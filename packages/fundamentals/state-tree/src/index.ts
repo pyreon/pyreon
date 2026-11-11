@@ -29,6 +29,11 @@ export { getParent, getPath, getRoot, hasParent, isRoot } from './tree'
 export { identifier, reference, resolveIdentifier } from './references'
 export type { ReferenceField } from './references'
 
+// ─── Model containers ───────────────────────────────────────────────────────────
+
+export { arrayOf, mapOf } from './containers'
+export type { ModelArray, ModelMap } from './containers'
+
 // ─── Patches ─────────────────────────────────────────────────────────────────
 
 export { applyPatch, onPatch } from './patch'
@@ -50,6 +55,7 @@ export type {
   PatchListener,
   SchemaModelHelpers,
   Snapshot,
+  SnapshotIn,
   SnapshotListener,
   StateShape,
 } from './types'

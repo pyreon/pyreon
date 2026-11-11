@@ -25,6 +25,7 @@ import {
 } from '@pyreon/core'
 import {
   _noopDispose,
+  batch,
   effectScope,
   getContextOwner,
   renderEffect,
@@ -32,9 +33,13 @@ import {
   runWithContextOwner,
   setContextOwner,
   setCurrentScope,
+  _captureRun,
+  _frameReads,
+  _releaseRun,
+  type EffectScope,
+  type RunCapture,
 } from '@pyreon/reactivity'
 import { setupDelegation } from './delegate'
-import type { EffectScope } from '@pyreon/reactivity'
 import { registerComponent, unregisterComponent } from './devtools'
 import { _takePendingForAdoption, detachNode, mountFor, mountKeyedList, mountReactive } from './nodes'
 import { applyProps, applySelectValueProp } from './props'
@@ -164,15 +169,15 @@ export function mountChild(
     // fires inside mountFor's effect. User-written `each={() => fn()}` still
     // works — props.each is then the function itself.
     const props = vnode.props as unknown as ForProps<unknown>
-    const initialEach = props.each as unknown
-    const source: () => unknown[] =
+    const initialEach = props.each
+    const source: () => readonly unknown[] =
       typeof initialEach === 'function'
-        ? (initialEach as () => unknown[])
-        : (() => props.each as unknown as unknown[])
+        ? initialEach
+        : () => props.each as readonly unknown[]
     const prevDepth = _elementDepth
     _elementDepth = 0
     const cleanup = mountFor(
-      source as () => unknown[],
+      source,
       props.by,
       props.children,
       parent,
@@ -490,6 +495,27 @@ function diagnoseReactivePropCall(
   )
 }
 
+/**
+ * The props object a component runs with — the ONE builder shared by
+ * `mountComponent` and `hydrateComponent`, so the two paths cannot drift.
+ *
+ * Positional children (`h(Comp, props, ...children)`) are merged into
+ * `props.children` by DESCRIPTOR copy (`mergeProps`), then compiler-emitted
+ * `_rp(() => expr)` thunks become getters (`makeReactiveProps`). An object
+ * spread here would fire every getter already on `vnode.props` — e.g. a
+ * component forwarding its own props with `h(Inner, props, 'label')` — and
+ * freeze the value, so the child would stop tracking the signal.
+ */
+export function componentProps(vnode: VNode): Record<string, unknown> {
+  const props = vnode.props as Record<string, unknown>
+  const children = vnode.children ?? []
+  const raw =
+    children.length > 0 && props.children === undefined
+      ? mergeProps(props, { children: children.length === 1 ? children[0] : children })
+      : props
+  return raw === EMPTY_PROPS ? raw : makeReactiveProps(raw)
+}
+
 function mountComponent(
   vnode: VNode & { type: ComponentFn },
   parent: Node,
@@ -558,36 +584,7 @@ function mountComponent(
     _mountingStack!.push(compId)
   }
 
-  // Merge vnode.children into props.children if not already set.
-  //
-  // Descriptor-copy preserves getter-shaped reactive props (the compiler-emitted
-  // `_rp(() => signal())` wrappers that `makeReactiveProps` converts to getters).
-  // A plain `{ ...vnode.props, children }` spread would fire every getter HERE
-  // and store the resolved value as a static data property, breaking
-  // signal-driven reactivity for every prop the component reads in a tracking
-  // scope — the bug-class root for any component called via the canonical
-  // `h(Comp, props, ...children)` shape with reactive props.
-  const children = vnode.children ?? []
-  let rawProps: Record<string, unknown>
-  if (
-    children.length > 0 &&
-    (vnode.props as Record<string, unknown>).children === undefined
-  ) {
-    // `mergeProps` copies own DESCRIPTORS (not values) so reactive getter props
-    // on vnode.props survive the merge. `vnode.props` is always a non-null object
-    // here (h() never produces null props; EMPTY_PROPS is the sentinel).
-    rawProps = mergeProps(vnode.props as Record<string, unknown>, {
-      children: children.length === 1 ? children[0] : children,
-    })
-  } else {
-    rawProps = vnode.props as Record<string, unknown>
-  }
-
-  // Convert compiler-emitted () => expr wrappers into getter properties.
-  // This makes component props reactive — reading props.state inside an
-  // effect/computed tracks the underlying signals.
-  const mergedProps =
-    rawProps === EMPTY_PROPS ? rawProps : makeReactiveProps(rawProps as Record<string, unknown>)
+  const mergedProps = componentProps(vnode)
 
   try {
     output = _runHooked(vnode.type, mergedProps)
@@ -667,10 +664,31 @@ function mountComponent(
     let cancelled = false
     output
       .then((resolved) => {
-        if (cancelled || !placeholder.parentNode) return
+        // The placeholder's LIVE parent, not the one captured at setup: while
+        // another load keeps an enclosing `<Suspense>` pending, its content
+        // (placeholder included) sits in an off-screen fragment.
+        const liveParent = placeholder.parentNode
+        if (cancelled || liveParent === null) return
         try {
           if (resolved != null) {
-            resolvedCleanup = mountChild(resolved as VNodeChild, parent, placeholder)
+            // The resolved subtree mounts in a microtask, outside both the
+            // owner and the batch every other mount runs in, so re-enter both:
+            //  - the owner: this component's scope, so descendants'
+            //    `useContext()` reach the ancestors' providers AND anything
+            //    this component `provide()`d before its first await — the
+            //    owner the synchronous path gives `mountChild` (#4377);
+            //  - a batch: an effect-driven mount (`<Show>`, a route swap)
+            //    already runs inside the effect flush, so what it notifies
+            //    applies AFTER it finishes. Without one, a still-loading
+            //    `lazy()` in the subtree registers with the enclosing
+            //    `<Suspense>`, which moves its content off-screen
+            //    SYNCHRONOUSLY — taking `placeholder` out of `liveParent` halfway
+            //    through this mount (`insertBefore` NotFoundError, empty page).
+            batch(() => {
+              resolvedCleanup = runWithContextOwner(scope, () =>
+                mountChild(resolved as VNodeChild, liveParent, placeholder),
+              )
+            })
           }
         } catch (err) {
           const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
@@ -689,12 +707,18 @@ function mountComponent(
 
     if (process.env.NODE_ENV !== 'production') _mountingStack!.pop()
 
+    // Restore the parent owner NOW, as the synchronous path does once its
+    // subtree is mounted: this component's siblings must not resolve context
+    // through its scope. (Restoring it in the unmount closure instead left the
+    // owner pointing here for the rest of the parent's mount, and clobbered
+    // whatever owner was current when the component later unmounted.)
+    setContextOwner(prevOwner)
+
     return () => {
       cancelled = true
       resolvedCleanup()
       if (placeholder.parentNode) placeholder.parentNode.removeChild(placeholder)
       scope.stop()
-      setContextOwner(prevOwner)
     }
   }
 
@@ -958,9 +982,11 @@ export function bindPolymorphicText(
  *   (ErrorBoundary routing, onUpdate notify, the re-entrant generation
  *   guard, inner-effect/onCleanup windows) that a renderEffect-flavored
  *   dispatcher cannot replicate — then dispose this dispatcher so its
- *   first-run subscriptions are dropped. Those structural branches keep the
- *   historical 2-invocations-at-mount shape (few per page, and their
- *   accessors are typically a single conditional read, not a cell formatter).
+ *   first-run subscriptions are dropped. The classified VALUE and the sources
+ *   its call read are handed over as a `FirstRun`, so the machinery's first
+ *   run mounts that value and replays those reads instead of calling the
+ *   accessor again: ONE invocation at mount on every branch (a `.map` maps
+ *   once, a compat component body runs once).
  *
  * Classification stays PINNED at the first run's value, exactly as the old
  * untracked sample pinned it — a textish-first accessor that later yields a
@@ -990,8 +1016,14 @@ function mountAccessorChild(
     // preserving the old sample's propagate-synchronously-out-of-mountChild
     // behavior. Re-runs take the `core !== null` path above with NO catch —
     // renderEffect re-run errors propagate, exactly as before.
+    // The first call runs inside an effect-shaped window (inner effects and
+    // `onCleanup`), and what it registers is released into whichever frame
+    // ends up owning the binding — here for text, the structural machinery's
+    // first run otherwise — so a single call registers exactly where it did
+    // when the machinery made its own call.
+    const run: RunCapture = { inner: null, cleanups: null }
     try {
-      const v = child()
+      const v = _captureRun(child, run)
       // Text fast path: reactive string/number/boolean — update text.data in
       // place. POLYMORPHIC: the accessor may later return a VNode
       // (`() => loading() ? 'Loading…' : <Table/>`), so the binding upgrades
@@ -1002,8 +1034,15 @@ function mountAccessorChild(
         text = document.createTextNode(v === false ? '' : String(v))
         parent.insertBefore(text, anchor)
         core = createPolyTextCore(text, parent, ownerAtSetup)
+        _releaseRun(run)
         return
       }
+      // The sources that call just read — handed to the structural machinery
+      // below with the value, so it does not evaluate the accessor again.
+      const reads = _frameReads()
+      // No collect frame (never true for this dispatcher's first run): the
+      // machinery will call the accessor itself, so the work stays here.
+      if (reads === null) _releaseRun(run)
       // Structural shape — hand off to the effect()-grade machinery.
       // Constructed UNTRACKED (the machinery was historically built outside
       // any tracking frame; its own effect establishes the real
@@ -1014,15 +1053,27 @@ function mountAccessorChild(
       try {
         runUntracked(() => {
           handoff = isKeyedArray(v)
-            ? mountKeyedList(child as () => VNode[], parent, anchor, (vn, p, a) =>
-                mountChild(vn, p, a),
+            ? mountKeyedList(
+                child as () => VNode[],
+                parent,
+                anchor,
+                (vn, p, a) => mountChild(vn, p, a),
+                reads === null ? undefined : { value: v as unknown as VNode[], reads, run },
               )
-            : mountReactive(child as () => VNodeChild, parent, anchor, mountChild)
+            : mountReactive(
+                child as () => VNodeChild,
+                parent,
+                anchor,
+                mountChild,
+                reads === null ? undefined : { value: v, reads, run },
+              )
         })
       } finally {
         _elementDepth = prevDepth
       }
     } catch (err) {
+      // Whatever the throwing call registered goes where it always went.
+      _releaseRun(run)
       firstRunError = err
     }
   })

@@ -11,15 +11,19 @@ import { join } from 'node:path'
 import { h } from '@pyreon/core'
 import type { RouteRecord } from '@pyreon/router'
 import { afterEach, describe, expect, it } from 'vitest'
-import { isHiddenStaticPath, REQUEST_RUNTIME, requestUrlFromTarget } from '../adapters/request-runtime'
+import {
+  fixedOriginFromEnv,
+  isHiddenStaticPath,
+  REQUEST_RUNTIME,
+  requestUrlFromTarget,
+} from '../adapters/request-runtime'
 import { stageClientThenServer } from '../adapters/stage'
 import { createServer } from '../entry-server'
 import { ssgPlugin } from '../ssg-plugin'
 
-const emitted = new Function(`${REQUEST_RUNTIME}\nreturn [__pyreonRequestUrl, __pyreonIsHiddenPath]`)() as [
-  typeof requestUrlFromTarget,
-  typeof isHiddenStaticPath,
-]
+const emitted = new Function(
+  `${REQUEST_RUNTIME}\nreturn [__pyreonRequestUrl, __pyreonIsHiddenPath, __pyreonFixedOrigin]`,
+)() as [typeof requestUrlFromTarget, typeof isHiddenStaticPath, typeof fixedOriginFromEnv]
 
 const TARGETS: Array<[string | undefined, string | null]> = [
   ['/a/b?c=1', 'http://victim.example/a/b?c=1'],
@@ -57,6 +61,35 @@ describe('requestUrlFromTarget — origin from Host, target only as a path', () 
     for (const host of ['victim.example/evil', 'a b', 'victim.example?x', 'victim.example#x']) {
       expect(requestUrlFromTarget('/x', `http://${host}`)).toBeNull()
       expect(emitted[0]('/x', `http://${host}`)).toBeNull()
+    }
+  })
+})
+
+describe('fixedOriginFromEnv — ORIGIN pins the origin, never Host', () => {
+  const OK: Array<[string | undefined, string | null]> = [
+    [undefined, null],
+    ['', null],
+    ['   ', null],
+    ['https://example.com', 'https://example.com'],
+    [' https://Example.COM:443/some/path?q#h ', 'https://example.com'],
+    ['http://127.0.0.1:3000/', 'http://127.0.0.1:3000'],
+  ]
+  it.each(OK)('%j', (value, expected) => {
+    expect(fixedOriginFromEnv(value)).toBe(expected)
+    expect(emitted[2](value)).toBe(expected)
+  })
+
+  it('throws at startup on a value that is not an absolute http(s) URL', () => {
+    for (const bad of ['example.com', '/path', 'ftp://example.com', 'javascript:alert(1)', 'file:///etc', 'http://']) {
+      expect(() => fixedOriginFromEnv(bad)).toThrow(/\[Pyreon\] ORIGIN must be an absolute http\(s\) URL/)
+      expect(() => emitted[2](bad)).toThrow(/\[Pyreon\] ORIGIN must be an absolute http\(s\) URL/)
+    }
+  })
+
+  it('every request-target resolves under the pinned origin', () => {
+    const origin = fixedOriginFromEnv('https://site.example')!
+    for (const [target] of TARGETS) {
+      expect(requestUrlFromTarget(target, origin)?.origin).toBe('https://site.example')
     }
   })
 })

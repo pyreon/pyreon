@@ -16,6 +16,7 @@ export const SWIFT_CHART_TARGET: ChartHostTarget = {
   nil: 'nil',
   nan: 'Double.nan',
   list: (items) => `[${items.join(', ')}]`,
+  str: swiftStr,
   struct: (name, fields) => `${name}(${fields.map(([k, v]) => `${k}: ${v}`).join(', ')})`,
   coalesce: (a, b) => `(${a} ?? ${b})`,
   withProgress: (options, struct, progress) => (options === 'nil' ? `${struct}(progress: ${progress})` : `{ () -> ${struct} in var pyreonO = ${options}; pyreonO.progress = ${progress}; return pyreonO }()`),
@@ -45,7 +46,7 @@ export function swiftChartAnimating(e: Extract<ExprIR, { kind: 'jsx-element' }>,
  */
 export function swiftChartEntrance(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string, indent: number, inner: (indent: number) => string): string {
   if (!swiftChartAnimating(e, tag)) return inner(indent)
-  const ms = chartEnterMs(chartAttrExpr(e, 'theme'), tag, SWIFT_CHART_TARGET.list, host.colorScope())
+  const ms = chartEnterMs(chartAttrExpr(e, 'theme'), tag, SWIFT_CHART_TARGET, host.colorScope())
   const pad = ' '.repeat(indent + 2)
   return `PyreonChartEntrance(durationMs: ${ms}) { pyreonEntrance in\n${pad}${inner(indent + 2)}\n${' '.repeat(indent)}}`
 }
@@ -89,7 +90,7 @@ export function swiftChartCanvas(e: Extract<ExprIR, { kind: 'jsx-element' }>, cm
   const size = 'Double(pyreonSaveGeo.size.width), Double(pyreonSaveGeo.size.height)'
   const action = onSave?.kind === 'event'
     ? swiftChartSelectBody(onSave.handler, `pyreonChartDataUrl(${cmds}, ${size})`, indent)
-    : `pyreonShareChartImage(${cmds}, ${size}, ${JSON.stringify(String(host.staticAttr(e, 'title') ?? 'chart'))})`
+    : `pyreonShareChartImage(${cmds}, ${size}, ${swiftStr(String(host.staticAttr(e, 'title') ?? 'chart'))})`
   return `GeometryReader { pyreonSaveGeo in ZStack(alignment: .topTrailing) { ${canvas}; Button(action: { ${action} }) { Text("⤓") }.padding(4).accessibilityIdentifier("pyreon-save-image") } }.accessibilityElement(children: .contain)`
 }
 
@@ -319,7 +320,7 @@ export function swiftMarkOptionArgs(opts: ExprIR | undefined, tag: string, serie
     const spacing = values.get('spacing')
     const width = values.get('width')
     if (kind?.kind !== 'literal' || typeof kind.value !== 'string' || color?.kind !== 'literal' || typeof color.value !== 'string' || spacing?.kind !== 'literal' || typeof spacing.value !== 'number' || width?.kind !== 'literal' || typeof width.value !== 'number') return false
-    args.push(`pattern: PyreonChartPattern(kind: ${JSON.stringify(kind.value)}, color: ${JSON.stringify(color.value)}, spacing: ${chartDouble(spacing.value)}, width: ${chartDouble(width.value)}${patternExtras(values, ': ')})`)
+    args.push(`pattern: PyreonChartPattern(kind: ${swiftStr(kind.value)}, color: ${swiftStr(color.value)}, spacing: ${chartDouble(spacing.value)}, width: ${chartDouble(width.value)}${patternExtras(values, ': ')})`)
     return true
   }
   // `gradient` sits right before `pattern` in Series field order: literal
@@ -341,11 +342,11 @@ export function swiftMarkOptionArgs(opts: ExprIR | undefined, tag: string, serie
       const offset = sv.get('offset')
       const color = sv.get('color')
       if (offset?.kind !== 'literal' || typeof offset.value !== 'number' || color?.kind !== 'literal' || typeof color.value !== 'string') return false
-      stopArgs.push(`PyreonChartGradientStop(offset: ${chartDouble(offset.value)}, color: ${JSON.stringify(color.value)})`)
+      stopArgs.push(`PyreonChartGradientStop(offset: ${chartDouble(offset.value)}, color: ${swiftStr(color.value)})`)
     }
     if (direction !== undefined && (direction.kind !== 'literal' || typeof direction.value !== 'string')) return false
     if (shape !== undefined && (shape.kind !== 'literal' || typeof shape.value !== 'string')) return false
-    args.push(`gradient: SeriesGradient(stops: [${stopArgs.join(', ')}]${direction === undefined ? '' : `, direction: ${JSON.stringify(direction.value)}`}${shape === undefined ? '' : `, shape: ${JSON.stringify(shape.value)}`})`)
+    args.push(`gradient: SeriesGradient(stops: [${stopArgs.join(', ')}]${direction === undefined ? '' : `, direction: ${swiftStr(direction.value)}`}${shape === undefined ? '' : `, shape: ${swiftStr(shape.value)}`})`)
     return true
   }
   let patternPushed = false
@@ -508,7 +509,7 @@ export function swiftChartTheme(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag
 
 /** The resolved theme per field as emitted text — read ONCE per host (it warns on a non-literal theme) and shared by the chrome, the tooltip and the palette default. */
 export function swiftChartThemeFields(e: Extract<ExprIR, { kind: 'jsx-element' }>, tag: string): ChartThemeText {
-  return chartThemeFields(chartAttrExpr(e, 'theme'), tag, (w) => host.warn(w), (items) => `[${items.join(', ')}]`, host.colorScope(), swiftChartScheme)
+  return chartThemeFields(chartAttrExpr(e, 'theme'), tag, (w) => host.warn(w), SWIFT_CHART_TARGET, host.colorScope(), swiftChartScheme)
 }
 
 /** The runtime colour-scheme switch: SwiftUI's `colorScheme` environment (injected into the view once any host reads it). */
@@ -715,13 +716,13 @@ function patternExtras(values: Map<string, ExprIR>, sep: string): string {
   const angle = values.get('angle')
   if (angle?.kind === 'literal' && typeof angle.value === 'number') out.push(`, angle${sep}${chartDouble(angle.value)}`)
   const symbol = values.get('symbol')
-  if (symbol?.kind === 'literal' && typeof symbol.value === 'string') out.push(`, symbol${sep}${JSON.stringify(symbol.value)}`)
+  if (symbol?.kind === 'literal' && typeof symbol.value === 'string') out.push(`, symbol${sep}${swiftStr(symbol.value)}`)
   const spacingY = values.get('spacingY')
   if (spacingY?.kind === 'literal' && typeof spacingY.value === 'number') out.push(`, spacingY${sep}${chartDouble(spacingY.value)}`)
   const image = values.get('image')
-  if (image?.kind === 'literal' && typeof image.value === 'string') out.push(`, image${sep}${JSON.stringify(image.value)}`)
+  if (image?.kind === 'literal' && typeof image.value === 'string') out.push(`, image${sep}${swiftStr(image.value)}`)
   const repeat = values.get('repeat')
-  if (repeat?.kind === 'literal' && typeof repeat.value === 'string') out.push(`, repeat${sep}${JSON.stringify(repeat.value)}`)
+  if (repeat?.kind === 'literal' && typeof repeat.value === 'string') out.push(`, repeat${sep}${swiftStr(repeat.value)}`)
   const shape = values.get('shape')
   if (shape?.kind === 'array') {
     const pts: string[] = []

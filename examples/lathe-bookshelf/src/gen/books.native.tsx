@@ -7,6 +7,9 @@ import { standardSchema } from '@pyreon/http/schema'
 import { useQuery } from '@pyreon/query'
 import { s } from '@pyreon/validate'
 
+type Int = number
+type Double = number
+
 /**
  * Bookshelf — `books`, for iOS and Android.
  *
@@ -28,8 +31,8 @@ export type Book = {
   id: string
   title: string
   status: string
-  pages?: number | undefined
-  rating?: number | undefined
+  pages?: Int | undefined
+  rating?: Double | undefined
   subtitle?: string | null | undefined
   tags?: string[] | undefined
 }
@@ -40,7 +43,7 @@ export const NewBook = s.object({
 })
 export type NewBook = {
   title: string
-  pages?: number | undefined
+  pages?: Int | undefined
 }
 
 /**

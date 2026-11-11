@@ -1,7 +1,13 @@
 import { computed, signal } from '@pyreon/reactivity'
 import { localeDirection } from './direction'
-import { createFormatters } from './formatters'
-import { interpolate } from './interpolation'
+import { createFormatters, type ParsedSpec, parseSpec } from './formatters'
+import {
+  type CompiledTemplate,
+  compileTemplate,
+  interpolate,
+  type Placeholder,
+  renderTemplate,
+} from './interpolation'
 import { resolvePluralCategory } from './pluralization'
 import type { TypedTranslationKey } from './type-helpers'
 import type { I18nInstance, I18nOptions, InterpolationValues, TranslationDictionary } from './types'
@@ -58,11 +64,10 @@ function isUnsafeI18nKey(key: string): boolean {
  */
 function buildKeyCandidates(
   keyPath: string,
-  locale: string,
   context: string | undefined,
   hasCount: boolean,
   count: number | undefined,
-  pluralRules: I18nOptions['pluralRules'],
+  category: string,
 ): string[] {
   if (!context && !hasCount) return [keyPath]
 
@@ -72,7 +77,6 @@ function buildKeyCandidates(
   const lastResort: string[] = []
   if (hasCount) {
     if (count === 0) tails.push('_zero')
-    const category = resolvePluralCategory(locale, count as number, pluralRules)
     if (category !== 'zero') tails.push(`_${category}`)
     if (category === 'one') {
       // Singular: the bare key IS the `one` form; `_other` only as a last resort.
@@ -103,8 +107,104 @@ function buildKeyCandidates(
 const NESTING_RE = /\$t\(([^()]*)\)/g
 const MAX_NESTING_DEPTH = 4
 
+/** Per-instance bound on dev missing-key warnings (each is one Set entry). */
+const MISSING_WARN_CAP = 200
+
 /** Per-instance bound on the (locale, namespace, key) resolution cache. */
 const RESOLUTION_CACHE_CAP = 2000
+
+/**
+ * Compiled-message cache bounds (leak-class C). Per instance: at most
+ * `COMPILED_LOCALE_CAP` active locales (FIFO), each a two-generation cache of
+ * at most `2 × COMPILED_GENERATION_CAP` keys, each key at most
+ * `COMPILED_VARIANT_CAP` plural/context variants (cleared on overflow).
+ */
+const COMPILED_LOCALE_CAP = 8
+const COMPILED_GENERATION_CAP = 1000
+const COMPILED_VARIANT_CAP = 32
+
+/**
+ * A resolved message, compiled once per (active locale, key, variant):
+ *  - `STATIC`: no `{{…}}` and no `$t(` — the template is the result for any values.
+ *  - `PARTS`: `{{…}}` placeholders pre-split into `parts` (no regex per render).
+ *  - `NESTED`: contains `$t(` — resolved through `finalize` per call.
+ */
+const STATIC = 0
+const PARTS = 1
+const NESTED = 2
+interface Compiled {
+  kind: typeof STATIC | typeof PARTS | typeof NESTED
+  template: string
+  parts: CompiledTemplate | null
+}
+
+/** A compiled placeholder carries its spec pre-split (see `parseSpec`). */
+interface CompiledPlaceholder extends Placeholder {
+  fmt?: ParsedSpec
+}
+
+function compileMessage(template: string): Compiled {
+  if (template.includes('$t(')) return { kind: NESTED, template, parts: null }
+  if (!template.includes('{{')) return { kind: STATIC, template, parts: null }
+  const parts = compileTemplate(template)
+  for (const p of parts.phs) {
+    if (p.spec) {
+      ;(p as CompiledPlaceholder).fmt = parseSpec(p.spec)
+    }
+  }
+  return { kind: PARTS, template, parts }
+}
+
+/**
+ * Per-key state in the compiled cache. `base` is the variant with neither a
+ * `count` nor a `context`; `plural` holds count-only (non-zero) variants keyed
+ * by plural category; `variants` every other count/context combination, keyed
+ * by everything the candidate list depends on. `null` = resolved to not-found;
+ * `undefined` = not compiled yet.
+ */
+interface KeyEntry {
+  namespace: string
+  keyPath: string
+  base: Compiled | null | undefined
+  plural: Map<string, Compiled | null> | undefined
+  variants: Map<string, Compiled | null> | undefined
+}
+
+/**
+ * Two-generation cache: O(1) hits with no write on a young hit (a strict LRU
+ * pays a delete + set per hit). When `young` fills it becomes `old` and the
+ * previous `old` is dropped; an `old` hit is promoted. Holds at most
+ * `2 × COMPILED_GENERATION_CAP` entries; a key used at least once per
+ * generation is never evicted.
+ *
+ * Generations are null-prototype dictionaries rather than Maps — the same
+ * shape a message catalog lookup has (`messages[id]`), and on JavaScriptCore
+ * a keyed read on one is no slower than `Map#get` and faster at a call site
+ * that sees few keys. Null prototype: no key (`__proto__`, `constructor`, …)
+ * can hit an inherited member, so a read is an own-entry read.
+ */
+type Generation = Record<string, KeyEntry | undefined>
+class GenerationCache {
+  young: Generation = Object.create(null) as Generation
+  old: Generation = Object.create(null) as Generation
+  youngSize = 0
+  get(key: string): KeyEntry | undefined {
+    const hit = this.young[key]
+    if (hit !== undefined) return hit
+    const aged = this.old[key]
+    if (aged !== undefined) this.set(key, aged)
+    return aged
+  }
+  set(key: string, entry: KeyEntry): void {
+    if (this.youngSize >= COMPILED_GENERATION_CAP) {
+      this.old = this.young
+      this.young = Object.create(null) as Generation
+      this.youngSize = 0
+    }
+    this.young[key] = entry
+    this.youngSize++
+  }
+}
 
 /**
  * Convert flat dotted keys into nested objects.
@@ -286,6 +386,9 @@ export function createI18n(options: I18nOptions): I18nInstance {
     format: (value: unknown, spec: string): string =>
       formatters.format(value, spec, locale.peek()),
   }
+  // The compiled-path equivalent: the spec was split once at compile time.
+  const formatCompiled = (value: unknown, ph: Placeholder): string =>
+    formatters.formatParsed(value, (ph as CompiledPlaceholder).fmt as ParsedSpec, locale.peek())
 
   // Internal store: locale → namespace → dictionary
   // We use a version counter to trigger reactive updates when messages change,
@@ -301,6 +404,35 @@ export function createI18n(options: I18nOptions): I18nInstance {
   // messages for a namespace change, so it is cleared at the two mutation points
   // (`loadNamespace`, `addMessages`). Bounded (leak-class C).
   const resolutionCache = new Map<string, string | null>()
+  // Compiled messages, per ACTIVE locale (the resolution walks that locale's
+  // step-down + fallback chain), keyed by the key exactly as passed to `t()` —
+  // a hit builds no string and parses nothing. Same invalidation as
+  // `resolutionCache`. `lastLocale`/`lastCompiled` skip the per-locale lookup
+  // while the locale does not change (the common case).
+  const compiledByLocale = new Map<string, GenerationCache>()
+  let lastLocale: string | undefined
+  let lastCompiled: GenerationCache | undefined
+  function compiledFor(loc: string): GenerationCache {
+    if (loc === lastLocale) return lastCompiled as GenerationCache
+    let c = compiledByLocale.get(loc)
+    if (c === undefined) {
+      if (compiledByLocale.size >= COMPILED_LOCALE_CAP) {
+        compiledByLocale.delete(compiledByLocale.keys().next().value as string)
+      }
+      c = new GenerationCache()
+      compiledByLocale.set(loc, c)
+    }
+    lastLocale = loc
+    lastCompiled = c
+    return c
+  }
+  /** Messages changed → every resolution may differ. */
+  function invalidateResolutions(): void {
+    resolutionCache.clear()
+    compiledByLocale.clear()
+    lastLocale = undefined
+    lastCompiled = undefined
+  }
 
   // Loading state
   const pendingLoads = signal(0)
@@ -446,27 +578,15 @@ export function createI18n(options: I18nOptions): I18nInstance {
     return resolveTranslation(innerKey, innerValues, depth + 1)
   }
 
-  function resolveTranslation(key: string, values?: InterpolationValues, depth = 0): string {
-    // Subscribe to reactive dependencies
-    const currentLocale = locale()
-    storeVersion()
-
-    // Parse key: "namespace:key.path" or just "key.path"
-    let namespace = defaultNamespace
-    let keyPath = key
-
-    const colonIndex = key.indexOf(':')
-    if (colonIndex > 0) {
-      namespace = key.slice(0, colonIndex)
-      keyPath = key.slice(colonIndex + 1)
-    }
-
-    // Reserved option keys (i18next-style): context (gender/variant) + count.
-    const context =
-      values && typeof values.context === 'string' && values.context ? values.context : undefined
-    const hasCount = !!values && 'count' in values
-    const count = hasCount ? Number(values!.count) : undefined
-
+  /**
+   * Resolve a key against the active locale's chain for one candidate list —
+   * the uncached path, run once per (active locale, key, variant).
+   */
+  function resolveCandidates(
+    currentLocale: string,
+    namespace: string,
+    candidates: string[],
+  ): Compiled | null {
     // Try candidates most-specific first (context × plural × _zero). Resolve
     // ALL candidates in the ACTIVE locale before consulting the fallback — so
     // an active-locale form (even a less-specific one, e.g. `items_other`) beats
@@ -479,14 +599,6 @@ export function createI18n(options: I18nOptions): I18nInstance {
     // Locales are tried along the BCP 47 step-down chain: `en-US` → `en` →
     // fallbackLocale (itself stepped down). A regional locale with only base-
     // language messages used to skip straight to the fallback.
-    const candidates = buildKeyCandidates(
-      keyPath,
-      currentLocale,
-      context,
-      hasCount,
-      count,
-      pluralRules,
-    )
     const chain = localeChain(currentLocale)
     for (let li = 0; li < chain.length; li++) {
       const loc = chain[li] as string
@@ -497,9 +609,97 @@ export function createI18n(options: I18nOptions): I18nInstance {
         if (li > 0 && process.env.NODE_ENV !== 'production')
           _countSink.__pyreon_count__?.('i18n.lookupKey.fallback')
         const result = lookupKey(loc, namespace, candidate)
-        if (result !== undefined) return finalize(result, values, depth)
+        if (result !== undefined) return compileMessage(result)
       }
     }
+    return null
+  }
+
+  function render(compiled: Compiled, values: InterpolationValues | undefined, depth: number): string {
+    if (compiled.kind === STATIC) return compiled.template
+    if (compiled.kind === NESTED) return finalize(compiled.template, values, depth)
+    // PARTS — same contract as `interpolate`: no values → the raw template.
+    if (!values) return compiled.template
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.interpolate')
+    return renderTemplate(compiled.parts as CompiledTemplate, values, formatCompiled)
+  }
+
+  function resolveTranslation(key: string, values?: InterpolationValues, depth = 0): string {
+    // Subscribe to reactive dependencies
+    const currentLocale = locale()
+    storeVersion()
+
+    const cache = currentLocale === lastLocale ? (lastCompiled as GenerationCache) : compiledFor(currentLocale)
+    let entry = cache.young[key]
+    // Hot path — a compiled message with neither a `count` nor a `context`
+    // (the same conditions the general path below checks).
+    if (entry !== undefined) {
+      const base = entry.base
+      if (base != null && base.kind !== NESTED) {
+        if (values === undefined) return base.template
+        if (!('count' in values) && !(typeof values.context === 'string' && values.context)) {
+          if (base.kind === STATIC) return base.template
+          if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.interpolate')
+          return renderTemplate(base.parts as CompiledTemplate, values, formatCompiled)
+        }
+      }
+    }
+    if (entry === undefined) entry = cache.get(key)
+    if (entry === undefined) {
+      // Parse key: "namespace:key.path" or just "key.path"
+      const colonIndex = key.indexOf(':')
+      entry = {
+        namespace: colonIndex > 0 ? key.slice(0, colonIndex) : defaultNamespace,
+        keyPath: colonIndex > 0 ? key.slice(colonIndex + 1) : key,
+        base: undefined,
+        plural: undefined,
+        variants: undefined,
+      }
+      cache.set(key, entry)
+    }
+
+    // Reserved option keys (i18next-style): context (gender/variant) + count.
+    let compiled: Compiled | null | undefined
+    const context =
+      values && typeof values.context === 'string' && values.context ? values.context : undefined
+    const hasCount = !!values && 'count' in values
+    if (!context && !hasCount) {
+      compiled = entry.base
+      if (compiled === undefined) {
+        compiled = entry.base = resolveCandidates(currentLocale, entry.namespace, [entry.keyPath])
+      }
+    } else {
+      const count = hasCount ? Number(values!.count) : undefined
+      const category = hasCount
+        ? resolvePluralCategory(currentLocale, count as number, pluralRules)
+        : ''
+      // Keyed by everything the candidate list depends on: context, count
+      // presence, count === 0 and the plural category. The dominant shape — a
+      // count, no context, not zero — is keyed by the category alone (no
+      // string built per call); every other shape by a composed key.
+      let variants: Map<string, Compiled | null> | undefined
+      let variant: string
+      if (!context && count !== 0) {
+        variant = category
+        variants = entry.plural
+        if (variants === undefined) variants = entry.plural = new Map()
+      } else {
+        variant = `${context ?? ''}\0${hasCount ? (count === 0 ? `0${category}` : category) : '-'}`
+        variants = entry.variants
+        if (variants === undefined) variants = entry.variants = new Map()
+      }
+      compiled = variants.get(variant)
+      if (compiled === undefined) {
+        compiled = resolveCandidates(
+          currentLocale,
+          entry.namespace,
+          buildKeyCandidates(entry.keyPath, context, hasCount, count, category),
+        )
+        if (variants.size >= COMPILED_VARIANT_CAP) variants.clear()
+        variants.set(variant, compiled)
+      }
+    }
+    if (compiled !== null) return render(compiled, values, depth)
 
     // Explicit default value (interpolated) before the key-as-fallback.
     const defaultValue = values?.defaultValue
@@ -509,12 +709,45 @@ export function createI18n(options: I18nOptions): I18nInstance {
 
     // Missing key handler
     if (onMissingKey) {
-      const custom = onMissingKey(currentLocale, key, namespace)
+      const custom = onMissingKey(currentLocale, key, entry.namespace)
       if (custom !== undefined) return custom!
+    } else if (process.env.NODE_ENV !== 'production') {
+      warnMissingKey(currentLocale, key, namespace, keyPath)
     }
 
     // Return the key itself as a visual fallback
     return key
+  }
+
+  // Dev-only: a missing key rendered the raw key with no signal at all, so a
+  // wrong key shape (`shop:title` for a key registered as `shop.title`) looked
+  // like a working app with odd text. Warn once per (locale, key). A key in a
+  // namespace that is not loaded YET is expected while a loader is in flight,
+  // so only warn when the namespace is present (or there is no loader at all).
+  // Bounded: at most MISSING_WARN_CAP distinct entries per instance.
+  const warnedMissing = new Set<string>()
+  function warnMissingKey(loc: string, key: string, namespace: string, keyPath: string): void {
+    const nsMap = store.get(loc)
+    if (loader && !nsMap?.has(namespace)) return
+    const id = `${loc}\0${key}`
+    if (warnedMissing.has(id) || warnedMissing.size >= MISSING_WARN_CAP) return
+    warnedMissing.add(id)
+    let hint = ''
+    if (namespace !== defaultNamespace && !nsMap?.has(namespace)) {
+      const fallbackDict = nsMap?.get(defaultNamespace)
+      const asDotted = `${namespace}.${keyPath}`
+      hint =
+        fallbackDict && resolveKey(fallbackDict, asDotted) !== undefined
+          ? ` "${key}" reads key "${keyPath}" in namespace "${namespace}", which has no messages; the default namespace has "${asDotted}" — did you mean t("${asDotted}")?`
+          : ` Namespace "${namespace}" has no messages for "${loc}" (register it with addMessages(locale, messages, "${namespace}") or a loader).`
+    }
+    /* v8 ignore next -- the caller is already dev-gated; this inner gate is for the dev-guard lint and the production branch is never taken under test */
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[Pyreon] i18n: missing translation "${key}" for locale "${loc}" — rendering the key itself.${hint}` +
+          ' Pass onMissingKey to createI18n to handle missing keys yourself.',
+      )
+    }
   }
 
   // ── Public API ──────────────────────────────────────────────────────
@@ -578,7 +811,7 @@ export function createI18n(options: I18nOptions): I18nInstance {
           // expanded, unsafe keys dropped, a store-owned copy. Loader output
           // (often fetched from a CDN) skipped all three.
           nsMap.set(namespace, normalizeDict(dict))
-          resolutionCache.clear() // messages changed → resolutions may differ
+          invalidateResolutions()
           storeVersion.update((c) => c + 1)
           loadedNsVersion.update((c) => c + 1)
         }
@@ -620,7 +853,7 @@ export function createI18n(options: I18nOptions): I18nInstance {
       nsMap.set(ns, normalizeDict(messages))
     }
 
-    resolutionCache.clear() // messages changed → resolutions may differ
+    invalidateResolutions()
     storeVersion.update((c) => c + 1)
     loadedNsVersion.update((c) => c + 1)
   }

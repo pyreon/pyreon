@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getContainerWidth } from '../Container/utils'
+import { defaultContainerWidths } from '../theme'
 
 describe('Container/utils – getContainerWidth', () => {
   it('returns width from props when present', () => {
@@ -25,16 +26,17 @@ describe('Container/utils – getContainerWidth', () => {
     expect(result).toEqual({ xs: '100%', lg: 960 })
   })
 
-  it('returns undefined/falsy when nothing matches', () => {
-    expect(getContainerWidth({}, {})).toBeFalsy()
+  // #4314: a theme without breakpoints falls back to coolgrid's default widths
+  it('falls back to the default widths when nothing matches', () => {
+    expect(getContainerWidth({}, {})).toEqual(defaultContainerWidths)
   })
 
-  it('returns undefined/falsy when both are undefined', () => {
-    expect(getContainerWidth(undefined, undefined)).toBeFalsy()
+  it('falls back to the default widths when both are undefined', () => {
+    expect(getContainerWidth(undefined, undefined)).toEqual(defaultContainerWidths)
   })
 
-  it('returns undefined/falsy when both are empty objects', () => {
-    expect(getContainerWidth({}, {})).toBeFalsy()
+  it('returns undefined when the theme has its own breakpoints but no container', () => {
+    expect(getContainerWidth({}, { breakpoints: { phone: 0, tablet: 600 } })).toBeUndefined()
   })
 
   it('returns string width from props', () => {

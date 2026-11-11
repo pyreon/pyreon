@@ -34,6 +34,8 @@ describe('createPreviewHandler', () => {
     expect(c.startsWith(`${PREVIEW_COOKIE}=`)).toBe(true)
     expect(c).toMatch(/HttpOnly/)
     expect(c).toMatch(/Secure/)
+    expect(c).toMatch(/SameSite=Lax/)
+    expect(c).toMatch(/Max-Age=3600(;|$)/)
   })
 
   it('rejects a wrong token with 401 and no cookie', async () => {

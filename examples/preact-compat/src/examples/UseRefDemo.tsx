@@ -3,7 +3,7 @@ import { useRef, useState } from 'preact/hooks'
 import Demo from './Demo'
 
 export default function UseRefDemo() {
-  const inputRef = useRef<HTMLInputElement>()
+  const inputRef = useRef<HTMLInputElement>(null)
   const classRef = createRef<HTMLInputElement>()
   const [msg, setMsg] = useState('')
 
@@ -11,7 +11,7 @@ export default function UseRefDemo() {
     <Demo
       title="useRef & createRef"
       apis="useRef, createRef"
-      code={`const inputRef = useRef<HTMLInputElement>()
+      code={`const inputRef = useRef<HTMLInputElement>(null)
 // later: inputRef.current?.focus()
 
 const classRef = createRef<HTMLInputElement>()

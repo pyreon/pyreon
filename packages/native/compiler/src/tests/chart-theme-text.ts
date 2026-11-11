@@ -4,16 +4,17 @@
 // expectations from this instead of pinning the light literal, which would
 // re-pin the very divergence chart-native-parity.test.ts closes.
 import { CHART_THEME_FIELDS, chartThemeFields } from '../../../../fundamentals/charts/src/native-plugin/hosts'
+import { kotlinStr, swiftStr } from '../string-literals'
 import type { ChartThemeText } from '../../../../fundamentals/charts/src/native-plugin/hosts'
 
 export const SWIFT_SCHEME = (light: string, dark: string): string => `(pyreonColorScheme == .dark ? ${dark} : ${light})`
 export const KOTLIN_SCHEME = (light: string, dark: string): string => `(if (isSystemInDarkTheme()) ${dark} else ${light})`
 
 export function swiftTheme(): ChartThemeText {
-  return chartThemeFields(undefined, 'X', () => {}, (items) => `[${items.join(', ')}]`, undefined, SWIFT_SCHEME)
+  return chartThemeFields(undefined, 'X', () => {}, { list: (items) => `[${items.join(', ')}]`, str: swiftStr }, undefined, SWIFT_SCHEME)
 }
 export function kotlinTheme(): ChartThemeText {
-  return chartThemeFields(undefined, 'X', () => {}, (items) => `listOf(${items.join(', ')})`, undefined, KOTLIN_SCHEME)
+  return chartThemeFields(undefined, 'X', () => {}, { list: (items) => `listOf(${items.join(', ')})`, str: kotlinStr }, undefined, KOTLIN_SCHEME)
 }
 /** `ChartTheme(...)` as the Swift emitter writes it for an un-themed host. */
 export function swiftThemeLiteral(over: Partial<ChartThemeText> = {}): string {

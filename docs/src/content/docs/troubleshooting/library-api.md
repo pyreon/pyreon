@@ -7,6 +7,12 @@ description: "Common library api-shape mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### A compat API that sorts its argument into the wrong shape
+
+Vue-compat `watch` treated any non-ref source as a getter, so `watch(reactive(obj), cb)` — Vue's most common form — called the proxy as a function, threw inside the effect, and never fired; `Array.isArray` also took a `reactive([])` for a list of sources. Classify by the real library's order (ref → function → reactive → array of sources) and warn on anything else. Test: `vue-compat/src/tests/watch-reactive-source.test.ts`.
+
+---
+
 ### Importing `@pyreon/charts` through a pre-0.52 entry point
 
 The main entry is now the engine (`<Chart>` with mark children, formerly `<Plot>` at `/plot`), and the ECharts wrapper is `<EChart>` at `/echarts`, with `/manual` and `/vite` under it. `<Chart options={…}>` from the root is the old wrapper and no longer type-checks.
@@ -182,8 +188,20 @@ A 27-package audit of `packages/fundamentals` (PRs #3642–#3653) found the same
 
 ---
 
+### A readonly Proxy that traps only `set` and `deleteProperty`
+
+A Proxy forwards every internal method it does not trap to the target, so `Object.defineProperty`, `Object.setPrototypeOf` and `Object.preventExtensions` (and `Object.freeze`/`Object.seal`, built on them) mutate the source behind the "readonly" view, and `Object.getOwnPropertyDescriptor(ro, k).value` hands out the raw nested object. A readonly view traps all five write methods (`set`, `deleteProperty`, `defineProperty`, `setPrototypeOf`, `preventExtensions`) from one shared handler, and a deep one wraps nested values on BOTH read paths (`get` and `getOwnPropertyDescriptor`, except the invariant-pinned non-configurable non-writable case). Vue 3's own readonly traps only set/delete, so "match Vue" is not a defence. Reference: `vue-compat/src/index.ts:readonlyWriteTraps`; lock: `vue-compat/src/tests/readonly-write-traps.test.ts`.
+
+---
+
 ### A scaffold's generated default is production code.
 
 Whatever a template ships is what a deployed app runs until someone replaces it, and "STUB" in a comment does not change that. So a template must not ship: a seeded login outside development (gate it on `import.meta.env.DEV`, so the production build compiles it away); plain-text passwords (use salted PBKDF2 through Web Crypto); `Math.random` secrets (use `crypto.getRandomValues`); a session cookie written by page JavaScript (set it on the server, `HttpOnly; SameSite=Lax`, and `Secure` except on http://localhost); auth state imported into a page by value (it is then bundled into the browser); or a credential that is identical in every generated project (a keystore password: generate it per project, pass it through the environment instead of argv, and store it only in a gitignored, owner-only file). Test the GENERATED output: scaffold it, then drive the generated endpoints with real `Request`s and run the generated scripts. Locks: `create-zero/src/tests/dashboard-auth.test.ts`, `create-multiplatform/src/tests/scaffold.test.ts` ("random per project").
+
+---
+
+### [FIXED, 2026-11] A component that iterates or clones its children must accept every shape the compiler emits, not just `VNode`.
+
+`@pyreon/kinetic`'s stagger renderers filtered children on `'type' in child`, but the compiler lowers literal markup (`<li>Install</li>`) to a pre-built `_tpl` item on the client and `_ssr` raw HTML on the server, so the docs' own stagger example rendered an empty `<ol>`. A forwarded `children` arrives as an accessor, and around a user's own `() => items.map(…)` as an accessor returning an accessor (one `typeof === 'function'` unwrap threw `children is not iterable`). **Rule: flatten children by unwrapping EVERY accessor level and every array/fragment; decorate a `_tpl` item by setting the extras on its element at mount (it has no props to clone), and pass raw server HTML through. Test it through the real compiler: kinetic's browser suite runs `@pyreon/vite-plugin` for exactly this.** Kinetic's group renderers also rebuilt every row on each change, so a removed row never unmounted: a keyed animated list keeps one row per key (`<For by>`), flips that row's `show` to leave, and drops it from its own `onAfterLeave`.
 
 ---

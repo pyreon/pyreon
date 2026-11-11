@@ -3435,7 +3435,7 @@ public func plain(_ v: Double) -> String {
     if Double(mag) >= 1000000000000000.0 || Double(mag) < 0.0001 {
       return exponential(v)
     }
-    let r = ((Double(v)) + 0.5).rounded(.down)
+    let r = pyreonRound(Double(v))
     if abs(v - r) < 0.000001 {
       return "\(pyreonNumberString(r))"
     }
@@ -3444,20 +3444,20 @@ public func plain(_ v: Double) -> String {
       places = ceil(Double(-log10(Double(mag)))) + 2.0
     }
     let mul = pow(Double(10.0), Double(places))
-    return "\(pyreonNumberString(((Double(v * mul)) + 0.5).rounded(.down) / mul))"
+    return "\(pyreonNumberString(pyreonRound(Double(v * mul)) / mul))"
   }
 
 public func exponential(_ v: Double) -> String {
     let mag = abs(v)
     var e = floor(Double(log10(Double(mag))))
-    var m = ((Double((Double(mag) / pow(Double(10.0), Double(e))) * 1000.0)) + 0.5).rounded(.down) / 1000.0
+    var m = pyreonRound(Double((Double(mag) / pow(Double(10.0), Double(e))) * 1000.0)) / 1000.0
     if m >= 10.0 {
       m = m / 10.0
       e = e + 1.0
     }
     let sign = v < 0.0 ? "-" : ""
-    let mant = abs(m - ((Double(m)) + 0.5).rounded(.down)) < 1e-7 ? "\(pyreonNumberString(((Double(m)) + 0.5).rounded(.down)))" : "\(pyreonNumberString(m))"
-    return "\(sign)\(mant)e\(pyreonNumberString(((Double(e)) + 0.5).rounded(.down)))"
+    let mant = abs(m - pyreonRound(Double(m))) < 1e-7 ? "\(pyreonNumberString(pyreonRound(Double(m))))" : "\(pyreonNumberString(m))"
+    return "\(sign)\(mant)e\(pyreonNumberString(pyreonRound(Double(e))))"
   }
 
 public func groupThousands(_ v: Double) -> String {
@@ -3501,17 +3501,17 @@ public func compact(_ v: Double) -> String {
   }
 
 public func trim(_ v: Double) -> String {
-    let r = ((Double(v * 10.0)) + 0.5).rounded(.down) / 10.0
-    return ((r).truncatingRemainder(dividingBy: 1) == 0) ? "\(pyreonNumberString(((Double(r)) + 0.5).rounded(.down)))" : "\(pyreonNumberString(r))"
+    let r = pyreonRound(Double(v * 10.0)) / 10.0
+    return ((r).truncatingRemainder(dividingBy: 1) == 0) ? "\(pyreonNumberString(pyreonRound(Double(r))))" : "\(pyreonNumberString(r))"
   }
 
 public func fixed(_ places: Int) -> (Double) -> String {
     let p = max(0, min(10, places))
     let mul = pow(Double(10.0), Double(p))
     return { v in
-      let r = ((Double(v * mul)) + 0.5).rounded(.down) / mul
+      let r = pyreonRound(Double(v * mul)) / mul
       if p == 0 {
-        return "\(pyreonNumberString(((Double(r)) + 0.5).rounded(.down)))"
+        return "\(pyreonNumberString(pyreonRound(Double(r))))"
       }
       let s = "\(pyreonNumberString(r))"
       let dot = pyreonIndexOf(s, ".")
@@ -3534,7 +3534,7 @@ public func percent(_ places: Int = 0) -> (Double) -> String {
   }
 
 public func padded(_ v: Double, _ width: Int) -> String {
-    let s = "\(pyreonNumberString(((Double(v)) + 0.5).rounded(.down)))"
+    let s = "\(pyreonNumberString(pyreonRound(Double(v))))"
     return s.utf16.count >= width ? s : "\(String(repeating: "0", count: width - s.utf16.count))\(s)"
   }
 
@@ -3556,7 +3556,7 @@ public func formatDate(_ ms: Double, _ pattern: String) -> String {
     let hour = floor(Double(inDay / 3600000.0))
     let minute = floor(Double((inDay - hour * 3600000.0) / 60000.0))
     let second = floor(Double((inDay - hour * 3600000.0 - minute * 60000.0) / 1000.0))
-    let name = MONTH_NAMES[Int(((Double(month)) + 0.5).rounded(.down) - Double(1))]
+    let name = MONTH_NAMES[Int(pyreonRound(Double(month)) - Double(1))]
     var out = ""
     var i = 0
     while i < pattern.utf16.count {
@@ -4157,7 +4157,7 @@ public func renderPie(_ slices: [Slice], _ box: PyreonChartRect, _ opts: PieOpti
           continue
         }
         let at = pointOnCircle(center, (radius + inner) / 2.0, a.mid)
-        out.append(PyreonDrawCmd(kind: "text", fill: opts.labelColor, text: "\(pyreonNumberString(((Double(a.fraction * 100.0)) + 0.5).rounded(.down)))%", at: at, size: opts.fontSize, align: "middle", baseline: "middle"))
+        out.append(PyreonDrawCmd(kind: "text", fill: opts.labelColor, text: "\(pyreonNumberString(pyreonRound(Double(a.fraction * 100.0))))%", at: at, size: opts.fontSize, align: "middle", baseline: "middle"))
       }
     }
     return out
@@ -7238,7 +7238,7 @@ public func rampColor(_ stops: [String], _ t: Double) -> String {
     if n == 1 || t <= 0.0 {
       let s0 = stops[0]
       let o0 = heatHashOffset(s0)
-      return "rgb(\(pyreonNumberString(((Double(heatChannel(s0, o0))) + 0.5).rounded(.down))), \(pyreonNumberString(((Double(heatChannel(s0, o0 + 2))) + 0.5).rounded(.down))), \(pyreonNumberString(((Double(heatChannel(s0, o0 + 4))) + 0.5).rounded(.down))))"
+      return "rgb(\(pyreonNumberString(pyreonRound(Double(heatChannel(s0, o0))))), \(pyreonNumberString(pyreonRound(Double(heatChannel(s0, o0 + 2))))), \(pyreonNumberString(pyreonRound(Double(heatChannel(s0, o0 + 4))))))"
     }
     let clamped = t >= 1.0 ? 1.0 : t
     var spanF = 0.0
@@ -7265,7 +7265,7 @@ public func rampColor(_ stops: [String], _ t: Double) -> String {
     let r = heatChannel(a, oa) + (heatChannel(b, ob) - heatChannel(a, oa)) * frac
     let g = heatChannel(a, oa + 2) + (heatChannel(b, ob + 2) - heatChannel(a, oa + 2)) * frac
     let bl = heatChannel(a, oa + 4) + (heatChannel(b, ob + 4) - heatChannel(a, oa + 4)) * frac
-    return "rgb(\(pyreonNumberString(((Double(r)) + 0.5).rounded(.down))), \(pyreonNumberString(((Double(g)) + 0.5).rounded(.down))), \(pyreonNumberString(((Double(bl)) + 0.5).rounded(.down))))"
+    return "rgb(\(pyreonNumberString(pyreonRound(Double(r)))), \(pyreonNumberString(pyreonRound(Double(g)))), \(pyreonNumberString(pyreonRound(Double(bl)))))"
   }
 
 public func visualOutside(_ v: Double, _ inRange: Domain?, _ outBands: [Double]?) -> Bool {
@@ -7948,9 +7948,9 @@ public func tintHex(_ hex: String, _ t: Double) -> String {
     if hex.utf16.count < 7 {
       return hex
     }
-    let r = ((Double(hexPair(hex, 1) + (255.0 - hexPair(hex, 1)) * t)) + 0.5).rounded(.down)
-    let g = ((Double(hexPair(hex, 3) + (255.0 - hexPair(hex, 3)) * t)) + 0.5).rounded(.down)
-    let b = ((Double(hexPair(hex, 5) + (255.0 - hexPair(hex, 5)) * t)) + 0.5).rounded(.down)
+    let r = pyreonRound(Double(hexPair(hex, 1) + (255.0 - hexPair(hex, 1)) * t))
+    let g = pyreonRound(Double(hexPair(hex, 3) + (255.0 - hexPair(hex, 3)) * t))
+    let b = pyreonRound(Double(hexPair(hex, 5) + (255.0 - hexPair(hex, 5)) * t))
     return "rgb(\(pyreonNumberString(r)), \(pyreonNumberString(g)), \(pyreonNumberString(b)))"
   }
 
@@ -8932,7 +8932,7 @@ public func polarTicks(_ lo: Double, _ hi: Double) -> [Double] {
     }
     var `guard` = 0
     while v <= hi + 1e-9 && `guard` < 1000 {
-      out.append(((Double(v * 1000000.0)) + 0.5).rounded(.down) / 1000000.0)
+      out.append(pyreonRound(Double(v * 1000000.0)) / 1000000.0)
       v = v + step
       `guard` = `guard` + 1
     }
@@ -9311,7 +9311,7 @@ public func sankeyRgba(_ hex: String, _ alpha: Double) -> String {
     let r = hexDigit(Double(Array(hex.utf16)[Int(1)])) * 16.0 + hexDigit(Double(Array(hex.utf16)[Int(2)]))
     let g = hexDigit(Double(Array(hex.utf16)[Int(3)])) * 16.0 + hexDigit(Double(Array(hex.utf16)[Int(4)]))
     let b = hexDigit(Double(Array(hex.utf16)[Int(5)])) * 16.0 + hexDigit(Double(Array(hex.utf16)[Int(6)]))
-    return "rgba(\(pyreonNumberString(((Double(r)) + 0.5).rounded(.down))), \(pyreonNumberString(((Double(g)) + 0.5).rounded(.down))), \(pyreonNumberString(((Double(b)) + 0.5).rounded(.down))), \(alpha))"
+    return "rgba(\(pyreonNumberString(pyreonRound(Double(r)))), \(pyreonNumberString(pyreonRound(Double(g)))), \(pyreonNumberString(pyreonRound(Double(b)))), \(alpha))"
   }
 
 public func sankeyIndexOf(_ nodes: [SankeyNode], _ name: String) -> Int {
@@ -10054,7 +10054,7 @@ public func formatIsoDays(_ days: Double) -> String {
     let mp = c.month < 10.0 ? "0" : ""
     let dp = c.day < 10.0 ? "0" : ""
     let yp = c.year < 1000.0 ? (c.year < 100.0 ? (c.year < 10.0 ? "000" : "00") : "0") : ""
-    return "\(yp)\(pyreonNumberString(((Double(c.year)) + 0.5).rounded(.down)))-\(mp)\(pyreonNumberString(((Double(c.month)) + 0.5).rounded(.down)))-\(dp)\(pyreonNumberString(((Double(c.day)) + 0.5).rounded(.down)))"
+    return "\(yp)\(pyreonNumberString(pyreonRound(Double(c.year))))-\(mp)\(pyreonNumberString(pyreonRound(Double(c.month))))-\(dp)\(pyreonNumberString(pyreonRound(Double(c.day))))"
   }
 
 public func layoutCalendar(_ start: String, _ end: String, _ box: PyreonChartRect, _ options: CalendarOptions? = nil) -> CalendarLayout {
@@ -10794,8 +10794,8 @@ public func ganttTicks(_ lo: Double, _ hi: Double, _ unit: String) -> [GanttTick
       if t >= lo {
         let c = civilFromDays(t)
         let q = floor(Double((c.month - 1.0) / 3.0)) + 1.0
-        let year = "\(pyreonNumberString(((Double(c.year)) + 0.5).rounded(.down)))"
-        let label = unit == "day" || unit == "week" ? "\(pyreonNumberString(((Double(c.day)) + 0.5).rounded(.down))) \(ganttMonthName(c.month))" : unit == "month" ? (sameYear ? ganttMonthName(c.month) : "\(ganttMonthName(c.month)) \(year)") : unit == "quarter" ? "Q\(pyreonNumberString(((Double(q)) + 0.5).rounded(.down))) \(year)" : year
+        let year = "\(pyreonNumberString(pyreonRound(Double(c.year))))"
+        let label = unit == "day" || unit == "week" ? "\(pyreonNumberString(pyreonRound(Double(c.day)))) \(ganttMonthName(c.month))" : unit == "month" ? (sameYear ? ganttMonthName(c.month) : "\(ganttMonthName(c.month)) \(year)") : unit == "quarter" ? "Q\(pyreonNumberString(pyreonRound(Double(q)))) \(year)" : year
         out.append(GanttTick(at: t, x: 0.0, label: label))
       }
       t = ganttNextTick(t, unit)
@@ -11290,7 +11290,7 @@ public func niceTicks(_ lo: Double, _ hi: Double, _ count: Int) -> [Double] {
     var out: [Double] = []
     var v = ceil(Double(lo / step)) * step
     while v <= hi + 1e-9 {
-      out.append(((Double(v * 1000000.0)) + 0.5).rounded(.down) / 1000000.0)
+      out.append(pyreonRound(Double(v * 1000000.0)) / 1000000.0)
       v = v + step
     }
     return out

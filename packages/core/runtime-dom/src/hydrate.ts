@@ -22,7 +22,6 @@ import {
   dispatchToErrorBoundary,
   ForSymbol,
   Fragment,
-  makeReactiveProps,
   PortalSymbol,
   reportError,
   _runHooked,
@@ -31,9 +30,14 @@ import {
   useContext,
 } from '@pyreon/core'
 import {
+  _captureRun,
+  _releaseRun,
+  _replayReads,
+  _sampleReads,
   effectScope,
   getContextOwner,
-  runUntracked,
+  type RunCapture,
+  type SubscriberHost,
   runWithContextOwner,
   setContextOwner,
   setCurrentScope,
@@ -42,7 +46,7 @@ import { setupDelegation } from './delegate'
 import { suspenseAttachOf } from './suspense-boundary'
 import { installDevTools } from './devtools'
 import { warnHydrationMismatch } from './hydration-debug'
-import { bindPolymorphicText, mountChild } from './mount'
+import { bindPolymorphicText, componentProps, mountChild } from './mount'
 import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
@@ -256,6 +260,46 @@ function soleAccessorChild(children: VNodeChild[] | undefined): (() => VNodeChil
 }
 
 /**
+ * Evaluate a reactive accessor ONCE for the hydration walk and hand that same
+ * evaluation to the binding that adopts it.
+ *
+ * The walk needs the initial value to choose a path (adopt text, adopt a
+ * range, keyed list, mount). It used to sample with `runUntracked(child)` and
+ * then let the binding call the accessor again — user code twice (a `.map`
+ * mapped twice, a compat component body ran twice), three times on the
+ * reactive-text path, which sampled again. Now the sample runs in a collect
+ * frame (`_sampleReads`) inside the inner-effect / `onCleanup` windows an
+ * effect run opens (`_captureRun`), and `acc`'s FIRST call — made by the
+ * binding's own first, tracked run — returns that value, replays the recorded
+ * reads into the binding's frame (the exact subscriptions a second call would
+ * record) and re-homes the captured effects and cleanups there. Later calls
+ * run the accessor. Every path below hands `acc` to exactly one binding, so the
+ * captured work always lands somewhere.
+ */
+function primeAccessor<T>(child: () => T): { initial: T; acc: () => T } {
+  const reads: SubscriberHost[] = []
+  const run: RunCapture = { inner: null, cleanups: null }
+  let initial: T
+  try {
+    initial = _captureRun(() => _sampleReads(child, reads), run)
+  } catch (err) {
+    _releaseRun(run)
+    throw err
+  }
+  let fresh = true
+  const acc = (): T => {
+    if (fresh) {
+      fresh = false
+      _replayReads(reads)
+      _releaseRun(run)
+      return initial
+    }
+    return child()
+  }
+  return { initial, acc }
+}
+
+/**
  * Hydrate an element's SOLE accessor child, whose extent is the element's
  * entire child list (no markers — see `soleAccessorChild`).
  *
@@ -271,7 +315,9 @@ function hydrateSoleAccessorChild(
   el: Element,
   path: string,
 ): Cleanup {
-  const initial = runUntracked(child)
+  const primed = primeAccessor(child)
+  const { initial } = primed
+  child = primed.acc
   const first = el.firstChild
 
   // Adopt: exactly one text child, text-ish initial. Deliberately NOT gated on
@@ -317,7 +363,7 @@ function hydrateSoleAccessorChild(
   if (first !== null) {
     const end = document.createComment('pyreon')
     el.appendChild(end)
-    const cleanup = adoptReactiveRange(child, el, first, end, path)
+    const cleanup = adoptReactiveRange(child, initial, el, first, end, path)
     end.remove()
     return cleanup
   }
@@ -420,6 +466,7 @@ function needsKeyedReconcile(value: unknown): boolean {
  */
 function adoptReactiveRange(
   child: () => VNodeChild,
+  initial: VNodeChild,
   parent: Node,
   rangeFirst: ChildNode,
   end: ChildNode,
@@ -440,7 +487,7 @@ function adoptReactiveRange(
   // server nodes FIRST: `mountReactive` inserts its marker and content into
   // this same parent, so a "remove until end" sweep afterwards would delete
   // what was just mounted.
-  if (needsKeyedReconcile(runUntracked(child))) {
+  if (needsKeyedReconcile(initial)) {
     // Hand off to the KEYED reconciler, not to `mountReactive` + `mountChild`.
     // `mountChild`'s own accessor dispatcher makes exactly this choice
     // (`mount.ts`, `isKeyedArray(v) ? mountKeyedList(...) : mountReactive(...)`)
@@ -600,7 +647,9 @@ function hydrateReactiveChild(
   anchor: Node | null,
   path: string,
 ): [Cleanup, ChildNode | null] {
-  const initial = runUntracked(child)
+  const primed = primeAccessor(child)
+  const { initial } = primed
+  child = primed.acc
 
   // Range-marked accessor output: the SSR renderer wraps every function child's
   // output in `<!--$-->…<!--/$-->`, giving this accessor's EXACT DOM extent —
@@ -679,7 +728,7 @@ function hydrateReactiveChild(
       // mismatch degrades to the pre-existing correctness, never past it.
       const rangeFirst = domNode.nextSibling
       if (rangeFirst !== null && rangeFirst !== end) {
-        const cleanup = adoptReactiveRange(child, parent, rangeFirst, end, path)
+        const cleanup = adoptReactiveRange(child, initial, parent, rangeFirst, end, path)
         domNode.remove()
         end.remove()
         return [cleanup, after ? firstReal(after) : null]
@@ -715,6 +764,7 @@ function hydrateReactiveChild(
       parent,
       anchor,
       path,
+      initial,
     )
   }
 
@@ -735,8 +785,9 @@ function hydrateReactiveText(
   parent: Node,
   anchor: Node | null,
   path: string,
+  // The caller's sampled value; `child` is its primed accessor (`primeAccessor`).
+  initial: string | number | boolean | null | undefined,
 ): [Cleanup, ChildNode | null] {
-  const initial = runUntracked(child)
   const expected = initial == null ? '' : String(initial)
 
   // Empty initial value: SSR emitted NOTHING, so there is no text node to adopt.
@@ -1171,7 +1222,8 @@ function hydrateMountSlot(
       // future flip and the region would DUPLICATE on the first re-render.
       const end = document.createComment('pyreon')
       parent.appendChild(end)
-      const cleanup = adoptReactiveRange(children as () => VNodeChild, parent, first, end, 'slot')
+      const primed = primeAccessor(children as () => VNodeChild)
+      const cleanup = adoptReactiveRange(primed.acc, primed.initial, parent, first, end, 'slot')
       end.remove()
       return cleanup
     }
@@ -1712,6 +1764,64 @@ function hydrateDeferredLazy(
   ]
 }
 
+/**
+ * Hydrate a component's SYNCHRONOUS client output against the
+ * `<!--$pas-->…<!--$pae-->` range the server emitted because the same component
+ * was ASYNC there (see the call site in `hydrateComponent`).
+ *
+ * The range is the extent: the walk starts at the first real node inside the
+ * start marker and is bounded by the matching end marker (`anchor`), whatever
+ * it leaves unclaimed inside the range is swept (as `sweepUnclaimed` does at a
+ * closing tag), and the parent's cursor continues after the end marker. The
+ * markers stay in the DOM while the component lives — a later walk over the
+ * same parent sees the same structure — and are removed with it.
+ *
+ * A client output of `null` claims nothing: the server range is left standing
+ * (the same "degrade, don't destroy" policy as `sweepUnclaimed`) but the
+ * parent's siblings still hydrate against their own nodes.
+ */
+function hydrateSyncOutputInAsyncRange(
+  output: VNodeChild,
+  start: Comment,
+  parent: Node,
+  path: string,
+): [Cleanup, ChildNode | null] {
+  const end = findMatchingAsyncEnd(start) as Comment
+  const first = firstReal(start.nextSibling)
+  const innerStart = first === end ? null : first
+  let childCleanup: Cleanup = noop
+  if (output != null) {
+    const [cleanup, next] = hydrateChild(output, innerStart, parent, end, path)
+    childCleanup = cleanup
+    // Range-bounded sweep: everything from the residual cursor up to the end
+    // marker is server DOM the client did not claim. Declined when nothing
+    // precedes the cursor inside the range — the client neither adopted nor
+    // mounted anything, i.e. hydration did not happen (`sweepUnclaimed`'s rule).
+    if (
+      next !== null &&
+      next !== end &&
+      next.parentNode === parent &&
+      firstReal(start.nextSibling) !== next
+    ) {
+      let n: ChildNode | null = next
+      while (n !== null && n !== end) {
+        const nx: ChildNode | null = n.nextSibling
+        n.remove()
+        n = nx
+      }
+    }
+  }
+  const after = end.nextSibling
+  return [
+    () => {
+      childCleanup()
+      start.remove()
+      end.remove()
+    },
+    after ? firstReal(after) : null,
+  ]
+}
+
 function hydrateComponent(
   vnode: VNode,
   domNode: ChildNode | null,
@@ -1742,22 +1852,9 @@ function hydrateComponent(
 
   // Function.name is always a string per spec; || handles empty string, avoids uncoverable ?? branch
   const componentName = ((vnode.type as ComponentFn).name || 'Anonymous') as string
-  const rawProps =
-    (vnode.children ?? []).length > 0 &&
-    (vnode.props as Record<string, unknown>).children === undefined
-      ? {
-          ...vnode.props,
-          children:
-            (vnode.children ?? []).length === 1
-              ? (vnode.children ?? [])[0]
-              : (vnode.children ?? []),
-        }
-      : (vnode.props as Record<string, unknown>)
-  // Convert compiler-emitted `_rp(() => expr)` wrappers into getter properties —
-  // mirrors mount.ts so component code reading `props.x` gets the resolved value,
-  // not the raw `_rp` function. Without it hydration binds against the wrong
-  // values and any signal-driven re-render diverges from the SSR HTML.
-  const mergedProps = makeReactiveProps(rawProps as Record<string, unknown>)
+  // Same builder as mountComponent — children merged by descriptor copy, then
+  // `_rp` thunks become getters — so a forwarded getter prop stays live here too.
+  const mergedProps = componentProps(vnode)
 
   let output: VNodeChild
   let hooks: LifecycleHooks
@@ -1846,14 +1943,25 @@ function hydrateComponent(
           // Hydrate the resolved subtree against the SSR DOM range.
           // `anchor = endMarker` bounds the sibling walk; hydrateChild
           // returns when it has consumed the range or hit the end marker.
-          const [childCleanup] = hydrateChild(
-            resolved as VNodeChild,
-            rangeStart,
-            parent,
-            endMarker,
-            `${path}:async`,
-          )
-          resolvedCleanup = childCleanup
+          //
+          // The microtask runs outside the synchronous walk, so re-enter the
+          // walk's ambient state exactly as `hydrateDeferredLazy` does:
+          //  - the owner: this component's scope, so the subtree's
+          //    `useContext()` sees the ancestors' providers and what this
+          //    component provided before its first await (#4377);
+          //  - the hydrating flag: without it a `<Suspense>` in the subtree
+          //    renders its fallback over the server content of a still-loading
+          //    lazy child (and later remounts it), and a compiled `_tpl` builds
+          //    eagerly instead of adopting at its cursor.
+          const prev = setHydrating(true)
+          try {
+            const [childCleanup] = runWithContextOwner(scope, () =>
+              hydrateChild(resolved as VNodeChild, rangeStart, parent, endMarker, `${path}:async`),
+            )
+            resolvedCleanup = childCleanup
+          } finally {
+            setHydrating(prev)
+          }
         } catch (err) {
           const handled = dispatchToErrorBoundary(err)
           if (!handled && process.env.NODE_ENV !== 'production') {
@@ -1884,6 +1992,19 @@ function hydrateComponent(
       if (startMarker?.parentNode) startMarker.parentNode.removeChild(startMarker)
       if (endMarker?.parentNode) endMarker.parentNode.removeChild(endMarker)
     }
+  } else if (isAsyncStartMarker(domNode) && findMatchingAsyncEnd(domNode as Comment) !== null) {
+    // SYNC output over an ASYNC server range. The component was async on the
+    // server (runtime-server wrapped its awaited output in `<!--$pas-->` /
+    // `<!--$pae-->`) and sync here — `island()` is the main case: its server
+    // path awaits the loader, its client path returns the bare
+    // `<pyreon-island>` marker. Hydrating against the `$pas` comment itself
+    // mismatches (`expected pyreon-island, got 8`) and mounts a fresh client
+    // node, throwing away the server-rendered subtree. The range is the
+    // component's extent, exactly as for the Promise path above: hydrate
+    // inside it, then continue the parent's walk after the end marker.
+    const range = hydrateSyncOutputInAsyncRange(output, domNode as Comment, parent, path)
+    subtreeCleanup = range[0]
+    nextDom = range[1]
   } else if (output != null) {
     // A `<Suspense>` delimits the range it hydrated so it can move it
     // off-screen when a descendant mounted LATER suspends it (see

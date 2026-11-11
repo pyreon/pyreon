@@ -28,7 +28,7 @@ describe('Math.* namespace emit (Swift mapping)', () => {
     // NOT `.rounded()`: Swift's default rule is toNearestOrAwayFromZero and
     // JS breaks ties toward +Infinity, so the two disagree on every negative
     // half (`Math.round(-0.5)` is `0` in JS/Kotlin, `-1` with `.rounded()`).
-    expect(swift('Math.round(n())')).toContain('((Double(n)) + 0.5).rounded(.down)')
+    expect(swift('Math.round(n())')).toContain('pyreonRound(Double(n))')
     expect(swift('Math.round(n())')).not.toMatch(/\(Double\(n\)\)\.rounded\(\)/)
     expect(swift('Math.round(n())')).not.toContain('Math.round')
   })
