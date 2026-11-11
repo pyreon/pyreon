@@ -1,7 +1,6 @@
 import { products } from '../../site/content/_products.json'
 import type { ProductSummary } from '../data'
 import { DocsGlyph as Glyph } from '../glyph'
-import { useLinkClick } from '../../site/kit/link'
 import { Inline } from '../inline'
 
 const SUMMARIES = products as ProductSummary[]
@@ -13,7 +12,6 @@ const SUMMARIES = products as ProductSummary[]
  * page: `sell-placement.test.ts` fails a page with two.
  */
 export default function InlineSell(props: { id: string }) {
-  const click = useLinkClick()
   const s = SUMMARIES.find((x) => x.id === props.id)
   if (!s) return null
   return (
@@ -25,7 +23,7 @@ export default function InlineSell(props: { id: string }) {
         <b>{s.name}</b>
         <p><Inline text={s.pitch} /></p>
       </div>
-      <a class="dx-pitch__link" href={s.href} onClick={click(s.href)} aria-label={`Open ${s.name}`}>
+      <a class="dx-pitch__link" href={s.href} aria-label={`Open ${s.name}`}>
         Open →
       </a>
     </aside>

@@ -1,30 +1,33 @@
 import { onMount, Show } from '@pyreon/core'
 import { useMediaQuery, useScrollLock } from '@pyreon/hooks'
 import { effect, signal, watch } from '@pyreon/reactivity'
-import { docsLayout } from './tokens'
-import { DocsSidebar } from './sidebar'
 import { trailOf } from './nav'
+import { SearchButton, showSearch } from './search'
+import { DocsSidebar } from './sidebar'
+import { docsLayout } from './tokens'
+
+/** The drawer button's "where am I": group / page. Pure; exported for tests. */
+export function drawerWhere(path: string): string {
+  const t = trailOf(path)
+  if (!t) return 'Docs'
+  return t.parent ? `${t.group.group} / ${t.parent.title}` : `${t.group.group} / ${t.item.title}`
+}
 
 /**
- * Below 960px the sidebar becomes this drawer: a full-width "Browse docs"
- * button under the nav (it names the current group / page), opening a modal
- * sheet with search and the same groups. A native modal `<dialog>`: focus
- * moves in, the page behind is inert, Escape closes it; focus then returns to
- * the button and the page scrolls again. Following a link, a route change and
- * widening past 960px all close it.
+ * Below 960px the sidebar becomes this drawer (an island, `DocsDrawerIsland`):
+ * a full-width "Browse docs" button under the nav (it names the current group
+ * / page), opening a modal sheet with search and the same groups. A native
+ * modal `<dialog>`: focus moves in, the page behind is inert, Escape closes
+ * it; focus then returns to the button and the page scrolls again. Following
+ * a link and widening past 960px close it.
  */
-export function DocsDrawer(props: { path: () => string; onSearch: () => void }) {
+export default function DocsDrawer(props: { path: string }) {
   const open = signal(false)
   const scroll = useScrollLock()
   let dialog: HTMLDialogElement | null = null
   let button: HTMLButtonElement | null = null
 
   const close = () => open.set(false)
-  const where = () => {
-    const t = trailOf(props.path())
-    if (!t) return 'Docs'
-    return t.parent ? `${t.group.group} / ${t.parent.title}` : `${t.group.group} / ${t.item.title}`
-  }
 
   const wide = useMediaQuery(`(min-width: ${docsLayout.drawerBreak}px)`)
   watch(wide, (w) => {
@@ -42,13 +45,8 @@ export function DocsDrawer(props: { path: () => string; onSearch: () => void }) 
         dialog.close()
       }
     })
-    const stopRoute = watch(
-      () => props.path(),
-      () => close(),
-    )
     return () => {
       sync.dispose()
-      stopRoute()
       scroll.unlock()
     }
   })
@@ -70,7 +68,7 @@ export function DocsDrawer(props: { path: () => string; onSearch: () => void }) 
           <path d="M2 4h12M2 8h12M2 12h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
         </svg>
         Browse docs
-        <span class="dx-drawer-btn__where">{where}</span>
+        <span class="dx-drawer-btn__where">{drawerWhere(props.path)}</span>
       </button>
       {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- pointer-only dismissal on the ::backdrop; the keyboard closes the modal dialog with Escape and its close button */}
       <dialog
@@ -103,10 +101,14 @@ export function DocsDrawer(props: { path: () => string; onSearch: () => void }) 
             path={props.path}
             idPrefix="dx-drawer"
             label="Docs, drawer"
-            onSearch={() => {
-              close()
-              props.onSearch()
-            }}
+            search={
+              <SearchButton
+                onOpen={() => {
+                  close()
+                  showSearch()
+                }}
+              />
+            }
             onNavigate={close}
           />
         </Show>

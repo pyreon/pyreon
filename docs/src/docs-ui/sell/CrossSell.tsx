@@ -1,7 +1,6 @@
 import { products } from '../../site/content/_products.json'
 import { useDocsData, type ProductSummary } from '../data'
 import { DocsGlyph as Glyph } from '../glyph'
-import { useLinkClick } from '../../site/kit/link'
 import { Inline } from '../inline'
 import { SLOT_IDS } from './slots'
 import { When } from '../when'
@@ -25,7 +24,6 @@ interface Card {
  */
 export default function CrossSell(props: { id?: string; ids?: string | string[] }) {
   const p = useDocsData().product
-  const click = useLinkClick()
   let cards: Card[] = []
   if (props.ids !== undefined) {
     const ids = Array.isArray(props.ids) ? props.ids : props.ids.split(',').map((x) => x.trim())
@@ -43,7 +41,7 @@ export default function CrossSell(props: { id?: string; ids?: string | string[] 
     <ul class="dx-lm">
       {cards.map((c) => (
         <li>
-          <a href={c.href} onClick={click(c.href)}>
+          <a href={c.href}>
             <b>
               <When on={c.id}>
                 <Glyph id={c.id ?? ''} size={16} />

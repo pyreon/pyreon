@@ -4,7 +4,6 @@ import { benchHeadline } from './headline'
 import { When } from '../when'
 import { SLOT_IDS } from './slots'
 import { VerdictChip } from '../../site/kit/bench'
-import { useLinkClick } from '../../site/kit/link'
 import { formatMeasure, RECORD_LINE } from '../../site/kit/verdict'
 
 /**
@@ -17,7 +16,6 @@ import { formatMeasure, RECORD_LINE } from '../../site/kit/verdict'
  */
 export default function BenchCallout(props: { id: string }) {
   const p = useDocsData().product
-  const click = useLinkClick()
   if (!p || p.id !== props.id || !p.benchmarks) return null
   const b = p.benchmarks
   const big = benchHeadline(b)
@@ -54,7 +52,7 @@ export default function BenchCallout(props: { id: string }) {
       </ul>
       <p class="dx-caveat">
         <span>{`${b.rival} · ${RECORD_LINE} · ${b.run} · author-run, synthetic · `}</span>
-        <a href="/benchmarks" onClick={click('/benchmarks')}>
+        <a href="/benchmarks">
           Every result, including where we lose →
         </a>
       </p>

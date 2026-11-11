@@ -2,7 +2,6 @@ import { island } from '@pyreon/zero'
 import homeJson from '../../site/content/_docs-home.json'
 import type { DocsHome as DocsHomeData } from '../../site/content/types-site'
 import { DocsGlyph as Glyph } from '../glyph'
-import { useLinkClick } from '../../site/kit/link'
 import { Inline } from '../inline'
 import { Command } from '../command'
 import { CodeFigure } from '../code-figure'
@@ -36,13 +35,12 @@ const RunOnceCounter = island(() => import('./RunOnceCounter'), { name: 'RunOnce
  */
 export function DocsHome() {
   const d = HOME
-  const click = useLinkClick()
   return (
     <div class="dx-home">
       <aside class="dx-banner" aria-label="Status">
         <span class="dx-bdg dx-bdg--preview">{d.banner.label}</span>
         <p><Inline text={d.banner.text} /></p>
-        <a href={d.banner.link.href} onClick={click(d.banner.link.href)}>
+        <a href={d.banner.link.href}>
           {d.banner.link.label} →
         </a>
       </aside>
@@ -68,7 +66,7 @@ export function DocsHome() {
                 ))}
               </div>
               <h3 class="dx-path__title">
-                <a href={p.href} onClick={click(p.href)}>
+                <a href={p.href}>
                   {p.title}
                 </a>
               </h3>
@@ -92,7 +90,7 @@ export function DocsHome() {
         <ul class="dx-tiles">
           {d.tiles.items.map((t) => (
             <li>
-              <a class="dx-tilecard" href={t.href} onClick={click(t.href)}>
+              <a class="dx-tilecard" href={t.href}>
                 <span class="dx-tile">
                   <Glyph id={t.productId} size={20} />
                 </span>
@@ -107,7 +105,7 @@ export function DocsHome() {
             </li>
           ))}
         </ul>
-        <a class="dx-more" href={d.tiles.link.href} onClick={click(d.tiles.link.href)}>
+        <a class="dx-more" href={d.tiles.link.href}>
           {d.tiles.link.label} →
         </a>
       </section>
@@ -130,7 +128,7 @@ export function DocsHome() {
           <summary>{d.whyFast.compiled.label}</summary>
           <CodeFigure label={d.whyFast.compiled.label} lang={d.whyFast.compiled.lang} source={d.whyFast.compiled.source} html={d.whyFast.compiled.html} />
         </details>
-        <a class="dx-more" href={d.whyFast.link.href} onClick={click(d.whyFast.link.href)}>
+        <a class="dx-more" href={d.whyFast.link.href}>
           {d.whyFast.link.label} →
         </a>
 
@@ -145,7 +143,7 @@ export function DocsHome() {
         </ul>
         <p class="dx-caveat">
           <span>{d.proofStrip.footer}</span>{' '}
-          <a href={d.proofStrip.link.href} onClick={click(d.proofStrip.link.href)}>
+          <a href={d.proofStrip.link.href}>
             {d.proofStrip.link.label} →
           </a>
         </p>
@@ -159,7 +157,7 @@ export function DocsHome() {
             <li class="dx-new__item">
               <span class="dx-new__area">{n.area}</span>
               <div>
-                <a class="dx-new__title" href={n.href} onClick={click(n.href)}>
+                <a class="dx-new__title" href={n.href}>
                   <Inline text={n.title} />
                 </a>
                 <p><Inline text={n.text} /></p>
@@ -172,7 +170,7 @@ export function DocsHome() {
         </ul>
         <p class="dx-caveat">
           <span>{d.whatsNew.footer}</span>{' '}
-          <a href={d.whatsNew.link.href} onClick={click(d.whatsNew.link.href)}>
+          <a href={d.whatsNew.link.href}>
             {d.whatsNew.link.label} →
           </a>
         </p>

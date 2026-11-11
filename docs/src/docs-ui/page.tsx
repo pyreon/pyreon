@@ -1,18 +1,17 @@
 import type { VNodeChild } from '@pyreon/core'
-import { h, onMount } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { h } from '@pyreon/core'
 import { DocsGlyph as Glyph } from './glyph'
 import { Badge } from './sidebar'
-import { useLinkClick } from '../site/kit/link'
-import { editUrlOf, PageActions, SITE_ORIGIN } from './actions'
+import { editUrlOf, SITE_ORIGIN } from './actions'
 import { useDocsData, type RailProduct } from './data'
 import { prevNextOf, trailOf, type PageLink } from './nav'
-import { InlineToc, RailToc, tocEntries, useScrollSpy, type TocHeading } from './toc'
+import { PitchHead } from './sell/ProductPitch'
+import { DocsActionsIsland, DocsEnhanceIsland, DocsHelpfulIsland } from './islands'
+import { InlineToc, RailToc, tocEntries, type TocHeading } from './toc'
 
 export function Breadcrumbs(props: { path: string; title: string }) {
-  const click = useLinkClick()
   const t = trailOf(props.path)
-  const link = (href: string, text: string) => h('li', null, h('a', { href, onClick: click(href) }, text))
+  const link = (href: string, text: string) => h('li', null, h('a', { href }, text))
   // h(): the middle crumbs are conditional children (#4385).
   return h(
     'nav',
@@ -30,12 +29,11 @@ export function Breadcrumbs(props: { path: string; title: string }) {
 
 /** The rail's ONE product card: the most relevant other product, with its proof badge (and the badge's source) when it has one. */
 export function RailCard(props: { product: RailProduct }) {
-  const click = useLinkClick()
   const p = props.product
   // h(): the badge is a conditional child (#4385).
   return h(
     'a',
-    { class: 'dx-rcard', href: p.href, onClick: click(p.href) },
+    { class: 'dx-rcard', href: p.href },
     h('span', { class: 'dx-tile' }, h(Glyph, { id: p.id, size: 22 })),
     h('b', null, p.name),
     h('span', { class: 'dx-rcard__cond' }, `${p.package} · ${p.category}`),
@@ -45,12 +43,11 @@ export function RailCard(props: { product: RailProduct }) {
 }
 
 function PrevNext(props: { path: string }) {
-  const click = useLinkClick()
   const { prev, next } = prevNextOf(props.path)
   const card = (l: PageLink, dir: 'prev' | 'next') =>
     h(
       'a',
-      { class: `dx-pn__link dx-pn__link--${dir}`, href: l.href, onClick: click(l.href), rel: dir },
+      { class: `dx-pn__link dx-pn__link--${dir}`, href: l.href, rel: dir },
       h('small', null, dir === 'prev' ? 'Previous' : 'Next'),
       dir === 'prev' ? `← ${l.title}` : `${l.title} →`,
     )
@@ -63,58 +60,20 @@ function PrevNext(props: { path: string }) {
   )
 }
 
-/**
- * "Was this page helpful?" — nothing is recorded (the site has no analytics).
- * "No" turns into a link to a GitHub issue that names the page, which is the
- * one thing that actually gets a page fixed.
- */
-function Helpful(props: { title: string; url: string }) {
-  const answer = signal<'yes' | 'no' | null>(null)
-  const issue = `https://github.com/pyreon/pyreon/issues/new?title=${encodeURIComponent(`docs: ${props.title}`)}&body=${encodeURIComponent(`Page: ${props.url}\n\nWhat was missing or wrong:\n`)}`
-  return (
-    <div class="dx-helpful">
-      {() =>
-        answer() === null ? (
-          <>
-            <span id="dx-helpful-q">Was this page helpful?</span>
-            <button type="button" aria-describedby="dx-helpful-q" onClick={() => answer.set('yes')}>
-              Yes
-            </button>
-            <button type="button" aria-describedby="dx-helpful-q" onClick={() => answer.set('no')}>
-              No
-            </button>
-          </>
-        ) : answer() === 'yes' ? (
-          <output>Good to hear. Nothing was recorded: this site has no analytics.</output>
-        ) : (
-          <output>
-            Sorry about that.{' '}
-            <a href={issue} rel="noopener noreferrer">
-              Tell us what is missing on GitHub
-            </a>
-            .
-          </output>
-        )
-      }
-    </div>
-  )
-}
-
-function Rail(props: { entries: readonly TocHeading[]; active: () => string | undefined; slug: string | undefined }) {
+function Rail(props: { entries: readonly TocHeading[]; slug: string | undefined }) {
   const data = useDocsData()
-  const click = useLinkClick()
-  // h(): the card and the edit link are conditional children (#4385).
+  // h(): the TOC, the card and the edit link are conditional children (#4385).
   return h(
     'aside',
     { class: 'dx-rail', 'aria-label': 'On this page and related' },
-    h(RailToc, { entries: props.entries, active: props.active }),
+    props.entries.length > 0 ? h(RailToc, { entries: props.entries }) : null,
     data.rail ? h(RailCard, { product: data.rail }) : null,
     h(
       'ul',
       { class: 'dx-rlinks' },
       props.slug !== undefined ? h('li', null, h('a', { href: editUrlOf(props.slug), rel: 'noopener noreferrer' }, 'Edit this page')) : null,
-      h('li', null, h('a', { href: '/docs/mcp', onClick: click('/docs/mcp') }, 'Ask your AI assistant (MCP)')),
-      h('li', null, h('a', { href: '/benchmarks', onClick: click('/benchmarks') }, 'Benchmarks')),
+      h('li', null, h('a', { href: '/docs/mcp' }, 'Ask your AI assistant (MCP)')),
+      h('li', null, h('a', { href: '/benchmarks' }, 'Benchmarks')),
     ),
   )
 }
@@ -125,9 +84,14 @@ function Rail(props: { entries: readonly TocHeading[]; active: () => string | un
  * page: breadcrumbs, page actions, the title, the inline TOC below 1180px,
  * "helpful?", prev / next, and the rail (TOC, one product card, links).
  *
- * `title` renders as the page's h1 unless the body brings its own: a
- * product overview's pitch strip, or a Markdown `# Heading` at the top (the
- * stylesheet hides the generic title then, so a page always has one h1).
+ * The page is static HTML (`site/render-mode.ts`); the actions and "helpful?"
+ * are islands, and one enhance island adds code copy, the TOCs' scroll-spy
+ * and heading anchors (`islands.ts`).
+ *
+ * `title` renders as the page's h1, except on a product overview (whose page
+ * data carries the product), where the pitch strip is the head and its h1 is
+ * the product name, and on the docs home (`ownTitle`: its hero has the h1).
+ * Either way the inline TOC sits under the title.
  */
 export function DocsPage(props: {
   path: string
@@ -138,27 +102,9 @@ export function DocsPage(props: {
   ownTitle?: boolean | undefined
   children?: VNodeChild
 }) {
-  const slots = useDocsData().slots
+  const { slots, product } = useDocsData()
   const entries = tocEntries([...slots.before, ...props.headings, ...slots.after])
-  const active = useScrollSpy(() => entries.map((e) => e.slug))
   const url = `${SITE_ORIGIN}${props.path}`
-  let prose: HTMLElement | null = null
-  // Heading anchors: a "#" link after each h2/h3 that has an id. Added once the
-  // page is mounted (the compiled Markdown emits bare headings); the heading
-  // text stays the heading's accessible name.
-  onMount(() => {
-    for (const heading of prose?.querySelectorAll<HTMLElement>('h2[id], h3[id]') ?? []) {
-      // Skip the selling slots' headings: a slot may still be hydrating (it
-      // loads on demand), and an extra child would make it re-render.
-      if (heading.querySelector('.dx-anchor') || heading.closest('.dx-slot')) continue
-      const a = document.createElement('a')
-      a.className = 'dx-anchor'
-      a.href = `#${heading.id}`
-      a.setAttribute('aria-label', `Link to this section: ${heading.textContent ?? ''}`)
-      a.textContent = '#'
-      heading.append(a)
-    }
-  })
   // h() throughout: the generic title is a conditional child (#4385).
   return h(
     'div',
@@ -167,26 +113,18 @@ export function DocsPage(props: {
       'div',
       { class: 'dx-article' },
       h(Breadcrumbs, { path: props.path, title: props.title }),
-      h(PageActions, { title: props.title, url, slug: props.slug }),
+      h(DocsActionsIsland, { title: props.title, url, slug: props.slug }),
       props.ownTitle
         ? null
-        : h('header', { class: 'dx-head' }, h('h1', { class: 'dx-title' }, props.title), props.description ? h('p', { class: 'dx-desc' }, props.description) : null),
-      h(InlineToc, { entries, active }),
-      h(
-        'div',
-        {
-          class: 'dx-prose',
-          id: 'dx-article',
-          tabIndex: -1,
-          ref: (el: HTMLElement | null) => {
-            prose = el
-          },
-        },
-        props.children,
-      ),
-      h(Helpful, { title: props.title, url }),
+        : product
+          ? h(PitchHead, { product })
+          : h('header', { class: 'dx-head' }, h('h1', { class: 'dx-title' }, props.title), props.description ? h('p', { class: 'dx-desc' }, props.description) : null),
+      entries.length > 0 ? h(InlineToc, { entries }) : null,
+      h('div', { class: 'dx-prose', id: 'dx-article', tabIndex: -1 }, props.children),
+      h(DocsHelpfulIsland, { title: props.title, url }),
       h(PrevNext, { path: props.path }),
+      h(DocsEnhanceIsland, {}),
     ),
-    h(Rail, { entries, active, slug: props.slug }),
+    h(Rail, { entries, slug: props.slug }),
   )
 }

@@ -1,28 +1,23 @@
-import '@pyreon/zero-content/blog.css'
 import './styles/tokens.css'
-import './styles/site-pages.css'
-import { isStaticSitePage } from './site/render-mode'
+import './site/static-client'
+import { prefetchStylesheetsOnIntent } from './styles/sheets'
 
 /**
- * The browser entry decides, per page, how much JavaScript the page needs:
+ * The browser entry. Every page on the site, marketing and docs, is static
+ * HTML with islands (`site/render-mode.ts`): `site/static-client.ts` hydrates
+ * the `<pyreon-island>` elements on the page (the nav, copy buttons, demos;
+ * on docs pages also search, the drawer, the TOCs, live examples), each with
+ * its own strategy. No page hydrates as a whole, so neither the router nor
+ * the UI system's styling runtime is downloaded.
  *
- *   - Marketing pages (everything in the `(site)` shell, and the 404) are
- *     static HTML with islands. They load `site/static-client.ts`, which
- *     hydrates only the `<pyreon-island>` elements on the page (the nav, copy
- *     buttons, demos); the page itself never hydrates, so neither the router
- *     nor the UI system's styling runtime is downloaded.
- *   - Docs pages load `app-client.ts`: the router app with client navigation,
- *     search and the live examples.
- *
- * Both branches are dynamic imports, so a page downloads only its own. The
- * stylesheet for docs pages (`docs.css`) is linked by the docs layout, never
- * here, so marketing pages do not load it.
- *
- * Zero has no per-route "islands only" mode yet; this is the app-side version
- * of it (see `site/render-mode.ts` for the issue).
+ * Zero has no per-route "islands only" mode yet; this is the app-side
+ * version of it (see `site/render-mode.ts` for the issue).
  */
-if (isStaticSitePage(document)) void import('./site/static-client')
-else void import('./app-client')
+
+// Each layout links its own stylesheets (`styles/sheets.ts`); the other side's
+// are prefetched when the visitor reaches for a link into it (and this is what
+// makes the build emit them).
+prefetchStylesheetsOnIntent(document)
 
 // Stale-chunk recovery — every new deploy invalidates the previous
 // deploy's chunk hashes. Users with cached HTML referencing old

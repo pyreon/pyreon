@@ -1,6 +1,5 @@
 import { For, onMount, onUnmount, Show } from '@pyreon/core'
 import { computed, effect, signal } from '@pyreon/reactivity'
-import { useRouter } from '@pyreon/router'
 import { useSearch } from '@pyreon/zero-content'
 import { DocsGlyph as Glyph } from './glyph'
 import { normalizeDocsPath, SIDEBAR, trailOf } from './nav'
@@ -83,7 +82,6 @@ function deepLink(r: RawResult): string {
 }
 
 export default function SearchDialog(props: { open: () => boolean; onClose: () => void }) {
-  const router = useRouter()
   const state = useSearch({ debounceMs: 120, maxResults: 12, minQueryLength: 2 })
   const grouped = computed(() => groupHits(state.results() as unknown as RawResult[], deepLink))
   const flat = computed(() => grouped().flatMap((g) => g.hits))
@@ -118,7 +116,8 @@ export default function SearchDialog(props: { open: () => boolean; onClose: () =
   const go = (hit: Hit | undefined) => {
     if (!hit) return
     props.onClose()
-    void router.push(hit.url)
+    // Docs pages are static documents: a result is a page load.
+    window.location.assign(hit.url)
   }
 
   const onKey = (e: KeyboardEvent) => {

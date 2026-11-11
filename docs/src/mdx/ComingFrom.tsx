@@ -1,4 +1,2 @@
-import { lazySlot } from '../docs-ui/sell/lazy-slot'
-
-/** `<ComingFrom id="form" lib="React Hook Form" />` — the same code before and after (`docs-ui/sell/ComingFrom.tsx`). Loads on the pages that use it. */
-export const ComingFrom = lazySlot<{ id: string; lib?: string }>(() => import('../docs-ui/sell/ComingFrom'))
+/** `<ComingFrom id="form" lib="React Hook Form" />` — the same code before and after (`docs-ui/sell/ComingFrom.tsx`). Server-rendered: a docs page is static HTML. */
+export { default as ComingFrom } from '../docs-ui/sell/ComingFrom'

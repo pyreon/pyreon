@@ -1,4 +1,2 @@
-import { lazySlot } from '../docs-ui/sell/lazy-slot'
-
-/** `<BenchCallout id="form" />` — the product benchmark result (`docs-ui/sell/BenchCallout.tsx`). Loads on the pages that use it. */
-export const BenchCallout = lazySlot<{ id: string }>(() => import('../docs-ui/sell/BenchCallout'))
+/** `<BenchCallout id="form" />` — the product benchmark result (`docs-ui/sell/BenchCallout.tsx`). Server-rendered: a docs page is static HTML. */
+export { default as BenchCallout } from '../docs-ui/sell/BenchCallout'

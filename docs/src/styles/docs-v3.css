@@ -13,6 +13,856 @@
    ───────────────────────────────────────────────────────────────────────── */
 @layer docs {
 
+/* ══ Component chrome from the first docs stylesheet ═══════════════════════
+   zero-content's CodeBlock / CodeGroup / APICard / PropTable / CompatMatrix /
+   PackageBadge / Since, the Shiki dual theme, the live <Example> surface and
+   the helper classes the example files use. Ported to the docs tokens
+   (`var(--dx-…)`, from site/theme.ts) like the rest of this file. Element rules are scoped to the docs (:where(.dx), no added
+   specificity), so the site header and footer look the same as on every
+   other page. The docs-v3 rules below restyle most of it.
+   ═════════════════════════════════════════════════════════════════════════ */
+/* ── Reset + global typography ─────────────────────────────────────── */
+:where(.dx) * { margin: 0; padding: 0; box-sizing: border-box; }
+:where(.dx) a {
+  color: var(--dx-link);
+  text-decoration: none;
+}
+:where(.dx) a:hover {
+  text-decoration: underline;
+}
+:where(.dx) h1,
+:where(.dx) h2,
+:where(.dx) h3,
+:where(.dx) h4,
+:where(.dx) h5,
+:where(.dx) h6 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--dx-text);
+  scroll-margin-top: 5rem;
+}
+:where(.dx) h1 { font-size: 2rem; margin: 0 0 1.5rem; }
+:where(.dx) h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; }
+:where(.dx) h3 { font-size: 1.25rem; margin: 2rem 0 0.75rem; }
+:where(.dx) h4 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; }
+:where(.dx) p { margin: 0 0 1rem; }
+:where(.dx) strong { font-weight: 600; color: var(--dx-text); }
+:where(.dx) em { font-style: italic; }
+:where(.dx) ul,
+:where(.dx) ol { margin: 0 0 1rem 1.5rem; }
+:where(.dx) li { margin: 0.25rem 0; }
+:where(.dx) li > ul,
+:where(.dx) li > ol { margin-top: 0.25rem; margin-bottom: 0; }
+:where(.dx) code {
+  font-family: var(--dx-mono);
+  font-size: 0.875em;
+  background: var(--dx-well);
+  border: 1px solid var(--dx-line);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+:where(.dx) pre {
+  font-family: var(--dx-mono);
+  background: var(--dx-code-bg, var(--dx-code-bg));
+  border: 1px solid var(--dx-line);
+  border-radius: 8px;
+  padding: 1rem;
+  overflow-x: auto;
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+:where(.dx) pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+}
+:where(.dx) blockquote {
+  border-left: 3px solid var(--dx-link);
+  margin: 0 0 1rem;
+  padding: 0.5rem 0 0.5rem 1rem;
+  color: var(--dx-mist);
+  background: var(--dx-well);
+  border-radius: 4px;
+}
+:where(.dx) hr {
+  border: 0;
+  border-top: 1px solid var(--dx-line);
+  margin: 2rem 0;
+}
+:where(.dx) table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+}
+:where(.dx) th,
+:where(.dx) td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--dx-line);
+}
+:where(.dx) th {
+  background: var(--dx-well);
+  font-weight: 600;
+}
+
+/* ── APICard ────────────────────────────────────────────────────────── */
+.api-card {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--dx-line);
+  border-radius: 8px;
+  margin: 0.5rem 0;
+  background: var(--dx-well);
+}
+.api-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.api-badge {
+  font-family: var(--dx-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.05rem 0.4rem;
+  border-radius: 3px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+/* The badge is ALWAYS rendered so the compiled template keeps a stable ref
+   for the sibling `.api-name` (see APICard.tsx STRUCTURE NOTE — a conditional
+   badge compiled to a `_mountSlot` that corrupted the name's text-node ref on
+   fresh mount → every API card threw during setup). When there's no `type`
+   it carries `--empty`; hide it so a typeless card shows no empty badge box. */
+.api-badge--empty {
+  display: none;
+}
+.api-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+.api-signature {
+  margin-top: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--dx-mist);
+}
+.api-signature code {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+.api-desc {
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--dx-mist);
+}
+/* ── PropTable ──────────────────────────────────────────────────────── */
+.prop-table {
+  margin: 1rem 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--dx-line);
+}
+.prop-table-title {
+  padding: 0.5rem 0.75rem;
+  background: var(--dx-well);
+  border-bottom: 1px solid var(--dx-line);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+.prop-table table {
+  margin: 0;
+  border: none;
+  font-size: 0.875rem;
+}
+.prop-table th { border-top: none; }
+.prop-table .type { color: var(--dx-link); }
+.prop-table .required { color: var(--dx-accent-text); margin-left: 2px; font-weight: 700; }
+.prop-table .dash { color: var(--dx-fog); }
+/* ── CompatMatrix ──────────────────────────────────────────────────── */
+.compat-matrix {
+  margin: 1rem 0;
+  border: 1px solid var(--dx-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.compat-matrix table {
+  margin: 0;
+  border: none;
+  font-size: 0.875rem;
+}
+.compat-matrix .support-cell {
+  text-align: center;
+  font-family: var(--dx-mono);
+}
+.compat-matrix .support-full { color: var(--c-green, var(--dx-link)); font-weight: 700; }
+.compat-matrix .support-partial { color: var(--c-yellow, var(--dx-mist)); }
+.compat-matrix .support-none { color: var(--dx-fog); }
+/* ── PackageBadge ──────────────────────────────────────────────────── */
+.package-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--dx-line);
+  background: var(--dx-well);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  text-decoration: none;
+  color: var(--dx-text);
+  transition: border-color 0.2s;
+  margin: 0.25rem 0.25rem 0.25rem 0;
+}
+.package-badge:hover {
+  border-color: var(--dx-link);
+  text-decoration: none;
+}
+.package-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.package-badge-name {
+  font-family: var(--dx-mono);
+  font-weight: 600;
+}
+.package-badge-status {
+  color: var(--dx-mist);
+  font-size: 0.7rem;
+  text-transform: lowercase;
+}
+/* ── Since badge ───────────────────────────────────────────────────── */
+.since-badge {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-family: var(--dx-mono);
+  background: var(--dx-hover-fill);
+  color: var(--dx-link);
+  vertical-align: middle;
+  margin-left: 0.4rem;
+}
+/* ── Playground ────────────────────────────────────────────────────── */
+.playground {
+  margin: 1rem 0;
+  border: 1px solid var(--dx-line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--dx-well);
+}
+.playground__title {
+  padding: 0.5rem 0.75rem;
+  background: var(--dx-card);
+  border-bottom: 1px solid var(--dx-line);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+.playground__body {
+  display: grid;
+  gap: 1px;
+  background: var(--dx-line);
+}
+.playground__editor,
+.playground__preview {
+  background: var(--dx-bg);
+  min-height: 200px;
+}
+.playground__textarea {
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  padding: 0.75rem;
+  border: 0;
+  outline: 0;
+  background: var(--dx-code-bg, var(--dx-code-bg));
+  color: var(--dx-text);
+  font-family: var(--dx-mono);
+  font-size: 0.825rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+.playground__iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--dx-bg);
+}
+.playground__toolbar {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--dx-card);
+  border-top: 1px solid var(--dx-line);
+}
+.playground__toolbar button {
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--dx-line);
+  border-radius: 4px;
+  background: var(--dx-bg);
+  color: var(--dx-text);
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: border-color 80ms, background 80ms;
+}
+.playground__toolbar button:hover {
+  border-color: var(--dx-link);
+  background: var(--dx-hover-fill);
+}
+
+/* ── (A) MDX component color tokens ──────────────────────────────────
+   APICard + PackageBadge reference --c-blue / --c-green / etc. Map to
+   the brand functional palette already in tokens.css. */
+:root {
+  --c-blue: var(--dx-link);
+  --c-green: var(--dx-ok);
+  --c-yellow: var(--dx-warn);
+  --c-orange: var(--dx-accent-text);
+  --c-red: var(--dx-err);
+  --c-purple: var(--dx-s-kw);
+  --c-cyan: var(--dx-link);
+}
+
+/* ── @pyreon/zero-content <CodeGroup> chrome ──────────────────────────
+   `:::code-group` containers in markdown render as:
+
+     .code-group
+       .code-group__tabs       (role="tablist" — buttons w/ aria-selected)
+         .code-group__tab[--active]
+       .code-group__panels[data-active="N"]
+         .code-block (panel 0)
+         .code-block (panel 1)
+         ...
+
+   Without these rules, the tabs read as default buttons + every
+   panel renders stacked. The component sets `data-active` reactively;
+   CSS gates visibility via `:nth-child(N+1)` so the active panel
+   shows + all others hide. Supports up to 8 tabs (practical ceiling
+   for any real code-group). */
+.code-group {
+  margin: 1rem 0;
+}
+.code-group__tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0 0.25rem;
+  border-bottom: 1px solid var(--dx-line);
+  margin-bottom: -1px;
+}
+.code-group__tab {
+  padding: 0.45rem 0.85rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+  border-radius: 4px 4px 0 0;
+  font-family: var(--dx-mono);
+  font-size: 0.78em;
+  color: var(--dx-mist);
+  cursor: pointer;
+  transition: color 0.18s ease, border-bottom-color 0.18s ease,
+    background 0.18s ease;
+}
+.code-group__tab:hover {
+  color: var(--dx-text);
+  background: var(--dx-well);
+}
+.code-group__tab--active {
+  color: var(--dx-accent);
+  border-bottom-color: var(--dx-accent);
+  font-weight: 600;
+}
+.code-group__tab:focus-visible {
+  outline: 2px solid var(--dx-accent);
+  outline-offset: 2px;
+}
+.code-group__panels > * {
+  display: none;
+}
+.code-group__panels[data-active='0'] > :nth-child(1),
+.code-group__panels[data-active='1'] > :nth-child(2),
+.code-group__panels[data-active='2'] > :nth-child(3),
+.code-group__panels[data-active='3'] > :nth-child(4),
+.code-group__panels[data-active='4'] > :nth-child(5),
+.code-group__panels[data-active='5'] > :nth-child(6),
+.code-group__panels[data-active='6'] > :nth-child(7),
+.code-group__panels[data-active='7'] > :nth-child(8) {
+  display: block;
+}
+.code-group__panels .code-block {
+  margin-top: 0;
+}
+/* ── @pyreon/zero-content <CodeBlock> chrome ──────────────────────────
+   The `<CodeBlock>` component renders this structure:
+
+     .code-block
+       .code-block__header           (when title= is set)
+         .code-block__filename
+       .code-block__body             (flex container — pre + copy)
+         .code-block__pre            (the Shiki-rendered <pre>)
+         .code-block__copy           (copy-to-clipboard button)
+
+   Without these rules the copy button rendered as a bare default-
+   styled <button> sitting AFTER the code block (block-level), looking
+   completely out of place. These rules make it a top-right corner
+   pill that fades in on hover — the established docs convention
+   (VitePress, MDX, Astro all use this shape). */
+.code-block {
+  /* Reset margin — the existing `pre` rule above already gave us
+     the bordered card visual; we don't want it doubled. The
+     code-block wrapper IS the card now. */
+  margin: 1rem 0;
+  /* Position context so the absolutely-positioned copy button anchors
+     to the block, not the page. */
+  position: relative;
+}
+.code-block__header {
+  /* Filename tab — sits on top of the body, sharing the rounded top
+     corner so it reads as a tab attached to the code card. */
+  display: flex;
+  align-items: center;
+  padding: 0.4rem 0.85rem;
+  background: var(--dx-well);
+  border: 1px solid var(--dx-line);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  font-family: var(--dx-mono);
+  font-size: 0.78em;
+  color: var(--dx-mist);
+}
+.code-block__filename {
+  /* The filename string itself — slightly stronger weight so it
+     reads as a label, not just dim text. */
+  font-weight: 500;
+}
+/* The header + gutter wrappers are ALWAYS rendered (so the compiled
+   template keeps stable static-element refs — see CodeBlock.tsx's
+   STRUCTURE NOTE). When they carry no content the component tags them
+   with an `--empty` modifier; hide those so an empty filename bar /
+   gutter never shows. */
+.code-block__header--empty,
+.code-block__gutter--empty {
+  display: none;
+}
+/* When a NON-EMPTY header is present, the body's top corners shouldn't be
+   rounded (they'd peek out above the tab). Round only the bottom. The
+   `:not(--empty)` guard keeps this from firing on the always-rendered but
+   filename-less (hidden) header. */
+.code-block:has(.code-block__header:not(.code-block__header--empty)) .code-block__pre,
+.code-block:has(.code-block__header:not(.code-block__header--empty)) .code-block__pre > pre {
+  border-radius: 0 0 6px 6px;
+}
+.code-block__body {
+  /* Wraps the pre + copy button. Position context for the absolute
+     copy button. */
+  position: relative;
+}
+.code-block__pre {
+  /* Clip Shiki's intrinsically wide inline code at the card boundary.
+     The nested <pre> remains horizontally scrollable; without this
+     containment its line boxes enlarged the PAGE scroll width on a
+     320px phone even though the pre itself had overflow-x: auto. */
+  min-width: 0;
+  overflow-x: auto;
+}
+.code-block__pre > pre {
+  /* The Shiki-rendered <pre> inside .code-block__pre. We want it
+     edge-to-edge with the wrapper (margin collapsing handled by the
+     wrapper). */
+  margin: 0;
+  overflow: visible;
+}
+/* Language indicator in the top-right corner — matches VitePress's
+   convention. Reads from the `data-lang` attribute the CodeBlock
+   sets on its wrapper. Hidden when a NON-EMPTY `.code-block__header`
+   (filename label) is present so the two don't compete (the header is
+   always in the DOM now, so gate on `:not(--empty)`). */
+.code-block:not(:has(.code-block__header:not(.code-block__header--empty)))::before {
+  content: attr(data-lang);
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--dx-fog);
+  font-family: var(--dx-mono);
+  font-size: 0.7em;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  pointer-events: none;
+  /* On hover the copy button slides up over this slot, so the lang
+     label fades out so they don't overlap. */
+  transition: opacity 0.18s ease;
+}
+.code-block:hover::before {
+  opacity: 0;
+}
+.code-block__copy {
+  /* Top-right corner pill. Fades in on hover/focus to stay out of
+     the way of the code reading. */
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 4px;
+  border: 1px solid var(--dx-line);
+  background: var(--dx-card);
+  color: var(--dx-mist);
+  font-family: var(--dx-sans);
+  font-size: 0.75em;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.18s ease, color 0.18s ease, background 0.18s ease,
+    border-color 0.18s ease;
+  /* z-index so the button always sits above the Shiki output's
+     focusable elements. */
+  z-index: 1;
+}
+.code-block:hover .code-block__copy,
+.code-block:focus-within .code-block__copy {
+  opacity: 1;
+}
+.code-block__copy:hover {
+  color: var(--dx-text);
+  background: var(--dx-bg);
+  border-color: var(--dx-current-border);
+}
+.code-block__copy:focus-visible {
+  /* Keyboard focus — always visible regardless of hover */
+  opacity: 1;
+  outline: 2px solid var(--dx-accent);
+  outline-offset: 1px;
+}
+/* Confirm-state — when the user clicked Copy. Brief ember tint so
+   the button signals "got it" before fading. */
+.code-block__copy[data-copied='true'],
+.code-block__copy:active {
+  color: var(--dx-accent);
+  border-color: var(--dx-accent);
+  background: var(--dx-current-fill);
+}
+@media (prefers-reduced-motion: reduce) {
+.code-block__copy {
+    transition: none;
+    opacity: 1;
+  }
+}
+/* ── Shiki dual-theme code highlighting (light + dark) ────────────────
+   `@pyreon/zero-content` runs Shiki in dual-theme mode and emits each
+   token's INLINE style in this exact shape:
+
+       style="color:#14141C; --shiki-dark:#E6E0D2"
+
+   ie. the LIGHT theme is inlined as a DIRECT CSS property (`color`,
+   `background-color`, etc.) and the DARK theme is inlined as a CSS
+   VARIABLE (`--shiki-dark`, `--shiki-dark-bg`, ...). NO `--shiki-light`
+   variable is emitted — the light theme is the default and needs no
+   selector to apply.
+
+   So in LIGHT mode: zero CSS rules needed. The inline `color:#…`
+   already paints every token correctly.
+
+   In DARK mode we must OVERRIDE the inline direct property using the
+   per-token `--shiki-dark` variable Shiki inlined. `!important` is
+   load-bearing on every override: inline styles beat regular
+   selectors (inline specificity is 1000). Without `!important` the
+   light theme color leaks through on every span in dark mode — every
+   keyword/string/number renders in its LIGHT-mode color against the
+   dark container, which is the bug the previous fix attempt left
+   behind.
+
+   Container `<pre class="shiki">`: its inline `background-color` is
+   the literal light-mode bg (e.g. #FAF5EB). We override to
+   `--bg-elevated` so the code block harmonizes with our token surface
+   in BOTH themes (light: white #FFFFFF, dark: ink-2 #111118) instead
+   of jumping between Shiki's hardcoded paper/ink values.
+
+   Spans inside .shiki carry their own inline `color:#…` (light theme
+   default) and `--shiki-dark:#…` (variable for dark). The dark
+   override below reads the per-token variable and wins via
+   `!important`. */
+/* Container BG — both themes use our elevated token. Inline wins
+   without `!important`. Applied to both themes. */
+.shiki {
+  background-color: var(--dx-card) !important;
+}
+/* Dark theme: flip every per-token color/style to the dark variable
+   Shiki inlined. Spans only — the `.shiki` container's `color` is
+   irrelevant (no direct text on it). `!important` beats inline
+   per the inline-vs-!important specificity rule. */
+[data-theme='dark'] .shiki,
+[data-theme='dark'] .shiki span {
+  color: var(--shiki-dark) !important;
+  font-style: var(--shiki-dark-font-style, inherit) !important;
+  font-weight: var(--shiki-dark-font-weight, inherit) !important;
+  text-decoration: var(--shiki-dark-text-decoration, inherit) !important;
+}
+/* Dark theme: also kill any inline `background-color` Shiki put on
+   spans (for highlighted lines / focused tokens). Without this, the
+   light-theme literal bg leaks through and produces the "fragmented
+   stripes against the container" look (each line's bg is the light
+   theme's paper color, against our dark elevated container — fights
+   the eye). The override drops them all to transparent so the dark
+   container's bg shows through cleanly. */
+[data-theme='dark'] .shiki span {
+  background-color: transparent !important;
+}
+
+/* ── (I) Scrollbars — quiet ───────────────────────────────────── */
+:where(.dx) * { scrollbar-color: var(--dx-line2) transparent; }
+
+/* ─── <Example> primitive — docs DX showcase ─────────────────────────────
+ *
+ * Styles for `<Example file="./..." share="key">` (the Pyreon-native
+ * replacement for iframe-sandboxed Playground). Lives at the docs
+ * level (consumer-owned) so apps can theme freely without forking the
+ * package's CSS.
+ */
+.pyreon-example {
+  margin: 1.5rem 0;
+  border: 1px solid var(--dx-line2);
+  border-radius: 8px;
+  background: var(--dx-card, var(--dx-bg));
+  overflow: hidden;
+}
+.pyreon-example__title {
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--dx-mist);
+  background: var(--dx-bg);
+  border-bottom: 1px solid var(--dx-line2);
+}
+.pyreon-example__surface {
+  padding: 1.25rem;
+}
+.pyreon-example__loading {
+  height: 60px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--dx-bg),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: pyreon-example-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes pyreon-example-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.pyreon-example__error {
+  padding: 1rem;
+  margin: 0;
+  font-family: var(--dx-mono, monospace);
+  font-size: 0.8125rem;
+  color: var(--dx-err);
+  background: var(--dx-well);
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* Helper classes used INSIDE example components for layout — these
+ * belong to the showcase examples, not the framework. Kept here so
+ * the example files stay framework-agnostic and the styling lives
+ * in one place. */
+.example-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.example-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.example-btn {
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--dx-line2);
+  border-radius: 4px;
+  background: var(--dx-bg);
+  color: var(--dx-text);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.example-btn:hover {
+  background: var(--dx-card, var(--dx-card));
+}
+.example-card {
+  padding: 0.75rem;
+  border-radius: 4px;
+  background: var(--dx-bg);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.example-log {
+  font-family: var(--dx-mono, monospace);
+  font-size: 0.75rem;
+  max-height: 8rem;
+  overflow-y: auto;
+  padding: 0.5rem;
+  border-radius: 4px;
+  background: var(--dx-bg);
+  white-space: pre-wrap;
+}
+.example-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid var(--dx-line2);
+  border-radius: 4px;
+  background: var(--dx-bg);
+  color: var(--dx-text);
+  font-size: 0.875rem;
+}
+.example-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  gap: 0.5rem;
+}
+.example-muted {
+  color: var(--dx-mist, var(--dx-fog));
+  font-size: 0.8125rem;
+}
+/* ─── Example content normalization (the "ugly bare controls" fix) ───────
+ *
+ * Example components were migrated from two conventions: some use the
+ * `.example-*` helper classes above, MANY use unprefixed `col`/`row`/
+ * `card`/`muted`/`badge`, and most render BARE <button>/<input>/<select>
+ * (67 buttons + 21 inputs across the gallery). Unstyled, those render as
+ * raw native controls — white buttons on the dark surface, the reported
+ * "ugly count buttons".
+ *
+ * Fix once, for every example: scope styling to `.pyreon-example__surface`
+ * (so it never leaks into docs prose) and style the BARE elements + the
+ * unprefixed helper classes. Every color is a theme token, so it follows
+ * light/dark automatically; the residual native chrome (caret, focus ring,
+ * scrollbars) follows the `color-scheme` the root declares with the theme
+ * (tokens.css). It used to say `light dark` here, which follows the OS and so
+ * disagreed with the site whenever the toggle overrode it. */
+.pyreon-example__surface button {
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--dx-line2);
+  border-radius: 6px;
+  background: var(--dx-card, var(--dx-bg));
+  color: var(--dx-text);
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.pyreon-example__surface button:hover {
+  background: var(--dx-bg);
+  border-color: var(--dx-mist, var(--dx-fog));
+}
+.pyreon-example__surface button:active {
+  transform: translateY(0.5px);
+}
+.pyreon-example__surface button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pyreon-example__surface button:focus-visible,
+.pyreon-example__surface :is(input, select, textarea):focus-visible {
+  outline: 2px solid var(--dx-link);
+  outline-offset: 1px;
+}
+/* Text-like fields only — NOT checkbox/radio (8 examples use those; box
+ * styling would break their native appearance). They keep the focus
+ * outline below for a11y but not the padding/border/background. */
+.pyreon-example__surface
+  :is(input:not([type='checkbox']):not([type='radio']), select, textarea) {
+  padding: 0.375rem 0.625rem;
+  border: 1px solid var(--dx-line2);
+  border-radius: 6px;
+  background: var(--dx-bg);
+  color: var(--dx-text);
+  font: inherit;
+  font-size: 0.875rem;
+}
+/* Checkboxes/radios: just make their native chrome follow the theme. */
+.pyreon-example__surface :is(input[type='checkbox'], input[type='radio']) {
+  accent-color: var(--dx-link);
+  cursor: pointer;
+}
+.pyreon-example__surface input::placeholder {
+  color: var(--dx-mist, var(--dx-fog));
+}
+/* Unprefixed helper classes used by the older migrated examples — mirror
+ * the `.example-*` equivalents so both conventions render identically. */
+.pyreon-example__surface .col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.pyreon-example__surface .row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.pyreon-example__surface .card {
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--dx-line2);
+  border-radius: 6px;
+  background: var(--dx-bg);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.pyreon-example__surface .muted {
+  color: var(--dx-mist, var(--dx-fog));
+  font-size: 0.8125rem;
+}
+.pyreon-example__surface .badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border: 1px solid var(--dx-line2);
+  border-radius: 999px;
+  background: var(--dx-card, var(--dx-bg));
+  font-size: 0.75rem;
+}
+/* Theme the live <Example> @pyreon/flow graph to the docs palette. The flow
+   defaults are light-mode (white nodes / faint #999 edges) — invisible on the
+   dark docs page. @pyreon/flow exposes `--pyreon-flow-*` (CSS vars with those
+   defaults as fallbacks); we map them to the mode-aware docs tokens so the
+   graph reads correctly in BOTH themes. Scoped to the example surface so it
+   never leaks to a consumer's own flow. */
+.pyreon-example__surface {
+  --pyreon-flow-node-bg: var(--dx-card);
+  --pyreon-flow-node-color: var(--dx-text);
+  --pyreon-flow-node-border: var(--dx-line2);
+  --pyreon-flow-node-selected: var(--dx-link);
+  --pyreon-flow-accent: var(--dx-link);
+  --pyreon-flow-edge: var(--dx-fog);
+  --pyreon-flow-edge-label: var(--dx-mist);
+  /* Dots default to a light #ddd — harsh on the dark canvas and distracting
+     from the content. Map to the low-contrast border token so the grid is a
+     faint hint in both themes, not a texture that competes with the nodes. */
+  --pyreon-flow-bg-pattern: var(--dx-line2);
+  --pyreon-flow-panel-bg: var(--dx-card);
+  --pyreon-flow-panel-border: var(--dx-line2);
+  --pyreon-flow-panel-shadow: var(--dx-shadow);
+  --pyreon-flow-control-color: var(--dx-text);
+  --pyreon-flow-control-muted: var(--dx-mist);
+  --pyreon-flow-minimap-node: var(--dx-fog);
+  --pyreon-flow-minimap-mask: var(--dx-hover-fill);
+}
+
+/* ══ Docs v3 ════════════════════════════════════════════════════════════════ */
+
 /* ── shell ─────────────────────────────────────────────────────────────── */
 .dx {
   display: grid;
@@ -257,10 +1107,6 @@
   text-wrap: balance;
 }
 .dx-desc { margin: 12px 0 0; font-size: 17px; line-height: 1.55; color: var(--dx-mist); max-width: 68ch; }
-/* One h1 per page: the body's own (a product pitch, or a Markdown `# Title` first in the page) replaces the generic one. */
-.dx-page:has(.dx-prose .dx-pitch) .dx-head,
-.dx-page:has(.dx-prose > .content > h1:first-child) .dx-head { display: none; }
-.dx-prose > .content > h1:first-child { margin-top: 26px; }
 
 /* ── TOC ───────────────────────────────────────────────────────────────── */
 .dx-toc-inline { display: none; }
@@ -577,6 +1423,9 @@
 .dx .playground__editor { border-right: 1px solid var(--dx-line); background: var(--dx-code-bg); }
 .dx .playground__textarea { width: 100%; height: 100%; min-height: 260px; padding: 14px; border: 0; background: transparent; color: var(--dx-s-fg); font-family: var(--dx-mono); font-size: 13px; line-height: 1.7; resize: vertical; }
 .dx .playground__iframe { width: 100%; height: 100%; min-height: 260px; border: 0; background: var(--dx-card); }
+.dx .playground__firing { margin-left: auto; padding: 2px 9px; border: 1px solid transparent; border-radius: var(--dx-r-pill); font-size: 11px; letter-spacing: .04em; color: var(--dx-fog); opacity: 0; transition: opacity .15s; }
+.dx .playground__firing--on { opacity: 1; color: var(--dx-accent-text); border-color: var(--dx-accent-text); }
+@media (prefers-reduced-motion: reduce) { .dx .playground__firing { transition: none; } }
 
 /* ── API cards, prop tables, compat matrix, package badge, since ─────── */
 .dx .api-card { margin: 0 0 12px; padding: 14px 16px; border: 1px solid var(--dx-line); border-radius: var(--dx-r-pane); background: var(--dx-card); }
@@ -752,6 +1601,8 @@
 .dx-code__body { overflow-x: auto; }
 .dx-code__body pre { margin: 0; padding: 18px 20px; border: 0; background: transparent !important; font-family: var(--dx-mono); font-size: 13px; line-height: 1.75; color: var(--dx-s-fg); font-variant-ligatures: none; }
 .dx-code__body code { padding: 0; border: 0; background: none; font-size: inherit; }
+/* The docs home's samples are short and sit in a narrow card: wrap long lines instead of hiding them behind a sideways scroll. */
+.dx-home .dx-code__body pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 /* Product-content / docs-home Shiki output: both themes as variables (defaultColor: false). */
 .dx-shiki span { color: var(--shiki-dark); }
 :root[data-theme="light"] .dx-shiki span { color: var(--shiki-light); }

@@ -1,16 +1,21 @@
 import { useHead } from '@pyreon/head'
 import { RouterView, useRoute } from '@pyreon/router'
-import { DocsDrawer } from '../../docs-ui/drawer'
-import { useDocsSearch } from '../../docs-ui/search'
+import { DocsSearchIsland, DocsDrawerIsland } from '../../docs-ui/islands'
+import { normalizeDocsPath } from '../../docs-ui/nav'
 import { DocsSidebar } from '../../docs-ui/sidebar'
 import { DOCS_VARS_CSS } from '../../docs-ui/tokens'
 import { SiteShell } from '../../site/shell/SiteShell'
-// The docs stylesheets are linked from here, not imported by the client
-// entry, so marketing pages never download them. `?url` emits each as its
-// own processed asset (vite-plugins/legacy-css-layer.ts still puts docs.css
-// in `@layer docs`).
-import docsCssHref from '../../styles/docs.css?url'
-import docsV3CssHref from '../../styles/docs-v3.css?url'
+import { DOCS_STYLESHEETS } from '../../styles/sheets'
+
+/**
+ * Prefetch a docs page the reader is about to open (pointer down or a short
+ * hover; Chromium's Speculation Rules, ignored elsewhere): docs pages are
+ * static documents, and this keeps a click between them close to instant
+ * without a client router.
+ */
+const SPECULATION_RULES = JSON.stringify({
+  prefetch: [{ where: { href_matches: '/docs/*' }, eagerness: 'moderate' }],
+})
 
 /**
  * Docs layout — the reading shell for `/docs` and `/docs/*`, inside the same
@@ -21,38 +26,39 @@ import docsV3CssHref from '../../styles/docs-v3.css?url'
  *   ≥ 960px   sidebar · article (the TOC moves under the title)
  *   < 960px   "Browse docs" drawer above the article
  *
- * Search opens with ⌘K / Ctrl+K / "/" or the sidebar's search box, and its
- * code loads on that first open. The docs tokens (`docs-ui/tokens.ts`, from
- * `site/theme.ts`) go into the head once; `styles/docs-v3.css` reads them.
+ * Like the marketing pages, a docs page is static HTML with islands
+ * (`site/render-mode.ts`, `docs-ui/islands.ts`): the sidebar, breadcrumbs,
+ * the Markdown and the selling slots never run in the browser; search, the
+ * drawer, the TOCs, page actions, code copy and the live examples are islands.
+ * Links between docs pages are page loads (prefetched, above).
+ *
+ * The docs tokens (`docs-ui/tokens.ts`, from `site/theme.ts`) go into the
+ * head once; `styles/docs-v3.css` reads them.
  */
 export function layout() {
   const route = useRoute()
-  const path = () => route().path
-  const search = useDocsSearch()
+  const path = normalizeDocsPath(route().path)
 
   useHead({
     style: [{ children: DOCS_VARS_CSS }],
-    link: [
-      { rel: 'stylesheet', href: docsCssHref },
-      { rel: 'stylesheet', href: docsV3CssHref },
-    ],
+    link: DOCS_STYLESHEETS.map((href) => ({ rel: 'stylesheet', href })),
+    script: [{ type: 'speculationrules', children: SPECULATION_RULES }],
   })
 
   return (
-    <SiteShell app>
+    <SiteShell>
       <div class="dx">
         <a class="dx-skip" href="#dx-article">
           Skip to the article
         </a>
         <aside class="dx-aside">
-          <DocsSidebar path={path} idPrefix="dx-side" label="Docs" onSearch={search.show} />
+          <DocsSidebar path={path} idPrefix="dx-side" label="Docs" search={<DocsSearchIsland />} />
         </aside>
         <div class="dx-main">
-          <DocsDrawer path={path} onSearch={search.show} />
+          <DocsDrawerIsland path={path} />
           <RouterView />
         </div>
       </div>
-      <search.Mount />
     </SiteShell>
   )
 }

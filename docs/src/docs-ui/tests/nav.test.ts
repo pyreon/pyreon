@@ -11,20 +11,13 @@ function mdFiles(dir: string): string[] {
     return statSync(p).isDirectory() ? mdFiles(p) : f.endsWith('.md') ? [relative(CONTENT, p)] : []
   })
 }
-/**
- * Pages written after the content set's sidebar was generated (_docs.json,
- * 2026-11-11). Each needs a place in the content set; listed here so a NEW
- * unlisted page still fails. They render, with breadcrumbs from their title.
- */
-const NOT_YET_IN_SIDEBAR = ['/docs/blog']
-
 const hrefOf = (file: string) => (file === 'index.md' ? '/docs' : `/docs/${file.replace(/\.md$/, '')}`)
 
 describe('docs navigation (_docs.json)', () => {
   it('lists every Markdown page exactly once, and nothing else', () => {
     const pages = new Set(mdFiles(CONTENT).map(hrefOf))
     const listed = new Set(FLAT.map((p) => p.href))
-    expect([...pages].filter((p) => !listed.has(p))).toEqual(NOT_YET_IN_SIDEBAR)
+    expect([...pages].filter((p) => !listed.has(p))).toEqual([])
     expect([...listed].filter((p) => !pages.has(p))).toEqual([])
   })
 

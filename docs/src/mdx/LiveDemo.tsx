@@ -1,4 +1,2 @@
-import { lazySlot } from '../docs-ui/sell/lazy-slot'
-
-/** `<LiveDemo id="form" />` — the product demo with Preview / Code tabs (`docs-ui/sell/LiveDemo.tsx`). Loads on the pages that use it. */
-export const LiveDemo = lazySlot<{ id: string }>(() => import('../docs-ui/sell/LiveDemo'))
+/** `<LiveDemo id="form" />` — the product demo with Preview / Code tabs (`docs-ui/sell/LiveDemo.tsx`). Server-rendered: a docs page is static HTML. */
+export { default as LiveDemo } from '../docs-ui/sell/LiveDemo'

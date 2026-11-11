@@ -1,6 +1,3 @@
-import { For, onMount, Show } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
-
 export interface TocHeading {
   level: number
   text: string
@@ -19,106 +16,100 @@ export function tocEntries(headings: readonly TocHeading[]): TocHeading[] {
 }
 
 /**
- * Scroll-spy: the slug of the last heading whose top has passed the line
- * under the fixed nav. IntersectionObserver wakes it (no scroll listener for
- * the common case); positions are re-read on every wake so late layout
- * (images, demos) never leaves it stale. Returns a signal both TOC variants
- * read, so the page runs one observer.
+ * The slug of the section being read: the last heading whose top has passed
+ * the line under the fixed nav (the first one before any has). Pure over the
+ * headings' tops; exported for tests.
  */
-export function useScrollSpy(slugs: () => readonly string[], offset = 96): () => string | undefined {
-  const active = signal<string | undefined>(undefined)
-  onMount(() => {
-    const els = slugs()
-      .map((s) => document.getElementById(s))
-      .filter((e): e is HTMLElement => e !== null)
-    if (els.length === 0 || typeof IntersectionObserver === 'undefined') return undefined
-    let raf = 0
-    const pick = () => {
-      raf = 0
-      let current: string | undefined = els[0]?.id
-      for (const el of els) {
-        if (el.getBoundingClientRect().top - offset <= 1) current = el.id
-        else break
-      }
-      active.set(current)
-    }
-    const schedule = () => {
-      if (raf === 0) raf = requestAnimationFrame(pick)
-    }
-    const io = new IntersectionObserver(schedule, { rootMargin: `-${offset}px 0px -60% 0px`, threshold: [0, 1] })
-    for (const el of els) io.observe(el)
-    window.addEventListener('scroll', schedule, { passive: true })
-    pick()
-    return () => {
-      if (raf !== 0) cancelAnimationFrame(raf)
-      io.disconnect()
-      window.removeEventListener('scroll', schedule)
-    }
-  })
-  return active
+export function activeSlug(tops: readonly { id: string; top: number }[], offset: number): string | undefined {
+  let current = tops[0]?.id
+  for (const t of tops) {
+    if (t.top - offset <= 1) current = t.id
+    else break
+  }
+  return current
 }
 
-function TocList(props: { entries: readonly TocHeading[]; active: () => string | undefined; onPick?: () => void }) {
+/**
+ * Scroll-spy over the static TOCs (`docs-ui/enhance.tsx` starts it): marks
+ * the link of the section being read with `aria-current="location"` in both
+ * TOCs (the rail's and the inline one; the layout shows one). An
+ * IntersectionObserver wakes it, plus a passive scroll listener; positions
+ * are re-read on every wake so late layout (images, demos) never leaves it
+ * stale. Returns the cleanup.
+ */
+export function startScrollSpy(root: ParentNode, offset = 96): () => void {
+  const links = [...root.querySelectorAll<HTMLAnchorElement>('.dx-toc__link')]
+  const slugs = [...new Set(links.map((a) => decodeURIComponent(a.hash.slice(1))))]
+  const els = slugs.map((s) => document.getElementById(s)).filter((e): e is HTMLElement => e !== null)
+  if (els.length === 0 || typeof IntersectionObserver === 'undefined') return () => {}
+  let raf = 0
+  let shown: string | undefined
+  const pick = () => {
+    raf = 0
+    const current = activeSlug(
+      els.map((el) => ({ id: el.id, top: el.getBoundingClientRect().top })),
+      offset,
+    )
+    if (current === shown) return
+    shown = current
+    for (const a of links) {
+      if (decodeURIComponent(a.hash.slice(1)) === current) a.setAttribute('aria-current', 'location')
+      else a.removeAttribute('aria-current')
+    }
+  }
+  const schedule = () => {
+    if (raf === 0) raf = requestAnimationFrame(pick)
+  }
+  const io = new IntersectionObserver(schedule, { rootMargin: `-${offset}px 0px -60% 0px`, threshold: [0, 1] })
+  for (const el of els) io.observe(el)
+  window.addEventListener('scroll', schedule, { passive: true })
+  pick()
+  return () => {
+    if (raf !== 0) cancelAnimationFrame(raf)
+    io.disconnect()
+    window.removeEventListener('scroll', schedule)
+  }
+}
+
+function TocList(props: { entries: readonly TocHeading[] }) {
   return (
     <ul class="dx-toc__list">
-      <For each={props.entries} by={(h) => h.slug}>
-        {(h) => (
-          <li class={h.level === 3 ? 'dx-toc__item dx-toc__item--sub' : 'dx-toc__item'}>
-            <a
-              href={`#${h.slug}`}
-              class="dx-toc__link"
-              aria-current={() => (props.active() === h.slug ? 'location' : undefined)}
-              onClick={() => props.onPick?.()}
-            >
-              {h.text}
-            </a>
-          </li>
-        )}
-      </For>
+      {props.entries.map((h) => (
+        <li class={h.level === 3 ? 'dx-toc__item dx-toc__item--sub' : 'dx-toc__item'}>
+          <a href={`#${h.slug}`} class="dx-toc__link">
+            {h.text}
+          </a>
+        </li>
+      ))}
     </ul>
   )
 }
 
-/** The right rail's "On this page" (≥ 1180px). */
-export function RailToc(props: { entries: readonly TocHeading[]; active: () => string | undefined }) {
+/** The right rail's "On this page" (≥ 1180px). Static; `startScrollSpy` marks the current section. */
+export function RailToc(props: { entries: readonly TocHeading[] }) {
   return (
-    <Show when={() => props.entries.length > 0}>
-      <nav class="dx-toc" aria-labelledby="dx-toc-title">
-        <p class="dx-eyebrow" id="dx-toc-title">
-          On this page
-        </p>
-        <TocList entries={props.entries} active={props.active} />
-      </nav>
-    </Show>
+    <nav class="dx-toc" aria-labelledby="dx-toc-title">
+      <p class="dx-eyebrow" id="dx-toc-title">
+        On this page
+      </p>
+      <TocList entries={props.entries} />
+    </nav>
   )
 }
 
 /**
- * The same list under the title below 1180px, collapsed by default (a native
- * `<details>`: keyboard and screen-reader behaviour for free). Closes after a
- * pick so the reader lands on the section, not on an open list.
+ * The same list under the title below 1180px, collapsed by default: a native
+ * `<details>`, so it opens and its links work with no script. Once the page's
+ * enhance island runs, a pick also closes it, so the reader lands on the
+ * section, not on an open list.
  */
-export function InlineToc(props: { entries: readonly TocHeading[]; active: () => string | undefined }) {
-  let details: HTMLDetailsElement | null = null
+export function InlineToc(props: { entries: readonly TocHeading[] }) {
   return (
-    <Show when={() => props.entries.length > 0}>
-      <details
-        class="dx-toc-inline"
-        ref={(el: HTMLDetailsElement | null) => {
-          details = el
-        }}
-      >
-        <summary class="dx-toc-inline__summary">On this page</summary>
-        <nav aria-label="On this page">
-          <TocList
-            entries={props.entries}
-            active={props.active}
-            onPick={() => {
-              if (details) details.open = false
-            }}
-          />
-        </nav>
-      </details>
-    </Show>
+    <details class="dx-toc-inline">
+      <summary class="dx-toc-inline__summary">On this page</summary>
+      <nav aria-label="On this page">
+        <TocList entries={props.entries} />
+      </nav>
+    </details>
   )
 }

@@ -1,21 +1,27 @@
-import { useDocsData } from '../data'
+import type { ProductData } from '../../site/content/model'
 import { DocsGlyph as Glyph } from '../glyph'
 import { InstallCommand } from '../../site/kit/controls'
-import { useLinkClick } from '../../site/kit/link'
 import { Inline } from '../inline'
 
 /**
- * `<ProductPitch id="form" />` — the pitch strip that opens a product
- * overview page: glyph tile, package and category, the product name as the
- * page's h1, its hook line and lede, the install command, a link to the
- * product page, and three facts. Everything comes from `content/<id>.json`
- * (`hero`), the same copy the product page prints. Renders nothing when the
- * page is not that product's overview or its content file is not in the app.
+ * `<ProductPitch id="form" />` in an overview page's Markdown marks where the
+ * pitch belongs: first. The docs page renders the pitch itself, as the page's
+ * head (`PitchHead`, in place of the generic title, above the inline "On this
+ * page"), so the tag renders nothing in the body.
  */
-export default function ProductPitch(props: { id: string }) {
-  const p = useDocsData().product
-  const click = useLinkClick()
-  if (!p || p.id !== props.id) return null
+export default function ProductPitch(_props: { id: string }) {
+  return null
+}
+
+/**
+ * The pitch strip that opens a product overview page: glyph tile, package and
+ * category, the product name as the page's h1, its hook line and lede, the
+ * install command, a link to the product page, and three facts. Everything
+ * comes from `content/<id>.json` (`hero`), the same copy the product page
+ * prints. `DocsPage` renders it for a page whose product content is loaded.
+ */
+export function PitchHead(props: { product: ProductData }) {
+  const p = props.product
   return (
     <header class="dx-pitch" id="overview">
       <div class="dx-pitch__pk">
@@ -32,7 +38,7 @@ export default function ProductPitch(props: { id: string }) {
       <p class="dx-pitch__lede"><Inline text={p.hero.lede} /></p>
       <div class="dx-pitch__ctas">
         <InstallCommand command={p.hero.install} />
-        <a class="dx-pitch__link" href={p.route} onClick={click(p.route)}>
+        <a class="dx-pitch__link" href={p.route}>
           Product page →
         </a>
       </div>

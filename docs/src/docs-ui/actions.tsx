@@ -123,11 +123,11 @@ function AskAi(props: { title: string; url: string; raw?: string | undefined; al
 }
 
 /**
- * The page actions under the breadcrumbs: Edit this page · Copy as Markdown ·
- * Ask your AI. A page without a Markdown source (the docs home) shows only the
+ * The page actions under the breadcrumbs (an island, `DocsActionsIsland`):
+ * Edit this page · Copy as Markdown · Ask your AI. A page without a Markdown source (the docs home) shows only the
  * last one.
  */
-export function PageActions(props: { title: string; url: string; slug?: string | undefined }) {
+export default function PageActions(props: { title: string; url: string; slug?: string | undefined }) {
   const { msg, flash } = useFlash()
   const slug = props.slug
   const copyMarkdown = async () => {
