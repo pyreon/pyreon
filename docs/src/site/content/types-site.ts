@@ -448,6 +448,7 @@ export interface BlogChannel {
   latest: string                        // label above the newest post on page 1
   readPost: string                      // the link line of the featured post
   list: { title: string; text: string } // the rest of the posts
+  upNext: { title: string; text: string; planned: string } // scheduled posts on the index; planned: "Planned · {date}"
   empty: { title: string; text: string }
   tag: { eyebrow: string; title: string; lede: string; posts: [one: string, many: string] }   // {tag}, {count}, {posts}
   pager: string                         // accessible name of the pager
@@ -455,6 +456,7 @@ export interface BlogChannel {
   newer: string
   older: string
   subscribe: { title: string; text: string; links: SiteLink[] }
+  bench: { more: string }              // footer link of a `::: bench` block in a post (to /benchmarks)
   post: {
     back: string
     toc: string
@@ -466,6 +468,7 @@ export interface BlogChannel {
     previous: string
     next: string
     related: string
+    cta: { title: string; text: string; link: SiteLink }   // the closing card after every post
   }
 }
 

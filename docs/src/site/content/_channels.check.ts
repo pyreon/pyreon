@@ -32,6 +32,11 @@ export const checked = {
       "title": "More posts",
       "text": "Newest first."
     },
+    "upNext": {
+      "title": "Up next",
+      "text": "Written and scheduled. Each post goes live on its date, in the RSS feed the same day.",
+      "planned": "Planned · {date}"
+    },
     "empty": {
       "title": "The first post is on its way.",
       "text": "Posts are published on their date with the next daily deploy. Subscribe to the RSS feed and the first one reaches you the day it goes out."
@@ -67,6 +72,9 @@ export const checked = {
         }
       ]
     },
+    "bench": {
+      "more": "How we measure, and every result →"
+    },
     "post": {
       "back": "← All posts",
       "toc": "In this post",
@@ -77,7 +85,15 @@ export const checked = {
       "more": "Keep reading",
       "previous": "Previous post",
       "next": "Next post",
-      "related": "Related"
+      "related": "Related",
+      "cta": {
+        "title": "Try Pyreon in five minutes",
+        "text": "One command scaffolds an app with routing and server rendering, ready to run and deploy.",
+        "link": {
+          "label": "Start a project",
+          "href": "/docs/quickstart"
+        }
+      }
     }
   },
   "showcase": {
