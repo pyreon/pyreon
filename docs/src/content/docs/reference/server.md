@@ -1,9 +1,7 @@
 ---
-title: "SSR / SSG / Islands — API Reference"
+title: "@pyreon/server — API Reference"
 description: "SSR + SSG + island architecture — createHandler(), prerender(), island(), serverIsland(), middleware chain"
 ---
-
-# @pyreon/server — API Reference
 
 > **Generated** from `server`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [server](/docs/server).
 

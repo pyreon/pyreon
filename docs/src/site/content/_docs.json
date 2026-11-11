@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 221,
+  "pageCount": 222,
   "pages": [
    {
     "path": "a11y.md",
@@ -41,6 +41,11 @@
     "path": "benchmarks.md",
     "title": "Benchmarks",
     "href": "/docs/benchmarks"
+   },
+   {
+    "path": "blog.md",
+    "title": "Blog",
+    "href": "/docs/blog"
    },
    {
     "path": "build-an-app.md",
@@ -1661,6 +1666,10 @@
       {
        "title": "Live examples",
        "href": "/docs/live-examples"
+      },
+      {
+       "title": "Blog",
+       "href": "/docs/blog"
       }
      ]
     },

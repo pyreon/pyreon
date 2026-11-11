@@ -1,9 +1,7 @@
 ---
-title: "Complete API — API Reference"
+title: "@pyreon/core — API Reference"
 description: "VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary, lazy(), Dynamic, cx(), splitProps, mergeProps, createUniqueId"
 ---
-
-# @pyreon/core — API Reference
 
 > **Generated** from `core`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [core](/docs/core).
 

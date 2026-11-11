@@ -3,8 +3,6 @@ title: "Deploying a Pyreon App"
 description: "How to build and deploy a @pyreon/zero app to Vercel, Cloudflare, Netlify, Node, Bun, or any static host — with the right adapter and rendering mode."
 ---
 
-# Deploying a Pyreon App
-
 A `@pyreon/zero` app builds to a deployable artifact whose shape depends on your **rendering mode** and **adapter**. Static modes need only a static host; server modes emit a runnable handler the adapter wires to the platform.
 
 ## Build

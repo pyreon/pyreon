@@ -1,9 +1,7 @@
 ---
-title: "Component Workbench — API Reference"
+title: "@pyreon/atlas — API Reference"
 description: "AI-native component workbench — derives, verifies, and serves a machine-readable component catalog"
 ---
-
-# @pyreon/atlas — API Reference
 
 > **Generated** from `atlas`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [atlas](/docs/atlas).
 

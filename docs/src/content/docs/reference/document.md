@@ -1,9 +1,7 @@
 ---
-title: "Universal Document Rendering — API Reference"
+title: "@pyreon/document — API Reference"
 description: "Universal document rendering — 18 primitives, 20 output formats"
 ---
-
-# @pyreon/document — API Reference
 
 > **Generated** from `document`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [document](/docs/document).
 

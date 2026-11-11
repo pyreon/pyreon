@@ -1,9 +1,7 @@
 ---
-title: "Local-First Sync — API Reference"
+title: "@pyreon/sync — API Reference"
 description: "Local-first CRDT-backed sync for signals — a synced signal IS a signal, so a remote op drives ONE fine-grained DOM update, not a re-render"
 ---
-
-# @pyreon/sync — API Reference
 
 > **Generated** from `sync`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [sync](/docs/sync).
 

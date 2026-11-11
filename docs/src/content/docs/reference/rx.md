@@ -1,9 +1,7 @@
 ---
-title: "Reactive Transforms — API Reference"
+title: "@pyreon/rx — API Reference"
 description: "Signal-aware reactive transforms — filter, map, flatMap, sortBy, groupBy, countBy, pipe, debounce, throttle, 42 functions"
 ---
-
-# @pyreon/rx — API Reference
 
 > **Generated** from `rx`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [rx](/docs/rx).
 

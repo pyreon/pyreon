@@ -1,9 +1,7 @@
 ---
-title: "JSX Reactive Transform — API Reference"
+title: "@pyreon/compiler — API Reference"
 description: "JSX reactive transform (Rust native + JS fallback) plus the Reactivity-Lens sidecar, React→Pyreon migration, and project audits"
 ---
-
-# @pyreon/compiler — API Reference
 
 > **Generated** from `compiler`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [compiler](/docs/compiler).
 

@@ -2,8 +2,6 @@
 title: Benchmarks
 ---
 
-# Benchmarks
-
 Pyreon's performance work is benchmark-driven. This page publishes the numbers:
 the wins, the statistical ties, **and the losses**. The same honesty bar applies
 here as everywhere else in these docs: an inflated benchmark is worse than a slow

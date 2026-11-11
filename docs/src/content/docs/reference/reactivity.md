@@ -1,9 +1,7 @@
 ---
-title: "Complete API — API Reference"
+title: "@pyreon/reactivity — API Reference"
 description: "Fine-grained reactivity: signal, computed, linked, effect, batch, onCleanup, createStore, watch, createResource, untrack"
 ---
-
-# @pyreon/reactivity — API Reference
 
 > **Generated** from `reactivity`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [reactivity](/docs/reactivity).
 

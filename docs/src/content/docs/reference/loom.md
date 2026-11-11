@@ -1,9 +1,7 @@
 ---
-title: "Dependency Observatory — API Reference"
+title: "@pyreon/loom — API Reference"
 description: "Monorepo dependency observatory — workspace graph, version-sync drift, cycles, phantom deps, and blast radius, as data"
 ---
-
-# @pyreon/loom — API Reference
 
 > **Generated** from `loom`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [loom](/docs/loom).
 

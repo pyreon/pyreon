@@ -3,8 +3,6 @@ title: '@pyreon/create-multiplatform'
 description: 'Scaffold a multiplatform Pyreon app — one src/App.tsx that runs on web, iOS (SwiftUI), and Android (Jetpack Compose) via PMTC.'
 ---
 
-# @pyreon/create-multiplatform
-
 Scaffold a multiplatform Pyreon app — **one `src/App.tsx` source** that runs on **web**, **iOS** (SwiftUI), and **Android** (Jetpack Compose) via PMTC (the Pyreon Multi-Target Compiler).
 
 :::warning{title="Experimental"}

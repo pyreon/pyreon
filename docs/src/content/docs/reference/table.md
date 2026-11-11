@@ -1,9 +1,7 @@
 ---
-title: "TanStack Table Adapter — API Reference"
+title: "@pyreon/table — API Reference"
 description: "Pyreon adapter for TanStack Table — reactive options, signal-driven state, flexRender"
 ---
-
-# @pyreon/table — API Reference
 
 > **Generated** from `table`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [table](/docs/table).
 

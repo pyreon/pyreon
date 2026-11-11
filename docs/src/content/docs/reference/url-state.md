@@ -1,9 +1,7 @@
 ---
-title: "URL State — API Reference"
+title: "@pyreon/url-state — API Reference"
 description: "URL-synced state — useUrlState(key, default) or schema mode, auto type coercion, SSR-safe"
 ---
-
-# @pyreon/url-state — API Reference
 
 > **Generated** from `url-state`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [url-state](/docs/url-state).
 

@@ -7,8 +7,6 @@ description: Reactive keyboard shortcut management for Pyreon — scope-aware, m
 
 <LiveDemo id="hotkeys" />
 
-# @pyreon/hotkeys
-
 <PackageBadge name="@pyreon/hotkeys" />
 
 Keyboard shortcut management for Pyreon — register global or scoped shortcuts, get

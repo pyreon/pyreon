@@ -3,8 +3,6 @@ title: Images & Fonts
 description: Out-of-the-box image and font optimization in @pyreon/zero — bi-modal Image, descriptor compat, registries, priority preload, self-hosted Google Fonts.
 ---
 
-# Images & Fonts
-
 `@pyreon/zero` auto-wires `imagePlugin` and `fontPlugin` into the build pipeline by default. A user adds `pyreon()` + `zero()` to vite.config and `<Image>` + self-hosted fonts Just Work — no manual plugin wiring.
 
 ```ts

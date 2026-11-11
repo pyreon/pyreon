@@ -4,8 +4,6 @@ summary: "Use field() + useForm({ fields: [...] }) + useField('name') inside <Fo
 seeAlso: [controllable-state]
 ---
 
-# Form fields
-
 ## The pattern
 
 Define fields with `field()` (pure data — name + default + validator), compose them with `useForm({ fields: [...] })`, and read them from context with `useField('name')`:

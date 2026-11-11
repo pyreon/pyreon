@@ -1,9 +1,7 @@
 ---
-title: "Router — API Reference"
+title: "@pyreon/router — API Reference"
 description: "hash+history+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params"
 ---
-
-# @pyreon/router — API Reference
 
 > **Generated** from `router`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [router](/docs/router).
 

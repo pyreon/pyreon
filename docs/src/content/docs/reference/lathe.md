@@ -1,9 +1,7 @@
 ---
-title: "Spec-to-Client Generator — API Reference"
+title: "@pyreon/lathe — API Reference"
 description: "OpenAPI in, typed Pyreon client out — schemas, endpoints, queries, mocks, faker factories, Markdown reference and Atlas scenarios, with a multiplatform mode tha"
 ---
-
-# @pyreon/lathe — API Reference
 
 > **Generated** from `lathe`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [lathe](/docs/lathe).
 

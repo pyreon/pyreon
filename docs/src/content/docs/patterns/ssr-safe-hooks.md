@@ -4,8 +4,6 @@ summary: "Guard browser globals with typeof or bucket browser-only work into onM
 seeAlso: [dev-warnings, event-listeners]
 ---
 
-# SSR-safe hooks
-
 ## The pattern
 
 Any hook or helper that touches `window`, `document`, `navigator`, `IntersectionObserver`, `ResizeObserver`, or `matchMedia` must run safely on the server where those globals don't exist.

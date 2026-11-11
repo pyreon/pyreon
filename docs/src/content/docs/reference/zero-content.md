@@ -1,9 +1,7 @@
 ---
-title: "Zero Content — markdown-driven Pyreon sites — API Reference"
+title: "@pyreon/zero-content — API Reference"
 description: "Compile-time .md/.mdx → Pyreon JSX, typed content collections, convention-scanned MDX components"
 ---
-
-# @pyreon/zero-content — API Reference
 
 > **Generated** from `zero-content`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [zero-content](/docs/zero-content).
 

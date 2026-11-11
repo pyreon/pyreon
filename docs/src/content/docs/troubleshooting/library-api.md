@@ -3,8 +3,6 @@ title: "Library API-Shape Mistakes"
 description: "Common library api-shape mistakes in Pyreon and how to fix them."
 ---
 
-# Library API-Shape Mistakes
-
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
 ### A compat API that sorts its argument into the wrong shape

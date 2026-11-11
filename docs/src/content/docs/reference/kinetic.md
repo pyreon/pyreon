@@ -1,9 +1,7 @@
 ---
-title: "CSS-Transition Animations — API Reference"
+title: "@pyreon/kinetic — API Reference"
 description: "CSS-transition animations — kinetic(tag) chainable factory, 4 modes (transition/collapse/stagger/group), SSR-safe"
 ---
-
-# @pyreon/kinetic — API Reference
 
 > **Generated** from `kinetic`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [kinetic](/docs/kinetic).
 

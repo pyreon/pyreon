@@ -3,8 +3,6 @@ title: 'Reactivity Lens'
 description: See which expressions are reactive (live) and which are static right where you type, as editor inlay hints — the compiler's reactive-vs-static ground truth, surfaced at the cursor.
 ---
 
-# Reactivity Lens
-
 The **Reactivity Lens** shows you which expressions in your code are **reactive** and which are **static** — rendered as ghost-text inlay hints at the end of each expression, the same surface TypeScript uses for inferred types. It's the compiler's own reactive-vs-static decision, surfaced right where you type.
 
 ```tsx

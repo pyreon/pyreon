@@ -2,8 +2,6 @@
 title: Multi-Platform Libraries — package-owned native plugins
 ---
 
-# Multi-Platform Libraries
-
 Pyreon's native compiler lowers supported TypeScript and JSX into SwiftUI and Jetpack Compose. A package owns the rules that translate its API. The compiler supplies shared state, function, JSX, theme-token and native style operations.
 
 This keeps the source-facing API in the package that publishes it. Adding a library does not require adding that library's names, payloads or target templates to the compiler. Native support remains a declared subset: a plugin can lower one API while other exports need a `<Web>` branch or a native adapter. The [capability matrix](./multiplatform.md) and [supported TypeScript](./pmtc-supported-typescript.md) describe those limits.

@@ -7,8 +7,6 @@ description: 'The canonical multi-platform UI vocabulary — 22 primitives plus 
 
 <LiveDemo id="primitives" />
 
-# @pyreon/primitives
-
 One vocabulary, three outputs. Write a component once with these primitives: on
 the **web** they render real DOM; on **iOS** and **Android** the PMTC compiler
 reads the same `.tsx` and emits SwiftUI and Jetpack Compose. On native targets

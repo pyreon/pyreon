@@ -3,8 +3,6 @@ title: "Recipes"
 description: "Copy-paste solutions to common Pyreon tasks — auth gates, optimistic UI, infinite scroll, dark mode, debounced search, persisted state, server-side form errors, and polling."
 ---
 
-# Recipes
-
 Short, copy-paste solutions to the tasks that come up in every app. Each composes Pyreon primitives covered in depth in the [guides](/docs/guides/reactivity-in-depth) — here they're just the answer.
 
 ## Auth-gated route

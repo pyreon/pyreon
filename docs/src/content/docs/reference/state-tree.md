@@ -1,9 +1,7 @@
 ---
-title: "State Tree — API Reference"
+title: "@pyreon/state-tree — API Reference"
 description: "Structured reactive state tree — composable models with snapshots, patches, and middleware"
 ---
-
-# @pyreon/state-tree — API Reference
 
 > **Generated** from `state-tree`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [state-tree](/docs/state-tree).
 
