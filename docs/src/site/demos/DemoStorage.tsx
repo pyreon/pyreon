@@ -36,7 +36,7 @@ function readRaw(): string {
 }
 
 export default function DemoStorage() {
-  // `.remove()` resets a signal and releases it, so a consumer that keeps
+  // `.remove()` resets a signal and releases it (#4381), so a consumer that keeps
   // using the key takes a fresh one afterwards: keep the current signal in a slot.
   const theme = signal(useStorage<Theme>(THEME_KEY, 'light'))
   const note = signal(useStorage(NOTE_KEY, ''))

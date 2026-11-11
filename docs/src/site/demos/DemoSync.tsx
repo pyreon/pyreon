@@ -12,7 +12,7 @@ import { PaperActions, PaperList, PaperMono, PaperRow, PaperTag } from '../kit/d
  * drops the link; edits keep landing in each device's own document.
  * Reconnecting re-runs the state exchange, so both sides' offline edits
  * merge with none lost. Only the wire is in-page: no WebSocket, no server.
- * (`connectYDocs` never re-forwards a received update, so the two docs are
+ * (`connectYDocs` never re-forwards a received update, #4381, so the two docs are
  * linked directly rather than through a third "relay" doc.)
  */
 interface Item {

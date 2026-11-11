@@ -56,7 +56,7 @@ const State = txt
 /**
  * Mounts hidden and shows on the next tick, so a freshly mounted kinetic
  * component runs its enter. (`appear` would do this, but with an initially
- * true `show` it renders the children twice: reported upstream.)
+ * true `show` it renders the children twice: #4380.)
  */
 function Entering(props: { render: (visible: () => boolean) => VNode }) {
   const visible = signal(false)
@@ -111,7 +111,7 @@ export default function DemoKinetic() {
             {() => (
               <Entering
                 render={(visible) =>
-                  // h() children, not JSX: stagger drops compiled-JSX children (reported upstream).
+                  // h() children, not JSX: stagger drops compiled-JSX children (#4380).
                   h(LISTS[preset.peek()], { show: () => visible() }, ...ITEMS.map((t) => h('li', null, t)))
                 }
               />
