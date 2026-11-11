@@ -3,6 +3,7 @@ import {
   _noopDispose,
   _rdCloseBindingFrame,
   _rdLabelBinding,
+  _rdLabelDirect,
   _rdNodeId,
   _rdOpenBindingFrame,
   getContextOwner,
@@ -402,10 +403,8 @@ export function _bindText(
             if (disposer !== null) disposer()
             const core = createPolyTextCore(node, parent, ownerAtSetup)
             core.apply(v as VNodeChild)
-            // (Dev: this updater is a graph node via `direct()`, left unlabelled —
-            // labelling it would need a named const here, i.e. a production
-            // shape change, for a path that runs once per upgrade.)
             const unsub = source.direct!(() => core.apply(source._v as VNodeChild))
+            if (process.env.NODE_ENV !== 'production') _rdLabelDirect(unsub, null, 'child', parent)
             disposer = () => {
               unsub()
               core.dispose()
@@ -436,7 +435,7 @@ export function _bindText(
       // the compiled template that emitted the call (skipFrames=1 skips
       // `_bindText`).
       if (process.env.NODE_ENV !== 'production')
-        _rdLabelBinding(textUpdate, 'text', node, undefined, 1)
+        _rdLabelBinding(textUpdate, 'text', node, undefined, 1, true)
     }
     return () => disposer!()
   }
@@ -513,29 +512,21 @@ export function _bindDirect(
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.bindDirect')
   // Fast path: source has .direct() (signal or computed)
   if (source.direct) {
-    // Dev: the same binding, instrumented. The initial write runs inside a
-    // binding-label frame so the compiled updater's DOM setter
-    // (`(v) => _setAttr(el, "aria-busy", v)`) names the binding, and the
-    // updater handed to `direct()` is held so its graph node can be labelled.
-    // Inlined (not a helper) so the whole block folds away in production and
-    // the two lines below stay byte-identical — a dev-only helper function
-    // kept its imports alive in the production bundle.
-    if (process.env.NODE_ENV !== 'production') {
-      _rdOpenBindingFrame()
-      let target: ReturnType<typeof _rdCloseBindingFrame> = null
-      try {
-        updater(source._v)
-      } finally {
-        target = _rdCloseBindingFrame()
-      }
-      const u = () => updater(source._v)
-      const dispose = source.direct(u)
-      if (target !== null) _rdLabelBinding(u, target.kind, target.target ?? null, target.key, 1)
-      else _rdLabelBinding(u, null, null, undefined, 1)
-      return dispose
+    // Dev: the initial write runs inside a binding-label frame so the compiled
+    // updater's DOM setter (`(v) => _setAttr(el, "aria-busy", v)`) names the
+    // binding, then the node `direct()` registered is labelled (`dom` when no
+    // setter reported a write) and its disposer tagged. One body for both
+    // builds: in production the dev calls and the empty `finally` fold away
+    // and `dispose` collapses into the return.
+    if (process.env.NODE_ENV !== 'production') _rdOpenBindingFrame()
+    try {
+      updater(source._v)
+    } finally {
+      if (process.env.NODE_ENV !== 'production') _rdCloseBindingFrame()
     }
-    updater(source._v)
-    return source.direct(() => updater(source._v))
+    const dispose = source.direct(() => updater(source._v))
+    if (process.env.NODE_ENV !== 'production') _rdLabelDirect(dispose, 1)
+    return dispose
   }
   // Fallback: bare callable. Use the compiler-provided receiver/caller if there
   // is one (preserves `this` for member-expression sources); otherwise call

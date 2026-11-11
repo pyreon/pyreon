@@ -221,17 +221,12 @@ export function bindSpread(el: Element, getProps: () => Props): Cleanup {
 export function applySelectValueProp(el: Element, props: Props): Cleanup | null {
   const descriptor = Object.getOwnPropertyDescriptor(props, 'value')
   if (descriptor?.get) {
-    if (process.env.NODE_ENV !== 'production') {
-      // Dev: same binding; the setter names it, the creation site (here) is dropped.
-      const d = renderEffect(() =>
-        applyStaticProp(el, 'value', (props as Record<string, unknown>).value),
-      )
-      _rdLabelBinding(d, null, null, undefined, null)
-      return d
-    }
-    return renderEffect(() =>
+    const d = renderEffect(() =>
       applyStaticProp(el, 'value', (props as Record<string, unknown>).value),
     )
+    // Dev: the setter names the binding; drop the creation site (this file).
+    if (process.env.NODE_ENV !== 'production') _rdLabelBinding(d, null, null, undefined, null)
+    return d
   }
   return applyProp(el, 'value', props.value)
 }
@@ -482,19 +477,7 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
   // renderEffect rather than effect since mountElement's cleanup array owns the
   // lifecycle.
   if (typeof value === 'function') {
-    // Dev: the same binding, with the creation site (this file) dropped from
-    // its graph node — the DOM setter it calls already names it. Inlined so
-    // the production branch below is untouched.
-    if (process.env.NODE_ENV !== 'production') {
-      const d = renderEffect(() => {
-        let resolved = (value as () => unknown)()
-        if (typeof resolved === 'function') resolved = (resolved as () => unknown)()
-        applyStaticProp(el, key, resolved)
-      })
-      _rdLabelBinding(d, null, null, undefined, null)
-      return d
-    }
-    return renderEffect(() => {
+    const d = renderEffect(() => {
       // The accessor's RESULT can itself be an accessor. The compiler inlines a
       // prop-derived function-valued const at its use site, so
       // `const tabIndexFor = () => …` passed as `tabIndex={tabIndexFor}` on a
@@ -507,6 +490,9 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
       if (typeof resolved === 'function') resolved = (resolved as () => unknown)()
       applyStaticProp(el, key, resolved)
     })
+    // Dev: the setter names the binding; drop the creation site (this file).
+    if (process.env.NODE_ENV !== 'production') _rdLabelBinding(d, null, null, undefined, null)
+    return d
   }
 
   applyStaticProp(el, key, value)
@@ -892,17 +878,9 @@ export function applyDomProp(el: Element, key: string, value: unknown): void {
 export function applyDomPropStatic(el: Element, key: string, value: unknown): void {
   if (typeof value === 'function') {
     const read = value as () => unknown
-    // Dev: emitted by the compiler, so its caller is the user's template.
-    if (process.env.NODE_ENV !== 'production') {
-      _rdLabelBinding(
-        renderEffect(() => applyDomProp(el, key, read())),
-        null,
-        null,
-        undefined,
-        1,
-      )
-      return
-    }
+    // Not relabelled: `applyDomProp` names the binding (`prop`), and taking the
+    // disposer just to move its creation site off this file would add a
+    // variable to the production build. Its `loc` therefore points here.
     renderEffect(() => applyDomProp(el, key, read()))
     return
   }

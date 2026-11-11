@@ -15,6 +15,7 @@
 import { transformJSX } from '@pyreon/compiler'
 import * as core from '@pyreon/core'
 import { For, h } from '@pyreon/core'
+import * as jsxRuntime from '@pyreon/core/jsx-runtime'
 import * as reactivity from '@pyreon/reactivity'
 import {
   __resetReactiveDevtoolsForTesting,
@@ -26,7 +27,13 @@ import {
   type ReactiveNode,
   signal,
 } from '@pyreon/reactivity'
-import { startReactiveCoverage, stopReactiveCoverage, takeReactiveCoverage } from '@pyreon/reactivity/coverage'
+import {
+  computeReactiveCoverage,
+  startReactiveCoverage,
+  stopReactiveCoverage,
+  takeReactiveCoverage,
+} from '@pyreon/reactivity/coverage'
+import { transformSync } from 'esbuild'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as runtimeDom from '../index'
 import { mount } from '../index'
@@ -35,11 +42,19 @@ const MODULES: Record<string, Record<string, unknown>> = {
   '@pyreon/runtime-dom': runtimeDom as never,
   '@pyreon/reactivity': reactivity as never,
   '@pyreon/core': core as never,
+  '@pyreon/core/jsx-runtime': jsxRuntime as never,
 }
 
 /** Compile `source` with the real compiler and return its named export. */
 function compile<T>(source: string, exportName: string): T {
-  const code = transformJSX(source, 'binding-graph.tsx').code
+  // The compiler leaves component JSX (`<For>`) for the automatic runtime,
+  // exactly as the Vite pipeline does; lower that with esbuild.
+  const code = transformSync(transformJSX(source, 'binding-graph.tsx').code, {
+    loader: 'tsx',
+    jsx: 'automatic',
+    jsxImportSource: '@pyreon/core',
+    format: 'esm',
+  }).code
   const names: string[] = []
   const values: unknown[] = []
   const body = code.replace(/^import\s*\{([^}]*)\}\s*from\s*["']([^"']+)["'];?\s*$/gm, (_m, list: string, from: string) => {
@@ -156,7 +171,9 @@ describe('compiled bindings in the reactive graph', () => {
     expect(entry('text in <span>')).toMatchObject({ reason: 'covered', fires: 2 })
     expect(entry('aria-busy on <div>').reason).toBe('ran-once')
     const report = takeReactiveCoverage()
-    expect(report.bindings.total).toBeGreaterThanOrEqual(6)
+    // class, aria-busy, title (_bind), text in <span>, text in <b>, value on
+    // <input>; `data-x` and `text in <i>` read static props, so they are dead.
+    expect(report.bindings.total).toBe(6)
     // Static props (`x: 1`, `note: 'static'`) make dead bindings — not reactive
     // edges, so not in the denominator.
     expect(report.entries.some((e) => e.name === 'data-x on <div>')).toBe(false)
@@ -173,7 +190,7 @@ describe('compiled bindings in the reactive graph', () => {
     expect(orphans).not.toContain('loading')
     expect(orphans).not.toContain('count')
     expect(desc.nodes.find((n) => n.name === 'loading')!.behavior).toBe('changing it updates 1 DOM binding')
-    expect(desc.summary.bindings).toBeGreaterThanOrEqual(6)
+    expect(desc.summary.bindings).toBe(6)
   })
 
   it('<For> rows and the list itself are nodes; the h() path names its prop bindings', () => {
@@ -269,10 +286,113 @@ describe('no leak: unmounted bindings leave the registry', () => {
     }
     if (hasGc) await collectGarbage()
     const pinned = takeReactiveCoverage().bindings.total
-    expect(pinned).toBeGreaterThanOrEqual(50 * 6)
+    expect(pinned).toBe(50 * 6)
     stopReactiveCoverage()
     if (!hasGc) return
     await collectGarbage()
     expect(_rdRegistrySize()).toBeLessThan(20)
+  })
+})
+
+describe('review follow-ups (#4472)', () => {
+  it('getUpdateCause survives a cascade larger than the fire buffer (600 compiled rows)', () => {
+    activateReactiveDevtools()
+    const m = compile<{ Row: () => unknown; locale: ReturnType<typeof signal<string>> }>(
+      `
+import { signal } from '@pyreon/reactivity'
+export const locale = signal('en', { name: 'locale' })
+export function Row() { return <li>{locale()}</li> }
+`,
+      '{ Row, locale }',
+    )
+    const el = document.createElement('div')
+    const seen: string[] = []
+    const e = reactivity.effect(() => {
+      seen.push(m.locale())
+    })
+    mount(h('ul', null, ...Array.from({ length: 600 }, () => h(m.Row as never, null))), el)
+    // One write → 600 binding re-runs + 1 effect run: more fires than the
+    // 512-entry buffer holds, so the signal's own entry is evicted.
+    m.locale.set('fr')
+    expect(el.textContent!.startsWith('frfr')).toBe(true)
+    const effCause = getUpdateCause(reactivity._rdNodeId(e)!)
+    expect(effCause?.chain.map((l) => l.name)).toEqual(['locale'])
+    expect(effCause?.rootReached).toBe(true)
+    const rows = getReactiveGraph().nodes.filter((n) => n.binding === 'text')
+    expect(rows).toHaveLength(600)
+    for (const row of [rows[0]!, rows[599]!]) {
+      const c = getUpdateCause(row.id)!
+      expect(c.chain.map((l) => l.name)).toEqual(['locale'])
+      expect(c.rootReached).toBe(true)
+    }
+  })
+
+  it('compiled updaters that write the DOM without a setter are still DOM bindings', () => {
+    activateReactiveDevtools()
+    const m = compile<{ B: () => unknown; busy: ReturnType<typeof signal<boolean>>; n: ReturnType<typeof signal<number>> }>(
+      `
+import { signal } from '@pyreon/reactivity'
+export const busy = signal(false, { name: 'busy' })
+export const n = signal(1.5, { name: 'n' })
+export function B() {
+  return <span><button disabled={busy()}>x</button><input checked={busy()} /><b>{n().toFixed(2)}</b></span>
+}
+`,
+      '{ B, busy, n }',
+    )
+    const el = document.createElement('div')
+    // 8 × (disabled + checked) on busy, 8 × toFixed text on n
+    mount(h('div', null, ...Array.from({ length: 8 }, () => h(m.B as never, null))), el)
+    const desc = describeReactiveGraph()
+    expect(desc.summary).toMatchObject({ effects: 0, bindings: 24 })
+    // a theme-like signal shown in many places is not a hot signal
+    expect(desc.insights.filter((i) => i.kind === 'high-fanout')).toEqual([])
+    expect(desc.nodes.find((n) => n.name === 'busy')!.behavior).toBe('changing it updates 16 DOM bindings')
+    const report = computeReactiveCoverage(getReactiveGraph().nodes)
+    expect(report.bindings).toEqual({ total: 24, covered: 0 })
+    expect(new Set(report.entries.filter((x) => x.kind === 'effect').map((x) => x.binding))).toEqual(new Set(['dom']))
+    m.n.set(2)
+    expect(el.querySelector('b')!.textContent).toBe('2.00')
+    expect(computeReactiveCoverage(getReactiveGraph().nodes).bindings).toEqual({ total: 24, covered: 8 })
+  })
+
+  it('the rocketstyle collapse class binding is labelled on the signal path too', () => {
+    activateReactiveDevtools()
+    const dark = signal(false, { name: 'dark' })
+    const before = new Set(getReactiveGraph().nodes.map((n) => n.id))
+    const el = document.createElement('div')
+    mount(runtimeDom._rsCollapse('<button>x</button>', 'l', 'd', dark as never) as never, el)
+    const nodes = getReactiveGraph().nodes.filter((n) => !before.has(n.id))
+    expect(nodes.map((n) => n.name)).toEqual(['class on <button>'])
+    dark.set(true)
+    expect(el.querySelector('button')!.className).toBe('d')
+  })
+
+  it('<For> rows bound through createSelector.subscribe are bindings with a cause', () => {
+    activateReactiveDevtools()
+    const m = compile<{ T: () => unknown; cur: ReturnType<typeof signal<number>> }>(
+      `
+import { signal, createSelector } from '@pyreon/reactivity'
+import { For } from '@pyreon/core'
+export const cur = signal(1, { name: 'cur' })
+export const isSel = createSelector(cur)
+export const rows = signal([{ id: 1 }, { id: 2 }], { name: 'rows' })
+export function T() {
+  return <table><For each={rows()} by={(r) => r.id}>{(row) => <tr class={isSel(row.id) ? 'danger' : ''}><td>x</td></tr>}</For></table>
+}
+`,
+      '{ T, cur }',
+    )
+    const el = document.createElement('div')
+    mount(h(m.T as never, null), el)
+    const rows = () => getReactiveGraph().nodes.filter((n) => n.name === 'class on <tr>')
+    expect(rows().map((n) => n.fires)).toEqual([1, 1])
+    m.cur.set(2)
+    expect(el.querySelectorAll('tr.danger')).toHaveLength(1)
+    // deselected row 1 and selected row 2 both re-ran
+    expect(rows().map((n) => n.fires)).toEqual([2, 2])
+    const c = getUpdateCause(rows()[1]!.id)!
+    expect(c.chain[0]!.name).toBe('cur')
+    expect(c.rootReached).toBe(true)
   })
 })
