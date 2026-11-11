@@ -26,6 +26,8 @@
 // Cancellation returns the `CANCEL` symbol, tested with `isCancel`, as clack
 // did; the caller decides what to print and how to exit.
 
+import { createTerm, header, type Term, verdict, visibleWidth } from '@pyreon/ansi'
+
 export const CANCEL: unique symbol = Symbol('create-zero.cancel')
 export type Cancel = typeof CANCEL
 
@@ -53,9 +55,22 @@ export interface PromptOutput {
   write(text: string): unknown
 }
 
+/**
+ * Render for a specific terminal instead of detecting one: colour level
+ * (0 plain, 1 sixteen colours, 2 truecolor), background and symbol set.
+ * Anything left out is detected by `@pyreon/ansi` from the environment and
+ * the OUTPUT stream's `isTTY`.
+ */
+export interface PromptStyle {
+  color?: 0 | 1 | 2 | undefined
+  theme?: 'dark' | 'light' | undefined
+  unicode?: boolean | undefined
+}
+
 interface Io {
   input: PromptInput
   output: PromptOutput
+  style?: PromptStyle | undefined
 }
 
 let io: Io = {
@@ -73,50 +88,57 @@ export function setPromptIo(next: Io): () => void {
 }
 
 // ─── Styling ────────────────────────────────────────────────────────────────
+//
+// Palette, colour level (NO_COLOR, FORCE_COLOR, TERM=dumb, TTY), theme
+// (PYREON_CLI_THEME, COLORFGBG) and the Unicode/ASCII decision all come from
+// `@pyreon/ansi`, so the scaffolder looks like every other Pyreon command.
+// Detection runs per write against the CURRENT output stream, so a swapped
+// stream (tests, a non-TTY pipe) is judged on its own `isTTY`.
 
-const ESC = '\u001b'
+const ESC = String.fromCharCode(27)
+
+/** The `Term` for the current output stream. */
+export function currentTerm(): Term {
+  const s = io.style
+  return createTerm({
+    level: s?.color,
+    theme: s?.theme,
+    unicode: s?.unicode,
+    isTTY: io.output.isTTY === true,
+  })
+}
+
 /**
- * Whether the terminal can draw the box/radio glyphs. Every platform but
- * legacy Windows consoles can; Windows Terminal and editor terminals set one
- * of these variables.
+ * The prompt-frame glyphs `@pyreon/ansi` has no token for, with their ASCII
+ * fallbacks. Which column is used is decided by the theme's Unicode
+ * detection (`t.unicode`), never here.
  */
-export function supportsUnicode(platform: string, env: Record<string, string | undefined>): boolean {
-  return platform !== 'win32' || Boolean(env.WT_SESSION || env.TERM_PROGRAM)
-}
+const FRAME = {
+  start: ['┌', '+'],
+  end: ['└', '+'],
+  boxOn: ['◼', '[x]'],
+  boxOff: ['◻', '[ ]'],
+  cursor: ['█', '_'],
+  upDown: ['↑/↓', 'up/down'],
+  leftRight: ['←/→', 'left/right'],
+} as const
 
-export function symbolSet(unicode: boolean) {
-  const sym = (u: string, ascii: string) => (unicode ? u : ascii)
-  return {
-    bar: sym('│', '|'),
-    start: sym('┌', 'T'),
-    end: sym('└', '-'),
-    active: sym('◆', '*'),
-    submit: sym('◇', 'o'),
-    cancel: sym('■', 'x'),
-    error: sym('▲', 'x'),
-    radioOn: sym('●', '>'),
-    radioOff: sym('○', ' '),
-    boxOn: sym('◼', '[+]'),
-    boxOff: sym('◻', '[ ]'),
-    spinner: unicode ? ['◒', '◐', '◓', '◑'] : ['-', '\\', '|', '/'],
-  }
-}
+const SPINNER = { unicode: ['◒', '◐', '◓', '◑'], ascii: ['-', '\\', '|', '/'] } as const
 
-const S = symbolSet(supportsUnicode(process.platform, process.env))
+const glyph = (t: Term, name: keyof typeof FRAME): string => FRAME[name][t.unicode ? 0 : 1]
 
-function useColor(): boolean {
-  return io.output.isTTY === true && !process.env.NO_COLOR
-}
-const paint = (code: string) => (str: string) => (useColor() ? `${ESC}[${code}m${str}${ESC}[0m` : str)
-const c = {
-  dim: paint('2'),
-  cyan: paint('36'),
-  green: paint('32'),
-  yellow: paint('33'),
-  red: paint('31'),
-  strike: paint('9'),
-  inverse: paint('7'),
-}
+/** The gray gutter `│` between steps. */
+const gutter = (t: Term): string => t.gray(t.sym('frameSide'))
+/** The gutter of the prompt being answered, in the accent colour. */
+const activeGutter = (t: Term): string => t.accent(t.sym('frameSide'))
+
+/** The dim key-hint footer of an active prompt: `└  ↑/↓ move · enter select · esc cancel`. */
+const hintFooter = (t: Term, hints: ReadonlyArray<string>): string =>
+  `${t.accent(glyph(t, 'end'))}  ${t.dim(hints.join(` ${t.sym('bullet')} `))}`
+
+/** The footer of an active prompt whose last submit was refused. */
+const errorFooter = (t: Term, message: string): string =>
+  `${t.warn(glyph(t, 'end'))}  ${t.warn(`${t.sym('warn')} ${message}`)}`
 
 function write(chunk: string): void {
   io.output.write(chunk)
@@ -124,21 +146,38 @@ function write(chunk: string): void {
 
 // ─── Messages ───────────────────────────────────────────────────────────────
 
-export function intro(title: string): void {
-  write(`${c.dim(S.start)}  ${c.inverse(` ${title} `)}\n`)
+/** Rule 1 first line: `┌  create-zero · 0.53.0`. */
+export function intro(name: string, context?: string): void {
+  const t = currentTerm()
+  write(`${t.accent(glyph(t, 'start'))}  ${header(t, name, context)}\n`)
 }
 
-export function outro(message: string): void {
-  write(`${c.dim(S.bar)}\n${c.dim(S.end)}  ${message}\n\n`)
+export interface OutroVerdict {
+  status: 'ok' | 'err' | 'warn' | 'info'
+  /** Counts, totals, elapsed — real data only. */
+  meta?: ReadonlyArray<string> | undefined
 }
 
+/**
+ * The last line. With a verdict it is rule 1's verdict line,
+ * `└  ✓ created my-app · 42 files · 180 ms`; without one, the plain message.
+ */
+export function outro(message: string, result?: OutroVerdict): void {
+  const t = currentTerm()
+  const body = result ? verdict(t, result.status, message, result.meta ?? []) : message
+  write(`${gutter(t)}\n${t.gray(glyph(t, 'end'))}  ${body}\n\n`)
+}
+
+/** Stop the flow: `└  ✗ Cancelled.` — the symbol and the words carry the state. */
 export function cancel(message: string): void {
-  write(`${c.dim(S.end)}  ${c.red(message)}\n\n`)
+  const t = currentTerm()
+  write(`${t.gray(glyph(t, 'end'))}  ${t.err(`${t.sym('err')} ${message}`)}\n\n`)
 }
 
 export function note(body: string, title: string): void {
-  const lines = body.split('\n').map((line) => `${c.dim(S.bar)}  ${c.dim(line)}`)
-  write(`${c.dim(S.bar)}\n${c.green(S.submit)}  ${title}\n${lines.join('\n')}\n`)
+  const t = currentTerm()
+  const lines = body.split('\n').map((line) => `${gutter(t)}  ${line}`)
+  write(`${gutter(t)}\n${t.info(t.sym('info'))}  ${t.bold(title)}\n${lines.join('\n')}\n`)
 }
 
 export interface Spinner {
@@ -151,16 +190,18 @@ export function spinner(): Spinner {
   const showCursor = () => write(`${ESC}[?25h`)
   return {
     start(message) {
-      write(`${c.dim(S.bar)}\n`)
+      const t = currentTerm()
+      const frames = t.unicode ? SPINNER.unicode : SPINNER.ascii
+      write(`${gutter(t)}\n`)
       if (!io.output.isTTY) {
-        write(`${c.cyan(S.spinner[0] as string)}  ${message}\n`)
+        write(`${t.accent(frames[0])}  ${message}\n`)
         return
       }
       let frame = 0
       write(`${ESC}[?25l`)
       process.once('exit', showCursor)
       const draw = () => {
-        write(`\r${ESC}[K${c.cyan(S.spinner[frame % S.spinner.length] as string)}  ${message}`)
+        write(`\r${ESC}[K${t.accent(frames[frame % frames.length] as string)}  ${message}`)
         frame++
       }
       draw()
@@ -168,15 +209,17 @@ export function spinner(): Spinner {
       timer.unref?.()
     },
     stop(message) {
+      const t = currentTerm()
+      const done = `${t.ok(t.sym('promptDone'))}  ${message}\n`
       if (timer !== undefined) {
         clearInterval(timer)
         timer = undefined
-        write(`\r${ESC}[K${c.green(S.submit)}  ${message}\n`)
+        write(`\r${ESC}[K${done}`)
         showCursor()
         process.off('exit', showCursor)
         return
       }
-      write(`${c.green(S.submit)}  ${message}\n`)
+      write(done)
     },
   }
 }
@@ -220,12 +263,6 @@ export function decodeKeys(chunk: string): Key[] {
   return keys
 }
 
-/** Visible width of a line, ignoring ANSI styling. */
-function visibleLength(line: string): number {
-  // oxlint-disable-next-line no-control-regex -- matching ANSI escapes is the point
-  return line.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, '').length
-}
-
 type Step = 'submit' | 'cancel' | undefined
 
 interface TtyPrompt {
@@ -244,10 +281,14 @@ function runTty(prompt: TtyPrompt): Promise<boolean> {
       // Clear the previous frame: back to its first line, then to the end.
       if (lines > 0) write(`${ESC}[${lines}A\r${ESC}[J`)
       write(`${frame}\n`)
-      const cols = io.output.columns ?? 80
+      // A pseudo-terminal with no size set (`script`, some CI runners and
+      // container shells) reports 0 columns; counting with that made every
+      // CHARACTER a line, so the next redraw moved the cursor up past the
+      // frame and `ESC[J` erased the earlier answers. 0 means unknown.
+      const cols = io.output.columns || 80
       lines = frame
         .split('\n')
-        .reduce((n, line) => n + Math.max(1, Math.ceil(visibleLength(line) / Math.max(cols, 1))), 0)
+        .reduce((n, line) => n + Math.max(1, Math.ceil(visibleWidth(line) / Math.max(cols, 1))), 0)
     }
     const finish = (submitted: boolean) => {
       input.off('data', onData)
@@ -267,7 +308,7 @@ function runTty(prompt: TtyPrompt): Promise<boolean> {
       }
       draw('active')
     }
-    write(`${c.dim(S.bar)}\n${ESC}[?25l`)
+    write(`${gutter(currentTerm())}\n${ESC}[?25l`)
     input.setEncoding('utf8')
     input.setRawMode?.(true)
     input.on('data', onData)
@@ -337,21 +378,51 @@ async function askLine<T>(
   accept: (line: string) => { value: T } | { error: string },
 ): Promise<T | Cancel> {
   const reader = lineReader(io.input)
-  write(`${c.dim(S.bar)}\n${c.cyan(S.active)}  ${question}\n`)
+  const t = currentTerm()
+  write(`${gutter(t)}\n${t.accent(t.sym('promptActive'))}  ${question}\n`)
   for (;;) {
     const line = await reader.next()
     if (line === null) return CANCEL
     const result = accept(line.trim())
     if ('value' in result) return result.value
-    write(`${c.yellow(S.error)}  ${result.error}\n`)
+    write(`${t.warn(`${t.sym('warn')}  ${result.error}`)}\n`)
   }
 }
 
 const isTty = () => io.input.isTTY === true
 
-function header(state: 'active' | 'submit' | 'cancel', message: string): string {
-  const icon = state === 'active' ? c.cyan(S.active) : state === 'submit' ? c.green(S.submit) : c.red(S.cancel)
+type PromptState = 'active' | 'submit' | 'cancel'
+
+/**
+ * A prompt's title line: `◆` (accent) while it is asked, `◇` (ok) once
+ * answered, `✗` (err) when cancelled — each state has its own symbol, so
+ * it reads the same without colour.
+ */
+function promptHead(t: Term, state: PromptState, message: string): string {
+  const icon =
+    state === 'active'
+      ? t.accent(t.sym('promptActive'))
+      : state === 'submit'
+        ? t.ok(t.sym('promptDone'))
+        : t.err(t.sym('err'))
   return `${icon}  ${message}`
+}
+
+/** The collapsed frame of an answered or cancelled prompt. */
+function settled(t: Term, state: 'submit' | 'cancel', message: string, answer: string): string {
+  return `${promptHead(t, state, message)}\n${gutter(t)}  ${t.dim(answer)}`
+}
+
+/** `↑/↓ move` with the ASCII fallback. */
+const moveHint = (t: Term): string => `${glyph(t, 'upDown')} move`
+const CANCEL_HINT = 'esc cancel'
+
+/** A radio / select row: `● label — hint` (accent, bold) or `○ label — hint` (gray). */
+function choiceRow(t: Term, on: boolean, label: string, hint: string | undefined): string {
+  const desc = hint ? ` ${t.dim(`${t.sym('dash')} ${hint}`)}` : ''
+  return on
+    ? `${t.accent(t.sym('selected'))} ${t.bold(label)}${desc}`
+    : `${t.gray(t.sym('unselected'))} ${label}${desc}`
 }
 
 // ─── text ───────────────────────────────────────────────────────────────────
@@ -374,12 +445,12 @@ export async function text(opts: TextOptions): Promise<string | Cancel> {
   let error: string | undefined
   const submitted = await runTty({
     render(state) {
-      const bar = c.dim(S.bar)
-      if (state === 'submit') return `${header(state, opts.message)}\n${bar}  ${c.dim(value)}`
-      if (state === 'cancel') return `${header(state, opts.message)}\n${bar}  ${c.strike(c.dim(value))}`
-      const shown = value === '' && opts.placeholder ? c.dim(opts.placeholder) : value
-      const body = `${header(state, opts.message)}\n${c.cyan(S.bar)}  ${shown}${c.inverse(' ')}`
-      return error ? `${body}\n${c.yellow(S.end)}  ${c.yellow(error)}` : `${body}\n${c.cyan(S.end)}`
+      const t = currentTerm()
+      if (state !== 'active') return settled(t, state, opts.message, value)
+      const cursor = t.accent(glyph(t, 'cursor'))
+      const shown = value === '' && opts.placeholder ? `${cursor}${t.dim(opts.placeholder)}` : `${value}${cursor}`
+      const body = `${promptHead(t, state, opts.message)}\n${activeGutter(t)}  ${shown}`
+      return `${body}\n${error ? errorFooter(t, error) : hintFooter(t, ['enter submit', CANCEL_HINT])}`
     },
     key(key) {
       if (key.name === 'cancel') return 'cancel'
@@ -436,7 +507,7 @@ export async function select<T>(opts: SelectOptions<T>): Promise<T | Cancel> {
   const { options } = opts
   if (!isTty()) {
     const fallback = options[indexOfValue(options, opts.initialValue)] as Option<T>
-    return askLine(`${opts.message} ${c.dim(`(${listing(options)}; default ${String(fallback.value)})`)}`, (line) => {
+    return askLine(`${opts.message} ${currentTerm().dim(`(${listing(options)}; default ${String(fallback.value)})`)}`, (line) => {
       if (line === '') return { value: fallback.value }
       const hit = pickToken(options, line)
       return hit ? { value: hit.value } : { error: `"${line}" is not one of: ${options.map((o) => String(o.value)).join(', ')}` }
@@ -445,17 +516,12 @@ export async function select<T>(opts: SelectOptions<T>): Promise<T | Cancel> {
   let cursor = indexOfValue(options, opts.initialValue)
   const submitted = await runTty({
     render(state) {
+      const t = currentTerm()
       const chosen = options[cursor] as Option<T>
-      if (state !== 'active') {
-        const label = state === 'submit' ? c.dim(chosen.label) : c.strike(c.dim(chosen.label))
-        return `${header(state, opts.message)}\n${c.dim(S.bar)}  ${label}`
-      }
-      const rows = options.map((o, i) => {
-        const on = i === cursor
-        const hint = on && o.hint ? ` ${c.dim(`(${o.hint})`)}` : ''
-        return `${c.cyan(S.bar)}  ${on ? `${c.green(S.radioOn)} ${o.label}${hint}` : c.dim(`${S.radioOff} ${o.label}`)}`
-      })
-      return `${header(state, opts.message)}\n${rows.join('\n')}\n${c.cyan(S.end)}`
+      if (state !== 'active') return settled(t, state, opts.message, chosen.label)
+      const rows = options.map((o, i) => `${activeGutter(t)}  ${choiceRow(t, i === cursor, o.label, o.hint)}`)
+      const foot = hintFooter(t, [moveHint(t), 'enter select', CANCEL_HINT])
+      return `${promptHead(t, state, opts.message)}\n${rows.join('\n')}\n${foot}`
     },
     key(key) {
       if (key.name === 'cancel') return 'cancel'
@@ -509,7 +575,7 @@ async function multi<T>(
 
   if (!isTty()) {
     const shown = initial.length > 0 ? initial.map(String).join(',') : '-'
-    return askLine(`${message} ${c.dim(`(${listing(items)}; comma-separated, - for none; default ${shown})`)}`, (line) => {
+    return askLine(`${message} ${currentTerm().dim(`(${listing(items)}; comma-separated, - for none; default ${shown})`)}`, (line) => {
       if (line === '') return required && initial.length === 0 ? { error: emptyError } : { value: initial }
       if (line === '-') return required ? { error: emptyError } : { value: [] }
       const picked: T[] = []
@@ -528,21 +594,26 @@ async function multi<T>(
   let error: string | undefined
   const submitted = await runTty({
     render(state) {
+      const t = currentTerm()
       if (state !== 'active') {
         const labels = items.filter((o) => selected.has(o.value)).map((o) => o.label).join(', ') || 'none'
-        return `${header(state, message)}\n${c.dim(S.bar)}  ${state === 'submit' ? c.dim(labels) : c.strike(c.dim(labels))}`
+        return settled(t, state, message, labels)
       }
+      const grouped = rows.some((r) => r.group !== undefined)
       const lines = rows.map((row, i) => {
-        if (!row.option) return `${c.cyan(S.bar)}  ${c.dim(row.group as string)}`
+        if (!row.option) return `${activeGutter(t)}  ${t.dim(row.group as string)}`
+        // The focused row carries `▸` so focus reads without colour too.
         const on = selectable[at] === i
-        const checked = selected.has(row.option.value)
-        const box = checked ? c.green(S.boxOn) : c.dim(S.boxOff)
-        const indent = rows.some((r) => r.group !== undefined) ? '  ' : ''
-        const hint = on && row.option.hint ? ` ${c.dim(`(${row.option.hint})`)}` : ''
-        return `${c.cyan(S.bar)}  ${indent}${box} ${on ? row.option.label : c.dim(row.option.label)}${hint}`
+        const pointer = on ? t.accent(t.sym('step')) : ' '.repeat(t.sym('step').length)
+        const box = selected.has(row.option.value) ? t.accent(glyph(t, 'boxOn')) : t.gray(glyph(t, 'boxOff'))
+        const label = on ? t.bold(row.option.label) : row.option.label
+        const hint = row.option.hint ? ` ${t.dim(`${t.sym('dash')} ${row.option.hint}`)}` : ''
+        return `${activeGutter(t)}  ${grouped ? '  ' : ''}${pointer} ${box} ${label}${hint}`
       })
-      const foot = error ? `${c.yellow(S.end)}  ${c.yellow(error)}` : c.cyan(S.end)
-      return `${header(state, message)}\n${lines.join('\n')}\n${foot}`
+      const foot = error
+        ? errorFooter(t, error)
+        : hintFooter(t, [moveHint(t), 'space toggle', 'a all', 'enter submit', CANCEL_HINT])
+      return `${promptHead(t, state, message)}\n${lines.join('\n')}\n${foot}`
     },
     key(key) {
       if (key.name === 'cancel') return 'cancel'
@@ -601,7 +672,7 @@ export interface ConfirmOptions {
 export async function confirm(opts: ConfirmOptions): Promise<boolean | Cancel> {
   const initial = opts.initialValue ?? true
   if (!isTty()) {
-    return askLine(`${opts.message} ${c.dim(`(y/n; default ${initial ? 'y' : 'n'})`)}`, (line) => {
+    return askLine(`${opts.message} ${currentTerm().dim(`(y/n; default ${initial ? 'y' : 'n'})`)}`, (line) => {
       const answer = line.toLowerCase()
       if (answer === '') return { value: initial }
       if (answer === 'y' || answer === 'yes') return { value: true }
@@ -612,13 +683,11 @@ export async function confirm(opts: ConfirmOptions): Promise<boolean | Cancel> {
   let value = initial
   const submitted = await runTty({
     render(state) {
-      const word = value ? 'Yes' : 'No'
-      if (state !== 'active') {
-        return `${header(state, opts.message)}\n${c.dim(S.bar)}  ${state === 'submit' ? c.dim(word) : c.strike(c.dim(word))}`
-      }
-      const yes = value ? `${c.green(S.radioOn)} Yes` : c.dim(`${S.radioOff} Yes`)
-      const no = value ? c.dim(`${S.radioOff} No`) : `${c.green(S.radioOn)} No`
-      return `${header(state, opts.message)}\n${c.cyan(S.bar)}  ${yes} ${c.dim('/')} ${no}\n${c.cyan(S.end)}`
+      const t = currentTerm()
+      if (state !== 'active') return settled(t, state, opts.message, value ? 'Yes' : 'No')
+      const choices = `${choiceRow(t, value, 'Yes', undefined)} ${t.dim('/')} ${choiceRow(t, !value, 'No', undefined)}`
+      const foot = hintFooter(t, [`${glyph(t, 'leftRight')} or y/n`, 'enter submit', CANCEL_HINT])
+      return `${promptHead(t, state, opts.message)}\n${activeGutter(t)}  ${choices}\n${foot}`
     },
     key(key) {
       if (key.name === 'cancel') return 'cancel'

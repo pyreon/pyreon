@@ -63,6 +63,24 @@ yarn dev
 
 The scaffolder **never installs dependencies itself** — it prints `cd`, `install`, and `dev` as next steps and stops. (It accepts `--install` / `--no-install` as no-ops, since people pass them out of habit from `create-vite` / `create-next-app`.)
 
+A `--yes` run, captured with `NO_COLOR=1` (the first line names the command and its version; the last line is the verdict — what was created, how many files it holds, and how long writing them took):
+
+```text
+┌  create-zero · 0.53.0
+│
+◒  Scaffolding project...
+◇  Project scaffolded
+│
+ℹ  Next steps
+│  cd my-app
+│  bun install
+│  bun run dev
+│
+└  ✓ created my-app · 27 files · 35 ms
+```
+
+Colour follows the shared Pyreon terminal theme: `NO_COLOR`, `FORCE_COLOR`, `TERM=dumb` and `PYREON_CLI_THEME=light|dark` are honoured, and `PYREON_CLI_SYMBOLS=ascii` (or a non-UTF-8 locale) swaps every glyph for an ASCII fallback.
+
 :::tip{title="Pick a starting point fast"}
 `npm create @pyreon/zero@latest my-app -- --preset standard --yes` skips every prompt and gives you a streaming-SSR app with store, query, and forms. Add `-- --template blog` or `-- --template monorepo` for a richer shape.
 :::

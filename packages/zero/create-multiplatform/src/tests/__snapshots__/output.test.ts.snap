@@ -1,0 +1,66 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`rendered report (snapshots) > ASCII 1`] = `
+"create-multiplatform - <version>
+
+  next    cd my-app && npm install && npm run dev
+  native  npm run build:ios (Xcode) - npm run build:android (Android SDK)
+
+v scaffolded my-app -> my-app/ - 30 files - 42 ms
+=====
+create-multiplatform - <version>
+x error: Project name "MyApp" must start with a lowercase letter. Native targets (Xcode + Gradle)
+  reject leading digits/special chars. Try "myapp" instead."
+`;
+
+exports[`rendered report (snapshots) > colour level 0 (NO_COLOR) 1`] = `
+"create-multiplatform · <version>
+
+  next    cd my-app && npm install && npm run dev
+  native  npm run build:ios (Xcode) · npm run build:android (Android SDK)
+
+✓ scaffolded my-app → my-app/ · 30 files · 42 ms
+=====
+create-multiplatform · <version>
+✗ error: Project name "MyApp" must start with a lowercase letter. Native targets (Xcode + Gradle)
+  reject leading digits/special chars. Try "myapp" instead."
+`;
+
+exports[`rendered report (snapshots) > colour level 1 (16 colours) 1`] = `
+"␛[1mcreate-multiplatform␛[22m ␛[90m· <version>␛[39m
+
+  ␛[90mnext␛[39m    cd my-app && npm install && npm run dev
+  ␛[90mnative␛[39m  npm run build:ios (Xcode) · npm run build:android (Android SDK)
+
+␛[32m✓␛[39m scaffolded my-app → my-app/ ␛[90m· 30 files · 42 ms␛[39m
+=====
+␛[1mcreate-multiplatform␛[22m ␛[90m· <version>␛[39m
+␛[31m✗␛[39m ␛[31merror:␛[39m Project name "MyApp" must start with a lowercase letter. Native targets (Xcode + Gradle)
+  reject leading digits/special chars. Try "myapp" instead."
+`;
+
+exports[`rendered report (snapshots) > colour level 2, dark 1`] = `
+"␛[1mcreate-multiplatform␛[22m ␛[38;2;138;134;150m· <version>␛[39m
+
+  ␛[38;2;138;134;150mnext␛[39m    cd my-app && npm install && npm run dev
+  ␛[38;2;138;134;150mnative␛[39m  npm run build:ios (Xcode) · npm run build:android (Android SDK)
+
+␛[38;2;74;222;128m✓␛[39m scaffolded my-app → my-app/ ␛[38;2;138;134;150m· 30 files · 42 ms␛[39m
+=====
+␛[1mcreate-multiplatform␛[22m ␛[38;2;138;134;150m· <version>␛[39m
+␛[38;2;248;113;113m✗␛[39m ␛[38;2;248;113;113merror:␛[39m Project name "MyApp" must start with a lowercase letter. Native targets (Xcode + Gradle)
+  reject leading digits/special chars. Try "myapp" instead."
+`;
+
+exports[`rendered report (snapshots) > colour level 2, light 1`] = `
+"␛[1mcreate-multiplatform␛[22m ␛[38;2;94;90;105m· <version>␛[39m
+
+  ␛[38;2;94;90;105mnext␛[39m    cd my-app && npm install && npm run dev
+  ␛[38;2;94;90;105mnative␛[39m  npm run build:ios (Xcode) · npm run build:android (Android SDK)
+
+␛[38;2;21;112;58m✓␛[39m scaffolded my-app → my-app/ ␛[38;2;94;90;105m· 30 files · 42 ms␛[39m
+=====
+␛[1mcreate-multiplatform␛[22m ␛[38;2;94;90;105m· <version>␛[39m
+␛[38;2;185;28;28m✗␛[39m ␛[38;2;185;28;28merror:␛[39m Project name "MyApp" must start with a lowercase letter. Native targets (Xcode + Gradle)
+  reject leading digits/special chars. Try "myapp" instead."
+`;

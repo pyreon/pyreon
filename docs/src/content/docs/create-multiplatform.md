@@ -43,6 +43,19 @@ create-multiplatform <project-name> [--dir <path>] [--scheme <url-scheme>]
 npx @pyreon/create-multiplatform my-app --dir ./apps/my-app
 ```
 
+A successful run, captured with `NO_COLOR=1`:
+
+```text
+create-multiplatform · 0.53.0
+
+  next    cd my-app && npm install && npm run dev
+  native  npm run build:ios (Xcode) · npm run build:android (Android SDK)
+
+✓ scaffolded my-app → my-app/ · 30 files · 6 ms
+```
+
+A refused name or directory goes to stderr as `✗ error: <message>`, wrapped at 100 columns, and exits 1. Colour honours `NO_COLOR`, `FORCE_COLOR`, `TERM=dumb` and `PYREON_CLI_THEME`.
+
 The target directory must not already exist and be non-empty — a `.git`-only directory is fine (the `mkdir my-app && cd my-app && npx @pyreon/create-multiplatform .` flow), but scaffolding refuses to overwrite a directory that already has real content in it.
 
 Scaffolded scripts, beyond `dev` / `build:ios` / `build:android`: `build` (`vite build`), `preview` (Vite preview), `lint` (`pyreon-lint .`, including the opt-in `portable` `@pyreon/lint` rule group scoped to `src/App.tsx` — it flags a shared-source construct PMTC can't lower to native, before a build tries and fails), `release:keystore` (generates a self-signed Android release keystore if absent), `release:android` (ensures the keystore, then produces a signed, R8-minified release APK via `gradle assembleRelease`), and `e2e:ios` / `e2e:android` (build, install and launch with `pyreon-native dev --target=<ios|android> --once`, then run the Maestro flows in `.maestro/`).
