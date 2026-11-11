@@ -141,17 +141,18 @@ describe('an unmapped Array/String method WARNS instead of leaking verbatim', ()
 })
 
 describe('Math.round matches JS on both targets', () => {
-  // JS `Math.round` is `floor(x + 0.5)` (ties toward +Infinity); Swift's
-  // `.rounded()` is toNearestOrAwayFromZero. Executed on the real toolchains
-  // over [-0.5, -1.5, 2.5]: JS/Kotlin `0 -1 3`, `.rounded()` `-1 -2 3`.
-  it('Swift emits the floor(x + 0.5) form, not .rounded()', () => {
+  // JS `Math.round` breaks ties toward +Infinity; Swift's `.rounded()` is toNearestOrAwayFromZero (executed over
+  // [-0.5, -1.5, 2.5]: JS `0 -1 3`, `.rounded()` `-1 -2 3`), and `java.lang.Math.round` returns a Long that turns NaN
+  // into 0 (#4258). Both targets call the runtime's `pyreonRound`, executed in native-integer-field-coercion.test.ts.
+  it('Swift calls pyreonRound, not .rounded()', () => {
     const r = swiftOf(APP(`  const out = computed(() => Math.round(-0.5))`))
-    expect(r.code).toContain(') + 0.5).rounded(.down)')
+    expect(r.code).toContain('pyreonRound(')
     expect(r.code).not.toMatch(/\)\)\.rounded\(\)/)
   })
-  it('Kotlin keeps java.lang.Math.round (IS floor(x + 0.5)), widened to Double', () => {
+  it('Kotlin calls pyreonRound, not java.lang.Math.round', () => {
     const r = kotlinOf(APP(`  const out = computed(() => Math.round(-0.5))`))
-    expect(r.code).toContain('Math.round(')
+    expect(r.code).toContain('pyreonRound(')
+    expect(r.code).not.toContain('Math.round(')
   })
 })
 

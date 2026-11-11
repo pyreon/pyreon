@@ -5,7 +5,18 @@
 import { type ComponentIR, type EmitContext, type EmitPreparation, type ExprIR } from '@pyreon/native-compiler/plugin-api'
 import { collectFlowRendererComponents, nodeResizerTargetsAnotherNode } from './lowering'
 
-export type StaticFlowHandle = { id?: string; type: string; position: string; offset?: number }
+/**
+ * The four handle sides — the CLOSED set a position may take. Native spells a
+ * position as an enum case (`.top` / `PyreonFlowPosition.Top`), so the value is
+ * spliced into CODE: anything outside this set is refused, never emitted.
+ */
+export const FLOW_HANDLE_POSITIONS = ['top', 'right', 'bottom', 'left'] as const
+export type FlowHandlePosition = (typeof FLOW_HANDLE_POSITIONS)[number]
+export function isFlowHandlePosition(v: unknown): v is FlowHandlePosition {
+  return typeof v === 'string' && (FLOW_HANDLE_POSITIONS as readonly string[]).includes(v)
+}
+
+export type StaticFlowHandle = { id?: string; type: string; position: FlowHandlePosition; offset?: number }
 
 export type StaticFlowNodeResizer = { minWidth: number; minHeight: number; handleSize: number; showEdgeHandles: boolean }
 
@@ -104,7 +115,7 @@ export function collectStaticFlowHandles(expr: ExprIR): { handles: StaticFlowHan
     return undefined
   }
   const type = literal('type'), position = literal('position'), id = literal('id'), offset = literal('offset')
-  if (typeof type !== 'string' || typeof position !== 'string') {
+  if (typeof type !== 'string' || !isFlowHandlePosition(position)) {
     return { handles: [], invalid: true }
   }
   return { handles: [{ ...(typeof id === 'string' ? { id } : {}), type, position, ...(typeof offset === 'number' ? { offset } : {}) }], invalid: false }

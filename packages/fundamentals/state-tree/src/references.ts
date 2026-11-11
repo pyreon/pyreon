@@ -205,10 +205,11 @@ export function buildReferenceField(
   instance: object,
   type: unknown,
   initialValue: unknown,
-  // Fired after every id write so the owner can invalidate its snapshot cache —
-  // reference ids are serialized by getSnapshot but written through a plain
-  // idSig (not a trackedSignal), so they bypass afterSet/emitPatch.
-  onWrite?: () => void,
+  // Fired after every id CHANGE (with the new id) so the owner can emit a patch
+  // and invalidate its snapshot cache — reference ids are serialized by
+  // getSnapshot but written through a plain idSig (not a trackedSignal), so
+  // they bypass afterSet/emitPatch.
+  onWrite?: (id: unknown) => void,
 ): { accessor: ReferenceField<object>; idSig: Signal<unknown> } {
   const idKey = (type as { _identifierKey?: string })?._identifierKey
   // Normalize the initial value (a target node OR a raw id) to an id at
@@ -229,14 +230,13 @@ export function buildReferenceField(
   // Single id-write site — `.set` (node-or-id) normalizes then delegates to
   // `.setId` so there's one `idSig.set` in this scope.
   accessor.setId = (id) => {
-    idSig.set(id ?? null)
-    onWrite?.()
+    const next = id ?? null
+    if (Object.is(idSig.peek(), next)) return
+    idSig.set(next)
+    onWrite?.(next)
   }
   accessor.set = (value) => {
-    const id =
-      isModelInstance(value) && idKey
-        ? readIdentifierOf(value as object, idKey)
-        : value
+    const id = isModelInstance(value) && idKey ? readIdentifierOf(value as object, idKey) : value
     accessor.setId(id as string | number | null | undefined)
   }
   accessor.peek = () => resolve(idSig.peek())

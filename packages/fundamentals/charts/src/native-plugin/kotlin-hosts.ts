@@ -9,7 +9,7 @@ export function emitKotlinChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   const inner = emitKotlinChartHostInner(e, indent)
   // `theme.background` — the ground the web host paints; see the Swift emitter. A Box carries it, since the host is a composable call.
   if (e.tag === GRAMMAR_CHART_HOST || inner === 'Box {}') return inner
-  const bg = chartThemeFields(chartAttrExprKotlin(e, 'theme'), e.tag, () => {}, KOTLIN_CHART_TARGET.list, host.colorScope(), kotlinChartScheme).background
+  const bg = chartThemeFields(chartAttrExprKotlin(e, 'theme'), e.tag, () => {}, KOTLIN_CHART_TARGET, host.colorScope(), kotlinChartScheme).background
   if (bg === '""') return inner
   const pad = ' '.repeat(indent + 2)
   return `Box(modifier = Modifier.background(pyreonChartColor(${bg}))) {\n${pad}${inner}\n${' '.repeat(indent)}}`
