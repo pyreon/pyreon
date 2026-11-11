@@ -1,4 +1,11 @@
 import type { Rule } from '../types'
+// Style (opt-in, the `readable` presets)
+import { maxJsxDepth } from './style/max-jsx-depth'
+import { noNestedTernaryBranch } from './style/no-nested-ternary-branch'
+import { paddingAroundMultilineBlocks } from './style/padding-around-multiline-blocks'
+import { paddingBeforeReturn } from './style/padding-before-return'
+import { paddingBetweenComponentSections } from './style/padding-between-component-sections'
+import { paddingBetweenDeclarations } from './style/padding-between-declarations'
 import { dialogA11y } from './accessibility/dialog-a11y'
 import { overlayA11y } from './accessibility/overlay-a11y'
 // Accessibility
@@ -309,10 +316,23 @@ export const allRules: Rule[] = [
   preferTypedSearchParams,
   // Storage (1) — opt-in, auto-gated on @pyreon/storage dependency
   noStorageWriteAsCall,
+  // Style (6) — opt-in; the `readable` / `readable-strict` preset layers
+  paddingBetweenDeclarations,
+  paddingBeforeReturn,
+  paddingBetweenComponentSections,
+  paddingAroundMultilineBlocks,
+  maxJsxDepth,
+  noNestedTernaryBranch,
 ]
 
 // Re-export all rules individually
 export {
+  maxJsxDepth,
+  noNestedTernaryBranch,
+  paddingAroundMultilineBlocks,
+  paddingBeforeReturn,
+  paddingBetweenComponentSections,
+  paddingBetweenDeclarations,
   devGuardWarnings,
   dialogA11y,
   initFnNeedsIdempotency,
