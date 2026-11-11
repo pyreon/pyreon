@@ -311,11 +311,55 @@ describe('a conditional element child lowers its taken branch', () => {
     expect(() => ssr('const a = <div>{cond ? one : two}</div>')).not.toThrow()
   })
 
-  it('does not lower a conditional whose branch carries a COMPONENT child', () => {
-    // A component child has no source range the in-hole emit can bracket, so
-    // the branch keeps the VNode path.
+  it('a conditional whose branch carries a COMPONENT child is preserved, not lowered in-hole', () => {
+    // The in-hole string lowering cannot host a component (no source range to
+    // bracket inside generated text), so the expression is PRESERVED instead:
+    // its own `<span>` root then templates as a deferred `_ssr` holding the
+    // component as an `_ssrNode` hole, and the outer call is deferred too.
     const out = ssr('const a = <div>{cond && <span><Widget /></span>}</div>')
-    expect(out).not.toContain('_ssr(["<span>')
+    expect(out).toContain(
+      'const a = _ssrDeferred(() => _ssr(["<div>", "</div>"], _escSole(cond && _ssrDeferred(() => _ssr(["<span>", "</span>"], _ssrNode(<Widget />))))))',
+    )
+  })
+})
+
+describe('JSX inside an expression hole', () => {
+  it('a `.map` whose item holds a COMPONENT templates the item root around it', () => {
+    // Was: the whole `.map` stayed generated text, so `<li>` and `<span>` went
+    // through jsx()/h() per item at runtime.
+    const out = ssr(
+      'function P() { return <ul>{items.map((item) => <li><Link href={item.href}>{item.name}</Link> <span class="p">{item.p}</span></li>)}</ul> }',
+    )
+    expect(out).toContain(
+      'return _ssrDeferred(() => _ssr(["<ul>", "</ul>"], _escSole(items.map((item) => _ssrDeferred(() => _ssr(["<li>", " <span class=\\"p\\">", "</span></li>"], _ssrNode(<Link href={item.href}>{item.name}</Link>), _escSole(item.p)))))))',
+    )
+  })
+
+  it('a non-sole wrapped expression keeps its accessor markers around the preserved range', () => {
+    const out = ssr('function P() { return <ul><b>x</b>{xs.map((x) => <Row x={x} />)}</ul> }')
+    expect(out).toContain(
+      '_ssrDeferred(() => _ssr(["<ul><b>x</b><!--$-->", "<!--/$--></ul>"], _esc(xs.map((x) => <Row x={x} />))))',
+    )
+  })
+
+  it('an expression that needs a rewrite stays generated text, but the call is DEFERRED', () => {
+    // `s` is a signal: `sliceExpr` auto-calls it, so the range cannot be kept
+    // verbatim. The JSX in it is still built when the hole evaluates, so the
+    // call must render at the h() position.
+    const out = ssr('const s = signal(1); const frag = <div>{[1, 2].map((i) => <Row v={s} i={i} />)}</div>')
+    expect(out).toMatch(/const frag = _ssrDeferred\(\(\) => _ssr\(/)
+  })
+
+  it('a lowered conditional with a component arm left as source is deferred', () => {
+    const out = ssr('const frag = <div class="p">{c ? <b>x</b> : <Consumer />}</div>')
+    expect(out).toContain(
+      'const frag = _ssrDeferred(() => _ssr(["<div class=\\"p\\">", "</div>"], _escSole(c ? _ssr(["<b>x</b>"]) : <Consumer />)))',
+    )
+  })
+
+  it('a JSX-free expression hole is unchanged (no deferral, no preserved range)', () => {
+    const out = ssr('function P(props) { return <div>{props.items.map((i) => i.name).join(", ")}</div> }')
+    expect(out).not.toContain('_ssrDeferred')
   })
 })
 

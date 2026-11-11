@@ -103,6 +103,13 @@ function safeNotEqual(a: unknown, b: unknown): boolean {
     : a !== b || (a !== null && typeof a === 'object') || typeof a === 'function'
 }
 
+/**
+ * Pending notifications across ALL stores, as alternating (entry, value)
+ * slots (Svelte's `subscriber_queue`). Emptied at the end of every outermost
+ * `set`, so it never outgrows one notification wave.
+ */
+const subscriberQueue: unknown[] = []
+
 interface SubEntry<T> {
   run: Subscriber<T>
   invalidate: Invalidator<T>
@@ -144,9 +151,23 @@ export function writable<T>(value?: T, start: StartStopNotifier<T> = noop): Writ
     v = next
     if (!stop) return // not "ready" — Svelte's gate (start hasn't returned)
     for (const s of subs) s.invalidate(v)
-    for (const s of subs) {
-      s.run(v)
-      s.rerender?.()
+    // Svelte's subscriber queue: queue (subscriber, value) PAIRS and let only
+    // the outermost `set` drain them. A `set` made from inside a subscriber
+    // used to notify everyone immediately and then resume the outer loop with
+    // the newer value, so a later subscriber skipped `1` and saw `2` twice.
+    const drain = subscriberQueue.length === 0
+    for (const s of subs) subscriberQueue.push(s as SubEntry<unknown>, v)
+    if (!drain) return
+    try {
+      for (let i = 0; i < subscriberQueue.length; i += 2) {
+        const s = subscriberQueue[i] as SubEntry<unknown>
+        s.run(subscriberQueue[i + 1])
+        s.rerender?.()
+      }
+    } finally {
+      // Always emptied — a throwing subscriber must not leave the queue
+      // non-empty, which would stop every later `set` from draining.
+      subscriberQueue.length = 0
     }
   }
   const set = (next: T): void => setVal(next)
