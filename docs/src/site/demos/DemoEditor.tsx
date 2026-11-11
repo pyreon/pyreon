@@ -144,8 +144,7 @@ export default function DemoEditor() {
     foldGutter: false,
     autocomplete: false,
     // The guides are a repeating background on every .cm-line, so they stripe
-    // the whole line width, not only the indentation (reported with this demo).
-    // Indent guides stripe the full width of each line (#4393).
+    // the whole line width, not only the indentation (#4393).
     highlightIndentGuides: false,
     ariaLabel: 'The post body as JSON (read only)',
   })
