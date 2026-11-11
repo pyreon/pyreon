@@ -86,6 +86,19 @@ export const runReactPatternsGate = async (
           })
         }
       }
+      // Patterns the migration left unconverted, positioned in the written file.
+      for (const m of migrated.manual) {
+        findings.push({
+          category: 'correctness',
+          severity: 'error',
+          code: 'react-patterns/not-migrated',
+          gate: 'react-patterns',
+          message: m.message,
+          location: { path: file, relPath, line: m.line, column: m.column },
+          fix: m.suggested,
+          fixable: false,
+        })
+      }
       const remaining = detectReactPatterns(migrated.code, relPath)
       for (const diag of remaining) {
         findings.push({
