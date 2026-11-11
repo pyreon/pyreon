@@ -34,16 +34,21 @@ export default definePlaywrightConfig({
     { name: 'site-products-b', testMatch: /\/site-products-b[^/]*\.spec\.ts$/, port: 5191 },
     // The blog, showcase, open stats and stable-link pages (posts, islands, widths, contrast).
     { name: 'site-project', testMatch: /site-project\.spec\.ts$/, port: 5191 },
+    // The blog's layout, "Up next" and the build with no published post (docs/dist-scheduled).
+    { name: 'site-blog', testMatch: /site-blog\.spec\.ts$/, port: 5191 },
     // Every internal href and #fragment in the built output resolves (reads dist, no browser).
     { name: 'site-links', testMatch: /site-links\.spec\.ts$/, port: 5191 },
   ],
   webServer: [
     {
-      // Every scheduled blog post is published in this build (site-project.spec.ts tests posts, tags and paging).
-      command: 'PYREON_CONTENT_NOW=2099-01-01 bun run --filter=@pyreon/docs build && bun scripts/serve-ssg.ts docs/dist 5191',
+      // First a build dated before the first post (docs/dist-scheduled: no post published, every post
+      // "Up next"; site-blog.spec.ts reads it from disk), then the served build, where every scheduled
+      // post is published (site-project.spec.ts tests posts, tags and paging).
+      command:
+        '(cd docs && PYREON_CONTENT_NOW=2026-11-12 bunx vite build --outDir dist-scheduled --emptyOutDir) && PYREON_CONTENT_NOW=2099-01-01 bun run --filter=@pyreon/docs build && bun scripts/serve-ssg.ts docs/dist 5191',
       port: 5191,
       cwd: '..',
-      timeout: 300_000,
+      timeout: 480_000,
     },
   ],
 })
