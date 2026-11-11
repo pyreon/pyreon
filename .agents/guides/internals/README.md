@@ -118,6 +118,8 @@ Framework packages emit counters via `globalThis.__pyreon_count__?.('name')` wit
 
 - Tier 1 drains `{ equals }` computed refreshes; tier 2 runs effects, multi-pass for re-entrant writes (`MAX_PASSES = 32`).
 - Every computed is dirty-marked at notify time, so derived values settle before any effect runs regardless of subscription order. Lazy computeds are never queued.
+- A computed's `_dirty` is a staleness level (`Stale` in `batch.ts`): 0 clean, 1 STRICT CHECK, 2 DIRTY, 3 disposed-while-marked. The write walk marks EVERY computed below a marked node. Below a self-gating node — an `{ equals }` computed, a computed with direct updaters, a fan-out owner booked for a gated refresh — it marks STRICT CHECK: the read resolves its deps first with `checkDirty` (iterative, explicit stack) and evaluates only if one really changed. Leaving those nodes unmarked made a pull inside `batch()` return a stale cache; marking them DIRTY would make a fresh-object computed there re-run its effects on every write (`staleness-fuzz.test.ts`).
+- Keep the computed `read` closure under V8's 460-byte inlining limit (`--print-bytecode --print-bytecode-filter=read`); cold paths live in module helpers (`readDisposed`, `evalThrew`, `checkDirty`). Deps live on the computed as `_deps` so `checkDirty` can reach any node.
 - The tier-1 drain clears an entry's queue flag before running it, so a later re-dirty re-runs instead of being deduplicated.
 
 ### Retained heap
