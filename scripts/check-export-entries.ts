@@ -14,11 +14,23 @@
  * This gate reproduces the tool's entry derivation statically, in <1s, so the
  * mismatch fails the PR that introduces it instead of the release weeks later.
  *
- * Two invariants per published package whose `build` uses `vl_rolldown_build`:
+ * Four invariants per published package whose `build` uses `vl_rolldown_build`:
  *   1. BUILD  — every subpath export `"./X"` (conditions-object value) has a
  *      `src/X.{ts,tsx,js,jsx}` entry (what the tool feeds rolldown).
  *   2. DEV    — the `bun` condition target file exists (the dev/workspace
  *      resolution path; a dangling target breaks `bun run dev`).
+ *   3. SAME   — the `bun` target IS that convention entry. The workspace
+ *      (tests, examples, `bun run dev`) resolves `bun`; consumers get what the
+ *      tool built from the KEY. When the two files differ, every in-repo check
+ *      exercises code that never ships. `@pyreon/runtime-dom/transition` shipped
+ *      without `TransitionGroup` this way (`bun` → `transition-entry.ts`, built
+ *      from `transition.ts`).
+ *   4. UNIQUE — no two export keys share an output (`import`/`types`) target.
+ *      The tool builds one entry per key and names the output after the target,
+ *      so two keys writing one file means one entry silently replaces the other.
+ *      Every compat package shipped `./jsx-runtime` and `./jsx-dev-runtime` →
+ *      `lib/jsx-runtime.js`, and 0.53.0's file held the DEV entry, which had no
+ *      `jsxDEV` — so `vite` dev failed on the published packages (#4283).
  *
  * String-valued passthrough exports (e.g. `"./package.json"`) are skipped,
  * mirroring the tool. Packages that don't use `vl_rolldown_build` (e.g.
@@ -38,7 +50,11 @@ const SOURCE_EXTS = ['.ts', '.tsx', '.js', '.jsx'] as const
 interface Violation {
   pkg: string
   exportKey: string
-  kind: 'missing-build-entry' | 'missing-bun-target'
+  kind:
+    | 'missing-build-entry'
+    | 'missing-bun-target'
+    | 'bun-target-not-build-entry'
+    | 'shared-output-target'
   detail: string
 }
 
@@ -50,6 +66,12 @@ function conventionEntry(sourceDir: string, exportKey: string): string {
 
 function resolvesToSource(pathNoExt: string): boolean {
   return SOURCE_EXTS.some((ext) => existsSync(`${pathNoExt}${ext}`))
+}
+
+/** The convention entry's actual file (with extension), or undefined. */
+function sourceFileOf(pathNoExt: string): string | undefined {
+  for (const ext of SOURCE_EXTS) if (existsSync(`${pathNoExt}${ext}`)) return `${pathNoExt}${ext}`
+  return undefined
 }
 
 function collectPackageDirs(): string[] {
@@ -85,6 +107,8 @@ function checkPackage(pkgDir: string): Violation[] {
 
   const sourceDir = join(pkgDir, 'src')
   const violations: Violation[] = []
+  // Invariant 4 bookkeeping: output target → the first key that claimed it.
+  const outputOwners = new Map<string, string>()
 
   for (const [exportKey, exportVal] of Object.entries(exportsObj)) {
     // Passthrough exports (string value, e.g. "./package.json") — the tool
@@ -107,8 +131,27 @@ function checkPackage(pkgDir: string): Violation[] {
       continue
     }
 
-    // Invariant 2 — the `bun` (dev/workspace) target must resolve to a file.
     const cond = exportVal as Record<string, unknown>
+
+    // Invariant 4 — one output file per key.
+    for (const condName of ['import', 'types'] as const) {
+      const target = cond[condName]
+      if (typeof target !== 'string') continue
+      const normalized = resolve(pkgDir, target)
+      const owner = outputOwners.get(normalized)
+      if (owner !== undefined) {
+        violations.push({
+          pkg: name,
+          exportKey,
+          kind: 'shared-output-target',
+          detail: `exports["${exportKey}"].${condName} → "${target}" is also exports["${owner}"].${condName}; the build writes one entry per key to that file, so one of them silently replaces the other. Give "${exportKey}" its own src/${exportKey.slice(2)}.ts and lib/${exportKey.slice(2)}.js`,
+        })
+      } else {
+        outputOwners.set(normalized, exportKey)
+      }
+    }
+
+    // Invariant 2 — the `bun` (dev/workspace) target must resolve to a file.
     const bunTarget = cond.bun
     if (typeof bunTarget === 'string') {
       const bunPath = resolve(pkgDir, bunTarget)
@@ -118,6 +161,15 @@ function checkPackage(pkgDir: string): Violation[] {
           exportKey,
           kind: 'missing-bun-target',
           detail: `exports["${exportKey}"].bun → "${bunTarget}" does not exist (breaks dev/workspace resolution)`,
+        })
+      } else if (bunPath !== sourceFileOf(entry)) {
+        // Invariant 3 — the workspace must run the file that ships.
+        const rel = (sourceFileOf(entry) ?? entry).replace(`${pkgDir}/`, './')
+        violations.push({
+          pkg: name,
+          exportKey,
+          kind: 'bun-target-not-build-entry',
+          detail: `exports["${exportKey}"].bun → "${bunTarget}", but the build ships ${rel} for this key; the workspace would test code that is never published. Point "bun" at ${rel} (and move the subpath's exports into it)`,
         })
       }
     }
@@ -146,7 +198,8 @@ function main(): void {
   console.error(
     '\nFix: rename the source file to match the export subpath (./X → src/X.ts),\n' +
       'or change the export key to match the file. The build tool derives entries\n' +
-      'from the export KEY by convention and ignores the bun/import/types targets.\n',
+      'from the export KEY by convention and names each output after its import/types\n' +
+      'target, so "./X" should read { bun: ./src/X.ts, import: ./lib/X.js, types: ./lib/types/X.d.ts }.\n',
   )
   process.exit(1)
 }
