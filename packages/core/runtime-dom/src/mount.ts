@@ -39,6 +39,7 @@ import {
   type RunCapture,
 } from '@pyreon/reactivity'
 import { setupDelegation } from './delegate'
+import { _adoptingCompiledBind, reportFirstText } from './hydration-debug'
 import { registerComponent, unregisterComponent } from './devtools'
 import { _takePendingForAdoption, detachNode, mountFor, mountKeyedList, mountReactive } from './nodes'
 import { applyProps, applySelectValueProp } from './props'
@@ -857,7 +858,14 @@ export function createPolyTextCore(
           mode = 'text'
         }
         const next = v == null || v === false ? '' : String(v as string | number | boolean)
-        if (written === null) written = text.data
+        if (written === null) {
+          written = text.data
+          // Dev: inside a compiled template's ADOPTION bind this is server
+          // text; report the first write if it changes it (#4419). The h()
+          // walk reports before it binds and never runs inside that window.
+          if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
+            reportFirstText(text, v, next, 'reactive')
+        }
         if (next !== written) {
           text.data = next
           written = next

@@ -45,7 +45,14 @@ import {
 import { setupDelegation } from './delegate'
 import { suspenseAttachOf } from './suspense-boundary'
 import { installDevTools } from './devtools'
-import { warnHydrationMismatch } from './hydration-debug'
+import {
+  _bindWithAdoption,
+  _popPathRoot,
+  _pushPathRoot,
+  compiledMismatchPath,
+  compiledParentPath,
+  warnHydrationMismatch,
+} from './hydration-debug'
 import { bindPolymorphicText, componentProps, mountChild } from './mount'
 import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
@@ -367,7 +374,12 @@ function hydrateSoleAccessorChild(
     end.remove()
     return cleanup
   }
-  // SSR rendered nothing into the element — no region to adopt.
+  // SSR rendered nothing into the element — no region to adopt. A client value
+  // that renders text is a divergence the mount below corrects: report it, as
+  // the adopting branch above does (#4419).
+  if ((typeof initial === 'string' && initial !== '') || typeof initial === 'number') {
+    warnHydrationMismatch('text', String(initial), '', `${path} > reactive`)
+  }
   return mountReactive(child, el, null, mountChild)
 }
 
@@ -735,7 +747,11 @@ function hydrateReactiveChild(
       }
 
       // General case — mount the live binding at the range position, then remove
-      // the SSR range, markers included.
+      // the SSR range, markers included. Reached with an EMPTY range: a client
+      // value that renders text is then a divergence (#4419).
+      if ((typeof initial === 'string' && initial !== '') || typeof initial === 'number') {
+        warnHydrationMismatch('text', String(initial), '', `${path} > reactive`)
+      }
       const marker = insertMarker(parent, domNode, 'pyreon')
       const cleanup = mountReactive(child, parent, marker, mountChild)
       let cur: ChildNode | null = domNode
@@ -1183,7 +1199,10 @@ function hydrateMountHole(
   // recovery BEFORE the content it replaces, so the sweep removes only the
   // stale nodes. When the cursor is null there is nothing left to precede and
   // the anchor is `null` again, which is the append the caller wants.
-  return hydrateChild(child, start, parent, start)
+  // Dev: mismatch paths from the hydration root, through the hole's element.
+  return process.env.NODE_ENV !== 'production'
+    ? hydrateChild(child, start, parent, start, compiledParentPath(parent))
+    : hydrateChild(child, start, parent, start)
 }
 
 /**
@@ -1204,6 +1223,9 @@ function hydrateMountSlot(
   parent: Node,
   open: Comment | null,
 ): Cleanup {
+  // Dev: mismatch paths below run from the hydration root through the slot's
+  // element (`root > div > reactive > b`), as the h() walk spells them; in
+  // production they keep the bare `slot` prefix.
   // MARKER-LESS REGION — the slot was its element's SOLE child, so
   // runtime-server elided the `<!--$-->` pair and the extent is the parent's
   // entire child list. See `_mountSlot` for why a `null` open provably means
@@ -1223,7 +1245,14 @@ function hydrateMountSlot(
       const end = document.createComment('pyreon')
       parent.appendChild(end)
       const primed = primeAccessor(children as () => VNodeChild)
-      const cleanup = adoptReactiveRange(primed.acc, primed.initial, parent, first, end, 'slot')
+      const cleanup = adoptReactiveRange(
+        primed.acc,
+        primed.initial,
+        parent,
+        first,
+        end,
+        process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot',
+      )
       end.remove()
       return cleanup
     }
@@ -1231,7 +1260,13 @@ function hydrateMountSlot(
     // walked against the region directly — there is no later render whose
     // cleanup would have to remove these nodes.
     const cursor = first === null ? null : first.nodeType === 1 ? first : firstReal(first)
-    return hydrateChild(children, cursor, parent, null, 'slot')[0]
+    return hydrateChild(
+      children,
+      cursor,
+      parent,
+      null,
+      process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot',
+    )[0]
   }
   // A PARKED mid range (see `PARKED_RANGE` in template.ts): the verifier moved
   // this slot's server content out so the compiled refs after it resolved
@@ -1240,7 +1275,13 @@ function hydrateMountSlot(
   const parked = _takeParkedRange(open)
   if (parked !== null) parent.insertBefore(parked, open.nextSibling)
   if (typeof children === 'function') {
-    return hydrateChild(children, open, parent, null, 'slot')[0]
+    return hydrateChild(
+      children,
+      open,
+      parent,
+      null,
+      process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot',
+    )[0]
   }
   // Locate the range end (depth-aware — accessor ranges nest).
   let close: ChildNode | null = null
@@ -1266,7 +1307,13 @@ function hydrateMountSlot(
   }
   const first = open.nextSibling
   const cursor = first === close ? null : first!.nodeType === 1 ? first : firstReal(first)
-  const [cleanup] = hydrateChild(children, cursor, parent, close, 'slot')
+  const [cleanup] = hydrateChild(
+    children,
+    cursor,
+    parent,
+    close,
+    process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot',
+  )
   open.remove()
   close.remove()
   return cleanup
@@ -1414,6 +1461,8 @@ function hydrateChild(
     // Swap fallback. For a deferred item whose cursor was not an element (or
     // whose adoption bailed), reading `native.el` here is what triggers the
     // lazy clone build — today's eager behavior, just moved to first use.
+    if (process.env.NODE_ENV !== 'production' && native.el.nodeType === 1)
+      reportSwappedTemplate(domNode, native.el, parent)
     if (domNode && domNode.parentNode) {
       domNode.parentNode.replaceChild(native.el, domNode)
     } else {
@@ -2010,8 +2059,15 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
   // (idempotent, CALL-time — a module-load call would pin the verify/plan
   // machinery into CSR bundles that tree-shake hydrateRoot).
   _setTplAdoptVerifier(tplAdoptVerify)
-  _setTplHoleHydrator(hydrateMountHole)
-  _setSlotHydrator(hydrateMountSlot)
+  // Dev: slot and hole content hydrates through THIS walk, which reports its
+  // own mismatches — so the compiled binders' adoption-report window is closed
+  // for the duration (it would otherwise see h()-path text as compiled).
+  _setTplHoleHydrator(
+    process.env.NODE_ENV !== 'production' ? outsideAdoptionBind(hydrateMountHole) : hydrateMountHole,
+  )
+  _setSlotHydrator(
+    process.env.NODE_ENV !== 'production' ? outsideAdoptionBind(hydrateMountSlot) : hydrateMountSlot,
+  )
   // Install the devtools hook on hydration too, not just `mount()` — otherwise
   // the reactive dev overlay (Ctrl+Shift+R) + `__PYREON_DEVTOOLS__` silently
   // don't exist in SSR/hydrated apps, which is most real Pyreon apps. Idempotent
@@ -2026,6 +2082,8 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
   // walk only: async-component continuations run after this frame and keep
   // the eager (armed-or-clone) behavior.
   const prevHydrationActive = setHydrating(true)
+  // Dev: compiled mismatch paths are DOM ancestors up to this container.
+  if (process.env.NODE_ENV !== 'production') _pushPathRoot(container)
   try {
     const [cleanup, residual] = hydrateChild(vnode, firstChild, container, null)
     // ROOT BOUNDARY SWEEP — the container's end is the extent, exactly as a
@@ -2036,5 +2094,107 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
     return cleanup
   } finally {
     setHydrating(prevHydrationActive)
+    if (process.env.NODE_ENV !== 'production') _popPathRoot(container)
   }
+}
+
+/** Dev: run a slot/hole hydrator with the compiled adoption-report window
+ *  closed, restoring it after (hydration nests). */
+function outsideAdoptionBind<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  return (...args: A): R => _bindWithAdoption(false, (a: A) => fn(...a), args)
+}
+
+/**
+ * Dev: a compiled template that could not ADOPT its server node is swapped
+ * for a client-built clone. The verifier also declines shapes it cannot prove
+ * (no divergence at all), so the swap alone is not a mismatch: report the
+ * first place where the server DOM and the clone actually differ, as the h()
+ * walk would have — a different element is a `tag` mismatch, different text a
+ * `text` one. Comments (range markers, placeholders) are ignored, and runs of
+ * text separated only by comments compare as one string, since that is how
+ * the server's markers split what the client renders as one node.
+ */
+function reportSwappedTemplate(server: ChildNode | null, client: Node, parent: Node): void {
+  if (server === null || server.nodeType !== 1) {
+    const actual = server === null ? 'null' : server.nodeType
+    warnHydrationMismatch(
+      'tag',
+      (client as Element).tagName?.toLowerCase() ?? client.nodeType,
+      actual,
+      compiledMismatchPath(parent, (client as Element).tagName?.toLowerCase() ?? 'node'),
+    )
+    return
+  }
+  const diff = firstDomDifference(server as Element, client as Element)
+  if (diff !== null) warnHydrationMismatch(diff.type, diff.expected, diff.actual, diff.path)
+}
+
+type DomItem = string | Element
+/** An element's children as text runs (comments dropped, adjacent text
+ *  joined, empty runs dropped) and elements. */
+function domItems(el: Element): DomItem[] {
+  const out: DomItem[] = []
+  let text = ''
+  for (let n = el.firstChild; n !== null; n = n.nextSibling) {
+    if (n.nodeType === 3) text += (n as Text).data
+    else if (n.nodeType === 1) {
+      if (text !== '') out.push(text)
+      text = ''
+      out.push(n as Element)
+    }
+  }
+  if (text !== '') out.push(text)
+  return out
+}
+
+function firstDomDifference(
+  server: Element,
+  client: Element,
+): { type: 'tag' | 'text'; expected: string; actual: string; path: string } | null {
+  const tag = client.tagName.toLowerCase()
+  if (server.tagName !== client.tagName) {
+    return {
+      type: 'tag',
+      expected: tag,
+      actual: server.tagName.toLowerCase(),
+      path: compiledMismatchPath(server.parentNode, tag),
+    }
+  }
+  const s = domItems(server)
+  const c = domItems(client)
+  for (let i = 0; i < Math.max(s.length, c.length); i++) {
+    const a = s[i]
+    const b = c[i]
+    if (typeof b === 'string' || typeof a === 'string') {
+      if (a === b) continue
+      if (typeof b === 'string' && typeof a === 'string') {
+        return { type: 'text', expected: b, actual: a, path: compiledMismatchPath(server, 'text') }
+      }
+      // Text on one side, an element (or nothing) on the other.
+      return typeof b === 'string'
+        ? {
+            type: 'text',
+            expected: b,
+            actual: a === undefined ? 'null' : (a as Element).tagName.toLowerCase(),
+            path: compiledMismatchPath(server, 'text'),
+          }
+        : {
+            type: 'tag',
+            expected: b === undefined ? 'null' : b.tagName.toLowerCase(),
+            actual: a === undefined ? 'null' : 'text',
+            path: compiledMismatchPath(server, b === undefined ? 'node' : b.tagName.toLowerCase()),
+          }
+    }
+    if (a === undefined || b === undefined) {
+      return {
+        type: 'tag',
+        expected: b === undefined ? 'null' : b.tagName.toLowerCase(),
+        actual: a === undefined ? 'null' : a.tagName.toLowerCase(),
+        path: compiledMismatchPath(server, ((b ?? a) as Element).tagName.toLowerCase()),
+      }
+    }
+    const inner = firstDomDifference(a, b)
+    if (inner !== null) return inner
+  }
+  return null
 }
