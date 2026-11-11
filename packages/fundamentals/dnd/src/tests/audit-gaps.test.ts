@@ -105,7 +105,6 @@ const flushMicrotasks = () => new Promise<void>((resolve) => queueMicrotask(reso
 describe('useDraggable — custom native drag preview', () => {
   it('does NOT wire onGenerateDragPreview when preview is omitted', async () => {
     const { useDraggable } = await import('../use-draggable')
-    const { dragPreview } = await import('../drag-preview')
     const el = document.createElement('div')
     useDraggable({ element: () => el, data: { id: '1' } })
     await flushMicrotasks()
