@@ -1,26 +1,32 @@
 /**
  * Builds the static Atlas workbench the /products/atlas demo embeds.
  *
- *   bun docs/scripts/build-atlas-demo.ts
+ *   bun docs/scripts/build-atlas-demo.ts [target-dir]
+ *
+ * The site build runs it (`vite-plugins/atlas-demo.ts` writes it to
+ * `dist/demos/atlas/`; the dev server serves a cached copy), so the output is
+ * never committed. It takes about two seconds.
  *
  * Runs the real `atlas build` on `examples/atlas-workshop` (the sample
  * library whose Button "Empty" scenario fails the accessible-name check) and
- * copies the output into `docs/public/demos/atlas/`, which the demo loads in
+ * copies the output into the target (default `docs/dist/demos/atlas/`), which the demo loads in
  * an iframe. An iframe, not an inline `<Workbench>`: the workbench owns its
  * page (a global reset on html/body, ↑↓ and ⌘K shortcuts on the window), which
  * must not leak into the marketing page.
  *
- * Re-run after changing the workshop or @pyreon/atlas. The base is relative
- * (`./`), so the site works wherever docs/public is served.
+ * The base is relative (`./`), so it works wherever it is served.
  */
 import { spawnSync } from 'node:child_process'
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const root = resolve(import.meta.dirname, '../..')
 const workshop = join(root, 'examples/atlas-workshop')
-const target = join(root, 'docs/public/demos/atlas')
+
+/** Build the workbench into `target` (replaced). Throws when `atlas build` fails. */
+export function buildAtlasDemo(target: string): void {
 const tmp = mkdtempSync(join(tmpdir(), 'atlas-demo-'))
 const out = join(tmp, 'out')
 
@@ -51,4 +57,10 @@ if (/fonts\.(googleapis|gstatic)\.com/.test(stripped)) {
   throw new Error('[Pyreon] build-atlas-demo: a Google Fonts reference survived; update the strip patterns for the new atlas build output.')
 }
 writeFileSync(index, stripped)
-process.stdout.write(`atlas demo → ${target}\n`)
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const target = resolve(process.argv[2] ?? join(root, 'docs/dist/demos/atlas'))
+  buildAtlasDemo(target)
+  process.stdout.write(`atlas demo → ${target}\n`)
+}

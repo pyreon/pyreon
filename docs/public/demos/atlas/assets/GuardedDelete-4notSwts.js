@@ -1,1 +1,0 @@
-import{f as e}from"./signal-Dq6QTWOo.js";import{a as t,i as n,l as r}from"./template-BO1RoDm1.js";import{n as i}from"./context-B9LYGsR9.js";function a(a){let o=i();return n(`<button type="button"> </button>`,n=>{let i=n.firstChild,s=t(()=>a.label??`Delete post`,i,n),c=e(()=>{r(n,`disabled`,!o(`posts.delete`)||void 0)});return()=>{s(),c()}})}export{a as GuardedDelete};

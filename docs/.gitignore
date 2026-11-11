@@ -1,3 +1,5 @@
 .pyreon/
 node_modules/
 dist/
+# Generated at build time (vite-plugins/atlas-demo.ts)
+public/demos/

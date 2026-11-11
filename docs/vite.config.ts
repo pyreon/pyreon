@@ -7,6 +7,7 @@ import { pyreonSyntaxDark, pyreonSyntaxLight } from './src/styles/pyreon-syntax'
 import inlineCriticalCss from './vite-plugins/inline-critical-css'
 import lastUpdated from './vite-plugins/last-updated'
 import legacyCssLayer from './vite-plugins/legacy-css-layer'
+import atlasDemo from './vite-plugins/atlas-demo'
 import openStats from './vite-plugins/open-stats'
 import blogCopy from './src/site/content/pages/channels/blog.json'
 import docsHomeContent from './vite-plugins/docs-home-content'
@@ -105,6 +106,9 @@ export default defineConfig({
     // /llms.txt + /llms-full.txt — the repo-root files `bun run gen-docs`
     // generates from the package manifests (see the plugin).
     publishLlmsTxt(),
+    // /demos/atlas/ — the Atlas workbench the /products/atlas demo embeds,
+    // built from examples/atlas-workshop (about 2 s), never committed.
+    atlasDemo(),
     // dist/sitemap.xml from the SSG output: every prerendered page and
     // nothing else, so an unpublished blog post (never rendered) is never
     // listed.
