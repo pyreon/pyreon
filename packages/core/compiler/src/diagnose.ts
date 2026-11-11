@@ -1485,6 +1485,36 @@ const Page = lazy(() => import('./Page'))`,
     }),
   },
   {
+    // A subpath whose shipped `lib/` file came from the WRONG source entry
+    // (#4283). The build takes each entry from the export KEY and the output
+    // file from the `import` target, so two keys pointing at one target
+    // collide. In 0.53.0 every compat `jsx-runtime.js` was the dev entry (no
+    // `jsxDEV`, blank page under `vite` dev only), and
+    // `@pyreon/runtime-dom/transition` was built from `transition.ts` (no
+    // `TransitionGroup`). In-repo tests read `src/` through the `bun`
+    // condition, so only an app on the published packages sees it.
+    // `check-export-entries` now rejects the shape; this teaches the
+    // residual (an app still on 0.53.0).
+    pattern:
+      /does not provide an export named ['"](jsxDEV|TransitionGroup)['"]|["']?(jsxDEV|TransitionGroup)["']? is not exported by/,
+    diagnose: (m) =>
+      (m[1] ?? m[2]) === 'TransitionGroup'
+        ? {
+            cause:
+              '`@pyreon/runtime-dom/transition` in `@pyreon/runtime-dom` 0.53.0 was built from the wrong source file: its `lib/transition-entry.js` holds `Transition` but not `TransitionGroup`. Tests inside the Pyreon repo read `src/` and never saw it; an app on the published package does.',
+            fix: 'Upgrade every `@pyreon/*` package to a release newer than 0.53.0 (`npx pyreon upgrade`). On 0.53.0, import `TransitionGroup` from the `@pyreon/runtime-dom` root instead of the `/transition` subpath.',
+            fixCode: `// on @pyreon/runtime-dom 0.53.0 — the /transition subpath lacks it:
+import { TransitionGroup } from '@pyreon/runtime-dom'`,
+          }
+        : {
+            cause:
+              'The JSX runtime your dev server resolved has no `jsxDEV`. In development the JSX transform imports `jsxDEV` from `@pyreon/core/jsx-dev-runtime`, and `pyreon({ compat })` redirects that to the compat package\'s `jsx-runtime`. In 0.53.0 every compat package (`react-`, `preact-`, `vue-`, `solid-`, `svelte-compat`) shipped a `lib/jsx-runtime.js` built from its dev-runtime entry, which exports only `Fragment`, `jsx` and `jsxs`. So `vite` dev renders a blank page while `vite build` works.',
+            fix: 'Upgrade every `@pyreon/*` package to a release newer than 0.53.0 (`npx pyreon upgrade`). There is no app-side workaround in dev; `vite build` + `vite preview` are unaffected. If you see this inside the Pyreon monorepo, a stale `lib/` is the likelier cause: run `bun scripts/bootstrap.ts`.',
+            fixCode: `// every @pyreon/* package on one version newer than 0.53.0
+// npx pyreon upgrade`,
+          },
+  },
+  {
     // Deferred lazy hydration: a server-rendered `lazy()` whose client chunk
     // had not landed keeps its server nodes until the chunk settles. When the
     // chunk FAILS instead, those nodes are dropped and the error reaches the
