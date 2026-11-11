@@ -1,4 +1,6 @@
 import { ColorModeProvider, For } from '@pyreon/core'
+// This module IS the lazy chunk: LiveChart.tsx loads it with import() only when a chart is drawn.
+// pyreon-lint-disable-next-line pyreon/no-eager-import
 import { Axis, Bar, Chart, ChartThemeProvider, Legend, Line, Scale, Tooltip } from '@pyreon/charts'
 import type { ChartTheme } from '@pyreon/charts'
 import { computed, signal } from '@pyreon/reactivity'
@@ -10,7 +12,7 @@ import { el, tone, txt } from '../../kit/bases'
 import { VerdictChip } from '../../kit/bench'
 import { KitScope } from '../../kit/scope'
 import { ToggleChips } from '../../kit/toggles'
-import { formatAxisMs, formatMs, formatUs, scalingRows, sortedRowBoard } from './model'
+import { formatAxisMs, formatUs, scalingRows, sortedRowBoard } from './model'
 
 /**
  * The live `@pyreon/charts` views of the row board and the scaling data,
@@ -104,10 +106,12 @@ export function RowBoardChart(props: {
           height={380}
           title={fill(c.title, { op: op() })}
           showTitle={false}
-          format={(v: number) => formatMs(v)}
         >
           <Bar<RowDatum> y="pyreon" stack label={c.pyreon} />
           <Bar<RowDatum> y="others" stack label={c.others} />
+          {/* One formatter for the value axis, the tooltip and the
+              description: every tick in ms ("0 ms", never "0 µs"). The end
+              labels stay on the canvas since pyreon/pyreon#4421. */}
           <Axis y format={(v: number) => formatAxisMs(v)} />
           <Tooltip />
         </Chart>

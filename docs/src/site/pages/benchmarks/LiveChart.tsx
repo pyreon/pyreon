@@ -1,6 +1,6 @@
 import type { ComponentFn, VNode } from '@pyreon/core'
 import { onMount } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { isServer, signal } from '@pyreon/reactivity'
 import type { BenchmarksPage, BenchmarksTemplate } from '../../content/types-site'
 
 /**
@@ -28,7 +28,7 @@ export type LiveChartProps =
   | { kind: 'scaling'; fallbackId: string; scaling: BenchmarksPage['scaling']; copy: BenchmarksTemplate['scaling']['live'] }
 
 export function wantsReducedData(): boolean {
-  if (typeof window === 'undefined') return true
+  if (isServer) return true
   const conn = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection
   if (conn?.saveData) return true
   return window.matchMedia?.('(prefers-reduced-data: reduce)').matches === true

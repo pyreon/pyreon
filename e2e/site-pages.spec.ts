@@ -1,7 +1,7 @@
-import { expect, type Page, test } from '@playwright/test'
-import { existsSync, readFileSync } from 'node:fs'
+import { expect, type Locator, type Page, test } from '@playwright/test'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { waitForHydration } from './hydration-barrier'
+import { waitForNav } from './site-islands'
 
 /**
  * pyreon.dev story, compare, migrate, benchmarks and project pages, against
@@ -9,8 +9,10 @@ import { waitForHydration } from './hydration-barrier'
  * sitemap promises for these families is prerendered; each page type
  * hydrates in place with no errors; no horizontal page scroll at the five
  * design widths; the switchers, filters and the live counter work by
- * keyboard; the charts package loads only where a live chart is drawn; and
- * every text node passes WCAG AA in both themes.
+ * keyboard and pointer; no control sits outside an island; the row board's
+ * axis reads in ms with no label clipped; the charts package loads only
+ * where a live chart is drawn; and every text node passes WCAG AA in both
+ * themes.
  */
 const WIDTHS = [320, 390, 768, 1024, 1440]
 /** One route per page type (plus the second project page, which has extra data). */
@@ -92,13 +94,16 @@ test.describe('build output', () => {
 })
 
 test.describe('hydration', () => {
+  // A marketing page is static HTML: only its islands hydrate. Scrolling
+  // through wakes every `visible` island; each must adopt its server HTML.
   for (const route of PAGE_TYPES) {
-    test(`${route} hydrates in place with no errors`, async ({ page }) => {
+    test(`${route}: every island adopts its server HTML, with no errors`, async ({ page }) => {
       await trackRemovals(page)
       const errors = collectErrors(page)
       await page.goto(route)
-      await waitForHydration(page)
-      await page.waitForTimeout(300)
+      await waitForNav(page)
+      await scrollThrough(page)
+      await page.waitForTimeout(600)
       expect(errors).toEqual([])
       expect(await page.evaluate(() => (window as unknown as { __removed: number }).__removed)).toBe(0)
     })
@@ -111,7 +116,7 @@ test.describe('no horizontal page scroll', () => {
       await page.setViewportSize({ width, height: 900 })
       for (const route of PAGE_TYPES) {
         await page.goto(route)
-        await waitForHydration(page)
+        await waitForNav(page)
         await scrollThrough(page)
         const scroll = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
         expect(scroll, `${route} at ${width}px`).toBeLessThanOrEqual(0)
@@ -120,23 +125,92 @@ test.describe('no horizontal page scroll', () => {
   }
 })
 
+/** The built HTML of a page, as the server sent it (what a reader without JavaScript gets). */
+const builtHtml = (route: string) => readFileSync(resolve(__dirname, `../docs/dist/${route.slice(1)}/index.html`), 'utf8')
+
+/** Products whose content file has benchmark rows: what "every product" must list. */
+const productsWithBenchmarks = (() => {
+  const dir = resolve(__dirname, '../docs/src/site/content/products')
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.json') && !f.startsWith('_'))
+    .filter((f) => {
+      const b = JSON.parse(readFileSync(resolve(dir, f), 'utf8')).benchmarks as { rows?: unknown[] } | null | undefined
+      return !!b && Array.isArray(b.rows) && b.rows.length > 0
+    })
+    .map((f) => f.slice(0, -5))
+    .sort()
+})()
+
+/**
+ * Records every `fillText` on a canvas: the chart draws its tick labels there,
+ * so this is how a spec reads them. Each entry carries the label's left and
+ * right ink edges in canvas pixels (from the context's own font metrics and
+ * transform) and the canvas width, so clipping is measurable.
+ */
+async function recordCanvasText(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __texts: { text: string; left: number; right: number; width: number; canvas: Element }[] }
+    w.__texts = []
+    const fill = CanvasRenderingContext2D.prototype.fillText
+    const clear = CanvasRenderingContext2D.prototype.clearRect
+    // A frame starts with a clear: keep only the canvas's latest frame.
+    CanvasRenderingContext2D.prototype.clearRect = function (this: CanvasRenderingContext2D, x: number, y: number, cw: number, ch: number) {
+      w.__texts = w.__texts.filter((e) => e.canvas !== this.canvas)
+      return clear.call(this, x, y, cw, ch)
+    }
+    CanvasRenderingContext2D.prototype.fillText = function (this: CanvasRenderingContext2D, text: string, x: number, y: number, max?: number) {
+      const m = this.measureText(text)
+      const t = this.getTransform()
+      // Ink extents around the anchor, in the context's own units, mapped through the transform.
+      const l = x - m.actualBoundingBoxLeft
+      const r = x + m.actualBoundingBoxRight
+      const isRotated = Math.abs(t.b) > 1e-6 || Math.abs(t.c) > 1e-6
+      if (!isRotated) w.__texts.push({ text, left: t.a * l + t.e, right: t.a * r + t.e, width: this.canvas.width, canvas: this.canvas })
+      return max === undefined ? fill.call(this, text, x, y) : fill.call(this, text, x, y, max)
+    }
+  })
+}
+
+/** Clicks until an island has hydrated and the click took effect (a static page's island is inert server HTML until then). */
+async function pressWhenLive(target: Locator): Promise<void> {
+  await target.scrollIntoViewIfNeeded()
+  await expect(async () => {
+    await target.click()
+    await expect(target).toHaveAttribute('aria-pressed', 'true', { timeout: 250 })
+  }).toPass({ timeout: 10_000 })
+}
+
 test.describe('/benchmarks', () => {
-  test('the row board is a live chart, switched by keyboard', async ({ page }) => {
+  test('the headline leads with rigour, and every loss is still on the page', async ({ page }) => {
+    await page.goto('/benchmarks')
+    await expect(page.locator('h1')).toHaveText('Every result, on the table.')
+    await expect(page).toHaveTitle('Benchmarks: every result, on the table · Pyreon')
+    const content = JSON.parse(readFileSync(resolve(__dirname, '../docs/src/site/content/pages/benchmarks.json'), 'utf8')) as {
+      losses: [string, string][]
+      withdrawn: [string, string][]
+    }
+    const losses = (await page.locator('#losses').innerText()).replace(/\s+/g, ' ')
+    for (const [title] of content.losses) expect(losses, title).toContain(title)
+    const withdrawn = (await page.locator('#withdrawn').innerText()).replace(/\s+/g, ' ')
+    for (const [claim] of content.withdrawn) expect(withdrawn, claim).toContain(claim)
+  })
+
+  test('the row board is a live chart, switched by keyboard and pointer', async ({ page }) => {
     const errors = collectErrors(page)
     const charts: string[] = []
     page.on('request', (r) => {
       if (/\/assets\/charts-[\w-]+\.js$/.test(r.url())) charts.push(r.url())
     })
     await page.goto('/benchmarks')
-    await waitForHydration(page)
+    await waitForNav(page)
     // Without the live chart the static SVG fallback is what shows.
     await expect(page.locator('#rows-fallback')).toBeVisible()
-    await page.locator('#rows').scrollIntoViewIfNeeded()
-    const group = page.locator('#rows [role=group][aria-label=Operation]')
+    await page.locator('#row-board').scrollIntoViewIfNeeded()
+    const group = page.locator('#row-board [role=group][aria-label=Operation]')
     await expect(group).toBeVisible()
     expect(charts.length).toBeGreaterThan(0)
     await expect(page.locator('#rows-fallback')).toBeHidden()
-    await expect(page.locator('#rows canvas').first()).toBeVisible()
+    await expect(page.locator('#row-board canvas').first()).toBeVisible()
     const first = group.locator('button').first()
     await first.focus()
     await page.keyboard.press('Enter')
@@ -145,42 +219,162 @@ test.describe('/benchmarks', () => {
     const second = group.locator('button').nth(1)
     await expect(second).toHaveAttribute('aria-pressed', 'true')
     await expect(second).toBeFocused()
-    await expect(page.locator('#rows [data-live-chart] p [aria-live=polite]')).toContainText(await second.innerText())
+    await expect(page.locator('#row-board [data-live-chart] p [aria-live=polite]')).toContainText(await second.innerText())
+    const third = group.locator('button').nth(2)
+    await third.click()
+    await expect(third).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('#row-board [data-live-chart] p [aria-live=polite]')).toContainText(await third.innerText())
     expect(errors).toEqual([])
   })
 
-  test('the reactivity engine switcher swaps the table', async ({ page }) => {
+  for (const width of [320, 1440]) {
+    for (const theme of ['dark', 'light'] as const) {
+      test(`the row board's axis reads in ms and no label is clipped (${width}px, ${theme})`, async ({ browser }) => {
+        const ctx = await browser.newContext({ colorScheme: theme, viewport: { width, height: 900 } })
+        const page = await ctx.newPage()
+        await recordCanvasText(page)
+        await page.goto('/benchmarks')
+        await page.locator('#row-board').scrollIntoViewIfNeeded()
+        await expect(page.locator('#row-board canvas').first()).toBeVisible()
+        const group = page.locator('#row-board [role=group][aria-label=Operation]')
+        // A sub-millisecond operation (partial update) and the widest axis (create 10,000 rows).
+        for (const op of ['partial update', 'create 10,000 rows']) {
+          await group.getByRole('button', { name: op, exact: true }).click()
+          await page.waitForTimeout(600)
+          const labels = await page.evaluate(() => {
+            const w = window as unknown as { __texts: { text: string; left: number; right: number; width: number; canvas: Element }[] }
+            const canvas = document.querySelector('#row-board canvas')
+            const out = w.__texts.filter((t) => t.canvas === canvas)
+            w.__texts = []
+            return out.map(({ text, left, right, width }) => ({ text, left, right, width }))
+          })
+          const ticks = labels.filter((l) => /\d\s*(ms|µs)$/.test(l.text))
+          expect(ticks.length, op).toBeGreaterThan(1)
+          expect(ticks.map((t) => t.text)).toContain('0 ms')
+          for (const t of ticks) {
+            expect(t.text, `${op}: a millisecond axis`).toMatch(/ ms$/)
+            expect(t.left, `${op}: "${t.text}" starts inside the canvas`).toBeGreaterThanOrEqual(0)
+            expect(t.right, `${op}: "${t.text}" ends inside the canvas`).toBeLessThanOrEqual(t.width)
+          }
+        }
+        await ctx.close()
+      })
+    }
+  }
+
+  test('the reactivity engine switcher: server HTML shows the first engine; pointer and keyboard switch it', async ({ page }) => {
+    // Without JavaScript: the first engine's complete table, its chip pressed, inside an island.
+    const html = builtHtml('/benchmarks')
+    const section = html.slice(html.indexOf('id="reactivity"'), html.indexOf('id="every-product"'))
+    expect(section).toContain('<pyreon-island')
+    expect(section).toMatch(/<caption[^>]*>(?:<!--[^>]*-->)*V8 · Node 26: ns per op/)
+    expect(section).toMatch(/aria-pressed="true"[^>]*>(?:<[^>]+>)*V8 · Node 26/)
+
     await page.goto('/benchmarks')
-    await waitForHydration(page)
+    await waitForNav(page)
     const group = page.locator('#reactivity [role=group]')
-    const table = page.locator('#reactivity table caption')
-    await expect(table).toContainText('V8')
-    await group.locator('button').nth(1).click()
-    await expect(table).toContainText('JavaScriptCore')
-    await expect(group.locator('button').nth(1)).toHaveAttribute('aria-pressed', 'true')
+    const caption = page.locator('#reactivity table caption')
+    await expect(caption).toContainText('V8')
+    const jsc = group.locator('button').nth(1)
+    await pressWhenLive(jsc)
+    await expect(caption).toContainText('JavaScriptCore')
+    const v8 = group.locator('button').first()
+    await v8.focus()
+    await page.keyboard.press('Enter')
+    await expect(v8).toHaveAttribute('aria-pressed', 'true')
+    await expect(caption).toContainText('V8')
+    await page.keyboard.press('ArrowRight')
+    await expect(jsc).toHaveAttribute('aria-pressed', 'true')
+    await expect(jsc).toBeFocused()
+    await expect(caption).toContainText('JavaScriptCore')
   })
 
-  test('the product filter narrows the cards', async ({ page }) => {
+  test('"every product": every product with benchmark data, filtered by pointer and keyboard', async ({ page }) => {
+    // Without JavaScript: every card, "all" pressed, inside an island.
+    const html = builtHtml('/benchmarks')
+    const section = html.slice(html.indexOf('id="every-product"'), html.indexOf('id="losses"'))
+    expect(section).toContain('<pyreon-island')
+    const listed = [...section.matchAll(/data-product="([a-z0-9-]+)"/g)].map((m) => m[1]).sort()
+    expect(listed).toEqual(productsWithBenchmarks)
+
     await page.goto('/benchmarks')
-    await waitForHydration(page)
-    const cards = page.locator('#products ul li a')
-    const all = await cards.count()
-    expect(all).toBeGreaterThan(0)
-    const losses = page.locator('#products [role=group] button', { hasText: 'has losses' })
-    await losses.focus()
+    await waitForNav(page)
+    const cards = page.locator('#every-product ul li a')
+    await expect(cards).toHaveCount(productsWithBenchmarks.length)
+    const chip = (name: string) => page.locator('#every-product [role=group] button', { hasText: name })
+    const countOf = async (name: string) => Number((await chip(name).innerText()).replace(/\D+/g, ''))
+    // Pointer.
+    await pressWhenLive(chip('has losses'))
+    await expect(cards).toHaveCount(await countOf('has losses'))
+    await expect(page.locator('#every-product p[aria-live=polite]')).toContainText(`${await countOf('has losses')} of ${productsWithBenchmarks.length} products`)
+    // Keyboard: Home presses "all", ArrowRight moves to "has wins".
+    await chip('has losses').focus()
+    await page.keyboard.press('Home')
+    await expect(chip('all')).toHaveAttribute('aria-pressed', 'true')
+    await expect(cards).toHaveCount(productsWithBenchmarks.length)
+    await page.keyboard.press('ArrowRight')
+    await expect(chip('has wins')).toHaveAttribute('aria-pressed', 'true')
+    await expect(chip('has wins')).toBeFocused()
+    await expect(cards).toHaveCount(await countOf('has wins'))
+    await chip('throughput only').focus()
     await page.keyboard.press('Space')
-    await expect(losses).toHaveAttribute('aria-pressed', 'true')
-    const count = Number((await losses.innerText()).replace(/\D+/g, ''))
-    await expect(cards).toHaveCount(count)
-    for (const href of await cards.evaluateAll((as) => as.map((a) => a.getAttribute('href')))) expect(href).toMatch(/^\/products\/[a-z-]+#benchmarks$/)
+    await expect(cards).toHaveCount(await countOf('throughput only'))
+    for (const href of await cards.evaluateAll((as) => as.map((a) => a.getAttribute('href')))) expect(href).toMatch(/^\/products\/[a-z0-9-]+#benchmarks$/)
   })
 
   test('every chart keeps its table alternative', async ({ page }) => {
     await page.goto('/benchmarks')
-    for (const id of ['rows', 'scaling', 'ssr', 'apps', 'bundle']) {
+    for (const id of ['row-board', 'scaling', 'ssr', 'apps', 'bundle']) {
       await expect(page.locator(`#${id} details table`).first(), id).toBeAttached()
     }
   })
+
+  test('the anchors other pages link to exist', async ({ page }) => {
+    await page.goto('/benchmarks')
+    for (const id of ['row-board', 'every-product', 'losses', 'reproduce', 'ssr']) await expect(page.locator(`#${id}`), id).toHaveCount(1)
+    const jumps = await page.locator('nav[aria-label="On this page"] a').evaluateAll((as) => as.map((a) => a.getAttribute('href')))
+    for (const href of jumps) await expect(page.locator(href!), href!).toHaveCount(1)
+  })
+})
+
+test.describe('no dead controls', () => {
+  // A static page hydrates only its islands: a button outside one does nothing.
+  for (const route of [...PAGE_TYPES, '/brand/kit']) {
+    test(route, () => {
+      const html = builtHtml(route)
+      const main = html.slice(html.indexOf('id="site-main"'))
+      const dead: string[] = []
+      let depth = 0
+      let details = 0
+      for (const m of main.matchAll(/<(\/?)(pyreon-island|details|button|select|textarea)\b[^>]*>/g)) {
+        const [tag, close, name] = m as unknown as [string, string, string]
+        if (name === 'pyreon-island') depth += close ? -1 : 1
+        else if (name === 'details') details += close ? -1 : 1
+        else if (!close && depth === 0 && details === 0) dead.push(tag.slice(0, 80))
+      }
+      expect(dead).toEqual([])
+    })
+  }
+})
+
+test.describe('/brand/kit', () => {
+  for (const mode of ['dark', 'light'] as const) {
+    test(`the forced ${mode} panel's buttons work (pointer and keyboard)`, async ({ page }) => {
+      await page.goto('/brand/kit')
+      const panel = page.getByTestId(`kit-scope-${mode}`)
+      const solid = panel.getByRole('button', { name: /^Solid · \d+$/ })
+      await solid.scrollIntoViewIfNeeded()
+      await expect(async () => {
+        await solid.click()
+        await expect(solid).not.toHaveText('Solid · 0', { timeout: 250 })
+      }).toPass({ timeout: 10_000 })
+      const ghost = panel.getByRole('button', { name: /^Ghost · \d+$/ })
+      await ghost.focus()
+      await page.keyboard.press('Enter')
+      await expect(ghost).toHaveText('Ghost · 1')
+      await expect(panel.locator('[data-theme]').first()).toHaveAttribute('data-theme', mode)
+    })
+  }
 })
 
 test.describe('the charts package loads only where a live chart is drawn', () => {
@@ -191,7 +385,7 @@ test.describe('the charts package loads only where a live chart is drawn', () =>
         if (/\/assets\/charts-[\w-]+\.js$/.test(r.url())) charts.push(r.url())
       })
       await page.goto(route)
-      await waitForHydration(page)
+      await waitForNav(page)
       await scrollThrough(page)
       await page.waitForTimeout(400)
       expect(charts).toEqual([])
@@ -202,7 +396,7 @@ test.describe('the charts package loads only where a live chart is drawn', () =>
 test.describe('/why/components-run-once', () => {
   test('the live counter runs its body once', async ({ page }) => {
     await page.goto('/why/components-run-once')
-    await waitForHydration(page)
+    await waitForNav(page)
     const add = page.getByRole('button', { name: 'Add one' })
     const value = page.locator('[data-run-once-value]')
     await add.scrollIntoViewIfNeeded()
@@ -240,7 +434,7 @@ test.describe('contrast', () => {
       const failures: string[] = []
       for (const route of PAGE_TYPES) {
         await page.goto(route)
-        await waitForHydration(page)
+        await waitForNav(page)
         await scrollThrough(page)
         await page.waitForTimeout(1000)
         for (const f of await page.evaluate(auditContrast)) failures.push(`${route}: ${f}`)
