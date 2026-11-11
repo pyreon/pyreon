@@ -63,7 +63,7 @@ test.describe('charts', () => {
   // KNOWN BUG, reported with this spec: hydrating the server-rendered chart
   // appends a second tooltip, live region and data table after the server's
   // own, so assistive tech finds an empty, stale status region first. This
-  // test passes while the bug exists; when it is fixed, drop `test.fail`.
+  // test passes while the bug exists (#4400); when it is fixed, drop `test.fail`.
   test.fail('the hydrated chart keeps one live region and one data table', async ({ page }) => {
     await openDemo(page, 'charts', 'canvas[role="img"]')
     await expect(page.locator('#demo canvas[role="img"] ~ [role="status"]')).toHaveCount(1)
