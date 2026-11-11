@@ -67,4 +67,36 @@ describe('a theme-only rocketstyle chain', () => {
     const node = mountCard(Card)
     expect(getComputedStyle(node).backgroundColor).toBe('rgb(107, 114, 128)')
   })
+
+  // #4324: a `backgroundImage` that is already a CSS <image> must reach the
+  // sheet verbatim. It used to be wrapped as `url(linear-gradient(…))`, which
+  // Chromium rejects, so the computed value fell back to `none`.
+  it('emits a gradient backgroundImage verbatim, not wrapped in url()', () => {
+    const Card = rocketstyle()({ name: 'GradientCard', component: 'div' as never }).theme(() => ({
+      backgroundImage: 'linear-gradient(95deg, #FF1F8C, #FF5E1A)',
+    }))
+    const node = mountCard(Card)
+    const rules = [...document.styleSheets]
+      .flatMap((s) => {
+        try {
+          return [...s.cssRules].map((r) => r.cssText)
+        } catch {
+          return []
+        }
+      })
+      .join('\n')
+    expect(rules).toContain('background-image: linear-gradient(')
+    expect(rules).not.toContain('url(linear-gradient(')
+    expect(getComputedStyle(node).backgroundImage).toBe(
+      'linear-gradient(95deg, rgb(255, 31, 140), rgb(255, 94, 26))',
+    )
+  })
+
+  it('still wraps a bare image path in url()', () => {
+    const Card = rocketstyle()({ name: 'PathImageCard', component: 'div' as never }).theme(() => ({
+      backgroundImage: '/img/hero.png',
+    }))
+    const node = mountCard(Card)
+    expect(getComputedStyle(node).backgroundImage).toMatch(/^url\(".*\/img\/hero\.png"\)$/)
+  })
 })
