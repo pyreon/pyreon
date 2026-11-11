@@ -841,9 +841,17 @@ export function createPolyTextCore(
   // first text write, which reads the node once (an adopted SSR node whose
   // text already matches is left untouched).
   let written: string | null = null
+  // Bumped by every `apply`. A subtree mount can synchronously re-run the
+  // binding that called `apply` (a ref or a nested boundary writing a signal
+  // the accessor read), so a NESTED `apply` can land while this one's mount is
+  // still on the stack. The outer call must then discard what it mounted:
+  // the nested call owns the binding now, and keeping both left the outer
+  // subtree on screen with no cleanup pointing at it.
+  let applyGen = 0
 
   return {
     apply(v: VNodeChild): void {
+      const myGen = ++applyGen
       const textish =
         v == null || v === false || (typeof v !== 'object' && typeof v !== 'function')
       if (textish) {
@@ -874,7 +882,11 @@ export function createPolyTextCore(
         p.removeChild(text)
         mode = 'sub'
       } else {
-        runUntracked(subCleanup)
+        // Cleared BEFORE running, so a nested `apply` during the mount below
+        // cannot run the same cleanup a second time.
+        const previous = subCleanup
+        subCleanup = noop
+        runUntracked(previous)
       }
       const liveParent = marker!.parentNode ?? parentAtSetup
       // Reset _elementDepth: this mount can run at SETUP time (a signal that
@@ -883,10 +895,15 @@ export function createPolyTextCore(
       // the next textish flip, so its cleanups must be REAL removers.
       const prevDepth = _elementDepth
       _elementDepth = 0
-      subCleanup = runUntracked(() =>
+      const mounted = runUntracked(() =>
         runWithContextOwner(ownerAtSetup, () => mountChild(v as VNodeChild, liveParent, marker)),
       )
       _elementDepth = prevDepth
+      if (myGen !== applyGen) {
+        runUntracked(mounted)
+        return
+      }
+      subCleanup = mounted
     },
     dispose(): void {
       if (mode === 'sub') {
@@ -977,7 +994,17 @@ function mountAccessorChild(
   let text: Text | null = null
   let handoff: Cleanup | null = null
   let firstRunError: unknown = FIRST_RUN_OK
+  // Set the moment the first run classifies the value as structural, BEFORE the
+  // machinery below is built. Building it mounts the value, and that mount can
+  // write a signal this dispatcher read on its first run (a ref recording
+  // state, `<Show>` over a transition stage), which re-runs this dispatcher
+  // synchronously, before `handoff` is assigned and before `disposeEffect()`
+  // below drops the subscription. The machinery's own effect already tracks
+  // the same reads and handles the change; a dispatcher re-run here built a
+  // SECOND binding and mounted the content twice.
+  let structural = false
   const disposeEffect = renderEffect(() => {
+    if (structural) return
     if (core !== null) {
       core.apply((child as () => VNodeChild)())
       return
@@ -1009,6 +1036,7 @@ function mountAccessorChild(
         _releaseRun(run)
         return
       }
+      structural = true
       // The sources that call just read — handed to the structural machinery
       // below with the value, so it does not evaluate the accessor again.
       const reads = _frameReads()
