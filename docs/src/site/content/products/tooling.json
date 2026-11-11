@@ -1,0 +1,451 @@
+{
+  "id": "tooling",
+  "route": "/products/tooling",
+  "name": "Tooling",
+  "package": "@pyreon/cli · lint · devtools · mcp · testing",
+  "category": "tools · developer experience",
+  "hero": {
+    "title": "Catch the bug that type-checks and never updates.",
+    "lede": "`pyreon doctor` runs up to ten gates over your app and returns one score from 0 to 100, with the fix printed under each finding. Behind it: 133 lint rules that know what a signal is, a test kit that can assert an effect did not re-run, and a DevTools panel for the reactive graph.",
+    "install": "bun add -D @pyreon/cli @pyreon/lint @pyreon/testing",
+    "ctaShort": "Install",
+    "facts": [
+      {
+        "key": "doctor",
+        "value": "15 gates · 0–100 score<small>10 check any app; 5 audit the Pyreon repo itself and skip in yours</small>"
+      },
+      {
+        "key": "lint",
+        "value": "133 rules · 25 categories<small>96 on in `recommended`; 31 more in `best-practices`</small>"
+      },
+      {
+        "key": "testing",
+        "value": "Testing Library API + graph matchers<small>`notToReRunWhen`, `toHaveRecomputedTimes`, leak checks</small>"
+      },
+      {
+        "key": "output",
+        "value": "terminal · JSON · GitHub annotations<small>`--ci` fails the job on errors only</small>"
+      }
+    ]
+  },
+  "why": {
+    "title": "Tooling that knows how Pyreon breaks.",
+    "items": [
+      {
+        "title": "It knows the framework",
+        "text": "Generic linters see valid TypeScript. `pyreon/no-props-destructure` sees `({ title }) =>` and flags it: a destructured prop is read once and breaks reactive prop tracking."
+      },
+      {
+        "title": "A score you can gate on",
+        "text": "`pyreon doctor --ci` exits 1 on error findings only. Warnings cost points, advisory best-practice findings never block, and a gate that scanned nothing says so instead of passing."
+      },
+      {
+        "title": "Findings on the exact line",
+        "text": "`--gha` prints GitHub Actions annotations with file, line and column, so each finding sits on the diff in \"Files changed\"."
+      },
+      {
+        "title": "Tests that can say \"did not\"",
+        "text": "`expectEffect(e).notToReRunWhen(() => theme.set('dark'))` asserts an unrelated write left an effect alone. A render-counting test cannot express that."
+      }
+    ]
+  },
+  "difference": {
+    "title": "Valid TypeScript. Dead UI.",
+    "before": {
+      "label": "ships",
+      "caption": "Type-checks with `tsc`, compiles, renders once. When the parent changes `title`, the heading never updates.",
+      "code": "import { signal } from '@pyreon/reactivity'\n\ntype Message = { id: string; subject: string }\n\nexport function Inbox({ title, messages }: { title: string; messages: Message[] }) {\n  const open = signal(false)\n  return (\n    <section>\n      <h2 onClick={() => open.set(!open())}>{title}</h2>\n      <ul>{messages.map((m) => <li>{m.subject}</li>)}</ul>\n    </section>\n  )\n}"
+    },
+    "after": {
+      "label": "caught",
+      "caption": "`pyreon lint` names the line and the rule. The fix reads props where they are used and keys the list.",
+      "code": "$ pyreon lint src\n\n/app/src/Inbox.tsx\n  5:22  error  Destructured props in component function — breaks reactive prop tracking. Use `props.x` pattern for reactive prop access.  pyreon/no-props-destructure\n  10:11  warning  `.map()` in JSX — use `<For>` for reactive list rendering instead.  pyreon/no-map-in-jsx\n\n✗ 1 error, 1 warning\n\n// fixed\nexport function Inbox(props: { title: string; messages: Message[] }) {\n  const open = signal(false)\n  return (\n    <section>\n      <h2 onClick={() => open.set(!open())}>{props.title}</h2>\n      <ul>\n        <For each={props.messages} by={(m) => m.id}>\n          {(m) => <li>{m.subject}</li>}\n        </For>\n      </ul>\n    </section>\n  )\n}"
+    }
+  },
+  "extraSectionsHtml": "<section class=\"p-sec tight\"><div class=\"wrap\">\n  <div class=\"head\"><div class=\"label\">the toolbox</div><h2>Every tool, and when you'd reach for it.</h2></div>\n  <div class=\"tl-grid\">\n    <div class=\"card hot\"><div class=\"in\"><span class=\"num\">pyreon doctor</span><h3>Project health in one command</h3><p>Gates run in parallel and isolate failures. One 0–100 score with a letter grade, a bar per category, and a fix under each finding.</p><div class=\"cmd\"><span><i>$</i> pyreon doctor --ci --gha</span></div></div></div>\n    <div class=\"card\"><div class=\"in\"><span class=\"num\">pyreon check</span><h3>The pre-commit scan</h3><p>Runs the compiler's detectors over the files you changed since HEAD, prints each finding with its fix, and exits 1 if anything is left.</p><div class=\"cmd\"><span><i>$</i> pyreon check</span></div></div></div>\n    <div class=\"card\"><div class=\"in\"><span class=\"num\">@pyreon/lint</span><h3>133 rules that know the framework</h3><p>Five presets, a config file with a JSON schema, watch mode, <code>--why-off</code> to explain a disabled rule, and an LSP server for your editor.</p><div class=\"cmd\"><span><i>$</i> pyreon lint --watch</span></div></div></div>\n    <div class=\"card\"><div class=\"in\"><span class=\"num\">@pyreon/testing</span><h3>Testing Library, plus the reactive graph</h3><p>render, screen, fireEvent and every query as you know them, plus matchers for fire counts, effect re-runs and leaks.</p><div class=\"cmd\"><span>expectSignal · expectEffect · expectNoReactiveLeak</span></div></div></div>\n    <div class=\"card\"><div class=\"in\"><span class=\"num\">@pyreon/devtools</span><h3>See the reactive graph</h3><p>A Chrome DevTools panel with six tabs. Click a component to highlight it on the page. Built from the repo and loaded unpacked.</p><div class=\"cmd\"><span>Components · Graph · Signals · Effects · Profiler · Console</span></div></div></div>\n    <div class=\"card\"><div class=\"in\"><span class=\"num\">Ctrl+Shift+R</span><h3>An overlay in every dev build</h3><p>Built into the runtime, tree-shaken from production: orphan signals, the latest updates with their cause chain, and Pick to inspect bound text.</p><div class=\"cmd\"><span>$p.reactivity() · $p.pick()</span></div></div></div>\n    <div class=\"card\"><div class=\"in\"><span class=\"num\">pyreon info · upgrade</span><h3>Keep versions in line</h3><p>info lists every installed @pyreon/* version and flags skew. upgrade aligns them to one version, as a dry run until you pass --write.</p><div class=\"cmd\"><span><i>$</i> pyreon upgrade --write</span></div></div></div>\n    <div class=\"card\"><div class=\"in\"><span class=\"num\">pyreon add · new</span><h3>Start and grow a project</h3><p>new scaffolds a web app, or iOS and Android too with --native (experimental). add installs a package and prints how to wire it in.</p><div class=\"cmd\"><span><i>$</i> pyreon add @pyreon/form</span></div></div></div>\n  </div>\n  <div class=\"head\" style=\"margin-top:90px\"><div class=\"label\">doctor gates</div><h2>What doctor checks.</h2><p>Gates that audit the Pyreon repo itself skip in your app and say why. They never count against your score.</p></div>\n  <div class=\"tl-tbl\"><table><thead><tr><th>gate</th><th>category</th><th>catches</th></tr></thead><tbody><tr><td class=\"mono\">react-patterns</td><td>correctness</td><td>React habits: useState, useEffect, className, React imports</td></tr><tr><td class=\"mono\">pyreon-patterns</td><td>correctness</td><td>For without by, destructured props, a signal written as a call</td></tr><tr><td class=\"mono\">lint</td><td>per rule</td><td>Every configured @pyreon/lint rule</td></tr><tr><td class=\"mono\">islands-audit</td><td>architecture</td><td>Duplicate, dead, nested or unregistered islands</td></tr><tr><td class=\"mono\">ssg-audit</td><td>architecture</td><td>404 placement, dynamic routes without getStaticPaths, non-literal revalidate</td></tr><tr><td class=\"mono\">content-audit</td><td>architecture</td><td>Missing titles, broken internal links, orphaned pages</td></tr><tr><td class=\"mono\">native-audit</td><td>architecture</td><td>Web-only imports and declarations the native build drops, in files that import @pyreon/primitives (needs @pyreon/native-compiler)</td></tr><tr><td class=\"mono\">check-dedup</td><td>architecture</td><td>Two versions of one @pyreon/* package in the lockfile</td></tr><tr><td class=\"mono\">dependency-fabric</td><td>architecture</td><td>Phantom deps, version drift, cycles (runs when @pyreon/loom is installed)</td></tr><tr><td class=\"mono\">audit-tests</td><td>testing</td><td>Tests that build fake vnodes instead of rendering through h()</td></tr><tr><td class=\"mono\">distribution</td><td>architecture</td><td>Package hygiene for libraries laid out like the Pyreon repo</td></tr><tr><td class=\"mono\">doc-claims</td><td>documentation</td><td>Numbers in the Pyreon docs that disagree with the source (Pyreon repo only)</td></tr><tr><td class=\"mono\">audit-leak-classes</td><td>best practices</td><td>Memory-leak heuristics; advisory, never graded (Pyreon repo only)</td></tr><tr><td class=\"mono\">audit-types</td><td>architecture</td><td>Typed but never-read public fields (--full, Pyreon repo only)</td></tr><tr><td class=\"mono\">bundle-budgets</td><td>performance</td><td>Gzipped entry size against locked budgets (--full, Pyreon repo only)</td></tr></tbody></table></div>\n</div></section>",
+  "demo": {
+    "title": "Run doctor.",
+    "text": "A simulated run on a small app, using finding codes doctor really prints. Fix findings and watch the score move: errors cost 10 points, warnings 3, info 1, per category, and the score is the mean of the categories that were measured.",
+    "component": "DemoTooling",
+    "reference": "pkg-tooling.html#demo",
+    "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"term\" style=\"background:#050508;border:1px solid var(--line);border-radius:21px;overflow:hidden\"><div style=\"display:flex;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:11.5px;color:var(--fog)\"><span>~/acme-app</span><span style=\"flex:1\"></span><span>pyreon doctor</span></div><pre id=\"dr-out\" style=\"margin:0;padding:18px 20px;font-size:12.5px;line-height:1.75;color:var(--s-fg);min-height:380px;white-space:pre-wrap\"></pre></div>\n  <div class=\"card\"><div class=\"in\"><span class=\"label\">findings</span><div id=\"dr-f\" class=\"dr-f\"></div><button class=\"pill solid\" type=\"button\" id=\"dr-fix\" style=\"margin-top:6px\">pyreon doctor --fix</button><button class=\"pill\" type=\"button\" id=\"dr-reset\">reset</button></div></div>\n</div>",
+    "referenceCss": ".tl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(330px,100%),1fr));gap:14px}.tl-grid .in{min-height:250px}.tl-grid .cmd{margin-top:auto;height:auto;min-height:40px;padding:8px 14px;font-size:12px;border-radius:12px}\n.tl-tbl{overflow-x:auto;border:1px solid var(--line);border-radius:18px;background:var(--obs-2)}.tl-tbl table{width:100%;border-collapse:collapse;font-size:14px;min-width:640px}.tl-tbl th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--fog);font-weight:400;padding:14px 18px;border-bottom:1px solid var(--line-2)}.tl-tbl td{padding:12px 18px;border-bottom:1px solid var(--line);color:var(--mist);font-weight:300}.tl-tbl td.mono{color:var(--ivory);font-size:13px}\n.dr-f{display:grid;gap:8px}.dr-f div{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;font-size:13px;color:var(--mist);transition:opacity .3s}.dr-f div.done{opacity:.35;text-decoration:line-through}.dr-f b{font-family:var(--mono);font-weight:400;font-size:11px;letter-spacing:.08em;text-transform:uppercase}.dr-f .e{color:var(--err)}.dr-f .w{color:var(--warn)}.dr-f .i{color:var(--fog)}.dr-f code{grid-column:2;font-size:11.5px;color:var(--fog)}",
+    "referenceJs": "(function(){var F0=[{s:'e',c:'correctness',code:'lint/pyreon/no-props-destructure',f:'src/Inbox.tsx:5:22',m:'Destructured props in component function',fix:'read props.title where it is used',auto:false},{s:'e',c:'correctness',code:'lint/pyreon/no-classname',f:'src/Counter.tsx:5:17',m:'Use class instead of className',fix:'class=\"btn\"',auto:true},{s:'e',c:'correctness',code:'lint/pyreon/no-signal-call-write',f:'src/Counter.tsx:5:48',m:'count(value) does NOT write the signal',fix:'count.set(count() + 1)',auto:true},{s:'w',c:'correctness',code:'lint/pyreon/no-map-in-jsx',f:'src/TodoList.tsx:4:14',m:'.map() in JSX',fix:'<For each={…} by={(t) => t.id}>',auto:false},{s:'e',c:'architecture',code:'check-dedup/multiple-versions',f:'bun.lock',m:'@pyreon/core resolves to 2 distinct versions',fix:'pyreon upgrade --write',auto:false},{s:'w',c:'architecture',code:'ssg-audit/dynamic-route-missing-get-static-paths',f:'src/routes/blog/[slug].tsx',m:'dynamic route without getStaticPaths',fix:'export getStaticPaths',auto:false},{s:'w',c:'performance',code:'lint/pyreon/no-effect-in-for',f:'src/Feed.tsx:88',m:'effect() created inside a <For> row',fix:'move the effect out of the row',auto:false}],F,$=function(i){return document.getElementById(i)},P={e:10,w:3,i:1},CATS=['correctness','performance','architecture','testing'];\nfunction score(){var sc={};CATS.forEach(function(c){sc[c]=100});F.forEach(function(x){if(!x.done)sc[x.c]=Math.max(0,sc[x.c]-P[x.s])});var v=CATS.map(function(c){return sc[c]});return{all:Math.round(v.reduce(function(a,b){return a+b},0)/v.length),sc:sc}}\nfunction grade(n){return n>=90?'A':n>=80?'B':n>=70?'C':n>=60?'D':'F'}\nfunction bar(n){var f=Math.round(n/100*12);return '<span style=\"color:'+(n>=90?'var(--ok)':n>=70?'var(--warn)':'var(--err)')+'\">'+'█'.repeat(f)+'</span><span style=\"color:var(--line-2)\">'+'░'.repeat(12-f)+'</span>'}\nfunction r(){var s=score(),open=F.filter(function(x){return!x.done});var o='<span style=\"color:var(--fog)\">pyreon doctor · project health audit</span>\\n\\n<b style=\"color:#FFFCF5;font-size:15px\">Score:  '+s.all+'/100   Grade: '+grade(s.all)+'</b>\\n\\n'+CATS.map(function(c){return(c+'              ').slice(0,15)+bar(s.sc[c])+' '+s.sc[c]}).join('\\n')+'\\n\\n'+(open.length?open.slice(0,4).map(function(x){return '<span style=\"color:'+(x.s==='e'?'#F87171':x.s==='w'?'#FACC15':'var(--fog)')+'\">'+(x.s==='e'?'✗':'!')+'</span> '+x.m.replace(/</g,'&lt;')+'  '+x.code+'\\n   <span style=\"color:var(--fog)\">'+x.f+'</span>'}).join('\\n'):'<span style=\"color:var(--ok)\">no findings</span>')+'\\n\\n<span style=\"color:var(--fog)\">Skipped: doc-claims, audit-leak-classes (targets the Pyreon monorepo), audit-types, bundle-budgets (enable with --full)</span>';$('dr-out').innerHTML=o;\n$('dr-f').innerHTML=F.map(function(x){return '<div class=\"'+(x.done?'done':'')+'\"><b class=\"'+x.s+'\">'+(x.s==='e'?'error':x.s==='w'?'warning':'info')+'</b><span>'+x.m.replace(/</g,'&lt;')+'</span><code>'+x.code+' · fix: '+x.fix.replace(/</g,'&lt;')+(x.auto?' (auto)':'')+'</code></div>'}).join('')}\nfunction reset(){F=F0.map(function(x){return Object.assign({},x)});r()}\n$('dr-fix').onclick=function(){F.forEach(function(x){if(x.auto)x.done=true});r()};$('dr-reset').onclick=reset;document.getElementById('dr-f').onclick=function(e){var d=e.target.closest('.dr-f > div');if(!d)return;var i=[].indexOf.call(d.parentNode.children,d);F[i].done=!F[i].done;r()};reset();})();",
+    "spec": "Terminal panel shows \"pyreon doctor\" output: score N/100 with letter grade (A ≥90, B ≥80, C ≥70, D ≥60, else F), one bar per measured category (correctness, performance, architecture, testing), the top four open findings with code and file:line, and a footer listing skipped gates with the real reasons (doc-claims and audit-leak-classes: \"targets the Pyreon monorepo\"; audit-types and bundle-budgets: \"enable with --full\"). The findings card lists seven findings; clicking one toggles it fixed. \"pyreon doctor --fix\" marks the auto-fixable ones (no-classname, no-signal-call-write) fixed; \"reset\" restores all. Category score = 100 minus the sum of penalties (error 10, warning 3, info 1), clamped to 0..100; overall = rounded mean of the four categories."
+  },
+  "features": {
+    "title": "What ships in the box.",
+    "items": [
+      {
+        "name": "pyreon doctor",
+        "text": "15 gates (10 for any app), a 0–100 score with a letter grade, `--only` / `--skip` to pick gates, `--fix` for lint and React-pattern fixes."
+      },
+      {
+        "name": "pyreon check",
+        "text": "scans git-changed files (or the paths you pass), prints each fix, `--json` for tools."
+      },
+      {
+        "name": "Five lint presets",
+        "text": "`recommended`, `strict`, `app`, `lib` and `best-practices`; per-rule overrides in `.pyreonlintrc.json`."
+      },
+      {
+        "name": "`pyreon-lint --why-off <rule>`",
+        "text": "says whether a rule will run, and which config line turns it off."
+      },
+      {
+        "name": "Editor support",
+        "text": "`pyreon-lint --lsp` serves diagnostics and inlay hints; a VS Code extension ships in the repo."
+      },
+      {
+        "name": "Parallel linting",
+        "text": "runs of 200 files or more spread across a worker pool; results are sorted so CI diffs stay stable."
+      },
+      {
+        "name": "Reactive-graph matchers",
+        "text": "`expectSignal(s).toHaveChangedTimes(n)`, `expectEffect(e).toReRunWhen(fn)` and `.notToReRunWhen(fn)`."
+      },
+      {
+        "name": "Leak matchers",
+        "text": "`expectNoReactiveLeak` checks that mount plus unmount leaves no graph growth; `expectGarbageCollected` replaces the WeakRef dance."
+      },
+      {
+        "name": "DevTools panel",
+        "text": "Components, Graph, Signals, Effects, Profiler and Console tabs, with click-to-highlight on the page."
+      },
+      {
+        "name": "pyreon info and upgrade",
+        "text": "find version skew before it trips the duplicate-instance guard, then align every `@pyreon/*` dependency."
+      }
+    ]
+  },
+  "api": {
+    "title": "Commands and exports.",
+    "groups": [
+      {
+        "name": "pyreon",
+        "items": [
+          "doctor",
+          "check",
+          "lint",
+          "plain",
+          "add",
+          "new",
+          "info",
+          "upgrade",
+          "context",
+          "mcp",
+          "atlas",
+          "loom",
+          "lathe"
+        ]
+      },
+      {
+        "name": "pyreon doctor",
+        "items": [
+          "--ci",
+          "--gha",
+          "--json",
+          "--fix",
+          "--full",
+          "--only",
+          "--skip",
+          "--roots",
+          "--audit-min-risk"
+        ]
+      },
+      {
+        "name": "pyreon-lint",
+        "items": [
+          "--preset",
+          "--fix",
+          "--watch",
+          "--lsp",
+          "--format",
+          "--rule",
+          "--rule-options",
+          "--why-off",
+          "--init",
+          "--list"
+        ]
+      },
+      {
+        "name": "@pyreon/testing",
+        "items": [
+          "render",
+          "renderHook",
+          "cleanup",
+          "screen",
+          "fireEvent",
+          "waitFor",
+          "within",
+          "expectSignal",
+          "expectEffect",
+          "expectGarbageCollected",
+          "expectNoReactiveLeak"
+        ]
+      },
+      {
+        "name": "@pyreon/testing subpaths",
+        "items": [
+          "/vitest",
+          "/matchers",
+          "/form",
+          "/router",
+          "/store",
+          "/i18n",
+          "/query",
+          "/toast",
+          "/ui"
+        ]
+      }
+    ]
+  },
+  "limits": [
+    {
+      "title": "Add --ci to gate a build",
+      "text": "Plain `pyreon doctor` always exits 0 so it can run as a report. `--ci` exits 1 when an error finding is left."
+    },
+    {
+      "title": "check and lint are different engines",
+      "text": "`pyreon check` runs the compiler's detectors on changed files. The lint rules (96 on in `recommended`) run under `pyreon lint`. `pyreon doctor` runs both."
+    },
+    {
+      "title": "Review --fix on React code",
+      "text": "The React fixes turn `useState` into `signal()`, but setter calls like `setCount(n)` stay as written. Rewrite them as `count.set(n)` before you commit."
+    },
+    {
+      "title": "Compile tests the way you compile the app",
+      "text": "Put `@pyreon/vite-plugin` in your vitest config. Without the Pyreon compiler, `{total()}` in JSX renders once and a DOM assertion after a click fails."
+    },
+    {
+      "title": "Graph matchers need a dev or test build",
+      "text": "Production builds drop the reactive graph, so the matchers throw a clear error there. The leak matchers also need `--expose-gc`."
+    },
+    {
+      "title": "Two extensions install from the repo",
+      "text": "The DevTools panel is built and loaded unpacked; the VS Code extension is linked from `packages/tools/lint/vscode`. Neither is in a store yet."
+    }
+  ],
+  "related": [
+    {
+      "href": "/products/ai",
+      "category": "tools",
+      "name": "AI and MCP",
+      "text": "The same detectors, served to your coding assistant.",
+      "package": "@pyreon/mcp"
+    },
+    {
+      "href": "/products/loom",
+      "category": "tools",
+      "name": "Loom",
+      "text": "The dependency checks behind the dependency-fabric gate.",
+      "package": "@pyreon/loom"
+    },
+    {
+      "href": "/products/atlas",
+      "category": "tools",
+      "name": "Atlas",
+      "text": "Verifies each component against its own contract.",
+      "package": "@pyreon/atlas"
+    }
+  ],
+  "end": {
+    "title": "Your app gets a grade. Unlike school, the answers are printed underneath.",
+    "cta": "Read the CLI guide"
+  },
+  "benchmarks": null,
+  "glyphSvg": "<path d=\"M18 102 L58 62\" stroke=\"currentColor\" stroke-width=\"12\" stroke-linecap=\"round\"/><path d=\"M62 32 A26 26 0 1 0 88 58\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><circle cx=\"84\" cy=\"34\" r=\"14\" fill=\"url(#eg)\"/>",
+  "proof": [
+    {
+      "stat": "133",
+      "label": "lint rules in 25 categories, from reactivity and JSX to SSR, routing, forms and security.",
+      "source": "allRules in packages/tools/lint/src/rules/index.ts, counted 11 Nov 2026; `pyreon-lint --list` prints \"133 rules total\""
+    },
+    {
+      "stat": "10",
+      "label": "doctor gates that check any app, feeding one 0–100 score. Unmeasured categories are left out, not counted as 100.",
+      "source": "GateName in packages/tools/cli/src/doctor/gate-names.ts (15 gates); distribution, doc-claims, audit-leak-classes, audit-types and bundle-budgets skip outside the Pyreon repo (their gates/*.ts skipReason); score.ts (mean of included categories)"
+    },
+    {
+      "stat": "7",
+      "label": "test-kit subpaths that set up form, router, store, i18n, query, toast and theme for you.",
+      "source": "packages/tools/testing/package.json exports ./form ./ui ./router ./store ./i18n ./toast ./query"
+    }
+  ],
+  "comingFrom": [
+    {
+      "lib": "eslint-plugin-react-hooks",
+      "title": "No dependency arrays, so no exhaustive-deps. The rules cover what goes wrong instead.",
+      "before": "// eslint.config.js\nimport tseslint from 'typescript-eslint'\nimport reactHooks from 'eslint-plugin-react-hooks'\n\nexport default [\n  {\n    files: ['src/**/*.{ts,tsx}'],\n    languageOptions: { parser: tseslint.parser },\n    plugins: { 'react-hooks': reactHooks },\n    rules: {\n      'react-hooks/rules-of-hooks': 'error',\n      'react-hooks/exhaustive-deps': 'warn',\n    },\n  },\n]",
+      "after": "{\n  \"$schema\": \"./node_modules/@pyreon/lint/schema/pyreonlintrc.schema.json\",\n  \"preset\": \"app\",\n  \"include\": [\"src/\"]\n}",
+      "note": "Save it as `.pyreonlintrc.json` and run `pyreon lint --watch`. `effect()` tracks what it reads, so there is no array to keep in sync. The `app` preset turns on 95 of the 133 rules, among them destructured props, `count(x)` used as a write, `.map()` in JSX, and `window` read during SSR."
+    },
+    {
+      "lib": "React Testing Library",
+      "title": "Same queries, same events. The render comes from @pyreon/testing.",
+      "before": "import { useState } from 'react'\nimport { render, screen, fireEvent } from '@testing-library/react'\n\nfunction Cart() {\n  const [qty, setQty] = useState(1)\n  return (\n    <div>\n      <button onClick={() => setQty((n) => n + 1)}>Add one</button>\n      <output>Total: {qty * 12}</output>\n    </div>\n  )\n}\n\ntest('adds to the total', () => {\n  render(<Cart />)\n  fireEvent.click(screen.getByRole('button', { name: 'Add one' }))\n  expect(screen.getByText('Total: 24')).toBeInTheDocument()\n})",
+      "after": "import { signal, computed } from '@pyreon/reactivity'\nimport { render, screen, fireEvent } from '@pyreon/testing'\n\nfunction Cart() {\n  const qty = signal(1)\n  const total = computed(() => qty() * 12)\n  return (\n    <div>\n      <button onClick={() => qty.update((n) => n + 1)}>Add one</button>\n      <output>Total: {total()}</output>\n    </div>\n  )\n}\n\ntest('adds to the total', () => {\n  render(<Cart />)\n  fireEvent.click(screen.getByRole('button', { name: 'Add one' }))\n  expect(screen.getByText('Total: 24')).toBeInTheDocument()\n})",
+      "note": "The queries are re-exported from `@testing-library/dom`, the package under React Testing Library. Add `@pyreon/testing/vitest` to `setupFiles` for cleanup between tests and the jest-dom matchers."
+    },
+    {
+      "lib": "React DevTools",
+      "title": "From \"what re-rendered?\" to \"which effect re-ran?\", asserted in a test.",
+      "before": "import { useState } from 'react'\nimport { render, screen, fireEvent } from '@testing-library/react'\n\nlet totalRenders = 0\nfunction Total({ qty }: { qty: number }) {\n  totalRenders++\n  return <output>Total: {qty * 12}</output>\n}\n\nfunction Shop() {\n  const [qty] = useState(1)\n  const [dark, setDark] = useState(false)\n  return (\n    <div className={dark ? 'dark' : 'light'}>\n      <button onClick={() => setDark((d) => !d)}>Dark mode</button>\n      <Total qty={qty} />\n    </div>\n  )\n}\n\ntest('dark mode re-renders Total', () => {\n  render(<Shop />)\n  const before = totalRenders\n  fireEvent.click(screen.getByRole('button', { name: 'Dark mode' }))\n  expect(totalRenders).toBe(before + 1) // memo() would stop it\n})",
+      "after": "import { signal, effect } from '@pyreon/reactivity'\nimport { expectEffect } from '@pyreon/testing'\n\ntest('dark mode does not re-run the total', () => {\n  const qty = signal(1)\n  const dark = signal(false)\n  const total = effect(() => {\n    document.title = `Total: ${qty() * 12}`\n  })\n  expectEffect(total).toReRunWhen(() => qty.set(2))\n  expectEffect(total).notToReRunWhen(() => dark.set(true))\n})",
+      "note": "Components run once, so there is no render to count. In the browser, the DevTools panel's Effects and Profiler tabs and the Ctrl+Shift+R overlay show what fired and why."
+    }
+  ],
+  "recipes": [
+    {
+      "title": "Gate every pull request",
+      "text": "One job prints annotations on the diff and fails when an error finding is left. Warnings still lower the score but do not fail the job.",
+      "code": "# .github/workflows/health.yml\nname: Health\non: [pull_request]\njobs:\n  doctor:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: oven-sh/setup-bun@v2\n      - run: bun install\n      - run: bunx pyreon doctor --gha --ci"
+    },
+    {
+      "title": "Block the commit, not the review",
+      "text": "With no paths, `pyreon check` scans files changed since HEAD plus untracked ones and exits 1 on any finding. Silence a line you mean with `// pyreon-lint-ignore <code>`.",
+      "code": "#!/bin/sh\n# .githooks/pre-commit  (git config core.hooksPath .githooks)\nexec bunx pyreon check"
+    },
+    {
+      "title": "Prove a theme switch leaves the cart alone",
+      "text": "Assertions on the reactive graph itself: what re-ran, and how often. Run them through `@pyreon/vite-plugin` with `@pyreon/testing/vitest` in `setupFiles`.",
+      "code": "import { expectEffect, expectSignal } from '@pyreon/testing'\nimport { signal, computed, effect } from '@pyreon/reactivity'\n\ntest('a theme switch does not re-run the cart log', () => {\n  const qty = signal(1)\n  const theme = signal('light')\n  const log = effect(() => { qty() })\n  expectEffect(log).toReRunWhen(() => qty.set(2))\n  expectEffect(log).notToReRunWhen(() => theme.set('dark'))\n})\n\ntest('total recomputes once per change', () => {\n  const qty = signal(1)\n  const total = computed(() => qty() * 12)\n  total() // first computation counts as 1\n  qty.set(3)\n  expectSignal(total).toHaveRecomputedTimes(2)\n})"
+    }
+  ],
+  "faq": [
+    {
+      "q": "Does doctor work outside the Pyreon monorepo?",
+      "a": "Yes. Ten gates check any app. The five that audit the Pyreon repo itself (distribution, doc-claims, audit-leak-classes, and the `--full` gates audit-types and bundle-budgets) skip in your app with the reason printed, and a category no gate measured is left out of the score rather than counted as 100."
+    },
+    {
+      "q": "Will a warning fail my build?",
+      "a": "No. `--ci` exits 1 only when an error finding is left. Warnings and info lower the score; findings in the advisory best-practices category are shown but never graded and never fail `--ci`."
+    },
+    {
+      "q": "Do I need check, lint and doctor?",
+      "a": "Use `pyreon check` in a pre-commit hook (changed files, compiler detectors), `pyreon lint --watch` while you write (the lint rules), and `pyreon doctor --ci` in CI (both of those plus the project gates)."
+    },
+    {
+      "q": "Where do I get the DevTools extension?",
+      "a": "Build it from the repo (`bun run --filter='@pyreon/devtools' build`), then load `packages/tools/devtools/dist/` unpacked from `chrome://extensions`. The Ctrl+Shift+R overlay needs nothing: it is in every dev build."
+    },
+    {
+      "q": "Which vitest does @pyreon/testing need?",
+      "a": "Vitest 5 (`^5.0.0` peer). It runs in happy-dom for structure; interaction and layout tests belong in a real browser through `@vitest/browser`."
+    }
+  ],
+  "sources": [
+    {
+      "claim": "133 rules, 25 categories, 14 auto-fixable; per-category counts",
+      "path": "packages/tools/lint/src/rules/index.ts allRules (counted via scratch script lintcount.ts); `pyreon-lint --list` footer \"133 rules total\""
+    },
+    {
+      "claim": "Presets: recommended 96 rules on, app 95, strict 96, lib 96, best-practices 127; 6 rules scope monorepo, 31 opt-in",
+      "path": "packages/tools/lint/src/config/presets.ts (getPreset counted via scratch lintpre.ts)"
+    },
+    {
+      "claim": "15 doctor gates: 13 fast, 2 slow behind --full",
+      "path": "packages/tools/cli/src/doctor/gate-names.ts; `pyreon --help` doctor gates list"
+    },
+    {
+      "claim": "Score: error 10, warning 3, info 1 per category, clamped; overall = mean of included categories; best-practices advisory, excluded from mean and --ci; grades A 90+ … F <60",
+      "path": "packages/tools/cli/src/doctor/score.ts"
+    },
+    {
+      "claim": "Plain doctor exits 0; --ci exits 1 on error findings",
+      "path": "measured: doctor on scratch sample (3 errors) exit 0 without --ci, exit 1 with --ci --json"
+    },
+    {
+      "claim": "--gha output format with file/line/col and ::notice:: score line",
+      "path": "measured: `pyreon doctor --roots src --ci --gha` on scratch sample; packages/tools/cli/src/doctor/render/gha.ts"
+    },
+    {
+      "claim": "Sample run: 7 gates, Score 76/100 Grade C; doc-claims and audit-leak-classes skipped as \"targets the Pyreon monorepo\"; audit-types/bundle-budgets \"enable with --full\"",
+      "path": "measured 11 Nov 2026: .scratch/tools/tooling-ai/sample, `pyreon doctor --roots src`"
+    },
+    {
+      "claim": "Gate descriptions (react-patterns, ssg-audit, check-dedup, audit-tests mock-vnode, native-audit, dependency-fabric needs loom)",
+      "path": "docs/src/content/docs/cli.md gate table (lines ~270–290); packages/tools/cli/src/doctor/gates/*.ts"
+    },
+    {
+      "claim": "Finding codes used in the demo (check-dedup/multiple-versions error, ssg-audit/dynamic-route-missing-get-static-paths warning, lint rule ids and severities)",
+      "path": "packages/tools/cli/src/doctor/gates/check-dedup.ts:177, ssg-audit.ts:17; lint rule meta via scratch lintids.ts"
+    },
+    {
+      "claim": "doctor --fix applies lint + react-patterns fixes",
+      "path": "packages/tools/cli/src/doctor/orchestrator.ts:71; `pyreon --help`"
+    },
+    {
+      "claim": "pyreon check: git-changed + untracked files by default, exits non-zero on findings, --fix applies migratePyreonCode + migrateReactCode, --json",
+      "path": "packages/tools/cli/src/check.ts; docs/src/content/docs/cli.md §pyreon check"
+    },
+    {
+      "claim": "// pyreon-lint-ignore <code> silences a detector finding",
+      "path": "packages/core/compiler/src/detector-suppression.ts"
+    },
+    {
+      "claim": "Inbox \"before\" type-checks and compiles; lint flags no-props-destructure at 5:22; fixed version type-checks and is clean under pyreon check",
+      "path": "measured: .scratch/tools/tooling-ai/tsc (tsc -p, transformJSX, pyreon lint, pyreon check)"
+    },
+    {
+      "claim": "Destructured-prop locals never update when the parent rewrites the prop",
+      "path": "AGENTS.md \"Components run once\"; detector message props-destructured in packages/core/compiler/src/pyreon-intercept.ts"
+    },
+    {
+      "claim": "React fixes leave setX(...) calls untouched (useState → signal only)",
+      "path": "measured: `pyreon check --fix` and `pyreon doctor --fix --only react-patterns` on .scratch/tools/tooling-ai/fixprobe*; packages/core/compiler/src/react-intercept.ts migrateReactCode"
+    },
+    {
+      "claim": "@pyreon/testing: Testing Library re-exports, render/renderHook/cleanup, expectSignal/expectEffect, GC matchers need --expose-gc, 7 library subpaths, vitest ^5 peer",
+      "path": "packages/tools/testing/src/index.ts, README.md, package.json, CHANGELOG.md 0.52.0 (#3753)"
+    },
+    {
+      "claim": "toHaveRecomputedTimes counts the first computation (prime + 1 change = 2)",
+      "path": "packages/tools/testing/src/tests/reactive.test.ts \"prime + 2 dep-change recomputes\"; measured in .scratch/tools/tooling-ai/vt/cart.test.tsx"
+    },
+    {
+      "claim": "Testing recipes and the Pyreon side of comingFrom pass under vitest 5 + happy-dom + @pyreon/vite-plugin; without the plugin the text does not update after a click",
+      "path": "measured: .scratch/tools/tooling-ai/vt (cart.test.tsx 3 tests, dark.test.tsx 1 test pass)"
+    },
+    {
+      "claim": "React side of the DevTools comingFrom: Total re-renders once per dark-mode toggle",
+      "path": "measured with react@19.3.1 + react-dom createRoot/act in .scratch/tools/tooling-ai/rt; RTL render/screen/fireEvent written to @testing-library/react 16 public API (not installed in the checkout)"
+    },
+    {
+      "claim": "ESLint flat config for eslint-plugin-react-hooks with typescript-eslint parser",
+      "path": "written to the documented flat-config shape of eslint-plugin-react-hooks (plugins object + rules) and typescript-eslint `parser` export; neither package is installed in the checkout, so not executed"
+    },
+    {
+      "claim": ".pyreonlintrc.json with $schema, preset, include works",
+      "path": "docs/src/content/docs/lint.md §Config file; measured `pyreon lint` in scratch sample with preset app + include"
+    },
+    {
+      "claim": "Lint: --why-off, --lsp, --watch, --init, --list, --rule, --rule-options, --format text|json|compact",
+      "path": "packages/tools/lint/src/cli.ts:109–190"
+    },
+    {
+      "claim": "Parallel lint above 200 files, stable sort",
+      "path": "packages/tools/lint/CHANGELOG.md (\"Parallel linting\")"
+    },
+    {
+      "claim": "VS Code extension installed by symlink from packages/tools/lint/vscode",
+      "path": "packages/tools/lint/vscode/README.md"
+    },
+    {
+      "claim": "DevTools: private package, six tabs, click-to-highlight, built and loaded unpacked",
+      "path": "packages/tools/devtools/README.md, panel.html:35–40, package.json \"private\": true; docs/src/content/docs/devtools.md"
+    },
+    {
+      "claim": "Ctrl+Shift+R overlay, $p.reactivity(), $p.pick(), tree-shaken from production",
+      "path": "packages/core/runtime-dom/src/devtools.ts:495,660; 00-brief/facts.md line 202"
+    },
+    {
+      "claim": "pyreon upgrade is a dry run by default, --write applies; info flags skew",
+      "path": "`pyreon --help`; docs/src/content/docs/cli.md"
+    },
+    {
+      "claim": "All features on this page are in the published release (no next-release items)",
+      "path": "CHANGELOGs of @pyreon/cli, lint, testing at 0.53.0; .changeset/ entries for these packages are patches only"
+    }
+  ]
+}

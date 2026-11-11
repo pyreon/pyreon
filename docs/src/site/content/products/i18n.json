@@ -1,0 +1,411 @@
+{
+ "id": "i18n",
+ "route": "/products/i18n",
+ "name": "i18n",
+ "package": "@pyreon/i18n",
+ "category": "fundamentals · translations",
+ "hero": {
+  "title": "`count === 1` is not a plural rule.",
+  "lede": "Translations, plurals, prices and dates that follow each language's own rules, and switch language live without a reload or a re-render. The message format is i18next's, so your JSON files come with you.",
+  "install": "bun add @pyreon/i18n",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "vs i18next",
+    "value": "`t()` 12.0× faster<small>One run, bun/JavaScriptCore, author-run.</small>"
+   },
+   {
+    "key": "plurals",
+    "value": "every CLDR category<small>`_zero`, `_one`, `_two`, `_few`, `_many`, `_other`, picked by `Intl.PluralRules`.</small>"
+   },
+   {
+    "key": "message format",
+    "value": "i18next's keys<small>`{{name}}`, `_one`/`_other`, `context`, `$t()`, `ns:key`.</small>"
+   },
+   {
+    "key": "iOS and Android",
+    "value": "{dot:ok} `t()`, plurals, locale switch<small>Lowered to a native runtime, asserted on device. Native targets are experimental; live switching and full CLDR plurals come in the next release.</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "12.0×",
+   "label": "faster `t()` lookup than i18next 26",
+   "source": "BENCHMARKS.md §10, i18n row · overnight run, one run, bun/JavaScriptCore"
+  },
+  {
+   "stat": "5.1×",
+   "label": "faster interpolation than i18next",
+   "source": "BENCHMARKS.md §10, i18n row · i18next on its faster `escapeValue: false` path"
+  },
+  {
+   "stat": "3.6×",
+   "label": "faster plural resolution than i18next",
+   "source": "BENCHMARKS.md §10, i18n row · one run"
+  }
+ ],
+ "why": {
+  "title": "The bugs you ship in your second language, gone.",
+  "items": [
+   {
+    "title": "Plurals by the language, not by `=== 1`",
+    "text": "Czech says 1 soubor, 3 soubory, 5 souborů. Polish says 22 pliki and 25 plików. `t('files', { count })` asks `Intl.PluralRules` for the category and picks `files_few` or `files_many` for you."
+   },
+   {
+    "title": "Switch language, nothing re-renders",
+    "text": "`i18n.locale.set('pl')` and every `t()`, price and date on screen rewrites its own text node. Components keep their state, inputs keep their caret."
+   },
+   {
+    "title": "Formats live inside the message",
+    "text": "Write `Total: {{amount, currency}}` or `Seen {{n, relativetime, day}}` in the translation. Translators move the number; you never concatenate."
+   },
+   {
+    "title": "Same messages on the server",
+    "text": "`@pyreon/i18n/core` has no JSX and depends only on `@pyreon/reactivity`, so receipts, emails and edge functions use the same dictionaries as the UI."
+   }
+  ]
+ },
+ "difference": {
+  "title": "You have written this ternary. So has everyone.",
+  "before": {
+   "label": "the usual shortcut",
+   "caption": "Right in English and German. Wrong in Czech, Polish, Russian, Ukrainian and Arabic.",
+   "code": "const label = count === 1\n  ? `${count} file`\n  : `${count} files`\n\n// cs: 1 soubor, 3 soubory, 5 souborů\n// pl: 1 plik, 22 pliki, 25 plików\n// ar: six forms, one of them for exactly two"
+  },
+  "after": {
+   "label": "with @pyreon/i18n",
+   "caption": "Each language lists the forms it has. The count picks one. A missing locale falls back.",
+   "code": "import { createI18n } from '@pyreon/i18n'\n\nconst i18n = createI18n({\n  locale: 'cs',\n  fallbackLocale: 'en',\n  messages: {\n    en: { files_one: '{{count}} file', files_other: '{{count}} files' },\n    cs: { files_one: '{{count}} soubor', files_few: '{{count}} soubory',\n          files_other: '{{count}} souborů' },\n    pl: { files_one: '{{count}} plik', files_few: '{{count}} pliki',\n          files_many: '{{count}} plików', files_other: '{{count}} pliku' },\n  },\n})\n\ni18n.t('files', { count: 3 })   // '3 soubory'\ni18n.t('files', { count: 5 })   // '5 souborů'\ni18n.locale.set('pl')           // every t() on screen updates in place\ni18n.t('files', { count: 22 })  // '22 pliki'"
+  }
+ },
+ "comingFrom": [
+  {
+   "lib": "i18next",
+   "title": "Keep the JSON. Drop the init.",
+   "before": "import i18next from 'i18next'\n\nawait i18next.init({\n  lng: 'cs',\n  fallbackLng: 'en',\n  resources: {\n    en: { translation: en },\n    cs: { translation: cs },\n  },\n})\n\ni18next.t('files', { count: 3 })   // '3 soubory'\nawait i18next.changeLanguage('en')",
+   "after": "import { createI18n } from '@pyreon/i18n'\n\nconst i18n = createI18n({\n  locale: 'cs',\n  fallbackLocale: 'en',\n  messages: { en, cs },   // the same objects\n})\n\ni18n.t('files', { count: 3 })  // '3 soubory'\ni18n.locale.set('en')          // synchronous, and reactive",
+   "note": "Checked with the same `en`/`cs` objects in both libraries: interpolation, `_one`/`_few`/`_other`, `context`, nested keys, `$t()` nesting and fallback give the same strings. Not supported: ordinal plurals, the `{{- raw}}` prefix and inline format options such as `number(minimumFractionDigits: 2)` (use a named format). i18next HTML-escapes values by default; Pyreon writes text into text nodes, so it does not."
+  },
+  {
+   "lib": "react-intl",
+   "title": "ICU plurals become suffix keys.",
+   "before": "import { IntlProvider, useIntl } from 'react-intl'\n\nconst messages = {\n  files: '{count, plural, one {# file} other {# files}}',\n}\n\nfunction Files({ count }: { count: number }) {\n  const intl = useIntl()\n  return <p>{intl.formatMessage({ id: 'files' }, { count })}</p>\n}\n\n<IntlProvider locale=\"en\" messages={messages}>\n  <Files count={3} />\n</IntlProvider>",
+   "after": "import { createI18n, I18nProvider, useI18n } from '@pyreon/i18n'\n\nconst i18n = createI18n({\n  locale: 'en',\n  messages: {\n    en: { files_one: '{{count}} file', files_other: '{{count}} files' },\n  },\n})\n\nconst Files = (props: { count: number }) => {\n  const { t } = useI18n()\n  return <p>{t('files', { count: props.count })}</p>\n}\n\n<I18nProvider value={i18n}>\n  <Files count={3} />\n</I18nProvider>",
+   "note": "Pyreon does not parse ICU MessageFormat: each plural branch becomes its own `_one`/`_other` key, and `{name}` becomes `{{name}}`. Numbers, dates, relative time and lists go through the same `Intl` formatters as `formatNumber` and friends, as `i18n.n()`, `d()` and `rt()`, with `l()` for lists in the next release."
+  }
+ ],
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Change the language, then the count.",
+  "text": "Pick Czech or Polish and try 1, 2, 5, 22 and 1.5. The plural category comes from `Intl.PluralRules`, the same call the package makes, and the price, date and relative time re-format for the new locale.",
+  "component": "DemoI18n",
+  "reference": "pkg-i18n.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"ui\">\n    <div class=\"row2\"><div><label for=\"i-loc\">Language</label><select id=\"i-loc\"><option value=\"en\">English</option><option value=\"cs\" selected>Čeština</option><option value=\"pl\">Polski</option><option value=\"de\">Deutsch</option><option value=\"ar\">العربية</option></select></div>\n    <div><label for=\"i-n\">Files</label><input id=\"i-n\" type=\"number\" min=\"0\" max=\"1000\" value=\"3\"></div></div>\n    <div class=\"hint\">Try 0, 1, 2, 5, 22 and 1.5</div>\n    <div style=\"margin-top:6px;font-size:22px;font-weight:600\" id=\"i-out\" aria-live=\"polite\"></div>\n    <div style=\"margin-top:6px;font-size:13px;color:#5E5A69\">plural category: <b id=\"i-cat\"></b></div>\n  </div>\n  <div class=\"card\"><div class=\"in\">\n    <div class=\"meter\">\n      <div><span>n(1234.5, currency)</span><b id=\"i-cur\" style=\"font-size:16px\"></b></div>\n      <div><span>d(now, date)</span><b id=\"i-date\" style=\"font-size:16px\"></b></div>\n      <div><span>rt(-3, day)</span><b id=\"i-rt\" style=\"font-size:16px\"></b></div>\n      <div><span>n(0.42, percent)</span><b id=\"i-pct\" style=\"font-size:16px\"></b></div>\n    </div>\n  </div></div>\n</div>",
+  "referenceCss": "",
+  "referenceJs": "(function(){var $=function(i){return document.getElementById(i)};var M={en:{one:'{{count}} file',other:'{{count}} files',zero:'No files'},cs:{one:'{{count}} soubor',few:'{{count}} soubory',many:'{{count}} souboru',other:'{{count}} souborů',zero:'Žádné soubory'},pl:{one:'{{count}} plik',few:'{{count}} pliki',many:'{{count}} plików',other:'{{count}} pliku',zero:'Brak plików'},de:{one:'{{count}} Datei',other:'{{count}} Dateien',zero:'Keine Dateien'},ar:{zero:'لا ملفات',one:'ملف واحد',two:'ملفان',few:'{{count}} ملفات',many:'{{count}} ملفًا',other:'{{count}} ملف'}};var CUR={en:'USD',cs:'CZK',pl:'PLN',de:'EUR',ar:'SAR'};\nfunction up(){var l=$('i-loc').value,n=parseFloat($('i-n').value)||0;var cat=new Intl.PluralRules(l).select(n);var key=(n===0&&M[l].zero)?'zero':(M[l][cat]?cat:'other');var nf=new Intl.NumberFormat(l).format(n);$('i-out').textContent=M[l][key].replace('{{count}}',nf);$('i-out').dir=l==='ar'?'rtl':'ltr';$('i-cat').textContent=cat+(key==='zero'&&cat!=='zero'?' (explicit _zero)':'');$('i-cur').textContent=new Intl.NumberFormat(l,{style:'currency',currency:CUR[l]}).format(1234.5);$('i-date').textContent=new Intl.DateTimeFormat(l,{dateStyle:'long'}).format(new Date());$('i-rt').textContent=new Intl.RelativeTimeFormat(l,{numeric:'auto'}).format(-3,'day');$('i-pct').textContent=new Intl.NumberFormat(l,{style:'percent'}).format(.42)}\n$('i-loc').onchange=up;$('i-n').oninput=up;up();})();"
+ },
+ "features": {
+  "title": "The whole translation layer, in one instance.",
+  "items": [
+   {
+    "name": "`t(key, values)`",
+    "text": "Reactive: read it in JSX and the text node updates when the locale or the messages change."
+   },
+   {
+    "name": "CLDR plurals",
+    "text": "`_zero` through `_many` per language, plus an explicit `_zero` for \"No files\" and your own `pluralRules`."
+   },
+   {
+    "name": "`n()`, `d()`, `rt()`",
+    "text": "Numbers, currency, dates and relative time, with each `Intl` formatter cached per locale and options."
+   },
+   {
+    "name": "Inline format specs",
+    "text": "`{{when, date}}`, `{{n, relativetime, day}}` and your own named formats, such as `{{amount, currency}}`, inside the message."
+   },
+   {
+    "name": "`l()` and `dir()`",
+    "text": "Lists in code or as `{{people, list}}`, and `rtl` for Arabic or Hebrew, ready for `<html dir>`.",
+    "status": "next release"
+   },
+   {
+    "name": "Context and defaults",
+    "text": "`{ context: 'female' }` tries `friend_female` first; `defaultValue` covers a key nobody translated yet."
+   },
+   {
+    "name": "Namespaces on demand",
+    "text": "`t('checkout:title')` with a `loader`; two concurrent loads of one namespace make one request."
+   },
+   {
+    "name": "`<Trans>`",
+    "text": "Puts JSX inside a translation: `<bold>rich</bold>` maps to your component, with `t` read from the provider."
+   },
+   {
+    "name": "Typed keys, opt in",
+    "text": "`createI18n<typeof en>()` turns `t('nav.hoem')` into a compile error."
+   },
+   {
+    "name": "Devtools subpath",
+    "text": "`@pyreon/i18n/devtools` lists live instances and their loaded locales, held by `WeakRef`."
+   }
+  ]
+ },
+ "recipes": [
+  {
+   "title": "Load a namespace when the route needs it",
+   "text": "Ship only the strings the page uses. Concurrent loads of the same namespace share one request, and `t()` updates when it lands.",
+   "code": "const i18n = createI18n({\n  locale: 'de',\n  fallbackLocale: 'en',\n  loader: (locale, ns) =>\n    import(`./locales/${locale}/${ns}.json`).then((m) => m.default),\n})\n\nawait Promise.all([\n  i18n.loadNamespace('checkout'),\n  i18n.loadNamespace('checkout'),   // same promise, no second fetch\n])\n\ni18n.t('checkout:title')               // 'Kasse'\ni18n.t('checkout:items', { count: 2 }) // '2 Artikel'"
+  },
+  {
+   "title": "Translate a receipt email on the server",
+   "text": "The `/core` entry has no JSX. The same dictionaries render in a worker, with currency and date formatted for the reader.",
+   "code": "import { createI18n } from '@pyreon/i18n/core'\n\nconst eur = { style: 'currency', currency: 'EUR' } as const\nconst mail = createI18n({\n  locale: 'en',\n  messages: {\n    en: { receipt: 'Paid {{amount, eur}} on {{when, date}}' },\n    de: { receipt: '{{amount, eur}} bezahlt am {{when, date}}' },\n  },\n  numberFormats: { en: { eur }, de: { eur } },\n})\n\nconst when = new Date(Date.UTC(2026, 10, 11))\nmail.t('receipt', { amount: 42, when })  // 'Paid €42.00 on Nov 11, 2026'\nmail.locale.set('de')\nmail.t('receipt', { amount: 42, when })  // '42,00 € bezahlt am 11.11.2026'"
+  }
+ ],
+ "api": {
+  "title": "Eight runtime exports and one instance.",
+  "groups": [
+   {
+    "name": "create",
+    "items": [
+     "createI18n",
+     "interpolate",
+     "resolvePluralCategory",
+     "parseRichText"
+    ]
+   },
+   {
+    "name": "components",
+    "items": [
+     "I18nProvider",
+     "useI18n",
+     "I18nContext",
+     "Trans"
+    ]
+   },
+   {
+    "name": "on the instance",
+    "items": [
+     "t",
+     "n",
+     "d",
+     "rt",
+     "locale",
+     "loadNamespace",
+     "addMessages",
+     "exists",
+     "isLoading",
+     "loadedNamespaces",
+     "availableLocales"
+    ]
+   },
+   {
+    "name": "entry points",
+    "items": [
+     "@pyreon/i18n",
+     "@pyreon/i18n/core",
+     "@pyreon/i18n/devtools"
+    ]
+   },
+   {
+    "name": "types",
+    "items": [
+     "I18nOptions",
+     "I18nInstance",
+     "TranslationDictionary",
+     "NamespaceLoader",
+     "MessageKeys",
+     "TranslationParams",
+     "TypedTranslationKey"
+    ]
+   },
+   {
+    "name": "next release",
+    "items": [
+     "l",
+     "dir",
+     "TextDirection"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Give each language its own plural keys",
+   "text": "The category is chosen per locale. A Czech dictionary with only `_one` and `_other` falls back to `_other` for 3, which reads wrong. Add `_few` and `_many` where the language has them."
+  },
+  {
+   "title": "Pluralize with `count`",
+   "text": "`count` drives the plural choice; a number passed as `n` or `value` is interpolated but not pluralized. `context` and `defaultValue` are options too, not message variables."
+  },
+  {
+   "title": "Read formatters in reactive code",
+   "text": "`n()`, `d()` and `rt()` read the locale signal. Call them in JSX, a `computed` or an `effect` and they re-format when the language changes."
+  },
+  {
+   "title": "Native plural rules cover 41 locales",
+   "text": "From the next release, iOS and Android ship a CLDR plural table in the runtime: 41 locale tags from `ar` to `zh`, and English-style rules for anything else. On the web it is whatever `Intl.PluralRules` knows."
+  }
+ ],
+ "faq": [
+  {
+   "q": "Can I keep my i18next JSON files?",
+   "a": "For the common syntax, yes: `{{name}}`, `_one`/`_other` suffixes, `context`, nested keys, `$t()` and `ns:key` resolve the same way. Ordinal plurals, `{{- raw}}` and inline format options are the gaps."
+  },
+  {
+   "q": "Where does 12× come from?",
+   "a": "The i18n row of the benchmark record: one process per operation and library, bun/JavaScriptCore, one run, i18next 26.5.11 configured with `escapeValue: false` so both libraries produce the same raw string. The date row is flagged: the two libraries pick different default date styles."
+  },
+  {
+   "q": "Does it escape HTML?",
+   "a": "No. Pyreon writes translated text into text nodes, where markup is inert. If you put a translation into `innerHTML`, escape it yourself, or use `<Trans>` for real markup."
+  },
+  {
+   "q": "What happens to a missing key?",
+   "a": "`t()` tries the current locale, then `fallbackLocale`, then `defaultValue`, and finally returns the key itself. `onMissingKey` lets you log it or return something else."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/zero",
+   "category": "framework",
+   "name": "Zero",
+   "text": "Locale-prefixed routes and per-locale pages.",
+   "package": "@pyreon/zero"
+  },
+  {
+   "href": "/products/form",
+   "category": "fundamentals",
+   "name": "Forms",
+   "text": "Translated labels and error messages in every field.",
+   "package": "@pyreon/form"
+  },
+  {
+   "href": "/products/native",
+   "category": "multiplatform",
+   "name": "Native",
+   "text": "The same `t()` and plurals in SwiftUI and Compose.",
+   "package": "Pyreon Native · PMTC"
+  }
+ ],
+ "end": {
+  "title": "Ship the Polish version. Polish speakers will notice.",
+  "cta": "Read the i18n guide"
+ },
+ "benchmarks": {
+  "rival": "vs i18next 26.5.11 · bun/JavaScriptCore, one process per operation and library",
+  "run": "overnight run, one run",
+  "h": "`t()` 12× faster than i18next.",
+  "p": "Every label calls `t()`, so the lookup cost is paid on every screen. i18next runs with `escapeValue: false`, its faster path, so both sides return the same raw string. The record lists no loss and no tie for i18n. The date row compares different default styles, so read it as indicative.",
+  "rows": [
+   {
+    "op": "`t()` lookup",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "12.0×"
+   },
+   {
+    "op": "interpolation",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "5.1×"
+   },
+   {
+    "op": "plural",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "3.6×"
+   },
+   {
+    "op": "number format",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "3.1×"
+   },
+   {
+    "op": "date format",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "2.7×"
+   }
+  ]
+ },
+ "glyphSvg": "<circle cx=\"60\" cy=\"60\" r=\"42\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><path d=\"M18 60 H102\" stroke=\"currentColor\" stroke-width=\"10\"/><circle cx=\"60\" cy=\"60\" r=\"14\" fill=\"url(#eg)\"/>",
+ "sources": [
+  {
+   "claim": "i18n vs i18next: t 12.0×, interpolation 5.1×, plural 3.6×, number 3.1×, date 2.7×; overnight, one run, bun",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §10 i18n row; packages/fundamentals/i18n/bench/i18n-bench.ts"
+  },
+  {
+   "claim": "i18next arm uses escapeValue:false; date op not byte-identical",
+   "path": "packages/fundamentals/i18n/bench/i18n-bench.ts header lines 20-35, 70"
+  },
+  {
+   "claim": "Czech/Polish plural outputs (3 soubory, 5 souborů, 22 pliki, 25 plików); de falls back to en",
+   "path": ".scratch/app/i18n4.ts (run on main)"
+  },
+  {
+   "claim": "Same en/cs objects give identical strings in i18next 26.5.11 for interpolation, plurals, context, nested keys, $t(); ordinal, {{- }} and number(...) differ",
+   "path": ".scratch/app/i18n.ts, .scratch/app/i18n2.ts (run on main)"
+  },
+  {
+   "claim": "Pyreon does not escape interpolated HTML; i18next does by default",
+   "path": ".scratch/app/i18n.ts output; packages/fundamentals/i18n/src/interpolation.ts"
+  },
+  {
+   "claim": "t() in JSX compiles to a reactive text binding",
+   "path": ".scratch/app/c1.tsx via transformJSX → bindPolymorphicText"
+  },
+  {
+   "claim": "locale.set re-runs an effect reading t()",
+   "path": ".scratch/app/i18n.ts effect log [\"3 files\",\"3 soubory\"]"
+  },
+  {
+   "claim": "Namespace loads deduplicated (one fetch for two concurrent loads)",
+   "path": "packages/fundamentals/i18n/src/create-i18n.ts pendingPromises (~l.562); .scratch/app/i18n3.ts"
+  },
+  {
+   "claim": "Loader output is not unwrapped from a module namespace (use .then(m => m.default))",
+   "path": "packages/fundamentals/i18n/src/create-i18n.ts loadNamespace"
+  },
+  {
+   "claim": "/core entry depends only on @pyreon/reactivity, no JSX",
+   "path": "packages/fundamentals/i18n/src/manifest.ts description; src/tests/core-entry.test.ts, backend-import.test.ts"
+  },
+  {
+   "claim": "Native tier service-backend: t(), plurals, locale switching lowered to PyreonI18n and asserted on device",
+   "path": "packages/fundamentals/i18n/src/manifest.ts multiplatform; examples/native-counter-ios/iosUITests/PyreonCounterUITests.swift"
+  },
+  {
+   "claim": "Native plural table covers en de fr es it pt nl cs sk pl ru uk ar he ja zh ko tr",
+   "path": "packages/fundamentals/i18n/src/tests/native-plural-cases.test.ts \"covers every language the docs promise\""
+  },
+  {
+   "claim": "Typed keys: createI18n<typeof en>() makes a typo a compile error",
+   "path": "packages/fundamentals/i18n/src/tests/message-keys.types.test.ts l.125"
+  },
+  {
+   "claim": "count is the reserved pluralization key",
+   "path": "packages/fundamentals/i18n/src/manifest.ts createI18n mistakes"
+  },
+  {
+   "claim": "Runtime exports: createI18n, interpolate, resolvePluralCategory, parseRichText, Trans, I18nProvider, useI18n, I18nContext",
+   "path": "packages/fundamentals/i18n/src/index.ts"
+  },
+  {
+   "claim": "react-intl sample written from react-intl docs; react-intl is not installed in the checkout, so it was not executed",
+   "path": "n/a"
+  }
+ ]
+}

@@ -1,0 +1,377 @@
+{
+ "id": "editor",
+ "route": "/products/editor",
+ "name": "Editors",
+ "package": "@pyreon/rich-text · @pyreon/code",
+ "category": "fundamentals · editors",
+ "hero": {
+  "title": "Delete the useEffect that keeps your editor in sync.",
+  "lede": "TipTap for rich text and CodeMirror 6 for code, wrapped so the document is a writable signal. Toolbars, word counts and save buttons read it directly, and a write from outside lands in the editor without echoing back.",
+  "install": "bun add @pyreon/rich-text @pyreon/code",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "rich text",
+    "value": "TipTap 3 on ProseMirror<small>MIT. The engine loads when `<RichText>` first renders.</small>"
+   },
+   {
+    "key": "code",
+    "value": "CodeMirror 6<small>Plus a diff editor, tabbed files and a minimap.</small>"
+   },
+   {
+    "key": "languages",
+    "value": "19 grammars, loaded on first use<small>JS, TS, JSX, TSX and JSON by default; 14 more with `@pyreon/code/languages-all`.</small>"
+   },
+   {
+    "key": "iOS and Android",
+    "value": "{dot:warn}hosted in a WebView<small>Next release, experimental. Same TipTap and CodeMirror inside.</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "7",
+   "label": "computed values on every rich-text editor: html, text, isEmpty, characterCount, wordCount, canUndo, canRedo",
+   "source": "packages/fundamentals/rich-text/src/types.ts (RichTextEditor)"
+  },
+  {
+   "stat": "19",
+   "label": "code grammars, each fetched the first time it is used",
+   "source": "packages/fundamentals/code/src/languages.ts + languages-all.ts (getAvailableLanguages() returns 20 ids incl. plain)"
+  },
+  {
+   "stat": "3",
+   "label": "code editors in the box: CodeEditor, DiffEditor, TabbedEditor",
+   "source": "packages/fundamentals/code/src/index.ts"
+  }
+ ],
+ "why": {
+  "title": "The editor work you would otherwise write by hand.",
+  "items": [
+   {
+    "title": "The document is a signal",
+    "text": "`editor.json` (rich text) and `editor.value` (code) are writable signals. Read them anywhere and the UI follows; call `.set()` and the editor updates."
+   },
+   {
+    "title": "One binding, no echo",
+    "text": "`bindRichTextToSignal` and `bindEditorToSignal` keep an editor and your store in step both ways with built-in loop guards. The code binding takes `serialize` and `parse`, so a JSON editor can drive a typed object and keep the last valid value while the user types."
+   },
+   {
+    "title": "Counts before the editor loads",
+    "text": "`wordCount`, `characterCount` and `isEmpty` derive from the document itself, so they are right before TipTap mounts. Moving the cursor does not re-run them; `isActive('bold')` still follows the selection."
+   },
+   {
+    "title": "The same editors in your native app",
+    "text": "`<CodeWebView>` and `<RichTextWebView>` lower to a native WebView hosting the same CodeMirror and TipTap, and `pyreon-native assets` builds the page for you. A round trip both ways is covered by the iOS and Android device tests.",
+    "status": "next release"
+   }
+  ]
+ },
+ "difference": {
+  "title": "Same TipTap. The sync code goes away.",
+  "before": {
+   "label": "React + @tiptap/react",
+   "caption": "An update handler, an effect that pushes outside changes back in without echoing, a JSON compare, and a selector hook for toolbar state.",
+   "code": "import { useEffect } from 'react'\nimport { EditorContent, useEditor, useEditorState, type JSONContent } from '@tiptap/react'\nimport StarterKit from '@tiptap/starter-kit'\n\nfunction PostEditor({ draft, setDraft }: { draft: JSONContent; setDraft: (d: JSONContent) => void }) {\n  const editor = useEditor({\n    extensions: [StarterKit],\n    content: draft,\n    immediatelyRender: false,\n    onUpdate: ({ editor }) => setDraft(editor.getJSON()),\n  })\n\n  // Push outside changes in, without echoing our own edits back.\n  useEffect(() => {\n    if (!editor || JSON.stringify(editor.getJSON()) === JSON.stringify(draft)) return\n    editor.commands.setContent(draft, { emitUpdate: false })\n  }, [editor, draft])\n\n  const ui = useEditorState({\n    editor,\n    selector: ({ editor }) => ({\n      bold: editor?.isActive('bold') ?? false,\n      words: editor?.getText().split(/\\s+/).filter(Boolean).length ?? 0,\n    }),\n  })\n\n  return (\n    <>\n      <button\n        className={ui?.bold ? 'on' : ''}\n        onClick={() => editor?.chain().focus().toggleBold().run()}\n      >B</button>\n      <EditorContent editor={editor} />\n      <p>{ui?.words ?? 0} words</p>\n    </>\n  )\n}"
+  },
+  "after": {
+   "label": "with @pyreon/rich-text",
+   "caption": "The component runs once. The binding handles both directions; the toolbar and the counter read signals.",
+   "code": "import { onUnmount } from '@pyreon/core'\nimport { signal } from '@pyreon/reactivity'\nimport { bindRichTextToSignal, createRichTextEditor, RichText, type JSONContent } from '@pyreon/rich-text'\n\nconst draft = signal<JSONContent>({ type: 'doc', content: [] })\n\nfunction PostEditor() {\n  const editor = createRichTextEditor({ ariaLabel: 'Post body' })\n  const binding = bindRichTextToSignal({ editor, signal: draft })\n  onUnmount(() => { binding.dispose(); editor.dispose() })\n\n  return (\n    <>\n      <button\n        class={() => (editor.isActive('bold') ? 'on' : '')}\n        onClick={() => editor.chain()?.focus().toggleBold().run()}\n      >B</button>\n      <RichText instance={editor} />\n      <p>{() => editor.wordCount()} words</p>\n    </>\n  )\n}"
+  }
+ },
+ "comingFrom": [
+  {
+   "lib": "@uiw/react-codemirror",
+   "title": "A JSON config editor that keeps the last valid value",
+   "before": "import { useCallback, useState } from 'react'\nimport CodeMirror from '@uiw/react-codemirror'\nimport { json } from '@codemirror/lang-json'\n\nfunction ConfigEditor() {\n  const [config, setConfig] = useState({ host: 'localhost', port: 3000 })\n  const [text, setText] = useState(() => JSON.stringify(config, null, 2))\n  const [error, setError] = useState('')\n\n  const onChange = useCallback((value: string) => {\n    setText(value)\n    try {\n      setConfig(JSON.parse(value))\n      setError('')\n    } catch (e) {\n      setError((e as Error).message)\n    }\n  }, [])\n\n  return (\n    <>\n      <CodeMirror value={text} height=\"300px\" theme=\"dark\" extensions={[json()]} onChange={onChange} />\n      <p role=\"alert\">{error}</p>\n    </>\n  )\n}",
+   "after": "import { onUnmount } from '@pyreon/core'\nimport { signal } from '@pyreon/reactivity'\nimport { CodeEditor, createEditor, useEditorSignal } from '@pyreon/code'\n\nconst config = signal({ host: 'localhost', port: 3000 })\nconst error = signal('')\n\nfunction ConfigEditor() {\n  const editor = createEditor({ language: 'json', theme: 'dark' })\n  useEditorSignal({\n    editor,\n    signal: config,\n    serialize: (v) => JSON.stringify(v, null, 2),\n    parse: (text) => {\n      const next = JSON.parse(text)\n      error.set('')\n      return next\n    },\n    onParseError: (e) => error.set(e.message),\n  })\n  onUnmount(() => editor.dispose()) // CodeEditor does not dispose the instance it is handed\n\n  return (\n    <>\n      <CodeEditor instance={editor} style=\"height: 300px\" />\n      <p role=\"alert\">{error}</p>\n    </>\n  )\n}",
+   "note": "Both sides run CodeMirror 6. `useEditorSignal` disposes the binding when the component unmounts. Keep `serialize` deterministic: valid input is re-serialized, so formatting follows `JSON.stringify(v, null, 2)`."
+  },
+  {
+   "lib": "@tiptap/react",
+   "title": "useEditor + useEditorState become one instance",
+   "before": "import { EditorContent, useEditor, useEditorState } from '@tiptap/react'\nimport StarterKit from '@tiptap/starter-kit'\nimport { Placeholder } from '@tiptap/extensions'\n\nfunction Notes() {\n  const editor = useEditor({\n    extensions: [StarterKit, Placeholder.configure({ placeholder: 'Write a note' })],\n    immediatelyRender: false,\n  })\n  const canUndo = useEditorState({\n    editor,\n    selector: ({ editor }) => editor?.can().undo() ?? false,\n  })\n\n  return (\n    <>\n      <button disabled={!canUndo} onClick={() => editor?.chain().focus().undo().run()}>Undo</button>\n      <EditorContent editor={editor} />\n    </>\n  )\n}",
+   "after": "import { onUnmount } from '@pyreon/core'\nimport { createRichTextEditor, RichText } from '@pyreon/rich-text'\n\nfunction Notes() {\n  const editor = createRichTextEditor({ placeholder: 'Write a note' })\n  onUnmount(() => editor.dispose())\n\n  return (\n    <>\n      <button disabled={() => !editor.canUndo()} onClick={() => editor.undo()}>Undo</button>\n      <RichText instance={editor} />\n    </>\n  )\n}",
+   "note": "Your TipTap extensions carry over through `extensions: [...]`, appended after StarterKit. `placeholder` is built in."
+  }
+ ],
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Type and watch the signals.",
+  "text": "The real @pyreon/rich-text editor. The meters on the right read the editor's own signals, and \"Load from outside\" writes the bound signal to show an external change landing without an echo.",
+  "spec": "DemoEditor mounts `createRichTextEditor({ content, ariaLabel: 'Post body' })` with `<RichText>` on a DemoSurface. Toolbar: Bold, Italic, Bulleted list, Undo, each calling `editor.chain()?.focus()…run()`; Bold has `aria-pressed` from `editor.isActive('bold')`, Undo is disabled from `!editor.canUndo()`. The meter card shows `editor.wordCount()`, `editor.characterCount()`, `editor.isEmpty()` and `editor.isActive('bold')`. A \"Load from outside\" button sets a signal bound with `bindRichTextToSignal`, replacing the document. That signal starts as the same document as `content`: in JSON format the binding applies the signal to the editor first. Dispose binding and editor on unmount.",
+  "component": "DemoEditor",
+  "reference": "pkg-editor.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"ui\" style=\"padding:0;overflow:hidden\">\n    <div class=\"ed-bar\"><button type=\"button\" data-c=\"bold\" aria-label=\"Bold\"><b>B</b></button><button type=\"button\" data-c=\"italic\" aria-label=\"Italic\"><i>I</i></button><button type=\"button\" data-c=\"insertUnorderedList\" aria-label=\"Bulleted list\">• list</button><button type=\"button\" data-c=\"undo\" aria-label=\"Undo\">undo</button></div>\n    <div id=\"ed\" class=\"ed\" contenteditable=\"true\" role=\"textbox\" aria-multiline=\"true\" aria-label=\"Post body\"><p>Pyreon ships its own <b>rich text</b> and code editors.</p><p>Edit this text.</p></div>\n  </div>\n  <div class=\"card\"><div class=\"in\"><div class=\"meter\">\n    <div><span>editor.wordCount()</span><b id=\"ed-w\">0</b></div>\n    <div><span>editor.characterCount()</span><b id=\"ed-c\">0</b></div>\n    <div><span>editor.isEmpty()</span><b id=\"ed-e\" style=\"font-size:16px\">false</b></div>\n    <div><span>editor.isActive('bold')</span><b id=\"ed-b\" style=\"font-size:16px\">false</b></div>\n  </div></div></div>\n</div>",
+  "referenceCss": ".ed-bar{display:flex;gap:4px;padding:8px;border-bottom:1px solid #E6DFD2;background:var(--ivory)}.ed-bar button{height:32px;min-width:36px;padding:0 10px;border:1px solid #D6D0C4;border-radius:6px;background:#fff;cursor:pointer;font:inherit;font-size:13px;color:#14141C}.ed{min-height:230px;padding:20px 22px;outline:none;font-size:15.5px;line-height:1.65}.ed:focus{box-shadow:inset 0 0 0 2px #0A6E89}.ed p{margin:0 0 10px}",
+  "referenceJs": "(function(){var e=document.getElementById('ed');function r(){var t=e.innerText.trim();document.getElementById('ed-w').textContent=t?t.split(/\\s+/).length:0;document.getElementById('ed-c').textContent=t.length;document.getElementById('ed-e').textContent=String(!t);var b=false;try{b=document.queryCommandState('bold')}catch(x){}document.getElementById('ed-b').textContent=String(b)}e.addEventListener('input',r);document.addEventListener('selectionchange',r);document.querySelectorAll('[data-c]').forEach(function(b){b.onmousedown=function(x){x.preventDefault()};b.onclick=function(){e.focus();try{document.execCommand(b.dataset.c)}catch(x){}r()}});r();})();"
+ },
+ "features": {
+  "title": "Two editors, one way of working.",
+  "items": [
+   {
+    "name": "createRichTextEditor",
+    "text": "HTML or ProseMirror JSON in; `json` is a writable signal out."
+   },
+   {
+    "name": "isActive() and chain()",
+    "text": "reactive toolbar state, and every TipTap command."
+   },
+   {
+    "name": "editable as a signal",
+    "text": "flip a live editor to read-only with `editor.editable.set(false)`."
+   },
+   {
+    "name": "Accessible by default",
+    "text": "the content area is a labelled `role=\"textbox\"`; `placeholder` reaches screen readers too."
+   },
+   {
+    "name": "createEditor",
+    "text": "code with signals for value, language, theme, cursor, selection and line count."
+   },
+   {
+    "name": "DiffEditor",
+    "text": "side by side, or inline with accept and reject per change when editable."
+   },
+   {
+    "name": "TabbedEditor",
+    "text": "multi-file editing; each tab keeps its own undo history."
+   },
+   {
+    "name": "Diagnostics and gutters",
+    "text": "`setDiagnostics`, line highlights and gutter markers for linters and debuggers."
+   },
+   {
+    "name": "Minimap, search, folding",
+    "text": "a canvas minimap, the search panel, fold all and unfold all."
+   },
+   {
+    "name": "Vim and Emacs keys",
+    "text": "one flag each, loaded from an optional package only when switched on."
+   }
+  ]
+ },
+ "api": {
+  "title": "Small APIs for both.",
+  "groups": [
+   {
+    "name": "rich text",
+    "items": [
+     "createRichTextEditor",
+     "RichText",
+     "bindRichTextToSignal",
+     "JSONContent"
+    ]
+   },
+   {
+    "name": "code",
+    "items": [
+     "createEditor",
+     "CodeEditor",
+     "DiffEditor",
+     "createTabbedEditor",
+     "TabbedEditor",
+     "bindEditorToSignal",
+     "useEditorSignal"
+    ]
+   },
+   {
+    "name": "languages and themes",
+    "items": [
+     "loadLanguage",
+     "registerLanguage",
+     "getAvailableLanguages",
+     "@pyreon/code/languages-all",
+     "darkTheme",
+     "lightTheme",
+     "resolveTheme"
+    ]
+   },
+   {
+    "name": "extras",
+    "items": [
+     "minimapExtension",
+     "openSearchPanel"
+    ]
+   },
+   {
+    "name": "native hosting · /webview",
+    "items": [
+     "CodeWebView",
+     "buildCodeHostHtml",
+     "RichTextWebView",
+     "buildRichTextHostHtml"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "You own the lifecycle",
+   "text": "An editor you create is yours to dispose. Call `editor.dispose()` in `onUnmount`, and `binding.dispose()` too, unless you bind with `useEditorSignal`, which disposes the binding for you."
+  },
+  {
+   "title": "Install the grammars you use",
+   "text": "Each language is an optional peer (`@codemirror/lang-*`). Install the ones you load; the rest never reach your bundle."
+  },
+  {
+   "title": "CodeMirror itself is not lazy",
+   "text": "Grammars and TipTap load on demand, but the CodeMirror core ships in the chunk that imports `@pyreon/code`. Put a code-heavy page behind `lazy()` or a route split."
+  },
+  {
+   "title": "On native it is a web editor",
+   "text": "The hosted editors are a WebView: expect WebView start-up time and web text editing, not a SwiftUI or Compose text field. Rich text hosts StarterKit; custom extensions need your own `html` page."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/form",
+   "category": "fundamentals",
+   "name": "Forms",
+   "text": "A field's `value` is a signal, so an editor binds straight to it.",
+   "package": "@pyreon/form"
+  },
+  {
+   "href": "/products/sync",
+   "category": "fundamentals",
+   "name": "Sync",
+   "text": "Yjs documents, transports and presence for local-first apps.",
+   "package": "@pyreon/sync"
+  },
+  {
+   "href": "/products/native",
+   "category": "multiplatform",
+   "name": "Native",
+   "text": "Where the hosted editors run on iOS and Android.",
+   "package": "Pyreon Native · PMTC"
+  }
+ ],
+ "recipes": [
+  {
+   "title": "A composer that autosaves",
+   "text": "Bind the editor to an HTML string, save a second after the last keystroke, and show a character budget and an Undo that knows when it has nothing to undo.",
+   "code": "import { onUnmount } from '@pyreon/core'\nimport { effect, signal } from '@pyreon/reactivity'\nimport { bindRichTextToSignal, createRichTextEditor, RichText } from '@pyreon/rich-text'\n\ndeclare function saveDraft(html: string): Promise<void>\n\nconst body = signal('<p>Start writing…</p>')\n\nfunction Composer() {\n  const editor = createRichTextEditor({ content: body.peek(), placeholder: 'Write something', ariaLabel: 'Message' })\n  const binding = bindRichTextToSignal({ editor, signal: body, format: 'html' })\n  let timer: ReturnType<typeof setTimeout> | undefined\n  const autosave = effect(() => {\n    const html = body()\n    clearTimeout(timer)\n    timer = setTimeout(() => void saveDraft(html), 1000)\n  })\n  onUnmount(() => { clearTimeout(timer); autosave.dispose(); binding.dispose(); editor.dispose() })\n\n  return (\n    <>\n      <RichText instance={editor} style=\"min-height: 12rem\" />\n      <footer>\n        {() => editor.characterCount()} / 280\n        <button disabled={() => !editor.canUndo()} onClick={() => editor.undo()}>Undo</button>\n      </footer>\n    </>\n  )\n}"
+  },
+  {
+   "title": "Review a change before saving",
+   "text": "An inline diff of two signals. With `readOnly={false}` each change gets accept and reject controls.",
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { DiffEditor } from '@pyreon/code'\n\nconst saved = signal('export const limit = 10\\n')\nconst edited = signal('export const limit = 25\\nexport const retries = 3\\n')\n\nfunction Review() {\n  return <DiffEditor original={saved} modified={edited} language=\"typescript\" inline readOnly={false} style=\"height: 240px\" />\n}"
+  },
+  {
+   "title": "The same editors in a native screen",
+   "text": "Two hosted editors in one component. `pyreon-native assets` builds the pages from the CodeMirror and TipTap your app has installed.",
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { CodeWebView } from '@pyreon/code/webview'\nimport { RichTextWebView } from '@pyreon/rich-text/webview'\n\nconst code = signal('let total = 0')\nconst note = signal('<p>Hello from the same source</p>')\nconst failure = signal('')\n\nconst Editors = () => (\n  <>\n    <CodeWebView\n      state={() => ({ value: code(), language: 'typescript', readOnly: false })}\n      onChange={(v) => code.set(v)}\n      onError={(m) => failure.set(m)}\n    />\n    <RichTextWebView\n      state={() => ({ content: note(), editable: true })}\n      onChange={(text) => note.set(text)}\n      onError={(m) => failure.set(m)}\n      grow\n    />\n  </>\n)",
+   "status": "next release"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Did you write your own editor engine?",
+   "a": "No. Rich text is TipTap 3 on ProseMirror and code is CodeMirror 6, both MIT. Pyreon adds the signals, the bindings, the components and the native hosting. TipTap's paid Pro modules are not included."
+  },
+  {
+   "q": "Can I keep my TipTap extensions?",
+   "a": "Yes. Pass them in `extensions`; they are appended after StarterKit, or set `starterKit: false` and bring the whole schema. `editor.view()` gives you the TipTap `Editor` once mounted."
+  },
+  {
+   "q": "How big is the code editor?",
+   "a": "In our bundle run the core editor was 131.0 KB gzipped against 126.4 KB for `@uiw/react-codemirror`: the same CodeMirror 6, with us 4% heavier. Grammars come on top, one at a time."
+  },
+  {
+   "q": "Is real-time collaboration built in?",
+   "a": "Not as a packaged integration. The pattern is TipTap's collaboration extension over a Yjs document, with `createYjsDoc` and `syncedAwareness` from `@pyreon/sync/yjs` for the document, transport and presence. You wire it; we do not test it end to end yet."
+  },
+  {
+   "q": "What changes on iOS and Android?",
+   "a": "The editor runs in a native WebView, and `<RichTextWebView>`'s `onChange` receives the TipTap JSON as a string (a native handler cannot hold the object). On the web, `JSON.parse` it if you want the object. This lands in the next release and native targets are experimental."
+  }
+ ],
+ "end": {
+  "title": "Two real editors. Zero sync effects.",
+  "cta": "Read the editor guide"
+ },
+ "benchmarks": {
+  "rival": "vs @uiw/react-codemirror (both wrap CodeMirror 6)",
+  "run": "overnight run, one run",
+  "h": "Same engine, about the same weight.",
+  "p": "Both wrap CodeMirror 6, so the size is mostly CodeMirror. We came out 4% heavier and print it. The Monaco row still fails to bundle, so there is no Monaco number here.",
+  "rows": [
+   {
+    "op": "core editor bundle (gz)",
+    "pyreon": 131,
+    "rival": 126.4,
+    "unit": "KB",
+    "verdict": "loss",
+    "label": "4% larger"
+   }
+  ]
+ },
+ "glyphSvg": "<path d=\"M18 28 H102 M18 52 H86 M18 76 H64\" stroke=\"currentColor\" stroke-width=\"10\" stroke-linecap=\"square\"/><path d=\"M80 66 V104\" stroke=\"currentColor\" stroke-width=\"10\"/><circle cx=\"96\" cy=\"96\" r=\"12\" fill=\"url(#eg)\"/>",
+ "sources": [
+  {
+   "claim": "rich-text wraps TipTap (@tiptap/core, starter-kit ^3.32) and imports it dynamically on mount",
+   "path": "packages/fundamentals/rich-text/package.json; src/editor.ts:368-371"
+  },
+  {
+   "claim": "@pyreon/code is built on CodeMirror 6 and imports it statically (not lazy)",
+   "path": "packages/fundamentals/code/package.json; src/editor.ts:1-54"
+  },
+  {
+   "claim": "19 grammars: 5 registered by default (+plain), 14 via languages-all; all @codemirror/lang-* are optional peers",
+   "path": "packages/fundamentals/code/src/languages.ts, src/languages-all.ts, package.json peerDependenciesMeta; ran getAvailableLanguages(): 6 before, 20 after importing languages-all"
+  },
+  {
+   "claim": "json/value writable signals; 7 rich-text computeds; code cursor/selection/lineCount computeds",
+   "path": "packages/fundamentals/rich-text/src/types.ts; packages/fundamentals/code/src/types.ts (EditorInstance)"
+  },
+  {
+   "claim": "bindRichTextToSignal takes an options object { editor, signal, format }",
+   "path": "packages/fundamentals/rich-text/src/bind-signal.ts:48"
+  },
+  {
+   "claim": "bindEditorToSignal: no infinite loop, parse failure keeps last valid value, onParseError",
+   "path": "packages/fundamentals/code/src/tests/bind-signal.test.ts (rapid bidirectional changes terminate; parse failure leaves external state at last valid value); ran scratch cd1.ts"
+  },
+  {
+   "claim": "counts derive from document JSON before mount; content computeds ignore selection moves",
+   "path": "packages/fundamentals/rich-text/src/tests/rich-text.test.ts (derives text / counts / isEmpty from JSON content BEFORE mount); CHANGELOG 0.52 docVersion/selectionVersion split; ran scratch rt1.ts (HTML content: 6 words pre-mount)"
+  },
+  {
+   "claim": "native hosting via CodeWebView/RichTextWebView is unreleased",
+   "path": ".changeset/editors-native-webview-hosting.md, .changeset/webview-chrome-and-grow.md"
+  },
+  {
+   "claim": "hosted editors round trip device-tested",
+   "path": "examples/native-tasks-ios/iosUITests/PyreonTasksUITests.swift test_hostedEditorsRoundTrip; examples/native-tasks-android/.../TasksAppInstrumentedTest.kt hostedEditorsRoundTrip"
+  },
+  {
+   "claim": "rich-text onChange on native receives a JSON string; StarterKit only on native",
+   "path": ".changeset/editors-native-webview-hosting.md; rich-text/src/manifest.ts nativeFrontend"
+  },
+  {
+   "claim": "DiffEditor inline mode with accept/reject when not readOnly",
+   "path": "packages/fundamentals/code/src/types.ts DiffEditorProps.inline"
+  },
+  {
+   "claim": "tabbed editor keeps per-tab undo history; vim/emacs from optional @replit packages",
+   "path": "packages/fundamentals/code/CHANGELOG.md 0.52.0 (#3659); src/editor.ts:818"
+  },
+  {
+   "claim": "code bundle 131.0 vs 126.4 KB gz; Monaco row fails",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §7 and §15"
+  },
+  {
+   "claim": "collaboration is guidance only, no integration code or tests",
+   "path": "rich-text/src/manifest.ts (Collaboration note); grep of packages/fundamentals/sync/src finds no tiptap/codemirror binding"
+  },
+  {
+   "claim": "Pyreon samples verified",
+   "path": ".scratch/tools/editor-document/{ed-after,code-after,notes-after,recipes-ed,native-ed}.tsx: tsc --noEmit against checkout types, transformJSX (no warnings), MCP validate (no issues)"
+  },
+  {
+   "claim": "Rival samples verified",
+   "path": ".scratch/tools/editor-document/react/*.tsx: tsc strict against @tiptap/react 3.32.0, @tiptap/starter-kit 3.33.0, @tiptap/extensions 3.33.0, @uiw/react-codemirror 4.25.12, @types/react 19.3 from the checkout store (not run in a browser)"
+  }
+ ]
+}

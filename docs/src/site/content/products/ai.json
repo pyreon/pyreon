@@ -1,0 +1,400 @@
+{
+ "id": "ai",
+ "route": "/products/ai",
+ "name": "AI and MCP",
+ "package": "@pyreon/mcp",
+ "category": "tools · AI-assisted development",
+ "hero": {
+  "title": "Your assistant learned React. This teaches it Pyreon.",
+  "lede": "An MCP server gives Claude Code, Cursor, Windsurf or any MCP client 24 tools: the real API from each package's manifest, the compiler's verdict on a snippet, and your own routes and components. In the editor, the Reactivity Lens marks each JSX expression `live` or `static` while you type.",
+  "install": "bun add -D @pyreon/mcp",
+  "ctaShort": "Add to your editor",
+  "facts": [
+   {
+    "key": "tools",
+    "value": "24<small>counted from the server's own `tools/list`</small>"
+   },
+   {
+    "key": "checks",
+    "value": "41 detector codes<small>19 React habits · 20 Pyreon mistakes · 2 native hazards</small>"
+   },
+   {
+    "key": "in the editor",
+    "value": "Reactivity Lens<small>`live`, `live·prop`, `live·attr`, `static`, `hoisted` inlay hints</small>"
+   },
+   {
+    "key": "for models",
+    "value": "`llms.txt` + `llms-full.txt`<small>generated from 58 package manifests</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "Stop correcting your assistant.",
+  "items": [
+   {
+    "title": "The compiler grades the snippet",
+    "text": "`explain_reactivity` runs the analysis the JSX transform uses and marks each expression live, baked once, or a footgun such as `props-destructured-body`."
+   },
+   {
+    "title": "The API from the source",
+    "text": "`get_api` answers from each package's manifest: signature, usage and common mistakes. \"`count.value` does not exist. Use `count()`\" comes back with the answer."
+   },
+   {
+    "title": "React habits caught by code",
+    "text": "`validate` returns each finding with code, line, the text as written, the fix and an auto-fixable flag. `className`, `useState` and `.map()` in JSX all have codes."
+   },
+   {
+    "title": "It reads your project",
+    "text": "`get_routes`, `get_components` and `get_content_collection` read your app. `get_atlas_catalog`, `get_api_client` and `get_dependency_fabric` read Atlas, Lathe and Loom output."
+   }
+  ]
+ },
+ "difference": {
+  "title": "What it writes from memory, and what the server tells it.",
+  "before": {
+   "label": "from memory",
+   "caption": "Plausible, idiomatic, and React. It fails in a Pyreon app before it renders.",
+   "code": "import { useState, useEffect } from 'react'\n\nexport function Counter({ start }: { start: number }) {\n  const [count, setCount] = useState(start)\n  useEffect(() => { document.title = String(count) }, [count])\n  return <button className=\"btn\" onClick={() => setCount(count + 1)}>{count}</button>\n}"
+  },
+  "after": {
+   "label": "validate",
+   "caption": "Real output, trimmed. The assistant gets a line number and a fix for each habit, before you see the code.",
+   "code": "validate(Counter.tsx) → Found 5 issues:\n\n1. react-import (line 1)          Auto-fixable: yes\n   Fix: import { ... } from \"@pyreon/core\"\n2. props-destructured (line 3)    Auto-fixable: no\n   Fix: (props: Props) => /* read props.x directly */\n3. use-state (line 4)             Auto-fixable: yes\n   Fix: count = signal(start)\n4. use-effect-deps (line 5)       Auto-fixable: yes\n   Fix: effect(() => { /* reads are auto-tracked */ })\n5. class-name-prop (line 6)       Auto-fixable: yes\n   Fix: class=\"btn\""
+  }
+ },
+ "extraSectionsHtml": "<section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">all 24 tools</div><h2>Six jobs your assistant can now do properly.</h2></div><div class=\"p-api\"><div><h4>discover · 5</h4><div class=\"chips\"><span>mcp_overview</span><span>get_api</span><span>get_pattern</span><span>get_anti_patterns</span><span>get_changelog</span></div></div><div><h4>check code · 4</h4><div class=\"chips\"><span>validate</span><span>explain_reactivity</span><span>diagnose</span><span>explain_error</span></div></div><div><h4>rewrite code · 2</h4><div class=\"chips\"><span>migrate_react</span><span>migrate_pyreon</span></div></div><div><h4>read your project · 5</h4><div class=\"chips\"><span>get_routes</span><span>get_components</span><span>get_content_collection</span><span>get_content_entry</span><span>get_dependency_fabric</span></div></div><div><h4>audit · 3</h4><div class=\"chips\"><span>audit_test_environment</span><span>audit_islands</span><span>get_browser_smoke_status</span></div></div><div><h4>components and APIs · 5</h4><div class=\"chips\"><span>get_atlas_catalog</span><span>get_atlas_component</span><span>get_api_client</span><span>get_api_operation</span><span>explain_api_diff</span></div></div></div></div></section><section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">beyond the server</div><h2>Built for machines to read.</h2></div><div class=\"p-inside c3\"><div class=\"card\"><div class=\"in\"><span class=\"pk\">Reactivity Lens</span><b>in your editor</b><p>Inlay hints from <code>pyreon-lint --lsp</code>: <code>live</code> where an expression updates, <code>static</code> where it was read once. Footguns arrive as warnings.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">pyreon check</span><b>before you commit</b><p>The compiler's React-habit and Pyreon-misuse detectors, over the files you changed. Prints each fix, exits 1 on any finding.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">llms.txt</span><b>for any model</b><p><code>llms.txt</code> and <code>llms-full.txt</code> are generated from every package manifest, and the docs build publishes both at the site root.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">create-zero --ai</span><b>at scaffold time</b><p><code>--ai mcp,claude,cursor,copilot,agents</code> writes <code>.mcp.json</code>, <code>CLAUDE.md</code>, Cursor rules, Copilot instructions or <code>AGENTS.md</code>.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">pyreon context</span><b>a project snapshot</b><p>Writes <code>.pyreon/context.json</code>: components with their props and signal names, routes and islands.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">your own llms.txt</span><b>for your docs</b><p><code>@pyreon/zero-content</code> emits <code>dist/llms.txt</code> for your site when you set <code>seo.llms</code>.</p></div></div></div></div></section>",
+ "demo": {
+  "title": "Watch the tools answer.",
+  "text": "Pick a question. Each answer is real output from the server on this snippet, recorded over stdio and trimmed to fit.",
+  "component": "DemoAi",
+  "reference": "pkg-ai.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"card\"><div class=\"in\">\n    <span class=\"label\">ask</span>\n    <div class=\"ai-qs\" id=\"ai-q\"><button type=\"button\" aria-pressed=\"true\">Why doesn't my label update?</button><button type=\"button\">Is this list right?</button><button type=\"button\">Why doesn't the button count?</button><button type=\"button\">How do I write to a signal?</button></div>\n  </div></div>\n  <div class=\"card\"><div class=\"in\"><span class=\"label\">tool calls</span><div class=\"logbox\" id=\"ai-log\"></div></div></div>\n</div>",
+  "referenceCss": ".ai-qs{display:grid;gap:8px;margin-top:12px}.ai-qs button{text-align:left;padding:14px 16px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--mist);font:inherit;font-size:14.5px;cursor:pointer}.ai-qs button[aria-pressed=\"true\"]{border-color:rgba(255,94,26,.6);color:var(--ivory);background:rgba(255,94,26,.06)}\n.logbox{font-family:var(--mono);font-size:12px;line-height:1.85;color:var(--mist);min-height:240px}.logbox div{border-bottom:1px solid var(--line);padding:3px 0;white-space:pre-wrap}.logbox .ok{color:var(--ok)}.logbox .tl{color:var(--accent-2)}.logbox .dm{color:var(--fog)}",
+  "referenceJs": "(function(){var S={\"Why doesn't my label update?\": [[\"tl\", \"→ explain_reactivity(Counter.tsx)\"], [\"dm\", \"Reactivity map for Counter.tsx — 2 live · 1 baked-static · 1 footgun\"], [\"dm\", \"   5 |   const { label } = props\"], [\"dm\", \"       ⚠ footgun [props-destructured-body]: captures the values ONCE during setup\"], [\"dm\", \"   8 |       {count()}       ◆ live\"], [\"dm\", \"   9 |       {props.label}   ◆ live\"], [\"dm\", \"  10 |       {label}         ○ baked once, never re-renders\"], [\"ok\", \"✓ read props.label directly, or splitProps(props, ['label'])\"]], \"Is this list right?\": [[\"tl\", \"→ validate(TodoList.tsx)\"], [\"dm\", \"Found 1 issue:\"], [\"dm\", \"1. array-map-jsx (line 4)\"], [\"dm\", \"   Array.map() in JSX is not reactive in Pyreon. Use <For> for efficient keyed list rendering.\"], [\"dm\", \"   Current: props.todos.map((t) => <li>{t.text}</li>)\"], [\"ok\", \"✓ Fix: <For each={props.todos} by={item => item.id}>{(t) => <li>{t.text}</li>}</For>\"]], \"Why doesn't the button count?\": [[\"tl\", \"→ validate(Greeting.tsx)\"], [\"dm\", \"Found 2 issues:\"], [\"dm\", \"1. props-destructured (line 3)\"], [\"dm\", \"2. signal-write-as-call (line 5)\"], [\"dm\", \"   `count(value)` does NOT write the signal. signal() is the read-only callable surface and ignores its arguments.\"], [\"ok\", \"✓ Fix: count.set(count() + 1)   Auto-fixable: yes\"]], \"How do I write to a signal?\": [[\"tl\", \"→ get_api({ package: \\\"reactivity\\\", symbol: \\\"signal\\\" })\"], [\"dm\", \"<T>(initialValue: T, options?: { name?: string }) => Signal<T>\"], [\"dm\", \"count() reads · count.set(5) writes · count.update(n => n + 1) derives\"], [\"dm\", \"Common mistake: `count.value` does not exist. Use `count()` to read\"], [\"dm\", \"Common mistake: `signal(5)` called after creation reads and ignores the argument\"], [\"ok\", \"✓ answered from @pyreon/reactivity's manifest\"]]};\nvar log=document.getElementById('ai-log'),tm=[];function run(k){tm.forEach(clearTimeout);tm=[];log.innerHTML='';S[k].forEach(function(l,i){tm.push(setTimeout(function(){var d=document.createElement('div');d.className=l[0];d.textContent=l[1];log.appendChild(d)},i*380))})}\ndocument.querySelectorAll('#ai-q button').forEach(function(b){b.onclick=function(){document.querySelectorAll('#ai-q button').forEach(function(x){x.setAttribute('aria-pressed',x===b)});run(b.textContent)}});run(\"Why doesn't my label update?\");})();",
+  "spec": "Same layout as the reference: a column of four question buttons (aria-pressed on the active one) and a log panel that prints lines one by one, 380 ms apart. The four questions and their logs are replaced with real tool output: explain_reactivity on a component that destructures props in its body (2 live, 1 baked-static, 1 footgun); validate on a list rendered with .map() (array-map-jsx); validate on a click handler that calls count(count() + 1) (props-destructured, signal-write-as-call); get_api for reactivity/signal. The first question runs on load."
+ },
+ "features": {
+  "title": "What's in the server, and around it.",
+  "items": [
+   {
+    "name": "validate",
+    "text": "React-habit, Pyreon-misuse and native-hazard detectors in one call, sorted by line. It says when the native checks were skipped."
+   },
+   {
+    "name": "explain_reactivity",
+    "text": "a line-numbered map: `◆ live`, `○ baked once`, `⚠ footgun`, with a count of each."
+   },
+   {
+    "name": "get_api",
+    "text": "signature, usage and common mistakes for each export the package manifests document."
+   },
+   {
+    "name": "get_anti_patterns",
+    "text": "a paged index of the whole catalog (522 entries on main); ask by name or category, or pass `full: true` for every entry in full."
+   },
+   {
+    "name": "diagnose and explain_error",
+    "text": "paste an error message into `diagnose` for the likely Pyreon cause, the fix and a code sample; `explain_error` reads a dev error report with its reactive trace."
+   },
+   {
+    "name": "migrate_react",
+    "text": "a first pass over React code: hooks to signals and effects, `className` to `class`, imports swapped, with a list of changes."
+   },
+   {
+    "name": "Your project",
+    "text": "`get_routes`, `get_components`, `get_content_collection` and `get_content_entry` read the app you are working in."
+   },
+   {
+    "name": "Atlas, Lathe and Loom",
+    "text": "verified component catalog, generated API client and operations, API diffs, and dependency health."
+   },
+   {
+    "name": "Reactivity Lens",
+    "text": "the compiler's live-or-static verdict as inlay hints in any LSP editor."
+   },
+   {
+    "name": "llms.txt",
+    "text": "a model-sized index of the framework's packages, plus `llms-full.txt` with each package's full section."
+   }
+  ]
+ },
+ "api": {
+  "title": "24 tools, and the pieces around them.",
+  "groups": [
+   {
+    "name": "discover",
+    "items": [
+     "mcp_overview",
+     "get_api",
+     "get_pattern",
+     "get_anti_patterns",
+     "get_changelog"
+    ]
+   },
+   {
+    "name": "check code",
+    "items": [
+     "validate",
+     "explain_reactivity",
+     "diagnose",
+     "explain_error"
+    ]
+   },
+   {
+    "name": "rewrite code",
+    "items": [
+     "migrate_react",
+     "migrate_pyreon"
+    ]
+   },
+   {
+    "name": "read your project",
+    "items": [
+     "get_routes",
+     "get_components",
+     "get_content_collection",
+     "get_content_entry",
+     "get_dependency_fabric"
+    ]
+   },
+   {
+    "name": "audit",
+    "items": [
+     "audit_test_environment",
+     "audit_islands",
+     "get_browser_smoke_status"
+    ]
+   },
+   {
+    "name": "components and APIs",
+    "items": [
+     "get_atlas_catalog",
+     "get_atlas_component",
+     "get_api_client",
+     "get_api_operation",
+     "explain_api_diff"
+    ]
+   },
+   {
+    "name": "outside the server: @pyreon/compiler/analyze",
+    "items": [
+     "analyzeReactivity",
+     "formatReactivityLens",
+     "detectPyreonPatterns"
+    ]
+   },
+   {
+    "name": "flags: pyreon-lint --lsp · pyreon check --fix",
+    "items": [
+     "--lsp",
+     "--fix"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "It needs an MCP client",
+   "text": "Claude Code, Cursor, Windsurf and other MCP clients call the tools. A plain chat window cannot; give it `llms.txt` instead."
+  },
+  {
+   "title": "Tools are listed lean",
+   "text": "`tools/list` carries names and parameter schemas without prose, so every session starts small (about 8 KB). If your assistant picks the wrong tool, ask it to call `mcp_overview` first."
+  },
+  {
+   "title": "migrate_react is a first pass",
+   "text": "It turns `useState` into `signal()` but leaves setter calls like `setCount(n)` and plain reads like `count` as written, so its output does not run as is. Rewrite them as `count.set(n)` and `count()`, then type-check before you commit."
+  },
+  {
+   "title": "Native checks are optional",
+   "text": "The two native-hazard codes, for the experimental iOS and Android targets, need `@pyreon/native-compiler` installed. Without it, `validate` still runs the other 39 codes, and on a snippet that imports `@pyreon/primitives` it says the native checks were skipped."
+  },
+  {
+   "title": "The Lens is structural",
+   "text": "It tells you whether an expression will update. To see how often it did, use Live Program Inlay Hints, served by the same LSP."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/tooling",
+   "category": "tools",
+   "name": "Tooling",
+   "text": "Lint, doctor and the test kit.",
+   "package": "@pyreon/cli · lint · devtools · mcp · testing"
+  },
+  {
+   "href": "/products/migrate",
+   "category": "tools",
+   "name": "Migrate",
+   "text": "Compat layers for moving a React codebase over.",
+   "package": "Pyreon Compat"
+  },
+  {
+   "href": "/products/atlas",
+   "category": "tools",
+   "name": "Atlas",
+   "text": "The verified component catalog your assistant reads.",
+   "package": "@pyreon/atlas"
+  }
+ ],
+ "end": {
+  "title": "It still will not write your tests. It will stop writing `useState`.",
+  "cta": "Read the MCP guide"
+ },
+ "benchmarks": null,
+ "glyphSvg": "<path d=\"M60 12 L69 51 L108 60 L69 69 L60 108 L51 69 L12 60 L51 51 Z\" stroke=\"currentColor\" stroke-width=\"9\" fill=\"none\" stroke-linejoin=\"round\"/><circle cx=\"60\" cy=\"60\" r=\"11\" fill=\"url(#eg)\"/>",
+ "proof": [
+  {
+   "stat": "24",
+   "label": "tools your assistant can call: lookup, validation, rewrites, project reading and audits.",
+   "source": "tools/list over stdio from packages/tools/mcp/lib/index.js, 11 Nov 2026 (scratch mcp-client.mjs)"
+  },
+  {
+   "stat": "41",
+   "label": "detector codes behind `validate`: React habits, Pyreon misuse and native-build hazards, each with a fix.",
+   "source": "Codes that a detector emits: ReactDiagnosticCode in packages/core/compiler/src/react-intercept.ts:23 (24 declared, 19 emitted; use-layout-effect, dangerously-set-inner-html, key-on-for-child, create-context-import, use-context-import are declared only), PyreonDiagnosticCode (20, all emitted) in pyreon-intercept.ts:113, NativeFindingCode (2) in packages/native/compiler/src/native-audit.ts:39 via packages/tools/mcp/src/native-detect.ts"
+  },
+  {
+   "stat": "522",
+   "label": "known mistakes in the anti-pattern catalog on main, served as a compact index your assistant pages through.",
+   "source": "get_anti_patterns({}) header \"522 total, page 1 of 3, 10 categories\", 11 Nov 2026"
+  }
+ ],
+ "recipes": [
+  {
+   "title": "Connect Claude Code",
+   "text": "Put this in `.mcp.json` at the project root. Cursor reads the same shape from `.cursor/mcp.json`, and Windsurf takes the same `mcpServers` block in its MCP config. `pyreon mcp` starts the same server from the CLI.",
+   "code": "{\n  \"mcpServers\": {\n    \"pyreon\": {\n      \"command\": \"bunx\",\n      \"args\": [\"@pyreon/mcp\"]\n    }\n  }\n}"
+  },
+  {
+   "title": "Start a project that already knows its assistant",
+   "text": "The scaffolder writes the AI files for the tools you name. Leave `--ai` out and it preselects `.mcp.json` and `CLAUDE.md` (the default with `--yes`).",
+   "code": "npm create @pyreon/zero@latest my-app -- --ai mcp,claude,cursor --yes\n\n# .mcp.json               (the server above)\n# CLAUDE.md                (Pyreon rules for Claude Code)\n# .cursor/rules/pyreon.md  (the same for Cursor)"
+  },
+  {
+   "title": "Give your own docs an llms.txt",
+   "text": "Building docs with `@pyreon/zero-content`? Turn on `seo.llms` next to `seo.baseUrl` and the build writes `dist/llms.txt`, with one line per page.",
+   "code": "// vite.config.ts\nimport content from '@pyreon/zero-content/plugin'\n\nexport default {\n  plugins: [\n    content({\n      seo: {\n        baseUrl: 'https://docs.example.com',\n        sitemap: true,\n        llms: { title: 'Example', description: 'Docs for the Example API' },\n      },\n    }),\n  ],\n}"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Does my code leave my machine?",
+   "a": "Not through this server. It runs locally over stdio and makes no network calls; tools read the snippet your assistant passes and the files in your project. Your assistant's own model provider is a separate question."
+  },
+  {
+   "q": "How much of my context window does it use?",
+   "a": "The tool list is about 8 KB of JSON. `get_anti_patterns` returns a compact index (its first page is about 35 KB of text); the full catalog, over 300 KB, comes back only when the assistant asks with `full: true`."
+  },
+  {
+   "q": "Is the Lens a guess?",
+   "a": "No. `analyzeReactivity` runs the reactive-or-static analysis the JSX transform uses to decide what to bind, and both compiler backends (Rust and JS) emit the same span data. `explain_reactivity` gives your assistant the same verdicts."
+  },
+  {
+   "q": "Which editors show the Lens?",
+   "a": "Any editor that speaks LSP inlay hints: register `pyreon-lint --lsp` for `.ts`, `.tsx`, `.js` and `.jsx`. For VS Code, symlink the extension from the Pyreon repo's `packages/tools/lint/vscode`."
+  },
+  {
+   "q": "My assistant does not speak MCP. Now what?",
+   "a": "Hand it `llms.txt` (a short index) or `llms-full.txt` (every package's section). Both are generated from the same manifests as `get_api`. `create-zero --ai copilot` writes `.github/copilot-instructions.md`."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "24 tools, names as listed",
+   "path": "tools/list over stdio, `node packages/tools/mcp/lib/index.js` (scratch mcp-client.mjs, 11 Nov 2026); 24 server.tool( calls in packages/tools/mcp/src/index.ts"
+  },
+  {
+   "claim": "tools/list carries no tool descriptions; ~8,048 chars of JSON",
+   "path": "raw tools/list (scratch rawlist.mjs, sizes.mjs); packages/tools/mcp/src/index.ts:151 (server.tool without description); src/tests/token-budget.test.ts"
+  },
+  {
+   "claim": "41 detector codes = 19 emitted React codes (of 24 declared) + 20 Pyreon + 2 native",
+   "path": "packages/core/compiler/src/react-intercept.ts:23–47; pyreon-intercept.ts:113–133; packages/native/compiler/src/native-audit.ts:39"
+  },
+  {
+   "claim": "Native checks need optional peer @pyreon/native-compiler; validate says when skipped",
+   "path": "packages/tools/mcp/package.json peerDependenciesMeta; packages/tools/mcp/src/native-detect.ts; packages/tools/mcp/CHANGELOG.md line ~31"
+  },
+  {
+   "claim": "validate output for the React Counter (5 issues) and TodoList (.map → array-map-jsx) and Greeting (props-destructured, signal-write-as-call)",
+   "path": "measured via tools/call validate, scratch calls.json, 11 Nov 2026"
+  },
+  {
+   "claim": "explain_reactivity output \"2 live · 1 baked-static · 1 footgun\" with props-destructured-body",
+   "path": "measured via tools/call explain_reactivity, scratch calls2.json"
+  },
+  {
+   "claim": "get_api reactivity/signal signature, usage, common mistakes",
+   "path": "measured via tools/call get_api; packages/tools/mcp/src/api-reference.ts"
+  },
+  {
+   "claim": "Anti-pattern catalog 522 entries, index page 1 of 3, ~34,399 chars; full: true ~390,139 chars",
+   "path": "measured via get_anti_patterns({}) and ({ full: true }) (scratch sizes.mjs)"
+  },
+  {
+   "claim": "diagnose turns an error message into cause + fix + code",
+   "path": "measured diagnose(\"TypeError: count.set is not a function\")"
+  },
+  {
+   "claim": "migrate_react converts useState/useEffect/className/imports but leaves setCount(...) calls",
+   "path": "measured migrate_react (scratch calls3.json) and migrateReactCode (scratch mig.ts)"
+  },
+  {
+   "claim": "MCP server makes no network calls",
+   "path": "packages/tools/mcp/src/*.ts: no fetch/http imports outside example strings in api-reference.ts; 00-brief/facts.md line 206"
+  },
+  {
+   "claim": "typescript is a runtime dependency of @pyreon/mcp",
+   "path": "packages/tools/mcp/package.json dependencies"
+  },
+  {
+   "claim": "Config files for Claude Code, Cursor, Windsurf; bunx @pyreon/mcp; pyreon mcp front door",
+   "path": "docs/src/content/docs/mcp.md §Quick Start; docs/src/content/docs/cli.md line 162"
+  },
+  {
+   "claim": "Reactivity Lens hints live, live·prop, live·attr, static, hoisted; served by pyreon-lint --lsp; footguns as warnings (source pyreon-lens)",
+   "path": "packages/tools/lint/src/lsp/index.ts:107–111; docs/src/content/docs/reactivity-lens.md"
+  },
+  {
+   "claim": "Lens = analyzeReactivity, same analysis as the JSX transform; both backends emit the same reactivityLens sidecar",
+   "path": "docs/src/content/docs/reactivity-lens.md §How it works; packages/core/compiler/src/analyze.ts; measured analyzeReactivity in scratch lens.ts"
+  },
+  {
+   "claim": "LPIH served by the same LSP, runtime fire counts",
+   "path": "docs/src/content/docs/lpih.md; reactivity-lens.md §Lens vs LPIH"
+  },
+  {
+   "claim": "VS Code extension linked from packages/tools/lint/vscode",
+   "path": "packages/tools/lint/vscode/README.md"
+  },
+  {
+   "claim": "pyreon check uses the compiler detectors on changed files, exits 1 on findings",
+   "path": "packages/tools/cli/src/check.ts; measured on scratch sample (EXIT 1)"
+  },
+  {
+   "claim": "llms.txt / llms-full.txt generated from manifests at repo root (37,572 and 254,229 bytes); docs build publishes both at the site root, CI checks byte-identity",
+   "path": "llms.txt, llms-full.txt; docs/vite-plugins/publish-llms-txt.ts; .github/workflows/docs.yml step \"llms.txt and llms-full.txt are published\" (#4275, merged 11 Nov 2026 00:02 CET). Live URL still returned 404 at 01:10 CET 11 Nov: the docs deploys after the merge were cancelled/queued"
+  },
+  {
+   "claim": "58 packages have a manifest",
+   "path": "ls packages/*/*/src/manifest.ts | wc -l = 58; AGENTS.md"
+  },
+  {
+   "claim": "create-zero --ai values and files written; default mcp,claude",
+   "path": "packages/zero/create-zero/src/templates.ts:36–41; args.ts:56,174; README.md example"
+  },
+  {
+   "claim": "pyreon context writes .pyreon/context.json with components (props, signal names), routes, islands",
+   "path": "measured `pyreon context` in scratch sample"
+  },
+  {
+   "claim": "zero-content seo.llms emits dist/llms.txt; import from @pyreon/zero-content/plugin",
+   "path": "packages/zero/zero-content/src/plugin.ts:175–228, 609–643; docs/src/content/docs/zero-content.md lines 34, 559–570"
+  },
+  {
+   "claim": "All features here are in the published release",
+   "path": "@pyreon/mcp, compiler, lint CHANGELOGs at 0.53.0; pending .changeset entries for @pyreon/mcp are patches"
+  }
+ ]
+}
