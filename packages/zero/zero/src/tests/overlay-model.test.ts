@@ -42,6 +42,26 @@ describe('parseStack', () => {
     expect(parseStack(undefined)).toEqual([])
     expect(parseStack('Error: no frames')).toEqual([])
   })
+
+  it('handles a hostile line in linear time and keeps the frames around it', () => {
+    const hostile = `at ${' (a'.repeat(50_000)}`
+    const hostileGecko = `@${'@a'.repeat(50_000)}`
+    const stack = [hostile, hostileGecko, '    at ok (/app/a.ts:1:2)'].join('\n')
+    const start = performance.now()
+    const frames = parseStack(stack)
+    expect(performance.now() - start).toBeLessThan(500)
+    expect(frames).toEqual([{ fn: 'ok', file: '/app/a.ts', line: 1, column: 2 }])
+  })
+
+  it('keeps a Windows drive letter and a URL port inside the file', () => {
+    expect(parseStack('    at fn (C:\\app\\a.ts:3:4)')[0]).toMatchObject({ file: 'C:\\app\\a.ts', line: 3, column: 4 })
+    expect(parseStack('fn@http://localhost:5173/src/a.tsx:7:8')[0]).toMatchObject({
+      fn: 'fn',
+      file: 'http://localhost:5173/src/a.tsx',
+      line: 7,
+      column: 8,
+    })
+  })
 })
 
 describe('library frames', () => {

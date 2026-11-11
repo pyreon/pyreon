@@ -89,10 +89,51 @@ export const KIND_PHASE: Record<OverlayKind, string> = {
 
 // ─── Stack ──────────────────────────────────────────────────────────────────
 
-// V8: `    at fn (file:1:2)`, `    at async fn (file:1:2)`, `    at file:1:2`.
-const V8_FRAME = /^\s*at (?:(?:async )?(.*?) \()?(.+?):(\d+):(\d+)\)?\s*$/
-// SpiderMonkey / JavaScriptCore: `fn@file:1:2`, `@file:1:2`.
-const GECKO_FRAME = /^\s*(.*?)@(.+?):(\d+):(\d+)\s*$/
+// Frames are split with plain string operations, not a regex with nested lazy
+// quantifiers: stack text is uncontrolled input and such a pattern backtracks
+// polynomially on a long hostile line. A real frame line is short, so a line
+// past MAX_FRAME_LINE is not a frame.
+const MAX_FRAME_LINE = 2000
+
+/** Split `file:line:column` at its last two colons (a Windows drive letter or a URL port stays in `file`). */
+function splitPosition(loc: string): { file: string; line: number; column: number } | null {
+  const c2 = loc.lastIndexOf(':')
+  const c1 = c2 > 0 ? loc.lastIndexOf(':', c2 - 1) : -1
+  if (c1 <= 0) return null
+  const lineText = loc.slice(c1 + 1, c2)
+  const columnText = loc.slice(c2 + 1)
+  if (!/^\d+$/.test(lineText) || !/^\d+$/.test(columnText)) return null
+  const file = loc.slice(0, c1)
+  if (file === '') return null
+  return { file, line: Number(lineText), column: Number(columnText) }
+}
+
+/** V8: `    at fn (file:1:2)`, `    at async fn (file:1:2)`, `    at file:1:2`. */
+function parseV8Frame(raw: string): RawFrame | null {
+  const t = raw.trim()
+  if (!t.startsWith('at ')) return null
+  let body = t.slice(3)
+  let fn = ''
+  const open = body.indexOf(' (')
+  if (open >= 0 && body.endsWith(')')) {
+    fn = body.slice(0, open)
+    body = body.slice(open + 2, -1)
+    if (fn.startsWith('async ')) fn = fn.slice(6)
+  } else if (body.endsWith(')')) {
+    body = body.slice(0, -1)
+  }
+  const pos = splitPosition(body)
+  return pos ? { fn: fn.trim(), ...pos } : null
+}
+
+/** SpiderMonkey / JavaScriptCore: `fn@file:1:2`, `@file:1:2`. */
+function parseGeckoFrame(raw: string): RawFrame | null {
+  const t = raw.trim()
+  const at = t.indexOf('@')
+  if (at < 0) return null
+  const pos = splitPosition(t.slice(at + 1))
+  return pos ? { fn: t.slice(0, at).trim(), ...pos } : null
+}
 
 export interface RawFrame {
   fn: string
@@ -110,17 +151,12 @@ export function parseStack(stack: string | undefined): RawFrame[] {
   if (!stack) return []
   const out: RawFrame[] = []
   for (const line of stack.split('\n')) {
-    const m = V8_FRAME.exec(line) ?? (line.includes('@') ? GECKO_FRAME.exec(line) : null)
-    if (!m) continue
-    const file = m[2] as string
+    if (line.length > MAX_FRAME_LINE) continue
+    const frame = parseV8Frame(line) ?? parseGeckoFrame(line)
+    if (!frame) continue
     // `at new Promise (<anonymous>)` and similar carry no usable position.
-    if (file === '<anonymous>' || file === 'native') continue
-    out.push({
-      fn: (m[1] ?? '').trim(),
-      file,
-      line: Number(m[3]),
-      column: Number(m[4]),
-    })
+    if (frame.file === '<anonymous>' || frame.file === 'native') continue
+    out.push(frame)
   }
   return out
 }
