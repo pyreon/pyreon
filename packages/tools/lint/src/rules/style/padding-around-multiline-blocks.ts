@@ -84,6 +84,7 @@ export const paddingAroundMultilineBlocks: Rule = {
         check(node.consequent)
       },
     }
+
     return callbacks
   },
 }

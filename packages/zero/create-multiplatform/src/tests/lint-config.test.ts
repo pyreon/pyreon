@@ -83,6 +83,7 @@ const SOURCES = {
 const portableIds = new Set(
   allRules.filter((r) => groupOf(r.meta) === 'portable').map((r) => r.meta.id),
 )
+
 const styleIds = new Set(allRules.filter((r) => groupOf(r.meta) === 'style').map((r) => r.meta.id))
 
 describe('the scaffolded lint config', () => {

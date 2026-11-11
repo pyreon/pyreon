@@ -33,6 +33,7 @@ function unwrapExport(node: any): any {
   ) {
     return node.declaration
   }
+
   return node
 }
 
@@ -54,6 +55,7 @@ function memberName(node: any): string | null {
   if (!key || node.computed) return null
   if (key.type === 'Identifier' || key.type === 'PrivateIdentifier') return key.name
   if (key.type === 'Literal') return String(key.value)
+
   return null
 }
 
@@ -62,6 +64,7 @@ function isMemberOverloadPair(prev: any, next: any): boolean {
   if (prev.value?.type !== 'TSEmptyBodyFunctionExpression') return false
   if (prev.kind === 'get' || prev.kind === 'set') return false
   const name = memberName(prev)
+
   return name !== null && name === memberName(next) && prev.static === next.static
 }
 
@@ -111,6 +114,7 @@ export const paddingBetweenDeclarations: Rule = {
         }
       },
     }
+
     return callbacks
   },
 }

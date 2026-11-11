@@ -25,6 +25,7 @@ function fixed(source: string, rules: Record<string, RuleEntry>, file = '/p/src/
   const again = lint(out, rules, file).filter((d) => d.fix)
   expect(again, 'one --fix pass must satisfy the rule').toEqual([])
   expect(applyFixes(out, lint(out, rules, file))).toBe(out)
+
   return out
 }
 

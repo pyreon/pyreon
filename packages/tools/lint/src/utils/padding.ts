@@ -64,6 +64,7 @@ function lineStartsOf(source: string): number[] {
   for (let i = 0; i < source.length; i++) if (source.charCodeAt(i) === 10) starts.push(i + 1)
   memoSource = source
   memoStarts = starts
+
   return starts
 }
 
@@ -76,6 +77,7 @@ function firstCommentFrom(comments: readonly SourceComment[], offset: number): n
     if ((comments[mid] as SourceComment).start < offset) lo = mid + 1
     else hi = mid
   }
+
   return lo
 }
 
@@ -92,6 +94,7 @@ export function createPadding(context: RuleContext): Padding {
       if ((starts[mid] as number) <= offset) lo = mid
       else hi = mid - 1
     }
+
     return lo + 1
   }
 
@@ -107,6 +110,7 @@ export function createPadding(context: RuleContext): Padding {
     }
     // An empty line INSIDE a block comment is part of the comment, not a gap.
     for (const c of between) if (c.start < from && c.end > from) return false
+
     return true
   }
 
@@ -142,6 +146,7 @@ export function createPadding(context: RuleContext): Padding {
 
     const insertAt = lineStart(insertLine)
     const newline = insertAt >= 2 && source.charCodeAt(insertAt - 2) === 13 ? '\r\n' : '\n'
+
     return { sameLine: nextLine <= prevLine, hasBlankLine, hasLeadingComment, insertAt, newline }
   }
 
@@ -163,6 +168,7 @@ export function createPadding(context: RuleContext): Padding {
         span: firstLineSpan(next),
         fix: { span: { start: g.insertAt, end: g.insertAt }, replacement: g.newline },
       })
+
       return true
     },
   }
@@ -181,5 +187,6 @@ export function unwrapExpression(node: any): any {
   ) {
     n = n.expression
   }
+
   return n
 }

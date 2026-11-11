@@ -70,6 +70,7 @@ export const noNestedTernaryBranch: Rule = {
         })
       },
     }
+
     return callbacks
   },
 }

@@ -204,6 +204,7 @@ export function getPreset(name: PresetName | readonly PresetName[]): LintConfig 
     : ['recommended', ...names]
   const rules: Record<string, RuleEntry> = {}
   for (const n of list) Object.assign(rules, presetBuilders[n]().rules)
+
   return { rules }
 }
 

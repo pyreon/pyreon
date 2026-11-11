@@ -28,6 +28,7 @@ export function isJsxish(expr: any): boolean {
   if (n.type === 'ArrowFunctionExpression' || n.type === 'FunctionExpression') {
     return n.body?.type === 'BlockStatement' ? returnsJsx(n.body) : isJsxish(n.body)
   }
+
   return false
 }
 
@@ -39,6 +40,7 @@ function returnsJsx(block: any): boolean {
     if (n.type === 'ReturnStatement' && isJsxish(n.argument)) found = true
     return undefined
   })
+
   return found
 }
 
@@ -81,6 +83,7 @@ export function childrenOf(node: any): any[] {
       out.push(child)
     }
   }
+
   return out
 }
 
@@ -127,5 +130,6 @@ export function isComponentDefinition(node: any): boolean {
     if (init?.type !== 'ArrowFunctionExpression' && init?.type !== 'FunctionExpression') return false
     return init.body?.type === 'BlockStatement' ? returnsJsx(init.body) : isJsxish(init.body)
   }
+
   return false
 }

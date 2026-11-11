@@ -432,6 +432,7 @@ export function applyFixes(sourceText: string, diagnostics: Diagnostic[]): strin
   for (const edit of ordered) {
     result = result.slice(0, edit.span.start) + edit.replacement + result.slice(edit.span.end)
   }
+
   return result
 }
 
@@ -479,6 +480,7 @@ export function selectFixEdits(diagnostics: readonly Diagnostic[]): Fix[] {
     for (const k of keys) seen.add(k)
     claimedUpTo = Math.max(claimedUpTo, c.end)
   }
+
   return applied
 }
 
@@ -505,6 +507,7 @@ function parseDirectiveTail(tail: string): Suppression {
     .split(/[\s,]+/)
     .map((x) => x.trim())
     .filter(Boolean)
+
   return { ruleIds, reason: reasonPart || undefined }
 }
 
@@ -559,6 +562,7 @@ function readFileDirectives(sourceText: string, lineIndex: LineIndex): FileDirec
     if (ruleIds.length === 0) out.disableAll = true
     for (const id of ruleIds) out.disabledRules.add(id)
   }
+
   return out
 }
 
@@ -578,5 +582,6 @@ export function isGeneratedSource(sourceText: string): boolean {
     }
     end = next
   }
+
   return GENERATED_RE.test(sourceText.slice(0, end))
 }

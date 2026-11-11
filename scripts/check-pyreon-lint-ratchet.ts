@@ -168,6 +168,7 @@ function main(): void {
   } else {
     console.log(`✓ Pyreon-lint ratchet — ${total} advisory finding(s), no rule above baseline.`)
   }
+  if (!readableOk) process.exit(1)
 }
 
 if (import.meta.main) main()

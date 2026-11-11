@@ -58,6 +58,7 @@ function searchDirectory(dir: string): { path: string; config: LintConfigFile } 
   }
   const pkgPath = join(dir, 'package.json')
   const fromPkg = extractPkgConfig(pkgPath)
+
   return fromPkg === null ? null : { path: pkgPath, config: fromPkg }
 }
 

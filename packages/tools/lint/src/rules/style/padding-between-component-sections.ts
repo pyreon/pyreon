@@ -60,6 +60,7 @@ function sectionOfCall(name: string | null): Section | null {
   if (name === null) return null
   if (BEHAVIOUR_CALLS.has(name)) return 'behaviour'
   if (SETUP_CALLS.has(name) || HOOK.test(name)) return 'setup'
+
   return null
 }
 
@@ -69,6 +70,7 @@ function isGuard(stmt: any): boolean {
   const c = stmt.consequent
   if (c.type === 'ReturnStatement') return true
   if (c.type === 'BlockStatement') return c.body.at(-1)?.type === 'ReturnStatement'
+
   return false
 }
 
@@ -84,6 +86,7 @@ export function classifyStatement(stmt: any): Section | null {
       const init = unwrapExpression(stmt.declarations[0]?.init)
       if (!init) return null
       if (init.type === 'ArrowFunctionExpression' || init.type === 'FunctionExpression') return 'behaviour'
+
       return sectionOfCall(calleeName(init))
     }
     case 'ExpressionStatement':
@@ -123,6 +126,7 @@ export const paddingBetweenComponentSections: Rule = {
         current = section
       }
     })
+
     return callbacks
   },
 }

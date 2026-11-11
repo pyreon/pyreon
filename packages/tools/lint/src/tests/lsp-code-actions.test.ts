@@ -27,10 +27,12 @@ interface Pos {
   line: number
   character: number
 }
+
 interface TextEdit {
   range: { start: Pos; end: Pos }
   newText: string
 }
+
 interface Action {
   title: string
   kind: string
@@ -45,6 +47,7 @@ function offsetOf(text: string, p: Pos): number {
     i = text.indexOf('\n', i) + 1
     line++
   }
+
   return i + p.character
 }
 
@@ -55,6 +58,7 @@ function applyEdits(text: string, edits: TextEdit[]): string {
   for (const e of sorted) {
     out = out.slice(0, offsetOf(text, e.range.start)) + e.newText + out.slice(offsetOf(text, e.range.end))
   }
+
   return out
 }
 
@@ -75,11 +79,13 @@ const SOURCE = [
 ].join('\n')
 
 let silence: ReturnType<typeof vi.spyOn> | undefined
+
 beforeEach(() => {
   // didOpen publishes diagnostics to stdout (the JSON-RPC transport).
   silence = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
   _resetOpenDocuments()
 })
+
 afterEach(() => {
   silence?.mockRestore()
   _reloadConfig(undefined)
@@ -100,6 +106,7 @@ async function codeActions(uri: string, only?: string[], range?: { start: Pos; e
       context: { diagnostics: [], ...(only ? { only } : {}) },
     },
   })
+
   return (res as { result: Action[] }).result
 }
 
@@ -182,6 +189,7 @@ describe('LSP uses the project’s own config', () => {
     dirs.push(dir)
     writeFileSync(join(dir, 'package.json'), '{"name":"x"}')
     if (config) writeFileSync(join(dir, '.pyreonlintrc.json'), JSON.stringify(config))
+
     return dir
   }
 

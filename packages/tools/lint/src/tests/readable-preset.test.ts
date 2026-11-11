@@ -13,9 +13,11 @@ import type { RuleEntry, Severity } from '../types'
 
 const sev = (e: RuleEntry | undefined): Severity | undefined =>
   e === undefined ? undefined : Array.isArray(e) ? (e[0] as Severity) : (e as Severity)
+
 const opts = (e: RuleEntry | undefined) => (Array.isArray(e) ? e[1] : undefined)
 
 const STYLE_IDS = allRules.filter((r) => r.meta.category === 'style').map((r) => r.meta.id)
+
 const READABLE = [
   'pyreon/padding-between-declarations',
   'pyreon/padding-before-return',
@@ -191,6 +193,7 @@ describe('fix → format → lint is stable (the rules never fight oxfmt)', () =
     const cfg = join(dir, 'oxfmt.json')
     writeFileSync(cfg, JSON.stringify(preset))
     execFileSync(OXFMT, ['-c', cfg, file], { stdio: 'ignore' })
+
     return readFileSync(file, 'utf8')
   }
 

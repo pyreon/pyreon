@@ -209,6 +209,7 @@ export function parsePresetList(val: string | undefined): PresetName[] | undefin
     // oxlint-disable-next-line no-console
     else console.error(`[pyreon-lint] --preset: unknown preset "${name}" ignored`)
   }
+
   return names.length > 0 ? names : undefined
 }
 

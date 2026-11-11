@@ -28,8 +28,10 @@ function describeElement(el: any, source: string): string {
     if (key !== 'class' && key !== 'className' && key !== 'id' && key !== 'data-testid') continue
     if (attr.value?.type !== 'Literal' || typeof attr.value.value !== 'string') continue
     const value = attr.value.value.length > 30 ? `${attr.value.value.slice(0, 27)}...` : attr.value.value
+
     return `<${name} ${key}="${value}">`
   }
+
   return `<${name}>`
 }
 
@@ -83,6 +85,7 @@ export const maxJsxDepth: Rule = {
         span: { start: anchor.start, end: anchor.end },
       })
     })
+
     return callbacks
   },
 }

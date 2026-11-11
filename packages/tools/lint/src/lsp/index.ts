@@ -98,6 +98,7 @@ export function _configFor(filePath: string): LintConfig {
     mtimeMs: located ? mtimeOf(located.path) : 0,
     config,
   })
+
   return config
 }
 
@@ -754,6 +755,7 @@ export function _computeCodeActions(
       edit: { changes: { [uri]: toTextEdits(selectFixEdits(diagnostics), index) } },
     })
   }
+
   return actions
 }
 
@@ -854,6 +856,7 @@ export function _handleMessage(
     const text = openDocuments.get(uri)
     if (text == null) return { jsonrpc: '2.0', id: msg.id, result: [] }
     const actions = _computeCodeActions(uri, text, msg.params.range, msg.params.context?.only)
+
     return { jsonrpc: '2.0', id: msg.id, result: actions }
   }
 

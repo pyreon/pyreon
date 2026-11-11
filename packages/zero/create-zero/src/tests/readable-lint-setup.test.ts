@@ -21,6 +21,7 @@ import { scaffold } from '../scaffold'
 import { FEATURES, type ProjectConfig } from '../templates'
 
 const dirs: string[] = []
+
 afterAll(() => {
   for (const d of dirs) rmSync(d, { recursive: true, force: true })
 })
@@ -47,6 +48,7 @@ async function scaffolded(overrides: Partial<ProjectConfig>): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), 'cz-readable-'))
   dirs.push(dir)
   await scaffold(config({ ...overrides, targetDir: dir }))
+
   return dir
 }
 

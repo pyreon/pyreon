@@ -70,6 +70,7 @@ export function countReadableFindings(parsed: unknown, codes: Set<string> = read
     const perFile = (out[file] ??= {})
     perFile[rule] = (perFile[rule] ?? 0) + 1
   }
+
   return out
 }
 
@@ -98,6 +99,7 @@ export function compareReadable(
       else if (c < b) improvements.push({ file, rule, baseline: b, current: c })
     }
   }
+
   return { regressions, improvements }
 }
 
@@ -127,6 +129,7 @@ export function buildReadableBaseline(current: PerFileCounts): ReadableBaseline 
     }
     if (Object.keys(sorted).length > 0) files[file] = sorted
   }
+
   return { description: DESCRIPTION, total, files }
 }
 
@@ -139,6 +142,7 @@ export function serializeReadableBaseline(b: ReadableBaseline): string {
   const lines = Object.entries(b.files).map(
     ([file, rules]) => `    ${JSON.stringify(file)}: ${JSON.stringify(rules)}`,
   )
+
   return (
     `{\n  "description": ${JSON.stringify(b.description)},\n  "total": ${b.total},\n  "files": {\n` +
     `${lines.join(',\n')}\n  }\n}\n`
@@ -181,6 +185,7 @@ export function checkReadable(parsed: unknown, path: string = READABLE_BASELINE_
     )
     console.error('  // pyreon-lint-disable-next-line <rule> -- <why>')
     console.error('The baseline only moves DOWN; do not raise it to absorb new findings.')
+
     return false
   }
   if (improvements.length > 0) {
@@ -192,6 +197,7 @@ export function checkReadable(parsed: unknown, path: string = READABLE_BASELINE_
   } else {
     console.log(`✓ Readable ratchet — ${total} finding(s), no file above its baseline.`)
   }
+
   return true
 }
 
@@ -217,6 +223,7 @@ export function updateReadable(
         console.error(`    ${r.file}  ${r.rule}: ${r.baseline} → ${r.current}`)
       }
       console.error('Only after renaming or moving files: re-run with --accept-moves.')
+
       return false
     }
   }
@@ -225,6 +232,7 @@ export function updateReadable(
   console.log(
     `[readable-ratchet] baseline written: ${baseline.total} finding(s) in ${Object.keys(baseline.files).length} file(s)`,
   )
+
   return true
 }
 

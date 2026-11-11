@@ -66,6 +66,7 @@ export const paddingBeforeReturn: Rule = {
         check(node.consequent)
       },
     }
+
     return callbacks
   },
 }
