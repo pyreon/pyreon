@@ -107,6 +107,18 @@ A module-level `Map` keyed by a user key (`defineStore('cart')`, `useCookie('ses
 
 ---
 
+### A JSON data block given the generic script-body rewrite
+
+`<\!--` breaks the comment opener in script CODE (where `\!` is an identity escape), but `\!` is not a JSON escape, so a JSON-LD, speculation-rules or import-map block whose data contained `<!--` stopped parsing and was dropped silently. Pick the escape by what reads the body back: a `JSON.parse`d block takes `escapeJsonForScript` from `@pyreon/core` (`<` → `\u003C`, U+2028/U+2029), the one helper `@pyreon/head` and `@pyreon/zero`'s `jsonLd()` share. Fix: `packages/core/head/src/serialize.ts` (`isJsonScriptType`). Lock: `head/src/tests/script-json-and-title.test.ts` (parse5 + `JSON.parse` oracle).
+
+---
+
+### A user string passed as a `String.prototype.replace` replacement
+
+`$&`, `` $` ``, `$'` and `$$` in the replacement are patterns, even when the search is a literal string, so a title like `Sale $' today` pulled the template's tail into `&lt;title&gt;`, and rendered HTML spliced into a template re-inserted the placeholder. Pass data through a function replacer: `s.replace(re, () =&gt; value)`. Funnels: `packages/core/head/src/title.ts` (`applyTitleTemplate`, shared by SSR and client), `server/src/html.ts&#58;processTemplate`, `zero/src/not-found.ts`. Sweep: `grep -rnE '\.replace(All)?\([^,]+, *[a-zA-Z_`]'` over runtime code.
+
+---
+
 ### Opt-in per-page hook wired by only some callers
 
 `renderPage`'s `collectStyles` was passed only by SSG, so SSR shipped styler class names with no `<style>` (wrong first paint only).

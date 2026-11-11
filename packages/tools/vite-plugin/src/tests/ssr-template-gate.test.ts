@@ -20,7 +20,11 @@ import pyreonPlugin, { type PyreonPluginOptions } from '../index'
 type ConfigHook = (c: { root: string }, e: { command: string }) => void
 type TransformCtx = {
   warn: (msg: string) => void
-  resolve: (id: string, importer?: string, o?: { skipSelf: boolean }) => Promise<{ id: string } | null>
+  resolve: (
+    id: string,
+    importer?: string,
+    o?: { skipSelf: boolean },
+  ) => Promise<{ id: string } | null>
 }
 type TransformHook = (
   this: TransformCtx,
@@ -88,13 +92,15 @@ describe('ssrTemplate resolvability gate (vite-plugin)', () => {
     expect(code).not.toContain('_ssr(')
   })
 
-  it('build command suppresses the dev warn (still falls back to h())', async () => {
+  it('build command ALSO warns (and still falls back to h())', async () => {
+    // A production build shipping the slower h() SSR walk without a word was
+    // the defect: the build log is the only place a deployer would notice.
     const { code, warnings } = await transform(undefined, {
       ssr: true,
       resolvable: false,
       command: 'build',
     })
     expect(code).not.toContain('_ssr(')
-    expect(warnings.some((w) => /fast path is OFF/.test(w))).toBe(false)
+    expect(warnings.filter((w) => /fast path is OFF/.test(w))).toHaveLength(1)
   })
 })
