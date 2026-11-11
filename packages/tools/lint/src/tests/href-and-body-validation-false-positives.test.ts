@@ -71,3 +71,23 @@ export async function POST(ctx: { request: Request }) {
     expect(body(src)).toBe(1)
   })
 })
+
+const mapIn = (expr: string) =>
+  lintFile('/p/src/a.tsx', `declare const items: any[]\ndeclare const T: any\nexport const C = () => ${expr}\n`, allRules, {
+    rules: { 'pyreon/no-map-in-jsx': 'warn' },
+  }).diagnostics.length
+
+describe('no-map-in-jsx — only maps that render', () => {
+  it('a map that builds data inside JSX is not a <For> candidate', () => {
+    // The create-zero dashboard invoice: rows for a document table.
+    expect(mapIn(`<T rows={[["a", "b"], ...items.map((it) => [it.a, String(it.b)])]} />`)).toBe(0)
+    expect(mapIn(`<i class={items.map((x) => x.cls).join(" ")} />`)).toBe(0)
+  })
+
+  it('a map that renders elements is still reported, in every callback shape', () => {
+    expect(mapIn(`<ul>{items.map((x) => <li>{x}</li>)}</ul>`)).toBe(1)
+    expect(mapIn(`<ul>{items.map((x) => { const y = x * 2; return <li>{y}</li> })}</ul>`)).toBe(1)
+    expect(mapIn(`<ul>{items.map((x) => (x ? <li>{x}</li> : null))}</ul>`)).toBe(1)
+    expect(mapIn(`<ul>{items.map(renderRow)}</ul>`)).toBe(1)
+  })
+})
