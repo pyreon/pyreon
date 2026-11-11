@@ -519,6 +519,16 @@ Resolution is leaf-first along the matched chain: a page's own declaration beats
 | `'isr'` | — | Routed through the shared SWR cache handler (`config.isr`, default `revalidate: 60`) |
 | `'ssr'` | — | Under an `'isr'` app mode this is the per-route **cache bypass** |
 
+**Reserved route names.** In a server app the build and the deploy adapter write their own output next to the prerendered pages. A prerendered route may not land under one of those names, because the server build or the adapter's staging would drop its HTML. These names are `server`, `server-edge`, `.zero-ssg-server` and `.vite`, plus the adapter's own:
+
+- `client`, `index.js` and `package.json` for node;
+- `client` and `index.ts` for bun;
+- `client` and `main.js` for deno;
+- `publish`, `netlify` and `netlify.toml` for netlify;
+- `_server`, `_worker.js` and `_routes.json` for cloudflare.
+
+The build fails with an error naming each such route. Rename the route, or render it with `renderMode: 'ssr'`. Under `ssg.format: 'file'`, `/server` writes `server.html`, which does not collide. Vercel stages outside `dist/` and reserves nothing.
+
 **Inside a static app (`mode: 'ssg'`):** `'spa'` routes emit the CSR shell instead of prerendered HTML; declaring `'ssr'` or `'isr'` is a **build error** (a static deploy has no server — the error names each offending route and the fix). Vercel/Netlify serve prerendered files static-first by platform convention; for subpath (`base`) deploys on Cloudflare the `_routes.json` excludes are root-relative — verify them when combining `base` with hybrid.
 
 When no route declares a divergent mode, the pipeline is byte-identical to the app-level mode — existing apps are unaffected.
@@ -1138,7 +1148,7 @@ A `defineAction` result is also a plain async function: `await createPost({ titl
 
 ### Security
 
-`createServer` mounts actions for you, after your app middleware and the page's own route middleware, so an auth gate on the page also gates its action.
+`createServer` mounts actions for you, after your app middleware and the route middleware of the page that **declares** the action (its layouts' and its own), so an auth gate on the page also gates its action. That holds whichever URL the action is called on: `/_zero/actions/<id>`, or a form posted to another page with `?_action=<id>` (that page's middleware runs too). An action defined outside a page module (a shared `src/actions.ts`) has no declaring page; in an app with route middleware it is refused with `403` rather than run without a gate, so define each action in the page (or the page's `.server.ts` sibling) whose middleware should guard it.
 
 - **Origin check.** A cross-origin POST is rejected with `403` on both `/_zero/actions/*` and page form posts. Allow specific origins with `createServer({ actions: { corsOrigins: ['https://admin.example.com'] } })`. Still set `SameSite=Lax` (or `Strict`) on auth cookies.
 - **Body limit.** Action requests over 1 MiB are rejected with `413` before the handler runs, checked on `Content-Length` and again while reading, so a missing header does not bypass it. Raise it for uploads with `actions: { bodyLimit: 10 * 1024 * 1024 }`.
@@ -1552,19 +1562,22 @@ export default createServer({
   config: { mode: 'ssr' },
   template: indexHtml, // optional HTML template override
   clientEntry: '/src/main.tsx', // optional
+  onError: (error, { phase, request }) => Sentry.captureException(error, { tags: { phase } }), // optional
 })
 ```
+
+**Error reporting.** `onError` receives every unexpected server error with its phase: a throwing middleware or API route (`'middleware'`), a failed render (`'render'` / `'stream'`), a server action handler that threw (`'action'`), and anything a middleware reports with `ctx.reportError`. It runs after the console line and never changes the response. It is a function, so it goes here, not in `zero({...})`. See [`@pyreon/server` error handling](/docs/server#reporting-errors-onerror).
 
 **Your `zero({...})` settings reach this server automatically.** A production build injects the data part of the config (`mode`, `base`, `ssr`, `isr`, `routeRules`, `i18n`), and a `config` you pass here wins key by key. Settings that are code, such as `middleware` or a custom ISR `store` / `cacheKey` function, cannot be carried into the bundle: when you set them on `zero()` without a `src/entry-server.ts`, the build warns, and you pass them here instead.
 
 **Request order.** Each request runs, in this order:
 
 1. `middleware` from `zero({...})` and from this call (app-wide: auth, rate limits, CORS, security headers);
-2. the matched route's own `middleware` export;
+2. the matched route's own `middleware` export and its layouts' (for a server action, those of the page that declares it);
 3. the framework endpoints: API routes, island fragments, the server-loader data endpoint (`/_pyreon/data`) and server actions (`/_zero/actions/*`);
 4. the page render.
 
-Because app-wide and route middleware run first, an auth check protects API routes, actions and loader data as well as pages. Route middleware is matched on the pathname (a query string can't skip it), with `base` and the i18n locale prefix removed. For the data endpoint it is matched on the page the data belongs to, so `/_pyreon/data?path=/admin` runs `/admin`'s middleware (a server-island fragment likewise runs the middleware of the page that signed its marker); the target is normalised once (doubled slashes collapsed; `\`, control characters and `.`/`..` segments refused with a 400), and the endpoint serves exactly the page that was gated. The OG image endpoint is gated the same way: `/_zero/og/admin.png` runs `/admin`'s middleware.
+Because app-wide and route middleware run first, an auth check protects API routes, actions and loader data as well as pages. Route middleware is matched on the pathname (a query string can't skip it), with `base` and the i18n locale prefix removed. For the data endpoint it is matched on the page the data belongs to, so `/_pyreon/data?path=/admin` runs `/admin`'s middleware (a server-island fragment likewise runs the middleware of the page that signed its marker); the target is normalised once (doubled slashes collapsed; `\`, control characters and `.`/`..` segments refused with a 400), and the endpoint serves exactly the page that was gated. The OG image endpoint is gated the same way: `/_zero/og/admin.png` runs `/admin`'s middleware. A `_layout` middleware also runs for a URL under its folder that matches no page: that URL renders the folder's not-found page inside the layout (running the layout's loader), so `/admin/nope` and `/_pyreon/data?path=/admin/nope` run `admin/_layout`'s middleware first.
 
 With `mode: 'isr'`, only HTML page renders are cached. API routes and the framework endpoints always run live, and responses keep their own content type. The cache sits **after** the middleware: app-wide and route middleware run for every request, including a cache HIT, so a page rendered for a request your middleware admitted is never served to one it would refuse. Middleware runs once per request (not again inside the render), and the headers it sets apply to cached responses too.
 

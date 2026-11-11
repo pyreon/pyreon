@@ -67,7 +67,7 @@ A full, end-to-end usage of the package:
 | [`get_api`](#get_api-constant) | constant | Look up any Pyreon API by `package` (e.g. |
 | [`validate`](#validate-constant) | constant | Two AST-based detectors run in parallel: `detectReactPatterns` flags "coming from React" mistakes (`useState`, `useEffec |
 | [`explain_reactivity`](#explain_reactivity-constant) | constant | The compiler's per-expression reactivity VERDICT for a snippet. |
-| [`migrate_react`](#migrate_react-constant) | constant | Convert React code to idiomatic Pyreon. |
+| [`migrate_react`](#migrate_react-constant) | constant | Convert React code to Pyreon that updates. |
 | [`migrate_pyreon`](#migrate_pyreon-constant) | constant | The Pyreon → correct-Pyreon codemod (parallel to `migrate_react`). |
 | [`diagnose`](#diagnose-constant) | constant | Parse a Pyreon runtime / build error into structured fix information. |
 | [`explain_error`](#explain_error-constant) | constant | The rich-context sibling of `diagnose`. |
@@ -234,7 +234,7 @@ function Cart(props) {
 tool: migrate_react({ code: string; filename?: string }) → MigrationResult
 ```
 
-Convert React code to idiomatic Pyreon. Handles `useState` → `signal()`, `useEffect` → `effect()`, `className` → `class`, `onChange` → `onInput`, `useMemo` → `computed()`, React imports → Pyreon imports. Reports per-edit fixable diagnostics so callers can apply or review.
+Convert React code to Pyreon that updates. `useState` → `signal()` with reads rewritten to `count()` and setter calls to `count.set(v)` / `count.update(fn)`; `useReducer` → `signal()` + `dispatch`; `useEffect` → `effect()` / `onMount()`; `useMemo` → `computed()`; `useCallback` / `memo` / `forwardRef` unwrapped; `useRef(null)` → `createRef()`, `useRef(v)` → `{ current: v }`; a body-level `const` derived from state → `computed()`; `className` → `class`; text-input `onChange` → `onInput`; React imports → Pyreon imports. Anything it cannot convert safely is left in place (React import kept) and listed under "Remaining issues" with the reason, together with whatever `validate` still finds in the output.
 
 **Example**
 
@@ -254,7 +254,8 @@ function Counter() {
 - Expecting the migration to handle every React feature — currently covers the most common hooks/JSX patterns. Class components, Concurrent React APIs, Suspense boundaries, and React-specific libs (react-router, redux) are NOT migrated automatically; the result will flag remaining issues but won't rewrite them.
 - Running `migrate_react` on a file that's already mostly Pyreon — it's idempotent against already-migrated code (nothing flagged → nothing changed), so the cost is just the parse pass; safe to re-run.
 - Forgetting that `useEffect(() => fn, [deps])` → `effect(() => fn)` changes semantics: Pyreon effects auto-track via signal reads, the explicit deps array is dropped. Verify your effects read the same signals the React deps array listed.
-- Trusting the migration to produce idiomatic Pyreon — the output is CORRECT but mechanical. Pair with `get_pattern` after migration to apply Pyreon-native shapes (e.g. `<Show when={() => …}>` instead of ternaries; `<For>` instead of `.map()`).
+- Applying the output without reading "Remaining issues" — that list is where the tool says what it did NOT convert (a state read at setup level, `useId`, `Context.Provider`, destructured props, `.map()` lists) and those lines still behave like React.
+- Trusting the migration to produce idiomatic Pyreon — the output updates but is mechanical. Pair with `get_pattern` after migration to apply Pyreon-native shapes (e.g. `<Show when={() => …}>` instead of ternaries; `<For>` instead of `.map()`).
 
 **See also:** `validate`
 

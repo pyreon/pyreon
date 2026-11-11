@@ -17,7 +17,7 @@
       "@pyreon/preact-compat": 1,
       "@pyreon/query": 1,
       "@pyreon/react-compat": 2,
-      "@pyreon/router": 17,
+      "@pyreon/router": 15,
       "@pyreon/server": 3,
       "@pyreon/solid-compat": 1,
       "@pyreon/styler": 1,
@@ -26,6 +26,6 @@
       "@pyreon/zero": 5,
       "@pyreon/zero-cli": 1
     },
-    "hooks": 30
+    "hooks": 24
   }
 }

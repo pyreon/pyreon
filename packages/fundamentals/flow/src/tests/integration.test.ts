@@ -2216,12 +2216,14 @@ describe('animateViewport — branch coverage', () => {
 })
 
 describe('flow.layout — animated path', () => {
-  it('triggers requestAnimationFrame for animated layout', async () => {
+  it('runs the animation on requestAnimationFrame and settles on the LAST frame (#4305)', async () => {
     const rafCalls: FrameRequestCallback[] = []
     vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
       rafCalls.push(cb)
       return rafCalls.length
     })
+    let now = 1000
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
 
     const flow = createFlow({
       nodes: [
@@ -2231,15 +2233,27 @@ describe('flow.layout — animated path', () => {
       edges: [{ source: '1', target: '2' }],
     })
 
-    await flow.layout('layered', { animate: true, animationDuration: 100 })
+    let settled = false
+    const done = flow.layout('layered', { animate: true, animationDuration: 100 }).then(() => {
+      settled = true
+    })
+    // ELK runs async; wait until the first frame is scheduled.
+    await vi.waitFor(() => expect(rafCalls.length).toBe(1))
 
-    // Should have called requestAnimationFrame at least once
-    expect(rafCalls.length).toBeGreaterThanOrEqual(1)
+    // Mid-animation: positions move, the promise is still pending.
+    now += 50
+    rafCalls[0]!(now)
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    expect(rafCalls.length).toBe(2)
 
-    // Execute the first frame callback to exercise the animation code
-    if (rafCalls[0]) {
-      rafCalls[0](performance.now() + 200) // simulate time past duration
-    }
+    // Past the duration: the last frame writes the final positions and settles.
+    now += 100
+    rafCalls[1]!(now)
+    await done
+    expect(settled).toBe(true)
+    const [a, b] = flow.nodes()
+    expect(a!.position).not.toEqual(b!.position)
 
     vi.restoreAllMocks()
   })

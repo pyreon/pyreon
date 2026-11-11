@@ -165,6 +165,7 @@ const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serializatio
 
 **Common mistakes**
 
+- Calling `layout()` without awaiting it and then reading positions or calling `fitView()` — the (default) animated layout is still running; `await flow.layout()` resolves once the final positions are applied, so `await flow.layout(); flow.fitView()` fits the laid-out graph. A later `layout()` or `dispose()` supersedes a running one (its promise resolves, its result is not applied)
 - Calling `pushHistory()` before every mutation out of habit — mutations checkpoint themselves (`autoHistory`, default on) and a manual push right before one is deduped; set `autoHistory: false` only if you want the manual model back.
 - Reading `flow.nodes()` inside an event handler to get a snapshot — that is a TRACKED read; use `getNodes()` / `getEdges()` / `getViewport()` for plain reads.
 - Computing a drop position from `clientX - rect.left` by hand — `screenToFlowPosition` already folds in the container rect, pan and zoom (and `flowToScreenPosition` is its inverse).

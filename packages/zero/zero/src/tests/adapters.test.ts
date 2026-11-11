@@ -1443,6 +1443,81 @@ describe('bun adapter — runtime contract', () => {
     20000,
   )
 
+  async function rawBunRequest(port: number, head: string, body = ''): Promise<string> {
+    const { connect } = await import('node:net')
+    return new Promise<string>((resolve, reject) => {
+      const sock = connect(port, '127.0.0.1', () => sock.write(head + body))
+      let out = ''
+      sock.on('data', (d) => (out += String(d)))
+      sock.on('end', () => resolve(out))
+      sock.on('error', reject)
+    })
+  }
+
+  // Bun builds `req.url` from the client's `Host`. ORIGIN pins the origin
+  // (body and client address survive the rebuild), and a Host Bun cannot
+  // form a URL from is a 400, not a 500.
+  it.skipIf(!hasBun)(
+    'ORIGIN fixes the request origin; an unusable Host is a 400',
+    async () => {
+      await setupMockBuild()
+      await writeFile(
+        join(MOCK_SERVER, 'entry-server.js'),
+        `export default async (req) => {
+  const url = new URL(req.url)
+  return Response.json({
+    origin: url.origin,
+    path: url.pathname + url.search,
+    body: await req.text(),
+    remote: typeof req[Symbol.for('pyreon.remoteAddress')],
+  })
+}`,
+      )
+      const outDir = join(TMP, 'bun-runtime-origin')
+      const port = await pickFreePort()
+      await bunAdapter().build({
+        kind: 'ssr',
+        serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+        clientOutDir: MOCK_CLIENT,
+        outDir,
+        config: { port },
+      })
+      const entry = join(outDir, 'index.ts')
+      const parse = (res: string) => JSON.parse(res.slice(res.indexOf('{'), res.lastIndexOf('}') + 1))
+      const stop = await startBunServer(entry, port, { ORIGIN: 'https://site.example' })
+      try {
+        for (const host of ['127.0.0.1:6379', 'attacker.example']) {
+          const res = await rawBunRequest(
+            port,
+            `POST //evil.example/a?b=1 HTTP/1.1\r\nHost: ${host}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n`,
+            '{}',
+          )
+          expect(parse(res)).toEqual({
+            origin: 'https://site.example',
+            path: '//evil.example/a?b=1',
+            body: '{}',
+            remote: 'string',
+          })
+        }
+      } finally {
+        await stop()
+      }
+      const port2 = await pickFreePort()
+      const stop2 = await startBunServer(entry, port2, { PORT: String(port2) })
+      try {
+        const bad = await rawBunRequest(port2, `GET /x HTTP/1.1\r\nHost: a/b?\r\nConnection: close\r\n\r\n`)
+        expect(bad.split('\r\n')[0]).toBe('HTTP/1.1 400 Bad Request')
+        // Unset ORIGIN keeps today's behaviour: the origin is the Host.
+        const ok = await rawBunRequest(port2, `GET /x HTTP/1.1\r\nHost: app.example\r\nConnection: close\r\n\r\n`)
+        expect(parse(ok).origin).toBe('http://app.example')
+      } finally {
+        await stop2()
+        await cleanup()
+      }
+    },
+    20000,
+  )
+
   it.skipIf(!hasBun)(
     'emitted entry boots — SSR fallback returns handler response for non-static paths',
     async () => {
@@ -1839,6 +1914,58 @@ describe('node adapter — runtime contract', () => {
         await stop()
         await cleanup()
       }
+    },
+    20000,
+  )
+
+  // Without ORIGIN the origin is the client's `Host`, so SSR code that
+  // resolves against the request origin (a relative `fetch` under
+  // `runWithRequest`, `new URL('/api', ctx.url)`) followed a `Host:
+  // 127.0.0.1:<internal port>` to an internal service. ORIGIN pins it.
+  it.skipIf(!hasNode)(
+    'ORIGIN fixes the request origin whatever Host and X-Forwarded-Proto say',
+    async () => {
+      await setupMockBuild()
+      await writeFile(
+        join(MOCK_SERVER, 'entry-server.js'),
+        `export default async (req) => {
+  const url = new URL(req.url)
+  return Response.json({ origin: url.origin, path: url.pathname + url.search, body: await req.text() })
+}`,
+      )
+      const outDir = join(TMP, 'node-runtime-origin')
+      const port = await pickFreePort()
+      await nodeAdapter().build({
+        kind: 'ssr',
+        serverEntry: join(MOCK_SERVER, 'entry-server.js'),
+        clientOutDir: MOCK_CLIENT,
+        outDir,
+        config: { port },
+      })
+      const entry = join(outDir, 'index.js')
+      const stop = await startNodeServer(entry, port, { ORIGIN: 'https://site.example/ignored-path', TRUST_PROXY: '1' })
+      try {
+        for (const host of ['127.0.0.1:6379', 'attacker.example', `127.0.0.1:${port}`]) {
+          const res = await rawRequest(
+            port,
+            `POST //evil.example/a?b=1 HTTP/1.1\r\nHost: ${host}\r\nX-Forwarded-Proto: http\r\nContent-Length: 2\r\nConnection: close\r\n\r\n`,
+            '{}',
+          )
+          expect(JSON.parse(res.slice(res.indexOf('{'), res.lastIndexOf('}') + 1))).toEqual({
+            origin: 'https://site.example',
+            path: '//evil.example/a?b=1',
+            body: '{}',
+          })
+        }
+      } finally {
+        await stop()
+      }
+      // A malformed ORIGIN fails at boot instead of silently trusting Host.
+      const port2 = await pickFreePort()
+      await expect(startNodeServer(entry, port2, { ORIGIN: 'site.example', PORT: String(port2) })).rejects.toThrow(
+        /ORIGIN must be an absolute http\(s\) URL/,
+      )
+      await cleanup()
     },
     20000,
   )

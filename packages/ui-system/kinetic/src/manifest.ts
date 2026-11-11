@@ -317,7 +317,7 @@ const Box = kinetic('div').preset(myPreset)`,
     },
     {
       label: 'Children are snapshotted',
-      note: 'Transition/collapse/stagger renderers read children once at render time (animation state is built per item) — they do not observe later child-list changes. The compiler may wrap `{children}` in a deferred accessor; kinetic unwraps it internally (`resolveChildren`). For lists that change at runtime, use group mode with accessor children: `{() => items().map((t) => <li key={t.id}>...</li>)}`.',
+      note: 'Transition/collapse/stagger renderers read children once at render time (animation state is built per item) — they do not observe later child-list changes. The compiler may wrap `{children}` in a deferred accessor (around a group\'s own accessor: an accessor returning an accessor) and lowers literal markup like `<li>Install</li>` to a pre-built element; kinetic unwraps every accessor level and animates pre-built elements as well as VNodes. For lists that change at runtime, use group mode with accessor children: `{() => items().map((t) => <li key={t.id}>...</li>)}`. Group rows that stay keep their element (as `<For>` rows do) — drive changing row content from signals.',
     },
     {
       label: 'Reactive HTML attrs forward',

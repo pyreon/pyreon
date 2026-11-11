@@ -333,6 +333,20 @@ store.editor.someMethod()           // works — class methods see real receiver
 - Using markRaw on plain data objects to "skip" deep wrap — for that, use \`shallowReactive\`. markRaw is for class instances and externally-managed shapes`,
   },
 
+  'reactivity/snapshot': {
+    signature: '<T>(value: T) => T',
+    example: `import { createStore, snapshot } from '@pyreon/reactivity'
+
+const store = createStore({ user: { name: 'Ann' }, tags: ['a'] })
+const copy = snapshot(store)   // { user: { name: 'Ann' }, tags: ['a'] }, no proxies
+structuredClone(copy)          // works — structuredClone(store) throws on the Proxy
+store.user.name = 'Bob'        // copy.user.name is still 'Ann'`,
+    notes: `A plain, non-reactive deep copy of a store (or of any value holding stores) — for logging, \`JSON.stringify\`, \`structuredClone\`, \`postMessage\`, undo history or a form's initial values. Reads the raw targets, so it tracks nothing and creates no per-property signals. Copies plain objects and arrays at every depth and unwraps every store proxy it meets (including one assigned into another store); keeps class instances, \`Map\`, \`Set\`, \`Date\` and \`markRaw\` objects by reference, unwrapped. Shared references and cycles are preserved. The equivalent of Svelte \`$state.snapshot\`. See also: createStore, markRaw, reconcile.`,
+    mistakes: `- Calling \`structuredClone(store)\` or \`postMessage(store)\` directly — a Proxy cannot be cloned; pass \`snapshot(store)\`
+- Expecting class instances / \`Map\` / \`Set\` / \`Date\` inside the store to be copied — they are kept by reference; copy them yourself if the snapshot must not share them
+- Using \`snapshot\` to read inside an effect and expecting a re-run on change — it tracks nothing by design; read the store fields directly to subscribe`,
+  },
+
   'reactivity/untrack': {
     signature: '(fn: () => T) => T',
     example: `effect(() => {
@@ -1710,8 +1724,9 @@ console.log(diags[0]?.code) // "react-use-state"`,
     signature: 'migrateReactCode(code: string, filename?: string): MigrationResult',
     example: `import { migrateReactCode } from "@pyreon/compiler/analyze"
 
-const { code, changes } = migrateReactCode(reactSource, "C.tsx")`,
-    notes: 'One-shot React→Pyreon codemod — `useState`→`signal`, `useEffect`→`effect`/`onMount`, `className`→`class`, etc. Returns the rewritten code plus the list of applied `MigrationChange`s. Mechanical only: shapes it cannot safely rewrite are left as `detectReactPatterns` diagnostics for the human. See also: detectReactPatterns.',
+const { code, changes, manual } = migrateReactCode(reactSource, "C.tsx")
+// manual: [{ line, column, message, suggested }] — e.g. a state read at setup level`,
+    notes: 'One-shot React→Pyreon codemod whose output updates: `useState`→`signal` with every read rewritten to `x()` and every setter call to `x.set(v)` / `x.update(fn)`, `useReducer`→`signal` + a `dispatch`, `useEffect`→`effect`/`onMount`, `useMemo`→`computed` (reads called), `useCallback`/`memo`/`forwardRef` unwrapped (the ref arrives as `props.ref`), `useRef(null)`→`createRef()`, `useRef(v)`→`{ current: v }`, a body-level `const` derived from state → `computed`, a `return` that reads state outside JSX → an accessor, `className`/`htmlFor`/text-input `onChange`, `createRoot(el).render(app)`→`mount(app, el)`, `Fragment`→`<>`, router `Link`/`Outlet`. References are resolved lexically, so shadowing locals are left alone. Returns `{ code, diagnostics, changes, manual }`: `manual` lists every pattern it left in place (with its React import kept) or converted with a caveat, each with a reason and a suggestion. See also: detectReactPatterns.',
   },
 
   'compiler/migratePyreonCode': {
@@ -2003,12 +2018,13 @@ const isExactAdmin = useIsActive("/admin", true)  // exact only
   'router/useTypedSearchParams': {
     signature: 'useTypedSearchParams<T extends SearchParamSchema>(schema: T): [get: () => InferSearchParams<T>, set: (updates: Partial<InferSearchParams<T>>) => Promise<NavigationResult>]',
     example: `const [params, setParams] = useTypedSearchParams({ page: "number", q: "string", active: "boolean" })
-params().page    // number (auto-coerced)
-params().q       // string
-setParams({ page: 2 })  // updates URL via router.replace`,
-    notes: `Type-safe search params with auto-coercion from URL strings. Schema keys define parameter names, values define types (\`"string"\`, \`"number"\`, \`"boolean"\`). Returns a \`[get, set]\` TUPLE (like \`useSearchParams\`): \`get()\` reads the coerced values reactively; \`set()\` merges updates and navigates via \`router.replace\` (resolving with the navigation's \`NavigationResult\`). Missing numbers coerce to \`0\`, booleans accept \`"true"\`/\`"1"\`. See also: useSearchParams, useRoute.`,
+params().page ?? 1  // number | undefined (auto-coerced; undefined when absent)
+params().q          // string
+setParams({ page: 2 })  // ?page=2 — other params kept, via router.replace`,
+    notes: `Type-safe search params with auto-coercion from URL strings. Schema keys define parameter names, values define types (\`"string"\`, \`"number"\`, \`"boolean"\`). Returns a \`[get, set]\` TUPLE (like \`useSearchParams\`): \`get()\` reads the coerced values reactively; \`set()\` changes only the params it is given (every other query param and the hash are kept; an \`undefined\` value removes the key) and navigates via \`router.replace\` (resolving with the navigation's \`NavigationResult\`). An absent or non-numeric number reads \`undefined\` (default it with \`?? 1\`), an absent string \`""\`, an absent boolean \`false\`; booleans accept \`"true"\`/\`"1"\`. See also: useSearchParams, useRoute.`,
     mistakes: `- Destructuring an object (\`params.page()\`) — the hook returns a TUPLE: \`const [params, setParams] = useTypedSearchParams(...)\`, read via \`params().page\`
-- Expecting \`set()\` to bypass navigation — it navigates via \`router.replace\`, so guards/blockers apply (check the resolved \`NavigationResult\` if you need to know it committed)`,
+- Expecting \`set()\` to bypass navigation — it navigates via \`router.replace\`, so guards/blockers apply (check the resolved \`NavigationResult\` if you need to know it committed)
+- Reading a \`number\` param without a default — it is \`undefined\` when absent from the URL, not \`0\`: \`params().page ?? 1\``,
   },
 
   'router/useTransition': {
@@ -2117,16 +2133,17 @@ setSearch({ page: "2" })`,
   },
 
   'router/useBlocker': {
-    signature: 'useBlocker(fn: BlockerFn): Blocker',
+    signature: 'useBlocker(fn: BlockerFn, options?: BlockerOptions): Blocker',
     example: `const blocker = useBlocker((to, from) => {
   return form.isDirty() && !confirm('Discard unsaved changes?')
 })
 // later, e.g. after save:
 blocker.remove()`,
-    notes: 'Block navigations while a condition holds. `fn(to, from)` is called before EVERY navigation — including browser Back/Forward, which route through the full pipeline — and returning `true` (or resolving to `true`; async blockers are supported, e.g. `confirm()` dialogs) cancels it. A cancelled browser traversal restores the URL/history position. Returns `{ remove() }` to unregister (auto-removed on component unmount). Also installs a shared ref-counted `beforeunload` handler so tab-close shows the browser confirmation while any blocker is active. See also: useRouter, onBeforeRouteLeave.',
+    notes: `Block navigations while a condition holds. \`fn(to, from)\` is called before EVERY navigation — including browser Back/Forward, which route through the full pipeline — and returning \`true\` (or resolving to \`true\`; async blockers are supported, e.g. \`confirm()\` dialogs) cancels it. A cancelled browser traversal restores the URL/history position. Returns \`{ remove() }\` to unregister (auto-removed on component unmount). Closing or reloading the tab shows the browser's "Leave site?" prompt only when a blocker says to block: the shared \`beforeunload\` handler calls each blocker synchronously with the current route as \`to\` and \`from\` (a blocker returning a Promise counts as blocking, since the browser cannot wait). \`options.beforeUnload\` overrides that: \`true\` / \`false\` always / never prompt, or a function such as \`() => form.isDirty()\` (use it for an async blocker). See also: useRouter, onBeforeRouteLeave.`,
     mistakes: `- Expecting \`proceed()\` / \`reset()\` methods (React Router shape) — Pyreon's blocker is a predicate: return \`true\` to block, \`false\` to allow; \`remove()\` unregisters it
 - Returning \`false\` to block — inverted: \`true\` means BLOCK (it answers "should this navigation be blocked?")
-- Assuming the Back button bypasses blockers — browser traversals run the same pipeline; a blocked Back restores the URL`,
+- Assuming the Back button bypasses blockers — browser traversals run the same pipeline; a blocked Back restores the URL
+- An async blocker without \`beforeUnload\` — the tab-close prompt cannot await it, so it always prompts; pass \`{ beforeUnload: () => isDirty() }\``,
   },
 
   'router/onBeforeRouteLeave': {
@@ -2418,11 +2435,13 @@ export default createHandler({
   routes,
   clientEntry: "/src/entry-client.ts",
   mode: "stream",  // or "string"
+  onError: (error, { phase, request }) => Sentry.captureException(error, { tags: { phase } }),
 })`,
-    notes: 'Build a production SSR handler from your `App`, `routes`, and optional template / client entry / middleware. The template is precompiled once at handler-creation (split into 4 parts to skip three string scans per request); a missing `<!--pyreon-app-->` placeholder throws at creation time, not per request. Middleware runs before render with `ctx.locals` for cross-middleware data passing — return a `Response` to short-circuit the chain. `mode: "stream"` uses `renderToStream` so Suspense boundaries flush out-of-order; `mode: "string"` uses `renderToString` (default). See also: prerender, island, useRequestLocals.',
+    notes: 'Build a production SSR handler from your `App`, `routes`, and optional template / client entry / middleware. The template is precompiled once at handler-creation (split into 4 parts to skip three string scans per request); a missing `<!--pyreon-app-->` placeholder throws at creation time, not per request. Middleware runs before render with `ctx.locals` for cross-middleware data passing — return a `Response` to short-circuit the chain. `mode: "stream"` uses `renderToStream` so Suspense boundaries flush out-of-order; `mode: "string"` uses `renderToString` (default). `onError(error, { request, phase })` receives every unexpected server error (`phase`: `middleware` — including API routes —, `render`, `stream`, `action` from zero server actions, or `reported` via `ctx.reportError`) to forward to Sentry / OpenTelemetry; it runs after the console line, never changes the 500 response, and a throwing hook is caught. See also: prerender, island, useRequestLocals.',
     mistakes: `- Omitting \`<!--pyreon-app-->\` from the custom template — throws at handler-creation, not per request
 - Returning a \`Response\` from middleware and expecting downstream middleware to still run — the chain short-circuits on the first \`Response\`
 - Reading \`ctx.locals\` from inside the component without \`useRequestLocals()\` — the component tree only sees locals when bridged through that hook
+- Expecting \`onError\` to replace the response or to be awaited — it is a reporter: the client always gets the generic 500, and a returned promise is not awaited
 - Forgetting to escape user data inserted into a custom template — \`createHandler\` only escapes its own loader-data injection (\`</script>\` → \`<\\/script>\`); your template content is your responsibility`,
   },
 
@@ -3152,9 +3171,9 @@ deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
     signature: '(instance: ModelInstance, snapshot: Partial<Snapshot>) => void',
     example: `applySnapshot(counter, { count: 0 })      // reset one field
 applySnapshot(app, { title: 'New' })      // merge — profile is left unchanged`,
-    notes: `Apply a (possibly PARTIAL) snapshot to a model instance — updates only the keys PRESENT in the snapshot, leaving absent keys unchanged (a merge, not a clear). Nested field-models, arrays-of-instances (\`todos: Todo[]\`), and object-of-instances (\`byId: { [k]: Model }\`) reconcile IN PLACE: existing instances are updated from the matching elements, never replaced by plain snapshot objects, and array length changes beyond the current↔snapshot overlap are NOT reconciled (use the array's own mutation methods to add/remove). Schema mode routes through the validated \`patch\` helper, so an invalid snapshot is REJECTED. Emits \`replace\` patches. See also: getSnapshot, model.`,
+    notes: 'Apply a (possibly PARTIAL) snapshot to a model instance — updates only the keys PRESENT in the snapshot, leaving absent keys unchanged (a merge, not a clear). Nested field-models reconcile IN PLACE. An `arrayOf(Model)` / `mapOf(Model)` field reconciles by index / key: existing instances are updated in place, extra snapshot elements are CREATED as `Model` instances, missing ones are dropped — so a snapshot fully restores the list. An undeclared container (`todos: [] as Todo[]`) whose elements all share one model infers that model from them; an empty or mixed one cannot create elements (declare it with `arrayOf`). A `reference` field restores its id. Schema mode routes through the validated `patch` helper, so an invalid snapshot is REJECTED. Emits `replace` patches. See also: getSnapshot, model.',
     mistakes: `- Expecting a partial snapshot to CLEAR unmentioned fields — it merges: keys absent from the snapshot keep their current value. Pass a full snapshot to replace everything.
-- Expecting a longer array snapshot to grow the list — arrays-of-instances reconcile only up to the overlap (\`min(current, snapshot)\`); extra snapshot elements are NOT added (there is no element type to recreate them). Use the array's own add/remove action, then apply.
+- Holding model instances in a plain \`[] as Todo[]\` field and restoring a snapshot into an EMPTY instance — with no element type the elements stay plain objects (a dev warning names the field). Declare it \`todos: arrayOf(Todo)\` so \`applySnapshot\` / \`applyPatch\` / \`create\` recreate the instances.
 - Applying an invalid snapshot in schema mode expecting a silent write — it routes through the validated \`patch\` and THROWS on a schema violation (the schema is the source of truth).`,
   },
 
@@ -3163,15 +3182,16 @@ applySnapshot(app, { title: 'New' })      // merge — profile is left unchanged
     example: `const dispose = onPatch(counter, (patch) => {
   console.log(patch) // { op: 'replace', path: '/count', value: 11 }
 })`,
-    notes: 'Subscribe to JSON patches emitted by state mutations on a model instance. Each patch is a `replace` op carrying the JSON-pointer path (`/count`, `/profile/name` for nested) and the new value — Pyreon state is one signal per field, so a field holding an array/object emits a whole-value `replace`, not granular add/remove ops. Returns an unsubscribe function. Pairs with `applyPatch` for undo/redo and state synchronization. See also: applyPatch, model.',
+    notes: 'Subscribe to JSON patches emitted by state mutations on a model instance. Each patch is a `replace` op carrying the JSON-pointer path (`/count`, `/profile/name` for nested, `/todos/1/done` for an element of an array / map field) and the new value as plain JSON — a model value, or a container holding models, is emitted as its SNAPSHOT, never as live instances; a `reference` write emits the stored id — Pyreon state is one signal per field, so a field holding an array/object emits a whole-value `replace`, not granular add/remove ops. Returns an unsubscribe function. Pairs with `applyPatch` for undo/redo and state synchronization. See also: applyPatch, model.',
   },
 
   'state-tree/applyPatch': {
     signature: '(instance: ModelInstance, patch: Patch | Patch[]) => void',
     example: `applyPatch(counter, { op: 'replace', path: '/count', value: 0 })`,
-    notes: 'Apply one or more JSON patches to a model instance. Accepts a single patch or an array for batch replay. REPLACE-ONLY: every patch must be `{ op: "replace" }` — any other op (`add`/`remove`/`move`/…) THROWS `unsupported op`. This mirrors what `onPatch` emits (Pyreon is one signal per field, so a field holding an array/object emits a whole-value `replace`, never granular add/remove), so an `onPatch`→`applyPatch` undo/redo round-trip is closed; a hand-authored standard JSON-Patch with add/remove is not. See also: onPatch, model.',
+    notes: 'Apply one or more JSON patches to a model instance. Accepts a single patch or an array for batch replay. REPLACE-ONLY: every patch must be `{ op: "replace" }` — any other op (`add`/`remove`/`move`/…) THROWS `unsupported op`. This mirrors what `onPatch` emits (Pyreon is one signal per field, so a field holding an array/object emits a whole-value `replace`, never granular add/remove), so an `onPatch`→`applyPatch` undo/redo or sync round-trip is closed; a hand-authored standard JSON-Patch with add/remove is not. Paths walk through model fields and into array / map elements (`/todos/1/done`, RFC 6901 `~0`/`~1` escapes). A value is restored exactly as `applySnapshot` restores it: a snapshot into a model field reconciles into the live instance, an `arrayOf` / `mapOf` field recreates its elements, a `reference` field stores the id. See also: onPatch, model.',
     mistakes: `- Passing an \`add\` / \`remove\` / \`move\` patch (e.g. imported from a standard JSON-Patch diff) — \`applyPatch\` throws \`unsupported op "<op>"\`; it accepts ONLY \`replace\`. Feed it the \`replace\` ops \`onPatch\` emits, or convert your diff to whole-value replaces.
-- Expecting a granular array patch (\`/todos/0\`, add-at-index) — Pyreon emits a whole-value \`replace\` of the field (\`/todos\`); apply the whole array value, not an element op.`,
+- Expecting an add-at-index array patch — adding or removing elements emits a whole-value \`replace\` of the field (\`/todos\`) carrying the element snapshots; only a write INSIDE an element addresses it (\`/todos/1/done\`).
+- Replaying patches of an undeclared \`[] as Todo[]\` field into an empty instance — the first \`/todos\` replace writes plain objects, and the next \`/todos/0/…\` patch throws. Declare the field with \`arrayOf(Todo)\`.`,
   },
 
   'state-tree/addMiddleware': {
@@ -3265,12 +3285,24 @@ list.add('write tests')               // pushes a Todo into the array
 const todo = list.todos()[0]
 getParent(todo)   // → list   (array children get a parent, not just field-nested)
 getRoot(todo)     // → list
-getPath(todo)     // "/todos"
+getPath(todo)     // "/todos/0"
 isRoot(list)      // true`,
-    notes: `Tree-traversal helpers. A model instance gets a tree PARENT when it is written into another model's state — as a field value, an ARRAY element, or a plain-object value (parent tracking runs on the initial value AND every subsequent write, so array-held children — the headline \`todos: Todo[]\` shape — are tracked, not just field-nested ones). \`getParent(node)\` → the instance \`node\` is attached under (or \`undefined\` for a root); \`getRoot(node)\` → walks to the top; \`getPath(node)\` → JSON-pointer path from the root built from each ancestor's parent-key (e.g. \`"/todos"\`, \`""\` for a root); \`isRoot(node)\` / \`hasParent(node)\` → booleans. All throw on a non-model-instance. See also: model, getSnapshot.`,
+    notes: `Tree-traversal helpers. A model instance gets a tree PARENT when it is written into another model's state — as a field value, an ARRAY element, or a plain-object value (parent tracking runs on the initial value AND every subsequent write, so array-held children — the headline \`todos: Todo[]\` shape — are tracked, not just field-nested ones). \`getParent(node)\` → the instance \`node\` is attached under (or \`undefined\` for a root); \`getRoot(node)\` → walks to the top; \`getPath(node)\` → JSON-pointer path from the root, including the element index / key for array and map children (e.g. \`"/todos/0"\`, \`"/byId/u1"\`, \`""\` for a root) — the same path the node's patches carry; \`isRoot(node)\` / \`hasParent(node)\` → booleans. All throw on a non-model-instance. See also: model, getSnapshot.`,
     mistakes: `- Expecting a parent for a child removed from an array — parent tracking sets the parent on write; a detached node keeps its last parent until GC (v1). getParent reflects the last attachment, not live membership
-- Expecting array INDICES in \`getPath\` — v1 paths carry the field key (\`/todos\`), not the element index (\`/todos/0\`)
 - Auto-attachment is one container level deep — a model nested inside an array inside an array is not auto-parented; use field or single-array nesting`,
+  },
+
+  'state-tree/arrayOf': {
+    signature: 'arrayOf(Model) => ModelArray<Model>; mapOf(Model) => ModelMap<Model>',
+    example: `const Todo = model({ state: { title: '', done: false } })
+const TodoList = model({ state: { todos: arrayOf(Todo), byId: mapOf(Todo) } })
+const list = TodoList.create({ todos: [{ title: 'a', done: false }] }) // a Todo instance
+getPath(list.todos()[0]!)                 // "/todos/0"
+onPatch(list, (p) => send(p))             // { op: 'replace', path: '/todos/0/done', value: true }
+applyPatch(TodoList.create(), received)   // replays, recreating Todo instances`,
+    notes: 'Declare a plain-mode state field as an ARRAY (`arrayOf`) or string-keyed MAP (`mapOf`) of `Model` instances. The field is an ordinary signal holding `Model[]` / `Record<string, Model>` (initially empty); declaring the element model is what makes the children first-class: `create()` turns element snapshots into instances (live instances are kept), `getSnapshot` serializes them, `onPatch` addresses a child write by index / key (`/todos/1/done`) and carries snapshots, and `applySnapshot` / `applyPatch` reconcile by index / key — updating existing instances in place, creating extra elements, dropping missing ones — so patches and snapshots round-trip, including into a fresh instance in another process. `getPath(child)` includes the index / key. A plain `[] as Todo[]` default still works for reading and gets indexed paths, but cannot recreate elements from data, and dev-warns once per field. See also: applySnapshot, applyPatch, onPatch, getParent, model.',
+    mistakes: `- Passing an instance (\`arrayOf(Todo.create())\`) — pass the model DEFINITION; it throws otherwise
+- Expecting \`self.todos.set([{ title }])\` to convert snapshots — direct signal writes store what you give them; push \`Todo.create({ title })\`. Only \`create\` / \`applySnapshot\` / \`applyPatch\` convert snapshots`,
   },
 
   'state-tree/identifier': {
@@ -3290,6 +3322,7 @@ post.author.set(user)  // stores user's id
 post.author.id()   // 'u-42'`,
     notes: `Declare a state field as a normalized REFERENCE to another model by its identifier. The field STORES the target's id (so it serializes + round-trips cleanly) but RESOLVES to the live node on read. \`post.author()\` → the target node (or \`undefined\` if unresolved); \`post.author.set(node | id)\` stores the id; \`post.author.id()\` reads the raw id; \`getSnapshot\`/\`applySnapshot\` serialize/restore the id. Resolution walks the tree from \`getRoot(node)\` for a node of the target type whose identifier equals the stored id. A validated identifier index makes the repeated case O(depth): the first resolve for an id walks the tree (O(N)), later resolves are validated cache hits (revalidated against the live tree, so a stale entry only ever costs an extra walk, never a wrong result). The target type must declare an \`identifier()\`. See also: identifier, resolveIdentifier, getRoot, model.`,
     mistakes: `- Reading \`reference\` resolution OUTSIDE the tree — the field resolves via \`getRoot(node)\`, so the referencing node and the target must share a root; an unrooted node resolves to \`undefined\`
+- Expecting a \`reference\` write to be invisible to \`onPatch\` — it emits a \`replace\` patch carrying the new id (and fires \`onSnapshot\`), so it replays like any other field
 - Expecting a \`reference\` field to deep-serialize its target — a reference serializes as the target's ID (so it round-trips), NOT as the node; the target serializes under its OWN owner in the tree. (Array-held OWNED instances — the \`todos: Todo[]\` shape — DO deep-serialize in \`getSnapshot\`; a reference is an id by design.)
 - Referencing a model with no \`identifier()\` — \`reference()\`/\`resolveIdentifier\` throw without a declared identifier on the target type`,
   },
@@ -5393,7 +5426,8 @@ can.set({ 'admin.*': true })  // replace all
 can.patch({ 'posts.delete': true })  // merge`,
     notes: 'Create a reactive permissions instance. Returns a callable object — `can(key, context?)` checks a permission reactively (reads as a signal in effects and JSX). Permissions can be booleans or predicate functions `(context?) => boolean`. Supports wildcard keys: `admin.*` (exactly one segment), `admin.**` (any depth below `admin`), `*` (everything); resolution is most-specific-first, so an exact or `**` deny overrides a broader subtree grant. The instance exposes `.not()`, `.all()`, `.any()` for multi-checks, `.assert()` to throw-on-deny, and `.set()` / `.patch()` / `.clear()` for runtime updates. See also: PermissionsProvider, usePermissions, can.assert.',
     mistakes: `- Reading \`can("key")\` outside a reactive scope and expecting updates — the check is a signal read, it only re-evaluates inside \`effect()\`, \`computed()\`, or JSX expression thunks
-- Using a static object instead of a predicate for context-dependent checks — \`'posts.update': true\` always passes, use \`(post) => post.authorId === userId()\` for ABAC
+- Using a static object instead of a predicate for context-dependent checks — \`'posts.update': true\` always passes, use \`(post: Post) => post.authorId === userId()\` for ABAC
+- Leaving a predicate's context parameter unannotated — \`(post) => post.authorId\` sees \`post: unknown\` and fails to typecheck; annotate it with the context type the predicate expects (\`(post: Post) => …\`), which any permission map accepts
 - Forgetting that \`admin.*\` only matches ONE segment — \`admin.users.list\` is NOT matched by \`admin.*\` (only \`admin.users\` is). Use \`admin.**\` to match any depth below \`admin\``,
   },
 
@@ -5850,6 +5884,7 @@ i18n.locale.set('fr')  // switch reactively`,
     mistakes: `- Reading \`t(key)\` outside a reactive scope and expecting updates on locale change — \`t()\` is a reactive signal read, wrap in JSX thunk or \`effect()\`
 - Using \`@pyreon/i18n\` on the backend — use \`@pyreon/i18n/core\` instead, it has zero JSX/core dependencies
 - Forgetting \`fallbackLocale\` — missing keys in the current locale return the key string instead of falling back to another language
+- Writing \`t("shop:title")\` for a key registered in the default namespace (\`messages: { en: { shop: { title } } }\` is \`shop.title\`) — \`ns:key\` reads namespace \`ns\`, which needs \`addMessages(locale, messages, "shop")\` or a loader. A missing key renders the key itself and, in development, warns once with a did-you-mean hint
 - Calling the plural suffix directly — \`t("items_one")\` bypasses selection. Call the BASE key with a \`count\`: \`t("items", { count: 3 })\`; the \`_one\`/\`_other\`/… suffix is chosen by the CLDR plural CATEGORY of \`count\` for the current locale.
 - Defining only \`_one\`/\`_other\` for every language — the plural category is locale-specific (\`Intl.PluralRules\`), not \`count === 1\`. Slavic locales need \`_few\`/\`_many\`, Arabic needs \`_zero\`/\`_two\`; a locale missing its required category falls through to \`_other\`. Provide the per-locale keys (or a custom \`pluralRules\`).
 - \`count\` is the RESERVED key that drives pluralization — passing the number under any other name (\`n\`, \`num\`, \`value\`) interpolates it but does NOT pluralize. Use \`{ count }\`.`,
@@ -6205,7 +6240,8 @@ await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing
 // force/stress/radial/box/rectpacking silently ignore them. nodeSpacing applies to all algorithms.
 const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serialization`,
     notes: 'Create a reactive flow instance. Generic over node data shape — `createFlow<MyData>(...)` returns `FlowInstance<MyData>` so `node.data.kind` narrows correctly without an `[key: string]: unknown` index signature on consumer types. Defaults to `Record<string, unknown>` when no generic is supplied. The returned instance owns signal-native nodes / edges and exposes CRUD, selection, viewport (zoom / pan / fitView), and auto-layout from the built-in engine (pure, synchronous, deterministic — no chunk to fetch). Pan / zoom uses pointer events + CSS transforms — no D3. See also: useFlow, FlowInstance, Flow.',
-    mistakes: `- Calling \`pushHistory()\` before every mutation out of habit — mutations checkpoint themselves (\`autoHistory\`, default on) and a manual push right before one is deduped; set \`autoHistory: false\` only if you want the manual model back.
+    mistakes: `- Calling \`layout()\` without awaiting it and then reading positions or calling \`fitView()\` — the (default) animated layout is still running; \`await flow.layout()\` resolves once the final positions are applied, so \`await flow.layout(); flow.fitView()\` fits the laid-out graph. A later \`layout()\` or \`dispose()\` supersedes a running one (its promise resolves, its result is not applied)
+- Calling \`pushHistory()\` before every mutation out of habit — mutations checkpoint themselves (\`autoHistory\`, default on) and a manual push right before one is deduped; set \`autoHistory: false\` only if you want the manual model back.
 - Reading \`flow.nodes()\` inside an event handler to get a snapshot — that is a TRACKED read; use \`getNodes()\` / \`getEdges()\` / \`getViewport()\` for plain reads.
 - Computing a drop position from \`clientX - rect.left\` by hand — \`screenToFlowPosition\` already folds in the container rect, pan and zoom (and \`flowToScreenPosition\` is its inverse).
 - Passing \`isValidConnection\` as a prop on \`<Flow>\` (React Flow) — here it is a \`createFlow\` config key, alongside \`connectionRadius\`.
@@ -7597,11 +7633,12 @@ function Counter() {
   return <button onClick={() => setCount(count + 1)}>{count}</button>
 }
 \` })`,
-    notes: 'Convert React code to idiomatic Pyreon. Handles `useState` → `signal()`, `useEffect` → `effect()`, `className` → `class`, `onChange` → `onInput`, `useMemo` → `computed()`, React imports → Pyreon imports. Reports per-edit fixable diagnostics so callers can apply or review. See also: validate.',
+    notes: 'Convert React code to Pyreon that updates. `useState` → `signal()` with reads rewritten to `count()` and setter calls to `count.set(v)` / `count.update(fn)`; `useReducer` → `signal()` + `dispatch`; `useEffect` → `effect()` / `onMount()`; `useMemo` → `computed()`; `useCallback` / `memo` / `forwardRef` unwrapped; `useRef(null)` → `createRef()`, `useRef(v)` → `{ current: v }`; a body-level `const` derived from state → `computed()`; `className` → `class`; text-input `onChange` → `onInput`; React imports → Pyreon imports. Anything it cannot convert safely is left in place (React import kept) and listed under "Remaining issues" with the reason, together with whatever `validate` still finds in the output. See also: validate.',
     mistakes: `- Expecting the migration to handle every React feature — currently covers the most common hooks/JSX patterns. Class components, Concurrent React APIs, Suspense boundaries, and React-specific libs (react-router, redux) are NOT migrated automatically; the result will flag remaining issues but won't rewrite them.
 - Running \`migrate_react\` on a file that's already mostly Pyreon — it's idempotent against already-migrated code (nothing flagged → nothing changed), so the cost is just the parse pass; safe to re-run.
 - Forgetting that \`useEffect(() => fn, [deps])\` → \`effect(() => fn)\` changes semantics: Pyreon effects auto-track via signal reads, the explicit deps array is dropped. Verify your effects read the same signals the React deps array listed.
-- Trusting the migration to produce idiomatic Pyreon — the output is CORRECT but mechanical. Pair with \`get_pattern\` after migration to apply Pyreon-native shapes (e.g. \`<Show when={() => …}>\` instead of ternaries; \`<For>\` instead of \`.map()\`).`,
+- Applying the output without reading "Remaining issues" — that list is where the tool says what it did NOT convert (a state read at setup level, \`useId\`, \`Context.Provider\`, destructured props, \`.map()\` lists) and those lines still behave like React.
+- Trusting the migration to produce idiomatic Pyreon — the output updates but is mechanical. Pair with \`get_pattern\` after migration to apply Pyreon-native shapes (e.g. \`<Show when={() => …}>\` instead of ternaries; \`<For>\` instead of \`.map()\`).`,
   },
 
   'mcp/migrate_pyreon': {
@@ -12583,7 +12620,7 @@ report.issues.filter((i) => i.severity === 'error')`,
   // <gen-docs:api-reference:start @pyreon/lathe>
 
   'lathe/generate': {
-    signature: 'generate(specText: string, config: ResolvedConfig, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string }): GenerateResult',
+    signature: 'generate(specText: string, config: ResolvedConfig, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string; refRoot?: string; realpath?: (path: string) => string }): GenerateResult',
     example: `import { generate, resolveConfig } from '@pyreon/lathe'
 
 const config = resolveConfig({ input: './openapi.yaml', target: 'multiplatform' })
@@ -12592,7 +12629,7 @@ const { doc, files, reach } = generate(specText, config)
 for (const [id, r] of reach) {
   if (r.reach === 'web-only') console.warn(id, r.reason)
 }`,
-    notes: 'The whole pipeline, pure: spec text in, file CONTENTS out. Touches no filesystem, which is what makes the generator testable without a temp directory and lets `lathe check` diff before writing. Returns the IR document, generated files, every input document read, and a per-operation `reach` map explaining in spec terms which operations can run natively and why the others cannot. Pass `location` and `readDocument` to resolve and bundle cross-file `$ref`s.',
+    notes: `The whole pipeline, pure: spec text in, file CONTENTS out. Touches no filesystem, which is what makes the generator testable without a temp directory and lets \`lathe check\` diff before writing. Returns the IR document, generated files, every input document read, and a per-operation \`reach\` map explaining in spec terms which operations can run natively and why the others cannot. Pass \`location\` and \`readDocument\` to resolve and bundle cross-file \`$ref\`s; a local \`$ref\` outside the spec's directory (or \`refRoot\`) throws instead of being read, and \`realpath\` makes that check see through symlinks.`,
     mistakes: `- Passing a relative \`baseUrl\` (or omitting \`servers\` from the spec) and expecting native output — PMTC bakes the request URL at compile time, so a relative base makes EVERY operation web-only. The reach report names this, but only if you read it.
 - Assuming the \`.native.tsx\` modules replace the web output. They are ADDITIVE: the web files are byte-identical whether the target is \`web\` or \`multiplatform\`.
 - Editing generated files. Every file carries a DO-NOT-EDIT banner and is overwritten on the next run; change the spec or the emitter.
@@ -12707,7 +12744,7 @@ if (diff.breaking > 0) console.log(renderContractDiff(diff, 'markdown'))`,
   },
 
   'lathe/loadOpenApi': {
-    signature: 'loadOpenApi(source: string, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string }): { doc: IrDocument; documents: string[] }',
+    signature: 'loadOpenApi(source: string, options?: { sourceUrl?: string; location?: string; readDocument?: (id: string) => string; refRoot?: string; realpath?: (path: string) => string }): { doc: IrDocument; documents: string[] }',
     example: `import { loadOpenApi } from '@pyreon/lathe'
 
 const { doc } = loadOpenApi(await readFile('./openapi.yaml', 'utf8'))
@@ -12715,6 +12752,7 @@ console.log(doc.models.length, 'models', doc.operations.length, 'operations')
 for (const note of doc.notes) console.warn(note.code, note.at, note.message)`,
     notes: 'Parses OpenAPI 3.x or Swagger 2.0 (JSON or YAML text) into the spec-agnostic IR. Every reduction the IR cannot represent is recorded in `doc.notes` with a stable code and a location. Deterministic: models and operations are sorted. Pass `sourceUrl` to resolve a relative server URL. With `location` and `readDocument`, cross-file `$ref`s are resolved and bundled; schemas are hoisted into named models and other values are inlined. Operations carry typed error bodies, while OpenAPI 3.1 webhooks and callbacks land in `doc.webhooks`.',
     mistakes: `- Calling it with only the text of a split spec. Without \`location\` and \`readDocument\`, relative cross-file references cannot be resolved. Remote references are never fetched here; \`lathe pull\` bundles them.
+- Keeping shared parts of a split spec in a SIBLING directory (\`$ref: '../shared/x.yaml'\`) without \`refRoot\`. A local \`$ref\` must stay inside the root spec's directory, so a spec cannot read an arbitrary file into the client; the run throws, naming the reference. Set \`refRoot\` to the common parent on purpose.
 - Ignoring \`doc.notes\`. A spec with a remote \`$ref\` or a non-JSON media type still produces output — with those pieces typed \`unknown\`. The note is the only signal. Filter on \`noteSeverity(note) === 'loss'\` for the ones that change behaviour.
 - Reading \`op.body\` as a type. It is \`{ mediaType, encoding, type }\` — \`encoding\` (\`json\` / \`form\` / \`multipart\` / \`text\` / \`binary\`) decides the call argument (\`json:\` / \`form:\` / \`multipart:\` / \`body:\`), and a form body carries its per-field \`fieldEncoding\`.
 - Reading pointers in Swagger 2 notes against the original file. The document is up-converted first, so a pointer under \`#/components/schemas\` may have originated under \`#/definitions\`. Swagger 1.x is refused.

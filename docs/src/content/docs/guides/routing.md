@@ -55,8 +55,8 @@ function User() {
   const params = useParams()                 // returns the params record directly: { id: '1' }
   // useTypedSearchParams returns a [get, set] tuple — destructure the getter:
   const [search] = useTypedSearchParams({ page: 'number', q: 'string' })
-  // search().page is a number (coerced), NaN-guarded to 0
-  return <h1>{() => `User ${params.id}, page ${search().page}`}</h1>
+  // search().page is a number (coerced), or undefined when absent / not a number
+  return <h1>{() => `User ${params.id}, page ${search().page ?? 1}`}</h1>
 }
 ```
 

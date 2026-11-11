@@ -170,6 +170,31 @@ describe('--fix writes the file and reports what it wrote', () => {
     })
   })
 
+  it('reports what the React migration could NOT convert, at its line in the written file', () => {
+    // A state read at setup level is valid Pyreon that never updates, so no
+    // detector finds it in the rewritten file. Only the migration knows (#4287).
+    const abs = write(
+      'src/s.tsx',
+      `import { useState } from 'react'
+export function S() {
+  const [n, setN] = useState(0)
+  if (n > 2) console.log('big')
+  return <button onClick={() => setN(n + 1)}>{n}</button>
+}
+`,
+    )
+    return run({ paths: ['src/s.tsx'], fix: true, json: true }).then((r) => {
+      const after = readFileSync(abs, 'utf8')
+      expect(after).toContain('onClick={() => n.set(n() + 1)}')
+      const rep = JSON.parse(r.out) as JsonReport
+      const notMigrated = rep.findings.filter((f) => f.code === 'not-migrated')
+      expect(notMigrated).toHaveLength(1)
+      expect(notMigrated[0]!.line).toBe(4)
+      expect(after.split('\n')[3]).toContain('if (n() > 2)')
+      expect(r.code).toBe(1)
+    })
+  })
+
   it('does NOT write when there is nothing to fix', () => {
     // Rewriting a clean file churns its mtime, which invalidates every
     // build cache keyed on it.

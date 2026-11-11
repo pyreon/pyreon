@@ -119,6 +119,8 @@ interface HandlerOptions {
    *   createHandler({ App, routes, base: '/app/' })
    */
   base?: string
+  /** Forward unexpected server errors to a reporter (Sentry, OpenTelemetry, a log shipper) — see "Error handling" */
+  onError?: (error: unknown, info: { request: Request; phase: ServerErrorPhase }) => void | Promise<void>
 }
 ```
 
@@ -222,6 +224,32 @@ const res = await handler(new Request('http://localhost/broken'))
 // res.status === 500
 // await res.text() === "Internal Server Error"
 ```
+
+#### Reporting errors — `onError`
+
+Pass `onError` to forward every unexpected server error to an error tracker. It receives the error and `{ request, phase }`:
+
+| `phase` | When |
+| --- | --- |
+| `'middleware'` | a middleware or API route threw |
+| `'render'` | an SSR render failed (string mode, or a stream render before the shell was sent) |
+| `'stream'` | a streamed render failed after the response started |
+| `'action'` | a `@pyreon/zero` server action handler threw |
+| `'reported'` | a middleware called `ctx.reportError(error, 'reported')` for an error it handled itself |
+
+```ts
+createHandler({
+  App,
+  routes,
+  onError: (error, { phase, request }) => {
+    Sentry.captureException(error, { tags: { phase }, extra: { url: request.url } })
+  },
+})
+```
+
+The hook runs after the `[Pyreon] …` console line and never changes the response: the client still gets the generic 500. Redirects are not errors and never reach it. A hook that throws or rejects is caught and logged, and a returned promise is not awaited, so a slow reporter does not delay the response.
+
+A middleware that catches an error itself (an API route turning a database failure into a 503) can still report it with `ctx.reportError?.(error, 'reported')`.
 
 ---
 

@@ -154,6 +154,12 @@ export async function check(opts: CheckOptions): Promise<number> {
         fixedCount += n
         code = fixedCode
       }
+      // What the React migration left unconverted is not re-detectable from the
+      // rewritten file (a state read at setup level is valid Pyreon that simply
+      // never updates), so report it here, positioned in the written file.
+      for (const m of r.manual) {
+        findings.push({ file: rel, line: m.line, column: m.column, code: 'not-migrated', source: 'react', message: m.message, suggested: m.suggested, fixable: false })
+      }
     }
 
     // Re-detect on the (possibly fixed) code so `--fix` reports only what remains.

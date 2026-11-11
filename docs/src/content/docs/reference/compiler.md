@@ -41,7 +41,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`analyzeValidate`](#analyzevalidate-function-experimental) | function | Build-time analogue of @pyreon/validate's runtime JIT: reads `s.*` schema DEFINITIONS from source and parses each into a |
 | [`emitValidator`](#emitvalidator-function-experimental) | function | Emits a monomorphic, fully-inlined validator FUNCTION SOURCE for an emittable `analyzeValidate` IR node — straight-line  |
 | [`detectReactPatterns`](#detectreactpatterns-function) | function | AST-based detector for "coming from React" mistakes — `useState` / `useEffect`, `className` / `htmlFor`, `onChange` on i |
-| [`migrateReactCode`](#migratereactcode-function) | function | One-shot React→Pyreon codemod — `useState`→`signal`, `useEffect`→`effect`/`onMount`, `className`→`class`, etc. |
+| [`migrateReactCode`](#migratereactcode-function) | function | One-shot React→Pyreon codemod whose output updates: `useState`→`signal` with every read rewritten to `x()` and every set |
 | [`migratePyreonCode`](#migratepyreoncode-function) | function | Pyreon→correct-Pyreon codemod (the parallel to `migrateReactCode`). |
 | [`hasReactPatterns`](#hasreactpatterns-function) | function | Fast regex pre-filter — returns whether `code` is worth a full `detectReactPatterns` AST walk. |
 | [`diagnoseError`](#diagnoseerror-function) | function | Maps a raw runtime/build error string to a structured `ErrorDiagnosis` (likely cause + actionable fix) for known Pyreon  |
@@ -309,14 +309,15 @@ console.log(diags[0]?.code) // "react-use-state"
 migrateReactCode(code: string, filename?: string): MigrationResult
 ```
 
-One-shot React→Pyreon codemod — `useState`→`signal`, `useEffect`→`effect`/`onMount`, `className`→`class`, etc. Returns the rewritten code plus the list of applied `MigrationChange`s. Mechanical only: shapes it cannot safely rewrite are left as `detectReactPatterns` diagnostics for the human.
+One-shot React→Pyreon codemod whose output updates: `useState`→`signal` with every read rewritten to `x()` and every setter call to `x.set(v)` / `x.update(fn)`, `useReducer`→`signal` + a `dispatch`, `useEffect`→`effect`/`onMount`, `useMemo`→`computed` (reads called), `useCallback`/`memo`/`forwardRef` unwrapped (the ref arrives as `props.ref`), `useRef(null)`→`createRef()`, `useRef(v)`→`{ current: v }`, a body-level `const` derived from state → `computed`, a `return` that reads state outside JSX → an accessor, `className`/`htmlFor`/text-input `onChange`, `createRoot(el).render(app)`→`mount(app, el)`, `Fragment`→`<>`, router `Link`/`Outlet`. References are resolved lexically, so shadowing locals are left alone. Returns `{ code, diagnostics, changes, manual }`: `manual` lists every pattern it left in place (with its React import kept) or converted with a caveat, each with a reason and a suggestion.
 
 **Example**
 
 ```tsx
 import { migrateReactCode } from "@pyreon/compiler/analyze"
 
-const { code, changes } = migrateReactCode(reactSource, "C.tsx")
+const { code, changes, manual } = migrateReactCode(reactSource, "C.tsx")
+// manual: [{ line, column, message, suggested }] — e.g. a state read at setup level
 ```
 
 **See also:** `detectReactPatterns`

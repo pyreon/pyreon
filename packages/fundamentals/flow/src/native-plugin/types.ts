@@ -4,6 +4,7 @@
  * closed `DeclIR` kind in the compiler before the lowering moved here; the
  * fields are unchanged.
  */
+import type { FlowHandlePosition } from './collect'
 import type { ExprIR, TypeIR } from '@pyreon/native-compiler/plugin-api'
 
 export interface FlowStatePayload {
@@ -34,8 +35,8 @@ export interface FlowStatePayload {
     extentParent?: boolean
     expandParent?: boolean
     group?: boolean
-    sourceHandles?: { id?: string; type: string; position: string; offset?: number }[]
-    targetHandles?: { id?: string; type: string; position: string; offset?: number }[]
+    sourceHandles?: { id?: string; type: string; position: FlowHandlePosition; offset?: number }[]
+    targetHandles?: { id?: string; type: string; position: FlowHandlePosition; offset?: number }[]
     zIndex?: number
   }[]
   edges: {

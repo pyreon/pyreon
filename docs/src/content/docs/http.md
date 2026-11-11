@@ -358,6 +358,8 @@ runWithRequest(ctx.req, () => render(ctx))
 
 Backed by `AsyncLocalStorage`, not a module-level variable — concurrent renders each see only their own request. (A shared slot forwards one user's session cookie into another user's render.)
 
+A relative URL resolves against the **inbound request's origin**. On a self-hosted server that origin comes from the client's `Host` header unless you pin it: set `ORIGIN=https://example.com` for zero's node, bun and deno runners (or pass `runWithRequest` a request whose URL you built from your own configured origin). Otherwise a request with `Host: 127.0.0.1:6379` turns `api.get('/users')` into a request to that internal address, rendered back to the caller.
+
 `forwardHeaders` requires an **explicit allowlist** and **stops at the origin boundary by default**, so pointing `baseUrl` at a third party cannot leak cookies there. Pass `{ crossOrigin: true }` only when the other origin is yours.
 
 ## Testing

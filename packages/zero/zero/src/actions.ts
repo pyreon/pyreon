@@ -197,6 +197,7 @@ export function getRegisteredActions(): Map<string, RegisteredAction> {
 export function _resetActions(): void {
   actionRegistry.clear()
   actionModuleLoaders = new Map()
+  actionDeclaringRoutes = new Map()
   _resetSubmissions()
   warnedPluginless = false
 }
@@ -547,6 +548,7 @@ export async function runActionHandler(
   handler: ActionHandler,
   req: Request,
   payload: ActionPayload,
+  ctx?: Pick<MiddlewareContext, 'reportError'>,
 ): Promise<ActionOutcome> {
   try {
     const result = await handler({ request: req, formData: payload.formData, json: payload.json, headers: req.headers })
@@ -558,6 +560,9 @@ export async function runActionHandler(
     const info = getRedirectInfo(err)
     if (info) return { kind: 'redirect', status: info.status, to: info.url }
     console.error('[Pyreon Action] handler failed:', err)
+    // The server's `onError` hook (createServer / createHandler) — the error
+    // is caught here, so the handler's own catch never sees it.
+    ctx?.reportError?.(err, 'action')
     const isProduction = process.env.NODE_ENV === 'production'
     return { kind: 'error', message: isProduction || !(err instanceof Error) ? 'Internal server error' : err.message }
   }
@@ -619,7 +624,7 @@ export function createActionMiddleware(
     const payload = await readActionPayload(ctx.req, resolved.bodyLimit)
     if (payload instanceof Response) return payload
 
-    const outcome = await runActionHandler(action.handler, ctx.req, payload)
+    const outcome = await runActionHandler(action.handler, ctx.req, payload, ctx)
     if (outcome.kind === 'error') return Response.json({ error: outcome.message }, { status: 500 })
     if (outcome.kind === 'redirect') {
       // A fetch() would silently FOLLOW a 3xx and hand the caller the target
@@ -651,6 +656,41 @@ let actionModuleLoaders: ReadonlyMap<string, () => Promise<unknown>> = new Map()
 /** @internal Called by the generated route-middleware module. */
 export function _registerActionModules(loaders: Record<string, () => Promise<unknown>>): void {
   actionModuleLoaders = new Map(Object.entries(loaders))
+}
+
+/**
+ * Build-time map: action id → URL pattern of the page that DECLARES it (the
+ * page file, or its `.server.*` sibling, that calls `defineAction`). The
+ * request gate runs that page's route middleware before the action body,
+ * whichever URL the action was posted to. Replaced wholesale per
+ * registration (bounded by the build's action call sites).
+ */
+let actionDeclaringRoutes: ReadonlyMap<string, string> = new Map()
+
+/** @internal Called by the generated route-middleware module. */
+export function _registerActionRoutes(routes: Record<string, string>): void {
+  actionDeclaringRoutes = new Map(Object.entries(routes))
+}
+
+/**
+ * The URL pattern of the page that declares action `id`, or `null` when no
+ * page declares it (an action defined in a shared module).
+ *
+ * @internal
+ */
+export function _actionDeclaringRoute(id: string): string | null {
+  return actionDeclaringRoutes.get(id) ?? null
+}
+
+/**
+ * Whether `id` names an action this server can run — registered, or listed
+ * in the build-time manifest. An unknown id is answered by the endpoint's
+ * own not-found path, without running anything.
+ *
+ * @internal
+ */
+export function _isKnownAction(id: string): boolean {
+  return actionRegistry.has(id) || actionModuleLoaders.has(id)
 }
 
 /**

@@ -953,6 +953,26 @@ Marking is **one-way** — there is no `unmarkRaw`. Mark BEFORE the object enter
 
 For plain data objects where you just want to skip deep tracking, use `shallowReactive` instead — `markRaw` is for class instances and externally-managed shapes.
 
+### snapshot
+
+`snapshot(value)` returns a plain, non-reactive deep copy of a store, or of any value that holds stores. Use it wherever a Proxy does not belong: `structuredClone`, `postMessage` to a worker, `JSON.stringify` for logging, an undo-history entry, or a form's initial values. It is the equivalent of Svelte's `$state.snapshot`.
+
+```ts
+import { createStore, snapshot } from '@pyreon/reactivity'
+
+const store = createStore({ user: { name: 'Ann' }, tags: ['a'] })
+const copy = snapshot(store) // { user: { name: 'Ann' }, tags: ['a'] }
+
+structuredClone(store) // throws: a Proxy cannot be cloned
+structuredClone(copy) // works
+store.user.name = 'Bob' // copy.user.name is still 'Ann'
+```
+
+- It reads the raw targets, so it **tracks nothing**: calling it inside an effect does not subscribe, and it creates no per-property signals.
+- Plain objects and arrays are copied at every depth, and every store proxy is unwrapped, including a store assigned into another store.
+- Class instances, `Map`, `Set`, `Date` and `markRaw` objects are kept **by reference** (unwrapped). Copy them yourself if the snapshot must not share them.
+- Shared references and cycles are preserved, as with `structuredClone`.
+
 ## reconcile
 
 Surgically diff new state into an existing `createStore` proxy. Instead of replacing the store root (which would trigger all downstream effects), `reconcile` walks both the new value and the store in parallel and only updates signals whose values actually changed.

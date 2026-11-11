@@ -667,7 +667,7 @@ s.preprocess((v) => String(v).trim(), s.string().min(1))
 | `.nonoptional(msg?)` | re-require a present value (rejects `undefined` again) |
 | `.default(value)` | fill `undefined` input with a value (or `() => value`) |
 | `.transform(fn)` | map the parsed value to a new shape (sync or async) |
-| `.refine(fn, opts)` | add a custom constraint after type + checks |
+| `.refine(fn, opts?)` | add a custom constraint after type + checks (`opts.message` defaults to `'Invalid value'`) |
 | `.superRefine(fn)` | add **any number** of issues via `ctx.addIssue` (cross-field) |
 | `.brand<'T'>()` | phantom type brand — prevent mixing structurally-identical values |
 | `.describe(text)` / `.field(meta)` | attach description / full `FieldMeta` (read via `getMeta`) |

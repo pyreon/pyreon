@@ -2,6 +2,7 @@ import type { Ref, VNode } from '@pyreon/core'
 import { runUntracked } from '@pyreon/reactivity'
 import { SizedMap } from '@pyreon/sized-map'
 import type { CSSProperties } from './types'
+import { isNativeItem, isVNodeLike, wrapNativeItem } from './child-shape'
 
 // FIFO-bounded class-string split cache. Class C leak prevention: the
 // pre-#PR shape was an unbounded Map keyed by className strings — every
@@ -210,10 +211,15 @@ export const consumerRef = <T>(holder: Record<string, unknown>): RefCallback<T> 
 }
 
 /** Clones a VNode with merged props. */
-export const cloneVNode = (vnode: VNode, extraProps: Record<string, unknown>): VNode => ({
-  ...vnode,
-  props: { ...vnode.props, ...extraProps },
-})
+export const cloneVNode = (vnode: VNode, extraProps: Record<string, unknown>): VNode => {
+  // Compiled static markup (`<li>Install</li>` → a pre-built `_tpl` item) has
+  // no props to merge into: spreading it lost the element. It is wrapped so the
+  // extras reach its element at mount. A non-VNode with no element (raw server
+  // HTML) cannot be decorated, but is returned so it still renders.
+  if (isNativeItem(vnode)) return wrapNativeItem(vnode, extraProps)
+  if (!isVNodeLike(vnode)) return vnode
+  return { ...vnode, props: { ...vnode.props, ...extraProps } }
+}
 
 /**
  * Resolves a `children` value the Pyreon compiler may have wrapped in a
@@ -240,5 +246,10 @@ export const cloneVNode = (vnode: VNode, extraProps: Record<string, unknown>): V
  * the initial render. Eagerly unwrapping the function matches that
  * contract; no reactivity is lost.
  */
-export const resolveChildren = <T>(children: T | (() => T)): T =>
-  (typeof children === 'function' ? (children as () => T)() : children) as T
+export const resolveChildren = <T>(children: T | (() => T)): T => {
+  // Unwrapped until it is not a function: a forwarded accessor can return
+  // another accessor (the compiler's wrap around a user's own `() => …`).
+  let value: unknown = children
+  while (typeof value === 'function') value = (value as () => unknown)()
+  return value as T
+}

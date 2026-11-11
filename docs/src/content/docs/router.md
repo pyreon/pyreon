@@ -1205,12 +1205,19 @@ Matching is segment-aware: `/admin` matches `/admin/users` (prefix) when `exact`
 Register a navigation blocker to prevent the user from leaving a page:
 
 ```ts
-function useBlocker(fn: BlockerFn): { remove(): void }
+function useBlocker(fn: BlockerFn, options?: BlockerOptions): { remove(): void }
 
 type BlockerFn = (to: ResolvedRoute, from: ResolvedRoute) => boolean | Promise<boolean>
+
+interface BlockerOptions {
+  // Tab close / reload prompt. Default: ask `fn` (see below).
+  beforeUnload?: boolean | (() => boolean)
+}
 ```
 
-Return `true` (or resolve to `true`) to block navigation. The blocker also installs a `beforeunload` handler to catch tab closures.
+Return `true` (or resolve to `true`) to block navigation.
+
+The blocker also covers closing or reloading the tab: the browser shows its "Leave site?" prompt only when a blocker says to block. On that event the blocker is called synchronously with the current route as both `to` and `from`. The browser cannot wait for a Promise, so a blocker that returns one counts as blocking; give such a blocker `beforeUnload: () => isDirty()`. `beforeUnload: false` never prompts and `beforeUnload: true` always prompts while the blocker is active.
 
 ```tsx
 import { useBlocker } from '@pyreon/router'
@@ -2581,14 +2588,17 @@ const [params, setParams] = useTypedSearchParams({
   active: 'boolean',
 })
 
-params().page // number (coerced from URL string)
+params().page ?? 1 // number | undefined (coerced from the URL string)
 params().q // string
 params().active // boolean
 
-setParams({ page: 2, q: 'hello' }) // updates URL
+setParams({ page: 2, q: 'hello' }) // updates the URL
+setParams({ page: undefined }) // removes ?page
 ```
 
-The type map supports `'string'`, `'number'`, and `'boolean'`. Values are coerced automatically from URL search param strings.
+The hook returns a `[get, set]` tuple. The type map supports `'string'`, `'number'`, and `'boolean'`, and values are coerced from the URL's strings. A `'number'` param that is absent (or not a number) reads `undefined`, so `?page=0` and no `page` stay distinguishable; an absent `'string'` reads `''` and an absent `'boolean'` reads `false`.
+
+`set` changes only the params you pass. Every other query param (including ones outside the schema, such as `utm_source`) and the hash are kept, and an `undefined` value removes its key. It navigates with `router.replace`, so guards and blockers apply.
 
 ## Route Transitions
 
@@ -2807,7 +2817,7 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="useSearchParams" type="hook" signature={"useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<NavigationResult>]"} description="Reactive read/write access to URL query parameters with optional defaults." />
 
-<APICard name="useTypedSearchParams" type="hook" signature={"useTypedSearchParams<T>(schema: T): [get: () => InferSearchParams<T>, set: (updates) => Promise<NavigationResult>]"} description="Type-safe search params with automatic coercion from URL strings." />
+<APICard name="useTypedSearchParams" type="hook" signature={"useTypedSearchParams<T>(schema: T): [get: () => InferSearchParams<T>, set: (updates: Partial<InferSearchParams<T>>) => Promise<NavigationResult>]"} description="Type-safe search params with automatic coercion from URL strings; set() keeps every other param." />
 
 <APICard name="useValidatedSearch" type="hook" signature={"useValidatedSearch<T>(): () => T"} description="Reactive accessor for the route's validateSearch result, with structural sharing." />
 
@@ -2817,7 +2827,7 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="useMiddlewareData" type="hook" signature={"useMiddlewareData(): () => Record<string, unknown>"} description="Reactive accessor for data set by the route's middleware chain." />
 
-<APICard name="useBlocker" type="hook" signature="useBlocker(fn: BlockerFn): { remove(): void }" description="Register a navigation blocker. Returns true to block, false to allow. Also handles beforeunload." />
+<APICard name="useBlocker" type="hook" signature="useBlocker(fn: BlockerFn, options?: BlockerOptions): { remove(): void }" description="Register a navigation blocker. Returns true to block, false to allow. Tab close / reload prompts only when a blocker blocks (options.beforeUnload overrides)." />
 
 <APICard name="onBeforeRouteLeave" type="hook" signature={"onBeforeRouteLeave(guard: NavigationGuard): () => void"} description="In-component guard called before navigating away from the current route." />
 

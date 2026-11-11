@@ -109,6 +109,8 @@ const can = createPermissions({
 })
 ```
 
+Annotate a predicate's context parameter with the type it expects (`(post: Post) => …`): the map accepts any context type, and an unannotated parameter is `unknown`, so `(post) => post.authorId` does not typecheck. The context is whatever the caller passes to `can(key, context)`.
+
 A predicate that **throws** is treated as **denied** rather than crashing the check — so `can('posts.update')` (no context) against a predicate that reads `post.authorId` returns `false` instead of throwing. This mirrors the throw-safe guard behavior in [`@pyreon/machine`](/docs/machine).
 
 ```tsx

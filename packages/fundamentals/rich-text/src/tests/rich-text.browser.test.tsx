@@ -244,6 +244,31 @@ describe('rich-text editor in real browser', () => {
     unmount()
   })
 
+  it('html binding made BEFORE mount keeps the outside value and shows it once mounted (#4360)', async () => {
+    const body = signal('<p>Start writing…</p>')
+    const editor = createRichTextEditor()
+    const binding = bindRichTextToSignal({ editor, signal: body, format: 'html' })
+    expect(body()).toBe('<p>Start writing…</p>')
+
+    const { container, unmount } = mountInBrowser(h(RichText, { instance: editor }))
+    await waitForView(editor)
+    await flush()
+    expect(container.textContent).toContain('Start writing…')
+    expect(body()).toBe('<p>Start writing…</p>')
+
+    // Both directions stay live after mount.
+    body.set('<p>from outside</p>')
+    await flush()
+    expect(container.textContent).toContain('from outside')
+    editor.setContent('<p>from editor</p>')
+    await flush()
+    expect(body()).toBe('<p>from editor</p>')
+
+    binding.dispose()
+    editor.dispose()
+    unmount()
+  })
+
   // ── Selection-immune content computeds ───────────────────────────────────
 
   it('a pure selection move does NOT re-run content computeds, but DOES re-run isActive', async () => {

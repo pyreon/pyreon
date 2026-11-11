@@ -28,11 +28,10 @@ const APP = [
 describe('Kotlin', () => {
   const out = transform(APP, { target: 'kotlin' })
 
-  it('widens java.lang.Math.round (a Long) to the Double PMTC infers', () => {
+  it('lowers to the runtime pyreonRound, a Double as PMTC infers (java.lang.Math.round is a Long and turns NaN into 0, #4258)', () => {
     expect(out.warnings).toEqual([])
-    // The Double argument is passed as-is; only the Long RESULT is widened.
-    expect(out.code).toContain('Math.round(((value).toDouble() / (max).toDouble()) * 100L).toDouble()')
-    expect(out.code).toContain('Math.round(2.5).toDouble() * 0.5')
+    expect(out.code).toContain('pyreonRound(((value).toDouble() / (max).toDouble()) * 100L)')
+    expect(out.code).toContain('pyreonRound(2.5) * 0.5')
   })
 
   it.skipIf(!isKotlincAvailable())('compiles', () => {
@@ -46,7 +45,7 @@ describe('Swift (unchanged control)', () => {
 
   it('still lowers round to a Double expression', () => {
     expect(out.warnings).toEqual([])
-    expect(out.code).toContain('+ 0.5).rounded(.down)')
+    expect(out.code).toContain('pyreonRound(')
   })
 
   it.skipIf(!isSwiftcAvailable())('typechecks', () => {

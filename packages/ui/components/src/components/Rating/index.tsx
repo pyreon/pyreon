@@ -2,7 +2,7 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { h, splitProps } from '@pyreon/core'
 import { RatingBase, type RatingBaseProps, type RatingState } from '@pyreon/ui-primitives'
-import { el } from '../../factory'
+import { el, tones } from '../../factory'
 
 /**
  * ELEMENT-FIRST COMPOSITION (the 2026-07-21 architecture decision, piloted
@@ -41,8 +41,8 @@ const RatingRoot = el
 const RatingStar = el
   .config({ name: 'RatingStar' })
   .attrs({ tag: 'span' })
-  .theme((t) => ({
-    color: t.color.system.base[300],
+  .theme((t, m) => ({
+    color: tones(t, m).border,
     transition: t.transition.fast,
     extendCss: `
       &[data-filled='true'] { color: ${t.color.system.warning.base}; }
