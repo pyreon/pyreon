@@ -1,21 +1,11 @@
+import { reportFailure } from './report'
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { createTerm, type Term } from '@pyreon/ansi'
 import { createServer } from 'vite'
-import { formatReadyLine, renderRouteBanner } from './dev-banner'
+import { type BannerColor, formatDevHeader, formatReadyLine, renderRouteBanner } from './dev-banner'
 import { loadZeroConfigPort } from './load-config'
 
-/**
- * Whether to emit ANSI color, following the de-facto standard: `NO_COLOR`
- * disables (https://no-color.org), `FORCE_COLOR` forces on, otherwise gate on
- * an interactive stdout. Piped output (`bun run dev > log`, most CI viewers,
- * and `bun run --filter`'s boxed capture) is a non-TTY, so it gets clean plain
- * text instead of raw escape codes.
- */
-function supportsColor(): boolean {
-  if (process.env.NO_COLOR) return false
-  if (process.env.FORCE_COLOR) return true
-  return Boolean(process.stdout.isTTY)
-}
 
 export interface DevOptions {
   port?: number
@@ -50,7 +40,10 @@ export async function dev(root: string | undefined, options: DevOptions) {
     await server.listen()
     // Server is ready here — measure now, print the timing at the very end.
     const readyMs = Date.now() - started
-    const color = supportsColor()
+    // The shared detection: NO_COLOR / FORCE_COLOR / TERM / isTTY. Piped
+    // output (`bun run dev > log`, CI, `bun run --filter`'s boxed capture)
+    // is a non-TTY and gets plain text.
+    const color: Term = createTerm()
 
     // Output order is deliberate for readability AND for `bun run --filter`,
     // whose runner elides the MIDDLE of long child output and keeps only the
@@ -59,6 +52,7 @@ export async function dev(root: string | undefined, options: DevOptions) {
     // table), and the Local URL + ready-time are printed LAST so the two things
     // you actually need survive in the visible tail even when the table is long.
     const banner = await scanRouteBanner(projectRoot, options.routes === true, color)
+    console.log(`\n${formatDevHeader(root ?? '.', color)}`)
     if (banner.length > 0) console.log(banner.join('\n'))
     console.log('')
     server.printUrls()
@@ -66,7 +60,7 @@ export async function dev(root: string | undefined, options: DevOptions) {
     console.log(formatReadyLine(readyMs, color))
     console.log('')
   } catch (error) {
-    console.error('[Pyreon] Failed to start dev server:', error)
+    reportFailure('zero dev', 'Failed to start the dev server', error)
     process.exit(1)
   }
 }
@@ -81,7 +75,7 @@ export async function dev(root: string | undefined, options: DevOptions) {
 async function scanRouteBanner(
   projectRoot: string,
   verbose: boolean,
-  color: boolean,
+  color: BannerColor,
 ): Promise<string[]> {
   try {
     const routesDir = join(projectRoot, 'src/routes')

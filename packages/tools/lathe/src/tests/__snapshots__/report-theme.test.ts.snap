@@ -39,6 +39,84 @@ exports[`lathe check, themed > 16 colours 1`] = `
 "
 `;
 
+exports[`lathe check, themed > 256 dark 1`] = `
+"␛[1mlathe check␛[22m ␛[38;5;103m· 2 projects␛[39m
+
+  ␛[38;5;78m✓␛[39m ␛[1mcatalog␛[22m  ␛[38;5;103mCatalog 2.1.0 · api.yaml · 1 model · 2 operations · web␛[39m␛[38;5;103m · ␛[39m␛[38;5;78mup to date␛[39m
+
+  ␛[38;5;203m✗␛[39m ␛[1mbilling␛[22m  ␛[38;5;103mBilling 2.1.0 · billing.yaml · 1 model · 3 operations · multiplatform␛[39m␛[38;5;103m · ␛[39m␛[38;5;203mstale␛[39m
+    ␛[1mplugins␛[22m        ␛[38;5;103mclient (+schemas, required by them)␛[39m
+    ␛[1mfiles␛[22m          3 of 11 files differ from the spec
+      ␛[38;5;220m~ stale␛[39m     packages/billing/src/gen/client.ts
+      ␛[38;5;78m+ missing␛[39m   packages/billing/src/gen/api-surface.json
+      ␛[38;5;203m− orphaned␛[39m  packages/billing/src/gen/legacy.ts
+    ␛[1mcontract␛[22m       ␛[38;5;203m1 breaking␛[39m␛[38;5;103m · 2 additive␛[39m
+      ␛[38;5;203m− breaking␛[39m  ␛[38;5;103moperation-removed␛[39m  deleteInvoice  \`DELETE /invoices/:id\` no longer exists
+      ␛[38;5;78m+ additive␛[39m  ␛[38;5;103mfield-added␛[39m        Invoice.dueAt  string (optional)
+      ␛[38;5;220m~ additive␛[39m  ␛[38;5;103mresponse-changed␛[39m   getInvoice     response gained field dueAt
+    ␛[1mnative reach␛[22m   1 of 3 operations␛[38;5;103m · 2 web-only␛[39m
+      ␛[38;5;220m! web-only␛[39m  1 operation: createBook
+        ␛[38;5;103m\`POST\` lowers through mutations, which PMTC does not yet recognise; GET operations on this␛[39m
+        ␛[38;5;103mclient DO reach native.␛[39m
+      ␛[38;5;220m! web-only␛[39m  1 operation: getLegacy
+        ␛[38;5;103mno typed JSON response (no content, or a media type Lathe cannot type) -- a native query␛[39m
+        ␛[38;5;103mdecodes into a declared type, so there is nothing to lower it to.␛[39m
+    ␛[1mnative verify␛[22m  1 of 2 files lower
+      ␛[38;5;78m✓ lowers␛[39m        books.native.tsx      ␛[38;5;103mswift␛[39m   ␛[38;5;103mcompiled␛[39m  ␛[38;5;103mPyreonQuery< PyreonZodSchema_␛[39m
+      ␛[38;5;203m✗ broken␛[39m        books.native.tsx      ␛[38;5;103mkotlin␛[39m  ␛[38;5;203mdoes not compile␛[39m
+          ␛[38;5;203m✗ leaked␛[39m useQuery( ␛[38;5;103memitted verbatim; the native build will not link␛[39m
+          ␛[38;5;203m✗ error␛[39m unresolved reference 'Book'
+          Declaration useBooks: useQuery without a response type cannot be lowered to Compose. Give
+          it the shape you expect: useQuery<Book[]>(…) so the decoder has a type to target.
+      ␛[38;5;220m! not compiled␛[39m  all modules together  ␛[38;5;103mkotlin␛[39m  ␛[38;5;103mkotlinc not found␛[39m
+    ␛[1mspec notes␛[22m     1 note␛[38;5;103m · ␛[39m␛[38;5;78m✓ nothing lost␛[39m␛[38;5;103m · 1 choice␛[39m
+      ␛[38;5;103mchoices: missing-operation-id x1 (use --json for detail)␛[39m
+
+  ␛[38;5;103mfix:␛[39m run lathe generate and commit the result
+
+␛[38;5;203m✗␛[39m 1 of 2 projects stale␛[38;5;103m · 1 breaking change␛[39m␛[38;5;103m · 1 native file not lowering␛[39m␛[38;5;103m · 1.8 s␛[39m
+"
+`;
+
+exports[`lathe check, themed > 256 light 1`] = `
+"␛[1mlathe check␛[22m ␛[38;5;59m· 2 projects␛[39m
+
+  ␛[38;5;22m✓␛[39m ␛[1mcatalog␛[22m  ␛[38;5;59mCatalog 2.1.0 · api.yaml · 1 model · 2 operations · web␛[39m␛[38;5;59m · ␛[39m␛[38;5;22mup to date␛[39m
+
+  ␛[38;5;124m✗␛[39m ␛[1mbilling␛[22m  ␛[38;5;59mBilling 2.1.0 · billing.yaml · 1 model · 3 operations · multiplatform␛[39m␛[38;5;59m · ␛[39m␛[38;5;124mstale␛[39m
+    ␛[1mplugins␛[22m        ␛[38;5;59mclient (+schemas, required by them)␛[39m
+    ␛[1mfiles␛[22m          3 of 11 files differ from the spec
+      ␛[38;5;94m~ stale␛[39m     packages/billing/src/gen/client.ts
+      ␛[38;5;22m+ missing␛[39m   packages/billing/src/gen/api-surface.json
+      ␛[38;5;124m− orphaned␛[39m  packages/billing/src/gen/legacy.ts
+    ␛[1mcontract␛[22m       ␛[38;5;124m1 breaking␛[39m␛[38;5;59m · 2 additive␛[39m
+      ␛[38;5;124m− breaking␛[39m  ␛[38;5;59moperation-removed␛[39m  deleteInvoice  \`DELETE /invoices/:id\` no longer exists
+      ␛[38;5;22m+ additive␛[39m  ␛[38;5;59mfield-added␛[39m        Invoice.dueAt  string (optional)
+      ␛[38;5;94m~ additive␛[39m  ␛[38;5;59mresponse-changed␛[39m   getInvoice     response gained field dueAt
+    ␛[1mnative reach␛[22m   1 of 3 operations␛[38;5;59m · 2 web-only␛[39m
+      ␛[38;5;94m! web-only␛[39m  1 operation: createBook
+        ␛[38;5;59m\`POST\` lowers through mutations, which PMTC does not yet recognise; GET operations on this␛[39m
+        ␛[38;5;59mclient DO reach native.␛[39m
+      ␛[38;5;94m! web-only␛[39m  1 operation: getLegacy
+        ␛[38;5;59mno typed JSON response (no content, or a media type Lathe cannot type) -- a native query␛[39m
+        ␛[38;5;59mdecodes into a declared type, so there is nothing to lower it to.␛[39m
+    ␛[1mnative verify␛[22m  1 of 2 files lower
+      ␛[38;5;22m✓ lowers␛[39m        books.native.tsx      ␛[38;5;59mswift␛[39m   ␛[38;5;59mcompiled␛[39m  ␛[38;5;59mPyreonQuery< PyreonZodSchema_␛[39m
+      ␛[38;5;124m✗ broken␛[39m        books.native.tsx      ␛[38;5;59mkotlin␛[39m  ␛[38;5;124mdoes not compile␛[39m
+          ␛[38;5;124m✗ leaked␛[39m useQuery( ␛[38;5;59memitted verbatim; the native build will not link␛[39m
+          ␛[38;5;124m✗ error␛[39m unresolved reference 'Book'
+          Declaration useBooks: useQuery without a response type cannot be lowered to Compose. Give
+          it the shape you expect: useQuery<Book[]>(…) so the decoder has a type to target.
+      ␛[38;5;94m! not compiled␛[39m  all modules together  ␛[38;5;59mkotlin␛[39m  ␛[38;5;59mkotlinc not found␛[39m
+    ␛[1mspec notes␛[22m     1 note␛[38;5;59m · ␛[39m␛[38;5;22m✓ nothing lost␛[39m␛[38;5;59m · 1 choice␛[39m
+      ␛[38;5;59mchoices: missing-operation-id x1 (use --json for detail)␛[39m
+
+  ␛[38;5;59mfix:␛[39m run lathe generate and commit the result
+
+␛[38;5;124m✗␛[39m 1 of 2 projects stale␛[38;5;59m · 1 breaking change␛[39m␛[38;5;59m · 1 native file not lowering␛[39m␛[38;5;59m · 1.8 s␛[39m
+"
+`;
+
 exports[`lathe check, themed > ascii 1`] = `
 "lathe check - 2 projects
 
@@ -204,6 +282,30 @@ exports[`lathe diff, themed > 16 colours 1`] = `
       ␛[90maffects␛[39m createBook, useCreateBook (books); listBooks, useListBooks (books)
 
 ␛[31m✗␛[39m 1 breaking, 1 additive ␛[90m· --fail-on-breaking · 23 ms␛[39m
+"
+`;
+
+exports[`lathe diff, themed > 256 dark 1`] = `
+"␛[1mlathe diff␛[22m ␛[38;5;103m· main:openapi.yaml → openapi.yaml␛[39m
+
+  ␛[38;5;203m− breaking␛[39m  ␛[38;5;103moperation-removed␛[39m  createBook  \`POST /books\` no longer exists
+      ␛[38;5;103maffects␛[39m createBook, useCreateBook (books)
+  ␛[38;5;78m+ additive␛[39m  ␛[38;5;103mfield-added␛[39m        Book.dueAt  string (optional)
+      ␛[38;5;103maffects␛[39m createBook, useCreateBook (books); listBooks, useListBooks (books)
+
+␛[38;5;203m✗␛[39m 1 breaking, 1 additive ␛[38;5;103m· --fail-on-breaking · 23 ms␛[39m
+"
+`;
+
+exports[`lathe diff, themed > 256 light 1`] = `
+"␛[1mlathe diff␛[22m ␛[38;5;59m· main:openapi.yaml → openapi.yaml␛[39m
+
+  ␛[38;5;124m− breaking␛[39m  ␛[38;5;59moperation-removed␛[39m  createBook  \`POST /books\` no longer exists
+      ␛[38;5;59maffects␛[39m createBook, useCreateBook (books)
+  ␛[38;5;22m+ additive␛[39m  ␛[38;5;59mfield-added␛[39m        Book.dueAt  string (optional)
+      ␛[38;5;59maffects␛[39m createBook, useCreateBook (books); listBooks, useListBooks (books)
+
+␛[38;5;124m✗␛[39m 1 breaking, 1 additive ␛[38;5;59m· --fail-on-breaking · 23 ms␛[39m
 "
 `;
 

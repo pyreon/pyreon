@@ -194,7 +194,7 @@ describe('reporter — formatText shape (shared @pyreon/ansi theme)', () => {
     configDiagnostics: [],
   }
 
-  for (const level of [0, 1, 2] as const) {
+  for (const level of [0, 1, 2, 3] as const) {
     for (const theme of ['dark', 'light'] as const) {
       it(`level ${level} · ${theme}`, () => {
         expect(show(formatText(shaped, { cwd: '/repo', elapsedMs: 380, color: level, theme, unicode: true }))).toMatchSnapshot()

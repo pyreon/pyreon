@@ -1,3 +1,4 @@
+import { reportFailure } from './report'
 import { resolve } from 'node:path'
 
 export interface ContextOptions {
@@ -13,7 +14,7 @@ export async function context(root: string | undefined, options: ContextOptions)
       outPath: options.out,
     })
   } catch (error) {
-    console.error('[Pyreon] Context generation failed:', error)
+    reportFailure('zero context', 'Context generation failed', error)
     process.exit(1)
   }
 }

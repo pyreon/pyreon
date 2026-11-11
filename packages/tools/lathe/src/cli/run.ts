@@ -104,11 +104,12 @@ export interface Argv {
   noGenerate: boolean;
   /**
    * Colour the terminal report: the `--color` / `--no-color` flag, or the
-   * level the bin resolved (0 plain, 1 sixteen colours, 2 truecolor).
+   * level the bin resolved (0 plain, 1 sixteen colours, 2 256 colours, 3
+   * truecolor).
    * `undefined` means "decide from the environment", which only the bin can
    * do; the pure run defaults to plain.
    */
-  color?: boolean | 0 | 1 | 2 | undefined;
+  color?: boolean | 0 | 1 | 2 | 3 | undefined;
   /**
    * Everything the parser refused: an unknown flag, a missing or invalid
    * value, an unknown command. A non-empty list means the run does NOTHING.

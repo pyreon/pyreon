@@ -57,12 +57,12 @@ export interface PromptOutput {
 
 /**
  * Render for a specific terminal instead of detecting one: colour level
- * (0 plain, 1 sixteen colours, 2 truecolor), background and symbol set.
+ * (0 plain, 1 sixteen colours, 2 256 colours, 3 truecolor), background and symbol set.
  * Anything left out is detected by `@pyreon/ansi` from the environment and
  * the OUTPUT stream's `isTTY`.
  */
 export interface PromptStyle {
-  color?: 0 | 1 | 2 | undefined
+  color?: 0 | 1 | 2 | 3 | undefined
   theme?: 'dark' | 'light' | undefined
   unicode?: boolean | undefined
 }

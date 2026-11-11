@@ -498,7 +498,13 @@ describe('messages and spinner', () => {
       intro('x')
       expect(printed()).toContain(`${ESC}[38;2;`)
     })
+    // FORCE_COLOR is a floor: a 256-colour TERM keeps its 256 colours.
     withEnv({ NO_COLOR: undefined, FORCE_COLOR: '1', TERM: 'xterm-256color', COLORTERM: undefined }, () => {
+      setup(false)
+      intro('x')
+      expect(printed()).toContain(`${ESC}[38;5;202m`)
+    })
+    withEnv({ NO_COLOR: undefined, FORCE_COLOR: '1', TERM: 'xterm', COLORTERM: undefined }, () => {
       setup(false)
       intro('x')
       expect(printed()).toContain(`${ESC}[31m`)
@@ -615,6 +621,8 @@ describe('rendered frames (snapshots)', () => {
     ['colour level 1 (16 colours)', { color: 1, unicode: true }],
     ['colour level 2, dark', { color: 2, theme: 'dark', unicode: true }],
     ['colour level 2, light', { color: 2, theme: 'light', unicode: true }],
+    ['colour level 3, dark', { color: 3, theme: 'dark', unicode: true }],
+    ['colour level 3, light', { color: 3, theme: 'light', unicode: true }],
     ['ASCII', { color: 0, unicode: false }],
   ]
   for (const [label, style] of cases) {

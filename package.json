@@ -309,6 +309,12 @@
         "reason": "Same as @pyreon/cli: private workspace package (the shared CLI theme), inlined at build, absent from the published output as an import."
       },
       {
+        "pkg": "@pyreon/zero-cli",
+        "dep": "@pyreon/ansi",
+        "code": "prod-import-of-dev-dep",
+        "reason": "Same as @pyreon/cli: private workspace package (the shared CLI theme), inlined at build, absent from the published output as an import."
+      },
+      {
         "pkg": "@pyreon/lathe",
         "dep": "@pyreon/validate",
         "code": "phantom-dep",

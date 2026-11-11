@@ -25,6 +25,8 @@ const STYLES: Array<[string, OutputStyle]> = [
   ['colour level 1 (16 colours)', { color: 1, unicode: true }],
   ['colour level 2, dark', { color: 2, theme: 'dark', unicode: true }],
   ['colour level 2, light', { color: 2, theme: 'light', unicode: true }],
+  ['colour level 3, dark', { color: 3, theme: 'dark', unicode: true }],
+  ['colour level 3, light', { color: 3, theme: 'light', unicode: true }],
   ['ASCII', { color: 0, unicode: false }],
 ]
 
@@ -79,10 +81,13 @@ describe('colour detection (FORCE_COLOR / TERM=dumb / NO_COLOR are honoured)', (
     }
   })
 
-  it('FORCE_COLOR=3 colours a pipe in truecolor; FORCE_COLOR=1 in 16 colours', () => {
+  it('FORCE_COLOR=3 colours a pipe in truecolor; 2 in 256 colours; 1 in 16 colours', () => {
     process.env.FORCE_COLOR = '3'
     expect(formatSummary(SUMMARY)).toContain(`${ESC}[38;2;`)
+    process.env.FORCE_COLOR = '2'
+    expect(formatSummary(SUMMARY)).toContain(`${ESC}[38;5;`)
     process.env.FORCE_COLOR = '1'
+    process.env.TERM = 'xterm'
     expect(formatSummary(SUMMARY)).toContain(`${ESC}[32m`)
   })
 
@@ -127,8 +132,11 @@ describe('main / run against a real directory', () => {
     expect(await run(['demo', '--dir', dir], { color: 0, unicode: true })).toBe(0)
     const lines = out.join('\n').split('\n')
     expect(lines[0]).toBe(`create-multiplatform · ${OWN_VERSION}`)
-    expect(lines.at(-1)?.startsWith(`✓ scaffolded demo → ${dir}/ · `)).toBe(true)
-    expect(lines.at(-1)).toMatch(/ · \d+ files · (\d+ ms|\d+\.\d s)$/)
+    // The verdict is last; a long temp path wraps its meta onto an indented
+    // line (rule 6), so read it from its first line to the end.
+    const verdictText = lines.slice(lines.findIndex((l) => l.startsWith('✓ scaffolded'))).join('\n')
+    expect(verdictText.startsWith(`✓ scaffolded demo → ${dir}/`)).toBe(true)
+    expect(verdictText).toMatch(/(?: · |\n {2})\d+ files(?: · |\n {2})(\d+ ms|\d+\.\d s)$/)
     expect(err).toEqual([])
   })
 

@@ -1,19 +1,20 @@
 import { isAbsolute, relative } from 'node:path'
 import {
-  createTerm,
   fileUrl,
   formatCounts,
   formatElapsed,
+  ghaAnnotation,
+  ghaLevel,
   padEndVisible,
   plural,
   severityStyle,
   type Term,
-  term as defaultTerm,
   verdict,
   visibleWidth,
   wrap,
   WRAP_WIDTH,
 } from '@pyreon/ansi'
+import { termFor } from './term-for'
 import type { Diagnostic, LintResult } from './types'
 
 export interface TextFormatOptions {
@@ -29,19 +30,18 @@ export interface TextFormatOptions {
   fixApplied?: boolean | undefined
   /**
    * Render for a specific terminal instead of the process's stdout:
-   * colour level (0 plain, 1 sixteen colours, 2 truecolor), background and
+   * colour level (0 plain, 1 sixteen colours, 2 256 colours, 3 truecolor),
+   * background and
    * symbol set. Anything left out is detected.
    */
-  color?: 0 | 1 | 2 | undefined
+  color?: 0 | 1 | 2 | 3 | undefined
   theme?: 'dark' | 'light' | undefined
   unicode?: boolean | undefined
   width?: number | undefined
 }
 
-const termFor = (opts: TextFormatOptions): Term =>
-  opts.color === undefined && opts.theme === undefined && opts.unicode === undefined
-    ? defaultTerm
-    : createTerm({ level: opts.color, theme: opts.theme, unicode: opts.unicode })
+/** The terminal options every text formatter takes. Primitives only: no `@pyreon/ansi` type is public. */
+export type TermChoice = Pick<TextFormatOptions, 'color' | 'theme' | 'unicode' | 'width'>
 
 const displayPath = (filePath: string, cwd: string): string => {
   if (!isAbsolute(filePath)) return filePath
@@ -93,7 +93,7 @@ const diagnosticLines = (
 export function formatText(result: LintResult, opts: TextFormatOptions = {}): string {
   const t = termFor(opts)
   const cwd = opts.cwd ?? process.cwd()
-  const width = opts.width ?? WRAP_WIDTH
+  const width = opts.width ?? t.width ?? WRAP_WIDTH
   const lines: string[] = []
 
   const block = (title: string, rows: ReadonlyArray<Parameters<typeof diagnosticLines>[1]>) => {
@@ -151,6 +151,35 @@ export function formatText(result: LintResult, opts: TextFormatOptions = {}): st
     lines.push(`  ${fixHint}${rest}`)
   }
   lines.push('')
+  return lines.join('\n')
+}
+
+/**
+ * Format results as GitHub Actions annotations (`--format gha`): one
+ * `::error` / `::warning` / `::notice` line per diagnostic, titled with the
+ * rule id, paths relative to `cwd` (default `process.cwd()`), so GitHub
+ * annotates the pull request's diff.
+ */
+export function formatGha(result: LintResult, opts: { cwd?: string | undefined } = {}): string {
+  const cwd = opts.cwd ?? process.cwd()
+  const lines: string[] = []
+  for (const d of result.configDiagnostics) {
+    lines.push(ghaAnnotation({ level: ghaLevel(d.severity), title: d.ruleId, message: d.message }))
+  }
+  for (const file of result.files) {
+    for (const d of file.diagnostics) {
+      lines.push(
+        ghaAnnotation({
+          level: ghaLevel(d.severity === 'off' ? 'info' : d.severity),
+          title: d.ruleId,
+          file: displayPath(file.filePath, cwd),
+          line: d.loc?.line,
+          column: d.loc?.column,
+          message: d.message,
+        }),
+      )
+    }
+  }
   return lines.join('\n')
 }
 

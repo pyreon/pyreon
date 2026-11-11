@@ -78,6 +78,162 @@ exports[`loom scan, themed > 16 colours 1`] = `
 "
 `;
 
+exports[`loom scan, themed > 256 dark 1`] = `
+"␛[1mloom scan␛[22m ␛[38;5;103m· . · 5 packages␛[39m
+
+  ␛[38;5;103mworkspace packages␛[39m  5
+  ␛[38;5;103mexternal deps␛[39m       5
+  ␛[38;5;103minternal edges␛[39m      5
+  ␛[38;5;103mdepth␛[39m               4
+  ␛[38;5;103mruntime cycles␛[39m      ␛[38;5;203m1␛[39m
+
+  ␛[38;5;45m␛[1mℹ 8 info␛[22m␛[39m
+  ␛[38;5;45mℹ␛[39m ␛[1munused-dep␛[22m ␛[38;5;103m·␛[39m \`@fix/app\` declares \`left-pad\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/app/package.json␛[39m␛[24m
+  ␛[38;5;45mℹ␛[39m ␛[1munused-dep␛[22m ␛[38;5;103m·␛[39m \`@fix/app\` declares \`chalk\` as a dependency but no source file imports it — lexical
+     evidence only (bins/plugins/CSS load without an import statement); verify before removing
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/app/package.json␛[39m␛[24m
+  ␛[38;5;45mℹ␛[39m ␛[1munused-dep␛[22m ␛[38;5;103m·␛[39m \`@fix/app\` declares \`pinned-pkg\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/app/package.json␛[39m␛[24m
+  ␛[38;5;45mℹ␛[39m ␛[1munused-dep␛[22m ␛[38;5;103m·␛[39m \`@fix/util\` declares \`left-pad\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/util/package.json␛[39m␛[24m
+  ␛[38;5;45mℹ␛[39m ␛[1munused-dep␛[22m ␛[38;5;103m·␛[39m \`@fix/util\` declares \`chalk\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/util/package.json␛[39m␛[24m
+  ␛[38;5;45mℹ␛[39m ␛[1munused-dep␛[22m ␛[38;5;103m·␛[39m \`@fix/util\` declares \`never-imported\` as a dependency but no source file imports it
+     — lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/util/package.json␛[39m␛[24m
+  ␛[38;5;45mℹ␛[39m ␛[1munused-dep␛[22m ␛[38;5;103m·␛[39m \`@fix/util\` declares \`pinned-pkg\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/util/package.json␛[39m␛[24m
+  ␛[38;5;45mℹ␛[39m ␛[1mversion-drift␛[22m ␛[38;5;103m·␛[39m \`pinned-pkg\` is declared with 2 different ranges (^2.0.0 · ^3.0.0) — a root
+     override pins it to 3.0.0, so installs agree, but the declarations still lie
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/app/package.json␛[39m␛[24m ␛[38;5;103m(^2.0.0)␛[39m
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/util/package.json␛[39m␛[24m ␛[38;5;103m(^3.0.0)␛[39m
+
+  ␛[38;5;220m␛[1m! 3 warnings␛[22m␛[39m
+  ␛[38;5;220m!␛[39m ␛[1mpeer-mismatch␛[22m ␛[38;5;103m·␛[39m \`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships
+     1.0.0 — the peer contract and the local reality disagree by a major
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/plugin/package.json␛[39m␛[24m
+  ␛[38;5;220m!␛[39m ␛[1mprod-import-of-dev-dep␛[22m ␛[38;5;103m·␛[39m \`@fix/app\` imports \`dev-only-pkg\` in shipping source but declares it
+     only in devDependencies — consumers won't have it installed
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/app/src/index.ts␛[39m␛[24m
+  ␛[38;5;220m!␛[39m ␛[1mversion-drift␛[22m ␛[38;5;103m·␛[39m \`chalk\` is declared with 2 different ranges (^5.0.0 · ^5.2.0)
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/app/package.json␛[39m␛[24m ␛[38;5;103m(^5.0.0)␛[39m
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/util/package.json␛[39m␛[24m ␛[38;5;103m(^5.2.0)␛[39m
+
+  ␛[38;5;203m␛[1m✗ 5 errors␛[22m␛[39m
+  ␛[38;5;203m✗␛[39m ␛[1mcycle␛[22m ␛[38;5;103m·␛[39m Runtime dependency cycle: @fix/auth → @fix/data → @fix/auth — imports resolve back to
+     their origin, which blocks layering and can break module initialisation order
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/auth/package.json␛[39m␛[24m
+  ␛[38;5;203m✗␛[39m ␛[1minternal-range␛[22m ␛[38;5;103m·␛[39m \`@fix/app\` declares workspace member \`@fix/util\` as \`1.0.0\` (not \`workspace:\`)
+     — a version slip silently installs the REGISTRY copy instead of linking the workspace
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/app/package.json␛[39m␛[24m
+  ␛[38;5;203m✗␛[39m ␛[1minternal-range␛[22m ␛[38;5;103m·␛[39m \`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not
+     \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the
+     workspace
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/plugin/package.json␛[39m␛[24m
+  ␛[38;5;203m✗␛[39m ␛[1mphantom-dep␛[22m ␛[38;5;103m·␛[39m \`@fix/app\` imports \`undeclared-pkg\` in shipping source but never declares it —
+     resolvable only through hoisting luck
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/app/src/index.ts␛[39m␛[24m
+  ␛[38;5;203m✗␛[39m ␛[1mversion-drift␛[22m ␛[38;5;103m·␛[39m \`left-pad\` is declared with 2 different ranges (^1.0.0 · ^2.0.0) — the majors
+     differ, so packages are building against different APIs
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/app/package.json␛[39m␛[24m ␛[38;5;103m(^1.0.0)␛[39m
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/util/package.json␛[39m␛[24m ␛[38;5;103m(^2.0.0)␛[39m
+
+  ␛[38;5;103mreport␛[39m  ␛[38;5;45mloom-report.json␛[39m
+
+␛[38;5;203m✗␛[39m ␛[38;5;203m5 errors␛[39m, ␛[38;5;220m3 warnings␛[39m, ␛[38;5;45m8 info␛[39m ␛[38;5;103m· 5 packages · 412 ms␛[39m
+"
+`;
+
+exports[`loom scan, themed > 256 light 1`] = `
+"␛[1mloom scan␛[22m ␛[38;5;59m· . · 5 packages␛[39m
+
+  ␛[38;5;59mworkspace packages␛[39m  5
+  ␛[38;5;59mexternal deps␛[39m       5
+  ␛[38;5;59minternal edges␛[39m      5
+  ␛[38;5;59mdepth␛[39m               4
+  ␛[38;5;59mruntime cycles␛[39m      ␛[38;5;124m1␛[39m
+
+  ␛[38;5;24m␛[1mℹ 8 info␛[22m␛[39m
+  ␛[38;5;24mℹ␛[39m ␛[1munused-dep␛[22m ␛[38;5;59m·␛[39m \`@fix/app\` declares \`left-pad\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/app/package.json␛[39m␛[24m
+  ␛[38;5;24mℹ␛[39m ␛[1munused-dep␛[22m ␛[38;5;59m·␛[39m \`@fix/app\` declares \`chalk\` as a dependency but no source file imports it — lexical
+     evidence only (bins/plugins/CSS load without an import statement); verify before removing
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/app/package.json␛[39m␛[24m
+  ␛[38;5;24mℹ␛[39m ␛[1munused-dep␛[22m ␛[38;5;59m·␛[39m \`@fix/app\` declares \`pinned-pkg\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/app/package.json␛[39m␛[24m
+  ␛[38;5;24mℹ␛[39m ␛[1munused-dep␛[22m ␛[38;5;59m·␛[39m \`@fix/util\` declares \`left-pad\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/util/package.json␛[39m␛[24m
+  ␛[38;5;24mℹ␛[39m ␛[1munused-dep␛[22m ␛[38;5;59m·␛[39m \`@fix/util\` declares \`chalk\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/util/package.json␛[39m␛[24m
+  ␛[38;5;24mℹ␛[39m ␛[1munused-dep␛[22m ␛[38;5;59m·␛[39m \`@fix/util\` declares \`never-imported\` as a dependency but no source file imports it
+     — lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/util/package.json␛[39m␛[24m
+  ␛[38;5;24mℹ␛[39m ␛[1munused-dep␛[22m ␛[38;5;59m·␛[39m \`@fix/util\` declares \`pinned-pkg\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/util/package.json␛[39m␛[24m
+  ␛[38;5;24mℹ␛[39m ␛[1mversion-drift␛[22m ␛[38;5;59m·␛[39m \`pinned-pkg\` is declared with 2 different ranges (^2.0.0 · ^3.0.0) — a root
+     override pins it to 3.0.0, so installs agree, but the declarations still lie
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/app/package.json␛[39m␛[24m ␛[38;5;59m(^2.0.0)␛[39m
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/util/package.json␛[39m␛[24m ␛[38;5;59m(^3.0.0)␛[39m
+
+  ␛[38;5;94m␛[1m! 3 warnings␛[22m␛[39m
+  ␛[38;5;94m!␛[39m ␛[1mpeer-mismatch␛[22m ␛[38;5;59m·␛[39m \`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships
+     1.0.0 — the peer contract and the local reality disagree by a major
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/plugin/package.json␛[39m␛[24m
+  ␛[38;5;94m!␛[39m ␛[1mprod-import-of-dev-dep␛[22m ␛[38;5;59m·␛[39m \`@fix/app\` imports \`dev-only-pkg\` in shipping source but declares it
+     only in devDependencies — consumers won't have it installed
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/app/src/index.ts␛[39m␛[24m
+  ␛[38;5;94m!␛[39m ␛[1mversion-drift␛[22m ␛[38;5;59m·␛[39m \`chalk\` is declared with 2 different ranges (^5.0.0 · ^5.2.0)
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/app/package.json␛[39m␛[24m ␛[38;5;59m(^5.0.0)␛[39m
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/util/package.json␛[39m␛[24m ␛[38;5;59m(^5.2.0)␛[39m
+
+  ␛[38;5;124m␛[1m✗ 5 errors␛[22m␛[39m
+  ␛[38;5;124m✗␛[39m ␛[1mcycle␛[22m ␛[38;5;59m·␛[39m Runtime dependency cycle: @fix/auth → @fix/data → @fix/auth — imports resolve back to
+     their origin, which blocks layering and can break module initialisation order
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/auth/package.json␛[39m␛[24m
+  ␛[38;5;124m✗␛[39m ␛[1minternal-range␛[22m ␛[38;5;59m·␛[39m \`@fix/app\` declares workspace member \`@fix/util\` as \`1.0.0\` (not \`workspace:\`)
+     — a version slip silently installs the REGISTRY copy instead of linking the workspace
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/app/package.json␛[39m␛[24m
+  ␛[38;5;124m✗␛[39m ␛[1minternal-range␛[22m ␛[38;5;59m·␛[39m \`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not
+     \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the
+     workspace
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/plugin/package.json␛[39m␛[24m
+  ␛[38;5;124m✗␛[39m ␛[1mphantom-dep␛[22m ␛[38;5;59m·␛[39m \`@fix/app\` imports \`undeclared-pkg\` in shipping source but never declares it —
+     resolvable only through hoisting luck
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/app/src/index.ts␛[39m␛[24m
+  ␛[38;5;124m✗␛[39m ␛[1mversion-drift␛[22m ␛[38;5;59m·␛[39m \`left-pad\` is declared with 2 different ranges (^1.0.0 · ^2.0.0) — the majors
+     differ, so packages are building against different APIs
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/app/package.json␛[39m␛[24m ␛[38;5;59m(^1.0.0)␛[39m
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/util/package.json␛[39m␛[24m ␛[38;5;59m(^2.0.0)␛[39m
+
+  ␛[38;5;59mreport␛[39m  ␛[38;5;24mloom-report.json␛[39m
+
+␛[38;5;124m✗␛[39m ␛[38;5;124m5 errors␛[39m, ␛[38;5;94m3 warnings␛[39m, ␛[38;5;24m8 info␛[39m ␛[38;5;59m· 5 packages · 412 ms␛[39m
+"
+`;
+
 exports[`loom scan, themed > ascii 1`] = `
 "loom scan - . - 5 packages
 

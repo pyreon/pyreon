@@ -34,6 +34,74 @@ exports[`atlas scan, themed > 16 colours 1`] = `
 ␛[31m✗␛[39m 2 failing scenarios␛[90m · 12 verified␛[39m␛[90m · 8 unverified␛[39m␛[90m · 6 components␛[39m␛[90m · 146 ms␛[39m"
 `;
 
+exports[`atlas scan, themed > 256 dark 1`] = `
+"␛[1matlas scan␛[22m ␛[38;5;103m· . · static (--no-mount)␛[39m
+
+  ␛[38;5;103mcomponents␛[39m   6
+  ␛[38;5;103mscenarios␛[39m   22  ␛[38;5;203m2 failing␛[39m␛[38;5;103m · ␛[39m12 verified␛[38;5;103m · ␛[39m8 unverified
+  ␛[38;5;103mchecks␛[39m      ␛[38;5;203ma11y 12/14 ✗␛[39m
+  ␛[38;5;103mnot run␛[39m     interaction, ssrParity, leak — mounting is disabled for this run (\`--no-mount\`) — the
+              scan stayed static
+              reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\` to measure
+              this (a Node scan cannot)
+  ␛[38;5;103mwrote␛[39m       ␛[38;5;45matlas-catalog.json␛[39m
+              ␛[38;5;45matlas-agent-guide.md␛[39m
+
+  ␛[38;5;220m!␛[39m ␛[1m1 file(s) export something PascalCase that produced no component:␛[22m
+    1× a chained/member call — rocketstyle chains are found by the runtime pass (needs \`theme\` in
+      your config); other member-call wrappers are not unwrapped
+      · src/components/Chip.tsx — Chip
+
+  ␛[38;5;203m✗␛[39m ␛[1matlas --check:␛[22m ␛[38;5;203mREGRESSED — 1 check(s) started failing, 2 check(s) stopped running␛[39m
+    ␛[38;5;203m✗␛[39m button--empty — now failing: a11y
+    ␛[38;5;203m✗␛[39m badge--default — no longer checked: interaction, leak (coverage lost — the failure did not go
+      away, the check did)
+    ␛[38;5;78m+␛[39m 1 new scenario(s)
+
+  ␛[38;5;203m␛[1m✗ 2 failing scenarios␛[22m␛[39m
+  ␛[38;5;203m✗␛[39m ␛[1mbutton--empty␛[22m  ␛[38;5;103mButton␛[39m
+     ␛[38;5;203m✗␛[39m ␛[1ma11y [missing-accessible-name]␛[22m ␛[38;5;103m·␛[39m missing accessible name: "label" is empty
+        ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45msrc/components/Button.tsx␛[39m␛[24m
+        ␛[38;5;103mfix:␛[39m Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+  ␛[38;5;103m… and 1 more failing scenario(s) — see the catalog JSON␛[39m
+
+␛[38;5;203m✗␛[39m 2 failing scenarios␛[38;5;103m · 12 verified␛[39m␛[38;5;103m · 8 unverified␛[39m␛[38;5;103m · 6 components␛[39m␛[38;5;103m · 146 ms␛[39m"
+`;
+
+exports[`atlas scan, themed > 256 light 1`] = `
+"␛[1matlas scan␛[22m ␛[38;5;59m· . · static (--no-mount)␛[39m
+
+  ␛[38;5;59mcomponents␛[39m   6
+  ␛[38;5;59mscenarios␛[39m   22  ␛[38;5;124m2 failing␛[39m␛[38;5;59m · ␛[39m12 verified␛[38;5;59m · ␛[39m8 unverified
+  ␛[38;5;59mchecks␛[39m      ␛[38;5;124ma11y 12/14 ✗␛[39m
+  ␛[38;5;59mnot run␛[39m     interaction, ssrParity, leak — mounting is disabled for this run (\`--no-mount\`) — the
+              scan stayed static
+              reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\` to measure
+              this (a Node scan cannot)
+  ␛[38;5;59mwrote␛[39m       ␛[38;5;24matlas-catalog.json␛[39m
+              ␛[38;5;24matlas-agent-guide.md␛[39m
+
+  ␛[38;5;94m!␛[39m ␛[1m1 file(s) export something PascalCase that produced no component:␛[22m
+    1× a chained/member call — rocketstyle chains are found by the runtime pass (needs \`theme\` in
+      your config); other member-call wrappers are not unwrapped
+      · src/components/Chip.tsx — Chip
+
+  ␛[38;5;124m✗␛[39m ␛[1matlas --check:␛[22m ␛[38;5;124mREGRESSED — 1 check(s) started failing, 2 check(s) stopped running␛[39m
+    ␛[38;5;124m✗␛[39m button--empty — now failing: a11y
+    ␛[38;5;124m✗␛[39m badge--default — no longer checked: interaction, leak (coverage lost — the failure did not go
+      away, the check did)
+    ␛[38;5;22m+␛[39m 1 new scenario(s)
+
+  ␛[38;5;124m␛[1m✗ 2 failing scenarios␛[22m␛[39m
+  ␛[38;5;124m✗␛[39m ␛[1mbutton--empty␛[22m  ␛[38;5;59mButton␛[39m
+     ␛[38;5;124m✗␛[39m ␛[1ma11y [missing-accessible-name]␛[22m ␛[38;5;59m·␛[39m missing accessible name: "label" is empty
+        ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24msrc/components/Button.tsx␛[39m␛[24m
+        ␛[38;5;59mfix:␛[39m Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+  ␛[38;5;59m… and 1 more failing scenario(s) — see the catalog JSON␛[39m
+
+␛[38;5;124m✗␛[39m 2 failing scenarios␛[38;5;59m · 12 verified␛[39m␛[38;5;59m · 8 unverified␛[39m␛[38;5;59m · 6 components␛[39m␛[38;5;59m · 146 ms␛[39m"
+`;
+
 exports[`atlas scan, themed > ascii 1`] = `
 "atlas scan - . - static (--no-mount)
 

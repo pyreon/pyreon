@@ -13,7 +13,7 @@ import { createAtlas } from '../index'
 import type { CatalogGraph, ComponentIntelligence, Scenario } from '../core'
 import { catalogReplacer } from '../core'
 import { focusComponents, suggestNames } from '../verify/focus'
-import { plural } from '@pyreon/ansi'
+import { finding, plural } from '@pyreon/ansi'
 import {
   commandHeader,
   failureLines,
@@ -584,15 +584,12 @@ function reportRatchet(
   try {
     raw = JSON.parse(readFileSync(catalogPath, 'utf8'))
   } catch {
-    err(
-      `atlas: no readable baseline at ${catalogPath} — nothing to compare against. ` +
-        `Run \`atlas scan\` and commit the catalog to enable --check.\n`,
-    )
+    problem('info', `no readable baseline at ${catalogPath} — nothing to compare against.`, 'run `atlas scan` and commit the catalog to enable --check')
     return 0
   }
   const baseline = readBaselineScenarios(raw)
   if (!baseline) {
-    err(`atlas: ${catalogPath} is not a readable catalog — skipping the comparison.\n`)
+    problem('warning', `${catalogPath} is not a readable catalog — skipping the comparison.`, 'regenerate it with `atlas scan`')
     return 0
   }
   // A scoped run (`atlas verify Card --check`) holds one component, so it is
@@ -790,6 +787,15 @@ function err(text: string): void {
 }
 
 /**
+ * A problem on stderr in the shared theme (rule 4): `✗ atlas · message`
+ * (or `!` / `ℹ` by severity), then `fix:` when there is one.
+ */
+function problem(severity: 'error' | 'warning' | 'info', message: string, fix?: string): void {
+  const t = termFor('stderr')
+  err(`${finding(t, { severity, source: 'atlas', message: message.replace(/^atlas: /, ''), fix }, { indent: 0, width: t.width }).join('\n')}\n`)
+}
+
+/**
  * Read `--flag=value` or `--flag value`.
  *
  * Both forms, because both are typed by real people and supporting only one
@@ -958,7 +964,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   }
   const argError = validateArgs(cmd, rest)
   if (argError) {
-    err(`atlas: ${argError} Try \`atlas --help\`.\n`)
+    problem('error', argError, 'run `atlas --help` for usage')
     return 1
   }
 
@@ -999,7 +1005,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     // Before the summary: a config that was found and could not be used
     // explains most of what follows (no groups, no title, no projects), and
     // reading it after the counts is reading it too late.
-    if (result.configError) err(`atlas: ${result.configError}\n`)
+    if (result.configError) problem('error', result.configError)
     if (result.runtimeError) err(`${result.runtimeError}\n`)
     if (result.frameworkWarnings) err(`${noticeLines(et, formatFrameworkWarnings(result.frameworkWarnings)).join('\n')}\n`)
     // Before the summary, for the same reason: it explains why every scenario
@@ -1032,7 +1038,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       err(`${noticeLines(et, notice.trimEnd().split('\n')).join('\n')}\n`)
     }
     if (result.components === 0) {
-      err(`atlas: no components found under ${join(dir ?? '.', scanDir ?? 'src')}\n`)
+      problem('error', `no components found under ${join(dir ?? '.', scanDir ?? 'src')}`, 'point it at your components: atlas scan <dir> or --dir <path>')
       return 1
     }
     // Reports what was actually established — WHICH check, not how many: six
@@ -1122,9 +1128,10 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       }
     }
     if (brokenComponents.length > 0) {
-      err(
-        `atlas: ${brokenComponents.length} component(s) could not be loaded, so none of their checks ran: ` +
-          `${brokenComponents.join(', ')}. Fix the error reported above and re-run.\n`,
+      problem(
+        'error',
+        `${brokenComponents.length} component(s) could not be loaded, so none of their checks ran: ${brokenComponents.join(', ')}.`,
+        'fix the error reported above and re-run',
       )
       verdictOf({ failedToLoad: brokenComponents.length })
       return emitJson(1)
@@ -1176,7 +1183,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     // passed" are identical, and the wrong one is green.
     if (result.focusError) {
       if (json) out(`${JSON.stringify({ ok: false, error: result.focusError }, null, 2)}\n`)
-      else err(`atlas: ${result.focusError}\n`)
+      else problem('error', result.focusError)
       return 1
     }
 
@@ -1203,7 +1210,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
           ...(rest.includes('--no-mount') ? ['static (--no-mount)'] : []),
         ])}\n`,
       )
-      if (result.focusNote) err(`atlas: ${result.focusNote}\n`)
+      if (result.focusNote) problem('info', result.focusNote)
       out('\n')
       for (const line of summaryLines(t, { report })) out(`${line}\n`)
       // UNCAPPED, unlike the whole-catalog scan: this is a question about one
@@ -1255,9 +1262,10 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     // nothing. That is the false-green this whole catalog is written against.
     if (report.verified === 0) {
       if (!json) {
-        err(
-          `atlas: nothing was verified — ${report.scenarios} scenario(s), none of which a check ` +
-            `could examine. This is not a pass; see the reasons above.\n`,
+        problem(
+          'error',
+          'nothing was verified, and that is not a pass.',
+          `${report.scenarios} scenario(s), none of which a check could examine: see the reasons above`,
         )
       }
       return finish(1)
@@ -1271,7 +1279,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     const impactArg = flagValue(rest, '--axe-min-impact')
     const IMPACTS = ['minor', 'moderate', 'serious', 'critical'] as const
     if (impactArg !== undefined && !(IMPACTS as readonly string[]).includes(impactArg)) {
-      err(`atlas: --axe-min-impact must be one of ${IMPACTS.join(', ')} (got "${impactArg}")\n`)
+      problem('error', `--axe-min-impact must be one of ${IMPACTS.join(', ')} (got "${impactArg}")`)
       return 1
     }
     const axeImpact = impactArg as (typeof IMPACTS)[number] | undefined
@@ -1285,7 +1293,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     const settleTimeoutMs = ms('--settle-timeout')
     for (const [flag, v] of [['--settle-ms', settleMs], ['--settle-timeout', settleTimeoutMs]] as const) {
       if (v === 'bad') {
-        err(`atlas: ${flag} must be a non-negative whole number of milliseconds (got "${flagValue(rest, flag)}")\n`)
+        problem('error', `${flag} must be a non-negative whole number of milliseconds (got "${flagValue(rest, flag)}")`)
         return 1
       }
     }
@@ -1357,7 +1365,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     const portArg = flagValue(rest, '--port')
     const port = portArg !== undefined ? Number(portArg) : undefined
     if (port !== undefined && (!Number.isInteger(port) || port < 1 || port > 65535)) {
-      err(`atlas: --port must be a whole number from 1 to 65535 (got "${portArg}").\n`)
+      problem('error', `--port must be a whole number from 1 to 65535 (got "${portArg}").`)
       return 1
     }
     // Imported lazily: the dev server pulls in Vite, and `atlas scan` must keep
@@ -1372,8 +1380,10 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       if (handle.components === 0) {
         // Not a hard failure — the server is up and says so — but silence here
         // would look like a broken workbench rather than an empty scan.
-        err(
-          `atlas: no components found under ${join(dir ?? '.', flagValue(rest, '--dir') ?? 'src')}. The workbench is running but empty.\n`,
+        problem(
+          'warning',
+          `no components found under ${join(dir ?? '.', flagValue(rest, '--dir') ?? 'src')}. The workbench is running but empty.`,
+          'point it at your components: atlas dev <dir> or --dir <path>',
         )
       }
       out(`atlas dev: ${handle.components} component(s) → ${handle.url}\n`)
@@ -1399,16 +1409,18 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     if (result.kind === 'exists') {
       // Not an error — re-running `init` in a configured project is a
       // reasonable thing to do, and the answer is "you already have one".
-      err(
-        `atlas: ${result.path} already exists. Pass --force to overwrite it ` +
-          `(it is hand-edited — your wrapper, theme and authored scenarios live there).\n`,
+      problem(
+        'warning',
+        `${result.path} already exists (it is hand-edited — your wrapper, theme and authored scenarios live there).`,
+        'pass --force to overwrite it',
       )
       return 1
     }
     if (result.kind === 'nothing-found') {
-      err(
-        `atlas: found no components under ${result.searched}, and no workspace packages containing any.\n` +
-          `  Point it somewhere else: atlas init <dir>\n`,
+      problem(
+        'error',
+        `found no components under ${result.searched}, and no workspace packages containing any.`,
+        'point it somewhere else: atlas init <dir>',
       )
       return 1
     }
@@ -1439,7 +1451,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     const positional = positionalArgs(rest)
     const [name, argsJson] = positional
     if (!name) {
-      err('atlas: usage — atlas check <Component> \'{"prop":"value"}\'\n')
+      problem('error', 'missing arguments', 'atlas check <Component> \'{"prop":"value"}\'')
       return 1
     }
     const { runCheck } = await import('./check')
@@ -1449,15 +1461,15 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       ...(argsJson !== undefined ? { argsJson } : {}),
     })
     if (result.kind === 'no-catalog') {
-      err(`atlas: no atlas-catalog.json found near ${result.searched}. Run \`atlas scan\` first.\n`)
+      problem('error', `no atlas-catalog.json found near ${result.searched}.`, 'run `atlas scan` first')
       return 1
     }
     if (result.kind === 'bad-json') {
-      err(`atlas: could not parse the args — ${result.reason}\n`)
+      problem('error', `could not parse the args — ${result.reason}`, 'pass the props as one JSON object: \'{"prop":"value"}\'')
       return 1
     }
     if (result.kind === 'unknown-component') {
-      err(`atlas: ${result.message}\n`)
+      problem('error', result.message)
       return 1
     }
     out(`${result.text}\n`)
@@ -1500,7 +1512,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     }
   }
 
-  err(`atlas: unknown command "${cmd}". Try \`atlas --help\`.\n`)
+  problem('error', `unknown command "${cmd}".`, 'run `atlas --help` for the list of commands')
   return 1
 }
 

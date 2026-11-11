@@ -99,7 +99,7 @@ describe('perf-advisor — end-to-end over the fixture manifest', () => {
 
   it('formatAdvisorReport renders findings + is empty for a clean build', () => {
     const report = formatAdvisorReport(runAdvisor(collect(120_000)))
-    expect(report).toContain('Pyreon perf advisor')
+    expect(report).toContain('perf advisor')
     expect(report).toContain('src/routes/heavy.tsx')
     expect(report).toContain('route-js-budget')
     expect(report).toContain('advisory')

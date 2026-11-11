@@ -1,6 +1,6 @@
 /**
  * `loom scan`'s human report, snapshotted at every colour level (plain, 16
- * colours, truecolor), on a dark and a light background, and with the ASCII
+ * colours, 256 colours, truecolor), on a dark and a light background, and with the ASCII
  * symbol fallback. ESC is shown as `␛` so the escape codes read in review.
  *
  * The fixture workspace carries one instance of every issue class, so every
@@ -30,8 +30,10 @@ describe('loom scan, themed', () => {
   const variants: Array<[string, Partial<ScanTextOptions>]> = [
     ['plain', { color: 0, unicode: true }],
     ['16 colours', { color: 1, theme: 'dark', unicode: true }],
-    ['truecolor dark', { color: 2, theme: 'dark', unicode: true }],
-    ['truecolor light', { color: 2, theme: 'light', unicode: true }],
+    ['256 dark', { color: 2, theme: 'dark', unicode: true }],
+    ['256 light', { color: 2, theme: 'light', unicode: true }],
+    ['truecolor dark', { color: 3, theme: 'dark', unicode: true }],
+    ['truecolor light', { color: 3, theme: 'light', unicode: true }],
     ['ascii', { color: 0, unicode: false }],
   ]
   for (const [name, term] of variants) {

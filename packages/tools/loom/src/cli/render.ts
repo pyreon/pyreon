@@ -34,8 +34,8 @@ export interface ScanTextOptions {
   reportPath?: string | undefined
   /** Wall-clock time of the scan, measured by the caller. */
   elapsedMs?: number | undefined
-  /** 0 plain, 1 sixteen colours, 2 truecolor. Detected from stdout when left out. */
-  color?: 0 | 1 | 2 | undefined
+  /** 0 plain, 1 sixteen colours, 2 256 colours, 3 truecolor. Detected from stdout when left out. */
+  color?: 0 | 1 | 2 | 3 | undefined
   theme?: 'dark' | 'light' | undefined
   unicode?: boolean | undefined
   width?: number | undefined

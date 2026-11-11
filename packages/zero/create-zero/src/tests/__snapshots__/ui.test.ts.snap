@@ -268,6 +268,184 @@ exports[`rendered frames (snapshots) > colour level 1 (16 colours) 1`] = `
 `;
 
 exports[`rendered frames (snapshots) > colour level 2, dark 1`] = `
+"␛[38;5;202m┌␛[39m  ␛[1mcreate-zero␛[22m ␛[38;5;103m· 0.53.0␛[39m
+␛[38;5;244m│␛[39m
+␛[?25l␛[38;5;202m◆␛[39m  Project name
+␛[38;5;202m│␛[39m  ␛[38;5;202m█␛[39m␛[38;5;103mmy-zero-app␛[39m
+␛[38;5;202m└␛[39m  ␛[38;5;103menter submit · esc cancel␛[39m
+␛[3A
+␛[J␛[38;5;202m◆␛[39m  Project name
+␛[38;5;202m│␛[39m  ␛[38;5;202m█␛[39m␛[38;5;103mmy-zero-app␛[39m
+␛[38;5;220m└␛[39m  ␛[38;5;220m! Project name is required␛[39m
+␛[3A
+␛[J␛[38;5;202m◆␛[39m  Project name
+␛[38;5;202m│␛[39m  my-app␛[38;5;202m█␛[39m
+␛[38;5;202m└␛[39m  ␛[38;5;103menter submit · esc cancel␛[39m
+␛[3A
+␛[J␛[38;5;78m◇␛[39m  Project name
+␛[38;5;244m│␛[39m  ␛[38;5;103mmy-app␛[39m
+␛[?25h␛[38;5;244m│␛[39m
+␛[?25l␛[38;5;202m◆␛[39m  Template
+␛[38;5;202m│␛[39m  ␛[38;5;202m●␛[39m ␛[1mMinimal␛[22m ␛[38;5;103m— no features, SPA, static deploy␛[39m
+␛[38;5;202m│␛[39m  ␛[38;5;244m○␛[39m Standard ␛[38;5;103m— store + query + forms␛[39m
+␛[38;5;202m└␛[39m  ␛[38;5;103m↑/↓ move · enter select · esc cancel␛[39m
+␛[4A
+␛[J␛[38;5;202m◆␛[39m  Template
+␛[38;5;202m│␛[39m  ␛[38;5;244m○␛[39m Minimal ␛[38;5;103m— no features, SPA, static deploy␛[39m
+␛[38;5;202m│␛[39m  ␛[38;5;202m●␛[39m ␛[1mStandard␛[22m ␛[38;5;103m— store + query + forms␛[39m
+␛[38;5;202m└␛[39m  ␛[38;5;103m↑/↓ move · enter select · esc cancel␛[39m
+␛[4A
+␛[J␛[38;5;78m◇␛[39m  Template
+␛[38;5;244m│␛[39m  ␛[38;5;103mStandard␛[39m
+␛[?25h␛[38;5;244m│␛[39m
+␛[?25l␛[38;5;202m◆␛[39m  Features
+␛[38;5;202m│␛[39m  ␛[38;5;103mState␛[39m
+␛[38;5;202m│␛[39m    ␛[38;5;202m▸␛[39m ␛[38;5;244m◻␛[39m ␛[1mstore␛[22m ␛[38;5;103m— signals store␛[39m
+␛[38;5;202m│␛[39m  ␛[38;5;103mData␛[39m
+␛[38;5;202m│␛[39m      ␛[38;5;202m◼␛[39m query
+␛[38;5;202m└␛[39m  ␛[38;5;103m↑/↓ move · space toggle · a all · enter submit · esc cancel␛[39m
+␛[6A
+␛[J␛[38;5;202m◆␛[39m  Features
+␛[38;5;202m│␛[39m  ␛[38;5;103mState␛[39m
+␛[38;5;202m│␛[39m    ␛[38;5;202m▸␛[39m ␛[38;5;202m◼␛[39m ␛[1mstore␛[22m ␛[38;5;103m— signals store␛[39m
+␛[38;5;202m│␛[39m  ␛[38;5;103mData␛[39m
+␛[38;5;202m│␛[39m      ␛[38;5;202m◼␛[39m query
+␛[38;5;202m└␛[39m  ␛[38;5;103m↑/↓ move · space toggle · a all · enter submit · esc cancel␛[39m
+␛[6A
+␛[J␛[38;5;78m◇␛[39m  Features
+␛[38;5;244m│␛[39m  ␛[38;5;103mstore, query␛[39m
+␛[?25h␛[38;5;244m│␛[39m
+␛[?25l␛[38;5;202m◆␛[39m  Lint config?
+␛[38;5;202m│␛[39m  ␛[38;5;202m●␛[39m ␛[1mYes␛[22m ␛[38;5;103m/␛[39m ␛[38;5;244m○␛[39m No
+␛[38;5;202m└␛[39m  ␛[38;5;103m←/→ or y/n · enter submit · esc cancel␛[39m
+␛[3A
+␛[J␛[38;5;202m◆␛[39m  Lint config?
+␛[38;5;202m│␛[39m  ␛[38;5;244m○␛[39m Yes ␛[38;5;103m/␛[39m ␛[38;5;202m●␛[39m ␛[1mNo␛[22m
+␛[38;5;202m└␛[39m  ␛[38;5;103m←/→ or y/n · enter submit · esc cancel␛[39m
+␛[3A
+␛[J␛[38;5;78m◇␛[39m  Lint config?
+␛[38;5;244m│␛[39m  ␛[38;5;103mNo␛[39m
+␛[?25h
+=====
+␛[38;5;244m│␛[39m
+␛[?25l␛[38;5;202m◆␛[39m  Cancelled prompt
+␛[38;5;202m│␛[39m  ␛[38;5;202m█␛[39m
+␛[38;5;202m└␛[39m  ␛[38;5;103menter submit · esc cancel␛[39m
+␛[3A
+␛[J␛[38;5;202m◆␛[39m  Cancelled prompt
+␛[38;5;202m│␛[39m  abc␛[38;5;202m█␛[39m
+␛[38;5;202m└␛[39m  ␛[38;5;103menter submit · esc cancel␛[39m
+␛[3A
+␛[J␛[38;5;203m✗␛[39m  Cancelled prompt
+␛[38;5;244m│␛[39m  ␛[38;5;103mabc␛[39m
+␛[?25h
+=====
+␛[38;5;244m│␛[39m
+␛[38;5;202m◒␛[39m  Scaffolding project...
+␛[38;5;78m◇␛[39m  Project scaffolded
+␛[38;5;244m│␛[39m
+␛[38;5;45mℹ␛[39m  ␛[1mNext steps␛[22m
+␛[38;5;244m│␛[39m  cd my-app
+␛[38;5;244m│␛[39m  bun install
+␛[38;5;244m│␛[39m  bun run dev
+␛[38;5;244m│␛[39m
+␛[38;5;244m└␛[39m  ␛[38;5;78m✓␛[39m created my-app ␛[38;5;103m· 42 files · 180 ms␛[39m
+
+␛[38;5;244m└␛[39m  ␛[38;5;203m✗ Cancelled.␛[39m
+
+"
+`;
+
+exports[`rendered frames (snapshots) > colour level 2, light 1`] = `
+"␛[38;5;160m┌␛[39m  ␛[1mcreate-zero␛[22m ␛[38;5;59m· 0.53.0␛[39m
+␛[38;5;242m│␛[39m
+␛[?25l␛[38;5;160m◆␛[39m  Project name
+␛[38;5;160m│␛[39m  ␛[38;5;160m█␛[39m␛[38;5;59mmy-zero-app␛[39m
+␛[38;5;160m└␛[39m  ␛[38;5;59menter submit · esc cancel␛[39m
+␛[3A
+␛[J␛[38;5;160m◆␛[39m  Project name
+␛[38;5;160m│␛[39m  ␛[38;5;160m█␛[39m␛[38;5;59mmy-zero-app␛[39m
+␛[38;5;94m└␛[39m  ␛[38;5;94m! Project name is required␛[39m
+␛[3A
+␛[J␛[38;5;160m◆␛[39m  Project name
+␛[38;5;160m│␛[39m  my-app␛[38;5;160m█␛[39m
+␛[38;5;160m└␛[39m  ␛[38;5;59menter submit · esc cancel␛[39m
+␛[3A
+␛[J␛[38;5;22m◇␛[39m  Project name
+␛[38;5;242m│␛[39m  ␛[38;5;59mmy-app␛[39m
+␛[?25h␛[38;5;242m│␛[39m
+␛[?25l␛[38;5;160m◆␛[39m  Template
+␛[38;5;160m│␛[39m  ␛[38;5;160m●␛[39m ␛[1mMinimal␛[22m ␛[38;5;59m— no features, SPA, static deploy␛[39m
+␛[38;5;160m│␛[39m  ␛[38;5;242m○␛[39m Standard ␛[38;5;59m— store + query + forms␛[39m
+␛[38;5;160m└␛[39m  ␛[38;5;59m↑/↓ move · enter select · esc cancel␛[39m
+␛[4A
+␛[J␛[38;5;160m◆␛[39m  Template
+␛[38;5;160m│␛[39m  ␛[38;5;242m○␛[39m Minimal ␛[38;5;59m— no features, SPA, static deploy␛[39m
+␛[38;5;160m│␛[39m  ␛[38;5;160m●␛[39m ␛[1mStandard␛[22m ␛[38;5;59m— store + query + forms␛[39m
+␛[38;5;160m└␛[39m  ␛[38;5;59m↑/↓ move · enter select · esc cancel␛[39m
+␛[4A
+␛[J␛[38;5;22m◇␛[39m  Template
+␛[38;5;242m│␛[39m  ␛[38;5;59mStandard␛[39m
+␛[?25h␛[38;5;242m│␛[39m
+␛[?25l␛[38;5;160m◆␛[39m  Features
+␛[38;5;160m│␛[39m  ␛[38;5;59mState␛[39m
+␛[38;5;160m│␛[39m    ␛[38;5;160m▸␛[39m ␛[38;5;242m◻␛[39m ␛[1mstore␛[22m ␛[38;5;59m— signals store␛[39m
+␛[38;5;160m│␛[39m  ␛[38;5;59mData␛[39m
+␛[38;5;160m│␛[39m      ␛[38;5;160m◼␛[39m query
+␛[38;5;160m└␛[39m  ␛[38;5;59m↑/↓ move · space toggle · a all · enter submit · esc cancel␛[39m
+␛[6A
+␛[J␛[38;5;160m◆␛[39m  Features
+␛[38;5;160m│␛[39m  ␛[38;5;59mState␛[39m
+␛[38;5;160m│␛[39m    ␛[38;5;160m▸␛[39m ␛[38;5;160m◼␛[39m ␛[1mstore␛[22m ␛[38;5;59m— signals store␛[39m
+␛[38;5;160m│␛[39m  ␛[38;5;59mData␛[39m
+␛[38;5;160m│␛[39m      ␛[38;5;160m◼␛[39m query
+␛[38;5;160m└␛[39m  ␛[38;5;59m↑/↓ move · space toggle · a all · enter submit · esc cancel␛[39m
+␛[6A
+␛[J␛[38;5;22m◇␛[39m  Features
+␛[38;5;242m│␛[39m  ␛[38;5;59mstore, query␛[39m
+␛[?25h␛[38;5;242m│␛[39m
+␛[?25l␛[38;5;160m◆␛[39m  Lint config?
+␛[38;5;160m│␛[39m  ␛[38;5;160m●␛[39m ␛[1mYes␛[22m ␛[38;5;59m/␛[39m ␛[38;5;242m○␛[39m No
+␛[38;5;160m└␛[39m  ␛[38;5;59m←/→ or y/n · enter submit · esc cancel␛[39m
+␛[3A
+␛[J␛[38;5;160m◆␛[39m  Lint config?
+␛[38;5;160m│␛[39m  ␛[38;5;242m○␛[39m Yes ␛[38;5;59m/␛[39m ␛[38;5;160m●␛[39m ␛[1mNo␛[22m
+␛[38;5;160m└␛[39m  ␛[38;5;59m←/→ or y/n · enter submit · esc cancel␛[39m
+␛[3A
+␛[J␛[38;5;22m◇␛[39m  Lint config?
+␛[38;5;242m│␛[39m  ␛[38;5;59mNo␛[39m
+␛[?25h
+=====
+␛[38;5;242m│␛[39m
+␛[?25l␛[38;5;160m◆␛[39m  Cancelled prompt
+␛[38;5;160m│␛[39m  ␛[38;5;160m█␛[39m
+␛[38;5;160m└␛[39m  ␛[38;5;59menter submit · esc cancel␛[39m
+␛[3A
+␛[J␛[38;5;160m◆␛[39m  Cancelled prompt
+␛[38;5;160m│␛[39m  abc␛[38;5;160m█␛[39m
+␛[38;5;160m└␛[39m  ␛[38;5;59menter submit · esc cancel␛[39m
+␛[3A
+␛[J␛[38;5;124m✗␛[39m  Cancelled prompt
+␛[38;5;242m│␛[39m  ␛[38;5;59mabc␛[39m
+␛[?25h
+=====
+␛[38;5;242m│␛[39m
+␛[38;5;160m◒␛[39m  Scaffolding project...
+␛[38;5;22m◇␛[39m  Project scaffolded
+␛[38;5;242m│␛[39m
+␛[38;5;24mℹ␛[39m  ␛[1mNext steps␛[22m
+␛[38;5;242m│␛[39m  cd my-app
+␛[38;5;242m│␛[39m  bun install
+␛[38;5;242m│␛[39m  bun run dev
+␛[38;5;242m│␛[39m
+␛[38;5;242m└␛[39m  ␛[38;5;22m✓␛[39m created my-app ␛[38;5;59m· 42 files · 180 ms␛[39m
+
+␛[38;5;242m└␛[39m  ␛[38;5;124m✗ Cancelled.␛[39m
+
+"
+`;
+
+exports[`rendered frames (snapshots) > colour level 3, dark 1`] = `
 "␛[38;2;255;94;26m┌␛[39m  ␛[1mcreate-zero␛[22m ␛[38;2;138;134;150m· 0.53.0␛[39m
 ␛[38;2;126;122;140m│␛[39m
 ␛[?25l␛[38;2;255;94;26m◆␛[39m  Project name
@@ -356,7 +534,7 @@ exports[`rendered frames (snapshots) > colour level 2, dark 1`] = `
 "
 `;
 
-exports[`rendered frames (snapshots) > colour level 2, light 1`] = `
+exports[`rendered frames (snapshots) > colour level 3, light 1`] = `
 "␛[38;2;180;58;14m┌␛[39m  ␛[1mcreate-zero␛[22m ␛[38;2;94;90;105m· 0.53.0␛[39m
 ␛[38;2;110;106;120m│␛[39m
 ␛[?25l␛[38;2;180;58;14m◆␛[39m  Project name

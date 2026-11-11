@@ -265,6 +265,138 @@ frame:
 `;
 
 exports[`specimen snapshots > level 2 · dark · ascii 1`] = `
+"roles: ␛[38;5;202maccent␛[39m ␛[38;5;78mok␛[39m ␛[38;5;220mwarn␛[39m ␛[38;5;203merr␛[39m ␛[38;5;45minfo␛[39m ␛[38;5;103mdim␛[39m ␛[38;5;244mgray␛[39m
+styles: ␛[1mbold␛[22m ␛[4munderline␛[24m ␛[38;5;198mplasma␛[39m ␛[38;5;202mcore␛[39m ␛[38;5;221mwarm␛[39m
+symbols: v x ! i > -> * o (*) ( ) # . +- | +- - - ->
+header: ␛[1mpyreon doctor␛[22m ␛[38;5;103m- project health audit␛[39m
+header (bare): ␛[1mlathe check␛[22m
+counts: ␛[38;5;203m1 error␛[39m, ␛[38;5;220m5 warnings␛[39m, ␛[38;5;45m2 info␛[39m
+verdict ok: ␛[38;5;78mv␛[39m built in 3.8 s ␛[38;5;103m- 4 routes - 13 pages prerendered␛[39m
+verdict err: ␛[38;5;203mx␛[39m ␛[38;5;203m1 error␛[39m, ␛[38;5;220m2 warnings␛[39m
+verdict none: ready ␛[38;5;103m- 3.0 s␛[39m
+columns:
+  ␛[4mroute␛[24m   ␛[4mmode␛[24m   ␛[4mjs (gz)␛[24m
+  /       ␛[38;5;45mssg␛[39m    18.4 kB
+  /app/*  spa   141.2 kB
+bar 94: ␛[38;5;78m###########␛[39m␛[38;5;244m.␛[39m
+bar 84: ␛[38;5;220m##########␛[39m␛[38;5;244m..␛[39m
+finding:
+  ␛[38;5;203mx␛[39m ␛[1maudit-tests␛[22m ␛[38;5;103m-␛[39m Browser package has no real-Chromium smoke test
+     ␛[38;5;103m->␛[39m ␛]8;;file:///repo/packages/ui/src/index.ts␛\\␛[4m␛[38;5;45mpackages/ui/src/index.ts␛[39m␛[24m␛]8;;␛\\
+     ␛[38;5;103m->␛[39m ␛[4m␛[38;5;45msrc/a.ts:3␛[39m␛[24m ␛[38;5;103m(declared here)␛[39m
+     ␛[38;5;103mfix:␛[39m add src/tests/ui.browser.test.tsx
+  ␛[38;5;45mi␛[39m ␛[1mlint␛[22m ␛[38;5;103m-␛[39m <For> without \`by\` recreates every row on reorder
+     ␛[38;5;103m->␛[39m ␛[4m␛[38;5;45msrc/routes/inbox.tsx:42:7␛[39m␛[24m
+frame:
+    ␛[38;5;244m+-[␛[39m ␛[4m␛[38;5;45msrc/Inbox.tsx:31:9␛[39m␛[24m ␛[38;5;244m]␛[39m
+    ␛[38;5;244m|␛[39m <canvas> is web-only and won't be emitted for iOS or Android
+    ␛[38;5;244m|␛[39m ␛[38;5;103mhint:␛[39m use <Chart>
+    ␛[38;5;244m+-␛[39m
+  ␛[38;5;244m+-␛[39m
+  ␛[38;5;244m|␛[39m untitled
+  ␛[38;5;244m+-␛[39m"
+`;
+
+exports[`specimen snapshots > level 2 · dark · utf-8 1`] = `
+"roles: ␛[38;5;202maccent␛[39m ␛[38;5;78mok␛[39m ␛[38;5;220mwarn␛[39m ␛[38;5;203merr␛[39m ␛[38;5;45minfo␛[39m ␛[38;5;103mdim␛[39m ␛[38;5;244mgray␛[39m
+styles: ␛[1mbold␛[22m ␛[4munderline␛[24m ␛[38;5;198mplasma␛[39m ␛[38;5;202mcore␛[39m ␛[38;5;221mwarm␛[39m
+symbols: ✓ ✗ ! ℹ ▸ ↳ ◆ ◇ ● ○ █ ░ ╭─ │ ╰─ · — →
+header: ␛[1mpyreon doctor␛[22m ␛[38;5;103m· project health audit␛[39m
+header (bare): ␛[1mlathe check␛[22m
+counts: ␛[38;5;203m1 error␛[39m, ␛[38;5;220m5 warnings␛[39m, ␛[38;5;45m2 info␛[39m
+verdict ok: ␛[38;5;78m✓␛[39m built in 3.8 s ␛[38;5;103m· 4 routes · 13 pages prerendered␛[39m
+verdict err: ␛[38;5;203m✗␛[39m ␛[38;5;203m1 error␛[39m, ␛[38;5;220m2 warnings␛[39m
+verdict none: ready ␛[38;5;103m· 3.0 s␛[39m
+columns:
+  ␛[4mroute␛[24m   ␛[4mmode␛[24m   ␛[4mjs (gz)␛[24m
+  /       ␛[38;5;45mssg␛[39m    18.4 kB
+  /app/*  spa   141.2 kB
+bar 94: ␛[38;5;78m███████████␛[39m␛[38;5;244m░␛[39m
+bar 84: ␛[38;5;220m██████████␛[39m␛[38;5;244m░░␛[39m
+finding:
+  ␛[38;5;203m✗␛[39m ␛[1maudit-tests␛[22m ␛[38;5;103m·␛[39m Browser package has no real-Chromium smoke test
+     ␛[38;5;103m↳␛[39m ␛]8;;file:///repo/packages/ui/src/index.ts␛\\␛[4m␛[38;5;45mpackages/ui/src/index.ts␛[39m␛[24m␛]8;;␛\\
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45msrc/a.ts:3␛[39m␛[24m ␛[38;5;103m(declared here)␛[39m
+     ␛[38;5;103mfix:␛[39m add src/tests/ui.browser.test.tsx
+  ␛[38;5;45mℹ␛[39m ␛[1mlint␛[22m ␛[38;5;103m·␛[39m <For> without \`by\` recreates every row on reorder
+     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45msrc/routes/inbox.tsx:42:7␛[39m␛[24m
+frame:
+    ␛[38;5;244m╭─[␛[39m ␛[4m␛[38;5;45msrc/Inbox.tsx:31:9␛[39m␛[24m ␛[38;5;244m]␛[39m
+    ␛[38;5;244m│␛[39m <canvas> is web-only and won't be emitted for iOS or Android
+    ␛[38;5;244m│␛[39m ␛[38;5;103mhint:␛[39m use <Chart>
+    ␛[38;5;244m╰─␛[39m
+  ␛[38;5;244m╭─␛[39m
+  ␛[38;5;244m│␛[39m untitled
+  ␛[38;5;244m╰─␛[39m"
+`;
+
+exports[`specimen snapshots > level 2 · light · ascii 1`] = `
+"roles: ␛[38;5;160maccent␛[39m ␛[38;5;22mok␛[39m ␛[38;5;94mwarn␛[39m ␛[38;5;124merr␛[39m ␛[38;5;24minfo␛[39m ␛[38;5;59mdim␛[39m ␛[38;5;242mgray␛[39m
+styles: ␛[1mbold␛[22m ␛[4munderline␛[24m ␛[38;5;198mplasma␛[39m ␛[38;5;202mcore␛[39m ␛[38;5;221mwarm␛[39m
+symbols: v x ! i > -> * o (*) ( ) # . +- | +- - - ->
+header: ␛[1mpyreon doctor␛[22m ␛[38;5;59m- project health audit␛[39m
+header (bare): ␛[1mlathe check␛[22m
+counts: ␛[38;5;124m1 error␛[39m, ␛[38;5;94m5 warnings␛[39m, ␛[38;5;24m2 info␛[39m
+verdict ok: ␛[38;5;22mv␛[39m built in 3.8 s ␛[38;5;59m- 4 routes - 13 pages prerendered␛[39m
+verdict err: ␛[38;5;124mx␛[39m ␛[38;5;124m1 error␛[39m, ␛[38;5;94m2 warnings␛[39m
+verdict none: ready ␛[38;5;59m- 3.0 s␛[39m
+columns:
+  ␛[4mroute␛[24m   ␛[4mmode␛[24m   ␛[4mjs (gz)␛[24m
+  /       ␛[38;5;24mssg␛[39m    18.4 kB
+  /app/*  spa   141.2 kB
+bar 94: ␛[38;5;22m###########␛[39m␛[38;5;242m.␛[39m
+bar 84: ␛[38;5;94m##########␛[39m␛[38;5;242m..␛[39m
+finding:
+  ␛[38;5;124mx␛[39m ␛[1maudit-tests␛[22m ␛[38;5;59m-␛[39m Browser package has no real-Chromium smoke test
+     ␛[38;5;59m->␛[39m ␛]8;;file:///repo/packages/ui/src/index.ts␛\\␛[4m␛[38;5;24mpackages/ui/src/index.ts␛[39m␛[24m␛]8;;␛\\
+     ␛[38;5;59m->␛[39m ␛[4m␛[38;5;24msrc/a.ts:3␛[39m␛[24m ␛[38;5;59m(declared here)␛[39m
+     ␛[38;5;59mfix:␛[39m add src/tests/ui.browser.test.tsx
+  ␛[38;5;24mi␛[39m ␛[1mlint␛[22m ␛[38;5;59m-␛[39m <For> without \`by\` recreates every row on reorder
+     ␛[38;5;59m->␛[39m ␛[4m␛[38;5;24msrc/routes/inbox.tsx:42:7␛[39m␛[24m
+frame:
+    ␛[38;5;242m+-[␛[39m ␛[4m␛[38;5;24msrc/Inbox.tsx:31:9␛[39m␛[24m ␛[38;5;242m]␛[39m
+    ␛[38;5;242m|␛[39m <canvas> is web-only and won't be emitted for iOS or Android
+    ␛[38;5;242m|␛[39m ␛[38;5;59mhint:␛[39m use <Chart>
+    ␛[38;5;242m+-␛[39m
+  ␛[38;5;242m+-␛[39m
+  ␛[38;5;242m|␛[39m untitled
+  ␛[38;5;242m+-␛[39m"
+`;
+
+exports[`specimen snapshots > level 2 · light · utf-8 1`] = `
+"roles: ␛[38;5;160maccent␛[39m ␛[38;5;22mok␛[39m ␛[38;5;94mwarn␛[39m ␛[38;5;124merr␛[39m ␛[38;5;24minfo␛[39m ␛[38;5;59mdim␛[39m ␛[38;5;242mgray␛[39m
+styles: ␛[1mbold␛[22m ␛[4munderline␛[24m ␛[38;5;198mplasma␛[39m ␛[38;5;202mcore␛[39m ␛[38;5;221mwarm␛[39m
+symbols: ✓ ✗ ! ℹ ▸ ↳ ◆ ◇ ● ○ █ ░ ╭─ │ ╰─ · — →
+header: ␛[1mpyreon doctor␛[22m ␛[38;5;59m· project health audit␛[39m
+header (bare): ␛[1mlathe check␛[22m
+counts: ␛[38;5;124m1 error␛[39m, ␛[38;5;94m5 warnings␛[39m, ␛[38;5;24m2 info␛[39m
+verdict ok: ␛[38;5;22m✓␛[39m built in 3.8 s ␛[38;5;59m· 4 routes · 13 pages prerendered␛[39m
+verdict err: ␛[38;5;124m✗␛[39m ␛[38;5;124m1 error␛[39m, ␛[38;5;94m2 warnings␛[39m
+verdict none: ready ␛[38;5;59m· 3.0 s␛[39m
+columns:
+  ␛[4mroute␛[24m   ␛[4mmode␛[24m   ␛[4mjs (gz)␛[24m
+  /       ␛[38;5;24mssg␛[39m    18.4 kB
+  /app/*  spa   141.2 kB
+bar 94: ␛[38;5;22m███████████␛[39m␛[38;5;242m░␛[39m
+bar 84: ␛[38;5;94m██████████␛[39m␛[38;5;242m░░␛[39m
+finding:
+  ␛[38;5;124m✗␛[39m ␛[1maudit-tests␛[22m ␛[38;5;59m·␛[39m Browser package has no real-Chromium smoke test
+     ␛[38;5;59m↳␛[39m ␛]8;;file:///repo/packages/ui/src/index.ts␛\\␛[4m␛[38;5;24mpackages/ui/src/index.ts␛[39m␛[24m␛]8;;␛\\
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24msrc/a.ts:3␛[39m␛[24m ␛[38;5;59m(declared here)␛[39m
+     ␛[38;5;59mfix:␛[39m add src/tests/ui.browser.test.tsx
+  ␛[38;5;24mℹ␛[39m ␛[1mlint␛[22m ␛[38;5;59m·␛[39m <For> without \`by\` recreates every row on reorder
+     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24msrc/routes/inbox.tsx:42:7␛[39m␛[24m
+frame:
+    ␛[38;5;242m╭─[␛[39m ␛[4m␛[38;5;24msrc/Inbox.tsx:31:9␛[39m␛[24m ␛[38;5;242m]␛[39m
+    ␛[38;5;242m│␛[39m <canvas> is web-only and won't be emitted for iOS or Android
+    ␛[38;5;242m│␛[39m ␛[38;5;59mhint:␛[39m use <Chart>
+    ␛[38;5;242m╰─␛[39m
+  ␛[38;5;242m╭─␛[39m
+  ␛[38;5;242m│␛[39m untitled
+  ␛[38;5;242m╰─␛[39m"
+`;
+
+exports[`specimen snapshots > level 3 · dark · ascii 1`] = `
 "roles: ␛[38;2;255;94;26maccent␛[39m ␛[38;2;74;222;128mok␛[39m ␛[38;2;250;204;21mwarn␛[39m ␛[38;2;248;113;113merr␛[39m ␛[38;2;34;211;238minfo␛[39m ␛[38;2;138;134;150mdim␛[39m ␛[38;2;126;122;140mgray␛[39m
 styles: ␛[1mbold␛[22m ␛[4munderline␛[24m ␛[38;2;255;31;140mplasma␛[39m ␛[38;2;255;94;26mcore␛[39m ␛[38;2;255;200;61mwarm␛[39m
 symbols: v x ! i > -> * o (*) ( ) # . +- | +- - - ->
@@ -297,7 +429,7 @@ frame:
   ␛[38;2;126;122;140m+-␛[39m"
 `;
 
-exports[`specimen snapshots > level 2 · dark · utf-8 1`] = `
+exports[`specimen snapshots > level 3 · dark · utf-8 1`] = `
 "roles: ␛[38;2;255;94;26maccent␛[39m ␛[38;2;74;222;128mok␛[39m ␛[38;2;250;204;21mwarn␛[39m ␛[38;2;248;113;113merr␛[39m ␛[38;2;34;211;238minfo␛[39m ␛[38;2;138;134;150mdim␛[39m ␛[38;2;126;122;140mgray␛[39m
 styles: ␛[1mbold␛[22m ␛[4munderline␛[24m ␛[38;2;255;31;140mplasma␛[39m ␛[38;2;255;94;26mcore␛[39m ␛[38;2;255;200;61mwarm␛[39m
 symbols: ✓ ✗ ! ℹ ▸ ↳ ◆ ◇ ● ○ █ ░ ╭─ │ ╰─ · — →
@@ -330,7 +462,7 @@ frame:
   ␛[38;2;126;122;140m╰─␛[39m"
 `;
 
-exports[`specimen snapshots > level 2 · light · ascii 1`] = `
+exports[`specimen snapshots > level 3 · light · ascii 1`] = `
 "roles: ␛[38;2;180;58;14maccent␛[39m ␛[38;2;21;112;58mok␛[39m ␛[38;2;138;90;0mwarn␛[39m ␛[38;2;185;28;28merr␛[39m ␛[38;2;10;110;137minfo␛[39m ␛[38;2;94;90;105mdim␛[39m ␛[38;2;110;106;120mgray␛[39m
 styles: ␛[1mbold␛[22m ␛[4munderline␛[24m ␛[38;2;255;31;140mplasma␛[39m ␛[38;2;255;94;26mcore␛[39m ␛[38;2;255;200;61mwarm␛[39m
 symbols: v x ! i > -> * o (*) ( ) # . +- | +- - - ->
@@ -363,7 +495,7 @@ frame:
   ␛[38;2;110;106;120m+-␛[39m"
 `;
 
-exports[`specimen snapshots > level 2 · light · utf-8 1`] = `
+exports[`specimen snapshots > level 3 · light · utf-8 1`] = `
 "roles: ␛[38;2;180;58;14maccent␛[39m ␛[38;2;21;112;58mok␛[39m ␛[38;2;138;90;0mwarn␛[39m ␛[38;2;185;28;28merr␛[39m ␛[38;2;10;110;137minfo␛[39m ␛[38;2;94;90;105mdim␛[39m ␛[38;2;110;106;120mgray␛[39m
 styles: ␛[1mbold␛[22m ␛[4munderline␛[24m ␛[38;2;255;31;140mplasma␛[39m ␛[38;2;255;94;26mcore␛[39m ␛[38;2;255;200;61mwarm␛[39m
 symbols: ✓ ✗ ! ℹ ▸ ↳ ◆ ◇ ● ○ █ ░ ╭─ │ ╰─ · — →

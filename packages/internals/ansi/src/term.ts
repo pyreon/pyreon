@@ -1,6 +1,6 @@
 /**
  * A `Term` binds the palette and symbols to one terminal's capabilities:
- * colour level, background theme and Unicode support. Every renderer takes
+ * colour level, background theme, Unicode support and layout width. Every renderer takes
  * a `Term` (defaulting to the process's stdout), so output is a pure
  * function of (data, term) and snapshot-testable at every level.
  */
@@ -10,6 +10,7 @@ import {
   detectColorLevel,
   detectTheme,
   detectUnicode,
+  detectWidth,
   type Env,
   type ThemeName,
 } from './detect'
@@ -27,6 +28,11 @@ export interface Term {
   readonly level: ColorLevel
   readonly theme: ThemeName
   readonly unicode: boolean
+  /**
+   * Layout width in columns: the window's width capped at 100, or 100 when
+   * the stream reports none (a pipe). Never below 40.
+   */
+  readonly width: number
   /** `level > 0`. */
   readonly color: boolean
   /** Colour `s` in a palette role (identity at level 0). */
@@ -58,13 +64,18 @@ export interface TermOptions {
   isTTY?: boolean | undefined
   /** Defaults to `process.platform`. */
   platform?: string | undefined
+  /** Layout width; detected from `columns` / `PYREON_CLI_WIDTH` when left out. */
+  width?: number | undefined
+  /** The stream's column count. Defaults to `process.stdout.columns`. */
+  columns?: number | undefined
 }
 
-const fg = (level: ColorLevel, hex: string, sgr16: number): string => {
-  if (level === 2) {
+const fg = (level: ColorLevel, hex: string, x256: number, sgr16: number): string => {
+  if (level === 3) {
     const [r, g, b] = hexToRgb(hex)
     return `38;2;${r};${g};${b}`
   }
+  if (level === 2) return `38;5;${x256}`
   return String(sgr16)
 }
 
@@ -80,23 +91,28 @@ export function createTerm(opts: TermOptions = {}): Term {
   const level = opts.level ?? detectColorLevel(env, isTTY)
   const theme = opts.theme ?? detectTheme(env)
   const unicode = opts.unicode ?? detectUnicode(env, opts.platform ?? process.platform)
+  // The real window's columns only when the stream was detected, not given:
+  // a caller that passes `isTTY` is describing some other terminal.
+  const columns = opts.columns ?? (opts.isTTY === undefined && isTTY ? process.stdout?.columns : undefined)
+  const width = opts.width ?? detectWidth(env, columns)
   const on = level > 0
 
   const roles = {} as Record<Role, Paint>
   for (const role of Object.keys(CLI_PALETTE) as Role[]) {
     const c = CLI_PALETTE[role]
-    roles[role] = sgr(on, fg(level, c[theme], c.sgr16), '39')
+    roles[role] = sgr(on, fg(level, c[theme], c.x256[theme], c.sgr16), '39')
   }
   const embers = {} as Record<keyof typeof EMBER, Paint>
   for (const tone of Object.keys(EMBER) as Array<keyof typeof EMBER>) {
     const e = EMBER[tone]
-    embers[tone] = sgr(on, fg(level, e.hex, e.sgr16), '39')
+    embers[tone] = sgr(on, fg(level, e.hex, e.x256, e.sgr16), '39')
   }
 
   return {
     level,
     theme,
     unicode,
+    width,
     color: on,
     paint: (role, s) => roles[role](s),
     ...roles,

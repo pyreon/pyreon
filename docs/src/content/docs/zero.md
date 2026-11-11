@@ -161,7 +161,7 @@ export default {
 Every production build ends with a summary of what it produced, printed after the SSG prerender, SSR bundle and deploy-adapter staging have all finished. A real `zero build` of `examples/cpa-pw-blog` (with `NO_COLOR`), from the route-mode table to the last line:
 
 ```text
-[zero] Route modes (app: ssg) — 4 ssg ○
+Route modes · app: ssg · 4 ssg ○
   ○ ssg  /
   ○ ssg  /about
   ○ ssg  /blog

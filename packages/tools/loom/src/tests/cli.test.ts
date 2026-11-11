@@ -126,5 +126,7 @@ describe('cli surface', () => {
     capture()
     expect(await runCli(['frobnicate'])).toBe(1)
     expect(err.join('')).toContain('frobnicate')
+    // The shared failure shape (rule 4): symbol · source · problem, then fix:.
+    expect(err.join('')).toBe('✗ loom · unknown command "frobnicate".\n   fix: run loom --help for the list of commands\n')
   })
 })

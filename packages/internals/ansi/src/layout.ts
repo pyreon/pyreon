@@ -88,7 +88,31 @@ export const verdict = (
   metaParts: ReadonlyArray<string | false | undefined | null> = [],
 ): string => {
   const mark = status === null ? '' : `${t.paint(status, t.sym(status))} `
-  return `${mark}${text}${meta(t, metaParts)}`
+  const one = `${mark}${text}${meta(t, metaParts)}`
+  const width = t.width ?? WRAP_WIDTH
+  if (visibleWidth(one) <= width) return one
+  // Too wide (rule 6): keep the verdict on the first line and move whole
+  // meta parts, never split, onto indented continuation lines.
+  const kept = metaParts.filter((p): p is string => typeof p === 'string' && p !== '')
+  const b = t.sym('bullet')
+  const lines: string[] = []
+  let line = `${mark}${text}`
+  let lineWidth = visibleWidth(line)
+  let first = true
+  for (const part of kept) {
+    const w = visibleWidth(part) + 3
+    if (lineWidth + w <= width) {
+      line += ` ${t.dim(`${b} ${part}`)}`
+      lineWidth += w
+      continue
+    }
+    lines.push(line)
+    line = `  ${t.dim(part)}`
+    lineWidth = 2 + visibleWidth(part)
+    first = false
+  }
+  lines.push(line)
+  return first ? one : lines.join('\n')
 }
 
 export type Align = 'left' | 'right'
@@ -100,6 +124,13 @@ export interface ColumnsOptions {
   gap?: number | undefined
   /** Leading spaces. Default 2. */
   indent?: number | undefined
+  /**
+   * The line width available. When any aligned row would be wider, the
+   * whole table stacks instead: each row's first cell on its own line and
+   * the remaining cells, unpadded, on the next line two spaces further in.
+   * Nothing is cut, so a long path survives a narrow terminal whole.
+   */
+  width?: number | undefined
 }
 
 /**
@@ -116,14 +147,38 @@ export const columns = (rows: ReadonlyArray<ReadonlyArray<string>>, opts: Column
       widths[i] = Math.max(widths[i] ?? 0, visibleWidth(cell))
     })
   }
-  return rows.map((row) => {
+  const aligned = rows.map((row) => {
     const cells = row.map((cell, i) => {
       const w = widths[i] ?? 0
       return opts.align?.[i] === 'right' ? padStartVisible(cell, w) : padEndVisible(cell, w)
     })
     return `${indent}${cells.join(gap)}`.trimEnd()
   })
+  const width = opts.width
+  if (width === undefined || aligned.every((l) => visibleWidth(l) <= width)) return aligned
+  const out: string[] = []
+  for (const row of rows) {
+    out.push(`${indent}${row[0] ?? ''}`.trimEnd())
+    const rest = row.slice(1).filter((c) => c !== '')
+    if (rest.length > 0) out.push(`${indent}  ${rest.join(gap)}`)
+  }
+  return out
 }
+
+/**
+ * The last line of a run the user stopped (Ctrl-C): `! interrupted · meta`.
+ * A warning, not an error: nothing failed, the run is incomplete. The meta
+ * says how far it got (`3 of 13 gates`, elapsed).
+ */
+export const interrupted = (t: Term, metaParts: ReadonlyArray<string | false | undefined | null> = []): string =>
+  verdict(t, 'warn', 'interrupted', metaParts)
+
+/**
+ * The last line of a run that had nothing to look at: `ℹ <what> · <hint>`.
+ * Info, not success: an empty scan proves nothing, so it never shows `✓`.
+ */
+export const nothingTo = (t: Term, what: string, hint?: string): string =>
+  verdict(t, 'info', what, hint ? [hint] : [])
 
 /**
  * A score bar: `value / max` of `width` cells filled in `role`, the rest

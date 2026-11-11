@@ -39,8 +39,8 @@ export interface Line {
 
 /** Primitive render options; the `Term`s are built from them. */
 export interface RenderOptions {
-  /** 0 plain, 1 sixteen colours, 2 truecolor. Detected when left out. */
-  color?: 0 | 1 | 2 | undefined
+  /** 0 plain, 1 sixteen colours, 2 256 colours, 3 truecolor. Detected when left out. */
+  color?: 0 | 1 | 2 | 3 | undefined
   theme?: 'dark' | 'light' | undefined
   unicode?: boolean | undefined
   /** Paths are shown relative to this directory. Default `process.cwd()`. */

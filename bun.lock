@@ -3483,6 +3483,7 @@
         "vite": "^8.3.5",
       },
       "devDependencies": {
+        "@pyreon/ansi": "workspace:*",
         "@pyreon/router": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",

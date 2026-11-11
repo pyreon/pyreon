@@ -26,8 +26,8 @@ import type { FailingScenario, VerifyReport } from '../verify/report'
 import { formatCheckTally, formatNotRun } from '../verify/report'
 
 export interface TermChoice {
-  /** 0 plain, 1 sixteen colours, 2 truecolor. Detected from the stream when left out. */
-  color?: 0 | 1 | 2 | undefined
+  /** 0 plain, 1 sixteen colours, 2 256 colours, 3 truecolor. Detected from the stream when left out. */
+  color?: 0 | 1 | 2 | 3 | undefined
   theme?: 'dark' | 'light' | undefined
   unicode?: boolean | undefined
 }

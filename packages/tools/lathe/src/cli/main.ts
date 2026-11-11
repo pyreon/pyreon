@@ -24,6 +24,7 @@ import type { LatheSection } from "../core/config";
 import { findConfigFile, loadConfig, type LoadedConfig } from "./config-file";
 import { renderInitReport, runInit, type InitFs } from "./init/init";
 import { importFromCwd } from "./plugin-modules";
+import { createTerm, header } from "@pyreon/ansi";
 import { pullSpec } from "./pull";
 import { resolveColorLevel } from "./report";
 import { parseArgv, run, type Argv, type Fs } from "./run";
@@ -227,9 +228,12 @@ export async function main(
       rerun();
     });
   }
-  process.stdout.write(
-    `\nwatching ${specs.length} spec(s)${loaded.file ? " and the config" : ""} - ctrl-c to stop\n`,
-  );
+  {
+    const t = createTerm({ level: typeof argv.color === "number" ? argv.color : argv.color ? 1 : 0 });
+    process.stdout.write(
+      `\n${t.dim(`${t.sym("arrow")} watching ${specs.length === 1 ? "1 spec" : `${specs.length} specs`}${loaded.file ? " and the config" : ""} ${t.sym("bullet")} ctrl-c to stop`)}\n`,
+    );
+  }
   // Never resolves: the process lives until the user stops it.
   await new Promise<never>(() => {});
   return code;
@@ -268,7 +272,7 @@ async function pull(
   const opts = {
     headers,
     cacheDir,
-    color: Boolean(argv.color),
+    color: argv.color,
     refOrigins: [...argv.refOrigins, ...(section?.refOrigins ?? [])],
   };
 
@@ -305,7 +309,10 @@ async function pull(
   }
   let code = 0;
   for (const t of sourced) {
-    if (t.name) process.stdout.write(`${t.name}\n`);
+    if (t.name) {
+      const term = createTerm({ level: typeof argv.color === "number" ? argv.color : argv.color ? 1 : 0 });
+      process.stdout.write(`${header(term, "lathe pull", t.name)}\n`);
+    }
     code = Math.max(
       code,
       await pullSpec(t.source as string, abs(t.input), opts),
@@ -430,7 +437,7 @@ async function init(
         for (const t of pullTargets(section)) {
           if (t.source && !existsSync(abs(t.input))) {
             const code = await pullSpec(t.source, abs(t.input), {
-              color: Boolean(argv.color),
+              color: argv.color,
               out: log,
             });
             if (code !== 0) return { code, stdout: "", stderr: "" };
