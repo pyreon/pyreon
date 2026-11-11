@@ -5,6 +5,7 @@ import { island } from '@pyreon/zero'
 const DemoReactivity = island(() => import('./DemoReactivity'), { name: 'DemoReactivity', hydrate: 'visible', prefetch: 'idle' })
 const DemoZero = island(() => import('./DemoZero'), { name: 'DemoZero', hydrate: 'visible', prefetch: 'idle' })
 const DemoNative = island(() => import('./DemoNative'), { name: 'DemoNative', hydrate: 'visible', prefetch: 'idle' })
+const DemoRouter = island(() => import('./DemoRouter'), { name: 'DemoRouter', hydrate: 'visible', prefetch: 'idle' })
 const DemoA11y = island(() => import('./DemoA11y'), { name: 'DemoA11y', hydrate: 'visible', prefetch: 'idle' })
 
 export const DEMOS_CORE: Readonly<Record<string, ComponentFn>> = {
@@ -12,4 +13,5 @@ export const DEMOS_CORE: Readonly<Record<string, ComponentFn>> = {
   DemoA11y,
   DemoZero,
   DemoNative,
+  DemoRouter,
 }

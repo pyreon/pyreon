@@ -1,6 +1,6 @@
 import type { VNodeChild } from '@pyreon/core'
-import { For } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { For, Show } from '@pyreon/core'
+import { signal, watch } from '@pyreon/reactivity'
 import { font, paper, radius, text } from '../theme'
 import { el, type ButtonAttrs, focusRing, tone, txt } from './bases'
 
@@ -14,7 +14,7 @@ import { el, type ButtonAttrs, focusRing, tone, txt } from './bases'
 
 const LogBox = el
   .config({ name: 'DemoLog' })
-  .attrs({ tag: 'ol', block: true })
+  .attrs({ tag: 'ol', block: true, contentAlignX: 'block', contentAlignY: 'top' })
   .theme((_t, m) => ({
     listStyle: 'none',
     margin: 0,
@@ -57,17 +57,30 @@ export interface LogEntry {
  * scroll it; announced politely. `empty` shows while there are no lines.
  */
 export function DemoLog(props: { entries: () => readonly LogEntry[]; label: string; empty?: string | undefined }) {
+  let box: HTMLElement | null = null
+  // Newest lines are appended: keep the box scrolled to them as they arrive.
+  watch(
+    () => props.entries().length,
+    () => {
+      const node = box
+      if (node) queueMicrotask(() => (node.scrollTop = node.scrollHeight))
+    },
+  )
   return (
-    <LogBox aria-label={props.label} aria-live="polite" tabIndex={0}>
-      {() =>
-        props.entries().length === 0 ? (
-          <LogLine state="dim">{props.empty ?? '(nothing yet)'}</LogLine>
-        ) : (
-          <For each={props.entries()} by={(e) => e.id}>
-            {(e) => <LogLine state={e.tone ?? 'plain'}>{e.text}</LogLine>}
-          </For>
-        )
-      }
+    <LogBox
+      aria-label={props.label}
+      aria-live="polite"
+      tabIndex={0}
+      ref={(n: HTMLElement | null) => {
+        box = n
+      }}
+    >
+      <Show when={() => props.entries().length === 0}>
+        <LogLine state="dim">{props.empty ?? '(nothing yet)'}</LogLine>
+      </Show>
+      <For each={() => props.entries()} by={(e) => e.id}>
+        {(e) => <LogLine state={e.tone ?? 'plain'}>{e.text}</LogLine>}
+      </For>
     </LogBox>
   )
 }
@@ -116,10 +129,18 @@ export function SimulatedNote(props: { children?: VNodeChild }) {
 
 // ─── paper surface ─────────────────────────────────────────────────────────
 
+// A fieldset cannot be a flex container reliably (wrapping breaks), so the
+// buttons sit in a wrapping row inside it.
 const PaperSegBox = el
   .config({ name: 'PaperSegmented' })
-  .attrs({ tag: 'fieldset', block: true, contentDirection: 'inline', gap: 4 })
-  .theme(() => ({ margin: 0, padding: 0, border: 'none', minWidth: 0, flexWrap: 'wrap' }))
+  .attrs({ tag: 'fieldset', block: true })
+  .theme(() => ({ margin: 0, padding: 0, border: 'none', minWidth: 0 }))
+
+/** A wrapping row of buttons (use inside a fieldset or anywhere). */
+export const ButtonRow = el
+  .config({ name: 'DemoButtonRow' })
+  .attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 6 })
+  .theme(() => ({ flexWrap: 'wrap', minWidth: 0 }))
 
 const PaperSegLegend = txt
   .config({ name: 'PaperSegLegend' })
@@ -159,13 +180,15 @@ export function PaperSegmented<T extends string>(props: {
   return (
     <PaperSegBox>
       <PaperSegLegend>{props.legend}</PaperSegLegend>
-      <For each={props.options} by={(o) => o}>
-        {(o) => (
-          <PaperToggle type="button" aria-pressed={() => (props.value() === o ? 'true' : 'false')} onClick={() => props.onChange(o)}>
-            {props.format ? props.format(o) : o}
-          </PaperToggle>
-        )}
-      </For>
+      <ButtonRow>
+        <For each={props.options} by={(o) => o}>
+          {(o) => (
+            <PaperToggle type="button" aria-pressed={() => (props.value() === o ? 'true' : 'false')} onClick={() => props.onChange(o)}>
+              {props.format ? props.format(o) : o}
+            </PaperToggle>
+          )}
+        </For>
+      </ButtonRow>
     </PaperSegBox>
   )
 }
@@ -219,3 +242,74 @@ export const PaperMono = txt
 
 /** A vertical stack with a gap. */
 export const DemoStack = el.config({ name: 'DemoStack' }).attrs({ block: true, gap: 12 }).theme(() => ({ minWidth: 0 }))
+
+/** An unstyled list on paper (rows bring their own borders). */
+export const PaperList = el
+  .config({ name: 'PaperList' })
+  .attrs({ tag: 'ul', block: true, contentAlignX: 'block' })
+  .theme(() => ({ listStyle: 'none', margin: 0, padding: 0, minWidth: 0 }))
+
+/** A checkbox row on paper: `<PaperCheck><input type="checkbox" /><span>label</span></PaperCheck>`; checked text is struck through. */
+export const PaperCheck = el
+  .config({ name: 'PaperCheck' })
+  .attrs({ tag: 'label', block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 10 })
+  .theme(() => ({
+    minHeight: 40,
+    borderBottom: `1px solid ${paper.line}`,
+    fontSize: 14,
+    color: paper.text,
+    cursor: 'pointer',
+    extendCss: `
+      & > input { width: 16px; height: 16px; margin: 0; accent-color: ${paper.accent}; }
+      & > input:focus-visible { outline: 2px solid ${paper.accent}; outline-offset: 2px; }
+      & > input:checked + span { text-decoration: line-through; color: ${paper.fog}; }
+    `,
+  }))
+
+/** A note line on the dark card. */
+export const CardNote = txt
+  .config({ name: 'DemoCardNote' })
+  .attrs({ tag: 'p' })
+  .theme((_t, m) => ({ margin: 0, fontSize: text.ui.size, lineHeight: 1.6, color: tone(m, 'fog') }))
+
+const CardToggle = el
+  .config({ name: 'DemoCardToggle' })
+  .attrs<ButtonAttrs & { 'aria-pressed'?: string | (() => string) }>({ tag: 'button', contentAlignY: 'center' })
+  .theme((_t, m) => ({
+    minHeight: 32,
+    paddingLeft: 12,
+    paddingRight: 12,
+    border: '1px solid',
+    borderColor: tone(m, 'line'),
+    borderRadius: radius.pill,
+    backgroundColor: 'transparent',
+    color: tone(m, 'fog'),
+    fontFamily: font.mono,
+    fontSize: text.mono.size,
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
+    hover: { color: tone(m, 'text') },
+    focus: focusRing(m),
+    extendCss: `&[aria-pressed='true'] { color: ${tone(m, 'text')}; border-color: ${tone(m, 'currentBorder')}; background: ${tone(m, 'currentFill')}; }`,
+  }))
+
+/**
+ * A wrapping set of toggle buttons for the dark card. (The kit's `Segmented`
+ * is a flex fieldset, which does not wrap reliably, so its labels squeeze
+ * onto two lines on a phone.)
+ */
+export function CardSegmented<T extends string>(props: { label: string; options: readonly T[]; value: () => T; onChange: (v: T) => void }) {
+  return (
+    <PaperSegBox aria-label={props.label}>
+      <ButtonRow>
+        <For each={props.options} by={(o) => o}>
+          {(o) => (
+            <CardToggle type="button" aria-pressed={() => (props.value() === o ? 'true' : 'false')} onClick={() => props.onChange(o)}>
+              {o}
+            </CardToggle>
+          )}
+        </For>
+      </ButtonRow>
+    </PaperSegBox>
+  )
+}
