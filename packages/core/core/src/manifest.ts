@@ -375,7 +375,7 @@ declare const todos: AsyncLike<{ id: number; title: string }[]>
       kind: 'component',
       signature: '<For each={items} by={keyFn}>{renderFn}</For>',
       summary:
-        'Keyed reactive list rendering. Uses the `by` prop (not `key`) for the key function because JSX extracts `key` as a special VNode reconciliation prop. The render function receives each item and its index. Internally uses an LIS-based reconciler for minimal DOM mutations when the list changes.',
+        'Keyed reactive list rendering. Uses the `by` prop (not `key`) for the key function because JSX extracts `key` as a special VNode reconciliation prop. The render function receives each item (no index). Internally uses an LIS-based reconciler for minimal DOM mutations when the list changes.',
       example: `const items = signal([
   { id: 1, name: "Apple" },
   { id: 2, name: "Banana" },
@@ -385,9 +385,9 @@ declare const todos: AsyncLike<{ id: number; title: string }[]>
   {(item, index) => <li>{item.name}</li>}
 </For>`,
       mistakes: [
-        '`<For each={items}>` — must call the signal: `<For each={items()}>`',
+        '`<For each={list}>` with a value read once (a destructured array, `items.peek()`) — the list never updates; pass the signal itself (`each={items}`) or a call the compiler tracks (`each={items()}`)',
         '`<For each={items()} key={...}>` — use `by` not `key` (JSX reserves `key` for VNode reconciliation)',
-        '`{items().map(...)}` — use `<For>` for reactive list rendering; `.map()` re-creates all DOM nodes on every change',
+        '`{items().map(...)}` without a `key` on each row — an unkeyed `.map()` re-creates every row on each change; use `<For by>` (or give each row a `key`)',
         '`<For each={items()} by={index}>` — using array index as key defeats the reconciler; use a stable identity like `item.id`',
       ],
       seeAlso: ['Show', 'mapArray'],

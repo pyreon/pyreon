@@ -15,7 +15,7 @@ kubb blocks are illustrative.
 ## 1. Run `lathe init`
 
 ```bash
-npx lathe init
+npx @pyreon/lathe init
 ```
 
 | kubb | Lathe |

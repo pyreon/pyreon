@@ -73,7 +73,7 @@ npm run build:ios       # src/App.tsx → ios/generated/App.swift
 npm run build:android   # src/App.tsx → android/.../generated/App.kt
 ```
 
-One trap: the unscoped `npx create-multiplatform` does not work, because `npx` resolves package names and the package is `@pyreon/create-multiplatform`. Already using the Pyreon CLI? `pyreon new --native` runs the same scaffolder.
+One trap: the unscoped `npx @pyreon/create-multiplatform` does not work, because `npx` resolves package names and the package is `@pyreon/create-multiplatform`. Already using the Pyreon CLI? `pyreon new --native` runs the same scaffolder.
 
 The parts of the generated tree you will touch:
 
@@ -115,8 +115,8 @@ There is no JavaScript running on the device to hot-patch, so the native loop ha
 | layer | command | what it answers |
 | --- | --- | --- |
 | web | `npm run dev` | layout, logic, styling: most of the work, with state-preserving hot reload |
-| compiler | `npx pyreon-native check --watch --source=src` | "will this run on the device?", in milliseconds, no device involved |
-| device | `npx pyreon-native dev --target=ios` (or `android`) | native look and feel and device features: rebuild, reinstall, relaunch |
+| compiler | `npx @pyreon/native-cli check --watch --source=src` | "will this run on the device?", in milliseconds, no device involved |
+| device | `npx @pyreon/native-cli dev --target=ios` (or `android`) | native look and feel and device features: rebuild, reinstall, relaunch |
 
 `pyreon-native dev` compiles your source in memory first and prints compiler problems before Xcode or Gradle even starts. If the emitted Swift or Kotlin did not change (a comment, whitespace, a web-only file), it skips the native build entirely. It is a rebuild loop, not hot reload, so in-memory state resets on each rebuild. The [native dev loop docs](/docs/native-dev-loop) measured about 31 seconds for a first run and about 3 seconds for a warm label edit, rebuild through relaunch, on an iOS simulator with the counter app. A bigger app compiles more Swift, so treat 3 seconds as a floor.
 
@@ -244,7 +244,7 @@ Weighing PMTC against Expo, Flutter or Capacitor? We wrote down [when each one i
 
 ## Build something with it
 
-The fastest way to judge all of this is to scaffold a project, run `npx pyreon-native check --typecheck --source=src` on one of your own components, and read what it says.
+The fastest way to judge all of this is to scaffold a project, run `npx @pyreon/native-cli check --typecheck --source=src` on one of your own components, and read what it says.
 
 ```bash
 npm create @pyreon/multiplatform@latest

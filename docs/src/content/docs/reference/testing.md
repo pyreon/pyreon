@@ -62,9 +62,9 @@ import { computed, effect } from '@pyreon/reactivity'
 test('computed recomputes exactly once per change', () => {
   const qty = signal(1)
   const total = computed(() => qty() * 10)
-  total() // materialize
+  total() // materialize (the first computation counts)
   qty.set(2)
-  expectSignal(total).toHaveRecomputedTimes(1)  // no thrash
+  expectSignal(total).toHaveRecomputedTimes(2)  // first computation + one recompute, no thrash
 })
 
 test('effect re-runs only when its dep changes', () => {
@@ -190,9 +190,9 @@ Assert how many times a signal/computed fired, by reading its node's `fires` cou
 
 ```tsx
 const total = computed(() => qty() * price())
-total()          // materialize
+total()          // materialize (the first computation counts)
 qty.set(2)
-expectSignal(total).toHaveRecomputedTimes(1)
+expectSignal(total).toHaveRecomputedTimes(2)
 ```
 
 **Common mistakes**

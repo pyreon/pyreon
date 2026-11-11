@@ -37,9 +37,11 @@ export interface ContentModule<TFrontmatter = Record<string, unknown>> {
  */
 export interface CollectionDefinition<TSchema = unknown> {
   /**
-   * `'pages'` collections produce file-system routes (zero's fs-router
-   * picks up the auto-generated catch-all). `'data'` collections are
-   * queryable via `getCollection` / `getEntry` but produce no routes.
+   * `'pages'` collections are renderable markdown pages, included in the
+   * search index by default; route them with your own catch-all route and
+   * `defineContentRoute` (no route is generated). `'data'` collections are
+   * queryable via `getCollection` / `getEntry` and are not searched by
+   * default.
    */
   type: 'pages' | 'data'
   /**

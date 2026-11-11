@@ -1,6 +1,6 @@
 ---
 title: "Document Primitives — API Reference"
-description: "18 rocketstyle document components — render in browser AND export to 14+ formats via the same tree"
+description: "18 rocketstyle document components — render in browser AND export to 20 formats via the same tree"
 ---
 
 # @pyreon/document-primitives — API Reference
@@ -20,7 +20,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 ## Features
 
 - 18 primitives covering structure, text, lists, tables, code, layout
-- Same component tree renders in browser AND exports to 14+ formats
+- Same component tree renders in browser AND exports to 20 formats
 - extractDocNode(templateFn) — one-step extraction (recommended)
 - createDocumentExport(templateFn) — two-step form (backward compat)
 - DocDocument accepts reactive accessors for title / author / subject
@@ -62,7 +62,7 @@ function ResumeTemplate(props: { resume: () => Resume }) {
   )
 }
 
-// One-step extraction → render to any of 14+ formats
+// One-step extraction → render to any of 20 formats
 const tree = extractDocNode(() => <ResumeTemplate resume={store.resume} />)
 await download(tree, 'resume.pdf')
 await download(tree, 'resume.docx')

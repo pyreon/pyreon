@@ -34,11 +34,11 @@ The package installs a single `pyreon` binary. Run it through your package manag
 :::code-group
 
 ```bash [npm]
-npx pyreon doctor
+npx @pyreon/cli doctor
 ```
 
 ```bash [bun]
-bunx pyreon doctor
+bunx @pyreon/cli doctor
 ```
 
 ```bash [pnpm]
@@ -449,9 +449,9 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install
       # Inline annotations on the PR (always exits 0 in this mode unless --ci added)
-      - run: bunx pyreon doctor --gha
+      - run: bunx @pyreon/cli doctor --gha
       # The actual gate — fails the job on any error finding
-      - run: bunx pyreon doctor --ci
+      - run: bunx @pyreon/cli doctor --ci
 ```
 
 `--ci` and `--gha`/`--json` are independent: `--ci` controls the **exit code**, the format flags control the **output**. To both annotate and gate in one run, combine them — `pyreon doctor --gha --ci` prints GHA annotations and exits non-zero on errors.

@@ -14,7 +14,7 @@
  *
  * Worth trying: delete this file and re-run `atlas scan`. The three rocketstyle
  * components stay in the catalog and lose their variant/size axes, so the
- * variant matrix has nothing to cross — 36 scenarios become 23. (Measured, not
+ * variant matrix has nothing to cross — 44 scenarios become 36. (Measured, not
  * estimated.)
  */
 import { h, type VNodeChild } from '@pyreon/core'
@@ -31,8 +31,9 @@ export const theme = tokens(THEMES[0]!, false)
  * the first `t.accent` read throws) and a `<PermissionsProvider>` (for
  * `usePermissions()` consumers like GuardedDelete).
  *
- * This is not decoration — without a wrapper, `atlas scan` honestly FAILS 36
- * of this project's 40 scenarios with `threw while mounted`. (An earlier
+ * This is not decoration — without this file (so without a wrapper), `atlas
+ * scan` honestly FAILS 22 of the 36 scenarios it derives, most with `threw while
+ * mounted`. (An earlier
  * pipeline bug ran every scenario through a second, wrongly-wired mount whose
  * verdict overwrote the real one, which made the same scenarios look verified.
  * They never were.)

@@ -17,7 +17,7 @@ engine, wrapped in Pyreon's fine-grained reactivity.
   active-state highlighting; commands run through `editor.chain()` plus
   `undo` / `redo` / `focus` / `blur` helpers.
 - **Lazy engine** — `@tiptap/*` is dynamically imported on mount, so it stays
-  out of the initial bundle (a ~1.5 KB gz wrapper; the engine is a lazy chunk).
+  out of the initial bundle (a ~3.6 KB gz wrapper; the engine is a lazy chunk).
   A re-mount keeps the current document, disposing mid-load is leak-safe, and a
   mount failure routes to `onError`.
 - **Accessible** — the content area is a labeled `role="textbox"` multiline

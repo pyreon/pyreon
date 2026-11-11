@@ -27,7 +27,7 @@ bun add -d @pyreon/lint
 | Setting | Default | Description |
 |---|---|---|
 | `pyreonLint.enable` | `true` | Enable/disable diagnostics |
-| `pyreonLint.preset` | `"recommended"` | Lint preset (recommended, strict, app, lib) |
+| `pyreonLint.preset` | `"recommended"` | Lint preset (recommended, strict, app, lib, best-practices) |
 
 ## How it works
 
@@ -35,8 +35,8 @@ The extension starts `pyreon-lint --lsp` as a child process, communicating via
 stdin/stdout JSON-RPC (Language Server Protocol). Diagnostics appear inline as
 you type (150ms debounce).
 
-## 56 rules
+## 133 rules
 
-Covers: reactivity (9), JSX (11), lifecycle (4), performance (4), SSR (3),
-architecture (5), store (3), form (3), styling (4), hooks (3), accessibility (3),
-router (4).
+133 rules across 25 categories, the same set the `pyreon-lint` CLI runs. The
+full list, with what each rule catches, is on the
+[lint docs page](https://pyreon.dev/docs/lint).

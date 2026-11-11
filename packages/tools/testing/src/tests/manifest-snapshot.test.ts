@@ -38,9 +38,9 @@ describe('gen-docs — @pyreon/testing snapshot', () => {
       test('computed recomputes exactly once per change', () => {
         const qty = signal(1)
         const total = computed(() => qty() * 10)
-        total() // materialize
+        total() // materialize (the first computation counts)
         qty.set(2)
-        expectSignal(total).toHaveRecomputedTimes(1)  // no thrash
+        expectSignal(total).toHaveRecomputedTimes(2)  // first computation + one recompute, no thrash
       })
 
       test('effect re-runs only when its dep changes', () => {

@@ -13,7 +13,8 @@ function Counter(props) {
   return (
     <div>
       {count()}          {/* live */}
-      {props.label}      {/* live·prop */}
+      {props.label}      {/* live */}
+      <Badge text={props.label} />  {/* live·prop */}
       {"hello"}          {/* static */}
     </div>
   )
