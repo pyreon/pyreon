@@ -214,6 +214,31 @@ const app = App.create({ title: 'Hello', profile: { name: 'Alice', age: 30 } })
 getSnapshot(app) // { title: "Hello", profile: { name: "Alice", age: 30 } }
 ```
 
+### Arrays and Maps of Models
+
+Declare a field that holds model instances with `arrayOf(Model)` or `mapOf(Model)`. Element snapshots become instances, child writes emit patches addressed by index or key, patch values are plain snapshots, and `applySnapshot` / `applyPatch` recreate the elements, so patches and snapshots round-trip, also into a fresh instance in another process.
+
+```ts
+import { applyPatch, arrayOf, getPath, model, onPatch } from '@pyreon/state-tree'
+
+const Todo = model({ state: { title: '', done: false } }).actions((self) => ({
+  toggle: () => self.done.update((d) => !d),
+}))
+const TodoList = model({ state: { todos: arrayOf(Todo) } })
+
+const list = TodoList.create({ todos: [{ title: 'a', done: false }] })
+getPath(list.todos()[0]!) // "/todos/0"
+
+const log: Patch[] = []
+onPatch(list, (p) => log.push(p))
+list.todos()[0]!.toggle() // { op: "replace", path: "/todos/0/done", value: true }
+
+const replica = TodoList.create({ todos: [{ title: 'a', done: false }] })
+applyPatch(replica, log)  // replica.todos()[0].done() === true
+```
+
+A plain `todos: [] as Todo[]` default still holds instances and gets indexed paths, but carries no element type: restoring data into an empty field writes plain objects, and a dev warning names the field.
+
 ### Time-Travel Debugging
 
 Record patches and replay them to implement undo/redo.
@@ -238,6 +263,8 @@ applyPatch(counter, history) // replays to count: 2
 | `ModelSelf`       | The `self` type inside views/actions factories                       |
 | `StateShape`      | `Record<string, unknown>` — the state config shape                   |
 | `Snapshot`        | Recursive plain-object serialization of state                        |
+| `SnapshotIn`      | What `.create()` accepts: a snapshot, with live instances allowed in `arrayOf` / `mapOf` fields |
+| `ModelArray` / `ModelMap` | The value types of `arrayOf(Model)` / `mapOf(Model)` fields   |
 | `Patch`           | `{ op: "replace", path: string, value: unknown }`                    |
 | `PatchListener`   | `(patch: Patch) => void`                                             |
 | `ActionCall`      | `{ name: string, args: unknown[], path: string }`                    |
@@ -246,6 +273,7 @@ applyPatch(counter, history) // replays to count: 2
 ## Gotchas
 
 - Only `"replace"` patches are supported — no `"add"` or `"remove"` operations.
+- A field holding model instances needs `arrayOf(Model)` / `mapOf(Model)` for snapshots and patches to recreate its elements.
 - `applySnapshot` leaves missing keys unchanged; it does not delete extra state.
 - `self` inside actions/views is loosely typed for non-state keys to prevent circular type resolution. Use explicit types if needed.
 - Always call `resetAllHooks()` in test `afterEach` to prevent singleton leakage between tests.
