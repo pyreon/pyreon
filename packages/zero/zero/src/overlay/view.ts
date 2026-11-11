@@ -222,6 +222,9 @@ export function renderOverlayMarkup(report: OverlayReport, options: RenderOverla
  * Returns a teardown.
  */
 export function overlayBehaviour(scope: Document | ShadowRoot): () => void {
+  // Browser only; a no-op anywhere else. (Self-contained, so it cannot
+  // import `isServer`; any browser-only global works as the guard.)
+  if (typeof navigator === 'undefined' || typeof location === 'undefined') return () => {}
   const root = scope.querySelector('[data-pz-ol]') as HTMLElement
   const wrap = root.querySelector('[data-pz-wrap]') as HTMLElement
   const dialog = root.querySelector('[data-pz-dialog]') as HTMLElement
@@ -363,6 +366,10 @@ export function overlayBehaviour(scope: Document | ShadowRoot): () => void {
  * `undefined` so the CSS follows `prefers-color-scheme`.
  */
 export function preferredTheme(): 'light' | 'dark' | undefined {
+  // Self-contained like `overlayBehaviour`, so no `isServer` import.
+  // (`typeof localStorage` itself can throw where storage is blocked, so the
+  // guard is a global that never does.)
+  if (typeof HTMLElement === 'undefined') return undefined
   const pick = (v: string | null | undefined) => (v === 'light' || v === 'dark' ? v : undefined)
   let stored: 'light' | 'dark' | undefined
   try {

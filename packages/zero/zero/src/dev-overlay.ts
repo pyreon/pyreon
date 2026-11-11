@@ -13,6 +13,7 @@
  * Hydration mismatches carry no source location (the runtime only knows the
  * DOM path), so this overlay shows no file link or code frame.
  */
+import { isServer } from '@pyreon/reactivity'
 import { onHydrationMismatch } from '@pyreon/runtime-dom'
 import type { HydrationMismatchContext } from '@pyreon/runtime-dom'
 import type { OverlayReport } from './overlay/model'
@@ -53,7 +54,8 @@ export function buildHydrationReport(
 }
 
 /** Mount the overlay for `report` over the page. Returns the host element. */
-export function showDevOverlay(report: OverlayReport): HTMLElement {
+export function showDevOverlay(report: OverlayReport): HTMLElement | undefined {
+  if (isServer) return undefined
   document.querySelector(HOST_TAG)?.remove()
   const host = document.createElement(HOST_TAG)
   const shadow = host.attachShadow({ mode: 'open' })

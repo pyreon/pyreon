@@ -148,6 +148,12 @@ test.describe('zero dev error overlay', () => {
     await expect(d.locator('.pz-code')).toHaveCount(0)
     await expect(d.locator('.pz-fix')).toContainText('byte-identical')
     await expect(d.getByRole('button', { name: 'Copy for your AI assistant' })).toBeFocused()
+    // Focus stays in the overlay (from the page, focus inside a shadow root
+    // reads as its host) while tabbing both ways past the ends.
+    for (const key of ['Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab']) {
+      await page.keyboard.press(key)
+      expect(await page.evaluate(() => document.activeElement?.tagName.toLowerCase())).toBe('pyreon-dev-overlay')
+    }
 
     await d.getByRole('button', { name: 'Copy for your AI assistant' }).click()
     const text = await readClipboard(page)

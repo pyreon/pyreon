@@ -12,7 +12,7 @@ import type { RouteRecord, RouterInstance } from '../types'
 const Page = () => null
 const TAG = Symbol.for('pyreon.router.loaderErrorRoute')
 
-function routes(leafLoader: RouteRecord['loader']): RouteRecord[] {
+function routes(leafLoader: NonNullable<RouteRecord['loader']>): RouteRecord[] {
   return [
     {
       path: '/',
