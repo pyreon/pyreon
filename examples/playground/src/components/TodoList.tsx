@@ -33,6 +33,11 @@ export function TodoList() {
     todos = ((list) => list.filter((t) => t.id !== id))(untrack(() => todos))
   }
 
+  // A `<For>` row runs once per key, so its `todo` is the object it mounted
+  // with. `toggle` replaces that object under the same id, so the row reads
+  // the live value by id; `todo.done` would keep the first value.
+  const isDone = (id: number) => todos.some((t) => t.id === id && t.done)
+
   const handleKey = (e: KeyboardEvent) => {
     if (e.key === 'Enter') addTodo()
   }
@@ -58,8 +63,8 @@ export function TodoList() {
       <ul class="todo-list">
         <For each={signalOf<typeof todos>(todos)} by={(todo) => todo.id}>
           {(todo) => (
-            <li class={todo.done ? 'done' : ''}>
-              <input type="checkbox" checked={todo.done} onChange={() => toggle(todo.id)} />
+            <li class={isDone(todo.id) ? 'done' : ''}>
+              <input type="checkbox" checked={isDone(todo.id)} onChange={() => toggle(todo.id)} />
               <span>{todo.text}</span>
               <button type="button" class="remove" onClick={() => remove(todo.id)}>
                 ×

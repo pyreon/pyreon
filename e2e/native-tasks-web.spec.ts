@@ -253,6 +253,34 @@ test.describe('native-tasks-web — the shared source renders on the third targe
     await expect(page.getByTestId('req-raw-result')).toHaveText('Raw: PUT text/plain Hello Pyreon')
   })
 
+  // Toggling a task replaces its object in the store under the same `by` key,
+  // so the web `<For>` keeps the row and does not re-run its callback. iOS and
+  // Android re-evaluate the row, so their label flipped; the web label kept
+  // saying "todo" while only the open count moved. The row reads the live
+  // value by id now; the count alone could not catch this, the label can.
+  test('toggling a task flips its row label, not only the open count', async ({ page }) => {
+    await page.goto('/')
+    await page.getByTestId('login-username').fill('ada')
+    await page.getByTestId('login-submit').click()
+    const tasks = page.getByTestId('tasks-page')
+    await expect(tasks).toBeVisible()
+    await expect(tasks.getByText('2 open')).toBeVisible()
+    const todo = tasks.getByRole('button', { name: 'todo', exact: true })
+    const done = tasks.getByRole('button', { name: 'done', exact: true })
+    await expect(todo).toHaveCount(2)
+    await expect(done).toHaveCount(0)
+
+    await todo.first().click()
+    await expect(tasks.getByText('1 open')).toBeVisible()
+    await expect(done).toHaveCount(1)
+    await expect(todo).toHaveCount(1)
+
+    // And back: the same row flips again.
+    await done.first().click()
+    await expect(tasks.getByText('2 open')).toBeVisible()
+    await expect(todo).toHaveCount(2)
+  })
+
   test('url-state writes through to the URL', async ({ page }) => {
     // The one behaviour that is genuinely web-specific: on native the router
     // holds the query, on web it must reach `location.search`. A lowering that
