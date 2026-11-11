@@ -26,6 +26,8 @@ export class SourceFile {
   /** module specifier -> type-only named bindings. */
   private readonly typeNamed = new Map<string, Set<string>>()
   private readonly body: string[] = []
+  /** Local type aliases declared after the imports, each only when the body names it (see {@link aliasIfUsed}). */
+  private readonly aliases: [name: string, definition: string][] = []
 
   constructor(readonly path: string) {}
 
@@ -106,6 +108,15 @@ export class SourceFile {
     return this
   }
 
+  /**
+   * Declare `type <name> = <definition>` after the imports, but only if the finished body names it: an unused local
+   * type is an error under `noUnusedLocals`, and a generator does not know up front which models a module inlines.
+   */
+  aliasIfUsed(name: string, definition: string): this {
+    this.aliases.push([name, definition])
+    return this
+  }
+
   build(header: string): GeneratedFile {
     const out: string[] = [header, '']
     for (const spec of [...this.typeNamed.keys()].sort()) {
@@ -128,6 +139,9 @@ export class SourceFile {
       if (clause) out.push(`import ${clause} from '${spec}'`)
     }
     if (out.length > 2) out.push('')
+    const bodyText = this.body.filter((l) => !/^\s*(\/\*\*|\*)/.test(l)).join('\n')
+    const used = this.aliases.filter(([name]) => new RegExp(`\\b${name}\\b`).test(bodyText))
+    if (used.length > 0) out.push(...used.map(([name, def]) => `type ${name} = ${def}`), '')
     out.push(...this.body)
     return { path: this.path, contents: `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n` }
   }

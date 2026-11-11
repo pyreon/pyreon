@@ -663,6 +663,10 @@ export function recognizeStream(_call: CallSite, ctx: ParseContext): ExtDeclSpec
       body.type === 'BlockStatement' ? ctx.statements(body) : [{ kind: 'expr', expr: ctx.expr(body) }]
     onEvent = { param, body: stmts }
   }
+  // Every event / line decodes into `dataType` (a `data: 'text'` SSE stream decodes nothing): record it so an
+  // integer-default number field a fractional payload would fail to decode is named (#3956). No response schema: a
+  // stream endpoint's `response` does not describe one event.
+  if (!sseText) ctx.recordDecode(dataType, undefined)
   return {
     type: STREAM_TYPE,
     payload: {

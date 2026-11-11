@@ -11,6 +11,8 @@
 // CSS-property mappings (background, padding, border-radius,
 // foreground color).
 
+import { kotlinStr, swiftStr } from './string-literals'
+
 export interface StyleIR {
   /** Unique identifier — emitted as the ViewModifier struct name (Swift)
    * or the Modifier-helper function name (Kotlin). */
@@ -54,7 +56,7 @@ export type StyleValue =
 export function emitSwiftStyleModifier(style: StyleIR): string {
   const lines: string[] = []
   lines.push(`struct ${style.name}: ViewModifier, PyreonStylable {`)
-  lines.push(`  static let pyreonSource = ${JSON.stringify(style.name)}`)
+  lines.push(`  static let pyreonSource = ${swiftStr(style.name)}`)
   lines.push(`  func body(content: Content) -> some View {`)
   lines.push(`    content`)
   for (const prop of style.properties) {
@@ -143,7 +145,7 @@ function kotlinPropertyChain(prop: StyleProperty): string | null {
 function swiftValue(v: StyleValue): string {
   switch (v.kind) {
     case 'string':
-      return JSON.stringify(v.value)
+      return swiftStr(v.value)
     case 'number':
       return String(v.value)
     case 'token': {
@@ -158,7 +160,7 @@ function swiftValue(v: StyleValue): string {
 function kotlinValue(v: StyleValue): string {
   switch (v.kind) {
     case 'string':
-      return JSON.stringify(v.value)
+      return kotlinStr(v.value)
     case 'number':
       return String(v.value)
     case 'token': {

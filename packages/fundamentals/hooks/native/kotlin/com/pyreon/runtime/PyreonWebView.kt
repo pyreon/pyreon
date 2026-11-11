@@ -78,6 +78,9 @@
 // - After that the MAIN frame stays on that origin (`shouldOverrideUrlLoading`):
 //   a user-tapped link off it is handed to the system (`http(s)` / `mailto` /
 //   `tel` / `sms`); any other off-origin main-frame navigation is cancelled.
+//   A POST never reaches `shouldOverrideUrlLoading`, so the same decision is
+//   applied to every http(s) main-frame request in `shouldInterceptRequest` (an
+//   off-origin one gets an empty 204 and the page stays).
 //   Sub-frames navigate freely but never get the bridge or the data.
 // - `addJavascriptInterface` exposes `__pyreonNative` to EVERY frame and there
 //   is no per-frame filter without androidx.webkit, so the shim — evaluated in
@@ -254,6 +257,32 @@ fun PyreonWebView(
                         }
                     }
 
+                    // `shouldOverrideUrlLoading` is never called for a POST, so a
+                    // form posted to another origin would load in place (seen on an
+                    // API 33 emulator). Every main-frame REQUEST passes here, however
+                    // it was started, so the same origin policy is applied to it:
+                    // an off-origin one gets an empty 204, which a navigation treats
+                    // as "nothing to show" and stays on the current page. Only
+                    // http(s) requests: a POST is a network request, and a `data:`
+                    // document (`loadDataWithBaseURL`) also passes through here.
+                    // Runs on a background thread, hence the @Volatile state.
+                    override fun shouldInterceptRequest(
+                        view: WebView,
+                        request: android.webkit.WebResourceRequest,
+                    ): android.webkit.WebResourceResponse? {
+                        val scheme = request.url?.scheme?.lowercase()
+                        if (scheme != "http" && scheme != "https") return null
+                        val decision = pyreonWebViewNavigationDecision(
+                            isMainFrame = request.isForMainFrame,
+                            initialLoadPending = state.initialLoadPending,
+                            url = request.url?.toString(),
+                            allowedOrigin = state.allowedOrigin,
+                            userActivated = false,
+                        )
+                        if (decision == PyreonWebViewNavigation.ALLOW) return null
+                        return android.webkit.WebResourceResponse("text/plain", "utf-8", 204, "No Content", emptyMap(), null)
+                    }
+
                     override fun onPageStarted(
                         view: WebView,
                         url: String?,
@@ -292,7 +321,10 @@ fun PyreonWebView(
                 state.loadedKey = key
                 state.loaded = false
                 state.allowedOrigin = null
-                state.initialLoadPending = loadPyreonWebView(webView, html, src)
+                // Pending BEFORE the load starts: its first request can reach
+                // shouldInterceptRequest (another thread) before load returns.
+                state.initialLoadPending = true
+                if (!loadPyreonWebView(webView, html, src)) state.initialLoadPending = false
             } else if (state.loaded && pyreonWebViewMayDeliver(webView.url, state.allowedOrigin)) {
                 // data-only change → push without reloading.
                 pushPyreonData(webView, data)
@@ -325,8 +357,10 @@ private class PyreonWebViewState {
     var group: String? = null
     /** The origin the host's own load landed on — the only one that gets the
      *  data push and the bridge (see "Origin scope" in the file header). */
+    @Volatile
     var allowedOrigin: String? = null
     /** True from the host starting a load until that load's page starts. */
+    @Volatile
     var initialLoadPending: Boolean = false
     /** Per-view secret the main-frame shim passes with every message: the JS
      *  interface object is visible to every frame, the shim's closure is not. */

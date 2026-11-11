@@ -109,6 +109,12 @@ export interface ModuleParseContext {
     resolve(name: string, arg: AstNode | undefined, options: RequestOptions): ResolvedRequest | null
   }
   /**
+   * Record that `type` is a JSON decode target of a request resolved in an EXPRESSION (a `save.mutate({ json })`) —
+   * the same record a declaration recognizer makes through `ParseContext.recordDecode`: a `response` schema refines
+   * the type's number fields, and with none an integer-default field is named.
+   */
+  recordDecode(type: TypeIR, response: ResolvedRequest['response']): void
+  /**
    * Add an item found OUTSIDE a declaration (a schema synthesized from an inline `s.object({ … }).safeParse(x)`).
    * Appended after every declaration-level item, in the order added.
    */
