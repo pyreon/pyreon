@@ -19,7 +19,7 @@ export interface FirstRun<T> {
 }
 
 import type { EffectScope, RunCapture, SubscriberHost } from '@pyreon/reactivity'
-import { _rdLabelBinding, _releaseRun, _replayReads, effect, effectScope, getContextOwner, getCurrentScope, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
+import { _frameReads, _rdDropBinding, _rdLabelBinding, _releaseRun, _replayReads, effect, effectScope, getContextOwner, getCurrentScope, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
 
 
 /**
@@ -99,6 +99,20 @@ function sameItems(value: unknown[], snapshot: unknown[]): boolean {
 }
 
 /**
+ * Dev: did a structural boundary's FIRST run track nothing? Keyed by the
+ * boundary's own marker comment, which exists before its effect runs, so no
+ * production local is needed: the effect body records the answer on its first
+ * run (`has()` is false only then — the naming step below overwrites the entry
+ * with `false`, so re-runs never record again), and the code after `effect()`
+ * reads it. A boundary that tracked nothing (`() => <b>static</b>`, a `<For>`
+ * over a plain array) can never re-run, so its graph node is dropped instead of
+ * labelled — the dead-binding rule `renderEffect` / `_bind` follow by returning
+ * `_noopDispose`. Left in, it read as a binding that never fired, permanently,
+ * and Reactive Coverage counted it. A WeakMap: an entry dies with its marker.
+ */
+const _structuralDead = /* @__PURE__ */ new WeakMap<Node, boolean>()
+
+/**
  * Mount a reactive node whose content changes over time.
  *
  * A comment node is used as a stable anchor point in the DOM.
@@ -152,6 +166,8 @@ export function mountReactive(
       _releaseRun(first.run)
       first = undefined
     } else value = accessor()
+    if (process.env.NODE_ENV !== 'production' && !_structuralDead.has(marker))
+      _structuralDead.set(marker, _frameReads()?.length === 0)
 
     // An accessor can re-run and produce the SAME value — `<Show when={() =>
     // sel() !== undefined}>` re-runs on every `sel` change while the verdict
@@ -251,7 +267,11 @@ export function mountReactive(
     }
   })
   // Dev: name this boundary's graph node; its creation site is this file.
-  if (process.env.NODE_ENV !== 'production') _rdLabelBinding(e, 'child', parent, undefined, null)
+  if (process.env.NODE_ENV !== 'production') {
+    if (_structuralDead.get(marker) === true) _rdDropBinding(e)
+    else _rdLabelBinding(e, 'child', parent, undefined, null)
+    _structuralDead.set(marker, false)
+  }
 
   return () => {
     e.dispose()
@@ -524,6 +544,8 @@ export function mountKeyedList(
       _releaseRun(first.run)
       first = undefined
     } else newList = accessor()
+    if (process.env.NODE_ENV !== 'production' && !_structuralDead.has(startMarker))
+      _structuralDead.set(startMarker, _frameReads()?.length === 0)
     const n = newList.length
     // Same untracking rationale as mountFor — see comment there. Child
     // mounts via mountVNode must not re-track on this effect's run.
@@ -597,7 +619,11 @@ export function mountKeyedList(
     })
   })
   // Dev: name this boundary's graph node; its creation site is this file.
-  if (process.env.NODE_ENV !== 'production') _rdLabelBinding(e, 'list', parent, undefined, null)
+  if (process.env.NODE_ENV !== 'production') {
+    if (_structuralDead.get(startMarker) === true) _rdDropBinding(e)
+    else _rdLabelBinding(e, 'list', parent, undefined, null)
+    _structuralDead.set(startMarker, false)
+  }
 
   return () => {
     e.dispose()
@@ -1470,6 +1496,8 @@ export function mountFor<T>(
     const liveParent = startMarker.parentNode
     if (!liveParent) return
     const items = source()
+    if (process.env.NODE_ENV !== 'production' && !_structuralDead.has(startMarker))
+      _structuralDead.set(startMarker, _frameReads()?.length === 0)
     const n = items.length
     // Child mounts must NOT re-track on this effect's run (mirrors
     // mountReactive). Otherwise any signal read during a child component's setup
@@ -1542,7 +1570,11 @@ export function mountFor<T>(
     })
   })
   // Dev: name this boundary's graph node; its creation site is this file.
-  if (process.env.NODE_ENV !== 'production') _rdLabelBinding(e, 'list', parent, undefined, null)
+  if (process.env.NODE_ENV !== 'production') {
+    if (_structuralDead.get(startMarker) === true) _rdDropBinding(e)
+    else _rdLabelBinding(e, 'list', parent, undefined, null)
+    _structuralDead.set(startMarker, false)
+  }
 
   return () => {
     e.dispose()

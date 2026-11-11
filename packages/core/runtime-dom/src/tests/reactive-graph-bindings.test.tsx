@@ -396,3 +396,42 @@ export function T() {
     expect(c.rootReached).toBe(true)
   })
 })
+
+describe('dead structural boundaries are not bindings', () => {
+  // A child accessor, keyed-array accessor or `<For>` whose first run tracked
+  // nothing can never re-run. It used to be labelled `child` / `list` anyway,
+  // so it sat in every coverage report as "ran once, never re-ran" — a row
+  // nothing could ever cover. Found through Atlas's named-bindings panel,
+  // where rocketstyle's static content slots filled half the list.
+  it('a static structural child accessor leaves no node; a live one keeps its edge', () => {
+    activateReactiveDevtools()
+    const flag = signal(true, { name: 'flag' })
+    mount(h('div', null, () => h('b', null, 'static')), document.createElement('div'))
+    mount(h('section', null, () => (flag() ? h('b', null, 'on') : null)), document.createElement('div'))
+    const bindings = getReactiveGraph().nodes.filter((n) => n.binding !== undefined)
+    expect(bindings.map((n) => n.name)).toEqual(['child of <section>'])
+    const live = bindings[0]!
+    expect(getReactiveGraph().edges).toContainEqual({ from: _rdNodeIdOf(flag), to: live.id })
+  })
+
+  it('a static keyed array and a <For> over a plain array leave no list node', () => {
+    activateReactiveDevtools()
+    const a = document.createElement('div')
+    const b = document.createElement('div')
+    mount(h('ul', null, () => [h('li', { key: 1 }, 'a'), h('li', { key: 2 }, 'b')]), a)
+    mount(
+      h('ol', null, h(For as never, { each: [{ id: 1 }], by: (r: { id: number }) => r.id }, ((r: { id: number }) =>
+        h('li', null, String(r.id))) as never,
+      )),
+      b,
+    )
+    expect(a.querySelectorAll('li')).toHaveLength(2)
+    expect(b.querySelectorAll('li')).toHaveLength(1)
+    const lists = getReactiveGraph().nodes.filter((n) => n.binding === 'list' || n.binding === 'child')
+    expect(lists.map((n) => n.name)).toEqual([])
+  })
+})
+
+function _rdNodeIdOf(x: unknown): number | undefined {
+  return (x as { __pxRdId?: number }).__pxRdId
+}
