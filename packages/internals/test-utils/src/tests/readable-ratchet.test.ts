@@ -12,6 +12,11 @@ import {
   serializeReadableBaseline,
   updateReadable,
 } from '../../../../../scripts/check-readable-ratchet'
+import {
+  countOxlintFindings,
+  OXLINT_BASELINE_PATH,
+  OXLINT_READABLE_CONFIG,
+} from '../../../../../scripts/check-readable-oxlint-ratchet'
 
 /**
  * The readable ratchet: `readable` style findings per (file, rule) may only go
@@ -169,5 +174,37 @@ describe('the committed baseline', () => {
       }
     }
     expect(sum).toBe(b.total)
+  })
+})
+
+describe('the readable oxlint ratchet', () => {
+  it('counts oxlint -f json diagnostics per file and rule', () => {
+    const report = {
+      diagnostics: [
+        { code: 'eslint(complexity)', filename: 'a.ts' },
+        { code: 'eslint(complexity)', filename: 'a.ts' },
+        { code: 'import(first)', filename: 'b.ts' },
+      ],
+    }
+    expect(countOxlintFindings(report)).toEqual({
+      'a.ts': { 'eslint(complexity)': 2 },
+      'b.ts': { 'import(first)': 1 },
+    })
+    expect(countOxlintFindings(null)).toEqual({})
+  })
+
+  it('the committed baseline is well-formed and its config extends the shipped preset', () => {
+    const root = join(import.meta.dirname, '../../../../..')
+    const b = JSON.parse(readFileSync(join(root, OXLINT_BASELINE_PATH), 'utf8')) as {
+      total: number
+      files: Record<string, Record<string, number>>
+    }
+    let sum = 0
+    for (const rules of Object.values(b.files)) for (const n of Object.values(rules)) sum += n
+    expect(sum).toBe(b.total)
+    const cfg = readFileSync(join(root, OXLINT_READABLE_CONFIG), 'utf8')
+    expect(cfg).toContain('"extends": ["../packages/tools/lint/oxlint/readable.json"]')
+    // Every hot-path exemption must be a file that exists, and the block must say why.
+    expect(cfg).toMatch(/Hot paths: long, branchy or deeply nested ON PURPOSE/)
   })
 })

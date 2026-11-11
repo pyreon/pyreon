@@ -40,6 +40,7 @@
  *   - check-native-plugin-types (a library-owned plugin names a Swift/Kotlin type nothing declares)
  *   - check-pyreon-lint-ratchet (@pyreon/lint advisory-finding count over framework src grew above baseline)
  *     — the same run also gates readable-baseline.json: a file gained a `readable` style finding
+ *   - check-readable-oxlint-ratchet (a file gained a finding of @pyreon/lint/oxlint/readable.json)
  *   - gen-docs --check      (manifest edited but generated files stale)
  *   - check-generated-fresh (the OTHER half of the pair: `anti-patterns.md` /
  *                            manifest edits leave the docs-site reference,
@@ -106,6 +107,9 @@ const GATES: Gate[] = [
   // Also gates readable-baseline.json (per-file `readable` style findings may
   // only go down) from the SAME doctor run — no second lint pass.
   { name: 'check-pyreon-lint-ratchet', cmd: 'bun scripts/check-pyreon-lint-ratchet.ts' },
+  // The oxlint half of `readable` (size, complexity, depth, params, import
+  // placement), frozen per file in readable-oxlint-baseline.json. ~1s.
+  { name: 'check-readable-oxlint-ratchet', cmd: 'bun scripts/check-readable-oxlint-ratchet.ts' },
   // App-side line count across the reference apps — the framework's "write
   // less code" claim, ratcheted so it cannot quietly drift the wrong way.
   { name: 'check-app-loc', cmd: 'bun scripts/check-app-loc.ts' },

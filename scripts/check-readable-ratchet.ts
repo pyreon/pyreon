@@ -117,7 +117,10 @@ const DESCRIPTION =
   'Fix new findings with `bunx pyreon-lint --fix <file>` (the spacing rules are autofixable), then ' +
   'tighten with `bun scripts/check-readable-ratchet.ts --update`. Never raise a count to absorb a finding.'
 
-export function buildReadableBaseline(current: PerFileCounts): ReadableBaseline {
+export function buildReadableBaseline(
+  current: PerFileCounts,
+  description: string = DESCRIPTION,
+): ReadableBaseline {
   const files: PerFileCounts = {}
   let total = 0
   for (const file of Object.keys(current).sort()) {
@@ -132,7 +135,7 @@ export function buildReadableBaseline(current: PerFileCounts): ReadableBaseline 
     if (Object.keys(sorted).length > 0) files[file] = sorted
   }
 
-  return { description: DESCRIPTION, total, files }
+  return { description, total, files }
 }
 
 /**
@@ -156,87 +159,120 @@ export function readReadableBaseline(path: string = READABLE_BASELINE_PATH): Rea
   return JSON.parse(readFileSync(path, 'utf8')) as ReadableBaseline
 }
 
-/**
- * Gate the report against the committed baseline. Prints the result and
- * returns `true` when nothing regressed.
- */
-export function checkReadable(parsed: unknown, path: string = READABLE_BASELINE_PATH): boolean {
+/** How a per-file ratchet names itself in its messages. */
+export interface PerFileRatchet {
+  /** `Readable ratchet` / `Readable oxlint ratchet`. */
+  label: string
+  /** Baseline description written by `--update`. */
+  description: string
+  /** The command that rewrites this baseline. */
+  updateCommand: string
+  /** Lines telling the author how to clear a new finding. */
+  fixHint: string[]
+}
+
+const PYREON_RATCHET: PerFileRatchet = {
+  label: 'Readable ratchet',
+  description: DESCRIPTION,
+  updateCommand: 'bun scripts/check-readable-ratchet.ts --update',
+  fixHint: [
+    'Fix them: `bunx pyreon-lint --fix <file>` clears the spacing findings; JSX depth and ternary',
+    'findings need a small refactor. A deliberate exception takes a reasoned opt-out:',
+    '  // pyreon-lint-disable-next-line <rule> -- <why>',
+  ],
+}
+
+const sumCounts = (c: PerFileCounts): number =>
+  Object.values(c).reduce((sum, rules) => sum + Object.values(rules).reduce((a, b) => a + b, 0), 0)
+
+/** Gate per-file counts against a committed baseline. Prints the result; `true` when nothing regressed. */
+export function checkPerFile(current: PerFileCounts, path: string, r: PerFileRatchet): boolean {
   const baseline = readReadableBaseline(path)
   if (!baseline) {
-    console.error(`✗ ${path} not found. Seed it with \`bun scripts/check-readable-ratchet.ts --update\`.`)
+    console.error(`✗ ${path} not found. Seed it with \`${r.updateCommand}\`.`)
+
     return false
   }
-  const current = countReadableFindings(parsed)
   const { regressions, improvements } = compareReadable(current, baseline.files)
-  const total = Object.values(current).reduce(
-    (sum, rules) => sum + Object.values(rules).reduce((a, b) => a + b, 0),
-    0,
-  )
+  const total = sumCounts(current)
 
   if (regressions.length > 0) {
-    console.error('✗ Readable ratchet — these files gained readable findings:')
-    for (const r of regressions.slice(0, 50)) {
-      console.error(`    ${r.file}  ${r.rule}: ${r.baseline} → ${r.current}`)
+    console.error(`✗ ${r.label} — these files gained findings:`)
+    for (const x of regressions.slice(0, 50)) {
+      console.error(`    ${x.file}  ${x.rule}: ${x.baseline} → ${x.current}`)
     }
     if (regressions.length > 50) console.error(`    …and ${regressions.length - 50} more`)
-    console.error(
-      '\nFix them: `bunx pyreon-lint --fix <file>` clears the spacing findings; JSX depth and ternary',
-    )
-    console.error(
-      'findings need a small refactor. A deliberate exception takes a reasoned opt-out:',
-    )
-    console.error('  // pyreon-lint-disable-next-line <rule> -- <why>')
+    console.error('')
+    for (const line of r.fixHint) console.error(line)
     console.error('The baseline only moves DOWN; do not raise it to absorb new findings.')
 
     return false
   }
   if (improvements.length > 0) {
-    const dropped = improvements.reduce((a, r) => a + (r.baseline - r.current), 0)
+    const dropped = improvements.reduce((a, x) => a + (x.baseline - x.current), 0)
     console.log(
-      `✓ Readable ratchet — ${total} finding(s) (baseline ${baseline.total}); ${dropped} fewer in ${improvements.length} (file, rule) pair(s).`,
+      `✓ ${r.label} — ${total} finding(s) (baseline ${baseline.total}); ${dropped} fewer in ${improvements.length} (file, rule) pair(s).`,
     )
-    console.log('  Tighten the baseline: `bun scripts/check-readable-ratchet.ts --update`')
+    console.log(`  Tighten the baseline: \`${r.updateCommand}\``)
   } else {
-    console.log(`✓ Readable ratchet — ${total} finding(s), no file above its baseline.`)
+    console.log(`✓ ${r.label} — ${total} finding(s), no file above its baseline.`)
   }
 
   return true
 }
 
 /**
- * `--update`: rewrite the baseline from the current report. Refuses to RAISE
- * any count unless `allowRaise` is set — for renamed or moved files, whose
+ * `--update`: rewrite a baseline from current counts. Refuses to RAISE any
+ * count unless `allowRaise` is set — for renamed or moved files, whose
  * findings reappear under a new path, and for absorbing code that landed on
- * main before this gate existed. Returns `true` when it wrote the file.
+ * main before the gate existed. Returns `true` when it wrote the file.
  */
-export function updateReadable(
-  parsed: unknown,
-  opts: { allowRaise?: boolean; path?: string } = {},
+export function updatePerFile(
+  current: PerFileCounts,
+  path: string,
+  r: PerFileRatchet,
+  allowRaise = false,
 ): boolean {
-  const path = opts.path ?? READABLE_BASELINE_PATH
-  const current = countReadableFindings(parsed)
   const existing = readReadableBaseline(path)
-  if (existing && !opts.allowRaise) {
+  if (existing && !allowRaise) {
     const { regressions } = compareReadable(current, existing.files)
     if (regressions.length > 0) {
       console.error(
         `✗ Refusing to raise ${regressions.length} baseline count(s) — fix those findings first.`,
       )
-      for (const r of regressions.slice(0, 20)) {
-        console.error(`    ${r.file}  ${r.rule}: ${r.baseline} → ${r.current}`)
+      for (const x of regressions.slice(0, 20)) {
+        console.error(`    ${x.file}  ${x.rule}: ${x.baseline} → ${x.current}`)
       }
       console.error('Only after renaming or moving files: re-run with --allow-raise. Never to absorb a new finding.')
 
       return false
     }
   }
-  const baseline = buildReadableBaseline(current)
+  const baseline = buildReadableBaseline(current, r.description)
   writeFileSync(path, serializeReadableBaseline(baseline))
   console.log(
-    `[readable-ratchet] baseline written: ${baseline.total} finding(s) in ${Object.keys(baseline.files).length} file(s)`,
+    `[${r.label}] baseline written: ${baseline.total} finding(s) in ${Object.keys(baseline.files).length} file(s)`,
   )
 
   return true
+}
+
+/** Gate a `doctor --only lint --json` report against `readable-baseline.json`. */
+export function checkReadable(parsed: unknown, path: string = READABLE_BASELINE_PATH): boolean {
+  return checkPerFile(countReadableFindings(parsed), path, PYREON_RATCHET)
+}
+
+/** `--update` for `readable-baseline.json`. */
+export function updateReadable(
+  parsed: unknown,
+  opts: { allowRaise?: boolean; path?: string } = {},
+): boolean {
+  return updatePerFile(
+    countReadableFindings(parsed),
+    opts.path ?? READABLE_BASELINE_PATH,
+    PYREON_RATCHET,
+    opts.allowRaise ?? false,
+  )
 }
 
 async function main(): Promise<void> {
