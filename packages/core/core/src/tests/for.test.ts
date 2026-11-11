@@ -115,3 +115,14 @@ describe('For', () => {
     expect(node2.type).toBe(ForSymbol as unknown as string)
   })
 })
+
+describe('For — `by` is required (#4357)', () => {
+  it('throws a [Pyreon] error that names the fix when `by` is missing or not a function', () => {
+    const children = (n: number) => h('li', null, n)
+    expect(() => For({ each: [1], children } as never)).toThrow(
+      /\[Pyreon\] <For> requires a `by` prop.*got no `by`.*by=\{\(item\) => item\.id\}/,
+    )
+    expect(() => For({ each: [1], by: 'id', children } as never)).toThrow('(got string)')
+    expect(For({ each: [1], by: (n: number) => n, children }).props).toBeTruthy()
+  })
+})

@@ -74,7 +74,7 @@ import { keys, useListBooks, type Book } from './gen'
 
 function Books() {
   const query = useListBooks()
-  return <For each={() => query.data() ?? []}>{(b) => <li>{b.title}</li>}</For>
+  return <For each={() => query.data() ?? []} by={(b) => b.id}>{(b) => <li>{b.title}</li>}</For>
 }
 ```
 

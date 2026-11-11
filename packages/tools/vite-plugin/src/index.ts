@@ -37,7 +37,7 @@ import { dirname, join as pathJoin } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Visitor } from 'oxc-parser'
 import { parseOxc } from './oxc-parse'
-import { foldNodeEnvProduction, islandCallOffsets, renameCompatJsxAttributes } from './ast-rewrite'
+import { compatAttributeEdits, foldNodeEnvProduction, islandCallOffsets } from './ast-rewrite'
 import {
   detectPlain,
   type CollapsibleSite,
@@ -51,7 +51,8 @@ import {
   DEV_ERROR_PRINTER_SCRIPT_TAG,
   DEV_ERROR_PRINTER_SOURCE,
 } from './dev-error-printer'
-import { injectIslandNames } from './island-auto-name'
+import { injectIslandNames, islandNameEdits } from './island-auto-name'
+import { SourceMapChain, type TextEdit } from './source-map-chain'
 import type { CollapseResolver } from './rocketstyle-collapse'
 import { createFilter } from 'vite'
 import type { FilterPattern, Plugin, ViteDevServer } from 'vite'
@@ -1220,6 +1221,8 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
 
     async transform(code, id, transformOptions) {
       if (!moduleFilter(id)) return
+      // The text Vite handed us: the source map this hook returns maps to it.
+      const hookInput = code
       // True once the NODE_ENV fold below rewrote `code`: every later
       // "nothing to do" exit must then hand the folded code back, not `undefined`.
       let folded = false
@@ -1274,9 +1277,13 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
         // Lazy: `optimize-validators` imports `@pyreon/compiler/validate`
         // (the TypeScript compiler API). Loaded only when the option is on, so
         // the plugin's static graph never pulls `typescript`.
-        const { optimizeValidators } = await import('./optimize-validators')
-        const rewritten = optimizeValidators(code, id)
-        if (rewritten !== null) return { code: rewritten, map: null }
+        const { optimizeValidatorEdits } = await import('./optimize-validators')
+        const edits = optimizeValidatorEdits(code, id)
+        if (edits !== null) {
+          const chain = new SourceMapChain(code, id, hookInput)
+          chain.edit(edits)
+          return { code: chain.code, map: chain.map() }
+        }
       }
 
       // ── Compiled validator verdicts (opt-in, build-only) ───────────────
@@ -1341,8 +1348,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
         compat === 'svelte'
       ) {
         if (compat === 'react' || compat === 'preact') {
-          const transformed = renameCompatJsxAttributes(code, id)
-          if (transformed !== code) return { code: transformed, map: null }
+          const edits = compatAttributeEdits(code, id)
+          if (edits.length > 0) {
+            const chain = new SourceMapChain(code, id, hookInput)
+            chain.edit(edits)
+            return { code: chain.code, map: chain.map() }
+          }
         }
         return folded ? { code, map: null } : undefined
       }
@@ -1373,13 +1384,18 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // never fires → PR-S12's stated bug ("the new island silently fails to
       // hydrate until a manual reload") shipped UNFIXED. Single-character
       // fix: use the same constant `resolveId` returns.
+      // Every pass from here on records how it moved text, so the hook
+      // returns ONE map from Vite's input to its output (see
+      // `source-map-chain.ts`). The NODE_ENV fold above is same-length and
+      // needs no step.
+      const chain = new SourceMapChain(code, id, hookInput)
       if (islandsEnabled) {
         // Auto-name nameless const-bound island() calls BEFORE scanning —
         // the scan then always sees a literal `name:`, and the runtime
         // receives it (same derivation the prescan applies to raw disk
         // source, so registry and marker can never disagree).
-        const named = injectIslandNames(code, id, projectRoot)
-        if (named !== null) code = named
+        chain.edit(islandNameEdits(code, id, projectRoot))
+        code = chain.code
         const changed = scanIslandDeclarations(code, id, islandRegistry)
         if (changed && _devServer) {
           const mod = _devServer.moduleGraph.getModuleById(ISLANDS_REGISTRY_ID)
@@ -1395,9 +1411,8 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // compiler resolves bare tags via its own table — imports are
       // no-ops there). Conservative: skips if the name is already
       // imported OR shadowed by a local declaration.
-      const codeAfterAutoImport = jsxAutoImportEnabled
-        ? autoImportCanonicalPrimitives(code, jsxAutoImportMappings)
-        : code
+      if (jsxAutoImportEnabled) chain.edit(autoImportCanonicalPrimitives(code, jsxAutoImportMappings))
+      const codeAfterAutoImport = chain.code
 
       // ── Inline-Defer pre-pass ──────────────────────────────────────────
       // Rewrites `<Defer when={x}><Modal /></Defer>` into the explicit
@@ -1409,7 +1424,8 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // special-casing needed in `transformJSX`. See
       // `@pyreon/compiler/defer-inline` for the rewrite contract.
       const deferResult = transformDeferInline(codeAfterAutoImport, id)
-      const sourceForJsx = deferResult.changed ? deferResult.code : codeAfterAutoImport
+      if (deferResult.changed) chain.step(deferResult.code, deferResult.map)
+      const sourceForJsx = chain.code
       for (const w of deferResult.warnings) {
         this.warn(`${w.message} (${id}:${w.line}:${w.column})`)
       }
@@ -1573,7 +1589,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
         this.warn(`${w.message} (${id}:${w.line}:${w.column})`)
       }
 
-      let output = result.code
+      chain.step(result.code, result.map)
 
       // ── Sanitizer auto-registration ────────────────────────────────────
       // The default innerHTML sanitizer lives behind a tree-shakeable
@@ -1600,33 +1616,36 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
         // APPENDED, not prepended: an ESM import is hoisted wherever it
         // sits, and a prepend shifted every line the compiler's source map
         // describes by one — a frame then resolved to the WRONG statement.
-        output += `\nimport '@pyreon/runtime-dom/sanitizer';\n`
+        chain.append(`\nimport '@pyreon/runtime-dom/sanitizer';\n`)
       }
 
       // ── Build-only: append compiled validator verdicts (.tsx path) ──────
       // `verdictTail` is only non-empty when compileValidators is on AND
       // isBuild — so this is implicitly build-only. Appended after the JSX
       // compile so the top-level `const X` it references is already emitted.
-      if (verdictTail) output += verdictTail
+      if (verdictTail) chain.append(verdictTail)
 
       // ── Dev-only transforms ────────────────────────────────────────────
       if (!isBuild) {
-        output = injectHmr(output, id)
+        const hmr = hmrEdits(chain.code, id)
+        if (hmr) {
+          chain.edit(hmr.edits)
+          chain.append(hmr.footer)
+        }
         // Inject debug names + LPIH source locations for signal() calls
         // not rewritten by HMR. `id` is Vite's resolved module path —
         // the same path the runtime would have parsed from new Error().
-        output = injectSignalNames(output, id)
+        // The location is the SOURCE position (traced back through the
+        // compile), not the position in the compiled text.
+        chain.edit(
+          signalNameEdits(chain.code, id, (line, col) => chain.originalPosition(line, col)),
+        )
       }
 
-      // R12: surface the compiler's V3 source map so stack traces /
-      // breakpoints in Pyreon components resolve to the right source line
-      // (the JS backend now emits one; substitutions shift line counts, so
-      // `map: null` previously mislocated every frame app-wide). Exact in
-      // build; in dev the small extra HMR / signal-name injections aren't
-      // re-mapped (still vastly better than no map). The native backend
-      // emits no map yet (its own scoped follow-up) → `null`, unchanged
-      // behaviour for that path.
-      return { code: output, map: result.map ?? null }
+      // One map from Vite's input to the returned code, through every pass
+      // above: the compiler's own map (both backends emit one) composed with
+      // the passes before and after it.
+      return { code: chain.code, map: chain.map() }
     },
 
     // ── SSR dev middleware ───────────────────────────────────────────────────
@@ -2049,7 +2068,7 @@ export function buildLpihClientScript(intervalMs: number): string {
 
 /**
  * Regex that detects signal declarations (prefix + variable name).
- * The arguments are extracted via balanced-paren matching in `injectHmr`.
+ * The arguments are extracted via balanced-paren matching in `rewriteSignalEdits`.
  * A brace-depth check filters out matches inside functions/blocks — only
  * module-scope (depth 0) signals are rewritten for HMR state preservation.
  *
@@ -2118,16 +2137,15 @@ function braceDepthAt(code: string, pos: number): number {
   return depth
 }
 
-/** Rewrite module-scope `signal()` calls to `__hmr_signal()` for state preservation. */
-function rewriteSignals(code: string, moduleId: string): string {
+/**
+ * Rewrite module-scope `signal()` calls to `__hmr_signal()` for state
+ * preservation, as edits: only the callee is replaced
+ * (`signal(` → `__hmr_signal(id, "name", signal, `), so the arguments and the
+ * closing paren keep their mapped positions.
+ */
+function rewriteSignalEdits(code: string, moduleId: string): TextEdit[] {
   const escapedId = JSON.stringify(moduleId)
-  const matches: {
-    start: number
-    end: number
-    prefix: string
-    name: string
-    args: string
-  }[] = []
+  const edits: TextEdit[] = []
   let m: RegExpExecArray | null = SIGNAL_PREFIX_RE.exec(code)
   while (m !== null) {
     const argsStart = m.index + m[0].length
@@ -2138,26 +2156,18 @@ function rewriteSignals(code: string, moduleId: string): string {
     }
     // Only rewrite module-scope signals (brace depth 0).
     if (braceDepthAt(code, m.index) === 0) {
-      matches.push({
-        start: m.index,
-        end: argsStart + args.length + 1, // +1 for closing paren
-        prefix: m[1] ?? '',
-        name: m[2] ?? '',
-        args,
+      const prefix = m[1] ?? ''
+      const name = m[2] ?? ''
+      edits.push({
+        start: m.index + prefix.length,
+        end: argsStart,
+        text: `__hmr_signal(${escapedId}, ${JSON.stringify(name)}, signal, `,
       })
     }
     m = SIGNAL_PREFIX_RE.exec(code)
   }
   SIGNAL_PREFIX_RE.lastIndex = 0
-
-  // Replace in reverse to preserve offsets
-  let output = code
-  for (let i = matches.length - 1; i >= 0; i--) {
-    const { start, end, prefix, name, args } = matches[i] as (typeof matches)[number]
-    const replacement = `${prefix}__hmr_signal(${escapedId}, ${JSON.stringify(name)}, signal, ${args})`
-    output = output.slice(0, start) + replacement + output.slice(end)
-  }
-  return output
+  return edits
 }
 
 /** Check if an argument string contains a top-level comma (i.e. has multiple arguments). */
@@ -2209,7 +2219,11 @@ function hasMultipleArgs(args: string): boolean {
  * @param moduleId - the file path to embed in the injected `__sourceLocation`.
  *                   Vite passes the resolved module ID (absolute path).
  */
-function injectSignalNames(code: string, moduleId: string): string {
+function signalNameEdits(
+  code: string,
+  moduleId: string,
+  toSource: (line: number, col: number) => { line: number; col: number } | null = () => null,
+): TextEdit[] {
   // Pre-pass: mask string-literal, template-literal, and comment regions
   // so the regexes below don't false-fire on `effect(` inside docstrings,
   // help-text strings, JS-as-text test fixtures, or comments mentioning
@@ -2224,7 +2238,7 @@ function injectSignalNames(code: string, moduleId: string): string {
   // masking only blanks characters — a module without any of them cannot
   // match, so skip the full-source mask (and the AST confirmation below).
   if (!code.includes('signal(') && !code.includes('computed(') && !code.includes('effect(')) {
-    return code
+    return []
   }
   const masked = _maskStringsAndComments(code)
   // The mask cannot see JSX TEXT (`<Code>effect()</Code>` in a demo), and a
@@ -2305,25 +2319,25 @@ function injectSignalNames(code: string, moduleId: string): string {
   }
   reUnboundEffect.lastIndex = 0
 
-  if (matches.length === 0) return code
-
-  // Sort by descending start so back-to-front rewriting doesn't shift
-  // later indices (each splice leaves earlier offsets unchanged).
-  matches.sort((a, b) => b.start - a.start)
+  if (matches.length === 0) return []
 
   // Pre-compute line offsets ONCE — avoids O(N²) when many calls share
   // a file. Each lookup becomes O(log N) via binary search.
   const lineStarts = _computeLineStarts(code)
 
-  let output = code
-  for (let i = 0; i < matches.length; i++) {
-    const { start, end, name, args, matchIdx } = matches[i] as Match
-    const { line, col } = _offsetToLineCol(matchIdx, lineStarts)
+  // Each edit INSERTS after the call's arguments, so nothing before it moves.
+  const edits: TextEdit[] = []
+  for (const { end, name, matchIdx } of matches) {
+    // `code` is the COMPILED module; report where the call is in the source
+    // (`toSource` traces back through the transform's map), and fall back to
+    // the compiled position only when it does not map.
+    const here = _offsetToLineCol(matchIdx, lineStarts)
+    const { line, col } = toSource(here.line, here.col) ?? here
     const locLiteral = `__sourceLocation: { file: ${JSON.stringify(moduleId)}, line: ${line}, col: ${col} }`
     const inner = name !== null ? `name: ${JSON.stringify(name)}, ${locLiteral}` : locLiteral
-    output = `${output.slice(0, start)}${args}, { ${inner} }${output.slice(end)}`
+    edits.push({ start: end, end, text: `, { ${inner} }` })
   }
-  return output
+  return edits
 }
 
 /**
@@ -2555,7 +2569,11 @@ export function _offsetToLineCol(
   return { line: lo + 1, col: offset - lineStart + 1 }
 }
 
-function injectHmr(code: string, moduleId: string): string {
+/**
+ * The HMR rewrite of `code`: edits for module-scope signals plus a footer to
+ * append, or `null` when the module needs no HMR wiring.
+ */
+function hmrEdits(code: string, moduleId: string): { edits: TextEdit[]; footer: string } | null {
   // `includes` first — the regex needs the literal `signal` and scans line by line.
   const hasSignals = code.includes('signal') && SIGNAL_PREFIX_RE.test(code)
   SIGNAL_PREFIX_RE.lastIndex = 0
@@ -2563,9 +2581,9 @@ function injectHmr(code: string, moduleId: string): string {
   const hasComponentExport = EXPORT_COMPONENT_RE.test(code)
 
   // Only inject HMR if the module exports components or has module-scope signals
-  if (!hasComponentExport && !hasSignals) return code
+  if (!hasComponentExport && !hasSignals) return null
 
-  let output = hasSignals ? rewriteSignals(code, moduleId) : code
+  const edits = hasSignals ? rewriteSignalEdits(code, moduleId) : []
 
   // Build the HMR footer
   const escapedId = JSON.stringify(moduleId)
@@ -2615,9 +2633,7 @@ function injectHmr(code: string, moduleId: string): string {
   lines.push(`  });`)
   lines.push(`}`)
 
-  output = `${output}\n\n${lines.join('\n')}\n`
-
-  return output
+  return { edits, footer: `\n\n${lines.join('\n')}\n` }
 }
 
 // ── Compat attribute transforms ──────────────────────────────────────────────
@@ -2654,8 +2670,8 @@ function injectHmr(code: string, moduleId: string): string {
 function autoImportCanonicalPrimitives(
   code: string,
   mappings: Array<{ source: string; names: string[] }>,
-): string {
-  if (mappings.length === 0) return code
+): TextEdit[] {
+  if (mappings.length === 0) return []
   // Build a unified name → source map. First mapping wins on overlap.
   const nameToSource = new Map<string, string>()
   for (const { source, names } of mappings) {
@@ -2663,7 +2679,7 @@ function autoImportCanonicalPrimitives(
       if (!nameToSource.has(n)) nameToSource.set(n, source)
     }
   }
-  if (nameToSource.size === 0) return code
+  if (nameToSource.size === 0) return []
 
   // Mask out comments + string/template literals BEFORE scanning so
   // documentation containing literal `<Stack>` text inside JSDoc
@@ -2691,7 +2707,7 @@ function autoImportCanonicalPrimitives(
   const allNames = Array.from(nameToSource.keys())
   const nameAlt = allNames.join('|')
   const jsxTagRe = new RegExp(`<(${nameAlt})(?=[\\s/>])`, 'g')
-  if (!jsxTagRe.test(code)) return code
+  if (!jsxTagRe.test(code)) return []
   jsxTagRe.lastIndex = 0
   const maskedForUsage = _maskCommentsAndStrings(code)
   const used = new Set<string>()
@@ -2699,7 +2715,7 @@ function autoImportCanonicalPrimitives(
   while ((m = jsxTagRe.exec(maskedForUsage)) !== null) {
     used.add(m[1]!)
   }
-  if (used.size === 0) return code
+  if (used.size === 0) return []
   const masked = _maskComments(code)
 
   // Find names already imported (any source). The auto-import respects
@@ -2749,17 +2765,16 @@ function autoImportCanonicalPrimitives(
     if (!bySource.has(src)) bySource.set(src, [])
     bySource.get(src)!.push(name)
   }
-  if (bySource.size === 0) return code
+  if (bySource.size === 0) return []
 
-  // Apply per-source: extend existing import OR prepend new line.
-  // Use the MASKED code to find existing-import positions so JSDoc
-  // examples like `// import { X } from '@pyreon/primitives'` don't
-  // false-match. The splice itself targets the ORIGINAL `code` at the
-  // same position (mask preserves positions char-for-char).
-  let result = code
-  let workMask = masked
-  // Process sources in stable order (mapping order) so output is
-  // deterministic across runs.
+  // Per source: extend its existing import, or add a new import line at the
+  // top. Positions are the ORIGINAL source's (the edits are applied together
+  // through `SourceMapChain`, which maps them), so the comment-masked source
+  // locates existing imports directly. JSDoc examples such as
+  // `// import { X } from '@pyreon/primitives'` must not match.
+  // Sources are processed in mapping order so the output is deterministic.
+  const edits: TextEdit[] = []
+  const newLines: string[] = []
   const orderedSources = mappings.map((mp) => mp.source).filter((s, i, a) => a.indexOf(s) === i)
   for (const source of orderedSources) {
     const toInject = bySource.get(source)
@@ -2768,11 +2783,11 @@ function autoImportCanonicalPrimitives(
     const existingImportRe = new RegExp(
       `import\\s*\\{([^}]*)\\}\\s*from\\s*['"]${escapeRegex(source)}['"]`,
     )
-    const existing = existingImportRe.exec(workMask)
+    const existing = existingImportRe.exec(masked)
     if (existing) {
       // Reuse the matched specifier list from the original (not masked)
       // source so aliases like `Stack as Container` survive.
-      const realMatch = result.slice(existing.index, existing.index + existing[0].length)
+      const realMatch = code.slice(existing.index, existing.index + existing[0].length)
       const insideBraces = /\{([^}]*)\}/.exec(realMatch)?.[1] ?? ''
       const existingSpecifiers = insideBraces
         .split(',')
@@ -2790,24 +2805,18 @@ function autoImportCanonicalPrimitives(
         if (!existingLocalNames.has(n)) merged.push(n)
       }
       merged.sort()
-      const newImport = `import { ${merged.join(', ')} } from '${source}'`
-      const before = result.slice(0, existing.index)
-      const after = result.slice(existing.index + existing[0].length)
-      result = before + newImport + after
-      // Keep the mask aligned so subsequent passes (multiple sources)
-      // re-search correctly. Replace the matched region in the mask
-      // with spaces of the new-length so position-alignment continues
-      // to hold for the post-region of the mask.
-      const beforeM = workMask.slice(0, existing.index)
-      const afterM = workMask.slice(existing.index + existing[0].length)
-      workMask = beforeM + ' '.repeat(newImport.length) + afterM
+      edits.push({
+        start: existing.index,
+        end: existing.index + existing[0].length,
+        text: `import { ${merged.join(', ')} } from '${source}'`,
+      })
     } else {
-      const importLine = `import { ${toInject.join(', ')} } from '${source}'\n`
-      result = importLine + result
-      workMask = ' '.repeat(importLine.length) + workMask
+      // Each new line goes ABOVE the ones added before it.
+      newLines.unshift(`import { ${toInject.join(', ')} } from '${source}'\n`)
     }
   }
-  return result
+  if (newLines.length > 0) edits.push({ start: 0, end: 0, text: newLines.join('') })
+  return edits
 }
 
 /**
