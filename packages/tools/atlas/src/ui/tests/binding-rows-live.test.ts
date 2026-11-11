@@ -202,6 +202,15 @@ describe('restartPreview', () => {
     expect(names).toEqual([])
   })
 
+  it('theme: false re-mounts the component and keeps the theme provider (verify-browser)', () => {
+    const { m, el } = setup(catalog())
+    const cells = m.previewTheme()
+    const button = el.querySelector('button')
+    m.restartPreview({ theme: false })
+    expect(m.previewTheme()).toBe(cells)
+    expect(el.querySelector('button')).not.toBe(button)
+  })
+
   it('reports the theme cells in the scope once the preview has mounted', () => {
     const { m } = setup(catalog())
     m.previewTheme()

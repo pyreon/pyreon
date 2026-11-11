@@ -274,9 +274,12 @@ export interface WorkbenchModel {
    * Mount the selected component again, from scratch, with fresh live values.
    * Reactive coverage calls it when a recording starts: a coverage session
    * counts only nodes created inside it, so the preview that was already on
-   * screen would otherwise be invisible to the recording.
+   * screen would otherwise be invisible to the recording. The preview's theme
+   * provider re-mounts with it (so its theme can be named as a source) unless
+   * `theme: false` — `atlas verify-browser` re-mounts per scenario and keeps
+   * the provider out of each scenario's new-node diff.
    */
-  restartPreview: () => void
+  restartPreview: (options?: { theme?: boolean }) => void
   /**
    * The preview's theme and mode, as nodes re-created with each preview
    * restart — what `PreviewTheme` provides. A recording re-mounts the
@@ -940,9 +943,13 @@ export function createModel(
   const previewMounts = signal(0)
   // The scope is cleared NOW, not when the re-mount lands: until then it
   // would describe the mount the new recording cannot see.
-  const restartPreview = () => {
+  const themeEpoch = signal(0)
+  const restartPreview = (options?: { theme?: boolean }) => {
     scope = emptyScope(scope.component)
-    mountEpoch.set(mountEpoch.peek() + 1)
+    batch(() => {
+      mountEpoch.set(mountEpoch.peek() + 1)
+      if (options?.theme !== false) themeEpoch.set(themeEpoch.peek() + 1)
+    })
   }
   let themeCells: {
     epoch: number
@@ -950,7 +957,7 @@ export function createModel(
     mode: Computed<'light' | 'dark'>
   } | null = null
   const previewTheme = () => {
-    const epoch = mountEpoch()
+    const epoch = themeEpoch()
     if (themeCells && themeCells.epoch === epoch) return themeCells
     themeCells?.theme.dispose()
     themeCells?.mode.dispose()
