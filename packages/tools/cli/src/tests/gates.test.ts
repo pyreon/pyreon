@@ -188,7 +188,7 @@ describe('runDocClaimsGate', () => {
     // and the multiplatform agent guide), once the anchors stopped requiring
     // one exact phrase: the primitives page frontmatter said "21 primitives"
     // against a real 22 while the gate passed.
-    // +8 with the #4367 docs pass (55 once merged with the two primitive sites below): the lint VS Code README (+2 rule-count,
+    // +8 with the #4367 docs pass (55 with the two primitive sites above): the lint VS Code README (+2 rule-count,
     // +1 category-count; it said "56 rules"), the rx function count (+2; the
     // manifest's breakdown summed to 43 under a "42"), the table feature
     // count (+2; the guide said 16 of 17) and the document-primitives format
