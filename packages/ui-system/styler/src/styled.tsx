@@ -17,7 +17,7 @@
  */
 import type { ComponentFn, Ref, VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
-import { _rdNoteTarget, computed, isServer, renderEffect, runUntracked } from '@pyreon/reactivity'
+import { _rdLabelSubscribers, _rdNoteTarget, computed, isServer, renderEffect, runUntracked } from '@pyreon/reactivity'
 import { buildProps } from './forward'
 import { type Interpolation, normalizeCSS, resolve } from './resolve'
 import { isDynamic } from './shared'
@@ -567,6 +567,11 @@ const createStyledComponent = (
       const originalRef = finalProps.ref
       const refWrapper = (node: Element | null) => {
         el = node
+        // Dev: the class binding's first run could not see its element (it runs
+        // before the ref attaches, and the tag may be a component, as for every
+        // rocketstyle component). Name it now, through the computed it reads,
+        // so production holds no handle to the binding.
+        if (process.env.NODE_ENV !== 'production' && node) _rdLabelSubscribers(cssClass, 'class', node)
         if (originalRef) {
           // A valid `RefProp` is only ever a function or a `{ current }`
           // object, so the final `else` (truthy ref that is neither) is

@@ -49,4 +49,25 @@ describe('DynamicStyled class binding in the reactive graph', () => {
     color.set('rgb(4, 5, 6)')
     expect(node()?.fires).toBe(2)
   })
+
+  it('names the element when the styled tag is a component (the rocketstyle shape), once its ref attaches', () => {
+    activateReactiveDevtools()
+    // A component tag: the binding's first run happens before the ref attaches,
+    // and `finalTag` is a function, so only the attached element can name it.
+    const Inner = (p: { ref?: (el: Element | null) => void; class?: string; children?: unknown }) =>
+      h('button', { ref: p.ref, class: p.class }, p.children as never)
+    const Btn = styled(Inner as never)`
+      color: ${(p: { $element?: { color?: string } }) => p.$element?.color};
+    ` as unknown as (props: Record<string, unknown>) => ReturnType<typeof h>
+    const color = signal('rgb(1, 2, 3)', { name: 'color' })
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    mount(h(Btn as never, { $element: () => ({ color: color() }) }, 'go'), root)
+
+    expect(root.querySelector('button')).not.toBeNull()
+    const node = () => getReactiveGraph().nodes.find((n) => n.binding === 'class')
+    expect(node()?.name).toBe('class on <button>')
+    color.set('rgb(4, 5, 6)')
+    expect(node()?.fires).toBe(2)
+  })
 })
