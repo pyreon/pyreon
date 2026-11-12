@@ -29,6 +29,7 @@ export type {
   ReactiveFire,
   ReactiveGraph,
   ReactiveNode,
+  OwnedReactiveNode,
   ReactiveNodeKind,
   SourceLocation,
   UpdateCause,
@@ -36,6 +37,8 @@ export type {
 export {
   __resetReactiveDevtoolsForTesting,
   _rdNodeId,
+  _rdPreview,
+  _rdScopeNodes,
   activateReactiveDevtools,
   deactivateReactiveDevtools,
   formatUpdateCause,

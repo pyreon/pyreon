@@ -130,7 +130,10 @@ const ALLOWED: Record<string, readonly (readonly [string, string])[]> = {
     ["typeof lit.value === 'object' ? JSON.stringify(lit.value)", `${JSON_DATA} (a query-param value, held as a literal IR string)`],
     ['body = JSON.stringify(literal.value)', `${JSON_DATA} (the request body the web's \`json:\` option sends)`],
   ],
-  'fundamentals/url-state/src/native-plugin/plugin.ts': [['useUrlState(${JSON.stringify(key)}, …)', DIAGNOSTIC]],
+  'fundamentals/url-state/src/native-plugin/plugin.ts': [
+    ['useUrlState(${JSON.stringify(key)}, …)', DIAGNOSTIC],
+    ['useUrlState(${JSON.stringify(key)}, …, options)', DIAGNOSTIC],
+  ],
 }
 
 function scan(): { unlisted: string[]; unused: string[] } {

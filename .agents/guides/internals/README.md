@@ -6,6 +6,8 @@ Plain Mode (the `'use plain'` dialect) has its own file: [plain-mode.md](./plain
 
 Two backends: a Rust native binary (napi-rs, 3.7–8.9× faster) and a JS fallback used per call when native throws. Any emit change lands in both in the same PR. `native-equivalence.test.ts` checks the curated JavaScript output with a parser and compares native bytes when the binary is installed; `fuzz-equivalence.test.ts` independently checks generated JavaScript in all compilation modes. JavaScript syntax, option and lens contracts run without the optional binary. Backend agreement alone cannot prove valid output.
 
+Both backends return the same V3 source map. The JS backend builds it with magic-string (`hires: 'boundary'`: a segment at every word start and every other character); the native backend encodes the identical `mappings` from its own edit list and preamble (`native/src/sourcemap.rs`, also used by the plain pre-pass), and `transformJSX` wraps them in a magic-string `SourceMap`. A Plain Mode pre-pass map is composed underneath, so the map always describes the caller's text. Any change to how edits or the preamble are assembled must keep the maps equal; the equivalence suites compare `mappings`.
+
 ### Template emission
 
 - `shouldWrap` wraps only a non-pure call, a props access or a signal reference. Known pure-static calls stay bare.
@@ -77,7 +79,9 @@ Live Program Inlay Hints (LPIH) is the runtime companion: fire and subscriber co
   - Health: `describeReactiveGraph` summary and insights (`orphan-signal`, `high-fanout`, `deep-chain`).
   - Activity: `getReactiveFires` plus the cause chain of the latest fire.
   - Inspect: a DOM→signal picker (`$p.pick()`). `_bindText` tags `textNode → _rdNodeId(source)` in a dev-only `WeakMap`; `nodesForElement(el)` (`@pyreon/runtime-dom`) reads it. Text bindings only.
+- Inspector reads, computed on request (#4446): `getComponentProps(id)` previews the live props object through `_rdPreview`, the graph's bounded preview, reading without tracking. `reactive.nodesForComponent(id)` reads `_rdScopeNodes(scope)`: `_rdRegister` records, per creating `EffectScope`, the ids of the nodes made while it was current, through a reader `scope.ts` installs in dev, since `reactive-devtools.ts` stays import-free. The registry keeps `id → { scope, props }` (`_devInspectable`, set right after `registerComponent`) and `unregisterComponent` deletes it, so nothing outlives the component. Locked by `devtools-inspect.test.tsx` (including a GC retention check), its `.browser` twin and `reactive-devtools-scope-nodes.test.ts`.
 - Tests: `binding-registry.test.ts`, `reactive-overlay.test.ts`, `e2e/reactive-overlay.spec.ts`.
+- Registration runs on BOTH walks. `hydrateComponent` takes its id and parent from `_devComponentIdentity` (`mount.ts`), which shares `mountComponent`'s owner-chain map, so a component mounted later under a hydrated one gets the right parent; `el` is the first element in the range the component claimed; its cleanup unregisters. Async components register on both paths. Locked by `hydrate-devtools-register.test.tsx` and its `.browser` twin.
 
 ### Dev error printer (`pyreon({ devErrorPrinter })`)
 
@@ -113,6 +117,16 @@ Framework packages emit counters via `globalThis.__pyreon_count__?.('name')` wit
 - `.trigger()` re-runs subscribers without a value change (signals compare with `Object.is`). Use it only for an owned mutable value mutated in place; prefer `set(newObject)`. `wrapSignal` forwards it to the base.
 - Direct subscribers: inline slot `_d1`, promoted to a `Set` on the second. Tracking subscribers: two inline (`_s1`, then a function in `_s`), promoted to a `Set` on the third. Never read `_s` as a `Set`; use `_hasSubscribers` / `_tierCount`.
 - A compiled slot with a static value mounts via `mountChildAsUnit` (effect-only cleanups, leaves with the clone). An accessor slot keeps a full remover.
+
+### Contract suite (`packages/core/reactivity/src/tests/contract/`)
+
+The contract suite is the definition of `@pyreon/reactivity`'s observable behaviour. It uses only the public API (plus the exports the core keeps as contracts: `_v`, `.direct`, `_hasSubscribers`, `_suspend*`/`_resume*`, `_bind`, `renderEffect`, `_noopDispose`, `setSnapshotCapture`). Each test is named after a guarantee id (C1–C25, S1) from the core redesign's contract table. A change to the core is correct when this suite passes, whatever the internals look like.
+
+- One file per group: `effects-and-batch`, `derivation`, `direct-and-subscribers`, `errors`, `ownership-and-cleanup`, `dependencies`, `selector`.
+- `accidental/` pins behaviour that is a property of today's implementation, not a promise (evaluation counts below an unchanged node, eager `{ equals }`, run order within a flush, nested first-run re-entrancy). Each assertion carries the value it becomes under the planned core; update those deliberately, never to make a change pass.
+- `bug-regressions.test.ts` holds the bugs the fuzz found (a lost update between effect passes, an extra run of the reader that pulled a changed computed, an inner effect leaked by a re-entered run). A newly found bug goes there as `test.fails` with the correct assertion until it is fixed.
+- `differential-fuzz.test.ts` checks random graphs and operation sequences against a from-scratch reference model. A failing seed prints a shrunk reproduction and a replay command. Knobs: `REACTIVITY_FUZZ_CASES`, `REACTIVITY_FUZZ_STEPS`, `REACTIVITY_FUZZ_SEED`, `REACTIVITY_FUZZ_ASSERT_WASTED=1` (zero wasted evaluations), `REACTIVITY_FUZZ_STRICT=0` (count the bug metrics instead of asserting them). `--reporter=verbose` prints the metric line.
+- A new guarantee gets a contract test, plus a fuzz operation when the generator does not reach it. Tests that read internals (`_s1`, `_dirty`, `_d1`, …) protect the current storage, not the contract. Do not use them to define behaviour.
 
 ### Batch (`batch.ts`)
 

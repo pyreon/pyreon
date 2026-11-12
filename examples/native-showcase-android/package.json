@@ -1,0 +1,16 @@
+{
+  "name": "@pyreon/example-native-showcase-android",
+  "version": "0.0.0",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — Android host for the Today showcase. Compiles ../native-showcase/src/TodayApp.tsx to Jetpack Compose.",
+  "license": "MIT",
+  "scripts": {
+    "build": "./scripts/build.sh",
+    "lint": "echo '[native-showcase-android] no TS lint surface; skipping'",
+    "test": "echo '[native-showcase-android] device tests run in the device lane (see README)'",
+    "typecheck": "echo '[native-showcase-android] no TS typecheck surface'"
+  },
+  "devDependencies": {
+    "@pyreon/native-cli": "workspace:*"
+  }
+}

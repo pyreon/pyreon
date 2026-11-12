@@ -2492,6 +2492,27 @@ console.log(JSON.stringify(src.slice(offset - 40, offset + 40)))`,
       related: 'Router guards run on the initial navigation (Vue Router model)',
     }),
   },
+  {
+    // core `For()` throws this at mount; the compiler's `for-without-by`
+    // warning ("<For> without a \"by\" prop throws when it mounts") says the same.
+    pattern: /<For> requires a `by` prop|<For> without a "by" prop throws when it mounts/,
+    diagnose: () => ({
+      cause:
+        '<For> keys its rows with the `by` function, and one was not given (or it is not a function). `key` does not stand in for it: JSX keeps `key` for the element itself, so <For> never sees it.',
+      fix: 'Add `by`, a function returning a stable, unique key per item: `by={(item) => item.id}`. For a list of unique strings or numbers use `by={(item) => item}`.',
+      fixCode: '<For each={items} by={(item) => item.id}>{(item) => <li>{item.name}</li>}</For>',
+    }),
+  },
+  {
+    // jsx.ts `signal-method-reference` warning: `onInput={sig.set}` hands the
+    // method to the runtime without its signal, so `this` is gone when it runs.
+    pattern: /"([^"\n]+)" is passed by reference, so it runs without its signal and throws/,
+    diagnose: (m) => ({
+      cause: `\`${m[1]}\` is a signal method (set, update, peek, subscribe) passed by reference. A signal is a function with methods on it that read \`this\`; once the method is detached and called by the runtime as a plain handler, \`this\` is undefined and it throws.`,
+      fix: 'Pass an arrow that calls the method on the signal: `onInput={(v) => sig.set(v)}`. For a handler that ignores the event, `onClick={() => sig.set(0)}`.',
+      fixCode: `${m[1]?.replace(/\.[a-z]+$/i, '') ?? 'sig'}.set(value)`,
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

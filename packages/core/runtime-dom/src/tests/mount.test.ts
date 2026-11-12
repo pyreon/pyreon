@@ -22,6 +22,7 @@ import {
 } from '@pyreon/core'
 import { cell, signal } from '@pyreon/reactivity'
 import { query, queryOptional } from '@pyreon/test-utils'
+import pkg from '../../package.json' with { type: 'json' }
 import { installDevTools, registerComponent, unregisterComponent } from '../devtools'
 import {
   KeepAlive as _KeepAlive,
@@ -2711,7 +2712,8 @@ describe('DevTools', () => {
       unknown
     >
     expect(devtools).not.toBeNull()
-    expect(devtools.version).toBe('0.1.0')
+    // The real package version (#4445), not the old hard-coded '0.1.0'.
+    expect(devtools.version).toBe(pkg.version)
   })
 
   test('registerComponent and getAllComponents', async () => {

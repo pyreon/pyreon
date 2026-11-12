@@ -25,6 +25,7 @@ type NativeTransform = (
   usesTemplates?: boolean | null
   warnings: Array<{ message: string; line: number; column: number; code: string }>
   reactivityLens?: ReactivitySpan[] | null
+  mapMappings?: string | null
 }
 
 let nativeTransform: NativeTransform | null = null
@@ -51,12 +52,23 @@ function assertJavaScript(code: string, filename = 'test.tsx') {
   expect(parseSync(filename, code).errors, code).toEqual([])
 }
 
+/**
+ * The source map is part of the backend contract (#4418): the native binary
+ * returns its `mappings` string and the JS wrapper builds the rest of the map
+ * from fixed inputs, so equal `mappings` means equal maps. Checked wherever
+ * the emitted code is.
+ */
+function expectSameMap(rs: { mapMappings?: string | null }, js: { map?: { mappings: string } }) {
+  expect(rs.mapMappings ?? undefined).toBe(js.map?.mappings)
+}
+
 function compare(input: string, filename = 'test.tsx') {
   const js = transformJSX_JS(input, filename)
   assertJavaScript(js.code)
   if (!nativeTransform) return
   const rs = nativeTransform(input, filename, false, null)
   expect(rs.code).toBe(js.code)
+  expectSameMap(rs, js)
 }
 
 function compareWithSignals(input: string, knownSignals: string[]) {
@@ -65,6 +77,7 @@ function compareWithSignals(input: string, knownSignals: string[]) {
   if (!nativeTransform) return
   const rs = nativeTransform(input, 'test.tsx', false, knownSignals)
   expect(rs.code).toBe(js.code)
+  expectSameMap(rs, js)
 }
 
 function compareSsr(input: string) {
@@ -73,6 +86,7 @@ function compareSsr(input: string) {
   if (!nativeTransform) return
   const rs = nativeTransform(input, 'test.tsx', true, null)
   expect(rs.code).toBe(js.code)
+  expectSameMap(rs, js)
 }
 
 // Compile-to-string SSR fast path (`ssrTemplate`) parity. The native backend
@@ -84,6 +98,7 @@ function compareSsrTemplate(input: string) {
   if (!nativeTransform) return
   const rs = nativeTransform(input, 'test.tsx', true, null, false, undefined, true)
   expect(rs.code).toBe(js.code)
+  expectSameMap(rs, js)
 }
 
 // `templatizeComponentChildren` parity — absorbing COMPONENT children into the
@@ -95,6 +110,7 @@ function compareTplComponents(input: string) {
   if (!nativeTransform) return
   const rs = nativeTransform(input, 'test.tsx', false, null, false, undefined, false, true)
   expect(rs.code).toBe(js.code)
+  expectSameMap(rs, js)
 }
 
 function compareTplComponentsWithSignals(input: string, knownSignals: string[]) {
@@ -106,6 +122,7 @@ function compareTplComponentsWithSignals(input: string, knownSignals: string[]) 
   if (!nativeTransform) return
   const rs = nativeTransform(input, 'test.tsx', false, knownSignals, false, undefined, false, true)
   expect(rs.code).toBe(js.code)
+  expectSameMap(rs, js)
 }
 
 // Reactivity-lens cross-backend gate (Phase 3). Asserts the Rust binary
@@ -139,6 +156,7 @@ function compareLens(input: string, filename = 'test.tsx') {
   const rsOn = nativeTransform(input, filename, false, null, true)
   expect(rsOn.code).toBe(rsOff.code)
   expect(rsOn.code).toBe(jsOn.code)
+  expectSameMap(rsOn, jsOn)
   expect(rsOff.reactivityLens == null).toBe(true)
   expect(canon(rsOn.reactivityLens)).toEqual(j)
 }
@@ -2658,6 +2676,7 @@ describe('templatizeComponentChildren syntax and optional native parity', () => 
     if (!nativeTransform) return
     const rs = nativeTransform(src, 'test.tsx', true, null, false, undefined, false, true)
     expect(rs.code).toBe(js.code)
+  expectSameMap(rs, js)
     // …and identical to the same source compiled with the option OFF.
     expect(rs.code).toBe(transformJSX_JS(src, 'test.tsx', { ssr: true }).code)
   })

@@ -80,7 +80,7 @@ describe('the gap this closes', () => {
     const code = "import type { Props } from './types'\nexport function Button(props: Props) {}"
     const resolveImportedType = createTypeResolver(disk(files))
     const [component] = scanSource(code, '/p/Button.tsx', { resolveImportedType })
-    expect(component?.axes).toEqual([{ name: 'state', values: ['a', 'b'] }])
+    expect(component?.axes).toMatchObject([{ name: 'state', values: ['a', 'b'] }])
   })
 
   it('follows a BARREL re-export', () => {

@@ -1051,6 +1051,10 @@ Shows a fallback while async children resolve.
 </Suspense>
 ```
 
+#### `SuspenseList`
+
+Accepted so Solid code that uses it runs: its children render, and each `<Suspense>` inside shows its fallback until its own data arrives. The reveal coordination (`revealOrder`, `tail`) is not implemented; passing either warns once in development.
+
 #### `ErrorBoundary`
 
 Catches errors in its subtree and renders a fallback.
@@ -1153,7 +1157,7 @@ Real shadow-DOM / SVG-namespace rendering is verified in the real-Chromium `soli
 
 ### Rendering
 
-These correspond to Solid's `solid-js/web` entry point. `@pyreon/solid-compat` exposes them from the **main entry** -- there is no `/web` subpath, so import them directly from `@pyreon/solid-compat`.
+These correspond to Solid's `solid-js/web` entry point. `@pyreon/solid-compat` exposes them from the **main entry**; in compat mode `pyreon({ compat: 'solid' })` aliases `solid-js/web` (and `solid-js/store`) to it, so existing imports keep working.
 
 #### `render`
 

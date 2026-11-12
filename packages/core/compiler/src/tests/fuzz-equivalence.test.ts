@@ -41,7 +41,7 @@ type NativeTransform = (
   collapse?: unknown,
   ssrTemplate?: boolean,
   templatizeComponentChildren?: boolean,
-) => { code: string }
+) => { code: string; mapMappings?: string | null }
 
 let nativeTransform: NativeTransform | null = null
 try {
@@ -439,14 +439,16 @@ describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
     for (let seed = 1; seed <= SEEDS; seed++) {
       const src = genComponent(seed)
       for (const { label, ssr, ssrTemplate, templatizeComponentChildren: tcc } of MODES) {
-        const js = transformJSX_JS(src, 'fuzz.tsx', {
+        const jsResult = transformJSX_JS(src, 'fuzz.tsx', {
           ssr,
           ssrTemplate,
           templatizeComponentChildren: tcc === true,
-        }).code
+        })
+        const js = jsResult.code
         let rs: string
+        let rsMappings: string | undefined
         try {
-          rs = nativeTransform!(
+          const rsResult = nativeTransform!(
             src,
             'fuzz.tsx',
             ssr,
@@ -455,7 +457,9 @@ describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
             undefined,
             ssrTemplate,
             tcc === true,
-          ).code
+          )
+          rs = rsResult.code
+          rsMappings = rsResult.mapMappings ?? undefined
         } catch (err) {
           // A native PANIC must name its seed — a bare thrown error from the
           // loop aborts the sweep with no way to reproduce it.
@@ -471,6 +475,13 @@ describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
             if (!firstDivergence) {
               firstDivergence = `\n── ${which} output does not parse (seed=${seed} mode=${label}) ──\n${src}\n── output ──\n${out}`
             }
+          }
+        }
+        // The source map is part of the contract (#4418): same `mappings`.
+        if (js === rs && rsMappings !== jsResult.map?.mappings) {
+          failures.push(`seed=${seed} mode=${label} (source map differs)`)
+          if (!firstDivergence) {
+            firstDivergence = `\n── source map differs (seed=${seed} mode=${label}) ──\n${src}\n── JS ──\n${jsResult.map?.mappings}\n── native ──\n${rsMappings}`
           }
         }
         if (js !== rs) {

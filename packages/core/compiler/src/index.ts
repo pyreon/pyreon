@@ -27,6 +27,7 @@ export {
 export type { CollapsibleSite, StaticChild, StaticChildNode } from './jsx'
 export type { PlainOptions, PlainTransformResult } from './plain'
 export { detectPlain, transformPlain } from './plain'
+export { composeMappings } from './source-map-compose'
 export type {
   MigrateToPlainResult,
   PlainDeclineCode,

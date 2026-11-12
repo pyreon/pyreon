@@ -23,7 +23,6 @@ import {
   provide,
   Suspense,
   createContext as pyreonCreateContext,
-  h as pyreonH,
   useContext,
 } from '@pyreon/core'
 import { batch, signal } from '@pyreon/reactivity'
@@ -33,10 +32,9 @@ import { toCompatComponent } from './jsx-runtime'
 // ─── Core JSX ────────────────────────────────────────────────────────────────
 
 /** Preact's hyperscript function — maps directly to Pyreon's h() */
-export { pyreonH as h }
-
-/** Alias: Preact also exports createElement */
-export const createElement = pyreonH
+// `h` / `createElement` route through the compat JSX runtime so a component
+// gets the hook wrapper (core's `h` skipped it: hooks threw outside render).
+export { createElement as h, createElement } from './jsx-runtime'
 
 export { Fragment }
 

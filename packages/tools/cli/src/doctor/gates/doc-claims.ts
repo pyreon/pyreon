@@ -173,6 +173,18 @@ const countDetectorCodes = (repoRoot: string): number => {
   return (m[1].match(/\|\s*'[a-z0-9-]+'/g) ?? []).length
 }
 
+// Same text-parse for the React detector's `ReactDiagnosticCode` union. Every
+// member is emitted by a detector and has a pre-filter trigger (locked by the
+// compiler's `react-prefilter-contract.test.ts`), so the union IS the count.
+const countReactDetectorCodes = (repoRoot: string): number => {
+  const file = join(repoRoot, 'packages/core/compiler/src/react-intercept.ts')
+  if (!existsSync(file)) return 0
+  const src = readFileSync(file, 'utf8')
+  const m = src.match(/export type ReactDiagnosticCode =\n((?:\s*\|\s*'[a-z0-9-]+'\n?)+)/)
+  if (!m?.[1]) return 0
+  return (m[1].match(/\|\s*'[a-z0-9-]+'/g) ?? []).length
+}
+
 // `@pyreon/document`'s `OutputFormat` union is the single source of truth
 // for "how many output formats" — every renderer is keyed by one of its
 // literals. READMEs repeat the count in prose; gate them all.
@@ -529,6 +541,25 @@ const checks: ClaimCheck[] = [
         file: 'AGENTS.md',
         pattern:
           /catches "using Pyreon wrong" mistakes — (\d+) detector codes today/,
+      },
+      {
+        file: 'packages/core/compiler/src/manifest.ts',
+        pattern: /"using Pyreon wrong" mistakes — (\d+) codes today/,
+      },
+      {
+        file: 'packages/core/compiler/README.md',
+        pattern: /PyreonDiagnostic\[\] — (\d+) codes today/,
+      },
+    ],
+  },
+  {
+    name: 'React detector code count',
+    codeId: 'react-detector-code-count',
+    actual: countReactDetectorCodes,
+    claims: [
+      {
+        file: 'packages/core/compiler/src/manifest.ts',
+        pattern: /"coming from React" mistakes — (\d+) codes today/,
       },
     ],
   },
