@@ -20,6 +20,7 @@
  * @module
  */
 import { analyzeValidate, emitSchemaSource } from '@pyreon/compiler/validate'
+import { applyEdits, type TextEdit } from './source-map-chain'
 
 /** Collision-proof alias prefix for the injected mini imports (`$` keeps it a valid id). */
 const ALIAS_PREFIX = '_pv$'
@@ -31,6 +32,16 @@ const ALIAS_PREFIX = '_pv$'
  * untouched in that case.
  */
 export function optimizeValidators(code: string, id: string): string | null {
+  const edits = optimizeValidatorEdits(code, id)
+  return edits === null ? null : applyEdits(code, edits).toString()
+}
+
+/**
+ * The rewrite `optimizeValidators` makes, as positioned edits on `code` (the
+ * schema initializers replaced, the lean imports inserted at the top), so the
+ * transform hook can return a source map for it. `null` when nothing changes.
+ */
+export function optimizeValidatorEdits(code: string, id: string): TextEdit[] | null {
   // Cheap pre-filter: no `s.` → no chainable schema construction to rewrite.
   if (!code.includes('s.')) return null
 
@@ -60,11 +71,6 @@ export function optimizeValidators(code: string, id: string): string | null {
   }
   if (edits.length === 0) return null
 
-  // Apply right-to-left so earlier offsets stay valid as we splice.
-  edits.sort((a, b) => b.start - a.start)
-  let out = code
-  for (const e of edits) out = out.slice(0, e.start) + e.lean + out.slice(e.end)
-
   const specifiers = [...usedImports]
     .sort()
     .map((name) => `${name} as ${ALIAS_PREFIX}${name}`)
@@ -72,9 +78,15 @@ export function optimizeValidators(code: string, id: string): string | null {
   // `mini` ships without the runtime JIT (`@pyreon/validate/jit`); the
   // chainable source this replaces had it, so keep it — the rewrite changes
   // the bundle, never the validator's speed.
-  return (
-    `import { ${specifiers} } from '@pyreon/validate/mini';\n` +
-    `import { enableJit as ${ALIAS_PREFIX}enableJit } from '@pyreon/validate/jit';\n` +
-    `${ALIAS_PREFIX}enableJit();\n${out}`
-  )
+  return [
+    {
+      start: 0,
+      end: 0,
+      text:
+        `import { ${specifiers} } from '@pyreon/validate/mini';\n` +
+        `import { enableJit as ${ALIAS_PREFIX}enableJit } from '@pyreon/validate/jit';\n` +
+        `${ALIAS_PREFIX}enableJit();\n`,
+    },
+    ...edits.map((e) => ({ start: e.start, end: e.end, text: e.lean })),
+  ]
 }

@@ -47,6 +47,12 @@ description: "Common build pipeline mistakes in Pyreon and how to fix them."
 
 ---
 
+### A transform step that moves text without a map, inside a hook that returns one map
+
+(#4418): the native compiler backend returned no map, and `@pyreon/vite-plugin`'s `transform` returned only the compiler's map although it also ran the JSX auto-import (adds an import line), the inline-`<Defer>` rewrite (removes one), island names, the compat rename, the validator rewrite and, in dev, the HMR signal rewrite and signal debug names. Vite composes maps between PLUGINS, not within one hook, so each unmapped step shifted every frame after it (the overlay caret landed 1–2 lines low) and `__sourceLocation` reported compiled lines. **Rule: every pass in the hook goes through `SourceMapChain` (`vite-plugin/src/source-map-chain.ts`) as positioned edits (`edit`), a step with its own map (`step`), or an end-of-module `append`; a step that changes text without a map makes `map()` return `null`, never a map that lies. A pass that reports a position from compiled text traces it back with `originalPosition`. A compiler emit change keeps the native `mappings` (`native/src/sourcemap.rs`) identical to magic-string's `hires: 'boundary'` map; `native-equivalence` / `fuzz-equivalence` / `plain-native-equivalence` compare them.** Residual: Vite's own JSX transform computes dev `jsxDEV` `lineNumber` from the plugin's output. Tests: `compiler/src/tests/sourcemap-positions.test.ts`, `vite-plugin/src/tests/source-map-chain.test.ts` (includes a real Vite dev SSR `ssrFixStacktrace` check).
+
+---
+
 ### Rewriting SOURCE with raw text (`replaceAll` / `replace(/re/g)`) instead of by AST node range
 
 (the vite-plugin NODE_ENV fold, #3791): the production-SSR fold did `code.replaceAll('process.env.NODE_ENV', '(      "production")')` on `@pyreon/*` files, so the same characters inside a string, comment, regex literal or template text were rewritten too. Zero's own `define: { "process.env.NODE_ENV": … }` key became `"(      "production")"`, invalid JS that failed the nested SSR build. A text match cannot tell an expression from a quoted spelling of it; the compat `className`/`htmlFor` rename had the same flaw and rewrote `const className = …`. **Fix: parse, find the real node, replace by `[start,end)`** (`@pyreon/vite-plugin` `ast-rewrite.ts`), skip write targets, keep length/line count so no source map is needed, gate the parse on a cheap substring check, and on a parse failure leave the code untouched rather than falling back to text. **Rule: any transform that edits source is positioned by the parser; test quoted keys, strings, comments, regex, template text vs interpolations, every read position and write targets, and re-parse the output.** Reference: `packages/tools/vite-plugin/src/ast-rewrite.ts` + `tests/ast-rewrite.test.ts` (bisect-verified).
@@ -243,6 +249,12 @@ The template `attrSetter` (`compiler/src/jsx.ts`, mirrored by `native/src/lib.rs
 ### HTML-string DOM construction is SVG-blind unless the string is rooted at `<svg>`.
 
 `template.innerHTML` parses a bare `<g>`/`<path>`/`<rect>` root in the HTML namespace, producing inert `HTMLUnknownElement`s. `_tpl` (`runtime-dom/src/template.ts`, `isSvgRooted`) parses SVG-rooted strings inside an `<svg>` wrapper and moves the children into the cached template. SVG `className` is a read-only `SVGAnimatedString`, so assigning it throws; the compiler emits `_setClass` (via `setAttribute`) in both backends. happy-dom implements neither behaviour, and `locator('svg path')` matches HTML-namespaced paths too. Assert `instanceof SVGPathElement`, `namespaceURI === 'http://www.w3.org/2000/svg'` and `getTotalLength() > 0` in real Chromium. Locks: `runtime-dom/src/tests/tpl-svg-namespace.browser.test.tsx`, `compiler-integration.test.tsx`, `e2e/app-showcase-flow.spec.ts`.
+
+---
+
+### Matching a DOM element to a tag with `tagName.toLowerCase()`.
+
+The HTML parser case-adjusts SVG element names (`linearGradient`, `clipPath`, `foreignObject`, `textPath`, `feGaussianBlur` and the rest of the spec's list), so a lowercased SVG tag never equals the vnode type that produced it, and every such element was reported as a hydration mismatch and re-mounted. Compare `el.localName === tag`: it is the lowercase name for HTML elements and the case-preserved name for SVG and MathML. Compare two DOM elements by `tagName` on both sides. Applies to `hydrateElement` and the row-plan replay (`hydration-plan.ts`). Locks: `runtime-dom/src/tests/hydrate-svg-camelcase.browser.test.tsx` (all 37 adjusted names, the h() path, compiled `_tpl`, `<For>` row replay), `hydrate-svg-camelcase.test.tsx` (real compiler and SSR).
 
 ---
 

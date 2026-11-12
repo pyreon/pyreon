@@ -254,6 +254,61 @@ let _nextId = 1
 // the underlying node is GC'd, so this Map never retains a dead node.
 const _byId = new Map<number, NodeRec>()
 
+// ── Ownership: which scope created a node ─────────────────────────────────
+// Scope (a component's `EffectScope` during its setup and onMount) → ids of
+// the nodes created while it was the current scope. Powers "what does this
+// component own?" in devtools. A WeakMap, so an entry goes with its scope;
+// it holds ids only (never nodes), and ids whose node was pruned are dropped
+// on read. The current scope is read through a reader `scope.ts` installs in
+// dev, which keeps this module import-free (see `SubscriberHostLike`).
+const _scopeNodes = /* @__PURE__ */ new WeakMap<object, number[]>()
+let _ownerReader: (() => object | null) | null = null
+
+/**
+ * Install the current-scope reader (`getCurrentScope`). Called once by
+ * `scope.ts` in dev.
+ *
+ * @internal
+ */
+export function _rdSetOwnerReader(read: () => object | null): void {
+  _ownerReader = read
+}
+
+/** A reactive node a scope owns, as `_rdScopeNodes` reports it. */
+export interface OwnedReactiveNode {
+  id: number
+  name: string
+  kind: ReactiveNodeKind
+}
+
+/**
+ * The live signals, computeds and effects created while `scope` was the
+ * current scope (for a component: during its setup and its onMount hooks), in
+ * creation order. Compiler-emitted DOM bindings are not graph nodes, so they
+ * are not listed. Returns `[]` for an unknown scope and in production.
+ *
+ * @internal
+ */
+export function _rdScopeNodes(scope: object): OwnedReactiveNode[] {
+  // Body inside the gate, not behind an early return: production then drops
+  // the WeakMap and the registry reads along with it.
+  if (process.env.NODE_ENV !== 'production') {
+    const ids = _scopeNodes.get(scope)
+    if (ids === undefined) return []
+    const out: OwnedReactiveNode[] = []
+    let live = 0
+    for (const id of ids) {
+      const rec = _byId.get(id)
+      if (rec === undefined) continue
+      ids[live++] = id // compact in place: pruned ids leave the list
+      out.push({ id, name: recName(rec), kind: rec.kind })
+    }
+    ids.length = live
+    return out
+  }
+  return []
+}
+
 // ── Coverage retention ───────────────────────────────────────────────────
 // The registry holds nodes via WeakRef, so a node whose component unmounts is
 // GC-pruned and DISAPPEARS from `getReactiveGraph()`. Correct for a live panel,
@@ -321,6 +376,18 @@ function preview(v: unknown): string {
     s = '[unstringifiable]'
   }
   return s.length > PREVIEW_MAX ? `${s.slice(0, PREVIEW_MAX)}…` : s
+}
+
+/**
+ * The bounded value preview the graph uses (`ReactiveNode.value`): at most
+ * 60 characters, never throws. Shared with `@pyreon/runtime-dom`'s devtools
+ * hook so a prop and a signal read the same way. `''` in production.
+ *
+ * @internal
+ */
+export function _rdPreview(v: unknown): string {
+  if (process.env.NODE_ENV !== 'production') return preview(v)
+  return ''
 }
 
 /** Activate the bridge. Idempotent. Called when a devtools client attaches. */
@@ -528,6 +595,14 @@ export function _rdRegister(
     _pendingLoc.set(node, { err: (loc as DeferredLocation).err, skip: (loc as DeferredLocation).skipFrames })
   }
   if (sub) _subId.set(sub, id)
+  if (_ownerReader !== null) {
+    const owner = _ownerReader()
+    if (owner !== null) {
+      const ids = _scopeNodes.get(owner)
+      if (ids === undefined) _scopeNodes.set(owner, [id])
+      else ids.push(id)
+    }
+  }
   // During a coverage session, pin the node so it can't be GC-pruned before
   // the snapshot — a complete denominator needs every node created in the
   // window, including ones whose component has since unmounted.

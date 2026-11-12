@@ -349,82 +349,82 @@ function TasksPage() {
       />
       {/* Action buttons: two VERTICAL <Stack> columns side by side. A single
           <Inline> row of buttons overflows on Android (Compose `Row` does not
-          wrap; iOS `HStack` shrinks and hides it), and a single vertical
-          <Stack> of eleven buttons pushes the last one (`tasks-logout`)
-          below the emulator fold, where a Compose performClick taps empty
-          coordinates and silently does nothing. The page root cannot be a
-          <Scroll>: the task list is a <For> (LazyColumn), which the compiler
-          refuses to nest inside a verticalScroll Column (infinite-height
-          measure). Two columns of ten keep every button on-screen on both
-          targets with no scrolling at all; a column of eleven already
-          pushes `tasks-logout` past the fold, so add a new button to the
-          SHORTER column. */}
-      <Inline gap={2}>
-        <Stack gap={2}>
-          <Button onPress={addTask} data-testid="new-task-add">
-            Add
-          </Button>
-          <Button onPress={() => navigate('/tasks/1')} data-testid="tasks-open-first">
-            Open task 1
-          </Button>
-          <Button onPress={() => navigate('/quotes')} data-testid="tasks-quotes">
-            Quotes
-          </Button>
-          <Button onPress={() => navigate('/vocab')} data-testid="tasks-vocab">
-            Vocab
-          </Button>
-          <Button onPress={() => navigate('/lifecycle')} data-testid="tasks-lifecycle">
-            Lifecycle
-          </Button>
-          <Button onPress={() => navigate('/dates')} data-testid="tasks-dates">
-            Dates
-          </Button>
-          <Button onPress={() => navigate('/flow')} data-testid="tasks-flow">
-            Flow
-          </Button>
-          <Button onPress={() => navigate('/flow-scale')} data-testid="tasks-flow-scale">
-            Flow scale
-          </Button>
-          <Button onPress={() => navigate('/select')} data-testid="tasks-select">
-            Select
-          </Button>
-          <Button onPress={() => navigate('/hooks')} data-testid="tasks-hooks">
-            Hooks
-          </Button>
-        </Stack>
-        <Stack gap={2}>
-          <Button onPress={() => navigate('/stats')} data-testid="tasks-stats">
-            Stats
-          </Button>
-          <Button onPress={() => navigate('/dashboard')} data-testid="tasks-dashboard">
-            Dashboard
-          </Button>
-          <Button onPress={() => navigate('/gallery')} data-testid="tasks-gallery">
-            Chart gallery
-          </Button>
-          <Button onPress={() => navigate('/toolkit')} data-testid="tasks-toolkit">
-            Toolkit
-          </Button>
-          <Button onPress={() => navigate('/streams')} data-testid="tasks-streams">
-            Streams
-          </Button>
-          <Button onPress={() => navigate('/requests')} data-testid="tasks-requests">
-            Requests
-          </Button>
-          <Button onPress={() => navigate('/webhost')} data-testid="tasks-webhost">
-            Web host
-          </Button>
-          <Button onPress={() => navigate('/intl')} data-testid="tasks-intl">
-            Intl
-          </Button>
-          <Button onPress={() => navigate('/fields')} data-testid="tasks-fields">
-            Fields
-          </Button>
-          <Button onPress={logout} data-testid="tasks-logout">
-            Logout
-          </Button>
-        </Stack>
-      </Inline>
+          wrap; iOS `HStack` shrinks and hides it). The columns sit in their
+          OWN <Scroll>: on a device the safe area (status and navigation bars)
+          takes ~100dp, and ten buttons per column no longer fit, so the lower
+          ones were unreachable to a finger. The scroller is a SIBLING of the
+          task <For>, never its parent: a <For> lowers to a LazyColumn, and a
+          LazyColumn nested in Column(Modifier.verticalScroll()) is a
+          measure-time crash on Android ("infinity maximum height
+          constraints"). Tests tap by tag and scroll to the button first. */}
+      <Scroll direction="vertical" data-testid="tasks-actions-scroll">
+        <Inline gap={2}>
+          <Stack gap={2}>
+            <Button onPress={addTask} data-testid="new-task-add">
+              Add
+            </Button>
+            <Button onPress={() => navigate('/tasks/1')} data-testid="tasks-open-first">
+              Open task 1
+            </Button>
+            <Button onPress={() => navigate('/quotes')} data-testid="tasks-quotes">
+              Quotes
+            </Button>
+            <Button onPress={() => navigate('/vocab')} data-testid="tasks-vocab">
+              Vocab
+            </Button>
+            <Button onPress={() => navigate('/lifecycle')} data-testid="tasks-lifecycle">
+              Lifecycle
+            </Button>
+            <Button onPress={() => navigate('/dates')} data-testid="tasks-dates">
+              Dates
+            </Button>
+            <Button onPress={() => navigate('/flow')} data-testid="tasks-flow">
+              Flow
+            </Button>
+            <Button onPress={() => navigate('/flow-scale')} data-testid="tasks-flow-scale">
+              Flow scale
+            </Button>
+            <Button onPress={() => navigate('/select')} data-testid="tasks-select">
+              Select
+            </Button>
+            <Button onPress={() => navigate('/hooks')} data-testid="tasks-hooks">
+              Hooks
+            </Button>
+          </Stack>
+          <Stack gap={2}>
+            <Button onPress={() => navigate('/stats')} data-testid="tasks-stats">
+              Stats
+            </Button>
+            <Button onPress={() => navigate('/dashboard')} data-testid="tasks-dashboard">
+              Dashboard
+            </Button>
+            <Button onPress={() => navigate('/gallery')} data-testid="tasks-gallery">
+              Chart gallery
+            </Button>
+            <Button onPress={() => navigate('/toolkit')} data-testid="tasks-toolkit">
+              Toolkit
+            </Button>
+            <Button onPress={() => navigate('/streams')} data-testid="tasks-streams">
+              Streams
+            </Button>
+            <Button onPress={() => navigate('/requests')} data-testid="tasks-requests">
+              Requests
+            </Button>
+            <Button onPress={() => navigate('/webhost')} data-testid="tasks-webhost">
+              Web host
+            </Button>
+            <Button onPress={() => navigate('/intl')} data-testid="tasks-intl">
+              Intl
+            </Button>
+            <Button onPress={() => navigate('/fields')} data-testid="tasks-fields">
+              Fields
+            </Button>
+            <Button onPress={logout} data-testid="tasks-logout">
+              Logout
+            </Button>
+          </Stack>
+        </Inline>
+      </Scroll>
     </Stack>
   )
 }
@@ -505,6 +505,23 @@ function BadgeNode(props: NodeComponentProps<GridNodeData>) {
     </Stack>
   )
 }
+
+// A <Flow> fills its parent, so it needs a parent with a real height. Without
+// one the canvas measures 0 tall and `onlyRenderVisibleElements` falls back to
+// rendering every node. `styled` carries the height to the web as CSS and to
+// iOS and Android as a frame modifier, with no `<Flow style>` native warning.
+//
+// The task flow shows a real graph (custom node, custom edge, MiniMap), which
+// the device suites measure by geometry, so it gets room for all of it. The
+// 400-node scale screen is kept SHORT on purpose: the culled count is bounded
+// by the frame (the 200px culling margin dominates), and the web e2e and both
+// device lanes hold it to at most 40 mounted nodes.
+const FlowFrame = styled(Stack)`
+  height: 360px;
+`
+const FlowScaleFrame = styled(Stack)`
+  height: 160px;
+`
 
 function FlowScreen() {
   const navigate = useNavigate()
@@ -648,11 +665,13 @@ function FlowScreen() {
           Back
         </Button>
       </Inline>
+      <FlowFrame>
       <Flow instance={flow} nodeTypes={{ badge: BadgeNode }} edgeTypes={{ wire: WireEdge }} ariaLabel="Task flow">
         <Background variant="dots" />
         <Controls />
         <MiniMap />
       </Flow>
+      </FlowFrame>
     </Stack>
   )
 }
@@ -728,9 +747,11 @@ function FlowScaleScreen() {
           Back
         </Button>
       </Inline>
+      <FlowScaleFrame>
       <Flow instance={flow} nodeTypes={{ grid: GridNode }} ariaLabel="Scale flow">
         <Background variant="dots" />
       </Flow>
+      </FlowScaleFrame>
     </Stack>
   )
 }

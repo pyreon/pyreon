@@ -126,6 +126,34 @@ describe('the React half of the detector set actually runs', () => {
     })
   })
 
+  // #4304: the cheap gate missed these habits, so a file whose ONLY habit was
+  // one of them came back with a green tick. One file per habit, nothing else
+  // React-shaped in it.
+  it.each([
+    ['array-map-jsx', 'export const L = (p) => <ul>{p.todos.map((t) => <li>{t.text}</li>)}</ul>\n'],
+    ['on-change-input', 'export const F = (p) => <input onChange={(e) => p.set(e.currentTarget.value)} />\n'],
+    ['memo-wrapper', 'export const M = memo(function M() { return <i /> })\n'],
+    ['dot-value-signal', "import { signal } from '@pyreon/reactivity'\nexport const n = signal(0)\nn.value += 1\n"],
+    ['use-effect-mount', 'export function A() { useLayoutEffect(() => { go() }, []) }\n'],
+  ])('reports %s from a file whose only React habit it is', (code, body) => {
+    write('src/only.tsx', body)
+    return run({ paths: ['src/only.tsx'], json: true }).then((r) => {
+      const rep = JSON.parse(r.out) as JsonReport
+      expect(rep.findings.map((f) => f.code)).toContain(code)
+      expect(r.code).toBe(1)
+    })
+  })
+
+  it('reports a Plain Mode footgun from a plain module (the Pyreon gate had the same gap)', () => {
+    write(
+      'src/plain.tsx',
+      "'use plain'\nimport { state } from '@pyreon/core/plain'\nlet cfg = state.raw({ open: false })\nexport const t = () => { cfg.open = true }\n",
+    )
+    return run({ paths: ['src/plain.tsx'], json: true }).then((r) => {
+      expect((JSON.parse(r.out) as JsonReport).findings.map((f) => f.code)).toContain('plain-mode')
+    })
+  })
+
   it('does NOT run the React detectors over a file with no React in it', () => {
     // The cheap regex gate exists so a clean repo does not pay for the
     // full React analysis on every file.

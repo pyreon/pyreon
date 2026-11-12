@@ -20,7 +20,7 @@
  * No runtime dependency (no chalk / kleur).
  */
 
-export type { ColorLevel, Env, ThemeName } from './detect'
+export type { ColorLevel, Env, ThemeName } from './detect.ts'
 export {
   DEFAULT_WIDTH,
   detectColorLevel,
@@ -29,14 +29,14 @@ export {
   detectWidth,
   MIN_WIDTH,
   NARROW_WIDTH,
-} from './detect'
-export type { GhaAnnotation, GhaLevel } from './gha'
-export { ghaAnnotation, ghaEscape, ghaLevel, ghaProperty } from './gha'
-export type { InterruptOptions } from './interrupt'
-export { onInterrupt } from './interrupt'
-export type { Role, RoleColor, SymbolName } from './palette'
-export { BACKGROUND, CLI_PALETTE, EMBER, hexToRgb, RULES, SYMBOLS, xterm256Rgb } from './palette'
-export type { Paint, Term, TermOptions } from './term'
+} from './detect.ts'
+export type { GhaAnnotation, GhaLevel } from './gha.ts'
+export { ghaAnnotation, ghaEscape, ghaLevel, ghaProperty } from './gha.ts'
+export type { InterruptOptions } from './interrupt.ts'
+export { onInterrupt } from './interrupt.ts'
+export type { Role, RoleColor, SymbolName } from './palette.ts'
+export { BACKGROUND, CLI_PALETTE, EMBER, hexToRgb, RULES, SYMBOLS, xterm256Rgb } from './palette.ts'
+export type { Paint, Term, TermOptions } from './term.ts'
 export {
   createTerm,
   fileUrl,
@@ -45,7 +45,7 @@ export {
   stripAnsi,
   term,
   visibleWidth,
-} from './term'
+} from './term.ts'
 export type {
   Align,
   ColumnsOptions,
@@ -57,7 +57,7 @@ export type {
   Severity,
   SeverityStyle,
   VerdictStatus,
-} from './layout'
+} from './layout.ts'
 export {
   bar,
   columns,
@@ -76,4 +76,4 @@ export {
   verdict,
   wrap,
   WRAP_WIDTH,
-} from './layout'
+} from './layout.ts'

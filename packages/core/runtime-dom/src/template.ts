@@ -10,6 +10,14 @@ import {
   renderEffect,
 } from '@pyreon/reactivity'
 import { _tagTextBinding } from './binding-registry'
+import {
+  _adoptingCompiledBind,
+  _bindWithAdoption,
+  _markServerText,
+  rangeText,
+  reportFirstText,
+  reportTextWrite,
+} from './hydration-debug'
 import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, SVG_TAGS, type PolyTextCore } from './mount'
 import { _bindEvent } from './props'
 
@@ -157,6 +165,18 @@ export function _setChild(node: Element, value: unknown): void {
     // On a fresh clone the compiled cell is empty, so the adoption probe is
     // skipped (`textContent =` would replace any children regardless).
     const fc = _freshBind ? null : node.firstChild
+    // Dev, adopting: the same write, reported if it changed the server's text
+    // (#4419). A separate block so production keeps exactly the write below.
+    if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
+      const before = node.textContent ?? ''
+      if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
+        ;(fc as Text).data = value as string
+      } else {
+        node.textContent = value as string
+      }
+      reportTextWrite(node, before, 'text')
+      return
+    }
     if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
       ;(fc as Text).data = value as string
     } else {
@@ -217,7 +237,15 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
     // own text: write in place and keep the node — the same sole-text fast
     // path `_setChild` takes, and by construction the value already matches.
     // A `<For>` row's `Item {r.n}!` reaches here; without this the element
-    // adopts but its one dynamic text is swapped for a fresh node.
+    // adopts but its one dynamic text is swapped for a fresh node. "By
+    // construction" holds when server and client agree; when they do not, the
+    // write is a correction, which dev reports (#4419).
+    if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
+      const before = (placeholder as Text).data
+      ;(placeholder as Text).data = value as string
+      reportTextWrite(placeholder, before, 'text')
+      return
+    }
     ;(placeholder as Text).data = value as string
   } else {
     // Nullish renders as EMPTY, not as the literal text "null". `String(null)`
@@ -351,6 +379,8 @@ export function _bindProp(props: object, key: string, node: Text, parent: Node):
     const v = d.value as unknown
     if (v === null || (typeof v !== 'object' && typeof v !== 'function')) {
       const next = v == null || v === false ? '' : String(v as string | number | boolean)
+      if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
+        reportFirstText(node, v, next, 'reactive')
       if (node.data !== next) node.data = next
       return _noopDispose
     }
@@ -389,7 +419,12 @@ export function _bindText(
     const textUpdate = () => {
       const v = source._v
       const next = v == null || v === false ? '' : String(v as string | number)
-      if (written === null) written = _freshBind ? undefined : node.data
+      if (written === null) {
+        written = _freshBind ? undefined : node.data
+        // Dev: the first write into ADOPTED server text (#4419).
+        if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
+          reportFirstText(node, v, next, 'reactive')
+      }
       if (next !== written) {
         // Value actually changed — the ONLY place the upgrade check runs, never
         // on the no-change hot path. Strings and numbers short-circuit on typeof.
@@ -455,7 +490,12 @@ export function _bindText(
       return
     }
     const next = v == null || v === false ? '' : String(v as string | number)
-    if (written === null) written = _freshBind ? undefined : node.data
+    if (written === null) {
+      written = _freshBind ? undefined : node.data
+      // Dev: the first write into ADOPTED server text (#4419).
+      if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
+        reportFirstText(node, v, next, 'reactive')
+    }
     if (next !== written) {
       if (typeof v === 'object' && v !== null && _isMountableTextValue(v)) {
         const parent = node.parentNode
@@ -1045,7 +1085,11 @@ function buildTpl(
         _freshBind = false // an ADOPTED node holds server content — keep every read
         let cleanup: (() => void) | null
         try {
-          cleanup = bind(target as HTMLElement)
+          // Dev: the binders report the server text they correct (#4419).
+          cleanup =
+            process.env.NODE_ENV !== 'production'
+              ? _bindWithAdoption(true, bind, target as HTMLElement)
+              : bind(target as HTMLElement)
           if (holes !== null) sweepHoles(holes)
         } finally {
           _tplHoleCursors = prevHoles
@@ -1067,7 +1111,9 @@ function buildTpl(
   _freshBind = true
   let cleanup: (() => void) | null
   try {
-    cleanup = bind(el)
+    // Dev: a clone holds no server content, even inside an adopting bind.
+    cleanup =
+      process.env.NODE_ENV !== 'production' ? _bindWithAdoption(false, bind, el) : bind(el)
   } finally {
     _freshBind = prevFresh
   }
@@ -1507,6 +1553,9 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
   // placeholder is always the template's `<!>` comment.
   if (isMidSlotText(placeholder)) return placeholder as Text
   if (isRangeOpen(placeholder)) {
+    // Dev: when this hands the bind a FRESH node, the binder reports against
+    // what the server rendered here (#4419), read before the range goes.
+    if (process.env.NODE_ENV !== 'production') _rangeServerText = _serverTextOfRange(placeholder as Comment)
     // A PARKED mid range (see `PARKED_RANGE`): the server rendered element
     // content into what the compiled bind treats as a text slot (a polymorphic
     // upgrade, or a divergence). A text bind has no use for it — discard the
@@ -1517,6 +1566,7 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
     if (_takeParkedRange(placeholder as Comment) !== null) {
       const fresh = document.createTextNode('')
       parent.replaceChild(fresh, placeholder)
+      if (process.env.NODE_ENV !== 'production') _markServerText(fresh, _rangeServerText)
       return fresh
     }
     // The shape SSR emits for a reactive text: exactly one text node between
@@ -1547,11 +1597,20 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
       else if (d === '/$' && --depth === 0) break
       n = next
     }
+    if (process.env.NODE_ENV !== 'production') _markServerText(fresh, _rangeServerText)
     return fresh
   }
   const t = document.createTextNode('')
   parent.replaceChild(t, placeholder)
   return t
+}
+
+// Dev: the server text of the range `_textSlot` is resolving (set and read
+// within one synchronous call).
+let _rangeServerText = ''
+function _serverTextOfRange(open: Comment): string {
+  const parked = (open as ParkedOpen)[PARKED_RANGE]
+  return parked !== undefined ? (parked.textContent ?? '') : rangeText(open)
 }
 
 /** The template's own inert `<!>` — an EMPTY comment, which is what a cloned

@@ -1711,3 +1711,27 @@ export function hydrate(code: VNodeChildAccessor, element: MountableElement): ()
 // ─── Re-exports from @pyreon/core ──────────────────────────────────────────────
 
 export { ErrorBoundary, For, Match, Show, Suspense, Switch }
+
+/**
+ * Solid's `<SuspenseList>` (#4366): it was not provided, so code importing it
+ * from `solid-js` failed under `compat: 'solid'`. Its children render, and
+ * each `<Suspense>` inside shows its fallback until its own data arrives.
+ * The COORDINATION Solid adds (`revealOrder` forwards / backwards / together,
+ * `tail` collapsed / hidden) is not implemented, so in development a list that
+ * asks for it warns once.
+ */
+export function SuspenseList(props: {
+  revealOrder?: 'forwards' | 'backwards' | 'together' | undefined
+  tail?: 'collapsed' | 'hidden' | undefined
+  children?: VNodeChild
+}): VNodeChild {
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    (props.revealOrder !== undefined || props.tail !== undefined)
+  ) {
+    console.warn(
+      '[Pyreon] <SuspenseList revealOrder / tail> is not coordinated in @pyreon/solid-compat: each <Suspense> inside reveals as soon as its own data arrives. Drop the props, or order the reveal yourself with nested <Suspense> boundaries.',
+    )
+  }
+  return props.children ?? null
+}

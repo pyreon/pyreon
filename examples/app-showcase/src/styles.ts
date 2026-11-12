@@ -1,4 +1,5 @@
 import { RouterLink, type RouterLinkProps } from '@pyreon/router'
+import { flowStyles } from '@pyreon/flow'
 import { createGlobalStyle, styled } from '@pyreon/styler'
 import { Card, Paragraph, Title } from '@pyreon/ui-components'
 import type { Theme } from '@pyreon/ui-theme'
@@ -30,6 +31,13 @@ import type { Theme } from '@pyreon/ui-theme'
 export const t = (p: { theme?: unknown }): Theme => p.theme as Theme
 
 // ─── Global resets ───────────────────────────────────────────────────
+/**
+ * `@pyreon/flow`'s stylesheet (node/edge states, focus rings, dark colour
+ * mode). The Flow Editor and Flow features pages render `<Flow>`; without
+ * this sheet their hover/selection states and dark mode are missing.
+ */
+export const FlowStyles = createGlobalStyle`${flowStyles}`
+
 export const GlobalReset = createGlobalStyle`
   *, *::before, *::after { box-sizing: border-box; margin: 0; }
   body {

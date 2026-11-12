@@ -73,7 +73,7 @@ describe('auditNative', () => {
   it('flags a top-level TS enum / class as native-unsupported-decl', () => {
     write(
       'src/Comp.tsx',
-      `import { Text } from '@pyreon/primitives'\ninterface Todo { id: number }\nenum Color { Red }\nclass Thing {}\nexport function Comp() { return (<Text>x</Text>) }`,
+      `import { Text } from '@pyreon/primitives'\ninterface Todo { id: number }\nenum Color { Red = 'red', Blue = 2 }\nclass Thing {}\nexport function Comp() { return (<Text>x</Text>) }`,
     )
     const r = auditNative(dir)
     const decls = r.findings.filter((x) => x.code === 'native-unsupported-decl')

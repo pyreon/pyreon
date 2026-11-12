@@ -278,7 +278,14 @@ function toComponent(
   const controls = inferControls(shapes).map((c) => ({ ...c, source: 'prop-type' as const }))
   const axes: VariantAxis[] = shapes
     .filter((s) => typeof s.type === 'object')
-    .map((s) => ({ name: s.name, values: (s.type as { union: readonly string[] }).union }))
+    .map((s) => ({
+      name: s.name,
+      values: (s.type as { union: readonly string[] }).union,
+      // What the `Default` scenario needs to render the component's OWN default
+      // (`props.size ?? 'md'`), not the union's first member (#4365).
+      ...(typeof s.defaultValue === 'string' ? { default: s.defaultValue } : {}),
+      ...(s.optional === true ? { optional: true } : {}),
+    }))
   const content = contentFromProps(name, shapes)
   return { name, controls, axes, scenarios: [], tags: [], source, ...(content ? { content } : {}) }
 }

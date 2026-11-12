@@ -450,7 +450,7 @@ import type { UrlRouter } from '@pyreon/url-state' // the setUrlRouter argument 
 
 ## On iOS and Android
 
-The address bar is the web's own surface, so history entries, `popstate`, `batchUrlUpdates` and custom serializers stay web. On iOS and Android (PMTC), `useUrlState(key, default)` with a literal **string, number or boolean** default lowers to the native router's query parameters (`PyreonRouter.query` / `setQueryParam`), with the same coercion as the web (an integer default lowers to an Int, a fractional one to a Double). Array and object defaults, a non-literal key or default, and the `clearOnDefault` / `debounce` / custom-serializer options stay web.
+The address bar is the web's own surface, so history entries, `popstate`, `batchUrlUpdates` and custom serializers stay web. On iOS and Android (PMTC), `useUrlState(key, default)` with a literal **string, number or boolean** default lowers to the native router's query parameters (`PyreonRouter.query` / `setQueryParam`), with the same coercion as the web (an integer default lowers to an Int, a fractional one to a Double). Object defaults and a non-literal key or default stay web. Native writes are immediate and replace the current entry, lists use the comma format, and the codec is the one inferred from the default; the options that ask for something else (`serialize`, `deserialize`, `debounce` other than 0, `replace: false`, `arrayFormat: 'repeat'`, `onChange`) are not applied natively, and the compiler warns about each one by name. `clearOnDefault` only changes the URL text, never the value read.
 
 ## API Reference
 

@@ -51,10 +51,16 @@ describe('<Press onSwipeLeft/onSwipeRight> gesture emit', () => {
 
   it('Kotlin emits pointerInput + detectHorizontalDragGestures with per-gesture reset', () => {
     const out = transform(SRC, { target: 'kotlin' })
-    expect(out.code).toContain('.pointerInput(Unit) { var dragTotal = 0f; detectHorizontalDragGestures(')
+    // The threshold is 40 DP converted with the scope's density: drag deltas
+    // are pixels, and a raw 40f fired at ~13 dp on a 3x screen (#4364).
+    // Bisect-verified: the old emit fails these with the raw `40f` literal.
+    expect(out.code).toContain(
+      '.pointerInput(Unit) { val swipeThreshold = 40.dp.toPx(); var dragTotal = 0f; detectHorizontalDragGestures(',
+    )
+    expect(out.code).not.toMatch(/dragTotal [<>] -?40f/)
     expect(out.code).toContain('onDragStart = { dragTotal = 0f }')
-    expect(out.code).toMatch(/if \(dragTotal < -40f\) run\(\{\s*dir = "left"/)
-    expect(out.code).toMatch(/else if \(dragTotal > 40f\) run\(\{\s*dir = "right"/)
+    expect(out.code).toMatch(/if \(dragTotal < -swipeThreshold\) run\(\{\s*dir = "left"/)
+    expect(out.code).toMatch(/else if \(dragTotal > swipeThreshold\) run\(\{\s*dir = "right"/)
     expect(out.code).toContain('onHorizontalDrag = { _, amount -> dragTotal += amount }')
     // clickable still present — swipe composes with tap.
     expect(out.code).toContain('.clickable(onClick = {')
@@ -74,8 +80,8 @@ describe('<Press onSwipeLeft/onSwipeRight> gesture emit', () => {
     const kotlin = transform(`import { signal } from '@pyreon/reactivity'\n${one}`, {
       target: 'kotlin',
     })
-    expect(kotlin.code).toContain('dragTotal < -40f')
-    expect(kotlin.code).not.toContain('dragTotal > 40f')
+    expect(kotlin.code).toContain('dragTotal < -swipeThreshold')
+    expect(kotlin.code).not.toContain('dragTotal > swipeThreshold')
   })
 
   it('a swipe-only <Press> (no onPress/onLongPress) does NOT warn', () => {
