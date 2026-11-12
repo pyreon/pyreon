@@ -863,9 +863,12 @@ kotlin {
 package ${androidPkg}
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -878,6 +881,10 @@ import ${androidPkg}.generated.App
 // ComponentActivity (NOT plain android.app.Activity) — Compose's
 // setContent {} is an extension on ComponentActivity; a plain Activity
 // fails to resolve it (receiver type mismatch).
+//
+// enableEdgeToEdge(light bars): dark status- and navigation-bar icons. The bars sit
+// over the window background, which the light window theme keeps light in dark mode
+// too; without it the icons are white on that light strip and the clock is unreadable.
 //
 // The Box does two things the emitted App() cannot do for itself:
 //  - safeDrawingPadding(): on Android 15+ (API 35) apps draw edge-to-edge, so
@@ -895,6 +902,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) PyreonDeepLink.receive(intent?.data)
+        val bars = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+        enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
         setContent {
             Box(Modifier.safeDrawingPadding().semantics { testTagsAsResourceId = true }) {
                 App()
