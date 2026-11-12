@@ -344,8 +344,8 @@ export function KitGallery() {
         native={{ label: 'Want the apps from day one?', command: 'npm create @pyreon/multiplatform@latest' }}
         links={[
           { label: 'Star on GitHub', href: 'https://github.com/pyreon/pyreon' },
-          { label: 'Join the Discord', href: '/discord' },
-          { label: 'Get the newsletter', href: '/newsletter' },
+          { label: 'Read the blog', href: '/blog' },
+          { label: 'Watch the releases', href: 'https://github.com/pyreon/pyreon/releases' },
         ]}
       />
     </>

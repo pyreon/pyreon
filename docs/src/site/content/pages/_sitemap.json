@@ -858,7 +858,7 @@
           "title": "Blog",
           "purpose": "Long-form stories behind the claims; scheduled posts publish themselves.",
           "audience": "developer",
-          "primaryCta": "Subscribe (RSS / newsletter)",
+          "primaryCta": "Subscribe (RSS)",
           "content": "docs/src/content/blog/*.md",
           "template": "blog-index",
           "reference": null,
@@ -898,9 +898,9 @@
         {
           "route": "/community",
           "title": "Community",
-          "purpose": "Discord, GitHub, how to contribute, good first issues, newsletter, live stats.",
+          "purpose": "GitHub, how to contribute, good first issues, live stats.",
           "audience": "developer",
-          "primaryCta": "Join the Discord",
+          "primaryCta": "Watch the releases",
           "content": "content/_project.json#community",
           "template": "plain",
           "reference": null,
@@ -947,7 +947,8 @@
           "template": "redirect",
           "reference": null,
           "decision": "keep",
-          "state": "redirect pending"
+          "state": "redirect pending",
+          "note": "Built only while SITE_LINKS.discord (docs/src/site-links.ts) has an address; until then the route, its links and this entry do not exist."
         },
         {
           "route": "/newsletter",
@@ -959,7 +960,8 @@
           "template": "redirect",
           "reference": null,
           "decision": "keep",
-          "state": "redirect pending"
+          "state": "redirect pending",
+          "note": "Built only while SITE_LINKS.newsletter (docs/src/site-links.ts) has an address; until then the route, its links and this entry do not exist."
         },
         {
           "route": "/404",
