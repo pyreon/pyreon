@@ -632,7 +632,8 @@ jobs:
           # #872 — JSX event-handler forwarding + unnamed function-arg
           #         labels (TodoRow passes onToggle/onRemove without
           #         labelled args; here you see the call site shape).
-          grep -q 'TodoRow(todo: t, onToggle:' generated/TodoApp.swift
+          #         `done:` is read live by id (stale keyed-row fix).
+          grep -q 'TodoRow(todo: t, done: isDone(t.id), onToggle:' generated/TodoApp.swift
           # #874 — Toggle binding (LAST typecheck-blocker; the
           #         interactive form, not just read-only).
           grep -q 'Toggle("", isOn: Binding(' generated/TodoApp.swift
