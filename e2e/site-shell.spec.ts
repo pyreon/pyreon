@@ -75,7 +75,7 @@ test.describe('hydration', () => {
   // too, so the blog index no longer hydrates as a whole (#4353 cannot reach
   // it); the showcase gallery island re-creates its live-demo links, which is
   // why it is not in the zero-removals list above.
-  for (const route of ['/blog', '/showcase', '/open', '/discord', '/newsletter', '/products/form', '/brand/kit']) {
+  for (const route of ['/blog', '/showcase', '/open', '/products/form', '/brand/kit']) {
     test(`${route} hydrates with no errors`, async ({ page }) => {
       const errors = collectErrors(page)
       await page.goto(route)

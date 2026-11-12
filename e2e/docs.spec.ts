@@ -768,4 +768,4 @@ test.describe('the charts page mounts every mark it documents', () => {
   })
 })
 
-// The blog, /open, /showcase, /discord and /newsletter: site-project.spec.ts.
+// The blog, /open, /showcase and the stable links (/discord, /newsletter): site-project.spec.ts.
