@@ -334,6 +334,22 @@ jobs:
     # assumed: that draft was written while a bun-install cache step existed
     # here, and removing it (see above) moved the number. Stating it wrong
     # would have been the same guessed-budget mistake one more time.
+    #
+    # RE-DERIVED 2026-11-12 from six runs (2026-11-11/12), because the suites
+    # grew after the table above: the slowest green value of each step was
+    #
+    #   prelude (checkout .. Swift unit tests, XcodeGen)   12m
+    #   todomvc build + UITest                              2.6 + 4.8
+    #   counter / finance / router-demo / tasks UITest      13.2 / 4.7 / 10.5 / 29.7
+    #   device-SDK archive                                  5.0
+    #     => 82m if every step is at its worst at once; observed totals 64-81m.
+    #
+    # 95 is that sum +15%. It holds only because a retry no longer re-runs a
+    # whole suite (scripts/native-ios-uitest.ts re-runs the failed tests alone): under
+    # the old xcodebuild retry flags one flaky tasks test added two more
+    # 23-30 minute passes, which no timeout near this one can absorb. Each
+    # step also carries its own `timeout-minutes` (1.5-2x its slowest green
+    # run), so a hang fails in that step, by name, instead of at minute 95.
     timeout-minutes: 95
     permissions:
       contents: read
@@ -350,13 +366,13 @@ jobs:
       # mtime, so a prefix-restored older lib/ is safe: it rebuilds only the
       # packages whose source changed. Measured before this: every native job
       # rebuilt all 76 packages from nothing — ~150 s of a ~210 s install.
-      # ORDER: this restore runs BEFORE the simulator boot below. Its key is a
-      # `hashFiles` over every package's src/, and hashFiles has a hard
-      # 120 s limit. With a cold simulator boot competing for the disk it
-      # exceeded that limit and failed the job (PR #4153's first run, 137 s),
-      # while the same expression takes 5-28 s on the macOS validate job,
-      # which boots no simulator. The boot still overlaps install, bootstrap,
-      # the Swift unit tests and the app build.
+      # ORDER: this restore, the install and the lib/ build all run BEFORE the
+      # simulator boot (see the boot step). The key is a `hashFiles` over
+      # every package's src/, and hashFiles has a hard 120 s limit. With a cold
+      # simulator boot competing for the disk it exceeded that limit and
+      # failed the job (PR #4153's first run, 137 s), while the same
+      # expression takes 5-28 s on the macOS validate job, which boots no
+      # simulator.
       - name: Restore source-hashed lib/ (read-only)
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -366,6 +382,44 @@ jobs:
           key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
           restore-keys: |
             bootstrap-ubuntu-
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      # NO bun-install cache on macOS. Measured over 25 green runs (2026-11-02..08):
+      # restoring the ~900 MB macOS tarball store took 179-487 s (median ~240 s)
+      # on every run, and the install after it took 3-14 s. The Android job on
+      # ubuntu has no tarball cache at all and installs the same lockfile cold
+      # in 7-13 s ("1194 packages installed [7.75s]"). Part of that restore
+      # time was the simulator's cold boot competing for the disk (see the
+      # lib/ restore's ORDER note), so the restore mostly hid boot I/O while
+      # buying ~1 s of install. It and its nightly writer are gone, which also
+      # frees ~0.9 GB of the 10 GB Actions cache for the small bootstrap
+      # entries every PR depends on.
+      - name: Install workspace deps (bootstraps @pyreon/native-cli used by the preBuildScript)
+        run: |
+          # Retry the install — a transient registry tarball-extract flake
+          # (`Fail extracting tarball for "@biomejs/cli-…"`) on the Android
+          # job broke the nightly green streak on 2026-06-27 (the run was
+          # otherwise green). Three attempts with linear backoff; any green
+          # attempt wins, all-three-fail still fails the step. This is the
+          # dominant transient flake resetting the device-gate green streak —
+          # the XCUITest attach flake has its own counted retry (scripts/native-ios-uitest.ts),
+          # this is the install half. Lockfile-frozen, so a retry can only
+          # re-download the SAME pinned versions (no resolution drift).
+          n=0
+          until [ "$n" -ge 3 ]; do
+            PYREON_BOOTSTRAP_SKIP=1 bun install --frozen-lockfile && exit 0
+            n=$((n + 1))
+            echo "::warning::bun install attempt $n failed — retrying in $((n * 10))s"
+            sleep $((n * 10))
+          done
+          echo "::error::bun install failed after 3 attempts"
+          exit 1
+      - name: Build lib/ (incremental over the restored cache; the preBuildScript needs @pyreon/native-cli built)
+        run: bun scripts/bootstrap.ts
+
       - name: Resolve ONE concrete Simulator device (by UDID) and start booting it
         # `xcodebuild test` needs a CONCRETE device (the build step's
         # `generic/platform=iOS Simulator` cannot run tests). Hardcoding a
@@ -395,11 +449,24 @@ jobs:
         # suite's handle-drag test failed all three iterations on the smaller
         # screen (run on PR #3574). Do not reorder by name.
         #
-        # Booting starts HERE, right after checkout and the lib/ restore, so the ~3-minute cold boot
-        # overlaps install + bootstrap + the Swift unit tests + the app build
-        # instead of stalling the first `xcodebuild test`. `simctl boot` returns
-        # once the boot is under way; the steps that need a READY device wait
-        # with `bootstatus -b` (or let xcodebuild wait).
+        # Booting starts HERE — AFTER `bun install` and the lib/ build, not
+        # before them. A cold boot is disk-heavy, and it used to start right
+        # after checkout so that it would overlap the install. Measured over six
+        # runs on 2026-11-11/12, against the macOS job of native-validate.yml
+        # (same runner image, same lockfile, same lib/ cache, no simulator) over
+        # twelve runs:
+        #
+        #                     with the boot running   without
+        #   setup-bun              51-66 s             < 15 s
+        #   bun install           150-265 s            21-32 s
+        #   bootstrap lib/         85-200 s            52-80 s
+        #
+        # so the overlap cost about 4.5 minutes of macOS time to hide a boot of
+        # about 3. The boot now overlaps CPU-bound work instead (the Swift unit
+        # tests and the first app compile); the "Simulator ready" step below
+        # prints how long the boot really took, so this trade stays measured.
+        # `simctl boot` returns once the boot is under way; the steps that need
+        # a READY device wait with `bootstatus -b` (or let xcodebuild wait).
         run: |
           set -euo pipefail
           PICK=$(xcrun simctl list devices available -j | jq -r '
@@ -418,47 +485,19 @@ jobs:
           fi
           IFS=$'\t' read -r UDID NAME OSV <<< "$PICK"
           echo "Resolved simulator: $NAME (iOS $OSV) $UDID"
-          echo "PYREON_SIM_UDID=$UDID" >> "$GITHUB_ENV"
-          echo "PYREON_SIM_NAME=$NAME" >> "$GITHUB_ENV"
+          {
+            echo "PYREON_SIM_UDID=$UDID"
+            echo "PYREON_SIM_NAME=$NAME"
+          } >> "$GITHUB_ENV"
           xcrun simctl boot "$UDID" || echo "note: boot returned non-zero (already booted?)"
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
-
-      # NO bun-install cache on macOS. Measured over 25 green runs (2026-11-02..08):
-      # restoring the ~900 MB macOS tarball store took 179-487 s (median ~240 s)
-      # on every run, and the install after it took 3-14 s. The Android job on
-      # ubuntu has no tarball cache at all and installs the same lockfile cold
-      # in 7-13 s ("1194 packages installed [7.75s]"). Part of that restore
-      # time was the simulator's cold boot competing for the disk (see the
-      # lib/ restore's ORDER note), so the restore mostly hid boot I/O while
-      # buying ~1 s of install. It and its nightly writer are gone, which also
-      # frees ~0.9 GB of the 10 GB Actions cache for the small bootstrap
-      # entries every PR depends on.
-      - name: Install workspace deps (bootstraps @pyreon/native-cli used by the preBuildScript)
-        run: |
-          # Retry the install — a transient registry tarball-extract flake
-          # (`Fail extracting tarball for "@biomejs/cli-…"`) on the Android
-          # job broke the nightly green streak on 2026-06-27 (the run was
-          # otherwise green). Three attempts with linear backoff; any green
-          # attempt wins, all-three-fail still fails the step. This is the
-          # dominant transient flake resetting the device-gate green streak —
-          # the XCUITest attach flake already has `-retry-tests-on-failure`,
-          # this is the install half. Lockfile-frozen, so a retry can only
-          # re-download the SAME pinned versions (no resolution drift).
-          n=0
-          until [ "$n" -ge 3 ]; do
-            PYREON_BOOTSTRAP_SKIP=1 bun install --frozen-lockfile && exit 0
-            n=$((n + 1))
-            echo "::warning::bun install attempt $n failed — retrying in $((n * 10))s"
-            sleep $((n * 10))
-          done
-          echo "::error::bun install failed after 3 attempts"
-          exit 1
-      - name: Build lib/ (incremental over the restored cache; the preBuildScript needs @pyreon/native-cli built)
-        run: bun scripts/bootstrap.ts
+          # Time the boot in the background; "Simulator ready" reads the file.
+          cat > "$RUNNER_TEMP/time-sim-boot.sh" <<'TIMER'
+          s=$(date +%s)
+          xcrun simctl bootstatus "$1" -b >/dev/null 2>&1
+          echo $(( $(date +%s) - s )) > "$2"
+          TIMER
+          nohup bash "$RUNNER_TEMP/time-sim-boot.sh" "$UDID" "$RUNNER_TEMP/sim-boot-seconds" >/dev/null 2>&1 &
+          disown
 
       # The ONLY place the Swift packages' own `swift test` runs in CI. Both
       # `native-runtime-swift` and `native-router-swift` self-skip off Darwin —
@@ -511,21 +550,49 @@ jobs:
         # Build only — proves the emitted Swift links against real
         # SwiftUI. The launch-and-render UI smoke is the NEXT step.
         # `CODE_SIGNING_ALLOWED=NO` because a Simulator build needs no
-        # provisioning profile. `generic/platform=iOS Simulator` avoids
-        # pinning a specific device/runtime name.
+        # provisioning profile.
+        #
+        # The destination is the resolved device, not `generic/platform=iOS
+        # Simulator`: the generic destination compiles arm64 AND x86_64, and
+        # the x86_64 half (both Swift packages and the app, about a minute)
+        # was used by nothing — every later step runs on the arm64 device, and
+        # the todomvc UITest step reuses these arm64 objects (same project,
+        # same DerivedData).
+        #
+        # NOT done, on measurement: one `-derivedDataPath` shared by all five
+        # apps. Each app is its own Xcode project and compiles PyreonRuntime +
+        # PyreonRouter again (80, 81, 39, 36, 74 s on run 43195120647), but a
+        # shared directory does not fix that: the package tasks are keyed on
+        # the PROJECT that builds them, so building app B rebuilds the
+        # objects app A just produced, and A's again after B (probed locally,
+        # finance -> todomvc -> finance, PyreonRuntime.o rewritten each time).
         working-directory: examples/native-todomvc-ios
+        timeout-minutes: 15
         run: |
           set -o pipefail
           xcodebuild build \
             -project PyreonTodoMVC.xcodeproj \
             -scheme PyreonTodoMVC \
             -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
+            -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
+      - name: Simulator ready (reports the cold-boot time)
+        # Unconditional: every UITest step needs the device, whichever apps
+        # this run selected. Placed after the first compile so the wait, if
+        # any, is the part of the boot that the compile did not cover.
+        timeout-minutes: 10
+        run: |
+          s=$(date +%s)
+          xcrun simctl bootstatus "${PYREON_SIM_UDID}" -b
+          echo "waited $(( $(date +%s) - s )) s here for the simulator"
+          for _ in 1 2 3 4 5; do [ -s "$RUNNER_TEMP/sim-boot-seconds" ] && break; sleep 1; done
+          echo "simulator cold boot took $(cat "$RUNNER_TEMP/sim-boot-seconds" 2>/dev/null || echo '?') s (overlapped with the Swift unit tests and the first compile)"
+
       - name: Run UITest on iOS Simulator (Phase 2.2 launch-and-render smoke)
         id: uitest-todomvc
+        timeout-minutes: 12
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' todomvc ')
         # The Phase-2.2 deliverable from the plan: BOOT the Simulator,
         # install the app, run an XCUITest that asserts the root view
@@ -538,28 +605,32 @@ jobs:
         # the app, boots the Simulator, and runs the UITest bundle in
         # one shot.
         #
-        # `-retry-tests-on-failure -test-iterations 3` (here + the 3
-        # sibling steps): XCUITest's harness attach is load-flaky on CI
-        # simulators — "Failed to get background assertion ... Timed
-        # out while acquiring background assertion" killed a run whose
-        # SAME suite passed locally and whose prior steps passed on the
-        # same sim. Xcode's native per-test retry self-heals the attach
-        # flake; a real product failure still fails all 3 iterations.
+        # RETRIES (here + the 4 sibling steps) go through scripts/native-ios-uitest.ts:
+        # one `build-for-testing`, one `test-without-building` over the suite,
+        # then ONLY the tests that failed are re-run, up to 3 runs each, and
+        # every retry is printed as a `::warning::` naming the test (a test
+        # that fails all 3 is an `::error::` naming it).
+        #
+        # It replaces `-retry-tests-on-failure -test-iterations 3
+        # -test-repetition-relaunch-enabled YES`. That existed for a real
+        # flake — XCUITest's harness attach is load-flaky on CI simulators
+        # ("Failed to get background assertion ... Timed out") — but measured
+        # on run 43120354638 one failing test made xcodebuild run the WHOLE
+        # suite three times (28, 56, then 84 test results; 9 minutes a pass).
+        # On the tasks suite a pass is 23-30 minutes, so one flaky test there
+        # could not fit the job timeout at all, and a retry that passed was
+        # invisible.
         working-directory: examples/native-todomvc-ios
         run: |
           set -o pipefail
-          mkdir -p "$GITHUB_WORKSPACE/.ci-ios-results"
-          xcodebuild test \
+          bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD")" -- \
+            xcodebuild test \
             -parallel-testing-enabled NO \
-            -test-repetition-relaunch-enabled YES \
-            -retry-tests-on-failure \
-            -test-iterations 3 \
             -project PyreonTodoMVC.xcodeproj \
             -scheme PyreonTodoMVC \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
-            -configuration Debug \
-            -resultBundlePath "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD").xcresult"
+            -configuration Debug
 
       # ── Gap 7 part (a) — XCUITest coverage beyond TodoMVC ──
       # The audit (2026-06-05 native-readiness) explicitly calls out
@@ -614,24 +685,21 @@ jobs:
 
       - name: Emit + xcodegen + UITest — native-counter-ios
         id: uitest-counter
+        timeout-minutes: 30
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' counter ')
         working-directory: examples/native-counter-ios
         run: |
           set -o pipefail
           bash scripts/build.sh
           xcodegen generate
-          mkdir -p "$GITHUB_WORKSPACE/.ci-ios-results"
-          xcodebuild test \
+          bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD")" -- \
+            xcodebuild test \
             -parallel-testing-enabled NO \
-            -test-repetition-relaunch-enabled YES \
-            -retry-tests-on-failure \
-            -test-iterations 3 \
             -project PyreonCounter.xcodeproj \
             -scheme PyreonCounter \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
-            -configuration Debug \
-            -resultBundlePath "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD").xcresult"
+            -configuration Debug
 
       # THE REAL-APP GATE. Every step above builds a DEMO — one screen, one
       # list, navigation only. This one builds a realistic app and asserts a
@@ -644,24 +712,21 @@ jobs:
       # so the counter's "Count: 0" never surfaced it; a 2700 balance did).
       - name: Emit + xcodegen + UITest — native-finance-ios (real-app gate)
         id: uitest-finance
+        timeout-minutes: 12
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' finance ')
         working-directory: examples/native-finance-ios
         run: |
           set -o pipefail
           bash scripts/build.sh
           xcodegen generate
-          mkdir -p "$GITHUB_WORKSPACE/.ci-ios-results"
-          xcodebuild test \
+          bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD")" -- \
+            xcodebuild test \
             -parallel-testing-enabled NO \
-            -test-repetition-relaunch-enabled YES \
-            -retry-tests-on-failure \
-            -test-iterations 3 \
             -project PyreonFinance.xcodeproj \
             -scheme PyreonFinance \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
-            -configuration Debug \
-            -resultBundlePath "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD").xcresult"
+            -configuration Debug
 
       # The useWebSocket device proof needs a live loopback peer — the iOS
       # Simulator shares the host loopback, so a background bun process is
@@ -691,6 +756,7 @@ jobs:
 
       - name: Emit + xcodegen + UITest — native-router-demo-ios
         id: uitest-router
+        timeout-minutes: 25
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' router-demo ')
         working-directory: examples/native-router-demo-ios
         # POLICY (enforced by scripts/check-ios-signing-policy.ts): a step that
@@ -708,18 +774,14 @@ jobs:
           set -o pipefail
           bash scripts/build.sh
           xcodegen generate
-          mkdir -p "$GITHUB_WORKSPACE/.ci-ios-results"
-          xcodebuild test \
+          bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD")" -- \
+            xcodebuild test \
             -parallel-testing-enabled NO \
-            -test-repetition-relaunch-enabled YES \
-            -retry-tests-on-failure \
-            -test-iterations 3 \
             -project PyreonRouterDemo.xcodeproj \
             -scheme PyreonRouterDemo \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
-            -configuration Debug \
-            -resultBundlePath "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD").xcresult"
+            -configuration Debug
 
       # Tasks showcase — Gap 5 PR-5.3(b) closure. Runs the
       # PyreonTasksUITests.swift suite (auth-gate + navigation +
@@ -765,6 +827,7 @@ jobs:
 
       - name: Emit + xcodegen + UITest — native-tasks-ios
         id: uitest-tasks
+        timeout-minutes: 50
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' tasks ')
         working-directory: examples/native-tasks-ios
         run: |
@@ -776,18 +839,14 @@ jobs:
           # prompt if the grant did not take, e.g. before first install).
           xcrun simctl location "${PYREON_SIM_UDID}" set 37.3349,-122.0090 || true
           xcrun simctl privacy "${PYREON_SIM_UDID}" grant location com.pyreon.PyreonTasks || true
-          mkdir -p "$GITHUB_WORKSPACE/.ci-ios-results"
-          xcodebuild test \
+          bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD")" -- \
+            xcodebuild test \
             -parallel-testing-enabled NO \
-            -test-repetition-relaunch-enabled YES \
-            -retry-tests-on-failure \
-            -test-iterations 3 \
             -project PyreonTasks.xcodeproj \
             -scheme PyreonTasks \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
-            -configuration Debug \
-            -resultBundlePath "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD").xcresult"
+            -configuration Debug
 
       - name: Upload iOS test results
         # A selected test step must leave diagnostic evidence, including on failure.
@@ -822,6 +881,7 @@ jobs:
       # arm64 executable — an empty archive dir is not a pass.
       - name: Device-SDK archive lane — native-todomvc-ios
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' todomvc ')
+        timeout-minutes: 12
         working-directory: examples/native-todomvc-ios
         run: bash scripts/archive.sh
 
@@ -842,9 +902,15 @@ jobs:
     # 60, not 40: the fetch-arc run data showed 40 is AT the wire —
     # attempt 1 timed out BOTH jobs at ~40:01/40:30; attempt 2's iOS
     # finished at 38.8 and Android timed out INSIDE the final (tasks)
-    # Espresso step with every prior step green. Advisory, label-gated
-    # jobs end when done — a generous ceiling only prevents the
-    # false-cancel class, it never adds wall-clock to green runs.
+    # Espresso step with every prior step green.
+    #
+    # DERIVED 2026-11-12 from seven runs (2026-11-11/12). Slowest green value
+    # of each part: prelude 3m, todomvc build 3.0 + emulator lanes 11.1,
+    # finance 0.6 + 2.8, counter 0.5 + 4.8, router-demo 0.4 + 5.8, tasks
+    # 0.6 + 6.2 => 39m if every step is at its worst at once (observed totals
+    # 25-37m). 60 is that sum +54%: the emulator steps are the noisy part
+    # (each cold-boots its own emulator, 60-65 s of every step), and the
+    # per-step timeouts below are what catch a hang, in 15-20 minutes.
     timeout-minutes: 60
     permissions:
       contents: read
@@ -852,6 +918,9 @@ jobs:
     # so a decide that never produced a value cannot shrink the lanes.
     env:
       ANDROID_APPS: ${{ needs.fingerprint.outputs.android-apps || needs.changes.outputs.android-apps || 'all' }}
+      # The pinned Gradle distribution (see "Install Gradle"). Job-level so the
+      # distribution cache can key on it.
+      GRADLE_VERSION: '9.8.2'
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -885,11 +954,13 @@ jobs:
         # services.gradle.org, whose 504s outlasted the 3x5s retry on 2026-11-09 (#4143).
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          # GRADLE_VERSION lives in the install step's env, so key on this file:
-          # bumping it re-downloads once, and the install step always looks for
-          # the zip of the pinned version inside this directory.
+          # Keyed on the VERSION (job-level env), not on this file's hash. The
+          # hash changed with every edit to this workflow, and main only runs
+          # it nightly, so until the next nightly every PR missed and saved its
+          # own 144 MB copy: five identical copies (757 MB of the 10 GB budget)
+          # on 2026-11-12. The zip is immutable and sha256-checked on use.
           path: ~/.cache/pyreon-dl/gradle
-          key: dl-gradle-${{ hashFiles('.github/workflows/native-device.yml') }}
+          key: dl-gradle-${{ env.GRADLE_VERSION }}
 
       - name: Install Gradle (pinned distribution + sha256)
         # The android examples pin AGP 9.4.1 (needs Gradle 9.6+) but ship no
@@ -905,7 +976,6 @@ jobs:
         # Bump GRADLE_SHA256 when bumping GRADLE_VERSION — the official `.sha256`
         # is at services.gradle.org/distributions/gradle-<V>-bin.zip.sha256.
         env:
-          GRADLE_VERSION: '9.8.2'
           GRADLE_SHA256: '21bd5da2de49b642904077f38c0efdc7778e92b3ed0889392dca61b97e389607'
         run: |
           set -euo pipefail
@@ -973,7 +1043,7 @@ jobs:
           # otherwise green). Three attempts with linear backoff; any green
           # attempt wins, all-three-fail still fails the step. This is the
           # dominant transient flake resetting the device-gate green streak —
-          # the XCUITest attach flake already has `-retry-tests-on-failure`,
+          # the XCUITest attach flake has its own counted retry (scripts/native-ios-uitest.ts),
           # this is the install half. Lockfile-frozen, so a retry can only
           # re-download the SAME pinned versions (no resolution drift).
           n=0
@@ -993,10 +1063,13 @@ jobs:
         working-directory: examples/native-todomvc-android
         run: bash scripts/build.sh
 
+      # Every `assembleDebug` below goes through scripts/native-gradle.sh: it
+      # retries a failed dependency DOWNLOAD (and only that), with a warning
+      # naming the attempt. See the script for the measured reason.
       - name: Build debug APK
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' todomvc ')
         working-directory: examples/native-todomvc-android
-        run: gradle assembleDebug --stacktrace
+        run: bash "$GITHUB_WORKSPACE/scripts/native-gradle.sh" assembleDebug --stacktrace
 
       - name: Enable KVM for emulator
         # `reactivecircus/android-emulator-runner` requires KVM
@@ -1031,7 +1104,7 @@ jobs:
         # reactivecircus/android-emulator-runner@v2
         # A hang after the tests (see the kill line in `script`) fails in
         # minutes instead of consuming the 60-minute job budget.
-        timeout-minutes: 25
+        timeout-minutes: 20
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         env:
           # No Gradle daemon inside the emulator step: nothing here reuses it,
@@ -1122,7 +1195,7 @@ jobs:
       - name: Build debug APK — native-finance-android (real-app gate)
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' finance ')
         working-directory: examples/native-finance-android
-        run: gradle assembleDebug --stacktrace
+        run: bash "$GITHUB_WORKSPACE/scripts/native-gradle.sh" assembleDebug --stacktrace
 
       - name: Run Compose instrumented test on Android Emulator — native-finance-android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' finance ')
@@ -1133,7 +1206,7 @@ jobs:
         # app rather than a demo.
         # A hang after the tests (see the kill line in `script`) fails in
         # minutes instead of consuming the 60-minute job budget.
-        timeout-minutes: 25
+        timeout-minutes: 15
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false # see the todomvc emulator step
@@ -1166,7 +1239,7 @@ jobs:
       - name: Build debug APK — native-counter-android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' counter ')
         working-directory: examples/native-counter-android
-        run: gradle assembleDebug --stacktrace
+        run: bash "$GITHUB_WORKSPACE/scripts/native-gradle.sh" assembleDebug --stacktrace
 
       - name: Run Espresso test on Android Emulator — native-counter-android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' counter ')
@@ -1177,7 +1250,7 @@ jobs:
         # job's runtime budget.
         # A hang after the tests (see the kill line in `script`) fails in
         # minutes instead of consuming the 60-minute job budget.
-        timeout-minutes: 25
+        timeout-minutes: 15
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false # see the todomvc emulator step
@@ -1216,13 +1289,13 @@ jobs:
       - name: Build debug APK — native-router-demo-android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' router-demo ')
         working-directory: examples/native-router-demo-android
-        run: gradle assembleDebug --stacktrace
+        run: bash "$GITHUB_WORKSPACE/scripts/native-gradle.sh" assembleDebug --stacktrace
 
       - name: Run Espresso test on Android Emulator — native-router-demo-android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' router-demo ')
         # A hang after the tests (see the kill line in `script`) fails in
         # minutes instead of consuming the 60-minute job budget.
-        timeout-minutes: 25
+        timeout-minutes: 15
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false # see the todomvc emulator step
@@ -1287,13 +1360,13 @@ jobs:
       - name: Build debug APK — native-tasks-android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' tasks ')
         working-directory: examples/native-tasks-android
-        run: gradle assembleDebug --stacktrace
+        run: bash "$GITHUB_WORKSPACE/scripts/native-gradle.sh" assembleDebug --stacktrace
 
       - name: Run Espresso test on Android Emulator — native-tasks-android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' tasks ')
         # A hang after the tests (see the kill line in `script`) fails in
         # minutes instead of consuming the 60-minute job budget.
-        timeout-minutes: 25
+        timeout-minutes: 15
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false # see the todomvc emulator step
@@ -1383,6 +1456,16 @@ jobs:
             ~/.gradle/caches/jars-9
             ~/.gradle/caches/transforms-4
           key: gradle-deps-${{ runner.os }}-${{ hashFiles('examples/native-*-android/**/*.gradle.kts', 'examples/native-*-android/gradle.properties') }}
+
+      # `gradle connectedCheck` says only "There were failing tests. See the
+      # report at: file:///…": no test name, no exception. On 2026-11-12 two
+      # red tasks steps (runs 43195120647, 43171644513) could be told apart
+      # only by downloading the artifact below. This prints one `::error::`
+      # per failed test with the head of its stack trace. Diagnostic only
+      # (always exits 0): the failed step has already failed the job.
+      - name: Name the failed Android tests
+        if: failure()
+        run: bun scripts/native-android-connected-failures.ts
 
       # The connected-test HTML/XML reports are the ONLY place the
       # failing assertion's line number lives — the gradle console log
