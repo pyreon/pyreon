@@ -18,10 +18,6 @@
 // specs and both compile gates with "value of optional type … must be
 // unwrapped" (swiftc) / "smart cast … is impossible" (kotlinc).
 
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { transform } from './first-party-plugins'
 import {
@@ -31,6 +27,7 @@ import {
   validateKotlin,
   validateSwiftWithStubs,
 } from '../validate'
+import { runtimeSwiftSources, swiftErrorLines, typecheckAgainstRealRuntime } from './real-runtime-swift'
 
 const HEAD = `import { Stack, Text } from '@pyreon/primitives'
 import { signal, computed } from '@pyreon/reactivity'
@@ -325,45 +322,9 @@ describe('the emit compiles', () => {
 
 describe.runIf(isSwiftUIAvailable())('the emit compiles against the real SDK + runtime', () => {
   it('BROAD fixture', () => {
-    const REPO = resolve(import.meta.dirname, '../../../../..')
-    const sources: string[] = []
-    const walk = (dir: string): void => {
-      let entries: string[]
-      try {
-        entries = readdirSync(dir)
-      } catch {
-        return
-      }
-      for (const e of entries) {
-        if (e === 'node_modules' || e === 'lib' || e === '.build' || e === 'Package.swift') continue
-        if (e.toLowerCase() === 'tests' || /Tests?\.swift$/.test(e)) continue
-        const p = join(dir, e)
-        if (statSync(p).isDirectory()) walk(p)
-        else if (p.endsWith('.swift')) sources.push(p)
-      }
-    }
-    for (const r of ['packages/fundamentals', 'packages/core', 'packages/native/runtime-swift', 'packages/native/router-swift']) {
-      walk(join(REPO, r))
-    }
+    const sources = runtimeSwiftSources()
     expect(sources.length).toBeGreaterThan(40)
-    const dir = mkdtempSync(join(tmpdir(), 'pyreon-narrowing-'))
-    try {
-      const app = join(dir, 'Narrowing.swift')
-      writeFileSync(app, `import SwiftUI\nimport Foundation\n${swift(BROAD).code}`, 'utf8')
-      const sdk = execFileSync('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path'], { encoding: 'utf8' }).trim()
-      try {
-        execFileSync(
-          'xcrun',
-          ['--sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, app, ...sources],
-          { encoding: 'utf8', stdio: 'pipe' },
-        )
-      } catch (err) {
-        const e = err as { stderr?: string | Buffer; stdout?: string | Buffer }
-        const out = [e.stderr, e.stdout].map((x) => (typeof x === 'string' ? x : x?.toString('utf8')) ?? '').join('\n')
-        expect.fail(`swiftc -typecheck failed:\n${out.split('\n').filter((l) => l.includes('error:')).slice(0, 12).join('\n')}`)
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
+    const diagnostics = typecheckAgainstRealRuntime([{ name: 'Narrowing.swift', code: swift(BROAD).code }], { sources })
+    if (diagnostics !== null) expect.fail(`swiftc -typecheck failed:\n${swiftErrorLines(diagnostics)}`)
   }, 300_000)
 })

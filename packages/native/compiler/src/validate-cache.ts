@@ -139,6 +139,9 @@ export type ValidateKind =
   | 'swift-typecheck'
   | 'swift-stubs'
   | 'swift-stubs-module'
+  // The real iOS SDK with the shipped runtime sources in the module (macOS
+  // only). The key's stub slot is a digest of those sources.
+  | 'swift-real-runtime'
   | 'kotlin'
   | 'kotlin-module'
 

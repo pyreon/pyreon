@@ -13,7 +13,8 @@
 // The same check against a loaded `K2JVMCompiler`, with the stubs compiled
 // once into a jar on the classpath, measures ~78ms — the JVM start and the
 // stub analysis were the cost, not the input. So this module keeps ONE
-// compiler JVM per test process and feeds it through a spool directory:
+// compiler JVM per test process (per vitest worker slot in a test run — see
+// `sharedSpoolFor`) and feeds it through a spool directory:
 //
 //   - The caller is synchronous (`validateKotlin` returns a verdict), so the
 //     transport cannot be an async stdio stream. The caller writes
@@ -49,7 +50,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { delimiter, dirname, join, resolve } from 'node:path'
 import { cacheDir } from './validate-cache'
 
 /** Field separator inside a request line; U+0001 cannot appear in a path. */
@@ -131,8 +132,35 @@ interface Daemon {
   owned: boolean
 }
 
-/** Env var through which a run-wide daemon (vitest globalSetup) hands its spool to worker processes. */
+/**
+ * Env var through which the run-wide daemons (vitest globalSetup) hand their
+ * spools to worker processes: one spool path per worker slot, joined with
+ * `path.delimiter`.
+ */
 export const SHARED_SPOOL_ENV = 'PYREON_KOTLIN_DAEMON_SPOOL'
+
+/**
+ * The run-wide daemon THIS worker process uses, or null when none was published.
+ *
+ * A daemon compiles one request at a time, and a caller's deadline starts when
+ * it enqueues. Two test files sharing one JVM therefore spend each other's
+ * compile time out of their own timeout, and a cold run (a stub edit
+ * invalidates every Kotlin verdict) tipped waiting callers past it and into a
+ * fallback `kotlinc` per check. So the run starts one JVM per vitest worker
+ * slot and each worker takes the one its `VITEST_POOL_ID` (1..maxWorkers,
+ * unique among workers alive at the same time) names. A pool id beyond the
+ * published list wraps around: still correct, only shared.
+ */
+export function sharedSpoolFor(
+  published: string | undefined,
+  poolId: string | undefined,
+): string | null {
+  const spools = (published ?? '').split(delimiter).filter(Boolean)
+  if (spools.length === 0) return null
+  const id = Number(poolId)
+  const slotIndex = Number.isInteger(id) && id >= 1 ? id - 1 : 0
+  return spools[slotIndex % spools.length] ?? null
+}
 
 function alive(d: Daemon): boolean {
   if (d.child) return d.child.exitCode === null && d.child.signalCode === null
@@ -454,7 +482,7 @@ function spawnDaemon(kotlincVersion: string): Daemon | string {
  * or it is no longer alive — the caller then spawns its own.
  */
 function attachShared(): Daemon | null {
-  const spool = process.env[SHARED_SPOOL_ENV]
+  const spool = sharedSpoolFor(process.env[SHARED_SPOOL_ENV], process.env.VITEST_POOL_ID)
   if (!spool || !existsSync(join(spool, 'ready'))) return null
   const libDir = kotlinLibDir()
   if (!libDir) return null
@@ -486,28 +514,47 @@ function daemon(kotlincVersion: string): Daemon | null {
 }
 
 /**
- * Start ONE daemon for a whole test run and return its spool, for a vitest
- * `globalSetup` to publish through `SHARED_SPOOL_ENV` before workers fork.
+ * Start the daemons for a whole test run, one per worker slot, and return
+ * their spools for a vitest `globalSetup` to publish through
+ * `SHARED_SPOOL_ENV` before workers fork (see `sharedSpoolFor` for why it is
+ * one per slot and not one per run).
  * Vitest's forks pool starts a fresh process per test file, so a per-process
  * daemon would pay a JVM start and a cold first compile per FILE (~3s each,
- * measured 2x faster than plain kotlinc where 50x was available); one shared
- * JVM pays them once per run. The stubs jar is built here too, so workers
- * never race to build it. Returns null (with the reason) when it cannot run;
- * workers then spawn their own or fall back, exactly as without a setup.
+ * measured 2x faster than plain kotlinc where 50x was available); run-wide
+ * JVMs pay them once per slot. The stubs jar is built here, by the first
+ * daemon, so neither the others nor the workers race to build it.
+ *
+ * Returns the reason when not even one can run; workers then spawn their own
+ * or fall back, exactly as without a setup. A later daemon that fails to start
+ * only narrows the list (`shortfall` says why): the run stays correct and the
+ * affected slots share.
  */
-export function startSharedKotlinDaemon(
+export function startSharedKotlinDaemons(
+  count: number,
   kotlincVersion: string,
   stubs: string,
   timeoutMs: number,
-): { spool: string; stop: () => void } | { reason: string } {
-  const own = spawnDaemon(kotlincVersion)
-  if (typeof own === 'string') return { reason: own }
-  const jar = stubsJar(own, stubs, kotlincVersion, timeoutMs)
+): { spools: string[]; stop: () => void; shortfall?: string } | { reason: string } {
+  const first = spawnDaemon(kotlincVersion)
+  if (typeof first === 'string') return { reason: first }
+  const jar = stubsJar(first, stubs, kotlincVersion, timeoutMs)
   if (!jar) {
-    stopDaemon(own)
+    stopDaemon(first)
     return { reason: 'the Compose stubs did not compile' }
   }
-  return { spool: own.spool, stop: () => stopDaemon(own) }
+  const daemons = [first]
+  let shortfall: string | undefined
+  while (daemons.length < count) {
+    const next = spawnDaemon(kotlincVersion)
+    if (typeof next === 'string') {
+      shortfall = `daemon ${daemons.length + 1} of ${count} did not start: ${next}`
+      break
+    }
+    daemons.push(next)
+  }
+  const stop = (): void => daemons.forEach(stopDaemon)
+  const spools = daemons.map((d) => d.spool)
+  return shortfall === undefined ? { spools, stop } : { spools, stop, shortfall }
 }
 
 /**
