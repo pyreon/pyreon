@@ -1,5 +1,41 @@
 # @pyreon/react-compat
 
+## 0.54.0
+
+### Minor Changes
+
+- [#4271](https://github.com/pyreon/pyreon/pull/4271) [`3387001`](https://github.com/pyreon/pyreon/commit/338700158abf71dbf0268bccab69fbcec701e6e6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `memo` no longer drops a memoized component's own state updates, and `useRef()` starts at `undefined` as it does in React and Preact.
+
+  A component wrapped in `memo` ignored its own `useState` / `useReducer` updates: the setter ran, but the component kept rendering its old output. The compat wrapper passes the same props object to every render of an instance, so `memo` compared that object with itself, found it equal, and returned the cached result. `memo` now compares a snapshot of the props and never skips a render that the component triggered itself (its own state, a context it reads, an external store), matching React.
+
+  `useRef()` with no argument returned `{ current: null }`, so the lazy-init idiom `if (ref.current === undefined) ref.current = create()` never ran. It now returns `{ current: undefined }`. `useRef(null)` and `useRef(value)` are unchanged.
+
+  Breaking for types: `useRef<T>()` is now typed `{ current: T | undefined }`, so passing it as a DOM `ref` no longer typechecks. Write `useRef<HTMLInputElement>(null)`, which is also React's form.
+
+### Patch Changes
+
+- [#4284](https://github.com/pyreon/pyreon/pull/4284) [`a687a5a`](https://github.com/pyreon/pyreon/commit/a687a5a93823d53bd65f0dafa55b5747a2d87fca) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix `vite` dev on the published compat packages: each `<pkg>/jsx-dev-runtime` now ships as its own `lib/jsx-dev-runtime.js` that exports `jsxDEV`, instead of sharing `lib/jsx-runtime.js` with the production runtime. In 0.53.0 the dev entry overwrote that file, so it had no `jsxDEV` and `vite` dev failed with "does not provide an export named 'jsxDEV'". `@pyreon/runtime-dom/transition` now exports `TransitionGroup`, as documented; the published subpath only had `Transition`.
+
+- [#4476](https://github.com/pyreon/pyreon/pull/4476) [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Components built through a compat layer's element factory now get the same compat wrapper as JSX-written ones. vue-compat: a stateful root mounted with `createApp(Root).mount(el)` re-renders on state change, and `h(Comp)` builds the wrapped component (so its lifecycle callbacks run on the compat schedule, a microtask after render, as through JSX). react-compat `createElement` / `h` and preact-compat `h` / `createElement` no longer throw "Hook called outside of a component render" for a hook-using component. vue-compat's `Teleport`, `KeepAlive`, `Transition` and `TransitionGroup` are marked `nativeCompat`, so `<KeepAlive>` and `<TransitionGroup>` render their children.
+
+- [#4271](https://github.com/pyreon/pyreon/pull/4271) [`3387001`](https://github.com/pyreon/pyreon/commit/338700158abf71dbf0268bccab69fbcec701e6e6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - When a subtree unmounts, effect cleanups now run parent before child, as in React and Preact.
+
+  `useEffect` and `useLayoutEffect` cleanups (and `componentWillUnmount` for preact-compat class components) ran child-first, because they were registered as unmount hooks, which run after the component's subtree is torn down. They now run when the component's scope is stopped, which happens before its children are torn down. A parent cleanup that unregisters something its children registered with (or that expects its children to still be mounted) now sees the same order it would in React.
+
+- [#4123](https://github.com/pyreon/pyreon/pull/4123) [`0fc7458`](https://github.com/pyreon/pyreon/commit/0fc745886238a2ead837732f4eea6022fdd33781) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Mount: components that receive a reactive prop are cheaper to set up. `makeReactiveProps` now builds the converted props object with a null prototype. On a plain `{}`, each per-instance getter forced V8 to mint a new hidden class per component; a null-prototype object skips that. The 2,047-component deep-tree mount went from 3.70–3.72 ms to 3.57–3.59 ms (two runs, interleaved arms, disjoint CIs).
+
+  **Breaking:** a component that receives ANY reactive (compiler-wrapped) prop now gets a props object with no prototype, so `props.hasOwnProperty(…)`, `props.toString()` and `` `${props}` `` throw or misbehave there. This is inconsistent by design: a component whose props are all static still receives the plain object it was passed, so the same code can work at one call site and fail at another. Use `Object.hasOwn(props, key)` or `key in props`, and `String(props.x)`. Spread, `Object.keys`, `in`, JSON and descriptor copying (`mergeProps` / `splitProps`) are unchanged.
+
+  The react, preact and vue compat layers restore `Object.prototype` on the props object once per component instance (in place, so reactive getters stay live), so third-party code written for those frameworks is unaffected. solid- and svelte-compat already pass the component a plain copy. `nativeCompat` components keep the Pyreon semantics.
+
+- [#4332](https://github.com/pyreon/pyreon/pull/4332) [`2ce96cc`](https://github.com/pyreon/pyreon/commit/2ce96cc195fcef664e8794a975221b84ff0849f4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/react-compat/dom`, the compat-mode target of both `react-dom` and `react-dom/client`, now exports React 19's public surface of both: `hydrateRoot`, `createPortal`, `flushSync`, `unstable_batchedUpdates`, `version`, the legacy `hydrate` / `unmountComponentAtNode` (and `render` now replaces a previous tree in the same container), and the resource hints `preconnect` / `prefetchDNS` / `preload` / `preloadModule` / `preinit` / `preinitModule`. `findDOMNode`, `useFormStatus` and `requestFormReset` throw a `[Pyreon]` error naming the replacement instead of failing as a missing import.
+
+- [#4476](https://github.com/pyreon/pyreon/pull/4476) [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Exports React 19.x's `useEffectEvent` (a stable function calling the latest callback), `<Activity mode>` (hidden children stay mounted but are not displayed), `<ViewTransition>` (renders its children, without the animation) and `cache` (returns the function unchanged, as React does outside Server Components). `import { useEffectEvent } from 'react'` under `compat: 'react'` used to fail at import.
+- Updated dependencies [[`a687a5a`](https://github.com/pyreon/pyreon/commit/a687a5a93823d53bd65f0dafa55b5747a2d87fca), [`f31485c`](https://github.com/pyreon/pyreon/commit/f31485c7eb6d1eaf402bfd6554bb9165da118012), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`aede571`](https://github.com/pyreon/pyreon/commit/aede571eb489fa90250a2690102020718217b137), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`cfd192d`](https://github.com/pyreon/pyreon/commit/cfd192d363b5a4c0860ee31280c1a6d3a743d38a), [`4360a8e`](https://github.com/pyreon/pyreon/commit/4360a8ec022b24674e767ee0877ef6d8d5946a23), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`2610d24`](https://github.com/pyreon/pyreon/commit/2610d248313fb85ccd787af6d65e62e2aa56c8a9), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`5599585`](https://github.com/pyreon/pyreon/commit/559958524ecef0983eb604ce5628ed258d932b42), [`93cd37d`](https://github.com/pyreon/pyreon/commit/93cd37d41484860321335daddf3e734d0977316c), [`eae9e20`](https://github.com/pyreon/pyreon/commit/eae9e20bdbb2190213e68963afeb732ae71bf543), [`34fc2b5`](https://github.com/pyreon/pyreon/commit/34fc2b5cbffff3edb2b84a3fc96423c804d6a9f4), [`8e9b9ac`](https://github.com/pyreon/pyreon/commit/8e9b9acce45a76ac3a9b8eb5bd55bd4c159ae1a9), [`bed3ef0`](https://github.com/pyreon/pyreon/commit/bed3ef0fc388e45f2baf0641554770c3b19b86d9), [`0e5acc1`](https://github.com/pyreon/pyreon/commit/0e5acc144e3bd34aead7c7bc5c49b303ed163f01), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`26815df`](https://github.com/pyreon/pyreon/commit/26815dfed810d848b28e09395d6ee171f3c10db4), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`c21ab54`](https://github.com/pyreon/pyreon/commit/c21ab54734096ac2613f998f5eba3f05dfe8c094), [`1d0d0b8`](https://github.com/pyreon/pyreon/commit/1d0d0b8afde33477e6e7191f6607fd029a79b33a), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`a8d60d3`](https://github.com/pyreon/pyreon/commit/a8d60d3c2262bf85b8bd994132b43c0aa9d9a5d1), [`6572180`](https://github.com/pyreon/pyreon/commit/657218094153dbd5d6a0d0d6dca7398b13803412), [`b1f9bfe`](https://github.com/pyreon/pyreon/commit/b1f9bfe4a5200225b6076044d310b1fcc2d0383e), [`511dd4a`](https://github.com/pyreon/pyreon/commit/511dd4acac8c673cafcc26dc9d4af88311300f98), [`5abcb2d`](https://github.com/pyreon/pyreon/commit/5abcb2d51816c8e114b0755cf761ba58a4ea8db5), [`ed925ac`](https://github.com/pyreon/pyreon/commit/ed925ac8a0b8f49e0fbade1438cfb2de0e20d1e4), [`96616a5`](https://github.com/pyreon/pyreon/commit/96616a57db3e85db9415f7cbd780f4a7a43e7ca9), [`0fc7458`](https://github.com/pyreon/pyreon/commit/0fc745886238a2ead837732f4eea6022fdd33781), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`bc6f40c`](https://github.com/pyreon/pyreon/commit/bc6f40ca8281e08f1a8f3e7cb988ad4092aadff8), [`03727ea`](https://github.com/pyreon/pyreon/commit/03727ea27fadbce6a5c0f93293757c90d2ac3ceb), [`1cd43b5`](https://github.com/pyreon/pyreon/commit/1cd43b5c6b6a3d71b671221ad292b12548f9b90e), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`a6c4897`](https://github.com/pyreon/pyreon/commit/a6c48979002c0ab1b1066d63321e414814967862), [`ab90ebc`](https://github.com/pyreon/pyreon/commit/ab90ebc06667adb17efd936df98ffd1067f48527), [`0c0bf63`](https://github.com/pyreon/pyreon/commit/0c0bf630656d09aea58774fe4333defeaec56f71), [`a0658bc`](https://github.com/pyreon/pyreon/commit/a0658bc295a6890010f96fd3ed8eb4a1bf539283), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`a0658bc`](https://github.com/pyreon/pyreon/commit/a0658bc295a6890010f96fd3ed8eb4a1bf539283), [`2979e47`](https://github.com/pyreon/pyreon/commit/2979e47ade6278c73a0f50ba5120bef21cb01139), [`3e3bb3f`](https://github.com/pyreon/pyreon/commit/3e3bb3f5f01f7b628fdac1b1bfef48550504abd4), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`2655fa3`](https://github.com/pyreon/pyreon/commit/2655fa3b4a29943b5c3f83dd6516eeeb3f26ec67), [`143e288`](https://github.com/pyreon/pyreon/commit/143e2887ff318a8e0842774eb2e320f085253400), [`c3bd80c`](https://github.com/pyreon/pyreon/commit/c3bd80c467ce940c0298ab6b85eabb5fd0463ef6), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a), [`4c56327`](https://github.com/pyreon/pyreon/commit/4c5632769f5df19db831799298b3713577751957), [`c1f21cc`](https://github.com/pyreon/pyreon/commit/c1f21cca9d17b2563fa847907e0019fc4e6425d2), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3)]:
+  - @pyreon/runtime-dom@0.54.0
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/core@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes
@@ -64,7 +100,7 @@
   below, just caught before push instead of by CI. The one other consumer
   pinning past 20.11.6 — `@happy-dom/global-registrator` in
   `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
-^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  ^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
   graph resolves to one version again.
 
   `examples/benchmark`'s framework competitors were refreshed too so the
@@ -94,7 +130,7 @@
   2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
   1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
   `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
-github')` — bumping it would break `changeset version` at release time with
+  github')` — bumping it would break `changeset version` at release time with
   `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
   map, not assumed. The root `uuid` override stays at `11.1.1` for the same
   reason, one level removed: it force-pins a transitive dep of `exceljs`
@@ -108,7 +144,7 @@ github')` — bumping it would break `changeset version` at release time with
   3.17.8 in this branch's first pass (a routine-looking override edit, not
   vetted as carefully as the deps above), and it broke
   `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
-is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
   retries) — bisected down to virtual-core's own 3.17.7 "synchronous
   notification for scroll compensation" change, not to anything else in this
   branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this
@@ -598,7 +634,7 @@ is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
   **react-compat**: 9 new specs added covering `Children.map` /
   `forEach` / `count` / `toArray` / `only` against function-wrapped
   children + the additive control. Reverted the `typeof children ===
-'function'` branch from `flattenChildren` → 8 of 9 specs fail with
+  'function'` branch from `flattenChildren` → 8 of 9 specs fail with
   "expected 2 to be 1" / "expected [Function] to throw" / etc. The 9th
   control spec ("plain children still work") stays green either way.
   Restored → 233/233 specs pass.

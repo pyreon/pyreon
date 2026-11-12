@@ -1,5 +1,25 @@
 # @pyreon/virtual
 
+## 0.54.0
+
+### Patch Changes
+
+- [#3942](https://github.com/pyreon/pyreon/pull/3942) [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dependency updates to the latest releases: oxc-parser 0.155, CodeMirror (autocomplete 6.20.4, language 6.13.1, merge 6.12.3, view 6.43.15), TanStack Query 5.104.5, TanStack Virtual core 3.19.6, Tiptap 3.32, Vite 8.3.4, Shiki 4.5, axe-core 4.14, @capsizecss/metrics 4.4 and the MCP SDK 1.32.1.
+
+- [#4002](https://github.com/pyreon/pyreon/pull/4002) [`3ee9faf`](https://github.com/pyreon/pyreon/commit/3ee9faf79ed0d9492c4bbc23f57cabb12791abf8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update third-party runtime dependencies to their latest releases: `magic-string` 1.4.4 (compiler), the `@tanstack/query-*` packages 5.105.0 (query), `@tanstack/virtual-core` 3.19.8 (virtual) and `@modelcontextprotocol/sdk` 1.32.2 (mcp). These are patch and minor releases with no API changes on the Pyreon side.
+
+- [#4422](https://github.com/pyreon/pyreon/pull/4422) [`2610d24`](https://github.com/pyreon/pyreon/commit/2610d248313fb85ccd787af6d65e62e2aa56c8a9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation and API-reference corrections (manifests feed `llms.txt` and MCP `get_api`). Every docs page and README now runs Pyreon CLIs through their scoped package (`npx @pyreon/lathe init`, not `npx lathe init`, which ran an unrelated npm package), and `pyreon doctor`'s doc-claims gate fails on an unscoped `npx` / `bunx` / `pnpm dlx` / `yarn dlx` command for one of our bins. The gate also checks the lint VS Code README's rule and category counts, the rx function count, the table feature count and the document-primitives format count. MCP `validate`'s text output now includes the column (`line 3, column 9`).
+
+- [#4176](https://github.com/pyreon/pyreon/pull/4176) [`9f59b23`](https://github.com/pyreon/pyreon/commit/9f59b2332af828f6817c07711dfc9c16f3e49ce0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `useVirtualizer` / `useWindowVirtualizer` no longer render zero rows when the scroll element is still detached from the document at mount. Pyreon builds a template into an inert fragment and inserts it after `onMount` has run (the routed-page case); there `ownerDocument.defaultView` is `null`, so TanStack attached no ResizeObserver or scroll listener, the scroll rect stayed 0×0 and only `totalSize` was right. The hook now re-attaches once the element is connected (microtask, then frame by frame for a bounded time), and warns in dev if it never is.
+
+- [#3953](https://github.com/pyreon/pyreon/pull/3953) [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/head` now compiles for iOS and Android. A native app has no document `<head>`, so `useHead(...)` lowers to nothing and `<HeadProvider>` is transparent: shared source that sets a page title for the web build builds natively instead of failing on a web-only import. The head context and the server-render helpers have no native equivalent and still warn by name. New `./native-plugin` entry.
+
+  `@pyreon/virtual` and `@pyreon/document` stay web-only, but their native warning now names the route: `@pyreon/virtual` points at `<Scroll>` with a lone `<For>` child (LazyVStack on iOS, LazyColumn on Android, verified by a regression spec that also compiles it on both toolchains, and by the existing warning for the nested shape Compose rejects at measure time), and `@pyreon/document` points at fetching the file from a server or handing it to the share sheet.
+
+- Updated dependencies [[`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`aede571`](https://github.com/pyreon/pyreon/commit/aede571eb489fa90250a2690102020718217b137), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`cfd192d`](https://github.com/pyreon/pyreon/commit/cfd192d363b5a4c0860ee31280c1a6d3a743d38a), [`4360a8e`](https://github.com/pyreon/pyreon/commit/4360a8ec022b24674e767ee0877ef6d8d5946a23), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`2610d24`](https://github.com/pyreon/pyreon/commit/2610d248313fb85ccd787af6d65e62e2aa56c8a9), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`5599585`](https://github.com/pyreon/pyreon/commit/559958524ecef0983eb604ce5628ed258d932b42), [`26815df`](https://github.com/pyreon/pyreon/commit/26815dfed810d848b28e09395d6ee171f3c10db4), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`1d0d0b8`](https://github.com/pyreon/pyreon/commit/1d0d0b8afde33477e6e7191f6607fd029a79b33a), [`511dd4a`](https://github.com/pyreon/pyreon/commit/511dd4acac8c673cafcc26dc9d4af88311300f98), [`5abcb2d`](https://github.com/pyreon/pyreon/commit/5abcb2d51816c8e114b0755cf761ba58a4ea8db5), [`96616a5`](https://github.com/pyreon/pyreon/commit/96616a57db3e85db9415f7cbd780f4a7a43e7ca9), [`0fc7458`](https://github.com/pyreon/pyreon/commit/0fc745886238a2ead837732f4eea6022fdd33781), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`bc6f40c`](https://github.com/pyreon/pyreon/commit/bc6f40ca8281e08f1a8f3e7cb988ad4092aadff8), [`03727ea`](https://github.com/pyreon/pyreon/commit/03727ea27fadbce6a5c0f93293757c90d2ac3ceb), [`1cd43b5`](https://github.com/pyreon/pyreon/commit/1cd43b5c6b6a3d71b671221ad292b12548f9b90e), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`a6c4897`](https://github.com/pyreon/pyreon/commit/a6c48979002c0ab1b1066d63321e414814967862), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`2655fa3`](https://github.com/pyreon/pyreon/commit/2655fa3b4a29943b5c3f83dd6516eeeb3f26ec67), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a), [`c1f21cc`](https://github.com/pyreon/pyreon/commit/c1f21cca9d17b2563fa847907e0019fc4e6425d2), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3)]:
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/core@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes
@@ -95,7 +115,7 @@
   below, just caught before push instead of by CI. The one other consumer
   pinning past 20.11.6 — `@happy-dom/global-registrator` in
   `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
-^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  ^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
   graph resolves to one version again.
 
   `examples/benchmark`'s framework competitors were refreshed too so the
@@ -125,7 +145,7 @@
   2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
   1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
   `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
-github')` — bumping it would break `changeset version` at release time with
+  github')` — bumping it would break `changeset version` at release time with
   `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
   map, not assumed. The root `uuid` override stays at `11.1.1` for the same
   reason, one level removed: it force-pins a transitive dep of `exceljs`
@@ -139,7 +159,7 @@ github')` — bumping it would break `changeset version` at release time with
   3.17.8 in this branch's first pass (a routine-looking override edit, not
   vetted as carefully as the deps above), and it broke
   `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
-is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
   retries) — bisected down to virtual-core's own 3.17.7 "synchronous
   notification for scroll compensation" change, not to anything else in this
   branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this

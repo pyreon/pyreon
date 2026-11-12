@@ -1,5 +1,16 @@
 # @pyreon/config
 
+## 0.54.0
+
+### Patch Changes
+
+- [#4264](https://github.com/pyreon/pyreon/pull/4264) [`529f472`](https://github.com/pyreon/pyreon/commit/529f472cdafb84f49090d7431d598f3dca5c9a11) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lathe now treats a spec as untrusted input when it follows `$ref`s.
+
+  - **Breaking (behaviour):** a local `$ref` must resolve inside the root spec's directory. A `../` escape, an absolute path, a `file://` URL or a symlink pointing out (real paths are compared in the CLI and the Vite plugin) now fails the run before the file is read, instead of reading it into the generated client. Set the new `refRoot` option (relative to the config file) to widen the boundary on purpose.
+  - `lathe pull` and `remoteRefs: 'fetch'` fetch a referenced document only from the referencing document's own origin, and check every redirect hop by the same rule. Name other origins with the new `refOrigins` option or `lathe pull --ref-origin <origin>`; `'*'` allows any public origin but still refuses loopback, private and link-local addresses.
+  - Bundling a split spec stops with an error past a node budget (1,000,000 plus 10 per input node) instead of expanding a `$ref` fan-out exponentially.
+  - A tag named after a Windows device (`con`, `nul`, `com1`, …) gets a safe file stem (`con-api`) in every per-tag file, and `naming.file` may not return one.
+
 ## 0.53.0
 
 No changes in this release.
@@ -164,7 +175,7 @@ No changes in this release.
   not checking. The most common failure when an AI writes UI code is a plausible
   prop value that does not exist — `state="primry"` typechecks in a JS file,
   renders without throwing, and silently does nothing. `atlas check Button
-'{"state":"primry"}'` catches it and suggests `primary`, plus unknown props,
+  '{"state":"primry"}'` catches it and suggests `primary`, plus unknown props,
   wrong types (including a non-function event handler) and missing required props.
   Exits non-zero, so it works in a hook or a CI step. Reads the catalog rather
   than rescanning, so it cannot disagree with the guide an agent was just handed.
@@ -195,7 +206,7 @@ No changes in this release.
 
   **Imported prop types now resolve** — the largest remaining gap between
   "works" and "usable on a real design system". `import type { ButtonProps } from
-'./types'` is what most projects do, and it produced ZERO controls: the
+  './types'` is what most projects do, and it produced ZERO controls: the
   component was found, its whole contract was not — no knobs, no variant axes, no
   scenarios past the edge cases. Relative imports are followed to the file,
   through barrel re-exports (`export type { X } from './y'`, `export *`) and

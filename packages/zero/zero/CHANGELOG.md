@@ -1,5 +1,129 @@
 # @pyreon/zero
 
+## 0.54.0
+
+### Minor Changes
+
+- [#4190](https://github.com/pyreon/pyreon/pull/4190) [`cb2ea6f`](https://github.com/pyreon/pyreon/commit/cb2ea6f8a76e9b02b4072ca17d7cae331fe88854) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `defineAction(schema, handler)` validates an action's input with any Standard Schema (zod, valibot, arktype, `@pyreon/validate`) before the handler runs. The handler receives the parsed output, typed; an invalid input returns `fail(422, { error, issues, fields })` without running the handler, so a `<Form>` page can show per-field messages from `useSubmission(action).result()?.fields`. JSON calls validate the body; form posts validate the fields as an object (repeated names become arrays). The one-argument `defineAction(handler)` is unchanged.
+
+  Upgrade: none
+
+- [#4208](https://github.com/pyreon/pyreon/pull/4208) [`b8ff5dc`](https://github.com/pyreon/pyreon/commit/b8ff5dcc6a724d5c635e2f3af4f8011dde025d0a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Server-island fragments are signed and gated as the page that declared them. Every marker the server renders now carries `data-page` and `data-sig` — an HMAC-SHA256 signature over the island name, the page's pathname, the encoded props and an expiry — and the client sends them back with the fragment request. `GET /_pyreon/fragment/<name>` verifies the signature before it decodes the props or renders anything (a missing, tampered or expired signature is a 403), runs the declaring page's route middleware, and answers `private, no-store` when that middleware ran or the request carried credentials. Previously the endpoint rendered any registered island with caller-chosen props and none of the page's route middleware.
+
+  Breaking (wire contract): an unsigned fragment request is refused. Set `PYREON_ISLAND_SECRET` (≥ 32 characters; comma-separated to rotate) or `createServer({ serverIslands: { secret } })` when more than one server instance serves the app — without it each process signs with its own random secret. Prerendered pages are signed at build time with that shared secret only (set it at build time and on the server); without it the build warns and their fragments are refused. SSR/ISR signatures last `serverIslands.maxAge` seconds (default one day); the ISR cache re-renders an entry past half that lifetime instead of serving it. A marker rendered on the client (SPA navigation) retries a 403 once with the signed marker taken from the current page's server HTML. `@pyreon/server` exports `SERVER_ISLAND_MINT` and `ServerIslandMint`; a custom handler without a mint keeps emitting unsigned markers.
+
+  Upgrade: manual — set `PYREON_ISLAND_SECRET` (≥ 32 characters) on every server instance, and at build time when prerendered pages contain server islands; a custom fragment client must send the marker's `page` and `sig` back.
+
+- [#4286](https://github.com/pyreon/pyreon/pull/4286) [`48d97f8`](https://github.com/pyreon/pyreon/commit/48d97f801ac5d7bea124f246d7939d8347433535) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add an `onError(error, { request, phase })` hook to `createHandler` and zero's `createServer`, so server errors can be forwarded to Sentry, OpenTelemetry or a log shipper. It receives a throwing middleware or API route (`'middleware'`), a failed render (`'render'` / `'stream'`), a throwing server action (`'action'`) and errors a middleware reports through the new `ctx.reportError`. The hook runs after the existing console line, never changes the response, and a failing hook is caught.
+
+  Upgrade: none
+
+- [#4476](https://github.com/pyreon/pyreon/pull/4476) [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Sitemap `exclude` string entries now match on a segment boundary (`'/blog'` drops `/blog` and `/blog/post`, not `/blogroll`), and `exclude` accepts `RegExp` entries that drop exactly the matched path. `exclude` now also applies to `additionalPaths` and SSG-enumerated paths.
+
+  Upgrade: manual — a string entry that relied on matching any path that merely starts with it (`/blog` dropping `/blogroll`) now needs a RegExp such as `/^\/blog/`.
+
+- [#4481](https://github.com/pyreon/pyreon/pull/4481) [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Upgrade: none
+
+  Zero's development error overlay is redesigned and now shows real, actionable data. An SSR render error, a loader error or a middleware error answers 500 with a self-contained page (no app CSS, system fonts) that names what failed and where: a status chip (`Server render failed`, `Loader threw`, `Middleware threw`), the matched route and phase, the message, the first stack frame in your own code as a link with **Open in editor** (Vite's `/__open-in-editor`), that file's lines around the error with the failing line marked, the stack with framework and dependency frames dimmed, a **How to fix it** box filled from the diagnose catalog when an entry matches (left out otherwise), **Copy for your AI assistant** (the whole report as plain text) and **Reload**. Hydration mismatches the runtime reports now open the same overlay over the running page, with the server value, the client value and the DOM path. The overlay is a dialog (`role="alertdialog"`): focus moves to it and stays inside, Esc dismisses it and gives focus back, it follows the stored `zero-theme` preference or the OS colour scheme, respects reduced motion, and fits a 320 px viewport. Development only: the browser half loads through a module zero injects into dev-server pages (new internal subpath `@pyreon/zero/dev-overlay`), and none of it reaches a build.
+
+  `@pyreon/router`: in development, `router.preload` tags a loader's error with the route whose loader threw (a non-enumerable `Symbol.for('pyreon.router.loaderErrorRoute')` property) before rethrowing the same error, so a dev host can tell a loader failure from a render failure. Folded out of production builds.
+
+  `@pyreon/compiler`: the diagnose catalog answers `window is not defined` (and `document`, `localStorage`, `navigator` and other browser globals) with the server-rendering cause and the `onMount` / `isServer` fix. These messages used to reach the generic `X is not defined` entry, which explains a compiler scope leak and advised updating `@pyreon/compiler`.
+
+- [#4286](https://github.com/pyreon/pyreon/pull/4286) [`48d97f8`](https://github.com/pyreon/pyreon/commit/48d97f801ac5d7bea124f246d7939d8347433535) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Route middleware now gates two paths that skipped it.
+
+  - A server action runs only after the route middleware of the page that declares it (its layouts' and its own), on `/_zero/actions/<id>` and when posted to any page with `?_action=<id>` (that page's middleware runs too). Before, both ran an action declared on a guarded page without that page's middleware. In an app with route middleware, an action defined outside a page module (for example a shared `src/actions.ts`) is now refused with `403` instead of running without a gate: move it into the page (or the page's `.server.ts` sibling) whose middleware should guard it.
+  - A `_layout` middleware now also runs for a URL under its folder that matches no page. Such a URL renders the folder's not-found page inside the layout, running the layout's loader; before, its data reached the 404 HTML and `/_pyreon/data` without the layout's middleware.
+
+  `RouteMiddlewareEntry` gains an optional `gate` field (generated for `_layout` entries).
+
+  Upgrade: manual — in an app with route middleware, move each action defined outside a page module (e.g. a shared `src/actions.ts`) into the page, or its `.server.ts` sibling, whose middleware should guard it; until then it answers 403.
+
+### Patch Changes
+
+- [#4481](https://github.com/pyreon/pyreon/pull/4481) [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon doctor`, `pyreon-lint` and the `zero build` summary now share one terminal look: one palette in truecolor (dark and light terminals) and 16 colours, plain under `NO_COLOR`, `TERM=dumb` or a pipe, with ASCII symbols when the locale is not UTF-8. `PYREON_CLI_THEME=light|dark` or `COLORFGBG` picks the light palette; `FORCE_COLOR=3` forces truecolor.
+
+  - doctor: findings read `✗ gate/rule · message`, then `↳ path:line:col`, then `fix:`; long messages wrap at 100 columns; skipped gates list one per line; the footer says `1 gate`, not `1 gates`.
+  - lint: file paths are shown relative to the working directory, messages wrap at 100 columns with the rule id kept, rule-option (config) diagnostics are printed instead of being dropped from text output, and a CLI run ends with the fixable count, file count and elapsed time (a clean CLI run prints `✓ no problems`). The watch-mode clear-screen sequence is no longer written to a pipe.
+  - zero build: the summary header names the mode and adapter, asset paths are never truncated, sizes are right-aligned, and the last line is the verdict (`✓ built in 1.5 s · 82 assets · 13 prerendered pages`). `zero build` no longer prints a separate `Build completed in Nms` after it. The route-mode table is coloured when the terminal supports it.
+
+  `--json`, `--gha` and lint's `compact` output are unchanged byte for byte.
+
+- [#4481](https://github.com/pyreon/pyreon/pull/4481) [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every Pyreon command now prints in the shared terminal theme, and the theme gains a 256-colour level.
+
+  - New flags: `pyreon check --gha` and `pyreon-lint --format gha` print one GitHub Actions annotation per finding. `@pyreon/lint` also exports `formatGha` and the `TermChoice` type.
+  - 256 colours: a terminal that advertises 256 colours but not truecolor (`TERM=xterm-256color`, macOS Terminal, `FORCE_COLOR=2`) now gets the nearest xterm-256 colour for each role instead of 16 colours. Every index keeps at least 4.5:1 contrast on dark and light backgrounds. Colour-level options that took `0 | 1 | 2` (where 2 was truecolor) now take `0 | 1 | 2 | 3`: 2 is 256 colours and 3 is truecolor, the numbering `FORCE_COLOR` uses. `FORCE_COLOR=1|2|3` is a minimum: a terminal that advertises more keeps it.
+  - Migrated: `pyreon check`, `plain`, `add`, `context` and the usage errors; `pyreon-lint --list`, `--why-off`, `--init` and watch mode; `zero dev` and the failure output of every `zero` command; the zero build's route-mode table and perf advisor; `lathe pull` and `--watch`; usage errors in `pyreon-native`, atlas and loom; `loom build` and `loom dev` status lines; create-zero's argument and fatal errors; the MCP server's fatal error.
+  - States the reference did not show: an empty run ends on `ℹ` (never `✓`), a run stopped with Ctrl-C ends on `! interrupted · elapsed` and exits 130 (watch modes end on `ℹ stopped watching` and exit 0), and a table that does not fit a narrow terminal stacks its rows instead of cutting them.
+  - Lines wrap at the terminal's width, at most 100 columns; `PYREON_CLI_WIDTH` sets it. A verdict too long for the line moves its counts onto an indented line.
+  - `pyreon-lint --watch` now prints a verdict after a clean re-lint, so a fixed problem no longer stays on screen.
+  - Every `--json` output is unchanged byte for byte.
+
+- [#3942](https://github.com/pyreon/pyreon/pull/3942) [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dependency updates to the latest releases: oxc-parser 0.155, CodeMirror (autocomplete 6.20.4, language 6.13.1, merge 6.12.3, view 6.43.15), TanStack Query 5.104.5, TanStack Virtual core 3.19.6, Tiptap 3.32, Vite 8.3.4, Shiki 4.5, axe-core 4.14, @capsizecss/metrics 4.4 and the MCP SDK 1.32.1.
+
+- [#4174](https://github.com/pyreon/pyreon/pull/4174) [`93cd37d`](https://github.com/pyreon/pyreon/commit/93cd37d41484860321335daddf3e734d0977316c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `zero dev` no longer answers a non-GET request to an `/api/*` path with 405 when no pipeline middleware, API route or page route claims it. A user plugin hosting its own dev backend through `configureServer` (registered after Zero's) never saw `POST /api/send`; the SSR and 404 handlers already skipped such paths, the request pipeline's method fallback did not.
+
+- [#4203](https://github.com/pyreon/pyreon/pull/4203) [`1d0d0b8`](https://github.com/pyreon/pyreon/commit/1d0d0b8afde33477e6e7191f6607fd029a79b33a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Head serialisation of script and title text.
+
+  - `@pyreon/head`: a JSON data block (`application/ld+json`, `speculationrules`, `importmap`, any `+json` / `/json` type) now escapes every `<` as `<`. The generic rewrite turned `<!--` into `<\!--`, and `\!` is not a JSON escape, so JSON-LD whose data contained `<!--` stopped parsing and its structured data was dropped. A `%s` title template now inserts the title literally on the server and the client: `$&`, `` $` ``, `$'` and `$$` in a title were expanded as replacement patterns.
+  - `@pyreon/core`: new `escapeJsonForScript(json)`, the one inline-script JSON recipe `@pyreon/head` and `@pyreon/zero` share.
+  - `@pyreon/zero`: `jsonLd()` uses the shared helper, and `render404Page` inserts the rendered body into the template literally.
+  - `@pyreon/compiler`: `diagnoseError` explains the `JSON.parse` invalid-escape error (V8, Firefox and JavaScriptCore wordings) that a JSON `<script>` body given the `<\!--` script-code escape produces, and points at `escapeJsonForScript`.
+
+- [#4241](https://github.com/pyreon/pyreon/pull/4241) [`0743754`](https://github.com/pyreon/pyreon/commit/0743754b227be5e0aaaef5000a123c0191c0f192) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `notFound()` thrown from a route `loader` or `serverLoader` now renders the not-found page instead of failing. The route enters the router's not-found state: `currentRoute()` resolves to the same `notFoundComponent` / `_404.tsx` chain an unmatched URL gets (inside its layouts, `isNotFound: true`, URL, params and query kept). SSR answers HTTP 404 in string and stream mode, where it used to answer 500 ("SSR render failed … Error: Not Found"). The loader-data blob carries a `__pyreonNotFound` marker, so the hydrating client resolves the same chain. The `/_pyreon/data` endpoint answers `{ "notFound": true }` instead of HTTP 500. A client navigation, `prefetchLoaderData` and `revalidate()` land on the same page. `router.runServerLoaders` can now return `{ kind: 'notFound' }`. Behaviour change: a loader's `notFound()` no longer calls `onError` and no longer leaves the page rendering with `undefined` loader data; like `redirect()`, it is treated as flow control. The next navigation leaves the not-found state.
+
+- [#4138](https://github.com/pyreon/pyreon/pull/4138) [`5ac3683`](https://github.com/pyreon/pyreon/commit/5ac3683659150fbe2f6c232f9e2303dda1a5ac62) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Routes whose mode resolves to `'ssg'` are now prerendered in every hybrid build, however that mode was reached.
+
+  With `mode: 'auto'`, or with a `routeRules` entry declaring `'ssg'`, the build's mode table printed `○ ssg` for a route but no HTML was written for it, so production served it with SSR. The prerender pass only ran when some route file contained a literal `export const renderMode = 'ssg'`. It now uses the same per-route resolver as the mode table (page > layout > `routeRules` > inference > app mode).
+
+  Also fixed on the way:
+
+  - Under `mode: 'auto'`, a `routeRules` entry or a parent `_layout`'s `renderMode` now beats the inferred mode, as documented. The inference was stamped onto the page as if the page had declared it, so it outranked both.
+  - `mode: 'auto'` picks the server pipeline when a `_layout` declares `'ssr'` or `'isr'` over pages that would otherwise infer `'ssg'`.
+  - The missing-`getStaticPaths` warning no longer fires for a dynamic route whose resolved mode is not `'ssg'` (a hybrid app's server-rendered routes, a layout-declared mode, an inferred `'ssr'`).
+  - A second build in the same process (a programmatic or test build) no longer prerenders with the first build's routes.
+
+- [#4286](https://github.com/pyreon/pyreon/pull/4286) [`48d97f8`](https://github.com/pyreon/pyreon/commit/48d97f801ac5d7bea124f246d7939d8347433535) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The node, bun and deno runners read `ORIGIN` (e.g. `https://example.com`) and use it as the origin of every request, so the client's `Host` header no longer decides where server-side code that resolves against the request origin (a relative SSR fetch under `runWithRequest`, `new URL('/api', ctx.url)`, the action origin check) sends its requests. An invalid `ORIGIN` stops the server at startup. The bun and deno runners answer a `Host` they cannot build a URL from with 400 instead of 500. Without `ORIGIN` the behaviour is unchanged; the deployment guide and the `@pyreon/http` SSR docs now say to set it.
+
+- [#4090](https://github.com/pyreon/pyreon/pull/4090) [`7cf23ff`](https://github.com/pyreon/pyreon/commit/7cf23ffe9cc7ced5d684b1faf84c2dff1226946c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Self-hosted Google Fonts no longer collide or 404 when Google serves a dynamically subset file. Files at `fonts.gstatic.com/l/font?kit=…` used to be saved under the bare name `font`: several of them overwrote each other, and with no extension a static host routed `/assets/fonts/font` to a 404. Such files now get a content-hash name with the extension read from the font bytes; normal `*.woff2` names are unchanged. Each font file is also downloaded once instead of once per weight that shares it.
+
+- [#4208](https://github.com/pyreon/pyreon/pull/4208) [`b8ff5dc`](https://github.com/pyreon/pyreon/commit/b8ff5dcc6a724d5c635e2f3af4f8011dde025d0a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Route and app middleware now gate every path that serves a page or its data. The single-fetch data endpoint and its route-middleware gate read the target page through one normaliser (doubled slashes collapsed; `\`, control characters and `.`/`..` segments refused with a 400), so the gated page is always the served page. ISR runs the app and route middleware before the cache lookup, so a cached page is never served to a request the middleware would refuse; middleware still runs once per request, its headers apply to cached responses, and background revalidation re-runs it as the original requester (socket address included). The OG image endpoint `/_zero/og/<page>.png` is gated by `<page>`'s route middleware and answers `private, no-store` when the page has route middleware or the request carried credentials. Per-route SPA shells run the middleware too. Server-island fragments are documented as public endpoints (not bound to the declaring page's route middleware).
+
+- [#4265](https://github.com/pyreon/pyreon/pull/4265) [`4f8415c`](https://github.com/pyreon/pyreon/commit/4f8415c7bbadf5bacee1378ff3424a68cb075f8a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A hybrid build (`mode: 'ssr' | 'isr' | 'auto'`) that prerenders the home page `/` now boots. The SSG pass writes the prerendered `/` to `dist/index.html`, and the SSR post-step copied that file as the server's `template.html`, so the template lost its `<!--pyreon-app-->` placeholder and the server exited with `[Pyreon] Template must contain <!--pyreon-app--> placeholder`. Every adapter (node, bun, deno, vercel, netlify, cloudflare) staged the same file. The template is now taken from the client build's own output before any post-step runs, so the `export const renderMode = 'ssr'` workaround on `/` is no longer needed.
+
+- [#4273](https://github.com/pyreon/pyreon/pull/4273) [`e314cc6`](https://github.com/pyreon/pyreon/commit/e314cc619da7e5a2064681047fee5509581ef02d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The default `<Link>` is now one component rendering its `<a>` directly, with no conditional spreads, so the anchor compiles to a string template on the server and a cloned template on the client. Same markup and behaviour; `createLink` is unchanged.
+
+- [#4009](https://github.com/pyreon/pyreon/pull/4009) [`282ed1a`](https://github.com/pyreon/pyreon/commit/282ed1ae49ab3f6be24cdcc290de97654ab42c2b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation only: the `ZeroConfig.middleware` doc comment said middleware passed to `zero({ middleware })` is applied to every route. It is not: middleware is code and cannot cross into the server bundle, so the option is dropped with a build warning. The comment now says so and points to `createServer({ middleware })`.
+
+- [#4273](https://github.com/pyreon/pyreon/pull/4273) [`e314cc6`](https://github.com/pyreon/pyreon/commit/e314cc619da7e5a2064681047fee5509581ef02d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The node SSR/SSG/ISR sub-build now always keeps zero's optional native peers (`sharp`) external. When `sharp` resolved only from zero's own `node_modules` (a workspace layout), Vite bundled it and the server could evaluate it at startup and crash on a missing native binary, even though zero imports it lazily.
+
+- [#4209](https://github.com/pyreon/pyreon/pull/4209) [`2298954`](https://github.com/pyreon/pyreon/commit/2298954b3f6539db6bd1a1da06ba7f93bf9707fd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The request URL's origin now comes only from the transport and `Host`; the request-target contributes only a path and query. The node runner and the dev servers resolved the target as a URL relative to the origin, so a target such as `//host/x` or an absolute-form target chose the URL's origin, which the server-action same-origin check compares against. A `Host` that would re-shape the URL is answered with 400.
+
+  The node, bun and deno runners no longer serve hidden paths (any `.`-prefixed segment except `/.well-known/`) as static files, adapter staging never copies `.vite/` into the client dir, and the SSG plugin removes the internal `.vite/manifest.json` on every exit, including SSR/ISR builds with no static route.
+
+  `og:image` on SSR/ISR pages uses `routeOg.siteUrl` when set and is injected per response outside the ISR cache, so a request's `Host` is never stored in a cached page.
+
+- [#4295](https://github.com/pyreon/pyreon/pull/4295) [`f6f3609`](https://github.com/pyreon/pyreon/commit/f6f360978249302ecff14c820192ad302d94851b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A hybrid build (`mode: 'ssr'` / `'isr'`, or `'auto'` resolving to a server build) now fails with a `[Pyreon]` error when a prerendered route would be written under a name the build or the deploy adapter owns in `dist/`. These names are `server`, `server-edge`, `.zero-ssg-server` and `.vite`, plus the adapter's own: `client`, `index.js` / `index.ts` / `main.js` and `package.json` for node, bun and deno; `publish`, `netlify` and `netlify.toml` for netlify; `_server`, `_worker.js` and `_routes.json` for cloudflare. Before, such a route was listed in `_pyreon-ssg-paths.json` and shown as `○ ssg`, but the SSR sub-build or the staging dropped its HTML, so it silently server-rendered. Adapters declare their names through the new optional `Adapter.reservedOutputs`. A custom adapter that stages into `outDir` should set it.
+
+- [#4156](https://github.com/pyreon/pyreon/pull/4156) [`cfd192d`](https://github.com/pyreon/pyreon/commit/cfd192d363b5a4c0860ee31280c1a6d3a743d38a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - RSS and sitemap fixes:
+
+  - `generateRssFeed` emits an item's `content` (HTML) as CDATA-wrapped `<content:encoded>`, and `feedUrl` as `<atom:link rel="self">`. Each namespace is declared only when it is used.
+  - The sitemap no longer lists the not-found route (`_404` or `_not-found`) as a page.
+  - The sitemap no longer emits a nested index twice when the route scan finds `/posts/` and the SSG manifest lists `/posts`.
+
+- [#4481](https://github.com/pyreon/pyreon/pull/4481) [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `seoPlugin({ sitemap: { exclude } })` now also leaves out excluded pages that arrive through `additionalPaths`, including every prerendered page under `useSsgPaths: true`. Before, `exclude` filtered only the route-file scan, so an excluded SSG page was listed in `sitemap.xml` anyway.
+- Updated dependencies [[`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`a687a5a`](https://github.com/pyreon/pyreon/commit/a687a5a93823d53bd65f0dafa55b5747a2d87fca), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`f69d6cf`](https://github.com/pyreon/pyreon/commit/f69d6cfeb1f3245e0c5751660401cd69980145f6), [`f2aa2d6`](https://github.com/pyreon/pyreon/commit/f2aa2d640518bbc7de093bdbe431225a61e7efe9), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`45331c6`](https://github.com/pyreon/pyreon/commit/45331c6da11881c67d3698ecda3c46aa647c73b0), [`a687a5a`](https://github.com/pyreon/pyreon/commit/a687a5a93823d53bd65f0dafa55b5747a2d87fca), [`0743754`](https://github.com/pyreon/pyreon/commit/0743754b227be5e0aaaef5000a123c0191c0f192), [`e308885`](https://github.com/pyreon/pyreon/commit/e308885eaeb56d5e6741feab0695edcc3d13bf7e), [`afe40fb`](https://github.com/pyreon/pyreon/commit/afe40fb53e70a06e5cba99b8279765d2d9a74332), [`d4ba7e4`](https://github.com/pyreon/pyreon/commit/d4ba7e445a76b23f225cdc949926e4db04b30a60), [`dfbde40`](https://github.com/pyreon/pyreon/commit/dfbde4019b6e004911904d325784e68bf15ade9c), [`6e900a6`](https://github.com/pyreon/pyreon/commit/6e900a6b521faac38acb3cf77fe897253b28ca69), [`e182184`](https://github.com/pyreon/pyreon/commit/e1821841cc91ffcd2e4aec5b29f4e985f66d2b46), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`a0658bc`](https://github.com/pyreon/pyreon/commit/a0658bc295a6890010f96fd3ed8eb4a1bf539283), [`f31485c`](https://github.com/pyreon/pyreon/commit/f31485c7eb6d1eaf402bfd6554bb9165da118012), [`8ab3c24`](https://github.com/pyreon/pyreon/commit/8ab3c2429ca05366eca87a5c4575b1ccd3c78ac8), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`aede571`](https://github.com/pyreon/pyreon/commit/aede571eb489fa90250a2690102020718217b137), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`cfd192d`](https://github.com/pyreon/pyreon/commit/cfd192d363b5a4c0860ee31280c1a6d3a743d38a), [`4360a8e`](https://github.com/pyreon/pyreon/commit/4360a8ec022b24674e767ee0877ef6d8d5946a23), [`5dbb92e`](https://github.com/pyreon/pyreon/commit/5dbb92eceb5e6e824d21aef36b728cde10b221c7), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`3ee9faf`](https://github.com/pyreon/pyreon/commit/3ee9faf79ed0d9492c4bbc23f57cabb12791abf8), [`148ce27`](https://github.com/pyreon/pyreon/commit/148ce27849e0a7e66ebbdd54639e861cdcd93fa2), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`2610d24`](https://github.com/pyreon/pyreon/commit/2610d248313fb85ccd787af6d65e62e2aa56c8a9), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`6b7085a`](https://github.com/pyreon/pyreon/commit/6b7085a6bad6e48c7a764d0f502e755ed54aaf8e), [`5599585`](https://github.com/pyreon/pyreon/commit/559958524ecef0983eb604ce5628ed258d932b42), [`93cd37d`](https://github.com/pyreon/pyreon/commit/93cd37d41484860321335daddf3e734d0977316c), [`eae9e20`](https://github.com/pyreon/pyreon/commit/eae9e20bdbb2190213e68963afeb732ae71bf543), [`34fc2b5`](https://github.com/pyreon/pyreon/commit/34fc2b5cbffff3edb2b84a3fc96423c804d6a9f4), [`8e9b9ac`](https://github.com/pyreon/pyreon/commit/8e9b9acce45a76ac3a9b8eb5bd55bd4c159ae1a9), [`bed3ef0`](https://github.com/pyreon/pyreon/commit/bed3ef0fc388e45f2baf0641554770c3b19b86d9), [`0e5acc1`](https://github.com/pyreon/pyreon/commit/0e5acc144e3bd34aead7c7bc5c49b303ed163f01), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`26815df`](https://github.com/pyreon/pyreon/commit/26815dfed810d848b28e09395d6ee171f3c10db4), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`c21ab54`](https://github.com/pyreon/pyreon/commit/c21ab54734096ac2613f998f5eba3f05dfe8c094), [`f854ab0`](https://github.com/pyreon/pyreon/commit/f854ab0432c2c1b353ea8b4b90d0aa88afde8311), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`1d0d0b8`](https://github.com/pyreon/pyreon/commit/1d0d0b8afde33477e6e7191f6607fd029a79b33a), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`a8d60d3`](https://github.com/pyreon/pyreon/commit/a8d60d3c2262bf85b8bd994132b43c0aa9d9a5d1), [`8352284`](https://github.com/pyreon/pyreon/commit/83522844ecd1be24638f89126c25dbd0e6926e84), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`6572180`](https://github.com/pyreon/pyreon/commit/657218094153dbd5d6a0d0d6dca7398b13803412), [`b1f9bfe`](https://github.com/pyreon/pyreon/commit/b1f9bfe4a5200225b6076044d310b1fcc2d0383e), [`511dd4a`](https://github.com/pyreon/pyreon/commit/511dd4acac8c673cafcc26dc9d4af88311300f98), [`5abcb2d`](https://github.com/pyreon/pyreon/commit/5abcb2d51816c8e114b0755cf761ba58a4ea8db5), [`f5e8ff6`](https://github.com/pyreon/pyreon/commit/f5e8ff692e6d305a80abc3f7cc6b0244d299d18f), [`ed925ac`](https://github.com/pyreon/pyreon/commit/ed925ac8a0b8f49e0fbade1438cfb2de0e20d1e4), [`96616a5`](https://github.com/pyreon/pyreon/commit/96616a57db3e85db9415f7cbd780f4a7a43e7ca9), [`0902367`](https://github.com/pyreon/pyreon/commit/0902367dc7c94b66247e7e9e837f604b971644e1), [`739844a`](https://github.com/pyreon/pyreon/commit/739844adaecdb37d139d594793bdedf4da203a6c), [`0fc7458`](https://github.com/pyreon/pyreon/commit/0fc745886238a2ead837732f4eea6022fdd33781), [`a070ccc`](https://github.com/pyreon/pyreon/commit/a070ccc135f0c492010f670d21e45d3abb17bb09), [`6f6f9f5`](https://github.com/pyreon/pyreon/commit/6f6f9f5e41c874a6f865338e3877158f4550272d), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`bc6f40c`](https://github.com/pyreon/pyreon/commit/bc6f40ca8281e08f1a8f3e7cb988ad4092aadff8), [`03727ea`](https://github.com/pyreon/pyreon/commit/03727ea27fadbce6a5c0f93293757c90d2ac3ceb), [`1cd43b5`](https://github.com/pyreon/pyreon/commit/1cd43b5c6b6a3d71b671221ad292b12548f9b90e), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`a6c4897`](https://github.com/pyreon/pyreon/commit/a6c48979002c0ab1b1066d63321e414814967862), [`ab90ebc`](https://github.com/pyreon/pyreon/commit/ab90ebc06667adb17efd936df98ffd1067f48527), [`9627463`](https://github.com/pyreon/pyreon/commit/962746396dcd5d2f7b6dc951088f22dd899284b9), [`09262fa`](https://github.com/pyreon/pyreon/commit/09262fa053d7c995f64bb26e351b7f7492f16c30), [`3acf603`](https://github.com/pyreon/pyreon/commit/3acf60374e846db9d16e3b5906d4488c5dbe3038), [`0743754`](https://github.com/pyreon/pyreon/commit/0743754b227be5e0aaaef5000a123c0191c0f192), [`700a06c`](https://github.com/pyreon/pyreon/commit/700a06c75804dd488000db0cb7716f421d997823), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`42343f4`](https://github.com/pyreon/pyreon/commit/42343f44de58e4ec797c1cd02685833bd4515c11), [`2fe2c1e`](https://github.com/pyreon/pyreon/commit/2fe2c1e6bcc4dbcfe1d8d349c46e97a7353e85c5), [`fb2f90b`](https://github.com/pyreon/pyreon/commit/fb2f90bf1f2c63d7cbd4508e65d4299c6966ff8e), [`0c0bf63`](https://github.com/pyreon/pyreon/commit/0c0bf630656d09aea58774fe4333defeaec56f71), [`a0658bc`](https://github.com/pyreon/pyreon/commit/a0658bc295a6890010f96fd3ed8eb4a1bf539283), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`a0658bc`](https://github.com/pyreon/pyreon/commit/a0658bc295a6890010f96fd3ed8eb4a1bf539283), [`2979e47`](https://github.com/pyreon/pyreon/commit/2979e47ade6278c73a0f50ba5120bef21cb01139), [`b8ff5dc`](https://github.com/pyreon/pyreon/commit/b8ff5dcc6a724d5c635e2f3af4f8011dde025d0a), [`48d97f8`](https://github.com/pyreon/pyreon/commit/48d97f801ac5d7bea124f246d7939d8347433535), [`3e3bb3f`](https://github.com/pyreon/pyreon/commit/3e3bb3f5f01f7b628fdac1b1bfef48550504abd4), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`7ed6c99`](https://github.com/pyreon/pyreon/commit/7ed6c9995eb87a26aaef6b0f8c7526a6291e3b4e), [`9e3d608`](https://github.com/pyreon/pyreon/commit/9e3d60870e000c7a9404d885b3d2207f80c94868), [`f1aa5ed`](https://github.com/pyreon/pyreon/commit/f1aa5edb158f88d8beb22c893972362f1dffbd1a), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`a2e002f`](https://github.com/pyreon/pyreon/commit/a2e002f8d3964a65a9e83f4d03374bb58e0ef6bd), [`2655fa3`](https://github.com/pyreon/pyreon/commit/2655fa3b4a29943b5c3f83dd6516eeeb3f26ec67), [`143e288`](https://github.com/pyreon/pyreon/commit/143e2887ff318a8e0842774eb2e320f085253400), [`f703796`](https://github.com/pyreon/pyreon/commit/f703796329d51f218ea10190b95d7c3f166e41f5), [`c3bd80c`](https://github.com/pyreon/pyreon/commit/c3bd80c467ce940c0298ab6b85eabb5fd0463ef6), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`4c56327`](https://github.com/pyreon/pyreon/commit/4c5632769f5df19db831799298b3713577751957), [`c1f21cc`](https://github.com/pyreon/pyreon/commit/c1f21cca9d17b2563fa847907e0019fc4e6425d2), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`c77b104`](https://github.com/pyreon/pyreon/commit/c77b104b9809a2c9a175b34ce8d38080d262d142), [`c5d086d`](https://github.com/pyreon/pyreon/commit/c5d086df30d65a4628525283a10bdb9ad9fb2bab), [`e314cc6`](https://github.com/pyreon/pyreon/commit/e314cc619da7e5a2064681047fee5509581ef02d), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`b8ff5dc`](https://github.com/pyreon/pyreon/commit/b8ff5dcc6a724d5c635e2f3af4f8011dde025d0a), [`2298954`](https://github.com/pyreon/pyreon/commit/2298954b3f6539db6bd1a1da06ba7f93bf9707fd)]:
+  - @pyreon/compiler@0.54.0
+  - @pyreon/runtime-dom@0.54.0
+  - @pyreon/vite-plugin@0.54.0
+  - @pyreon/runtime-server@0.54.0
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/core@0.54.0
+  - @pyreon/head@0.54.0
+  - @pyreon/server@0.54.0
+  - @pyreon/router@0.54.0
+  - @pyreon/sized-map@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes
@@ -1382,7 +1506,7 @@
 - [#1625](https://github.com/pyreon/pyreon/pull/1625) [`b96f66e`](https://github.com/pyreon/pyreon/commit/b96f66e8ed85a14353b7e203a6e4ae5f438f977e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The node + bun deploy adapters' emitted server entry now honors `$PORT` at
   runtime, falling back to the build-time configured port (default 3000).
   Previously the port was baked into `server.listen(3000, …)` / `Bun.serve({
-port: 3000 })` and `process.env.PORT` was ignored — breaking the standard
+  port: 3000 })` and `process.env.PORT` was ignored — breaking the standard
   convention every Node/Bun PaaS relies on (Vercel, Heroku, Cloud Run, Render,
   Fly, CI runners all inject `$PORT`). A set-but-empty `PORT` falls back to the
   configured port; `PORT=0` binds an ephemeral port.
@@ -2320,7 +2444,7 @@ port: 3000 })` and `process.env.PORT` was ignored — breaking the standard
 - [#1318](https://github.com/pyreon/pyreon/pull/1318) [`88a42f7`](https://github.com/pyreon/pyreon/commit/88a42f7620f4c9a4a3df0d6b730294a4f91c94ae) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero): inner SSR/SSG sub-build inherits `build.assetsInlineLimit` + `assetsDir` from the outer config
 
   The SSG/SSR/ISR plugins run a programmatic inner `vite build` with `configFile:
-false` (it must not re-load and re-run the user's whole `vite.config.ts`). As a
+  false` (it must not re-load and re-run the user's whole `vite.config.ts`). As a
   side effect the inner build also dropped the user's `build.assetsInlineLimit`,
   falling back to Vite's 4 KB default — so a `<= 4 KB` image the client build
   emitted as a hashed file (`/assets/logo-HASH.png`) was inlined as a `data:` URI
@@ -2417,7 +2541,7 @@ false` (it must not re-load and re-run the user's whole `vite.config.ts`). As a
   while still preserving a deliberate `noindex` / `none` directive verbatim.
 
   Closes the bokisch.com 0.27.1 Lighthouse finding (`<meta name="robots"
-content="index, follow">` on the live `/404.html`). Applies to both the
+  content="index, follow">` on the live `/404.html`). Applies to both the
   runtime SSR path (`render404Page`) and the SSG build path
   (`__renderNotFound`) since they share this boundary.
 
@@ -2681,7 +2805,7 @@ content="index, follow">` on the live `/404.html`). Applies to both the
 
   Bisect-verified: revert the path-skip → `examples/chat`'s
   `/api/history/general` returns 404 (smoke fails with `messages
-visible: 0`); restored → 200 + history loads + 60 messages render.
+  visible: 0`); restored → 200 + history loads + 60 messages render.
   The chat audit example is the canonical test case (no prior audit
   hit this — only the streaming-primitive surface area surfaces it).
 
@@ -2793,7 +2917,7 @@ visible: 0`); restored → 200 + history loads + 60 messages render.
   - W4 verified: `/throw` test route surfaces "Intentional test error..."
     message + stack in the rendered body + `console.error`
   - W1 verified: scaffold output of `create-pyreon-app w1-test-2 --features
-query` has zero `app.store.` or `useAppStore` references
+    query` has zero `app.store.` or `useAppStore` references
   - W6 verified: `page.on('console')` warning capture returns empty on every
     page load (previously: one warning per page)
 
@@ -3798,7 +3922,7 @@ query` has zero `app.store.` or `useAppStore` references
     (2 specs) — 3 and 5 mounted ThemeToggles register exactly ONE
     matchMedia listener. **Bisect-verified**: reverted refcount logic
     in `initTheme` → both specs fail with `expected 1 times, but got
-3 times` / `got 5 times`; restored → 2/2 pass.
+    3 times` / `got 5 times`; restored → 2/2 pass.
   - `packages/zero/zero/src/tests/isr-revalidate-timer-leak-repro.test.ts`
     (1 spec) — 5 successful revalidations leave zero pending revalidate
     timers (instruments `globalThis.setTimeout` / `clearTimeout`).
@@ -3856,7 +3980,7 @@ query` has zero `app.store.` or `useAppStore` references
 
   Same exact shape as [#734](https://github.com/pyreon/pyreon/issues/734)'s `isr.ts revalidate()` fix. Two sites in
   `ssg-plugin.ts` ran `Promise.race([work, new Promise((_, reject) =>
-setTimeout(reject, 30_000))])` without clearing the timer when `work`
+  setTimeout(reject, 30_000))])` without clearing the timer when `work`
   won the race:
 
   - `renderOne(p)` — per-path SSG render (line 1156)
@@ -3915,7 +4039,7 @@ setTimeout(reject, 30_000))])` without clearing the timer when `work`
     writes → spec fails with `expected '<base64 nonce>' to be ''`;
     restored → 16/16 csp tests pass.
   - ssg-plugin fix is **mechanical copy-paste** of the same `let
-timeoutId; try { ... } finally { if (timeoutId) clearTimeout }`
+    timeoutId; try { ... } finally { if (timeoutId) clearTimeout }`
     shape proven by [#734](https://github.com/pyreon/pyreon/issues/734)'s `isr-revalidate-timer-leak-repro.test.ts`.
     A dedicated test would require extracting `renderOne` from inside
     `closeBundle`'s closure (significant refactor); the isr.ts test
@@ -4143,12 +4267,12 @@ timeoutId; try { ... } finally { if (timeoutId) clearTimeout }`
   One generated file, one `createNamedIcon` import, a strictly-typed component
   PER set under **namespaced** names so two sets never clash: `ui` →
   `<UiIcon>` + `type UiIconName`, `brand` → `<BrandIcon>` + `type
-BrandIconName`. Per-set binding prefixes (`ui_check` / `brand_check`) keep two
+  BrandIconName`. Per-set binding prefixes (`ui_check` / `brand_check`) keep two
   sets sharing a glyph filename collision-free. `mode` is per-set (a colorful
   brand set can be `image` while the system set stays `inline`).
 
   `dir` and `sets` are mutually exclusive — the plugin throws `[Pyreon]
-iconsPlugin: provide EXACTLY ONE of dir or sets` at config time if both or
+  iconsPlugin: provide EXACTLY ONE of dir or sets` at config time if both or
   neither is given. The dev watcher watches every set's folder; regeneration is
   still idempotent. New exports: `IconSetConfig`, `NamedSetInput`,
   `generateNamedIconSetsSource`, `componentNameFromSetKey` (server entry);
@@ -4190,7 +4314,7 @@ iconsPlugin: provide EXACTLY ONE of dir or sets` at config time if both or
   ```
 
   The generated file calls `createNamedIcon(REGISTRY)`, so `keyof typeof
-REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
+  REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
   (not a virtual module) deliberately: the published `@pyreon/zero` can't
   `import` a plugin virtual module (Rolldown resolves static imports before
   plugin `resolveId` — the same constraint that makes islands need
@@ -4491,7 +4615,7 @@ REGISTRY` IS the type surface — zero per-app wiring. It writes a **real file**
     hard-fail in SSR rather than silently no-op.
   - `no-dom-in-setup`: added the same early-return-on-typeof-document/window
     guard tracking that `no-window-in-ssr` already had — `if (typeof document
-=== 'undefined') return …` at function head implicitly guards the rest
+    === 'undefined') return …` at function head implicitly guards the rest
     of the body for both rules now.
   - `BROWSER_GLOBALS`: removed `fetch`. It's a universal global in Node 18+,
     Bun, Deno, browsers, and edge runtimes. Code using `fetch` isn't
