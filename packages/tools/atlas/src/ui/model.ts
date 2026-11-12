@@ -5,7 +5,19 @@
  */
 import { h, type VNodeChildAtom } from '@pyreon/core'
 import { PermissionsProvider } from '@pyreon/permissions'
-import { batch, computed, effect, isClient, signal, type Computed, type Effect, type Signal } from '@pyreon/reactivity'
+import {
+  _rdNodeId,
+  batch,
+  computed,
+  effect,
+  isClient,
+  signal,
+  untrack,
+  type Computed,
+  type Effect,
+  type Signal,
+} from '@pyreon/reactivity'
+import { createLiveArgs, detached, type LiveArgs } from './live-args'
 import type { A11yReport } from './a11y'
 import { analyzeA11y } from './a11y'
 import type { AddonTabId, BackgroundPreset, CanvasLayout, LocalePreset, PseudoId, ViewportPreset } from './addons'
@@ -258,10 +270,96 @@ export interface WorkbenchModel {
    * recording after the node has mounted: the keys are filled by rendering.
    */
   previewAs: (roleId: string) => { node: VNodeChildAtom; recording: RecordingPermissions }
+  /**
+   * Mount the selected component again, from scratch, with fresh live values.
+   * Reactive coverage calls it when a recording starts: a coverage session
+   * counts only nodes created inside it, so the preview that was already on
+   * screen would otherwise be invisible to the recording. The preview's theme
+   * provider re-mounts with it (so its theme can be named as a source) unless
+   * `theme: false` — `atlas verify-browser` re-mounts per scenario and keeps
+   * the provider out of each scenario's new-node diff.
+   */
+  restartPreview: (options?: { theme?: boolean }) => void
+  /**
+   * The preview's theme and mode, as nodes re-created with each preview
+   * restart — what `PreviewTheme` provides. A recording re-mounts the
+   * preview's provider with fresh ones, so it can name them as a binding's
+   * source (`class ← theme`).
+   */
+  previewTheme: () => { theme: Computed<ThemeTokens>; mode: Computed<'light' | 'dark'> }
+  /**
+   * Which reactive nodes belong to the PREVIEWED component, as opposed to the
+   * workbench around it — see `PreviewScope`. Read it when sampling coverage.
+   */
+  previewScope: () => PreviewScope
+  /**
+   * Bumped (a microtask after) each time the preview finishes mounting, in a
+   * development build — when a fresh `previewScope()` is worth reading. The
+   * DOM observer behind `renderTick` attaches only after a re-mount's own
+   * writes, so it cannot say this.
+   */
+  previewMounts: Signal<number>
   /** `ref` for the search `<input>` — attach in the top bar so ⌘K can focus it. */
   searchRef: (el: HTMLInputElement | null) => void
   /** Focus the search input (⌘K) via the captured ref — no DOM query. */
   focusSearch: () => void
+}
+
+/**
+ * The previewed component's footprint in the reactive graph, for scoping
+ * coverage to it. Ids are reactive-graph node ids (dev builds only — in a
+ * production build every list is empty).
+ *
+ * - `mounts`: one id window per mount of the preview since the live values
+ *   were created (`start` is taken just before the component renders, `end`
+ *   just after its subtree mounted). A node created inside a window is the
+ *   component's, whatever it reads.
+ * - `props`: the live-value cell for each control key — the graph node a
+ *   binding reads when it reads `props.<key>`. Maps a binding's source back to
+ *   the control that drives it.
+ * - `remount`: keys the catalog's `render` read while rendering. Changing one
+ *   re-mounts the preview, so its bindings are rebuilt rather than updated.
+ * - `changed`: keys whose value changed since the live values were created.
+ * - `ignore`: Atlas's own nodes inside the preview (the window probes, the
+ *   remount trigger) — never reported as the component's.
+ */
+export interface PreviewScope {
+  component: string
+  mounts: ReadonlyArray<{ start: number; end: number }>
+  props: ReadonlyMap<number, string>
+  remount: ReadonlySet<string>
+  changed: ReadonlySet<string>
+  ignore: ReadonlySet<number>
+  /** Workbench state the preview reads, by node id: `theme`, `mode`. */
+  context: ReadonlyMap<number, string>
+}
+
+/**
+ * Bracket the preview's subtree. Mounted first and last around the
+ * component, so every node the component creates while mounting falls between
+ * the ids they take — and the workbench's own reactive child that hosts the
+ * preview (created after `preview()` returns, before the subtree mounts) falls
+ * outside. A probe taken inside `preview()` would sit before that host and
+ * report it as the component's.
+ */
+function MountMark(props: { at: () => void }): null {
+  props.at()
+  return null
+}
+
+/** How many mount windows a scope keeps (see `PreviewScope.mounts`). */
+const MAX_MOUNTS = 200
+
+function emptyScope(component: string): PreviewScope {
+  return {
+    component,
+    mounts: [],
+    props: new Map(),
+    remount: new Set(),
+    changed: new Set(),
+    ignore: new Set(),
+    context: new Map(),
+  }
 }
 
 export function createModel(
@@ -738,14 +836,160 @@ export function createModel(
   //
   // `appearance` renders the same component under another mode / brand — the
   // Theme Lab's tiles. Omitted, it is the workbench's own.
+  //
+  // The workbench's own preview passes LIVE values (see ./live-args): a control
+  // edit updates the mounted component in place, the way a parent passing a
+  // reactive prop would, instead of throwing it away. Only a key the catalog's
+  // `render` reads while rendering re-mounts it (through `remountOn`). The
+  // Theme Lab's tiles keep plain values — they are snapshots, not the subject.
+  // Re-mount trigger for the preview alone. A restart that also re-mounts the
+  // theme provider does NOT bump it: the provider's re-mount already builds
+  // the preview afresh, and bumping both re-ran the old preview accessor too —
+  // a second, stray mount that counted every binding twice.
+  const mountEpoch = signal(0)
+  let restarts = 0
+  // Re-mount when the SET of keys changes: the props object has one getter
+  // per key, and a key that did not exist when it was built has no getter.
+  const keySet = computed(() => Object.keys(vals()).join('\u0000'), { equals: (a, b) => a === b })
+  let live: { id: string; epoch: number; args: LiveArgs } | null = null
+  // Re-mount trigger for the keys `render` read while rendering. The watcher
+  // bumps it from inside its own run, so the re-mount is queued behind the
+  // component's bindings of the same key: they update in place first (their
+  // fire is real and counted — locked by binding-rows-live.test.ts), and only
+  // then is the preview rebuilt. The watcher is Atlas's own node, so coverage
+  // ignores it.
+  const remountBump = signal(0)
+  let remountWatch: Effect | null = null
+  const watchRemount = (args: LiveArgs, keys: readonly string[]): Effect | null => {
+    if (keys.length === 0) return null
+    const cells = keys.map((k) => args.cell(k))
+    let first = true
+    const watch = detached(() =>
+      effect(() => {
+        for (const c of cells) c()
+        if (first) {
+          first = false
+          return
+        }
+        untrack(() => remountBump.update((n) => n + 1))
+      }),
+    )
+    const id = _rdNodeId(watch)
+    if (id !== undefined) ignored.add(id)
+    return watch
+  }
+  let scope = emptyScope('')
+  const ignored = new Set<number>()
+  const liveFor = (id: string, epoch: number): LiveArgs => {
+    if (live && live.id === id && live.epoch === epoch) return live.args
+    live?.args.dispose()
+    live = { id, epoch, args: createLiveArgs(() => vals()) }
+    ignored.clear()
+    scope = emptyScope(id)
+    return live.args
+  }
+  // A reactive-graph id taken NOW: a probe signal's id is above every node
+  // created before it. Dev only — the registry does not exist in production.
+  const probe = (): number | undefined => {
+    if (process.env.NODE_ENV === 'production') return undefined
+    const id = _rdNodeId(signal(0))
+    if (id !== undefined) ignored.add(id)
+    return id
+  }
   const preview = (appearance?: Appearance): VNodeChildAtom | VNodeChildAtom[] => {
     const entry = sel()
     if (!entry) return null
+    if (appearance) {
+      return h(
+        PermissionsProvider,
+        { value: permissions().can },
+        entry.render(vals(), makeRenderCtx(appearance)) as VNodeChildAtom,
+      )
+    }
+    void mountEpoch()
+    const args = liveFor(entry.id, restarts)
+    void keySet()
+    let start: number | undefined
+    const keys = Object.keys(untrack(vals))
+    const { out, keys: readWhileRendering } = args.rendering(() =>
+      entry.render(args.props(keys), renderCtx),
+    )
+    // The keys `render` read itself: changing one re-mounts (see `watchRemount`).
+    void remountBump()
+    remountWatch?.dispose()
+    remountWatch = null
+    const done = (): void => {
+      remountWatch = watchRemount(args, readWhileRendering)
+      const end = probe()
+      if (start === undefined || end === undefined) return
+      // Deferred: this runs inside the mount, and a reader of the scope
+      // should see the subtree settled, not write state mid-mount.
+      queueMicrotask(() => previewMounts.set(previewMounts.peek() + 1))
+      scope = {
+        component: entry.id,
+        // Bounded: a remount key edited all session long keeps the latest
+        // windows; the nodes of the oldest mounts drop out of the scope.
+        mounts: [...scope.mounts, { start, end }].slice(-MAX_MOUNTS),
+        props: scope.props,
+        remount: new Set([...scope.remount, ...readWhileRendering]),
+        changed: args.changed(),
+        ignore: ignored,
+        context: scope.context,
+      }
+    }
     return h(
       PermissionsProvider,
       { value: permissions().can },
-      entry.render(vals(), appearance ? makeRenderCtx(appearance) : renderCtx) as VNodeChildAtom,
+      h(MountMark, { at: () => (start = probe()) }),
+      out as VNodeChildAtom,
+      // Mounted LAST, after the component's whole subtree.
+      h(MountMark, { at: done }),
     )
+  }
+  const previewMounts = signal(0)
+  // The scope is cleared NOW, not when the re-mount lands: until then it
+  // would describe the mount the new recording cannot see.
+  const themeEpoch = signal(0)
+  const restartPreview = (options?: { theme?: boolean }) => {
+    scope = emptyScope(scope.component)
+    restarts += 1
+    if (options?.theme === false) mountEpoch.update((n) => n + 1)
+    else themeEpoch.update((n) => n + 1)
+  }
+  let themeCells: {
+    epoch: number
+    theme: Computed<ThemeTokens>
+    mode: Computed<'light' | 'dark'>
+  } | null = null
+  const previewTheme = () => {
+    const epoch = themeEpoch()
+    if (themeCells && themeCells.epoch === epoch) return themeCells
+    themeCells?.theme.dispose()
+    themeCells?.mode.dispose()
+    themeCells = detached(() => ({
+      epoch,
+      theme: computed(() => theme()),
+      mode: computed<'light' | 'dark'>(() => (dark() ? 'dark' : 'light')),
+    }))
+    return themeCells
+  }
+  // The cells map grows as bindings read keys after the last mount, so the
+  // id→key map is refreshed on every read rather than frozen at mount.
+  const previewScope = (): PreviewScope => {
+    if (!live) return scope
+    const props = new Map<number, string>()
+    for (const [key, cell] of live.args.cells()) {
+      const id = _rdNodeId(cell)
+      if (id !== undefined) props.set(id, key)
+    }
+    const context = new Map<number, string>()
+    if (themeCells) {
+      const t = _rdNodeId(themeCells.theme)
+      const md = _rdNodeId(themeCells.mode)
+      if (t !== undefined) context.set(t, 'theme')
+      if (md !== undefined) context.set(md, 'mode')
+    }
+    return { ...scope, props, changed: live.args.changed(), context }
   }
 
   const previewAs = (roleId: string) => {
@@ -993,7 +1237,7 @@ export function createModel(
     wrapped: catalog.wrapped === true,
     viewports, backgrounds, locales, roles, viewportPreset, backgroundPreset, dir,
     brand, theme, sel, vals, visibleGroups, tree, browseIds, collapsed, isCollapsed, toggleGroup, noResults, matchCount, activeScenario, renderTick, a11y, previewEmpty,
-    setValue, selectScenario, runPlay, reset, logAction, clearActions, search, searchHits, preview, previewAs, searchRef, focusSearch, previewRef,
+    setValue, selectScenario, runPlay, reset, logAction, clearActions, search, searchHits, preview, previewAs, restartPreview, previewScope, previewTheme, previewMounts, searchRef, focusSearch, previewRef,
     searchOpen, sidebarW, panelFrac, grid, compact, drawerOpen, embed, toggleTheme, syncTheme,
   }
 }

@@ -594,9 +594,21 @@ Four panels read data no other workbench has:
   hand-written `catalog`), and under `atlas dev` marks a prop that appeared on
   a rescan as `new` / "added N min ago" (`WorkbenchControl.source` /
   `addedAt`).
-- **Reactive coverage** shows the recording's share of updated reactive nodes
-  as a bar. It lists nodes, not named bindings: compiled template bindings do
-  not record which attribute or prop they drive.
+- **Reactive coverage** lists every DOM binding of the selected component by
+  name — `aria-busy ← loading`, `class ← variant, size, mode, theme` — with its
+  kind, how many times it updated after its mount, and a status that is a
+  shape and a word (✓ covered, ○ never fired, ↻ rebuilt by a re-mount).
+  Uncovered rows come first, each saying what would exercise it (the control
+  to change, the state to interact with, the theme switch). The % bar reads
+  the same rows. Record re-mounts the preview, so its bindings are counted
+  from their first run; the list re-samples while you work. A production
+  build has no reactive graph, and the panel says so instead of a score.
+- **Control edits update the preview in place.** `render` receives live
+  values — one getter per key — so a component's bindings re-run on an edit
+  instead of the component being re-mounted. A key the catalog's `render`
+  reads itself (to branch on it) still re-mounts the preview when it changes.
+  The generated catalog keeps the getters (`mergeArgs` / `setArg` /
+  `argReader` from `@pyreon/atlas/core`).
 - **Lens** prints a **Fix:** line under a verdict worth acting on — a detector
   footgun's own rewrite (`ReactivityFinding.fix` from `@pyreon/compiler`), or
   how to read a baked-once value live.

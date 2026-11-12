@@ -534,6 +534,22 @@ test.describe('URL state', () => {
     await expect(page.locator('input[placeholder]').last()).toHaveValue('Shipped')
   })
 
+  test('a control edit updates a DERIVED component in place, not by re-mounting it', async ({ page }) => {
+    // The generated render merges live args by descriptor (`__merge`), so the
+    // component's own bindings read each control — an object spread there
+    // would read every getter once and re-mount the preview on every edit.
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Badge' }).click()
+    const root = page.getByTestId('canvas-preview').locator(':scope > *').first()
+    await root.evaluate((el) => {
+      ;(el as HTMLElement & { __probe?: number }).__probe = 1
+    })
+    await page.getByTestId('addon-tab-controls').click()
+    await page.locator('input[placeholder]').last().fill('Live edit')
+    await expect(page.getByTestId('canvas-preview')).toContainText('Live edit')
+    expect(await root.evaluate((el) => (el as HTMLElement & { __probe?: number }).__probe)).toBe(1)
+  })
+
   test('canvas state is shareable, and a stale component id degrades', async ({ page }) => {
     // `kiosk` is a preset from the project's atlas.config.ts — the shipped
     // `tablet` id no longer exists here, which is itself the point: the link

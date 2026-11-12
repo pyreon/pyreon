@@ -186,6 +186,47 @@ export const read = () => inner()
     expect(r.code).toContain(`export const themeMode = signal('light')`)
   })
 
+  // A closure (or hoisted function) written ABOVE `const n = signal(0)` reads and
+  // writes that `n` when it runs. The walk used to register `n` at its
+  // declaration, so the closure kept `n.set(n.peek() + 1)` on what became
+  // `let n = state(0)` (a crash); the plain transform resolves names the same
+  // way, so the binding declines instead (atlas `previewMounts`).
+  it('a signal referenced ABOVE its declaration declines — byte-untouched', () => {
+    const src = `import { signal } from '@pyreon/reactivity'
+export function f() {
+  const done = () => { queueMicrotask(() => n.set(n.peek() + 1)) }
+  function g() { return n() }
+  const n = signal(0)
+  const after = signal(1)
+  return { done, g, a: after() }
+}
+`
+    const r = M(src)
+    expect(r.declined.map((d) => `${d.name}:${d.code}:${d.line}`)).toEqual(['n:forward-reference:3'])
+    expect(r.converted).toEqual(['after'])
+    expect(r.code).toContain('queueMicrotask(() => n.set(n.peek() + 1))')
+    expect(r.code).toContain('return n() }')
+    expect(r.code).toContain('const n = signal(0)')
+    // the converted remainder still round-trips
+    expect(transformPlain(r.code!, 'mig.tsx')?.warnings ?? []).toEqual([])
+  })
+
+  it('a later inner declaration shadows an outer signal for the WHOLE block', () => {
+    const r = M(`import { signal } from '@pyreon/reactivity'
+const x = signal(0)
+export const top = () => x()
+export function f() {
+  const g = () => x + 1
+  const x = 5
+  return g
+}
+`)
+    expect(r.converted).toEqual(['x'])
+    // the inner block's \`x\` is the number, not the signal: no signalOf, no read rewrite
+    expect(r.code).toContain('const g = () => x + 1')
+    expect(r.code).toContain('export const top = () => x')
+  })
+
   it('a signal passed to a COMPONENT prop keeps identity (and its accessor type)', () => {
     const r = M(`import { signal } from '@pyreon/reactivity'
 export function A() { const open = signal(false); return <Defer when={open}><b>{open}</b></Defer> }
