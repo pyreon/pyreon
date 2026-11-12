@@ -104,8 +104,7 @@ export function gateChannels<T extends Json>(data: T, file: string, links: Recor
         .map((item, i) => walk(item, `${at}[${i}]`))
     }
     if (node && typeof node === 'object') {
-      const src = node as Record<string, unknown>
-      let obj: Record<string, unknown> = { ...src }
+      const obj: Record<string, unknown> = { ...(node as Record<string, unknown>) }
       const variants = obj.withChannel
       delete obj.withChannel
       if (variants !== undefined) {
@@ -116,7 +115,7 @@ export function gateChannels<T extends Json>(data: T, file: string, links: Recor
           if (!(KEYS as string[]).includes(key)) {
             throw new Error(`[Pyreon] ${file}: ${at}.withChannel.${key} names no channel. Use one of: ${KEYS.join(', ')}.`)
           }
-          if (open.has(key as SiteLinkKey)) obj = { ...obj, ...(override as Record<string, unknown>) }
+          if (open.has(key as SiteLinkKey)) Object.assign(obj, override)
         }
       }
       for (const [key, value] of Object.entries(obj)) {
