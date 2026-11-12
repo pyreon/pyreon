@@ -1,9 +1,0 @@
----
-'@pyreon/loom': minor
----
-
-The observatory takes the Pyreon tool-app layout: a 48 px top bar with the workspace name, the view switch, the error / warning / info counts and the exit code `loom scan` would return; the package list grouped by resolution depth (severity glyph and blast-radius count per row, a filter field instead of the kind buttons); a view bar per view; a 340 px detail rail (deps · dependents · blast, findings, depends-on, blast radius, resolution path, and the `loom.ignore` entry that suppresses the first finding); and a status bar with the scan counts and the suppressions in force. Below 860 px the list is a drawer, below 760 px the rail too. With nothing selected (how it opens) the rail shows the workspace overview: counts, findings by severity, cycles, the five widest blast radii and the gate. Platform packages (only an optionalDependency of one parent, e.g. `@pyreon/compiler-<os>-<arch>`) are ranked under their parent, not beside it.
-
-The graph draws internal packages as boxes, one column per depth, and selecting a package lights its blast radius; dev edges are an opt-in layer. The matrix now shows external version usage by default (drift coloured by severity, phantom and unused declarations marked, "drift only" narrowing), with the import DSM one chip away. Impact leads with the selection's blast radius; the manifest view shows an excerpt of this scan's report with a download of the full document. The graph is keyboard-operable (one tab stop, Enter selects); the dev server shows a themed loading line while it scans and a themed error with a reload when a rescan fails.
-
-Report additions: `report.gate` (`{ strict, exit }`, what `loom scan` exits with under the resolved settings) and `issue.ignored` (the `loom.ignore` reason, as data). Breaking for embedders of `@pyreon/loom/ui`: the `KindFilter` type and the model's `kind` signal are gone (the list filters by text; externals have their own group).

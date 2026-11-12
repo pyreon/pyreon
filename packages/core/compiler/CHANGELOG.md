@@ -1,5 +1,185 @@
 # @pyreon/compiler
 
+## 0.54.0
+
+### Minor Changes
+
+- [#4289](https://github.com/pyreon/pyreon/pull/4289) [`f5e8ff6`](https://github.com/pyreon/pyreon/commit/f5e8ff692e6d305a80abc3f7cc6b0244d299d18f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `migrateReactCode` (MCP `migrate_react`, `pyreon check --fix`, `pyreon doctor --fix`) now produces Pyreon that updates. Reads of `useState` / `useMemo` values become `count()`. Setter calls become `count.set(v)` / `count.update(fn)`, and a setter passed as a value becomes a value-or-updater function. `useReducer` becomes a signal plus a `dispatch`. A body-level `const` derived from state becomes a `computed`, and a `return` that reads state outside JSX becomes an accessor. `memo` / `forwardRef` are really unwrapped, and the ref arrives as `props.ref`. `useRef(value)` becomes `{ current: value }`, not a signal. `createRoot(el).render(app)` becomes `mount(app, el)`, `<Fragment>` becomes `<>`, and `useNavigate` / `useParams` / `Link` / `Outlet` map to `@pyreon/router`. `dangerouslySetInnerHTML` and `onChange` on selects and checkboxes are left alone. References are resolved lexically, so shadowing locals are untouched. What cannot be converted safely stays in place with its React import and is listed in the new `MigrationResult.manual` (line and column in the migrated code, reason, suggestion). `migrate_react` lists those notes together with whatever `validate` still finds in the output, and `pyreon check --fix` / `doctor --fix` report them as `not-migrated` findings.
+
+  When two planned rewrites overlap, `migrateReactCode` now throws `[Pyreon] migrateReactCode: two rewrites overlap at offset N` instead of silently dropping one, and `diagnoseError` (MCP `diagnose` / `explain_error`) explains that error: find the construct at that offset, convert it by hand, migrate the rest, and report the input.
+
+- [#4476](https://github.com/pyreon/pyreon/pull/4476) [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon check` and doctor's react-patterns gate no longer skip files whose only React habit is `.map()` in JSX, `onChange` on an input, a compound `.value +=` on a signal, a bare `memo(...)`, or `useLayoutEffect`. `hasReactPatterns` is now derived from one trigger per detector code (`REACT_PATTERN_TRIGGERS`, typed over `ReactDiagnosticCode`), so it cannot drift from the detectors. `hasPyreonPatterns` now also passes Plain Mode modules, so `plain-mode` findings reach `pyreon check` and doctor.
+
+  Breaking (types): five `ReactDiagnosticCode` members that no detector ever emitted are removed — `use-layout-effect` (reported under `use-effect-*`), `dangerously-set-inner-html` (a supported Pyreon prop), `key-on-for-child`, `create-context-import` and `use-context-import` (reported under `react-import`).
+
+- [#4091](https://github.com/pyreon/pyreon/pull/4091) [`2fe2c1e`](https://github.com/pyreon/pyreon/commit/2fe2c1e6bcc4dbcfe1d8d349c46e97a7353e85c5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add per-tab back stacks for tab-bar apps: `createRouter({ tabs })` with `<Tabs router={router}>` ([#4060](https://github.com/pyreon/pyreon/issues/4060)).
+
+  `createRouter({ routes, tabs: [{ name, root }] })` keeps one stack per tab and an active tab. `push` / `replace` / `useNavigate()` act on the active tab. A path under another tab's root selects that tab and pushes onto it, a tab's root path selects it and pops it to the root, and `router.selectTab(name)` switches tabs and keeps every stack. Selecting the tab that is already active pops it to its root. `router.activeTab()` (reactive) and `router.tabStack(name)` read the state.
+
+  `<Tabs router={router}>` from `@pyreon/primitives` binds the tab bar to the router. Put a `<RouterView />` in each `<Tab>`: it shows that tab's top entry, and `useRoute()` / `useParams()` inside it read that tab's route, so a hidden tab keeps its page, params and loader data while another tab navigates. Tapping the active tab pops it to its root.
+
+  - **Web:** the URL is the active tab's top entry. Every history entry the router writes is stamped with its tab and that tab's stack, so Back and Forward restore both through the full navigation pipeline (guards, blockers, loaders). A reload restores the stack stamped on the current entry.
+  - **iOS:** `RouterProvider` adds no stack of its own for a tab-bar router. Each tab is its own `NavigationStack` inside the `TabView` (`PyreonRouterTabs` / `PyreonTabStack`), so a push from inside a tab stays in it and the tab bar stays visible.
+  - **Android:** each tab keeps its own stack (`PyreonTabStack`). The system Back pops the active tab first, then returns from another tab's root to the first tab. `PyreonTabs` gains an `onReselect` callback.
+  - **Deep links** select the tab whose root prefixes the path and push it there, on all three targets.
+
+  The native compiler lowers `tabs` (an array literal of string-literal `{ name, root }`). A `<Tab value>` that names no configured tab, a tab whose root matches no top-level literal route, and a `<RouterView />` outside a `<Tab>` are named in warnings. A signal-bound `<Tabs value onChange>` is unchanged.
+
+  `pyreon doctor diagnose` / MCP `diagnose` explain the two router-tab warnings (`selectTab` of an unknown tab, `<Tabs router>` on a router without `tabs`).
+
+- [#4477](https://github.com/pyreon/pyreon/pull/4477) [`a2e002f`](https://github.com/pyreon/pyreon/commit/a2e002f8d3964a65a9e83f4d03374bb58e0ef6bd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A keyed `<For>` row that reads a field of an item replaced under the same key is now caught before it ships.
+
+  On the web, `<For each={todos} by={(t) => t.id}>` runs a row once per key. An update such as `todos.set(todos().map((t) => (t.id === id ? { ...t, done: !t.done } : t)))` keeps the key, so the row is kept and `{t.done ? …}`, `class={t.done ? …}` or `<Row todo={t} />` with `props.todo.done` keep showing the first value. iOS and Android redraw the row, so the same source was right on two targets and stale on the web.
+
+  - `detectPyreonPatterns` has a new code, `for-stale-item-field`, so `pyreon check`, the MCP `validate` tool and the Reactivity Lens report it. It fires only when the file also replaces items under their key and the read field is one that update overrides. A `<For>` whose `each` is a call inside a `{() => …}` accessor is rebuilt on every list change, so it is skipped.
+  - `@pyreon/lint` has the matching rule, `pyreon/no-stale-for-item-field` (error in `recommended`, accepts `exemptPaths`). There are now 134 rules.
+  - The `diagnoseError` catalog (the MCP `diagnose` tool) recognises the symptom ("my <For> row does not update").
+  - The fix in each message: read the live value by key through a call (`isDone(t.id)`), which stays reactive on the web and lowers to a plain lookup on native, or give the field its own signal.
+  - The `@pyreon/primitives` docs example now reads `done` by id.
+
+- [#4199](https://github.com/pyreon/pyreon/pull/4199) [`2655fa3`](https://github.com/pyreon/pyreon/commit/2655fa3b4a29943b5c3f83dd6516eeeb3f26ec67) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Component props built from constant parent props are no longer re-evaluated through a getter chain. Inside a component, `<Child depth={props.depth - 1} />` now evaluates once when `props.depth` is a plain value (and stays a live getter when it is reactive), and `<Child x={props.x} />` forwards the parent's own getter instead of wrapping it, so a prop threaded through many levels costs one call instead of one per level. Adds the compiler helpers `_pk` and `_pp` to `@pyreon/core` (a newer compiler needs a matching core).
+
+### Patch Changes
+
+- [#4481](https://github.com/pyreon/pyreon/pull/4481) [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Atlas: the Atlas v2 design parts that needed a data source ([#4440](https://github.com/pyreon/pyreon/issues/4440)).
+
+  - **Canvas → Layout**: `centered` (default), `padded` and `fullscreen`, carried in the link as `?layout=`.
+  - **Permissions** now renders the scenario as every role sees it, side by side, each under its own recording `can()`, with the keys that render consulted and a verdict against the role's policy (`presets.roles` or the shipped roles): an enabled action whose label starts with a known verb, rendered although that role's key for the verb was denied — or with no `can()` behind it while the policy withholds the verb — is flagged. Breaking (0.x): the single-role picker and the consulted-keys list it showed are replaced by the cards; a card's chip still renders the canvas as that role (`?role=`).
+  - **Schema** lists where every control came from (schema, rocketstyle dimension, prop type, content seed, `defineComponent`, or the catalog) and, under `atlas dev`, marks a prop that appeared on a rescan as new / "added N min ago". New optional fields: `PropControl.source` (`ControlSource`), `WorkbenchControl.source` and `WorkbenchControl.addedAt`. The panel now applies to every component with a control, not only one with a schema.
+  - **Reactive coverage** shows the recording's percentage as a bar.
+  - **Lens** prints a "Fix:" line under a footgun (the detector's own rewrite) and under a baked-once read.
+  - Every panel except Controls, Actions, A11y, Canvas and Addons now loads its body on first open, which takes the workbench's main bundle below its previous size.
+
+  Compiler: `analyzeReactivity` findings for a detector footgun carry the detector's suggested rewrite as `fix`.
+
+- [#3930](https://github.com/pyreon/pyreon/pull/3930) [`f69d6cf`](https://github.com/pyreon/pyreon/commit/f69d6cfeb1f3245e0c5751660401cd69980145f6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix four places where the two compiler backends disagreed, and where the output lost reactivity or didn't parse.
+
+  - A value derived from a prop, through another local, is now reactive inside object-literal methods, higher-order component wrappers, class fields, array elements, ternary branches and `export default` objects. Previously the native backend left the inner local un-inlined and the value stopped updating.
+  - A component with a defaulted props parameter (`(props = {}) => …`) now binds its props reactively. The JavaScript backend had been baking them in as static values.
+  - An object key or class member named like a signal (`{ source: 1 }`) is no longer treated as a read of that signal, so static literals are no longer wrapped in a reactive getter.
+  - A signal written inside an event handler (`i = 2`, `i++`, `a[i] = 1`, `s.value++`, destructuring targets) is no longer called as if it were read. Both backends used to produce output that was a syntax error or wrote to the wrong place.
+
+  An expression that starts with an object literal and is then accessed (`{ a: s() }.a`) is now parenthesized, so it no longer parses as a block.
+
+- [#4016](https://github.com/pyreon/pyreon/pull/4016) [`f2aa2d6`](https://github.com/pyreon/pyreon/commit/f2aa2d640518bbc7de093bdbe431225a61e7efe9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A bare signal used as JSX text (`<span>{count}</span>`) now compiles to the same direct `_bindText(count, …)` binding as the called form `{count()}`, in both the JS and Rust backends. It used to go through the general `bindPolymorphicText` binding, which re-tracks on every update. Behaviour is unchanged: `_bindText` still mounts a VNode if the signal holds one. A local variable that shadows a signal's name is not affected.
+
+- [#4481](https://github.com/pyreon/pyreon/pull/4481) [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The content audit (`pyreon doctor`) recognises collections that are not a literal `defineCollection({...})`: a preset such as `blogCollection()`, a factory call, or a collection held in a variable. Each gets its literal `path` when it passes one, and `src/content/<name>` otherwise. Before, every post of a `blogCollection()` collection was reported as an orphaned markdown file.
+
+  Plain Mode (`'use plain'`) no longer wraps the tail of an `async` component after a reactive early return in `return () => { … }`. The tail of an async component contains `await`, so the wrapped output did not parse; an async body runs once, so there is no branch to keep live. Fixed in both the JS and the Rust backends.
+
+  `diagnoseError` (MCP `diagnose` / `explain_error`) explains the `orphaned-md-file` finding, including the misread of non-literal collections that older compilers reported.
+
+- [#3928](https://github.com/pyreon/pyreon/pull/3928) [`45331c6`](https://github.com/pyreon/pyreon/commit/45331c6da11881c67d3698ecda3c46aa647c73b0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The inline-`<Defer>` pre-pass no longer parses `.ts` / `.js` modules that merely mention `Defer`. The rewrite only matches a JSX `<Defer>` element, and those languages can't contain one, so the result is unchanged. Large non-JSX modules no longer pay for a full parse they can't use: a production `vite build` of `examples/app-showcase` got about 40ms faster.
+
+- [#4284](https://github.com/pyreon/pyreon/pull/4284) [`a687a5a`](https://github.com/pyreon/pyreon/commit/a687a5a93823d53bd65f0dafa55b5747a2d87fca) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `diagnoseError` (and the MCP `diagnose` / `explain_error` tools) now explain "does not provide an export named 'jsxDEV'" from a compat package's `jsx-runtime` and "'TransitionGroup' is not exported by" `@pyreon/runtime-dom/transition`, both symptoms of the 0.53.0 packaging collision: upgrade past 0.53.0, or on 0.53.0 import `TransitionGroup` from the `@pyreon/runtime-dom` root.
+
+- [#4241](https://github.com/pyreon/pyreon/pull/4241) [`0743754`](https://github.com/pyreon/pyreon/commit/0743754b227be5e0aaaef5000a123c0191c0f192) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `diagnoseError` recognises the pre-fix symptoms of a loader's `notFound()` answering HTTP 500 (`SSR render failed … Error: Not Found`, `data endpoint returned HTTP 500`) and explains the upgrade and the `_404.tsx` page.
+
+- [#4297](https://github.com/pyreon/pyreon/pull/4297) [`e308885`](https://github.com/pyreon/pyreon/commit/e308885eaeb56d5e6741feab0695edcc3d13bf7e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `diagnoseError`: the mock-vnode / `audit_test_environment` diagnosis now carries its pointer to the test-environment parity rules as `related` (it was under an unknown `docs` key, so the MCP `diagnose` tool never showed it), and the `_fuse` version-skew diagnosis no longer returns stray keys left over from a mis-closed `fixCode` string.
+
+- [#3885](https://github.com/pyreon/pyreon/pull/3885) [`afe40fb`](https://github.com/pyreon/pyreon/commit/afe40fb53e70a06e5cba99b8279765d2d9a74332) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Signal reads through a literal index or a TypeScript type layer now get the direct binding tier. `{row.queries[0].elapsed()}`, `{(row.cell as Cell).elapsed()}` and `{row.cell!.elapsed()}` used to compile to a fully tracked binding (one effect re-run per update) instead of `_bindText` / `_bindDirect`. A literal key is as stable as a named property and a cast is erased at runtime, so both now bind the signal directly. A dynamic index (`row.queries[i]`) still takes the general path. Measured on the dbmon benchmark (600 cells updating per tick): Pyreon goes from about 1.09× behind Svelte to a statistical tie.
+
+- [#3925](https://github.com/pyreon/pyreon/pull/3925) [`d4ba7e4`](https://github.com/pyreon/pyreon/commit/d4ba7e445a76b23f225cdc949926e4db04b30a60) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The JSX compiler is now linear in template size. Each child's DOM-walk key used to spell out every sibling hop (`.nextSibling` repeated up to the child's index), so building, hashing and prefix-searching those keys cost O(position) per child, which made large literal templates quadratic. Keys are now one segment per tree level, and the longest-captured-prefix search walks the same candidates in the same order, so emitted code is byte-identical: 1,550 compilations of 775 real `.tsx` files across `examples/`, `docs/` and the UI packages, client and SSR, matched `main` exactly.
+
+  Native backend, one large table template:
+
+  | rows | before | after  |
+  | ---- | ------ | ------ |
+  | 100  | 735µs  | 610µs  |
+  | 400  | 4.82ms | 2.49ms |
+  | 800  | 14.3ms | 5.0ms  |
+
+  The JS fallback is up to 33% faster.
+
+  Two smaller native-backend savings, on every client transform: the `String`/`Number` rebinding scans (two whole-source searches that only the SSR template path reads) are now computed lazily, as the JS backend already did, and `clean_jsx_text` no longer allocates per line. Compiling 775 real `.tsx` files is about 5% faster, with output byte-identical (2,325 compilations across client, SSR and SSR-template modes).
+
+- [#4178](https://github.com/pyreon/pyreon/pull/4178) [`dfbde40`](https://github.com/pyreon/pyreon/commit/dfbde4019b6e004911904d325784e68bf15ade9c) Thanks [@dependabot](https://github.com/apps/dependabot)! - The native (Rust) compiler backend is built against napi 3.16.1 and oxc 0.157.0. napi 3.16.1 avoids a deadlock when a worker loads the addon during `block_on` (napi-rs [#3670](https://github.com/pyreon/pyreon/issues/3670)).
+
+- [#3927](https://github.com/pyreon/pyreon/pull/3927) [`6e900a6`](https://github.com/pyreon/pyreon/commit/6e900a6b521faac38acb3cf77fe897253b28ca69) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The native-binary loader now finds an in-tree `native/pyreon-compiler.node` from the built entry as well as from source. The build code-splits the JSX transform into `lib/_chunks/`, two levels below the package root, but the loader only probed one level up. So anything that loaded the compiler's built `lib/` from a source checkout silently ran the slower JS backend. Published installs don't ship `native/`, so they're unaffected and keep resolving the per-platform `@pyreon/compiler-<platform>` package.
+
+- [#4005](https://github.com/pyreon/pyreon/pull/4005) [`e182184`](https://github.com/pyreon/pyreon/commit/e1821841cc91ffcd2e4aec5b29f4e985f66d2b46) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The native (Rust) JSX backend moves to `oxc_*` 0.155 and `napi` 3.15, matching the `oxc-parser` 0.155 the JS backend already uses, so both backends parse with the same oxc release.
+
+- [#4476](https://github.com/pyreon/pyreon/pull/4476) [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Stack traces in compiled `.tsx` modules point at the failing line and column again ([#4418](https://github.com/pyreon/pyreon/issues/4418)).
+
+  - `@pyreon/compiler`: the native (Rust) backend now returns a V3 source map, identical to the JS backend's, so `transformJSX` returns a map on both backends. A Plain Mode module's map now describes the text you passed in, not the pre-pass rewrite. `transformDeferInline` returns a `map`, and no longer emits `import {  from './x'` when two `<Defer>` children drop bindings of the same import. New export: `composeMappings(outer, inner)`, which composes the `mappings` of two maps (native when the binary is present).
+  - `@pyreon/vite-plugin`: the `transform` hook returns one map through every pass it runs, not only the compiler's. Before, a bare `<Show>` or `<For>` (auto-imported), an inline `<Defer>`, island auto-naming, the compat `className` rename, the validator rewrite and the dev HMR and signal-name passes each shifted frames that came after them. Signal debug names (`__sourceLocation`) now report the source position instead of the compiled one.
+
+- [#4485](https://github.com/pyreon/pyreon/pull/4485) [`a0658bc`](https://github.com/pyreon/pyreon/commit/a0658bc295a6890010f96fd3ed8eb4a1bf539283) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `innerHTML` (and the other props that are DOM properties without an attribute of the same name: `textContent`, `innerText`, `defaultValue`, `defaultChecked`, `defaultSelected`, `defaultMuted`, `currentTime`, `playbackRate`, `defaultPlaybackRate`, `volume`, `srcObject`, `httpEquiv`, `acceptCharset`) on an element inside a compiled template no longer becomes an attribute. The element is rendered through the h() path, so `innerHTML` is sanitized content as it is everywhere else. Server rendering writes `textContent` and `innerText` as the element's escaped content instead of a `text-content` attribute, matching the client.
+
+- [#3891](https://github.com/pyreon/pyreon/pull/3891) [`f31485c`](https://github.com/pyreon/pyreon/commit/f31485c7eb6d1eaf402bfd6554bb9165da118012) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A compiled style that can never re-run (one computed from a `<For>` item, or any non-reactive expression) is now written with the new `_setStyleOnce`, which skips the skip-if-equal cache that reactive styles keep. Recording that cache read `cssText` back after every write, a full serialization of the declaration, on every templated element with a computed style. Reactive styles are unchanged. Mounting a 10,000-item virtual list is about 8% faster.
+
+- [#3890](https://github.com/pyreon/pyreon/pull/3890) [`8ab3c24`](https://github.com/pyreon/pyreon/commit/8ab3c2429ca05366eca87a5c4575b1ccd3c78ac8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - SSR compile-to-string: an attribute whose value is a conditional between two string literals (`class={selected ? 'row on' : 'row'}`) is now baked at compile time. Both renderings are escaped when the page is compiled and the test picks one, instead of calling a runtime attribute helper on every render. Output is byte-identical; server rendering of a 1,000-row table is about 20% faster.
+
+- [#4272](https://github.com/pyreon/pyreon/pull/4272) [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `ssrTemplate`: an expression child that contains JSX the compiler cannot lower to a string (a `.map` whose item holds a component, a component ternary arm) is now kept in place and re-walked, so its own elements compile to `_ssr` templates instead of `jsx()`/`h()` per element. Any template call whose holes still build JSX is wrapped in `_ssrDeferred`, which fixes components in such holes rendering before an enclosing provider when the template is built outside a component's return (module-level constants), where they read context defaults.
+
+- [#4077](https://github.com/pyreon/pyreon/pull/4077) [`5dbb92e`](https://github.com/pyreon/pyreon/commit/5dbb92eceb5e6e824d21aef36b728cde10b221c7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The native (Rust) JSX transform is rebuilt against updated Cargo dependencies.
+
+- [#3942](https://github.com/pyreon/pyreon/pull/3942) [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dependency updates to the latest releases: oxc-parser 0.155, CodeMirror (autocomplete 6.20.4, language 6.13.1, merge 6.12.3, view 6.43.15), TanStack Query 5.104.5, TanStack Virtual core 3.19.6, Tiptap 3.32, Vite 8.3.4, Shiki 4.5, axe-core 4.14, @capsizecss/metrics 4.4 and the MCP SDK 1.32.1.
+
+- [#4002](https://github.com/pyreon/pyreon/pull/4002) [`3ee9faf`](https://github.com/pyreon/pyreon/commit/3ee9faf79ed0d9492c4bbc23f57cabb12791abf8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update third-party runtime dependencies to their latest releases: `magic-string` 1.4.4 (compiler), the `@tanstack/query-*` packages 5.105.0 (query), `@tanstack/virtual-core` 3.19.8 (virtual) and `@modelcontextprotocol/sdk` 1.32.2 (mcp). These are patch and minor releases with no API changes on the Pyreon side.
+
+- [#4405](https://github.com/pyreon/pyreon/pull/4405) [`148ce27`](https://github.com/pyreon/pyreon/commit/148ce27849e0a7e66ebbdd54639e861cdcd93fa2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The `array-map-jsx` React-pattern detector (MCP `validate`, `pyreon check`, doctor) no longer fires on a `.map()` that renders no list: an attribute value that maps data (`rows={lines.map((l) => [l.item, l.qty])}`) or a callback that returns no JSX. It reports a `.map()` rendered as children whose callback renders JSX, or whose callback is not inline.
+
+- [#4476](https://github.com/pyreon/pyreon/pull/4476) [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<For>` without `by` now fails with `[Pyreon] <For> requires a \`by\` prop`, naming the fix, on the client, the server and in hydration, instead of `getKey is not a function`deep inside the list.`by`was already required by the type and the docs; the compiler's`missing-key-on-for`warning and the`for-missing-by` detector no longer promise an index-based fallback.
+
+- [#3946](https://github.com/pyreon/pyreon/pull/3946) [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<For>` SSR output is now about half as many DOM nodes for a typical list. A leading run of single-element rows (a table body, a list) no longer gets a `<!--k:KEY-->` comment before every row. Their keys travel once, space-separated, on the closing marker instead: `<!--/pyreon-for:k0 k1 …-->`. This covers component rows too, when the component renders one element: `<For>{(r) => <Row r={r} />}</For>` is classified by what `Row` returned, including compiled `_ssr` output and components that wrap another component. From the first row of any other shape (a fragment, an accessor such as the reactive-conditional component return, text, or an async or still-loading component), every row keeps its own marker as before, because those rows can span any number of nodes.
+
+  The string renderer, the stream renderer and the compiled `_ssrForKeyed` fast path emit identical bytes. Hydration rebuilds the row table from both forms and still verifies every key before adopting anything. A list whose keys don't match is re-rendered, exactly as before. The previous format (a marker before every row) still hydrates, so a cached prerendered page keeps working after an upgrade.
+
+  Measured on the 1,000-row hydration benchmark (real Chromium, n=60, the same session for both arms): Pyreon goes from 6.33 ms (a tie with Vue at 6.26 ms) to 6.11 ms, an outright first place (Vue 6.31 ms, CIs disjoint). The framework walk drops from 1.31 ms to 1.17 ms, and the browser's layout flush gets cheaper with fewer nodes to lay out. The HTML is smaller too.
+
+  The server and client halves must be the same version. Every app already ships both from one build, and `@pyreon/*` releases as a fixed version group.
+
+  The `runtime-server.for.keyMarker` dev counter now counts only rows that get their own marker, so it reads 0 for a plain table.
+
+- [#4203](https://github.com/pyreon/pyreon/pull/4203) [`1d0d0b8`](https://github.com/pyreon/pyreon/commit/1d0d0b8afde33477e6e7191f6607fd029a79b33a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Head serialisation of script and title text.
+
+  - `@pyreon/head`: a JSON data block (`application/ld+json`, `speculationrules`, `importmap`, any `+json` / `/json` type) now escapes every `<` as `<`. The generic rewrite turned `<!--` into `<\!--`, and `\!` is not a JSON escape, so JSON-LD whose data contained `<!--` stopped parsing and its structured data was dropped. A `%s` title template now inserts the title literally on the server and the client: `$&`, `` $` ``, `$'` and `$$` in a title were expanded as replacement patterns.
+  - `@pyreon/core`: new `escapeJsonForScript(json)`, the one inline-script JSON recipe `@pyreon/head` and `@pyreon/zero` share.
+  - `@pyreon/zero`: `jsonLd()` uses the shared helper, and `render404Page` inserts the rendered body into the template literally.
+  - `@pyreon/compiler`: `diagnoseError` explains the `JSON.parse` invalid-escape error (V8, Firefox and JavaScriptCore wordings) that a JSON `<script>` body given the `<\!--` script-code escape produces, and points at `escapeJsonForScript`.
+
+- [#3993](https://github.com/pyreon/pyreon/pull/3993) [`8352284`](https://github.com/pyreon/pyreon/commit/83522844ecd1be24638f89126c25dbd0e6926e84) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix prop-derived const inlining breaking semicolon-free code ([#3987](https://github.com/pyreon/pyreon/issues/3987)). The compiler replaces an inlined name with `(<its initializer>)`, so a statement that began with such a name began with `(`, and ASI joined it to the previous line: `start.set(x)` then `loadItems()` became a call of `start.set(x)` (a runtime `TypeError`), and `const seq = ++counter` then `api.fetchItems()` a parse error that failed the whole build. A leading `;` is now emitted exactly where one is needed (an expression statement in a statement list, after a statement that does not already end itself), in both the JS and native backends. Semicolon-style code compiles byte-for-byte as before.
+
+- [#4088](https://github.com/pyreon/pyreon/pull/4088) [`ed925ac`](https://github.com/pyreon/pyreon/commit/ed925ac8a0b8f49e0fbade1438cfb2de0e20d1e4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A function held in a NAMED binding is now an accessor in compiled JSX, as it already was on the `h()` path ([#4086](https://github.com/pyreon/pyreon/issues/4086)). `<p>{label}</p>` with `const label = () => …` (or a `function` declaration, a helper param, a function-valued prop) rendered the closure's SOURCE text; it now mounts reactively and follows its signals. A DOM-property binding (`checked`, `disabled`, `selected`, `multiple`, `readOnly`, `indeterminate`, `value`) with a non-literal value assigned the function object itself — `checked={isOn}` left the box permanently checked — and now resolves it: through the new `_setProp` sink inside a reactive binding, and through `_setPropStatic` (which binds a function live) in static position. Literal values keep the plain property assignment. `<input value>` additionally resolves a function in `_setValue`.
+
+- [#3952](https://github.com/pyreon/pyreon/pull/3952) [`739844a`](https://github.com/pyreon/pyreon/commit/739844adaecdb37d139d594793bdedf4da203a6c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update the native (Rust) compiler backend to oxc 0.154 and napi 3.14. oxc renamed `ParserReturn::panicked` to `fatal_error` (same meaning: the parser terminated early), so both parse-failure guards now read the new field.
+
+- [#4478](https://github.com/pyreon/pyreon/pull/4478) [`6f6f9f5`](https://github.com/pyreon/pyreon/commit/6f6f9f5e41c874a6f865338e3877158f4550272d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The Plain Mode codemod (`pyreon plain`) no longer breaks a signal that a closure or hoisted function references above its declaration (`const done = () => n.set(n.peek() + 1)` written before `const n = signal(0)`). The codemod registered each name at its declaration, so it converted `n` to `let n = state(0)` and left the earlier closure calling `.set` and `.peek` on a plain number. Such a binding now declines with the new `forward-reference` code and keeps its classic text. Every block's declarations are also in scope for the whole block, so a later inner `const x = 5` no longer lets an earlier closure's `x` be rewritten as an outer signal.
+
+- [#3975](https://github.com/pyreon/pyreon/pull/3975) [`ab90ebc`](https://github.com/pyreon/pyreon/commit/ab90ebc06667adb17efd936df98ffd1067f48527) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix a `<Show>` (or any component) whose children are compiled elements going stale after they are torn down and mounted again ([#3955](https://github.com/pyreon/pyreon/issues/3955)). A multi-child `<Show>` stopped updating its bindings the first time `when` re-ran truthy, and hiding then re-showing even a single child froze its content at the first value: a compiled template built once as a component child was re-inserted after its bindings had been disposed. The compiler now marks a templated child (`_tpl(html, bind, 1)`), the item rebuilds itself when mounted after a teardown, and a `<Show>` whose verdict did not change keeps its DOM (focus and typed input survive) for several children as it already did for one. Both compiler backends emit the flag and agree byte for byte.
+
+- [#4476](https://github.com/pyreon/pyreon/pull/4476) [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A signal's own method passed by reference in JSX (`ref={panel.set}`, `onClick={panel.set}`) is no longer rewritten to `panel().set` (the value's `set` field, `undefined`). The compiler leaves it as written and warns `signal-method-reference` with the arrow that works (`ref={(el) => panel.set(el)}`), in both backends. Signal methods read `this`, so calling one detached now fails in dev with `[Pyreon] signal.set() was called without its signal` instead of `Cannot read properties of undefined (reading '_v')`.
+
+- [#4109](https://github.com/pyreon/pyreon/pull/4109) [`9e3d608`](https://github.com/pyreon/pyreon/commit/9e3d60870e000c7a9404d885b3d2207f80c94868) Thanks [@vitbokisch](https://github.com/vitbokisch)! - SSR no longer emits a content attribute twice when an element carries both a live prop and its default. `<input defaultValue="def" value="cur">` rendered `value="def" value="cur"`, and the HTML parser keeps the FIRST, so the server page showed the default until hydration (and for good with JavaScript off). `checked` + `defaultChecked` and `muted` + `defaultMuted` had the same shape: `checked={false} defaultChecked` came out checked.
+
+  The live prop now decides the attribute whenever it is set (non-nullish), matching the control state a client mount and a hydration produce; a nullish live prop leaves the default in place. The compile-to-string SSR path routes such an element through the `h()` renderer in both compiler backends, since which prop wins is only known at runtime.
+
+- [#4026](https://github.com/pyreon/pyreon/pull/4026) [`f1aa5ed`](https://github.com/pyreon/pyreon/commit/f1aa5edb158f88d8beb22c893972362f1dffbd1a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Server rendering now serialises props that have no attribute of the same name the way the browser stores them, instead of kebab-casing the name into an attribute nothing reads:
+
+  - On an `<input>`, `defaultValue` becomes `value` and `defaultChecked` becomes `checked`.
+  - On a `<textarea>`, `defaultValue` becomes the text content; `value` still wins when both are given.
+  - On a media element, `defaultMuted` becomes `muted`.
+  - Props that exist only as properties (`indeterminate`, `currentTime`, `playbackRate`, `volume`, `srcObject`) are no longer written into the HTML at all.
+
+  Before this, `<input defaultValue="x">` rendered `default-value="x"`, so the input was empty until hydration and stayed empty with JavaScript off. The compiled SSR path matches in both compiler backends.
+
+- [#4272](https://github.com/pyreon/pyreon/pull/4272) [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - SSR: `<script>` and `<style>` text is escaped for the namespace the HTML parser will actually be in. Raw text is only raw in the HTML namespace; inside `<svg>` / `<math>` the parser tokenizes it as markup and decodes entities, so there both are now entity-escaped (which round-trips exactly). The renderer tracks the namespace through the tree — `<svg>`, `<math>` and `<foreignObject>` (back to HTML only from SVG), compared case-insensitively — and the compiled `ssrTemplate` path passes each child hole under a baked `<svg>` / `<math>` / `<foreignObject>` the path of those tags (`_escSole(x, "s")`), in both compiler backends. In the HTML namespace, a `<script>` also neutralises the end tag of an enclosing raw-text or RCDATA element (`</noscript`, `</textarea`, `</title`, `</iframe`, `</noembed`, `</noframes`, `</xmp`), and `<style>` escapes every tag-opening `<` as the CSS escape `\3c `.
+
+- [#3921](https://github.com/pyreon/pyreon/pull/3921) [`143e288`](https://github.com/pyreon/pyreon/commit/143e2887ff318a8e0842774eb2e320f085253400) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Text fusion now also covers an ALL-STATIC text run. `<li>Row {it.index}</li>` inside a `<For>` row used to bake `Row <!>` and swap the placeholder for a new text node on every row (a `createTextNode` plus a `replaceChild`). It now compiles to one `_setChild(el, _fuse("Row ", it.index))` into an empty element: a single text node, and the same in-place `.data` adoption on hydration that a lone static `{x}` child gets. Measured on the virtual-list scenario against `@tanstack/react-virtual`: `jump to row 5,000` (23 rows remounted) moved from 1.15–1.23× behind to 1.09–1.15× ahead, and `scroll 60 steps` from a tie to 1.11–1.12× ahead. SSR and `h()` output are unchanged.
+
+  `_setChild` (and the other static/polymorphic child setters) now mount an array that contains a nested array or a function, instead of stringifying it. A fused run whose part is a `VNode[]` or a reactive accessor renders its elements, or stays live; it no longer prints `[object Object]` or the function source.
+
+- [#4476](https://github.com/pyreon/pyreon/pull/4476) [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The test-environment audit no longer counts the member list of an `interface` or `type` alias (`type`, `props`, `children`) as a mock-vnode literal: it declares a shape, it is not a value standing in for a render.
+
+- [#4481](https://github.com/pyreon/pyreon/pull/4481) [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Upgrade: none
+
+  Zero's development error overlay is redesigned and now shows real, actionable data. An SSR render error, a loader error or a middleware error answers 500 with a self-contained page (no app CSS, system fonts) that names what failed and where: a status chip (`Server render failed`, `Loader threw`, `Middleware threw`), the matched route and phase, the message, the first stack frame in your own code as a link with **Open in editor** (Vite's `/__open-in-editor`), that file's lines around the error with the failing line marked, the stack with framework and dependency frames dimmed, a **How to fix it** box filled from the diagnose catalog when an entry matches (left out otherwise), **Copy for your AI assistant** (the whole report as plain text) and **Reload**. Hydration mismatches the runtime reports now open the same overlay over the running page, with the server value, the client value and the DOM path. The overlay is a dialog (`role="alertdialog"`): focus moves to it and stays inside, Esc dismisses it and gives focus back, it follows the stored `zero-theme` preference or the OS colour scheme, respects reduced motion, and fits a 320 px viewport. Development only: the browser half loads through a module zero injects into dev-server pages (new internal subpath `@pyreon/zero/dev-overlay`), and none of it reaches a build.
+
+  `@pyreon/router`: in development, `router.preload` tags a loader's error with the route whose loader threw (a non-enumerable `Symbol.for('pyreon.router.loaderErrorRoute')` property) before rethrowing the same error, so a dev host can tell a loader failure from a render failure. Folded out of production builds.
+
+  `@pyreon/compiler`: the diagnose catalog answers `window is not defined` (and `document`, `localStorage`, `navigator` and other browser globals) with the server-rendering cause and the `onMount` / `isServer` fix. These messages used to reach the generic `X is not defined` entry, which explains a compiler scope leak and advised updating `@pyreon/compiler`.
+
 ## 0.53.0
 
 ### Minor Changes
@@ -636,7 +816,7 @@
   below, just caught before push instead of by CI. The one other consumer
   pinning past 20.11.6 — `@happy-dom/global-registrator` in
   `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
-^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  ^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
   graph resolves to one version again.
 
   `examples/benchmark`'s framework competitors were refreshed too so the
@@ -666,7 +846,7 @@
   2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
   1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
   `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
-github')` — bumping it would break `changeset version` at release time with
+  github')` — bumping it would break `changeset version` at release time with
   `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
   map, not assumed. The root `uuid` override stays at `11.1.1` for the same
   reason, one level removed: it force-pins a transitive dep of `exceljs`
@@ -680,7 +860,7 @@ github')` — bumping it would break `changeset version` at release time with
   3.17.8 in this branch's first pass (a routine-looking override edit, not
   vetted as carefully as the deps above), and it broke
   `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
-is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
   retries) — bisected down to virtual-core's own 3.17.7 "synchronous
   notification for scroll compensation" change, not to anything else in this
   branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this
@@ -717,21 +897,21 @@ is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
   CALLING the ref, which is what the runtime does at mount/unmount). Code
   migrated from `createRef()` that assigns `el.current = node` throws
   `Cannot set property current of … which has only a getter` — `pyreon doctor
-diagnose` / MCP `diagnose` now explain the callable-ref contract and point
+  diagnose` / MCP `diagnose` now explain the callable-ref contract and point
   at `el(node)` or `createRef()`.
 
 - [#3192](https://github.com/pyreon/pyreon/pull/3192) [`5493aa8`](https://github.com/pyreon/pyreon/commit/5493aa818aa3943c429ff37a35b2262401e4ecac) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Teach `pyreon doctor diagnose` / MCP `diagnose` the loader circular-reference
   error, which the catalog did not cover at all.
 
   `@pyreon/router`'s loader serializer throws `[Pyreon] Loader returned circular
-reference at "…"`. It is one of the few SSR failures that surfaces as a hard 500
+  reference at "…"`. It is one of the few SSR failures that surfaces as a hard 500
   with a stack pointing into framework code, and the cause is almost always an ORM
   instance with its back-references intact rather than anything the author wrote
   deliberately — so the paste-the-error path is where it should be answered.
 
   The diagnosis names the distinction the serializer actually draws, because that
   is the part a reader gets wrong: a SHARED reference (`{ author: user,
-lastEditor: user }`) is a DAG and serializes fine, so this error means the graph
+  lastEditor: user }`) is a DAG and serializes fine, so this error means the graph
   genuinely closes on itself. The fix points at a plain projection and says why
   that is worth doing regardless — everything a loader returns is embedded in the
   HTML and shipped to every visitor, so returning a whole ORM row also ships
@@ -1600,7 +1780,7 @@ lastEditor: user }`) is a DAG and serializes fine, so this error means the graph
   miscompiled. The native (Rust) backend inlined the prop-derived local into the
   shorthand value without expanding the `key:` prefix, emitting a keyless
   `{ (pick(props.v)) }` — a build-time syntax error (`Unexpected token '('.
-Expected a property name.`). The JS backend didn't crash but left the shorthand
+  Expected a property name.`). The JS backend didn't crash but left the shorthand
   captured-once (non-reactive), diverging from the native backend.
 
   Both backends now **expand** a prop-derived shorthand to
@@ -1802,7 +1982,7 @@ Expected a property name.`). The JS backend didn't crash but left the shorthand
   runtime strategy are the same word).
 
   `<Counter hydrate="visible" />` → `island(() => import('./Counter'), { name,
-hydrate: 'visible' })` with a **file-derived stable name**, which eliminates the
+  hydrate: 'visible' })` with a **file-derived stable name**, which eliminates the
   entire duplicate-name / registry-drift / dead-island bug class by construction.
 
   Supports default + named imports, all strategy strings (`load`/`idle`/`visible`/
@@ -1997,7 +2177,7 @@ hydrate: 'visible' })` with a **file-derived stable name**, which eliminates the
   into truthy + falsy resolver lookups, requires matching templateHtml (one `_tpl`
   reused across both values), builds the stride-2 value-major class array
   `[v0_light, v0_dark, v1_light, v1_dark]`, and emits `__rsCollapseDyn(html,
-classes, () => (cond) ? 0 : 1, () => __pyrMode() === "dark")` — or the
+  classes, () => (cond) ? 0 : 1, () => __pyrMode() === "dark")` — or the
   handler-combined `__rsCollapseDynH(…, handlerObj)`. Unions BOTH values' rule
   bundles (dedup by ruleKey). The dynamic paths set ONLY their own import flag
   (not needs_collapse), so the preamble gate widened to
@@ -2099,7 +2279,7 @@ classes, () => (cond) ? 0 : 1, () => __pyrMode() === "dark")` — or the
   falls through to the partial path only when the full shape is absent (a full shape
   with an unresolved key bails outright — it can never be a partial site). Emits
   `__rsCollapseH(html, light, dark, () => __pyrMode() === "dark", { "onClick":
-(<sliced expr>), … })`, brace-wrapped as a JSX child; each handler expression is
+  (<sliced expr>), … })`, brace-wrapped as a JSX child; each handler expression is
   re-emitted verbatim from its source span (paren-wrapped). Sets both
   needs_collapse + needs_collapse_h (matching JS — a partial-only module imports
   both helpers; the unused one tree-shakes out).
@@ -2392,7 +2572,7 @@ classes, () => (cond) ? 0 : 1, () => __pyrMode() === "dark")` — or the
   disabling `<Image>`/`<OptimizedImage>`'s blur-up and color placeholders, which
   is the framework's **own** `imagePlugin` output (`data:image/webp;base64,…` for
   blur, `data:image/svg+xml,…` for color). Dev mode logged a `[Pyreon] Blocked
-unsafe URL` warning on every render; production silently dropped the attribute
+  unsafe URL` warning on every render; production silently dropped the attribute
   so the placeholder never reached the DOM.
 
   The guard is now context-aware. A `data:image/<type>` URI is allowed only on an
@@ -2409,7 +2589,7 @@ unsafe URL` warning on every render; production silently dropped the attribute
   survives.
 
   `@pyreon/compiler` gains a matching `ERROR_PATTERNS` entry so `pyreon doctor
-diagnose` / the MCP `diagnose` tool explains the `[Pyreon] Blocked unsafe URL`
+  diagnose` / the MCP `diagnose` tool explains the `[Pyreon] Blocked unsafe URL`
   warning and which `data:` URIs are allowed where.
 
 ## 0.28.0
@@ -2501,7 +2681,7 @@ diagnose` / the MCP `diagnose` tool explains the `[Pyreon] Blocked unsafe URL`
 
   - **Compiler** (`@pyreon/compiler`): `detectElementChildCollapsibleShape`
     (literal root props + recursively-static element children → `{ props,
-childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
+    childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
     `CollapsibleSite` per element-child site carrying `childTree` +
     `childrenText = serializeStaticChildren(childTree)`;
     `tryRocketstyleCollapse` falls through to `tryElementChildCollapse`
@@ -2516,7 +2696,7 @@ childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
   The element-child site expands to ONE resolution (no per-value fan-out,
   unlike dynamic's two), so the census trustworthiness invariant becomes
   `collapsible + 2×dynamic-addressable + 1×element-child-static-addressable
-=== scanner-count`. All 1414 compiler + 207 vite-plugin tests pass.
+  === scanner-count`. All 1414 compiler + 207 vite-plugin tests pass.
 
   Bisect-verified: removing the `|| tryElementChildCollapse` emit arm fails
   the 2 positive emit specs; stubbing the scan element-child branch fails
@@ -2861,7 +3041,7 @@ childTree, childrenKey }`); `scanCollapsibleSites` emits ONE
   relaxation" pattern. The single relaxation: a `JSXExpressionContainer`
   wrapping a `ConditionalExpression` with BOTH branches being `StringLiteral`
   is acceptable as a `DynamicCollapsibleProp { name, condStart, condEnd,
-valueTruthy, valueFalsy }`.
+  valueTruthy, valueFalsy }`.
 
   - Composes with the existing `on*`-handler relaxation (same call can
     carry one ternary AND any number of handlers — matches real-corpus
@@ -2929,7 +3109,7 @@ valueTruthy, valueFalsy }`.
 
   2. **`tryDynamicCollapse` extension** — stops bailing when handlers are
      present. Routes handler-bearing sites to `__rsCollapseDynH(html,
-classes, valueIndex, isDark, handlers)` (5-arg combined emit);
+     classes, valueIndex, isDark, handlers)` (5-arg combined emit);
      no-handler sites stay on `__rsCollapseDyn` (4-arg, lighter).
      Handlers object literal built from sliced source spans (same shape
      as `tryPartialCollapse` re-emits handlers via `__rsCollapseH`).
@@ -2957,7 +3137,7 @@ classes, valueIndex, isDark, handlers)` (5-arg combined emit);
 
   The `assertDynProbeCollapsed` helper gains a fifth fingerprint —
   `handlerCombinedShape` — that matches `===\`dark\`,{`(the 5-arg`**rsCollapseDynH`signature has the handlers object immediately
-after the mode accessor; the 4-arg`**rsCollapseDyn`ends with`)`
+  after the mode accessor; the 4-arg`**rsCollapseDyn`ends with`)`
   at that point). Combined with the existing four fingerprints, this
   proves BOTH emit paths fire in the same chunk.
 
@@ -3077,10 +3257,10 @@ after the mode accessor; the 4-arg`**rsCollapseDyn`ends with`)`
   ## Bisect verification
 
   Reverted the fallthrough chain (`return tryPartialCollapse(...) ||
-tryDynamicCollapse(...)` → `return tryPartialCollapse(...)`):
+  tryDynamicCollapse(...)` → `return tryPartialCollapse(...)`):
 
   - 4 POSITIVE emit specs fail with `expected '<source>' to contain
-'__rsCollapseDyn('` / `'__pyrMode() === "dark"'` / etc.
+    '__rsCollapseDyn('` / `'__pyrMode() === "dark"'` / etc.
   - 5 specs pass either way (FULL + on\*-partial regression specs;
     the three conservative-bail specs which always assert absence)
   - Restored → 9/9 emit + 6/6 scan + 13/13 detector = 28/28 dynamic-
@@ -3163,8 +3343,8 @@ tryDynamicCollapse(...)` → `return tryPartialCollapse(...)`):
 
   **Bisect verified at the build-artifact layer**: reverted the
   `tryDynamicCollapse` fallthrough in `tryRocketstyleCollapse` (`return
-tryPartialCollapse(...) || tryDynamicCollapse(...)` → `return
-tryPartialCollapse(...)`), rebuilt compiler lib, re-ran verify-modes:
+  tryPartialCollapse(...) || tryDynamicCollapse(...)` → `return
+  tryPartialCollapse(...)`), rebuilt compiler lib, re-ran verify-modes:
 
   - ALL THREE fingerprints become false; the probe falls back to a
     normal `h(Button, props)` mount (visible in the chunk:
@@ -3198,7 +3378,7 @@ tryPartialCollapse(...)`), rebuilt compiler lib, re-ran verify-modes:
 
   The trustworthiness gate (`myCollapsible === scannerCollapsible`) was
   updated to `myCollapsible + 2 * dynamicTernaryAddressable ===
-scannerCollapsible` because the scanner now emits 2 entries per
+  scannerCollapsible` because the scanner now emits 2 entries per
   dynamic site (one per literal value for the resolver). Same load-bearing
   "census agrees with scanner truth-set" invariant, just accounting for
   the new expansion.
@@ -3521,7 +3701,7 @@ scannerCollapsible` because the scanner now emits 2 entries per
     snapshot) + `StyleSheet.injectRules(rules, key)` (idempotent
     pre-resolved rule injection, no re-hash).
   - `@pyreon/runtime-dom` — `_rsCollapse(html, lightClass, darkClass,
-isDark, bind?)` (one html-keyed `_tpl` cloneNode; class reactively
+    isDark, bind?)` (one html-keyed `_tpl` cloneNode; class reactively
     bound to the live mode accessor — RFC decision 1 dual-emit, mode swap
     re-runs ONLY the className on the SAME node, no remount; decision 4
     hoisted-factory). `runtime-dom` stays layer-pure (never imports
@@ -3559,7 +3739,7 @@ isDark, bind?)` (one html-keyed `_tpl` cloneNode; class reactively
 
   Bisect-verified: disabling the compiler's `tryRocketstyleCollapse(node)`
   detection call fails the 4 collapse-emission specs (`expected … to
-contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
+  contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   specs still pass; restored → 13/13.
 
   **Deliberately deferred (follow-up PRs, tracked in

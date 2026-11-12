@@ -1,5 +1,68 @@
 # @pyreon/cli
 
+## 0.54.0
+
+### Minor Changes
+
+- [#4481](https://github.com/pyreon/pyreon/pull/4481) [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every Pyreon command now prints in the shared terminal theme, and the theme gains a 256-colour level.
+
+  - New flags: `pyreon check --gha` and `pyreon-lint --format gha` print one GitHub Actions annotation per finding. `@pyreon/lint` also exports `formatGha` and the `TermChoice` type.
+  - 256 colours: a terminal that advertises 256 colours but not truecolor (`TERM=xterm-256color`, macOS Terminal, `FORCE_COLOR=2`) now gets the nearest xterm-256 colour for each role instead of 16 colours. Every index keeps at least 4.5:1 contrast on dark and light backgrounds. Colour-level options that took `0 | 1 | 2` (where 2 was truecolor) now take `0 | 1 | 2 | 3`: 2 is 256 colours and 3 is truecolor, the numbering `FORCE_COLOR` uses. `FORCE_COLOR=1|2|3` is a minimum: a terminal that advertises more keeps it.
+  - Migrated: `pyreon check`, `plain`, `add`, `context` and the usage errors; `pyreon-lint --list`, `--why-off`, `--init` and watch mode; `zero dev` and the failure output of every `zero` command; the zero build's route-mode table and perf advisor; `lathe pull` and `--watch`; usage errors in `pyreon-native`, atlas and loom; `loom build` and `loom dev` status lines; create-zero's argument and fatal errors; the MCP server's fatal error.
+  - States the reference did not show: an empty run ends on `ℹ` (never `✓`), a run stopped with Ctrl-C ends on `! interrupted · elapsed` and exits 130 (watch modes end on `ℹ stopped watching` and exit 0), and a table that does not fit a narrow terminal stacks its rows instead of cutting them.
+  - Lines wrap at the terminal's width, at most 100 columns; `PYREON_CLI_WIDTH` sets it. A verdict too long for the line moves its counts onto an indented line.
+  - `pyreon-lint --watch` now prints a verdict after a clean re-lint, so a fixed problem no longer stays on screen.
+  - Every `--json` output is unchanged byte for byte.
+
+### Patch Changes
+
+- [#4481](https://github.com/pyreon/pyreon/pull/4481) [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The doc-claims gate module exports `countRepo(repoRoot)`, the counts its claims are checked against (published packages, manifests, lint rules and categories, MCP tools, docs pages, hook exports, detector codes), so a page that displays them reads the same definition the gate enforces.
+
+- [#4156](https://github.com/pyreon/pyreon/pull/4156) [`cfd192d`](https://github.com/pyreon/pyreon/commit/cfd192d363b5a4c0860ee31280c1a6d3a743d38a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon doctor`'s doc-claims gate no longer counts blog posts (`docs/src/content/blog/`) as documentation pages, so a weekly post no longer breaks the "N doc pages" claim.
+
+- [#4481](https://github.com/pyreon/pyreon/pull/4481) [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon doctor`, `pyreon-lint` and the `zero build` summary now share one terminal look: one palette in truecolor (dark and light terminals) and 16 colours, plain under `NO_COLOR`, `TERM=dumb` or a pipe, with ASCII symbols when the locale is not UTF-8. `PYREON_CLI_THEME=light|dark` or `COLORFGBG` picks the light palette; `FORCE_COLOR=3` forces truecolor.
+
+  - doctor: findings read `✗ gate/rule · message`, then `↳ path:line:col`, then `fix:`; long messages wrap at 100 columns; skipped gates list one per line; the footer says `1 gate`, not `1 gates`.
+  - lint: file paths are shown relative to the working directory, messages wrap at 100 columns with the rule id kept, rule-option (config) diagnostics are printed instead of being dropped from text output, and a CLI run ends with the fixable count, file count and elapsed time (a clean CLI run prints `✓ no problems`). The watch-mode clear-screen sequence is no longer written to a pipe.
+  - zero build: the summary header names the mode and adapter, asset paths are never truncated, sizes are right-aligned, and the last line is the verdict (`✓ built in 1.5 s · 82 assets · 13 prerendered pages`). `zero build` no longer prints a separate `Build completed in Nms` after it. The route-mode table is coloured when the terminal supports it.
+
+  `--json`, `--gha` and lint's `compact` output are unchanged byte for byte.
+
+- [#4159](https://github.com/pyreon/pyreon/pull/4159) [`11d628e`](https://github.com/pyreon/pyreon/commit/11d628ed61551323d638acd0f80a5bb87af26cf4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Starter-app fixes in `create-pyreon-app`:
+
+  - The code samples on the app starter's home, counter, posts and dashboard pages kept their line breaks only in source. JSX drops a line break between children (in every JSX implementation, `<pre>` included), so they rendered as `state(0)const doubled = …`. Each line now ends with an explicit `{"\n"}`.
+  - The next-steps note uses the package manager the scaffolder was invoked with (`npm_config_user_agent`): `npm install` / `npm run dev` after `npm create`, `pnpm dev` after `pnpm create`, and so on. The monorepo template keeps bun, because its root scripts call `bun run --filter`.
+  - The lint prompt said "59 Pyreon-specific rules"; the registry has 133. The prompt is now a `lint-rule-count` claim surface of the doc-claims gate (`@pyreon/cli`), so CI fails when it drifts again.
+  - The starter footer reads "signal-based, fine-grained" instead of "blazing fast".
+  - `pyreon/no-secret-in-shared-module` treats `npm_config_user_agent` as environment plumbing, not a secret. Package managers set it to name themselves.
+
+- [#4291](https://github.com/pyreon/pyreon/pull/4291) [`92cdc7d`](https://github.com/pyreon/pyreon/commit/92cdc7d7d192c61b7f1141c3c947e7cd83a6f579) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon doctor`'s doc-claims gate now checks every count of the canonical primitives in the files that carry it, however the count is phrased. It used to check only exact phrases such as "the N canonical primitives", so "21 primitives plus Transition…" on the primitives page and "all N canonical primitives" in the multiplatform guide went unchecked, and both were stale.
+
+- [#4422](https://github.com/pyreon/pyreon/pull/4422) [`2610d24`](https://github.com/pyreon/pyreon/commit/2610d248313fb85ccd787af6d65e62e2aa56c8a9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation and API-reference corrections (manifests feed `llms.txt` and MCP `get_api`). Every docs page and README now runs Pyreon CLIs through their scoped package (`npx @pyreon/lathe init`, not `npx lathe init`, which ran an unrelated npm package), and `pyreon doctor`'s doc-claims gate fails on an unscoped `npx` / `bunx` / `pnpm dlx` / `yarn dlx` command for one of our bins. The gate also checks the lint VS Code README's rule and category counts, the rx function count, the table feature count and the document-primitives format count. MCP `validate`'s text output now includes the column (`line 3, column 9`).
+
+- [#4289](https://github.com/pyreon/pyreon/pull/4289) [`f5e8ff6`](https://github.com/pyreon/pyreon/commit/f5e8ff692e6d305a80abc3f7cc6b0244d299d18f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `migrateReactCode` (MCP `migrate_react`, `pyreon check --fix`, `pyreon doctor --fix`) now produces Pyreon that updates. Reads of `useState` / `useMemo` values become `count()`. Setter calls become `count.set(v)` / `count.update(fn)`, and a setter passed as a value becomes a value-or-updater function. `useReducer` becomes a signal plus a `dispatch`. A body-level `const` derived from state becomes a `computed`, and a `return` that reads state outside JSX becomes an accessor. `memo` / `forwardRef` are really unwrapped, and the ref arrives as `props.ref`. `useRef(value)` becomes `{ current: value }`, not a signal. `createRoot(el).render(app)` becomes `mount(app, el)`, `<Fragment>` becomes `<>`, and `useNavigate` / `useParams` / `Link` / `Outlet` map to `@pyreon/router`. `dangerouslySetInnerHTML` and `onChange` on selects and checkboxes are left alone. References are resolved lexically, so shadowing locals are untouched. What cannot be converted safely stays in place with its React import and is listed in the new `MigrationResult.manual` (line and column in the migrated code, reason, suggestion). `migrate_react` lists those notes together with whatever `validate` still finds in the output, and `pyreon check --fix` / `doctor --fix` report them as `not-migrated` findings.
+
+  When two planned rewrites overlap, `migrateReactCode` now throws `[Pyreon] migrateReactCode: two rewrites overlap at offset N` instead of silently dropping one, and `diagnoseError` (MCP `diagnose` / `explain_error`) explains that error: find the construct at that offset, convert it by hand, migrate the rest, and report the input.
+
+- [#4476](https://github.com/pyreon/pyreon/pull/4476) [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon check` and doctor's react-patterns gate no longer skip files whose only React habit is `.map()` in JSX, `onChange` on an input, a compound `.value +=` on a signal, a bare `memo(...)`, or `useLayoutEffect`. `hasReactPatterns` is now derived from one trigger per detector code (`REACT_PATTERN_TRIGGERS`, typed over `ReactDiagnosticCode`), so it cannot drift from the detectors. `hasPyreonPatterns` now also passes Plain Mode modules, so `plain-mode` findings reach `pyreon check` and doctor.
+
+  Breaking (types): five `ReactDiagnosticCode` members that no detector ever emitted are removed — `use-layout-effect` (reported under `use-effect-*`), `dangerously-set-inner-html` (a supported Pyreon prop), `key-on-for-child`, `create-context-import` and `use-context-import` (reported under `react-import`).
+
+- [#4477](https://github.com/pyreon/pyreon/pull/4477) [`a2e002f`](https://github.com/pyreon/pyreon/commit/a2e002f8d3964a65a9e83f4d03374bb58e0ef6bd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A keyed `<For>` row that reads a field of an item replaced under the same key is now caught before it ships.
+
+  On the web, `<For each={todos} by={(t) => t.id}>` runs a row once per key. An update such as `todos.set(todos().map((t) => (t.id === id ? { ...t, done: !t.done } : t)))` keeps the key, so the row is kept and `{t.done ? …}`, `class={t.done ? …}` or `<Row todo={t} />` with `props.todo.done` keep showing the first value. iOS and Android redraw the row, so the same source was right on two targets and stale on the web.
+
+  - `detectPyreonPatterns` has a new code, `for-stale-item-field`, so `pyreon check`, the MCP `validate` tool and the Reactivity Lens report it. It fires only when the file also replaces items under their key and the read field is one that update overrides. A `<For>` whose `each` is a call inside a `{() => …}` accessor is rebuilt on every list change, so it is skipped.
+  - `@pyreon/lint` has the matching rule, `pyreon/no-stale-for-item-field` (error in `recommended`, accepts `exemptPaths`). There are now 134 rules.
+  - The `diagnoseError` catalog (the MCP `diagnose` tool) recognises the symptom ("my <For> row does not update").
+  - The fix in each message: read the live value by key through a call (`isDone(t.id)`), which stays reactive on the web and lowers to a plain lookup on native, or give the field its own signal.
+  - The `@pyreon/primitives` docs example now reads `done` by id.
+
+- Updated dependencies [[`597eff1`](https://github.com/pyreon/pyreon/commit/597eff15a534373d09bb290e8749608611b8319f), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`f8a9770`](https://github.com/pyreon/pyreon/commit/f8a97700f3fbd9c0f497824e6beb4d18ecad6f13), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`f69d6cf`](https://github.com/pyreon/pyreon/commit/f69d6cfeb1f3245e0c5751660401cd69980145f6), [`f2aa2d6`](https://github.com/pyreon/pyreon/commit/f2aa2d640518bbc7de093bdbe431225a61e7efe9), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`45331c6`](https://github.com/pyreon/pyreon/commit/45331c6da11881c67d3698ecda3c46aa647c73b0), [`a687a5a`](https://github.com/pyreon/pyreon/commit/a687a5a93823d53bd65f0dafa55b5747a2d87fca), [`0743754`](https://github.com/pyreon/pyreon/commit/0743754b227be5e0aaaef5000a123c0191c0f192), [`e308885`](https://github.com/pyreon/pyreon/commit/e308885eaeb56d5e6741feab0695edcc3d13bf7e), [`afe40fb`](https://github.com/pyreon/pyreon/commit/afe40fb53e70a06e5cba99b8279765d2d9a74332), [`d4ba7e4`](https://github.com/pyreon/pyreon/commit/d4ba7e445a76b23f225cdc949926e4db04b30a60), [`dfbde40`](https://github.com/pyreon/pyreon/commit/dfbde4019b6e004911904d325784e68bf15ade9c), [`6e900a6`](https://github.com/pyreon/pyreon/commit/6e900a6b521faac38acb3cf77fe897253b28ca69), [`e182184`](https://github.com/pyreon/pyreon/commit/e1821841cc91ffcd2e4aec5b29f4e985f66d2b46), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`a0658bc`](https://github.com/pyreon/pyreon/commit/a0658bc295a6890010f96fd3ed8eb4a1bf539283), [`f31485c`](https://github.com/pyreon/pyreon/commit/f31485c7eb6d1eaf402bfd6554bb9165da118012), [`8ab3c24`](https://github.com/pyreon/pyreon/commit/8ab3c2429ca05366eca87a5c4575b1ccd3c78ac8), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`11d628e`](https://github.com/pyreon/pyreon/commit/11d628ed61551323d638acd0f80a5bb87af26cf4), [`5dbb92e`](https://github.com/pyreon/pyreon/commit/5dbb92eceb5e6e824d21aef36b728cde10b221c7), [`457c9ce`](https://github.com/pyreon/pyreon/commit/457c9cebd6583f88cdb309f35b1dba6ae6fc8044), [`3ee9faf`](https://github.com/pyreon/pyreon/commit/3ee9faf79ed0d9492c4bbc23f57cabb12791abf8), [`148ce27`](https://github.com/pyreon/pyreon/commit/148ce27849e0a7e66ebbdd54639e861cdcd93fa2), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`6e62c7d`](https://github.com/pyreon/pyreon/commit/6e62c7d0c5dda0f2a275c140aadc1bc4c29a9835), [`b2ad72e`](https://github.com/pyreon/pyreon/commit/b2ad72e34e901aa634f5ba91867cf71ed96a823a), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`1d0d0b8`](https://github.com/pyreon/pyreon/commit/1d0d0b8afde33477e6e7191f6607fd029a79b33a), [`1cc7355`](https://github.com/pyreon/pyreon/commit/1cc7355def1b6470e1ac7961469e4608c819f79a), [`8352284`](https://github.com/pyreon/pyreon/commit/83522844ecd1be24638f89126c25dbd0e6926e84), [`52aa984`](https://github.com/pyreon/pyreon/commit/52aa984f840f760ea305457bed722fb3d2d3b01a), [`5990b5b`](https://github.com/pyreon/pyreon/commit/5990b5b6742d467dcb28bc94bf2bc3fcea4ce6c3), [`ce9bc6e`](https://github.com/pyreon/pyreon/commit/ce9bc6eb2d2bd3f568f178285a398c6e80ba1a30), [`8597765`](https://github.com/pyreon/pyreon/commit/8597765db1c4bd1f45029eb12aeb49325609622f), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`d5edb24`](https://github.com/pyreon/pyreon/commit/d5edb24fd7e9e1aefd23372bac54b13e29769009), [`f5e8ff6`](https://github.com/pyreon/pyreon/commit/f5e8ff692e6d305a80abc3f7cc6b0244d299d18f), [`ed925ac`](https://github.com/pyreon/pyreon/commit/ed925ac8a0b8f49e0fbade1438cfb2de0e20d1e4), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`7e39941`](https://github.com/pyreon/pyreon/commit/7e39941a6fe07657c5fc010ee4d0985dc26675d9), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`a0ab9cf`](https://github.com/pyreon/pyreon/commit/a0ab9cf627a21fc83c746e0aaf1312aabe6cf0b1), [`6e0d14c`](https://github.com/pyreon/pyreon/commit/6e0d14c14ee19339d25e3b974d90eb571694cb9e), [`1496a84`](https://github.com/pyreon/pyreon/commit/1496a84df5e8f51df9bca3decda388e0a75b427e), [`73e221c`](https://github.com/pyreon/pyreon/commit/73e221c33787842941a4e49f961aff24566ab88c), [`ad2a8de`](https://github.com/pyreon/pyreon/commit/ad2a8de7bfde34680e3f33e2b203ac62b2b04b88), [`a503e83`](https://github.com/pyreon/pyreon/commit/a503e837a25e93b61e3f2b9e1b55144c06157e22), [`4d8a3e0`](https://github.com/pyreon/pyreon/commit/4d8a3e07a94000d2cff9dff642b108cfc188879d), [`bc42b74`](https://github.com/pyreon/pyreon/commit/bc42b74a245f60028028f264f5c3968a330a2fe0), [`bbac2d8`](https://github.com/pyreon/pyreon/commit/bbac2d834fe4be327ae31dfba2fa92ee3fb7d744), [`7740e2f`](https://github.com/pyreon/pyreon/commit/7740e2fe6bd8b35d142075d5ebe1b8b236ae525c), [`96616a5`](https://github.com/pyreon/pyreon/commit/96616a57db3e85db9415f7cbd780f4a7a43e7ca9), [`fc12522`](https://github.com/pyreon/pyreon/commit/fc12522441c02e15db1d9670013401f3fe926593), [`bbac2d8`](https://github.com/pyreon/pyreon/commit/bbac2d834fe4be327ae31dfba2fa92ee3fb7d744), [`9ad118e`](https://github.com/pyreon/pyreon/commit/9ad118ec46145a24d960863d3d96b4fb6392fe5a), [`6906adf`](https://github.com/pyreon/pyreon/commit/6906adf78bbac38802fdbd1829efcdc24ed25448), [`1ece4c0`](https://github.com/pyreon/pyreon/commit/1ece4c0cd31a8ed21b14ad41fe794969f2a80d18), [`bbac2d8`](https://github.com/pyreon/pyreon/commit/bbac2d834fe4be327ae31dfba2fa92ee3fb7d744), [`769d852`](https://github.com/pyreon/pyreon/commit/769d8524cbf4d4ac9627a039d0015a831a31151e), [`08bcee8`](https://github.com/pyreon/pyreon/commit/08bcee866ba0fbd0fbf876a1ecdf8e709a1244f3), [`6aef1c9`](https://github.com/pyreon/pyreon/commit/6aef1c91c0b8d30530cf36adaaf5ef7116ea9ad0), [`310bf91`](https://github.com/pyreon/pyreon/commit/310bf91f6673d747a77e1996647673fce725d0db), [`09262fa`](https://github.com/pyreon/pyreon/commit/09262fa053d7c995f64bb26e351b7f7492f16c30), [`bbac2d8`](https://github.com/pyreon/pyreon/commit/bbac2d834fe4be327ae31dfba2fa92ee3fb7d744), [`817d232`](https://github.com/pyreon/pyreon/commit/817d23245ea8b00b1680a8d1fc6933d919cd0a0c), [`f4e5d4a`](https://github.com/pyreon/pyreon/commit/f4e5d4af5af609bbd98e6356a3491b9386109d59), [`1a7ccdd`](https://github.com/pyreon/pyreon/commit/1a7ccdda20096710a2486f67e97025776552f3f5), [`06621cc`](https://github.com/pyreon/pyreon/commit/06621cc7fc5c1c591cafc4a2f56fbaf6a90afcea), [`adeaef9`](https://github.com/pyreon/pyreon/commit/adeaef94fdd962ccfd19558dbc91ef52b5b71cee), [`f31f903`](https://github.com/pyreon/pyreon/commit/f31f903baa6b09cbe66afa07a48202b7fcfe6c92), [`6eff04e`](https://github.com/pyreon/pyreon/commit/6eff04ee8bd5b35b2f981a6fa006dc00a15300f9), [`0902367`](https://github.com/pyreon/pyreon/commit/0902367dc7c94b66247e7e9e837f604b971644e1), [`769d852`](https://github.com/pyreon/pyreon/commit/769d8524cbf4d4ac9627a039d0015a831a31151e), [`1f751e7`](https://github.com/pyreon/pyreon/commit/1f751e77167667c463904f2cc4e12a7061743ed4), [`bbac2d8`](https://github.com/pyreon/pyreon/commit/bbac2d834fe4be327ae31dfba2fa92ee3fb7d744), [`50fa51d`](https://github.com/pyreon/pyreon/commit/50fa51d062bd1bc260a72536ed1f49e585f78dfe), [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155), [`8b3214b`](https://github.com/pyreon/pyreon/commit/8b3214bb6d8392493939513870b9ff7b52ecf8b5), [`db8c255`](https://github.com/pyreon/pyreon/commit/db8c255cea867d0bd092ab377629a47c5cdaaefe), [`22ca310`](https://github.com/pyreon/pyreon/commit/22ca310101833666295f7d941509b4c7467f89d0), [`d73d237`](https://github.com/pyreon/pyreon/commit/d73d2370bc1ef349722eec6cdd73db686e733547), [`739844a`](https://github.com/pyreon/pyreon/commit/739844adaecdb37d139d594793bdedf4da203a6c), [`544a762`](https://github.com/pyreon/pyreon/commit/544a762b866a2fd526f0e20636cc4c256ab9fc15), [`d55ecbb`](https://github.com/pyreon/pyreon/commit/d55ecbb061f0599836fc4385b5d694854e47a935), [`a9fe968`](https://github.com/pyreon/pyreon/commit/a9fe9688c142e1652513a74b293555d8ae40c1ac), [`c0df87c`](https://github.com/pyreon/pyreon/commit/c0df87ca58a9c23fcc0035cb46c3db5f9f399c46), [`760cbef`](https://github.com/pyreon/pyreon/commit/760cbefcbbd7378413f1020a1b33740c60b0ec5e), [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155), [`04ccbe7`](https://github.com/pyreon/pyreon/commit/04ccbe7d34879d554e35524a03f5e2f5761775fb), [`e883da2`](https://github.com/pyreon/pyreon/commit/e883da2c5a4e37e2c886b2399c28ae31e27c5d61), [`d47fa5a`](https://github.com/pyreon/pyreon/commit/d47fa5a2ff23761f04a7f81a97bdf677ed55b9fe), [`0dd9221`](https://github.com/pyreon/pyreon/commit/0dd9221e3e30019f57832e95fe76dd067655170f), [`7270e41`](https://github.com/pyreon/pyreon/commit/7270e41ba3cbb0597265129877c060f7d2a7b3d5), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`784e46a`](https://github.com/pyreon/pyreon/commit/784e46a486c2ccb16728117c392f0194b563fd66), [`6e1a7be`](https://github.com/pyreon/pyreon/commit/6e1a7be711eb7858ad5612df5c0062a2a427c194), [`eab5598`](https://github.com/pyreon/pyreon/commit/eab5598203c2973217cf815a47c7a27567e268fa), [`03b6bfa`](https://github.com/pyreon/pyreon/commit/03b6bfa460bca4b9512ea411a5eaef79033dc1b8), [`6ea59b1`](https://github.com/pyreon/pyreon/commit/6ea59b115639d71b3645b267c9572185a9d52a63), [`24bbbfd`](https://github.com/pyreon/pyreon/commit/24bbbfded6d857f8c638da7d059c6eadf13bb977), [`6e0d14c`](https://github.com/pyreon/pyreon/commit/6e0d14c14ee19339d25e3b974d90eb571694cb9e), [`be9720b`](https://github.com/pyreon/pyreon/commit/be9720b4d801e8f5aac8d5c2e400c179ca129984), [`0468605`](https://github.com/pyreon/pyreon/commit/0468605d9b72eefcbdbc2dba0d2d6f86dcb19ee2), [`abc4561`](https://github.com/pyreon/pyreon/commit/abc45618892cbbcf375bc856656699f7d3515af6), [`d5bc305`](https://github.com/pyreon/pyreon/commit/d5bc3050a472edddae91df05c2b6b19c06efeff4), [`bc1cc7e`](https://github.com/pyreon/pyreon/commit/bc1cc7e05362f41dea5786f9b74cc39d0188984d), [`a18904a`](https://github.com/pyreon/pyreon/commit/a18904a9fd4f1ff15f5fd17ae13c3b2ea7d5d754), [`e78e8cd`](https://github.com/pyreon/pyreon/commit/e78e8cd0756ef31ad97a00cca09fae1f05dcdc8f), [`b89ab6f`](https://github.com/pyreon/pyreon/commit/b89ab6fae4fc1bbec161f0994987375a2eabe822), [`d54e046`](https://github.com/pyreon/pyreon/commit/d54e04684f2a3f541c90a20380014547b79708c7), [`b441a1d`](https://github.com/pyreon/pyreon/commit/b441a1d2ba7013a6690cfce4dbbd5015c247f60c), [`bd75ce2`](https://github.com/pyreon/pyreon/commit/bd75ce2c2c44c44759197de1fccdc78f013c3bce), [`71fe560`](https://github.com/pyreon/pyreon/commit/71fe5608b1d95b7df6f550281a278290e33a0f90), [`15434f5`](https://github.com/pyreon/pyreon/commit/15434f55159337beada1cb7526aa956abcbd2de9), [`bbac2d8`](https://github.com/pyreon/pyreon/commit/bbac2d834fe4be327ae31dfba2fa92ee3fb7d744), [`6f6f9f5`](https://github.com/pyreon/pyreon/commit/6f6f9f5e41c874a6f865338e3877158f4550272d), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`ab90ebc`](https://github.com/pyreon/pyreon/commit/ab90ebc06667adb17efd936df98ffd1067f48527), [`2fe2c1e`](https://github.com/pyreon/pyreon/commit/2fe2c1e6bcc4dbcfe1d8d349c46e97a7353e85c5), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`9e3d608`](https://github.com/pyreon/pyreon/commit/9e3d60870e000c7a9404d885b3d2207f80c94868), [`f1aa5ed`](https://github.com/pyreon/pyreon/commit/f1aa5edb158f88d8beb22c893972362f1dffbd1a), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`a2e002f`](https://github.com/pyreon/pyreon/commit/a2e002f8d3964a65a9e83f4d03374bb58e0ef6bd), [`2655fa3`](https://github.com/pyreon/pyreon/commit/2655fa3b4a29943b5c3f83dd6516eeeb3f26ec67), [`143e288`](https://github.com/pyreon/pyreon/commit/143e2887ff318a8e0842774eb2e320f085253400), [`a5685dc`](https://github.com/pyreon/pyreon/commit/a5685dc445f9cefb5a6f99f25061be19301f868d), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`10adf79`](https://github.com/pyreon/pyreon/commit/10adf79a515a7852d357099e22ff75b6d9ba8cc8), [`2de6084`](https://github.com/pyreon/pyreon/commit/2de6084df506180f468f9674fa341fea50044574), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05)]:
+  - @pyreon/native-compiler@0.54.0
+  - @pyreon/compiler@0.54.0
+  - @pyreon/lint@0.54.0
+
 ## 0.53.0
 
 ### Minor Changes
@@ -245,7 +308,7 @@
 
   - **`@pyreon/cli`** (`runDistributionGate`, i.e. `pyreon doctor` + the
     `check-distribution` CI gate): a new rule, `distribution/native-source-not-
-shipped`, fails any package that declares `pyreon.native` but omits the
+    shipped`, fails any package that declares `pyreon.native` but omits the
     declared native source dirs from `files`. This is the class of bug above —
     a co-located port that builds in-repo but is absent from npm. It surfaced two
     real instances (`@pyreon/sync`, `@pyreon/table`), both fixed here.
@@ -430,7 +493,7 @@ shipped`, fails any package that declares `pyreon.native` but omits the
   sits behind a passing gate.
 
   Worse, the verdict depended on which tool last wrote the file: `changeset
-version` parses and re-serialises every manifest, so the same claim passed on one
+  version` parses and re-serialises every manifest, so the same claim passed on one
   branch and hard-failed on another. `.json` claim files now have their escapes
   decoded before matching, which makes `@pyreon/lint`'s published npm description
   — the real instance — checked rather than skipped.
@@ -617,7 +680,7 @@ version` parses and re-serialises every manifest, so the same claim passed on on
   not checking. The most common failure when an AI writes UI code is a plausible
   prop value that does not exist — `state="primry"` typechecks in a JS file,
   renders without throwing, and silently does nothing. `atlas check Button
-'{"state":"primry"}'` catches it and suggests `primary`, plus unknown props,
+  '{"state":"primry"}'` catches it and suggests `primary`, plus unknown props,
   wrong types (including a non-function event handler) and missing required props.
   Exits non-zero, so it works in a hook or a CI step. Reads the catalog rather
   than rescanning, so it cannot disagree with the guide an agent was just handed.
@@ -648,7 +711,7 @@ version` parses and re-serialises every manifest, so the same claim passed on on
 
   **Imported prop types now resolve** — the largest remaining gap between
   "works" and "usable on a real design system". `import type { ButtonProps } from
-'./types'` is what most projects do, and it produced ZERO controls: the
+  './types'` is what most projects do, and it produced ZERO controls: the
   component was found, its whole contract was not — no knobs, no variant axes, no
   scenarios past the edge cases. Relative imports are followed to the file,
   through barrel re-exports (`export type { X } from './y'`, `export *`) and
@@ -787,7 +850,7 @@ version` parses and re-serialises every manifest, so the same claim passed on on
   so it can't regress.
 
   This removes the `npm warn publish "repository.url" was normalized to
-"git+https://github.com/pyreon/pyreon.git"` line npm printed once per
+  "git+https://github.com/pyreon/pyreon.git"` line npm printed once per
   package on every release (69 lines of publish-log noise). The published
   metadata is byte-identical to what npm was already auto-correcting to —
   there is no runtime or API change.
@@ -905,7 +968,7 @@ version` parses and re-serialises every manifest, so the same claim passed on on
   on one synced version trajectory, `info` flags **version skew** when the
   installed set spans more than one version — the condition that can trip the
   `registerSingleton` duplicate-instance guard (`[Pyreon] Duplicate @pyreon/X
-detected`) and split context/reactivity across instances at runtime.
+  detected`) and split context/reactivity across instances at runtime.
 
   ```bash
   pyreon info          # env + installed @pyreon versions + skew check
@@ -927,7 +990,7 @@ detected`) and split context/reactivity across instances at runtime.
   `--lsp`). It exits non-zero on lint errors, just like the standalone binary.
 
   To keep one implementation, `@pyreon/lint` now exports **`runCli(argv): number
-| null`** (extracted from its bin's `main()`): returns the exit code, or `null`
+  | null`** (extracted from its bin's `main()`): returns the exit code, or `null`
   for the long-running `--watch` / `--lsp` modes. Both the `pyreon-lint` bin and
   `pyreon lint` call it, so the two CLIs can never drift. Lazy-loaded in the
   `pyreon` dispatch — no main-entry bundle growth.
@@ -1598,7 +1661,7 @@ detected`) and split context/reactivity across instances at runtime.
     A/B/C/D/F. Categories with no gate coverage are excluded from the mean
     rather than counted as perfect-100 (would inflate the score).
   - **DoctorReport aggregator** — `buildReport(gates) → { score, grade,
-categories[], findings[], gates[], totals, elapsedMs, timestamp }`.
+    categories[], findings[], gates[], totals, elapsedMs, timestamp }`.
     Pure-function: gate results in, report out. Findings sorted errors →
     warnings → infos, then by category.
   - **Beautiful CLI output** — big-score banner with letter grade,
@@ -1608,7 +1671,7 @@ categories[], findings[], gates[], totals, elapsedMs, timestamp }`.
     gates footer. ANSI colors respect `NO_COLOR` / `FORCE_COLOR`.
   - **`--json`** — full `DoctorReport` for AI agents + dashboards.
   - **`--gha`** — GitHub Actions annotation lines (`::error file=X,
-line=Y,col=Z::msg`) for inline PR annotations.
+    line=Y,col=Z::msg`) for inline PR annotations.
   - **Modes** — `--full` (enable slow gates: audit-types, bundle-budgets),
     `--only <gates>`, `--skip <gates>`, `--fix` (lint + react-patterns),
     `--ci` (exit nonzero on error findings only). `--only` precedence
@@ -1671,7 +1734,7 @@ line=Y,col=Z::msg`) for inline PR annotations.
   business asserting. Fix: pre-check whether ANY of the gate's claim files
   exist; if zero do, return `meta.skipped: true` with
   `skipReason: 'no claim sites found in this project (gate targets Pyreon
-monorepo paths)'`. The aggregator then excludes documentation from the
+  monorepo paths)'`. The aggregator then excludes documentation from the
   score mean rather than counting it as 0/100.
 
   Test coverage: the original "emits file-missing when claim file absent"

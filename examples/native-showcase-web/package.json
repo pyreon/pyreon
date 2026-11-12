@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-native-showcase-web",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "PRIVATE / EXPERIMENTAL — the Today showcase on the web: ../native-showcase/src/TodayApp.tsx rendered to HTML at build time and hydrated in the browser. The same file compiles to SwiftUI (native-showcase-ios) and Jetpack Compose (native-showcase-android).",
   "license": "MIT",

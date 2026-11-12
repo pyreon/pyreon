@@ -1,5 +1,20 @@
 # @pyreon/unistyle
 
+## 0.54.0
+
+### Patch Changes
+
+- [#4140](https://github.com/pyreon/pyreon/pull/4140) [`b0064b5`](https://github.com/pyreon/pyreon/commit/b0064b51d8724a4f4a1db626926280d6abc764fd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix unstyled elements after the style sheet evicts rules. Past its bound (10,000 rules) the sheet dropped its oldest rules while styled's class caches, static components, CPSE's shape cache, `@keyframes` and static globals kept handing out the evicted names — on the server, later requests shipped class names with no CSS. The sheet now never evicts a class an element in the document still carries (the client pass runs after the current render attaches), a `@keyframes`, a static global, or a mounted dynamic global, and every cache above the sheet re-inserts a rule it finds evicted (`sheet.isLive`). Also key styled's `$element` class cache on the theme, so a theme swap or a second server tenant no longer reuses a class resolved under another theme. Adds `sheet.isLive(name)` and `sheet.retain(key)`; `sheet.insertGlobal` now returns its key.
+
+- [#4144](https://github.com/pyreon/pyreon/pull/4144) [`8a5702e`](https://github.com/pyreon/pyreon/commit/8a5702ea3588f18ced3a7d419b825630b70d07b1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Make theme-keyed style caches hit across `<PyreonUI>` mounts and Text mounts. `enrichTheme` is now memoized on the input theme object's identity (and returns an already-enriched theme unchanged), so a fresh `<PyreonUI>` with the same theme object — one per SSR request — reuses every rocketstyle, styler and unistyle cache instead of re-resolving each component once per request. `Text` now interns its `$text` style bundle and the styler's class cache keys on it, so warm Text mounts skip the CSS pipeline.
+
+- [#4326](https://github.com/pyreon/pyreon/pull/4326) [`eb3c73b`](https://github.com/pyreon/pyreon/commit/eb3c73b5a4d6ee91cb5042a7e1d0afe994d5430a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `backgroundImage` no longer wraps a value that is already a CSS image in `url()`. Gradients (including `repeating-*` and `conic-gradient`), `url()`, `image-set()`, `cross-fade()`, `element()`, `var()` / `env()`, `none` and the CSS-wide keywords now pass through verbatim, so `backgroundImage: 'linear-gradient(…)'` and mode-aware values under `cssVariables` render instead of computing to `none`. A bare path or URL still becomes `url(…)`, and each layer of a comma-separated list is handled on its own.
+- Updated dependencies [[`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`aede571`](https://github.com/pyreon/pyreon/commit/aede571eb489fa90250a2690102020718217b137), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`cfd192d`](https://github.com/pyreon/pyreon/commit/cfd192d363b5a4c0860ee31280c1a6d3a743d38a), [`4360a8e`](https://github.com/pyreon/pyreon/commit/4360a8ec022b24674e767ee0877ef6d8d5946a23), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`2610d24`](https://github.com/pyreon/pyreon/commit/2610d248313fb85ccd787af6d65e62e2aa56c8a9), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`5599585`](https://github.com/pyreon/pyreon/commit/559958524ecef0983eb604ce5628ed258d932b42), [`26815df`](https://github.com/pyreon/pyreon/commit/26815dfed810d848b28e09395d6ee171f3c10db4), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`1d0d0b8`](https://github.com/pyreon/pyreon/commit/1d0d0b8afde33477e6e7191f6607fd029a79b33a), [`511dd4a`](https://github.com/pyreon/pyreon/commit/511dd4acac8c673cafcc26dc9d4af88311300f98), [`5abcb2d`](https://github.com/pyreon/pyreon/commit/5abcb2d51816c8e114b0755cf761ba58a4ea8db5), [`96616a5`](https://github.com/pyreon/pyreon/commit/96616a57db3e85db9415f7cbd780f4a7a43e7ca9), [`0fc7458`](https://github.com/pyreon/pyreon/commit/0fc745886238a2ead837732f4eea6022fdd33781), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`bc6f40c`](https://github.com/pyreon/pyreon/commit/bc6f40ca8281e08f1a8f3e7cb988ad4092aadff8), [`03727ea`](https://github.com/pyreon/pyreon/commit/03727ea27fadbce6a5c0f93293757c90d2ac3ceb), [`1cd43b5`](https://github.com/pyreon/pyreon/commit/1cd43b5c6b6a3d71b671221ad292b12548f9b90e), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`a6c4897`](https://github.com/pyreon/pyreon/commit/a6c48979002c0ab1b1066d63321e414814967862), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`2655fa3`](https://github.com/pyreon/pyreon/commit/2655fa3b4a29943b5c3f83dd6516eeeb3f26ec67), [`e5f746d`](https://github.com/pyreon/pyreon/commit/e5f746db830031c6c011ca518d629a0ff5f8ac77), [`b0064b5`](https://github.com/pyreon/pyreon/commit/b0064b51d8724a4f4a1db626926280d6abc764fd), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a), [`8106e81`](https://github.com/pyreon/pyreon/commit/8106e81d8f6915d18f40a65574edaa2f604e2337), [`8a5702e`](https://github.com/pyreon/pyreon/commit/8a5702ea3588f18ced3a7d419b825630b70d07b1), [`c1f21cc`](https://github.com/pyreon/pyreon/commit/c1f21cca9d17b2563fa847907e0019fc4e6425d2), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3)]:
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/core@0.54.0
+  - @pyreon/ui-core@0.54.0
+  - @pyreon/styler@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes
@@ -415,7 +430,7 @@
   `cpseStyled`'s `styles` prop now accepts responsive values — mobile-first
   arrays (`padding={[8, 16]}`) and breakpoint objects (`padding={{ sm: 16 }}`).
   Each breakpoint emits a suffixed value-agnostic rule (`padding:
-var(--u-<hash>-sm)`) wrapped in its `@media` query (via `createMediaQueries`;
+  var(--u-<hash>-sm)`) wrapped in its `@media` query (via `createMediaQueries`;
   the styler's `splitAtRules` hoists the nesting), and the instance sets every
   breakpoint's value inline. The class stays value-agnostic (shared across
   instances of the same shape); the browser's `@media` cascade selects the active
@@ -768,7 +783,7 @@ var(--u-<hash>-sm)`) wrapped in its `@media` query (via `createMediaQueries`;
   **Bisect-verified-with-restore**:
 
   - Disabled `_isDynamic` cache → `× returns cached result on subsequent
-calls without rescanning values` fires; restored → 425/425 pass.
+    calls without rescanning values` fires; restored → 425/425 pass.
   - Disabled `_staticResolved` cache → 2 lock-in specs fire; restored →
     425/425 pass.
 
@@ -939,10 +954,10 @@ calls without rescanning values` fires; restored → 425/425 pass.
   `@pyreon/styler`:
 
   - `src/__tests__/styler.browser.test.tsx` (8 tests): `styled('div')\`…\``mounts into real DOM with the generated`pyr-_`class; Chromium
-resolves the authored styles (color/padding) via the injected
-stylesheet; function interpolations resolve per-render against props
-(verified`isDynamic`returns true for arrow fns →`DynamicStyled`path); different tags (div/span/button) produce distinct elements;`ThemeProvider`injects a theme consumed by themed components;`keyframes` registers an animation name (`pyr-kf-_`prefix, via`String(fadeIn)`) that Chromium applies; standalone `css\`…\``CSSResult interpolates into`styled()`and resolves in the cascade;
-CSS rules are queryable via`document.styleSheets`.
+    resolves the authored styles (color/padding) via the injected
+    stylesheet; function interpolations resolve per-render against props
+    (verified`isDynamic`returns true for arrow fns →`DynamicStyled`path); different tags (div/span/button) produce distinct elements;`ThemeProvider`injects a theme consumed by themed components;`keyframes` registers an animation name (`pyr-kf-_`prefix, via`String(fadeIn)`) that Chromium applies; standalone `css\`…\``CSSResult interpolates into`styled()`and resolves in the cascade;
+    CSS rules are queryable via`document.styleSheets`.
   - Added `vitest.browser.config.ts`, `test:browser` script, and
     `@pyreon/test-utils` + `@vitest/browser-playwright` devdeps.
   - Wired `nodeExcludeBrowserTests` into the node vitest config so regular
@@ -974,10 +989,10 @@ CSS rules are queryable via`document.styleSheets`.
     `StyleSheet.insert` — 6/8 tests failed (every test that asserts a
     computed style or queryable rule). Restored, 8/8 passed.
   - unistyle (light): hard-coded `__PYREON__` to `{ sortedBreakpoints:
-undefined, media: undefined }` — enrichment test failed. Restored,
+    undefined, media: undefined }` — enrichment test failed. Restored,
     6/6 passed.
   - unistyle (load-bearing): replaced the `media[item]\`${result};\``emit in`makeItResponsive`with`return ''` — both responsive-prop
-tests failed (`expected '8px' to be '0px'`). Restored, 6/6 passed.
+    tests failed (`expected '8px' to be '0px'`). Restored, 6/6 passed.
 
   Also removes `packages/ui-system/styler/` and `packages/ui-system/unistyle/`
   from `PHASE_5_PENDING_PACKAGES` in `scripts/check-browser-smoke.ts`. The

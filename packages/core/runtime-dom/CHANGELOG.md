@@ -1,5 +1,125 @@
 # @pyreon/runtime-dom
 
+## 0.54.0
+
+### Patch Changes
+
+- [#4284](https://github.com/pyreon/pyreon/pull/4284) [`a687a5a`](https://github.com/pyreon/pyreon/commit/a687a5a93823d53bd65f0dafa55b5747a2d87fca) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix `vite` dev on the published compat packages: each `<pkg>/jsx-dev-runtime` now ships as its own `lib/jsx-dev-runtime.js` that exports `jsxDEV`, instead of sharing `lib/jsx-runtime.js` with the production runtime. In 0.53.0 the dev entry overwrote that file, so it had no `jsxDEV` and `vite` dev failed with "does not provide an export named 'jsxDEV'". `@pyreon/runtime-dom/transition` now exports `TransitionGroup`, as documented; the published subpath only had `Transition`.
+
+- [#3891](https://github.com/pyreon/pyreon/pull/3891) [`f31485c`](https://github.com/pyreon/pyreon/commit/f31485c7eb6d1eaf402bfd6554bb9165da118012) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A compiled style that can never re-run (one computed from a `<For>` item, or any non-reactive expression) is now written with the new `_setStyleOnce`, which skips the skip-if-equal cache that reactive styles keep. Recording that cache read `cssText` back after every write, a full serialization of the declaration, on every templated element with a computed style. Reactive styles are unchanged. Mounting a 10,000-item virtual list is about 8% faster.
+
+- [#4198](https://github.com/pyreon/pyreon/pull/4198) [`4360a8e`](https://github.com/pyreon/pyreon/commit/4360a8ec022b24674e767ee0877ef6d8d5946a23) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Bindings that can never update no longer keep anything alive. A `renderEffect` or `_bind` whose first run tracked no signal returns a shared no-op disposer and registers nothing with its scope, and `_bindProp` writes a static primitive prop once instead of building a tracked text binding. On a statically composed page (every `FormRow label="…"`) that removes the effect closures, dependency arrays and scope entries of every static binding.
+
+- [#4481](https://github.com/pyreon/pyreon/pull/4481) [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The devtools registry now records each component's real parent and its own element (development builds only). A component that a reactive update mounts later, such as a `<For>` row, a `<Show>` branch or a route, was registered as a root; its parent now comes from the owner chain. Every component after the first among siblings was registered with its first sibling's element, so `highlight(id)`, the element picker and the devtools inspector pointed at the wrong DOM.
+
+- [#4476](https://github.com/pyreon/pyreon/pull/4476) [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The devtools hook (`window.__PYREON_DEVTOOLS__`) answers two inspector questions for a mounted component, computed when asked:
+
+  - `getComponentProps(id)` returns a shallow, bounded preview of its props, with values rendered like graph values and reactive props read without tracking.
+  - `reactive.nodesForComponent(id)` returns the signals, computeds and effects it created during setup and `onMount`, as graph node ids.
+
+  The registry's reference to the props object and the scope is dropped on unmount. Both are development only; production output is unchanged.
+
+- [#4476](https://github.com/pyreon/pyreon/pull/4476) [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `window.__PYREON_DEVTOOLS__.version` is the real `@pyreon/runtime-dom` version instead of a hard-coded `0.1.0`, so the devtools extension can show which Pyreon a page runs. The build inlines it from the same `package.json` field the package already ships for its duplicate-instance check, so production output is unchanged.
+
+- [#4174](https://github.com/pyreon/pyreon/pull/4174) [`93cd37d`](https://github.com/pyreon/pyreon/commit/93cd37d41484860321335daddf3e734d0977316c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A compiled template that is a component's child no longer builds when it is created. It was built while the parent's JSX arguments were being evaluated — before the enclosing component's setup — so every component the template held (a `<RouterView />`, a routed page) was set up under the wrong owner and never saw the context the enclosing provider provides (a layout wrapping its shell in `<QueryClientProvider>` made the routed page throw "No QueryClient found"). It now builds on first use, which is the mount.
+
+- [#4042](https://github.com/pyreon/pyreon/pull/4042) [`eae9e20`](https://github.com/pyreon/pyreon/commit/eae9e20bdbb2190213e68963afeb732ae71bf543) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Two `<For>` row-lifecycle fixes. The bulk-detach window that skips a list's row removals when its parent leaves as a unit is now scoped to that parent's subtree, so a row `onUnmount` that tears down an unrelated tree (a separate root, a node elsewhere in the document) removes it again. And rows adopted during hydration now own the `effect()`s their row callback creates, exactly like client-mounted rows, so removing a server-rendered row stops its effects.
+
+- [#3902](https://github.com/pyreon/pyreon/pull/3902) [`34fc2b5`](https://github.com/pyreon/pyreon/commit/34fc2b5cbffff3edb2b84a3fc96423c804d6a9f4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Faster teardown of lists inside elements. A `<For>` mounted inside a freshly built element no longer removes its rows from the DOM one at a time when it is torn down: the element leaves the document as a unit right after, so those removals were redundant. Every row's cleanup still runs, so effects are disposed and refs cleared. Unmounting a 1,000-row × 6-column table goes from 2.83ms to 1.36ms in Chromium, ahead of memoized react-table (1.88ms).
+
+- [#4115](https://github.com/pyreon/pyreon/pull/4115) [`8e9b9ac`](https://github.com/pyreon/pyreon/commit/8e9b9acce45a76ac3a9b8eb5bd55bd4c159ae1a9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<For>` mounts new rows straight into the live parent on a fresh render, a full replace, and a contiguous insert, instead of staging them in a `DocumentFragment` and moving the fragment in. Staging parented every row twice. Measured in real Chromium on the benchmark row (same build, arms interleaved, CI95 disjoint): 1,000-row create JS 0.99 → 0.905 ms, replace 1.56 → 1.43 ms; 10,000-row create 10.47 → 9.50 ms. A row `ref` now sees its element connected and in its final parent when it runs.
+
+- [#3923](https://github.com/pyreon/pyreon/pull/3923) [`bed3ef0`](https://github.com/pyreon/pyreon/commit/bed3ef0fc388e45f2baf0641554770c3b19b86d9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<For>` no longer leaves a removed row in the DOM when an update both removes a key and duplicates another (for example `[1, 2, 3] → [2, 2, 1]`). The "pure reorder" shortcut compared the number of cached rows to the list length, and a duplicate kept those equal while a key had gone. It now counts the distinct rows the update keeps.
+
+- [#4225](https://github.com/pyreon/pyreon/pull/4225) [`0e5acc1`](https://github.com/pyreon/pyreon/commit/0e5acc144e3bd34aead7c7bc5c49b303ed163f01) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Keyed reorders (`<For>` and keyed `.map` lists) now move existing rows with the browser's state-preserving `moveBefore` where it exists (Chromium 133+), falling back to `insertBefore` elsewhere. A moved row keeps focus, running CSS animations and transitions, iframe and media state, instead of being removed and re-inserted.
+
+- [#3946](https://github.com/pyreon/pyreon/pull/3946) [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix `<For>` rows that re-render their own content being duplicated or misplaced on the next reorder. Affected rows include a row that returns an accessor (`(x) => () => <li>{x.label()}</li>`), a component using the reactive-conditional pattern (`return (() => cond() ? <A/> : <B/>)`), and a text row whose value becomes an element.
+
+  The list recorded such a row's position by its first DOM node. Once the row re-ran, that node was gone, so the next move re-inserted the stale node and left the live content behind: a duplicated row, rows out of order, and sometimes an `insertBefore … is not a child of this node` error. Rows that aren't a single element are now delimited by their own comment markers, which nothing inside the row can replace. Single-element rows, the common case, are unchanged and get no extra nodes.
+
+  The same applied to a list hydrated from server HTML. Hydration consumes the `<!--$-->…<!--/$-->` markers around a reactive text child, so a row ending in text recorded a removed node as its end. That row is now ended at its live last node, and given its own end marker when that node is text.
+
+- [#4320](https://github.com/pyreon/pyreon/pull/4320) [`26815df`](https://github.com/pyreon/pyreon/commit/26815dfed810d848b28e09395d6ee171f3c10db4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<For each>` accepts a readonly array: `each` is typed `readonly T[] | (() => readonly T[])`, so `as const` data, `readonly X[]` props and accessors returning a readonly array typecheck instead of failing with "The type 'readonly X[]' is 'readonly' and cannot be assigned to the mutable type 'X[]'". Mutable arrays are still accepted. Runtime behaviour is unchanged; runtime-dom's internal `mountFor` source is typed readonly to match.
+
+  Upgrade: none
+
+- [#3903](https://github.com/pyreon/pyreon/pull/3903) [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix: an `effect()` or `computed()` created directly in a `<For>` row callback is now disposed when its row is removed and when the list unmounts. It previously had no owner, so a removed row kept running its effects indefinitely. Rows that create nothing pay no allocation; the fair benchmark shows no measurable cost.
+
+- [#3946](https://github.com/pyreon/pyreon/pull/3946) [`871f6f0`](https://github.com/pyreon/pyreon/commit/871f6f0925f4793441138947c8834fe0b6b426d2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<For>` SSR output is now about half as many DOM nodes for a typical list. A leading run of single-element rows (a table body, a list) no longer gets a `<!--k:KEY-->` comment before every row. Their keys travel once, space-separated, on the closing marker instead: `<!--/pyreon-for:k0 k1 …-->`. This covers component rows too, when the component renders one element: `<For>{(r) => <Row r={r} />}</For>` is classified by what `Row` returned, including compiled `_ssr` output and components that wrap another component. From the first row of any other shape (a fragment, an accessor such as the reactive-conditional component return, text, or an async or still-loading component), every row keeps its own marker as before, because those rows can span any number of nodes.
+
+  The string renderer, the stream renderer and the compiled `_ssrForKeyed` fast path emit identical bytes. Hydration rebuilds the row table from both forms and still verifies every key before adopting anything. A list whose keys don't match is re-rendered, exactly as before. The previous format (a marker before every row) still hydrates, so a cached prerendered page keeps working after an upgrade.
+
+  Measured on the 1,000-row hydration benchmark (real Chromium, n=60, the same session for both arms): Pyreon goes from 6.33 ms (a tie with Vue at 6.26 ms) to 6.11 ms, an outright first place (Vue 6.31 ms, CIs disjoint). The framework walk drops from 1.31 ms to 1.17 ms, and the browser's layout flush gets cheaper with fewer nodes to lay out. The HTML is smaller too.
+
+  The server and client halves must be the same version. Every app already ships both from one build, and `@pyreon/*` releases as a fixed version group.
+
+  The `runtime-server.for.keyMarker` dev counter now counts only rows that get their own marker, so it reads 0 for a plain table.
+
+- [#3907](https://github.com/pyreon/pyreon/pull/3907) [`c21ab54`](https://github.com/pyreon/pyreon/commit/c21ab54734096ac2613f998f5eba3f05dfe8c094) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A `<For>` update that only swaps or rotates a few rows (up to 8 positions, nothing added or removed) now goes straight to moving those rows, without first looking every key up in the row cache twice. About 10 µs less JavaScript per swap on a 1,000-row list.
+
+- [#4272](https://github.com/pyreon/pyreon/pull/4272) [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Hydration evaluates a reactive child once. The hydration walk sampled each reactive accessor to choose how to adopt it and then let the binding call it again (three times for reactive text between elements); the sampled value, its dependencies and the effects and cleanups it created are now handed to the binding instead.
+
+- [#4272](https://github.com/pyreon/pyreon/pull/4272) [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Hydration no longer freezes getter props when a component is given positional children. A component that forwards its own props with a child, `h(Inner, props, 'label')`, stayed reactive when mounted but received static values when hydrated, because `hydrateComponent` merged the children with an object spread. Mount and hydrate now build component props through one shared helper.
+
+- [#4476](https://github.com/pyreon/pyreon/pull/4476) [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Hydrating compiled JSX now reports server/client divergences in development, as `h()` content already did ([#4419](https://github.com/pyreon/pyreon/issues/4419)).
+
+  A compiled `_tpl` template adopts the server's DOM and its bind writes the client's values into it. When those values differed, the write corrected the page silently, so there was no `[Pyreon] Hydration mismatch` warning and no `onHydrationMismatch` call for nearly every component in a JSX app. Every compiled text write into adopted server DOM now reports, with the same message and payload as the `h()` path: `_setChild`, `_setChildAt`, `_bindText`, `_bindProp`, `bindPolymorphicText` and `_textSlot`. So does a compiled element that cannot be adopted because the server rendered a different tag or text; the report names the first difference. A mismatch is reported exactly when hydration changes what the server rendered. Attribute differences are not reported, as on the `h()` path. Compiled-path reports are development-only and add no bytes to production builds.
+
+  The `h()` path also reports an accessor that renders text over an empty server element or range, which it used to mount silently. Mismatches inside a compiled slot or mount hole now carry a path from the hydration root (`root > div > reactive > b`) instead of `slot > …`.
+
+- [#4476](https://github.com/pyreon/pyreon/pull/4476) [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `hydrateRoot` registers every hydrated component with the devtools hook (`window.__PYREON_DEVTOOLS__`), with its parent and its own first element, and unregisters it on unmount. SSR, SSG, island and Zero apps no longer show an empty Components tree. A component mounted later under a hydrated one is registered under it, and async components are registered on both the mount and the hydration path. Development only; production bundles are unchanged.
+
+- [#4476](https://github.com/pyreon/pyreon/pull/4476) [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Hydration adopts server-rendered camelCase SVG elements (`linearGradient`, `clipPath`, `foreignObject`, `textPath`, `feGaussianBlur` and every other name the HTML parser case-adjusts) instead of reporting a tag mismatch and re-mounting them. The element walk and the `<For>` row-plan replay compare `localName` with the vnode type.
+
+- [#4349](https://github.com/pyreon/pyreon/pull/4349) [`a8d60d3`](https://github.com/pyreon/pyreon/commit/a8d60d3c2262bf85b8bd994132b43c0aa9d9a5d1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Hydration now adopts an `island()` rendered inside a fully hydrated page instead of replacing it.
+
+  On the server an island is async, so its HTML sits between `<!--$pas-->` and `<!--$pae-->`. On the client it returns its `<pyreon-island>` marker synchronously. Hydration used to compare that marker against the `<!--$pas-->` comment, report `Hydration mismatch (tag): expected pyreon-island, got 8`, and mount an empty island in its place. The demo then stayed blank until the island's own trigger fired. Now a synchronous output hydrates inside the server's range, and the page continues after the range. This covers any component that is async on the server and synchronous on the client, including one rendered from a compiled template.
+
+- [#4220](https://github.com/pyreon/pyreon/pull/4220) [`6572180`](https://github.com/pyreon/pyreon/commit/657218094153dbd5d6a0d0d6dca7398b13803412) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Keyed `.map` lists reorder through `<For>`'s own reconciler core instead of a second copy of it: entries carry their position, so the separate key→position map and the duplicate longest-increasing-subsequence implementation are gone (−570 B minified, −205 B gzip on the benchmark table app). Behaviour is unchanged.
+
+- [#3922](https://github.com/pyreon/pyreon/pull/3922) [`b1f9bfe`](https://github.com/pyreon/pyreon/commit/b1f9bfe4a5200225b6076044d310b1fcc2d0383e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<For>` and keyed-array children no longer allocate their reorder buffers (four typed arrays and a `Set`) when they mount. The buffers are created on the first reorder or key removal, which many lists never perform. Measured retained heap for a 1,000-row table with a `<For>` over each row's cells (1,001 lists) dropped by 1,296 KB, about 1.3 KB per list, the same in three runs. Mount time is unchanged within noise.
+
+- [#4228](https://github.com/pyreon/pyreon/pull/4228) [`511dd4a`](https://github.com/pyreon/pyreon/commit/511dd4acac8c673cafcc26dc9d4af88311300f98) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Mounted components retain less memory. A component that registers no lifecycle hook shares one frozen hooks object instead of allocating its own, a component with no unmount work returns a small unmount closure instead of keeping its whole mount context alive, and render bindings register their disposer with the scope directly instead of through a `{ dispose }` wrapper. On a 2,047-component tree this is about 74 bytes less retained per component (−14 to −17%).
+
+- [#4088](https://github.com/pyreon/pyreon/pull/4088) [`ed925ac`](https://github.com/pyreon/pyreon/commit/ed925ac8a0b8f49e0fbade1438cfb2de0e20d1e4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A function held in a NAMED binding is now an accessor in compiled JSX, as it already was on the `h()` path ([#4086](https://github.com/pyreon/pyreon/issues/4086)). `<p>{label}</p>` with `const label = () => …` (or a `function` declaration, a helper param, a function-valued prop) rendered the closure's SOURCE text; it now mounts reactively and follows its signals. A DOM-property binding (`checked`, `disabled`, `selected`, `multiple`, `readOnly`, `indeterminate`, `value`) with a non-literal value assigned the function object itself — `checked={isOn}` left the box permanently checked — and now resolves it: through the new `_setProp` sink inside a reactive binding, and through `_setPropStatic` (which binds a function live) in static position. Literal values keep the plain property assignment. `<input value>` additionally resolves a function in `_setValue`.
+
+- [#4272](https://github.com/pyreon/pyreon/pull/4272) [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A reactive child whose first value is an element, `null` or an array is evaluated once at mount instead of twice. The value from the call that classifies it is now mounted directly and that call's dependencies are replayed into the binding's effect, so `{() => list().map(…)}` maps once and a compat component body (with its hooks and `useEffect`s) runs once on mount. Effects and `onCleanup`s registered by that call belong to the binding's effect, as before.
+
+- [#4481](https://github.com/pyreon/pyreon/pull/4481) [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - DOM bindings now show up in the dev reactive graph, so Reactive Coverage, `describeReactiveGraph` and `getUpdateCause` see them.
+
+  Before, `renderEffect` registered but never counted a re-run as a fire, `_bind` never registered, and the `direct()` updaters behind compiled `_bindText` / `_bindDirect` were not nodes, not edges and not even counted as subscribers. Coverage reported every DOM binding as absent or "created but never executed", and a signal shown only through compiled text was called an orphan.
+
+  Now every live binding is an `effect` node with an edge from each source. Its mount run counts as fire 1 and each re-run as another, so a binding reads `ran-once` until its signal changes and `covered` after. Nodes carry `binding` (`text`, `attr`, `class`, `style`, `prop`, `child`, `list`, or `dom` for a compiled updater that writes the DOM directly), `target` (the element's tag) and `key`, and are named like `aria-busy on <div>`. A dead binding (its first run read no signal) is not registered, and that includes a child, keyed-array or `<For>` boundary that read no signal. The styler's reactive class binding (a rocketstyle component's variant, size and state) is labelled `class on <tag>`. `createSelector(...).subscribe` row bindings are nodes too, with an edge from the selector. `getUpdateCause` now finds the root of a cascade even when it produced more fires than the 512-entry fire buffer holds. The coverage report adds `bindings`, and `describeReactiveGraph` adds `summary.bindings` (its `effects` count and `high-fanout` insight no longer include DOM bindings).
+
+  Development builds only. Every call is behind the `process.env.NODE_ENV` gate, and production bundles of the instrumented runtime-dom modules do not import the helpers.
+
+- [#3975](https://github.com/pyreon/pyreon/pull/3975) [`ab90ebc`](https://github.com/pyreon/pyreon/commit/ab90ebc06667adb17efd936df98ffd1067f48527) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix a `<Show>` (or any component) whose children are compiled elements going stale after they are torn down and mounted again ([#3955](https://github.com/pyreon/pyreon/issues/3955)). A multi-child `<Show>` stopped updating its bindings the first time `when` re-ran truthy, and hiding then re-showing even a single child froze its content at the first value: a compiled template built once as a component child was re-inserted after its bindings had been disposed. The compiler now marks a templated child (`_tpl(html, bind, 1)`), the item rebuilds itself when mounted after a teardown, and a `<Show>` whose verdict did not change keeps its DOM (focus and typed input survive) for several children as it already did for one. Both compiler backends emit the flag and agree byte for byte.
+
+- [#4379](https://github.com/pyreon/pyreon/pull/4379) [`0c0bf63`](https://github.com/pyreon/pyreon/commit/0c0bf630656d09aea58774fe4333defeaec56f71) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Async function components keep their ancestors' context on the client ([#4377](https://github.com/pyreon/pyreon/issues/4377)). The subtree an async component resolves to is mounted or hydrated in a later microtask, which had no context owner. Every `useContext()` in that subtree returned the context's default, including contexts the async component itself provided before its first `await`. The microtask now re-enters the component's scope. The mount path also restores the parent context owner as soon as it returns, so the async component's siblings no longer resolve context through it. Hydrating that subtree now runs inside the hydration walk, so a `<Suspense>` in it keeps the server content of a still-loading lazy child instead of showing its fallback. The async continuation runs in a `batch()` and mounts into the placeholder's current parent. As a result, a still-loading `lazy()` in the resolved subtree can suspend the enclosing `<Suspense>` without breaking the mount, which used to throw `insertBefore` NotFoundError. An async component that resolves while its boundary is showing the fallback for another load now mounts correctly.
+
+- [#4485](https://github.com/pyreon/pyreon/pull/4485) [`a0658bc`](https://github.com/pyreon/pyreon/commit/a0658bc295a6890010f96fd3ed8eb4a1bf539283) Thanks [@vitbokisch](https://github.com/vitbokisch)! - An element mounted after its `<svg>` or `<math>` ancestor (a `<Show>` branch, a reactive child, a `<For>` row, a portal into an SVG target, the fresh mount after a hydration mismatch) is created in the right namespace. The namespace now comes from the parent the element is inserted into, as the HTML parser decides it, so SVG elements that were missing from a tag list (`feDropShadow`, `feFuncA`, `mpath`, `switch`, …) render, HTML below `<foreignObject>` is HTML, and MathML below `mtext`/`mi`/… is HTML. A compiled template rooted at any SVG element is parsed as SVG.
+
+- [#4476](https://github.com/pyreon/pyreon/pull/4476) [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A reactive child whose own mount writes a signal it read (a ref recording state, `<Show>` over a transition stage, kinetic's `appear`) now mounts its content once. The accessor dispatcher used to build a second binding, and the text-to-subtree swap kept an orphaned copy.
+
+- [#4485](https://github.com/pyreon/pyreon/pull/4485) [`a0658bc`](https://github.com/pyreon/pyreon/commit/a0658bc295a6890010f96fd3ed8eb4a1bf539283) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `tabIndex` and the other camelCase HTML props on an SVG or MathML element are written as the lowercase attribute the HTML parser would create (`tabindex`), on the h() and compiled paths and when removing them, so the element is focusable and a hydrated reactive `tabIndex` no longer adds a second attribute. `viewBox`, `preserveAspectRatio` and the rest of the parser's camelCase SVG attributes keep their case.
+
+- [#3945](https://github.com/pyreon/pyreon/pull/3945) [`2979e47`](https://github.com/pyreon/pyreon/commit/2979e47ade6278c73a0f50ba5120bef21cb01139) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Compiled templates clone from a root element cached at parse time instead of reading `template.content.firstElementChild` on every clone. That's two DOM getter calls saved per row: creating 1,000 rows in the benchmark spends about 70 µs less in JavaScript.
+
+- [#4374](https://github.com/pyreon/pyreon/pull/4374) [`3e3bb3f`](https://github.com/pyreon/pyreon/commit/3e3bb3f5f01f7b628fdac1b1bfef48550504abd4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Hydration no longer doubles a VNode passed as an element's only child. A compiled `<td>{x.cell.content}</td>` inside `<For>`, where `content` is sometimes a string and sometimes an element, used to keep the server's nodes and append a fresh copy beside them in every VNode cell after the first row. The cell now adopts the server's nodes, as a function child already did.
+
+- [#3921](https://github.com/pyreon/pyreon/pull/3921) [`143e288`](https://github.com/pyreon/pyreon/commit/143e2887ff318a8e0842774eb2e320f085253400) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Text fusion now also covers an ALL-STATIC text run. `<li>Row {it.index}</li>` inside a `<For>` row used to bake `Row <!>` and swap the placeholder for a new text node on every row (a `createTextNode` plus a `replaceChild`). It now compiles to one `_setChild(el, _fuse("Row ", it.index))` into an empty element: a single text node, and the same in-place `.data` adoption on hydration that a lone static `{x}` child gets. Measured on the virtual-list scenario against `@tanstack/react-virtual`: `jump to row 5,000` (23 rows remounted) moved from 1.15–1.23× behind to 1.09–1.15× ahead, and `scroll 60 steps` from a tie to 1.11–1.12× ahead. SSR and `h()` output are unchanged.
+
+  `_setChild` (and the other static/polymorphic child setters) now mount an array that contains a nested array or a function, instead of stringifying it. A fused run whose part is a `VNode[]` or a reactive accessor renders its elements, or stays live; it no longer prints `[object Object]` or the function source.
+
+- [#3905](https://github.com/pyreon/pyreon/pull/3905) [`c3bd80c`](https://github.com/pyreon/pyreon/commit/c3bd80c467ce940c0298ab6b85eabb5fd0463ef6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A string `style` write no longer reads the declaration back. The readback, which serializes the whole declaration, is now taken only the first time the same string is written again, which is the only case where the skip-if-unchanged check needs it. Elements whose style is set once, or whose style changes on every run (a virtual-list row's `transform`), stop paying it: a virtual list scrolls about 8% faster and mounts about 5% faster.
+
+- [#3920](https://github.com/pyreon/pyreon/pull/3920) [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Suspense>` is now pay-per-use in the browser bundle. Its DOM boundary handler moved from `@pyreon/runtime-dom` into `@pyreon/core`, where `<Suspense>` carries it under a `Symbol.for('pyreon:suspense-attach')` key, so runtime-dom reads it off the component instead of importing it. An app that never renders a `<Suspense>` no longer bundles the component or its handler: the keyed-table benchmark app shrinks from 17,308 to 16,926 B gzipped. No API change.
+
+- [#3913](https://github.com/pyreon/pyreon/pull/3913) [`4c56327`](https://github.com/pyreon/pyreon/commit/4c5632769f5df19db831799298b3713577751957) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Reactive text bindings no longer read `node.data` back from the DOM on every update. They compare against the string they last wrote, and read the node only on their first run, so a hydrated node whose server text already matches is still left alone. This covers the signal fast path of `_bindText`, its callable path, and the shared core behind `bindPolymorphicText`. On the dbmon scenario (600 text cells changing per tick) the tick drops about 5%, from 1.85–1.90 ms to 1.70–1.81 ms.
+- Updated dependencies [[`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`aede571`](https://github.com/pyreon/pyreon/commit/aede571eb489fa90250a2690102020718217b137), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`cfd192d`](https://github.com/pyreon/pyreon/commit/cfd192d363b5a4c0860ee31280c1a6d3a743d38a), [`4360a8e`](https://github.com/pyreon/pyreon/commit/4360a8ec022b24674e767ee0877ef6d8d5946a23), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`2610d24`](https://github.com/pyreon/pyreon/commit/2610d248313fb85ccd787af6d65e62e2aa56c8a9), [`956a521`](https://github.com/pyreon/pyreon/commit/956a5214e0208b883767aee1d91acefefe7c1557), [`5599585`](https://github.com/pyreon/pyreon/commit/559958524ecef0983eb604ce5628ed258d932b42), [`26815df`](https://github.com/pyreon/pyreon/commit/26815dfed810d848b28e09395d6ee171f3c10db4), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`1e1c9b7`](https://github.com/pyreon/pyreon/commit/1e1c9b7c54cb7c02d30e64e86da5d823cb3595e4), [`1d0d0b8`](https://github.com/pyreon/pyreon/commit/1d0d0b8afde33477e6e7191f6607fd029a79b33a), [`511dd4a`](https://github.com/pyreon/pyreon/commit/511dd4acac8c673cafcc26dc9d4af88311300f98), [`5abcb2d`](https://github.com/pyreon/pyreon/commit/5abcb2d51816c8e114b0755cf761ba58a4ea8db5), [`96616a5`](https://github.com/pyreon/pyreon/commit/96616a57db3e85db9415f7cbd780f4a7a43e7ca9), [`0fc7458`](https://github.com/pyreon/pyreon/commit/0fc745886238a2ead837732f4eea6022fdd33781), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`bc6f40c`](https://github.com/pyreon/pyreon/commit/bc6f40ca8281e08f1a8f3e7cb988ad4092aadff8), [`03727ea`](https://github.com/pyreon/pyreon/commit/03727ea27fadbce6a5c0f93293757c90d2ac3ceb), [`1cd43b5`](https://github.com/pyreon/pyreon/commit/1cd43b5c6b6a3d71b671221ad292b12548f9b90e), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`87ccdb5`](https://github.com/pyreon/pyreon/commit/87ccdb56ca5247dcfbb1309c7875d65204549b0d), [`9018b4b`](https://github.com/pyreon/pyreon/commit/9018b4b2ef3fb50b6eacbdca9f9e553ad0efb541), [`3f1009e`](https://github.com/pyreon/pyreon/commit/3f1009eb66fbf6aac01a9b74c096d747bd6f5e6c), [`a6c4897`](https://github.com/pyreon/pyreon/commit/a6c48979002c0ab1b1066d63321e414814967862), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`2655fa3`](https://github.com/pyreon/pyreon/commit/2655fa3b4a29943b5c3f83dd6516eeeb3f26ec67), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a), [`c1f21cc`](https://github.com/pyreon/pyreon/commit/c1f21cca9d17b2563fa847907e0019fc4e6425d2), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3)]:
+  - @pyreon/reactivity@0.54.0
+  - @pyreon/core@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes
@@ -401,7 +521,7 @@
   below, just caught before push instead of by CI. The one other consumer
   pinning past 20.11.6 — `@happy-dom/global-registrator` in
   `examples/benchmark`, whose own 20.13.2 release requires `happy-dom
-^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
+  ^20.13.2` as a peer — is reverted to `^20.11.6` alongside it, so the whole
   graph resolves to one version again.
 
   `examples/benchmark`'s framework competitors were refreshed too so the
@@ -431,7 +551,7 @@
   2.31.1 → 3.0.1 and `@changesets/changelog-github` 0.7.0 → 1.0.0 stay put:
   1.0.0 ships `"type": "module"` with no CJS export, and this repo's own
   `.changeset/resilient-changelog.cjs` does `require('@changesets/changelog-
-github')` — bumping it would break `changeset version` at release time with
+  github')` — bumping it would break `changeset version` at release time with
   `ERR_REQUIRE_ESM`, verified by reading the published package's `exports`
   map, not assumed. The root `uuid` override stays at `11.1.1` for the same
   reason, one level removed: it force-pins a transitive dep of `exceljs`
@@ -445,7 +565,7 @@ github')` — bumping it would break `changeset version` at release time with
   3.17.8 in this branch's first pass (a routine-looking override edit, not
   vetted as carefully as the deps above), and it broke
   `@pyreon/virtual`'s real-Chromium `repositions a STAYING row below when row 0
-is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
+  is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
   retries) — bisected down to virtual-core's own 3.17.7 "synchronous
   notification for scroll compensation" change, not to anything else in this
   branch (ruled out `@tanstack/react-virtual`, unrelated — not imported by this
@@ -569,7 +689,7 @@ is remeasured taller` test deterministically (3/3 local runs, plus 3/3 CI
 
 - [#3310](https://github.com/pyreon/pyreon/pull/3310) [`4234788`](https://github.com/pyreon/pyreon/commit/423478813e018e7974b1dbd07525772cc5164754) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix a hydration regression from the mid-slot adoption change: an element whose
   SOLE child is an accessor that rendered `null` on the server — `<i
-class={…}>{() => cond ? null : <X/>}</i>`, which SSR emits as an EMPTY `<i>` with
+  class={…}>{() => cond ? null : <X/>}</i>`, which SSR emits as an EMPTY `<i>` with
   its range markers elided — came back from hydration with every binding dead.
   The class never updated and the slot never mounted, while identity was kept
   and no mismatch was reported; only a later flip showed it.
@@ -635,7 +755,7 @@ class={…}>{() => cond ? null : <X/>}</i>`, which SSR emits as an EMPTY `<i>` w
   static content after it. `templateSignature` refused that shape outright, for a
   real reason: a `<!>` is ONE node in the clone and a `<!--$-->…<!--/$-->` RANGE
   in the server DOM, so a compiled ref that steps past it (`__p1 =
-__p0.nextSibling.nextSibling`) lands on range content. The element and
+  __p0.nextSibling.nextSibling`) lands on range content. The element and
   everything under it rebuilt. A 19-shape adoption census found this the only
   ordinary shape still rebuilding — every prose sentence whose interpolation is
   not at the very end, which is most of them.
@@ -2068,7 +2188,7 @@ __p0.nextSibling.nextSibling`) lands on range content. The element and
   disabling `<Image>`/`<OptimizedImage>`'s blur-up and color placeholders, which
   is the framework's **own** `imagePlugin` output (`data:image/webp;base64,…` for
   blur, `data:image/svg+xml,…` for color). Dev mode logged a `[Pyreon] Blocked
-unsafe URL` warning on every render; production silently dropped the attribute
+  unsafe URL` warning on every render; production silently dropped the attribute
   so the placeholder never reached the DOM.
 
   The guard is now context-aware. A `data:image/<type>` URI is allowed only on an
@@ -2085,7 +2205,7 @@ unsafe URL` warning on every render; production silently dropped the attribute
   survives.
 
   `@pyreon/compiler` gains a matching `ERROR_PATTERNS` entry so `pyreon doctor
-diagnose` / the MCP `diagnose` tool explains the `[Pyreon] Blocked unsafe URL`
+  diagnose` / the MCP `diagnose` tool explains the `[Pyreon] Blocked unsafe URL`
   warning and which `data:` URIs are allowed where.
 
 - Updated dependencies [[`a448ff4`](https://github.com/pyreon/pyreon/commit/a448ff4fa5b5627622be0fcd7fbe65b5f8c51991)]:
@@ -2541,7 +2661,7 @@ diagnose` / the MCP `diagnose` tool explains the `[Pyreon] Blocked unsafe URL`
   corpus revealed the strict no-handler scope only addresses 0.2% of all
   `@pyreon/ui-components` sites; the bigger 15.4% dynamic-prop bucket is
   mostly **handler-combined ternaries** (`<Button state={cond ? 'a' : 'b'}
-onClick={h}>` — the most common real-world shape).
+  onClick={h}>` — the most common real-world shape).
 
   PR [#767](https://github.com/pyreon/pyreon/issues/767)'s `tryDynamicCollapse` deliberately BAILED on these by design
   ("PR 3 scope: no-handler only"). This PR ships the runtime half of the
@@ -2812,7 +2932,7 @@ onClick={h}>` — the most common real-world shape).
     snapshot) + `StyleSheet.injectRules(rules, key)` (idempotent
     pre-resolved rule injection, no re-hash).
   - `@pyreon/runtime-dom` — `_rsCollapse(html, lightClass, darkClass,
-isDark, bind?)` (one html-keyed `_tpl` cloneNode; class reactively
+    isDark, bind?)` (one html-keyed `_tpl` cloneNode; class reactively
     bound to the live mode accessor — RFC decision 1 dual-emit, mode swap
     re-runs ONLY the className on the SAME node, no remount; decision 4
     hoisted-factory). `runtime-dom` stays layer-pure (never imports
@@ -2850,7 +2970,7 @@ isDark, bind?)` (one html-keyed `_tpl` cloneNode; class reactively
 
   Bisect-verified: disabling the compiler's `tryRocketstyleCollapse(node)`
   detection call fails the 4 collapse-emission specs (`expected … to
-contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
+  contain '__rsCollapse('`) while the 9 bail-catalogue / key-stability
   specs still pass; restored → 13/13.
 
   **Deliberately deferred (follow-up PRs, tracked in
