@@ -61,9 +61,23 @@ describe('parseTestResults', () => {
     ])
   })
 
+  it('reads a skipped test as skipped, never as failed', () => {
+    // The two lines xcodebuild printed on run 43217949673 for a deliberate XCTSkip.
+    const out = [
+      "Test Case '-[AppUITests.Suite test_geo]' started.",
+      "Test Case '-[AppUITests.Suite test_geo]' skipped (0.212 seconds).",
+    ].join('\n')
+    expect(parseTestResults(out, true)).toEqual([{ id: 'AppUITests/Suite/test_geo', status: 'skipped', seconds: 0.212 }])
+  })
+
+  it('does not infer a crash unless asked to', () => {
+    expect(parseTestResults("Test Case '-[AppUITests.Suite test_x]' started.")).toEqual([])
+  })
+
   it('counts a test that started and never finished as failed', () => {
     const r = parseTestResults(
       [done('Suite', 'test_a', 'passed'), "Test Case '-[AppUITests.Suite test_crash]' started."].join('\n'),
+      true,
     )
     expect(r.find((t) => t.id.endsWith('test_crash'))).toEqual({
       id: 'AppUITests/Suite/test_crash',
@@ -103,6 +117,35 @@ describe('runSuite', () => {
     expect(fake.calls[1]!.some((a) => a.startsWith('-only-testing:'))).toBe(false)
   })
 
+  it('passes a green run that contains skipped tests, and lists the skips', async () => {
+    const { fake, outcome } = run([
+      { code: 0, output: '' },
+      {
+        code: 0,
+        output: [
+          done('S', 'test_a', 'passed'),
+          "Test Case '-[AppUITests.S test_geo]' started.",
+          "Test Case '-[AppUITests.S test_geo]' skipped (0.212 seconds).",
+        ].join('\n'),
+      },
+    ])
+    const out = await outcome
+    expect(out.ok).toBe(true)
+    expect(fake.calls).toHaveLength(2)
+    const { annotations, summary } = report('app', out)
+    expect(annotations).toEqual([])
+    expect(summary).toContain('2 tests (1 skipped)')
+    expect(summary).toContain('- skipped: `AppUITests/S/test_geo`')
+  })
+
+  it('trusts a zero exit code over a test that started and printed no result', async () => {
+    const { outcome } = run([
+      { code: 0, output: '' },
+      { code: 0, output: "Test Case '-[AppUITests.S test_quiet]' started." },
+    ])
+    expect((await outcome).ok).toBe(true)
+  })
+
   it('re-runs ONLY the failed test, in its own result bundle, and reports the retry', async () => {
     const { fake, outcome } = run([
       { code: 0, output: '' },
@@ -127,7 +170,7 @@ describe('runSuite', () => {
       '::warning::app: RETRIED AppUITests/S/test_flaky: failed, then passed on attempt 2. A flake, or a race worth a fix.',
     ])
     expect(summary).toContain('| `AppUITests/S/test_flaky` | retried, passed on attempt 2 |')
-    expect(summary).toContain('3 tests')
+    expect(summary).toContain('3 tests (0 skipped)')
   })
 
   it('fails, naming the test, when it fails every attempt', async () => {
@@ -274,6 +317,8 @@ describe('native-gradle.sh', () => {
     chmodSync(join(dir, 'gradle'), 0o755)
     const r = spawnSync('bash', [SCRIPT, 'assembleDebug', '--stacktrace'], {
       encoding: 'utf8',
+      // spawnSync blocks the event loop, so vitest's own timeout cannot fire.
+      timeout: 15_000,
       env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, PYREON_GRADLE_RETRY_SLEEP: '0' },
     })
     return { status: r.status, stdout: r.stdout, calls: Number(readFileSync(counter, 'utf8')) }

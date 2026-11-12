@@ -41,35 +41,43 @@ import { dirname } from 'node:path'
 export interface TestResult {
   /** `Module/Class/method`, the form `-only-testing:` takes. */
   id: string
-  status: 'passed' | 'failed'
+  status: 'passed' | 'failed' | 'skipped'
   seconds: number
 }
 
-const CASE_DONE = /Test Case '-\[(\S+?)\.(\S+) (\S+)\]' (passed|failed) \(([\d.]+) seconds\)/
+const CASE_DONE = /Test Case '-\[(\S+?)\.(\S+) (\S+)\]' (passed|failed|skipped) \(([\d.]+) seconds\)/
 const CASE_STARTED = /Test Case '-\[(\S+?)\.(\S+) (\S+)\]' started/
 
 /**
  * Read the per-test results out of xcodebuild's console output.
  *
- * A test that STARTED and never reported a result (the runner crashed or was
- * killed inside it) counts as failed with zero seconds, so it is named and
- * retried instead of vanishing from the tally.
+ * A skipped test (`XCTSkip`) is its own status and never a failure: the first
+ * version of this parser knew only passed/failed, read the two deliberate
+ * skips in the counter suite as "started, never finished", and failed a green
+ * run (PR #4487, run 43217949673).
+ *
+ * With `inferCrashed`, a test that STARTED and never reported a result (the
+ * runner crashed or was killed inside it) counts as failed with zero seconds,
+ * so it is named and retried instead of vanishing from the tally. The caller
+ * passes it only for a run xcodebuild itself reported as failed.
  */
-export function parseTestResults(output: string): TestResult[] {
+export function parseTestResults(output: string, inferCrashed = false): TestResult[] {
   const done = new Map<string, TestResult>()
   const started: string[] = []
   for (const line of output.split('\n')) {
     const end = CASE_DONE.exec(line)
     if (end) {
       const id = `${end[1]}/${end[2]}/${end[3]}`
-      done.set(id, { id, status: end[4] as 'passed' | 'failed', seconds: Number(end[5]) })
+      done.set(id, { id, status: end[4] as TestResult['status'], seconds: Number(end[5]) })
       continue
     }
     const start = CASE_STARTED.exec(line)
     if (start) started.push(`${start[1]}/${start[2]}/${start[3]}`)
   }
-  for (const id of started) {
-    if (!done.has(id)) done.set(id, { id, status: 'failed', seconds: 0 })
+  if (inferCrashed) {
+    for (const id of started) {
+      if (!done.has(id)) done.set(id, { id, status: 'failed', seconds: 0 })
+    }
   }
   return [...done.values()]
 }
@@ -90,6 +98,8 @@ export interface Attempt {
   n: number
   exitCode: number
   results: TestResult[]
+  /** Seconds from starting xcodebuild to the first test starting (device wait, install, runner attach). */
+  startupSeconds: number | undefined
 }
 
 export interface Outcome {
@@ -109,7 +119,7 @@ export interface RunOptions {
   maxAttempts: number
   maxRetriedTests: number
   /** Runs one command, streams its output, resolves with exit code + captured output. */
-  exec: (argv: string[]) => Promise<{ code: number; output: string }>
+  exec: (argv: string[]) => Promise<{ code: number; output: string; startupSeconds?: number }>
   log: (line: string) => void
 }
 
@@ -137,10 +147,11 @@ export async function runSuite(o: RunOptions): Promise<Outcome> {
         : `ios-uitest: attempt ${n} of ${o.maxAttempts}, re-running ${only.length > 0 ? pending.join(', ') : 'the whole suite'}`,
     )
     const run = await o.exec([...base, ...only, '-resultBundlePath', bundle])
-    const results = parseTestResults(run.output)
-    attempts.push({ n, exitCode: run.code, results })
+    const results = parseTestResults(run.output, run.code !== 0)
+    attempts.push({ n, exitCode: run.code, results, startupSeconds: run.startupSeconds })
 
-    let failedNow = results.filter((r) => r.status === 'failed').map((r) => r.id)
+    // xcodebuild's exit code is the verdict; the parsed names say WHICH tests.
+    let failedNow = run.code === 0 ? [] : results.filter((r) => r.status === 'failed').map((r) => r.id)
     // A non-zero exit that names no failed test is not a pass: the runner
     // never attached, or died outside a test. Re-run what this attempt was
     // asked to run (the whole suite on attempt 1).
@@ -169,10 +180,15 @@ export function report(name: string, out: Outcome): { annotations: string[]; sum
     lines.push('`build-for-testing` failed; no test ran.')
     return { annotations, summary: `${lines.join('\n')}\n` }
   }
+  const skipped = first.filter((r) => r.status === 'skipped')
+  const startup = out.attempts[0]?.startupSeconds
   lines.push(
-    `${first.length} tests, ${total.toFixed(0)} s in the first pass, ${out.attempts.length} xcodebuild test run(s).`,
+    `${first.length} tests (${skipped.length} skipped), ${total.toFixed(0)} s in the first pass, ${out.attempts.length} xcodebuild test run(s).` +
+      (startup === undefined ? '' : ` ${startup.toFixed(0)} s from starting xcodebuild to the first test.`),
     '',
   )
+  for (const r of skipped) lines.push(`- skipped: \`${r.id}\``)
+  if (skipped.length > 0) lines.push('')
   for (const [id, n] of out.retried) {
     annotations.push(
       `::warning::${name}: RETRIED ${id}: failed, then passed on attempt ${n}. A flake, or a race worth a fix.`,
@@ -198,25 +214,35 @@ export function report(name: string, out: Outcome): { annotations: string[]; sum
   return { annotations, summary: `${lines.join('\n')}\n` }
 }
 
-function streamingExec(argv: string[]): Promise<{ code: number; output: string }> {
+function streamingExec(argv: string[]): Promise<{ code: number; output: string; startupSeconds?: number }> {
   return new Promise((resolve, reject) => {
     const child = spawn(argv[0]!, argv.slice(1), { stdio: ['inherit', 'pipe', 'pipe'] })
     // Keep only the lines the parser reads: a suite prints tens of thousands.
     let kept = ''
     let tail = ''
+    const startedAt = Date.now()
+    let firstTestAt: number | undefined
     const take = (chunk: Buffer, sink: NodeJS.WriteStream) => {
       sink.write(chunk)
       const text = tail + chunk.toString('utf8')
       const lines = text.split('\n')
       tail = lines.pop() ?? ''
-      for (const line of lines) if (line.includes("Test Case '")) kept += `${line}\n`
+      for (const line of lines) {
+        if (!line.includes("Test Case '")) continue
+        firstTestAt ??= Date.now()
+        kept += `${line}\n`
+      }
     }
     child.stdout.on('data', (c: Buffer) => take(c, process.stdout))
     child.stderr.on('data', (c: Buffer) => take(c, process.stderr))
     child.on('error', reject)
     child.on('close', (code, signal) => {
       if (tail.includes("Test Case '")) kept += `${tail}\n`
-      resolve({ code: code ?? (signal ? 1 : 0), output: kept })
+      resolve({
+        code: code ?? (signal ? 1 : 0),
+        output: kept,
+        ...(firstTestAt === undefined ? {} : { startupSeconds: (firstTestAt - startedAt) / 1000 }),
+      })
     })
   })
 }

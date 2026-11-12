@@ -366,13 +366,13 @@ jobs:
       # mtime, so a prefix-restored older lib/ is safe: it rebuilds only the
       # packages whose source changed. Measured before this: every native job
       # rebuilt all 76 packages from nothing — ~150 s of a ~210 s install.
-      # ORDER: this restore, the install and the lib/ build all run BEFORE the
-      # simulator boot (see the boot step). The key is a `hashFiles` over
-      # every package's src/, and hashFiles has a hard 120 s limit. With a cold
-      # simulator boot competing for the disk it exceeded that limit and
-      # failed the job (PR #4153's first run, 137 s), while the same
-      # expression takes 5-28 s on the macOS validate job, which boots no
-      # simulator.
+      # ORDER: this restore runs BEFORE the simulator boot below. Its key is a
+      # `hashFiles` over every package's src/, and hashFiles has a hard
+      # 120 s limit. With a cold simulator boot competing for the disk it
+      # exceeded that limit and failed the job (PR #4153's first run, 137 s),
+      # while the same expression takes 5-28 s on the macOS validate job,
+      # which boots no simulator. The boot still overlaps install, bootstrap,
+      # the Swift unit tests and the app build.
       - name: Restore source-hashed lib/ (read-only)
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -382,6 +382,77 @@ jobs:
           key: bootstrap-ubuntu-${{ hashFiles('packages/*/*/src/**', 'packages/*/*/package.json', 'packages/*/*/tsconfig.json', 'tsconfig.json', 'scripts/bootstrap.ts', 'bun.lock') }}
           restore-keys: |
             bootstrap-ubuntu-
+      - name: Resolve ONE concrete Simulator device (by UDID) and start booting it
+        # `xcodebuild test` needs a CONCRETE device (the build step's
+        # `generic/platform=iOS Simulator` cannot run tests). Hardcoding a
+        # model name ROTS with every macos-* runner-image update (the pinned
+        # `iPhone 15` vanished once and every UITest step died with exit 70),
+        # so the device is resolved at runtime.
+        #
+        # Resolved by UDID, from the NEWEST iOS runtime, via JSON. The previous
+        # version resolved a NAME from `simctl list` text order (oldest runtime
+        # first) and every test step targeted `name=…,OS=latest`, while the
+        # location/appearance step re-resolved a UDID with `head -1` on the same
+        # text. Those are two DIFFERENT simulators on an image with more than
+        # one runtime — measured 2026-09-22 (run 35755838262): the grant step
+        # booted DC4CD8B3 (the oldest runtime's iPhone 16 Pro) while every
+        # `xcodebuild test` ran on 291E4B86 (iOS 26.2). So the injected
+        # location and pinned appearance never reached the device under test,
+        # and a SECOND simulator stayed booted for the rest of the job,
+        # competing for CPU with every later UITest step. One UDID, used by
+        # every step, closes both.
+        #
+        # WHICH iPhone matters, not just which runtime: the UITests include
+        # drag gestures between on-screen targets (flow handle → handle), so
+        # they are geometry-sensitive. `sort_by` is STABLE, so within the newest
+        # runtime this keeps simctl's own device order — whose first iPhone is
+        # the model the suites have always run on (iPhone 16 Pro on macos-15).
+        # A `.name` tie-break once picked `iPhone 16` instead, and the counter
+        # suite's handle-drag test failed all three iterations on the smaller
+        # screen (run on PR #3574). Do not reorder by name.
+        #
+        # Booting starts HERE, right after checkout and the lib/ restore, so the
+        # simulator's cold start overlaps install + bootstrap + the Swift unit
+        # tests + the app build. `simctl boot` returns once the boot is under
+        # way; the steps that need a READY device wait with `bootstatus -b`
+        # (or let xcodebuild wait).
+        #
+        # The overlap is not free, and moving it does not help. With the boot
+        # running, `bun install` takes 150-265 s and the lib/ build 85-200 s;
+        # on native-validate.yml's macOS job (same image, same lockfile, no
+        # simulator) they take 21-32 s and 52-80 s. Starting the boot AFTER
+        # them was tried (PR #4487, run 43217949673): install 30 s and lib/
+        # 60 s, but the Swift unit tests went from about 2 to 4.3 minutes and
+        # the first `xcodebuild test` then waited 300 s for the device before
+        # its first test (66 s in the old order). Job start to the end of the
+        # todomvc UITest: 15.5 minutes, against 13.6-17.2 (median 15.1) in the
+        # old order. A tie, so the order with the longer record stays.
+        # `bootstatus` is also not test-readiness: it returned after 93 s on
+        # that run, minutes before a test could start.
+        run: |
+          set -euo pipefail
+          PICK=$(xcrun simctl list devices available -j | jq -r '
+            [ .devices | to_entries[]
+              | select(.key | test("SimRuntime\\.iOS-"))
+              | (.key | capture("iOS-(?<maj>[0-9]+)-(?<min>[0-9]+)")) as $v
+              | .value[]
+              | select(.name | startswith("iPhone"))
+              | { udid, name, maj: ($v.maj | tonumber), min: ($v.min | tonumber) } ]
+            | sort_by(-.maj, -.min) | first // empty
+            | "\(.udid)\t\(.name)\t\(.maj).\(.min)"')
+          if [ -z "$PICK" ]; then
+            echo "::error::No available iPhone simulator on this runner image:"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          IFS=$'\t' read -r UDID NAME OSV <<< "$PICK"
+          echo "Resolved simulator: $NAME (iOS $OSV) $UDID"
+          {
+            echo "PYREON_SIM_UDID=$UDID"
+            echo "PYREON_SIM_NAME=$NAME"
+          } >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID" || echo "note: boot returned non-zero (already booted?)"
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -419,85 +490,6 @@ jobs:
           exit 1
       - name: Build lib/ (incremental over the restored cache; the preBuildScript needs @pyreon/native-cli built)
         run: bun scripts/bootstrap.ts
-
-      - name: Resolve ONE concrete Simulator device (by UDID) and start booting it
-        # `xcodebuild test` needs a CONCRETE device (the build step's
-        # `generic/platform=iOS Simulator` cannot run tests). Hardcoding a
-        # model name ROTS with every macos-* runner-image update (the pinned
-        # `iPhone 15` vanished once and every UITest step died with exit 70),
-        # so the device is resolved at runtime.
-        #
-        # Resolved by UDID, from the NEWEST iOS runtime, via JSON. The previous
-        # version resolved a NAME from `simctl list` text order (oldest runtime
-        # first) and every test step targeted `name=…,OS=latest`, while the
-        # location/appearance step re-resolved a UDID with `head -1` on the same
-        # text. Those are two DIFFERENT simulators on an image with more than
-        # one runtime — measured 2026-09-22 (run 35755838262): the grant step
-        # booted DC4CD8B3 (the oldest runtime's iPhone 16 Pro) while every
-        # `xcodebuild test` ran on 291E4B86 (iOS 26.2). So the injected
-        # location and pinned appearance never reached the device under test,
-        # and a SECOND simulator stayed booted for the rest of the job,
-        # competing for CPU with every later UITest step. One UDID, used by
-        # every step, closes both.
-        #
-        # WHICH iPhone matters, not just which runtime: the UITests include
-        # drag gestures between on-screen targets (flow handle → handle), so
-        # they are geometry-sensitive. `sort_by` is STABLE, so within the newest
-        # runtime this keeps simctl's own device order — whose first iPhone is
-        # the model the suites have always run on (iPhone 16 Pro on macos-15).
-        # A `.name` tie-break once picked `iPhone 16` instead, and the counter
-        # suite's handle-drag test failed all three iterations on the smaller
-        # screen (run on PR #3574). Do not reorder by name.
-        #
-        # Booting starts HERE — AFTER `bun install` and the lib/ build, not
-        # before them. A cold boot is disk-heavy, and it used to start right
-        # after checkout so that it would overlap the install. Measured over six
-        # runs on 2026-11-11/12, against the macOS job of native-validate.yml
-        # (same runner image, same lockfile, same lib/ cache, no simulator) over
-        # twelve runs:
-        #
-        #                     with the boot running   without
-        #   setup-bun              51-66 s             < 15 s
-        #   bun install           150-265 s            21-32 s
-        #   bootstrap lib/         85-200 s            52-80 s
-        #
-        # so the overlap cost about 4.5 minutes of macOS time to hide a boot of
-        # about 3. The boot now overlaps CPU-bound work instead (the Swift unit
-        # tests and the first app compile); the "Simulator ready" step below
-        # prints how long the boot really took, so this trade stays measured.
-        # `simctl boot` returns once the boot is under way; the steps that need
-        # a READY device wait with `bootstatus -b` (or let xcodebuild wait).
-        run: |
-          set -euo pipefail
-          PICK=$(xcrun simctl list devices available -j | jq -r '
-            [ .devices | to_entries[]
-              | select(.key | test("SimRuntime\\.iOS-"))
-              | (.key | capture("iOS-(?<maj>[0-9]+)-(?<min>[0-9]+)")) as $v
-              | .value[]
-              | select(.name | startswith("iPhone"))
-              | { udid, name, maj: ($v.maj | tonumber), min: ($v.min | tonumber) } ]
-            | sort_by(-.maj, -.min) | first // empty
-            | "\(.udid)\t\(.name)\t\(.maj).\(.min)"')
-          if [ -z "$PICK" ]; then
-            echo "::error::No available iPhone simulator on this runner image:"
-            xcrun simctl list devices available
-            exit 1
-          fi
-          IFS=$'\t' read -r UDID NAME OSV <<< "$PICK"
-          echo "Resolved simulator: $NAME (iOS $OSV) $UDID"
-          {
-            echo "PYREON_SIM_UDID=$UDID"
-            echo "PYREON_SIM_NAME=$NAME"
-          } >> "$GITHUB_ENV"
-          xcrun simctl boot "$UDID" || echo "note: boot returned non-zero (already booted?)"
-          # Time the boot in the background; "Simulator ready" reads the file.
-          cat > "$RUNNER_TEMP/time-sim-boot.sh" <<'TIMER'
-          s=$(date +%s)
-          xcrun simctl bootstatus "$1" -b >/dev/null 2>&1
-          echo $(( $(date +%s) - s )) > "$2"
-          TIMER
-          nohup bash "$RUNNER_TEMP/time-sim-boot.sh" "$UDID" "$RUNNER_TEMP/sim-boot-seconds" >/dev/null 2>&1 &
-          disown
 
       # The ONLY place the Swift packages' own `swift test` runs in CI. Both
       # `native-runtime-swift` and `native-router-swift` self-skip off Darwin —
@@ -606,18 +598,6 @@ jobs:
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
-
-      - name: Simulator ready (reports the cold-boot time)
-        # Unconditional: every UITest step needs the device, whichever apps
-        # this run selected. Placed after the first compile so the wait, if
-        # any, is the part of the boot that the compile did not cover.
-        timeout-minutes: 10
-        run: |
-          s=$(date +%s)
-          xcrun simctl bootstatus "${PYREON_SIM_UDID}" -b
-          echo "waited $(( $(date +%s) - s )) s here for the simulator"
-          for _ in 1 2 3 4 5; do [ -s "$RUNNER_TEMP/sim-boot-seconds" ] && break; sleep 1; done
-          echo "simulator cold boot took $(cat "$RUNNER_TEMP/sim-boot-seconds" 2>/dev/null || echo '?') s (overlapped with the Swift unit tests and the first compile)"
 
       - name: Run UITest on iOS Simulator (Phase 2.2 launch-and-render smoke)
         id: uitest-todomvc
