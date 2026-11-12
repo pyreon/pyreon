@@ -31,6 +31,7 @@ const FIXTURES: Record<PyreonDiagnosticCode, string> = {
   'accessor-uncalled-in-template': `const width = signal(10)\nconst s = \`w=\${width}%\`\n`,
   'accessor-uncalled-in-condition': `const width = signal(10)\nif (width) { obj.width() }\n`,
   'charts-legacy-import': `import { useChart } from '@pyreon/charts'\nexport const c = useChart(() => ({}))\n`,
+  'for-stale-item-field': `const todos = signal([])\nconst toggle = (id) => todos.set(todos().map((t) => (t.id === id ? { ...t, done: !t.done } : t)))\nexport const L = () => <For each={todos} by={(t) => t.id}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For>\n`,
   'plain-mode': `'use plain'\nimport { state } from '@pyreon/core/plain'\nlet cfg = state.raw({ open: false })\nexport const t = () => { cfg.open = true }\n`,
 }
 
