@@ -531,6 +531,42 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      # ONE workspace over the five example projects, and one DerivedData.
+      #
+      # Each app is its own Xcode project, and each project compiled the two
+      # Swift packages again: PyreonRuntime + PyreonRouter took 80, 81, 39, 36
+      # and 74 s in the five app steps of run 43195120647.
+      #
+      # A shared `-derivedDataPath` alone does not fix that (probed: finance ->
+      # todomvc -> finance through `-project`, PyreonRuntime.o rewritten on
+      # every switch — the package tasks are keyed on the project that builds
+      # them). Built through ONE workspace the same sequence compiles the
+      # packages once: the second and third builds leave PyreonRuntime.o
+      # untouched and run no SwiftDriver job for it. Reuse is decided by the
+      # build system's own input signatures, within this job only; nothing is
+      # cached across runs, so there is no eviction or invalidation rule.
+      #
+      # The workspace names every project up front; the ones a step has not
+      # generated yet (or that this run does not select) are simply absent
+      # until `xcodegen generate` writes them.
+      - name: Create the shared Xcode workspace
+        run: |
+          set -euo pipefail
+          WS="$RUNNER_TEMP/PyreonCI.xcworkspace"
+          mkdir -p "$WS"
+          {
+            echo '<?xml version="1.0" encoding="UTF-8"?>'
+            echo '<Workspace version = "1.0">'
+            for p in native-todomvc-ios/PyreonTodoMVC native-counter-ios/PyreonCounter native-finance-ios/PyreonFinance native-router-demo-ios/PyreonRouterDemo native-tasks-ios/PyreonTasks; do
+              echo "   <FileRef location = \"absolute:$GITHUB_WORKSPACE/examples/$p.xcodeproj\"></FileRef>"
+            done
+            echo '</Workspace>'
+          } > "$WS/contents.xcworkspacedata"
+          {
+            echo "PYREON_IOS_WS=$WS"
+            echo "PYREON_IOS_DD=$RUNNER_TEMP/ios-derived-data"
+          } >> "$GITHUB_ENV"
+
       - name: Emit Swift (PMTC .tsx → generated/*.swift)
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' todomvc ')
         # Run the compile loop up front so `generated/` exists before
@@ -556,22 +592,15 @@ jobs:
         # Simulator`: the generic destination compiles arm64 AND x86_64, and
         # the x86_64 half (both Swift packages and the app, about a minute)
         # was used by nothing — every later step runs on the arm64 device, and
-        # the todomvc UITest step reuses these arm64 objects (same project,
-        # same DerivedData).
-        #
-        # NOT done, on measurement: one `-derivedDataPath` shared by all five
-        # apps. Each app is its own Xcode project and compiles PyreonRuntime +
-        # PyreonRouter again (80, 81, 39, 36, 74 s on run 43195120647), but a
-        # shared directory does not fix that: the package tasks are keyed on
-        # the PROJECT that builds them, so building app B rebuilds the
-        # objects app A just produced, and A's again after B (probed locally,
-        # finance -> todomvc -> finance, PyreonRuntime.o rewritten each time).
+        # every later step reuses these arm64 package objects (one workspace,
+        # one DerivedData; see "Create the shared Xcode workspace").
         working-directory: examples/native-todomvc-ios
         timeout-minutes: 15
         run: |
           set -o pipefail
           xcodebuild build \
-            -project PyreonTodoMVC.xcodeproj \
+            -workspace "$PYREON_IOS_WS" \
+            -derivedDataPath "$PYREON_IOS_DD" \
             -scheme PyreonTodoMVC \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
@@ -626,7 +655,8 @@ jobs:
           bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD")" -- \
             xcodebuild test \
             -parallel-testing-enabled NO \
-            -project PyreonTodoMVC.xcodeproj \
+            -workspace "$PYREON_IOS_WS" \
+            -derivedDataPath "$PYREON_IOS_DD" \
             -scheme PyreonTodoMVC \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
@@ -695,7 +725,8 @@ jobs:
           bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD")" -- \
             xcodebuild test \
             -parallel-testing-enabled NO \
-            -project PyreonCounter.xcodeproj \
+            -workspace "$PYREON_IOS_WS" \
+            -derivedDataPath "$PYREON_IOS_DD" \
             -scheme PyreonCounter \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
@@ -722,7 +753,8 @@ jobs:
           bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD")" -- \
             xcodebuild test \
             -parallel-testing-enabled NO \
-            -project PyreonFinance.xcodeproj \
+            -workspace "$PYREON_IOS_WS" \
+            -derivedDataPath "$PYREON_IOS_DD" \
             -scheme PyreonFinance \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
@@ -777,7 +809,8 @@ jobs:
           bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD")" -- \
             xcodebuild test \
             -parallel-testing-enabled NO \
-            -project PyreonRouterDemo.xcodeproj \
+            -workspace "$PYREON_IOS_WS" \
+            -derivedDataPath "$PYREON_IOS_DD" \
             -scheme PyreonRouterDemo \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
@@ -842,7 +875,8 @@ jobs:
           bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD")" -- \
             xcodebuild test \
             -parallel-testing-enabled NO \
-            -project PyreonTasks.xcodeproj \
+            -workspace "$PYREON_IOS_WS" \
+            -derivedDataPath "$PYREON_IOS_DD" \
             -scheme PyreonTasks \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
