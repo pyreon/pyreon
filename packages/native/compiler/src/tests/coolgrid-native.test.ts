@@ -57,8 +57,8 @@ export function App() {
 describe('coolgrid-native — Container / Row / Col', () => {
   it('Container → vertical Stack, Row → horizontal Stack, gap in raw px (Swift)', () => {
     const { code } = swift(GRID)
-    expect(code).toContain('VStack(spacing: 16)') // Container gap 16px
-    expect(code).toContain('HStack(spacing: 8)') // Row gap 8px
+    expect(code).toContain('VStack(alignment: .leading, spacing: 16)') // Container gap 16px
+    expect(code).toContain('HStack(alignment: .top, spacing: 8)') // Row gap 8px
   })
 
   it('Container → Column, Row → Row, gap in raw px (Kotlin)', () => {

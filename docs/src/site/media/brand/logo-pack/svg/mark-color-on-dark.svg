@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 125 76" width="125" height="76" fill="none" role="img" aria-label="Pyreon">
+<defs><linearGradient id="eg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FF1F8C"/><stop offset="55%" stop-color="#FF5E1A"/><stop offset="100%" stop-color="#FFC83D"/></linearGradient></defs>
+<g transform="translate(-3 -26)"><circle cx="36" cy="64" r="22" fill="url(#eg)"/><path d="M70 86 L70 42 L70 64 Q70 42 92 42 Q112 42 112 64 L112 86" stroke="#F4EFE6" stroke-width="10" stroke-linecap="square" stroke-linejoin="miter" fill="none"/></g>
+</svg>

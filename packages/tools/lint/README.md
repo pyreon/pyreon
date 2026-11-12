@@ -18,7 +18,8 @@ pyreon-lint src/ components/             # specific paths
 pyreon-lint --preset strict src/         # strict — warns promoted to errors
 pyreon-lint --preset best-practices      # enable every opt-in best-practice rule
 pyreon-lint --fix src/                   # auto-fix fixable issues
-pyreon-lint --format json src/           # JSON output (text | json | compact)
+pyreon-lint --format json src/           # JSON output (text | json | compact | gha)
+pyreon-lint --format gha src/            # GitHub Actions annotations, one per diagnostic
 pyreon-lint --quiet src/                 # errors only
 pyreon-lint --watch src/                 # watch + re-lint on change (100 ms debounce)
 pyreon-lint --rule pyreon/no-map-in-jsx=off src/
@@ -164,7 +165,7 @@ The `./cli` export wires `process.argv` to `lint()` + a `formatText` / `formatJS
 
 ## CLI colors
 
-The text reporter uses brand-mapped 256-color ANSI (matches the CLI spec §6.5 and `pyreon doctor`): error → ember-core (xterm 202), warning → ember-warm (220), info → cyan (45); glyphs `✗` / `!` / `ℹ`; file path bold, location + rule id dim. Respects `NO_COLOR` and `FORCE_COLOR`. `--format json|compact` is unchanged (machine formats, no color).
+The text output (and `--list`, `--why-off`, `--init`) uses the shared Pyreon terminal theme, the same one as `pyreon doctor` and `zero build`: severity as a word in its colour (`error`, `warning`, `info`), the verdict last with counts, files and elapsed time. Colour is truecolor when the terminal says so (`COLORTERM=truecolor`), the nearest xterm-256 colours on a 256-colour terminal (`TERM=xterm-256color`, `FORCE_COLOR=2`), 16 colours otherwise, and plain under `NO_COLOR`, `TERM=dumb` or a pipe. `PYREON_CLI_THEME=light|dark` (or `COLORFGBG`) picks the light- or dark-background palette. Lines wrap at the window width, at most 100 columns, and a path is never cut. `--format json|compact|gha` are machine formats and never coloured.
 
 ## Gotchas
 

@@ -140,7 +140,7 @@ const BLOCKS = 3
 function text(name: string, key = 'children'): ContentSeed {
   return {
     args: { [key]: name },
-    controls: [{ name: key, kind: 'text', defaultValue: name, reactive: false, required: false }],
+    controls: [{ name: key, kind: 'text', defaultValue: name, reactive: false, required: false, source: 'content' }],
     contentKey: key,
   }
 }
@@ -150,7 +150,7 @@ function opened(seed: ContentSeed): ContentSeed {
   return {
     args: { open: true, ...seed.args },
     controls: [
-      { name: 'open', kind: 'boolean', defaultValue: true, reactive: false, required: false },
+      { name: 'open', kind: 'boolean', defaultValue: true, reactive: false, required: false, source: 'content' },
       ...seed.controls,
     ],
     ...(seed.contentKey ? { contentKey: seed.contentKey } : {}),
@@ -176,8 +176,8 @@ export function deriveContent(shape: ContentShape): ContentSeed {
     return {
       args: { src: PLACEHOLDER_IMAGE, alt: `${shape.name} placeholder` },
       controls: [
-        { name: 'src', kind: 'text', defaultValue: PLACEHOLDER_IMAGE, reactive: false, required: false },
-        { name: 'alt', kind: 'text', defaultValue: `${shape.name} placeholder`, reactive: false, required: false },
+        { name: 'src', kind: 'text', defaultValue: PLACEHOLDER_IMAGE, reactive: false, required: false, source: 'content' },
+        { name: 'alt', kind: 'text', defaultValue: `${shape.name} placeholder`, reactive: false, required: false, source: 'content' },
       ],
     }
   }

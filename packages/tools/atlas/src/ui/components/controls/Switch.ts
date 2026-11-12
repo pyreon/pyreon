@@ -1,23 +1,24 @@
 import { el } from '../../kit'
 
+/** An on/off switch (`.sw2`): 34 × 20 track, ember when on. */
 export const Switch = el
   .attrs({
     tag: 'button',
   })
   .theme((t) => ({
     cursor: 'pointer',
-    border: 'none',
     padding: '0',
-    width: '40px',
-    height: '24px',
+    flex: 'none',
+    width: '34px',
+    height: '20px',
     borderRadius: t.radius.pill,
     position: 'relative',
-    transition: `background ${t.motion.slow}`,
-    background: t.border,
+    justifySelf: 'start',
+    border: `1px solid ${t.border2}`,
+    background: t.surface2,
+    transition: `background ${t.motion.slow},border-color ${t.motion.slow}`,
   }))
-  .states(
-    (t) => ({
-      on: { backgroundColor: t.accent },
-      off: {},
-    }),
-  )
+  .states((t) => ({
+    on: { backgroundColor: t.glow, borderColor: t.accent },
+    off: {},
+  }))

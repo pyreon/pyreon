@@ -1,9 +1,7 @@
 ---
-title: "Pyreon-specific Linter — API Reference"
+title: "@pyreon/lint — API Reference"
 description: "Pyreon-specific linter — 134 rules across 25 categories, config files, watch mode, AST cache, CLI + LSP"
 ---
-
-# @pyreon/lint — API Reference
 
 > **Generated** from `lint`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [lint](/docs/lint).
 
@@ -163,7 +161,7 @@ const result = lintFile("app.tsx", source, allRules, config, cache, configSink)
 ### `cli` `function`
 
 ```ts
-pyreon-lint [--preset name] [--fix] [--format text|json|compact] [--quiet] [--watch] [--list] [--config path] [--ignore path] [--rule id=severity] [--rule-options id='{json}'] [path...]
+pyreon-lint [--preset name] [--fix] [--format text|json|compact|gha] [--quiet] [--watch] [--list] [--config path] [--ignore path] [--rule id=severity] [--rule-options id='{json}'] [path...]
 ```
 
 CLI entry. Config: `.pyreonlintrc.json` (reference `schema/pyreonlintrc.schema.json` for IDE autocomplete) or `package.json`'s `'pyreonlint'` field. Ignore: `.pyreonlintignore` + `.gitignore`. Watch: `fs.watch` recursive with 100ms debounce. `--rule-options id='{json}'` passes per-rule options on a single run.
@@ -178,6 +176,7 @@ pyreon-lint --init                      # scaffold .pyreonlintrc.json for this p
 pyreon-lint --list                      # list all 134 rules
 pyreon-lint --why-off no-window-in-ssr  # why a rule will (or will not) run here
 pyreon-lint --format json               # machine-readable
+pyreon-lint --format gha                # GitHub Actions annotations
 pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/
 ```
 

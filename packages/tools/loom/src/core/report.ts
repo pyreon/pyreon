@@ -74,6 +74,7 @@ export function buildReport(rootDir: string, options: BuildReportOptions = {}): 
     if (match) {
       issue.severity = 'info'
       issue.message += ` (ignored: ${match.reason})`
+      issue.ignored = match.reason
     }
   }
 
@@ -82,19 +83,23 @@ export function buildReport(rootDir: string, options: BuildReportOptions = {}): 
   )
 
   const depthValues = Object.values(graph.depths)
+  const errors = issues.filter((i) => i.severity === 'error').length
+  const warnings = issues.filter((i) => i.severity === 'warning').length
+  const strict = options.settings?.strict === true
   return {
     model,
     external,
     graph,
     issues,
+    gate: { strict, exit: errors > 0 || (strict && warnings > 0) ? 1 : 0 },
     stats: {
       internal: model.packages.length,
       external: external.length,
       edges: graph.edges.length,
       depth: depthValues.length ? Math.max(...depthValues) : 0,
       cycles: graph.cycles.length,
-      errors: issues.filter((i) => i.severity === 'error').length,
-      warnings: issues.filter((i) => i.severity === 'warning').length,
+      errors,
+      warnings,
       infos: issues.filter((i) => i.severity === 'info').length,
     },
   }

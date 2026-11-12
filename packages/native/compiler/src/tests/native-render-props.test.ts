@@ -23,13 +23,12 @@
 // stub + real-SDK compiles fail with the original `(User?) -> Void` /
 // debug-description emit.
 
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable } from '../validate'
+import { runtimeSwiftSources, swiftErrorLines, typecheckAgainstRealRuntime } from './real-runtime-swift'
 
 const HEAD = `import { Stack, Text } from '@pyreon/primitives'
 import type { VNodeChild } from '@pyreon/core'
@@ -363,37 +362,8 @@ describe('the emit compiles', () => {
  * the app does (one Swift module), which is the cross-file case for real.
  */
 describe.runIf(isSwiftUIAvailable())('the emit compiles against the real SDK + runtime', () => {
-  const REPO = resolve(import.meta.dirname, '../../../../..')
-  const runtimeSources = (): string[] => {
-    const out: string[] = []
-    const walk = (dir: string): void => {
-      let entries: string[]
-      try {
-        entries = readdirSync(dir)
-      } catch {
-        return
-      }
-      for (const e of entries) {
-        if (e === 'node_modules' || e === 'lib' || e === '.build' || e === 'Package.swift') continue
-        if (e.toLowerCase() === 'tests' || /Tests?\.swift$/.test(e)) continue
-        const p = join(dir, e)
-        if (statSync(p).isDirectory()) walk(p)
-        else if (p.endsWith('.swift')) out.push(p)
-      }
-    }
-    for (const r of [
-      'packages/fundamentals',
-      'packages/core',
-      'packages/native/runtime-swift',
-      'packages/native/router-swift',
-    ]) {
-      walk(join(REPO, r))
-    }
-    return out
-  }
-
   it('BROAD fixture + the lathe bookshelf data components and their consumer', () => {
-    const sources = runtimeSources()
+    const sources = runtimeSwiftSources()
     // An empty list would make the compile vacuously succeed.
     expect(sources.length).toBeGreaterThan(40)
     const fixture = (f: string) => readFileSync(join(import.meta.dirname, '../fixtures', f), 'utf8')
@@ -402,48 +372,10 @@ describe.runIf(isSwiftUIAvailable())('the emit compiles against the real SDK + r
     expect(books.warnings).toEqual([])
     expect(screen.warnings).toEqual([])
     const broad = swift(BROAD).code
-    const dir = mkdtempSync(join(tmpdir(), 'pyreon-render-props-'))
-    try {
-      const files = [broad, books.code, screen.code].map((code, i) => {
-        const p = join(dir, `RenderProps${i}.swift`)
-        writeFileSync(p, `import SwiftUI\nimport Foundation\n${code}`, 'utf8')
-        return p
-      })
-      const sdk = execFileSync('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path'], {
-        encoding: 'utf8',
-      }).trim()
-      try {
-        execFileSync(
-          'xcrun',
-          [
-            '--sdk',
-            'iphonesimulator',
-            'swiftc',
-            '-typecheck',
-            '-target',
-            'arm64-apple-ios17.0-simulator',
-            '-sdk',
-            sdk,
-            ...files,
-            ...sources,
-          ],
-          { encoding: 'utf8', stdio: 'pipe' },
-        )
-      } catch (err) {
-        const e = err as { stderr?: string | Buffer; stdout?: string | Buffer }
-        const out = [e.stderr, e.stdout]
-          .map((x) => (typeof x === 'string' ? x : x?.toString('utf8')) ?? '')
-          .join('\n')
-        expect.fail(
-          `swiftc -typecheck failed:\n${out
-            .split('\n')
-            .filter((l) => l.includes('error:'))
-            .slice(0, 12)
-            .join('\n')}`,
-        )
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
+    const diagnostics = typecheckAgainstRealRuntime(
+      [broad, books.code, screen.code].map((code, i) => ({ name: `RenderProps${i}.swift`, code })),
+      { sources },
+    )
+    if (diagnostics !== null) expect.fail(`swiftc -typecheck failed:\n${swiftErrorLines(diagnostics)}`)
   }, 300_000)
 })

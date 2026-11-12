@@ -32,6 +32,7 @@ import {
   builtinMethods,
   CATALOG_ID,
   fontLinks,
+  themeHeadLines,
   routesFlagScript,
   type RpcMethod,
 } from '../dev/plugin'
@@ -199,7 +200,7 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
 
   if (configProblem) log(`atlas build: ${configProblem}`)
 
-  const title = options.title ?? configTitle ?? 'atlas'
+  const title = options.title ?? configTitle ?? 'Atlas'
   const entries: readonly CatalogEntrySource[] = collectEntries(root, components)
 
   if (entries.length === 0) {
@@ -490,6 +491,7 @@ export function staticHtml(title: string, baked: BakedRpc, base = '/'): string {
     '    <meta charset="utf-8" />',
     '    <meta name="viewport" content="width=device-width, initial-scale=1" />',
     `    <title>${escapeHtml(title)}</title>`,
+    ...themeHeadLines(),
     ...fontLinks(),
     // Before the module script, which is deferred — see `bakedRpcScript`.
     `    ${bakedRpcScript(baked)}`,

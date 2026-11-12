@@ -1,4 +1,4 @@
-import { disabledState, el, focusRing } from '../../factory'
+import { disabledState, el, focusRing, solidFill, tintText } from '../../factory'
 
 const Button = el
   .config({ name: 'Button' })
@@ -22,13 +22,7 @@ const Button = el
     },
   }))
   .states((t) => ({
-    primary: {
-      backgroundColor: t.color.system.primary.base,
-      color: t.color.system.light.base,
-      hover: {
-        backgroundColor: t.color.system.primary[800],
-      },
-    },
+    primary: solidFill(t, 'primary'),
     secondary: {
       backgroundColor: t.color.system.base[100],
       color: t.color.system.dark[800],
@@ -36,20 +30,8 @@ const Button = el
         backgroundColor: t.color.system.base[200],
       },
     },
-    danger: {
-      backgroundColor: t.color.system.error.base,
-      color: t.color.system.light.base,
-      hover: {
-        backgroundColor: t.color.system.error[800],
-      },
-    },
-    success: {
-      backgroundColor: t.color.system.success.base,
-      color: t.color.system.light.base,
-      hover: {
-        backgroundColor: t.color.system.success[800],
-      },
-    },
+    danger: solidFill(t, 'error'),
+    success: solidFill(t, 'success'),
   }))
   .sizes((t) => ({
     small: {
@@ -74,38 +56,43 @@ const Button = el
       paddingRight: t.spacing.xLarge,
     },
   }))
-  .variants((t) => ({
+  .variants((t, m) => ({
     solid: {},
     outline: {
       backgroundColor: t.color.system.transparent,
       borderColor: t.color.system.primary.base,
-      color: t.color.system.primary.text,
+      color: tintText(t, m, 'primary'),
       hover: {
         backgroundColor: t.color.system.primary[50],
       },
     },
     subtle: {
       backgroundColor: t.color.system.primary[100],
-      color: t.color.system.primary.text,
+      color: tintText(t, m, 'primary'),
       hover: {
         backgroundColor: t.color.system.primary[200],
       },
     },
     ghost: {
       backgroundColor: t.color.system.transparent,
-      color: t.color.system.primary.text,
+      color: tintText(t, m, 'primary'),
       hover: {
         backgroundColor: t.color.system.base[50],
       },
     },
     link: {
       backgroundColor: t.color.system.transparent,
-      color: t.color.system.primary.text,
+      color: tintText(t, m, 'primary'),
       paddingTop: 0,
       paddingBottom: 0,
       paddingLeft: 0,
       paddingRight: 0,
       textDecoration: 'underline',
+      // A link has no fill, hovered or not — without this the state's solid
+      // hover fill showed behind the tone-coloured text (2.5:1 or worse).
+      hover: {
+        backgroundColor: t.color.system.transparent,
+      },
     },
   }))
 

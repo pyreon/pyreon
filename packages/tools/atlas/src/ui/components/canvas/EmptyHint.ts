@@ -12,11 +12,11 @@ export const EmptyHint = txt
     maxWidth: '440px',
     marginTop: '4px',
     padding: '10px 14px',
-    borderRadius: t.radius.chip,
+    borderRadius: t.radius.panel,
     border: t.hairline,
     background: t.surface,
     color: t.muted,
-    fontSize: t.size.label,
+    fontSize: t.size.small,
     lineHeight: '1.5',
     textAlign: 'center',
   }))

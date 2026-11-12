@@ -1,43 +1,129 @@
 /**
- * Adjacency matrix — rows depend on columns; back-edges inside a cycle render
- * red when cycle-highlighting is on. Internal packages only (an external
- * column can never depend on anything, so the interesting quadrant is the
- * internal×internal block — the design's "scope prefix stripped" note).
+ * The matrix view, two readings over the same scan:
  *
- * Ordered DEEPEST first (the foundations everything imports), then name:
- * every dependency sits before its dependents, so every forward edge lands
- * BELOW the diagonal and a mark above it is a back-edge — the classic DSM
- * reading, where a cycle shows up in the wrong triangle. Foundations-first
- * also puts the dense block in the top-left, where the view opens; entries-
- * first opened on a screen-sized empty square (examples never import each
- * other).
+ *  - `versions` (default, the design's matrix): rows are EXTERNAL
+ *    dependencies, columns the packages declaring them, cells the declared
+ *    range. Drift is coloured — cross-major red, same-major amber — on the
+ *    declarations that disagree with the usual range; phantom imports and
+ *    unused declarations are marked in place. "drift only" narrows the rows to
+ *    the externals with a `version-drift` finding.
+ *  - `imports`: the internal adjacency DSM — rows depend on columns,
+ *    foundations first, so a mark above the diagonal is a back-edge.
  *
- * Performance shape (the reason this is plain DOM + global classes, not
- * rocketstyle components — see `global-css.ts`):
- *  - The grid is a CSS grid with only the EDGE cells rendered, each placed
- *    by `grid-area`. On this repo that is ~900 nodes instead of n² ≈ 23k.
- *  - It is built once per shown ID SET. Selection, cycle-highlighting and
- *    theme are not read by the build, so they never rebuild it.
- *  - Selection is one reactive `<style>` (crosshair bands + lit row/column),
- *    so a selection change rewrites a single text node — O(1) DOM work.
+ * Performance shape (why this is plain DOM + global classes, not rocketstyle
+ * components — see `global-css.ts`): both grids render only the cells that
+ * EXIST, each placed by `grid-area` (the empty cells' dot and hairlines are
+ * one background), and each is built once per row/id set. Selection is one
+ * reactive `<style>` (bands + lit header), so a selection change rewrites a
+ * single text node.
  */
-import { cx, type VNodeChild } from '@pyreon/core'
+import { cx, type VNode, type VNodeChild } from '@pyreon/core'
 import { computed } from '@pyreon/reactivity'
-import { shortName, type ObservatoryModel } from '../model'
-import { matrixIds, matrixSelectionCss } from '../selection-css'
+import { shortName, versionMatrix, type ObservatoryModel, type VersionMatrix } from '../model'
+import { matrixIds, matrixSelectionCss, versionSelectionCss } from '../selection-css'
+
+export function MatrixView(props: { model: ObservatoryModel }) {
+  const m = props.model
+  return () =>
+    m.matrixMode() === 'versions' ? <VersionGrid model={m} /> : <ImportGrid model={m} />
+}
+
+function VersionGrid(props: { model: ObservatoryModel }) {
+  const m = props.model
+  const depthOf = (id: string) => m.byId.get(id)?.depth ?? 0
+  const vm = computed(() => versionMatrix(m.report, depthOf, m.driftOnly()))
+  const colName = (u: string) => (u === 'ROOT' ? '(root)' : shortName(u))
+
+  const build = (x: VersionMatrix): VNode => {
+    if (x.rows.length === 0) {
+      return (
+        <div class="lm-pk-empty" data-testid="matrix-empty">
+          {m.driftOnly()
+            ? 'Every external dependency is declared with one range across the workspace — no drift. Turn off “drift only” to see every declaration.'
+            : 'This workspace declares no external dependencies.'}
+        </div>
+      )
+    }
+    const ci = new Map(x.cols.map((c, i) => [c, i]))
+    const children: VNodeChild[] = [<div class="lm-vm-corner">external dependency</div>]
+    x.cols.forEach((u, i) => {
+      children.push(
+        <div class={cx(['lm-vm-ch', `lm-vc${i}`])} style={`grid-column:${i + 2}`}>
+          <button type="button" title={u} onClick={() => m.byId.has(u) && m.select(u)}>
+            {colName(u)}
+          </button>
+        </div>,
+      )
+    })
+    x.rows.forEach((row, r) => {
+      children.push(
+        <div class={cx(['lm-vm-rl', `lm-vr${r}`])} style={`grid-row:${r + 2}`}>
+          <button type="button" title={row.dep} onClick={() => m.select(row.dep)}>
+            {row.dep}
+          </button>
+          <small>{row.use}</small>
+        </div>,
+      )
+      for (const [user, cell] of row.cells) {
+        const c = ci.get(user)!
+        const text = cell.note === 'unused' ? `${cell.text} · unused` : cell.text
+        children.push(
+          <span
+            class={cx(['lm-vm-c', cell.tone && `lm-vm-c--${cell.tone}`])}
+            style={`grid-area:${r + 2}/${c + 2}`}
+            title={`${colName(user)} → ${row.dep}: ${text}`}
+            data-cell={`${user}|${row.dep}`}
+          >
+            {cell.note === 'phantom' ? '— phantom' : text}
+          </span>,
+        )
+      }
+    })
+    children.push(<div class="lm-vm-band lm-vm-bandc" />, <div class="lm-vm-band lm-vm-bandr" />)
+    return (
+      <div
+        class="lm-vm"
+        data-testid="version-grid"
+        style={`--lm-n:${x.cols.length};--lm-r:${x.rows.length}`}
+      >
+        {children}
+      </div>
+    )
+  }
+
+  return (
+    <div class="lm-mxwrap" data-testid="matrix-view">
+      <style>
+        {() =>
+          versionSelectionCss(
+            vm().cols,
+            vm().rows.map((r) => r.dep),
+            m.selId(),
+          )
+        }
+      </style>
+      <div class="lm-mxnote">
+        {() =>
+          `${vm().rows.length} external ${vm().rows.length === 1 ? 'dependency' : 'dependencies'} × ${vm().cols.length} declaring packages · a coloured range disagrees with the usual one · · = not declared`
+        }
+      </div>
+      {() => build(vm())}
+    </div>
+  )
+}
 
 const sameIds = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && a.every((v, i) => v === b[i])
 
-export function MatrixView(props: { model: ObservatoryModel }) {
+function ImportGrid(props: { model: ObservatoryModel }) {
   const m = props.model
   const ids = computed(() => matrixIds(m), { equals: sameIds })
 
   const build = (list: string[]) => {
     if (list.length === 0) {
       return (
-        <div class="lm-mx-empty" data-testid="matrix-empty">
-          The matrix covers internal packages — switch the kind filter to “all” or “internal”.
+        <div class="lm-pk-empty" data-testid="matrix-empty">
+          This workspace has no internal packages to relate.
         </div>
       )
     }
@@ -72,8 +158,8 @@ export function MatrixView(props: { model: ObservatoryModel }) {
         const ci = index.get(c)
         if (ci === undefined) continue
         const back = depthOf(c) <= depthOf(r) && m.cycleNodes.has(r) && m.cycleNodes.has(c)
-        // A real <button> per edge cell: keyboard-reachable + the a11y
-        // rules' point, not just their letter. Empty cells are not rendered.
+        // A real <button> per edge cell: keyboard-reachable. Empty cells are
+        // not rendered at all.
         children.push(
           <button
             type="button"

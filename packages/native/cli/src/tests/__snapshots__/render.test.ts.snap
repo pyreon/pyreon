@@ -1,0 +1,701 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`human output specimen > level 0 (NO_COLOR) 1`] = `
+"── check
+pyreon-native check · src · swift + kotlin · swiftc -typecheck
+
+  ✗ error · swift + kotlin · Unexpected token
+     ↳ src/Broken.tsx:1:42
+  ! warning · swift + kotlin · <canvas> is web-only and is not emitted for iOS or Android
+     ↳ src/Inbox.tsx
+  ✗ type error · swift · /tmp/x.swift:3:5: error: cannot convert value of type String to Int
+     ↳ src/Typed.tsx:3:5
+  ℹ skipped · swift · references PyreonRuntime/PyreonRouter — type-check skipped (module not on
+     search path)
+     ↳ src/Router.tsx
+
+✗ 3 errors, 2 warnings · 3 files checked · 1 type-check skipped · 1 web-only entry skipped · 13 ms
+
+── check --watch (clean)
+pyreon-native check · watching src · swift · Ctrl-C to stop
+
+✓ no errors or warnings · 2 files checked · 4 ms · waiting for changes…
+
+── build
+pyreon-native build · ios · src → generated
+
+  ! warning · swift · <canvas> is web-only and is not emitted for iOS or Android
+     ↳ src/Inbox.tsx
+  ℹ skipped · 1 web-only entry file (import @pyreon/runtime-dom|runtime-server)
+     ↳ src/entry.tsx
+
+✓ compiled 12 files → generated · 1 warning · 41 ms
+
+── build --target=all (one fails)
+pyreon-native build · ios + android · src → generated
+
+  ✓ ios · compiled 12 files → generated/ios · 1 warning · 1.4 s
+    ! warning · swift · <canvas> is web-only and is not emitted for iOS or Android
+       ↳ src/Inbox.tsx
+  ✗ android · build failed · 3 ms
+    Unexpected token
+    ↳ src/Broken.tsx:1:42
+
+✗ 1 of 2 targets failed (android) · 1 warning · 1.4 s
+
+── assets
+pyreon-native assets · ios · assets → ios
+
+✓ materialized 4 assets (9 files) → ios · 22 ms
+
+── stage-web
+pyreon-native stage-web · android · web → android/app/src/main
+
+  ! warning · skipped nested directory 'img' (flat-only v1)
+
+✓ staged 3 web-bundle files → android/app/src/main/assets · 1 warning · 5 ms
+
+── failure
+✗ assets failed · 1 ms
+  [Pyreon] assets: source directory '/app/nope' does not exist
+
+── wire
+  Android srcDirs (1)
+    node_modules/@pyreon/native-runtime-kotlin/src/main/kotlin
+  iOS SwiftPM packages (1)
+    PyreonRuntime  → node_modules/@pyreon/native-runtime-swift
+  iOS co-located target sources (1)
+    [Feat]
+      node_modules/feat/native/swift
+
+  ✗ error · kotlin · @acme/gone declares native sources in a directory that does not exist
+     ↳ node_modules/@acme/gone/native/kotlin
+
+✗ 1 broken native declaration · 3 ms
+
+── wire --android-out --ios-out
+  ✓ wrote 2 Android srcDirs → android/srcdirs.txt
+  ✓ staged 1 co-located Swift file, linked 2 SwiftPM packages → ios
+
+✓ resolved native sources · 2 Android srcDirs · 0 SwiftPM packages · 2 ms
+
+── dev
+pyreon-native dev · iOS · Demo (com.example.Demo)
+
+  ! 1 compiler warning — these constructs will not run on the device
+    ! warning · swift · <canvas> is web-only and is not emitted for iOS or Android
+       ↳ src/Inbox.tsx
+  ▸ compile shared source     ✓    6 ms  12 files
+  ▸ device                    ✓  120 ms  IPHONE-16
+  ▸ run scripts/build-ios.sh  ✓  400 ms
+  ▸ build + install           ✓   2.1 s
+  ▸ launch                    ✓  500 ms
+
+  ✓ ready in 3.1 s · app relaunched · in-memory state reset
+  ▸ build + install           — skipped
+  ✓ up to date in 5 ms · emitted code is unchanged, native build skipped
+  ▸ build + install           ✗ failed  900 ms
+    xcodebuild failed (exit 65)
+    error: boom
+  ✗ failed after 0.9 s · the next save retries"
+`;
+
+exports[`human output specimen > level 0 ASCII 1`] = `
+"── check
+pyreon-native check - src - swift + kotlin - swiftc -typecheck
+
+  x error - swift + kotlin - Unexpected token
+     -> src/Broken.tsx:1:42
+  ! warning - swift + kotlin - <canvas> is web-only and is not emitted for iOS or Android
+     -> src/Inbox.tsx
+  x type error - swift - /tmp/x.swift:3:5: error: cannot convert value of type String to Int
+     -> src/Typed.tsx:3:5
+  i skipped - swift - references PyreonRuntime/PyreonRouter — type-check skipped (module not on
+     search path)
+     -> src/Router.tsx
+
+x 3 errors, 2 warnings - 3 files checked - 1 type-check skipped - 1 web-only entry skipped - 13 ms
+
+── check --watch (clean)
+pyreon-native check - watching src - swift - Ctrl-C to stop
+
+v no errors or warnings - 2 files checked - 4 ms - waiting for changes…
+
+── build
+pyreon-native build - ios - src -> generated
+
+  ! warning - swift - <canvas> is web-only and is not emitted for iOS or Android
+     -> src/Inbox.tsx
+  i skipped - 1 web-only entry file (import @pyreon/runtime-dom|runtime-server)
+     -> src/entry.tsx
+
+v compiled 12 files -> generated - 1 warning - 41 ms
+
+── build --target=all (one fails)
+pyreon-native build - ios + android - src -> generated
+
+  v ios - compiled 12 files -> generated/ios - 1 warning - 1.4 s
+    ! warning - swift - <canvas> is web-only and is not emitted for iOS or Android
+       -> src/Inbox.tsx
+  x android - build failed - 3 ms
+    Unexpected token
+    -> src/Broken.tsx:1:42
+
+x 1 of 2 targets failed (android) - 1 warning - 1.4 s
+
+── assets
+pyreon-native assets - ios - assets -> ios
+
+v materialized 4 assets (9 files) -> ios - 22 ms
+
+── stage-web
+pyreon-native stage-web - android - web -> android/app/src/main
+
+  ! warning - skipped nested directory 'img' (flat-only v1)
+
+v staged 3 web-bundle files -> android/app/src/main/assets - 1 warning - 5 ms
+
+── failure
+x assets failed - 1 ms
+  [Pyreon] assets: source directory '/app/nope' does not exist
+
+── wire
+  Android srcDirs (1)
+    node_modules/@pyreon/native-runtime-kotlin/src/main/kotlin
+  iOS SwiftPM packages (1)
+    PyreonRuntime  -> node_modules/@pyreon/native-runtime-swift
+  iOS co-located target sources (1)
+    [Feat]
+      node_modules/feat/native/swift
+
+  x error - kotlin - @acme/gone declares native sources in a directory that does not exist
+     -> node_modules/@acme/gone/native/kotlin
+
+x 1 broken native declaration - 3 ms
+
+── wire --android-out --ios-out
+  v wrote 2 Android srcDirs -> android/srcdirs.txt
+  v staged 1 co-located Swift file, linked 2 SwiftPM packages -> ios
+
+v resolved native sources - 2 Android srcDirs - 0 SwiftPM packages - 2 ms
+
+── dev
+pyreon-native dev - iOS · Demo (com.example.Demo)
+
+  ! 1 compiler warning - these constructs will not run on the device
+    ! warning - swift - <canvas> is web-only and is not emitted for iOS or Android
+       -> src/Inbox.tsx
+  > compile shared source     v    6 ms  12 files
+  > device                    v  120 ms  IPHONE-16
+  > run scripts/build-ios.sh  v  400 ms
+  > build + install           v   2.1 s
+  > launch                    v  500 ms
+
+  v ready in 3.1 s - app relaunched - in-memory state reset
+  > build + install           - skipped
+  v up to date in 5 ms - emitted code is unchanged, native build skipped
+  > build + install           x failed  900 ms
+    xcodebuild failed (exit 65)
+    error: boom
+  x failed after 0.9 s - the next save retries"
+`;
+
+exports[`human output specimen > level 1 (16 colours) 1`] = `
+"── check
+␛[1mpyreon-native check␛[22m ␛[90m· src · swift + kotlin · swiftc -typecheck␛[39m
+
+  ␛[31m✗␛[39m ␛[1merror␛[22m ␛[90m·␛[39m ␛[90mswift + kotlin ·␛[39m Unexpected token
+     ␛[90m↳␛[39m ␛]8;;file:///app/src/Broken.tsx#L1␛\\␛[4m␛[36msrc/Broken.tsx:1:42␛[39m␛[24m␛]8;;␛\\
+  ␛[33m!␛[39m ␛[1mwarning␛[22m ␛[90m·␛[39m ␛[90mswift + kotlin ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+     ␛[90m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[36msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[31m✗␛[39m ␛[1mtype error␛[22m ␛[90m·␛[39m ␛[90mswift ·␛[39m /tmp/x.swift:3:5: error: cannot convert value of type String to Int
+     ␛[90m↳␛[39m ␛]8;;file:///app/src/Typed.tsx#L3␛\\␛[4m␛[36msrc/Typed.tsx:3:5␛[39m␛[24m␛]8;;␛\\
+  ␛[36mℹ␛[39m ␛[1mskipped␛[22m ␛[90m·␛[39m ␛[90mswift ·␛[39m references PyreonRuntime/PyreonRouter — type-check skipped (module not on
+     search path)
+     ␛[90m↳␛[39m ␛]8;;file:///app/src/Router.tsx␛\\␛[4m␛[36msrc/Router.tsx␛[39m␛[24m␛]8;;␛\\
+
+␛[31m✗␛[39m ␛[31m3 errors␛[39m, ␛[33m2 warnings␛[39m ␛[90m· 3 files checked · 1 type-check skipped · 1 web-only entry skipped · 13 ms␛[39m
+
+── check --watch (clean)
+␛[1mpyreon-native check␛[22m ␛[90m· watching src · swift · Ctrl-C to stop␛[39m
+
+␛[32m✓␛[39m no errors or warnings ␛[90m· 2 files checked · 4 ms · waiting for changes…␛[39m
+
+── build
+␛[1mpyreon-native build␛[22m ␛[90m· ios · src → generated␛[39m
+
+  ␛[33m!␛[39m ␛[1mwarning␛[22m ␛[90m·␛[39m ␛[90mswift ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+     ␛[90m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[36msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[36mℹ␛[39m ␛[1mskipped␛[22m ␛[90m·␛[39m 1 web-only entry file (import @pyreon/runtime-dom|runtime-server)
+     ␛[90m↳␛[39m ␛]8;;file:///app/src/entry.tsx␛\\␛[4m␛[36msrc/entry.tsx␛[39m␛[24m␛]8;;␛\\
+
+␛[32m✓␛[39m compiled 12 files → generated ␛[90m· 1 warning · 41 ms␛[39m
+
+── build --target=all (one fails)
+␛[1mpyreon-native build␛[22m ␛[90m· ios + android · src → generated␛[39m
+
+  ␛[32m✓␛[39m ios · compiled 12 files → generated/ios ␛[90m· 1 warning · 1.4 s␛[39m
+    ␛[33m!␛[39m ␛[1mwarning␛[22m ␛[90m·␛[39m ␛[90mswift ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+       ␛[90m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[36msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[31m✗␛[39m android · build failed ␛[90m· 3 ms␛[39m
+␛[90m    Unexpected token␛[39m
+    ␛[90m↳␛[39m ␛]8;;file:///app/src/Broken.tsx#L1␛\\␛[4m␛[36msrc/Broken.tsx:1:42␛[39m␛[24m␛]8;;␛\\
+
+␛[31m✗␛[39m 1 of 2 targets failed (android) ␛[90m· 1 warning · 1.4 s␛[39m
+
+── assets
+␛[1mpyreon-native assets␛[22m ␛[90m· ios · assets → ios␛[39m
+
+␛[32m✓␛[39m materialized 4 assets (9 files) → ios ␛[90m· 22 ms␛[39m
+
+── stage-web
+␛[1mpyreon-native stage-web␛[22m ␛[90m· android · web → android/app/src/main␛[39m
+
+  ␛[33m!␛[39m ␛[1mwarning␛[22m ␛[90m·␛[39m skipped nested directory 'img' (flat-only v1)
+
+␛[32m✓␛[39m staged 3 web-bundle files → android/app/src/main/assets ␛[90m· 1 warning · 5 ms␛[39m
+
+── failure
+␛[31m✗␛[39m assets failed ␛[90m· 1 ms␛[39m
+␛[90m  [Pyreon] assets: source directory '/app/nope' does not exist␛[39m
+
+── wire
+  ␛[1mAndroid srcDirs␛[22m ␛[90m(1)␛[39m
+    ␛]8;;file:///app/node_modules/@pyreon/native-runtime-kotlin/src/main/kotlin␛\\␛[4m␛[36mnode_modules/@pyreon/native-runtime-kotlin/src/main/kotlin␛[39m␛[24m␛]8;;␛\\
+  ␛[1miOS SwiftPM packages␛[22m ␛[90m(1)␛[39m
+    PyreonRuntime  ␛[90m→␛[39m ␛]8;;file:///app/node_modules/@pyreon/native-runtime-swift␛\\␛[4m␛[36mnode_modules/@pyreon/native-runtime-swift␛[39m␛[24m␛]8;;␛\\
+  ␛[1miOS co-located target sources␛[22m ␛[90m(1)␛[39m
+    [Feat]
+      ␛]8;;file:///app/node_modules/feat/native/swift␛\\␛[4m␛[36mnode_modules/feat/native/swift␛[39m␛[24m␛]8;;␛\\
+
+  ␛[31m✗␛[39m ␛[1merror␛[22m ␛[90m·␛[39m ␛[90mkotlin ·␛[39m @acme/gone declares native sources in a directory that does not exist
+     ␛[90m↳␛[39m ␛]8;;file:///app/node_modules/@acme/gone/native/kotlin␛\\␛[4m␛[36mnode_modules/@acme/gone/native/kotlin␛[39m␛[24m␛]8;;␛\\
+
+␛[31m✗␛[39m 1 broken native declaration ␛[90m· 3 ms␛[39m
+
+── wire --android-out --ios-out
+  ␛[32m✓␛[39m wrote 2 Android srcDirs → ␛]8;;file:///app/android/srcdirs.txt␛\\␛[4m␛[36mandroid/srcdirs.txt␛[39m␛[24m␛]8;;␛\\
+  ␛[32m✓␛[39m staged 1 co-located Swift file, linked 2 SwiftPM packages → ␛]8;;file:///app/ios␛\\␛[4m␛[36mios␛[39m␛[24m␛]8;;␛\\
+
+␛[32m✓␛[39m resolved native sources ␛[90m· 2 Android srcDirs · 0 SwiftPM packages · 2 ms␛[39m
+
+── dev
+␛[1mpyreon-native dev␛[22m ␛[90m· iOS · Demo (com.example.Demo)␛[39m
+
+  ␛[33m!␛[39m ␛[33m1 compiler warning␛[39m ␛[90m— these constructs will not run on the device␛[39m
+    ␛[33m!␛[39m ␛[1mwarning␛[22m ␛[90m·␛[39m ␛[90mswift ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+       ␛[90m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[36msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[31m▸␛[39m compile shared source     ␛[32m✓␛[39m ␛[90m   6 ms␛[39m  ␛[90m12 files␛[39m
+  ␛[31m▸␛[39m device                    ␛[32m✓␛[39m ␛[90m 120 ms␛[39m  ␛[90mIPHONE-16␛[39m
+  ␛[31m▸␛[39m run scripts/build-ios.sh  ␛[32m✓␛[39m ␛[90m 400 ms␛[39m
+  ␛[31m▸␛[39m build + install           ␛[32m✓␛[39m ␛[90m  2.1 s␛[39m
+  ␛[31m▸␛[39m launch                    ␛[32m✓␛[39m ␛[90m 500 ms␛[39m
+
+  ␛[32m✓␛[39m ␛[1m␛[32mready in 3.1 s␛[39m␛[22m ␛[90m· app relaunched · in-memory state reset␛[39m
+  ␛[31m▸␛[39m build + install           ␛[90m—␛[39m ␛[90mskipped␛[39m
+  ␛[32m✓␛[39m ␛[1m␛[32mup to date in 5 ms␛[39m␛[22m ␛[90m· emitted code is unchanged, native build skipped␛[39m
+  ␛[31m▸␛[39m build + install           ␛[31m✗␛[39m ␛[31mfailed␛[39m ␛[90m 900 ms␛[39m
+␛[90m    xcodebuild failed (exit 65)␛[39m
+␛[90m    error: boom␛[39m
+  ␛[31m✗␛[39m failed after 0.9 s ␛[90m· the next save retries␛[39m"
+`;
+
+exports[`human output specimen > level 2 dark 1`] = `
+"── check
+␛[1mpyreon-native check␛[22m ␛[38;5;103m· src · swift + kotlin · swiftc -typecheck␛[39m
+
+  ␛[38;5;203m✗␛[39m ␛[1merror␛[22m ␛[38;5;103m·␛[39m ␛[38;5;103mswift + kotlin ·␛[39m Unexpected token
+     ␛[38;5;103m↳␛[39m ␛]8;;file:///app/src/Broken.tsx#L1␛\\␛[4m␛[38;5;45msrc/Broken.tsx:1:42␛[39m␛[24m␛]8;;␛\\
+  ␛[38;5;220m!␛[39m ␛[1mwarning␛[22m ␛[38;5;103m·␛[39m ␛[38;5;103mswift + kotlin ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+     ␛[38;5;103m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[38;5;45msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[38;5;203m✗␛[39m ␛[1mtype error␛[22m ␛[38;5;103m·␛[39m ␛[38;5;103mswift ·␛[39m /tmp/x.swift:3:5: error: cannot convert value of type String to Int
+     ␛[38;5;103m↳␛[39m ␛]8;;file:///app/src/Typed.tsx#L3␛\\␛[4m␛[38;5;45msrc/Typed.tsx:3:5␛[39m␛[24m␛]8;;␛\\
+  ␛[38;5;45mℹ␛[39m ␛[1mskipped␛[22m ␛[38;5;103m·␛[39m ␛[38;5;103mswift ·␛[39m references PyreonRuntime/PyreonRouter — type-check skipped (module not on
+     search path)
+     ␛[38;5;103m↳␛[39m ␛]8;;file:///app/src/Router.tsx␛\\␛[4m␛[38;5;45msrc/Router.tsx␛[39m␛[24m␛]8;;␛\\
+
+␛[38;5;203m✗␛[39m ␛[38;5;203m3 errors␛[39m, ␛[38;5;220m2 warnings␛[39m ␛[38;5;103m· 3 files checked · 1 type-check skipped · 1 web-only entry skipped · 13 ms␛[39m
+
+── check --watch (clean)
+␛[1mpyreon-native check␛[22m ␛[38;5;103m· watching src · swift · Ctrl-C to stop␛[39m
+
+␛[38;5;78m✓␛[39m no errors or warnings ␛[38;5;103m· 2 files checked · 4 ms · waiting for changes…␛[39m
+
+── build
+␛[1mpyreon-native build␛[22m ␛[38;5;103m· ios · src → generated␛[39m
+
+  ␛[38;5;220m!␛[39m ␛[1mwarning␛[22m ␛[38;5;103m·␛[39m ␛[38;5;103mswift ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+     ␛[38;5;103m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[38;5;45msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[38;5;45mℹ␛[39m ␛[1mskipped␛[22m ␛[38;5;103m·␛[39m 1 web-only entry file (import @pyreon/runtime-dom|runtime-server)
+     ␛[38;5;103m↳␛[39m ␛]8;;file:///app/src/entry.tsx␛\\␛[4m␛[38;5;45msrc/entry.tsx␛[39m␛[24m␛]8;;␛\\
+
+␛[38;5;78m✓␛[39m compiled 12 files → generated ␛[38;5;103m· 1 warning · 41 ms␛[39m
+
+── build --target=all (one fails)
+␛[1mpyreon-native build␛[22m ␛[38;5;103m· ios + android · src → generated␛[39m
+
+  ␛[38;5;78m✓␛[39m ios · compiled 12 files → generated/ios ␛[38;5;103m· 1 warning · 1.4 s␛[39m
+    ␛[38;5;220m!␛[39m ␛[1mwarning␛[22m ␛[38;5;103m·␛[39m ␛[38;5;103mswift ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+       ␛[38;5;103m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[38;5;45msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[38;5;203m✗␛[39m android · build failed ␛[38;5;103m· 3 ms␛[39m
+␛[38;5;103m    Unexpected token␛[39m
+    ␛[38;5;103m↳␛[39m ␛]8;;file:///app/src/Broken.tsx#L1␛\\␛[4m␛[38;5;45msrc/Broken.tsx:1:42␛[39m␛[24m␛]8;;␛\\
+
+␛[38;5;203m✗␛[39m 1 of 2 targets failed (android) ␛[38;5;103m· 1 warning · 1.4 s␛[39m
+
+── assets
+␛[1mpyreon-native assets␛[22m ␛[38;5;103m· ios · assets → ios␛[39m
+
+␛[38;5;78m✓␛[39m materialized 4 assets (9 files) → ios ␛[38;5;103m· 22 ms␛[39m
+
+── stage-web
+␛[1mpyreon-native stage-web␛[22m ␛[38;5;103m· android · web → android/app/src/main␛[39m
+
+  ␛[38;5;220m!␛[39m ␛[1mwarning␛[22m ␛[38;5;103m·␛[39m skipped nested directory 'img' (flat-only v1)
+
+␛[38;5;78m✓␛[39m staged 3 web-bundle files → android/app/src/main/assets ␛[38;5;103m· 1 warning · 5 ms␛[39m
+
+── failure
+␛[38;5;203m✗␛[39m assets failed ␛[38;5;103m· 1 ms␛[39m
+␛[38;5;103m  [Pyreon] assets: source directory '/app/nope' does not exist␛[39m
+
+── wire
+  ␛[1mAndroid srcDirs␛[22m ␛[38;5;103m(1)␛[39m
+    ␛]8;;file:///app/node_modules/@pyreon/native-runtime-kotlin/src/main/kotlin␛\\␛[4m␛[38;5;45mnode_modules/@pyreon/native-runtime-kotlin/src/main/kotlin␛[39m␛[24m␛]8;;␛\\
+  ␛[1miOS SwiftPM packages␛[22m ␛[38;5;103m(1)␛[39m
+    PyreonRuntime  ␛[38;5;103m→␛[39m ␛]8;;file:///app/node_modules/@pyreon/native-runtime-swift␛\\␛[4m␛[38;5;45mnode_modules/@pyreon/native-runtime-swift␛[39m␛[24m␛]8;;␛\\
+  ␛[1miOS co-located target sources␛[22m ␛[38;5;103m(1)␛[39m
+    [Feat]
+      ␛]8;;file:///app/node_modules/feat/native/swift␛\\␛[4m␛[38;5;45mnode_modules/feat/native/swift␛[39m␛[24m␛]8;;␛\\
+
+  ␛[38;5;203m✗␛[39m ␛[1merror␛[22m ␛[38;5;103m·␛[39m ␛[38;5;103mkotlin ·␛[39m @acme/gone declares native sources in a directory that does not exist
+     ␛[38;5;103m↳␛[39m ␛]8;;file:///app/node_modules/@acme/gone/native/kotlin␛\\␛[4m␛[38;5;45mnode_modules/@acme/gone/native/kotlin␛[39m␛[24m␛]8;;␛\\
+
+␛[38;5;203m✗␛[39m 1 broken native declaration ␛[38;5;103m· 3 ms␛[39m
+
+── wire --android-out --ios-out
+  ␛[38;5;78m✓␛[39m wrote 2 Android srcDirs → ␛]8;;file:///app/android/srcdirs.txt␛\\␛[4m␛[38;5;45mandroid/srcdirs.txt␛[39m␛[24m␛]8;;␛\\
+  ␛[38;5;78m✓␛[39m staged 1 co-located Swift file, linked 2 SwiftPM packages → ␛]8;;file:///app/ios␛\\␛[4m␛[38;5;45mios␛[39m␛[24m␛]8;;␛\\
+
+␛[38;5;78m✓␛[39m resolved native sources ␛[38;5;103m· 2 Android srcDirs · 0 SwiftPM packages · 2 ms␛[39m
+
+── dev
+␛[1mpyreon-native dev␛[22m ␛[38;5;103m· iOS · Demo (com.example.Demo)␛[39m
+
+  ␛[38;5;220m!␛[39m ␛[38;5;220m1 compiler warning␛[39m ␛[38;5;103m— these constructs will not run on the device␛[39m
+    ␛[38;5;220m!␛[39m ␛[1mwarning␛[22m ␛[38;5;103m·␛[39m ␛[38;5;103mswift ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+       ␛[38;5;103m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[38;5;45msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[38;5;202m▸␛[39m compile shared source     ␛[38;5;78m✓␛[39m ␛[38;5;103m   6 ms␛[39m  ␛[38;5;103m12 files␛[39m
+  ␛[38;5;202m▸␛[39m device                    ␛[38;5;78m✓␛[39m ␛[38;5;103m 120 ms␛[39m  ␛[38;5;103mIPHONE-16␛[39m
+  ␛[38;5;202m▸␛[39m run scripts/build-ios.sh  ␛[38;5;78m✓␛[39m ␛[38;5;103m 400 ms␛[39m
+  ␛[38;5;202m▸␛[39m build + install           ␛[38;5;78m✓␛[39m ␛[38;5;103m  2.1 s␛[39m
+  ␛[38;5;202m▸␛[39m launch                    ␛[38;5;78m✓␛[39m ␛[38;5;103m 500 ms␛[39m
+
+  ␛[38;5;78m✓␛[39m ␛[1m␛[38;5;78mready in 3.1 s␛[39m␛[22m ␛[38;5;103m· app relaunched · in-memory state reset␛[39m
+  ␛[38;5;202m▸␛[39m build + install           ␛[38;5;103m—␛[39m ␛[38;5;103mskipped␛[39m
+  ␛[38;5;78m✓␛[39m ␛[1m␛[38;5;78mup to date in 5 ms␛[39m␛[22m ␛[38;5;103m· emitted code is unchanged, native build skipped␛[39m
+  ␛[38;5;202m▸␛[39m build + install           ␛[38;5;203m✗␛[39m ␛[38;5;203mfailed␛[39m ␛[38;5;103m 900 ms␛[39m
+␛[38;5;103m    xcodebuild failed (exit 65)␛[39m
+␛[38;5;103m    error: boom␛[39m
+  ␛[38;5;203m✗␛[39m failed after 0.9 s ␛[38;5;103m· the next save retries␛[39m"
+`;
+
+exports[`human output specimen > level 2 light 1`] = `
+"── check
+␛[1mpyreon-native check␛[22m ␛[38;5;59m· src · swift + kotlin · swiftc -typecheck␛[39m
+
+  ␛[38;5;124m✗␛[39m ␛[1merror␛[22m ␛[38;5;59m·␛[39m ␛[38;5;59mswift + kotlin ·␛[39m Unexpected token
+     ␛[38;5;59m↳␛[39m ␛]8;;file:///app/src/Broken.tsx#L1␛\\␛[4m␛[38;5;24msrc/Broken.tsx:1:42␛[39m␛[24m␛]8;;␛\\
+  ␛[38;5;94m!␛[39m ␛[1mwarning␛[22m ␛[38;5;59m·␛[39m ␛[38;5;59mswift + kotlin ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+     ␛[38;5;59m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[38;5;24msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[38;5;124m✗␛[39m ␛[1mtype error␛[22m ␛[38;5;59m·␛[39m ␛[38;5;59mswift ·␛[39m /tmp/x.swift:3:5: error: cannot convert value of type String to Int
+     ␛[38;5;59m↳␛[39m ␛]8;;file:///app/src/Typed.tsx#L3␛\\␛[4m␛[38;5;24msrc/Typed.tsx:3:5␛[39m␛[24m␛]8;;␛\\
+  ␛[38;5;24mℹ␛[39m ␛[1mskipped␛[22m ␛[38;5;59m·␛[39m ␛[38;5;59mswift ·␛[39m references PyreonRuntime/PyreonRouter — type-check skipped (module not on
+     search path)
+     ␛[38;5;59m↳␛[39m ␛]8;;file:///app/src/Router.tsx␛\\␛[4m␛[38;5;24msrc/Router.tsx␛[39m␛[24m␛]8;;␛\\
+
+␛[38;5;124m✗␛[39m ␛[38;5;124m3 errors␛[39m, ␛[38;5;94m2 warnings␛[39m ␛[38;5;59m· 3 files checked · 1 type-check skipped · 1 web-only entry skipped · 13 ms␛[39m
+
+── check --watch (clean)
+␛[1mpyreon-native check␛[22m ␛[38;5;59m· watching src · swift · Ctrl-C to stop␛[39m
+
+␛[38;5;22m✓␛[39m no errors or warnings ␛[38;5;59m· 2 files checked · 4 ms · waiting for changes…␛[39m
+
+── build
+␛[1mpyreon-native build␛[22m ␛[38;5;59m· ios · src → generated␛[39m
+
+  ␛[38;5;94m!␛[39m ␛[1mwarning␛[22m ␛[38;5;59m·␛[39m ␛[38;5;59mswift ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+     ␛[38;5;59m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[38;5;24msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[38;5;24mℹ␛[39m ␛[1mskipped␛[22m ␛[38;5;59m·␛[39m 1 web-only entry file (import @pyreon/runtime-dom|runtime-server)
+     ␛[38;5;59m↳␛[39m ␛]8;;file:///app/src/entry.tsx␛\\␛[4m␛[38;5;24msrc/entry.tsx␛[39m␛[24m␛]8;;␛\\
+
+␛[38;5;22m✓␛[39m compiled 12 files → generated ␛[38;5;59m· 1 warning · 41 ms␛[39m
+
+── build --target=all (one fails)
+␛[1mpyreon-native build␛[22m ␛[38;5;59m· ios + android · src → generated␛[39m
+
+  ␛[38;5;22m✓␛[39m ios · compiled 12 files → generated/ios ␛[38;5;59m· 1 warning · 1.4 s␛[39m
+    ␛[38;5;94m!␛[39m ␛[1mwarning␛[22m ␛[38;5;59m·␛[39m ␛[38;5;59mswift ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+       ␛[38;5;59m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[38;5;24msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[38;5;124m✗␛[39m android · build failed ␛[38;5;59m· 3 ms␛[39m
+␛[38;5;59m    Unexpected token␛[39m
+    ␛[38;5;59m↳␛[39m ␛]8;;file:///app/src/Broken.tsx#L1␛\\␛[4m␛[38;5;24msrc/Broken.tsx:1:42␛[39m␛[24m␛]8;;␛\\
+
+␛[38;5;124m✗␛[39m 1 of 2 targets failed (android) ␛[38;5;59m· 1 warning · 1.4 s␛[39m
+
+── assets
+␛[1mpyreon-native assets␛[22m ␛[38;5;59m· ios · assets → ios␛[39m
+
+␛[38;5;22m✓␛[39m materialized 4 assets (9 files) → ios ␛[38;5;59m· 22 ms␛[39m
+
+── stage-web
+␛[1mpyreon-native stage-web␛[22m ␛[38;5;59m· android · web → android/app/src/main␛[39m
+
+  ␛[38;5;94m!␛[39m ␛[1mwarning␛[22m ␛[38;5;59m·␛[39m skipped nested directory 'img' (flat-only v1)
+
+␛[38;5;22m✓␛[39m staged 3 web-bundle files → android/app/src/main/assets ␛[38;5;59m· 1 warning · 5 ms␛[39m
+
+── failure
+␛[38;5;124m✗␛[39m assets failed ␛[38;5;59m· 1 ms␛[39m
+␛[38;5;59m  [Pyreon] assets: source directory '/app/nope' does not exist␛[39m
+
+── wire
+  ␛[1mAndroid srcDirs␛[22m ␛[38;5;59m(1)␛[39m
+    ␛]8;;file:///app/node_modules/@pyreon/native-runtime-kotlin/src/main/kotlin␛\\␛[4m␛[38;5;24mnode_modules/@pyreon/native-runtime-kotlin/src/main/kotlin␛[39m␛[24m␛]8;;␛\\
+  ␛[1miOS SwiftPM packages␛[22m ␛[38;5;59m(1)␛[39m
+    PyreonRuntime  ␛[38;5;59m→␛[39m ␛]8;;file:///app/node_modules/@pyreon/native-runtime-swift␛\\␛[4m␛[38;5;24mnode_modules/@pyreon/native-runtime-swift␛[39m␛[24m␛]8;;␛\\
+  ␛[1miOS co-located target sources␛[22m ␛[38;5;59m(1)␛[39m
+    [Feat]
+      ␛]8;;file:///app/node_modules/feat/native/swift␛\\␛[4m␛[38;5;24mnode_modules/feat/native/swift␛[39m␛[24m␛]8;;␛\\
+
+  ␛[38;5;124m✗␛[39m ␛[1merror␛[22m ␛[38;5;59m·␛[39m ␛[38;5;59mkotlin ·␛[39m @acme/gone declares native sources in a directory that does not exist
+     ␛[38;5;59m↳␛[39m ␛]8;;file:///app/node_modules/@acme/gone/native/kotlin␛\\␛[4m␛[38;5;24mnode_modules/@acme/gone/native/kotlin␛[39m␛[24m␛]8;;␛\\
+
+␛[38;5;124m✗␛[39m 1 broken native declaration ␛[38;5;59m· 3 ms␛[39m
+
+── wire --android-out --ios-out
+  ␛[38;5;22m✓␛[39m wrote 2 Android srcDirs → ␛]8;;file:///app/android/srcdirs.txt␛\\␛[4m␛[38;5;24mandroid/srcdirs.txt␛[39m␛[24m␛]8;;␛\\
+  ␛[38;5;22m✓␛[39m staged 1 co-located Swift file, linked 2 SwiftPM packages → ␛]8;;file:///app/ios␛\\␛[4m␛[38;5;24mios␛[39m␛[24m␛]8;;␛\\
+
+␛[38;5;22m✓␛[39m resolved native sources ␛[38;5;59m· 2 Android srcDirs · 0 SwiftPM packages · 2 ms␛[39m
+
+── dev
+␛[1mpyreon-native dev␛[22m ␛[38;5;59m· iOS · Demo (com.example.Demo)␛[39m
+
+  ␛[38;5;94m!␛[39m ␛[38;5;94m1 compiler warning␛[39m ␛[38;5;59m— these constructs will not run on the device␛[39m
+    ␛[38;5;94m!␛[39m ␛[1mwarning␛[22m ␛[38;5;59m·␛[39m ␛[38;5;59mswift ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+       ␛[38;5;59m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[38;5;24msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[38;5;160m▸␛[39m compile shared source     ␛[38;5;22m✓␛[39m ␛[38;5;59m   6 ms␛[39m  ␛[38;5;59m12 files␛[39m
+  ␛[38;5;160m▸␛[39m device                    ␛[38;5;22m✓␛[39m ␛[38;5;59m 120 ms␛[39m  ␛[38;5;59mIPHONE-16␛[39m
+  ␛[38;5;160m▸␛[39m run scripts/build-ios.sh  ␛[38;5;22m✓␛[39m ␛[38;5;59m 400 ms␛[39m
+  ␛[38;5;160m▸␛[39m build + install           ␛[38;5;22m✓␛[39m ␛[38;5;59m  2.1 s␛[39m
+  ␛[38;5;160m▸␛[39m launch                    ␛[38;5;22m✓␛[39m ␛[38;5;59m 500 ms␛[39m
+
+  ␛[38;5;22m✓␛[39m ␛[1m␛[38;5;22mready in 3.1 s␛[39m␛[22m ␛[38;5;59m· app relaunched · in-memory state reset␛[39m
+  ␛[38;5;160m▸␛[39m build + install           ␛[38;5;59m—␛[39m ␛[38;5;59mskipped␛[39m
+  ␛[38;5;22m✓␛[39m ␛[1m␛[38;5;22mup to date in 5 ms␛[39m␛[22m ␛[38;5;59m· emitted code is unchanged, native build skipped␛[39m
+  ␛[38;5;160m▸␛[39m build + install           ␛[38;5;124m✗␛[39m ␛[38;5;124mfailed␛[39m ␛[38;5;59m 900 ms␛[39m
+␛[38;5;59m    xcodebuild failed (exit 65)␛[39m
+␛[38;5;59m    error: boom␛[39m
+  ␛[38;5;124m✗␛[39m failed after 0.9 s ␛[38;5;59m· the next save retries␛[39m"
+`;
+
+exports[`human output specimen > level 3 dark 1`] = `
+"── check
+␛[1mpyreon-native check␛[22m ␛[38;2;138;134;150m· src · swift + kotlin · swiftc -typecheck␛[39m
+
+  ␛[38;2;248;113;113m✗␛[39m ␛[1merror␛[22m ␛[38;2;138;134;150m·␛[39m ␛[38;2;138;134;150mswift + kotlin ·␛[39m Unexpected token
+     ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///app/src/Broken.tsx#L1␛\\␛[4m␛[38;2;34;211;238msrc/Broken.tsx:1:42␛[39m␛[24m␛]8;;␛\\
+  ␛[38;2;250;204;21m!␛[39m ␛[1mwarning␛[22m ␛[38;2;138;134;150m·␛[39m ␛[38;2;138;134;150mswift + kotlin ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+     ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[38;2;34;211;238msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[38;2;248;113;113m✗␛[39m ␛[1mtype error␛[22m ␛[38;2;138;134;150m·␛[39m ␛[38;2;138;134;150mswift ·␛[39m /tmp/x.swift:3:5: error: cannot convert value of type String to Int
+     ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///app/src/Typed.tsx#L3␛\\␛[4m␛[38;2;34;211;238msrc/Typed.tsx:3:5␛[39m␛[24m␛]8;;␛\\
+  ␛[38;2;34;211;238mℹ␛[39m ␛[1mskipped␛[22m ␛[38;2;138;134;150m·␛[39m ␛[38;2;138;134;150mswift ·␛[39m references PyreonRuntime/PyreonRouter — type-check skipped (module not on
+     search path)
+     ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///app/src/Router.tsx␛\\␛[4m␛[38;2;34;211;238msrc/Router.tsx␛[39m␛[24m␛]8;;␛\\
+
+␛[38;2;248;113;113m✗␛[39m ␛[38;2;248;113;113m3 errors␛[39m, ␛[38;2;250;204;21m2 warnings␛[39m ␛[38;2;138;134;150m· 3 files checked · 1 type-check skipped · 1 web-only entry skipped · 13 ms␛[39m
+
+── check --watch (clean)
+␛[1mpyreon-native check␛[22m ␛[38;2;138;134;150m· watching src · swift · Ctrl-C to stop␛[39m
+
+␛[38;2;74;222;128m✓␛[39m no errors or warnings ␛[38;2;138;134;150m· 2 files checked · 4 ms · waiting for changes…␛[39m
+
+── build
+␛[1mpyreon-native build␛[22m ␛[38;2;138;134;150m· ios · src → generated␛[39m
+
+  ␛[38;2;250;204;21m!␛[39m ␛[1mwarning␛[22m ␛[38;2;138;134;150m·␛[39m ␛[38;2;138;134;150mswift ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+     ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[38;2;34;211;238msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[38;2;34;211;238mℹ␛[39m ␛[1mskipped␛[22m ␛[38;2;138;134;150m·␛[39m 1 web-only entry file (import @pyreon/runtime-dom|runtime-server)
+     ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///app/src/entry.tsx␛\\␛[4m␛[38;2;34;211;238msrc/entry.tsx␛[39m␛[24m␛]8;;␛\\
+
+␛[38;2;74;222;128m✓␛[39m compiled 12 files → generated ␛[38;2;138;134;150m· 1 warning · 41 ms␛[39m
+
+── build --target=all (one fails)
+␛[1mpyreon-native build␛[22m ␛[38;2;138;134;150m· ios + android · src → generated␛[39m
+
+  ␛[38;2;74;222;128m✓␛[39m ios · compiled 12 files → generated/ios ␛[38;2;138;134;150m· 1 warning · 1.4 s␛[39m
+    ␛[38;2;250;204;21m!␛[39m ␛[1mwarning␛[22m ␛[38;2;138;134;150m·␛[39m ␛[38;2;138;134;150mswift ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+       ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[38;2;34;211;238msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[38;2;248;113;113m✗␛[39m android · build failed ␛[38;2;138;134;150m· 3 ms␛[39m
+␛[38;2;138;134;150m    Unexpected token␛[39m
+    ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///app/src/Broken.tsx#L1␛\\␛[4m␛[38;2;34;211;238msrc/Broken.tsx:1:42␛[39m␛[24m␛]8;;␛\\
+
+␛[38;2;248;113;113m✗␛[39m 1 of 2 targets failed (android) ␛[38;2;138;134;150m· 1 warning · 1.4 s␛[39m
+
+── assets
+␛[1mpyreon-native assets␛[22m ␛[38;2;138;134;150m· ios · assets → ios␛[39m
+
+␛[38;2;74;222;128m✓␛[39m materialized 4 assets (9 files) → ios ␛[38;2;138;134;150m· 22 ms␛[39m
+
+── stage-web
+␛[1mpyreon-native stage-web␛[22m ␛[38;2;138;134;150m· android · web → android/app/src/main␛[39m
+
+  ␛[38;2;250;204;21m!␛[39m ␛[1mwarning␛[22m ␛[38;2;138;134;150m·␛[39m skipped nested directory 'img' (flat-only v1)
+
+␛[38;2;74;222;128m✓␛[39m staged 3 web-bundle files → android/app/src/main/assets ␛[38;2;138;134;150m· 1 warning · 5 ms␛[39m
+
+── failure
+␛[38;2;248;113;113m✗␛[39m assets failed ␛[38;2;138;134;150m· 1 ms␛[39m
+␛[38;2;138;134;150m  [Pyreon] assets: source directory '/app/nope' does not exist␛[39m
+
+── wire
+  ␛[1mAndroid srcDirs␛[22m ␛[38;2;138;134;150m(1)␛[39m
+    ␛]8;;file:///app/node_modules/@pyreon/native-runtime-kotlin/src/main/kotlin␛\\␛[4m␛[38;2;34;211;238mnode_modules/@pyreon/native-runtime-kotlin/src/main/kotlin␛[39m␛[24m␛]8;;␛\\
+  ␛[1miOS SwiftPM packages␛[22m ␛[38;2;138;134;150m(1)␛[39m
+    PyreonRuntime  ␛[38;2;138;134;150m→␛[39m ␛]8;;file:///app/node_modules/@pyreon/native-runtime-swift␛\\␛[4m␛[38;2;34;211;238mnode_modules/@pyreon/native-runtime-swift␛[39m␛[24m␛]8;;␛\\
+  ␛[1miOS co-located target sources␛[22m ␛[38;2;138;134;150m(1)␛[39m
+    [Feat]
+      ␛]8;;file:///app/node_modules/feat/native/swift␛\\␛[4m␛[38;2;34;211;238mnode_modules/feat/native/swift␛[39m␛[24m␛]8;;␛\\
+
+  ␛[38;2;248;113;113m✗␛[39m ␛[1merror␛[22m ␛[38;2;138;134;150m·␛[39m ␛[38;2;138;134;150mkotlin ·␛[39m @acme/gone declares native sources in a directory that does not exist
+     ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///app/node_modules/@acme/gone/native/kotlin␛\\␛[4m␛[38;2;34;211;238mnode_modules/@acme/gone/native/kotlin␛[39m␛[24m␛]8;;␛\\
+
+␛[38;2;248;113;113m✗␛[39m 1 broken native declaration ␛[38;2;138;134;150m· 3 ms␛[39m
+
+── wire --android-out --ios-out
+  ␛[38;2;74;222;128m✓␛[39m wrote 2 Android srcDirs → ␛]8;;file:///app/android/srcdirs.txt␛\\␛[4m␛[38;2;34;211;238mandroid/srcdirs.txt␛[39m␛[24m␛]8;;␛\\
+  ␛[38;2;74;222;128m✓␛[39m staged 1 co-located Swift file, linked 2 SwiftPM packages → ␛]8;;file:///app/ios␛\\␛[4m␛[38;2;34;211;238mios␛[39m␛[24m␛]8;;␛\\
+
+␛[38;2;74;222;128m✓␛[39m resolved native sources ␛[38;2;138;134;150m· 2 Android srcDirs · 0 SwiftPM packages · 2 ms␛[39m
+
+── dev
+␛[1mpyreon-native dev␛[22m ␛[38;2;138;134;150m· iOS · Demo (com.example.Demo)␛[39m
+
+  ␛[38;2;250;204;21m!␛[39m ␛[38;2;250;204;21m1 compiler warning␛[39m ␛[38;2;138;134;150m— these constructs will not run on the device␛[39m
+    ␛[38;2;250;204;21m!␛[39m ␛[1mwarning␛[22m ␛[38;2;138;134;150m·␛[39m ␛[38;2;138;134;150mswift ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+       ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[38;2;34;211;238msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[38;2;255;94;26m▸␛[39m compile shared source     ␛[38;2;74;222;128m✓␛[39m ␛[38;2;138;134;150m   6 ms␛[39m  ␛[38;2;138;134;150m12 files␛[39m
+  ␛[38;2;255;94;26m▸␛[39m device                    ␛[38;2;74;222;128m✓␛[39m ␛[38;2;138;134;150m 120 ms␛[39m  ␛[38;2;138;134;150mIPHONE-16␛[39m
+  ␛[38;2;255;94;26m▸␛[39m run scripts/build-ios.sh  ␛[38;2;74;222;128m✓␛[39m ␛[38;2;138;134;150m 400 ms␛[39m
+  ␛[38;2;255;94;26m▸␛[39m build + install           ␛[38;2;74;222;128m✓␛[39m ␛[38;2;138;134;150m  2.1 s␛[39m
+  ␛[38;2;255;94;26m▸␛[39m launch                    ␛[38;2;74;222;128m✓␛[39m ␛[38;2;138;134;150m 500 ms␛[39m
+
+  ␛[38;2;74;222;128m✓␛[39m ␛[1m␛[38;2;74;222;128mready in 3.1 s␛[39m␛[22m ␛[38;2;138;134;150m· app relaunched · in-memory state reset␛[39m
+  ␛[38;2;255;94;26m▸␛[39m build + install           ␛[38;2;138;134;150m—␛[39m ␛[38;2;138;134;150mskipped␛[39m
+  ␛[38;2;74;222;128m✓␛[39m ␛[1m␛[38;2;74;222;128mup to date in 5 ms␛[39m␛[22m ␛[38;2;138;134;150m· emitted code is unchanged, native build skipped␛[39m
+  ␛[38;2;255;94;26m▸␛[39m build + install           ␛[38;2;248;113;113m✗␛[39m ␛[38;2;248;113;113mfailed␛[39m ␛[38;2;138;134;150m 900 ms␛[39m
+␛[38;2;138;134;150m    xcodebuild failed (exit 65)␛[39m
+␛[38;2;138;134;150m    error: boom␛[39m
+  ␛[38;2;248;113;113m✗␛[39m failed after 0.9 s ␛[38;2;138;134;150m· the next save retries␛[39m"
+`;
+
+exports[`human output specimen > level 3 light 1`] = `
+"── check
+␛[1mpyreon-native check␛[22m ␛[38;2;94;90;105m· src · swift + kotlin · swiftc -typecheck␛[39m
+
+  ␛[38;2;185;28;28m✗␛[39m ␛[1merror␛[22m ␛[38;2;94;90;105m·␛[39m ␛[38;2;94;90;105mswift + kotlin ·␛[39m Unexpected token
+     ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///app/src/Broken.tsx#L1␛\\␛[4m␛[38;2;10;110;137msrc/Broken.tsx:1:42␛[39m␛[24m␛]8;;␛\\
+  ␛[38;2;138;90;0m!␛[39m ␛[1mwarning␛[22m ␛[38;2;94;90;105m·␛[39m ␛[38;2;94;90;105mswift + kotlin ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+     ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[38;2;10;110;137msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[38;2;185;28;28m✗␛[39m ␛[1mtype error␛[22m ␛[38;2;94;90;105m·␛[39m ␛[38;2;94;90;105mswift ·␛[39m /tmp/x.swift:3:5: error: cannot convert value of type String to Int
+     ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///app/src/Typed.tsx#L3␛\\␛[4m␛[38;2;10;110;137msrc/Typed.tsx:3:5␛[39m␛[24m␛]8;;␛\\
+  ␛[38;2;10;110;137mℹ␛[39m ␛[1mskipped␛[22m ␛[38;2;94;90;105m·␛[39m ␛[38;2;94;90;105mswift ·␛[39m references PyreonRuntime/PyreonRouter — type-check skipped (module not on
+     search path)
+     ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///app/src/Router.tsx␛\\␛[4m␛[38;2;10;110;137msrc/Router.tsx␛[39m␛[24m␛]8;;␛\\
+
+␛[38;2;185;28;28m✗␛[39m ␛[38;2;185;28;28m3 errors␛[39m, ␛[38;2;138;90;0m2 warnings␛[39m ␛[38;2;94;90;105m· 3 files checked · 1 type-check skipped · 1 web-only entry skipped · 13 ms␛[39m
+
+── check --watch (clean)
+␛[1mpyreon-native check␛[22m ␛[38;2;94;90;105m· watching src · swift · Ctrl-C to stop␛[39m
+
+␛[38;2;21;112;58m✓␛[39m no errors or warnings ␛[38;2;94;90;105m· 2 files checked · 4 ms · waiting for changes…␛[39m
+
+── build
+␛[1mpyreon-native build␛[22m ␛[38;2;94;90;105m· ios · src → generated␛[39m
+
+  ␛[38;2;138;90;0m!␛[39m ␛[1mwarning␛[22m ␛[38;2;94;90;105m·␛[39m ␛[38;2;94;90;105mswift ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+     ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[38;2;10;110;137msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[38;2;10;110;137mℹ␛[39m ␛[1mskipped␛[22m ␛[38;2;94;90;105m·␛[39m 1 web-only entry file (import @pyreon/runtime-dom|runtime-server)
+     ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///app/src/entry.tsx␛\\␛[4m␛[38;2;10;110;137msrc/entry.tsx␛[39m␛[24m␛]8;;␛\\
+
+␛[38;2;21;112;58m✓␛[39m compiled 12 files → generated ␛[38;2;94;90;105m· 1 warning · 41 ms␛[39m
+
+── build --target=all (one fails)
+␛[1mpyreon-native build␛[22m ␛[38;2;94;90;105m· ios + android · src → generated␛[39m
+
+  ␛[38;2;21;112;58m✓␛[39m ios · compiled 12 files → generated/ios ␛[38;2;94;90;105m· 1 warning · 1.4 s␛[39m
+    ␛[38;2;138;90;0m!␛[39m ␛[1mwarning␛[22m ␛[38;2;94;90;105m·␛[39m ␛[38;2;94;90;105mswift ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+       ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[38;2;10;110;137msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[38;2;185;28;28m✗␛[39m android · build failed ␛[38;2;94;90;105m· 3 ms␛[39m
+␛[38;2;94;90;105m    Unexpected token␛[39m
+    ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///app/src/Broken.tsx#L1␛\\␛[4m␛[38;2;10;110;137msrc/Broken.tsx:1:42␛[39m␛[24m␛]8;;␛\\
+
+␛[38;2;185;28;28m✗␛[39m 1 of 2 targets failed (android) ␛[38;2;94;90;105m· 1 warning · 1.4 s␛[39m
+
+── assets
+␛[1mpyreon-native assets␛[22m ␛[38;2;94;90;105m· ios · assets → ios␛[39m
+
+␛[38;2;21;112;58m✓␛[39m materialized 4 assets (9 files) → ios ␛[38;2;94;90;105m· 22 ms␛[39m
+
+── stage-web
+␛[1mpyreon-native stage-web␛[22m ␛[38;2;94;90;105m· android · web → android/app/src/main␛[39m
+
+  ␛[38;2;138;90;0m!␛[39m ␛[1mwarning␛[22m ␛[38;2;94;90;105m·␛[39m skipped nested directory 'img' (flat-only v1)
+
+␛[38;2;21;112;58m✓␛[39m staged 3 web-bundle files → android/app/src/main/assets ␛[38;2;94;90;105m· 1 warning · 5 ms␛[39m
+
+── failure
+␛[38;2;185;28;28m✗␛[39m assets failed ␛[38;2;94;90;105m· 1 ms␛[39m
+␛[38;2;94;90;105m  [Pyreon] assets: source directory '/app/nope' does not exist␛[39m
+
+── wire
+  ␛[1mAndroid srcDirs␛[22m ␛[38;2;94;90;105m(1)␛[39m
+    ␛]8;;file:///app/node_modules/@pyreon/native-runtime-kotlin/src/main/kotlin␛\\␛[4m␛[38;2;10;110;137mnode_modules/@pyreon/native-runtime-kotlin/src/main/kotlin␛[39m␛[24m␛]8;;␛\\
+  ␛[1miOS SwiftPM packages␛[22m ␛[38;2;94;90;105m(1)␛[39m
+    PyreonRuntime  ␛[38;2;94;90;105m→␛[39m ␛]8;;file:///app/node_modules/@pyreon/native-runtime-swift␛\\␛[4m␛[38;2;10;110;137mnode_modules/@pyreon/native-runtime-swift␛[39m␛[24m␛]8;;␛\\
+  ␛[1miOS co-located target sources␛[22m ␛[38;2;94;90;105m(1)␛[39m
+    [Feat]
+      ␛]8;;file:///app/node_modules/feat/native/swift␛\\␛[4m␛[38;2;10;110;137mnode_modules/feat/native/swift␛[39m␛[24m␛]8;;␛\\
+
+  ␛[38;2;185;28;28m✗␛[39m ␛[1merror␛[22m ␛[38;2;94;90;105m·␛[39m ␛[38;2;94;90;105mkotlin ·␛[39m @acme/gone declares native sources in a directory that does not exist
+     ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///app/node_modules/@acme/gone/native/kotlin␛\\␛[4m␛[38;2;10;110;137mnode_modules/@acme/gone/native/kotlin␛[39m␛[24m␛]8;;␛\\
+
+␛[38;2;185;28;28m✗␛[39m 1 broken native declaration ␛[38;2;94;90;105m· 3 ms␛[39m
+
+── wire --android-out --ios-out
+  ␛[38;2;21;112;58m✓␛[39m wrote 2 Android srcDirs → ␛]8;;file:///app/android/srcdirs.txt␛\\␛[4m␛[38;2;10;110;137mandroid/srcdirs.txt␛[39m␛[24m␛]8;;␛\\
+  ␛[38;2;21;112;58m✓␛[39m staged 1 co-located Swift file, linked 2 SwiftPM packages → ␛]8;;file:///app/ios␛\\␛[4m␛[38;2;10;110;137mios␛[39m␛[24m␛]8;;␛\\
+
+␛[38;2;21;112;58m✓␛[39m resolved native sources ␛[38;2;94;90;105m· 2 Android srcDirs · 0 SwiftPM packages · 2 ms␛[39m
+
+── dev
+␛[1mpyreon-native dev␛[22m ␛[38;2;94;90;105m· iOS · Demo (com.example.Demo)␛[39m
+
+  ␛[38;2;138;90;0m!␛[39m ␛[38;2;138;90;0m1 compiler warning␛[39m ␛[38;2;94;90;105m— these constructs will not run on the device␛[39m
+    ␛[38;2;138;90;0m!␛[39m ␛[1mwarning␛[22m ␛[38;2;94;90;105m·␛[39m ␛[38;2;94;90;105mswift ·␛[39m <canvas> is web-only and is not emitted for iOS or Android
+       ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///app/src/Inbox.tsx␛\\␛[4m␛[38;2;10;110;137msrc/Inbox.tsx␛[39m␛[24m␛]8;;␛\\
+  ␛[38;2;180;58;14m▸␛[39m compile shared source     ␛[38;2;21;112;58m✓␛[39m ␛[38;2;94;90;105m   6 ms␛[39m  ␛[38;2;94;90;105m12 files␛[39m
+  ␛[38;2;180;58;14m▸␛[39m device                    ␛[38;2;21;112;58m✓␛[39m ␛[38;2;94;90;105m 120 ms␛[39m  ␛[38;2;94;90;105mIPHONE-16␛[39m
+  ␛[38;2;180;58;14m▸␛[39m run scripts/build-ios.sh  ␛[38;2;21;112;58m✓␛[39m ␛[38;2;94;90;105m 400 ms␛[39m
+  ␛[38;2;180;58;14m▸␛[39m build + install           ␛[38;2;21;112;58m✓␛[39m ␛[38;2;94;90;105m  2.1 s␛[39m
+  ␛[38;2;180;58;14m▸␛[39m launch                    ␛[38;2;21;112;58m✓␛[39m ␛[38;2;94;90;105m 500 ms␛[39m
+
+  ␛[38;2;21;112;58m✓␛[39m ␛[1m␛[38;2;21;112;58mready in 3.1 s␛[39m␛[22m ␛[38;2;94;90;105m· app relaunched · in-memory state reset␛[39m
+  ␛[38;2;180;58;14m▸␛[39m build + install           ␛[38;2;94;90;105m—␛[39m ␛[38;2;94;90;105mskipped␛[39m
+  ␛[38;2;21;112;58m✓␛[39m ␛[1m␛[38;2;21;112;58mup to date in 5 ms␛[39m␛[22m ␛[38;2;94;90;105m· emitted code is unchanged, native build skipped␛[39m
+  ␛[38;2;180;58;14m▸␛[39m build + install           ␛[38;2;185;28;28m✗␛[39m ␛[38;2;185;28;28mfailed␛[39m ␛[38;2;94;90;105m 900 ms␛[39m
+␛[38;2;94;90;105m    xcodebuild failed (exit 65)␛[39m
+␛[38;2;94;90;105m    error: boom␛[39m
+  ␛[38;2;185;28;28m✗␛[39m failed after 0.9 s ␛[38;2;94;90;105m· the next save retries␛[39m"
+`;

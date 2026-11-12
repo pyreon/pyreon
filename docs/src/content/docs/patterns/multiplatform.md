@@ -4,8 +4,6 @@ summary: 'Write ONE .tsx that PMTC compiles to SwiftUI + Compose. Stay inside th
 seeAlso: [routing-setup, state-management, data-fetching]
 ---
 
-# Multiplatform app (one source → web + iOS + Android)
-
 ## The golden rule (read this first)
 
 **PMTC compiles your COMPONENT SOURCE — signals, the 22 canonical primitives, a fixed hook set, and a narrow declarative TS subset — to SwiftUI (iOS) and Jetpack Compose (Android). It does NOT transpile npm packages to native.** So a multiplatform app is built from: the canonical primitives + reactivity + the ported hooks/services, written in the supported TS subset. Anything outside that compiles for web but **silently breaks or drops on native**. Build inside the lane and it works first-try; step outside and it won't.

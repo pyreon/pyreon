@@ -3,8 +3,6 @@ title: "Global State Management"
 description: "How to share state across your app with @pyreon/store (composition stores) and @pyreon/state-tree (structured models with snapshots, patches, and undo)."
 ---
 
-# Global State Management
-
 Local state is just a `signal()`. For state shared across many components — or state that needs actions, snapshots, time-travel, or middleware — Pyreon offers two layers:
 
 - **`@pyreon/store`** — lightweight composition stores, singleton by ID. Best for app-wide state with actions.

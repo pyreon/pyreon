@@ -4,8 +4,6 @@ summary: "Use useControllableState from @pyreon/hooks — never reimplement the 
 seeAlso: [signal-writes]
 ---
 
-# Controlled / uncontrolled components
-
 ## The pattern
 
 Use `useControllableState` (exported from `@pyreon/core`, and re-exported by `@pyreon/hooks`) for any primitive that exposes both controlled (`value` + `onChange`) and uncontrolled (`defaultValue`) props:

@@ -3,6 +3,10 @@ title: Storage
 description: Reactive client-side storage for Pyreon — localStorage, sessionStorage, cookies, IndexedDB, and custom backends.
 ---
 
+<ProductPitch id="storage" />
+
+<LiveDemo id="storage" />
+
 `@pyreon/storage` is signal-backed persistence. Every stored value **is a reactive signal** — read it like a signal, write it with `.set()`, and the underlying storage backend persists automatically. There is no separate "load / save" step, no `useEffect` to sync, no manual `JSON.parse`. A `useStorage('theme', 'light')` value participates in the exact same fine-grained reactivity as a plain `signal()`: it patches the DOM in place, drives `computed()` derivations, and re-runs `effect()`s.
 
 <PackageBadge name="@pyreon/storage" href="/docs/storage" />
@@ -602,3 +606,11 @@ On iOS and Android (PMTC), the `useStorage` family lowers to the native storage 
 | `IndexedDBOptions<T>` | `StorageOptions<T>` + `{ dbName?, storeName?, debounceMs? }`.                                |
 | `StorageBackend`      | `{ get(key): string \| null; set(key, value): void; remove(key): void }` (synchronous).    |
 | `AsyncStorageBackend` | `{ get(key): Promise<string \| null>; set(key, value): Promise<void>; remove(key): Promise<void> }`. |
+
+<BenchCallout id="storage" />
+
+<ComingFrom id="storage" />
+
+<InlineSell id="store" />
+
+<CrossSell id="storage" />

@@ -103,6 +103,19 @@ describe('generateSitemap', () => {
     expect(sitemap.split('<url>').length - 1).toBe(3)
   })
 
+  it('applies `exclude` to additionalPaths too (the SSG manifest arrives that way)', () => {
+    // Regression: `exclude` filtered only the route-file scan. With
+    // `useSsgPaths` every prerendered page ALSO arrives as an additional
+    // path, so an excluded page was listed anyway.
+    const sitemap = generateSitemap(['index.tsx', 'discord.tsx'], {
+      origin: 'https://example.com',
+      exclude: ['/discord'],
+      additionalPaths: [{ path: '/discord' }, { path: '/open' }],
+    })
+    expect(sitemap).not.toContain('/discord')
+    expect(sitemap).toContain('<loc>https://example.com/open</loc>')
+  })
+
   it('excludes the not-found view under both of its names', () => {
     // `_404.tsx` is the fs-router's not-found slot, not a page; it used to
     // be published as `/_404`.

@@ -1,22 +1,21 @@
-import { el, type T } from '../../kit'
+import type { T } from '../../kit'
+import { el } from '../../kit'
 
 /**
- * The compact-layout sidebar: an OVERLAY drawer rather than a flex sibling.
- * As a sibling, a 272px sidebar left a 390px phone ~80px of canvas — the
- * preview read as broken. Overlaid, the canvas keeps the whole width and the
- * tree is one tap away.
+ * The compact-layout catalog: an OVERLAY drawer under the top bar rather than
+ * a column. As a column, the catalog left a 390px phone ~170px of canvas;
+ * overlaid, the canvas keeps the whole width and the catalog is one tap away.
  */
 export const Drawer = el
   .attrs({ tag: 'div', contentDirection: 'rows', contentAlignX: 'block' })
   .theme((t: T) => ({
     position: 'fixed',
-    top: '0',
+    top: '48px',
     left: '0',
     bottom: '0',
-    width: 'min(320px, 86vw)',
+    width: 'min(280px, 86vw)',
     zIndex: '61',
     background: t.surface,
     borderRight: t.hairline,
-    extendCss:
-      'box-shadow:16px 0 48px -16px rgba(0,0,0,.45);animation:atlas-drawer .18s ease-out;outline:none;',
+    extendCss: `box-shadow:20px 0 40px -20px ${t.shadow};animation:atlas-drawer .18s ease-out;outline:none;`,
   }))

@@ -1,9 +1,7 @@
 ---
-title: "Reactive Storage — API Reference"
+title: "@pyreon/storage — API Reference"
 description: "Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB"
 ---
-
-# @pyreon/storage — API Reference
 
 > **Generated** from `storage`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [storage](/docs/storage).
 

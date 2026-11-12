@@ -11,5 +11,5 @@ import { cx, txt } from '../../kit'
 export const PropReq = txt
   .attrs({ tag: 'sup' })
   .theme((t: { danger?: string }) =>
-    cx(`color:${t.danger ?? '#e5484d'};font-weight:700;margin-left:2px;`),
+    cx(`color:${t.danger};font-weight:700;margin-left:2px;`),
   )

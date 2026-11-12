@@ -113,7 +113,7 @@ const result = lintFile("app.tsx", source, allRules, config, cache, configSink)`
       name: 'cli',
       kind: 'function',
       signature:
-        "pyreon-lint [--preset name] [--fix] [--format text|json|compact] [--quiet] [--watch] [--list] [--config path] [--ignore path] [--rule id=severity] [--rule-options id='{json}'] [path...]",
+        "pyreon-lint [--preset name] [--fix] [--format text|json|compact|gha] [--quiet] [--watch] [--list] [--config path] [--ignore path] [--rule id=severity] [--rule-options id='{json}'] [path...]",
       summary:
         "CLI entry. Config: `.pyreonlintrc.json` (reference `schema/pyreonlintrc.schema.json` for IDE autocomplete) or `package.json`'s `'pyreonlint'` field. Ignore: `.pyreonlintignore` + `.gitignore`. Watch: `fs.watch` recursive with 100ms debounce. `--rule-options id='{json}'` passes per-rule options on a single run.",
       example: `pyreon-lint --preset strict --quiet    # CI mode
@@ -123,6 +123,7 @@ pyreon-lint --init                      # scaffold .pyreonlintrc.json for this p
 pyreon-lint --list                      # list all 134 rules
 pyreon-lint --why-off no-window-in-ssr  # why a rule will (or will not) run here
 pyreon-lint --format json               # machine-readable
+pyreon-lint --format gha                # GitHub Actions annotations
 pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/`,
       seeAlso: ['lint'],
     },

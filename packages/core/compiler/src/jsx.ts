@@ -2268,12 +2268,19 @@ export function transformJSX_JS(
     // a client handler plus a divergence from the h() path (and, for a string
     // value, a live inline handler the h() path refuses to emit).
     if (SSR_EVENT_HANDLER_ATTRS.has(name)) return true
-    // innerHTML / dangerouslySetInnerHTML are INNER CONTENT, not attrs → bail.
-    if (name === 'innerHTML' || name === 'dangerouslySetInnerHTML') return false
+    // innerHTML / dangerouslySetInnerHTML / textContent / innerText are INNER
+    // CONTENT, not attrs → bail (the h() path renders the content).
+    if (
+      name === 'innerHTML' ||
+      name === 'dangerouslySetInnerHTML' ||
+      name === 'textContent' ||
+      name === 'innerText'
+    )
+      return false
     // `<textarea value>` is the other half of the PZ-09 concern that bails
     // `select`/`option` in `ssrSerializeElement`: <textarea> has NO `value`
     // CONTENT attribute — the value IS the element's text content, which
-    // `renderProp` skips and `textareaValue` emits as the child. Serializing it
+    // `renderProp` skips and `contentFromProps` emits as the child. Serializing it
     // here produced a dead `value="…"` attribute AND an EMPTY textarea, so
     // every server-rendered prefilled textarea came back blank (the exact bug
     // the h() path's skip fixed) plus a hydration mismatch. The fast path
@@ -2284,7 +2291,7 @@ export function transformJSX_JS(
     // static-bake arm as well as the runtime helper.
     if (tag === 'textarea' && name === 'value') return false
     // `<textarea defaultValue>` is the same: on a textarea the default IS the
-    // text content, which `textareaValue` emits from the h() path.
+    // text content, which `contentFromProps` emits from the h() path.
     if (tag === 'textarea' && name === 'defaultValue') return false
     // Property-only props have no content attribute, and `renderProp` drops
     // them (`PROPERTY_ONLY_PROPS` in runtime-server). The lowercase ones would
@@ -4998,7 +5005,8 @@ export function transformJSX_JS(
       // attribute, which an SVG `<use>` ignores — measured `bbox.width === 0` in
       // Chromium). The namespace is now resolved in the runtime, so both paths
       // agree; see `foreignAttrNamespace` in runtime-dom's props.ts.
-      if (jsxAttrName(attr) === 'key') return true
+      const attrName = jsxAttrName(attr)
+      if (attrName === 'key' || TPL_PROPERTY_ONLY_ATTRS.has(attrName)) return true
     }
     return false
   }
@@ -7296,6 +7304,36 @@ const VOID_ELEMENTS = new Set([
   'source',
   'track',
   'wbr',
+])
+
+/**
+ * Props the h() path writes as a DOM PROPERTY that has no content attribute
+ * under the prop's own (lowercased) name: inner content (`innerHTML`, which the
+ * h() path sanitizes, `textContent`, `innerText`), the `default*` reset values
+ * (`defaultValue` IS the `value` attribute), media state with no attribute at
+ * all, and the two whose attribute is dashed. The template path can only bake a
+ * name or hand it to `_setAttr`, and both produce an attribute under the JSX
+ * spelling: `innerHTML={html()}` wrote an `innerhtml` attribute instead of
+ * (sanitized) content (#4473). An element carrying one BAILS to h(), which owns
+ * the property semantics — these props are rare, and most replace the
+ * element's children, so the template has nothing to bake. Mirrored by
+ * `is_tpl_property_only_attr` in the Rust backend.
+ */
+const TPL_PROPERTY_ONLY_ATTRS = new Set([
+  'innerHTML',
+  'textContent',
+  'innerText',
+  'defaultValue',
+  'defaultChecked',
+  'defaultSelected',
+  'defaultMuted',
+  'currentTime',
+  'playbackRate',
+  'defaultPlaybackRate',
+  'volume',
+  'srcObject',
+  'acceptCharset',
+  'httpEquiv',
 ])
 
 const JSX_TO_HTML_ATTR: Record<string, string> = {

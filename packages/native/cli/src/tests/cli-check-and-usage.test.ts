@@ -53,6 +53,8 @@ beforeEach(() => {
   logs = []
   warns = []
   errs = []
+  // Plain text: the assertions read words, not escape codes (CI may set FORCE_COLOR).
+  vi.stubEnv('NO_COLOR', '1')
   vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => logs.push(a.join(' ')))
   vi.spyOn(console, 'warn').mockImplementation((...a: unknown[]) => warns.push(a.join(' ')))
   vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => errs.push(a.join(' ')))
@@ -62,6 +64,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
   rmSync(outDir, { recursive: true, force: true })
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
 })
 
 const write = (name: string, code: string): void => writeFileSync(join(dir, name), code, 'utf8')
@@ -106,7 +109,7 @@ describe('check exits with the code CI reads', () => {
     // The usage line advertises "a .tsx file or a directory".
     write('One.tsx', CLEAN)
     expect(main(['check', `--source=${join(dir, 'One.tsx')}`])).toBe(0)
-    expect(logs.join('\n')).toContain('checked 1 file(s)')
+    expect(logs.join('\n')).toContain('1 file checked')
   })
 })
 
@@ -117,10 +120,10 @@ describe('findings are routed to the right stream and carry a position', () => {
     write('Broken.tsx', BROKEN)
     main(['check', `--source=${dir}`, '--target=ios'])
 
-    const line = errs.find((l) => l.includes('Broken.tsx'))
-    expect(line, 'the error must be on stderr').toBeDefined()
-    expect(line, 'and marked as an error').toContain('✗')
-    expect(line, 'with a line:col an editor can jump to').toMatch(/Broken\.tsx:\d+:\d+/)
+    const block = errs.join('\n')
+    expect(block, 'the error must be on stderr').toContain('Broken.tsx')
+    expect(block, 'and marked as an error, by symbol AND word').toContain('✗ error')
+    expect(block, 'with a line:col an editor can jump to').toMatch(/↳ \S*Broken\.tsx:\d+:\d+/)
     expect(warns.join('\n'), 'and NOT on the warn channel').not.toContain('Broken.tsx')
   })
 
@@ -130,10 +133,10 @@ describe('findings are routed to the right stream and carry a position', () => {
     write('Warns.tsx', WARNS)
     main(['check', `--source=${dir}`, '--target=ios'])
 
-    const line = warns.find((l) => l.includes('Warns.tsx'))
-    expect(line).toBeDefined()
-    expect(line, 'warnings are marked, not error-glyphed').toContain('!')
-    expect(line, 'no position may be invented').not.toMatch(/Warns\.tsx:\d+:\d+/)
+    const block = warns.join('\n')
+    expect(block).toContain('Warns.tsx')
+    expect(block, 'warnings are marked, not error-glyphed').toContain('! warning')
+    expect(block, 'no position may be invented').not.toMatch(/Warns\.tsx:\d+:\d+/)
     expect(errs.join('\n')).not.toContain('Warns.tsx')
   })
 
@@ -142,7 +145,7 @@ describe('findings are routed to the right stream and carry a position', () => {
     // does not say which is not actionable.
     write('Warns.tsx', WARNS)
     main(['check', `--source=${dir}`, '--target=ios'])
-    expect(warns.find((l) => l.includes('Warns.tsx'))).toContain('[swift]')
+    expect(warns.join('\n')).toContain('! warning · swift · ')
   })
 
   it('checks BOTH targets when --target is omitted', () => {
@@ -150,10 +153,9 @@ describe('findings are routed to the right stream and carry a position', () => {
     // everywhere, not just on the platform you happen to be building.
     write('Warns.tsx', WARNS)
     main(['check', `--source=${dir}`])
-    const all = warns.join('\n')
-    expect(all).toContain('[swift]')
-    expect(all).toContain('[kotlin]')
-    expect(logs.join('\n')).toContain('swift, kotlin')
+    // The same warning on both targets prints once and names both.
+    expect(warns.join('\n')).toContain('! warning · swift + kotlin · ')
+    expect(logs.join('\n'), 'the header names both targets').toContain('· swift + kotlin')
   })
 })
 
@@ -235,7 +237,7 @@ describe('argument parsing accepts both flag forms', () => {
     // argument the user plainly supplied.
     write('App.tsx', CLEAN)
     expect(main(['check', '--source', dir, '--target', 'ios'])).toBe(0)
-    expect(logs.join('\n')).toContain('[swift]')
+    expect(logs[0], 'the header names the one target').toMatch(/· swift$/)
   })
 
   it('a trailing --key with no value does not consume past the end', () => {

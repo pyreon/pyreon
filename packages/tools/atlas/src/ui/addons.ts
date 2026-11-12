@@ -13,6 +13,7 @@
  * entry here, not touching the shell.
  */
 import type { ThemeTokens } from './theme'
+import { PREVIEW_COLORS } from './theme'
 
 // ── viewport ────────────────────────────────────────────────────────────────
 
@@ -112,13 +113,13 @@ export const BACKGROUND_VARIANT: Record<BackgroundId, string> = {
 export function backgroundCss(id: BackgroundId, t: ThemeTokens): string {
   switch (id) {
     case 'light':
-      return '#ffffff'
+      return PREVIEW_COLORS.light
     case 'dark':
-      return '#0f0f14'
+      return PREVIEW_COLORS.dark
     case 'checker':
       // 8px checkerboard from two 45°/-45° gradient pairs — no asset needed.
       return (
-        'repeating-conic-gradient(rgba(128,128,128,.18) 0% 25%, transparent 0% 50%)' +
+        `repeating-conic-gradient(${PREVIEW_COLORS.checker} 0% 25%, transparent 0% 50%)` +
         ' 50% / 16px 16px'
       )
     case 'theme':
@@ -176,10 +177,33 @@ export function pseudoProps(active: PseudoId | null): Record<string, boolean> {
  * padding that belongs to the wrong element — and it is a single rule, applied
  * to the preview subtree only so the workbench chrome stays readable.
  */
-export const OUTLINE_CSS =
-  '& *, & *::before, & *::after { outline: 1px solid rgba(255,45,85,.45) !important; outline-offset: -1px; }'
+export const OUTLINE_CSS = `& *, & *::before, & *::after { outline: 1px solid ${PREVIEW_COLORS.outline} !important; outline-offset: -1px; }`
 
-// ── registry ────────────────────────────────────────────────────────────────
+// ── stage layout ────────────────────────────────────────────────────────────
+
+/**
+ * How the preview sits on the stage — Storybook's `layout` parameter, with
+ * the same three meanings so a reader who knows one knows the other:
+ *
+ * - `centered` — the component in the middle with room around it (the
+ *   default: a button, a badge, a card).
+ * - `padded` — top-left with a small gutter: how a form, a list or a table
+ *   sits in a page, where centring hides a broken left edge.
+ * - `fullscreen` — no gutter and no surface edge: a page section, a navbar or
+ *   a layout shell, which must touch the frame's edges to be judged.
+ */
+export type CanvasLayout = 'centered' | 'padded' | 'fullscreen'
+
+export const CANVAS_LAYOUTS: readonly { id: CanvasLayout; label: string }[] = [
+  { id: 'centered', label: 'Centered' },
+  { id: 'padded', label: 'Padded' },
+  { id: 'fullscreen', label: 'Fullscreen' },
+]
+
+/** A link's layout, or `undefined` for anything that is not one of the three. */
+export function parseLayout(value: string | undefined): CanvasLayout | undefined {
+  return CANVAS_LAYOUTS.find((l) => l.id === value)?.id
+}
 
 // ── locale / direction ──────────────────────────────────────────────────────
 
@@ -227,7 +251,7 @@ export function localeDir(id: LocaleId): 'ltr' | 'rtl' {
 // ── panel registry ──────────────────────────────────────────────────────────
 
 /** The tabs in the addon panel. */
-export type AddonTabId = 'controls' | 'actions' | 'a11y' | 'canvas'
+export type AddonTabId = 'controls' | 'actions' | 'a11y' | 'canvas' | 'addons'
 
 export interface AddonTab {
   id: AddonTabId
@@ -241,14 +265,16 @@ export interface AddonTab {
  * shell has no hand-written button-per-tab — adding a tab is a data entry.
  *
  * Mapping to Storybook's addon set: `controls` ≈ addon-controls (args),
- * `actions` ≈ addon-actions, `a11y` ≈ addon-a11y, and `canvas` folds together
- * addon-viewport, addon-backgrounds, addon-pseudo-states and addon-outline —
- * four packages there, four rows here, because none of them needs more than a
- * preset list on this stack.
+ * `actions` ≈ addon-actions, `a11y` ≈ addon-a11y, `canvas` holds the stage's
+ * own tools (zoom, grid, measure), and `addons` folds together addon-viewport,
+ * addon-backgrounds, addon-pseudo-states and addon-outline — four packages
+ * there, four rows here, because none of them needs more than a preset list
+ * on this stack.
  */
 export const ADDON_TABS: readonly AddonTab[] = [
   { id: 'controls', title: 'Controls', hint: 'Edit the component props live' },
   { id: 'actions', title: 'Actions', hint: 'Log events the component emits' },
   { id: 'a11y', title: 'A11y', hint: 'Static accessibility checks' },
-  { id: 'canvas', title: 'Canvas', hint: 'Viewport, background, pseudo state, outline' },
+  { id: 'canvas', title: 'Canvas', hint: 'Zoom, grid, measure and layout on the stage' },
+  { id: 'addons', title: 'Addons', hint: 'Viewport, background, outline, pseudo state, locale' },
 ]

@@ -3,6 +3,10 @@ title: URL State
 description: Reactive signals synced to URL query parameters — auto type coercion, debounce, SSR-safe.
 ---
 
+<ProductPitch id="urlstate" />
+
+<LiveDemo id="urlstate" />
+
 `@pyreon/url-state` turns URL search parameters into reactive signals. Read `?page=2` into a signal, write it back with `page.set(3)`, and the browser URL updates automatically — no manual `URLSearchParams` plumbing, no `popstate` listeners, no `typeof window` checks. Each parameter is a fine-grained signal, so a component that reads `page()` re-renders only when `page` changes.
 
 <PackageBadge name="@pyreon/url-state" href="/docs/url-state" />
@@ -543,3 +547,11 @@ interface Serializer<T> {
   deserialize: (raw: string) => T
 }
 ```
+
+<BenchCallout id="urlstate" />
+
+<ComingFrom id="urlstate" />
+
+<InlineSell id="router" />
+
+<CrossSell id="urlstate" />

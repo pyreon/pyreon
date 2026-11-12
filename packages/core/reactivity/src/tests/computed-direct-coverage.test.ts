@@ -193,8 +193,13 @@ describe('computed.ts — coverage of uncovered branches', () => {
     const c = computed(() => s() * 2, { equals: (a, b) => a === b })
     c()
 
-    const updater1 = () => {}
-    const updater2 = () => {}
+    const ran: string[] = []
+    const updater1 = () => {
+      ran.push('1')
+    }
+    const updater2 = () => {
+      ran.push('2')
+    }
 
     const dispose1 = c.direct(updater1) // captured in directFn1
     c.direct(updater2) // promotes: directFn1 → directFns Set, directFn1 = null
@@ -204,12 +209,16 @@ describe('computed.ts — coverage of uncovered branches', () => {
       _d1: (() => void) | null
     }
     expect(internal._d1).toBeNull()
-    expect(internal._d?.has(updater1)).toBe(true)
+    // Dev stores an instrumented wrapper per updater (the reactive-graph node,
+    // see `_rdDirect`), so assert membership by count, not identity.
+    expect(internal._d?.size).toBe(2)
 
     // Tier-1 dispose closure runs the `else if (directFns)` branch:
     dispose1()
-    expect(internal._d?.has(updater1)).toBe(false)
     expect(internal._d?.size).toBe(1)
+    // Identity: the entry removed is updater1's, not updater2's.
+    s.set(2)
+    expect(ran).toEqual(['2'])
   })
 
   test('.direct() Tier 2 dispose closure removes entry from directFns Set (lines 351-354)', () => {
@@ -217,13 +226,21 @@ describe('computed.ts — coverage of uncovered branches', () => {
     const c = computed(() => s() * 2, { equals: (a, b) => a === b })
     c()
 
-    c.direct(() => {}) // Tier 1
-    const dispose2 = c.direct(() => {}) // Tier 2 promotion
+    const ran: string[] = []
+    c.direct(() => {
+      ran.push('1')
+    }) // Tier 1
+    const dispose2 = c.direct(() => {
+      ran.push('2')
+    }) // Tier 2 promotion
 
     const internal = c as unknown as { _d: Set<() => void> | null }
     expect(internal._d?.size).toBe(2)
 
     dispose2()
     expect(internal._d?.size).toBe(1)
+    // Identity: the entry removed is the second updater's.
+    s.set(2)
+    expect(ran).toEqual(['1'])
   })
 })

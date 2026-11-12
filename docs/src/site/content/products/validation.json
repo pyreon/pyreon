@@ -1,0 +1,472 @@
+{
+ "id": "validation",
+ "route": "/products/validation",
+ "name": "Validation",
+ "package": "@pyreon/validate",
+ "category": "fundamentals · schema validation",
+ "hero": {
+  "title": "Write it like Zod. It won all 12 cells of our workload bench.",
+  "emberWord": "all 12",
+  "lede": "`s` is a schema library with the chain you already know, compiled to one flat function on first parse. The same schema runs light in the browser and strict on the server, and Zod, Valibot or ArkType schemas plug into every Pyreon package that takes one.",
+  "install": "bun add @pyreon/validate",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "workload bench",
+    "value": "12 of 12 cells fastest<small>vs Zod, Valibot, ArkType; one run.</small>"
+   },
+   {
+    "key": "results",
+    "value": "`parse()` never throws<small>`{ ok, value }` or `{ ok, issues }`; `parseOrThrow()` when you want one.</small>"
+   },
+   {
+    "key": "also accepts",
+    "value": "Zod, Valibot, ArkType<small>Any Standard Schema, in forms, stores and state trees.</small>"
+   },
+   {
+    "key": "mini entry",
+    "value": "5.2 KB gz for a 4-field schema<small>Next release, author-measured; 13.8 KB through the main entry.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "Why it is worth a new import.",
+  "items": [
+   {
+    "title": "Fast where forms and APIs live",
+    "text": "Each schema compiles to one monomorphic function the first time it parses. Rejecting bad input, which every form and endpoint does all day, is where it is strongest: in the 10-library bench it never loses an invalid-input parse."
+   },
+   {
+    "title": "Light in the browser, strict on the server",
+    "text": "Import `@pyreon/validate/server` on the server and every `.email()` and `.phone()` upgrades to strict RFC 5322 and full E.164, with a disposable-domain blocklist. None of that code reaches the client bundle."
+   },
+   {
+    "title": "Checks that need your database",
+    "text": "`.serverCheck('email-unique')` passes in the browser and is listed in `r.pending` so the UI can say \"checking\". On the server, `parseAsync` runs the check you registered. One schema, no second copy."
+   },
+   {
+    "title": "Errors ready to translate",
+    "text": "Every issue carries a `code`, an i18n `key` like `validate.string.email` and its `params`. `formatErrorsByPath(issues, t)` turns them into one message per field, in any language."
+   }
+  ]
+ },
+ "difference": {
+  "title": "One schema for both sides, and the browser knows what it skipped.",
+  "before": {
+   "label": "Zod, a database check",
+   "caption": "A second schema for the server, so the DB call stays out of the bundle. The two drift, and the client never learns a check is pending.",
+   "code": "// shared/signup.ts\nimport { z } from 'zod'\n\nconst Signup = z.object({\n  email: z.email(),\n  password: z.string().min(10),\n})\n\n// server/signup.ts: a second schema, so the DB call never reaches the bundle\nconst ServerSignup = Signup.superRefine(async (v, ctx) => {\n  if (await db.users.exists(v.email)) {\n    ctx.addIssue({ code: 'custom', path: ['email'], message: 'Email already taken' })\n  }\n})\n// ...and the browser has no idea a server check exists"
+  },
+  "after": {
+   "label": "with @pyreon/validate",
+   "caption": "The check is part of the shared schema. The browser records it as pending; the server runs it, plus strict email rules.",
+   "code": "// shared/signup.ts: imported by the browser and the server\nimport { s } from '@pyreon/validate'\n\nexport const Signup = s.object({\n  email: s.string().email().serverCheck('email-unique', { message: 'Email already taken' }),\n  password: s.string().min(10),\n})\n\n// client/signup.ts: cheap checks run, the server check is recorded as pending\nimport { Signup } from '../shared/signup'\n\nconst r = Signup.parse({ email: 'ada@example.com', password: 'correct horse' })\n// r.ok === true, r.pending → [{ path: ['email'], key: 'email-unique' }]\n\n// server/signup.ts: strict RFC 5322 email, disposable-domain blocklist, the DB check\nimport { registerServerCheck } from '@pyreon/validate/server'\nimport { Signup } from '../shared/signup'\n\nregisterServerCheck('email-unique', async (email) => !(await db.users.exists(email as string)))\n\nasync function handleSignup(body: unknown) {\n  const verdict = await Signup.parseAsync(body)\n  return verdict.ok ? { ok: true } : { ok: false, issues: verdict.issues }\n}"
+  }
+ },
+ "extraSectionsHtml": "<section class=\"p-sec tight\"><div class=\"wrap\">\n  <div class=\"head\"><div class=\"label\">which package do I need?</div><h2>One product, two packages.</h2><p>Validation ships as two npm packages with similar names. Most apps install only the first.</p></div>\n  <div class=\"p-ps\">\n    <div class=\"card hot\"><div class=\"in\" style=\"padding:28px;gap:12px\"><span class=\"label\" style=\"color:var(--accent)\">install this</span><h3 class=\"mono\" style=\"font-size:22px\">@pyreon/validate</h3><p>The validator you write schemas with: <code class=\"mono\">s.object</code>, <code class=\"mono\">s.string().email()</code> and the rest. Plus helpers for labels, translated errors and live validation that also work on Zod, Valibot and ArkType schemas.</p><div class=\"cmd\" style=\"margin-top:6px\"><span><i>$</i> bun add @pyreon/validate</span></div></div></div>\n    <div class=\"card\"><div class=\"in\" style=\"padding:28px;gap:12px\"><span class=\"label\">comes with forms and stores</span><h3 class=\"mono\" style=\"font-size:22px\">@pyreon/validation</h3><p>The plumbing. Forms, Store and State-tree use it to accept any schema, and it's installed with them. You only import it yourself for its typed Zod, Valibot or ArkType adapters.</p></div></div>\n  </div>\n</div></section>",
+ "demo": {
+  "title": "One schema, validated twice.",
+  "text": "Type an email and validate. The browser runs the light format check and lists `email-unique` as pending; the server pass runs the strict email rules, the disposable-domain blocklist and the uniqueness check. Try ada@example.com (taken) and test@mailinator.com (disposable).",
+  "component": "DemoValidation",
+  "reference": "pkg-validation.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"ui\">\n    <label for=\"v-email\">Same schema, client and server</label><input id=\"v-email\" type=\"email\" value=\"ada@example.com\" autocomplete=\"off\">\n    <div class=\"hint\">Try ada@example.com (taken), test@mailinator.com (disposable), or your own</div>\n    <button class=\"go\" type=\"button\" id=\"v-run\">Validate</button>\n  </div>\n  <div class=\"card\"><div class=\"in\"><div class=\"meter\">\n    <div><span>browser · format</span><b id=\"v-c1\" style=\"font-size:15px\">—</b></div>\n    <div><span>browser · email-unique</span><b id=\"v-c2\" style=\"font-size:15px\">—</b></div>\n    <div><span>server · strict format</span><b id=\"v-s1\" style=\"font-size:15px\">—</b></div>\n    <div><span>server · email-unique</span><b id=\"v-s2\" style=\"font-size:15px\">—</b></div>\n  </div></div></div>\n</div>",
+  "referenceCss": "",
+  "referenceJs": "(function(){var $=function(i){return document.getElementById(i)};function run(){var v=$('v-email').value.trim().toLowerCase();var fmt=/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(v);$('v-c1').textContent=fmt?'pass':'fail';$('v-c2').textContent=fmt?'pending':'—';$('v-s1').textContent='checking…';$('v-s2').textContent='checking…';setTimeout(function(){var disp=/@(mailinator|guerrillamail|10minutemail)\\./.test(v);$('v-s1').textContent=!fmt?'fail':disp?'fail · disposable':'pass';$('v-s2').textContent=!fmt||disp?'skipped':v==='ada@example.com'?'fail · taken':'pass'},700)}$('v-run').onclick=run;run();})();",
+  "spec": "DemoValidation uses the real `@pyreon/validate`: one `s.object({ email: s.string().email().serverCheck('email-unique') })`. The browser column shows `Signup.parse(value)` (ok/fail and the `pending` list). The server column simulates a server round-trip of about 700 ms and runs `strictEmail()` and `isDisposableEmail()` from `@pyreon/validate/server` plus a mock uniqueness check where only ada@example.com is taken. The earlier benchmark bars and bundle bars are removed: they came from a 2026-08-31 run and an unsourced size table, not the current record."
+ },
+ "features": {
+  "title": "What is in the box.",
+  "items": [
+   {
+    "name": "The full chain",
+    "text": "strings, numbers, bigints, dates, literals, enums, objects, arrays, tuples, records, maps, sets, unions, discriminated unions, intersections, lazy recursion."
+   },
+   {
+    "name": "String formats",
+    "text": "`email`, `url`, `uuid`, `ulid`, `nanoid`, `cuid`, `jwt`, `ip`, `cidr`, `phone`, `creditCard`, `emoji`, `iso.date`, `iso.dateTime`, `iso.time`, `duration`."
+   },
+   {
+    "name": "Object algebra",
+    "text": "`.pick`, `.omit`, `.partial`, `.required`, `.extend`, `.merge`, `.keyof`, `.catchall`, `.strict`."
+   },
+   {
+    "name": "Refine and transform",
+    "text": "`.refine`, `.superRefine`, `.transform`, `.pipe`, `s.preprocess`, `s.coerce`; async members work inside every composition via `parseAsync`."
+   },
+   {
+    "name": "Resilient parsing",
+    "text": "`.catch(fallback)` for bad fields, `.readonly()` for frozen output."
+   },
+   {
+    "name": "`.is()` for a boolean",
+    "text": "a verdict-only compiled path that builds no output and no issues."
+   },
+   {
+    "name": "JSON Schema out",
+    "text": "`toJsonSchema()` emits draft 2020-12 for OpenAPI, editor autocomplete or an LLM's structured output."
+   },
+   {
+    "name": "Strict CSP",
+    "text": "`configure({ jit: false })` runs the interpreter with identical results when `unsafe-eval` is off."
+   },
+   {
+    "name": "Labels on any schema",
+    "text": "`withField(z.string().email(), { label, placeholder })` attaches metadata to Zod, Valibot, ArkType or `s` schemas."
+   },
+   {
+    "name": "Shared native schemas",
+    "text": "A declared `s.object({...})` compiles to a native struct on iOS and Android, and its `parse` returns the same `{ ok, value, issues }` there. Experimental.",
+    "status": "next release"
+   }
+  ]
+ },
+ "api": {
+  "title": "One namespace for schemas, a few helpers for the rest.",
+  "groups": [
+   {
+    "name": "schemas · s",
+    "items": [
+     "s.string",
+     "s.number",
+     "s.boolean",
+     "s.date",
+     "s.enum",
+     "s.literal",
+     "s.object",
+     "s.array",
+     "s.tuple",
+     "s.record",
+     "s.union",
+     "s.discriminatedUnion",
+     "s.lazy",
+     "s.coerce",
+     "s.preprocess",
+     "s.custom"
+    ]
+   },
+   {
+    "name": "on every schema",
+    "items": [
+     "parse",
+     "safeParse",
+     "parseOrThrow",
+     "parseAsync",
+     "is",
+     "optional",
+     "refine",
+     "transform",
+     "catch",
+     "serverCheck"
+    ]
+   },
+   {
+    "name": "helpers",
+    "items": [
+     "withField",
+     "getMeta",
+     "parseReactive",
+     "parseReactiveAsync",
+     "watchValid",
+     "formatErrors",
+     "formatErrorsByPath",
+     "configure",
+     "installFormatValidator"
+    ]
+   },
+   {
+    "name": "server · @pyreon/validate/server",
+    "items": [
+     "registerServerCheck",
+     "strictEmail",
+     "strictPhone",
+     "isDisposableEmail",
+     "addDisposableDomains"
+    ]
+   },
+   {
+    "name": "JSON Schema · @pyreon/validate/json-schema",
+    "items": [
+     "toJsonSchema"
+    ]
+   },
+   {
+    "name": "subpaths",
+    "items": [
+     "@pyreon/validate/mini"
+    ]
+   },
+   {
+    "name": "next release · @pyreon/validate/jit",
+    "items": [
+     "enableJit"
+    ]
+   },
+   {
+    "name": "adapters · @pyreon/validation",
+    "items": [
+     "zodSchema",
+     "valibotSchema",
+     "arktypeSchema",
+     "isStandardSchema",
+     "standardSchemaToValidator"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "The result shape is `{ ok }`, not `{ success }`",
+   "text": "`parse()` and its alias `safeParse()` return `{ ok, value }` or `{ ok, issues }` and never throw. Use `parseOrThrow()` where an exception reads better."
+  },
+  {
+   "title": "Strict CSP: one line skips the JIT",
+   "text": "The JIT uses `new Function`. Under a CSP without `unsafe-eval` it falls back to the interpreter after one blocked attempt; call `configure({ jit: false })` at startup to skip that attempt. Results are identical, only slower."
+  },
+  {
+   "title": "The chain does not tree-shake",
+   "text": "Chain methods live on prototypes. For the smallest bundle import from `@pyreon/validate/mini`, or let `pyreon({ optimizeValidators: true })` rewrite module-level schemas for you."
+  },
+  {
+   "title": "A browser `ok` is not the final word",
+   "text": "`.serverCheck` always passes in the browser and shows up in `pending`. Treat the server's `parseAsync` as the verdict."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/form",
+   "category": "fundamentals",
+   "name": "Forms",
+   "text": "Pass a schema straight to useForm.",
+   "package": "@pyreon/form"
+  },
+  {
+   "href": "/products/store",
+   "category": "fundamentals",
+   "name": "Store",
+   "text": "`defineSchemaStore` validates every `set` and `patch` against a schema.",
+   "package": "@pyreon/store"
+  },
+  {
+   "href": "/products/i18n",
+   "category": "fundamentals",
+   "name": "i18n",
+   "text": "Translated error messages.",
+   "package": "@pyreon/i18n"
+  }
+ ],
+ "end": {
+  "title": "Keep the chain. Lose the second schema.",
+  "cta": "Read the validation guide"
+ },
+ "benchmarks": {
+  "rival": "vs Zod 4 (interpreted and compiled), Valibot, ArkType, typia, TypeBox, Yup and Joi · bun (JavaScriptCore)",
+  "run": "final pass, one run",
+  "h": "Fastest in all 12 cells of the multi-schema workload.",
+  "p": "The workload bench runs many schemas through one call site, the way a real app does. In the 10-library protocol bench, Zod's compiled mode, ArkType and typia take six cells, all on valid input or email; they are in the table.",
+  "rows": [
+   {
+    "op": "multi-schema workload, 12 cells",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "fastest in 12 of 12 vs Zod, Valibot, ArkType"
+   },
+   {
+    "op": "invalid scalar string (closest cell)",
+    "pyreon": 34.9,
+    "rival": 44.7,
+    "unit": "ns",
+    "verdict": "win",
+    "label": "1.28× vs Valibot · 1.40× vs Zod (CI margin 0.1 ns)"
+   },
+   {
+    "op": "protocol bench, 24 cells",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "split",
+    "label": "wins or ties 18, including every invalid-input parse"
+   },
+   {
+    "op": "parse email, valid",
+    "pyreon": 29,
+    "rival": 24,
+    "unit": "ns",
+    "verdict": "loss",
+    "label": "Zod compiled mode ahead"
+   },
+   {
+    "op": "parse int, valid",
+    "pyreon": 5,
+    "rival": 3,
+    "unit": "ns",
+    "verdict": "loss",
+    "label": "Zod compiled mode ahead"
+   },
+   {
+    "op": "parse array of 20, valid",
+    "pyreon": 119,
+    "rival": 107,
+    "unit": "ns",
+    "verdict": "loss",
+    "label": "Zod compiled mode ahead"
+   },
+   {
+    "op": "parse user object, valid",
+    "pyreon": 43,
+    "rival": 35,
+    "unit": "ns",
+    "verdict": "loss",
+    "label": "ArkType ahead (returns the input, no clone)"
+   },
+   {
+    "op": "check email, valid",
+    "pyreon": 27,
+    "rival": 21,
+    "unit": "ns",
+    "verdict": "loss",
+    "label": "typia 21 · ArkType 22"
+   },
+   {
+    "op": "check email, invalid",
+    "pyreon": 22,
+    "rival": 19,
+    "unit": "ns",
+    "verdict": "loss",
+    "label": "ArkType ahead"
+   },
+   {
+    "op": "adapter tax, @pyreon/validation",
+    "pyreon": null,
+    "rival": null,
+    "unit": "ns",
+    "verdict": "loss",
+    "label": "−24 to +436 ns over raw Zod / Valibot / ArkType (overnight run)"
+   }
+  ]
+ },
+ "glyphSvg": "<path d=\"M18 62 L46 90 L102 30\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\" stroke-linecap=\"square\"/><circle cx=\"24\" cy=\"30\" r=\"14\" fill=\"url(#eg)\"/>",
+ "proof": [
+  {
+   "stat": "12 / 12",
+   "label": "cells won on a multi-schema workload against Zod, Valibot and ArkType.",
+   "source": "BENCHMARKS.md §9 'Validate — multi-schema megamorphic workload', final pass 2026-11-05, one run"
+  },
+  {
+   "stat": "18 / 24",
+   "label": "cells won or tied in a 10-library bench, including every invalid-input parse.",
+   "source": "BENCHMARKS.md §9 'Validate — 10-library protocol bench', final pass, one run"
+  },
+  {
+   "stat": "1.40×",
+   "label": "faster than Zod rejecting a bad string: the closest of the twelve cells (34.9 vs 48.7 ns).",
+   "source": "BENCHMARKS.md §9 megamorphic, invalid scalar string, one run"
+  }
+ ],
+ "comingFrom": [
+  {
+   "lib": "Zod",
+   "title": "Rename `z` to `s`, read `ok` instead of `success`.",
+   "before": "import { z } from 'zod'\n\nconst User = z.object({\n  name: z.string().min(1),\n  email: z.email(),\n  age: z.number().int().min(18).optional(),\n})\ntype User = z.infer<typeof User>\n\nconst r = User.safeParse(input)\nif (r.success) save(r.data)\nelse show(r.error.issues)",
+   "after": "import { s, type Infer } from '@pyreon/validate'\n\nconst User = s.object({\n  name: s.string().min(1),\n  email: s.string().email(),\n  age: s.number().int().min(18).optional(),\n})\ntype User = Infer<typeof User>\n\nconst r = User.parse(input) // never throws\nif (r.ok) save(r.value)\nelse show(r.issues)",
+   "note": "The chain is the same for the common cases. Or keep Zod: Pyreon's form, store and state-tree accept a Zod schema as it is."
+  },
+  {
+   "lib": "Valibot",
+   "title": "Same functional style, same tree-shaking, from `/mini`.",
+   "before": "import * as v from 'valibot'\n\nconst User = v.object({\n  name: v.pipe(v.string(), v.minLength(1)),\n  email: v.pipe(v.string(), v.email()),\n  age: v.optional(v.pipe(v.number(), v.integer(), v.minValue(18))),\n})\ntype User = v.InferOutput<typeof User>\n\nconst r = v.safeParse(User, input)\nif (r.success) save(r.output)\nelse show(r.issues)",
+   "after": "import { email, integer, minLength, minValue, number, object, optional, pipe, string, type Infer } from '@pyreon/validate/mini'\n\nconst User = object({\n  name: pipe(string(), minLength(1)),\n  email: pipe(string(), email()),\n  age: optional(pipe(number(), integer(), minValue(18))),\n})\ntype User = Infer<typeof User>\n\nconst r = User.parse(input)\nif (r.ok) save(r.value)\nelse show(r.issues)",
+   "note": "From the next release `@pyreon/validate/mini` ships without the runtime JIT; call `enableJit()` from `@pyreon/validate/jit` once if you want its speed back."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "Error messages in German, from the issue keys",
+   "text": "Every built-in issue has an i18n key and params, so translation is a lookup, not a regex over English text.",
+   "code": "import { formatErrorsByPath, s } from '@pyreon/validate'\n\n// every built-in issue carries an i18n key and params\nconst messages: Record<string, string> = {\n  'validate.string.too-short': 'Mindestens {min} Zeichen',\n  'validate.string.email': 'Ungültige E-Mail-Adresse',\n}\nconst t = (key: string, params?: Record<string, unknown>) =>\n  (messages[key] ?? key).replace(/\\{(\\w+)\\}/g, (_, k: string) => String(params?.[k] ?? ''))\n\nconst Signup = s.object({ name: s.string().min(2), email: s.string().email() })\n\nconst r = Signup.parse({ name: 'A', email: 'nope' })\nif (!r.ok) console.log(formatErrorsByPath(r.issues, t))\n// { name: 'Mindestens 2 Zeichen', email: 'Ungültige E-Mail-Adresse' }"
+  },
+  {
+   "title": "A schema an LLM or an OpenAPI spec can read",
+   "text": "Emit JSON Schema from the same object you validate with, then check what comes back.",
+   "code": "import { s } from '@pyreon/validate'\nimport { toJsonSchema } from '@pyreon/validate/json-schema'\n\nconst Ticket = s.object({\n  title: s.string().min(3).describe('One-line summary'),\n  priority: s.enum(['low', 'normal', 'urgent']),\n  tags: s.array(s.string()).max(5).optional(),\n})\n\n// draft 2020-12, ready for an OpenAPI spec or an LLM's structured output\nconsole.log(JSON.stringify(toJsonSchema(Ticket), null, 2))\n\n// ...and the same schema checks what comes back\nconst reply = Ticket.parse(JSON.parse('{\"title\":\"Login loops\",\"priority\":\"urgent\"}'))\nconsole.log(reply.ok) // true"
+  },
+  {
+   "title": "Validate a signal as it changes",
+   "text": "`parseReactive` gives a computed result for templates; `watchValid` calls you only when validity flips.",
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { parseReactive, s, watchValid } from '@pyreon/validate'\n\nconst Coupon = s.string().regex(/^[A-Z]{4}-\\d{4}$/, { message: 'Looks like ABCD-1234' })\nconst code = signal('')\n\n// a Computed result for templates...\nconst result = parseReactive(Coupon, code)\n// ...and a callback that fires only when validity flips\nconst stop = watchValid(Coupon, code, (valid) => console.log('valid:', valid)) // valid: false\n\ncode.set('SAVE-2026') // valid: true\ncode.set('save') // valid: false\nconsole.log(result().issues?.[0]?.message) // 'Looks like ABCD-1234'\nstop()"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Where does it lose, and why?",
+   "a": "Six of 24 protocol cells: Zod's compiled mode parses a valid email, int and 20-item array faster; ArkType parses a valid user object faster because it hands back your input instead of a clean copy; typia and ArkType check emails faster. On email the grammars also differ: ArkType accepts `a..b@x.com` and `a@-x.com`, which Zod, Valibot and `s` reject."
+  },
+  {
+   "q": "Are those numbers independent?",
+   "a": "No. We wrote the bench, it is synthetic, and the validate rows are one run on one machine. Every library is checked for identical results before timing. Run it yourself: `cd packages/fundamentals/validate && bun bench/validation.ts`."
+  },
+  {
+   "q": "@pyreon/validate or @pyreon/validation?",
+   "a": "Install `@pyreon/validate`: it is the `s` schema library plus helpers. `@pyreon/validation` is the small adapter layer (`zodSchema`, `valibotSchema`, `arktypeSchema`, the Standard Schema bridge) that forms, stores and state trees use to accept any validator. It comes with them."
+  },
+  {
+   "q": "Do I have to switch from Zod?",
+   "a": "No. `withField`, `parseReactive`, `formatErrors` and every Pyreon package that takes a schema work with a Zod, Valibot or ArkType schema directly. Switch when the speed or the server split is worth it to you."
+  },
+  {
+   "q": "What about async rules?",
+   "a": "`.refine` and `.transform` can be async anywhere in the tree; call `parseAsync`. A sync `parse()` of an async schema returns one issue telling you to use `parseAsync`, instead of a wrong answer."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "Megamorphic 12/12, invalid string 34.9 vs valibot 44.7 (1.28×) vs zod 48.7 (1.40×), 0.1 ns CI margin",
+   "path": "BENCHMARKS.md §6 Validate megamorphic (final pass 779a82f01, one run)"
+  },
+  {
+   "claim": "Protocol bench: 18/24 won or tied; losses zod-c email 24 vs 29, int 3 vs 5, array-of-20 107 vs 119; arktype object.user 35 vs 43; check email valid typia 21/arktype 22 vs 27; email invalid arktype 19 vs 22",
+   "path": "BENCHMARKS.md §6 Validate protocol bench, §12"
+  },
+  {
+   "claim": "Adapter wrapper tax −24 to +436 ns",
+   "path": "BENCHMARKS.md §10 'validation (wrapper tax)' (overnight)"
+  },
+  {
+   "claim": "mini 4-field 5.2 KB gz vs 13.8 KB main entry (author-measured); mini without JIT, enableJit from /jit",
+   "path": "docs/src/content/docs/validate.md 'Mini entry'; .changeset/validate-mini-no-jit.md"
+  },
+  {
+   "claim": "parse never throws, safeParse alias, parseOrThrow throws ValidationError, .is()",
+   "path": "docs/src/content/docs/validate.md 'Parse API'; scratch val1.ts printed ok/issues and 'throws ValidationError'"
+  },
+  {
+   "claim": "@pyreon/validate/server upgrades email/phone to strict RFC 5322/E.164 + disposable blocklist; serverCheck pending on client",
+   "path": "docs/src/content/docs/validate.md 'Client / server validation'; scratch run-val.ts: mailinator rejected server-side, pending [{path:['email'],key:'email-unique'}]"
+  },
+  {
+   "claim": "Issues carry code, key (validate.string.email), params",
+   "path": "scratch val1.ts output; packages/fundamentals/validate/src/core/issue.ts"
+  },
+  {
+   "claim": "ArkType accepts a..b@x.com, .a@x.com, a@x..com, a@-x.com; zod/valibot/s reject",
+   "path": "scratch val1.ts (arktype 2.2.9, zod 4.6.7, valibot 1.5.0); .agents/guides/fundamentals/references/validate.md email corpus note"
+  },
+  {
+   "claim": "String formats list",
+   "path": "packages/fundamentals/validate/src/primitives/string.ts methods"
+  },
+  {
+   "claim": "configure({ jit: false }) for CSP",
+   "path": "packages/fundamentals/validate/src/v1.ts L212, core/config.ts"
+  },
+  {
+   "claim": "Native: declared s.object parse returns { ok, value, issues } on iOS/Android (unreleased)",
+   "path": "docs/src/content/docs/multiplatform.md L108; .changeset/native-schema-own-result-shapes.md"
+  },
+  {
+   "claim": "Draft claims removed: '3.9 KB', 'Zod 4 64.6 KB', 'ArkType 46.9 KB', '16× smaller', '4.6× faster valid user', '8× faster invalid', 'Effect Schema', demo bars from 2026-08-31",
+   "path": "not in BENCHMARKS.md record; docs give 13.8 KB main-entry / 5.2 KB mini for a 4-field schema"
+  }
+ ]
+}

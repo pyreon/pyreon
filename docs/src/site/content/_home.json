@@ -1,0 +1,831 @@
+{
+ "id": "home",
+ "route": "/",
+ "reference": "reference/Landing v5.html (section order kept; copy rewritten; three sections added: the code you delete, three platforms, AI)",
+ "meta": {
+  "title": "Pyreon: your component runs once",
+  "description": "A signal-based TypeScript framework. Components run once, only the DOM node that changed updates. A quarter of React's JavaScript for the same app. Full stack on the web, with iOS and Android from the same .tsx (experimental).",
+  "share": {
+   "template": "home",
+   "title": "Your component runs once. Ever.",
+   "sub": "A quarter of React's JavaScript. 2.6× faster at 10,000 rows.",
+   "caveat": "synthetic · author-run · M3 Max · pyreon.dev/benchmarks"
+  }
+ },
+ "sections": [
+  {
+   "kind": "hero",
+   "id": "hero",
+   "variant": "hook",
+   "eyebrow": "Open source · MIT · pre-1.0",
+   "title": "Your component runs once. Ever.",
+   "emberWord": "Ever.",
+   "lede": "Pyreon updates the one DOM node that changed, so there is nothing to memoise and nothing re-renders. Full stack on the web today, and the same `.tsx` compiles to SwiftUI and Jetpack Compose (experimental).",
+   "install": "npm create @pyreon/zero@latest",
+   "ctas": [
+    {
+     "label": "Read the docs",
+     "href": "/docs"
+    },
+    {
+     "label": "See the benchmarks",
+     "href": "/benchmarks"
+    }
+   ],
+   "status": [
+    {
+     "dot": "ok",
+     "text": "MIT, no strings"
+    },
+    {
+     "dot": "ok",
+     "text": "77 packages, one version"
+    },
+    {
+     "dot": "warn",
+     "text": "iOS and Android: experimental (we mean it)",
+     "href": "/why/one-codebase"
+    }
+   ],
+   "alternatives": [
+    {
+     "title": "Write it once. Ship it to web, iOS and Android.",
+     "emberWord": "web, iOS and Android.",
+     "useWhen": "A native-first campaign landing (link from the one-codebase cards). Not the default: native is experimental, so the default hero leads with what ships on the web today."
+    }
+   ],
+   "visual": {
+    "kind": "three-targets",
+    "file": "examples/native-showcase/src/TodayApp.tsx",
+    "fileNote": "the only source · abridged",
+    "code": "import { For, Show } from '@pyreon/core'\nimport { computed, signal } from '@pyreon/reactivity'\nimport { Field, Inline, Press, Stack, Text, Toggle } from '@pyreon/primitives'\n\nexport function TodayApp() {\n  const todos = signal<Todo[]>([/* three todos */])\n  const draft = signal('')\n  const left = computed(() => todos().filter((t) => !t.done).length)\n  const add = () => { /* push draft(), clear it */ }\n\n  return (\n    <Stack gap={4}>\n      <Inline align=\"center\">\n        <Text size=\"xl\" weight=\"bold\">Today</Text>\n        <Text size=\"sm\">{`${left()} left`}</Text>\n      </Inline>\n      <Field value={draft} onChangeText={(t) => draft.set(t)} onSubmit={add} />\n      <For each={todos} by={(t) => t.id}>\n        {(t) => <TodoRow todo={t} onToggle={() => toggle(t.id)} onRemove={() => remove(t.id)} />}\n      </For>\n    </Stack>\n  )\n}",
+    "items": [
+     "Water the basil",
+     "Book the dentist",
+     "Call Grandma back"
+    ],
+    "targets": [
+     {
+      "label": "Web",
+      "caption": "server-rendered HTML, hydrated"
+     },
+     {
+      "label": "iOS",
+      "caption": "generated SwiftUI · experimental"
+     },
+     {
+      "label": "Android",
+      "caption": "generated Compose · experimental"
+     }
+    ],
+    "note": "Real captures: Chromium, an iOS Simulator and an Android emulator, all built from this one file. Typing is sped up. Source: examples/native-showcase.",
+    "media": {
+     "kind": "video",
+     "dark": {
+      "mp4": "video/three-targets-dark.mp4",
+      "webm": "video/three-targets-dark.webm",
+      "poster": "video/three-targets-dark.poster.png",
+      "small": {
+       "mp4": "video/three-targets-sm-dark.mp4",
+       "webm": "video/three-targets-sm-dark.webm"
+      }
+     },
+     "light": {
+      "mp4": "video/three-targets-light.mp4",
+      "webm": "video/three-targets-light.webm",
+      "poster": "video/three-targets-light.poster.png",
+      "small": {
+       "mp4": "video/three-targets-sm-light.mp4",
+       "webm": "video/three-targets-sm-light.webm"
+      }
+     },
+     "width": 1200,
+     "height": 518,
+     "alt": "The same todo app, Today, running in a browser, in an iOS Simulator and in an Android emulator. A todo is added, one is marked done and one is removed, in step on all three."
+    }
+   }
+  },
+  {
+   "kind": "proof-band",
+   "id": "proof",
+   "title": "Same app. Less code shipped, less work done.",
+   "items": [
+    {
+     "stat": "4×",
+     "label": "less JavaScript than React 19 for the same app",
+     "detail": "17.2 KB vs 69.6 KB gzip",
+     "condition": "same app, gzip -9",
+     "source": "record §7 bundle"
+    },
+    {
+     "stat": "2.6×",
+     "label": "faster than React 19 creating 10,000 rows",
+     "detail": "72.6 ms vs 192.0 ms",
+     "condition": "real Chromium, row board",
+     "source": "record §1"
+    },
+    {
+     "stat": "6.5×",
+     "label": "faster server rendering than React 19",
+     "detail": "1,000 rows: 109.9 µs vs 714.4 µs; 5.7× at 10 rows",
+     "condition": "compiled SSR, one run",
+     "source": "record §5 bench:ssr"
+    }
+   ],
+   "caveat": "synthetic · author-run · M3 Max · record of 2026-11-05",
+   "link": {
+    "label": "Every result, including where we lose",
+    "href": "/benchmarks"
+   }
+  },
+  {
+   "kind": "once",
+   "id": "performance",
+   "eyebrow": "Components run once",
+   "title": "No re-renders. Just updates.",
+   "lede": "Your component function runs one time. When a signal changes, Pyreon writes to the exact text node or attribute that reads it. Click the counter: the component never runs again.",
+   "counter": {
+    "code": "function Counter() {\n  const count = signal(0)\n  return (\n    <button onClick={() => count.update((n) => n + 1)}>\n      {count()}\n    </button>\n  )\n}",
+    "metrics": [
+     {
+      "label": "component runs",
+      "value": "1",
+      "live": false
+     },
+     {
+      "label": "text node writes",
+      "value": "0",
+      "live": true
+     },
+     {
+      "label": "nodes diffed",
+      "value": "0",
+      "live": false
+     }
+    ],
+    "spec": "Real @pyreon/core counter. Each click increments 'text node writes' and pulses the number (brand signal pulse, 200 ms). 'component runs' stays 1."
+   },
+   "bench": [
+    {
+     "op": "10,000 rows",
+     "rival": "vs React 19",
+     "result": "2.6× faster",
+     "verdict": "win"
+    },
+    {
+     "op": "10,000 rows",
+     "rival": "vs Preact",
+     "result": "3.8× faster",
+     "verdict": "win"
+    },
+    {
+     "op": "Clear rows",
+     "rival": "vs Vue 3.6 Vapor",
+     "result": "1.11–1.12× faster, both runs",
+     "verdict": "win"
+    },
+    {
+     "op": "Create 1,000, replace, update, swap, remove",
+     "rival": "vs Vue Vapor, Octane, Vue 3",
+     "result": "level with the fastest",
+     "verdict": "tie"
+    }
+   ],
+   "caveat": "synthetic · author-run · two runs · M3 Max · real Chromium, nine other frameworks, 95% intervals",
+   "link": {
+    "label": "Full results, method and every loss",
+    "href": "/benchmarks#row-board"
+   }
+  },
+  {
+   "kind": "diff",
+   "id": "delete",
+   "eyebrow": "The code you delete",
+   "title": "Delete useMemo. Delete useCallback. Delete every dependency array.",
+   "lede": "React re-runs your component on every change, so you write code to stop it. Pyreon never re-runs it, so that code has nothing left to do.",
+   "rows": [
+    [
+     "-",
+     "const [count, setCount] = useState(0)"
+    ],
+    [
+     "+",
+     "const count = signal(0)"
+    ],
+    [
+     "-",
+     "const double = useMemo(() => count * 2, [count])"
+    ],
+    [
+     "+",
+     "const double = computed(() => count() * 2)"
+    ],
+    [
+     "-",
+     "const inc = useCallback(() => setCount((c) => c + 1), [])"
+    ],
+    [
+     "+",
+     "const inc = () => count.update((c) => c + 1)"
+    ],
+    [
+     "-",
+     "const Row = React.memo(function Row({ item }) { … })"
+    ],
+    [
+     "+",
+     "function Row(props) { … }   // runs once anyway"
+    ]
+   ],
+   "caption": "Your component runs once. Nothing to memoise.",
+   "link": {
+    "label": "Why components run once",
+    "href": "/why/components-run-once"
+   }
+  },
+  {
+   "kind": "strip",
+   "id": "benchmarks",
+   "eyebrow": "Benchmarks",
+   "title": "Numbers worth a screenshot.",
+   "lede": "Head-to-heads against the libraries you would otherwise install. We also print every loss. It's a whole section.",
+   "items": [
+    {
+     "stat": "8.7×",
+     "label": "faster charts than ECharts 6",
+     "rival": "mount 100,000 points; 2.5–8.7× on four operations",
+     "condition": "one run",
+     "href": "/products/charts#benchmarks"
+    },
+    {
+     "stat": "6/6",
+     "label": "operations won against React Flow 12",
+     "rival": "500 nodes: mount, drag, select, add, pan and zoom, unmount",
+     "condition": "one run",
+     "href": "/products/flow#benchmarks"
+    },
+    {
+     "stat": "4/4",
+     "label": "form operations won against six libraries",
+     "rival": "React Hook Form, Formik, TanStack Form, Felte, vee-validate, Solid modular-forms",
+     "condition": "one run",
+     "href": "/products/form#benchmarks"
+    },
+    {
+     "stat": "12×",
+     "label": "faster `t()` than i18next",
+     "rival": "i18next 26.5.11",
+     "condition": "one run, bun",
+     "href": "/products/i18n#benchmarks"
+    },
+    {
+     "stat": "4.7×",
+     "label": "faster `renderToString` than Solid",
+     "rival": "1.64–4.68× across four scenarios, byte-identical output",
+     "condition": "one run",
+     "href": "/benchmarks#ssr"
+    }
+   ],
+   "caveat": "synthetic · author-run · M3 Max · record of 2026-11-05",
+   "link": {
+    "label": "Read where we lose",
+    "href": "/benchmarks#losses"
+   }
+  },
+  {
+   "kind": "compare",
+   "id": "compare",
+   "eyebrow": "How it compares",
+   "title": "Other teams maintain two codebases. You maintain one.",
+   "lede": "Shipping a website and phone apps, the usual ways. What we do best comes first; the rows that don't flatter us come last, and they are not small print.",
+   "columns": [
+    "Pyreon",
+    "Next.js + React Native",
+    "Expo",
+    "Flutter",
+    "Capacitor"
+   ],
+   "rows": [
+    {
+     "topic": "Codebases",
+     "cells": [
+      "One",
+      "Two, sharing some logic",
+      "One",
+      "One",
+      "One"
+     ]
+    },
+    {
+     "topic": "Web",
+     "cells": [
+      "SSR, SSG, ISR, islands, SPA per route",
+      "Excellent (Next.js)",
+      "Expo Router web; SSR still maturing",
+      "Canvas rendering, weaker SEO",
+      "It is the web"
+     ]
+    },
+    {
+     "topic": "UI on the phone",
+     "cells": [
+      "Generated SwiftUI / Compose",
+      "Platform widgets",
+      "Platform widgets",
+      "Draws its own pixels",
+      "A web view"
+     ]
+    },
+    {
+     "topic": "JS or VM runtime on the phone",
+     "cells": [
+      "None: compiled Swift and Kotlin",
+      "Hermes JS engine",
+      "Hermes JS engine",
+      "Dart runtime",
+      "Web view engine"
+     ]
+    },
+    {
+     "topic": "Forms, data, i18n, validation",
+     "cells": [
+      "Built in, one version",
+      "Pick and wire your own",
+      "Pick and wire your own",
+      "Separate packages",
+      "Pick and wire your own"
+     ]
+    },
+    {
+     "topic": "Re-renders to tune",
+     "cells": [
+      "None: components run once",
+      "Yes (React)",
+      "Yes (React)",
+      "Widget rebuilds",
+      "Depends on the web framework"
+     ]
+    },
+    {
+     "topic": "Over-the-air updates",
+     "cells": [
+      "Not for native logic (it is compiled)",
+      "EAS Update (with Expo)",
+      "EAS Update",
+      "Third-party",
+      "Third-party"
+     ],
+     "pyreonBehind": true
+    },
+    {
+     "topic": "Maturity",
+     "cells": [
+      "Web: pre-1.0. iOS and Android: experimental",
+      "Production",
+      "Production",
+      "Production",
+      "Production"
+     ],
+     "pyreonBehind": true
+    }
+   ],
+   "note": "Competitor facts follow their own 2026 docs; the platform rows are summarised on our comparison page.",
+   "links": [
+    {
+     "label": "Full comparison, including when to pick something else",
+     "href": "/docs/compare-app-frameworks"
+    },
+    {
+     "label": "Pyreon vs React",
+     "href": "/compare/react"
+    },
+    {
+     "label": "vs React Native",
+     "href": "/compare/react-native"
+    }
+   ],
+   "source": "docs/src/content/docs/compare-app-frameworks.md (Comparison table, 'Where Pyreon is behind')"
+  },
+  {
+   "kind": "platforms",
+   "id": "platforms",
+   "eyebrow": "Web · iOS · Android",
+   "title": "One .tsx file. A website, an iPhone app and an Android app.",
+   "lede": "Build the website now. The same components compile to real SwiftUI and Jetpack Compose views, tested on an iOS Simulator and an Android emulator in CI. Experimental, and labelled that way on every page.",
+   "mappings": [
+    {
+     "pyreon": "<Stack>",
+     "ios": "VStack",
+     "android": "Column"
+    },
+    {
+     "pyreon": "<Field>",
+     "ios": "TextField",
+     "android": "TextField"
+    },
+    {
+     "pyreon": "<Toggle>",
+     "ios": "Toggle",
+     "android": "Switch"
+    },
+    {
+     "pyreon": "<Modal>",
+     "ios": ".sheet",
+     "android": "Dialog"
+    },
+    {
+     "pyreon": "signal()",
+     "ios": "@State / @Observable",
+     "android": "mutableStateOf"
+    }
+   ],
+   "points": [
+    "Primitives that render DOM on the web and native views on the phone (22 in the next release)",
+    "Outside the native subset, the compiler almost always names the line and the fix",
+    "Web-first packages say so per package, so nothing surprises you on device"
+   ],
+   "install": "npm create @pyreon/multiplatform@latest",
+   "status": {
+    "dot": "warn",
+    "text": "Experimental. The device-proven share is tracked in a public matrix.",
+    "href": "/docs/multiplatform"
+   },
+   "link": {
+    "label": "How one codebase works",
+    "href": "/why/one-codebase"
+   }
+  },
+  {
+   "kind": "ai",
+   "id": "ai",
+   "eyebrow": "Built for AI assistants",
+   "title": "Your AI writes a bug. The framework catches it.",
+   "lede": "Assistants learned on React, and some React habits compile fine in a signals framework and then never update. Pyreon ships the tools that catch them while the code is written.",
+   "items": [
+    {
+     "name": "MCP server",
+     "text": "24 tools. `get_api` returns the real API, `validate` flags misuse with the line, the offending code and the fix. No network calls."
+    },
+    {
+     "name": "Reactivity Lens",
+     "text": "`live` and `static` hints in your editor, on every expression, as you type."
+    },
+    {
+     "name": "pyreon check",
+     "text": "Scans changed files, prints each finding with its fix, `--fix` applies the auto-fixable ones, exits non-zero in CI."
+    },
+    {
+     "name": "133 lint rules",
+     "text": "In 25 categories, from destructured props and context to browser globals in server code."
+    }
+   ],
+   "example": {
+    "code": "function Badge(props: { label: string }) {\n  const { label } = props\n  return <b>{label}</b>\n}",
+    "finding": "props-destructured-body · 2:8 · read props.label so it stays reactive"
+   },
+   "install": "npm create @pyreon/zero@latest -- --ai mcp,claude",
+   "link": {
+    "label": "Why Pyreon is AI-ready",
+    "href": "/why/ai-ready"
+   }
+  },
+  {
+   "kind": "audiences",
+   "id": "who",
+   "eyebrow": "Who it's for",
+   "title": "Built for teams who'd rather ship than glue.",
+   "lede": "If your package.json has thirty libraries that each solve a tenth of the problem, this is for you.",
+   "items": [
+    {
+     "title": "SaaS and dashboards",
+     "text": "Forms, validation, query, tables and charts that already know each other, on one version. Skip the week of wiring libraries together.",
+     "tags": [
+      "form",
+      "query",
+      "table",
+      "charts"
+     ]
+    },
+    {
+     "title": "Content and marketing sites",
+     "text": "Every route picks SSG, ISR or SSR. Markdown collections and RSS are built in, with scheduled posts in the next release. This site and its blog run on it.",
+     "tags": [
+      "zero",
+      "content",
+      "i18n"
+     ]
+    },
+    {
+     "title": "A web app that wants a phone app",
+     "text": "Ship the web version now. Screens built from the primitives compile to SwiftUI and Compose as native support fills in. No second team.",
+     "tags": [
+      "native",
+      "primitives"
+     ]
+    },
+    {
+     "title": "Teams leaving React",
+     "text": "Run your React components on react-compat, then convert one component at a time. Your AI assistant gets the real API through MCP.",
+     "tags": [
+      "migrate",
+      "ai"
+     ]
+    }
+   ]
+  },
+  {
+   "kind": "products",
+   "id": "products",
+   "eyebrow": "Products",
+   "title": "40 products. One version.",
+   "lede": "One reactive core, one release train, one set of docs. Here are the ones people start with.",
+   "featured": [
+    {
+     "id": "native",
+     "width": "full"
+    },
+    {
+     "id": "zero",
+     "width": "half"
+    },
+    {
+     "id": "design",
+     "width": "half"
+    },
+    {
+     "id": "form",
+     "width": "third"
+    },
+    {
+     "id": "validation",
+     "width": "third"
+    },
+    {
+     "id": "query",
+     "width": "third"
+    },
+    {
+     "id": "charts",
+     "width": "half"
+    },
+    {
+     "id": "flow",
+     "width": "half"
+    },
+    {
+     "id": "tooling",
+     "width": "full"
+    }
+   ],
+   "pitchesFrom": "content/_products.json#products[].pitch",
+   "link": {
+    "label": "See all 40 products",
+    "href": "/products"
+   }
+  },
+  {
+   "kind": "migrate",
+   "id": "migration",
+   "eyebrow": "Migration",
+   "title": "Bring your React app.",
+   "lede": "Compat layers with near-full public-API parity for React, Vue, Solid, Svelte and Preact. Point your build at the layer, keep shipping, and move a component to signals when you choose, not when a deadline says so.",
+   "layers": [
+    {
+     "name": "React",
+     "package": "@pyreon/react-compat",
+     "href": "/migrate/react"
+    },
+    {
+     "name": "Vue",
+     "package": "@pyreon/vue-compat",
+     "href": "/migrate/vue"
+    },
+    {
+     "name": "Solid",
+     "package": "@pyreon/solid-compat",
+     "href": "/migrate/solid"
+    },
+    {
+     "name": "Svelte",
+     "package": "@pyreon/svelte-compat",
+     "href": "/migrate/svelte"
+    },
+    {
+     "name": "Preact",
+     "package": "@pyreon/preact-compat",
+     "href": "/migrate/preact"
+    }
+   ],
+   "install": "npm create @pyreon/zero@latest my-app -- --compat react",
+   "link": {
+    "label": "How migration works",
+    "href": "/migrate"
+   }
+  },
+  {
+   "kind": "status",
+   "id": "status",
+   "eyebrow": "Status",
+   "title": "What's ready, and what isn't (yet).",
+   "lede": "Pre-1.0 means versions can still break, and we say so in a changeset when they do. The web is what apps run on today. iOS and Android are experimental and move every release.",
+   "columns": [
+    {
+     "dot": "ok",
+     "label": "Web framework",
+     "title": "Core, router, SSR, Zero",
+     "items": [
+      "SSG, SSR, ISR, SPA and islands",
+      "Real-browser tests in CI for the example apps",
+      "The docs and blog you are reading run on it"
+     ]
+    },
+    {
+     "dot": "ok",
+     "label": "Libraries",
+     "title": "Forms, query, i18n, validation, charts",
+     "items": [
+      "Used on the web today, one version",
+      "Several also lower to iOS and Android",
+      "Docs generated from source and checked in CI"
+     ]
+    },
+    {
+     "dot": "warn",
+     "label": "Experimental",
+     "title": "iOS and Android",
+     "items": [
+      "Forms, lists, navigation and storage run on device",
+      "XCUITest and Compose UI tests gate every native change",
+      "Device-proven share tracked in a public matrix"
+     ]
+    }
+   ],
+   "link": {
+    "label": "Status and direction",
+    "href": "/status"
+   }
+  },
+  {
+   "kind": "evidence",
+   "id": "evidence",
+   "eyebrow": "Evidence",
+   "title": "Don't trust us. Run it.",
+   "lede": "No logos we haven't earned. Here is what you can check yourself, in one command.",
+   "command": "git clone https://github.com/pyreon/pyreon && cd pyreon && bun install\ncd examples/benchmark && bun bench-fair.ts --repeat 5 --wait-quiet 4",
+   "items": [
+    {
+     "title": "Eight bugs in our own benchmarks",
+     "text": "Each one found, fixed, re-run and published, with the guard that stops it now. The claims they inflated were withdrawn."
+    },
+    {
+     "title": "Every loss on the page",
+     "text": "Solid mounts deep trees 1.15–1.18× faster and ships a smaller bundle. It's on the benchmarks page, not in a footnote."
+    },
+    {
+     "title": "The docs run on it",
+     "text": "200+ documentation pages and the blog, built by Zero and served as static pages."
+    },
+    {
+     "title": "An independent venue",
+     "text": "A keyed implementation is staged for krausest/js-framework-benchmark. Staged, not yet submitted."
+    }
+   ],
+   "link": {
+    "label": "How we measure",
+    "href": "/why/performance"
+   }
+  },
+  {
+   "kind": "cta",
+   "id": "cta",
+   "title": "Start building in one line.",
+   "lede": "Start with the website. When you want the apps too, the multiplatform starter builds web, iOS and Android from one `src/App.tsx`.",
+   "install": "npm create @pyreon/zero@latest",
+   "secondary": {
+    "label": "Follow the tutorial",
+    "href": "/docs/quickstart"
+   },
+   "native": {
+    "label": "Want the apps from day one?",
+    "command": "npm create @pyreon/multiplatform@latest"
+   },
+   "community": [
+    {
+     "label": "Star on GitHub",
+     "href": "https://github.com/pyreon/pyreon"
+    },
+    {
+     "label": "Join the Discord",
+     "href": "/discord"
+    },
+    {
+     "label": "Get the newsletter",
+     "href": "/newsletter"
+    }
+   ]
+  }
+ ],
+ "destinations": [
+  {
+   "href": "/blog",
+   "state": "live",
+   "nav": "main",
+   "footer": "Learn",
+   "note": "Live since 9 Nov (PR #4156); RSS at /blog/rss.xml."
+  },
+  {
+   "href": "/showcase",
+   "state": "open PR",
+   "nav": "main",
+   "footer": "Community",
+   "note": "Hide the nav link until the page is on main."
+  },
+  {
+   "href": "/open",
+   "state": "open PR",
+   "nav": "none",
+   "footer": "Project",
+   "note": "Live stats (stars, downloads, releases, contributors), refreshed daily. Never quote its numbers in copy."
+  },
+  {
+   "href": "/discord",
+   "state": "redirect pending",
+   "nav": "icon",
+   "footer": "Community",
+   "note": "Not on main. On feat/site-redesign the page exists and forwards once SITE_LINKS.discord is set (null on 11 Nov, so it points to GitHub issues). Invite due before 16 Nov."
+  },
+  {
+   "href": "/newsletter",
+   "state": "redirect pending",
+   "nav": "none",
+   "footer": "Community",
+   "note": "Not on main. On feat/site-redesign the page exists and forwards once SITE_LINKS.newsletter is set (null on 11 Nov, so it offers the RSS feed). Sign-up due before 16 Nov."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "4× less JavaScript (17.2 vs 69.6 KB)",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §7; facts.md 'Losses' bundle line"
+  },
+  {
+   "claim": "2.6× / 3.8× at create 10,000",
+   "path": "record §1 row board (run 1 figures, two runs); facts.md"
+  },
+  {
+   "claim": "SSR 6.5× / 5.7× vs React 19",
+   "path": "record §5 bench:ssr, one run; facts.md"
+  },
+  {
+   "claim": "clear rows 1.11–1.12×, other ops tie",
+   "path": "facts.md row-list board"
+  },
+  {
+   "claim": "charts 2.5–8.7× vs ECharts 6",
+   "path": "facts.md; record §2 charts"
+  },
+  {
+   "claim": "flow wins 6/6 vs React Flow 12",
+   "path": "record §2 flow table, one run"
+  },
+  {
+   "claim": "forms 4/4 vs six libraries",
+   "path": "facts.md form-bench; record §6"
+  },
+  {
+   "claim": "i18n t() 12×",
+   "path": "facts.md; record §10, bun, one run"
+  },
+  {
+   "claim": "renderToString vs Solid 1.64–4.68×",
+   "path": "facts.md"
+  },
+  {
+   "claim": "comparison rows",
+   "path": "/tmp/wt-site-content/docs/src/content/docs/compare-app-frameworks.md"
+  },
+  {
+   "claim": "native mappings, 22 primitives",
+   "path": "facts.md 'Native mappings'; docs primitives.md"
+  },
+  {
+   "claim": "MCP 24 tools, 133 lint rules, pyreon check, Reactivity Lens",
+   "path": "facts.md AI lines"
+  },
+  {
+   "claim": "props-destructured finding text",
+   "path": "07-graphics G-ai-assistant-corrected (fact-checked card); packages/core/compiler/src/pyreon-intercept.ts"
+  },
+  {
+   "claim": "create-zero --ai and --compat flags",
+   "path": "facts.md create-zero flags; packages/zero/create-zero/src/args.ts"
+  },
+  {
+   "claim": "reproduce command",
+   "path": "record 'Reproduce' (examples/benchmark/bench-fair.ts --repeat 5 --wait-quiet 4)"
+  },
+  {
+   "claim": "eight harness bugs; krausest staged",
+   "path": "facts.md"
+  }
+ ]
+}

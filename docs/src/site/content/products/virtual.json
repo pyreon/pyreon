@@ -1,0 +1,371 @@
+{
+ "id": "virtual",
+ "route": "/products/virtual",
+ "name": "Virtual",
+ "package": "@pyreon/virtual",
+ "category": "fundamentals · large lists",
+ "hero": {
+  "title": "A hundred thousand rows. Twenty in the DOM.",
+  "emberWord": "Twenty",
+  "lede": "TanStack Virtual with its state in Pyreon signals. Only the rows on screen exist, and a scroll adds the rows coming in and removes the ones going out: the rows that stay do no work, because there is no component to re-render.",
+  "install": "bun add @pyreon/virtual",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "vs react-virtual, Chromium",
+    "value": "faster on all 4 operations<small>Mount, scroll, jump, unmount. One run, author-run.</small>"
+   },
+   {
+    "key": "built on",
+    "value": "`@tanstack/virtual-core`<small>Same measuring and range logic as react-virtual.</small>"
+   },
+   {
+    "key": "sizing",
+    "value": "fixed, variable, measured<small>Vertical, horizontal and masonry lanes.</small>"
+   },
+   {
+    "key": "scroll target",
+    "value": "an element or the window<small>`useVirtualizer` / `useWindowVirtualizer`.</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "3.25×",
+   "label": "faster unmount of a 10,000-row virtual list than `@tanstack/react-virtual` (20 vs 65 µs)",
+   "source": "BENCHMARKS.md §2 Virtual list, real Chromium · final pass, one run"
+  },
+  {
+   "stat": "1.15×",
+   "label": "faster mount (777 vs 897 µs); jump to row 5,000 1.10×",
+   "source": "BENCHMARKS.md §2 Virtual list · one run"
+  },
+  {
+   "stat": "20",
+   "label": "rows in the DOM at row 50,000 of 100,000 (10 visible + 5 overscan each side)",
+   "source": "`useVirtualizer` with a 400 px viewport, 40 px rows and `overscan: 5`, mounted and scrolled to row 50,000"
+  }
+ ],
+ "why": {
+  "title": "Long lists that stay quick.",
+  "items": [
+   {
+    "title": "Scrolling touches the edges only",
+    "text": "Rows render through a keyed `<For by={(r) => r.index}>`. A scroll step creates the rows entering and removes the rows leaving; the rest keep their DOM and run nothing."
+   },
+   {
+    "title": "Signals out, signals in",
+    "text": "`virtualItems()`, `totalSize()` and `isScrolling()` are signals, and the options are a function that reads signals. Filter the list and `count` re-sizes the virtualizer on its own."
+   },
+   {
+    "title": "Any row shape",
+    "text": "Fixed heights, known variable heights, or measured on render with `measureElement`. Horizontal lists and masonry lanes too, from the same core TanStack uses."
+   },
+   {
+    "title": "Jump anywhere",
+    "text": "`instance.scrollToIndex(50_000)` for \"go to row\", `scrollToOffset` for a saved position."
+   }
+  ]
+ },
+ "difference": {
+  "title": "Same core. No list re-render per scroll step.",
+  "before": {
+   "label": "React + @tanstack/react-virtual",
+   "caption": "Each scroll step re-renders the list component and reconciles every visible row.",
+   "code": "function List({ rows }: { rows: string[] }) {\n  const parentRef = useRef<HTMLDivElement>(null)\n  const v = useVirtualizer({\n    count: rows.length,\n    getScrollElement: () => parentRef.current,\n    estimateSize: () => 40,\n    overscan: 5,\n  })\n  return (\n    <div ref={parentRef} style={{ height: 400, overflow: 'auto' }}>\n      <div style={{ height: v.getTotalSize(), position: 'relative' }}>\n        {v.getVirtualItems().map((item) => (\n          <div key={item.key} style={{ position: 'absolute', top: 0,\n            width: '100%', height: item.size,\n            transform: `translateY(${item.start}px)` }}>\n            {rows[item.index]}\n          </div>\n        ))}\n      </div>\n    </div>\n  )\n}"
+  },
+  "after": {
+   "label": "with @pyreon/virtual",
+   "caption": "The component runs once. A scroll step adds and removes rows at the edges.",
+   "code": "import { For } from '@pyreon/core'\nimport { useVirtualizer } from '@pyreon/virtual'\n\nconst List = (props: { rows: () => string[] }) => {\n  let scrollEl: HTMLElement | null = null\n  const v = useVirtualizer(() => ({\n    count: props.rows().length,\n    getScrollElement: () => scrollEl,\n    estimateSize: () => 40,\n    overscan: 5,\n  }))\n  return (\n    <div ref={(el) => (scrollEl = el)} style=\"height: 400px; overflow: auto\">\n      <div style={() => `height: ${v.totalSize()}px; position: relative`}>\n        <For each={() => v.virtualItems()} by={(item) => item.index}>\n          {(item) => (\n            <div style={() => `position: absolute; top: ${item.start}px; height: ${item.size}px; width: 100%`}>\n              {props.rows()[item.index]}\n            </div>\n          )}\n        </For>\n      </div>\n    </div>\n  )\n}"
+  }
+ },
+ "comingFrom": [
+  {
+   "lib": "TanStack Virtual (React)",
+   "title": "Options become a function; getters become signals.",
+   "before": "const v = useVirtualizer({\n  count: rows.length,\n  getScrollElement: () => parentRef.current,\n  estimateSize: () => 40,\n})\n\nv.getTotalSize()\nv.getVirtualItems()\nv.scrollToIndex(5000)",
+   "after": "const v = useVirtualizer(() => ({\n  count: rows().length,\n  getScrollElement: () => scrollEl ?? null,\n  estimateSize: () => 40,\n}))\n\nv.totalSize()\nv.virtualItems()\nv.instance.scrollToIndex(5000)",
+   "note": "Every `@tanstack/virtual-core` option works the same (`overscan`, `horizontal`, `lanes`, `gap`, `paddingStart`, `measureElement`…). The `Virtualizer` instance is on `.instance`; its state is mirrored into the `virtualItems`, `totalSize` and `isScrolling` signals."
+  }
+ ],
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Scroll 100,000 rows.",
+  "text": "The counters show how many rows exist in the DOM right now: about twenty at any position, out of 100,000.",
+  "component": "DemoVirtual",
+  "reference": "pkg-virtual.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"ui\" style=\"padding:0;overflow:hidden\"><div id=\"vt-box\" style=\"height:420px;overflow:auto;position:relative\" tabindex=\"0\" aria-label=\"Virtual list of 100,000 rows\"><div id=\"vt-inner\" style=\"position:relative\"></div></div></div>\n  <div class=\"card\"><div class=\"in\"><div class=\"meter\"><div><span>total rows</span><b>100,000</b></div><div><span>rows in the DOM</span><b id=\"vt-dom\">0</b></div><div><span>rows changed on last scroll</span><b id=\"vt-ch\">0</b></div></div><button class=\"pill\" type=\"button\" id=\"vt-jump\">scrollToIndex(50000)</button></div></div>\n</div>",
+  "referenceCss": ".vt-row{position:absolute;left:0;right:0;height:40px;display:flex;justify-content:space-between;align-items:center;padding:0 18px;border-bottom:1px solid #EDE6D6;font-size:14px}.vt-row b{font-weight:500;font-variant-numeric:tabular-nums}",
+  "referenceJs": "(function(){var N=100000,H=40,box=document.getElementById('vt-box'),inner=document.getElementById('vt-inner'),live={};inner.style.height=N*H+'px';var names=['Ada','Grace','Linus','Margaret','Edsger','Barbara','Ken','Dennis'];\nfunction r(){var s=Math.max(0,Math.floor(box.scrollTop/H)-5),e=Math.min(N,Math.ceil((box.scrollTop+box.clientHeight)/H)+5),ch=0,keep={};for(var i=s;i<e;i++){keep[i]=1;if(!live[i]){var d=document.createElement('div');d.className='vt-row';d.style.top=i*H+'px';d.innerHTML='<span>'+names[i%8]+' · order #'+(100000+i)+'</span><b>$'+((i*37)%900+20)+'</b>';inner.appendChild(d);live[i]=d;ch++}}Object.keys(live).forEach(function(k){if(!keep[k]){live[k].remove();delete live[k];ch++}});document.getElementById('vt-dom').textContent=Object.keys(live).length;document.getElementById('vt-ch').textContent=ch}\nbox.addEventListener('scroll',r,{passive:true});document.getElementById('vt-jump').onclick=function(){box.scrollTop=50000*H-box.clientHeight/2};r();})();"
+ },
+ "features": {
+  "title": "Virtualization, the TanStack way, with signals.",
+  "items": [
+   {
+    "name": "`useVirtualizer`",
+    "text": "For a scrolling element; returns `virtualItems`, `totalSize`, `isScrolling` and the core `instance`."
+   },
+   {
+    "name": "`useWindowVirtualizer`",
+    "text": "For a list that scrolls with the page; safe to render on the server."
+   },
+   {
+    "name": "Reactive options",
+    "text": "Read a signal in `count` and the virtualizer follows. Changed a size estimate? One `instance.measure()` re-sizes the list."
+   },
+   {
+    "name": "`item(index)`",
+    "text": "Per-index `start`, `size` and `lane` accessors for measured rows, at no cost until you use them."
+   },
+   {
+    "name": "Measured rows",
+    "text": "`measureElement` corrects an estimate once a row renders."
+   },
+   {
+    "name": "Horizontal and lanes",
+    "text": "`horizontal: true` for carousels, `lanes` for masonry grids."
+   },
+   {
+    "name": "`scrollToIndex` / `scrollToOffset`",
+    "text": "Go to row 50,000, or back to where the user was."
+   },
+   {
+    "name": "Overscan",
+    "text": "Render a few rows past each edge so fast scrolls do not flash blank."
+   },
+   {
+    "name": "Detached at mount",
+    "text": "A scroll element inserted after mount (a `<Show>`, a portal) gets its observers re-attached instead of rendering zero rows.",
+    "status": "next release"
+   },
+   {
+    "name": "Core utilities re-exported",
+    "text": "`Virtualizer`, `elementScroll`, `windowScroll`, `measureElement`, `defaultRangeExtractor` and the observers."
+   }
+  ]
+ },
+ "recipes": [
+  {
+   "title": "A filtered contact list",
+   "text": "The count reads a computed, so typing in the search box re-sizes the list and keeps only the visible matches in the DOM.",
+   "code": "import { computed, signal } from '@pyreon/reactivity'\nimport { useVirtualizer } from '@pyreon/virtual'\n\nconst query = signal('')\nconst visible = computed(() =>\n  contacts().filter((c) => c.name.toLowerCase().includes(query().toLowerCase())),\n)\n\nconst v = useVirtualizer(() => ({\n  count: visible().length,\n  getScrollElement: () => scrollEl ?? null,\n  estimateSize: () => 56,\n  overscan: 8,\n}))"
+  },
+  {
+   "title": "A feed that scrolls with the page",
+   "text": "No inner scroll box: the window is the scroller, and rows of different heights are measured as they render.",
+   "code": "import { For } from '@pyreon/core'\nimport { useWindowVirtualizer } from '@pyreon/virtual'\n\nconst v = useWindowVirtualizer(() => ({\n  count: posts().length,\n  estimateSize: () => 240,\n}))\n\n<div style={() => `height: ${v.totalSize()}px; position: relative`}>\n  <For each={() => v.virtualItems()} by={(it) => it.index}>\n    {(it) => (\n      <article\n        data-index={it.index}\n        ref={(el) => v.instance.measureElement(el)}\n        style={() => `position: absolute; top: ${v.item(it.index).start()}px; width: 100%`}\n      >\n        {posts()[it.index]?.body}\n      </article>\n    )}\n  </For>\n</div>"
+  }
+ ],
+ "api": {
+  "title": "Two hooks and the TanStack core.",
+  "groups": [
+   {
+    "name": "hooks",
+    "items": [
+     "useVirtualizer",
+     "useWindowVirtualizer"
+    ]
+   },
+   {
+    "name": "result",
+    "items": [
+     "virtualItems",
+     "totalSize",
+     "isScrolling",
+     "item",
+     "instance"
+    ]
+   },
+   {
+    "name": "core",
+    "items": [
+     "Virtualizer",
+     "elementScroll",
+     "windowScroll",
+     "measureElement",
+     "observeElementRect",
+     "observeElementOffset",
+     "observeWindowRect",
+     "observeWindowOffset",
+     "defaultKeyExtractor",
+     "defaultRangeExtractor"
+    ]
+   },
+   {
+    "name": "types",
+    "items": [
+     "UseVirtualizerOptions",
+     "UseVirtualizerResult",
+     "UseWindowVirtualizerOptions",
+     "UseWindowVirtualizerResult",
+     "VirtualItem",
+     "VirtualizerOptions",
+     "Range",
+     "Rect",
+     "ScrollToOptions",
+     "ItemRegistry",
+     "VirtualItemMeasurement"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Give a close `estimateSize`",
+   "text": "The scrollbar is sized from it before rows are measured. A close guess keeps the thumb from jumping."
+  },
+  {
+   "title": "Find-in-page sees rendered rows only",
+   "text": "Rows outside the window are not in the DOM, so the browser's search cannot find them. Put a search box on long lists."
+  },
+  {
+   "title": "Key rows by index",
+   "text": "Use `<For by={(item) => item.index}>` so a scroll moves only the edges. A `.map()` without a `key` rebuilds every visible row."
+  },
+  {
+   "title": "Native lists are already lazy",
+   "text": "On iOS and Android (native targets are experimental), put a `<For>` as the only child of `<Scroll>` and it becomes a `LazyVStack` or `LazyColumn`, no virtualizer needed. `@pyreon/virtual` itself is web."
+  }
+ ],
+ "faq": [
+  {
+   "q": "How does it compare with react-virtual?",
+   "a": "Same `virtual-core`, rendered differently. In real Chromium at 10,000 rows, one run: mount 1.15×, 60 scroll steps 1.04×, jump to row 5,000 1.10×, unmount 3.25× faster. Under happy-dom the record shows scroll-to-DOM 1.4× faster and mount 1.1× slower; happy-dom is a JavaScript DOM, the browser figure is the one that counts."
+  },
+  {
+   "q": "Do I need it for a table?",
+   "a": "For a few hundred rows, no. Past a few thousand, pair it with `@pyreon/table`: virtualize the row model and render only the window."
+  },
+  {
+   "q": "Does it work with server rendering?",
+   "a": "`useWindowVirtualizer` checks for a browser before touching `window`, and both hooks start measuring on mount, so the server renders the list shell and the client fills the window."
+  },
+  {
+   "q": "Variable heights?",
+   "a": "Yes. Pass a per-index `estimateSize`, or measure rows with `measureElement` and a `data-index` attribute, as in TanStack."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/table",
+   "category": "fundamentals",
+   "name": "Table",
+   "text": "Virtualize the rows of a data grid.",
+   "package": "@pyreon/table"
+  },
+  {
+   "href": "/products/rx",
+   "category": "fundamentals",
+   "name": "RX",
+   "text": "Filter and sort the list you virtualize.",
+   "package": "@pyreon/rx"
+  },
+  {
+   "href": "/products/primitives",
+   "category": "core",
+   "name": "Primitives",
+   "text": "Lazy lists on iOS and Android with `<Scroll><For>`.",
+   "package": "@pyreon/primitives"
+  }
+ ],
+ "end": {
+  "title": "Ninety-nine thousand nine hundred and eighty rows, doing nothing.",
+  "cta": "Read the virtual guide"
+ },
+ "benchmarks": {
+  "rival": "vs @tanstack/react-virtual 3.14 with memoized rows · 10,000 rows, real Chromium",
+  "run": "final pass, one run",
+  "h": "Faster on all four operations.",
+  "p": "Same `virtual-core` on both sides, so the difference is rendering: React re-renders the list on every scroll step, Pyreon patches the rows entering and leaving. One run in the browser; the happy-dom rows below come from a separate harness (overnight run, one run) and include a loss at mount.",
+  "rows": [
+   {
+    "op": "unmount",
+    "pyreon": 20,
+    "rival": 65,
+    "unit": "µs",
+    "verdict": "win",
+    "label": "3.25×"
+   },
+   {
+    "op": "mount 10,000-row list",
+    "pyreon": 777,
+    "rival": 897,
+    "unit": "µs",
+    "verdict": "win",
+    "label": "1.15×"
+   },
+   {
+    "op": "jump to row 5,000",
+    "pyreon": 315,
+    "rival": 345,
+    "unit": "µs",
+    "verdict": "win",
+    "label": "1.10×"
+   },
+   {
+    "op": "scroll 60 steps of 5 rows",
+    "pyreon": 3.53,
+    "rival": 3.68,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "1.04×"
+   },
+   {
+    "op": "happy-dom: scroll → DOM",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "1.4×"
+   },
+   {
+    "op": "happy-dom: mount 10k list",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "loss",
+    "label": "react-virtual 1.1×"
+   }
+  ]
+ },
+ "glyphSvg": "<path d=\"M24 22 H96 M24 46 H96 M24 70 H96 M24 94 H96\" stroke=\"currentColor\" stroke-width=\"9\" opacity=\".35\"/><rect x=\"16\" y=\"36\" width=\"88\" height=\"44\" rx=\"8\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><circle cx=\"104\" cy=\"58\" r=\"10\" fill=\"url(#eg)\"/>",
+ "sources": [
+  {
+   "claim": "Chromium virtual vs react-virtual, 10,000 rows, one run: mount 777 vs 897 µs (1.15×), scroll 3.53 vs 3.68 ms (1.04×), jump 315 vs 345 µs (1.10×), unmount 20 vs 65 µs (3.25×)",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §2 Virtual list; §13 \"virtual Chromium (4 ops) F ×1 win\""
+  },
+  {
+   "claim": "happy-dom virtual row: scroll → DOM 1.4×; mount 10k 1.1× slower",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §10 virtual row"
+  },
+  {
+   "claim": "100,000 rows, 400 px viewport, 40 px rows, overscan 5: 15 items at the top (0..14), 20 at row 50,000 (49995..50014)",
+   "path": ".scratch/app/virt.ts (happy-dom with stubbed clientHeight; useVirtualizer mounted through runtime-dom)"
+  },
+  {
+   "claim": "virtualItems, totalSize, isScrolling are signals; item(index); instance",
+   "path": "packages/fundamentals/virtual/src/use-virtualizer.ts l.32-47"
+  },
+  {
+   "claim": "Keyed For by index: scroll patches only entering/leaving rows",
+   "path": "packages/fundamentals/virtual/src/manifest.ts useVirtualizer summary"
+  },
+  {
+   "claim": "Observers re-attach when the scroll element was detached at mount (#4176, on main, unreleased)",
+   "path": "packages/fundamentals/virtual/src/reactive-virtualizer.ts l.98-133; 00-brief/facts.md \"What shipped since 5 Nov\""
+  },
+  {
+   "claim": "Native: For as only child of Scroll lowers to LazyVStack/LazyColumn; package is web-only",
+   "path": "packages/fundamentals/virtual/src/manifest.ts multiplatform"
+  },
+  {
+   "claim": "react-virtual before code typechecks against @tanstack/react-virtual 3.14.23",
+   "path": ".scratch/app/rival/virtual.tsx (tsc exit 0)"
+  },
+  {
+   "claim": "Draft api listed \"3 exports\" with Virtualizer as a type; it is a re-exported class and there are 2 hooks + 10 core re-exports",
+   "path": "packages/fundamentals/virtual/src/index.ts"
+  }
+ ]
+}

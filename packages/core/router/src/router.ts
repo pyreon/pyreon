@@ -4,6 +4,7 @@ import { batch, computed, isClient, signal, untrack } from '@pyreon/reactivity'
 import type { Computed, Signal } from '@pyreon/reactivity'
 import { SizedMap } from '@pyreon/sized-map'
 import { buildNameIndex, buildPath, resolveLoaderNotFound, resolveRoute, stringifyQuery } from './match'
+import { markLoaderError } from './loader-error'
 import { isNotFoundError } from './not-found'
 import { classifyRedirectTarget, getRedirectInfo, redirect as throwRedirect } from './redirect'
 import { ScrollManager } from './scroll'
@@ -2048,8 +2049,14 @@ export function createRouter<TNames extends string = string>(
             } catch (err) {
               // `notFound()` is not a render failure: the page renders the
               // not-found chain (SSR status 404). Anything else — including
-              // `redirect()` — still rejects.
-              if (!isNotFoundError(err)) throw err
+              // `redirect()` — still rejects. In development the error is
+              // tagged with the route whose loader threw, so a dev host (zero's
+              // error overlay) can say "loader" rather than "render" and name
+              // the route. Folded out of production builds.
+              if (!isNotFoundError(err)) {
+                if (process.env.NODE_ENV !== 'production') markLoaderError(err, r.path)
+                throw err
+              }
               notFoundThrown = true
               return
             }

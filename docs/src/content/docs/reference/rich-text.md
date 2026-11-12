@@ -1,9 +1,7 @@
 ---
-title: "Rich Text Editor — API Reference"
+title: "@pyreon/rich-text — API Reference"
 description: "Reactive WYSIWYG editor — signal-backed layer over TipTap (ProseMirror), lazy-loaded, a11y-labeled"
 ---
-
-# @pyreon/rich-text — API Reference
 
 > **Generated** from `rich-text`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [rich-text](/docs/rich-text).
 

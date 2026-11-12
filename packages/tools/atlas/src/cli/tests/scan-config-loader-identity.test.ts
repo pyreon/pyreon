@@ -77,7 +77,7 @@ describe('config and components share one module graph', () => {
     write('src/Example.tsx', EXAMPLE)
     write('atlas.config.ts', `${WRAPPER}\nexport const alias = { '@unused': './src' }\n`)
     const { out } = scan(dir)
-    expect(out).toMatch(/1 component\(s\), \d+ scenario\(s\) — \d+ verified, 0 failing/)
+    expect(out).toMatch(/components\s+1\n\s+scenarios\s+\d+\s+0 failing · \d+ verified/)
     expect(out).not.toContain('Expected configured provider')
   }, 320_000)
 

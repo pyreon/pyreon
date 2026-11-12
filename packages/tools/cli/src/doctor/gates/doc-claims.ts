@@ -827,6 +827,36 @@ export function findUnscopedRunnerCommands(repoRoot: string): Finding[] {
   return findings
 }
 
+/** The repository's own counts, as the claims above measure them. */
+export interface RepoCounts {
+  publishedPackages: number
+  manifests: number
+  lintRules: number
+  lintCategories: number
+  mcpTools: number
+  docPages: number
+  hookExports: number
+  detectorCodes: number
+}
+
+/**
+ * Every count this gate checks prose against, computed by the SAME counters.
+ *
+ * Exported so a page that SHOWS these numbers (the docs site's `/open` page)
+ * reads them from the definition the gate enforces, rather than keeping a
+ * second counter that could come to disagree with it.
+ */
+export const countRepo = (repoRoot: string): RepoCounts => ({
+  publishedPackages: countPublishedPackages(repoRoot),
+  manifests: countManifests(repoRoot),
+  lintRules: countLintRules(repoRoot),
+  lintCategories: countLintCategories(repoRoot),
+  mcpTools: countMcpTools(repoRoot),
+  docPages: countDocPages(repoRoot),
+  hookExports: countHookExports(repoRoot),
+  detectorCodes: countDetectorCodes(repoRoot),
+})
+
 export interface DocClaimsGateOptions {
   /** Repository root directory */
   cwd: string

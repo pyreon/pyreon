@@ -1,10 +1,11 @@
-/** Canvas view — the live preview on a zoomable, dotted stage. */
-import { _rp, Show } from '@pyreon/core'
+/** Canvas view — the live preview on a zoomable stage with an optional dot grid. */
+import { _rp as reactiveProp, Show } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import * as C from '../../components'
 import type { WorkbenchModel } from '../../model'
 import { BACKGROUND_VARIANT, VIEWPORT_SIZE } from '../../addons'
 import { ZOOM_PCT } from '../../model'
+import { PreviewTheme } from './PreviewTheme'
 
 
 export function Canvas(props: { model: WorkbenchModel }) {
@@ -74,15 +75,16 @@ export function Canvas(props: { model: WorkbenchModel }) {
   // one; the fluid default is not a frame, it is the stage.
   //
   // `let`, not `const`: these derive from `props.model`, and the compiler
-  // INLINES a prop-derived const at every JSX use site (emitting its own
-  // `_rp` import, which collides with the explicit one this file needs for
-  // the `css` prop). `let` is the documented opt-out — see anti-patterns
-  // "reactive-props inlining re-invokes a STATEFUL prop-derived const".
+  // INLINES a prop-derived const at every JSX use site. Harmless for these
+  // two accessors, but `let` keeps one closure each — see anti-patterns
+  // "reactive-props inlining re-invokes a STATEFUL prop-derived const". The
+  // compiler also INJECTS `import { _rp }` into this file (the `PreviewTheme`
+  // model prop), which is why the hand-written import above is aliased.
   // oxlint-disable-next-line prefer-const
   let pinned = () => m.viewportPreset().width !== null
   // The render context in one line — brand, mode, pinned viewport, forced
-  // pseudo state, locale. Lives in the canvas bar; a pinned frame repeats it
-  // on its own chrome so a screenshot of the device edge still says what it is.
+  // pseudo state, locale. In the stage corner; a pinned frame repeats it on
+  // its own chrome so a screenshot of the device edge still says what it is.
   // oxlint-disable-next-line prefer-const
   let chrome = () =>
     `${m.brand().name} · ${m.dark() ? 'dark' : 'light'}${
@@ -90,69 +92,32 @@ export function Canvas(props: { model: WorkbenchModel }) {
     }${m.pseudo() ? ` · :${m.pseudo()}` : ''}${m.locale() === 'en' ? '' : ` · ${m.locale()}`}`
 
   return (
-    <C.Main>
-      <C.CanvasBar>
-        {/* Compact layout opens the sidebar from the top bar's drawer button. */}
-        <Show when={() => !m.compact()}>
-          <C.ZoomBtn
-            data-testid="toggle-sidebar"
-            title="Toggle sidebar"
-            aria-label={() => (m.sidebarOpen() ? 'Hide sidebar' : 'Show sidebar')}
-            aria-pressed={() => (m.sidebarOpen() ? 'true' : 'false')}
-            onClick={() => m.sidebarOpen.set(!m.sidebarOpen())}
-          >
-            {() => (m.sidebarOpen() ? '⇤' : '⇥')}
-          </C.ZoomBtn>
-        </Show>
-        {/* Title, then the render context on its own line. The component
-            path used to lead that line AND the status bar's — it now lives in
-            the status bar only. */}
-        <C.CanvasTitle>
-          <C.CanvasName data-testid="canvas-name">{() => m.sel()?.name ?? ''}</C.CanvasName>
-          <C.CanvasPath data-testid="canvas-meta">{chrome}</C.CanvasPath>
-        </C.CanvasTitle>
-        <C.Spacer />
-        <C.Segment>
-          <C.ZoomBtn aria-label="Zoom out" onClick={() => m.zoomIdx.set(Math.max(0, m.zoomIdx() - 1))}>−</C.ZoomBtn>
-          <C.ZoomLabel data-testid="zoom-label">{() => `${ZOOM_PCT[m.zoomIdx()]}%`}</C.ZoomLabel>
-          <C.ZoomBtn aria-label="Zoom in" onClick={() => m.zoomIdx.set(Math.min(ZOOM_PCT.length - 1, m.zoomIdx() + 1))}>+</C.ZoomBtn>
-        </C.Segment>
-        {/* Compact: a LABELLED button that opens the panels as a bottom sheet
-            — on a phone this is the only route to Controls. */}
-        <Show
-          when={() => m.compact()}
-          fallback={
-            <C.ZoomBtn
-              data-testid="toggle-panel"
-              title="Toggle addon panel"
-              aria-label={() => (m.panelOpen() ? 'Hide addon panel' : 'Show addon panel')}
-              aria-pressed={() => (m.panelOpen() ? 'true' : 'false')}
-              onClick={() => m.panelOpen.set(!m.panelOpen())}
-            >
-              {() => (m.panelOpen() ? '⇥' : '⇤')}
-            </C.ZoomBtn>
-          }
-        >
-          <C.PanelsBtn
-            data-testid="toggle-panel"
-            aria-expanded={() => (m.sheetOpen() ? 'true' : 'false')}
-            onClick={() => m.sheetOpen.set(!m.sheetOpen())}
-          >
-            Panels
-          </C.PanelsBtn>
-        </Show>
-      </C.CanvasBar>
-
+    <C.Main
+      id="atlas-canvas-panel"
+      role="tabpanel"
+      aria-label={() => `${m.sel()?.name ?? 'Component'} preview`}
+      data-testid="canvas"
+    >
       {/*
         Addon dimensions are passed as ACCESSORS (`() => …`) like every other
         signal-driven dimension here, so they re-resolve without the compiler —
         see ../Workbench for why that matters for the prebuilt lib.
       */}
       <C.Stage
+        data-testid="canvas-stage"
+        data-grid={() => (m.grid() ? 'on' : 'off')}
+        state={() => (m.grid() ? 'grid' : 'plain') as never}
+        multiple={() => m.layout() as never}
+        data-layout={() => m.layout()}
         onPointerMove={onStageMove}
         onPointerLeave={onStageLeave}
         {...({ innerRef: stageRef } as Record<string, unknown>)}
       >
+        <C.StageMeta>
+          <span data-testid="canvas-name">{() => m.sel()?.name ?? ''}</span>
+          {' · '}
+          <span data-testid="canvas-meta">{chrome}</span>
+        </C.StageMeta>
         <Show when={() => m.measure()}>
           <C.MeasureBox data-testid="measure-box" ref={boxRef} />
           <C.MeasureLabel data-testid="measure-label" ref={labelRef} />
@@ -166,6 +131,7 @@ export function Canvas(props: { model: WorkbenchModel }) {
         */}
         <C.Frame
           data-testid="canvas-frame"
+          multiple={() => m.layout() as never}
           size={() => (VIEWPORT_SIZE[m.viewport()] ?? 'vFull') as never}
           variant={() => (pinned() ? 'framed' : 'bare') as never}
           {...({
@@ -174,7 +140,7 @@ export function Canvas(props: { model: WorkbenchModel }) {
             // overridden). `_rp`-branded by hand, exactly what the compiler
             // would emit — the UI ships prebuilt, and a bare function value
             // would land on the DOM as an attribute instead of restyling.
-            css: _rp(() => {
+            css: reactiveProp(() => {
               const w = m.viewportPreset().width
               return VIEWPORT_SIZE[m.viewport()] || w === null ? '' : `width:${w}px;max-width:100%;`
             }),
@@ -183,30 +149,35 @@ export function Canvas(props: { model: WorkbenchModel }) {
           <Show when={pinned}>
             <C.FrameChrome>{chrome}</C.FrameChrome>
           </Show>
+          <PreviewTheme model={m}>
           <C.PreviewSurface
             data-testid="canvas-preview"
             ref={m.previewRef}
             size={() => ('z' + ZOOM_PCT[m.zoomIdx()]) as never}
             variant={() => (BACKGROUND_VARIANT[m.background()] ?? 'bgTheme') as never}
             {...({
-              css: _rp(() => {
+              css: reactiveProp(() => {
                 const color = m.backgroundPreset().color
                 const bg = BACKGROUND_VARIANT[m.background()] || !color ? '' : `background:${color};`
                 // An adopted overlay (a modal, a drawer) is confined to this
                 // surface — give it a viewport-sized box to open into rather
                 // than the 220px a closed component needs.
-                return `${bg}min-height:${m.overlayOpen() ? 520 : 220}px;`
+                // Fullscreen grows with the frame (its `multiple` dimension).
+                const min = m.overlayOpen() ? 520 : m.layout() === 'fullscreen' ? 0 : 220
+                return `${bg}min-height:${min}px;`
               }),
             } as Record<string, unknown>)}
             state={() => (m.outline() ? 'outlined' : 'plain') as never}
+            multiple={() => m.layout() as never}
           >
             {() => m.preview()}
           </C.PreviewSurface>
+          </PreviewTheme>
         </C.Frame>
         <Show when={() => m.previewEmpty()}>
           <C.EmptyHint data-testid="canvas-empty">
             Nothing rendered for this state — the component returned no DOM. Pick another
-            scenario in the sidebar, or give it what it needs (data props, an open state, a
+            scenario above, or give it what it needs (data props, an open state, a
             render-prop child) in atlas.config.ts.
           </C.EmptyHint>
         </Show>

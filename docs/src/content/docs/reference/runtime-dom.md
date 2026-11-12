@@ -1,9 +1,7 @@
 ---
-title: "DOM Renderer — API Reference"
+title: "@pyreon/runtime-dom — API Reference"
 description: "DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, KeepAlive, SVG/MathML namespace, custom elements"
 ---
-
-# @pyreon/runtime-dom — API Reference
 
 > **Generated** from `runtime-dom`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [runtime-dom](/docs/runtime-dom).
 

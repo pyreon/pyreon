@@ -273,7 +273,10 @@ export function generateSitemap(
     const byPath = new Map<string, SitemapEntry>()
     for (const e of [
       ...paths.map((p) => ({ path: p, changefreq, priority })),
-      ...(config.additionalPaths ?? []).filter((extra) => !isExcluded(extra.path, exclude)),
+      // `exclude` applies to every source, not just the route-file scan: the
+      // SSG manifest (`useSsgPaths`) and `additionalPaths` arrive here, and
+      // an excluded page they listed used to reach the sitemap anyway.
+      ...(config.additionalPaths ?? []).filter((entry) => !isExcluded(entry.path, exclude)),
     ]) {
       const key = e.path.length > 1 && e.path.endsWith('/') ? e.path.slice(0, -1) : e.path
       if (!byPath.has(key)) byPath.set(key, e)

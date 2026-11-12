@@ -527,7 +527,7 @@ getReactiveGraph()
 // nodes: [{ name:'$a', kind:'signal', value:'2', … }, { kind:'derived', … }, { kind:'effect', … }]
 // edges: [{ from:$a, to:derived }, { from:derived, to:effect }]
 getReactiveFires() // → [{ id, ts }, …]  (bounded, chronological)`,
-    notes: 'Fresh snapshot of the live reactive graph + a bounded recent-fire timeline, for the reactive-devtools tabs. `getReactiveGraph()` returns every tracked node (`{ id, kind: "signal"|"derived"|"effect", name, value, subscribers, fires, lastFire }`) plus dependency edges recomputed on demand from the real subscriber `_s` Sets (source → subscriber: signal→derived, derived→effect) — always consistent with the framework’s actual subscription state, no incremental drift. `getReactiveFires()` returns a fixed-size ring buffer of recent fires (`{ id, ts }`, oldest → newest) powering the Effects/Profiler tabs. Both require `activateReactiveDevtools()` first and return empty otherwise. Names come from `signal(v, { name })` / the vite-plugin dev auto-naming; anonymous computeds/effects get a synthetic `derived#id` / `effect#id`. See also: activateReactiveDevtools, getReactiveTrace, onSignalUpdate.',
+    notes: 'Fresh snapshot of the live reactive graph + a bounded recent-fire timeline, for the reactive-devtools tabs. `getReactiveGraph()` returns every tracked node (`{ id, kind: "signal"|"derived"|"effect", name, value, subscribers, fires, lastFire, loc?, binding?, target?, key? }`) plus dependency edges recomputed on demand from the real subscriber slots, both the tracked `_s1`/`_s` pair and the `direct()` `_d1`/`_d` pair (source → subscriber: signal→derived, derived→effect, signal→DOM binding). Every live DOM binding (compiled `_bindText` / `_bindDirect` / `_bind` / `renderEffect`, `createSelector().subscribe` row bindings, h()-path props and children, `<For>` / `<Show>` boundaries) is an `effect` node with `binding` set to what it writes (`text`, `attr`, `class`, `style`, `prop`, `child`, `list`, or `dom` when a compiled updater assigns the DOM without a setter) and a name like `aria-busy on <div>`; its mount run counts as fire 1 and each re-run as another — always consistent with the framework’s actual subscription state, no incremental drift. `getReactiveFires()` returns a fixed-size ring buffer of recent fires (`{ id, ts }`, oldest → newest) powering the Effects/Profiler tabs. Both require `activateReactiveDevtools()` first and return empty otherwise. Names come from `signal(v, { name })` / the vite-plugin dev auto-naming; anonymous computeds/effects get a synthetic `derived#id` / `effect#id`. See also: activateReactiveDevtools, getReactiveTrace, onSignalUpdate.',
     mistakes: `- Holding the returned arrays expecting them to update — they are point-in-time snapshots; call again (the devtools panel polls)
 - Reading \`node.value\` for non-string state as the real value — it is a bounded, safely-stringified PREVIEW (never a raw ref — no pinning). Inspect the signal directly for the live value
 - Expecting fires for every write in a long-running app — \`getReactiveFires()\` is a fixed-size ring; older entries roll off`,
@@ -545,7 +545,7 @@ console.log(formatGraphDescription(describeReactiveGraph()))
 //   qty            changing it re-derives 1 value and runs 1 effect
 //   shippingFlat   nothing reacts to it (no dependents)
 // Insights: orphan-signal  nothing depends on \`shippingFlat\``,
-    notes: `Auto-generated BEHAVIORAL description of the reactive graph — what a change to each signal actually DOES, in English, plus health insights only the graph shape can surface. No framework generates behavioral (not API) docs from the reactive graph; Pyreon can because it holds the precise graph. Returns \`{ summary, nodes, insights }\`: each \`nodes[]\` entry has an English \`behavior\` one-liner (a signal describes its downstream fan-out — 'changing it re-derives N values and runs M effects'; a computed/effect describes what it reacts to — 'recomputes when qty, price change'). \`insights\` flags behavioral smells: \`orphan-signal\` (nothing depends on it — dead reactivity), \`high-fanout\` (a change re-runs many effects — a hot signal), \`deep-chain\` (end of a long dependency chain). Pure over \`getReactiveGraph()\`; dev/test only. Pairs with \`getUpdateCause\` — this describes the whole graph, that explains one update. See also: getReactiveGraph, getUpdateCause, activateReactiveDevtools.`,
+    notes: `Auto-generated BEHAVIORAL description of the reactive graph — what a change to each signal actually DOES, in English, plus health insights only the graph shape can surface. No framework generates behavioral (not API) docs from the reactive graph; Pyreon can because it holds the precise graph. Returns \`{ summary, nodes, insights }\`: each \`nodes[]\` entry has an English \`behavior\` one-liner (a signal describes its downstream fan-out — 'changing it re-derives N values, runs M effects and updates K DOM bindings'; a computed/effect describes what it reacts to — 'recomputes when qty, price change'). \`summary\` is \`{ signals, derived, effects, bindings, edges }\`, where \`effects\` excludes DOM bindings. \`insights\` flags behavioral smells: \`orphan-signal\` (nothing depends on it, counting DOM bindings — dead reactivity), \`high-fanout\` (a change re-runs many effects, not counting DOM bindings — a hot signal), \`deep-chain\` (end of a long dependency chain). Pure over \`getReactiveGraph()\`; dev/test only. Pairs with \`getUpdateCause\` — this describes the whole graph, that explains one update. See also: getReactiveGraph, getUpdateCause, activateReactiveDevtools.`,
     mistakes: `- Running it in production — the reactive registry is tree-shaken when \`NODE_ENV === "production"\`, so the graph (and description) is empty.
 - Treating an \`orphan-signal\` insight as always a bug — a signal read only outside a tracking scope (an event handler) legitimately has no graph dependents; it flags the SHAPE, you confirm intent.
 - Expecting it to describe a component from SOURCE without running — it reads the LIVE graph (\`getReactiveGraph()\`), so the reactive nodes must have been created + subscribed first.`,
@@ -629,7 +629,7 @@ console.log(formatReactiveCoverage(report))`,
     example: `const report = takeReactiveCoverage()
 console.log(report.percent, 'covered') // e.g. 42.9
 for (const e of report.uncoveredEntries) console.log(e.reason, e.name, e.loc)`,
-    notes: 'Snapshot the current Reactive Coverage session into a `ReactiveCoverageReport` — `{ total, covered, uncovered, percent, byKind, entries, uncoveredEntries }`, where each entry is `{ id, kind, name, fires, subscribers, covered, reason, loc }`. A node is covered when its reactive behaviour actually fired: signals when they changed (`fires ≥ 1`), effects/derived when they RE-ran past their mount run (`fires ≥ 2`). The `ran-once` reason flags the interesting bucket — a mounted effect/computed whose reactive re-run was never triggered. Call any number of times while the session is active. See also: startReactiveCoverage, formatReactiveCoverage, computeReactiveCoverage.',
+    notes: 'Snapshot the current Reactive Coverage session into a `ReactiveCoverageReport` — `{ total, covered, uncovered, percent, byKind, bindings, entries, uncoveredEntries }`, where each entry is `{ id, kind, name, fires, subscribers, covered, reason, loc }` plus `binding` / `target` / `key` for a DOM binding. Every live DOM binding is an effect (mount run = fire 1), so it reads `ran-once` until a source changes and `covered` after; `bindings` totals them. A dead binding (its first run read no signal) is not counted. A node is covered when its reactive behaviour actually fired: signals when they changed (`fires ≥ 1`), effects/derived when they RE-ran past their mount run (`fires ≥ 2`). The `ran-once` reason flags the interesting bucket — a mounted effect/computed whose reactive re-run was never triggered. Call any number of times while the session is active. See also: startReactiveCoverage, formatReactiveCoverage, computeReactiveCoverage.',
   },
 
   'reactivity/formatReactiveCoverage': {
@@ -1295,7 +1295,7 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/Stack': {
     signature: `(props: { direction?: 'column' | 'row'; align?: Align; justify?: Justify; gap?: Space; wrap?: boolean; padding?: Space; children }) => VNode`,
     example: '<Stack gap="md" align="center"><Text>a</Text><Text>b</Text></Stack>',
-    notes: 'Primary layout container. Web → `<div style="display:flex;flex-direction:column|row">`; iOS → `VStack`/`HStack`; Android → `Column`/`Row`. Default `direction="column"`. `gap`/`padding` are theme-space tokens (number index OR "sm"|"md"|"lg"). See also: Inline, Layer, Scroll.',
+    notes: 'Primary layout container. Web → `<div style="display:flex;flex-direction:column|row">`; iOS → `VStack`/`HStack`; Android → `Column`/`Row`. Default `direction="column"`. Without `align`, children start at the cross-axis start on every target (web flex `stretch`, iOS `VStack(alignment: .leading)` / `HStack(alignment: .top)`, Android Column/Row Start/Top), so rows and unequal columns line up the same way everywhere. `gap`/`padding` are theme-space tokens (number index OR "sm"|"md"|"lg"). See also: Inline, Layer, Scroll.',
     mistakes: `- Using \`<View>\` / \`<VStack>\` / \`<div>\` — the canonical name is \`<Stack>\` (one name, all platforms)
 - Expecting responsive props (breakpoint arrays) — not supported in v1; use @pyreon/elements for responsive web
 - Relying on \`justify\` or \`wrap\` natively — both are IGNORED on iOS and Android (the compiler warns); use \`<Spacer />\` between children to distribute them`,
@@ -1304,7 +1304,7 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/Inline': {
     signature: '(props: { align?: Align; justify?: Justify; gap?: Space; wrap?: boolean; padding?: Space; children }) => VNode',
     example: '<Inline gap="sm"><Field value={q()} onChangeText={(t) => q.set(t)} /><Button onPress={search}>Go</Button></Inline>',
-    notes: 'Horizontal row — sugar for `<Stack direction="row">`. Web flex-row; iOS `HStack`; Android `Row`. ⚠ On Android `<Inline>` is a NON-WRAPPING `Row` (SwiftUI HStack shrinks to fit, but Compose Row overflows + clips the last children). Keep horizontal groups short, or use a vertical `<Stack>` for action lists. See also: Stack.',
+    notes: 'Horizontal row — sugar for `<Stack direction="row">`. Web flex-row; iOS `HStack(alignment: .top)` unless `align` is set; Android `Row`. ⚠ On Android `<Inline>` is a NON-WRAPPING `Row` (SwiftUI HStack shrinks to fit, but Compose Row overflows + clips the last children). Keep horizontal groups short, or use a vertical `<Stack>` for action lists. See also: Stack.',
     mistakes: `- Putting 5+ buttons in an <Inline> — they overflow + clip (become untappable) on Android; stack vertically or split
 - Relying on \`wrap\` for native multi-line — wrapping behavior differs per target`,
   },
@@ -1319,7 +1319,7 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/Scroll': {
     signature: `(props: { axis?: 'vertical' | 'horizontal'; padding?: Space; children }) => VNode`,
     example: '<Scroll><Stack gap="md">{/* long content */}</Stack></Scroll>',
-    notes: 'Scrollable region, vertical unless `axis="horizontal"`. Web → `overflow-y:auto` (or `overflow-x`); iOS → `ScrollView`; Android → `Column(verticalScroll)` / `Row(horizontalScroll)`. ⚠ Do not put a weighted `<Spacer>` inside a Scroll on Android (weight inside a scroll is invalid Compose). See also: Stack.',
+    notes: 'Scrollable region, vertical unless `axis="horizontal"`. Web → `overflow-y:auto` (or `overflow-x`); iOS → `ScrollView` with its content in a leading-aligned stack pinned to the leading edge (a top-aligned row when horizontal), as on the web and Android; Android → `Column(verticalScroll)` / `Row(horizontalScroll)`. ⚠ Do not put a weighted `<Spacer>` inside a Scroll on Android (weight inside a scroll is invalid Compose). See also: Stack.',
     mistakes: '- Nesting a `<Spacer>` (weight) inside `<Scroll>` — invalid on Android Compose',
   },
 
@@ -1379,7 +1379,7 @@ type Props = ExtractProps<typeof Iterator>
   'primitives/Button': {
     signature: `(props: { onPress: () => void; disabled?: boolean; variant?: 'primary'|'secondary'|'ghost'|'danger'; children }) => VNode`,
     example: '<Button variant="primary" onPress={() => count.set(count() + 1)}>Increment</Button>',
-    notes: 'Styled CTA. Web `<button>`; iOS/Android `Button`. Handler is `onPress` (NOT `onClick`). Multi-statement handlers work: `onPress={() => { a.set(1); b.set(2) }}`. See also: Press, Link.',
+    notes: 'Styled CTA. Web `<button>` (filled blue by default); iOS `Button` with `.buttonStyle(.borderedProminent)` by default (`secondary` `.bordered`, `ghost` `.borderless`, `danger` red `.borderedProminent`); Android Material `Button` (`OutlinedButton` / `TextButton` for secondary / ghost). An inline `style` that sets a background or border replaces the default chrome, as it does on the web. Handler is `onPress` (NOT `onClick`). Multi-statement handlers work: `onPress={() => { a.set(1); b.set(2) }}`. See also: Press, Link.',
     mistakes: `- Using \`onClick\` — the canonical event is \`onPress\` (mapped to onClick/action:/onClick per target)
 - Passing \`onPress={maybeUndefined}\` — guard it; a non-function handler is a footgun`,
   },
@@ -1439,7 +1439,7 @@ const base = signal(1.0)
     example: `<Field value={draft()} onChangeText={(t) => draft.set(t)} placeholder="Search…" onSubmit={search} />
 <Field multiline lines={5} value={bio()} onChangeText={(t) => bio.set(t)} placeholder="About you" />
 <Field kind="date" min="2026-01-01" value={due()} onChangeText={(d) => due.set(d)} />`,
-    notes: `Text input. Web \`<input>\`; iOS/Android single-line \`TextField\`. Handler is \`onChangeText(next)\` (NOT \`onInput\`/\`onChange\`). \`value\` accepts a signal accessor for two-way binding. \`multiline\` makes it a text area on every target — web \`<textarea rows>\`, iOS \`TextField(axis: .vertical)\` + \`.lineLimit(lines, reservesSpace: true)\`, Android \`minLines\`/\`maxLines\` — exactly \`lines\` rows tall (default 3) and scrolling past them. \`kind="date" | "time" | "datetime"\` makes it the platform picker (web \`<input type=date|time|datetime-local>\`, iOS \`DatePicker\`, Android Material 3 date/time dialogs) over the web's zone-free wall-clock STRING — \`YYYY-MM-DD\` / \`HH:mm\` / \`YYYY-MM-DDTHH:mm\`, \`''\` = no value — bounded by \`min\`/\`max\` in the same format. \`multiline\` and a date \`kind\` are mutually exclusive. See also: Toggle.`,
+    notes: `Text input. Web \`<input>\` with a 1px grey rounded border; iOS \`TextField\` / \`SecureField\` with \`.textFieldStyle(.roundedBorder)\`; Android a filled single-line \`TextField\`. An inline \`style\` (or \`background\` prop) that draws a background or border replaces the default box on web and iOS. Handler is \`onChangeText(next)\` (NOT \`onInput\`/\`onChange\`). \`value\` accepts a signal accessor for two-way binding. \`multiline\` makes it a text area on every target — web \`<textarea rows>\`, iOS \`TextField(axis: .vertical)\` + \`.lineLimit(lines, reservesSpace: true)\`, Android \`minLines\`/\`maxLines\` — exactly \`lines\` rows tall (default 3) and scrolling past them. \`kind="date" | "time" | "datetime"\` makes it the platform picker (web \`<input type=date|time|datetime-local>\`, iOS \`DatePicker\`, Android Material 3 date/time dialogs) over the web's zone-free wall-clock STRING — \`YYYY-MM-DD\` / \`HH:mm\` / \`YYYY-MM-DDTHH:mm\`, \`''\` = no value — bounded by \`min\`/\`max\` in the same format. \`multiline\` and a date \`kind\` are mutually exclusive. See also: Toggle.`,
     mistakes: `- Using \`onChange\`/\`onInput\` — the canonical handler is \`onChangeText(next: string)\`
 - Forgetting \`value\` is the source of truth — write back via \`onChangeText\` → signal.set
 - A dynamic \`multiline={cond()}\` — it is structural (a different element / initializer), so only a static value lowers natively; branch the element instead
@@ -1677,7 +1677,7 @@ const result = analyzeReactivity(
 )
 for (const f of result.findings) console.log(f.line, f.kind, f.detail)
 console.log(formatReactivityLens(code, result)) // annotated-source debug view`,
-    notes: `[EXPERIMENTAL] Reactivity-Lens entry point (experimental). The compiler ALREADY decides per-expression whether code is reactive while emitting codegen; this surfaces that ground truth back to the author instead of discarding it. Returns \`{ findings, spans }\` — \`findings\` merges the structural codegen decisions (\`reactive\` / \`reactive-prop\` / \`reactive-attr\` / \`static-text\` / \`hoisted-static\`) with the EXISTING \`detectPyreonPatterns\` footguns (\`kind: 'footgun'\`, carrying the detector \`code\`) under one (line, column)-sorted taxonomy. Forces the JS backend so the sidecar is always present. Absence of a span is “not asserted”, never an implicit static claim. See also: formatReactivityLens, detectPyreonPatterns, transformJSX_JS.`,
+    notes: `[EXPERIMENTAL] Reactivity-Lens entry point (experimental). The compiler ALREADY decides per-expression whether code is reactive while emitting codegen; this surfaces that ground truth back to the author instead of discarding it. Returns \`{ findings, spans }\` — \`findings\` merges the structural codegen decisions (\`reactive\` / \`reactive-prop\` / \`reactive-attr\` / \`static-text\` / \`hoisted-static\`) with the EXISTING \`detectPyreonPatterns\` footguns (\`kind: 'footgun'\`, carrying the detector \`code\` and, when the detector suggests one, its rewrite as \`fix\`) under one (line, column)-sorted taxonomy. Forces the JS backend so the sidecar is always present. Absence of a span is “not asserted”, never an implicit static claim. See also: formatReactivityLens, detectPyreonPatterns, transformJSX_JS.`,
     mistakes: `- Treating the absence of a span as a static guarantee — the Lens is asymmetric: positive spans are RECORDS of a codegen branch; silence means "not analyzed", not "proven static"
 - Expecting it to reflect the native backend — it deliberately forces \`transformJSX_JS\`; codegen is byte-identical so the analysis is sound, native just does not emit the sidecar at production bundle time (it is an editor-only feature)
 - Calling it on a hot build path — it is an authoring-time / LSP tool, not part of the production transform pipeline`,
@@ -7513,7 +7513,7 @@ const result = lintFile("app.tsx", source, allRules, config, cache, configSink)`
   },
 
   'lint/cli': {
-    signature: `pyreon-lint [--preset name] [--fix] [--format text|json|compact] [--quiet] [--watch] [--list] [--config path] [--ignore path] [--rule id=severity] [--rule-options id='{json}'] [path...]`,
+    signature: `pyreon-lint [--preset name] [--fix] [--format text|json|compact|gha] [--quiet] [--watch] [--list] [--config path] [--ignore path] [--rule id=severity] [--rule-options id='{json}'] [path...]`,
     example: `pyreon-lint --preset strict --quiet    # CI mode
 pyreon-lint --fix                       # auto-fix
 pyreon-lint --watch src/                # watch mode
@@ -7521,6 +7521,7 @@ pyreon-lint --init                      # scaffold .pyreonlintrc.json for this p
 pyreon-lint --list                      # list all 134 rules
 pyreon-lint --why-off no-window-in-ssr  # why a rule will (or will not) run here
 pyreon-lint --format json               # machine-readable
+pyreon-lint --format gha                # GitHub Actions annotations
 pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/`,
     notes: `CLI entry. Config: \`.pyreonlintrc.json\` (reference \`schema/pyreonlintrc.schema.json\` for IDE autocomplete) or \`package.json\`'s \`'pyreonlint'\` field. Ignore: \`.pyreonlintignore\` + \`.gitignore\`. Watch: \`fs.watch\` recursive with 100ms debounce. \`--rule-options id='{json}'\` passes per-rule options on a single run. See also: lint.`,
   },
@@ -10618,7 +10619,7 @@ const posts = await getCollection('blog')
 for (const post of posts) {
   console.log(post.data.title, post.slug)
 }`,
-    notes: `Runtime query — returns every entry in a collection. Data shape inferred from the collection's zod schema via the generated \`.pyreon/content-types.d.ts\`. Each entry exposes a \`render()\` lazy loader to get the page component. See also: getEntry, getEntries.`,
+    notes: `Runtime query — returns every entry in a collection. \`data\` is the collection schema's PARSED output (defaults applied, values typed as the schema outputs them — a \`Date\` stays a \`Date\`), matching the generated \`.pyreon/content-types.d.ts\`. Entries come from the collection's metadata chunk (frontmatter, headings, \`wordCount\`, \`excerpt\` — no bodies); \`render()\` loads the entry's page component on demand, so a listing never pulls in bodies. See also: getEntry, getEntries.`,
     mistakes: `- Calling \`getCollection\` in a component body without \`await\`. It returns a Promise. Wrap in an async setup function, use a loader, or await it during SSG render.
 - Prefixing the collection to \`entry.slug\` twice — \`slug\` is collection-relative (\`'hello'\` for \`src/content/blog/hello.md\`), the same key \`getEntry\` takes
 - Passing a string that isn't a defined collection. TypeScript catches this once \`.pyreon/content-types.d.ts\` is generated; without it, you'd get a runtime error.`,
@@ -10907,6 +10908,36 @@ search.query.set('signal')
     notes: `\`useSearch\` is the headless search state — build a custom search UI on top of it. \`<Search />\` wraps it with default styling + keyboard shortcuts (⌘K-style open). Both load a MiniSearch index lazily via \`loadSearchIndex\` (a module-level cache, reference-counted across mounts so it is not re-fetched per component instance) and debounce the query (\`debounceMs\`, default 150ms) before searching. \`status\` exists specifically to avoid a "No results" flash: \`'idle'\` (query empty or below \`minQueryLength\`), \`'searching'\` (in flight), \`'ready'\` (a search COMPLETED for the current query — only then is an empty \`results\` a genuine "no matches"). \`minQueryLength\` defaults to 2 (single letters hit too broad a result set on docs-sized corpora).`,
     mistakes: `- Gating the empty state on \`results().length === 0\` alone — during the debounce/index-load window results are momentarily empty for a query that WILL match; gate on \`status() === 'ready'\` too, as shown above
 - Building a search index yourself instead of calling \`loadSearchIndex\` — the module-level cache is what keeps the ~200 KB index from being fetched/parsed once per mounted search UI`,
+  },
+
+  'zero-content/blogCollection / defineBlog (@pyreon/zero-content/blog)': {
+    signature: `blogCollection(options?: { path?: string; unpublished?: 'omit' | 'runtime' }): CollectionDefinition · defineBlog(config: BlogConfig): Blog`,
+    example: `// content.config.ts
+import { defineConfig } from '@pyreon/zero-content'
+import { blogCollection } from '@pyreon/zero-content/blog'
+export default defineConfig({ collections: { blog: blogCollection() } })
+
+// src/blog.ts
+import 'virtual:zero-content/collections'
+import { defineBlog } from '@pyreon/zero-content/blog'
+export const blog = defineBlog({
+  siteUrl: 'https://example.com',
+  title: 'Example blog',
+  description: 'Notes from the team.',
+  feedPath: '/blog/rss.xml',
+})
+
+// src/routes/blog/index.tsx          export default blog.IndexPage
+// src/routes/blog/page/[page].tsx    export const getStaticPaths = blog.pagePaths; export default blog.IndexPage
+// src/routes/blog/[slug].tsx         export const getStaticPaths = blog.postPaths; export default blog.PostPage
+// src/routes/blog/tags/[tag]/index.tsx        export const getStaticPaths = blog.tagPaths;     export default blog.TagPage
+// src/routes/blog/tags/[tag]/page/[page].tsx  export const getStaticPaths = blog.tagPagePaths; export default blog.TagPage`,
+    notes: `A production blog on a content collection. \`blogCollection()\` is a \`pages\` collection with a dependency-free Standard Schema for post frontmatter (title, description, date, updated?, slug?, tags?, cover?, coverAlt?, author?, canonical?, draft? — unknown fields are a build error), \`date\` as the publish date, and \`unpublished: 'omit'\` by default. \`defineBlog({ siteUrl, title, description, … })\` returns the queries (\`getPosts()\` — published, newest first; \`getPost\`, \`getTags\` with counts), four route components (\`IndexPage\` for \`/blog\` and \`/blog/page/[page]\`, \`PostPage\`, \`TagPage\` for \`/blog/tags/[tag]\` and \`/blog/tags/[tag]/page/[page]\`, paginated like the index) and their \`getStaticPaths\` (\`pagePaths\`, \`postPaths\`, \`tagPaths\`, \`tagPagePaths\`). Listings read the collection's metadata chunk, so no listing loads a post body. Every listing, count, page count, previous/next and related list derives from the published posts only, and \`PostPage\` renders an unpublished entry only in development (with a Draft/Scheduled notice), whatever the \`unpublished\` mode bundled. Each page sets its head through \`blogPostHead\`/\`blogListHead\`: title, description, canonical, Open Graph + \`article:*\`, Twitter card, JSON-LD \`BlogPosting\` (post), \`Blog\` (index) or \`CollectionPage\` (tag). After every post \`postEnd\` renders a call-to-action box (\`cta\`, off unless given — turn it off when posts carry their own closing), share links (\`share\`, on), a feed link (\`feed\`, on with \`feedPath\`) and a newsletter form (\`newsletter\`, renders nothing while its action is empty). Components (\`PostList\`, \`PostCard\`, \`PostHeader\`, \`PostMeta\`, \`TagList\`, \`Pagination\`, \`PostNav\`, \`RelatedPosts\`, \`PostEnd\`, \`CallToAction\`, \`ShareLinks\`, \`NewsletterForm\`) are exported for custom pages, and \`views: { index, tag, post }\` replaces a page type's markup with the site's own component, which receives the computed page data (\`BlogListView\`: posts, page, page count, total, pager URLs, top tags, the tag; \`BlogPostView\`: post, body component, headings for a table of contents, previous/next, related, absolute URL, preview status) while the blog keeps the queries, not-found handling, head tags and static paths. The optional stylesheet \`@pyreon/zero-content/blog.css\` has one-class specificity and takes its colours from the host via \`--pyreon-blog-*\` variables. RSS stays in the content plugin's \`seo.rss\`. See also: defineCollection, getCollection.`,
+    mistakes: `- Forgetting \`import 'virtual:zero-content/collections'\` in the file that calls \`defineBlog\` — the SSG render and \`getStaticPaths\` read the collection registry it populates; without it \`getPosts()\` throws \`No content collection registry available\`
+- Expecting \`/blog/page/1\` to exist — page 1 is \`/blog\`; \`pagePaths\` lists pages 2..n and the index route treats \`1\` as not found (no duplicate URL)
+- A frontmatter \`slug\` that differs from the file name — the URL comes from the file; \`postPaths\` fails the build naming both
+- Importing \`@pyreon/zero-content/blog.css\` AFTER the site stylesheet — it has one-class specificity, so it must come first for the site's class rules to win
+- Treating \`entry.data.date\` as a string — the schema outputs \`BlogPostData\` (dates as \`Date\`, \`tags\`/\`author\` as lists, \`draft\` boolean) and that parsed output is what ships`,
   },
 
   'zero-content/generateSitemap / generateRssFeed / generateLlmsTxt': {
@@ -12553,12 +12584,78 @@ const section = sectionFrom(loadedModule, 'loom') // default OR named export`,
   'loom/loom scan': {
     signature: 'loom scan [dir] [--strict] [--json] [--no-imports] [--no-write]',
     example: `$ loom scan .
-loom: 5 workspace package(s), 6 external dep(s), 4 internal edge(s), depth 2, 1 cycle(s).
+loom scan · . · 5 packages
 
-ERROR · 3
-  ✗ cycle [@fix/auth] — Runtime dependency cycle: @fix/auth → @fix/data → @fix/auth
-  ✗ version-drift [left-pad] — declared with 2 different ranges (^1.0.0 · ^2.0.0) — the majors differ
-  ✗ phantom-dep [undeclared-pkg] — \\\`@fix/app\\\` imports \\\`undeclared-pkg\\\` in shipping source but never declares it`,
+  workspace packages  5
+  external deps       5
+  internal edges      5
+  depth               4
+  runtime cycles      1
+
+  ℹ 8 info
+  ℹ unused-dep · \`@fix/app\` declares \`left-pad\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ↳ packages/app/package.json
+  ℹ unused-dep · \`@fix/app\` declares \`chalk\` as a dependency but no source file imports it — lexical
+     evidence only (bins/plugins/CSS load without an import statement); verify before removing
+     ↳ packages/app/package.json
+  ℹ unused-dep · \`@fix/app\` declares \`pinned-pkg\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ↳ packages/app/package.json
+  ℹ unused-dep · \`@fix/util\` declares \`left-pad\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ↳ packages/util/package.json
+  ℹ unused-dep · \`@fix/util\` declares \`chalk\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ↳ packages/util/package.json
+  ℹ unused-dep · \`@fix/util\` declares \`never-imported\` as a dependency but no source file imports it
+     — lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ↳ packages/util/package.json
+  ℹ unused-dep · \`@fix/util\` declares \`pinned-pkg\` as a dependency but no source file imports it —
+     lexical evidence only (bins/plugins/CSS load without an import statement); verify before
+     removing
+     ↳ packages/util/package.json
+  ℹ version-drift · \`pinned-pkg\` is declared with 2 different ranges (^2.0.0 · ^3.0.0) — a root
+     override pins it to 3.0.0, so installs agree, but the declarations still lie
+     ↳ packages/app/package.json (^2.0.0)
+     ↳ packages/util/package.json (^3.0.0)
+
+  ! 3 warnings
+  ! peer-mismatch · \`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships
+     1.0.0 — the peer contract and the local reality disagree by a major
+     ↳ packages/plugin/package.json
+  ! prod-import-of-dev-dep · \`@fix/app\` imports \`dev-only-pkg\` in shipping source but declares it
+     only in devDependencies — consumers won't have it installed
+     ↳ packages/app/src/index.ts
+  ! version-drift · \`chalk\` is declared with 2 different ranges (^5.0.0 · ^5.2.0)
+     ↳ packages/app/package.json (^5.0.0)
+     ↳ packages/util/package.json (^5.2.0)
+
+  ✗ 5 errors
+  ✗ cycle · Runtime dependency cycle: @fix/auth → @fix/data → @fix/auth — imports resolve back to
+     their origin, which blocks layering and can break module initialisation order
+     ↳ packages/auth/package.json
+  ✗ internal-range · \`@fix/app\` declares workspace member \`@fix/util\` as \`1.0.0\` (not \`workspace:\`)
+     — a version slip silently installs the REGISTRY copy instead of linking the workspace
+     ↳ packages/app/package.json
+  ✗ internal-range · \`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not
+     \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the
+     workspace
+     ↳ packages/plugin/package.json
+  ✗ phantom-dep · \`@fix/app\` imports \`undeclared-pkg\` in shipping source but never declares it —
+     resolvable only through hoisting luck
+     ↳ packages/app/src/index.ts
+  ✗ version-drift · \`left-pad\` is declared with 2 different ranges (^1.0.0 · ^2.0.0) — the majors
+     differ, so packages are building against different APIs
+     ↳ packages/app/package.json (^1.0.0)
+     ↳ packages/util/package.json (^2.0.0)
+
+✗ 5 errors, 3 warnings, 8 info · 5 packages · 3 ms`,
     notes: 'Read the workspace, analyze the dependency fabric, and report. Discovery reads the same declarations an install tool reads; analysis splits edges by semantics (runtime vs dev); eight detectors emit findings with stable codes, honest severities (error gates, warning advises, info knows its own limits), and structured evidence (which files import the phantom, which packages declare which range). Writes `loom-report.json` next to the root manifest and EXITS NON-ZERO on error-severity findings — the CI contract. `--strict` reds on warnings too; `--no-imports` skips the lexical detectors (phantom/dev-dep/unused); `--json` prints the full report to stdout and ONLY that (the write notice moves to stderr), so `loom scan . --json > report.json` is a valid JSON file. See also: loom dev.',
     mistakes: `- Treating a dev-edge "cycle" as a bug — loom deliberately excludes devDependencies from cycle detection; monorepos legitimately share test utilities both ways, and a detector that cries wolf is a dead gate
 - Reading \`unused-dep\` as a removal order — it is INFO with lexical evidence only; bins, plugin autoloads, and CSS imports load without an import statement
@@ -12571,7 +12668,7 @@ ERROR · 3
     signature: 'loom dev [dir] [--port=5230]',
     example: `$ loom dev . --port=5230
 loom dev: 142 package(s) → http://localhost:5230/`,
-    notes: 'The observatory: five views over the scan report — the layered dependency graph (columns by resolution depth, cycle edges dashed + animated, hover dims unrelated nodes), the internal adjacency matrix (keyboard-reachable cells), cycle cards with break-the-loop advice, blast-radius ranking (transitive dependents, counted not guessed), and the manifest table — plus a detail panel per package (metrics, depends-on / required-by, findings, resolution path), ⌘K search, kind filters, and dark/light theming. The report endpoint re-scans per request, so a manifest edit + reload shows fresh truth. Vite + @pyreon/vite-plugin are OPTIONAL peers: `loom scan` works without them; `loom dev` names the install when missing. See also: loom scan.',
+    notes: `The observatory: a tool-app layout over the scan report — a top bar (workspace name, view switch, error / warning / info counts and the exit code \`loom scan\` would return), the package list grouped by resolution depth with a severity glyph and blast-radius count per row, five views, a detail rail and a scan status bar (counts plus the \`loom.ignore\` suppressions in force). The views: the layered graph of internal packages (one column per depth; selecting a package lights its blast radius and the edges a change travels; cycle edges dashed red; dev edges an opt-in layer), the matrix (external VERSION usage — rows are dependencies, columns the packages declaring them, cross-major drift red, same-major amber, phantom imports and unused declarations marked; or the internal import DSM), cycle cards, impact (the selection's blast radius plus every package ranked by reach), and the manifest (an excerpt of this scan's \`loom-report.json\` with a download of the full report, and every node as a table row). With nothing selected (the first view) the rail is a workspace overview — counts, findings by severity, the five widest blast radii with platform packages ranked under their parent, and the gate. For a package the rail shows deps / dependents / blast, findings, depends-on, blast radius, resolution path and the \`loom.ignore\` entry that would suppress the first finding. ⌘K search, ↑↓ through the list, one keyboard tab stop in the graph, dark/light following the shared \`pyreon-theme\` preference. Below 860 px the list is a drawer, below 760 px the rail too. The report endpoint re-scans per request, so a manifest edit + reload shows fresh truth; a failed rescan renders its reason with a reload. Vite + @pyreon/vite-plugin are OPTIONAL peers: \`loom scan\` works without them; \`loom dev\` names the install when missing. See also: loom scan.`,
     mistakes: `- Expecting the UI in a project without Vite — \`loom dev\` needs vite + @pyreon/vite-plugin (optional peers) and its error names the exact install; \`loom scan\` never needs them
 - Reading graph depth as import distance — depth is LONGEST-path from the entry points (how far below the surface a package sits), hard-bounded at V−1; packages inside a cycle keep the depth their first visit found`,
   },
@@ -12591,6 +12688,8 @@ loom: 142 package(s) → dist/observatory`,
 
 const report = buildReport('.')
 report.stats            // { internal, external, edges, depth, cycles, errors, warnings, infos }
+report.gate             // { strict, exit } — what \`loom scan\` exits with
+report.issues.filter((i) => i.ignored)  // findings a loom.ignore entry waved through, with the reason
 report.graph.cycles     // string[][] — each runtime loop in order
 report.issues.filter((i) => i.severity === 'error')`,
     notes: 'The programmatic engine behind the CLI — scan the workspace, analyze the graph, run every detector, fold the stats. One entry point; the CLI, the dev server, and your own tooling all consume the same `LoomReport` (model + external usage + graph analysis + issues + stats). Pure Node: its engine imports only `@pyreon/config` (to read `pyreon.config.ts`) — safe to call from build scripts and CI tooling. See also: loom scan.',
@@ -12773,18 +12872,41 @@ if (worstVerdict(report) !== 'lowers') process.exitCode = 1`,
 
   'atlas/atlas scan': {
     signature: 'atlas scan [dir] [--no-mount] [--check]',
-    example: `$ atlas scan .
-atlas: discovered 10 component(s), 44 scenario(s) — 42 verified, 2 failing, 0 unverified.
-  checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43
-  not run: reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\`
-  → atlas-catalog.json
-  → atlas-agent-guide.md
-atlas: 2 failing scenario(s):
-  ✗ button--empty
-      a11y: missing accessible name: "label" is empty`,
+    example: `$ atlas scan . --no-mount --no-write
+atlas scan · . · static (--no-mount)
+
+  components   6
+  scenarios   22  2 failing · 12 verified · 8 unverified
+  checks      a11y 12/14 ✗
+  not run     interaction, ssrParity, leak — mounting is disabled for this run (\`--no-mount\`) — the
+              scan stayed static
+              reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\` to measure
+              this (a Node scan cannot)
+
+  ! 3 file(s) export something PascalCase that produced no component:
+    3× a chained/member call — rocketstyle chains are found by the runtime pass (needs \`theme\` in
+      your config); other member-call wrappers are not unwrapped
+      · src/components/Chip.tsx — Chip
+      · src/components/Stack.tsx — Stack
+      · src/demo-catalog.tsx — DemoButton, DemoBadge, IconDot
+    Not necessarily wrong — a provider, a schema or a const belongs here too.
+    But a component you expected in the catalog would show up in this list.
+
+  ✗ 2 failing scenarios
+  ✗ button--empty  Button
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+  ✗ badge--empty  Badge
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+  Run atlas verify <Component> to re-check one component on its own.
+
+✗ 2 failing scenarios · 12 verified · 8 unverified · 6 components · 137 ms`,
     notes: 'Discover components (static TS scan + rocketstyle runtime detection), derive controls and variant scenarios, MOUNT each scenario (real module load through a Vite-powered loader) and run the node half of the verify pipeline — a11y (static), interaction (mount + play/click-walk), a REAL leak check (reactive-graph accumulation across repeated mounts, past GC), and SSR-PARITY (`renderToString` + hydrate, asserting the runtime reported no mismatch AND the hydrated DOM equals a fresh client mount — two oracles because SSR and hydrate can agree on the same wrong DOM). Parity skips with a reason when `@pyreon/runtime-server` is absent, and is blind to `typeof window` branching because both renders share one process. Writes `atlas-catalog.json` (every component, control, scenario, and verdict) and `atlas-agent-guide.md` (the AI-consumable summary). Exits non-zero when any scenario FAILS — wiring the scan into CI gates the catalog. `--no-mount` keeps the scan purely static (no project code executes). `--check` turns the scan into a RATCHET: it compares against the COMMITTED `atlas-catalog.json` instead of rewriting it (a ratchet that overwrites its own baseline compares a run to itself and can never report a regression again) and exits non-zero on a REGRESSION. A check that STOPPED RUNNING counts as one — that is the case absolute counts cannot catch, because losing coverage makes the numbers improve: delete a wrapper and every mount-dependent check drops to skip, so `2 failing` becomes `0 failing` and a broken catalog reads as fixed. A missing or unreadable baseline is exit 0 with a note, never a failure — making the first `--check` run red for everybody is how a ratchet gets disabled on day one. See also: atlas verify, atlas verify-browser, createAtlas.',
     mistakes: `- Treating "verified" as a default — a scenario is verified only when a check actually RAN and passed; \`checked: 0\` renders as unverified, never smoothed into a pass
-- Reading \`N verified\` as "everything was checked" — it is a scenario count, not a check count. The \`checks:\` line is the one that says which of the six ran, and a package without \`@pyreon/runtime-server\` resolvable reports 1090/1090 verified having run only two of them
+- Reading \`N verified\` as "everything was checked" — it is a scenario count, not a check count. The \`checks\` row is the one that says which of the six ran, and a package without \`@pyreon/runtime-server\` resolvable reports 1090/1090 verified having run only two of them
 - Running the scan without the project theme in \`atlas.config.ts\` for rocketstyle components — dimension axes resolve empty and the variant scenarios collapse to defaults
 - Expecting the leak check under plain \`node\` — it needs a GC hook (\`bun\`, or \`node --expose-gc\`); without one it reports skip, not pass
 - Expecting reactivityCoverage/snapshot verdicts from the scan — those are browser-only claims; run \`atlas verify-browser\` to earn them
@@ -12807,16 +12929,23 @@ Input: 1 problem(s):
 
   'atlas/atlas verify': {
     signature: 'atlas verify [Component] [--cwd <dir>] [--json] [--check]',
-    example: `$ atlas verify Button
-atlas verify Button: 1 component(s), 15 scenario(s)
-  checks: a11y 14/15 ✗ · interaction 15/15 · ssrParity 15/15 · leak 15/15
-  not run: reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\`
+    example: `$ atlas verify Button --no-mount
+atlas verify Button · 1 component · 9 scenarios · static (--no-mount)
 
-✗ button--empty
-    a11y [missing-accessible-name]: missing accessible name: "label" is empty
-      → Give "label" a non-empty value, or an aria-label if the text is decorative.
+  scenarios  9  1 failing · 8 verified · 0 unverified
+  checks     a11y 8/9 ✗
+  not run    interaction, ssrParity, leak — mounting is disabled for this run (\`--no-mount\`) — the
+             scan stayed static
+             reactivityCoverage, snapshot — browser-only — run \`atlas verify-browser\` to measure
+             this (a Node scan cannot)
 
-1 failing · 14 verified · 0 unverified`,
+  ✗ 1 failing scenario
+  ✗ button--empty  Button
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+
+✗ 1 failing scenario · 8 verified · 0 unverified · 141 ms`,
     notes: 'Re-check ONE component and report WHICH check failed and why — the write → verify → fix loop, for a person or an agent iterating on a single component. Discovery still walks the whole project (a component’s file is not known until it does), but decoration and verification — mounting, exercising, hydrating and GC-probing every scenario — run only for the match, so this is a question about one component rather than a whole-catalog scan with the answer filtered out at the end. Measured on `@pyreon/ui-components` (108 components, 1090 scenarios): 1.35s for a full scan against 0.90s scoped to one component’s 60 scenarios; the verify work drops ~18× but discovery dominates the residual, so treat this as a focus tool first and a speed tool second. Prints a per-check tally, the checks that did NOT run and why, and every failing scenario UNCAPPED with its findings. `--json` emits the same report as data for an agent to branch on. Never writes `atlas-catalog.json`: a scoped run holds one component, and writing that would replace the whole catalog. Exits non-zero on any failing check, on a name that matched nothing, and on a run where nothing could be verified at all. See also: atlas scan, atlas verify-browser, VerifyFinding.',
     mistakes: `- Reading exit 0 as "checked and clean" without the \`checks:\` line — a run where nothing could be examined exits NON-zero for exactly this reason, but a run where only two of six checks were available exits 0 and the tally is what says so
 - Expecting a scoped run to refresh \`atlas-catalog.json\` — it deliberately never writes; a one-component catalog would replace the real one and silently break the agent guide, the MCP tools and \`atlas check\` for every other component until the next full scan

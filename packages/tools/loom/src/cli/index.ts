@@ -14,8 +14,10 @@ import {
   readManifestLoomSection,
   validateLoomSection,
 } from '../core/config'
-import type { LoomIssue, LoomReport } from '../core/types'
+import type { LoomReport } from '../core/types'
 import { type FlagSpec, type ParsedArgs, parseArgs } from './args'
+import { createTerm, finding, header, plural, verdict } from '@pyreon/ansi'
+import { renderScanText } from './render'
 import type { LoomSettings } from '../core/config'
 
 const HELP = `
@@ -75,15 +77,20 @@ function err(text: string): void {
   process.stderr.write(text)
 }
 
-const GLYPH = { error: '✗', warning: '▲', info: '·' } as const
-
-function renderIssue(issue: LoomIssue): string {
-  const dep = issue.dep ? ` [${issue.dep}]` : ''
-  return `  ${GLYPH[issue.severity]} ${issue.code}${dep} — ${issue.message}`
-}
-
 function message(error: unknown): string {
   return String((error as Error)?.message ?? error)
+}
+
+/**
+ * A problem on stderr in the shared theme (rule 4): `✗ loom · problem`,
+ * further lines of the message underneath, then `fix:` when there is one.
+ */
+function problem(source: string, text: string, fix?: string): void {
+  const t = createTerm({ isTTY: Boolean(process.stderr.isTTY) })
+  const [first = '', ...rest] = text.replace(/^loom( \w+)?: /, '').split('\n')
+  const lines = finding(t, { severity: 'error', source, message: first, fix }, { indent: 0, width: t.width })
+  lines.splice(fix ? lines.length - 1 : lines.length, 0, ...rest.map((l) => `   ${l.replace(/^ {2}/, '')}`))
+  err(`${lines.join('\n')}\n`)
 }
 
 /** Resolve config and scan. Config is read HERE so `buildReport` stays pure. */
@@ -139,13 +146,13 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     return 0
   }
   if (cmd !== 'scan' && cmd !== 'dev' && cmd !== 'build') {
-    err(`loom: unknown command "${cmd}". Try \`loom --help\`.\n`)
+    problem('loom', `unknown command "${cmd}".`, 'run loom --help for the list of commands')
     return 1
   }
 
   const parsed = parseArgs(rest, SPECS[cmd])
   if (!parsed.ok) {
-    err(`loom ${cmd}: ${parsed.error} Try \`loom --help\`.\n`)
+    problem(`loom ${cmd}`, parsed.error, 'run loom --help for usage')
     return 1
   }
   const args = parsed.args
@@ -156,60 +163,43 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   const dir = args.positionals[0] ?? '.'
 
   if (cmd === 'scan') {
+    const started = performance.now()
     let report: LoomReport
     let settings: LoomSettings
     try {
       ;({ report, settings } = await scan(dir, args))
     } catch (error) {
-      err(`${message(error)}\n`)
+      problem('loom scan', message(error))
       return 1
     }
     const json = args.flags.has('--json')
+    const strict = args.flags.has('--strict') || settings.strict === true
+    const red = report.stats.errors > 0 || (strict && report.stats.warnings > 0)
+    const reportPath = args.flags.has('--no-write') ? undefined : join(dir, 'loom-report.json')
+    if (reportPath) writeFileSync(reportPath, JSON.stringify(report, null, 2))
 
     if (json) {
-      out(JSON.stringify(report, null, 2) + '\n')
-    } else {
-      const s = report.stats
-      out(
-        `loom: ${s.internal} workspace package(s), ${s.external} external dep(s), ` +
-          `${s.edges} internal edge(s), depth ${s.depth}, ${s.cycles} cycle(s).\n`,
-      )
-      const bySeverity = (sev: LoomIssue['severity']) => report.issues.filter((i) => i.severity === sev)
-      for (const sev of ['error', 'warning', 'info'] as const) {
-        const list = bySeverity(sev)
-        if (!list.length) continue
-        out(`\n${sev.toUpperCase()} · ${list.length}\n`)
-        for (const issue of list) out(renderIssue(issue) + '\n')
-      }
-      if (report.issues.length === 0) out('loom: fabric clean — no findings.\n')
-    }
-
-    if (!args.flags.has('--no-write')) {
-      const reportPath = join(dir, 'loom-report.json')
-      writeFileSync(reportPath, JSON.stringify(report, null, 2))
       // Under `--json`, stdout is a MACHINE channel and may carry nothing but
       // the document — `loom scan . --json > report.json` is the documented
       // machine surface, and a trailing "→ path" line makes that file
       // unparseable by every JSON reader. Narration goes to stderr there, so
       // the notice is still visible in a terminal (both streams land there)
-      // while a redirect gets exactly the report. In human mode the narration
-      // IS the requested output, so it stays on stdout.
-      const notice = `  → ${reportPath}\n`
-      if (json) err(notice)
-      else out(notice)
+      // while a redirect gets exactly the report.
+      out(JSON.stringify(report, null, 2) + '\n')
+      if (reportPath) err(`  → ${reportPath}\n`)
+      if (red) {
+        err(
+          `loom: ${report.stats.errors} error(s)` +
+            (strict ? ` + ${report.stats.warnings} warning(s) (strict)` : '') +
+            '\n',
+        )
+      }
+    } else {
+      // In human mode the narration IS the requested output: one report on
+      // stdout, its last line the verdict.
+      out(renderScanText(report, { dir, strict, reportPath, elapsedMs: performance.now() - started }))
     }
-
-    const strict = args.flags.has('--strict') || settings.strict === true
-    const red = report.stats.errors > 0 || (strict && report.stats.warnings > 0)
-    if (red) {
-      err(
-        `loom: ${report.stats.errors} error(s)` +
-          (strict ? ` + ${report.stats.warnings} warning(s) (strict)` : '') +
-          '\n',
-      )
-      return 1
-    }
-    return 0
+    return red ? 1 : 0
   }
 
   if (cmd === 'build') {
@@ -217,7 +207,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     try {
       ;({ report } = await scan(dir, args))
     } catch (error) {
-      err(`${message(error)}\n`)
+      problem(`loom ${cmd}`, message(error))
       return 1
     }
     // The default sits next to the scanned workspace, like loom-report.json.
@@ -227,10 +217,11 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     try {
       const { buildStaticSite } = await import('../build/static-site')
       const outDir = await buildStaticSite({ report, outDir: outOpt, ...(base ? { base } : {}) })
-      out(`loom: ${report.stats.internal} package(s) → ${outDir}\n`)
+      const t = createTerm()
+      out(`${verdict(t, 'ok', `built the observatory ${t.sym('arrow')} ${outDir}`, [plural(report.stats.internal, 'package')])}\n`)
       return 0
     } catch (error) {
-      err(`${message(error)}\n`)
+      problem(`loom ${cmd}`, message(error))
       return 1
     }
   }
@@ -241,7 +232,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   if (portArg !== undefined) {
     port = Number(portArg)
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
-      err(`loom dev: --port must be a whole number from 1 to 65535 (got "${portArg}").\n`)
+      problem('loom dev', `--port must be a whole number from 1 to 65535 (got "${portArg}").`)
       return 1
     }
   }
@@ -252,7 +243,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     // settings, so the UI reports exactly what `loom scan` reports.
     ;({ settings } = await scan(dir, args))
   } catch (error) {
-    err(`${message(error)}\n`)
+    problem(`loom ${cmd}`, message(error))
     return 1
   }
   const { startDevServer } = await import('../dev/server')
@@ -263,11 +254,12 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       settings,
       ...(port !== undefined ? { port } : {}),
     })
-    out(`loom dev: ${handle.packages} package(s) → ${handle.url}\n`)
+    const t = createTerm()
+    out(`${header(t, 'loom dev', plural(handle.packages, 'package'))}\n  ${t.dim('local')}  ${t.info(handle.url)}\n`)
     await new Promise<void>(() => {})
     return 0
   } catch (error) {
-    err(`${message(error)}\n`)
+    problem(`loom ${cmd}`, message(error))
     return 1
   }
 }

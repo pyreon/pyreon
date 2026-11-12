@@ -119,7 +119,7 @@ describe('<Tabs> emit', () => {
   it('several children of one tab are wrapped in ONE container on both targets', () => {
     const src = SRC.replace('<Text data-testid="feed-body">feed</Text>', '<Text>one</Text><Text>two</Text>')
     const swift = transform(src, { target: 'swift' }).code
-    expect(swift).toMatch(/case "feed":\n\s+VStack\(spacing: 0\) \{/)
+    expect(swift).toMatch(/case "feed":\n\s+VStack\(alignment: \.leading, spacing: 0\) \{/)
     const kotlin = transform(src, { target: 'kotlin' }).code
     expect(kotlin).toMatch(/"feed" -> \{\n\s+Column \{/)
   })

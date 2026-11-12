@@ -1,0 +1,105 @@
+{
+  "id": "react",
+  "route": "/migrate/react",
+  "name": "React",
+  "package": "@pyreon/react-compat",
+  "hook": {
+    "title": "Your React code, on Pyreon's engine.",
+    "lede": "`@pyreon/react-compat` covers React 19's public API with near-full parity, and it runs the value-and-re-render model you know: `useState` returns the value, the body re-runs, deps arrays are honoured. Most components move over with their imports untouched."
+  },
+  "covers": [
+    "Every React 19 hook except `useEffectEvent`: `useState`, `useReducer`, `useEffect`, `useLayoutEffect`, `useInsertionEffect`, `useMemo`, `useCallback`, `useRef`, `useId`, `useContext`, `useSyncExternalStore`, `useTransition`, `useDeferredValue`, `useImperativeHandle`, `useActionState`, `useOptimistic`, `use`, `useDebugValue`.",
+    "React's hook rules: positional hooks, deps arrays, stale-closure semantics.",
+    "`createContext`, `createPortal`, `lazy`, `Suspense`, `ErrorBoundary`, `memo`, `forwardRef`, `cloneElement`, `Children`, `createRef`, `isValidElement`, `StrictMode` and `Profiler` (both render their children).",
+    "`createRoot` and `render` from `@pyreon/react-compat/dom`, standing in for `react-dom/client`.",
+    "Pyreon's own components work inside a compat app: the router, query, form, toast, head and UI providers ship marked with `nativeCompat()` (33 components across 17 packages)."
+  ],
+  "doesNotCover": [
+    "Class components: `Component` and `PureComponent` are stubs; `setState` and `forceUpdate` warn and do nothing, lifecycle methods never fire.",
+    "Concurrent rendering: `useTransition`, `useDeferredValue`, `startTransition` and `flushSync` run synchronously.",
+    "Nested state across a parent re-render: the parent rebuilds its subtree, so a child's `useState`, `useReducer` and `useRef` reset and `useEffect([])` runs again. `memo` does not stop it; lift the state up.",
+    "`useLayoutEffect` and `useInsertionEffect` run with `useEffect`'s timing.",
+    "`react-dom` resolves to `@pyreon/react-compat/dom`, which exports `createRoot` and `render` only. Import `createPortal` and `flushSync` from `react`; `hydrateRoot` and `react-dom/server` are not provided.",
+    "Libraries that use React internals or its scheduler: `zustand/react`'s `useStore`, `@xyflow/react`, the heavier `react-aria` hooks. Prefer a `/vanilla` or `/core` entry where one exists.",
+    "`version` reports `19.0.0-pyreon`, so code that checks for an exact React version will not match.",
+    "A few React 19 exports: `useEffectEvent`, `<Activity>`, `<ViewTransition>` and `cache` are not provided, so an import of them fails."
+  ],
+  "install": "npm install @pyreon/react-compat @pyreon/core @pyreon/reactivity @pyreon/runtime-dom\nnpm install -D @pyreon/vite-plugin",
+  "config": [
+    {
+      "file": "vite.config.ts",
+      "code": "// vite.config.ts\nimport { defineConfig } from 'vite'\nimport pyreon from '@pyreon/vite-plugin'\n\nexport default defineConfig({\n  plugins: [pyreon({ compat: 'react' })],\n})",
+      "note": "Use it in place of `@vitejs/plugin-react`. Aliases `react`, `react/jsx-runtime`, `react-dom` and `react-dom/client`."
+    },
+    {
+      "file": "tsconfig.json",
+      "code": "// tsconfig.json\n{\n  \"compilerOptions\": {\n    \"jsx\": \"react-jsx\",\n    \"jsxImportSource\": \"@pyreon/react-compat\"\n  }\n}",
+      "note": "Types and the JSX runtime come from the compat package."
+    }
+  ],
+  "scaffold": "npm create @pyreon/zero@latest my-app -- --compat react",
+  "ports": [
+    {
+      "title": "Then, one component at a time",
+      "before": {
+        "label": "React (runs as-is on react-compat)",
+        "file": "Counter.tsx",
+        "code": "import { useState } from 'react'\n\nexport function Counter({ step }: { step: number }) {\n  const [count, setCount] = useState(0)\n  const doubled = count * 2\n  return (\n    <button className=\"counter\" onClick={() => setCount(count + step)}>\n      {count} / {doubled}\n    </button>\n  )\n}"
+      },
+      "after": {
+        "label": "Pyreon",
+        "file": "Counter.tsx",
+        "code": "import { computed, signal } from '@pyreon/reactivity'\n\nexport function Counter(props: { step: number }) {\n  const count = signal(0)\n  const doubled = computed(() => count() * 2)\n  return (\n    <button class=\"counter\" onClick={() => count.update((c) => c + props.step)}>\n      {count()} / {doubled()}\n    </button>\n  )\n}"
+      },
+      "note": "The Pyreon side is the final form, after `compat` is switched off. While the app is still in compat mode, wrap it in `nativeCompat()` and write the text as an arrow (`{() => …}`), as in step 4 on /migrate."
+    }
+  ],
+  "docs": [
+    {
+      "label": "@pyreon/react-compat reference",
+      "href": "/docs/react-compat"
+    },
+    {
+      "label": "Coming from React",
+      "href": "/docs/migrating-from-react"
+    },
+    {
+      "label": "The nativeCompat marker",
+      "href": "/docs/native-compat"
+    }
+  ],
+  "sources": [
+    {
+      "claim": "API surface, value + re-render model, key differences and gotchas",
+      "path": "packages/tools/react-compat/README.md"
+    },
+    {
+      "claim": "Exports",
+      "path": "packages/tools/react-compat/src/index.ts; packages/tools/react-compat/src/dom.ts (createRoot, render only)"
+    },
+    {
+      "claim": "react-dom and react-dom/client alias to @pyreon/react-compat/dom; react-dom/server not aliased",
+      "path": "packages/tools/vite-plugin/src/index.ts lines 128–142 (compat option) and 430–462 (alias map)"
+    },
+    {
+      "claim": "33 marked components across 17 packages",
+      "path": "docs/src/content/docs/native-compat.md (Components shipped marked)"
+    },
+    {
+      "claim": "Third-party libraries known not to work",
+      "path": "packages/tools/react-compat/README.md (Third-party React hook library compatibility)"
+    },
+    {
+      "claim": "Covered by unit, browser and Playwright e2e tests",
+      "path": "packages/tools/react-compat/src/tests/; packages/tools/react-compat/src/*.browser.test.tsx; e2e/react-compat.spec.ts; e2e/cpa-app-react-compat.spec.ts"
+    },
+    {
+      "claim": "Pyreon Counter compiles, typechecks and updates on click",
+      "path": "/tmp/wt-site-content/.scratch/site-compare/{Counter.tsx,mount-counter.ts}"
+    },
+    {
+      "claim": "React Counter typechecks (@types/react 19.3.0)",
+      "path": "/tmp/wt-site-content/.scratch/site-compare/rivals/CounterReact.tsx"
+    }
+  ]
+}

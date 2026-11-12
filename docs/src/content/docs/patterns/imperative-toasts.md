@@ -4,8 +4,6 @@ summary: "Mount <Toaster /> once, then toast() / toast.success() / toast.promise
 seeAlso: [event-listeners]
 ---
 
-# Imperative notifications — toasts
-
 ## The pattern
 
 Mount `<Toaster />` once at the app root, then call `toast()` from anywhere (event handlers, store actions, effects — no hook-order concerns):

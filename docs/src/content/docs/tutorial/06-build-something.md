@@ -3,8 +3,6 @@ title: "6. Build something real"
 description: "Tutorial chapter 6 — you know the whole model. Put it together by building a real todo app, then branch into the guides for routing, data, forms, and more."
 ---
 
-# 6. Build something real
-
 You now know the entire Pyreon model:
 
 - **`signal`** — reactive state ([ch. 1](/docs/tutorial/01-signals))

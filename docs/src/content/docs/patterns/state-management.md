@@ -4,8 +4,6 @@ summary: "signal for local UI state, defineStore for shared app state, state-tre
 seeAlso: [signal-writes]
 ---
 
-# State management — stores vs signals vs models
-
 ## The pattern
 
 Three tiers, pick by scope:

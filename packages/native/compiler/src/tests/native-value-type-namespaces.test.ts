@@ -13,13 +13,12 @@
 // in parse.ts fails the rename specs and every compile below with the original
 // redeclaration errors.
 
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable } from '../validate'
+import { runtimeSwiftSources, swiftErrorLines, typecheckAgainstRealRuntime } from './real-runtime-swift'
 
 const FIXTURE = readFileSync(join(import.meta.dirname, '../fixtures/value-type-namespaces.tsx'), 'utf8')
 
@@ -111,46 +110,13 @@ describe('the emit compiles', () => {
 
   // `PyreonQuery` / `PyreonURL` from the REAL runtime, on the real iOS SDK.
   it.runIf(isSwiftUIAvailable())('Swift: against the real iOS SDK + runtime', () => {
-    const REPO = resolve(import.meta.dirname, '../../../../..')
-    const sources: string[] = []
-    const walk = (dir: string): void => {
-      let entries: string[]
-      try {
-        entries = readdirSync(dir)
-      } catch {
-        return
-      }
-      for (const e of entries) {
-        if (e === 'node_modules' || e === 'lib' || e === '.build' || e === 'Package.swift') continue
-        if (e.toLowerCase() === 'tests' || /Tests?\.swift$/.test(e)) continue
-        const p = join(dir, e)
-        if (statSync(p).isDirectory()) walk(p)
-        else if (p.endsWith('.swift')) sources.push(p)
-      }
-    }
-    for (const r of ['packages/fundamentals', 'packages/core', 'packages/native/runtime-swift', 'packages/native/router-swift']) {
-      walk(join(REPO, r))
-    }
+    const sources = runtimeSwiftSources()
     // An empty list would make the compile vacuously succeed.
     expect(sources.length).toBeGreaterThan(40)
-    const dir = mkdtempSync(join(tmpdir(), 'pyreon-value-type-ns-'))
-    try {
-      const file = join(dir, 'ValueTypeNamespaces.swift')
-      writeFileSync(file, `import SwiftUI\nimport Foundation\n${transform(FIXTURE, { target: 'swift' }).code}`, 'utf8')
-      const sdk = execFileSync('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path'], { encoding: 'utf8' }).trim()
-      try {
-        execFileSync(
-          'xcrun',
-          ['--sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, file, ...sources],
-          { encoding: 'utf8', stdio: 'pipe' },
-        )
-      } catch (err) {
-        const e = err as { stderr?: string | Buffer; stdout?: string | Buffer }
-        const out = [e.stderr, e.stdout].map((x) => (typeof x === 'string' ? x : x?.toString('utf8')) ?? '').join('\n')
-        expect.fail(`swiftc -typecheck failed:\n${out.split('\n').filter((l) => l.includes('error:')).slice(0, 12).join('\n')}`)
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
+    const diagnostics = typecheckAgainstRealRuntime(
+      [{ name: 'ValueTypeNamespaces.swift', code: transform(FIXTURE, { target: 'swift' }).code }],
+      { sources },
+    )
+    if (diagnostics !== null) expect.fail(`swiftc -typecheck failed:\n${swiftErrorLines(diagnostics)}`)
   }, 900_000)
 })

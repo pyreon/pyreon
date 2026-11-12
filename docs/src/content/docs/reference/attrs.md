@@ -1,9 +1,7 @@
 ---
-title: "Chainable HOC Factory — API Reference"
+title: "@pyreon/attrs — API Reference"
 description: "Chainable HOC factory — default props (.attrs), base swaps (.config), HOC composition (.compose), statics (.statics)"
 ---
-
-# @pyreon/attrs — API Reference
 
 > **Generated** from `attrs`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [attrs](/docs/attrs).
 

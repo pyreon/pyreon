@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa pq-native" viewBox="0 0 640 400" width="640" height="400" role="img" aria-labelledby="pq-native-t pq-native-d" fill="none">
+<title id="pq-native-t">One .tsx lowered by PMTC to the web, SwiftUI and Jetpack Compose</title>
+<desc id="pq-native-d">A table of how one .tsx source lowers through the PMTC compiler: signal becomes a DOM binding on the web, @State in SwiftUI and mutableStateOf in Compose; &lt;Stack&gt; becomes a flex column div, VStack and Column; &lt;Inline&gt; a flex row, HStack and Row; &lt;Field&gt; an input, TextField and TextField; &lt;Toggle&gt; a switch input, Toggle and Switch; &lt;Scroll&gt; with &lt;For&gt; a keyed list, LazyVStack and LazyColumn. Rows light up one at a time. iOS and Android targets are experimental.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.pq-native{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.pq-native .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.pq-native .pq-native-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.pq-native *{animation:none!important;transition:none!important}.pq-native .pq-native-rm{opacity:1}.pq-native .pq-native-am{opacity:0}}
+
+.pq-native .ln{stroke:var(--px-hint);stroke-width:1.5;fill:none}
+.pq-native .dash{stroke:var(--px-hint);stroke-width:1.5;stroke-dasharray:3 5;fill:none}
+.pq-native .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pq-native .bx2{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+.pq-native .lab{fill:var(--px-fog);font-size:14px;letter-spacing:.04em}
+.pq-native .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.pq-native .val{fill:var(--px-text);font-size:20px;font-weight:500}
+.pq-native .big{fill:var(--px-strong);font-size:24px;font-weight:600;letter-spacing:-.02em}
+.pq-native .code{fill:var(--px-text);font-size:15px}
+.pq-native .kw{fill:var(--px-accent-text)} .pq-native .fn{fill:var(--px-link)} .pq-native .str{fill:var(--px-warm)} .pq-native .ty{fill:var(--px-violet)}
+.pq-native .dim{fill:var(--px-fog)}
+.pq-native .hint{fill:var(--px-hint);font-size:13px}
+.pq-native .ember{stroke:url(#pq-native-egu);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:36 900;fill:none}
+.pq-native .emberS{stroke:url(#pq-native-egu);stroke-width:2.5;stroke-linecap:round;fill:none}
+.pq-native .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.pq-native .ok{fill:var(--px-ok)} .pq-native .warm{fill:var(--px-warm)} .pq-native .hot{fill:var(--px-accent)} .pq-native .errF{fill:var(--px-err)}
+.pq-native .okT{fill:var(--px-ok)} .pq-native .warmT{fill:var(--px-warm)} .pq-native .hotT{fill:var(--px-accent-text)} .pq-native .errT{fill:var(--px-err)}
+.pq-native .okS{stroke:var(--px-ok)} .pq-native .errS{stroke:var(--px-err)}
+.pq-native .gfill{fill:url(#pq-native-eg)}
+@media (prefers-reduced-motion: reduce){.pq-native .ember{opacity:0}}
+
+.pq-native .hl{fill:var(--px-glow)}
+.pq-native .v{fill:var(--px-text)}
+.pq-native .pm{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+@keyframes pq-native-h0{0.0000%{opacity:0;animation-timing-function:step-end}6.4935%{opacity:1;animation-timing-function:step-end}20.7792%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-native-h1{0.0000%{opacity:0;animation-timing-function:step-end}20.7792%{opacity:1;animation-timing-function:step-end}35.0649%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-native-h2{0.0000%{opacity:0;animation-timing-function:step-end}35.0649%{opacity:1;animation-timing-function:step-end}49.3506%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-native-h3{0.0000%{opacity:0;animation-timing-function:step-end}49.3506%{opacity:1;animation-timing-function:step-end}63.6364%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-native-h4{0.0000%{opacity:0;animation-timing-function:step-end}63.6364%{opacity:1;animation-timing-function:step-end}77.9221%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-native-h5{0.0000%{opacity:0;animation-timing-function:step-end}77.9221%{opacity:1;animation-timing-function:step-end}92.2078%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-native-t0{0%{stroke-dashoffset:60;opacity:0}6.4935%{stroke-dashoffset:60;opacity:1}9.0909%{stroke-dashoffset:-420;opacity:1}9.1039%{stroke-dashoffset:60;opacity:0}100%{stroke-dashoffset:60;opacity:0}}
+@keyframes pq-native-t1{0%{stroke-dashoffset:60;opacity:0}20.7792%{stroke-dashoffset:60;opacity:1}23.3766%{stroke-dashoffset:-420;opacity:1}23.3896%{stroke-dashoffset:60;opacity:0}100%{stroke-dashoffset:60;opacity:0}}
+@keyframes pq-native-t2{0%{stroke-dashoffset:60;opacity:0}35.0649%{stroke-dashoffset:60;opacity:1}37.6623%{stroke-dashoffset:-420;opacity:1}37.6753%{stroke-dashoffset:60;opacity:0}100%{stroke-dashoffset:60;opacity:0}}
+@keyframes pq-native-t3{0%{stroke-dashoffset:60;opacity:0}49.3506%{stroke-dashoffset:60;opacity:1}51.9481%{stroke-dashoffset:-420;opacity:1}51.9610%{stroke-dashoffset:60;opacity:0}100%{stroke-dashoffset:60;opacity:0}}
+@keyframes pq-native-t4{0%{stroke-dashoffset:60;opacity:0}63.6364%{stroke-dashoffset:60;opacity:1}66.2338%{stroke-dashoffset:-420;opacity:1}66.2468%{stroke-dashoffset:60;opacity:0}100%{stroke-dashoffset:60;opacity:0}}
+@keyframes pq-native-t5{0%{stroke-dashoffset:60;opacity:0}77.9221%{stroke-dashoffset:60;opacity:1}80.5195%{stroke-dashoffset:-420;opacity:1}80.5325%{stroke-dashoffset:60;opacity:0}100%{stroke-dashoffset:60;opacity:0}}
+.pq-native .h0{animation:pq-native-h0 7700ms linear infinite}
+.pq-native .t0{animation:pq-native-t0 7700ms linear infinite}
+.pq-native .h1{animation:pq-native-h1 7700ms linear infinite}
+.pq-native .t1{animation:pq-native-t1 7700ms linear infinite}
+.pq-native .h2{animation:pq-native-h2 7700ms linear infinite}
+.pq-native .t2{animation:pq-native-t2 7700ms linear infinite}
+.pq-native .h3{animation:pq-native-h3 7700ms linear infinite}
+.pq-native .t3{animation:pq-native-t3 7700ms linear infinite}
+.pq-native .h4{animation:pq-native-h4 7700ms linear infinite}
+.pq-native .t4{animation:pq-native-t4 7700ms linear infinite}
+.pq-native .h5{animation:pq-native-h5 7700ms linear infinite}
+.pq-native .t5{animation:pq-native-t5 7700ms linear infinite}
+.pq-native .t0{stroke-dasharray:60 900}.pq-native .t1{stroke-dasharray:60 900}.pq-native .t2{stroke-dasharray:60 900}.pq-native .t3{stroke-dasharray:60 900}.pq-native .t4{stroke-dasharray:60 900}.pq-native .t5{stroke-dasharray:60 900}
+@media (prefers-reduced-motion: reduce){.pq-native .h4{opacity:1}}
+</style>
+<defs><linearGradient id="pq-native-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-native-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="640" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-native-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-native-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<text class="m eb" x="24" y="34">PMTC · ONE .TSX, THREE TARGETS · NATIVE IS EXPERIMENTAL</text>
+<text class="m hint" x="24" y="66">you write</text>
+<text class="m hint" x="206" y="66">web</text>
+<text class="m hint" x="366" y="66">iOS · SwiftUI</text>
+<text class="m hint" x="490" y="66">Android · Compose</text>
+<rect class="pm" x="152" y="50" width="44" height="286" rx="10"/>
+<text class="m lab" x="174" y="193" text-anchor="middle" transform="rotate(-90 174 193)" style="fill:var(--px-text)" letter-spacing="3">PMTC</text>
+<rect class="hl h0" x="20" y="78" width="600" height="38" rx="8" opacity="0"/><text class="m code " x="24" y="104" font-size="14">signal(0)</text><text class="m lab v" x="206" y="104" font-size="13" style="letter-spacing:0">DOM binding</text><text class="m lab v" x="366" y="104" font-size="13" style="letter-spacing:0">@State</text><text class="m lab v" x="490" y="104" font-size="13" style="letter-spacing:0">mutableStateOf</text><line x1="24" y1="120" x2="616" y2="120" style="stroke:var(--px-line)" stroke-width="1"/><rect class="hl h1" x="20" y="120" width="600" height="38" rx="8" opacity="0"/><text class="m code " x="24" y="146" font-size="14">&lt;Stack&gt;</text><text class="m lab v" x="206" y="146" font-size="13" style="letter-spacing:0">div · flex column</text><text class="m lab v" x="366" y="146" font-size="13" style="letter-spacing:0">VStack</text><text class="m lab v" x="490" y="146" font-size="13" style="letter-spacing:0">Column</text><line x1="24" y1="162" x2="616" y2="162" style="stroke:var(--px-line)" stroke-width="1"/><rect class="hl h2" x="20" y="162" width="600" height="38" rx="8" opacity="0"/><text class="m code " x="24" y="188" font-size="14">&lt;Inline&gt;</text><text class="m lab v" x="206" y="188" font-size="13" style="letter-spacing:0">div · flex row</text><text class="m lab v" x="366" y="188" font-size="13" style="letter-spacing:0">HStack</text><text class="m lab v" x="490" y="188" font-size="13" style="letter-spacing:0">Row</text><line x1="24" y1="204" x2="616" y2="204" style="stroke:var(--px-line)" stroke-width="1"/><rect class="hl h3" x="20" y="204" width="600" height="38" rx="8" opacity="0"/><text class="m code " x="24" y="230" font-size="14">&lt;Field&gt;</text><text class="m lab v" x="206" y="230" font-size="13" style="letter-spacing:0">input</text><text class="m lab v" x="366" y="230" font-size="13" style="letter-spacing:0">TextField</text><text class="m lab v" x="490" y="230" font-size="13" style="letter-spacing:0">TextField</text><line x1="24" y1="246" x2="616" y2="246" style="stroke:var(--px-line)" stroke-width="1"/><rect class="hl h4" x="20" y="246" width="600" height="38" rx="8" opacity="0"/><text class="m code " x="24" y="272" font-size="14">&lt;Toggle&gt;</text><text class="m lab v" x="206" y="272" font-size="13" style="letter-spacing:0">input · switch</text><text class="m lab v" x="366" y="272" font-size="13" style="letter-spacing:0">Toggle</text><text class="m lab v" x="490" y="272" font-size="13" style="letter-spacing:0">Switch</text><line x1="24" y1="288" x2="616" y2="288" style="stroke:var(--px-line)" stroke-width="1"/><rect class="hl h5" x="20" y="288" width="600" height="38" rx="8" opacity="0"/><text class="m code " x="24" y="314" font-size="14">&lt;Scroll&gt;&lt;For&gt;</text><text class="m lab v" x="206" y="314" font-size="13" style="letter-spacing:0">div · keyed list</text><text class="m lab v" x="366" y="314" font-size="13" style="letter-spacing:0">LazyVStack</text><text class="m lab v" x="490" y="314" font-size="13" style="letter-spacing:0">LazyColumn</text>
+<line class="ember t0" x1="196" y1="113" x2="616" y2="113"/><line class="ember t1" x1="196" y1="155" x2="616" y2="155"/><line class="ember t2" x1="196" y1="197" x2="616" y2="197"/><line class="ember t3" x1="196" y1="239" x2="616" y2="239"/><line class="ember t4" x1="196" y1="281" x2="616" y2="281"/><line class="ember t5" x1="196" y1="323" x2="616" y2="323"/>
+<rect class="ring pq-native-rm" x="20" y="246" width="600" height="38" rx="8"/>
+<text class="m hint" x="24" y="378">no JavaScript engine on the phone · real SwiftUI and Compose views</text>
+</svg>

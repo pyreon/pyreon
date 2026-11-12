@@ -1,0 +1,403 @@
+{
+ "id": "form",
+ "route": "/products/form",
+ "name": "Forms",
+ "package": "@pyreon/form",
+ "category": "fundamentals · forms",
+ "hero": {
+  "title": "Type in one field. The other eleven never notice.",
+  "emberWord": "never",
+  "lede": "Every field's value, error, touched and dirty flag is its own signal, so a keystroke updates one input and nothing else. On a 12-field form against six popular form libraries, it was the fastest at all four timed operations.",
+  "install": "bun add @pyreon/form",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "re-renders",
+    "value": "0 per 10 keystrokes<small>Formik: 10. Fields update in place.</small>"
+   },
+   {
+    "key": "schemas",
+    "value": "Zod, Valibot, ArkType, `s`<small>Passed straight to `schema`. No resolver package.</small>"
+   },
+   {
+    "key": "accessibility",
+    "value": "built into `register()`<small>id, `aria-invalid`, `aria-describedby`; focus jumps to the first error.</small>"
+   },
+   {
+    "key": "native",
+    "value": "{dot:warn}iOS and Android, experimental<small>`useForm` and `useFieldArray` compile to native form state.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "The form code you keep rewriting, already written.",
+  "items": [
+   {
+    "title": "A keystroke touches one field",
+    "text": "Value, error, touched and dirty are four separate signals per field. Typing in `email` updates the email input and its error text; the password field, the submit button and the other ten fields stay put. Formik re-renders its whole form 10 times for 10 keystrokes; this does 0."
+   },
+   {
+    "title": "Async checks can't race",
+    "text": "Async validators are versioned and receive an `AbortSignal`. When the user types faster than your server answers, the late answer is dropped instead of overwriting the newer one. `debounceMs: 300` cuts the requests too."
+   },
+   {
+    "title": "Your schema, as it is",
+    "text": "Hand `schema` a raw Zod, Valibot or ArkType schema, or `@pyreon/validate`'s `s`. No resolver package. An error on `address.city` lands on the `address.city` field, and a key that matches no field fails the form instead of vanishing."
+   },
+   {
+    "title": "Accessible by default",
+    "text": "One `register('email')` spread gives the input an id, `aria-invalid` and `aria-describedby` that follow the error. A failed submit moves focus to the first broken field, like React Hook Form's `shouldFocusError`."
+   }
+  ]
+ },
+ "difference": {
+  "title": "Delete the debounce, the race guard and the effect.",
+  "before": {
+   "label": "React, an async check by hand",
+   "caption": "A ref to drop stale answers, a timer to debounce, an effect with a dependency array. Per async field.",
+   "code": "import { useEffect, useRef, useState } from 'react'\n\nfunction EmailField() {\n  const [email, setEmail] = useState('')\n  const [error, setError] = useState<string>()\n  const latest = useRef(0)\n\n  useEffect(() => {\n    const id = ++latest.current\n    const t = setTimeout(async () => {\n      const taken = await checkEmail(email)\n      if (id === latest.current) setError(taken ? 'Already registered' : undefined)\n    }, 300)\n    return () => clearTimeout(t)\n  }, [email])\n\n  return (\n    <>\n      <input value={email} onChange={(e) => setEmail(e.target.value)} />\n      {error && <span>{error}</span>}\n    </>\n  )\n}"
+  },
+  "after": {
+   "label": "with @pyreon/form",
+   "caption": "Declare the check. Debounce, stale-result discarding and the abort signal are built in.",
+   "code": "import { useForm } from '@pyreon/form'\n\nconst form = useForm({\n  initialValues: { email: '', password: '' },\n  validators: {\n    email: async (v, _all, signal) =>\n      (await checkEmail(v, signal)) ? 'Already registered' : undefined,\n    password: (v) => (v.length < 8 ? 'At least 8 characters' : undefined),\n  },\n  validateOn: 'change',\n  debounceMs: 300,\n  onSubmit: (values) => api.signup(values),\n})"
+  }
+ },
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Type fast and watch what re-renders.",
+  "text": "The email check answers after 0.4 to 1.1 seconds, and \"ada@example.com\" is taken. Type fast and watch the counters: the password field never updates while you type an email, and every slow answer that arrives late is thrown away.",
+  "component": "DemoForm",
+  "reference": "pkg-form.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"ui\" role=\"form\" aria-label=\"Sign-up demo\">\n    <label for=\"f-email\">Email</label><input id=\"f-email\" type=\"email\" placeholder=\"you@example.com\" autocomplete=\"off\">\n    <div class=\"err\" id=\"e-email\" aria-live=\"polite\"></div>\n    <label for=\"f-pass\">Password</label><input id=\"f-pass\" type=\"password\" placeholder=\"At least 8 characters\">\n    <div class=\"err\" id=\"e-pass\" aria-live=\"polite\"></div>\n    <button class=\"go\" type=\"button\" id=\"f-sub\">Create account</button>\n    <div class=\"hint\" id=\"f-out\" aria-live=\"polite\"></div>\n  </div>\n  <div class=\"card\"><div class=\"in\">\n    <div class=\"meter\">\n      <div id=\"m-email\"><span>email field updates</span><b id=\"c-email\">0</b></div>\n      <div id=\"m-pass\"><span>password field updates</span><b id=\"c-pass\">0</b></div>\n      <div id=\"m-stale\"><span>stale async results discarded</span><b id=\"c-stale\">0</b></div>\n      <div id=\"m-req\"><span>requests sent (debounced 300 ms)</span><b id=\"c-req\">0</b></div>\n    </div>\n    <p class=\"note\">Validation runs on blur by default. This demo validates as you type so you can see debouncing and stale-result handling at work.</p>\n  </div></div>\n</div>",
+  "referenceCss": "",
+  "referenceJs": "(function(){var $=function(i){return document.getElementById(i)};var c={email:0,pass:0,stale:0,req:0},ver=0,timer=null;\nfunction bump(k){c[k]++;$('c-'+k).textContent=c[k];var m=$('m-'+k);m.classList.remove('flash');void m.offsetWidth;m.classList.add('flash');setTimeout(function(){m.classList.remove('flash')},400)}\nfunction setErr(f,msg){var e=$('e-'+f),i=$('f-'+f);if(e.textContent!==msg){e.textContent=msg;i.setAttribute('aria-invalid',msg?'true':'false');bump(f==='email'?'email':'pass')}}\n$('f-email').addEventListener('input',function(){bump('email');clearTimeout(timer);var v=this.value;timer=setTimeout(function(){var my=++ver;bump('req');$('e-email').textContent='Checking…';var delay=400+Math.random()*700;setTimeout(function(){if(my!==ver){bump('stale');return}var msg=!v?'':!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(v)?'Enter a valid email address':v.toLowerCase()==='ada@example.com'?'This email is already registered':'';$('e-email').textContent='';setErr('email',msg)},delay)},300)});\n$('f-pass').addEventListener('input',function(){bump('pass');setErr('pass',this.value&&this.value.length<8?'At least 8 characters':'')});\n$('f-sub').onclick=function(){var ok=!$('e-email').textContent&&!$('e-pass').textContent&&$('f-email').value&&$('f-pass').value.length>=8;$('f-out').textContent=ok?'Submitted. In a real app, server errors would come back through setErrors().':'Fix the highlighted fields first. Focus moves to the first error.';if(!ok){($('e-email').textContent||!$('f-email').value?$('f-email'):$('f-pass')).focus()}};})();"
+ },
+ "features": {
+  "title": "Everything a real form needs.",
+  "items": [
+   {
+    "name": "Two ways to declare",
+    "text": "`useForm({ initialValues })`, or reusable `field('email', '', validator)` definitions passed as `useForm({ fields })`, with the value type inferred either way."
+   },
+   {
+    "name": "Validate on blur, change or submit",
+    "text": "`validateOn` defaults to `'blur'`, so nobody is told off mid-word."
+   },
+   {
+    "name": "Async validators",
+    "text": "with `debounceMs`, an `AbortSignal`, and stale results discarded by version."
+   },
+   {
+    "name": "Cross-field rules",
+    "text": "every validator gets `(value, allValues)`, so \"must differ from email\" is one line."
+   },
+   {
+    "name": "Field arrays with stable keys",
+    "text": "`append`, `prepend`, `insert`, `remove`, `update`, `move`, `swap`, `replace`; render with `<For by={(i) => i.key}>` and inputs keep focus when rows move."
+   },
+   {
+    "name": "Dot-path leaf fields",
+    "text": "`'address.city'` is a real field; `nestValues()` turns the flat values into the nested payload your API wants."
+   },
+   {
+    "name": "Server errors in one call",
+    "text": "`setErrors({ email: 'Already registered' })` shows them at once, touched or not."
+   },
+   {
+    "name": "Reset to what the server saved",
+    "text": "`reset(saved)` makes the saved values the new clean baseline; `keepErrors`, `keepTouched`, `keepDirty` keep what you choose."
+   },
+   {
+    "name": "Runtime fields",
+    "text": "`registerField` and `unregisterField` for forms built from data."
+   },
+   {
+    "name": "Typed inputs",
+    "text": "`register(name, { type: 'checkbox' | 'number' | 'file' })` binds `checked`, `valueAsNumber` or the `FileList`."
+   }
+  ]
+ },
+ "api": {
+  "title": "12 runtime exports, plus types.",
+  "groups": [
+   {
+    "name": "create",
+    "items": [
+     "useForm",
+     "field",
+     "useFieldArray"
+    ]
+   },
+   {
+    "name": "read",
+    "items": [
+     "useField",
+     "useWatch",
+     "useFormState"
+    ]
+   },
+   {
+    "name": "share",
+    "items": [
+     "FormProvider",
+     "useFormContext",
+     "Form",
+     "Submit"
+    ]
+   },
+   {
+    "name": "nested data",
+    "items": [
+     "nestValues",
+     "flattenValues"
+    ]
+   },
+   {
+    "name": "types",
+    "items": [
+     "FormState",
+     "FieldState",
+     "UseFormOptions",
+     "FormValues",
+     "FieldNames",
+     "FieldValue",
+     "NestValues",
+     "InferFieldValues"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Validation waits for blur",
+   "text": "That is the default, so people aren't corrected mid-word. For live feedback set `validateOn: 'change'` and add `debounceMs` if a validator calls your server."
+  },
+  {
+   "title": "Key array rows by `item.key`",
+   "text": "Each `useFieldArray` item carries a stable `key`. Use it in `<For by>`; an index key makes inputs lose focus when rows move."
+  },
+  {
+   "title": "Dot-path values stay flat",
+   "text": "`values()` and `onSubmit` keep `'address.city'` as one key. Convert at the API boundary with `nestValues()`; a nested schema needs an `as never` cast until deep-path types land."
+  },
+  {
+   "title": "Typed `<Form of>` in strict TSX",
+   "text": "Today `<Form of={form}>` rejects a typed form under `strict`. Until that is fixed, write `<form onSubmit={form.handleSubmit}>` or wrap with `<FormProvider form={form}>`, both of which type cleanly."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/validation",
+   "category": "fundamentals",
+   "name": "Validation",
+   "text": "The schema library that tops our 12-cell validation bench, ready to pass to `schema`.",
+   "package": "@pyreon/validate"
+  },
+  {
+   "href": "/products/query",
+   "category": "fundamentals",
+   "name": "Query",
+   "text": "Save with a mutation, then `reset()` the form to what came back.",
+   "package": "@pyreon/query"
+  },
+  {
+   "href": "/products/i18n",
+   "category": "fundamentals",
+   "name": "i18n",
+   "text": "Translated labels and error messages.",
+   "package": "@pyreon/i18n"
+  }
+ ],
+ "end": {
+  "title": "Your form, minus the plumbing. The plumbing was most of it.",
+  "cta": "Read the forms guide"
+ },
+ "benchmarks": {
+  "rival": "vs Solid modular-forms, React Hook Form, Formik, vee-validate (Vue), Felte (Svelte), TanStack Form · real Chromium",
+  "run": "overnight run, one run",
+  "h": "Fastest of seven form libraries on all four timed operations.",
+  "p": "One 12-field form, one shared Zod schema, each library written the way its own docs recommend, inside its own framework. The closest rival is Solid's modular-forms, which also keeps the lightest heap.",
+  "rows": [
+   {
+    "op": "mount 12 fields",
+    "pyreon": 210,
+    "rival": 305,
+    "unit": "µs",
+    "verdict": "win",
+    "label": "1.45× vs modular-forms · 3.0× vs React Hook Form"
+   },
+   {
+    "op": "keystroke, validating",
+    "pyreon": 460,
+    "rival": 570,
+    "unit": "µs",
+    "verdict": "win",
+    "label": "1.24× vs modular-forms · 1.8× vs React Hook Form"
+   },
+   {
+    "op": "keystroke, blur mode",
+    "pyreon": 60,
+    "rival": 100,
+    "unit": "µs",
+    "verdict": "win",
+    "label": "1.67× vs modular-forms · 8.8× vs Formik"
+   },
+   {
+    "op": "reset a dirty form",
+    "pyreon": 20,
+    "rival": 35,
+    "unit": "µs",
+    "verdict": "win",
+    "label": "1.75× vs modular-forms · 9× vs React Hook Form"
+   },
+   {
+    "op": "headless store update",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "62.4× vs TanStack form-core (bun)"
+   },
+   {
+    "op": "re-renders per 10 keystrokes",
+    "pyreon": 0,
+    "rival": 10,
+    "unit": "",
+    "verdict": "info",
+    "label": "Formik 10 · React Hook Form 0"
+   },
+   {
+    "op": "retained heap",
+    "pyreon": 2.42,
+    "rival": 2.33,
+    "unit": "MB",
+    "verdict": "loss",
+    "label": "modular-forms 0.09 MB lighter"
+   }
+  ]
+ },
+ "glyphSvg": "<path d=\"M18 30 H102 M18 60 H102 M18 90 H62\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\" stroke-linecap=\"square\"/><circle cx=\"88\" cy=\"90\" r=\"14\" fill=\"url(#eg)\"/>",
+ "proof": [
+  {
+   "stat": "210 µs",
+   "label": "to mount a 12-field form. React Hook Form: 640 µs. TanStack Form: 680 µs.",
+   "source": "BENCHMARKS.md §6 form-bench, overnight run 2026-11-05, one run, real Chromium, M3 Max"
+  },
+  {
+   "stat": "460 µs",
+   "label": "per validating keystroke. React Hook Form: 830 µs. Formik: 1,320 µs.",
+   "source": "BENCHMARKS.md §6 form-bench, keystroke (change mode, validates), one run"
+  },
+  {
+   "stat": "9×",
+   "label": "faster reset of a dirty form than React Hook Form (20 vs 180 µs).",
+   "source": "BENCHMARKS.md §6 form-bench, reset dirty form, one run"
+  }
+ ],
+ "comingFrom": [
+  {
+   "lib": "React Hook Form",
+   "title": "Same shape, minus the resolver and the formState destructure.",
+   "before": "import { useForm } from 'react-hook-form'\nimport { zodResolver } from '@hookform/resolvers/zod'\nimport { z } from 'zod'\n\nconst schema = z.object({\n  email: z.email('Enter a valid email'),\n  password: z.string().min(8, 'At least 8 characters'),\n})\ntype Values = z.infer<typeof schema>\n\nfunction SignUp() {\n  const {\n    register, handleSubmit, setError,\n    formState: { errors, isSubmitting },\n  } = useForm<Values>({ resolver: zodResolver(schema), mode: 'onBlur' })\n\n  const onSubmit = async (values: Values) => {\n    const res = await api.signup(values)\n    if (res.emailTaken) setError('email', { message: 'Already registered' })\n  }\n\n  return (\n    <form onSubmit={handleSubmit(onSubmit)}>\n      <input {...register('email')} />\n      {errors.email && <span>{errors.email.message}</span>}\n      <input type=\"password\" {...register('password')} />\n      {errors.password && <span>{errors.password.message}</span>}\n      <button disabled={isSubmitting}>Sign up</button>\n    </form>\n  )\n}",
+   "after": "import { useField, useForm } from '@pyreon/form'\nimport { z } from 'zod'\n\nconst schema = z.object({\n  email: z.string().email('Enter a valid email'),\n  password: z.string().min(8, 'At least 8 characters'),\n})\n\nfunction SignUp() {\n  const form = useForm({\n    initialValues: { email: '', password: '' },\n    schema,\n    onSubmit: async (values) => {\n      const res = await api.signup(values)\n      if (res.emailTaken) form.setErrors({ email: 'Already registered' })\n    },\n  })\n  const email = useField(form, 'email')\n  const password = useField(form, 'password')\n\n  return (\n    <form onSubmit={form.handleSubmit}>\n      <input {...email.register()} />\n      {() => email.showError() && <span>{email.error()}</span>}\n      <input type=\"password\" {...password.register()} />\n      {() => password.showError() && <span>{password.error()}</span>}\n      <button disabled={form.isSubmitting}>Sign up</button>\n    </form>\n  )\n}",
+   "note": "`register()` reads the same. The Zod schema goes in as it is, and `setErrors` replaces `setError`. Each error line is its own reactive text, so a new error repaints one `<span>`."
+  },
+  {
+   "lib": "Formik",
+   "title": "Keep the validate logic, lose the render prop.",
+   "before": "import { ErrorMessage, Field, Form, Formik } from 'formik'\n\nfunction SignUp() {\n  return (\n    <Formik\n      initialValues={{ email: '', password: '' }}\n      validate={(v) => {\n        const errors: { email?: string; password?: string } = {}\n        if (!v.email.includes('@')) errors.email = 'Enter a valid email'\n        if (v.password.length < 8) errors.password = 'At least 8 characters'\n        return errors\n      }}\n      onSubmit={async (values, { setFieldError }) => {\n        const res = await api.signup(values)\n        if (res.emailTaken) setFieldError('email', 'Already registered')\n      }}\n    >\n      {({ isSubmitting }) => (\n        <Form>\n          <Field name=\"email\" type=\"email\" />\n          <ErrorMessage name=\"email\" component=\"span\" />\n          <Field name=\"password\" type=\"password\" />\n          <ErrorMessage name=\"password\" component=\"span\" />\n          <button type=\"submit\" disabled={isSubmitting}>Sign up</button>\n        </Form>\n      )}\n    </Formik>\n  )\n}",
+   "after": "import { useForm } from '@pyreon/form'\n\nfunction SignUp() {\n  const form = useForm({\n    initialValues: { email: '', password: '' },\n    validators: {\n      email: (v) => (v.includes('@') ? undefined : 'Enter a valid email'),\n      password: (v) => (v.length < 8 ? 'At least 8 characters' : undefined),\n    },\n    onSubmit: async (values) => {\n      const res = await api.signup(values)\n      if (res.emailTaken) form.setFieldError('email', 'Already registered')\n    },\n  })\n  const { email, password } = form.fields\n\n  return (\n    <form onSubmit={form.handleSubmit}>\n      <input type=\"email\" {...form.register('email')} />\n      <span>{email.error()}</span>\n      <input type=\"password\" {...form.register('password')} />\n      <span>{password.error()}</span>\n      <button disabled={form.isSubmitting}>Sign up</button>\n    </form>\n  )\n}",
+   "note": "Formik's `validate` becomes one validator per field. In form-bench Formik re-renders the whole form on each of 10 keystrokes; here nothing re-renders."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "A nested address, posted as nested JSON",
+   "text": "Dot-path keys are real fields with their own validators and errors. `nestValues()` builds `{ name, address: { city, zip } }` for the API.",
+   "code": "import { nestValues, useForm } from '@pyreon/form'\n\nfunction ProfileForm() {\n  const form = useForm({\n    initialValues: { name: '', 'address.city': '', 'address.zip': '' },\n    validators: {\n      'address.zip': (zip) => (/^\\d{5}$/.test(zip) ? undefined : 'Five digits'),\n    },\n    // values stay flat; nest them at the API boundary\n    onSubmit: (values) => api.saveProfile(nestValues(values)),\n  })\n\n  return (\n    <form onSubmit={form.handleSubmit}>\n      <input {...form.register('name')} />\n      <input {...form.register('address.city')} />\n      <input {...form.register('address.zip')} />\n      <span>{form.fields['address.zip'].error()}</span>\n      <button>Save</button>\n    </form>\n  )\n}"
+  },
+  {
+   "title": "An invite list that grows",
+   "text": "`useFieldArray` gives every row a stable key, so removing row two never moves the cursor out of row three.",
+   "code": "import { For } from '@pyreon/core'\nimport { useFieldArray } from '@pyreon/form'\n\nfunction Invites() {\n  const emails = useFieldArray<string>([''])\n\n  return (\n    <ul>\n      <For each={emails.items} by={(item) => item.key}>\n        {(item) => (\n          <li>\n            <input\n              value={item.value()}\n              onInput={(e) => item.value.set(e.currentTarget.value)}\n            />\n            <button type=\"button\" onClick={() => emails.remove(emails.items().indexOf(item))}>\n              Remove\n            </button>\n          </li>\n        )}\n      </For>\n      <button type=\"button\" onClick={() => emails.append('')}>Add another</button>\n    </ul>\n  )\n}"
+  },
+  {
+   "title": "An edit form that knows when it is saved",
+   "text": "After a save, `reset(saved)` makes the server's copy the clean baseline. The Save button is disabled again until the next real change.",
+   "code": "import { useForm } from '@pyreon/form'\ntype Post = { title: string; body: string }\n\nfunction EditPost(props: { post: Post }) {\n  const form = useForm({\n    initialValues: props.post,\n    onSubmit: async (values) => {\n      const saved = await api.savePost(values)\n      form.reset(saved) // the server's copy becomes the new clean baseline\n    },\n  })\n\n  return (\n    <form onSubmit={form.handleSubmit}>\n      <input {...form.register('title')} />\n      <textarea {...form.register('body')} />\n      <button disabled={() => !form.isDirty() || form.isSubmitting()}>Save</button>\n    </form>\n  )\n}"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Is the benchmark measuring the form library or the framework?",
+   "a": "Both, on purpose. Each library runs in its own framework, written the way its docs recommend, with one shared Zod schema, in real Chromium. That is the cost you ship. It is one overnight run on one machine and we wrote the bench, so the harness is in the repo: `cd examples/form-bench && bun bench-form.ts`."
+  },
+  {
+   "q": "Do I need an adapter for Zod?",
+   "a": "No. Any Standard Schema (Zod 3.24+, Valibot 1+, ArkType 2+, `@pyreon/validate`) goes straight into `schema`. The `zodSchema()` adapters in `@pyreon/validation` remain for when you want them."
+  },
+  {
+   "q": "What happens to a schema error for a field I didn't declare?",
+   "a": "It is never dropped. A nested error goes to the closest declared parent field; an error that matches nothing marks the form invalid, sets `submitError` and warns in development."
+  },
+  {
+   "q": "Does it work with server-rendered pages?",
+   "a": "Yes. The form state is plain signals that start from `initialValues` on both sides, and `focusFirstError()` is a no-op on the server. Input ids come from `createUniqueId()`, which matches between server HTML and the hydrated page from the next release on."
+  },
+  {
+   "q": "Can I watch one value without re-running on every field?",
+   "a": "`useWatch(form, 'email')` returns that field's own signal. `useFormState(form, (s) => s.isValid && s.isDirty)` takes a selector so a button only recomputes when its inputs change."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "form-bench figures 210/305/640/680, 460/570/830/1,320/2,380, 60/100/530, 20/35/180; heap 2.42 vs 2.33 MB",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §6 (repo BENCHMARKS.md §6), examples/form-bench"
+  },
+  {
+   "claim": "0 re-renders per 10 keystrokes, Formik 10; headless update 62.4× vs TanStack form-core",
+   "path": "BENCHMARKS.md §10 rows 'form (re-render count)', 'form (headless store)'"
+  },
+  {
+   "claim": "Each library idiomatic in its own framework with one shared zod schema",
+   "path": "examples/form-bench/README.md, examples/form-bench/shared/schema.ts"
+  },
+  {
+   "claim": "validators receive (value, allValues, signal); stale async results discarded by version; debounceMs",
+   "path": "packages/fundamentals/form/src/use-form.ts (validateField, debounceMs ~L756), src/tests/lazy-abort-controller.test.tsx"
+  },
+  {
+   "claim": "Raw Standard Schema accepted in schema; zod >=3.24 / valibot >=1 / arktype >=2",
+   "path": "docs/src/content/docs/form.md L482, src/tests/standard-schema.test.tsx, src/tests/arktype-schema.test.tsx"
+  },
+  {
+   "claim": "Schema error routing: leaf, nearest ancestor, orphan key invalidates",
+   "path": ".agents/guides/fundamentals/references/form.md 'Schemas', src/tests/schema-error-routing.test.tsx"
+  },
+  {
+   "claim": "register() returns id + aria-invalid + aria-describedby; focusOnError default on",
+   "path": "src/tests/a11y-autowire.test.ts, src/tests/focus-on-error.test.tsx; scratch run printed id=pyreon-1 aria-invalid aria-describedby"
+  },
+  {
+   "claim": "useFieldArray methods incl. update/replace and stable keys",
+   "path": "packages/fundamentals/form/src/use-field-array.ts"
+  },
+  {
+   "claim": "reset(values) is a durable new baseline; keep* options",
+   "path": "docs/src/content/docs/form.md 'reset(values?, options?)', src/tests/reset-options.test.tsx"
+  },
+  {
+   "claim": "native tier service-backend: useForm v2 + useFieldArray lower to PyreonForm/PyreonFieldArray",
+   "path": "packages/fundamentals/form/src/manifest.ts multiplatform"
+  },
+  {
+   "claim": "<Form of={form}> fails strict typecheck for a typed form (FormProps<Record<string, unknown>>)",
+   "path": "packages/fundamentals/form/src/form-component.tsx L43; reproduced with tsc in .scratch/data; filed as pyreon/pyreon#4309"
+  },
+  {
+   "claim": "Every code sample typechecked (tsc strict) and run through transformJSX + happy-dom",
+   "path": ".scratch/data/py/form-*.tsx, rv/form-*.tsx, run-form-recipes.tsx"
+  }
+ ]
+}

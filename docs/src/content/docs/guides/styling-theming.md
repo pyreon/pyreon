@@ -3,8 +3,6 @@ title: "Styling & Theming"
 description: "How to style Pyreon components with @pyreon/styler (CSS-in-JS), build multi-state components with rocketstyle, go responsive with unistyle, and theme everything with PyreonUI."
 ---
 
-# Styling & Theming
-
 Pyreon's UI system layers cleanly: **styler** (CSS-in-JS primitives) → **unistyle** (responsive props) → **rocketstyle** (multi-dimensional themed components) → **PyreonUI** (the unified theme + mode provider). Theme is a reactive context, so a whole-theme swap re-resolves CSS and swaps class names without remounting.
 
 ## When to use what

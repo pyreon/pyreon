@@ -13,7 +13,7 @@ export const MeasureLabel = txt
     fontSize: t.size.label,
     padding: '2px 8px',
     borderRadius: t.radius.chip,
-    color: '#fff',
+    color: t.accentText,
     background: t.accent,
     whiteSpace: 'nowrap',
   }))

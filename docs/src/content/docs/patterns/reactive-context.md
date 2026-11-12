@@ -4,8 +4,6 @@ summary: "Use createReactiveContext for live values; never destructure context r
 seeAlso: [signal-writes]
 ---
 
-# Reactive context
-
 ## The pattern
 
 Two context kinds in `@pyreon/core`, pick by whether the value changes over time:

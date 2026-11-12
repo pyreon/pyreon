@@ -1,9 +1,7 @@
 ---
-title: "UI ↔ Document Bridge — API Reference"
+title: "@pyreon/connector-document — API Reference"
 description: "Bridge between ui-system JSX trees and @pyreon/document — extracts a DocNode tree for multi-format export"
 ---
-
-# @pyreon/connector-document — API Reference
 
 > **Generated** from `connector-document`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [connector-document](/docs/connector-document).
 

@@ -1,9 +1,7 @@
 ---
-title: "Flow Diagrams — API Reference"
+title: "@pyreon/flow — API Reference"
 description: "Reactive flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout with its own engine (no layout dependency)"
 ---
-
-# @pyreon/flow — API Reference
 
 > **Generated** from `flow`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [flow](/docs/flow).
 

@@ -3,8 +3,6 @@ title: "Best-Practice Mistakes (opt-in `@pyreon/lint` rules)"
 description: "Common best-practice mistakes (opt-in `@pyreon/lint` rules) in Pyreon and how to fix them."
 ---
 
-# Best-Practice Mistakes (opt-in `@pyreon/lint` rules)
-
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
 ### `<img>` without `alt`

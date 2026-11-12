@@ -975,3 +975,18 @@ pre code {
   text-decoration: underline;
 }
 
+
+/* Skip link: off-screen until it receives keyboard focus. */
+.skip-to-content {
+  position: absolute;
+  left: 8px;
+  top: -40px;
+  z-index: 100;
+  padding: 6px 10px;
+  background: #fff;
+  color: #000;
+  border-radius: 4px;
+}
+.skip-to-content:focus {
+  top: 8px;
+}

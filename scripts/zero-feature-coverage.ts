@@ -272,6 +272,11 @@ export const ZERO_FEATURE_COVERAGE: Record<string, Coverage> = {
     spec: 'e2e/https-dev.spec.ts',
     evidence: 'serves over TLS and the browser reports a secure context',
   },
+  'Development Error Overlay': {
+    kind: 'e2e',
+    spec: 'e2e/zero-dev-overlay.spec.ts',
+    evidence: 'loader error: "Loader threw" on the loader phase, no invented fix',
+  },
   i18n: {
     kind: 'e2e',
     spec: 'e2e/ssg-i18n.spec.ts',

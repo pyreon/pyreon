@@ -1,16 +1,18 @@
 import { el } from '../../kit'
 
+/** A log line (`.log2 > div`): handler, payload, time — mono, hairline-separated. */
 export const ActionRow = el
   .attrs({
     tag: 'div',
-    contentDirection: 'inline',
-    contentAlignY: 'center',
-    gap: 8,
+    block: true,
   })
   .theme((t) => ({
-    padding: '8px 12px',
-    borderRadius: t.radius.field,
-    marginBottom: '8px',
-    background: t.surface2,
-    extendCss: 'animation:atlas-in .18s;',
+    display: 'grid',
+    gap: '8px',
+    alignItems: 'baseline',
+    padding: '6px 12px',
+    borderBottom: t.hairline,
+    fontFamily: t.font.mono,
+    fontSize: t.size.small,
+    extendCss: 'grid-template-columns:minmax(0,max-content) minmax(0,1fr) auto;animation:atlas-in .18s;',
   }))

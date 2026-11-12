@@ -8,7 +8,7 @@ const Tooltip = el
   .attrs({ tag: 'div', role: 'tooltip' })
   .theme((t) => ({
     backgroundColor: t.color.system.dark[800],
-    color: t.color.system.light.base,
+    color: t.color.system.dark.contrast,
     fontSize: t.fontSize.xSmall,
     borderRadius: t.borderRadius.small,
     paddingTop: t.spacing.xxxSmall,

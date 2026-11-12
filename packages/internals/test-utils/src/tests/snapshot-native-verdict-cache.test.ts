@@ -107,6 +107,71 @@ describe('native verdict cache snapshots', () => {
     }
   })
 
+  it('merge keeps the destination records, adds the source ones, and still filters both sides', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pyreon-verdict-merge-'))
+    try {
+      const base = join(dir, 'base')
+      const own = join(dir, 'own')
+      const live = join(dir, 'live')
+      const name = (c: string) => `${c.repeat(64)}.json`
+      mkdirSync(join(base, 'kotlin-runtime'), { recursive: true })
+      mkdirSync(join(own, 'kotlin-runtime'), { recursive: true })
+      writeFileSync(join(base, name('a')), '{"v":2,"ok":true}')
+      writeFileSync(join(base, name('b')), '{"v":2,"ok":true}')
+      writeFileSync(join(base, 'kotlin-runtime', name('c')), '{"ok":true}')
+      writeFileSync(join(base, probe), '{"available":true,"version":"1"}')
+      writeFileSync(join(own, name('b')), '{"v":2,"ok":true}')
+      writeFileSync(join(own, name('d')), '{"v":2,"ok":false,"error":"error: x"}')
+      writeFileSync(join(own, 'kotlin-runtime', name('e')), '{"ok":true}')
+
+      // The default branch's store first, then the pull request's own on top.
+      expect(snapshotNativeVerdicts(base, live)).toBe(4)
+      // A half-written record already in the destination must not survive a merge.
+      writeFileSync(join(live, name('f')), '{')
+      writeFileSync(join(live, 'daemon.jar'), 'binary')
+      expect(snapshotNativeVerdicts(own, live, { merge: true })).toBe(6)
+      expect(readdirSync(live).sort()).toEqual(
+        ['kotlin-runtime', name('a'), name('b'), name('d'), probe].sort(),
+      )
+      expect(readdirSync(join(live, 'kotlin-runtime')).sort()).toEqual([name('c'), name('e')])
+      expect(JSON.parse(readFileSync(join(live, name('d')), 'utf8')).error).toBe('error: x')
+
+      // A second store that was never restored leaves the first one intact.
+      expect(snapshotNativeVerdicts(join(dir, 'absent'), live, { merge: true })).toBe(6)
+      // Without merge the destination is REPLACED: saving must not resurrect evicted records.
+      expect(snapshotNativeVerdicts(own, live)).toBe(3)
+      expect(existsSync(join(live, name('a')))).toBe(false)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('the CLI merges on --merge and rejects a wrong argument count', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pyreon-verdict-cli-'))
+    const script = join(
+      import.meta.dirname,
+      '../../../../../scripts/snapshot-native-verdict-cache.ts',
+    )
+    const run = (...args: string[]) =>
+      execFileSync('bun', [script, ...args], { encoding: 'utf8', stdio: 'pipe' })
+    try {
+      const a = join(dir, 'a')
+      const b = join(dir, 'b')
+      mkdirSync(a)
+      mkdirSync(b)
+      writeFileSync(join(a, record), '{"v":2,"ok":true}')
+      writeFileSync(join(b, `${'e'.repeat(64)}.json`), '{"v":2,"ok":true}')
+      expect(run(a, b, '--merge')).toContain(`Merged ${a} into ${b}: 2 complete records`)
+      expect(readdirSync(b)).toHaveLength(2)
+      expect(run(a, b)).toContain('Copied 1 complete records')
+      expect(readdirSync(b)).toEqual([record])
+      expect(() => run(a)).toThrow('Pass exactly two cache directories')
+      expect(() => run(a, b, join(dir, 'c'))).toThrow('Pass exactly two cache directories')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('handles a cold cache and refuses overlapping directories before modifying either', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pyreon-verdict-snapshot-'))
     try {

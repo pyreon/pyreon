@@ -29,3 +29,11 @@ describe('text-semantics element attributes', () => {
     expectTypeOf<El['data']>().toHaveProperty('value')
   })
 })
+
+describe('anchor attributes', () => {
+  // `<a href="/feed.xml" type="application/rss+xml">` — the MIME hint of a
+  // feed link (found building the blog module's "Subscribe via RSS" link).
+  it('<a> accepts type', () => {
+    expectTypeOf<El['a']>().toHaveProperty('type')
+  })
+})

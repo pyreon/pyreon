@@ -15,8 +15,9 @@ export const NodeChip = el
     fontFamily: t.font.mono,
     fontSize: t.size.meta,
     cursor: 'pointer',
-    padding: '6px 10px',
-    borderRadius: t.radius.item,
+    height: '26px',
+    padding: '0 10px',
+    borderRadius: t.radius.pill,
     border: t.hairline,
     color: t.text,
     backgroundColor: t.surface2,
@@ -25,7 +26,7 @@ export const NodeChip = el
   }))
   .states(
     (t) => ({
-      active: { borderColor: t.accent, backgroundColor: t.accentSoft },
+      active: { borderColor: t.accent, backgroundColor: t.glow, color: t.accent },
       idle: {},
     }),
   )

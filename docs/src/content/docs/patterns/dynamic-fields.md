@@ -4,8 +4,6 @@ summary: "Stable keys for <For by> via .key, never the array index."
 seeAlso: [form-fields, keyed-lists]
 ---
 
-# Dynamic form arrays — useFieldArray
-
 ## The pattern
 
 Manage variable-length form inputs with `useFieldArray`. Each item has a **stable monotonic key** — use it with `<For by>` so reordering/insertion preserves input focus and DOM state:

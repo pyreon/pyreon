@@ -169,7 +169,7 @@ describe('the React half of the detector set actually runs', () => {
     // reader cannot tell which rule set to go read.
     write('src/w.tsx', REACT_SOURCE)
     return run({ paths: ['src/w.tsx'] }).then((r) => {
-      expect(r.out).toContain('[react:')
+      expect(r.out).toContain('✗ react:')
     })
   })
 })
@@ -416,14 +416,16 @@ export function go() { a(1); a(2) }
     expect(human.out.includes('--fix')).toBe(anyFixable)
   })
 
-  it('groups the human output by file, printing each name once', () => {
+  it('gives every finding its own file:line:col location (rule 4)', () => {
     write('src/a.ts', `import { signal } from '@pyreon/reactivity'
 const a = signal(0)
 export function go() { a(1); a(2) }
 `)
     return run({ paths: ['src/a.ts'] }).then((r) => {
-      const occurrences = r.out.split('src/a.ts').length - 1
-      expect(occurrences, 'the file heading is printed once').toBe(1)
+      const locations = r.out.match(/↳ src\/a\.ts:\d+:\d+/g) ?? []
+      const findings = r.out.match(/^ {2}✗ /gm) ?? []
+      expect(findings.length, 'two findings').toBe(2)
+      expect(locations.length, 'one location per finding').toBe(findings.length)
     })
   })
 })

@@ -13,6 +13,15 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import {
+  createTerm,
+  finding as findingLines,
+  formatElapsed,
+  header,
+  plural,
+  type Term,
+  verdict,
+} from '@pyreon/ansi'
 import { ADD_RECIPES } from './add-recipes'
 
 export interface AddOptions {
@@ -22,15 +31,14 @@ export interface AddOptions {
   json: boolean
 }
 
-// ESC computed so the SOURCE carries no raw C0 control byte (source-hygiene gate).
-const ESC = String.fromCharCode(27)
-const useColor = (): boolean => !!process.stdout.isTTY && !process.env.NO_COLOR
-const paint = (s: string, c: string): string => (useColor() ? `${ESC}[${c}m${s}${ESC}[0m` : s)
-const bold = (s: string) => paint(s, '1')
-const dim = (s: string) => paint(s, '2')
-const red = (s: string) => paint(s, '31')
-const green = (s: string) => paint(s, '32')
-const cyan = (s: string) => paint(s, '36')
+/** A usage or install error on stderr: `✗ pyreon add · problem`, then `fix:`. */
+const fail = (message: string, fix: string): number => {
+  const t = createTerm({ isTTY: Boolean(process.stderr.isTTY) })
+  console.error(
+    findingLines(t, { severity: 'error', source: 'pyreon add', message, fix }, { indent: 0, width: t.width }).join('\n'),
+  )
+  return 1
+}
 
 interface PackageManager {
   name: 'bun' | 'pnpm' | 'yarn' | 'npm'
@@ -68,18 +76,16 @@ export function normalizePackageName(input: string): string {
 
 export function add(opts: AddOptions): number {
   if (opts.packages.length === 0) {
-    console.error(red('  pyreon add <pkg...> — nothing to add. Example: `pyreon add query toast`'))
-    return 1
+    return fail('nothing to add', 'name the packages: pyreon add query toast')
   }
 
   const names = opts.packages.map(normalizePackageName)
   const nonPyreon = names.filter((n) => !n.startsWith('@pyreon/'))
   if (nonPyreon.length > 0) {
-    console.error(
-      red(`  pyreon add is for @pyreon/* packages; got ${nonPyreon.join(', ')}.`) +
-        dim(`\n  Use your package manager directly for third-party packages.`),
+    return fail(
+      `pyreon add is for @pyreon/* packages; got ${nonPyreon.join(', ')}.`,
+      'use your package manager directly for third-party packages',
     )
-    return 1
   }
 
   const pm = detectPackageManager(opts.cwd)
@@ -102,45 +108,65 @@ export function add(opts: AddOptions): number {
     return 0
   }
 
-  // ── Install ────────────────────────────────────────────────────────────────
-  console.log(`\n  ${bold('Installing')} ${names.map((n) => cyan(n)).join(', ')} ${dim(`(${pm.name})`)}`)
-  console.log(`  ${dim('$')} ${installCmd.join(' ')}`)
-  if (opts.dryRun) {
-    console.log(dim('  (--dry-run — not installed)'))
-  } else {
+  const started = performance.now()
+  const t = createTerm()
+  console.log(renderAddHeader(t, names, pm.name, installCmd.join(' ')))
+  if (!opts.dryRun) {
     try {
       execFileSync(pm.name, [...pm.addArgs, ...names], { cwd: opts.cwd, stdio: 'inherit' })
     } catch {
-      console.error(red(`\n  Install failed. Run manually: ${installCmd.join(' ')}`))
-      return 1
+      return fail('install failed', `run it yourself: ${installCmd.join(' ')}`)
     }
   }
-
-  // ── Setup guidance ───────────────────────────────────────────────────────────
-  for (const name of names) {
-    const recipe = ADD_RECIPES[name]
-    console.log(`\n  ${bold(cyan(name))}${recipe ? dim(` — ${recipe.summary}`) : ''}`)
-    if (!recipe) {
-      console.log(dim(`  Installed. See https://pyreon.dev/docs for setup.`))
-      continue
-    }
-    if (recipe.provider) {
-      console.log(`  ${bold('1.')} Add the provider near your app root:`)
-      console.log(indent(recipe.provider.setup, green))
-      console.log(indent(recipe.provider.wrap, green))
-      console.log(`  ${bold('2.')} Use it:`)
-    } else {
-      console.log(`  ${bold('Use it:')}`)
-    }
-    console.log(indent(recipe.usage, green))
-    console.log(`  ${dim('Docs:')} https://pyreon.dev${recipe.docs}`)
-  }
+  console.log(renderAddGuide(t, names, { dryRun: opts.dryRun, pm: pm.name, elapsedMs: performance.now() - started }))
   return 0
 }
 
-function indent(code: string, color: (s: string) => string): string {
+/** First lines: what runs (`pyreon add · names · pm`) and the exact install command. */
+export const renderAddHeader = (t: Term, names: readonly string[], pm: string, command: string): string =>
+  [header(t, 'pyreon add', `${names.join(', ')} ${t.sym('bullet')} ${pm}`), `  ${t.dim('$')} ${command}`].join('\n')
+
+/**
+ * After the install: per package, how to wire it in (provider, usage, docs
+ * link), then the verdict. Code is printed uncoloured and unframed, so it
+ * copies cleanly out of the terminal.
+ */
+export function renderAddGuide(
+  t: Term,
+  names: readonly string[],
+  run: { dryRun: boolean; pm: string; elapsedMs: number },
+): string {
+  const lines: string[] = []
+  for (const name of names) {
+    const recipe = ADD_RECIPES[name]
+    lines.push('', `  ${t.bold(name)}${recipe ? ` ${t.dim(`${t.sym('bullet')} ${recipe.summary}`)}` : ''}`)
+    if (!recipe) {
+      lines.push(`    no setup recipe yet ${t.dim(t.sym('dash'))} see the docs`)
+      lines.push(`    ${t.dim('docs')}  ${t.info('https://pyreon.dev/docs')}`)
+      continue
+    }
+    if (recipe.provider) {
+      lines.push(`    ${t.accent('1.')} Add the provider near your app root:`)
+      lines.push(indent(recipe.provider.setup), indent(recipe.provider.wrap))
+      lines.push(`    ${t.accent('2.')} Use it:`)
+    } else {
+      lines.push(`    ${t.accent(t.sym('step'))} Use it:`)
+    }
+    lines.push(indent(recipe.usage))
+    lines.push(`    ${t.dim('docs')}  ${t.info(`https://pyreon.dev${recipe.docs}`)}`)
+  }
+  lines.push('')
+  lines.push(
+    run.dryRun
+      ? verdict(t, 'info', '--dry-run: nothing installed', [plural(names.length, 'package'), run.pm])
+      : verdict(t, 'ok', `installed ${plural(names.length, 'package')}`, [run.pm, formatElapsed(run.elapsedMs)]),
+  )
+  return lines.join('\n')
+}
+
+function indent(code: string): string {
   return code
     .split('\n')
-    .map((l) => `      ${color(l)}`)
+    .map((l) => `      ${l}`)
     .join('\n')
 }

@@ -19,7 +19,7 @@ import type { ReactiveCoverageReport } from '@pyreon/reactivity/coverage'
 import * as C from '../../components'
 import { createInsightSession, type InsightRow, insightSummary } from '../../graph-insights'
 import type { WorkbenchModel } from '../../model'
-import { registerAddonPanel } from '../../panels'
+import type { AddonPanelRender } from '../../panels'
 import {
   type CoverageRow,
   coverageRows,
@@ -44,167 +44,188 @@ const STATE: Record<CoverageRow['reason'], 'ok' | 'warn' | 'danger' | 'unknown'>
   'never-ran': 'danger',
 }
 
-export function registerReactiveCoveragePanel(): void {
-  registerAddonPanel({
-    id: 'reactivity',
-    title: 'Reactivity',
-    hint: 'Which reactive edges never fired',
-    render: (model) => {
-      const m = model as WorkbenchModel
-      const session = createCoverageSession()
-      // Baselined at panel construction: whatever is already in the graph is
-      // the workbench's own, and only what appears afterwards is the
-      // component's. Without this the panel reports Atlas's chrome as the
-      // component's smells — confidently, about someone else's code.
-      const shape = createInsightSession()
-      shape.baseline()
-      const report = signal<ReactiveCoverageReport | null>(null)
-      const insights = signal<InsightRow[]>([])
-      const recording = signal(false)
+/** The panel body — loaded on first open (see ./lazy). */
+export const render: AddonPanelRender = (model) => {
+  const m = model as WorkbenchModel
+  const session = createCoverageSession()
+  // Baselined at panel construction: whatever is already in the graph is
+  // the workbench's own, and only what appears afterwards is the
+  // component's. Without this the panel reports Atlas's chrome as the
+  // component's smells — confidently, about someone else's code.
+  const shape = createInsightSession()
+  shape.baseline()
+  const report = signal<ReactiveCoverageReport | null>(null)
+  const insights = signal<InsightRow[]>([])
+  const recording = signal(false)
 
-      const refresh = () => {
-        report.set(session.sample())
-        // Re-read the SHAPE at the same moment as coverage. The two answer
-        // different questions off one graph — coverage is "did this edge ever
-        // fire", shape is "is this graph a sensible one" — and a component can
-        // be at 100% coverage and still drive forty effects from one signal.
-        insights.set(shape.sample())
-      }
+  const refresh = () => {
+    report.set(session.sample())
+    paint()
+    // Re-read the SHAPE at the same moment as coverage. The two answer
+    // different questions off one graph — coverage is "did this edge ever
+    // fire", shape is "is this graph a sensible one" — and a component can
+    // be at 100% coverage and still drive forty effects from one signal.
+    insights.set(shape.sample())
+  }
 
-      const start = () => {
-        session.start()
-        recording.set(true)
-        refresh()
-      }
-      const stop = () => {
-        refresh() // sample BEFORE ending the session, or the session's data is gone
-        session.stop()
-        recording.set(false)
-      }
+  const start = () => {
+    session.start()
+    recording.set(true)
+    refresh()
+  }
+  const stop = () => {
+    refresh() // sample BEFORE ending the session, or the session's data is gone
+    session.stop()
+    recording.set(false)
+  }
 
-      // Read once per render: a production build tree-shakes the reactive
-      // registry, and an empty graph would otherwise compute as a perfect 100%.
-      const available = isCoverageAvailable()
+  // Read once per render: a production build tree-shakes the reactive
+  // registry, and an empty graph would otherwise compute as a perfect 100%.
+  const available = isCoverageAvailable()
 
-      const summary = () => {
-        const r = report()
-        return r ? coverageSummary(r) : null
-      }
-      const rows = () => {
-        const r = report()
-        return r ? coverageRows(r) : []
-      }
+  const summary = () => {
+    const r = report()
+    return r ? coverageSummary(r) : null
+  }
+  const rows = () => {
+    const r = report()
+    return r ? coverageRows(r) : []
+  }
 
-      return (
+  // The bar's fill width is a measurement, written onto the element (see
+  // CovFill): when the bar mounts, and on every new report while it is
+  // mounted. Not an effect — the shell re-mounts a kept panel body on a tab
+  // switch, which would dispose an effect created at build time.
+  let fill: HTMLElement | null = null
+  const fillRef = (el: HTMLElement | null) => {
+    fill = el
+    paint()
+  }
+  const paint = () => {
+    const pct = summary()?.percent ?? 0
+    if (fill) fill.style.width = `${Math.max(0, Math.min(100, pct))}%`
+  }
+
+  return (
+    <>
+      <C.ActionsHead>
+        <C.ActionsHint>
+          {() =>
+            recording()
+              ? 'Recording — interact with the preview, then Stop.'
+              : 'Record, interact with the preview, then Stop to see which reactive edges never fired.'
+          }
+        </C.ActionsHint>
+        <C.ClearBtn
+          data-testid="coverage-toggle"
+          onClick={() => (recording() ? stop() : start())}
+        >
+          {() => (recording() ? 'Stop' : 'Record')}
+        </C.ClearBtn>
+      </C.ActionsHead>
+
+      {/*
+        Not available ≠ nothing to report. A production workbench has no
+        reactive registry at all, and saying "100%" there would be a
+        fabricated pass — the exact class the verify verdict was fixed for.
+      */}
+      <Show when={() => !available}>
+        <C.ActionsEmpty data-testid="coverage-unavailable">
+          Reactive coverage needs a development build — the reactive registry
+          is tree-shaken in production, so there is nothing to measure.
+        </C.ActionsEmpty>
+      </Show>
+
+      <Show when={() => available && report() === null}>
+        <C.ActionsEmpty>No recording yet — press Record.</C.ActionsEmpty>
+      </Show>
+
+      {/*
+        Graph SHAPE, distinct from coverage above. Shown whenever a graph
+        exists rather than gated on a recording: a smell is a property of
+        the graph, not of a session, so requiring Record to see an orphan
+        signal would hide the one finding that is usually a real bug.
+      */}
+      <Show when={() => available && insights().length > 0}>
         <>
-          <C.ActionsHead>
-            <C.ActionsHint>
-              {() =>
-                recording()
-                  ? 'Recording — interact with the preview, then Stop.'
-                  : 'Record, interact with the preview, then Stop to see which reactive edges never fired.'
-              }
-            </C.ActionsHint>
-            <C.ClearBtn
-              data-testid="coverage-toggle"
-              onClick={() => (recording() ? stop() : start())}
-            >
-              {() => (recording() ? 'Stop' : 'Record')}
-            </C.ClearBtn>
-          </C.ActionsHead>
+          <C.A11ySummary data-testid="insights-summary">
+            <C.A11yStat>
+              <C.A11yDot state="warn" />
+              {() => insightSummary(insights())}
+            </C.A11yStat>
+          </C.A11ySummary>
+          {() =>
+            insights().map((row) => (
+              <C.A11yRow data-testid="insight-row">
+                <C.A11yIcon state={row.kind === 'orphan-signal' ? 'danger' : 'warn'}>!</C.A11yIcon>
+                <C.A11yBody>
+                  <C.A11yTitle>{`${row.kind} · ${row.name}`}</C.A11yTitle>
+                  <C.A11yNote>{`${row.detail} — ${row.meaning}`}</C.A11yNote>
+                </C.A11yBody>
+              </C.A11yRow>
+            ))
+          }
+        </>
+      </Show>
 
-          {/*
-            Not available ≠ nothing to report. A production workbench has no
-            reactive registry at all, and saying "100%" there would be a
-            fabricated pass — the exact class the verify verdict was fixed for.
-          */}
-          <Show when={() => !available}>
-            <C.ActionsEmpty data-testid="coverage-unavailable">
-              Reactive coverage needs a development build — the reactive registry
-              is tree-shaken in production, so there is nothing to measure.
+      <Show when={() => available && report() !== null}>
+        <>
+          <C.CovHead data-testid="coverage-head">
+            {/* Decorative: the number beside it and the caption say it in text. */}
+            <C.CovBar aria-hidden="true" data-testid="coverage-bar">
+              <C.CovFill ref={fillRef} data-testid="coverage-fill" />
+            </C.CovBar>
+            <C.CovNum data-testid="coverage-percent">{() => `${summary()?.percent ?? 0}%`}</C.CovNum>
+            <C.CovCaption>
+              {() =>
+                `of the ${summary()?.total ?? 0} reactive nodes in this recording updated at least once — an effect that only ran at mount does not count.`
+              }
+            </C.CovCaption>
+          </C.CovHead>
+          <C.A11ySummary data-testid="coverage-summary">
+            <C.A11yStat>
+              <C.A11yDot state="ok" />
+              {() => `${summary()?.percent ?? 0}% covered`}
+            </C.A11yStat>
+            <C.A11yStat>
+              <C.A11yDot state="warn" />
+              {() => `${summary()?.ranOnce ?? 0} ran once`}
+            </C.A11yStat>
+            <C.A11yStat>
+              <C.A11yDot state="unknown" />
+              {() => `${summary()?.neverChanged ?? 0} never changed`}
+            </C.A11yStat>
+            <C.A11yStat>
+              <C.A11yDot state="ok" />
+              {() => `${summary()?.covered ?? 0}/${summary()?.total ?? 0} nodes`}
+            </C.A11yStat>
+          </C.A11ySummary>
+
+          <Show when={() => rows().length === 0}>
+            <C.ActionsEmpty>
+              Every reactive edge fired. Nothing untested in this session.
             </C.ActionsEmpty>
           </Show>
 
-          <Show when={() => available && report() === null}>
-            <C.ActionsEmpty>No recording yet — press Record.</C.ActionsEmpty>
-          </Show>
-
-          {/*
-            Graph SHAPE, distinct from coverage above. Shown whenever a graph
-            exists rather than gated on a recording: a smell is a property of
-            the graph, not of a session, so requiring Record to see an orphan
-            signal would hide the one finding that is usually a real bug.
-          */}
-          <Show when={() => available && insights().length > 0}>
-            <>
-              <C.A11ySummary data-testid="insights-summary">
-                <C.A11yStat>
-                  <C.A11yDot state="warn" />
-                  {() => insightSummary(insights())}
-                </C.A11yStat>
-              </C.A11ySummary>
-              {() =>
-                insights().map((row) => (
-                  <C.A11yRow data-testid="insight-row">
-                    <C.A11yIcon state={row.kind === 'orphan-signal' ? 'danger' : 'warn'}>!</C.A11yIcon>
-                    <C.A11yBody>
-                      <C.A11yTitle>{`${row.kind} · ${row.name}`}</C.A11yTitle>
-                      <C.A11yNote>{`${row.detail} — ${row.meaning}`}</C.A11yNote>
-                    </C.A11yBody>
-                  </C.A11yRow>
-                ))
-              }
-            </>
-          </Show>
-
-          <Show when={() => available && report() !== null}>
-            <>
-              <C.A11ySummary data-testid="coverage-summary">
-                <C.A11yStat>
-                  <C.A11yDot state="ok" />
-                  {() => `${summary()?.percent ?? 0}% covered`}
-                </C.A11yStat>
-                <C.A11yStat>
-                  <C.A11yDot state="warn" />
-                  {() => `${summary()?.ranOnce ?? 0} ran once`}
-                </C.A11yStat>
-                <C.A11yStat>
-                  <C.A11yDot state="unknown" />
-                  {() => `${summary()?.neverChanged ?? 0} never changed`}
-                </C.A11yStat>
-                <C.A11yStat>
-                  <C.A11yDot state="ok" />
-                  {() => `${summary()?.covered ?? 0}/${summary()?.total ?? 0} nodes`}
-                </C.A11yStat>
-              </C.A11ySummary>
-
-              <Show when={() => rows().length === 0}>
-                <C.ActionsEmpty>
-                  Every reactive edge fired. Nothing untested in this session.
-                </C.ActionsEmpty>
-              </Show>
-
-              {() =>
-                rows().map((row) => (
-                  <C.A11yRow data-testid="coverage-row">
-                    <C.A11yIcon state={STATE[row.reason]}>{ICON[row.reason]}</C.A11yIcon>
-                    <C.A11yBody>
-                      <C.A11yTitle>{`${row.kind} · ${row.name}`}</C.A11yTitle>
-                      <C.A11yNote>{row.where ? `${row.explain} — ${row.where}` : row.explain}</C.A11yNote>
-                    </C.A11yBody>
-                  </C.A11yRow>
-                ))
-              }
-            </>
-          </Show>
-
-          {/* Selecting another component makes the previous reading stale. */}
-          {() => {
-            void m.selId()
-            return null
-          }}
+          {() =>
+            rows().map((row) => (
+              <C.A11yRow data-testid="coverage-row">
+                <C.A11yIcon state={STATE[row.reason]}>{ICON[row.reason]}</C.A11yIcon>
+                <C.A11yBody>
+                  <C.A11yTitle>{`${row.kind} · ${row.name}`}</C.A11yTitle>
+                  <C.A11yNote>{row.where ? `${row.explain} — ${row.where}` : row.explain}</C.A11yNote>
+                </C.A11yBody>
+              </C.A11yRow>
+            ))
+          }
         </>
-      )
-    },
-  })
+      </Show>
+
+      {/* Selecting another component makes the previous reading stale. */}
+      {() => {
+        void m.selId()
+        return null
+      }}
+    </>
+  )
 }

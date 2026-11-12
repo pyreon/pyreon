@@ -1,9 +1,7 @@
 ---
-title: "MCP Server — API Reference"
+title: "@pyreon/mcp — API Reference"
 description: "Model Context Protocol server — discoverability map, live API lookup, validation, migration, anti-pattern catalog, changelog, test-environment audit"
 ---
-
-# @pyreon/mcp — API Reference
 
 > **Generated** from `mcp`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [mcp](/docs/mcp).
 

@@ -2,8 +2,6 @@
 title: PMTC Supported TypeScript Surface
 ---
 
-# PMTC Supported TypeScript Surface
-
 The Pyreon Multi-Target Compiler (PMTC) intercepts JSX + TypeScript source in your `.tsx` files and emits Swift (SwiftUI) and Kotlin (Compose). It does **not** compile arbitrary TypeScript — Phase 0 deliberately ships a focused subset that covers the seven canonical patterns the TodoMVC + native-counter examples exercise. This page enumerates exactly what works, what silently drops, what fires a warning, and what's planned.
 
 If you hit a shape this page doesn't list, treat it as undefined behavior — file an issue with the source snippet so the matrix can grow.
@@ -281,7 +279,20 @@ console.log(result.code)        // emitted Swift
 console.log(result.warnings)    // ['Component X has an untyped …', …]
 ```
 
-The CLI (`pyreon-native build`) prints `[pyreon-native] N warning(s):` to stderr automatically. No Vite-plugin or LSP/editor surfacer exists yet — that's a Phase D6 follow-up.
+The CLI (`pyreon-native build`, and `pyreon-native check` without writing files) prints each warning to stderr automatically:
+
+```text
+$ pyreon-native build --target=ios --source=src --out=generated
+pyreon-native build · ios · src → generated
+
+  ! warning · swift · <Text font="Brand">: no bundled font by that name — run the assets/fonts step
+     (Font.custom will fall back to the system font on-device).
+     ↳ src/FinanceApp.tsx
+
+✓ compiled 1 file → generated · 1 warning · 39 ms
+```
+
+No Vite-plugin or LSP/editor surfacer exists yet — that's a Phase D6 follow-up.
 
 ## What's NOT supported (and not planned for Phase 0)
 

@@ -3,8 +3,6 @@ title: "Performance"
 description: "How to keep a Pyreon app fast — fine-grained updates, virtualizing large lists, lazy-loading heavy modules, batching, and selectors."
 ---
 
-# Performance
-
 Pyreon is fast by default: a signal change updates exactly the DOM that depends on it, with no component re-render and no virtual-DOM diff. Most apps need no tuning. This guide covers the few levers that matter when you push scale.
 
 ## The default you get for free

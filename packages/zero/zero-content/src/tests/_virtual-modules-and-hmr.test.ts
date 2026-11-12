@@ -183,13 +183,14 @@ describe('a hot update invalidates what actually changed', () => {
     expect(invalidated.join(' ')).not.toContain('collections')
   })
 
-  it('a markdown edit does NOT invalidate a virtual module', async () => {
-    // The page's own module is already invalidated by Vite; touching a
-    // virtual barrel here cascades to every other page.
+  it('a markdown edit marks only its collection metadata stale, and propagates nothing', async () => {
+    // The page's own module is already invalidated by Vite. The listing
+    // metadata of its collection must be rebuilt on the next load — but
+    // returning it (or a barrel) for HMR would cascade to every page.
     const h = await harness()
     const { invalidated, result } = h.hot(path.join(root, 'src', 'content', 'docs', 'a.md'))
-    await result
-    expect(invalidated).toEqual([])
+    expect(await result).toBeUndefined()
+    expect(invalidated).toEqual(['\0virtual:zero-content/meta/docs'])
   })
 
   it('an unrelated file invalidates nothing', async () => {

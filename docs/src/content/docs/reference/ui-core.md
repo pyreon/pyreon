@@ -1,9 +1,7 @@
 ---
-title: "UI Provider + Config — API Reference"
+title: "@pyreon/ui-core — API Reference"
 description: "Unified `PyreonUI` provider (theme + mode + config), `useMode()` hook, init() escape hatch"
 ---
-
-# @pyreon/ui-core — API Reference
 
 > **Generated** from `ui-core`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [ui-core](/docs/ui-core).
 

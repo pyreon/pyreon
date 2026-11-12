@@ -696,7 +696,10 @@ export function transformPlain(
       // Tail detection runs AFTER the walk so component-BODY state
       // (`let loading = state(true)` inside the component) is in scope when
       // the `if` tests are classified — the function scope is still live here.
-      const wrapFrom = isComponent ? findReactiveTail(body) : null
+      // Never for an ASYNC component: its body runs (and awaits) once, and
+      // wrapping a tail that contains `await` in a plain `() => { … }`
+      // emits a syntax error. There is no re-evaluating branch to restore.
+      const wrapFrom = isComponent && !fn.async ? findReactiveTail(body) : null
       if (wrapFrom !== null) {
         ms.appendLeft(wrapFrom, 'return () => {\n')
         ms.appendRight(body.end - 1, '\n}\n')

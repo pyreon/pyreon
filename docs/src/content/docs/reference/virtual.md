@@ -1,9 +1,7 @@
 ---
-title: "TanStack Virtual Adapter — API Reference"
+title: "@pyreon/virtual — API Reference"
 description: "Pyreon adapter for TanStack Virtual — element-scoped and window-scoped virtualization"
 ---
-
-# @pyreon/virtual — API Reference
 
 > **Generated** from `virtual`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [virtual](/docs/virtual).
 

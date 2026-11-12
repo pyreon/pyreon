@@ -1,0 +1,8 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`pull output in the shared terminal theme > fetched then unchanged, at every colour level; NO_COLOR is complete 1`] = `
+"  ␛[38;2;74;222;128m✓␛[39m fetched  ␛[4m<dir>/openapi.yaml␛[24m ␛[38;2;138;134;150m· 91 bytes␛[39m
+    ␛[38;2;138;134;150mnext:␛[39m review the diff, then run lathe generate
+  ␛[38;2;74;222;128m✓␛[39m spec unchanged  ␛[4m<dir>/openapi.yaml␛[24m
+"
+`;

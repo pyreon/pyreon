@@ -1,4 +1,4 @@
-/** Addon panel shell + the Controls widgets (text / enum / bool / range / swatch). */
+/** Addon panel shell + the Controls widgets (text / number / colour / enum / bool). */
 export { AddonPanel } from './AddonPanel'
 export { AddonTabs } from './AddonTabs'
 export { AddonBody } from './AddonBody'
@@ -11,11 +11,6 @@ export { EnumWrap } from './EnumWrap'
 export { EnumBtn } from './EnumBtn'
 export { Switch } from './Switch'
 export { Knob } from './Knob'
-export { RangeRow } from './RangeRow'
-export { Range } from './Range'
-export { RangeVal } from './RangeVal'
-export { SwatchWrap } from './SwatchWrap'
-export { Swatch } from './Swatch'
 export { ResetBtn } from './ResetBtn'
 export { NumberInput } from './NumberInput'
 export { ColorInput } from './ColorInput'

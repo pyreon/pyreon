@@ -79,7 +79,7 @@ export function App() {
       signature:
         "(props: { direction?: 'column' | 'row'; align?: Align; justify?: Justify; gap?: Space; wrap?: boolean; padding?: Space; children }) => VNode",
       summary:
-        'Primary layout container. Web → `<div style="display:flex;flex-direction:column|row">`; iOS → `VStack`/`HStack`; Android → `Column`/`Row`. Default `direction="column"`. `gap`/`padding` are theme-space tokens (number index OR "sm"|"md"|"lg").',
+        'Primary layout container. Web → `<div style="display:flex;flex-direction:column|row">`; iOS → `VStack`/`HStack`; Android → `Column`/`Row`. Default `direction="column"`. Without `align`, children start at the cross-axis start on every target (web flex `stretch`, iOS `VStack(alignment: .leading)` / `HStack(alignment: .top)`, Android Column/Row Start/Top), so rows and unequal columns line up the same way everywhere. `gap`/`padding` are theme-space tokens (number index OR "sm"|"md"|"lg").',
       example: `<Stack gap="md" align="center"><Text>a</Text><Text>b</Text></Stack>`,
       mistakes: [
         'Using `<View>` / `<VStack>` / `<div>` — the canonical name is `<Stack>` (one name, all platforms)',
@@ -94,7 +94,7 @@ export function App() {
       signature:
         '(props: { align?: Align; justify?: Justify; gap?: Space; wrap?: boolean; padding?: Space; children }) => VNode',
       summary:
-        'Horizontal row — sugar for `<Stack direction="row">`. Web flex-row; iOS `HStack`; Android `Row`. ⚠ On Android `<Inline>` is a NON-WRAPPING `Row` (SwiftUI HStack shrinks to fit, but Compose Row overflows + clips the last children). Keep horizontal groups short, or use a vertical `<Stack>` for action lists.',
+        'Horizontal row — sugar for `<Stack direction="row">`. Web flex-row; iOS `HStack(alignment: .top)` unless `align` is set; Android `Row`. ⚠ On Android `<Inline>` is a NON-WRAPPING `Row` (SwiftUI HStack shrinks to fit, but Compose Row overflows + clips the last children). Keep horizontal groups short, or use a vertical `<Stack>` for action lists.',
       example: `<Inline gap="sm"><Field value={q()} onChangeText={(t) => q.set(t)} /><Button onPress={search}>Go</Button></Inline>`,
       mistakes: [
         'Putting 5+ buttons in an <Inline> — they overflow + clip (become untappable) on Android; stack vertically or split',
@@ -120,7 +120,7 @@ export function App() {
       signature:
         "(props: { axis?: 'vertical' | 'horizontal'; padding?: Space; children }) => VNode",
       summary:
-        'Scrollable region, vertical unless `axis="horizontal"`. Web → `overflow-y:auto` (or `overflow-x`); iOS → `ScrollView`; Android → `Column(verticalScroll)` / `Row(horizontalScroll)`. ⚠ Do not put a weighted `<Spacer>` inside a Scroll on Android (weight inside a scroll is invalid Compose).',
+        'Scrollable region, vertical unless `axis="horizontal"`. Web → `overflow-y:auto` (or `overflow-x`); iOS → `ScrollView` with its content in a leading-aligned stack pinned to the leading edge (a top-aligned row when horizontal), as on the web and Android; Android → `Column(verticalScroll)` / `Row(horizontalScroll)`. ⚠ Do not put a weighted `<Spacer>` inside a Scroll on Android (weight inside a scroll is invalid Compose).',
       example: `<Scroll><Stack gap="md">{/* long content */}</Stack></Scroll>`,
       mistakes: ['Nesting a `<Spacer>` (weight) inside `<Scroll>` — invalid on Android Compose'],
       seeAlso: ['Stack'],
@@ -216,7 +216,7 @@ export function App() {
       signature:
         "(props: { onPress: () => void; disabled?: boolean; variant?: 'primary'|'secondary'|'ghost'|'danger'; children }) => VNode",
       summary:
-        'Styled CTA. Web `<button>`; iOS/Android `Button`. Handler is `onPress` (NOT `onClick`). Multi-statement handlers work: `onPress={() => { a.set(1); b.set(2) }}`.',
+        'Styled CTA. Web `<button>` (filled blue by default); iOS `Button` with `.buttonStyle(.borderedProminent)` by default (`secondary` `.bordered`, `ghost` `.borderless`, `danger` red `.borderedProminent`); Android Material `Button` (`OutlinedButton` / `TextButton` for secondary / ghost). An inline `style` that sets a background or border replaces the default chrome, as it does on the web. Handler is `onPress` (NOT `onClick`). Multi-statement handlers work: `onPress={() => { a.set(1); b.set(2) }}`.',
       example: `<Button variant="primary" onPress={() => count.set(count() + 1)}>Increment</Button>`,
       mistakes: [
         'Using `onClick` — the canonical event is `onPress` (mapped to onClick/action:/onClick per target)',
@@ -301,7 +301,7 @@ const base = signal(1.0)
       signature:
         "(props: { value: string | (() => string); onChangeText: (next: string) => void; placeholder?: string; disabled?: boolean } & ({ multiline?: false; kind?: 'text'|'number'|'password'|'email'|'search'|'tel'|'url'; onSubmit?: () => void } | { multiline: true; lines?: number } | { kind: 'date'|'time'|'datetime'; min?: string; max?: string })) => VNode",
       summary:
-        'Text input. Web `<input>`; iOS/Android single-line `TextField`. Handler is `onChangeText(next)` (NOT `onInput`/`onChange`). `value` accepts a signal accessor for two-way binding. `multiline` makes it a text area on every target — web `<textarea rows>`, iOS `TextField(axis: .vertical)` + `.lineLimit(lines, reservesSpace: true)`, Android `minLines`/`maxLines` — exactly `lines` rows tall (default 3) and scrolling past them. `kind="date" | "time" | "datetime"` makes it the platform picker (web `<input type=date|time|datetime-local>`, iOS `DatePicker`, Android Material 3 date/time dialogs) over the web\'s zone-free wall-clock STRING — `YYYY-MM-DD` / `HH:mm` / `YYYY-MM-DDTHH:mm`, `\'\'` = no value — bounded by `min`/`max` in the same format. `multiline` and a date `kind` are mutually exclusive.',
+        'Text input. Web `<input>` with a 1px grey rounded border; iOS `TextField` / `SecureField` with `.textFieldStyle(.roundedBorder)`; Android a filled single-line `TextField`. An inline `style` (or `background` prop) that draws a background or border replaces the default box on web and iOS. Handler is `onChangeText(next)` (NOT `onInput`/`onChange`). `value` accepts a signal accessor for two-way binding. `multiline` makes it a text area on every target — web `<textarea rows>`, iOS `TextField(axis: .vertical)` + `.lineLimit(lines, reservesSpace: true)`, Android `minLines`/`maxLines` — exactly `lines` rows tall (default 3) and scrolling past them. `kind="date" | "time" | "datetime"` makes it the platform picker (web `<input type=date|time|datetime-local>`, iOS `DatePicker`, Android Material 3 date/time dialogs) over the web\'s zone-free wall-clock STRING — `YYYY-MM-DD` / `HH:mm` / `YYYY-MM-DDTHH:mm`, `\'\'` = no value — bounded by `min`/`max` in the same format. `multiline` and a date `kind` are mutually exclusive.',
       example: `<Field value={draft()} onChangeText={(t) => draft.set(t)} placeholder="Search…" onSubmit={search} />
 <Field multiline lines={5} value={bio()} onChangeText={(t) => bio.set(t)} placeholder="About you" />
 <Field kind="date" min="2026-01-01" value={due()} onChangeText={(d) => due.set(d)} />`,
