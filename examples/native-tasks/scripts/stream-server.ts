@@ -27,7 +27,7 @@
 //                origins (127.0.0.1 and localhost); see webview-scope-pages.ts.
 //
 // Stateless by design: the response depends only on the request's headers, so
-// XCUITest's `-test-iterations 3` and relaunches replay the same script. (The
+// a retried XCUITest (scripts/native-ios-uitest.ts re-runs a failed test) and relaunches replay the same script. (The
 // one exception, /webview/offorigin's hit counter, is keyed by a per-launch
 // run id for the same reason.)
 //
