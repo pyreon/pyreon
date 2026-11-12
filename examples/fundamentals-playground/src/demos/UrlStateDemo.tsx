@@ -1,6 +1,22 @@
+import { onMount } from '@pyreon/core'
+import { state as plainState } from '@pyreon/core/plain'
 import { batchUrlUpdates, useUrlState } from '@pyreon/url-state'
 
+/**
+ * `useUrlState` reads the browser URL and falls back to its defaults on the
+ * server, which has no query string for it. A deep link (`/url-state?page=5`)
+ * would therefore hydrate against server HTML that carries the defaults, so the
+ * URL-driven body renders after mount instead.
+ */
 export function UrlStateDemo() {
+  let ready = plainState(false)
+  onMount(() => {
+    ready = true
+  })
+  return <>{() => (ready ? <UrlStateBody /> : <h2>URL State</h2>)}</>
+}
+
+function UrlStateBody() {
   // Schema mode — multiple URL params from a single call. Returns
   // `{ [K]: UrlStateSignal<T[K]> }` — each field is its OWN reactive
   // signal. Numbers/booleans/arrays auto-coerced via inferred serializers,
