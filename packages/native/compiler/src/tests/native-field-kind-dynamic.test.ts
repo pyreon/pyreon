@@ -61,8 +61,9 @@ describe('Field dynamic kind — show/hide-password toggle (ternary), static byt
     expect(out).toContain(
       '(reveal ? AnyView(TextField("Password", text: $draft)) : AnyView(SecureField("Password", text: $draft)))',
     )
-    // the modifier chain binds to the parenthesised ternary
-    expect(out).toMatch(/\)\)\)\s*\n?\s*\.disabled\(busy\)/)
+    // the modifier chain binds to the parenthesised ternary (the field box
+    // style first, #4482)
+    expect(out).toMatch(/\)\)\)\s*\n?\s*\.textFieldStyle\(\.roundedBorder\)\s*\n?\s*\.disabled\(busy\)/)
   })
 
   it('Kotlin: static password → PasswordVisualTransformation(); dynamic → a runtime if', () => {

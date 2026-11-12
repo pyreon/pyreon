@@ -16,8 +16,26 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
 const ENTRY = /^(?:probe-)?[a-f0-9]{64}\.json$/
 
+export interface SnapshotOptions {
+  /**
+   * Keep the destination's existing records and add the source's to them,
+   * instead of replacing the destination. Records are content-addressed, so a
+   * name present on both sides is the same verdict and either copy may win.
+   *
+   * This is what lets a job hydrate from TWO restored stores (the default
+   * branch's and the pull request's own): the second hydrate must not discard
+   * the first. Saving never merges: the archive is rebuilt from the live store
+   * alone, so a record the validator evicted does not ride back in.
+   */
+  merge?: boolean
+}
+
 /** Copy complete atomic records from both verdict stores to an idle directory. */
-export function snapshotNativeVerdicts(source: string, destination: string): number {
+export function snapshotNativeVerdicts(
+  source: string,
+  destination: string,
+  options: SnapshotOptions = {},
+): number {
   const from = resolve(source)
   const to = resolve(destination)
   const inside = (parent: string, child: string) => {
@@ -30,8 +48,8 @@ export function snapshotNativeVerdicts(source: string, destination: string): num
   const staging = mkdtempSync(join(dirname(to), '.native-verdict-snapshot-'))
   let copied = 0
   try {
-    const copyStore = (store: string): void => {
-      const input = join(from, store)
+    const copyStore = (root: string, store: string): void => {
+      const input = join(root, store)
       const output = join(staging, store)
       let names: string[]
       try {
@@ -62,14 +80,17 @@ export function snapshotNativeVerdicts(source: string, destination: string): num
           copied++
         } catch (error) {
           const code = (error as NodeJS.ErrnoException).code
-          if (code !== 'ENOENT' && code !== 'ELOOP') throw error
+          // EEXIST: a merge already staged this name from the source.
+          if (code !== 'ENOENT' && code !== 'ELOOP' && code !== 'EEXIST') throw error
         } finally {
           if (fd !== undefined) closeSync(fd)
         }
       }
     }
-    copyStore('')
-    copyStore('kotlin-runtime')
+    for (const root of options.merge === true ? [from, to] : [from]) {
+      copyStore(root, '')
+      copyStore(root, 'kotlin-runtime')
+    }
     rmSync(to, { recursive: true, force: true })
     renameSync(staging, to)
     return copied
@@ -79,9 +100,17 @@ export function snapshotNativeVerdicts(source: string, destination: string): num
 }
 
 if (import.meta.main) {
-  const [source, destination] = process.argv.slice(2)
-  if (!source || !destination)
-    throw new Error('[Pyreon] Pass source and destination cache directories.')
-  const copied = snapshotNativeVerdicts(source, destination)
-  console.log(`[native-cache] Copied ${copied} complete records from ${source} to ${destination}`)
+  const args = process.argv.slice(2)
+  const merge = args.includes('--merge')
+  const [source, destination, ...extra] = args.filter((arg) => arg !== '--merge')
+  if (!source || !destination || extra.length > 0)
+    throw new Error(
+      '[Pyreon] Usage: snapshot-native-verdict-cache.ts <source> <destination> [--merge]. Pass exactly two cache directories.',
+    )
+  const copied = snapshotNativeVerdicts(source, destination, { merge })
+  console.log(
+    merge
+      ? `[native-cache] Merged ${source} into ${destination}: ${copied} complete records`
+      : `[native-cache] Copied ${copied} complete records from ${source} to ${destination}`,
+  )
 }

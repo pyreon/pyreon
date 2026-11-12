@@ -53,18 +53,18 @@ function txWithTodoProps(jsxBody: string, target: 'swift' | 'kotlin'): string {
 describe('Phase B — <Stack> emit', () => {
   it('Swift: <Stack> → VStack { ... }', () => {
     const out = tx(`<Stack><Text>hi</Text></Stack>`, 'swift')
-    expect(out).toMatch(/VStack \{[\s\S]+Text\("hi"\)/)
+    expect(out).toMatch(/VStack\(alignment: \.leading\) \{[\s\S]+Text\("hi"\)/)
   })
 
   it('Swift: <Stack direction="row"> → HStack', () => {
     const out = tx(`<Stack direction="row"><Text>hi</Text></Stack>`, 'swift')
-    expect(out).toMatch(/HStack \{[\s\S]+Text\("hi"\)/)
+    expect(out).toMatch(/HStack\(alignment: \.top\) \{[\s\S]+Text\("hi"\)/)
     expect(out).not.toContain('VStack')
   })
 
   it('Swift: <Stack gap={2}> → VStack(spacing: 8) (token 2 → 8px)', () => {
     const out = tx(`<Stack gap={2}><Text>hi</Text></Stack>`, 'swift')
-    expect(out).toContain('VStack(spacing: 8)')
+    expect(out).toContain('VStack(alignment: .leading, spacing: 8)')
   })
 
   it('Swift: <Stack padding={4}> → trailing .padding(16) modifier', () => {
@@ -119,13 +119,13 @@ describe('Phase B — <Stack> emit', () => {
 describe('Phase B — <Inline> emit (sugar over Stack with direction="row")', () => {
   it('Swift: <Inline> → HStack', () => {
     const out = tx(`<Inline><Text>a</Text><Text>b</Text></Inline>`, 'swift')
-    expect(out).toMatch(/HStack \{/)
+    expect(out).toMatch(/HStack\(alignment: \.top\) \{/)
     expect(out).not.toMatch(/VStack/)
   })
 
   it('Swift: <Inline gap={2}> → HStack(spacing: 8)', () => {
     const out = tx(`<Inline gap={2}><Text>a</Text></Inline>`, 'swift')
-    expect(out).toContain('HStack(spacing: 8)')
+    expect(out).toContain('HStack(alignment: .top, spacing: 8)')
   })
 
   it('Kotlin: <Inline> → Row', () => {
@@ -236,17 +236,17 @@ describe('Phase P2.1 — <Scroll> emit (scrollable container)', () => {
   const FOR_IN_SCROLL = (axis = '') =>
     `<Scroll${axis}><For each={items} by={(i) => i.id}>{(i) => <Text>{i.label}</Text>}</For></Scroll>`
 
-  it('Swift: <For> inside <Scroll> → ScrollView { LazyVStack(spacing: 0) { ForEach } }', () => {
+  it('Swift: <For> inside <Scroll> → ScrollView { LazyVStack(alignment: .leading, spacing: 0) { ForEach } }', () => {
     const out = tx(FOR_IN_SCROLL(), 'swift')
     expect(out).toContain('ScrollView {')
-    expect(out).toContain('LazyVStack(spacing: 0) {')
-    expect(out).toMatch(/LazyVStack\(spacing: 0\) \{[\s\S]+ForEach\(/)
+    expect(out).toContain('LazyVStack(alignment: .leading, spacing: 0) {')
+    expect(out).toMatch(/LazyVStack\(alignment: \.leading, spacing: 0\) \{[\s\S]+ForEach\(/)
   })
 
   it('Swift: <For> inside <Scroll axis="horizontal"> → LazyHStack', () => {
     const out = tx(FOR_IN_SCROLL(' axis="horizontal"'), 'swift')
     expect(out).toContain('ScrollView(.horizontal)')
-    expect(out).toContain('LazyHStack(spacing: 0) {')
+    expect(out).toContain('LazyHStack(alignment: .top, spacing: 0) {')
   })
 
   it('Swift: non-<For> <Scroll> content is NOT wrapped in a Lazy stack (unchanged)', () => {
@@ -1857,8 +1857,8 @@ describe('Phase B — composition smoke', () => {
       `<Stack gap={3} padding={4}><Text>Title</Text><Inline gap={2}><Text>Click:</Text><Button onPress={fn}>OK</Button></Inline></Stack>`,
       'swift',
     )
-    expect(out).toContain('VStack(spacing: 12)')
-    expect(out).toContain('HStack(spacing: 8)')
+    expect(out).toContain('VStack(alignment: .leading, spacing: 12)')
+    expect(out).toContain('HStack(alignment: .top, spacing: 8)')
     expect(out).toContain('.padding(16)')
     expect(out).toContain('Button("OK") { fn() }')
   })

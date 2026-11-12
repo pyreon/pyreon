@@ -6728,14 +6728,19 @@ fn ssr_serialize_attr(
     if ssr_is_lowercase_event_handler(name) {
         return true;
     }
-    // innerHTML / dangerouslySetInnerHTML are INNER CONTENT, not attrs → bail.
-    if name == "innerHTML" || name == "dangerouslySetInnerHTML" {
+    // innerHTML / dangerouslySetInnerHTML / textContent / innerText are INNER
+    // CONTENT, not attrs → bail (the h() path renders the content).
+    if name == "innerHTML"
+        || name == "dangerouslySetInnerHTML"
+        || name == "textContent"
+        || name == "innerText"
+    {
         return false;
     }
     // `<textarea value>` is the other half of the PZ-09 concern that bails
     // `select`/`option` in `ssr_serialize_element`: <textarea> has NO `value`
     // CONTENT attribute — the value IS the element's text content, which
-    // `renderProp` skips and `textareaValue` emits as the child. Serializing it
+    // `renderProp` skips and `contentFromProps` emits as the child. Serializing it
     // here produced a dead `value="…"` attribute AND an EMPTY textarea, so
     // every server-rendered prefilled textarea came back blank (the exact bug
     // the h() path's skip fixed) plus a hydration mismatch. The fast path
@@ -8073,13 +8078,41 @@ fn has_bail_attr(el: &JSXElement, is_root: bool) -> bool {
                 // attribute an SVG `<use>` ignores — measured `bbox.width == 0`
                 // in Chromium). The namespace is now resolved in the runtime, so
                 // both paths agree. Mirrors `hasBailAttr` in `src/jsx.ts`.
-                if jsx_attr_name(&a.name) == "key" {
+                let name = jsx_attr_name(&a.name);
+                if name == "key" || is_tpl_property_only_attr(&name) {
                     return true;
                 }
             }
         }
     }
     false
+}
+
+/// Props the h() path writes as a DOM PROPERTY with no content attribute under
+/// the prop's own (lowercased) name — inner content (`innerHTML`, sanitized on
+/// the h() path), the `default*` reset values, attribute-less media state, and
+/// the two dashed attributes. The template can only produce an attribute under
+/// the JSX spelling (`innerHTML={x()}` wrote an `innerhtml` attribute, #4473),
+/// so an element carrying one bails to h(). Mirrors `TPL_PROPERTY_ONLY_ATTRS`
+/// in `src/jsx.ts`.
+fn is_tpl_property_only_attr(name: &str) -> bool {
+    matches!(
+        name,
+        "innerHTML"
+            | "textContent"
+            | "innerText"
+            | "defaultValue"
+            | "defaultChecked"
+            | "defaultSelected"
+            | "defaultMuted"
+            | "currentTime"
+            | "playbackRate"
+            | "defaultPlaybackRate"
+            | "volume"
+            | "srcObject"
+            | "acceptCharset"
+            | "httpEquiv"
+    )
 }
 
 /// Mirrors the JS backend's `isComponentTag` EXACTLY — "first character is not

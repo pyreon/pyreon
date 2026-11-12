@@ -36,9 +36,9 @@ describe('M2.2b — view-branch ternary lowers to Swift if/else', () => {
   it('Swift: view-ternary at the body root → if/else, NOT `? :`', () => {
     const out = transform(VIEW_TERNARY_RETURN, { target: 'swift' }).code
     expect(out).toContain('if sc == "regular" {')
-    expect(out).toContain('HStack {')
+    expect(out).toContain('HStack(alignment: .top) {')
     expect(out).toContain('} else {')
-    expect(out).toContain('VStack {')
+    expect(out).toContain('VStack(alignment: .leading) {')
     // The invalid ViewBuilder ternary must NOT be emitted.
     expect(out).not.toContain('? HStack')
     expect(out).not.toContain(': VStack')
@@ -46,7 +46,7 @@ describe('M2.2b — view-branch ternary lowers to Swift if/else', () => {
 
   it('Swift: view-ternary inside a container → if/else', () => {
     const out = transform(VIEW_TERNARY_IN_WRAP, { target: 'swift' }).code
-    expect(out).toContain('VStack {')
+    expect(out).toContain('VStack(alignment: .leading) {')
     expect(out).toContain('if sc == "regular" {')
     expect(out).toContain('} else {')
     expect(out).not.toContain('? HStack')

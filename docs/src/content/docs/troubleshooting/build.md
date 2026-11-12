@@ -252,6 +252,24 @@ The template `attrSetter` (`compiler/src/jsx.ts`, mirrored by `native/src/lib.rs
 
 ---
 
+### Deciding an element's namespace from a depth counter and a tag list instead of its parent.
+
+`mountElement` used `_svgDepth`/`_mathmlDepth` (non-zero only while an ancestor `<svg>`/`<math>` was mounting in the same synchronous pass) plus `SVG_TAGS`/`MATHML_TAGS`. Anything mounted LATER into an existing `<svg>` (a `<Show>` branch, a reactive child, a `<For>` row, a portal, the fresh mount after a hydration mismatch) fell back to the list, so `feDropShadow`, `feFuncA`, `mpath`, `switch`, `mstyle` and every other unlisted name became inert HTML elements, and the counter put HTML below `<foreignObject>` in the SVG namespace (#4453). Take the namespace from the parent the element is inserted into, by the parser's rule (`childNsOf` in `runtime-dom/src/mount.ts`); the element being built and its children's namespace sit in two slots compared by identity, so a nested child costs no DOM read. A template-root list must be the COMPLETE vocabulary minus the names HTML shares (`SVG_ROOT_TAGS` in `template.ts`). Keep the slot restore in a `finally`: the old counter leaked an increment when a child threw, and every later mount came out SVG. Locks: `runtime-dom/src/tests/late-namespace.test.tsx` + `.browser.test.tsx` (including a throw mid-subtree, late `<For>` rows into SVG, `foreignObject` rows), `tpl-svg-namespace.test.ts` (bisect-verified: 8 of 9 node cases and 9 of 10 browser cases fail on the counter).
+
+---
+
+### Writing a camelCase prop to a foreign element under its JSX spelling.
+
+`setAttribute` lowercases names only on HTML elements, so `tabIndex` on an SVG `<g>` became a `tabIndex` attribute Chromium ignores (not focusable, `g.tabIndex === -1`), while the same name in markup (SSR bytes, a `_tpl` bake) parses to `tabindex`, and hydrating a reactive `tabIndex` added a second attribute (#4466). Every attribute write and removal on the h() and compiled paths goes through `foreignAttrName` (`runtime-dom/src/props.ts`): lowercase, except the parser's closed "adjust SVG attributes" table (MathML: `definitionURL`). A lowercase name costs one non-allocating `toLowerCase` and no DOM read, and sinks that already know the element is HTML (the `data-*`/`aria-*` branch) skip the call, since `setAttribute` lowercases there by itself (a per-attribute scan on every write measured as part of a +2.2% flow-mount regression, #4485). happy-dom does not show the symptom. Locks: `foreign-attr-case.test.tsx` + `.browser.test.tsx` (bisect-verified: 5 of 7 browser cases fail, the hydration case with `['id', 'tabIndex', 'tabindex']`).
+
+---
+
+### Templating a prop the h() path writes as a property with no attribute of its own name.
+
+The `_tpl` path can only bake a prop into the HTML or hand it to `_setAttr`, so `innerHTML={html()}` wrote an `innerhtml` attribute (unsanitized text in an attribute, an empty div), a literal was baked as `innerHTML="…"`, and `textContent`, `innerText`, `defaultValue`, `defaultChecked`, `defaultSelected`, `defaultMuted`, `currentTime`, `playbackRate`, `defaultPlaybackRate`, `volume`, `srcObject`, `httpEquiv`, `acceptCharset` all became dead attributes (#4473). An element carrying one bails to h() in both backends (`TPL_PROPERTY_ONLY_ATTRS` / `is_tpl_property_only_attr`). SSR renders `textContent`/`innerText` as escaped content (`contentFromProps`) instead of a kebab-case attribute, and the compiled SSR path bails them like `innerHTML`. Locks: `compiler/src/tests/tpl-property-only-bail.test.ts`, `native-equivalence.test.ts`, `runtime-dom/src/tests/property-only-props-compiled.test.tsx` (bisect-verified).
+
+---
+
 ### Matching a DOM element to a tag with `tagName.toLowerCase()`.
 
 The HTML parser case-adjusts SVG element names (`linearGradient`, `clipPath`, `foreignObject`, `textPath`, `feGaussianBlur` and the rest of the spec's list), so a lowercased SVG tag never equals the vnode type that produced it, and every such element was reported as a hydration mismatch and re-mounted. Compare `el.localName === tag`: it is the lowercase name for HTML elements and the case-preserved name for SVG and MathML. Compare two DOM elements by `tagName` on both sides. Applies to `hydrateElement` and the row-plan replay (`hydration-plan.ts`). Locks: `runtime-dom/src/tests/hydrate-svg-camelcase.browser.test.tsx` (all 37 adjusted names, the h() path, compiled `_tpl`, `<For>` row replay), `hydrate-svg-camelcase.test.tsx` (real compiler and SSR).

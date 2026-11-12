@@ -45,13 +45,10 @@
 //      spec fails (no warning), the conditional spec reads the wrong reason.
 // (Exact messages recorded in the PR report.)
 
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable } from '../validate'
+import { swiftErrorLines, typecheckAgainstRealRuntime } from './real-runtime-swift'
 
 /**
  * `swiftc -typecheck` against the REAL SDK and the REAL runtime sources (the
@@ -59,39 +56,8 @@ import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable } from '../va
  * recipe. Returns the error lines, or null when it compiles.
  */
 function compileAgainstRealRuntime(code: string): string | null {
-  const repo = resolve(import.meta.dirname, '../../../../..')
-  const sources: string[] = []
-  const walk = (dir: string): void => {
-    let entries: string[]
-    try {
-      entries = readdirSync(dir)
-    } catch {
-      return
-    }
-    for (const e of entries) {
-      if (e === 'node_modules' || e === 'lib' || e === '.build' || e === 'Package.swift') continue
-      if (e.toLowerCase() === 'tests' || /Tests?\.swift$/.test(e)) continue
-      const p = join(dir, e)
-      if (statSync(p).isDirectory()) walk(p)
-      else if (p.endsWith('.swift')) sources.push(p)
-    }
-  }
-  for (const root of ['packages/fundamentals', 'packages/core', 'packages/native/runtime-swift', 'packages/native/router-swift']) walk(join(repo, root))
-  if (sources.length < 40) return `only ${sources.length} runtime sources found`
-  const dir = mkdtempSync(join(tmpdir(), 'pyreon-flow-known-bugs-'))
-  try {
-    const app = join(dir, 'ProbeApp.swift')
-    writeFileSync(app, `import SwiftUI\nimport Foundation\n${code}`, 'utf8')
-    const sdk = execFileSync('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path'], { encoding: 'utf8' }).trim()
-    execFileSync('xcrun', ['--sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, app, ...sources], { encoding: 'utf8', stdio: 'pipe' })
-    return null
-  } catch (err) {
-    const e = err as { stderr?: string | Buffer; stdout?: string | Buffer; message?: string }
-    const out = [e.stderr, e.stdout].map((x) => (typeof x === 'string' ? x : x?.toString('utf8')) ?? '').join('\n')
-    return out.split('\n').filter((l) => l.includes('error:')).slice(0, 12).join('\n') || (e.message ?? 'swiftc failed')
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
+  const diagnostics = typecheckAgainstRealRuntime([{ name: 'ProbeApp.swift', code }])
+  return diagnostics === null ? null : swiftErrorLines(diagnostics) || diagnostics
 }
 
 const run = (src: string, target: 'swift' | 'kotlin') => {

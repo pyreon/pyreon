@@ -48,6 +48,22 @@ describe('_tpl — SVG-rooted templates are SVG-namespaced', () => {
     expect(item.el.firstElementChild!.namespaceURI).toBe(SVG_NS)
   })
 
+  // #4453: the root list was a partial SVG vocabulary, so a template rooted at
+  // any SVG element missing from it parsed as an inert HTML element.
+  it.each(['feDropShadow', 'feFuncA', 'feDistantLight', 'mpath', 'switch', 'view', 'animateColor'])(
+    'an SVG element that was missing from the root list, <%s>, is SVG',
+    (tag) => {
+      const item = _tpl(`<${tag}></${tag}>`, () => null) as { el: Element }
+      expect(item.el.localName).toBe(tag)
+      expect(item.el.namespaceURI).toBe(SVG_NS)
+    },
+  )
+
+  it.each(['a', 'script', 'style', 'font'])('the HTML-collision tag <%s> stays HTML', (tag) => {
+    const item = _tpl(`<${tag}></${tag}>`, () => null) as { el: Element }
+    expect(item.el.namespaceURI).toBe(HTML_NS)
+  })
+
   it('an HTML <div> template is unchanged (still HTML)', () => {
     const item = _tpl('<div class="x"><span> </span></div>', () => null) as { el: Element }
     expect(item.el.namespaceURI).toBe(HTML_NS)

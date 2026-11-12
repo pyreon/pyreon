@@ -948,7 +948,7 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
     // Load-bearing for streams: chunks of CONCURRENT streams interleave at
     // every await, so a module-level stack would cross-contaminate; the
     // ALS context sticks to this stream's continuation graph.
-    const taValue = textareaValue(tag, props)
+    const taValue = contentFromProps(tag, props)
     const raw = taValue === null ? rawTextContent(tag, vnode.children) : null
     const children = raw !== null && 'fallback' in raw ? raw.fallback : vnode.children
     if (taValue !== null) {
@@ -1675,7 +1675,7 @@ function renderElement(vnode: VNode): MaybeAsync {
     // option renderer sees the nearest enclosing select's value (PZ-09).
     // The context follows async continuations, so an async subtree keeps
     // its frame without any pop/cleanup discipline.
-    const taValue = textareaValue(tag, props)
+    const taValue = contentFromProps(tag, props)
     if (taValue !== null) {
       html += taValue
       return `${html}</${tag}>`
@@ -2257,6 +2257,8 @@ function renderPropSkipped(key: string): boolean {
   // literal attributes, costing bytes and forcing a hydration fix-up.
   if (key === 'key' || key === 'ref') return true
   if (key === 'innerHTML' || key === 'dangerouslySetInnerHTML') return true
+  // Content too, emitted by `contentFromProps` (see there).
+  if (key === 'textContent' || key === 'innerText') return true
   // `on*` event props — charCode probe (no regex machinery per prop).
   //
   // BOTH cases, deliberately. The camelCase form is the one Pyreon documents,
@@ -2375,7 +2377,7 @@ function renderProp(tag: string, key: string, value: unknown): string | null {
   // emitted dead bytes AND an EMPTY textarea. Any server-rendered prefilled
   // textarea (a bio, a comment draft, a description) came back blank, filled
   // in only after hydration, and stayed blank with JS off. The value is
-  // emitted as the text content instead; see `textareaValue`.
+  // emitted as the text content instead; see `contentFromProps`.
   if (key === 'value' && tag === 'textarea') return null
 
   // Props the client sets as a PROPERTY that maps onto a different content
@@ -2384,7 +2386,7 @@ function renderProp(tag: string, key: string, value: unknown): string | null {
   // HTML disagreed with what the client mount produces for the same props.
   //   - `defaultValue` / `defaultChecked` on an input ARE the `value` /
   //     `checked` content attributes; on a textarea `defaultValue` is the text
-  //     content (see `textareaValue`).
+  //     content (see `contentFromProps`).
   //   - `defaultMuted` on a media element is the `muted` content attribute.
   //   - The rest exist only as properties, so there is nothing to serialize.
   if (key === 'defaultValue' && tag === 'input') return renderProp(tag, 'value', value)
@@ -3003,11 +3005,18 @@ function rawTextContent(
     : { fallback: r.resolved }
 }
 
-function textareaValue(tag: string, props: Record<string, unknown> | null): string | null {
-  if (tag !== 'textarea' || props == null) return null
+function contentFromProps(tag: string, props: Record<string, unknown> | null): string | null {
+  if (props == null) return null
   // `value` wins over `defaultValue`, as on the client, where setting the
   // `value` property after the default overrides it.
-  let v = props.value ?? props.defaultValue
+  let v = tag === 'textarea' ? (props.value ?? props.defaultValue) : undefined
+  // `textContent` / `innerText` are Node/HTMLElement PROPERTIES that replace the
+  // element's content on the client (`key in el` in `setStaticProp`). They have
+  // no content attribute: the camelCase-to-kebab fallback serialized a dead
+  // `text-content="…"` and an EMPTY element, which the client then filled — a
+  // server/client divergence for the same props (#4473's class). The text is
+  // the element's content here too.
+  if (v == null) v = props.textContent ?? props.innerText
   if (typeof v === 'function') v = (v as () => unknown)()
   if (v === null || v === undefined || typeof v === 'boolean') return null
   return escapeHtml(String(v))

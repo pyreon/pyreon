@@ -28,13 +28,12 @@
 // used to fail to compile on its own, because the key was emitted only for a
 // file that READ permissions.
 
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { transform, validateKotlinFiles, validateSwiftFilesWithStubs } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable } from '../validate'
+import { runtimeSwiftSources, swiftErrorLines, typecheckAgainstRealRuntime } from './real-runtime-swift'
 
 const REPO = resolve(import.meta.dirname, '../../../../..')
 const BOOKSHELF = join(REPO, 'examples/lathe-bookshelf/src/gen')
@@ -226,81 +225,17 @@ describe('schema-bearing modules compile TOGETHER', () => {
   }, 300_000)
 })
 
-/** Every Swift file the runtime actually ships (see real-runtime-typecheck.test.ts). */
-function runtimeSwiftSources(): string[] {
-  const roots = [
-    join(REPO, 'packages/fundamentals'),
-    join(REPO, 'packages/core'),
-    join(REPO, 'packages/native/runtime-swift'),
-    join(REPO, 'packages/native/router-swift'),
-  ]
-  const out: string[] = []
-  const walk = (dir: string): void => {
-    let entries: string[]
-    try {
-      entries = readdirSync(dir)
-    } catch {
-      return
-    }
-    for (const e of entries) {
-      if (e === 'node_modules' || e === 'lib' || e === '.build') continue
-      if (e === 'Package.swift') continue
-      if (e.toLowerCase() === 'tests' || /Tests?\.swift$/.test(e)) continue
-      const p = join(dir, e)
-      if (statSync(p).isDirectory()) walk(p)
-      else if (p.endsWith('.swift')) out.push(p)
-    }
-  }
-  roots.forEach(walk)
-  return out
-}
-
 describe.runIf(isSwiftUIAvailable())('schema-bearing modules against the REAL SDK + runtime', () => {
   it('every file in one target typechecks', () => {
     const runtime = runtimeSwiftSources()
     expect(runtime.length).toBeGreaterThan(40)
-    const dir = mkdtempSync(join(tmpdir(), 'pyreon-multi-module-'))
-    try {
-      const files = emitAll('swift').map((code, i) => {
-        const p = join(dir, `Module${i}.swift`)
-        // The CLI adds these; the raw emit carries no imports.
-        writeFileSync(p, `import SwiftUI\nimport Foundation\n${code}`, 'utf8')
-        return p
-      })
-      const sdk = execFileSync('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path'], {
-        encoding: 'utf8',
-      }).trim()
-      execFileSync(
-        'xcrun',
-        [
-          '--sdk',
-          'iphonesimulator',
-          'swiftc',
-          '-typecheck',
-          '-module-cache-path',
-          join(dir, 'ModuleCache'),
-          '-target',
-          'arm64-apple-ios17.0-simulator',
-          '-sdk',
-          sdk,
-          ...files,
-          ...runtime,
-        ],
-        { encoding: 'utf8', stdio: 'pipe' },
+    const diagnostics = typecheckAgainstRealRuntime(
+      emitAll('swift').map((code, i) => ({ name: `Module${i}.swift`, code })),
+      { sources: runtime, isolatedModuleCache: true },
+    )
+    if (diagnostics !== null)
+      expect.fail(
+        `swiftc -typecheck failed for the multi-module target:\n${swiftErrorLines(diagnostics) || diagnostics.slice(0, 2000)}`,
       )
-    } catch (err) {
-      const e = err as { stderr?: string | Buffer; stdout?: string | Buffer }
-      const out = [e.stderr, e.stdout]
-        .map((x) => (typeof x === 'string' ? x : x?.toString('utf8')) ?? '')
-        .join('\n')
-      const errors = out
-        .split('\n')
-        .filter((l) => l.includes('error:'))
-        .slice(0, 12)
-        .join('\n')
-      expect.fail(`swiftc -typecheck failed for the multi-module target:\n${errors || out.slice(0, 2000)}`)
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
   }, 300_000)
 })

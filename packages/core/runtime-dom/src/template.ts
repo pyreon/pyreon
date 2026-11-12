@@ -18,7 +18,7 @@ import {
   reportFirstText,
   reportTextWrite,
 } from './hydration-debug'
-import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, SVG_TAGS, type PolyTextCore } from './mount'
+import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, type PolyTextCore } from './mount'
 import { _bindEvent } from './props'
 
 // Dev-mode gates in this file use the bare bundler-agnostic
@@ -632,12 +632,28 @@ let _freshBind = false
  *   return () => { __d0() };
  * })
  */
-// SVG tags that are ALSO valid HTML — a template rooted at one of these is
-// almost always the HTML element, so do NOT SVG-wrap it. Every other entry in
-// SVG_TAGS is namespace-unambiguous. (MathML is the same shape of bug but has no
-// real template-rooted instances, and happy-dom can't parse MathML foreign
-// content to verify a fix, so it is deliberately out of scope.)
-const SVG_ROOT_EXCLUDE = new Set(['svg', 'title'])
+// Every SVG element name (SVG 1.1 and SVG 2, case-sensitive) that is NOT also an
+// HTML element name. A template rooted at one of these is SVG content; the
+// names HTML shares (`a`, `script`, `style`, `title`, `font`) are left out, since
+// a template rooted at one is almost always the HTML element, and `svg` opens
+// SVG content by itself. The list has to be complete: a missing name
+// (`feDropShadow` was one) parses as an inert HTML element. MathML is the same
+// shape of bug but has no real template-rooted instances, and happy-dom cannot
+// parse MathML foreign content to verify a fix, so it is out of scope.
+const SVG_ROOT_TAGS = new Set([
+  'altGlyph', 'altGlyphDef', 'altGlyphItem', 'animate', 'animateColor', 'animateMotion',
+  'animateTransform', 'circle', 'clipPath', 'color-profile', 'cursor', 'defs', 'desc', 'discard',
+  'ellipse', 'feBlend', 'feColorMatrix', 'feComponentTransfer', 'feComposite',
+  'feConvolveMatrix', 'feDiffuseLighting', 'feDisplacementMap', 'feDistantLight',
+  'feDropShadow', 'feFlood', 'feFuncA', 'feFuncB', 'feFuncG', 'feFuncR', 'feGaussianBlur',
+  'feImage', 'feMerge', 'feMergeNode', 'feMorphology', 'feOffset', 'fePointLight',
+  'feSpecularLighting', 'feSpotLight', 'feTile', 'feTurbulence', 'filter', 'font-face',
+  'font-face-format', 'font-face-name', 'font-face-src', 'font-face-uri', 'foreignObject', 'g',
+  'glyph', 'glyphRef', 'hkern', 'image', 'line', 'linearGradient', 'marker', 'mask',
+  'metadata', 'missing-glyph', 'mpath', 'path', 'pattern', 'polygon', 'polyline',
+  'radialGradient', 'rect', 'set', 'stop', 'switch', 'symbol', 'text', 'textPath', 'tref',
+  'tspan', 'use', 'view', 'vkern',
+])
 
 /**
  * Whether a template STRING is rooted at a bare SVG element — `<g>`, `<path>`,
@@ -655,7 +671,7 @@ function isSvgRooted(html: string): boolean {
   const m = /^\s*<([a-zA-Z][a-zA-Z0-9-]*)/.exec(html)
   if (m === null) return false
   const tag = m[1] as string
-  return !SVG_ROOT_EXCLUDE.has(tag) && SVG_TAGS.has(tag)
+  return SVG_ROOT_TAGS.has(tag)
 }
 
 // ─── Compiled-template hydration adoption (SEAM) ────────────────────────────

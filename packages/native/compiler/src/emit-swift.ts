@@ -186,6 +186,7 @@ import {
 import {
   extractTextTypography,
   PRESSED_STATE_IDENT,
+  styleDrawsSurface,
   styleToNativeModifiers,
   styleUsesPressedState,
   swiftTextTypographyModifiers,
@@ -7711,9 +7712,40 @@ function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
 }
 
 /**
- * `<Button variant>` → SwiftUI buttonStyle. Absent (or `primary`, the
- * documented default) emits nothing, so every existing app's output is
- * byte-identical.
+ * Whether the app draws this element's surface itself: a canonical
+ * `background` prop, or an inline `style` that sets a background or border
+ * (`styleDrawsSurface`). The web primitives merge `style` over their built-in
+ * chrome, so the app's surface replaces the default one; on iOS the system
+ * chrome is then left off rather than drawn underneath the app's.
+ */
+function swiftDrawsOwnSurface(e: Extract<ExprIR, { kind: 'jsx-element' }>): boolean {
+  for (const a of e.attrs) {
+    if (a.kind !== 'attr') continue
+    if (a.name === 'background') return true
+    if (a.name === 'style' && styleDrawsSurface(a.value)) return true
+  }
+  return false
+}
+
+/**
+ * `<Button variant>` → SwiftUI buttonStyle. Every variant draws an explicit
+ * style, the same role Compose and the web give it:
+ *
+ * | variant             | SwiftUI                       | Compose          | web                  |
+ * | ------------------- | ----------------------------- | ---------------- | -------------------- |
+ * | absent / `primary`  | `.borderedProminent` (filled) | `Button` (filled)| filled blue          |
+ * | `secondary`         | `.bordered`                   | `OutlinedButton` | white, grey outline  |
+ * | `ghost`             | `.borderless` (tinted text)   | `TextButton`     | blue text            |
+ * | `danger`            | `.borderedProminent` + red    | `Button` + error | filled red           |
+ *
+ * The default used to emit NOTHING, which left SwiftUI's `.automatic` style:
+ * outside a List or toolbar that is a borderless tinted-text button, so the
+ * documented "styled CTA" drew as a link on iOS only (#4482).
+ *
+ * The default (absent / `primary`) yields to the app: when the button draws
+ * its own surface (`swiftDrawsOwnSurface`), no system chrome is added, exactly
+ * as the web's merged `style` replaces its built-in fill. An explicit
+ * secondary / ghost / danger is the author's request and is kept.
  *
  * A DYNAMIC variant is deliberately not resolved here: it would need a
  * conditional over two different opaque `some View` styles, which swiftc
@@ -7721,31 +7753,32 @@ function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
  * warns instead of silently picking one.
  */
 function swiftButtonVariantModifier(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const defaultStyle = swiftDrawsOwnSurface(e) ? '' : '.buttonStyle(.borderedProminent)'
   const attr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'variant',
   )
-  if (attr === undefined) return ''
+  if (attr === undefined) return defaultStyle
   const v = readStaticAttr(e, 'variant')
   if (typeof v !== 'string') {
     _emitWarnings.push(
       `<Button variant>: only a static literal lowers (primary | secondary | ghost | danger) — a dynamic value would need a conditional over two different opaque button styles, which swiftc rejects. The button falls back to the default style.`,
     )
-    return ''
+    return defaultStyle
   }
   switch (v) {
     case 'primary':
-      return ''
+      return defaultStyle
     case 'secondary':
       return '.buttonStyle(.bordered)'
     case 'ghost':
-      return '.buttonStyle(.plain)'
+      return '.buttonStyle(.borderless)'
     case 'danger':
       return '.buttonStyle(.borderedProminent).tint(.red)'
     default:
       _emitWarnings.push(
         `<Button variant=${swiftStr(v)}>: not one of primary | secondary | ghost | danger — the button falls back to the default style.`,
       )
-      return ''
+      return defaultStyle
   }
 }
 
@@ -8657,7 +8690,8 @@ function emitSwiftTransitionGroup(
   const p = ' '.repeat(indent)
   const inner = ' '.repeat(indent + 2)
   const body = e.children.map((c) => inner + emitSwiftChild(c, indent + 2)).join('\n')
-  const container = `VStack {\n${body}\n${p}}`
+  // Start-aligned like every other column the emit draws (#4482).
+  const container = `VStack(alignment: .leading) {\n${body}\n${p}}`
   const driver = findForEachDriverSwift(e)
   // Drive the animation off the list's `.count`, NOT the list itself:
   // SwiftUI's `.animation(_:value:)` requires an `Equatable` value, and the
@@ -9081,9 +9115,15 @@ function emitSwiftStack(
   const align = swiftStylingValue(e, 'align', (v) =>
     resolveAlign(String(v), 'swift', isRow ? 'vertical' : 'horizontal'),
   )
-  if (align !== undefined) {
-    initArgs.push(`alignment: ${align}`)
-  }
+  // No `align` → the cross-platform default, EXPLICITLY. SwiftUI's stacks
+  // centre on the cross axis by default; web flex defaults to `stretch` (a
+  // column's children start at the left, a row's at the top) and Compose's
+  // Column / Row to Start / Top. Left implicit, every iOS line was centred and
+  // two columns of unequal length in an Inline were centred against each other
+  // (the staggered action columns of #4482). `stretch` itself is approximated
+  // as start on both native targets, so this is the same value an explicit
+  // `align="stretch"` / `align="start"` emits.
+  initArgs.push(`alignment: ${align ?? (isRow ? '.top' : '.leading')}`)
   {
     // Silently wrong, not merely inert — see stretchAlignWarning.
     const w = stretchAlignWarning(isRow ? 'Inline' : 'Stack', readStaticAttr(e, 'align'))
@@ -9188,18 +9228,29 @@ function emitSwiftScrollBody(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const hasFor = e.children.some(
     (c) => c.kind === 'expr' && c.expr.kind === 'jsx-element' && c.expr.tag === 'For',
   )
+  //
+  // Alignment (#4482): a ScrollView lays its content out in an implicit stack
+  // CENTRED on the cross axis, and a vertical one centres content narrower
+  // than the screen. The web `<Scroll>` is a block container (children start
+  // at the left) and Compose's `Column(verticalScroll)` / `Row` default to
+  // Start / Top, so the content is wrapped in an explicit start-aligned stack,
+  // pinned to the leading edge on a vertical scroll. The wrapper keeps the
+  // implicit stack's default spacing, so only the alignment changes.
+  const horizontal = axis === 'horizontal'
+  const pin = horizontal ? '' : '.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)'
+  const innerPad = ' '.repeat(indent + 4)
   if (hasFor) {
-    const lazyStack = axis === 'horizontal' ? 'LazyHStack' : 'LazyVStack'
-    const innerPad = ' '.repeat(indent + 4)
+    const lazyStack = horizontal ? 'LazyHStack(alignment: .top' : 'LazyVStack(alignment: .leading'
     const lazyContent = e.children.map((c) => innerPad + emitSwiftChild(c, indent + 4)).join('\n')
     return (
       `ScrollView${initSignature} {\n` +
-      `${pad}${lazyStack}(spacing: 0) {\n${lazyContent}\n${pad}}\n` +
+      `${pad}${lazyStack}, spacing: 0) {\n${lazyContent}\n${pad}}${pin}\n` +
       `${' '.repeat(indent)}}${modifiers}`
     )
   }
-  const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
-  return `ScrollView${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}${modifiers}`
+  const stack = horizontal ? 'HStack(alignment: .top)' : 'VStack(alignment: .leading)'
+  const contentLines = e.children.map((c) => innerPad + emitSwiftChild(c, indent + 4)).join('\n')
+  return `ScrollView${initSignature} {\n${pad}${stack} {\n${contentLines}\n${pad}}${pin}\n${' '.repeat(indent)}}${modifiers}`
 }
 
 /**
@@ -9979,7 +10030,7 @@ function emitSwiftNavPane(children: readonly ChildIR[], indent: number): string 
   if (children.length === 1) return pad + emitSwiftChild(children[0]!, indent)
   if (children.length === 0) return `${pad}EmptyView()`
   const inner = children.map((c) => ' '.repeat(indent + 2) + emitSwiftChild(c, indent + 2)).join('\n')
-  return `${pad}VStack(spacing: 0) {\n${inner}\n${pad}}`
+  return `${pad}VStack(alignment: .leading, spacing: 0) {\n${inner}\n${pad}}`
 }
 
 /**
@@ -10125,7 +10176,7 @@ function emitSwiftTabStack(
       rootView = `PyreonRouteLoader(path: ${swiftStr(target.path)}, load: { ${loadBody} }) { ${rootView} }`
     }
   }
-  return `PyreonTabStack(router: ${ctx.routerExpr}, tab: ${swiftStr(tab.name)}) {\n${pad}${rootView}${emitSwiftNavigationDestination(ctx.routes, indent + 4)}\n${' '.repeat(indent)}}`
+  return `PyreonTabStack(router: ${ctx.routerExpr}, tab: ${swiftStr(tab.name)}) {\n${pad}${rootView}${SWIFT_SCREEN_FRAME}${emitSwiftNavigationDestination(ctx.routes, indent + 4)}\n${' '.repeat(indent)}}`
 }
 
 /**
@@ -10563,6 +10614,18 @@ function emitSwiftField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   } else {
     result = swiftFieldViewExpr(e, placeholder, textArg)
   }
+  // Field chrome (#4482). The iOS default text-field style is borderless — a
+  // placeholder floating on the page that does not read as an input — while
+  // the web Field draws a 1px grey rounded border and Compose's TextField a
+  // filled box with an underline. `.roundedBorder` is SwiftUI's bordered
+  // field. It is an environment style, so it reaches both views of the
+  // `kind` ternary's AnyView branches and a multiline `axis: .vertical` field.
+  // An app that draws the field's surface itself (a `background` prop, or a
+  // background / border in `style`) keeps its own look, as on the web, where
+  // `style` merges over the built-in border.
+  if (!swiftDrawsOwnSurface(e)) {
+    result += `\n${' '.repeat(indent + 2)}.textFieldStyle(.roundedBorder)`
+  }
 
   // onSubmit modifier (Pyreon canonical event for keyboard "done").
   const onSubmit = e.attrs.find(
@@ -10935,7 +10998,7 @@ function emitSwiftRouterProvider(
           const loadBody = emitSwiftExpr(homeTarget.loader, indent + 2)
           homeInvocation = `PyreonRouteLoader(path: ${swiftStr(homeTarget.path)}, load: { ${loadBody} }) { ${homeInvocation} }`
         }
-        _activeHomeRouteSwift = homeInvocation
+        _activeHomeRouteSwift = `${homeInvocation}${SWIFT_SCREEN_FRAME}`
       }
     }
   }
@@ -10964,7 +11027,7 @@ function emitSwiftRouterProvider(
       const body =
         meaningful.length === 1
           ? emitSwiftChild(meaningful[0]!, indent)
-          : `VStack(spacing: 0) {\n${meaningful.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+          : `VStack(alignment: .leading, spacing: 0) {\n${meaningful.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
       result = `${body}\n${' '.repeat(indent)}.environment(\\.pyreonRouter, ${routerExpr})`
     } finally {
       _activeRouterSlotSwift = prevSlot
@@ -11054,6 +11117,41 @@ function swiftRouteParamsInvocation(
     }
   }
   return { call: `${expr}(params: params)`, usesParams: true }
+}
+
+/**
+ * Pins a routed screen to the top-leading corner of the space the navigation
+ * stack gives it (#4482). A NavigationStack root or destination is laid out at
+ * its intrinsic size and CENTRED, so a short screen floated in the middle of
+ * the display with an empty band under the nav bar; a web route renders at the
+ * top of the page and a Compose NavHost destination at TopStart. Applied to
+ * every screen the router emits: the home route, a tab's root, and the
+ * `navigationDestination` dispatch.
+ *
+ * `minWidth: 0` / `minHeight: 0` are load-bearing: without a minimum a flexible
+ * frame is at least as large as its content, so a screen taller than the space
+ * left (a long page, or any page while the keyboard is up) grew past it and was
+ * centred by the stack, overflowing UNDER the nav bar. With them the frame is
+ * the space offered and a tall screen overflows at the bottom, as it does on
+ * Compose.
+ */
+const SWIFT_SCREEN_FRAME =
+  '.frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)'
+
+/**
+ * The `.navigationDestination(for: String.self) { path in … }` modifier around
+ * a dispatch chain, pinned as a screen (`SWIFT_SCREEN_FRAME`). The chain is an
+ * if / else-if over the routes, so it is wrapped in one `Group` the frame can
+ * apply to.
+ */
+function swiftNavigationDestinationBlock(branches: readonly string[], indent: number): string {
+  const modifierIndent = ' '.repeat(indent - 2)
+  const body = branches.map((l) => `  ${l}`).join('\n')
+  return (
+    `\n${modifierIndent}.navigationDestination(for: String.self) { path in\n` +
+    `${' '.repeat(indent)}Group {\n${body}\n${' '.repeat(indent)}}${SWIFT_SCREEN_FRAME}\n` +
+    `${modifierIndent}}`
+  )
 }
 
 /**
@@ -11202,9 +11300,7 @@ function emitSwiftNavigationDestination(
   } else {
     branches.push(`${pad}else {`, `${innerPad}${fallback}`, `${pad}}`)
   }
-  const body = branches.join('\n')
-  const modifierIndent = ' '.repeat(indent - 2)
-  return `\n${modifierIndent}.navigationDestination(for: String.self) { path in\n${body}\n${modifierIndent}}`
+  return swiftNavigationDestinationBlock(branches, indent)
 }
 
 /**
@@ -11300,9 +11396,7 @@ function emitSwiftNestedNavigationDestination(
   } else {
     branches.push(`${pad}else {`, `${innerPad}${fallback}`, `${pad}}`)
   }
-  const body = branches.join('\n')
-  const modifierIndent = ' '.repeat(indent - 2)
-  return `\n${modifierIndent}.navigationDestination(for: String.self) { path in\n${body}\n${modifierIndent}}`
+  return swiftNavigationDestinationBlock(branches, indent)
 }
 
 /**

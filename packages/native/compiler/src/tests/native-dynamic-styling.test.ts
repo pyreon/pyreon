@@ -35,7 +35,7 @@ export function App() {
 describe('ternary-of-two-literal-tokens compile-resolves per branch', () => {
   it('Swift: gap/padding lower to a native conditional of resolved tokens', () => {
     const out = transform(APP, { target: 'swift' }).code
-    expect(out).toContain('VStack(spacing: (dense ? 8 : 16))')
+    expect(out).toContain('VStack(alignment: .leading, spacing: (dense ? 8 : 16))')
     expect(out).toContain('.padding((dense ? 4 : 12))')
     expect(out).toContain('.cornerRadius((dense ? 4 : 8))')
     // background resolves a COLOR expr per branch
@@ -70,7 +70,7 @@ describe('fully-dynamic styling values warn loudly (were silently dropped)', () 
 describe('static styling values keep their byte-shape', () => {
   it('Swift + Kotlin static gap/padding unchanged', () => {
     const sw = transform(APP, { target: 'swift' }).code
-    expect(sw).toContain('VStack(spacing: 12)')
+    expect(sw).toContain('VStack(alignment: .leading, spacing: 12)')
     expect(sw).toContain('.padding(8)')
     const kt = transform(APP, { target: 'kotlin' }).code
     expect(kt).toContain('Arrangement.spacedBy(12.dp)')

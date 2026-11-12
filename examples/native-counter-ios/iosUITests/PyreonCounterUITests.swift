@@ -53,6 +53,42 @@ final class PyreonCounterUITests: XCTestCase {
     /// The F3 controls live at the END of the page (so they cannot push the
     /// counter's own controls below the fold); tapping one scrolls the canvas
     /// away, and a screenshot or gesture on it needs it back on screen first.
+    /// Cancel a system picker sheet (PHPicker, UIDocumentPicker), tapping again
+    /// if the first tap did not take.
+    ///
+    /// Both pickers are REMOTE views: the sheet's chrome is in the accessibility
+    /// tree before the out-of-process picker accepts touches. A single tap sent
+    /// the moment `Cancel` first exists can land in that window and be dropped.
+    /// Measured on CI run 43120354638: the tap was synthesized, the delegate
+    /// never fired, and the hierarchy captured at the failure still showed the
+    /// `Photos` navigation bar with its `Cancel` button — the picker was simply
+    /// still open. The test then waited for "Photo: cancelled" and blamed the
+    /// delegate, on all three attempts of that run.
+    ///
+    /// A person whose tap is ignored taps again, and that is all this does: at
+    /// most four taps, each only while the button is still there. What the test
+    /// asserts is unchanged — the awaited `pick()` must resolve `nil` and the
+    /// status text must re-render — and a delegate that really never resumes
+    /// still fails it, because dismissing the sheet does not write that text.
+    private func dismissSystemPicker(_ cancelButton: XCUIElement, in app: XCUIApplication) {
+        guard cancelButton.exists else {
+            // No Cancel exposed on this iOS version: swipe the sheet down.
+            app.swipeDown()
+            return
+        }
+        for attempt in 1...4 {
+            cancelButton.tap()
+            let gone = NSPredicate(format: "exists == false")
+            let expectation = XCTNSPredicateExpectation(predicate: gone, object: cancelButton)
+            if XCTWaiter().wait(for: [expectation], timeout: 3) == .completed {
+                if attempt > 1 {
+                    print("dismissSystemPicker: Cancel needed \(attempt) taps (the first landed before the remote picker accepted touches)")
+                }
+                return
+            }
+        }
+    }
+
     private func bringFullyOnScreen(_ element: XCUIElement, in app: XCUIApplication) {
         let scroll = app.scrollViews.firstMatch
         for _ in 0..<20 {
@@ -1402,11 +1438,7 @@ final class PyreonCounterUITests: XCTestCase {
         // blocks app termination, which wedges the Simulator and cascades
         // launch-timeouts into every later test in the run. It is also the
         // assertion itself: cancelling is what makes pick() resolve nil.
-        if cancelButton.exists {
-            cancelButton.tap()
-        } else {
-            app.swipeDown()
-        }
+        dismissSystemPicker(cancelButton, in: app)
 
         XCTAssertTrue(
             app.staticTexts["File: cancelled"].waitForExistence(timeout: 10),
@@ -1459,12 +1491,7 @@ final class PyreonCounterUITests: XCTestCase {
         // launch-timeouts into every later test in the run — the exact CI flake
         // this suite was fixed for. It is also the assertion itself: cancelling
         // is what makes pick() resolve nil.
-        if cancelButton.exists {
-            cancelButton.tap()
-        } else {
-            // Fall back to swiping the sheet down if no Cancel is exposed.
-            app.swipeDown()
-        }
+        dismissSystemPicker(cancelButton, in: app)
 
         XCTAssertTrue(
             app.staticTexts["Photo: cancelled"].waitForExistence(timeout: 10),
