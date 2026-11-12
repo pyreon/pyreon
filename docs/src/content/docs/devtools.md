@@ -31,6 +31,7 @@ window.__PYREON_DEVTOOLS__
 //                  reactive.getGraph() · reactive.getFires()
 //                  reactive.showOverlay() · reactive.hideOverlay()  (also Ctrl+Shift+R)
 //                  reactive.nodesForElement(el)   (DOM→signal — overlay Inspect / 🎯)
+//                  reactive.nodesForComponent(id) (what a component created: signals, computeds, effects)
 ```
 
 `$p` is a console helper for the same data (`$p.tree()`, `$p.components()`, `$p.help()`).
@@ -54,14 +55,15 @@ The extension reads everything through a global hook the framework attaches in t
 
 ### The `window.__PYREON_DEVTOOLS__` hook
 
-`@pyreon/runtime-dom` auto-installs the hook on the first browser `mount()` (idempotent, SSR-safe — a no-op when there is no `window`). It exposes the component-tree surface:
+`@pyreon/runtime-dom` auto-installs the hook on the first browser `mount()` or `hydrateRoot()` (idempotent, SSR-safe — a no-op when there is no `window`). Components are registered on both paths, so SSR, SSG, island and Zero apps show the same tree as a client-rendered app; each entry is removed when its component unmounts. It exposes the component-tree surface:
 
 | Member | Description |
 | --- | --- |
-| `version` | Hook protocol version. |
+| `version` | The `@pyreon/runtime-dom` version that installed the hook (`"0.53.0"`). Detect what the hook can do by the presence of a member, not by this version. |
 | `getComponentTree()` | Root components as a collapsible hierarchy. |
 | `getAllComponents()` | Flat list of every mounted component entry. |
 | `highlight(id)` | Briefly outlines a component's DOM element. |
+| `getComponentProps(id)` | A component's props as `{ name: preview }`, computed when called: own enumerable keys (at most 50), each value previewed like a graph value (60 characters), reactive props read without tracking. `null` once the component has unmounted. Nothing is copied or kept between calls; the registry drops its reference to the props object on unmount. |
 | `onComponentMount(cb)` / `onComponentUnmount(cb)` | Subscribe to mount/unmount. |
 | `enableOverlay()` / `disableOverlay()` | Click-to-inspect element picker. |
 | `reactive` | The opt-in reactive bridge (see below). |
@@ -173,6 +175,8 @@ The **DOM→signal picker**. Press the **🎯 Pick** button, then click any elem
 ```
 
 The correlation is **exact, not a heuristic**: it's captured at bind time in `_bindText`, where both the text node and its source signal are in scope — so clicking a `{count()}` element resolves to exactly `count`, never a guess. Available programmatically as `__PYREON_DEVTOOLS__.reactive.nodesForElement(el)` (also exported from `@pyreon/runtime-dom`) and via the console shorthand `$p.pick()`. `Escape` cancels picking.
+
+The component-side counterpart is `__PYREON_DEVTOOLS__.reactive.nodesForComponent(id)`: the signals, computeds and effects a component created during its setup and `onMount` hooks, as `{ id, name, kind }` with graph node ids, in creation order. Disposed nodes drop out, a child component's nodes belong to the child, and compiler-emitted DOM bindings are not graph nodes, so they are not listed. Use the ids with `getGraph()` and `getUpdateCause(id)`, or to scope the graph to one component.
 
 Scope: text bindings only — the dominant "I see a wrong value" case. Attribute / class / style bindings and multi-signal text expressions aren't correlated (their owner element isn't in scope at bind time). Returns `[]` in production (nothing is tagged).
 

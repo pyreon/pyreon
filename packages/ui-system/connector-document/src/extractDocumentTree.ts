@@ -48,6 +48,63 @@ type VNodeLike = {
 // `h(Fragment, null, …)`; a fragment vnode groups children with no wrapper.
 const FRAGMENT_TYPE: symbol = Symbol.for('Pyreon.Fragment')
 
+// `@pyreon/core`'s compiler brand for a reactive-prop thunk (`_rp` / `_pp` /
+// `_rpd`), `Symbol.for('pyreon.reactiveProp')` in `core/src/props.ts`. Same
+// global-registry trick as FRAGMENT_TYPE: instance-safe, no runtime import.
+const REACTIVE_PROP: symbol = Symbol.for('pyreon.reactiveProp')
+
+/**
+ * A vnode's children, by the same rule the runtime mounts with
+ * (`mergeChildrenIntoProps` in runtime-server, `mountComponent` in
+ * runtime-dom): `props.children` when it is set, else `vnode.children`.
+ *
+ * Both shapes reach the extractor. `h(Comp, props, ...children)` puts children
+ * in `vnode.children`; the AUTOMATIC JSX runtime (`jsx()`, which every Vite app
+ * uses for components) puts them in `props.children` and leaves
+ * `vnode.children` empty. Reading only `vnode.children` exported every
+ * JSX-authored template empty (#4303).
+ */
+function childrenOf(vnode: VNodeLike): unknown[] {
+  const fromProps = vnode.props?.children
+  if (fromProps !== undefined) return Array.isArray(fromProps) ? fromProps : [fromProps]
+  return vnode.children ?? []
+}
+
+/**
+ * The props a component function receives — what the runtime builds before
+ * calling it: children merged in (see {@link childrenOf}), and every
+ * compiler-emitted reactive-prop thunk (`title={props.title}` compiles to
+ * `_pp(props, 'title')`) turned into a getter, as `makeReactiveProps` does. A
+ * component (or an `.attrs()` callback) must read `props.title` as the VALUE;
+ * handed the raw thunk, `props.level ?? 'h1'` saw a function and
+ * `props.ordered ? … : …` was always true. A getter (not a snapshot) keeps the
+ * read live, so a signal-backed prop exports its current value.
+ */
+function componentProps(vnode: VNodeLike): Record<string, unknown> {
+  const raw = vnode.props ?? {}
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(raw)) {
+    const desc = Object.getOwnPropertyDescriptor(raw, key)!
+    const value = desc.get ? undefined : desc.value
+    if (
+      typeof value === 'function' &&
+      (value as unknown as Record<symbol, unknown>)[REACTIVE_PROP]
+    ) {
+      Object.defineProperty(out, key, {
+        get: value as () => unknown,
+        enumerable: true,
+        configurable: true,
+      })
+    } else {
+      Object.defineProperty(out, key, { ...desc, configurable: true })
+    }
+  }
+  if (out.children === undefined && vnode.children && vnode.children.length > 0) {
+    out.children = vnode.children.length === 1 ? vnode.children[0] : vnode.children
+  }
+  return out
+}
+
 function isVNode(value: unknown): value is VNodeLike {
   return value != null && typeof value === 'object' && 'type' in value && 'props' in value
 }
@@ -112,7 +169,7 @@ function extractChildren(children: unknown[], options: ExtractOptions): DocChild
 }
 
 function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocChild[] | null {
-  const { type, props, children } = vnode
+  const { type, props } = vnode
   const includeStyles = options.includeStyles !== false
   const rootSize = options.rootSize ?? 16
 
@@ -183,12 +240,11 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
       // idempotence assumption is now structural rather than implicit:
       // we never call the component, so it cannot have side effects
       // that affect the second extraction.
-      const rsAttrs = (type as { __rs_attrs?: Array<(p: Record<string, unknown>) => Record<string, unknown>> }).__rs_attrs
+      const rsAttrs = (
+        type as { __rs_attrs?: Array<(p: Record<string, unknown>) => Record<string, unknown>> }
+      ).__rs_attrs
       if (rsAttrs && rsAttrs.length > 0) {
-        const mergedProps = { ...props }
-        if (children && children.length > 0) {
-          mergedProps.children = children.length === 1 ? children[0] : children
-        }
+        const mergedProps = componentProps(vnode)
         const attrsResult = rsAttrs.reduce<Record<string, unknown>>(
           (acc, fn) => Object.assign(acc, fn(mergedProps)),
           {},
@@ -200,11 +256,7 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
         // Path B (fallback for non-rocketstyle docComponents):
         // invoke the component to get the post-attrs vnode. Used by
         // hand-rolled test fixtures that don't go through rocketstyle.
-        const mergedProps = { ...props }
-        if (children && children.length > 0) {
-          mergedProps.children = children.length === 1 ? children[0] : children
-        }
-        const result = (type as (p: Record<string, unknown>) => unknown)(mergedProps)
+        const result = (type as (p: Record<string, unknown>) => unknown)(componentProps(vnode))
         if (isVNode(result)) {
           extractedFromCall = result
           const innerProps = (result as { props?: Record<string, unknown> }).props
@@ -237,7 +289,7 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
     // Children: prefer the JSX vnode's children (the user-supplied
     // tree). The post-attrs call might wrap children in additional
     // styled elements that aren't part of the document tree.
-    const docChildren = extractChildren(children ?? [], options)
+    const docChildren = extractChildren(childrenOf(vnode), options)
 
     const node: DocNode = {
       type: docType,
@@ -265,19 +317,14 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
   // more than one node). Both produced an empty list/section in the
   // exported document with no error.
   if (type === FRAGMENT_TYPE) {
-    const docChildren = extractChildren(children ?? [], options)
+    const docChildren = extractChildren(childrenOf(vnode), options)
     if (docChildren.length > 0) return docChildren
     return null
   }
 
   // Component function WITHOUT _documentType — call it to get its VNode output
   if (typeof type === 'function') {
-    const mergedProps = { ...props }
-    if (children && children.length > 0) {
-      mergedProps.children = children.length === 1 ? children[0] : children
-    }
-
-    const result = type(mergedProps)
+    const result = type(componentProps(vnode))
 
     if (isVNode(result)) {
       return extractNode(result, options)
@@ -301,7 +348,7 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
 
   // DOM element (string type like 'div', 'span') — transparent, extract children
   if (typeof type === 'string') {
-    const docChildren = extractChildren(children ?? [], options)
+    const docChildren = extractChildren(childrenOf(vnode), options)
     // If there's text content in the DOM element, collect it
     if (docChildren.length > 0) return docChildren
     return null

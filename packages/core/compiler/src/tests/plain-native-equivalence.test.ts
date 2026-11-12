@@ -23,7 +23,11 @@ import { transformPlain } from '../plain'
 const require2 = createRequire(import.meta.url)
 let nativePlain:
   | ((code: string, filename: string, knownSignals: string[] | null) =>
-      | { code: string; warnings: Array<{ message: string; line: number; column: number; code: string }> }
+      | {
+          code: string
+          warnings: Array<{ message: string; line: number; column: number; code: string }>
+          mapMappings?: string | null
+        }
       | null)
   | null = null
 try {
@@ -53,6 +57,8 @@ function compare(code: string, filename = 'eq.tsx', knownSignals?: string[]) {
     expect.fail(`code diverged on:\n${code}\n${diffs.join('\n')}`)
   }
   expect(rs!.warnings, `warnings diverged on:\n${code}`).toEqual(js.warnings)
+  // The pre-pass map is part of the backend contract (#4418).
+  expect(rs!.mapMappings, `source map diverged on:\n${code}`).toBe(js.map?.mappings)
 }
 
 const HEADER = `'use plain'\nimport { state, derived, effect } from '@pyreon/core/plain'\n`

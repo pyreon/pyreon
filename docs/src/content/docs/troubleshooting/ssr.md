@@ -115,7 +115,7 @@ A module-level `Map` keyed by a user key (`defineStore('cart')`, `useCookie('ses
 
 ### A user string passed as a `String.prototype.replace` replacement
 
-`$&`, `` $` ``, `$'` and `$$` in the replacement are patterns, even when the search is a literal string, so a title like `Sale $' today` pulled the template's tail into `&lt;title&gt;`, and rendered HTML spliced into a template re-inserted the placeholder. Pass data through a function replacer: `s.replace(re, () =&gt; value)`. Funnels: `packages/core/head/src/title.ts` (`applyTitleTemplate`, shared by SSR and client), `server/src/html.ts&#58;processTemplate`, `zero/src/not-found.ts`. Sweep: `grep -rnE '\.replace(All)?\([^,]+, *[a-zA-Z_`]'` over runtime code.
+`$&`, `` $` ``, `$'` and `$$` in the replacement are patterns, even when the search is a literal string, so a title like `Sale $' today` pulled the template's tail into `<title>`, and rendered HTML spliced into a template re-inserted the placeholder. Pass data through a function replacer: `s.replace(re, () => value)`. Funnels: `packages/core/head/src/title.ts` (`applyTitleTemplate`, shared by SSR and client), `server/src/html.ts:processTemplate`, `zero/src/not-found.ts`. Sweep: `grep -rnE '\.replace(All)?\([^,]+, *[a-zA-Z_`]'` over runtime code.
 
 ---
 
@@ -299,5 +299,11 @@ A guard is only as good as the representation it inspects. Decide on what the CO
 ### A WebSocket endpoint that authenticates by cookie without checking `Origin`
 
 WebSockets are not subject to CORS, and the browser attaches the endpoint's cookies to an upgrade that ANY site's page opens (cross-site WebSocket hijacking). Refuse a browser upgrade whose `Origin` is neither same-origin with `Host` nor explicitly allowed, before the auth hook runs; an upgrade with no `Origin` is not a browser page. Reference: `packages/fundamentals/sync/src/server.ts` (`allowedOrigins`, close 4403); `tests/server-origin.test.ts`.
+
+---
+
+### A compiled binder that corrects adopted server DOM without reporting it
+
+(#4419): `_tpl` adoption hands the server's nodes to the compiled bind, and `_setChild`, `_setChildAt`, `_bindText`, `_bindProp`, `bindPolymorphicText` and `_textSlot` all overwrote divergent server text silently. A verifier bail swapped the server element for a clone, also silently. The h() walk reports both, so a JSX app (where nearly everything compiles to `_tpl`) heard about none of its SSR/client divergences. **Rule: every compiled write into adopted server DOM goes through the dev-only report in `hydration-debug.ts`.** Binders call `reportFirstText` inside their existing first-run (`written === null`) branch, and static writes call `reportTextWrite` in a separate `process.env.NODE_ENV !== 'production'` block that repeats the write. The adoption window is `_bindWithAdoption(true, …)` in `buildTpl`, closed for clone binds and for slot/hole hydration (the h() walk reports those itself). Swaps report the first real DOM difference (`reportSwappedTemplate`), never the bail itself. A mismatch is reported exactly when hydration changes server text, so production keeps byte-identical binders. The h() walk had the same gap for an accessor that renders text over an EMPTY server element or range; it now reports that too (in production as well, like every h()-path report). Locks: `runtime-dom/src/tests/hydrate-compiled-mismatch-report.browser.test.tsx` (real Chromium, recorded real compiler output) and its happy-dom twin, which regenerates that record; the compiled parity fuzz's O1 oracle (no report on agreement).
 
 ---

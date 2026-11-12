@@ -6,6 +6,7 @@
  */
 
 import type { Effect } from '@pyreon/reactivity'
+import { useEffect, useMemo, useRef } from './hooks'
 import {
   batch as pyreonBatch,
   computed as pyreonComputed,
@@ -89,3 +90,46 @@ export function effect(fn: () => void | (() => void)): () => void {
  * Batch multiple signal writes into a single update.
  */
 export { pyreonBatch as batch }
+
+// ─── Component hooks: useSignal / useComputed / useSignalEffect ─────────────
+//
+// `@preact/signals` also exports these three hooks, and the compat alias
+// points `@preact/signals` here, so `import { useSignal } from
+// '@preact/signals'` under `compat: 'preact'` failed at import (#4366). They
+// follow `@preact/signals`' own implementation: one signal / computed / effect
+// per component instance, created on the first render, the computed and the
+// effect always calling the LATEST callback, and the effect disposed on
+// unmount.
+
+/**
+ * A signal owned by the component: created once, on the first render, from
+ * `initial`; later renders return the same signal.
+ *
+ * @example
+ * const count = useSignal(0)
+ * return <button onClick={() => count.value++}>{count.value}</button>
+ */
+export function useSignal<T>(initial: T): WritableSignal<T> {
+  return useMemo(() => signal(initial), [])
+}
+
+/**
+ * A computed owned by the component. It is created once and always runs the
+ * callback from the latest render, so it can read props through the closure.
+ */
+export function useComputed<T>(fn: () => T): ReadonlySignal<T> {
+  const latest = useRef(fn)
+  latest.current = fn
+  return useMemo(() => computed(() => latest.current()), [])
+}
+
+/**
+ * An effect owned by the component: it tracks the signals the callback reads,
+ * re-runs when they change, runs the callback from the latest render, and is
+ * disposed on unmount. A returned function is its cleanup.
+ */
+export function useSignalEffect(fn: () => void | (() => void)): void {
+  const latest = useRef(fn)
+  latest.current = fn
+  useEffect(() => effect(() => latest.current()), [])
+}

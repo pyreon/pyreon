@@ -548,3 +548,27 @@ describe('diagnoseError — keyed <For> row keeps the first value of a replaced 
     expect(diagnoseError('virtual list scroll position jumps')?.cause ?? '').not.toContain('ONCE per key')
   })
 })
+
+describe('diagnoseError — <For> without by', () => {
+  it.each([
+    '[Pyreon] <For> requires a `by` prop: a function returning a stable, unique key for each item (got no `by`).',
+    '[Pyreon] <For> requires a `by` prop',
+    '<For> without a "by" prop throws when it mounts: "by" is required to key the rows.',
+  ])('%s → names the by prop', (message) => {
+    const result = diagnoseError(message)
+    expect(result?.fix).toContain('by={(item) => item.id}')
+    expect(result?.cause).toContain('`key`')
+  })
+})
+
+describe('diagnoseError — signal method passed by reference', () => {
+  const message =
+    '"count.set" is passed by reference, so it runs without its signal and throws: signal methods read "this". Pass an arrow instead: onInput={(v) => count.set(v)}.'
+
+  it('explains the detached-method throw and names the arrow fix', () => {
+    const result = diagnoseError(message)
+    expect(result?.cause).toContain('count.set')
+    expect(result?.fix).toContain('(v) => sig.set(v)')
+    expect(result?.fixCode).toBe('count.set(value)')
+  })
+})

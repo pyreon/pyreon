@@ -43,10 +43,9 @@ Each pass is applied during a single AST walk. The compiler has a **dual-backend
 
 ### Source maps
 
-The transform shifts line counts (a one-line JSX element can expand into a multi-line `_tpl(...)` factory), so a source map is required for stack traces and debugger breakpoints in Pyreon components to resolve to the right source line. The **JS backend** applies its edits through [`magic-string`](https://github.com/Rich-Harris/magic-string) and returns a correct **V3 source map** alongside byte-identical code; `@pyreon/vite-plugin` forwards it to Vite. Caveats, stated honestly:
+The transform shifts line counts (a one-line JSX element can expand into a multi-line `_tpl(...)` factory, and imports and hoisted statics land on top), so a source map is required for stack traces and debugger breakpoints in Pyreon components to resolve to the right source line and column. **Both backends** return the same **V3 source map** (`hires: 'boundary'`: a segment at every word start and every other character, so any token an engine reports maps exactly): the JS backend applies its edits through [`magic-string`](https://github.com/Rich-Harris/magic-string), and the native (Rust) backend encodes the identical `mappings` from the same edits. The cross-backend equivalence and fuzz suites compare the maps as well as the code.
 
-- The **native (Rust) backend** does not emit a source map yet — a scoped follow-up. When the native binary is active (the default in production builds), the map is absent and frames fall back to the transformed positions until that lands.
-- In dev mode, the small extra HMR / signal-name injections the Vite plugin applies _after_ the compiler are not re-mapped — a minor residual offset, still far better than no map.
+A Plain Mode module's pre-pass map is composed underneath, so the result always maps to the text you passed in. `transformDeferInline` returns a map too (it removes import lines). `@pyreon/vite-plugin` composes these with its own passes and hands Vite one map.
 
 A no-op compile (nothing to transform) returns no map, since the emitted code is byte-identical to the input and needs no remapping.
 
@@ -603,7 +602,7 @@ The compiler emits warnings for common mistakes. Warnings are returned in the `w
 
 ### `missing-key-on-for`
 
-Emitted when a `<For>` component is used without a `by` prop:
+Emitted when a `<For>` component is used without a `by` prop. `by` is required: such a `<For>` throws a `` [Pyreon] <For> requires a `by` prop `` error when it mounts.
 
 ```tsx
 // Triggers warning:
@@ -631,6 +630,7 @@ interface CompilerWarning {
     | 'circular-prop-derived'
     | 'duplicate-jsx-attr'
     | 'plain-mode'
+    | 'signal-method-reference'
 }
 ```
 
@@ -642,6 +642,7 @@ Currently-emitted codes:
 | `circular-prop-derived` | A prop-derived `const` chain that references itself (`const a = b + props.x; const b = a + 1`). The cyclic identifier keeps its captured value instead of being reactively inlined — restructure the chain or read `props.*` directly. |
 | `duplicate-jsx-attr`    | The same JSX attribute name written twice on one element (`<div id="a" id="b" />`). The later one wins (matches JS object-literal semantics), the earlier one is flagged as ignored. |
 | `plain-mode`            | Emitted by the [Plain Mode](/docs/plain-mode) pre-pass for a declined/unconvertible shape — prefixed with `[plain]` in the message. |
+| `signal-method-reference` | A signal's own method passed by reference as an attribute value (`ref={panel.set}`, `onInput={value.set}`). Signal methods read `this`, so the detached reference throws when called (dev builds name it: `[Pyreon] signal.set() was called without its signal`). Pass an arrow: `ref={(el) => panel.set(el)}`. The compiler leaves such a member as written; any other member of a signal (`user.name`) still reads the value (`user().name`). |
 
 `signal-call-in-jsx` and `signal-in-static-prop` are declared in the type but are not currently emitted by either backend — reserved for future diagnostics. Don't build tooling that assumes they fire today.
 
@@ -695,7 +696,7 @@ interface TransformResult {
   usesTemplates?: boolean
   /** Compiler warnings for common mistakes */
   warnings: CompilerWarning[]
-  /** V3 source map — JS backend only, and only when the code changed */
+  /** V3 source map (both backends, identical) — only when the code changed */
   map?: GeneratedSourceMap
   /** Reactivity-lens spans — only when `options.reactivityLens` is true */
   reactivityLens?: ReactivitySpan[]
@@ -720,6 +721,7 @@ interface CompilerWarning {
     | 'circular-prop-derived'
     | 'duplicate-jsx-attr'
     | 'plain-mode'
+    | 'signal-method-reference'
 }
 ```
 

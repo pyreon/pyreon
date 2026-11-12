@@ -76,7 +76,9 @@ function renderNode(node: DocNode, ctx: RenderContext): string {
       const text = escapeXml(getTextContent(node.children))
       const color = sanitizeColor((p.color as string) ?? '#4f46e5')
       ctx.y += 18
-      svg += `<a href="${escapeXml(href)}"><text x="${ctx.padding}" y="${ctx.y}" font-size="14" fill="${color}" text-decoration="underline" font-family="system-ui, -apple-system, sans-serif">${text}</text></a>`
+      const label = `<text x="${ctx.padding}" y="${ctx.y}" font-size="14" fill="${color}" text-decoration="underline" font-family="system-ui, -apple-system, sans-serif">${text}</text>`
+      // A rejected href renders the label without a link (#4365).
+      svg += href ? `<a href="${escapeXml(href)}">${label}</a>` : label
       ctx.y += 10
       break
     }

@@ -16,10 +16,11 @@
  *    `rocketstyle`/`coolgrid`/`kinetic`/`ui-components`). On native these
  *    silently drop / fail to emit. Fix: host the component in a `<WebView>`
  *    (charts/flow/editor) or use `@pyreon/primitives` (UI).
- *  - **`native-unsupported-decl`** — a top-level `interface` / TS `enum` /
- *    `class` declaration. PMTC silently DROPS these (the emit references an
- *    undefined symbol on the real device build). Fix: `type X = { … }` /
- *    `type X = 'a' | 'b'` / functions + signals.
+ *  - **`native-unsupported-decl`** — a top-level `class`, or a TS `enum` PMTC
+ *    cannot lower (string enums and literal numeric enums DO lower, see
+ *    `ts-enum-shape.ts`). PMTC emits nothing for these (the emit references
+ *    an undefined symbol on the real device build). Fix: one literal kind per
+ *    enum / `type X = 'a' | 'b'` / functions + signals.
  *
  * See `get_pattern({ name: 'multiplatform' })` for the full supported subset.
  *
@@ -34,6 +35,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { parseSync, type Program, type Statement } from 'oxc-parser'
+import { isLowerableTsEnum } from './ts-enum-shape'
 import { WEB_ONLY_PACKAGES } from './web-only-packages'
 
 export type NativeFindingCode = 'web-only-package-import' | 'native-unsupported-decl'
@@ -211,7 +213,11 @@ function unsupportedDecls(program: Program): UnsupportedDecl[] {
       stmt.declaration
         ? (stmt.declaration as Statement)
         : stmt
+    // A string enum, or a numeric enum with literal members, LOWERS since #4146
+    // (`ts-enum-desugar.ts`): only the shapes PMTC cannot reduce are reported,
+    // decided by the compiler's own classifier (#4363).
     if (decl.type === 'TSEnumDeclaration') {
+      if (isLowerableTsEnum(decl as unknown as Record<string, unknown>)) continue
       out.push({ kind: 'TS enum', name: decl.id.name, start: stmt.start })
     } else if (decl.type === 'ClassDeclaration') {
       out.push({ kind: 'class', name: decl.id?.name ?? '<anonymous>', start: stmt.start })
@@ -256,7 +262,7 @@ export function auditNative(cwd: string): NativeAuditResult {
     for (const d of unsupportedDecls(parsed.program)) {
       const fix =
         d.kind === 'TS enum'
-          ? `use a string-literal union \`type ${d.name} = 'a' | 'b'\` (→ native enum)`
+          ? `give every member a literal of ONE kind (all strings, or all numbers) so it lowers like a string-literal union, or write \`type ${d.name} = 'a' | 'b'\` (→ native enum)`
           : `move the logic into functions + signals (or \`defineStore\` / \`model()\`)`
       findings.push({
         code: 'native-unsupported-decl',
@@ -333,7 +339,7 @@ export function detectNativePatterns(
     const kind = d.kind === 'TS enum' ? 'enum' : 'class'
     const suggested =
       kind === 'enum'
-        ? `type ${d.name} = 'a' | 'b'  // string-literal union → native enum`
+        ? `give every member a literal of one kind, or type ${d.name} = 'a' | 'b'  // string-literal union → native enum`
         : `move logic into functions + signals (or defineStore / model())`
     const { line, column } = locate(parsed, d.start)
     diags.push({

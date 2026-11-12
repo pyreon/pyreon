@@ -301,7 +301,7 @@ function detectForKeying(ctx: DetectContext, node: ts.JsxOpeningLikeElement): vo
       ctx,
       node,
       'for-missing-by',
-      '<For each={...}> requires a `by` prop so the keyed reconciler can preserve item identity across reorders. Without `by`, every update remounts the full list.',
+      '<For each={...}> requires a `by` prop: it keys the rows, and a <For> without one throws when it mounts.',
       getNodeText(ctx, node),
       '<For each={items} by={(item) => item.id}>',
       false,
@@ -1673,6 +1673,9 @@ export function hasPyreonPatterns(code: string): boolean {
     // hydrateIslands call must both appear in the same source for the bug
     // shape to trigger. Pre-filter on EITHER half — the AST walker fast-
     // exits when the never-island set is empty.
-    (/\bisland\s*\(/.test(code) && /\bhydrate\s*:\s*['"]never['"]/.test(code))
+    (/\bisland\s*\(/.test(code) && /\bhydrate\s*:\s*['"]never['"]/.test(code)) ||
+    // plain-mode: the Plain Mode footgun detectors run only on a Plain Mode
+    // module — the same test the compiler uses to enter its plain pre-pass.
+    detectPlain(code)
   )
 }

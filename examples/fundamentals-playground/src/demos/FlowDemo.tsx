@@ -1,6 +1,19 @@
-import { Background, Controls, Flow, MiniMap, useFlow } from '@pyreon/flow'
+import { onMount } from '@pyreon/core'
+import { Background, Controls, Flow, flowStyles, MiniMap, useFlow } from '@pyreon/flow'
+
+/** Inject `@pyreon/flow`'s stylesheet once (node/edge states, focus rings, dark mode). */
+function useFlowStyles(): void {
+  onMount(() => {
+    if (document.getElementById('pyreon-flow-styles')) return
+    const style = document.createElement('style')
+    style.id = 'pyreon-flow-styles'
+    style.textContent = flowStyles
+    document.head.appendChild(style)
+  })
+}
 
 export function FlowDemo() {
+  useFlowStyles()
   const flow = useFlow({
     nodes: [
       {

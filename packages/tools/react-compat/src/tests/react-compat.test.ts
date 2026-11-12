@@ -732,8 +732,12 @@ describe('useImperativeHandle', () => {
 // ─── Re-exports ───────────────────────────────────────────────────────────────
 
 describe('re-exports', () => {
-  test('createElement is h', () => {
-    expect(createElement).toBe(h)
+  test('createElement is the compat factory, not core h (components get the hook wrapper)', () => {
+    expect(createElement).not.toBe(h)
+    const Comp = () => null
+    // Same component type as JSX produces — the compat wrapper.
+    expect(createElement(Comp, null).type).toBe(jsx(Comp, {}).type)
+    expect(createElement(Comp, null).type).not.toBe(Comp)
   })
 
   test('Fragment is exported', () => {

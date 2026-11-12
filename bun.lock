@@ -1059,6 +1059,48 @@
         "vite": "^8.3.5",
       },
     },
+    "examples/native-showcase": {
+      "name": "@pyreon/example-native-showcase",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/native-cli": "workspace:*",
+        "@pyreon/primitives": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+      },
+    },
+    "examples/native-showcase-android": {
+      "name": "@pyreon/example-native-showcase-android",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@pyreon/native-cli": "workspace:*",
+      },
+    },
+    "examples/native-showcase-ios": {
+      "name": "@pyreon/example-native-showcase-ios",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@pyreon/native-cli": "workspace:*",
+      },
+    },
+    "examples/native-showcase-web": {
+      "name": "@pyreon/example-native-showcase-web",
+      "version": "0.0.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/primitives": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/runtime-server": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "@types/bun": "^1.4.4",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.5",
+      },
+    },
     "examples/native-tasks": {
       "name": "@pyreon/example-native-tasks",
       "version": "0.50.3",
@@ -1481,11 +1523,13 @@
       "name": "@pyreon/compiler",
       "version": "0.53.0",
       "dependencies": {
+        "@jridgewell/sourcemap-codec": "^1.5.5",
         "magic-string": "^1.4.4",
         "oxc-parser": "^0.155.0",
         "typescript": ">=5.0.0 <7.0.0",
       },
       "devDependencies": {
+        "@jridgewell/trace-mapping": "^0.3.31",
         "@pyreon/core": "workspace:^",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
@@ -2042,6 +2086,7 @@
         "@pyreon/manifest": "workspace:*",
         "@pyreon/native-compiler": "workspace:*",
         "@pyreon/runtime-dom": "workspace:^",
+        "@pyreon/runtime-server": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/typescript": "workspace:^",
@@ -3073,8 +3118,10 @@
       "name": "@pyreon/vite-plugin",
       "version": "0.53.0",
       "dependencies": {
+        "@jridgewell/trace-mapping": "^0.3.31",
         "@pyreon/compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
+        "magic-string": "^1.4.4",
         "oxc-parser": "^0.155.0",
       },
       "devDependencies": {
@@ -3189,6 +3236,7 @@
         "@pyreon/unistyle": "workspace:^",
       },
       "devDependencies": {
+        "@pyreon/compiler": "workspace:^",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
@@ -3198,6 +3246,7 @@
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^5.0.5",
         "@vitus-labs/tools-rolldown": "^2.8.0",
+        "esbuild": "^0.28.2",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
@@ -4490,6 +4539,14 @@
     "@pyreon/example-native-router-demo-ios": ["@pyreon/example-native-router-demo-ios@workspace:examples/native-router-demo-ios"],
 
     "@pyreon/example-native-router-demo-web": ["@pyreon/example-native-router-demo-web@workspace:examples/native-router-demo-web"],
+
+    "@pyreon/example-native-showcase": ["@pyreon/example-native-showcase@workspace:examples/native-showcase"],
+
+    "@pyreon/example-native-showcase-android": ["@pyreon/example-native-showcase-android@workspace:examples/native-showcase-android"],
+
+    "@pyreon/example-native-showcase-ios": ["@pyreon/example-native-showcase-ios@workspace:examples/native-showcase-ios"],
+
+    "@pyreon/example-native-showcase-web": ["@pyreon/example-native-showcase-web@workspace:examples/native-showcase-web"],
 
     "@pyreon/example-native-tasks": ["@pyreon/example-native-tasks@workspace:examples/native-tasks"],
 

@@ -478,7 +478,7 @@ import { flowStyles } from '@pyreon/flow'
 
 **Common mistakes**
 
-- Forgetting to inject it — nodes render unstyled and edges invisible (the SVG has no stroke), which reads as a geometry bug.
+- Forgetting to inject it — hover/selection states, animated edges, focus rings and the dark colour mode are missing (the screen-reader text stays hidden: that is inline). In development `<Flow>` warns once when the sheet is not loaded.
 - Injecting it per &lt;Flow&gt; instance — it is document-scoped; N copies are N identical stylesheets.
 
 **See also:** `Flow` · `Background`
