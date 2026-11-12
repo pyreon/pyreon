@@ -13,8 +13,8 @@ import {
   detectWidth,
   type Env,
   type ThemeName,
-} from './detect'
-import { CLI_PALETTE, EMBER, hexToRgb, type Role, SYMBOLS, type SymbolName } from './palette'
+} from './detect.ts'
+import { CLI_PALETTE, EMBER, hexToRgb, type Role, SYMBOLS, type SymbolName } from './palette.ts'
 
 // ESC built from its char code so the source stays free of raw control bytes.
 const ESC = String.fromCharCode(27)
