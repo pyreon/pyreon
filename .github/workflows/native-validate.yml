@@ -186,7 +186,13 @@ jobs:
     # cache could never converge — see ci.yml's test-cell comment), so it
     # must fire on every PR the dependency graph says can change the emit, not
     # just on native-surface paths. The macOS job below uses the same rule.
-    if: (success() && (needs.decide.outputs.run == 'true' || needs.decide.outputs.graph == 'true')) || (failure() && needs.decide.result != 'success')
+    #
+    # Light PR CI (`vars.PR_CI_MODE == 'light'`, see .agents/guides/ci/README.md):
+    # on a PULL REQUEST this Linux lane is skipped; the merge queue and push to
+    # main still run it (same `decide` rules on the group's diff). The macOS
+    # typecheck and the device lanes are NOT skipped: they do not run in the
+    # queue, so the PR is their only coverage.
+    if: (github.event_name != 'pull_request' || vars.PR_CI_MODE != 'light') && ((success() && (needs.decide.outputs.run == 'true' || needs.decide.outputs.graph == 'true')) || (failure() && needs.decide.result != 'success'))
     # PINNED, not `ubuntu-latest`: GitHub moved `ubuntu-latest` to Ubuntu 26.04, and
     # the Swift tarball below is the ubuntu24.04 build (swift.org has no 26.04 build
     # we pin), so the job fails on a new-image runner, whatever the PR changes.
