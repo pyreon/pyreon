@@ -195,8 +195,11 @@ describe('the --check ratchet against an unreadable baseline', () => {
     writeFileSync(join(dir, 'atlas-catalog.json'), JSON.stringify({ hello: 'world' }))
     const code = await run('scan', dir, '--check', '--no-mount')
     expect(code, 'not a regression').toBe(0)
-    expect(errText()).toContain('not a readable catalog')
-    expect(errText()).toContain('skipping the comparison')
+    // The shared theme wraps at 100 columns, and a long temp path pushes this
+    // phrase across the wrap point: compare with whitespace collapsed.
+    const flat = errText().replace(/\s+/g, ' ')
+    expect(flat).toContain('not a readable catalog')
+    expect(flat).toContain('skipping the comparison')
   })
 
   it('SKIPS with a different message when there is no baseline file at all', async () => {
