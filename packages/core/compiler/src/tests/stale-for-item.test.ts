@@ -226,6 +226,91 @@ describe('for-stale-item-field — stays quiet', () => {
   })
 })
 
+describe('for-stale-item-field — syntax variants of each half', () => {
+  const L = (forEl: string, write = TOGGLE, extra = '') => `
+    const todos = signal<Todo[]>([])
+    ${write}
+    ${extra}
+    export const L = () => ${forEl}
+  `
+  const row = `(t) => <li>{t.done ? 'y' : 'n'}</li>`
+
+  it('a wrapped spread and a wrapped `by` are still read through', () => {
+    const write = `const toggle = (id) => todos.set(todos().map((t) => (t.id === id ? { ...(t as Todo), done: !t.done } : t)))`
+    const d = hits(L(`<For each={todos} by={((t) => t.id) as (t: Todo) => number}>{${row}}</For>`, write))
+    expect(d.map((x) => x.current)).toEqual(['t.done'])
+  })
+
+  it('a map that builds a fresh object without spreading the item is not a same-key replacement', () => {
+    const write = `const reset = () => todos.set(todos().map((t) => ({ id: t.id, title: t.title, done: false })))`
+    expect(hits(L(`<For each={todos} by={(t) => t.id}>{${row}}</For>`, write))).toEqual([])
+  })
+
+  it('an object built in a nested function of the map callback is not the replacement', () => {
+    const write = `const f = () => todos().map((t) => { const later = () => ({ ...t, done: true }); return t })`
+    expect(hits(L(`<For each={todos} by={(t) => t.id}>{${row}}</For>`, write))).toEqual([])
+  })
+
+  it('a computed key, or a second spread in a `.with`, makes every non-key field stale', () => {
+    const computedKey = `const set = (id, k, v) => todos.set(todos().map((t) => (t.id === id ? { ...t, [k]: v } : t)))`
+    const twoSpreads = `todos.set(todos().with(0, { ...todos()[0], ...patch }))`
+    const titleRow = `<For each={todos} by={(t) => t.id}>{(t) => <li data-id={t.id}>{t.title}</li>}</For>`
+    expect(hits(L(titleRow, computedKey)).map((x) => x.current)).toEqual(['t.title'])
+    expect(hits(L(titleRow, twoSpreads)).map((x) => x.current)).toEqual(['t.title'])
+  })
+
+  it('a `by` the detector cannot read as `x => x.key` treats every replaced field as stale', () => {
+    // Without a known key field the replaced `id` is reported too.
+    const write = `const swap = (id) => todos.set(todos().map((t) => (t.id === id ? { ...t, id: id + 1 } : t)))`
+    const idRow = `(t) => <li>{t.id}</li>`
+    for (const by of ['keyOf', '({ id }) => id', '(t) => String(t.id)', '(t) => { log(t) }', '"id"']) {
+      const attr = by.startsWith('"') ? `by=${by}` : `by={${by}}`
+      expect(hits(L(`<For each={todos} ${attr}>{${idRow}}</For>`, write)).map((x) => x.current)).toEqual(['t.id'])
+    }
+    // A block-bodied `by` that returns the key is read like the expression form.
+    expect(hits(L(`<For each={todos} by={(t) => { return t.id }}>{${idRow}}</For>`, write))).toEqual([])
+  })
+
+  it('a row that rebinds the item name, by declaration or a destructured nested param', () => {
+    expect(hits(L(`<For each={todos} by={(t) => t.id}>{(t) => { const t2 = t; { const t = load() } return <li>{t.done}</li> }}</For>`))).toEqual([])
+    expect(hits(L(`<For each={todos} by={(t) => t.id}>{(t) => <Picker onPick={({ t }) => use(t.done)} />}</For>`))).toEqual([])
+    expect(hits(L(`<For each={todos} by={(t) => t.id}>{(t) => <Picker onPick={([, t]) => use(t.done)} />}</For>`))).toEqual([])
+  })
+
+  it('row callbacks the detector does not inspect', () => {
+    const forEl = (child: string) => `<For each={todos} by={(t) => t.id}>{${child}}</For>`
+    expect(hits(L(forEl('renderRow')))).toEqual([])
+    expect(hits(L(forEl(`() => <li>row</li>`)))).toEqual([])
+    expect(hits(L(forEl(`([id, done]) => <li>{done}</li>`)))).toEqual([])
+    expect(hits(L(`<For each="todos" by={(t) => t.id}>{${row}}</For>`)).map((x) => x.current)).toEqual(['t.done'])
+  })
+
+  it('a <For> over a call result outside any accessor keeps its rows', () => {
+    const code = `
+      const todos = signal<Todo[]>([])
+      ${TOGGLE}
+      export const el = <For each={todos()} by={(t) => t.id}>{${row}}</For>
+    `
+    expect(hits(code).map((x) => x.current)).toEqual(['t.done'])
+  })
+
+  it('same-file components: destructured, nested, spread-into, and parameterless', () => {
+    const forEl = (child: string) => `<For each={todos} by={(t) => t.id}>{(t) => ${child}}</For>`
+    const comps = `
+      const Spread = ({ done, id }: Todo) => <b data-id={id}>{done ? 'y' : 'n'}</b>
+      const Nested = ({ todo: { done, title } }: { todo: Todo }) => <b>{done ? 'y' : 'n'}{title}</b>
+      const Other = ({ label, todo }: { label: string; todo: Todo }) => <b>{label}{todo.done ? 'y' : 'n'}</b>
+      const Computed = ({ [key]: v }: any) => <b>{v}</b>
+      function NoProps() { return <b>static</b> }
+    `
+    expect(hits(L(forEl(`<Spread {...t} />`), TOGGLE, comps)).map((x) => x.current)).toEqual(['{...t}'])
+    expect(hits(L(forEl(`<Nested todo={t} />`), TOGGLE, comps)).map((x) => x.current)).toEqual(['todo={t}'])
+    expect(hits(L(forEl(`<Other label="x" todo={t} />`), TOGGLE, comps)).map((x) => x.current)).toEqual(['todo={t}'])
+    expect(hits(L(forEl(`<Computed todo={t} />`), TOGGLE, comps))).toEqual([])
+    expect(hits(L(forEl(`<NoProps todo={t} />`), TOGGLE, comps))).toEqual([])
+  })
+})
+
 describe('for-stale-item-field — the shipped native-todomvc source', () => {
   const HERE = dirname(fileURLToPath(import.meta.url))
   const SRC = resolve(HERE, '../../../../../examples/native-todomvc-ios/src/TodoApp.tsx')
