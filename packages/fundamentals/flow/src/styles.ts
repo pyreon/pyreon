@@ -13,6 +13,11 @@
  * ```
  */
 export const flowStyles = `
+/* Marker: <Flow> checks for it in dev and warns when this sheet is missing. */
+.pyreon-flow {
+  --pyreon-flow-styles: 1;
+}
+
 /* ── Animated edges ────────────────────────────────────────────────────────── */
 
 .pyreon-flow-edge-animated {

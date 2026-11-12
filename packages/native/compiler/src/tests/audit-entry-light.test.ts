@@ -38,7 +38,9 @@ async function inputsOf(entry: string): Promise<string[]> {
 describe('@pyreon/native-compiler/audit entry graph', () => {
   it('is exactly the audit, its entry and the shared web-only map', async () => {
     const inputs = (await inputsOf('audit.ts')).sort()
-    expect(inputs).toEqual(['audit.ts', 'native-audit.ts', 'web-only-packages.ts'])
+    // `ts-enum-shape.ts` is the compiler's own (dependency-free) enum
+    // classifier, shared so the audit and PMTC agree on which enums lower.
+    expect(inputs).toEqual(['audit.ts', 'native-audit.ts', 'ts-enum-shape.ts', 'web-only-packages.ts'])
   })
 
   it('the main entry DOES pull the emitters (positive control)', async () => {

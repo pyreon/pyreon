@@ -153,7 +153,7 @@ describe('MCP validate — native-compiler not installed', () => {
   })
 
   it('the default loader resolves the real peer in this workspace', async () => {
-    const r = await detectNative(`import { Stack } from '@pyreon/primitives'\nenum E { A }\n`, 'a.tsx')
+    const r = await detectNative(`import { Stack } from '@pyreon/primitives'\nenum E { A = 'a', B = 1 }\n`, 'a.tsx')
     expect(r.skipped).toBe(false)
     expect(r.diags.length).toBeGreaterThan(0)
   })

@@ -11,7 +11,7 @@ describe('detectPyreonPatterns', () => {
       const diags = detectPyreonPatterns(code)
       expect(diags).toHaveLength(1)
       expect(diags[0]!.code).toBe('for-missing-by')
-      expect(diags[0]!.message).toContain('keyed reconciler')
+      expect(diags[0]!.message).toContain('throws when it mounts')
     })
 
     it('does NOT flag <For> that carries a `by`', () => {

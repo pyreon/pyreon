@@ -13,30 +13,23 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.displayCutoutPadding
-import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.ui.Modifier
 import com.pyreon.generated.TabsApp
 
 class TabsDemoActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // System bars, as the create-multiplatform scaffold's MainActivity does it,
-        // minus the soft-keyboard inset:
+        // System bars, as the create-multiplatform scaffold's MainActivity does it:
         //  - enableEdgeToEdge(light bars): dark system-bar icons. The bars sit over
         //    the window background, which the light window theme keeps light in
         //    dark mode too; without this the icons are white on that light strip;
-        //  - systemBarsPadding().displayCutoutPadding(): this app targets SDK 35+, so
-        //    Android 15+ draws it edge-to-edge and the top of the screen would sit
-        //    UNDER the status bar. Not safeDrawingPadding(): that also pads for the
-        //    keyboard (ime), so every keyboard show/hide re-lays the page out. A fixed
-        //    page taller than what is left (the tasks page) is re-centred and slides
-        //    while the keyboard animates, and a tap in that window lands on the wrong
-        //    spot (the instrumented tests tap right after typing the login name).
+        //  - safeDrawingPadding(): this app targets SDK 35+, so Android 15+ draws it
+        //    edge-to-edge and the top of the screen would sit UNDER the status bar.
         val bars = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
         enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
         setContent {
-            Box(Modifier.systemBarsPadding().displayCutoutPadding()) {
+            Box(Modifier.safeDrawingPadding()) {
                 TabsApp()
             }
         }

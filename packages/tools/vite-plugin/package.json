@@ -44,8 +44,10 @@
     "vite": ">=8.0.0"
   },
   "dependencies": {
+    "@jridgewell/trace-mapping": "^0.3.31",
     "@pyreon/compiler": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
+    "magic-string": "^1.4.4",
     "oxc-parser": "^0.155.0"
   },
   "devDependencies": {

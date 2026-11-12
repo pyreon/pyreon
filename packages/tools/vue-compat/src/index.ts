@@ -1676,7 +1676,9 @@ export function defineAsyncComponent<P extends Props = Props>(
 /**
  * Re-export of Pyreon's `h()` function for creating VNodes.
  */
-export { Fragment, pyreonH as h }
+export { Fragment }
+/** Vue's `h()` — builds a vnode; a component goes through the compat wrapper (see `createElement` in `./jsx-runtime`). */
+export { createElement as h } from './jsx-runtime'
 
 // ─── createApp ────────────────────────────────────────────────────────────────
 
@@ -1713,7 +1715,10 @@ export function createApp(component: ComponentFn, props?: Props): App {
         pushContext(frame)
         pushedFrames.push(frame)
       }
-      const vnode = pyreonH(component, props ?? null)
+      // The root goes through the compat wrapper like every JSX-rendered
+      // component: built with core's `h()` it never re-rendered when its
+      // state changed (the wrapper is what re-runs a Vue-style component).
+      const vnode = pyreonH(toCompatComponent(component), props ?? null)
       const unmount = pyreonMount(vnode, container)
       return () => {
         unmount()
@@ -1897,7 +1902,7 @@ export function onRenderTriggered(
  * Teleport — renders children into a different DOM element.
  * Maps to Pyreon's Portal.
  */
-export function Teleport(props: {
+function TeleportImpl(props: {
   to: string | Element
   children?: VNodeChild
 }): VNodeChild {
@@ -1937,7 +1942,7 @@ export function Teleport(props: {
  *   )
  * }
  */
-export function KeepAlive(props: {
+function KeepAliveImpl(props: {
   active?: () => boolean
   /** Accepted for Vue compatibility — ignored (no per-instance cache). */
   include?: string | RegExp | (string | RegExp)[]
@@ -1990,7 +1995,7 @@ export function KeepAlive(props: {
  * //   .fade-enter-from, .fade-leave-to     { opacity: 0; }
  * //   .fade-enter-active, .fade-leave-active { transition: opacity 300ms; }
  */
-export function Transition(props: {
+function TransitionImpl(props: {
   name?: string
   show?: () => boolean
   appear?: boolean
@@ -2065,7 +2070,7 @@ export function Transition(props: {
  *   )
  * }
  */
-export function TransitionGroup<T = unknown>(props: {
+function TransitionGroupImpl<T = unknown>(props: {
   tag?: string
   name?: string
   appear?: boolean
@@ -2155,6 +2160,16 @@ function VueSuspense(props: {
 // Native so `jsx()` does not wrap it — the boundary has no Vue-style render
 // semantics, and wrapping only adds a compat render frame around it.
 export const Suspense = /* @__PURE__ */ nativeCompat(VueSuspense)
+
+// Framework components built on Pyreon's own runtime components (Portal,
+// KeepAlive, Transition, TransitionGroup) are `nativeCompat`, like `Suspense`:
+// the compat wrapper would run their bodies inside a Vue-style render frame
+// (untracked, re-run on every state change), where `<KeepAlive>` rendered its
+// children as nothing. Assignment + PURE keeps them tree-shakeable.
+export const Teleport = /* @__PURE__ */ nativeCompat(TeleportImpl)
+export const KeepAlive = /* @__PURE__ */ nativeCompat(KeepAliveImpl)
+export const Transition = /* @__PURE__ */ nativeCompat(TransitionImpl)
+export const TransitionGroup = /* @__PURE__ */ nativeCompat(TransitionGroupImpl)
 
 // ─── getCurrentInstance / useSlots / useAttrs ────────────────────────────────
 

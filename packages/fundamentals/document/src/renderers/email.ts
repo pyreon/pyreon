@@ -113,8 +113,14 @@ function renderNode(node: DocNode): string {
       return `<p style="margin:0 0 12px 0;font-size:${size}px;color:${color};font-weight:${weight};font-style:${style};text-decoration:${decoration};${align}line-height:${lh}">${renderChildren(node.children)}</p>`
     }
 
-    case 'link':
-      return `<a href="${esc(sanitizeHref(p.href as string))}" style="color:${sanitizeColor((p.color as string) ?? '#4f46e5')};text-decoration:underline" target="_blank" rel="noopener noreferrer">${renderChildren(node.children)}</a>`
+    case 'link': {
+      // A rejected href (`sanitizeHref` returns '') renders the label only: an empty link target reloads / opens nothing useful (#4365).
+      const href = sanitizeHref(p.href as string)
+      const color = sanitizeColor((p.color as string) ?? '#4f46e5')
+      return href
+        ? `<a href="${esc(href)}" style="color:${color};text-decoration:underline" target="_blank" rel="noopener noreferrer">${renderChildren(node.children)}</a>`
+        : `<span style="color:${color}">${renderChildren(node.children)}</span>`
+    }
 
     case 'image': {
       const align = (p.align as string) ?? 'left'
@@ -206,6 +212,8 @@ function renderNode(node: DocNode): string {
       const href = esc(sanitizeHref(p.href as string))
       const text = renderChildren(node.children)
       const align = cssDecl('text-align', (p.align as string) ?? 'left')
+      // A rejected href renders the label as a plain block (see `link`).
+      if (!href) return `<div style="${align}margin:12px 0;font-weight:bold">${text}</div>`
 
       // Bulletproof button — works in Outlook via VML, CSS everywhere else
       return `<div style="${align}margin:12px 0"><!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${href}" style="height:44px;v-text-anchor:middle;width:200px" arcsize="10%" strokecolor="${bg}" fillcolor="${bg}"><w:anchorlock/><center style="color:${color};font-family:Arial,sans-serif;font-size:14px;font-weight:bold">${text}</center></v:roundrect><![endif]--><!--[if !mso]><!--><a href="${href}" style="display:inline-block;background-color:${bg};color:${color};padding:12px 24px;border-radius:${radius}px;text-decoration:none;font-weight:bold;font-size:14px;font-family:Arial,sans-serif" target="_blank" rel="noopener noreferrer">${text}</a><!--<![endif]--></div>`

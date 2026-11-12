@@ -308,7 +308,7 @@ export function schedulePrefetch(
     },
     { rootMargin: '200px' },
   )
-  observer.observe(el)
+  for (const target of visibilityTargets(el)) observer.observe(target)
   return () => {
     cancelled = true
     observer.disconnect()
@@ -521,6 +521,8 @@ function scheduleInteractionHydration(
   // index walk relative to `el`. After hydration we re-query the live tree.
   let captured: CapturedInteraction | null = null
   // Stamp a "scheduled" marker for tests / devtools introspection.
+  // `data-island-state` is removed once hydration finishes; `data-island-hydrated`
+  // (set in hydrateIsland) marks the island as live.
   el.setAttribute('data-island-state', 'awaiting-interaction')
 
   const startHydration = () => {
@@ -699,12 +701,28 @@ async function hydrateIsland(
     const idPrefix = el.getAttribute('data-id-prefix')
     const tree = idPrefix === null ? h(Comp, props) : h(_IslandIds, { prefix: idPrefix }, h(Comp, props))
     runWithContextOwner(owner ?? null, () => hydrateRoot(el, tree))
+    // Stamp the "live" marker only after hydrateRoot returns, so tests and
+    // devtools can wait for it (a static page never sets data-pyreon-hydrated).
+    el.setAttribute('data-island-hydrated', '')
     if (process.env.NODE_ENV !== 'production') _count('island.hydrated')
   } catch (err) {
     console.error(`Failed to hydrate island "${name}"`, err)
     el.setAttribute('data-island-error', 'hydration-failed')
     if (process.env.NODE_ENV !== 'production') _count('island.error')
   }
+}
+
+/**
+ * What to observe for an island's `visible` trigger. An island element styled
+ * `display: contents` (a common choice: the wrapper then adds no box to the
+ * layout) generates no box, and an IntersectionObserver never reports a
+ * box-less target as intersecting, so the island never hydrated. Its element
+ * children carry the boxes; any of them entering the viewport counts.
+ */
+function visibilityTargets(el: HTMLElement): Element[] {
+  if (typeof getComputedStyle === 'undefined' || getComputedStyle(el).display !== 'contents') return [el]
+  const children = [...el.children]
+  return children.length > 0 ? children : [el]
 }
 
 function observeVisibility(el: HTMLElement, callback: () => void): (() => void) | null {
@@ -728,7 +746,7 @@ function observeVisibility(el: HTMLElement, callback: () => void): (() => void) 
     { rootMargin: '200px' },
   )
 
-  observer.observe(el)
+  for (const target of visibilityTargets(el)) observer.observe(target)
   return () => observer.disconnect()
 }
 

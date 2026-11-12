@@ -1,3 +1,4 @@
+import { For } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { Link } from "@pyreon/zero/link"
 import { posts } from "../lib/posts"
@@ -22,7 +23,7 @@ export default function Home() {
       <p>Recent writing, statically rendered. Subscribe via <a href="/api/rss">RSS</a>.</p>
 
       <ul class="post-list">
-        {recent.map((post) => (
+        <For each={recent} by={(post) => post.slug}>{(post) => (
           <li>
             <h2 class="post-title">
               <Link href={`/blog/${post.slug}`} prefetch="hover">
@@ -33,13 +34,13 @@ export default function Home() {
             <p class="post-summary">{post.description}</p>
             {post.tags && post.tags.length > 0 ? (
               <div class="tags">
-                {post.tags.map((t) => (
+                <For each={post.tags} by={(t) => t}>{(t) => (
                   <span class="tag">#{t}</span>
-                ))}
+                )}</For>
               </div>
             ) : null}
           </li>
-        ))}
+        )}</For>
       </ul>
 
       {posts.length > recent.length ? (

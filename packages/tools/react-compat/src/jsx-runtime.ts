@@ -275,4 +275,25 @@ export function jsx(
 }
 
 export const jsxs = jsx
+
+/**
+ * The layer's element factory (``createElement` / `h``) — routed through {@link jsx} so a
+ * component built with it gets exactly what a JSX-written one gets: the compat
+ * wrapper (hooks run inside a render frame, state changes re-render), or the
+ * component itself when it is marked `nativeCompat`. Handing a user component
+ * to core's `h()` directly skipped the wrapper, so its hooks threw
+ * "Hook called outside of a component render" or it never re-rendered.
+ * `key` in `props` is passed as the key, and positional `children` win over
+ * `props.children`, as in React.
+ */
+export function createElement(
+  type: string | ComponentFn | symbol,
+  props?: (Props & { key?: string | number | null }) | null,
+  ...children: VNodeChild[]
+): VNode {
+  const { key, ...rest } = (props ?? {}) as Props & { key?: string | number | null }
+  const merged = rest as Props & { children?: VNodeChild | VNodeChild[] }
+  if (children.length > 0) merged.children = children.length === 1 ? children[0] : children
+  return jsx(type, merged, key ?? null)
+}
 export const jsxDEV = jsx
