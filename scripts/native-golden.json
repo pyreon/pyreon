@@ -122,8 +122,8 @@
       "warnings": 0
     },
     "fixture:13-canonical-overlay.tsx|swift": {
-      "sha": "628f2161e809287aab1c33d5c9ffc8737b59d561945cd106a3e9d3657561303f",
-      "bytes": 425,
+      "sha": "9c417c284a5243d419841baf7712dfa932e4bff0a509ac17c04386fc17dd4808",
+      "bytes": 438,
       "warnings": 0
     },
     "fixture:13-canonical-overlay.tsx|kotlin": {
@@ -222,8 +222,8 @@
       "warnings": 0
     },
     "fixture:router-tabs.tsx|swift": {
-      "sha": "e7fdcf5e94cd112457dba6ea39d133f7d9b04c144f1d72a5e2657b03cbcf2c3a",
-      "bytes": 2774,
+      "sha": "75cde6c2e54587945b9b9cc15f5f6c18b496ec2ddeefecbf5ad003141862b65e",
+      "bytes": 2882,
       "warnings": 0
     },
     "fixture:router-tabs.tsx|kotlin": {
@@ -262,8 +262,8 @@
       "warnings": 0
     },
     "fixture:showcase-finance.tsx|swift": {
-      "sha": "c4757812b8c3f05d8bf1f7884282eafe044d09f00a610941a7083a98e39d7e6e",
-      "bytes": 5446,
+      "sha": "59739c2509e1be4c75f0ca18105b81028c82ee2668b8a61e670d123569e34740",
+      "bytes": 5513,
       "warnings": 1
     },
     "fixture:showcase-finance.tsx|kotlin": {
@@ -272,8 +272,8 @@
       "warnings": 0
     },
     "fixture:showcase-tasks.tsx|swift": {
-      "sha": "9741f0eba8ba24743f91dbc53e2e072364a1ea4cac2e43aaa0bf67e17a3e0a34",
-      "bytes": 12658,
+      "sha": "4bc77ae33fba257841eae7b6963e0c6e171d20b2df54677ac6f2953e4075f98f",
+      "bytes": 12725,
       "warnings": 1
     },
     "fixture:showcase-tasks.tsx|kotlin": {
@@ -2692,8 +2692,8 @@
       "warnings": 0
     },
     "golden-fixture:flow-45.tsx|swift": {
-      "sha": "b6b48db7d3d2e35f5fc775e209df45bcc646f218123477dbabee6044932d13e8",
-      "bytes": 20128,
+      "sha": "a3e56ee2008f2470e77ef9397b11e704f86cc7ca2926ecbaf2fba9bc12bcb218",
+      "bytes": 20154,
       "warnings": 0
     },
     "golden-fixture:flow-45.tsx|kotlin": {
@@ -2702,8 +2702,8 @@
       "warnings": 0
     },
     "golden-fixture:flow-46.tsx|swift": {
-      "sha": "407d25951d4187fbc8dfdde277a7469122c30ba0104424e2c1bec31a1aae7dd2",
-      "bytes": 160998,
+      "sha": "8d44517f32613415d7a7b88274262f5b0c8e07b022d9135bb52159b3c072429c",
+      "bytes": 161117,
       "warnings": 2
     },
     "golden-fixture:flow-46.tsx|kotlin": {
@@ -3162,8 +3162,8 @@
       "warnings": 1
     },
     "golden-fixture:http-01.tsx|swift": {
-      "sha": "9741f0eba8ba24743f91dbc53e2e072364a1ea4cac2e43aaa0bf67e17a3e0a34",
-      "bytes": 12658,
+      "sha": "4bc77ae33fba257841eae7b6963e0c6e171d20b2df54677ac6f2953e4075f98f",
+      "bytes": 12725,
       "warnings": 1
     },
     "golden-fixture:http-01.tsx|kotlin": {
@@ -7392,8 +7392,8 @@
       "warnings": 0
     },
     "example:native-counter-ios/Counter.tsx|swift": {
-      "sha": "d63bb8d906d85d9cbafc22926e747c3ea467d415a902f2004126199df76d71da",
-      "bytes": 21932,
+      "sha": "15cf7e20f25c5a62242bc20d8ced7da447daa3494b7a664d26f095e67cdcdc63",
+      "bytes": 21958,
       "warnings": 0
     },
     "example:native-counter-ios/Counter.tsx|kotlin": {
@@ -7402,8 +7402,8 @@
       "warnings": 0
     },
     "example:native-finance/FinanceApp.tsx|swift": {
-      "sha": "e3cb650ccac162cd8f9eec24ff52a093e9663c20508def0fb90c6f096972c0f9",
-      "bytes": 7922,
+      "sha": "7fe7d3e9ad1839a047d068923d9d919ac54b71d17a07f5218184b5478fd2c12d",
+      "bytes": 7989,
       "warnings": 1
     },
     "example:native-finance/FinanceApp.tsx|kotlin": {
@@ -7412,8 +7412,8 @@
       "warnings": 0
     },
     "example:native-router-demo-ios/RouterApp.tsx|swift": {
-      "sha": "e80a52631e98a97027e8367a5d5783b31eb05a2e51816b6e611ecf200832a56d",
-      "bytes": 37973,
+      "sha": "b7af385bcafb3904599e6193db340f9e2e8b265ed71f3903027c577fcd71e868",
+      "bytes": 38161,
       "warnings": 1
     },
     "example:native-router-demo-ios/RouterApp.tsx|kotlin": {
@@ -7422,8 +7422,8 @@
       "warnings": 1
     },
     "example:native-tasks/TasksApp.tsx|swift": {
-      "sha": "6664e53980a8e36486889f789161bb5068e42891adb7b28b9aa4fb88b46beb6a",
-      "bytes": 181325,
+      "sha": "a2c78dec5814a4865b7343615e86db86ed350a452c38b0b076824f39df8b6550",
+      "bytes": 181457,
       "warnings": 2
     },
     "example:native-tasks/TasksApp.tsx|kotlin": {

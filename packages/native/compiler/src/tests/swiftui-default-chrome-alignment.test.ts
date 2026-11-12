@@ -174,7 +174,7 @@ describe('<Stack> / <Inline> align to the start by default (#4482)', () => {
 describe('<Scroll> content starts at the leading edge (#4482)', () => {
   it('vertical: an explicit leading stack pinned to the leading edge', () => {
     expect(swift(`<Scroll><Text>a</Text><Text>b</Text></Scroll>`)).toMatch(
-      /ScrollView \{\n\s*VStack\(alignment: \.leading\) \{\n[\s\S]*\n\s*\}\.frame\(maxWidth: \.infinity, alignment: \.leading\)\n\s*\}/,
+      /ScrollView \{\n\s*VStack\(alignment: \.leading\) \{\n[\s\S]*\n\s*\}\.frame\(minWidth: 0, maxWidth: \.infinity, alignment: \.leading\)\n\s*\}/,
     )
   })
 
@@ -182,12 +182,12 @@ describe('<Scroll> content starts at the leading edge (#4482)', () => {
     const out = swift(`<Scroll axis="horizontal"><Text>a</Text></Scroll>`)
     expect(out).toContain('ScrollView(.horizontal) {')
     expect(out).toContain('HStack(alignment: .top) {')
-    expect(out).not.toContain('.frame(maxWidth: .infinity, alignment: .leading)')
+    expect(out).not.toContain(".frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)")
   })
 
   it('a lazy list keeps its spacing and gains the alignment', () => {
     const out = swift(`<Scroll><For each={items} by={(t) => t.id}>{(t) => <Text>{t.title}</Text>}</For></Scroll>`)
-    expect(out).toMatch(/LazyVStack\(alignment: \.leading, spacing: 0\) \{[\s\S]*\}\.frame\(maxWidth: \.infinity, alignment: \.leading\)/)
+    expect(out).toMatch(/LazyVStack\(alignment: \.leading, spacing: 0\) \{[\s\S]*\}\.frame\(minWidth: 0, maxWidth: \.infinity, alignment: \.leading\)/)
   })
 })
 
@@ -202,12 +202,12 @@ describe('routed screens start at the top (#4482)', () => {
       return <RouterProvider router={router}><RouterView /></RouterProvider>
     }
   `
-  const FRAME = '.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)'
+  const FRAME = '.frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)'
 
   it('the home route and every navigationDestination are pinned top-leading', () => {
     const out = transform(routed, { target: 'swift' }).code
     expect(out).toContain(`Home()${FRAME}`)
-    expect(out).toMatch(/\.navigationDestination\(for: String\.self\) \{ path in\n\s*Group \{\n[\s\S]*?\n\s*\}\.frame\(maxWidth: \.infinity, maxHeight: \.infinity, alignment: \.topLeading\)\n/)
+    expect(out).toMatch(/\.navigationDestination\(for: String\.self\) \{ path in\n\s*Group \{\n[\s\S]*?\n\s*\}\.frame\(minWidth: 0, maxWidth: \.infinity, minHeight: 0, maxHeight: \.infinity, alignment: \.topLeading\)\n/)
   })
 
   it.skipIf(!isSwiftcAvailable())('the routed emit type-checks', () => {

@@ -9237,7 +9237,7 @@ function emitSwiftScrollBody(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   // pinned to the leading edge on a vertical scroll. The wrapper keeps the
   // implicit stack's default spacing, so only the alignment changes.
   const horizontal = axis === 'horizontal'
-  const pin = horizontal ? '' : '.frame(maxWidth: .infinity, alignment: .leading)'
+  const pin = horizontal ? '' : '.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)'
   const innerPad = ' '.repeat(indent + 4)
   if (hasFor) {
     const lazyStack = horizontal ? 'LazyHStack(alignment: .top' : 'LazyVStack(alignment: .leading'
@@ -11127,8 +11127,16 @@ function swiftRouteParamsInvocation(
  * top of the page and a Compose NavHost destination at TopStart. Applied to
  * every screen the router emits: the home route, a tab's root, and the
  * `navigationDestination` dispatch.
+ *
+ * `minWidth: 0` / `minHeight: 0` are load-bearing: without a minimum a flexible
+ * frame is at least as large as its content, so a screen taller than the space
+ * left (a long page, or any page while the keyboard is up) grew past it and was
+ * centred by the stack, overflowing UNDER the nav bar. With them the frame is
+ * the space offered and a tall screen overflows at the bottom, as it does on
+ * Compose.
  */
-const SWIFT_SCREEN_FRAME = '.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)'
+const SWIFT_SCREEN_FRAME =
+  '.frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)'
 
 /**
  * The `.navigationDestination(for: String.self) { path in … }` modifier around
