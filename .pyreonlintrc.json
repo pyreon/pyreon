@@ -442,6 +442,7 @@
       {
         "exemptPaths": [
           "packages/zero/zero/src/adapters/",
+          "packages/zero/zero/src/dev-overlay-env.ts",
           "packages/tools/atlas/src/plugins/"
         ]
       }
