@@ -12,17 +12,17 @@ Use the cheapest layer that answers your question.
 | Layer | Command | Feedback | Use it for |
 | --- | --- | --- | --- |
 | Web | `bun run dev` | Instant, state-preserving hot reload | Layout, logic and styling that behave the same on every target. Most of the work. |
-| Compiler | `npx pyreon-native check --watch --source=src` | Milliseconds, no device | "Will this construct run on the device?" — every unsupported construct is a named warning. |
-| Device | `npx pyreon-native dev --target=ios` (or `android`) | Seconds, on a real simulator or emulator | Native look and feel, device features, anything the web cannot show. |
+| Compiler | `npx @pyreon/native-cli check --watch --source=src` | Milliseconds, no device | "Will this construct run on the device?" — every unsupported construct is a named warning. |
+| Device | `npx @pyreon/native-cli dev --target=ios` (or `android`) | Seconds, on a real simulator or emulator | Native look and feel, device features, anything the web cannot show. |
 
 ## `pyreon-native dev`
 
 ```bash
 # iOS: uses a booted simulator, or boots the newest iPhone simulator
-npx pyreon-native dev --target=ios
+npx @pyreon/native-cli dev --target=ios
 
 # Android: needs an online emulator or a USB-debugging device
-npx pyreon-native dev --target=android
+npx @pyreon/native-cli dev --target=android
 ```
 
 Run it from the project root of a [Create Multi-Platform](/docs/create-multiplatform) app. It does this on every change:

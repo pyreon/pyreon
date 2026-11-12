@@ -19,7 +19,7 @@ Or with zero setup: `pyreon loom <cmd>` delegates to the project-local install.
 
 ```bash
 pyreon loom scan .
-# loom: 142 workspace package(s), 147 external dep(s), 681 internal edge(s), depth 8, 0 cycle(s).
+# loom: 148 workspace package(s), 227 external dep(s), 858 internal edge(s), depth 11, 0 cycle(s).
 #
 # WARNING · 8
 #   ▲ version-drift [happy-dom] — `happy-dom` is declared with 2 different ranges (^20.11.1 · ^20.0.0)
@@ -33,7 +33,7 @@ It reads the same declarations an install tool reads — root `workspaces` globs
 | --- | --- | --- |
 | `version-drift` | error / warning / info | one external dep declared with different ranges. Cross-major = error; same-major = warning; root-overridden = info. **Peer ranges are contracts, not pins** (excluded from the grouping), and a range that's a strict superset of the rest (`>=5 <7` ⊇ `^6.0.3`) reads as policy → info |
 | `internal-range` | error | a workspace member referenced by a bare semver (a registry install waiting to happen) or a `workspace:` pin whose major no longer exists |
-| `cycle` | error | a **runtime** import loop between workspace packages — dev edges are deliberately excluded, because monorepos legitimately share test utilities both ways |
+| `cycle` | error | a cycle in the **runtime** dependency graph between workspace packages, as declared in `package.json` (`dependencies` + `peerDependencies`) — dev edges are deliberately excluded, because monorepos legitimately share test utilities both ways |
 | `phantom-dep` | error (published) / warning (private) | shipping source imports a package the manifest never declares — hoisting luck that explodes under isolated stores |
 | `prod-import-of-dev-dep` | warning (published) / info (private) | shipping source leans on a devDependency consumers won't have |
 | `peer-mismatch` | warning | an internal peer range disagreeing with the workspace copy by a major |
@@ -66,7 +66,7 @@ Vite + `@pyreon/vite-plugin` are **optional peers**: `loom scan` runs without th
 
 ```bash
 pyreon loom build . --out=loom-dist --base=/deps/
-# loom: 142 package(s) → loom-dist
+# loom: 148 package(s) → loom-dist
 ```
 
 Prerenders the same five views to plain files — one page per view at its own URL (`/`, `/matrix`, `/cycles`, `/impact`, `/manifests`), so you can link someone straight to the cycles view. The scan is baked in once, so the output works from any static host or opened straight from `file://`. `--out` defaults to `loom-dist`; `--base` sets the public path for a subdirectory deploy; `--no-imports` behaves as it does for `scan`. The build is a snapshot — re-run it after dependency changes to refresh.
@@ -122,8 +122,8 @@ A `pyreon.config.*` that exists but fails to load is a **named error**, never a 
 ## CI wiring
 
 ```yaml
-- run: bunx loom scan .           # red exit on error findings
-- run: bunx loom scan . --strict  # warnings gate too
+- run: bunx @pyreon/loom scan .           # red exit on error findings
+- run: bunx @pyreon/loom scan . --strict  # warnings gate too
 ```
 
 The machine surface is `loom-report.json` — stable issue codes, structured evidence per finding, and the full model (packages, edges, depths, reach) for your own tooling.

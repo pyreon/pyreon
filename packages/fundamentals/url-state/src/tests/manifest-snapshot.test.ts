@@ -29,8 +29,8 @@ describe('gen-docs — url-state snapshot', () => {
 
       // Schema mode — multiple params from a single call
       const filters = useUrlState({ q: '', sort: 'name', desc: false })
-      filters.q.set('hello')       // ?q=hello&sort=name&desc=false
-      filters.sort.set('date')     // ?q=hello&sort=date&desc=false
+      filters.q.set('hello')       // ?q=hello  (params at their default are not written: clearOnDefault)
+      filters.sort.set('date')     // ?q=hello&sort=date
       filters.desc.set(true)       // ?q=hello&sort=date&desc=true
 
       // Array parameters with repeated keys

@@ -3,7 +3,7 @@ title: Atlas
 description: The AI-native component workbench — derives, verifies, and serves a machine-readable component catalog from your source.
 ---
 
-`@pyreon/atlas` is a component workbench that inverts Storybook's model: **you don't author stories — Atlas derives them.** Your components and their TypeScript types are the source of truth. Atlas infers controls from prop types, generates scenarios from variant axes (rocketstyle dimensions included), verifies every scenario with a five-check pipeline, and writes the result as a machine-readable catalog that both humans (the workbench) and AI assistants (the agent guide) consume.
+`@pyreon/atlas` is a component workbench that inverts Storybook's model: **you don't author stories — Atlas derives them.** Your components and their TypeScript types are the source of truth. Atlas infers controls from prop types, generates scenarios from variant axes (rocketstyle dimensions included), verifies every scenario with a six-check pipeline, and writes the result as a machine-readable catalog that both humans (the workbench) and AI assistants (the agent guide) consume.
 
 <PackageBadge name="@pyreon/atlas" href="/docs/atlas" />
 
@@ -34,8 +34,8 @@ Atlas works with **zero config** — `atlas scan` / `atlas dev` need nothing at 
 
 ```bash
 pyreon atlas scan .
-# atlas: discovered 10 component(s), 44 scenario(s) — 42 verified, 2 failing, 0 unverified.
-#   checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43
+# atlas: discovered 11 component(s), 44 scenario(s) — 42 verified, 2 failing, 0 unverified.
+#   checks: a11y 12/14 ✗ · interaction 44/44 · ssrParity 44/44 · leak 44/44
 #   not run: reactivityCoverage, snapshot — browser-only — run `atlas verify-browser`
 #   → atlas-catalog.json
 #   → atlas-agent-guide.md
@@ -337,8 +337,8 @@ The scan runs `play` **instead of** the automatic click-walk; a throw fails the 
 ## CI wiring
 
 ```yaml
-- run: bunx atlas scan .              # red exit on failing scenarios
-- run: bunx atlas verify-browser .    # red exit on visual diffs
+- run: bunx @pyreon/atlas scan .              # red exit on failing scenarios
+- run: bunx @pyreon/atlas verify-browser .    # red exit on visual diffs
 ```
 
 `scan` under `bun` gets the leak check for free (GC hook present). `verify-browser` needs Playwright Chromium in the environment; snapshot baselines should be created per-runner (first run) rather than committed across platforms.
@@ -348,7 +348,7 @@ The scan runs `play` **instead of** the automatic click-walk; a throw fails the 
 | | Storybook | Atlas |
 |---|---|---|
 | Stories | authored by hand (CSF) | **derived** from types + variant axes; authoring is opt-in enrichment |
-| Verification | separate addons/test-runner | five-check verdict built into the scan, three honest states |
+| Verification | separate addons/test-runner | six-check verdict built into the scan, three honest states |
 | AI surface | none (catalog is your source) | `atlas-catalog.json` + agent guide, first-class |
 | Compat | — | Storybook stays a supported *bridge* (`@pyreon/storybook` renderer); Atlas never requires migrating stories |
 

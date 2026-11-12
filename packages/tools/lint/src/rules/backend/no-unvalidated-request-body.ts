@@ -20,7 +20,11 @@ import { getSpan } from '../../utils/ast'
  * is left alone.
  */
 const BODY_READERS = new Set(['json', 'formData', 'text'])
-const VALIDATORS = /^(parse|safeParse|parseAsync|validate|assert|check|decode)$/i
+// A bare validator name, or one followed by what it validates: `parse`,
+// `schema.safeParse`, and also a hand-written `parseNewPost(body)` /
+// `validateSignup(body)` / `assertUser(body)`. The suffix must start with an
+// uppercase letter, so `checkout` or `decoder` do not count as validating.
+const VALIDATORS = /^(?:parse|safeParse|parseAsync|validate|assert|check|decode)(?:[A-Z]\w*)?$/
 const REQUESTISH = /^(req|request|ctx|context|event)$/i
 
 /**

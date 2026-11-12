@@ -6,7 +6,7 @@ export default defineManifest({
   tagline:
     'Reactive code editor — CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages',
   description:
-    'Reactive code editor for Pyreon built on CodeMirror 6 — the core editor is ~138 KB gz (measured), ~7x lighter than Monaco\'s ~940 KB gz core. `editor.value` is a writable Signal<string> — reads track reactively, writes push back into CodeMirror. 19 language grammars lazy-loaded on demand. Canvas-based minimap, diff editor, tabbed editor, and two-way signal binding with built-in loop prevention.',
+    'Reactive code editor for Pyreon built on CodeMirror 6 — the core editor is about 131 KB gz (measured, see BENCHMARKS.md), at parity with @uiw/react-codemirror, which wraps the same CM6. `editor.value` is a writable Signal<string> — reads track reactively, writes push back into CodeMirror. 19 language grammars lazy-loaded on demand. Canvas-based minimap, diff editor, tabbed editor, and two-way signal binding with built-in loop prevention.',
   category: 'browser',
   multiplatform: {
     tier: 'web-only',
@@ -76,7 +76,7 @@ tabbed.openTab({ id: 'readme', name: 'README.md', language: 'markdown', value: '
     'bindEditorToSignal — two-way binding with built-in loop prevention',
     '19 language grammars via loadLanguage (lazy-loaded)',
     'Canvas-based minimapExtension for code overview',
-    'Built on CodeMirror 6 — measured core ~138KB gz vs Monaco ~940KB gz ESM core (~7x smaller gzipped)',
+    'Built on CodeMirror 6 — measured core about 131 KB gz (BENCHMARKS.md), at parity with @uiw/react-codemirror',
   ],
   api: [
     {
@@ -313,7 +313,7 @@ const extensions = [darkTheme /* , ...other CM extensions */]`,
     },
     {
       label: 'Bundle size',
-      note: 'Built on CodeMirror 6. Measured (esbuild+gzip, code-split): the core editor is ~138 KB gz (~416 KB min) — at parity with @uiw/react-codemirror (~129 KB gz), both wrap the same CM6. Monaco\'s ESM core is ~940 KB gz (~3.6 MB min, workers/CSS excluded) — @pyreon/code is ~7x smaller gzipped. Each extra language grammar streams as a ~40 KB gz lazy chunk that reuses the loaded core. Reproduce with `bun run --filter=@pyreon/code bench`.',
+      note: 'Built on CodeMirror 6. Measured (esbuild+gzip, code-split): the core editor is about 131 KB gz — at parity with @uiw/react-codemirror (about 126 KB gz), both wrap the same CM6 (the current figures are in BENCHMARKS.md; the Monaco comparison was withdrawn because its bundle row does not build). Each extra language grammar streams as a ~40 KB gz lazy chunk that reuses the loaded core. Reproduce with `bun run --filter=@pyreon/code bench`.',
     },
     {
       label: 'Third-party themes',

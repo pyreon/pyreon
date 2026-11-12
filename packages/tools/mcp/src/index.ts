@@ -226,10 +226,12 @@ server.tool(
     const merged: Diag[] = [...reactDiags, ...pyreonDiags, ...nativeDiags]
     merged.sort((a, b) => a.line - b.line || a.column - b.column)
 
+    // The detectors' column is 0-based; the text gives the 1-based column an
+    // editor shows, beside the line (it used to drop the column entirely).
     const issueText = merged
       .map(
         (d, i) =>
-          `${i + 1}. **${d.code}** (line ${d.line})\n   ${d.message}\n   Current: \`${d.current}\`\n   Fix: \`${d.suggested}\`\n   Auto-fixable: ${d.fixable ? 'yes' : 'no'}`,
+          `${i + 1}. **${d.code}** (line ${d.line}, column ${d.column + 1})\n   ${d.message}\n   Current: \`${d.current}\`\n   Fix: \`${d.suggested}\`\n   Auto-fixable: ${d.fixable ? 'yes' : 'no'}`,
       )
       .join('\n\n')
 
