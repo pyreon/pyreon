@@ -166,7 +166,7 @@ Real browsers don't. happy-dom queues it on a `setTimeout`, so a stale echo from
 
 ### Spawning a JVM toolchain per check
 
-In `@pyreon/native-compiler` the cost of `kotlinc` was JVM start, not compilation. One warm compiler JVM per vitest worker slot (vitest `globalSetup: src/tests/global-setup-kotlin-daemon.ts`) with stubs pre-compiled to a jar replaces per-check spawns; plain `kotlinc` remains the fallback and a parity spec locks both to identical verdicts. Scope a warm resource to the run, and size it to the run's concurrency: vitest's forks pool starts a process per test file, and one single-threaded daemon shared by parallel files forced the whole suite serial (a queued caller's deadline was spent on other files' compiles). Check that an "invalid" probe is actually invalid (`String + Int` is legal Kotlin). Measure a toolchain's start against its work before sharding or caching.
+In `@pyreon/native-compiler` the cost of `kotlinc` was JVM start, not compilation. One warm compiler JVM per test run (vitest `globalSetup: src/tests/global-setup-kotlin-daemon.ts`) with stubs pre-compiled to a jar replaces per-check spawns; plain `kotlinc` remains the fallback and a parity spec locks both to identical verdicts. Scope a warm resource to the run: vitest's forks pool starts a process per test file. Check that an "invalid" probe is actually invalid (`String + Int` is legal Kotlin). Measure a toolchain's start against its work before sharding or caching.
 
 ---
 

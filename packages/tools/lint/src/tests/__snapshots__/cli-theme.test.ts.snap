@@ -61,9 +61,9 @@ exports[`--init > renders at truecolor dark 1`] = `
 `;
 
 exports[`--list > renders at truecolor (one level is enough: the roles are the reporter’s) 1`] = `
-"␛[1mpyreon-lint --list␛[22m ␛[38;2;138;134;150m· 133 rules in 10 groups␛[39m
+"␛[1mpyreon-lint --list␛[22m ␛[38;2;138;134;150m· 134 rules in 10 groups␛[39m
 
-  ␛[1mPYREON␛[22m ␛[38;2;138;134;150m(53) — framework semantics — nothing outside Pyreon can know these␛[39m
+  ␛[1mPYREON␛[22m ␛[38;2;138;134;150m(54) — framework semantics — nothing outside Pyreon can know these␛[39m
     pyreon/no-async-effect  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;248;113;113merror␛[39m
       Disallow async functions in \`effect()\` / \`renderEffect()\` / \`computed()\` — signal reads after
       the first await are not tracked.
@@ -109,6 +109,10 @@ exports[`--list > renders at truecolor (one level is enough: the roles are the r
     pyreon/plain-mode-footgun  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;248;113;113merror␛[39m
       Report every Plain Mode compile-time warning (shallow-state mutation, write to derived,
       unlowerable signalOf, …) as an error.
+    pyreon/no-stale-for-item-field  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;248;113;113merror␛[39m
+      A keyed \`<For>\` row reads a field of its item while this file replaces items under the same
+      key — on the web the row keeps the first value (iOS/Android redraw). Read the live value by
+      key through a call, or give the field its own signal.
     pyreon/no-map-in-jsx  ␛[38;2;138;134;150mjsx␛[39m  ␛[38;2;250;204;21mwarn␛[39m
       Prefer <For> over .map() inside JSX for reactive list rendering.
     pyreon/use-by-not-key  ␛[38;2;138;134;150mjsx␛[39m  ␛[38;2;248;113;113merror␛[39m

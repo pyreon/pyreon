@@ -108,6 +108,11 @@ const FIXTURES: Record<string, Fixture> = {
     bad: `'use plain'\nimport { state } from '@pyreon/core/plain'\nlet cfg = state.raw({ open: false })\nexport const toggle = () => { cfg.open = true }`,
     good: `'use plain'\nimport { state } from '@pyreon/core/plain'\nlet cfg = state.raw({ open: false })\nexport const toggle = () => { cfg = { ...cfg, open: true } }`,
   },
+  'pyreon/no-stale-for-item-field': {
+    file: 'src/a.tsx',
+    bad: `${SIG}const todos = signal([])\nconst toggle = (id) => todos.set(todos().map((t) => (t.id === id ? { ...t, done: !t.done } : t)))\nexport const A = () => <For each={todos} by={(t) => t.id}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For>`,
+    good: `${SIG}const todos = signal([])\nconst toggle = (id) => todos.set(todos().map((t) => (t.id === id ? { ...t, done: !t.done } : t)))\nconst isDone = (id) => todos().some((t) => t.id === id && t.done)\nexport const A = () => <For each={todos} by={(t) => t.id}>{(t) => <li>{isDone(t.id) ? 'y' : 'n'}</li>}</For>`,
+  },
   'pyreon/no-effect-assignment': {
     file: 'src/a.ts',
     bad: `${SIG}const total = signal(0)\neffect(() => { total.update((n) => n + 1) })`,

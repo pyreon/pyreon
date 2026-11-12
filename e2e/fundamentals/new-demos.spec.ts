@@ -435,6 +435,19 @@ test.describe('Feature demo — schema-driven CRUD over a mock fetcher', () => {
     await expect(checkbox).not.toBeChecked({ timeout: 5000 })
     await checkbox.click()
     await expect(checkbox).toBeChecked({ timeout: 5000 })
+    // The row must follow the updated task, not only the browser's own
+    // checkbox state. The update replaces the task object under the same id,
+    // which leaves a kept `<For>` row on its first value (#4468); this row
+    // reads `task.done` and still follows, because its `<For each={list.data()
+    // ?? []}>` sits in a `{() => …}` accessor that re-runs on the refetch and
+    // rebuilds the rows. The `for-stale-item-field` detector and
+    // `pyreon/no-stale-for-item-field` skip that shape on this premise; if the
+    // style ever stops following, the premise broke and they must not skip it.
+    await expect(page.locator('[data-testid=feature-task-2] span')).toHaveCSS(
+      'text-decoration-line',
+      'line-through',
+      { timeout: 5000 },
+    )
   })
 
   test('useSearch filters by title reactively', async ({ page }) => {

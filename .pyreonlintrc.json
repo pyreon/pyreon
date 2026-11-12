@@ -303,6 +303,17 @@
       }
     ],
     "pyreon/no-signal-read-in-attrs-callback": "error",
+    "pyreon/no-stale-for-item-field": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/native/compiler/src/fixtures/",
+          "packages/native/compiler/src/golden-fixtures/",
+          "packages/fundamentals/flow/native-golden/",
+          "packages/fundamentals/http/native-golden/"
+        ]
+      }
+    ],
     "pyreon/no-storage-write-as-call": "error",
     "pyreon/no-store-outside-provider": "error",
     "pyreon/no-submit-without-validation": "error",

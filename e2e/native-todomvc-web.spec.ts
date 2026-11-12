@@ -89,6 +89,42 @@ test.describe('native-todomvc-web — Phase D runtime contract', () => {
     await expect(page.getByText('0 remaining')).toBeVisible()
   })
 
+  // #4468: toggling replaces the todo object under the same `by` key, so the
+  // web `<For>` keeps the row and never re-runs its callback. A row that read
+  // `props.todo.done` kept the value it mounted with. The checkbox hides that
+  // when it is the writer (the browser flips `checked` itself), so the proof
+  // needs a writer that is NOT this checkbox: a second tab on the same storage
+  // key. Its write reaches this tab through the `storage` event, the count
+  // follows, and the row's checkbox must follow too.
+  test('a todo toggled in another tab flips this tab\'s checkbox, not only the count', async ({
+    context,
+    page,
+  }) => {
+    await page.goto('/')
+    const field = page.getByPlaceholder('What needs to be done?')
+    await field.fill('Walk dog')
+    await field.press('Enter')
+    await expect(page.getByText('1 remaining')).toBeVisible()
+    const here = page.locator('input[type="checkbox"]')
+    await expect(here).not.toBeChecked()
+
+    // No init script on this page, so it opens on the todo the first tab wrote.
+    const other = await context.newPage()
+    await other.goto('/')
+    await expect(other.getByText('Walk dog')).toBeVisible()
+    await other.locator('input[type="checkbox"]').click()
+    await expect(other.getByText('0 remaining')).toBeVisible()
+
+    await expect(page.getByText('0 remaining')).toBeVisible()
+    await expect(here).toBeChecked()
+
+    // And back.
+    await other.locator('input[type="checkbox"]').click()
+    await expect(page.getByText('1 remaining')).toBeVisible()
+    await expect(here).not.toBeChecked()
+    await other.close()
+  })
+
   test('<Button onPress> filter switches drive the visible computed', async ({
     page,
   }) => {

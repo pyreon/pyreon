@@ -77,10 +77,18 @@ final class PyreonCounterUITests: XCTestCase {
             return
         }
         for attempt in 1...4 {
+            // Re-check before EVERY tap. The first version of this loop tapped
+            // again after a 3 s wait without looking, and on CI (run
+            // 43237889444) the first tap had worked: the sheet was gone, the
+            // second tap found no button and failed the test. A tap is only
+            // repeated while the button is still there after the wait.
+            guard cancelButton.exists else { return }
             cancelButton.tap()
             let gone = NSPredicate(format: "exists == false")
             let expectation = XCTNSPredicateExpectation(predicate: gone, object: cancelButton)
-            if XCTWaiter().wait(for: [expectation], timeout: 3) == .completed {
+            // 8 s: one existence check costs about a second on a CI simulator,
+            // so a shorter wait can expire while the sheet is still animating out.
+            if XCTWaiter().wait(for: [expectation], timeout: 8) == .completed {
                 if attempt > 1 {
                     print("dismissSystemPicker: Cancel needed \(attempt) taps (the first landed before the remote picker accepted touches)")
                 }

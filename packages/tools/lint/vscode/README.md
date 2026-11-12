@@ -35,8 +35,8 @@ The extension starts `pyreon-lint --lsp` as a child process, communicating via
 stdin/stdout JSON-RPC (Language Server Protocol). Diagnostics appear inline as
 you type (150ms debounce).
 
-## 133 rules
+## 134 rules
 
-133 rules across 25 categories, the same set the `pyreon-lint` CLI runs. The
+134 rules across 25 categories, the same set the `pyreon-lint` CLI runs. The
 full list, with what each rule catches, is on the
 [lint docs page](https://pyreon.dev/docs/lint).
