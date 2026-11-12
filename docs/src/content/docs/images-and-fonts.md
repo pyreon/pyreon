@@ -10,7 +10,7 @@ description: Out-of-the-box image and font optimization in @pyreon/zero — bi-m
 ```ts
 // vite.config.ts
 import pyreon from '@pyreon/vite-plugin'
-import zero from '@pyreon/zero'
+import zero from '@pyreon/zero/server'
 
 export default {
   plugins: [

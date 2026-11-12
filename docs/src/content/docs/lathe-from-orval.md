@@ -16,7 +16,7 @@ illustrative.
 ## 1. Run `lathe init`
 
 ```bash
-npx lathe init
+npx @pyreon/lathe init
 ```
 
 It finds `orval.config.ts` (it is read as text — orval does not need to stay

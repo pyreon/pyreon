@@ -1,7 +1,12 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
 import { isTestFile } from '../../utils/file-roles'
+import { collectEventOnlyFunctions } from '../../utils/deferred-callbacks'
 import { BROWSER_GLOBALS } from '../../utils/imports'
+
+// One test for "could this file mention a browser global at all?", so the
+// event-only pre-pass below costs nothing in the files that never do.
+const MENTIONS_BROWSER_GLOBAL = new RegExp(`\\b(?:${[...BROWSER_GLOBALS].join('|')})\\b`)
 
 export const noWindowInSsr: Rule = {
   meta: {
@@ -441,10 +446,16 @@ export const noWindowInSsr: Rule = {
       }
       return false
     }
+    // Functions that only ever run in response to a browser event — JSX
+    // `on*` / `ref` values, `on*` option callbacks, and local functions
+    // referenced only from those. Server rendering never calls them, so a
+    // browser global inside is not an SSR hazard. Computed once per file, and
+    // only when the file mentions a browser global at all.
+    let eventOnly: WeakSet<object> | undefined
     function pushFunctionScope(node?: any) {
       earlyReturnStack.push(0)
       shadowedNamesStack.push(node ? collectParamNames(node.params ?? []) : new Set())
-      if (node && watchCallbackNodes.has(node)) {
+      if (node && (watchCallbackNodes.has(node) || eventOnly?.has(node))) {
         safeDepth++
         watchCallbackSafeDepthStack.push(1)
       } else {
@@ -466,6 +477,11 @@ export const noWindowInSsr: Rule = {
     }
 
     const callbacks: VisitorCallbacks = {
+      Program(node: any) {
+        if (MENTIONS_BROWSER_GLOBAL.test(context.getSourceText())) {
+          eventOnly = collectEventOnlyFunctions(node)
+        }
+      },
       VariableDeclaration(node: any) {
         for (const decl of node.declarations ?? []) {
           if (decl.id?.type !== 'Identifier') continue

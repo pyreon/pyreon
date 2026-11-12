@@ -12,7 +12,7 @@ TanStack Table v9 adapter.
   - `rowPaginationFeature` + `paginatedRowModel: createPaginatedRowModel()`
   - `columnVisibilityFeature` (required for `row.getVisibleCells()`)
   - `rowSelectionFeature`; `globalFilteringFeature` (needs column filtering)
-  - `stockFeatures` is all 16 features but not the row models.
+  - `stockFeatures` is all 17 features but not the row models.
 - Core types take a leading `TFeatures`: `ColumnDef<typeof features, T>`, `Table<TFeatures, T>`.
 - v9 changes from v8: `table.getState()` and top-level `onStateChange` are gone — use `table.store.state` / `table.atoms.<slice>` and per-slice `on<Slice>Change`. Supplying one puts that slice in controlled mode. Pinning is `start`/`end`; `sortingFn` → `sortFn`; `columnSizingInfo` → `columnResizing`; `getIsSomeRowsSelected()` is true when at least one row (including all) is selected.
 - The runtime re-export list is curated, not `export *`; `src/tests/public-surface.test.ts` snapshots it.
@@ -31,6 +31,6 @@ TanStack Table v9 adapter.
 Benches `bench:table` (re-run counts) and `bench:table:wall` compare against `@tanstack/react-table` on the same table-core:
 
 - Single-cell edit: 6 cell units and 1 DOM write, independent of N, matching a hand-memoized react-table without `React.memo`; wall-clock about 1.3× faster than memoized react-table.
-- Mount is about 1.7–1.9× slower (N×M fine-grained bindings allocated up front); replace about 1.1–1.3× slower.
+- Standings against react-table (mount, update, replace) are in `BENCHMARKS.md`; read them there rather than from a copy here, which went stale.
 - A sort re-runs every cell on the keyed path (react-memo-row does 0). This is deliberate and test-locked: a state-reading cell under `React.memo` freezes, ours stays correct.
 - Known limitation: a data edit that changes sort order updates values but does not re-position keyed rows until the next structure/state change. `toggleSorting`/`setSorting` reorder normally.

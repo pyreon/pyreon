@@ -4,7 +4,7 @@ export default defineManifest({
   name: '@pyreon/document-primitives',
   title: 'Document Primitives',
   tagline:
-    '18 rocketstyle document components — render in browser AND export to 14+ formats via the same tree',
+    '18 rocketstyle document components — render in browser AND export to 20 formats via the same tree',
   description:
     '18 rocketstyle-based document primitives — `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak`. The same JSX tree renders in the browser AND exports to 14+ output formats (PDF, DOCX, XLSX, PPTX, HTML, Markdown, email, Slack, Teams, etc.). Primitives carry `_documentType` static markers; `extractDocumentTree` (from `@pyreon/connector-document`) walks the tree to produce a `DocNode` for `@pyreon/document`\\\'s `render()` to consume. `DocDocument` accepts reactive accessors for `title` / `author` / `subject` — function values are stored in `_documentProps` and resolved at extraction time so each export click reads the LIVE value from the underlying signal.',
   category: 'browser',
@@ -15,7 +15,7 @@ export default defineManifest({
   },
   features: [
     '18 primitives covering structure, text, lists, tables, code, layout',
-    'Same component tree renders in browser AND exports to 14+ formats',
+    'Same component tree renders in browser AND exports to 20 formats',
     'extractDocNode(templateFn) — one-step extraction (recommended)',
     'createDocumentExport(templateFn) — two-step form (backward compat)',
     'DocDocument accepts reactive accessors for title / author / subject',
@@ -52,7 +52,7 @@ function ResumeTemplate(props: { resume: () => Resume }) {
   )
 }
 
-// One-step extraction → render to any of 14+ formats
+// One-step extraction → render to any of 20 formats
 const tree = extractDocNode(() => <ResumeTemplate resume={store.resume} />)
 await download(tree, 'resume.pdf')
 await download(tree, 'resume.docx')

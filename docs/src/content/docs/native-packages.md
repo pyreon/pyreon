@@ -39,7 +39,7 @@ A fixed `../node_modules/@pyreon/native-runtime-swift` path (what an unhoisted, 
 The pre-build script a scaffolded `ios/project.yml` runs on every build includes:
 
 ```bash
-npx pyreon-native wire --ios-out="${PROJECT_DIR}/ios"
+npx @pyreon/native-cli wire --ios-out="${PROJECT_DIR}/ios"
 ```
 
 `wire --ios-out` writes into two directories the Xcode project references by a FIXED relative path, regenerated on every build so a moved package can't go stale:
@@ -62,7 +62,7 @@ Both directories are `.gitignore`d — they're derived from `node_modules`, so c
 The equivalent Android step:
 
 ```bash
-npx pyreon-native wire --app="${PROJECT_DIR}" --android-out="${PROJECT_DIR}/android/app/pyreon-native.srcdirs"
+npx @pyreon/native-cli wire --app="${PROJECT_DIR}" --android-out="${PROJECT_DIR}/android/app/pyreon-native.srcdirs"
 ```
 
 `--android-out` writes a plain newline-separated list of absolute, already-resolved Kotlin source directories — the base runtime, the router, and every co-located feature `native/kotlin/` directory, in dependency order, deduplicated. `android/app/build.gradle.kts` reads it at Gradle **configure** time and falls back to the fixed `node_modules` paths only when the file doesn't exist yet (a flat install, or before `wire` has run once):

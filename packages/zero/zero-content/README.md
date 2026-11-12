@@ -11,7 +11,7 @@ Tightly coupled to `@pyreon/zero` — that integration IS the value:
 
 ## Status
 
-**v0 — Pre-publish.** The package is currently `private: true` in this monorepo, so a `bun add @pyreon/zero-content` from outside the workspace doesn't resolve yet. Use as a `workspace:*` dep inside the Pyreon repo (see `docs`) or watch this readme for the un-private flip.
+Published on npm: `bun add @pyreon/zero-content`.
 
 ## Install
 
@@ -28,7 +28,7 @@ bun add @pyreon/zero-content
 ```ts
 // vite.config.ts
 import pyreon from '@pyreon/vite-plugin'
-import zero from '@pyreon/zero'
+import zero from '@pyreon/zero/server'
 import content from '@pyreon/zero-content/plugin'
 
 export default {

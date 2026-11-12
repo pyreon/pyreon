@@ -68,7 +68,7 @@ const WindowList = () => {
     'useVirtualizer — element-scoped with reactive virtualItems, totalSize, isScrolling',
     'useWindowVirtualizer — window-scoped variant with SSR-safe browser checks',
     'item(index) — fine-grained per-index start/size/lane accessors (dynamic sizing, zero-cost until used)',
-    'Signal-driven count and estimateSize for reactive list lengths',
+    'Signal-driven count for reactive list lengths; a changed estimateSize applies after instance.measure()',
     'Fixed-size, known-variable, and dynamic (measureElement) sizing; horizontal + masonry lanes',
     'scrollToIndex / scrollToOffset for programmatic scrolling',
     'TanStack Virtual core utilities re-exported for convenience',
@@ -79,7 +79,7 @@ const WindowList = () => {
       kind: 'hook',
       signature: '(options: UseVirtualizerOptions) => UseVirtualizerResult',
       summary:
-        'Create an element-scoped virtualizer. Attach to a scrollable container via `getScrollElement`. Returns reactive `virtualItems()`, `totalSize()`, and `isScrolling()` signals; a fine-grained per-index `item(index)` accessor (`start`/`size`/`lane`); plus `instance.scrollToIndex()` / `scrollToOffset()`. Options that accept functions (`count`, `estimateSize`) track signal reads reactively. Render rows with a keyed `<For by={row => row.index}>` so a scroll patches only the entering/leaving rows — staying rows do zero work.',
+        'Create an element-scoped virtualizer. Attach to a scrollable container via `getScrollElement`. Returns reactive `virtualItems()`, `totalSize()`, and `isScrolling()` signals; a fine-grained per-index `item(index)` accessor (`start`/`size`/`lane`); plus `instance.scrollToIndex()` / `scrollToOffset()`. The options function tracks the signals it reads: a changed `count` recalculates at once, while a changed `estimateSize` result applies after `instance.measure()` (estimated sizes are cached). Render rows with a keyed `<For by={row => row.index}>` so a scroll patches only the entering/leaving rows — staying rows do zero work.',
       example: `const virtualizer = useVirtualizer(() => ({
   count: items().length,          // signal read inside the thunk → reactive
   getScrollElement: () => scrollRef,
@@ -95,7 +95,7 @@ const WindowList = () => {
         'Forgetting to set a fixed height on the scroll container — without overflow:auto + a height, the virtualizer has no viewport to measure',
         'Passing options as a plain object instead of a function — useVirtualizer takes a thunk `() => ({ ... })`, so signal reads inside it (e.g. `count: items().length`) are tracked and the virtualizer updates when the list changes',
         'Reading virtualItems() outside a reactive scope — captures the initial window only, never updates on scroll',
-        'Using .map() instead of <For> on virtualItems — .map() re-mounts EVERY visible row on every scroll (no keyed reconciliation); a keyed <For by={row => row.index}> reuses staying rows so only entering/leaving rows touch the DOM',
+        'Rendering virtualItems with an UNKEYED .map() — it re-mounts every visible row on every scroll; a keyed <For by={row => row.index}> (or a .map() whose rows carry key={row.index}, which reconciles the same way) reuses staying rows so only entering/leaving rows touch the DOM',
         'Reading a captured `<For>` item.start for DYNAMICALLY-measured lists (measureElement) — a staying row is NOT re-rendered when a remeasure above it shifts its position, so it goes stale. Use item(row.index).start() (a per-index signal) instead — required for dynamic sizing, still fine-grained',
         'Passing a `styled()` scroll container `innerRef` instead of `ref` — a styled component forwards plain `ref` to its DOM node; innerRef is a silent no-op there, so getScrollElement returns null and the list renders ZERO rows',
       ],

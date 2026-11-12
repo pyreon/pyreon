@@ -1123,7 +1123,13 @@ export default function NewPost() {
   return (
     <Form action={action}>
       <input name="title" />
-      <p>{() => sub.result()?.fields?.title?.join(', ') ?? ''}</p>
+      <p>
+        {() => {
+          // result() is the validation error OR the handler's own result; narrow first.
+          const r = sub.result()
+          return r && 'fields' in r ? (r.fields.title?.join(', ') ?? '') : ''
+        }}
+      </p>
       <input name="views" />
       <button>Create</button>
     </Form>

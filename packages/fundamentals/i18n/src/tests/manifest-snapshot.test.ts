@@ -36,7 +36,7 @@ describe('gen-docs — i18n snapshot', () => {
           },
         },
         // Async namespace loading — deduplicates concurrent requests:
-        loader: (locale, ns) => import(\`./locales/\${locale}/\${ns}.json\`),
+        loader: async (locale, ns) => (await import(\`./locales/\${locale}/\${ns}.json\`)).default,
       })
 
       // Use the t() function — reactive, re-evaluates on locale change:

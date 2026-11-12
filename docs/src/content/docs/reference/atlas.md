@@ -73,10 +73,10 @@ export const scenarios = {
 // and `wrapper` (the providers your components genuinely need to mount).
 
 // Then:
-//   bunx atlas scan .            → atlas-catalog.json + atlas-agent-guide.md
-//   bunx atlas verify Button     → re-check ONE component; says WHICH check failed
-//   bunx atlas dev .             → the workbench at localhost:5210
-//   bunx atlas verify-browser .  → coverage + snapshot verdicts in Chromium
+//   bunx @pyreon/atlas scan .            → atlas-catalog.json + atlas-agent-guide.md
+//   bunx @pyreon/atlas verify Button     → re-check ONE component; says WHICH check failed
+//   bunx @pyreon/atlas dev .             → the workbench at localhost:5210
+//   bunx @pyreon/atlas verify-browser .  → coverage + snapshot verdicts in Chromium
 ```
 
 ## Exports

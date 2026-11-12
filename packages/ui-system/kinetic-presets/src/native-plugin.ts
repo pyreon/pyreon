@@ -3,7 +3,7 @@ import { type CompilerPlugin } from '@pyreon/native-compiler/plugin-api'
 /**
  * Map a `@pyreon/kinetic-presets` export name onto the native preset vocabulary, or undefined when it has no analogue.
  *
- * Only UNAMBIGUOUS names map. The pack ships 123 presets and native knows seven, so most of them (backInDown, blurScale,
+ * Only UNAMBIGUOUS names map. The pack ships 122 presets and native knows seven, so most of them (backInDown, blurScale,
  * bounceIn, flip*, rotate*, …) have nothing to lower to. Mapping those to the nearest fade would silently animate the
  * wrong thing, which is worse than declining by name — and the decline is what the author can act on. Diagonal and
  * magnitude variants (fadeDownLeft, slideUpBig) are deliberately NOT mapped: native has neither a diagonal nor a distance

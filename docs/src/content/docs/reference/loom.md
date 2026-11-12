@@ -21,7 +21,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 - Workspace discovery matching real repos: npm/bun/yarn `workspaces` (array + object forms), pnpm-workspace.yaml, segment-wise globs (`packages/*/*`, `**`, negations)
 - Graph analysis split by edge SEMANTICS: runtime (dependencies + peers) drives cycles/depths/reach; dev edges tracked separately — shared test utilities never read as circular
-- Seven detectors with honest severities: version-drift (peer-contract + strict-superset-containment aware), internal-range, cycle, phantom-dep (+ phantom-type-dep), prod-import-of-dev-dep, peer-mismatch, unused-dep (info — lexical evidence, not proof)
+- Eight detectors with honest severities: version-drift (peer-contract + strict-superset-containment aware), internal-range, cycle, phantom-dep (+ phantom-type-dep), prod-import-of-dev-dep, peer-mismatch, unused-dep (info — lexical evidence, not proof)
 - Severity respects reality: a private package has no consumers, so its phantom-dep is a warning and its dev-dep import is info
 - TYPE-AWARE import scan: `import type` / `export type` (multi-line included) and everything in a `.d.ts` are tracked separately from runtime imports — importing types from a devDependency is correct code, so it is never reported, while an undeclared type-only import surfaces as info-level `phantom-type-dep` rather than a runtime phantom
 - Configured from the root `package.json`'s `loom` key OR a `loom` section in the ecosystem-wide `pyreon.config.*` — same shape, manifest wins per key; carries devPaths, ignore (reason mandatory), strict, and per-code severity overrides so a repo can adopt loom incrementally. A config file that exists but cannot load is a NAMED error, never a silent skip
@@ -69,7 +69,7 @@ $ loom dev . --port=5230   # the observatory UI over the same report
 loom scan [dir] [--strict] [--json] [--no-imports] [--no-write]
 ```
 
-Read the workspace, analyze the dependency fabric, and report. Discovery reads the same declarations an install tool reads; analysis splits edges by semantics (runtime vs dev); seven detectors emit findings with stable codes, honest severities (error gates, warning advises, info knows its own limits), and structured evidence (which files import the phantom, which packages declare which range). Writes `loom-report.json` next to the root manifest and EXITS NON-ZERO on error-severity findings — the CI contract. `--strict` reds on warnings too; `--no-imports` skips the lexical detectors (phantom/dev-dep/unused); `--json` prints the full report to stdout and ONLY that (the write notice moves to stderr), so `loom scan . --json > report.json` is a valid JSON file.
+Read the workspace, analyze the dependency fabric, and report. Discovery reads the same declarations an install tool reads; analysis splits edges by semantics (runtime vs dev); eight detectors emit findings with stable codes, honest severities (error gates, warning advises, info knows its own limits), and structured evidence (which files import the phantom, which packages declare which range). Writes `loom-report.json` next to the root manifest and EXITS NON-ZERO on error-severity findings — the CI contract. `--strict` reds on warnings too; `--no-imports` skips the lexical detectors (phantom/dev-dep/unused); `--json` prints the full report to stdout and ONLY that (the write notice moves to stderr), so `loom scan . --json > report.json` is a valid JSON file.
 
 **Example**
 
@@ -149,7 +149,7 @@ loom: 142 package(s) → dist/observatory
 (rootDir: string, options?: { noImports?: boolean }) => LoomReport
 ```
 
-The programmatic engine behind the CLI — scan the workspace, analyze the graph, run every detector, fold the stats. One entry point; the CLI, the dev server, and your own tooling all consume the same `LoomReport` (model + external usage + graph analysis + issues + stats). Pure Node with zero runtime dependencies — safe to call from build scripts and CI tooling.
+The programmatic engine behind the CLI — scan the workspace, analyze the graph, run every detector, fold the stats. One entry point; the CLI, the dev server, and your own tooling all consume the same `LoomReport` (model + external usage + graph analysis + issues + stats). Pure Node: its engine imports only `@pyreon/config` (to read `pyreon.config.ts`) — safe to call from build scripts and CI tooling.
 
 **Example**
 

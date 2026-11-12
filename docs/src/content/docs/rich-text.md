@@ -308,7 +308,7 @@ The base package targets the browser (TipTap/ProseMirror need a real DOM). For S
 
 ## Bundle & lazy-loading
 
-The package's own wrapper code is ~1.5 KB gzipped — TipTap is externalized and dynamically imported on mount. Nothing of `@tiptap/*` ships in your initial bundle until a `<RichText>` renders, mirroring how `@pyreon/code` defers CodeMirror grammars.
+The package's own wrapper code is about 3.6 KB gzipped — TipTap is externalized and dynamically imported on mount. Nothing of `@tiptap/*` ships in your initial bundle until a `<RichText>` renders, mirroring how `@pyreon/code` defers CodeMirror grammars.
 
 ### Wrapper overhead vs `@tiptap/react`
 
@@ -316,10 +316,10 @@ The package's own wrapper code is ~1.5 KB gzipped — TipTap is externalized and
 
 | Measured (gzipped) | `@pyreon/rich-text` | `@tiptap/react` |
 | --- | --- | --- |
-| **Wrapper glue** (engine + framework externalized) | **1.5 KB** | 8.5 KB |
-| **Initial entry chunk** (before the editor loads) | **1.5 KB** (engine is a lazy chunk) | 88.9 KB (engine eagerly imported) |
+| **Wrapper glue** (engine + framework externalized) | **3.6 KB** | 9.6 KB |
+| **Initial entry chunk** (before the editor loads) | **3.6 KB** (engine is a lazy chunk) | 110.2 KB (engine eagerly imported) |
 
-The wrapper glue is ~5.7× smaller. The larger gap on the initial chunk is because `@pyreon/rich-text` lazy-imports the engine _by default_ (a dynamic `import()` in the mount path), whereas `@tiptap/react`'s `EditorContent` statically imports `@tiptap/core` — so the engine lands in the initial bundle unless you manually code-split it with `React.lazy` + `Suspense`.
+Measured 2026-11-11 with the command above. The wrapper glue is about 2.7× smaller. The larger gap on the initial chunk is because `@pyreon/rich-text` lazy-imports the engine _by default_ (a dynamic `import()` in the mount path), whereas `@tiptap/react`'s `EditorContent` statically imports `@tiptap/core` — so the engine lands in the initial bundle unless you manually code-split it with `React.lazy` + `Suspense`.
 
 This is a **bundle** measurement (Rung R1, measured in-repo). Typing-latency and mount-time — the other wrapper-overhead axes — need a real-browser + React harness and are **not** measured here; a noisy latency bench is worse than none, so they're deferred rather than estimated.
 

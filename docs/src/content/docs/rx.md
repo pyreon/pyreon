@@ -127,7 +127,7 @@ In dev mode a spike in the `rx.transform.raw` perf counter is exactly this mista
 :::
 
 :::tip[Computed lifecycle]
-A `Computed` output auto-disposes when it has no subscribers. Inside a component body the JSX reactive scope keeps it alive; in standalone code, read it inside an `effect()` (or subscribe) so it stays active and re-derives.
+A `Computed` output is not disposed when nothing subscribes to it. Read it inside an `effect()`, another `computed()` or JSX to react to its changes; read anywhere else, it returns the current derived value.
 :::
 
 ## Two import styles
@@ -668,7 +668,7 @@ Reactive returns are typed as the `Computed` produced by `@pyreon/reactivity`'s 
 | `debounce(source, ms)`  | `(Signal<T>, number)`      | `ReadableSignal<T> & { dispose: () => void }`      |
 | `throttle(source, ms)`  | `(Signal<T>, number)`      | `ReadableSignal<T> & { dispose: () => void }`      |
 
-Both seed synchronously with `source()`; both **must** be `.dispose()`-d to release their internal effect + timer.
+Both seed synchronously with `source()`. Created inside a component or `effectScope`, both are torn down with it; a standalone one must be `.dispose()`-d to release its internal effect and timer (see the note above).
 
 ### Search (1)
 
