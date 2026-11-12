@@ -264,7 +264,30 @@ jobs:
     # 120 is therefore also a MEASUREMENT: the next nightly will report a real
     # cold duration instead of being cut off at the cap, which is the number
     # the next re-derivation should use. A truncated run teaches nothing.
-    timeout-minutes: 120
+    #
+    # 2026-11-12: the suite's files now run in parallel (four workers, a Kotlin
+    # compiler JVM each), so the two lanes get separate budgets.
+    #
+    # Pull requests, pushes and dispatches: 70. Sum of the worst MEASURED time
+    # of each part, times the runner-speed spread measured across identical
+    # work (1.85x: one uncached file took 28.6 s and 52.7 s on two runners):
+    #
+    #   tests, every Swift verdict cold, parallel (#4486)   16.5
+    #   co-located native sources, cold                      8.1
+    #   lib/ rebuild of all 77 packages (stale lib cache)    3.9
+    #   Kotlin package unit tests, cold                      2.8
+    #   registry-snippet compile, cold                       0.7
+    #   Swift toolchain install                              0.6
+    #   everything else (checkout, JDK, install, smokes)     1.4
+    #                                                       ----
+    #                                                       34.0 x 1.85 = 63
+    #
+    # The same cold work took 59.9 min of tests (64.0 min job) serially.
+    #
+    # The uncached nightly keeps 120: its last five serial runs took 60-102
+    # min, and it has not run in parallel yet. Re-derive it from the first
+    # nightly after this lands, with the same sum.
+    timeout-minutes: ${{ github.event_name == 'schedule' && 120 || 70 }}
     permissions:
       contents: read
     steps:
@@ -769,6 +792,12 @@ jobs:
     # cancelled at the cap on every night from 2026-10-28 to 11-02, so it
     # checked nothing. PR and push runs execute only the macOS-specific files
     # (see the test step) and stay well inside 90.
+    #
+    # 2026-11-12, both figures checked against measured parts and kept.
+    # Pull requests and pushes, worst measured per part: tests with every
+    # Swift verdict cold 34.4, lib/ rebuild on a stale cache 16.3, co-located
+    # sources cold 8.9, registry-snippet compile cold 3.1, the rest 2.0 = 64.7,
+    # x 1.4 = 90. The nightly's last six uncached runs took 95-135 min of 180.
     timeout-minutes: ${{ github.event_name == 'schedule' && 180 || 90 }}
     permissions:
       contents: read
