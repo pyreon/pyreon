@@ -73,9 +73,11 @@ export const LATE_CASES: LateCase[] = [
           h(
             'g',
             null,
-            h(For, { each: () => items(), by: (n: number) => n }, (n: number) =>
-              h('switch', { 'data-n': String(n) }, h('rect', { width: 1, height: 1 })),
-            ),
+            h(For, {
+              each: () => items(),
+              by: (n: number) => n,
+              children: (n: number) => h('switch', { 'data-n': String(n) }, h('rect', { width: 1, height: 1 })),
+            }),
           ),
         ),
         host,
