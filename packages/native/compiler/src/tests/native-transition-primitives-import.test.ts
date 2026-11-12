@@ -155,7 +155,7 @@ describe('<TransitionGroup> imported from @pyreon/primitives', () => {
 
   it('Swift: a VStack animated off the list length', () => {
     const out = transform(groupFromPrimitives, { target: 'swift' }).code
-    expect(out).toContain('VStack {')
+    expect(out).toContain('VStack(alignment: .leading) {')
     expect(out).toContain('.animation(.default, value: rows.count)')
   })
 

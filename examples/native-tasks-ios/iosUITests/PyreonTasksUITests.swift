@@ -1078,6 +1078,57 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(waitForLabel(picked, "0", timeout: 3), "grammar first-bar selection: label=\(picked.label), frame=\(chart.frame), point=\(point.screenPoint)", file: file, line: line)
     }
 
+    /// #4482 — the SwiftUI emit states the cross-platform defaults instead of
+    /// leaving SwiftUI's own: a `<Field>` is a bordered box, a `<Button>` has
+    /// button chrome, stacks start at the leading / top edge (two columns of
+    /// buttons share their top), and a routed screen starts under the nav bar
+    /// rather than centred in the screen. Before the fix every line was
+    /// centred, the page floated mid-screen and buttons were text links.
+    func test_tasksScreenLayoutMatchesTheOtherTargets() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing on login page")
+        // `.roundedBorder` draws a ~34pt box; a bare field is only its ~22pt line.
+        XCTAssertGreaterThanOrEqual(username.frame.height, 30, "login field has no box: \(username.frame)")
+        username.tap()
+        username.typeText("ada")
+        dismissKeyboard(app)
+        let submit = app.buttons["login-submit"].firstMatch
+        XCTAssertGreaterThanOrEqual(submit.frame.height, 30, "Continue has no button chrome: \(submit.frame)")
+        submit.tap()
+
+        let page = app.otherElements["tasks-page"].firstMatch
+        XCTAssertTrue(page.waitForExistence(timeout: 15), "Tasks page did not render after login")
+        let navBar = app.navigationBars.firstMatch
+        XCTAssertTrue(navBar.exists, "no navigation bar on the pushed tasks screen")
+        XCTAssertLessThan(
+            page.frame.minY - navBar.frame.maxY, 24,
+            "tasks screen is not pinned under the nav bar (page \(page.frame), nav bar \(navBar.frame))"
+        )
+
+        let field = app.textFields["new-task-title"].firstMatch
+        XCTAssertGreaterThanOrEqual(field.frame.height, 30, "new-task field has no box: \(field.frame)")
+
+        // The two action columns are top-aligned in their Inline (they were
+        // centred against each other, so unequal columns staggered).
+        let add = app.buttons["new-task-add"].firstMatch
+        let stats = app.buttons["tasks-stats"].firstMatch
+        XCTAssertTrue(add.exists && stats.exists, "action buttons missing")
+        XCTAssertEqual(add.frame.minY, stats.frame.minY, accuracy: 1, "action columns are not top-aligned: \(add.frame) vs \(stats.frame)")
+        XCTAssertGreaterThanOrEqual(add.frame.height, 30, "Add has no button chrome: \(add.frame)")
+
+        // Leading-aligned: the header row, the field and the first action column
+        // start at the page's leading edge (the element's frame is its content
+        // box, inside the padding), not centred within the page.
+        let icon = app.images["header-icon"].firstMatch
+        XCTAssertTrue(icon.waitForExistence(timeout: 15), "header icon missing")
+        XCTAssertEqual(icon.frame.minX, page.frame.minX, accuracy: 4, "header is not leading-aligned: \(icon.frame) in \(page.frame)")
+        XCTAssertEqual(field.frame.minX, page.frame.minX, accuracy: 2, "field is not leading-aligned: \(field.frame) in \(page.frame)")
+        XCTAssertEqual(add.frame.minX, page.frame.minX, accuracy: 2, "action column is not leading-aligned: \(add.frame) in \(page.frame)")
+    }
+
     func test_authGateStoreMutationAndTypedParamsDetail() throws {
         let app = XCUIApplication()
         app.launch()

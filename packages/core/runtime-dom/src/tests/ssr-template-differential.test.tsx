@@ -907,7 +907,7 @@ describe('SSR fast path — conservative bail catalogue (stays on h())', () => {
     ['select element', `const N = <select value="b"><option>a</option></select>`],
     // `<textarea value>` is the other half of the PZ-09 concern that bails
     // `select`. <textarea> has NO `value` CONTENT attribute — the value IS the
-    // text content — so `renderProp` skips it and `textareaValue` emits it as
+    // text content — so `renderProp` skips it and `contentFromProps` emits it as
     // the child. The fast path serialized it as an attribute instead, giving a
     // dead `value="…"` AND an EMPTY textarea: every server-rendered prefilled
     // textarea came back blank (blank with JS off, and a hydration mismatch).

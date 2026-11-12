@@ -46,7 +46,7 @@ export function App() { return (<Box><Text>Hi</Text></Box>) }`
 
   it('later .attrs() in the chain wins (gap lg beats the earlier sm); direction row', () => {
     // direction 'row' → HStack; gap: the second .attrs()'s 'lg' (16) wins over 'sm'.
-    expect(swift(SRC).code).toContain('HStack(spacing: 16)')
+    expect(swift(SRC).code).toContain('HStack(alignment: .top, spacing: 16)')
     expect(kotlin(SRC).code).toContain('Row(horizontalArrangement = Arrangement.spacedBy(16.dp))')
   })
 

@@ -26,7 +26,7 @@ describe('router tabs — Swift emit', () => {
   it('binds the tab bar to the router and gives each tab its own stack', () => {
     expect(out.code).toContain('PyreonRouterTabs(router: router, items: [')
     expect(out.code).toContain('PyreonTabItem(value: "feed", label: "Feed", systemImage: "house.fill")')
-    expect(out.code).toMatch(/case "feed":\s+PyreonTabStack\(router: router, tab: "feed"\) \{\s+FeedHome\(\)\s+\.navigationDestination\(for: String\.self\)/)
+    expect(out.code).toMatch(/case "feed":\s+PyreonTabStack\(router: router, tab: "feed"\) \{\s+FeedHome\(\)\.frame\(minWidth: 0, maxWidth: \.infinity, minHeight: 0, maxHeight: \.infinity, alignment: \.topLeading\)\s+\.navigationDestination\(for: String\.self\)/)
     expect(out.code).toMatch(/case "me":\s+PyreonTabStack\(router: router, tab: "me"\) \{\s+MeHome\(\)/)
   })
   it('emits no warnings', () => {

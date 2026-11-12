@@ -152,7 +152,7 @@ describe('interaction props with no native lowering say so', () => {
     // confirm button — the case where the visual difference IS the safeguard.
     const sw = (v: string) => code(`<Button variant="${v}" onPress={() => {}}>Delete</Button>`, 'swift')
     expect(sw('secondary')).toContain('.buttonStyle(.bordered)')
-    expect(sw('ghost')).toContain('.buttonStyle(.plain)')
+    expect(sw('ghost')).toContain('.buttonStyle(.borderless)')
     expect(sw('danger')).toContain('.buttonStyle(.borderedProminent).tint(.red)')
 
     // Compose expresses the role by swapping the COMPOSABLE, not by a
@@ -174,15 +174,17 @@ describe('interaction props with no native lowering say so', () => {
     expect(out).not.toContain('colorScheme')
   })
 
-  it('primary and absent are BYTE-IDENTICAL to before', () => {
-    // The default must not churn every existing app's output.
+  it('primary and absent are the same filled button', () => {
+    // iOS states the filled style (#4482: left implicit it was SwiftUI's
+    // `.automatic`, a text link); Compose's plain Button is already filled.
     for (const target of ['swift', 'kotlin'] as const) {
       const none = code(`<Button onPress={() => {}}>x</Button>`, target)
       const primary = code(`<Button variant="primary" onPress={() => {}}>x</Button>`, target)
       expect(primary, target).toBe(none)
-      expect(none, target).not.toContain('buttonStyle')
       expect(none, target).not.toContain('OutlinedButton')
     }
+    expect(code(`<Button onPress={() => {}}>x</Button>`, 'swift')).toContain('.buttonStyle(.borderedProminent)')
+    expect(code(`<Button onPress={() => {}}>x</Button>`, 'kotlin')).not.toContain('buttonStyle')
   })
 
   it('a DYNAMIC variant warns rather than guessing', () => {
@@ -205,8 +207,10 @@ describe('interaction props with no native lowering say so', () => {
     const jsx = `<Button variant="fancy" onPress={() => {}}>x</Button>`
     for (const target of ['swift', 'kotlin'] as const) {
       expect(warnings(jsx, target), target).toHaveLength(1)
-      expect(code(jsx, target), target).not.toContain('buttonStyle')
     }
+    // …to the default style
+    expect(code(jsx, 'swift')).toBe(code(`<Button onPress={() => {}}>x</Button>`, 'swift'))
+    expect(code(jsx, 'kotlin')).not.toContain('OutlinedButton')
   })
 
   it.skipIf(!isSwiftcAvailable())('every variant compiles (Swift)', () => {

@@ -65,7 +65,7 @@ describe('Pyreon → Swift emit', () => {
       "struct Increment: View {
         @State private var count: Int = 0
         var body: some View {
-          Button("Increment") { count = count + 1 }
+          Button("Increment") { count = count + 1 }.buttonStyle(.borderedProminent)
         }
       }"
     `)

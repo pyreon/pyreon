@@ -11,8 +11,10 @@
 package com.pyreon
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
@@ -34,7 +36,11 @@ class MainActivity : ComponentActivity() {
         // sits under the status bar, where the system takes the tap (#4292).
         // Opting in on older levels too makes the CI emulator (API 33) lay the
         // app out the way API 35+ devices do, so the device tests see it.
-        enableEdgeToEdge()
+        // Light bars (dark icons): the bars sit over the window background, which
+        // the light window theme keeps light in dark mode too, so the default
+        // white icons would be unreadable there.
+        val bars = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+        enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
         setContent {
             Box(Modifier.safeDrawingPadding()) {
                 RouterApp()
