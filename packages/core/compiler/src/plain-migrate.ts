@@ -52,6 +52,7 @@ export type PlainDeclineCode =
   | 'mixed-declaration'
   | 'exported'
   | 'reassigned'
+  | 'forward-reference'
 
 export interface PlainMigrateDeclined {
   /** Binding name (or `<file>` for file-level notes). */
@@ -377,6 +378,148 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
     return false
   }
 
+  // ── Block hoisting ────────────────────────────────────────────────────────
+  // A `const` / `let` / function / class name is in scope for its WHOLE block,
+  // not only after its declaration: a closure written above `const n = signal(0)`
+  // (a callback, a hoisted function) reads and writes that `n` when it runs. A
+  // walk that registered names at their declaration resolved those earlier
+  // references to nothing (or to an outer binding), so the candidate converted
+  // to `let n = state(0)` while the closure kept `n.set(n.peek() + 1)` — a
+  // runtime crash. Every statement list therefore registers its declarations
+  // before its statements are walked — and a candidate referenced ABOVE its
+  // declaration is declined (`forward-reference`): the plain transform resolves
+  // a name at its declaration too, so it would compile such a reference as a
+  // plain variable and leave `n = …` assigning to the signal.
+  /** Candidates created by `hoistBlock`, by declarator — the walk reuses them. */
+  const hoisted = new Map<N, Candidate>()
+
+  function makeCandidate(stmt: N, d: N, found: { role: Role; call: N }, multi: boolean): Candidate {
+    if (multi) {
+      // Mixed multi-declarator statements complicate the `const`→`let`
+      // kind rewrite — decline, rare shape.
+      const { line, column } = posOf(d.id.start)
+      return {
+        name: d.id.name,
+        role: found.role,
+        decl: stmt,
+        declarator: d,
+        call: found.call,
+        literalObject: false,
+        declined: {
+          name: d.id.name,
+          code: 'mixed-declaration',
+          reason: 'declared in a multi-declarator statement — split the declaration first',
+          line,
+          column,
+        },
+        edits: [],
+      }
+    }
+    const firstArg = found.call.arguments?.[0] ? unwrapTs(found.call.arguments[0]) : null
+    return {
+      name: d.id.name,
+      role: found.role,
+      decl: stmt,
+      declarator: d,
+      call: found.call,
+      literalObject:
+        found.role === 'signal' &&
+        (firstArg?.type === 'ObjectExpression' || firstArg?.type === 'ArrayExpression'),
+      declined: null,
+      edits: [],
+    }
+  }
+
+  /** Register every name `stmts` declares in the current (innermost) scope. */
+  function hoistBlock(stmts: N[]): void {
+    const scope = scopes[scopes.length - 1]!
+    /** Each variable declaration with its index in `stmts` (an `export` wraps it). */
+    const decls: Array<{ stmt: N; index: number }> = []
+    // Pass 1: every declared name shadows outer bindings for the whole block —
+    // including a local `signal`, which then makes `signal(0)` no candidate.
+    for (const [index, raw] of stmts.entries()) {
+      const stmt =
+        (raw?.type === 'ExportNamedDeclaration' || raw?.type === 'ExportDefaultDeclaration') && raw.declaration
+          ? raw.declaration
+          : raw
+      if (!stmt) continue
+      if (stmt.type === 'VariableDeclaration') {
+        decls.push({ stmt, index })
+        for (const d of stmt.declarations ?? []) {
+          const names = new Set<string>()
+          collectPatternNames(d.id, names)
+          for (const n of names) scope.set(n, null)
+        }
+      } else if (
+        (stmt.type === 'FunctionDeclaration' || stmt.type === 'ClassDeclaration') &&
+        stmt.id?.name
+      ) {
+        scope.set(stmt.id.name, null)
+      }
+    }
+    // Pass 2: the signal / computed declarators become candidates up front.
+    for (const { stmt, index } of decls) {
+      const ds: N[] = stmt.declarations ?? []
+      for (const d of ds) {
+        if (d.id?.type !== 'Identifier') continue
+        const found = d.init ? roleOfCall(d.init) : null
+        if (!found || (found.role !== 'signal' && found.role !== 'computed')) continue
+        const c = makeCandidate(stmt, d, found, ds.length > 1)
+        candidates.push(c)
+        scope.set(d.id.name, c)
+        hoisted.set(d, c)
+        // Conservative: any mention above the declaration declines, even one an
+        // inner scope shadows — a declined binding keeps its classic text.
+        for (const before of stmts.slice(0, index)) {
+          const at = firstMention(before, c.name)
+          if (at) {
+            declineOf(
+              c,
+              'forward-reference',
+              'referenced above its declaration (a closure or hoisted function) — move the declaration above its first use',
+              at.start,
+            )
+            break
+          }
+        }
+      }
+    }
+  }
+
+  /** The first Identifier named `name` in `node` that is a reference, not a key. */
+  function firstMention(node: N, name: string): N {
+    let found: N = null
+    const visit = (n: N, parent: N, key: string): void => {
+      if (found || !n || typeof n !== 'object') return
+      if (Array.isArray(n)) {
+        for (const c of n) visit(c, parent, key)
+        return
+      }
+      if (typeof n.type !== 'string') return
+      if (n.type === 'Identifier' && n.name === name) {
+        const memberProp = parent?.type === 'MemberExpression' && key === 'property' && !parent.computed
+        const objectKey =
+          (parent?.type === 'Property' || parent?.type === 'MethodDefinition' || parent?.type === 'PropertyDefinition') &&
+          key === 'key' &&
+          !parent.computed &&
+          !parent.shorthand
+        if (!memberProp && !objectKey) found = n
+        return
+      }
+      for (const k of Object.keys(n)) {
+        if (k === 'type' || k === 'start' || k === 'end' || k === 'loc' || k === 'range') continue
+        visit(n[k], n, k)
+      }
+    }
+    visit(node, null, '')
+    return found
+  }
+
+  function walkBlock(stmts: N[]): void {
+    hoistBlock(stmts)
+    for (const s of stmts) walkStmt(s)
+  }
+
   // ── Statement / expression walkers ────────────────────────────────────────
 
   function walkStmt(stmt: N): void {
@@ -457,7 +600,7 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
         return
       case 'BlockStatement':
         scopes.push(new Map())
-        for (const s of stmt.body ?? []) walkStmt(s)
+        walkBlock(stmt.body ?? [])
         scopes.pop()
         return
       case 'ForStatement':
@@ -491,6 +634,8 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
       case 'SwitchStatement':
         walkExpr(stmt.discriminant, true)
         scopes.push(new Map())
+        // One scope for every case: hoist all their declarations together.
+        hoistBlock((stmt.cases ?? []).flatMap((c: N) => c.consequent ?? []))
         for (const c of stmt.cases ?? []) {
           if (c.test) walkExpr(c.test, true)
           for (const s of c.consequent ?? []) walkStmt(s)
@@ -519,7 +664,7 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
     scopes.push(new Map())
     for (const p of fn.params ?? []) shadowPattern(p)
     if (fn.body?.type === 'BlockStatement') {
-      for (const s of fn.body.body ?? []) walkStmt(s)
+      walkBlock(fn.body.body ?? [])
     } else if (fn.body) {
       const setter = voidWriteBody(fn.body)
       if (setter) {
@@ -568,54 +713,27 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
   function walkVariableDeclaration(stmt: N): void {
     const decls: N[] = stmt.declarations ?? []
     for (const d of decls) {
-      const found = d.init ? roleOfCall(d.init) : null
-      if (found && (found.role === 'signal' || found.role === 'computed') && d.id?.type === 'Identifier') {
-        if (decls.length > 1) {
-          // Mixed multi-declarator statements complicate the `const`→`let`
-          // kind rewrite — decline, rare shape.
-          const { line, column } = posOf(d.id.start)
-          const c: Candidate = {
-            name: d.id.name,
-            role: found.role,
-            decl: stmt,
-            declarator: d,
-            call: found.call,
-            literalObject: false,
-            declined: {
-              name: d.id.name,
-              code: 'mixed-declaration',
-              reason: 'declared in a multi-declarator statement — split the declaration first',
-              line,
-              column,
-            },
-            edits: [],
-          }
+      // A block's declarations were hoisted (`hoistBlock`); a `for (…;;)` head's were not.
+      let c = hoisted.get(d) ?? null
+      if (!c && d.id?.type === 'Identifier') {
+        const found = d.init ? roleOfCall(d.init) : null
+        if (found && (found.role === 'signal' || found.role === 'computed')) {
+          c = makeCandidate(stmt, d, found, decls.length > 1)
           candidates.push(c)
           scopes[scopes.length - 1]!.set(d.id.name, c)
+        }
+      }
+      if (c) {
+        if (decls.length > 1) {
           walkExpr(d.init, true)
           continue
         }
-        const firstArg = found.call.arguments?.[0] ? unwrapTs(found.call.arguments[0]) : null
-        const c: Candidate = {
-          name: d.id.name,
-          role: found.role,
-          decl: stmt,
-          declarator: d,
-          call: found.call,
-          literalObject:
-            found.role === 'signal' &&
-            (firstArg?.type === 'ObjectExpression' || firstArg?.type === 'ArrayExpression'),
-          declined: null,
-          edits: [],
-        }
-        candidates.push(c)
-        scopes[scopes.length - 1]!.set(d.id.name, c)
         if (stmt === exportedDeclaration) declineExported(c, d.id.start)
         // Walk the ARGUMENTS (they may reference earlier candidates). A
         // computed's callback is a TRACKED scope — see `trackedDepth`.
-        if (found.role === 'computed') trackedDepth++
-        for (const a of found.call.arguments ?? []) walkExpr(a, true)
-        if (found.role === 'computed') trackedDepth--
+        if (c.role === 'computed') trackedDepth++
+        for (const a of c.call.arguments ?? []) walkExpr(a, true)
+        if (c.role === 'computed') trackedDepth--
         continue
       }
       shadowPattern(d.id)
@@ -1050,7 +1168,7 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
     if (mentions - 1 > calls) effectNonCallSeen = true
   }
 
-  for (const stmt of program.body as N[]) walkStmt(stmt)
+  walkBlock(program.body as N[])
   walkEffectRefs()
 
   // ── Apply ─────────────────────────────────────────────────────────────────
