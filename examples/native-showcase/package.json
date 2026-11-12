@@ -1,0 +1,19 @@
+{
+  "name": "@pyreon/example-native-showcase",
+  "version": "0.0.0",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — Today, a small todo app written once in src/TodayApp.tsx and built for the web (native-showcase-web), iOS / SwiftUI (native-showcase-ios) and Android / Jetpack Compose (native-showcase-android).",
+  "license": "MIT",
+  "scripts": {
+    "check": "bun ../../packages/native/cli/src/cli.ts check --source=src",
+    "lint": "echo '[native-showcase] no TS lint surface; skipping'",
+    "test": "echo '[native-showcase] no test surface; device tests live in the -ios and -android hosts'",
+    "typecheck": "echo '[native-showcase] typechecked through native-showcase-web'"
+  },
+  "devDependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/native-cli": "workspace:*",
+    "@pyreon/primitives": "workspace:*",
+    "@pyreon/reactivity": "workspace:*"
+  }
+}

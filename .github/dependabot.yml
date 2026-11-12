@@ -65,6 +65,8 @@ updates:
       - '/examples/native-finance-android/app'
       - '/examples/native-router-demo-android'
       - '/examples/native-router-demo-android/app'
+      - '/examples/native-showcase-android'
+      - '/examples/native-showcase-android/app'
     schedule:
       interval: 'weekly'
       day: 'monday'

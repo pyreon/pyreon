@@ -111,11 +111,25 @@ interface SignalFn<T> {
 
 // Shared method implementations — defined once, assigned to every signal.
 // Uses `this` binding (signal methods are always called as `signal.method()`).
+//
+// A DETACHED reference (`ref={sig.set}`, `onInput={sig.set}`, `.then(sig.set)`)
+// therefore runs with `this === undefined`, which used to surface as
+// "Cannot read properties of undefined (reading '_v')". Dev builds name the
+// mistake and the fix instead (#4356); the compiler also warns on the JSX
+// shape (`signal-method-reference`).
+function _detached(method: string): never {
+  throw new TypeError(
+    `[Pyreon] signal.${method}() was called without its signal. Signal methods read \`this\`, so a detached reference such as ref={sig.${method}} or promise.then(sig.${method}) cannot work. Pass an arrow instead: (v) => sig.${method}(v).`,
+  )
+}
+
 function _peek(this: SignalFn<unknown>) {
+  if (process.env.NODE_ENV !== 'production' && this == null) _detached('peek')
   return this._v
 }
 
 function _set(this: SignalFn<unknown>, newValue: unknown) {
+  if (process.env.NODE_ENV !== 'production' && this == null) _detached('set')
   if (Object.is(this._v, newValue)) return
   if (process.env.NODE_ENV !== 'production')
     _countSink.__pyreon_count__?.('reactivity.signalWrite')
@@ -208,10 +222,12 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
 }
 
 function _update(this: SignalFn<unknown>, fn: (current: unknown) => unknown) {
+  if (process.env.NODE_ENV !== 'production' && this == null) _detached('update')
   _set.call(this, fn(this._v))
 }
 
 function _trigger(this: SignalFn<unknown>) {
+  if (process.env.NODE_ENV !== 'production' && this == null) _detached('trigger')
   if (process.env.NODE_ENV !== 'production') _rdRecordFire(this)
   // The SAME batch-aware notify as `_set`, minus the value write and the
   // `Object.is` gate. Deliberately DUPLICATED rather than extracted: `_set`'s
@@ -256,6 +272,7 @@ function _trigger(this: SignalFn<unknown>) {
 }
 
 function _subscribe(this: SignalFn<unknown>, listener: () => void): () => void {
+  if (process.env.NODE_ENV !== 'production' && this == null) _detached('subscribe')
   addSubscriber(this, listener)
   const self = this
   // Promotion-aware disposer (mirrors `_directFn`): a 2nd subscriber may have

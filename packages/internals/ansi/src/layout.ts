@@ -4,14 +4,14 @@
  * its own IO.
  */
 
-import type { Role, SymbolName } from './palette'
+import type { Role, SymbolName } from './palette.ts'
 import {
   fileUrl,
   padEndVisible,
   padStartVisible,
   type Term,
   visibleWidth,
-} from './term'
+} from './term.ts'
 
 /** Default wrap width (rule 6). */
 export const WRAP_WIDTH = 100

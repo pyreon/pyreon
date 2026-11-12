@@ -352,7 +352,7 @@ describe('detectReactPatterns', () => {
     // SSR, so following it breaks server rendering.
     const code = 'const el = <div dangerouslySetInnerHTML={{ __html: "<b>hi</b>" }} />'
     const diags = detectReactPatterns(code)
-    expect(diags.find((d) => d.code === 'dangerously-set-inner-html')).toBeUndefined()
+    expect(diags).toEqual([])
   })
 
   test('detects .value assignment on a declared signal', () => {

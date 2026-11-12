@@ -349,6 +349,12 @@ onHydrationMismatch((mismatch) => {
 
 The hook fires on every hydration mismatch (in addition to the dev-mode console warning when `enableHydrationWarnings()` is on), so a single call surfaces the full mismatch flow to your telemetry pipeline. Returns a disposer that unregisters the listener.
 
+#### Compiled JSX (`_tpl`) reports in development
+
+Most JSX compiles to `_tpl` templates that adopt the server's DOM in place. In development, a compiled template reports what it corrects with the same message and handler payload as `h()` content: text it rewrites (`root > p > text` for a static child, `> reactive` for a bound one), and an element it cannot adopt because the server rendered a different tag or text there (the first difference, as `tag` or `text`). The rule is that a mismatch is reported exactly when hydration changes what the server rendered. A value the server already rendered is never reported, and any rewrite is, whitespace-only included, as on the `h()` path. Attribute differences are not reported on either path.
+
+These compiled-path reports are development-only, so they cost production bundles nothing. In production, `onHydrationMismatch` still receives `h()`-path mismatches but not compiled-template ones.
+
 ## Template Cloning
 
 Template cloning is Pyreon's optimization for repetitive DOM structures. Instead of creating elements one by one with `createElement` + `setAttribute`, it parses HTML once into a `<template>` element and clones it via `cloneNode(true)` -- approximately 5-10x faster.
