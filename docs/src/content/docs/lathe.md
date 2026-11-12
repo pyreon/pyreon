@@ -3,6 +3,10 @@ title: Lathe
 description: OpenAPI in, typed Pyreon client out — schemas, endpoints, query hooks, mocks, fake-data factories, reference pages and Atlas scenarios, with a multiplatform mode that proves its own output lowers to Swift and Kotlin.
 ---
 
+<ProductPitch id="lathe" />
+
+<LiveDemo id="lathe" />
+
 `@pyreon/lathe` reads an OpenAPI 3.x document and emits a client for the Pyreon
 stack. Not a fetch wrapper — the whole surface: `@pyreon/validate` schemas,
 `@pyreon/http` endpoint declarations, `@pyreon/query` hooks, query keys derived
@@ -25,7 +29,7 @@ only for the `faker` plugin, `zod` only for `validator: 'zod'`.
 ## Getting started
 
 ```bash
-npx lathe init
+npx @pyreon/lathe init
 ```
 
 `lathe init` finds what the project generates from today — an orval,
@@ -1204,7 +1208,7 @@ lathe: {
 
 Every entry is checked: an unknown operation or model fails the run with a
 suggestion, and a stream whose name would collide with an operation is refused.
-Streams are web-only — PMTC has no streaming lowering.
+Typed SSE / NDJSON streams also reach native: with `--target multiplatform` a stream lowers through `useStream` to the native stream runtime (a stream PMTC cannot type is reported `web-only` with the reason).
 
 ### MCP tools, generated from the spec
 
@@ -1377,13 +1381,17 @@ lathe diff old/api-surface.json src/gen/api-surface.json --format markdown
 ```
 
 ```text
-API contract: 2 breaking, 1 additive
-  BREAKING  field-now-optional  RoomEvent.at — required → optional
-             affects roomEvents, roomEventsStream, useRoomEventsStream (rooms)
-  BREAKING  operation-removed  tailLog — `GET /log` no longer exists
-             affects tailLog, tailLogStream, useTailLogStream (rows)
-  additive  field-added  ChatChunk.role — string (optional)
-             affects createChat, createChatStream, useCreateChat, useCreateChatStream (chat)
+$ lathe diff openapi.before.yaml openapi.yaml
+lathe diff · openapi.before.yaml → openapi.yaml
+
+  − breaking  field-removed  Book.pages  was integer (optional)
+      affects createBook, useCreateBook (books); getBook, useGetBook (books); listBooks,
+              useListBooks (books)
+  + additive  field-added    Book.dueAt  date-time (optional)
+      affects createBook, useCreateBook (books); getBook, useGetBook (books); listBooks,
+              useListBooks (books)
+
+! 1 breaking, 1 additive · 19 ms
 ```
 
 Severities are from the **client's** point of view (a response field turning
@@ -1420,7 +1428,7 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           set +e
-          bunx lathe diff "origin/${BASE_REF}:openapi.yaml" openapi.yaml \
+          bunx @pyreon/lathe diff "origin/${BASE_REF}:openapi.yaml" openapi.yaml \
             --format markdown --fail-on-breaking > contract.md
           echo "code=$?" >> "$GITHUB_OUTPUT"
       - name: Summary
@@ -1595,9 +1603,10 @@ never touched. Commit the manifest with the rest of the output.
   as the platform integer PMTC lowers `number().int()` to — Swift `Int`
   (64-bit), Kotlin `Int` (32-bit, so a value past 2147483647 fails to decode on
   Android) — reported as `int64-native`.
-- **Streams are web-only.** PMTC has no streaming lowering, so `<op>Stream` /
-  `use<Op>Stream` exist in the web output only; a stream-only operation is
-  reported `web-only` with that reason.
+- **Typed streams reach native.** A typed SSE / NDJSON stream lowers through
+  `useStream` to the native stream runtime and is reported `web+native`; a
+  stream the native layout cannot give a component is reported `web-only`
+  with the reason.
 - **Streams on non-`pyreon` clients import `@pyreon/http/stream`** (the
   zero-dependency subpath) — the one place an axios / ky / fetch client depends
   on `@pyreon/http`, and only when the spec has a streaming operation. On axios,
@@ -1675,3 +1684,11 @@ generates the whole surface — schemas, client, hooks, keys, mocks, faker, Atla
 scenarios, reference pages and the two native modules — from a 4-operation spec,
 and serves the API it talks to as in-process dev middleware so the e2e boots one
 thing and still exercises real HTTP.
+
+<BenchCallout id="lathe" />
+
+<ComingFrom id="lathe" />
+
+<InlineSell id="query" />
+
+<CrossSell id="lathe" />

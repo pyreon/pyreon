@@ -3,8 +3,6 @@ title: 'Reactivity Rules'
 description: What is reactive and what is static in Pyreon — the one page you need to understand.
 ---
 
-# Reactivity Rules
-
 Pyreon components run **once**. Unlike React (which re-renders the entire function), Pyreon executes your component function a single time during setup. Reactivity happens at the individual expression level through signals and the compiler.
 
 This page explains exactly what's reactive and what's static.

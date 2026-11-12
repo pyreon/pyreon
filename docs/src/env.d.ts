@@ -27,6 +27,27 @@ declare module 'virtual:zero/api-routes' {
   export const apiRoutes: ApiRouteEntry[]
 }
 
+// Build-time project numbers for `/open` (vite-plugins/open-stats.ts).
+declare module 'virtual:pyreon-open-stats' {
+  import type { OpenStats } from './open/stats'
+  const stats: OpenStats
+  export default stats
+}
+
+// Build-time release history for `/releases` (vite-plugins/site-releases.ts).
+declare module 'virtual:pyreon-site-releases' {
+  import type { ReleaseData } from './site/releases/parse'
+  const data: ReleaseData
+  export default data
+}
+
+// Scheduled blog posts for the index's "Up next" (vite-plugins/blog.ts).
+declare module 'virtual:pyreon-blog-planned' {
+  import type { PlannedPost } from './blog/planned'
+  const planned: PlannedPost[]
+  export default planned
+}
+
 declare module 'virtual:zero-content/collections'
 declare module 'virtual:zero-content/components'
 
@@ -52,4 +73,12 @@ declare module '*.mdx' {
   export const frontmatter: Record<string, unknown>
   export const headings: Array<{ level: number; text: string; slug: string }>
   export const slug: string
+}
+
+// `@pyreon/vite-plugin` (islands: true): every `island()` declaration in the
+// app, for `hydrateIslandsAuto()` on static pages (site/static-client.ts).
+declare module 'virtual:pyreon/islands-registry' {
+  import type { ComponentFn } from '@pyreon/core'
+  export const __pyreonIslandRegistry: Record<string, () => Promise<{ default: ComponentFn } | ComponentFn>>
+  export const __pyreonIslandsEnabled: boolean
 }

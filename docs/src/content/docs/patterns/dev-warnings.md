@@ -4,8 +4,6 @@ summary: "Gate warnings on bare process.env.NODE_ENV !== 'production', inline. N
 seeAlso: [ssr-safe-hooks]
 ---
 
-# Dev-mode warnings
-
 ## The pattern
 
 Gate every dev-only warning, validation, or introspection on a bare `process.env.NODE_ENV !== 'production'` check, written inline at the call site:

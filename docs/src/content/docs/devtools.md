@@ -39,14 +39,23 @@ Four isolated execution contexts cooperate: a **page hook** (reads `__PYREON_DEV
 
 ## Panel tabs
 
-The panel is skinned on the Pyreon brand identity (ink/ember/cyan, JetBrains Mono + Space Grotesk).
+The panel uses the pyreon.dev tokens in both themes; inside Chrome DevTools it follows the DevTools theme. Below 760 px the component tree sits above the inspector. Everything it shows is read from the running page; nothing is sampled or simulated.
 
-- **Components** — the mounted component tree (rebuilt from `parentId` — the framework registers post-order, so a parent's own `childIds` is empty when its children register first). A freshly-mounted component pulses with the signature ember signal-propagation animation (reduced-motion gated). Click to highlight the DOM node; the inspector shows id / parent / children. The toolbar **Inspect** toggle drives the element-picker overlay.
-- **Signals** — every tracked signal / computed / effect: name, kind, value preview, subscriber count, fire count, sorted by activity; hot rows ember-tinted.
-- **Graph** — a layered SVG dependency diagram (signals → derived → effects), ember edges on the recently-fired path.
-- **Effects** — per-node fire lanes across the observed time window.
-- **Profiler** — fires bucketed into 100 ms frames with a peak/frame summary.
-- **Console** — evaluates expressions in the inspected page's own world (e.g. `__PYREON_DEVTOOLS__.reactive.getGraph()`), result streamed back.
+- **Components**: the mounted tree, rebuilt from `parentId` (the framework registers post-order, so a parent's own `childIds` is empty). Filter by name, move with the arrow keys, click or press Enter to outline the component on the page. The inspector shows the owner path and the **reactive reads**: the signals and computeds rendered as text inside the component (from `reactive.nodesForElement`). **Why did this update?** is the causal chain (`getUpdateCause`) behind the most recent of those reads, root first, with the source line: `draft signal changed (Composer.tsx:18) → Composer.tsx:31 computed recomputed`.
+- **Graph**: the dependency graph, signals → computeds → effects. *Selected* shows the chain around the selected signal, the selected component's reads, or the last write; *Everything* shows the most active 120 nodes and says how many it left out. Nodes that fired in the last write are outlined in ember.
+- **Signals**: signals and computeds with their value, subscribers, writes and last write, newest first. Virtualised, so 10,000 rows stay smooth. Selecting a row scopes the Graph to it.
+- **Effects**: one lane per effect that ran in the last 10 seconds, with what it reads.
+- **Profiler**: press record, use the app. Each batch (one synchronous cascade, from the cascade stamp on every fire) is listed with the change that started it and how many nodes it touched. Times run from the batch's first to its last fire and are limited by the page clock (100 µs unless the page is cross-origin isolated). If the page's 512-fire buffer wraps between two polls, the panel says some batches are missing.
+- **Console**: `[Pyreon]` warnings and errors the page logs while the panel is open, plus an input that evaluates in the page.
+
+Computeds and effects carry no runtime name, so the panel names them by where they were created (`Composer.tsx:31`).
+
+### Limits
+
+- The inspector traces text bindings only. Attribute, class and style bindings, text that a component receives as children, and multi-signal text expressions are not linked to a component.
+- Component props and the effects a component owns are not exposed by the hook, so the inspector does not show them ([#4446](https://github.com/pyreon/pyreon/issues/4446)).
+- Components mounted by `hydrateRoot` (SSR and Zero apps) are not registered yet, so the Components tab is empty there; the reactive tabs work ([#4444](https://github.com/pyreon/pyreon/issues/4444)).
+- The Console only sees what is logged after the panel opens.
 
 ## Programmatic API
 
@@ -113,12 +122,13 @@ interface ReactiveGraph {
 interface ReactiveFire {
   id: number
   ts: number // performance.now() at fire time
+  cascade: number // synchronous-cascade stamp: a signal fire opens one, downstream fires inherit it
 }
 ```
 
 **Zero cost until attached.** Every instrumentation point early-returns until `activateReactiveDevtools()` is called, and the single call site per node creation / fire sits inside the standard `process.env.NODE_ENV !== 'production'` gate, so it is fully tree-shaken from production builds. **No retention.** Nodes are held via `WeakRef` and pruned by a `FinalizationRegistry` — the registry never keeps a signal/computed/effect alive; edges and the fire buffer hold only numeric ids and timestamps, never node references or values. `getReactiveGraph()` recomputes edges fresh from the live subscriber sets on each call, so it never drifts out of sync.
 
-This is the Foundation the extension's **Signals**, **Graph**, **Effects**, **Profiler**, and **Console** tabs consume. The Profiler tab buckets fire timestamps into 100 ms frames; a true per-frame _duration_ flamegraph additionally needs run-duration instrumentation in the Foundation (deferred).
+This is the Foundation the extension's **Graph**, **Signals**, **Effects** and **Profiler** tabs consume. The Profiler groups fires into batches by their cascade stamp; per-run durations would need run-duration instrumentation in the Foundation, which it does not have.
 
 Only user `signal()` / `computed()` / `effect()` are tracked — compiler-emitted DOM-binding plumbing (`renderEffect` / `_bind`) is intentionally excluded so the graph stays meaningful and the hottest path untouched. The extension consumes `reactive` defensively: a page running an older `@pyreon/runtime-dom` (no Foundation) shows an explicit "needs the Foundation" notice rather than a fake/empty surface — Components works regardless, and polling runs only while a reactive tab is open.
 
@@ -137,7 +147,7 @@ The panel has three tabs:
 
 #### Health
 
-The graph-wiring readout: a summary header (`N signals · M derived · K effects · B DOM bindings · E edges`) followed by the insights that only the graph can surface — the same ones [`describeReactiveGraph`](/reactivity#describe-a-reactive-graph) computes:
+The graph-wiring readout: a summary header (`N signals · M derived · K effects · B DOM bindings · E edges`) followed by the insights that only the graph can surface — the same ones [`describeReactiveGraph`](/docs/reactivity#describe-a-reactive-graph) computes:
 
 - **`orphan-signal`** — nothing depends on this signal: dead reactivity or an unused signal.
 - **`high-fanout`** — changing this signal re-runs many effects; a hot hub worth auditing.
@@ -145,7 +155,7 @@ The graph-wiring readout: a summary header (`N signals · M derived · K effects
 
 #### Activity — "why did X update?"
 
-The runtime **causal** view, powered by [`getReactiveFires`](/reactivity) + [`getUpdateCause` / `formatUpdateCause`](/reactivity). Interact with the app, switch to **Activity**, and the panel shows the recent reactive fires (newest first) plus the causal chain that explains the *most recent* one:
+The runtime **causal** view, powered by [`getReactiveFires`](/docs/reactivity) + [`getUpdateCause` / `formatUpdateCause`](/docs/reactivity). Interact with the app, switch to **Activity**, and the panel shows the recent reactive fires (newest first) plus the causal chain that explains the *most recent* one:
 
 ```text
 Recent updates (newest first):
@@ -176,4 +186,4 @@ The correlation is **exact, not a heuristic**: it's captured at bind time in `_b
 
 Scope: text bindings only — the dominant "I see a wrong value" case. Attribute / class / style bindings and multi-signal text expressions aren't correlated (their owner element isn't in scope at bind time). Returns `[]` in production (nothing is tagged).
 
-Opening the panel **auto-activates** graph/fire tracking, so it works even if the app never called `reactive.activate()`. It's build-only in effect: the whole devtools module (overlay included) is tree-shaken from production by the `process.env.NODE_ENV !== 'production'` gate, so there is nothing to ship or disable. Use the `⟳` button to re-read after interacting with the app. This is the runtime complement to the component-inspect overlay (`Ctrl+Shift+P`, hover-to-inspect DOM) and the [Reactivity Lens](/reactivity-lens) editor hints (compiler-side static analysis).
+Opening the panel **auto-activates** graph/fire tracking, so it works even if the app never called `reactive.activate()`. It's build-only in effect: the whole devtools module (overlay included) is tree-shaken from production by the `process.env.NODE_ENV !== 'production'` gate, so there is nothing to ship or disable. Use the `⟳` button to re-read after interacting with the app. This is the runtime complement to the component-inspect overlay (`Ctrl+Shift+P`, hover-to-inspect DOM) and the [Reactivity Lens](/docs/reactivity-lens) editor hints (compiler-side static analysis).

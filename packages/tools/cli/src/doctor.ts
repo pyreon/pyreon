@@ -25,6 +25,7 @@
  *   - --ci: exit non-zero on any error finding
  */
 
+import { createTerm, finding } from '@pyreon/ansi'
 import {
   runDoctor,
   type GateName,
@@ -130,9 +131,18 @@ export const doctor = async (options: DoctorOptions): Promise<number> => {
     // exit would be the exact false-green the workspace-roots fix
     // closes. Fail with guidance instead of silently passing.
     if (!report.measured) {
+      const t = createTerm({ isTTY: Boolean(process.stderr.isTTY) })
       console.error(
-        '[Pyreon] doctor --ci measured nothing: every gate was skipped or matched no files. ' +
-          'Check the workspace layout (package.json `workspaces` / pnpm-workspace.yaml) or pass --roots <glob,...>.',
+        finding(
+          t,
+          {
+            severity: 'error',
+            source: 'pyreon doctor --ci',
+            message: 'measured nothing: every gate was skipped or matched no files.',
+            fix: 'check the workspace layout (package.json `workspaces` / pnpm-workspace.yaml) or pass --roots <glob,...>',
+          },
+          { indent: 0, width: t.width },
+        ).join('\n'),
       )
       return 1
     }

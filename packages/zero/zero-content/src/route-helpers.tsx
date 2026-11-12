@@ -11,15 +11,18 @@
  * wrap to keep Pyreon's synchronous `mount()` happy, and the cast
  * dance around `Promise<VNode>`).
  *
- * `defineContentRoute('docs')` collapses all of it into one call —
- * the user writes `export default defineContentRoute('docs')` in
+ * `defineContentRoute('docs')` collapses the component half into one
+ * call — the user writes `export default defineContentRoute('docs')` in
  * their catch-all route file and gets:
  *
  *   - the `default` component (sync wrapper + Suspense + async body)
- *   - `getStaticPaths` for SSG (enumerated from the slug glob the
- *     virtual collections module already builds)
  *   - sane 404 + loading fallbacks (overridable)
- *   - the registry-import side effect baked in
+ *
+ * It does NOT provide `getStaticPaths` or the
+ * `import 'virtual:zero-content/collections'` side effect: a static build
+ * still exports `getStaticPaths` from the route file and imports the
+ * registry there (see `docs/src/routes/docs/[...slug].tsx` and the
+ * zero-content docs).
  *
  * Override surface (everything optional):
  *

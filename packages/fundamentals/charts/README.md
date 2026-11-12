@@ -70,7 +70,7 @@ separate modules, so a bar chart never pulls the radial trigonometry or the
 finance and matrix families (locked by the repo's import budgets). WITHIN
 `PlotChart` the cartesian marks share one renderer and one interaction surface
 (tooltip, legend, zoom, brush, `maxPoints` decimation): a one-line chart
-measures the same 40.9 KB gz as a bar + line + tooltip + legend chart — see
+measures the same 38.0 KB gz as a bar + line + tooltip + legend chart — see
 "Bundle size" below.
 
 Marks: `bars`, `line`, `area`, `points`, `stackedBars`, `groupedBars`.
@@ -318,9 +318,11 @@ tree-shaken way).
 
 | Chart                          | `@pyreon/charts` | ECharts 6, tree-shaken | ECharts 6, whole package |
 | ------------------------------ | --------------------- | ---------------------- | ------------------------ |
-| Line                           | 40.9 KB (`PlotChart`) | 155.9 KB               | 361.1 KB                 |
-| Bar + line, tooltip, legend    | 40.9 KB (`PlotChart`) | 176.8 KB               | —                        |
-| Pie                            | 18.1 KB (`PieChart`)  | 117.3 KB               | —                        |
+| Line                           | 38.0 KB (`PlotChart`) | 155.9 KB               | 361.0 KB                 |
+| Bar + line, tooltip, legend    | 38.0 KB (`PlotChart`) | 176.7 KB               | —                        |
+| Pie                            | 19.1 KB (`PieChart`)  | 117.2 KB               | —                        |
+
+Figures from the latest benchmark record (`BENCHMARKS.md`, `bench:charts-bundle`); that file is authoritative when they differ.
 
 `PlotChart` does not yet tree-shake per mark: a one-line chart costs the same
 as a bar + line + tooltip + legend chart.
@@ -333,13 +335,13 @@ Canvas renders the whole chart as one `<canvas>` element. SVG creates hundreds o
 
 The one surface the two engines share with no DOM is "a spec in, an SVG string out": the plot engine's `renderSvg(renderChart(spec))` against ECharts' server-side renderer (`echarts.init(null, null, { ssr: true, renderer: 'svg' })` → `renderToSVGString()`), same rows, same 960×400 size, axes and grid on both sides, animation off.
 
-| Chart | `@pyreon/charts` | ECharts 6.1 SSR | ratio |
-| --- | --- | --- | --- |
-| bars, 1,000 rows | 1.40 ms | 6.89 ms | **4.9×** |
-| bars, 10,000 rows | 13.4 ms | 59.0 ms | **4.4×** |
-| line, 10,000 rows | 6.10 ms | 11.6 ms | **1.9×** |
+| Chart | `@pyreon/charts` faster by |
+| --- | --- |
+| bars, 1,000 rows | **8.2×** |
+| bars, 10,000 rows | **7.5×** |
+| line, 10,000 rows | **7.4×** |
 
-Measured 2026-09-08, Bun 1.x on an M3 Max, K=15 medians, `NODE_ENV=production`; reproduce with `bun run --filter=@pyreon/charts bench:engine`. Read it as that surface and nothing finer: ECharts draws more chrome by default (a themed legend, styled ticks), the engine emits one command per datum where ECharts batches a line into one path, and neither number is a canvas paint — the canvas executors need a real 2D context on one side and a real DOM on the other, so they are not comparable here. The engine's own layout + render throughput (bars ×10k, line ×100k, treemap, sankey, LTTB) prints above these rows in the same run. *Author-run bench; magnitudes are the signal.*
+Ratios from the latest benchmark record (`BENCHMARKS.md`, median of 15, no CI); see that file for the absolute times. Bun on an M3 Max, K=15 medians, `NODE_ENV=production`; reproduce with `bun run --filter=@pyreon/charts bench:engine`. Read it as that surface and nothing finer: ECharts draws more chrome by default (a themed legend, styled ticks), the engine emits one command per datum where ECharts batches a line into one path, and neither number is a canvas paint — the canvas executors need a real 2D context on one side and a real DOM on the other, so they are not comparable here. The engine's own layout + render throughput (bars ×10k, line ×100k, treemap, sankey, LTTB) prints above these rows in the same run. *Author-run bench; magnitudes are the signal.*
 
 ## Native geometry — the plot engine on iOS/Android
 

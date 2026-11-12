@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa ph-card-charts" viewBox="0 0 560 220" width="560" height="220" role="img" aria-labelledby="ph-card-charts-t ph-card-charts-d" fill="none">
+<title id="ph-card-charts-t">Charts</title>
+<desc id="ph-card-charts-d">A bar chart of monthly revenue with a dashed target line, the latest bar highlighted, as drawn by a &lt;Chart&gt; with &lt;Bar&gt; and &lt;Line&gt; children.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.ph-card-charts{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.ph-card-charts .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.ph-card-charts .ph-card-charts-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.ph-card-charts *{animation:none!important;transition:none!important}.ph-card-charts .ph-card-charts-rm{opacity:1}.ph-card-charts .ph-card-charts-am{opacity:0}}
+
+.ph-card-charts .ln{stroke:var(--px-hint);stroke-width:1.5}
+.ph-card-charts .dash{stroke:var(--px-hint);stroke-width:1.5;stroke-dasharray:4 6}
+.ph-card-charts .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.ph-card-charts .bx2{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+.ph-card-charts .act{fill:none;stroke:var(--px-text);stroke-width:2}
+.ph-card-charts .lab{fill:var(--px-fog);font-size:14px;letter-spacing:.02em}
+.ph-card-charts .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.ph-card-charts .val{fill:var(--px-text);font-size:20px;font-weight:500}
+.ph-card-charts .big{fill:var(--px-strong);font-size:30px;font-weight:600;letter-spacing:-.02em}
+.ph-card-charts .txt{fill:var(--px-text);font-size:16px}
+.ph-card-charts .mt{fill:var(--px-mist);font-size:14px}
+.ph-card-charts .hint{fill:var(--px-fog);font-size:13px}
+.ph-card-charts .ember{stroke:url(#ph-card-charts-eg);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:36 2000;fill:none}
+.ph-card-charts .emS{stroke:url(#ph-card-charts-eg);stroke-width:2.5;fill:none}
+.ph-card-charts .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.ph-card-charts .ok{fill:var(--px-ok)} .ph-card-charts .warm{fill:var(--px-warm)} .ph-card-charts .hot{fill:var(--px-accent)} .ph-card-charts .err{fill:var(--px-err)}
+.ph-card-charts .okT{fill:var(--px-ok)} .ph-card-charts .warmT{fill:var(--px-warm)} .ph-card-charts .hotT{fill:var(--px-accent-text)} .ph-card-charts .errT{fill:var(--px-err)} .ph-card-charts .linkT{fill:var(--px-link)}
+.ph-card-charts .focus{fill:none;stroke:var(--px-link);stroke-width:2;stroke-dasharray:3 3}
+.pxa{--sx-kw:#FF5E1A;--sx-str:#FFC83D;--sx-num:#FF1F8C;--sx-fn:#22D3EE;--sx-type:#A78BFA;--sx-com:#8A8696;--sx-fg:#E6E0D2;--sx-pane:#111118;--sx-pane-line:#2E2E3B;--sx-del-bar:#FF1F8C;--sx-del-bg:rgba(255,31,140,.12);--sx-del-text:#F7B9D6;--sx-ins-bar:#22D3EE;--sx-ins-bg:rgba(34,211,238,.09);--sx-ins-text:#E9FBFF}
+@media (prefers-color-scheme: light){.pxa{--sx-kw:#C2410C;--sx-str:#8A5A00;--sx-num:#BE185D;--sx-fn:#0E7490;--sx-type:#6D28D9;--sx-com:#6B6776;--sx-fg:#14141C;--sx-pane:#F4EFE6;--sx-pane-line:#E6DFD2;--sx-del-bar:#D1106F;--sx-del-bg:rgba(209,16,111,.07);--sx-del-text:#8E0B4C;--sx-ins-bar:#0A6E89;--sx-ins-bg:rgba(10,110,137,.08);--sx-ins-text:#0B4F63}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--sx-kw:#FF5E1A;--sx-str:#FFC83D;--sx-num:#FF1F8C;--sx-fn:#22D3EE;--sx-type:#A78BFA;--sx-com:#8A8696;--sx-fg:#E6E0D2;--sx-pane:#111118;--sx-pane-line:#2E2E3B;--sx-del-bar:#FF1F8C;--sx-del-bg:rgba(255,31,140,.12);--sx-del-text:#F7B9D6;--sx-ins-bar:#22D3EE;--sx-ins-bg:rgba(34,211,238,.09);--sx-ins-text:#E9FBFF}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--sx-kw:#C2410C;--sx-str:#8A5A00;--sx-num:#BE185D;--sx-fn:#0E7490;--sx-type:#6D28D9;--sx-com:#6B6776;--sx-fg:#14141C;--sx-pane:#F4EFE6;--sx-pane-line:#E6DFD2;--sx-del-bar:#D1106F;--sx-del-bg:rgba(209,16,111,.07);--sx-del-text:#8E0B4C;--sx-ins-bar:#0A6E89;--sx-ins-bg:rgba(10,110,137,.08);--sx-ins-text:#0B4F63}
+.ph-card-charts .cd{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;fill:var(--sx-fg);white-space:pre;font-variant-ligatures:none}
+.ph-card-charts .cd .k{fill:var(--sx-kw)} .ph-card-charts .cd .s{fill:var(--sx-str)} .ph-card-charts .cd .n{fill:var(--sx-num)}
+.ph-card-charts .cd .f{fill:var(--sx-fn)} .ph-card-charts .cd .t{fill:var(--sx-type)} .ph-card-charts .cd .c{fill:var(--sx-com)} .ph-card-charts .cd .u{fill:var(--sx-com)}
+.ph-card-charts .pane{fill:var(--sx-pane);stroke:var(--sx-pane-line);stroke-width:1}
+.ph-card-charts .delbg{fill:var(--sx-del-bg)} .ph-card-charts .delbar{fill:var(--sx-del-bar)} .ph-card-charts .insbg{fill:var(--sx-ins-bg)} .ph-card-charts .insbar{fill:var(--sx-ins-bar)}
+.ph-card-charts .sgn-d{fill:var(--sx-del-bar)} .ph-card-charts .sgn-i{fill:var(--sx-ins-bar)}.ph-card-charts .warnT{fill:var(--px-warn)}
+</style>
+<defs><linearGradient id="ph-card-charts-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="ph-card-charts-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="560" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="ph-card-charts-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="ph-card-charts-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<rect class="bx" x="16" y="16" width="528" height="188" rx="14"/>
+<line class="ln" x1="48" y1="176" x2="520" y2="176" style="stroke:var(--px-line2)"/>
+<rect x="60" y="136" width="28" height="40" rx="4" style="fill:var(--px-bar)"/><rect x="106" y="124" width="28" height="52" rx="4" style="fill:var(--px-bar)"/><rect x="152" y="128" width="28" height="48" rx="4" style="fill:var(--px-bar)"/><rect x="198" y="110" width="28" height="66" rx="4" style="fill:var(--px-bar)"/><rect x="244" y="104" width="28" height="72" rx="4" style="fill:var(--px-bar)"/><rect x="290" y="92" width="28" height="84" rx="4" style="fill:var(--px-bar)"/><rect x="336" y="84" width="28" height="92" rx="4" style="fill:var(--px-bar)"/><rect x="382" y="72" width="28" height="104" rx="4" style="fill:var(--px-bar)"/><rect x="428" y="58" width="28" height="118" rx="4" style="fill:var(--px-bar)"/><rect x="474" y="44" width="28" height="132" rx="4" style="fill:url(#ph-card-charts-egv)"/>
+<path d="M60 120 L520 60" style="stroke:var(--px-fog);stroke-width:1.5;stroke-dasharray:5 5;fill:none"/>
+<text class="m hint" x="48" y="40" style="font-size:12px">&lt;Chart&gt; · &lt;Bar y="revenue"&gt; · &lt;Line y="target"&gt;</text>
+</svg>

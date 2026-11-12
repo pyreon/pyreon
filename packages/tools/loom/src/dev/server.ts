@@ -12,6 +12,7 @@ import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildReport } from '../core/report'
+import { tokens } from '../ui/theme'
 import type { LoomSettings } from '../core/config'
 
 export interface DevServerOptions {
@@ -93,7 +94,22 @@ export const FONTS_HREF =
  * site data is blocked).
  */
 export const THEME_BOOT =
-  "try{var t=localStorage.getItem('loom:theme');if(t==='dark'||t==='light')document.documentElement.setAttribute('data-lm-theme',t)}catch(e){}"
+  "try{var t=localStorage.getItem('pyreon-theme');if(t!=='dark'&&t!=='light')t=localStorage.getItem('loom:theme');if(t==='dark'||t==='light')document.documentElement.setAttribute('data-lm-theme',t)}catch(e){}"
+
+const boot = (dark: boolean) => {
+  const t = tokens(dark)
+  return `background:${t.bg};color:${t.muted};color-scheme:${dark ? 'dark' : 'light'}`
+}
+/**
+ * The page ground before the bundle runs — the same palette the observatory
+ * uses, by the same rule (a remembered choice on <html>, else the OS), so
+ * the loading line never flashes white on a dark setup.
+ */
+export const BOOT_CSS =
+  `html{${boot(true)}}` +
+  `@media (prefers-color-scheme: light){html:not([data-lm-theme=dark]){${boot(false)}}}` +
+  `html[data-lm-theme=dark]{${boot(true)}}html[data-lm-theme=light]{${boot(false)}}` +
+  "body{margin:0}.lm-boot{min-height:100vh;display:grid;place-items:center;font:12px/1.5 'JetBrains Mono',ui-monospace,monospace}"
 
 function devHtml(title: string): string {
   return [
@@ -106,8 +122,11 @@ function devHtml(title: string): string {
     '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />',
     `<link href="${FONTS_HREF}" rel="stylesheet" />`,
     `<script>${THEME_BOOT}</script>`,
+    `<style>${BOOT_CSS}</style>`,
     '</head><body>',
-    '<div id="loom-root"></div>',
+    // The loading state: the scan runs per request, so on a large workspace
+    // the report takes a moment — show that it is coming, in the theme.
+    `<div id="loom-root"><div class="lm-boot" role="status">${title} · scanning the workspace…</div></div>`,
     // `src="/@id/…"`, never an inline `import 'virtual:…'` — Vite does not
     // import-analyse inline transformIndexHtml scripts, so the bare virtual
     // specifier would reach the browser and fail with an unsupported scheme
@@ -186,14 +205,15 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
         load(id: string) {
           if (id !== resolved(ENTRY_ID)) return undefined
           return [
-            `import { mountObservatory } from ${JSON.stringify(uiModulePath())}`,
+            `import { mountObservatory, mountScanError } from ${JSON.stringify(uiModulePath())}`,
             '',
             `const root = document.getElementById('loom-root')`,
             `const res = await fetch(${JSON.stringify(REPORT_PATH)})`,
             `const body = await res.json()`,
             // A failed rescan (a manifest mid-edit that no longer parses) must
             // say why, not hand an error object to the UI as if it were a report.
-            `if (!res.ok) { if (root) { root.textContent = 'loom: ' + (body.error ?? 'the scan failed'); root.style.cssText = 'font:14px/1.5 ui-monospace,monospace;padding:24px;white-space:pre-wrap;color:#b91c1c' } }`,
+            `if (root) root.textContent = ''`,
+            `if (!res.ok) { if (root) mountScanError(root, body.error ?? 'the scan failed') }`,
             `else if (root) mountObservatory(root, body, { brand: ${JSON.stringify(brand)} })`,
             '',
           ].join('\n')

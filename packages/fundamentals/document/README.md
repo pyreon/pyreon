@@ -155,7 +155,7 @@ If you need the document tree to also render in the browser (live preview + expo
 
 ## Lazy-loaded heavy renderers
 
-Approximate chunk sizes (already vendored in `lib/`):
+The heavy engines are OPTIONAL peer dependencies (`pdfmake`, `docx`, `exceljs`, `pptxgenjs`): install the ones for the formats you render. Approximate chunk sizes:
 
 | Renderer | Approx chunk |
 |---|---|
@@ -164,7 +164,7 @@ Approximate chunk sizes (already vendored in `lib/`):
 | XLSX | ~1.1 MB |
 | PPTX | ~400 KB |
 
-These load only when their format is invoked. The 14 MB published `lib/` is the trade-off for a single-install batteries-included experience; consumers tree-shake at their build step so unused renderers don't ship to end users.
+These load only when their format is invoked, so apps that never render a heavy format never pay for it. The package's own `lib/` is small (well under 1 MB); rendering a heavy format without its peer installed fails with a message naming the package to install.
 
 ## Gotchas
 

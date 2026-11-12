@@ -11,6 +11,7 @@ Highlights:
 - **Server loaders** — a `.server.{ts,tsx,js,jsx}` sibling next to a route file is a server-only data loader (never ships to the client; single-fetch on client navigations). Layouts can't have them — put per-request layout data in a page serverLoader or middleware locals.
 - **Per-route `renderMode`** — any route opts out of the global mode (`export const renderMode = 'ssg'`).
 - **SSG delivery polish** — `ssg: { speculationRules, viewTransitions, cssMode: 'asset', earlyHints }` tune how prerendered pages ship.
+- **Dev error overlay** — in `vite dev`, an SSR, loader or middleware error, or a reported hydration mismatch, opens an overlay with the route and phase, the source file and lines around the error (with **Open in editor**), the diagnose-catalog fix when one matches, a dimmed-library stack and **Copy for your AI assistant**. Nothing of it reaches a build.
 - **Runtime ISR with tags + persistence** — `isr.tagsForRequest` + `isrHandler.revalidateTag(tag)` for group invalidation; `createFsStore(dir)` persists the cache across restarts.
 
 ## Install

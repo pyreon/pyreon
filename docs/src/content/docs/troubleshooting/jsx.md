@@ -3,8 +3,6 @@ title: "JSX Mistakes"
 description: "Common jsx mistakes in Pyreon and how to fix them."
 ---
 
-# JSX Mistakes
-
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
 ### `key` on `<For>`
@@ -26,6 +24,12 @@ Use `by`, not `key` — JSX reserves `key` for VNode reconciliation.
 ### `.map()` in JSX
 
 Use `<For>` for reactive list rendering, not `.map()`.
+
+---
+
+### A `<For>` row reading a field of an item that is replaced under the same key
+
+On the web a keyed `<For>` runs a row's callback once per key, so `t` is the object the row mounted with. `list.map((t) => (t.id === id ? { ...t, done: !t.done } : t))` keeps the key, so the row is kept and `{t.done ? 'done' : 'todo'}` / `class={t.done ? …}` keep the FIRST value while a count derived from the list moves. iOS and Android re-evaluate the row (SwiftUI `ForEach`, Compose `items`), so a multiplatform source looked right on two targets and stale on web (`examples/native-tasks`, the playground `TodoList`). A checkbox hides it, because the browser flips `checked` itself; a label or class does not. Fix: give the changing field its own signal (`done: Signal<boolean>`, the tutorial's shape), or read the live value by id in a call (`isDone(t.id)`, which stays reactive on web and lowers to a plain lookup on native). No lint rule catches it yet. Locked by `e2e/native-tasks-web.spec.ts` (row label) and `e2e/app.spec.ts` (TodoList row class).
 
 ---
 

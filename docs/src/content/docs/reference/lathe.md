@@ -1,9 +1,7 @@
 ---
-title: "Spec-to-Client Generator — API Reference"
+title: "@pyreon/lathe — API Reference"
 description: "OpenAPI in, typed Pyreon client out — schemas, endpoints, queries, mocks, faker factories, Markdown reference and Atlas scenarios, with a multiplatform mode tha"
 ---
-
-# @pyreon/lathe — API Reference
 
 > **Generated** from `lathe`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [lathe](/docs/lathe).
 
@@ -63,26 +61,36 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 A full, end-to-end usage of the package:
 
 ```tsx
-$ npx lathe generate ./openapi.yaml --target multiplatform
+$ npx @pyreon/lathe generate
+lathe generate · 1 project
 
-lathe / Bookshelf 1.2.0
-  4 models  4 operations  target=multiplatform
+  ✓ Bookshelf  1.2.0 · openapi.yaml · 4 models · 4 operations · multiplatform · wrote 6 of 29 files
+    plugins        schemas, client, queries, mocks, faker, atlas, docs (+components, required by
+                   them)
+    files          6 of 29 files written
+      ~ updated  src/gen/schemas/Book.ts
+      ~ updated  src/gen/faker.ts
+      ~ updated  src/gen/components.tsx
+      ~ updated  src/gen/books.native.tsx
+      ~ updated  src/gen/docs/models.md
+      ~ updated  src/gen/api-surface.json
+    contract       1 breaking · 1 additive
+      − breaking  field-removed  Book.pages  was integer (optional)
+      + additive  field-added    Book.dueAt  date-time (optional)
+    native reach   3 of 4 operations · 1 web-only
+      ! web-only  1 operation: createBook
+        `POST` lowers through mutations, which PMTC does not yet recognise; GET operations on this
+        client DO reach native.
+    native verify  4 of 4 files lower
+      ✓ lowers    authors.native.tsx    swift   compiled
+      ✓ lowers    authors.native.tsx    kotlin  compiled
+      ✓ lowers    books.native.tsx      swift   compiled
+      ✓ lowers    books.native.tsx      kotlin  compiled
+      ✓ compiled  all modules together  swift
+      ✓ compiled  all modules together  kotlin
+      markers  PyreonQuery< PyreonZodSchema_ PyreonSchemaError
 
-  + src/gen/schemas/Book.ts
-  + src/gen/schemas.ts
-  + src/gen/client.ts
-  + src/gen/endpoints/books.ts
-  + src/gen/queries/books.ts
-  + src/gen/books.native.tsx
-
-  5 file(s) written
-
-  native reach  3/4 operations
-    web-only 1 op(s): createBook
-      POST lowers through mutations, which PMTC does not yet recognise.
-
-  lowers books.native.tsx swift   [PyreonQuery< PyreonZodSchema_]
-  lowers books.native.tsx kotlin  [PyreonQuery< PyreonZodSchema_]
+! wrote 6 of 29 files · 1 breaking change · 69 ms
 ```
 
 ## Exports

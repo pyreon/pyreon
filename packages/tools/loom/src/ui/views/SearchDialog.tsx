@@ -83,7 +83,7 @@ export function SearchDialog(props: {
             }
             onKeyDown={onKey}
           />
-          <C.SearchKbd>esc</C.SearchKbd>
+          <C.Kbd>esc</C.Kbd>
         </C.SearchDialogHead>
         <C.SearchResults
           ref={(el: HTMLElement | null) => {
@@ -104,7 +104,7 @@ export function SearchDialog(props: {
                 <C.SearchRowKind variant={hit.kind}>{hit.kind}</C.SearchRowKind>
                 {hit.reason ? <C.SearchRowReason>{hit.reason}</C.SearchRowReason> : null}
                 <Show when={() => activeIdx() === i}>
-                  <C.SearchEnterHint>↵</C.SearchEnterHint>
+                  <C.Kbd>↵</C.Kbd>
                 </Show>
               </C.SearchRow>
             ))

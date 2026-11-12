@@ -75,6 +75,9 @@ pyreon-lint --format json
 # Compact one-line-per-diagnostic output
 pyreon-lint --format compact
 
+# GitHub Actions annotations (inline on the PR diff)
+pyreon-lint --format gha
+
 # Override a specific rule's severity
 pyreon-lint --rule pyreon/no-classname=off
 
@@ -95,7 +98,7 @@ pyreon-lint --lsp
 | `[path...]`                   | Files or directories to lint (default: `.`). Directories are walked recursively.            |
 | `--preset <name>`             | Preset: `recommended` (default), `strict`, `app`, `lib`, `best-practices`                    |
 | `--fix`                       | Apply auto-fixes for fixable diagnostics, writing changes back to disk                       |
-| `--format <fmt>`              | Output format: `text` (default), `json`, `compact`                                           |
+| `--format <fmt>`              | Output format: `text` (default), `json`, `compact`, `gha` (GitHub annotations)               |
 | `--quiet`                     | Only show errors (hide warnings and infos)                                                   |
 | `--watch`                     | Watch mode — re-lint on file changes (`fs.watch` recursive + 100ms debounce + AST cache)     |
 | `--list`                      | List all rules (`id`, category, severity, description, `[fixable]`) and the total count      |
@@ -1079,7 +1082,7 @@ The server advertises `textDocumentSync: full` and `inlayHintProvider: true`. On
 ```yaml
 # .github/workflows/lint.yml
 - name: Pyreon lint
-  run: bunx pyreon-lint --preset strict --quiet
+  run: bunx @pyreon/lint --preset strict --quiet
 ```
 
 `--preset strict` promotes every warning to an error so the job fails on any deviation; `--quiet` keeps the output to errors only. The `--format json` output (`{ files, totalErrors, totalWarnings, totalInfos, configDiagnostics }`) feeds dashboards and custom gates. For a ratcheted burn-down (counts may only decrease), pair the JSON output with a baseline file.

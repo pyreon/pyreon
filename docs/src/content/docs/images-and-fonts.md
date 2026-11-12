@@ -3,14 +3,12 @@ title: Images & Fonts
 description: Out-of-the-box image and font optimization in @pyreon/zero — bi-modal Image, descriptor compat, registries, priority preload, self-hosted Google Fonts.
 ---
 
-# Images & Fonts
-
 `@pyreon/zero` auto-wires `imagePlugin` and `fontPlugin` into the build pipeline by default. A user adds `pyreon()` + `zero()` to vite.config and `<Image>` + self-hosted fonts Just Work — no manual plugin wiring.
 
 ```ts
 // vite.config.ts
 import pyreon from '@pyreon/vite-plugin'
-import zero from '@pyreon/zero'
+import zero from '@pyreon/zero/server'
 
 export default {
   plugins: [
@@ -673,9 +671,9 @@ function Page() {
 
 ## Related
 
-- [`useHead`](/head) — the underlying head-management hook that powers these primitives
-- [`@pyreon/head`](/head) — declarative document head management
-- [`<Image priority>`](/zero#image) — for optimized LCP images (preferred over `usePreload`)
+- [`useHead`](/docs/head) — the underlying head-management hook that powers these primitives
+- [`@pyreon/head`](/docs/head) — declarative document head management
+- [`<Image priority>`](/docs/zero#image) — for optimized LCP images (preferred over `usePreload`)
 
 ## `<NoOptimize>` — subtree-scoped image optimization opt-out
 

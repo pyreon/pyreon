@@ -202,7 +202,7 @@ const MATRIX: Cell[] = [
 
   // blog + cloudflare — exercises the SSG-forced template AND the
   // wrangler.toml + _routes.json deploy-artefact pair. Both blog content
-  // (TSX posts via import.meta.glob) and cloudflare's dual-file deploy
+  // (markdown posts on @pyreon/zero-content/blog) and cloudflare's dual-file deploy
   // shape live here.
   {
     name: 'cpa-smoke-blog-cloudflare',
@@ -218,9 +218,14 @@ const MATRIX: Cell[] = [
       // assertion doubles as proof the adapter's SSG branch actually ran.
       assertJsonValid(join(dir, 'dist', '_routes.json'))
       assertFileContains(join(dir, 'vite.config.ts'), 'cloudflareAdapter')
-      // Blog README mentions RSS + content/posts/ (distinct from app's).
+      // Blog README mentions RSS + content/blog/ (distinct from app's).
       assertFileContains(join(dir, 'README.md'), 'RSS')
-      assertFileContains(join(dir, 'README.md'), 'src/content/posts')
+      assertFileContains(join(dir, 'README.md'), 'src/content/blog')
+      // Markdown posts on @pyreon/zero-content/blog, with the feed emitted.
+      assertFileContains(join(dir, 'vite.config.ts'), "@pyreon/zero-content/plugin")
+      assertFileExists(join(dir, 'dist', 'blog', 'rss.xml'))
+      assertFileExists(join(dir, 'dist', 'blog', 'welcome', 'index.html'))
+      assertFileExists(join(dir, 'dist', 'blog', 'tags', 'pyreon', 'index.html'))
     },
     // SSG mode — prerendered HTML at dist/client/index.html. previewSmoke
     // catches the dist/client outDir bug for the static-site path too.

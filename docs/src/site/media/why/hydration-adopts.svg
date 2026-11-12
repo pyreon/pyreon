@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa pw-hydration-adopts" viewBox="0 0 960 480" width="960" height="480" role="img" aria-labelledby="pw-hydration-adopts-t pw-hydration-adopts-d" fill="none">
+<title id="pw-hydration-adopts-t">Hydration adopts the server DOM and keeps what you typed</title>
+<desc id="pw-hydration-adopts-d">Three browser frames. 1, the server-rendered HTML arrives with an empty email input; the JavaScript has not loaded. 2, the user types ada@pyreon before the JavaScript lands. 3, hydration adopts the existing nodes instead of replacing them: the typed text, the focus and the caret are all still there. Below, a dashed ghost frame shows the alternative, a hydration that rebuilds the DOM, where the input comes back empty and focus is lost.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.pw-hydration-adopts{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.pw-hydration-adopts .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.pw-hydration-adopts .pw-hydration-adopts-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.pw-hydration-adopts *{animation:none!important;transition:none!important}.pw-hydration-adopts .pw-hydration-adopts-rm{opacity:1}.pw-hydration-adopts .pw-hydration-adopts-am{opacity:0}}
+
+.pw-hydration-adopts .ln{stroke:var(--px-hint);stroke-width:1.5;fill:none}
+.pw-hydration-adopts .dash{stroke:var(--px-hint);stroke-width:1.5;stroke-dasharray:3 5;fill:none}
+.pw-hydration-adopts .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pw-hydration-adopts .bx2{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+.pw-hydration-adopts .lab{fill:var(--px-fog);font-size:14px;letter-spacing:.04em}
+.pw-hydration-adopts .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.pw-hydration-adopts .val{fill:var(--px-text);font-size:20px;font-weight:500}
+.pw-hydration-adopts .big{fill:var(--px-strong);font-size:24px;font-weight:600;letter-spacing:-.02em}
+.pw-hydration-adopts .code{fill:var(--px-text);font-size:15px}
+.pw-hydration-adopts .kw{fill:var(--px-accent-text)} .pw-hydration-adopts .fn{fill:var(--px-link)} .pw-hydration-adopts .str{fill:var(--px-warm)} .pw-hydration-adopts .ty{fill:var(--px-violet)}
+.pw-hydration-adopts .dim{fill:var(--px-fog)}
+.pw-hydration-adopts .hint{fill:var(--px-hint);font-size:13px}
+.pw-hydration-adopts .ember{stroke:url(#pw-hydration-adopts-egu);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:36 900;fill:none}
+.pw-hydration-adopts .emberS{stroke:url(#pw-hydration-adopts-egu);stroke-width:2.5;stroke-linecap:round;fill:none}
+.pw-hydration-adopts .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.pw-hydration-adopts .ok{fill:var(--px-ok)} .pw-hydration-adopts .warm{fill:var(--px-warm)} .pw-hydration-adopts .hot{fill:var(--px-accent)} .pw-hydration-adopts .errF{fill:var(--px-err)}
+.pw-hydration-adopts .okT{fill:var(--px-ok)} .pw-hydration-adopts .warmT{fill:var(--px-warm)} .pw-hydration-adopts .hotT{fill:var(--px-accent-text)} .pw-hydration-adopts .errT{fill:var(--px-err)}
+.pw-hydration-adopts .okS{stroke:var(--px-ok)} .pw-hydration-adopts .errS{stroke:var(--px-err)}
+.pw-hydration-adopts .gfill{fill:url(#pw-hydration-adopts-eg)}
+@media (prefers-reduced-motion: reduce){.pw-hydration-adopts .ember{opacity:0}}
+
+.pw-hydration-adopts .caret{fill:var(--px-text)}
+.pw-hydration-adopts .focus{fill:none;stroke:var(--px-link);stroke-width:2}
+.pw-hydration-adopts .ghost{fill:none;stroke:var(--px-hint);stroke-width:1.2;stroke-dasharray:4 5}
+.pw-hydration-adopts .chk{fill:var(--px-ok);font-size:13px}
+@keyframes pw-hydration-adopts-k0{0.0000%{opacity:0;animation-timing-function:step-end}16.2500%{opacity:1;animation-timing-function:step-end}18.0000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pw-hydration-adopts-k1{0.0000%{opacity:0;animation-timing-function:step-end}18.0000%{opacity:1;animation-timing-function:step-end}19.7500%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pw-hydration-adopts-k2{0.0000%{opacity:0;animation-timing-function:step-end}19.7500%{opacity:1;animation-timing-function:step-end}21.5000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pw-hydration-adopts-k3{0.0000%{opacity:0;animation-timing-function:step-end}21.5000%{opacity:1;animation-timing-function:step-end}23.2500%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pw-hydration-adopts-k4{0.0000%{opacity:0;animation-timing-function:step-end}23.2500%{opacity:1;animation-timing-function:step-end}25.0000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pw-hydration-adopts-k5{0.0000%{opacity:0;animation-timing-function:step-end}25.0000%{opacity:1;animation-timing-function:step-end}26.7500%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pw-hydration-adopts-k6{0.0000%{opacity:0;animation-timing-function:step-end}26.7500%{opacity:1;animation-timing-function:step-end}28.5000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pw-hydration-adopts-k7{0.0000%{opacity:0;animation-timing-function:step-end}28.5000%{opacity:1;animation-timing-function:step-end}30.2500%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pw-hydration-adopts-k8{0.0000%{opacity:0;animation-timing-function:step-end}30.2500%{opacity:1;animation-timing-function:step-end}32.0000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pw-hydration-adopts-k9{0.0000%{opacity:0;animation-timing-function:step-end}32.0000%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pw-hydration-adopts-js0{0.0000%{opacity:1;animation-timing-function:step-end}42.5000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pw-hydration-adopts-js1{0.0000%{opacity:0;animation-timing-function:step-end}42.5000%{opacity:1;animation-timing-function:step-end}47.5000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pw-hydration-adopts-js2{0.0000%{opacity:0;animation-timing-function:step-end}47.5000%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pw-hydration-adopts-f2{0.0000%{opacity:0;animation-timing-function:step-end}13.7500%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pw-hydration-adopts-ad{0%{opacity:0}47.5000%{opacity:0}48.5000%{opacity:1}50.0000%{opacity:0}100%{opacity:0}}
+.pw-hydration-adopts .k0{animation:pw-hydration-adopts-k0 8000ms linear infinite}
+.pw-hydration-adopts .k1{animation:pw-hydration-adopts-k1 8000ms linear infinite}
+.pw-hydration-adopts .k2{animation:pw-hydration-adopts-k2 8000ms linear infinite}
+.pw-hydration-adopts .k3{animation:pw-hydration-adopts-k3 8000ms linear infinite}
+.pw-hydration-adopts .k4{animation:pw-hydration-adopts-k4 8000ms linear infinite}
+.pw-hydration-adopts .k5{animation:pw-hydration-adopts-k5 8000ms linear infinite}
+.pw-hydration-adopts .k6{animation:pw-hydration-adopts-k6 8000ms linear infinite}
+.pw-hydration-adopts .k7{animation:pw-hydration-adopts-k7 8000ms linear infinite}
+.pw-hydration-adopts .k8{animation:pw-hydration-adopts-k8 8000ms linear infinite}
+.pw-hydration-adopts .k9{animation:pw-hydration-adopts-k9 8000ms linear infinite}
+.pw-hydration-adopts .js0{animation:pw-hydration-adopts-js0 8000ms linear infinite}
+.pw-hydration-adopts .js1{animation:pw-hydration-adopts-js1 8000ms linear infinite}
+.pw-hydration-adopts .js2{animation:pw-hydration-adopts-js2 8000ms linear infinite}
+.pw-hydration-adopts .f2{animation:pw-hydration-adopts-f2 8000ms linear infinite}
+.pw-hydration-adopts .ad{animation:pw-hydration-adopts-ad 8000ms linear infinite}
+@media (prefers-reduced-motion: reduce){.pw-hydration-adopts .k0,.pw-hydration-adopts .k1,.pw-hydration-adopts .k2,.pw-hydration-adopts .k3,.pw-hydration-adopts .k4,.pw-hydration-adopts .k5,.pw-hydration-adopts .k6,.pw-hydration-adopts .k7,.pw-hydration-adopts .k8,.pw-hydration-adopts .k9{opacity:0}.pw-hydration-adopts .k9,.pw-hydration-adopts .js2,.pw-hydration-adopts .f2{opacity:1}.pw-hydration-adopts .js0,.pw-hydration-adopts .js1{opacity:0}}
+</style>
+<defs><linearGradient id="pw-hydration-adopts-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pw-hydration-adopts-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="960" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pw-hydration-adopts-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pw-hydration-adopts-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<text class="m eb" x="24" y="34">HYDRATION THAT ADOPTS THE SERVER DOM</text>
+<rect class="bx" x="24" y="64" width="288" height="236" rx="14"/>
+<rect x="24" y="64" width="288" height="30" rx="14" style="fill:var(--px-raised)"/><rect x="24" y="80" width="288" height="14" style="fill:var(--px-raised)"/>
+<circle cx="42" cy="79" r="4" style="fill:var(--px-hint)"/><circle cx="56" cy="79" r="4" style="fill:var(--px-hint)"/>
+<text class="m hint" x="72" y="84" font-size="12">example.com/login</text>
+<text class="m lab" x="40" y="126" style="fill:var(--px-text)"><tspan style="fill:var(--px-accent-text)">1</tspan>  server HTML arrives</text>
+<text class="m hint" x="40" y="148">the page is usable</text>
+<text class="m hint" x="40" y="190">email</text>
+<rect x="40" y="200" width="256" height="40" rx="8" style="fill:var(--px-bg);stroke:var(--px-fog);stroke-width:1.5"/>
+<text class="m hint" x="40" y="280">JavaScript: not loaded</text>
+<rect class="bx" x="336" y="64" width="288" height="236" rx="14"/>
+<rect x="336" y="64" width="288" height="30" rx="14" style="fill:var(--px-raised)"/><rect x="336" y="80" width="288" height="14" style="fill:var(--px-raised)"/>
+<circle cx="354" cy="79" r="4" style="fill:var(--px-hint)"/><circle cx="368" cy="79" r="4" style="fill:var(--px-hint)"/>
+<text class="m hint" x="384" y="84" font-size="12">example.com/login</text>
+<text class="m lab" x="352" y="126" style="fill:var(--px-text)"><tspan style="fill:var(--px-accent-text)">2</tspan>  you type before the JS</text>
+<text class="m hint" x="352" y="148">slow network, real user</text>
+<text class="m hint" x="352" y="190">email</text>
+<rect x="352" y="200" width="256" height="40" rx="8" style="fill:var(--px-bg);stroke:var(--px-fog);stroke-width:1.5"/>
+<text class="m code k0" x="364" y="226" opacity="0">a</text><text class="m code k1" x="364" y="226" opacity="0">ad</text><text class="m code k2" x="364" y="226" opacity="0">ada</text><text class="m code k3" x="364" y="226" opacity="0">ada@</text><text class="m code k4" x="364" y="226" opacity="0">ada@p</text><text class="m code k5" x="364" y="226" opacity="0">ada@py</text><text class="m code k6" x="364" y="226" opacity="0">ada@pyr</text><text class="m code k7" x="364" y="226" opacity="0">ada@pyre</text><text class="m code k8" x="364" y="226" opacity="0">ada@pyreo</text><text class="m code k9" x="364" y="226" opacity="0">ada@pyreon</text>
+<rect class="focus f2" x="350" y="198" width="260" height="44" rx="10" opacity="0"/>
+<text class="m hint js0" x="352" y="280">JavaScript: loading…</text>
+<text class="m hint js1" x="352" y="280" opacity="0">JavaScript: landed</text>
+<text class="m hint js2" x="352" y="280" opacity="0">JavaScript: landed</text>
+<path class="ln" d="M312 220 L336 220"/><path class="ln" d="M624 220 L648 220"/>
+<rect class="bx" x="648" y="64" width="288" height="236" rx="14"/>
+<rect x="648" y="64" width="288" height="30" rx="14" style="fill:var(--px-raised)"/><rect x="648" y="80" width="288" height="14" style="fill:var(--px-raised)"/>
+<circle cx="666" cy="79" r="4" style="fill:var(--px-hint)"/><circle cx="680" cy="79" r="4" style="fill:var(--px-hint)"/>
+<text class="m hint" x="696" y="84" font-size="12">example.com/login</text>
+<text class="m lab" x="664" y="126" style="fill:var(--px-text)"><tspan style="fill:var(--px-accent-text)">3</tspan>  hydration adopts the page</text>
+<text class="m hint" x="664" y="148">same nodes, nothing rebuilt</text>
+<text class="m hint" x="664" y="190">email</text>
+<rect x="664" y="200" width="256" height="40" rx="8" style="fill:var(--px-bg);stroke:var(--px-fog);stroke-width:1.5"/>
+<g class="js2" opacity="0">
+<text class="m code" x="676" y="226">ada@pyreon</text>
+<rect class="caret" x="768" y="211" width="2" height="19"/>
+<rect class="focus" x="662" y="198" width="260" height="44" rx="10"/>
+<text class="m chk" x="664" y="274">✓ text  ✓ focus  ✓ caret</text></g>
+<text class="m hint js0" x="676" y="226">…</text><text class="m hint js1" x="676" y="226" opacity="0">adopting…</text>
+<rect class="ring ad" x="644" y="60" width="296" height="244" rx="17" opacity="0"/>
+<rect class="ring pw-hydration-adopts-rm" x="644" y="60" width="296" height="244" rx="17"/>
+<!-- the alternative -->
+<rect class="ghost" x="648" y="330" width="288" height="112" rx="14"/>
+<text class="m hint" x="664" y="356">alternative: rebuild the DOM</text>
+<rect x="664" y="370" width="256" height="40" rx="8" class="ghost"/>
+<text class="m hint" x="678" y="396">(empty)</text>
+<text class="m hint" x="664" y="432">text, focus and caret: gone</text>
+<text class="m hint" x="24" y="356">Adopted on hydration:</text>
+<text class="m lab" x="24" y="384" font-size="13">text typed into uncontrolled inputs</text>
+<text class="m lab" x="24" y="408" font-size="13">focus and the caret</text>
+<text class="m lab" x="24" y="432" font-size="13">scroll inside adopted regions</text>
+<text class="m lab" x="24" y="456" font-size="13">listeners other scripts attached early</text>
+</svg>

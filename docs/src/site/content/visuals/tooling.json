@@ -1,0 +1,14 @@
+{
+ "id": "tooling",
+ "og": {
+  "src": "/media/og/products/tooling.png",
+  "width": 1200,
+  "height": 630,
+  "alt": "Tooling (@pyreon/cli · lint · devtools · mcp · testing): Catch the bug that type-checks and never updates."
+ },
+ "hero": {
+  "kind": "picture",
+  "file": "products/tooling/hero-dark.png",
+  "alt": "The Reactivity Lens overlay in a dev build of a Pyreon counter app: the Inspect tab explains that the picked text shows one reactive value, derived#32, which recomputed because the count signal changed, with the source file and line of each step. The counter reads 3, with count, doubled and isEven listed below."
+ }
+}

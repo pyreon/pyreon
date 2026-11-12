@@ -18,7 +18,12 @@ import {
 
 // Relay URL from `?ws=` (the e2e points isolated browser contexts at the test
 // relay this way) or null → cross-tab-only sync. Read once at module load.
+// Only a relay on this machine is accepted: the demo is also served from
+// pyreon.dev, and a crafted `?ws=wss://elsewhere` link must not stream a
+// visitor's board to a third-party server.
+const LOCAL_RELAY = /^wss?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?(\/|$)/
 const RELAY_URL = new URLSearchParams(location.search).get('ws')
+const RELAY = RELAY_URL !== null && LOCAL_RELAY.test(RELAY_URL) ? RELAY_URL : null
 
 export function BoardRoute() {
   // `useRoute()` is a reactive accessor — the router keeps THIS component
@@ -39,7 +44,7 @@ export function BoardRoute() {
     currentId = id
     current?.dispose()
     openCardId = null
-    current = createBoardDoc(id, RELAY_URL)
+    current = createBoardDoc(id, RELAY)
     board = current
   })
   onUnmount(() => current?.dispose())

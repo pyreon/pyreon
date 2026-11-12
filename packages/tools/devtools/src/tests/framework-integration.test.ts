@@ -81,6 +81,14 @@ void [
   _t2,
 ]
 
+// The page hook's `ReactiveDevtools` is a structural SUBSET of the
+// framework's reactive bridge: the framework's must stay assignable to it,
+// so renaming or removing a method the hook calls (getGraph, getFires,
+// getUpdateCause, nodesForElement, …) fails `tsc`.
+const _driftReactive: NonNullable<ExtDevtools['reactive']> =
+  null as unknown as FrameworkDevtools['reactive']
+void _driftReactive
+
 // ── 2 · Runtime proof against the real framework ─────────────────────
 
 const Leaf = () => h('span', { class: 'leaf' }, 'leaf')

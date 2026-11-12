@@ -1,0 +1,163 @@
+{
+  "id": "releases",
+  "route": "/releases",
+  "title": "Releases",
+  "lede": "Every merged change that affects users carries a changeset. Releases are cut from `main` by a workflow, and every `@pyreon/*` package ships at the same version.",
+  "sections": [
+    {
+      "kind": "steps",
+      "title": "How a release happens",
+      "items": [
+        {
+          "title": "A change lands with a changeset",
+          "text": "Each pull request that changes a published package adds a changeset (`bun changeset`) describing the change for users. While Pyreon is `0.x`, a changeset is `minor` or `patch`, never `major`; a breaking change is written as `minor` and called out in the prose."
+        },
+        {
+          "title": "Changesets collects them",
+          "text": "On every push to `main`, the release workflow gathers the unreleased changesets into one \"Version Packages\" pull request, with the version bumps and changelog entries."
+        },
+        {
+          "title": "Merging it publishes",
+          "text": "When that pull request merges, every package is published to npm with provenance, at one shared version, and GitHub releases are created."
+        },
+        {
+          "title": "You align with one command",
+          "text": "`pyreon upgrade` aligns your `@pyreon/*` versions and runs the codemods for each release it crosses. It is a dry run until you pass `--write`."
+        }
+      ]
+    },
+    {
+      "kind": "links",
+      "title": "Where the changelog lives",
+      "items": [
+        {
+          "label": "Per-package CHANGELOG.md",
+          "href": "https://github.com/pyreon/pyreon/tree/main/packages",
+          "text": "Each package keeps its own `CHANGELOG.md`, with every entry linked to its pull request."
+        },
+        {
+          "label": "GitHub releases",
+          "href": "https://github.com/pyreon/pyreon/releases",
+          "text": "A release for each published package."
+        },
+        {
+          "label": "MCP `get_changelog`",
+          "href": "/docs/mcp",
+          "text": "Lets your AI assistant read what changed between your version and the latest."
+        },
+        {
+          "label": "Blog",
+          "href": "/blog",
+          "text": "The stories behind the bigger changes. RSS at `/blog/rss.xml`."
+        }
+      ]
+    },
+    {
+      "kind": "list",
+      "title": "New on main, shipping in the next release",
+      "text": "Merged and unreleased. Each item is on `main` today and goes out with the next release.",
+      "items": [
+        {
+          "title": "More TypeScript compiles to iOS and Android",
+          "text": "`effect()` in a component body, timers, `Date`, TypeScript enums, module-scope signals, `throw` / `try` / `catch`, `JSON.parse` and a `@pyreon/validate` schema's `.parse(x)` now lower to SwiftUI and Compose. The native targets remain experimental.",
+          "status": "next release"
+        },
+        {
+          "title": "`<Select>` and date/time `<Field>`",
+          "text": "`<Select>` uses each platform's own picker; `<Field kind=\"date\" | \"time\" | \"datetime\">` with `min` / `max` opens the native date and time pickers.",
+          "status": "next release"
+        },
+        {
+          "title": "More hooks on native",
+          "text": "`useDocumentVisibility`, `usePrevious`, `useUpdateEffect`, `useReducedMotion`, `useKeyboard`, `useInfiniteQuery`, `useLatest` and a colour-scheme `useMediaQuery`.",
+          "status": "next release"
+        },
+        {
+          "title": "`queryOptions` in `@pyreon/query`",
+          "text": "`queryOptions`, `infiniteQueryOptions` and `mutationOptions`: declare a query once, reuse it in hooks and the client, and `client.getQueryData(opts.queryKey)` is typed without a generic.",
+          "status": "next release"
+        },
+        {
+          "title": "Head tags no longer duplicate on hydration",
+          "text": "A server-rendered page keeps exactly one copy of each `<meta>`, `<link>` and JSON-LD tag.",
+          "status": "next release"
+        },
+        {
+          "title": "`mode: 'auto'` prerenders inferred-SSG routes",
+          "text": "In a build that also has SSR routes, pages inferred as SSG are now prerendered. `mode: 'auto'` stays experimental.",
+          "status": "next release"
+        },
+        {
+          "title": "Hydration-stable `createUniqueId()`",
+          "text": "Ids in server HTML now match the hydrated component's (a per-request counter on the server, one namespace per island).",
+          "status": "next release"
+        },
+        {
+          "title": "`@pyreon/validate/mini`",
+          "text": "Ships without the runtime JIT: a 4-field object schema is 5.2 KB gzip through `mini` against 13.8 KB through the main entry (author-measured). `enableJit()` from `@pyreon/validate/jit` restores the JIT.",
+          "status": "next release"
+        },
+        {
+          "title": "Scheduled content in `@pyreon/zero-content`",
+          "text": "`publishDate: 'date'` plus `unpublished: 'omit'` keeps future-dated entries out of a production build until their date; `PYREON_CONTENT_NOW=<date>` previews the site as it will look then.",
+          "status": "next release"
+        },
+        {
+          "title": "Security fixes",
+          "text": "`@pyreon/zero` takes the request origin from `Host` for its server-action origin check, and no longer serves build internals; `@pyreon/mcp` and `@pyreon/lathe` validate tool arguments before they reach `git` or the filesystem; native `<WebView>` scopes its bridge to the loaded page's origin.",
+          "status": "next release"
+        }
+      ]
+    },
+    {
+      "kind": "note",
+      "text": "Breaking change in the next release: `@pyreon/store`'s `subscribe` callback now receives the state as `mutation.state`, and the old second `state` argument is gone. Update `subscribe((mutation, state) => …)` to read `mutation.state`.",
+      "href": "/docs/store"
+    }
+  ],
+  "end": {
+    "title": "Every change has a changeset. Every changeset has a line in a changelog.",
+    "cta": {
+      "label": "Browse releases on GitHub",
+      "href": "https://github.com/pyreon/pyreon/releases"
+    }
+  },
+  "sources": [
+    {
+      "claim": "Changesets flow: Version Packages PR, publish with provenance on merge, GitHub release",
+      "path": "CONTRIBUTING.md \"Releases\" / \"Release workflow\"; .github/workflows/release.yml"
+    },
+    {
+      "claim": "No major changesets in 0.x; CI guard and release-time cap",
+      "path": "CONTRIBUTING.md \"0.x version policy\"; scripts/check-no-major-changesets.ts"
+    },
+    {
+      "claim": "One fixed version group",
+      "path": ".changeset/config.json \"fixed\"; docs/src/content/docs/stability-and-direction.md"
+    },
+    {
+      "claim": "Per-package CHANGELOG.md with PR links",
+      "path": "packages/core/core/CHANGELOG.md (example)"
+    },
+    {
+      "claim": "GitHub releases per package exist",
+      "path": "gh release list -R pyreon/pyreon (checked 11 Nov)"
+    },
+    {
+      "claim": "pyreon upgrade aligns, codemods only with --write",
+      "path": "00-brief/facts.md; docs/src/content/docs/cli.md"
+    },
+    {
+      "claim": "Unreleased highlights (#4134, #4136, #4154, #4146, #4155, #4100–#4102, #4056, #4057, hooks, #4188, #4161, #4138, #4160, #4193, zero-content scheduling, #4209, #4211, #4215, #4222)",
+      "path": "00-brief/facts.md \"What shipped since 5 Nov\" (checked against origin/main 2655fa3b4)"
+    },
+    {
+      "claim": "validate/mini 5.2 vs 13.8 KB is author-measured",
+      "path": "docs/src/content/docs/validate.md"
+    },
+    {
+      "claim": "store subscribe breaking change",
+      "path": "docs/src/content/docs/store.md"
+    }
+  ]
+}

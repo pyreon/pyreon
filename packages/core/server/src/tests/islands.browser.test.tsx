@@ -147,6 +147,43 @@ describe('@pyreon/server — hydrateIslands in real Chromium', () => {
     spacer.remove()
   })
 
+  it('hydrate=visible: an island styled `display: contents` still hydrates when its content scrolls in', async () => {
+    // A box-less element never intersects, so observing the island element
+    // itself left a `display: contents` island unhydrated forever.
+    const spacer = document.createElement('div')
+    spacer.style.height = '5000px'
+    document.body.appendChild(spacer)
+    const island = installIsland({
+      hydrate: 'visible',
+      componentName: 'Contents',
+      initialHtml: '<div data-testid="contents-child">SSR</div>',
+    })
+    island.style.display = 'contents'
+
+    let loaderCalled = false
+    const Contents = () => <div data-testid="contents-child">live</div>
+    const cleanup = hydrateIslands({
+      Contents: () => {
+        loaderCalled = true
+        return Promise.resolve({ default: Contents })
+      },
+    })
+    await settle()
+    expect(loaderCalled).toBe(false)
+
+    island.querySelector('[data-testid="contents-child"]')!.scrollIntoView({ behavior: 'instant', block: 'center' })
+    for (let i = 0; i < 30; i++) {
+      await flushFrames()
+      if (loaderCalled && island.textContent === 'live') break
+    }
+    expect(loaderCalled).toBe(true)
+    expect(island.textContent).toBe('live')
+
+    cleanup()
+    cleanupIslands()
+    spacer.remove()
+  })
+
   it('hydrate=media(...): only fires when matchMedia(query).matches is true', async () => {
     // Use a query guaranteed to be true in headless Chromium.
     const island = installIsland({

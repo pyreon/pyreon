@@ -1,9 +1,7 @@
 ---
-title: "State Machines — API Reference"
+title: "@pyreon/machine — API Reference"
 description: "Reactive state machines — constrained signals with type-safe transitions"
 ---
-
-# @pyreon/machine — API Reference
 
 > **Generated** from `machine`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [machine](/docs/machine).
 

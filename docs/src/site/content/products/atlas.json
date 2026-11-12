@@ -1,0 +1,405 @@
+{
+ "id": "atlas",
+ "route": "/products/atlas",
+ "name": "Atlas",
+ "package": "@pyreon/atlas",
+ "category": "tools · component catalog",
+ "hero": {
+  "title": "Write the component. Atlas writes the scenarios and tests every one.",
+  "emberWord": "every one",
+  "lede": "Atlas reads your Pyreon components and their prop types, derives a scenario for every variant, and runs six checks on each: accessibility, interaction, leaks, SSR parity, reactivity coverage and a visual snapshot. You get a workbench, a static docs site and a catalog your coding agent can read, and a check that could not run is reported as not run, never as passed.",
+  "install": "bun add -D @pyreon/atlas",
+  "ctaShort": "Try it",
+  "facts": [
+   {
+    "key": "story files to write",
+    "value": "0<small>Author only what a type cannot say: a play script, a named state.</small>"
+   },
+   {
+    "key": "checks per scenario",
+    "value": "6<small>a11y (static + axe-core), interaction, leak, SSR parity, reactivity coverage, snapshot.</small>"
+   },
+   {
+    "key": "verdicts",
+    "value": "pass · fail · unverified<small>A failing scan exits 1. A skipped check never counts as a pass.</small>"
+   },
+   {
+    "key": "outputs",
+    "value": "workbench · static site · agent catalog<small>`atlas-catalog.json` and `atlas-agent-guide.md`, also served over MCP.</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "8",
+   "label": "scenarios derived from one 17-line Button, with no config: Default, three variants, two sizes, Empty and Long content.",
+   "source": "`atlas scan` on a scratch project holding only that Button (the after side of the comparison below), 2026-11-11"
+  },
+  {
+   "stat": "48",
+   "label": "checks on those 8 scenarios after `atlas scan` and `atlas verify-browser`. One failed twice: the static name check and axe-core `button-name (critical)` on the Empty scenario.",
+   "source": "`atlas verify-browser .` output: \"8 scenario(s) — coverage measured on 8, axe-core run on 8 (1 with violations), 8 baseline(s) created, 0 visual diff(s)\""
+  },
+  {
+   "stat": "44",
+   "label": "scenarios across 11 components in the repo's atlas-workshop example, zero story files: 42 verified, 2 failing, exit code 1.",
+   "source": "`bun atlas scan .` on a copy of examples/atlas-workshop, 2026-11-11"
+  }
+ ],
+ "why": {
+  "title": "A catalog that cannot drift, because nobody writes it.",
+  "items": [
+   {
+    "title": "Scenarios come from your types",
+    "text": "A `variant?: 'solid' | 'soft' | 'outline' | 'ghost'` prop becomes a select control and three scenarios. Rocketstyle dimensions become axes too. Add a value to the union and the next scan has a scenario for it."
+   },
+   {
+    "title": "Every scenario is mounted, clicked and hydrated",
+    "text": "The scan mounts each scenario, clicks everything interactive, renders it on the server, hydrates it and compares the DOM. `atlas verify-browser` adds axe-core, reactivity coverage and pixel snapshots in real Chromium."
+   },
+   {
+    "title": "Three verdicts, never two",
+    "text": "pass, fail or unverified. The summary line names which of the six checks ran (`checks: a11y 7/8 ✗ · interaction 8/8 …`) and the `not run:` line says why the rest did not. A red scan is a red exit code."
+   },
+   {
+    "title": "Your coding agent reads the same catalog",
+    "text": "`atlas-agent-guide.md` lists every component's legal prop values and a known-good usage. `atlas check Button '{\"variant\":\"solidd\"}'` answers \"did you mean `solid`?\" and exits 1. MCP serves it as `get_atlas_catalog` and `get_atlas_component`."
+   }
+  ]
+ },
+ "difference": {
+  "title": "Seven stories to maintain, or zero.",
+  "before": {
+   "label": "Storybook (CSF3)",
+   "caption": "One export per state, rewritten whenever the props change.",
+   "code": "// Button.stories.tsx (Storybook 10, CSF3, React)\nimport type { Meta, StoryObj } from '@storybook/react-vite'\nimport { Button } from './Button'\n\nconst meta = {\n  component: Button,\n  args: { label: 'Button' },\n} satisfies Meta<typeof Button>\nexport default meta\ntype Story = StoryObj<typeof meta>\n\nexport const Solid: Story = {}\nexport const Soft: Story = { args: { variant: 'soft' } }\nexport const Outline: Story = { args: { variant: 'outline' } }\nexport const Ghost: Story = { args: { variant: 'ghost' } }\nexport const Medium: Story = { args: { size: 'md' } }\nexport const Large: Story = { args: { size: 'lg' } }\nexport const Empty: Story = { args: { label: '' } }\n// Add a variant to Button.tsx, then remember to come back here.\n// Nothing tells you when you forget."
+  },
+  "after": {
+   "label": "with Atlas",
+   "caption": "The component is the only file. Real scan output underneath.",
+   "code": "import type { VNodeChild } from '@pyreon/core'\n\nexport interface ButtonProps {\n  /** Visible text. */\n  label: string\n  variant?: 'solid' | 'soft' | 'outline' | 'ghost'\n  size?: 'sm' | 'md' | 'lg'\n  onClick?: () => void\n}\n\nexport function Button(props: ButtonProps): VNodeChild {\n  return (\n    <button class={`btn btn-${props.variant ?? 'solid'} btn-${props.size ?? 'md'}`} onClick={props.onClick}>\n      {props.label}\n    </button>\n  )\n}\n\n// $ atlas scan\n// atlas: discovered 1 component(s), 8 scenario(s) — 7 verified, 1 failing, 0 unverified.\n//   checks: a11y 7/8 ✗ · interaction 8/8 · ssrParity 8/8 · leak 8/8\n//   ✗ button--empty\n//       a11y [missing-accessible-name]: missing accessible name: \"label\" is empty"
+  }
+ },
+ "comingFrom": [
+  {
+   "lib": "Storybook",
+   "title": "A play function becomes one authored scenario. The variant stories disappear.",
+   "before": "// Button.stories.tsx (Storybook 10)\nimport type { Meta, StoryObj } from '@storybook/react-vite'\nimport { expect, fn, userEvent, within } from 'storybook/test'\nimport { Button } from './Button'\n\nconst meta = { component: Button } satisfies Meta<typeof Button>\nexport default meta\ntype Story = StoryObj<typeof meta>\n\nexport const SubmitsOnce: Story = {\n  args: { label: 'Save', onClick: fn() },\n  play: async ({ canvasElement, args }) => {\n    const canvas = within(canvasElement)\n    await userEvent.click(canvas.getByRole('button', { name: 'Save' }))\n    await expect(args.onClick).toHaveBeenCalledOnce()\n  },\n}\n// …plus one story per variant, kept in sync by hand",
+   "after": "// atlas.config.ts: only the case a prop type cannot describe\nimport type { PlayContext } from '@pyreon/atlas/core'\n\nlet clicks = 0\n\nexport const scenarios = {\n  Button: [\n    {\n      name: 'Submits once',\n      args: { label: 'Save', onClick: () => { clicks++ } },\n      play: async ({ root, step }: PlayContext) => {\n        clicks = 0\n        await step('click Save', () => {\n          const button = root.querySelector('button')\n          if (!button) throw new Error('no button rendered')\n          button.click()\n        })\n        await step('onClick ran once', () => {\n          if (clicks !== 1) throw new Error(`onClick ran ${clicks} times`)\n        })\n      },\n    },\n  ],\n}\n// variant=soft, size=lg, Empty, Long content…: derived, nothing to write",
+   "note": "Atlas runs `play` instead of its automatic click-walk, and a throw fails the interaction check naming the step: `play failed at step \"click Save\": no button rendered`. It hands you `root` and `step` and no assertion library, so throw (or bring your own `expect`). The same `scenarios` key works in the `atlas` section of `pyreon.config.ts`."
+  }
+ ],
+ "extraSectionsHtml": "<section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">real output</div><h2>What a scan says, word for word.</h2><p>The <code>examples/atlas-workshop</code> app in the repo: 11 components, no story files, one authored play script. Run under bun, so the leak check runs too.</p></div><div class=\"card\"><div class=\"in\"><pre>$ atlas scan .\natlas: discovered 11 component(s), 44 scenario(s) — 42 verified, 2 failing, 0 unverified.\n  checks: a11y 12/14 ✗ · interaction 44/44 · ssrParity 44/44 · leak 44/44\n  not run: reactivityCoverage, snapshot — browser-only — run `atlas verify-browser` to measure this (a Node scan cannot)\n  → atlas-catalog.json\n  → atlas-agent-guide.md\natlas: 2 file(s) import a module supplied by a build plugin Atlas does not run (virtual:zero/routes) — typically app entry points.\n  Nothing to fix: the import is correct. Atlas cannot load these files, so a component\n  defined in one of them would be absent — move it to its own file if you want it catalogued.\natlas: 2 failing scenario(s):\n  ✗ button--empty\n      a11y [missing-accessible-name]: missing accessible name: \"label\" is empty\n        → Give \"label\" a non-empty value, or an aria-label if the text is genuinely decorative.\n  ✗ badge--empty\n      a11y [missing-accessible-name]: missing accessible name: \"label\" is empty\n        → Give \"label\" a non-empty value, or an aria-label if the text is genuinely decorative.\n  Run `atlas verify &lt;Component&gt;` to re-check one component on its own.\n$ echo $?\n1</pre></div></div></div></section><section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">already on storybook?</div><h2>Keep it. Pyreon renders there too.</h2></div><div class=\"p-inside c1\"><div class=\"card\"><div class=\"in\"><span class=\"pk\">@pyreon/storybook</span><b>framework</b><p>Set <code>framework: '@pyreon/storybook'</code> and your Pyreon components render in Storybook with <code>Meta</code>, <code>StoryObj</code>, args, decorators and play functions. Atlas never asks you to migrate stories; run both and move when you want to.</p></div></div></div></div></section>",
+ "demo": {
+  "title": "The workbench, live.",
+  "text": "This is the Atlas workbench on a small sample library. Pick a component, change its props in Controls, open the A11y tab, and select the Empty scenario: its verdict dot turns red, and the A11y tab names the problem, a button with no accessible name, with axe-core one click away.",
+  "component": "DemoAtlas",
+  "reference": "pkg-atlas.html#demo",
+  "referenceHtml": "<div class=\"card\" style=\"overflow:hidden\"><div class=\"in\" style=\"padding:0\"><iframe src=\"Atlas.html\" title=\"Atlas workbench demo\" style=\"width:100%;height:680px;border:0;display:block;border-radius:21px\"></iframe></div></div>",
+  "referenceCss": "",
+  "referenceJs": "",
+  "spec": "Embed the static workbench `atlas build` produces for a small sample library, or mount the real `Workbench` from `@pyreon/atlas/ui` with a `WorkbenchCatalog` whose components carry their `render` function and whose scenarios carry the verdict `atlas scan` wrote (bundle the scan JSON at build time and merge it in). Sidebar shows a verdict dot per scenario (ok, fail, unverified). Selecting Button → Empty shows a red (fail) dot, and the A11y tab's live structural check shows the danger row \"Accessible name: interactive element with no name\". Controls edit props live; the A11y tab can run axe-core on the preview. Nothing in the demo is a static screenshot of a verdict."
+ },
+ "features": {
+  "title": "Workbench, CI gate and agent catalog in one tool.",
+  "items": [
+   {
+    "name": "`atlas dev`",
+    "text": "a workbench on the real Vite and Pyreon compiler, rescanning when a source file changes"
+   },
+   {
+    "name": "Canvas tools",
+    "text": "viewports, backgrounds, zoom, a measure overlay, outlines, RTL locales, and forced hover, focus or active states on rocketstyle components"
+   },
+   {
+    "name": "Panels",
+    "text": "Controls, A11y with axe-core on demand, an Actions log, the Reactivity Lens and a steppable `@pyreon/store` timeline"
+   },
+   {
+    "name": "`atlas verify-browser`",
+    "text": "axe-core, reactivity coverage and visual diffs in real Chromium, merged back into the catalog"
+   },
+   {
+    "name": "`atlas scan --check`",
+    "text": "compares with the committed catalog; a check that stopped running counts as a regression"
+   },
+   {
+    "name": "`atlas check`",
+    "text": "validates a proposed usage against the derived contract, with a did-you-mean, for hooks and agents"
+   },
+   {
+    "name": "`atlas build`",
+    "text": "a static docs site with the Reactivity Lens and source panels baked in, deployable anywhere"
+   },
+   {
+    "name": "Docs view",
+    "text": "an autodocs page per component: preview, props table, usage, every scenario as a link"
+   },
+   {
+    "name": "Monorepos",
+    "text": "`projects` merges packages into one catalog; two `Button`s stay two, keyed `Core/Button` and `Admin/Button`"
+   },
+   {
+    "name": "Empty renders fail",
+    "text": "a scenario that mounts no DOM fails with `empty-render` instead of passing quietly"
+   }
+  ]
+ },
+ "api": {
+  "title": "Flags, config and the programmatic API.",
+  "groups": [
+   {
+    "name": "atlas scan",
+    "items": [
+     "--no-mount",
+     "--check",
+     "--json",
+     "--no-write",
+     "--dir"
+    ]
+   },
+   {
+    "name": "atlas verify-browser",
+    "items": [
+     "--update-snapshots",
+     "--no-axe",
+     "--axe-min-impact",
+     "--settle-ms",
+     "--settle-timeout"
+    ]
+   },
+   {
+    "name": "atlas build",
+    "items": [
+     "--out",
+     "--base",
+     "--title"
+    ]
+   },
+   {
+    "name": "pyreon.config.ts · atlas",
+    "items": [
+     "title",
+     "projects",
+     "pages",
+     "scenarios",
+     "wrapper",
+     "extensions",
+     "theme",
+     "presets",
+     "matrix",
+     "parts",
+     "browserOnly",
+     "ignore",
+     "alias"
+    ]
+   },
+   {
+    "name": "programmatic",
+    "items": [
+     "createAtlas",
+     "defineAtlas",
+     "defineAtlasPlugin",
+     "recommendedPlugins",
+     "CHECK_KEYS"
+    ]
+   },
+   {
+    "name": "@pyreon/atlas/auto",
+    "items": [
+     "components",
+     "defineComponent"
+    ]
+   },
+   {
+    "name": "types",
+    "items": [
+     "PlayContext",
+     "AtlasWrapperProps",
+     "VerifyFinding",
+     "FindingCode"
+    ]
+   },
+   {
+    "name": "@pyreon/atlas/ui",
+    "items": [
+     "Workbench",
+     "runAxe",
+     "THEMES",
+     "tokens"
+    ]
+   },
+   {
+    "name": "MCP tools (@pyreon/mcp)",
+    "items": [
+     "get_atlas_catalog",
+     "get_atlas_component"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Two and a half checks need a browser",
+   "text": "Reactivity coverage and snapshots, and the axe-core half of a11y, run in `atlas verify-browser` (needs `playwright-core`). A plain scan marks them not run and says so."
+  },
+  {
+   "title": "The leak check needs a GC hook",
+   "text": "Run the scan under bun, or node with `--expose-gc`. Without one the leak check skips with that reason rather than passing."
+  },
+  {
+   "title": "Overlays and parts need a hint",
+   "text": "Components that return null on the server go in `browserOnly`; parts that only render inside a parent go in `parts: { TabPanel: 'Tabs' }`."
+  },
+  {
+   "title": "Pyreon components only",
+   "text": "Atlas finds Pyreon component shapes and rocketstyle chains. It does not catalog React or Vue components, and `styled('div')` components are not discovered yet."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/lathe",
+   "category": "tools",
+   "name": "Lathe",
+   "text": "Generates Atlas scenarios and a mocked wrapper for every safe read in your API.",
+   "package": "@pyreon/lathe"
+  },
+  {
+   "href": "/products/ai",
+   "category": "tools",
+   "name": "AI and MCP",
+   "text": "Serves the Atlas catalog to your coding agent.",
+   "package": "@pyreon/mcp"
+  },
+  {
+   "href": "/products/loom",
+   "category": "tools",
+   "name": "Loom",
+   "text": "The same treatment for your dependency graph.",
+   "package": "@pyreon/loom"
+  }
+ ],
+ "recipes": [
+  {
+   "title": "Gate pull requests on the catalog",
+   "text": "The scan exits 1 when any scenario fails a check. `verify-browser` writes axe-core and coverage verdicts into the catalog and exits 1 on a visual diff. Baselines are machine-specific, so this workflow records them on `main` and restores them from the runner cache for every pull request; without a stored baseline the first run only records one.",
+   "code": "# .github/workflows/components.yml\nname: components\non:\n  pull_request:\n  push:\n    branches: [main]\njobs:\n  atlas:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: oven-sh/setup-bun@v2\n      - run: bun install\n      - run: bunx atlas scan .            # exit 1 on any failing check\n      - run: bunx playwright-core install chromium\n      # baselines are machine-specific: keep them in the runner's cache, recorded on main\n      - uses: actions/cache@v4\n        with:\n          path: atlas-snapshots\n          key: atlas-snapshots-${{ runner.os }}-${{ github.sha }}\n          restore-keys: atlas-snapshots-${{ runner.os }}-\n      # exit 1 on a visual diff; axe-core and coverage verdicts go into atlas-catalog.json\n      - run: bunx atlas verify-browser . ${{ github.event_name == 'push' && '--update-snapshots' || '' }}"
+  },
+  {
+   "title": "Stop an agent shipping `variant=\"solidd\"`",
+   "text": "A wrong prop value typechecks in plenty of places and renders as nothing. `atlas check` reads the committed catalog, so it answers instantly, and exits 1. Put it in a pre-commit hook or your agent's loop. Output below is from the atlas-workshop example.",
+   "code": "$ atlas check Button '{\"label\":\"Save\",\"variant\":\"solidd\"}'\nButton: 1 problem(s):\n  · `variant` must be one of `solid`, `soft`, `outline`, `ghost` — got `solidd` — did you mean `solid`?\n\n$ atlas check Button '{\"variant\":\"soft\",\"colour\":\"red\"}'\nButton: 2 problem(s):\n  · `colour` is not a prop of Button\n  · `label` is required and was not supplied\n\n$ atlas check Button '{\"label\":\"Save\",\"variant\":\"soft\",\"size\":\"lg\"}'\nButton: usage is valid."
+  },
+  {
+   "title": "Publish your design system as a static site",
+   "text": "One URL per component, no server. The Docs source block and the Reactivity Lens are computed at build time and shipped as data, so the deployed site still shows real verdicts.",
+   "code": "$ atlas build --out atlas-dist --base /design-system/\n# then deploy atlas-dist/ to GitHub Pages, Netlify, Cloudflare or S3"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Do I have to give up Storybook?",
+   "a": "No. `@pyreon/storybook` renders Pyreon components in Storybook with the usual `Meta`, `StoryObj`, args and play functions. Atlas never imports your stories and never asks you to delete them."
+  },
+  {
+   "q": "What does \"verified\" mean here?",
+   "a": "At least one check ran on that scenario and none failed. That is why the scan prints a per-check tally and a `not run:` line: a Node scan runs four of the six checks (three if there is no GC hook), and `atlas verify-browser` runs the rest. A scenario where nothing ran is unverified, never verified."
+  },
+  {
+   "q": "Does it run my component code?",
+   "a": "Yes, by default: the scan imports each component through Vite to mount it. `atlas scan --no-mount` stays static and never executes component modules; the runtime checks then report as not run."
+  },
+  {
+   "q": "Can it check React or Vue components?",
+   "a": "No. Atlas reads Pyreon component shapes (function components, `nativeCompat` wrappers, rocketstyle chains). For a mixed codebase, keep Storybook for the rest."
+  },
+  {
+   "q": "How long does a scan take?",
+   "a": "The atlas-workshop example (11 components, 44 scenarios) scanned in under two seconds on our laptop, one run. The leak check forces garbage collection once per group of about 256 scenarios rather than once per scenario, which is what keeps large libraries fast."
+  }
+ ],
+ "end": {
+  "title": "Point it at your components. Find out which ones were never tested.",
+  "cta": "Read the Atlas guide"
+ },
+ "benchmarks": null,
+ "glyphSvg": "<rect x=\"17\" y=\"17\" width=\"34\" height=\"34\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><rect x=\"69\" y=\"17\" width=\"34\" height=\"34\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><rect x=\"17\" y=\"69\" width=\"34\" height=\"34\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><circle cx=\"86\" cy=\"86\" r=\"22\" fill=\"url(#eg)\"/>",
+ "sources": [
+  {
+   "claim": "Six checks: a11y, interaction, reactivityCoverage, leak, snapshot, ssrParity",
+   "path": "packages/tools/atlas/src/core/types.ts CHECK_KEYS (line 303)"
+  },
+  {
+   "claim": "8 scenarios from a 17-line Button with no config; scan output quoted in the difference block",
+   "path": "`bun packages/tools/atlas/bin/atlas.js scan .` in .scratch/tools/atlas-lathe/atlas-mini (Button.tsx only), run 2026-11-11, exit 1"
+  },
+  {
+   "claim": "48 checks; axe-core button-name (critical) on Empty; verify-browser summary line",
+   "path": "`atlas verify-browser .` on the same project; atlas-catalog.json a11y findings missing-accessible-name + axe-violation"
+  },
+  {
+   "claim": "atlas-workshop: 11 components, 44 scenarios, 42 verified, 2 failing, exit 1; leak 44/44 under bun",
+   "path": "examples/atlas-workshop scanned from a copy, 2026-11-11 (node: leak not run, \"no GC hook\")"
+  },
+  {
+   "claim": "atlas check outputs (did you mean, unknown prop, missing required)",
+   "path": "atlas check against examples/atlas-workshop catalog; packages/tools/atlas/src/core/validate-usage.ts"
+  },
+  {
+   "claim": "Authored play replaces the click-walk; failure names the step (play-failed)",
+   "path": "atlas-mini atlas.config.ts run with a deliberately broken selector; packages/tools/atlas/src/core/types.ts PlayContext / FindingCode play-failed"
+  },
+  {
+   "claim": "scan exits non-zero on any failing scenario",
+   "path": "packages/tools/atlas/src/cli/run.ts lines 1085-1097"
+  },
+  {
+   "claim": "--check: a check that stopped running is a regression; never writes the catalog",
+   "path": "packages/tools/atlas/src/cli/run.ts reportRatchet; docs/src/content/docs/atlas.md \"--check — the ratchet\""
+  },
+  {
+   "claim": "empty-render fails the interaction check; browserOnly and parts escape hatches",
+   "path": "packages/tools/atlas/src/core/types.ts FindingCode empty-render; .agents/guides/tools/README.md \"Scan and scenarios\""
+  },
+  {
+   "claim": "Leak check needs bun or node --expose-gc",
+   "path": "node scan output \"not run: leak — no GC hook\"; docs/src/content/docs/atlas.md six-check table"
+  },
+  {
+   "claim": "One GC sweep per group of ~256 scenarios",
+   "path": "packages/tools/atlas/README.md \"What a scan costs, and why\""
+  },
+  {
+   "claim": "pyreon.config.ts atlas keys incl. extensions, alias, ignore",
+   "path": "packages/tools/atlas/src/discover/config.ts AtlasConfig interface (lines 33-173)"
+  },
+  {
+   "claim": "Four brand themes (Ember, Aurora, Forest, Contrast), light and dark",
+   "path": "packages/tools/atlas/src/ui/theme.ts THEMES line 182"
+  },
+  {
+   "claim": "MCP tools get_atlas_catalog, get_atlas_component",
+   "path": "packages/tools/mcp/src/manifest.ts lines 287, 322"
+  },
+  {
+   "claim": "@pyreon/storybook framework with Meta/StoryObj/play",
+   "path": "packages/tools/storybook/README.md"
+  },
+  {
+   "claim": "Workbench exported from @pyreon/atlas/ui",
+   "path": "packages/tools/atlas/src/ui.ts line 10"
+  },
+  {
+   "claim": "atlas build bakes Docs source and Reactivity Lens; --out/--base",
+   "path": "docs/src/content/docs/atlas.md \"atlas build\"; ran `atlas build . --out atlas-dist --base /ds/` on atlas-mini"
+  },
+  {
+   "claim": "Released: nothing on this page is newer than the published version (only a __proto__ serialisation fix is pending)",
+   "path": "git log <npm-latest release tag>..HEAD -- packages/tools/atlas; .changeset/atlas-baked-rpc-own-proto-key.md"
+  },
+  {
+   "claim": "Storybook side: CSF3 with satisfies Meta, storybook/test fn/userEvent/within/expect",
+   "path": "Storybook 9 public API (storybook.js.org/docs/writing-stories, writing-tests/interaction-testing); not run here"
+  }
+ ]
+}

@@ -1,3 +1,4 @@
+import { reportFailure } from './report'
 import { resolve } from 'node:path'
 import { build as viteBuild } from 'vite'
 
@@ -53,7 +54,7 @@ export async function build(root: string | undefined) {
   } catch (error) {
     // Keep the stack (and a Rolldown/Vite `frame`/`loc`): the message alone
     // hid WHERE a build failed.
-    console.error('[Pyreon] Build failed:', error)
+    reportFailure('zero build', 'Build failed', error)
     process.exit(1)
   }
 }
@@ -61,10 +62,9 @@ export async function build(root: string | undefined) {
 /** @internal Exported for tests — same pipeline, rejects instead of exiting. */
 export async function runBuild(root: string | undefined) {
   const projectRoot = resolve(root ?? '.')
-  const start = performance.now()
-
+  // No closing line of its own: the zero plugin's build summary is the
+  // verdict (`✓ built in 1.5 s · …`), and with `buildSummary: false` Vite's
+  // own `✓ built in …` line is. A third success line here used to follow
+  // the verdict and push it off the bottom.
   await viteBuild({ root: projectRoot })
-
-  const elapsed = Math.round(performance.now() - start)
-  console.log(`Build completed in ${elapsed}ms`)
 }

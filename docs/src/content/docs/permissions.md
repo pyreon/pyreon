@@ -3,6 +3,10 @@ title: Permissions
 description: Reactive type-safe permissions for Pyreon — universal, signal-driven, works with any authorization model
 ---
 
+<ProductPitch id="permissions" />
+
+<LiveDemo id="permissions" />
+
 `@pyreon/permissions` provides reactive, universal permissions. A permission is either a boolean or a predicate function — check it with `can(key, context?)`, which reads like a signal: it re-evaluates inside effects, computeds, and JSX. One primitive maps to any authorization model — RBAC, ABAC, feature flags, subscription tiers — because every model collapses to string keys.
 
 <PackageBadge name="@pyreon/permissions" href="/docs/permissions" />
@@ -636,3 +640,11 @@ Resolution is **most-specific-first**: exact → `prefix.*` → `prefix.**` (nea
 | `<PermissionsProvider value={can}>`    | `VNodeChild`  | Provide a `Permissions` instance to descendants. The prop is **`value`**.                |
 | `usePermissions()`                     | `Permissions` | Read the nearest provided instance. **Throws** if no `<PermissionsProvider>` is mounted. |
 | `usePermissions(grants)`               | `Permissions` | Self-contained instance seeded with `grants` (`readonly string[]`); needs no provider. Works on all three targets. |
+
+<BenchCallout id="permissions" />
+
+<ComingFrom id="permissions" />
+
+<InlineSell id="auth" />
+
+<CrossSell id="permissions" />

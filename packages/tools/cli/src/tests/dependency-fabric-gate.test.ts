@@ -211,6 +211,27 @@ describe('loom refusal classification', () => {
     expect(loomFailureReason(buf)).toBe('loom: bad config')
   })
 
+  it('reads the shared theme\'s finding block, wrapped or coloured, from a newer loom', () => {
+    // A long root path wraps onto its own 3-space continuation line; the
+    // reason is the whole message, so the empty-workspace refusal is still
+    // recognised (doctor read only the first line and called it a failure).
+    const ESC = String.fromCharCode(27)
+    const wrapped = Object.assign(new Error('Command failed'), {
+      stderr:
+        `${ESC}[38;2;248;113;113m✗${ESC}[39m ${ESC}[1mloom scan${ESC}[22m ${ESC}[2m·${ESC}[22m\n` +
+        '   /var/folders/very/long/temporary/root is not a workspace root — its package.json declares\n' +
+        '   no `workspaces`.\n' +
+        '   fix: run it from the root\n',
+    })
+    const reason = loomFailureReason(wrapped)
+    expect(reason).toBe(
+      '/var/folders/very/long/temporary/root is not a workspace root — its package.json declares no `workspaces`.',
+    )
+    expect(isEmptyWorkspaceRefusal(reason)).toBe(true)
+    const ascii = Object.assign(new Error('x'), { stderr: 'x loom - unknown command "frobnicate".\n   fix: run loom --help\n' })
+    expect(loomFailureReason(ascii)).toBe('unknown command "frobnicate".')
+  })
+
   it('falls back to the error\'s first line when stderr is empty or absent', () => {
     expect(loomFailureReason(Object.assign(new Error('spawn failed\ndetail'), { stderr: '' }))).toBe('spawn failed')
     expect(loomFailureReason(new Error('ENOENT'))).toBe('ENOENT')

@@ -1,0 +1,453 @@
+{
+ "id": "table",
+ "route": "/products/table",
+ "name": "Table",
+ "package": "@pyreon/table",
+ "category": "fundamentals · data grids",
+ "hero": {
+  "title": "Edit one cell. One cell updates. No `React.memo`.",
+  "emberWord": "One cell",
+  "lede": "TanStack Table v9, with the table's state stored in Pyreon signals. Sort, filter, paginate and group with the API you know; change one price and exactly one text node changes, at 100 rows or 1,000, with no memo comparator to keep correct.",
+  "install": "bun add @pyreon/table",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "built on",
+    "value": "`@tanstack/table-core` v9<small>Features, row models, sort and filter functions re-exported from one import.</small>"
+   },
+   {
+    "key": "single-cell edit",
+    "value": "1 DOM write<small>6 cell re-runs (one row), the same at 100 and 1,000 rows.</small>"
+   },
+   {
+    "key": "vs react-table, Chromium",
+    "value": "replace 1.11–1.18× · sort 1.09–1.10×<small>Against memoized rows, two runs. Unmount 1.42–1.45×.</small>"
+   },
+   {
+    "key": "iOS and Android",
+    "value": "{dot:ok} `createTableState`<small>Sort, filter, paginate and select lower natively. `useTable` itself is web.</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "1.42–1.45×",
+   "label": "faster unmount than `@tanstack/react-table` with memoized rows, 1,000 × 6",
+   "source": "BENCHMARKS.md §2 table, real Chromium · final pass, two runs"
+  },
+  {
+   "stat": "1.11–1.18×",
+   "label": "faster replacing 1,000 rows; sort 1.09–1.10×",
+   "source": "BENCHMARKS.md §2 table, real Chromium · two runs"
+  },
+  {
+   "stat": "1",
+   "label": "DOM write for a single-cell edit, at 100 rows and at 1,000",
+   "source": "packages/fundamentals/table/bench/table-rerender-bench.ts header (measured counts)"
+  }
+ ],
+ "why": {
+  "title": "A data grid without the performance tuning chapter.",
+  "items": [
+   {
+    "title": "Cell-level updates by default",
+    "text": "An in-place edit re-runs only the edited row's cells (six in a six-column table) and writes one DOM node. With React you get that by memoizing rows on `row.original` and keeping every update immutable; here it is how the adapter works."
+   },
+   {
+    "title": "The table's state is signals",
+    "text": "v9's reactivity seam is backed by Pyreon signals, so `table.getRowModel()` read in JSX subscribes like any signal. No `table.Subscribe` wrapper, no selector."
+   },
+   {
+    "title": "Options as a function",
+    "text": "`useTable(() => ({ data: products(), columns, features }))` reads signals inside; change `products` and the table re-syncs."
+   },
+   {
+    "title": "Correct before clever",
+    "text": "A cell that reads table state (selection, sort) stays right when that state changes. The same cell inside a row memoized on `original` freezes; the adapter re-runs cells on a structure change on purpose."
+   }
+  ]
+ },
+ "difference": {
+  "title": "The memo you no longer write.",
+  "before": {
+   "label": "React + @tanstack/react-table 9",
+   "caption": "Per-row updates need a memoized row component, a comparator on `row.original`, and immutable edits everywhere.",
+   "code": "const ProductRow = memo(\n  ({ row }: { row: Row<typeof features, Product> }) => (\n    <tr>\n      {row.getVisibleCells().map((cell) => (\n        <td key={cell.id}>\n          {flexRender(cell.column.columnDef.cell, cell.getContext())}\n        </td>\n      ))}\n    </tr>\n  ),\n  (a, b) => a.row.original === b.row.original,\n)\n\nfunction Products() {\n  const [data, setData] = useState(initial)\n  const table = useTable({ features, data, columns, getRowId: (p) => p.id })\n  return (\n    <table><tbody>\n      {table.getRowModel().rows.map((row) => (\n        <ProductRow key={row.id} row={row} />\n      ))}\n    </tbody></table>\n  )\n}"
+  },
+  "after": {
+   "label": "with @pyreon/table",
+   "caption": "Keyed rows, reactive cells. Editing one price touches one text node.",
+   "code": "import { For } from '@pyreon/core'\nimport { signal } from '@pyreon/reactivity'\nimport { flexRenderCell, useTable, visibleCells } from '@pyreon/table'\n\nconst products = signal(initial)\nconst table = useTable(() => ({\n  features, data: products(), columns, getRowId: (p) => p.id,\n}))\n\nconst Products = () => (\n  <table><tbody>\n    <For each={() => table.getRowModel().rows} by={(r) => r.id}>\n      {(row) => (\n        <tr>\n          <For each={() => visibleCells(table, row.id)} by={(c) => c.id}>\n            {(cell) => <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>}\n          </For>\n        </tr>\n      )}\n    </For>\n  </tbody></table>\n)"
+  }
+ },
+ "comingFrom": [
+  {
+   "lib": "TanStack Table (React)",
+   "title": "Same core, same column defs, different render loop.",
+   "before": "import {\n  useTable, tableFeatures, rowSortingFeature,\n  createSortedRowModel, sortFns,\n} from '@tanstack/react-table'\n\nconst features = tableFeatures({\n  rowSortingFeature,\n  sortedRowModel: createSortedRowModel(),\n  sortFns,\n})\n\nconst [data] = useState(initial)\nconst table = useTable({ features, data, columns })\n\n{table.getRowModel().rows.map((row) => <ProductRow key={row.id} row={row} />)}",
+   "after": "import {\n  useTable, tableFeatures, rowSortingFeature,\n  createSortedRowModel, sortFns,\n} from '@pyreon/table'\n\nconst features = tableFeatures({\n  rowSortingFeature,\n  sortedRowModel: createSortedRowModel(),\n  sortFns,\n})\n\nconst data = signal(initial)\nconst table = useTable(() => ({ features, data: data(), columns }))\n\n<For each={() => table.getRowModel().rows} by={(r) => r.id}>…</For>",
+   "note": "`tableFeatures`, column defs, row models and `sortFn_*` / `filterFn_*` move over unchanged; they come from the same `@tanstack/table-core` v9. The two changes: options become a function, and rows render through keyed `<For>` with `visibleCells` and `flexRenderCell` instead of `.map()`."
+  }
+ ],
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Sort, filter, edit.",
+  "text": "1,000 products. Click a header to sort, type to filter, and double-click a price to edit it. Two counters show what your last edit cost: the cells that re-ran (one row's worth) and the DOM nodes written (one).",
+  "spec": "1,000 products × 4 columns (name, category, price, stock) in a `useTable` table with sorting and global filtering, rendered with keyed `<For>` + `visibleCells` + `flexRenderCell`. Header click toggles sorting; the filter input sets the global filter. Double-clicking a price opens an input; Enter or blur writes the new price into the data signal (a new object for that row only). Each cell accessor increments a counter when it runs; a MutationObserver on the tbody counts characterData/childList records. After an edit the two counters show the cells re-run by that edit (4, the edited row) and the DOM writes (1); they update on edits only, not on sort or filter (a sort re-runs every cell by design, see limits).",
+  "component": "DemoTable",
+  "reference": "pkg-table.html#demo",
+  "referenceHtml": "<div class=\"card\"><div class=\"in\">\n  <div style=\"display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between\"><input id=\"tb-f\" placeholder=\"Filter by name\" aria-label=\"Filter by name\" style=\"height:38px;border-radius:999px;border:1px solid var(--line-2);background:transparent;color:var(--ivory);padding:0 16px;font:inherit;width:240px\"><span class=\"mono\" style=\"font-size:12px;color:var(--fog)\">rows <b id=\"tb-n\" style=\"color:var(--ivory);font-weight:400\"></b> · cells re-rendered on last edit <b id=\"tb-c\" style=\"color:var(--accent);font-weight:400\">0</b></span></div>\n  <div style=\"overflow:auto;max-height:420px;border:1px solid var(--line);border-radius:12px\"><table class=\"tb\"><thead><tr><th><button type=\"button\" data-k=\"name\">Product</button></th><th><button type=\"button\" data-k=\"cat\">Category</button></th><th><button type=\"button\" data-k=\"price\">Price</button></th><th><button type=\"button\" data-k=\"stock\">Stock</button></th></tr></thead><tbody id=\"tb-b\"></tbody></table></div>\n</div></div>",
+  "referenceCss": ".tb{width:100%;border-collapse:collapse;font-size:13.5px}.tb th{position:sticky;top:0;background:var(--obs-3);text-align:left;padding:0;border-bottom:1px solid var(--line-2)}.tb th button{width:100%;text-align:left;padding:11px 14px;background:transparent;border:0;color:var(--mist);font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}.tb td{padding:9px 14px;border-bottom:1px solid var(--line);color:var(--s-fg)}.tb td.pr{cursor:text;font-variant-numeric:tabular-nums}.tb td.flash{animation:px-flash .9s ease-out}.tb input{width:90px;height:28px;border-radius:6px;border:1px solid #FF5E1A;background:var(--well);color:var(--ivory);padding:0 8px;font:inherit}",
+  "referenceJs": "(function(){var A=['Desk','Lamp','Chair','Shelf','Mug','Pen','Notebook','Cable','Monitor','Keyboard'],Cc=['Office','Home','Tech','Kitchen'],R=[];for(var i=0;i<1000;i++)R.push({id:i,name:A[i%10]+' '+(100+i),cat:Cc[i%4],price:((i*37)%480)+9,stock:(i*13)%120});var s={k:'name',d:1},f='',$=function(i){return document.getElementById(i)};\nfunction rows(){return R.filter(function(r){return r.name.toLowerCase().indexOf(f)>=0}).sort(function(a,b){return(a[s.k]>b[s.k]?1:a[s.k]<b[s.k]?-1:0)*s.d})}\nfunction r(){var rs=rows().slice(0,200);$('tb-n').textContent=rows().length;$('tb-b').innerHTML=rs.map(function(x){return '<tr><td>'+x.name+'</td><td>'+x.cat+'</td><td class=\"pr\" data-id=\"'+x.id+'\" tabindex=\"0\">$'+x.price+'</td><td>'+x.stock+'</td></tr>'}).join('');}\n$('tb-b').addEventListener('dblclick',function(e){var td=e.target.closest('.pr');if(!td)return;var row=R[+td.dataset.id];td.innerHTML='<input value=\"'+row.price+'\" aria-label=\"Price\">';var inp=td.querySelector('input');inp.focus();inp.select();function done(){var v=parseFloat(inp.value);if(!isNaN(v))row.price=v;td.textContent='$'+row.price;td.classList.remove('flash');void td.offsetWidth;td.classList.add('flash');$('tb-c').textContent='1'}inp.onblur=done;inp.onkeydown=function(k){if(k.key==='Enter')inp.blur()}});\ndocument.querySelectorAll('[data-k]').forEach(function(b){b.onclick=function(){s.d=s.k===b.dataset.k?-s.d:1;s.k=b.dataset.k;r()}});$('tb-f').oninput=function(){f=this.value.toLowerCase();r()};r();})();"
+ },
+ "features": {
+  "title": "Every TanStack feature, plus Pyreon's own pieces.",
+  "items": [
+   {
+    "name": "`useTable(() => options)`",
+    "text": "Returns the v9 `Table` directly; its state is signals."
+   },
+   {
+    "name": "`flexRenderCell` + `visibleCells`",
+    "text": "The fine-grained pair: a cell subscribes to its own row, a row's cell list to column geometry."
+   },
+   {
+    "name": "`flexRender`",
+    "text": "Headers and footers from column-def templates: strings, functions or JSX."
+   },
+   {
+    "name": "Sorting, filtering, pagination",
+    "text": "`rowSortingFeature`, `columnFilteringFeature`, `globalFilteringFeature`, `rowPaginationFeature` and their row models."
+   },
+   {
+    "name": "Grouping and aggregation",
+    "text": "`columnGroupingFeature`, `rowAggregationFeature` and the `aggregationFn_*` set."
+   },
+   {
+    "name": "Selection, expanding, pinning",
+    "text": "Row selection, row expanding, row and column pinning."
+   },
+   {
+    "name": "Column sizing, resizing, ordering",
+    "text": "Plus visibility and faceting."
+   },
+   {
+    "name": "Built-in functions",
+    "text": "`sortFn_*`, `filterFn_*` and `aggregationFn_*` re-exported for `tableFeatures`."
+   },
+   {
+    "name": "`createTableState`",
+    "text": "A dependency-free sort, filter, paginate and select engine for simple tables, and the one that runs natively."
+   },
+   {
+    "name": "One import source",
+    "text": "Everything above from `@pyreon/table`; `@tanstack/table-core` types re-exported."
+   }
+  ]
+ },
+ "recipes": [
+  {
+   "title": "Sort, search and page a product list",
+   "text": "Register only what the table uses. Changing the data signal re-syncs; sorting and filtering are the TanStack calls you know.",
+   "code": "const features = tableFeatures({\n  rowSortingFeature,\n  sortedRowModel: createSortedRowModel(),\n  sortFns: { alphanumeric: sortFn_alphanumeric, basic: sortFn_basic },\n  columnFilteringFeature,\n  globalFilteringFeature,\n  filteredRowModel: createFilteredRowModel(),\n  filterFns: { includesString: filterFn_includesString },\n  rowPaginationFeature,\n  paginatedRowModel: createPaginatedRowModel(),\n})\n\nconst table = useTable(() => ({\n  features, data: products(), columns, globalFilterFn: 'includesString',\n}))\n\ntable.getColumn('price')!.toggleSorting(true) // most expensive first\ntable.setGlobalFilter('desk')  // ['Standing desk', 'Desk lamp']\ntable.setGlobalFilter('')\ntable.setPageSize(2)           // 3 pages of 5 products"
+  },
+  {
+   "title": "A table that also runs on iOS and Android",
+   "text": "`createTableState` has no dependencies: sort, filter, paginate and select over your data, rendered with `<For>`.",
+   "code": "import { createTableState } from '@pyreon/table'\n\nconst t = createTableState({\n  data: products,\n  columns: [{ id: 'name' }, { id: 'price' }],\n  pageSize: 2,\n  rowId: (p) => p.name,\n})\n\nt.toggleSort('price')   // asc: Plant pot, Desk lamp\nt.toggleSort('price')   // desc: Standing desk, USB-C dock\nt.setFilter('desk')     // Standing desk, Desk lamp\nt.toggleSelected('Desk lamp')\nt.selectedIds()         // ['Desk lamp']\n\n<For each={t.rows()} by={(p) => p.name}>{(p) => <Text>{p.name}</Text>}</For>"
+  }
+ ],
+ "api": {
+  "title": "A thin adapter and the whole core.",
+  "groups": [
+   {
+    "name": "pyreon",
+    "items": [
+     "useTable",
+     "flexRender",
+     "flexRenderCell",
+     "visibleCells",
+     "pyreonReactivity",
+     "createTableState"
+    ]
+   },
+   {
+    "name": "features",
+    "items": [
+     "tableFeatures",
+     "stockFeatures",
+     "rowSortingFeature",
+     "columnFilteringFeature",
+     "globalFilteringFeature",
+     "rowPaginationFeature",
+     "rowSelectionFeature",
+     "columnVisibilityFeature",
+     "columnGroupingFeature",
+     "rowExpandingFeature",
+     "columnPinningFeature",
+     "columnSizingFeature",
+     "columnResizingFeature",
+     "columnOrderingFeature",
+     "columnFacetingFeature",
+     "rowPinningFeature",
+     "rowAggregationFeature",
+     "cellSelectionFeature",
+     "cellSpanningFeature"
+    ]
+   },
+   {
+    "name": "row models",
+    "items": [
+     "createSortedRowModel",
+     "createFilteredRowModel",
+     "createPaginatedRowModel",
+     "createGroupedRowModel",
+     "createExpandedRowModel",
+     "createFacetedRowModel"
+    ]
+   },
+   {
+    "name": "helpers",
+    "items": [
+     "createColumnHelper",
+     "sortFns",
+     "filterFns",
+     "aggregationFns",
+     "functionalUpdate",
+     "tableOptions"
+    ]
+   },
+   {
+    "name": "types",
+    "items": [
+     "UseTableOptions",
+     "TableState",
+     "TableStateOptions",
+     "TableColumn",
+     "SortDirection",
+     "ColumnDef",
+     "Table",
+     "Row"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Render rows with `<For>`, not `.map()`",
+   "text": "A `.map()` over rows rebuilds the whole `<tbody>` on every change. Keyed `<For>` with `visibleCells` and `flexRenderCell` is what makes edits cell-sized."
+  },
+  {
+   "title": "Sorting re-runs every cell",
+   "text": "A sort or any structure change re-runs all cells (memoized React rows re-run none); DOM writes are the same keyed moves on both sides. That is the price of cells that read table state staying correct."
+  },
+  {
+   "title": "An edit that changes sort order waits",
+   "text": "Editing a value updates the cell at once, but rows re-position on the next structure or state change. `toggleSorting` and `setSorting` reorder normally."
+  },
+  {
+   "title": "Register features explicitly",
+   "text": "v9 includes only what you list in `tableFeatures`, which keeps bundles small; build the object once at module scope. `row.getVisibleCells()` needs `columnVisibilityFeature`; without it, `visibleCells` falls back to every cell of the row."
+  }
+ ],
+ "faq": [
+  {
+   "q": "Is it faster than react-table?",
+   "a": "In real Chromium, against react-table with memoized rows at 1,000 × 6, two runs: replace 1.11–1.18×, sort 1.09–1.10×, unmount 1.42–1.45× faster; mount and single-cell update tie in one run and are 1.03× ahead in the other, so we do not count them as wins. Under happy-dom (one run) the record shows losses at mount (1,000 rows), single-cell update (1,000) and sort (100); happy-dom is a JavaScript DOM, which is why the headline uses the browser."
+  },
+  {
+   "q": "Do I have to learn a new table API?",
+   "a": "No. Features, column defs, row models and every table method are TanStack Table v9. Two things change: options become a function, and rows render through keyed `<For>`."
+  },
+  {
+   "q": "How big a table can it handle?",
+   "a": "It renders every row you give it. For thousands of rows, page them, or render the visible window with `@pyreon/virtual`."
+  },
+  {
+   "q": "Does it run on native?",
+   "a": "`useTable` stays web. `createTableState` covers the common table (one sort column, a text filter, pages, selection), is plain signals, and lowers to iOS and Android. Native targets are experimental."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/virtual",
+   "category": "fundamentals",
+   "name": "Virtual",
+   "text": "Render only the visible rows of a long table.",
+   "package": "@pyreon/virtual"
+  },
+  {
+   "href": "/products/query",
+   "category": "fundamentals",
+   "name": "Query",
+   "text": "Server data straight into rows.",
+   "package": "@pyreon/query"
+  },
+  {
+   "href": "/products/urlstate",
+   "category": "fundamentals",
+   "name": "URL State",
+   "text": "Keep sort and filter in a shareable link.",
+   "package": "@pyreon/url-state"
+  }
+ ],
+ "end": {
+  "title": "The fastest cell is the one that did not re-render.",
+  "cta": "Read the table guide"
+ },
+ "benchmarks": {
+  "rival": "vs @tanstack/react-table 9.3.1 with memoized rows · 1,000 rows × 6 columns, real Chromium",
+  "run": "final pass · Chromium rows two runs, happy-dom rows one run",
+  "h": "Unmount 1.4× faster than memoized react-table.",
+  "p": "Same `table-core` on both sides; React rows are memoized on `row.original`, the fair comparison. In the browser Pyreon wins replace, sort and unmount in both runs; mount and single-cell update are a tie in one run and 1.03× ahead in the other. The happy-dom rows at the bottom (one run) time a JavaScript DOM, not a browser; they include three losses, kept here so you can see them.",
+  "rows": [
+   {
+    "op": "unmount",
+    "pyreon": 1.21,
+    "rival": 1.75,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "1.42–1.45×"
+   },
+   {
+    "op": "replace 1,000 rows",
+    "pyreon": 22.52,
+    "rival": 24.95,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "1.11× run 1 · 1.18× run 2"
+   },
+   {
+    "op": "sort 1,000 rows",
+    "pyreon": 17.69,
+    "rival": 19.32,
+    "unit": "ms",
+    "verdict": "win",
+    "label": "1.09–1.10×"
+   },
+   {
+    "op": "mount",
+    "pyreon": 25.64,
+    "rival": 25.81,
+    "unit": "ms",
+    "verdict": "split",
+    "label": "tie in run 1, 1.03× in run 2"
+   },
+   {
+    "op": "update one cell",
+    "pyreon": 1.5,
+    "rival": 1.54,
+    "unit": "ms",
+    "verdict": "split",
+    "label": "tie in run 1, 1.03× in run 2"
+   },
+   {
+    "op": "happy-dom: single-cell update vs memoized rows, 100 rows",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "1.6×"
+   },
+   {
+    "op": "happy-dom: replace vs memoized rows",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "1.4–1.5×"
+   },
+   {
+    "op": "happy-dom: mount, 100 rows",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "tie",
+    "label": "could not distinguish"
+   },
+   {
+    "op": "happy-dom: mount, 1,000 rows",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "loss",
+    "label": "react-table 1.3×"
+   },
+   {
+    "op": "happy-dom: single-cell update vs memoized rows, 1,000 rows",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "loss",
+    "label": "react-table 1.2×"
+   },
+   {
+    "op": "happy-dom: sort vs memoized rows, 100 rows",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "loss",
+    "label": "react-table 1.3×"
+   },
+   {
+    "op": "happy-dom: sort vs memoized rows, 1,000 rows",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "tie",
+    "label": "could not distinguish"
+   }
+  ]
+ },
+ "glyphSvg": "<rect x=\"14\" y=\"20\" width=\"92\" height=\"80\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><path d=\"M14 46 H106 M14 72 H106 M48 20 V100\" stroke=\"currentColor\" stroke-width=\"8\"/><circle cx=\"78\" cy=\"86\" r=\"10\" fill=\"url(#eg)\"/>",
+ "sources": [
+  {
+   "claim": "Chromium table vs react-table memo rows, 1,000×6, two runs: unmount 1.21/1.18 vs 1.75/1.69 ms (1.42–1.45×), replace 1.11–1.18×, sort 1.09–1.10×, mount and update-one-cell tie/1.03×",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §2 Table block; §13 table Chromium rows"
+  },
+  {
+   "claim": "happy-dom table rows: vs memo single-cell 1.6× at 100, replace 1.4–1.5×; losses mount 1.3× at 1,000, single-cell 1.2× at 1,000, sort 1.3× at 100; ties mount 100, sort 1,000",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §10 table row"
+  },
+  {
+   "claim": "Single-cell edit: 6 cell units and 1 DOM write at N=100 and N=1000; sort re-runs all cells by design",
+   "path": "packages/fundamentals/table/bench/table-rerender-bench.ts header \"HONEST READ\""
+  },
+  {
+   "claim": "React fair baseline memoizes rows on row.original with immutable updates",
+   "path": "packages/fundamentals/table/bench/table-rerender-bench.ts l.25-30, l.217"
+  },
+  {
+   "claim": "Edit that changes sort order does not reposition rows until next structure/state change",
+   "path": ".agents/guides/fundamentals/references/table.md \"Known limitation\""
+  },
+  {
+   "claim": ".map() over rows rebuilds the whole tbody; use keyed For + visibleCells + flexRenderCell",
+   "path": ".agents/guides/fundamentals/references/table.md \"Fine-grained cells\""
+  },
+  {
+   "claim": "pyreonReactivity backs v9 coreReactivityFeature with signals",
+   "path": ".agents/guides/fundamentals/references/table.md API; packages/fundamentals/table/src/reactivity.ts"
+  },
+  {
+   "claim": "Sort desc / global filter / pagination outputs in the recipe",
+   "path": ".scratch/app/table.ts (run on main)"
+  },
+  {
+   "claim": "createTableState: dependency-free; sort/filter/paginate/select; lowers to PyreonTableState natively; useTable web-only",
+   "path": "packages/fundamentals/table/src/state.ts header; src/manifest.ts multiplatform"
+  },
+  {
+   "claim": "createTableState outputs in the recipe",
+   "path": ".scratch/app/table.ts \"cts\" lines"
+  },
+  {
+   "claim": "react-table v9 memo-row before code typechecks against @tanstack/react-table 9.3.1",
+   "path": ".scratch/app/rival/table.tsx (tsc exit 0)"
+  },
+  {
+   "claim": "Draft listed createTableState as \"for state you control\" and \"Web only: native apps use lists from the primitives\" — createTableState is the native-portable engine",
+   "path": "packages/fundamentals/table/src/state.ts l.1-14"
+  }
+ ]
+}

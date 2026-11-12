@@ -1,0 +1,16 @@
+[
+  {
+    "id": "angular",
+    "name": "Angular",
+    "href": "/docs/migrating-from-angular",
+    "text": "Angular's signals (v16+) are almost the same API: `signal`, `computed`, `effect`, `.set`, `.update`. The guide maps class components, templates and dependency injection to function components, JSX and context.",
+    "why": "There is no Angular compat layer; this is a rewrite with a familiar reactive core."
+  },
+  {
+    "id": "react-native",
+    "name": "React Native and Expo",
+    "href": "/docs/migrating-from-react-native",
+    "text": "A concept map from `View`, `Text`, `Pressable`, `TextInput` and `FlatList` to Pyreon's primitives, Expo Router to `@pyreon/router`, and the `expo-*` modules to Pyreon hooks, plus what does not carry over.",
+    "why": "No compat layer: screens are rebuilt with `@pyreon/primitives`. The native targets are experimental."
+  }
+]

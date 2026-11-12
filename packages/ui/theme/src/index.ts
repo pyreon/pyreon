@@ -1,4 +1,6 @@
 export { default as theme, type Theme } from './theme'
+export { brandTheme } from './brand'
+export { brandPackageDefaults, type BrandPackageDefaults } from './package-defaults'
 
 // Augment rocketstyle's ThemeDefault so .theme()/.states()/.sizes()/.variants()
 // callbacks receive fully typed `t` parameter matching our theme shape.

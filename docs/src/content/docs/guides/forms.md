@@ -3,8 +3,6 @@ title: "Forms & Validation"
 description: "How to build reactive forms in Pyreon with @pyreon/form — composable fields, per-field signals, blur-gated validation, arrays, and schema validation."
 ---
 
-# Forms & Validation
-
 `@pyreon/form` is signal-based form management: every field's `value`, `error`, `touched`, and `dirty` are independent signals, so a keystroke patches only that field's bound DOM. Validation runs on blur by default (so users aren't scolded mid-keystroke), with sync, async, and schema adapters.
 
 ## When to use it

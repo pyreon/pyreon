@@ -1,9 +1,7 @@
 ---
-title: "Complete API — API Reference"
+title: "@pyreon/core — API Reference"
 description: "VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary, lazy(), Dynamic, cx(), splitProps, mergeProps, createUniqueId"
 ---
-
-# @pyreon/core — API Reference
 
 > **Generated** from `core`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [core](/docs/core).
 
@@ -576,7 +574,7 @@ A branch inside a `<Switch>`. Renders its children when `when` is truthy and it 
 <For each={items} by={keyFn}>{renderFn}</For>
 ```
 
-Keyed reactive list rendering. Uses the `by` prop (not `key`) for the key function because JSX extracts `key` as a special VNode reconciliation prop. The render function receives each item and its index. Internally uses an LIS-based reconciler for minimal DOM mutations when the list changes.
+Keyed reactive list rendering. Uses the `by` prop (not `key`) for the key function because JSX extracts `key` as a special VNode reconciliation prop. The render function receives each item (no index). Internally uses an LIS-based reconciler for minimal DOM mutations when the list changes.
 
 **Example**
 
@@ -593,9 +591,9 @@ const items = signal([
 
 **Common mistakes**
 
-- `<For each={items}>` — must call the signal: `<For each={items()}>`
+- `<For each={list}>` with a value read once (a destructured array, `items.peek()`) — the list never updates; pass the signal itself (`each={items}`) or a call the compiler tracks (`each={items()}`)
 - `<For each={items()} key={...}>` — use `by` not `key` (JSX reserves `key` for VNode reconciliation)
-- `{items().map(...)}` — use `<For>` for reactive list rendering; `.map()` re-creates all DOM nodes on every change
+- `{items().map(...)}` without a `key` on each row — an unkeyed `.map()` re-creates every row on each change; use `<For by>` (or give each row a `key`)
 - `<For each={items()} by={index}>` — using array index as key defeats the reconciler; use a stable identity like `item.id`
 
 **See also:** `Show` · `mapArray`

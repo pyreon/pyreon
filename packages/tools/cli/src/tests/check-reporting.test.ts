@@ -142,13 +142,17 @@ describe('findings come out in a deterministic order', () => {
     expect(findings[0]!.file, 'a.tsx before z.tsx').toBe('a.tsx')
   })
 
-  it('prints each file header ONCE, however many findings it has', async () => {
-    // The grouping loop. A header per finding turns a file with twenty
-    // findings into forty lines of noise.
+  it('prints each finding as symbol · code · message, ↳ location, fix (rule 4)', async () => {
     const f = write('a.tsx', TWO)
     await check(opts({ paths: [f] }))
-    const headers = logs.filter((l) => l.trim() === 'a.tsx' || l.includes('a.tsx'))
-    expect(headers.filter((l) => !l.includes(':')), 'one header').toHaveLength(1)
+    const text = out()
+    const blocks = text.split('\n\n').filter((b) => b.trimStart().startsWith('✗ ') && b.includes('↳'))
+    expect(blocks, 'one block per finding').toHaveLength(2)
+    for (const b of blocks) {
+      expect(b).toMatch(/^ {2}✗ \S+ · /)
+      expect(b).toMatch(/\n {5}↳ a\.tsx:\d+:\d+/)
+      expect(b).toMatch(/\n {5}fix: /)
+    }
   })
 
   it('reports the FILE count, not the finding count, in the summary', async () => {

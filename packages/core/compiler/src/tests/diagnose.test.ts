@@ -38,6 +38,19 @@ describe('diagnoseError (browser-safe error catalog)', () => {
     expect(result?.cause).toContain('#3815')
     expect(result?.fix).toContain('@pyreon/compiler')
   })
+  it('answers a browser global read on the server with onMount / isServer, ahead of the generic `X is not defined` entry', () => {
+    for (const name of ['window', 'document', 'localStorage', 'navigator']) {
+      // V8's exact text for the SSR read (`ReferenceError: window is not defined`).
+      const result = diagnoseError(`ReferenceError: ${name} is not defined`)
+      expect(result?.cause, name).toContain(`\`${name}\` exists only in the browser`)
+      expect(result?.fix, name).toContain('onMount')
+      expect(result?.fix, name).toContain('isServer')
+    }
+    // Not a browser global: still the compiler scope-leak entry.
+    expect(diagnoseError('ReferenceError: rowLabel is not defined')?.fix).toContain('@pyreon/compiler')
+    // A substring of a longer identifier is not the global.
+    expect(diagnoseError('ReferenceError: mywindow is not defined')?.cause ?? '').not.toContain('exists only in the browser')
+  })
   it('diagnoses a known error pattern (cause + fix)', () => {
     const result = diagnoseError('count is not a function')
     expect(result).not.toBeNull()
@@ -83,6 +96,16 @@ describe('diagnoseError (browser-safe error catalog)', () => {
     expect(r).not.toBeNull()
     expect(r!.cause).toContain('@pyreon/core')
     expect(r!.fix).toContain('defineAsyncComponent')
+  })
+
+  it('diagnoses the content audit orphaned-md-file finding, naming the pre-0.54 collection misread', () => {
+    // The finding's message as `auditContent` builds it.
+    const r = diagnoseError(
+      "Markdown file `src/content/blog/hello.md` lives under `src/content/` but is not under any declared collection's `path`. The runtime ignores it.",
+    )
+    expect(r?.cause).toContain('blogCollection()')
+    expect(r?.fix).toContain('pyreon upgrade')
+    expect(diagnoseError('content audit: orphaned-md-file in src/content/x.md')?.cause).toContain('no declared collection')
   })
 
   it('diagnoses a compat jsx-runtime shipped without jsxDEV, and runtime-dom/transition without TransitionGroup (#4283)', () => {

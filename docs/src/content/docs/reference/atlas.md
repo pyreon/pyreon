@@ -1,9 +1,7 @@
 ---
-title: "Component Workbench — API Reference"
+title: "@pyreon/atlas — API Reference"
 description: "AI-native component workbench — derives, verifies, and serves a machine-readable component catalog"
 ---
-
-# @pyreon/atlas — API Reference
 
 > **Generated** from `atlas`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [atlas](/docs/atlas).
 
@@ -74,10 +72,10 @@ export const scenarios = {
 // and `wrapper` (the providers your components genuinely need to mount).
 
 // Then:
-//   bunx atlas scan .            → atlas-catalog.json + atlas-agent-guide.md
-//   bunx atlas verify Button     → re-check ONE component; says WHICH check failed
-//   bunx atlas dev .             → the workbench at localhost:5210
-//   bunx atlas verify-browser .  → coverage + snapshot verdicts in Chromium
+//   bunx @pyreon/atlas scan .            → atlas-catalog.json + atlas-agent-guide.md
+//   bunx @pyreon/atlas verify Button     → re-check ONE component; says WHICH check failed
+//   bunx @pyreon/atlas dev .             → the workbench at localhost:5210
+//   bunx @pyreon/atlas verify-browser .  → coverage + snapshot verdicts in Chromium
 ```
 
 ## Exports
@@ -110,21 +108,44 @@ Discover components (static TS scan + rocketstyle runtime detection), derive con
 **Example**
 
 ```tsx
-$ atlas scan .
-atlas: discovered 10 component(s), 44 scenario(s) — 42 verified, 2 failing, 0 unverified.
-  checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43
-  not run: reactivityCoverage, snapshot — browser-only — run `atlas verify-browser`
-  → atlas-catalog.json
-  → atlas-agent-guide.md
-atlas: 2 failing scenario(s):
-  ✗ button--empty
-      a11y: missing accessible name: "label" is empty
+$ atlas scan . --no-mount --no-write
+atlas scan · . · static (--no-mount)
+
+  components   6
+  scenarios   22  2 failing · 12 verified · 8 unverified
+  checks      a11y 12/14 ✗
+  not run     interaction, ssrParity, leak — mounting is disabled for this run (`--no-mount`) — the
+              scan stayed static
+              reactivityCoverage, snapshot — browser-only — run `atlas verify-browser` to measure
+              this (a Node scan cannot)
+
+  ! 3 file(s) export something PascalCase that produced no component:
+    3× a chained/member call — rocketstyle chains are found by the runtime pass (needs `theme` in
+      your config); other member-call wrappers are not unwrapped
+      · src/components/Chip.tsx — Chip
+      · src/components/Stack.tsx — Stack
+      · src/demo-catalog.tsx — DemoButton, DemoBadge, IconDot
+    Not necessarily wrong — a provider, a schema or a const belongs here too.
+    But a component you expected in the catalog would show up in this list.
+
+  ✗ 2 failing scenarios
+  ✗ button--empty  Button
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+  ✗ badge--empty  Badge
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+  Run atlas verify <Component> to re-check one component on its own.
+
+✗ 2 failing scenarios · 12 verified · 8 unverified · 6 components · 137 ms
 ```
 
 **Common mistakes**
 
 - Treating "verified" as a default — a scenario is verified only when a check actually RAN and passed; `checked: 0` renders as unverified, never smoothed into a pass
-- Reading `N verified` as "everything was checked" — it is a scenario count, not a check count. The `checks:` line is the one that says which of the six ran, and a package without `@pyreon/runtime-server` resolvable reports 1090/1090 verified having run only two of them
+- Reading `N verified` as "everything was checked" — it is a scenario count, not a check count. The `checks` row is the one that says which of the six ran, and a package without `@pyreon/runtime-server` resolvable reports 1090/1090 verified having run only two of them
 - Running the scan without the project theme in `atlas.config.ts` for rocketstyle components — dimension axes resolve empty and the variant scenarios collapse to defaults
 - Expecting the leak check under plain `node` — it needs a GC hook (`bun`, or `node --expose-gc`); without one it reports skip, not pass
 - Expecting reactivityCoverage/snapshot verdicts from the scan — those are browser-only claims; run `atlas verify-browser` to earn them
@@ -174,16 +195,23 @@ Re-check ONE component and report WHICH check failed and why — the write → v
 **Example**
 
 ```tsx
-$ atlas verify Button
-atlas verify Button: 1 component(s), 15 scenario(s)
-  checks: a11y 14/15 ✗ · interaction 15/15 · ssrParity 15/15 · leak 15/15
-  not run: reactivityCoverage, snapshot — browser-only — run `atlas verify-browser`
+$ atlas verify Button --no-mount
+atlas verify Button · 1 component · 9 scenarios · static (--no-mount)
 
-✗ button--empty
-    a11y [missing-accessible-name]: missing accessible name: "label" is empty
-      → Give "label" a non-empty value, or an aria-label if the text is decorative.
+  scenarios  9  1 failing · 8 verified · 0 unverified
+  checks     a11y 8/9 ✗
+  not run    interaction, ssrParity, leak — mounting is disabled for this run (`--no-mount`) — the
+             scan stayed static
+             reactivityCoverage, snapshot — browser-only — run `atlas verify-browser` to measure
+             this (a Node scan cannot)
 
-1 failing · 14 verified · 0 unverified
+  ✗ 1 failing scenario
+  ✗ button--empty  Button
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+
+✗ 1 failing scenario · 8 verified · 0 unverified · 141 ms
 ```
 
 **Common mistakes**

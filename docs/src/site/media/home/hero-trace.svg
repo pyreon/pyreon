@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa ph-hero" viewBox="0 0 960 420" width="960" height="420" role="img" aria-labelledby="ph-hero-t ph-hero-d" fill="none">
+<title id="ph-hero-t">One component, three targets</title>
+<desc id="ph-hero-d">Brand stroke-trace: four signal edges trace into the Pyreon disc, the n strokes through, and the trace continues from App.tsx, which runs once, into three targets: web (SSR, SSG, islands, SPA), iOS (SwiftUI, experimental) and Android (Compose, experimental).</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.ph-hero{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.ph-hero .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.ph-hero .ph-hero-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.ph-hero *{animation:none!important;transition:none!important}.ph-hero .ph-hero-rm{opacity:1}.ph-hero .ph-hero-am{opacity:0}}
+
+.ph-hero .grid line{stroke:var(--px-line);stroke-width:1}
+.ph-hero .edge{stroke:url(#ph-hero-egu);stroke-width:1.6;stroke-linecap:round}
+.ph-hero .trace{stroke:url(#ph-hero-egu);stroke-width:2.2;stroke-linecap:round;fill:none}
+.ph-hero .node{fill:var(--px-card);stroke:var(--px-accent);stroke-width:2}
+.ph-hero .tname{fill:var(--px-strong);font-size:22px;font-weight:600;letter-spacing:-.01em}
+.ph-hero .tsub{fill:var(--px-fog);font-size:13px;letter-spacing:.04em}
+.ph-hero .cap{fill:var(--px-fog);font-size:13px;letter-spacing:.14em}
+.ph-hero .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.ph-hero .disc{transform-box:fill-box;transform-origin:center}
+@keyframes ph-hero-draw{from{stroke-dashoffset:var(--l)}to{stroke-dashoffset:0}}
+@keyframes ph-hero-disc{from{transform:scale(0)}to{transform:scale(1)}}
+@keyframes ph-hero-fade{from{opacity:0}to{opacity:1}}
+@keyframes ph-hero-pulse{0%{opacity:0;stroke-width:6}40%{opacity:1;stroke-width:3}100%{opacity:0;stroke-width:2}}
+.ph-hero .e0{stroke-dasharray:303;--l:303;animation:ph-hero-draw 360ms cubic-bezier(.2,.7,.3,1) 0ms both}
+.ph-hero .e1{stroke-dasharray:286;--l:286;animation:ph-hero-draw 360ms cubic-bezier(.2,.7,.3,1) 40ms both}
+.ph-hero .e2{stroke-dasharray:283;--l:283;animation:ph-hero-draw 360ms cubic-bezier(.2,.7,.3,1) 80ms both}
+.ph-hero .e3{stroke-dasharray:238;--l:238;animation:ph-hero-draw 360ms cubic-bezier(.2,.7,.3,1) 120ms both}
+.ph-hero .disc{animation:ph-hero-disc 280ms cubic-bezier(.2,.7,.3,1) 380ms both}
+.ph-hero .n{stroke-dasharray:180;--l:180;animation:ph-hero-draw 340ms cubic-bezier(.2,.7,.3,1) 560ms both}
+.ph-hero .trunk{stroke-dasharray:164;--l:164;animation:ph-hero-draw 140ms linear 700ms both}
+.ph-hero .br{stroke-dasharray:230;--l:230;animation:ph-hero-draw 160ms cubic-bezier(.2,.7,.3,1) 760ms both}
+.ph-hero .tgt{animation:ph-hero-fade 160ms cubic-bezier(.2,.7,.3,1) 840ms both}
+.ph-hero .src{animation:ph-hero-fade 200ms cubic-bezier(.2,.7,.3,1) 640ms both}
+.ph-hero .hit{opacity:0;animation:ph-hero-pulse 160ms cubic-bezier(.2,.7,.3,1) 840ms both}
+.ph-hero[data-state="idle"] *{animation-play-state:paused}
+</style>
+<defs><linearGradient id="ph-hero-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="ph-hero-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="960" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="ph-hero-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="ph-hero-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<g class="grid"><line x1="0" y1="18" x2="960" y2="18" opacity="0.13"/><line x1="0" y1="50" x2="960" y2="50" opacity="0.19"/><line x1="0" y1="82" x2="960" y2="82" opacity="0.25"/><line x1="0" y1="114" x2="960" y2="114" opacity="0.31"/><line x1="0" y1="146" x2="960" y2="146" opacity="0.38"/><line x1="0" y1="178" x2="960" y2="178" opacity="0.44"/><line x1="0" y1="210" x2="960" y2="210" opacity="0.50"/><line x1="0" y1="242" x2="960" y2="242" opacity="0.44"/><line x1="0" y1="274" x2="960" y2="274" opacity="0.38"/><line x1="0" y1="306" x2="960" y2="306" opacity="0.31"/><line x1="0" y1="338" x2="960" y2="338" opacity="0.25"/><line x1="0" y1="370" x2="960" y2="370" opacity="0.19"/><line x1="0" y1="402" x2="960" y2="402" opacity="0.13"/></g>
+<line class="edge e0" x1="24" y1="70" x2="290" y2="214"/><line class="edge e1" x1="70" y1="396" x2="290" y2="214"/><line class="edge e2" x1="12" y1="262" x2="290" y2="214"/><line class="edge e3" x1="150" y1="22" x2="290" y2="214"/>
+<line class="trace trunk" x1="446" y1="214" x2="610" y2="214"/>
+<path class="trace br" d="M610 214 C 700 214, 602 104, 712 104"/><path class="trace br" d="M610 214 C 700 214, 602 214, 712 214"/><path class="trace br" d="M610 214 C 700 214, 602 324, 712 324"/>
+<g transform="translate(232.4 111.6) scale(1.6)">
+  <circle class="disc" cx="36" cy="64" r="22" fill="url(#ph-hero-egd)"/>
+  <path class="n" d="M70 86 L70 42 L70 64 Q70 42 92 42 Q112 42 112 64 L112 86" style="stroke:var(--px-text)" stroke-width="10" stroke-linecap="square" stroke-linejoin="miter" fill="none"/>
+</g>
+<g class="src"><text class="m cap" x="250" y="306">APP.TSX · RUNS ONCE</text></g>
+<g class="tgt"><circle class="node" cx="712" cy="104" r="7"/><text class="tname" x="734" y="111">web</text><text class="m tsub" x="734" y="134">SSR · SSG · islands · SPA</text></g><circle class="ring hit" cx="712" cy="104" r="13"/><g class="tgt"><circle class="node" cx="712" cy="214" r="7"/><text class="tname" x="734" y="221">iOS</text><text class="m tsub" x="734" y="244">SwiftUI · experimental</text></g><circle class="ring hit" cx="712" cy="214" r="13"/><g class="tgt"><circle class="node" cx="712" cy="324" r="7"/><text class="tname" x="734" y="331">Android</text><text class="m tsub" x="734" y="354">Compose · experimental</text></g><circle class="ring hit" cx="712" cy="324" r="13"/>
+</svg>

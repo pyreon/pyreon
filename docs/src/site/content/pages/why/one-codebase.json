@@ -1,0 +1,319 @@
+{
+  "id": "one-codebase",
+  "route": "/why/one-codebase",
+  "title": "One codebase",
+  "hook": {
+    "eyebrow": "Web · iOS · Android",
+    "title": "One .tsx file. A website, an iPhone app and an Android app.",
+    "lede": "Write a component once in TypeScript. Pyreon renders it fine-grained on the web and compiles it to real SwiftUI and real Jetpack Compose, so each phone draws it with its own UI toolkit. The native targets are experimental, and this page says exactly what that means.",
+    "cta": {
+      "label": "Scaffold web + iOS + Android",
+      "command": "npm create @pyreon/multiplatform@latest"
+    }
+  },
+  "sections": [
+    {
+      "kind": "code",
+      "title": "Same source. Three idiomatic outputs.",
+      "text": "The counter every new multiplatform project starts with. On the web, Vite builds it against `@pyreon/runtime-dom`. Through `pyreon-native`, the same file becomes SwiftUI and Compose that Xcode and Gradle build like any other code.",
+      "blocks": [
+        {
+          "label": "src/App.tsx",
+          "lang": "tsx",
+          "code": "// src/App.tsx, as scaffolded by @pyreon/create-multiplatform\nimport { signal } from '@pyreon/reactivity'\nimport { Stack, Text, Button } from '@pyreon/primitives'\n\nexport function App() {\n  const count = signal(0)\n  return (\n    <Stack gap=\"md\" align=\"center\">\n      <Text data-testid=\"count\">{count}</Text>\n      <Button data-testid=\"increment\" onPress={() => count.set(count() + 1)}>Increment</Button>\n    </Stack>\n  )\n}"
+        },
+        {
+          "label": "iOS · SwiftUI",
+          "lang": "swift",
+          "code": "struct App: View {\n  @State private var count: Int = 0\n  var body: some View {\n    VStack(alignment: .center, spacing: 12) {\n      Text(verbatim: \"\\(count)\").accessibilityIdentifier(\"count\")\n      Button(\"Increment\") { count = count + 1 }.accessibilityIdentifier(\"increment\")\n    }\n  }\n}"
+        },
+        {
+          "label": "Android · Jetpack Compose",
+          "lang": "kotlin",
+          "code": "@Composable\nfun App() {\n  var count by remember { mutableStateOf(0L) }\n  Column(verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {\n    Text(text = \"${count}\", modifier = Modifier.testTag(\"count\"))\n    Button(onClick = { count = count + 1L }, modifier = Modifier.testTag(\"increment\")) {\n      Text(\"Increment\")\n    }\n  }\n}"
+        }
+      ],
+      "caption": "Unedited compiler output, minus the import preamble and a one-line Kotlin helper. A signal becomes `@State` on iOS and `mutableStateOf` on Android; `data-testid` becomes an accessibility identifier and a test tag."
+    },
+    {
+      "kind": "story",
+      "title": "Experimental, stated plainly.",
+      "text": [
+        "The multiplatform docs call PMTC, the Pyreon Multi-Target Compiler, \"experimental — demo-quality, not production-ready\". We mean it. The web framework is pre-1.0; the native targets are a step behind that.",
+        "What is device-proven is measured, not described: the multiplatform page carries a weighted capability matrix that credits a capability only when a test on a real iOS Simulator or Android emulator asserts it, and a CI gate recomputes the headline from the table. Check the rows your app needs before you commit."
+      ]
+    },
+    {
+      "kind": "compare-strip",
+      "title": "Your primitives become their platform's own views.",
+      "items": [
+        {
+          "label": "`<Stack>`",
+          "before": "iOS: `VStack`",
+          "after": "Android: `Column`"
+        },
+        {
+          "label": "`<Inline>`",
+          "before": "iOS: `HStack`",
+          "after": "Android: `Row`"
+        },
+        {
+          "label": "`<Field>`",
+          "before": "iOS: `TextField` (`SecureField` for passwords)",
+          "after": "Android: `TextField`"
+        },
+        {
+          "label": "`<Toggle>`",
+          "before": "iOS: `Toggle`",
+          "after": "Android: `Switch`"
+        },
+        {
+          "label": "`<Modal>`",
+          "before": "iOS: `.sheet`",
+          "after": "Android: `Dialog`"
+        },
+        {
+          "label": "`<Scroll><For>`",
+          "before": "iOS: `ScrollView { LazyVStack }`",
+          "after": "Android: `LazyColumn`"
+        },
+        {
+          "label": "`signal` / `computed`",
+          "before": "iOS: `@State` / `@Observable`",
+          "after": "Android: `mutableStateOf` / `derivedStateOf`"
+        }
+      ]
+    },
+    {
+      "kind": "list",
+      "title": "What lowers to native.",
+      "text": "PMTC compiles your component source. It does not transpile npm packages to Swift or Kotlin: a package reaches the phone when its logic has a Swift/Kotlin runtime port the compiler recognises.",
+      "items": [
+        {
+          "title": "The canonical primitives",
+          "text": "`Stack`, `Inline`, `Scroll`, `Text`, `Button`, `Field`, `Toggle`, `Modal` and the rest, each with a real DOM implementation on the web and SwiftUI and Compose output natively. The next release brings the set to 22 with `Select`, `Tabs`, `Split`, `Canvas` and `Gesture`."
+        },
+        {
+          "title": "The reactive core",
+          "text": "`signal`, `computed`, typed props, `<For>`, `<Show>`, `if` and ternaries, array and string methods, object types as structs and data classes."
+        },
+        {
+          "title": "Logic packages with native ports",
+          "text": "`@pyreon/store`, `machine`, `state-tree`, `i18n`, `permissions`, `form`, `storage`, `flow`, the router, and `@pyreon/charts`, which draws to a native canvas."
+        },
+        {
+          "title": "Device hooks",
+          "text": "`useFetch`, `useOnline`, `useAppState`, `useClipboard`, `useColorScheme`, `useGeolocation`, `useHaptics`, `useShare`. For anything else, `useNativeModule('Name')` compiles to a Swift or Kotlin class you write."
+        }
+      ]
+    },
+    {
+      "kind": "list",
+      "title": "New on main, shipping in the next release.",
+      "text": "Plain TypeScript that used to stop a native build now compiles. Each lowering is documented row by row on the multiplatform page.",
+      "items": [
+        {
+          "title": "`effect()` in a component body",
+          "text": "Runs when the view appears and again when a signal it reads changes (`.onAppear` + `.onChange(of:)` on iOS, a keyed effect in Compose). A returned cleanup runs as on the web.",
+          "status": "next release"
+        },
+        {
+          "title": "Timers",
+          "text": "`setTimeout`, `setInterval` and their `clear…` twins lower to a `PyreonTimers` runtime. On iOS a timer keeps firing during a scroll, as in a browser.",
+          "status": "next release"
+        },
+        {
+          "title": "`Date`, enums and module-scope signals",
+          "text": "`new Date(…)`, `Date.parse`, the getters and `toISOString` lower (a date is its epoch milliseconds). String enums become native enums. A file's module-scope `signal()` / `computed()` become one observable singleton per file.",
+          "status": "next release"
+        },
+        {
+          "title": "`throw`, `try` / `catch` / `finally`, `JSON.parse`",
+          "text": "Error handling lowers in helper, handler and computed bodies. `JSON.parse` becomes a typed, throwing native decode, and a `@pyreon/validate` schema's `.parse(x)` returns the same `{ ok, value, issues }` it returns on the web, never throwing.",
+          "status": "next release"
+        },
+        {
+          "title": "`<Select>` and date/time `<Field>`",
+          "text": "`<Select>` uses each platform's own picker. `<Field kind=\"date\" | \"time\" | \"datetime\">` with `min` / `max` opens iOS `DatePicker` and the Material 3 pickers on Android.",
+          "status": "next release"
+        },
+        {
+          "title": "More hooks",
+          "text": "`useDocumentVisibility`, `usePrevious`, `useUpdateEffect`, `useReducedMotion`, `useKeyboard`, `useInfiniteQuery`, `useLatest` and a colour-scheme `useMediaQuery` now lower to iOS and Android.",
+          "status": "next release"
+        }
+      ]
+    },
+    {
+      "kind": "list",
+      "title": "What stays on the web, and how you know.",
+      "text": "Every package manifest declares a `multiplatform.tier` with a rationale: `shared`, `service-backend` or `web-only`. The docs and the MCP server read the same field. Several web-first packages still lower part of their API, so read each package's tier rather than guessing.",
+      "items": [
+        {
+          "title": "`@pyreon/table`",
+          "text": "The TanStack-backed `useTable` stays web; the dependency-free `createTableState` engine crosses."
+        },
+        {
+          "title": "`@pyreon/dnd`",
+          "text": "The page-wide drag monitor stays web; `useSortable`, `useDraggable` and `useDroppable` cross."
+        },
+        {
+          "title": "`@pyreon/hotkeys`",
+          "text": "The DOM shortcut registry stays web; the `useHotkey` hook crosses."
+        },
+        {
+          "title": "`@pyreon/code`",
+          "text": "CodeMirror is a DOM editor, so it stays web. The `<WebView>` primitive can host it on a phone with a two-way data bridge."
+        }
+      ]
+    },
+    {
+      "kind": "code",
+      "title": "When the compiler says no, it says why.",
+      "text": "Code outside the native subset gets a named warning, per construct and per target, with the fix. The docs say this is what you get \"almost always\", and `check --typecheck` runs a real `swiftc -typecheck` for the rest.",
+      "blocks": [
+        {
+          "label": "npx pyreon-native check (abridged)",
+          "lang": "text",
+          "code": "! Totals.tsx [swift] Component Totals: a top-level `for` statement has no native\n  lowering and was DROPPED — … Move loops/switch into a helper function that takes\n  parameters (they DO lower there) …\n! Totals.tsx [swift] <div> is a DOM/SVG element with no native lowering … Use the\n  shared vocabulary from `@pyreon/primitives` (Stack, Text, Image, …), keep web-only\n  markup inside a `<Web>` branch.\nchecked 1 file(s) [swift, kotlin] — 0 error(s), 4 warning(s)"
+        }
+      ]
+    },
+    {
+      "kind": "steps",
+      "title": "Tested on simulators and emulators, in CI.",
+      "items": [
+        {
+          "title": "Type-checked against SDK stubs",
+          "text": "On every PR that touches the native surface, emitted Swift and Kotlin are type-checked."
+        },
+        {
+          "title": "Built with real Xcode and Gradle",
+          "text": "The example apps (`native-todomvc`, `native-tasks`, `native-finance`, a router demo, a counter) build for real."
+        },
+        {
+          "title": "Driven on devices",
+          "text": "`iOS — xcodebuild` runs XCUITest on a Simulator and `Android — gradlew` runs Compose instrumented tests on an emulator, plus an R8-minified release lane. Both are required checks when native paths change."
+        }
+      ]
+    },
+    {
+      "kind": "steps",
+      "title": "From zero to three apps.",
+      "items": [
+        {
+          "title": "Scaffold",
+          "text": "Web needs Bun or Node. iOS needs macOS, Xcode and xcodegen. Android needs JDK 17, the Android SDK and `gradle` on `PATH`.",
+          "code": "npm create @pyreon/multiplatform@latest my-app\ncd my-app\nnpm install"
+        },
+        {
+          "title": "Build the web first",
+          "text": "Layout, logic and styling with hot reload that keeps your module-level signal values. Nothing in the web build needs Xcode or Gradle.",
+          "code": "npm run dev"
+        },
+        {
+          "title": "Ask the compiler, then the device",
+          "text": "`check` answers \"will this run on the device?\" in milliseconds; `dev` rebuilds, reinstalls and relaunches.",
+          "code": "npx pyreon-native check --watch --source=src\nnpx pyreon-native dev --target=ios"
+        }
+      ]
+    },
+    {
+      "kind": "faq",
+      "title": "Questions a mobile lead asks.",
+      "items": [
+        {
+          "q": "Is there a JavaScript runtime on the phone?",
+          "a": "Not for your UI. The primitives compile to SwiftUI and Compose views. A web-only pane, such as a code editor, can be hosted in the `<WebView>` primitive when you choose to, and pays WebView startup cost."
+        },
+        {
+          "q": "Is it ready for production?",
+          "a": "No. The native targets are experimental. Use the capability matrix on the multiplatform page to see which capabilities are asserted on devices in CI, and treat the rest as unproven."
+        },
+        {
+          "q": "Does my AI assistant know the native rules?",
+          "a": "The multiplatform scaffold writes `AGENTS.md`, `CLAUDE.md` and `.mcp.json`, and switches on the `portable` lint rules for `src/`, so the editor flags non-portable code before you build."
+        }
+      ]
+    },
+    {
+      "kind": "links",
+      "title": "Go deeper.",
+      "items": [
+        {
+          "label": "Multi-platform",
+          "href": "/docs/multiplatform",
+          "text": "Status, every lowering, and the capability matrix."
+        },
+        {
+          "label": "Primitives",
+          "href": "/docs/primitives",
+          "text": "The primitive vocabulary and its mappings."
+        },
+        {
+          "label": "Native dev loop",
+          "href": "/docs/native-dev-loop",
+          "text": "`pyreon-native check` and `dev`."
+        },
+        {
+          "label": "Library status",
+          "href": "/docs/multiplatform-libraries",
+          "text": "Which packages lower, and how far."
+        }
+      ]
+    }
+  ],
+  "end": {
+    "title": "Write it once in TypeScript. Ship it fine-grained to the web, iOS and Android.",
+    "cta": {
+      "label": "Scaffold web + iOS + Android",
+      "command": "npm create @pyreon/multiplatform@latest"
+    }
+  },
+  "share": {
+    "ogTitle": "One .tsx file. Three apps.",
+    "ogSub": "A website, real SwiftUI and real Jetpack Compose from the same component. Experimental, device-tested in CI."
+  },
+  "sources": [
+    {
+      "claim": "Counter App.tsx and its Swift/Kotlin output",
+      "path": "packages/zero/create-multiplatform templates; post 05-blog/B09-one-tsx-three-platforms.md (unedited compiler output)"
+    },
+    {
+      "claim": "Status \"experimental — demo-quality, not production-ready\"; weighted capability matrix gated in CI",
+      "path": "docs/src/content/docs/multiplatform.md line 7; docs/src/content/docs/stability-and-direction.md"
+    },
+    {
+      "claim": "Primitive and signal mappings",
+      "path": "docs/src/content/docs/primitives.md; docs/src/content/docs/multiplatform.md"
+    },
+    {
+      "claim": "22 canonical primitives incl. Select and Field kind date/time/datetime",
+      "path": "AGENTS.md; docs/src/content/docs/primitives.md"
+    },
+    {
+      "claim": "New lowerings since 5 Nov (#4134, #4136, #4154, #4146, #4155, #4100, #4101, #4102, #4056, #4057, hooks #4149–#4171)",
+      "path": "docs/src/content/docs/multiplatform.md; packages/native/compiler/src/module-state.ts; 00-brief/facts.md \"What shipped since 5 Nov\""
+    },
+    {
+      "claim": "multiplatform.tier shared | service-backend | web-only in every manifest",
+      "path": "AGENTS.md \"Documentation is generated from manifests\"; scripts/check-multiplatform-tier.ts"
+    },
+    {
+      "claim": "table/dnd/hotkeys/code split between web and native",
+      "path": "packages/fundamentals/{table,dnd,hotkeys,code}/src/manifest.ts; post B09"
+    },
+    {
+      "claim": "Named warnings \"almost always\"; check --typecheck runs swiftc",
+      "path": "docs/src/content/docs/multiplatform.md; docs/src/content/docs/native-dev-loop.md"
+    },
+    {
+      "claim": "Native device CI required checks (XCUITest, Compose, R8 lane)",
+      "path": ".github/workflows/native-device.yml; .agents/guides/ci/README.md"
+    },
+    {
+      "claim": "Scaffold writes AGENTS.md, CLAUDE.md, .mcp.json",
+      "path": "docs/src/content/docs/stability-and-direction.md \"Directions\" item 4"
+    }
+  ]
+}

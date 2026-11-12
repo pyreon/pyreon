@@ -1,9 +1,7 @@
 ---
-title: "1. Signals"
+title: "1. Signals — reactive state"
 description: "Tutorial chapter 1 — signals are Pyreon's reactive state. Create one, read it, write it, and watch the DOM update with no re-render."
 ---
-
-# 1. Signals — reactive state
 
 A **signal** is a reactive value. It's a callable: call it to read, use `.set` to write. When you write, every place that read it updates — automatically, with no component re-render.
 

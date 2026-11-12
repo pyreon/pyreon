@@ -9,32 +9,32 @@
 // you actually need — into the elided region. A one-line summary keeps the
 // whole banner short so nothing is elided; `--routes` opts into the full table.
 //
-// Color is a parameter, never assumed: `dev.ts` decides via NO_COLOR /
-// FORCE_COLOR / isTTY and passes a boolean, so piped/CI output stays clean
-// plain text instead of leaking raw SGR escapes.
+// Color is a parameter, never assumed: `dev.ts` passes the `Term` the shared
+// `@pyreon/ansi` detection built for stdout (NO_COLOR, FORCE_COLOR, TERM,
+// isTTY), so piped/CI output stays clean plain text.
 
-// 8-bit-safe SGR opener codes (the CLI carries no color dependency — same
-// convention as @pyreon/lint's reporter + `pyreon doctor`).
-const RESET = '\x1b[0m'
-type Colorizer = (s: string) => string
-interface Style {
-  cyan: Colorizer
-  yellow: Colorizer
-  green: Colorizer
-  dim: Colorizer
-  bold: Colorizer
+import { createTerm, formatElapsed, header, type Term, verdict } from '@pyreon/ansi'
+
+/**
+ * The banner speaks the shared `@pyreon/ansi` theme. `color` is either a
+ * ready `Term` (what `dev.ts` passes, detected once from stdout) or a
+ * boolean for the pure formatters: `false` is plain, `true` is colour at
+ * the detected level (16 colours at least).
+ */
+export type BannerColor = boolean | Term
+
+const termOf = (color: BannerColor): Term => {
+  if (typeof color !== 'boolean') return color
+  if (!color) return createTerm({ level: 0 })
+  const detected = createTerm()
+  return detected.level > 0 ? detected : createTerm({ level: 1 })
 }
 
-function style(color: boolean): Style {
-  const wrap = (open: string): Colorizer =>
-    color ? (s) => `${open}${s}${RESET}` : (s) => s
-  return {
-    cyan: wrap('\x1b[36m'),
-    yellow: wrap('\x1b[33m'),
-    green: wrap('\x1b[32m'),
-    dim: wrap('\x1b[2m'),
-    bold: wrap('\x1b[1m'),
-  }
+/** Palette role per render mode: the same mapping as the build's route table. */
+const MODE_ROLE = { SSR: 'accent', SSG: 'info', ISR: 'warn' } as const
+const paintMode = (t: Term, mode: string, s: string): string => {
+  const role = MODE_ROLE[mode.toUpperCase() as keyof typeof MODE_ROLE]
+  return role === undefined ? s : t.paint(role, s)
 }
 
 /** Minimal shape the formatters read off a parsed page route. */
@@ -65,30 +65,32 @@ export function countRoutes(pages: readonly RouteSummaryInput[], apiCount: numbe
  * Modes are ordered by count (desc), ties broken alphabetically, so the output
  * is deterministic. `API 1` is only rendered when there are API routes.
  */
-export function formatRouteSummary(counts: RouteCounts, color = true): string {
-  const c = style(color)
+export function formatRouteSummary(counts: RouteCounts, color: BannerColor = true): string {
+  const t = termOf(color)
+  const sep = t.dim(t.sym('bullet'))
   const parts = Object.entries(counts.modes)
     .sort(([a, na], [b, nb]) => nb - na || a.localeCompare(b))
-    .map(([mode, n]) => `${mode} ${c.bold(String(n))}`)
-  if (counts.api > 0) parts.push(`API ${c.bold(String(counts.api))}`)
-  const body = parts.length > 0 ? parts.join(` ${c.dim('·')} `) : c.dim('none')
-  return `  ${c.cyan('Routes')}  ${body}   ${c.dim('zero dev --routes to list')}`
+    .map(([mode, n]) => `${paintMode(t, mode, mode)} ${t.bold(String(n))}`)
+  if (counts.api > 0) parts.push(`API ${t.bold(String(counts.api))}`)
+  const body = parts.length > 0 ? parts.join(` ${sep} `) : t.dim('none')
+  return `  ${t.dim('Routes')}  ${body} ${t.dim(`${t.sym('bullet')} zero dev --routes to list`)}`
 }
 
 /** The full, expanded route table (one line per route) — used with `--routes`. */
 export function formatRouteTable(
   pages: readonly RouteSummaryInput[],
   apiPatterns: readonly string[],
-  color = true,
+  color: BannerColor = true,
 ): string[] {
-  const c = style(color)
-  const lines: string[] = ['', `  ${c.cyan(' Routes')}`, '']
+  const t = termOf(color)
+  const lines: string[] = ['', `  ${t.bold('Routes')}`]
   for (const r of pages) {
-    lines.push(`  ${c.dim(r.renderMode.toUpperCase().padEnd(4))} ${r.urlPath}`)
+    const mode = r.renderMode.toUpperCase()
+    lines.push(`    ${paintMode(t, mode, mode.padEnd(4))} ${r.urlPath}`)
   }
   if (apiPatterns.length > 0) {
-    lines.push('', `  ${c.yellow(' API Routes')}`, '')
-    for (const p of apiPatterns) lines.push(`  ${c.dim('API ')} ${p}`)
+    lines.push('', `  ${t.bold('API Routes')}`)
+    for (const p of apiPatterns) lines.push(`    ${t.dim('API ')} ${p}`)
   }
   return lines
 }
@@ -103,12 +105,12 @@ export function formatRouteTable(
 export function renderRouteBanner(
   pages: readonly RouteSummaryInput[],
   apiPatterns: readonly string[],
-  opts: { verbose: boolean; color?: boolean; appMode?: string },
+  opts: { verbose: boolean; color?: BannerColor; appMode?: string },
 ): string[] {
   if (pages.length === 0 && apiPatterns.length === 0) return []
   const color = opts.color ?? true
   const head = opts.appMode ? [formatModeLine(opts.appMode, pages, color)] : []
-  if (opts.verbose) return [...head, ...formatRouteTable(pages, apiPatterns, color)]
+  if (opts.verbose) return ['', ...head, ...formatRouteTable(pages, apiPatterns, color)]
   return ['', ...head, formatRouteSummary(countRoutes(pages, apiPatterns.length), color)]
 }
 
@@ -120,9 +122,9 @@ export function renderRouteBanner(
 export function formatModeLine(
   appMode: string,
   pages: readonly RouteSummaryInput[],
-  color = true,
+  color: BannerColor = true,
 ): string {
-  const c = style(color)
+  const t = termOf(color)
   const overrides: Record<string, number> = {}
   for (const r of pages) {
     const m = r.renderMode.toLowerCase()
@@ -131,12 +133,19 @@ export function formatModeLine(
   const parts = Object.entries(overrides)
     .sort(([, a], [, b]) => b - a)
     .map(([m, n]) => `${n} ${m}`)
-  const hybrid = parts.length > 0 ? ` ${c.dim(`(hybrid: ${parts.join(', ')})`)}` : ''
-  return `  ${c.cyan('Mode')}    ${c.bold(appMode)}${hybrid}`
+  const hybrid = parts.length > 0 ? ` ${t.dim(`(hybrid: ${parts.join(', ')})`)}` : ''
+  return `  ${t.dim('Mode')}    ${paintMode(t, appMode, t.bold(appMode))}${hybrid}`
 }
 
-/** The closing `➜  ready in 234ms` line — printed last, in the visible tail. */
-export function formatReadyLine(readyMs: number, color = true): string {
-  const c = style(color)
-  return `  ${c.green('➜')}  ${c.dim('ready in')} ${c.bold(`${readyMs}ms`)}`
+/** Rule 1, first line: `zero dev · <project dir>`. */
+export function formatDevHeader(project: string, color: BannerColor = true): string {
+  return header(termOf(color), 'zero dev', project)
+}
+
+/**
+ * The closing verdict, `✓ ready in 234 ms`, printed last so it survives in
+ * the visible tail of `bun run --filter`'s boxed output.
+ */
+export function formatReadyLine(readyMs: number, color: BannerColor = true): string {
+  return verdict(termOf(color), 'ok', `ready in ${formatElapsed(readyMs)}`)
 }

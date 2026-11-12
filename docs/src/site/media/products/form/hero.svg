@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa pq-form" viewBox="0 0 640 400" width="640" height="400" role="img" aria-labelledby="pq-form-t pq-form-d" fill="none">
+<title id="pq-form-t">Type in one field; the other eleven never update</title>
+<desc id="pq-form-d">A twelve-field form. Letters are typed into the email field one keystroke at a time; each keystroke pulses only the email input and its message, which reads "invalid" until the address is complete and then shows a check mark. The other eleven fields stay still and a counter reads 0 updates for them.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.pq-form{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.pq-form .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.pq-form .pq-form-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.pq-form *{animation:none!important;transition:none!important}.pq-form .pq-form-rm{opacity:1}.pq-form .pq-form-am{opacity:0}}
+
+.pq-form .ln{stroke:var(--px-hint);stroke-width:1.5;fill:none}
+.pq-form .dash{stroke:var(--px-hint);stroke-width:1.5;stroke-dasharray:3 5;fill:none}
+.pq-form .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pq-form .bx2{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+.pq-form .lab{fill:var(--px-fog);font-size:14px;letter-spacing:.04em}
+.pq-form .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.pq-form .val{fill:var(--px-text);font-size:20px;font-weight:500}
+.pq-form .big{fill:var(--px-strong);font-size:24px;font-weight:600;letter-spacing:-.02em}
+.pq-form .code{fill:var(--px-text);font-size:15px}
+.pq-form .kw{fill:var(--px-accent-text)} .pq-form .fn{fill:var(--px-link)} .pq-form .str{fill:var(--px-warm)} .pq-form .ty{fill:var(--px-violet)}
+.pq-form .dim{fill:var(--px-fog)}
+.pq-form .hint{fill:var(--px-hint);font-size:13px}
+.pq-form .ember{stroke:url(#pq-form-egu);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:36 900;fill:none}
+.pq-form .emberS{stroke:url(#pq-form-egu);stroke-width:2.5;stroke-linecap:round;fill:none}
+.pq-form .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.pq-form .ok{fill:var(--px-ok)} .pq-form .warm{fill:var(--px-warm)} .pq-form .hot{fill:var(--px-accent)} .pq-form .errF{fill:var(--px-err)}
+.pq-form .okT{fill:var(--px-ok)} .pq-form .warmT{fill:var(--px-warm)} .pq-form .hotT{fill:var(--px-accent-text)} .pq-form .errT{fill:var(--px-err)}
+.pq-form .okS{stroke:var(--px-ok)} .pq-form .errS{stroke:var(--px-err)}
+.pq-form .gfill{fill:url(#pq-form-eg)}
+@media (prefers-reduced-motion: reduce){.pq-form .ember{opacity:0}}
+
+@keyframes pq-form-ty0{0.0000%{opacity:0;animation-timing-function:step-end}11.2500%{opacity:1;animation-timing-function:step-end}15.0000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-form-ty1{0.0000%{opacity:0;animation-timing-function:step-end}15.0000%{opacity:1;animation-timing-function:step-end}18.7500%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-form-ty2{0.0000%{opacity:0;animation-timing-function:step-end}18.7500%{opacity:1;animation-timing-function:step-end}22.5000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-form-ty3{0.0000%{opacity:0;animation-timing-function:step-end}22.5000%{opacity:1;animation-timing-function:step-end}26.2500%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-form-ty4{0.0000%{opacity:0;animation-timing-function:step-end}26.2500%{opacity:1;animation-timing-function:step-end}30.0000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-form-ty5{0.0000%{opacity:0;animation-timing-function:step-end}30.0000%{opacity:1;animation-timing-function:step-end}33.7500%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-form-ty6{0.0000%{opacity:0;animation-timing-function:step-end}33.7500%{opacity:1;animation-timing-function:step-end}82.5000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-form-bad{0.0000%{opacity:0;animation-timing-function:step-end}11.2500%{opacity:1;animation-timing-function:step-end}33.7500%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-form-good{0.0000%{opacity:0;animation-timing-function:step-end}33.7500%{opacity:1;animation-timing-function:step-end}82.5000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-form-kf{0%{opacity:0}11.2500%{opacity:0}12.1500%{opacity:1}13.5000%{opacity:0}15.0000%{opacity:0}15.9000%{opacity:1}17.2500%{opacity:0}18.7500%{opacity:0}19.6500%{opacity:1}21.0000%{opacity:0}22.5000%{opacity:0}23.4000%{opacity:1}24.7500%{opacity:0}26.2500%{opacity:0}27.1500%{opacity:1}28.5000%{opacity:0}30.0000%{opacity:0}30.9000%{opacity:1}32.2500%{opacity:0}33.7500%{opacity:0}34.6500%{opacity:1}36.0000%{opacity:0}100%{opacity:0}}
+@keyframes pq-form-c0{0.0000%{opacity:1;animation-timing-function:step-end}11.2500%{opacity:0;animation-timing-function:step-end}82.5000%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-form-c1{0.0000%{opacity:0;animation-timing-function:step-end}11.2500%{opacity:1;animation-timing-function:step-end}82.5000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+.pq-form .ty0{animation:pq-form-ty0 8000ms linear infinite}
+.pq-form .ty1{animation:pq-form-ty1 8000ms linear infinite}
+.pq-form .ty2{animation:pq-form-ty2 8000ms linear infinite}
+.pq-form .ty3{animation:pq-form-ty3 8000ms linear infinite}
+.pq-form .ty4{animation:pq-form-ty4 8000ms linear infinite}
+.pq-form .ty5{animation:pq-form-ty5 8000ms linear infinite}
+.pq-form .ty6{animation:pq-form-ty6 8000ms linear infinite}
+.pq-form .bad{animation:pq-form-bad 8000ms linear infinite}
+.pq-form .good{animation:pq-form-good 8000ms linear infinite}
+.pq-form .kf{animation:pq-form-kf 8000ms linear infinite}
+.pq-form .c0{animation:pq-form-c0 8000ms linear infinite}
+.pq-form .c1{animation:pq-form-c1 8000ms linear infinite}
+@media (prefers-reduced-motion: reduce){.pq-form [class*="ty"],.pq-form .bad,.pq-form .c0{opacity:0}.pq-form .ty6,.pq-form .good,.pq-form .c1{opacity:1}}
+</style>
+<defs><linearGradient id="pq-form-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-form-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="640" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-form-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-form-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<text class="m eb" x="24" y="34">USEFORM · 12 FIELDS · ONE KEYSTROKE</text>
+<text class="m lab" x="24" y="67" font-size="13" style="fill:var(--px-text)">email</text><rect class="bx" x="24" y="74" width="184" height="36" rx="8"/><text class="m code ty0" x="36" y="97" opacity="0">a</text><text class="m code ty1" x="36" y="97" opacity="0">ad</text><text class="m code ty2" x="36" y="97" opacity="0">ada</text><text class="m code ty3" x="36" y="97" opacity="0">ada@</text><text class="m code ty4" x="36" y="97" opacity="0">ada@py</text><text class="m code ty5" x="36" y="97" opacity="0">ada@pyreon</text><text class="m code ty6" x="36" y="97" opacity="0">ada@pyreon.dev</text><rect class="ring kf" x="20" y="70" width="192" height="44" rx="11" opacity="0"/><rect class="ring pq-form-rm" x="20" y="70" width="192" height="44" rx="11"/><text class="m errT bad" x="198" y="97" font-size="12" text-anchor="end" opacity="0">invalid</text><text class="m okT good" x="198" y="97" font-size="13" text-anchor="end" opacity="0">✓</text><text class="m lab" x="228" y="67" font-size="13">name</text><rect class="bx" x="228" y="74" width="184" height="36" rx="8"/><rect x="240" y="88" width="77" height="8" rx="4" style="fill:var(--px-line2)"/><text class="m lab" x="432" y="67" font-size="13">phone</text><rect class="bx" x="432" y="74" width="184" height="36" rx="8"/><rect x="444" y="88" width="44" height="8" rx="4" style="fill:var(--px-line2)"/><text class="m lab" x="24" y="139" font-size="13">company</text><rect class="bx" x="24" y="146" width="184" height="36" rx="8"/><rect x="36" y="160" width="81" height="8" rx="4" style="fill:var(--px-line2)"/><text class="m lab" x="228" y="139" font-size="13">street</text><rect class="bx" x="228" y="146" width="184" height="36" rx="8"/><rect x="240" y="160" width="48" height="8" rx="4" style="fill:var(--px-line2)"/><text class="m lab" x="432" y="139" font-size="13">city</text><rect class="bx" x="432" y="146" width="184" height="36" rx="8"/><rect x="444" y="160" width="85" height="8" rx="4" style="fill:var(--px-line2)"/><text class="m lab" x="24" y="211" font-size="13">zip</text><rect class="bx" x="24" y="218" width="184" height="36" rx="8"/><rect x="36" y="232" width="52" height="8" rx="4" style="fill:var(--px-line2)"/><text class="m lab" x="228" y="211" font-size="13">country</text><rect class="bx" x="228" y="218" width="184" height="36" rx="8"/><rect x="240" y="232" width="89" height="8" rx="4" style="fill:var(--px-line2)"/><text class="m lab" x="432" y="211" font-size="13">password</text><rect class="bx" x="432" y="218" width="184" height="36" rx="8"/><rect x="444" y="232" width="56" height="8" rx="4" style="fill:var(--px-line2)"/><text class="m lab" x="24" y="283" font-size="13">confirm</text><rect class="bx" x="24" y="290" width="184" height="36" rx="8"/><rect x="36" y="304" width="93" height="8" rx="4" style="fill:var(--px-line2)"/><text class="m lab" x="228" y="283" font-size="13">plan</text><rect class="bx" x="228" y="290" width="184" height="36" rx="8"/><rect x="240" y="304" width="60" height="8" rx="4" style="fill:var(--px-line2)"/><text class="m lab" x="432" y="283" font-size="13">notes</text><rect class="bx" x="432" y="290" width="184" height="36" rx="8"/><rect x="444" y="304" width="97" height="8" rx="4" style="fill:var(--px-line2)"/>
+<line x1="24" y1="360" x2="616" y2="360" style="stroke:var(--px-line2)" stroke-width="1"/>
+<text class="m lab" x="24" y="386" style="fill:var(--px-text)">email</text>
+<text class="m lab c0" x="80" y="386">idle</text>
+<text class="m lab c1" x="80" y="386" opacity="0" style="fill:var(--px-accent-text)">updates on every key</text>
+<text class="m lab" x="616" y="386" text-anchor="end">other 11 fields: <tspan style="fill:var(--px-text)">0 updates</tspan></text>
+</svg>

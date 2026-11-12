@@ -1631,7 +1631,7 @@ const Status = () => (
 
 ## @pyreon/document — Universal Document Rendering
 
-Universal document rendering for Pyreon. One template, every output format: HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, plain text, CSV, SVG, JSON, JSONL, Slack, Teams, Discord, Telegram, Notion, Confluence, WhatsApp, Google Chat. Heavy renderers are lazy-loaded — chunks (PDF ~3MB pdfmake + fonts, DOCX ~700KB, XLSX ~1.1MB, PPTX ~400KB) only load when invoked. The vendored architecture means one npm install covers every format; apps that never render to a heavy format never pay its chunk cost. Supports both JSX primitives and a fluent builder API.
+Universal document rendering for Pyreon. One template, every output format: HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, plain text, CSV, SVG, JSON, JSONL, Slack, Teams, Discord, Telegram, Notion, Confluence, WhatsApp, Google Chat. Heavy renderers are lazy-loaded — chunks (PDF ~3MB pdfmake + fonts, DOCX ~700KB, XLSX ~1.1MB, PPTX ~400KB) only load when invoked. The heavy engines (pdfmake, docx, exceljs, pptxgenjs) are optional peer dependencies: install the ones for the formats you render; apps that never render a heavy format never pay its chunk cost. Supports both JSX primitives and a fluent builder API.
 
 ```typescript
 import { Document, Page, Heading, Text, Table, List, ListItem, Code, Divider, render, createDocument, download } from '@pyreon/document'
@@ -1688,7 +1688,7 @@ await doc.toSlack()     // Slack Block Kit
 await doc.toNotion()    // Notion blocks
 ```
 
-> **Note**: Heavy format renderers are lazy-loaded: PDF (~3MB via pdfmake + bundled fonts), DOCX (~700KB via docx), XLSX (~1.1MB via exceljs), PPTX (~400KB via pptxgenjs). First render of each format triggers the dynamic import; subsequent renders are instant. The vendored architecture means apps download all renderer chunks during npm install (14MB total `lib/`), but consumer-side bundlers tree-shake to only ship the renderers an app actually invokes.
+> **Note**: Heavy format renderers are lazy-loaded: PDF (~3MB via pdfmake + bundled fonts), DOCX (~700KB via docx), XLSX (~1.1MB via exceljs), PPTX (~400KB via pptxgenjs). First render of each format triggers the dynamic import; subsequent renders are instant. The engines are optional peer dependencies, so an app installs only the ones for the formats it renders, and bundlers ship only the renderers it invokes.
 >
 > **Format return types**: Binary formats (pdf, docx, xlsx, pptx) return Uint8Array. Text formats (html, email, md, text, csv, svg, json, jsonl, slack, teams, discord, telegram, notion, confluence, whatsapp, google-chat) return string.
 >
@@ -2057,7 +2057,7 @@ const i18n = createI18n({
     },
   },
   // Async namespace loading — deduplicates concurrent requests:
-  loader: (locale, ns) => import(`./locales/${locale}/${ns}.json`),
+  loader: async (locale, ns) => (await import(`./locales/${locale}/${ns}.json`)).default,
 })
 
 // Use the t() function — reactive, re-evaluates on locale change:
@@ -2201,7 +2201,7 @@ rows.set([...rows(), { month: 'Apr', revenue: 190, target: 180 }])
 
 ## @pyreon/code — Code Editor
 
-Reactive code editor for Pyreon built on CodeMirror 6 — the core editor is ~138 KB gz (measured), ~7x lighter than Monaco's ~940 KB gz core. `editor.value` is a writable Signal<string> — reads track reactively, writes push back into CodeMirror. 19 language grammars lazy-loaded on demand. Canvas-based minimap, diff editor, tabbed editor, and two-way signal binding with built-in loop prevention.
+Reactive code editor for Pyreon built on CodeMirror 6 — the core editor is about 131 KB gz (measured, see BENCHMARKS.md), at parity with @uiw/react-codemirror, which wraps the same CM6. `editor.value` is a writable Signal<string> — reads track reactively, writes push back into CodeMirror. 19 language grammars lazy-loaded on demand. Canvas-based minimap, diff editor, tabbed editor, and two-way signal binding with built-in loop prevention.
 
 ```typescript
 import { createEditor, createTabbedEditor, CodeEditor, DiffEditor, TabbedEditor, bindEditorToSignal, loadLanguage, minimapExtension } from '@pyreon/code'
@@ -2267,7 +2267,7 @@ tabbed.openTab({ id: 'readme', name: 'README.md', language: 'markdown', value: '
 >
 > **Two-way binding**: For external signal <-> editor synchronization, use `bindEditorToSignal` — it handles loop prevention, format-on-input races, and parse error recovery. Hand-rolling the flag pattern is the #1 source of bugs.
 >
-> **Bundle size**: Built on CodeMirror 6. Measured (esbuild+gzip, code-split): the core editor is ~138 KB gz (~416 KB min) — at parity with @uiw/react-codemirror (~129 KB gz), both wrap the same CM6. Monaco's ESM core is ~940 KB gz (~3.6 MB min, workers/CSS excluded) — @pyreon/code is ~7x smaller gzipped. Each extra language grammar streams as a ~40 KB gz lazy chunk that reuses the loaded core. Reproduce with `bun run --filter=@pyreon/code bench`.
+> **Bundle size**: Built on CodeMirror 6. Measured (esbuild+gzip, code-split): the core editor is about 131 KB gz — at parity with @uiw/react-codemirror (about 126 KB gz), both wrap the same CM6 (the current figures are in BENCHMARKS.md; the Monaco comparison was withdrawn because its bundle row does not build). Each extra language grammar streams as a ~40 KB gz lazy chunk that reuses the loaded core. Reproduce with `bun run --filter=@pyreon/code bench`.
 >
 > **Third-party themes**: EditorTheme is `'light' | 'dark' | Extension` and resolveTheme passes a custom Extension through unchanged — so any `@uiw/codemirror-theme-*` package (dracula, github, tokyo-night, … an instant ~35-theme gallery) is a plain CM6 Extension that drops into `theme:` directly: `createEditor({ theme: dracula })`. Verified against a real @uiw theme package in the browser suite.
 >
@@ -2690,8 +2690,8 @@ page.remove() // removes ?page entirely
 
 // Schema mode — multiple params from a single call
 const filters = useUrlState({ q: '', sort: 'name', desc: false })
-filters.q.set('hello')       // ?q=hello&sort=name&desc=false
-filters.sort.set('date')     // ?q=hello&sort=date&desc=false
+filters.q.set('hello')       // ?q=hello  (params at their default are not written: clearOnDefault)
+filters.sort.set('date')     // ?q=hello&sort=date
 filters.desc.set(true)       // ?q=hello&sort=date&desc=true
 
 // Array parameters with repeated keys
@@ -3085,26 +3085,36 @@ export default defineConfig({
 Lathe reads an OpenAPI 3.x document and emits a client for the Pyreon stack: `@pyreon/validate` schemas, `@pyreon/http` endpoint declarations, `@pyreon/query` hooks, deterministic mock fixtures, and `@pyreon/atlas` scenarios derived from the spec's own enums and examples. YAML is read as YAML 1.2 core through the `yaml` package, configured strictly: anchors and merge keys resolve, while duplicate keys, multi-document streams, custom tags and non-JSON values are REFUSED with a line number rather than producing a document the author did not write. What separates it from a conventional generator is `target: 'multiplatform'`: the native compiler (PMTC) lowers only a SUBSET of TypeScript and has no module graph, so it recognises a client, a schema and a call only when they share ONE file's top level. Hand-written code drifts out of that constantly; generated code need not, so Lathe emits a self-contained module per tag — a layout no human would maintain and exactly the one the compiler wants — then runs the real compiler over its own output and checks for the POSITIVE marker (`PyreonQuery<`, `PyreonZodSchema_`), because zero warnings is not evidence of lowering.
 
 ```typescript
-$ npx lathe generate ./openapi.yaml --target multiplatform
+$ npx @pyreon/lathe generate
+lathe generate · 1 project
 
-lathe / Bookshelf 1.2.0
-  4 models  4 operations  target=multiplatform
+  ✓ Bookshelf  1.2.0 · openapi.yaml · 4 models · 4 operations · multiplatform · wrote 6 of 29 files
+    plugins        schemas, client, queries, mocks, faker, atlas, docs (+components, required by
+                   them)
+    files          6 of 29 files written
+      ~ updated  src/gen/schemas/Book.ts
+      ~ updated  src/gen/faker.ts
+      ~ updated  src/gen/components.tsx
+      ~ updated  src/gen/books.native.tsx
+      ~ updated  src/gen/docs/models.md
+      ~ updated  src/gen/api-surface.json
+    contract       1 breaking · 1 additive
+      − breaking  field-removed  Book.pages  was integer (optional)
+      + additive  field-added    Book.dueAt  date-time (optional)
+    native reach   3 of 4 operations · 1 web-only
+      ! web-only  1 operation: createBook
+        `POST` lowers through mutations, which PMTC does not yet recognise; GET operations on this
+        client DO reach native.
+    native verify  4 of 4 files lower
+      ✓ lowers    authors.native.tsx    swift   compiled
+      ✓ lowers    authors.native.tsx    kotlin  compiled
+      ✓ lowers    books.native.tsx      swift   compiled
+      ✓ lowers    books.native.tsx      kotlin  compiled
+      ✓ compiled  all modules together  swift
+      ✓ compiled  all modules together  kotlin
+      markers  PyreonQuery< PyreonZodSchema_ PyreonSchemaError
 
-  + src/gen/schemas/Book.ts
-  + src/gen/schemas.ts
-  + src/gen/client.ts
-  + src/gen/endpoints/books.ts
-  + src/gen/queries/books.ts
-  + src/gen/books.native.tsx
-
-  5 file(s) written
-
-  native reach  3/4 operations
-    web-only 1 op(s): createBook
-      POST lowers through mutations, which PMTC does not yet recognise.
-
-  lowers books.native.tsx swift   [PyreonQuery< PyreonZodSchema_]
-  lowers books.native.tsx kotlin  [PyreonQuery< PyreonZodSchema_]
+! wrote 6 of 29 files · 1 breaking change · 69 ms
 ```
 
 ## @pyreon/loom — Dependency Observatory
@@ -3112,16 +3122,29 @@ lathe / Bookshelf 1.2.0
 Loom reads a workspace the way an install tool does — root workspace globs (npm/bun/yarn array + object forms, `packages/*/*`-style nesting, negations, pnpm-workspace.yaml) and every member manifest — and turns the dependency fabric into DATA: the internal graph (longest-path depths, RUNTIME cycles with dev edges deliberately excluded, transitive blast radius), the external version-usage map (every dep → every declared range → who declares it), and a detector-driven issue list with honest severities. `loom scan` writes `loom-report.json` and exits non-zero on error findings, so wiring it into CI gates the fabric; `loom dev` serves the five-view observatory UI over the same report. Loom reads DECLARED truth only — no lockfile parsing, no registry calls (outdated/duplicate-install analysis are documented future layers).
 
 ```typescript
-$ loom scan .
-loom: 142 workspace package(s), 147 external dep(s), 681 internal edge(s), depth 8, 0 cycle(s).
+$ loom scan . --no-write
+loom scan · . · 148 packages
 
-WARNING · 8
-  ▲ version-drift [happy-dom] — \`happy-dom\` is declared with 2 different ranges (^20.11.1 · ^20.0.0)
-  ▲ version-drift [esbuild] — \`esbuild\` is declared with 2 different ranges (^0.25.0 · ^0.24.2)
+  workspace packages  148
+  external deps       227
+  internal edges      858
+  depth                11
+  runtime cycles        0
 
-INFO · 12
-  · unused-dep [tslib] — \`@pyreon/charts\` declares \`tslib\` as a dependency but no source file imports it — lexical evidence only
-  → loom-report.json
+  ℹ 305 info
+  ℹ phantom-dep · `@pyreon/example-react-compat` imports `react-dom` in shipping source but never
+     declares it — resolvable only through hoisting luck (ignored: `@pyreon/vite-plugin` with
+     compat:'react' ALIASES react-dom (and react-dom/client) to @pyreon/react-compat/dom. Installing
+     the real react-dom would defeat the example, whose entire point is that React-shaped code runs
+     with no React present.)
+     ↳ examples/react-compat/src/main.tsx
+  ℹ phantom-type-dep · `@pyreon/create-zero` imports `@pyreon/server` type-only but never declares
+     it — erased at runtime, so consumers are unaffected, but typecheck resolves it through hoisting
+     luck; declare it in devDependencies
+     ↳ packages/zero/create-zero/templates/app/src/routes/(admin)/dashboard.tsx
+  …
+
+✓ no errors or warnings · 305 info · 148 packages · 392 ms
 
 $ loom scan . --strict     # warnings gate too (red exit)
 $ loom scan . --json       # the full report as machine-readable JSON
@@ -3173,10 +3196,10 @@ export const scenarios = {
 // and `wrapper` (the providers your components genuinely need to mount).
 
 // Then:
-//   bunx atlas scan .            → atlas-catalog.json + atlas-agent-guide.md
-//   bunx atlas verify Button     → re-check ONE component; says WHICH check failed
-//   bunx atlas dev .             → the workbench at localhost:5210
-//   bunx atlas verify-browser .  → coverage + snapshot verdicts in Chromium
+//   bunx @pyreon/atlas scan .            → atlas-catalog.json + atlas-agent-guide.md
+//   bunx @pyreon/atlas verify Button     → re-check ONE component; says WHICH check failed
+//   bunx @pyreon/atlas dev .             → the workbench at localhost:5210
+//   bunx @pyreon/atlas verify-browser .  → coverage + snapshot verdicts in Chromium
 ```
 
 ## @pyreon/lint — Pyreon-specific Linter
@@ -3287,7 +3310,7 @@ function ResumeTemplate(props: { resume: () => Resume }) {
   )
 }
 
-// One-step extraction → render to any of 14+ formats
+// One-step extraction → render to any of 20 formats
 const tree = extractDocNode(() => <ResumeTemplate resume={store.resume} />)
 await download(tree, 'resume.pdf')
 await download(tree, 'resume.docx')
@@ -3412,7 +3435,7 @@ Pyreon Zero's content layer. Tight coupling to zero (no standalone use) — that
 ```typescript
 // vite.config.ts
 import pyreon from '@pyreon/vite-plugin'
-import zero from '@pyreon/zero'
+import zero from '@pyreon/zero/server'
 import content from '@pyreon/zero-content/plugin'
 
 export default { plugins: [pyreon(), zero(), content()] }
@@ -3910,9 +3933,9 @@ import { computed, effect } from '@pyreon/reactivity'
 test('computed recomputes exactly once per change', () => {
   const qty = signal(1)
   const total = computed(() => qty() * 10)
-  total() // materialize
+  total() // materialize (the first computation counts)
   qty.set(2)
-  expectSignal(total).toHaveRecomputedTimes(1)  // no thrash
+  expectSignal(total).toHaveRecomputedTimes(2)  // first computation + one recompute, no thrash
 })
 
 test('effect re-runs only when its dep changes', () => {

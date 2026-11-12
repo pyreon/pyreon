@@ -3,6 +3,10 @@ title: '@pyreon/reactivity'
 description: Signals-based reactive primitives powering Pyreon's fine-grained reactivity system.
 ---
 
+<ProductPitch id="reactivity" />
+
+<LiveDemo id="reactivity" />
+
 `@pyreon/reactivity` is the foundation of Pyreon's reactivity system. It provides signals, computed values, effects, stores, and other primitives that enable fine-grained, automatic dependency tracking without a virtual DOM. Every reactive update in Pyreon flows through these primitives.
 
 <PackageBadge name="@pyreon/reactivity" href="/docs/reactivity" />
@@ -587,14 +591,15 @@ batch(() => {
 // Now the outermost batch ends -- effects run once with final values
 ```
 
-### Batch with Return Values
+### Reading a value after a batch
 
-Batch returns the result of the callback:
+`batch(fn)` returns nothing (`batch(fn: () => void): void`). Read what you need after it, or with `.peek()` inside it:
 
 ```ts
-const result = batch(() => {
+let result = 0
+batch(() => {
   count.set(10)
-  return count.peek() // 10
+  result = count.peek() // 10
 })
 ```
 
@@ -2023,3 +2028,11 @@ Writes are intercepted:
 - `wrapped.update(fn)` → custom `update` handler (or default `set(fn(peek()))`)
 
 The internal `_v` field is forwarded live via property getter, so the compiler's fast path always sees the current value.
+
+<BenchCallout id="reactivity" />
+
+<ComingFrom id="reactivity" />
+
+<InlineSell id="store" />
+
+<CrossSell id="reactivity" />

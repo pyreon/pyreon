@@ -1,9 +1,7 @@
 ---
-title: "Testing — API Reference"
+title: "@pyreon/testing — API Reference"
 description: "Testing-Library-compatible test kit for Pyreon — render/cleanup/renderHook + the full @testing-library/dom surface + reactive-graph matchers"
 ---
-
-# @pyreon/testing — API Reference
 
 > **Generated** from `testing`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [testing](/docs/guides/testing).
 
@@ -62,9 +60,9 @@ import { computed, effect } from '@pyreon/reactivity'
 test('computed recomputes exactly once per change', () => {
   const qty = signal(1)
   const total = computed(() => qty() * 10)
-  total() // materialize
+  total() // materialize (the first computation counts)
   qty.set(2)
-  expectSignal(total).toHaveRecomputedTimes(1)  // no thrash
+  expectSignal(total).toHaveRecomputedTimes(2)  // first computation + one recompute, no thrash
 })
 
 test('effect re-runs only when its dep changes', () => {
@@ -190,9 +188,9 @@ Assert how many times a signal/computed fired, by reading its node's `fires` cou
 
 ```tsx
 const total = computed(() => qty() * price())
-total()          // materialize
+total()          // materialize (the first computation counts)
 qty.set(2)
-expectSignal(total).toHaveRecomputedTimes(1)
+expectSignal(total).toHaveRecomputedTimes(2)
 ```
 
 **Common mistakes**

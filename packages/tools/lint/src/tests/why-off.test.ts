@@ -181,8 +181,8 @@ describe('formatRuleState', () => {
       explainRuleState('rx-prefer-pipe', { config: recommended(), filePath: projectDir }),
     )
     expect(out).toContain('WILL NOT RUN')
-    expect(out).toContain('[opt-in]')
-    expect(out).toContain('[dependency-missing]')
+    expect(out).toContain('! opt-in · ')
+    expect(out).toContain('! dependency-missing · ')
     expect(out).toContain('fix:')
   })
 

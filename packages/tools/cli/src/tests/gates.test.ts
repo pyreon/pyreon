@@ -188,7 +188,12 @@ describe('runDocClaimsGate', () => {
     // and the multiplatform agent guide), once the anchors stopped requiring
     // one exact phrase: the primitives page frontmatter said "21 primitives"
     // against a real 22 while the gate passed.
-    expect(result.meta.scanned).toBe(47)
+    // +8 with the #4367 docs pass (55 with the two primitive sites above): the lint VS Code README (+2 rule-count,
+    // +1 category-count; it said "56 rules"), the rx function count (+2; the
+    // manifest's breakdown summed to 43 under a "42"), the table feature
+    // count (+2; the guide said 16 of 17) and the document-primitives format
+    // count (+1; "14+ formats" against 20).
+    expect(result.meta.scanned).toBe(55)
     // The real repo must be drift-free — this gate runs in CI; if a
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')

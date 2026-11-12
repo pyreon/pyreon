@@ -1,0 +1,379 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`doctor text in the shared theme > ascii fallback 1`] = `
+"
+  pyreon doctor - project health audit
+
+  Score:  94/100   Grade: A
+  Scope:  3 package root(s) from workspaces (apps/*, packages/*)
+  Scanned: lint 412 - audit-tests 9
+
+  correctness    ############ 100 - clean
+  performance    ############  97 - 1W
+  architecture   skipped
+  testing        ##########..  80 - 2E
+  documentation  ############  99 - 1i
+  best-practices clean (advisory — not graded)
+
+  ! 1 gate(s) matched no files — their categories were NOT measured:
+     islands-audit — matched no files
+
+  Top findings (4 of 4):
+
+  x audit-tests/no-browser-smoke - Browser package has no real-Chromium smoke test
+     -> packages/ui/src/index.ts
+     -> packages/ui/package.json:3 (declared)
+     fix: add src/tests/ui.browser.test.tsx
+
+  x audit-tests/project - Project-wide
+
+  ! pyreon/no-missing-for-by - <For> without \`by\` recreates every row on reorder
+     -> src/routes/inbox.tsx:42:7
+     fix: <For each={messages} by={(m) => m.id}>
+
+  i pyreon/doc-note - A note, with: colons, commas
+     and a newline
+     -> README.md
+
+  Skipped:
+    bundle-budgets  needs --full
+
+  2 errors, 1 warning, 1 info - 2 gates - 500 ms
+"
+`;
+
+exports[`doctor text in the shared theme > level 0 · dark 1`] = `
+"
+  pyreon doctor · project health audit
+
+  Score:  94/100   Grade: A
+  Scope:  3 package root(s) from workspaces (apps/*, packages/*)
+  Scanned: lint 412 · audit-tests 9
+
+  correctness    ████████████ 100 · clean
+  performance    ████████████  97 · 1W
+  architecture   skipped
+  testing        ██████████░░  80 · 2E
+  documentation  ████████████  99 · 1i
+  best-practices clean (advisory — not graded)
+
+  ! 1 gate(s) matched no files — their categories were NOT measured:
+     islands-audit — matched no files
+
+  Top findings (4 of 4):
+
+  ✗ audit-tests/no-browser-smoke · Browser package has no real-Chromium smoke test
+     ↳ packages/ui/src/index.ts
+     ↳ packages/ui/package.json:3 (declared)
+     fix: add src/tests/ui.browser.test.tsx
+
+  ✗ audit-tests/project · Project-wide
+
+  ! pyreon/no-missing-for-by · <For> without \`by\` recreates every row on reorder
+     ↳ src/routes/inbox.tsx:42:7
+     fix: <For each={messages} by={(m) => m.id}>
+
+  ℹ pyreon/doc-note · A note, with: colons, commas
+     and a newline
+     ↳ README.md
+
+  Skipped:
+    bundle-budgets  needs --full
+
+  2 errors, 1 warning, 1 info · 2 gates · 500 ms
+"
+`;
+
+exports[`doctor text in the shared theme > level 0 · light 1`] = `
+"
+  pyreon doctor · project health audit
+
+  Score:  94/100   Grade: A
+  Scope:  3 package root(s) from workspaces (apps/*, packages/*)
+  Scanned: lint 412 · audit-tests 9
+
+  correctness    ████████████ 100 · clean
+  performance    ████████████  97 · 1W
+  architecture   skipped
+  testing        ██████████░░  80 · 2E
+  documentation  ████████████  99 · 1i
+  best-practices clean (advisory — not graded)
+
+  ! 1 gate(s) matched no files — their categories were NOT measured:
+     islands-audit — matched no files
+
+  Top findings (4 of 4):
+
+  ✗ audit-tests/no-browser-smoke · Browser package has no real-Chromium smoke test
+     ↳ packages/ui/src/index.ts
+     ↳ packages/ui/package.json:3 (declared)
+     fix: add src/tests/ui.browser.test.tsx
+
+  ✗ audit-tests/project · Project-wide
+
+  ! pyreon/no-missing-for-by · <For> without \`by\` recreates every row on reorder
+     ↳ src/routes/inbox.tsx:42:7
+     fix: <For each={messages} by={(m) => m.id}>
+
+  ℹ pyreon/doc-note · A note, with: colons, commas
+     and a newline
+     ↳ README.md
+
+  Skipped:
+    bundle-budgets  needs --full
+
+  2 errors, 1 warning, 1 info · 2 gates · 500 ms
+"
+`;
+
+exports[`doctor text in the shared theme > level 1 · dark 1`] = `
+"
+  ␛[1mpyreon doctor␛[22m ␛[90m· project health audit␛[39m
+
+  Score:  ␛[32m␛[1m94␛[22m␛[39m/100   Grade: ␛[32m␛[1mA␛[22m␛[39m
+  ␛[90mScope:␛[39m  3 package root(s) ␛[90mfrom workspaces (apps/*, packages/*)␛[39m
+  ␛[90mScanned: lint 412 · audit-tests 9␛[39m
+
+  correctness    ␛[32m████████████␛[39m ␛[32m100␛[39m ␛[90m·␛[39m ␛[90mclean␛[39m
+  performance    ␛[32m████████████␛[39m ␛[32m 97␛[39m ␛[90m·␛[39m ␛[33m1W␛[39m
+  ␛[90marchitecture  ␛[39m ␛[90mskipped␛[39m
+  testing        ␛[33m██████████␛[39m␛[90m░░␛[39m ␛[33m 80␛[39m ␛[90m·␛[39m ␛[31m2E␛[39m
+  documentation  ␛[32m████████████␛[39m ␛[32m 99␛[39m ␛[90m·␛[39m ␛[36m1i␛[39m
+  best-practices ␛[90mclean␛[39m ␛[90m(advisory — not graded)␛[39m
+
+  ␛[33m!␛[39m ␛[1m1 gate(s) matched no files — their categories were NOT measured:␛[22m
+     ␛[33mislands-audit␛[39m ␛[90m— matched no files␛[39m
+
+␛[1m  Top findings (4 of 4):␛[22m
+
+  ␛[31m✗␛[39m ␛[1maudit-tests/no-browser-smoke␛[22m ␛[90m·␛[39m Browser package has no real-Chromium smoke test
+     ␛[90m↳␛[39m ␛]8;;file:///repo/packages/ui/src/index.ts␛\\␛[4m␛[36mpackages/ui/src/index.ts␛[39m␛[24m␛]8;;␛\\
+     ␛[90m↳␛[39m ␛]8;;file:///repo/packages/ui/package.json#L3␛\\␛[4m␛[36mpackages/ui/package.json:3␛[39m␛[24m␛]8;;␛\\ ␛[90m(declared)␛[39m
+     ␛[90mfix:␛[39m add src/tests/ui.browser.test.tsx
+
+  ␛[31m✗␛[39m ␛[1maudit-tests/project␛[22m ␛[90m·␛[39m Project-wide
+
+  ␛[33m!␛[39m ␛[1mpyreon/no-missing-for-by␛[22m ␛[90m·␛[39m <For> without \`by\` recreates every row on reorder
+     ␛[90m↳␛[39m ␛]8;;file:///repo/src/routes/inbox.tsx#L42␛\\␛[4m␛[36msrc/routes/inbox.tsx:42:7␛[39m␛[24m␛]8;;␛\\
+     ␛[90mfix:␛[39m <For each={messages} by={(m) => m.id}>
+
+  ␛[36mℹ␛[39m ␛[1mpyreon/doc-note␛[22m ␛[90m·␛[39m A note, with: colons, commas
+     and a newline
+     ␛[90m↳␛[39m ␛]8;;file:///repo/README.md␛\\␛[4m␛[36mREADME.md␛[39m␛[24m␛]8;;␛\\
+
+  ␛[90mSkipped:␛[39m
+    bundle-budgets  ␛[90mneeds --full␛[39m
+
+  ␛[31m2 errors␛[39m, ␛[33m1 warning␛[39m, ␛[36m1 info␛[39m ␛[90m· 2 gates · 500 ms␛[39m
+"
+`;
+
+exports[`doctor text in the shared theme > level 1 · light 1`] = `
+"
+  ␛[1mpyreon doctor␛[22m ␛[90m· project health audit␛[39m
+
+  Score:  ␛[32m␛[1m94␛[22m␛[39m/100   Grade: ␛[32m␛[1mA␛[22m␛[39m
+  ␛[90mScope:␛[39m  3 package root(s) ␛[90mfrom workspaces (apps/*, packages/*)␛[39m
+  ␛[90mScanned: lint 412 · audit-tests 9␛[39m
+
+  correctness    ␛[32m████████████␛[39m ␛[32m100␛[39m ␛[90m·␛[39m ␛[90mclean␛[39m
+  performance    ␛[32m████████████␛[39m ␛[32m 97␛[39m ␛[90m·␛[39m ␛[33m1W␛[39m
+  ␛[90marchitecture  ␛[39m ␛[90mskipped␛[39m
+  testing        ␛[33m██████████␛[39m␛[90m░░␛[39m ␛[33m 80␛[39m ␛[90m·␛[39m ␛[31m2E␛[39m
+  documentation  ␛[32m████████████␛[39m ␛[32m 99␛[39m ␛[90m·␛[39m ␛[36m1i␛[39m
+  best-practices ␛[90mclean␛[39m ␛[90m(advisory — not graded)␛[39m
+
+  ␛[33m!␛[39m ␛[1m1 gate(s) matched no files — their categories were NOT measured:␛[22m
+     ␛[33mislands-audit␛[39m ␛[90m— matched no files␛[39m
+
+␛[1m  Top findings (4 of 4):␛[22m
+
+  ␛[31m✗␛[39m ␛[1maudit-tests/no-browser-smoke␛[22m ␛[90m·␛[39m Browser package has no real-Chromium smoke test
+     ␛[90m↳␛[39m ␛]8;;file:///repo/packages/ui/src/index.ts␛\\␛[4m␛[36mpackages/ui/src/index.ts␛[39m␛[24m␛]8;;␛\\
+     ␛[90m↳␛[39m ␛]8;;file:///repo/packages/ui/package.json#L3␛\\␛[4m␛[36mpackages/ui/package.json:3␛[39m␛[24m␛]8;;␛\\ ␛[90m(declared)␛[39m
+     ␛[90mfix:␛[39m add src/tests/ui.browser.test.tsx
+
+  ␛[31m✗␛[39m ␛[1maudit-tests/project␛[22m ␛[90m·␛[39m Project-wide
+
+  ␛[33m!␛[39m ␛[1mpyreon/no-missing-for-by␛[22m ␛[90m·␛[39m <For> without \`by\` recreates every row on reorder
+     ␛[90m↳␛[39m ␛]8;;file:///repo/src/routes/inbox.tsx#L42␛\\␛[4m␛[36msrc/routes/inbox.tsx:42:7␛[39m␛[24m␛]8;;␛\\
+     ␛[90mfix:␛[39m <For each={messages} by={(m) => m.id}>
+
+  ␛[36mℹ␛[39m ␛[1mpyreon/doc-note␛[22m ␛[90m·␛[39m A note, with: colons, commas
+     and a newline
+     ␛[90m↳␛[39m ␛]8;;file:///repo/README.md␛\\␛[4m␛[36mREADME.md␛[39m␛[24m␛]8;;␛\\
+
+  ␛[90mSkipped:␛[39m
+    bundle-budgets  ␛[90mneeds --full␛[39m
+
+  ␛[31m2 errors␛[39m, ␛[33m1 warning␛[39m, ␛[36m1 info␛[39m ␛[90m· 2 gates · 500 ms␛[39m
+"
+`;
+
+exports[`doctor text in the shared theme > level 2 · dark 1`] = `
+"
+  ␛[1mpyreon doctor␛[22m ␛[38;5;103m· project health audit␛[39m
+
+  Score:  ␛[38;5;78m␛[1m94␛[22m␛[39m/100   Grade: ␛[38;5;78m␛[1mA␛[22m␛[39m
+  ␛[38;5;103mScope:␛[39m  3 package root(s) ␛[38;5;103mfrom workspaces (apps/*, packages/*)␛[39m
+  ␛[38;5;103mScanned: lint 412 · audit-tests 9␛[39m
+
+  correctness    ␛[38;5;78m████████████␛[39m ␛[38;5;78m100␛[39m ␛[38;5;103m·␛[39m ␛[38;5;244mclean␛[39m
+  performance    ␛[38;5;78m████████████␛[39m ␛[38;5;78m 97␛[39m ␛[38;5;103m·␛[39m ␛[38;5;220m1W␛[39m
+  ␛[38;5;103marchitecture  ␛[39m ␛[38;5;244mskipped␛[39m
+  testing        ␛[38;5;220m██████████␛[39m␛[38;5;244m░░␛[39m ␛[38;5;220m 80␛[39m ␛[38;5;103m·␛[39m ␛[38;5;203m2E␛[39m
+  documentation  ␛[38;5;78m████████████␛[39m ␛[38;5;78m 99␛[39m ␛[38;5;103m·␛[39m ␛[38;5;45m1i␛[39m
+  best-practices ␛[38;5;244mclean␛[39m ␛[38;5;103m(advisory — not graded)␛[39m
+
+  ␛[38;5;220m!␛[39m ␛[1m1 gate(s) matched no files — their categories were NOT measured:␛[22m
+     ␛[38;5;220mislands-audit␛[39m ␛[38;5;103m— matched no files␛[39m
+
+␛[1m  Top findings (4 of 4):␛[22m
+
+  ␛[38;5;203m✗␛[39m ␛[1maudit-tests/no-browser-smoke␛[22m ␛[38;5;103m·␛[39m Browser package has no real-Chromium smoke test
+     ␛[38;5;103m↳␛[39m ␛]8;;file:///repo/packages/ui/src/index.ts␛\\␛[4m␛[38;5;45mpackages/ui/src/index.ts␛[39m␛[24m␛]8;;␛\\
+     ␛[38;5;103m↳␛[39m ␛]8;;file:///repo/packages/ui/package.json#L3␛\\␛[4m␛[38;5;45mpackages/ui/package.json:3␛[39m␛[24m␛]8;;␛\\ ␛[38;5;103m(declared)␛[39m
+     ␛[38;5;103mfix:␛[39m add src/tests/ui.browser.test.tsx
+
+  ␛[38;5;203m✗␛[39m ␛[1maudit-tests/project␛[22m ␛[38;5;103m·␛[39m Project-wide
+
+  ␛[38;5;220m!␛[39m ␛[1mpyreon/no-missing-for-by␛[22m ␛[38;5;103m·␛[39m <For> without \`by\` recreates every row on reorder
+     ␛[38;5;103m↳␛[39m ␛]8;;file:///repo/src/routes/inbox.tsx#L42␛\\␛[4m␛[38;5;45msrc/routes/inbox.tsx:42:7␛[39m␛[24m␛]8;;␛\\
+     ␛[38;5;103mfix:␛[39m <For each={messages} by={(m) => m.id}>
+
+  ␛[38;5;45mℹ␛[39m ␛[1mpyreon/doc-note␛[22m ␛[38;5;103m·␛[39m A note, with: colons, commas
+     and a newline
+     ␛[38;5;103m↳␛[39m ␛]8;;file:///repo/README.md␛\\␛[4m␛[38;5;45mREADME.md␛[39m␛[24m␛]8;;␛\\
+
+  ␛[38;5;103mSkipped:␛[39m
+    bundle-budgets  ␛[38;5;103mneeds --full␛[39m
+
+  ␛[38;5;203m2 errors␛[39m, ␛[38;5;220m1 warning␛[39m, ␛[38;5;45m1 info␛[39m ␛[38;5;103m· 2 gates · 500 ms␛[39m
+"
+`;
+
+exports[`doctor text in the shared theme > level 2 · light 1`] = `
+"
+  ␛[1mpyreon doctor␛[22m ␛[38;5;59m· project health audit␛[39m
+
+  Score:  ␛[38;5;22m␛[1m94␛[22m␛[39m/100   Grade: ␛[38;5;22m␛[1mA␛[22m␛[39m
+  ␛[38;5;59mScope:␛[39m  3 package root(s) ␛[38;5;59mfrom workspaces (apps/*, packages/*)␛[39m
+  ␛[38;5;59mScanned: lint 412 · audit-tests 9␛[39m
+
+  correctness    ␛[38;5;22m████████████␛[39m ␛[38;5;22m100␛[39m ␛[38;5;59m·␛[39m ␛[38;5;242mclean␛[39m
+  performance    ␛[38;5;22m████████████␛[39m ␛[38;5;22m 97␛[39m ␛[38;5;59m·␛[39m ␛[38;5;94m1W␛[39m
+  ␛[38;5;59marchitecture  ␛[39m ␛[38;5;242mskipped␛[39m
+  testing        ␛[38;5;94m██████████␛[39m␛[38;5;242m░░␛[39m ␛[38;5;94m 80␛[39m ␛[38;5;59m·␛[39m ␛[38;5;124m2E␛[39m
+  documentation  ␛[38;5;22m████████████␛[39m ␛[38;5;22m 99␛[39m ␛[38;5;59m·␛[39m ␛[38;5;24m1i␛[39m
+  best-practices ␛[38;5;242mclean␛[39m ␛[38;5;59m(advisory — not graded)␛[39m
+
+  ␛[38;5;94m!␛[39m ␛[1m1 gate(s) matched no files — their categories were NOT measured:␛[22m
+     ␛[38;5;94mislands-audit␛[39m ␛[38;5;59m— matched no files␛[39m
+
+␛[1m  Top findings (4 of 4):␛[22m
+
+  ␛[38;5;124m✗␛[39m ␛[1maudit-tests/no-browser-smoke␛[22m ␛[38;5;59m·␛[39m Browser package has no real-Chromium smoke test
+     ␛[38;5;59m↳␛[39m ␛]8;;file:///repo/packages/ui/src/index.ts␛\\␛[4m␛[38;5;24mpackages/ui/src/index.ts␛[39m␛[24m␛]8;;␛\\
+     ␛[38;5;59m↳␛[39m ␛]8;;file:///repo/packages/ui/package.json#L3␛\\␛[4m␛[38;5;24mpackages/ui/package.json:3␛[39m␛[24m␛]8;;␛\\ ␛[38;5;59m(declared)␛[39m
+     ␛[38;5;59mfix:␛[39m add src/tests/ui.browser.test.tsx
+
+  ␛[38;5;124m✗␛[39m ␛[1maudit-tests/project␛[22m ␛[38;5;59m·␛[39m Project-wide
+
+  ␛[38;5;94m!␛[39m ␛[1mpyreon/no-missing-for-by␛[22m ␛[38;5;59m·␛[39m <For> without \`by\` recreates every row on reorder
+     ␛[38;5;59m↳␛[39m ␛]8;;file:///repo/src/routes/inbox.tsx#L42␛\\␛[4m␛[38;5;24msrc/routes/inbox.tsx:42:7␛[39m␛[24m␛]8;;␛\\
+     ␛[38;5;59mfix:␛[39m <For each={messages} by={(m) => m.id}>
+
+  ␛[38;5;24mℹ␛[39m ␛[1mpyreon/doc-note␛[22m ␛[38;5;59m·␛[39m A note, with: colons, commas
+     and a newline
+     ␛[38;5;59m↳␛[39m ␛]8;;file:///repo/README.md␛\\␛[4m␛[38;5;24mREADME.md␛[39m␛[24m␛]8;;␛\\
+
+  ␛[38;5;59mSkipped:␛[39m
+    bundle-budgets  ␛[38;5;59mneeds --full␛[39m
+
+  ␛[38;5;124m2 errors␛[39m, ␛[38;5;94m1 warning␛[39m, ␛[38;5;24m1 info␛[39m ␛[38;5;59m· 2 gates · 500 ms␛[39m
+"
+`;
+
+exports[`doctor text in the shared theme > level 3 · dark 1`] = `
+"
+  ␛[1mpyreon doctor␛[22m ␛[38;2;138;134;150m· project health audit␛[39m
+
+  Score:  ␛[38;2;74;222;128m␛[1m94␛[22m␛[39m/100   Grade: ␛[38;2;74;222;128m␛[1mA␛[22m␛[39m
+  ␛[38;2;138;134;150mScope:␛[39m  3 package root(s) ␛[38;2;138;134;150mfrom workspaces (apps/*, packages/*)␛[39m
+  ␛[38;2;138;134;150mScanned: lint 412 · audit-tests 9␛[39m
+
+  correctness    ␛[38;2;74;222;128m████████████␛[39m ␛[38;2;74;222;128m100␛[39m ␛[38;2;138;134;150m·␛[39m ␛[38;2;126;122;140mclean␛[39m
+  performance    ␛[38;2;74;222;128m████████████␛[39m ␛[38;2;74;222;128m 97␛[39m ␛[38;2;138;134;150m·␛[39m ␛[38;2;250;204;21m1W␛[39m
+  ␛[38;2;138;134;150marchitecture  ␛[39m ␛[38;2;126;122;140mskipped␛[39m
+  testing        ␛[38;2;250;204;21m██████████␛[39m␛[38;2;126;122;140m░░␛[39m ␛[38;2;250;204;21m 80␛[39m ␛[38;2;138;134;150m·␛[39m ␛[38;2;248;113;113m2E␛[39m
+  documentation  ␛[38;2;74;222;128m████████████␛[39m ␛[38;2;74;222;128m 99␛[39m ␛[38;2;138;134;150m·␛[39m ␛[38;2;34;211;238m1i␛[39m
+  best-practices ␛[38;2;126;122;140mclean␛[39m ␛[38;2;138;134;150m(advisory — not graded)␛[39m
+
+  ␛[38;2;250;204;21m!␛[39m ␛[1m1 gate(s) matched no files — their categories were NOT measured:␛[22m
+     ␛[38;2;250;204;21mislands-audit␛[39m ␛[38;2;138;134;150m— matched no files␛[39m
+
+␛[1m  Top findings (4 of 4):␛[22m
+
+  ␛[38;2;248;113;113m✗␛[39m ␛[1maudit-tests/no-browser-smoke␛[22m ␛[38;2;138;134;150m·␛[39m Browser package has no real-Chromium smoke test
+     ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///repo/packages/ui/src/index.ts␛\\␛[4m␛[38;2;34;211;238mpackages/ui/src/index.ts␛[39m␛[24m␛]8;;␛\\
+     ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///repo/packages/ui/package.json#L3␛\\␛[4m␛[38;2;34;211;238mpackages/ui/package.json:3␛[39m␛[24m␛]8;;␛\\ ␛[38;2;138;134;150m(declared)␛[39m
+     ␛[38;2;138;134;150mfix:␛[39m add src/tests/ui.browser.test.tsx
+
+  ␛[38;2;248;113;113m✗␛[39m ␛[1maudit-tests/project␛[22m ␛[38;2;138;134;150m·␛[39m Project-wide
+
+  ␛[38;2;250;204;21m!␛[39m ␛[1mpyreon/no-missing-for-by␛[22m ␛[38;2;138;134;150m·␛[39m <For> without \`by\` recreates every row on reorder
+     ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///repo/src/routes/inbox.tsx#L42␛\\␛[4m␛[38;2;34;211;238msrc/routes/inbox.tsx:42:7␛[39m␛[24m␛]8;;␛\\
+     ␛[38;2;138;134;150mfix:␛[39m <For each={messages} by={(m) => m.id}>
+
+  ␛[38;2;34;211;238mℹ␛[39m ␛[1mpyreon/doc-note␛[22m ␛[38;2;138;134;150m·␛[39m A note, with: colons, commas
+     and a newline
+     ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///repo/README.md␛\\␛[4m␛[38;2;34;211;238mREADME.md␛[39m␛[24m␛]8;;␛\\
+
+  ␛[38;2;138;134;150mSkipped:␛[39m
+    bundle-budgets  ␛[38;2;138;134;150mneeds --full␛[39m
+
+  ␛[38;2;248;113;113m2 errors␛[39m, ␛[38;2;250;204;21m1 warning␛[39m, ␛[38;2;34;211;238m1 info␛[39m ␛[38;2;138;134;150m· 2 gates · 500 ms␛[39m
+"
+`;
+
+exports[`doctor text in the shared theme > level 3 · light 1`] = `
+"
+  ␛[1mpyreon doctor␛[22m ␛[38;2;94;90;105m· project health audit␛[39m
+
+  Score:  ␛[38;2;21;112;58m␛[1m94␛[22m␛[39m/100   Grade: ␛[38;2;21;112;58m␛[1mA␛[22m␛[39m
+  ␛[38;2;94;90;105mScope:␛[39m  3 package root(s) ␛[38;2;94;90;105mfrom workspaces (apps/*, packages/*)␛[39m
+  ␛[38;2;94;90;105mScanned: lint 412 · audit-tests 9␛[39m
+
+  correctness    ␛[38;2;21;112;58m████████████␛[39m ␛[38;2;21;112;58m100␛[39m ␛[38;2;94;90;105m·␛[39m ␛[38;2;110;106;120mclean␛[39m
+  performance    ␛[38;2;21;112;58m████████████␛[39m ␛[38;2;21;112;58m 97␛[39m ␛[38;2;94;90;105m·␛[39m ␛[38;2;138;90;0m1W␛[39m
+  ␛[38;2;94;90;105marchitecture  ␛[39m ␛[38;2;110;106;120mskipped␛[39m
+  testing        ␛[38;2;138;90;0m██████████␛[39m␛[38;2;110;106;120m░░␛[39m ␛[38;2;138;90;0m 80␛[39m ␛[38;2;94;90;105m·␛[39m ␛[38;2;185;28;28m2E␛[39m
+  documentation  ␛[38;2;21;112;58m████████████␛[39m ␛[38;2;21;112;58m 99␛[39m ␛[38;2;94;90;105m·␛[39m ␛[38;2;10;110;137m1i␛[39m
+  best-practices ␛[38;2;110;106;120mclean␛[39m ␛[38;2;94;90;105m(advisory — not graded)␛[39m
+
+  ␛[38;2;138;90;0m!␛[39m ␛[1m1 gate(s) matched no files — their categories were NOT measured:␛[22m
+     ␛[38;2;138;90;0mislands-audit␛[39m ␛[38;2;94;90;105m— matched no files␛[39m
+
+␛[1m  Top findings (4 of 4):␛[22m
+
+  ␛[38;2;185;28;28m✗␛[39m ␛[1maudit-tests/no-browser-smoke␛[22m ␛[38;2;94;90;105m·␛[39m Browser package has no real-Chromium smoke test
+     ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///repo/packages/ui/src/index.ts␛\\␛[4m␛[38;2;10;110;137mpackages/ui/src/index.ts␛[39m␛[24m␛]8;;␛\\
+     ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///repo/packages/ui/package.json#L3␛\\␛[4m␛[38;2;10;110;137mpackages/ui/package.json:3␛[39m␛[24m␛]8;;␛\\ ␛[38;2;94;90;105m(declared)␛[39m
+     ␛[38;2;94;90;105mfix:␛[39m add src/tests/ui.browser.test.tsx
+
+  ␛[38;2;185;28;28m✗␛[39m ␛[1maudit-tests/project␛[22m ␛[38;2;94;90;105m·␛[39m Project-wide
+
+  ␛[38;2;138;90;0m!␛[39m ␛[1mpyreon/no-missing-for-by␛[22m ␛[38;2;94;90;105m·␛[39m <For> without \`by\` recreates every row on reorder
+     ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///repo/src/routes/inbox.tsx#L42␛\\␛[4m␛[38;2;10;110;137msrc/routes/inbox.tsx:42:7␛[39m␛[24m␛]8;;␛\\
+     ␛[38;2;94;90;105mfix:␛[39m <For each={messages} by={(m) => m.id}>
+
+  ␛[38;2;10;110;137mℹ␛[39m ␛[1mpyreon/doc-note␛[22m ␛[38;2;94;90;105m·␛[39m A note, with: colons, commas
+     and a newline
+     ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///repo/README.md␛\\␛[4m␛[38;2;10;110;137mREADME.md␛[39m␛[24m␛]8;;␛\\
+
+  ␛[38;2;94;90;105mSkipped:␛[39m
+    bundle-budgets  ␛[38;2;94;90;105mneeds --full␛[39m
+
+  ␛[38;2;185;28;28m2 errors␛[39m, ␛[38;2;138;90;0m1 warning␛[39m, ␛[38;2;10;110;137m1 info␛[39m ␛[38;2;94;90;105m· 2 gates · 500 ms␛[39m
+"
+`;

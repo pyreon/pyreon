@@ -3,8 +3,6 @@ title: "Architecture Mistakes"
 description: "Common architecture mistakes in Pyreon and how to fix them."
 ---
 
-# Architecture Mistakes
-
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
 ### Styling an Element's layout with theme flex overrides instead of Element props

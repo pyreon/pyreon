@@ -23,4 +23,7 @@ import { runCli } from './index'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../..')
 const code = await runCli(['scan', repoRoot, '--no-write', '--strict'])
-process.exit(code)
+// `exitCode`, not `process.exit()`: on a pipe (validate-fast captures this
+// gate's output) stdout is written asynchronously, and exiting at once cut the
+// report off mid-line — losing the verdict, its last line.
+process.exitCode = code

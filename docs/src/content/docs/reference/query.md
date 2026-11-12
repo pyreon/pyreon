@@ -1,9 +1,7 @@
 ---
-title: "TanStack Query Adapter — API Reference"
+title: "@pyreon/query — API Reference"
 description: "TanStack Query adapter with signal-driven results + WebSocket subscriptions + SSE (useSSE)"
 ---
-
-# @pyreon/query — API Reference
 
 > **Generated** from `query`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [query](/docs/query).
 

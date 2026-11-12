@@ -1,9 +1,7 @@
 ---
-title: "Schema-Driven CRUD — API Reference"
+title: "@pyreon/feature — API Reference"
 description: "Schema-driven CRUD primitives — define once, get queries, forms, tables, and stores"
 ---
-
-# @pyreon/feature — API Reference
 
 > **Generated** from `feature`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [feature](/docs/feature).
 

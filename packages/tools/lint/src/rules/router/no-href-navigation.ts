@@ -2,7 +2,42 @@ import type { Rule, VisitorCallbacks } from '../../types'
 import { getJSXAttribute, getSpan } from '../../utils/ast'
 import { extractImportInfo } from '../../utils/imports'
 
-const EXTERNAL_PREFIXES = ['http://', 'https://', 'mailto:', 'tel:']
+const EXTERNAL_PREFIXES = ['http://', 'https://', 'mailto:', 'tel:', '//']
+
+/**
+ * A same-origin href that is not a PAGE: an API route (`/api/rss`) or a file
+ * (`/feed.xml`, `/report.pdf`). `<Link>` would hand it to the client router,
+ * which renders the not-found route instead of letting the browser fetch the
+ * resource — so a plain `<a>` is the correct element and must not be flagged.
+ */
+function isNonPageResource(href: string): boolean {
+  const path = href.split(/[?#]/)[0] ?? ''
+  if (path === '/api' || path.startsWith('/api/')) return true
+  const last = path.slice(path.lastIndexOf('/') + 1)
+
+  return /\.[a-z0-9]{1,5}$/i.test(last) && !/\.html?$/i.test(last)
+}
+
+/**
+ * An anchor that says it is NOT an in-app navigation: it opens elsewhere
+ * (`target`), saves a file (`download`), or names a resource / an outside
+ * page through `rel` (`alternate` — a feed or other representation of the
+ * page; `external`). `<RouterLink>` would be wrong for each: the router
+ * would try to match `/blog/rss.xml` as a route. Dynamic hrefs make the
+ * href itself unreadable, so these explicit signals are what the rule can
+ * trust.
+ */
+const NON_ROUTE_RELS = ['alternate', 'external']
+
+function declaresNonRoute(node: any): boolean {
+  if (getJSXAttribute(node, 'target') || getJSXAttribute(node, 'download')) return true
+  const rel = getJSXAttribute(node, 'rel')?.value
+  if (rel?.type === 'Literal' && typeof rel.value === 'string') {
+    const tokens = rel.value.toLowerCase().split(/\s+/)
+    return NON_ROUTE_RELS.some((t) => tokens.includes(t))
+  }
+  return false
+}
 
 export const noHrefNavigation: Rule = {
   meta: {
@@ -34,13 +69,19 @@ export const noHrefNavigation: Rule = {
 
         const hrefAttr = getJSXAttribute(node, 'href')
         if (!hrefAttr) return
+        if (declaresNonRoute(node)) return
 
         // Get the href value
+        // `download` / `target` mean the author wants the browser, not the
+        // router: a file save or a new browsing context.
+        if (getJSXAttribute(node, 'download') || getJSXAttribute(node, 'target')) return
+
         const value = hrefAttr.value
         if (value?.type === 'Literal' && typeof value.value === 'string') {
           const href: string = value.value
           // Skip external URLs and anchor links
           if (href.startsWith('#') || EXTERNAL_PREFIXES.some((p) => href.startsWith(p))) return
+          if (isNonPageResource(href)) return
         }
 
         context.report({

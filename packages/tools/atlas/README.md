@@ -1,6 +1,6 @@
 # @pyreon/atlas
 
-> **Working name — a rebrand is pending.** Private, not yet published.
+> **Working name — a rebrand is pending.** Published on npm as `@pyreon/atlas`.
 
 An **AI-native component workbench** for the Pyreon ecosystem. Atlas is "in the
 category of Storybook" but designed the opposite way: instead of hand-authoring
@@ -320,12 +320,19 @@ question it withholds is the whole finding: **which of the six checks failed?**
 So every run prints a per-check tally, and the checks that did not run say why:
 
 ```text
-atlas: discovered 9 component(s), 43 scenario(s) — 41 verified, 2 failing, 0 unverified.
-  checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43
-  not run: reactivityCoverage, snapshot — browser-only — run `atlas verify-browser`
+$ atlas scan . --no-mount --no-write
+atlas scan · . · static (--no-mount)
+
+  components   6
+  scenarios   22  2 failing · 12 verified · 8 unverified
+  checks      a11y 12/14 ✗
+  not run     interaction, ssrParity, leak — mounting is disabled for this run (`--no-mount`) — the
+              scan stayed static
+              reactivityCoverage, snapshot — browser-only — run `atlas verify-browser` to measure
+              this (a Node scan cannot)
 ```
 
-That line matters more than it looks. On a package where `@pyreon/runtime-server`
+That row matters more than it looks. On a package where `@pyreon/runtime-server`
 does not resolve, the scan reports **every scenario verified** having run
 exactly two of the six checks — true, and completely misleading without the tally.
 
@@ -343,15 +350,24 @@ shows it there.
 
 `atlas verify <Component>` is the loop for iterating on one component:
 
-```bash
-$ atlas verify Button
-atlas verify Button: 1 component(s), 15 scenario(s)
-  checks: a11y 14/15 ✗ · interaction 15/15 · ssrParity 15/15 · leak 15/15
+```text
+$ atlas verify Button --no-mount
+atlas verify Button · 1 component · 9 scenarios · static (--no-mount)
 
-✗ button--empty
-    a11y: missing accessible name: "label" is empty
+  scenarios  9  1 failing · 8 verified · 0 unverified
+  checks     a11y 8/9 ✗
+  not run    interaction, ssrParity, leak — mounting is disabled for this run (`--no-mount`) — the
+             scan stayed static
+             reactivityCoverage, snapshot — browser-only — run `atlas verify-browser` to measure
+             this (a Node scan cannot)
 
-1 failing · 14 verified · 0 unverified
+  ✗ 1 failing scenario
+  ✗ button--empty  Button
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+
+✗ 1 failing scenario · 8 verified · 0 unverified · 141 ms
 ```
 
 Discovery still walks the project — a component's file is not known until it
@@ -364,10 +380,11 @@ first and a speed tool second.
 
 Every finding is structured — `{ code, message, fix? }`:
 
-```
-✗ button--empty
-    a11y [missing-accessible-name]: missing accessible name: "label" is empty
-      → Give "label" a non-empty value, or an aria-label if the text is decorative.
+```text
+  ✗ button--empty  Button
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
 ```
 
 `code` is the **stable** class (`hydrate-threw`, `reactive-nodes-retained`, …) — what you
@@ -394,13 +411,29 @@ answer "how is it now"; they cannot answer "did I help".
 The case that makes it worth having: **a check that stops running is a regression**,
 even though it makes the counts improve.
 
-```
-# baseline: 2 failing
+```text
+# baseline: a mounted scan, committed
 $ atlas scan . --check --no-mount
-atlas: discovered 1 component(s), 2 scenario(s) — 0 verified, 0 failing, 2 unverified.
-atlas --check: REGRESSED — 4 check(s) stopped running
-  ✗ button--empty — no longer checked: interaction, leak
-    (coverage lost — the failure did not go away, the check did)
+atlas scan · . · static (--no-mount) · ratchet (--check)
+
+  components  1
+  scenarios   3  1 failing · 2 verified · 0 unverified
+  checks      a11y 2/3 ✗
+  not run     interaction, ssrParity, leak — mounting is disabled for this run (`--no-mount`) — the
+              scan stayed static
+              reactivityCoverage, snapshot — browser-only — run `atlas verify-browser` to measure
+              this (a Node scan cannot)
+
+  ✗ atlas --check: REGRESSED — 6 check(s) stopped running
+    ✗ button--default — no longer checked: interaction, leak (coverage lost — the failure did not go
+      away, the check did)
+    ✗ button--empty — no longer checked: interaction, leak (coverage lost — the failure did not go
+      away, the check did)
+    ✗ button--long-content — no longer checked: interaction, leak (coverage lost — the failure did
+      not go away, the check did)
+
+✗ regressed against the committed catalog (--check) · 1 failing scenario · 2 verified · 0 unverified
+  · 1 component · 64 ms
 ```
 
 Delete a wrapper and every mount-dependent check drops to `skip`: failures vanish,

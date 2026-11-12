@@ -3,8 +3,6 @@ title: "Reactivity in Depth"
 description: "How Pyreon's signals, computeds, and effects work — the components-run-once model, where reactivity lives, batching, untracking, and selectors."
 ---
 
-# Reactivity in Depth
-
 Pyreon's reactivity is fine-grained: a signal change updates exactly the DOM that depends on it, never a component re-render. The mental model is one rule:
 
 > **Components run once. What's reactive depends on WHERE you read a signal.**

@@ -72,3 +72,38 @@ describe('W19 — auto-inject entry-client script', () => {
     expect(result).toBe(html)
   })
 })
+
+describe('dev error overlay module injection', () => {
+  const html = '<html><head></head><body><!--pyreon-scripts--></body></html>'
+  const devCtx = { server: {}, path: '/', filename: 'index.html' }
+
+  it('the dev server gets the overlay module in <head>, before the entry', () => {
+    const [mainPlugin] = zeroPlugin({ mode: 'ssr' })
+    const result = getTransform(mainPlugin!)(html, devCtx) as unknown as {
+      html: string
+      tags: Array<{ tag: string; attrs: Record<string, string>; injectTo: string }>
+    }
+    expect(result.html).toContain('<script type="module" src="/src/entry-client.ts">')
+    expect(result.tags).toEqual([
+      {
+        tag: 'script',
+        attrs: { type: 'module', src: '/@id/__x00__virtual:zero/dev-overlay' },
+        injectTo: 'head',
+      },
+    ])
+  })
+
+  it('a build never gets it (no dev server in the context)', () => {
+    const [mainPlugin] = zeroPlugin({ mode: 'ssr' })
+    const result = getTransform(mainPlugin!)(html, { path: '/', filename: 'index.html' })
+    expect(typeof result).toBe('string')
+    expect(result).not.toContain('dev-overlay')
+  })
+
+  it('an all-SPA app has no hydration to watch, so it is not injected there either', () => {
+    const [mainPlugin] = zeroPlugin({ mode: 'spa' })
+    const result = getTransform(mainPlugin!)(html, devCtx)
+    expect(typeof result).toBe('string')
+    expect(result).not.toContain('dev-overlay')
+  })
+})

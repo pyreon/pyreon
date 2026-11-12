@@ -224,69 +224,27 @@ hr {
   margin: var(--space-2xl) 0;
 }
 
-/* ─── Post lists ─────────────────────────────────────────────────────────── */
+/* ─── Blog ───────────────────────────────────────────────────────────────── */
+/* The blog components come from @pyreon/zero-content/blog; its stylesheet
+   (imported in entry-client.ts, before this file) reads these variables.
+   Any one-class rule here overrides it — restyle freely. */
 
-.post-list {
-  list-style: none;
+:root {
+  --pyreon-blog-width: 100%;
+  --pyreon-blog-muted: var(--c-text-muted);
+  --pyreon-blog-border: var(--c-border);
+  --pyreon-blog-surface: var(--c-surface);
+  --pyreon-blog-accent: var(--c-accent);
+  --pyreon-blog-radius: var(--radius-md);
+  --pyreon-blog-meta-font: var(--font-mono);
+}
+
+/* The page column already sets the width and padding. */
+.pyreon-blog,
+.pyreon-blog-post {
   padding: 0;
-  margin: 0;
 }
 
-.post-list li {
-  margin-bottom: var(--space-xl);
-  padding-bottom: var(--space-xl);
-  border-bottom: 1px solid var(--c-border);
-}
-
-.post-list li:last-child {
-  border-bottom: 0;
-}
-
-.post-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  margin-bottom: var(--space-xs);
-}
-
-.post-title a {
-  color: var(--c-text);
-  text-decoration: none;
-}
-
-.post-title a:hover {
-  color: var(--c-accent);
-}
-
-.post-meta {
-  color: var(--c-text-muted);
-  font-size: 0.875rem;
-  margin-bottom: var(--space-sm);
-}
-
-.post-summary {
-  color: var(--c-text-secondary);
-}
-
-.tags {
-  display: flex;
-  gap: var(--space-xs);
-  flex-wrap: wrap;
-  margin-top: var(--space-sm);
-}
-
-.tag {
-  font-size: 0.75rem;
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-sm);
-  padding: 0.125rem 0.5rem;
-  color: var(--c-text-secondary);
-}
-
-/* ─── Post detail ────────────────────────────────────────────────────────── */
-
-.post-header {
-  margin-bottom: var(--space-2xl);
-  padding-bottom: var(--space-xl);
-  border-bottom: 1px solid var(--c-border);
+.pyreon-blog-card__title {
+  margin-top: var(--space-xs);
 }

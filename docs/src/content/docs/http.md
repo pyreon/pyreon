@@ -3,6 +3,10 @@ title: HTTP
 description: The transport layer under @pyreon/query — onion middleware, typed errors, and optional schema-validated responses.
 ---
 
+<ProductPitch id="http" />
+
+<LiveDemo id="http" />
+
 `@pyreon/http` owns **how a request is made**: URL building, path params, query encoding, headers, body, cancellation, typed errors, and optional response validation.
 
 It deliberately owns **no cache, no dedup-by-key, and no reactive container** — `@pyreon/query`, `useFetch` and `createResource` already do. That split mirrors the one the native runtime already made, where `PyreonFetch` is the reactive result container and `PyreonHttp` the request/response layer beneath it.
@@ -278,7 +282,7 @@ const api = createHttp({
 | Concern | Default | Why |
 | --- | --- | --- |
 | timeout | **on**, 30s | `fetch` has none — a server that accepts and never responds wedges the promise forever |
-| retry | **off** | `@pyreon/query` already retries 3×; a client default of 3 makes one logical query **nine** requests |
+| retry | **off** | `@pyreon/query` already retries 3×; a client default of 3 makes one logical query up to **16** requests (4 query attempts × 4 client attempts) |
 | dedupe | off | query already dedupes by key |
 | throw on non-2xx | on | query needs a *rejected* promise to enter its error state |
 | credentials | `same-origin` | — |
@@ -475,3 +479,11 @@ function AvatarButton() {
 - **`useFetch`** (`@pyreon/hooks`) — the tiny reactive container, and the multiplatform hook PMTC lowers to native. Reach for it when you want `{ data, error, isPending }` and nothing else.
 - **`@pyreon/feature`** — builds on this client, so its generated CRUD hooks cancel correctly.
 - **`@pyreon/validation`** — owns the Standard Schema contract this package validates against.
+
+<BenchCallout id="http" />
+
+<ComingFrom id="http" />
+
+<InlineSell id="query" />
+
+<CrossSell id="http" />

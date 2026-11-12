@@ -1,0 +1,354 @@
+{
+ "id": "document",
+ "route": "/products/document",
+ "name": "Documents",
+ "package": "@pyreon/document",
+ "category": "fundamentals · documents",
+ "hero": {
+  "title": "Write the report once. Send it as a PDF, a spreadsheet or a Slack message.",
+  "emberWord": "once",
+  "lede": "Build invoices, reports and notifications from JSX, then render the same tree to any of 20 formats, from PDF and Word to Teams cards and Notion blocks. Text formats need nothing else; PDF, Word, Excel and PowerPoint use an engine you install only if you emit them.",
+  "install": "bun add @pyreon/document",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "formats",
+    "value": "20 built in<small>16 text formats; PDF, DOCX, XLSX and PPTX via an optional peer.</small>"
+   },
+   {
+    "key": "building blocks",
+    "value": "18 primitives<small>JSX, `h()`, direct calls or a fluent builder. Same output.</small>"
+   },
+   {
+    "key": "safe output",
+    "value": "links allowlisted, CSV formula-safe<small>A `javascript:` link never reaches HTML, email, Markdown or chat output.</small>"
+   },
+   {
+    "key": "throughput",
+    "value": "45.9K–505K small docs/s<small>16 formats, overnight run, one run, author-run.</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "20",
+   "label": "output formats from one tree, PDF to Google Chat",
+   "source": "packages/fundamentals/document/src/render.ts (20 registerRenderer calls); all 20 rendered in scratch doc1.tsx"
+  },
+  {
+   "stat": "18",
+   "label": "primitives: Document, Page, Heading, Text, Table, List, Button and more",
+   "source": "packages/fundamentals/document/src/index.ts (nodes exports)"
+  },
+  {
+   "stat": "45.9K–505K",
+   "label": "small documents rendered per second across 16 formats (overnight run, one run)",
+   "source": "00-brief/BENCHMARKS-2026-11-05.md §11"
+  }
+ ],
+ "why": {
+  "title": "One template instead of one per format.",
+  "items": [
+   {
+    "title": "Twenty outputs, one tree",
+    "text": "The same invoice becomes a PDF attachment, an email body, a Markdown file and a Slack message. Change a heading once. Your own components work inside the tree."
+   },
+   {
+    "title": "Install only what you emit",
+    "text": "pdfmake, docx, exceljs and pptxgenjs are optional peers, imported the first time you render that format. An app that only sends email never installs them, and a missing one fails with the exact `bun add` command."
+   },
+   {
+    "title": "User text stays text",
+    "text": "Link and image URLs go through an allowlist, CSV cells starting with `=`, `+`, `-` or `@` are neutralised, Markdown text is escaped, and a Slack link cannot smuggle in `<!channel>`."
+   },
+   {
+    "title": "Every channel speaks its own format",
+    "text": "Slack gets Block Kit, Teams an Adaptive Card, Notion blocks, Confluence and Jira ADF, Telegram HTML, email a 600px table layout with Outlook-safe buttons."
+   }
+  ]
+ },
+ "difference": {
+  "title": "Three formats used to mean three templates.",
+  "before": {
+   "label": "pdfmake + hand-built Slack + CSV",
+   "caption": "Each format has its own shape, so one report is three templates to keep in step. The CSV breaks on a value like `$1,000` and passes `=HYPERLINK(…)` straight to Excel.",
+   "code": "import type { TDocumentDefinitions } from 'pdfmake/interfaces'\n\nconst rows = [['US', '$1M'], ['EU', '$800K']]\n\n// PDF: pdfmake's document definition\nconst pdf: TDocumentDefinitions = {\n  info: { title: 'Q4 Report' },\n  content: [\n    { text: 'Sales report', style: 'header' },\n    'Q4 2026 performance summary.',\n    { table: { headerRows: 1, body: [['Region', 'Revenue'], ...rows] } },\n  ],\n  styles: { header: { fontSize: 22, bold: true } },\n}\n\n// Slack: Block Kit, by hand\nconst slack = {\n  blocks: [\n    { type: 'header', text: { type: 'plain_text', text: 'Sales report' } },\n    { type: 'section', text: { type: 'mrkdwn', text: 'Q4 2026 performance summary.' } },\n    { type: 'section', text: { type: 'mrkdwn', text: rows.map(([r, v]) => `*${r}*: ${v}`).join('\\n') } },\n  ],\n}\n\n// CSV: escaping is on you\nconst csv = [['Region', 'Revenue'], ...rows].map((r) => r.join(',')).join('\\n')"
+  },
+  "after": {
+   "label": "with @pyreon/document",
+   "caption": "One component. Pick the format at the call site.",
+   "code": "import { Document, Page, Heading, Text, Table, render } from '@pyreon/document'\n\nconst rows: [string, string][] = [['US', '$1M'], ['EU', '$800K']]\nconst Report = (props: { rows: [string, string][] }) => (\n  <Document title=\"Q4 Report\">\n    <Page>\n      <Heading>Sales report</Heading>\n      <Text>Q4 2026 performance summary.</Text>\n      <Table columns={['Region', 'Revenue']} rows={props.rows} />\n    </Page>\n  </Document>\n)\nconst report = <Report rows={rows} />\n\nawait render(report, 'pdf')    // Uint8Array (with pdfmake installed)\nawait render(report, 'slack')  // Block Kit JSON\nawait render(report, 'csv')    // quoted, formula-safe\nawait render(report, 'email')  // table layout, Outlook-safe buttons"
+  }
+ },
+ "comingFrom": [
+  {
+   "lib": "pdfmake",
+   "title": "A document definition becomes components",
+   "before": "import pdfMake from 'pdfmake/build/pdfmake'\nimport pdfFonts from 'pdfmake/build/vfs_fonts'\nimport type { TDocumentDefinitions } from 'pdfmake/interfaces'\n\npdfMake.addVirtualFileSystem(pdfFonts) // Roboto, the default font, as base64\n\nconst rows = [['US', '$1M'], ['EU', '$800K']]\n\nconst pdf: TDocumentDefinitions = {\n  info: { title: 'Q4 Report' },\n  content: [\n    { text: 'Sales report', style: 'header' },\n    'Q4 2026 performance summary.',\n    { table: { headerRows: 1, body: [['Region', 'Revenue'], ...rows] } },\n  ],\n  styles: { header: { fontSize: 22, bold: true } },\n}\n\npdfMake.createPdf(pdf).download('q4.pdf')",
+   "after": "import { Document, Page, Heading, Text, Table, download } from '@pyreon/document'\n\nconst rows: [string, string][] = [['US', '$1M'], ['EU', '$800K']]\n\nawait download(\n  <Document title=\"Q4 Report\">\n    <Page>\n      <Heading>Sales report</Heading>\n      <Text>Q4 2026 performance summary.</Text>\n      <Table columns={['Region', 'Revenue']} rows={rows} />\n    </Page>\n  </Document>,\n  'q4.pdf',\n)",
+   "note": "pdfmake still draws the PDF: keep it installed. The extension on the file name picks the format, so `q4.docx` or `q4.md` works the same way."
+  }
+ ],
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Same document, different formats.",
+  "text": "One tree, rendered live with `render()` in your browser: HTML, Markdown, CSV, Slack, email and JSON. PDF shows what a real app downloads.",
+  "component": "DemoDocument",
+  "reference": "pkg-document.html#demo",
+  "referenceHtml": "<div class=\"card\"><div class=\"in\" style=\"padding:0\">\n  <div class=\"lx-code-h\" role=\"tablist\" aria-label=\"Formats\" id=\"dc-tabs\" style=\"padding:12px 16px\"></div>\n  <div class=\"dc-grid\"><div class=\"dc-out\" id=\"dc-out\"></div><div class=\"dc-side\"><span class=\"label\">all 20 formats</span><div class=\"dc-all\" id=\"dc-all\"></div></div></div>\n</div></div>",
+  "referenceCss": ".dc-grid{display:grid;grid-template-columns:minmax(0,1fr) 260px}@media(max-width:860px){.dc-grid{grid-template-columns:minmax(0,1fr)}}.dc-out{padding:22px 26px;min-height:360px;border-right:1px solid var(--line);overflow:auto}.dc-out pre{margin:0;font-size:12.5px;line-height:1.7;color:var(--s-fg);white-space:pre-wrap}.dc-side{padding:20px}.dc-all{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}.dc-all span{font-family:var(--mono);font-size:11px;padding:4px 9px;border-radius:999px;border:1px solid var(--line);color:var(--mist)}.dc-all span.on{border-color:rgba(255,94,26,.55);color:var(--ivory)}\n.dc-html{background:#FFFCF5;color:#14141C;border-radius:12px;padding:24px;font-family:Georgia,serif}.dc-html h2{margin:0 0 6px;font-size:22px}.dc-html table{border-collapse:collapse;width:100%;margin-top:12px;font-family:system-ui;font-size:14px}.dc-html td,.dc-html th{border-bottom:1px solid #E6DFD2;padding:8px;text-align:left}\n.dc-slack{background:#1A1D21;border-radius:12px;padding:16px;color:#D1D2D3;font-family:system-ui;font-size:14px;line-height:1.5}.dc-slack b{color:#fff}",
+  "referenceJs": "(function(){var D={title:'Q4 Report',heading:'Sales report',text:'Q4 2026 performance summary.',cols:['Region','Revenue'],rows:[['US','$1M'],['EU','$800K'],['APAC','$420K']]},$=function(i){return document.getElementById(i)};\nfunction esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')}\nvar F={html:function(){return '<div class=\"dc-html\"><h2>'+D.heading+'</h2><p style=\"margin:0;color:#45414F\">'+D.text+'</p><table><tr>'+D.cols.map(function(c){return '<th>'+c+'</th>'}).join('')+'</tr>'+D.rows.map(function(r){return '<tr>'+r.map(function(c){return '<td>'+c+'</td>'}).join('')+'</tr>'}).join('')+'</table></div>'},\nmd:function(){return '<pre>'+esc('# '+D.heading+'\\n\\n'+D.text+'\\n\\n| '+D.cols.join(' | ')+' |\\n| '+D.cols.map(function(){return '---'}).join(' | ')+' |\\n'+D.rows.map(function(r){return '| '+r.join(' | ')+' |'}).join('\\n'))+'</pre>'},\ncsv:function(){return '<pre>'+esc([D.cols].concat(D.rows).map(function(r){return r.join(',')}).join('\\n'))+'</pre>'},\nslack:function(){return '<div class=\"dc-slack\"><b>'+D.heading+'</b><br>'+D.text+'<br><br>'+D.rows.map(function(r){return '• <b>'+r[0]+'</b>: '+r[1]}).join('<br>')+'</div><pre style=\"margin-top:14px;color:var(--fog)\">'+esc(JSON.stringify({blocks:[{type:'header',text:{type:'plain_text',text:D.heading}},{type:'section',text:{type:'mrkdwn',text:D.text}}]},null,2))+'</pre>'},\nemail:function(){return '<pre>'+esc('<table role=\"presentation\" width=\"100%\" style=\"font-family:Arial\">\\n  <tr><td><h1 style=\"font-size:22px\">'+D.heading+'</h1></td></tr>\\n  <tr><td>'+D.text+'</td></tr>\\n  …inline-styled rows…\\n</table>')+'</pre>'},\njson:function(){return '<pre>'+esc(JSON.stringify({type:'document',props:{title:D.title},children:[{type:'heading',content:D.heading},{type:'text',content:D.text},{type:'table',props:{columns:D.cols,rows:D.rows}}]},null,2))+'</pre>'},\npdf:function(){return '<div style=\"display:grid;place-items:center;min-height:300px;text-align:center;color:var(--mist)\"><div><div style=\"width:120px;height:156px;margin:0 auto 16px;background:#FFFCF5;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.5);padding:14px;color:#14141C;font-size:9px;text-align:left\"><b style=\"font-size:11px\">'+D.heading+'</b><br>'+D.text+'<div style=\"margin-top:8px;border-top:1px solid #ccc\"></div>US · $1M<br>EU · $800K</div>render(report, \\'pdf\\') → Uint8Array<br><span style=\"color:var(--fog);font-size:13px\">pdfmake loads on first use</span></div></div>'}};\nvar ALL=['html','pdf','docx','xlsx','pptx','email','md','text','csv','svg','json','jsonl','slack','teams','discord','telegram','notion','confluence','whatsapp','google chat'],cur='html';\nfunction r(){$('dc-tabs').innerHTML=Object.keys(F).map(function(k){return '<button class=\"lx-tab\" role=\"tab\" aria-selected=\"'+(k===cur)+'\" data-f=\"'+k+'\">'+k+'</button>'}).join('');document.querySelectorAll('[data-f]').forEach(function(b){b.onclick=function(){cur=b.dataset.f;r()}});$('dc-out').innerHTML=F[cur]();$('dc-all').innerHTML=ALL.map(function(a){return '<span class=\"'+(a===cur||(cur==='md'&&a==='md')?'on':'')+'\">'+a+'</span>'}).join('')}r();})();"
+ },
+ "features": {
+  "title": "Documents for every channel.",
+  "items": [
+   {
+    "name": "render(node, format, options)",
+    "text": "typed per format: `Uint8Array` for the four binary ones, `string` for the rest."
+   },
+   {
+    "name": "createDocument()",
+    "text": "a fluent builder with 20 `to*` methods, from `toPdf()` to `toJsonl()`."
+   },
+   {
+    "name": "Your components",
+    "text": "components that return primitives are resolved before rendering; fragments flatten."
+   },
+   {
+    "name": "Email that survives Outlook",
+    "text": "600px table layout, inline styles, VML buttons for Outlook."
+   },
+   {
+    "name": "Chat payloads",
+    "text": "Slack Block Kit, Teams Adaptive Card, Discord, Telegram, WhatsApp, Google Chat."
+   },
+   {
+    "name": "Workspace formats",
+    "text": "Notion blocks and Atlassian Document Format for Confluence and Jira."
+   },
+   {
+    "name": "json and jsonl",
+    "text": "a round-trippable tree, or one content block per line for ingestion and chunking."
+   },
+   {
+    "name": "download(doc, \"report.pdf\")",
+    "text": "renders and saves in the browser; the extension picks the format."
+   },
+   {
+    "name": "Right to left",
+    "text": "`direction: 'rtl'` in HTML, SVG, email and DOCX."
+   },
+   {
+    "name": "registerRenderer()",
+    "text": "add your own format next to the built-in 20."
+   }
+  ]
+ },
+ "api": {
+  "title": "Render, build, extend.",
+  "groups": [
+   {
+    "name": "render",
+    "items": [
+     "render",
+     "download",
+     "createDocument",
+     "registerRenderer",
+     "unregisterRenderer",
+     "isDocNode"
+    ]
+   },
+   {
+    "name": "layout",
+    "items": [
+     "Document",
+     "Page",
+     "PageBreak",
+     "Section",
+     "Row",
+     "Column",
+     "Spacer",
+     "Divider"
+    ]
+   },
+   {
+    "name": "content",
+    "items": [
+     "Heading",
+     "Text",
+     "Image",
+     "Link",
+     "Button",
+     "Code",
+     "Quote",
+     "List",
+     "ListItem",
+     "Table"
+    ]
+   },
+   {
+    "name": "types",
+    "items": [
+     "DocNode",
+     "OutputFormat",
+     "BinaryOutputFormat",
+     "TextOutputFormat",
+     "RenderOptions",
+     "DocumentRenderer"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Binary formats need their engine",
+   "text": "Install `pdfmake`, `docx`, `exceljs` or `pptxgenjs` for PDF, DOCX, XLSX or PPTX. They load on first use; render on the server if you would rather not ship them to browsers."
+  },
+  {
+   "title": "A render is a snapshot",
+   "text": "Signals in the tree are read once. Render again to pick up new values."
+  },
+  {
+   "title": "Table cells are plain values",
+   "text": "Each cell is a string or a number. Put rich content in the blocks around the table."
+  },
+  {
+   "title": "Formats differ in what they can show",
+   "text": "Slack shows a table as a code block, WhatsApp as pipe-separated lines, and chat formats turn a page break into a divider; each renderer does the closest thing its platform has. Check a chat payload in the platform's preview before you rely on it."
+  },
+  {
+   "title": "Web and server only",
+   "text": "Rendering runs in browsers, Node and Bun, not inside iOS or Android apps. Build the file on a server and fetch it, or hand it to the share sheet."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/table",
+   "category": "fundamentals",
+   "name": "Table",
+   "text": "Export the rows users are looking at.",
+   "package": "@pyreon/table"
+  },
+  {
+   "href": "/products/zero",
+   "category": "framework",
+   "name": "Zero",
+   "text": "Render PDFs and emails in a server route.",
+   "package": "@pyreon/zero"
+  },
+  {
+   "href": "/products/charts",
+   "category": "fundamentals",
+   "name": "Charts",
+   "text": "The chart on screen, the numbers in the report.",
+   "package": "@pyreon/charts"
+  }
+ ],
+ "recipes": [
+  {
+   "title": "An invoice as a PDF attachment and an email body",
+   "text": "One component, two renders, one `sendMail` from whatever mailer you use. The email gets a Pay button that works in Outlook.",
+   "code": "import { Document, Page, Heading, Text, Table, Button, render } from '@pyreon/document'\n\ndeclare function sendMail(m: { to: string; subject: string; html: string; attachments: { filename: string; content: Uint8Array }[] }): Promise<void>\ntype Line = { item: string; qty: number; price: string }\nconst Invoice = (props: { no: string; customer: string; lines: Line[]; payUrl: string }) => (\n  <Document title={`Invoice ${props.no}`}>\n    <Page>\n      <Heading>Invoice {props.no}</Heading>\n      <Text>Billed to {props.customer}</Text>\n      <Table columns={['Item', 'Qty', 'Price']} rows={props.lines.map((l) => [l.item, l.qty, l.price])} striped />\n      <Button href={props.payUrl}>Pay now</Button>\n    </Page>\n  </Document>\n)\nasync function sendInvoice(no: string, customer: string, email: string, lines: Line[]) {\n  const doc = <Invoice no={no} customer={customer} lines={lines} payUrl={`https://pay.example.com/${no}`} />\n  await sendMail({\n    to: email,\n    subject: `Invoice ${no}`,\n    html: await render(doc, 'email'),\n    attachments: [{ filename: `invoice-${no}.pdf`, content: await render(doc, 'pdf') }],\n  })\n}"
+  },
+  {
+   "title": "Export buttons in the browser",
+   "text": "The file extension chooses the format. XLSX and PDF load their engine on the first click.",
+   "code": "import { download } from '@pyreon/document'\n\n// `report` is any document tree, e.g. <Report rows={rows} />\nconst ExportButtons = () => (\n  <div>\n    <button onClick={() => download(report, 'q4.xlsx')}>Excel</button>\n    <button onClick={() => download(report, 'q4.pdf')}>PDF</button>\n    <button onClick={() => download(report, 'q4.md')}>Markdown</button>\n  </div>\n)"
+  },
+  {
+   "title": "A weekly summary in Slack",
+   "text": "The `slack` output is a Block Kit payload an incoming webhook accepts as is.",
+   "code": "import { Document, Heading, Text, Link, render } from '@pyreon/document'\n\nasync function postWeekly(webhookUrl: string, signups: number, churned: number) {\n  const summary = (\n    <Document>\n      <Heading>Weekly numbers</Heading>\n      <Text>{signups} sign-ups, {churned} cancellations.</Text>\n      <Link href=\"https://dash.example.com/weekly\">Open the dashboard</Link>\n    </Document>\n  )\n  await fetch(webhookUrl, {\n    method: 'POST',\n    headers: { 'content-type': 'application/json' },\n    body: await render(summary, 'slack'),\n  })\n}"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Do I pay for pdfmake if I only send email?",
+   "a": "No. The four binary engines are optional peer dependencies and are imported only when you render their format. If you never render a PDF, pdfmake is never installed or bundled."
+  },
+  {
+   "q": "Is it safe to render user content?",
+   "a": "That is the default. URLs are allowlisted (links: `http`, `https`, `mailto`, `tel` and relative; images: `http`, `https`, relative and `data:image`), a rejected link renders as its label, CSV cells are guarded against formula injection, and Markdown, Discord and Slack text is escaped."
+  },
+  {
+   "q": "Can I use my own components?",
+   "a": "Yes. Any component that returns document primitives can sit in the tree; `render()` resolves it first. A DOM element such as `<div>` throws with a message naming it, because a PDF has no idea what a div is."
+  },
+  {
+   "q": "Can I add a format we need?",
+   "a": "Register a renderer with `registerRenderer('thermal', { render(node) { … } })` and call `render(doc, 'thermal')`. It receives the same `DocNode` tree the built-in renderers get."
+  },
+  {
+   "q": "Does it run in a native app?",
+   "a": "Not on the device. Render on your server and fetch the file, or hand it to the system share sheet; both of those lower to iOS and Android on the experimental native targets."
+  }
+ ],
+ "end": {
+  "title": "One report. Every format someone will ask for next week.",
+  "cta": "Read the documents guide"
+ },
+ "benchmarks": null,
+ "glyphSvg": "<path d=\"M28 12 H74 L94 32 V108 H28 Z\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\" stroke-linejoin=\"round\"/><path d=\"M42 62 H78 M42 84 H66\" stroke=\"currentColor\" stroke-width=\"8\"/><circle cx=\"84\" cy=\"94\" r=\"14\" fill=\"url(#eg)\"/>",
+ "sources": [
+  {
+   "claim": "20 formats registered; all 20 render",
+   "path": "packages/fundamentals/document/src/render.ts:56-95; src/types.ts OutputFormat; scratch doc1.tsx output: pdf 16,622 B (%PDF), docx 10,234 B, xlsx 6,639 B, pptx 57,190 B (PK zip), 16 text formats 132–4,509 chars"
+  },
+  {
+   "claim": "16 text formats need nothing extra; 4 binary are optional peers with install-command errors",
+   "path": "packages/fundamentals/document/package.json peerDependenciesMeta; src/renderers/{pdf.ts:364,docx.ts:420,xlsx.ts:316,pptx.ts:349}; CHANGELOG 0.52.0 #2844"
+  },
+  {
+   "claim": "18 primitives",
+   "path": "packages/fundamentals/document/src/index.ts; README \"Primitives — 18 nodes\""
+  },
+  {
+   "claim": "builder has 20 to* methods",
+   "path": "src/types.ts DocumentBuilder; enumerated in scratch doc4.tsx"
+  },
+  {
+   "claim": "render overloads Uint8Array/string",
+   "path": "src/render.ts render() overloads; src/types.ts BinaryOutputFormat"
+  },
+  {
+   "claim": "user components resolved, DOM element throws",
+   "path": "src/render.ts render() doc comment; manifest.ts render mistakes"
+  },
+  {
+   "claim": "URL allowlist, CSV formula guard, md/discord escaping, Slack <!channel> guard",
+   "path": "CHANGELOG 0.52.0 #3644; src/sanitize.ts; scratch doc4.tsx: javascript: link rendered as plain \"this\", CSV cell =HYPERLINK quoted with leading apostrophe"
+  },
+  {
+   "claim": "email: 600px table layout, VML Outlook buttons",
+   "path": "src/renderers/email.ts:7-13,52,210"
+  },
+  {
+   "claim": "Teams Adaptive Card 1.5, Notion blocks, Confluence ADF, Telegram HTML",
+   "path": "src/renderers/{teams,notion,confluence,telegram}.ts; output in scratch doc4.tsx"
+  },
+  {
+   "claim": "RTL honored by html, svg, email, docx",
+   "path": "src/types.ts RenderOptions.direction"
+  },
+  {
+   "claim": "Slack tables become a code block",
+   "path": "scratch doc1.tsx slack output"
+  },
+  {
+   "claim": "throughput 45.9K–505K / 1.7K–36.8K docs/s, 16 formats, overnight one run",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §11 (Pyreon-only, no rival, so benchmarks is null)"
+  },
+  {
+   "claim": "web-only tier; server render + share sheet",
+   "path": "src/manifest.ts multiplatform.rationale"
+  },
+  {
+   "claim": "Samples verified",
+   "path": ".scratch/tools/editor-document/docs-samples.tsx + pdfmake-before.ts: tsc --noEmit (pdfmake types from @types/pdfmake), transformJSX; docs-run.tsx / docs-run2.tsx executed (slack payload has blocks; invoice email contains pay link; PDF 15,527 B)"
+  },
+  {
+   "claim": "pdfmake createPdf().download() is the browser build API (comingFrom before)",
+   "path": "@types/pdfmake in packages/fundamentals/document/node_modules (TCreatedPdf.download); not run in a browser"
+  }
+ ]
+}

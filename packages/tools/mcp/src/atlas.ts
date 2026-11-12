@@ -20,8 +20,10 @@
  *
  * A scenario carries a verdict, and (as of the verify-honesty fix) `ok` means
  * VERIFIED — at least one check ran and none failed — while `checked: 0` means
- * nothing examined it. Four of Atlas' five checks are still stubs, so most
- * scenarios are unverified, and that is exactly what an agent must be told.
+ * nothing examined it. Not every check runs in every pass (of Atlas' six
+ * checks, `reactivityCoverage` and `snapshot` run only under
+ * `atlas verify-browser`), so a scenario can be unverified, and that is
+ * exactly what an agent must be told.
  * Presenting an unverified scenario as a known-good example is worse than
  * offering nothing: the agent cannot tell the difference and has no way to
  * check. Every rendering below carries the distinction through.

@@ -3,6 +3,10 @@ title: Flow
 description: Reactive flow diagrams for Pyreon — signal-native nodes, edges, pan/zoom, a built-in seven-mode layout engine.
 ---
 
+<ProductPitch id="flow" />
+
+<LiveDemo id="flow" />
+
 `@pyreon/flow` provides reactive flow diagrams for Pyreon. Signal-native nodes and edges, pan/zoom without D3, a built-in seven-mode layout engine (code-split, zero dependencies), and per-node O(1) reactivity. Built from the ground up for signal-based frameworks — each node mounts **exactly once** across the lifetime of the graph, and a drag, selection click, or `updateNode` patches that node in place instead of remounting it.
 
 <PackageBadge name="@pyreon/flow" href="/docs/flow" />
@@ -515,7 +519,7 @@ Nodes don't need explicit `width` / `height` — the renderer measures the real 
 
 > explicit `node.width` / `node.height` → measured DOM size → `150×40` default
 
-That rule drives edge anchoring, **auto-layout** (ELK receives real boxes), `fitView`, drag snap lines, rubber-band selection hit-tests, the minimap, `<NodeResizer>`'s starting size, and viewport culling. Read a node's effective box imperatively via `flow.getNodeDimensions(id)`, or reactively via the `flow.measurements()` map (`Map<string, NodeMeasurement>` — size plus measured handle dots).
+That rule drives edge anchoring, **auto-layout** (the layout engine receives real boxes), `fitView`, drag snap lines, rubber-band selection hit-tests, the minimap, `<NodeResizer>`'s starting size, and viewport culling. Read a node's effective box imperatively via `flow.getNodeDimensions(id)`, or reactively via the `flow.measurements()` map (`Map<string, NodeMeasurement>` — size plus measured handle dots).
 
 :::note
 Explicit `width` / `height` always win — set them when you need layout to run **before** first render (SSR, headless `computeLayout`), or when `<NodeResizer>` writes them. Under SSR / happy-dom nothing is measured, so geometry falls back to explicit-or-default.
@@ -659,7 +663,7 @@ flow.fitView() // fits the final positions, not the pre-layout ones
 
 A later `layout()` call (or `flow.dispose()`) supersedes one still running: the earlier promise resolves at that point, and its positions are not applied over the newer layout. Pass `{ animate: false }` to apply the result at once. Animation frames pause in a background tab, so an animated layout started there resolves when the tab is visible again.
 
-`flow.layout()` feeds ELK each node's **effective dimensions** (explicit → measured DOM size → default, see [Measured node dimensions](#measured-node-dimensions)) — content-sized custom nodes are laid out at their real rendered size, so spacing is correct instead of assuming 150×40 boxes. The standalone `computeLayout(nodes, edges, algorithm?, options?)` export has no DOM access and uses explicit-or-default sizes; set `width`/`height` on the nodes you pass it for precise headless layout.
+`flow.layout()` feeds the built-in layout engine (seven algorithms, no `elkjs` dependency) each node's **effective dimensions** (explicit → measured DOM size → default, see [Measured node dimensions](#measured-node-dimensions)) — content-sized custom nodes are laid out at their real rendered size, so spacing is correct instead of assuming 150×40 boxes. The standalone `computeLayout(nodes, edges, algorithm?, options?)` export has no DOM access and uses explicit-or-default sizes; set `width`/`height` on the nodes you pass it for precise headless layout.
 
 ### Layout Options
 
@@ -674,7 +678,7 @@ A later `layout()` call (or `flow.dispose()`) supersedes one still running: the 
 
 #### Algorithm Applicability
 
-Not every option applies to every algorithm — ELK namespaces options under specific pipelines, so passing `direction` to a force layout has zero effect. The table below is **empirically verified** (each cell records whether running the algorithm twice with two different values for that option produces a different layout `✅` or an identical one `❌`):
+Not every option applies to every algorithm — the options belong to specific algorithms (the names follow ELK's), so passing `direction` to a force layout has zero effect. The table below is **empirically verified** (each cell records whether running the algorithm twice with two different values for that option produces a different layout `✅` or an identical one `❌`):
 
 | Option         | `layered` | `tree` | `force` | `stress` | `radial` | `box` | `rectpacking` |
 | -------------- | :-------: | :----: | :-----: | :------: | :------: | :---: | :-----------: |
@@ -684,7 +688,7 @@ Not every option applies to every algorithm — ELK namespaces options under spe
 | `edgeRouting`  |     ✅    |   ❌   |    ❌   |    ❌    |    ❌    |   ❌  |       ❌      |
 
 :::warning
-`direction`, `layerSpacing`, and `edgeRouting` are namespaced under ELK's layered/tree pipelines. The other algorithms (`force`, `stress`, `radial`, `box`, `rectpacking`) accept the option in `LayoutOptions` (so it typechecks) but **silently ignore** the value at layout time. Setting one of these on an algorithm that ignores it fires a **dev-mode `console.warn`** (tree-shaken in production — the gate is the bundler-agnostic `process.env.NODE_ENV !== 'production'`). `nodeSpacing` is the only option respected by every algorithm. Use `layered` or `tree` if you need a directional layout.
+`direction`, `layerSpacing`, and `edgeRouting` apply to the layered and tree algorithms. The other algorithms (`force`, `stress`, `radial`, `box`, `rectpacking`) accept the option in `LayoutOptions` (so it typechecks) but **silently ignore** the value at layout time. Setting one of these on an algorithm that ignores it fires a **dev-mode `console.warn`** (tree-shaken in production — the gate is the bundler-agnostic `process.env.NODE_ENV !== 'production'`). `nodeSpacing` is the only option respected by every algorithm. Use `layered` or `tree` if you need a directional layout.
 :::
 
 The same logic is exposed standalone as `computeLayout(nodes, edges, algorithm?, options?)`, which returns `Promise<Array<{ id, position }>>` without mutating the flow — useful if you want to compute positions and apply them yourself.
@@ -1468,3 +1472,11 @@ State that lives only in memory, flow graphs included, is lost when the app is c
 | Auto-layout            | Separate elkjs/dagre setup   | `flow.layout('layered')` — seven modes built in |
 | Undo/redo              | DIY                          | Built-in, automatic checkpoints on every mutation |
 | Connection rules       | `isValidConnection` callback | Declarative `connectionRules` AND an `isValidConnection` veto |
+
+<BenchCallout id="flow" />
+
+<ComingFrom id="flow" />
+
+<InlineSell id="dnd" />
+
+<CrossSell id="flow" />

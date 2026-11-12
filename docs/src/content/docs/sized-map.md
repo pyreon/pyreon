@@ -2,8 +2,6 @@
 title: "@pyreon/sized-map"
 ---
 
-# @pyreon/sized-map
-
 A bounded-`Map<K, V>` primitive that evicts the oldest entry when a size cap is exceeded. Single implementation, two configurations — FIFO or LRU-on-read.
 
 ## Install

@@ -22,6 +22,7 @@ pyreon check src/            # scan a directory (recursive; skips node_modules/l
 pyreon check src/App.tsx     # scan specific files
 pyreon check --fix           # apply the mechanically-safe auto-fixes in place
 pyreon check --json          # machine-readable findings for tooling
+pyreon check --gha           # GitHub Actions annotations (inline on the PR diff)
 ```
 
 Exits non-zero on any finding. `--fix` applies `migratePyreonCode` + `migrateReactCode` (only the mechanically-safe fixes; anything else stays reported so it still gates).
@@ -274,7 +275,7 @@ await generateContext({ cwd: process.cwd(), outPath: '.pyreon/context.json' })
 ```yaml
 # .github/workflows/ci.yml
 - name: Pyreon Doctor
-  run: bunx pyreon doctor --ci --gha
+  run: bunx @pyreon/cli doctor --ci --gha
 ```
 
 `--gha` emits inline annotations; `--ci` fails the build on errors but not warnings/info.

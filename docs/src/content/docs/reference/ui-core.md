@@ -1,9 +1,7 @@
 ---
-title: "UI Provider + Config — API Reference"
+title: "@pyreon/ui-core — API Reference"
 description: "Unified `PyreonUI` provider (theme + mode + config), `useMode()` hook, init() escape hatch"
 ---
-
-# @pyreon/ui-core — API Reference
 
 > **Generated** from `ui-core`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [ui-core](/docs/ui-core).
 
@@ -26,7 +24,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - init() callable directly for custom environments (tests, SSR without PyreonUI)
 - init(&#123; cssVariables: true &#125;) — opt-in CSS-variables theming: theme becomes custom properties, dark/light is one attribute write (no re-render)
 - cssVariablesPrePaintScript() — blocking &lt;head&gt; script that sets the mode attribute on documentElement before first paint (FOUC fix)
-- enrichTheme() (re-exported from @pyreon/unistyle) merges user theme with defaults
+- enrichTheme() (from @pyreon/unistyle, not re-exported here) merges a user theme with the defaults
 - Zero-dep utilities: get, set, merge, pick, omit, throttle, isEmpty, isEqual
 - HTML_TAGS / HTML_TEXT_TAGS constants drive Element / Text base tag dispatching
 

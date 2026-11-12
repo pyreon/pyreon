@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa pq-auth" viewBox="0 0 640 400" width="640" height="400" role="img" aria-labelledby="pq-auth-t pq-auth-d" fill="none">
+<title id="pq-auth-t">useOidc signs in through PKCE, state, nonce and token checks</title>
+<desc id="pq-auth-d">auth.signIn() runs five steps: authorization request with S256 PKCE, state and nonce; the provider sign-in; the callback, where the code is scrubbed from the address bar and state is checked; the code exchange; and ID-token verification of signature, nonce and issuer. auth.status() moves from signedOut to signingIn to signedIn only after the last check. A side panel lists what is not offered at all: the implicit flow, the password grant and PKCE plain.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.pq-auth{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.pq-auth .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.pq-auth .pq-auth-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.pq-auth *{animation:none!important;transition:none!important}.pq-auth .pq-auth-rm{opacity:1}.pq-auth .pq-auth-am{opacity:0}}
+
+.pq-auth .ln{stroke:var(--px-hint);stroke-width:1.5;fill:none}
+.pq-auth .dash{stroke:var(--px-hint);stroke-width:1.5;stroke-dasharray:3 5;fill:none}
+.pq-auth .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pq-auth .bx2{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+.pq-auth .lab{fill:var(--px-fog);font-size:14px;letter-spacing:.04em}
+.pq-auth .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.pq-auth .val{fill:var(--px-text);font-size:20px;font-weight:500}
+.pq-auth .big{fill:var(--px-strong);font-size:24px;font-weight:600;letter-spacing:-.02em}
+.pq-auth .code{fill:var(--px-text);font-size:15px}
+.pq-auth .kw{fill:var(--px-accent-text)} .pq-auth .fn{fill:var(--px-link)} .pq-auth .str{fill:var(--px-warm)} .pq-auth .ty{fill:var(--px-violet)}
+.pq-auth .dim{fill:var(--px-fog)}
+.pq-auth .hint{fill:var(--px-hint);font-size:13px}
+.pq-auth .ember{stroke:url(#pq-auth-egu);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:36 900;fill:none}
+.pq-auth .emberS{stroke:url(#pq-auth-egu);stroke-width:2.5;stroke-linecap:round;fill:none}
+.pq-auth .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.pq-auth .ok{fill:var(--px-ok)} .pq-auth .warm{fill:var(--px-warm)} .pq-auth .hot{fill:var(--px-accent)} .pq-auth .errF{fill:var(--px-err)}
+.pq-auth .okT{fill:var(--px-ok)} .pq-auth .warmT{fill:var(--px-warm)} .pq-auth .hotT{fill:var(--px-accent-text)} .pq-auth .errT{fill:var(--px-err)}
+.pq-auth .okS{stroke:var(--px-ok)} .pq-auth .errS{stroke:var(--px-err)}
+.pq-auth .gfill{fill:url(#pq-auth-eg)}
+@media (prefers-reduced-motion: reduce){.pq-auth .ember{opacity:0}}
+
+.pq-auth .bxdot{fill:var(--px-card);stroke:var(--px-fog);stroke-width:1.5}
+@keyframes pq-auth-k0{0.0000%{opacity:0;animation-timing-function:step-end}13.4884%{opacity:1;animation-timing-function:step-end}74.4186%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-auth-k1{0.0000%{opacity:0;animation-timing-function:step-end}17.9070%{opacity:1;animation-timing-function:step-end}74.4186%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-auth-k2{0.0000%{opacity:0;animation-timing-function:step-end}22.3256%{opacity:1;animation-timing-function:step-end}74.4186%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-auth-k3{0.0000%{opacity:0;animation-timing-function:step-end}26.7442%{opacity:1;animation-timing-function:step-end}74.4186%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-auth-k4{0.0000%{opacity:0;animation-timing-function:step-end}31.1628%{opacity:1;animation-timing-function:step-end}74.4186%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-auth-s0{0.0000%{opacity:1;animation-timing-function:step-end}10.4651%{opacity:0;animation-timing-function:step-end}74.4186%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-auth-s1{0.0000%{opacity:0;animation-timing-function:step-end}10.4651%{opacity:1;animation-timing-function:step-end}32.5581%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-auth-s2{0.0000%{opacity:0;animation-timing-function:step-end}32.5581%{opacity:1;animation-timing-function:step-end}74.4186%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-auth-sp{0%{stroke-dashoffset:40;opacity:0}10.4651%{stroke-dashoffset:40;opacity:1}30.4651%{stroke-dashoffset:-240;opacity:1}30.4767%{stroke-dashoffset:40;opacity:0}100%{stroke-dashoffset:40;opacity:0}}
+@keyframes pq-auth-fs{0%{opacity:0}32.5581%{opacity:0}33.4884%{opacity:1}34.8837%{opacity:0}100%{opacity:0}}
+.pq-auth .k0{animation:pq-auth-k0 8600ms linear infinite}
+.pq-auth .k1{animation:pq-auth-k1 8600ms linear infinite}
+.pq-auth .k2{animation:pq-auth-k2 8600ms linear infinite}
+.pq-auth .k3{animation:pq-auth-k3 8600ms linear infinite}
+.pq-auth .k4{animation:pq-auth-k4 8600ms linear infinite}
+.pq-auth .s0{animation:pq-auth-s0 8600ms linear infinite}
+.pq-auth .s1{animation:pq-auth-s1 8600ms linear infinite}
+.pq-auth .s2{animation:pq-auth-s2 8600ms linear infinite}
+.pq-auth .sp{animation:pq-auth-sp 8600ms linear infinite}
+.pq-auth .fs{animation:pq-auth-fs 8600ms linear infinite}
+.pq-auth .sp{stroke-dasharray:40 900}
+@media (prefers-reduced-motion: reduce){.pq-auth .s0,.pq-auth .s1{opacity:0}.pq-auth .s2,.pq-auth .k0,.pq-auth .k1,.pq-auth .k2,.pq-auth .k3,.pq-auth .k4{opacity:1}}
+</style>
+<defs><linearGradient id="pq-auth-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-auth-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="640" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-auth-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-auth-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<text class="m eb" x="24" y="34">@PYREON/AUTH · USEOIDC · ONE SIGN-IN</text>
+<line class="ln" x1="40" y1="86" x2="40" y2="326"/>
+<line class="ember sp" x1="40" y1="86" x2="40" y2="326"/>
+<line class="emberS pq-auth-rm" x1="40" y1="86" x2="40" y2="326"/>
+<rect class="bx" x="64" y="60" width="292" height="52" rx="10"/>
+<text class="m lab" x="80" y="82" style="fill:var(--px-text)">authorize</text>
+<text class="m hint" x="80" y="101">S256 PKCE · state · nonce</text>
+<circle cx="40" cy="86" r="7" class="bxdot"/>
+<text class="m okT k0" x="340" y="91" text-anchor="end" opacity="0">✓</text><rect class="bx" x="64" y="120" width="292" height="52" rx="10"/>
+<text class="m lab" x="80" y="142" style="fill:var(--px-text)">provider sign-in</text>
+<text class="m hint" x="80" y="161">https-only issuer</text>
+<circle cx="40" cy="146" r="7" class="bxdot"/>
+<text class="m okT k1" x="340" y="151" text-anchor="end" opacity="0">✓</text><rect class="bx" x="64" y="180" width="292" height="52" rx="10"/>
+<text class="m lab" x="80" y="202" style="fill:var(--px-text)">callback</text>
+<text class="m hint" x="80" y="221">code scrubbed · state checked</text>
+<circle cx="40" cy="206" r="7" class="bxdot"/>
+<text class="m okT k2" x="340" y="211" text-anchor="end" opacity="0">✓</text><rect class="bx" x="64" y="240" width="292" height="52" rx="10"/>
+<text class="m lab" x="80" y="262" style="fill:var(--px-text)">exchange code</text>
+<text class="m hint" x="80" y="281">single-use, 10 min</text>
+<circle cx="40" cy="266" r="7" class="bxdot"/>
+<text class="m okT k3" x="340" y="271" text-anchor="end" opacity="0">✓</text><rect class="bx" x="64" y="300" width="292" height="52" rx="10"/>
+<text class="m lab" x="80" y="322" style="fill:var(--px-text)">verify ID token</text>
+<text class="m hint" x="80" y="341">signature · nonce · iss</text>
+<circle cx="40" cy="326" r="7" class="bxdot"/>
+<text class="m okT k4" x="340" y="331" text-anchor="end" opacity="0">✓</text>
+<!-- status -->
+<rect class="bx" x="380" y="60" width="236" height="112" rx="12"/>
+<text class="m hint" x="396" y="86">auth.status()</text>
+<text class="m val s0" x="396" y="128">'signedOut'</text>
+<text class="m val s1" x="396" y="128" opacity="0" style="fill:var(--px-fog)">'signingIn'</text>
+<text class="m val s2" x="396" y="128" opacity="0">'signedIn'</text>
+<text class="m hint" x="396" y="156">only after every check</text>
+<rect class="ring fs" x="376" y="56" width="244" height="120" rx="15" opacity="0"/>
+<rect class="ring pq-auth-rm" x="376" y="56" width="244" height="120" rx="15"/>
+<!-- not offered -->
+<rect class="bx2" x="380" y="192" width="236" height="160" rx="12"/>
+<text class="m hint" x="396" y="218">not offered at all</text>
+<text class="m lab" x="396" y="254" text-decoration="line-through">implicit flow</text>
+<text class="m lab" x="396" y="286" text-decoration="line-through">password grant</text>
+<text class="m lab" x="396" y="318" text-decoration="line-through">PKCE 'plain'</text>
+<text class="m hint" x="24" y="388">the same call on iOS and Android (experimental)</text>
+</svg>

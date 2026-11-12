@@ -3,6 +3,10 @@ title: Rx
 description: Signal-aware reactive transforms for Pyreon — filter, map, sortBy, groupBy, pipe, debounce, throttle
 ---
 
+<ProductPitch id="rx" />
+
+<LiveDemo id="rx" />
+
 `@pyreon/rx` is a library of **signal-aware reactive data transforms**. Every collection and aggregation function is overloaded: pass a `Signal<T[]>` and you get back a `Computed` that auto-tracks and re-derives whenever the source changes; pass a plain `T[]` and you get a one-shot static result. The same `filter` / `map` / `sortBy` / `groupBy` you reach for on arrays, but they participate in Pyreon's reactivity graph for free.
 
 <PackageBadge name="@pyreon/rx" href="/docs/rx" />
@@ -127,7 +131,7 @@ In dev mode a spike in the `rx.transform.raw` perf counter is exactly this mista
 :::
 
 :::tip[Computed lifecycle]
-A `Computed` output auto-disposes when it has no subscribers. Inside a component body the JSX reactive scope keeps it alive; in standalone code, read it inside an `effect()` (or subscribe) so it stays active and re-derives.
+A `Computed` output is not disposed when nothing subscribes to it. Read it inside an `effect()`, another `computed()` or JSX to react to its changes; read anywhere else, it returns the current derived value.
 :::
 
 ## Two import styles
@@ -668,7 +672,7 @@ Reactive returns are typed as the `Computed` produced by `@pyreon/reactivity`'s 
 | `debounce(source, ms)`  | `(Signal<T>, number)`      | `ReadableSignal<T> & { dispose: () => void }`      |
 | `throttle(source, ms)`  | `(Signal<T>, number)`      | `ReadableSignal<T> & { dispose: () => void }`      |
 
-Both seed synchronously with `source()`; both **must** be `.dispose()`-d to release their internal effect + timer.
+Both seed synchronously with `source()`. Created inside a component or `effectScope`, both are torn down with it; a standalone one must be `.dispose()`-d to release its internal effect and timer (see the note above).
 
 ### Search (1)
 
@@ -696,3 +700,11 @@ Composes left-to-right into **one** computed; signal source → `Computed`, plai
 ## Multiplatform
 
 On iOS and Android (PMTC), the `rx` namespace functions and their standalone forms lower to native collection operations (import aliases included); an unsupported function warns by name at compile time.
+
+<BenchCallout id="rx" />
+
+<ComingFrom id="rx" />
+
+<InlineSell id="reactivity" />
+
+<CrossSell id="rx" />

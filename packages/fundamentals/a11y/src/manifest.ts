@@ -73,7 +73,7 @@ function Field() {
         'Remove both live regions (`polite` and `assertive`) that `announce()` lazily creates, so the NEXT `announce()` call re-creates them from scratch. Mainly useful in tests, to reset the module-level DOM state between cases without relying on a full DOM teardown; app code rarely needs it since the regions are cheap and reused across the page lifetime.',
       example: `afterEach(() => clearAnnouncements())`,
       mistakes: [
-        'Calling this expecting it to CANCEL a pending announcement — it removes the region element entirely; there is no in-flight message to cancel since `announce()` writes synchronously (on the next frame)',
+        'Calling this expecting it to CANCEL a pending announcement — it removes the region element entirely; a pending message is written about 100 ms after `announce()` and is not cancelled by it',
       ],
       seeAlso: ['announce'],
     },

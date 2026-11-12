@@ -7,7 +7,12 @@ tags: [javascript, typescript, webdev, opensource]
 cover: /blog/covers/introducing-pyreon.png
 ---
 
-What if your component ran once, and a state change touched only the exact text node that shows it? Zero re-render passes and zero dependency arrays. On our benchmark board that model builds 10,000 rows **2.6× faster than React 19**, and the same app ships in **a quarter of React’s bundle** (17.2 KB vs 69.6 KB gzipped).
+What if your component ran once, and a state change touched only the exact text node that shows it? Zero re-render passes and zero dependency arrays. Here is what that model does on our benchmark board:
+
+::: bench
+- **2.6×** faster than React 19 building 10,000 rows
+- **17.2 KB** gzipped for the same app, a quarter of React’s 69.6 KB
+:::
 
 *Synthetic, author-run, Apple M3 Max, real Chromium. Reproduce: [pyreon.dev/docs/benchmarks](/docs/benchmarks).*
 

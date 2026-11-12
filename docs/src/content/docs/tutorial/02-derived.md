@@ -1,9 +1,7 @@
 ---
-title: "2. Derived values"
+title: "2. Derived values — computed"
 description: "Tutorial chapter 2 — computed() derives a value from other signals and caches it, recomputing only when a dependency changes."
 ---
-
-# 2. Derived values — `computed`
 
 When a value is computed *from* other signals, don't recompute it by hand — wrap it in `computed`. It tracks what it reads, caches the result, and recomputes only when a dependency actually changes.
 

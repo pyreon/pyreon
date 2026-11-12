@@ -22,6 +22,7 @@
  */
 import type { RouteRecord } from '@pyreon/router'
 import { resolveRoute } from '@pyreon/router'
+import { createTerm } from '@pyreon/ansi'
 import { colorizeMode, type ColorLevel } from './build-summary'
 import type { RenderMode } from './types'
 
@@ -243,17 +244,18 @@ export function formatRouteModeTable(
   color: ColorLevel = 0,
 ): string[] {
   if (entries.length === 0) return []
+  const t = createTerm({ level: color, unicode: true })
   const counts: Partial<Record<RenderMode, number>> = {}
   for (const e of entries) counts[e.mode] = (counts[e.mode] ?? 0) + 1
   const countsLine = (Object.entries(counts) as Array<[RenderMode, number]>)
     .sort(([, a], [, b]) => b - a)
     .map(([m, n]) => colorizeMode(color, m, `${n} ${m} ${MODE_GLYPH[m]}`))
     .join(' · ')
-  const lines: string[] = [`[zero] Route modes (app: ${appMode}) — ${countsLine}`]
+  const lines: string[] = [`${t.bold('Route modes')} ${t.dim(`${t.sym('bullet')} app: ${appMode} ${t.sym('bullet')}`)} ${countsLine}`]
   if (entries.length <= maxRows) {
     const sorted = [...entries].sort((a, b) => a.pattern.localeCompare(b.pattern))
     for (const e of sorted) {
-      const marker = e.declared && e.mode !== appMode ? '  (declared)' : ''
+      const marker = e.declared && e.mode !== appMode ? `  ${t.dim('(declared)')}` : ''
       lines.push(
         `  ${colorizeMode(color, e.mode, `${MODE_GLYPH[e.mode]} ${e.mode.padEnd(3)}`)}  ${e.pattern}${marker}`,
       )

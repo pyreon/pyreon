@@ -1,0 +1,415 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`atlas scan --json is locked > --no-mount 1`] = `
+"{
+  "ok": false,
+  "components": 2,
+  "scenarios": 4,
+  "verified": 2,
+  "failed": 1,
+  "unverified": 1,
+  "tallies": [
+    {
+      "key": "interaction",
+      "pass": 0,
+      "fail": 0,
+      "skip": 4,
+      "skipReason": "mounting is disabled for this run (\`--no-mount\`) — the scan stayed static"
+    },
+    {
+      "key": "ssrParity",
+      "pass": 0,
+      "fail": 0,
+      "skip": 4,
+      "skipReason": "mounting is disabled for this run (\`--no-mount\`) — the scan stayed static"
+    },
+    {
+      "key": "a11y",
+      "pass": 2,
+      "fail": 1,
+      "skip": 1,
+      "skipReason": "no name-like prop required or supplied to check statically — \`atlas verify-browser\` runs axe-core on the rendered preview for real accessibility coverage"
+    },
+    {
+      "key": "leak",
+      "pass": 0,
+      "fail": 0,
+      "skip": 4,
+      "skipReason": "mounting is disabled for this run (\`--no-mount\`) — the scan stayed static"
+    },
+    {
+      "key": "reactivityCoverage",
+      "pass": 0,
+      "fail": 0,
+      "skip": 4,
+      "skipReason": "browser-only — run \`atlas verify-browser\` to measure this (a Node scan cannot)"
+    },
+    {
+      "key": "snapshot",
+      "pass": 0,
+      "fail": 0,
+      "skip": 4,
+      "skipReason": "browser-only — run \`atlas verify-browser\` to measure this (a Node scan cannot)"
+    }
+  ],
+  "failures": [
+    {
+      "id": "button--empty",
+      "component": "Button",
+      "checks": [
+        {
+          "key": "a11y",
+          "findings": [
+            {
+              "code": "missing-accessible-name",
+              "message": "missing accessible name: \\"label\\" is empty",
+              "fix": "Give \\"label\\" a non-empty value, or an aria-label if the text is genuinely decorative."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+"
+`;
+
+exports[`atlas scan --json is locked > a failing project 1`] = `
+"{
+  "ok": false,
+  "components": 1,
+  "scenarios": 3,
+  "verified": 2,
+  "failed": 1,
+  "unverified": 0,
+  "tallies": [
+    {
+      "key": "interaction",
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    {
+      "key": "ssrParity",
+      "pass": 0,
+      "fail": 0,
+      "skip": 3,
+      "skipReason": "the parity plugin was given no runtime to render with"
+    },
+    {
+      "key": "a11y",
+      "pass": 2,
+      "fail": 1,
+      "skip": 0
+    },
+    {
+      "key": "leak",
+      "pass": 0,
+      "fail": 0,
+      "skip": 3,
+      "skipReason": "no GC hook — run the scan under bun, or node --expose-gc"
+    },
+    {
+      "key": "reactivityCoverage",
+      "pass": 0,
+      "fail": 0,
+      "skip": 3,
+      "skipReason": "browser-only — run \`atlas verify-browser\` to measure this (a Node scan cannot)"
+    },
+    {
+      "key": "snapshot",
+      "pass": 0,
+      "fail": 0,
+      "skip": 3,
+      "skipReason": "browser-only — run \`atlas verify-browser\` to measure this (a Node scan cannot)"
+    }
+  ],
+  "failures": [
+    {
+      "id": "button--empty",
+      "component": "Button",
+      "checks": [
+        {
+          "key": "a11y",
+          "findings": [
+            {
+              "code": "missing-accessible-name",
+              "message": "missing accessible name: \\"label\\" is empty",
+              "fix": "Give \\"label\\" a non-empty value, or an aria-label if the text is genuinely decorative."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+"
+`;
+
+exports[`atlas scan --json is locked > a passing project 1`] = `
+"{
+  "ok": true,
+  "components": 1,
+  "scenarios": 1,
+  "verified": 1,
+  "failed": 0,
+  "unverified": 0,
+  "tallies": [
+    {
+      "key": "interaction",
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    {
+      "key": "ssrParity",
+      "pass": 0,
+      "fail": 0,
+      "skip": 1,
+      "skipReason": "the parity plugin was given no runtime to render with"
+    },
+    {
+      "key": "a11y",
+      "pass": 0,
+      "fail": 0,
+      "skip": 1,
+      "skipReason": "no name-like prop required or supplied to check statically — \`atlas verify-browser\` runs axe-core on the rendered preview for real accessibility coverage"
+    },
+    {
+      "key": "leak",
+      "pass": 0,
+      "fail": 0,
+      "skip": 1,
+      "skipReason": "no GC hook — run the scan under bun, or node --expose-gc"
+    },
+    {
+      "key": "reactivityCoverage",
+      "pass": 0,
+      "fail": 0,
+      "skip": 1,
+      "skipReason": "browser-only — run \`atlas verify-browser\` to measure this (a Node scan cannot)"
+    },
+    {
+      "key": "snapshot",
+      "pass": 0,
+      "fail": 0,
+      "skip": 1,
+      "skipReason": "browser-only — run \`atlas verify-browser\` to measure this (a Node scan cannot)"
+    }
+  ],
+  "failures": [],
+  "catalogPath": "<dir>/atlas-catalog.json",
+  "guidePath": "<dir>/atlas-agent-guide.md"
+}
+"
+`;
+
+exports[`atlas verify --json is locked > a failing component 1`] = `
+"{
+  "ok": false,
+  "component": "Button",
+  "scenarios": 3,
+  "verified": 2,
+  "failed": 1,
+  "unverified": 0,
+  "tallies": [
+    {
+      "key": "interaction",
+      "pass": 3,
+      "fail": 0,
+      "skip": 0
+    },
+    {
+      "key": "ssrParity",
+      "pass": 0,
+      "fail": 0,
+      "skip": 3,
+      "skipReason": "the parity plugin was given no runtime to render with"
+    },
+    {
+      "key": "a11y",
+      "pass": 2,
+      "fail": 1,
+      "skip": 0
+    },
+    {
+      "key": "leak",
+      "pass": 0,
+      "fail": 0,
+      "skip": 3,
+      "skipReason": "no GC hook — run the scan under bun, or node --expose-gc"
+    },
+    {
+      "key": "reactivityCoverage",
+      "pass": 0,
+      "fail": 0,
+      "skip": 3,
+      "skipReason": "browser-only — run \`atlas verify-browser\` to measure this (a Node scan cannot)"
+    },
+    {
+      "key": "snapshot",
+      "pass": 0,
+      "fail": 0,
+      "skip": 3,
+      "skipReason": "browser-only — run \`atlas verify-browser\` to measure this (a Node scan cannot)"
+    }
+  ],
+  "failures": [
+    {
+      "id": "button--empty",
+      "component": "Button",
+      "checks": [
+        {
+          "key": "a11y",
+          "findings": [
+            {
+              "code": "missing-accessible-name",
+              "message": "missing accessible name: \\"label\\" is empty",
+              "fix": "Give \\"label\\" a non-empty value, or an aria-label if the text is genuinely decorative."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+"
+`;
+
+exports[`atlas verify --json is locked > a passing component 1`] = `
+"{
+  "ok": true,
+  "component": "Counter",
+  "scenarios": 1,
+  "verified": 1,
+  "failed": 0,
+  "unverified": 0,
+  "tallies": [
+    {
+      "key": "interaction",
+      "pass": 1,
+      "fail": 0,
+      "skip": 0
+    },
+    {
+      "key": "ssrParity",
+      "pass": 0,
+      "fail": 0,
+      "skip": 1,
+      "skipReason": "the parity plugin was given no runtime to render with"
+    },
+    {
+      "key": "a11y",
+      "pass": 0,
+      "fail": 0,
+      "skip": 1,
+      "skipReason": "no name-like prop required or supplied to check statically — \`atlas verify-browser\` runs axe-core on the rendered preview for real accessibility coverage"
+    },
+    {
+      "key": "leak",
+      "pass": 0,
+      "fail": 0,
+      "skip": 1,
+      "skipReason": "no GC hook — run the scan under bun, or node --expose-gc"
+    },
+    {
+      "key": "reactivityCoverage",
+      "pass": 0,
+      "fail": 0,
+      "skip": 1,
+      "skipReason": "browser-only — run \`atlas verify-browser\` to measure this (a Node scan cannot)"
+    },
+    {
+      "key": "snapshot",
+      "pass": 0,
+      "fail": 0,
+      "skip": 1,
+      "skipReason": "browser-only — run \`atlas verify-browser\` to measure this (a Node scan cannot)"
+    }
+  ],
+  "failures": []
+}
+"
+`;
+
+exports[`atlas verify --json is locked > an unknown component 1`] = `
+"{
+  "ok": false,
+  "error": "no component named \\"Nope\\" in this catalog"
+}
+"
+`;
+
+exports[`atlas verify --json is locked > every component, --no-mount 1`] = `
+"{
+  "ok": false,
+  "component": null,
+  "scenarios": 4,
+  "verified": 2,
+  "failed": 1,
+  "unverified": 1,
+  "tallies": [
+    {
+      "key": "interaction",
+      "pass": 0,
+      "fail": 0,
+      "skip": 4,
+      "skipReason": "mounting is disabled for this run (\`--no-mount\`) — the scan stayed static"
+    },
+    {
+      "key": "ssrParity",
+      "pass": 0,
+      "fail": 0,
+      "skip": 4,
+      "skipReason": "mounting is disabled for this run (\`--no-mount\`) — the scan stayed static"
+    },
+    {
+      "key": "a11y",
+      "pass": 2,
+      "fail": 1,
+      "skip": 1,
+      "skipReason": "no name-like prop required or supplied to check statically — \`atlas verify-browser\` runs axe-core on the rendered preview for real accessibility coverage"
+    },
+    {
+      "key": "leak",
+      "pass": 0,
+      "fail": 0,
+      "skip": 4,
+      "skipReason": "mounting is disabled for this run (\`--no-mount\`) — the scan stayed static"
+    },
+    {
+      "key": "reactivityCoverage",
+      "pass": 0,
+      "fail": 0,
+      "skip": 4,
+      "skipReason": "browser-only — run \`atlas verify-browser\` to measure this (a Node scan cannot)"
+    },
+    {
+      "key": "snapshot",
+      "pass": 0,
+      "fail": 0,
+      "skip": 4,
+      "skipReason": "browser-only — run \`atlas verify-browser\` to measure this (a Node scan cannot)"
+    }
+  ],
+  "failures": [
+    {
+      "id": "button--empty",
+      "component": "Button",
+      "checks": [
+        {
+          "key": "a11y",
+          "findings": [
+            {
+              "code": "missing-accessible-name",
+              "message": "missing accessible name: \\"label\\" is empty",
+              "fix": "Give \\"label\\" a non-empty value, or an aria-label if the text is genuinely decorative."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+"
+`;

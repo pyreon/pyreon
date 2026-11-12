@@ -1,0 +1,462 @@
+{
+ "id": "hooks",
+ "route": "/products/hooks",
+ "name": "Hooks",
+ "package": "@pyreon/hooks",
+ "category": "fundamentals · hooks",
+ "hero": {
+  "title": "65 hooks. Zero cleanup code to write.",
+  "emberWord": "Zero",
+  "lede": "From `useToggle` and `useClickOutside` to `useShare`, `useBiometrics` and `useGeolocation`. Each one removes its own listeners, timers and observers when the component unmounts, renders safely on the server, and hands back signals you can read anywhere.",
+  "install": "bun add @pyreon/hooks",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "hooks",
+    "value": "65 in one package<small>State, DOM, responsive, timing, device, data, composition.</small>"
+   },
+   {
+    "key": "cleanup",
+    "value": "automatic on unmount<small>Listeners, observers and timers are removed for you.</small>"
+   },
+   {
+    "key": "server",
+    "value": "SSR-safe<small>Browser APIs are guarded; nothing throws during server rendering.</small>"
+   },
+   {
+    "key": "native",
+    "value": "{dot:warn}45 of 65 compile to iOS and Android<small>Counted on main. Native targets are experimental.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "The helpers you keep copying from blog posts, done properly once.",
+  "items": [
+   {
+    "title": "Nothing to clean up",
+    "text": "Every listener, observer, interval and timeout is registered against the component and removed on unmount. There is no `return () => removeEventListener(…)` to forget."
+   },
+   {
+    "title": "Signals in, signals out",
+    "text": "Stateful hooks return accessors such as `online()` or `visibility()`. Pass one to another hook as a getter and it reacts, so `useInterval(fn, () => visible() ? 30_000 : null)` pauses itself when the tab hides."
+   },
+   {
+    "title": "The edge cases are already handled",
+    "text": "`useScrollLock` is reference-counted and pads for the scrollbar so the page does not jump. `useClickOutside` listens to `pointerdown`, so one tap fires once. `useClipboard` ignores a slower, older copy that resolves last."
+   },
+   {
+    "title": "One call, three platforms",
+    "text": "`useShare`, `useHaptics`, `useBiometrics`, `useImagePicker` and 41 others compile to native code for iOS and Android. Three are web-only by design (`useBreakpoint`, a width `useMediaQuery`, `useControllableState`): a native build drops them with a named warning instead of guessing."
+   }
+  ]
+ },
+ "difference": {
+  "title": "Pause polling while nobody is looking.",
+  "before": {
+   "label": "React · hand-rolled",
+   "caption": "A visibility hook, a ref so the interval sees the latest callback, and two dependency arrays to keep right.",
+   "code": "import { useEffect, useRef, useState } from 'react'\n\nfunction useVisible() {\n  const [visible, setVisible] = useState(\n    typeof document === 'undefined' || document.visibilityState === 'visible',\n  )\n  useEffect(() => {\n    const onChange = () => setVisible(document.visibilityState === 'visible')\n    document.addEventListener('visibilitychange', onChange)\n    return () => document.removeEventListener('visibilitychange', onChange)\n  }, [])\n  return visible\n}\n\nexport function Prices({ refresh }: { refresh: () => void }) {\n  const visible = useVisible()\n  const latest = useRef(refresh)\n  useEffect(() => {\n    latest.current = refresh\n  }, [refresh])\n\n  useEffect(() => {\n    if (!visible) return\n    const id = setInterval(() => latest.current(), 30_000)\n    return () => clearInterval(id)\n  }, [visible])\n\n  return <p>Refreshing every 30 s while you're looking.</p>\n}"
+  },
+  "after": {
+   "label": "Pyreon · @pyreon/hooks",
+   "caption": "The delay is a getter. When the tab hides it returns null and the interval stops; when it comes back, it restarts. Unmount clears it.",
+   "code": "import { useDocumentVisibility, useInterval } from '@pyreon/hooks'\n\nexport function Prices(props: { refresh: () => void }) {\n  const visibility = useDocumentVisibility()\n\n  useInterval(\n    () => props.refresh(),\n    () => (visibility() === 'visible' ? 30_000 : null),\n  )\n\n  return <p>Refreshing every 30 s while you're looking.</p>\n}"
+  }
+ },
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Try a few, live.",
+  "text": "These read your browser right now: go offline, switch the colour scheme, resize the window, switch tabs. Browse all 65 beside them.",
+  "component": "DemoHooks",
+  "reference": "pkg-hooks.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"ui\">\n    <div class=\"hk-row\"><span>useOnline()</span><b id=\"hk-on\"></b></div>\n    <div class=\"hk-row\"><span>useColorScheme()</span><b id=\"hk-cs\"></b></div>\n    <div class=\"hk-row\"><span>useWindowResize()</span><b id=\"hk-ws\"></b></div>\n    <div class=\"hk-row\"><span>useDocumentVisibility()</span><b id=\"hk-vis\"></b></div>\n    <div class=\"hk-row\"><span>useIdle(3000)</span><b id=\"hk-idle\"></b></div>\n    <div class=\"hk-row\"><span>useTimeAgo(loaded)</span><b id=\"hk-ago\"></b></div>\n    <div style=\"display:flex;gap:8px;margin-top:12px;flex-wrap:wrap\"><button class=\"sec\" type=\"button\" id=\"hk-tg\">useToggle() · off</button><button class=\"sec\" type=\"button\" id=\"hk-copy\">useClipboard().copy</button></div>\n  </div>\n  <div class=\"card\"><div class=\"in\"><span class=\"label\">all hooks</span><div id=\"hk-all\" class=\"hk-all\"></div></div></div>\n</div>",
+  "referenceCss": ".hk-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #EDE6D6;font-family:var(--mono);font-size:13px}.hk-row b{font-weight:500;color:#C2410C}.hk-all h5{margin:14px 0 6px;font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--fog);font-weight:400}.hk-all h5:first-child{margin-top:0}.hk-all div{display:flex;flex-wrap:wrap;gap:5px}.hk-all span{font-family:var(--mono);font-size:11.5px;padding:4px 9px;border-radius:999px;border:1px solid var(--line);color:var(--mist)}",
+  "referenceJs": "(function(){var C={\"state\": [\"useToggle\", \"useCounter\", \"usePrevious\", \"useLatest\", \"useControllableState\"], \"DOM\": [\"useEventListener\", \"useClickOutside\", \"useFocus\", \"useHover\", \"useFocusTrap\", \"useFocusReturn\", \"useInertOthers\", \"useElementSize\", \"useWindowResize\", \"useWindowScroll\", \"useScrollLock\", \"useIntersection\", \"useInfiniteScroll\"], \"responsive\": [\"useBreakpoint\", \"useMediaQuery\", \"useColorScheme\", \"useSizeClass\", \"useReducedMotion\"], \"timing\": [\"useDebouncedValue\", \"useDebouncedCallback\", \"useThrottledCallback\", \"useInterval\", \"useTimeout\", \"useTimeAgo\"], \"device\": [\"useClipboard\", \"useHaptics\", \"useShare\", \"useLinking\", \"useNotifications\", \"useBiometrics\", \"useImagePicker\", \"useFilePicker\", \"useCamera\", \"useAudioRecorder\", \"useBluetooth\", \"useWakeLock\", \"useSpeech\", \"useDeviceMotion\", \"useScreenOrientation\", \"useSafeArea\", \"useDeviceInfo\", \"useKeyboard\", \"useOnline\", \"useAppState\", \"useDocumentVisibility\", \"useIdle\", \"useDialog\", \"useCrashReporter\"], \"data\": [\"useFetch\", \"useAuth\", \"useDatabase\", \"useGeolocation\", \"useMap\", \"useWebSocket\", \"useSecureStorage\", \"usePush\", \"usePayments\"], \"composition\": [\"useMergedRef\", \"useUpdateEffect\", \"useIsomorphicLayoutEffect\"]},$=function(i){return document.getElementById(i)};$('hk-all').innerHTML=Object.keys(C).map(function(k){return '<h5>'+k+' · '+C[k].length+'</h5><div>'+C[k].map(function(h){return '<span>'+h+'</span>'}).join('')+'</div>'}).join('');\nfunction on(){$('hk-on').textContent=String(navigator.onLine)}on();addEventListener('online',on);addEventListener('offline',on);\nvar mq=matchMedia('(prefers-color-scheme: dark)');function cs(){$('hk-cs').textContent=mq.matches?'dark':'light'}cs();mq.addEventListener&&mq.addEventListener('change',cs);\nfunction ws(){$('hk-ws').textContent=innerWidth+' × '+innerHeight}ws();addEventListener('resize',ws);\nfunction vis(){$('hk-vis').textContent=document.visibilityState}vis();document.addEventListener('visibilitychange',vis);\nvar last=Date.now();function act(){last=Date.now()}['mousemove','keydown','scroll','touchstart'].forEach(function(e){addEventListener(e,act,{passive:true})});var t0=Date.now();\nsetInterval(function(){$('hk-idle').textContent=String(Date.now()-last>3000);var s=Math.round((Date.now()-t0)/1000);$('hk-ago').textContent=s<5?'just now':s<60?s+' seconds ago':Math.round(s/60)+' min ago'},500);\nvar tg=false;$('hk-tg').onclick=function(){tg=!tg;this.textContent='useToggle() · '+(tg?'on':'off')};$('hk-copy').onclick=function(){var b=this;try{navigator.clipboard.writeText('npm i @pyreon/hooks').then(function(){b.textContent='copied: true'},function(){b.textContent='copied: blocked'})}catch(e){b.textContent='copied: blocked'}};})();"
+ },
+ "features": {
+  "title": "Seven categories, one package.",
+  "items": [
+   {
+    "name": "State:",
+    "text": "useToggle, useCounter, usePrevious, useLatest, useControllableState"
+   },
+   {
+    "name": "DOM:",
+    "text": "click outside, hover, focus, element size, intersection, infinite scroll, scroll lock"
+   },
+   {
+    "name": "Focus for overlays:",
+    "text": "useFocusTrap stacks nested modals; useInertOthers makes the background inert and restores it exactly"
+   },
+   {
+    "name": "Responsive:",
+    "text": "useMediaQuery, useColorScheme, useSizeClass, useReducedMotion, useBreakpoint"
+   },
+   {
+    "name": "Timing:",
+    "text": "debounced values and callbacks, throttling, intervals with a reactive delay, a self-updating useTimeAgo"
+   },
+   {
+    "name": "Device:",
+    "text": "clipboard, haptics, share sheet, notifications, biometrics, camera, image and file pickers, speech, wake lock"
+   },
+   {
+    "name": "Data:",
+    "text": "useFetch aborts the previous request on refetch and on unmount, so a slow response never overwrites a fresh one"
+   },
+   {
+    "name": "Cross-platform state:",
+    "text": "useAuth, useDatabase, useMap, usePush, usePayments mirror their native containers field for field"
+   },
+   {
+    "name": "Secrets stay off disk:",
+    "text": "useSecureStorage uses the Keychain on iOS, AndroidKeyStore on Android, and memory only on the web"
+   },
+   {
+    "name": "Newly native:",
+    "text": "useDocumentVisibility, usePrevious, useUpdateEffect, useReducedMotion, useKeyboard, useLatest and `prefers-color-scheme` queries now compile for iOS and Android",
+    "status": "next release"
+   }
+  ]
+ },
+ "api": {
+  "title": "65 hooks.",
+  "groups": [
+   {
+    "name": "state",
+    "items": [
+     "useToggle",
+     "useCounter",
+     "usePrevious",
+     "useLatest",
+     "useControllableState"
+    ]
+   },
+   {
+    "name": "DOM",
+    "items": [
+     "useEventListener",
+     "useClickOutside",
+     "useFocus",
+     "useHover",
+     "useFocusTrap",
+     "useFocusReturn",
+     "useInertOthers",
+     "useElementSize",
+     "useWindowResize",
+     "useWindowScroll",
+     "useScrollLock",
+     "useIntersection",
+     "useInfiniteScroll"
+    ]
+   },
+   {
+    "name": "responsive",
+    "items": [
+     "useBreakpoint",
+     "useMediaQuery",
+     "useColorScheme",
+     "useSizeClass",
+     "useReducedMotion"
+    ]
+   },
+   {
+    "name": "timing",
+    "items": [
+     "useDebouncedValue",
+     "useDebouncedCallback",
+     "useThrottledCallback",
+     "useInterval",
+     "useTimeout",
+     "useTimeAgo"
+    ]
+   },
+   {
+    "name": "device and interaction",
+    "items": [
+     "useClipboard",
+     "useHaptics",
+     "useShare",
+     "useLinking",
+     "useNotifications",
+     "useBiometrics",
+     "useImagePicker",
+     "useFilePicker",
+     "useCamera",
+     "useAudioRecorder",
+     "useBluetooth",
+     "useWakeLock",
+     "useSpeech",
+     "useDeviceMotion",
+     "useScreenOrientation",
+     "useSafeArea",
+     "useDeviceInfo",
+     "useKeyboard",
+     "useOnline",
+     "useAppState",
+     "useDocumentVisibility",
+     "useIdle",
+     "useDialog",
+     "useCrashReporter"
+    ]
+   },
+   {
+    "name": "data",
+    "items": [
+     "useFetch",
+     "useAuth",
+     "useDatabase",
+     "useGeolocation",
+     "useMap",
+     "useWebSocket",
+     "useSecureStorage",
+     "usePush",
+     "usePayments"
+    ]
+   },
+   {
+    "name": "composition",
+    "items": [
+     "useMergedRef",
+     "useUpdateEffect",
+     "useIsomorphicLayoutEffect"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Device hooks ask for permission",
+   "text": "Camera, notifications, location and the microphone prompt the user and can be refused. `useAudioRecorder().start()` and `useDeviceMotion().start()` resolve `false` on a refusal, so a denial is an `if`, not a `try`."
+  },
+  {
+   "title": "Web APIs vary by browser",
+   "text": "Web Bluetooth, the Share API and wake lock are not in every browser. Check the hook's own flag first: `canShare()` on `useShare`, `available()` on `useBluetooth`, `supported()` on `useWakeLock`."
+  },
+  {
+   "title": "Native lowering is experimental",
+   "text": "Hooks that compile to iOS and Android follow the native compiler's status. Some take a narrower shape natively (a literal key for `useKeyboard`, a string URL for `useFetch`); anything else is a named warning."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/primitives",
+   "category": "core",
+   "name": "Primitives",
+   "text": "The cross-platform UI these hooks pair with.",
+   "package": "@pyreon/primitives"
+  },
+  {
+   "href": "/products/native",
+   "category": "multiplatform",
+   "name": "Native",
+   "text": "Where 45 of these hooks compile to SwiftUI and Compose.",
+   "package": "Pyreon Native · PMTC"
+  },
+  {
+   "href": "/products/hotkeys",
+   "category": "fundamentals",
+   "name": "Hotkeys",
+   "text": "Shortcuts with modifiers, beyond `useKeyboard`.",
+   "package": "@pyreon/hotkeys"
+  },
+  {
+   "href": "/products/a11y",
+   "category": "fundamentals",
+   "name": "Accessibility",
+   "text": "Announcements to go with the focus traps.",
+   "package": "@pyreon/a11y"
+  }
+ ],
+ "end": {
+  "title": "Stop rewriting `useEventListener` in every project. We wrote it 65 times so you don't have to.",
+  "cta": "Read the hooks guide"
+ },
+ "benchmarks": {
+  "rival": "vs Solid and Preact counters · bun/JavaScriptCore",
+  "run": "overnight run, one run",
+  "h": "A faster counter than Solid's or Preact's. The hook layer costs 0–6%.",
+  "p": "`useCounter` increments 1.27× faster than a Solid signal counter and 1.47× faster than a Preact Signals one, and the wrapper measures 0–6% over the raw signal it returns. Synthetic, author-run, one overnight run under bun.",
+  "rows": [
+   {
+    "op": "hook overhead vs a raw signal",
+    "pyreon": null,
+    "rival": null,
+    "unit": "",
+    "verdict": "info",
+    "label": "0–6%"
+   },
+   {
+    "op": "counter vs Solid createSignal",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "1.27× faster (one run)"
+   },
+   {
+    "op": "counter vs Preact Signals",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "1.47× faster (one run)"
+   }
+  ]
+ },
+ "glyphSvg": "<path d=\"M74 14 V64 A26 26 0 0 1 22 64\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\" stroke-linecap=\"round\"/><circle cx=\"74\" cy=\"20\" r=\"12\" fill=\"url(#eg)\"/>",
+ "proof": [
+  {
+   "stat": "65",
+   "label": "hooks in one package, across seven categories",
+   "source": "packages/fundamentals/hooks/src/index.ts; README.md \"65 hooks across 7 categories\""
+  },
+  {
+   "stat": "45",
+   "label": "of them compile to SwiftUI and Compose apps from the same call (counted on main; native is experimental)",
+   "source": "nativeLoweredHooks() with first-party plugins ∩ @pyreon/hooks exports, run on main (.scratch/core/fork-c/lowered.ts)"
+  },
+  {
+   "stat": "0–6%",
+   "label": "what a hook costs over the raw signal it wraps (overnight run, one run)",
+   "source": "BENCHMARKS.md 2026-11-05 §10, hooks row"
+  }
+ ],
+ "comingFrom": [
+  {
+   "lib": "react-use",
+   "title": "useClickAway → useClickOutside",
+   "before": "import { useRef, useState } from 'react'\nimport { useClickAway } from 'react-use'\n\nexport function Menu() {\n  const [open, setOpen] = useState(true)\n  const ref = useRef<HTMLDivElement>(null)\n  useClickAway(ref, () => setOpen(false))\n  return open ? <div ref={ref}>Menu</div> : null\n}",
+   "after": "import { signal } from '@pyreon/reactivity'\nimport { useClickOutside } from '@pyreon/hooks'\n\nexport function Menu() {\n  const open = signal(true)\n  const panel = signal<HTMLElement | null>(null)\n  useClickOutside(() => panel(), () => open.set(false))\n  return () => (open() ? <div ref={(el) => panel.set(el)}>Menu</div> : null)\n}",
+   "note": "The element is passed as a getter, so it can mount and unmount while the listener stays in place."
+  },
+  {
+   "lib": "usehooks-ts",
+   "title": "useMediaQuery returns an accessor",
+   "before": "import { useMediaQuery } from 'usehooks-ts'\n\nexport function Layout() {\n  const wide = useMediaQuery('(min-width: 768px)')\n  return <div>{wide ? 'Sidebar layout' : 'Stacked layout'}</div>\n}",
+   "after": "import { useMediaQuery } from '@pyreon/hooks'\n\nexport function Layout() {\n  const wide = useMediaQuery('(min-width: 768px)')\n  return <div>{() => (wide() ? 'Sidebar layout' : 'Stacked layout')}</div>\n}",
+   "note": "In React the whole component re-renders when the query flips. Here only the text node that reads `wide()` updates."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "A dialog that behaves",
+   "text": "Focus moves in and stays in, the page behind stops scrolling, Escape and a click outside both close it. Four hooks, no cleanup code.",
+   "code": "import { effect, signal } from '@pyreon/reactivity'\nimport { useClickOutside, useFocusTrap, useKeyboard, useScrollLock } from '@pyreon/hooks'\n\nexport function Dialog(props: { open: () => boolean; onClose: () => void }) {\n  const panel = signal<HTMLElement | null>(null)\n  const scroll = useScrollLock()\n\n  useFocusTrap(() => panel(), { active: () => props.open(), initialFocus: true })\n  useClickOutside(() => panel(), () => props.onClose())\n  useKeyboard('Escape', () => props.onClose())\n  effect(() => (props.open() ? scroll.lock() : scroll.unlock()))\n\n  return () =>\n    props.open() ? (\n      <div ref={(el) => panel.set(el)} role=\"dialog\" aria-modal=\"true\">\n        <input placeholder=\"Name\" />\n        <button onClick={() => props.onClose()}>Close</button>\n      </div>\n    ) : null\n}"
+  },
+  {
+   "title": "Polling that stops when nobody is watching",
+   "text": "Refresh every 10 seconds, pause while the tab is hidden or the network is down, and show a label that keeps itself current.",
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { useDocumentVisibility, useInterval, useOnline, useTimeAgo } from '@pyreon/hooks'\n\nexport function LiveScore(props: { load: () => Promise<number> }) {\n  const score = signal(0)\n  const updated = signal(Date.now())\n  const visibility = useDocumentVisibility()\n  const online = useOnline()\n\n  const refresh = async () => {\n    score.set(await props.load())\n    updated.set(Date.now())\n  }\n\n  // Polls every 10 s, pauses while the tab is hidden or the network is gone.\n  useInterval(refresh, () => (visibility() === 'visible' && online() ? 10_000 : null))\n  const ago = useTimeAgo(() => updated())\n\n  return (\n    <p>\n      {() => score()} · updated {() => ago()}\n      {() => (online() ? null : ' · offline, paused')}\n    </p>\n  )\n}"
+  },
+  {
+   "title": "One share button for web, iPhone and Android",
+   "text": "The share sheet where there is one, the clipboard where there is not, and a light tap of haptic feedback. `useShare` and `useHaptics` compile to the platform APIs in a native build.",
+   "code": "import { useClipboard, useHaptics, useShare } from '@pyreon/hooks'\nimport { Button } from '@pyreon/primitives'\n\nexport function ShareButton(props: { url: string }) {\n  const share = useShare()\n  const clipboard = useClipboard()\n  const haptics = useHaptics()\n\n  const onPress = async () => {\n    haptics.impact('light')\n    if (share.canShare()) share.url(props.url)\n    else await clipboard.copy(props.url)\n  }\n\n  return (\n    <Button onPress={onPress}>\n      {clipboard.copied() ? 'Link copied' : 'Share'}\n    </Button>\n  )\n}"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Do I still write dependency arrays?",
+   "a": "No. A hook reads signals, so it knows what it depends on. `useUpdateEffect(source, callback)` takes a getter, which is the opposite order from React's `(effect, deps)`."
+  },
+  {
+   "q": "What happens during server rendering?",
+   "a": "Browser APIs are guarded, so a hook renders its server value (for example `useOnline()` is `true`, `useDocumentVisibility()` is `\"visible\"`). `useFetch` starts pending on the server too, so the hydrated page matches the server HTML."
+  },
+  {
+   "q": "Which hooks work on iOS and Android?",
+   "a": "45 of the 65 compile to native code. The DOM-only ones (focus traps, element size, scroll lock and similar) stay on the web, and three are web-only by design with a named compile warning: `useBreakpoint`, a width or orientation `useMediaQuery`, and `useControllableState`. Use `useSizeClass()` for compact versus regular layouts on every platform."
+  },
+  {
+   "q": "Does importing one hook pull in all 65?",
+   "a": "No. The package is ESM and marked side-effect free, so a bundler keeps only the hooks you import."
+  },
+  {
+   "q": "Is `useFetch` a replacement for a data library?",
+   "a": "It is deliberately thin: one request, abort on refetch and unmount, no cache, no retries. For caching and signal-driven keys use `@pyreon/query`."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "65 hooks, 7 categories",
+   "path": "packages/fundamentals/hooks/src/index.ts (65 use* exports); README.md line 3"
+  },
+  {
+   "claim": "45 of 65 lower to iOS/Android; 20 do not (list)",
+   "path": "nativeLoweredHooks() in packages/native/compiler/src/parse.ts with scripts/native-first-party-plugins; computed in .scratch/core/fork-c/lowered.ts"
+  },
+  {
+   "claim": "useBreakpoint, width useMediaQuery, useControllableState web-only by design with named warning; useSizeClass alternative",
+   "path": "docs/src/content/docs/reference/hooks.md line 23"
+  },
+  {
+   "claim": "self-cleaning, SSR-safe, signal-native",
+   "path": "packages/fundamentals/hooks/src/manifest.ts description; src/__tests__/cleanup-paths-coverage.test.ts, ssr-branches*.test.ts"
+  },
+  {
+   "claim": "useScrollLock refcounted, scrollbar padding, locks html for iOS Safari",
+   "path": "packages/fundamentals/hooks/src/useScrollLock.ts lines 1-45"
+  },
+  {
+   "claim": "useClickOutside uses pointerdown capture so a tap fires once",
+   "path": "packages/fundamentals/hooks/src/useClickOutside.ts doc comment"
+  },
+  {
+   "claim": "useClipboard ignores an older copy resolving last",
+   "path": "packages/fundamentals/hooks/src/useClipboard.ts copyGeneration"
+  },
+  {
+   "claim": "useInterval accepts a getter delay; null pauses",
+   "path": "packages/fundamentals/hooks/src/useInterval.ts"
+  },
+  {
+   "claim": "useFetch aborts previous request on refetch and unmount; starts pending on server; no cache/retries",
+   "path": "packages/fundamentals/hooks/src/useFetch.ts; docs/src/content/docs/reference/hooks.md line 465"
+  },
+  {
+   "claim": "useSecureStorage Keychain / AndroidKeyStore / memory-only web, inert on server",
+   "path": "packages/fundamentals/hooks/src/useSecureStorage.ts; reference/hooks.md line 198"
+  },
+  {
+   "claim": "useFocusTrap scope stack; useInertOthers per-element refcount",
+   "path": "packages/fundamentals/hooks/src/useFocusTrap.ts lines 203-226, 373; useInertOthers.ts line 15-20"
+  },
+  {
+   "claim": "useAuth/useDatabase/useMap/usePush/usePayments mirror native containers",
+   "path": "packages/fundamentals/hooks/src/{useAuth,useDatabase,useMap,usePush,usePayments}.ts header comments"
+  },
+  {
+   "claim": "useAudioRecorder/useDeviceMotion start() resolve false on denial",
+   "path": "docs/src/content/docs/reference/hooks.md lines 1008, 1087"
+  },
+  {
+   "claim": "useUpdateEffect argument order (source, callback)",
+   "path": "docs/src/content/docs/reference/hooks.md line 610"
+  },
+  {
+   "claim": "useKeyboard native needs literal key; useFetch native needs string literal URL",
+   "path": "reference/hooks.md lines 1364, 480"
+  },
+  {
+   "claim": "sideEffects false",
+   "path": "packages/fundamentals/hooks/package.json"
+  },
+  {
+   "claim": "0-6% overhead; counter 1.27x/1.47x, overnight one run",
+   "path": "BENCHMARKS.md 2026-11-05 §10 hooks row"
+  },
+  {
+   "claim": "harness treats sub-2x gaps as ties",
+   "path": "packages/fundamentals/hooks/bench/hooks-bench.ts header, HARNESS RUNG"
+  },
+  {
+   "claim": "all samples typecheck and compile",
+   "path": ".scratch/core/fork-c/samples (tsc + transformJSX, 0 errors/warnings); react/before.tsx typechecked against @types/react 19"
+  },
+  {
+   "claim": "hooks newly lowering since 5 Nov (main only)",
+   "path": "facts.md \"What shipped since 5 Nov\" (#4149, #4158, #4165, #4166, #4168, #4171); reference/hooks.md lines 610, 695, 882, 1196, 1364"
+  }
+ ]
+}

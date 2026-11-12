@@ -1,0 +1,215 @@
+{
+  "id": "ai-ready",
+  "route": "/why/ai-ready",
+  "title": "AI-ready",
+  "hook": {
+    "eyebrow": "Built for AI assistants",
+    "title": "Your AI writes a bug. The framework catches it.",
+    "lede": "Your assistant has read more React than anything else, so its first Pyreon draft comes back React-shaped and compiles fine. Pyreon ships the tools it checks its work against: an MCP server with 24 tools, the compiler's live/static verdict in your editor, `pyreon check` and generated `llms.txt`.",
+    "cta": {
+      "label": "Start building",
+      "command": "npm create @pyreon/zero@latest"
+    }
+  },
+  "sections": [
+    {
+      "kind": "proof",
+      "title": "Counted, not claimed.",
+      "stats": [
+        {
+          "stat": "24",
+          "label": "MCP tools: get_api, validate, diagnose, explain_reactivity and more",
+          "condition": "tool list checked against the docs page by a CI step",
+          "source": "docs/src/content/docs/mcp.md"
+        },
+        {
+          "stat": "133",
+          "label": "lint rules in 25 categories in `@pyreon/lint`",
+          "condition": "count from AGENTS.md on main",
+          "source": "AGENTS.md"
+        },
+        {
+          "stat": "0",
+          "label": "network calls from the MCP server: no model inside, deterministic answers",
+          "condition": "as documented",
+          "source": "docs/src/content/docs/mcp.md"
+        }
+      ]
+    },
+    {
+      "kind": "code",
+      "title": "A plausible draft, caught before you see it.",
+      "text": "Two bugs that are not syntax errors: a signal \"written\" by calling it, and a React `key` on a list. The button never counts, and the list never gets the `by` it needs. The assistant passes the draft to the MCP `validate` tool first.",
+      "blocks": [
+        {
+          "label": "The draft",
+          "lang": "tsx",
+          "code": "import { signal } from '@pyreon/reactivity'\nimport { For } from '@pyreon/core'\n\nexport function App() {\n  const count = signal(0)\n  const items = signal([{ id: 1, t: 'a' }])\n  return (\n    <div>\n      <button onClick={() => count(count() + 1)}>{count()}</button>\n      <For each={items} key={(i) => i.id}>{(i) => <li>{i.t}</li>}</For>\n    </div>\n  )\n}"
+        },
+        {
+          "label": "validate (real output, trimmed)",
+          "lang": "text",
+          "code": "Found 2 issues:\n\n1. **signal-write-as-call** (line 9)\n   `count(value)` does NOT write the signal — `signal()` is the read-only callable\n   surface and ignores its arguments. Use `count.set(value)` to assign or\n   `count.update((prev) => …)` to derive from the previous value. …\n   Current: `count(count() + 1)`\n   Fix: `count.set(count() + 1)`\n   Auto-fixable: yes\n\n2. **for-with-key** (line 10)\n   `key` on <For> is reserved by JSX for VNode reconciliation and is extracted\n   before the prop reaches the runtime. In Pyreon, use `by` for list identity.\n   Current: `key={(i) => i.id}`\n   Fix: `by={(i) => i.id}`\n   Auto-fixable: yes"
+        }
+      ],
+      "caption": "Each finding carries its code, line, the offending text, the fix and an auto-fixable flag, so the assistant applies the fix instead of guessing."
+    },
+    {
+      "kind": "list",
+      "title": "Five tools, one source of truth.",
+      "text": "The API answers come from the same per-package manifests that generate the docs and `llms.txt`, and CI fails when they drift.",
+      "items": [
+        {
+          "title": "MCP server",
+          "text": "`@pyreon/mcp` speaks JSON-RPC over stdio and never modifies your files. `validate` runs three detector families (React habits, Pyreon misuse, native-build hazards), including `props-destructured`, `signal-write-as-call`, `for-missing-by` and `array-map-jsx`. Configs are documented for Claude Code, Cursor and Windsurf."
+        },
+        {
+          "title": "Reactivity Lens",
+          "text": "`pyreon-lint --lsp` draws `live`, `live·prop`, `live·attr`, `static` and `hoisted` next to each JSX expression. Watch for `static` where you expected `live`: it reviews whatever your assistant just pasted."
+        },
+        {
+          "title": "`pyreon check`",
+          "text": "The terminal twin of `validate`. It scans git-changed files (or a folder), prints each finding with its fix, applies the auto-fixable ones with `--fix`, and exits non-zero, so it fits a pre-commit hook or a CI step."
+        },
+        {
+          "title": "`@pyreon/lint`",
+          "text": "133 rules in 25 categories, with an LSP server, watch mode and an AST cache. Silence one line with `// pyreon-lint-ignore <rule>`."
+        },
+        {
+          "title": "`llms.txt`",
+          "text": "`llms.txt` and `llms-full.txt` sit at the root of the repository, generated from the manifests. An assistant that cannot speak MCP reads them directly."
+        }
+      ]
+    },
+    {
+      "kind": "code",
+      "title": "Register it once.",
+      "blocks": [
+        {
+          "label": ".mcp.json",
+          "lang": "json",
+          "code": "{\n  \"mcpServers\": {\n    \"pyreon\": { \"command\": \"bunx\", \"args\": [\"@pyreon/mcp\"] }\n  }\n}"
+        },
+        {
+          "label": "Your terminal",
+          "lang": "sh",
+          "code": "pyreon check            # git-changed .ts/.tsx files\npyreon check src/       # a directory\npyreon check --fix      # apply the auto-fixable rewrites"
+        }
+      ]
+    },
+    {
+      "kind": "steps",
+      "title": "Or let the scaffold wire it.",
+      "items": [
+        {
+          "title": "Pick your assistants",
+          "text": "`--ai` takes `mcp`, `claude`, `cursor`, `copilot` and `agents`. The default, `mcp,claude`, writes `.mcp.json` and a `CLAUDE.md`; `copilot` writes `.github/copilot-instructions.md`.",
+          "code": "npm create @pyreon/zero@latest my-app -- --ai mcp,claude,cursor"
+        },
+        {
+          "title": "Approve the server",
+          "text": "Open the app in your editor, approve the Pyreon MCP server, and ask for a feature. Watch what your assistant checks."
+        }
+      ]
+    },
+    {
+      "kind": "quote",
+      "text": "The server makes no network calls and runs no long scans at startup.",
+      "attribution": "Pyreon docs",
+      "href": "/docs/mcp"
+    },
+    {
+      "kind": "faq",
+      "title": "Where these tools stop.",
+      "items": [
+        {
+          "q": "Do the detectors know my types?",
+          "a": "No. They read syntax, not types, so a signal used in arithmetic without being called (`count + 1`) slips past them. TypeScript flags that one, so keep `tsc` in the loop."
+        },
+        {
+          "q": "Does this make the model smarter?",
+          "a": "No. It gives the model something to check its work against. Whether it calls the tools depends on the client and the prompt, which is why the scaffolds write the instructions for you."
+        },
+        {
+          "q": "Is the Lens on the VS Code Marketplace?",
+          "a": "Not yet. VS Code uses an extension from the repo; other editors register `pyreon-lint --lsp` by hand."
+        }
+      ]
+    },
+    {
+      "kind": "links",
+      "title": "Go deeper.",
+      "items": [
+        {
+          "label": "MCP server",
+          "href": "/docs/mcp",
+          "text": "Every tool, with an example."
+        },
+        {
+          "label": "Reactivity Lens",
+          "href": "/docs/reactivity-lens",
+          "text": "The hints, and how to enable them."
+        },
+        {
+          "label": "CLI",
+          "href": "/docs/cli",
+          "text": "`pyreon check` and friends."
+        },
+        {
+          "label": "llms.txt on GitHub",
+          "href": "https://github.com/pyreon/pyreon/blob/main/llms.txt",
+          "text": "Generated from the package manifests."
+        }
+      ]
+    }
+  ],
+  "end": {
+    "title": "We cannot change what a model was trained on. We can change what it checks its work against.",
+    "cta": {
+      "label": "Start building",
+      "command": "npm create @pyreon/zero@latest"
+    }
+  },
+  "share": {
+    "ogTitle": "Your AI writes a bug. Pyreon catches it.",
+    "ogSub": "An MCP server with 24 tools, live/static hints in your editor, pyreon check and llms.txt. No network calls."
+  },
+  "sources": [
+    {
+      "claim": "24 MCP tools; check-mcp-docs keeps server, manifest and docs in sync",
+      "path": "AGENTS.md \"The Pyreon MCP server\"; docs/src/content/docs/mcp.md; post B13"
+    },
+    {
+      "claim": "No network calls; Claude Code, Cursor, Windsurf configs",
+      "path": "docs/src/content/docs/mcp.md lines 6, 55–72, 96"
+    },
+    {
+      "claim": "validate output for signal-write-as-call and for-with-key",
+      "path": "post 05-blog/B13-built-for-ai-assistants.md (real tool output); packages/core/compiler/src/pyreon-intercept.ts"
+    },
+    {
+      "claim": "Detectors: props-destructured, signal-write-as-call, for-missing-by, array-map-jsx; three detector families",
+      "path": "packages/core/compiler/src/{pyreon-intercept,react-intercept}.ts; docs/src/content/docs/mcp.md"
+    },
+    {
+      "claim": "133 lint rules, 25 categories; LSP, watch mode, AST cache",
+      "path": "AGENTS.md \"Notable package facts\""
+    },
+    {
+      "claim": "pyreon check scope, --fix, non-zero exit, pyreon-lint-ignore",
+      "path": "docs/src/content/docs/cli.md; packages/core/compiler/src/detector-suppression.ts"
+    },
+    {
+      "claim": "Lens hints and pyreon-lint --lsp; VS Code extension not on Marketplace",
+      "path": "docs/src/content/docs/reactivity-lens.md; post B13"
+    },
+    {
+      "claim": "llms.txt at repo root (pyreon.dev/llms.txt 404 on 10 Nov)",
+      "path": "llms.txt; 00-brief/facts.md"
+    },
+    {
+      "claim": "create-zero --ai values and defaults",
+      "path": "packages/zero/create-zero/src/{args,templates}.ts"
+    }
+  ]
+}

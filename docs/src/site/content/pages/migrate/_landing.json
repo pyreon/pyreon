@@ -1,0 +1,129 @@
+{
+  "id": "migrate",
+  "route": "/migrate",
+  "productHref": "/products/migrate",
+  "hook": {
+    "eyebrow": "Migrate",
+    "title": "Bring your React app. Keep shipping while you move.",
+    "lede": "Point `react` at `@pyreon/react-compat` and your hooks, deps arrays and all, run on Pyreon's engine. Then convert one component at a time, with a codemod for the mechanical parts, until the compat layer has nothing left to do."
+  },
+  "steps": [
+    {
+      "n": 1,
+      "title": "Install the compat layer",
+      "text": "The React layer plus the Pyreon runtime it sits on. The Vite plugin needs Vite 8. On the published packages `vite dev` renders a blank page (the compat JSX runtime ships no `jsxDEV`); `vite build` works, and the fix is on main for the next release.",
+      "file": null,
+      "code": "npm install @pyreon/react-compat @pyreon/core @pyreon/reactivity @pyreon/runtime-dom\nnpm install -D @pyreon/vite-plugin"
+    },
+    {
+      "n": 2,
+      "title": "Change two config files",
+      "text": "Swap `@vitejs/plugin-react` for the Pyreon plugin in compat mode. It resolves `react`, `react-dom`, `react-dom/client` and the JSX runtime to the compat package, so your import lines stay as they are, and it renames `className` and `htmlFor` on the way through.",
+      "file": "vite.config.ts + tsconfig.json",
+      "code": "// vite.config.ts\nimport { defineConfig } from 'vite'\nimport pyreon from '@pyreon/vite-plugin'\n\nexport default defineConfig({\n  plugins: [pyreon({ compat: 'react' })],\n})\n\n// tsconfig.json\n{\n  \"compilerOptions\": {\n    \"jsx\": \"react-jsx\",\n    \"jsxImportSource\": \"@pyreon/react-compat\"\n  }\n}"
+    },
+    {
+      "n": 3,
+      "title": "Keep shipping",
+      "text": "Function components behave like React: `useState` returns the value, the body re-runs, deps arrays are honoured. Before you deploy, check the four known gaps: class components are stubs, transitions run synchronously, a child's state resets when its parent re-renders (lift that state up), and libraries that reach into React internals will not run.",
+      "file": null,
+      "code": null
+    },
+    {
+      "n": 4,
+      "title": "Convert one component at a time",
+      "text": "Run the codemod on a file, finish what it reports, and wrap the converted component in `nativeCompat()` so it runs in Pyreon's setup frame. The compat build skips Pyreon's compiler pass, so write reactive text as an arrow (`{() => …}`) until step 5.",
+      "file": "Likes.tsx",
+      "code": "import { nativeCompat } from '@pyreon/core'\nimport { signal } from '@pyreon/reactivity'\n\n// A converted component inside a compat app: it runs once.\nexport const Likes = nativeCompat(function Likes() {\n  const likes = signal(0)\n  return (\n    <button onClick={() => likes.update((n) => n + 1)}>\n      {() => `${likes()} likes`}\n    </button>\n  )\n})"
+    },
+    {
+      "n": 5,
+      "title": "Switch the compiler on",
+      "text": "When no React-style component is left, drop `compat` from the plugin and set `jsxImportSource` to `@pyreon/core`. The compiler now makes `{likes()}` reactive without the arrow, and the app is plain Pyreon. Moving to Zero's file router is a separate step you can take later.",
+      "file": "vite.config.ts",
+      "code": "// vite.config.ts\nimport { defineConfig } from 'vite'\nimport pyreon from '@pyreon/vite-plugin'\n\nexport default defineConfig({\n  plugins: [pyreon()],\n})"
+    }
+  ],
+  "tools": {
+    "title": "Tools for the mechanical part.",
+    "items": [
+      {
+        "name": "`migrate_react`",
+        "package": "@pyreon/mcp",
+        "what": "Your AI assistant hands it a React file and gets back `useState` turned into `signal`, `useMemo` into `computed`, `useEffect` into `effect`, `useCallback` unwrapped to a plain function, `className` and `htmlFor` renamed, `onChange` on inputs turned into `onInput`, the imports swapped, plus the list of changes it made and the findings it could not fix.",
+        "how": "Add the server to `.mcp.json`: `{ \"mcpServers\": { \"pyreon\": { \"command\": \"bunx\", \"args\": [\"@pyreon/mcp\"] } } }`",
+        "limits": "A first pass that does not run as is: setter calls such as `setCount(…)` stay dangling, value reads are not turned into calls, a `useRef` becomes a signal so its `.current` uses break, and a `memo()` wrapper can stay in place although the change list says it was removed. `.map()` lists are flagged for `<For>` but not rewritten; class components and React-specific libraries are not converted. TypeScript flags the dangling setters; review the diff."
+      },
+      {
+        "name": "`pyreon check --fix`",
+        "package": "@pyreon/cli",
+        "what": "The same detectors in the terminal. It scans your git-changed files (or the paths you pass), prints each finding with its fix, writes the codemod's first-pass rewrites with `--fix`, and exits non-zero on any finding, so it works as a pre-commit gate.",
+        "how": "`pyreon check src/components/Search.tsx --fix`",
+        "limits": "Applies the same codemod as `migrate_react`, with the same gaps, and skips a file whose only React habit is a `.map()` list, an `onChange` or `dangerouslySetInnerHTML`."
+      },
+      {
+        "name": "`--compat` scaffold",
+        "package": "@pyreon/create-zero",
+        "what": "Starting a new app next to the old one? The scaffold wires the compat layer into a Zero app for React, Vue, Solid or Preact.",
+        "how": "`npm create @pyreon/zero@latest my-app -- --compat react`",
+        "limits": "The scaffold offers `react`, `vue`, `solid` and `preact`; Svelte compat is set up by hand through the Vite plugin."
+      }
+    ]
+  },
+  "layersTitle": "Five frameworks, one engine.",
+  "guidesTitle": "No compat layer, still a guide.",
+  "cta": {
+    "title": "Ship on Pyreon this week. Finish the move when it pays.",
+    "command": "npm install @pyreon/react-compat",
+    "secondary": {
+      "label": "Read the React migration guide",
+      "href": "/docs/migrating-from-react"
+    }
+  },
+  "sources": [
+    {
+      "claim": "Vite plugin compat aliases for react, react-dom, react-dom/client and the JSX runtime",
+      "path": "packages/tools/vite-plugin/src/index.ts lines 128–142 (compat option) and 430–462 (alias map)"
+    },
+    {
+      "claim": "className/htmlFor renamed in compat mode; reactive JSX transform skipped in compat mode",
+      "path": "packages/tools/vite-plugin/src/index.ts lines 1272–1287 (compat mode skips the reactive JSX transform; renames className/htmlFor for react and preact); packages/tools/vite-plugin/src/ast-rewrite.ts line 211"
+    },
+    {
+      "claim": "@pyreon/vite-plugin peer: vite >= 8.0.0; compat peers core, reactivity, runtime-dom",
+      "path": "packages/tools/vite-plugin/package.json; packages/tools/react-compat/package.json (peerDependencies)"
+    },
+    {
+      "claim": "Value + re-render model, deps arrays honoured; known gaps (class stubs, sync transitions, nested state reset, React internals)",
+      "path": "packages/tools/react-compat/README.md (Key differences, Gotchas, Third-party)"
+    },
+    {
+      "claim": "nativeCompat() makes a component run in Pyreon's setup frame inside a compat app",
+      "path": "docs/src/content/docs/native-compat.md; packages/tools/react-compat/src/jsx-runtime.ts lines 218–231"
+    },
+    {
+      "claim": "Step 4 sample: a nativeCompat signal component inside a react-compat parent updates on click",
+      "path": "/tmp/wt-site-content/.scratch/site-compare/{Mixed.tsx,mount-mixed.ts} (run 11 Nov 2026)"
+    },
+    {
+      "claim": "migrate_react transforms and its documented limits",
+      "path": "packages/tools/mcp/src/manifest.ts lines 142–162; packages/core/compiler/src/react-intercept.ts migrateReactCode"
+    },
+    {
+      "claim": "migrate_react leaves setter calls and value reads unconverted (observed output)",
+      "path": "/tmp/wt-site-content/.scratch/site-compare/{mig.ts,mig2.ts}"
+    },
+    {
+      "claim": "pyreon check scans git-changed files or paths, --fix applies migratePyreonCode + migrateReactCode, exits non-zero",
+      "path": "packages/tools/cli/src/check.ts lines 1–19"
+    },
+    {
+      "claim": "MCP config for Claude Code via bunx @pyreon/mcp",
+      "path": "docs/src/content/docs/mcp.md lines 40–53"
+    },
+    {
+      "claim": "create-zero --compat none|react|vue|solid|preact",
+      "path": "packages/zero/create-zero/src/args.ts lines 57–60, 278; generators/vite-config.ts line 23"
+    }
+  ]
+}

@@ -1,0 +1,155 @@
+{
+  "route": "/open",
+  "meta": {
+    "title": "Open stats · Pyreon",
+    "description": "Pyreon in numbers, live: GitHub stars, contributors, issues, releases and npm downloads, plus the benchmark record with every withdrawn claim."
+  },
+  "hero": {
+    "eyebrow": "open stats",
+    "title": "Built in the open. Counted in public.",
+    "lede": "Every number on this page is pulled from GitHub, npm and the repository on each daily deploy. Nobody types them in and nobody rounds them up.",
+    "actions": [
+      {
+        "label": "Star on GitHub",
+        "href": "https://github.com/pyreon/pyreon"
+      }
+    ]
+  },
+  "updated": "Last updated",
+  "unavailable": "unavailable right now",
+  "work": {
+    "label": "the work",
+    "title": "What has shipped.",
+    "text": "Commits, pull requests, releases, packages and tests, counted straight from the source.",
+    "tiles": [
+      {
+        "stat": "commits",
+        "label": "Commits on main",
+        "href": "https://github.com/pyreon/pyreon/commits/main"
+      },
+      {
+        "stat": "mergedPrs",
+        "label": "Merged pull requests",
+        "href": "https://github.com/pyreon/pyreon/pulls?q=is%3Apr+is%3Amerged"
+      },
+      {
+        "stat": "releases",
+        "label": "Releases published",
+        "href": "https://github.com/pyreon/pyreon/releases",
+        "hint": "Latest: {latestTag}, {latestDate}"
+      },
+      {
+        "stat": "publishedPackages",
+        "label": "Published packages",
+        "href": "/docs/package-catalog"
+      },
+      {
+        "stat": "testFiles",
+        "label": "Test files",
+        "hint": "{browserTestFiles} of them run in real Chromium"
+      },
+      {
+        "stat": "lintRules",
+        "label": "Lint rules",
+        "href": "/docs/lint",
+        "hint": "in {lintCategories} categories"
+      },
+      {
+        "stat": "mcpTools",
+        "label": "MCP tools",
+        "href": "/docs/mcp"
+      },
+      {
+        "stat": "docPages",
+        "label": "Docs pages",
+        "href": "/docs/getting-started"
+      }
+    ],
+    "note": "The package, lint-rule, MCP-tool and doc-page counts come from the same code as the doc-claims check, which fails CI the moment a number in the docs drifts from the code.",
+    "noteLink": {
+      "label": "The doc-claims check →",
+      "href": "https://github.com/pyreon/pyreon/blob/main/scripts/check-doc-claims.ts"
+    }
+  },
+  "downloads": {
+    "label": "downloads",
+    "title": "Installs from npm.",
+    "text": "The last 7 days, with the last 30 underneath.",
+    "monthly": "{count} in the last 30 days",
+    "chart": "Weekly downloads of {package}, the package every Pyreon app installs, from npm's public download counts.",
+    "chartMissing": "The download history is unavailable in this build. It comes back with the next deploy."
+  },
+  "community": {
+    "label": "community",
+    "title": "This is where it starts.",
+    "text": "The first stars, the first forks and the first outside contributors are being counted right now, and yours can be one of them.",
+    "tiles": [
+      {
+        "stat": "stars",
+        "label": "Stars",
+        "href": "https://github.com/pyreon/pyreon/stargazers"
+      },
+      {
+        "stat": "forks",
+        "label": "Forks",
+        "href": "https://github.com/pyreon/pyreon/forks"
+      },
+      {
+        "stat": "contributors",
+        "label": "Contributors",
+        "href": "https://github.com/pyreon/pyreon/graphs/contributors"
+      },
+      {
+        "stat": "openIssues",
+        "label": "Open issues",
+        "href": "https://github.com/pyreon/pyreon/issues"
+      },
+      {
+        "stat": "closedIssues",
+        "label": "Closed issues",
+        "href": "https://github.com/pyreon/pyreon/issues?q=is%3Aissue+is%3Aclosed"
+      }
+    ],
+    "actions": [
+      {
+        "label": "Star the repo on GitHub",
+        "href": "https://github.com/pyreon/pyreon"
+      },
+      {
+        "label": "Find an issue to pick up",
+        "href": "https://github.com/pyreon/pyreon/issues"
+      },
+      {
+        "label": "Read the contributing guide",
+        "href": "https://github.com/pyreon/pyreon/blob/main/CONTRIBUTING.md"
+      }
+    ]
+  },
+  "benchmarks": {
+    "label": "benchmarks",
+    "title": "Every claim in one record, losses included.",
+    "text": "Every performance claim Pyreon makes is in one record, with the method, the machine and the cases where another framework wins. A number that turns out wrong is withdrawn in the record itself, with the reason, and the history keeps every edit.",
+    "links": [
+      {
+        "label": "The benchmark record",
+        "href": "https://github.com/pyreon/pyreon/blob/main/BENCHMARKS.md",
+        "text": "Every result, the method and the machine."
+      },
+      {
+        "label": "What changed, and what is withdrawn",
+        "href": "https://github.com/pyreon/pyreon/blob/main/BENCHMARKS.md#0-what-changed-and-what-is-withdrawn",
+        "text": "Claims taken back, with the reason."
+      },
+      {
+        "label": "Every revision of the record",
+        "href": "https://github.com/pyreon/pyreon/commits/main/BENCHMARKS.md",
+        "text": "The git history of every edit."
+      },
+      {
+        "label": "The benchmarks page",
+        "href": "/benchmarks",
+        "text": "The same record, drawn: charts, tables and how to reproduce it."
+      }
+    ]
+  }
+}

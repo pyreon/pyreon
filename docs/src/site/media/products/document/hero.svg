@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa pq-document" viewBox="0 0 640 400" width="640" height="400" role="img" aria-labelledby="pq-document-t pq-document-d" fill="none">
+<title id="pq-document-t">One document tree rendered to PDF, a spreadsheet, Slack and Markdown</title>
+<desc id="pq-document-d">An invoice written once as JSX: &lt;Document&gt; with a &lt;Heading&gt; and a &lt;Table&gt;. render(doc, format) is called with 'pdf', then 'xlsx', then 'slack', then 'md', and each time the same tree lights up a different output: a PDF page, a spreadsheet grid, a Slack Block Kit message and a Markdown file.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.pq-document{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.pq-document .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.pq-document .pq-document-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.pq-document *{animation:none!important;transition:none!important}.pq-document .pq-document-rm{opacity:1}.pq-document .pq-document-am{opacity:0}}
+
+.pq-document .ln{stroke:var(--px-hint);stroke-width:1.5;fill:none}
+.pq-document .dash{stroke:var(--px-hint);stroke-width:1.5;stroke-dasharray:3 5;fill:none}
+.pq-document .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pq-document .bx2{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+.pq-document .lab{fill:var(--px-fog);font-size:14px;letter-spacing:.04em}
+.pq-document .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.pq-document .val{fill:var(--px-text);font-size:20px;font-weight:500}
+.pq-document .big{fill:var(--px-strong);font-size:24px;font-weight:600;letter-spacing:-.02em}
+.pq-document .code{fill:var(--px-text);font-size:15px}
+.pq-document .kw{fill:var(--px-accent-text)} .pq-document .fn{fill:var(--px-link)} .pq-document .str{fill:var(--px-warm)} .pq-document .ty{fill:var(--px-violet)}
+.pq-document .dim{fill:var(--px-fog)}
+.pq-document .hint{fill:var(--px-hint);font-size:13px}
+.pq-document .ember{stroke:url(#pq-document-egu);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:36 900;fill:none}
+.pq-document .emberS{stroke:url(#pq-document-egu);stroke-width:2.5;stroke-linecap:round;fill:none}
+.pq-document .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.pq-document .ok{fill:var(--px-ok)} .pq-document .warm{fill:var(--px-warm)} .pq-document .hot{fill:var(--px-accent)} .pq-document .errF{fill:var(--px-err)}
+.pq-document .okT{fill:var(--px-ok)} .pq-document .warmT{fill:var(--px-warm)} .pq-document .hotT{fill:var(--px-accent-text)} .pq-document .errT{fill:var(--px-err)}
+.pq-document .okS{stroke:var(--px-ok)} .pq-document .errS{stroke:var(--px-err)}
+.pq-document .gfill{fill:url(#pq-document-eg)}
+@media (prefers-reduced-motion: reduce){.pq-document .ember{opacity:0}}
+
+.pq-document .sk{fill:var(--px-line2)}
+.pq-document .skS{stroke:var(--px-line2);stroke-width:1.5}
+@keyframes pq-document-f0{0.0000%{opacity:0;animation-timing-function:step-end}7.5000%{opacity:1;animation-timing-function:step-end}30.0000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-document-f1{0.0000%{opacity:0;animation-timing-function:step-end}30.0000%{opacity:1;animation-timing-function:step-end}52.5000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-document-f2{0.0000%{opacity:0;animation-timing-function:step-end}52.5000%{opacity:1;animation-timing-function:step-end}75.0000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-document-f3{0.0000%{opacity:1;animation-timing-function:step-end}7.5000%{opacity:0;animation-timing-function:step-end}75.0000%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-document-t0{0%{stroke-dashoffset:36;opacity:0}7.5000%{stroke-dashoffset:36;opacity:1}10.0000%{stroke-dashoffset:-160;opacity:1}10.0125%{stroke-dashoffset:36;opacity:0}100%{stroke-dashoffset:36;opacity:0}}
+@keyframes pq-document-t1{0%{stroke-dashoffset:36;opacity:0}30.0000%{stroke-dashoffset:36;opacity:1}32.5000%{stroke-dashoffset:-160;opacity:1}32.5125%{stroke-dashoffset:36;opacity:0}100%{stroke-dashoffset:36;opacity:0}}
+@keyframes pq-document-t2{0%{stroke-dashoffset:36;opacity:0}52.5000%{stroke-dashoffset:36;opacity:1}55.0000%{stroke-dashoffset:-160;opacity:1}55.0125%{stroke-dashoffset:36;opacity:0}100%{stroke-dashoffset:36;opacity:0}}
+@keyframes pq-document-t3{0%{stroke-dashoffset:36;opacity:0}75.0000%{stroke-dashoffset:36;opacity:1}77.5000%{stroke-dashoffset:-160;opacity:1}77.5125%{stroke-dashoffset:36;opacity:0}100%{stroke-dashoffset:36;opacity:0}}
+@keyframes pq-document-r0{0%{opacity:0}9.5000%{opacity:0}10.5000%{opacity:1}12.0000%{opacity:0}100%{opacity:0}}
+@keyframes pq-document-r1{0%{opacity:0}32.0000%{opacity:0}33.0000%{opacity:1}34.5000%{opacity:0}100%{opacity:0}}
+@keyframes pq-document-r2{0%{opacity:0}54.5000%{opacity:0}55.5000%{opacity:1}57.0000%{opacity:0}100%{opacity:0}}
+@keyframes pq-document-r3{0%{opacity:0}77.0000%{opacity:0}78.0000%{opacity:1}79.5000%{opacity:0}100%{opacity:0}}
+.pq-document .f0{animation:pq-document-f0 8000ms linear infinite}
+.pq-document .t0{animation:pq-document-t0 8000ms linear infinite}
+.pq-document .r0{animation:pq-document-r0 8000ms linear infinite}
+.pq-document .f1{animation:pq-document-f1 8000ms linear infinite}
+.pq-document .t1{animation:pq-document-t1 8000ms linear infinite}
+.pq-document .r1{animation:pq-document-r1 8000ms linear infinite}
+.pq-document .f2{animation:pq-document-f2 8000ms linear infinite}
+.pq-document .t2{animation:pq-document-t2 8000ms linear infinite}
+.pq-document .r2{animation:pq-document-r2 8000ms linear infinite}
+.pq-document .f3{animation:pq-document-f3 8000ms linear infinite}
+.pq-document .t3{animation:pq-document-t3 8000ms linear infinite}
+.pq-document .r3{animation:pq-document-r3 8000ms linear infinite}
+@media (prefers-reduced-motion: reduce){.pq-document .f1,.pq-document .f2,.pq-document .f3{opacity:0}.pq-document .f0{opacity:1}}
+</style>
+<defs><linearGradient id="pq-document-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-document-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="640" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-document-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-document-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<text class="m eb" x="24" y="34">@PYREON/DOCUMENT · ONE TREE, ANY FORMAT</text>
+<rect class="bx" x="24" y="56" width="306" height="200" rx="12"/>
+<text class="m code" x="40" y="88"><tspan class="kw">const</tspan> doc = (</text>
+<text class="m code" x="48" y="114">&lt;<tspan class="ty">Document</tspan>&gt;</text>
+<text class="m code" x="64" y="140">&lt;<tspan class="ty">Heading</tspan>&gt;Invoice 42&lt;/…&gt;</text>
+<text class="m code" x="64" y="166">&lt;<tspan class="ty">Table</tspan> rows={lines} /&gt;</text>
+<text class="m code" x="48" y="192">&lt;/<tspan class="ty">Document</tspan>&gt;)</text>
+<text class="m code" x="40" y="232"><tspan class="fn">render</tspan>(doc,</text>
+<text class="m code f0" x="157" y="232"><tspan class="str">'pdf'</tspan>)</text><text class="m code f1" x="157" y="232" opacity="0"><tspan class="str">'xlsx'</tspan>)</text><text class="m code f2" x="157" y="232" opacity="0"><tspan class="str">'slack'</tspan>)</text><text class="m code f3" x="157" y="232" opacity="0"><tspan class="str">'md'</tspan>)</text>
+<path class="ln" d="M330 170 C 352 170, 350 104, 372 104"/><path class="ember t0" d="M330 170 C 352 170, 350 104, 372 104"/>
+<path class="ln" d="M330 170 C 352 170, 350 212, 372 212"/><path class="ember t1" d="M330 170 C 352 170, 350 212, 372 212"/>
+<path class="ln" d="M330 170 C 352 170, 350 320, 372 320"/><path class="ember t2" d="M330 170 C 352 170, 350 320, 372 320"/>
+<path class="ln" d="M330 170 C 350 170, 350 300, 330 300"/>
+<path class="ember t3" d="M330 170 C 350 170, 350 300, 330 300"/>
+<rect class="bx" x="372" y="56" width="244" height="96" rx="12"/>
+<text class="m lab" x="600" y="80" text-anchor="end">PDF</text><rect x="388" y="88" width="90" height="10" rx="3" class="sk"/><rect x="388" y="108" width="196" height="6" rx="3" class="sk"/><rect x="388" y="122" width="170" height="6" rx="3" class="sk"/><rect x="388" y="136" width="186" height="6" rx="3" class="sk"/>
+<rect class="ring r0" x="368" y="52" width="252" height="104" rx="15" opacity="0"/>
+<rect class="bx" x="372" y="164" width="244" height="96" rx="12"/>
+<text class="m lab" x="600" y="188" text-anchor="end">XLSX</text><g class="skS"><line x1="388" y1="196" x2="584" y2="196"/><line x1="388" y1="210" x2="584" y2="210"/><line x1="388" y1="224" x2="584" y2="224"/><line x1="388" y1="238" x2="584" y2="238"/><line x1="388" y1="196" x2="388" y2="238"/><line x1="453" y1="196" x2="453" y2="238"/><line x1="518" y1="196" x2="518" y2="238"/><line x1="583" y1="196" x2="583" y2="238"/></g>
+<rect class="ring r1" x="368" y="160" width="252" height="104" rx="15" opacity="0"/>
+<rect class="bx" x="372" y="272" width="244" height="96" rx="12"/>
+<text class="m lab" x="600" y="296" text-anchor="end">Slack</text><rect x="388" y="304" width="20" height="20" rx="5" class="sk"/><rect x="416" y="306" width="80" height="7" rx="3" class="sk"/><rect x="416" y="318" width="150" height="6" rx="3" class="sk"/><rect x="416" y="332" width="64" height="12" rx="4" class="sk"/>
+<rect class="ring r2" x="368" y="268" width="252" height="104" rx="15" opacity="0"/>
+<!-- md output -->
+<rect class="bx" x="24" y="272" width="306" height="96" rx="12"/>
+<text class="m lab" x="314" y="296" text-anchor="end">Markdown</text>
+<text class="m code dim" x="40" y="300" font-size="14"># Invoice 42</text>
+<text class="m code dim" x="40" y="324" font-size="14">| item | qty | total |</text>
+<text class="m code dim" x="40" y="348" font-size="14">| ---- | --- | ----- |</text>
+<rect class="ring r3" x="20" y="268" width="314" height="104" rx="15" opacity="0"/>
+<rect class="ring pq-document-rm" x="368" y="52" width="252" height="104" rx="15"/>
+<text class="m hint" x="24" y="392">20 formats · pdfmake, docx, exceljs load only when you emit them</text>
+</svg>

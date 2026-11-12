@@ -34,11 +34,11 @@ The package installs a single `pyreon` binary. Run it through your package manag
 :::code-group
 
 ```bash [npm]
-npx pyreon doctor
+npx @pyreon/cli doctor
 ```
 
 ```bash [bun]
-bunx pyreon doctor
+bunx @pyreon/cli doctor
 ```
 
 ```bash [pnpm]
@@ -66,27 +66,50 @@ pyreon doctor
 ```text
   pyreon doctor · project health audit
 
-  Score:  92/100   Grade: A
+  Score:  95/100   Grade: A
+  Scope:  1 package root(s) from single package (.)
+  Scanned: react-patterns 1 · pyreon-patterns 1 · lint 3 · islands-audit 0 · ssg-audit 0 ·
+           content-audit 0 · audit-tests 1 · check-dedup 0
 
-  Per category:
-
-  correctness    █████████░░░ 87  · 1E 1W
-  performance    ████████████ 100 · clean
+  correctness    ██████████░░  84 · 1E 2W
+  performance    skipped
   architecture   ████████████ 100 · clean
   testing        ████████████ 100 · clean
-  documentation  ████████████ 100 · clean
+  documentation  skipped
   best-practices clean (advisory — not graded)
 
-  Top findings (2 of 2):
+  ! 1 gate(s) matched no files — their categories were NOT measured:
+     distribution — no published packages found under packages/<category>/<pkg> — this gate audits
+       the Pyreon framework repo layout
 
-  ✗ useState imported from React. Use signal() from @pyreon/reactivity.  react-patterns/no-usestate
-     src/App.tsx:1:9
-     fix: import { signal } from "@pyreon/reactivity"
+  Top findings (3 of 3):
 
-  ! className → class (HTML standard attribute).  react-patterns/className
-     src/App.tsx:3:18
+  ✗ lint/pyreon/no-classname · Use `class` instead of `className` — Pyreon uses standard HTML
+     attributes.
+     ↳ src/App.tsx:3:30
 
-  1 error · 1 warning · 13 gates · 1.4s
+  ! react-patterns/class-name-prop · 'className' is a React JSX attribute. Use 'class' in Pyreon
+     (standard HTML).
+     ↳ src/App.tsx:3:30
+     fix: class="app"
+
+  ! react-patterns/react-import · Import from 'react' is a React package. Use Pyreon equivalent.
+     ↳ src/App.tsx:1:0
+     fix: import { ... } from "@pyreon/core"
+
+  Skipped:
+    doc-claims          doc-claim audit targets the Pyreon monorepo (scripts/check-doc-claims.ts not
+                        present here)
+    dependency-fabric   @pyreon/loom is not installed in this project — install it (`pyreon add
+                        @pyreon/loom`) to include dependency health in the score, or run `pyreon
+                        loom scan .` directly. Not scored rather than assumed healthy.
+    native-audit        no @pyreon/primitives importers found (not a multiplatform project)
+    audit-leak-classes  leak-class audit targets the Pyreon monorepo (scripts/audit-leak-classes.ts
+                        not present here)
+    audit-types         enable with --full
+    bundle-budgets      enable with --full
+
+  1 error, 2 warnings · 8 gates · 17 ms
 ```
 
 By default `pyreon doctor` runs the **13 fast gates** (~2-5s on a warm cache). The 2 slow gates are opt-in via `--full`.
@@ -101,21 +124,26 @@ pyreon check src/              # scan a directory (recursive; skips node_modules
 pyreon check src/App.tsx        # scan specific files
 pyreon check --fix              # apply the mechanically-safe auto-fixes in place
 pyreon check --json             # machine-readable findings for tooling
+pyreon check --gha              # GitHub Actions annotations (inline on the PR diff)
 ```
 
 Example output:
 
 ```
-  src/Counter.tsx
-    4:2  [signal-write-as-call] (auto-fixable — run with --fix)
-      `count(value)` does NOT write the signal — use `count.set(value)` …
-      → count.set(5)
-    5:9  [for-missing-by]
-      <For each={...}> requires a `by` prop so the keyed reconciler can preserve identity …
-      → <For each={items} by={(item) => item.id}>
+pyreon check · 3 files · git-changed files
 
-  2 findings in 1 file  ·  some are auto-fixable with --fix
+  ✗ signal-write-as-call · `count(value)` does NOT write the signal — use `count.set(value)` …
+     ↳ src/Counter.tsx:4:2
+     fix: count.set(5) (auto-fixable: run with --fix)
+
+  ✗ for-missing-by · <For each={...}> requires a `by` prop so the keyed reconciler can preserve …
+     ↳ src/Counter.tsx:5:9
+     fix: <For each={items} by={(item) => item.id}>
+
+✗ 2 findings in 1 file · 1 auto-fixable with --fix · 3 files checked · 41 ms
 ```
+
+Each finding follows the shared terminal theme: symbol and code, the message, `↳ file:line:col` (a clickable link in terminals that support OSC 8), then `fix:`. An empty run prints `ℹ No changed .ts/.tsx files to check · …` rather than a success mark, and Ctrl-C ends the run with `! interrupted` and exit code 130.
 
 **How it differs from the neighbours:** `pyreon doctor` is the whole-project health audit (all gates + a 0-100 score, slower); `pyreon lint` runs the `@pyreon/lint` **rule set** (a different engine). `pyreon check` is the fast, file-scoped **compiler-detector** pass — the quickest way to answer "did I introduce a Pyreon anti-pattern in this file / my diff?" `--fix` applies `migratePyreonCode` + `migrateReactCode` (only the mechanically-safe fixes; anything else stays reported so it still gates).
 ## `pyreon add`
@@ -358,12 +386,12 @@ Without `--ci`, `pyreon doctor` is **informational** — it prints the report an
 
 The human-readable renderer (`--format=text`, the default) prints, in order:
 
-1. **Banner** — `pyreon doctor · project health audit` + `Score: N/100   Grade: X`.
-2. **Per-category bars** — a 12-cell bar per category, colored by grade, with an `E`/`W`/`i` breakdown (`1E 2W 3i`) or `clean`. The advisory `best-practices` row is labeled `advisory — excluded from grade & --ci` so it's never mistaken for a grade-affecting bucket. A category with no contributing gate shows `skipped`.
-3. **Top findings** — up to 10 findings, each with a severity glyph (`✗` error, `!` warning, `ℹ` info), the bolded message, the `<gate>/<rule>` code, a clickable file location, related locations (`↳`), and a `fix:` hint. A `…and N more` line points to `--json` for the full list.
-4. **Footer** — skipped gates with reasons, total counts, gate count, and elapsed wall-clock.
+1. **Banner** — `pyreon doctor · project health audit`, `Score: N/100   Grade: X`, the scan scope and the per-gate scan counts.
+2. **Per-category bars** — a 12-cell bar per category, colored by grade, the score right-aligned, then an `E`/`W`/`i` breakdown (`1E 2W 3i`) or `clean`. The advisory `best-practices` row is labeled `advisory — excluded from grade and --ci` so it's never mistaken for a grade-affecting bucket. A category with no contributing gate shows `skipped`.
+3. **Top findings** — up to 10 findings, each as `<glyph> <gate>/<rule> · <message>` (`✗` error, `!` warning, `ℹ` info), then `↳ path:line:col` (and `↳` for each related location), then `fix:` when the gate knows the change. Lines wrap at 100 columns; paths are never truncated. A `…and N more` line points to `--json` for the full list.
+4. **Footer** — skipped gates with reasons, then the verdict: total counts, gates run, elapsed.
 
-Colors degrade gracefully via `@pyreon/ansi` (respects `NO_COLOR` / `FORCE_COLOR` / TTY detection), and file paths are OSC-8 hyperlinks in terminals that support them (iTerm2, WezTerm, kitty, VS Code).
+The look is the shared Pyreon CLI theme from `@pyreon/ansi`, the same one `pyreon-lint` and the `zero build` summary use: truecolor when the terminal advertises it (`COLORTERM=truecolor`), 16 colours otherwise, plain when `NO_COLOR` is set, `TERM=dumb`, or output is piped (`FORCE_COLOR=1` opts back in, `FORCE_COLOR=3` forces truecolor). Light terminals get their own palette via `COLORFGBG` or `PYREON_CLI_THEME=light`; symbols fall back to ASCII (`v x ! i ->`) when the locale is not UTF-8. File paths are OSC 8 hyperlinks in terminals that support them (iTerm2, WezTerm, kitty, VS Code).
 
 #### JSON (`--json` / `--format=json`)
 
@@ -449,9 +477,9 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install
       # Inline annotations on the PR (always exits 0 in this mode unless --ci added)
-      - run: bunx pyreon doctor --gha
+      - run: bunx @pyreon/cli doctor --gha
       # The actual gate — fails the job on any error finding
-      - run: bunx pyreon doctor --ci
+      - run: bunx @pyreon/cli doctor --ci
 ```
 
 `--ci` and `--gha`/`--json` are independent: `--ci` controls the **exit code**, the format flags control the **output**. To both annotate and gate in one run, combine them — `pyreon doctor --gha --ci` prints GHA annotations and exits non-zero on errors.
@@ -658,7 +686,7 @@ console.log(context.components.length, 'components')
 
 | Command | Description |
 | --- | --- |
-| `pyreon check [paths] [--fix] [--json]` | Fast, file-scoped Pyreon/React anti-pattern scan (compiler detectors) with inline fixes. No paths → git-changed files. Exits non-zero on findings. |
+| `pyreon check [paths] [--fix] [--json\|--gha]` | Fast, file-scoped Pyreon/React anti-pattern scan (compiler detectors) with inline fixes. No paths → git-changed files. Exits non-zero on findings. |
 | `pyreon plain [paths] [--write] [--json] [--include-tests]` | Plain-Mode readiness report + classic→plain codemod. No paths → the whole tree under cwd. |
 | `pyreon add <pkg...> [--dry-run] [--json]` | Install `@pyreon/*` packages (PM auto-detected) and print a tailored setup recipe for each. |
 | `pyreon new [name] [--native]` | Scaffold a new Pyreon project (delegates to `@pyreon/create-zero`, or `-multiplatform` with `--native`). |

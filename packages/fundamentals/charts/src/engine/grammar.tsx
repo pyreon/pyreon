@@ -891,7 +891,9 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
     // cell); its `onSelectIndex` is the index every host reports on every
     // target, which is what `<Chart onSelect>` promises.
     p.onSelectIndex = reactiveProp(() => props.onSelect)
-    for (const key of ['tooltip', 'showLegend', 'legendPosition', 'format'] as const) p[key] = reactiveProp(() => read(key) ?? (resolved().props as Record<string, unknown>)[key])
+    for (const key of ['tooltip', 'showLegend', 'legendPosition'] as const) p[key] = reactiveProp(() => read(key) ?? (resolved().props as Record<string, unknown>)[key])
+    // `<Axis y format>` overrides the chart's `format` here too (see the plot host's forwarding below).
+    p.format = reactiveProp(() => (resolved().props as Record<string, unknown>).format ?? read('format'))
     // The family hosts take a PNG-only toolbox; the plot's `'svg'` form maps to it.
     p.toolbox = reactiveProp(() => {
       const tb = (resolved().props as Record<string, unknown>).toolbox as ToolboxConfig | undefined
@@ -926,9 +928,14 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
       return props.by === undefined ? undefined : channel<T, string>(props.by)
     }),
   }
-  // Every `<PlotChart>` prop a child can set, forwarded as an accessor; the chart's own props win when both are given.
+  // Every `<PlotChart>` prop a child can set, forwarded as an accessor; the chart's own props win when both are given,
+  // except `format`: an `<Axis y format>` is the more specific of the two and overrides the chart's (as `ChartProps.format` says).
   const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'endLabels', 'xTicks', 'yTicks', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'initialZoom', 'zoomLimits', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'toolbox', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize'] as const
-  for (const key of forwarded) plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key] ?? (resolved().props as Record<string, unknown>)[key])
+  for (const key of forwarded) {
+    plotProps[key] = key === 'format'
+      ? reactiveProp(() => (resolved().props as Record<string, unknown>).format ?? props.format)
+      : reactiveProp(() => (props as unknown as Record<string, unknown>)[key] ?? (resolved().props as Record<string, unknown>)[key])
+  }
   // Every other `<PlotChart>` prop, the events/actions model included — the grammar reaches the whole host.
   for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'density', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'seriesLabels', 'onSaveImage', 'locale'] as const) {
     plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key])

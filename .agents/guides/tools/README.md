@@ -31,8 +31,8 @@ Derives a verified, machine-readable component catalog from source. You write no
 ### Verification
 
 - Six checks per scenario, listed once in `CHECK_KEYS` (`atlas/src/core/types.ts`): `a11y`, `interaction`, `reactivityCoverage`, `leak`, `snapshot`, `ssrParity`. Iterate that list; never hand-write a copy.
-- The report names which check failed: `checks: a11y 18/20 ✗ · interaction 43/43 · …` plus `not run:` lines with reasons.
-- `N verified` counts scenarios, not checks. A scenario that ran two of six checks still counts as verified, so read the `not run:` lines.
+- The report names which check failed: a `checks` row (`a11y 18/20 ✗ · interaction 43/43 · …`, from `formatCheckTally`) plus `not run` rows with reasons (`formatNotRun`). The human output uses the shared `@pyreon/ansi` look (header first, verdict last); `--json` is the machine surface and is snapshot-locked (`src/cli/tests/machine-output-lock.test.ts`).
+- `N verified` counts scenarios, not checks. A scenario that ran two of six checks still counts as verified, so read the `not run` rows.
 - Findings are `{ code, message, fix? }` (catalog v2); `code` is stable. MCP refuses a v1 catalog.
 - `atlas verify <Component>` verifies only the match and never writes the catalog. An unmatched name or a run that verified nothing exits non-zero.
 - `--check` (on `scan` and `verify`) ratchets against the committed catalog: non-zero on regression, never rewrites the baseline, missing baseline = exit 0. A check that stopped running counts as a regression — losing coverage makes the counts improve.
@@ -97,7 +97,7 @@ OpenAPI 3.x in; `@pyreon/validate` schemas, `@pyreon/http` endpoints, `@pyreon/q
 ## `@pyreon/loom` — dependency observatory
 
 - `loom scan [dir]` reads the workspace like an install tool (npm/bun/yarn/pnpm globs, including `packages/*/*`) and reports the fabric as data. Writes `loom-report.json` next to the root manifest; exits non-zero on error-severity findings. Flags: `--strict`, `--no-imports`, `--no-write`, `--json` (report only on stdout).
-- `loom dev [dir]` (`--port=`) serves the observatory UI, built on the public Pyreon UI stack.
+- `loom dev [dir]` (`--port=`) serves the observatory UI, built on the public Pyreon UI stack. Theme = the shared `pyreon-theme` key (legacy `loom:theme` read as a fallback), else the OS, dark by default; `THEME_BOOT` (dev server) and `app/index.html` apply it before first paint and must stay identical. Palette in `src/ui/theme.ts`, contrast computed in `tests/theme.test.ts`. Layout = the tool-app design (`Loom.html`): 48 px top bar, 240 px list by depth, 42 px view bar, 340 px rail (290 at ≤1100), 28 px status bar; list drawer ≤860, rail drawer ≤760. High-cardinality rows (list, chips, graph, matrices, tables) are plain elements + global classes in `global-css.ts`; selection reaches the graph and matrices as ONE `<style>` string (`selection-css.ts`). The report's `gate` (`{ strict, exit }`) and `issue.ignored` feed the top bar and status bar. Layout locked by `e2e/loom-layout.spec.ts` (5 widths × 2 themes, no overflow).
 - `loom build [dir]` prerenders it to a static site (`--out=`, default `loom-dist`; `--base=`). `vite`, `@pyreon/vite-plugin` and `@pyreon/zero` are optional peers; `scan` needs none.
 - Report: internal graph (depths, runtime cycles only, blast radius), external version usage, and 8 detector codes: `version-drift`, `internal-range`, `cycle`, `phantom-dep`, `phantom-type-dep`, `prod-import-of-dev-dep`, `peer-mismatch`, `unused-dep` (info).
 - Type-aware: type-only imports/exports and `.d.ts` files are tracked apart from runtime imports; tsconfig `paths` aliases are never packages. The import scan strips comments and template literals.

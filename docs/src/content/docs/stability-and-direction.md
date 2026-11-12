@@ -7,7 +7,7 @@ Teams choosing a framework for a production app need to know how it changes, not
 
 ## Versioning
 
-- **Pre-1.0 (`0.x`).** Every published `@pyreon/*` package is released as one **fixed version group**, so installed packages always match each other. The current version is in any package's `package.json` and on npm.
+- **Pre-1.0 (`0.x`).** Every published `@pyreon/*` package is released as one **fixed version group**: each release publishes them all at the same version. An app can still end up with mismatched versions (a partial upgrade, a lockfile pinning one package); `pyreon info` lists the installed `@pyreon/*` versions and flags the skew. The current version is in any package's `package.json` and on npm.
 - **Breaking changes are `minor` bumps** while the version is `0.x`; patch releases do not intentionally break APIs. A changeset is required for every consumer-affecting source change in a published package, and CI refuses a changeset that declares a major bump.
 - **Release notes** live in each package's `CHANGELOG.md` and are served by the MCP `get_changelog` tool, so an AI assistant can read what changed between the version you have and the latest.
 - **Version-skew check.** `pyreon info` reports the installed `@pyreon/*` versions and flags skew; `pyreon upgrade` aligns them.
@@ -29,7 +29,7 @@ Use the matrix as your decision tool: if the capabilities your app needs are cre
 
 ## Compatibility promises you can rely on
 
-- **Named failures over silent ones.** Code outside the native subset produces a named compiler warning rather than a silent miscompile; gates in CI exist specifically to keep it that way.
+- **Named failures over silent ones.** Code outside the native subset almost always produces a named compiler warning rather than a silent miscompile; the rare silent case is a bug, and gates in CI exist to keep it that way.
 - **Honest comparisons.** Claims about other frameworks are kept in one place — [Pyreon vs Expo, React Native, Flutter](/docs/compare-app-frameworks) — including where Pyreon is behind.
 - **Generated docs are checked.** API references, `llms.txt` and the MCP reference are generated from package manifests and verified in CI, so they do not silently describe an older API.
 

@@ -59,7 +59,7 @@ export default defineNodeConfig({
     'src/ui/bases.tsx',
     'src/ui/chrome.ts',
     'src/ui/kit.ts',
-    'src/ui/index.ts',
+    'src/ui/index.tsx',
     'src/ui/Observatory.tsx',
     'src/ui/views/**',
     'src/dev/server.ts',
