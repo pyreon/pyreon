@@ -18,7 +18,8 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.displayCutoutPadding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.ui.Modifier
 import com.pyreon.generated.RouterApp
 import com.pyreon.router.PyreonDeepLink
@@ -30,16 +31,22 @@ class MainActivity : ComponentActivity() {
         // setContent so the value is pending when the router is constructed
         // and its initialPath default picks it up.
         PyreonDeepLink.receive(intent?.data)
-        // System bars, as the create-multiplatform scaffold's MainActivity does it:
+        // System bars, as the create-multiplatform scaffold's MainActivity does it,
+        // minus the soft-keyboard inset:
         //  - enableEdgeToEdge(light bars): dark system-bar icons. The bars sit over
         //    the window background, which the light window theme keeps light in
         //    dark mode too; without this the icons are white on that light strip;
-        //  - safeDrawingPadding(): this app targets SDK 35+, so Android 15+ draws it
-        //    edge-to-edge and the top of the screen would sit UNDER the status bar.
+        //  - systemBarsPadding().displayCutoutPadding(): this app targets SDK 35+, so
+        //    Android 15+ draws it edge-to-edge and the top of the screen would sit
+        //    UNDER the status bar. Not safeDrawingPadding(): that also pads for the
+        //    keyboard (ime), so every keyboard show/hide re-lays the page out. A fixed
+        //    page taller than what is left (the tasks page) is re-centred and slides
+        //    while the keyboard animates, and a tap in that window lands on the wrong
+        //    spot (the instrumented tests tap right after typing the login name).
         val bars = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
         enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
         setContent {
-            Box(Modifier.safeDrawingPadding()) {
+            Box(Modifier.systemBarsPadding().displayCutoutPadding()) {
                 RouterApp()
             }
         }

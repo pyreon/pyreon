@@ -11,6 +11,15 @@
 // The scaffold padded but left the icons white; the example hosts had neither. This file
 // holds the scaffold AND every example host to the same contract, so a new
 // example activity cannot ship without it.
+//
+// One deliberate difference: the scaffold pads with safeDrawingPadding() (bars,
+// cutout AND the soft keyboard), the example hosts with
+// systemBarsPadding().displayCutoutPadding() (no keyboard inset). With the window
+// edge-to-edge, the keyboard inset re-lays the page out on every show/hide; the
+// tasks example's fixed page is taller than what the keyboard leaves, so it is
+// re-centred and slides while the keyboard animates, and the instrumented tests,
+// which tap right after typing the login name, hit the wrong spot (four tasks
+// tests failed on the API 33 emulator that way).
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -47,14 +56,29 @@ const scaffoldHost = {
   src: scaffold.find((f) => f.path.endsWith('/MainActivity.kt'))?.content ?? '',
 }
 
-function expectHostContract({ path, src: raw }: { path: string; src: string }): void {
+type Padding = 'safeDrawing' | 'barsAndCutout'
+
+function expectHostContract({ path, src: raw }: { path: string; src: string }, padding: Padding): void {
   const src = code(raw)
   const body = src.slice(src.indexOf('setContent {'))
   // the emitted root composable is mounted INSIDE a Box padded for the system bars
-  expect(body, `${path}: setContent must wrap the app in Box(Modifier.safeDrawingPadding()...)`).toMatch(
-    /^setContent \{\s*Box\(Modifier\.safeDrawingPadding\(\)/,
-  )
-  expect(src, path).toContain('import androidx.compose.foundation.layout.safeDrawingPadding')
+  if (padding === 'safeDrawing') {
+    expect(body, `${path}: setContent must wrap the app in Box(Modifier.safeDrawingPadding()...)`).toMatch(
+      /^setContent \{\s*Box\(Modifier\.safeDrawingPadding\(\)/,
+    )
+    expect(src, path).toContain('import androidx.compose.foundation.layout.safeDrawingPadding')
+  } else {
+    expect(
+      body,
+      `${path}: setContent must wrap the app in Box(Modifier.systemBarsPadding().displayCutoutPadding())`,
+    ).toMatch(/^setContent \{\s*Box\(Modifier\.systemBarsPadding\(\)\.displayCutoutPadding\(\)\)/)
+    expect(src, path).toContain('import androidx.compose.foundation.layout.systemBarsPadding')
+    expect(src, path).toContain('import androidx.compose.foundation.layout.displayCutoutPadding')
+    // no keyboard inset: it slides a fixed page while the keyboard animates
+    expect(src, `${path}: no keyboard-inset padding in an example host`).not.toMatch(
+      /safeDrawingPadding\(|imePadding\(|safeContentPadding\(/,
+    )
+  }
   // light (dark-icon) bars, set before the content is mounted
   const edge = src.indexOf('enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)')
   expect(edge, `${path}: enableEdgeToEdge with light bars`).toBeGreaterThan(-1)
@@ -71,12 +95,15 @@ describe('Android hosts: system bars', () => {
   })
 
   it('the scaffold MainActivity pads for the bars and uses light bars', () => {
-    expectHostContract(scaffoldHost)
+    expectHostContract(scaffoldHost, 'safeDrawing')
   })
 
-  it.each(exampleHosts.map((h) => [h.path, h] as const))('%s pads for the bars and uses light bars', (_, host) => {
-    expectHostContract(host)
-  })
+  it.each(exampleHosts.map((h) => [h.path, h] as const))(
+    '%s pads for the bars (not the keyboard) and uses light bars',
+    (_, host) => {
+      expectHostContract(host, 'barsAndCutout')
+    },
+  )
 
   it('every host keeps the light window theme the light bar style assumes', () => {
     const manifests = [
