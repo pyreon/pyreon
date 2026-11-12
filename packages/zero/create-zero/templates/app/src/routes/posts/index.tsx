@@ -1,3 +1,4 @@
+import { For } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { useLoaderData } from "@pyreon/router"
 import type { LoaderContext } from "@pyreon/zero"
@@ -72,7 +73,7 @@ export default function PostsIndex() {
       </div>
 
       <div class="posts-grid">
-        {data.posts.map((post) => (
+        <For each={data.posts} by={(post) => post.id}>{(post) => (
           <Link href={`/posts/${post.id}`} class="card post-card" prefetch="hover">
             <span class="post-id">#{post.id}</span>
             <div>
@@ -80,7 +81,7 @@ export default function PostsIndex() {
               <p>{post.excerpt}</p>
             </div>
           </Link>
-        ))}
+        )}</For>
       </div>
 
       <div class="code-block" style="max-width: 520px; margin: var(--space-2xl) auto 0;">

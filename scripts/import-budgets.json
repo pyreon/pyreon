@@ -1,5 +1,5 @@
 {
-  "@pyreon/reactivity::signals": 4020,
+  "@pyreon/reactivity::signals": 4180,
   "@pyreon/runtime-dom::mount": 9185,
   "@pyreon/runtime-dom::mount+hydrate": 17500,
   "@pyreon/router::basic": 3866,

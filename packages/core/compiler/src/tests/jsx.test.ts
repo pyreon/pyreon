@@ -1232,6 +1232,17 @@ describe('JSX transform — warnings', () => {
     expect(result.warnings[0]?.column).toBeGreaterThanOrEqual(0)
   })
 
+  // The message used to promise an index-based fallback that does not exist:
+  // `by` is required and a <For> without it throws at mount (#4357). Both
+  // backends must say so.
+  test('the <For> warning says `by` is required, in both backends', () => {
+    for (const fn of [transformJSX, transformJSX_JS]) {
+      const message = fn('<For each={items}>{(item) => <li>{item}</li>}</For>').warnings[0]?.message
+      expect(message).toContain('throws when it mounts')
+      expect(message).not.toContain('index-based')
+    }
+  })
+
   test('no warning on <For> with by prop', () => {
     const result = transformJSX(
       '<For each={items} by={(item) => item.id}>{(item) => <li>{item}</li>}</For>',

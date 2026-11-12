@@ -26,10 +26,19 @@ import {
   getReactiveGraph,
   getUpdateCause,
   isClient,
+  type EffectScope,
+  type OwnedReactiveNode,
+  _rdPreview,
+  _rdScopeNodes,
+  runUntracked,
   type ReactiveFire,
   type ReactiveGraph,
   type UpdateCause,
 } from '@pyreon/reactivity'
+// The same named import `index.ts` makes for `registerSingleton`: the build
+// inlines the one field (`var version = "0.53.0"`), so no JSON module reaches
+// the client and the hook adds no bytes the package did not already ship.
+import { version as runtimeDomVersion } from '../package.json' with { type: 'json' }
 import { type BoundReactiveNode, nodesForElement } from './binding-registry'
 
 export interface DevtoolsComponentEntry {
@@ -51,10 +60,22 @@ export interface DevtoolsComponentEntry {
 }
 
 export interface PyreonDevtools {
+  /**
+   * The `@pyreon/runtime-dom` version that installed the hook (`"0.53.0"`).
+   * Detect hook capabilities by the presence of a member, not by this version.
+   */
   readonly version: string
   getComponentTree(): DevtoolsComponentEntry[]
   getAllComponents(): DevtoolsComponentEntry[]
   highlight(id: string): void
+  /**
+   * A shallow, bounded preview of a mounted component's props, computed when
+   * called: own enumerable string keys (at most 50), each value rendered like
+   * `ReactiveNode.value` (60 characters at most). Reactive props are read
+   * without tracking. `null` for an unknown or unmounted id. Nothing is
+   * copied or kept between calls.
+   */
+  getComponentProps(id: string): Record<string, string> | null
   onComponentMount(cb: (entry: DevtoolsComponentEntry) => void): () => void
   onComponentUnmount(cb: (id: string) => void): () => void
   /** Toggle the component inspector overlay (also: Ctrl+Shift+P) */
@@ -95,6 +116,13 @@ export interface PyreonReactiveDevtools {
    * in production.
    */
   nodesForElement(el: Element): BoundReactiveNode[]
+  /**
+   * The signals, computeds and effects a mounted component created during its
+   * setup and onMount hooks, by graph node id (correlate with `getGraph()` /
+   * `getUpdateCause`), in creation order. Disposed nodes drop out. `[]` for
+   * an unknown id and in production.
+   */
+  nodesForComponent(id: string): OwnedReactiveNode[]
 }
 
 // ─── Internal registry ────────────────────────────────────────────────────────
@@ -128,7 +156,49 @@ export function registerComponent(
   for (const cb of _mountListeners) cb(entry)
 }
 
+// Component id → what the inspector reads ON REQUEST: the component's scope
+// (owned reactive nodes) and its props object (previewed when asked, never
+// copied). Bounded by the component's lifetime: `unregisterComponent` deletes
+// the entry, so nothing here outlives the component. Kept off the public
+// `DevtoolsComponentEntry`, which a devtools client may hold on to.
+const _inspectable = new Map<string, { scope: EffectScope; props: object }>()
+
+/**
+ * Record what the inspector may read for a registered component. Dev only;
+ * called by the renderer right after `registerComponent`.
+ *
+ * @internal
+ */
+export function _devInspectable(id: string, scope: EffectScope, props: object): void {
+  if (_components.has(id)) _inspectable.set(id, { scope, props })
+}
+
+const MAX_PREVIEW_PROPS = 50
+
+function componentProps(id: string): Record<string, string> | null {
+  const rec = _inspectable.get(id)
+  if (rec === undefined) return null
+  const props = rec.props as Record<string, unknown>
+  const out: Record<string, string> = {}
+  runUntracked(() => {
+    let n = 0
+    for (const key of Object.keys(props)) {
+      if (n++ === MAX_PREVIEW_PROPS) break
+      let v: unknown
+      try {
+        v = props[key]
+      } catch {
+        out[key] = '[threw]'
+        continue
+      }
+      out[key] = _rdPreview(v)
+    }
+  })
+  return out
+}
+
 export function unregisterComponent(id: string): void {
+  _inspectable.delete(id)
   const entry = _components.get(id)
   if (!entry) return
   if (entry.parentId) {
@@ -594,7 +664,7 @@ export function installDevTools(): void {
   _installed = true
 
   const devtools: PyreonDevtools = {
-    version: '0.1.0',
+    version: runtimeDomVersion,
 
     getComponentTree() {
       return Array.from(_components.values()).filter((e) => e.parentId === null)
@@ -614,6 +684,8 @@ export function installDevTools(): void {
         el.style.outline = prev
       }, 1500)
     },
+
+    getComponentProps: componentProps,
 
     onComponentMount(cb: (entry: DevtoolsComponentEntry) => void): () => void {
       _mountListeners.push(cb)
@@ -644,6 +716,10 @@ export function installDevTools(): void {
       showOverlay: enableReactiveOverlay,
       hideOverlay: disableReactiveOverlay,
       nodesForElement,
+      nodesForComponent(id: string): OwnedReactiveNode[] {
+        const rec = _inspectable.get(id)
+        return rec === undefined ? [] : _rdScopeNodes(rec.scope)
+      },
     },
   }
 

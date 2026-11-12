@@ -1,11 +1,14 @@
 import { onUnmount } from '@pyreon/core'
-import { effect, signal } from '@pyreon/reactivity'
+import { effect, isServer, signal } from '@pyreon/reactivity'
 
 /**
  * Return a debounced version of a reactive value.
  */
 export function useDebouncedValue<T>(getter: () => T, delayMs: number): () => T {
   const debounced = signal<T>(getter())
+  // Server render: the value is already the initial one; a trailing timer
+  // would fire after render and keep the process alive.
+  if (isServer) return debounced
   let timer: ReturnType<typeof setTimeout> | undefined
 
   effect(() => {

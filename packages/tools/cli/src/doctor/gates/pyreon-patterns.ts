@@ -1,7 +1,7 @@
 /**
  * pyreon-patterns gate — wraps `@pyreon/compiler:detectPyreonPatterns`.
  *
- * Catches "using Pyreon wrong" mistakes — 12 detector codes today
+ * Catches "using Pyreon wrong" mistakes — every `PyreonDiagnosticCode`
  * (for-missing-by, props-destructured, signal-write-as-call, etc.).
  * The detector matches the anti-patterns catalogue in
  * `.agents/rules/anti-patterns.md` (entries tagged `[detector: ...]`)

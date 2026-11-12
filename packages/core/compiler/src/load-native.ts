@@ -42,6 +42,11 @@ export interface NativeBinding {
     filename: string,
     knownSignals: string[] | null,
   ) => unknown
+  /**
+   * Native `composeMappings` (`native/src/sourcemap.rs`). OPTIONAL: binaries
+   * older than it lack the export, and callers fall back to the JS one.
+   */
+  composeMappings?: (outer: string, inner: string) => string | null
   transformJsx: (
     code: string,
     filename: string,

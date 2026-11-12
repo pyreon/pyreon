@@ -38,6 +38,7 @@
  * `transformJSX` then converts to runtime calls as usual.
  */
 
+import MagicString, { type SourceMap } from 'magic-string'
 import { parseSync } from 'oxc-parser'
 
 export interface DeferInlineWarning {
@@ -59,6 +60,12 @@ export interface DeferInlineResult {
   changed: boolean
   /** Soft warnings for cases the transform deliberately skipped. */
   warnings: DeferInlineWarning[]
+  /**
+   * V3 source map of the rewrite, present when `changed`. The rewrite removes
+   * whole import lines, so a caller that runs further transforms on `code`
+   * must compose this map or every later line maps one line too high.
+   */
+  map?: SourceMap
 }
 
 interface Node {
@@ -482,36 +489,56 @@ function buildRenderPropBody(code: string, analysis: ChildAnalysis, childRange: 
   return `{(__C) => ${body}}`
 }
 
-function applyEdits(source: string, edits: Edit[]): string {
-  const sorted = [...edits].sort((a, b) => b.start - a.start)
-  let out = source
-  for (const e of sorted) {
-    out = out.slice(0, e.start) + e.replacement + out.slice(e.end)
+function applyEdits(source: string, edits: Edit[]): MagicString {
+  const s = new MagicString(source)
+  for (const e of [...edits].sort((a, b) => a.start - b.start)) {
+    if (e.start === e.end) s.appendLeft(e.start, e.replacement)
+    else if (e.replacement === '') s.remove(e.start, e.end)
+    else s.update(e.start, e.end, e.replacement)
   }
-  return out
+  return s
 }
 
 /**
- * Compute the edit that removes the import binding for the given match.
- * Handles three shapes:
- *   1. Single-specifier declaration → remove the entire ImportDeclaration
+ * Compute the edit that removes the import bindings of one declaration.
+ * Handles four shapes:
+ *   1. Every specifier goes → remove the entire ImportDeclaration
  *      (including its trailing newline).
- *   2. Multi-specifier declaration where this is the FIRST specifier →
+ *   2. One of several goes, and it is the FIRST specifier →
  *      remove the specifier + the comma + whitespace that follows it.
- *   3. Multi-specifier declaration where this is a LATER specifier →
+ *   3. One of several goes, and it is a LATER specifier →
  *      remove the preceding comma + whitespace + the specifier.
- *
- * Case (1) is the simple v1 path; cases (2) and (3) are the v2
- * multi-specifier handling.
+ *   4. Several of several go → the specifier list is rewritten to the kept
+ *      ones. (Applying 2 and 3 to adjacent specifiers overlapped and left
+ *      `import {  from './x'`, a syntax error.)
  */
-function buildImportRemovalEdit(code: string, info: ImportInfo): Edit {
+function buildImportRemovalEdit(code: string, infos: ImportInfo[]): Edit {
+  const info = infos[0]!
   const specifiers = (info.declaration.specifiers as Node[]) ?? []
-  if (specifiers.length === 1) {
+  const gone = new Set(infos.map((i) => i.specifier))
+  if (specifiers.every((s) => gone.has(s))) {
     // Whole declaration goes. Eat trailing newline so we don't leave a blank line.
     const start = info.declaration.start as number
     let end = info.declaration.end as number
     if (code[end] === '\n') end += 1
     return { start, end, replacement: '' }
+  }
+  if (infos.length > 1) {
+    // Rebuild the import clause from the kept specifiers: a default or
+    // namespace binding stands alone, named ones go back inside braces.
+    const kept = specifiers.filter((s) => !gone.has(s))
+    const text = (s: Node) => code.slice(s.start as number, s.end as number)
+    const named = kept.filter((s) => s.type === 'ImportSpecifier').map(text)
+    const clause = [
+      ...kept.filter((s) => s.type !== 'ImportSpecifier').map(text),
+      ...(named.length > 0 ? [`{ ${named.join(', ')} }`] : []),
+    ].join(', ')
+    const source = info.declaration.source as Node
+    return {
+      start: info.declaration.start as number,
+      end: source.start as number,
+      replacement: `import ${clause} from `,
+    }
   }
   // Multi-specifier — remove just this one binding.
   const idx = specifiers.indexOf(info.specifier)
@@ -574,6 +601,7 @@ export function transformDeferInline(
   if (matches.length === 0) return { code, changed: false, warnings }
 
   const edits: Edit[] = []
+  const removals = new Map<Node, ImportInfo[]>()
   let changed = false
 
   for (const m of matches) {
@@ -670,16 +698,26 @@ export function transformDeferInline(
     })
 
     // 3. Remove the static import binding so Rolldown actually emits the
-    //    dynamic chunk. Multi-specifier imports drop just the one
-    //    binding, leaving siblings intact.
-    edits.push(buildImportRemovalEdit(code, importInfo))
+    //    dynamic chunk (after the loop: two Defers can drop bindings of the
+    //    SAME declaration, and their edits must not overlap).
+    const removed = removals.get(importInfo.declaration)
+    if (removed) removed.push(importInfo)
+    else removals.set(importInfo.declaration, [importInfo])
 
     changed = true
   }
 
   if (!changed) return { code, changed: false, warnings }
 
-  return { code: applyEdits(code, edits), changed: true, warnings }
+  for (const infos of removals.values()) edits.push(buildImportRemovalEdit(code, infos))
+
+  const s = applyEdits(code, edits)
+  return {
+    code: s.toString(),
+    changed: true,
+    warnings,
+    map: s.generateMap({ source: filename, includeContent: true, hires: 'boundary' }),
+  }
 }
 
 function getLoc(code: string, offset: number): { line: number; column: number } {

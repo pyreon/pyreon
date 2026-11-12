@@ -7,6 +7,7 @@ import {
   Brand,
   BrandSubtitle,
   BrandTitle,
+  FlowStyles,
   GlobalReset,
   Main,
   NavGroup,
@@ -42,6 +43,7 @@ export function layout(_props: Props) {
   return (
     <PyreonUI theme={theme} mode="light">
       <GlobalReset />
+      <FlowStyles />
       <Shell>
         <Sidebar>
           <Brand to="/">

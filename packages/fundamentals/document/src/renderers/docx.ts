@@ -192,20 +192,17 @@ function renderTextNode(ctx: DocxCtx, n: DocNode): void {
 function renderLink(ctx: DocxCtx, n: DocNode): void {
   const { docx, children } = ctx
   const p = n.props
+  const href = sanitizeHref(p.href as string)
+  const run = new docx.TextRun({
+    text: getTextContent(n.children),
+    color: sanitizeXmlColor(p.color as string, '4f46e5'),
+    underline: { type: docx.UnderlineType.SINGLE },
+  })
+  // A rejected href renders the label without a hyperlink (an empty
+  // relationship target otherwise) — #4365.
   children.push(
     new docx.Paragraph({
-      children: [
-        new docx.ExternalHyperlink({
-          link: sanitizeHref(p.href as string),
-          children: [
-            new docx.TextRun({
-              text: getTextContent(n.children),
-              color: sanitizeXmlColor(p.color as string, '4f46e5'),
-              underline: { type: docx.UnderlineType.SINGLE },
-            }),
-          ],
-        }),
-      ],
+      children: [href ? new docx.ExternalHyperlink({ link: href, children: [run] }) : run],
     }),
   )
 }
@@ -373,21 +370,17 @@ function renderButtonOrQuote(ctx: DocxCtx, n: DocNode): void {
   const p = n.props
   const text = getTextContent(n.children)
   if (n.type === 'button') {
+    const href = sanitizeHref(p.href as string)
+    const run = new docx.TextRun({
+      text,
+      bold: true,
+      color: '4F46E5',
+      underline: { type: docx.UnderlineType.SINGLE },
+    })
     children.push(
       new docx.Paragraph({
-        children: [
-          new docx.ExternalHyperlink({
-            link: sanitizeHref(p.href as string),
-            children: [
-              new docx.TextRun({
-                text,
-                bold: true,
-                color: '4F46E5',
-                underline: { type: docx.UnderlineType.SINGLE },
-              }),
-            ],
-          }),
-        ],
+        // Rejected href → the label without a hyperlink (#4365).
+        children: [href ? new docx.ExternalHyperlink({ link: href, children: [run] }) : run],
         spacing: { after: 120 },
       }),
     )

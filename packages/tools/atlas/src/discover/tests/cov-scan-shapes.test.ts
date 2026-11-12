@@ -116,7 +116,7 @@ describe('the union reader', () => {
 
   it('keeps a union of string literals as an axis', () => {
     const code = 'interface P { size?: "sm" | "lg" }\nexport function Button(props: P) { return null }'
-    expect(one(code)?.axes).toEqual([{ name: 'size', values: ['sm', 'lg'] }])
+    expect(one(code)?.axes).toEqual([{ name: 'size', values: ['sm', 'lg'], optional: true }])
   })
 })
 

@@ -1,3 +1,4 @@
+import { For } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { Link } from "@pyreon/zero/link"
 
@@ -64,7 +65,7 @@ export default function About() {
           The Stack
         </h2>
         <div style="display: grid; gap: var(--space-sm);">
-          {[
+          <For each={[
             ["Pyreon", "Signal-based UI framework with JSX"],
             ["Vite", "Lightning-fast dev server and optimized builds"],
             ["File Router", "Drop a file, get a route — layouts, guards, loaders"],
@@ -74,7 +75,7 @@ export default function About() {
             ["Font Plugin", "Google Fonts optimization, preconnect, font-display:swap"],
             ["Cache MW", "Immutable hashed assets, stale-while-revalidate pages"],
             ["SEO Tools", "Sitemap, robots.txt, JSON-LD structured data"],
-          ].map(([name, desc]) => (
+          ]} by={([name]) => name}>{([name, desc]) => (
             <div
               class="card"
               style="display: flex; align-items: center; gap: var(--space-md); padding: var(--space-md) var(--space-lg);"
@@ -84,7 +85,7 @@ export default function About() {
               </code>
               <span style="color: var(--c-text-secondary); font-size: 0.9rem;">{desc}</span>
             </div>
-          ))}
+          )}</For>
         </div>
       </section>
 
