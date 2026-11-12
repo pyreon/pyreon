@@ -15,12 +15,13 @@
 // which convert the value through its own Codable / @Serializable encoding.
 
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable } from '../validate'
+import { runtimeSwiftSources, swiftErrorLines, typecheckAgainstRealRuntime } from './real-runtime-swift'
 
 const REPO = resolve(import.meta.dirname, '../../../../..')
 
@@ -113,34 +114,6 @@ function blocks(code: string, head: RegExp): string[] {
   return out
 }
 
-function runtimeSwiftSources(): string[] {
-  const out: string[] = []
-  const walk = (dir: string): void => {
-    let entries: string[]
-    try {
-      entries = readdirSync(dir)
-    } catch {
-      return
-    }
-    for (const e of entries) {
-      if (e === 'node_modules' || e === 'lib' || e === '.build' || e === 'Package.swift') continue
-      if (e.toLowerCase() === 'tests' || /Tests?\.swift$/.test(e)) continue
-      const p = join(dir, e)
-      if (statSync(p).isDirectory()) walk(p)
-      else if (p.endsWith('.swift')) out.push(p)
-    }
-  }
-  for (const r of [
-    'packages/fundamentals',
-    'packages/core',
-    'packages/native/runtime-swift',
-    'packages/native/router-swift',
-  ]) {
-    walk(join(REPO, r))
-  }
-  return out
-}
-
 function failWith(err: unknown, what: string): never {
   const e = err as { stderr?: string | Buffer; stdout?: string | Buffer }
   const out = [e.stderr, e.stdout]
@@ -158,42 +131,14 @@ describe.runIf(isSwiftUIAvailable())('typed safeParse against the REAL runtime (
   it('typechecks against the real iOS SDK + runtime', () => {
     const sources = runtimeSwiftSources()
     expect(sources.length).toBeGreaterThan(40)
-    const dir = mkdtempSync(join(tmpdir(), 'pyreon-typed-safeparse-'))
-    try {
-      const file = join(dir, 'TypedSafeParse.swift')
-      writeFileSync(
-        file,
-        `import SwiftUI\nimport Foundation\n${transform(TYPED, { target: 'swift' }).code}`,
-        'utf8',
+    const diagnostics = typecheckAgainstRealRuntime(
+      [{ name: 'TypedSafeParse.swift', code: transform(TYPED, { target: 'swift' }).code }],
+      { sources, isolatedModuleCache: true },
+    )
+    if (diagnostics !== null)
+      expect.fail(
+        `swiftc -typecheck failed:\n${swiftErrorLines(diagnostics) || diagnostics.slice(0, 2000)}`,
       )
-      const sdk = execFileSync('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path'], {
-        encoding: 'utf8',
-      }).trim()
-      try {
-        execFileSync(
-          'xcrun',
-          [
-            '--sdk',
-            'iphonesimulator',
-            'swiftc',
-            '-typecheck',
-            '-module-cache-path',
-            join(dir, 'mc'),
-            '-target',
-            'arm64-apple-ios17.0-simulator',
-            '-sdk',
-            sdk,
-            file,
-            ...sources,
-          ],
-          { encoding: 'utf8', stdio: 'pipe' },
-        )
-      } catch (err) {
-        failWith(err, 'swiftc -typecheck failed')
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
   }, 900_000)
 
   // A compile proves the call is well-typed, not that the conversion is

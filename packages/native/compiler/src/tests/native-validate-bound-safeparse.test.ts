@@ -8,13 +8,10 @@
 // compiled it, and PMTC said nothing. It now lowers the way the inline
 // `s.object({ … }).safeParse(x)` form already did.
 
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable } from '../validate'
+import { runtimeSwiftSources, swiftErrorLines, typecheckAgainstRealRuntime } from './real-runtime-swift'
 
 const BOUND = `import { computed } from '@pyreon/reactivity'
 import { s } from '@pyreon/validate'
@@ -160,77 +157,13 @@ describe('bound `.safeParse` compiles on both toolchains', () => {
   it.runIf(isSwiftUIAvailable())(
     'Swift: against the real iOS SDK + runtime',
     () => {
-      const REPO = resolve(import.meta.dirname, '../../../../..')
-      const sources: string[] = []
-      const walk = (dir: string): void => {
-        let entries: string[]
-        try {
-          entries = readdirSync(dir)
-        } catch {
-          return
-        }
-        for (const e of entries) {
-          if (e === 'node_modules' || e === 'lib' || e === '.build' || e === 'Package.swift')
-            continue
-          if (e.toLowerCase() === 'tests' || /Tests?\.swift$/.test(e)) continue
-          const p = join(dir, e)
-          if (statSync(p).isDirectory()) walk(p)
-          else if (p.endsWith('.swift')) sources.push(p)
-        }
-      }
-      for (const r of [
-        'packages/fundamentals',
-        'packages/core',
-        'packages/native/runtime-swift',
-        'packages/native/router-swift',
-      ]) {
-        walk(join(REPO, r))
-      }
+      const sources = runtimeSwiftSources()
       expect(sources.length).toBeGreaterThan(40)
-      const dir = mkdtempSync(join(tmpdir(), 'pyreon-bound-safeparse-'))
-      try {
-        const file = join(dir, 'BoundSafeParse.swift')
-        writeFileSync(
-          file,
-          `import SwiftUI\nimport Foundation\n${transform(BOUND, { target: 'swift' }).code}`,
-          'utf8',
-        )
-        const sdk = execFileSync('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path'], {
-          encoding: 'utf8',
-        }).trim()
-        try {
-          execFileSync(
-            'xcrun',
-            [
-              '--sdk',
-              'iphonesimulator',
-              'swiftc',
-              '-typecheck',
-              '-target',
-              'arm64-apple-ios17.0-simulator',
-              '-sdk',
-              sdk,
-              file,
-              ...sources,
-            ],
-            { encoding: 'utf8', stdio: 'pipe' },
-          )
-        } catch (err) {
-          const e = err as { stderr?: string | Buffer; stdout?: string | Buffer }
-          const out = [e.stderr, e.stdout]
-            .map((x) => (typeof x === 'string' ? x : x?.toString('utf8')) ?? '')
-            .join('\n')
-          expect.fail(
-            `swiftc -typecheck failed:\n${out
-              .split('\n')
-              .filter((l) => l.includes('error:'))
-              .slice(0, 12)
-              .join('\n')}`,
-          )
-        }
-      } finally {
-        rmSync(dir, { recursive: true, force: true })
-      }
+      const diagnostics = typecheckAgainstRealRuntime(
+        [{ name: 'BoundSafeParse.swift', code: transform(BOUND, { target: 'swift' }).code }],
+        { sources },
+      )
+      if (diagnostics !== null) expect.fail(`swiftc -typecheck failed:\n${swiftErrorLines(diagnostics)}`)
     },
     900_000,
   )

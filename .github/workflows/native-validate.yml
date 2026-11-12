@@ -95,6 +95,12 @@ env:
   # Exact release the Linux job downloads (SWIFT_VERSION stays the 6.0 line for cache keys).
   SWIFT_RELEASE: '6.0.3'
   KOTLIN_VERSION: '2.0.21'
+  # Which compile-verdict store a run SAVES to. The default branch writes the
+  # shared `validate` lineage that every ref can read; any other ref writes its
+  # own `validate-branch` lineage. The two names share no prefix, so the
+  # `validate` restore below can only ever match a default-branch store (see
+  # "Restore native compile-verdict cache").
+  VERDICT_LINEAGE: ${{ github.ref == 'refs/heads/main' && 'validate' || 'validate-branch' }}
 
 jobs:
   decide:
@@ -389,6 +395,13 @@ jobs:
           PYREON_BOOTSTRAP_SKIP: '1'
       - name: Build lib/ (incremental over the restored cache)
         run: bun scripts/bootstrap.ts
+        env:
+          # No step in this job runs the JSX compiler's Rust backend (PMTC is
+          # TypeScript, and the JS fallback is byte-identical by ci.yml's
+          # equivalence gates), and its binary is in no cache this job
+          # restores: `cargo build` ran from nothing on every run, measured at
+          # 37-47 s here and 57-67 s on macOS.
+          PYREON_BOOTSTRAP_SKIP_NATIVE: '1'
 
       # Restore the content-addressed compile-verdict cache (validate-cache.ts).
       # A verdict is a pure function of (validator kind, compiler version, the
@@ -398,7 +411,12 @@ jobs:
       #
       # Accumulating-key pattern: `key` is unique per run so every run SAVES,
       # and `restore-keys` falls back to the newest entry sharing the prefix.
-      # A PR branch can read caches from its base, so PRs inherit main's.
+      #
+      # TWO restores, hydrated as a union. This first one reads the DEFAULT
+      # BRANCH's newest store: only main saves under the `validate` lineage
+      # (`VERDICT_LINEAGE` above), so on any other ref the prefix finds nothing
+      # in the ref's own scope and falls through to main's. The second, below,
+      # adds the ref's own store.
       #
       # The toolchain versions are in the cache key as well as in the verdict
       # keys. That is belt-and-braces, not redundancy: it keeps a toolchain bump
@@ -421,6 +439,32 @@ jobs:
       - name: Hydrate native compile-verdict cache
         if: github.event_name != 'schedule'
         run: bun scripts/snapshot-native-verdict-cache.ts .cache/pyreon-native-validate-archive .cache/pyreon-native-validate
+
+      # The ref's OWN store, merged on top of the default branch's. Both are
+      # needed, and neither alone is enough:
+      #   - only the ref's own (what a single prefix restore picked whenever one
+      #     existed, because Actions searches the current ref before the default
+      #     branch): every verdict main gained since is missing. Measured on
+      #     #4478: main had saved a 257 KB store 31 min earlier, the run
+      #     restored its own 170 KB one and spent 26.9 min recompiling what
+      #     main already had, against 10-15 min for runs that read main's.
+      #   - only the default branch's: a pull request that changes the emit or
+      #     a stub recompiles its own delta on every push.
+      # Records are content-addressed, so the union is exact. The key is the
+      # one this run SAVES under (`VERDICT_LINEAGE`, `validate-branch` here
+      # since the step is skipped on main).
+      - name: Restore native compile-verdict cache (this ref's own store)
+        if: github.event_name != 'schedule' && github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/pyreon-native-validate-archive
+          key: native-verdicts-ci-${{ runner.os }}-${{ env.VERDICT_LINEAGE }}-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
+          restore-keys: |
+            native-verdicts-ci-${{ runner.os }}-${{ env.VERDICT_LINEAGE }}-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-
+
+      - name: Hydrate native compile-verdict cache (this ref's own store)
+        if: github.event_name != 'schedule' && github.ref != 'refs/heads/main'
+        run: bun scripts/snapshot-native-verdict-cache.ts .cache/pyreon-native-validate-archive .cache/pyreon-native-validate --merge
 
       - name: Run native-compiler tests with validation REQUIRED
         # PYREON_REQUIRE_NATIVE_VALIDATE=1 promotes the "skip when tool
@@ -650,7 +694,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/pyreon-native-validate-archive
-          key: native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
+          key: native-verdicts-ci-${{ runner.os }}-${{ env.VERDICT_LINEAGE }}-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
 
   validate-swift-typecheck:
     name: Validate emitted Swift (real-SDK typecheck, macOS)
@@ -771,6 +815,13 @@ jobs:
           PYREON_BOOTSTRAP_SKIP: '1'
       - name: Build lib/ (incremental over the restored cache)
         run: bun scripts/bootstrap.ts
+        env:
+          # No step in this job runs the JSX compiler's Rust backend (PMTC is
+          # TypeScript, and the JS fallback is byte-identical by ci.yml's
+          # equivalence gates), and its binary is in no cache this job
+          # restores: `cargo build` ran from nothing on every run, measured at
+          # 37-47 s here and 57-67 s on macOS.
+          PYREON_BOOTSTRAP_SKIP_NATIVE: '1'
 
       # The macOS twin of the ubuntu job's verdict cache (same accumulating-key
       # pattern; `runner.os` keeps the two stores apart, and the verdict keys
@@ -788,6 +839,32 @@ jobs:
       - name: Hydrate native compile-verdict cache
         if: github.event_name != 'schedule'
         run: bun scripts/snapshot-native-verdict-cache.ts .cache/pyreon-native-validate-archive .cache/pyreon-native-validate
+
+      # The ref's OWN store, merged on top of the default branch's. Both are
+      # needed, and neither alone is enough:
+      #   - only the ref's own (what a single prefix restore picked whenever one
+      #     existed, because Actions searches the current ref before the default
+      #     branch): every verdict main gained since is missing. Measured on
+      #     #4478: main had saved a 257 KB store 31 min earlier, the run
+      #     restored its own 170 KB one and spent 26.9 min recompiling what
+      #     main already had, against 10-15 min for runs that read main's.
+      #   - only the default branch's: a pull request that changes the emit or
+      #     a stub recompiles its own delta on every push.
+      # Records are content-addressed, so the union is exact. The key is the
+      # one this run SAVES under (`VERDICT_LINEAGE`, `validate-branch` here
+      # since the step is skipped on main).
+      - name: Restore native compile-verdict cache (this ref's own store)
+        if: github.event_name != 'schedule' && github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/pyreon-native-validate-archive
+          key: native-verdicts-ci-${{ runner.os }}-${{ env.VERDICT_LINEAGE }}-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
+          restore-keys: |
+            native-verdicts-ci-${{ runner.os }}-${{ env.VERDICT_LINEAGE }}-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-
+
+      - name: Hydrate native compile-verdict cache (this ref's own store)
+        if: github.event_name != 'schedule' && github.ref != 'refs/heads/main'
+        run: bun scripts/snapshot-native-verdict-cache.ts .cache/pyreon-native-validate-archive .cache/pyreon-native-validate --merge
 
       - name: Run native-compiler tests (real-SDK Swift -typecheck)
         # macos-15 ships the real SwiftUI SDK → isSwiftUIAvailable()=true → the
@@ -807,12 +884,16 @@ jobs:
         #
         # PRs and pushes run only the files that need macOS (real SwiftUI SDK,
         # Observation, xcrun, platform branches — selected by content in
-        # scripts/native-macos-test-files.ts) and run them IN PARALLEL. The
-        # package config serializes files only so they can share one Kotlin
-        # compiler JVM, and kotlinc is shimmed out here, so there is nothing
-        # to share. The ~280 stub-validated files this skips are compiled on
-        # Linux with validation REQUIRED; the nightly below still runs all of
-        # them under this runner's newer Swift compiler, once a day.
+        # scripts/native-macos-test-files.ts), in parallel like every lane
+        # (the package config). The stub-validated files this skips are
+        # compiled on Linux with validation REQUIRED; the nightly below still
+        # runs all of them under this runner's newer Swift compiler, once a day.
+        #
+        # The compiles against the real iOS SDK with the real runtime sources
+        # (src/tests/real-runtime-swift.ts, 45-65 s each on this runner) go
+        # through the verdict cache like every other validator. They were
+        # hand-rolled `execFileSync` calls the cache never saw: twelve of them
+        # were 650 of the 772 file-seconds of a WARM run of this step.
         run: |
           mkdir -p "$RUNNER_TEMP/no-kotlinc"
           printf '#!/bin/sh\nexit 127\n' > "$RUNNER_TEMP/no-kotlinc/kotlinc"
@@ -825,7 +906,7 @@ jobs:
             FILES=$(bun ../../../scripts/native-macos-test-files.ts)
             echo "Running $(echo "$FILES" | wc -l | tr -d ' ') macOS-specific test files in parallel"
             # shellcheck disable=SC2086 # one path per word, by construction
-            bunx vitest run --fileParallelism $FILES
+            bunx vitest run $FILES
           fi
 
       - name: Native coverage — COMPILE every registry snippet
@@ -884,4 +965,4 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/pyreon-native-validate-archive
-          key: native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}
+          key: native-verdicts-ci-${{ runner.os }}-${{ env.VERDICT_LINEAGE }}-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}

@@ -134,6 +134,79 @@ describe('native cache snapshot wiring', () => {
   }
 })
 
+describe("native-validate restores the default branch store AND the ref's own", () => {
+  const workflow = readFileSync(
+    new URL('../../../../../.github/workflows/native-validate.yml', import.meta.url),
+    'utf8',
+  )
+  const MERGE =
+    'run: bun scripts/snapshot-native-verdict-cache.ts .cache/pyreon-native-validate-archive .cache/pyreon-native-validate --merge\n'
+
+  it('rejects a second restore whose hydrate would replace the first store', () => {
+    expect(workflow.split(MERGE)).toHaveLength(3) // one per validate job
+    const replaced = findNativeCacheSnapshotViolations(
+      workflow.replaceAll(MERGE, MERGE.replace(' --merge', '')),
+    )
+    expect(replaced).toEqual([
+      'validate: a second native cache restore must hydrate with --merge, or it discards the first store',
+      'validate-swift-typecheck: a second native cache restore must hydrate with --merge, or it discards the first store',
+    ])
+  })
+
+  it('rejects --merge on the only restore of a job (nothing to merge into means a wiring mistake)', () => {
+    const single = [
+      'jobs:',
+      '  one:',
+      '    steps:',
+      '      - uses: actions/cache/restore@v6',
+      '        with:',
+      '          path: .cache/pyreon-native-validate-archive',
+      '          key: native-verdicts-ci-x',
+      `      - ${MERGE}`,
+    ].join('\n')
+    expect(findNativeCacheSnapshotViolations(single)).toEqual([
+      'one: native cache restore must use a matching immutable snapshot step',
+    ])
+    expect(findNativeCacheSnapshotViolations(single.replace(' --merge', ''))).toEqual([])
+  })
+
+  // Actions searches the CURRENT ref's caches before the default branch's, so
+  // the two lineages must not share a prefix: a `validate-` prefix that also
+  // matched a pull request's own store would never reach main's.
+  it('each job reads main through a prefix only main writes, then its own lineage, and saves by ref', () => {
+    const base =
+      'native-verdicts-ci-${{ runner.os }}-validate-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-'
+    const own =
+      'native-verdicts-ci-${{ runner.os }}-${{ env.VERDICT_LINEAGE }}-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-'
+    const saved =
+      'native-verdicts-ci-${{ runner.os }}-${{ env.VERDICT_LINEAGE }}-swift${{ env.SWIFT_VERSION }}-kotlin${{ env.KOTLIN_VERSION }}-${{ github.run_id }}'
+    expect(workflow).toContain(
+      "VERDICT_LINEAGE: ${{ github.ref == 'refs/heads/main' && 'validate' || 'validate-branch' }}",
+    )
+    // The lineage names themselves, as they expand in a key.
+    const expand = (lineage: string) => base.replace('-validate-', `-${lineage}-`)
+    expect(expand('validate-branch').startsWith(expand('validate'))).toBe(false)
+    expect(expand('validate').startsWith(expand('validate-branch'))).toBe(false)
+    expect(saved).toBe(`${own}\${{ github.run_id }}`)
+    for (const name of ['validate', 'validate-swift-typecheck']) {
+      const job = parseJobBlocks(workflow).find((j) => j.name === name)!
+      const keyed = job.body
+        .split(/^ {6}- /m)
+        .filter((step) => /^\s+key:\s*native-verdicts-ci-/m.test(step))
+      expect(keyed).toHaveLength(3)
+      const [fromMain, fromSelf, save] = keyed as [string, string, string]
+      expect(fromMain).toContain(`restore-keys: |\n            ${base}\n`)
+      expect(fromMain).toContain("if: github.event_name != 'schedule'\n")
+      expect(fromSelf).toContain(`restore-keys: |\n            ${own}\n`)
+      expect(fromSelf).toContain(
+        "if: github.event_name != 'schedule' && github.ref != 'refs/heads/main'\n",
+      )
+      expect(save).toContain('uses: actions/cache/save@')
+      expect(save).toContain(`key: ${saved}\n`)
+    }
+  })
+})
+
 describe('scheduling invariants', () => {
   const ci = readFileSync(
     new URL('../../../../../.github/workflows/ci.yml', import.meta.url),
