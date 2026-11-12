@@ -547,3 +547,136 @@ describe('readable rules — shared contract', () => {
     }
   })
 })
+
+// ── statement and node shapes the main specs do not reach ────────────────────
+
+describe('readable rules — less common shapes', () => {
+  it('max-jsx-depth names the subtree by its first literal class / id / data-testid', () => {
+    const deep = (n: number) => `${'<div>'.repeat(n)}x${'</div>'.repeat(n)}`
+    const src = lines(
+      'export function Page(p: object, c: string) {',
+      `  return <main><section {...p} style="x" class={c} data-testid="hero-root">${deep(5)}</section></main>`,
+      '}',
+    )
+    expect(lint(src, only('pyreon/max-jsx-depth'))[0]?.message).toContain('`<section data-testid="hero-root">`')
+  })
+
+  it('max-jsx-depth leaves the JSX of a nested function component to that component', () => {
+    const deep = (n: number) => `${'<div>'.repeat(n)}x${'</div>'.repeat(n)}`
+    const src = lines(
+      'export function Outer() {',
+      `  function Inner() { return ${deep(7)} }`,
+      '  const Config = { depth: 1 }',
+      '  return <div><Inner /></div>',
+      '}',
+    )
+    const d = lint(src, only('pyreon/max-jsx-depth'))
+    // Only Inner is too deep; Outer's own tree is two levels.
+    expect(d).toHaveLength(1)
+    expect(d[0]?.loc.line).toBe(2)
+  })
+
+  it('padding-around-multiline-blocks treats a labelled loop and a class static block like any block', () => {
+    const R = only('pyreon/padding-around-multiline-blocks')
+    const labelled = lines(
+      'function f(rows: number[][]) {',
+      '  let n = 0',
+      '  outer: for (const r of rows) {',
+      '    if (r.length === 0) continue outer',
+      '  }',
+      '  return n',
+      '}',
+    )
+    expect(lint(labelled, R).map((d) => d.message)).toEqual([
+      'Add a blank line before this block. A multi-line block is its own paragraph.',
+      'Add a blank line after the block above. A multi-line block is its own paragraph.',
+    ])
+    const staticBlock = lines(
+      'class A {',
+      '  static {',
+      '    const ready = true',
+      '    if (ready) {',
+      '      A.init()',
+      '    }',
+      '  }',
+      '  static init() {}',
+      '}',
+    )
+    expect(lint(staticBlock, R).map((d) => d.loc.line)).toEqual([4])
+  })
+
+  it('padding-between-component-sections: guards, declarations and statements it cannot classify', () => {
+    const R = only('pyreon/padding-between-component-sections')
+    const src = lines(
+      "import { signal } from '@pyreon/reactivity'",
+      'export function Card(props: { x?: number; rows: number[] }) {',
+      '  const s = signal(0)',
+      '  let pending',
+      '  const total = sum(props.rows)',
+      '  for (const r of props.rows) pending = r',
+      '  function onClick() { s.set(1) }',
+      '  if (props.x === 0) log(props.x)',
+      '  if (props.x === 1) return null',
+      '  else log(props.x)',
+      '  if (props.x === undefined) {',
+      '    log(props.x)',
+      '    return null',
+      '  }',
+      '  return <button onClick={onClick}>{s}</button>',
+      '}',
+    )
+    // setup (signal, then three unclassified statements that join it) →
+    // behaviour (the function declaration and the `if` with an `else`, which
+    // is not a guard) → render (the block guard ending in `return`).
+    expect(lint(src, R).map((d) => [d.loc.line, d.message])).toEqual([
+      [7, 'Add a blank line between setup and behaviour. Components read setup → behaviour → render.'],
+      [11, 'Add a blank line between behaviour and render. Components read setup → behaviour → render.'],
+    ])
+  })
+
+  it('component-shape recognises JSX behind a conditional, a logical and a bare return', () => {
+    const R = only('pyreon/padding-between-component-sections')
+    const body = (ret: string) =>
+      lines(
+        "import { signal } from '@pyreon/reactivity'",
+        'export function A(props: { on: boolean }) {',
+        '  const s = signal(0)',
+        '  if (!props.on) return',
+        `  return ${ret}`,
+        '}',
+      )
+    for (const ret of ['props.on ? <b>{s}</b> : null', 'props.on && <b>{s}</b>']) {
+      expect(lint(body(ret), R).map((d) => d.loc.line)).toEqual([4])
+    }
+  })
+
+  it('padding-between-declarations: re-exports, computed and literal member names, and overloads', () => {
+    const R = only('pyreon/padding-between-declarations')
+    const reexports = lines("export * from './a'", 'export function f() {', '  return 1', '}')
+    expect(lint(reexports, R)).toEqual([])
+    // A declaration without a body followed by something other than its
+    // implementation is not an overload pair.
+    const notOverload = lines('declare function g(a: string): void', 'const h = () => {', '  return 1', '}')
+    expect(lint(notOverload, R).map((d) => d.loc.line)).toEqual([2])
+    const members = lines(
+      'abstract class C {',
+      "  'size'(a: string): number",
+      "  'size'(a: number): number",
+      "  'size'(a: unknown): number {",
+      '    return 1',
+      '  }',
+      '  [key](a: string): void',
+      '  [key](a: unknown): void {',
+      '    return',
+      '  }',
+      '  abstract get v(): number',
+      '  get v2(): number {',
+      '    return 1',
+      '  }',
+      '}',
+    )
+    // The literal-named overloads stay glued; computed names cannot be paired,
+    // and an abstract getter is not an overload of the next member.
+    expect(lint(members, R).map((d) => d.loc.line)).toEqual([7, 8, 11, 12])
+  })
+})
