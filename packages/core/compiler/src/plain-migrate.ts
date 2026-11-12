@@ -393,7 +393,7 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
   /** Candidates created by `hoistBlock`, by declarator — the walk reuses them. */
   const hoisted = new Map<N, Candidate>()
 
-  function makeCandidate(stmt: N, d: N, found: { role: Role; call: N }, multi: boolean): Candidate {
+  function makeCandidate(stmt: N, d: N, found: { role: Candidate['role']; call: N }, multi: boolean): Candidate {
     if (multi) {
       // Mixed multi-declarator statements complicate the `const`→`let`
       // kind rewrite — decline, rare shape.
@@ -464,7 +464,7 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
         if (d.id?.type !== 'Identifier') continue
         const found = d.init ? roleOfCall(d.init) : null
         if (!found || (found.role !== 'signal' && found.role !== 'computed')) continue
-        const c = makeCandidate(stmt, d, found, ds.length > 1)
+        const c = makeCandidate(stmt, d, { role: found.role, call: found.call }, ds.length > 1)
         candidates.push(c)
         scope.set(d.id.name, c)
         hoisted.set(d, c)
@@ -718,7 +718,7 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
       if (!c && d.id?.type === 'Identifier') {
         const found = d.init ? roleOfCall(d.init) : null
         if (found && (found.role === 'signal' || found.role === 'computed')) {
-          c = makeCandidate(stmt, d, found, decls.length > 1)
+          c = makeCandidate(stmt, d, { role: found.role, call: found.call }, decls.length > 1)
           candidates.push(c)
           scopes[scopes.length - 1]!.set(d.id.name, c)
         }
