@@ -103,10 +103,11 @@ describe('TodoMVC compile baseline', () => {
           todos = todos.filter({ t in !t.done })
         }
         var body: some View {
-          VStack(spacing: 8) {
+          VStack(alignment: .leading, spacing: 8) {
             TextField("What needs to be done?", text: $draft)
+              .textFieldStyle(.roundedBorder)
               .onSubmit { addTodo() }.accessibilityIdentifier("new-todo")
-            VStack {
+            VStack(alignment: .leading) {
               ForEach(visible, id: \\.id) { t in
                 TodoRow(todo: t, onToggle: { toggle(t.id) }, onRemove: { remove(t.id) })
               }
@@ -114,11 +115,11 @@ describe('TodoMVC compile baseline', () => {
             .animation(.default, value: visible.count)
             HStack(alignment: .center, spacing: 8) {
               Text(verbatim: "\\(remaining) remaining")
-              Button("All") { filter = .all }
-              Button("Active") { filter = .active }
-              Button("Completed") { filter = .completed }
+              Button("All") { filter = .all }.buttonStyle(.borderedProminent)
+              Button("Active") { filter = .active }.buttonStyle(.borderedProminent)
+              Button("Completed") { filter = .completed }.buttonStyle(.borderedProminent)
               if hasCompleted {
-                Button("Clear completed") { clearCompleted() }
+                Button("Clear completed") { clearCompleted() }.buttonStyle(.borderedProminent)
               }
             }
           }.accessibilityElement(children: .contain).accessibilityIdentifier("todo-app")
@@ -136,7 +137,7 @@ describe('TodoMVC compile baseline', () => {
                 set: { _ in onToggle() }
               ))
             Text(verbatim: "\\(todo.text)")
-            Button("Remove") { onRemove() }
+            Button("Remove") { onRemove() }.buttonStyle(.borderedProminent)
           }
         }
       }"

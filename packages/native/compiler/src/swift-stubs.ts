@@ -438,6 +438,12 @@ public struct TextField: View {
   public init(_ title: String, text: Binding<String>, axis: Axis) {}
   public typealias Body = Never
 }
+// \`<Field kind="password">\`. Real SwiftUI: \`init<S: StringProtocol>(_ title: S,
+// text: Binding<String>)\` (no \`axis:\` form — a secure field is single-line).
+public struct SecureField: View {
+  public init(_ title: String, text: Binding<String>) {}
+  public typealias Body = Never
+}
 public struct ForEach<Data, ID, Content: View>: View {
   public init(_ data: Data, id: KeyPath<Data.Element, ID>, @ViewBuilder content: @escaping (Data.Element) -> Content) where Data: RandomAccessCollection {}
   public typealias Body = Never
@@ -558,7 +564,16 @@ public struct PrimitiveButtonStyleStub {
   public static let plain = PrimitiveButtonStyleStub()
   public static let bordered = PrimitiveButtonStyleStub()
   public static let borderedProminent = PrimitiveButtonStyleStub()
+  public static let borderless = PrimitiveButtonStyleStub()
   public static let automatic = PrimitiveButtonStyleStub()
+}
+// SwiftUI's built-in text-field styles (\`.textFieldStyle(.roundedBorder)\` — the
+// default <Field> chrome). Real: \`func textFieldStyle<S: TextFieldStyle>(_:)\`
+// with \`.automatic\` / \`.plain\` / \`.roundedBorder\` static members.
+public struct TextFieldStyleStub {
+  public static let automatic = TextFieldStyleStub()
+  public static let plain = TextFieldStyleStub()
+  public static let roundedBorder = TextFieldStyleStub()
 }
 public enum AccessibilityChildBehavior { case contain, combine, ignore }
 // UIKit's keyboard types, as SwiftUI's .keyboardType takes them. Listed to
@@ -616,6 +631,7 @@ extension View {
   public func animation<V: Equatable>(_ animation: Animation?, value: V) -> some View { self }
   public func transition(_ t: AnyTransition) -> some View { self }
   public func buttonStyle(_ style: PrimitiveButtonStyleStub) -> some View { self }
+  public func textFieldStyle(_ style: TextFieldStyleStub) -> some View { self }
   public func buttonStyle<S: ButtonStyle>(_ style: S) -> some View { self }
   public func tint(_ color: Color?) -> some View { self }
   public func accessibilityIdentifier(_ id: String) -> some View { self }

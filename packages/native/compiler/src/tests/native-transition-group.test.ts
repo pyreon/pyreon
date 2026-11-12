@@ -30,7 +30,7 @@ const LIST_SRC = `
 describe('Phase 5.3 — <TransitionGroup> native emit', () => {
   it('Swift: VStack wrapping the For, animation driven by the For `each` signal', () => {
     const out = transform(LIST_SRC, { target: 'swift' }).code
-    expect(out).toContain('VStack {')
+    expect(out).toContain('VStack(alignment: .leading) {')
     expect(out).toContain('ForEach(items, id: \\.id)')
     // The list animation is driven by the For's `each` list `.count` — so
     // SwiftUI animates item insert/remove (enter/leave changes the count).
@@ -55,7 +55,7 @@ describe('Phase 5.3 — <TransitionGroup> native emit', () => {
       `export function Static() { return <TransitionGroup><Text>hi</Text></TransitionGroup> }`,
       { target: 'swift' },
     ).code
-    expect(out).toContain('VStack {')
+    expect(out).toContain('VStack(alignment: .leading) {')
     expect(out).toContain('Text("hi")')
     // Nothing changes to animate — no deprecated value-less .animation emitted.
     expect(out).not.toContain('.animation(')
