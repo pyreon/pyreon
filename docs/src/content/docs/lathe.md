@@ -25,7 +25,7 @@ only for the `faker` plugin, `zod` only for `validator: 'zod'`.
 ## Getting started
 
 ```bash
-npx lathe init
+npx @pyreon/lathe init
 ```
 
 `lathe init` finds what the project generates from today — an orval,
@@ -74,7 +74,7 @@ import { keys, useListBooks, type Book } from './gen'
 
 function Books() {
   const query = useListBooks()
-  return <For each={() => query.data() ?? []}>{(b) => <li>{b.title}</li>}</For>
+  return <For each={() => query.data() ?? []} by={(b) => b.id}>{(b) => <li>{b.title}</li>}</For>
 }
 ```
 
@@ -1204,7 +1204,7 @@ lathe: {
 
 Every entry is checked: an unknown operation or model fails the run with a
 suggestion, and a stream whose name would collide with an operation is refused.
-Streams are web-only — PMTC has no streaming lowering.
+Typed SSE / NDJSON streams also reach native: with `--target multiplatform` a stream lowers through `useStream` to the native stream runtime (a stream PMTC cannot type is reported `web-only` with the reason).
 
 ### MCP tools, generated from the spec
 
@@ -1420,7 +1420,7 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           set +e
-          bunx lathe diff "origin/${BASE_REF}:openapi.yaml" openapi.yaml \
+          bunx @pyreon/lathe diff "origin/${BASE_REF}:openapi.yaml" openapi.yaml \
             --format markdown --fail-on-breaking > contract.md
           echo "code=$?" >> "$GITHUB_OUTPUT"
       - name: Summary
@@ -1595,9 +1595,10 @@ never touched. Commit the manifest with the rest of the output.
   as the platform integer PMTC lowers `number().int()` to — Swift `Int`
   (64-bit), Kotlin `Int` (32-bit, so a value past 2147483647 fails to decode on
   Android) — reported as `int64-native`.
-- **Streams are web-only.** PMTC has no streaming lowering, so `<op>Stream` /
-  `use<Op>Stream` exist in the web output only; a stream-only operation is
-  reported `web-only` with that reason.
+- **Typed streams reach native.** A typed SSE / NDJSON stream lowers through
+  `useStream` to the native stream runtime and is reported `web+native`; a
+  stream the native layout cannot give a component is reported `web-only`
+  with the reason.
 - **Streams on non-`pyreon` clients import `@pyreon/http/stream`** (the
   zero-dependency subpath) — the one place an axios / ky / fetch client depends
   on `@pyreon/http`, and only when the spec has a streaming operation. On axios,

@@ -49,6 +49,17 @@ export interface PropControl {
 export interface VariantAxis {
   name: string
   values: readonly string[]
+  /**
+   * The value the component uses when the prop is not passed, when the scan
+   * can read one (`props.size ?? 'md'`). The `Default` scenario uses it.
+   */
+  default?: string | undefined
+  /**
+   * `true` for an optional prop (`size?:`). With no known `default`, the
+   * `Default` scenario leaves such an axis UNSET, so the component applies
+   * its own default instead of the union's first member.
+   */
+  optional?: boolean | undefined
 }
 
 /**
@@ -256,10 +267,9 @@ export function finding(code: FindingCode, message: string, fix?: string): Verif
  * The distinction is load-bearing and used to be missing. `ok` was "no check
  * failed", and `emptyVerdict()` starts every check at `skip` — so a scenario
  * nothing had examined was `ok: true`, indistinguishable from one that passed
- * every gate. Two of the five checks (`reactivityCoverage`, `snapshot`) are
- * still unimplemented stubs — `a11y` (static name check), `interaction`
- * (real mount) and `leak` (reactive-graph accumulation past GC) run today —
- * so unverified remains a real state: without `checked` the catalog printed
+ * every gate. Of the six checks, `reactivityCoverage` and `snapshot` run
+ * only in the browser pass (`atlas verify-browser`), so a node scan leaves
+ * them at `skip` and unverified remains a real state: without `checked` the catalog printed
  * `[pass]` and the agent guide offered "correct:" examples on the strength of
  * checks that never ran.
  *

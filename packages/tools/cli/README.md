@@ -274,7 +274,7 @@ await generateContext({ cwd: process.cwd(), outPath: '.pyreon/context.json' })
 ```yaml
 # .github/workflows/ci.yml
 - name: Pyreon Doctor
-  run: bunx pyreon doctor --ci --gha
+  run: bunx @pyreon/cli doctor --ci --gha
 ```
 
 `--gha` emits inline annotations; `--ci` fails the build on errors but not warnings/info.

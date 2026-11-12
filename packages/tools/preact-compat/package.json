@@ -28,6 +28,11 @@
       "import": "./lib/hooks.js",
       "types": "./lib/types/hooks.d.ts"
     },
+    "./compat": {
+      "bun": "./src/compat.ts",
+      "import": "./lib/compat.js",
+      "types": "./lib/types/compat.d.ts"
+    },
     "./signals": {
       "bun": "./src/signals.ts",
       "import": "./lib/signals.js",
@@ -39,9 +44,9 @@
       "types": "./lib/types/jsx-runtime.d.ts"
     },
     "./jsx-dev-runtime": {
-      "bun": "./src/jsx-runtime.ts",
-      "import": "./lib/jsx-runtime.js",
-      "types": "./lib/types/jsx-runtime.d.ts"
+      "bun": "./src/jsx-dev-runtime.ts",
+      "import": "./lib/jsx-dev-runtime.js",
+      "types": "./lib/types/jsx-dev-runtime.d.ts"
     }
   },
   "files": [

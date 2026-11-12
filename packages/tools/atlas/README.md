@@ -1,6 +1,6 @@
 # @pyreon/atlas
 
-> **Working name — a rebrand is pending.** Private, not yet published.
+> **Working name — a rebrand is pending.** Published on npm as `@pyreon/atlas`.
 
 An **AI-native component workbench** for the Pyreon ecosystem. Atlas is "in the
 category of Storybook" but designed the opposite way: instead of hand-authoring

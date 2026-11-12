@@ -1,0 +1,29 @@
+{
+  "name": "@pyreon/example-native-showcase-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — the Today showcase on the web: ../native-showcase/src/TodayApp.tsx rendered to HTML at build time and hydrated in the browser. The same file compiles to SwiftUI (native-showcase-ios) and Jetpack Compose (native-showcase-android).",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && vite build --ssr src/entry-server.ts --outDir dist-server && bun scripts/prerender.ts",
+    "preview": "vite preview",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/primitives": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/runtime-server": "workspace:*"
+  },
+  "devDependencies": {
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vite-plugin": "workspace:*",
+    "@types/bun": "^1.4.4",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.5"
+  }
+}

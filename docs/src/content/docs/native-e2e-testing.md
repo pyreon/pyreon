@@ -11,7 +11,7 @@ A project from [Create Multi-Platform](/docs/create-multiplatform) comes ready f
 
 - `data-testid` on the sample app's elements. PMTC lowers it to the iOS **accessibility identifier** and the Android **test tag**.
 - `MainActivity` exposes test tags as Android resource ids (`testTagsAsResourceId`). Without that, Compose keeps test tags private to its own test rules and Maestro's `id:` finds nothing on Android.
-- `MainActivity` pads for the system bars. On Android 15 and later an app draws edge-to-edge, so the top of the screen otherwise sits under the status bar and is hidden from the accessibility tree.
+- `MainActivity` pads for the system bars. On Android 15 and later an app draws edge-to-edge, so the top of the screen otherwise sits under the status bar and is hidden from the accessibility tree. It also asks for light system bars (dark icons): the strip under the bars is the light window background, so default white icons are unreadable there.
 - `.maestro/counter.yaml`, one flow for both platforms.
 - `e2e:ios` and `e2e:android` scripts.
 
@@ -65,9 +65,12 @@ Then select by `id:` in the flow. Prefer ids over visible text: text changes wit
 
 ## Retrofit an existing Android app
 
-An app created before the scaffold carried these changes needs the same three adjustments in `MainActivity.kt`:
+An app created before the scaffold carried these changes needs the same adjustments in `MainActivity.kt`:
 
 ```kotlin
+import android.graphics.Color
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -79,6 +82,8 @@ import androidx.compose.ui.semantics.testTagsAsResourceId
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val bars = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+        enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
         setContent {
             Box(Modifier.safeDrawingPadding().semantics { testTagsAsResourceId = true }) {
                 App()

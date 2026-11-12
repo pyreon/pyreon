@@ -20,7 +20,7 @@ loom --version
 | --- | --- | --- |
 | `version-drift` | error (cross-major) / warning (same-major) / info (root-overridden) | one external dep declared with different ranges across packages |
 | `internal-range` | error | a workspace member referenced by a bare semver (registry install waiting to happen) or a `workspace:` pin whose major no longer exists |
-| `cycle` | error | a runtime import loop between workspace packages (dev edges deliberately excluded — shared test utilities legitimately "cycle") |
+| `cycle` | error | a cycle in the runtime dependency graph between workspace packages, as declared in `package.json` (`dependencies` + `peerDependencies`; dev edges deliberately excluded — shared test utilities legitimately "cycle") |
 | `phantom-dep` | error (published) / warning (private) | shipping source imports a package at RUNTIME that the manifest never declares — hoisting luck |
 | `phantom-type-dep` | info | a `import type` / `.d.ts` import of an undeclared package — erased at build, so consumers are fine, but typecheck rides on hoisting |
 | `prod-import-of-dev-dep` | warning (published) / info (private) | shipping source leans at RUNTIME on a devDependency consumers won't have |

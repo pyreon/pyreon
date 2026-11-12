@@ -94,8 +94,8 @@ Important caveats, stated as the project's record:
   render-on-change; see [Reactivity Rules](/docs/reactivity-rules).
 - **A compile step is required** (the [Vite plugin](/docs/vite-plugin)) —
   Pyreon is not usable as a no-build script include.
-- **Source maps**: the compiler's JS backend emits a correct V3 map, but the
-  native (Rust) backend does not yet — a scoped follow-up. See
+- **Source maps**: both compiler backends emit the same V3 map, and the Vite
+  plugin composes it with its own passes. See
   [Compiler › Source maps](/docs/compiler#source-maps).
 
 If a comparison here ever drifts from reality, treat the reality as

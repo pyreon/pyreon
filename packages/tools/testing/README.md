@@ -60,7 +60,7 @@ The differentiator — assertions no DOM-only testing library can express, becau
 ```ts
 import { expectSignal, expectEffect } from '@pyreon/testing'
 
-expectSignal(total).toHaveRecomputedTimes(1)          // recomputed once, no thrash
+expectSignal(total).toHaveRecomputedTimes(2)          // first computation + one recompute, no thrash
 expectEffect(logEffect).toReRunWhen(() => qty.set(3))
 expectEffect(logEffect).notToReRunWhen(() => theme.set('dark')) // fine-grained: NOT re-run by an unrelated write
 ```

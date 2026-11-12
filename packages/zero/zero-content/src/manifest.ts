@@ -45,7 +45,7 @@ export default defineManifest({
   ],
   longExample: `// vite.config.ts
 import pyreon from '@pyreon/vite-plugin'
-import zero from '@pyreon/zero'
+import zero from '@pyreon/zero/server'
 import content from '@pyreon/zero-content/plugin'
 
 export default { plugins: [pyreon(), zero(), content()] }
@@ -107,7 +107,7 @@ export default defineConfig({
       kind: 'function',
       signature: "defineCollection<TSchema>({ type, path?, schema, components?, searchable?, publishDate?, unpublished?: 'runtime' | 'omit' }): CollectionDefinition<TSchema>",
       summary:
-        "Per-collection definition. `type: 'pages'` triggers route generation under `src/routes/_content/<name>/[...slug].tsx` (auto-gitignored); `type: 'data'` is queryable via `getCollection`/`getEntry` but not routed. Schema is a zod schema — frontmatter is validated against it at build with file:line errors on mismatch. `publishDate: '<field>'` makes a future-dated entry unpublished until that date (like `draft: true`); production builds never list unpublished entries in the search index, sitemap, RSS or llms.txt, and `unpublished: 'omit'` also leaves them out of the bundle entirely (not routable — the right choice for a static site; the default `'runtime'` keeps them bundled for preview mode). A static build decides at BUILD time, so a scheduled entry appears with the first build on or after its date; `PYREON_CONTENT_NOW` overrides the build's clock.",
+        "Per-collection definition. `type: 'pages'` marks renderable markdown pages, included in the search index by default (route them with your own catch-all route and `defineContentRoute`; no route is generated); `type: 'data'` is queryable via `getCollection`/`getEntry` and not searched by default. Schema is a zod schema — frontmatter is validated against it at build with file:line errors on mismatch. `publishDate: '<field>'` makes a future-dated entry unpublished until that date (like `draft: true`); production builds never list unpublished entries in the search index, sitemap, RSS or llms.txt, and `unpublished: 'omit'` also leaves them out of the bundle entirely (not routable — the right choice for a static site; the default `'runtime'` keeps them bundled for preview mode). A static build decides at BUILD time, so a scheduled entry appears with the first build on or after its date; `PYREON_CONTENT_NOW` overrides the build's clock.",
       example: `defineCollection({
   type: 'pages',
   path: 'src/content/docs',

@@ -278,7 +278,7 @@ const api = createHttp({
 | Concern | Default | Why |
 | --- | --- | --- |
 | timeout | **on**, 30s | `fetch` has none — a server that accepts and never responds wedges the promise forever |
-| retry | **off** | `@pyreon/query` already retries 3×; a client default of 3 makes one logical query **nine** requests |
+| retry | **off** | `@pyreon/query` already retries 3×; a client default of 3 makes one logical query up to **16** requests (4 query attempts × 4 client attempts) |
 | dedupe | off | query already dedupes by key |
 | throw on non-2xx | on | query needs a *rejected* promise to enter its error state |
 | credentials | `same-origin` | — |

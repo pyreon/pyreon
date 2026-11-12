@@ -18,7 +18,7 @@
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import type { Finding, GateResult } from '../types'
 
 interface ClaimSpec {
@@ -169,6 +169,18 @@ const countDetectorCodes = (repoRoot: string): number => {
   const m = src.match(
     /export type PyreonDiagnosticCode =\n((?:\s*\|\s*'[a-z0-9-]+'\n?)+)/,
   )
+  if (!m?.[1]) return 0
+  return (m[1].match(/\|\s*'[a-z0-9-]+'/g) ?? []).length
+}
+
+// Same text-parse for the React detector's `ReactDiagnosticCode` union. Every
+// member is emitted by a detector and has a pre-filter trigger (locked by the
+// compiler's `react-prefilter-contract.test.ts`), so the union IS the count.
+const countReactDetectorCodes = (repoRoot: string): number => {
+  const file = join(repoRoot, 'packages/core/compiler/src/react-intercept.ts')
+  if (!existsSync(file)) return 0
+  const src = readFileSync(file, 'utf8')
+  const m = src.match(/export type ReactDiagnosticCode =\n((?:\s*\|\s*'[a-z0-9-]+'\n?)+)/)
   if (!m?.[1]) return 0
   return (m[1].match(/\|\s*'[a-z0-9-]+'/g) ?? []).length
 }
@@ -384,6 +396,37 @@ const checks: ClaimCheck[] = [
     ],
   },
   {
+    // `rx` object members other than `pipe`. The manifest's breakdown summed
+    // to 43 while its headline said 42 (#4367).
+    name: 'rx function count',
+    codeId: 'rx-function-count',
+    actual: (repoRoot) => {
+      const p = join(repoRoot, 'packages/fundamentals/rx/src/index.ts')
+      if (!existsSync(p)) return -1
+      const block = readFileSync(p, 'utf8').match(/export const rx[^=]*=\s*(?:Object\.freeze\()?\{([\s\S]*?)\}/)?.[1] ?? ''
+      const names = block.split(/[,\n]/).map((s) => s.trim().split(':')[0]!.trim()).filter((n) => /^\w+$/.test(n))
+      return names.filter((n) => n !== 'pipe').length
+    },
+    claims: [
+      { file: 'packages/fundamentals/rx/src/manifest.ts', pattern: /(\d+) functions(?: plus pipe| across collections|')/, all: true },
+      { file: 'docs/src/content/docs/rx.md', pattern: /all (\d+) functions plus `pipe`/ },
+    ],
+  },
+  {
+    // TanStack Table features `@pyreon/table` re-exports (and `stockFeatures` holds).
+    name: 'table feature count',
+    codeId: 'table-feature-count',
+    actual: (repoRoot) => {
+      const p = join(repoRoot, 'packages/fundamentals/table/src/index.ts')
+      if (!existsSync(p)) return -1
+      return new Set(readFileSync(p, 'utf8').match(/\b(?!core)[a-z]\w*Feature\b/g) ?? []).size
+    },
+    claims: [
+      { file: 'packages/fundamentals/table/src/manifest.ts', pattern: /all (\d+) features/, all: true },
+      { file: '.agents/guides/fundamentals/references/table.md', pattern: /`stockFeatures` is all (\d+) features/ },
+    ],
+  },
+  {
     name: 'doc page count',
     codeId: 'doc-count',
     actual: countDocPages,
@@ -435,6 +478,16 @@ const checks: ClaimCheck[] = [
         pattern: /Pyreon-specific rules \((\d+) rules, \d+ categories/,
       },
       {
+        // The VS Code extension's README. It said "56 rules" against 133
+        // because it was not a claim surface (#4367).
+        file: 'packages/tools/lint/vscode/README.md',
+        pattern: /^## (\d+) rules$/m,
+      },
+      {
+        file: 'packages/tools/lint/vscode/README.md',
+        pattern: /^(\d+) rules across \d+ categories/m,
+      },
+      {
         // The scaffolder's lint prompt, which every `create-pyreon-app` user
         // reads. It shipped "59" in 0.53.0 against an actual 133, because it
         // was not a claim surface.
@@ -469,6 +522,10 @@ const checks: ClaimCheck[] = [
         file: '.agents/rules/code-style.md',
         pattern: /Pyreon-specific rules \(\d+ rules, (\d+) categories/,
       },
+      {
+        file: 'packages/tools/lint/vscode/README.md',
+        pattern: /^\d+ rules across (\d+) categories/m,
+      },
     ],
   },
   {
@@ -484,6 +541,25 @@ const checks: ClaimCheck[] = [
         file: 'AGENTS.md',
         pattern:
           /catches "using Pyreon wrong" mistakes — (\d+) detector codes today/,
+      },
+      {
+        file: 'packages/core/compiler/src/manifest.ts',
+        pattern: /"using Pyreon wrong" mistakes — (\d+) codes today/,
+      },
+      {
+        file: 'packages/core/compiler/README.md',
+        pattern: /PyreonDiagnostic\[\] — (\d+) codes today/,
+      },
+    ],
+  },
+  {
+    name: 'React detector code count',
+    codeId: 'react-detector-code-count',
+    actual: countReactDetectorCodes,
+    claims: [
+      {
+        file: 'packages/core/compiler/src/manifest.ts',
+        pattern: /"coming from React" mistakes — (\d+) codes today/,
       },
     ],
   },
@@ -504,6 +580,13 @@ const checks: ClaimCheck[] = [
         file: 'packages/fundamentals/document/README.md',
         pattern: /one template, (\d+) output formats/,
         rejectHedged: /one template, (\d+)\+ output formats/,
+      },
+      {
+        // It said "14+ formats" (4 places) against 20 (#4315).
+        file: 'packages/ui-system/document-primitives/src/manifest.ts',
+        pattern: /(\d+) formats/,
+        rejectHedged: /(\d+)\+ formats/,
+        all: true,
       },
     ],
   },
@@ -647,6 +730,102 @@ const checks: ClaimCheck[] = [
     ],
   },
 ]
+
+// ─── Unscoped package-runner commands ───────────────────────────────────────
+
+/**
+ * Every bin a PUBLISHED `@pyreon/*` package ships, with the package. Read from
+ * the package.json files, so a new CLI is covered the day it ships.
+ */
+export function pyreonBins(repoRoot: string): Map<string, string> {
+  const bins = new Map<string, string>()
+  const packagesDir = join(repoRoot, 'packages')
+  if (!existsSync(packagesDir)) return bins
+  for (const group of readdirSync(packagesDir)) {
+    const groupDir = join(packagesDir, group)
+    if (!statSync(groupDir).isDirectory()) continue
+    for (const pkg of readdirSync(groupDir)) {
+      const manifestPath = join(groupDir, pkg, 'package.json')
+      if (!existsSync(manifestPath)) continue
+      let manifest: { name?: string; private?: boolean; bin?: string | Record<string, string> }
+      try {
+        manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+      } catch {
+        continue
+      }
+      if (manifest.private === true || !manifest.name?.startsWith('@pyreon/') || !manifest.bin) continue
+      const names =
+        typeof manifest.bin === 'string' ? [manifest.name.slice('@pyreon/'.length)] : Object.keys(manifest.bin)
+      for (const name of names) bins.set(name, manifest.name)
+    }
+  }
+  return bins
+}
+
+/** The pages a reader copies commands from: the docs site's content and every README. */
+function commandDocFiles(repoRoot: string): string[] {
+  const out: string[] = []
+  const walk = (dir: string, accept: (file: string) => boolean): void => {
+    if (!existsSync(dir)) return
+    for (const entry of readdirSync(dir)) {
+      if (entry === 'node_modules' || entry === 'lib' || entry.startsWith('.')) continue
+      const full = join(dir, entry)
+      if (statSync(full).isDirectory()) walk(full, accept)
+      else if (accept(entry)) out.push(full)
+    }
+  }
+  walk(join(repoRoot, 'docs', 'src', 'content'), (f) => /\.mdx?$/.test(f))
+  walk(join(repoRoot, 'packages'), (f) => f === 'README.md')
+  if (existsSync(join(repoRoot, 'README.md'))) out.push(join(repoRoot, 'README.md'))
+  return out
+}
+
+/**
+ * A docs page that tells the reader to run `npx atlas …` / `bunx lathe …` with
+ * the UNSCOPED name of one of our binaries. Without a local install, the
+ * package runner fetches the npm package of that name, which for `atlas`,
+ * `lathe`, `loom`, `zero` and others is someone else's project (`npx lathe
+ * init` ran a solid modeller). The scoped form (`npx @pyreon/lathe init`)
+ * runs our CLI whether or not it is installed.
+ */
+export function findUnscopedRunnerCommands(repoRoot: string): Finding[] {
+  const bins = pyreonBins(repoRoot)
+  if (bins.size === 0) return []
+  const names = [...bins.keys()].sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const re = new RegExp(
+    String.raw`\b(npx|bunx|pnpx|pnpm dlx|yarn dlx)\s+(?:(?:-y|--yes)\s+)?(${names.join('|')})(?=$|[\s` + '`' + String.raw`'")\]])`,
+    'gm',
+  )
+  const findings: Finding[] = []
+  for (const filePath of commandDocFiles(repoRoot)) {
+    const content = readFileSync(filePath, 'utf8')
+    const relPath = relative(repoRoot, filePath)
+    for (const m of content.matchAll(re)) {
+      const runner = m[1] ?? 'npx'
+      const bin = m[2] ?? ''
+      const pkg = bins.get(bin) ?? `@pyreon/${bin}`
+      // A line that also names the package (`… use \`bunx @pyreon/mcp\`; an
+      // unscoped \`npx pyreon-mcp\` resolves another package`) is contrasting
+      // the two on purpose, or saying the bin comes from the installed
+      // package. Only a bare instruction is reported.
+      const lineStart = content.lastIndexOf('\n', m.index) + 1
+      const lineEnd = content.indexOf('\n', m.index)
+      const lineText = content.slice(lineStart, lineEnd === -1 ? undefined : lineEnd)
+      if (lineText.includes(pkg)) continue
+      const line = content.slice(0, m.index).split('\n').length
+      findings.push({
+        category: 'documentation',
+        severity: 'error',
+        code: 'doc-claims/unscoped-runner-command',
+        gate: 'doc-claims',
+        message: `${relPath}:${line}: \`${runner} ${bin}\` runs the npm package named "${bin}", not ${pkg}, when it is not installed locally.`,
+        location: { path: filePath, relPath },
+        fix: `Write \`${runner} ${pkg}\` (the package's ${bin} binary).`,
+      })
+    }
+  }
+  return findings
+}
 
 export interface DocClaimsGateOptions {
   /** Repository root directory */
@@ -820,6 +999,8 @@ export const runDocClaimsGate = async (
       }
     }
   }
+
+  findings.push(...findUnscopedRunnerCommands(opts.cwd))
 
   return {
     gate: 'doc-claims',

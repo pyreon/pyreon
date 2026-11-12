@@ -1485,6 +1485,36 @@ const Page = lazy(() => import('./Page'))`,
     }),
   },
   {
+    // A subpath whose shipped `lib/` file came from the WRONG source entry
+    // (#4283). The build takes each entry from the export KEY and the output
+    // file from the `import` target, so two keys pointing at one target
+    // collide. In 0.53.0 every compat `jsx-runtime.js` was the dev entry (no
+    // `jsxDEV`, blank page under `vite` dev only), and
+    // `@pyreon/runtime-dom/transition` was built from `transition.ts` (no
+    // `TransitionGroup`). In-repo tests read `src/` through the `bun`
+    // condition, so only an app on the published packages sees it.
+    // `check-export-entries` now rejects the shape; this teaches the
+    // residual (an app still on 0.53.0).
+    pattern:
+      /does not provide an export named ['"](jsxDEV|TransitionGroup)['"]|["']?(jsxDEV|TransitionGroup)["']? is not exported by/,
+    diagnose: (m) =>
+      (m[1] ?? m[2]) === 'TransitionGroup'
+        ? {
+            cause:
+              '`@pyreon/runtime-dom/transition` in `@pyreon/runtime-dom` 0.53.0 was built from the wrong source file: its `lib/transition-entry.js` holds `Transition` but not `TransitionGroup`. Tests inside the Pyreon repo read `src/` and never saw it; an app on the published package does.',
+            fix: 'Upgrade every `@pyreon/*` package to a release newer than 0.53.0 (`npx pyreon upgrade`). On 0.53.0, import `TransitionGroup` from the `@pyreon/runtime-dom` root instead of the `/transition` subpath.',
+            fixCode: `// on @pyreon/runtime-dom 0.53.0 — the /transition subpath lacks it:
+import { TransitionGroup } from '@pyreon/runtime-dom'`,
+          }
+        : {
+            cause:
+              'The JSX runtime your dev server resolved has no `jsxDEV`. In development the JSX transform imports `jsxDEV` from `@pyreon/core/jsx-dev-runtime`, and `pyreon({ compat })` redirects that to the compat package\'s `jsx-runtime`. In 0.53.0 every compat package (`react-`, `preact-`, `vue-`, `solid-`, `svelte-compat`) shipped a `lib/jsx-runtime.js` built from its dev-runtime entry, which exports only `Fragment`, `jsx` and `jsxs`. So `vite` dev renders a blank page while `vite build` works.',
+            fix: 'Upgrade every `@pyreon/*` package to a release newer than 0.53.0 (`npx pyreon upgrade`). There is no app-side workaround in dev; `vite build` + `vite preview` are unaffected. If you see this inside the Pyreon monorepo, a stale `lib/` is the likelier cause: run `bun scripts/bootstrap.ts`.',
+            fixCode: `// every @pyreon/* package on one version newer than 0.53.0
+// npx pyreon upgrade`,
+          },
+  },
+  {
     // Deferred lazy hydration: a server-rendered `lazy()` whose client chunk
     // had not landed keeps its server nodes until the chunk settles. When the
     // chunk FAILS instead, those nodes are dropped and the error reaches the
@@ -2436,6 +2466,27 @@ console.log(JSON.stringify(src.slice(offset - 40, offset + 40)))`,
         : `A ${(m[1] ?? "guard").toLowerCase()} threw on the client's initial navigation, so the deep link was cancelled and <RouterView> renders nothing.`,
       fix: "Make the guard decide explicitly per environment: import { isServer } from '@pyreon/reactivity' and return a value on the server (e.g. `!isServer && isAdmin()` keeps the server from rendering a guarded page). To gate server-rendered HTML on a session, throw redirect() from the route's loader, which receives the request.",
       related: 'Router guards run on the initial navigation (Vue Router model)',
+    }),
+  },
+  {
+    // core `For()` throws this at mount; the compiler's `for-without-by`
+    // warning ("<For> without a \"by\" prop throws when it mounts") says the same.
+    pattern: /<For> requires a `by` prop|<For> without a "by" prop throws when it mounts/,
+    diagnose: () => ({
+      cause:
+        '<For> keys its rows with the `by` function, and one was not given (or it is not a function). `key` does not stand in for it: JSX keeps `key` for the element itself, so <For> never sees it.',
+      fix: 'Add `by`, a function returning a stable, unique key per item: `by={(item) => item.id}`. For a list of unique strings or numbers use `by={(item) => item}`.',
+      fixCode: '<For each={items} by={(item) => item.id}>{(item) => <li>{item.name}</li>}</For>',
+    }),
+  },
+  {
+    // jsx.ts `signal-method-reference` warning: `onInput={sig.set}` hands the
+    // method to the runtime without its signal, so `this` is gone when it runs.
+    pattern: /"([^"\n]+)" is passed by reference, so it runs without its signal and throws/,
+    diagnose: (m) => ({
+      cause: `\`${m[1]}\` is a signal method (set, update, peek, subscribe) passed by reference. A signal is a function with methods on it that read \`this\`; once the method is detached and called by the runtime as a plain handler, \`this\` is undefined and it throws.`,
+      fix: 'Pass an arrow that calls the method on the signal: `onInput={(v) => sig.set(v)}`. For a handler that ignores the event, `onClick={() => sig.set(0)}`.',
+      fixCode: `${m[1]?.replace(/\.[a-z]+$/i, '') ?? 'sig'}.set(value)`,
     }),
   },
 ]

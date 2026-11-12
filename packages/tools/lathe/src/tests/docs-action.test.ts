@@ -7,7 +7,7 @@
  * the setup ones is executed with `bash -e` — the shell GitHub uses — in a real
  * git repository whose `main` holds the base spec, with the PR's spec in the
  * working tree. The `${{ … }}` expressions and `if:` conditions are evaluated
- * the way the runner would for the cases that matter; `bunx lathe` runs this
+ * the way the runner would for the cases that matter; `bunx @pyreon/lathe` runs this
  * package's SOURCE entry, and `gh` is a stub backed by a directory of
  * comments (one file per comment id). What cannot run here is the hosted part:
  * checkout, setup-bun, `bun install`, the real GitHub API and the real `jq`
@@ -108,11 +108,11 @@ function runWorkflow(base: string, head: string | null, opts: RunOptions = {}): 
   if (head === null) rmSync(join(dir, 'openapi.yaml'))
   else writeFileSync(join(dir, 'openapi.yaml'), head)
 
-  // PATH shims: `bunx lathe …` runs this package's source; `gh` records.
+  // PATH shims: `bunx @pyreon/lathe …` runs this package's source; `gh` records.
   const bin = join(dir, '.bin')
   mkdirSync(bin)
   writeFileSync(join(bin, 'entry.ts'), `import { main } from ${JSON.stringify(MAIN)}\nprocess.exitCode = await main(process.argv.slice(2), process.cwd())\n`)
-  writeFileSync(join(bin, 'bunx'), `#!/bin/sh\n[ "$1" = lathe ] || exit 99\nshift\nexec bun ${JSON.stringify(join(bin, 'entry.ts'))} "$@"\n`)
+  writeFileSync(join(bin, 'bunx'), `#!/bin/sh\n[ "$1" = @pyreon/lathe ] || exit 99\nshift\nexec bun ${JSON.stringify(join(bin, 'entry.ts'))} "$@"\n`)
   // The stub `gh` answers the calls the Comment step makes: list the
   // PR's comments (returning the ids whose body starts with the marker — the
   // step's `--jq` filter), PATCH one (`-F body=@file`), and `pr comment`.
@@ -316,7 +316,13 @@ describe('the docs GitHub Action', () => {
     const doc = Object.values(workflow().jobs)[0]?.steps ?? []
     const self = (parse(readFileSync(SELF_TEST, 'utf8')) as { jobs: { contract: { steps: Step[] } } }).jobs.contract.steps
     // workflow_dispatch has no base ref; the self-test falls back to main.
-    const norm = (x: unknown) => JSON.stringify(x ?? null).replaceAll("github.base_ref || 'main'", 'github.base_ref')
+    // The docs name the published package (`bunx @pyreon/lathe`, because a bare
+    // `bunx lathe` would fetch an unrelated npm package); the self-test runs
+    // inside the workspace, where the `lathe` bin is the code under test.
+    const norm = (x: unknown) =>
+      JSON.stringify(x ?? null)
+        .replaceAll("github.base_ref || 'main'", 'github.base_ref')
+        .replaceAll('bunx @pyreon/lathe', 'bunx lathe')
     const shape = (st: Step) => norm({ run: st.run, if: st.if, env: st.env })
     const byName = (name: string) => self.filter((st) => st.name === name || st.name?.startsWith(`${name} (`))
     for (const name of ['Diff the contract', 'Summary', 'Comment', 'Fail on a breaking change']) {

@@ -38,7 +38,8 @@ items.trigger()           // force subscribers to re-run`,
 - \`const [val, setVal] = signal(0)\` — signals are not destructurable tuples. The whole return value IS the signal
 - \`{count}\` in JSX — renders the signal function itself, not its value. Use \`{count()}\` or \`{() => count()}\`
 - \`.peek()\` inside \`effect()\` / \`computed()\` — bypasses tracking, creates stale reads. Only use \`.peek()\` for loop-prevention guards
-- Mutating a held object in place then \`set(sameReference)\` — a no-op (Object.is gate), subscribers never re-run. Prefer an immutable \`set(newObject)\`; if you deliberately own a mutable value, mutate then \`.trigger()\``,
+- Mutating a held object in place then \`set(sameReference)\` — a no-op (Object.is gate), subscribers never re-run. Prefer an immutable \`set(newObject)\`; if you deliberately own a mutable value, mutate then \`.trigger()\`
+- Passing a method detached from its signal — \`ref={el.set}\`, \`onInput={value.set}\`, \`promise.then(count.set)\`. The methods live on a shared prototype and read \`this\`, so the detached call throws (dev: \`[Pyreon] signal.set() was called without its signal\`; the compiler warns \`signal-method-reference\` on the JSX shape). Pass an arrow: \`ref={(node) => el.set(node)}\``,
   },
 
   'reactivity/isServer': {
@@ -972,10 +973,10 @@ declare const todos: AsyncLike<{ id: number; title: string }[]>
 <For each={items()} by={item => item.id}>
   {(item, index) => <li>{item.name}</li>}
 </For>`,
-    notes: 'Keyed reactive list rendering. Uses the `by` prop (not `key`) for the key function because JSX extracts `key` as a special VNode reconciliation prop. The render function receives each item and its index. Internally uses an LIS-based reconciler for minimal DOM mutations when the list changes. See also: Show, mapArray.',
-    mistakes: `- \`<For each={items}>\` — must call the signal: \`<For each={items()}>\`
+    notes: 'Keyed reactive list rendering. Uses the `by` prop (not `key`) for the key function because JSX extracts `key` as a special VNode reconciliation prop. The render function receives each item (no index). Internally uses an LIS-based reconciler for minimal DOM mutations when the list changes. See also: Show, mapArray.',
+    mistakes: `- \`<For each={list}>\` with a value read once (a destructured array, \`items.peek()\`) — the list never updates; pass the signal itself (\`each={items}\`) or a call the compiler tracks (\`each={items()}\`)
 - \`<For each={items()} key={...}>\` — use \`by\` not \`key\` (JSX reserves \`key\` for VNode reconciliation)
-- \`{items().map(...)}\` — use \`<For>\` for reactive list rendering; \`.map()\` re-creates all DOM nodes on every change
+- \`{items().map(...)}\` without a \`key\` on each row — an unkeyed \`.map()\` re-creates every row on each change; use \`<For by>\` (or give each row a \`key\`)
 - \`<For each={items()} by={index}>\` — using array index as key defeats the reconciler; use a stable identity like \`item.id\``,
   },
 
@@ -1611,7 +1612,7 @@ const { code, warnings } = transformJSX(
   "App.tsx",
   { knownSignals: ["count"] },
 )`,
-    notes: 'The production entry point. Tries the Rust native binary first (3.7-8.9× faster) and falls back per-call to `transformJSX_JS` inside a try/catch so a native panic never crashes the Vite dev server. Output (`{ code, usesTemplates?, warnings, reactivityLens? }`) is byte-identical across both backends. `options.ssr` skips the `_tpl()` template optimization so `@pyreon/runtime-server` can walk the VNode tree; `options.knownSignals` seeds cross-module signal auto-call; `options.reactivityLens` collects the additive `ReactivitySpan[]` sidecar (codegen is byte-identical whether or not it is collected). See also: transformJSX_JS, analyzeReactivity.',
+    notes: 'The production entry point. Tries the Rust native binary first (3.7-8.9× faster) and falls back per-call to `transformJSX_JS` inside a try/catch so a native panic never crashes the Vite dev server. Output (`{ code, usesTemplates?, warnings, map?, reactivityLens? }`) is byte-identical across both backends, the V3 source `map` included (present whenever the code changed; a Plain Mode pre-pass map is composed underneath, so it always maps to the text you passed). `options.ssr` skips the `_tpl()` template optimization so `@pyreon/runtime-server` can walk the VNode tree; `options.knownSignals` seeds cross-module signal auto-call; `options.reactivityLens` collects the additive `ReactivitySpan[]` sidecar (codegen is byte-identical whether or not it is collected). See also: transformJSX_JS, analyzeReactivity.',
     mistakes: `- Expecting \`transformJSX\` to throw on a native panic — it never does; it silently falls back to the JS backend (correctness-equivalent, just slower)
 - Passing user component source WITHOUT \`ssr: true\` when feeding the result to \`@pyreon/runtime-server\` — SSR needs the \`h()\` VNode tree, not \`_tpl()\` clone templates
 - Assuming bare \`{count}\` is auto-called for an IMPORTED signal without seeding \`knownSignals\` — the compiler only tracks \`const count = signal(...)\` declared in the same file unless told otherwise
@@ -1716,8 +1717,8 @@ validate("a@b.co").length // 0`,
     example: `import { detectReactPatterns } from "@pyreon/compiler/analyze"
 
 const diags = detectReactPatterns("const [n,setN] = useState(0)", "x.tsx")
-console.log(diags[0]?.code) // "react-use-state"`,
-    notes: 'AST-based detector for "coming from React" mistakes — `useState` / `useEffect`, `className` / `htmlFor`, `onChange` on inputs, `.value` writes on signals, React-package imports. Pairs with `detectPyreonPatterns` inside the MCP `validate` tool; the merged result is sorted by line + column. See also: migrateReactCode, detectPyreonPatterns, hasReactPatterns.',
+console.log(diags[0]?.code) // "use-state"`,
+    notes: 'AST-based detector for "coming from React" mistakes — 19 codes today: React-package imports (`react-import`, `react-dom-import`, `react-router-import`), hooks (`use-state`, `use-effect-mount` / `use-effect-deps` / `use-effect-no-deps` — `useLayoutEffect` included, `use-memo`, `use-callback`, `use-ref-dom` / `use-ref-box`, `use-reducer`), wrappers (`memo-wrapper`, `forward-ref`), JSX (`class-name-prop`, `html-for-prop`, `on-change-input`, `array-map-jsx`) and `.value` writes on signals (`dot-value-signal`). `dangerouslySetInnerHTML` is a supported Pyreon prop and is not reported. Pairs with `detectPyreonPatterns` inside the MCP `validate` tool; the merged result is sorted by line + column. See also: migrateReactCode, detectPyreonPatterns, hasReactPatterns.',
   },
 
   'compiler/migrateReactCode': {
@@ -1742,7 +1743,7 @@ const { code, changes, remaining } = migratePyreonCode(source, "C.tsx")`,
     example: `import { hasReactPatterns, detectReactPatterns } from "@pyreon/compiler/analyze"
 
 if (hasReactPatterns(src)) report(detectReactPatterns(src, file))`,
-    notes: 'Fast regex pre-filter — returns whether `code` is worth a full `detectReactPatterns` AST walk. Cheap gate for batch scanners; never reports diagnostics itself. See also: detectReactPatterns.',
+    notes: `Fast regex pre-filter — returns whether \`code\` is worth a full \`detectReactPatterns\` AST walk. Cheap gate for batch scanners (\`pyreon check\`, doctor's react-patterns gate); never reports diagnostics itself. Derived from one trigger per detector code (\`REACT_PATTERN_TRIGGERS\`, typed over the code union), so it can over-match but never skips a file a detector would report on. See also: detectReactPatterns.`,
   },
 
   'compiler/diagnoseError': {
@@ -1766,7 +1767,7 @@ const diags = detectPyreonPatterns(
   "A.tsx",
 )
 console.log(diags[0]?.code) // "props-destructured-body"`,
-    notes: 'AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 16 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`). The detector arm behind the MCP `validate` tool and `pyreon doctor --check-pyreon-patterns`. Diagnostics report `fixable: true` ONLY for the 3 codes `migratePyreonCode` can auto-fix mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild` — kept in sync via `AUTO_FIXABLE_PYREON_CODES`); every other code is `fixable: false`. See also: hasPyreonPatterns, detectReactPatterns, analyzeReactivity.',
+    notes: 'AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 20 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`, `accessor-uncalled-in-template`, `accessor-uncalled-in-condition`, `charts-legacy-import`, `plain-mode`). The detector arm behind the MCP `validate` tool and `pyreon doctor --check-pyreon-patterns`. Diagnostics report `fixable: true` ONLY for the 3 codes `migratePyreonCode` can auto-fix mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild` — kept in sync via `AUTO_FIXABLE_PYREON_CODES`); every other code is `fixable: false`. See also: hasPyreonPatterns, detectReactPatterns, analyzeReactivity.',
     mistakes: `- Reading \`fixable\` as sometimes-true — it is an enforced \`false\` invariant for every Pyreon code; wiring auto-fix UX off it applies nothing
 - Expecting it to flag \`const { x } = props.nested\` or an \`onMount\`-scoped destructure — \`props-destructured-body\` is deliberately scoped to the canonical \`= props\` body-scope shape for zero false positives`,
   },
@@ -1835,7 +1836,17 @@ console.log(formatSsgAudit(auditSsg(".")))`,
     example: `import { transformDeferInline } from "@pyreon/compiler"
 
 const { code, changed } = transformDeferInline(src, "page.tsx")`,
-    notes: 'Standalone pre-pass that inlines `<Defer>` namespace-import boundaries. Fast-paths out entirely when the source contains no `Defer` mention (no parse). Returns `{ code, changed, warnings }`; runs before the JSX transform in the Vite plugin chain.',
+    notes: 'Standalone pre-pass that inlines `<Defer>` namespace-import boundaries. Fast-paths out entirely when the source contains no `Defer` mention (no parse). Returns `{ code, changed, warnings, map? }` (`map` when `changed`: the rewrite removes import lines, so a caller that transforms further must compose it); runs before the JSX transform in the Vite plugin chain.',
+  },
+
+  'compiler/composeMappings': {
+    signature: 'composeMappings(outer: string, inner: string): string',
+    example: `import { composeMappings } from "@pyreon/compiler"
+
+const mappings = composeMappings(jsxMap.mappings, prepassMap.mappings)`,
+    notes: 'Compose the `mappings` of two single-source V3 maps from positioned-edit transforms: `outer` maps C → B, `inner` maps B → A, the result maps C → A. One binary search per outer segment; an outer segment on text the inner map does not cover is dropped. `transformJSX` uses it for the Plain Mode pre-pass and `@pyreon/vite-plugin` for the passes around the compile.',
+    mistakes: `- Passing maps with more than one source, or \`names\` you need kept: the result has one source (index 0) and no names
+- Composing in the wrong order: \`outer\` is the LATER transform (its generated text is the final output)`,
   },
 
   'compiler/generateContext': {
@@ -5874,7 +5885,7 @@ clearStorage('all')     // every backend`,
     example: `const i18n = createI18n({
   locale: 'en',
   messages: { en: { greeting: 'Hello, {{name}}!' } },
-  loader: (locale, ns) => import(\`./locales/\${locale}/\${ns}.json\`),
+  loader: async (locale, ns) => (await import(\`./locales/\${locale}/\${ns}.json\`)).default,
   fallbackLocale: 'en',
 })
 
@@ -6413,7 +6424,7 @@ const NodeWithToolbar = (props) => (
   <Flow instance={flow} />
 </div>`,
     notes: 'The package stylesheet as ONE plain string — every `.pyreon-flow-*` rule with its `--pyreon-flow-*` custom-property fallbacks (26 theme vars, all documented under "Theming"). Inject it once per document (`<style>{flowStyles}</style>`, a `useHead` style, or your CSS pipeline); it is an inert string with no side effects, so `sideEffects: false` tree-shakes it out of apps that ship their own CSS. Theme by overriding the variables on an ancestor, never by editing the string. See also: Flow, Background.',
-    mistakes: `- Forgetting to inject it — nodes render unstyled and edges invisible (the SVG has no stroke), which reads as a geometry bug.
+    mistakes: `- Forgetting to inject it — hover/selection states, animated edges, focus rings and the dark colour mode are missing (the screen-reader text stays hidden: that is inline). In development \`<Flow>\` warns once when the sheet is not loaded.
 - Injecting it per <Flow> instance — it is document-scoped; N copies are N identical stylesheets.`,
   },
 
@@ -7257,11 +7268,11 @@ table.toggleSort('name'); table.setFilter('li')
 <For each={() => virtualizer.virtualItems()} by={(row) => row.index}>
   {(row) => <div style={() => \`transform: translateY(\${row.start}px)\`}>{row.index}</div>}
 </For>`,
-    notes: 'Create an element-scoped virtualizer. Attach to a scrollable container via `getScrollElement`. Returns reactive `virtualItems()`, `totalSize()`, and `isScrolling()` signals; a fine-grained per-index `item(index)` accessor (`start`/`size`/`lane`); plus `instance.scrollToIndex()` / `scrollToOffset()`. Options that accept functions (`count`, `estimateSize`) track signal reads reactively. Render rows with a keyed `<For by={row => row.index}>` so a scroll patches only the entering/leaving rows — staying rows do zero work. See also: useWindowVirtualizer.',
+    notes: 'Create an element-scoped virtualizer. Attach to a scrollable container via `getScrollElement`. Returns reactive `virtualItems()`, `totalSize()`, and `isScrolling()` signals; a fine-grained per-index `item(index)` accessor (`start`/`size`/`lane`); plus `instance.scrollToIndex()` / `scrollToOffset()`. The options function tracks the signals it reads: a changed `count` recalculates at once, while a changed `estimateSize` result applies after `instance.measure()` (estimated sizes are cached). Render rows with a keyed `<For by={row => row.index}>` so a scroll patches only the entering/leaving rows — staying rows do zero work. See also: useWindowVirtualizer.',
     mistakes: `- Forgetting to set a fixed height on the scroll container — without overflow:auto + a height, the virtualizer has no viewport to measure
 - Passing options as a plain object instead of a function — useVirtualizer takes a thunk \`() => ({ ... })\`, so signal reads inside it (e.g. \`count: items().length\`) are tracked and the virtualizer updates when the list changes
 - Reading virtualItems() outside a reactive scope — captures the initial window only, never updates on scroll
-- Using .map() instead of <For> on virtualItems — .map() re-mounts EVERY visible row on every scroll (no keyed reconciliation); a keyed <For by={row => row.index}> reuses staying rows so only entering/leaving rows touch the DOM
+- Rendering virtualItems with an UNKEYED .map() — it re-mounts every visible row on every scroll; a keyed <For by={row => row.index}> (or a .map() whose rows carry key={row.index}, which reconciles the same way) reuses staying rows so only entering/leaving rows touch the DOM
 - Reading a captured \`<For>\` item.start for DYNAMICALLY-measured lists (measureElement) — a staying row is NOT re-rendered when a remeasure above it shifts its position, so it goes stale. Use item(row.index).start() (a per-index signal) instead — required for dynamic sizing, still fine-grained
 - Passing a \`styled()\` scroll container \`innerRef\` instead of \`ref\` — a styled component forwards plain \`ref\` to its DOM node; innerRef is a silent no-op there, so getScrollElement returns null and the list renders ZERO rows`,
   },
@@ -8882,7 +8893,7 @@ announce('Error: name is required', { politeness: 'assertive' })`,
     signature: 'clearAnnouncements(): void',
     example: 'afterEach(() => clearAnnouncements())',
     notes: 'Remove both live regions (`polite` and `assertive`) that `announce()` lazily creates, so the NEXT `announce()` call re-creates them from scratch. Mainly useful in tests, to reset the module-level DOM state between cases without relying on a full DOM teardown; app code rarely needs it since the regions are cheap and reused across the page lifetime. See also: announce.',
-    mistakes: '- Calling this expecting it to CANCEL a pending announcement — it removes the region element entirely; there is no in-flight message to cancel since `announce()` writes synchronously (on the next frame)',
+    mistakes: '- Calling this expecting it to CANCEL a pending announcement — it removes the region element entirely; a pending message is written about 100 ms after `announce()` and is not cancelled by it',
   },
 
   'a11y/VisuallyHidden': {
@@ -10578,7 +10589,7 @@ export default defineConfig({
     sidebar: z.object({ order: z.number(), group: z.string() }).optional(),
   }),
 })`,
-    notes: `Per-collection definition. \`type: 'pages'\` triggers route generation under \`src/routes/_content/<name>/[...slug].tsx\` (auto-gitignored); \`type: 'data'\` is queryable via \`getCollection\`/\`getEntry\` but not routed. Schema is a zod schema — frontmatter is validated against it at build with file:line errors on mismatch. \`publishDate: '<field>'\` makes a future-dated entry unpublished until that date (like \`draft: true\`); production builds never list unpublished entries in the search index, sitemap, RSS or llms.txt, and \`unpublished: 'omit'\` also leaves them out of the bundle entirely (not routable — the right choice for a static site; the default \`'runtime'\` keeps them bundled for preview mode). A static build decides at BUILD time, so a scheduled entry appears with the first build on or after its date; \`PYREON_CONTENT_NOW\` overrides the build's clock.`,
+    notes: `Per-collection definition. \`type: 'pages'\` marks renderable markdown pages, included in the search index by default (route them with your own catch-all route and \`defineContentRoute\`; no route is generated); \`type: 'data'\` is queryable via \`getCollection\`/\`getEntry\` and not searched by default. Schema is a zod schema — frontmatter is validated against it at build with file:line errors on mismatch. \`publishDate: '<field>'\` makes a future-dated entry unpublished until that date (like \`draft: true\`); production builds never list unpublished entries in the search index, sitemap, RSS or llms.txt, and \`unpublished: 'omit'\` also leaves them out of the bundle entirely (not routable — the right choice for a static site; the default \`'runtime'\` keeps them bundled for preview mode). A static build decides at BUILD time, so a scheduled entry appears with the first build on or after its date; \`PYREON_CONTENT_NOW\` overrides the build's clock.`,
     mistakes: `- Returning raw \`z.object(...)\` schemas without wrapping in \`defineCollection\`. The plugin needs the wrapper to know the collection name + type.
 - Setting \`type: "pages"\` for a collection that should not be routed (e.g. blog posts queried via \`getCollection\` for an index page). Use \`type: "data"\`.
 - Expecting a scheduled (\`publishDate\` in the future) entry on a static site to appear AT its date — it appears with the first build on or after that date; schedule or trigger a deploy
@@ -12285,9 +12296,9 @@ rerender(3) // updates the props signal; the hook re-reads it only if it reads p
   'testing/expectSignal': {
     signature: 'expectSignal(target: unknown) => { toHaveChangedTimes(n: number): void; toHaveRecomputedTimes(n: number): void }',
     example: `const total = computed(() => qty() * price())
-total()          // materialize
+total()          // materialize (the first computation counts)
 qty.set(2)
-expectSignal(total).toHaveRecomputedTimes(1)`,
+expectSignal(total).toHaveRecomputedTimes(2)`,
     notes: `Assert how many times a signal/computed fired, by reading its node's \`fires\` count from Pyreon's reactive graph (\`getReactiveGraph()\`). Catches over-computation / thrash a DOM assertion cannot see. Synchronous; dev/test build only. See also: expectEffect, expectNoReactiveLeak.`,
     mistakes: `- \`toHaveChangedTimes\` and \`toHaveRecomputedTimes\` are the SAME check (both assert \`fires === n\`) — they differ only in the error wording. There is no semantic distinction at runtime; pick whichever reads clearer.
 - Passing a non-reactive value — the target must be a signal/computed (a reactive-graph node); anything else throws \`[Pyreon] expectSignal: target is not a reactive node\`.
@@ -12548,7 +12559,7 @@ ERROR · 3
   ✗ cycle [@fix/auth] — Runtime dependency cycle: @fix/auth → @fix/data → @fix/auth
   ✗ version-drift [left-pad] — declared with 2 different ranges (^1.0.0 · ^2.0.0) — the majors differ
   ✗ phantom-dep [undeclared-pkg] — \\\`@fix/app\\\` imports \\\`undeclared-pkg\\\` in shipping source but never declares it`,
-    notes: 'Read the workspace, analyze the dependency fabric, and report. Discovery reads the same declarations an install tool reads; analysis splits edges by semantics (runtime vs dev); seven detectors emit findings with stable codes, honest severities (error gates, warning advises, info knows its own limits), and structured evidence (which files import the phantom, which packages declare which range). Writes `loom-report.json` next to the root manifest and EXITS NON-ZERO on error-severity findings — the CI contract. `--strict` reds on warnings too; `--no-imports` skips the lexical detectors (phantom/dev-dep/unused); `--json` prints the full report to stdout and ONLY that (the write notice moves to stderr), so `loom scan . --json > report.json` is a valid JSON file. See also: loom dev.',
+    notes: 'Read the workspace, analyze the dependency fabric, and report. Discovery reads the same declarations an install tool reads; analysis splits edges by semantics (runtime vs dev); eight detectors emit findings with stable codes, honest severities (error gates, warning advises, info knows its own limits), and structured evidence (which files import the phantom, which packages declare which range). Writes `loom-report.json` next to the root manifest and EXITS NON-ZERO on error-severity findings — the CI contract. `--strict` reds on warnings too; `--no-imports` skips the lexical detectors (phantom/dev-dep/unused); `--json` prints the full report to stdout and ONLY that (the write notice moves to stderr), so `loom scan . --json > report.json` is a valid JSON file. See also: loom dev.',
     mistakes: `- Treating a dev-edge "cycle" as a bug — loom deliberately excludes devDependencies from cycle detection; monorepos legitimately share test utilities both ways, and a detector that cries wolf is a dead gate
 - Reading \`unused-dep\` as a removal order — it is INFO with lexical evidence only; bins, plugin autoloads, and CSS imports load without an import statement
 - Expecting outdated-vs-latest or duplicate-install findings — loom reads DECLARED truth; lockfile + registry layers are documented future work, not silently half-done
@@ -12582,7 +12593,7 @@ const report = buildReport('.')
 report.stats            // { internal, external, edges, depth, cycles, errors, warnings, infos }
 report.graph.cycles     // string[][] — each runtime loop in order
 report.issues.filter((i) => i.severity === 'error')`,
-    notes: 'The programmatic engine behind the CLI — scan the workspace, analyze the graph, run every detector, fold the stats. One entry point; the CLI, the dev server, and your own tooling all consume the same `LoomReport` (model + external usage + graph analysis + issues + stats). Pure Node with zero runtime dependencies — safe to call from build scripts and CI tooling. See also: loom scan.',
+    notes: 'The programmatic engine behind the CLI — scan the workspace, analyze the graph, run every detector, fold the stats. One entry point; the CLI, the dev server, and your own tooling all consume the same `LoomReport` (model + external usage + graph analysis + issues + stats). Pure Node: its engine imports only `@pyreon/config` (to read `pyreon.config.ts`) — safe to call from build scripts and CI tooling. See also: loom scan.',
     mistakes: '- Re-deriving your own truth from the model instead of reading `report.graph` / `report.issues` — the analysis is the contract; nothing downstream should recompute cycles or reach differently',
   },
   // <gen-docs:api-reference:end @pyreon/loom>

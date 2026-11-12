@@ -1,7 +1,7 @@
 import { defineManifest } from '@pyreon/manifest'
 
 /**
- * Fourth migration to the T2.1 pipeline. @pyreon/hooks ships 36
+ * Fourth migration to the T2.1 pipeline. @pyreon/hooks ships 65
  * signal-based hooks across seven categories — too many to enumerate
  * one-by-one in api[]. Strategy: documented categories in `features`
  * + the highest-leverage hooks (those used by other Pyreon packages
