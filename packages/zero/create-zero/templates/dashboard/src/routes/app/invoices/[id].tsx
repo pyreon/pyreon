@@ -1,5 +1,5 @@
 import { signal } from "@pyreon/reactivity"
-import { onMount } from "@pyreon/core"
+import { For, onMount } from "@pyreon/core"
 import { useHead } from "@pyreon/head"
 import { useRoute } from "@pyreon/router"
 import type { GetStaticPaths } from "@pyreon/zero/server"
@@ -181,14 +181,14 @@ export default function InvoiceDetail() {
                 </tr>
               </thead>
               <tbody>
-                {found.items.map((it) => (
+                <For each={found.items} by={(it) => it.description}>{(it) => (
                   <tr>
                     <td>{it.description}</td>
                     <td>{it.qty}</td>
                     <td>${formatMoney(it.unitPrice)}</td>
                     <td>${formatMoney(it.qty * it.unitPrice)}</td>
                   </tr>
-                ))}
+                )}</For>
               </tbody>
             </table>
             <div class="total">Total: ${formatMoney(invoiceTotal(found))}</div>

@@ -115,6 +115,8 @@ export interface PyreonDevtools {
   getComponentTree(): DevtoolsComponentEntry[]
   getAllComponents(): DevtoolsComponentEntry[]
   highlight(id: string): void
+  /** A bounded preview of a mounted component's props; `null` for an unknown or unmounted id. */
+  getComponentProps(id: string): Record<string, string> | null
   onComponentMount(cb: (entry: DevtoolsComponentEntry) => void): () => void
   onComponentUnmount(cb: (id: string) => void): () => void
   enableOverlay(): void

@@ -33,6 +33,7 @@
  */
 import { deriveIslandName, fnv1a6, islandRelPath } from '@pyreon/compiler'
 import { islandCallOffsets } from './ast-rewrite'
+import { applyEdits, type TextEdit } from './source-map-chain'
 
 export { deriveIslandName, fnv1a6, islandRelPath }
 
@@ -49,47 +50,46 @@ const HAS_NAME_RE = /(?:^|[\s,{])name\s*:/
 
 /**
  * Inject derived `name:` into nameless, const-bound `island()` calls.
- * Returns the rewritten source, or null when nothing changed. Inline
- * (single-line) insertion — line positions are preserved so downstream
- * source maps only drift by columns on the affected lines.
+ * Returns the rewritten source, or null when nothing changed.
  */
 export function injectIslandNames(code: string, absPath: string, root: string): string | null {
-  if (!code.includes('island')) return null
+  const edits = islandNameEdits(code, absPath, root)
+  return edits.length > 0 ? applyEdits(code, edits).toString() : null
+}
+
+/**
+ * The insertions `injectIslandNames` makes, as positioned edits on `code`, so
+ * the transform hook can map them (`SourceMapChain`). Each one is an inline
+ * insertion inside the call: no line moves, and only the text after it on
+ * that line shifts.
+ */
+export function islandNameEdits(code: string, absPath: string, root: string): TextEdit[] {
+  if (!code.includes('island')) return []
   const relPath = islandRelPath(root, absPath)
-  let changed = false
   const callOffsets = islandCallOffsets(code, absPath)
+  const edits: TextEdit[] = []
 
-  let out = code.replace(
-    ISLAND_WITH_OPTS_RE,
-    (
-      full,
-      binding: string | undefined,
-      varName: string | undefined,
-      head: string,
-      opts: string,
-      close: string,
-      offset: number,
-    ) => {
-      if (!binding || !varName || !callOffsets.has(offset + binding.length)) return full
-      if (HAS_NAME_RE.test(opts)) return full
-      changed = true
-      const name = deriveIslandName(varName, relPath)
-      // opts usually starts with the user's own whitespace — don't double it
-      const sep = opts.trim().length > 0 && !/^\s/.test(opts) ? ' ' : ''
-      return `${binding}${head} name: ${JSON.stringify(name)},${sep}${opts}${close}`
-    },
-  )
+  ISLAND_WITH_OPTS_RE.lastIndex = 0
+  for (const m of code.matchAll(ISLAND_WITH_OPTS_RE)) {
+    const [, binding, varName, head = '', opts = ''] = m
+    const offset = m.index
+    if (!binding || !varName || !callOffsets.has(offset + binding.length)) continue
+    if (HAS_NAME_RE.test(opts)) continue
+    const name = deriveIslandName(varName, relPath)
+    // opts usually starts with the user's own whitespace — don't double it
+    const sep = opts.trim().length > 0 && !/^\s/.test(opts) ? ' ' : ''
+    const at = offset + binding.length + head.length
+    edits.push({ start: at, end: at, text: ` name: ${JSON.stringify(name)},${sep}` })
+  }
 
-  const rewrittenOffsets = out === code ? callOffsets : islandCallOffsets(out, absPath)
-  out = out.replace(
-    ISLAND_NO_OPTS_RE,
-    (full, binding: string, varName: string, head: string, close: string, offset: number) => {
-      if (!rewrittenOffsets.has(offset + binding.length)) return full
-      changed = true
-      const name = deriveIslandName(varName, relPath)
-      return `${binding}${head}, { name: ${JSON.stringify(name)} }${close}`
-    },
-  )
+  for (const m of code.matchAll(ISLAND_NO_OPTS_RE)) {
+    const [, binding = '', varName = '', head = ''] = m
+    const offset = m.index
+    if (!callOffsets.has(offset + binding.length)) continue
+    const name = deriveIslandName(varName, relPath)
+    const at = offset + binding.length + head.length
+    edits.push({ start: at, end: at, text: `, { name: ${JSON.stringify(name)} }` })
+  }
 
-  return changed ? out : null
+  return edits
 }

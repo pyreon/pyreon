@@ -189,6 +189,18 @@ export function setErrorHandler(fn: (err: unknown) => void): void {
   _userErrorHandler = fn
 }
 
+/** Two returned cleanups of one effect (a run re-entered by its own write): run both. */
+function chainCleanup(first: () => void, second: () => void): () => void {
+  return () => {
+    try {
+      first()
+    } catch (err) {
+      _errorHandler(err)
+    }
+    second()
+  }
+}
+
 /** Remove an effect from all dependency subscriber sets (local deps array). */
 function cleanupLocalDeps(deps: SubscriberHost[], fn: () => void): void {
   if (deps.length === 1) {
@@ -292,24 +304,34 @@ export function effect(
       // in the steady state). The first run is inside the synchronous mount where
       // the context stack is still intact, so it calls fn directly; re-runs happen
       // after mountReactive truncated the stack and need it restored.
+      let ret: (() => void) | void
       if (isFirstRun) {
         const collected = deps
         try {
-          cleanup = runCollect(run, collected, fn) || undefined
+          ret = runCollect(run, collected, fn)
         } finally {
           deps = exactDeps(collected)
         }
       } else {
-        cleanup = runVerify(run, deps, fnToRunReplay) || undefined
+        ret = runVerify(run, deps, fnToRunReplay)
       }
-      if (_c.c !== null) cleanups = _c.c
+      if (typeof ret === 'function') cleanup = cleanup === undefined ? ret : chainCleanup(cleanup, ret)
     } catch (err) {
       _errorHandler(err)
     } finally {
+      // What this run registered is APPENDED, never assigned: a run can be
+      // re-entered (an effect that writes a signal it read during its first
+      // run re-runs nested inside it), and the nested run has already stored
+      // its own inner effects and cleanups here. Assigning dropped them — an
+      // inner effect nobody could dispose, not even `scope.stop()`. Cleanups
+      // registered before a throw are kept too (they used to be dropped).
+      const own = _c.c
       _c.o = prevCleanupWindow
       _c.c = prevCleanupCollector
+      if (own !== null) cleanups = cleanups === undefined ? own : cleanups.concat(own)
       const mine = getInnerEffectCollector()
-      if (mine !== LAZY_INNER && mine !== null) innerEffects = mine as Effect[]
+      if (mine !== LAZY_INNER && mine !== null)
+        innerEffects = innerEffects === null ? (mine as Effect[]) : innerEffects.concat(mine as Effect[])
       setInnerEffectCollector(outerCollector)
     }
     // Notify scope after each reactive re-run (not the initial synchronous run)

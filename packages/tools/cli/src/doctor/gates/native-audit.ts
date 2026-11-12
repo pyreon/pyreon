@@ -5,8 +5,8 @@
  * `@pyreon/primitives`:
  *  - `web-only-package-import` (warning) — a package that can't be
  *    native-rendered imported alongside multiplatform components.
- *  - `native-unsupported-decl` (warning) — a top-level interface / TS enum
- *    / class that PMTC silently drops on native.
+ *  - `native-unsupported-decl` (warning) — a top-level class, or a TS enum
+ *    PMTC cannot lower (string / literal numeric enums lower), on native.
  *
  * Both are `warning` (architecture category): they don't break the WEB
  * build, only the native one — and only if the project actually targets

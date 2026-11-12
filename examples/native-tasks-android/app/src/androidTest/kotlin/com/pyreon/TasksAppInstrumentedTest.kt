@@ -481,7 +481,7 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
         composeRule.onNodeWithTag("login-submit").performClick()
         assertTagDisplayed("tasks-page", "after login-submit")
-        composeRule.onNodeWithTag("tasks-gallery").performClick()
+        composeRule.onNodeWithTag("tasks-gallery").performScrollTo().performClick()
         assertTagDisplayed("gal-page", "after tasks-gallery (/tasks -> /gallery)")
 
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
@@ -613,7 +613,7 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
         composeRule.onNodeWithTag("login-submit").performClick()
         assertTagDisplayed("tasks-page", "after login-submit")
-        composeRule.onNodeWithTag("tasks-streams").performClick()
+        composeRule.onNodeWithTag("tasks-streams").performScrollTo().performClick()
         assertTagDisplayed("streams-page", "after tasks-streams (/tasks -> /streams)")
 
         // `enabled: () => rowsOn()` is false at mount: nothing may open.
@@ -640,7 +640,7 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
         composeRule.onNodeWithTag("login-submit").performClick()
         assertTagDisplayed("tasks-page", "after login-submit")
-        composeRule.onNodeWithTag("tasks-hooks").performClick()
+        composeRule.onNodeWithTag("tasks-hooks").performScrollTo().performClick()
         assertTagDisplayed("hooks-page", "after tasks-hooks (/tasks -> /hooks)")
 
         waitForTagText("hooks-pages", "1")
@@ -675,16 +675,41 @@ class TasksAppInstrumentedTest {
      * the field shows the day in the device's format), and confirm a time in an
      * EMPTY time field.
      */
+    /**
+     * Tap a node the way a finger does: a real touch through the system's input
+     * pipeline (UiAutomator), at the node's centre on SCREEN. `performClick()`
+     * injects straight into the Compose root, so it "taps" a control even when
+     * the status bar (a window above the app) covers it and a finger cannot
+     * reach it (#4292: the first control of a screen sat under the status bar on
+     * API 35+, where Android forces edge-to-edge). The node must also lie below
+     * the system bars, which fails fast with the reason instead of a timeout.
+     */
+    private fun fingerTap(tag: String) {
+        val node = composeRule.onNodeWithTag(tag).fetchSemanticsNode()
+        val top = composeRule.runOnUiThread {
+            ViewCompat.getRootWindowInsets(composeRule.activity.window.decorView)
+                ?.getInsets(WindowInsetsCompat.Type.systemBars())?.top ?: 0
+        }
+        assertTrue(
+            "'$tag' starts at y=${node.positionOnScreen.y} on screen, under the system bars (inset top $top): no finger can tap it",
+            node.positionOnScreen.y >= top,
+        )
+        val x = (node.positionOnScreen.x + node.size.width / 2f).toInt()
+        val y = (node.positionOnScreen.y + node.size.height / 2f).toInt()
+        assertTrue("UiAutomator could not inject a tap at ($x, $y)", UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).click(x, y))
+        composeRule.waitForIdle()
+    }
+
     @Test
     fun dateFieldsPickThroughTheNativeDatePicker() {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
         composeRule.onNodeWithTag("login-submit").performClick()
         assertTagDisplayed("tasks-page", "after login-submit")
-        composeRule.onNodeWithTag("tasks-dates").performClick()
+        composeRule.onNodeWithTag("tasks-dates").performScrollTo().performClick()
         assertTagDisplayed("dates-page", "after tasks-dates (/tasks -> /dates)")
 
         waitForTagText("dates-day-value", "2026-10-22")
-        composeRule.onNodeWithTag("dates-day").performClick()
+        fingerTap("dates-day")
         // The picker is a Dialog — its own window. Wait for its title through the
         // Compose rule, which searches every window's semantics root, with the same
         // generous budget the Modal test uses (a Dialog's window can register well
@@ -717,7 +742,7 @@ class TasksAppInstrumentedTest {
         composeRule.onAllNodes(hasText("Pick a time")).fetchSemanticsNodes().let {
             assertTrue("the empty time field does not show its placeholder", it.isNotEmpty())
         }
-        composeRule.onNodeWithTag("dates-time").performClick()
+        fingerTap("dates-time")
         composeRule.waitUntil(timeoutMillis = 20_000) { composeRule.onAllNodes(hasText("OK")).fetchSemanticsNodes().isNotEmpty() }
         composeRule.onNodeWithText("OK").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
@@ -738,14 +763,14 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
         composeRule.onNodeWithTag("login-submit").performClick()
         assertTagDisplayed("tasks-page", "after login-submit")
-        composeRule.onNodeWithTag("tasks-select").performClick()
+        composeRule.onNodeWithTag("tasks-select").performScrollTo().performClick()
         assertTagDisplayed("select-page", "after tasks-select (/tasks -> /select)")
 
         waitForTagText("select-value", "none")
         composeRule.onAllNodesWithText("Pick a fruit").fetchSemanticsNodes().let {
             assertTrue("the placeholder is not shown while nothing is selected", it.isNotEmpty())
         }
-        composeRule.onNodeWithTag("select-fruit").performClick()
+        fingerTap("select-fruit")
         composeRule.waitUntil(timeoutMillis = 5_000) {
             composeRule.onAllNodesWithText("Apple").fetchSemanticsNodes().isNotEmpty()
         }
@@ -778,7 +803,7 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
         composeRule.onNodeWithTag("login-submit").performClick()
         assertTagDisplayed("tasks-page", "after login-submit")
-        composeRule.onNodeWithTag("tasks-requests").performClick()
+        composeRule.onNodeWithTag("tasks-requests").performScrollTo().performClick()
         assertTagDisplayed("requests-page", "after tasks-requests (/tasks -> /requests)")
 
         composeRule.onNodeWithTag("req-draft").performScrollTo().performTextInput("Grace Hopper")
@@ -817,7 +842,7 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
         composeRule.onNodeWithTag("login-submit").performClick()
         assertTagDisplayed("tasks-page", "after login-submit")
-        composeRule.onNodeWithTag("tasks-intl").performClick()
+        composeRule.onNodeWithTag("tasks-intl").performScrollTo().performClick()
         assertTagDisplayed("intl-page", "after tasks-intl (/tasks -> /intl)")
 
         waitForTagText("intl-meeting", "22.10.2026, 10:00")
@@ -843,7 +868,7 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
         composeRule.onNodeWithTag("login-submit").performClick()
         assertTagDisplayed("tasks-page", "after login-submit")
-        composeRule.onNodeWithTag("tasks-fields").performClick()
+        composeRule.onNodeWithTag("tasks-fields").performScrollTo().performClick()
         assertTagDisplayed("fields-page", "after tasks-fields (/tasks -> /fields)")
 
         fun heightOf(tag: String): Float =
@@ -909,7 +934,7 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
         composeRule.onNodeWithTag("login-submit").performClick()
         assertTagDisplayed("tasks-page", "after login-submit")
-        composeRule.onNodeWithTag("tasks-requests").performClick()
+        composeRule.onNodeWithTag("tasks-requests").performScrollTo().performClick()
         assertTagDisplayed("requests-page", "after tasks-requests (/tasks -> /requests)")
 
         composeRule.onNodeWithTag("req-draft").performScrollTo().performTextInput("Ada L")
@@ -972,6 +997,7 @@ class TasksAppInstrumentedTest {
 
         composeRule
             .onNodeWithTag("new-task-add")
+            .performScrollTo()
             .performClick()
 
         composeRule
@@ -982,6 +1008,7 @@ class TasksAppInstrumentedTest {
         // TaskDetailPageParam(id = "1") in the dispatcher (auth-gated).
         composeRule
             .onNodeWithTag("tasks-open-first")
+            .performScrollTo()
             .performClick()
 
         composeRule
@@ -1010,6 +1037,7 @@ class TasksAppInstrumentedTest {
         // idle-sync does NOT cover URLSession-style background work.
         composeRule
             .onNodeWithTag("tasks-quotes")
+            .performScrollTo()
             .performClick()
 
         composeRule
@@ -1057,6 +1085,7 @@ class TasksAppInstrumentedTest {
         // import + render.
         composeRule
             .onNodeWithTag("tasks-vocab")
+            .performScrollTo()
             .performClick()
 
         composeRule
@@ -1097,7 +1126,7 @@ class TasksAppInstrumentedTest {
         // tasks page and FlowScreen are plain Stacks (no Scroll ancestor), and
         // scrollToNode throws without one — the scroll-first rule is for
         // Column(verticalScroll) pages only.
-        composeRule.onNodeWithTag("tasks-flow").performClick()
+        composeRule.onNodeWithTag("tasks-flow").performScrollTo().performClick()
         assertTagDisplayed("flow-page", "after tasks-flow (/tasks -> /flow)")
         composeRule.onNodeWithTag("flow-node-count").assertTextEquals("2")
         composeRule.onNodeWithTag("flow-edge-count").assertTextEquals("2")
@@ -1263,7 +1292,7 @@ class TasksAppInstrumentedTest {
 
         // F6 scale proof: 400 nodes with culling on. Every assertion is a COUNT
         // or an identity, so it is deterministic on any emulator.
-        composeRule.onNodeWithTag("tasks-flow-scale").performClick()
+        composeRule.onNodeWithTag("tasks-flow-scale").performScrollTo().performClick()
         assertTagDisplayed("flow-scale-page", "after tasks-flow-scale (/tasks -> /flow-scale)")
         composeRule.onNodeWithTag("flow-scale-total").assertTextEquals("0")
         composeRule.onNodeWithTag("flow-scale-load").performClick()
@@ -1320,6 +1349,7 @@ class TasksAppInstrumentedTest {
 
         composeRule
             .onNodeWithTag("tasks-lifecycle")
+            .performScrollTo()
             .performClick()
         composeRule
             .onNodeWithTag("lifecycle-page")
@@ -1345,6 +1375,7 @@ class TasksAppInstrumentedTest {
         // existing at all proves the Double pipeline.
         composeRule
             .onNodeWithTag("tasks-stats")
+            .performScrollTo()
             .performClick()
         composeRule
             .onNodeWithTag("stats-page")
@@ -1537,6 +1568,7 @@ class TasksAppInstrumentedTest {
         // first run to reach this line failed on exactly that.
         composeRule
             .onNodeWithTag("tasks-dashboard")
+            .performScrollTo()
             .performClick()
         assertTagDisplayed("dash-page", "after tasks-dashboard (/tasks -> /dashboard)")
         composeRule
@@ -1602,6 +1634,7 @@ class TasksAppInstrumentedTest {
         // on a phone, and an off-screen assertion is not device render proof.
         composeRule
             .onNodeWithTag("tasks-gallery")
+            .performScrollTo()
             .performClick()
         assertTagDisplayed("gal-page", "after tasks-gallery (/tasks -> /gallery)")
         for (tag in listOf(
@@ -1776,6 +1809,7 @@ class TasksAppInstrumentedTest {
         // renders "false", which is displayed just as happily as "true".
         composeRule
             .onNodeWithTag("tasks-toolkit")
+            .performScrollTo()
             .performClick()
 
         composeRule.waitUntil(timeoutMillis = 15_000) {
@@ -2000,6 +2034,7 @@ class TasksAppInstrumentedTest {
         // coordinates and silently leaves the route unchanged.
         composeRule
             .onNodeWithTag("tasks-logout")
+            .performScrollTo()
             .performClick()
 
         assertTagDisplayed("login-page", "after tasks-logout (/tasks -> /login)")
@@ -2056,7 +2091,7 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("login-submit").performClick()
         assertTagDisplayed("tasks-page", "after login-submit")
         dismissSoftKeyboard(device)
-        composeRule.onNodeWithTag("tasks-webhost").performClick()
+        composeRule.onNodeWithTag("tasks-webhost").performScrollTo().performClick()
         assertTagDisplayed("webhost-page", "after tasks-webhost")
 
         // ── SIZING ───────────────────────────────────────────────────────────────────────────────

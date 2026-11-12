@@ -169,11 +169,11 @@ describe('selectApps — synthetic surfaces', () => {
 describe('deriveAppSurfaces — the real example apps', () => {
   const surfaces = deriveAppSurfaces(REPO)
   const key = (s: AppSurface) => s.app + '-' + s.platform
-  it('finds all ten device-lane apps', () => {
+  it('finds all twelve device-lane apps', () => {
     expect(surfaces.map(key).sort()).toEqual([
       'counter-android', 'counter-ios', 'finance-android', 'finance-ios',
-      'router-demo-android', 'router-demo-ios', 'tasks-android', 'tasks-ios',
-      'todomvc-android', 'todomvc-ios',
+      'router-demo-android', 'router-demo-ios', 'showcase-android', 'showcase-ios',
+      'tasks-android', 'tasks-ios', 'todomvc-android', 'todomvc-ios',
     ])
   })
   it('the runtime and router are claimed by every app on their platform', () => {

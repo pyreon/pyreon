@@ -5,6 +5,7 @@
 use napi_derive::napi;
 
 mod plain;
+mod sourcemap;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
 use oxc_ast_visit::Visit;
@@ -83,6 +84,11 @@ pub struct TransformResult {
     pub uses_templates: Option<bool>,
     pub warnings: Vec<CompilerWarning>,
     pub reactivity_lens: Option<Vec<ReactivitySpan>>,
+    /// V3 `mappings` for the transform, byte-identical to the JS backend's
+    /// magic-string `generateMap({ hires: 'boundary' })`. `None` exactly when the JS
+    /// backend returns no map (nothing was transformed). The JS wrapper builds
+    /// the full map object around it (`sources`, `sourcesContent`, …).
+    pub map_mappings: Option<String>,
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -771,6 +777,8 @@ struct Ctx<'a> {
 
     /// Signal variables: `const x = signal(...)` or `const x = computed(...)`
     signal_vars: FxHashSet<String>,
+    /// JSX elements already scanned by `check_signal_method_refs`.
+    method_ref_scanned: FxHashSet<u32>,
     /// Shadowed signal names in current scope (for scope-aware auto-call)
     shadowed_signals: FxHashSet<String>,
     /// Selector variables: `const x = createSelector(...)` — drives the
@@ -929,6 +937,7 @@ impl<'a> Ctx<'a> {
             in_jsx_child_callback: false,
             in_callback_argument: false,
             signal_vars: FxHashSet::default(),
+            method_ref_scanned: FxHashSet::default(),
             shadowed_signals: FxHashSet::default(),
             selector_vars: FxHashSet::default(),
             shadowed_selectors: FxHashSet::default(),
@@ -997,6 +1006,7 @@ impl<'a> Ctx<'a> {
                 } else {
                     None
                 },
+                map_mappings: None,
             };
         }
 
@@ -1011,6 +1021,10 @@ impl<'a> Ctx<'a> {
         }
         parts.push(&self.source[last_pos..]);
         let mut result = parts.join("");
+        // Everything below only PREPENDS (hoists, then imports, then the
+        // collapse prologue), so the final preamble is the prefix of `result`
+        // in front of these `body_len` bytes.
+        let body_len = result.len();
 
         if !self.hoists.is_empty() {
             let preamble: String = self
@@ -1199,8 +1213,24 @@ impl<'a> Ctx<'a> {
             result = self.collapse_preamble() + &result;
         }
 
+        let edits: Vec<sourcemap::Edit> = self
+            .replacements
+            .iter()
+            .map(|r| sourcemap::Edit {
+                start: r.start as usize,
+                end: r.end as usize,
+                text: &r.text,
+            })
+            .collect();
+        let map_mappings = Some(sourcemap::boundary_mappings(
+            self.source,
+            &result[..result.len() - body_len],
+            &edits,
+        ));
+
         TransformResult {
             code: result,
+            map_mappings,
             uses_templates: if self.needs_tpl_import {
                 Some(true)
             } else {
@@ -2065,6 +2095,8 @@ fn expr_children_any_dynamic(expr: &Expression, ctx: &mut Ctx) -> bool {
         Expression::SequenceExpression(s) => s.expressions.iter().any(|e| is_dynamic(e, ctx)),
         Expression::ParenthesizedExpression(p) => is_dynamic(&p.expression, ctx),
         Expression::TemplateLiteral(t) => t.expressions.iter().any(|e| is_dynamic(e, ctx)),
+        // `sig.set` by reference — a stable function, not a reactive read.
+        Expression::StaticMemberExpression(m) if is_signal_method_ref(m, ctx, &[]) => false,
         Expression::StaticMemberExpression(m) => is_dynamic(&m.object, ctx),
         Expression::ComputedMemberExpression(m) => {
             is_dynamic(&m.object, ctx) || is_dynamic(&m.expression, ctx)
@@ -3567,6 +3599,7 @@ fn references_signal_var(expr: &Expression, ctx: &Ctx) -> bool {
         Expression::ArrayExpression(arr) => arr.elements.iter().any(|el| {
             el.as_expression().map_or(false, |e| references_signal_var(e, ctx))
         }),
+        Expression::StaticMemberExpression(m) if is_signal_method_ref(m, ctx, &[]) => false,
         Expression::StaticMemberExpression(m) => references_signal_var(&m.object, ctx),
         Expression::ComputedMemberExpression(m) => {
             references_signal_var(&m.object, ctx) || references_signal_var(&m.expression, ctx)
@@ -4061,6 +4094,10 @@ fn collect_signal_idents(
 
     // Skip property name positions on member expressions
     if let Expression::StaticMemberExpression(m) = expr {
+        // `sig.set` passed by reference — the signal's method, not a value read.
+        if is_signal_method_ref(m, ctx, shadows) {
+            return;
+        }
         collect_signal_idents(&m.object, ctx, out, range_start, range_end, shadows);
         return; // don't collect .property
     }
@@ -4450,6 +4487,19 @@ fn collect_signal_idents_stmt(
 
 /// EXACTLY-BARE check: parens / TS type layers unwrap to an active,
 /// non-shadowed signal Identifier.
+/// The Signal / Computed API members a `sig.<name>` reference means the
+/// signal's OWN method by. Mirrors `SIGNAL_METHOD_NAMES` in `src/jsx.ts`.
+const SIGNAL_METHOD_NAMES: [&str; 8] =
+    ["set", "update", "peek", "trigger", "subscribe", "direct", "debug", "dispose"];
+
+/// `sig.set` / `sig.update` / … written WITHOUT a call: a reference to the
+/// signal's own method (`ref={panel.set}`), not a read of a field on its value.
+/// Auto-calling it emitted `panel().set`. Mirrors `isSignalMethodRef` in jsx.ts.
+fn is_signal_method_ref(m: &StaticMemberExpression, ctx: &Ctx, shadows: &[String]) -> bool {
+    SIGNAL_METHOD_NAMES.contains(&m.property.name.as_str())
+        && is_bare_active_signal(&m.object, ctx, shadows)
+}
+
 fn is_bare_active_signal(expr: &Expression, ctx: &Ctx, shadows: &[String]) -> bool {
     let mut cur = expr;
     loop {
@@ -4558,6 +4608,15 @@ fn slice_span(span: Span, ctx: &Ctx) -> String {
 
 // ─── Main entry ──────────────────────────────────────────────────────────────
 
+/// Compose two source-map `mappings` strings (`outer` C → B over `inner`
+/// B → A). The native twin of `composeMappings` in
+/// `src/source-map-compose.ts`; `None` on malformed input, and the JS side
+/// then falls back to its own implementation.
+#[napi(catch_unwind)]
+pub fn compose_mappings(outer: String, inner: String) -> Option<String> {
+    sourcemap::compose(&outer, &inner)
+}
+
 // `catch_unwind`: the JS side documents that a native PANIC falls back to
 // the JS backend instead of crashing the dev server — without this attribute
 // napi-rs does NOT catch unwinds, so a panic aborted the Vite process. (A
@@ -4599,6 +4658,7 @@ pub fn transform_jsx(
             uses_templates: None,
             warnings: vec![],
             reactivity_lens: None,
+            map_mappings: None,
         };
     }
 
@@ -5369,6 +5429,10 @@ fn walk_jsx_child(child: &JSXChild, ctx: &mut Ctx) {
 // ─── JSX element handling ────────────────────────────────────────────────────
 
 fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
+    // `ref={panel.set}` — mirrors the JS `checkSignalMethodRefs` at the same
+    // walk position (before any emit path swallows the subtree).
+    check_signal_method_refs(el, ctx);
+
     // Rocketstyle-collapse: a candidate component with a resolved site collapses
     // to a single `__rsCollapse` cloneNode — children are baked into the SSR-
     // resolved template, so do NOT recurse into the subtree. Mirrors the JS
@@ -5457,6 +5521,57 @@ fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
     ctx.parent_eager_mount = old_eager;
 }
 
+/// `ref={panel.set}` / `onClick={count.update}`: a signal METHOD passed as an
+/// attribute value by reference. Signal methods read `this`, so the detached
+/// reference throws when called. Warns with the arrow that works (#4356).
+/// Covers the element's attributes and its directly nested elements;
+/// `method_ref_scanned` keeps an element from being reported twice. Mirrors
+/// `checkSignalMethodRefs` in src/jsx.ts.
+fn check_signal_method_refs(el: &JSXElement, ctx: &mut Ctx) {
+    if ctx.method_ref_scanned.contains(&el.span.start) {
+        return;
+    }
+    scan_signal_method_refs(el, ctx);
+}
+
+fn scan_signal_method_refs(el: &JSXElement, ctx: &mut Ctx) {
+    ctx.method_ref_scanned.insert(el.span.start);
+    for attr in &el.opening_element.attributes {
+        let JSXAttributeItem::Attribute(a) = attr else { continue };
+        let Some(JSXAttributeValue::ExpressionContainer(container)) = &a.value else { continue };
+        let Some(value) = container.expression.as_expression() else { continue };
+        let Expression::StaticMemberExpression(m) = unwrap_type_layers(value) else { continue };
+        let method = m.property.name.as_str();
+        if !SIGNAL_METHOD_NAMES.contains(&method) {
+            continue;
+        }
+        let Expression::Identifier(object) = unwrap_type_layers(&m.object) else { continue };
+        if !is_active_signal(object.name.as_str(), ctx) {
+            continue;
+        }
+        let reference = format!("{}.{}", object.name.as_str(), method);
+        let attr_name = jsx_attr_name(&a.name).to_string();
+        ctx.warn(
+            m.span,
+            format!(
+                "\"{reference}\" is passed by reference, so it runs without its signal and throws: signal methods read \"this\". Pass an arrow instead: {attr_name}={{(v) => {reference}(v)}}."
+            ),
+            "signal-method-reference",
+        );
+    }
+    scan_signal_method_ref_children(&el.children, ctx);
+}
+
+fn scan_signal_method_ref_children(children: &[JSXChild], ctx: &mut Ctx) {
+    for child in children {
+        match child {
+            JSXChild::Element(e) => scan_signal_method_refs(e, ctx),
+            JSXChild::Fragment(f) => scan_signal_method_ref_children(&f.children, ctx),
+            _ => {}
+        }
+    }
+}
+
 fn check_for_warnings(el: &JSXElement, ctx: &mut Ctx) {
     let tag = jsx_tag_name(el);
     if tag != "For" {
@@ -5475,7 +5590,7 @@ fn check_for_warnings(el: &JSXElement, ctx: &mut Ctx) {
         };
         ctx.warn(
             span,
-            "<For> without a \"by\" prop will use index-based diffing, which is slower and may cause bugs with stateful children. Add by={(item) => item.id} for efficient keyed reconciliation.".to_string(),
+            "<For> without a \"by\" prop throws when it mounts: \"by\" is required to key the rows. Add by={(item) => item.id} (or by={(item) => item} for unique strings or numbers).".to_string(),
             "missing-key-on-for",
         );
     }

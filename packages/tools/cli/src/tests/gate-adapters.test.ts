@@ -101,6 +101,25 @@ describe('runReactPatternsGate', () => {
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 
+  it('flags a file whose ONLY React habit is .map() in JSX or onChange (#4304)', async () => {
+    const cwd = makeTmpDir()
+    writeFile(
+      cwd,
+      'packages/core/app/src/List.tsx',
+      `export const L = (p) => <ul>{p.todos.map((t) => <li>{t.text}</li>)}</ul>\n`,
+    )
+    writeFile(
+      cwd,
+      'packages/core/app/src/Field.tsx',
+      `export const F = (p) => <input onChange={(e) => p.set(e.currentTarget.value)} />\n`,
+    )
+    const result = await runReactPatternsGate({ cwd })
+    const codes = result.findings.map((f) => f.code)
+    expect(codes).toContain('react-patterns/array-map-jsx')
+    expect(codes).toContain('react-patterns/on-change-input')
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
   it('OBJECTIVE scope: ignores examples/, *-compat src, and test fixtures', async () => {
     const cwd = makeTmpDir()
     writeWorkspaceRoot(cwd)

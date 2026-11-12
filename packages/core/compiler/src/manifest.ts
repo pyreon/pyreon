@@ -32,7 +32,7 @@ export default defineManifest({
       signature:
         'transformJSX(code: string, filename?: string, options?: TransformOptions): TransformResult',
       summary:
-        'The production entry point. Tries the Rust native binary first (3.7-8.9× faster) and falls back per-call to `transformJSX_JS` inside a try/catch so a native panic never crashes the Vite dev server. Output (`{ code, usesTemplates?, warnings, reactivityLens? }`) is byte-identical across both backends. `options.ssr` skips the `_tpl()` template optimization so `@pyreon/runtime-server` can walk the VNode tree; `options.knownSignals` seeds cross-module signal auto-call; `options.reactivityLens` collects the additive `ReactivitySpan[]` sidecar (codegen is byte-identical whether or not it is collected).',
+        'The production entry point. Tries the Rust native binary first (3.7-8.9× faster) and falls back per-call to `transformJSX_JS` inside a try/catch so a native panic never crashes the Vite dev server. Output (`{ code, usesTemplates?, warnings, map?, reactivityLens? }`) is byte-identical across both backends, the V3 source `map` included (present whenever the code changed; a Plain Mode pre-pass map is composed underneath, so it always maps to the text you passed). `options.ssr` skips the `_tpl()` template optimization so `@pyreon/runtime-server` can walk the VNode tree; `options.knownSignals` seeds cross-module signal auto-call; `options.reactivityLens` collects the additive `ReactivitySpan[]` sidecar (codegen is byte-identical whether or not it is collected).',
       example: `import { transformJSX } from "@pyreon/compiler"
 
 const { code, warnings } = transformJSX(
@@ -185,11 +185,11 @@ validate("a@b.co").length // 0`,
       signature:
         "detectReactPatterns(code: string, filename?: string): ReactDiagnostic[]",
       summary:
-        'AST-based detector for "coming from React" mistakes — `useState` / `useEffect`, `className` / `htmlFor`, `onChange` on inputs, `.value` writes on signals, React-package imports. Pairs with `detectPyreonPatterns` inside the MCP `validate` tool; the merged result is sorted by line + column.',
+        'AST-based detector for "coming from React" mistakes — 19 codes today: React-package imports (`react-import`, `react-dom-import`, `react-router-import`), hooks (`use-state`, `use-effect-mount` / `use-effect-deps` / `use-effect-no-deps` — `useLayoutEffect` included, `use-memo`, `use-callback`, `use-ref-dom` / `use-ref-box`, `use-reducer`), wrappers (`memo-wrapper`, `forward-ref`), JSX (`class-name-prop`, `html-for-prop`, `on-change-input`, `array-map-jsx`) and `.value` writes on signals (`dot-value-signal`). `dangerouslySetInnerHTML` is a supported Pyreon prop and is not reported. Pairs with `detectPyreonPatterns` inside the MCP `validate` tool; the merged result is sorted by line + column.',
       example: `import { detectReactPatterns } from "@pyreon/compiler/analyze"
 
 const diags = detectReactPatterns("const [n,setN] = useState(0)", "x.tsx")
-console.log(diags[0]?.code) // "react-use-state"`,
+console.log(diags[0]?.code) // "use-state"`,
       seeAlso: ['migrateReactCode', 'detectPyreonPatterns', 'hasReactPatterns'],
     },
     {
@@ -221,7 +221,7 @@ const { code, changes, remaining } = migratePyreonCode(source, "C.tsx")`,
       kind: 'function',
       signature: 'hasReactPatterns(code: string): boolean',
       summary:
-        'Fast regex pre-filter — returns whether `code` is worth a full `detectReactPatterns` AST walk. Cheap gate for batch scanners; never reports diagnostics itself.',
+        'Fast regex pre-filter — returns whether `code` is worth a full `detectReactPatterns` AST walk. Cheap gate for batch scanners (`pyreon check`, doctor\'s react-patterns gate); never reports diagnostics itself. Derived from one trigger per detector code (`REACT_PATTERN_TRIGGERS`, typed over the code union), so it can over-match but never skips a file a detector would report on.',
       example: `import { hasReactPatterns, detectReactPatterns } from "@pyreon/compiler/analyze"
 
 if (hasReactPatterns(src)) report(detectReactPatterns(src, file))`,
@@ -250,7 +250,7 @@ if (d) console.log(d.cause, d.fix)`,
       signature:
         "detectPyreonPatterns(code: string, filename?: string): PyreonDiagnostic[]",
       summary:
-        'AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 16 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`). The detector arm behind the MCP `validate` tool and `pyreon doctor --check-pyreon-patterns`. Diagnostics report `fixable: true` ONLY for the 3 codes `migratePyreonCode` can auto-fix mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild` — kept in sync via `AUTO_FIXABLE_PYREON_CODES`); every other code is `fixable: false`.',
+        'AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 20 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`, `accessor-uncalled-in-template`, `accessor-uncalled-in-condition`, `charts-legacy-import`, `plain-mode`). The detector arm behind the MCP `validate` tool and `pyreon doctor --check-pyreon-patterns`. Diagnostics report `fixable: true` ONLY for the 3 codes `migratePyreonCode` can auto-fix mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild` — kept in sync via `AUTO_FIXABLE_PYREON_CODES`); every other code is `fixable: false`.',
       example: `import { detectPyreonPatterns } from "@pyreon/compiler/analyze"
 
 const diags = detectPyreonPatterns(
@@ -353,10 +353,24 @@ console.log(formatSsgAudit(auditSsg(".")))`,
       signature:
         'transformDeferInline(code: string, filename?: string): DeferInlineResult',
       summary:
-        'Standalone pre-pass that inlines `<Defer>` namespace-import boundaries. Fast-paths out entirely when the source contains no `Defer` mention (no parse). Returns `{ code, changed, warnings }`; runs before the JSX transform in the Vite plugin chain.',
+        'Standalone pre-pass that inlines `<Defer>` namespace-import boundaries. Fast-paths out entirely when the source contains no `Defer` mention (no parse). Returns `{ code, changed, warnings, map? }` (`map` when `changed`: the rewrite removes import lines, so a caller that transforms further must compose it); runs before the JSX transform in the Vite plugin chain.',
       example: `import { transformDeferInline } from "@pyreon/compiler"
 
 const { code, changed } = transformDeferInline(src, "page.tsx")`,
+    },
+    {
+      name: 'composeMappings',
+      kind: 'function',
+      signature: 'composeMappings(outer: string, inner: string): string',
+      summary:
+        'Compose the `mappings` of two single-source V3 maps from positioned-edit transforms: `outer` maps C → B, `inner` maps B → A, the result maps C → A. One binary search per outer segment; an outer segment on text the inner map does not cover is dropped. `transformJSX` uses it for the Plain Mode pre-pass and `@pyreon/vite-plugin` for the passes around the compile.',
+      example: `import { composeMappings } from "@pyreon/compiler"
+
+const mappings = composeMappings(jsxMap.mappings, prepassMap.mappings)`,
+      mistakes: [
+        'Passing maps with more than one source, or `names` you need kept: the result has one source (index 0) and no names',
+        'Composing in the wrong order: `outer` is the LATER transform (its generated text is the final output)',
+      ],
     },
     {
       name: 'generateContext',
