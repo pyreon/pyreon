@@ -21,23 +21,6 @@ import {
   TabsBar,
 } from '../../sections/dashboard/styled'
 
-/**
- * The dashboard ships its own QueryClient and Permissions providers
- * scoped to the section. Other sections (todos, blog) don't need
- * @pyreon/query, so providing it at the section level keeps the
- * shell layer slim and avoids forcing every section to think about
- * cache config.
- */
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      // Mock API never goes stale, so disable refetch on focus.
-      refetchOnWindowFocus: false,
-      staleTime: Infinity,
-    },
-  },
-})
-
 type Tab = 'orders' | 'customers'
 let activeTab = state<Tab>('orders')
 
@@ -60,6 +43,19 @@ let activeTab = state<Tab>('orders')
  *   └────────────────────────────────────────────────────┘
  */
 export default function DashboardPageRoute() {
+  // One QueryClient per mounted dashboard (not per module): a module-level
+  // client lives on the server across requests, so a later request renders the
+  // CACHED rows while the browser starts empty and the two disagree at hydration.
+  // The dashboard owns its providers so other sections do not need @pyreon/query.
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        // Mock API never goes stale, so disable refetch on focus.
+        refetchOnWindowFocus: false,
+        staleTime: Infinity,
+      },
+    },
+  })
   return (
     <QueryClientProvider client={queryClient}>
       <PermissionsProvider value={dashboardPermissions}>

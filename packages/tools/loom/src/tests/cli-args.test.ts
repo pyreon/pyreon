@@ -100,7 +100,8 @@ describe('an empty scan is not a clean pass', () => {
       writeFileSync(join(empty, 'package.json'), JSON.stringify({ name: 'r', workspaces: ['packages/*'] }))
       capture()
       expect(await runCli(['scan', empty, '--no-write'])).toBe(1)
-      expect(err.join('')).toContain('its globs match no packages')
+      // The shared theme wraps at 100 columns; a long temp path can split the phrase.
+      expect(err.join('').replace(/\s+/g, ' ')).toContain('its globs match no packages')
     } finally {
       rmSync(empty, { recursive: true, force: true })
     }
