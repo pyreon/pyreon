@@ -5,6 +5,7 @@ import { generateActionManifest, isActionSourceFile, mayDefineActions } from './
 import { transformServerActions } from './actions-transform'
 import { innerBuildActiveInProcess, innerBuildFlagSet } from './build-flags'
 import { term } from '@pyreon/ansi'
+import { devOverlayDisabled } from "./dev-overlay-env";
 import { collectBuildStats, formatBuildSummary } from './build-summary'
 import { Readable } from 'node:stream'
 import type { ConfigEnv, Plugin, ViteDevServer } from 'vite'
@@ -393,7 +394,7 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 				// overlay is a modal, and a suite that clicks through a page with a
 				// known mismatch would be blocked by it. The overlay's own e2e
 				// suite does not set it.
-				if (!ctx?.server || config.mode === 'spa' || process.env.PYREON_DEV_OVERLAY === 'off') return out;
+				if (!ctx?.server || config.mode === 'spa' || devOverlayDisabled()) return out;
 				return {
 					html: out,
 					tags: [
