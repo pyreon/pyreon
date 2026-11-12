@@ -283,104 +283,96 @@ const VOID_ELEMENTS = new Set([
 export const SVG_NS = 'http://www.w3.org/2000/svg'
 export const MATHML_NS = 'http://www.w3.org/1998/Math/MathML'
 
-// Tags that require namespace-aware creation. Exported so `_tpl` (template.ts)
-// can decide when a template STRING is rooted at a foreign (SVG/MathML) element
-// and must be parsed in the right namespace — see `_tpl`'s foreign-root wrap.
-export const SVG_TAGS = new Set([
-  'svg',
-  'circle',
-  'ellipse',
-  'line',
-  'path',
-  'polygon',
-  'polyline',
-  'rect',
-  'g',
-  'defs',
-  'symbol',
-  'use',
-  'text',
-  'tspan',
-  'textPath',
-  'image',
-  'clipPath',
-  'mask',
-  'pattern',
-  'marker',
-  'linearGradient',
-  'radialGradient',
-  'stop',
-  'filter',
-  'feBlend',
-  'feColorMatrix',
-  'feComponentTransfer',
-  'feComposite',
-  'feConvolveMatrix',
-  'feDiffuseLighting',
-  'feDisplacementMap',
-  'feFlood',
-  'feGaussianBlur',
-  'feImage',
-  'feMerge',
-  'feMergeNode',
-  'feMorphology',
-  'feOffset',
-  'feSpecularLighting',
-  'feTile',
-  'feTurbulence',
-  'animate',
-  'animateMotion',
-  'animateTransform',
-  'set',
-  'desc',
-  'title',
-  'metadata',
-  'foreignObject',
-])
+// ─── Element namespace ───────────────────────────────────────────────────────
+//
+// An h() element's namespace comes from the PARENT it is inserted into, the way
+// the HTML parser's tree construction decides it: inside SVG content an element
+// is SVG (except below `<foreignObject>`, an HTML integration point), inside
+// MathML it is MathML (except below a text integration point — `mi`, `mo`, `mn`,
+// `ms`, `mtext` — or an `annotation-xml` with an HTML encoding), and in HTML
+// content only `<svg>` and `<math>` open a foreign subtree.
+//
+// The parent is the only source that is right for EVERY entry point. A depth
+// counter plus a tag list (what this replaced) only knew about ancestors mounted
+// in the same synchronous pass, so anything mounted LATER into an existing
+// `<svg>` — a `<Show>` branch, a reactive child, a `<For>` row, a slot, the
+// fresh mount after a hydration mismatch — fell back to the list, and every SVG
+// element missing from it (`feDropShadow`, `feFuncA`, `mpath`, `switch`, …)
+// became an inert HTML element. The counter also put HTML below
+// `<foreignObject>` in the SVG namespace (#4453).
+//
+// Cost on the common path: while `mountElement` builds an element's children,
+// that element and its children's namespace are held in two module slots, so a
+// nested child resolves by an identity compare — no DOM read. Only a mount into
+// some OTHER parent (a top-level or late mount) reads `parent.namespaceURI`, plus
+// `localName` when the parent is foreign. The slots are restored when the
+// element's children are done, so they never outlive the synchronous pass.
 
-export const MATHML_TAGS = new Set([
-  'math',
-  'mi',
-  'mo',
-  'mn',
-  'ms',
-  'mtext',
-  'mspace',
-  'mrow',
-  'mfrac',
-  'msqrt',
-  'mroot',
-  'msub',
-  'msup',
-  'msubsup',
-  'munder',
-  'mover',
-  'munderover',
-  'mtable',
-  'mtr',
-  'mtd',
-  'mpadded',
-  'mphantom',
-  'menclose',
-])
+const NS_HTML = 0
+const NS_SVG = 1
+const NS_MATHML = 2
 
-/** Track SVG context depth — children of <svg> inherit the SVG namespace. */
-let _svgDepth = 0
-let _mathmlDepth = 0
+let _nsParent: Node | null = null
+let _nsChildren = NS_HTML
 
-function createElementWithNS(tag: string): Element {
-  if (_svgDepth > 0 || SVG_TAGS.has(tag)) return document.createElementNS(SVG_NS, tag)
-  if (_mathmlDepth > 0 || MATHML_TAGS.has(tag)) return document.createElementNS(MATHML_NS, tag)
-  return document.createElement(tag)
+/** The namespace context the CHILDREN of a foreign element are parsed in. */
+function childNsOfForeign(el: Element, ns: string | null, localName: string): number {
+  if (ns === SVG_NS) return localName === 'foreignObject' ? NS_HTML : NS_SVG
+  if (ns === MATHML_NS) {
+    if (
+      localName === 'mi' ||
+      localName === 'mo' ||
+      localName === 'mn' ||
+      localName === 'ms' ||
+      localName === 'mtext'
+    )
+      return NS_HTML
+    if (localName === 'annotation-xml') {
+      const enc = el.getAttribute('encoding')?.toLowerCase()
+      return enc === 'text/html' || enc === 'application/xhtml+xml' ? NS_HTML : NS_MATHML
+    }
+    return NS_MATHML
+  }
+  return NS_HTML
+}
+
+function childNsOf(parent: Node): number {
+  if (parent === _nsParent) return _nsChildren
+  // `namespaceURI` is an Element member: a DocumentFragment, ShadowRoot or
+  // Document parent reads `undefined` and is HTML content.
+  const ns = (parent as Element).namespaceURI
+  if (ns === SVG_NS || ns === MATHML_NS) {
+    return childNsOfForeign(parent as Element, ns, (parent as Element).localName)
+  }
+  return NS_HTML
+}
+
+function createElementIn(ns: number, tag: string): Element {
+  if (ns === NS_HTML) {
+    if (tag === 'svg') return document.createElementNS(SVG_NS, tag)
+    if (tag === 'math') return document.createElementNS(MATHML_NS, tag)
+    return document.createElement(tag)
+  }
+  if (ns === NS_SVG) return document.createElementNS(SVG_NS, tag)
+  // MathML content: `<svg>` (inside `annotation-xml`) is SVG, the rest MathML.
+  // Not modelled: the parser keeps `mglyph`/`malignmark` MathML directly below
+  // a text integration point; here they follow the HTML rule like any tag.
+  if (tag === 'svg') return document.createElementNS(SVG_NS, tag)
+  return document.createElementNS(MATHML_NS, tag)
+}
+
+/** The namespace URI `createElementIn(ns, tag)` gives, without asking the DOM. */
+function nsUriOf(ns: number, tag: string): string | null {
+  if (ns === NS_SVG) return SVG_NS
+  if (tag === 'svg') return SVG_NS
+  if (ns === NS_MATHML || tag === 'math') return MATHML_NS
+  return null
 }
 
 function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup {
   const tag = vnode.type as string
-  const el = createElementWithNS(tag)
-  const isSvg = tag === 'svg'
-  const isMathml = tag === 'math'
-  if (isSvg) _svgDepth++
-  if (isMathml) _mathmlDepth++
+  const parentNs = childNsOf(parent)
+  const el = createElementIn(parentNs, tag)
 
   if (process.env.NODE_ENV !== 'production' && (vnode.children?.length ?? 0) > 0 && VOID_ELEMENTS.has(vnode.type as string)) {
     console.warn(
@@ -397,12 +389,26 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
   let propCleanup: Cleanup | null =
     props !== EMPTY_PROPS ? applyProps(el, props, isSelect ? 'value' : undefined) : null
 
-  // Mount children inside element context — nested elements can skip DOM removal closures
+  // Mount children inside element context — nested elements can skip DOM removal closures.
+  // The element's own children resolve their namespace from the slots below
+  // without touching the DOM; an HTML element in HTML content (the common case)
+  // decides it with two compares.
+  const prevNsParent = _nsParent
+  const prevNsChildren = _nsChildren
+  _nsParent = el
+  _nsChildren =
+    parentNs === NS_HTML && tag !== 'svg' && tag !== 'math'
+      ? NS_HTML
+      : childNsOfForeign(el, nsUriOf(parentNs, tag), tag)
   _elementDepth++
-  const childCleanup = mountChildren(vnode.children ?? [], el, null)
-  _elementDepth--
-  if (isSvg) _svgDepth--
-  if (isMathml) _mathmlDepth--
+  let childCleanup: Cleanup
+  try {
+    childCleanup = mountChildren(vnode.children ?? [], el, null)
+  } finally {
+    _elementDepth--
+    _nsParent = prevNsParent
+    _nsChildren = prevNsChildren
+  }
 
   // `<select value>` — deferred until after children (PZ-09): the property
   // assignment selects a matching <option>, so the options must exist first. Runs

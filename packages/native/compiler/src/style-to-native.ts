@@ -265,6 +265,27 @@ function unparen(e: ExprIR): ExprIR {
   return e
 }
 
+/** Style keys that draw a control's SURFACE (its fill or its outline). */
+const SURFACE_KEYS = new Set(['background', 'backgroundColor', 'border', 'borderWidth', 'borderColor'])
+
+/**
+ * Whether an inline `style` value draws the element's own surface — a
+ * background or a border — in ANY branch of a style tree.
+ *
+ * The web primitives merge the author's `style` OVER their built-in chrome, so
+ * an app-set background or border replaces the default fill / outline. The
+ * Swift emit gives `<Button>` and `<Field>` system chrome by default
+ * (`.borderedProminent`, `.roundedBorder`); when the app styled the surface
+ * itself, that chrome is left off, so the app's look wins instead of being
+ * drawn on top of (or underneath) a second one.
+ */
+export function styleDrawsSurface(e: ExprIR): boolean {
+  const n = unparen(e)
+  if (n.kind === 'object') return n.fields.some((f) => SURFACE_KEYS.has(f.name))
+  if (n.kind === 'ternary') return styleDrawsSurface(n.then) || styleDrawsSurface(n.otherwise)
+  return false
+}
+
 /** The literal `color` of an object-literal style branch, if it has one. */
 function literalColorOf(e: ExprIR): string | undefined {
   if (e.kind !== 'object') return undefined

@@ -5,6 +5,7 @@ import { generateActionManifest, isActionSourceFile, mayDefineActions } from './
 import { transformServerActions } from './actions-transform'
 import { innerBuildActiveInProcess, innerBuildFlagSet } from './build-flags'
 import { term } from '@pyreon/ansi'
+import { devOverlayDisabled } from "./dev-overlay-env";
 import { collectBuildStats, formatBuildSummary } from './build-summary'
 import { Readable } from 'node:stream'
 import type { ConfigEnv, Plugin, ViteDevServer } from 'vite'
@@ -388,7 +389,12 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 				// so it runs before the entry (module scripts run in document
 				// order) and its handler is registered before hydration. No
 				// hydration in an all-SPA app, so nothing to install there.
-				if (!ctx?.server || config.mode === 'spa') return out;
+				// `PYREON_DEV_OVERLAY=off` (set by the e2e web servers) leaves a
+				// hydration mismatch as the console warning it always was: the
+				// overlay is a modal, and a suite that clicks through a page with a
+				// known mismatch would be blocked by it. The overlay's own e2e
+				// suite does not set it.
+				if (!ctx?.server || config.mode === 'spa' || devOverlayDisabled()) return out;
 				return {
 					html: out,
 					tags: [

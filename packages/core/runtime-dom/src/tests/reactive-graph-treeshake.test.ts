@@ -26,7 +26,9 @@ async function bundle(file: string, env: 'production' | 'development'): Promise<
     write: false,
     format: 'esm',
     logLevel: 'silent',
-    external: ['@pyreon/*'],
+    // package.json is the version stamp `devtools.ts` reads; esbuild cannot take a
+    // named import from a JSON module with an import attribute, and it is not under test.
+    external: ['@pyreon/*', '*/package.json'],
     define: { 'process.env.NODE_ENV': JSON.stringify(env) },
   })
   return r.outputFiles[0]!.text

@@ -78,7 +78,8 @@ describe('kinetic() factory declines observably instead of emitting a broken bin
     // detector walks the chain to its base. A renamed import is why the local
     // name is collected rather than the literal `kinetic` being matched.
     const { code, warnings } = transform(CHAINED_SRC, { target: 'swift' })
-    expect(code).not.toContain('k(')
+    // a word-bounded `k(` — `VStack(` / `HStack(` end in `k(` too
+    expect(code).not.toMatch(/\bk\(/)
     expect(code).not.toContain('let Fancy')
     expect(warnings.some((x) => x.includes('`Fancy`'))).toBe(true)
   })

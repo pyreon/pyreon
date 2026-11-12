@@ -1,3 +1,4 @@
+import { onMount } from '@pyreon/core'
 import { state, signalOf } from '@pyreon/core/plain'
 import {
   useClipboard,
@@ -8,9 +9,25 @@ import {
   useWindowResize,
 } from '@pyreon/hooks'
 
-const mountedAt = new Date()
-
+/**
+ * Several of these hooks read the browser (window size, clock, clipboard) when
+ * they are created, and the server has none of it, so the demo renders after
+ * mount: server and first client render then agree, and nothing is rebuilt.
+ */
 export function HooksDemo() {
+  let ready = state(false)
+  onMount(() => {
+    ready = true
+  })
+  return <>{() => (ready ? <HooksBody /> : <h2>Hooks</h2>)}</>
+}
+
+function HooksBody() {
+  // Per mount, not per module: a module-level Date is stamped once when the
+  // SERVER starts, so a later request rendered "2 minutes ago" while the browser
+  // rendered "just now".
+  const mountedAt = new Date()
+
   // useToggle — boolean signal + .toggle()
   const open = useToggle(false)
 

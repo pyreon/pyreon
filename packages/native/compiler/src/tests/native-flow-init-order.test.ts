@@ -15,16 +15,11 @@
 // Bisect-load-bearing: dropping the sort fails the order spec and the stub +
 // real-SDK compile of the full-config fixture with "must precede argument".
 
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { SWIFT_FLOW_STATE_INIT_LABELS } from '../../../../fundamentals/flow/src/native-plugin/lowering'
 import { transform, validateSwiftWithStubs } from './first-party-plugins'
 import { isSwiftcAvailable, isSwiftUIAvailable } from '../validate'
-
-const REPO = resolve(import.meta.dirname, '../../../../..')
+import { runtimeSwiftSources, swiftErrorLines, typecheckAgainstRealRuntime } from './real-runtime-swift'
 
 const FULL = `import { createFlow } from '@pyreon/flow'
 import { Stack, Text } from '@pyreon/primitives'
@@ -58,31 +53,12 @@ describe('a createFlow with its config written out of declaration order', () => 
   }, 120_000)
 
   it.runIf(isSwiftUIAvailable())('compiles against the real SDK + runtime', () => {
-    const sources: string[] = []
-    const walk = (dir: string): void => {
-      for (const e of readdirSync(dir)) {
-        if (['node_modules', 'lib', '.build', 'Package.swift'].includes(e)) continue
-        if (e.toLowerCase() === 'tests' || /Tests?\.swift$/.test(e)) continue
-        const p = join(dir, e)
-        if (statSync(p).isDirectory()) walk(p)
-        else if (p.endsWith('.swift')) sources.push(p)
-      }
-    }
-    for (const r of ['packages/fundamentals', 'packages/core', 'packages/native/runtime-swift', 'packages/native/router-swift']) walk(join(REPO, r))
+    const sources = runtimeSwiftSources()
     expect(sources.length).toBeGreaterThan(40)
-    const dir = mkdtempSync(join(tmpdir(), 'pyreon-flow-init-'))
-    try {
-      const app = join(dir, 'App.swift')
-      writeFileSync(app, `import SwiftUI\nimport Foundation\n${transform(FULL, { target: 'swift' }).code}`)
-      const sdk = execFileSync('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path'], { encoding: 'utf8' }).trim()
-      try {
-        execFileSync('xcrun', ['--sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, app, ...sources], { stdio: 'pipe' })
-      } catch (err) {
-        const e = err as { stderr?: Buffer }
-        expect.fail(String(e.stderr ?? '').split('\n').filter((l) => l.includes('error:')).slice(0, 8).join('\n'))
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
+    const diagnostics = typecheckAgainstRealRuntime(
+      [{ name: 'App.swift', code: transform(FULL, { target: 'swift' }).code }],
+      { sources },
+    )
+    if (diagnostics !== null) expect.fail(swiftErrorLines(diagnostics, 8))
   }, 300_000)
 })
