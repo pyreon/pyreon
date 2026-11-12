@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { readdirSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
+import { parseFrontmatter } from '@pyreon/zero-content/plugin'
 import { resolve } from 'node:path'
 import { readPosts } from '../../../vite-plugins/blog'
+import blogCopy from '../../site/content/pages/channels/blog.json'
 import { estimateWords, plannedPosts, upNext } from '../planned'
 
 const POSTS = resolve(__dirname, '../../content/blog')
-const posts = readPosts(POSTS)
+const posts = readPosts(POSTS, blogCopy.bench.more)
 const at = (day: string) => Date.parse(day)
 
 describe('plannedPosts', () => {
@@ -52,6 +54,19 @@ describe('upNext', () => {
     const first = planned[0]?.title as string
     expect(upNext(planned, [first]).map((p) => p.title)).not.toContain(first)
     expect(upNext(planned, [])).toHaveLength(planned.length)
+  })
+})
+
+describe('readPosts', () => {
+  it('reads a post as its page compiles it: a ::: bench block counts its "more" link', () => {
+    // The post page gets the link from blogBench(); a planned card that did not
+    // count it showed 7 min for an 8-minute post.
+    const files = readdirSync(POSTS).filter((f) => f.endsWith('.md')).sort()
+    const i = files.findIndex((f) => readFileSync(resolve(POSTS, f), 'utf8').includes('::: bench'))
+    expect(i).toBeGreaterThanOrEqual(0)
+    const raw = parseFrontmatter(readFileSync(resolve(POSTS, files[i] as string), 'utf8')).content
+    expect(posts[i]?.body).toContain(blogCopy.bench.more)
+    expect(estimateWords(posts[i]?.body ?? '')).toBeGreaterThan(estimateWords(raw))
   })
 })
 

@@ -59,7 +59,7 @@ export default defineConfig({
     // content() compiles the post (src/blog/bench.ts).
     blogBench({ moreLabel: blogCopy.bench.more }),
     // virtual:pyreon-blog-planned — the scheduled posts "Up next" lists.
-    blogPlanned(),
+    blogPlanned({ benchMoreLabel: blogCopy.bench.more }),
     content({
       highlighter: {
         themes: { light: pyreonSyntaxLight, dark: pyreonSyntaxDark },
