@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/lint'
-description: Pyreon-specific linter — 133 rules across 25 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, and opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage). CLI, programmatic API, watch mode, AST cache, and an LSP server.
+description: Pyreon-specific linter — 134 rules across 25 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, and opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage). CLI, programmatic API, watch mode, AST cache, and an LSP server.
 ---
 
 `@pyreon/lint` is a framework-specific linter that catches Pyreon anti-patterns at the AST level — bare signal reads in JSX, props destructuring that breaks reactivity, browser globals in SSR code, bundler-coupled dev gates, and dozens more. It is powered by [`oxc-parser`](https://oxc.rs) for fast ESTree/TS-ESTree parsing, ships a CLI (`pyreon-lint`), a programmatic API (`lint` / `lintFile`), watch mode, an AST cache, and an LSP server for editor integration.
@@ -400,7 +400,7 @@ Every rule belongs to one of ten **groups** — the axis the 25 categories don't
 
 | group | rules | what it is |
 | --- | --- | --- |
-| `pyreon` | 52 | Framework semantics — reactivity, JSX, lifecycle, SSR/SSG. Nothing outside Pyreon can know these. |
+| `pyreon` | 54 | Framework semantics — reactivity, JSX, lifecycle, SSR/SSG. Nothing outside Pyreon can know these. |
 | `isomorphic` | 6 | Runs on BOTH sides — the hydration contract for a file that renders on server and client. |
 | `backend` | 7 | Server-role files — handlers, loaders, adapters. |
 | `web-perf` | 7 | Client-role files — main thread, teardown, network. |
@@ -480,13 +480,13 @@ pyreon-lint --why-off pyreon/rx-prefer-pipe
 
 The dependency gate is checked relative to a file, so pass a path (`pyreon-lint --why-off <id> src/`) when you want that reason evaluated. An unknown id exits non-zero and suggests the near miss. Programmatic equivalent: `explainRuleState(id, { config, filePath })`.
 
-There are **133 rules across 25 categories**. Six of them are **monorepo-scoped** (`meta.scope: 'monorepo'`) — `no-circular-import`, `no-cross-layer-import`, `no-error-without-prefix`, `no-query-selector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`. They encode the Pyreon repository's own conventions (its layer order, its private internal packages, its `[Pyreon]` error prefix) rather than anything about Pyreon-the-framework, so **every preset a consumer selects forces them off**, `best-practices` included. The Pyreon repo re-enables them by id in its own `.pyreonlintrc.json`, which keeps that dependency visible in config instead of hidden inside a shared preset. `query`, `rx`, `i18n`, `storage`, `http`, and `portable` are wholesale opt-in best-practice categories — off in the standard presets. `frontend` is mixed (6 of 12 on by default); the rest of the opt-in surface is individual rules scattered across otherwise-mandatory categories, marked `ᵒ` below. Run `pyreon-lint --list` for the authoritative list with live severities.
+There are **134 rules across 25 categories**. Six of them are **monorepo-scoped** (`meta.scope: 'monorepo'`) — `no-circular-import`, `no-cross-layer-import`, `no-error-without-prefix`, `no-query-selector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`. They encode the Pyreon repository's own conventions (its layer order, its private internal packages, its `[Pyreon]` error prefix) rather than anything about Pyreon-the-framework, so **every preset a consumer selects forces them off**, `best-practices` included. The Pyreon repo re-enables them by id in its own `.pyreonlintrc.json`, which keeps that dependency visible in config instead of hidden inside a shared preset. `query`, `rx`, `i18n`, `storage`, `http`, and `portable` are wholesale opt-in best-practice categories — off in the standard presets. `frontend` is mixed (6 of 12 on by default); the rest of the opt-in surface is individual rules scattered across otherwise-mandatory categories, marked `ᵒ` below. Run `pyreon-lint --list` for the authoritative list with live severities.
 
 ### Categories at a glance
 
 | Category          | Rules | Opt-in? | Purpose                                                             |
 | ----------------- | ----- | ------- | ------------------------------------------------------------------ |
-| `reactivity`      | 17    | 2 of 17 | Signal/effect/computed correctness — tracking, batching, leaks     |
+| `reactivity`      | 18    | 2 of 18 | Signal/effect/computed correctness — tracking, batching, leaks     |
 | `jsx`             | 12    | 2 of 12 | Pyreon JSX semantics — `class`/`for`, `<For>`/`by`, props, `<Show>`|
 | `lifecycle`       | 6     |         | `onMount`/`effect` setup-vs-mount, cleanup, idempotent `init*`     |
 | `performance`     | 5     | 1 of 5  | Keyed lists, lazy imports, leak-prone timers                       |
@@ -514,7 +514,7 @@ There are **133 rules across 25 categories**. Six of them are **monorepo-scoped*
 
 Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — enable via `best-practices` or per-rule config; library-scoped ones additionally auto-gate on `package.json` deps.
 
-### Reactivity (17)
+### Reactivity (18)
 
 | Rule                                  | Severity | Fixable | Description                                                                        |
 | -------------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------- |
@@ -534,6 +534,7 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 | `pyreon/no-iterate-children-without-resolve` | error |     | Iterating `props.children` at the VNode level (`cloneVNode`, `.map`/`.filter`, `.props`) must first unwrap a possible compiler accessor via `resolveChildren(…)` |
 | `pyreon/no-guard-only-signal-reads-in-effect` | info |    | Every reactive read in an `effect()` sits behind a non-reactive guard (`if (ref.current) { … }`) — the first run can short-circuit before any read, so the effect subscribes to nothing and never re-runs |
 | `pyreon/plain-mode-footgun`           | error    |         | Every [Plain Mode](/docs/plain-mode) compile-time warning as an error — mutating SHALLOW state, assigning to `derived`, an unlowerable `signalOf`, … Set `projectWide: true` when the app uses `pyreon({ plain: true })` |
+| `pyreon/no-stale-for-item-field`      | error    |         | A keyed `<For>` row reads a field of its item (`t.done`, a destructured `{ done }`, or `props.todo.done` in a same-file child given the item) while the same file replaces items under their key (`{ ...t, done }` in a `.map`, `.with`, `splice`, `xs[i] =`). The web row runs once per key and keeps the first value; iOS/Android redraw. Read the live value by key through a call (`isDone(t.id)`) or give the field its own signal. Takes `exemptPaths` |
 | `pyreon/no-unguarded-async-signal-write` ᵒ | warn |     | An async function writes captured signal state after an `await` with no staleness guard — a slow earlier response resolves last and clobbers newer data (leak class F) |
 
 ### JSX (12)

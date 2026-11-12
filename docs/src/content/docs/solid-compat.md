@@ -1347,6 +1347,11 @@ function TodoApp() {
     setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)))
   }
 
+  // Pyreon's keyed <For> runs a row once per `by` key (Solid's reference-keyed
+  // <For> would remount it), so a toggled todo keeps its row and `todo.done`
+  // there keeps the first value. Read it live by id instead.
+  const isDone = (id: number) => todos().some((t) => t.id === id && t.done)
+
   const removeTodo = (id: number) => {
     setTodos((prev) => prev.filter((t) => t.id !== id))
   }
@@ -1388,8 +1393,8 @@ function TodoApp() {
       <ul>
         <For each={filteredTodos} by={(t) => t.id}>
           {(todo) => (
-            <li class={todo.done ? 'done' : ''}>
-              <input type="checkbox" checked={todo.done} onChange={() => toggleTodo(todo.id)} />
+            <li class={isDone(todo.id) ? 'done' : ''}>
+              <input type="checkbox" checked={isDone(todo.id)} onChange={() => toggleTodo(todo.id)} />
               <span>{todo.text}</span>
               <button onClick={() => removeTodo(todo.id)}>x</button>
             </li>

@@ -73,6 +73,14 @@
  *                       computed(...)`) stringifies the function SOURCE
  *                       into the output — a CSS value / text silently
  *                       renders `() => …`. Call it: `${itemWidth()}`.
+ *  - `for-stale-item-field` — a keyed `<For>` row reads a field of its item
+ *                       (`t.done`, a destructured `{ done }`, or the item
+ *                       passed to a same-file component that reads
+ *                       `props.todo.done`) while the same file replaces items
+ *                       under their key (`{ ...t, done }` in a `.map`, `.with`,
+ *                       `splice`, `xs[i] =`). The web row runs once per key,
+ *                       so the read keeps the first value; iOS/Android redraw.
+ *                       See `stale-for-item.ts`.
  *  - `accessor-uncalled-in-condition` — a tracked accessor binding used
  *                       BARE (or under `!`) as an `if`/ternary condition
  *                       outside JSX. An accessor is a function — always
@@ -104,6 +112,7 @@ import { detectPlain, transformPlain } from './plain'
 import { filterSuppressed } from './detector-suppression'
 import ts from 'typescript'
 import { findChartsLegacyImports } from './charts-migration'
+import { findStaleForItemReads } from './stale-for-item'
 import { assertClassicTs } from './ts'
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -131,6 +140,7 @@ export type PyreonDiagnosticCode =
   | 'accessor-uncalled-in-condition'
   | 'charts-legacy-import'
   | 'plain-mode'
+  | 'for-stale-item-field'
 
 export interface PyreonDiagnostic {
   /** Machine-readable code for filtering + programmatic handling */
@@ -1519,6 +1529,37 @@ function detectChartsLegacyImports(ctx: DetectContext): void {
   }
 }
 
+/**
+ * `for-stale-item-field`: file-level, because the two halves (a same-key
+ * replacement write and the row read) are usually far apart. Not fixable: the
+ * fix moves the read behind a call by key or gives the field its own signal,
+ * a choice about the data model.
+ */
+function detectStaleForItemFields(ctx: DetectContext): void {
+  for (const hit of findStaleForItemReads(ctx.sf)) {
+    const key = hit.keyField ?? 'id'
+    const field = hit.fields[0]!
+    const live = `live${field.charAt(0).toUpperCase()}${field.slice(1)}`
+    const what =
+      hit.kind === 'child-prop'
+        ? `<For> row passes its item to \`<${hit.component}>\`, which reads \`${hit.fields.join('`, `')}\` off it`
+        : hit.kind === 'destructure'
+          ? `<For> row destructures \`${field}\` from its item`
+          : `<For> row reads \`${hit.param}.${field}\``
+    pushDiag(
+      ctx,
+      hit.node,
+      'for-stale-item-field',
+      `${what}, but this file replaces items under the same \`by\` key (\`{ ...item, ${hit.fields.join(', ')}: … }\`). On the web a keyed <For> keeps that row and runs its callback once per key, so the item is the object the row mounted with and this read shows the FIRST value forever (iOS and Android redraw the row, so only the web goes stale). Read the live value by key through a call, which stays reactive on web and lowers to a lookup on native, or give the field its own signal.`,
+      getNodeText(ctx, hit.node),
+      hit.kind === 'child-prop'
+        ? `// pass the live value instead of reading it off the item: ${hit.fields.map((f) => `${f}={live${f.charAt(0).toUpperCase()}${f.slice(1)}(${hit.param}.${key})}`).join(' ')}\n// const ${live} = (${key}) => items().find((x) => x.${key} === ${key})?.${field}`
+        : `${live}(${hit.kind === 'destructure' ? key : `${hit.param}.${key}`})\n// const ${live} = (${key}) => items().find((x) => x.${key} === ${key})?.${field}  — or make \`${field}\` a per-item signal`,
+      false,
+    )
+  }
+}
+
 function visit(ctx: DetectContext, node: ts.Node): void {
   ts.forEachChild(node, (child) => {
     visitNode(ctx, child)
@@ -1576,6 +1617,7 @@ export function detectPyreonPatterns(code: string, filename = 'input.tsx'): Pyre
   }
   visit(ctx, sf)
   detectChartsLegacyImports(ctx)
+  detectStaleForItemFields(ctx)
   if (ctx.plainMode) detectPlainModeWarnings(ctx, filename)
   // Sort by (line, column) for stable ordering when multiple patterns fire.
   ctx.diagnostics.sort((a, b) => a.line - b.line || a.column - b.column)

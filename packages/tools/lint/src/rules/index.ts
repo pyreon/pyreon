@@ -86,6 +86,7 @@ import { noBareSignalInJsx } from './reactivity/no-bare-signal-in-jsx'
 import { noContextDestructure } from './reactivity/no-context-destructure'
 import { noEffectAssignment } from './reactivity/no-effect-assignment'
 import { plainModeFootgun } from './reactivity/plain-mode-footgun'
+import { noStaleForItemField } from './reactivity/no-stale-for-item-field'
 import { noGuardOnlySignalReadsInEffect } from './reactivity/no-guard-only-signal-reads-in-effect'
 import { noIterateChildrenWithoutResolve } from './reactivity/no-iterate-children-without-resolve'
 import { noNestedEffect } from './reactivity/no-nested-effect'
@@ -182,7 +183,7 @@ export const allRules: Rule[] = [
   noPlatformBranchWithoutFallback,
   noRequireInEsm,
   requireErrorCause,
-  // Reactivity (16)
+  // Reactivity (17)
   noAsyncEffect,
   noBareSignalInJsx,
   noContextDestructure,
@@ -199,6 +200,7 @@ export const allRules: Rule[] = [
   noIterateChildrenWithoutResolve,
   noGuardOnlySignalReadsInEffect,
   plainModeFootgun,
+  noStaleForItemField,
   // JSX (11)
   noMapInJsx,
   useByNotKey,
@@ -354,6 +356,7 @@ export {
   noMissingCleanup,
   noMissingFallback,
   noMissingForBy,
+  noStaleForItemField,
   noModuleSignalInServerPackage,
   noMountInEffect,
   noMutateStoreState,

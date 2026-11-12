@@ -77,7 +77,7 @@ Explore the [live examples](/docs/examples) and the [UI component workbench](/at
 | [@pyreon/cli](/docs/cli) | CLI tools for Pyreon — doctor, generate, context |
 | [@pyreon/config](https://github.com/pyreon/pyreon/tree/main/packages/tools/config) | One pyreon.config.ts for the whole ecosystem — a typed section per package. |
 | [@pyreon/lathe](/docs/lathe) | Spec-to-Pyreon code generator — OpenAPI in, typed schemas / endpoints / queries out, with a multiplatform mode that proves its own output lowers to Swift and Kotlin. |
-| [@pyreon/lint](/docs/lint) | Pyreon-specific linter — 133 rules across 25 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, and opt-in best practices |
+| [@pyreon/lint](/docs/lint) | Pyreon-specific linter — 134 rules across 25 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, and opt-in best practices |
 | [@pyreon/loom](/docs/loom) | Monorepo dependency observatory — workspace graph, version-sync drift, cycles, phantom deps, and blast radius, as data. |
 | [@pyreon/mcp](/docs/mcp) | MCP server for Pyreon — AI-powered framework assistance |
 | [@pyreon/preact-compat](/docs/preact-compat) | Preact-compatible API shim for Pyreon — write Preact-style code that runs on Pyreon's reactive engine |

@@ -46,18 +46,6 @@ A compiler verdict is a pure function of the key, whether it accepts or rejects.
 
 ---
 
-### A prefix restore on a pull request reads the pull request's OWN newest store, never the default branch's newer one
-
-Actions searches the current ref's caches before the default branch's. For an accumulating content-addressed store that means a pull request with one earlier run is pinned to that snapshot: everything main computed since is a miss (native verdicts, #4478: 26.9 min against 10-15 min for runs that read main's store, which was 31 minutes old). Save the default branch and other refs under prefixes that are not prefixes of each other, restore both, and hydrate the union. Test: `check-ci-fail-fast.test.ts` ("restores the default branch store AND the ref's own").
-
----
-
-### A compile that bypasses the verdict cache is paid on every run, on whichever runner is scarcest
-
-Nine test files hand-rolled `xcrun swiftc -typecheck` of an emit with the real runtime sources. Twelve such compiles were 650 of the 772 file-seconds of a WARM macOS run. Route every compiler invocation whose verdict is a pure function of its inputs through `withVerdictCache`, and put ALL the inputs in the key (there: compiler and SDK build, each runtime source by path and content, the emitted files). Test: `real-runtime-swift.test.ts`.
-
----
-
 ### One cache artifact, one key prefix, one writer
 
 `~/.bun/install/cache` was saved under two prefixes by different workflows, doubling ~1 GB entries in the 10 GB actions-cache budget. LRU eviction then dropped the small valuable entries (bootstrap `lib/`, the native verdict store, Playwright browsers) and main paid ~60 min of cold `kotlinc`/`swiftc`.
@@ -200,7 +188,7 @@ Gzip size differs between macOS and the ubuntu runner by ~1%, so a budget inside
 ### Keep threshold gates at or below measured reality
 
 A gate red on arrival (`Coverage (Full)`, in `.github/workflows/ci-main.yml`) cannot distinguish a regression and is dead. A job budget must include setup, its shared worker pool, every subsequent serial phase, and diagnostic upload: passing rows before cancellation are an incomplete measurement. Keep command deadlines below the composed job backstop, name packages in start/result logs, and verify infrastructure changes on their PR. A child deadline must escalate TERM to KILL for its owned process group and bound inherited-pipe waits; a printed summary from a timed-out, signalled or unexplained nonzero run cannot establish coverage. Vitest 5 writes JSON to a file and omits unhandled errors from its success field: use fresh owned JSON and companion `onTestRunEnd` reports, require a completed passing run with no unhandled errors, reject assertion/setup/teardown/runtime failures even when coverage is 100%, and accept exit 1 only with an all-green report plus an explicit coverage-threshold diagnostic. Ratchet thresholds up as tests land. Per package: exclude a file covered only by a `*.browser.test.*` via `coverageExclude` or targeted `/* v8 ignore */` with a comment naming that test (never a file with no coverage anywhere); write real tests for cheap gaps; otherwise re-baseline explicitly with a `BELOW_FLOOR_EXEMPTIONS` entry in `scripts/check-coverage.ts`. Give every new package explicit thresholds; the category default may differ from what the gate assumes.
-  - Local pre-push native tests need their own budget: a cold verdict cache (any stub, runtime or chart-engine edit) recompiles every affected fixture and can exceed one hour under load. Keep typecheck and ordinary affected-check deadlines independent, preserve explicit overrides, and replay the clock failure to prove healthy native work finishes without weakening timeout failures.
+  - Local pre-push native tests need their own budget: real-SDK fixtures compile outside the validator verdict cache and can exceed one hour under load. Keep typecheck and ordinary affected-check deadlines independent, preserve explicit overrides, and replay the clock failure to prove healthy native work finishes without weakening timeout failures.
   - A generated-code typecheck should diagnose the generated files against real imports, rather than fully checking the framework for every fixture and discarding those diagnostics. Keep strict options and real module resolution, assert an invalid consumer is rejected, and give compiler-backed suites a bounded per-case budget (`lathe/src/tests/generated-typecheck.test.ts`). Workspace typecheck covers the framework separately.
 
 ---

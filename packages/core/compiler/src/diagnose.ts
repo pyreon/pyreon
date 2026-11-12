@@ -1962,6 +1962,30 @@ const html = (await renderToString(<App />)).replace('<!--x-->', head)`,
     }),
   },
   {
+    // A keyed <For> row that keeps the first value of an item field (#4468).
+    // Nothing throws, so the symptom is the report itself: "the row does not
+    // update", "it updates on iOS but not on web", "only the count moves".
+    pattern:
+      /(?:<For>|\bFor\b row|keyed (?:list|row)|list (?:row|item)|todo row)[^\n]{0,100}(?:not update|doesn'?t update|never updates|stale|old value|keeps? (?:the |its )?(?:old|first))/i,
+    diagnose: () => ({
+      cause:
+        "A keyed `<For each={items} by={(t) => t.id}>` runs a row's callback ONCE per key on the web. An update that replaces the item object but keeps its key (`items.set(items().map((t) => (t.id === id ? { ...t, done: !t.done } : t)))`) keeps the row, so a plain read of the item's fields in it (`{t.done ? …}`, `class={t.done ? …}`, or `todo={t}` to a child reading `props.todo.done`) shows the value the row mounted with. A count derived from the list still moves, and iOS/Android (PMTC) redraw the row, so only the web row looks frozen. A checkbox hides it when it is the only writer, because the browser flips `checked` itself.",
+      fix: 'Read the live value by key through a call, e.g. `const isDone = (id) => items().some((t) => t.id === id && t.done)` and `{isDone(t.id) ? …}` (reactive on web, a plain lookup on native), pass it to a child as its own prop (`done={isDone(t.id)}`), or give the changing field its own signal (`done: Signal<boolean>`). The `for-stale-item-field` detector (`pyreon check`, MCP `validate`) and lint `pyreon/no-stale-for-item-field` flag the shape when the same file replaces items under their key.',
+      fixCode: `// WRONG — the row keeps the first value of t.done on web
+<For each={todos} by={(t) => t.id}>
+  {(t) => <li class={t.done ? 'done' : ''}>{t.title}</li>}
+</For>
+
+// RIGHT — read the live value by id
+const isDone = (id: number) => todos().some((t) => t.id === id && t.done)
+<For each={todos} by={(t) => t.id}>
+  {(t) => <li class={isDone(t.id) ? 'done' : ''}>{t.title}</li>}
+</For>`,
+      related:
+        'The `by` key field never goes stale (the row exists because of it), and fields the update never replaces are fine. A `<For>` whose `each` is a call inside a `{() => …}` accessor is rebuilt on every list change, so its rows are fresh.',
+    }),
+  },
+  {
     // Accessor interpolated UNCALLED — function source rendered into a CSS
     // value or DOM text. No exception fires (String(fn) is legal), so the
     // symptom is the pasted OUTPUT: "() =>" appearing in a style/width/text.
