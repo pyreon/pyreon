@@ -252,4 +252,4 @@ npm create @pyreon/multiplatform@latest
 
 - Docs: [Create a multiplatform app](/docs/create-multiplatform) (toolchains, deep links, release builds) and [how PMTC works](/docs/multiplatform)
 - Star the repo: [github.com/pyreon/pyreon](https://github.com/pyreon/pyreon)
-- Talk to us on [Discord](https://pyreon.dev/discord) or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues). If something you expected to lower does not, paste the warning text: named warnings exist so bug reports can be specific.
+- Questions, ideas, a bug: open an issue on [GitHub](https://github.com/pyreon/pyreon/issues), where every answer stays findable for the next person. If something you expected to lower does not, paste the warning text: named warnings exist so bug reports can be specific.

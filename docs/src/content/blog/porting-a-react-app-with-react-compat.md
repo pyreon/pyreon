@@ -207,4 +207,4 @@ Answer "Migrating from another framework?" with React (or pass `--compat react`)
 
 - Every hook, its exact semantics and the migration checklist: [@pyreon/react-compat docs](/docs/react-compat) and [Migrating from React](/docs/migrating-from-react)
 - Star the repo: [github.com/pyreon/pyreon](https://github.com/pyreon/pyreon)
-- Talk to us on [Discord](https://pyreon.dev/discord) or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues).
+- Questions, ideas, a bug: open an issue on [GitHub](https://github.com/pyreon/pyreon/issues), where every answer stays findable for the next person.
