@@ -1612,7 +1612,7 @@ const { code, warnings } = transformJSX(
   "App.tsx",
   { knownSignals: ["count"] },
 )`,
-    notes: 'The production entry point. Tries the Rust native binary first (3.7-8.9× faster) and falls back per-call to `transformJSX_JS` inside a try/catch so a native panic never crashes the Vite dev server. Output (`{ code, usesTemplates?, warnings, reactivityLens? }`) is byte-identical across both backends. `options.ssr` skips the `_tpl()` template optimization so `@pyreon/runtime-server` can walk the VNode tree; `options.knownSignals` seeds cross-module signal auto-call; `options.reactivityLens` collects the additive `ReactivitySpan[]` sidecar (codegen is byte-identical whether or not it is collected). See also: transformJSX_JS, analyzeReactivity.',
+    notes: 'The production entry point. Tries the Rust native binary first (3.7-8.9× faster) and falls back per-call to `transformJSX_JS` inside a try/catch so a native panic never crashes the Vite dev server. Output (`{ code, usesTemplates?, warnings, map?, reactivityLens? }`) is byte-identical across both backends, the V3 source `map` included (present whenever the code changed; a Plain Mode pre-pass map is composed underneath, so it always maps to the text you passed). `options.ssr` skips the `_tpl()` template optimization so `@pyreon/runtime-server` can walk the VNode tree; `options.knownSignals` seeds cross-module signal auto-call; `options.reactivityLens` collects the additive `ReactivitySpan[]` sidecar (codegen is byte-identical whether or not it is collected). See also: transformJSX_JS, analyzeReactivity.',
     mistakes: `- Expecting \`transformJSX\` to throw on a native panic — it never does; it silently falls back to the JS backend (correctness-equivalent, just slower)
 - Passing user component source WITHOUT \`ssr: true\` when feeding the result to \`@pyreon/runtime-server\` — SSR needs the \`h()\` VNode tree, not \`_tpl()\` clone templates
 - Assuming bare \`{count}\` is auto-called for an IMPORTED signal without seeding \`knownSignals\` — the compiler only tracks \`const count = signal(...)\` declared in the same file unless told otherwise
@@ -1717,8 +1717,8 @@ validate("a@b.co").length // 0`,
     example: `import { detectReactPatterns } from "@pyreon/compiler/analyze"
 
 const diags = detectReactPatterns("const [n,setN] = useState(0)", "x.tsx")
-console.log(diags[0]?.code) // "react-use-state"`,
-    notes: 'AST-based detector for "coming from React" mistakes — `useState` / `useEffect`, `className` / `htmlFor`, `onChange` on inputs, `.value` writes on signals, React-package imports. Pairs with `detectPyreonPatterns` inside the MCP `validate` tool; the merged result is sorted by line + column. See also: migrateReactCode, detectPyreonPatterns, hasReactPatterns.',
+console.log(diags[0]?.code) // "use-state"`,
+    notes: 'AST-based detector for "coming from React" mistakes — 19 codes today: React-package imports (`react-import`, `react-dom-import`, `react-router-import`), hooks (`use-state`, `use-effect-mount` / `use-effect-deps` / `use-effect-no-deps` — `useLayoutEffect` included, `use-memo`, `use-callback`, `use-ref-dom` / `use-ref-box`, `use-reducer`), wrappers (`memo-wrapper`, `forward-ref`), JSX (`class-name-prop`, `html-for-prop`, `on-change-input`, `array-map-jsx`) and `.value` writes on signals (`dot-value-signal`). `dangerouslySetInnerHTML` is a supported Pyreon prop and is not reported. Pairs with `detectPyreonPatterns` inside the MCP `validate` tool; the merged result is sorted by line + column. See also: migrateReactCode, detectPyreonPatterns, hasReactPatterns.',
   },
 
   'compiler/migrateReactCode': {
@@ -1743,7 +1743,7 @@ const { code, changes, remaining } = migratePyreonCode(source, "C.tsx")`,
     example: `import { hasReactPatterns, detectReactPatterns } from "@pyreon/compiler/analyze"
 
 if (hasReactPatterns(src)) report(detectReactPatterns(src, file))`,
-    notes: 'Fast regex pre-filter — returns whether `code` is worth a full `detectReactPatterns` AST walk. Cheap gate for batch scanners; never reports diagnostics itself. See also: detectReactPatterns.',
+    notes: `Fast regex pre-filter — returns whether \`code\` is worth a full \`detectReactPatterns\` AST walk. Cheap gate for batch scanners (\`pyreon check\`, doctor's react-patterns gate); never reports diagnostics itself. Derived from one trigger per detector code (\`REACT_PATTERN_TRIGGERS\`, typed over the code union), so it can over-match but never skips a file a detector would report on. See also: detectReactPatterns.`,
   },
 
   'compiler/diagnoseError': {
@@ -1836,7 +1836,17 @@ console.log(formatSsgAudit(auditSsg(".")))`,
     example: `import { transformDeferInline } from "@pyreon/compiler"
 
 const { code, changed } = transformDeferInline(src, "page.tsx")`,
-    notes: 'Standalone pre-pass that inlines `<Defer>` namespace-import boundaries. Fast-paths out entirely when the source contains no `Defer` mention (no parse). Returns `{ code, changed, warnings }`; runs before the JSX transform in the Vite plugin chain.',
+    notes: 'Standalone pre-pass that inlines `<Defer>` namespace-import boundaries. Fast-paths out entirely when the source contains no `Defer` mention (no parse). Returns `{ code, changed, warnings, map? }` (`map` when `changed`: the rewrite removes import lines, so a caller that transforms further must compose it); runs before the JSX transform in the Vite plugin chain.',
+  },
+
+  'compiler/composeMappings': {
+    signature: 'composeMappings(outer: string, inner: string): string',
+    example: `import { composeMappings } from "@pyreon/compiler"
+
+const mappings = composeMappings(jsxMap.mappings, prepassMap.mappings)`,
+    notes: 'Compose the `mappings` of two single-source V3 maps from positioned-edit transforms: `outer` maps C → B, `inner` maps B → A, the result maps C → A. One binary search per outer segment; an outer segment on text the inner map does not cover is dropped. `transformJSX` uses it for the Plain Mode pre-pass and `@pyreon/vite-plugin` for the passes around the compile.',
+    mistakes: `- Passing maps with more than one source, or \`names\` you need kept: the result has one source (index 0) and no names
+- Composing in the wrong order: \`outer\` is the LATER transform (its generated text is the final output)`,
   },
 
   'compiler/generateContext': {

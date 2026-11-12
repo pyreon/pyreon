@@ -309,7 +309,7 @@ validate("a@b.co").length // 0
 import { detectReactPatterns } from "@pyreon/compiler/analyze"
 
 const diags = detectReactPatterns("const [n,setN] = useState(0)", "x.tsx")
-console.log(diags[0]?.code) // "react-use-state"
+console.log(diags[0]?.code) // "use-state"
 
 import { migrateReactCode } from "@pyreon/compiler/analyze"
 
@@ -371,6 +371,10 @@ console.log(formatSsgAudit(auditSsg(".")))
 import { transformDeferInline } from "@pyreon/compiler"
 
 const { code, changed } = transformDeferInline(src, "page.tsx")
+
+import { composeMappings } from "@pyreon/compiler"
+
+const mappings = composeMappings(jsxMap.mappings, prepassMap.mappings)
 
 import { generateContext } from "@pyreon/compiler/audits"
 

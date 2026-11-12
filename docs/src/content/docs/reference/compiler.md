@@ -42,7 +42,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`formatReactivityLens`](#formatreactivitylens-function-experimental) | function | Renders an `analyzeReactivity` result as an annotated-source CLI / debug view — each spanned expression gets an inline ` |
 | [`analyzeValidate`](#analyzevalidate-function-experimental) | function | Build-time analogue of @pyreon/validate's runtime JIT: reads `s.*` schema DEFINITIONS from source and parses each into a |
 | [`emitValidator`](#emitvalidator-function-experimental) | function | Emits a monomorphic, fully-inlined validator FUNCTION SOURCE for an emittable `analyzeValidate` IR node — straight-line  |
-| [`detectReactPatterns`](#detectreactpatterns-function) | function | AST-based detector for "coming from React" mistakes — `useState` / `useEffect`, `className` / `htmlFor`, `onChange` on i |
+| [`detectReactPatterns`](#detectreactpatterns-function) | function | AST-based detector for "coming from React" mistakes — 19 codes today: React-package imports (`react-import`, `react-dom- |
 | [`migrateReactCode`](#migratereactcode-function) | function | One-shot React→Pyreon codemod whose output updates: `useState`→`signal` with every read rewritten to `x()` and every set |
 | [`migratePyreonCode`](#migratepyreoncode-function) | function | Pyreon→correct-Pyreon codemod (the parallel to `migrateReactCode`). |
 | [`hasReactPatterns`](#hasreactpatterns-function) | function | Fast regex pre-filter — returns whether `code` is worth a full `detectReactPatterns` AST walk. |
@@ -56,6 +56,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`auditSsg`](#auditssg-function) | function | Project-wide syntactic SSG audit — three detectors: `404-outside-layout-dir` (`_404.tsx` not co-located with `_layout.ts |
 | [`formatSsgAudit`](#formatssgaudit-function) | function | Text renderer for an `auditSsg` result — file path + line/column + actionable fix per finding. |
 | [`transformDeferInline`](#transformdeferinline-function) | function | Standalone pre-pass that inlines `<Defer>` namespace-import boundaries. |
+| [`composeMappings`](#composemappings-function) | function | Compose the `mappings` of two single-source V3 maps from positioned-edit transforms: `outer` maps C → B, `inner` maps B  |
 | [`generateContext`](#generatecontext-function) | function | Project scanner — walks the source tree and produces a structured `ProjectContext` (routes, islands, components) that `@ |
 | [`filePathToUrlPath`](#filepathtourlpath-function) | function | The `@pyreon/zero` fs-route convention: extension-stripped route file path → URL pattern (`index` collapses, `[id]` → `: |
 | [`isApiRoute`](#isapiroute-function) | function | True for a zero file-based API route: a `.ts`/`.js` file inside the TOP-LEVEL `api/` directory of the routes dir (path i |
@@ -70,7 +71,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 transformJSX(code: string, filename?: string, options?: TransformOptions): TransformResult
 ```
 
-The production entry point. Tries the Rust native binary first (3.7-8.9× faster) and falls back per-call to `transformJSX_JS` inside a try/catch so a native panic never crashes the Vite dev server. Output (`{ code, usesTemplates?, warnings, reactivityLens? }`) is byte-identical across both backends. `options.ssr` skips the `_tpl()` template optimization so `@pyreon/runtime-server` can walk the VNode tree; `options.knownSignals` seeds cross-module signal auto-call; `options.reactivityLens` collects the additive `ReactivitySpan[]` sidecar (codegen is byte-identical whether or not it is collected).
+The production entry point. Tries the Rust native binary first (3.7-8.9× faster) and falls back per-call to `transformJSX_JS` inside a try/catch so a native panic never crashes the Vite dev server. Output (`{ code, usesTemplates?, warnings, map?, reactivityLens? }`) is byte-identical across both backends, the V3 source `map` included (present whenever the code changed; a Plain Mode pre-pass map is composed underneath, so it always maps to the text you passed). `options.ssr` skips the `_tpl()` template optimization so `@pyreon/runtime-server` can walk the VNode tree; `options.knownSignals` seeds cross-module signal auto-call; `options.reactivityLens` collects the additive `ReactivitySpan[]` sidecar (codegen is byte-identical whether or not it is collected).
 
 **Example**
 
@@ -290,7 +291,7 @@ validate("a@b.co").length // 0
 detectReactPatterns(code: string, filename?: string): ReactDiagnostic[]
 ```
 
-AST-based detector for "coming from React" mistakes — `useState` / `useEffect`, `className` / `htmlFor`, `onChange` on inputs, `.value` writes on signals, React-package imports. Pairs with `detectPyreonPatterns` inside the MCP `validate` tool; the merged result is sorted by line + column.
+AST-based detector for "coming from React" mistakes — 19 codes today: React-package imports (`react-import`, `react-dom-import`, `react-router-import`), hooks (`use-state`, `use-effect-mount` / `use-effect-deps` / `use-effect-no-deps` — `useLayoutEffect` included, `use-memo`, `use-callback`, `use-ref-dom` / `use-ref-box`, `use-reducer`), wrappers (`memo-wrapper`, `forward-ref`), JSX (`class-name-prop`, `html-for-prop`, `on-change-input`, `array-map-jsx`) and `.value` writes on signals (`dot-value-signal`). `dangerouslySetInnerHTML` is a supported Pyreon prop and is not reported. Pairs with `detectPyreonPatterns` inside the MCP `validate` tool; the merged result is sorted by line + column.
 
 **Example**
 
@@ -298,7 +299,7 @@ AST-based detector for "coming from React" mistakes — `useState` / `useEffect`
 import { detectReactPatterns } from "@pyreon/compiler/analyze"
 
 const diags = detectReactPatterns("const [n,setN] = useState(0)", "x.tsx")
-console.log(diags[0]?.code) // "react-use-state"
+console.log(diags[0]?.code) // "use-state"
 ```
 
 **See also:** `migrateReactCode` · `detectPyreonPatterns` · `hasReactPatterns`
@@ -352,7 +353,7 @@ const { code, changes, remaining } = migratePyreonCode(source, "C.tsx")
 hasReactPatterns(code: string): boolean
 ```
 
-Fast regex pre-filter — returns whether `code` is worth a full `detectReactPatterns` AST walk. Cheap gate for batch scanners; never reports diagnostics itself.
+Fast regex pre-filter — returns whether `code` is worth a full `detectReactPatterns` AST walk. Cheap gate for batch scanners (`pyreon check`, doctor's react-patterns gate); never reports diagnostics itself. Derived from one trigger per detector code (`REACT_PATTERN_TRIGGERS`, typed over the code union), so it can over-match but never skips a file a detector would report on.
 
 **Example**
 
@@ -571,7 +572,7 @@ console.log(formatSsgAudit(auditSsg(".")))
 transformDeferInline(code: string, filename?: string): DeferInlineResult
 ```
 
-Standalone pre-pass that inlines `<Defer>` namespace-import boundaries. Fast-paths out entirely when the source contains no `Defer` mention (no parse). Returns `{ code, changed, warnings }`; runs before the JSX transform in the Vite plugin chain.
+Standalone pre-pass that inlines `<Defer>` namespace-import boundaries. Fast-paths out entirely when the source contains no `Defer` mention (no parse). Returns `{ code, changed, warnings, map? }` (`map` when `changed`: the rewrite removes import lines, so a caller that transforms further must compose it); runs before the JSX transform in the Vite plugin chain.
 
 **Example**
 
@@ -580,6 +581,29 @@ import { transformDeferInline } from "@pyreon/compiler"
 
 const { code, changed } = transformDeferInline(src, "page.tsx")
 ```
+
+---
+
+### `composeMappings` `function`
+
+```ts
+composeMappings(outer: string, inner: string): string
+```
+
+Compose the `mappings` of two single-source V3 maps from positioned-edit transforms: `outer` maps C → B, `inner` maps B → A, the result maps C → A. One binary search per outer segment; an outer segment on text the inner map does not cover is dropped. `transformJSX` uses it for the Plain Mode pre-pass and `@pyreon/vite-plugin` for the passes around the compile.
+
+**Example**
+
+```tsx
+import { composeMappings } from "@pyreon/compiler"
+
+const mappings = composeMappings(jsxMap.mappings, prepassMap.mappings)
+```
+
+**Common mistakes**
+
+- Passing maps with more than one source, or `names` you need kept: the result has one source (index 0) and no names
+- Composing in the wrong order: `outer` is the LATER transform (its generated text is the final output)
 
 ---
 
