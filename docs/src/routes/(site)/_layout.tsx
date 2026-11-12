@@ -5,8 +5,8 @@ import { SITE_STYLESHEETS } from '../../styles/sheets'
 
 /**
  * Marketing shell for every page in this route group (the group adds nothing
- * to the URL): home, products, brand, blog, showcase, open, discord,
- * newsletter. The docs have their own layout under `routes/docs/`.
+ * to the URL): home, products, brand, blog, showcase, open. The docs have
+ * their own layout under `routes/docs/`.
  *
  * It links the marketing-only stylesheets (`styles/sheets.ts`), so docs pages
  * never download them.

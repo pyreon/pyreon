@@ -3,57 +3,8 @@
   "destination": "the Pyreon newsletter",
   "meta": {
     "title": "Newsletter · Pyreon",
-    "description": "Get every Pyreon post the day it goes out: deep dives into the compiler and runtime, measured benchmarks and release notes."
+    "description": "The Pyreon newsletter: what shipped, what we measured, what is next."
   },
-  "hero": {
-    "eyebrow": "newsletter",
-    "title": "Every post, the day it goes out.",
-    "lede": "Deep dives into how the compiler and the runtime work, benchmark results with the losses left in, and release write-ups. The email list opens with the launch; the RSS feed already carries every post in full, the moment it is published.",
-    "actions": [
-      {
-        "label": "Subscribe with RSS",
-        "href": "/blog/rss.xml"
-      },
-      {
-        "label": "Read the blog",
-        "href": "/blog"
-      }
-    ]
-  },
-  "feed": {
-    "title": "Add the feed anywhere.",
-    "text": "Paste this address into any feed reader, or into an RSS-to-email service to get each post by mail.",
-    "url": "https://pyreon.dev/blog/rss.xml",
-    "note": "Prefer GitHub? Watch pyreon/pyreon and choose Custom → Releases to get a notification for each release."
-  },
-  "sections": [
-    {
-      "kind": "links",
-      "title": "Other ways to follow along",
-      "items": [
-        {
-          "label": "Releases on GitHub",
-          "href": "https://github.com/pyreon/pyreon/releases",
-          "text": "Watch the repository and pick Releases to hear about each one."
-        },
-        {
-          "label": "Discord",
-          "href": "/discord",
-          "text": "Questions, show-and-tell, and talking to the people who build it."
-        },
-        {
-          "label": "Open stats",
-          "href": "/open",
-          "text": "The project in live numbers, refreshed daily."
-        },
-        {
-          "label": "Community",
-          "href": "/community",
-          "text": "How to contribute, good first issues and where to report a bug."
-        }
-      ]
-    }
-  ],
   "redirect": {
     "title": "Taking you to {destination}.",
     "text": "If nothing happens in a second, use the link below.",

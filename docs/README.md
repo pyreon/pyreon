@@ -18,7 +18,7 @@ production) landed in the cutover PR.
 | `public/blog/covers/`       | Blog cover images (1600x840 PNG)                       |
 | `src/mdx/`                  | Convention-scanned components (PascalCase, used inline in `.md`) |
 | `src/components/`           | Docs layout pieces (header, sidebar, toc) and the pre-redesign landing |
-| `src/routes/`               | fs-router pages: `_layout.tsx` (root: head defaults + `<PyreonUI>`), `docs/` (docs shell), `(site)/` (marketing shell: home, products, brand, blog, showcase, open, discord, newsletter) |
+| `src/routes/`               | fs-router pages: `_layout.tsx` (root: head defaults + `<PyreonUI>`), `docs/` (docs shell), `(site)/` (marketing shell: home, products, brand, blog, showcase, open) |
 | `src/site/`                 | The redesigned marketing site: `theme.ts` (every token), `kit/` (rocketstyle components), `shell/` (nav, mega menu, mobile sheet, footer), `pages/`, `demos/` (live product demos as islands), `content/` (the content set, synced) |
 | `src/styles/`               | docs.css + syntax themes                               |
 | `src/examples/`             | Real `.tsx` example components mounted via `<Example>` |
@@ -102,7 +102,7 @@ tags; `views` draws the index, tag and post pages in the site kit
 (`src/blog/views/`), with every label from `_channels.json` (`blog`). Every
 post ends with its own "Start building" section in the markdown; after it
 come share links, a copy-link button, the subscribe band and the posts to
-read next. The newsletter launches through `/newsletter` (below).
+read next. The newsletter, once it exists, launches through `/newsletter` (below).
 
 Posts live in `src/content/blog/<slug>.md`:
 
@@ -148,7 +148,7 @@ published ones).
 
 ## Site pages: /open, /showcase, /discord, /newsletter
 
-Four standalone pages that posts link to, so their addresses must never move.
+Four addresses that posts link to, so they must never move.
 
 - **`/open`** (`src/routes/(site)/open.tsx`, `src/open/`): live project numbers. They
   are fetched once per build by `vite-plugins/open-stats.ts` (GitHub repo,
@@ -167,7 +167,9 @@ Four standalone pages that posts link to, so their addresses must never move.
   `examples/collab-board` and `examples/react-compat` into `/showcase/<name>/`
   as live demos (see `.github/workflows/docs.yml`).
 - **`/discord`** and **`/newsletter`**: stable links driven by
-  `src/site-links.ts`, copy from `_channels.json`.
+  `src/site-links.ts`, copy from `_channels.json`. They are not routes:
+  `vite-plugins/channel-gate.ts` writes each as a static redirect, and only
+  while its channel has an address (below).
 
 ### Switching on /discord or /newsletter
 
@@ -180,17 +182,40 @@ export const SITE_LINKS = {
 } satisfies Record<string, string | null>
 ```
 
-The next deploy turns that page into a redirect that works on a static host:
-a `<meta http-equiv="refresh">`, a canonical link to the target, `noindex`,
-a visible "Continue" link, and the page leaves the sitemap. The target must be
-an absolute `https://` URL (anything else fails the build), and it is used
-exactly as written: a query string a visitor arrives with is not forwarded.
-While a target is `null`, `/discord` points people to GitHub issues and
-`/newsletter` to the blog's RSS feed.
+The next deploy writes that page as a redirect that works on a static host:
+a `<meta http-equiv="refresh">`, a canonical link to the target, `noindex`
+and a visible "Continue" link; redirects stay out of the sitemap. The target
+must be an absolute `https://` URL (anything else fails the build), and it is
+used exactly as written: a query string a visitor arrives with is not
+forwarded.
+
+While a target is `null` the channel does not exist on the site: no page
+(the address is a 404), no sitemap entry, and no link to it anywhere. One
+rule does this, `gateChannels` in `src/site-links.ts`, which
+`vite-plugins/channel-gate.ts` applies to every content JSON file as it is
+imported (the unit tests load the same plugin):
+
+- a list item whose `href` or `route` is `/discord`, `/newsletter` or their
+  `https://pyreon.dev/…` form is dropped (the nav icon, the mobile sheet, the
+  footer, the blog's buttons and "Get new posts" strip, the community links,
+  the home page's closing links, sitemap rows);
+- copy that names the channel inside a sentence or a single slot is written
+  without it, and the channel version sits beside it in `withChannel`
+  (`{ "text": "…", "withChannel": { "discord": { "text": "…on Discord…" } } }`),
+  merged in only while the channel is open;
+- anything left that still points at a closed channel fails the build with
+  the file and the field.
+
+So the content set is written for a site without the channels, and setting
+an address brings every link back with no code change. Blog posts are
+published text, not content JSON: they name only channels that exist, and
+`src/tests/site-links.test.ts` fails if one links a closed channel.
 
 The site's own unit tests (`bun run test` in `docs/`) cover the stats
-fetchers, including every failure path, the link config and the showcase data;
-`e2e/site-project.spec.ts` checks the blog and the four pages in the built site.
+fetchers, including every failure path, the link config and the channel rule,
+and the showcase data; `e2e/site-project.spec.ts` checks the blog and the
+pages in the built site, and `e2e/site-links.spec.ts` that no built page links
+a closed channel.
 
 ## Deploy
 

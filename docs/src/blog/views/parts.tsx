@@ -375,7 +375,7 @@ const StripLede = txt
   .attrs({ tag: 'p' })
   .theme((_t, m) => ({ margin: 0, fontFamily: font.sans, fontSize: text.small.size, lineHeight: text.small.lineHeight, color: tone(m, 'mist') }))
 
-/** `.b-sub` — "Get new posts": the feed, the newsletter page and GitHub releases, on one line. */
+/** `.b-sub` — "Get new posts": the feed and GitHub releases (and the newsletter once it opens), on one line. */
 export function SubscribeBand(props: { copy: BlogChannel; level?: 'h2' | 'h3' | undefined }) {
   const s = props.copy.subscribe
   return (

@@ -17,6 +17,19 @@ export interface Cta { label: string; href?: string; command?: string }   // com
 export interface CodeSide { label: string; file: string; code: string }
 export interface CtaBlock { title: string; command: string; secondary: { label: string; href: string } }
 
+/**
+ * Community channels that may not exist yet. Their addresses live in the app
+ * (`docs/src/site-links.ts`, `null` = not open). While a channel is closed the
+ * app drops every list item that links to it (`href`/`route` `/discord`,
+ * `https://pyreon.dev/discord`, likewise `/newsletter`) and builds no page for
+ * it, so write the copy for a site WITHOUT the channel. Where a sentence or a
+ * single link would name the channel once it opens, put that version in
+ * `withChannel`: the app merges `withChannel[<id>]` over the object while the
+ * channel is open, and drops the key either way.
+ */
+export type ChannelId = 'discord' | 'newsletter'
+export interface WithChannel<T> { withChannel?: Partial<Record<ChannelId, Partial<T>>> }
+
 // ---------------------------------------------------------------- _home.json
 /** Section order is the array order. `kind` picks the component (see visual-alignment.md §C). */
 export type HomeSection =
@@ -295,7 +308,7 @@ export type SiteSection =
   | { kind: 'quote'; text: string; attribution: string; href?: string } // 'Pyreon docs' | 'Pyreon benchmark record'
   | { kind: 'compare-strip'; title: string; items: { label: string; before: string; after: string }[] }
   | { kind: 'faq'; title: string; items: { q: string; a: string }[] }
-  | { kind: 'links'; title: string; items: { label: string; href: string; text: string }[] }
+  | { kind: 'links'; title: string; items: ({ label: string; href: string; text: string } & WithChannel<{ label: string; href: string; text: string }>)[] }
   | { kind: 'note'; text: string; href?: string }                      // small fine-print line
   | { kind: 'table'; title: string; columns: string[]; rows: string[][] }
   | { kind: 'logos'; title: string; text: string
@@ -338,7 +351,7 @@ export interface ProjectPage {
   title: string
   lede: string
   sections: SiteSection[]
-  end: { title: string; cta: Cta }
+  end: { title: string; cta: Cta & WithChannel<Cta> }
   sources: Source[]
 }
 export interface NotFoundPage {
@@ -435,7 +448,8 @@ export interface MigrateSite { landing: MigrateLanding; layers: MigrateLayer[]; 
 // ---------------------------------------------------------------- blog, showcase, open, discord, newsletter (_channels.json)
 // Workstream b of the site integration. The pages that publish and gather: the blog's index,
 // tag and post pages (the posts themselves are docs/src/content/blog/*.md), the showcase,
-// the live stats page and the two stable links. `{name}` in a string is filled by the page.
+// the live stats page and the two stable links (built only while their channel is open, see
+// ChannelId). `{name}` in a string is filled by the page.
 export interface ChannelHero { eyebrow: string; title: string; lede: string; actions: Cta[] }
 export interface ChannelMeta { title: string; description: string }   // <title> and meta description
 
@@ -519,13 +533,11 @@ export interface OpenChannel {
   benchmarks: { label: string; title: string; text: string; links: { label: string; href: string; text: string }[] }
 }
 
+/** `/discord`, `/newsletter`: a redirect to the channel, built only while its address is set. */
 export interface StableLinkChannel {
   route: '/discord' | '/newsletter'
   destination: string                   // "the Pyreon Discord"
   meta: ChannelMeta
-  hero: ChannelHero
-  feed?: { title: string; text: string; url: string; note: string }
-  sections: SiteSection[]
   redirect: { title: string; text: string; cta: string }   // {destination}
 }
 

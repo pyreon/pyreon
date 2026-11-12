@@ -201,7 +201,7 @@ defineBlog({
 })
 ```
 
-When your posts end with their own closing, set `cta: false` so the page has one ending, not two — this site does that and keeps the share links, the RSS link and the newsletter slot. `postEnd: false` renders none of it, and `postFooter` adds any component of your own after it.
+When your posts end with their own closing, set `cta: false` so the page has one ending, not two, and keep the share links and the RSS link; the newsletter slot stays empty until you give it a sign-up `action`. `postEnd: false` renders none of it, and `postFooter` adds any component of your own after it.
 
 To render a page type in your own design system, pass `views`. Each view receives the page's computed data as props, and the blog still decides what exists (published posts only, the not-found view for anything else), writes the head tags and lists the static paths. pyreon.dev renders all three page types this way:
 

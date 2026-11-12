@@ -44,18 +44,24 @@ export function blogBench(options: { moreLabel: string }): Plugin {
   }
 }
 
-/** Every post file in `dir`, split into frontmatter and body. */
-export function readPosts(dir: string): PostSource[] {
+/**
+ * Every post file in `dir`, split into frontmatter and body. The body is what
+ * the post page compiles: its `::: bench` blocks rewritten the way
+ * `blogBench()` rewrites them (the "more" link they gain is read too), so a
+ * planned card's reading time is the one the post shows on its date.
+ */
+export function readPosts(dir: string, benchMoreLabel: string): PostSource[] {
   return readdirSync(dir)
     .filter((f) => f.endsWith('.md'))
     .sort()
     .map((f) => {
-      const { data, content } = parseFrontmatter(readFileSync(join(dir, f), 'utf8'))
+      const { data, content } = parseFrontmatter(rewriteBenchBlocks(readFileSync(join(dir, f), 'utf8'), benchMoreLabel, f))
       return { data, body: content }
     })
 }
 
-export function blogPlanned(): Plugin {
+/** `benchMoreLabel`: the same label `blogBench()` gets. */
+export function blogPlanned(options: { benchMoreLabel: string }): Plugin {
   let dir = ''
   let now = Date.now()
   return {
@@ -73,7 +79,7 @@ export function blogPlanned(): Plugin {
       filter: { id: /^\0virtual:pyreon-blog-planned$/ },
       handler(id) {
         if (id !== RESOLVED_ID) return undefined
-        return `export default ${JSON.stringify(plannedPosts(readPosts(dir), now))}`
+        return `export default ${JSON.stringify(plannedPosts(readPosts(dir, options.benchMoreLabel), now))}`
       },
     },
     handleHotUpdate(ctx) {
