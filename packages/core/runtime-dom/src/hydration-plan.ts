@@ -411,7 +411,8 @@ export function replayRowPlan(plan: RowPlan, rowVNode: VNodeChild, first: ChildN
   if (!isElementVNode(rowVNode)) return null
   if (first.nodeType !== 1) return null
   const rootEl = first as Element
-  if (rootEl.tagName.toLowerCase() !== plan.rootTag) return null
+  // `localName`: SVG names are case-adjusted by the parser (see `hydrateElement`).
+  if (rootEl.localName !== plan.rootTag) return null
 
   // Phase 0 — verify the row's VNODE shape against the signature (tag, key
   // sequences, child kinds/counts) and collect step targets in step order.
@@ -440,7 +441,7 @@ export function replayRowPlan(plan: RowPlan, rowVNode: VNodeChild, first: ChildN
     if (!node || node.nodeType !== 1) return null
     const el = node as Element
     if (step.kind === 0) {
-      if (el.tagName.toLowerCase() !== step.tag) return null
+      if (el.localName !== step.tag) return null
       els[s] = el
       texts[s] = null
     } else if (step.elided) {

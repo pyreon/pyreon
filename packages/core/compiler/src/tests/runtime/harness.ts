@@ -53,9 +53,16 @@ import { transformJSX } from '../../jsx'
 export function compileAndMount(
   jsxExpr: string,
   context: Record<string, unknown> = {},
+  /**
+   * Statements placed before the `return`, inside the component. A signal
+   * the compiler must KNOW is a signal (auto-call, signal-method references)
+   * has to be declared here as `const x = signal(...)`; one passed through
+   * `context` is an opaque identifier to the compiler.
+   */
+  setup = '',
 ): MountInBrowserResult {
   // Wrap as a function so the compiler emits a return statement.
-  const source = `export function App(props) { return ${jsxExpr} }`
+  const source = `export function App(props) { ${setup}\n return ${jsxExpr} }`
   const compiled = transformJSX(source, 'compile-runtime-test.tsx').code
 
   // Strip ALL `@pyreon/*` imports — we inject the symbols by name

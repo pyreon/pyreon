@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Today</title>
+    <style>
+      /* Page-level styling only: the page colour, the system font, and the
+         accent the browser gives its own controls (the switch, the caret), in
+         a light and a dark version. Everything inside #app comes from the
+         shared TodayApp.tsx, which follows the same setting through useColorMode(). */
+      html { color-scheme: light dark; background: #F4EFE6; accent-color: #A8380A; caret-color: #A8380A; }
+      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+      #app { max-width: 480px; margin: 0 auto; }
+      :focus-visible { outline: 2px solid #A8380A; outline-offset: 2px; }
+      @media (prefers-color-scheme: dark) {
+        html { background: #0A0A0E; accent-color: #FF5E1A; caret-color: #FF5E1A; }
+        :focus-visible { outline-color: #FF5E1A; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app" data-testid="app-root"><!--app--></div>
+    <script type="module" src="/src/entry-client.tsx"></script>
+  </body>
+</html>

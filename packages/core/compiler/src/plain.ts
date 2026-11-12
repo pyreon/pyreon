@@ -48,7 +48,7 @@
  * literal initializer to get deep state), destructuring assignment onto state, rest/nested props
  * patterns, `for (x of …)` heads writing state.
  */
-import MagicString from 'magic-string'
+import MagicString, { type SourceMap } from 'magic-string'
 import { parseSync } from 'oxc-parser'
 import type { CompilerWarning } from './jsx'
 
@@ -59,6 +59,12 @@ type N = any
 export interface PlainTransformResult {
   code: string
   warnings: CompilerWarning[]
+  /**
+   * V3 source map of the rewrite (magic-string `hires: 'boundary'`; the native
+   * pre-pass returns the same `mappings`). `transformJSX` composes it with the
+   * JSX transform's own map so the result maps to the text the caller passed.
+   */
+  map?: SourceMap
 }
 
 export interface PlainOptions {
@@ -1748,5 +1754,9 @@ export function transformPlain(
     }
   }
 
-  return { code: ms.toString(), warnings }
+  return {
+    code: ms.toString(),
+    warnings,
+    map: ms.generateMap({ source: filename, includeContent: true, hires: 'boundary' }),
+  }
 }

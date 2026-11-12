@@ -209,10 +209,19 @@ export function foldNodeEnvProduction(code: string, id: string): string | null {
  * key spelling the same word is not an attribute and stays untouched.
  */
 export function renameCompatJsxAttributes(code: string, id: string): string {
-  if (!code.includes('className') && !code.includes('htmlFor')) return code
+  const edits = compatAttributeEdits(code, id)
+  return edits.length === 0 ? code : splice(code, edits)
+}
+
+/** The renames `renameCompatJsxAttributes` makes, as positioned edits. */
+export function compatAttributeEdits(
+  code: string,
+  id: string,
+): { start: number; end: number; text: string }[] {
+  if (!code.includes('className') && !code.includes('htmlFor')) return []
   const lang = langOf(id)
   const program = parse(code, id, lang === 'ts' || lang === 'js' ? 'jsx' : lang)
-  if (!program) return code
+  if (!program) return []
   const edits: { start: number; end: number; text: string }[] = []
   walk(program, (n) => {
     if (n.type === 'JSXAttribute') {
@@ -224,7 +233,7 @@ export function renameCompatJsxAttributes(code: string, id: string): string {
     }
     return true
   })
-  return edits.length === 0 ? code : splice(code, edits)
+  return edits
 }
 
 /** Real bare island() call positions; examples in literals/comments are inert. */

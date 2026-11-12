@@ -1,7 +1,8 @@
 import { type ComponentFn, h } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
-import { defineAsyncComponent, ref, isRef, unref } from './index'
+import { createApp, defineAsyncComponent, ref, isRef, unref } from './index'
+import { jsx } from './jsx-runtime'
 
 /**
  * Real-browser smoke test for `@pyreon/vue-compat`.
@@ -61,5 +62,21 @@ describe('@pyreon/vue-compat — defineAsyncComponent options in real Chromium',
     await tick(60)
     expect(container.querySelector('#async-error')?.textContent).toBe('Async component timed out after 20ms.')
     unmount()
+  })
+})
+
+describe('@pyreon/vue-compat — createApp root in real Chromium', () => {
+  it('a stateful root mounted with createApp re-renders on a real click', async () => {
+    const Counter = () => {
+      const count = ref(0)
+      return jsx('button', { onClick: () => count.value++, children: `count ${count.value}` })
+    }
+    const el = document.body.appendChild(document.createElement('div'))
+    const unmount = createApp(Counter as ComponentFn).mount(el)
+    el.querySelector('button')!.click()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(el.textContent).toBe('count 1')
+    unmount()
+    el.remove()
   })
 })

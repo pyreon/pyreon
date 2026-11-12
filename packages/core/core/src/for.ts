@@ -83,6 +83,17 @@ export interface ForProps<T> {
  *   <For each={items} by={r => r.id}>{r => <li>...</li>}</For>
  */
 export function For<T>(props: ForProps<T>): VNode {
+  // `by` is required (see ForProps). Without it the reconciler has no key and
+  // failed deep inside the list effect with "getKey is not a function", on the
+  // client and the server alike. Checked here, where every path (h(), compiled
+  // JSX, SSR, hydration) builds the list, so the error names the fix.
+  if (typeof props.by !== 'function') {
+    throw new TypeError(
+      process.env.NODE_ENV !== 'production'
+        ? `[Pyreon] <For> requires a \`by\` prop: a function returning a stable, unique key for each item (got ${props.by === undefined ? 'no `by`' : typeof props.by}). Add one, e.g. <For each={items} by={(item) => item.id}>. Use by={(item) => item} for a list of unique strings or numbers. \`key\` does not work here: JSX keeps it for the element itself.`
+        : '[Pyreon] <For> requires a `by` prop',
+    )
+  }
   return {
     type: ForSymbol as unknown as string,
     props: props as unknown as Props,

@@ -337,13 +337,13 @@ Compiler warnings are surfaced in the terminal via Vite's warning system, includ
 
 ### Source maps
 
-The plugin returns the compiler's **V3 source map** to Vite, so runtime stack traces and debugger breakpoints in Pyreon components resolve to the original source line. This matters because the transform shifts line counts -- a one-line JSX element can expand into a multi-line `_tpl(...)` factory -- and without a map every frame would mislocate.
+The plugin returns **one V3 source map** per module, from the text Vite handed it to the text it returns, so runtime stack traces, `server.ssrFixStacktrace` and debugger breakpoints in Pyreon components resolve to the original line and column, in dev and build, client and SSR. This matters because the transform moves code: a one-line JSX element can expand into a multi-line `_tpl(...)` factory, and imports and hoisted statics land on top.
 
-Honest scope:
+The map covers every pass, not only the compiler's: the JSX auto-import (which can add an import line), island auto-naming, the inline-`<Defer>` rewrite (which removes import lines), the compat `className` rename, the validator rewrite, and in dev the HMR signal rewrite and signal debug names. Signal debug names (`__sourceLocation`) also report the source position, traced back through the compile.
 
-- The map is produced by the compiler's **JS backend**. When the **native (Rust) binary** is active (the default in production builds) it does not emit a map yet -- a scoped follow-up -- so the plugin passes `null` for those files until it lands.
-- In dev mode the plugin's own post-compiler injections (signal-preserving HMR, signal debug names) are not re-mapped; the resulting offset is small and still far better than no map.
+- Text appended at the end of a module (the HMR footer, the sanitizer import, compiled validator verdicts) moves nothing and needs no mapping.
 - A file with nothing to transform produces no map (the code is byte-identical to the source, so no remapping is needed).
+- Vite's own JSX transform runs after this plugin: the `lineNumber` it writes into dev-mode `jsxDEV(...)` calls is computed from this plugin's output, not your source. Stack frames are unaffected (they go through the map).
 
 ### File Extensions
 

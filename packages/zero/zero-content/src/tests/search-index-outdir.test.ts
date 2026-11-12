@@ -1,9 +1,11 @@
 /**
  * Regression: the closeBundle search-index emission must resolve its output
  * directory correctly when `build.outDir` is ABSOLUTE — the shape produced by
- * @pyreon/zero's INNER SSG server build (`dist/.zero-ssg-server/`) — and must
- * skip entirely during that inner build (the outer client build owns the
- * index).
+ * @pyreon/zero's INNER SSG server build (`dist/.zero-ssg-server/`) — and the
+ * inner build must not re-emit an index the outer client build wrote. When
+ * the client build had no entries (a static, islands-only site: no page
+ * module runs in the browser, so the client build compiles no Markdown), the
+ * inner build writes the index and SEO outputs into `dist/` itself.
  *
  * Before the fix, `path.join(root, build.outDir)` concatenated an absolute
  * `build.outDir` onto `root`, writing the index to a doubled
@@ -101,14 +103,39 @@ describe('content() closeBundle — search-index outDir resolution', () => {
     expect(existsSync(path.join(doubled, 'search-index.json'))).toBe(false)
   })
 
-  it('skips emission entirely during the inner SSG build', async () => {
+  it('the inner SSG build does not re-emit an index the client build wrote', async () => {
+    const dist = path.join(tmpDir, 'dist')
+    const plugin = await setup(dist)
+    await runCloseBundle(plugin)
+    expect(existsSync(path.join(dist, 'search-index.json'))).toBe(true)
+    await fs.rm(path.join(dist, 'search-index.json'))
+
+    // The inner build runs with the same plugin instance.
+    process.env.PYREON_ZERO_SSG_INNER_BUILD = '1'
+    const inner = path.join(dist, '.zero-ssg-server')
+    await fs.mkdir(inner, { recursive: true })
+    await (plugin.configResolved as (this: unknown, c: unknown) => Promise<void>).call({}, {
+      root: tmpDir,
+      command: 'build',
+      base: '/',
+      build: { outDir: inner },
+      logger: { warn: vi.fn() },
+    })
+    await runCloseBundle(plugin)
+    expect(existsSync(path.join(dist, 'search-index.json'))).toBe(false)
+    expect(existsSync(path.join(inner, 'search-index.json'))).toBe(false)
+  })
+
+  it('an islands-only site: the inner SSG build writes the index into dist/ when the client build had none', async () => {
     const absOutDir = path.join(tmpDir, 'dist', '.zero-ssg-server')
     const plugin = await setup(absOutDir)
     process.env.PYREON_ZERO_SSG_INNER_BUILD = '1'
     await runCloseBundle(plugin)
 
-    const doubled = path.join(tmpDir, absOutDir)
+    expect(existsSync(path.join(tmpDir, 'dist', 'search-index.json'))).toBe(true)
+    expect(existsSync(path.join(tmpDir, 'dist', 'search-index-docs.json'))).toBe(true)
+    // Never inside the server bundle's own directory, never at a doubled path.
     expect(existsSync(path.join(absOutDir, 'search-index.json'))).toBe(false)
-    expect(existsSync(path.join(doubled, 'search-index.json'))).toBe(false)
+    expect(existsSync(path.join(path.join(tmpDir, absOutDir), 'search-index.json'))).toBe(false)
   })
 })

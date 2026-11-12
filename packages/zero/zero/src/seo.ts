@@ -19,8 +19,20 @@ import type { I18nRoutingConfig } from './i18n-routing'
 export interface SitemapConfig {
   /** Base URL of the site (required). e.g. "https://example.com" */
   origin: string
-  /** Paths to exclude from the sitemap. */
-  exclude?: string[]
+  /**
+   * Paths to exclude from the sitemap. Applies to file-scanned routes AND to
+   * `additionalPaths` (including SSG-enumerated paths under `useSsgPaths`).
+   *
+   * - A `string` matches the path itself and every path under it, on a
+   *   segment boundary: `'/blog'` drops `/blog` and `/blog/post`, but keeps
+   *   `/blogroll`. A trailing slash on either side is ignored.
+   * - A `RegExp` is tested against the normalised path (no trailing slash):
+   *   `/^\/why$/` drops `/why` only, keeping `/why/<id>`.
+   *
+   * Excluding a prefix that a page sits under is a string; excluding one
+   * page without its children is a RegExp.
+   */
+  exclude?: (string | RegExp)[]
   /** Default change frequency. Default: "weekly" */
   changefreq?: ChangeFreq
   /** Default priority. Default: 0.7 */
@@ -164,6 +176,30 @@ export function formatLoc(origin: string, path: string, mode: TrailingSlash): st
   return `${origin}${p}`
 }
 
+/**
+ * Whether `path` is excluded by an `exclude` list. See {@link SitemapConfig.exclude}.
+ *
+ * @internal — exported for unit testing.
+ */
+export function isExcluded(path: string, exclude: readonly (string | RegExp)[]): boolean {
+  const p = stripTrailingSlash(path)
+  return exclude.some((e) => {
+    if (e instanceof RegExp) {
+      // A `g`/`y` regex keeps `lastIndex` between calls; reset it so the
+      // match does not depend on the previous path.
+      e.lastIndex = 0
+      return e.test(p)
+    }
+    const n = stripTrailingSlash(e)
+    if (n === '/') return true
+    return p === n || p.startsWith(`${n}/`)
+  })
+}
+
+function stripTrailingSlash(path: string): string {
+  return path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path
+}
+
 /** Route files that are not pages (see the special files in `fs-router.ts`). */
 const NON_PAGE_ROUTE_FILES = new Set(['_layout', '_error', '_loading', '_404', '_not-found'])
 
@@ -217,7 +253,7 @@ export function generateSitemap(
       return path
     })
     .filter((p): p is string => p !== null)
-    .filter((p) => !exclude.some((e) => p.startsWith(e)))
+    .filter((p) => !isExcluded(p, exclude))
 
   // Dedup by path (first-wins, order-preserving). The same static route
   // routinely appears in BOTH the file-system route scan AND
@@ -237,7 +273,7 @@ export function generateSitemap(
     const byPath = new Map<string, SitemapEntry>()
     for (const e of [
       ...paths.map((p) => ({ path: p, changefreq, priority })),
-      ...(config.additionalPaths ?? []),
+      ...(config.additionalPaths ?? []).filter((extra) => !isExcluded(extra.path, exclude)),
     ]) {
       const key = e.path.length > 1 && e.path.endsWith('/') ? e.path.slice(0, -1) : e.path
       if (!byPath.has(key)) byPath.set(key, e)

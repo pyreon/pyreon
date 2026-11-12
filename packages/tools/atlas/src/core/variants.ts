@@ -5,9 +5,9 @@
  * verified scenarios with zero authoring.
  *
  * Two shapes. `axes` (the default) is the ONE-AXIS-AT-A-TIME fan: the default
- * combination (every axis at its first value) plus, per axis, each other value
- * with the remaining axes held at their defaults — `Σ|axis|` scenarios. `full`
- * is the cross-product, `Π|axis|`. The product was the original default and
+ * combination (see `defaultCombination`) plus, per axis, each other value with
+ * the remaining axes held at their defaults. `full` is the cross-product,
+ * `Π|axis|`, plus the default combination when it is not one of its cells. The product was the original default and
  * it does not survive contact with a real design system: four layout
  * components sharing `indent(5) × gap(5) × gapY(6)` produced 150 scenarios
  * EACH — 600 of a 1,230-scenario catalog, 28% of a 2.5 MB file shipped to the
@@ -20,6 +20,32 @@ import { makeScenario } from './scenario'
 
 /** Which variant scenarios to derive from a component's axes. */
 export type VariantMatrix = 'axes' | 'full'
+
+/**
+ * The combination the component renders with when no axis prop is passed:
+ * per axis, the component's own default when the scan read one; nothing at
+ * all for an optional axis without one (the component decides); the first
+ * value only for an axis that must be given (or whose semantics are unknown,
+ * e.g. a rocketstyle dimension).
+ *
+ * It used to be every axis's FIRST value, so a `Button` with
+ * `size?: 'sm' | 'md' | 'lg'` rendering `props.size ?? 'md'` got a "Default"
+ * of `size: "sm"` (#4365): the order of a union says nothing about defaults.
+ */
+export function defaultCombination(axes: readonly VariantAxis[]): Record<string, string> {
+  const defaults: Record<string, string> = {}
+  for (const axis of axes) {
+    if (axis.values.length === 0) continue
+    if (axis.default !== undefined && axis.values.includes(axis.default)) defaults[axis.name] = axis.default
+    else if (axis.optional !== true) defaults[axis.name] = axis.values[0]!
+  }
+  return defaults
+}
+
+const sameCombination = (a: Record<string, string>, b: Record<string, string>): boolean => {
+  const ka = Object.keys(a)
+  return ka.length === Object.keys(b).length && ka.every((k) => a[k] === b[k])
+}
 
 /**
  * Cross-product of the axes' values.
@@ -46,18 +72,20 @@ export function buildVariantMatrix(axes: readonly VariantAxis[]): Record<string,
  * The one-axis-at-a-time fan: the default combination first, then each axis's
  * non-default values with every other axis at its default.
  *
- * Every combination carries EVERY axis (a scenario is a complete pinned
- * state), so a consumer grouping by `variant` sees the same keys as with the
- * product. With one axis the fan IS the product.
+ * Every combination carries every axis the default combination pins, so a
+ * consumer grouping by `variant` sees the same keys as with the product; an
+ * optional axis with no known default is left to the component except in the
+ * cells that vary it.
  */
 export function buildVariantFan(axes: readonly VariantAxis[]): Record<string, string>[] {
   const usable = axes.filter((a) => a.values.length > 0)
   if (usable.length === 0) return [{}]
-  const defaults: Record<string, string> = {}
-  for (const axis of usable) defaults[axis.name] = axis.values[0]!
+  const defaults = defaultCombination(usable)
   const combos: Record<string, string>[] = [defaults]
   for (const axis of usable) {
-    for (const value of axis.values.slice(1)) combos.push({ ...defaults, [axis.name]: value })
+    for (const value of axis.values) {
+      if (defaults[axis.name] !== value) combos.push({ ...defaults, [axis.name]: value })
+    }
   }
   return combos
 }
@@ -94,12 +122,19 @@ export function autoVariantScenarios(
   baseArgs: Record<string, unknown> = {},
   matrix: VariantMatrix = 'axes',
 ): Scenario[] {
-  const usable = axes.filter((a) => a.values.length > 0)
-  const defaults: Record<string, string> = {}
-  for (const axis of usable) defaults[axis.name] = axis.values[0]!
-  const combos = matrix === 'full' ? buildVariantMatrix(axes) : buildVariantFan(axes)
+  const defaults = defaultCombination(axes)
+  let combos: Record<string, string>[]
+  if (matrix === 'full') {
+    const product = buildVariantMatrix(axes)
+    // An unset optional axis makes the default combination a cell the
+    // product does not contain; it comes first, as in the fan.
+    const index = product.findIndex((c) => sameCombination(c, defaults))
+    combos = index === -1 ? [defaults, ...product] : [product[index]!, ...product.filter((_, i) => i !== index)]
+  } else {
+    combos = buildVariantFan(axes)
+  }
   return combos.map((variant) => {
-    const isDefault = Object.keys(variant).every((k) => defaults[k] === variant[k])
+    const isDefault = sameCombination(variant, defaults)
     return makeScenario({
       component,
       name: isDefault ? 'Default' : matrix === 'full' ? variantLabel(variant) : fanLabel(variant, defaults),
