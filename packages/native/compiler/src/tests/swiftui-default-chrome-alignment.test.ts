@@ -44,7 +44,9 @@ describe('<Button> draws its documented chrome on iOS (#4482)', () => {
   })
 
   it('the default reaches the mixed-label and the complex-content forms too', () => {
-    expect(swift(`<Button onPress={() => {}}>{draft()} open</Button>`)).toMatch(/\n\s*}\.buttonStyle\(\.borderedProminent\)/)
+    expect(swift(`<Button onPress={() => {}}>{draft()} open</Button>`)).toMatch(
+      /\n\s*}\.buttonStyle\(\.borderedProminent\)/,
+    )
     expect(swift(`<Button onPress={() => {}}><Stack><Text>a</Text></Stack></Button>`)).toMatch(
       /\n\s*}\.buttonStyle\(\.borderedProminent\)/,
     )
@@ -57,7 +59,9 @@ describe('<Button> draws its documented chrome on iOS (#4482)', () => {
   })
 
   it('secondary and danger keep their styles', () => {
-    expect(swift(`<Button variant="secondary" onPress={() => {}}>x</Button>`)).toContain('.buttonStyle(.bordered)')
+    expect(swift(`<Button variant="secondary" onPress={() => {}}>x</Button>`)).toContain(
+      '.buttonStyle(.bordered)',
+    )
     expect(swift(`<Button variant="danger" onPress={() => {}}>x</Button>`)).toContain(
       '.buttonStyle(.borderedProminent).tint(.red)',
     )
@@ -80,7 +84,9 @@ describe('<Button> draws its documented chrome on iOS (#4482)', () => {
 
   it('a pressed style still draws the button alone', () => {
     // `__pyPressed` is the press-state identifier a rocketstyle `active:` block lowers to.
-    const out = swift(`<Button onPress={() => {}} style={__pyPressed ? { opacity: 0.5 } : { opacity: 1 }}>Go</Button>`)
+    const out = swift(
+      `<Button onPress={() => {}} style={__pyPressed ? { opacity: 0.5 } : { opacity: 1 }}>Go</Button>`,
+    )
     expect(out).toContain('.buttonStyle(PyreonPressStyle')
     expect(out).not.toContain('.borderedProminent')
   })
@@ -105,18 +111,26 @@ describe('<Press> stays chrome-less (its contract on every target)', () => {
 
 describe('<Field> has a visible box on iOS (#4482)', () => {
   it('a text field → .textFieldStyle(.roundedBorder)', () => {
-    expect(swift(`<Field value={draft} onChangeText={(v) => draft.set(v)} placeholder="What needs doing?" />`)).toMatch(
+    expect(
+      swift(
+        `<Field value={draft} onChangeText={(v) => draft.set(v)} placeholder="What needs doing?" />`,
+      ),
+    ).toMatch(
       /TextField\("What needs doing\?", text: \$draft\)\n\s*\.textFieldStyle\(\.roundedBorder\)/,
     )
   })
 
   it('a password field and the AnyView ternary of the two kinds get it too', () => {
-    expect(swift(`<Field kind="password" value={draft} onChangeText={(v) => draft.set(v)} />`)).toMatch(
-      /SecureField\("", text: \$draft\)\n\s*\.textFieldStyle\(\.roundedBorder\)/,
-    )
     expect(
-      swift(`<Field kind={reveal() ? 'text' : 'password'} value={draft} onChangeText={(v) => draft.set(v)} />`),
-    ).toMatch(/AnyView\(SecureField\("", text: \$draft\)\)\)\n\s*\.textFieldStyle\(\.roundedBorder\)/)
+      swift(`<Field kind="password" value={draft} onChangeText={(v) => draft.set(v)} />`),
+    ).toMatch(/SecureField\("", text: \$draft\)\n\s*\.textFieldStyle\(\.roundedBorder\)/)
+    expect(
+      swift(
+        `<Field kind={reveal() ? 'text' : 'password'} value={draft} onChangeText={(v) => draft.set(v)} />`,
+      ),
+    ).toMatch(
+      /AnyView\(SecureField\("", text: \$draft\)\)\)\n\s*\.textFieldStyle\(\.roundedBorder\)/,
+    )
   })
 
   it('a multiline field is boxed as well', () => {
@@ -137,17 +151,23 @@ describe('<Field> has a visible box on iOS (#4482)', () => {
   })
 
   it('a date field is a DatePicker, not a text box: untouched', () => {
-    expect(swift(`<Field kind="date" value={draft} onChangeText={(v) => draft.set(v)} />`)).not.toContain(
-      '.textFieldStyle(',
-    )
+    expect(
+      swift(`<Field kind="date" value={draft} onChangeText={(v) => draft.set(v)} />`),
+    ).not.toContain('.textFieldStyle(')
   })
 })
 
 describe('<Stack> / <Inline> align to the start by default (#4482)', () => {
   it('no align → VStack(alignment: .leading) / HStack(alignment: .top): web flex stretch, Compose Start / Top', () => {
-    expect(swift(`<Stack gap={3}><Text>a</Text></Stack>`)).toContain('VStack(alignment: .leading, spacing: 12) {')
-    expect(swift(`<Inline gap={2}><Text>a</Text></Inline>`)).toContain('HStack(alignment: .top, spacing: 8) {')
-    expect(swift(`<Stack direction="row"><Text>a</Text></Stack>`)).toContain('HStack(alignment: .top) {')
+    expect(swift(`<Stack gap={3}><Text>a</Text></Stack>`)).toContain(
+      'VStack(alignment: .leading, spacing: 12) {',
+    )
+    expect(swift(`<Inline gap={2}><Text>a</Text></Inline>`)).toContain(
+      'HStack(alignment: .top, spacing: 8) {',
+    )
+    expect(swift(`<Stack direction="row"><Text>a</Text></Stack>`)).toContain(
+      'HStack(alignment: .top) {',
+    )
     expect(swift(`<Stack><Text>a</Text></Stack>`)).toContain('VStack(alignment: .leading) {')
   })
 
@@ -160,8 +180,12 @@ describe('<Stack> / <Inline> align to the start by default (#4482)', () => {
   })
 
   it('an explicit align still wins', () => {
-    expect(swift(`<Stack align="center"><Text>a</Text></Stack>`)).toContain('VStack(alignment: .center) {')
-    expect(swift(`<Inline align="end"><Text>a</Text></Inline>`)).toContain('HStack(alignment: .bottom) {')
+    expect(swift(`<Stack align="center"><Text>a</Text></Stack>`)).toContain(
+      'VStack(alignment: .center) {',
+    )
+    expect(swift(`<Inline align="end"><Text>a</Text></Inline>`)).toContain(
+      'HStack(alignment: .bottom) {',
+    )
   })
 
   it('Compose output is unchanged (Column / Row already default to Start / Top)', () => {
@@ -182,12 +206,16 @@ describe('<Scroll> content starts at the leading edge (#4482)', () => {
     const out = swift(`<Scroll axis="horizontal"><Text>a</Text></Scroll>`)
     expect(out).toContain('ScrollView(.horizontal) {')
     expect(out).toContain('HStack(alignment: .top) {')
-    expect(out).not.toContain(".frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)")
+    expect(out).not.toContain('.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)')
   })
 
   it('a lazy list keeps its spacing and gains the alignment', () => {
-    const out = swift(`<Scroll><For each={items} by={(t) => t.id}>{(t) => <Text>{t.title}</Text>}</For></Scroll>`)
-    expect(out).toMatch(/LazyVStack\(alignment: \.leading, spacing: 0\) \{[\s\S]*\}\.frame\(minWidth: 0, maxWidth: \.infinity, alignment: \.leading\)/)
+    const out = swift(
+      `<Scroll><For each={items} by={(t) => t.id}>{(t) => <Text>{t.title}</Text>}</For></Scroll>`,
+    )
+    expect(out).toMatch(
+      /LazyVStack\(alignment: \.leading, spacing: 0\) \{[\s\S]*\}\.frame\(minWidth: 0, maxWidth: \.infinity, alignment: \.leading\)/,
+    )
   })
 })
 
@@ -202,12 +230,15 @@ describe('routed screens start at the top (#4482)', () => {
       return <RouterProvider router={router}><RouterView /></RouterProvider>
     }
   `
-  const FRAME = '.frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)'
+  const FRAME =
+    '.frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)'
 
   it('the home route and every navigationDestination are pinned top-leading', () => {
     const out = transform(routed, { target: 'swift' }).code
     expect(out).toContain(`Home()${FRAME}`)
-    expect(out).toMatch(/\.navigationDestination\(for: String\.self\) \{ path in\n\s*Group \{\n[\s\S]*?\n\s*\}\.frame\(minWidth: 0, maxWidth: \.infinity, minHeight: 0, maxHeight: \.infinity, alignment: \.topLeading\)\n/)
+    expect(out).toMatch(
+      /\.navigationDestination\(for: String\.self\) \{ path in\n\s*Group \{\n[\s\S]*?\n\s*\}\.frame\(minWidth: 0, maxWidth: \.infinity, minHeight: 0, maxHeight: \.infinity, alignment: \.topLeading\)\n/,
+    )
   })
 
   it.skipIf(!isSwiftcAvailable())('the routed emit type-checks', () => {
