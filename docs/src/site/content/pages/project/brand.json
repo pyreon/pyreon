@@ -1,0 +1,229 @@
+{
+  "id": "brand",
+  "route": "/brand",
+  "title": "Brand",
+  "lede": "The Pyreon mark, colours and type, and the few rules that keep them meaning something. Download the files, use them to talk about Pyreon, and keep the ember for the moment a signal changes.",
+  "sections": [
+    {
+      "kind": "logos",
+      "title": "The mark",
+      "text": "The mark is the \"-on\" from the wordmark: a solid ember disc for the `o` (one lit particle) and a heavy bracket-stroke `n`. It is drawn on a 120 × 120 grid. Write the name \"Pyreon\", never \"PyreonJS\".",
+      "items": [
+        {
+          "file": "logo-on-color.svg",
+          "href": "/brand/logo-on-color.svg",
+          "use": "Primary mark. Ember disc, paper `n`. Dark backgrounds only: the `n` is paper-coloured and disappears on light.",
+          "background": "#0A0A0E"
+        },
+        {
+          "file": "logo-on-mono-dark.svg",
+          "href": "/brand/logo-on-mono-dark.svg",
+          "use": "One colour, paper (#F4EFE6). For dark backgrounds and single-colour print on dark.",
+          "background": "#0A0A0E"
+        },
+        {
+          "file": "logo-on-mono-light.svg",
+          "href": "/brand/logo-on-mono-light.svg",
+          "use": "One colour, ink (#14141C in the file). For paper and light backgrounds.",
+          "background": "#FAF5EB"
+        },
+        {
+          "file": "favicon.svg",
+          "href": "/favicon.svg",
+          "use": "The colour mark on a rounded ink tile, sized 32 × 32. Browser tabs and app icons.",
+          "background": "#FAF5EB"
+        }
+      ]
+    },
+    {
+      "kind": "list",
+      "title": "Using the mark",
+      "items": [
+        {
+          "title": "Clear space",
+          "text": "Keep at least half the disc's radius free on every side: 11 units on the 120-unit grid, about 9% of the mark's width."
+        },
+        {
+          "title": "Minimum size",
+          "text": "Colour mark: 32 px. One-colour mark: 16 px."
+        },
+        {
+          "title": "With the wordmark",
+          "text": "Set \"pyreon\" in lower case, Space Grotesk 600, at 0.7 × the mark's height, with a gap of 0.22 × its height, on the baseline of the `n`."
+        },
+        {
+          "title": "Ember \"on\"",
+          "text": "In a hero you may set \"pyre\" in ink or paper and give the trailing \"on\" the ember gradient. Once per page at most."
+        }
+      ]
+    },
+    {
+      "kind": "palette",
+      "title": "Colour",
+      "text": "Two neutrals, one gradient, two cool accents. Ember marks signal propagation and active state; everything else stays quiet.",
+      "swatches": [
+        {
+          "name": "Ink",
+          "hex": "#0A0A0E",
+          "role": "Dark background, text on paper"
+        },
+        {
+          "name": "Paper",
+          "hex": "#F4EFE6",
+          "role": "Text on ink, code wells on light"
+        },
+        {
+          "name": "Page paper",
+          "hex": "#FAF5EB",
+          "role": "Light page background"
+        },
+        {
+          "name": "Ember plasma",
+          "hex": "#FF1F8C",
+          "role": "Gradient start"
+        },
+        {
+          "name": "Ember core",
+          "hex": "#FF5E1A",
+          "role": "Gradient middle, the signal pulse"
+        },
+        {
+          "name": "Ember warm",
+          "hex": "#FFC83D",
+          "role": "Gradient end"
+        },
+        {
+          "name": "Ember on paper",
+          "hex": "#A8380A",
+          "role": "Text-safe ember for type on paper"
+        },
+        {
+          "name": "Cyan",
+          "hex": "#22D3EE",
+          "role": "Links and interactive elements on ink"
+        },
+        {
+          "name": "Cyan on paper",
+          "hex": "#0A6E89",
+          "role": "Links and interactive elements on paper"
+        },
+        {
+          "name": "Violet",
+          "hex": "#A78BFA",
+          "role": "Types in code, secondary accent"
+        }
+      ],
+      "gradient": {
+        "name": "Ember gradient",
+        "css": "linear-gradient(95deg, #FF1F8C 0%, #FF5E1A 55%, #FFC83D 100%)",
+        "role": "The mark's disc, the \"on\" of the wordmark, a winning cell"
+      }
+    },
+    {
+      "kind": "type",
+      "title": "Type",
+      "faces": [
+        {
+          "name": "Space Grotesk",
+          "weights": [
+            400,
+            500,
+            600,
+            700
+          ],
+          "role": "Headings, body and the wordmark. Headings from 22 px up get negative letter-spacing, tighter as they grow.",
+          "href": "https://fonts.google.com/specimen/Space+Grotesk"
+        },
+        {
+          "name": "JetBrains Mono",
+          "weights": [
+            400,
+            500
+          ],
+          "role": "Code, and the small upper-case eyebrow labels above sections.",
+          "href": "https://fonts.google.com/specimen/JetBrains+Mono"
+        }
+      ]
+    },
+    {
+      "kind": "story",
+      "title": "Motion",
+      "text": [
+        "When a value changes, only the node that reads it moves: a 200 ms pulse from its resting colour to ember core and back, easing `cubic-bezier(.2, .7, .3, 1)`. Nothing else animates: no page transitions, hover effects or loaders in ember.",
+        "With reduced motion, the pulse becomes a static 2 px ember underline, so the meaning survives without the movement."
+      ]
+    },
+    {
+      "kind": "dodont",
+      "title": "Do and don't",
+      "items": [
+        {
+          "do": "Use the colour mark on ink.",
+          "dont": "Put the colour mark on paper; its `n` vanishes. Use the one-colour ink mark instead.",
+          "why": "Contrast."
+        },
+        {
+          "do": "Scale the mark as a whole.",
+          "dont": "Stretch, rotate, outline or re-colour the gradient.",
+          "why": "The disc and the `n` are one letterform."
+        },
+        {
+          "do": "Keep ember for change and active state.",
+          "dont": "Use ember as a full-bleed background, a default button fill or a decorative border.",
+          "why": "Overused, it stops meaning \"this changed\"."
+        },
+        {
+          "do": "\"2.6× faster than React at 10,000 rows (synthetic, author-run).\"",
+          "dont": "\"Lightning-fast. Crushes the competition.\"",
+          "why": "A number someone can check beats an adjective nobody can."
+        },
+        {
+          "do": "Write \"Pyreon\".",
+          "dont": "Write \"PyreonJS\" or \"Pyreon.js\".",
+          "why": "One name everywhere."
+        }
+      ]
+    }
+  ],
+  "end": {
+    "title": "One lit particle. Use it where something changes.",
+    "cta": {
+      "label": "Download the colour mark",
+      "href": "/brand/logo-on-color.svg"
+    }
+  },
+  "sources": [
+    {
+      "claim": "Mark concept, construction on 120 grid, clear space 11 units (~9%), min sizes 32/16 px, lockup ratios, ember \"on\" once per page",
+      "path": "09-site/reference/design_handoff_pyreon_brand/README.md §2"
+    },
+    {
+      "claim": "Logo files served from docs/public/brand/ and docs/public/favicon.svg; color mark n stroke #F4EFE6; mono-light fill #14141C; favicon 32×32 ink tile",
+      "path": "docs/public/brand/logo-on-*.svg; docs/public/favicon.svg"
+    },
+    {
+      "claim": "Unified palette hexes and gradient angle",
+      "path": "maintainer brief for the site (11 Nov); README §3 for the ember stops, 95deg gradient and roles"
+    },
+    {
+      "claim": "Ember only for propagation/active state; never full-bleed, default CTA fill or decorative border",
+      "path": "design handoff README §3 \"Ember\""
+    },
+    {
+      "claim": "Space Grotesk 400–700; JetBrains Mono for code and eyebrows; negative letter-spacing from 22 px",
+      "path": "design handoff README §4 (weights narrowed to 400/500 for mono per the site brief)"
+    },
+    {
+      "claim": "Motion: 200 ms pulse, easing, reduced-motion underline",
+      "path": "design handoff README §5"
+    },
+    {
+      "claim": "Name is Pyreon, never PyreonJS",
+      "path": "00-brief/facts.md \"Identity\""
+    },
+    {
+      "claim": "2.6× at 10,000 rows",
+      "path": "BENCHMARKS.md §1"
+    }
+  ]
+}

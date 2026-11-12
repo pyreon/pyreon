@@ -3,8 +3,6 @@ title: "Testing Mistakes"
 description: "Common testing mistakes in Pyreon and how to fix them."
 ---
 
-# Testing Mistakes
-
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
 ### Treating "the web" as one oracle for a locale-data API — V8 and JSC disagree, so a differential test needs a stated reference engine

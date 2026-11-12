@@ -3,6 +3,10 @@ title: Document
 description: Universal document rendering for Pyreon — one template, 20 output formats from PDF to Slack.
 ---
 
+<ProductPitch id="document" />
+
+<LiveDemo id="document" />
+
 `@pyreon/document` renders **one document template to many output formats**. Compose a format-agnostic node tree once — with JSX primitives or the fluent builder — then render it to PDF, DOCX, XLSX, PPTX, email, HTML, Markdown, plain text, CSV, SVG, JSON / JSONL, or straight into Slack / Teams / Discord / Telegram / Notion / Confluence / WhatsApp / Google Chat payloads.
 
 The heavy binary renderers (PDF, DOCX, XLSX, PPTX) are **lazy-loaded per format** — a document app that only ever emails never downloads the 3 MB PDF engine into its runtime path. Custom formats (receipt printers, internal schemas) are pluggable via `registerRenderer()`.
@@ -717,3 +721,11 @@ type OutputFormat =
 ## Multiplatform
 
 `@pyreon/document` wraps pdfmake, docx, exceljs and pptxgenjs, which run in the browser or Node, so it does not lower to iOS or Android. From a native app, build the file on a server and fetch it (`useFetch` / `@pyreon/http` lower), or hand a result to the platform share sheet (`useShare` lowers).
+
+<BenchCallout id="document" />
+
+<ComingFrom id="document" />
+
+<InlineSell id="charts" />
+
+<CrossSell id="document" />

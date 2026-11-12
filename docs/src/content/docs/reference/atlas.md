@@ -1,9 +1,7 @@
 ---
-title: "Component Workbench — API Reference"
+title: "@pyreon/atlas — API Reference"
 description: "AI-native component workbench — derives, verifies, and serves a machine-readable component catalog"
 ---
-
-# @pyreon/atlas — API Reference
 
 > **Generated** from `atlas`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [atlas](/docs/atlas).
 
@@ -22,7 +20,8 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - Derived catalog: controls inferred from prop types, scenarios generated from variant axes (rocketstyle dimensions resolved through the project theme)
 - Five-check verify verdict per scenario — a11y, interaction (play scripts or auto click-walk), REAL leak check (reactive-graph accumulation past GC), reactivity coverage, visual snapshot
 - Machine-readable output: atlas-catalog.json + atlas-agent-guide.md, written for AI assistants as first-class consumers
-- Zero-config workbench (`atlas dev`): real Vite + the real Pyreon compiler, live control editors, canvas addons (viewport/background/zoom/measure/pseudo-states), axe-core a11y panel, autodocs, Actions log, Reactivity Lens
+- Zero-config workbench (`atlas dev`): real Vite + the real Pyreon compiler, the Pyreon app shell (catalog with one verdict dot per component, a scenario strip, the canvas, and 13 panels — Controls, Schema (where every control comes from, new props marked as added), Actions, A11y with on-demand axe-core, Perf, Permissions (every role side by side, judged against its policy), Query, Store, Update cause, Reactive coverage (with the % bar), Lens (with a Fix: line), Canvas (incl. centered / padded / fullscreen layout), Addons), autodocs, and a catalog drawer below 860px
+- Theme follows the shared Pyreon preference (`localStorage['pyreon-theme']`, else `prefers-color-scheme`), applied before first paint; the chrome palette lives in one file (`CHROME_PALETTES`, emitted as CSS custom properties) and passes 4.5:1 in both modes; `?embed` renders the bare app for an iframe (no theme toggle, no storage writes)
 - Browser verification (`atlas verify-browser`): reactive coverage measured on the page’s own devtools bridge + axe-core accessibility run per scenario (merged into the `a11y` verdict; `--no-axe` / `--axe-min-impact`; a run that cannot happen is a skip with its reason, never a pass) + perceptual snapshot baselines (own YIQ + anti-aliasing diff, `<id>.diff.png` on a failure), merged into the catalog
 - Authoring opt-in via atlas.config.ts: theme, wrapper (in the workbench it also receives each render’s appearance as `mode`/`dark`/`brand` accessors — forward `mode` to your provider or the dark workbench shows components in light mode), presets (viewports/locales/roles), authored scenarios with step-labelled `play` functions (args stay live — a render-prop child or an h() tree reaches the canvas intact, and an authored Default is the base of every derived scenario), `matrix` (axis fan by default, full cross-product opt-in), `parts` (a part renders inside its parent) and `browserOnly` (an overlay that returns null where isServer is true)
 - A scenario that mounts NO DOM fails the interaction check with `empty-render` — "mounts, clicks and unmounts without throwing" is true of an empty container, and this is the check that is not
@@ -109,21 +108,44 @@ Discover components (static TS scan + rocketstyle runtime detection), derive con
 **Example**
 
 ```tsx
-$ atlas scan .
-atlas: discovered 10 component(s), 44 scenario(s) — 42 verified, 2 failing, 0 unverified.
-  checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43
-  not run: reactivityCoverage, snapshot — browser-only — run `atlas verify-browser`
-  → atlas-catalog.json
-  → atlas-agent-guide.md
-atlas: 2 failing scenario(s):
-  ✗ button--empty
-      a11y: missing accessible name: "label" is empty
+$ atlas scan . --no-mount --no-write
+atlas scan · . · static (--no-mount)
+
+  components   6
+  scenarios   22  2 failing · 12 verified · 8 unverified
+  checks      a11y 12/14 ✗
+  not run     interaction, ssrParity, leak — mounting is disabled for this run (`--no-mount`) — the
+              scan stayed static
+              reactivityCoverage, snapshot — browser-only — run `atlas verify-browser` to measure
+              this (a Node scan cannot)
+
+  ! 3 file(s) export something PascalCase that produced no component:
+    3× a chained/member call — rocketstyle chains are found by the runtime pass (needs `theme` in
+      your config); other member-call wrappers are not unwrapped
+      · src/components/Chip.tsx — Chip
+      · src/components/Stack.tsx — Stack
+      · src/demo-catalog.tsx — DemoButton, DemoBadge, IconDot
+    Not necessarily wrong — a provider, a schema or a const belongs here too.
+    But a component you expected in the catalog would show up in this list.
+
+  ✗ 2 failing scenarios
+  ✗ button--empty  Button
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+  ✗ badge--empty  Badge
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+  Run atlas verify <Component> to re-check one component on its own.
+
+✗ 2 failing scenarios · 12 verified · 8 unverified · 6 components · 137 ms
 ```
 
 **Common mistakes**
 
 - Treating "verified" as a default — a scenario is verified only when a check actually RAN and passed; `checked: 0` renders as unverified, never smoothed into a pass
-- Reading `N verified` as "everything was checked" — it is a scenario count, not a check count. The `checks:` line is the one that says which of the six ran, and a package without `@pyreon/runtime-server` resolvable reports 1090/1090 verified having run only two of them
+- Reading `N verified` as "everything was checked" — it is a scenario count, not a check count. The `checks` row is the one that says which of the six ran, and a package without `@pyreon/runtime-server` resolvable reports 1090/1090 verified having run only two of them
 - Running the scan without the project theme in `atlas.config.ts` for rocketstyle components — dimension axes resolve empty and the variant scenarios collapse to defaults
 - Expecting the leak check under plain `node` — it needs a GC hook (`bun`, or `node --expose-gc`); without one it reports skip, not pass
 - Expecting reactivityCoverage/snapshot verdicts from the scan — those are browser-only claims; run `atlas verify-browser` to earn them
@@ -173,16 +195,23 @@ Re-check ONE component and report WHICH check failed and why — the write → v
 **Example**
 
 ```tsx
-$ atlas verify Button
-atlas verify Button: 1 component(s), 15 scenario(s)
-  checks: a11y 14/15 ✗ · interaction 15/15 · ssrParity 15/15 · leak 15/15
-  not run: reactivityCoverage, snapshot — browser-only — run `atlas verify-browser`
+$ atlas verify Button --no-mount
+atlas verify Button · 1 component · 9 scenarios · static (--no-mount)
 
-✗ button--empty
-    a11y [missing-accessible-name]: missing accessible name: "label" is empty
-      → Give "label" a non-empty value, or an aria-label if the text is decorative.
+  scenarios  9  1 failing · 8 verified · 0 unverified
+  checks     a11y 8/9 ✗
+  not run    interaction, ssrParity, leak — mounting is disabled for this run (`--no-mount`) — the
+             scan stayed static
+             reactivityCoverage, snapshot — browser-only — run `atlas verify-browser` to measure
+             this (a Node scan cannot)
 
-1 failing · 14 verified · 0 unverified
+  ✗ 1 failing scenario
+  ✗ button--empty  Button
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+
+✗ 1 failing scenario · 8 verified · 0 unverified · 141 ms
 ```
 
 **Common mistakes**

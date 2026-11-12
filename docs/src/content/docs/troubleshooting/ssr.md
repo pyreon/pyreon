@@ -3,8 +3,6 @@ title: "SSR-rendering Mistakes"
 description: "Common ssr-rendering mistakes in Pyreon and how to fix them."
 ---
 
-# SSR-rendering Mistakes
-
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
 ### [FIXED, 2026-11] A process-wide counter used to mint ids that must match across the server render and hydration (`createUniqueId`).

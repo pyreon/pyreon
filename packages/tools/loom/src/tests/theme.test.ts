@@ -10,7 +10,7 @@
  * loses that one declaration in exactly one mode.
  */
 import { describe, expect, it } from 'vitest'
-import { ACCENT, hexToRgba, tokens, type LoomTokens } from '../ui/theme'
+import { ACCENT, ACCENT_ON_PAPER, hexToRgba, mixHex, tokens, type LoomTokens } from '../ui/theme'
 
 describe('hexToRgba', () => {
   it('converts a 6-char hex', () => {
@@ -29,6 +29,14 @@ describe('hexToRgba', () => {
 
   it('carries the alpha through verbatim, including 0', () => {
     expect(hexToRgba('#000000', 0)).toBe('rgba(0,0,0,0)')
+  })
+})
+
+describe('mixHex', () => {
+  it('lays one colour over another as an opaque hex', () => {
+    expect(mixHex('#ffffff', '#000000', 0.5)).toBe('#808080')
+    expect(mixHex('#ff0000', '#0000ff', 1)).toBe('#ff0000')
+    expect(mixHex('#ff0000', '#0000ff', 0)).toBe('#0000ff')
   })
 })
 
@@ -55,16 +63,15 @@ describe('tokens', () => {
     }
   })
 
-  it('uses the shared ACCENT in both modes', () => {
+  it('uses the ember accent on ink, and the text-safe ember on paper', () => {
     expect(tokens(true).accent).toBe(ACCENT)
-    expect(tokens(false).accent).toBe(ACCENT)
+    expect(tokens(false).accent).toBe(ACCENT_ON_PAPER)
   })
 
-  it('derives the soft accent from ACCENT rather than hardcoding it', () => {
+  it('derives the dark soft accent from ACCENT rather than hardcoding it', () => {
     // If someone changes ACCENT, accentSoft must follow — a hardcoded rgba
     // would leave the two out of step with nothing to catch it.
-    expect(tokens(true).accentSoft).toContain('255,107,61')
-    expect(tokens(false).accentSoft).toContain('255,107,61')
+    expect(tokens(true).accentSoft).toBe(hexToRgba(ACCENT, 0.12))
   })
 
   it('satisfies the LoomTokens contract', () => {
@@ -72,5 +79,75 @@ describe('tokens', () => {
     expect(t.danger).toBeTruthy()
     expect(t.ok).toBeTruthy()
     expect(t.warn).toBeTruthy()
+  })
+})
+
+// ── WCAG AA, computed ─────────────────────────────────────────────────────
+
+type Rgba = [number, number, number, number]
+function parse(c: string): Rgba {
+  if (c.startsWith('#')) {
+    const h = c.slice(1)
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16), 1]
+  }
+  const p = /rgba?\(([^)]+)\)/.exec(c)![1]!.split(',').map(Number)
+  return [p[0]!, p[1]!, p[2]!, p[3] ?? 1]
+}
+const over = (top: Rgba, bottom: Rgba): Rgba => [
+  top[0] * top[3] + bottom[0] * (1 - top[3]),
+  top[1] * top[3] + bottom[1] * (1 - top[3]),
+  top[2] * top[3] + bottom[2] * (1 - top[3]),
+  1,
+]
+const lum = (c: Rgba) => {
+  const f = (x: number) => {
+    const v = x / 255
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2])
+}
+const ratio = (fg: Rgba, bg: Rgba) => {
+  const [a, b] = [lum(fg), lum(bg)]
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+}
+
+describe('both themes pass 4.5:1 for text', () => {
+  const TEXT = ['text', 'muted', 'faint', 'accent', 'ext', 'ok', 'warn', 'danger'] as const
+  for (const dark of [true, false]) {
+    const t = tokens(dark)
+    const grounds: [string, Rgba][] = []
+    for (const s of ['bg', 'deep', 'surface', 'surface2'] as const) {
+      const base = parse(t[s])
+      grounds.push([s, base], [`accentSoft on ${s}`, over(parse(t.accentSoft), base)])
+    }
+    grounds.push(['selFill', parse(t.selFill)])
+    for (const role of TEXT) {
+      it(`${dark ? 'dark' : 'light'}: ${role} on every ground`, () => {
+        for (const [name, bg] of grounds) {
+          const r = ratio(parse(t[role]), bg)
+          expect(r, `${role} on ${name} = ${r.toFixed(2)}`).toBeGreaterThanOrEqual(4.5)
+        }
+      })
+    }
+    it(`${dark ? 'dark' : 'light'}: each status colour on its own tinted badge`, () => {
+      for (const k of ['ok', 'warn', 'danger'] as const) {
+        const soft = t[`${k}Soft` as const]
+        for (const s of ['bg', 'deep', 'surface', 'surface2'] as const) {
+          const r = ratio(parse(t[k]), over(parse(soft), parse(t[s])))
+          expect(r, `${k} on ${k}Soft over ${s} = ${r.toFixed(2)}`).toBeGreaterThanOrEqual(4.5)
+        }
+      }
+    })
+  }
+
+  it('text on an accent fill passes in both modes', () => {
+    for (const dark of [true, false]) {
+      const t = tokens(dark)
+      expect(ratio(parse(t.accentText), parse(t.accent))).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it('the check is not vacuous: the dark ember on paper fails', () => {
+    expect(ratio(parse(ACCENT), parse(tokens(false).bg))).toBeLessThan(4.5)
   })
 })

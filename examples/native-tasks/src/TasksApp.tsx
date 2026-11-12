@@ -309,6 +309,17 @@ function TasksPage() {
     )
   }
 
+  // A web `<For>` row runs once per key, so its `t` is the task as it was when
+  // the row mounted: `toggle` replaces the object, the key stays, and a
+  // `{t.done ? …}` read would keep showing the first value on web (iOS and
+  // Android re-evaluate the row, so only web went stale). Read the live
+  // value by id instead: the call keeps it reactive on web, and it lowers to
+  // a plain lookup on both native targets.
+  const isDone = (id: number) =>
+    useApp()
+      .store.tasks()
+      .some((t) => t.id === id && t.done)
+
   const logout = () => {
     useApp().store.isAuthed.set(false)
     navigate('/login')
@@ -324,7 +335,7 @@ function TasksPage() {
       <For each={useApp().store.tasks} by={(t) => t.id}>
         {(t) => (
           <Inline gap={2}>
-            <Button onPress={() => toggle(t.id)}>{t.done ? 'done' : 'todo'}</Button>
+            <Button onPress={() => toggle(t.id)}>{isDone(t.id) ? 'done' : 'todo'}</Button>
             <Text>{t.title}</Text>
           </Inline>
         )}

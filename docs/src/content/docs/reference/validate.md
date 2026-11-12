@@ -1,9 +1,7 @@
 ---
-title: "Pyreon validator + Standard Schema DX — API Reference"
+title: "@pyreon/validate — API Reference"
 description: "Pyreon's own validation library — chainable + function-comp hybrid API, Standard Schema-native, with built-in field metadata, reactive parse, and i18n-aware err"
 ---
-
-# @pyreon/validate — API Reference
 
 > **Generated** from `validate`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [validate](/docs/validate).
 

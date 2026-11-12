@@ -42,7 +42,7 @@ describe('atlas scan text summary', () => {
     write('atlas.config.ts', 'export default {\n')
     write('src/Badge.tsx', 'export function Badge(props: { label?: string }) { return props.label ?? null }\n')
     await runCli(['scan', dir, '--no-mount', '--no-write'])
-    expect(stderr.join('')).toMatch(/atlas: could not load .*atlas\.config\.ts/)
+    expect(stderr.join('')).toMatch(/atlas · could not load\s+\S*atlas\.config\.ts/)
     expect(stdout.join('')).toContain('1 component')
   }, 120_000)
 })

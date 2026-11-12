@@ -1,0 +1,286 @@
+{
+ "order": [
+  "zero",
+  "content",
+  "native",
+  "primitives",
+  "design",
+  "kinetic",
+  "router",
+  "reactivity",
+  "form",
+  "validation",
+  "auth",
+  "query",
+  "http",
+  "store",
+  "statetree",
+  "machine",
+  "sync",
+  "storage",
+  "feature",
+  "i18n",
+  "permissions",
+  "urlstate",
+  "hooks",
+  "hotkeys",
+  "rx",
+  "a11y",
+  "dnd",
+  "toast",
+  "table",
+  "virtual",
+  "charts",
+  "editor",
+  "flow",
+  "document",
+  "atlas",
+  "lathe",
+  "loom",
+  "tooling",
+  "ai",
+  "migrate"
+ ],
+ "products": [
+  {
+   "id": "zero",
+   "name": "Zero",
+   "package": "@pyreon/zero",
+   "category": "framework · full stack"
+  },
+  {
+   "id": "content",
+   "name": "Content",
+   "package": "@pyreon/zero-content",
+   "category": "zero · content"
+  },
+  {
+   "id": "native",
+   "name": "Native",
+   "package": "Pyreon Native · PMTC",
+   "category": "multiplatform · iOS and Android"
+  },
+  {
+   "id": "primitives",
+   "name": "Primitives",
+   "package": "@pyreon/primitives",
+   "category": "core · cross-platform UI"
+  },
+  {
+   "id": "design",
+   "name": "Design System",
+   "package": "@pyreon/rocketstyle · styler · elements · coolgrid · kinetic",
+   "category": "ui system · 11 packages"
+  },
+  {
+   "id": "kinetic",
+   "name": "Motion",
+   "package": "@pyreon/kinetic + kinetic-presets",
+   "category": "ui system · animation"
+  },
+  {
+   "id": "router",
+   "name": "Router",
+   "package": "@pyreon/router",
+   "category": "core · routing"
+  },
+  {
+   "id": "reactivity",
+   "name": "Reactivity",
+   "package": "@pyreon/reactivity",
+   "category": "core · signals"
+  },
+  {
+   "id": "form",
+   "name": "Forms",
+   "package": "@pyreon/form",
+   "category": "fundamentals · forms"
+  },
+  {
+   "id": "validation",
+   "name": "Validation",
+   "package": "@pyreon/validate",
+   "category": "fundamentals · schema validation"
+  },
+  {
+   "id": "auth",
+   "name": "Auth",
+   "package": "@pyreon/auth",
+   "category": "fundamentals · authentication"
+  },
+  {
+   "id": "query",
+   "name": "Query",
+   "package": "@pyreon/query",
+   "category": "fundamentals · data fetching"
+  },
+  {
+   "id": "http",
+   "name": "HTTP",
+   "package": "@pyreon/http",
+   "category": "fundamentals · requests"
+  },
+  {
+   "id": "store",
+   "name": "Store",
+   "package": "@pyreon/store",
+   "category": "fundamentals · state"
+  },
+  {
+   "id": "statetree",
+   "name": "State Tree",
+   "package": "@pyreon/state-tree",
+   "category": "fundamentals · structured state"
+  },
+  {
+   "id": "machine",
+   "name": "State Machines",
+   "package": "@pyreon/machine",
+   "category": "fundamentals · state"
+  },
+  {
+   "id": "sync",
+   "name": "Sync",
+   "package": "@pyreon/sync",
+   "category": "fundamentals · local-first"
+  },
+  {
+   "id": "storage",
+   "name": "Storage",
+   "package": "@pyreon/storage",
+   "category": "fundamentals · persistence"
+  },
+  {
+   "id": "feature",
+   "name": "Feature",
+   "package": "@pyreon/feature",
+   "category": "fundamentals · CRUD"
+  },
+  {
+   "id": "i18n",
+   "name": "i18n",
+   "package": "@pyreon/i18n",
+   "category": "fundamentals · translations"
+  },
+  {
+   "id": "permissions",
+   "name": "Permissions",
+   "package": "@pyreon/permissions",
+   "category": "fundamentals · access control"
+  },
+  {
+   "id": "urlstate",
+   "name": "URL State",
+   "package": "@pyreon/url-state",
+   "category": "fundamentals · url"
+  },
+  {
+   "id": "hooks",
+   "name": "Hooks",
+   "package": "@pyreon/hooks",
+   "category": "fundamentals · hooks"
+  },
+  {
+   "id": "hotkeys",
+   "name": "Hotkeys",
+   "package": "@pyreon/hotkeys",
+   "category": "fundamentals · keyboard"
+  },
+  {
+   "id": "rx",
+   "name": "RX",
+   "package": "@pyreon/rx",
+   "category": "fundamentals · reactive data"
+  },
+  {
+   "id": "a11y",
+   "name": "Accessibility",
+   "package": "@pyreon/a11y",
+   "category": "fundamentals · accessibility"
+  },
+  {
+   "id": "dnd",
+   "name": "Drag and Drop",
+   "package": "@pyreon/dnd",
+   "category": "fundamentals · interaction"
+  },
+  {
+   "id": "toast",
+   "name": "Toast",
+   "package": "@pyreon/toast",
+   "category": "fundamentals · feedback"
+  },
+  {
+   "id": "table",
+   "name": "Table",
+   "package": "@pyreon/table",
+   "category": "fundamentals · data grids"
+  },
+  {
+   "id": "virtual",
+   "name": "Virtual",
+   "package": "@pyreon/virtual",
+   "category": "fundamentals · large lists"
+  },
+  {
+   "id": "charts",
+   "name": "Charts",
+   "package": "@pyreon/charts",
+   "category": "fundamentals · data visualisation"
+  },
+  {
+   "id": "editor",
+   "name": "Editors",
+   "package": "@pyreon/rich-text · @pyreon/code",
+   "category": "fundamentals · editors"
+  },
+  {
+   "id": "flow",
+   "name": "Flow",
+   "package": "@pyreon/flow",
+   "category": "fundamentals · diagrams"
+  },
+  {
+   "id": "document",
+   "name": "Documents",
+   "package": "@pyreon/document",
+   "category": "fundamentals · documents"
+  },
+  {
+   "id": "atlas",
+   "name": "Atlas",
+   "package": "@pyreon/atlas",
+   "category": "tools · component catalog"
+  },
+  {
+   "id": "lathe",
+   "name": "Lathe",
+   "package": "@pyreon/lathe",
+   "category": "tools · api clients"
+  },
+  {
+   "id": "loom",
+   "name": "Loom",
+   "package": "@pyreon/loom",
+   "category": "tools · monorepo health"
+  },
+  {
+   "id": "tooling",
+   "name": "Tooling",
+   "package": "@pyreon/cli · lint · devtools · mcp · testing",
+   "category": "tools · developer experience"
+  },
+  {
+   "id": "ai",
+   "name": "AI and MCP",
+   "package": "@pyreon/mcp",
+   "category": "tools · AI-assisted development"
+  },
+  {
+   "id": "migrate",
+   "name": "Migrate",
+   "package": "Pyreon Compat",
+   "category": "tools · migration"
+  }
+ ]
+}

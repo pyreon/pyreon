@@ -2,8 +2,6 @@
 title: PMTC Per-Target Setup
 ---
 
-# PMTC Per-Target Setup
-
 This page assumes you've followed [Multi-Platform (PMTC)](./multiplatform.md) and have a `.tsx` source compiling to Swift / Kotlin via `@pyreon/native-compiler`. The next question is: **how do you turn that emitted source into a real app on iOS / Android / web?**
 
 Three setup paths, in order of how-much-control:

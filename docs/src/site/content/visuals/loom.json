@@ -1,0 +1,14 @@
+{
+ "id": "loom",
+ "og": {
+  "src": "/media/og/products/loom.png",
+  "width": 1200,
+  "height": 630,
+  "alt": "Loom (@pyreon/loom): Find the imports that only work by luck."
+ },
+ "hero": {
+  "kind": "picture",
+  "file": "products/loom/hero-dark.png",
+  "alt": "The loom observatory run on the Pyreon monorepo: a dependency graph layered by resolution depth fanning out from @pyreon/docs, a package list on the left, and a detail panel with metrics and the 42 packages it depends on; the status bar reads 148 internal packages, 858 edges, 0 cycles, 0 errors."
+ }
+}

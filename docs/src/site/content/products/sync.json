@@ -1,0 +1,326 @@
+{
+ "id": "sync",
+ "route": "/products/sync",
+ "name": "Sync",
+ "package": "@pyreon/sync",
+ "category": "fundamentals · local-first",
+ "hero": {
+  "title": "Same signal. Now it's multiplayer, and it works offline.",
+  "emberWord": "multiplayer",
+  "lede": "A synced value is still a signal, backed by a CRDT. Edits from other tabs, devices and people merge, survive offline and come back after a reload, and each remote change updates only the DOM that reads it. Yjs does the merging; a relay server with per-room auth is included.",
+  "install": "bun add @pyreon/sync",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "engine",
+    "value": "Yjs, behind a neutral adapter<small>Plus a small last-writer-wins engine for scalars.</small>"
+   },
+   {
+    "key": "transports",
+    "value": "tabs, WebSocket, your relay<small>`createSyncServer` for Node and Bun.</small>"
+   },
+   {
+    "key": "offline",
+    "value": "IndexedDB persistence"
+   },
+   {
+    "key": "inbound frame",
+    "value": "59 ns<small>WebSocket frame intake on the transport's fast path, overnight run.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "Multiplayer and offline without rewriting your app.",
+  "items": [
+   {
+    "title": "It is still a signal",
+    "text": "Templates, effects and the compiler can't tell a synced signal from a local one. `title()` reads, `title.set()` writes, and only the text that shows the title updates when a peer changes it."
+   },
+   {
+    "title": "Concurrent edits are kept",
+    "text": "`syncedText` and `syncedList` merge by position, so two people typing or adding cards at once both keep their work. Scalars are last-writer-wins, and the docs say so."
+   },
+   {
+    "title": "Offline, then caught up",
+    "text": "`persistViaIndexedDB` keeps every edit locally; the WebSocket transport reconnects and reconciles state vectors when the network returns. `ws.synced()` tells you when you're caught up."
+   },
+   {
+    "title": "A relay you can secure",
+    "text": "`createSyncServer` keeps one authoritative document per room, and runs your `authorize` hook before any data moves. From the next release it also closes cross-site browser upgrades before that hook even runs."
+   }
+  ]
+ },
+ "difference": {
+  "title": "Collaboration is an import, not a rewrite.",
+  "before": {
+   "label": "a local signal",
+   "caption": "Lives in one tab and is gone on reload.",
+   "code": "import { signal } from '@pyreon/reactivity'\n\nconst title = signal('Untitled') // one tab, gone on reload\n\nfunction Title() {\n  return <input value={title()} onInput={(e) => title.set(e.currentTarget.value)} />\n}"
+  },
+  "after": {
+   "label": "a synced signal",
+   "caption": "Same reads, same writes, same component. Now shared, merged and stored offline.",
+   "code": "import { syncedSignal } from '@pyreon/sync'\nimport { connectViaWebSocket, createYjsDoc, persistViaIndexedDB } from '@pyreon/sync/yjs'\n\nconst doc = createYjsDoc()\npersistViaIndexedDB(doc, 'doc-42')\nconnectViaWebSocket(doc, 'wss://sync.example.com/doc-42')\n\nconst title = syncedSignal({ doc, key: 'title', initial: 'Untitled' })\n\nfunction Title() {\n  return <input value={title()} onInput={(e) => title.set(e.currentTarget.value)} />\n}"
+  }
+ },
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Two devices, one list. Go offline and back.",
+  "text": "Add items on both devices, take one offline, keep editing, then reconnect. Both sets of changes survive.",
+  "component": "DemoSync",
+  "reference": "pkg-sync.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"ui\" id=\"sy-a\"></div>\n  <div class=\"ui\" id=\"sy-b\"></div>\n</div>",
+  "referenceCss": ".sy-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.sy-h b{font-size:15px}.sy-st{font-size:12px;padding:3px 10px;border-radius:999px;background:#DCFCE7;color:#15803D}.sy-st.off{background:#FEE2E2;color:#B91C1C}.sy-l{list-style:none;padding:0;margin:12px 0 0;min-height:150px}.sy-l li{padding:8px 0;border-bottom:1px solid #EDE6D6;font-size:14px;display:flex;justify-content:space-between}.sy-l li small{color:#5E5A69}.sy-f{display:flex;gap:8px}.sy-f input{flex:1}",
+  "referenceJs": "(function(){var D={a:{name:'Laptop',on:true,items:[],q:[]},b:{name:'Phone',on:true,items:[],q:[]}};var seq=0;\nfunction add(k,t){var it={id:++seq,t:t,by:D[k].name};D[k].items.push(it);if(D[k].on){var o=k==='a'?'b':'a';if(D[o].on)D[o].items.push(it);else D[o].q.push(it)}else D[k].q.push(it);r()}\nfunction tog(k){var d=D[k],o=D[k==='a'?'b':'a'];d.on=!d.on;if(d.on){var mine=d.q.filter(function(i){return i.by===d.name}),theirs=d.q.filter(function(i){return i.by!==d.name});d.q=[];theirs.forEach(function(i){if(!d.items.some(function(x){return x.id===i.id}))d.items.push(i)});o.items.forEach(function(i){if(!d.items.some(function(x){return x.id===i.id}))d.items.push(i)});mine.forEach(function(i){if(!o.items.some(function(x){return x.id===i.id}))o.items.push(i)});d.items.sort(function(x,y){return x.id-y.id});o.items.sort(function(x,y){return x.id-y.id})}r()}\nfunction r(){['a','b'].forEach(function(k){var d=D[k],el=document.getElementById('sy-'+k);el.innerHTML='<div class=\"sy-h\"><b>'+d.name+'</b><span class=\"sy-st'+(d.on?'':' off')+'\">'+(d.on?'online':'offline')+'</span></div><div class=\"sy-f\"><input aria-label=\"New item on '+d.name+'\" placeholder=\"Add an item\" id=\"sy-i-'+k+'\"><button class=\"sec\" type=\"button\" id=\"sy-add-'+k+'\">Add</button></div><ul class=\"sy-l\">'+d.items.map(function(i){return '<li>'+i.t.replace(/</g,'&lt;')+'<small>'+i.by+'</small></li>'}).join('')+'</ul><button class=\"sec\" type=\"button\" id=\"sy-t-'+k+'\">'+(d.on?'Go offline':'Reconnect')+'</button>';\ndocument.getElementById('sy-add-'+k).onclick=function(){var v=document.getElementById('sy-i-'+k).value.trim();if(v)add(k,v)};document.getElementById('sy-i-'+k).onkeydown=function(e){if(e.key==='Enter'&&this.value.trim())add(k,this.value.trim())};document.getElementById('sy-t-'+k).onclick=function(){tog(k)}})}\nadd('a','Draft the launch post');add('b','Record the demo');})();"
+ },
+ "features": {
+  "title": "Local-first, end to end.",
+  "items": [
+   {
+    "name": "`syncedSignal` and `syncedStore`",
+    "text": "one value, or a flat store of synced fields."
+   },
+   {
+    "name": "`syncedText`",
+    "text": "a `Signal<string>` over `Y.Text` with positional `insert` and `delete`."
+   },
+   {
+    "name": "`syncedList`",
+    "text": "a `Signal<T[]>` over `Y.Array`; render with a keyed `<For>`."
+   },
+   {
+    "name": "`syncedAwareness`",
+    "text": "presence and live cursors, never persisted."
+   },
+   {
+    "name": "Offline",
+    "text": "`persistViaIndexedDB` with `whenSynced`."
+   },
+   {
+    "name": "Transports",
+    "text": "`connectViaBroadcastChannel` across tabs, `connectViaWebSocket` across devices (auto-reconnect), `connectYDocs` in memory."
+   },
+   {
+    "name": "Relay server",
+    "text": "`createSyncServer` for Node and Bun, with `authorize` and attach-to-existing-server mode."
+   },
+   {
+    "name": "Seeds wait for the first sync",
+    "text": "an `initial` value never overwrites a peer's real one."
+   },
+   {
+    "name": "Test double",
+    "text": "`FakeCrdtDoc` and `connectFakeDocs` for synchronous unit tests."
+   },
+   {
+    "name": "Native scalars",
+    "text": "`syncedSignal` over a `PyreonCrdtDoc` compiles to iOS and Android (strings, numbers, booleans). Experimental."
+   }
+  ]
+ },
+ "api": {
+  "title": "Three entries: bridge, engine, relay.",
+  "groups": [
+   {
+    "name": "@pyreon/sync",
+    "items": [
+     "syncedSignal",
+     "syncedStore",
+     "PyreonCrdtDoc",
+     "connectPyreonSync",
+     "FakeCrdtDoc",
+     "connectFakeDocs",
+     "createNativeSyncHost"
+    ]
+   },
+   {
+    "name": "@pyreon/sync/yjs",
+    "items": [
+     "createYjsDoc",
+     "syncedText",
+     "syncedList",
+     "syncedAwareness",
+     "persistViaIndexedDB",
+     "connectViaWebSocket",
+     "connectViaBroadcastChannel",
+     "connectYDocs"
+    ]
+   },
+   {
+    "name": "@pyreon/sync/server",
+    "items": [
+     "createSyncServer"
+    ]
+   },
+   {
+    "name": "types",
+    "items": [
+     "CrdtAdapter",
+     "CrdtDoc",
+     "CrdtMap",
+     "SyncedSignal",
+     "SyncedStore"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "CRDTs prevent lost updates, not conflicts",
+   "text": "Scalar fields are last-writer-wins, and merged text can still read oddly when two people rewrite one sentence. Use `syncedText` for strings people edit together, and show presence."
+  },
+  {
+   "title": "Budget about 60 KB gzipped",
+   "text": "Yjs, `y-indexeddb`, `y-protocols` and the WebSocket client come with the `/yjs` entry. It stays out of apps that never import it."
+  },
+  {
+   "title": "Write your `authorize` hook",
+   "text": "Without one the relay accepts every connection and warns in the log, even in production. Whole-document CRDTs make per-field access hard: use one room per document."
+  },
+  {
+   "title": "Native covers scalars",
+   "text": "On iOS and Android `syncedSignal` lowers; text, lists, presence and the Yjs transports stay web, and native cross-device transport is still being built."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/editor",
+   "category": "fundamentals",
+   "name": "Editors",
+   "text": "Rich-text and code editors, ready to bind to `syncedText`.",
+   "package": "@pyreon/rich-text · @pyreon/code"
+  },
+  {
+   "href": "/products/store",
+   "category": "fundamentals",
+   "name": "Store",
+   "text": "Turn a store into a synced store.",
+   "package": "@pyreon/store"
+  },
+  {
+   "href": "/products/flow",
+   "category": "fundamentals",
+   "name": "Flow",
+   "text": "Shared diagrams and whiteboards.",
+   "package": "@pyreon/flow"
+  }
+ ],
+ "end": {
+  "title": "Ship multiplayer without a backend rewrite. Or much of a backend.",
+  "cta": "Read the sync guide"
+ },
+ "benchmarks": {
+  "rival": "Pyreon-only throughput (no competitor)",
+  "run": "overnight run, one run",
+  "h": "A synced keystroke in 3.8 µs. An inbound frame in 59 ns.",
+  "p": "No head-to-head exists for sync, so these are our own throughput figures for the bridge between Yjs and your signals. The presence row is the overhead the signal wrapper adds over raw y-protocols.",
+  "rows": [
+   {
+    "op": "inbound WebSocket frame",
+    "pyreon": 59,
+    "rival": null,
+    "unit": "ns",
+    "verdict": "info",
+    "label": "per frame"
+   },
+   {
+    "op": "presence publish overhead, 1 peer",
+    "pyreon": 240,
+    "rival": null,
+    "unit": "ns",
+    "verdict": "info",
+    "label": "5.5 µs at 200 peers"
+   },
+   {
+    "op": "synced-text keystroke, 1k doc",
+    "pyreon": 3.8,
+    "rival": null,
+    "unit": "µs",
+    "verdict": "info",
+    "label": "72.8 µs at 10k, fragmented"
+   }
+  ]
+ },
+ "glyphSvg": "<circle cx=\"36\" cy=\"60\" r=\"20\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><circle cx=\"88\" cy=\"60\" r=\"18\" fill=\"url(#eg)\"/><path d=\"M56 60 H70\" stroke=\"currentColor\" stroke-width=\"10\"/>",
+ "proof": [
+  {
+   "stat": "59 ns",
+   "label": "to take in an inbound WebSocket frame on the transport's fast path.",
+   "source": "BENCHMARKS.md §11 sync (Pyreon-only, no competitor), overnight run 2026-11-05"
+  },
+  {
+   "stat": "3.8 µs",
+   "label": "per synced-text keystroke on a 1k document; 72.8 µs on a fragmented 10k one.",
+   "source": "BENCHMARKS.md §11 sync"
+  },
+  {
+   "stat": "5.5 µs",
+   "label": "of signal-wrapper overhead per cursor publish in a 200-peer room (240 ns with one peer).",
+   "source": "BENCHMARKS.md §11 sync"
+  }
+ ],
+ "comingFrom": [
+  {
+   "lib": "Yjs + React",
+   "title": "Keep Yjs. Drop the bridge code.",
+   "before": "import { useSyncExternalStore } from 'react'\nimport * as Y from 'yjs'\n\nconst doc = new Y.Doc()\nconst meta = doc.getMap<string>('meta')\n// + a provider (y-websocket, y-indexeddb) wired to `doc`\n\nfunction useTitle() {\n  return useSyncExternalStore(\n    (onChange) => {\n      meta.observe(onChange)\n      return () => meta.unobserve(onChange)\n    },\n    () => meta.get('title') ?? 'Untitled',\n  )\n}\n\nfunction Title() {\n  const title = useTitle()\n  return <input value={title} onChange={(e) => meta.set('title', e.target.value)} />\n}",
+   "after": "import { syncedSignal } from '@pyreon/sync'\nimport { connectViaWebSocket, createYjsDoc, persistViaIndexedDB } from '@pyreon/sync/yjs'\n\nconst doc = createYjsDoc()\npersistViaIndexedDB(doc, 'doc-42')\nconnectViaWebSocket(doc, 'wss://sync.example.com/doc-42')\n\nconst title = syncedSignal({ doc, key: 'title', initial: 'Untitled' })\n\nfunction Title() {\n  return <input value={title()} onInput={(e) => title.set(e.currentTarget.value)} />\n}",
+   "note": "Same Yjs document underneath, so existing Yjs data and tooling still apply. `syncedSignal` replaces the observe / unobserve / snapshot bridge, and the transports and IndexedDB persistence are included."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "A shared board with a secured relay",
+   "text": "Two clients on one room converge on the title and both cards; a client with a bad token never syncs.",
+   "code": "// server.ts: Node or Bun\nimport { createSyncServer } from '@pyreon/sync/server'\n\nconst relay = await createSyncServer({\n  port: 1234,\n  authorize: ({ room, token }) => canEdit(room, token), // false → closed with 4401\n})\n\nimport { syncedSignal } from '@pyreon/sync'\nimport { connectViaWebSocket, createYjsDoc, persistViaIndexedDB, syncedList } from '@pyreon/sync/yjs'\n\nfunction openBoard(room: string, token: string) {\n  const doc = createYjsDoc()\n  persistViaIndexedDB(doc, room) // edits survive reloads and offline\n  const ws = connectViaWebSocket(doc, `ws://localhost:1234/${room}?token=${token}`)\n\n  const title = syncedSignal({ doc, key: 'title', initial: 'Untitled' }) // a signal\n  const cards = syncedList<string>(doc, 'cards') // a Signal<string[]>, merged by position\n  return { title, cards, ws }\n}"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Is this a new CRDT?",
+   "a": "For text, lists and presence, no: it is Yjs. The package adds the signal bridge, transports, persistence and a relay. A small dependency-free last-writer-wins engine (`PyreonCrdtDoc`) exists for scalars, which is the part that compiles to native."
+  },
+  {
+   "q": "Do I need my own server?",
+   "a": "Cross-tab sync needs none (`BroadcastChannel`). Across devices you need a relay; `createSyncServer` is one, and it can attach to your existing HTTP server."
+  },
+  {
+   "q": "Does the relay store documents?",
+   "a": "No. It keeps an in-memory document per room so late joiners catch up. Durability lives in each client's IndexedDB, or in a store you add."
+  },
+  {
+   "q": "How do I test synced code?",
+   "a": "With `FakeCrdtDoc` and `connectFakeDocs`, which are synchronous and need no engine. For offline-reconnect behaviour, use `createYjsDoc` with `connectYDocs`."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "59 ns inbound frame; presence 240 ns → 5.5 µs; keystroke 3.8 µs → 72.8 µs",
+   "path": "BENCHMARKS.md §11 sync (overnight)"
+  },
+  {
+   "claim": "yjs, y-indexeddb, y-protocols are dependencies (no separate install)",
+   "path": "packages/fundamentals/sync/package.json dependencies"
+  },
+  {
+   "claim": "Relay test: two clients converge (title + both list items), bad token never synced",
+   "path": "scratch run-sync.ts against createSyncServer + connectViaWebSocket"
+  },
+  {
+   "claim": "No authorize → accepts all + console.warn even in production; 4401 on reject",
+   "path": "packages/fundamentals/sync/src/server.ts L279-304; docs sync.md 'Authorization is not optional'"
+  },
+  {
+   "claim": "Cross-site WebSocket upgrades closed 4403 before authorize, allowedOrigins (unreleased)",
+   "path": ".changeset/sync-relay-origin-check.md"
+  },
+  {
+   "claim": "Seeds defer until first sync; LWW scalars; ~60 KB+ gz; presence O(N); native covers scalars",
+   "path": ".agents/guides/fundamentals/references/sync.md; docs sync.md 'Honest limits'"
+  },
+  {
+   "claim": "Draft fixes: install 'bun add @pyreon/sync yjs' (yjs is a dependency); limit 'Yjs is a separate install' false; 'Web only for now' replaced by the native scalars rule; benchmark units corrected from 'x'",
+   "path": "packages/fundamentals/sync/package.json; docs sync.md"
+  }
+ ]
+}

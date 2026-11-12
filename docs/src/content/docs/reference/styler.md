@@ -1,9 +1,7 @@
 ---
-title: "CSS-in-JS — API Reference"
+title: "@pyreon/styler — API Reference"
 description: "CSS-in-JS — styled() / css / keyframes / createGlobalStyle, reactive theming, FNV-1a-deduped StyleSheet (SSR-safe)"
 ---
-
-# @pyreon/styler — API Reference
 
 > **Generated** from `styler`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [styler](/docs/styler).
 

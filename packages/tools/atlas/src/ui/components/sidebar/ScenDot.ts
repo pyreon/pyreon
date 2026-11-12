@@ -16,6 +16,6 @@ export const ScenDot = el
     (t) => ({
       ok: { backgroundColor: t.ok },
       fail: { backgroundColor: t.danger },
-      unverified: {},
+      unverified: { backgroundColor: 'transparent', border: `1.5px solid ${t.warn}` },
     }),
   )

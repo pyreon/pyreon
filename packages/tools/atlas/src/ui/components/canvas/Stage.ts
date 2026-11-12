@@ -1,5 +1,9 @@
 import { el } from '../../kit'
 
+/**
+ * The canvas stage (`.at-canvas`): the app background with an optional dot
+ * grid (Canvas → Grid), the preview centred on it.
+ */
 export const Stage = el
   .attrs({
     tag: 'div',
@@ -10,13 +14,21 @@ export const Stage = el
     position: 'relative',
     flex: '1',
     minHeight: '0',
+    minWidth: '0',
     overflow: 'auto',
-    padding: '40px',
+    padding: '40px 24px',
     backgroundColor: t.bg,
-    backgroundSize: '22px 22px',
-    extendCss: `background-image:radial-gradient(${t.dotColor} 1px,transparent 1px);`,
-  })) // The Viewport addon is a rocketstyle `size` dimension, not an inline width:
-// the presets are a closed set, so they resolve to cached classes like every
-// other style here (the workbench ships zero inline styles). `vFull` keeps the
-// fluid default; the rest pin the canvas to a real unistyle breakpoint, capped
-// at the stage width so a desktop preset never overflows on a small screen.
+  }))
+  .states((t) => ({
+    grid: {
+      backgroundSize: '16px 16px',
+      extendCss: `background-image:radial-gradient(circle,${t.dotColor} 1px,transparent 1px);`,
+    },
+    plain: {},
+  }))
+  // Fullscreen layout: the frame spans the stage edge to edge.
+  .multiple(() => ({
+    centered: {},
+    padded: {},
+    fullscreen: { padding: '0' },
+  }))

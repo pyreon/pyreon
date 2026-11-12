@@ -21,6 +21,18 @@
  */
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
+import {
+  columns,
+  createTerm,
+  finding as findingLines,
+  formatElapsed,
+  header,
+  nothingTo,
+  plural,
+  type Term,
+  verdict,
+  wrap,
+} from '@pyreon/ansi'
 
 export interface PlainOptions {
   paths: string[]
@@ -43,15 +55,6 @@ const isSource = (f: string): boolean => /\.(?:tsx?|jsx?)$/.test(f) && !f.endsWi
 export const isTestFile = (f: string): boolean =>
   /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(f) || /(?:^|[/\\])(?:__tests__|tests|e2e)[/\\]/.test(f)
 
-const useColor = (): boolean => !!process.stdout.isTTY && !process.env.NO_COLOR
-// ESC computed so the SOURCE carries no raw C0 control byte (source-hygiene gate).
-const ESC = String.fromCharCode(27)
-const paint = (s: string, code: string): string => (useColor() ? `${ESC}[${code}m${s}${ESC}[0m` : s)
-const bold = (s: string) => paint(s, '1')
-const dim = (s: string) => paint(s, '2')
-const green = (s: string) => paint(s, '32')
-const yellow = (s: string) => paint(s, '33')
-const cyan = (s: string) => paint(s, '36')
 
 function expandPath(p: string, cwd: string, includeTests: boolean, skipped: { tests: number }): string[] {
   const abs = isAbsolute(p) ? p : resolve(cwd, p)
@@ -91,9 +94,9 @@ function expandPath(p: string, cwd: string, includeTests: boolean, skipped: { te
   return out
 }
 
-type FileStatus = 'already-plain' | 'full' | 'partial' | 'declined' | 'nothing'
+export type FileStatus = 'already-plain' | 'full' | 'partial' | 'declined' | 'nothing'
 
-interface FileReport {
+export interface FileReport {
   file: string
   status: FileStatus
   converted: string[]
@@ -103,6 +106,7 @@ interface FileReport {
 
 export async function plain(opts: PlainOptions): Promise<number> {
   const { migrateToPlain } = await import('@pyreon/compiler')
+  const started = performance.now()
 
   const includeTests = opts.includeTests === true
   const skipped = { tests: 0 }
@@ -119,7 +123,7 @@ export async function plain(opts: PlainOptions): Promise<number> {
       console.log(JSON.stringify({ files: [], declined: {}, matched: 0 }, null, 2))
       return 0
     }
-    console.log(dim('  No source files matched.'))
+    console.log(nothingTo(createTerm(), 'No source files matched', 'pass a file or directory: pyreon plain src/'))
     return 0
   }
 
@@ -178,46 +182,110 @@ export async function plain(opts: PlainOptions): Promise<number> {
     return 0
   }
 
-  console.log(bold('\n  Plain Mode readiness\n'))
-  for (const r of reports) {
-    if (r.status === 'nothing') continue
-    const label =
-      r.status === 'already-plain'
-        ? green('✓ already plain')
-        : r.status === 'full'
-          ? green(`✓ converts fully (${r.converted.length} binding${r.converted.length === 1 ? '' : 's'})`)
-          : r.status === 'partial'
-            ? yellow(`◐ partial (${r.converted.length} convert, ${r.declined.length} declined)`)
-            : yellow(`✗ declined (${r.declined.length})`)
-    console.log(`  ${cyan(r.file)} ${label}${r.written ? green('  → written') : ''}`)
-    for (const d of r.declined) {
-      console.log(dim(`      ${d.line}:${d.column} [${d.code}] ${d.reason}`))
-    }
+  console.log(
+    renderPlainText(createTerm(), {
+      reports,
+      skippedTests: skipped.tests,
+      histogram,
+      write: opts.write,
+      paths: opts.paths,
+      cwd: opts.cwd,
+      elapsedMs: performance.now() - started,
+    }),
+  )
+  return 0
+}
+
+/** What `renderPlainText` needs: the scan's result, not its IO. */
+export interface PlainRun {
+  reports: readonly FileReport[]
+  skippedTests: number
+  histogram: ReadonlyMap<string, number>
+  write: boolean
+  paths: readonly string[]
+  cwd: string
+  elapsedMs: number
+}
+
+const statusCell = (t: Term, r: FileReport): string => {
+  const n = r.converted.length
+  if (r.status === 'already-plain') return `${t.ok(t.sym('ok'))} already plain`
+  if (r.status === 'full') return `${t.ok(t.sym('ok'))} converts fully ${t.dim(`${t.sym('bullet')} ${plural(n, 'binding')}`)}`
+  if (r.status === 'partial') {
+    return `${t.warn(t.sym('warn'))} partial ${t.dim(`${t.sym('bullet')} ${n} convert, ${r.declined.length} declined`)}`
+  }
+  return `${t.warn(t.sym('warn'))} declined ${t.dim(`${t.sym('bullet')} ${r.declined.length}`)}`
+}
+
+/**
+ * The readiness report: header, one row per file with something to say
+ * (status as symbol + word, `→ written` when `--write` changed it), each
+ * declined shape as a finding under its file, the declined-shape histogram,
+ * then the verdict.
+ */
+export function renderPlainText(t: Term, run: PlainRun): string {
+  const shown = run.reports.filter((r) => r.status !== 'nothing')
+  const count = (s: FileStatus): number => run.reports.filter((r) => r.status === s).length
+  const lines = [header(t, 'pyreon plain', `Plain Mode readiness ${t.sym('bullet')} ${plural(run.reports.length, 'file')}`)]
+
+  if (shown.length > 0) {
+    lines.push('')
+    const rows = shown.map((r) => [
+      t.underline(r.file),
+      statusCell(t, r),
+      r.written ? t.ok(`${t.sym('arrow')} written`) : '',
+    ])
+    const rowLines = columns(rows, { width: t.width })
+    // A stacked table emits two lines per row; keep each row's lines together.
+    const per = rowLines.length / shown.length
+    shown.forEach((r, i) => {
+      lines.push(...rowLines.slice(i * per, (i + 1) * per))
+      for (const d of r.declined) {
+        lines.push(
+          ...findingLines(
+            t,
+            {
+              severity: 'warning',
+              source: d.code,
+              message: `${d.name ? `${d.name}: ` : ''}${d.reason}`,
+              location: { path: r.file, abs: resolve(run.cwd, r.file), line: d.line, column: d.column },
+            },
+            { indent: 4, width: t.width },
+          ),
+        )
+      }
+    })
   }
 
-  const convertible = by('full').length + by('partial').length
-  console.log(
-    `\n  ${bold(String(reports.length))} file(s) scanned · ${green(String(by('already-plain').length))} already plain · ` +
-      `${green(String(convertible))} convertible · ${yellow(String(by('declined').length))} declined · ` +
-      `${dim(String(by('nothing').length))} nothing to convert`,
+  if (run.histogram.size > 0) {
+    lines.push('', `  ${t.bold('Declined shapes')} ${t.dim('(build-next histogram)')}`)
+    const sorted = [...run.histogram.entries()].sort((a, b) => b[1] - a[1])
+    lines.push(...columns(sorted.map(([code, n]) => [code, String(n)]), { align: ['left', 'right'], indent: 4 }))
+  }
+
+  if (run.skippedTests > 0) {
+    const note = `${plural(run.skippedTests, 'test file')} skipped ${t.sym('dash')} Plain Mode needs the pyreon() plugin, which test runners often lack. Pass --include-tests if yours has it.`
+    const wrapped = wrap(note, t.width, t.width - 4, '    ')
+    lines.push('', `  ${t.info(t.sym('info'))} ${wrapped[0] ?? ''}`, ...wrapped.slice(1))
+  }
+
+  const convertible = count('full') + count('partial')
+  if (!run.write && convertible > 0) {
+    lines.push('', `  ${t.dim('next:')} pyreon plain${run.paths.length ? ` ${run.paths.join(' ')}` : ''} --write ${t.dim('to apply')}`)
+  }
+
+  const declined = count('declined')
+  const written = run.reports.filter((r) => r.written).length
+  lines.push(
+    '',
+    verdict(t, declined > 0 ? 'warn' : 'ok', `${plural(run.reports.length, 'file')} scanned`, [
+      `${count('already-plain')} already plain`,
+      `${convertible} convertible`,
+      `${declined} declined`,
+      `${count('nothing')} nothing to convert`,
+      written > 0 && `${written} written`,
+      formatElapsed(run.elapsedMs),
+    ]),
   )
-  if (skipped.tests > 0) {
-    console.log(
-      dim(
-        `  ${skipped.tests} test file(s) skipped — Plain Mode needs the pyreon() plugin, which test runners often lack. ` +
-          'Pass --include-tests if yours has it.',
-      ),
-    )
-  }
-  if (histogram.size > 0) {
-    console.log(bold('\n  Declined shapes (build-next histogram):'))
-    for (const [code, n] of [...histogram.entries()].sort((a, b) => b[1] - a[1])) {
-      console.log(`    ${yellow(code.padEnd(20))} ${n}`)
-    }
-  }
-  if (!opts.write && convertible > 0) {
-    console.log(dim(`\n  Run \`pyreon plain${opts.paths.length ? ` ${opts.paths.join(' ')}` : ''} --write\` to apply.`))
-  }
-  console.log('')
-  return 0
+  return lines.join('\n')
 }

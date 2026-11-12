@@ -3,6 +3,10 @@ title: Virtual
 description: Reactive TanStack Virtual adapter for efficient list and grid virtualization.
 ---
 
+<ProductPitch id="virtual" />
+
+<LiveDemo id="virtual" />
+
 `@pyreon/virtual` is the Pyreon adapter for [TanStack Virtual](https://tanstack.com/virtual). It provides reactive virtualizer hooks that return signals for virtual items, total size, and scrolling state. Efficiently render thousands of items by only mounting the visible ones plus a configurable overscan buffer.
 
 The package provides two hooks:
@@ -1344,3 +1348,11 @@ Create a reactive virtualizer for window-based scrolling.
 | `measure()`                        | Invalidate all size measurements and recalculate        |
 | `getVirtualItems()`                | Get the current list of virtual items (non-reactive)    |
 | `getTotalSize()`                   | Get the current total size (non-reactive)               |
+
+<BenchCallout id="virtual" />
+
+<ComingFrom id="virtual" />
+
+<InlineSell id="table" />
+
+<CrossSell id="virtual" />

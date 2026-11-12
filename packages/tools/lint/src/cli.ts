@@ -1,12 +1,24 @@
 #!/usr/bin/env node
 import { resolve } from 'node:path'
+import {
+  createTerm,
+  finding,
+  formatElapsed,
+  header,
+  interrupted,
+  onInterrupt,
+  plural,
+  verdict,
+  wrap,
+} from '@pyreon/ansi'
 import { loadConfig, loadConfigFromPath } from './config/loader'
 import { getPreset } from './config/presets'
 import { initConfig } from './init'
 import { listRules } from './lint'
 import { lintAsync } from './parallel'
 import { startLspServer } from './lsp/index'
-import { formatCompact, formatJSON, formatText } from './reporter'
+import { formatCompact, formatGha, formatJSON, formatText, type TermChoice } from './reporter'
+import { termFor } from './term-for'
 import { groupOf } from './rules/groups'
 import type { PresetName, RuleGroup, Severity } from './types'
 import { watchAndLint } from './watcher'
@@ -22,7 +34,7 @@ function printUsage() {
   Options:
     --preset <name>    Preset: recommended (default), strict, app, lib, best-practices
     --fix              Auto-fix fixable issues
-    --format <fmt>     Output: text (default), json, compact
+    --format <fmt>     Output: text (default), json, compact, gha (GitHub annotations)
     --quiet            Only show errors
     --init             Write a starting .pyreonlintrc.json for this project
     --list             List all available rules
@@ -63,31 +75,79 @@ const GROUP_ORDER: RuleGroup[] = [
   'internal',
 ]
 
-function printList() {
+const SEVERITY_ROLE = { error: 'err', warn: 'warn', info: 'info', off: 'dim' } as const
+
+/**
+ * `--list`: one section per group (bold name, count, dim blurb), one row per
+ * rule (id, category, default severity as a word in its colour, the
+ * description wrapped under its own column, `fixable` when it is), then
+ * the totals. Exported for tests.
+ */
+export function formatRuleList(opts: TermChoice = {}): string {
+  const t = termFor(opts)
   const rules = listRules()
   const maxId = Math.max(...rules.map((r) => r.id.length))
   const maxCat = Math.max(...rules.map((r) => r.category.length))
+  const lines = [header(t, 'pyreon-lint --list', `${plural(rules.length, 'rule')} in ${plural(GROUP_ORDER.length, 'group')}`)]
+  // 4 indent, id, 2, category, 2, severity (5), 2: the description column.
+  const descCol = 4 + maxId + 2 + maxCat + 2 + 5 + 2
+  const descWidth = t.width - descCol
+  // A window too narrow for a readable description column puts the
+  // description on its own line under the id.
+  const stacked = descWidth < 30
 
   for (const group of GROUP_ORDER) {
     const inGroup = rules.filter((r) => groupOf(r) === group)
     if (inGroup.length === 0) continue
-    console.log(`\n  ${group.toUpperCase()}  (${inGroup.length})  \u2014 ${GROUP_BLURB[group]}`)
+    const title = `${t.bold(group.toUpperCase())} ${t.dim(`(${inGroup.length}) ${t.sym('dash')} ${GROUP_BLURB[group]}`)}`
+    lines.push('', ...wrap(title, t.width, t.width - 2, '    ').map((l, i) => (i === 0 ? `  ${l}` : l)))
     for (const rule of inGroup) {
-      const fixLabel = rule.fixable ? ' [fixable]' : ''
-      const id = rule.id.padEnd(maxId)
-      const cat = rule.category.padEnd(maxCat)
-      const sev = rule.severity.padEnd(5)
-      console.log(`    ${id}  ${cat}  ${sev}  ${rule.description}${fixLabel}`)
+      const desc = `${rule.description}${rule.fixable ? ` ${t.ok('fixable')}` : ''}`
+      const role = SEVERITY_ROLE[rule.severity as keyof typeof SEVERITY_ROLE] ?? 'dim'
+      if (stacked) {
+        lines.push(`    ${rule.id}  ${t.dim(rule.category)}  ${t.paint(role, rule.severity)}`)
+        lines.push(...wrap(desc, t.width, t.width - 6, '      ').map((l, i) => (i === 0 ? `      ${l}` : l)))
+        continue
+      }
+      const sev = t.paint(role, rule.severity.padEnd(5))
+      const prefix = `    ${rule.id.padEnd(maxId)}  ${t.dim(rule.category.padEnd(maxCat))}  ${sev}  `
+      const body = wrap(desc, t.width, descWidth, ' '.repeat(descCol))
+      lines.push(`${prefix}${body[0] ?? ''}`, ...body.slice(1))
     }
   }
 
-  console.log(`\n  ${rules.length} rules total`)
+  const fixable = rules.filter((r) => r.fixable).length
+  lines.push('', verdict(t, null, `${rules.length} rules total`, [`${fixable} fixable`]))
+  return lines.join('\n')
+}
+
+function printList() {
+  console.log(formatRuleList())
+}
+
+/** A usage problem on stderr in the shared theme: `✗ pyreon-lint · problem`, then `fix:`. */
+function usageProblem(message: string, fix: string): void {
+  const t = createTerm({ isTTY: Boolean(process.stderr.isTTY) })
+  // oxlint-disable-next-line no-console
+  console.error(finding(t, { severity: 'error', source: 'pyreon-lint', message, fix }, { indent: 0, width: t.width }).join('\n'))
+}
+
+/** `--init`: the outcome as the verdict (last line), any guidance above it. */
+export function formatInitResult(
+  r: { status: 'written' | 'exists' | 'no-package-json'; message: string },
+  opts: TermChoice = {},
+): string {
+  const t = termFor(opts)
+  const [first = '', ...rest] = r.message.split('\n')
+  const status = r.status === 'written' ? 'ok' : r.status === 'exists' ? 'warn' : 'err'
+  const body = rest.filter((l, i) => !(i === 0 && l === ''))
+  return [header(t, 'pyreon-lint --init'), ...(body.length > 0 ? ['', ...body] : []), '', verdict(t, status, first)].join('\n')
 }
 
 interface CliArgs {
   preset: PresetName
   fix: boolean
-  format: 'text' | 'json' | 'compact'
+  format: 'text' | 'json' | 'compact' | 'gha'
   quiet: boolean
   runInit: boolean
   showList: boolean
@@ -161,7 +221,7 @@ function parseValueFlag(arg: string, nextArg: string | undefined, result: CliArg
     return 1
   }
   if (arg === '--format') {
-    result.format = (nextArg ?? 'text') as 'text' | 'json' | 'compact'
+    result.format = (nextArg ?? 'text') as CliArgs['format']
     return 1
   }
   if (arg === '--config') {
@@ -214,14 +274,16 @@ export function parseRuleOptionsOverride(
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       overrides[ruleId] = parsed as Record<string, unknown>
     } else {
-      // oxlint-disable-next-line no-console
-      console.error(
-        `[pyreon-lint] --rule-options ${ruleId}: expected JSON object, got ${typeof parsed}`,
+      usageProblem(
+        `--rule-options ${ruleId}: expected JSON object, got ${typeof parsed}`,
+        `pass an object: --rule-options ${ruleId}='{"key":"value"}'`,
       )
     }
   } catch (err) {
-    // oxlint-disable-next-line no-console
-    console.error(`[pyreon-lint] --rule-options ${ruleId}: invalid JSON — ${(err as Error).message}`)
+    usageProblem(
+      `--rule-options ${ruleId}: invalid JSON — ${(err as Error).message}`,
+      `quote the JSON for your shell: --rule-options ${ruleId}='{"key":"value"}'`,
+    )
   }
 }
 
@@ -250,7 +312,7 @@ export async function runCli(argv: string[]): Promise<number | null> {
 
   if (args.runInit) {
     const r = initConfig(resolve('.'))
-    console.log(`\n  ${r.message}\n`)
+    console.log(formatInitResult(r))
     return r.status === 'written' ? 0 : 1
   }
 
@@ -301,6 +363,15 @@ export async function runCli(argv: string[]): Promise<number | null> {
   }
 
   let result: Awaited<ReturnType<typeof lintAsync>>
+  const startedAt = performance.now()
+  // Ctrl-C: the last line says the run was stopped, on stderr so a
+  // `--format json` stdout stays valid; exit 130.
+  const stopInterrupt = onInterrupt(() =>
+    interrupted(createTerm({ isTTY: Boolean(process.stderr.isTTY) }), [
+      'pyreon-lint',
+      formatElapsed(performance.now() - startedAt),
+    ]),
+  )
   try {
     result = await lintAsync({
       paths: args.paths,
@@ -319,14 +390,22 @@ export async function runCli(argv: string[]): Promise<number | null> {
     // one line that tells the user what to do next.
     console.error(`\n  ${err instanceof Error ? err.message : String(err)}\n`)
     return 1
+  } finally {
+    stopInterrupt()
   }
 
   if (args.format === 'json') {
     console.log(formatJSON(result))
+  } else if (args.format === 'gha') {
+    const gha = formatGha(result)
+    if (gha) console.log(gha)
   } else if (args.format === 'compact') {
     console.log(formatCompact(result))
   } else {
-    const output = formatText(result)
+    const output = formatText(result, {
+      elapsedMs: performance.now() - startedAt,
+      fixApplied: args.fix,
+    })
     if (output) console.log(output)
   }
 

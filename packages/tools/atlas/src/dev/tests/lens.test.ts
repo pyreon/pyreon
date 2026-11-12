@@ -90,4 +90,19 @@ describe('against the real compiler', () => {
     }
     expect(findings.length).toBeGreaterThan(0)
   })
+
+  it("carries a footgun's detector fix through to the panel (the Lens's \"Fix:\" line)", () => {
+    const code = [
+      "import { For } from '@pyreon/core'",
+      'export function List(props) {',
+      '  return <For each={props.items} key={(i) => i.id}>{(i) => <li>{i.name}</li>}</For>',
+      '}',
+    ].join('\n')
+    const { findings } = analyzeReactivity(code, 'List.tsx')
+    const line = toLensLines(code, findings).find((l) => l.line === 3)!
+    const footgun = line.findings.find((f) => f.code === 'for-with-key')
+    expect(footgun?.fix).toBe('by={(i) => i.id}')
+    // A structural verdict carries none.
+    expect(line.findings.filter((f) => f.kind !== 'footgun').every((f) => f.fix === undefined)).toBe(true)
+  })
 })

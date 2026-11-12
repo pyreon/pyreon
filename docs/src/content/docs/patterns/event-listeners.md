@@ -4,8 +4,6 @@ summary: "Use useEventListener from @pyreon/hooks — never raw addEventListener
 seeAlso: [ssr-safe-hooks]
 ---
 
-# Event listeners
-
 ## The pattern
 
 Register DOM event listeners via `useEventListener` from `@pyreon/hooks`. It handles cleanup on unmount and SSR safety:

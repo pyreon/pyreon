@@ -1,22 +1,37 @@
 /**
- * <Observatory> — the Loom UI root: header (brand · view tabs · search ·
- * health · theme toggle), sidebar (kind filters + grouped package list),
- * the active view, the detail panel, and the stats footer.
+ * <Observatory> — the Loom UI root, in the tool-app layout: a top bar (brand
+ * + workspace · view switch · scan summary · search · theme), the package
+ * list grouped by depth, the active view under its view bar, the detail rail,
+ * and the scan status bar.
  *
  * Wrapped in `<PyreonUI>` with the token set as the theme; the theme is
  * passed as an ACCESSOR so a dark-mode flip re-resolves every rocketstyle
  * chain (the Atlas Workbench wiring, including the `as never` cast the
  * prebuilt-lib path needs).
  */
-import { h, onMount, Show, type VNodeChild } from '@pyreon/core'
+import { cx, h, onMount, Show, type VNode } from '@pyreon/core'
 import { useEventListener, useMediaQuery } from '@pyreon/hooks'
 import { batch, computed, effect, isServer } from '@pyreon/reactivity'
 import { PyreonUI } from '@pyreon/ui-core'
 import type { LoomReport } from '../core/types'
 import * as C from './chrome'
 import { ensureGlobalStyles } from './global-css'
-import { createModel, shortName, type ObservatoryModel, type ViewId } from './model'
-import { hashForSel, MOBILE_QUERY, readPrefs, writeThemePref } from './prefs'
+import {
+  createModel,
+  depthGroups,
+  scanSummary,
+  shortName,
+  type ObservatoryModel,
+  type ViewId,
+} from './model'
+import {
+  hashForSel,
+  MOBILE_QUERY,
+  NAV_QUERY,
+  readPrefs,
+  THEME_KEY,
+  writeThemePref,
+} from './prefs'
 import { tokens } from './theme'
 import { GraphView } from './views/GraphView'
 import { SearchDialog } from './views/SearchDialog'
@@ -25,6 +40,7 @@ import { CyclesView } from './views/CyclesView'
 import { ImpactView } from './views/ImpactView'
 import { TableView } from './views/TableView'
 import { DetailPanel } from './views/DetailPanel'
+import { LoomGlyph, SearchIcon, ThemeIcon } from './views/icons'
 
 const VIEWS: { id: ViewId; label: string }[] = [
   { id: 'graph', label: 'graph' },
@@ -34,12 +50,11 @@ const VIEWS: { id: ViewId; label: string }[] = [
   { id: 'table', label: 'manifest' },
 ]
 
-const TITLES: Record<ViewId, [string, string]> = {
-  graph: ['Dependency graph', '01 · graph · layered by resolution depth'],
-  matrix: ['Adjacency matrix', '02 · matrix · who imports whom'],
-  cycles: ['Circular dependencies', '03 · cycles · runtime-edge loop detection'],
-  impact: ['Blast radius', '04 · impact · transitive dependents'],
-  table: ['Package manifest', '05 · manifest · versions · licenses · findings'],
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+
+/** The workspace's display name: the root manifest's `name`, else its folder. */
+export function workspaceName(report: LoomReport): string {
+  return report.model.root.name ?? report.model.root.dir.split(/[\\/]/).filter(Boolean).pop() ?? ''
 }
 
 export function Observatory(props: {
@@ -48,9 +63,9 @@ export function Observatory(props: {
   /** Seeds the active view. Routed hosts pass their own; the default keeps
    * `mountObservatory` byte-identical. */
   initialView?: ViewId
-  /** When supplied, the view tabs render as real links to these hrefs instead
-   * of flipping a signal — that is what makes a routed host's URLs mean
-   * something. Absent (the single-page host), the tabs stay signal-driven. */
+  /** When supplied, the view switch renders as real links to these hrefs
+   * instead of flipping a signal — that is what makes a routed host's URLs
+   * mean something. Absent (the single-page host), it stays signal-driven. */
   hrefFor?: (id: ViewId) => string
 }) {
   ensureGlobalStyles()
@@ -63,30 +78,39 @@ export function Observatory(props: {
   ;(globalThis as Record<string, unknown>).__LOOM_MODEL__ = m
 
   const theme = computed(() => tokens(m.dark()))
-  const mobile = useMediaQuery(MOBILE_QUERY)
+  const narrowList = useMediaQuery(NAV_QUERY)
+  const narrowPanel = useMediaQuery(MOBILE_QUERY)
+  const summary = scanSummary(m.report)
 
-  // Crossing the breakpoint re-lays out the chrome: below it the sidebar and
-  // detail panel are overlay drawers (closed by default), above it they are
-  // columns (open by default). Only a TRANSITION moves them — a user who
-  // closed the panel on desktop keeps it closed until the viewport changes.
-  let wasMobile: boolean | undefined
-  effect(() => {
-    const mob = mobile()
-    if (wasMobile !== undefined && mob !== wasMobile) {
-      batch(() => {
-        m.navOpen.set(!mob)
-        m.panelOpen.set(!mob)
-      })
-    }
-    wasMobile = mob
-  })
-  const closeDrawersOnMobile = () => {
-    if (!mobile()) return
-    batch(() => {
-      m.navOpen.set(false)
-      m.panelOpen.set(false)
+  // Crossing a breakpoint re-lays out the chrome: below it the list (860) or
+  // the detail rail (760) is an overlay drawer, closed by default; above it,
+  // a column, open by default. Only a TRANSITION moves them — a user who
+  // closed the rail keeps it closed until the viewport changes.
+  const followBreakpoint = (query: () => boolean, open: (v: boolean) => void) => {
+    let was: boolean | undefined
+    effect(() => {
+      const narrow = query()
+      if (was !== undefined && narrow !== was) open(!narrow)
+      was = narrow
     })
   }
+  followBreakpoint(narrowList, (v) => m.navOpen.set(v))
+  followBreakpoint(narrowPanel, (v) => m.panelOpen.set(v))
+
+  const closeDrawers = () =>
+    batch(() => {
+      if (narrowList()) m.navOpen.set(false)
+      if (narrowPanel()) m.panelOpen.set(false)
+    })
+  const drawerOpen = () => (narrowList() && m.navOpen()) || (narrowPanel() && m.panelOpen())
+
+  // The theme is the SHARED Pyreon preference: another tab (the docs, Atlas)
+  // choosing light or dark applies here too, live.
+  useEventListener('storage', (e: StorageEvent) => {
+    if (e.key === THEME_KEY && (e.newValue === 'dark' || e.newValue === 'light')) {
+      m.dark.set(e.newValue === 'dark')
+    }
+  })
 
   let sideListEl: HTMLElement | null = null
   let canvasEl: HTMLElement | null = null
@@ -99,8 +123,9 @@ export function Observatory(props: {
     const offDark = m.dark.subscribe(() =>
       root.setAttribute('data-lm-theme', m.dark() ? 'dark' : 'light'),
     )
+
     // Selection → URL hash (replace, not push: arrowing through 50 packages
-    // must not leave 50 history entries), and keep the sidebar row on screen
+    // must not leave 50 history entries), and keep the list row on screen
     // when the selection moves by keyboard or ⌘K.
     const revealRow = () =>
       requestAnimationFrame(() => {
@@ -110,7 +135,9 @@ export function Observatory(props: {
       })
     revealRow() // a selection restored from the URL starts on screen too
     const offSel = m.selId.subscribe(() => {
-      history.replaceState(history.state, '', hashForSel(m.selId()))
+      const id = m.selId()
+      // No selection = no hash: the URL of the overview is the bare page.
+      history.replaceState(history.state, '', id ? hashForSel(id) : location.pathname + location.search)
       revealRow()
     })
     // Each view starts at its top-left — the canvas element is shared, so a
@@ -123,25 +150,26 @@ export function Observatory(props: {
     }
   })
 
-  // The search input, captured by REF — focusing via a live element reference
-  // instead of a runtime document.querySelector (better, and the AST walker
-  // can actually see it's DOM-free at setup).
+  // The ⌘K field, captured by REF — focused via a live element reference.
   let searchEl: HTMLInputElement | null = null
   const searchRef = (el: HTMLInputElement | null) => {
     searchEl = el
   }
+  const openSearch = () => {
+    m.searchOpen.set(true)
+    queueMicrotask(() => searchEl?.focus())
+  }
 
-  // ⌘K → search, Escape → clear, ↑/↓ → walk the visible list. Registered
-  // through `useEventListener` (lifecycle-owned cleanup, SSR-safe no-op) —
-  // never a raw document.addEventListener in a component body.
+  // ⌘K → search, Escape → close / clear the filter, ↑/↓ → walk the list.
+  // Registered through `useEventListener` (lifecycle-owned cleanup, SSR-safe
+  // no-op) — never a raw document.addEventListener in a component body.
   useEventListener('keydown', (e: KeyboardEvent) => {
     if (isServer) return
     const target = e.target as HTMLElement | null
     const typing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA'
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault()
-      m.searchOpen.set(true)
-      queueMicrotask(() => searchEl?.focus())
+      openSearch()
       return
     }
     if (e.key === 'Escape') {
@@ -149,74 +177,167 @@ export function Observatory(props: {
         m.searchOpen.set(false)
         return
       }
+      if (drawerOpen()) {
+        closeDrawers()
+        return
+      }
+      // Then the filter, then the selection (back to the workspace overview).
       if (m.query()) m.query.set('')
+      else if (m.selId()) m.select('')
       ;(document.activeElement as HTMLElement | null)?.blur()
       return
     }
-    if (typing) return
+    if (typing && !(target as HTMLInputElement).dataset.lmFilter) return
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       const ids = m.shown().map((n) => n.id)
       if (!ids.length) return
       e.preventDefault()
       const i = ids.indexOf(m.selId())
-      const next = e.key === 'ArrowDown' ? Math.min(ids.length - 1, i + 1) : Math.max(0, i - 1)
+      const next =
+        i < 0 ? 0 : e.key === 'ArrowDown' ? Math.min(ids.length - 1, i + 1) : Math.max(0, i - 1)
       m.select(ids[next]!)
     }
   })
 
-  const health = () => (m.report.stats.cycles > 0 || m.report.stats.errors > 0 ? 'bad' : 'ok')
-  const healthLabel = () =>
-    m.report.stats.errors > 0
-      ? `${m.report.stats.errors} error${m.report.stats.errors === 1 ? '' : 's'}`
-      : m.report.stats.cycles > 0
-        ? `${m.report.stats.cycles} cycle${m.report.stats.cycles === 1 ? '' : 's'}`
-        : 'fabric clean'
-
-  const sidebarGroup = (
-    label: string,
-    num: string,
-    glyph: string,
-    kind: 'internal' | 'external',
-  ): VNodeChild => (
-    <>
-      {() => {
-        const items = m.shown().filter((n) => n.kind === kind)
-        if (!items.length) return null
-        return (
-          <>
-            <C.GroupHead>
-              <C.GroupNum>{num}</C.GroupNum>
-              <C.GroupGlyph>{glyph}</C.GroupGlyph>
-              <C.GroupLabel>{label}</C.GroupLabel>
-              <C.GroupCount>{String(items.length)}</C.GroupCount>
-            </C.GroupHead>
-            {items.map((n) => (
-              <C.PkgBtn
-                data-testid={`pkg-${n.id}`}
-                state={() => (m.selId() === n.id ? 'active' : 'idle')}
-                title={n.id}
-                onClick={() => {
-                  m.select(n.id)
-                  closeDrawersOnMobile()
-                }}
-              >
-                <C.PkgBar state={() => (m.selId() === n.id ? 'active' : 'idle')} />
-                <C.PkgName>{n.id}</C.PkgName>
-                {n.status !== 'current' ? (
-                  <C.PkgFlag
-                    data-flag={n.status}
-                    variant={n.status === 'circular' || n.status === 'issue' ? 'danger' : 'warn'}
-                  />
-                ) : null}
-              </C.PkgBtn>
-            ))}
-          </>
-        )
-      }}
-    </>
+  const viewSwitch = (
+    <C.ViewSeg aria-label="View" data-testid="view-switch">
+      {VIEWS.map((v) => (
+        <C.ViewBtn
+          data-testid={`view-${v.id}`}
+          state={() => (m.view() === v.id ? 'active' : 'idle')}
+          {...(props.hrefFor
+            ? // The selection rides along in the hash, so a routed host's
+              // full-page navigation keeps what you were looking at.
+              {
+                tag: 'a',
+                href: () => props.hrefFor!(v.id) + (m.selId() ? hashForSel(m.selId()) : ''),
+                'aria-current': () => (m.view() === v.id ? 'page' : undefined),
+              }
+            : {
+                'aria-pressed': () => (m.view() === v.id ? 'true' : 'false'),
+                onClick: () => m.view.set(v.id),
+              })}
+        >
+          {v.label}
+        </C.ViewBtn>
+      ))}
+    </C.ViewSeg>
   )
-  const internalGroup = sidebarGroup('internal', '01', '~>', 'internal')
-  const externalGroup = sidebarGroup('external', '02', '//', 'external')
+
+  const list = (): VNode | VNode[] => {
+    const groups = depthGroups(m.shown())
+    if (!groups.length) {
+      return (
+        <div class="lm-pk-empty" data-testid="pkg-empty">
+          {`Nothing matches “${m.query()}”.`}
+          <br />
+          Esc clears the filter.
+        </div>
+      )
+    }
+    return groups.map((g) => (
+      <div>
+        <div class="lm-pk-g">
+          <span>{g.label}</span>
+          <span>{String(g.items.length)}</span>
+        </div>
+        {g.items.map((n) => (
+          <button
+            type="button"
+            class="lm-pk"
+            data-testid={`pkg-${n.id}`}
+            title={n.id}
+            aria-current={() => (m.selId() === n.id ? 'true' : 'false')}
+            onClick={() => {
+              m.select(n.id)
+              if (narrowList()) m.navOpen.set(false)
+            }}
+          >
+            <span class={cx(['lm-sev', `lm-sev--${n.worst ?? 'none'}`])} aria-hidden="true" />
+            <span class="lm-pk-n">{n.kind === 'internal' ? shortName(n.id) : n.id}</span>
+            <span class="lm-pk-d" title="blast radius">
+              {String(m.reachOf(n.id))}
+            </span>
+          </button>
+        ))}
+      </div>
+    ))
+  }
+
+  const SUBS: Record<ViewId, () => string> = {
+    graph: () =>
+      `internal runtime edges · layered by depth from the entry points · dev edges ${m.showDev() ? 'shown' : 'hidden'}`,
+    matrix: () =>
+      m.matrixMode() === 'versions'
+        ? 'external version usage · drift highlighted, cross-major in red'
+        : 'internal imports · rows depend on columns · foundations first',
+    cycles: () =>
+      `${plural(m.report.stats.cycles, 'runtime cycle')} · dev edges excluded`,
+    impact: () => 'what changes if the selected package changes',
+    table: () => 'every package and dependency · the full report as data',
+  }
+  const TITLES: Record<ViewId, string> = {
+    graph: 'Graph',
+    matrix: 'Matrix',
+    cycles: 'Cycles',
+    impact: 'Impact',
+    table: 'Manifest',
+  }
+
+  const chips = (): VNode | null => {
+    switch (m.view()) {
+      case 'graph':
+        return (
+          <C.ChipGroup>
+            <C.Chip
+              data-testid="dev-toggle"
+              state={() => (m.showDev() ? 'on' : 'off')}
+              aria-pressed={() => (m.showDev() ? 'true' : 'false')}
+              onClick={() => m.showDev.set(!m.showDev())}
+            >
+              dev edges
+            </C.Chip>
+            <C.Chip
+              data-testid="cycles-toggle"
+              state={() => (m.showCycles() ? 'on' : 'off')}
+              aria-pressed={() => (m.showCycles() ? 'true' : 'false')}
+              onClick={() => m.showCycles.set(!m.showCycles())}
+            >
+              {m.report.stats.cycles > 0
+                ? `highlight cycles · ${m.report.stats.cycles}`
+                : 'highlight cycles'}
+            </C.Chip>
+          </C.ChipGroup>
+        )
+      case 'matrix':
+        return (
+          <C.ChipGroup>
+            <Show when={() => m.matrixMode() === 'versions'}>
+              <C.Chip
+                data-testid="drift-toggle"
+                state={() => (m.driftOnly() ? 'on' : 'off')}
+                aria-pressed={() => (m.driftOnly() ? 'true' : 'false')}
+                onClick={() => m.driftOnly.set(!m.driftOnly())}
+              >
+                drift only
+              </C.Chip>
+            </Show>
+            {(['versions', 'imports'] as const).map((mode) => (
+              <C.Chip
+                data-testid={`matrix-${mode}`}
+                state={() => (m.matrixMode() === mode ? 'on' : 'off')}
+                aria-pressed={() => (m.matrixMode() === mode ? 'true' : 'false')}
+                onClick={() => m.matrixMode.set(mode)}
+              >
+                {mode}
+              </C.Chip>
+            ))}
+          </C.ChipGroup>
+        )
+      default:
+        return null
+    }
+  }
 
   return (
     <PyreonUI
@@ -225,123 +346,113 @@ export function Observatory(props: {
     >
       <C.Shell data-testid="loom-shell" data-lm-theme={() => (m.dark() ? 'dark' : 'light')}>
         <C.Header>
-          <C.BrandBlock>
-            <C.BrandMark>
-              <C.BrandGlyph>{'{}'}</C.BrandGlyph>
-            </C.BrandMark>
-            <C.Col>
-              <C.BrandName>{props.brand ?? 'loom'}</C.BrandName>
-              <C.BrandSub>dependency observatory</C.BrandSub>
-            </C.Col>
-          </C.BrandBlock>
-          <C.NavTabs>
-            {VIEWS.map((v) => (
-              <C.NavTab
-                data-testid={`view-${v.id}`}
-                state={() => (m.view() === v.id ? 'active' : 'idle')}
-                {...(props.hrefFor
-                  ? // The selection rides along in the hash, so a routed host's
-                    // full-page tab navigation keeps what you were looking at.
-                    { tag: 'a', href: () => props.hrefFor!(v.id) + hashForSel(m.selId()) }
-                  : { onClick: () => m.view.set(v.id) })}
-              >
-                {v.label}
-              </C.NavTab>
-            ))}
-          </C.NavTabs>
+          <C.Brand aria-label={`${props.brand ?? 'loom'} · ${workspaceName(m.report)}`}>
+            <LoomGlyph />
+            <C.BrandName>{props.brand ?? 'loom'}</C.BrandName>
+            <C.BrandWorkspace data-testid="workspace-name" title={m.report.model.root.dir}>
+              {workspaceName(m.report)}
+            </C.BrandWorkspace>
+          </C.Brand>
+          {viewSwitch}
           <C.Spacer />
-          <C.SearchWrap>
-            <C.SearchTrigger data-testid="search-trigger" onClick={() => m.searchOpen.set(true)}>
-              <C.SearchGlyph>⌕</C.SearchGlyph>
-              <C.SearchTriggerText>Search packages, findings…</C.SearchTriggerText>
-              <C.SearchTriggerKbd>⌘K</C.SearchTriggerKbd>
-            </C.SearchTrigger>
-          </C.SearchWrap>
-          <C.Spacer />
-          <C.HealthPill data-testid="loom-health" state={health}>
-            <C.HealthDot state={health} />
-            <C.HealthText state={health}>{healthLabel}</C.HealthText>
-          </C.HealthPill>
+          <C.ScanSummary
+            data-testid="loom-health"
+          >
+            <C.ScanItem>
+              <span class="lm-sev lm-sev--error" aria-hidden="true" />
+              <C.ScanCount variant="error">{String(summary.errors)}</C.ScanCount>
+              {summary.errors === 1 ? ' error' : ' errors'}
+            </C.ScanItem>
+            <C.ScanItem>
+              <span class="lm-sev lm-sev--warning" aria-hidden="true" />
+              <C.ScanCount variant="warning">{String(summary.warnings)}</C.ScanCount>
+              {summary.warnings === 1 ? ' warning' : ' warnings'}
+            </C.ScanItem>
+            <C.ScanItem>
+              <span class="lm-sev lm-sev--info" aria-hidden="true" />
+              <C.ScanCount variant="info">{String(summary.infos)}</C.ScanCount>
+              {' info'}
+            </C.ScanItem>
+            <span
+              data-testid="scan-exit"
+              title={
+                m.report.gate?.strict
+                  ? 'what `loom scan` exits with — strict: warnings gate too'
+                  : 'what `loom scan` exits with'
+              }
+            >{`exit ${summary.exit}`}</span>
+          </C.ScanSummary>
+          <C.IconBtn
+            data-testid="search-trigger"
+            aria-label="Search packages and findings (⌘K)"
+            title="Search (⌘K)"
+            onClick={openSearch}
+          >
+            <SearchIcon />
+          </C.IconBtn>
           <C.IconBtn
             data-testid="dark-toggle"
+            aria-label={() => (m.dark() ? 'Switch to light theme' : 'Switch to dark theme')}
+            title="Toggle theme"
             onClick={() => {
               const next = !m.dark()
               m.dark.set(next)
               writeThemePref(next)
             }}
-            title="Toggle theme"
-            aria-label="Toggle theme"
           >
-            {() => (m.dark() ? '☀' : '☾')}
+            <ThemeIcon />
           </C.IconBtn>
         </C.Header>
 
         <C.Body>
           <Show when={() => m.navOpen()}>
-            <C.Sidebar data-testid="loom-sidebar">
-              <C.KindRow>
-                {(['all', 'internal', 'external'] as const).map((k) => (
-                  <C.KindBtn
-                    data-testid={`kind-${k}`}
-                    state={() => (m.kind() === k ? 'active' : 'idle')}
-                    onClick={() => m.kind.set(k)}
-                  >
-                    {k}
-                  </C.KindBtn>
-                ))}
-              </C.KindRow>
+            <C.Sidebar data-testid="loom-sidebar" aria-label="Packages">
+              <C.SideHead>
+                <C.FilterField
+                  type="search"
+                  data-testid="pkg-filter"
+                  data-lm-filter="1"
+                  aria-label="Filter packages"
+                  placeholder={`Filter ${m.nodes.length} packages…`}
+                  value={() => m.query()}
+                  onInput={(e: Event) => m.query.set((e.target as HTMLInputElement).value)}
+                />
+              </C.SideHead>
               <C.SideList
                 ref={(el: HTMLElement | null) => {
                   sideListEl = el
                 }}
               >
-                {internalGroup}
-                {externalGroup}
-                <Show when={() => m.shown().length === 0}>
-                  <C.SideEmpty>no packages match</C.SideEmpty>
-                </Show>
+                {list}
               </C.SideList>
-              <C.SideFoot>{`${m.nodes.length} packages · ↑↓ browse`}</C.SideFoot>
             </C.Sidebar>
           </Show>
 
           <C.Main>
             <C.ViewBar>
-              <C.SmallBtn
-                data-testid="nav-toggle"
-                onClick={() => m.navOpen.set(!m.navOpen())}
-                title="Toggle package list"
-              >
-                {() => (m.navOpen() ? '⇤' : '⇥')}
-              </C.SmallBtn>
-              <C.ViewTitleBlock>
-                <C.ViewTitle data-testid="view-title">{() => TITLES[m.view()][0]}</C.ViewTitle>
-                <C.ViewEyebrow>{() => TITLES[m.view()][1]}</C.ViewEyebrow>
-              </C.ViewTitleBlock>
-              <C.Spacer />
-              <C.CyclesBtn
-                data-testid="cycles-toggle"
-                title="Highlight dependency cycles"
-                // Red only when there is something to be alarmed about — an
-                // acyclic workspace used to wear the same alarm as a broken one.
-                state={() => (!m.showCycles() ? 'off' : m.report.stats.cycles > 0 ? 'on' : 'clean')}
-                aria-pressed={() => (m.showCycles() ? 'true' : 'false')}
-                onClick={() => m.showCycles.set(!m.showCycles())}
-              >
-                <C.CyclesDot variant={m.report.stats.cycles > 0 ? 'danger' : 'ok'} />
-                <C.CyclesLabel>
-                  {m.report.stats.cycles > 0
-                    ? `highlight cycles · ${m.report.stats.cycles}`
-                    : 'highlight cycles'}
-                </C.CyclesLabel>
-              </C.CyclesBtn>
-              <C.SmallBtn
-                data-testid="panel-toggle"
-                onClick={() => m.panelOpen.set(!m.panelOpen())}
-                title="Toggle detail panel"
-              >
-                {() => (m.panelOpen() ? '⇥' : '⇤')}
-              </C.SmallBtn>
+              <Show when={narrowList}>
+                <C.DrawerBtn
+                  data-testid="nav-toggle"
+                  aria-label="Toggle package list"
+                  aria-expanded={() => (m.navOpen() ? 'true' : 'false')}
+                  onClick={() => m.navOpen.set(!m.navOpen())}
+                >
+                  ☰
+                </C.DrawerBtn>
+              </Show>
+              <C.ViewTitle data-testid="view-title">{() => TITLES[m.view()]}</C.ViewTitle>
+              <C.ViewSub data-testid="view-sub">{() => SUBS[m.view()]()}</C.ViewSub>
+              {chips}
+              <Show when={narrowPanel}>
+                <C.DrawerBtn
+                  data-testid="panel-toggle"
+                  aria-label="Toggle package detail"
+                  aria-expanded={() => (m.panelOpen() ? 'true' : 'false')}
+                  onClick={() => m.panelOpen.set(!m.panelOpen())}
+                >
+                  ⓘ
+                </C.DrawerBtn>
+              </Show>
             </C.ViewBar>
             <C.Canvas
               data-testid="loom-canvas"
@@ -366,37 +477,28 @@ export function Observatory(props: {
             </C.Canvas>
           </C.Main>
 
-          <Show when={() => m.panelOpen()}>{h(DetailPanel, { model: m })}</Show>
-          <Show when={() => mobile() && (m.navOpen() || m.panelOpen())}>
+          <Show when={() => m.panelOpen()}>
+            {h(DetailPanel, { model: m })}
+          </Show>
+          <Show when={drawerOpen}>
             <C.DrawerScrim
               data-testid="drawer-scrim"
-              aria-hidden="true"
-              onClick={closeDrawersOnMobile}
+              aria-label="Close"
+              tabIndex={-1}
+              onClick={closeDrawers}
             />
           </Show>
         </C.Body>
 
-        <C.Footer>
-          <span>{`${m.report.stats.internal} internal`}</span>
-          <C.FootSep>·</C.FootSep>
-          <span>{`${m.report.stats.external} external`}</span>
-          <C.FootSep>·</C.FootSep>
-          <span>{`${m.report.stats.edges} edges`}</span>
-          <C.FootSep>·</C.FootSep>
-          <span>{`depth ${m.report.stats.depth}`}</span>
-          <C.Spacer />
-          <C.FootDanger variant={m.report.stats.cycles ? 'danger' : 'ok'}>
-            {`● ${m.report.stats.cycles} cycles`}
-          </C.FootDanger>
-          <C.FootSep>·</C.FootSep>
-          <C.FootDanger variant={m.report.stats.errors ? 'danger' : 'ok'}>
-            {`✗ ${m.report.stats.errors} errors`}
-          </C.FootDanger>
-          <C.FootSep>·</C.FootSep>
-          <C.FootDanger variant={m.report.stats.warnings ? 'warn' : 'ok'}>
-            {`▲ ${m.report.stats.warnings} warnings`}
-          </C.FootDanger>
-        </C.Footer>
+        <C.StatusBar data-testid="loom-status">
+          <span>{`loom scan · ${plural(m.report.stats.internal, 'package')} · ${plural(m.report.stats.edges, 'runtime edge')} · depth ${m.report.stats.depth}`}</span>
+          <span>{`${plural(summary.errors, 'error')} · ${plural(summary.warnings, 'warning')} · ${summary.infos} info`}</span>
+          <span data-testid="status-ignored">
+            {summary.ignored.length
+              ? `ignored: ${summary.ignored.length} (${summary.ignored[0]!.dep ?? summary.ignored[0]!.pkg} · ${summary.ignored[0]!.code} — ${summary.ignored[0]!.ignored})`
+              : 'ignored: 0'}
+          </span>
+        </C.StatusBar>
       </C.Shell>
       <SearchDialog model={m} fieldRef={searchRef} focusField={() => searchEl?.focus()} />
     </PyreonUI>

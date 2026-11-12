@@ -1,0 +1,97 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the whole banner in the shared theme > --routes at truecolor 1`] = `
+"␛[1mzero dev␛[22m ␛[38;2;138;134;150m· apps/web␛[39m
+
+  ␛[38;2;138;134;150mMode␛[39m    ␛[38;2;255;94;26m␛[1mssr␛[22m␛[39m ␛[38;2;138;134;150m(hybrid: 1 ssg, 1 isr, 1 spa)␛[39m
+
+  ␛[1mRoutes␛[22m
+    ␛[38;2;34;211;238mSSG ␛[39m /
+    ␛[38;2;250;204;21mISR ␛[39m /blog/:slug
+    ␛[38;2;255;94;26mSSR ␛[39m /account
+    SPA  /app/*
+
+  ␛[1mAPI Routes␛[22m
+    ␛[38;2;138;134;150mAPI ␛[39m /api/health
+
+  ➜  Local:   http://localhost:3000/   (printed by Vite)
+
+␛[38;2;74;222;128m✓␛[39m ready in 412 ms"
+`;
+
+exports[`the whole banner in the shared theme > renders at 16 colours 1`] = `
+"␛[1mzero dev␛[22m ␛[90m· apps/web␛[39m
+
+  ␛[90mMode␛[39m    ␛[31m␛[1mssr␛[22m␛[39m ␛[90m(hybrid: 1 ssg, 1 isr, 1 spa)␛[39m
+  ␛[90mRoutes␛[39m  ␛[33mISR␛[39m ␛[1m1␛[22m ␛[90m·␛[39m SPA ␛[1m1␛[22m ␛[90m·␛[39m ␛[36mSSG␛[39m ␛[1m1␛[22m ␛[90m·␛[39m ␛[31mSSR␛[39m ␛[1m1␛[22m ␛[90m·␛[39m API ␛[1m1␛[22m ␛[90m· zero dev --routes to list␛[39m
+
+  ➜  Local:   http://localhost:3000/   (printed by Vite)
+
+␛[32m✓␛[39m ready in 412 ms"
+`;
+
+exports[`the whole banner in the shared theme > renders at 256 dark 1`] = `
+"␛[1mzero dev␛[22m ␛[38;5;103m· apps/web␛[39m
+
+  ␛[38;5;103mMode␛[39m    ␛[38;5;202m␛[1mssr␛[22m␛[39m ␛[38;5;103m(hybrid: 1 ssg, 1 isr, 1 spa)␛[39m
+  ␛[38;5;103mRoutes␛[39m  ␛[38;5;220mISR␛[39m ␛[1m1␛[22m ␛[38;5;103m·␛[39m SPA ␛[1m1␛[22m ␛[38;5;103m·␛[39m ␛[38;5;45mSSG␛[39m ␛[1m1␛[22m ␛[38;5;103m·␛[39m ␛[38;5;202mSSR␛[39m ␛[1m1␛[22m ␛[38;5;103m·␛[39m API ␛[1m1␛[22m ␛[38;5;103m· zero dev --routes to list␛[39m
+
+  ➜  Local:   http://localhost:3000/   (printed by Vite)
+
+␛[38;5;78m✓␛[39m ready in 412 ms"
+`;
+
+exports[`the whole banner in the shared theme > renders at 256 light 1`] = `
+"␛[1mzero dev␛[22m ␛[38;5;59m· apps/web␛[39m
+
+  ␛[38;5;59mMode␛[39m    ␛[38;5;160m␛[1mssr␛[22m␛[39m ␛[38;5;59m(hybrid: 1 ssg, 1 isr, 1 spa)␛[39m
+  ␛[38;5;59mRoutes␛[39m  ␛[38;5;94mISR␛[39m ␛[1m1␛[22m ␛[38;5;59m·␛[39m SPA ␛[1m1␛[22m ␛[38;5;59m·␛[39m ␛[38;5;24mSSG␛[39m ␛[1m1␛[22m ␛[38;5;59m·␛[39m ␛[38;5;160mSSR␛[39m ␛[1m1␛[22m ␛[38;5;59m·␛[39m API ␛[1m1␛[22m ␛[38;5;59m· zero dev --routes to list␛[39m
+
+  ➜  Local:   http://localhost:3000/   (printed by Vite)
+
+␛[38;5;22m✓␛[39m ready in 412 ms"
+`;
+
+exports[`the whole banner in the shared theme > renders at ascii 1`] = `
+"zero dev - apps/web
+
+  Mode    ssr (hybrid: 1 ssg, 1 isr, 1 spa)
+  Routes  ISR 1 - SPA 1 - SSG 1 - SSR 1 - API 1 - zero dev --routes to list
+
+  ➜  Local:   http://localhost:3000/   (printed by Vite)
+
+v ready in 412 ms"
+`;
+
+exports[`the whole banner in the shared theme > renders at plain 1`] = `
+"zero dev · apps/web
+
+  Mode    ssr (hybrid: 1 ssg, 1 isr, 1 spa)
+  Routes  ISR 1 · SPA 1 · SSG 1 · SSR 1 · API 1 · zero dev --routes to list
+
+  ➜  Local:   http://localhost:3000/   (printed by Vite)
+
+✓ ready in 412 ms"
+`;
+
+exports[`the whole banner in the shared theme > renders at truecolor dark 1`] = `
+"␛[1mzero dev␛[22m ␛[38;2;138;134;150m· apps/web␛[39m
+
+  ␛[38;2;138;134;150mMode␛[39m    ␛[38;2;255;94;26m␛[1mssr␛[22m␛[39m ␛[38;2;138;134;150m(hybrid: 1 ssg, 1 isr, 1 spa)␛[39m
+  ␛[38;2;138;134;150mRoutes␛[39m  ␛[38;2;250;204;21mISR␛[39m ␛[1m1␛[22m ␛[38;2;138;134;150m·␛[39m SPA ␛[1m1␛[22m ␛[38;2;138;134;150m·␛[39m ␛[38;2;34;211;238mSSG␛[39m ␛[1m1␛[22m ␛[38;2;138;134;150m·␛[39m ␛[38;2;255;94;26mSSR␛[39m ␛[1m1␛[22m ␛[38;2;138;134;150m·␛[39m API ␛[1m1␛[22m ␛[38;2;138;134;150m· zero dev --routes to list␛[39m
+
+  ➜  Local:   http://localhost:3000/   (printed by Vite)
+
+␛[38;2;74;222;128m✓␛[39m ready in 412 ms"
+`;
+
+exports[`the whole banner in the shared theme > renders at truecolor light 1`] = `
+"␛[1mzero dev␛[22m ␛[38;2;94;90;105m· apps/web␛[39m
+
+  ␛[38;2;94;90;105mMode␛[39m    ␛[38;2;180;58;14m␛[1mssr␛[22m␛[39m ␛[38;2;94;90;105m(hybrid: 1 ssg, 1 isr, 1 spa)␛[39m
+  ␛[38;2;94;90;105mRoutes␛[39m  ␛[38;2;138;90;0mISR␛[39m ␛[1m1␛[22m ␛[38;2;94;90;105m·␛[39m SPA ␛[1m1␛[22m ␛[38;2;94;90;105m·␛[39m ␛[38;2;10;110;137mSSG␛[39m ␛[1m1␛[22m ␛[38;2;94;90;105m·␛[39m ␛[38;2;180;58;14mSSR␛[39m ␛[1m1␛[22m ␛[38;2;94;90;105m·␛[39m API ␛[1m1␛[22m ␛[38;2;94;90;105m· zero dev --routes to list␛[39m
+
+  ➜  Local:   http://localhost:3000/   (printed by Vite)
+
+␛[38;2;21;112;58m✓␛[39m ready in 412 ms"
+`;

@@ -27,7 +27,8 @@ describe('deriveContent', () => {
     const seed = deriveContent({ name: 'Button', tag: 'button' })
     expect(seed.args).toEqual({ children: 'Button' })
     expect(seed.controls).toEqual([
-      { name: 'children', kind: 'text', defaultValue: 'Button', reactive: false, required: false },
+      // `source: 'content'` — the Schema panel's provenance column.
+      { name: 'children', kind: 'text', defaultValue: 'Button', reactive: false, required: false, source: 'content' },
     ])
   })
 

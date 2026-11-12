@@ -2,9 +2,11 @@
 title: Multi-Platform Pyreon
 ---
 
-# Multi-Platform Pyreon
+<ProductPitch id="native" />
 
-> **Status:** PMTC (Pyreon Multi-Target Compiler) is **experimental — demo-quality, not production-ready.** The single number for "how much is device-proven" is the gated weighted matrix at the bottom of this page (`check-multiplatform-matrix` fails CI when its headline disagrees with its table) — do not quote a score from memory or from an older revision of this page. The 15-primitive canonical vocabulary spans all three targets — every primitive has a real web DOM runtime AND emits SwiftUI + Jetpack Compose. **Be precise about what "validated" means**, because the layers differ sharply in strength:
+<LiveDemo id="native" />
+
+> **Status:** PMTC (Pyreon Multi-Target Compiler) is **experimental — demo-quality, not production-ready.** The single number for "how much is device-proven" is the gated weighted matrix at the bottom of this page (`check-multiplatform-matrix` fails CI when its headline disagrees with its table) — do not quote a score from memory or from an older revision of this page. The 22-primitive canonical vocabulary spans all three targets — every primitive has a real web DOM runtime AND emits SwiftUI + Jetpack Compose. **Be precise about what "validated" means**, because the layers differ sharply in strength:
 > - **(1) Per-PR gate — SYNTAX + STUB TYPE-CHECK.** `swiftc -parse` (syntax, accepts unresolved types) runs on every emit; `kotlinc` type-resolves against Compose **stubs**; and `swiftc -typecheck` type-resolves against SwiftUI+PyreonRuntime **stubs** (`swift-stubs.ts`, the Swift sibling of `kotlin-stubs.ts`) — the stubs' generic constraints mirror the real SDK EXACTLY (`animation<V: Equatable>`, so a `[Todo]` value is correctly REJECTED) so this catches the type-corruption class that pure `-parse` waves through. **Scope:** the stub `-typecheck` now covers the 2 example apps + **all 37** compiler fixtures — canonical primitives, common modifiers, i18n/machine/permissions/link/webview, the rx fixtures, the router-hook surface (`PyreonRouter`/`useNavigate`/`useParams`/`matchPath`/`RouterProvider`), the `PyreonForm` binding surface, and every `@Observable` fixture including the two LARGE showcase apps (`showcase-finance`/`showcase-tasks`, closed by M-gate.1f with `PyreonAuth`/`PyreonDatabase`/`PyreonFetch` + `LazyVStack`/`Color`/`Font.custom`/`.foregroundColor`/`.task`/`navigationDestination` stubs, all mirrored from runtime-swift). It also compiles an example's **app-provided** `useNativeModule` classes alongside the emit — the framework cannot stub a class the app owns, and a synthesized stand-in would mask a mismatched method name. The gate keeps earning its keep by SURFACING real emitter bugs that were then FIXED so the emitted native code actually compiles: rx `.first`/`.last`/`.min`/`.average` now infer Optional/Double bindings; a null-returning component emits `EmptyView()` not `body { nil }`; a top-level object-shape `interface` is SYNTHESIZED into a struct/data-class; and — found while closing the showcase apps — `useDatabase`'s `get`/`delete`/`find` emitted Swift WITHOUT the argument labels the runtime declares (`delete(_ collection:id:)`), so those calls had never compiled. Argument labels are a TYPE-level concern, which is exactly why only a `-typecheck` gate could see it — see the silent-failure cliff below.
 > - **(2) Real-toolchain BUILD of the gated example apps** — `xcodebuild` (full Swift compile) + `gradle assembleDebug` — via the `native-device` workflow (auto-runs on native-path PRs; **REQUIRED** — both build jobs are branch-protection required checks, promoted after the 14-green-nightly streak gate passed). This is the only place type-checking against the REAL SDK (not stubs) happens, and only for those apps.
 > - **(3) Launch + interaction UI smokes** — XCUITest (iOS Simulator) + Compose-instrumented-test (Android Emulator). Strong for the **Tasks/Counter/Router** examples (login validation, store mutation, typed-params nav, content-asserted fetch, Suspense/ErrorBoundary all assert real behaviour); **launch-only for TodoMVC**; **absent for native-analytics**.
@@ -1432,9 +1434,22 @@ for (const w of warnings) console.warn(w)
 ```
 
 The shipped surface today is the `pyreon-native build` CLI, which
-aggregates warnings per file and prints them to stderr as
-`[pyreon-native] N warning(s):` after each build, plus `pyreon-native
-check --lsp` (a stdio LSP server; warnings are currently position-less —
+prints each warning to stderr with its target and file, and counts them
+in the build's last line (`pyreon-native check` reports the same
+warnings without writing any files):
+
+```text
+$ pyreon-native build --target=ios --source=src --out=generated
+pyreon-native build · ios · src → generated
+
+  ! warning · swift · <Text font="Brand">: no bundled font by that name — run the assets/fonts step
+     (Font.custom will fall back to the system font on-device).
+     ↳ src/FinanceApp.tsx
+
+✓ compiled 1 file → generated · 1 warning · 39 ms
+```
+
+There is also `pyreon-native check --lsp` (a stdio LSP server; warnings are currently position-less —
 threading spans through the compiler's warn sites is a follow-up). There
 is **no Vite-plugin surfacer yet** — that's an explicit Phase 6 DX
 follow-up. `@pyreon/native-compiler` publishes to npm with the rest of
@@ -1773,8 +1788,8 @@ engineering effort.
   surface from PRs #1235 / #1441). Pre-emit warnings about dropped
   `useLoaderData()` reads, dropped `<Suspense fallback>` props,
   etc. ARE shown — they're emitted at compile time, surfaced via
-  `transform()` `result.warnings` and the CLI's
-  `[pyreon-native] N warning(s)` stderr aggregation. The actual
+  `transform()` `result.warnings` and the CLI's per-warning
+  `! warning · <target> · <message>` lines on stderr. The actual
   runtime-state debugging is per-target (Xcode + Android Studio
   above).
 
@@ -1885,3 +1900,11 @@ The runtime packages exist, with one reactive container per data/service hook:
 - Example apps: `examples/native-todomvc-{ios,android,web}/` + `examples/native-router-demo-{ios,web}/` — `native-router-demo-ios` ships a full XcodeGen host shell (#1105) so `bash scripts/build.sh` produces a buildable Xcode project, not a source-only stub. `examples/native-todomvc-web/README.md` was also corrected (#1106) so it no longer references a fictional `src/TodoApp.tsx` — the one-source contract (Phase E3) keeps the shared TodoApp source in `examples/native-todomvc-ios/src/`.
 - Native validation gates: `.github/workflows/native-validate.yml` (compiler fixtures and real-SDK Swift typechecks) and `.github/workflows/native-device.yml` (example builds and Simulator/emulator tests); selected automatically for relevant PRs, with nightly and manual runs. The `native-device` label forces every device lane.
 - `.agents/guides/multiplatform/README.md` — agent-context summary of the layered model
+
+<BenchCallout id="native" />
+
+<ComingFrom id="native" />
+
+<InlineSell id="primitives" />
+
+<CrossSell id="native" />

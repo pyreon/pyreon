@@ -1,0 +1,663 @@
+{
+  "brand": {
+    "href": "/",
+    "label": "pyreon",
+    "logo": "glyph (color disc + paper/ink n) + wordmark 600"
+  },
+  "main": [
+    {
+      "label": "Products",
+      "kind": "mega",
+      "panel": "products"
+    },
+    {
+      "label": "Why Pyreon",
+      "kind": "menu",
+      "items": [
+        {
+          "label": "Components run once",
+          "href": "/why/components-run-once",
+          "sub": "The code you delete"
+        },
+        {
+          "label": "One codebase",
+          "href": "/why/one-codebase",
+          "sub": "Web, iOS, Android (experimental)"
+        },
+        {
+          "label": "AI-ready",
+          "href": "/why/ai-ready",
+          "sub": "MCP, Reactivity Lens, pyreon check"
+        },
+        {
+          "label": "Performance",
+          "href": "/why/performance",
+          "sub": "Don't trust us. Run it."
+        },
+        {
+          "label": "Full stack",
+          "href": "/why/full-stack",
+          "sub": "Zero: every route its own mode"
+        }
+      ],
+      "footerOfMenu": [
+        {
+          "label": "Compare",
+          "items": [
+            {
+              "label": "vs React",
+              "href": "/compare/react"
+            },
+            {
+              "label": "vs Next.js",
+              "href": "/compare/next"
+            },
+            {
+              "label": "vs Solid",
+              "href": "/compare/solid"
+            },
+            {
+              "label": "vs Vue",
+              "href": "/compare/vue"
+            },
+            {
+              "label": "vs Svelte",
+              "href": "/compare/svelte"
+            },
+            {
+              "label": "vs React Native",
+              "href": "/compare/react-native"
+            }
+          ]
+        },
+        {
+          "label": "Migrate",
+          "items": [
+            {
+              "label": "Bring your React app",
+              "href": "/migrate"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "Docs",
+      "href": "/docs"
+    },
+    {
+      "label": "Benchmarks",
+      "href": "/benchmarks"
+    },
+    {
+      "label": "Blog",
+      "href": "/blog"
+    },
+    {
+      "label": "Showcase",
+      "href": "/showcase",
+      "showWhen": "the /showcase page is on main (open PR)"
+    }
+  ],
+  "actions": [
+    {
+      "kind": "github",
+      "href": "https://github.com/pyreon/pyreon",
+      "label": "GitHub",
+      "ariaLabel": "Pyreon on GitHub"
+    },
+    {
+      "kind": "discord",
+      "href": "/discord",
+      "ariaLabel": "Join the Pyreon Discord",
+      "showWhen": "the /discord redirect is live"
+    },
+    {
+      "kind": "theme",
+      "ariaLabel": "Switch theme"
+    },
+    {
+      "kind": "primary",
+      "label": "Start a project",
+      "href": "/docs/quickstart",
+      "command": "npm create @pyreon/zero@latest"
+    }
+  ],
+  "megaMenu": {
+    "id": "products",
+    "columns": [
+      {
+        "id": "build",
+        "title": "Build",
+        "items": [
+          {
+            "id": "zero",
+            "name": "Zero",
+            "href": "/products/zero",
+            "sub": "Full-stack framework"
+          },
+          {
+            "id": "native",
+            "name": "Native",
+            "href": "/products/native",
+            "sub": "iOS and Android from TSX (experimental)",
+            "badge": "experimental"
+          },
+          {
+            "id": "content",
+            "name": "Content",
+            "href": "/products/content",
+            "sub": "Markdown and MDX sites"
+          },
+          {
+            "id": "primitives",
+            "name": "Primitives",
+            "href": "/products/primitives",
+            "sub": "One UI for web, iOS, Android"
+          },
+          {
+            "id": "design",
+            "name": "Design System",
+            "href": "/products/design",
+            "sub": "Themes and components"
+          },
+          {
+            "id": "auth",
+            "name": "Auth",
+            "href": "/products/auth",
+            "sub": "Sign-in everywhere (next release)",
+            "badge": "next release"
+          },
+          {
+            "id": "reactivity",
+            "name": "Reactivity",
+            "href": "/products/reactivity",
+            "sub": "Signals"
+          },
+          {
+            "id": "router",
+            "name": "Router",
+            "href": "/products/router",
+            "sub": "Typed routes"
+          },
+          {
+            "id": "hooks",
+            "name": "Hooks",
+            "href": "/products/hooks",
+            "sub": "65 hooks"
+          },
+          {
+            "id": "kinetic",
+            "name": "Motion",
+            "href": "/products/kinetic",
+            "sub": "Enter and leave animations"
+          },
+          {
+            "id": "a11y",
+            "name": "Accessibility",
+            "href": "/products/a11y",
+            "sub": "Screen-reader announcements"
+          }
+        ]
+      },
+      {
+        "id": "data",
+        "title": "Data and state",
+        "items": [
+          {
+            "id": "form",
+            "name": "Forms",
+            "href": "/products/form",
+            "sub": "Field-level forms"
+          },
+          {
+            "id": "validation",
+            "name": "Validation",
+            "href": "/products/validation",
+            "sub": "Schemas, Standard Schema"
+          },
+          {
+            "id": "query",
+            "name": "Query",
+            "href": "/products/query",
+            "sub": "Server data on signals"
+          },
+          {
+            "id": "http",
+            "name": "HTTP",
+            "href": "/products/http",
+            "sub": "Typed requests"
+          },
+          {
+            "id": "store",
+            "name": "Store",
+            "href": "/products/store",
+            "sub": "Shared state"
+          },
+          {
+            "id": "statetree",
+            "name": "State Tree",
+            "href": "/products/statetree",
+            "sub": "Snapshots and patches"
+          },
+          {
+            "id": "machine",
+            "name": "State Machines",
+            "href": "/products/machine",
+            "sub": "States as a signal"
+          },
+          {
+            "id": "storage",
+            "name": "Storage",
+            "href": "/products/storage",
+            "sub": "Persistent signals"
+          },
+          {
+            "id": "sync",
+            "name": "Sync",
+            "href": "/products/sync",
+            "sub": "Local-first, offline"
+          },
+          {
+            "id": "feature",
+            "name": "Feature",
+            "href": "/products/feature",
+            "sub": "Schema to CRUD"
+          },
+          {
+            "id": "permissions",
+            "name": "Permissions",
+            "href": "/products/permissions",
+            "sub": "Reactive can()"
+          },
+          {
+            "id": "urlstate",
+            "name": "URL State",
+            "href": "/products/urlstate",
+            "sub": "State in the URL"
+          },
+          {
+            "id": "i18n",
+            "name": "i18n",
+            "href": "/products/i18n",
+            "sub": "Translations"
+          }
+        ]
+      },
+      {
+        "id": "visual",
+        "title": "Visual and content",
+        "items": [
+          {
+            "id": "charts",
+            "name": "Charts",
+            "href": "/products/charts",
+            "sub": "Charts as JSX, web and native"
+          },
+          {
+            "id": "table",
+            "name": "Table",
+            "href": "/products/table",
+            "sub": "Headless data grids"
+          },
+          {
+            "id": "virtual",
+            "name": "Virtual",
+            "href": "/products/virtual",
+            "sub": "10,000 rows, few in the DOM"
+          },
+          {
+            "id": "editor",
+            "name": "Editors",
+            "href": "/products/editor",
+            "sub": "Rich text and code"
+          },
+          {
+            "id": "flow",
+            "name": "Flow",
+            "href": "/products/flow",
+            "sub": "Node editors"
+          },
+          {
+            "id": "document",
+            "name": "Documents",
+            "href": "/products/document",
+            "sub": "One template, 20 formats"
+          },
+          {
+            "id": "hotkeys",
+            "name": "Hotkeys",
+            "href": "/products/hotkeys",
+            "sub": "Scoped shortcuts"
+          },
+          {
+            "id": "dnd",
+            "name": "Drag and Drop",
+            "href": "/products/dnd",
+            "sub": "Sortable, keyboard too"
+          },
+          {
+            "id": "toast",
+            "name": "Toast",
+            "href": "/products/toast",
+            "sub": "toast() from anywhere"
+          },
+          {
+            "id": "rx",
+            "name": "RX",
+            "href": "/products/rx",
+            "sub": "Signal operators"
+          }
+        ]
+      },
+      {
+        "id": "tools",
+        "title": "Developer tools",
+        "items": [
+          {
+            "id": "tooling",
+            "name": "Tooling",
+            "href": "/products/tooling",
+            "sub": "Doctor, lint, check, devtools"
+          },
+          {
+            "id": "atlas",
+            "name": "Atlas",
+            "href": "/products/atlas",
+            "sub": "Component workbench"
+          },
+          {
+            "id": "lathe",
+            "name": "Lathe",
+            "href": "/products/lathe",
+            "sub": "OpenAPI to typed client"
+          },
+          {
+            "id": "loom",
+            "name": "Loom",
+            "href": "/products/loom",
+            "sub": "Monorepo dependency map"
+          },
+          {
+            "id": "ai",
+            "name": "AI and MCP",
+            "href": "/products/ai",
+            "sub": "MCP server, 24 tools"
+          },
+          {
+            "id": "migrate",
+            "name": "Migrate",
+            "href": "/products/migrate",
+            "sub": "From React, Vue, Solid, Svelte"
+          }
+        ]
+      }
+    ],
+    "footer": [
+      {
+        "label": "All 40 products",
+        "href": "/products"
+      },
+      {
+        "label": "Compare with what you use",
+        "href": "/compare/react"
+      },
+      {
+        "label": "Benchmarks per product",
+        "href": "/benchmarks#every-product"
+      }
+    ]
+  },
+  "contextual": {
+    "note": "Product, benchmarks and docs pages replace the middle of the bar with crumbs (pyreon / products / forms) and the primary pill with a page action, as in the reference pages.",
+    "primaryByTemplate": {
+      "product": {
+        "label": "Install",
+        "copies": "hero.install"
+      },
+      "benchmarks": {
+        "label": "Run them",
+        "href": "/benchmarks#reproduce"
+      },
+      "docs": {
+        "label": "Get started",
+        "href": "/docs/quickstart"
+      },
+      "compare": {
+        "label": "Start a project",
+        "href": "/docs/quickstart"
+      },
+      "why": {
+        "label": "Start a project",
+        "href": "/docs/quickstart"
+      }
+    }
+  },
+  "mobile": {
+    "breakpoint": 960,
+    "button": {
+      "open": "Open menu",
+      "close": "Close menu"
+    },
+    "sheet": {
+      "big": [
+        {
+          "label": "Home",
+          "href": "/"
+        },
+        {
+          "label": "Products",
+          "href": "/products"
+        },
+        {
+          "label": "Why Pyreon",
+          "href": "/why/components-run-once"
+        },
+        {
+          "label": "Docs",
+          "href": "/docs"
+        },
+        {
+          "label": "Benchmarks",
+          "href": "/benchmarks"
+        },
+        {
+          "label": "Blog",
+          "href": "/blog"
+        },
+        {
+          "label": "Showcase",
+          "href": "/showcase",
+          "showWhen": "page on main"
+        }
+      ],
+      "sections": [
+        {
+          "title": "Why Pyreon",
+          "items": "main[1].items"
+        },
+        {
+          "title": "Compare",
+          "items": "main[1].footerOfMenu[0].items"
+        },
+        {
+          "title": "Products",
+          "items": "megaMenu.columns[*].items (all 40, grouped by column)"
+        }
+      ],
+      "install": "npm create @pyreon/zero@latest",
+      "footer": [
+        {
+          "label": "GitHub",
+          "href": "https://github.com/pyreon/pyreon"
+        },
+        {
+          "label": "Discord",
+          "href": "/discord"
+        },
+        {
+          "label": "Newsletter",
+          "href": "/newsletter"
+        }
+      ]
+    },
+    "a11y": "A disclosure (WAI-ARIA APG disclosure navigation), not role=dialog: the menu button in the bar has aria-expanded and aria-controls and stays the close control, visible above the sheet (an aria-modal dialog would hide it from screen readers). While open, the page behind is inert, Tab stays in the header (bar and sheet), focus moves to the first link, body scroll is locked, Escape closes it and returns focus to the button, and widening past the breakpoint closes it."
+  },
+  "footer": {
+    "tagline": "Your component runs once. Web today; iOS and Android from the same .tsx (experimental). MIT licensed.",
+    "install": "npm create @pyreon/zero@latest",
+    "columns": [
+      {
+        "title": "Learn",
+        "links": [
+          {
+            "label": "Quickstart",
+            "href": "/docs/quickstart"
+          },
+          {
+            "label": "Docs",
+            "href": "/docs"
+          },
+          {
+            "label": "Blog",
+            "href": "/blog"
+          },
+          {
+            "label": "RSS",
+            "href": "/blog/rss.xml"
+          },
+          {
+            "label": "Coming from React",
+            "href": "/migrate/react"
+          },
+          {
+            "label": "Coming from React Native",
+            "href": "/docs/migrating-from-react-native"
+          }
+        ]
+      },
+      {
+        "title": "Why Pyreon",
+        "links": [
+          {
+            "label": "Components run once",
+            "href": "/why/components-run-once"
+          },
+          {
+            "label": "One codebase",
+            "href": "/why/one-codebase"
+          },
+          {
+            "label": "AI-ready",
+            "href": "/why/ai-ready"
+          },
+          {
+            "label": "Performance",
+            "href": "/why/performance"
+          },
+          {
+            "label": "Full stack",
+            "href": "/why/full-stack"
+          },
+          {
+            "label": "Compare",
+            "href": "/compare/react"
+          }
+        ]
+      },
+      {
+        "title": "Products",
+        "links": [
+          {
+            "label": "Zero",
+            "href": "/products/zero"
+          },
+          {
+            "label": "Native",
+            "href": "/products/native"
+          },
+          {
+            "label": "Forms",
+            "href": "/products/form"
+          },
+          {
+            "label": "Query",
+            "href": "/products/query"
+          },
+          {
+            "label": "Charts",
+            "href": "/products/charts"
+          },
+          {
+            "label": "All 40 products",
+            "href": "/products"
+          }
+        ]
+      },
+      {
+        "title": "Evidence",
+        "links": [
+          {
+            "label": "Benchmarks",
+            "href": "/benchmarks"
+          },
+          {
+            "label": "Reproduce them",
+            "href": "/benchmarks#reproduce"
+          },
+          {
+            "label": "Status",
+            "href": "/status"
+          },
+          {
+            "label": "Native capability matrix",
+            "href": "/docs/multiplatform"
+          },
+          {
+            "label": "Live stats",
+            "href": "/open",
+            "showWhen": "page on main"
+          }
+        ]
+      },
+      {
+        "title": "Community",
+        "links": [
+          {
+            "label": "GitHub",
+            "href": "https://github.com/pyreon/pyreon"
+          },
+          {
+            "label": "Discord",
+            "href": "/discord"
+          },
+          {
+            "label": "Newsletter",
+            "href": "/newsletter"
+          },
+          {
+            "label": "Showcase",
+            "href": "/showcase",
+            "showWhen": "page on main"
+          },
+          {
+            "label": "Contribute",
+            "href": "/community"
+          },
+          {
+            "label": "Releases",
+            "href": "/releases"
+          },
+          {
+            "label": "Brand",
+            "href": "/brand"
+          }
+        ]
+      }
+    ],
+    "bottom": {
+      "left": "© Pyreon contributors · MIT",
+      "right": "Made in Prague"
+    }
+  }
+}

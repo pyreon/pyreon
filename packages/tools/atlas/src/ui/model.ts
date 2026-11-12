@@ -8,8 +8,8 @@ import { PermissionsProvider } from '@pyreon/permissions'
 import { batch, computed, effect, isClient, signal, type Computed, type Effect, type Signal } from '@pyreon/reactivity'
 import type { A11yReport } from './a11y'
 import { analyzeA11y } from './a11y'
-import type { AddonTabId, BackgroundPreset, LocalePreset, PseudoId, ViewportPreset } from './addons'
-import { BACKGROUNDS, LOCALES, VIEWPORTS, pseudoProps } from './addons'
+import type { AddonTabId, BackgroundPreset, CanvasLayout, LocalePreset, PseudoId, ViewportPreset } from './addons'
+import { BACKGROUNDS, LOCALES, VIEWPORTS, parseLayout, pseudoProps } from './addons'
 import { pseudoLocalizeValues } from './pseudo-locale'
 import {
   DEFAULT_PERMISSION_SETS,
@@ -44,7 +44,7 @@ import {
   type HierarchyNode,
 } from './hierarchy'
 import type { BrandTheme, ThemeTokens } from './theme'
-import { THEMES, tokens } from './theme'
+import { readThemeMode, THEMES, tokens, writeThemeMode } from './theme'
 
 export type View = 'canvas' | 'docs' | 'lab'
 /**
@@ -67,6 +67,13 @@ export type { A11yCheck, A11yReport } from './a11y'
 /** Discrete zoom levels — a rocketstyle `size` dimension (continuous scale would need an inline style). */
 export const ZOOM_PCT = [50, 75, 100, 125, 150, 175, 200] as const
 
+/**
+ * Below this width the catalog becomes a drawer — the design system's
+ * app-shell breakpoint. ONE definition: the model seeds `compact` from it and
+ * the Workbench follows it live.
+ */
+export const COMPACT_QUERY = '(max-width: 859.98px)'
+
 export interface WorkbenchModel {
   catalog: WorkbenchCatalog
   groups: CatalogGroup[]
@@ -87,12 +94,25 @@ export interface WorkbenchModel {
   filter: Signal<string>
   /** The ⌘K search dialog (docs-site style modal; the top-bar input became a trigger). */
   searchOpen: Signal<boolean>
-  // Resizable shell panels — widths in px (drag handles clamp them), open flags
-  // for the collapse toggles.
+  /**
+   * `?embed` — the workbench is a guest in another page (an iframe). It does
+   * not persist preferences or write the shared theme, and it hides the theme
+   * toggle (the host owns the theme; pass `?dark=0|1` to set it).
+   */
+  embed: boolean
+  /** Flip light/dark and persist it as the shared `pyreon-theme` preference. */
+  toggleTheme: () => void
+  /**
+   * Re-read the shared preference — another tab wrote `pyreon-theme`, or the
+   * OS flipped and nothing was stored. A mode the LINK chose is left alone.
+   */
+  syncTheme: () => void
+  // Resizable shell regions (drag handles clamp them): the catalog's width in
+  // px, and the addon panel's share of the main column's height.
   sidebarW: Signal<number>
-  panelW: Signal<number>
-  sidebarOpen: Signal<boolean>
-  panelOpen: Signal<boolean>
+  panelFrac: Signal<number>
+  /** Canvas panel: the dotted grid behind the preview. */
+  grid: Signal<boolean>
   zoomIdx: Signal<number>
   view: Signal<View>
   addon: Signal<Addon>
@@ -106,6 +126,8 @@ export interface WorkbenchModel {
   outline: Signal<boolean>
   /** Measure addon — hovering the preview shows the hovered box's dimensions. */
   measure: Signal<boolean>
+  /** Canvas panel: how the preview sits on the stage (carried in the link). */
+  layout: Signal<CanvasLayout>
   /** The live preview surface element (null before mount) — the a11y probe target's parent. */
   previewElement: () => HTMLElement | null
   /** Active locale — threaded to `render` as `ctx.locale`, and drives `dir=`. */
@@ -175,12 +197,10 @@ export interface WorkbenchModel {
    * which permission keys it consulted — reads it to re-evaluate.
    */
   renderTick: Signal<number>
-  /** Narrow viewport (≤900px): the sidebar is a drawer and the panels a sheet. */
+  /** Narrow viewport (below 860px): the catalog is a drawer. */
   compact: Signal<boolean>
-  /** Compact-mode sidebar drawer. Not persisted — a drawer is transient. */
+  /** Compact-mode catalog drawer. Not persisted — a drawer is transient. */
   drawerOpen: Signal<boolean>
-  /** Compact-mode addon bottom sheet. Not persisted. */
-  sheetOpen: Signal<boolean>
   /** Live a11y verdict for the RENDERED preview (re-probed after each render). */
   a11y: Signal<A11yReport>
   /** True when the last render left the preview surface with no DOM at all. */
@@ -232,6 +252,12 @@ export interface WorkbenchModel {
    * and brand for this one render — the Theme Lab's tiles.
    */
   preview: (appearance?: { dark?: boolean; brandId?: string }) => VNodeChildAtom | VNodeChildAtom[]
+  /**
+   * Render the selected component as ONE role sees it, under its own fresh
+   * recording instance — the Permissions panel's side-by-side cards. Read the
+   * recording after the node has mounted: the keys are filled by rendering.
+   */
+  previewAs: (roleId: string) => { node: VNodeChildAtom; recording: RecordingPermissions }
   /** `ref` for the search `<input>` — attach in the top bar so ⌘K can focus it. */
   searchRef: (el: HTMLInputElement | null) => void
   /** Focus the search input (⌘K) via the captured ref — no DOM query. */
@@ -279,12 +305,12 @@ export function createModel(
   // Chrome preferences survive a reload without a link — brand, appearance,
   // panel widths, what is open. A link still wins for what it names.
   const prefs = readPrefs()
-  // On a narrow screen both side panels start CLOSED: sidebar (272px) and
-  // addon panel (352px) are fixed-width flex siblings of the canvas, and
-  // below ~900px they left it no room at all — the canvas disappeared and the
-  // page read as broken. A stored preference still wins.
+  // Below 860px the catalog is a drawer over the canvas rather than a column
+  // beside it (a 220px column left a phone ~170px of canvas). Seeded
+  // synchronously so a phone never paints the desktop layout first.
   const narrow =
-    isClient && typeof matchMedia === 'function' && matchMedia('(max-width: 900px)').matches
+    isClient && typeof matchMedia === 'function' && matchMedia(COMPACT_QUERY).matches
+  const embed = initial.embed === true
 
   // Path URLs — `/atlas/button/` rather than `/atlas/?c=button`.
   //
@@ -304,7 +330,12 @@ export function createModel(
   const routeBase = hasRoutes ? pathBase(location.pathname, pathId) : ''
 
   const brandId = signal(initial.brand ?? prefs.brand ?? 'ember')
-  const dark = signal(initial.dark ?? prefs.dark ?? true)
+  // The chrome AND the preview follow the SHARED Pyreon theme preference
+  // (`pyreon-theme`, else the OS). A link's `?dark=` still wins for what it
+  // names — a screenshot of a bug is mode-specific, and an embedding host
+  // sets the mode this way.
+  let preferDark = readThemeMode() === 'dark'
+  const dark = signal(initial.dark ?? preferDark)
   // The link's component id, RESOLVED against the catalog — never used raw.
   //
   // A link naming a component that no longer exists falls back to the first one
@@ -372,6 +403,7 @@ export function createModel(
   )
   const outline = signal(false)
   const measure = signal(false)
+  const layout = signal<CanvasLayout>(parseLayout(initial.layout) ?? 'centered')
   const locale = signal<string>(
     locales.find((l) => l.id === initial.locale)?.id ?? locales[0]?.id ?? 'en',
   )
@@ -576,27 +608,51 @@ export function createModel(
   const clearActions = () => actions.set([])
 
   const searchOpen = signal(false)
-  const sidebarW = signal(prefs.sidebarW ?? 272)
-  const panelW = signal(prefs.panelW ?? 352)
-  const sidebarOpen = signal(prefs.sidebarOpen ?? !narrow)
-  const panelOpen = signal(prefs.panelOpen ?? !narrow)
+  const sidebarW = signal(prefs.sidebarW ?? 220)
+  // The design splits the main column ~46 / 54 between canvas and panels
+  // (40 / 60 when the catalog is a drawer and the panels need the room).
+  const panelFrac = signal(prefs.panelFrac ?? (narrow ? 0.6 : 0.54))
+  const grid = signal(true)
   // Compact layout is its own state, not the desktop flags reinterpreted: a
   // desktop preference of "sidebar open" must not open a drawer over the
   // canvas the moment the same workbench is viewed on a phone.
   const compact = signal(narrow)
   const drawerOpen = signal(false)
-  const sheetOpen = signal(false)
   const renderTick = signal(0)
-  effect(() => {
-    writePrefs({
-      brand: brandId(),
-      dark: dark(),
-      sidebarW: sidebarW(),
-      panelW: panelW(),
-      sidebarOpen: sidebarOpen(),
-      panelOpen: panelOpen(),
+  // A guest in someone else's page leaves their storage alone.
+  if (!embed) {
+    effect(() => {
+      writePrefs({
+        brand: brandId(),
+        sidebarW: sidebarW(),
+        panelFrac: panelFrac(),
+      })
     })
-  })
+  }
+  const toggleTheme = () => {
+    const next = !dark.peek()
+    if (embed) return dark.set(next)
+    // The preference first: the URL effect compares `dark` against it, and
+    // it runs synchronously inside `dark.set`.
+    preferDark = next
+    writeThemeMode(next ? 'dark' : 'light')
+    dark.set(next)
+  }
+  const syncTheme = () => {
+    if (initial.dark !== undefined) return
+    preferDark = readThemeMode() === 'dark'
+    dark.set(preferDark)
+  }
+  // The chrome's colours are CSS custom properties keyed on the root's
+  // `data-theme` (see ./theme) — this keeps the attribute in step with the
+  // mode, including a mode a link chose. The inline head script set it before
+  // first paint; this is the same value unless the link overrides it.
+  if (isClient) {
+    const root = document.documentElement
+    effect(() => {
+      root.setAttribute('data-theme', dark() ? 'dark' : 'light')
+    })
+  }
 
   let searchEl: HTMLInputElement | null = null
   const searchRef = (el: HTMLInputElement | null) => {
@@ -651,7 +707,7 @@ export function createModel(
   // `pseudo` is read INSIDE the accessor so the preview re-renders when the
   // forced state flips; a catalog spreads it onto its root (`{...ctx.pseudo}`)
   // to opt into pseudo-state forcing.
-  const makeRenderCtx = (appearance: Appearance) => ({
+  const makeRenderCtx = (appearance: Appearance, recording?: RecordingPermissions) => ({
     logAction,
     setValue: (key: string, v: unknown) => setValue(selId(), key, v),
     get pseudo() {
@@ -663,7 +719,7 @@ export function createModel(
     // A getter, so each render reads the CURRENT role rather than the one that
     // happened to be active when the context object was built.
     get can() {
-      return permissions().can
+      return (recording ?? permissions()).can
     },
     // A getter, so a component reading it re-renders when the state changes.
     get query() {
@@ -690,6 +746,20 @@ export function createModel(
       { value: permissions().can },
       entry.render(vals(), appearance ? makeRenderCtx(appearance) : renderCtx) as VNodeChildAtom,
     )
+  }
+
+  const previewAs = (roleId: string) => {
+    const role = roles.find((r) => r.id === roleId) ?? roles[0]!
+    const recording = recordingPermissions(role)
+    const entry = sel()
+    const node: VNodeChildAtom = entry
+      ? h(
+          PermissionsProvider,
+          { value: recording.can },
+          entry.render(vals(), makeRenderCtx({}, recording)) as VNodeChildAtom,
+        )
+      : null
+    return { node, recording }
   }
 
   // The a11y verdict is probed from the RENDERED preview, not asserted.
@@ -864,6 +934,7 @@ export function createModel(
       // catalog, and a `Tree`'s whole `data` in every URL is not a link
       // anyone pastes.
       const next: UrlState = {
+        ...(embed ? { embed: true } : {}),
         c: selId(),
         p: String(addon()),
         args: editedArgs(values()[selId()], initialArgs(sel())),
@@ -876,8 +947,12 @@ export function createModel(
         ...(pseudo() ? { pseudo: pseudo() as string } : {}),
         query: queryState(),
         role: permissionSet(),
+        layout: layout(),
       }
-      if (!urlStateChanged(lastWritten, next, urlDefaults)) return
+      // `dark` is written only when it differs from the shared preference:
+      // the preference is the source of truth, a link records an override.
+      const defaults: UrlDefaults = { ...urlDefaults, dark: preferDark }
+      if (!urlStateChanged(lastWritten, next, defaults)) return
       lastWritten = next
       // `nextQuery`, because both obvious names are taken in this scope:
       // `query` is the search-box signal and `search` is the search function.
@@ -894,7 +969,7 @@ export function createModel(
         forQuery = { ...next }
         delete forQuery.c
       }
-      const nextQuery = serializeUrlState(forQuery, urlDefaults)
+      const nextQuery = serializeUrlState(forQuery, defaults)
       if (hasRoutes) {
         // An ABSOLUTE path, not the bare `?query` below. That form resolves
         // against the current directory, so once the URL is `/atlas/button/`
@@ -908,9 +983,9 @@ export function createModel(
   }
 
   return {
-    catalog, groups, total, title: opts.title ?? 'atlas', subtitle: opts.subtitle ?? '',
+    catalog, groups, total, title: opts.title ?? 'Atlas', subtitle: opts.subtitle ?? '',
     brandId, dark, selId, query, filter, zoomIdx, view, addon, actions,
-    viewport, background, pseudo, outline, measure, locale, pseudoLocale, permissionSet, permissions, queryState, queryResult,
+    viewport, background, pseudo, outline, measure, layout, locale, pseudoLocale, permissionSet, permissions, queryState, queryResult,
     previewElement: () => previewEl,
     overlayOpen,
     overlayHostRef,
@@ -918,8 +993,8 @@ export function createModel(
     wrapped: catalog.wrapped === true,
     viewports, backgrounds, locales, roles, viewportPreset, backgroundPreset, dir,
     brand, theme, sel, vals, visibleGroups, tree, browseIds, collapsed, isCollapsed, toggleGroup, noResults, matchCount, activeScenario, renderTick, a11y, previewEmpty,
-    setValue, selectScenario, runPlay, reset, logAction, clearActions, search, searchHits, preview, searchRef, focusSearch, previewRef,
-    searchOpen, sidebarW, panelW, sidebarOpen, panelOpen, compact, drawerOpen, sheetOpen,
+    setValue, selectScenario, runPlay, reset, logAction, clearActions, search, searchHits, preview, previewAs, searchRef, focusSearch, previewRef,
+    searchOpen, sidebarW, panelFrac, grid, compact, drawerOpen, embed, toggleTheme, syncTheme,
   }
 }
 
@@ -933,11 +1008,8 @@ const PREFS_KEY = 'atlas:prefs'
 
 interface Prefs {
   brand?: string
-  dark?: boolean
   sidebarW?: number
-  panelW?: number
-  sidebarOpen?: boolean
-  panelOpen?: boolean
+  panelFrac?: number
 }
 
 function readPrefs(): Prefs {
@@ -950,11 +1022,10 @@ function readPrefs(): Prefs {
     const p = parsed as Record<string, unknown>
     const out: Prefs = {}
     if (typeof p.brand === 'string') out.brand = p.brand
-    if (typeof p.dark === 'boolean') out.dark = p.dark
     if (typeof p.sidebarW === 'number' && Number.isFinite(p.sidebarW)) out.sidebarW = p.sidebarW
-    if (typeof p.panelW === 'number' && Number.isFinite(p.panelW)) out.panelW = p.panelW
-    if (typeof p.sidebarOpen === 'boolean') out.sidebarOpen = p.sidebarOpen
-    if (typeof p.panelOpen === 'boolean') out.panelOpen = p.panelOpen
+    if (typeof p.panelFrac === 'number' && p.panelFrac >= 0.2 && p.panelFrac <= 0.8) {
+      out.panelFrac = p.panelFrac
+    }
     return out
   } catch {
     return {}

@@ -1,7 +1,9 @@
+import { createTerm, stripAnsi } from '@pyreon/ansi'
 import { describe, expect, it } from 'vitest'
 import {
   countRoutes,
   formatModeLine,
+  formatDevHeader,
   formatReadyLine,
   formatRouteSummary,
   formatRouteTable,
@@ -138,13 +140,14 @@ describe('renderRouteBanner', () => {
 
 describe('formatReadyLine', () => {
   it('shows the elapsed startup time', () => {
-    expect(strip(formatReadyLine(234))).toContain('ready in 234ms')
+    expect(strip(formatReadyLine(234))).toBe('✓ ready in 234 ms')
+    expect(strip(formatReadyLine(3000))).toBe('✓ ready in 3.0 s')
   })
 
   it('emits plain text when color is off', () => {
     const line = formatReadyLine(234, false)
     expect(hasAnsi(line)).toBe(false)
-    expect(line).toContain('ready in 234ms')
+    expect(line).toBe('✓ ready in 234 ms')
   })
 })
 
@@ -174,5 +177,51 @@ describe('formatModeLine', () => {
       { verbose: false, color: false, appMode: 'ssr' },
     )
     expect(lines.some((l) => l.includes('Mode'))).toBe(true)
+  })
+})
+
+describe('the whole banner in the shared theme', () => {
+  const ESC = String.fromCharCode(27)
+  const show = (x: string): string => x.split(ESC).join('␛')
+  const routes = [
+    { urlPath: '/', renderMode: 'ssg' },
+    { urlPath: '/blog/:slug', renderMode: 'isr' },
+    { urlPath: '/account', renderMode: 'ssr' },
+    { urlPath: '/app/*', renderMode: 'spa' },
+  ]
+  const levels = [
+    ['plain', { level: 0, unicode: true }],
+    ['16 colours', { level: 1, theme: 'dark', unicode: true }],
+    ['256 dark', { level: 2, theme: 'dark', unicode: true }],
+    ['256 light', { level: 2, theme: 'light', unicode: true }],
+    ['truecolor dark', { level: 3, theme: 'dark', unicode: true }],
+    ['truecolor light', { level: 3, theme: 'light', unicode: true }],
+    ['ascii', { level: 0, unicode: false }],
+  ] as const
+  const banner = (t: ReturnType<typeof createTerm>, verbose: boolean): string =>
+    [
+      formatDevHeader('apps/web', t),
+      ...renderRouteBanner(routes, ['/api/health'], { verbose, color: t, appMode: 'ssr' }),
+      '',
+      '  ➜  Local:   http://localhost:3000/   (printed by Vite)',
+      '',
+      formatReadyLine(412, t),
+    ].join('\n')
+
+  for (const [name, opts] of levels) {
+    it(`renders at ${name}`, () => {
+      expect(show(banner(createTerm(opts), false))).toMatchSnapshot()
+    })
+  }
+
+  it('--routes at truecolor', () => {
+    expect(show(banner(createTerm({ level: 3, theme: 'dark', unicode: true }), true))).toMatchSnapshot()
+  })
+
+  it('NO_COLOR output is the coloured output without escapes', () => {
+    const plain = banner(createTerm({ level: 0, unicode: true }), true)
+    for (const level of [1, 2, 3] as const) {
+      expect(stripAnsi(banner(createTerm({ level, unicode: true }), true))).toBe(plain)
+    }
   })
 })

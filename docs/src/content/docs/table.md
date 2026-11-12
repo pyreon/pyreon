@@ -3,6 +3,10 @@ title: Table
 description: Reactive TanStack Table adapter with fine-grained signal integration.
 ---
 
+<ProductPitch id="table" />
+
+<LiveDemo id="table" />
+
 `@pyreon/table` is the Pyreon adapter for [TanStack Table](https://tanstack.com/table) v9. It wraps TanStack Table's core with a reactive `useTable` hook whose state lives in Pyreon signals, and provides `flexRender` / `flexRenderCell` for rendering column definitions in Pyreon templates.
 
 <PackageBadge name="@pyreon/table" href="/docs/table" />
@@ -2491,3 +2495,11 @@ The TanStack-backed `useTable` (row models, faceting, sizing) is web only. On iO
 (PMTC), `createTableState({ data, columns, pageSize })` lowers to the native
 `PyreonTableState` port — sort, filter, paginate and select over `<For each={t.rows()}>` —
 for scalar columns using the default `row[id]` accessor.
+
+<BenchCallout id="table" />
+
+<ComingFrom id="table" />
+
+<InlineSell id="virtual" />
+
+<CrossSell id="table" />

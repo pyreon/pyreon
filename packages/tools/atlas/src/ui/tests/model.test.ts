@@ -63,7 +63,7 @@ describe('createModel — initial state', () => {
 
   it('applies title/subtitle defaults when omitted', () => {
     const m = createModel(CATALOG, {})
-    expect(m.title).toBe('atlas')
+    expect(m.title).toBe('Atlas')
     expect(m.subtitle).toBe('')
   })
 
@@ -122,6 +122,7 @@ describe('createModel — control values', () => {
 describe('createModel — theme', () => {
   it('re-derives tokens when brand or mode flips', () => {
     const m = model()
+    m.dark.set(true)
     const darkBg = m.theme().bg
     m.dark.set(false)
     expect(m.theme().bg).not.toBe(darkBg)

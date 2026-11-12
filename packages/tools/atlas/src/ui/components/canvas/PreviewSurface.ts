@@ -1,4 +1,6 @@
 import { el } from '../../kit'
+import { OUTLINE_CSS } from '../../addons'
+import { PREVIEW_COLORS } from '../../theme'
 
 export const PreviewSurface = el
   .attrs({
@@ -7,7 +9,7 @@ export const PreviewSurface = el
     contentAlignY: 'center',
   })
   .theme((t) => ({
-    padding: '56px 40px',
+    padding: '40px',
     // No `minHeight` here: the canvas sets it through the per-instance `css`
     // prop (220px closed, taller while an adopted overlay is open), and a theme
     // value would outrank that prop.
@@ -24,7 +26,6 @@ export const PreviewSurface = el
     // boundary at all — the component floated on an empty page.
     borderRadius: t.radius.card,
     border: t.hairline,
-    boxShadow: '0 1px 2px rgba(15,18,30,.06), 0 8px 24px -12px rgba(15,18,30,.18)',
   }))
   .sizes(() => ({
     z50: { transform: 'scale(.5)' },
@@ -41,12 +42,14 @@ export const PreviewSurface = el
   // grid for translucent surfaces and shadows.
   .variants((t) => ({
     bgTheme: { backgroundColor: t.surface },
-    bgLight: { backgroundColor: '#ffffff' },
-    bgDark: { backgroundColor: '#0f0f14' },
+    bgLight: { backgroundColor: PREVIEW_COLORS.light },
+    bgDark: { backgroundColor: PREVIEW_COLORS.dark },
     bgChecker: {
-      backgroundColor: '#ffffff',
-      backgroundImage:
-        'repeating-conic-gradient(rgba(128,128,128,.18) 0% 25%, transparent 0% 50%)',
+      backgroundColor: PREVIEW_COLORS.light,
+      // Raw CSS, not the `backgroundImage` key: unistyle wraps that key's
+      // value in `url()`, which turned this gradient into an invalid value
+      // and left the "checker" background plain white.
+      extendCss: `background-image:repeating-conic-gradient(${PREVIEW_COLORS.checker} 0% 25%, transparent 0% 50%);`,
       backgroundSize: '16px 16px',
     },
   }))
@@ -56,8 +59,25 @@ export const PreviewSurface = el
   // padding shows up immediately).
   .states(() => ({
     outlined: {
-      extendCss:
-        '& *, & *::before, & *::after { outline: 1px solid rgba(255,45,85,.45) !important; outline-offset: -1px; }',
+      extendCss: OUTLINE_CSS,
     },
     plain: {},
+  }))
+  // Canvas → Layout (Storybook's `layout`). `centered` is the theme above;
+  // the other two move the component to the top-left — where a form or a
+  // table sits in a page — and `fullscreen` also drops the gutter and the
+  // surface edge so a page section can touch the frame. Alignment goes
+  // through `extendCss` because it overrides the centring the attrs set.
+  .multiple(() => ({
+    centered: {},
+    padded: {
+      padding: '16px',
+      extendCss: 'justify-content:flex-start;align-items:flex-start;',
+    },
+    fullscreen: {
+      padding: '0',
+      border: 'none',
+      borderRadius: '0',
+      extendCss: 'justify-content:flex-start;align-items:stretch;flex:1 1 auto;',
+    },
   }))

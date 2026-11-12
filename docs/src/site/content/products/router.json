@@ -1,0 +1,450 @@
+{
+ "id": "router",
+ "route": "/products/router",
+ "name": "Router",
+ "package": "@pyreon/router",
+ "category": "core · routing",
+ "hero": {
+  "title": "Every navigation runs your guards. The Back button too.",
+  "emberWord": "Back",
+  "lede": "Nested routes, loaders that finish before the page renders, guards, middleware and leave blockers, and `await router.push()` tells you whether the navigation committed, was cancelled or was superseded. The same route table runs in the browser, on the server and in the experimental iOS and Android builds.",
+  "install": "bun add @pyreon/router",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "matching",
+    "value": "885–3,763× React Router<small>Level with radix3 at 50 and 200 routes. One run, synthetic, author-run.</small>"
+   },
+   {
+    "key": "push() returns",
+    "value": "`committed` · `cancelled` · `superseded`"
+   },
+   {
+    "key": "accessibility",
+    "value": "page changes announced<small>The root `<RouterView>` speaks each new title to screen readers.</small>"
+   },
+   {
+    "key": "native",
+    "value": "{dot:ok}routes, guards and deep links on iOS and Android<small>Native targets are experimental.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "Routing with fewer ways to get it wrong.",
+  "items": [
+   {
+    "title": "The Back button runs the pipeline",
+    "text": "Back and Forward go through blockers, middleware, guards and loaders like any `push()`. Sign out, press Back to a guarded page, and you land on `/login`. If a guard cancels, the URL and history position are restored."
+   },
+   {
+    "title": "Data before the page",
+    "text": "Loaders run in parallel before the route commits and get an `AbortSignal` when a newer navigation supersedes them. `useLoaderData<LoaderData<typeof loader>>()` takes its type from the loader, so the two can't drift."
+   },
+   {
+    "title": "Navigation that reports back",
+    "text": "`await router.push('/checkout')` resolves to `'committed'`, `'cancelled'` (a blocker, guard or middleware said no) or `'superseded'` (a newer navigation won). No guessing from the URL afterwards."
+   },
+   {
+    "title": "Accessible and smooth by default",
+    "text": "The root `<RouterView>` announces each new page through a polite live region. Navigations run inside `document.startViewTransition()` where it exists, and skip the animation when the user asks for reduced motion."
+   }
+  ]
+ },
+ "difference": {
+  "title": "A signed-in area: the guard is a guard, not a loader.",
+  "before": {
+   "label": "React Router 8 (data mode)",
+   "caption": "The auth check hides inside a loader that returns a redirect, so the settings route needs a loader just to guard it.",
+   "code": "import { createBrowserRouter, redirect, useLoaderData, type LoaderFunctionArgs } from 'react-router'\n\nconst loader = ({ params }: LoaderFunctionArgs) => fetchUser(params.id!)\n\nconst router = createBrowserRouter([\n  {\n    path: '/user/:id',\n    loader,\n    Component: User,\n  },\n  {\n    path: '/settings',\n    loader: () => (isSignedIn() ? null : redirect('/login')),\n    Component: Settings,\n  },\n])\n\nfunction User() {\n  const user = useLoaderData<typeof loader>()\n  return <h1>{user.name}</h1>\n}"
+  },
+  "after": {
+   "label": "Pyreon",
+   "caption": "Guards return `true`, `false` or a path. The loader types the component.",
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { createRouter, useLoaderData, type LoaderData } from '@pyreon/router'\n\nconst signedIn = signal(false)\nconst loader = ({ params }: { params: Record<string, string> }) => fetchUser(params.id!)\n\nconst router = createRouter({\n  mode: 'history',\n  routes: [\n    { path: '/user/:id', component: User, loader },\n    { path: '/settings', component: Settings, beforeEnter: () => signedIn() || '/login' },\n  ],\n})\n\nfunction User() {\n  const user = useLoaderData<LoaderData<typeof loader>>()\n  return <h1>{user.name}</h1>\n}"
+  }
+ },
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Navigate a small app.",
+  "text": "Links, typed params, a loader and a guard. The settings page requires sign-in.",
+  "component": "DemoRouter",
+  "reference": "pkg-router.html#demo",
+  "referenceHtml": "<div class=\"ui\"><div class=\"urlbar\" id=\"rt-url\"></div><div style=\"display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px\" id=\"rt-nav\"></div><div id=\"rt-view\" style=\"min-height:160px;transition:opacity .2s\"></div><label style=\"display:flex;gap:8px;align-items:center;font-weight:500;margin-top:10px\"><input type=\"checkbox\" id=\"rt-auth\" style=\"width:16px;height:16px;accent-color:#C2410C\"> Signed in</label></div>",
+  "referenceCss": ".ds-ctl{display:grid;grid-template-columns:80px 1fr;align-items:center;gap:10px}.seg{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;width:fit-content;flex-wrap:wrap}.seg button{height:30px;padding:0 14px;border:0;border-radius:999px;background:transparent;color:var(--fog);font-family:var(--mono);font-size:12px;cursor:pointer}.seg button[aria-pressed=\"true\"]{background:var(--line);color:var(--ivory)}\n.pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px}.pick button{height:38px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--mist);font-family:var(--mono);font-size:12px;cursor:pointer}.pick button[aria-pressed=\"true\"]{border-color:rgba(255,94,26,.55);background:rgba(255,94,26,.08);color:var(--ivory)}\n.tri{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}@media(max-width:760px){.tri{grid-template-columns:minmax(0,1fr)}}.tri div{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--well)}.tri .label{display:block;margin-bottom:8px}.tri code{font-size:12.5px;color:var(--s-fg);white-space:pre-wrap;display:block}\n.urlbar{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:10px;background:#EDE6D6;font-family:var(--mono);font-size:12px;color:var(--hover-line);margin-bottom:16px;overflow:hidden;white-space:nowrap}.urlbar b{color:#C2410C;font-weight:500}",
+  "referenceJs": "(function(){var auth=false,path='/',$=function(i){return document.getElementById(i)},U={'1':'Ada Lovelace','2':'Grace Hopper'};\nvar R=[['/','Home'],['/user/1','Ada'],['/user/2','Grace'],['/settings','Settings']];\nfunction go(p){if(p==='/settings'&&!auth){path='/login?returnTo=%2Fsettings'}else path=p;var v=$('rt-view');v.style.opacity=0;setTimeout(function(){render();v.style.opacity=1},160)}\nfunction render(){$('rt-url').innerHTML='app.example.com<b>'+path+'</b>';$('rt-nav').innerHTML=R.map(function(r){var on=path===r[0]||path.indexOf(r[0])===0&&r[0]!=='/';return '<button class=\"sec\" type=\"button\" data-p=\"'+r[0]+'\" style=\"'+(on?'border-color:#C2410C;color:#C2410C':'')+'\">'+r[1]+'</button>'}).join('');document.querySelectorAll('[data-p]').forEach(function(b){b.onclick=function(){go(b.dataset.p)}});var h;var m=path.match(/^\\/user\\/(\\d+)/);if(path==='/')h='<h3 style=\"margin:0 0 6px\">Home</h3><p style=\"margin:0;color:var(--hover-line)\">Pick a user or open settings.</p>';else if(m)h='<div style=\"font-size:12px;color:#5E5A69\">useParams() → { id: \"'+m[1]+'\" } · loader ran</div><h3 style=\"margin:6px 0\">'+U[m[1]]+'</h3>';else if(path==='/settings')h='<h3 style=\"margin:0 0 6px\">Settings</h3><p style=\"margin:0;color:var(--hover-line)\">beforeEnter passed: you are signed in.</p>';else h='<h3 style=\"margin:0 0 6px\">Sign in</h3><p style=\"margin:0;color:var(--hover-line)\">beforeEnter redirected here. returnTo keeps you on this site.</p>';$('rt-view').innerHTML=h}\n$('rt-auth').onchange=function(){auth=this.checked;if(auth&&path.indexOf('/login')===0)go('/settings')};render();})();",
+  "spec": "As in the reference (links, a typed param, a loader, a sign-in guard on Settings), plus two additions built on the real router: a status line that prints what each `router.push()` resolved to (`committed` or `cancelled`), and a Back button. Sign in, open Settings, sign out, press Back: the guard runs again and the view lands on Sign in."
+ },
+ "features": {
+  "title": "Everything an app router needs, nothing it should guess.",
+  "items": [
+   {
+    "name": "createRouter",
+    "text": "in hash (the default) or history mode, with a `url` option for server rendering"
+   },
+   {
+    "name": "Nested, named and aliased routes,",
+    "text": "with `(.*)` catch-alls and `lazy()` components in a bounded cache"
+   },
+   {
+    "name": "Loaders",
+    "text": "in parallel, with abort on supersede, stale-while-revalidate and a loader cache"
+   },
+   {
+    "name": "Guards and middleware:",
+    "text": "`beforeEnter`, `beforeLeave`, global `beforeEach`/`afterEach`, and middleware data via `useMiddlewareData()`"
+   },
+   {
+    "name": "useBlocker",
+    "text": "for unsaved changes, on every in-app navigation and on Back"
+   },
+   {
+    "name": "Typed search params:",
+    "text": "`useTypedSearchParams` coerces, `validateSearch` + `useValidatedSearch` validate"
+   },
+   {
+    "name": "Prefetch on intent, hover or viewport,",
+    "text": "per `<RouterLink>`"
+   },
+   {
+    "name": "View Transitions and route announcements",
+    "text": "on by default, reduced motion respected"
+   },
+   {
+    "name": "Tab stacks:",
+    "text": "one back stack per tab for tab-bar apps",
+    "status": "next release"
+   },
+   {
+    "name": "Native routes on iOS and Android",
+    "text": "(experimental) with nested routes, `beforeEnter`, loaders and inbound deep links"
+   }
+  ]
+ },
+ "api": {
+  "title": "The whole surface.",
+  "groups": [
+   {
+    "name": "setup",
+    "items": [
+     "createRouter",
+     "RouterProvider",
+     "RouterView",
+     "RouterLink",
+     "lazy"
+    ]
+   },
+   {
+    "name": "hooks",
+    "items": [
+     "useRouter",
+     "useRoute",
+     "useParams",
+     "useNavigate",
+     "useLoaderData",
+     "useSearchParams",
+     "useTypedSearchParams",
+     "useValidatedSearch",
+     "useIsActive",
+     "useBlocker",
+     "useTransition",
+     "useMiddlewareData"
+    ]
+   },
+   {
+    "name": "guards and errors",
+    "items": [
+     "redirect",
+     "notFound",
+     "NotFoundBoundary",
+     "onBeforeRouteLeave",
+     "onBeforeRouteUpdate"
+    ]
+   },
+   {
+    "name": "types and utilities",
+    "items": [
+     "LoaderData",
+     "ExtractParams",
+     "NavigationResult",
+     "buildPath",
+     "resolveRoute",
+     "parseQuery",
+     "stringifyQuery"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Guards aren't security",
+   "text": "A client-side guard only hides a page. Check access on the server too (with Zero, in route middleware or a `.server.ts` loader)."
+  },
+  {
+   "title": "Hash mode is the default",
+   "text": "Set `mode: 'history'` for clean URLs, and serve the app for every path."
+  },
+  {
+   "title": "Loader params are strings",
+   "text": "A loader sees `params` as `Record<string, string>`. For params typed from the path, read them with `useRoute<'/user/:id'>()`, or let Zero's `typedRoutes` check every link."
+  },
+  {
+   "title": "File-based routes come from Zero",
+   "text": "The router takes a route list. Zero builds that list from `src/routes` on the web; native apps declare it as an array."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/zero",
+   "category": "framework",
+   "name": "Zero",
+   "text": "File-based routes, server loaders and typed links.",
+   "package": "@pyreon/zero"
+  },
+  {
+   "href": "/products/urlstate",
+   "category": "fundamentals",
+   "name": "URL State",
+   "text": "Any state as a search param signal.",
+   "package": "@pyreon/url-state"
+  },
+  {
+   "href": "/products/a11y",
+   "category": "fundamentals",
+   "name": "Accessibility",
+   "text": "Skip links and announcements around your routes.",
+   "package": "@pyreon/a11y"
+  }
+ ],
+ "end": {
+  "title": "Press Back with confidence. Your guards will be there.",
+  "cta": "Read the router guide"
+ },
+ "benchmarks": {
+  "rival": "vs radix3, find-my-way, Hono, Next.js path-to-regexp, TanStack Router, Vue Router, React Router",
+  "run": "final pass, one run (Hono's timed arm changed afterwards, PR #4142)",
+  "h": "Matching at radix-tree speed, hundreds of times ahead of React Router.",
+  "p": "At 50 and 200 routes the average ties radix3, the fastest standalone matcher. Framework routers trail by 2.8× to more than 3,000×. Hono wins small tables, and radix3 or find-my-way win most single-shape rows; both stay in the table.",
+  "rows": [
+   {
+    "op": "50 routes, average",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "tie",
+    "label": "best average (1.00×), radix3 1.01×; no CI on this row"
+   },
+   {
+    "op": "200 routes, average",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "tie",
+    "label": "1.03× of radix3; no CI on this row"
+   },
+   {
+    "op": "miss → catch-all",
+    "pyreon": 26,
+    "rival": 57,
+    "unit": "ns",
+    "verdict": "win",
+    "label": "2.2–2.3× vs find-my-way (57–59 ns) at 50 and 200 routes"
+   },
+   {
+    "op": "vs Next.js path-to-regexp",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "info",
+    "label": "2.8–10.6× faster on average; no CI, no verdict"
+   },
+   {
+    "op": "vs TanStack Router",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "info",
+    "label": "7.7–8.3× faster on average; no CI, no verdict"
+   },
+   {
+    "op": "vs Vue Router",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "info",
+    "label": "7.7–19.0× faster on average; no CI, no verdict"
+   },
+   {
+    "op": "vs React Router",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "info",
+    "label": "885–3,763× faster on average; no CI, no verdict"
+   },
+   {
+    "op": "single-shape rows (static, dynamic, splat), 50–200 routes",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "loss",
+    "label": "radix3 or find-my-way 1.2–2.1× ahead per row"
+   },
+   {
+    "op": "10 routes, average",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "loss",
+    "label": "Hono 1.91× ahead (its arm skipped building params then; expected to narrow)"
+   }
+  ]
+ },
+ "glyphSvg": "<path d=\"M22 98 V64 C22 46 34 38 50 38 H90\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><path d=\"M78 24 L94 38 L78 52\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><circle cx=\"22\" cy=\"98\" r=\"12\" fill=\"url(#eg)\"/>",
+ "proof": [
+  {
+   "stat": "885×",
+   "label": "faster route matching than React Router, and up to 3,763× (8 routers, 1,344-cell correctness gate before timing)",
+   "source": "BENCHMARKS.md 2026-11-05 §9, final pass, one run"
+  },
+  {
+   "stat": "7.7–19×",
+   "label": "faster matching than Vue Router, and 7.7–8.3× faster than TanStack Router",
+   "source": "BENCHMARKS.md 2026-11-05 §9, one run"
+  },
+  {
+   "stat": "1.00×",
+   "label": "the best average at 50 routes, a tie with radix3 (1.01×), the fastest standalone matcher",
+   "source": "BENCHMARKS.md 2026-11-05 §9, one run, no CI on the average row"
+  }
+ ],
+ "comingFrom": [
+  {
+   "lib": "React Router",
+   "title": "Unsaved-changes protection",
+   "before": "import { useState } from 'react'\nimport { useBlocker } from 'react-router'\n\nfunction Editor() {\n  const [dirty, setDirty] = useState(false)\n  const blocker = useBlocker(() => dirty)\n  return (\n    <>\n      <textarea onChange={() => setDirty(true)} />\n      {blocker.state === 'blocked' && (\n        <div>\n          <p>Leave without saving?</p>\n          <button onClick={() => blocker.proceed()}>Leave</button>\n          <button onClick={() => blocker.reset()}>Stay</button>\n        </div>\n      )}\n    </>\n  )\n}",
+   "after": "import { signal } from '@pyreon/reactivity'\nimport { useBlocker } from '@pyreon/router'\n\nfunction Editor() {\n  const dirty = signal(false)\n  useBlocker(() => dirty() && !window.confirm('Leave without saving?'))\n  return <textarea onInput={() => dirty.set(true)} />\n}",
+   "note": "A Pyreon blocker is a predicate: return `true` to block. It may return a promise, so a custom dialog works too. It covers Back and Forward too, and is removed when the component unmounts."
+  },
+  {
+   "lib": "React Router",
+   "title": "Page number in the URL",
+   "before": "import { useSearchParams } from 'react-router'\n\nfunction Results() {\n  const [params, setParams] = useSearchParams()\n  const page = Number(params.get('page') ?? 1)\n  return (\n    <button\n      onClick={() =>\n        setParams((prev) => {\n          prev.set('page', String(page + 1))\n          return prev\n        })\n      }\n    >\n      Page {page}\n    </button>\n  )\n}",
+   "after": "import { useTypedSearchParams } from '@pyreon/router'\n\nfunction Results() {\n  const [search, setSearch] = useTypedSearchParams({ page: 'number' })\n  const page = () => search().page || 1 // a missing ?page reads as 0\n  return (\n    <button onClick={() => setSearch({ page: page() + 1 })}>\n      Page {page()}\n    </button>\n  )\n}",
+   "note": "Values arrive coerced to the declared type, and `setSearch` merges into the declared params (it replaces the history entry; query keys outside the schema are dropped). For richer rules, give the route a `validateSearch` function (or a Zod `.parse`) and read it with `useValidatedSearch()`."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "A signed-in area that holds on Back",
+   "text": "The guard reads a signal. Signed out, `/settings` redirects to `/login`, and pressing Back into it after signing out redirects again.",
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { createRouter } from '@pyreon/router'\n\nexport const signedIn = signal(false)\n\nconst Home = () => <h1>Home</h1>\nconst Login = () => <h1>Sign in</h1>\nconst Settings = () => <h1>Settings</h1>\n\nexport const router = createRouter({\n  mode: 'history',\n  routes: [\n    { path: '/', component: Home },\n    { path: '/login', component: Login },\n    { path: '/settings', component: Settings, beforeEnter: () => signedIn() || '/login' },\n  ],\n})\n\nawait router.push('/settings') // 'committed', and you are on /login\nsignedIn.set(true)\nawait router.push('/settings') // 'committed', on /settings\nawait router.push('/')\nsignedIn.set(false)\nhistory.back()                 // the guard runs again: back on /login"
+  },
+  {
+   "title": "Know when a navigation was refused",
+   "text": "A blocker turns a push into `'cancelled'`, so a save-then-leave flow can tell the user instead of assuming it worked. Mount it only while there are unsaved edits: while a blocker is mounted, closing the tab asks first too.",
+   "code": "import { Show } from '@pyreon/core'\nimport { signal } from '@pyreon/reactivity'\nimport { useBlocker, useRouter } from '@pyreon/router'\n\n// Mounted only while there are unsaved edits: a mounted blocker also makes\n// closing the tab ask first.\nconst Unsaved = () => {\n  useBlocker(() => true)\n  return null\n}\n\nfunction Editor() {\n  const dirty = signal(false)\n  const router = useRouter()\n\n  const leave = async () => {\n    const result = await router.push('/')\n    if (result === 'cancelled') alert('Save or discard your changes first.')\n  }\n\n  return (\n    <div>\n      <Show when={dirty}>\n        <Unsaved />\n      </Show>\n      <textarea onInput={() => dirty.set(true)} />\n      <button onClick={leave}>Done</button>\n    </div>\n  )\n}"
+  },
+  {
+   "title": "One back stack per tab",
+   "text": "A tab-bar app keeps a separate history per tab: switching tabs returns to where that tab was, and Back walks only the current tab's stack.",
+   "status": "next release",
+   "code": "import { createRouter } from '@pyreon/router'\n\nconst Feed = () => <h1>Feed</h1>\nconst Search = () => <h1>Search</h1>\nconst Profile = () => <h1>Profile</h1>\nconst Post = () => <h1>Post</h1>\n\nexport const router = createRouter({\n  mode: 'history',\n  routes: [\n    { path: '/', component: Feed },\n    { path: '/post/:id', component: Post },\n    { path: '/search', component: Search },\n    { path: '/profile', component: Profile },\n  ],\n  tabs: [\n    { name: 'home', root: '/' },\n    { name: 'search', root: '/search' },\n    { name: 'profile', root: '/profile' },\n  ],\n})"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Does route matching speed matter?",
+   "a": "Rarely as a bottleneck, which is the point: it stays out of the way at any route count. It is level with radix3, the fastest standalone matcher we measured, at 50 and 200 routes; Hono led at 10 routes, 1.91×, in the published run, measured before a harness fix that adds work to Hono's timed arm (PR #4142)."
+  },
+  {
+   "q": "How are params typed?",
+   "a": "`ExtractParams<'/user/:id'>` is `{ id: string }`, and `useRoute<'/user/:id'>()().params.id` is typed. `createRouter<'home' | 'user'>` types named navigation, and Zero's `typedRoutes` makes a mistyped `<RouterLink to>` a compile error."
+  },
+  {
+   "q": "Does it work with server rendering?",
+   "a": "Yes. Pass the request URL as `url`, and loaders run before the HTML is written; their data is serialised so hydration does not fetch again. Zero wires all of it, including server-only loaders in `.server.ts` files."
+  },
+  {
+   "q": "Is it the same router on iOS and Android?",
+   "a": "The same API: `RouterProvider`, `RouterView`, `useNavigate`, `useParams`, `useLoaderData` and `beforeEnter`, lowered to SwiftUI's `NavigationStack` and to Compose on the experimental native targets. Inbound deep links route through it, cold and warm."
+  },
+  {
+   "q": "Can I opt out of the announcements or transitions?",
+   "a": "`<RouterView announceRouteChanges={false} />` turns off the announcer, and `meta: { viewTransition: false }` skips the transition for one route."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "Router bench figures: 50/200 ties with radix3, miss→catch-all 26 vs 57–59 ns, ahead of find-my-way avg, Hono 50/200 3.3×, Next.js path-to-regexp 2.8–10.6×, Vue Router 7.7–19.0×, TanStack 7.7–8.3×, React Router 885–3,763×, per-row losses, Hono 1.91× at 10 routes",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §9 (final pass, one run, 8 routers, 1,344-cell correctness gate)"
+  },
+  {
+   "claim": "Hono arm changed after the figures (PR #4142); its rows will move up",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §9 harness note; facts.md"
+  },
+  {
+   "claim": "Per-row loss range 1.2–2.1× computed from static 16 vs 12–13, nested static 21 vs 10, dynamic 78–79 vs 61–62, 2 params 133–134 vs 102–103, nested dynamic 135–142 vs 100–105, splat 109 vs 78–79 ns",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §9"
+  },
+  {
+   "claim": "Back/Forward runs blockers, middleware, guards, loaders; cancel restores URL",
+   "path": "docs/src/content/docs/router.md \"Hash mode vs history mode\" paragraph; verified: .scratch/core/parent/run-router.ts \"Back into /settings after sign-out → /login\""
+  },
+  {
+   "claim": "push()/replace() resolve to NavigationResult committed|cancelled|superseded (in 0.53.0)",
+   "path": "packages/core/router/src/types.ts NavigationResult; run-router.ts printed committed and cancelled"
+  },
+  {
+   "claim": "A guard redirect resolves committed and lands on /login",
+   "path": ".scratch/core/parent/run-router.ts output \"push /settings signed out → committed | Login\""
+  },
+  {
+   "claim": "Root RouterView announces route changes by default; announceRouteChanges={false}",
+   "path": "docs/src/content/docs/router.md \"Accessibility — route announcements\"; packages/core/router/src/announcer.ts"
+  },
+  {
+   "claim": "View Transitions automatic, skipped under prefers-reduced-motion, meta.viewTransition: false",
+   "path": "docs/src/content/docs/router.md \"View Transitions API\""
+  },
+  {
+   "claim": "mode defaults to hash",
+   "path": "docs/src/content/docs/router.md RouterOptions table"
+  },
+  {
+   "claim": "Loader params are Record<string,string>; LoaderData<typeof loader>; AbortSignal",
+   "path": "packages/core/router/src/types.ts LoaderContext; docs router.md \"Data Loaders\""
+  },
+  {
+   "claim": "useTypedSearchParams returns a [get, set] tuple; set merges and uses replace",
+   "path": "packages/core/router/src/router.ts useTypedSearchParams; verified run-router.ts (\"signals page 3\", url ?q=signals&page=3)"
+  },
+  {
+   "claim": "useBlocker predicate, beforeunload, auto-removed on unmount; may return a Promise",
+   "path": "docs/src/content/docs/router.md \"useBlocker\" (BlockerFn returns boolean | Promise<boolean>)"
+  },
+  {
+   "claim": "RouterLink prefetch intent|hover|viewport|none",
+   "path": "docs/src/content/docs/router.md RouterLinkProps"
+  },
+  {
+   "claim": "tabs option is main-only",
+   "path": "git show @pyreon/router@0.53.0:packages/core/router/src/types.ts has no tabs; docs router.md \"Tab stacks\""
+  },
+  {
+   "claim": "Native router API on NavigationStack; deep links cold and warm",
+   "path": "packages/native/router-swift/package.json description; docs migrating-from-react-native.md \"Navigation\""
+  },
+  {
+   "claim": "ExtractParams, useRoute<path>, createRouter<TNames>",
+   "path": "docs/src/content/docs/router.md \"TypeScript Param Inference\", \"Typed Route Names\""
+  },
+  {
+   "claim": "Pyreon samples compile with transformJSX and pass tsc; run in happy-dom",
+   "path": ".scratch/core/parent/{RouterApp.tsx,RouterFrom.tsx,run-router.ts}"
+  },
+  {
+   "claim": "React Router before code",
+   "path": "written from react-router v7 documented APIs (createBrowserRouter, useBlocker state/proceed/reset, useSearchParams); not typechecked, react-router is not installed in the checkout"
+  }
+ ]
+}

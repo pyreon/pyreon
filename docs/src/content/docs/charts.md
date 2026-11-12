@@ -3,6 +3,10 @@ title: Charts
 description: "@pyreon/charts — charts on Pyreon's own engine: marks as JSX children, typed channels, canvas and SVG, and the same chart on iOS and Android."
 ---
 
+<ProductPitch id="charts" />
+
+<LiveDemo id="charts" />
+
 `@pyreon/charts` is Pyreon's **own chart engine**. You write `<Chart>` with your
 rows and put marks inside it as children. Channels are field names, typed
 against the row, so a typo is a compile error when the chart and its marks
@@ -862,3 +866,11 @@ Each series becomes a mark, each component a child:
 | `useChart(() => option)` + `chart.instance()` | `<Chart>` reads signals directly; `createChartHandle()` for imperative actions |
 | `<ChartWebView>` on iOS / Android | `<Chart>` itself: it draws natively |
 | `chartsViteAlias()` in `vite.config.ts` | delete it |
+
+<BenchCallout id="charts" />
+
+<ComingFrom id="charts" />
+
+<InlineSell id="table" />
+
+<CrossSell id="charts" />

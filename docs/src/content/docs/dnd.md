@@ -3,6 +3,10 @@ title: Drag & Drop
 description: Signal-driven drag and drop for Pyreon — draggable, droppable, sortable, file drop, cross-list boards, and keyboard-accessible reordering.
 ---
 
+<ProductPitch id="dnd" />
+
+<LiveDemo id="dnd" />
+
 `@pyreon/dnd` is signal-driven drag and drop. It wraps [@atlaskit/pragmatic-drag-and-drop](https://atlassian.design/components/pragmatic-drag-and-drop) — the framework-agnostic engine behind Trello and Jira — and exposes it as a set of Pyreon hooks whose state is fine-grained signals and whose teardown is wired into Pyreon's component lifecycle.
 
 <PackageBadge name="@pyreon/dnd" href="/docs/dnd" />
@@ -656,3 +660,11 @@ The generic only constrains what *this* draggable produces. A drop handler (`use
 | `UseFileDropResult`     | `{ isOver: () => boolean; isDraggingFiles: () => boolean }`                                  |
 | `UseDragMonitorOptions` | `{ onDragStart?; onDrop?; canMonitor? }`                                                     |
 | `UseDragMonitorResult`  | `{ isDragging: () => boolean; dragData: () => DragData \| null }`                            |
+
+<BenchCallout id="dnd" />
+
+<ComingFrom id="dnd" />
+
+<InlineSell id="flow" />
+
+<CrossSell id="dnd" />

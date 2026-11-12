@@ -1,5 +1,6 @@
 import { el } from '../../kit'
 
+/** The switch's thumb — fog when off, ember when on. */
 export const Knob = el
   .attrs({
     tag: 'span',
@@ -7,15 +8,14 @@ export const Knob = el
   .theme((t) => ({
     position: 'absolute',
     top: '2px',
-    width: '20px',
-    height: '20px',
-    borderRadius: t.radius.round,
-    background: '#fff',
-    boxShadow: '0 1px 3px rgba(0,0,0,.3)',
-    transition: `left ${t.motion.slow}`,
     left: '2px',
+    width: '14px',
+    height: '14px',
+    borderRadius: t.radius.round,
+    background: t.faint,
+    transition: `transform ${t.motion.slow},background ${t.motion.slow}`,
   }))
-  .states(() => ({
-    on: { left: '20px' },
+  .states((t) => ({
+    on: { transform: 'translateX(14px)', backgroundColor: t.accent },
     off: {},
   }))

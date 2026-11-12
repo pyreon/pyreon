@@ -1,0 +1,273 @@
+{
+  "id": "full-stack",
+  "route": "/why/full-stack",
+  "title": "Full stack",
+  "hook": {
+    "eyebrow": "Pyreon Zero",
+    "title": "SSG, SSR, ISR or SPA. Per route, in one line.",
+    "lede": "`@pyreon/zero` lets every route pick how it renders, prints what it chose at build time, and hydrates by adopting the server's DOM, so what your users typed before the JavaScript landed is still there. Compiled server rendering runs 6.5× faster than React 19 at 1,000 rows (one run).",
+    "cta": {
+      "label": "Start building",
+      "command": "npm create @pyreon/zero@latest"
+    }
+  },
+  "sections": [
+    {
+      "kind": "proof",
+      "title": "Fast on the server, fast on the hand-off.",
+      "stats": [
+        {
+          "stat": "5.7–6.6×",
+          "label": "faster compiled SSR than React 19 at 10 / 100 / 1,000 rows",
+          "condition": "overnight run, one run · Apple M3 Max · synthetic, author-run",
+          "source": "BENCHMARKS.md §5"
+        },
+        {
+          "stat": "1.64–4.68×",
+          "label": "`renderToString` throughput vs Solid across four scenarios, byte-identical output enforced",
+          "condition": "overnight run, one run · Apple M3 Max · synthetic, author-run",
+          "source": "BENCHMARKS.md §5"
+        },
+        {
+          "stat": "4.02 ms",
+          "label": "to hydrate a 320-component page, ahead of React 4.15, Preact 4.30, Vue 4.47",
+          "condition": "final pass, one run · real Chromium · Apple M3 Max · synthetic, author-run",
+          "source": "BENCHMARKS.md §4"
+        }
+      ],
+      "note": "Compiled SSR also leads Vue 3 (1.14–1.68×) and Svelte 5 (1.21–1.55×) at every size measured, one run. Synthetic, author-run, Apple M3 Max."
+    },
+    {
+      "kind": "code",
+      "title": "One export per route.",
+      "text": "The app mode is only the default. A page, or a `_layout` that cascades to everything below it, declares its own mode. Prefer policy in one place? `routeRules` maps path globs to modes.",
+      "blocks": [
+        {
+          "label": "src/routes/about.tsx",
+          "lang": "tsx",
+          "code": "export const renderMode = 'ssg'"
+        },
+        {
+          "label": "vite.config.ts",
+          "lang": "ts",
+          "code": "zero({\n  mode: 'ssr',\n  routeRules: {\n    '/blog/**': { renderMode: 'isr' },\n    '/admin/**': { renderMode: 'spa' },\n  },\n})"
+        },
+        {
+          "label": "npm run build",
+          "lang": "text",
+          "code": "[zero] Route modes (app: ssr) — 5 ssr λ · 1 ssg ○\n  λ ssr  /\n  ○ ssg  /about  (declared)\n  λ ssr  /counter\n  λ ssr  /dashboard\n  λ ssr  /posts\n  λ ssr  /posts/:id"
+        }
+      ],
+      "caption": "Precedence is always the same: the page's own `renderMode`, the nearest `_layout`, `routeRules`, `mode: 'auto'` inference, then the app mode. Impossible combinations fail the build and name the route."
+    },
+    {
+      "kind": "list",
+      "title": "Or let Zero decide.",
+      "text": "`mode: 'auto'` is experimental. It infers a mode per route on a \"static unless the code says otherwise\" rule, and the build prints the table so you can see every choice.",
+      "items": [
+        {
+          "title": "`revalidate` export",
+          "text": "ISR."
+        },
+        {
+          "title": "`getStaticPaths` export",
+          "text": "SSG, even next to a loader."
+        },
+        {
+          "title": "`loader`, `.server.ts`, `guard` or `middleware`",
+          "text": "SSR."
+        },
+        {
+          "title": "Anything else",
+          "text": "SSG."
+        },
+        {
+          "title": "Inferred-SSG routes prerender in mixed apps",
+          "text": "In a build that also has SSR routes, pages inferred as SSG are now prerendered, and one resolver answers \"what mode does this page get\" everywhere. New on main, shipping in the next release.",
+          "status": "next release"
+        }
+      ]
+    },
+    {
+      "kind": "story",
+      "title": "Hydration that keeps what you typed.",
+      "text": [
+        "A slow train, a server-rendered page, three letters typed into the search box. Then the JavaScript lands and a hydrating framework that rebuilds the DOM throws the letters away, along with the cursor.",
+        "Pyreon adopts the server's nodes instead of replacing them. Text typed into an uncontrolled input, focus, scroll position inside adopted regions and listeners other scripts attached early all survive the boot. Zero resolves the current route's code before hydrating, so the first client render is the real page, not a loading fallback."
+      ]
+    },
+    {
+      "kind": "list",
+      "title": "Deploy where you already deploy.",
+      "text": "`--adapter` on `npm create @pyreon/zero@latest` writes the platform files and wires the adapter into `vite.config.ts`.",
+      "items": [
+        {
+          "title": "`node` and `bun`",
+          "text": "A production server plus a Dockerfile."
+        },
+        {
+          "title": "`vercel`",
+          "text": "`vercel.json`."
+        },
+        {
+          "title": "`netlify`",
+          "text": "`netlify.toml`."
+        },
+        {
+          "title": "`cloudflare`",
+          "text": "A `wrangler.toml` with `nodejs_compat` already set."
+        },
+        {
+          "title": "`static`",
+          "text": "Just `dist/`. The scaffolder refuses it with SSR or ISR, because there is no server to run them."
+        }
+      ]
+    },
+    {
+      "kind": "list",
+      "title": "Content and a blog, built in.",
+      "text": "`@pyreon/zero-content` turns `.md` and `.mdx` into real Pyreon JSX at build time, with typed collections, Shiki highlighting, callouts, search and inline live examples. It powers the Pyreon docs and blog.",
+      "items": [
+        {
+          "title": "Typed collections",
+          "text": "`getCollection`, `getEntry` and `getEntries` query your content with types."
+        },
+        {
+          "title": "Scheduled publishing",
+          "text": "Declare `publishDate: 'date'` on a collection and a future-dated entry stays out of listings, search, the sitemap and the feed of a production build until its date; `unpublished: 'omit'` keeps it out of the bundle too. `PYREON_CONTENT_NOW=<date>` builds the site as it will look that day. New on main, shipping in the next release.",
+          "status": "next release"
+        },
+        {
+          "title": "Feeds",
+          "text": "Full-content RSS with `content: 'full'`, the shape dev.to's \"Publishing from RSS\" imports. New on main, shipping in the next release.",
+          "status": "next release"
+        }
+      ]
+    },
+    {
+      "kind": "steps",
+      "title": "From scaffold to a running server.",
+      "items": [
+        {
+          "title": "Scaffold",
+          "text": "Pick a mode and an adapter, or take the defaults.",
+          "code": "npm create @pyreon/zero@latest my-app -- --mode ssr-stream --adapter node"
+        },
+        {
+          "title": "Build",
+          "text": "Every SSG, SSR, ISR or auto build prints its per-route mode table.",
+          "code": "npm run build"
+        },
+        {
+          "title": "Run",
+          "text": "The Node adapter writes a `node:http` server.",
+          "code": "PORT=8080 node dist/index.js"
+        }
+      ]
+    },
+    {
+      "kind": "faq",
+      "title": "Questions before you ship.",
+      "items": [
+        {
+          "q": "Does streaming SSR work?",
+          "a": "Yes: `ssr: { mode: 'stream' }`. The default is buffered string rendering."
+        },
+        {
+          "q": "What if a prerendered file goes missing?",
+          "a": "The Node and Bun servers serve SSG pages from disk first and fall back to rendering the page, never to a 404."
+        },
+        {
+          "q": "Will a typo in my config fail quietly?",
+          "a": "No. Config typos fail with a did-you-mean."
+        },
+        {
+          "q": "Is `mode: 'auto'` safe for production?",
+          "a": "It is labelled experimental. The build table shows exactly what it chose, and an explicit `renderMode` export always wins, so you can pin any route."
+        }
+      ]
+    },
+    {
+      "kind": "links",
+      "title": "Go deeper.",
+      "items": [
+        {
+          "label": "Zero",
+          "href": "/docs/zero",
+          "text": "Render modes, routeRules, adapters."
+        },
+        {
+          "label": "Zero Content",
+          "href": "/docs/zero-content",
+          "text": "Collections, MDX and scheduled entries."
+        },
+        {
+          "label": "Benchmarks",
+          "href": "/benchmarks",
+          "text": "SSR and hydration numbers with their runs."
+        }
+      ]
+    }
+  ],
+  "end": {
+    "title": "Your users typed it. Pyreon keeps it.",
+    "cta": {
+      "label": "Start building",
+      "command": "npm create @pyreon/zero@latest"
+    }
+  },
+  "share": {
+    "ogTitle": "SSG, SSR, ISR or SPA. Per route, in one line.",
+    "ogSub": "Pyreon Zero: per-route render modes, hydration that keeps what users typed, and SSR 6.5× faster than React 19 (one run)."
+  },
+  "sources": [
+    {
+      "claim": "Compiled SSR vs React 5.72/6.57/6.50×; Vue 1.68/1.35/1.14×; Svelte 1.21/1.55/1.46×",
+      "path": "BENCHMARKS.md §5 bench:ssr table"
+    },
+    {
+      "claim": "renderToString vs Solid 1.64–4.68×, byte-identical output",
+      "path": "BENCHMARKS.md §5 bench:ssr-cross table"
+    },
+    {
+      "claim": "App page hydration 4.02 ms vs 4.15/4.30/4.47, one run",
+      "path": "BENCHMARKS.md §4"
+    },
+    {
+      "claim": "renderMode export, _layout cascade, routeRules, precedence, build mode table, impossible combos fail",
+      "path": "docs/src/content/docs/zero.md lines 490–540; packages/zero/zero/src/{fs-router,route-modes}.ts"
+    },
+    {
+      "claim": "Build output sample",
+      "path": "post 05-blog/B07-create-zero-to-deployed-in-5-minutes.md (real run)"
+    },
+    {
+      "claim": "mode auto EXPERIMENTAL and its inference rule",
+      "path": "docs/src/content/docs/zero.md line 522"
+    },
+    {
+      "claim": "auto prerenders inferred SSG in mixed builds (#4138), unreleased",
+      "path": "packages/zero/zero/src/fs-router.ts createFileRouteModeResolver; 00-brief/facts.md"
+    },
+    {
+      "claim": "Hydration adopts server DOM: typed input, focus, scroll, foreign listeners; route code resolved before hydrateRoot",
+      "path": "packages/core/runtime-dom/src/hydrate.ts; post 05-blog/B04-hydration-that-adopts-the-server-dom.md"
+    },
+    {
+      "claim": "Scaffold adapters node, bun, vercel, netlify, cloudflare, static (no Deno); static refused with SSR/ISR",
+      "path": "packages/zero/create-zero/src/{args,templates}.ts; post B07"
+    },
+    {
+      "claim": "zero-content: compile-time md to JSX, typed collections, powers docs",
+      "path": "docs/src/content/docs/zero-content.md"
+    },
+    {
+      "claim": "publishDate scheduling and PYREON_CONTENT_NOW, unreleased",
+      "path": "docs/src/content/docs/zero-content.md \"Drafts and scheduled entries\"; packages/zero/zero-content/src/publish.ts"
+    },
+    {
+      "claim": "Streaming via ssr.mode stream; config typos did-you-mean; SSG static-first with SSR fallback",
+      "path": "docs/src/content/docs/zero.md lines 151, 512; packages/zero/zero/src/config-validation.ts"
+    }
+  ]
+}

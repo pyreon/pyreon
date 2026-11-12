@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa ph-who-content" viewBox="0 0 560 220" width="560" height="220" role="img" aria-labelledby="ph-who-content-t ph-who-content-d" fill="none">
+<title id="ph-who-content-t">Content and marketing sites</title>
+<desc id="ph-who-content-d">Schematic: Markdown posts flow into a typed collection and out to pages; each route carries its own render mode chip, SSG, ISR or SSR, and the collection also feeds an RSS feed.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.ph-who-content{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.ph-who-content .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.ph-who-content .ph-who-content-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.ph-who-content *{animation:none!important;transition:none!important}.ph-who-content .ph-who-content-rm{opacity:1}.ph-who-content .ph-who-content-am{opacity:0}}
+
+.ph-who-content .ln{stroke:var(--px-hint);stroke-width:1.5}
+.ph-who-content .dash{stroke:var(--px-hint);stroke-width:1.5;stroke-dasharray:4 6}
+.ph-who-content .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.ph-who-content .bx2{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+.ph-who-content .act{fill:none;stroke:var(--px-text);stroke-width:2}
+.ph-who-content .lab{fill:var(--px-fog);font-size:14px;letter-spacing:.02em}
+.ph-who-content .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.ph-who-content .val{fill:var(--px-text);font-size:20px;font-weight:500}
+.ph-who-content .big{fill:var(--px-strong);font-size:30px;font-weight:600;letter-spacing:-.02em}
+.ph-who-content .txt{fill:var(--px-text);font-size:16px}
+.ph-who-content .mt{fill:var(--px-mist);font-size:14px}
+.ph-who-content .hint{fill:var(--px-fog);font-size:13px}
+.ph-who-content .ember{stroke:url(#ph-who-content-eg);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:36 2000;fill:none}
+.ph-who-content .emS{stroke:url(#ph-who-content-eg);stroke-width:2.5;fill:none}
+.ph-who-content .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.ph-who-content .ok{fill:var(--px-ok)} .ph-who-content .warm{fill:var(--px-warm)} .ph-who-content .hot{fill:var(--px-accent)} .ph-who-content .err{fill:var(--px-err)}
+.ph-who-content .okT{fill:var(--px-ok)} .ph-who-content .warmT{fill:var(--px-warm)} .ph-who-content .hotT{fill:var(--px-accent-text)} .ph-who-content .errT{fill:var(--px-err)} .ph-who-content .linkT{fill:var(--px-link)}
+.ph-who-content .focus{fill:none;stroke:var(--px-link);stroke-width:2;stroke-dasharray:3 3}
+.pxa{--sx-kw:#FF5E1A;--sx-str:#FFC83D;--sx-num:#FF1F8C;--sx-fn:#22D3EE;--sx-type:#A78BFA;--sx-com:#8A8696;--sx-fg:#E6E0D2;--sx-pane:#111118;--sx-pane-line:#2E2E3B;--sx-del-bar:#FF1F8C;--sx-del-bg:rgba(255,31,140,.12);--sx-del-text:#F7B9D6;--sx-ins-bar:#22D3EE;--sx-ins-bg:rgba(34,211,238,.09);--sx-ins-text:#E9FBFF}
+@media (prefers-color-scheme: light){.pxa{--sx-kw:#C2410C;--sx-str:#8A5A00;--sx-num:#BE185D;--sx-fn:#0E7490;--sx-type:#6D28D9;--sx-com:#6B6776;--sx-fg:#14141C;--sx-pane:#F4EFE6;--sx-pane-line:#E6DFD2;--sx-del-bar:#D1106F;--sx-del-bg:rgba(209,16,111,.07);--sx-del-text:#8E0B4C;--sx-ins-bar:#0A6E89;--sx-ins-bg:rgba(10,110,137,.08);--sx-ins-text:#0B4F63}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--sx-kw:#FF5E1A;--sx-str:#FFC83D;--sx-num:#FF1F8C;--sx-fn:#22D3EE;--sx-type:#A78BFA;--sx-com:#8A8696;--sx-fg:#E6E0D2;--sx-pane:#111118;--sx-pane-line:#2E2E3B;--sx-del-bar:#FF1F8C;--sx-del-bg:rgba(255,31,140,.12);--sx-del-text:#F7B9D6;--sx-ins-bar:#22D3EE;--sx-ins-bg:rgba(34,211,238,.09);--sx-ins-text:#E9FBFF}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--sx-kw:#C2410C;--sx-str:#8A5A00;--sx-num:#BE185D;--sx-fn:#0E7490;--sx-type:#6D28D9;--sx-com:#6B6776;--sx-fg:#14141C;--sx-pane:#F4EFE6;--sx-pane-line:#E6DFD2;--sx-del-bar:#D1106F;--sx-del-bg:rgba(209,16,111,.07);--sx-del-text:#8E0B4C;--sx-ins-bar:#0A6E89;--sx-ins-bg:rgba(10,110,137,.08);--sx-ins-text:#0B4F63}
+.ph-who-content .cd{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;fill:var(--sx-fg);white-space:pre;font-variant-ligatures:none}
+.ph-who-content .cd .k{fill:var(--sx-kw)} .ph-who-content .cd .s{fill:var(--sx-str)} .ph-who-content .cd .n{fill:var(--sx-num)}
+.ph-who-content .cd .f{fill:var(--sx-fn)} .ph-who-content .cd .t{fill:var(--sx-type)} .ph-who-content .cd .c{fill:var(--sx-com)} .ph-who-content .cd .u{fill:var(--sx-com)}
+.ph-who-content .pane{fill:var(--sx-pane);stroke:var(--sx-pane-line);stroke-width:1}
+.ph-who-content .delbg{fill:var(--sx-del-bg)} .ph-who-content .delbar{fill:var(--sx-del-bar)} .ph-who-content .insbg{fill:var(--sx-ins-bg)} .ph-who-content .insbar{fill:var(--sx-ins-bar)}
+.ph-who-content .sgn-d{fill:var(--sx-del-bar)} .ph-who-content .sgn-i{fill:var(--sx-ins-bar)}.ph-who-content .warnT{fill:var(--px-warn)}
+</style>
+<defs><linearGradient id="ph-who-content-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="ph-who-content-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="560" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="ph-who-content-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="ph-who-content-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<path d="M24 34 h12 l6 6 v16 h-18 z" style="fill:none;stroke:var(--px-fog);stroke-width:1.5"/><text class="m mt" x="52" y="50" style="font-size:13px">hello.md</text><path d="M24 86 h12 l6 6 v16 h-18 z" style="fill:none;stroke:var(--px-fog);stroke-width:1.5"/><text class="m mt" x="52" y="102" style="font-size:13px">release.md</text><path d="M24 138 h12 l6 6 v16 h-18 z" style="fill:none;stroke:var(--px-fog);stroke-width:1.5"/><text class="m mt" x="52" y="154" style="font-size:13px">roadmap.md</text>
+<path class="ln" d="M150 46 C 180 46, 180 100, 204 100 M150 98 L204 100 M150 150 C 180 150, 180 100, 204 100"/>
+<rect class="bx" x="204" y="74" width="120" height="52" rx="12"/><text class="m mt" x="264" y="98" text-anchor="middle" style="font-size:13px">collection</text><text class="m hint" x="264" y="116" text-anchor="middle" style="font-size:11px">schema-checked</text>
+<path class="ln" d="M324 100 C 350 100, 350 40, 372 40 M324 100 L372 100 M324 100 C 350 100, 350 160, 372 160"/>
+<text class="m txt" x="380" y="45" style="font-size:14px">/</text><rect x="488" y="28" width="52" height="24" rx="12" style="fill:none;stroke:var(--px-bar);stroke-width:1.5"/><text class="m mt" x="514" y="44.5" text-anchor="middle" style="font-size:12px;letter-spacing:.06em">SSG</text>
+<text class="m txt" x="380" y="105" style="font-size:13px">/blog/[slug]</text><rect x="488" y="88" width="52" height="24" rx="12" style="fill:var(--px-glow);stroke:var(--px-accent);stroke-width:1.5"/><text class="m hotT m" x="514" y="104.5" text-anchor="middle" style="font-size:12px;letter-spacing:.06em">ISR</text>
+<text class="m txt" x="380" y="165" style="font-size:13px">/account</text><rect x="488" y="148" width="52" height="24" rx="12" style="fill:none;stroke:var(--px-bar);stroke-width:1.5"/><text class="m mt" x="514" y="164.5" text-anchor="middle" style="font-size:12px;letter-spacing:.06em">SSR</text>
+<text class="m hint" x="204" y="200" style="font-size:12px">scheduled posts · RSS · search</text>
+</svg>

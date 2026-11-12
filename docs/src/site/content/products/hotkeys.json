@@ -1,0 +1,357 @@
+{
+ "id": "hotkeys",
+ "route": "/products/hotkeys",
+ "name": "Hotkeys",
+ "package": "@pyreon/hotkeys",
+ "category": "fundamentals · keyboard",
+ "hero": {
+  "title": "You have written this `keydown` listener before. It was the last time.",
+  "emberWord": "last",
+  "lede": "`useHotkey('mod+s', save)` is ⌘S on a Mac and Ctrl+S everywhere else, skips text fields, stops the browser's own save dialog and unregisters when the component goes. Sequences like `g i`, scopes for the editor, and a list of every shortcut for your help dialog come with it.",
+  "install": "bun add @pyreon/hotkeys",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "one line",
+    "value": "`useHotkey('mod+s', save)`<small>⌘ on Mac, Ctrl elsewhere; removed on unmount.</small>"
+   },
+   {
+    "key": "a non-shortcut key",
+    "value": "one `Map` lookup<small>However many shortcuts are registered.</small>"
+   },
+   {
+    "key": "vs tinykeys, hotkeys-js, mousetrap",
+    "value": "misses 6.0–118× faster<small>One run, bun/JavaScriptCore, 12 and 48 bindings.</small>"
+   },
+   {
+    "key": "iOS and Android",
+    "value": "{dot:warn} `useHotkey` with a literal shortcut<small>A SwiftUI `.keyboardShortcut` or a Compose key handler; native is experimental. The registry stays web.</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "6–118×",
+   "label": "faster than tinykeys, hotkeys-js and mousetrap on a key that is not a shortcut (12 and 48 bindings, one run)",
+   "source": "BENCHMARKS.md §10, hotkeys row: miss 6.0–118× · overnight run, one run, bun/JavaScriptCore"
+  },
+  {
+   "stat": "1.7–7.5×",
+   "label": "faster dispatch when the key is a shortcut",
+   "source": "BENCHMARKS.md §10, hotkeys row · vs tinykeys, hotkeys-js, mousetrap"
+  },
+  {
+   "stat": "1",
+   "label": "shared listener per target and event type, for every shortcut",
+   "source": "packages/fundamentals/hotkeys/src/manifest.ts; src/types.ts `target` option"
+  }
+ ],
+ "why": {
+  "title": "The details you forget at 11 pm.",
+  "items": [
+   {
+    "title": "Typing is not a shortcut",
+    "text": "Shortcuts stay quiet while focus is in an input, textarea, select or contenteditable. Opt back in with `enableOnInputs: true`, or only for text inputs with `['input']`."
+   },
+   {
+    "title": "`mod` means the right key",
+    "text": "⌘ on macOS, Ctrl on Windows and Linux, from one string. `?` fires on Shift+/, so the help shortcut works on every layout that has a question mark."
+   },
+   {
+    "title": "Scopes that stack",
+    "text": "`useHotkeyScope('editor')` turns the editor's Ctrl+Z on while the editor is mounted. Activation is reference-counted, so two editors on one page do not switch each other off."
+   },
+   {
+    "title": "A miss costs one lookup",
+    "text": "Dispatch is bucketed by key. A keypress that is not a shortcut, which is most of them, touches one `Map` and leaves, however many shortcuts you registered."
+   }
+  ]
+ },
+ "difference": {
+  "title": "Fifteen lines you keep re-typing.",
+  "before": {
+   "label": "React, by hand",
+   "caption": "Skip inputs, guess the platform, prevent the default, remember the cleanup. In every component that needs a shortcut.",
+   "code": "useEffect(() => {\n  const onKey = (e: KeyboardEvent) => {\n    const t = e.target as HTMLElement\n    if (t.isContentEditable ||\n        /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return\n    const mod = navigator.platform.includes('Mac')\n      ? e.metaKey : e.ctrlKey\n    if (mod && e.key.toLowerCase() === 's') {\n      e.preventDefault()\n      save()\n    }\n  }\n  window.addEventListener('keydown', onKey)\n  return () => window.removeEventListener('keydown', onKey)\n}, [save])"
+  },
+  "after": {
+   "label": "with @pyreon/hotkeys",
+   "caption": "Same behaviour. Inputs skipped, default prevented, removed on unmount, listed in your help dialog.",
+   "code": "import { useHotkey } from '@pyreon/hotkeys'\n\nuseHotkey('mod+s', () => save(), { description: 'Save' })"
+  }
+ },
+ "comingFrom": [
+  {
+   "lib": "tinykeys",
+   "title": "`$mod+KeyK` becomes `mod+k`.",
+   "before": "import { tinykeys } from 'tinykeys'\n\nuseEffect(\n  () =>\n    tinykeys(window, {\n      '$mod+KeyK': (e) => {\n        e.preventDefault()\n        openPalette()\n      },\n      'g i': () => goToInbox(),\n    }),\n  [],\n)",
+   "after": "import { useHotkey } from '@pyreon/hotkeys'\n\nuseHotkey('mod+k', () => openPalette())\nuseHotkey('g i', () => goToInbox())",
+   "note": "Sequences use the same space-separated form. `preventDefault` is on by default; pass `preventDefault: false` to let the browser act too."
+  },
+  {
+   "lib": "hotkeys-js",
+   "title": "Scopes without a global `setScope`.",
+   "before": "import hotkeys from 'hotkeys-js'\n\nuseEffect(() => {\n  hotkeys('ctrl+s, command+s', (e) => {\n    e.preventDefault()\n    save()\n  })\n  hotkeys('ctrl+z', 'editor', () => undo())\n  hotkeys.setScope('editor')\n  return () => {\n    hotkeys.unbind('ctrl+s, command+s')\n    hotkeys.unbind('ctrl+z', 'editor')\n  }\n}, [])",
+   "after": "import { useHotkey, useHotkeyScope } from '@pyreon/hotkeys'\n\nuseHotkey('mod+s', () => save())\n\n// in the editor component:\nuseHotkeyScope('editor')\nuseHotkey('ctrl+z', () => undo(), { scope: 'editor' })",
+   "note": "hotkeys-js has one active scope at a time. Here any number of scopes can be on together, each held for as long as a component that asked for it is mounted."
+  }
+ ],
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Press the keys.",
+  "text": "Click inside the box to give it focus, then try the shortcuts. Toggle the editor scope to see scoped keys switch on and off.",
+  "component": "DemoHotkeys",
+  "reference": "pkg-hotkeys.html#demo",
+  "referenceHtml": "<div class=\"card\"><div class=\"in\" id=\"hk-box\" tabindex=\"0\" aria-label=\"Hotkeys demo, focus and press keys\" style=\"outline:none\">\n  <div style=\"display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between\"><span class=\"label\">registered shortcuts</span><button class=\"pill\" type=\"button\" id=\"hk-scope\">editor scope: off</button></div>\n  <div class=\"hk-grid\" id=\"hk-grid\"></div>\n  <div class=\"hk-out\" id=\"hk-out\" aria-live=\"polite\">Click here, then press a shortcut.</div>\n</div></div>",
+  "referenceCss": ".hk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:8px;margin:14px 0}.hk-grid div{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border:1px solid var(--line);border-radius:10px;font-size:14px;color:var(--mist);transition:all .2s}.hk-grid div.off{opacity:.35}.hk-grid div.hit{border-color:#FF5E1A;background:rgba(255,94,26,.1);color:var(--ivory)}.hk-grid kbd{font-size:11.5px}.hk-out{font-family:var(--mono);font-size:13px;color:var(--fog);padding:14px;border:1px dashed var(--line-2);border-radius:10px}#hk-box:focus-visible{box-shadow:inset 0 0 0 2px var(--link);border-radius:21px}",
+  "referenceJs": "(function(){var mac=/Mac|iPhone|iPad/.test(navigator.platform),M=mac?'⌘':'Ctrl',K=[{k:'mod+k',l:'Open command palette',d:M+' K'},{k:'g i',l:'Go to inbox',d:'G then I'},{k:'?',l:'Show shortcuts',d:'?'},{k:'mod+s',l:'Save',d:M+' S',scope:'editor'},{k:'mod+z',l:'Undo',d:M+' Z',scope:'editor'},{k:'escape',l:'Close',d:'Esc'}],scope=false,last=null,lastT=0,$=function(i){return document.getElementById(i)};\nfunction r(){$('hk-grid').innerHTML=K.map(function(x,i){var off=x.scope&&!scope;return '<div id=\"hk-'+i+'\" class=\"'+(off?'off':'')+'\"><span>'+x.l+(x.scope?' <small style=\"color:var(--fog)\">· editor</small>':'')+'</span><kbd>'+x.d+'</kbd></div>'}).join('')}\nfunction hit(i,how){var el=$('hk-'+i);el.classList.add('hit');setTimeout(function(){el.classList.remove('hit')},500);$('hk-out').textContent='fired: '+K[i].k+'  →  '+K[i].l+(how?'  ('+how+')':'')}\n$('hk-box').addEventListener('keydown',function(e){var mod=mac?e.metaKey:e.ctrlKey,key=e.key.toLowerCase(),now=Date.now();var idx=-1;K.forEach(function(x,i){if(x.scope&&!scope)return;if(x.k==='mod+k'&&mod&&key==='k')idx=i;if(x.k==='mod+s'&&mod&&key==='s')idx=i;if(x.k==='mod+z'&&mod&&key==='z')idx=i;if(x.k==='?'&&e.key==='?')idx=i;if(x.k==='escape'&&key==='escape')idx=i;if(x.k==='g i'&&key==='i'&&last==='g'&&now-lastT<1000)idx=i});if(idx>=0){e.preventDefault();hit(idx,K[idx].k==='g i'?'sequence':'')}else if((K[idx]||{}).scope){}if(!mod){last=key;lastT=now}if(idx<0&&mod&&(key==='s'||key==='z')&&!scope){e.preventDefault();$('hk-out').textContent=M+' '+key.toUpperCase()+' ignored: the editor scope is off'}});\n$('hk-scope').onclick=function(){scope=!scope;this.textContent='editor scope: '+(scope?'on':'off');r();$('hk-box').focus()};r();})();"
+ },
+ "features": {
+  "title": "Every shortcut pattern, one registry.",
+  "items": [
+   {
+    "name": "`useHotkey`",
+    "text": "Registers on setup, unregisters on unmount. `target` takes an element ref for panel-local keys."
+   },
+   {
+    "name": "Sequences",
+    "text": "`g i`, Gmail and vim style: the next key must follow within a second."
+   },
+   {
+    "name": "Comma lists",
+    "text": "`'ctrl+s, mod+p'` binds one handler to several combos."
+   },
+   {
+    "name": "`useHotkeyScope`",
+    "text": "Reference-counted scopes; `enableScope` / `disableScope` for code outside components."
+   },
+   {
+    "name": "`event: 'keyup'`",
+    "text": "Act on release, for push-to-talk."
+   },
+   {
+    "name": "`once` and `ignoreRepeat`",
+    "text": "Fire once and unregister, or ignore auto-repeat while a key is held."
+   },
+   {
+    "name": "`enabled: () => …`",
+    "text": "Gate a shortcut on a signal: no re-registering when the condition flips."
+   },
+   {
+    "name": "`trigger('g i')`",
+    "text": "Run the bound action from a command palette or a test. Returns how many handlers fired."
+   },
+   {
+    "name": "`getRegisteredHotkeys()`",
+    "text": "Every shortcut with its scope and description, ready for a \"?\" help dialog."
+   },
+   {
+    "name": "`getHotkeyConflicts()`",
+    "text": "Finds `ctrl+s` and `control+s` bound twice in one scope, even when the strings differ."
+   }
+  ]
+ },
+ "recipes": [
+  {
+   "title": "A help dialog that lists itself",
+   "text": "Give each shortcut a description. The list that `?` opens reads the registry each time it opens, so it never drifts from what is bound.",
+   "code": "import { For, Show } from '@pyreon/core'\nimport { signal } from '@pyreon/reactivity'\nimport { formatCombo, getRegisteredHotkeys, parseShortcut, useHotkey } from '@pyreon/hotkeys'\n\n// 'g i' is a sequence: format each step\nconst label = (shortcut: string) =>\n  shortcut.split(/\\s+/).map((step) => formatCombo(parseShortcut(step))).join(' then ')\n\nexport function Shortcuts(props: { openPalette: () => void; goToInbox: () => void }) {\n  const open = signal(false)\n  useHotkey('mod+k', props.openPalette, { description: 'Command palette' })\n  useHotkey('g i', props.goToInbox, { description: 'Go to inbox' })\n  useHotkey('?', () => open.set(true), { description: 'Show shortcuts' })\n  useHotkey('escape', () => open.set(false), { description: 'Close this list' })\n\n  // getRegisteredHotkeys() is a snapshot: read it each time the list opens\n  return (\n    <Show when={open}>\n      {() => (\n        <dl>\n          <For each={[...getRegisteredHotkeys()]} by={(h) => h.shortcut}>\n            {(h) => (\n              <>\n                <dt>{label(h.shortcut)}</dt>\n                <dd>{h.description}</dd>\n              </>\n            )}\n          </For>\n        </dl>\n      )}\n    </Show>\n  )\n}"
+  },
+  {
+   "title": "Shortcuts that only work in the panel",
+   "text": "Escape closes the panel only while focus is inside it. The listener is shared and removed with the last binding.",
+   "code": "import { elementRef, type VNodeChild } from '@pyreon/core'\nimport { useHotkey } from '@pyreon/hotkeys'\n\nconst Panel = (props: { onClose: () => void; children?: VNodeChild }) => {\n  const panel = elementRef<HTMLDivElement>()\n  useHotkey('escape', () => props.onClose(), { target: panel })\n  return <div ref={panel} tabIndex={-1}>{props.children}</div>\n}"
+  }
+ ],
+ "api": {
+  "title": "Hooks, a registry and a parser.",
+  "groups": [
+   {
+    "name": "hooks",
+    "items": [
+     "useHotkey",
+     "useHotkeyScope"
+    ]
+   },
+   {
+    "name": "registry",
+    "items": [
+     "registerHotkey",
+     "trigger",
+     "enableScope",
+     "disableScope",
+     "getActiveScopes",
+     "getRegisteredHotkeys",
+     "getHotkeyConflicts",
+     "getPressedKeys",
+     "isKeyPressed"
+    ]
+   },
+   {
+    "name": "parsing",
+    "items": [
+     "parseShortcut",
+     "formatCombo",
+     "matchesCombo",
+     "splitShortcutList"
+    ]
+   },
+   {
+    "name": "types",
+    "items": [
+     "UseHotkeyOptions",
+     "HotkeyOptions",
+     "HotkeyEntry",
+     "KeyCombo",
+     "InputKind"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Text fields win by default",
+   "text": "A shortcut does not fire while the user types. If ⌘S should save from inside a textarea, pass `enableOnInputs: ['textarea']` or `true`."
+  },
+  {
+   "title": "Build server help panels from config",
+   "text": "Registration is a no-op on the server, so `getRegisteredHotkeys()` is empty during SSR. Render a static list there, or the live one after mount."
+  },
+  {
+   "title": "Sequences fire on keydown",
+   "text": "`g i` cannot use `event: 'keyup'`; registration throws a clear error if you try."
+  },
+  {
+   "title": "On native, keep it literal",
+   "text": "iOS and Android lower `useHotkey` with a literal shortcut and a handler that does not read the event. A computed shortcut, a comma list or a handler reading `e.key` warns by name and is dropped there."
+  }
+ ],
+ "faq": [
+  {
+   "q": "Does it prevent the browser default?",
+   "a": "Yes, by default, which is what you want for ⌘S and ⌘K. Pass `preventDefault: false` for a shortcut that should let the browser act as well."
+  },
+  {
+   "q": "What about keyboard layouts and IME input?",
+   "a": "Matching uses the key the layout produces, so `?` fires on Shift+/. With Alt held it falls back to the physical key, so `alt+s` works on a Mac, where Option+S types ß. Keystrokes inside an IME composition never match, so typing Japanese or Chinese does not trigger shortcuts."
+  },
+  {
+   "q": "How fast is it?",
+   "a": "Against tinykeys, hotkeys-js and mousetrap: dispatch on a hit 1.7–7.5×, a miss 6.0–118× with 12 and 48 bindings, register plus teardown 1.17× vs tinykeys and 9–14× vs the other two. One run, bun, author-run; the record lists no loss."
+  },
+  {
+   "q": "Do I need to clean up?",
+   "a": "Not with `useHotkey`: it unregisters on unmount. `registerHotkey` returns an unregister function for code outside components."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/a11y",
+   "category": "fundamentals",
+   "name": "Accessibility",
+   "text": "Announce what a shortcut did to screen readers.",
+   "package": "@pyreon/a11y"
+  },
+  {
+   "href": "/products/hooks",
+   "category": "fundamentals",
+   "name": "Hooks",
+   "text": "`useKeyboard` and 60-odd more signal hooks.",
+   "package": "@pyreon/hooks"
+  },
+  {
+   "href": "/products/editor",
+   "category": "fundamentals",
+   "name": "Editors",
+   "text": "Editor-scoped shortcuts beside a code or rich-text editor.",
+   "package": "@pyreon/rich-text · @pyreon/code"
+  }
+ ],
+ "end": {
+  "title": "Press ? to see what else it does.",
+  "cta": "Read the hotkeys guide"
+ },
+ "benchmarks": {
+  "rival": "vs tinykeys 4, hotkeys-js 4, mousetrap 1.6 · bun/JavaScriptCore, 12 and 48 bindings",
+  "run": "overnight run, one run",
+  "h": "A key that is not a shortcut: up to 118× cheaper.",
+  "p": "Most keypresses are typing, not shortcuts, so the miss path is the one that runs all day. Pyreon buckets shortcuts by key; a miss is one lookup. Ranges cover the three rivals and both binding counts. No loss or tie is recorded.",
+  "rows": [
+   {
+    "op": "dispatch, key is not a shortcut",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "6.0–118×"
+   },
+   {
+    "op": "dispatch, key is a shortcut",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "1.7–7.5×"
+   },
+   {
+    "op": "register + teardown vs tinykeys",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "1.17×"
+   },
+   {
+    "op": "register + teardown vs hotkeys-js, mousetrap",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "9–14×"
+   }
+  ]
+ },
+ "glyphSvg": "<rect x=\"12\" y=\"30\" width=\"96\" height=\"60\" rx=\"10\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><path d=\"M32 74 H88\" stroke=\"currentColor\" stroke-width=\"9\"/><circle cx=\"84\" cy=\"50\" r=\"10\" fill=\"url(#eg)\"/>",
+ "sources": [
+  {
+   "claim": "hotkeys vs tinykeys/hotkeys-js/mousetrap: hit 1.7–7.5×, miss 6.0–118× (12 and 48 bindings), register+teardown 1.17× / 9–14×; no loss",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §10 hotkeys row"
+  },
+  {
+   "claim": "Key-bucketed dispatch: a miss is one Map lookup; one shared listener per (target, event type)",
+   "path": "packages/fundamentals/hotkeys/src/manifest.ts description; src/registry.ts"
+  },
+  {
+   "claim": "Defaults: preventDefault true, enableOnInputs false (input/textarea/select/contenteditable), scope global",
+   "path": "packages/fundamentals/hotkeys/src/types.ts HotkeyOptions"
+  },
+  {
+   "claim": "mod+s fires on Ctrl+S (non-Mac UA), ignored inside an <input>, sequence g i, ? on Shift+/, scoped ctrl+z only after enableScope, trigger returns 1, unregister works",
+   "path": ".scratch/app/hk.ts (happy-dom, run on main)"
+  },
+  {
+   "claim": "getHotkeyConflicts finds mod+s and control+s as one conflict",
+   "path": ".scratch/app/hk.ts \"conflicts\" output"
+  },
+  {
+   "claim": "registerHotkey is a no-op on the server",
+   "path": "packages/fundamentals/hotkeys/src/registry.ts registerHotkey isServer branch"
+  },
+  {
+   "claim": "keyup is rejected for sequences with a clear error",
+   "path": "packages/fundamentals/hotkeys/src/types.ts event option doc"
+  },
+  {
+   "claim": "useHotkey target accepts a getter, resolved after mount",
+   "path": "packages/fundamentals/hotkeys/src/use-hotkey.ts l.36-65"
+  },
+  {
+   "claim": "Native: literal useHotkey lowers to SwiftUI .keyboardShortcut / Compose key handler; computed shortcut, combo list, reading the event warn and drop",
+   "path": "packages/fundamentals/hotkeys/src/manifest.ts multiplatform.nativeFrontend"
+  },
+  {
+   "claim": "Rival before-code typechecks (tinykeys 4.0.1, hotkeys-js 4.1.2, React 19 types)",
+   "path": ".scratch/app/rival/hotkeys.tsx (tsc exit 0)"
+  }
+ ]
+}

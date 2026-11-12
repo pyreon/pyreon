@@ -62,8 +62,6 @@ const out: string[] = [
   '---',
   '',
 ]
-out.push('# Examples')
-out.push('')
 out.push(
   `Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. ${total} examples across ${topics.length} topics. (Generated from \`docs/src/examples/\` by \`docs/scripts/gen-examples-gallery.ts\`.)`,
 )

@@ -3,8 +3,6 @@ title: "4. Components run once"
 description: "Tutorial chapter 4 — the one rule that explains all of Pyreon: components run ONCE, and reactivity depends on WHERE you read a signal."
 ---
 
-# 4. Components run once
-
 This is the single most important idea in Pyreon. **A component function runs exactly once** — on mount. It is not re-invoked when state changes. So what makes the UI update?
 
 > Reactivity depends on **where** you read a signal. A signal read inside a JSX expression (or an `effect` / `computed`) is wired to that spot; a write updates only that spot. The component body itself never re-runs.

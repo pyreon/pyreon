@@ -1,0 +1,326 @@
+{
+ "id": "storage",
+ "route": "/products/storage",
+ "name": "Storage",
+ "package": "@pyreon/storage",
+ "category": "fundamentals · persistence",
+ "hero": {
+  "title": "A signal that remembers. In every tab, after every reload.",
+  "emberWord": "remembers",
+  "lede": "`useStorage('theme', 'light')` is a signal backed by localStorage: read it with `theme()`, write it with `theme.set()`, and every open tab follows. Session storage, cookies (readable during SSR), IndexedDB and custom backends work the same way, with versioned migrations built in.",
+  "install": "bun add @pyreon/storage",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "backends",
+    "value": "local · session · cookie · IndexedDB · memory · custom"
+   },
+   {
+    "key": "writes",
+    "value": "10.1–29.7× faster<small>vs Jotai `atomWithStorage` and Zustand `persist`; one run.</small>"
+   },
+   {
+    "key": "SSR",
+    "value": "cookies read per request<small>No flash of the wrong theme or locale.</small>"
+   },
+   {
+    "key": "native",
+    "value": "{dot:warn}iOS and Android, experimental<small>Persists through the platform's own storage.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "Persistence without the plumbing.",
+  "items": [
+   {
+    "title": "It is a signal",
+    "text": "`theme()` reads, `theme.set()` writes, `theme.remove()` deletes and returns to the default. Every component calling `useStorage('theme', …)` gets the same signal, and every tab updates through the `storage` event."
+   },
+   {
+    "title": "Old data upgrades itself",
+    "text": "Give `version: 2` and a `migrate(old, from)`. A value written by last month's release, or by a tab still running it, is migrated on read. Values from before versioning arrive as `from = 0`."
+   },
+   {
+    "title": "The right theme on the first paint",
+    "text": "`useCookie` reads the request's `Cookie` header during SSR. Under `renderToString` each request gets its own cookie signals, so concurrent users never see each other's values."
+   },
+   {
+    "title": "Failures don't crash the page",
+    "text": "A corrupt stored value falls back to the default, private mode degrades to memory, and a quota error reaches `onError` while the UI keeps the new value."
+   }
+  ]
+ },
+ "difference": {
+  "title": "Persisted theme, synced across tabs.",
+  "before": {
+   "label": "localStorage by hand",
+   "caption": "Parse, guard, listen, re-render, and remember the quota. Per key.",
+   "code": "type Theme = 'light' | 'dark'\n\nlet theme: Theme = 'light'\ntry {\n  const raw = localStorage.getItem('theme')\n  if (raw) theme = JSON.parse(raw) as Theme // corrupt value? private mode?\n} catch {}\n\nwindow.addEventListener('storage', (e) => {\n  if (e.key === 'theme' && e.newValue) {\n    theme = JSON.parse(e.newValue) as Theme\n    render(theme) // and every other place that shows it\n  }\n})\n\nfunction setTheme(next: Theme) {\n  theme = next\n  localStorage.setItem('theme', JSON.stringify(next)) // quota exceeded?\n  render(theme)\n}\nsetTheme('dark')"
+  },
+  "after": {
+   "label": "with @pyreon/storage",
+   "caption": "A signal that is persisted, shared and synced.",
+   "code": "import { useStorage } from '@pyreon/storage'\n\nconst theme = useStorage<'light' | 'dark'>('theme', 'light')\n\ntheme() // 'light', or whatever was saved; a corrupt value falls back to the default\ntheme.set('dark') // saved, and every open tab updates\ntheme.remove() // back to 'light', entry deleted"
+  }
+ },
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "It's really in your localStorage.",
+  "text": "Change it, reload the page, or open this page in a second tab and watch it follow.",
+  "component": "DemoStorage",
+  "reference": "pkg-storage.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"ui\">\n    <label>useStorage('pyreon-demo-theme', 'light')</label>\n    <div class=\"st-seg\" id=\"st-t\"><button type=\"button\">light</button><button type=\"button\">dark</button><button type=\"button\">system</button></div>\n    <label style=\"margin-top:16px\">useStorage('pyreon-demo-note', '')</label>\n    <input id=\"st-n\" placeholder=\"Type something, then reload\">\n    <div style=\"display:flex;gap:8px;margin-top:14px\"><button class=\"sec\" type=\"button\" id=\"st-r\">theme.remove()</button><button class=\"sec\" type=\"button\" id=\"st-c\">clearStorage()</button></div>\n  </div>\n  <div class=\"card\"><div class=\"in\"><span class=\"label\">localStorage, live</span><pre id=\"st-raw\"></pre><p class=\"note\" id=\"st-x\">Open a second tab to see cross-tab sync.</p></div></div>\n</div>",
+  "referenceCss": ".st-seg{display:flex;gap:4px;padding:4px;border:1px solid #D6D0C4;border-radius:10px;width:fit-content}.st-seg button{height:32px;padding:0 14px;border:0;border-radius:7px;background:transparent;color:#5E5A69;font:inherit;font-size:13px;cursor:pointer}.st-seg button[aria-pressed=\"true\"]{background:#14141C;color:#fff}",
+  "referenceJs": "(function(){var K1='pyreon-demo-theme',K2='pyreon-demo-note',$=function(i){return document.getElementById(i)};\nfunction get(k,d){try{var v=localStorage.getItem(k);return v===null?d:JSON.parse(v)}catch(e){return d}}function set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}function rm(k){try{localStorage.removeItem(k)}catch(e){}}\nfunction draw(){var t=get(K1,'light');document.querySelectorAll('#st-t button').forEach(function(b){b.setAttribute('aria-pressed',b.textContent===t)});if(document.activeElement!==$('st-n'))$('st-n').value=get(K2,'');var r={};try{[K1,K2].forEach(function(k){var v=localStorage.getItem(k);if(v!==null)r[k]=v})}catch(e){}$('st-raw').textContent=Object.keys(r).length?Object.keys(r).map(function(k){return k+': '+r[k]}).join('\\n'):'(empty, defaults in use)'}\ndocument.querySelectorAll('#st-t button').forEach(function(b){b.onclick=function(){set(K1,b.textContent);draw()}});$('st-n').oninput=function(){set(K2,this.value);draw()};$('st-r').onclick=function(){rm(K1);draw()};$('st-c').onclick=function(){rm(K1);rm(K2);$('st-n').value='';draw()};\nwindow.addEventListener('storage',function(e){if(e.key===K1||e.key===K2){draw();$('st-x').textContent='↻ updated from another tab'}});draw();})();"
+ },
+ "features": {
+  "title": "Every place a browser can keep data.",
+  "items": [
+   {
+    "name": "`useStorage`",
+    "text": "localStorage, with cross-tab sync."
+   },
+   {
+    "name": "`useSessionStorage`",
+    "text": "per-tab state that survives a reload."
+   },
+   {
+    "name": "`useCookie`",
+    "text": "`maxAge`, `sameSite`, `secure`, and SSR reads through `setCookieSource`."
+   },
+   {
+    "name": "`useIndexedDB`",
+    "text": "large values; the signal updates at once and the write is debounced and flushed on `pagehide`."
+   },
+   {
+    "name": "`useMemoryStorage`",
+    "text": "for tests and SSR."
+   },
+   {
+    "name": "`createStorage({ get, set, remove })`",
+    "text": "your own backend, for example encrypted at rest."
+   },
+   {
+    "name": "`version` + `migrate`",
+    "text": "on every backend, cross-tab included."
+   },
+   {
+    "name": "`writeDebounceMs`",
+    "text": "coalesce writes from a textarea; pending ones flush when the tab closes."
+   },
+   {
+    "name": "Custom serializers and `onError`",
+    "text": "for dates, maps, and quota failures."
+   },
+   {
+    "name": "`removeStorage` / `clearStorage`",
+    "text": "cleanup helpers."
+   }
+  ]
+ },
+ "api": {
+  "title": "Five hooks, a factory, two helpers.",
+  "groups": [
+   {
+    "name": "hooks",
+    "items": [
+     "useStorage",
+     "useSessionStorage",
+     "useCookie",
+     "useIndexedDB",
+     "useMemoryStorage"
+    ]
+   },
+   {
+    "name": "advanced",
+    "items": [
+     "createStorage",
+     "setCookieSource"
+    ]
+   },
+   {
+    "name": "cleanup",
+    "items": [
+     "removeStorage",
+     "clearStorage"
+    ]
+   },
+   {
+    "name": "types",
+    "items": [
+     "StorageSignal",
+     "StorageOptions",
+     "CookieOptions",
+     "IndexedDBOptions",
+     "StorageBackend"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Not for secrets",
+   "text": "Browser storage is readable by any script on the page. On a device, use `useSecureStorage` from `@pyreon/hooks` for tokens."
+  },
+  {
+   "title": "IndexedDB starts at the default",
+   "text": "Reads are async, so the signal shows the default until the stored value arrives."
+  },
+  {
+   "title": "Concurrent SSR needs an accessor",
+   "text": "Pass `setCookieSource` a function that reads the current request, and render inside `renderToString` or `runWithRequestContext`, which isolate the cached signals per request. A plain string is one shared slot."
+  },
+  {
+   "title": "One key, one set of options",
+   "text": "Every call for a key shares one signal, so a second call's different default is ignored, with a development warning."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/store",
+   "category": "fundamentals",
+   "name": "Store",
+   "text": "Persist a whole store.",
+   "package": "@pyreon/store"
+  },
+  {
+   "href": "/products/urlstate",
+   "category": "fundamentals",
+   "name": "URL State",
+   "text": "State that lives in the URL instead.",
+   "package": "@pyreon/url-state"
+  },
+  {
+   "href": "/products/sync",
+   "category": "fundamentals",
+   "name": "Sync",
+   "text": "When the data should follow the user to other devices, not just other tabs.",
+   "package": "@pyreon/sync"
+  }
+ ],
+ "end": {
+  "title": "Remember everything. Write none of the plumbing.",
+  "cta": "Read the storage guide"
+ },
+ "benchmarks": {
+  "rival": "vs Jotai atomWithStorage and Zustand persist · bun / JavaScriptCore",
+  "run": "overnight run, one run",
+  "h": "Persisted writes 10.1× to 29.7× faster.",
+  "p": "All three libraries write to the same in-memory storage engine, and a correctness gate checks that all three agree before anything is timed. Reads are single-digit nanoseconds everywhere; Zustand's is one nanosecond quicker.",
+  "rows": [
+   {
+    "op": "write",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "10.1–29.7×"
+   },
+   {
+    "op": "create",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "1.7–1.8×"
+   },
+   {
+    "op": "read",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "loss",
+    "label": "Zustand persist 1.5× (4 vs 3 ns, rounded)"
+   }
+  ]
+ },
+ "glyphSvg": "<ellipse cx=\"60\" cy=\"28\" rx=\"40\" ry=\"13\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><path d=\"M20 28 V90 Q60 114 100 90 V28\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><circle cx=\"60\" cy=\"68\" r=\"15\" fill=\"url(#eg)\"/>",
+ "proof": [
+  {
+   "stat": "29.7×",
+   "label": "faster persisted writes at best (10.1× at worst) than Jotai `atomWithStorage` and Zustand `persist`.",
+   "source": "BENCHMARKS.md §10 storage row, overnight run 2026-11-05, bun, one run"
+  },
+  {
+   "stat": "1.8×",
+   "label": "faster to create a persisted value (1.7× at worst).",
+   "source": "BENCHMARKS.md §10 storage row, one run"
+  }
+ ],
+ "comingFrom": [
+  {
+   "lib": "Zustand persist",
+   "title": "Persistence without a middleware or a store.",
+   "before": "import { create } from 'zustand'\nimport { createJSONStorage, persist } from 'zustand/middleware'\n\ntype Prefs = { theme: 'light' | 'dark'; setTheme: (t: 'light' | 'dark') => void }\n\nconst usePrefs = create<Prefs>()(\n  persist(\n    (set) => ({ theme: 'light', setTheme: (theme) => set({ theme }) }),\n    {\n      name: 'prefs',\n      storage: createJSONStorage(() => localStorage),\n      version: 2,\n      migrate: (old, version) => (version < 2 ? { ...(old as object), theme: 'light' } : old) as Prefs,\n    },\n  ),\n)\n// cross-tab: add your own 'storage' listener that calls usePrefs.persist.rehydrate()",
+   "after": "import { useStorage } from '@pyreon/storage'\n\ntype Prefs = { theme: 'light' | 'dark'; density: 'cozy' | 'compact' }\n\nconst prefs = useStorage<Prefs>('prefs', { theme: 'light', density: 'cozy' }, {\n  version: 2,\n  // runs on read for a value stored under an older version (or none: from = 0),\n  // including one another tab just wrote\n  migrate: (old, from) => (from < 2 ? { ...(old as Prefs), density: 'cozy' } : (old as Prefs)),\n})\n\nprefs.set({ ...prefs(), theme: 'dark' }) // saved; every open tab updates",
+   "note": "`name` becomes the key, `version` and `migrate` carry over, and cross-tab sync needs no listener. To persist part of a `@pyreon/store` store, return a `useStorage` signal from its setup instead of using `partialize`."
+  },
+  {
+   "lib": "Jotai atomWithStorage",
+   "title": "The atom is the signal.",
+   "before": "import { useAtom } from 'jotai'\nimport { atomWithStorage } from 'jotai/utils'\n\nconst themeAtom = atomWithStorage<'light' | 'dark'>('theme', 'light')\n\nfunction ThemeToggle() {\n  const [theme, setTheme] = useAtom(themeAtom)\n  return (\n    <button onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}>{theme}</button>\n  )\n}",
+   "after": "import { useStorage } from '@pyreon/storage'\n\nconst theme = useStorage<'light' | 'dark'>('theme', 'light') // same key → same signal\n\nfunction ThemeToggle() {\n  return (\n    <button onClick={() => theme.set(theme() === 'light' ? 'dark' : 'light')}>{theme()}</button>\n  )\n}",
+   "note": "No `useAtom` pair: read `theme()` anywhere and only that text updates. Other tabs follow through the `storage` event."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "A theme with no flash, on a busy server",
+   "text": "The cookie decides the server render, localStorage keeps other tabs in step, and concurrent requests each read their own cookie.",
+   "code": "import { runWithRequestContext } from '@pyreon/runtime-server'\nimport { setCookieSource, useCookie, useStorage } from '@pyreon/storage'\nimport { AsyncLocalStorage } from 'node:async_hooks'\n\n// server: each concurrent request reads its own Cookie header.\n// runWithRequestContext (renderToString does the same) isolates the signal registry per request.\nconst current = new AsyncLocalStorage<Request>()\nsetCookieSource(() => current.getStore()?.headers.get('cookie') ?? '')\n\nconst handle = <T>(req: Request, render: () => Promise<T>) =>\n  current.run(req, () => runWithRequestContext(render))\n\n// shared: the cookie decides the first paint; localStorage mirrors it for fast reads and other tabs\nfunction useTheme() {\n  const cookie = useCookie<'light' | 'dark'>('theme', 'light', { maxAge: 60 * 60 * 24 * 365, sameSite: 'lax' })\n  const local = useStorage('theme', cookie())\n  const set = (next: 'light' | 'dark') => {\n    local.set(next)\n    cookie.set(next)\n  }\n  return { theme: local, set }\n}"
+  },
+  {
+   "title": "Reshape stored data without losing it",
+   "text": "Users who stored `{ theme }` last month get `{ theme, density }` today, on first read.",
+   "code": "import { useStorage } from '@pyreon/storage'\n\ntype Prefs = { theme: 'light' | 'dark'; density: 'cozy' | 'compact' }\n\nconst prefs = useStorage<Prefs>('prefs', { theme: 'light', density: 'cozy' }, {\n  version: 2,\n  // runs on read for a value stored under an older version (or none: from = 0),\n  // including one another tab just wrote\n  migrate: (old, from) => (from < 2 ? { ...(old as Prefs), density: 'cozy' } : (old as Prefs)),\n})\n\nprefs.set({ ...prefs(), theme: 'dark' }) // saved; every open tab updates"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Does it really sync between tabs?",
+   "a": "Yes, through the browser's `storage` event, for localStorage-backed signals. A versioned value written by another tab is migrated before it lands. Session storage is per tab by definition."
+  },
+  {
+   "q": "What happens in private mode or when storage is full?",
+   "a": "`useStorage` probes for write access and degrades to an in-memory value instead of throwing. A failed write calls `onError`; the signal keeps the new value so the UI stays consistent."
+  },
+  {
+   "q": "How is it measured?",
+   "a": "One overnight run under bun, against Jotai `atomWithStorage` and Zustand `persist` writing to the same in-memory engine. We wrote it; run `bun run --filter '@pyreon/storage' bench:storage`."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "writes 10.1–29.7×, create 1.7–1.8×, read loss 1.5× (4 vs 3 ns)",
+   "path": "BENCHMARKS.md §10 storage row (overnight)"
+  },
+  {
+   "claim": "Shared in-memory engine; correctness gate reads backing store",
+   "path": ".agents/guides/fundamentals/references/storage.md"
+  },
+  {
+   "claim": "Migration from a pre-version value (from = 0) and envelope; corrupt value → default; other-tab storage event updates the signal; remove() deletes the entry",
+   "path": "scratch run-storage.ts output"
+  },
+  {
+   "claim": "Cookie signals isolated per request only under runWithRequestContext/renderToString; a bare AsyncLocalStorage + accessor without it returned request 1's value to request 2",
+   "path": "packages/fundamentals/storage/src/registry.ts L36-60; scratch run-storage-ssr2.ts ('dark dark dark') vs run-storage-ssr.ts ('dark, light, light')"
+  },
+  {
+   "claim": "Same key, different default → one signal + dev warning",
+   "path": "scratch run-storage-ssr2.ts warning text"
+  },
+  {
+   "claim": "useIndexedDB debounce default 100 ms, flushed on pagehide",
+   "path": "packages/fundamentals/storage/src/indexed-db.ts L116-154"
+  },
+  {
+   "claim": "Native: @PyreonAppStorage (Swift) / rememberPyreonStorage (Kotlin)",
+   "path": "packages/fundamentals/storage/src/manifest.ts; docs storage.md 'Multiplatform'"
+  },
+  {
+   "claim": "Draft fixes: native said '@AppStorage on iOS' (it is the PyreonAppStorage runtime) with an ok dot (experimental); '9 exports' label replaced",
+   "path": "packages/fundamentals/storage/src/manifest.ts"
+  }
+ ]
+}

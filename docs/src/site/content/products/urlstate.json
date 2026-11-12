@@ -1,0 +1,376 @@
+{
+ "id": "urlstate",
+ "route": "/products/urlstate",
+ "name": "URL State",
+ "package": "@pyreon/url-state",
+ "category": "fundamentals · url",
+ "hero": {
+  "title": "Refresh. Paste the link. The filters are still there.",
+  "emberWord": "still",
+  "lede": "`useUrlState('page', 1)` is a signal that lives in the address bar, typed from its default. Search, sort, tabs and pagination survive a reload, a shared link and the back button, with no parsers to write and no adapter to mount.",
+  "install": "bun add @pyreon/url-state",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "one line",
+    "value": "`useUrlState('page', 1)`<small>`?page=3` reads back as the number 3.</small>"
+   },
+   {
+    "key": "types",
+    "value": "from the default<small>Numbers, booleans, strings and arrays; custom serializers for the rest.</small>"
+   },
+   {
+    "key": "vs nuqs 2",
+    "value": "array parse 2.1× faster<small>One run, bun/JavaScriptCore. Integer parse is 1.1× slower.</small>"
+   },
+   {
+    "key": "where it runs",
+    "value": "web<small>On iOS and Android (experimental), scalar params bind to the native router's query instead; literal arrays follow in the next release.</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "2.1×",
+   "label": "faster array parsing than nuqs 2",
+   "source": "BENCHMARKS.md §10, url-state row · overnight run, one run, bun/JavaScriptCore"
+  },
+  {
+   "stat": "1.8×",
+   "label": "faster boolean parsing than nuqs",
+   "source": "BENCHMARKS.md §10, url-state row · one run"
+  },
+  {
+   "stat": "0",
+   "label": "new history entries for a batch of writes made with the default `replace`",
+   "source": ".scratch/app/url.ts · `batchUrlUpdates` makes one `replaceState`"
+  }
+ ],
+ "why": {
+  "title": "State the user can bookmark.",
+  "items": [
+   {
+    "title": "Typed by its default",
+    "text": "`useUrlState('page', 1)` returns a number, `useUrlState('inStock', false)` a boolean, `useUrlState('tags', [] as string[])` an array. `?tags=a,b` reads back as `['a', 'b']`."
+   },
+   {
+    "title": "Clean URLs by default",
+    "text": "A value equal to its default leaves the URL, so `sort=name` never shows up. Set `clearOnDefault: false` to keep it."
+   },
+   {
+    "title": "Back and forward just work",
+    "text": "A `popstate` updates every signal bound to that key and re-runs what reads it. Two components on the same key stay in sync."
+   },
+   {
+    "title": "One history write per click",
+    "text": "Writes use `replaceState` unless you ask for `push`. `batchUrlUpdates(() => { … })` folds several params into one history operation; `debounce: 300` keeps a search box from writing on every key."
+   }
+  ]
+ },
+ "difference": {
+  "title": "The parsers come from your defaults.",
+  "before": {
+   "label": "React + nuqs 2",
+   "caption": "A parser per param, a tuple per hook, and an adapter at the root.",
+   "code": "import { useQueryState, useQueryStates, parseAsInteger,\n  parseAsString, parseAsBoolean } from 'nuqs'\nimport { NuqsAdapter } from 'nuqs/adapters/react'\n\nfunction Products() {\n  const [page, setPage] = useQueryState('page', parseAsInteger.withDefault(1))\n  const [filters, setFilters] = useQueryStates({\n    q: parseAsString.withDefault(''),\n    sort: parseAsString.withDefault('name'),\n    inStock: parseAsBoolean.withDefault(false),\n  })\n  return (\n    <>\n      <input value={filters.q} onChange={(e) => setFilters({ q: e.target.value })} />\n      <button onClick={() => setPage((p) => p + 1)}>Next ({page})</button>\n    </>\n  )\n}\n\nexport const App = () => (\n  <NuqsAdapter>\n    <Products />\n  </NuqsAdapter>\n)"
+  },
+  "after": {
+   "label": "with @pyreon/url-state",
+   "caption": "Each param is a signal. The default says the type. Only the text that reads it updates.",
+   "code": "import { useUrlState } from '@pyreon/url-state'\n\nconst Products = () => {\n  const page = useUrlState('page', 1)\n  const filters = useUrlState({ q: '', sort: 'name', inStock: false })\n  return (\n    <>\n      <input value={filters.q()} onInput={(e) => filters.q.set(e.currentTarget.value)} />\n      <button onClick={() => page.set(page() + 1)}>Next ({page()})</button>\n    </>\n  )\n}"
+  }
+ },
+ "comingFrom": [
+  {
+   "lib": "nuqs",
+   "title": "Parsers become defaults; setters become `.set()`.",
+   "before": "import { debounce, parseAsArrayOf, parseAsString, useQueryState } from 'nuqs'\n\nconst [tags, setTags] = useQueryState(\n  'tags',\n  parseAsArrayOf(parseAsString).withDefault([]),\n)\nconst [q, setQ] = useQueryState(\n  'q',\n  parseAsString.withDefault('').withOptions({ limitUrlUpdates: debounce(300) }),\n)\nsetTags(['red', 'blue'])",
+   "after": "import { useUrlState } from '@pyreon/url-state'\n\nconst tags = useUrlState('tags', [] as string[])\nconst q = useUrlState('q', '', { debounce: 300 })\n\ntags.set(['red', 'blue'])   // ?tags=red%2Cblue\ntags()                      // ['red', 'blue']",
+   "note": "nuqs ships more built-in parsers (dates, string literals, enums). Here those are a `serialize`/`deserialize` pair on the option, and a plain object default goes through JSON on its own. Both libraries drop a param that equals its default."
+  }
+ ],
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Change filters, watch the URL.",
+  "text": "Every control is a URL-synced signal. Defaults disappear from the address bar.",
+  "component": "DemoUrlstate",
+  "reference": "pkg-urlstate.html#demo",
+  "referenceHtml": "<div class=\"ui\"><div class=\"urlbar\" id=\"us-url\"></div>\n  <div class=\"row2\"><div><label for=\"us-q\">Search</label><input id=\"us-q\" placeholder=\"lamp\"></div><div><label for=\"us-sort\">Sort</label><select id=\"us-sort\"><option>name</option><option>price</option><option>rating</option></select></div></div>\n  <div style=\"display:flex;gap:18px;margin-top:14px;flex-wrap:wrap\"><label style=\"display:flex;gap:8px;align-items:center;font-weight:500\"><input type=\"checkbox\" id=\"us-stock\" style=\"width:16px;height:16px;accent-color:#C2410C\"> In stock</label><span style=\"display:flex;gap:6px;align-items:center\">Page <button class=\"sec\" type=\"button\" id=\"us-prev\">‹</button><b id=\"us-page\">1</b><button class=\"sec\" type=\"button\" id=\"us-next\">›</button></span></div>\n</div>",
+  "referenceCss": ".ds-ctl{display:grid;grid-template-columns:80px 1fr;align-items:center;gap:10px}.seg{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;width:fit-content;flex-wrap:wrap}.seg button{height:30px;padding:0 14px;border:0;border-radius:999px;background:transparent;color:var(--fog);font-family:var(--mono);font-size:12px;cursor:pointer}.seg button[aria-pressed=\"true\"]{background:var(--line);color:var(--ivory)}\n.pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px}.pick button{height:38px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--mist);font-family:var(--mono);font-size:12px;cursor:pointer}.pick button[aria-pressed=\"true\"]{border-color:rgba(255,94,26,.55);background:rgba(255,94,26,.08);color:var(--ivory)}\n.tri{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}@media(max-width:760px){.tri{grid-template-columns:minmax(0,1fr)}}.tri div{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--well)}.tri .label{display:block;margin-bottom:8px}.tri code{font-size:12.5px;color:var(--s-fg);white-space:pre-wrap;display:block}\n.urlbar{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:10px;background:#EDE6D6;font-family:var(--mono);font-size:12px;color:var(--hover-line);margin-bottom:16px;overflow:hidden;white-space:nowrap}.urlbar b{color:#C2410C;font-weight:500}",
+  "referenceJs": "(function(){var S={q:'',sort:'name',inStock:false,page:1},D={q:'',sort:'name',inStock:false,page:1},$=function(i){return document.getElementById(i)};function r(){var p=Object.keys(S).filter(function(k){return S[k]!==D[k]}).map(function(k){return '<b>'+k+'</b>='+encodeURIComponent(S[k])});$('us-url').innerHTML='shop.example.com/products'+(p.length?'?'+p.join('&amp;'):'');$('us-page').textContent=S.page}\n$('us-q').oninput=function(){S.q=this.value;S.page=1;r()};$('us-sort').onchange=function(){S.sort=this.value;r()};$('us-stock').onchange=function(){S.inStock=this.checked;S.page=1;r()};$('us-prev').onclick=function(){S.page=Math.max(1,S.page-1);r()};$('us-next').onclick=function(){S.page++;r()};r();})();"
+ },
+ "features": {
+  "title": "Small API, the whole job.",
+  "items": [
+   {
+    "name": "Single-param mode",
+    "text": "`useUrlState('page', 1)` with `.set()`, `.reset()` and `.remove()`."
+   },
+   {
+    "name": "Schema mode",
+    "text": "`useUrlState({ q: '', sort: 'name' })` returns one signal per key."
+   },
+   {
+    "name": "Type coercion",
+    "text": "Numbers, floats, booleans and arrays come back as their types, not strings."
+   },
+   {
+    "name": "Arrays two ways",
+    "text": "`?tags=a,b` (default, commas inside a value escaped) or `arrayFormat: 'repeat'` for `?tags=a&tags=b`."
+   },
+   {
+    "name": "`clearOnDefault`",
+    "text": "On by default: the URL holds only what differs from the default."
+   },
+   {
+    "name": "`debounce`",
+    "text": "One URL write after the user stops typing."
+   },
+   {
+    "name": "`replace: false`",
+    "text": "Use `pushState` when a change deserves its own back-button step."
+   },
+   {
+    "name": "`batchUrlUpdates`",
+    "text": "Several params, one history operation."
+   },
+   {
+    "name": "`onChange`",
+    "text": "Fires on back/forward, router navigation or another hook writing the same key, never for your own `.set()`."
+   },
+   {
+    "name": "`setUrlRouter`",
+    "text": "Route writes through `@pyreon/router` (or anything with `replace(path)`) so guards and scroll handling stay in charge."
+   }
+  ]
+ },
+ "recipes": [
+  {
+   "title": "A product list you can link to",
+   "text": "Search, sort, a stock filter and the page number, all in the URL. Changing the search resets the page in the same history write.",
+   "code": "import { batchUrlUpdates, useUrlState } from '@pyreon/url-state'\n\nconst Catalogue = () => {\n  const f = useUrlState({ q: '', sort: 'name', inStock: false })\n  const page = useUrlState('page', 1)\n\n  const search = (q: string) =>\n    batchUrlUpdates(() => {\n      f.q.set(q)\n      page.reset()   // one replaceState for both\n    })\n\n  return <input value={f.q()} onInput={(e) => search(e.currentTarget.value)} />\n}"
+  },
+  {
+   "title": "Tabs that survive a reload",
+   "text": "A tab is a string param. The default tab keeps the URL clean; every other tab is shareable.",
+   "code": "const tab = useUrlState('tab', 'overview')\n\nconst Tabs = () => (\n  <nav>\n    <button aria-pressed={() => tab() === 'overview'} onClick={() => tab.set('overview')}>Overview</button>\n    <button aria-pressed={() => tab() === 'billing'} onClick={() => tab.set('billing')}>Billing</button>\n  </nav>\n)\n// /settings            → overview\n// /settings?tab=billing → billing"
+  }
+ ],
+ "api": {
+  "title": "Three functions.",
+  "groups": [
+   {
+    "name": "functions",
+    "items": [
+     "useUrlState",
+     "batchUrlUpdates",
+     "setUrlRouter"
+    ]
+   },
+   {
+    "name": "options",
+    "items": [
+     "debounce",
+     "replace",
+     "arrayFormat",
+     "clearOnDefault",
+     "serialize",
+     "deserialize",
+     "onChange"
+    ]
+   },
+   {
+    "name": "types",
+    "items": [
+     "UrlStateSignal",
+     "UrlStateOptions",
+     "ArrayFormat",
+     "Serializer",
+     "UrlRouter"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "The server renders the default",
+   "text": "On the server every signal starts at its default; it does not read the request URL. A server-rendered page linked with `?page=3` shows page 1 until the client takes over, so read the param in your loader when the first paint must match."
+  },
+  {
+   "title": "With a router set, the router writes",
+   "text": "After `setUrlRouter(router)`, a write is `router.replace(url)`, or `router.push(url)` for a signal with `replace: false`. A router without `push` falls back to `replace` and warns once."
+  },
+  {
+   "title": "Complex values need a serializer",
+   "text": "Dates and enums take a `serialize`/`deserialize` pair; a plain object default is stored as JSON. Keep the URL for what a user would share; put the rest in a store."
+  },
+  {
+   "title": "The address bar is a web thing",
+   "text": "On iOS and Android (experimental), `useUrlState` with a literal key and a string, number or boolean default binds to the native router's query; literal-array defaults join them in the next release. An object default stays web with a named warning, and `debounce`, `clearOnDefault: false` and custom serializers have no effect there."
+  }
+ ],
+ "faq": [
+  {
+   "q": "Does every keystroke add a history entry?",
+   "a": "No. Writes default to `replaceState`, and `debounce` delays the write until typing stops. Pass `replace: false` only where the back button should step through changes."
+  },
+  {
+   "q": "What if the URL holds garbage, like `?page=abc`?",
+   "a": "A value that does not parse as the default's type falls back to the default: `?page=abc` reads as 1, `?inStock=yes` as false. For stricter rules, pass a `deserialize`."
+  },
+  {
+   "q": "Is it faster than nuqs?",
+   "a": "On parsing, mostly: boolean 1.8×, array parse 2.1×, array serialize 1.2×, float 1.7×. Integer parse is 1.1× slower (8.1 vs 7.0 ns), and string, number serialize and round-trip tie. One run, bun, nanoseconds either way."
+  },
+  {
+   "q": "Do I need a router?",
+   "a": "No. Without one it writes to `history` directly. With `@pyreon/router`, call `setUrlRouter(router)` once so router navigation and URL state stay in step."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/router",
+   "category": "core",
+   "name": "Router",
+   "text": "Route URL writes through the router with `setUrlRouter`.",
+   "package": "@pyreon/router"
+  },
+  {
+   "href": "/products/table",
+   "category": "fundamentals",
+   "name": "Table",
+   "text": "Keep sort and filter state in the link.",
+   "package": "@pyreon/table"
+  },
+  {
+   "href": "/products/storage",
+   "category": "fundamentals",
+   "name": "Storage",
+   "text": "The same signal shape for localStorage and cookies.",
+   "package": "@pyreon/storage"
+  }
+ ],
+ "end": {
+  "title": "Your users already know how to share a URL. Let them.",
+  "cta": "Read the URL state guide"
+ },
+ "benchmarks": {
+  "rival": "vs nuqs 2.10.2 parsers · bun/JavaScriptCore",
+  "run": "overnight run, one run",
+  "h": "Array parsing 2.1× faster than nuqs.",
+  "p": "The codec work that runs on every read and write: parse the param, serialize it back. Wins on booleans, floats and arrays; integer parse is a nanosecond behind; three rows tie.",
+  "rows": [
+   {
+    "op": "array parse",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "2.1×"
+   },
+   {
+    "op": "boolean",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "1.8×"
+   },
+   {
+    "op": "float",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "1.7×"
+   },
+   {
+    "op": "array serialize",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "1.2×"
+   },
+   {
+    "op": "string",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "tie",
+    "label": "could not distinguish"
+   },
+   {
+    "op": "number serialize",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "tie",
+    "label": "could not distinguish"
+   },
+   {
+    "op": "round-trip",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "tie",
+    "label": "could not distinguish"
+   },
+   {
+    "op": "integer parse",
+    "pyreon": 8.1,
+    "rival": 7,
+    "unit": "ns",
+    "verdict": "loss",
+    "label": "nuqs 1.1×"
+   }
+  ]
+ },
+ "glyphSvg": "<rect x=\"10\" y=\"38\" width=\"100\" height=\"44\" rx=\"22\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><path d=\"M34 60 H62\" stroke=\"currentColor\" stroke-width=\"9\"/><circle cx=\"84\" cy=\"60\" r=\"11\" fill=\"url(#eg)\"/>",
+ "sources": [
+  {
+   "claim": "url-state vs nuqs rows (wins, ties, integer parse loss 8.1 vs 7.0 ns), overnight one run",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §10 url-state row"
+  },
+  {
+   "claim": "?page=3 → number 3; ?tags=a,b → [a,b]; ?inStock=true → boolean",
+   "path": ".scratch/app/url.ts (happy-dom, run on main)"
+  },
+  {
+   "claim": "clearOnDefault default true: sort back to \"name\" removes it from the URL",
+   "path": "packages/fundamentals/url-state/src/types.ts clearOnDefault; .scratch/app/url.ts \"back to default\""
+  },
+  {
+   "claim": "batchUrlUpdates: two writes, zero new history entries (replaceState)",
+   "path": "packages/fundamentals/url-state/src/sync.ts l.117-136; .scratch/app/url.ts \"batch … history 0\""
+  },
+  {
+   "claim": "Commas inside an array value are escaped and round-trip",
+   "path": ".scratch/app/url.ts \"tags enc\" → [\"red\",\"a,b\"]"
+  },
+  {
+   "claim": "popstate updates the signal and re-runs effects",
+   "path": ".scratch/app/url.ts \"popstate [2,7]\"; packages/fundamentals/url-state/src/use-url-state.ts l.229-248"
+  },
+  {
+   "claim": "onChange not called for own writes",
+   "path": "packages/fundamentals/url-state/src/types.ts onChange doc"
+  },
+  {
+   "claim": "With a router set, every write is router.replace; replace option ignored",
+   "path": "docs/src/content/docs/url-state.md \"Router Integration\" warning"
+  },
+  {
+   "claim": "Server: signals initialize to default; does not read request URL",
+   "path": "packages/fundamentals/url-state/src/manifest.ts description; docs/src/content/docs/url-state.md \"SSR\""
+  },
+  {
+   "claim": "Native: scalar and literal-array defaults bind to PyreonRouter query; object defaults, debounce, clearOnDefault, serializers stay web",
+   "path": "packages/fundamentals/url-state/src/manifest.ts multiplatform.nativeFrontend"
+  },
+  {
+   "claim": "nuqs 2 before code typechecks against nuqs 2.10.2 + @types/react 19",
+   "path": ".scratch/app/rival/nuqs.tsx (tsc exit 0)"
+  }
+ ]
+}

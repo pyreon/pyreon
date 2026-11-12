@@ -1,0 +1,1001 @@
+{
+  "version": "2026-11-11",
+  "note": "Every public route of the redesigned pyreon.dev. 'reference' = a page drawn on the design canvas (pulled 11 Nov); null = no canvas design, built from the template spec in ../visual-alignment.md. 'state': live (on main today), redesign (exists, gets the new design), new (to build), open PR, redirect pending.",
+  "sections": [
+    {
+      "section": "Home",
+      "pages": [
+        {
+          "route": "/",
+          "title": "Home",
+          "purpose": "Sell in one screen: runs once, the proof band, the install command; then route each visitor to their story.",
+          "audience": "developer, tech lead",
+          "primaryCta": "npm create @pyreon/zero@latest",
+          "content": "content/_home.json",
+          "template": "home",
+          "reference": "reference/Landing v5.html",
+          "decision": "keep",
+          "state": "redesign"
+        }
+      ]
+    },
+    {
+      "section": "Products",
+      "nav": "Products (mega menu)",
+      "pages": [
+        {
+          "route": "/products",
+          "title": "All products",
+          "purpose": "Show the whole box: 40 products in five groups, a one-line pitch each, so nobody installs a 31st library.",
+          "audience": "developer",
+          "primaryCta": "Open a product",
+          "content": "content/_products.json",
+          "template": "products-index",
+          "reference": "reference/products.html",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/zero",
+          "title": "Zero",
+          "purpose": "Make a developer want @pyreon/zero in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/zero.json#hero.install",
+          "content": "content/zero.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/content",
+          "title": "Content",
+          "purpose": "Make a developer want @pyreon/zero-content in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/content.json#hero.install",
+          "content": "content/content.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/native",
+          "title": "Native",
+          "purpose": "Make a developer want Pyreon Native · PMTC in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/native.json#hero.install",
+          "content": "content/native.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/primitives",
+          "title": "Primitives",
+          "purpose": "Make a developer want @pyreon/primitives in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/primitives.json#hero.install",
+          "content": "content/primitives.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/design",
+          "title": "Design System",
+          "purpose": "Make a developer want @pyreon/rocketstyle · styler · elements · coolgrid · kinetic in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/design.json#hero.install",
+          "content": "content/design.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/kinetic",
+          "title": "Motion",
+          "purpose": "Make a developer want @pyreon/kinetic + kinetic-presets in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/kinetic.json#hero.install",
+          "content": "content/kinetic.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/router",
+          "title": "Router",
+          "purpose": "Make a developer want @pyreon/router in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/router.json#hero.install",
+          "content": "content/router.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/reactivity",
+          "title": "Reactivity",
+          "purpose": "Make a developer want @pyreon/reactivity in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/reactivity.json#hero.install",
+          "content": "content/reactivity.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/form",
+          "title": "Forms",
+          "purpose": "Make a developer want @pyreon/form in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/form.json#hero.install",
+          "content": "content/form.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/validation",
+          "title": "Validation",
+          "purpose": "Make a developer want @pyreon/validate in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/validation.json#hero.install",
+          "content": "content/validation.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/auth",
+          "title": "Auth",
+          "purpose": "Make a developer want @pyreon/auth in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/auth.json#hero.install",
+          "content": "content/auth.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign",
+          "status": "next release",
+          "note": "@pyreon/auth is not on npm until the next release; the page ships with the release or carries the next-release label."
+        },
+        {
+          "route": "/products/query",
+          "title": "Query",
+          "purpose": "Make a developer want @pyreon/query in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/query.json#hero.install",
+          "content": "content/query.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/http",
+          "title": "HTTP",
+          "purpose": "Make a developer want @pyreon/http in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/http.json#hero.install",
+          "content": "content/http.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/store",
+          "title": "Store",
+          "purpose": "Make a developer want @pyreon/store in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/store.json#hero.install",
+          "content": "content/store.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/statetree",
+          "title": "State Tree",
+          "purpose": "Make a developer want @pyreon/state-tree in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/statetree.json#hero.install",
+          "content": "content/statetree.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/machine",
+          "title": "State Machines",
+          "purpose": "Make a developer want @pyreon/machine in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/machine.json#hero.install",
+          "content": "content/machine.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/sync",
+          "title": "Sync",
+          "purpose": "Make a developer want @pyreon/sync in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/sync.json#hero.install",
+          "content": "content/sync.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/storage",
+          "title": "Storage",
+          "purpose": "Make a developer want @pyreon/storage in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/storage.json#hero.install",
+          "content": "content/storage.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/feature",
+          "title": "Feature",
+          "purpose": "Make a developer want @pyreon/feature in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/feature.json#hero.install",
+          "content": "content/feature.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/i18n",
+          "title": "i18n",
+          "purpose": "Make a developer want @pyreon/i18n in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/i18n.json#hero.install",
+          "content": "content/i18n.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/permissions",
+          "title": "Permissions",
+          "purpose": "Make a developer want @pyreon/permissions in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/permissions.json#hero.install",
+          "content": "content/permissions.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/urlstate",
+          "title": "URL State",
+          "purpose": "Make a developer want @pyreon/url-state in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/urlstate.json#hero.install",
+          "content": "content/urlstate.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/hooks",
+          "title": "Hooks",
+          "purpose": "Make a developer want @pyreon/hooks in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/hooks.json#hero.install",
+          "content": "content/hooks.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/hotkeys",
+          "title": "Hotkeys",
+          "purpose": "Make a developer want @pyreon/hotkeys in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/hotkeys.json#hero.install",
+          "content": "content/hotkeys.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/rx",
+          "title": "RX",
+          "purpose": "Make a developer want @pyreon/rx in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/rx.json#hero.install",
+          "content": "content/rx.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/a11y",
+          "title": "Accessibility",
+          "purpose": "Make a developer want @pyreon/a11y in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/a11y.json#hero.install",
+          "content": "content/a11y.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/dnd",
+          "title": "Drag and Drop",
+          "purpose": "Make a developer want @pyreon/dnd in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/dnd.json#hero.install",
+          "content": "content/dnd.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/toast",
+          "title": "Toast",
+          "purpose": "Make a developer want @pyreon/toast in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/toast.json#hero.install",
+          "content": "content/toast.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/table",
+          "title": "Table",
+          "purpose": "Make a developer want @pyreon/table in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/table.json#hero.install",
+          "content": "content/table.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/virtual",
+          "title": "Virtual",
+          "purpose": "Make a developer want @pyreon/virtual in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/virtual.json#hero.install",
+          "content": "content/virtual.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/charts",
+          "title": "Charts",
+          "purpose": "Make a developer want @pyreon/charts in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/charts.json#hero.install",
+          "content": "content/charts.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/editor",
+          "title": "Editors",
+          "purpose": "Make a developer want @pyreon/rich-text · @pyreon/code in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/editor.json#hero.install",
+          "content": "content/editor.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/flow",
+          "title": "Flow",
+          "purpose": "Make a developer want @pyreon/flow in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/flow.json#hero.install",
+          "content": "content/flow.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/document",
+          "title": "Documents",
+          "purpose": "Make a developer want @pyreon/document in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/document.json#hero.install",
+          "content": "content/document.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/atlas",
+          "title": "Atlas",
+          "purpose": "Make a developer want @pyreon/atlas in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/atlas.json#hero.install",
+          "content": "content/atlas.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/lathe",
+          "title": "Lathe",
+          "purpose": "Make a developer want @pyreon/lathe in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/lathe.json#hero.install",
+          "content": "content/lathe.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/loom",
+          "title": "Loom",
+          "purpose": "Make a developer want @pyreon/loom in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/loom.json#hero.install",
+          "content": "content/loom.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/tooling",
+          "title": "Tooling",
+          "purpose": "Make a developer want @pyreon/cli · lint · devtools · mcp · testing in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/tooling.json#hero.install",
+          "content": "content/tooling.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/ai",
+          "title": "AI and MCP",
+          "purpose": "Make a developer want @pyreon/mcp in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/ai.json#hero.install",
+          "content": "content/ai.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/products/migrate",
+          "title": "Migrate",
+          "purpose": "Make a developer want Pyreon Compat in one screen, then prove it.",
+          "audience": "developer",
+          "primaryCta": "content/migrate.json#hero.install",
+          "content": "content/migrate.json",
+          "template": "product",
+          "reference": "reference/pkg-*.html (pkg-form, pkg-native, pkg-charts, pkg-ai, pkg-reactivity, pkg-zero drawn; the rest share ProductPage.tsx)",
+          "decision": "keep",
+          "state": "redesign"
+        }
+      ]
+    },
+    {
+      "section": "Why Pyreon",
+      "nav": "Why Pyreon (menu)",
+      "decisionNote": "Keep all five: each carries one wedge from facts.md (ONCE, NATIVE, AI, HONEST, STACK) that a homepage section can only tease. /why itself redirects to /why/components-run-once (no index page: the menu is the index).",
+      "pages": [
+        {
+          "route": "/why/components-run-once",
+          "title": "Components run once",
+          "purpose": "Your component runs once. Ever.",
+          "audience": "developer",
+          "primaryCta": "npm create @pyreon/zero@latest",
+          "content": "content/_why.json#pages[id=components-run-once]",
+          "template": "story",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        },
+        {
+          "route": "/why/one-codebase",
+          "title": "One codebase",
+          "purpose": "One .tsx file. A website, an iPhone app and an Android app.",
+          "audience": "developer",
+          "primaryCta": "npm create @pyreon/multiplatform@latest",
+          "content": "content/_why.json#pages[id=one-codebase]",
+          "template": "story",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        },
+        {
+          "route": "/why/ai-ready",
+          "title": "AI-ready",
+          "purpose": "Your AI writes a bug. The framework catches it.",
+          "audience": "developer",
+          "primaryCta": "npm create @pyreon/zero@latest",
+          "content": "content/_why.json#pages[id=ai-ready]",
+          "template": "story",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        },
+        {
+          "route": "/why/performance",
+          "title": "Performance",
+          "purpose": "2.6× faster than React. Don't trust us. Run it.",
+          "audience": "developer, tech lead",
+          "primaryCta": "See the full board",
+          "content": "content/_why.json#pages[id=performance]",
+          "template": "story",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        },
+        {
+          "route": "/why/full-stack",
+          "title": "Full stack",
+          "purpose": "SSG, SSR, ISR or SPA. Per route, in one line.",
+          "audience": "developer",
+          "primaryCta": "npm create @pyreon/zero@latest",
+          "content": "content/_why.json#pages[id=full-stack]",
+          "template": "story",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        },
+        {
+          "route": "/why",
+          "title": "Why Pyreon (redirect)",
+          "purpose": "Redirects to /why/components-run-once.",
+          "audience": "developer",
+          "primaryCta": "-",
+          "content": null,
+          "template": "redirect",
+          "reference": null,
+          "decision": "merge",
+          "state": "new",
+          "reason": "A five-item index adds a click and no content; the nav menu lists the five."
+        }
+      ]
+    },
+    {
+      "section": "Compare",
+      "nav": "Why Pyreon menu, 'Compare' row",
+      "decisionNote": "Keep all six. /compare/react-native and the app-framework docs page (/docs/compare-app-frameworks) stay consistent: the compare page is the selling summary and links the docs page for Expo, Flutter, KMP and Capacitor.",
+      "pages": [
+        {
+          "route": "/compare/react",
+          "title": "Pyreon vs React",
+          "purpose": "React ships 4× more JavaScript for the same app.",
+          "audience": "developer, tech lead",
+          "primaryCta": "npm create @pyreon/zero@latest",
+          "content": "content/_compare.json#pages[id=react]",
+          "template": "compare",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        },
+        {
+          "route": "/compare/next",
+          "title": "Pyreon vs Next.js",
+          "purpose": "File routes, SSR, SSG and ISR. On components that run once.",
+          "audience": "developer, tech lead",
+          "primaryCta": "npm create @pyreon/zero@latest",
+          "content": "content/_compare.json#pages[id=next]",
+          "template": "compare",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        },
+        {
+          "route": "/compare/solid",
+          "title": "Pyreon vs Solid",
+          "purpose": "Same signals as Solid. `renderToString` up to 4.7× faster.",
+          "audience": "developer, tech lead",
+          "primaryCta": "npm create @pyreon/zero@latest",
+          "content": "content/_compare.json#pages[id=solid]",
+          "template": "compare",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        },
+        {
+          "route": "/compare/vue",
+          "title": "Pyreon vs Vue",
+          "purpose": "Vue's reactivity without `.value`. In 1.6× less JavaScript.",
+          "audience": "developer, tech lead",
+          "primaryCta": "npm create @pyreon/zero@latest",
+          "content": "content/_compare.json#pages[id=vue]",
+          "template": "compare",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        },
+        {
+          "route": "/compare/svelte",
+          "title": "Pyreon vs Svelte",
+          "purpose": "2,047 components. Mounted 3× faster than Svelte 5.",
+          "audience": "developer, tech lead",
+          "primaryCta": "npm create @pyreon/zero@latest",
+          "content": "content/_compare.json#pages[id=svelte]",
+          "template": "compare",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        },
+        {
+          "route": "/compare/react-native",
+          "title": "Pyreon vs React Native and Expo",
+          "purpose": "One .tsx. A website, an iPhone app and an Android app.",
+          "audience": "developer, tech lead",
+          "primaryCta": "npm create @pyreon/multiplatform@latest",
+          "content": "content/_compare.json#pages[id=react-native]",
+          "template": "compare",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        },
+        {
+          "route": "/compare",
+          "title": "Compare (redirect)",
+          "purpose": "Redirects to /compare/react, the rival most visitors arrive with.",
+          "audience": "developer",
+          "primaryCta": "-",
+          "content": null,
+          "template": "redirect",
+          "reference": null,
+          "decision": "merge",
+          "state": "new",
+          "reason": "No index page; the menu lists the six."
+        }
+      ]
+    },
+    {
+      "section": "Migrate",
+      "nav": "Why Pyreon menu, 'Migrate' row; footer Learn",
+      "decisionNote": "Keep: the product page /products/migrate sells the tools; /migrate is the step-by-step landing. Angular and React Native stay docs-only guides (no compat layer).",
+      "pages": [
+        {
+          "route": "/migrate",
+          "title": "Bring your React app",
+          "purpose": "Lower the switching cost: run existing components on a compat layer, convert one at a time.",
+          "audience": "developer, tech lead",
+          "primaryCta": "npm install @pyreon/react-compat",
+          "content": "content/_migrate.json#landing",
+          "template": "migrate",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        },
+        {
+          "route": "/migrate/react",
+          "title": "React",
+          "purpose": "Your React code, on Pyreon's engine.",
+          "audience": "developer",
+          "primaryCta": "npm install @pyreon/react-compat @pyreon/core @pyreon/reactivity @pyreon/runtime-dom\nnpm install -D @pyreon/vite-plugin",
+          "content": "content/_migrate.json#layers[id=react]",
+          "template": "migrate",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        },
+        {
+          "route": "/migrate/vue",
+          "title": "Vue",
+          "purpose": "Keep your composables. Port templates when you're ready.",
+          "audience": "developer",
+          "primaryCta": "npm install @pyreon/vue-compat @pyreon/core @pyreon/reactivity @pyreon/runtime-dom\nnpm install -D @pyreon/vite-plugin",
+          "content": "content/_migrate.json#layers[id=vue]",
+          "template": "migrate",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        },
+        {
+          "route": "/migrate/solid",
+          "title": "Solid",
+          "purpose": "Your Solid components run on day one.",
+          "audience": "developer",
+          "primaryCta": "npm install @pyreon/solid-compat @pyreon/core @pyreon/reactivity @pyreon/runtime-dom\nnpm install -D @pyreon/vite-plugin",
+          "content": "content/_migrate.json#layers[id=solid]",
+          "template": "migrate",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        },
+        {
+          "route": "/migrate/preact",
+          "title": "Preact",
+          "purpose": "Preact code, hooks and signals included.",
+          "audience": "developer",
+          "primaryCta": "npm install @pyreon/preact-compat @pyreon/core @pyreon/reactivity @pyreon/runtime-dom\nnpm install -D @pyreon/vite-plugin",
+          "content": "content/_migrate.json#layers[id=preact]",
+          "template": "migrate",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        },
+        {
+          "route": "/migrate/svelte",
+          "title": "Svelte",
+          "purpose": "Keep your stores. Move components to TSX.",
+          "audience": "developer",
+          "primaryCta": "npm install @pyreon/svelte-compat @pyreon/core @pyreon/reactivity @pyreon/runtime-dom\nnpm install -D @pyreon/vite-plugin",
+          "content": "content/_migrate.json#layers[id=svelte]",
+          "template": "migrate",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        }
+      ]
+    },
+    {
+      "section": "Evidence",
+      "nav": "Benchmarks (main)",
+      "pages": [
+        {
+          "route": "/benchmarks",
+          "title": "Benchmarks",
+          "purpose": "Every result on the table, the method, the eight harness bugs, and the one command to reproduce it.",
+          "audience": "tech lead, developer",
+          "primaryCta": "bun bench-fair.ts (reproduce)",
+          "content": "content/_benchmarks.json",
+          "template": "benchmarks",
+          "reference": "reference/benchmarks.html",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/docs/benchmarks",
+          "title": "Benchmarks (docs)",
+          "purpose": "The method and record in docs form; stays live because every published card prints pyreon.dev/docs/benchmarks.",
+          "audience": "tech lead",
+          "primaryCta": "Open /benchmarks",
+          "content": "docs/src/content/docs/benchmarks.md",
+          "template": "docs",
+          "reference": null,
+          "decision": "keep",
+          "state": "live",
+          "reason": "Printed URL on every card and video caveat; must never 404."
+        },
+        {
+          "route": "/open",
+          "title": "Live stats",
+          "purpose": "Stars, downloads, releases and contributors, refreshed daily, so copy never quotes a count.",
+          "audience": "tech lead",
+          "primaryCta": "Star on GitHub",
+          "content": "page owns its data (open PR)",
+          "template": "plain",
+          "reference": null,
+          "decision": "keep",
+          "state": "open PR"
+        },
+        {
+          "route": "/status",
+          "title": "Status and direction",
+          "purpose": "What is pre-1.0, what is experimental, the directions under consideration, from stability-and-direction.md only.",
+          "audience": "tech lead",
+          "primaryCta": "Read the native matrix",
+          "content": "content/_project.json#status",
+          "template": "plain",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        }
+      ]
+    },
+    {
+      "section": "Learn",
+      "nav": "Docs, Blog (main)",
+      "pages": [
+        {
+          "route": "/docs",
+          "title": "Docs home",
+          "purpose": "Four start-here paths with exact commands, eight proof tiles, what's new.",
+          "audience": "developer",
+          "primaryCta": "npm create @pyreon/zero@latest",
+          "content": "content/_docs-home.json",
+          "template": "docs",
+          "reference": "reference/Docs v3.html",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/docs/**",
+          "title": "Docs pages (about 221)",
+          "purpose": "Reading first; at most one inline sell per guide.",
+          "audience": "developer",
+          "primaryCta": "varies",
+          "content": "docs/src/content/docs/** + content/_docs.json (sidebar, overviews)",
+          "template": "docs",
+          "reference": "reference/Docs v3.html",
+          "decision": "keep",
+          "state": "redesign"
+        },
+        {
+          "route": "/blog",
+          "title": "Blog",
+          "purpose": "Long-form stories behind the claims; scheduled posts publish themselves.",
+          "audience": "developer",
+          "primaryCta": "Subscribe (RSS / newsletter)",
+          "content": "docs/src/content/blog/*.md",
+          "template": "blog-index",
+          "reference": null,
+          "decision": "keep",
+          "state": "live"
+        },
+        {
+          "route": "/blog/<slug>",
+          "title": "Blog post",
+          "purpose": "One story, one proof, one action.",
+          "audience": "developer",
+          "primaryCta": "post CTA",
+          "content": "docs/src/content/blog/<slug>.md",
+          "template": "blog-post",
+          "reference": null,
+          "decision": "keep",
+          "state": "live"
+        }
+      ]
+    },
+    {
+      "section": "Community",
+      "nav": "Showcase (main, when live); footer Community",
+      "pages": [
+        {
+          "route": "/showcase",
+          "title": "Showcase",
+          "purpose": "Projects built with Pyreon, submitted from #show-and-tell. Never invented entries.",
+          "audience": "developer",
+          "primaryCta": "Submit your project",
+          "content": "page owns its data (open PR)",
+          "template": "showcase",
+          "reference": null,
+          "decision": "keep",
+          "state": "open PR"
+        },
+        {
+          "route": "/community",
+          "title": "Community",
+          "purpose": "Discord, GitHub, how to contribute, good first issues, newsletter, live stats.",
+          "audience": "developer",
+          "primaryCta": "Join the Discord",
+          "content": "content/_project.json#community",
+          "template": "plain",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        },
+        {
+          "route": "/releases",
+          "title": "Releases",
+          "purpose": "How releases work and what is new on main, marked as unreleased until it ships.",
+          "audience": "developer, tech lead",
+          "primaryCta": "Read the changelog",
+          "content": "content/_project.json#releases",
+          "template": "plain",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        },
+        {
+          "route": "/brand",
+          "title": "Brand",
+          "purpose": "Logos, palette, type and usage for anyone writing about Pyreon.",
+          "audience": "developer",
+          "primaryCta": "Download the logos",
+          "content": "content/_project.json#brand",
+          "template": "plain",
+          "reference": "reference/design_handoff_pyreon_brand/",
+          "decision": "keep",
+          "state": "new"
+        }
+      ]
+    },
+    {
+      "section": "Utility",
+      "nav": "none",
+      "pages": [
+        {
+          "route": "/discord",
+          "title": "Discord (redirect)",
+          "purpose": "Stable link used everywhere instead of the raw invite.",
+          "audience": "developer",
+          "primaryCta": "-",
+          "content": null,
+          "template": "redirect",
+          "reference": null,
+          "decision": "keep",
+          "state": "redirect pending"
+        },
+        {
+          "route": "/newsletter",
+          "title": "Newsletter (redirect)",
+          "purpose": "Stable link to the sign-up.",
+          "audience": "developer",
+          "primaryCta": "-",
+          "content": null,
+          "template": "redirect",
+          "reference": null,
+          "decision": "keep",
+          "state": "redirect pending"
+        },
+        {
+          "route": "/404",
+          "title": "Not found",
+          "purpose": "A 404 with personality that routes back to docs, products and search.",
+          "audience": "developer",
+          "primaryCta": "Back to the docs",
+          "content": "content/_project.json#notFound",
+          "template": "404",
+          "reference": null,
+          "decision": "keep",
+          "state": "new"
+        }
+      ]
+    }
+  ],
+  "decisions": [
+    {
+      "route": "/pricing, /teams, /contact-sales, /book-a-call",
+      "decision": "drop",
+      "reason": "Phase 1 sells the framework to developers and offers no paid service."
+    },
+    {
+      "route": "/why (index), /compare (index)",
+      "decision": "merge",
+      "reason": "Redirects to the first page; the nav menus are the index."
+    },
+    {
+      "route": "/roadmap",
+      "decision": "merge into /status",
+      "reason": "stability-and-direction.md has no dated roadmap; a separate page would have to invent one."
+    },
+    {
+      "route": "/web-and-mobile (Landing v5 nav item)",
+      "decision": "merge into /why/one-codebase",
+      "reason": "Same story; one URL."
+    }
+  ]
+}

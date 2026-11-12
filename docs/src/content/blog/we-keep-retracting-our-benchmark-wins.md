@@ -11,7 +11,15 @@ Most benchmark pages show you the wins. Ours opens with the mistakes.
 
 Section 0 of [`BENCHMARKS.md`](https://github.com/pyreon/pyreon/blob/main/BENCHMARKS.md) lists every verdict that moved and every claim we withdrew, above the results, not in a footnote. We hunted bugs in our own harness for months, and most of them made Pyreon look *better* than it was. We fixed every one, re-ran everything and published what came out.
 
-Here is what survived. Pyreon wins `clear rows` outright in both runs against ten frameworks (130 µs vs Vue 3.6 Vapor RC's 145 µs). It builds 10,000 rows **2.6× faster than React 19** and 3.8× faster than Preact. It ties for the lightest retained heap on the board. Those numbers came through every bug below, and that is why they mean something.
+Here is what survived:
+
+::: bench
+- **130 µs** to clear rows, an outright win in both runs against ten frameworks (Vue 3.6 Vapor RC: 145 µs)
+- **2.6×** faster than React 19 building 10,000 rows
+- **3.8×** faster than Preact building 10,000 rows
+:::
+
+It also ties for the lightest retained heap on the board. Those numbers came through every bug below, and that is why they mean something.
 
 *Synthetic, author-run, Apple M3 Max, real Chromium. Reproduce: [pyreon.dev/docs/benchmarks](/docs/benchmarks).*
 

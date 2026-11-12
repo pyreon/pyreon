@@ -6,12 +6,14 @@ export const ClearBtn = el
   })
   .theme((t) => ({
     font: 'inherit',
+    flex: 'none',
     fontSize: t.size.small,
     cursor: 'pointer',
-    padding: '4px 8px',
-    borderRadius: t.radius.item,
-    border: t.hairline,
-    background: t.bg,
+    height: '26px',
+    padding: '0 10px',
+    borderRadius: t.radius.button,
+    border: `1px solid ${t.border2}`,
+    background: t.surface,
     color: t.text,
     hover: { borderColor: t.accent },
   }))

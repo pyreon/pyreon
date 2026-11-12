@@ -1,0 +1,14 @@
+{
+ "id": "table",
+ "og": {
+  "src": "/media/og/products/table.png",
+  "width": 1200,
+  "height": 630,
+  "alt": "Table: Edit one cell. One cell updates. No React.memo. 1.42–1.45× faster unmount than @tanstack/react-table with memoized rows, 1,000 × 6"
+ },
+ "hero": {
+  "kind": "picture",
+  "file": "products/table/hero-dark.png",
+  "alt": "An orders table built with @pyreon/table in the Pyreon example dashboard: search and status filter, columns for order, customer, category, items, total, status badges and date, a Refund action per row, and pagination showing 1–10 of 240."
+ }
+}

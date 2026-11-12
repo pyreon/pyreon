@@ -25,6 +25,8 @@ import {
 } from '@pyreon/core'
 import {
   _noopDispose,
+  _rdDropBinding,
+  _rdLabelBinding,
   batch,
   effectScope,
   getContextOwner,
@@ -758,6 +760,11 @@ function mountComponent(
     parent.insertBefore(boundaryStart!, anchor)
     parent.insertBefore(boundaryEnd, anchor)
   }
+  // Dev-only: remember where this component's output starts, so devtools
+  // records the component's OWN first element rather than the parent's.
+  const devEnd = process.env.NODE_ENV !== 'production' ? (boundaryEnd ?? anchor) : null
+  const devBefore =
+    process.env.NODE_ENV !== 'production' ? (devEnd ? devEnd.previousSibling : parent.lastChild) : null
   try {
     subtreeCleanup = output != null ? mountChild(output, parent, boundaryEnd ?? anchor) : noop
     if (boundaryEnd !== null) {
@@ -791,7 +798,22 @@ function mountComponent(
 
   if (process.env.NODE_ENV !== 'production') {
     _mountingStack!.pop()
-    const firstEl = parent instanceof Element ? parent.firstElementChild : null
+    // The first element this component inserted: walk from just after
+    // `devBefore` to the end marker. `parent.firstElementChild` (the old
+    // read) is the FIRST SIBLING's element for every component but the
+    // first, so highlight, the picker and the devtools inspector all
+    // pointed at the wrong DOM.
+    let firstEl: Element | null = null
+    for (
+      let n = devBefore ? devBefore.nextSibling : parent.firstChild;
+      n !== null && n !== devEnd;
+      n = n.nextSibling
+    ) {
+      if (n.nodeType === 1) {
+        firstEl = n as Element
+        break
+      }
+    }
     registerComponent(compId!, componentName, firstEl, devParentId!)
     _devInspectable(compId!, scope, mergedProps)
   }
@@ -1045,6 +1067,10 @@ export function bindPolymorphicText(
 ): Cleanup {
   const core = createPolyTextCore(text, parentAtSetup, getContextOwner())
   const dispose = renderEffect(() => core.apply(child()))
+  // Dev: a text binding at its caller (the compiled template, for the emitted
+  // `bindPolymorphicText(() => expr, text, el)`).
+  if (process.env.NODE_ENV !== 'production')
+    _rdLabelBinding(dispose, 'text', text, undefined, 1)
   // Dead binding whose value was text: nothing re-runs it and the core holds
   // no subtree, so there is nothing to tear down. A first value that mounted a
   // subtree keeps the core's disposer (it removes that subtree).
@@ -1188,15 +1214,20 @@ function mountAccessorChild(
     }
   })
   if (firstRunError !== FIRST_RUN_OK) {
+    if (process.env.NODE_ENV !== 'production') _rdDropBinding(disposeEffect)
     disposeEffect()
     throw firstRunError
   }
   if (handoff !== null) {
     // Drop the dispatcher's first-run subscriptions — the machinery's own
-    // effect owns the binding from here.
+    // effect owns the binding from here. Dev: and its graph node — the
+    // machinery's effect is the binding's node.
+    if (process.env.NODE_ENV !== 'production') _rdDropBinding(disposeEffect)
     disposeEffect()
     return handoff
   }
+  // Dev: this dispatcher is a text binding; its creation site is this file.
+  if (process.env.NODE_ENV !== 'production') _rdLabelBinding(disposeEffect, 'text', text, undefined, null)
   // Textish — this dispatcher IS the binding (bindPolymorphicText's shape).
   if (depthAtEntry > 0) {
     // Dead (tracked nothing): the core is in text mode and can never leave it,

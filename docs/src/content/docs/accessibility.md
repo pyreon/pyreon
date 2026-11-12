@@ -2,8 +2,6 @@
 title: Accessibility
 ---
 
-# Accessibility
-
 Pyreon is built so that **accessible UI is the default, not an afterthought**. Most of the work — label/error wiring, focus management, keyboard navigation, correct ARIA serialization — happens automatically when you use the framework's primitives. Where it can't be automatic, it's a one-line opt-in.
 
 This page is the map: what you get for free, and how to reach for the rest.

@@ -1,9 +1,7 @@
 ---
-title: "Document Primitives — API Reference"
+title: "@pyreon/document-primitives — API Reference"
 description: "18 rocketstyle document components — render in browser AND export to 20 formats via the same tree"
 ---
-
-# @pyreon/document-primitives — API Reference
 
 > **Generated** from `document-primitives`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [document-primitives](/docs/document-primitives).
 

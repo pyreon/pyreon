@@ -3,6 +3,10 @@ title: 'Validate — validator + Standard Schema DX'
 description: Pyreon's own validator runtime plus a DX layer (field metadata, reactive parse, i18n errors) that works on any Standard Schema validator.
 ---
 
+<ProductPitch id="validation" />
+
+<LiveDemo id="validation" />
+
 `@pyreon/validate` is **two things in one package**, layered on [Standard Schema](https://standardschema.dev) — the cross-library protocol implemented natively by **Zod 3.24+**, **Valibot 1.0+**, **ArkType 2.0+**, and any future spec-compliant validator:
 
 1. **DX helpers on top of _your_ validator** — `withField`, `parseReactive`, `watchValid`, `formatErrors` work on **any** Standard Schema. They add the three things the protocol deliberately leaves out: field metadata, reactive parse, and i18n-aware error formatting. Bring Zod / Valibot / ArkType, or anything spec-compliant.
@@ -1029,3 +1033,11 @@ The main entry installs the JIT for you, and `pyreon({ optimizeValidators: true 
 | `uninstallServerCheck(key)` | Remove a registered server check. |
 
 Types: `ServerCheckFn`.
+
+<BenchCallout id="validation" />
+
+<ComingFrom id="validation" />
+
+<InlineSell id="form" />
+
+<CrossSell id="validation" />

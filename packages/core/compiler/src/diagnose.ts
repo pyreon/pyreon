@@ -699,6 +699,21 @@ const s = useStore(props.id)`,
     }),
   },
   {
+    // The most common SSR failure: component or loader code reads a
+    // browser-only global while it runs on the server. Must sit BEFORE the
+    // generic `(\w+) is not defined` entry below, which explains a compiler
+    // scope leak and would otherwise answer "update @pyreon/compiler" for a
+    // plain `window is not defined`.
+    pattern:
+      /\b(window|document|localStorage|sessionStorage|navigator|location|matchMedia|requestAnimationFrame|getComputedStyle|HTMLElement|IntersectionObserver|ResizeObserver) is not defined\b/,
+    diagnose: (m) => ({
+      cause: `\`${m[1]}\` exists only in the browser, and this code ran on the server (an SSR render, an SSG prerender or a loader), where there is no \`${m[1]}\`.`,
+      fix: `Read \`${m[1]}\` inside \`onMount\`, which runs only in the browser after hydration, or guard the read with \`isServer\` from \`@pyreon/reactivity\` and render the same markup on both sides so hydration still matches. A loader gets the request as \`ctx.request\` (URL, headers, cookies) instead of browser globals.`,
+      fixCode: `const width = signal(0)
+onMount(() => width.set(window.innerWidth))`,
+    }),
+  },
+  {
     // A scope leak under the compile-to-string SSR path: a prop-derived
     // `const` whose initializer contained JSX used to be inlined by splicing
     // the ORIGINAL source, so sibling `.map()` callbacks could carry each
@@ -2466,6 +2481,26 @@ console.log(JSON.stringify(src.slice(offset - 40, offset + 40)))`,
         : `A ${(m[1] ?? "guard").toLowerCase()} threw on the client's initial navigation, so the deep link was cancelled and <RouterView> renders nothing.`,
       fix: "Make the guard decide explicitly per environment: import { isServer } from '@pyreon/reactivity' and return a value on the server (e.g. `!isServer && isAdmin()` keeps the server from rendering a guarded page). To gate server-rendered HTML on a session, throw redirect() from the route's loader, which receives the request.",
       related: 'Router guards run on the initial navigation (Vue Router model)',
+    }),
+  },
+  {
+    // The content audit's `orphaned-md-file` finding (`pyreon doctor`,
+    // MCP). Before 0.54 the audit only recognised a literal
+    // `defineCollection({...})`, so every post of a collection declared any
+    // other way — the `blogCollection()` preset from
+    // `@pyreon/zero-content/blog`, an app's own factory, a variable — was
+    // reported as orphaned although the runtime served it.
+    pattern: /lives under `src\/content\/` but is not under any declared collection's `path`|\borphaned-md-file\b/,
+    diagnose: () => ({
+      cause:
+        "The content audit found a markdown file under `src/content/` that no declared collection claims. Either it really is outside every collection's directory (the runtime ignores it), or the collection that holds it is declared in a way an older `@pyreon/compiler` could not read: before 0.54 the audit only understood a literal `defineCollection({ ... })`, so a `blogCollection()` preset, a factory call or a collection held in a variable left its whole directory looking orphaned.",
+      fix: "If the file's collection is declared with `blogCollection()`, a factory or a variable, upgrade `@pyreon/compiler` (`npx pyreon upgrade`); the audit now treats any value in `collections` as a collection, using its literal `path` or `src/content/<name>`. Otherwise move the file into a collection's directory, declare a collection whose `path` includes it, or delete it.",
+      fixCode: `// content.config.ts — every value here is a collection; a non-literal one
+// reads from src/content/<name> unless it passes a literal path
+export const collections = {
+  blog: blogCollection(),                       // src/content/blog
+  notes: defineCollection({ path: 'src/notes' }),
+}`,
     }),
   },
   {

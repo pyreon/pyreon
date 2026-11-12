@@ -1,9 +1,7 @@
 ---
-title: "HTTP Client — API Reference"
+title: "@pyreon/http — API Reference"
 description: "Transport layer under @pyreon/query — onion middleware, typed errors, optional schema validation"
 ---
-
-# @pyreon/http — API Reference
 
 > **Generated** from `http`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [http](/docs/http).
 

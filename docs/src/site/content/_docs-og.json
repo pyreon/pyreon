@@ -1,0 +1,206 @@
+{
+  "pages": {
+    "/docs": {
+      "image": "/media/og/docs.png",
+      "alt": "Pyreon docs: Build the website. Get the apps."
+    },
+    "/docs/a11y": {
+      "image": "/media/og/docs/a11y.png",
+      "alt": "Accessibility documentation: announce('Saved') reaches screen readers with no provider and no setup; <LiveRegion>, <VisuallyHidden> and SSR-safe ids cover the rest."
+    },
+    "/docs/atlas": {
+      "image": "/media/og/docs/atlas.png",
+      "alt": "Atlas documentation: A component catalog derived from your components and types: controls from props, scenarios from variants, and a six-check verdict per scenario (a11y, interaction, leak, SSR parity, reactivity, snapshot)."
+    },
+    "/docs/auth": {
+      "image": "/media/og/docs/auth.png",
+      "alt": "Auth documentation: OIDC sign-in on the web, and on iOS and Android (experimental), from one call, with S256 PKCE, state, nonce and the issuer check on by default, plus signed sessions, TOTP and passkeys."
+    },
+    "/docs/benchmarks": {
+      "image": "/media/og/docs/benchmarks.png",
+      "alt": "Pyreon benchmark method and record."
+    },
+    "/docs/charts": {
+      "image": "/media/og/docs/charts.png",
+      "alt": "Charts documentation: Charts written as JSX marks (<Line>, <Bar>, <Area>) on Pyreon's own engine, with an accessible data table built in and the same source on iOS and Android (experimental)."
+    },
+    "/docs/cli": {
+      "image": "/media/og/docs/cli.png",
+      "alt": "Tooling documentation: pyreon doctor runs up to ten gates over your app and scores it 0–100 with the fixes inline, next to 133 lint rules, pyreon check, a test kit and devtools for the reactive graph."
+    },
+    "/docs/dnd": {
+      "image": "/media/og/docs/dnd.png",
+      "alt": "Drag and Drop documentation: Drag and drop on Atlassian's pragmatic-drag-and-drop engine: sortable lists with keyboard reordering, file drop, and every drag state as a signal."
+    },
+    "/docs/document": {
+      "image": "/media/og/docs/document.png",
+      "alt": "Documents documentation: One template, 20 output formats: PDF, DOCX, XLSX, PPTX, email, Markdown, Slack, Teams, Notion and more. Heavy renderers load only when used."
+    },
+    "/docs/feature": {
+      "image": "/media/og/docs/feature.png",
+      "alt": "Feature documentation: Hand defineFeature a schema and an API path. Get list, detail, search, create, update and delete, plus the form, the table and the store."
+    },
+    "/docs/flow": {
+      "image": "/media/og/docs/flow.png",
+      "alt": "Flow documentation: Node editors where each node mounts once and a drag touches one node, with auto-layout from its own engine: no dagre, no elkjs."
+    },
+    "/docs/form": {
+      "image": "/media/og/docs/form.png",
+      "alt": "Forms documentation: Every field is its own signal, so typing in one field never touches the other eleven. Pass a Zod, Valibot or ArkType schema raw, no adapter."
+    },
+    "/docs/guides/styling-theming": {
+      "image": "/media/og/docs/guides/styling-theming.png",
+      "alt": "Design System documentation: Eleven packages: styled() CSS-in-JS, components styled by state × size × variant × dark mode, a responsive grid and transitions, all cached and SSR-safe."
+    },
+    "/docs/hooks": {
+      "image": "/media/og/docs/hooks.png",
+      "alt": "Hooks documentation: 65 signal-based hooks, 45 of them also on iOS and Android (experimental), from useClickOutside and useMediaQuery to useCamera and useBiometrics."
+    },
+    "/docs/hotkeys": {
+      "image": "/media/og/docs/hotkeys.png",
+      "alt": "Hotkeys documentation: Scoped keyboard shortcuts with modifier keys and conflict detection, unregistered when their component unmounts."
+    },
+    "/docs/http": {
+      "image": "/media/og/docs/http.png",
+      "alt": "HTTP documentation: The request layer under Query: onion middleware, typed errors, cancellation and optional schema validation, on a zero-dependency core."
+    },
+    "/docs/i18n": {
+      "image": "/media/og/docs/i18n.png",
+      "alt": "i18n documentation: Translations with Intl-correct plurals, number, date and relative-time formatting, and namespaces that load when a page needs them."
+    },
+    "/docs/kinetic": {
+      "image": "/media/og/docs/kinetic.png",
+      "alt": "Motion documentation: Enter, leave and height collapse from one kinetic(tag) factory, 122 presets, and SSR output crawlers can read."
+    },
+    "/docs/lathe": {
+      "image": "/media/og/docs/lathe.png",
+      "alt": "Lathe documentation: OpenAPI in, typed Pyreon client out: schemas, endpoints, query hooks, mocks and docs. lathe check fails CI when the generated code drifts from the spec."
+    },
+    "/docs/loom": {
+      "image": "/media/og/docs/loom.png",
+      "alt": "Loom documentation: Your workspace's dependency graph as data: version drift, runtime cycles, phantom deps and blast radius, with a non-zero exit for CI."
+    },
+    "/docs/machine": {
+      "image": "/media/og/docs/machine.png",
+      "alt": "State Machines documentation: A state machine that is a signal: it holds only the states you list and moves only by named events, with typed guards."
+    },
+    "/docs/mcp": {
+      "image": "/media/og/docs/mcp.png",
+      "alt": "AI and MCP documentation: An MCP server with 24 tools: your assistant looks up the real API, validates its code against Pyreon's misuse detectors and explains reactivity. No network calls."
+    },
+    "/docs/migrating-from-react": {
+      "image": "/media/og/docs/migrating-from-react.png",
+      "alt": "Migrate documentation: Compat layers for React, Preact, Vue, Solid and Svelte with near-full public-API parity: change the imports, keep shipping, port screens when it pays."
+    },
+    "/docs/multiplatform": {
+      "image": "/media/og/docs/multiplatform.png",
+      "alt": "Native documentation: Compile one .tsx into a real SwiftUI app and a real Jetpack Compose app, tested on an iOS Simulator and an Android emulator in CI. Experimental, and labelled that way."
+    },
+    "/docs/permissions": {
+      "image": "/media/og/docs/permissions.png",
+      "alt": "Permissions documentation: can('posts.edit') is a reactive check, so the UI follows when roles change. RBAC, ABAC, feature flags and plan tiers, with posts.* wildcards."
+    },
+    "/docs/primitives": {
+      "image": "/media/og/docs/primitives.png",
+      "alt": "Primitives documentation: Components from <Stack> and <Field> to <Toggle> and <Modal> (22 in the next release) that render DOM on the web and real SwiftUI and Jetpack Compose views on phones (native: experimental)."
+    },
+    "/docs/query": {
+      "image": "/media/og/docs/query.png",
+      "alt": "Query documentation: TanStack Query on signals: data, error and isFetching are separate signals, and WebSocket and SSE hooks share the same cache."
+    },
+    "/docs/reactivity": {
+      "image": "/media/og/docs/reactivity.png",
+      "alt": "Reactivity documentation: signal, computed, effect, batch: the core every Pyreon package runs on, and it works on its own."
+    },
+    "/docs/rich-text": {
+      "image": "/media/og/docs/rich-text.png",
+      "alt": "Editors documentation: Rich text on TipTap and code on CodeMirror 6, where the document is a signal. Lazy-loaded languages, a minimap and a diff editor included."
+    },
+    "/docs/router": {
+      "image": "/media/og/docs/router.png",
+      "alt": "Router documentation: Params typed from the path string (/user/:id gives { id: string }), with loaders, guards, middleware, typed search params and View Transitions."
+    },
+    "/docs/rx": {
+      "image": "/media/og/docs/rx.png",
+      "alt": "RX documentation: 43 functions (filter, sortBy, groupBy, pipe, debounce…) that take signals and return signals."
+    },
+    "/docs/state-tree": {
+      "image": "/media/og/docs/state-tree.png",
+      "alt": "State Tree documentation: MobX-State-Tree-style models on signals: typed snapshots, JSON-patch record and replay, middleware, and per-request isolation on the server."
+    },
+    "/docs/storage": {
+      "image": "/media/og/docs/storage.png",
+      "alt": "Storage documentation: Signals that persist: localStorage synced across tabs, sessionStorage, cookies the server can read, and IndexedDB, all behind one API."
+    },
+    "/docs/store": {
+      "image": "/media/og/docs/store.png",
+      "alt": "Store documentation: Global state is a setup function that returns signals and functions. Actions, patches, subscriptions and per-request SSR isolation come with it."
+    },
+    "/docs/sync": {
+      "image": "/media/og/docs/sync.png",
+      "alt": "Sync documentation: Local-first sync where a synced value is a normal signal, so a remote edit is one DOM update. Yjs underneath, IndexedDB offline, a WebSocket relay with per-room auth."
+    },
+    "/docs/table": {
+      "image": "/media/og/docs/table.png",
+      "alt": "Table documentation: TanStack Table's headless core with signal-driven state and reactive options, rendered by Pyreon's fine-grained DOM."
+    },
+    "/docs/toast": {
+      "image": "/media/og/docs/toast.png",
+      "alt": "Toast documentation: toast('Saved') from anywhere, no provider; toast.promise() for async work, and the timer pauses on hover, on focus and in a hidden tab."
+    },
+    "/docs/url-state": {
+      "image": "/media/og/docs/url-state.png",
+      "alt": "URL State documentation: useUrlState('page', 1) is a signal synced to the query string, with type coercion and replaceState, so filters survive a refresh and a pasted link."
+    },
+    "/docs/validate": {
+      "image": "/media/og/docs/validate.png",
+      "alt": "Validation documentation: A chainable validator (s.string().email()) that speaks Standard Schema, with field metadata, reactive parse and translated errors built in."
+    },
+    "/docs/virtual": {
+      "image": "/media/og/docs/virtual.png",
+      "alt": "Virtual documentation: TanStack Virtual for element or window scrolling: a 10,000-row list with only the visible rows in the DOM."
+    },
+    "/docs/zero": {
+      "image": "/media/og/docs/zero.png",
+      "alt": "Zero documentation: Every route picks its own rendering: SSG, SSR, ISR or SPA, plus islands, server actions and adapters for Node, Bun, Deno, Vercel, Netlify, Cloudflare and static hosts."
+    },
+    "/docs/zero-content": {
+      "image": "/media/og/docs/zero-content.png",
+      "alt": "Content documentation: Markdown and MDX compiled to real Pyreon JSX at build time, with Astro-style typed collections checked by your own Zod, Valibot or ArkType schema."
+    }
+  },
+  "groups": {
+    "Build": {
+      "image": "/media/og/docs/groups/build.png",
+      "alt": "Pyreon docs, Build: Zero, Native, Content, Primitives, Design System, Auth, Reactivity, Router, Hooks, Motion, Accessibility"
+    },
+    "Data and state": {
+      "image": "/media/og/docs/groups/data-and-state.png",
+      "alt": "Pyreon docs, Data and state: Forms, Validation, Query, HTTP, Store, State Tree, State Machines, Storage, Sync, Feature, Permissions, URL State, i18n"
+    },
+    "Developer tools": {
+      "image": "/media/og/docs/groups/developer-tools.png",
+      "alt": "Pyreon docs, Developer tools: Tooling: CLI and doctor, AI and MCP, Atlas, Lathe, Loom, Migrate: compat layers"
+    },
+    "Get started": {
+      "image": "/media/og/docs/groups/get-started.png",
+      "alt": "Pyreon docs, Get started: Overview, Quickstart, Add Pyreon to an existing project, Build an app in 30 minutes, Tutorial, Examples gallery, Recipes, Why Pyreon, Pyreon vs other app frameworks, Stability and direction, Benchmarks"
+    },
+    "Guides": {
+      "image": "/media/og/docs/groups/guides.png",
+      "alt": "Pyreon docs, Guides: Reactivity in depth, Signal reads and writes, Keyed list rendering, Reactive context, Reactive prop forwarding, Controlled and uncontrolled, Dev-mode warnings, Choosing SSR, SSG or ISR, Islands and partial hydration, Island patterns, SSR-safe hooks, Client-side routing, Router setup, Data fetching and caching, useQuery and useMutation, Forms and validation, Form fields, Dynamic form arrays, Global state management, Stores vs signals vs models, Styling and theming with styled + PyreonUI, Animations and transitions, Localizing the UI system, Accessibility in Pyreon, Event listeners, Imperative toasts, One source, web + iOS + Android, Performance, Testing Pyreon apps, Deploying a Pyreon app"
+    },
+    "Migrate": {
+      "image": "/media/og/docs/groups/migrate.png",
+      "alt": "Pyreon docs, Migrate: Coming from React, Coming from React Native and Expo, Coming from Vue, Coming from Solid, Coming from Svelte, Coming from Angular, Lathe from orval, Lathe from hey-api, Lathe from kubb, Lathe from openapi-fetch"
+    },
+    "Reference": {
+      "image": "/media/og/docs/groups/reference.png",
+      "alt": "Pyreon docs, Reference: Package catalog, Architecture and prior art, Core packages, API reference, Troubleshooting"
+    },
+    "Visual and content": {
+      "image": "/media/og/docs/groups/visual-and-content.png",
+      "alt": "Pyreon docs, Visual and content: Charts, Table, Virtual, Rich text editor, Code editor, Flow, Documents, Hotkeys, Drag and Drop, Toast, RX"
+    }
+  }
+}

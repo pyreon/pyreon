@@ -1,56 +1,109 @@
 /**
- * Impact view — blast radius, counted not guessed: transitive internal
- * dependents per package, ranked, with the workspace-level stat cards.
+ * Impact — the selected package's blast radius as the design's card (every
+ * package that rebuilds, retests or republishes if it changes), then every
+ * internal package ranked by that reach in a dense table.
  */
 import * as C from '../chrome'
 import { impactRows, type ObservatoryModel } from '../model'
+
+const MAX_CHIPS = 120
 
 export function ImpactView(props: { model: ObservatoryModel }) {
   const m = props.model
   const ranked = impactRows(m)
   const maxReach = Math.max(1, ...ranked.map((r) => r.reach))
-  const inLoop = m.cycleNodes.size
-
-  const stats: { label: string; value: string; variant: 'plain' | 'accent' | 'danger' | 'ok' }[] = [
-    { label: 'PACKAGES', value: String(m.report.stats.internal), variant: 'plain' },
-    { label: 'DEEPEST CHAIN', value: String(m.report.stats.depth), variant: 'plain' },
-    { label: 'MOST DEPENDED ON', value: String(ranked[0]?.reach ?? 0), variant: 'accent' },
-    { label: 'IN A LOOP', value: String(inLoop), variant: inLoop ? 'danger' : 'ok' },
-  ]
 
   return (
-    <C.Article data-testid="impact-view">
-      <C.Eyebrow>{`04 · impact · ${ranked.length} packages ranked by reach`}</C.Eyebrow>
-      <C.H1>Blast radius, counted not guessed.</C.H1>
-      <C.Lead>
-        How many packages break if this one breaks — transitive dependents, measured across the whole runtime graph.
-        Sorted by reach.
-      </C.Lead>
-      <C.StatGrid>
-        {stats.map((s) => (
-          <C.StatCard>
-            <C.StatLabel>{s.label}</C.StatLabel>
-            <C.StatValue variant={s.variant}>{s.value}</C.StatValue>
-          </C.StatCard>
-        ))}
-      </C.StatGrid>
-      {ranked.map((r, i) => (
-        <C.ImpactRow
-          data-testid={`impact-${r.node.id}`}
-          state={() => (m.selId() === r.node.id ? 'active' : 'idle')}
-          onClick={() => m.select(r.node.id)}
-        >
-          <C.ImpactRank>{String(i + 1).padStart(2, '0')}</C.ImpactRank>
-          <C.ImpactName>{r.node.id}</C.ImpactName>
-          <C.ImpactTrack>
-            <C.ImpactFill
-              variant={m.cycleNodes.has(r.node.id) ? 'danger' : 'accent'}
-              css={`width:${Math.round((r.reach / maxReach) * 100)}%;`}
-            />
-          </C.ImpactTrack>
-          <C.ImpactCount>{`${r.reach} dependents`}</C.ImpactCount>
-        </C.ImpactRow>
-      ))}
-    </C.Article>
+    <C.ArticleWide data-testid="impact-view">
+      <C.Card variant="plain" data-testid="impact-card">
+        {() => {
+          const blast = m.blast()
+          if (!m.selId()) {
+            return (
+              <>
+                <C.CardTitle>Blast radius</C.CardTitle>
+                <C.CardText>
+                  Select a package — in the list, the graph or the ranking below — to see everything
+                  that rebuilds, retests or republishes if it changes.
+                </C.CardText>
+              </>
+            )
+          }
+          return (
+            <>
+              <C.CardTitle>
+                {'Blast radius of '}
+                <C.Mono data-testid="impact-name">{m.selId()}</C.Mono>
+                {` · ${blast.length}`}
+              </C.CardTitle>
+              <C.CardText>
+                Everything that rebuilds, retests or republishes if this package changes —
+                transitive dependents over runtime edges.
+              </C.CardText>
+              <div class="lm-chips" data-testid="impact-blast">
+                {blast.length === 0 ? (
+                  <C.Note>Nothing in the workspace depends on it.</C.Note>
+                ) : (
+                  blast.slice(0, MAX_CHIPS).map((id) => (
+                    <button type="button" class="lm-chip" title={id} onClick={() => m.select(id)}>
+                      {id}
+                    </button>
+                  ))
+                )}
+              </div>
+              {blast.length > MAX_CHIPS ? (
+                <div class="lm-more">{`+ ${blast.length - MAX_CHIPS} more in the ranking below`}</div>
+              ) : null}
+            </>
+          )
+        }}
+      </C.Card>
+
+      <table class="lm-tbl" data-testid="impact-table">
+        <caption class="lm-sr">Internal packages ranked by blast radius</caption>
+        <thead>
+          <tr>
+            <th class="lm-th-rank">#</th>
+            <th>package</th>
+            <th class="lm-th-bar lm-col-opt">reach</th>
+            <th class="lm-th-n lm-num">dependents</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ranked.map((r, i) => (
+            <tr
+              data-testid={`impact-${r.node.id}`}
+              class={() => (m.selId() === r.node.id ? 'lm-tr is-sel' : 'lm-tr')}
+            >
+              <td>{String(i + 1).padStart(2, '0')}</td>
+              <td>
+                <button
+                  type="button"
+                  class="lm-tname"
+                  title={r.node.id}
+                  onClick={() => m.select(r.node.id)}
+                >
+                  <span>{r.node.id}</span>
+                  {r.platforms.length ? (
+                    <small class="lm-plat" title={r.platforms.join('\n')}>
+                      {`+${r.platforms.length} platform`}
+                    </small>
+                  ) : null}
+                </button>
+              </td>
+              <td class="lm-col-opt">
+                <span class="lm-bar" aria-hidden="true">
+                  <i
+                    class={m.cycleNodes.has(r.node.id) ? 'is-cyc' : undefined}
+                    style={`width:${Math.round((r.reach / maxReach) * 100)}%`}
+                  />
+                </span>
+              </td>
+              <td class="lm-num">{String(r.reach)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </C.ArticleWide>
   )
 }

@@ -47,6 +47,10 @@ export function viteDevServer(
   return {
     command: `bun run --filter=${filter} dev -- --port ${port}${strict ? ' --strictPort' : ''}`,
     port,
+    // Hydration mismatches stay console warnings in e2e: zero's dev overlay is a
+    // modal that would block every click on a page with a known mismatch. Only
+    // the overlay's own suite (a bespoke webServer) leaves it on.
+    env: { PYREON_DEV_OVERLAY: 'off' },
     ...(opts.timeout !== undefined ? { timeout: opts.timeout } : {}),
   }
 }

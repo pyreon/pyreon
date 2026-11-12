@@ -3,8 +3,6 @@ title: "SSG / e2e Test-Server Mistakes"
 description: "Common ssg / e2e test-server mistakes in Pyreon and how to fix them."
 ---
 
-# SSG / e2e Test-Server Mistakes
-
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
 ### `vite preview` for SSG e2e gates that read per-route HTML

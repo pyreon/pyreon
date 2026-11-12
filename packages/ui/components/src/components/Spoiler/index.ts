@@ -1,5 +1,5 @@
 import { SpoilerBase } from '@pyreon/ui-primitives'
-import { el } from '../../factory'
+import { el, tintText } from '../../factory'
 
 /**
  * Spoiler — truncate-with-"show more" that delegates ALL behavior + a11y to
@@ -59,12 +59,12 @@ export default Spoiler
 export const SpoilerToggle = el
   .config({ name: 'SpoilerToggle' })
   .attrs({ tag: 'button' })
-  .theme((t) => ({
+  .theme((t, m) => ({
     marginTop: t.spacing.xxSmall,
     padding: 0,
     backgroundColor: 'transparent',
     borderWidth: 0,
-    color: t.color.system.primary.base,
+    color: tintText(t, m, 'primary'),
     fontSize: t.fontSize.small,
     fontWeight: t.fontWeight.medium,
     cursor: 'pointer',

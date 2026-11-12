@@ -1,9 +1,7 @@
 ---
-title: "Drag & Drop — API Reference"
+title: "@pyreon/dnd — API Reference"
 description: "Signal-driven drag and drop over @atlaskit/pragmatic-drag-and-drop — draggable, droppable, sortable, file drop, monitor"
 ---
-
-# @pyreon/dnd — API Reference
 
 > **Generated** from `dnd`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [dnd](/docs/dnd).
 

@@ -8,7 +8,7 @@ export const FrameChrome = el
     contentAlignX: 'spaceBetween',
   })
   .theme((t) => ({
-    padding: '8px 16px',
+    padding: '6px 12px',
     borderBottom: t.hairline,
     background: t.chrome,
     fontFamily: t.font.mono,

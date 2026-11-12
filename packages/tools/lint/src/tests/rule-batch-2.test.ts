@@ -111,6 +111,24 @@ function Nav() { return <a href="/x">x</a> }`
     expect(find(r, 'pyreon/no-href-navigation').length).toBe(0)
   })
 
+  it('does NOT flag an anchor that declares it is not an in-app route', () => {
+    for (const attrs of [
+      'href={feed} rel="alternate" type="application/rss+xml"',
+      'href={url} target="_blank" rel="noopener"',
+      'href="/report.pdf" download',
+      'href={profile} rel="author external"',
+    ]) {
+      const code = `import { useRouter } from '@pyreon/router'
+function Nav() { return <a ${attrs}>x</a> }`
+      const r = lintFile(tsx, code, allRules, cfg())
+      expect(find(r, 'pyreon/no-href-navigation').length, attrs).toBe(0)
+    }
+    // `rel` alone without a non-route token still flags.
+    const code = `import { useRouter } from '@pyreon/router'
+function Nav() { return <a href="/x" rel="author">x</a> }`
+    expect(find(lintFile(tsx, code, allRules, cfg()), 'pyreon/no-href-navigation').length).toBeGreaterThan(0)
+  })
+
   it('does NOT flag external links (http/https/mailto/tel)', () => {
     const code = `import { useRouter } from '@pyreon/router'
 function Nav() { return <a href="https://example.com">x</a> }`

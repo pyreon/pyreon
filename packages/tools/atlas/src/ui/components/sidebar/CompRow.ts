@@ -6,7 +6,7 @@ import { el } from '../../kit'
  * invalid and swallows the inner click.
  */
 export const CompRow = el
-  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignY: 'center', block: true, gap: 2 })
+  .attrs({ tag: 'div', contentDirection: 'inline', contentAlignY: 'center', block: true })
   .theme(() => ({
-    marginBottom: '1px',
+    extendCss: '& > button:first-child{flex:1;}',
   }))

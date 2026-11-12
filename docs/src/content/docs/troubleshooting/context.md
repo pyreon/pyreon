@@ -3,8 +3,6 @@ title: "Context & Provider Mistakes"
 description: "Common context & provider mistakes in Pyreon and how to fix them."
 ---
 
-# Context & Provider Mistakes
-
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
 ### A component reading context bare while sibling hooks use a fallback

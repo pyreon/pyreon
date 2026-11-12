@@ -4,8 +4,6 @@ summary: 'JSX spread on a component is reactivity-safe — the compiler emits _w
 seeAlso: [signal-writes, controllable-state]
 ---
 
-# Reactive prop forwarding via JSX spread
-
 ## The pattern
 
 Forwarding props through a component with JSX spread is safe. The Pyreon compiler ensures reactive props survive:

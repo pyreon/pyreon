@@ -175,9 +175,9 @@ test.describe('atlas build — @pyreon/ui-components', () => {
     if (axeCount > 0) await expect(page.getByTestId('axe-target').first()).not.toBeEmpty()
   })
 
-  test('the Theme Lab says brands cannot apply instead of tiling identical cards', async ({ page }) => {
+  test('the Lab says brands cannot apply instead of tiling identical cards', async ({ page }) => {
     await page.goto('/button/')
-    await page.getByRole('tab', { name: 'Theme Lab', exact: true }).click()
+    await page.getByRole('tab', { name: 'Lab', exact: true }).click()
     await expect(page.getByTestId('lab-note')).toContainText('does not read `brand`')
     await expect(page.locator('[data-testid^="lab-tile-"]')).toHaveCount(2)
   })
@@ -208,13 +208,13 @@ test.describe('atlas build — shell layout', () => {
     await expect(page.getByRole('button', { name: 'Accordion', exact: true })).toHaveCount(1)
   })
 
-  test('on a phone the shell is one row, the tree a drawer, the panels a sheet', async ({ page }) => {
+  test('on a phone the shell is one row, the catalog a drawer, the panels under the canvas', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto('/button/')
     await expect(page.getByTestId('canvas-name')).toHaveText('Button')
-    // One 56px top bar — it used to wrap to three rows (163px).
+    // One 48px top bar — it used to wrap to three rows (163px).
     const header = await page.locator('header').boundingBox()
-    expect(header?.height ?? 0).toBeLessThanOrEqual(64)
+    expect(header?.height ?? 0).toBe(48)
     const previewWidth = async () => (await page.getByTestId('canvas-preview').boundingBox())?.width ?? 0
     const before = await previewWidth()
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
@@ -228,11 +228,10 @@ test.describe('atlas build — shell layout', () => {
     await expect(page.getByTestId('sidebar-drawer')).toHaveCount(0)
     await expect(page.getByTestId('canvas-name')).toHaveText('Badge')
 
-    // The panels are one labelled tap away, as a sheet.
-    await page.getByTestId('toggle-panel').click()
-    await expect(page.getByTestId('panel-sheet')).toBeVisible()
+    // The panels sit under the canvas at every width — no extra tap.
     await expect(page.getByTestId('addon-tab-controls')).toBeInViewport()
-    await page.keyboard.press('Escape')
-    await expect(page.getByTestId('panel-sheet')).toHaveCount(0)
+    const canvasBox = await page.getByTestId('canvas-stage').boundingBox()
+    const panelBox = await page.getByTestId('addon-panel').boundingBox()
+    expect(panelBox!.y).toBeGreaterThanOrEqual(canvasBox!.y + canvasBox!.height - 1)
   })
 })

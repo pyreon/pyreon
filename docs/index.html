@@ -3,7 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0F0F14" />
+
+    <!-- Cascade-layer order, declared before any stylesheet: the hand-written
+         CSS (vite-plugins/legacy-css-layer.ts) sits below @pyreon/styler's
+         `elements` and `rocketstyle` layers, so the kit's styles win over the
+         docs' global resets. -->
+    <style>@layer docs, elements, rocketstyle, site;</style>
 
     <!-- Title, description, Open Graph and Twitter tags come from
          @pyreon/head: site defaults in src/routes/_layout.tsx, which a page
@@ -12,25 +17,14 @@
          A static tag here could not be overridden — social scrapers read the
          first og:image, so every page would share the generic card. -->
 
-    <!-- FOUC-safe theme sync. Mirrors VitePress's localStorage key
-         ('vitepress-theme-appearance') so the cut-over is seamless for
-         users who already have a stored preference. Sets data-theme on
-         <html> BEFORE first paint so tokens.css resolves the right
-         palette with no flash. Default = dark per brand handoff. -->
-    <script>
-      ;(function () {
-        try {
-          var a = localStorage.getItem('vitepress-theme-appearance')
-          var d =
-            !a ||
-            a === 'dark' ||
-            (a === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches)
-          document.documentElement.dataset.theme = d ? 'dark' : 'light'
-        } catch (e) {
-          document.documentElement.dataset.theme = 'dark'
-        }
-      })()
-    </script>
+    <!-- Pre-paint theme: sets data-theme on <html> BEFORE first paint so
+         the CSS-variables theme (src/site/ui-init.ts) and tokens.css resolve
+         the right palette with no flash. A stored choice ("pyreon-theme",
+         shared with the tool apps; the VitePress-era key is honoured once)
+         wins, else the OS preference. MUST stay byte-identical to
+         PRE_PAINT_SCRIPT in src/site/color-mode.ts — the color-mode test
+         reads this file and fails on drift. -->
+    <script>(function(){var d=document.documentElement,m;try{var s=localStorage.getItem("pyreon-theme");if(s!=="light"&&s!=="dark"){var l=localStorage.getItem("vitepress-theme-appearance");s=l==="light"||l==="dark"?l:null}m=s||(window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark")}catch(e){m="dark"}d.setAttribute("data-theme",m);d.style.colorScheme=m})()</script>
 
     <!-- Brand fonts — Space Grotesk (sans) + JetBrains Mono (mono/accent),
          from brand handoff §4. Now self-hosted by @pyreon/zero's
@@ -52,12 +46,9 @@
          falls back to the Google CDN `<link>` (build-only self-host),
          so local dev keeps working with no extra wiring. -->
 
-    <!-- Brand favicon — rounded ink tile + ember disc. Leading slash
-         so Vite's index.html transform base-prefixes it to
-         `/<base>/favicon.svg`. Relative `./favicon.svg` would resolve
-         against the current page URL and 404 on deep routes like
-         `/pyreon/docs/X/` (→ tried to load `/docs/favicon.svg`). -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Favicons, the web app manifest and theme-color come from the root
+         layout's head defaults (src/routes/_layout.tsx), from the brand
+         icon set in public/brand. -->
 
     <!--pyreon-head-->
   </head>

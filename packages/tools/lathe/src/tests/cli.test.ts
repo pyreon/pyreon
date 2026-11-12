@@ -75,7 +75,7 @@ describe('run', () => {
     const r = await run(parseArgv(['generate', 'openapi.yaml', '--out', 'gen']), undefined, fs)
     expect(r.code).toBe(0)
     expect(fs.files['gen/schemas.ts']).toBeDefined()
-    expect(r.stdout).toContain('file(s) written')
+    expect(r.stdout).toMatch(/wrote \d+ of \d+ files/)
   })
 
   it('is idempotent: a second run rewrites nothing', async () => {
@@ -88,8 +88,7 @@ describe('run', () => {
     // The invariant is unchanged — a second run writes NOTHING. The count now
     // names the denominator too, so "nothing moved" is distinguishable from
     // "nothing was generated".
-    expect(second.stdout).toContain('0 of')
-    expect(second.stdout).toContain('file(s) written')
+    expect(second.stdout).toContain('everything already current')
     expect(second.stdout).toContain('everything already current')
   })
 
@@ -97,7 +96,10 @@ describe('run', () => {
     const fs = memFs({ 'gen/schemas.ts': '// stale' })
     const r = await run(parseArgv(['check', 'openapi.yaml', '--out', 'gen']), undefined, fs)
     expect(r.code).toBe(1)
-    expect(r.stdout).toContain('STALE')
+    expect(r.stdout).toContain('stale')
+    // The files are NAMED, each with what is wrong with it.
+    expect(r.stdout).toMatch(/~ stale\s+gen\/schemas\.ts/)
+    expect(r.stdout).toMatch(/\+ missing\s+gen\/client\.ts/)
     expect(r.stdout).toContain('lathe generate')
     // `check` must never write.
     expect(fs.files['gen/schemas.ts']).toBe('// stale')
@@ -108,7 +110,8 @@ describe('run', () => {
     await run(parseArgv(['generate', 'openapi.yaml', '--out', 'gen']), undefined, fs)
     const r = await run(parseArgv(['check', 'openapi.yaml', '--out', 'gen']), undefined, fs)
     expect(r.code).toBe(0)
-    expect(r.stdout).not.toContain('STALE')
+    expect(r.stdout).not.toContain('stale')
+    expect(r.stdout).toContain('up to date')
   })
 
   it('fails with an actionable message when the spec is missing', async () => {
@@ -170,8 +173,9 @@ describe('run', () => {
     const r = await run(parseArgv(['generate', 'openapi.yaml', '--out', 'gen', '--dry-run']), undefined, fs)
     expect(r.code).toBe(0)
     expect(Object.keys(fs.files)).toEqual(['openapi.yaml'])
-    expect(r.stdout).toContain('DRY RUN')
-    expect(r.stdout).toContain('schemas.ts')
+    expect(r.stdout).toContain('dry run')
+    expect(r.stdout).toMatch(/\+ would create\s+gen\/schemas\.ts/)
+    expect(r.stdout).toMatch(/paths would change/)
   })
 
   it('a config typo in `target` is refused by name', async () => {
@@ -280,7 +284,7 @@ components:
     fs.files['packages/billing/src/gen/schemas.ts'] = '// hand-edited'
     const r = await run(parseArgv(['check']), twoProjects, fs)
     expect(r.code).toBe(1)
-    expect(r.stdout).toContain('STALE')
+    expect(r.stdout).toContain('1 of 2 projects stale')
   })
 
   it('names a duplicate or missing project name rather than guessing', async () => {

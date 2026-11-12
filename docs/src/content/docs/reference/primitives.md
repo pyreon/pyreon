@@ -1,9 +1,7 @@
 ---
-title: "Canonical Multiplatform Primitives — API Reference"
+title: "@pyreon/primitives — API Reference"
 description: "22 canonical cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, I"
 ---
-
-# @pyreon/primitives — API Reference
 
 > **Generated** from `primitives`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [primitives](/docs/primitives).
 

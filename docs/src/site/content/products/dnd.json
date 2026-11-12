@@ -1,0 +1,342 @@
+{
+ "id": "dnd",
+ "route": "/products/dnd",
+ "name": "Drag and Drop",
+ "package": "@pyreon/dnd",
+ "category": "fundamentals · interaction",
+ "hero": {
+  "title": "A sortable list in one hook. Keyboard users included.",
+  "emberWord": "one hook",
+  "lede": "Reorder lists, build kanban boards and take file drops on Atlassian's pragmatic-drag-and-drop. Space picks an item up, the arrows move it, a screen reader hears every step, and every drag state is a signal your JSX reads directly.",
+  "install": "bun add @pyreon/dnd",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "engine",
+    "value": "pragmatic-drag-and-drop<small>Atlassian's engine: native drag events, hit-testing, edges.</small>"
+   },
+   {
+    "key": "keyboard",
+    "value": "Space · arrows · Esc<small>Alt+Arrow moves directly. Each step is announced.</small>"
+   },
+   {
+    "key": "hooks",
+    "value": "5<small>Sortable, draggable, droppable, file drop, monitor.</small>"
+   },
+   {
+    "key": "iOS and Android",
+    "value": "{dot:ok} sortable, draggable, droppable<small>Experimental. SwiftUI `.onDrag`/`.onDrop`, Compose drag-and-drop. File drop and the monitor stay web.</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "20×",
+   "label": "faster hover across 1,000 rows: `isOverKey` wakes the two rows involved, a hand-written `overId() === key` wakes every row",
+   "source": "BENCHMARKS.md §10, dnd row · overnight run, one run, bun, happy-dom (relative only)"
+  }
+ ],
+ "why": {
+  "title": "The parts of drag and drop nobody finishes.",
+  "items": [
+   {
+    "title": "Keyboard reordering, on by default",
+    "text": "Focus a row, Space or Enter picks it up, the arrows move it, Space drops it and Escape puts it back. Alt+Arrow moves in one step. No sensors to configure."
+   },
+   {
+    "title": "Screen readers hear every move",
+    "text": "\"Picked up Fix Safari bug. Current position 4 of 4.\" then \"Moved Fix Safari bug to position 3 of 4.\" Items get `aria-roledescription`, plus `role=\"listitem\"` and keyboard instructions unless you set your own."
+   },
+   {
+    "title": "State you read, not render props",
+    "text": "`activeId()`, `overId()` and `overEdge()` are signals, and `isOverKey(id)` answers per row. A drop indicator is `class={() => s.isOverKey(t.id) ? s.overEdge() : ''}`: when the hover moves, only the row it left and the row it entered update."
+   },
+   {
+    "title": "Files with reasons",
+    "text": "`useFileDrop({ accept: ['image/*'], maxFiles: 5 })` gives you the accepted files, and `onReject(files, 'accept' | 'maxFiles')` tells you why the rest were refused."
+   }
+  ]
+ },
+ "difference": {
+  "title": "Delete the sensors, the contexts and `arrayMove`.",
+  "before": {
+   "label": "React + dnd-kit",
+   "caption": "Two providers, two sensors, a per-row hook with a style transform, and the reorder written by hand.",
+   "code": "function Row({ task }: { task: Task }) {\n  const { attributes, listeners, setNodeRef, transform, transition } =\n    useSortable({ id: task.id })\n  const style = { transform: CSS.Transform.toString(transform), transition }\n  return (\n    <li ref={setNodeRef} style={style} {...attributes} {...listeners}>\n      {task.title}\n    </li>\n  )\n}\n\nfunction Tasks() {\n  const [tasks, setTasks] = useState(initial)\n  const sensors = useSensors(\n    useSensor(PointerSensor),\n    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),\n  )\n  const onDragEnd = ({ active, over }: DragEndEvent) => {\n    if (!over || active.id === over.id) return\n    setTasks((ts) => {\n      const from = ts.findIndex((t) => t.id === active.id)\n      const to = ts.findIndex((t) => t.id === over.id)\n      return arrayMove(ts, from, to)\n    })\n  }\n  return (\n    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>\n      <SortableContext items={tasks} strategy={verticalListSortingStrategy}>\n        <ul>{tasks.map((t) => <Row key={t.id} task={t} />)}</ul>\n      </SortableContext>\n    </DndContext>\n  )\n}"
+  },
+  "after": {
+   "label": "with @pyreon/dnd",
+   "caption": "One hook. Pointer, keyboard, announcements and auto-scroll included; you get the reordered array.",
+   "code": "import { For } from '@pyreon/core'\nimport { useSortable } from '@pyreon/dnd'\nimport { signal } from '@pyreon/reactivity'\n\nconst tasks = signal<Task[]>(initial)\n\nconst Tasks = () => {\n  const { containerRef, itemRef } = useSortable({\n    items: tasks,\n    by: (t) => t.id,\n    label: (t) => t.title,\n    onReorder: (next) => tasks.set(next),\n  })\n  return (\n    <ul ref={containerRef}>\n      <For each={tasks} by={(t) => t.id}>\n        {(t) => <li ref={itemRef(t.id)}>{t.title}</li>}\n      </For>\n    </ul>\n  )\n}"
+  }
+ },
+ "comingFrom": [
+  {
+   "lib": "react-beautiful-dnd",
+   "title": "Same company's engine, without the render props.",
+   "before": "<DragDropContext\n  onDragEnd={(r) => {\n    if (!r.destination) return\n    setTasks((ts) => reorder(ts, r.source.index, r.destination!.index))\n  }}\n>\n  <Droppable droppableId=\"tasks\">\n    {(provided) => (\n      <ul ref={provided.innerRef} {...provided.droppableProps}>\n        {tasks.map((t, i) => (\n          <Draggable key={t.id} draggableId={t.id} index={i}>\n            {(p) => (\n              <li ref={p.innerRef} {...p.draggableProps} {...p.dragHandleProps}>\n                {t.title}\n              </li>\n            )}\n          </Draggable>\n        ))}\n        {provided.placeholder}\n      </ul>\n    )}\n  </Droppable>\n</DragDropContext>",
+   "after": "const { containerRef, itemRef } = useSortable({\n  items: tasks,\n  by: (t) => t.id,\n  label: (t) => t.title,\n  onReorder: (next) => tasks.set(next),\n})\n\n<ul ref={containerRef}>\n  <For each={tasks} by={(t) => t.id}>\n    {(t) => <li ref={itemRef(t.id)}>{t.title}</li>}\n  </For>\n</ul>",
+   "note": "react-beautiful-dnd is no longer maintained, and Atlassian points its users to Pragmatic drag and drop, the engine under `@pyreon/dnd`. Boards across lists: give each list the same `groupId` and handle `onCrossListDrop` / `onCrossListReceive`."
+  }
+ ],
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Reorder it. Then try the keyboard.",
+  "text": "Drag a row, or focus one and press Space, then the arrow keys, then Space again.",
+  "component": "DemoDnd",
+  "reference": "pkg-dnd.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"ui\"><div class=\"dd-list\" id=\"dd-list\" role=\"list\"></div><div class=\"dd-live\" id=\"dd-live\" aria-live=\"polite\"></div></div>\n  <div class=\"card\"><div class=\"in\"><span class=\"label\">tasks() · live signal</span><pre id=\"dd-sig\"></pre><p class=\"note\">The announcement under the list is what a screen reader hears.</p></div></div>\n</div>",
+  "referenceCss": ".dd-list{display:grid;gap:8px}.dd-item{display:grid;grid-template-columns:20px 1fr auto;align-items:center;gap:10px;padding:12px 14px;border:1px solid var(--s-fg);border-radius:10px;background:#fff;font-size:14px;cursor:grab;user-select:none;transition:transform .15s,box-shadow .15s,border-color .15s}.dd-item:focus{outline:2px solid #C2410C;outline-offset:2px}.dd-item.lift{border-color:#C2410C;box-shadow:0 10px 24px -12px rgba(194,65,12,.5);transform:scale(1.01)}.dd-item.over{border-top:3px solid #C2410C}.dd-item i{font-style:normal;color:#6B6776;letter-spacing:-2px}.dd-item small{font-family:var(--mono);font-size:11px;color:var(--fog)}.dd-live{margin-top:12px;min-height:20px;font-size:12.5px;color:#5E5A69;font-family:var(--mono)}",
+  "referenceJs": "(function(){var T=[{id:1,t:'Design review'},{id:2,t:'Ship onboarding'},{id:3,t:'Write release notes'},{id:4,t:'Fix Safari bug'}],L=document.getElementById('dd-list'),live=document.getElementById('dd-live'),sig=document.getElementById('dd-sig'),drag=null,picked=null;\nfunction say(s){live.textContent=s}function out(){sig.textContent='['+T.map(function(x){return'\\n  { id: '+x.id+', title: \\''+x.t+'\\' }'}).join(',')+'\\n]'}\nfunction render(focusId){L.innerHTML='';T.forEach(function(x,i){var d=document.createElement('div');d.className='dd-item'+(picked===x.id?' lift':'');d.tabIndex=0;d.draggable=true;d.setAttribute('role','listitem');d.innerHTML='<i>⋮⋮</i><span></span><small>#'+x.id+'</small>';d.children[1].textContent=x.t;\nd.ondragstart=function(e){drag=i;e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',x.t)}catch(_){}};d.ondragover=function(e){e.preventDefault();d.classList.add('over')};d.ondragleave=function(){d.classList.remove('over')};\nd.ondrop=function(e){e.preventDefault();if(drag===null)return;var m=T.splice(drag,1)[0];T.splice(i,0,m);say('Dropped '+m.t+' at position '+(i+1)+' of '+T.length);drag=null;render();out()};\nd.onkeydown=function(e){if(e.key===' '||e.key==='Enter'){e.preventDefault();if(picked===x.id){picked=null;say('Dropped '+x.t+' at position '+(i+1)+' of '+T.length)}else{picked=x.id;say('Picked up '+x.t+'. Use arrow keys to move.')}render(x.id)}else if(picked===x.id&&(e.key==='ArrowUp'||e.key==='ArrowDown')){e.preventDefault();var j=i+(e.key==='ArrowUp'?-1:1);if(j<0||j>=T.length)return;T.splice(i,1);T.splice(j,0,x);say('Moved '+x.t+' to position '+(j+1)+' of '+T.length);render(x.id);out()}else if(e.key==='Escape'&&picked){picked=null;say('Cancelled');render(x.id)}};\nL.appendChild(d);if(focusId===x.id)d.focus()})}render();out();})();"
+ },
+ "features": {
+  "title": "Five hooks, every drag surface.",
+  "items": [
+   {
+    "name": "`useSortable`",
+    "text": "Reorder with edge detection and auto-scroll; `axis: 'horizontal'` for rows of cards."
+   },
+   {
+    "name": "Boards",
+    "text": "`groupId` links lists, `onCrossListDrop` and `onCrossListReceive(item, index)` move cards between them."
+   },
+   {
+    "name": "`itemHandleRef`",
+    "text": "Drag only by the grip, keep the rest of the row clickable."
+   },
+   {
+    "name": "`useDraggable`",
+    "text": "Typed `data`, a `handle`, a custom `preview` and `isDragging()`."
+   },
+   {
+    "name": "`useDroppable`",
+    "text": "`canDrop(source)` filters, `edges` turns on `overEdge()` for which side you are on, `isOver()` lights the target."
+   },
+   {
+    "name": "`useFileDrop`",
+    "text": "Real OS files only, with `accept`, `maxFiles` and `isDraggingFiles()` for a page-wide hint."
+   },
+   {
+    "name": "`useDragMonitor`",
+    "text": "Watch every element drag on the page, with `canMonitor` to filter, for an overlay or analytics."
+   },
+   {
+    "name": "Keyboard and live region",
+    "text": "Pick up, move, drop and cancel with announcements through `@pyreon/a11y`."
+   },
+   {
+    "name": "`disabled`",
+    "text": "A boolean or a signal: lock a list while it saves."
+   },
+   {
+    "name": "Cleanup by design",
+    "text": "Every engine registration is torn down on unmount, and per item when its ref goes `null`."
+   }
+  ]
+ },
+ "recipes": [
+  {
+   "title": "A drop indicator that touches two rows, not all of them",
+   "text": "`isOverKey(id)` and `overEdge()` are signals. The line appears above or below the hovered card, and a hover move updates only the row it left and the row it entered.",
+   "code": "const s = useSortable({\n  items: tasks,\n  by: (t) => t.id,\n  label: (t) => t.title,\n  onReorder: (next) => tasks.set(next),\n})\n\n<ul ref={s.containerRef}>\n  <For each={tasks} by={(t) => t.id}>\n    {(t) => (\n      <li\n        ref={s.itemRef(t.id)}\n        class={() => (s.isOverKey(t.id) ? `drop-${s.overEdge()}` : '')}\n        data-active={() => s.isActive(t.id)}\n      >\n        {t.title}\n      </li>\n    )}\n  </For>\n</ul>"
+  },
+  {
+   "title": "An avatar drop zone that says no politely",
+   "text": "One image at a time. Rejections come with a reason you can show.",
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { useFileDrop } from '@pyreon/dnd'\n\nconst Avatar = () => {\n  const error = signal('')\n  const drop = useFileDrop({\n    accept: ['image/*'],\n    maxFiles: 1,\n    onDrop: (files) => upload(files[0]!),\n    onReject: (_files, reason) =>\n      error.set(reason === 'accept' ? 'Images only' : 'One file at a time'),\n  })\n  return (\n    <div ref={drop.ref} class={() => (drop.isOver() ? 'zone over' : 'zone')}>\n      Drop a photo <span role=\"alert\">{error()}</span>\n    </div>\n  )\n}"
+  }
+ ],
+ "api": {
+  "title": "Five hooks.",
+  "groups": [
+   {
+    "name": "hooks",
+    "items": [
+     "useSortable",
+     "useDraggable",
+     "useDroppable",
+     "useFileDrop",
+     "useDragMonitor"
+    ]
+   },
+   {
+    "name": "sortable state",
+    "items": [
+     "containerRef",
+     "itemRef",
+     "itemHandleRef",
+     "activeId",
+     "overId",
+     "overEdge",
+     "isActive",
+     "isOverKey"
+    ]
+   },
+   {
+    "name": "types",
+    "items": [
+     "UseSortableOptions",
+     "UseDraggableOptions",
+     "UseDroppableOptions",
+     "UseFileDropOptions",
+     "UseDragMonitorOptions",
+     "DragData",
+     "DropEdge",
+     "DropLocation",
+     "DragPreviewOptions",
+     "FileRejectReason"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Give `items` as a signal or getter",
+   "text": "`useSortable` reads `items()` when a drop lands. A captured array goes stale after the first reorder."
+  },
+  {
+   "title": "Match `by` with `<For by>`",
+   "text": "Use the same key in the hook's `by`, in `itemRef(key)` and in `<For by>`: the hook finds the dragged row by that key, and `<For>` moves the existing DOM node instead of rebuilding it."
+  },
+  {
+   "title": "File drop is for OS files",
+   "text": "`useFileDrop` reacts to files dragged in from the desktop, not to in-app drags. Use `useDroppable` for those."
+  },
+  {
+   "title": "On native, the gesture hooks only",
+   "text": "iOS and Android lower `useSortable`, `useDraggable` and `useDroppable` to the platform drag engines. The page-wide monitor and OS file drop stay web. Native targets are experimental."
+  }
+ ],
+ "faq": [
+  {
+   "q": "Is it accessible without extra work?",
+   "a": "Sortable lists are. Items become focusable with list semantics and instructions, the keyboard flow is built in, and every pick-up, move, drop and cancel is announced. `label(item)` makes the announcement say \"Fix Safari bug\" instead of an id."
+  },
+  {
+   "q": "Why pragmatic-drag-and-drop?",
+   "a": "It is built on the browser's native drag events, which is also what lets files arrive from the desktop, and it is the engine behind Trello and Jira. `@pyreon/dnd` adapts its state into signals and its teardown into `onCleanup`."
+  },
+  {
+   "q": "What does the wrapper cost?",
+   "a": "Against a hand-rolled signals + pragmatic-drag-and-drop integration, measured in one run under happy-dom: mount and unmount tie, each drag start and drop adds about 5 ns, registering a page monitor about 82 ns, and a hover move across 1,000 rows is 20× cheaper with `isOverKey` than with a per-row `overId() === key`. happy-dom times are relative, not browser times."
+  },
+  {
+   "q": "How do I build a kanban board?",
+   "a": "One `useSortable` per column with the same `groupId`. Reordering inside a column calls `onReorder`; a card dropped into another column calls `onCrossListDrop(item)` on the source and `onCrossListReceive(item, index)` on the target, where you move it between your signals."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/a11y",
+   "category": "fundamentals",
+   "name": "Accessibility",
+   "text": "The live region every move is announced through.",
+   "package": "@pyreon/a11y"
+  },
+  {
+   "href": "/products/flow",
+   "category": "fundamentals",
+   "name": "Flow",
+   "text": "Drag nodes on a canvas instead of rows in a list.",
+   "package": "@pyreon/flow"
+  },
+  {
+   "href": "/products/virtual",
+   "category": "fundamentals",
+   "name": "Virtual",
+   "text": "Long lists where a scroll touches only the rows entering and leaving.",
+   "package": "@pyreon/virtual"
+  }
+ ],
+ "end": {
+  "title": "Drag it, or press Space. Both work.",
+  "cta": "Read the drag and drop guide"
+ },
+ "benchmarks": {
+  "rival": "vs a hand-rolled signals + raw pragmatic-drag-and-drop integration · bun, happy-dom",
+  "run": "overnight run, one run, happy-dom: relative only",
+  "h": "Hover across 1,000 rows: 20× faster.",
+  "p": "The baseline is what you would write without the wrapper: the same engine calls, the same signals, the same cleanup. Mounting costs the same, each event and each page monitor adds a few nanoseconds, and a hover that moves across a long list is where the hooks pull ahead. happy-dom is a JavaScript DOM, so read the ratios, not the times.",
+  "rows": [
+   {
+    "op": "hover fan-out, 1,000 rows (`isOverKey` vs `overId() === key`)",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "20×"
+   },
+   {
+    "op": "draggable, droppable, sortable-row mount + unmount",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "tie",
+    "label": "could not distinguish"
+   },
+   {
+    "op": "per-event dispatch (drag start + drop)",
+    "pyreon": null,
+    "rival": null,
+    "unit": "",
+    "verdict": "loss",
+    "label": "+5 ns"
+   },
+   {
+    "op": "page monitor mount + unmount",
+    "pyreon": null,
+    "rival": null,
+    "unit": "",
+    "verdict": "loss",
+    "label": "+82 ns"
+   }
+  ]
+ },
+ "glyphSvg": "<rect x=\"12\" y=\"16\" width=\"58\" height=\"40\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><rect x=\"50\" y=\"64\" width=\"58\" height=\"40\" fill=\"url(#eg)\"/>",
+ "sources": [
+  {
+   "claim": "dnd row: row-enter fan-out 20×; mount/unmount tie; monitor +82 ns; dispatch +5 ns; happy-dom, overnight",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §10 dnd row"
+  },
+  {
+   "claim": "Baseline is a hand-rolled Pyreon + pdnd integration (same signal, same cleanup)",
+   "path": "packages/fundamentals/dnd/bench/dnd-wrapper-tax.ts header"
+  },
+  {
+   "claim": "Keyboard: Space/Enter pick up and drop, arrows move, Escape cancels, Alt+Arrow direct move; announcement strings",
+   "path": "packages/fundamentals/dnd/src/use-sortable.ts l.33, l.375-437; src/use-sortable-a11y.browser.test.tsx"
+  },
+  {
+   "claim": "Items get tabindex=0, role=listitem, aria-roledescription=\"sortable item\", aria-describedby unless set; container role=list unless ul/ol",
+   "path": "packages/fundamentals/dnd/src/use-sortable.ts l.259-270, l.541-548"
+  },
+  {
+   "claim": "Auto-scroll via pragmatic-drag-and-drop-auto-scroll",
+   "path": "packages/fundamentals/dnd/src/use-sortable.ts l.3"
+  },
+  {
+   "claim": "useSortable options: items (getter), by, onReorder, axis, groupId, onCrossListDrop, onCrossListReceive, label, disabled; result incl. itemHandleRef, activeId, overId, overEdge, isActive",
+   "path": "packages/fundamentals/dnd/src/types.ts l.141-225"
+  },
+  {
+   "claim": "useFileDrop: accept, maxFiles, onReject(files, \"accept\" | \"maxFiles\"), isOver, isDraggingFiles, ref",
+   "path": "packages/fundamentals/dnd/src/use-file-drop.ts l.9-43"
+  },
+  {
+   "claim": "Native: useSortable/useDraggable/useDroppable lower to SwiftUI .onDrag/.onDrop and Compose dragAndDropSource/Target; monitor and file drop stay web",
+   "path": "packages/fundamentals/dnd/src/manifest.ts multiplatform"
+  },
+  {
+   "claim": "dnd-kit before code typechecks (@dnd-kit/core 6.3.1, sortable 10.0.0, utilities 3.2.2)",
+   "path": ".scratch/app/rival/dnd.tsx (tsc exit 0)"
+  },
+  {
+   "claim": "Draft limit \"Web only, doesn't compile to iOS or Android\" was wrong",
+   "path": "packages/fundamentals/dnd/src/manifest.ts multiplatform.rationale/nativeFrontend"
+  },
+  {
+   "claim": "react-beautiful-dnd sample and its deprecation in favour of Pragmatic drag and drop: from the library's public docs; not installed in the checkout, not executed",
+   "path": "n/a"
+  }
+ ]
+}

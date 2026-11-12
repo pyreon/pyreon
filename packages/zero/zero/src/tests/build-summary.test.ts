@@ -5,34 +5,10 @@ import { afterAll, describe, expect, it } from 'vitest'
 import {
   collectBuildStats,
   colorizeMode,
-  detectColorLevel,
-  emberBrand,
   formatBuildSummary,
   formatKB,
 } from '../build-summary'
 import { formatRouteModeTable } from '../route-modes'
-
-// ─── detectColorLevel ────────────────────────────────────────────────────────
-
-describe('detectColorLevel', () => {
-  it('NO_COLOR always wins', () => {
-    expect(detectColorLevel({ NO_COLOR: '1', COLORTERM: 'truecolor' }, true)).toBe(0)
-  })
-  it('TERM=dumb is plain', () => {
-    expect(detectColorLevel({ TERM: 'dumb' }, true)).toBe(0)
-  })
-  it('non-TTY is plain unless FORCE_COLOR', () => {
-    expect(detectColorLevel({}, false)).toBe(0)
-    expect(detectColorLevel({ FORCE_COLOR: '1' }, false)).toBe(1)
-  })
-  it('COLORTERM=truecolor unlocks the gradient tier', () => {
-    expect(detectColorLevel({ COLORTERM: 'truecolor' }, true)).toBe(2)
-    expect(detectColorLevel({ COLORTERM: '24bit' }, true)).toBe(2)
-  })
-  it('plain TTY gets 16-color', () => {
-    expect(detectColorLevel({}, true)).toBe(1)
-  })
-})
 
 // ─── formatKB ────────────────────────────────────────────────────────────────
 
@@ -124,28 +100,35 @@ describe('collectBuildStats', () => {
 describe('formatBuildSummary', () => {
   const stats = collectBuildStats(dist)
 
-  it('plain (color 0) output carries the brand, entries, totals, server + pages + time', () => {
-    const text = formatBuildSummary(stats, { color: 0, elapsedMs: 965 }).join('\n')
-    expect(text).toContain('▲ pyreon zero')
-    expect(text).toContain('Client assets')
+  it('plain (color 0) output carries the header, entries, totals, server + pages + time', () => {
+    const text = formatBuildSummary(stats, { color: 0, elapsedMs: 965, context: 'ssr · adapter: node' }).join('\n')
+    expect(text).toContain('zero build · ssr · adapter: node')
+    expect(text).toContain('asset')
     expect(text).toContain('entry')
     expect(text).toContain('index-Ab12Cd34.js')
     expect(text).toContain('gzip')
-    expect(text).toContain('Σ') // totals row
-    expect(text).toContain('2 js')
-    expect(text).toContain('1 css')
-    expect(text).toContain('Server bundle')
+    expect(text).toMatch(/total js +2 files/)
+    expect(text).toMatch(/total css +1 file /)
+    expect(text).toContain('server bundle')
     expect(text).toContain('server/entry-server.js')
     expect(text).toContain('2 prerendered pages')
-    expect(text).toContain('Build complete')
-    expect(text).toContain('965 ms')
+    // The last non-empty line is the verdict: symbol, word, elapsed, counts.
+    const lines = text.split('\n').filter((l) => l.trim() !== '')
+    expect(lines.at(-1)).toMatch(
+      /^ {2}✓ built in 965 ms · 4 assets · 2 prerendered pages \([\d.]+ k?B html\) · server [\d.]+ k?B$/,
+    )
     // Plain tier: no ANSI escapes at all.
     expect(text).not.toContain('\x1b[')
   })
 
   it('seconds formatting above 1s', () => {
     const text = formatBuildSummary(stats, { color: 0, elapsedMs: 1080 }).join('\n')
-    expect(text).toContain('1.08 s')
+    expect(text).toContain('built in 1.1 s')
+  })
+
+  it('falls back to ASCII symbols', () => {
+    const text = formatBuildSummary(stats, { color: 0, unicode: false, elapsedMs: 5 }).join('\n')
+    expect(text).toContain('v built in 5 ms - ')
   })
 
   it('collapses the tail past maxRows', () => {
@@ -153,10 +136,19 @@ describe('formatBuildSummary', () => {
     expect(text).toContain('+ 3 more')
   })
 
-  it('truecolor tier paints the ember gradient', () => {
-    const text = formatBuildSummary(stats, { color: 2, elapsedMs: 10 }).join('\n')
-    expect(text).toContain('\x1b[38;2;255;31;140m') // ember-plasma
-    expect(text).toContain('\x1b[38;2;') // truecolor escapes present
+  it('truecolor tier uses the shared palette, per theme', () => {
+    const dark = formatBuildSummary(stats, { color: 3, elapsedMs: 10 }).join('\n')
+    expect(dark).toContain('\x1b[38;2;74;222;128m✓') // ok, dark
+    const light = formatBuildSummary(stats, { color: 3, theme: 'light', elapsedMs: 10 }).join('\n')
+    expect(light).toContain('\x1b[38;2;21;112;58m✓') // ok, light
+  })
+
+  it('256-colour tier uses the nearest xterm index, per theme', () => {
+    const dark = formatBuildSummary(stats, { color: 2, elapsedMs: 10 }).join('\n')
+    expect(dark).toContain('\x1b[38;5;78m✓') // ok, dark
+    const light = formatBuildSummary(stats, { color: 2, theme: 'light', elapsedMs: 10 }).join('\n')
+    expect(light).toContain('\x1b[38;5;22m✓') // ok, light
+    expect(dark).not.toContain('\x1b[38;2;')
   })
 
   it('16-color tier uses basic ANSI only', () => {
@@ -166,13 +158,9 @@ describe('formatBuildSummary', () => {
   })
 })
 
-// ─── emberBrand / colorizeMode / mode-table color param ──────────────────────
+// ─── colorizeMode / mode-table color param ──────────────────────
 
 describe('branding helpers', () => {
-  it('emberBrand degrades to plain text at level 0', () => {
-    expect(emberBrand(0)).toBe('▲ pyreon zero')
-  })
-
   it('colorizeMode is identity at level 0 and for unknown modes', () => {
     expect(colorizeMode(0, 'ssr', 'λ ssr')).toBe('λ ssr')
     expect(colorizeMode(2, 'nope', 'x')).toBe('x')
@@ -185,8 +173,8 @@ describe('branding helpers', () => {
     ]
     const plain = formatRouteModeTable(entries, 'ssr')
     expect(plain.join('\n')).not.toContain('\x1b[')
-    expect(plain[0]).toContain('[zero] Route modes (app: ssr)')
-    const colored = formatRouteModeTable(entries, 'ssr', 40, 2)
+    expect(plain[0]).toContain('Route modes · app: ssr ·')
+    const colored = formatRouteModeTable(entries, 'ssr', 40, 3)
     expect(colored.join('\n')).toContain('\x1b[38;2;')
   })
 })

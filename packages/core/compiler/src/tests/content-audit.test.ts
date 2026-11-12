@@ -93,6 +93,29 @@ export default defineConfig({
     expect(decls[0]?.type).toBe('data')
   })
 
+  it('recognises a collection built by a preset or a variable (blogCollection())', async () => {
+    const configPath = await writeFile(
+      'content.config.ts',
+      `import { defineConfig } from '@pyreon/zero-content'
+import { blogCollection } from '@pyreon/zero-content/blog'
+const notes = makeNotes()
+export default defineConfig({
+  collections: {
+    blog: blogCollection(),
+    news: blogCollection({ path: 'src/news' }),
+    notes,
+  },
+})
+`,
+    )
+    const decls = parseContentConfig(configPath)
+    expect(decls.map((d) => [d.name, path.relative(tmpDir, d.contentDir)])).toEqual([
+      ['blog', path.join('src', 'content', 'blog')],
+      ['news', path.join('src', 'news')],
+      ['notes', path.join('src', 'content', 'notes')],
+    ])
+  })
+
   it('handles multiple collections in one config', async () => {
     const configPath = await writeFile(
       'content.config.ts',

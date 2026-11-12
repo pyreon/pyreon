@@ -1,40 +1,37 @@
 import { el } from '../../kit'
 
+/**
+ * A catalog row (`.at-g a`): 28px, verdict dot + name. Selected = the glow
+ * tint with the accent edge. Indented by `data-depth`.
+ */
 export const CompBtn = el
   .attrs({
     tag: 'button',
     contentDirection: 'inline',
     contentAlignY: 'center',
     block: true,
-    gap: 12,
+    gap: 8,
   })
   .theme((t) => ({
     font: 'inherit',
     cursor: 'pointer',
     textAlign: 'left',
     border: 'none',
-    padding: '8px 8px',
-    borderRadius: t.radius.button,
-    marginBottom: '1px',
-    fontSize: t.size.item,
-    transition: `background ${t.motion.fast}`,
-    fontWeight: '500',
+    height: '28px',
+    padding: '0 12px',
+    fontSize: t.size.text,
     color: t.muted,
     background: 'transparent',
-    hover: { background: t.surface2 },
     minWidth: '0',
-    // Nesting depth → indent. A part sits under its parent, a folder's
-    // components under the folder header.
+    hover: { color: t.text, background: t.sheen },
     extendCss:
-      '&[data-depth="2"]{padding-left:20px;}&[data-depth="3"]{padding-left:32px;}&[data-depth="4"]{padding-left:44px;}',
+      '&[data-depth="2"]{padding-left:24px;}&[data-depth="3"]{padding-left:36px;}&[data-depth="4"]{padding-left:48px;}&[data-depth="5"]{padding-left:60px;}',
   }))
-  .states(
-    (t) => ({
-      active: {
-        fontWeight: 600,
-        color: t.text,
-        backgroundColor: t.accentSoft,
-      },
-      idle: {},
-    }),
-  )
+  .states((t) => ({
+    active: {
+      color: t.text,
+      backgroundColor: t.glow,
+      boxShadow: `inset 2px 0 0 ${t.accent}`,
+    },
+    idle: {},
+  }))

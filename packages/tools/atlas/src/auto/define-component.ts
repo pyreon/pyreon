@@ -47,7 +47,9 @@ function toPropShape(rawName: string, spec: PropSpec): PropShape {
 /** Build a `ComponentIntelligence` from a terse spec. */
 export function defineComponent(name: string, spec: ComponentSpec = {}): ComponentIntelligence {
   const entries = Object.entries(spec.props ?? {})
-  const controls = inferControls(entries.map(([rawName, propSpec]) => toPropShape(rawName, propSpec)))
+  const controls = inferControls(entries.map(([rawName, propSpec]) => toPropShape(rawName, propSpec))).map(
+    (c) => ({ ...c, source: 'spec' as const }),
+  )
 
   const axes: VariantAxis[] = []
   if (spec.axes) {

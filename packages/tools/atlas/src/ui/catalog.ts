@@ -24,6 +24,20 @@ export interface WorkbenchControl {
    * parts are mandatory documents less than the validator does.
    */
   required?: boolean
+  /**
+   * Where the control came from — `prop-type`, `dimension` (rocketstyle),
+   * `content` (the seed Atlas renders with) or `spec` (`defineComponent`).
+   * Absent on a hand-written catalog's controls. The Schema panel's
+   * "source" column.
+   */
+  source?: import('../core').ControlSource
+  /**
+   * When `atlas dev` first saw this control, in epoch ms — set only for a
+   * control that APPEARED on a rescan during the session (a prop added to
+   * the source while the workbench was open), never for one present at boot.
+   * The Schema panel shows it as "added N min ago".
+   */
+  addedAt?: number
 }
 
 /** Context handed to a component's `render` — lets the preview log events + write control values back. */

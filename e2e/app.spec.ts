@@ -170,6 +170,10 @@ test.describe("TodoList", () => {
     // Should now be checked and remaining count should drop to 0
     await expect(page.locator(".remaining")).toContainText("0")
     await expect(thirdCheckbox).toBeChecked()
+    // The row itself must follow, not only the browser's own checkbox state:
+    // toggling replaces the todo object under the same `by` key, so a row that
+    // read `todo.done` once kept its old class while the count moved.
+    await expect(page.locator(".todo-list li").nth(2)).toHaveClass("done")
   })
 
   test("toggle a done todo marks it undone", async ({ page }) => {
@@ -180,6 +184,7 @@ test.describe("TodoList", () => {
     // Should now be unchecked and remaining count should increase to 2
     await expect(page.locator(".remaining")).toContainText("2")
     await expect(firstCheckbox).not.toBeChecked()
+    await expect(page.locator(".todo-list li").nth(0)).not.toHaveClass("done")
   })
 
   test("remove a todo", async ({ page }) => {

@@ -226,57 +226,13 @@
 }
 
 
-/* ── 4 · Base / reusable scaffolding ─────────────────────────────────── */
+/* ── 4 · Base ─────────────────────────────────────────────────────────── */
 
 body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
 }
-
-.px-sans  { font-family: var(--font-sans); }
-.px-mono  { font-family: var(--font-mono); font-feature-settings: 'ss01', 'ss02', 'cv01'; }
-
-.px-ember-text {
-  background: var(--ember-grad);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.px-eyebrow {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: .16em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-
-.px-link { color: var(--link); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color .15s; }
-.px-link:hover { border-bottom-color: currentColor; }
-
-
-/* ── 5 · Motion — the signature pulse · respects reduced-motion ──────── */
-
-@keyframes px-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(255,94,26,.7), 0 0 0 0 rgba(255,31,140,.5); }
-  60%  { box-shadow: 0 0 0 8px rgba(255,94,26,0),  0 0 0 16px rgba(255,31,140,0); }
-  100% { box-shadow: 0 0 0 0 rgba(255,94,26,0),   0 0 0 0 rgba(255,31,140,0); }
-}
-@keyframes px-trace {
-  0%   { stroke-dashoffset: 100; opacity: 0; }
-  20%  { opacity: 1; }
-  100% { stroke-dashoffset: 0; opacity: 0; }
-}
-@keyframes px-digit {
-  0%   { color: var(--text); transform: translateY(0); }
-  50%  { color: var(--ember); transform: translateY(-2px); }
-  100% { color: var(--text); transform: translateY(0); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .px-pulse, .px-trace, .px-digit { animation: none !important; }
-}
-
 
 /* ── 6 · Selection ───────────────────────────────────────────────────── */
 

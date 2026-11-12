@@ -1,0 +1,405 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`lathe --json is locked > check --json, current and stale > current 1`] = `
+"{
+  "ok": true,
+  "command": "check",
+  "projects": [
+    {
+      "name": "",
+      "title": "T",
+      "version": "1",
+      "models": 1,
+      "operations": 1,
+      "target": "web",
+      "output": "gen",
+      "files": [
+        "schemas/Book.ts",
+        "schemas.ts",
+        "client.ts",
+        "endpoints/books.ts",
+        "queries/books.ts",
+        "keys.ts",
+        "endpoints/index.ts",
+        "queries/index.ts",
+        "index.ts",
+        "package.json",
+        "lathe-manifest.json",
+        "api-surface.json"
+      ],
+      "wrote": 0,
+      "removed": [],
+      "stale": [],
+      "dryRun": false,
+      "reach": {
+        "listBooks": {
+          "reach": "web+native"
+        }
+      },
+      "notes": [],
+      "verify": {
+        "ran": false,
+        "reason": "no native modules were generated (target is \`web\`)",
+        "files": []
+      },
+      "changes": []
+    }
+  ]
+}
+"
+`;
+
+exports[`lathe --json is locked > check --json, current and stale > stale 1`] = `
+"{
+  "ok": false,
+  "command": "check",
+  "projects": [
+    {
+      "name": "",
+      "title": "T",
+      "version": "1",
+      "models": 1,
+      "operations": 1,
+      "target": "web",
+      "output": "gen",
+      "files": [
+        "schemas/Book.ts",
+        "schemas.ts",
+        "client.ts",
+        "endpoints/books.ts",
+        "queries/books.ts",
+        "keys.ts",
+        "endpoints/index.ts",
+        "queries/index.ts",
+        "index.ts",
+        "package.json",
+        "lathe-manifest.json",
+        "api-surface.json"
+      ],
+      "wrote": 0,
+      "removed": [],
+      "stale": [
+        "schemas/Book.ts",
+        "api-surface.json"
+      ],
+      "dryRun": false,
+      "reach": {
+        "listBooks": {
+          "reach": "web+native"
+        }
+      },
+      "notes": [],
+      "verify": {
+        "ran": false,
+        "reason": "no native modules were generated (target is \`web\`)",
+        "files": []
+      },
+      "changes": [
+        {
+          "severity": "additive",
+          "code": "field-added",
+          "subject": "Book.title",
+          "detail": "string (optional)"
+        }
+      ]
+    }
+  ]
+}
+"
+`;
+
+exports[`lathe --json is locked > generate --dry-run --json 1`] = `
+"{
+  "ok": true,
+  "command": "generate",
+  "projects": [
+    {
+      "name": "",
+      "title": "T",
+      "version": "1",
+      "models": 1,
+      "operations": 1,
+      "target": "web",
+      "output": "gen",
+      "files": [
+        "schemas/Book.ts",
+        "schemas.ts",
+        "client.ts",
+        "endpoints/books.ts",
+        "queries/books.ts",
+        "keys.ts",
+        "endpoints/index.ts",
+        "queries/index.ts",
+        "index.ts",
+        "package.json",
+        "lathe-manifest.json",
+        "api-surface.json"
+      ],
+      "wrote": 0,
+      "removed": [],
+      "stale": [
+        "schemas/Book.ts",
+        "api-surface.json"
+      ],
+      "dryRun": true,
+      "reach": {
+        "listBooks": {
+          "reach": "web+native"
+        }
+      },
+      "notes": [],
+      "verify": {
+        "ran": false,
+        "reason": "no native modules were generated (target is \`web\`)",
+        "files": []
+      },
+      "changes": [
+        {
+          "severity": "additive",
+          "code": "field-added",
+          "subject": "Book.title",
+          "detail": "string (optional)"
+        }
+      ]
+    }
+  ]
+}
+"
+`;
+
+exports[`lathe --json is locked > generate --json 1`] = `
+"{
+  "ok": true,
+  "command": "generate",
+  "projects": [
+    {
+      "name": "",
+      "title": "T",
+      "version": "1",
+      "models": 1,
+      "operations": 1,
+      "target": "web",
+      "output": "gen",
+      "files": [
+        "schemas/Book.ts",
+        "schemas.ts",
+        "client.ts",
+        "endpoints/books.ts",
+        "queries/books.ts",
+        "keys.ts",
+        "endpoints/index.ts",
+        "queries/index.ts",
+        "index.ts",
+        "package.json",
+        "lathe-manifest.json",
+        "api-surface.json"
+      ],
+      "wrote": 12,
+      "removed": [],
+      "stale": [],
+      "dryRun": false,
+      "reach": {
+        "listBooks": {
+          "reach": "web+native"
+        }
+      },
+      "notes": [],
+      "verify": {
+        "ran": false,
+        "reason": "no native modules were generated (target is \`web\`)",
+        "files": []
+      },
+      "changes": []
+    }
+  ]
+}
+"
+`;
+
+exports[`lathe diff machine formats are locked > --format github (annotations + markdown, and the job summary) > stdout 1`] = `
+"::error title=API breaking: operation-removed::deleteOrder — \`DELETE /orders/:id\` no longer exists (affects deleteOrder, useDeleteOrder (orders))
+::notice title=API additive: field-added::Order.dueAt — string (optional) (affects getOrder, useGetOrder (orders))
+### API contract: 1 breaking, 1 additive
+
+#### Breaking (1)
+
+Existing, correct client code can now be wrong at RUNTIME — it still typechecks against the regenerated types.
+
+| Change | Subject | Detail | Generated code affected |
+| --- | --- | --- | --- |
+| \`operation-removed\` | \`deleteOrder\` | \`DELETE /orders/:id\` no longer exists | \`deleteOrder\`, \`useDeleteOrder\` (orders) |
+
+#### Additive (1)
+
+Nothing existing breaks; new surface is available.
+
+| Change | Subject | Detail | Generated code affected |
+| --- | --- | --- | --- |
+| \`field-added\` | \`Order.dueAt\` | string (optional) | \`getOrder\`, \`useGetOrder\` (orders) |
+
+<sub>Generated by <code>lathe diff</code> — severities are from the client’s point of view.</sub>
+
+"
+`;
+
+exports[`lathe diff machine formats are locked > --format github (annotations + markdown, and the job summary) > summary 1`] = `
+"### API contract: 1 breaking, 1 additive
+
+#### Breaking (1)
+
+Existing, correct client code can now be wrong at RUNTIME — it still typechecks against the regenerated types.
+
+| Change | Subject | Detail | Generated code affected |
+| --- | --- | --- | --- |
+| \`operation-removed\` | \`deleteOrder\` | \`DELETE /orders/:id\` no longer exists | \`deleteOrder\`, \`useDeleteOrder\` (orders) |
+
+#### Additive (1)
+
+Nothing existing breaks; new surface is available.
+
+| Change | Subject | Detail | Generated code affected |
+| --- | --- | --- | --- |
+| \`field-added\` | \`Order.dueAt\` | string (optional) | \`getOrder\`, \`useGetOrder\` (orders) |
+
+<sub>Generated by <code>lathe diff</code> — severities are from the client’s point of view.</sub>
+
+"
+`;
+
+exports[`lathe diff machine formats are locked > --format json 1`] = `
+"{
+  "ok": true,
+  "command": "diff",
+  "projects": [],
+  "diff": {
+    "before": {
+      "title": "Shop"
+    },
+    "after": {
+      "title": "Shop"
+    },
+    "breaking": 1,
+    "additive": 1,
+    "changes": [
+      {
+        "severity": "breaking",
+        "code": "operation-removed",
+        "subject": "deleteOrder",
+        "detail": "\`DELETE /orders/:id\` no longer exists",
+        "affects": [
+          {
+            "id": "deleteOrder",
+            "module": "orders",
+            "symbols": [
+              "deleteOrder",
+              "useDeleteOrder"
+            ]
+          }
+        ]
+      },
+      {
+        "severity": "additive",
+        "code": "field-added",
+        "subject": "Order.dueAt",
+        "detail": "string (optional)",
+        "affects": [
+          {
+            "id": "getOrder",
+            "module": "orders",
+            "symbols": [
+              "getOrder",
+              "useGetOrder"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+"
+`;
+
+exports[`lathe diff machine formats are locked > --format markdown 1`] = `
+"### API contract: 1 breaking, 1 additive
+
+#### Breaking (1)
+
+Existing, correct client code can now be wrong at RUNTIME — it still typechecks against the regenerated types.
+
+| Change | Subject | Detail | Generated code affected |
+| --- | --- | --- | --- |
+| \`operation-removed\` | \`deleteOrder\` | \`DELETE /orders/:id\` no longer exists | \`deleteOrder\`, \`useDeleteOrder\` (orders) |
+
+#### Additive (1)
+
+Nothing existing breaks; new surface is available.
+
+| Change | Subject | Detail | Generated code affected |
+| --- | --- | --- | --- |
+| \`field-added\` | \`Order.dueAt\` | string (optional) | \`getOrder\`, \`useGetOrder\` (orders) |
+
+<sub>Generated by <code>lathe diff</code> — severities are from the client’s point of view.</sub>
+
+"
+`;
+
+exports[`lathe diff machine formats are locked > --format markdown with no change 1`] = `
+"### API contract: No contract changes.
+
+Nothing a generated client depends on moved.
+
+"
+`;
+
+exports[`lathe diff machine formats are locked > --json 1`] = `
+"{
+  "ok": false,
+  "command": "diff",
+  "projects": [],
+  "diff": {
+    "before": {
+      "title": "Shop"
+    },
+    "after": {
+      "title": "Shop"
+    },
+    "breaking": 1,
+    "additive": 1,
+    "changes": [
+      {
+        "severity": "breaking",
+        "code": "operation-removed",
+        "subject": "deleteOrder",
+        "detail": "\`DELETE /orders/:id\` no longer exists",
+        "affects": [
+          {
+            "id": "deleteOrder",
+            "module": "orders",
+            "symbols": [
+              "deleteOrder",
+              "useDeleteOrder"
+            ]
+          }
+        ]
+      },
+      {
+        "severity": "additive",
+        "code": "field-added",
+        "subject": "Order.dueAt",
+        "detail": "string (optional)",
+        "affects": [
+          {
+            "id": "getOrder",
+            "module": "orders",
+            "symbols": [
+              "getOrder",
+              "useGetOrder"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+"
+`;

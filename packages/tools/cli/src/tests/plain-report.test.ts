@@ -112,9 +112,11 @@ describe('the declined histogram is ordered by COUNT — the build-next signal',
     for (let i = 0; i < 3; i++) write(`d${i}.ts`, DECLINED)
     await plain(opts({ paths: [tmp] }))
 
-    const rows = logs
-      .slice(logs.findIndex((l) => l.includes('Declined shapes')) + 1)
-      .filter((l) => /\S/.test(l))
+    // The section runs from its heading to the next blank line.
+    const all = logs.join('\n').split('\n')
+    const from = all.findIndex((l) => l.includes('Declined shapes')) + 1
+    const end = all.findIndex((l, i) => i >= from && !/\S/.test(l))
+    const rows = all.slice(from, end === -1 ? undefined : end)
     const counts = rows.map((l) => Number(l.trim().split(/\s+/).pop()))
     expect(counts.length, 'both shapes must appear').toBeGreaterThanOrEqual(2)
     expect(counts, 'descending by count').toEqual([...counts].sort((a, b) => b - a))

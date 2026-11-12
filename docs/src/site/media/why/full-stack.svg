@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa pw-full-stack" viewBox="0 0 960 480" width="960" height="480" role="img" aria-labelledby="pw-full-stack-t pw-full-stack-d" fill="none">
+<title id="pw-full-stack-t">Render modes per route, resolved through one precedence chain</title>
+<desc id="pw-full-stack-d">A precedence chain across the top: the page's own renderMode, the nearest _layout, routeRules, mode: 'auto' (experimental), then the app mode. Four routes resolve in turn. / falls through to the app mode and gets SSR. /about declares renderMode = 'ssg' on the page and gets SSG. /blog/** matches a routeRules glob and gets ISR. /admin/** matches routeRules and gets SPA.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.pw-full-stack{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.pw-full-stack .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.pw-full-stack .pw-full-stack-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.pw-full-stack *{animation:none!important;transition:none!important}.pw-full-stack .pw-full-stack-rm{opacity:1}.pw-full-stack .pw-full-stack-am{opacity:0}}
+
+.pw-full-stack .ln{stroke:var(--px-hint);stroke-width:1.5;fill:none}
+.pw-full-stack .dash{stroke:var(--px-hint);stroke-width:1.5;stroke-dasharray:3 5;fill:none}
+.pw-full-stack .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pw-full-stack .bx2{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+.pw-full-stack .lab{fill:var(--px-fog);font-size:14px;letter-spacing:.04em}
+.pw-full-stack .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.pw-full-stack .val{fill:var(--px-text);font-size:20px;font-weight:500}
+.pw-full-stack .big{fill:var(--px-strong);font-size:24px;font-weight:600;letter-spacing:-.02em}
+.pw-full-stack .code{fill:var(--px-text);font-size:15px}
+.pw-full-stack .kw{fill:var(--px-accent-text)} .pw-full-stack .fn{fill:var(--px-link)} .pw-full-stack .str{fill:var(--px-warm)} .pw-full-stack .ty{fill:var(--px-violet)}
+.pw-full-stack .dim{fill:var(--px-fog)}
+.pw-full-stack .hint{fill:var(--px-hint);font-size:13px}
+.pw-full-stack .ember{stroke:url(#pw-full-stack-egu);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:36 900;fill:none}
+.pw-full-stack .emberS{stroke:url(#pw-full-stack-egu);stroke-width:2.5;stroke-linecap:round;fill:none}
+.pw-full-stack .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.pw-full-stack .ok{fill:var(--px-ok)} .pw-full-stack .warm{fill:var(--px-warm)} .pw-full-stack .hot{fill:var(--px-accent)} .pw-full-stack .errF{fill:var(--px-err)}
+.pw-full-stack .okT{fill:var(--px-ok)} .pw-full-stack .warmT{fill:var(--px-warm)} .pw-full-stack .hotT{fill:var(--px-accent-text)} .pw-full-stack .errT{fill:var(--px-err)}
+.pw-full-stack .okS{stroke:var(--px-ok)} .pw-full-stack .errS{stroke:var(--px-err)}
+.pw-full-stack .gfill{fill:url(#pw-full-stack-eg)}
+@media (prefers-reduced-motion: reduce){.pw-full-stack .ember{opacity:0}}
+
+.pw-full-stack .stp{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pw-full-stack .dot{fill:var(--px-card);stroke:var(--px-hint);stroke-width:1.5}
+.pw-full-stack .exp{fill:var(--px-warn);font-size:11px;letter-spacing:.1em}
+.pw-full-stack .chip{fill:none;stroke:var(--px-fog);stroke-width:1.5}
+.pw-full-stack .mode{fill:var(--px-text);font-size:15px;font-weight:600}
+@keyframes pw-full-stack-tr0{0%{stroke-dashoffset:40;opacity:0}7.5000%{stroke-dashoffset:40;opacity:1}16.8750%{stroke-dashoffset:-528;opacity:1}16.8875%{stroke-dashoffset:40;opacity:0}100%{stroke-dashoffset:40;opacity:0}}
+@keyframes pw-full-stack-hit0{0%{opacity:0}16.8750%{opacity:0}17.8750%{opacity:1}19.3750%{opacity:0}100%{opacity:0}}
+@keyframes pw-full-stack-on0{0.0000%{opacity:0;animation-timing-function:step-end}16.8750%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+.pw-full-stack .tr0{stroke-dasharray:40 900}
+@keyframes pw-full-stack-tr1{0%{stroke-dashoffset:40;opacity:0}27.5000%{stroke-dashoffset:40;opacity:1}29.3750%{stroke-dashoffset:-40;opacity:1}29.3875%{stroke-dashoffset:40;opacity:0}100%{stroke-dashoffset:40;opacity:0}}
+@keyframes pw-full-stack-hit1{0%{opacity:0}29.3750%{opacity:0}30.3750%{opacity:1}31.8750%{opacity:0}100%{opacity:0}}
+@keyframes pw-full-stack-on1{0.0000%{opacity:0;animation-timing-function:step-end}29.3750%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+.pw-full-stack .tr1{stroke-dasharray:40 900}
+@keyframes pw-full-stack-tr2{0%{stroke-dashoffset:40;opacity:0}47.5000%{stroke-dashoffset:40;opacity:1}53.1250%{stroke-dashoffset:-284;opacity:1}53.1375%{stroke-dashoffset:40;opacity:0}100%{stroke-dashoffset:40;opacity:0}}
+@keyframes pw-full-stack-hit2{0%{opacity:0}53.1250%{opacity:0}54.1250%{opacity:1}55.6250%{opacity:0}100%{opacity:0}}
+@keyframes pw-full-stack-on2{0.0000%{opacity:0;animation-timing-function:step-end}53.1250%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+.pw-full-stack .tr2{stroke-dasharray:40 900}
+@keyframes pw-full-stack-tr3{0%{stroke-dashoffset:40;opacity:0}67.5000%{stroke-dashoffset:40;opacity:1}73.1250%{stroke-dashoffset:-284;opacity:1}73.1375%{stroke-dashoffset:40;opacity:0}100%{stroke-dashoffset:40;opacity:0}}
+@keyframes pw-full-stack-hit3{0%{opacity:0}73.1250%{opacity:0}74.1250%{opacity:1}75.6250%{opacity:0}100%{opacity:0}}
+@keyframes pw-full-stack-on3{0.0000%{opacity:0;animation-timing-function:step-end}73.1250%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+.pw-full-stack .tr3{stroke-dasharray:40 900}
+.pw-full-stack .tr0{animation:pw-full-stack-tr0 8000ms linear infinite}
+.pw-full-stack .hit0{animation:pw-full-stack-hit0 8000ms linear infinite}
+.pw-full-stack .on0{animation:pw-full-stack-on0 8000ms linear infinite}
+.pw-full-stack .tr1{animation:pw-full-stack-tr1 8000ms linear infinite}
+.pw-full-stack .hit1{animation:pw-full-stack-hit1 8000ms linear infinite}
+.pw-full-stack .on1{animation:pw-full-stack-on1 8000ms linear infinite}
+.pw-full-stack .tr2{animation:pw-full-stack-tr2 8000ms linear infinite}
+.pw-full-stack .hit2{animation:pw-full-stack-hit2 8000ms linear infinite}
+.pw-full-stack .on2{animation:pw-full-stack-on2 8000ms linear infinite}
+.pw-full-stack .tr3{animation:pw-full-stack-tr3 8000ms linear infinite}
+.pw-full-stack .hit3{animation:pw-full-stack-hit3 8000ms linear infinite}
+.pw-full-stack .on3{animation:pw-full-stack-on3 8000ms linear infinite}
+@media (prefers-reduced-motion: reduce){.pw-full-stack .on0,.pw-full-stack .on1,.pw-full-stack .on2,.pw-full-stack .on3{opacity:1}}
+</style>
+<defs><linearGradient id="pw-full-stack-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pw-full-stack-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="960" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pw-full-stack-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pw-full-stack-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<text class="m eb" x="24" y="34">ZERO · ONE RENDER MODE PER ROUTE</text>
+<text class="m hint" x="24" y="98">precedence</text>
+<text class="m hint" x="24" y="116">first match wins</text><rect class="stp" x="175" y="64" width="112" height="62" rx="10"/>
+<text class="m lab" x="231" y="90" text-anchor="middle" style="fill:var(--px-text);letter-spacing:0" font-size="13">page</text>
+<text class="m lab" x="231" y="110" text-anchor="middle" style="letter-spacing:0" font-size="13">renderMode</text><path class="ln" d="M287 95 L297 95"/><rect class="stp" x="297" y="64" width="112" height="62" rx="10"/>
+<text class="m lab" x="353" y="90" text-anchor="middle" style="fill:var(--px-text);letter-spacing:0" font-size="13">nearest</text>
+<text class="m lab" x="353" y="110" text-anchor="middle" style="letter-spacing:0" font-size="13">_layout</text><path class="ln" d="M409 95 L419 95"/><rect class="stp" x="419" y="64" width="112" height="62" rx="10"/>
+<text class="m lab" x="475" y="90" text-anchor="middle" style="fill:var(--px-text);letter-spacing:0" font-size="13">routeRules</text>
+<path class="ln" d="M531 95 L541 95"/><rect class="stp" x="541" y="64" width="112" height="62" rx="10"/>
+<text class="m lab" x="597" y="90" text-anchor="middle" style="fill:var(--px-text);letter-spacing:0" font-size="13">mode: 'auto'</text>
+<text class="m exp" x="597" y="110" text-anchor="middle">EXPERIMENTAL</text><path class="ln" d="M653 95 L663 95"/><rect class="stp" x="663" y="64" width="112" height="62" rx="10"/>
+<text class="m lab" x="719" y="90" text-anchor="middle" style="fill:var(--px-text);letter-spacing:0" font-size="13">app mode</text>
+<text class="m lab" x="719" y="110" text-anchor="middle" style="letter-spacing:0" font-size="13">'ssr'</text><line x1="24" y1="150" x2="936" y2="150" style="stroke:var(--px-line2)" stroke-width="1"/>
+<text class="m hint" x="24" y="174">route</text><text class="m hint" x="936" y="174" text-anchor="end">gets</text><text class="m code" x="24" y="219">/</text>
+<line class="ln" x1="191" y1="214" x2="719" y2="214" style="stroke:var(--px-line2)"/>
+<circle class="dot" cx="231" cy="214" r="6"/><circle class="dot" cx="353" cy="214" r="6"/><circle class="dot" cx="475" cy="214" r="6"/><circle class="dot" cx="597" cy="214" r="6"/><circle class="dot" cx="719" cy="214" r="6"/>
+<path class="ember tr0" d="M191 214 L719 214"/>
+<circle class="ring hit0" cx="719" cy="214" r="11" opacity="0"/>
+<circle class="ring pw-full-stack-rm" cx="719" cy="214" r="11"/>
+<g class="on0" opacity="0"><circle cx="719" cy="214" r="6" style="fill:var(--px-accent)"/>
+<text class="m hint" x="719" y="240" text-anchor="middle" font-size="12">mode: 'ssr'</text>
+<rect class="chip" x="836" y="197" width="100" height="34" rx="17"/>
+<text class="m mode" x="886" y="220" text-anchor="middle">λ SSR</text></g><text class="m code" x="24" y="285">/about</text>
+<line class="ln" x1="191" y1="280" x2="719" y2="280" style="stroke:var(--px-line2)"/>
+<circle class="dot" cx="231" cy="280" r="6"/><circle class="dot" cx="353" cy="280" r="6"/><circle class="dot" cx="475" cy="280" r="6"/><circle class="dot" cx="597" cy="280" r="6"/><circle class="dot" cx="719" cy="280" r="6"/>
+<path class="ember tr1" d="M191 280 L231 280"/>
+<circle class="ring hit1" cx="231" cy="280" r="11" opacity="0"/>
+<circle class="ring pw-full-stack-rm" cx="231" cy="280" r="11"/>
+<g class="on1" opacity="0"><circle cx="231" cy="280" r="6" style="fill:var(--px-accent)"/>
+<text class="m hint" x="231" y="306" text-anchor="middle" font-size="12">renderMode = 'ssg'</text>
+<rect class="chip" x="836" y="263" width="100" height="34" rx="17"/>
+<text class="m mode" x="886" y="286" text-anchor="middle">○ SSG</text></g><text class="m code" x="24" y="351">/blog/**</text>
+<line class="ln" x1="191" y1="346" x2="719" y2="346" style="stroke:var(--px-line2)"/>
+<circle class="dot" cx="231" cy="346" r="6"/><circle class="dot" cx="353" cy="346" r="6"/><circle class="dot" cx="475" cy="346" r="6"/><circle class="dot" cx="597" cy="346" r="6"/><circle class="dot" cx="719" cy="346" r="6"/>
+<path class="ember tr2" d="M191 346 L475 346"/>
+<circle class="ring hit2" cx="475" cy="346" r="11" opacity="0"/>
+<circle class="ring pw-full-stack-rm" cx="475" cy="346" r="11"/>
+<g class="on2" opacity="0"><circle cx="475" cy="346" r="6" style="fill:var(--px-accent)"/>
+<text class="m hint" x="475" y="372" text-anchor="middle" font-size="12">→ renderMode: 'isr'</text>
+<rect class="chip" x="836" y="329" width="100" height="34" rx="17"/>
+<text class="m mode" x="886" y="352" text-anchor="middle">⟳ ISR</text></g><text class="m code" x="24" y="417">/admin/**</text>
+<line class="ln" x1="191" y1="412" x2="719" y2="412" style="stroke:var(--px-line2)"/>
+<circle class="dot" cx="231" cy="412" r="6"/><circle class="dot" cx="353" cy="412" r="6"/><circle class="dot" cx="475" cy="412" r="6"/><circle class="dot" cx="597" cy="412" r="6"/><circle class="dot" cx="719" cy="412" r="6"/>
+<path class="ember tr3" d="M191 412 L475 412"/>
+<circle class="ring hit3" cx="475" cy="412" r="11" opacity="0"/>
+<circle class="ring pw-full-stack-rm" cx="475" cy="412" r="11"/>
+<g class="on3" opacity="0"><circle cx="475" cy="412" r="6" style="fill:var(--px-accent)"/>
+<text class="m hint" x="475" y="438" text-anchor="middle" font-size="12">→ renderMode: 'spa'</text>
+<rect class="chip" x="836" y="395" width="100" height="34" rx="17"/>
+<text class="m mode" x="886" y="418" text-anchor="middle">⚡︎ SPA</text></g><text class="m hint" x="24" y="472">impossible combinations fail the build and name the route</text>
+</svg>

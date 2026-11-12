@@ -2,8 +2,6 @@
 title: Multi-Platform Libraries — package-owned native plugins
 ---
 
-# Multi-Platform Libraries
-
 Pyreon's native compiler lowers supported TypeScript and JSX into SwiftUI and Jetpack Compose. A package owns the rules that translate its API. The compiler supplies shared state, function, JSX, theme-token and native style operations.
 
 This keeps the source-facing API in the package that publishes it. Adding a library does not require adding that library's names, payloads or target templates to the compiler. Native support remains a declared subset: a plugin can lower one API while other exports need a `<Web>` branch or a native adapter. The [capability matrix](./multiplatform.md) and [supported TypeScript](./pmtc-supported-typescript.md) describe those limits.
@@ -185,7 +183,7 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/validation` | Standard Schema adapters (zod/valibot/arktype are JS libraries), so the adapters themselves stay web; the declarative schema FORMS lower to native validators (Gap-4 v1) |
 | `@pyreon/virtual` | DOM virtualization (scroll containers, measured rows). Native lists are lazy by construction: render the rows with a `<For>` as the ONLY child of a `<Scroll>` (LazyVStack on iOS, LazyColumn on Android) and no virtualizer is needed. Do not nest that `<For>` among other children inside a `<Scroll>`: Compose rejects a lazy list inside a scrolling Column at measure time. |
 | `@pyreon/zero` | the web meta-framework (SSR/SSG/ISR, Vite, fs-router); native apps are built by PMTC + create-multiplatform, not zero |
-| `@pyreon/zero-content` | markdown/MDX content pipeline for zero's web rendering |
+| `@pyreon/zero-content` | markdown/MDX content pipeline and blog module for zero's web rendering: a Vite plugin, SSG/SSR pages and document head tags — nothing here has a native target |
 
 {/* gen:multiplatform-tiers:end */}
 

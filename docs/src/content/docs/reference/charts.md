@@ -1,9 +1,7 @@
 ---
-title: "Charts on web, iOS and Android — API Reference"
+title: "@pyreon/charts — API Reference"
 description: "Pyreon's own charting engine: marks as JSX children, typed channels, canvas and SVG, the same chart on the web, iOS and Android"
 ---
-
-# @pyreon/charts — API Reference
 
 > **Generated** from `charts`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [charts](/docs/charts).
 

@@ -35,12 +35,15 @@ beforeEach(() => {
   logs = []
   warns = []
   errs = []
+  // Plain text: the assertions read words, not escape codes (CI may set FORCE_COLOR).
+  vi.stubEnv('NO_COLOR', '1')
   vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => logs.push(a.join(' ')))
   vi.spyOn(console, 'warn').mockImplementation((...a: unknown[]) => warns.push(a.join(' ')))
   vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => errs.push(a.join(' ')))
 })
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
   rmSync(root, { recursive: true, force: true })
 })
 
@@ -92,14 +95,15 @@ describe('build report', () => {
   it('lists the web-only entries it skipped', () => {
     const src = srcDir({ 'C.tsx': CLEAN, 'entry.tsx': WEB_ENTRY })
     expect(main(['build', `--target=ios`, `--source=${src}`, `--out=${outDir()}`])).toBe(0)
-    expect(logs.join('\n')).toMatch(/skipped 1 web-only entry file/)
+    expect(logs.join('\n')).toMatch(/ℹ skipped · 1 web-only entry file/)
     expect(logs.join('\n')).toContain('entry.tsx')
   })
 
   it('prints every warning with its file', () => {
     const src = srcDir({ 'C.tsx': WARNS })
     expect(main(['build', `--target=android`, `--source=${src}`, `--out=${outDir()}`])).toBe(0)
-    expect(warns.join('\n')).toMatch(/1 warning\(s\)/)
+    expect(warns.join('\n')).toContain('! warning · kotlin · ')
+    expect(logs.at(-1), 'and the verdict counts it').toMatch(/^✓ compiled 1 file → \S+(?: · |\n {2})1 warning · /) // a long path wraps the meta (rule 6)
     expect(warns.join('\n')).toContain('C.tsx')
   })
 
@@ -168,7 +172,7 @@ describe('wire output modes', () => {
   it('`--ios-out` stages co-located Swift and links the SwiftPM packages', () => {
     const dir = app()
     expect(main(['wire', `--app=${dir}`, '--ios-out=ios'])).toBe(0)
-    expect(logs.join('\n')).toMatch(/staged 1 co-located Swift file\(s\), linked 1 SwiftPM package\(s\)/)
+    expect(logs.join('\n')).toMatch(/✓ staged 1 co-located Swift file, linked 1 SwiftPM package → /)
     expect(readdirSync(join(dir, 'ios', 'PyreonNative'), { recursive: true }).length).toBeGreaterThan(0)
   })
 

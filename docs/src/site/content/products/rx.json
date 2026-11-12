@@ -1,0 +1,403 @@
+{
+ "id": "rx",
+ "route": "/products/rx",
+ "name": "RX",
+ "package": "@pyreon/rx",
+ "category": "fundamentals · reactive data",
+ "hero": {
+  "title": "`items().sort()` just mutated your state. `sortBy` does not.",
+  "emberWord": "mutated",
+  "lede": "Filter, sort, group, search, sum: 43 functions in one package. Pass a signal and get a live computed back; pass a plain array and get an array. Derived lists become one line each, they never mutate the source, and `pipe` runs a whole chain as one reactive node.",
+  "install": "bun add @pyreon/rx",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "functions",
+    "value": "43<small>Collections, set operations, aggregation, operators, timing, search and `pipe`.</small>"
+   },
+   {
+    "key": "in → out",
+    "value": "signal → computed<small>A plain array in gives a plain array out.</small>"
+   },
+   {
+    "key": "`pipe`",
+    "value": "1 node for N stages<small>An exact count, not a timing.</small>"
+   },
+   {
+    "key": "iOS and Android",
+    "value": "{dot:ok} shared tier<small>Supported transforms lower to native collection operations; an unsupported one warns by name.</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "1",
+   "label": "reactive node for a three-stage `pipe`, where separate calls build three",
+   "source": "BENCHMARKS.md §10, rx row: \"`pipe` fuses N nodes into 1 (exact count)\" · final pass"
+  },
+  {
+   "stat": "43",
+   "label": "signal-aware functions in one package, `pipe` included",
+   "source": "packages/fundamentals/rx/src/index.ts, `rx` namespace"
+  }
+ ],
+ "why": {
+  "title": "Derived data, minus the footguns.",
+  "items": [
+   {
+    "title": "Never mutates the source",
+    "text": "`sortBy` sorts a copy and compares numbers as numbers, so `[1, 10, 2]` comes back `[1, 2, 10]`. A hand-written `items().sort()` inside a `computed` reorders the signal's own array."
+   },
+   {
+    "title": "One function, two modes",
+    "text": "`filter(users, fn)` with a signal returns a `Computed` that re-derives when `users` changes. `filter(list, fn)` with an array returns an array. Same import on the server, in tests and in components."
+   },
+   {
+    "title": "`pipe` is one node",
+    "text": "`pipe(products, inStock, byPrice, top3)` is one computed: one subscription, one recompute per change. Three separate calls make three nodes and three hops."
+   },
+   {
+    "title": "Timers that clean up",
+    "text": "`debounce(query, 300)` gives a signal that settles 300 ms after the last keystroke. Inside a component its effect and pending timer go away on unmount."
+   }
+  ]
+ },
+ "difference": {
+  "title": "Three computeds, one bug, or one `pipe`.",
+  "before": {
+   "label": "by hand",
+   "caption": "A computed per step. Forget the `[...]` copy and the sort reorders `inStock`'s cached array in place.",
+   "code": "const inStock = computed(() =>\n  products().filter((p) => p.stock > 0))\nconst byPrice = computed(() =>\n  [...inStock()].sort((a, b) => a.price - b.price))\nconst top3 = computed(() => byPrice().slice(0, 3))"
+  },
+  "after": {
+   "label": "with @pyreon/rx",
+   "caption": "One computed for the chain. Each stage is a plain function; rx helpers on plain arrays return plain arrays.",
+   "code": "import { pipe, sortBy, take } from '@pyreon/rx'\n\nconst top3 = pipe(\n  products,\n  (items) => items.filter((p) => p.stock > 0),\n  (items) => sortBy(items, 'price'),\n  (items) => take(items, 3),\n)\n\ntop3()  // ['Desk lamp', 'Monitor arm', 'Mechanical keyboard']\nproducts.update((ps) => [...ps, plantPot])\ntop3()  // ['Plant pot', 'Desk lamp', 'Monitor arm']"
+  }
+ },
+ "comingFrom": [
+  {
+   "lib": "RxJS",
+   "title": "A filtered, debounced list without a subscription.",
+   "before": "import { BehaviorSubject, combineLatest, debounceTime, map } from 'rxjs'\n\nconst products$ = new BehaviorSubject<Product[]>(initial)\nconst query$ = new BehaviorSubject('')\n\nconst visible$ = combineLatest([\n  products$,\n  query$.pipe(debounceTime(300)),\n]).pipe(\n  map(([items, q]) =>\n    items.filter((p) => p.name.toLowerCase().includes(q.toLowerCase()))),\n  map((items) => [...items].sort((a, b) => a.price - b.price)),\n)\n\nconst sub = visible$.subscribe(render)\n// later: sub.unsubscribe()",
+   "after": "import { For } from '@pyreon/core'\nimport { signal } from '@pyreon/reactivity'\nimport { debounce, search, sortBy } from '@pyreon/rx'\n\nconst products = signal<Product[]>(initial)\nconst query = signal('')\n\nfunction ProductList() {\n  // built in the component: the debounce's effect and timer go away on unmount\n  const visible = sortBy(search(products, debounce(query, 300), ['name']), 'price')\n  // no subscribe, no unsubscribe\n  return (\n    <ul>\n      <For each={visible} by={(p) => p.id}>{(p) => <li>{p.name}</li>}</For>\n    </ul>\n  )\n}",
+   "note": "`@pyreon/rx` is not RxJS. RxJS is push-based streams over time: events, HTTP, cancellation with `switchMap`, schedulers, backpressure. `@pyreon/rx` is pull-based derivation of the current value of a signal, plus `debounce`, `throttle`, `scan` and `distinct` for signals. Keep RxJS for event streams; for \"a list that depends on other state\" this is less code. For requests, use `@pyreon/query`."
+  }
+ ],
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Search, sort and group a live list.",
+  "text": "One `pipe` over a products signal: search, sort and group. The counter shows how many times the pipe recomputed: once per change, however many stages it has.",
+  "spec": "A products signal (12 rows: name, category, price) and three control signals: a search query, a sort key (name | price) with a direction (asc | desc), and a grouping (none | category). One `pipe(products, (xs) => search(xs, query(), ['name', 'cat']), (xs) => sortBy(xs, key(), dir()), (xs) => grouped() ? groupBy(xs, 'cat') : xs)` whose first stage increments a recompute counter; the counter goes up by exactly one per input change. The code panel shows that real call shape: rx helpers are called with the array first inside each stage. It must not show curried forms such as `rx.search('q', keys)` or `rx.sortBy('name')`, which do not exist.",
+  "component": "DemoRx",
+  "reference": "pkg-rx.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"card\"><div class=\"in\">\n    <input id=\"rx-q\" placeholder=\"search name or category\" aria-label=\"Search\" style=\"height:40px;border-radius:999px;border:1px solid var(--line-2);background:transparent;color:var(--ivory);padding:0 16px;font:inherit\">\n    <div class=\"ds-ctl\"><span class=\"label\">sortBy</span><div class=\"seg\" id=\"rx-s\"><button type=\"button\" aria-pressed=\"true\">name</button><button type=\"button\">price</button></div></div>\n    <div class=\"ds-ctl\"><span class=\"label\">direction</span><div class=\"seg\" id=\"rx-d\"><button type=\"button\" aria-pressed=\"true\">asc</button><button type=\"button\">desc</button></div></div>\n    <div class=\"ds-ctl\"><span class=\"label\">groupBy</span><div class=\"seg\" id=\"rx-g\"><button type=\"button\" aria-pressed=\"true\">none</button><button type=\"button\">category</button></div></div>\n    <pre id=\"rx-code\" style=\"padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--well);font-size:12px;line-height:1.7;margin:0\"></pre>\n    <div class=\"mono\" style=\"font-size:12px;color:var(--fog)\">pipe recomputes: <b id=\"rx-n\" style=\"color:var(--accent);font-weight:400\">1</b></div>\n  </div></div>\n  <div class=\"ui\" id=\"rx-out\" style=\"max-height:440px;overflow:auto\"></div>\n</div>",
+  "referenceCss": ".ds-ctl{display:grid;grid-template-columns:80px 1fr;align-items:center;gap:10px}.seg{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;width:fit-content;flex-wrap:wrap}.seg button{height:30px;padding:0 14px;border:0;border-radius:999px;background:transparent;color:var(--fog);font-family:var(--mono);font-size:12px;cursor:pointer}.seg button[aria-pressed=\"true\"]{background:var(--line);color:var(--ivory)}\n.logbox{font-family:var(--mono);font-size:12px;line-height:1.85;color:var(--mist);min-height:120px;max-height:240px;overflow:auto}.logbox div{border-bottom:1px solid var(--line);padding:3px 0}.logbox b{color:var(--accent);font-weight:400}",
+  "referenceJs": "(function(){var P=[['Desk lamp','Home',39],['Standing desk','Office',489],['Mechanical keyboard','Tech',129],['Coffee grinder','Kitchen',89],['Monitor arm','Office',119],['Noise headphones','Tech',249],['Cast iron pan','Kitchen',45],['Plant pot','Home',19],['USB-C dock','Tech',179],['Chef knife','Kitchen',95],['Desk mat','Office',29],['Throw blanket','Home',59]].map(function(x){return{name:x[0],cat:x[1],price:x[2]}}),S={q:'',s:'name',d:'asc',g:'none'},n=0,$=function(i){return document.getElementById(i)};\nfunction r(){n++;$('rx-n').textContent=n;var q=S.q.toLowerCase(),xs=P.filter(function(p){return!q||p.name.toLowerCase().indexOf(q)>=0||p.cat.toLowerCase().indexOf(q)>=0}).sort(function(a,b){var v=a[S.s]>b[S.s]?1:a[S.s]<b[S.s]?-1:0;return S.d==='asc'?v:-v});var h='';if(S.g==='category'){var G={};xs.forEach(function(x){(G[x.cat]=G[x.cat]||[]).push(x)});Object.keys(G).forEach(function(k){h+='<div style=\"font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#5E5A69;margin:12px 0 4px\">'+k+' · '+G[k].length+'</div>'+G[k].map(row).join('')})}else h=xs.map(row).join('');$('rx-out').innerHTML=h||'<div class=\"hint\">No matches</div>';$('rx-code').innerHTML='rx.<span class=\"f\">pipe</span>(products,\\n  rx.<span class=\"f\">search</span>(<span class=\"s\">\\''+S.q.replace(/</g,'')+'\\'</span>, [<span class=\"s\">\\'name\\'</span>, <span class=\"s\">\\'cat\\'</span>]),\\n  rx.<span class=\"f\">sortBy</span>(<span class=\"s\">\\''+S.s+'\\'</span>, <span class=\"s\">\\''+S.d+'\\'</span>)'+(S.g==='category'?',\\n  rx.<span class=\"f\">groupBy</span>(<span class=\"s\">\\'cat\\'</span>)':'')+',\\n)'}\nfunction row(x){return '<div style=\"display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #EDE6D6;font-size:14px\"><span>'+x.name+' <small style=\"color:#5E5A69\">'+x.cat+'</small></span><b style=\"font-weight:500\">$'+x.price+'</b></div>'}\n[['rx-s','s'],['rx-d','d'],['rx-g','g']].forEach(function(c){document.querySelectorAll('#'+c[0]+' button').forEach(function(b){b.onclick=function(){document.querySelectorAll('#'+c[0]+' button').forEach(function(x){x.setAttribute('aria-pressed',x===b)});S[c[1]]=b.textContent;r()}})});$('rx-q').oninput=function(){S.q=this.value;r()};r();})();"
+ },
+ "features": {
+  "title": "43 functions, grouped the way you think.",
+  "items": [
+   {
+    "name": "Collections",
+    "text": "`filter`, `map`, `flatMap`, `sortBy` (asc or desc), `groupBy`, `countBy`, `keyBy`, `uniqBy`, `partition`, `chunk` and more."
+   },
+   {
+    "name": "Slicing",
+    "text": "`take`, `skip`, `first`, `last`, `takeWhile`, `dropWhile`, `sample`."
+   },
+   {
+    "name": "Set operations",
+    "text": "`intersection`, `difference`, `union`, reactive on both inputs."
+   },
+   {
+    "name": "Aggregation",
+    "text": "`count`, `sum`, `min`, `max`, `average`, `reduce`, `every`, `some`. `sum`, `min`, `max` and `average` take a key or a selector."
+   },
+   {
+    "name": "`search(source, query, keys)`",
+    "text": "Case-insensitive match across the fields you name; the query can be a signal."
+   },
+   {
+    "name": "`debounce` / `throttle`",
+    "text": "Signals that settle; torn down with the component, or `.dispose()` outside one."
+   },
+   {
+    "name": "`scan` / `distinct`",
+    "text": "Running totals, and a signal that only notifies on a real change."
+   },
+   {
+    "name": "`combine` / `zip` / `merge`",
+    "text": "Join several signals: one function over their values, pairs by index, or one concatenated list."
+   },
+   {
+    "name": "`pipe`",
+    "text": "A whole chain in one computed node, typed stage by stage up to seven."
+   },
+   {
+    "name": "`rx.*` or named imports",
+    "text": "A namespace for dot-notation, named exports for tree-shaking: the same functions."
+   }
+  ]
+ },
+ "recipes": [
+  {
+   "title": "A dashboard tile from one source",
+   "text": "Totals, counts per category and groups, each a live computed over the same signal.",
+   "code": "import { countBy, groupBy, sum } from '@pyreon/rx'\n\nconst revenue = sum(orders, 'total')\nconst perStatus = countBy(orders, 'status')\nconst byRegion = groupBy(orders, 'region')\n\nconst Tile = () => (\n  <section>\n    <h3>{() => revenue().toFixed(2)}</h3>\n    <p>{() => perStatus().paid ?? 0} paid</p>\n    <p>{() => Object.keys(byRegion()).length} regions</p>\n  </section>\n)"
+  },
+  {
+   "title": "Selected rows that survive a refresh",
+   "text": "The intersection of what is selected and what is still in the list, live on both sides.",
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { intersection } from '@pyreon/rx'\n\nconst visibleIds = signal([1, 2, 3])\nconst selectedIds = signal([2, 3, 4])\nconst stillSelected = intersection(visibleIds, selectedIds)\n\nstillSelected()        // [2, 3]\nselectedIds.set([3])\nstillSelected()        // [3]"
+  }
+ ],
+ "api": {
+  "title": "43 functions and a namespace.",
+  "groups": [
+   {
+    "name": "compose",
+    "items": [
+     "pipe",
+     "rx"
+    ]
+   },
+   {
+    "name": "collections",
+    "items": [
+     "filter",
+     "map",
+     "flatMap",
+     "sortBy",
+     "groupBy",
+     "countBy",
+     "keyBy",
+     "uniqBy",
+     "unique",
+     "partition",
+     "chunk",
+     "flatten",
+     "compact",
+     "reverse",
+     "find",
+     "mapValues"
+    ]
+   },
+   {
+    "name": "slicing",
+    "items": [
+     "take",
+     "skip",
+     "first",
+     "last",
+     "takeWhile",
+     "dropWhile",
+     "sample"
+    ]
+   },
+   {
+    "name": "sets",
+    "items": [
+     "intersection",
+     "difference",
+     "union"
+    ]
+   },
+   {
+    "name": "aggregation",
+    "items": [
+     "count",
+     "sum",
+     "min",
+     "max",
+     "average",
+     "reduce",
+     "every",
+     "some"
+    ]
+   },
+   {
+    "name": "operators and timing",
+    "items": [
+     "distinct",
+     "scan",
+     "combine",
+     "zip",
+     "merge",
+     "debounce",
+     "throttle",
+     "search"
+    ]
+   },
+   {
+    "name": "types",
+    "items": [
+     "ReadableSignal",
+     "KeyOf"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Pass the signal, not its value",
+   "text": "`filter(users, fn)` is live. `filter(users(), fn)` runs once and never updates, because detection is `typeof source === 'function'`."
+  },
+  {
+   "title": "Outside a component, dispose timers",
+   "text": "`debounce`, `throttle`, `distinct` and `scan` own an effect. In a component or `effectScope` it is torn down for you; elsewhere call `.dispose()`."
+  },
+  {
+   "title": "`search` reads string fields",
+   "text": "`search` matches only fields whose value is a string, so a number or a nested object in `keys` never matches. Map it to a string field first, or use `filter` with your own test."
+  },
+  {
+   "title": "Not a stream library",
+   "text": "No `switchMap`, no schedulers, no cancellation. For events over time and request racing, RxJS still fits; for server data, `@pyreon/query`."
+  }
+ ],
+ "faq": [
+  {
+   "q": "Is this RxJS for signals?",
+   "a": "No. It is collection helpers, lodash-style, that understand signals. The benchmark races it against a hand-written `computed` and Solid's `createMemo`; RxJS appears there only as scale context, because it solves a different problem."
+  },
+  {
+   "q": "Is it slower than writing the computed myself?",
+   "a": "Filter, map and sum measure level with or ahead of a hand-written computed. `pipe` of three stages and `sortBy` read 1.03× behind a hand computed, `groupBy` 1.02× behind, but the harness prints medians without confidence intervals there, so the record gives them no verdict."
+  },
+  {
+   "q": "When should I use `pipe`?",
+   "a": "For a chain of two or more steps that nothing else reads in between. It builds one node instead of one per step. If you need an intermediate result elsewhere, keep that step as its own computed."
+  },
+  {
+   "q": "Does it work on iOS and Android?",
+   "a": "The package is in the shared tier: supported transforms, namespaced or imported by name, lower to native collection operations, and an unsupported one warns by name. Native targets are experimental."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/reactivity",
+   "category": "core",
+   "name": "Reactivity",
+   "text": "The signals and computeds underneath.",
+   "package": "@pyreon/reactivity"
+  },
+  {
+   "href": "/products/table",
+   "category": "fundamentals",
+   "name": "Table",
+   "text": "Sort, filter and group with TanStack when you need a grid.",
+   "package": "@pyreon/table"
+  },
+  {
+   "href": "/products/charts",
+   "category": "fundamentals",
+   "name": "Charts",
+   "text": "Pass an rx computed as `data`; the chart redraws when it changes.",
+   "package": "@pyreon/charts"
+  }
+ ],
+ "end": {
+  "title": "Your `computed` was fine. It just did not need to be written.",
+  "cta": "Read the rx guide"
+ },
+ "benchmarks": {
+  "rival": "vs a hand-written `computed` and Solid `createMemo` · 1,000 rows, bun/JavaScriptCore",
+  "run": "final pass, one run",
+  "h": "A pipeline costs one node, not N.",
+  "p": "The record's fair peer is the computed you would write without rx; RxJS appears in the harness only as scale context, not as a race. `pipe` fusing three stages into one node is an exact count. For three rows the harness prints medians with no confidence interval, so the record gives no verdict.",
+  "rows": [
+   {
+    "op": "reactive nodes for a three-stage chain",
+    "pyreon": 1,
+    "rival": 3,
+    "unit": "",
+    "verdict": "win",
+    "label": "exact count, not a timing"
+   },
+   {
+    "op": "filter, map, sum",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "info",
+    "label": "level with or ahead of a hand computed"
+   },
+   {
+    "op": "`pipe`, three stages",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "info",
+    "label": "1.03×, no CI: no verdict"
+   },
+   {
+    "op": "`sortBy`",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "info",
+    "label": "1.03×, no CI: no verdict"
+   },
+   {
+    "op": "`groupBy`",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "info",
+    "label": "1.02×, no CI: no verdict"
+   }
+  ]
+ },
+ "glyphSvg": "<path d=\"M14 30 H70 M14 60 H52 M14 90 H34\" stroke=\"currentColor\" stroke-width=\"10\" stroke-linecap=\"square\"/><path d=\"M76 56 L92 72 L108 56\" stroke=\"currentColor\" stroke-width=\"9\" fill=\"none\"/><circle cx=\"92\" cy=\"30\" r=\"14\" fill=\"url(#eg)\"/>",
+ "sources": [
+  {
+   "claim": "rx row: pipe fuses N nodes into 1 (exact count); filter/map/sum level with or ahead; pipe 1.03×, sortBy 1.03×, groupBy 1.02× no verdict (no CI); final pass",
+   "path": "00-brief/BENCHMARKS-2026-11-05.md §10 rx row and §0"
+  },
+  {
+   "claim": "Fair peers are hand computed and Solid createMemo; RxJS only a labelled scale-context row",
+   "path": "packages/fundamentals/rx/bench/rx-bench.ts header FAIR-FRAMING"
+  },
+  {
+   "claim": "42 functions; rx namespace and named exports",
+   "path": "packages/fundamentals/rx/src/index.ts"
+  },
+  {
+   "claim": "sortBy copies ([...arr].sort) and compares raw numeric keys",
+   "path": "packages/fundamentals/rx/src/collections.ts l.103-125"
+  },
+  {
+   "claim": "pipe example output (top3 before/after adding Plant pot); pipe stage runs once per change",
+   "path": ".scratch/app/rx.ts (run on main)"
+  },
+  {
+   "claim": "search is case-insensitive, query may be a signal; debounce settles after 300 ms",
+   "path": "packages/fundamentals/rx/src/search.ts l.34-39; .scratch/app/rx.ts \"after 300ms\""
+  },
+  {
+   "claim": "RxJS before code produces the same list (Desk lamp, Standing desk)",
+   "path": ".scratch/app/rx.ts with rxjs 7.8.2"
+  },
+  {
+   "claim": "intersection reactive on both inputs ([2,3] → [3])",
+   "path": ".scratch/app/rx.ts \"inter\" lines"
+  },
+  {
+   "claim": "debounce/throttle/distinct/scan own an effect; auto-disposed in a component/effectScope, else .dispose()",
+   "path": ".agents/guides/fundamentals/references/rx.md; packages/fundamentals/rx/src/timing.ts"
+  },
+  {
+   "claim": "Signal detection is typeof === \"function\"",
+   "path": "packages/fundamentals/rx/src/manifest.ts description; docs/src/content/docs/rx.md warning"
+  },
+  {
+   "claim": "Native tier shared: supported transforms lower to native collection operations, unsupported warn",
+   "path": "packages/fundamentals/rx/src/manifest.ts multiplatform"
+  },
+  {
+   "claim": "Draft \"after\" used curried rx.filter(fn) / rx.sortBy(key) / rx.take(n) inside rx.pipe — no curried overloads exist",
+   "path": "packages/fundamentals/rx/src/collections.ts signatures (source first); src/pipe.ts"
+  }
+ ]
+}

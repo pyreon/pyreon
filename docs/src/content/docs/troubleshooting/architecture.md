@@ -3,8 +3,6 @@ title: "Architecture Mistakes"
 description: "Common architecture mistakes in Pyreon and how to fix them."
 ---
 
-# Architecture Mistakes
-
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
 ### Styling an Element's layout with theme flex overrides instead of Element props
@@ -409,6 +407,12 @@ Libraries are compiled by any bundler (Vite, Webpack, Rolldown, esbuild, Rollup,
 ### Early prod-return in a public dev-only reader keeps its machinery
 
 Tree-shaking runs before the minifier removes unreachable code, so module-level machinery referenced in the dead tail survives. Wrap the body instead: `if (process.env.NODE_ENV !== 'production') { … } return empty` folds to `if (false)` and is dropped at parse time with its references. The early return is fine when the tail references only locals or already-retained exports. Module-level `new FinalizationRegistry(cb)`-style consts also need `/* @__PURE__ */`. Reference: `packages/core/reactivity/src/reactive-devtools.ts:getReactiveGraph`; test `reactive-devtools-treeshake.test.ts`.
+
+---
+
+### A dev-only helper FUNCTION keeps its external imports in the production bundle
+
+`if (process.env.NODE_ENV !== 'production') return devTwin(...)` drops `devTwin` as dead code, but esbuild still emits the `import { _rdLabelBinding } from "@pyreon/reactivity"` its body referenced, so the shipped module names the devtools helpers (and a package-entry measurement counts them). Inline the dev code in the `if` block instead. The same applies to an exported dev helper of a package entry: wrap its body in the dev block (see the entry above), or the entry keeps the machinery it references. Reference: `_bindDirect` in `packages/core/runtime-dom/src/template.ts`; test `reactive-graph-treeshake.test.ts` (asserts the helper names are absent from each production module and present in development).
 
 ---
 

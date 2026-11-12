@@ -1,0 +1,328 @@
+{
+ "id": "machine",
+ "route": "/products/machine",
+ "name": "State Machines",
+ "package": "@pyreon/machine",
+ "category": "fundamentals · state",
+ "hero": {
+  "title": "The spinner and the error, on screen together? Not any more.",
+  "emberWord": "together",
+  "lede": "A machine is a signal that can only hold the states you declare and only moves along the events you allow. Read it like any signal, render from `matches()`, and let `can()` and `nextEvents()` enable the buttons. Against XState it sends events 34.7× faster.",
+  "install": "bun add @pyreon/machine",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "model",
+    "value": "a signal with declared states<small>`machine()` reads it; effects and JSX track it.</small>"
+   },
+   {
+    "key": "vs XState 5",
+    "value": "34.7× faster `send`<small>bun, one run; faster on all four ops.</small>"
+   },
+   {
+    "key": "types",
+    "value": "states and events inferred<small>No codegen, no typegen file.</small>"
+   },
+   {
+    "key": "native",
+    "value": "{dot:warn}iOS and Android, experimental<small>Compiles to a native `PyreonMachine`.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "Booleans don't scale. States do.",
+  "items": [
+   {
+    "title": "One value, not four flags",
+    "text": "`loading`, `error` and `done` can all be true when a slow response lands after a retry. A machine is in exactly one state, and an event the current state doesn't handle changes nothing."
+   },
+   {
+    "title": "Buttons that know when they work",
+    "text": "`can('PAY', payload)` runs the guard and predicts exactly what `send` would do; `nextEvents()` lists what is possible now. Both are reactive, so `disabled={() => !checkout.can('PAY')}` stays right."
+   },
+   {
+    "title": "Branch states, no glue",
+    "text": "`always: [{ target: 'empty', guard: () => cart().length === 0 }, 'ready']` routes the moment a state is entered, reading ordinary signals. `send` returns the settled state after the cascade."
+   },
+   {
+    "title": "No actor to start",
+    "text": "No interpreter, no `createActor().start()`, no context object. Data lives in signals beside the machine; side effects hang off `onEnter`, `onExit` and `onTransition`."
+   }
+  ]
+ },
+ "difference": {
+  "title": "Three flags, or one machine.",
+  "before": {
+   "label": "boolean flags",
+   "caption": "Nothing stops two of these being true. This snippet runs and prints both.",
+   "code": "import { signal } from '@pyreon/reactivity'\n\nconst loading = signal(false)\nconst error = signal<Error | null>(null)\nconst done = signal(false)\n\n// a slow first request finishes after a retry started:\nloading.set(true)\nerror.set(null)\ndone.set(true) // spinner and \"Saved!\" on screen together\nconsole.log({ loading: loading(), done: done() })"
+  },
+  "after": {
+   "label": "with @pyreon/machine",
+   "caption": "Only the transitions you wrote can happen. `FETCH` while loading does nothing.",
+   "code": "import { createMachine } from '@pyreon/machine'\nimport { effect } from '@pyreon/reactivity'\n\nconst fetcher = createMachine({\n  initial: 'idle',\n  states: {\n    idle: { on: { FETCH: 'loading' } },\n    loading: { on: { SUCCESS: 'done', ERROR: 'error' } },\n    error: { on: { RETRY: 'loading' } },\n    done: { final: true },\n  },\n})\n\neffect(() => console.log(fetcher())) // it is a signal; no actor to start\n\nfetcher.send('FETCH') // 'loading'\nfetcher.send('FETCH') // not handled in 'loading': stays 'loading'\nconsole.log(fetcher.matches('loading'), fetcher.can('SUCCESS'))"
+  }
+ },
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Drive the checkout.",
+  "text": "Only valid events are enabled. That list is `nextEvents()`, and it's reactive.",
+  "component": "DemoMachine",
+  "reference": "pkg-machine.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"card\"><div class=\"in\"><div class=\"mc-graph\" id=\"mc-g\"></div><div class=\"mc-ev\" id=\"mc-ev\"></div></div></div>\n  <div class=\"card\"><div class=\"in\"><span class=\"label\">onTransition log</span><div class=\"logbox\" id=\"mc-log\"></div></div></div>\n</div>",
+  "referenceCss": ".mc-graph{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:18px}.mc-graph span{padding:14px 10px;text-align:center;border:1px solid var(--line);border-radius:12px;font-family:var(--mono);font-size:12.5px;color:var(--fog);transition:all .25s}.mc-graph span.on{border-color:rgba(255,94,26,.7);color:var(--ivory);background:rgba(255,94,26,.08);box-shadow:0 0 30px -12px rgba(255,94,26,.9)}.mc-ev{display:flex;flex-wrap:wrap;gap:8px}.mc-ev button{height:34px;padding:0 14px;border-radius:999px;border:1px solid var(--line-2);background:transparent;color:var(--ivory);font-family:var(--mono);font-size:12px;cursor:pointer}.mc-ev button:disabled{opacity:.3;cursor:not-allowed}\n.logbox{font-family:var(--mono);font-size:12px;line-height:1.85;color:var(--mist);min-height:220px}.logbox div{border-bottom:1px solid var(--line);padding:3px 0}.logbox .dm{color:var(--fog)}",
+  "referenceJs": "(function(){var M={cart:{CHECKOUT:'details'},details:{BACK:'cart',PAY:'paying'},paying:{SUCCESS:'paid',DECLINE:'declined'},declined:{RETRY:'paying',BACK:'details'},paid:{},cancelled:{}},EV=['CHECKOUT','BACK','PAY','SUCCESS','DECLINE','RETRY','RESET'],s='cart';\nvar g=document.getElementById('mc-g'),ev=document.getElementById('mc-ev'),log=document.getElementById('mc-log');Object.keys(M).slice(0,5).concat([]).forEach(function(k){var x=document.createElement('span');x.dataset.s=k;x.textContent=k;g.appendChild(x)});var ex=document.createElement('span');ex.textContent='final: paid';ex.style.opacity='.5';g.appendChild(ex);\nfunction send(e){if(e==='RESET'){l(s+' → cart','RESET');s='cart';return draw()}var t=M[s][e];if(!t)return;l(s+' → '+t,e);s=t;draw()}\nfunction l(t,e){var d=document.createElement('div');d.innerHTML='<span class=\"dm\">'+e+'</span>  '+t;log.prepend(d)}\nfunction draw(){g.querySelectorAll('span[data-s]').forEach(function(x){x.classList.toggle('on',x.dataset.s===s)});ev.innerHTML='';EV.forEach(function(e){var b=document.createElement('button');b.type='button';b.textContent=e==='RESET'?'reset()':\"send('\"+e+\"')\";b.disabled=e==='RESET'?false:!M[s][e];b.onclick=function(){send(e)};ev.appendChild(b)})}draw();})();"
+ },
+ "features": {
+  "title": "Everything, and nothing extra.",
+  "items": [
+   {
+    "name": "`createMachine({ initial, states })`",
+    "text": "with state and event names inferred from the config."
+   },
+   {
+    "name": "`send(event, payload?)`",
+    "text": "returns the settled state; unhandled events are no-ops."
+   },
+   {
+    "name": "Guards",
+    "text": "`{ target, guard }`; a guard that throws denies instead of crashing `send`."
+   },
+   {
+    "name": "`can(event, payload?)`",
+    "text": "predicts `send` exactly, guard included."
+   },
+   {
+    "name": "`matches(...states)` and `nextEvents()`",
+    "text": "reactive reads for rendering."
+   },
+   {
+    "name": "Eventless `always` transitions",
+    "text": "for branch states; a runaway loop throws after 1,000 steps."
+   },
+   {
+    "name": "Final states",
+    "text": "`final: true`, `isFinal()`, `onDone`."
+   },
+   {
+    "name": "Lifecycle listeners",
+    "text": "`onEnter`, `onExit` (before the next `onEnter`), `onTransition`; each returns an unsubscribe."
+   },
+   {
+    "name": "Run to completion",
+    "text": "an event sent from inside a listener is queued and handled after the current one, in order."
+   },
+   {
+    "name": "`StateOf` / `EventOf`",
+    "text": "type helpers that work on an instance or a config."
+   }
+  ]
+ },
+ "api": {
+  "title": "One function, fully typed.",
+  "groups": [
+   {
+    "name": "create",
+    "items": [
+     "createMachine"
+    ]
+   },
+   {
+    "name": "read",
+    "items": [
+     "machine()",
+     "matches",
+     "can",
+     "nextEvents",
+     "isFinal"
+    ]
+   },
+   {
+    "name": "drive",
+    "items": [
+     "send",
+     "reset",
+     "dispose"
+    ]
+   },
+   {
+    "name": "listen",
+    "items": [
+     "onEnter",
+     "onExit",
+     "onTransition",
+     "onDone"
+    ]
+   },
+   {
+    "name": "types",
+    "items": [
+     "StateOf",
+     "EventOf",
+     "InferStates",
+     "InferEvents",
+     "MachineConfig"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Data lives in signals",
+   "text": "There is no `context`. Keep fetched data and errors in signals beside the machine and update them in `onEnter`."
+  },
+  {
+   "title": "Flat by design",
+   "text": "No hierarchical or parallel states, invoked actors or delayed `after` transitions. Compose several machines with effects when you need them, or use XState for statecharts."
+  },
+  {
+   "title": "`dispose()` clears listeners",
+   "text": "It removes `onEnter`, `onExit`, `onTransition` and `onDone` callbacks; the machine itself still answers `send`."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/reactivity",
+   "category": "core",
+   "name": "Reactivity",
+   "text": "A machine is a constrained signal.",
+   "package": "@pyreon/reactivity"
+  },
+  {
+   "href": "/products/form",
+   "category": "fundamentals",
+   "name": "Forms",
+   "text": "Multi-step wizards with a machine.",
+   "package": "@pyreon/form"
+  },
+  {
+   "href": "/products/native",
+   "category": "multiplatform",
+   "name": "Native",
+   "text": "Machines run on iOS and Android.",
+   "package": "Pyreon Native · PMTC"
+  }
+ ],
+ "end": {
+  "title": "Model the states once. Delete the bugs that lived between them.",
+  "cta": "Read the state machine guide"
+ },
+ "benchmarks": {
+  "rival": "vs XState 5.33 · bun / JavaScriptCore, one process per op",
+  "run": "overnight run, one run",
+  "h": "34.7× faster `send` than XState, and faster on all four ops.",
+  "p": "A machine here is a constrained signal, not an interpreter with an actor model, so it does less work per event. It also does less: no statecharts, no actors. Compare features before you compare numbers.",
+  "rows": [
+   {
+    "op": "send",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "34.7×"
+   },
+   {
+    "op": "create",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "11.4×"
+   },
+   {
+    "op": "can",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "6.0×"
+   },
+   {
+    "op": "matches",
+    "pyreon": null,
+    "rival": null,
+    "unit": "x",
+    "verdict": "win",
+    "label": "4.7×"
+   }
+  ]
+ },
+ "glyphSvg": "<circle cx=\"28\" cy=\"32\" r=\"15\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><circle cx=\"92\" cy=\"32\" r=\"15\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><path d=\"M44 32 H76 M92 48 V70\" stroke=\"currentColor\" stroke-width=\"10\"/><circle cx=\"92\" cy=\"90\" r=\"17\" fill=\"url(#eg)\"/>",
+ "proof": [
+  {
+   "stat": "34.7×",
+   "label": "faster `send` than XState 5.",
+   "source": "BENCHMARKS.md §10 machine row, overnight run 2026-11-05, bun/JavaScriptCore, one run"
+  },
+  {
+   "stat": "11.4×",
+   "label": "faster to create a machine.",
+   "source": "BENCHMARKS.md §10 machine row, one run"
+  },
+  {
+   "stat": "6.0×",
+   "label": "faster `can()`; `matches()` 4.7×.",
+   "source": "BENCHMARKS.md §10 machine row, one run"
+  }
+ ],
+ "comingFrom": [
+  {
+   "lib": "XState",
+   "title": "Same states block. No actor, no event objects.",
+   "before": "import { createActor, createMachine } from 'xstate'\n\nconst fetcher = createMachine({\n  id: 'fetcher',\n  initial: 'idle',\n  states: {\n    idle: { on: { FETCH: 'loading' } },\n    loading: { on: { SUCCESS: 'done', ERROR: 'error' } },\n    error: { on: { RETRY: 'loading' } },\n    done: { type: 'final' },\n  },\n})\n\nconst actor = createActor(fetcher).start()\nactor.subscribe((snapshot) => console.log(snapshot.value))\n\nactor.send({ type: 'FETCH' }) // 'loading'\nactor.send({ type: 'FETCH' }) // not handled in 'loading': stays 'loading'\nconsole.log(actor.getSnapshot().matches('loading'), actor.getSnapshot().can({ type: 'SUCCESS' }))",
+   "after": "import { createMachine } from '@pyreon/machine'\nimport { effect } from '@pyreon/reactivity'\n\nconst fetcher = createMachine({\n  initial: 'idle',\n  states: {\n    idle: { on: { FETCH: 'loading' } },\n    loading: { on: { SUCCESS: 'done', ERROR: 'error' } },\n    error: { on: { RETRY: 'loading' } },\n    done: { final: true },\n  },\n})\n\neffect(() => console.log(fetcher())) // it is a signal; no actor to start\n\nfetcher.send('FETCH') // 'loading'\nfetcher.send('FETCH') // not handled in 'loading': stays 'loading'\nconsole.log(fetcher.matches('loading'), fetcher.can('SUCCESS'))",
+   "note": "The `states` config ports almost line for line (`type: 'final'` becomes `final: true`). `send({ type })` becomes `send(type, payload?)`, and the machine is read like a signal. Statecharts, context and actors have no equivalent here; if you use them, keep XState."
+  }
+ ],
+ "recipes": [
+  {
+   "title": "A checkout that routes itself",
+   "text": "A branch state reads the cart and the user, a guard checks the payment payload, and `onTransition` logs every hop.",
+   "code": "import { createMachine } from '@pyreon/machine'\nimport { signal } from '@pyreon/reactivity'\n\nconst cart = signal<string[]>([])\nconst user = signal<string | null>(null)\n\nconst checkout = createMachine({\n  initial: 'validating',\n  states: {\n    // routes itself the moment it is entered\n    validating: {\n      always: [\n        { target: 'empty', guard: () => cart().length === 0 },\n        { target: 'needsLogin', guard: () => !user() },\n        'ready',\n      ],\n    },\n    empty: { on: { ADD: 'validating' } },\n    needsLogin: { on: { LOGIN: 'validating' } },\n    ready: { on: { PAY: { target: 'paying', guard: (p) => (p as { total: number }).total > 0 } } },\n    paying: { on: { PAID: 'done', DECLINED: 'ready' } },\n    done: { final: true },\n  },\n})\n\ncheckout.onTransition((from, to, event) => console.log(`${from} → ${to} (${event.type})`))\n\ncart.set(['book'])\ncheckout.send('ADD') // settles in 'needsLogin', after passing through 'validating'\nuser.set('ada')\ncheckout.send('LOGIN') // 'ready'\nconsole.log(checkout.nextEvents(), checkout.can('PAY', { total: 42 })) // ['PAY'] true\ncheckout.send('PAY', { total: 0 }) // guard says no: still 'ready'\ncheckout.send('PAY', { total: 42 }) // 'paying'"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Why is it so much faster than XState?",
+   "a": "It does less: no actor system, no snapshot objects, no statechart semantics. A transition is a lookup and a signal write. The figures are one overnight run under bun that we wrote; run `packages/fundamentals/machine/bench/` yourself."
+  },
+  {
+   "q": "Does it work in effects and JSX?",
+   "a": "Yes. `machine()`, `matches()`, `can()`, `nextEvents()` and `isFinal()` are reactive reads, like any signal."
+  },
+  {
+   "q": "Can I send an event from a listener?",
+   "a": "Yes. It is queued and handled after the current transition finishes, in order; more than 10,000 in one `send` throws a runaway error."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "vs XState: create 11.4×, send 34.7×, can 6.0×, matches 4.7× (overnight, one run, no losses)",
+   "path": "BENCHMARKS.md §10 machine row"
+  },
+  {
+   "claim": "can() predicts send exactly; throwing guard denies; always cascade; 1000-step cap; run-to-completion queue, 10,000 runaway",
+   "path": ".agents/guides/fundamentals/references/machine.md; packages/fundamentals/machine/src/types.ts"
+  },
+  {
+   "claim": "Out of scope vs XState: context, invoked actors, hierarchical/parallel, delayed after",
+   "path": ".agents/guides/fundamentals/references/machine.md"
+  },
+  {
+   "claim": "dispose() clears listeners but send still transitions",
+   "path": "scratch m-dispose.ts printed 'b b'; docs machine.md 'Cleanup'"
+  },
+  {
+   "claim": "Samples ran: XState and Pyreon both end in 'loading' with matches/can true; checkout transition log; flags snippet prints loading and done both true",
+   "path": "scratch ts/machine-*.ts (xstate 5.33.4)"
+  },
+  {
+   "claim": "Native: createMachine lowers to PyreonMachine",
+   "path": "packages/fundamentals/machine/src/manifest.ts"
+  },
+  {
+   "claim": "Draft fixes: 'dispose() is final, ignores every call' was false; 'Sending SUCCESS while idle is a silent no-op' kept (verified); native marked experimental",
+   "path": "scratch m-dispose.ts"
+  }
+ ]
+}
