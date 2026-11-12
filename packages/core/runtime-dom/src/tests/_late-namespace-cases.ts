@@ -9,6 +9,7 @@
  */
 import { For, h, Portal, Show } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { expect } from 'vitest'
 import { mount } from '../index'
 
 export const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -88,6 +89,92 @@ export const LATE_CASES: LateCase[] = [
     expect: [
       ['switch', SVG_NS],
       ['switch rect', SVG_NS],
+    ],
+  },
+  {
+    name: '<For> rows appended in two later batches into an <svg> parent',
+    run: (host) => {
+      const items = signal<number[]>([])
+      const dispose = mount(
+        h(
+          'div',
+          null,
+          h(
+            'svg',
+            { class: 'rows' },
+            h(For, {
+              each: () => items(),
+              by: (n: number) => n,
+              children: (n: number) => h('g', { class: `row-${n}` }, h('feDropShadow', { dx: String(n) })),
+            }),
+          ),
+        ),
+        host,
+      )
+      items.set([1])
+      items.set([1, 2, 3])
+      return dispose
+    },
+    expect: [
+      ['g.row-1', SVG_NS],
+      ['g.row-3', SVG_NS],
+      ['g.row-3 feDropShadow', SVG_NS],
+    ],
+  },
+  {
+    name: '<foreignObject> rows of a <For> under <svg> hold HTML, mounted late',
+    run: (host) => {
+      const items = signal<number[]>([])
+      const dispose = mount(
+        h(
+          'svg',
+          null,
+          h(For, {
+            each: () => items(),
+            by: (n: number) => n,
+            children: (n: number) =>
+              h('foreignObject', { class: `fo-${n}` }, h('div', { class: `fo-div-${n}` }, String(n))),
+          }),
+        ),
+        host,
+      )
+      items.set([1, 2])
+      return dispose
+    },
+    expect: [
+      ['foreignObject.fo-2', SVG_NS],
+      ['div.fo-div-1', HTML_NS],
+      ['div.fo-div-2', HTML_NS],
+    ],
+  },
+  {
+    name: 'a mount that throws while building SVG children leaves the next mounts correct',
+    run: (host) => {
+      const failed = document.createElement('div')
+      host.appendChild(failed)
+      // A child whose `type` read throws fails the mount mid-way through the
+      // <svg> subtree, after the namespace slots were set for its children.
+      const bad = {
+        get type(): string {
+          throw new Error('boom')
+        },
+      }
+      expect(() => mount(h('svg', null, h('g', null, h('rect', null), bad as never)), failed)).toThrow('boom')
+      const html = document.createElement('div')
+      const svgHost = document.createElement('div')
+      host.append(html, svgHost)
+      const d1 = mount(h('section', { class: 'after' }, h('p', { class: 'after-p' }, 'x')), html)
+      const d2 = mount(h('svg', { class: 'after-svg' }, h('mpath', { class: 'after-mpath' })), svgHost)
+      return () => {
+        d1()
+        d2()
+      }
+    },
+    expect: [
+      ['section.after', HTML_NS],
+      ['p.after-p', HTML_NS],
+      ['svg.after-svg', SVG_NS],
+      ['mpath.after-mpath', SVG_NS],
     ],
   },
   {

@@ -739,18 +739,17 @@ const MATHML_NS_URI = 'http://www.w3.org/1998/Math/MathML'
  * `referrerPolicy`, …), with `viewBox`/`preserveAspectRatio`/… untouched.
  *
  * Cost: a lowercase name (every `data-*`/`aria-*` and nearly every attribute)
- * returns after a character scan and never reads the DOM.
+ * costs one `toLowerCase`, which V8 answers without allocating when nothing
+ * changes, and never reads the DOM. Sinks that already know the element is HTML
+ * (where `setAttribute` lowercases by itself) skip the call entirely (profiled
+ * on the flow mount, #4485).
  */
 export function foreignAttrName(el: Element, key: string): string {
-  for (let i = 0; i < key.length; i++) {
-    const c = key.charCodeAt(i)
-    if (c >= 65 && c <= 90) {
-      const ns = el.namespaceURI
-      if (ns === SVG_NS_URI) return SVG_CASED_ATTRS.has(key) ? key : key.toLowerCase()
-      if (ns === MATHML_NS_URI) return key === 'definitionURL' ? key : key.toLowerCase()
-      return key
-    }
-  }
+  const lower = key.toLowerCase()
+  if (lower === key) return key
+  const ns = el.namespaceURI
+  if (ns === SVG_NS_URI) return SVG_CASED_ATTRS.has(key) ? key : lower
+  if (ns === MATHML_NS_URI) return key === 'definitionURL' ? key : lower
   return key
 }
 
@@ -1181,7 +1180,10 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   // marker carried its name in SSR HTML but lost it on every client mount.
   // Matches React/Vue/Solid.
   if (key.startsWith('data-') || key.startsWith('aria-')) {
-    setAttrNsAware(el, key, String(value))
+    // HTML element (the foreign branch returned above): `setAttribute`
+    // lowercases the name itself and no qualified name applies, so the plain
+    // call is exactly what `setAttrNsAware` would do here, minus its checks.
+    el.setAttribute(key, String(value))
     return
   }
 
