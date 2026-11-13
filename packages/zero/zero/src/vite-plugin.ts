@@ -302,6 +302,9 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 	// dev watcher regenerates the manifest when a file joins or leaves it.
 	let actionManifestFiles = new Set<string>();
 	let root: string;
+	// True for `vite build`, false for the dev server. Captured in
+	// configResolved; decides whether the client route module carries hmrIds.
+	let isBuild = false;
 	// PZ-11 — `server.proxy` context keys, captured in configResolved. The
 	// dev middlewares below register during `configureServer` (which runs
 	// BEFORE Vite installs its internal middlewares, proxy included), so
@@ -319,6 +322,7 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 			// cryptic JSX errors instead of the one cause. Fail once, clearly.
 			assertPyreonPluginPresent(resolvedConfig.plugins, `${resolvedConfig.root}/src/routes`);
 			root = resolvedConfig.root;
+			isBuild = resolvedConfig.command === "build";
 			routesDir = `${root}/src/routes`;
 			proxyContexts = Object.keys(resolvedConfig.server?.proxy ?? {});
 			// Sync `__ZERO_BASE__` to the FINAL resolved base. The config()
@@ -468,6 +472,11 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 						// hasServerLoader marker (the .server.ts sibling is
 						// structurally unreachable from the client bundle).
 						serverLoaders: loadOptions?.ssr === true,
+						// A lazy route's `hmrId` is the absolute path of its file.
+						// Dev needs it in the browser (HMR) and every server graph
+						// needs it (modulepreload lookup); a production client
+						// build would only ship it, so it is left out there.
+						hmrIds: !isBuild || loadOptions?.ssr === true,
 					});
 					// Register the i18n config in BOTH graphs so `useLocale()` can
 					// derive the locale from the URL in production SSR, SSG and on

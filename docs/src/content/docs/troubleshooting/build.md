@@ -620,6 +620,12 @@ Escaping `|` in a Markdown table cell without first escaping `\` turns `\|` into
 
 ---
 
+### An absolute path in a string of generated code ships to browsers
+
+A bundler rewrites import specifiers, never a plain string. `@pyreon/zero`'s route module tagged each lazy route with `hmrId: "<absolute route file>"`, so production client bundles carried the build machine's directory layout and their bytes depended on the checkout path. Emit path metadata only into the graphs that read it: the dev client (HMR) and server graphs (modulepreload lookup) get `hmrId`; a production client build passes `hmrIds: false` (`fs-router.ts`, `vite-plugin.ts`). Test: `loader-route-split.test.ts` builds and scans the client output for the fixture's path.
+
+---
+
 ### Every compiled `_setX` helper must restate the `setStaticProp` branches above it.
 
 The compiled template path routes attributes by name straight to `_setAttr`/`_setValue`/`_setStyle`/`_setClass`/`_setHtml` and never calls `setStaticProp`, so any earlier branch must be restated in the helper. Current guarantees:

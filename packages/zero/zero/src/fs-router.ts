@@ -586,6 +586,15 @@ export interface GenerateRouteModuleOptions {
    * marker and never import the sibling module.
    */
   serverLoaders?: boolean
+  /**
+   * Tag each lazy route with `hmrId: "<absolute path of the route file>"`.
+   * Default true. The id has two readers: the dev HMR coordinator in the
+   * browser, and the server's modulepreload lookup (which maps a matched
+   * route back to its source module). A production CLIENT build has neither,
+   * and there the id is a plain string that ships: pass false so the browser
+   * bundle does not carry the build machine's directory layout.
+   */
+  hmrIds?: boolean
 }
 
 export function generateRouteModule(
@@ -651,6 +660,7 @@ export function generateRouteModuleFromRoutes(
   // structurally unreachable from the client bundle (the exclusion
   // guarantee is the import graph itself, not a strip transform).
   const emitServerLoaders = options?.serverLoaders ?? false
+  const emitHmrIds = options?.hmrIds ?? true
 
   // Track whether we need lazy() at all (omitted in static-only mode and
   // when there are no routes that use it).
@@ -688,11 +698,12 @@ export function generateRouteModuleFromRoutes(
     if (errorName) opts.push(`error: ${errorName}`)
     // `hmrId` lets `@pyreon/router`'s dev HMR coordinator map a
     // hot-updated module back to its route record(s) for an in-place
-    // component swap (no page reload, signals preserved). Inert in
-    // production — the coordinator is only registered in a dev browser,
-    // so `_hmrId` is dead metadata once built.
-    opts.push(`hmrId: ${jsStringLiteral(fullPath)}`)
-    const optsStr = `, { ${opts.join(', ')} }`
+    // component swap (no page reload, signals preserved), and lets the
+    // server map a matched route to its source module for modulepreload.
+    // It is an ABSOLUTE path in a plain string, which no bundler rewrites,
+    // so a production client build omits it (`hmrIds: false`).
+    if (emitHmrIds) opts.push(`hmrId: ${jsStringLiteral(fullPath)}`)
+    const optsStr = opts.length > 0 ? `, { ${opts.join(', ')} }` : ''
     // jsStringLiteral for safe-embed — matches the `hmrId` line above.
     imports.push(
       `const ${name} = lazy(${loaderExpr ?? `() => import(${jsStringLiteral(fullPath)})`}${optsStr})`,
