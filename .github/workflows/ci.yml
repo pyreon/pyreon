@@ -1450,6 +1450,26 @@ jobs:
               exit 1
             fi
           fi
+      # ── size gates: how the three steps below judge ─────────────────────
+      # A pull request is judged on the bytes IT adds: `size-base.ts` measures
+      # HEAD^1 (the commit this merge ref merges into) and the gates compare.
+      # A push to main and a merge-queue group are judged against the ceilings
+      # in scripts/size-budgets/, which is where the sum of several merges
+      # shows. The base is rebuilt only when a changed path can move a size;
+      # otherwise this step is a `git worktree add`.
+      - name: Prepare size base
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          echo "PYREON_SIZE_ROUTES_OUT=$RUNNER_TEMP/size-routes.json" >> "$GITHUB_ENV"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "PYREON_SIZE_MODE=pr" >> "$GITHUB_ENV"
+            echo "PYREON_SIZE_BASE=$RUNNER_TEMP/size-base.json" >> "$GITHUB_ENV"
+            bun scripts/size-base.ts --ref='HEAD^1' --out="$RUNNER_TEMP/size-base.json" --dir="$RUNNER_TEMP/size-base-tree"
+          else
+            echo "PYREON_SIZE_MODE=main" >> "$GITHUB_ENV"
+          fi
       - name: Verify Modes
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         env:
@@ -1457,12 +1477,17 @@ jobs:
           PYREON_REQUIRE_WORKERD: '1'
         run: bun run verify-modes
       # ── package contracts against the built lib/ ────────────────────────
+      # The names of these three steps are read by size-ceiling-status.yml.
       - name: Check Bundle Budgets
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run check-bundle-budgets
       - name: Check Import Budgets
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run check-import-budgets
+      # Judges the route sizes the Verify Modes step recorded.
+      - name: Check Route Budgets
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run check-route-budgets
       # sideEffects declared + source maps shipped + a live `npm pack
       # --dry-run` probe against the built tarball.
       - name: Check Distribution

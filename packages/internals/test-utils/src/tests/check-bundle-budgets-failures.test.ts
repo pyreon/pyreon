@@ -6,6 +6,8 @@ import { join, resolve } from 'node:path'
 // than re-typed as `0.011`: a hand-copied literal is a second source of truth
 // that silently stops matching the thing it describes.
 import { diagnoseMeasurement } from '../../../../../scripts/check-bundle-budgets'
+import { ceilingFor } from '../../../../../scripts/size-budget-policy'
+import { loadCeilings, writeCeiling } from '../../../../../scripts/size-budget-store'
 
 /**
  * Subprocess regression test for `scripts/check-bundle-budgets.ts`
@@ -36,23 +38,14 @@ import { diagnoseMeasurement } from '../../../../../scripts/check-bundle-budgets
 const REPO_ROOT = resolve(import.meta.dirname, '..', '..', '..', '..', '..')
 const SCRIPT = resolve(REPO_ROOT, 'scripts', 'check-bundle-budgets.ts')
 
-interface ThinEntry {
-  name: string
-  current: number
-  budget: number
-  headroom: number
-  required: number
-}
-
 interface JsonOutput {
-  thinNew: ThinEntry[]
-  thinKnown: ThinEntry[]
-  recovered: string[]
+  mode: string
   measured: Array<{ name: string; raw: number; gzip: number }>
   failures: Array<{ name: string; error: string }>
   unmeasurable: Array<{ name: string; raw: number; reason: string }>
   repaired: string[]
-  violations: unknown[]
+  violations: Array<{ name: string; current: number; budget: number; code: string; message: string }>
+  notes: Array<{ name: string; code: string; message: string }>
   missing: Array<{ name: string; current: number }>
 }
 
@@ -273,14 +266,14 @@ function setupFixturePackagesDir(opts: {
 function runCheck(
   packagesRoot: string,
   extraEnv: Record<string, string> = {},
-  budgetsPath?: string,
+  extraArgs: string[] = [],
 ): {
   status: number | null
   json: JsonOutput | null
   stderr: string
 } {
   const args = [SCRIPT, '--json', `--packages-root=${packagesRoot}`]
-  if (budgetsPath) args.push(`--budgets=${budgetsPath}`)
+  args.push(...extraArgs)
   const result = spawnSync('bun', args, {
     cwd: REPO_ROOT,
     encoding: 'utf-8',
@@ -464,125 +457,149 @@ describe('scripts/check-bundle-budgets.ts failure surfacing', () => {
     expect(tiny!.current).toBeLessThan(200)
   })
 
-  describe('thin budgets (headroom below the minimum)', () => {
-    // A budget set within a few bytes of its measurement turns red on the next
-    // PR that adds a line to the package, so it is reported as a defect of the
-    // budget. The verdict reads only the measured bytes: the same bytes get the
-    // same verdict with or without `CI` set.
-    //
-    // The budgets FILE is the thing under test, so these drive the script's
-    // `--budgets=` seam — the companion to `--packages-root=`.
-    // Deliberately NOT inside the packages root — that directory is walked as
-    // `<root>/<category>/<package>`, so a stray file there is not a fixture.
-    function writeBudgets(budgets: Record<string, unknown>): string {
-      const dir = realpathSync(mkdtempSync(join(tmpdir(), 'pyreon-budgets-file-')))
+  describe('the verdict, end to end through the script', () => {
+    // The policy is unit-tested in `size-budget-policy.test.ts`. A rule that is
+    // never consulted satisfies those tests while doing nothing, so these drive
+    // the real script: its ceiling files (`--budgets-dir=`), its mode and its
+    // base file, and read the exit code a CI step would.
+    const NAME = '@pyreon-test/good-fixture'
+
+    function budgetsWith(ceiling: number | undefined): string {
+      // Deliberately NOT inside the packages root — that directory is walked as
+      // `<root>/<category>/<package>`, so a stray file there is not a fixture.
+      const dir = realpathSync(mkdtempSync(join(tmpdir(), 'pyreon-budgets-dir-')))
       budgetsDir = dir
-      const file = join(dir, 'budgets.json')
-      writeFileSync(file, JSON.stringify(budgets, null, 2))
+      if (ceiling !== undefined) writeCeiling(dir, 'bundle', NAME, ceiling)
+      return dir
+    }
+
+    function baseFile(dir: string, size: number | null, ceiling: number | undefined): string {
+      const file = join(dir, 'base.json')
+      const family = { sizes: null, ceilings: {} }
+      writeFileSync(
+        file,
+        JSON.stringify({
+          ref: 'test',
+          bundle: {
+            sizes: size === null ? null : { [NAME]: size },
+            ceilings: ceiling === undefined ? {} : { [NAME]: ceiling },
+          },
+          imports: family,
+          routes: family,
+        }),
+      )
       return file
     }
 
-    /** Measures the fixture first, so the thin budget is calibrated, not guessed. */
-    function measureFixture(root: string): number {
-      const json = runCheck(root).json as JsonOutput
-      const entry = json.missing.find((m) => m.name === '@pyreon-test/good-fixture')
-      expect(entry).toBeDefined()
-      return entry!.current
-    }
-
-    it('FAILS on a budget too tight to be measured reliably', () => {
-      testDir = setupFixturePackagesDir({ goodPackage: true })
-      const measured = measureFixture(testDir)
-      const budgets = writeBudgets({ '@pyreon-test/good-fixture': measured + 1 })
-      const { status, json } = runCheck(testDir, {}, budgets)
-
-      const thin = (json as JsonOutput).thinNew.find((t) => t.name === '@pyreon-test/good-fixture')
-      expect(thin).toBeDefined()
-      // Headroom is the budget minus the measured bytes, nothing else: one
-      // byte of slack is one byte of headroom.
-      expect(thin!.headroom).toBe(1)
-      // The remedy travels WITH the finding — the operator should not have to
-      // work out what "enough headroom" is.
-      expect(thin!.required).toBeGreaterThan(thin!.headroom)
-      expect(status).toBe(1)
-    })
-
-    it('gives the same verdict with and without CI set (#4288)', () => {
-      // Until 2026-11 a run without `CI` inflated its measurement by a presumed
-      // 1.1% macOS/ubuntu delta, so `@pyreon/server` (6139 B on both machines,
-      // budget 6280) passed CI and failed every local validate-fast. A budget
-      // whose headroom sits between the minimum and the minimum + 1.1% is that
-      // band, and must pass in both environments. The package has to be a few
-      // KB for 1.1% to be more than a byte, so it is generated here.
-      testDir = setupFixturePackagesDir({})
-      const dir = join(testDir, 'sized-cat', 'sized-fixture')
-      mkdirSync(join(dir, 'lib'), { recursive: true })
+    /**
+     * Gives the fixture a few KB of incompressible-ish code. The default one is
+     * a single line, and the rules under test have byte floors (the 64 B
+     * allowance, the noise band) that a 40 B package never leaves.
+     */
+    function fatten(root: string): void {
+      const words = Array.from({ length: 400 }, (_, i) => `w${(i * 2654435761) % 1000003}`)
       writeFileSync(
-        join(dir, 'package.json'),
-        JSON.stringify({ name: '@pyreon-test/sized-fixture', version: '0.0.0-test', exports: { '.': { import: './lib/index.js' } } }),
-      )
-      // Deterministic, poorly compressible strings: ~10 KB gzipped.
-      let seed = 1
-      const rand = (): number => (seed = (seed * 1103515245 + 12345) % 2147483648)
-      const words = Array.from({ length: 1200 }, () => rand().toString(36) + rand().toString(36))
-      writeFileSync(
-        join(dir, 'lib', 'index.js'),
+        join(root, 'good-cat', 'good-fixture', 'lib', 'index.js'),
         `const WORDS = ${JSON.stringify(words)}\nexport function pick(i) { return WORDS[i % WORDS.length] }\n`,
       )
-      const first = runCheck(testDir).json as JsonOutput
-      const measured = first.missing.find((m) => m.name === '@pyreon-test/sized-fixture')!.current
-      expect(measured * 0.011, 'the old inflation must be worth more than a byte here').toBeGreaterThan(50)
-      // 2% of headroom: above the 1.5% minimum, below 1.5% + the old 1.1%.
-      const budgets = writeBudgets({ '@pyreon-test/sized-fixture': Math.ceil(measured * 1.02) })
-      const local = runCheck(testDir, {}, budgets)
-      const ci = runCheck(testDir, { CI: 'true' }, budgets)
-      expect((local.json as JsonOutput).thinNew, 'local verdict').toHaveLength(0)
-      expect((ci.json as JsonOutput).thinNew, 'CI verdict').toHaveLength(0)
-      expect(local.status).toBe(0)
-      expect(ci.status).toBe(0)
+    }
+
+    /** Measures the fixture first, so every size below is calibrated, not guessed. */
+    function measureFixture(root: string): number {
+      fatten(root)
+      const json = runCheck(root, {}, ['--measure-only']).json as JsonOutput
+      const entry = json.measured.find((m) => m.name === NAME)
+      expect(entry).toBeDefined()
+      return entry!.gzip
+    }
+
+    it('pr: growth over the allowance FAILS, though the package is far under its ceiling', () => {
+      testDir = setupFixturePackagesDir({ goodPackage: true })
+      const size = measureFixture(testDir)
+      const dir = budgetsWith(size * 10)
+      // The base was half this size: the change doubled the package.
+      const base = baseFile(dir, Math.floor(size / 2), size * 10)
+      const { status, json } = runCheck(testDir, {}, [`--budgets-dir=${dir}`, '--mode=pr', `--base=${base}`])
+      expect(status).toBe(1)
+      const v = (json as JsonOutput).violations.find((x) => x.name === NAME)
+      expect(v?.code).toBe('growth')
+      expect(v?.message).toContain(`--update=${NAME}`)
     })
 
-    it('does NOT fail for a budget with real headroom', () => {
+    it('pr: the same growth PASSES once the change sets the ceiling (the acceptance)', () => {
       testDir = setupFixturePackagesDir({ goodPackage: true })
-      const measured = measureFixture(testDir)
-      const budgets = writeBudgets({
-        '@pyreon-test/good-fixture': Math.ceil(measured * 1.3) + 128,
-      })
-      const { status, json } = runCheck(testDir, {}, budgets)
-      expect((json as JsonOutput).thinNew).toHaveLength(0)
-      expect((json as JsonOutput).thinKnown).toHaveLength(0)
+      const size = measureFixture(testDir)
+      const dir = budgetsWith(Math.ceil(size * 1.1))
+      // Same doubling, but the base ceiling differs from the head's: the pull
+      // request edited this package's ceiling file.
+      const base = baseFile(dir, Math.floor(size / 2), size * 10)
+      const { status, json } = runCheck(testDir, {}, [`--budgets-dir=${dir}`, '--mode=pr', `--base=${base}`])
       expect(status).toBe(0)
+      expect((json as JsonOutput).violations).toEqual([])
+      expect((json as JsonOutput).notes.find((n) => n.name === NAME)?.code).toBe('accepted')
     })
 
-    it('GRANDFATHERS a listed thin budget but keeps reporting it', () => {
-      // Existing thin entries must not redden unrelated PRs — a gate that is
-      // red on arrival is one nobody reads. They stay visible instead.
+    it('pr: drift from OTHER merges does not fail a change that added nothing', () => {
       testDir = setupFixturePackagesDir({ goodPackage: true })
-      const measured = measureFixture(testDir)
-      const budgets = writeBudgets({
-        '@pyreon-test/good-fixture': measured + 1,
-        _thinHeadroom: { '@pyreon-test/good-fixture': 'known debt, retired by <reason>' },
-      })
-      const { status, json } = runCheck(testDir, {}, budgets)
-      expect((json as JsonOutput).thinNew).toHaveLength(0)
-      expect((json as JsonOutput).thinKnown.map((t) => t.name)).toContain(
-        '@pyreon-test/good-fixture',
-      )
-      expect(status).toBe(0)
+      const size = measureFixture(testDir)
+      // The package is over its ceiling, on the base exactly as on the head.
+      const dir = budgetsWith(size - 50)
+      const base = baseFile(dir, size, size - 50)
+      const pr = runCheck(testDir, {}, [`--budgets-dir=${dir}`, '--mode=pr', `--base=${base}`])
+      expect(pr.status).toBe(0)
+      expect((pr.json as JsonOutput).notes.find((n) => n.name === NAME)?.code).toBe('base-over-ceiling')
+      // `sizes: null` — no input that moves a size changed — is the same case.
+      const same = runCheck(testDir, {}, [`--budgets-dir=${dir}`, '--mode=pr', `--base=${baseFile(dir, null, size - 50)}`])
+      expect(same.status).toBe(0)
     })
 
-    it('reports a grandfathered entry that no longer needs the exemption', () => {
-      // The ratchet half: the list may only shrink, so an entry that recovered
-      // is named for removal rather than left to accumulate.
+    it('main: the same over-ceiling package is reported RED', () => {
       testDir = setupFixturePackagesDir({ goodPackage: true })
-      const measured = measureFixture(testDir)
-      const budgets = writeBudgets({
-        '@pyreon-test/good-fixture': Math.ceil(measured * 1.3) + 128,
-        _thinHeadroom: { '@pyreon-test/good-fixture': 'stale entry' },
+      const size = measureFixture(testDir)
+      const dir = budgetsWith(size - 50)
+      const { status, json } = runCheck(testDir, {}, [`--budgets-dir=${dir}`, '--mode=main'])
+      expect(status).toBe(1)
+      expect((json as JsonOutput).violations.find((x) => x.name === NAME)?.code).toBe('over-ceiling')
+      // And through the environment variable CI sets, not only the flag.
+      expect(runCheck(testDir, { PYREON_SIZE_MODE: 'main' }, [`--budgets-dir=${dir}`]).status).toBe(1)
+    })
+
+    it('pr: fails CLOSED when the base measurement is missing', () => {
+      testDir = setupFixturePackagesDir({ goodPackage: true })
+      const dir = budgetsWith(100000)
+      const none = runCheck(testDir, {}, [`--budgets-dir=${dir}`, '--mode=pr'])
+      expect(none.status).toBe(1)
+      expect(none.stderr).toContain('pr mode needs the base measurement')
+      const gone = runCheck(testDir, {}, [`--budgets-dir=${dir}`, '--mode=pr', `--base=${join(dir, 'absent.json')}`])
+      expect(gone.status).toBe(1)
+    })
+
+    it('local: reports an over-ceiling package without failing, but a missing ceiling fails', () => {
+      testDir = setupFixturePackagesDir({ goodPackage: true })
+      const size = measureFixture(testDir)
+      const over = runCheck(testDir, {}, [`--budgets-dir=${budgetsWith(size - 50)}`])
+      expect(over.status).toBe(0)
+      expect((over.json as JsonOutput).notes.find((n) => n.name === NAME)?.code).toBe('local-over-ceiling')
+      const none = runCheck(testDir, {}, [`--budgets-dir=${budgetsWith(undefined)}`])
+      expect(none.status).toBe(1)
+      expect((none.json as JsonOutput).missing.map((m) => m.name)).toContain(NAME)
+    })
+
+    it('--update=<package> writes that package\'s own file with ceilingFor(measured)', () => {
+      testDir = setupFixturePackagesDir({ goodPackage: true })
+      const size = measureFixture(testDir)
+      const dir = budgetsWith(size * 10)
+      writeCeiling(dir, 'bundle', '@pyreon-test/neighbour', 4242)
+      const run = spawnSync('bun', [SCRIPT, `--packages-root=${testDir}`, `--budgets-dir=${dir}`, `--update=${NAME}`], {
+        cwd: REPO_ROOT,
+        encoding: 'utf-8',
+        timeout: 60_000,
+        env: { PATH: process.env.PATH, HOME: process.env.HOME },
       })
-      const json = runCheck(testDir, {}, budgets).json as JsonOutput
-      expect(json.recovered).toContain('@pyreon-test/good-fixture')
-      expect(json.thinKnown).toHaveLength(0)
+      expect(run.status).toBe(0)
+      const after = loadCeilings(dir).bundle
+      expect(after[NAME]).toBe(ceilingFor(size))
+      expect(after['@pyreon-test/neighbour']).toBe(4242)
     })
   })
 

@@ -1,13 +1,15 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   assertClientClean,
-  assertRouteBudgets,
+  checkRouteSizes,
+  routeHtmlMap,
   firstLoadJsGzip,
   staticImports,
 } from '../../../../../scripts/zero-app-checks'
+import { writeCeiling } from '../../../../../scripts/size-budget-store'
 
 const dirs: string[] = []
 function tmp(files: Record<string, string>): string {
@@ -66,13 +68,63 @@ describe('zero-app-checks — first-load JS', () => {
     expect(firstLoadJsGzip(join(d, 'index.html'), d).files).toBe(3)
   })
 
-  it('fails over budget and on a route with no budget', () => {
+  it('judges a built route against its ceiling file, in the mode the environment names', () => {
     const d = app()
-    const budgets = join(d, 'b.json')
-    writeFileSync(budgets, JSON.stringify({ budgets: { 'x:/': 1 } }))
-    expect(() => assertRouteBudgets('x', d, { '/': join(d, 'index.html') }, budgets)).toThrow(/budget 1 B/)
-    expect(() => assertRouteBudgets('x', d, { '/other': join(d, 'index.html') }, budgets)).toThrow(/no budget/)
-    writeFileSync(budgets, JSON.stringify({ budgets: { 'x:/': 100000 } }))
-    expect(() => assertRouteBudgets('x', d, { '/': join(d, 'index.html') }, budgets)).not.toThrow()
+    const budgets = join(d, 'budgets')
+    const routes = { '/': join(d, 'index.html') }
+    const run = (mode: string | undefined, fn: () => void): (() => void) => () => {
+      const before = { mode: process.env.PYREON_SIZE_MODE, out: process.env.PYREON_SIZE_ROUTES_OUT }
+      delete process.env.PYREON_SIZE_ROUTES_OUT
+      if (mode === undefined) delete process.env.PYREON_SIZE_MODE
+      else process.env.PYREON_SIZE_MODE = mode
+      try {
+        fn()
+      } finally {
+        if (before.mode === undefined) delete process.env.PYREON_SIZE_MODE
+        else process.env.PYREON_SIZE_MODE = before.mode
+        if (before.out !== undefined) process.env.PYREON_SIZE_ROUTES_OUT = before.out
+      }
+    }
+    const check = (): void => checkRouteSizes('x', d, routes, budgets)
+
+    // No ceiling at all fails in every mode, a local run included.
+    expect(run(undefined, check)).toThrow(/has no ceiling/)
+
+    writeCeiling(budgets, 'routes', 'x:/', 1)
+    // The default branch fails a route over its ceiling …
+    expect(run('main', check)).toThrow(/over its ceiling of 1 B/)
+    // … a local run reports it and leaves the verdict to CI.
+    expect(run(undefined, check)).not.toThrow()
+
+    writeCeiling(budgets, 'routes', 'x:/', 100000)
+    expect(run('main', check)).not.toThrow()
+    // A ceiling whose route was not measured is guarding nothing: it fails.
+    writeCeiling(budgets, 'routes', 'x:/gone', 100000)
+    expect(run('main', check)).toThrow(/x:\/gone: has a ceiling but was not measured/)
+  })
+
+  it('records sizes instead of judging when CI names an output file', () => {
+    const d = app()
+    const out = join(d, 'routes.json')
+    const before = process.env.PYREON_SIZE_ROUTES_OUT
+    process.env.PYREON_SIZE_ROUTES_OUT = out
+    try {
+      // No ceiling exists, and this still does not throw: the verdict belongs
+      // to the `Check Route Budgets` step that reads the file.
+      checkRouteSizes('x', d, { '/': join(d, 'index.html') }, join(d, 'budgets'))
+    } finally {
+      if (before === undefined) delete process.env.PYREON_SIZE_ROUTES_OUT
+      else process.env.PYREON_SIZE_ROUTES_OUT = before
+    }
+    const recorded = JSON.parse(readFileSync(out, 'utf8')) as Record<string, number>
+    expect(recorded['x:/']).toBe(firstLoadJsGzip(join(d, 'index.html'), d).bytes)
+  })
+
+  it('maps a route to its directory-format HTML', () => {
+    expect(routeHtmlMap('/dist', ['/', '/about', '/a/b'])).toEqual({
+      '/': join('/dist', 'index.html'),
+      '/about': join('/dist', 'about', 'index.html'),
+      '/a/b': join('/dist', 'a', 'b', 'index.html'),
+    })
   })
 })

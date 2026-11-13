@@ -1,0 +1,112 @@
+name: Size Ceiling Status
+
+# A pull request is judged on the bytes it adds, so several merges can together
+# take an entry over its ceiling with every pull request green. Main's push run
+# is where that shows: the `Build` job's size steps run against the ceilings
+# and go red. Nobody watches main's Actions tab, so this workflow keeps ONE
+# sticky issue in step with those steps: a red size step creates the issue or
+# comments on it, and the next run where all three pass closes it.
+#
+# A `workflow_run` trigger, not a job in ci.yml: it runs in the default-branch
+# context with `issues: write`, which the Build job (it runs pull request code)
+# must not hold, and pull requests never see a check row for it.
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  notify:
+    name: Size ceilings → sticky issue
+    if: github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read # read the run's job and step conclusions
+      issues: write # create / comment on / close the sticky issue
+    steps:
+      # No swallow-all catch: the notification IS the deliverable. If the
+      # issue cannot be written, a breach would vanish silently, so this step
+      # fails loudly after its retries.
+      - name: Create / update / close the sticky issue
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          retries: 3
+          script: |
+            const title = '[size] main is over a size ceiling'
+            const run = context.payload.workflow_run
+            const { owner, repo } = context.repo
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              owner,
+              repo,
+              run_id: run.id,
+              filter: 'latest',
+              per_page: 100,
+            })
+            const build = jobs.find((j) => j.name === 'Build')
+            // A docs-only push skips Build: it measured nothing, so it neither
+            // opens nor closes the issue. The last run that measured stands.
+            if (!build || build.conclusion === 'skipped' || build.conclusion === 'cancelled') {
+              core.info(`Build did not run to a verdict (${build?.conclusion ?? 'missing'}) — leaving the issue as it is.`)
+              return
+            }
+            const names = ['Check Bundle Budgets', 'Check Import Budgets', 'Check Route Budgets']
+            const steps = names.map((name) => ({
+              name,
+              conclusion: (build.steps ?? []).find((s) => s.name === name)?.conclusion ?? 'missing',
+            }))
+            const red = steps.filter((s) => s.conclusion === 'failure')
+            // `skipped`/`missing` is no verdict (an earlier step failed first):
+            // it must not close an open issue.
+            const allGreen = steps.every((s) => s.conclusion === 'success')
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: 'open',
+              creator: 'github-actions[bot]',
+              per_page: 100,
+            })
+            const sticky = issues.find((i) => i.title === title)
+            if (red.length > 0) {
+              const line = [
+                `Size steps failed on \`${run.head_sha.slice(0, 9)}\`: ${build.html_url}`,
+                ...steps.map((s) => `- ${s.name}: **${s.conclusion}**`),
+              ].join('\n')
+              if (sticky) {
+                await github.rest.issues.createComment({ owner, repo, issue_number: sticky.number, body: line })
+              } else {
+                await github.rest.issues.create({
+                  owner,
+                  repo,
+                  title,
+                  body: [
+                    'An entry on `main` is over its ceiling in `scripts/size-budgets/`. No single pull request',
+                    'crossed it: each is judged on the bytes it adds, and their sum went over.',
+                    '',
+                    'Until this is fixed, `Build` is red on every push to `main`, and a pull request that adds',
+                    'bytes to the same entry fails. Pull requests that do not touch it are not affected.',
+                    '',
+                    'To fix: open the failed step in the linked run for the entry and its size. Shrink it, or',
+                    'accept the size in ONE pull request with `--update=<id>` on the matching gate',
+                    '(`bun run check-bundle-budgets`, `check-import-budgets` or `check-route-budgets`) and say',
+                    'what the bytes bought. See "Size gates" in `.agents/guides/ci/README.md`.',
+                    '',
+                    'This issue is managed by `size-ceiling-status.yml`: one comment per red run, and it closes',
+                    'itself on the next run where all three size steps pass.',
+                    '',
+                    line,
+                  ].join('\n'),
+                })
+              }
+            } else if (allGreen && sticky) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: sticky.number,
+                body: `All three size steps pass on \`${run.head_sha.slice(0, 9)}\`: ${build.html_url} — closing.`,
+              })
+              await github.rest.issues.update({ owner, repo, issue_number: sticky.number, state: 'closed' })
+            }

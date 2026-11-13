@@ -15,11 +15,22 @@
  *      route HTML: every `<script type="module" src>` and `modulepreload`,
  *      plus the transitive closure of their STATIC imports (dynamic
  *      `import()` is deferred work, not first-load), gzipped and summed.
- *      Locked in `scripts/zero-app-budgets.json`.
+ *      Judged by `check-route-budgets` against `scripts/size-budgets/apps/`.
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { gzipSync } from 'node:zlib'
+
+import {
+  type BaseFamily,
+  formatVerdicts,
+  judgeFamily,
+  resolveBasePath,
+  resolveSizeMode,
+  type SizeBaseFile,
+  type SizeMode,
+} from './size-budget-policy'
+import { loadCeilings } from './size-budget-store'
 
 /** Every file under `dir` (recursive). */
 function walk(dir: string): string[] {
@@ -122,38 +133,85 @@ export function firstLoadJsGzip(htmlPath: string, clientDir: string): { bytes: n
   return { bytes, files: seen.size }
 }
 
-export interface AppBudgets {
-  /** `<example>:<route>` → max gzipped first-load JS bytes. */
-  budgets: Record<string, number>
+/** `<example>:<route>` → the route's prerendered HTML, for `ssg.format: 'directory'`. */
+export function routeHtmlMap(dist: string, routes: readonly string[]): Record<string, string> {
+  return Object.fromEntries(
+    routes.map((route) => [route, join(dist, ...route.split('/').filter(Boolean), 'index.html')]),
+  )
 }
 
-/**
- * Measures each route and compares to its locked budget. A route with no
- * budget entry fails (a new route is locked deliberately, not implicitly).
- * `PYREON_ZERO_BUDGETS_REPORT=1` prints the measurements for re-locking.
- */
-export function assertRouteBudgets(
+/** Gzipped first-load JS per route, keyed `<example>:<route>`. */
+export function measureRoutes(
   example: string,
   clientDir: string,
   routes: Record<string, string>,
-  budgetsFile: string,
-): void {
-  const { budgets } = JSON.parse(readFileSync(budgetsFile, 'utf-8')) as AppBudgets
-  const problems: string[] = []
+): Record<string, number> {
+  const sizes: Record<string, number> = {}
   for (const [route, html] of Object.entries(routes)) {
-    const key = `${example}:${route}`
-    const { bytes, files } = firstLoadJsGzip(html, clientDir)
-    if (process.env['PYREON_ZERO_BUDGETS_REPORT']) {
-      console.log(`[zero-app-budget] ${key}: ${bytes} B gz across ${files} file(s)`)
-    }
-    const limit = budgets[key]
-    if (limit === undefined) problems.push(`${key}: no budget in ${budgetsFile} (measured ${bytes} B gz)`)
-    else if (bytes > limit) {
-      problems.push(
-        `${key}: first-load JS is ${bytes} B gz, budget ${limit} B (+${bytes - limit}). ` +
-          `If the growth is intended, raise THIS entry by hand and say why in the PR.`,
-      )
-    }
+    sizes[`${example}:${route}`] = firstLoadJsGzip(html, clientDir).bytes
   }
-  if (problems.length > 0) throw new Error(`[zero-app-budget]\n  ${problems.join('\n  ')}`)
+  return sizes
+}
+
+/** Adds `sizes` to the JSON object in `file` (created when absent). */
+export function recordRouteSizes(file: string, sizes: Record<string, number>): void {
+  const prev = existsSync(file) ? (JSON.parse(readFileSync(file, 'utf-8')) as Record<string, number>) : {}
+  writeFileSync(file, `${JSON.stringify({ ...prev, ...sizes }, null, 2)}\n`)
+}
+
+/**
+ * Judges measured route sizes and throws on a failing verdict.
+ *
+ * `measuredIds` must cover every route that has a ceiling for the examples
+ * measured: a ceiling whose route was not measured fails, so a cell that stops
+ * running cannot leave its ceilings guarding nothing.
+ */
+export function judgeRouteSizes(
+  sizes: Record<string, number>,
+  ceilings: Record<string, number>,
+  mode: SizeMode,
+  base: BaseFamily | undefined,
+): { lines: string[]; failed: number } {
+  const verdicts = judgeFamily(
+    mode,
+    Object.entries(sizes).map(([id, size]) => ({ id, size, ceiling: ceilings[id] })),
+    base,
+  )
+  const { lines, failed } = formatVerdicts('route first-load JS', mode, verdicts)
+  const unmeasured = Object.keys(ceilings).filter((id) => !(id in sizes))
+  for (const id of unmeasured) {
+    lines.unshift(`  ✗ ${id}: has a ceiling but was not measured. Its verify-modes cell did not run, or the route was removed (then remove the ceiling).`)
+  }
+  return { lines, failed: failed + unmeasured.length }
+}
+
+/**
+ * Called from a verify-modes cell with the routes it just built.
+ *
+ * With `PYREON_SIZE_ROUTES_OUT` set (CI), the sizes are recorded there and the
+ * `Check Route Budgets` step judges them. Without it the verdict is given
+ * here, in the mode `PYREON_SIZE_MODE` names (a local run: ceilings reported,
+ * only a missing ceiling fails).
+ */
+export function checkRouteSizes(
+  example: string,
+  clientDir: string,
+  routes: Record<string, string>,
+  budgetsDir: string,
+): void {
+  const sizes = measureRoutes(example, clientDir, routes)
+  const out = process.env['PYREON_SIZE_ROUTES_OUT']
+  if (out) {
+    recordRouteSizes(out, sizes)
+    return
+  }
+  const mode = resolveSizeMode([], process.env)
+  const basePath = resolveBasePath([], process.env)
+  const base =
+    mode === 'pr' && basePath ? (JSON.parse(readFileSync(basePath, 'utf-8')) as SizeBaseFile).routes : undefined
+  const all = loadCeilings(budgetsDir).routes
+  const ceilings = Object.fromEntries(Object.entries(all).filter(([id]) => id.startsWith(`${example}:`)))
+  const { lines, failed } = judgeRouteSizes(sizes, ceilings, mode, base)
+  if (failed > 0) throw new Error(`[route-size]\n${lines.join('\n')}`)
+  for (const line of lines) console.log(`[route-size] ${line.trim()}`)
 }

@@ -121,7 +121,7 @@ The file-scanning gates (`react-patterns`, `pyreon-patterns`, `lint`, `audit-tes
 | `check-dedup` | architecture | fast | Duplicate `@pyreon/*` versions in the lockfile |
 | `audit-leak-classes` | `best-practices` (advisory) | fast | Memory-leak class heuristics (A / C / D / I) — advisory, excluded from grade + `--ci` |
 | `audit-types` | architecture | slow (`--full`) | Typed-but-unimplemented public-interface fields |
-| `bundle-budgets` | performance | slow (`--full`) | Gzipped main-entry size vs locked `bundle-budgets.json` budget |
+| `bundle-budgets` | performance | slow (`--full`) | Gzipped main-entry size vs its ceiling in `scripts/size-budgets/` |
 
 **Framework-internal gates skip in consumer apps.** `doc-claims`, `audit-leak-classes`, `audit-types`, and `bundle-budgets` all detect they aren't running inside the Pyreon monorepo (via the presence of their companion `scripts/*.ts`) and return **skipped** — excluded from the composite score rather than scoring 0 and dragging an otherwise-clean consumer app's grade down. `native-audit` self-skips when no `@pyreon/primitives` importer is found. They all surface in the report's skipped-gates footer.
 
