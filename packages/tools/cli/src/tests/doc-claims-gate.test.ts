@@ -374,6 +374,44 @@ describe('the scaffolder prompt carries the lint rule count', () => {
   })
 })
 
+describe('the marketing site carries the lint counts', () => {
+  // pyreon.dev said "133 lint rules in 25 categories" while the registry held
+  // 140 in 26: its content files (synced from the 09-site staging set) were
+  // not claim surfaces, so two rule additions passed without touching them.
+  const rules = (n: number): string =>
+    `export const allRules: Rule[] = [\n${Array.from({ length: n }, (_, i) => `  rule${i},`).join('\n')}\n]\n`
+  const category = (name: string): string => `export default { meta: { category: '${name}' } }\n`
+  const HOME = 'docs/src/site/content/_home.json'
+  const home = (n: number, cats: number): string =>
+    `{\n "items": [\n    {\n     "name": "${n} lint rules",\n     "text": "In ${cats} categories, from props to SSR."\n    }\n ]\n}\n`
+  const repo = (claimed: number, claimedCats: number): Record<string, string> => ({
+    'packages/tools/lint/src/rules/index.ts': rules(4),
+    'packages/tools/lint/src/rules/jsx/a.ts': category('jsx'),
+    'packages/tools/lint/src/rules/style/b.ts': category('style'),
+    [HOME]: home(claimed, claimedCats),
+  })
+  const onHome = (r: GateResult, id: string): Finding[] =>
+    forCheck(r, id).filter((f) => f.code.endsWith('-drift') && f.location?.relPath === HOME)
+
+  it('reports a stale site rule count and category count', () => {
+    build(repo(3, 1))
+    return run().then((r) => {
+      expect(onHome(r, 'lint-rule-count').map((f) => f.message)).toEqual([
+        `lint rule count: ${HOME} claims 3, actual 4.`,
+      ])
+      expect(onHome(r, 'lint-category-count').length).toBe(1)
+    })
+  })
+
+  it('stays quiet when the site matches the registry', () => {
+    build(repo(4, 2))
+    return run().then((r) => {
+      expect(onHome(r, 'lint-rule-count')).toEqual([])
+      expect(onHome(r, 'lint-category-count')).toEqual([])
+    })
+  })
+})
+
 describe('a JSON claim is read as the reader sees it', () => {
   // `package.json` may store any character as a `\uXXXX` escape, and
   // `changeset version` re-serialises the file on every release — so a
