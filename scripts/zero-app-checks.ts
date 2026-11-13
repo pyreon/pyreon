@@ -17,7 +17,7 @@
  *      `import()` is deferred work, not first-load), gzipped and summed.
  *      Judged by `check-route-budgets` against `scripts/size-budgets/apps/`.
  */
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { gzipSync } from 'node:zlib'
 
@@ -31,6 +31,7 @@ import {
   type SizeBaseFile,
   type SizeMode,
 } from './size-budget-policy'
+import { readTextIfExists } from './fs-read'
 import { loadCeilings } from './size-budget-store'
 
 /** Every file under `dir` (recursive). */
@@ -57,10 +58,15 @@ export interface ClientLeakOptions {
  * and contain at least one `.js` file — an empty walk is a failure, never a pass.
  */
 export function assertClientClean(clientDir: string, opts: ClientLeakOptions): void {
-  if (!existsSync(clientDir)) {
+  // The walk itself reports a missing directory; checking first and walking
+  // second is two operations the directory can change between.
+  let files: string[]
+  try {
+    files = walk(clientDir)
+  } catch (err) {
+    if ((err as { code?: unknown } | null)?.code !== 'ENOENT') throw err
     throw new Error(`[zero-app-checks] client dir ${clientDir} does not exist — nothing was checked`)
   }
-  const files = walk(clientDir)
   const js = files.filter((f) => /\.m?js$/.test(f))
   if (js.length === 0) {
     throw new Error(`[zero-app-checks] no .js files under ${clientDir} — nothing was checked`)
@@ -140,8 +146,8 @@ export function firstLoadJsGzip(
     const f = queue.pop() as string
     if (seen.has(f)) continue
     seen.add(f)
-    if (!existsSync(f)) throw new Error(`[zero-app-checks] ${htmlPath} references missing ${f}`)
-    const raw = readFileSync(f, 'utf-8')
+    const raw = readTextIfExists(f)
+    if (raw === undefined) throw new Error(`[zero-app-checks] ${htmlPath} references missing ${f}`)
     const code = checkoutRoot ? raw.replaceAll(checkoutRoot, '') : raw
     bytes += gzipSync(code, { level: 9 }).length
     for (const spec of staticImports(raw)) queue.push(resolve(dirname(f), spec))
@@ -172,7 +178,8 @@ export function measureRoutes(
 
 /** Adds `sizes` to the JSON object in `file` (created when absent). */
 export function recordRouteSizes(file: string, sizes: Record<string, number>): void {
-  const prev = existsSync(file) ? (JSON.parse(readFileSync(file, 'utf-8')) as Record<string, number>) : {}
+  const text = readTextIfExists(file)
+  const prev = text === undefined ? {} : (JSON.parse(text) as Record<string, number>)
   writeFileSync(file, `${JSON.stringify({ ...prev, ...sizes }, null, 2)}\n`)
 }
 

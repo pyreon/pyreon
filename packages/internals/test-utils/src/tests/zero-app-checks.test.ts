@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   assertClientClean,
   checkRouteSizes,
+  recordRouteSizes,
   routeHtmlMap,
   firstLoadJsGzip,
   staticImports,
@@ -136,6 +137,23 @@ describe('zero-app-checks — first-load JS', () => {
     }
     const recorded = JSON.parse(readFileSync(out, 'utf8')) as Record<string, number>
     expect(recorded['x:/']).toBe(firstLoadJsGzip(join(d, 'index.html'), d).bytes)
+  })
+
+  it('a script the HTML references but the build did not emit is named, not an ENOENT', () => {
+    const d = tmp({ 'index.html': '<script type="module" src="/assets/gone.js"></script>' })
+    expect(() => firstLoadJsGzip(join(d, 'index.html'), d)).toThrow(/references missing .*gone\.js/)
+  })
+
+  it('recordRouteSizes creates the file when absent and merges when present', () => {
+    const d = tmp({})
+    const out = join(d, 'routes.json')
+    // Absent: one write, no existence check before it.
+    recordRouteSizes(out, { 'x:/': 10 })
+    recordRouteSizes(out, { 'x:/about': 20, 'x:/': 11 })
+    expect(JSON.parse(readFileSync(out, 'utf8'))).toEqual({ 'x:/': 11, 'x:/about': 20 })
+    // A file that exists but is not JSON is an error, never silently replaced.
+    writeFileSync(out, 'not json')
+    expect(() => recordRouteSizes(out, { 'x:/': 1 })).toThrow()
   })
 
   it('maps a route to its directory-format HTML', () => {

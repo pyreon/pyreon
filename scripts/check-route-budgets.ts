@@ -21,11 +21,12 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 import { isUpdateMode } from './bundle-budget-policy'
+import { readTextIfExists } from './fs-read'
 import { nextCeiling, resolveBasePath, resolveSizeMode, type SizeBaseFile } from './size-budget-policy'
 import { loadCeilings, resolveBudgetsDir, writeCeiling } from './size-budget-store'
 import { judgeRouteSizes } from './zero-app-checks'
@@ -43,12 +44,13 @@ export function measureRouteSizes(root: string): Record<string, number> {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, PYREON_VERIFY_MODES_ROOT: root, PYREON_SIZE_ROUTES_MEASURE: out },
     })
-    if (run.status !== 0 || !existsSync(out)) {
+    const recorded = run.status === 0 ? readTextIfExists(out) : undefined
+    if (recorded === undefined) {
       throw new Error(
         `[Pyreon] check-route-budgets: building the size-judged routes in ${root} failed (exit ${run.status}). Fix the build first.\n${run.stdout}\n${run.stderr}`,
       )
     }
-    return JSON.parse(readFileSync(out, 'utf8')) as Record<string, number>
+    return JSON.parse(recorded) as Record<string, number>
   } finally {
     rmSync(scratch, { recursive: true, force: true })
   }
@@ -61,13 +63,14 @@ function main(): void {
   if (recorded) {
     // A named file that is missing means the step that records it did not run.
     // Building the routes here instead would hide that, so it is a failure.
-    if (!existsSync(recorded)) {
+    const text = readTextIfExists(recorded)
+    if (text === undefined) {
       console.error(
         `✗ check-route-budgets: no recorded route sizes at ${recorded}. The Verify Modes step writes them; it failed or did not run.`,
       )
       process.exit(1)
     }
-    sizes = JSON.parse(readFileSync(recorded, 'utf8')) as Record<string, number>
+    sizes = JSON.parse(text) as Record<string, number>
   } else {
     sizes = measureRouteSizes(REPO_ROOT)
   }
@@ -102,13 +105,14 @@ function main(): void {
   const basePath = resolveBasePath(args, process.env)
   let base: SizeBaseFile | undefined
   if (mode === 'pr') {
-    if (basePath === undefined || !existsSync(basePath)) {
+    const text = basePath === undefined ? undefined : readTextIfExists(basePath)
+    if (text === undefined) {
       console.error(
         '✗ check-route-budgets: pr mode needs the base measurement. Run `bun scripts/size-base.ts --out=<file>` and pass --base=<file> (or PYREON_SIZE_BASE).',
       )
       process.exit(1)
     }
-    base = JSON.parse(readFileSync(basePath, 'utf8')) as SizeBaseFile
+    base = JSON.parse(text) as SizeBaseFile
   }
 
   for (const [id, size] of Object.entries(sizes)) console.log(`  ${id}: ${size} B gz${ceilings[id] === undefined ? '' : `, ceiling ${ceilings[id]}`}`)

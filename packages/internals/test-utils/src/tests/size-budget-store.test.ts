@@ -8,12 +8,13 @@
  * request is dispatched no CI at all.
  */
 
-import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { SCENARIOS } from '../../../../../scripts/check-import-budgets'
+import { listDirIfExists, readTextIfExists } from '../../../../../scripts/fs-read'
 import {
   ceilingFile,
   loadCeilings,
@@ -91,6 +92,45 @@ describe('size-budget-store', () => {
     const d = tmp()
     writeCeiling(d, 'bundle', '@pyreon/core', Number.NaN)
     expect(() => loadCeilings(d)).toThrow(/core\.json/)
+  })
+})
+
+describe('fs-read: read it if it is there, as one operation', () => {
+  let dir: string | null = null
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true })
+    dir = null
+  })
+
+  it('a missing file reads as undefined and a missing directory as empty', () => {
+    dir = realpathSync(mkdtempSync(join(tmpdir(), 'pyreon-fs-read-')))
+    expect(readTextIfExists(join(dir, 'absent.json'))).toBeUndefined()
+    expect(listDirIfExists(join(dir, 'absent'))).toEqual([])
+    // A path THROUGH a file (ENOTDIR) is "not there" too.
+    writeFileSync(join(dir, 'file'), 'x')
+    expect(readTextIfExists(join(dir, 'file', 'inner'))).toBeUndefined()
+    expect(listDirIfExists(join(dir, 'file'))).toEqual([])
+    expect(readTextIfExists(join(dir, 'file'))).toBe('x')
+  })
+
+  it('any other failure still throws: a directory is not an empty file', () => {
+    dir = realpathSync(mkdtempSync(join(tmpdir(), 'pyreon-fs-read-')))
+    expect(() => readTextIfExists(dir as string)).toThrow()
+  })
+
+  it('writeCeiling into a directory that does not exist yet creates the file', () => {
+    dir = realpathSync(mkdtempSync(join(tmpdir(), 'pyreon-fs-read-')))
+    const budgets = join(dir, 'not', 'yet')
+    writeCeiling(budgets, 'bundle', '@pyreon/core', 8232)
+    expect(loadCeilings(budgets).bundle).toEqual({ '@pyreon/core': 8232 })
+  })
+
+  it('a ceiling file that is not JSON is an error naming the file, never treated as absent', () => {
+    dir = realpathSync(mkdtempSync(join(tmpdir(), 'pyreon-fs-read-')))
+    writeCeiling(dir, 'bundle', '@pyreon/core', 8232)
+    writeFileSync(join(dir, 'packages', 'core.json'), '{ broken')
+    expect(() => loadCeilings(dir as string)).toThrow(/core\.json is not valid JSON/)
+    expect(() => writeCeiling(dir as string, 'bundle', '@pyreon/core', 9000)).toThrow(/core\.json is not valid JSON/)
   })
 })
 

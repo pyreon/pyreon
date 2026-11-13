@@ -23,11 +23,12 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 import { measureRouteSizes } from './check-route-budgets'
+import { listDirIfExists } from './fs-read'
 import { movesLibSizes, movesRouteSizes, type SizeBaseFile } from './size-budget-policy'
 import { loadCeilings, sizeBudgetsDir } from './size-budget-store'
 
@@ -53,14 +54,13 @@ function run(cmd: string, args: string[], cwd: string, env?: Record<string, stri
 
 /** Copies every built `lib/` of the head into the same package of `base`. */
 function seedLib(base: string): void {
-  const packages = join(REPO_ROOT, 'packages')
-  for (const cat of readdirSync(packages)) {
-    const catDir = join(packages, cat)
-    if (!statSync(catDir).isDirectory()) continue
-    for (const pkg of readdirSync(catDir)) {
-      const lib = join(catDir, pkg, 'lib')
-      const target = join(base, 'packages', cat, pkg)
-      if (existsSync(lib) && existsSync(target)) cpSync(lib, join(target, 'lib'), { recursive: true })
+  // Each copy is attempted, not preceded by an existence check: a package the
+  // base does not have, or one with no `lib/`, fails the copy with ENOENT and
+  // is skipped. Bootstrap then builds whatever is missing.
+  for (const cat of listDirIfExists(join(REPO_ROOT, 'packages'))) {
+    for (const pkg of listDirIfExists(join(REPO_ROOT, 'packages', cat.name))) {
+      const rel = join('packages', cat.name, pkg.name, 'lib')
+      copyIfPresent(join(REPO_ROOT, rel), join(base, rel))
     }
   }
   // The compiler's native binary is an untracked build artifact. Route cells
@@ -68,13 +68,25 @@ function seedLib(base: string): void {
   // not, and the two emit a few bytes apart, so the base must use whichever
   // backend the head has. (CI's Build job has none at this point.)
   const native = join('packages', 'core', 'compiler', 'native')
-  if (existsSync(join(REPO_ROOT, native)) && existsSync(join(base, native))) {
-    for (const file of readdirSync(join(REPO_ROOT, native))) {
-      if (file.endsWith('.node')) cpSync(join(REPO_ROOT, native, file), join(base, native, file))
-    }
+  for (const file of listDirIfExists(join(REPO_ROOT, native))) {
+    if (file.name.endsWith('.node')) copyIfPresent(join(REPO_ROOT, native, file.name), join(base, native, file.name))
   }
-  const manifest = join(REPO_ROOT, '.bootstrap-cache.json')
-  if (existsSync(manifest)) cpSync(manifest, join(base, '.bootstrap-cache.json'))
+  copyIfPresent(join(REPO_ROOT, '.bootstrap-cache.json'), join(base, '.bootstrap-cache.json'))
+}
+
+/**
+ * Copies `from` to `to`; a source or destination parent that does not exist is
+ * skipped (returns false). One operation, with no existence check before it.
+ */
+function copyIfPresent(from: string, to: string): boolean {
+  try {
+    cpSync(from, to, { recursive: true })
+    return true
+  } catch (err) {
+    const code = (err as { code?: unknown } | null)?.code
+    if (code === 'ENOENT' || code === 'ENOTDIR') return false
+    throw err
+  }
 }
 
 /**
@@ -87,17 +99,22 @@ function seedLib(base: string): void {
  * installs.
  */
 function linkNodeModules(base: string): boolean {
-  const groups = ['node_modules', 'docs/node_modules']
-  for (const parent of ['examples', ...readdirSync(join(REPO_ROOT, 'packages')).map((c) => join('packages', c))]) {
-    const dir = join(REPO_ROOT, parent)
-    if (!existsSync(dir) || !statSync(dir).isDirectory()) continue
-    for (const name of readdirSync(dir)) groups.push(join(parent, name, 'node_modules'))
+  // Which workspaces have a `node_modules`, and which of them the base also
+  // has, is read from directory listings, never probed per path.
+  const groups = ['node_modules']
+  const parents = ['.', 'examples', ...listDirIfExists(join(REPO_ROOT, 'packages')).map((c) => join('packages', c.name))]
+  for (const parent of parents) {
+    const inBase = new Set(listDirIfExists(join(base, parent)).map((e) => e.name))
+    for (const entry of listDirIfExists(join(REPO_ROOT, parent))) {
+      if (!entry.isDirectory() || entry.name === 'node_modules' || !inBase.has(entry.name)) continue
+      if (parent === '.' && entry.name !== 'docs') continue
+      const installed = listDirIfExists(join(REPO_ROOT, parent, entry.name)).some((e) => e.name === 'node_modules')
+      if (installed) groups.push(join(parent, entry.name, 'node_modules'))
+    }
   }
   for (const group of groups) {
-    const from = join(REPO_ROOT, group)
-    const to = join(base, group)
-    if (!existsSync(from) || !existsSync(dirname(to))) continue
-    if (spawnSync('cp', ['-al', from, to], { stdio: 'ignore' }).status !== 0) return false
+    const linked = spawnSync('cp', ['-al', join(REPO_ROOT, group), join(base, group)], { stdio: 'ignore' })
+    if (linked.status !== 0) return false
   }
   return true
 }

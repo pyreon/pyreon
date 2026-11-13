@@ -22,8 +22,10 @@
  * No Bun API, so tests can import it.
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+
+import { listDirIfExists, readTextIfExists } from './fs-read'
 
 export interface Ceilings {
   bundle: Record<string, number>
@@ -79,9 +81,12 @@ function splitRouteId(id: string): { app: string; route: string } {
   return { app: id.slice(0, at), route: id.slice(at + 1) }
 }
 
-function readJson<T>(file: string): T {
+/** The parsed file, or `undefined` when it does not exist. */
+function readJson<T>(file: string): T | undefined {
+  const text = readTextIfExists(file)
+  if (text === undefined) return undefined
   try {
-    return JSON.parse(readFileSync(file, 'utf8')) as T
+    return JSON.parse(text) as T
   } catch (err) {
     throw new Error(
       `[Pyreon] size budgets: ${file} is not valid JSON (${err instanceof Error ? err.message : String(err)}). Fix or regenerate it with --update.`,
@@ -90,8 +95,8 @@ function readJson<T>(file: string): T {
 }
 
 function jsonFiles(dir: string): string[] {
-  if (!existsSync(dir)) return []
-  return readdirSync(dir)
+  return listDirIfExists(dir)
+    .map((entry) => entry.name)
     .filter((f) => f.endsWith('.json'))
     .sort()
     .map((f) => join(dir, f))
@@ -106,7 +111,7 @@ const isBytes = (v: unknown): v is number => typeof v === 'number' && Number.isF
 export function loadCeilings(dir: string): Ceilings {
   const out: Ceilings = { bundle: {}, imports: {}, routes: {} }
   for (const file of jsonFiles(join(dir, 'packages'))) {
-    const data = readJson<Partial<PackageFile>>(file)
+    const data = readJson<Partial<PackageFile>>(file) ?? {}
     if (typeof data.package !== 'string') {
       throw new Error(`[Pyreon] size budgets: ${file} has no "package" name. Add it.`)
     }
@@ -123,7 +128,7 @@ export function loadCeilings(dir: string): Ceilings {
     }
   }
   for (const file of jsonFiles(join(dir, 'apps'))) {
-    const data = readJson<Partial<AppFile>>(file)
+    const data = readJson<Partial<AppFile>>(file) ?? {}
     if (typeof data.app !== 'string') {
       throw new Error(`[Pyreon] size budgets: ${file} has no "app" name. Add it.`)
     }
@@ -152,12 +157,12 @@ export function writeCeiling(dir: string, family: keyof Ceilings, id: string, va
   const file = join(dir, rel)
   if (family === 'routes') {
     const { app, route } = splitRouteId(id)
-    const prev = existsSync(file) ? readJson<Partial<AppFile>>(file) : {}
+    const prev = readJson<Partial<AppFile>>(file) ?? {}
     write(file, { app, routes: sorted({ ...prev.routes, [route]: value }) })
     return rel
   }
   const pkg = family === 'imports' ? splitImportId(id).pkg : id
-  const prev = existsSync(file) ? readJson<Partial<PackageFile>>(file) : {}
+  const prev = readJson<Partial<PackageFile>>(file) ?? {}
   const bundle = family === 'bundle' ? value : prev.bundle
   const imports =
     family === 'imports' ? { ...prev.imports, [splitImportId(id).scenario]: value } : prev.imports
