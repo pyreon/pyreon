@@ -495,7 +495,6 @@ const checks: ClaimCheck[] = [
         file: 'packages/zero/create-zero/src/prompts.ts',
         pattern: /Include @pyreon\/lint\? \((\d+) Pyreon-specific rules\)/,
       },
-      // pyreon.dev, synced from the 09-site staging set: see doc-claims-site.ts.
       ...SITE_LINT_RULE_CLAIMS,
     ],
   },
