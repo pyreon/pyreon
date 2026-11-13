@@ -12,8 +12,10 @@ import { getPreset } from '../config/presets'
 import { allRules } from '../rules/index'
 import type { Severity } from '../types'
 
+// `style` rules are opt-in too, but they belong to the `readable` preset
+// layers, not to `best-practices` — see `readable-preset.test.ts`.
 const OPT_IN_IDS = allRules
-  .filter((r) => r.meta.optIn === true)
+  .filter((r) => r.meta.optIn === true && r.meta.category !== 'style')
   .map((r) => r.meta.id)
 
 function sev(entry: unknown): Severity {
@@ -89,7 +91,7 @@ describe('opt-in best-practice rule wiring', () => {
   it('the `best-practices` preset enables every opt-in rule at meta.severity', () => {
     const cfg = getPreset('best-practices')
     for (const rule of allRules) {
-      if (rule.meta.optIn === true) {
+      if (rule.meta.optIn === true && rule.meta.category !== 'style') {
         expect(sev(cfg.rules[rule.meta.id])).toBe(rule.meta.severity)
         expect(sev(cfg.rules[rule.meta.id])).not.toBe('off')
       }

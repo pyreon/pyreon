@@ -769,6 +769,38 @@ const FIXTURES: Record<string, Fixture> = {
     bad: `import { useStorage } from '@pyreon/storage'\nconst theme = useStorage('theme', 'light')\ntheme('dark')`,
     good: `import { useStorage } from '@pyreon/storage'\nconst theme = useStorage('theme', 'light')\ntheme.set('dark')`,
   },
+  // ── style (the `readable` preset layers) ─────────────────────────────────
+  'pyreon/padding-between-declarations': {
+    file: 'src/a.ts',
+    bad: `export function a() {\n  return 1\n}\nexport function b() {\n  return 2\n}\n`,
+    good: `export function a() {\n  return 1\n}\n\nexport function b() {\n  return 2\n}\n`,
+  },
+  'pyreon/padding-before-return': {
+    file: 'src/a.ts',
+    bad: `export function f(a: number) {\n  const b = a + 1\n  const c = b * 2\n  const d = c - 3\n  return d\n}\n`,
+    good: `export function f(a: number) {\n  const b = a + 1\n  const c = b * 2\n  const d = c - 3\n\n  return d\n}\n`,
+  },
+  'pyreon/padding-between-component-sections': {
+    file: 'src/a.tsx',
+    bad: `${SIG}export function C() {\n  const n = signal(0)\n  const inc = () => n.set(n() + 1)\n  return <button onClick={inc}>{n}</button>\n}\n`,
+    good: `${SIG}export function C() {\n  const n = signal(0)\n\n  const inc = () => n.set(n() + 1)\n\n  return <button onClick={inc}>{n}</button>\n}\n`,
+  },
+  'pyreon/padding-around-multiline-blocks': {
+    file: 'src/a.ts',
+    bad: `export function f(xs: number[]) {\n  let n = 0\n  for (const x of xs) {\n    n += x\n  }\n  return n\n}\n`,
+    good: `export function f(xs: number[]) {\n  let n = 0\n\n  for (const x of xs) {\n    n += x\n  }\n\n  return n\n}\n`,
+  },
+  'pyreon/max-jsx-depth': {
+    file: 'src/a.tsx',
+    bad: `export const C = () => <div><ul><li><a><b><i>x</i></b></a></li></ul></div>\n`,
+    good: `export const C = () => <div><ul><li><a><b>x</b></a></li></ul></div>\n`,
+    options: { max: 5 },
+  },
+  'pyreon/no-nested-ternary-branch': {
+    file: 'src/a.ts',
+    bad: `export const f = (a: boolean, b: boolean) => (a ? (b ? 1 : 2) : 3)\n`,
+    good: `export const f = (a: boolean, b: boolean) => (!a ? 3 : b ? 1 : 2)\n`,
+  },
 }
 
 /** Every `@pyreon/*` package a dependency-gated rule might look for. */

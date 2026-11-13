@@ -477,7 +477,7 @@
    "package": "@pyreon/cli · lint · devtools · mcp · testing",
    "group": "tools",
    "href": "/products/tooling",
-   "pitch": "`pyreon doctor` runs up to ten gates over your app and scores it 0–100 with the fixes inline, next to 133 lint rules, `pyreon check`, a test kit and devtools for the reactive graph."
+   "pitch": "`pyreon doctor` runs up to ten gates over your app and scores it 0–100 with the fixes inline, next to 140 lint rules, `pyreon check`, a test kit and devtools for the reactive graph."
   },
   {
    "id": "ai",

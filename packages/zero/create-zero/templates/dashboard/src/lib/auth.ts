@@ -25,7 +25,7 @@
  * this file with a Supabase-backed implementation that keeps the same
  * function signatures, so routes don't need to change.
  */
-import { SESSION_TTL_SECONDS } from "./session-cookie"
+import { SESSION_TTL_SECONDS } from './session-cookie'
 
 interface User {
   id: string
@@ -48,7 +48,6 @@ export interface SessionInfo {
   email: string
 }
 
-
 // OWASP's current floor for PBKDF2-HMAC-SHA256.
 const PBKDF2_ITERATIONS = 600_000
 
@@ -57,24 +56,25 @@ const sessions = new Map<string, Session>()
 
 function randomHex(bytes: number): string {
   const buf = crypto.getRandomValues(new Uint8Array(bytes))
-  return Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("")
+  return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 async function derive(password: string, saltHex: string): Promise<string> {
   const key = await crypto.subtle.importKey(
-    "raw",
+    'raw',
     new TextEncoder().encode(password),
-    "PBKDF2",
+    'PBKDF2',
     false,
-    ["deriveBits"],
+    ['deriveBits'],
   )
   const salt = Uint8Array.from(saltHex.match(/../g) ?? [], (h) => Number.parseInt(h, 16))
   const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt, iterations: PBKDF2_ITERATIONS },
+    { name: 'PBKDF2', hash: 'SHA-256', salt, iterations: PBKDF2_ITERATIONS },
     key,
     256,
   )
-  return Array.from(new Uint8Array(bits), (b) => b.toString(16).padStart(2, "0")).join("")
+
+  return Array.from(new Uint8Array(bits), (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 /** Constant-time string comparison (same-length hex digests). */
@@ -82,6 +82,7 @@ function equal(a: string, b: string): boolean {
   if (a.length !== b.length) return false
   let diff = 0
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+
   return diff === 0
 }
 
@@ -95,6 +96,7 @@ async function createUser(email: string, password: string): Promise<User> {
     createdAt: new Date(),
   }
   users.set(email, user)
+
   return user
 }
 
@@ -110,6 +112,7 @@ function createSession(user: User): string {
     email: user.email,
     expiresAt: new Date(Date.now() + SESSION_TTL_SECONDS * 1000),
   })
+
   return id
 }
 
@@ -119,9 +122,10 @@ function createSession(user: User): string {
 // deployed app has no account with a password printed in its own source.
 // Do not remove the guard: a known login on a public deployment is an open door.
 let demoSeeded: Promise<unknown> | null = null
+
 function ensureDemoUser(): Promise<unknown> {
   if (!import.meta.env.DEV) return Promise.resolve()
-  demoSeeded ??= createUser("demo@example.com", "demo1234")
+  demoSeeded ??= createUser('demo@example.com', 'demo1234')
   return demoSeeded
 }
 
@@ -130,8 +134,9 @@ export async function signUp(
   password: string,
 ): Promise<{ sessionId: string } | { error: string }> {
   await ensureDemoUser()
-  if (users.has(email)) return { error: "Email already registered" }
-  if (password.length < 8) return { error: "Password must be at least 8 characters" }
+  if (users.has(email)) return { error: 'Email already registered' }
+  if (password.length < 8) return { error: 'Password must be at least 8 characters' }
+
   return { sessionId: createSession(await createUser(email, password)) }
 }
 
@@ -146,7 +151,8 @@ export async function signIn(
   await ensureDemoUser()
   const user = users.get(email)
   const hash = await derive(password, user?.salt ?? DUMMY_SALT)
-  if (!user || !equal(hash, user.hash)) return { error: "Invalid email or password" }
+  if (!user || !equal(hash, user.hash)) return { error: 'Invalid email or password' }
+
   return { sessionId: createSession(user) }
 }
 
@@ -154,10 +160,12 @@ export async function getSession(sessionId: string | undefined): Promise<Session
   if (!sessionId) return null
   const s = sessions.get(sessionId)
   if (!s) return null
+
   if (s.expiresAt < new Date()) {
     sessions.delete(sessionId)
     return null
   }
+
   return { userId: s.userId, email: s.email }
 }
 

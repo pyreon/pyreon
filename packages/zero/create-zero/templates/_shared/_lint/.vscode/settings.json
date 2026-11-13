@@ -1,0 +1,10 @@
+{
+  // oxfmt formats on save (oxfmt.config.ts); the fix-all actions add the
+  // readable blank lines (@pyreon/lint) and apply oxlint's fixes.
+  "editor.defaultFormatter": "oxc.oxc-vscode",
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.oxc": "explicit",
+    "source.fixAll.pyreon": "explicit"
+  }
+}

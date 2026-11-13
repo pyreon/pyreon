@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/lint",
   "version": "0.53.0",
-  "description": "Pyreon-specific linter \u2014 134 rules across 25 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, and opt-in best practices",
+  "description": "Pyreon-specific linter \u2014 140 rules across 26 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, opt-in best practices, and a readable style preset",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/lint#readme",
   "bugs": {
@@ -34,6 +34,13 @@
       "bun": "./src/lint-worker.ts",
       "import": "./lib/lint-worker.js"
     },
+    "./oxfmt": {
+      "bun": "./src/oxfmt.ts",
+      "import": "./lib/oxfmt.js",
+      "types": "./lib/types/oxfmt.d.ts"
+    },
+    "./oxlint/readable.json": "./oxlint/readable.json",
+    "./oxlint/readable-strict.json": "./oxlint/readable-strict.json",
     "./package.json": "./package.json"
   },
   "files": [
@@ -42,6 +49,7 @@
     "!lib/analysis",
     "src",
     "schema",
+    "oxlint",
     "README.md",
     "LICENSE"
   ],

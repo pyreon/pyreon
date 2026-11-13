@@ -10,13 +10,13 @@ import { ADAPTERS } from '../adapters'
 import type { ProjectConfig } from '../templates'
 
 const MODE_MAP: Record<ProjectConfig['renderMode'], string> = {
-  'ssr-stream': `mode: 'ssr', ssr: { mode: 'stream' }`,
+  'ssr-stream': `mode: 'ssr',\n      ssr: { mode: 'stream' }`,
   'ssr-string': `mode: 'ssr'`,
   ssg: `mode: 'ssg'`,
   spa: `mode: 'spa'`,
   // Every route gets the SWR cache with a 60s revalidation window by
   // default; per-route `export const revalidate = N` overrides it.
-  isr: `mode: 'isr', isr: { revalidate: 60 }`,
+  isr: `mode: 'isr',\n      isr: { revalidate: 60 }`,
 }
 
 export function generateViteConfig(config: ProjectConfig): string {
@@ -30,7 +30,10 @@ export function generateViteConfig(config: ProjectConfig): string {
   const adapterImport = adapter.viteFactory
     ? `\nimport { ${adapter.viteFactory} } from '@pyreon/zero/server'`
     : ''
-  const adapterArg = adapter.viteFactory ? `, adapter: ${adapter.viteFactory}()` : ''
+  // One option per line: the scaffolded `oxfmt.config.ts` formats an object
+  // that wraps one property per line, so anything else is rewritten by the
+  // project's first `bun run format`.
+  const adapterArg = adapter.viteFactory ? `\n      adapter: ${adapter.viteFactory}(),` : ''
 
   // Blog template — the content plugin compiles the markdown posts and
   // emits the RSS feed (published posts only, full bodies). It runs before
@@ -55,8 +58,10 @@ export function generateViteConfig(config: ProjectConfig): string {
     }),`
     : ''
 
-  return `import pyreon from '@pyreon/vite-plugin'
-import zero from '@pyreon/zero/server'${adapterImport}${contentImport}
+  // oxfmt sorts imports by specifier: `@pyreon/zero-content/plugin` comes
+  // before `@pyreon/zero/server` ('-' sorts before '/').
+  return `import pyreon from '@pyreon/vite-plugin'${contentImport}
+import zero from '@pyreon/zero/server'${adapterImport}
 
 // One config surface: fonts, SEO, favicons, og-images, and AI discoverability
 // are all fields on zero() — no separate plugin imports needed.
@@ -64,7 +69,7 @@ export default {
   plugins: [${contentPlugin}
     pyreon(${pyreonOpts}),
     zero({
-      ${MODE_MAP[config.renderMode]}${adapterArg},${typedRoutesLine}
+      ${MODE_MAP[config.renderMode]},${adapterArg}${typedRoutesLine}
 
       // Google Fonts — self-hosted at build time (CDN in dev), preloaded,
       // with auto size-adjusted fallbacks that eliminate font-swap CLS

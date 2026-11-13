@@ -28,6 +28,14 @@ import { PYREON_DEP_RANGE } from '../own-version'
 
 const PYREON_VERSION = PYREON_DEP_RANGE
 
+/**
+ * The oxlint / oxfmt ranges a lint-enabled scaffold installs — the versions
+ * this repository runs, so the shipped `@pyreon/lint/oxlint/*.json` and
+ * `@pyreon/lint/oxfmt` presets are exercised against them in CI.
+ */
+export const OXLINT_RANGE = '^1.89.0'
+export const OXFMT_RANGE = '^0.74.0'
+
 function pyreonVersion(_pkg: string): string {
   return PYREON_VERSION
 }
@@ -164,6 +172,13 @@ export function generatePackageJson(
   }
   if (config.lint) {
     devDeps['@pyreon/lint'] = pyreonVersion('@pyreon/lint')
+    // The readable setup is three tools, each owning its half: @pyreon/lint
+    // (blank lines, component structure, JSX shape), oxlint (size limits,
+    // import placement — `.oxlintrc.json` extends `@pyreon/lint/oxlint/readable.json`)
+    // and oxfmt (everything inside a line, import order — `oxfmt.config.ts`
+    // re-exports `@pyreon/lint/oxfmt`).
+    devDeps.oxlint = OXLINT_RANGE
+    devDeps.oxfmt = OXFMT_RANGE
   }
 
   const scripts: Record<string, string> = {
@@ -178,7 +193,13 @@ export function generatePackageJson(
     'doctor:fix': 'zero doctor --fix',
     'doctor:ci': 'zero doctor --ci',
   }
-  if (config.lint) scripts.lint = 'pyreon-lint .'
+  if (config.lint) {
+    scripts.lint = 'oxlint && pyreon-lint .'
+    scripts.format = 'oxfmt'
+    // Formatter first, then the lint fixes: the lint fixes only ADD blank lines
+    // between statements, which the formatter keeps, so one pass is stable.
+    scripts.fix = 'oxfmt && oxlint --fix && pyreon-lint --fix .'
+  }
 
   const pkg = {
     name: kind === 'monorepo-web' ? 'web' : basename(config.name),

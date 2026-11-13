@@ -7,7 +7,7 @@
  * without TLS. Kept apart from `auth.ts` so it survives the Supabase overlay,
  * which replaces that file.
  */
-export const SESSION_COOKIE = "sid"
+export const SESSION_COOKIE = 'sid'
 
 /** Session lifetime in seconds — the cookie's Max-Age and the stub's expiry. */
 export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
@@ -15,13 +15,13 @@ export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
 function isLocalHttp(request: Request): boolean {
   const url = new URL(request.url)
   return (
-    url.protocol === "http:" &&
-    (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]")
+    url.protocol === 'http:' &&
+    (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]')
   )
 }
 
 function attributes(request: Request, maxAge: number): string {
-  const secure = isLocalHttp(request) ? "" : "; Secure"
+  const secure = isLocalHttp(request) ? '' : '; Secure'
   return `Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`
 }
 
@@ -37,9 +37,10 @@ export function clearedSessionCookie(request: Request): string {
 
 /** The session id the request carries, if any. */
 export function readSessionId(request: Request): string | undefined {
-  const cookie = request.headers.get("cookie") ?? ""
+  const cookie = request.headers.get('cookie') ?? ''
   const raw = new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]+)`).exec(cookie)?.[1]
   if (!raw) return undefined
+
   try {
     return decodeURIComponent(raw)
   } catch {
