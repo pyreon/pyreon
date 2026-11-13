@@ -1,4 +1,19 @@
-import type { ClaimSpec } from './doc-claims'
+/** One place a document states a count, and how to read the number out of it. */
+export interface ClaimSpec {
+  /** Doc file relative to repo root */
+  file: string
+  /** Capture group 1 must contain the number */
+  pattern: RegExp
+  /** Optional pattern variant for "X+" hedged claims (also wrong) */
+  rejectHedged?: RegExp
+  /**
+   * Assert EVERY occurrence of the pattern in the file agrees (not just
+   * the first). Required for files that repeat the same count string —
+   * e.g. `lint/src/manifest.ts` carries the rule count 5× (3 prose + 2
+   * `--list` help comments); bumping 4 of 5 would otherwise pass silent.
+   */
+  all?: boolean
+}
 
 /**
  * Lint counts on the marketing site (`docs/src/site/content`). Each of these
