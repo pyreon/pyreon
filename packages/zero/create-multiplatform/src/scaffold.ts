@@ -27,24 +27,65 @@ const PRINT_WIDTH = 100
  * that line fits in the print width.
  */
 export function jsonFile(value: unknown): string {
-  const text = JSON.stringify(value, null, 2)
-  const scalarArray =
-    /^( *)(.*)\[\n((?:\1 {2}(?:"(?:[^"\\\n]|\\.)*"|-?\d[\d.eE+-]*|true|false|null),?\n)+)\1\]/gm
-  const collapsed = text.replace(
-    scalarArray,
-    (whole: string, indent: string, head: string, body: string, offset: number) => {
-      const items = body
-        .split('\n')
-        .filter((line) => line.length > 0)
-        .map((line) => line.trim().replace(/,$/, ''))
-      const line = `${indent}${head}[${items.join(', ')}]`
-      const trailingComma = text[offset + whole.length] === ',' ? 1 : 0
+  const lines = JSON.stringify(value, null, 2).split('\n')
+  const out: string[] = []
+  let i = 0
 
-      return line.length + trailingComma <= PRINT_WIDTH ? line : whole
-    },
-  )
+  // A line walk, not a regex: a backtracking pattern over the indentation
+  // is polynomial on long runs of spaces (CodeQL js/polynomial-redos).
+  while (i < lines.length) {
+    const line = lines[i] as string
+    const collapsed = line.endsWith('[') ? collapseScalarArray(lines, i) : null
 
-  return `${collapsed}\n`
+    if (collapsed && collapsed.text.length <= PRINT_WIDTH) {
+      out.push(collapsed.text)
+      i = collapsed.next
+    } else {
+      out.push(line)
+      i++
+    }
+  }
+
+  return `${out.join('\n')}\n`
+}
+
+/**
+ * The array opened on `lines[start]` as one line, when every element is a
+ * plain value; `next` is the line after its closing bracket.
+ */
+function collapseScalarArray(lines: string[], start: number): { text: string; next: number } | null {
+  const open = lines[start] as string
+  const indent = open.length - open.trimStart().length
+  const itemIndent = ' '.repeat(indent + 2)
+  const items: string[] = []
+  let j = start + 1
+
+  for (; j < lines.length; j++) {
+    const line = lines[j] as string
+    if (!line.startsWith(itemIndent) || line[indent + 2] === ' ') break
+    const item = line.slice(indent + 2)
+    const bare = item.endsWith(',') ? item.slice(0, -1) : item
+    if (!isJsonScalar(bare)) break
+    items.push(bare)
+  }
+
+  const close = lines[j]
+  if (items.length === 0 || close === undefined) return null
+  const closing = close.slice(indent)
+  if (close.slice(0, indent).trim() !== '' || (closing !== ']' && closing !== '],')) return null
+
+  return { text: `${open}${items.join(', ')}${closing}`, next: j + 1 }
+}
+
+function isJsonScalar(text: string): boolean {
+  if (text.startsWith('{') || text.startsWith('[')) return false
+  try {
+    JSON.parse(text)
+
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** A single file the scaffold emits, relative to the project root. */
