@@ -63,6 +63,13 @@ describe('recording', () => {
     expect(rec.consulted()).toEqual(['posts.read', 'posts.delete'])
   })
 
+  it('records a key consulted through can.assert, and asserts with the role policy', () => {
+    const rec = recordingPermissions(permissionSetById('viewer'))
+    expect(() => rec.can.assert('posts.read')).not.toThrow()
+    expect(() => rec.can.assert('posts.delete')).toThrow()
+    expect(rec.consulted()).toEqual(['posts.read', 'posts.delete'])
+  })
+
   it('separates the consulted keys that were DENIED', () => {
     const rec = recordingPermissions(permissionSetById('viewer'))
     rec.can('posts.read')

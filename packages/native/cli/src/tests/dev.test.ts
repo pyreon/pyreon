@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   classifyChange,
   createAndroidPlatform,
@@ -18,6 +18,10 @@ import {
   type Runner,
 } from '../dev'
 import { main } from '../cli'
+
+// Plain text: the assertions read words, not escape codes (CI may set FORCE_COLOR).
+beforeAll(() => void vi.stubEnv('NO_COLOR', '1'))
+afterAll(() => void vi.unstubAllEnvs())
 
 const SIMS = JSON.stringify({
   devices: {
@@ -172,7 +176,9 @@ describe('runDevLoop', () => {
       await new Promise((done) => setTimeout(done, 5))
     }
   }
-  const settled = (n: number) => () => lines.filter((l) => l.startsWith('✓ built') || l.startsWith('·') || l.startsWith('✗')).length >= n
+  // A cycle has settled once its verdict is logged: ready, up to date, or failed.
+  const settled = (n: number) => () =>
+    lines.filter((l) => /^ {2}(✓ ready in|✓ up to date in|✗ failed after) /m.test(l)).length >= n
   const touch = (file: string, offsetMs: number) => {
     const t = new Date(Date.now() + offsetMs)
     utimesSync(file, t, t)
@@ -238,6 +244,7 @@ describe('runDevLoop', () => {
     const summary = await pending
     expect(summary.builds).toBe(2)
     expect(calls.filter((c) => c.startsWith('xcodebuild')).length).toBe(2)
+    expect(lines.some((l) => l.includes('src/App.tsx → rebuilding…')), 'the changed file is named').toBe(true)
     // A source-only change must not re-run the staging script or xcodegen.
     expect(calls.filter((c) => c.startsWith('bash scripts/build-ios.sh')).length).toBe(1)
     expect(calls.filter((c) => c.startsWith('xcodegen')).length).toBe(1)
@@ -487,7 +494,7 @@ describe('platform failure paths', () => {
     if ('error' in platform) throw new Error(platform.error)
     const summary = await runDevLoop({ appDir: app, sourceDir: join(app, 'src'), target: 'swift', platform, run, log, once: true, compiler })
     expect(summary.builds).toBe(1)
-    expect(lines.join('\n')).toContain('1 compiler warning(s)')
+    expect(lines.join('\n')).toContain('! 1 compiler warning — these constructs will not run on the device')
     expect(lines.join('\n')).toContain('unsupported thing')
   })
 })

@@ -19,42 +19,44 @@ beforeEach(() => {
   history.replaceState(null, '', '/')
 })
 
+const read = (m: ReturnType<typeof createModel>) => ({
+  brand: m.brandId(),
+  sidebarW: m.sidebarW(),
+  panelFrac: m.panelFrac(),
+})
 const defaults = () => {
   localStorage.clear()
-  const m = createModel(CATALOG, {})
-  return { dark: m.dark(), sidebarW: m.sidebarW(), panelW: m.panelW(), sidebarOpen: m.sidebarOpen(), panelOpen: m.panelOpen() }
+  return read(createModel(CATALOG, {}))
 }
 
 describe('stored preferences', () => {
   it('applies every well-typed field', () => {
-    localStorage.setItem(
-      KEY,
-      JSON.stringify({ dark: false, sidebarW: 300, panelW: 400, sidebarOpen: false, panelOpen: false }),
-    )
-    const m = createModel(CATALOG, {})
-    expect([m.dark(), m.sidebarW(), m.panelW(), m.sidebarOpen(), m.panelOpen()]).toEqual([false, 300, 400, false, false])
+    localStorage.setItem(KEY, JSON.stringify({ brand: 'forest', sidebarW: 300, panelFrac: 0.4 }))
+    expect(read(createModel(CATALOG, {}))).toEqual({ brand: 'forest', sidebarW: 300, panelFrac: 0.4 })
   })
 
   it('ignores each wrongly-typed field and keeps its default', () => {
     const base = defaults()
-    localStorage.setItem(
-      KEY,
-      JSON.stringify({ brand: 7, dark: 'no', sidebarW: 'wide', panelW: null, sidebarOpen: 1, panelOpen: 'yes' }),
-    )
-    const m = createModel(CATALOG, {})
-    expect({ dark: m.dark(), sidebarW: m.sidebarW(), panelW: m.panelW(), sidebarOpen: m.sidebarOpen(), panelOpen: m.panelOpen() }).toEqual(base)
+    localStorage.setItem(KEY, JSON.stringify({ brand: 7, sidebarW: 'wide', panelFrac: 'half' }))
+    expect(read(createModel(CATALOG, {}))).toEqual(base)
+  })
+
+  it('ignores a panel split outside 20–80% — a corrupt value cannot hide the canvas or the panels', () => {
+    const base = defaults()
+    for (const panelFrac of [0, 0.05, 0.95, 1, -1]) {
+      localStorage.setItem(KEY, JSON.stringify({ panelFrac }))
+      expect(createModel(CATALOG, {}).panelFrac(), String(panelFrac)).toBe(base.panelFrac)
+    }
   })
 
   it.each([
     ['an array', '[1,2]'],
     ['a bare value', '42'],
     ['null', 'null'],
-    ['broken JSON', '{"dark": '],
+    ['broken JSON', '{"sidebarW": '],
   ])('ignores %s as a whole', (_label, raw) => {
     const base = defaults()
     localStorage.setItem(KEY, raw)
-    const m = createModel(CATALOG, {})
-    expect(m.dark()).toBe(base.dark)
-    expect(m.sidebarW()).toBe(base.sidebarW)
+    expect(read(createModel(CATALOG, {}))).toEqual(base)
   })
 })

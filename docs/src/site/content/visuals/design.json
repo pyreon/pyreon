@@ -1,0 +1,14 @@
+{
+ "id": "design",
+ "og": {
+  "src": "/media/og/products/design.png",
+  "width": 1200,
+  "height": 630,
+  "alt": "Design System: Write every variant once. Get every combination, dark mode included. 6.3× faster than Emotion at serving a style it has already seen (warm dedup)"
+ },
+ "hero": {
+  "kind": "picture",
+  "file": "products/design/hero-dark.png",
+  "alt": "Real @pyreon/ui-components rendered twice from the same definitions, once in light mode and once in dark: buttons by state and variant (primary, outline, subtle, danger, success) and by size, status badges, chips, a progress bar, and success and warning alerts."
+ }
+}

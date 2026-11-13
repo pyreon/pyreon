@@ -1,9 +1,7 @@
 ---
-title: "Universal Validation Gate — API Reference"
+title: "@pyreon/validation — API Reference"
 description: "The library-agnostic validation gate — Standard Schema bridge + Zod / Valibot / ArkType adapters"
 ---
-
-# @pyreon/validation — API Reference
 
 > **Generated** from `validation`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [validation](/docs/validation).
 

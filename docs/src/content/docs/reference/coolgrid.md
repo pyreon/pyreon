@@ -1,9 +1,7 @@
 ---
-title: "Responsive Grid — API Reference"
+title: "@pyreon/coolgrid — API Reference"
 description: "Context-cascading responsive grid — Container, Row, Col with custom columns and breakpoints"
 ---
-
-# @pyreon/coolgrid — API Reference
 
 > **Generated** from `coolgrid`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [coolgrid](/docs/coolgrid).
 

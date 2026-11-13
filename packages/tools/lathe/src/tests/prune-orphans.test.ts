@@ -63,7 +63,7 @@ describe('orphaned generated files', () => {
     expect(fs.files['gen/queries/beta.ts']).toBeUndefined()
     expect(fs.files['gen/endpoints/alpha.ts']).toBeDefined()
     const out = r.stdout.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '')
-    expect(out).toContain('- gen/endpoints/beta.ts')
+    expect(out).toMatch(/(−|-) removed\s+gen\/endpoints\/beta\.ts/)
     expect(out).toMatch(/2 removed/)
   })
 
@@ -77,7 +77,7 @@ describe('orphaned generated files', () => {
     delete current['gen/endpoints/beta.ts']
     const r = await check(fs)
     expect(r.code).toBe(1)
-    expect(r.stdout).toContain('endpoints/beta.ts (orphaned')
+    expect(r.stdout).toMatch(/(−|-) orphaned\s+gen\/endpoints\/beta\.ts/)
     expect(fs.files['gen/endpoints/beta.ts']).toBeDefined()
   })
 

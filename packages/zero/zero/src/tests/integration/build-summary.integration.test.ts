@@ -11,10 +11,10 @@
  *     like Vite's own build report.
  *
  * Bisect-verified: removing the gates in buildSummaryPlugin.closeBundle
- * multiplies the "Build complete" count; removing the plugin zeroes it.
+ * multiplies the verdict-line count; removing the plugin zeroes it.
  */
 import { cp, rm } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { join, relative, resolve, sep } from 'node:path'
 import { build, type Logger } from 'vite'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { zeroPlugin } from '../../vite-plugin'
@@ -29,6 +29,13 @@ import type { ZeroConfig } from '../../types'
 // like the original. Gitignored; removed in afterAll.
 const FIXTURE_SRC = resolve(import.meta.dirname, 'fixture-build')
 const FIXTURE = resolve(import.meta.dirname, 'fixture-build-summary-run')
+// Copy SOURCE only. build-post-step.test.ts builds inside fixture-build/ at
+// the same time, so its dist/ and its temp `__pyreon-zero-*` entries can
+// vanish mid-copy (ENOENT on `dist/.vite` in the full package run).
+const sourceOnly = (src: string): boolean => {
+  const top = relative(FIXTURE_SRC, src).split(sep)[0] ?? ''
+  return top !== 'dist' && !top.startsWith('__pyreon-zero-')
+}
 const DIST = join(FIXTURE, 'dist')
 
 async function buildFixture(
@@ -74,7 +81,7 @@ async function buildFixture(
 
 beforeAll(async () => {
   await rm(FIXTURE, { recursive: true, force: true })
-  await cp(FIXTURE_SRC, FIXTURE, { recursive: true })
+  await cp(FIXTURE_SRC, FIXTURE, { recursive: true, filter: sourceOnly })
 })
 
 beforeEach(async () => {
@@ -96,16 +103,19 @@ describe('build summary — real build', () => {
       const lines = await buildFixture({ mode: 'ssr' })
       const text = lines.join('\n')
 
-      expect(text).toContain('▲ pyreon zero')
-      expect(text).toContain('Client assets')
+      expect(text).toContain('zero build · ssr · adapter: node')
+      expect(text).toContain('asset')
       expect(text).toContain('gzip')
-      expect(text).toContain('Server bundle')
+      expect(text).toContain('server bundle')
       expect(text).toContain('server/entry-server.js')
 
       // EXACTLY once — the recursive inner sub-builds' plugin chains carry
-      // their own buildSummaryPlugin and must stay silent.
-      const completions = lines.filter((l) => l.includes('Build complete'))
+      // their own buildSummaryPlugin and must stay silent. (Vite's own
+      // `✓ built in 960ms` lines are unindented; the verdict is indented.)
+      const completions = lines.filter((l) => l.startsWith('  ✓ built in '))
       expect(completions).toHaveLength(1)
+      // ...and it is the summary's last line.
+      expect(lines.filter((l) => l.trim() !== '').at(-1)).toMatch(/^ {2}✓ built in [\d.]+ m?s · /)
     },
     120_000,
   )
@@ -115,8 +125,8 @@ describe('build summary — real build', () => {
     async () => {
       const lines = await buildFixture({ mode: 'ssr' }, 'warn')
       const text = lines.join('\n')
-      expect(text).not.toContain('▲ pyreon zero')
-      expect(text).not.toContain('Build complete')
+      expect(text).not.toContain('zero build ·')
+      expect(text).not.toContain('  ✓ built in ')
       expect(text).not.toContain('Route modes')
     },
     120_000,
@@ -127,8 +137,8 @@ describe('build summary — real build', () => {
     async () => {
       const lines = await buildFixture({ mode: 'ssr', buildSummary: false })
       const text = lines.join('\n')
-      expect(text).not.toContain('▲ pyreon zero')
-      expect(text).not.toContain('Build complete')
+      expect(text).not.toContain('zero build ·')
+      expect(text).not.toContain('  ✓ built in ')
     },
     120_000,
   )

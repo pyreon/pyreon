@@ -102,7 +102,7 @@ describe('describeReactiveGraph — behavioral summary from the graph', () => {
   it('returns an empty summary for an empty graph', () => {
     activateReactiveDevtools()
     const desc = describeReactiveGraph()
-    expect(desc.summary).toEqual({ signals: 0, derived: 0, effects: 0, edges: 0 })
+    expect(desc.summary).toEqual({ signals: 0, derived: 0, effects: 0, bindings: 0, edges: 0 })
     expect(desc.nodes).toEqual([])
     expect(desc.insights).toEqual([])
   })

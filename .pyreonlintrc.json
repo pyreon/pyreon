@@ -36,7 +36,8 @@
       {
         "exemptPaths": [
           "packages/zero/zero/src/image.tsx",
-          "packages/zero/zero/src/icon.tsx"
+          "packages/zero/zero/src/icon.tsx",
+          "packages/zero/zero-content/src/blog/components.tsx"
         ]
       }
     ],
@@ -178,6 +179,7 @@
           "packages/zero/cli/",
           "packages/zero/create-zero/src/",
           "packages/zero/zero/src/adapters/",
+          "packages/zero/zero/src/dev-overlay-env.ts",
           "packages/zero/zero/src/ssg-plugin.ts",
           "packages/zero/zero/src/ssr-build-shared.ts",
           "packages/zero/zero/src/perf-advisor-plugin.ts",
@@ -415,7 +417,8 @@
       {
         "exemptPaths": [
           "packages/zero/zero/src/image.tsx",
-          "packages/zero/zero/src/icon.tsx"
+          "packages/zero/zero/src/icon.tsx",
+          "packages/zero/zero-content/src/blog/components.tsx"
         ]
       }
     ],
@@ -450,6 +453,7 @@
       {
         "exemptPaths": [
           "packages/zero/zero/src/adapters/",
+          "packages/zero/zero/src/dev-overlay-env.ts",
           "packages/tools/atlas/src/plugins/"
         ]
       }

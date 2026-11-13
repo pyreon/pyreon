@@ -1,0 +1,318 @@
+{
+ "id": "feature",
+ "route": "/products/feature",
+ "name": "Feature",
+ "package": "@pyreon/feature",
+ "category": "fundamentals · CRUD",
+ "hero": {
+  "title": "You have built this CRUD screen before. Declare it this time.",
+  "emberWord": "Declare",
+  "lede": "Give `defineFeature` a name, a Zod schema and a REST path. You get the list, detail and search queries, create, update and delete mutations that refresh the list, a validated form that saves itself, a table with columns from the schema, and a store, all wired to Pyreon's query, form, table and store packages.",
+  "install": "bun add @pyreon/feature",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "you write",
+    "value": "name · schema · api<small>`defineFeature({ name: 'posts', schema, api: '/api/posts' })`.</small>"
+   },
+   {
+    "key": "you get",
+    "value": "9 hooks, 2 components<small>`useList` … `useStore`, plus `<Posts.Field>` and `<Posts.Table>`.</small>"
+   },
+   {
+    "key": "REST shape",
+    "value": "`GET` · `POST` · `PUT /:id` · `DELETE /:id`<small>Every mutation refreshes the list.</small>"
+   },
+   {
+    "key": "schemas",
+    "value": "Zod, or any Standard Schema<small>Valibot, ArkType, `@pyreon/validate` validate; fields and columns are read from Zod.</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "1",
+   "label": "declaration for list, detail, search, create, update, delete, form, table and store",
+   "source": "packages/fundamentals/feature/src/types.ts, Feature interface"
+  },
+  {
+   "stat": "3",
+   "label": "requests for a create, and the list on screen is current: GET, POST, GET",
+   "source": ".scratch/app/feat.ts, mock fetcher log"
+  }
+ ],
+ "why": {
+  "title": "The resource boilerplate, generated from the schema you already wrote.",
+  "items": [
+   {
+    "title": "One declaration, the whole resource",
+    "text": "`Posts.useList()`, `useById(id)`, `useSearch(term)`, `useCreate()`, `useUpdate()`, `useDelete()`, `useForm()`, `useTable()`, `useStore()`, typed from `z.infer` of your schema."
+   },
+   {
+    "title": "The list never goes stale",
+    "text": "Create, update and delete invalidate the `['posts']` query on success. Add a post and every `useList()` on screen refetches: `GET`, `POST`, `GET`."
+   },
+   {
+    "title": "A form that knows where to send itself",
+    "text": "`Posts.useForm()` starts from the schema's defaults, validates with it, and `POST`s on submit. `useForm({ mode: 'edit', id })` loads the record first and `PUT`s instead."
+   },
+   {
+    "title": "Generated, not hidden",
+    "text": "Each hook is the real `@pyreon/query`, `@pyreon/form`, `@pyreon/table` or `@pyreon/store` object. Take one generated piece and hand-write the next; `<Posts.Field>` renders one field, so your layout stays yours."
+   }
+  ]
+ },
+ "difference": {
+  "title": "The same screen, before and after.",
+  "before": {
+   "label": "React + TanStack Query + react-hook-form + Zod",
+   "caption": "Query keys, fetchers, invalidation and a resolver, per resource. Then update and delete, the same again.",
+   "code": "const PostSchema = z.object({\n  title: z.string().min(1), body: z.string(), published: z.boolean(),\n})\n\nexport const usePosts = () =>\n  useQuery({ queryKey: ['posts'], queryFn: () => fetch('/api/posts').then(json) })\n\nexport function useCreatePost() {\n  const qc = useQueryClient()\n  return useMutation({\n    mutationFn: (data: z.infer<typeof PostSchema>) =>\n      fetch('/api/posts', { method: 'POST', body: JSON.stringify(data) }).then(json),\n    onSuccess: () => qc.invalidateQueries({ queryKey: ['posts'] }),\n  })\n}\n// …usePost, useUpdatePost, useDeletePost\n\nfunction NewPost() {\n  const create = useCreatePost()\n  const { register, handleSubmit, formState: { errors } } = useForm({\n    resolver: zodResolver(PostSchema),\n    defaultValues: { title: '', body: '', published: false },\n  })\n  return (\n    <form onSubmit={handleSubmit((v) => create.mutate(v))}>\n      <input {...register('title')} />\n      {errors.title && <p>{errors.title.message}</p>}\n      <textarea {...register('body')} />\n      <input type=\"checkbox\" {...register('published')} />\n      <button disabled={create.isPending}>Create</button>\n    </form>\n  )\n}"
+  },
+  "after": {
+   "label": "with @pyreon/feature",
+   "caption": "One declaration. The form validates, posts and refreshes the list on its own.",
+   "code": "import { defineFeature } from '@pyreon/feature'\nimport { z } from 'zod'\n\nexport const Posts = defineFeature({\n  name: 'posts',\n  api: '/api/posts',\n  schema: z.object({\n    title: z.string().min(1), body: z.string(), published: z.boolean(),\n  }),\n})\n\nconst NewPost = () => {\n  const form = Posts.useForm()   // POST /api/posts, then the list refetches\n  return (\n    <form onSubmit={form.handleSubmit}>\n      <Posts.Field form={form} name=\"title\" />\n      <Posts.Field form={form} name=\"body\" />\n      <Posts.Field form={form} name=\"published\" />\n      <button disabled={() => form.isSubmitting()}>Create</button>\n    </form>\n  )\n}"
+  }
+ },
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "What one declaration gives you.",
+  "text": "Click a generated member to see what it does. The table on the right uses `useList`, `useCreate` and `useDelete`: add a row and the list refetches.",
+  "component": "DemoFeature",
+  "reference": "pkg-feature.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"card\"><div class=\"in\"><span class=\"label\">posts = defineFeature(…)</span><div class=\"pick\" id=\"ft-h\" style=\"grid-template-columns:repeat(auto-fill,minmax(130px,1fr))\"></div><p class=\"note\" id=\"ft-d\" style=\"font-size:14px;color:var(--mist);margin-top:8px\"></p></div></div>\n  <div class=\"ui\"><div style=\"display:flex;gap:8px;margin-bottom:12px\"><input id=\"ft-in\" placeholder=\"New post title\" aria-label=\"New post title\"><button class=\"go\" type=\"button\" id=\"ft-add\" style=\"white-space:nowrap\">useCreate()</button></div><div class=\"err\" id=\"ft-err\"></div><table style=\"width:100%;border-collapse:collapse;font-size:14px\"><thead><tr><th style=\"text-align:left;padding:6px 4px;border-bottom:1px solid #E6DFD2;font-size:12px;color:#5E5A69\">title</th><th style=\"text-align:left;padding:6px 4px;border-bottom:1px solid #E6DFD2;font-size:12px;color:#5E5A69\">published</th><th></th></tr></thead><tbody id=\"ft-rows\"></tbody></table></div>\n</div>",
+  "referenceCss": ".ds-ctl{display:grid;grid-template-columns:80px 1fr;align-items:center;gap:10px}.seg{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:999px;width:fit-content;flex-wrap:wrap}.seg button{height:30px;padding:0 14px;border:0;border-radius:999px;background:transparent;color:var(--fog);font-family:var(--mono);font-size:12px;cursor:pointer}.seg button[aria-pressed=\"true\"]{background:var(--line);color:var(--ivory)}\n.pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px}.pick button{height:38px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--mist);font-family:var(--mono);font-size:12px;cursor:pointer}.pick button[aria-pressed=\"true\"]{border-color:rgba(255,94,26,.55);background:rgba(255,94,26,.08);color:var(--ivory)}\n.tri{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}@media(max-width:760px){.tri{grid-template-columns:minmax(0,1fr)}}.tri div{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--well)}.tri .label{display:block;margin-bottom:8px}.tri code{font-size:12.5px;color:var(--s-fg);white-space:pre-wrap;display:block}\n.urlbar{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:10px;background:#EDE6D6;font-family:var(--mono);font-size:12px;color:var(--hover-line);margin-bottom:16px;overflow:hidden;white-space:nowrap}.urlbar b{color:#C2410C;font-weight:500}",
+  "referenceJs": "(function(){var H={useList:'Paginated list query, cached and refetched automatically.',useById:'One record by ID, reactive to a signal.',useSearch:'Search query with debounced input.',useCreate:'Create mutation; invalidates the list on success.',useUpdate:'Update mutation; invalidates the list on success.',useDelete:'Delete mutation; invalidates the list on success.',useForm:'A @pyreon/form form validated by the feature schema.',useTable:'A @pyreon/table instance with columns inferred from the schema.',useStore:'A store for cached items, selection and loading state.',fields:'Introspected field metadata for building forms.',schema:'The schema itself, for reuse anywhere.'},cur='useCreate',rows=[{t:'Launch checklist',p:true},{t:'Q4 roadmap',p:false}],$=function(i){return document.getElementById(i)};\nfunction r(){$('ft-h').innerHTML=Object.keys(H).map(function(k){return '<button type=\"button\" aria-pressed=\"'+(k===cur)+'\" data-k=\"'+k+'\">'+k+'</button>'}).join('');document.querySelectorAll('#ft-h [data-k]').forEach(function(b){b.onclick=function(){cur=b.dataset.k;r()}});$('ft-d').textContent='posts.'+cur+' · '+H[cur];$('ft-rows').innerHTML=rows.map(function(x,i){return '<tr><td style=\"padding:8px 4px;border-bottom:1px solid #EDE6D6\">'+x.t.replace(/</g,'&lt;')+'</td><td style=\"padding:8px 4px;border-bottom:1px solid #EDE6D6\">'+(x.p?'yes':'no')+'</td><td style=\"text-align:right;border-bottom:1px solid #EDE6D6\"><button class=\"sec\" type=\"button\" data-del=\"'+i+'\">useDelete()</button></td></tr>'}).join('');document.querySelectorAll('[data-del]').forEach(function(b){b.onclick=function(){rows.splice(+b.dataset.del,1);r()}})}\n$('ft-add').onclick=function(){var v=$('ft-in').value.trim();if(!v){$('ft-err').textContent='title: String must contain at least 1 character';$('ft-in').setAttribute('aria-invalid','true');return}$('ft-err').textContent='';$('ft-in').setAttribute('aria-invalid','false');rows.push({t:v,p:false});$('ft-in').value='';r()};r();})();",
+  "spec": "Same as the reference, with one correction to the copy: `useSearch` is \"a search query that refetches when the term signal changes (sent as `?q=`), disabled while the term is empty\". It is not debounced; pair it with a debounced signal (e.g. `debounce` from `@pyreon/rx`) if you need that."
+ },
+ "features": {
+  "title": "What one `defineFeature` returns.",
+  "items": [
+   {
+    "name": "`useList({ page, pageSize, params })`",
+    "text": "A `@pyreon/query` list query; `page` can be a signal."
+   },
+   {
+    "name": "`useById(id)`",
+    "text": "One record from `GET /api/posts/:id`."
+   },
+   {
+    "name": "`useSearch(term)`",
+    "text": "Pass a signal; it refetches with `?q=` when the term changes and waits while it is empty."
+   },
+   {
+    "name": "`useCreate` / `useUpdate` / `useDelete`",
+    "text": "Mutations that invalidate the feature's queries on success."
+   },
+   {
+    "name": "`useForm({ mode, id })`",
+    "text": "A `@pyreon/form` state with schema validation; create posts, edit loads the record and puts."
+   },
+   {
+    "name": "`useTable(data, { columns })`",
+    "text": "A TanStack Table v9 instance from `@pyreon/table`, columns from the schema."
+   },
+   {
+    "name": "`useStore()`",
+    "text": "A `@pyreon/store` with cached items, selection and loading."
+   },
+   {
+    "name": "`<Posts.Field>` / `<Posts.Table>`",
+    "text": "Label, typed control and error for one field; a sortable table with per-column cell overrides."
+   },
+   {
+    "name": "`reference(Users)`",
+    "text": "Mark a foreign key to another feature."
+   },
+   {
+    "name": "`fields`, `extractFields`, `defaultInitialValues`",
+    "text": "The schema introspection, for building your own UI."
+   }
+  ]
+ },
+ "recipes": [
+  {
+   "title": "An admin list with search and delete",
+   "text": "The generated table, a search box bound to `useSearch`, and a delete button that refreshes the list when it succeeds.",
+   "code": "const PostsAdmin = () => {\n  const term = signal('')\n  const all = Posts.useList()\n  const found = Posts.useSearch(term)\n  const remove = Posts.useDelete()\n  const rows = () => (term() ? found.data() : all.data()) ?? []\n  const view = Posts.useTable(rows, { columns: ['title', 'published'] })\n  return (\n    <>\n      <input placeholder=\"Search\" onInput={(e) => term.set(e.currentTarget.value)} />\n      <Posts.Table\n        of={view}\n        cell={{\n          title: (ctx) => (\n            <>\n              {ctx.row.title}\n              <button onClick={() => remove.mutate((ctx.row as typeof ctx.row & { id: number }).id)}>Delete</button>\n            </>\n          ),\n        }}\n        empty=\"No posts yet\"\n      />\n    </>\n  )\n}"
+  },
+  {
+   "title": "An edit page",
+   "text": "Edit mode loads the record, refuses to submit until it has arrived (so blank defaults never overwrite it), and sends `PUT /api/posts/:id` on save.",
+   "code": "const EditPost = (props: { id: number }) => {\n  const form = Posts.useForm({\n    mode: 'edit',\n    id: props.id,\n    onSuccess: () => toast.success('Saved'),\n  })\n  return (\n    <Show when={() => !form.isLoading()} fallback={<p>Loading…</p>}>\n      <form onSubmit={form.handleSubmit}>\n        <Posts.Field form={form} name=\"title\" />\n        <Posts.Field form={form} name=\"body\" />\n        <button disabled={() => form.isSubmitting()}>Save</button>\n      </form>\n    </Show>\n  )\n}"
+  }
+ ],
+ "api": {
+  "title": "A small surface that generates a large one.",
+  "groups": [
+   {
+    "name": "define",
+    "items": [
+     "defineFeature",
+     "reference",
+     "isReference"
+    ]
+   },
+   {
+    "name": "generated hooks",
+    "items": [
+     "useList",
+     "useById",
+     "useSearch",
+     "useCreate",
+     "useUpdate",
+     "useDelete",
+     "useForm",
+     "useTable",
+     "useStore",
+     "queryKey"
+    ]
+   },
+   {
+    "name": "generated components",
+    "items": [
+     "Field",
+     "Table"
+    ]
+   },
+   {
+    "name": "introspection and building blocks",
+    "items": [
+     "extractFields",
+     "defaultInitialValues",
+     "createFieldComponent",
+     "createTableComponent",
+     "featureTableFeatures"
+    ]
+   },
+   {
+    "name": "types",
+    "items": [
+     "Feature",
+     "FeatureConfig",
+     "FeatureFormOptions",
+     "FeatureFormState",
+     "FeatureStore",
+     "FeatureTableOptions",
+     "FeatureTableResult",
+     "InferSchemaValues",
+     "ListOptions",
+     "FieldInfo",
+     "FieldType"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Conventional REST under one path",
+   "text": "The routes are derived from `api`: `GET /`, `GET /:id`, `POST /`, `PUT /:id`, `DELETE /:id`. Other shapes need a custom `fetcher`, or the underlying `@pyreon/query` hooks directly."
+  },
+  {
+   "title": "Fields and columns come from Zod",
+   "text": "Valibot, ArkType and `@pyreon/validate` schemas validate, but auto form fields, columns and create defaults are read from Zod only. With another schema, pass `initialValues` and columns; a one-time dev warning says so."
+  },
+  {
+   "title": "Needs a `QueryClientProvider`",
+   "text": "The generated queries and mutations are `@pyreon/query` hooks, so mount a `QueryClient` above them."
+  },
+  {
+   "title": "On native, the declaration crosses",
+   "text": "With a literal field map, iOS and Android get a Codable struct and `initialValues`. An inline `z.object` of scalars, with on-device `safeParse`, follows in the next release. The generated hooks stay web. Native targets are experimental."
+  }
+ ],
+ "faq": [
+  {
+   "q": "Is this a code generator?",
+   "a": "No files are written. `defineFeature` runs at import time and returns an object whose members are the real query, form, table and store hooks, typed from your schema."
+  },
+  {
+   "q": "Can I customise one piece?",
+   "a": "Yes. Use `Posts.useForm()` with your own markup, replace one `<Posts.Field>` with a hand-written input, or skip the generated table and call `@pyreon/table` with the data from `Posts.useList()`. Nothing is all-or-nothing."
+  },
+  {
+   "q": "What about auth headers or a different backend?",
+   "a": "Pass `fetcher`, any function with the `fetch` signature, to add headers, a base URL or a different transport."
+  },
+  {
+   "q": "Does it work with Valibot or ArkType?",
+   "a": "For validation, yes, through the Standard Schema bridge in `@pyreon/validation`. For auto fields and columns, use Zod or pass them yourself."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/query",
+   "category": "fundamentals",
+   "name": "Query",
+   "text": "The cache under every generated hook.",
+   "package": "@pyreon/query"
+  },
+  {
+   "href": "/products/form",
+   "category": "fundamentals",
+   "name": "Forms",
+   "text": "What `useForm()` returns.",
+   "package": "@pyreon/form"
+  },
+  {
+   "href": "/products/table",
+   "category": "fundamentals",
+   "name": "Table",
+   "text": "What `useTable()` returns.",
+   "package": "@pyreon/table"
+  }
+ ],
+ "end": {
+  "title": "Fifty lines per resource, times every resource. Or one call each.",
+  "cta": "Read the feature guide"
+ },
+ "benchmarks": null,
+ "glyphSvg": "<path d=\"M14 26 H106 M14 60 H106 M14 94 H106\" stroke=\"currentColor\" stroke-width=\"9\"/><path d=\"M46 14 V106\" stroke=\"currentColor\" stroke-width=\"9\"/><circle cx=\"84\" cy=\"78\" r=\"13\" fill=\"url(#eg)\"/>",
+ "sources": [
+  {
+   "claim": "defineFeature end to end: fields title/body/published; list → create → list refetch (GET, POST, GET); form defaults {\"title\":\"\",\"body\":\"\",\"published\":false}; validation error on empty title; useForm submit POSTs and refreshes list; useTable columns",
+   "path": ".scratch/app/feat.ts (happy-dom, mock fetcher, QueryClientProvider; run on main)"
+  },
+  {
+   "claim": "REST routes derived from api; mutations invalidate list on success",
+   "path": "packages/fundamentals/feature/src/manifest.ts defineFeature summary; src/define-feature.ts useCreate l.358-368"
+  },
+  {
+   "claim": "useForm edit mode loads the record and PUTs; create POSTs; invalidates on success",
+   "path": "packages/fundamentals/feature/src/define-feature.ts l.428-470"
+  },
+  {
+   "claim": "useSearch: queryKey [..., \"search\", term], sends q=term, enabled only when term non-empty; not debounced",
+   "path": "packages/fundamentals/feature/src/define-feature.ts l.346-354"
+  },
+  {
+   "claim": "Feature members: name, api, schema, fields, Table, Field, 9 hooks, queryKey",
+   "path": "packages/fundamentals/feature/src/types.ts Feature interface l.163-233"
+  },
+  {
+   "claim": "Field introspection Zod-only; validation for any Standard Schema; dev warning",
+   "path": ".agents/guides/fundamentals/README.md @pyreon/feature row; src/manifest.ts mistakes"
+  },
+  {
+   "claim": "Requires a QueryClient in context",
+   "path": "packages/fundamentals/feature/src/manifest.ts mistakes"
+  },
+  {
+   "claim": "fetcher option: typeof fetch",
+   "path": "packages/fundamentals/feature/src/types.ts FeatureConfig l.57"
+  },
+  {
+   "claim": "Native: literal field map / inline z.object of scalars → Codable struct + initialValues + on-device safeParse; hooks stay web",
+   "path": "packages/fundamentals/feature/src/manifest.ts multiplatform.nativeFrontend"
+  },
+  {
+   "claim": "React CRUD before code typechecks (react-query 5.105, react-hook-form 7.91, @hookform/resolvers 6, zod 4.6.7)",
+   "path": ".scratch/app/rival/feature.tsx (tsc exit 0); `json` helper defined there"
+  },
+  {
+   "claim": "Draft errors: posts.useTable() with no data argument; draft demo said useSearch is debounced",
+   "path": "packages/fundamentals/feature/src/manifest.ts mistakes (useTable takes data first); src/define-feature.ts useSearch"
+  }
+ ]
+}

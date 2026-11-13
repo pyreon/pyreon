@@ -1,10 +1,8 @@
 import { txt } from '../../kit'
 
-export const CtrlLabel = txt
-  .attrs({
-    tag: 'label',
-  })
-  .theme((t) => ({
-    fontSize: t.size.body,
-    fontWeight: '600',
-  }))
+export const CtrlLabel = txt.attrs({ tag: 'label' }).theme((t) => ({
+  fontFamily: t.font.mono,
+  fontSize: t.size.caption,
+  color: t.muted,
+  overflowWrap: 'anywhere',
+}))

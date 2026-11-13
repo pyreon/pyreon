@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa ph-card-native" viewBox="0 0 560 220" width="560" height="220" role="img" aria-labelledby="ph-card-native-t ph-card-native-d" fill="none">
+<title id="ph-card-native-t">Native</title>
+<desc id="ph-card-native-d">One src/App.tsx compiles to ios/…/App.swift (SwiftUI) and android/…/App.kt (Jetpack Compose); the UI on the device is SwiftUI and Compose views, no JavaScript engine renders it. Experimental.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.ph-card-native{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.ph-card-native .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.ph-card-native .ph-card-native-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.ph-card-native *{animation:none!important;transition:none!important}.ph-card-native .ph-card-native-rm{opacity:1}.ph-card-native .ph-card-native-am{opacity:0}}
+
+.ph-card-native .ln{stroke:var(--px-hint);stroke-width:1.5}
+.ph-card-native .dash{stroke:var(--px-hint);stroke-width:1.5;stroke-dasharray:4 6}
+.ph-card-native .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.ph-card-native .bx2{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+.ph-card-native .act{fill:none;stroke:var(--px-text);stroke-width:2}
+.ph-card-native .lab{fill:var(--px-fog);font-size:14px;letter-spacing:.02em}
+.ph-card-native .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.ph-card-native .val{fill:var(--px-text);font-size:20px;font-weight:500}
+.ph-card-native .big{fill:var(--px-strong);font-size:30px;font-weight:600;letter-spacing:-.02em}
+.ph-card-native .txt{fill:var(--px-text);font-size:16px}
+.ph-card-native .mt{fill:var(--px-mist);font-size:14px}
+.ph-card-native .hint{fill:var(--px-fog);font-size:13px}
+.ph-card-native .ember{stroke:url(#ph-card-native-eg);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:36 2000;fill:none}
+.ph-card-native .emS{stroke:url(#ph-card-native-eg);stroke-width:2.5;fill:none}
+.ph-card-native .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.ph-card-native .ok{fill:var(--px-ok)} .ph-card-native .warm{fill:var(--px-warm)} .ph-card-native .hot{fill:var(--px-accent)} .ph-card-native .err{fill:var(--px-err)}
+.ph-card-native .okT{fill:var(--px-ok)} .ph-card-native .warmT{fill:var(--px-warm)} .ph-card-native .hotT{fill:var(--px-accent-text)} .ph-card-native .errT{fill:var(--px-err)} .ph-card-native .linkT{fill:var(--px-link)}
+.ph-card-native .focus{fill:none;stroke:var(--px-link);stroke-width:2;stroke-dasharray:3 3}
+.pxa{--sx-kw:#FF5E1A;--sx-str:#FFC83D;--sx-num:#FF1F8C;--sx-fn:#22D3EE;--sx-type:#A78BFA;--sx-com:#8A8696;--sx-fg:#E6E0D2;--sx-pane:#111118;--sx-pane-line:#2E2E3B;--sx-del-bar:#FF1F8C;--sx-del-bg:rgba(255,31,140,.12);--sx-del-text:#F7B9D6;--sx-ins-bar:#22D3EE;--sx-ins-bg:rgba(34,211,238,.09);--sx-ins-text:#E9FBFF}
+@media (prefers-color-scheme: light){.pxa{--sx-kw:#C2410C;--sx-str:#8A5A00;--sx-num:#BE185D;--sx-fn:#0E7490;--sx-type:#6D28D9;--sx-com:#6B6776;--sx-fg:#14141C;--sx-pane:#F4EFE6;--sx-pane-line:#E6DFD2;--sx-del-bar:#D1106F;--sx-del-bg:rgba(209,16,111,.07);--sx-del-text:#8E0B4C;--sx-ins-bar:#0A6E89;--sx-ins-bg:rgba(10,110,137,.08);--sx-ins-text:#0B4F63}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--sx-kw:#FF5E1A;--sx-str:#FFC83D;--sx-num:#FF1F8C;--sx-fn:#22D3EE;--sx-type:#A78BFA;--sx-com:#8A8696;--sx-fg:#E6E0D2;--sx-pane:#111118;--sx-pane-line:#2E2E3B;--sx-del-bar:#FF1F8C;--sx-del-bg:rgba(255,31,140,.12);--sx-del-text:#F7B9D6;--sx-ins-bar:#22D3EE;--sx-ins-bg:rgba(34,211,238,.09);--sx-ins-text:#E9FBFF}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--sx-kw:#C2410C;--sx-str:#8A5A00;--sx-num:#BE185D;--sx-fn:#0E7490;--sx-type:#6D28D9;--sx-com:#6B6776;--sx-fg:#14141C;--sx-pane:#F4EFE6;--sx-pane-line:#E6DFD2;--sx-del-bar:#D1106F;--sx-del-bg:rgba(209,16,111,.07);--sx-del-text:#8E0B4C;--sx-ins-bar:#0A6E89;--sx-ins-bg:rgba(10,110,137,.08);--sx-ins-text:#0B4F63}
+.ph-card-native .cd{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;fill:var(--sx-fg);white-space:pre;font-variant-ligatures:none}
+.ph-card-native .cd .k{fill:var(--sx-kw)} .ph-card-native .cd .s{fill:var(--sx-str)} .ph-card-native .cd .n{fill:var(--sx-num)}
+.ph-card-native .cd .f{fill:var(--sx-fn)} .ph-card-native .cd .t{fill:var(--sx-type)} .ph-card-native .cd .c{fill:var(--sx-com)} .ph-card-native .cd .u{fill:var(--sx-com)}
+.ph-card-native .pane{fill:var(--sx-pane);stroke:var(--sx-pane-line);stroke-width:1}
+.ph-card-native .delbg{fill:var(--sx-del-bg)} .ph-card-native .delbar{fill:var(--sx-del-bar)} .ph-card-native .insbg{fill:var(--sx-ins-bg)} .ph-card-native .insbar{fill:var(--sx-ins-bar)}
+.ph-card-native .sgn-d{fill:var(--sx-del-bar)} .ph-card-native .sgn-i{fill:var(--sx-ins-bar)}.ph-card-native .warnT{fill:var(--px-warn)}
+</style>
+<defs><linearGradient id="ph-card-native-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="ph-card-native-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="560" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="ph-card-native-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="ph-card-native-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<rect class="bx" x="16" y="16" width="528" height="188" rx="14"/>
+<text class="m txt" x="36" y="46" style="font-size:14px">src/App.tsx</text><text class="m hint" x="524" y="46" text-anchor="end">you write it once</text>
+<line class="ln" x1="16" y1="62" x2="544" y2="62" style="stroke:var(--px-line2)"/>
+<text class="m mt" x="36" y="92">→ ios/…/App.swift</text><rect x="434" y="76" width="90" height="24" rx="12" style="fill:none;stroke:var(--px-link);stroke-width:1.5"/><text class="m linkT m" x="479" y="92.5" text-anchor="middle" style="font-size:12px;letter-spacing:.06em">SWIFTUI</text>
+<text class="m mt" x="36" y="128">→ android/…/App.kt</text><rect x="434" y="112" width="90" height="24" rx="12" style="fill:none;stroke:var(--px-warm);stroke-width:1.5"/><text class="m warmT m" x="479" y="128.5" text-anchor="middle" style="font-size:12px;letter-spacing:.06em">COMPOSE</text>
+<line class="ln" x1="16" y1="150" x2="544" y2="150" style="stroke:var(--px-line2)"/>
+<text class="m mt" x="36" y="182">JS engine rendering your UI</text><text class="m hotT m" x="524" y="183" text-anchor="end" style="font-size:15px">none</text>
+<line x1="472" y1="190" x2="524" y2="190" style="stroke:url(#ph-card-native-eg);stroke-width:2"/>
+</svg>

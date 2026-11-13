@@ -1,0 +1,202 @@
+{
+  "id": "svelte",
+  "route": "/compare/svelte",
+  "rival": "Svelte",
+  "rivalMeasured": "svelte 5.57.3",
+  "hook": {
+    "eyebrow": "Pyreon vs Svelte",
+    "title": "2,047 components. Mounted 3× faster than Svelte 5.",
+    "lede": "Svelte compiles components into direct DOM updates. So does Pyreon, from plain TSX instead of a `.svelte` file, and its server rendering came out ahead of Svelte 5 at 10, 100 and 1,000 rows. Miss writing `count++`? Plain Mode lets you."
+  },
+  "proof": [
+    {
+      "stat": "3.0×",
+      "label": "faster to mount a 2,047-component tree: 3.59 ms against 10.80 ms",
+      "condition": "real Chromium, run 1 table of a two-run record",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 119"
+    },
+    {
+      "stat": "1.55×",
+      "label": "faster compiled SSR at 100 rows (11.64 against 18.08 µs); 1.21× at 10 rows, 1.46× at 1,000",
+      "condition": "one run",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–243"
+    },
+    {
+      "stat": "1.9×",
+      "label": "faster swapping two rows in 1,000: 805 µs against 1.50 ms",
+      "condition": "real Chromium, run 1 table",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 87"
+    }
+  ],
+  "table": {
+    "title": "Pyreon and Svelte, line by line.",
+    "note": "Synthetic, author-run, Apple M3 Max, real Chromium unless noted. Reproduce: pyreon.dev/docs/benchmarks",
+    "rows": [
+      {
+        "topic": "Mount a deep tree (2,047 components)",
+        "pyreon": "3.59 ms",
+        "rival": "10.80 ms",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 119 (run 1)"
+      },
+      {
+        "topic": "Compiled SSR, 10 / 100 / 1,000 rows",
+        "pyreon": "1.80 / 11.64 / 109.9 µs",
+        "rival": "2.18 / 18.08 / 160.5 µs (one run)",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–243 (one run)"
+      },
+      {
+        "topic": "Create 10,000 rows",
+        "pyreon": "72.64 ms",
+        "rival": "87.51 ms",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 90 (run 1)"
+      },
+      {
+        "topic": "Swap two rows in 1,000",
+        "pyreon": "805 µs",
+        "rival": "1.50 ms",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 87 (run 1)"
+      },
+      {
+        "topic": "Memo wall: passthrough",
+        "pyreon": "450 / 451 µs",
+        "rival": "487 / 487 µs (Svelte was the fastest rival); Pyreon 1.08× in both runs",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 124"
+      },
+      {
+        "topic": "12-field form, keystroke (blur mode)",
+        "pyreon": "60 µs",
+        "rival": "700 µs (Felte, one run)",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §6, line 275 (one run)"
+      },
+      {
+        "topic": "dbmon tick (every value changes)",
+        "pyreon": "1.71 / 1.70 ms",
+        "rival": "1.75 / 1.71 ms: a three-way tie with Octane",
+        "verdict": "tie",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 118"
+      },
+      {
+        "topic": "Bundle, same keyed-table app (gzip)",
+        "pyreon": "17.2 KB",
+        "rival": "16.1 KB: Svelte is 1.1 KB smaller",
+        "verdict": "rival",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+      },
+      {
+        "topic": "Authoring",
+        "pyreon": "`.tsx` functions. Plain Mode (`'use plain'`) lets you write `let count = state(0)` and `count++`.",
+        "rival": "`.svelte` files with runes, template blocks and scoped CSS.",
+        "verdict": "different",
+        "source": "docs/src/content/docs/migrating-from-svelte.md; docs/src/content/docs/plain-mode.md"
+      },
+      {
+        "topic": "Native apps",
+        "pyreon": "PMTC compiles the same components to SwiftUI and Compose (experimental).",
+        "rival": "No first-party native target.",
+        "verdict": "pyreon",
+        "source": "docs/src/content/docs/multiplatform.md"
+      },
+      {
+        "topic": "Ecosystem and maturity",
+        "pyreon": "Pre-1.0.",
+        "rival": "Svelte 5 is a stable major with SvelteKit and years in production.",
+        "verdict": "rival",
+        "source": "00-brief/facts.md (status labels)"
+      }
+    ]
+  },
+  "code": {
+    "title": "The same search box, twice.",
+    "caption": "Svelte's `bind:value` and direct assignment are terse; Pyreon spells the write out. In exchange the component is a TypeScript function, not a second file format.",
+    "rival": {
+      "label": "Svelte 5 (runes)",
+      "file": "Search.svelte",
+      "code": "<script lang=\"ts\">\n  type Item = { id: number; name: string }\n  let { items }: { items: Item[] } = $props()\n\n  let query = $state('')\n  const visible = $derived(\n    items.filter((i) => i.name.toLowerCase().includes(query.toLowerCase())),\n  )\n</script>\n\n<div>\n  <input bind:value={query} />\n  <p>{visible.length} matches</p>\n  <ul>\n    {#each visible as i (i.id)}\n      <li>{i.name}</li>\n    {/each}\n  </ul>\n</div>"
+    },
+    "pyreon": {
+      "label": "Pyreon",
+      "file": "Search.tsx",
+      "code": "import { For } from '@pyreon/core'\nimport { computed, signal } from '@pyreon/reactivity'\n\ntype Item = { id: number; name: string }\n\nexport function Search(props: { items: Item[] }) {\n  const query = signal('')\n  const visible = computed(() =>\n    props.items.filter((i) => i.name.toLowerCase().includes(query().toLowerCase())),\n  )\n\n  return (\n    <div>\n      <input value={query()} onInput={(e) => query.set(e.currentTarget.value)} />\n      <p>{visible().length} matches</p>\n      <ul>\n        <For each={visible} by={(i) => i.id}>\n          {(i) => <li>{i.name}</li>}\n        </For>\n      </ul>\n    </div>\n  )\n}"
+    },
+    "checked": "Svelte side: compiled with the Svelte 5.57.3 compiler, 0 warnings. Pyreon side: typechecked against the repo's `tsconfig` (0 errors), compiled with the real JSX compiler (`transformJSX`) and mounted in happy-dom; typing into the input filters the list."
+  },
+  "deletes": {
+    "title": "What you stop writing.",
+    "items": [
+      {
+        "what": "The `.svelte` file format",
+        "instead": "Plain `.tsx`: TypeScript, your linter and your editor read it with no extra language tooling."
+      },
+      {
+        "what": "Template blocks (`{#if}`, `{#each}`, `bind:value`)",
+        "instead": "`<Show>`, `<For each by>`, `value` plus `onInput`."
+      }
+    ]
+  },
+  "pickTheOther": {
+    "title": "When to pick Svelte",
+    "items": [
+      "The smallest output matters more than mount or update cost: the same app is 16.1 KB in Svelte and 17.2 KB in Pyreon.",
+      "You like single-file components with template blocks and scoped CSS.",
+      "You want SvelteKit and a stable major version with a long production record."
+    ]
+  },
+  "migrate": {
+    "title": "Keep your stores while you move.",
+    "text": "`@pyreon/svelte-compat` runs `svelte/store`, lifecycle and context on Pyreon. Components move to TSX.",
+    "href": "/migrate/svelte",
+    "label": "Migrate from Svelte"
+  },
+  "cta": {
+    "title": "Compiled speed, in plain TypeScript.",
+    "command": "npm create @pyreon/zero@latest",
+    "secondary": {
+      "label": "Every result, including where we lose",
+      "href": "/docs/benchmarks"
+    }
+  },
+  "sources": [
+    {
+      "claim": "Deep tree Svelte 10.80 ms vs Pyreon 3.59 ms (run 1)",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §2, line 119"
+    },
+    {
+      "claim": "Compiled SSR vs Svelte 5: 2.18 / 18.08 / 160.5 vs 1.80 / 11.64 / 109.9 µs, one run",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–243"
+    },
+    {
+      "claim": "Create 10,000 87.51 ms, swap 1.50 ms for Svelte (run 1)",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 87, 90"
+    },
+    {
+      "claim": "Memo passthrough 450/451 vs Svelte 487/487 µs, 1.08× both runs",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §2, line 124"
+    },
+    {
+      "claim": "dbmon three-way tie including Svelte",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §2, line 118"
+    },
+    {
+      "claim": "Bundle Svelte 16.1 KB vs Pyreon 17.2 KB",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+    },
+    {
+      "claim": "Felte keystroke blur 700 vs 60 µs, one run",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §6, line 275"
+    },
+    {
+      "claim": "Plain Mode: 'use plain', state(), count++",
+      "path": "docs/src/content/docs/plain-mode.md; docs/src/content/docs/migrating-from-svelte.md"
+    },
+    {
+      "claim": "Svelte Search compiles with svelte 5.57.3, no warnings",
+      "path": "/tmp/wt-site-content/.scratch/site-compare/rivals/{Search.svelte,check.mjs}"
+    }
+  ]
+}

@@ -256,7 +256,7 @@ describe('pyreon add tells you what to do after it installs', () => {
     return run({ packages: ['@pyreon/not-a-real-package'] }).then(({ value, out }) => {
       expect(value).toBe(0)
       expect(out).toContain('@pyreon/not-a-real-package')
-      expect(out).toContain('Installed.')
+      expect(out).toContain('no setup recipe yet')
       expect(out).toContain('https://pyreon.dev/docs')
     })
   })

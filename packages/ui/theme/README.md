@@ -16,17 +16,19 @@ import { Button } from '@pyreon/ui-components'
 </PyreonUI>
 ```
 
-The default `theme` is the only runtime export. Type augmentation runs as a side effect of importing this package; the `import '@pyreon/ui-theme'` (or any import that pulls it into the graph — including `import theme from '@pyreon/ui-theme'`) is what activates it.
+Type augmentation runs as a side effect of importing this package; the `import '@pyreon/ui-theme'` (or any import that pulls it into the graph — including `import theme from '@pyreon/ui-theme'`) is what activates it.
 
 ## Exports
 
 | Export | Description |
 |---|---|
-| `theme` (default export) | The default theme object. Frozen-shape (`as const`) so its literal types flow through to consumers. |
-| `Theme` (type) | `typeof theme` — the exact theme shape. Use for typing custom theme overrides. |
+| `theme` (default export) | The default theme object. |
+| `brandTheme` | The Pyreon brand theme: the default theme with ember primary, ink text on fills, Space Grotesk / JetBrains Mono and softer radii. See [Brand theme](#brand-theme). |
+| `brandPackageDefaults` | The brand's look for charts, toast, flow and document, as the options those packages accept. See [Package defaults](#package-defaults). |
+| `Theme` (type) | The theme contract: the default theme's shape with its values widened to `string` / `number`, so any theme with the same keys (for example `brandTheme`) is a `Theme`. |
 
 ```ts
-import theme, { type Theme } from '@pyreon/ui-theme'
+import theme, { brandTheme, type Theme } from '@pyreon/ui-theme'
 ```
 
 ## Theme shape
@@ -54,24 +56,69 @@ The full object is in [`src/theme.ts`](./src/theme.ts). Top-level keys:
 
 ### Color palette
 
-Under `color.system` each color carries `base` (full opacity) + `text` (where applicable) + opacity ramps `50` / `100` / `200` / `300` / `400` / `500` / `600` / `700` / `800` / `900`. Palettes:
+Under `color.system` each color carries `base` (full opacity) and the opacity steps `50` … `900`. The five tones also carry the text roles below. Palettes:
 
 - `transparent` — `'transparent'` literal
 - `light` — white with opacity ramp
-- `dark` — slate-900 with opacity ramp
+- `dark` — slate-900 with opacity ramp, plus `contrast: '#ffffff'` (text on a dark fill, e.g. Tooltip)
 - `base` — slate-400 with opacity ramp (neutral grays)
-- `primary` — blue-500 + `text: '#1e40af'`
-- `success` — emerald-500 + `text: '#065f46'`
-- `info` — sky-500 + `text: '#0c4a6e'`
-- `error` — red-500 + `text: '#991b1b'`
-- `warning` — amber-500 + `text: '#92400e'`
+- `primary` — blue-500 · `success` — emerald-500 · `info` — sky-500 · `error` — red-500 · `warning` — amber-500
+
+Every tone has these roles. Each pair passes WCAG AA (4.5:1) in both modes, locked by `src/tests/contrast.test.ts`:
+
+| Key | Use | Default theme |
+|---|---|---|
+| `base` | the solid fill | the tone at full opacity |
+| `contrast` | text and glyphs ON `base` and ON `hover` | `#0f172a` for all five (white is 2.5–3.8:1 on these fills) |
+| `hover` | the solid fill of a hovered `base` fill | the tone's 400 shade (`#60a5fa` for primary) |
+| `text` | text in the tone on the light page and on the tone's tints `50`–`200` | `#1e40af`, `#065f46`, `#0c4a6e`, `#991b1b`, `#92400e` |
+| `textDark` | the same, in dark mode (the page is `dark.base`) | the tone's 300 shade (`#93c5fd` for primary) |
 
 ```ts
-t.color.system.primary.base   // 'rgba(59, 130, 246, 1)'
-t.color.system.primary.text   // '#1e40af'
-t.color.system.primary[200]   // 'rgba(59, 130, 246, 0.2)'
-t.color.system.transparent    // 'transparent'
+t.color.system.primary.base       // 'rgba(59, 130, 246, 1)'
+t.color.system.primary.contrast   // '#0f172a' — text on the fill
+t.color.system.primary.text       // '#1e40af' — text in primary, light mode
+t.color.system.primary[200]       // 'rgba(59, 130, 246, 0.2)'
 ```
+
+In a component, `solidFill(t, tone)` (from `@pyreon/ui-components`' `factory.ts`) gives a fill with its `contrast` text and `hover` fill, and `tintText(t, m, tone)` gives `m(text, textDark)`.
+
+- **Never put white on a fill without measuring.** White on blue-500 is 3.68:1, on emerald-500 2.54:1, on the brand's ember 3.06:1. Read `contrast`.
+- **The opacity steps are not text colours.** `primary[700]` as text on `primary[100]` is about 2.3:1. Use `text` / `textDark`.
+- **Hover is a solid colour, not `[800]`.** An opacity step is composited over the page, so it is lighter on a light page and darker on a dark one, and no single text colour passes on both.
+
+## Brand theme
+
+`brandTheme` is the Pyreon brand: pass it to `<PyreonUI theme={brandTheme}>` instead of `theme`. It keeps every key of the default theme and changes:
+
+| | Brand value |
+|---|---|
+| `primary` | ember `#FF5E1A`; `contrast` ink `#0A0A0E` (6.46:1); `hover` `#FF7A3D`; `text` `#A8380A` / `textDark` `#FF8A4C` |
+| `error` | `#DC2626` with white text (4.83:1), `hover` `#B91C1C`, `text` `#B91C1C` / `textDark` `#F87171` |
+| `success` | `#15803D` with white text (5.02:1), `hover` `#166534`, `text` `#11692F` / `textDark` `#4ADE80` |
+| `warning` | `#FACC15` with ink text, `hover` `#FDE047`, `text` `#8A5A00` / `textDark` `#FACC15` |
+| `info` | `#22D3EE` with ink text, `hover` `#67E8F9`, `text` `#0A6E89` / `textDark` `#22D3EE` |
+| `fontFamily` | `base`: Space Grotesk, `mono`: JetBrains Mono (system fallbacks). The theme names the fonts; load them in the app. |
+| `borderRadius` | `small` 6, `base` 10, `medium` 14, `large` 18, `xLarge` 22 |
+
+The opacity steps of each brand tone are generated from the brand colour, so tints, rings and borders match the fill. The neutral palettes (`light`, `dark`, `base`) are the default theme's.
+
+With `@pyreon/vite-plugin`'s rocketstyle collapse, point the collapse at the brand theme so build-time resolution uses the same theme as the app: `collapse: { theme: { name: 'brandTheme', source: '@pyreon/ui-theme' } }`.
+
+## Package defaults
+
+`brandPackageDefaults` carries the brand look for the packages that draw outside the component library, as values those packages already accept (`src/tests/package-defaults.test.ts` feeds each to the real package):
+
+```tsx
+import { brandPackageDefaults as brand } from '@pyreon/ui-theme'
+
+<ChartThemeProvider light={brand.charts.light} dark={brand.charts.dark}>…</ChartThemeProvider>  // palette + axis per mode
+<Toaster {...brand.toast} />                                                                    // max 3 on screen
+<Flow style={brand.flow.style[mode]}>… <Background {...brand.flow.background} /></Flow>          // ember selection, dots every 14px
+render(doc, 'html', { styles: brand.document.styles })                                         // paper page, serif headings (HTML only)
+```
+
+`flow.style` is an inline style string because Flow's dark-mode rule sets its `--pyreon-flow-*` variables on the `.pyreon-flow` element itself, so a value set on an ancestor does not reach it in dark mode.
 
 ## Global type augmentation
 
@@ -105,8 +152,11 @@ const myTheme: Theme = {
       ...theme.color.system,
       primary: {
         ...theme.color.system.primary,
-        base: 'rgba(139, 92, 246, 1)',      // violet-500
+        base: 'rgba(124, 58, 237, 1)',      // violet-600
+        contrast: '#ffffff',                // 5.70:1 (on violet-500 it would be 4.23:1 and fail)
+        hover: '#6d28d9',                   // violet-700, 7.10:1 with white
         text: '#5b21b6',
+        textDark: '#c4b5fd',
       },
     },
   },
@@ -115,7 +165,7 @@ const myTheme: Theme = {
 <PyreonUI theme={myTheme}>…</PyreonUI>
 ```
 
-Because `theme` is `as const`, deep spreads preserve the literal types — the resulting `myTheme` still satisfies `Theme` and every rocketstyle component continues to type-check.
+`myTheme` satisfies `Theme` and every rocketstyle component type-checks against it. Changing a fill means re-checking its `contrast` and `hover`, and the opacity steps (`50`…`900`) still describe the old colour unless you replace them too.
 
 ## Mode (light / dark)
 
@@ -128,14 +178,14 @@ Because `theme` is `as const`, deep spreads preserve the literal types — the r
 <PyreonUI theme={theme} mode="light" inversed>…</PyreonUI>  // flips
 ```
 
-`useMode()` returns the resolved mode signal — rocketstyle components can branch on it via the `useDarkMode` dimension. The semantic colors in `system.*` are mode-neutral by design (blue is blue regardless); contrast adjustment happens at the rocketstyle component layer (e.g. `.states()` callbacks reading `useDarkMode`).
+`useMode()` returns the resolved mode. Fills (`base`, `hover`) and the text on them (`contrast`) are the same in both modes. Text in a tone is not: components read `text` in light mode and `textDark` in dark mode through rocketstyle's `mode(light, dark)` helper. The neutral palettes (`light`, `dark`, `base`) are light-only today; most components still draw light surfaces in dark mode (#4340), and `<PyreonUI>` does not paint the page, so set the app background to match the mode.
 
 ## Gotchas
 
-- **No `createTheme`. No `defaultTheme`.** Earlier docs referenced these; they don't exist. The package's only runtime export is the default `theme`.
+- **No `createTheme`. No `defaultTheme`.** Earlier docs referenced these; they don't exist. Build a theme by spreading `theme` (see Custom themes) or start from `brandTheme`.
 - **Don't re-augment `ThemeDefault` / `StylesDefault` in your app.** This package owns the augmentation. Re-declaring them in a consumer `pyreon.d.ts` triggers `TS2320`.
 - **CSS property naming follows `@pyreon/unistyle`** — `borderWidthTop` not `borderTopWidth`. Property-first.
-- **`theme` is `as const`.** This is load-bearing — it's what lets literal numeric values (spacing, fontSize) widen to `number` only where intentional, and what lets the global augmentation pass the strict shape into `ThemeDefault`. Don't reshape `theme` at module scope.
+- **`Theme` is the shape, not the values.** `theme` is declared `as const`, and `Theme` widens its leaves to `string` / `number`, so a custom theme must keep every key but may change any value. A custom tone must keep `contrast`, `hover`, `text` and `textDark` passing 4.5:1 against its fills, tints and both pages; run the pairs through `src/tests/contrast.test.ts`.
 
 ## License
 

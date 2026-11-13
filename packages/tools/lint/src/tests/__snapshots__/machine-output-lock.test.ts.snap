@@ -1,0 +1,84 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`lint machine output is locked > compact 1`] = `
+"/repo/src/routes/inbox.tsx:42:7: warn [pyreon/no-missing-for-by] <For> needs a \`by\` key so rows survive reorder
+/repo/src/routes/inbox.tsx:58:12: error [pyreon/no-signal-call-write] signal(v) only reads. Write with draft.set(v)
+/repo/src/components/Avatar.tsx:9:5: info [pyreon/require-img-alt] <img> needs alt text"
+`;
+
+exports[`lint machine output is locked > json 1`] = `
+"{
+  "files": [
+    {
+      "filePath": "/repo/src/routes/inbox.tsx",
+      "diagnostics": [
+        {
+          "ruleId": "pyreon/no-missing-for-by",
+          "severity": "warn",
+          "message": "<For> needs a \`by\` key so rows survive reorder",
+          "loc": {
+            "line": 42,
+            "column": 7
+          },
+          "span": {
+            "start": 100,
+            "end": 120
+          },
+          "fix": {
+            "span": {
+              "start": 100,
+              "end": 120
+            },
+            "replacement": "<For each={x} by={(m) => m.id}>"
+          }
+        },
+        {
+          "ruleId": "pyreon/no-signal-call-write",
+          "severity": "error",
+          "message": "signal(v) only reads. Write with draft.set(v)",
+          "loc": {
+            "line": 58,
+            "column": 12
+          },
+          "span": {
+            "start": 300,
+            "end": 310
+          }
+        }
+      ]
+    },
+    {
+      "filePath": "/repo/src/components/Avatar.tsx",
+      "diagnostics": [
+        {
+          "ruleId": "pyreon/require-img-alt",
+          "severity": "info",
+          "message": "<img> needs alt text",
+          "loc": {
+            "line": 9,
+            "column": 5
+          },
+          "span": {
+            "start": 1,
+            "end": 2
+          }
+        }
+      ]
+    },
+    {
+      "filePath": "/repo/src/clean.ts",
+      "diagnostics": []
+    }
+  ],
+  "totalErrors": 1,
+  "totalWarnings": 1,
+  "totalInfos": 1,
+  "configDiagnostics": [
+    {
+      "ruleId": "pyreon/x",
+      "severity": "warn",
+      "message": "bad options"
+    }
+  ]
+}"
+`;

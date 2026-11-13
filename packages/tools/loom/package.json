@@ -66,6 +66,7 @@
     "lint": "oxlint ."
   },
   "devDependencies": {
+    "@pyreon/ansi": "workspace:*",
     "@pyreon/head": "workspace:*",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/router": "workspace:*",

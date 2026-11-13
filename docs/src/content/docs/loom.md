@@ -3,6 +3,10 @@ title: Loom
 description: The monorepo dependency observatory — workspace graph, version-sync drift, cycles, phantom deps, and blast radius, as data.
 ---
 
+<ProductPitch id="loom" />
+
+<LiveDemo id="loom" />
+
 `@pyreon/loom` reads your workspace the way an install tool does and turns its dependency fabric into **data**: the internal graph (depths, cycles, blast radius), the external version-usage map, and a detector-driven issue list with honest severities. One scan, three consumers: your terminal, your CI, and the observatory UI.
 
 <PackageBadge name="@pyreon/loom" href="/docs/loom" />
@@ -17,14 +21,30 @@ Or with zero setup: `pyreon loom <cmd>` delegates to the project-local install.
 
 ## `loom scan` — the fabric as findings
 
-```bash
-pyreon loom scan .
-# loom: 148 workspace package(s), 227 external dep(s), 858 internal edge(s), depth 11, 0 cycle(s).
-#
-# WARNING · 8
-#   ▲ version-drift [happy-dom] — `happy-dom` is declared with 2 different ranges (^20.11.1 · ^20.0.0)
-#   …
-#   → loom-report.json
+```text
+$ pyreon loom scan . --no-write
+loom scan · . · 148 packages
+
+  workspace packages  148
+  external deps       227
+  internal edges      858
+  depth                11
+  runtime cycles        0
+
+  ℹ 305 info
+  ℹ phantom-dep · `@pyreon/example-react-compat` imports `react-dom` in shipping source but never
+     declares it — resolvable only through hoisting luck (ignored: `@pyreon/vite-plugin` with
+     compat:'react' ALIASES react-dom (and react-dom/client) to @pyreon/react-compat/dom. Installing
+     the real react-dom would defeat the example, whose entire point is that React-shaped code runs
+     with no React present.)
+     ↳ examples/react-compat/src/main.tsx
+  ℹ phantom-type-dep · `@pyreon/create-zero` imports `@pyreon/server` type-only but never declares
+     it — erased at runtime, so consumers are unaffected, but typecheck resolves it through hoisting
+     luck; declare it in devDependencies
+     ↳ packages/zero/create-zero/templates/app/src/routes/(admin)/dashboard.tsx
+  …
+
+✓ no errors or warnings · 305 info · 148 packages · 392 ms
 ```
 
 It reads the same declarations an install tool reads — root `workspaces` globs (npm/bun/yarn array + object forms, `packages/*/*`-style nesting, negations) plus `pnpm-workspace.yaml` — and analyzes:
@@ -50,15 +70,17 @@ pyreon loom dev .            # http://localhost:5230, or the next free port
 pyreon loom dev . --port 4000  # exactly this port, or fail
 ```
 
-Five views over the same report:
+Five views over the same report, in the Pyreon tool-app layout: a top bar (workspace, view switch, error / warning / info counts and the exit code `loom scan` would return), the package list grouped by resolution depth (a severity glyph and the blast-radius count on every row; the filter field narrows it), the active view, a detail rail, and a status bar with the scan counts and the `loom.ignore` suppressions in force.
 
-- **Graph** — layered by resolution depth (ENTRY → DEPTH *n*), curved edges, cycle edges dashed red and animated, hover dims unrelated nodes.
-- **Matrix** — the internal adjacency block; rows depend on columns, cycle back-edges in red, every cell keyboard-reachable.
-- **Cycles** — each runtime loop as a card: the import chain as clickable chips, severity by length, break-the-loop advice.
-- **Impact** — blast radius, counted not guessed: transitive dependents per package, ranked.
-- **Manifest** — every node as a data row with per-package finding counts and a status badge.
+- **Graph** — internal packages in one column per resolution depth (ENTRY → DEPTH *n*). Selecting a package fills it and lights its blast radius: every transitive dependent and the edges a change travels along. Cycle edges dashed red; dev edges are an opt-in dotted layer; hover dims everything but a package's direct neighbours.
+- **Matrix** — external version usage: rows are external dependencies, columns the packages declaring them, cells the declared range. On a drifting dependency the declarations that disagree with the usual range are coloured — red across majors, amber within one; phantom imports and unused declarations are marked in place. "drift only" (on by default when there is drift) narrows the rows to the `version-drift` findings. The **imports** chip switches to the internal adjacency matrix: rows depend on columns, foundations first, so a mark above the diagonal is a back-edge.
+- **Cycles** — each runtime loop as a card: the ring of packages (clickable) and how to open it; an acyclic workspace says what was checked.
+- **Impact** — the selected package's blast radius, then every package ranked by reach.
+- **Manifest** — an excerpt of this scan's `loom-report.json` (counts, the gate, the first findings) with a download of the full report, and every node as a table row with its findings and status.
 
-Plus a detail panel per package (metrics, depends-on / required-by, findings, resolution path from the nearest entry point), ⌘K search, kind filters, ↑↓ navigation, and dark/light theming. The report endpoint re-scans per request — edit a manifest, reload, see fresh truth.
+The detail rail shows deps · dependents · blast, the findings, what the package depends on, its blast radius, the resolution path from the nearest entry point, and the `loom.ignore` entry that would suppress its first finding (an external dependency shows its declared ranges and who declares each). With nothing selected (how it opens) the rail shows the workspace overview: counts, findings by severity, cycles, the five widest blast radii and the gate. Platform packages (only an optionalDependency of one parent, e.g. `@pyreon/compiler-<os>-<arch>`) are ranked under their parent, not beside it. ⌘K searches packages, findings, versions and edges; ↑↓ walks the list (also from the filter field); the graph has one tab stop, the selected box, and Enter selects. Below 860 px the list becomes a drawer, below 760 px the rail too (Escape closes them).
+
+The theme is the shared Pyreon preference — `localStorage['pyreon-theme']` (`'light' | 'dark'`), otherwise `prefers-color-scheme` — so choosing light on the docs site, in Atlas or in Loom applies to all three, live across tabs. Loom's own key from before (`loom:theme`) is still read as a fallback. The report endpoint re-scans per request — edit a manifest, reload, see fresh truth; while it scans the page says so, and a rescan that fails (a manifest mid-edit) shows the reason with a reload button.
 
 Vite + `@pyreon/vite-plugin` are **optional peers**: `loom scan` runs without them; `loom dev` names the install when missing. The dev server reports with the same settings `loom scan` resolves (config file + `package.json` key), and keeps its own dependency cache in `node_modules/.cache/loom-vite`, so it never invalidates your app's Vite cache.
 
@@ -129,3 +151,11 @@ A `pyreon.config.*` that exists but fails to load is a **named error**, never a 
 The machine surface is `loom-report.json` — stable issue codes, structured evidence per finding, and the full model (packages, edges, depths, reach) for your own tooling.
 
 It is written **next to the root manifest** — the workspace root, not a `dist/` or a temp dir — because that is where a CI step and your own tooling look for it without being told. It is a generated artifact, regenerated on every scan, so **gitignore it**: on a large monorepo it is hundreds of kilobytes, and running the gate above then `git add .` is enough to commit it by accident. Use `--no-write` when you only want the exit code (that is what `pyreon doctor`'s `dependency-fabric` gate does — auditing a repo must not leave a file in it), or `--json` to send the report to stdout instead.
+
+<BenchCallout id="loom" />
+
+<ComingFrom id="loom" />
+
+<InlineSell id="tooling" />
+
+<CrossSell id="loom" />

@@ -215,6 +215,14 @@ const GATES: Gate[] = [
     name: 'check-ci-fail-fast',
     cmd: 'bun scripts/check-ci-fail-fast.ts',
   },
+  // Light PR CI (`vars.PR_CI_MODE == 'light'`) skips heavy jobs on a PR and
+  // leaves them to the merge queue and main. A skip is sound only if the job
+  // really runs on merge_group + push and every required context is still
+  // posted in the queue; this gate pins both.
+  {
+    name: 'check-light-pr-ci',
+    cmd: 'bun scripts/check-light-pr-ci.ts',
+  },
   // Shell has no hoisting, and `bash -n` cannot see it — the script is
   // syntactically valid and the failure is ordering. A helper defined below an
   // EARLY-EXIT branch is a path no pull request exercises, so it stays green on

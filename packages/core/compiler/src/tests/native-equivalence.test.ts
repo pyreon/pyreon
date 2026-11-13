@@ -283,6 +283,26 @@ describe('JS syntax and optional native parity — template emission', () => {
   test('root spread with _applyProps', () => compare('<div {...props}><span /></div>'))
   test('inner spread bails', () => compare('<div><span {...innerProps} /></div>'))
   test('keyed element bails', () => compare('<div key={id}><span /></div>'))
+  // #4473: a property-only prop (no content attribute under its own name)
+  // bails the element to h() in both backends.
+  test.each([
+    'innerHTML',
+    'textContent',
+    'innerText',
+    'defaultValue',
+    'defaultChecked',
+    'defaultSelected',
+    'defaultMuted',
+    'currentTime',
+    'playbackRate',
+    'defaultPlaybackRate',
+    'volume',
+    'srcObject',
+    'acceptCharset',
+    'httpEquiv',
+  ])('property-only %s bails (dynamic and literal)', (name) =>
+    compare(`<section><div ${name}={x()} /><p ${name}="lit" /></section>`),
+  )
   test('static class in HTML', () => compare('<div class="box"><span /></div>'))
   test('boolean attr in HTML', () => compare('<div><input disabled /></div>'))
   test('_bindDirect for signal class', () => compare('<div class={cls()}><span /></div>'))

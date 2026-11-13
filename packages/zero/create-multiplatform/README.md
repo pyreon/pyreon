@@ -16,13 +16,14 @@ npm run build:android # src/App.tsx → android/.../generated/App.kt, then Gradl
 ## Usage
 
 ```text
-Usage: create-multiplatform <project-name> [--dir <path>]
+Usage: create-multiplatform <project-name> [--dir <path>] [--scheme <url-scheme>]
 ```
 
 | Arg | Description |
 | --- | --- |
 | `<project-name>` | Required positional. Also the directory scaffolded into (unless `--dir` overrides it). Must be **kebab-case**: starts with a lowercase letter, lowercase letters/digits/hyphens only, no consecutive or trailing hyphens, 1–50 characters — the name propagates into the Xcode project name and the Gradle module id, both of which have stricter rules than an npm package name. An invalid name fails fast with a suggested kebab-case fix. |
 | `--dir <path>` / `-d <path>` | Scaffold into a different directory than `<project-name>` (defaults to the project name). |
+| `--scheme <url-scheme>` | The custom URL scheme the app registers for deep links. Defaults to the project's identifier (`my-app` → `myapp`). |
 | `--help` / `-h` | Print usage and exit 0. |
 
 The target directory must not already exist and be non-empty (a `.git`-only or `.DS_Store`-only directory is fine — the common `mkdir my-app && cd my-app && npx @pyreon/create-multiplatform .` flow). A non-empty existing directory refuses to scaffold rather than overwrite in-progress work.
@@ -31,6 +32,17 @@ The target directory must not already exist and be non-empty (a `.git`-only or `
 npx @pyreon/create-multiplatform my-app
 npx @pyreon/create-multiplatform my-app --dir ./apps/my-app
 npx @pyreon/create-multiplatform --help
+```
+
+A successful run prints (captured with `NO_COLOR=1`):
+
+```text
+create-multiplatform · 0.53.0
+
+  next    cd my-app && npm install && npm run dev
+  native  npm run build:ios (Xcode) · npm run build:android (Android SDK)
+
+✓ scaffolded my-app → my-app/ · 30 files · 6 ms
 ```
 
 ## What it generates

@@ -1,9 +1,7 @@
 ---
-title: "Sized Map — API Reference"
+title: "@pyreon/sized-map — API Reference"
 description: "Bounded Map<K, V> — evicts the oldest entry at a maxEntries cap; FIFO (default) or LRU-on-read mode"
 ---
-
-# @pyreon/sized-map — API Reference
 
 > **Generated** from `sized-map`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [sized-map](/docs/sized-map).
 

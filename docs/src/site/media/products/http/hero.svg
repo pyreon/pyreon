@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa pq-http" viewBox="0 0 640 400" width="640" height="400" role="img" aria-labelledby="pq-http-t pq-http-d" fill="none">
+<title id="pq-http-t">Responses are checked against the schema at the boundary</title>
+<desc id="pq-http-d">getUser({ params: { id } }) goes out through bearer and retry middleware with the default 30 s timeout. The first response, { id: '7', name: 'Ada' }, passes the User schema and arrives typed. The second, { id: 7 }, fails the check (id must be a string): the call throws ResponseValidationError at the boundary instead of handing a component a value that only claims to be a User.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.pq-http{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.pq-http .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.pq-http .pq-http-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.pq-http *{animation:none!important;transition:none!important}.pq-http .pq-http-rm{opacity:1}.pq-http .pq-http-am{opacity:0}}
+
+.pq-http .ln{stroke:var(--px-hint);stroke-width:1.5;fill:none}
+.pq-http .dash{stroke:var(--px-hint);stroke-width:1.5;stroke-dasharray:3 5;fill:none}
+.pq-http .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pq-http .bx2{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+.pq-http .lab{fill:var(--px-fog);font-size:14px;letter-spacing:.04em}
+.pq-http .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.pq-http .val{fill:var(--px-text);font-size:20px;font-weight:500}
+.pq-http .big{fill:var(--px-strong);font-size:24px;font-weight:600;letter-spacing:-.02em}
+.pq-http .code{fill:var(--px-text);font-size:15px}
+.pq-http .kw{fill:var(--px-accent-text)} .pq-http .fn{fill:var(--px-link)} .pq-http .str{fill:var(--px-warm)} .pq-http .ty{fill:var(--px-violet)}
+.pq-http .dim{fill:var(--px-fog)}
+.pq-http .hint{fill:var(--px-hint);font-size:13px}
+.pq-http .ember{stroke:url(#pq-http-egu);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:36 900;fill:none}
+.pq-http .emberS{stroke:url(#pq-http-egu);stroke-width:2.5;stroke-linecap:round;fill:none}
+.pq-http .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.pq-http .ok{fill:var(--px-ok)} .pq-http .warm{fill:var(--px-warm)} .pq-http .hot{fill:var(--px-accent)} .pq-http .errF{fill:var(--px-err)}
+.pq-http .okT{fill:var(--px-ok)} .pq-http .warmT{fill:var(--px-warm)} .pq-http .hotT{fill:var(--px-accent-text)} .pq-http .errT{fill:var(--px-err)}
+.pq-http .okS{stroke:var(--px-ok)} .pq-http .errS{stroke:var(--px-err)}
+.pq-http .gfill{fill:url(#pq-http-eg)}
+@media (prefers-reduced-motion: reduce){.pq-http .ember{opacity:0}}
+
+@keyframes pq-http-rq{0%{stroke-dashoffset:40;opacity:0}8.8889%{stroke-dashoffset:40;opacity:1}14.4444%{stroke-dashoffset:-470;opacity:1}14.4556%{stroke-dashoffset:40;opacity:0}53.3333%{stroke-dashoffset:40;opacity:1}58.8889%{stroke-dashoffset:-470;opacity:1}58.9000%{stroke-dashoffset:40;opacity:0}100%{stroke-dashoffset:40;opacity:0}}
+@keyframes pq-http-rs{0%{stroke-dashoffset:40;opacity:0}16.6667%{stroke-dashoffset:40;opacity:1}20.0000%{stroke-dashoffset:-370;opacity:1}20.0111%{stroke-dashoffset:40;opacity:0}61.1111%{stroke-dashoffset:40;opacity:1}64.4444%{stroke-dashoffset:-370;opacity:1}64.4556%{stroke-dashoffset:40;opacity:0}100%{stroke-dashoffset:40;opacity:0}}
+@keyframes pq-http-pa{0.0000%{opacity:0;animation-timing-function:step-end}16.6667%{opacity:1;animation-timing-function:step-end}53.3333%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-http-pb{0.0000%{opacity:0;animation-timing-function:step-end}61.1111%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-http-ok{0.0000%{opacity:0;animation-timing-function:step-end}22.2222%{opacity:1;animation-timing-function:step-end}53.3333%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-http-bad{0.0000%{opacity:0;animation-timing-function:step-end}66.6667%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-http-idle{0.0000%{opacity:1;animation-timing-function:step-end}22.2222%{opacity:0;animation-timing-function:step-end}53.3333%{opacity:1;animation-timing-function:step-end}66.6667%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-http-ck{0.0000%{opacity:0;animation-timing-function:step-end}20.0000%{opacity:1;animation-timing-function:step-end}53.3333%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-http-x{0.0000%{opacity:0;animation-timing-function:step-end}64.4444%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-http-fx{0%{opacity:0}64.4444%{opacity:0}65.3333%{opacity:1}66.6667%{opacity:0}100%{opacity:0}}
+.pq-http .rq{animation:pq-http-rq 9000ms linear infinite}
+.pq-http .rs{animation:pq-http-rs 9000ms linear infinite}
+.pq-http .pa{animation:pq-http-pa 9000ms linear infinite}
+.pq-http .pb{animation:pq-http-pb 9000ms linear infinite}
+.pq-http .okk{animation:pq-http-ok 9000ms linear infinite}
+.pq-http .bad{animation:pq-http-bad 9000ms linear infinite}
+.pq-http .idle{animation:pq-http-idle 9000ms linear infinite}
+.pq-http .ck{animation:pq-http-ck 9000ms linear infinite}
+.pq-http .xx{animation:pq-http-x 9000ms linear infinite}
+.pq-http .fx{animation:pq-http-fx 9000ms linear infinite}
+.pq-http .rq,.pq-http .rs{stroke-dasharray:40 900}
+@media (prefers-reduced-motion: reduce){.pq-http .pa,.pq-http .okk,.pq-http .idle,.pq-http .ck{opacity:0}.pq-http .pb,.pq-http .bad,.pq-http .xx{opacity:1}}
+</style>
+<defs><linearGradient id="pq-http-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-http-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="640" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-http-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-http-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<text class="m eb" x="24" y="34">@PYREON/HTTP · CHECKED, NOT CAST</text>
+<!-- request lane -->
+<rect class="bx" x="24" y="60" width="156" height="40" rx="10"/><text class="m lab" x="102" y="85" text-anchor="middle" style="fill:var(--px-text)">getUser()</text>
+<rect class="bx" x="204" y="60" width="90" height="40" rx="10"/><text class="m lab" x="249" y="85" text-anchor="middle" style="fill:var(--px-text)">bearer</text>
+<rect class="bx" x="306" y="60" width="80" height="40" rx="10"/><text class="m lab" x="346" y="85" text-anchor="middle" style="fill:var(--px-text)">retry</text>
+<rect class="bx2" x="500" y="60" width="116" height="150" rx="12"/>
+<text class="m lab" x="558" y="86" text-anchor="middle">server</text>
+<text class="m hint" x="558" y="108" text-anchor="middle">GET /users/7</text>
+<path class="ln" d="M180 80 L204 80 M294 80 L306 80 M386 80 L500 80"/>
+<path class="ember rq" d="M30 80 L500 80"/>
+<text class="m hint" x="398" y="70">30 s timeout</text>
+<!-- response lane -->
+<path class="ln" d="M500 180 L444 180"/>
+<path class="ln" d="M268 180 L200 180 L200 244"/>
+<path class="ember rs" d="M500 180 L200 180 L200 244"/>
+<g class="pa" opacity="0"><text class="m code" x="558" y="150" text-anchor="middle" font-size="13">{ id: <tspan class="str">'7'</tspan>,</text><text class="m code" x="558" y="170" text-anchor="middle" font-size="13">name: … }</text></g>
+<g class="pb" opacity="0"><text class="m code" x="558" y="160" text-anchor="middle" font-size="14">{ id: <tspan class="str">7</tspan> }</text></g>
+<!-- schema -->
+<rect class="bx" x="268" y="140" width="176" height="80" rx="12"/>
+<text class="m hint" x="284" y="164">response: User</text>
+<text class="m code" x="284" y="196" font-size="14">id: z.<tspan class="fn">string</tspan>()</text>
+<text class="m okT ck" x="430" y="198" text-anchor="end" opacity="0">✓</text>
+<text class="m errT xx" x="430" y="198" text-anchor="end" opacity="0">✗</text>
+<rect class="ring fx" x="264" y="136" width="184" height="88" rx="15" opacity="0"/>
+<rect class="ring pq-http-rm" x="264" y="136" width="184" height="88" rx="15"/>
+<!-- result -->
+<rect class="bx2" x="24" y="244" width="592" height="100" rx="12"/>
+<text class="m hint" x="40" y="270">const user = await getUser({ params: { id } })</text>
+<text class="m lab idle" x="40" y="310">…</text>
+<g class="okk" opacity="0"><text class="m code" x="40" y="306">user: <tspan class="ty">User</tspan> = { id: <tspan class="str">'7'</tspan>, name: <tspan class="str">'Ada'</tspan> }</text>
+<text class="m okT" x="40" y="330" font-size="13">typed and validated</text></g>
+<g class="bad" opacity="0"><text class="m code" x="40" y="306"><tspan class="errT">throws</tspan> <tspan class="ty">ResponseValidationError</tspan></text>
+<text class="m lab" x="40" y="330" font-size="13">at the boundary; err.value holds what arrived</text></g>
+<text class="m hint" x="24" y="380">no component ever receives { id: 7 } as a User</text>
+</svg>

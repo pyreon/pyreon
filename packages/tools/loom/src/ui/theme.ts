@@ -7,6 +7,8 @@
  */
 export interface LoomTokens {
   bg: string
+  /** The canvas ground under the graph / matrix / articles (the design's `--bg-deep`). */
+  deep: string
   surface: string
   surface2: string
   text: string
@@ -14,7 +16,11 @@ export interface LoomTokens {
   faint: string
   border: string
   accent: string
+  /** Text ON an accent fill: ink on the bright ember, white on the paper one. */
+  accentText: string
   accentSoft: string
+  /** An OPAQUE accent tint for selected graph boxes (edges must not show through). */
+  selFill: string
   /** External-package hue (the design's steel blue). */
   ext: string
   edge: string
@@ -37,70 +43,98 @@ export interface LoomTokens {
   warnRing: string
 }
 
+/** `a` laid over `b` at `alpha`, as an opaque hex — for fills that must hide what is under them. */
+export function mixHex(a: string, b: string, alpha: number): string {
+  const rgb = (hex: string) => {
+    const h = hex.replace('#', '')
+    return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16))
+  }
+  const [x, y] = [rgb(a), rgb(b)]
+  return `#${x
+    .map((v, i) => Math.round(v * alpha + y[i]! * (1 - alpha)).toString(16).padStart(2, '0'))
+    .join('')}`
+}
+
 export function hexToRgba(hex: string, a: number): string {
   const h = hex.replace('#', '')
   const n = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
   return `rgba(${parseInt(n.slice(0, 2), 16)},${parseInt(n.slice(2, 4), 16)},${parseInt(n.slice(4, 6), 16)},${a})`
 }
 
-export const ACCENT = '#ff6b3d'
+/**
+ * The two palettes — the Pyreon design system's ink / paper / ember values
+ * (pyreon.dev, the docs, Atlas), so Loom reads as the same product in both
+ * modes. Every text role passes 4.5:1 on every surface it sits on, including
+ * the tinted badge and selection grounds — pinned by `tests/theme.test.ts`,
+ * which computes the WCAG ratios.
+ *
+ * Rules the numbers enforce: small ember text in light mode is the darker
+ * `#A8380A` (the dark ember is 2.9:1 on paper), and the dark-mode faint ink is
+ * one step lighter than the design's fog `#8A8696`, which measured 4.4:1 on a
+ * tinted row.
+ */
+export const ACCENT = '#FF5E1A'
+export const ACCENT_ON_PAPER = '#A8380A'
 
 export function tokens(dark: boolean): LoomTokens {
   if (dark) {
     return {
-      bg: '#0f0f14',
-      surface: '#16161d',
-      surface2: '#1c1c25',
-      text: '#ececf0',
-      muted: '#8a8a99',
-      faint: '#55555f',
-      border: '#26262f',
+      bg: '#0A0A0E',
+      deep: '#06060A',
+      surface: '#111118',
+      surface2: '#181822',
+      text: '#F4EFE6',
+      muted: '#C9C4B8',
+      faint: '#8E8A9A',
+      border: '#23232E',
       accent: ACCENT,
-      accentSoft: hexToRgba(ACCENT, 0.15),
-      ext: '#5b8dd9',
-      edge: '#33333f',
-      edgeAlpha: '0.1',
-      dot: 'rgba(255,255,255,.04)',
-      codeBg: '#0a0a0e',
-      danger: '#ef5f5f',
-      dangerSoft: 'rgba(239,95,95,.12)',
-      dangerRing: 'rgba(239,95,95,.35)',
-      ok: '#3fb083',
-      okSoft: 'rgba(63,176,131,.12)',
-      okRing: 'rgba(63,176,131,.35)',
-      warn: '#e0a53b',
-      warnSoft: 'rgba(224,165,59,.12)',
-      warnRing: 'rgba(224,165,59,.35)',
+      accentText: '#0A0A0E',
+      accentSoft: hexToRgba(ACCENT, 0.12),
+      selFill: mixHex(ACCENT, '#111118', 0.14),
+      ext: '#22D3EE',
+      edge: '#3A3846',
+      edgeAlpha: '0.14',
+      dot: 'rgba(255,255,255,.045)',
+      codeBg: '#0A0A0E',
+      danger: '#F87171',
+      dangerSoft: 'rgba(248,113,113,.10)',
+      dangerRing: 'rgba(248,113,113,.40)',
+      ok: '#4ADE80',
+      okSoft: 'rgba(74,222,128,.08)',
+      okRing: 'rgba(74,222,128,.40)',
+      warn: '#FACC15',
+      warnSoft: 'rgba(250,204,21,.08)',
+      warnRing: 'rgba(250,204,21,.40)',
     }
   }
   return {
-    bg: '#f6f6f8',
-    surface: '#ffffff',
-    surface2: '#f1f2f5',
-    text: '#16171c',
-    muted: '#5b6273',
-    // Was #9aa0ad (2.4:1 on the light bg) — axis labels, eyebrows and the
-    // table's secondary columns were near-unreadable. #7a8193 is ~4:1.
-    faint: '#7a8193',
-    border: '#e4e6ec',
-    accent: ACCENT,
-    accentSoft: hexToRgba(ACCENT, 0.1),
-    ext: '#3f6fbf',
-    edge: '#b3b8c5',
-    edgeAlpha: '0.28',
-    dot: 'rgba(20,24,40,.05)',
-    codeBg: '#f1f2f5',
-    danger: '#d64545',
-    dangerSoft: 'rgba(214,69,69,.08)',
-    dangerRing: 'rgba(214,69,69,.28)',
-    // Darker than the dark-mode green: #2f9e6f on its own tint was ~3:1, so the
-    // "fabric clean" pill read as disabled. #1f7f58 clears 4.5:1.
-    ok: '#1f7f58',
-    okSoft: 'rgba(47,158,111,.1)',
-    okRing: 'rgba(47,158,111,.3)',
-    warn: '#a86f0f',
-    warnSoft: 'rgba(201,138,32,.1)',
-    warnRing: 'rgba(201,138,32,.3)',
+    bg: '#FAF5EB',
+    deep: '#F3EDE1',
+    surface: '#FFFFFF',
+    surface2: '#F4EFE6',
+    text: '#14141C',
+    muted: '#45414F',
+    // The design's light-mode dim for Loom (Loom.html overrides `--dim`).
+    faint: '#4F4B5C',
+    border: '#E6DFD2',
+    accent: ACCENT_ON_PAPER,
+    accentText: '#FFFFFF',
+    accentSoft: 'rgba(232,74,15,.08)',
+    selFill: mixHex('#E84A0F', '#FFFFFF', 0.1),
+    ext: '#0A6E89',
+    edge: '#B9B2A6',
+    edgeAlpha: '0.3',
+    dot: 'rgba(20,20,28,.06)',
+    codeBg: '#F4EFE6',
+    danger: '#B91C1C',
+    dangerSoft: 'rgba(185,28,28,.07)',
+    dangerRing: 'rgba(185,28,28,.30)',
+    ok: '#11692F',
+    okSoft: 'rgba(17,105,47,.07)',
+    okRing: 'rgba(17,105,47,.30)',
+    warn: '#8A5A00',
+    warnSoft: 'rgba(138,90,0,.07)',
+    warnRing: 'rgba(138,90,0,.30)',
   }
 }
 

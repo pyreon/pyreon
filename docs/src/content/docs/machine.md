@@ -3,6 +3,10 @@ title: Machine
 description: Reactive state machines for Pyreon — constrained signals with type-safe transitions.
 ---
 
+<ProductPitch id="machine" />
+
+<LiveDemo id="machine" />
+
 `@pyreon/machine` provides reactive state machines — constrained signals that can only hold specific values and transition between them via specific events. Replace nested booleans with explicit states and type-safe transitions.
 
 <PackageBadge name="@pyreon/machine" href="/docs/machine" />
@@ -545,3 +549,11 @@ type TransitionConfig<TState> = TState | { target: TState; guard: (payload?: unk
 ## Multiplatform
 
 On iOS and Android (PMTC), `createMachine` lowers to the native `PyreonMachine` runtime on both targets (transitions device-asserted).
+
+<BenchCallout id="machine" />
+
+<ComingFrom id="machine" />
+
+<InlineSell id="form" />
+
+<CrossSell id="machine" />

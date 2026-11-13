@@ -8,6 +8,7 @@
   },
   "include": [
     "src",
-    "env.d.ts"
+    "env.d.ts",
+    "content.config.ts"
   ]
 }

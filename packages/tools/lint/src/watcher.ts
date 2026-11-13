@@ -1,19 +1,23 @@
 import { readFileSync, watch } from 'node:fs'
 import { resolve } from 'node:path'
+import { formatElapsed, header, onInterrupt, plural, term, verdict } from '@pyreon/ansi'
 import { AstCache } from './cache'
 import { createIgnoreFilter } from './config/ignore'
 import { loadConfig, loadConfigFromPath } from './config/loader'
 import { resolveLintConfig } from './lint'
-import { formatCompact, formatJSON, formatText } from './reporter'
+import { formatCompact, formatGha, formatJSON, formatText } from './reporter'
 import { allRules } from './rules/index'
 import { lintFile } from './runner'
 import type { LintConfig, LintOptions, LintResult } from './types'
 import { hasJsExtension } from './utils/index'
 
-function formatOutput(result: LintResult, format: string): string {
+function formatOutput(result: LintResult, format: string, elapsedMs: number): string {
   if (format === 'json') return formatJSON(result)
   if (format === 'compact') return formatCompact(result)
-  return formatText(result)
+  if (format === 'gha') return formatGha(result)
+  // A watch run is a CLI run: a clean re-lint prints a verdict too, so the
+  // screen never keeps showing a problem that was just fixed.
+  return formatText(result, { elapsedMs })
 }
 
 /**
@@ -39,11 +43,18 @@ export function watchAndLint(options: LintOptions & { format: string }): void {
 
   const isIgnored = createIgnoreFilter(cwd, options.ignore)
 
+  const runs = { count: 0 }
   // Debounce map: filePath -> timeout
   const pending = new Map<string, ReturnType<typeof setTimeout>>()
 
   // oxlint-disable-next-line no-console
-  console.log(`\x1b[2m[pyreon-lint] Watching for changes...\x1b[0m\n`)
+  console.log(`${header(term, 'pyreon-lint', `watching ${options.paths.join(', ')}`)}\n`)
+  // Ctrl-C is how a watch ends: say so, as the last line, and exit 0.
+  const watchStarted = performance.now()
+  onInterrupt(
+    () => verdict(term, 'info', 'stopped watching', [plural(runs.count, 're-lint'), formatElapsed(performance.now() - watchStarted)]),
+    { write: (text) => void process.stdout.write(text), code: 0 },
+  )
 
   for (const p of options.paths) {
     const dir = resolve(p)
@@ -62,6 +73,7 @@ export function watchAndLint(options: LintOptions & { format: string }): void {
           filePath,
           setTimeout(() => {
             pending.delete(filePath)
+            runs.count++
             relintFile(filePath, config, cache, options.format)
           }, 100),
         )
@@ -80,9 +92,12 @@ function relintFile(filePath: string, config: LintConfig, cache: AstCache, forma
     return
   }
 
+  const started = performance.now()
   const fileResult = lintFile(filePath, source, allRules, config, cache)
 
-  if (fileResult.diagnostics.length === 0) return
+  // A clean file prints nothing in the machine formats (nothing to report),
+  // but the text format still says so: the last screen showed a problem.
+  if (fileResult.diagnostics.length === 0 && format !== 'text') return
 
   const result: LintResult = {
     files: [fileResult],
@@ -98,7 +113,8 @@ function relintFile(filePath: string, config: LintConfig, cache: AstCache, forma
     else if (d.severity === 'info') result.totalInfos++
   }
 
-  // Clear screen and print
-  process.stdout.write('\x1b[2J\x1b[H')
-  console.log(formatOutput(result, format))
+  // Clear screen and print. Never send the clear sequence to a pipe or a
+  // colourless terminal: it is an escape code like any other.
+  if (term.color && process.stdout.isTTY) process.stdout.write('\x1b[2J\x1b[H')
+  console.log(formatOutput(result, format, performance.now() - started))
 }

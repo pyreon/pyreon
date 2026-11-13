@@ -59,7 +59,7 @@ describe('pyreon add', () => {
     expect(out()).toContain('QueryClientProvider')
     expect(out()).toContain('useQuery')
     expect(out()).toContain('/docs/query')
-    expect(out()).toContain('(--dry-run — not installed)') // did NOT install
+    expect(out()).toContain('--dry-run: nothing installed') // did NOT install
   })
 
   it('accepts a bare name and normalizes it', () => {

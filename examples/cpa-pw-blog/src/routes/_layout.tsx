@@ -20,7 +20,7 @@ export function layout() {
             <Link href="/about" prefetch="hover" exactActiveClass="nav-active">
               About
             </Link>
-            <a href="/api/rss" title="RSS feed">
+            <a href="/blog/rss.xml" title="RSS feed">
               RSS
             </a>
             <ThemeToggle />

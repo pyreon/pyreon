@@ -1,9 +1,7 @@
 ---
-title: "Form Management — API Reference"
+title: "@pyreon/form — API Reference"
 description: "Signal-based form management with fields, validation, arrays, and cross-field watchers"
 ---
-
-# @pyreon/form — API Reference
 
 > **Generated** from `form`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [form](/docs/form).
 

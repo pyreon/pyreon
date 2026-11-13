@@ -1,3 +1,5 @@
+import { createTerm, finding, header } from '@pyreon/ansi'
+import { reportFailure } from './report'
 import { type ChildProcess, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -86,7 +88,7 @@ export async function preview(root: string | undefined, options: PreviewOptions)
 
     const target = resolvePreviewTarget(projectRoot)
     if (target.kind === 'runner') {
-      console.log(`[Pyreon] zero preview: running the built ${target.runtime} server (${target.entry})`)
+      console.log(header(createTerm(), 'zero preview', `running the built ${target.runtime} server (${target.entry})`))
       const child = startRunner(target, port, projectRoot)
       const forward = (signal: NodeJS.Signals) => child.kill(signal)
       process.once('SIGINT', forward)
@@ -95,11 +97,19 @@ export async function preview(root: string | undefined, options: PreviewOptions)
       return
     }
     if (target.serverBuildWithoutRunner) {
+      const t = createTerm({ isTTY: Boolean(process.stderr.isTTY) })
       console.warn(
-        '[Pyreon] zero preview: this is a server build for a hosting platform (vercel / netlify / cloudflare), ' +
-          'so preview can only serve the static client — SSR pages and API routes will NOT work here. ' +
-          "Use the platform's local runner (vercel dev, netlify dev, wrangler pages dev), or build with " +
-          "adapter: 'node' to preview the real server.",
+        finding(
+          t,
+          {
+            severity: 'warning',
+            source: 'zero preview',
+            message:
+              'this is a server build for a hosting platform (vercel / netlify / cloudflare), so preview can only serve the static client: SSR pages and API routes will NOT work here.',
+            fix: "use the platform's local runner (vercel dev, netlify dev, wrangler pages dev), or build with adapter: 'node' to preview the real server",
+          },
+          { indent: 0, width: t.width },
+        ).join('\n'),
       )
     }
     const outDir = target.outDir
@@ -116,7 +126,7 @@ export async function preview(root: string | undefined, options: PreviewOptions)
 
     server.printUrls()
   } catch (error) {
-    console.error('[Pyreon] Failed to start preview server:', error)
+    reportFailure('zero preview', 'Failed to start the preview server', error)
     process.exit(1)
   }
 }

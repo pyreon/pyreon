@@ -4,8 +4,6 @@ summary: "Signals are callable. Read with mySignal(), write with mySignal.set(..
 seeAlso: [controllable-state]
 ---
 
-# Signal reads and writes
-
 ## The pattern
 
 Pyreon signals are callable functions. The API is tiny:

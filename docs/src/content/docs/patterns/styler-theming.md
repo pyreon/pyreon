@@ -4,8 +4,6 @@ summary: "styled() for CSS-in-JS, PyreonUI for theme + mode. Never init() manual
 seeAlso: [reactive-context]
 ---
 
-# Styling and theming — styled + PyreonUI
-
 ## The pattern
 
 Wrap the app in `PyreonUI` (from `@pyreon/ui-core`) to provide theme + light/dark mode + config in one provider:

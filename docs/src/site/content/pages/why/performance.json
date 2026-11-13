@@ -1,0 +1,231 @@
+{
+  "id": "performance",
+  "route": "/why/performance",
+  "title": "Performance",
+  "hook": {
+    "eyebrow": "Measured in public",
+    "title": "2.6× faster than React. Don't trust us. Run it.",
+    "lede": "Ten frameworks, real Chromium, every arm on its own fast path. Pyreon builds 10,000 rows in 72.6 ms against React 19's 192.0. Every number on our board comes with its run count and the command that reproduces it.",
+    "cta": {
+      "label": "See the full board",
+      "href": "/benchmarks"
+    }
+  },
+  "sections": [
+    {
+      "kind": "proof",
+      "title": "The numbers that survived.",
+      "stats": [
+        {
+          "stat": "2.6×",
+          "label": "faster than React 19 creating 10,000 rows (72.6 vs 192.0 ms); 3.8× faster than Preact",
+          "condition": "final pass, two runs · Apple M3 Max · real Chromium · synthetic, author-run",
+          "source": "BENCHMARKS.md §1"
+        },
+        {
+          "stat": "4×",
+          "label": "less JavaScript than React for the same keyed-table app (17.2 KB vs 69.6 KB gzip)",
+          "condition": "final pass, one run (sizes are deterministic)",
+          "source": "BENCHMARKS.md §7"
+        },
+        {
+          "stat": "6.5×",
+          "label": "faster compiled server rendering than React 19 at 1,000 rows (109.9 vs 714.4 µs)",
+          "condition": "overnight run, one run · Apple M3 Max · synthetic, author-run",
+          "source": "BENCHMARKS.md §5"
+        }
+      ],
+      "note": "Synthetic, author-run, Apple M3 Max. Absolute times are machine-dependent; compare ratios."
+    },
+    {
+      "kind": "list",
+      "title": "More from the same record.",
+      "items": [
+        {
+          "title": "Clear rows: the outright row-board win",
+          "text": "130 µs vs Vue 3.6 Vapor (RC) 145 µs, 1.11–1.12×, with confidence intervals disjoint in both runs."
+        },
+        {
+          "title": "Tied for the lightest memory",
+          "text": "Retained heap after the suite: Pyreon 3.08 MB and Preact 3.09 MB, ahead of Solid 3.16, Svelte 3.27, Vue 3 3.30 and React 3.50. Both runs."
+        },
+        {
+          "title": "Hydration that leads",
+          "text": "On a 320-component app page Pyreon hydrates in 4.02 ms, ahead of React (4.15), Preact (4.30) and Vue (4.47). One run."
+        },
+        {
+          "title": "TodoMVC against React 19",
+          "text": "Toggle 1,000 todos about 2.4× faster, clear 1,000 3–4× faster. One run."
+        },
+        {
+          "title": "Signals against Preact Signals",
+          "text": "Effect propagation 2.04–2.13×, batching 1.94–1.95×, the computed diamond 1.30–1.31× on V8. Two runs."
+        }
+      ]
+    },
+    {
+      "kind": "steps",
+      "title": "Don't trust us. Run it.",
+      "items": [
+        {
+          "title": "Reproduce the row board",
+          "text": "Strictly sequential, gated on a one-minute load below 4. You get 100 samples per cell from five page loads, framework order reshuffled every pass.",
+          "code": "git clone https://github.com/pyreon/pyreon && cd pyreon\nbun install\ncd examples/benchmark\nbun bench-fair.ts --repeat 5 --wait-quiet 4"
+        },
+        {
+          "title": "Read the verdict rules",
+          "text": "A result is a win only when the confidence intervals are disjoint in both runs. Overlapping intervals mean \"could not distinguish\", never \"equal\". A close verdict needs two agreeing runs."
+        },
+        {
+          "title": "Check the rest",
+          "text": "Every suite on the board, from SSR to the reactivity core, lists its own command on the benchmarks page."
+        }
+      ]
+    },
+    {
+      "kind": "story",
+      "title": "Eight bugs we found in our own benchmark.",
+      "text": [
+        "Pyreon's authors wrote every harness, every competitor arm, and decide what counts as a win. Every judgement call in a setup like that leans toward the home team. So we went looking, and found eight measurement bugs. Each one was fixed, re-run and published, and each has a guard that stops it coming back."
+      ]
+    },
+    {
+      "kind": "list",
+      "title": "The eight, and the guard for each.",
+      "items": [
+        {
+          "title": "1. Rivals on slow paths",
+          "text": "Svelte and Vue arms ran on deep proxies and Octane was pinned eight patches behind. Guard: every arm on its framework's documented fast path."
+        },
+        {
+          "title": "2. A 100 µs clock",
+          "text": "Chromium clamps `performance.now()` on a non-isolated page. Guard: cross-origin isolated pages with a measured 5 µs quantum, and a batch instrument for tiny ops."
+        },
+        {
+          "title": "3. A `String()` wrapper",
+          "text": "It switched off Octane's compiler fast path. Guard: no presentation work a real user would not write; competitor arms are checked by compiling them."
+        },
+        {
+          "title": "4. A V8 string cache",
+          "text": "Its growth was billed to five arms' retained heap. Guard: every arm renders the raw `row.id`."
+        },
+        {
+          "title": "5. `table-layout: auto`",
+          "text": "Whole-table re-measures inflated a Pyreon partial-update lead; the published ~4.9× was withdrawn. Guard: `table-layout: fixed` plus a bimodality check."
+        },
+        {
+          "title": "6. A busy machine",
+          "text": "A hydration \"tie\" was measured at load 8.2. Guard: sequential runs gated on load below 4."
+        },
+        {
+          "title": "7. A rival's upgrade",
+          "text": "A clear-rows swing was mostly a competitor getting slower. Guard: split \"Pyreon moved\" from \"competitor moved\" before attributing a change."
+        },
+        {
+          "title": "8. Pooled intervals",
+          "text": "100 samples from 5 page loads were treated as independent. Guard: a two-stage cluster bootstrap over page loads."
+        }
+      ]
+    },
+    {
+      "kind": "quote",
+      "text": "Synthetic: these are synthetic micro- and scenario benchmarks. They do not predict the performance of your app.",
+      "attribution": "Pyreon benchmark record",
+      "href": "/benchmarks"
+    },
+    {
+      "kind": "story",
+      "title": "An independent venue, staged.",
+      "text": [
+        "The only full answer to author bias is someone else's harness. A keyed Pyreon implementation for krausest/js-framework-benchmark is staged in the repo under `contrib/krausest/pyreon-keyed/`. Staged, not yet submitted."
+      ]
+    },
+    {
+      "kind": "note",
+      "text": "The board also lists where we are not first: Solid mounts a deep component tree 1.15–1.18× faster, Solid, Preact and Svelte ship smaller bundles, signal creation is about 5× slower than Preact Signals, and five row-board ops are statistical ties with the fastest rivals.",
+      "href": "/benchmarks"
+    },
+    {
+      "kind": "links",
+      "title": "Go deeper.",
+      "items": [
+        {
+          "label": "The benchmark board",
+          "href": "/benchmarks",
+          "text": "Every result, ties and losses included."
+        },
+        {
+          "label": "Benchmark docs",
+          "href": "/docs/benchmarks",
+          "text": "The full record, competitor versions and every reproduce command."
+        },
+        {
+          "label": "Components run once",
+          "href": "/why/components-run-once",
+          "text": "Why the work is not there to begin with."
+        }
+      ]
+    }
+  ],
+  "end": {
+    "title": "We publish where we lose, so you can trust where we win.",
+    "cta": {
+      "label": "Start building",
+      "command": "npm create @pyreon/zero@latest"
+    }
+  },
+  "share": {
+    "ogTitle": "2.6× faster than React. Don't trust us. Run it.",
+    "ogSub": "Ten frameworks, real Chromium, one command to reproduce. Synthetic, author-run, M3 Max."
+  },
+  "sources": [
+    {
+      "claim": "Create 10k 72.64 vs React 192.01 vs Preact 278.03 ms; clear rows 1.11–1.12× vs Vapor; heap 3.08 vs 3.09 MB",
+      "path": "BENCHMARKS.md §1"
+    },
+    {
+      "claim": "Bundle 17.2 vs 69.6 KB (4.05×)",
+      "path": "BENCHMARKS.md §7"
+    },
+    {
+      "claim": "Compiled SSR 109.9 vs React 714.4 µs at 1,000 rows (6.50×), one run",
+      "path": "BENCHMARKS.md §5"
+    },
+    {
+      "claim": "App page hydration 4.02 / 4.15 / 4.30 / 4.47 ms, one run",
+      "path": "BENCHMARKS.md §4"
+    },
+    {
+      "claim": "TodoMVC toggle ~2.4×, clear 3–4×, one run",
+      "path": "BENCHMARKS.md §6"
+    },
+    {
+      "claim": "Reactivity V8 effect/batch/diamond ratios, two runs",
+      "path": "BENCHMARKS.md §8"
+    },
+    {
+      "claim": "Reproduce command bench-fair.ts --repeat 5 --wait-quiet 4 in examples/benchmark",
+      "path": "BENCHMARKS.md \"Reproduce\" and §1; docs/src/content/docs/benchmarks.md line 171"
+    },
+    {
+      "claim": "Win only when CIs disjoint in both runs; overlap = could not distinguish",
+      "path": "BENCHMARKS.md header \"How to read\""
+    },
+    {
+      "claim": "Eight harness bugs and guards",
+      "path": ".agents/guides/benchmarks/README.md; post 05-blog/B02-we-keep-retracting-our-benchmark-wins.md"
+    },
+    {
+      "claim": "krausest keyed implementation staged, not submitted",
+      "path": "contrib/krausest/pyreon-keyed/; BENCHMARKS.md header"
+    },
+    {
+      "claim": "Synthetic quote",
+      "path": "BENCHMARKS.md header \"Synthetic\""
+    },
+    {
+      "claim": "Losses: deep tree, bundle vs Solid/Preact, signal creation, row-board ties",
+      "path": "BENCHMARKS.md §13"
+    }
+  ]
+}

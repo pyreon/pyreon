@@ -320,12 +320,19 @@ question it withholds is the whole finding: **which of the six checks failed?**
 So every run prints a per-check tally, and the checks that did not run say why:
 
 ```text
-atlas: discovered 9 component(s), 43 scenario(s) — 41 verified, 2 failing, 0 unverified.
-  checks: a11y 18/20 ✗ · interaction 43/43 · ssrParity 43/43 · leak 43/43
-  not run: reactivityCoverage, snapshot — browser-only — run `atlas verify-browser`
+$ atlas scan . --no-mount --no-write
+atlas scan · . · static (--no-mount)
+
+  components   6
+  scenarios   22  2 failing · 12 verified · 8 unverified
+  checks      a11y 12/14 ✗
+  not run     interaction, ssrParity, leak — mounting is disabled for this run (`--no-mount`) — the
+              scan stayed static
+              reactivityCoverage, snapshot — browser-only — run `atlas verify-browser` to measure
+              this (a Node scan cannot)
 ```
 
-That line matters more than it looks. On a package where `@pyreon/runtime-server`
+That row matters more than it looks. On a package where `@pyreon/runtime-server`
 does not resolve, the scan reports **every scenario verified** having run
 exactly two of the six checks — true, and completely misleading without the tally.
 
@@ -343,15 +350,24 @@ shows it there.
 
 `atlas verify <Component>` is the loop for iterating on one component:
 
-```bash
-$ atlas verify Button
-atlas verify Button: 1 component(s), 15 scenario(s)
-  checks: a11y 14/15 ✗ · interaction 15/15 · ssrParity 15/15 · leak 15/15
+```text
+$ atlas verify Button --no-mount
+atlas verify Button · 1 component · 9 scenarios · static (--no-mount)
 
-✗ button--empty
-    a11y: missing accessible name: "label" is empty
+  scenarios  9  1 failing · 8 verified · 0 unverified
+  checks     a11y 8/9 ✗
+  not run    interaction, ssrParity, leak — mounting is disabled for this run (`--no-mount`) — the
+             scan stayed static
+             reactivityCoverage, snapshot — browser-only — run `atlas verify-browser` to measure
+             this (a Node scan cannot)
 
-1 failing · 14 verified · 0 unverified
+  ✗ 1 failing scenario
+  ✗ button--empty  Button
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+
+✗ 1 failing scenario · 8 verified · 0 unverified · 141 ms
 ```
 
 Discovery still walks the project — a component's file is not known until it
@@ -364,10 +380,11 @@ first and a speed tool second.
 
 Every finding is structured — `{ code, message, fix? }`:
 
-```
-✗ button--empty
-    a11y [missing-accessible-name]: missing accessible name: "label" is empty
-      → Give "label" a non-empty value, or an aria-label if the text is decorative.
+```text
+  ✗ button--empty  Button
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
 ```
 
 `code` is the **stable** class (`hydrate-threw`, `reactive-nodes-retained`, …) — what you
@@ -394,13 +411,29 @@ answer "how is it now"; they cannot answer "did I help".
 The case that makes it worth having: **a check that stops running is a regression**,
 even though it makes the counts improve.
 
-```
-# baseline: 2 failing
+```text
+# baseline: a mounted scan, committed
 $ atlas scan . --check --no-mount
-atlas: discovered 1 component(s), 2 scenario(s) — 0 verified, 0 failing, 2 unverified.
-atlas --check: REGRESSED — 4 check(s) stopped running
-  ✗ button--empty — no longer checked: interaction, leak
-    (coverage lost — the failure did not go away, the check did)
+atlas scan · . · static (--no-mount) · ratchet (--check)
+
+  components  1
+  scenarios   3  1 failing · 2 verified · 0 unverified
+  checks      a11y 2/3 ✗
+  not run     interaction, ssrParity, leak — mounting is disabled for this run (`--no-mount`) — the
+              scan stayed static
+              reactivityCoverage, snapshot — browser-only — run `atlas verify-browser` to measure
+              this (a Node scan cannot)
+
+  ✗ atlas --check: REGRESSED — 6 check(s) stopped running
+    ✗ button--default — no longer checked: interaction, leak (coverage lost — the failure did not go
+      away, the check did)
+    ✗ button--empty — no longer checked: interaction, leak (coverage lost — the failure did not go
+      away, the check did)
+    ✗ button--long-content — no longer checked: interaction, leak (coverage lost — the failure did
+      not go away, the check did)
+
+✗ regressed against the committed catalog (--check) · 1 failing scenario · 2 verified · 0 unverified
+  · 1 component · 64 ms
 ```
 
 Delete a wrapper and every mount-dependent check drops to `skip`: failures vanish,
@@ -434,7 +467,7 @@ mounted is what the project ships. Two consequences worth knowing:
 
   In the workbench the wrapper also receives the render's APPEARANCE as
   accessors — `mode` (`'light' | 'dark'`), `dark`, and `brand`
-  (`{ id, name, accent }`) — per render, so each Theme Lab tile is its own
+  (`{ id, name, accent }`) — per render, so each Lab tile is its own
   appearance. Forward `mode` or the dark workbench shows components in their
   light mode; read `brand` to make the Lab's brand tiles mean something (a
   wrapper that never reads it gets one tile per mode and a note saying so).
@@ -490,8 +523,8 @@ when a project's own components dominate rather than the framework.
 `<Workbench>` ships the addons a component workbench is actually judged on. In
 Storybook these are four separate packages you install and configure; here they
 are presets in [`src/ui/addons.ts`](./src/ui/addons.ts), rendered by the
-**Canvas** tab, and exported so a host can drive its own toolbar from the same
-data.
+**Addons** tab (zoom, grid, measure and layout live in the **Canvas** tab), and exported
+so a host can drive its own toolbar from the same data.
 
 | Addon | Storybook equivalent | What it does |
 | --- | --- | --- |
@@ -500,6 +533,7 @@ data.
 | **Pseudo state** | `addon-pseudo-states` | Forces `hover` / `focus` / `active` / `disabled` |
 | **Outline** | `addon-outline` | Outlines every box in the preview subtree (chrome untouched) |
 | **Locale** | `addon-toolbars` / RTL addons | Switches locale (`ctx.locale`) and flips the preview to `dir="rtl"` |
+| **Layout** (Canvas tab) | `parameters.layout` | `centered` / `padded` (top-left, 16px gutter) / `fullscreen` (no gutter, the whole stage); `?layout=` in the link |
 
 **The pseudo-state one is genuinely cheaper on this stack.**
 `@storybook/addon-pseudo-states` has to rewrite the emitted stylesheet — rename
@@ -532,8 +566,79 @@ That half needs no catalog cooperation. To translate as well, read `ctx.locale`
 (a BCP-47 tag) — e.g. feed it to `@pyreon/i18n`'s `createI18n({ locale })`.
 
 Everything else is a rocketstyle dimension (`size` for viewport, `variant` for
-background, `state` for outline), so the addons add **zero inline styles** and
+background, `state` for outline, `multiple` for layout), so the addons add **zero inline styles** and
 resolve through the same class cache as the rest of the workbench.
+
+## The app shell, theme and `?embed`
+
+The workbench is the Pyreon app shell: a 48px top bar, the catalog column
+(220px, draggable), and a main column of scenario strip → canvas → the 13
+panels (Controls, Schema, Actions, A11y, Perf, Permissions, Query, Store,
+Update cause, Reactive coverage, Lens, Canvas, Addons), split by a draggable,
+keyboard-operable divider. Below 860px the catalog is a modal drawer.
+Every panel except Controls, Actions, A11y, Canvas and Addons loads its body
+the first time its tab opens (`views/panels/lazy.tsx`); the tab strip and `?p=`
+links never wait for it.
+
+Four panels read data no other workbench has:
+
+- **Permissions** renders the scenario as every role sees it, side by side,
+  each under its own recording `can()`, and judges each render against the
+  role's policy (`presets.roles`, or the shipped four): an enabled action whose
+  label starts with a known verb (`Delete`, `Remove`, `Save`, `Edit`, …) is
+  flagged when the role's consulted key for that verb was denied, or — with no
+  `can()` behind it — when the policy withholds the verb from the role. A
+  component that consulted nothing is unguarded on every card.
+- **Schema** lists where every control came from (`schema`, `rocketstyle
+  dimension`, `prop type`, `content seed`, `defineComponent`, or the
+  hand-written `catalog`), and under `atlas dev` marks a prop that appeared on
+  a rescan as `new` / "added N min ago" (`WorkbenchControl.source` /
+  `addedAt`).
+- **Reactive coverage** lists every DOM binding of the selected component by
+  name — `aria-busy ← loading`, `class ← variant, size, mode, theme` — with its
+  kind, how many times it updated after its mount, and a status that is a
+  shape and a word (✓ covered, ○ never fired, ↻ rebuilt by a re-mount).
+  Uncovered rows come first, each saying what would exercise it (the control
+  to change, the state to interact with, the theme switch). The % bar reads
+  the same rows. Record re-mounts the preview, so its bindings are counted
+  from their first run; the list re-samples while you work. A production
+  build has no reactive graph, and the panel says so instead of a score.
+- **Control edits update the preview in place.** `render` receives live
+  values — one getter per key — so a component's bindings re-run on an edit
+  instead of the component being re-mounted. A key the catalog's `render`
+  reads itself (to branch on it) still re-mounts the preview when it changes.
+  The generated catalog keeps the getters (`mergeArgs` / `setArg` /
+  `argReader` from `@pyreon/atlas/core`).
+- **Lens** prints a **Fix:** line under a verdict worth acting on — a detector
+  footgun's own rewrite (`ReactivityFinding.fix` from `@pyreon/compiler`), or
+  how to read a baked-once value live.
+
+**Colours live in one file** — [`src/ui/theme.ts`](./src/ui/theme.ts):
+
+- `CHROME_PALETTES` — the chrome's dark and light palettes (the Pyreon design
+  system's ink / paper / ember values). `CHROME_TOKENS` hands components
+  `var(--atlas-*)` references, and `chromeThemeCss()` emits both palettes keyed
+  on `:root[data-theme]`, so a mode flip is one attribute write. Every text
+  role passes 4.5:1 on every surface in both modes — computed in
+  `tests/theme-contrast.test.ts`, and audited in the browser at five widths by
+  `e2e/atlas-shell.spec.ts`.
+- `tokens(brand, dark)` / `THEMES` — the PREVIEW brands (Ember, Aurora,
+  Forest, Contrast) a catalog built on Atlas's `el` / `txt` bases styles from.
+  The preview renders inside its own `<PyreonUI>` with these, so the chrome and
+  the component under test never restyle each other.
+- `PREVIEW_COLORS` — the fixed surfaces and debug overlays the preview tools
+  paint (forced light / dark backgrounds, the checker, Outline, the A11y
+  highlight).
+
+**The mode follows the shared Pyreon preference**: `localStorage['pyreon-theme']`
+(`'light' | 'dark'`), otherwise `prefers-color-scheme`. `themeBootScript()` is
+the inline `<head>` script that applies it before first paint — `atlas dev` and
+`atlas build` inline it; a host that mounts `<Workbench>` itself should too.
+The toggle writes the key; a `?dark=0|1` link overrides it for that view.
+
+**`?embed`** renders the bare app for an iframe: the theme toggle is hidden
+(the host passes `&dark=`), nothing is written to the host's storage, and the
+flag survives the workbench's own URL rewrites.
 
 ## Styling convention
 

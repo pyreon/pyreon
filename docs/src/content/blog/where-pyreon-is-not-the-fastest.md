@@ -7,7 +7,11 @@ tags: [javascript, performance, benchmarks, webdev]
 cover: /blog/covers/where-pyreon-is-not-the-fastest.png
 ---
 
-Clear 1,000 rows: **Pyreon 130 µs, the fastest of ten frameworks** in both runs. Build 10,000 rows: **2.6× faster than React 19**. Retained heap: **tied for the lightest on the board**.
+::: bench
+- **130 µs** to clear 1,000 rows, the fastest of ten frameworks in both runs
+- **2.6×** faster than React 19 building 10,000 rows
+- **Lightest** retained heap on the board, tied
+:::
 
 That is the top of the scoreboard. This post puts the whole thing on the table: every win, every tie and every loss in our benchmark record, with the numbers and the causes. We publish where we lose, so you can trust where we win.
 
@@ -191,4 +195,4 @@ npm create @pyreon/zero@latest
 
 - Docs: [pyreon.dev/docs](/docs). The rules that keep an app on the fast path: [the seven rules of fine-grained reactivity](/blog/seven-rules-of-fine-grained-reactivity).
 - Star the repo: [github.com/pyreon/pyreon](https://github.com/pyreon/pyreon)
-- Talk to us on [Discord](https://pyreon.dev/discord) or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues). Found a harness bug? That is our favourite kind of issue.
+- Questions, ideas, a bug: open an issue on [GitHub](https://github.com/pyreon/pyreon/issues), where every answer stays findable for the next person. Found a harness bug? That is our favourite kind of issue.

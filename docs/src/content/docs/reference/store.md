@@ -1,9 +1,7 @@
 ---
-title: "State Management — API Reference"
+title: "@pyreon/store — API Reference"
 description: "Global state management — Pinia-inspired composition stores returning StoreApi<T>"
 ---
-
-# @pyreon/store — API Reference
 
 > **Generated** from `store`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [store](/docs/store).
 

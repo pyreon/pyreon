@@ -6,6 +6,7 @@
 export type {
   ComponentRef,
   ControlKind,
+  ControlSource,
   PropControl,
   VariantAxis,
   ScenarioSource,
@@ -34,7 +35,7 @@ export type { VariantMatrix } from './variants'
 export { catalogReplacer, looksLikeVNode } from './serialize'
 
 export type { ContentBlocks, ContentShape, ContentSeed } from './content'
-export { CONTENT_KEYS, deriveContent, isContainer, isContentBlocks, isContentKey, materializeContent, PLACEHOLDER_IMAGE, seedArgs } from './content'
+export { argReader, CONTENT_KEYS, deriveContent, isContainer, isContentBlocks, isContentKey, materializeContent, mergeArgs, PLACEHOLDER_IMAGE, seedArgs, setArg } from './content'
 
 export type { AtlasExtension, AtlasWrapperProps } from './extension'
 export {

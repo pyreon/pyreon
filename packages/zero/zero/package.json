@@ -203,6 +203,11 @@
       "import": "./lib/preview.js",
       "types": "./lib/types/preview.d.ts"
     },
+    "./dev-overlay": {
+      "bun": "./src/dev-overlay.ts",
+      "import": "./lib/dev-overlay.js",
+      "types": "./lib/types/dev-overlay.d.ts"
+    },
     "./web-vitals": {
       "bun": "./src/web-vitals.ts",
       "import": "./lib/web-vitals.js",
@@ -251,6 +256,7 @@
     "vite": "^8.3.5"
   },
   "devDependencies": {
+    "@pyreon/ansi": "workspace:*",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",

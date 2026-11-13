@@ -74,6 +74,7 @@
     "test:e2e:edge-runtimes": "bun scripts/edge-runtimes/tools.ts && bun run --filter=@pyreon/example-edge-runtimes build:all && bunx playwright test --config=e2e-configs/edge-runtimes.config.ts",
     "test:e2e:ssg-subpath": "bunx playwright test --config=e2e-configs/ssg-subpath.config.ts",
     "test:e2e:https-dev": "bunx playwright test --config=e2e-configs/https-dev.config.ts",
+    "test:e2e:zero-dev-overlay": "bunx playwright test --config=e2e-configs/zero-dev-overlay.config.ts",
     "test:e2e:ssg-i18n": "bunx playwright test --config=e2e-configs/ssg-i18n.config.ts",
     "test:e2e:ssg-i18n-prefix": "bunx playwright test --config=e2e-configs/ssg-i18n-prefix.config.ts",
     "test:e2e:zero-islands": "bunx playwright test --config=e2e-configs/zero-islands.config.ts",
@@ -267,6 +268,54 @@
         "dep": "@pyreon/ansi",
         "code": "prod-import-of-dev-dep",
         "reason": "Same as @pyreon/cli: private workspace package, inlined at build, absent from the published output as an import."
+      },
+      {
+        "pkg": "@pyreon/zero",
+        "dep": "@pyreon/ansi",
+        "code": "prod-import-of-dev-dep",
+        "reason": "Same as @pyreon/cli: private workspace package (the shared CLI theme), inlined at build, absent from the published output as an import."
+      },
+      {
+        "pkg": "@pyreon/create-zero",
+        "dep": "@pyreon/ansi",
+        "code": "prod-import-of-dev-dep",
+        "reason": "Same as @pyreon/cli: private workspace package (the shared CLI theme), inlined at build, absent from the published output as an import."
+      },
+      {
+        "pkg": "@pyreon/create-multiplatform",
+        "dep": "@pyreon/ansi",
+        "code": "prod-import-of-dev-dep",
+        "reason": "Same as @pyreon/cli: private workspace package (the shared CLI theme), inlined at build, absent from the published output as an import."
+      },
+      {
+        "pkg": "@pyreon/native-cli",
+        "dep": "@pyreon/ansi",
+        "code": "prod-import-of-dev-dep",
+        "reason": "Same as @pyreon/cli: private workspace package (the shared CLI theme), inlined at build, absent from the published output as an import."
+      },
+      {
+        "pkg": "@pyreon/lathe",
+        "dep": "@pyreon/ansi",
+        "code": "prod-import-of-dev-dep",
+        "reason": "Same as @pyreon/cli: private workspace package (the shared CLI theme), inlined at build, absent from the published output as an import."
+      },
+      {
+        "pkg": "@pyreon/loom",
+        "dep": "@pyreon/ansi",
+        "code": "prod-import-of-dev-dep",
+        "reason": "Same as @pyreon/cli: private workspace package (the shared CLI theme), inlined at build, absent from the published output as an import."
+      },
+      {
+        "pkg": "@pyreon/atlas",
+        "dep": "@pyreon/ansi",
+        "code": "prod-import-of-dev-dep",
+        "reason": "Same as @pyreon/cli: private workspace package (the shared CLI theme), inlined at build, absent from the published output as an import."
+      },
+      {
+        "pkg": "@pyreon/zero-cli",
+        "dep": "@pyreon/ansi",
+        "code": "prod-import-of-dev-dep",
+        "reason": "Same as @pyreon/cli: private workspace package (the shared CLI theme), inlined at build, absent from the published output as an import."
       },
       {
         "pkg": "@pyreon/lathe",

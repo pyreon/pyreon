@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { theme } from './index'
+import { brandTheme, theme } from './index'
 
 /**
  * Real-browser smoke test for `@pyreon/ui-theme`.
@@ -28,5 +28,6 @@ describe('@pyreon/ui-theme — browser smoke', () => {
     // ever picks up a function value or circular ref, those pipelines
     // break silently — this catches it before users hit it.
     expect(() => JSON.parse(JSON.stringify(theme))).not.toThrow()
+    expect(JSON.parse(JSON.stringify(brandTheme))).toEqual(brandTheme)
   })
 })

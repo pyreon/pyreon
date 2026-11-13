@@ -13,7 +13,9 @@ process.stdout.on('error', (error) => {
 
 runCli(process.argv.slice(2))
   .then((code) => {
-    if (code) process.exit(code)
+    // `exitCode`, not `process.exit()`: on a pipe stdout is written
+    // asynchronously, and exiting at once cuts the report off mid-line.
+    if (code) process.exitCode = code
   })
   .catch((error) => {
     process.stderr.write(`loom: ${error?.message ?? error}\n`)

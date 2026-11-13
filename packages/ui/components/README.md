@@ -191,6 +191,10 @@ ARIA responsibility is split by where behaviour lives:
 
 `@pyreon/ui-theme` globally augments `ThemeDefault extends Theme` and `StylesDefault extends ITheme` — consumer apps MUST NOT re-augment those interfaces (would trigger TS2320). The `t` parameter inside `.theme()` / `.states()` / `.sizes()` / `.variants()` is typed as the full theme shape from `@pyreon/ui-theme`.
 
+### Text on fills and tints
+
+A component that puts text on a coloured fill reads that colour's `contrast`, and its hover fill from `hover`: `solidFill(t, 'primary')` from `factory.ts` returns all three. Text in a tone (outline, subtle, ghost and link buttons, Badge, Alert, NavLink, the selected Tab) reads `tintText(t, m, tone)`, which is the theme's `text` in light mode and `textDark` in dark mode. Never assume white text on a fill, and never use an opacity step (`[700]`, `[800]`) as a text colour. `text-on-fill-contrast.browser.test.tsx` measures every such component in real Chromium, with the default and the brand theme, in both modes, against 4.5:1.
+
 ## Gotchas
 
 - **Dimensions are string-valued.** `state="primary"` not `state` (boolean). The TS types reject the boolean form.

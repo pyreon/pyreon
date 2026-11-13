@@ -34,6 +34,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@pyreon/ansi": "workspace:*",
     "@pyreon/compiler": "workspace:*",
     "@pyreon/lint": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",

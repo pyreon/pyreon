@@ -19,7 +19,7 @@ import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config
 export default definePlaywrightConfig({
   testDir: '../e2e',
   projects: [
-    { name: 'atlas-workshop', testMatch: /atlas-workshop\.spec\.ts$/, port: 5208 },
+    { name: 'atlas-workshop', testMatch: /atlas-(workshop|shell)\.spec\.ts$/, port: 5208 },
   ],
   webServer: [viteDevServer('@pyreon/example-atlas-workshop', 5208)],
 })

@@ -1,0 +1,404 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`pyreon add > renders at 16 colours 1`] = `
+"␛[1mpyreon add␛[22m ␛[90m· @pyreon/query, @pyreon/not-a-recipe · bun␛[39m
+  ␛[90m$␛[39m bun add @pyreon/query @pyreon/not-a-recipe
+
+  ␛[1m@pyreon/query␛[22m ␛[90m· TanStack Query adapter — server-state caching, mutations, infinite queries.␛[39m
+    ␛[31m1.␛[39m Add the provider near your app root:
+      import { QueryClient, QueryClientProvider } from '@pyreon/query'
+      const queryClient = new QueryClient()
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    ␛[31m2.␛[39m Use it:
+      import { useQuery } from '@pyreon/query'
+      // options are a FUNCTION so queryKey can read signals + refetch reactively
+      const todos = useQuery(() => ({ queryKey: ['todos', id()], queryFn: fetchTodos }))
+    ␛[90mdocs␛[39m  ␛[36mhttps://pyreon.dev/docs/query␛[39m
+
+  ␛[1m@pyreon/not-a-recipe␛[22m
+    no setup recipe yet ␛[90m—␛[39m see the docs
+    ␛[90mdocs␛[39m  ␛[36mhttps://pyreon.dev/docs␛[39m
+
+␛[32m✓␛[39m installed 2 packages ␛[90m· bun · 2.4 s␛[39m"
+`;
+
+exports[`pyreon add > renders at 256 dark 1`] = `
+"␛[1mpyreon add␛[22m ␛[38;5;103m· @pyreon/query, @pyreon/not-a-recipe · bun␛[39m
+  ␛[38;5;103m$␛[39m bun add @pyreon/query @pyreon/not-a-recipe
+
+  ␛[1m@pyreon/query␛[22m ␛[38;5;103m· TanStack Query adapter — server-state caching, mutations, infinite queries.␛[39m
+    ␛[38;5;202m1.␛[39m Add the provider near your app root:
+      import { QueryClient, QueryClientProvider } from '@pyreon/query'
+      const queryClient = new QueryClient()
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    ␛[38;5;202m2.␛[39m Use it:
+      import { useQuery } from '@pyreon/query'
+      // options are a FUNCTION so queryKey can read signals + refetch reactively
+      const todos = useQuery(() => ({ queryKey: ['todos', id()], queryFn: fetchTodos }))
+    ␛[38;5;103mdocs␛[39m  ␛[38;5;45mhttps://pyreon.dev/docs/query␛[39m
+
+  ␛[1m@pyreon/not-a-recipe␛[22m
+    no setup recipe yet ␛[38;5;103m—␛[39m see the docs
+    ␛[38;5;103mdocs␛[39m  ␛[38;5;45mhttps://pyreon.dev/docs␛[39m
+
+␛[38;5;78m✓␛[39m installed 2 packages ␛[38;5;103m· bun · 2.4 s␛[39m"
+`;
+
+exports[`pyreon add > renders at 256 light 1`] = `
+"␛[1mpyreon add␛[22m ␛[38;5;59m· @pyreon/query, @pyreon/not-a-recipe · bun␛[39m
+  ␛[38;5;59m$␛[39m bun add @pyreon/query @pyreon/not-a-recipe
+
+  ␛[1m@pyreon/query␛[22m ␛[38;5;59m· TanStack Query adapter — server-state caching, mutations, infinite queries.␛[39m
+    ␛[38;5;160m1.␛[39m Add the provider near your app root:
+      import { QueryClient, QueryClientProvider } from '@pyreon/query'
+      const queryClient = new QueryClient()
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    ␛[38;5;160m2.␛[39m Use it:
+      import { useQuery } from '@pyreon/query'
+      // options are a FUNCTION so queryKey can read signals + refetch reactively
+      const todos = useQuery(() => ({ queryKey: ['todos', id()], queryFn: fetchTodos }))
+    ␛[38;5;59mdocs␛[39m  ␛[38;5;24mhttps://pyreon.dev/docs/query␛[39m
+
+  ␛[1m@pyreon/not-a-recipe␛[22m
+    no setup recipe yet ␛[38;5;59m—␛[39m see the docs
+    ␛[38;5;59mdocs␛[39m  ␛[38;5;24mhttps://pyreon.dev/docs␛[39m
+
+␛[38;5;22m✓␛[39m installed 2 packages ␛[38;5;59m· bun · 2.4 s␛[39m"
+`;
+
+exports[`pyreon add > renders at ascii 1`] = `
+"pyreon add - @pyreon/query, @pyreon/not-a-recipe - bun
+  $ bun add @pyreon/query @pyreon/not-a-recipe
+
+  @pyreon/query - TanStack Query adapter — server-state caching, mutations, infinite queries.
+    1. Add the provider near your app root:
+      import { QueryClient, QueryClientProvider } from '@pyreon/query'
+      const queryClient = new QueryClient()
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    2. Use it:
+      import { useQuery } from '@pyreon/query'
+      // options are a FUNCTION so queryKey can read signals + refetch reactively
+      const todos = useQuery(() => ({ queryKey: ['todos', id()], queryFn: fetchTodos }))
+    docs  https://pyreon.dev/docs/query
+
+  @pyreon/not-a-recipe
+    no setup recipe yet - see the docs
+    docs  https://pyreon.dev/docs
+
+v installed 2 packages - bun - 2.4 s"
+`;
+
+exports[`pyreon add > renders at plain 1`] = `
+"pyreon add · @pyreon/query, @pyreon/not-a-recipe · bun
+  $ bun add @pyreon/query @pyreon/not-a-recipe
+
+  @pyreon/query · TanStack Query adapter — server-state caching, mutations, infinite queries.
+    1. Add the provider near your app root:
+      import { QueryClient, QueryClientProvider } from '@pyreon/query'
+      const queryClient = new QueryClient()
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    2. Use it:
+      import { useQuery } from '@pyreon/query'
+      // options are a FUNCTION so queryKey can read signals + refetch reactively
+      const todos = useQuery(() => ({ queryKey: ['todos', id()], queryFn: fetchTodos }))
+    docs  https://pyreon.dev/docs/query
+
+  @pyreon/not-a-recipe
+    no setup recipe yet — see the docs
+    docs  https://pyreon.dev/docs
+
+✓ installed 2 packages · bun · 2.4 s"
+`;
+
+exports[`pyreon add > renders at truecolor dark 1`] = `
+"␛[1mpyreon add␛[22m ␛[38;2;138;134;150m· @pyreon/query, @pyreon/not-a-recipe · bun␛[39m
+  ␛[38;2;138;134;150m$␛[39m bun add @pyreon/query @pyreon/not-a-recipe
+
+  ␛[1m@pyreon/query␛[22m ␛[38;2;138;134;150m· TanStack Query adapter — server-state caching, mutations, infinite queries.␛[39m
+    ␛[38;2;255;94;26m1.␛[39m Add the provider near your app root:
+      import { QueryClient, QueryClientProvider } from '@pyreon/query'
+      const queryClient = new QueryClient()
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    ␛[38;2;255;94;26m2.␛[39m Use it:
+      import { useQuery } from '@pyreon/query'
+      // options are a FUNCTION so queryKey can read signals + refetch reactively
+      const todos = useQuery(() => ({ queryKey: ['todos', id()], queryFn: fetchTodos }))
+    ␛[38;2;138;134;150mdocs␛[39m  ␛[38;2;34;211;238mhttps://pyreon.dev/docs/query␛[39m
+
+  ␛[1m@pyreon/not-a-recipe␛[22m
+    no setup recipe yet ␛[38;2;138;134;150m—␛[39m see the docs
+    ␛[38;2;138;134;150mdocs␛[39m  ␛[38;2;34;211;238mhttps://pyreon.dev/docs␛[39m
+
+␛[38;2;74;222;128m✓␛[39m installed 2 packages ␛[38;2;138;134;150m· bun · 2.4 s␛[39m"
+`;
+
+exports[`pyreon add > renders at truecolor light 1`] = `
+"␛[1mpyreon add␛[22m ␛[38;2;94;90;105m· @pyreon/query, @pyreon/not-a-recipe · bun␛[39m
+  ␛[38;2;94;90;105m$␛[39m bun add @pyreon/query @pyreon/not-a-recipe
+
+  ␛[1m@pyreon/query␛[22m ␛[38;2;94;90;105m· TanStack Query adapter — server-state caching, mutations, infinite queries.␛[39m
+    ␛[38;2;180;58;14m1.␛[39m Add the provider near your app root:
+      import { QueryClient, QueryClientProvider } from '@pyreon/query'
+      const queryClient = new QueryClient()
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    ␛[38;2;180;58;14m2.␛[39m Use it:
+      import { useQuery } from '@pyreon/query'
+      // options are a FUNCTION so queryKey can read signals + refetch reactively
+      const todos = useQuery(() => ({ queryKey: ['todos', id()], queryFn: fetchTodos }))
+    ␛[38;2;94;90;105mdocs␛[39m  ␛[38;2;10;110;137mhttps://pyreon.dev/docs/query␛[39m
+
+  ␛[1m@pyreon/not-a-recipe␛[22m
+    no setup recipe yet ␛[38;2;94;90;105m—␛[39m see the docs
+    ␛[38;2;94;90;105mdocs␛[39m  ␛[38;2;10;110;137mhttps://pyreon.dev/docs␛[39m
+
+␛[38;2;21;112;58m✓␛[39m installed 2 packages ␛[38;2;94;90;105m· bun · 2.4 s␛[39m"
+`;
+
+exports[`pyreon plain > a narrow window stacks the table and never cuts the long path 1`] = `
+"pyreon plain · Plain Mode readiness · 5 files
+
+  src/Counter.tsx
+    ✓ already plain
+  src/Profile.tsx
+    ✓ converts fully · 3 bindings  → written
+  src/components/settings/notifications/EmailDigestPreferencesPanel.tsx
+    ! partial · 1 convert, 1 declined
+    ! signal-as-value · items: passed to a function as a
+       value, so it must stay a signal
+       ↳ src/components/settings/notifications/EmailDigestPreferencesPanel.tsx:14:9
+  src/store.ts
+    ! declined · 1
+    ! exported-signal · count: exported, so another
+       module may call it
+       ↳ src/store.ts:3:14
+
+  Declined shapes (build-next histogram)
+    signal-as-value  1
+    exported-signal  1
+
+  ℹ 4 test files skipped — Plain Mode needs the pyreon()
+    plugin, which test runners often lack. Pass
+    --include-tests if yours has it.
+
+  next: pyreon plain src --write to apply
+
+! 5 files scanned · 1 already plain · 2 convertible
+  1 declined · 1 nothing to convert · 1 written · 380 ms"
+`;
+
+exports[`pyreon plain > renders at 16 colours 1`] = `
+"␛[1mpyreon plain␛[22m ␛[90m· Plain Mode readiness · 5 files␛[39m
+
+  ␛[4msrc/Counter.tsx␛[24m
+    ␛[32m✓␛[39m already plain
+  ␛[4msrc/Profile.tsx␛[24m
+    ␛[32m✓␛[39m converts fully ␛[90m· 3 bindings␛[39m  ␛[32m→ written␛[39m
+  ␛[4msrc/components/settings/notifications/EmailDigestPreferencesPanel.tsx␛[24m
+    ␛[33m!␛[39m partial ␛[90m· 1 convert, 1 declined␛[39m
+    ␛[33m!␛[39m ␛[1msignal-as-value␛[22m ␛[90m·␛[39m items: passed to a function as a value, so it must stay a signal
+       ␛[90m↳␛[39m ␛]8;;file:///repo/src/components/settings/notifications/EmailDigestPreferencesPanel.tsx#L14␛\\␛[4m␛[36msrc/components/settings/notifications/EmailDigestPreferencesPanel.tsx:14:9␛[39m␛[24m␛]8;;␛\\
+  ␛[4msrc/store.ts␛[24m
+    ␛[33m!␛[39m declined ␛[90m· 1␛[39m
+    ␛[33m!␛[39m ␛[1mexported-signal␛[22m ␛[90m·␛[39m count: exported, so another module may call it
+       ␛[90m↳␛[39m ␛]8;;file:///repo/src/store.ts#L3␛\\␛[4m␛[36msrc/store.ts:3:14␛[39m␛[24m␛]8;;␛\\
+
+  ␛[1mDeclined shapes␛[22m ␛[90m(build-next histogram)␛[39m
+    signal-as-value  1
+    exported-signal  1
+
+  ␛[36mℹ␛[39m 4 test files skipped — Plain Mode needs the pyreon() plugin, which test runners often lack. Pass
+    --include-tests if yours has it.
+
+  ␛[90mnext:␛[39m pyreon plain src --write ␛[90mto apply␛[39m
+
+␛[33m!␛[39m 5 files scanned ␛[90m· 1 already plain␛[39m ␛[90m· 2 convertible␛[39m ␛[90m· 1 declined␛[39m ␛[90m· 1 nothing to convert␛[39m ␛[90m· 1 written␛[39m
+  ␛[90m380 ms␛[39m"
+`;
+
+exports[`pyreon plain > renders at 256 dark 1`] = `
+"␛[1mpyreon plain␛[22m ␛[38;5;103m· Plain Mode readiness · 5 files␛[39m
+
+  ␛[4msrc/Counter.tsx␛[24m
+    ␛[38;5;78m✓␛[39m already plain
+  ␛[4msrc/Profile.tsx␛[24m
+    ␛[38;5;78m✓␛[39m converts fully ␛[38;5;103m· 3 bindings␛[39m  ␛[38;5;78m→ written␛[39m
+  ␛[4msrc/components/settings/notifications/EmailDigestPreferencesPanel.tsx␛[24m
+    ␛[38;5;220m!␛[39m partial ␛[38;5;103m· 1 convert, 1 declined␛[39m
+    ␛[38;5;220m!␛[39m ␛[1msignal-as-value␛[22m ␛[38;5;103m·␛[39m items: passed to a function as a value, so it must stay a signal
+       ␛[38;5;103m↳␛[39m ␛]8;;file:///repo/src/components/settings/notifications/EmailDigestPreferencesPanel.tsx#L14␛\\␛[4m␛[38;5;45msrc/components/settings/notifications/EmailDigestPreferencesPanel.tsx:14:9␛[39m␛[24m␛]8;;␛\\
+  ␛[4msrc/store.ts␛[24m
+    ␛[38;5;220m!␛[39m declined ␛[38;5;103m· 1␛[39m
+    ␛[38;5;220m!␛[39m ␛[1mexported-signal␛[22m ␛[38;5;103m·␛[39m count: exported, so another module may call it
+       ␛[38;5;103m↳␛[39m ␛]8;;file:///repo/src/store.ts#L3␛\\␛[4m␛[38;5;45msrc/store.ts:3:14␛[39m␛[24m␛]8;;␛\\
+
+  ␛[1mDeclined shapes␛[22m ␛[38;5;103m(build-next histogram)␛[39m
+    signal-as-value  1
+    exported-signal  1
+
+  ␛[38;5;45mℹ␛[39m 4 test files skipped — Plain Mode needs the pyreon() plugin, which test runners often lack. Pass
+    --include-tests if yours has it.
+
+  ␛[38;5;103mnext:␛[39m pyreon plain src --write ␛[38;5;103mto apply␛[39m
+
+␛[38;5;220m!␛[39m 5 files scanned ␛[38;5;103m· 1 already plain␛[39m ␛[38;5;103m· 2 convertible␛[39m ␛[38;5;103m· 1 declined␛[39m ␛[38;5;103m· 1 nothing to convert␛[39m ␛[38;5;103m· 1 written␛[39m
+  ␛[38;5;103m380 ms␛[39m"
+`;
+
+exports[`pyreon plain > renders at 256 light 1`] = `
+"␛[1mpyreon plain␛[22m ␛[38;5;59m· Plain Mode readiness · 5 files␛[39m
+
+  ␛[4msrc/Counter.tsx␛[24m
+    ␛[38;5;22m✓␛[39m already plain
+  ␛[4msrc/Profile.tsx␛[24m
+    ␛[38;5;22m✓␛[39m converts fully ␛[38;5;59m· 3 bindings␛[39m  ␛[38;5;22m→ written␛[39m
+  ␛[4msrc/components/settings/notifications/EmailDigestPreferencesPanel.tsx␛[24m
+    ␛[38;5;94m!␛[39m partial ␛[38;5;59m· 1 convert, 1 declined␛[39m
+    ␛[38;5;94m!␛[39m ␛[1msignal-as-value␛[22m ␛[38;5;59m·␛[39m items: passed to a function as a value, so it must stay a signal
+       ␛[38;5;59m↳␛[39m ␛]8;;file:///repo/src/components/settings/notifications/EmailDigestPreferencesPanel.tsx#L14␛\\␛[4m␛[38;5;24msrc/components/settings/notifications/EmailDigestPreferencesPanel.tsx:14:9␛[39m␛[24m␛]8;;␛\\
+  ␛[4msrc/store.ts␛[24m
+    ␛[38;5;94m!␛[39m declined ␛[38;5;59m· 1␛[39m
+    ␛[38;5;94m!␛[39m ␛[1mexported-signal␛[22m ␛[38;5;59m·␛[39m count: exported, so another module may call it
+       ␛[38;5;59m↳␛[39m ␛]8;;file:///repo/src/store.ts#L3␛\\␛[4m␛[38;5;24msrc/store.ts:3:14␛[39m␛[24m␛]8;;␛\\
+
+  ␛[1mDeclined shapes␛[22m ␛[38;5;59m(build-next histogram)␛[39m
+    signal-as-value  1
+    exported-signal  1
+
+  ␛[38;5;24mℹ␛[39m 4 test files skipped — Plain Mode needs the pyreon() plugin, which test runners often lack. Pass
+    --include-tests if yours has it.
+
+  ␛[38;5;59mnext:␛[39m pyreon plain src --write ␛[38;5;59mto apply␛[39m
+
+␛[38;5;94m!␛[39m 5 files scanned ␛[38;5;59m· 1 already plain␛[39m ␛[38;5;59m· 2 convertible␛[39m ␛[38;5;59m· 1 declined␛[39m ␛[38;5;59m· 1 nothing to convert␛[39m ␛[38;5;59m· 1 written␛[39m
+  ␛[38;5;59m380 ms␛[39m"
+`;
+
+exports[`pyreon plain > renders at ascii 1`] = `
+"pyreon plain - Plain Mode readiness - 5 files
+
+  src/Counter.tsx
+    v already plain
+  src/Profile.tsx
+    v converts fully - 3 bindings  -> written
+  src/components/settings/notifications/EmailDigestPreferencesPanel.tsx
+    ! partial - 1 convert, 1 declined
+    ! signal-as-value - items: passed to a function as a value, so it must stay a signal
+       -> src/components/settings/notifications/EmailDigestPreferencesPanel.tsx:14:9
+  src/store.ts
+    ! declined - 1
+    ! exported-signal - count: exported, so another module may call it
+       -> src/store.ts:3:14
+
+  Declined shapes (build-next histogram)
+    signal-as-value  1
+    exported-signal  1
+
+  i 4 test files skipped - Plain Mode needs the pyreon() plugin, which test runners often lack. Pass
+    --include-tests if yours has it.
+
+  next: pyreon plain src --write to apply
+
+! 5 files scanned - 1 already plain - 2 convertible - 1 declined - 1 nothing to convert - 1 written
+  380 ms"
+`;
+
+exports[`pyreon plain > renders at plain 1`] = `
+"pyreon plain · Plain Mode readiness · 5 files
+
+  src/Counter.tsx
+    ✓ already plain
+  src/Profile.tsx
+    ✓ converts fully · 3 bindings  → written
+  src/components/settings/notifications/EmailDigestPreferencesPanel.tsx
+    ! partial · 1 convert, 1 declined
+    ! signal-as-value · items: passed to a function as a value, so it must stay a signal
+       ↳ src/components/settings/notifications/EmailDigestPreferencesPanel.tsx:14:9
+  src/store.ts
+    ! declined · 1
+    ! exported-signal · count: exported, so another module may call it
+       ↳ src/store.ts:3:14
+
+  Declined shapes (build-next histogram)
+    signal-as-value  1
+    exported-signal  1
+
+  ℹ 4 test files skipped — Plain Mode needs the pyreon() plugin, which test runners often lack. Pass
+    --include-tests if yours has it.
+
+  next: pyreon plain src --write to apply
+
+! 5 files scanned · 1 already plain · 2 convertible · 1 declined · 1 nothing to convert · 1 written
+  380 ms"
+`;
+
+exports[`pyreon plain > renders at truecolor dark 1`] = `
+"␛[1mpyreon plain␛[22m ␛[38;2;138;134;150m· Plain Mode readiness · 5 files␛[39m
+
+  ␛[4msrc/Counter.tsx␛[24m
+    ␛[38;2;74;222;128m✓␛[39m already plain
+  ␛[4msrc/Profile.tsx␛[24m
+    ␛[38;2;74;222;128m✓␛[39m converts fully ␛[38;2;138;134;150m· 3 bindings␛[39m  ␛[38;2;74;222;128m→ written␛[39m
+  ␛[4msrc/components/settings/notifications/EmailDigestPreferencesPanel.tsx␛[24m
+    ␛[38;2;250;204;21m!␛[39m partial ␛[38;2;138;134;150m· 1 convert, 1 declined␛[39m
+    ␛[38;2;250;204;21m!␛[39m ␛[1msignal-as-value␛[22m ␛[38;2;138;134;150m·␛[39m items: passed to a function as a value, so it must stay a signal
+       ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///repo/src/components/settings/notifications/EmailDigestPreferencesPanel.tsx#L14␛\\␛[4m␛[38;2;34;211;238msrc/components/settings/notifications/EmailDigestPreferencesPanel.tsx:14:9␛[39m␛[24m␛]8;;␛\\
+  ␛[4msrc/store.ts␛[24m
+    ␛[38;2;250;204;21m!␛[39m declined ␛[38;2;138;134;150m· 1␛[39m
+    ␛[38;2;250;204;21m!␛[39m ␛[1mexported-signal␛[22m ␛[38;2;138;134;150m·␛[39m count: exported, so another module may call it
+       ␛[38;2;138;134;150m↳␛[39m ␛]8;;file:///repo/src/store.ts#L3␛\\␛[4m␛[38;2;34;211;238msrc/store.ts:3:14␛[39m␛[24m␛]8;;␛\\
+
+  ␛[1mDeclined shapes␛[22m ␛[38;2;138;134;150m(build-next histogram)␛[39m
+    signal-as-value  1
+    exported-signal  1
+
+  ␛[38;2;34;211;238mℹ␛[39m 4 test files skipped — Plain Mode needs the pyreon() plugin, which test runners often lack. Pass
+    --include-tests if yours has it.
+
+  ␛[38;2;138;134;150mnext:␛[39m pyreon plain src --write ␛[38;2;138;134;150mto apply␛[39m
+
+␛[38;2;250;204;21m!␛[39m 5 files scanned ␛[38;2;138;134;150m· 1 already plain␛[39m ␛[38;2;138;134;150m· 2 convertible␛[39m ␛[38;2;138;134;150m· 1 declined␛[39m ␛[38;2;138;134;150m· 1 nothing to convert␛[39m ␛[38;2;138;134;150m· 1 written␛[39m
+  ␛[38;2;138;134;150m380 ms␛[39m"
+`;
+
+exports[`pyreon plain > renders at truecolor light 1`] = `
+"␛[1mpyreon plain␛[22m ␛[38;2;94;90;105m· Plain Mode readiness · 5 files␛[39m
+
+  ␛[4msrc/Counter.tsx␛[24m
+    ␛[38;2;21;112;58m✓␛[39m already plain
+  ␛[4msrc/Profile.tsx␛[24m
+    ␛[38;2;21;112;58m✓␛[39m converts fully ␛[38;2;94;90;105m· 3 bindings␛[39m  ␛[38;2;21;112;58m→ written␛[39m
+  ␛[4msrc/components/settings/notifications/EmailDigestPreferencesPanel.tsx␛[24m
+    ␛[38;2;138;90;0m!␛[39m partial ␛[38;2;94;90;105m· 1 convert, 1 declined␛[39m
+    ␛[38;2;138;90;0m!␛[39m ␛[1msignal-as-value␛[22m ␛[38;2;94;90;105m·␛[39m items: passed to a function as a value, so it must stay a signal
+       ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///repo/src/components/settings/notifications/EmailDigestPreferencesPanel.tsx#L14␛\\␛[4m␛[38;2;10;110;137msrc/components/settings/notifications/EmailDigestPreferencesPanel.tsx:14:9␛[39m␛[24m␛]8;;␛\\
+  ␛[4msrc/store.ts␛[24m
+    ␛[38;2;138;90;0m!␛[39m declined ␛[38;2;94;90;105m· 1␛[39m
+    ␛[38;2;138;90;0m!␛[39m ␛[1mexported-signal␛[22m ␛[38;2;94;90;105m·␛[39m count: exported, so another module may call it
+       ␛[38;2;94;90;105m↳␛[39m ␛]8;;file:///repo/src/store.ts#L3␛\\␛[4m␛[38;2;10;110;137msrc/store.ts:3:14␛[39m␛[24m␛]8;;␛\\
+
+  ␛[1mDeclined shapes␛[22m ␛[38;2;94;90;105m(build-next histogram)␛[39m
+    signal-as-value  1
+    exported-signal  1
+
+  ␛[38;2;10;110;137mℹ␛[39m 4 test files skipped — Plain Mode needs the pyreon() plugin, which test runners often lack. Pass
+    --include-tests if yours has it.
+
+  ␛[38;2;94;90;105mnext:␛[39m pyreon plain src --write ␛[38;2;94;90;105mto apply␛[39m
+
+␛[38;2;138;90;0m!␛[39m 5 files scanned ␛[38;2;94;90;105m· 1 already plain␛[39m ␛[38;2;94;90;105m· 2 convertible␛[39m ␛[38;2;94;90;105m· 1 declined␛[39m ␛[38;2;94;90;105m· 1 nothing to convert␛[39m ␛[38;2;94;90;105m· 1 written␛[39m
+  ␛[38;2;94;90;105m380 ms␛[39m"
+`;

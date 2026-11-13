@@ -1125,11 +1125,10 @@ still typechecks — against the new types, which agree with the new spec and wi
 nothing the app was written for. The failure arrives at runtime, as a value that
 is suddenly `undefined`.
 
-```
-contract  2 breaking  1 additive
-  ! [field-removed]     Book.pages   was integer
-  ! [field-now-optional] Book.status  required → optional
-  + [field-added]       Book.isbn    string (optional)
+```text
+    contract       1 breaking · 1 additive
+      − breaking  field-removed  Book.pages  was integer (optional)
+      + additive  field-added    Book.dueAt  date-time (optional)
 ```
 
 Severity is always from the CLIENT's side, which is not symmetric with the

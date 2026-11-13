@@ -3,6 +3,10 @@ title: Sync
 description: Local-first, CRDT-backed sync for Pyreon signals — a synced signal is just a signal, so a remote change drives one surgical fine-grained DOM update.
 ---
 
+<ProductPitch id="sync" />
+
+<LiveDemo id="sync" />
+
 `@pyreon/sync` is a local-first / collaborative sync layer built directly on Pyreon's reactivity. A synced value **is a normal `Signal`** — so when a remote peer changes it, the update becomes one `signal.set`, which drives **one fine-grained DOM update**. No virtual-DOM re-render, no diff. This is the architectural reason signals are the ideal substrate for sync: the surgical-update path you already get for local state is exactly the path a remote op rides.
 
 <PackageBadge name="@pyreon/sync" href="/docs/sync" />
@@ -675,3 +679,11 @@ The root entry also ships a pure-TypeScript engine with no `yjs`: a last-writer-
 | `SyncServer` | type | `{ port; rooms; close() }`. |
 | `AuthorizeContext` | type | `{ room; token; req }` passed to `authorize`. |
 | `AuthorizeResult` | type | `boolean \| 'read' \| 'write'` — `'read'` admits a read-only client (its document updates are dropped); `false` rejects (close 4401). |
+
+<BenchCallout id="sync" />
+
+<ComingFrom id="sync" />
+
+<InlineSell id="storage" />
+
+<CrossSell id="sync" />

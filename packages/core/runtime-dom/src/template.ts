@@ -1,5 +1,14 @@
 import type { NativeItem, VNodeChild } from '@pyreon/core'
-import { _noopDispose, _rdNodeId, getContextOwner, renderEffect } from '@pyreon/reactivity'
+import {
+  _noopDispose,
+  _rdCloseBindingFrame,
+  _rdLabelBinding,
+  _rdLabelDirect,
+  _rdNodeId,
+  _rdOpenBindingFrame,
+  getContextOwner,
+  renderEffect,
+} from '@pyreon/reactivity'
 import { _tagTextBinding } from './binding-registry'
 import {
   _adoptingCompiledBind,
@@ -9,7 +18,7 @@ import {
   reportFirstText,
   reportTextWrite,
 } from './hydration-debug'
-import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, SVG_TAGS, type PolyTextCore } from './mount'
+import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, type PolyTextCore } from './mount'
 import { _bindEvent } from './props'
 
 // Dev-mode gates in this file use the bare bundler-agnostic
@@ -430,6 +439,7 @@ export function _bindText(
             const core = createPolyTextCore(node, parent, ownerAtSetup)
             core.apply(v as VNodeChild)
             const unsub = source.direct!(() => core.apply(source._v as VNodeChild))
+            if (process.env.NODE_ENV !== 'production') _rdLabelDirect(unsub, null, 'child', parent)
             disposer = () => {
               unsub()
               core.dispose()
@@ -454,7 +464,14 @@ export function _bindText(
     }
     // Upgraded during the initial call → the core updater is already
     // subscribed; otherwise wire the text updater now.
-    if (disposer === null) disposer = source.direct(textUpdate)
+    if (disposer === null) {
+      disposer = source.direct(textUpdate)
+      // Dev: name the graph node `direct()` registered for this updater, at
+      // the compiled template that emitted the call (skipFrames=1 skips
+      // `_bindText`).
+      if (process.env.NODE_ENV !== 'production')
+        _rdLabelBinding(textUpdate, 'text', node, undefined, 1, true)
+    }
     return () => disposer!()
   }
   // Fallback: bare callable. Use the compiler-provided receiver/caller when
@@ -493,6 +510,8 @@ export function _bindText(
       written = next
     }
   })
+  if (process.env.NODE_ENV !== 'production')
+    _rdLabelBinding(disposeEffect, 'text', node, undefined, 1)
   // Dead binding that stayed text: no re-run can happen and no subtree exists.
   if (disposeEffect === _noopDispose && core === null) return _noopDispose
   return () => {
@@ -533,14 +552,30 @@ export function _bindDirect(
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.bindDirect')
   // Fast path: source has .direct() (signal or computed)
   if (source.direct) {
+    // Dev: the initial write runs inside a binding-label frame so the compiled
+    // updater's DOM setter (`(v) => _setAttr(el, "aria-busy", v)`) names the
+    // binding, then the node `direct()` registered is labelled (`dom` when no
+    // setter reported a write) and its disposer tagged. One body for both
+    // builds: in production the dev calls fold away and `dispose` collapses
+    // into the return. No try/finally — Bun keeps an emptied `finally {}`; see
+    // `renderEffect` for why a frame left open by a throw is harmless.
+    if (process.env.NODE_ENV !== 'production') _rdOpenBindingFrame()
     updater(source._v)
-    return source.direct(() => updater(source._v))
+    if (process.env.NODE_ENV !== 'production') _rdCloseBindingFrame()
+    const dispose = source.direct(() => updater(source._v))
+    if (process.env.NODE_ENV !== 'production') _rdLabelDirect(dispose, 1)
+    return dispose
   }
   // Fallback: bare callable. Use the compiler-provided receiver/caller if there
   // is one (preserves `this` for member-expression sources); otherwise call
   // source directly.
   const fn = resolveSlowCaller(source, caller, receiver)
-  return renderEffect(() => updater(fn()))
+  const dispose = renderEffect(() => updater(fn()))
+  // Dev: keep the label the updater's DOM setter reported; point the location
+  // at the compiled template rather than at this helper.
+  if (process.env.NODE_ENV !== 'production')
+    _rdLabelBinding(dispose, null, null, undefined, 1)
+  return dispose
 }
 
 // ─── Compiler-facing template API ─────────────────────────────────────────────
@@ -597,12 +632,28 @@ let _freshBind = false
  *   return () => { __d0() };
  * })
  */
-// SVG tags that are ALSO valid HTML — a template rooted at one of these is
-// almost always the HTML element, so do NOT SVG-wrap it. Every other entry in
-// SVG_TAGS is namespace-unambiguous. (MathML is the same shape of bug but has no
-// real template-rooted instances, and happy-dom can't parse MathML foreign
-// content to verify a fix, so it is deliberately out of scope.)
-const SVG_ROOT_EXCLUDE = new Set(['svg', 'title'])
+// Every SVG element name (SVG 1.1 and SVG 2, case-sensitive) that is NOT also an
+// HTML element name. A template rooted at one of these is SVG content; the
+// names HTML shares (`a`, `script`, `style`, `title`, `font`) are left out, since
+// a template rooted at one is almost always the HTML element, and `svg` opens
+// SVG content by itself. The list has to be complete: a missing name
+// (`feDropShadow` was one) parses as an inert HTML element. MathML is the same
+// shape of bug but has no real template-rooted instances, and happy-dom cannot
+// parse MathML foreign content to verify a fix, so it is out of scope.
+const SVG_ROOT_TAGS = new Set([
+  'altGlyph', 'altGlyphDef', 'altGlyphItem', 'animate', 'animateColor', 'animateMotion',
+  'animateTransform', 'circle', 'clipPath', 'color-profile', 'cursor', 'defs', 'desc', 'discard',
+  'ellipse', 'feBlend', 'feColorMatrix', 'feComponentTransfer', 'feComposite',
+  'feConvolveMatrix', 'feDiffuseLighting', 'feDisplacementMap', 'feDistantLight',
+  'feDropShadow', 'feFlood', 'feFuncA', 'feFuncB', 'feFuncG', 'feFuncR', 'feGaussianBlur',
+  'feImage', 'feMerge', 'feMergeNode', 'feMorphology', 'feOffset', 'fePointLight',
+  'feSpecularLighting', 'feSpotLight', 'feTile', 'feTurbulence', 'filter', 'font-face',
+  'font-face-format', 'font-face-name', 'font-face-src', 'font-face-uri', 'foreignObject', 'g',
+  'glyph', 'glyphRef', 'hkern', 'image', 'line', 'linearGradient', 'marker', 'mask',
+  'metadata', 'missing-glyph', 'mpath', 'path', 'pattern', 'polygon', 'polyline',
+  'radialGradient', 'rect', 'set', 'stop', 'switch', 'symbol', 'text', 'textPath', 'tref',
+  'tspan', 'use', 'view', 'vkern',
+])
 
 /**
  * Whether a template STRING is rooted at a bare SVG element — `<g>`, `<path>`,
@@ -620,7 +671,7 @@ function isSvgRooted(html: string): boolean {
   const m = /^\s*<([a-zA-Z][a-zA-Z0-9-]*)/.exec(html)
   if (m === null) return false
   const tag = m[1] as string
-  return !SVG_ROOT_EXCLUDE.has(tag) && SVG_TAGS.has(tag)
+  return SVG_ROOT_TAGS.has(tag)
 }
 
 // ─── Compiled-template hydration adoption (SEAM) ────────────────────────────
@@ -1213,6 +1264,7 @@ export function _rsCollapse(
     const disposeClass = _bindDirect(isDark as unknown as { _v?: unknown }, (v) => {
       el.className = v ? darkClass : lightClass
     })
+    if (process.env.NODE_ENV !== 'production') _rdLabelBinding(disposeClass, 'class', el, undefined, null)
     const disposeChildren = bind ? bind(el) : null
     if (!disposeChildren) return disposeClass
     return () => {
@@ -1253,6 +1305,7 @@ export function _rsCollapseH(
     const disposeClass = _bindDirect(isDark as unknown as { _v?: unknown }, (v) => {
       el.className = v ? darkClass : lightClass
     })
+    if (process.env.NODE_ENV !== 'production') _rdLabelBinding(disposeClass, 'class', el, undefined, null)
     // Inline-first-disposer slot (mirrors the signal `_d1`->`_d` idiom): the
     // dominant collapsed shape is a single handler, so hold the first disposer
     // inline and promote to an array only on a 2nd. `Object.keys` (not `for...in`)
@@ -1345,6 +1398,7 @@ export function _rsCollapseDyn(
       const idx = (valueIndex() << 1) | (isDark() ? 1 : 0)
       el.className = classes[idx] ?? ''
     })
+    if (process.env.NODE_ENV !== 'production') _rdLabelBinding(disposeClass, 'class', el, undefined, null)
     const disposeChildren = bind ? bind(el) : null
     if (!disposeChildren) return disposeClass
     return () => {
@@ -1422,6 +1476,7 @@ export function _rsCollapseDynH(
       const idx = (valueIndex() << 1) | (isDark() ? 1 : 0)
       el.className = classes[idx] ?? ''
     })
+    if (process.env.NODE_ENV !== 'production') _rdLabelBinding(disposeClass, 'class', el, undefined, null)
     // Handler attachment — identical to `_rsCollapseH`: routes through the
     // canonical `_bindEvent` so delegation / batching / name normalization behave
     // byte-identically to the 5-layer mount. `Object.keys` (not `for...in`) so

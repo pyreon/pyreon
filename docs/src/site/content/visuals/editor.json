@@ -1,0 +1,14 @@
+{
+ "id": "editor",
+ "og": {
+  "src": "/media/og/products/editor.png",
+  "width": 1200,
+  "height": 630,
+  "alt": "Editors (@pyreon/rich-text · @pyreon/code): Delete the useEffect that keeps your editor in sync."
+ },
+ "hero": {
+  "kind": "picture",
+  "file": "products/editor/hero-dark.png",
+  "alt": "The two Pyreon editors side by side: a rich-text editor with a toolbar (bold active because the caret is in bold text) editing release notes with a heading, a list and a quote, and a code editor showing a Pyreon component in TSX with line numbers and a cursor status bar."
+ }
+}

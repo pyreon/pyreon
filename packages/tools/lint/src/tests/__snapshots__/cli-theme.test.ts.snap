@@ -1,0 +1,447 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`--format gha > one annotation per diagnostic, paths relative to cwd 1`] = `
+"::warning title=lint-config::unknown rule pyreon/x
+::warning title=pyreon/no-missing-for-by,file=src/routes/inbox.tsx,line=42,col=7::<For> needs a \`by\` key
+::error title=pyreon/no-signal-call-write,file=src/routes/inbox.tsx,line=58,col=12::signal(v) only reads.%0AWrite with draft.set(v)"
+`;
+
+exports[`--init > renders at ascii 1`] = `
+"pyreon-lint --init
+
+  Library rules will activate for: @pyreon/query
+
+  Next: \`pyreon-lint .\`
+
+v Wrote .pyreonlintrc.json with the \`app\` preset (no published entry point).
+
+pyreon-lint --init
+
+! .pyreonlintrc.json already exists — leaving it alone.
+
+pyreon-lint --init
+
+x No package.json here, so the preset cannot be inferred."
+`;
+
+exports[`--init > renders at plain 1`] = `
+"pyreon-lint --init
+
+  Library rules will activate for: @pyreon/query
+
+  Next: \`pyreon-lint .\`
+
+✓ Wrote .pyreonlintrc.json with the \`app\` preset (no published entry point).
+
+pyreon-lint --init
+
+! .pyreonlintrc.json already exists — leaving it alone.
+
+pyreon-lint --init
+
+✗ No package.json here, so the preset cannot be inferred."
+`;
+
+exports[`--init > renders at truecolor dark 1`] = `
+"␛[1mpyreon-lint --init␛[22m
+
+  Library rules will activate for: @pyreon/query
+
+  Next: \`pyreon-lint .\`
+
+␛[38;2;74;222;128m✓␛[39m Wrote .pyreonlintrc.json with the \`app\` preset (no published entry point).
+
+␛[1mpyreon-lint --init␛[22m
+
+␛[38;2;250;204;21m!␛[39m .pyreonlintrc.json already exists — leaving it alone.
+
+␛[1mpyreon-lint --init␛[22m
+
+␛[38;2;248;113;113m✗␛[39m No package.json here, so the preset cannot be inferred."
+`;
+
+exports[`--list > renders at truecolor (one level is enough: the roles are the reporter’s) 1`] = `
+"␛[1mpyreon-lint --list␛[22m ␛[38;2;138;134;150m· 134 rules in 10 groups␛[39m
+
+  ␛[1mPYREON␛[22m ␛[38;2;138;134;150m(54) — framework semantics — nothing outside Pyreon can know these␛[39m
+    pyreon/no-async-effect  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;248;113;113merror␛[39m
+      Disallow async functions in \`effect()\` / \`renderEffect()\` / \`computed()\` — signal reads after
+      the first await are not tracked.
+    pyreon/no-bare-signal-in-jsx  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;34;211;238minfo␛[39m
+      STYLE-ONLY: prefer the explicit \`{() => sig()}\` accessor form over bare \`{sig()}\` in JSX text.
+      NOT a correctness rule — the compiler lowers BOTH forms to the SAME reactive \`_bindText(sig,
+      node)\` binding, so bare \`{sig()}\` is already fully reactive. Opt-in.
+    pyreon/no-context-destructure  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Disallow destructuring useContext() — it breaks reactivity when context provides getters.
+    pyreon/no-signal-in-loop  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;248;113;113merror␛[39m
+      Disallow creating signals or computeds inside loops.
+    pyreon/no-signal-in-props  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Signal call in component prop — value captured once unless compiler wraps it. Use props.x
+      pattern for reactivity.
+    pyreon/no-nested-effect  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Warn against nesting effect() inside another effect().
+    pyreon/no-peek-in-tracked  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;248;113;113merror␛[39m
+      Disallow .peek() inside effect() or computed() — it bypasses tracking.
+    pyreon/no-unbatched-updates  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Warn when 3+ .set() calls can fire on the SAME execution path in a function without batch().
+    pyreon/prefer-computed  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Suggest computed() when an effect only contains a single .set() call.
+    pyreon/no-effect-assignment  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Warn when an effect only contains a single .update() call.
+    pyreon/no-signal-leak  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Warn about unused signal declarations (potential leaks).
+    pyreon/no-signal-call-write  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;248;113;113merror␛[39m
+      Disallow \`sig(value)\` write attempts on signal/computed bindings — \`signal()\` is the read-only
+      callable. Use \`sig.set(value)\` or \`sig.update(fn)\`. ␛[38;2;74;222;128mfixable␛[39m
+    pyreon/storage-signal-v-forwarding  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;248;113;113merror␛[39m
+      Signal-wrapper callables delegating \`.direct\` to a base signal must also forward the internal
+      \`_v\` field. Without forwarding, the compiler-emitted \`_bindText\` fast path reads \`undefined\`
+      and renders empty text post-hydration.
+    pyreon/no-iterate-children-without-resolve  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;248;113;113merror␛[39m
+      Library code that iterates \`props.children\` at the VNode level (\`cloneVNode(children, …)\`,
+      \`(Array.isArray(children) ? children : [children]).map/filter(…)\`, or \`children.props\`) must
+      first unwrap a possible compiler-emitted accessor function — call \`resolveChildren(…)\` or
+      \`typeof X === "function" ? X() : X\` at the body entry. Without it, the Pyreon compiler's
+      prop-inlining wrap silently produces \`{type: undefined}\` → \`<undefined>\` DOM tags.
+    pyreon/no-guard-only-signal-reads-in-effect  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;34;211;238minfo␛[39m
+      Flag effects whose EVERY reactive read sits behind a non-reactive guard — the first run can
+      short-circuit before any read, so the effect subscribes to nothing and never re-runs.
+    pyreon/plain-mode-footgun  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;248;113;113merror␛[39m
+      Report every Plain Mode compile-time warning (shallow-state mutation, write to derived,
+      unlowerable signalOf, …) as an error.
+    pyreon/no-stale-for-item-field  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;248;113;113merror␛[39m
+      A keyed \`<For>\` row reads a field of its item while this file replaces items under the same
+      key — on the web the row keeps the first value (iOS/Android redraw). Read the live value by
+      key through a call, or give the field its own signal.
+    pyreon/no-map-in-jsx  ␛[38;2;138;134;150mjsx␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Prefer <For> over .map() inside JSX for reactive list rendering.
+    pyreon/use-by-not-key  ␛[38;2;138;134;150mjsx␛[39m  ␛[38;2;248;113;113merror␛[39m
+      Use \`by\` prop on <For> instead of \`key\` — JSX reserves \`key\` for VNode reconciliation. ␛[38;2;74;222;128mfixable␛[39m
+    pyreon/no-classname  ␛[38;2;138;134;150mjsx␛[39m  ␛[38;2;248;113;113merror␛[39m
+      Use \`class\` instead of \`className\` — Pyreon uses standard HTML attributes. ␛[38;2;74;222;128mfixable␛[39m
+    pyreon/no-htmlfor  ␛[38;2;138;134;150mjsx␛[39m  ␛[38;2;248;113;113merror␛[39m
+      Use \`for\` instead of \`htmlFor\` — Pyreon uses standard HTML attributes. ␛[38;2;74;222;128mfixable␛[39m
+    pyreon/no-onchange  ␛[38;2;138;134;150mjsx␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Prefer \`onInput\` over \`onChange\` on input elements for keypress-by-keypress updates. ␛[38;2;74;222;128mfixable␛[39m
+    pyreon/no-ternary-conditional  ␛[38;2;138;134;150mjsx␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Style preference for <Show> over a ternary with JSX branches. Opt-in — NOT a correctness or
+      efficiency rule: the compiler lowers \`{cond ? <a/> : <b/>}\` and \`<Show>\` to the SAME reactive
+      \`_mountSlot(() => …)\` accessor, so they mount, swap, and unmount identically. \`<Show>\` adds
+      \`fallback\`/\`keyed\`, but a ternary is fully valid and not measurably slower.
+    pyreon/no-and-conditional  ␛[38;2;138;134;150mjsx␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Style preference for <Show> over \`&&\` with JSX. Opt-in — NOT a correctness rule: the compiler
+      lowers \`{cond && <el/>}\` and \`<Show>\` to the SAME reactive \`_mountSlot(() => …)\` accessor, so
+      they mount, swap, and unmount identically. \`<Show>\` adds \`fallback\`/\`keyed\` and a well-tested
+      reactive boundary, but bare \`&&\` is fully valid conditional rendering.
+    pyreon/no-line-comment-in-jsx  ␛[38;2;138;134;150mjsx␛[39m  ␛[38;2;248;113;113merror␛[39m
+      A \`//\` line in JSX child position is not a comment — JSX has no line comments, so it renders
+      as literal text on web AND, through PMTC, on iOS and Android. Use \`{/* … */}\`.
+    pyreon/no-index-as-by  ␛[38;2;138;134;150mjsx␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Disallow using index as \`by\` prop on <For> — use a unique key instead.
+    pyreon/no-missing-for-by  ␛[38;2;138;134;150mjsx␛[39m  ␛[38;2;248;113;113merror␛[39m
+      Require a \`by\` prop on \`<For>\` — without it, keyed reconciliation is defeated and every update
+      remounts the whole list.
+    pyreon/no-props-destructure  ␛[38;2;138;134;150mjsx␛[39m  ␛[38;2;248;113;113merror␛[39m
+      Disallow destructuring props in component functions — breaks reactive prop tracking. Use
+      props.x or splitProps().
+    pyreon/no-children-access  ␛[38;2;138;134;150mjsx␛[39m  ␛[38;2;34;211;238minfo␛[39m
+      Inform about direct props.children access in renderer files.
+    pyreon/no-missing-cleanup  ␛[38;2;138;134;150mlifecycle␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Warn when onMount uses setInterval/addEventListener without returning a cleanup function.
+    pyreon/no-mount-in-effect  ␛[38;2;138;134;150mlifecycle␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Warn when onMount is called inside effect().
+    pyreon/no-effect-in-mount  ␛[38;2;138;134;150mlifecycle␛[39m  ␛[38;2;34;211;238minfo␛[39m
+      Inform when effect() is created inside onMount — effects are typically created at setup time.
+    pyreon/no-dom-in-setup  ␛[38;2;138;134;150mlifecycle␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Warn when DOM query methods are used outside onMount or effect.
+    pyreon/no-imperative-effect-on-create  ␛[38;2;138;134;150mlifecycle␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Flag \`effect()\` calls at component body level whose callback does imperative work (DOM access,
+      async/IO, addEventListener, setTimeout) — that work belongs in \`onMount\`, not in a
+      per-instance reactive effect.
+    pyreon/init-fn-needs-idempotency  ␛[38;2;138;134;150mlifecycle␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Flag exported \`init*\` functions called from the same module without a refcount / boolean guard
+      — register effects N times if called from N component bodies.
+    pyreon/no-effect-in-for  ␛[38;2;138;134;150mperformance␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Warn when effect() is created inside <For> — creates effects per item on every reconciliation.
+    pyreon/no-eager-import  ␛[38;2;138;134;150mperformance␛[39m  ␛[38;2;34;211;238minfo␛[39m
+      Suggest lazy-loading heavy Pyreon packages (charts, code, document, flow).
+    pyreon/no-heavy-import-only-in-handler  ␛[38;2;138;134;150mperformance␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      A statically-imported heavy module used only in event handlers / lifecycle callbacks should be
+      a dynamic import().
+    pyreon/prefer-show-over-display  ␛[38;2;138;134;150mperformance␛[39m  ␛[38;2;34;211;238minfo␛[39m
+      Suggest <Show> over a conditional \`display\` style — with the trade-off flagged. Opt-in:
+      toggling \`display\` keeps a STABLE SSR tree shape (the element is always mounted), which is
+      hydration-safe and ref-safe. \`<Show>\`/\`&&\` compile to a slot marker that SSR omits when falsy,
+      changing the tree shape — prefer it only when the node needn’t stay mounted. Neither is
+      universally correct, so this is an opt-in hint.
+    pyreon/promise-race-needs-cleartimeout  ␛[38;2;138;134;150mperformance␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Flag \`Promise.race([work, setTimeout-reject])\` without a corresponding \`clearTimeout\` in a
+      \`finally\` block — the timer leaks until it fires when \`work\` wins the race.
+    pyreon/no-window-in-ssr  ␛[38;2;138;134;150mssr␛[39m  ␛[38;2;248;113;113merror␛[39m
+      Disallow browser globals outside onMount/effect/typeof guards — they break SSR.
+    pyreon/no-mismatch-risk  ␛[38;2;138;134;150mssr␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Warn about non-deterministic calls (Date.now, Math.random, crypto.randomUUID) in JSX context
+      that cause hydration mismatches.
+    pyreon/prefer-request-context  ␛[38;2;138;134;150mssr␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Warn about module-level signal()/createStore() in server files — use request context instead.
+    pyreon/prefer-isserver  ␛[38;2;138;134;150mssr␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Prefer \`isServer\` / \`isClient\` from \`@pyreon/reactivity\` over hand-rolled \`typeof window\` /
+      \`typeof document\` checks — they single-source SSR detection (PR #1503) and use the reliable
+      \`typeof document\` discriminator. Recommended-level warn, gated on the project depending on
+      @pyreon/reactivity. ␛[38;2;74;222;128mfixable␛[39m
+    pyreon/no-private-env-in-client  ␛[38;2;138;134;150mssr␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Flag raw \`process.env.X\` / \`import.meta.env.X\` reads in client-reachable @pyreon/zero code —
+      \`process.env\` is undefined in the browser and \`import.meta.env\` is bundler-specific. Use
+      \`publicEnv()\` from \`@pyreon/zero/env\` with a \`ZERO_PUBLIC_\`-prefixed var (inlined into the
+      client bundle at build, secrets kept out). Opt-in best-practice, gated on the project
+      depending on @pyreon/zero; \`NODE_ENV\` + Vite built-ins + server-only files are never flagged.
+    pyreon/no-deep-import  ␛[38;2;138;134;150marchitecture␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Disallow importing from @pyreon/*/src/, /dist/, or /lib/ — use public exports instead.
+    pyreon/island-import-from-client  ␛[38;2;138;134;150marchitecture␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Import \`island\` from '@pyreon/server/client' (or '@pyreon/zero'), never the '@pyreon/server'
+      barrel — the barrel drags node:* + the server singleton into client bundles.
+    pyreon/dev-guard-warnings  ␛[38;2;138;134;150marchitecture␛[39m  ␛[38;2;248;113;113merror␛[39m
+      Require console.warn/error calls to be wrapped in a dev-only guard (\`if (process.env.NODE_ENV
+      !== "production")\` — the bundler-agnostic form; \`__DEV__\` is also accepted as a
+      framework-internal alias) so they tree-shake in production.
+    pyreon/no-module-signal-in-server-package  ␛[38;2;138;134;150marchitecture␛[39m  ␛[38;2;248;113;113merror␛[39m
+      Forbid module-scoped Pyreon signals in server-side framework packages. Server packages are
+      concurrent — module signals race between requests. Use per-request \`AsyncLocalStorage\` or the
+      framework context system instead. See the i18n-routing.ts \`localeSignal\` precedent for the
+      canonical fix shape.
+    pyreon/no-process-dev-gate  ␛[38;2;138;134;150marchitecture␛[39m  ␛[38;2;248;113;113merror␛[39m
+      Forbid bundler-coupled dev gates: \`typeof process !== "undefined" && process.env.NODE_ENV !==
+      "production"\` is dead in Vite browser bundles, and \`import.meta.env.DEV\` is Vite/Rolldown-only
+      (dead in Webpack/Next.js, esbuild, Rollup, Parcel, Bun). Use bundler-agnostic
+      \`process.env.NODE_ENV !== "production"\` — every modern bundler auto-replaces it at consumer
+      build time. ␛[38;2;74;222;128mfixable␛[39m
+    pyreon/no-unguarded-async-signal-write  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      An async function that writes captured signal state after an \`await\` with no staleness guard —
+      a slow earlier response resolves last and clobbers newer data (leak class F).
+    pyreon/invalid-loader-export  ␛[38;2;138;134;150mssg␛[39m  ␛[38;2;248;113;113merror␛[39m
+      \`export const loader\` must be a function — non-callable exports crash the SSR runtime with
+      \`loader is not a function\`.
+    pyreon/missing-get-static-paths  ␛[38;2;138;134;150mssg␛[39m  ␛[38;2;250;204;21mwarn␛[39m
+      Dynamic route files (\`[id].tsx\`, \`[...slug].tsx\`) should export \`getStaticPaths\` — under
+      \`mode: "ssg"\` the SSG plugin silently skips routes without it.
+    pyreon/revalidate-not-pure-literal  ␛[38;2;138;134;150mssg␛[39m  ␛[38;2;248;113;113merror␛[39m
+      \`export const revalidate = X\` must be a numeric literal or \`false\` — non-literal forms are
+      silently dropped from the build-time ISR manifest (PR I limitation)."
+`;
+
+exports[`--why-off > renders at 16 colours 1`] = `
+"␛[1mpyreon-lint --why-off␛[22m ␛[90m· pyreon/query-options-as-function␛[39m
+
+  ␛[33m!␛[39m ␛[1mopt-in␛[22m ␛[90m·␛[39m This is an opt-in best-practice rule: every shipped preset except best-practices leaves
+     it off.
+     ␛[90mfix:␛[39m enable it in .pyreonlintrc.json: "rules": { "pyreon/query-options-as-function": "warn" }
+
+  ␛[33m!␛[39m ␛[1mdependency-missing␛[22m ␛[90m·␛[39m It activates only when the project depends on @pyreon/query, and
+     package.json does not.
+     ␛[90mfix:␛[39m add @pyreon/query to dependencies, or ignore this rule
+
+  ␛[36mℹ␛[39m Configured exemptPaths (a file under any of these is skipped):
+      src/legacy/
+      vendor/
+
+␛[31m✗␛[39m WILL NOT RUN ␛[90m· severity: off · 2 reasons␛[39m
+
+␛[1mpyreon-lint --why-off␛[22m ␛[90m· pyreon/no-missing-for-by␛[39m
+
+  ␛[32m✓␛[39m Nothing is suppressing it.
+
+␛[32m✓␛[39m WILL RUN ␛[90m· severity: warn␛[39m
+
+␛[1mpyreon-lint --why-off␛[22m ␛[90m· pyreon/no-mising-for-by␛[39m
+
+  Did you mean:
+    pyreon/no-missing-for-by
+
+␛[31m✗␛[39m unknown rule pyreon/no-mising-for-by ␛[90m· run pyreon-lint --list for the full set␛[39m"
+`;
+
+exports[`--why-off > renders at 256 dark 1`] = `
+"␛[1mpyreon-lint --why-off␛[22m ␛[38;5;103m· pyreon/query-options-as-function␛[39m
+
+  ␛[38;5;220m!␛[39m ␛[1mopt-in␛[22m ␛[38;5;103m·␛[39m This is an opt-in best-practice rule: every shipped preset except best-practices leaves
+     it off.
+     ␛[38;5;103mfix:␛[39m enable it in .pyreonlintrc.json: "rules": { "pyreon/query-options-as-function": "warn" }
+
+  ␛[38;5;220m!␛[39m ␛[1mdependency-missing␛[22m ␛[38;5;103m·␛[39m It activates only when the project depends on @pyreon/query, and
+     package.json does not.
+     ␛[38;5;103mfix:␛[39m add @pyreon/query to dependencies, or ignore this rule
+
+  ␛[38;5;45mℹ␛[39m Configured exemptPaths (a file under any of these is skipped):
+      src/legacy/
+      vendor/
+
+␛[38;5;203m✗␛[39m WILL NOT RUN ␛[38;5;103m· severity: off · 2 reasons␛[39m
+
+␛[1mpyreon-lint --why-off␛[22m ␛[38;5;103m· pyreon/no-missing-for-by␛[39m
+
+  ␛[38;5;78m✓␛[39m Nothing is suppressing it.
+
+␛[38;5;78m✓␛[39m WILL RUN ␛[38;5;103m· severity: warn␛[39m
+
+␛[1mpyreon-lint --why-off␛[22m ␛[38;5;103m· pyreon/no-mising-for-by␛[39m
+
+  Did you mean:
+    pyreon/no-missing-for-by
+
+␛[38;5;203m✗␛[39m unknown rule pyreon/no-mising-for-by ␛[38;5;103m· run pyreon-lint --list for the full set␛[39m"
+`;
+
+exports[`--why-off > renders at 256 light 1`] = `
+"␛[1mpyreon-lint --why-off␛[22m ␛[38;5;59m· pyreon/query-options-as-function␛[39m
+
+  ␛[38;5;94m!␛[39m ␛[1mopt-in␛[22m ␛[38;5;59m·␛[39m This is an opt-in best-practice rule: every shipped preset except best-practices leaves
+     it off.
+     ␛[38;5;59mfix:␛[39m enable it in .pyreonlintrc.json: "rules": { "pyreon/query-options-as-function": "warn" }
+
+  ␛[38;5;94m!␛[39m ␛[1mdependency-missing␛[22m ␛[38;5;59m·␛[39m It activates only when the project depends on @pyreon/query, and
+     package.json does not.
+     ␛[38;5;59mfix:␛[39m add @pyreon/query to dependencies, or ignore this rule
+
+  ␛[38;5;24mℹ␛[39m Configured exemptPaths (a file under any of these is skipped):
+      src/legacy/
+      vendor/
+
+␛[38;5;124m✗␛[39m WILL NOT RUN ␛[38;5;59m· severity: off · 2 reasons␛[39m
+
+␛[1mpyreon-lint --why-off␛[22m ␛[38;5;59m· pyreon/no-missing-for-by␛[39m
+
+  ␛[38;5;22m✓␛[39m Nothing is suppressing it.
+
+␛[38;5;22m✓␛[39m WILL RUN ␛[38;5;59m· severity: warn␛[39m
+
+␛[1mpyreon-lint --why-off␛[22m ␛[38;5;59m· pyreon/no-mising-for-by␛[39m
+
+  Did you mean:
+    pyreon/no-missing-for-by
+
+␛[38;5;124m✗␛[39m unknown rule pyreon/no-mising-for-by ␛[38;5;59m· run pyreon-lint --list for the full set␛[39m"
+`;
+
+exports[`--why-off > renders at ascii 1`] = `
+"pyreon-lint --why-off - pyreon/query-options-as-function
+
+  ! opt-in - This is an opt-in best-practice rule: every shipped preset except best-practices leaves
+     it off.
+     fix: enable it in .pyreonlintrc.json: "rules": { "pyreon/query-options-as-function": "warn" }
+
+  ! dependency-missing - It activates only when the project depends on @pyreon/query, and
+     package.json does not.
+     fix: add @pyreon/query to dependencies, or ignore this rule
+
+  i Configured exemptPaths (a file under any of these is skipped):
+      src/legacy/
+      vendor/
+
+x WILL NOT RUN - severity: off - 2 reasons
+
+pyreon-lint --why-off - pyreon/no-missing-for-by
+
+  v Nothing is suppressing it.
+
+v WILL RUN - severity: warn
+
+pyreon-lint --why-off - pyreon/no-mising-for-by
+
+  Did you mean:
+    pyreon/no-missing-for-by
+
+x unknown rule pyreon/no-mising-for-by - run pyreon-lint --list for the full set"
+`;
+
+exports[`--why-off > renders at plain 1`] = `
+"pyreon-lint --why-off · pyreon/query-options-as-function
+
+  ! opt-in · This is an opt-in best-practice rule: every shipped preset except best-practices leaves
+     it off.
+     fix: enable it in .pyreonlintrc.json: "rules": { "pyreon/query-options-as-function": "warn" }
+
+  ! dependency-missing · It activates only when the project depends on @pyreon/query, and
+     package.json does not.
+     fix: add @pyreon/query to dependencies, or ignore this rule
+
+  ℹ Configured exemptPaths (a file under any of these is skipped):
+      src/legacy/
+      vendor/
+
+✗ WILL NOT RUN · severity: off · 2 reasons
+
+pyreon-lint --why-off · pyreon/no-missing-for-by
+
+  ✓ Nothing is suppressing it.
+
+✓ WILL RUN · severity: warn
+
+pyreon-lint --why-off · pyreon/no-mising-for-by
+
+  Did you mean:
+    pyreon/no-missing-for-by
+
+✗ unknown rule pyreon/no-mising-for-by · run pyreon-lint --list for the full set"
+`;
+
+exports[`--why-off > renders at truecolor dark 1`] = `
+"␛[1mpyreon-lint --why-off␛[22m ␛[38;2;138;134;150m· pyreon/query-options-as-function␛[39m
+
+  ␛[38;2;250;204;21m!␛[39m ␛[1mopt-in␛[22m ␛[38;2;138;134;150m·␛[39m This is an opt-in best-practice rule: every shipped preset except best-practices leaves
+     it off.
+     ␛[38;2;138;134;150mfix:␛[39m enable it in .pyreonlintrc.json: "rules": { "pyreon/query-options-as-function": "warn" }
+
+  ␛[38;2;250;204;21m!␛[39m ␛[1mdependency-missing␛[22m ␛[38;2;138;134;150m·␛[39m It activates only when the project depends on @pyreon/query, and
+     package.json does not.
+     ␛[38;2;138;134;150mfix:␛[39m add @pyreon/query to dependencies, or ignore this rule
+
+  ␛[38;2;34;211;238mℹ␛[39m Configured exemptPaths (a file under any of these is skipped):
+      src/legacy/
+      vendor/
+
+␛[38;2;248;113;113m✗␛[39m WILL NOT RUN ␛[38;2;138;134;150m· severity: off · 2 reasons␛[39m
+
+␛[1mpyreon-lint --why-off␛[22m ␛[38;2;138;134;150m· pyreon/no-missing-for-by␛[39m
+
+  ␛[38;2;74;222;128m✓␛[39m Nothing is suppressing it.
+
+␛[38;2;74;222;128m✓␛[39m WILL RUN ␛[38;2;138;134;150m· severity: warn␛[39m
+
+␛[1mpyreon-lint --why-off␛[22m ␛[38;2;138;134;150m· pyreon/no-mising-for-by␛[39m
+
+  Did you mean:
+    pyreon/no-missing-for-by
+
+␛[38;2;248;113;113m✗␛[39m unknown rule pyreon/no-mising-for-by ␛[38;2;138;134;150m· run pyreon-lint --list for the full set␛[39m"
+`;
+
+exports[`--why-off > renders at truecolor light 1`] = `
+"␛[1mpyreon-lint --why-off␛[22m ␛[38;2;94;90;105m· pyreon/query-options-as-function␛[39m
+
+  ␛[38;2;138;90;0m!␛[39m ␛[1mopt-in␛[22m ␛[38;2;94;90;105m·␛[39m This is an opt-in best-practice rule: every shipped preset except best-practices leaves
+     it off.
+     ␛[38;2;94;90;105mfix:␛[39m enable it in .pyreonlintrc.json: "rules": { "pyreon/query-options-as-function": "warn" }
+
+  ␛[38;2;138;90;0m!␛[39m ␛[1mdependency-missing␛[22m ␛[38;2;94;90;105m·␛[39m It activates only when the project depends on @pyreon/query, and
+     package.json does not.
+     ␛[38;2;94;90;105mfix:␛[39m add @pyreon/query to dependencies, or ignore this rule
+
+  ␛[38;2;10;110;137mℹ␛[39m Configured exemptPaths (a file under any of these is skipped):
+      src/legacy/
+      vendor/
+
+␛[38;2;185;28;28m✗␛[39m WILL NOT RUN ␛[38;2;94;90;105m· severity: off · 2 reasons␛[39m
+
+␛[1mpyreon-lint --why-off␛[22m ␛[38;2;94;90;105m· pyreon/no-missing-for-by␛[39m
+
+  ␛[38;2;21;112;58m✓␛[39m Nothing is suppressing it.
+
+␛[38;2;21;112;58m✓␛[39m WILL RUN ␛[38;2;94;90;105m· severity: warn␛[39m
+
+␛[1mpyreon-lint --why-off␛[22m ␛[38;2;94;90;105m· pyreon/no-mising-for-by␛[39m
+
+  Did you mean:
+    pyreon/no-missing-for-by
+
+␛[38;2;185;28;28m✗␛[39m unknown rule pyreon/no-mising-for-by ␛[38;2;94;90;105m· run pyreon-lint --list for the full set␛[39m"
+`;

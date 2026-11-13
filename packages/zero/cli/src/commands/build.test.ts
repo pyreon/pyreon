@@ -123,11 +123,11 @@ describe('zero build — single-owner SSR pipeline end invariants', () => {
       await writeFile(join(dir, 'vite.config.ts'), 'throw new Error("broken config")\n')
       await expect(build(dir)).rejects.toThrow('process.exit called')
       expect(exitSpy).toHaveBeenCalledWith(1)
-      expect(errorSpy).toHaveBeenCalledWith('[Pyreon] Build failed:', expect.any(Error))
-      // The whole Error (with its stack) is logged, not just the message.
-      const logged = errorSpy.mock.calls.find((c) => c[0] === '[Pyreon] Build failed:')![1] as Error
-      expect(logged.message).toContain('broken config')
-      expect(logged.stack).toBeTruthy()
+      const logged = errorSpy.mock.calls.map((c) => String(c[0])).join('\n')
+      expect(logged).toContain('✗ zero build · Build failed: ')
+      expect(logged).toContain('broken config')
+      // The stack is printed too, not just the message: it says WHERE.
+      expect(logged).toMatch(/\n {3}at /)
     } finally {
       exitSpy.mockRestore()
       errorSpy.mockRestore()

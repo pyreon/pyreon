@@ -7,7 +7,7 @@
  * `reactive-view.test.ts` proves the *presentation logic* in isolation
  * — but nothing mounts a genuine reactive app and proves the WHOLE
  * chain (framework opt-in registry → hook → the extension's actual
- * `layoutGraph` / `bucketFires`) works against the real, merged
+ * `layoutGraph` / `ingestFires`) works against the real, merged
  * Foundation. That is exactly the test-environment-parity gap (mocks
  * pass while the real path silently drifts).
  *
@@ -27,7 +27,7 @@ import {
 } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { bucketFires, layoutGraph } from '../reactive-view'
+import { createRecorder, ingestFires, layoutGraph } from '../reactive-view'
 import type {
   ReactiveFire as ExtFire,
   ReactiveGraph as ExtGraph,
@@ -206,11 +206,18 @@ describe('reactive devtools — real-app end-to-end', () => {
     // All real edges survive the layout's endpoint filter.
     expect(laid.edges.length).toBe(graph.edges.length)
 
-    // Profiler tab: fires bucket into frames, total preserved.
-    const b = bucketFires(fires, 100)
-    expect(b.total).toBe(fires.length)
-    expect(b.frames.reduce((a, c) => a + c, 0)).toBe(fires.length)
-    expect(b.max).toBeGreaterThanOrEqual(1)
+    // Profiler tab: the two writes are two batches, each rooted at the
+    // signal that was written, and no fire is lost or double-counted.
+    const rec = ingestFires(createRecorder(), fires, (id) => {
+      const n = graph.nodes.find((x) => x.id === id)
+      return n ? { name: n.name, kind: n.kind } : undefined
+    })
+    expect(rec.batches.reduce((a, b) => a + b.fires, 0)).toBe(fires.length)
+    const roots = rec.batches.filter((b) => b.rootKind === 'signal').map((b) => b.rootName)
+    expect(roots.slice(-2)).toEqual(['$price', '$qty'])
+    // A re-poll of the same snapshot adds nothing.
+    const again = ingestFires(rec, fires, () => undefined)
+    expect(again.batches.reduce((a, b) => a + b.fires, 0)).toBe(fires.length)
   })
 
   it('deactivate() closes the read gate; subsequent activate() re-exposes the live graph', () => {

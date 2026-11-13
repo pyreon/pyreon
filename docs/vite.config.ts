@@ -6,7 +6,18 @@ import { defineConfig } from 'vite'
 import { pyreonSyntaxDark, pyreonSyntaxLight } from './src/styles/pyreon-syntax'
 import inlineCriticalCss from './vite-plugins/inline-critical-css'
 import lastUpdated from './vite-plugins/last-updated'
+import legacyCssLayer from './vite-plugins/legacy-css-layer'
+import atlasDemo from './vite-plugins/atlas-demo'
+import openStats from './vite-plugins/open-stats'
+import blogCopy from './src/site/content/pages/channels/blog.json'
+import docsHomeContent from './vite-plugins/docs-home-content'
+import productContent from './vite-plugins/product-content'
+import sitePagesContent from './vite-plugins/site-pages-content'
+import siteReleases from './vite-plugins/site-releases'
 import publishLlmsTxt from './vite-plugins/publish-llms-txt'
+import staticPages from './vite-plugins/static-pages'
+import { blogBench, blogPlanned } from './vite-plugins/blog'
+import channelGate from './vite-plugins/channel-gate'
 
 // Pyreon-native docs site, powered by @pyreon/zero + @pyreon/zero-content.
 //
@@ -32,10 +43,27 @@ import publishLlmsTxt from './vite-plugins/publish-llms-txt'
 // the SSG entry's createApp call.
 export default defineConfig({
   plugins: [
+    // tokens.css → `@layer docs`, below the UI system's layers (see the plugin).
+    legacyCssLayer(),
+    // Content JSON → without links to a channel that is not open (Discord,
+    // newsletter: src/site-links.ts), before the plugins below read the same
+    // files; /discord and /newsletter as static redirects once they are open.
+    channelGate(),
+    // Product content JSON → Shiki-highlighted code at build time.
+    productContent(),
+    // Story / compare / migrate / project content JSON → highlighted code at build time.
+    sitePagesContent(),
+    // The docs home's code (`_docs-home.json`) → Shiki at build time.
+    docsHomeContent(),
     // The custom pyreon-syntax Shiki themes mirror the brand handoff §3/§6.7
     // tokens (`--syn-*` in tokens.css). VitePress applied them via its
     // `markdown.theme: { light, dark }` config — same surface here, only
     // wired through `@pyreon/zero-content`'s highlighter option.
+    // `::: bench` blocks in blog posts → raw HTML around their list, before
+    // content() compiles the post (src/blog/bench.ts).
+    blogBench({ moreLabel: blogCopy.bench.more }),
+    // virtual:pyreon-blog-planned — the scheduled posts "Up next" lists.
+    blogPlanned({ benchMoreLabel: blogCopy.bench.more }),
     content({
       highlighter: {
         themes: { light: pyreonSyntaxLight, dark: pyreonSyntaxDark },
@@ -50,9 +78,8 @@ export default defineConfig({
         rss: {
           collection: 'blog',
           path: 'blog/rss.xml',
-          title: 'Pyreon blog',
-          description:
-            'Notes from building Pyreon: how the compiler and runtime work, measured benchmark results (losses included), and release write-ups.',
+          title: blogCopy.meta.title,
+          description: blogCopy.meta.description,
           language: 'en',
           content: 'full',
         },
@@ -80,19 +107,62 @@ export default defineConfig({
       },
     }),
     lastUpdated({ contentDir: 'src/content/docs' }),
+    // virtual:pyreon-open-stats — GitHub / npm / repo numbers for /open,
+    // fetched once per build; a failed source renders as "unavailable".
+    openStats(),
+    // virtual:pyreon-site-releases — released versions (CHANGELOG.md) and the
+    // unreleased changesets on main, read once per build for /releases.
+    siteReleases(),
     // /llms.txt + /llms-full.txt — the repo-root files `bun run gen-docs`
     // generates from the package manifests (see the plugin).
     publishLlmsTxt(),
+    // /demos/atlas/ — the Atlas workbench the /products/atlas demo embeds,
+    // built from examples/atlas-workshop (about 2 s), never committed.
+    atlasDemo(),
     // dist/sitemap.xml from the SSG output: every prerendered page and
     // nothing else, so an unpublished blog post (never rendered) is never
     // listed.
     seoPlugin({
-      sitemap: { origin: 'https://pyreon.dev', useSsgPaths: true, trailingSlash: 'never' },
+      sitemap: {
+        origin: 'https://pyreon.dev',
+        useSsgPaths: true,
+        trailingSlash: 'never',
+        // /discord and /newsletter (written by channelGate once switched on)
+        // are redirect files, not prerendered routes, so they never appear.
+        // /why and /compare are redirects to their first page (sitemap
+        // decision "merge"), not pages.
+        exclude: [
+          // Exactly these two: their pages (/why/<id>, /compare/<id>) stay listed.
+          /^\/why$/,
+          /^\/compare$/,
+        ],
+      },
+      // Everything is crawlable; the sitemap is the list above.
+      robots: { rules: [{ userAgent: '*', allow: ['/'] }], sitemap: 'https://pyreon.dev/sitemap.xml' },
     }),
+    // Marketing pages hydrate only their islands: drop the route preloads
+    // and loader data they would carry for a full app (see the plugin).
+    staticPages(),
     // Must come AFTER zero() so its closeBundle runs on the final SSG
     // HTML — folds the render-blocking app stylesheet into each page's
     // <head> to clear the last critical-path request before first paint.
     inlineCriticalCss(),
   ],
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            // `@pyreon/server/client` re-exports `island()`, and rolldown
+            // otherwise co-locates island.ts with the first route that
+            // declares an island (/products/[id]), so the static pages'
+            // island hydrator imported that whole route chunk. One group for
+            // the islands runtime keeps it standalone.
+            { name: 'islands-runtime', test: /[\\/]core[\\/]server[\\/](?:src|lib)[\\/]/ },
+          ],
+        },
+      },
+    },
+  },
   server: { port: 5191 },
 })

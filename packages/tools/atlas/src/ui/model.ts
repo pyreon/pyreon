@@ -5,11 +5,23 @@
  */
 import { h, type VNodeChildAtom } from '@pyreon/core'
 import { PermissionsProvider } from '@pyreon/permissions'
-import { batch, computed, effect, isClient, signal, type Computed, type Effect, type Signal } from '@pyreon/reactivity'
+import {
+  _rdNodeId,
+  batch,
+  computed,
+  effect,
+  isClient,
+  signal,
+  untrack,
+  type Computed,
+  type Effect,
+  type Signal,
+} from '@pyreon/reactivity'
+import { createLiveArgs, detached, type LiveArgs } from './live-args'
 import type { A11yReport } from './a11y'
 import { analyzeA11y } from './a11y'
-import type { AddonTabId, BackgroundPreset, LocalePreset, PseudoId, ViewportPreset } from './addons'
-import { BACKGROUNDS, LOCALES, VIEWPORTS, pseudoProps } from './addons'
+import type { AddonTabId, BackgroundPreset, CanvasLayout, LocalePreset, PseudoId, ViewportPreset } from './addons'
+import { BACKGROUNDS, LOCALES, VIEWPORTS, parseLayout, pseudoProps } from './addons'
 import { pseudoLocalizeValues } from './pseudo-locale'
 import {
   DEFAULT_PERMISSION_SETS,
@@ -44,7 +56,7 @@ import {
   type HierarchyNode,
 } from './hierarchy'
 import type { BrandTheme, ThemeTokens } from './theme'
-import { THEMES, tokens } from './theme'
+import { readThemeMode, THEMES, tokens, writeThemeMode } from './theme'
 
 export type View = 'canvas' | 'docs' | 'lab'
 /**
@@ -67,6 +79,13 @@ export type { A11yCheck, A11yReport } from './a11y'
 /** Discrete zoom levels — a rocketstyle `size` dimension (continuous scale would need an inline style). */
 export const ZOOM_PCT = [50, 75, 100, 125, 150, 175, 200] as const
 
+/**
+ * Below this width the catalog becomes a drawer — the design system's
+ * app-shell breakpoint. ONE definition: the model seeds `compact` from it and
+ * the Workbench follows it live.
+ */
+export const COMPACT_QUERY = '(max-width: 859.98px)'
+
 export interface WorkbenchModel {
   catalog: WorkbenchCatalog
   groups: CatalogGroup[]
@@ -87,12 +106,25 @@ export interface WorkbenchModel {
   filter: Signal<string>
   /** The ⌘K search dialog (docs-site style modal; the top-bar input became a trigger). */
   searchOpen: Signal<boolean>
-  // Resizable shell panels — widths in px (drag handles clamp them), open flags
-  // for the collapse toggles.
+  /**
+   * `?embed` — the workbench is a guest in another page (an iframe). It does
+   * not persist preferences or write the shared theme, and it hides the theme
+   * toggle (the host owns the theme; pass `?dark=0|1` to set it).
+   */
+  embed: boolean
+  /** Flip light/dark and persist it as the shared `pyreon-theme` preference. */
+  toggleTheme: () => void
+  /**
+   * Re-read the shared preference — another tab wrote `pyreon-theme`, or the
+   * OS flipped and nothing was stored. A mode the LINK chose is left alone.
+   */
+  syncTheme: () => void
+  // Resizable shell regions (drag handles clamp them): the catalog's width in
+  // px, and the addon panel's share of the main column's height.
   sidebarW: Signal<number>
-  panelW: Signal<number>
-  sidebarOpen: Signal<boolean>
-  panelOpen: Signal<boolean>
+  panelFrac: Signal<number>
+  /** Canvas panel: the dotted grid behind the preview. */
+  grid: Signal<boolean>
   zoomIdx: Signal<number>
   view: Signal<View>
   addon: Signal<Addon>
@@ -106,6 +138,8 @@ export interface WorkbenchModel {
   outline: Signal<boolean>
   /** Measure addon — hovering the preview shows the hovered box's dimensions. */
   measure: Signal<boolean>
+  /** Canvas panel: how the preview sits on the stage (carried in the link). */
+  layout: Signal<CanvasLayout>
   /** The live preview surface element (null before mount) — the a11y probe target's parent. */
   previewElement: () => HTMLElement | null
   /** Active locale — threaded to `render` as `ctx.locale`, and drives `dir=`. */
@@ -175,12 +209,10 @@ export interface WorkbenchModel {
    * which permission keys it consulted — reads it to re-evaluate.
    */
   renderTick: Signal<number>
-  /** Narrow viewport (≤900px): the sidebar is a drawer and the panels a sheet. */
+  /** Narrow viewport (below 860px): the catalog is a drawer. */
   compact: Signal<boolean>
-  /** Compact-mode sidebar drawer. Not persisted — a drawer is transient. */
+  /** Compact-mode catalog drawer. Not persisted — a drawer is transient. */
   drawerOpen: Signal<boolean>
-  /** Compact-mode addon bottom sheet. Not persisted. */
-  sheetOpen: Signal<boolean>
   /** Live a11y verdict for the RENDERED preview (re-probed after each render). */
   a11y: Signal<A11yReport>
   /** True when the last render left the preview surface with no DOM at all. */
@@ -232,10 +264,102 @@ export interface WorkbenchModel {
    * and brand for this one render — the Theme Lab's tiles.
    */
   preview: (appearance?: { dark?: boolean; brandId?: string }) => VNodeChildAtom | VNodeChildAtom[]
+  /**
+   * Render the selected component as ONE role sees it, under its own fresh
+   * recording instance — the Permissions panel's side-by-side cards. Read the
+   * recording after the node has mounted: the keys are filled by rendering.
+   */
+  previewAs: (roleId: string) => { node: VNodeChildAtom; recording: RecordingPermissions }
+  /**
+   * Mount the selected component again, from scratch, with fresh live values.
+   * Reactive coverage calls it when a recording starts: a coverage session
+   * counts only nodes created inside it, so the preview that was already on
+   * screen would otherwise be invisible to the recording. The preview's theme
+   * provider re-mounts with it (so its theme can be named as a source) unless
+   * `theme: false` — `atlas verify-browser` re-mounts per scenario and keeps
+   * the provider out of each scenario's new-node diff.
+   */
+  restartPreview: (options?: { theme?: boolean }) => void
+  /**
+   * The preview's theme and mode, as nodes re-created with each preview
+   * restart — what `PreviewTheme` provides. A recording re-mounts the
+   * preview's provider with fresh ones, so it can name them as a binding's
+   * source (`class ← theme`).
+   */
+  previewTheme: () => { theme: Computed<ThemeTokens>; mode: Computed<'light' | 'dark'> }
+  /**
+   * Which reactive nodes belong to the PREVIEWED component, as opposed to the
+   * workbench around it — see `PreviewScope`. Read it when sampling coverage.
+   */
+  previewScope: () => PreviewScope
+  /**
+   * Bumped (a microtask after) each time the preview finishes mounting, in a
+   * development build — when a fresh `previewScope()` is worth reading. The
+   * DOM observer behind `renderTick` attaches only after a re-mount's own
+   * writes, so it cannot say this.
+   */
+  previewMounts: Signal<number>
   /** `ref` for the search `<input>` — attach in the top bar so ⌘K can focus it. */
   searchRef: (el: HTMLInputElement | null) => void
   /** Focus the search input (⌘K) via the captured ref — no DOM query. */
   focusSearch: () => void
+}
+
+/**
+ * The previewed component's footprint in the reactive graph, for scoping
+ * coverage to it. Ids are reactive-graph node ids (dev builds only — in a
+ * production build every list is empty).
+ *
+ * - `mounts`: one id window per mount of the preview since the live values
+ *   were created (`start` is taken just before the component renders, `end`
+ *   just after its subtree mounted). A node created inside a window is the
+ *   component's, whatever it reads.
+ * - `props`: the live-value cell for each control key — the graph node a
+ *   binding reads when it reads `props.<key>`. Maps a binding's source back to
+ *   the control that drives it.
+ * - `remount`: keys the catalog's `render` read while rendering. Changing one
+ *   re-mounts the preview, so its bindings are rebuilt rather than updated.
+ * - `changed`: keys whose value changed since the live values were created.
+ * - `ignore`: Atlas's own nodes inside the preview (the window probes, the
+ *   remount trigger) — never reported as the component's.
+ */
+export interface PreviewScope {
+  component: string
+  mounts: ReadonlyArray<{ start: number; end: number }>
+  props: ReadonlyMap<number, string>
+  remount: ReadonlySet<string>
+  changed: ReadonlySet<string>
+  ignore: ReadonlySet<number>
+  /** Workbench state the preview reads, by node id: `theme`, `mode`. */
+  context: ReadonlyMap<number, string>
+}
+
+/**
+ * Bracket the preview's subtree. Mounted first and last around the
+ * component, so every node the component creates while mounting falls between
+ * the ids they take — and the workbench's own reactive child that hosts the
+ * preview (created after `preview()` returns, before the subtree mounts) falls
+ * outside. A probe taken inside `preview()` would sit before that host and
+ * report it as the component's.
+ */
+function MountMark(props: { at: () => void }): null {
+  props.at()
+  return null
+}
+
+/** How many mount windows a scope keeps (see `PreviewScope.mounts`). */
+const MAX_MOUNTS = 200
+
+function emptyScope(component: string): PreviewScope {
+  return {
+    component,
+    mounts: [],
+    props: new Map(),
+    remount: new Set(),
+    changed: new Set(),
+    ignore: new Set(),
+    context: new Map(),
+  }
 }
 
 export function createModel(
@@ -279,12 +403,12 @@ export function createModel(
   // Chrome preferences survive a reload without a link — brand, appearance,
   // panel widths, what is open. A link still wins for what it names.
   const prefs = readPrefs()
-  // On a narrow screen both side panels start CLOSED: sidebar (272px) and
-  // addon panel (352px) are fixed-width flex siblings of the canvas, and
-  // below ~900px they left it no room at all — the canvas disappeared and the
-  // page read as broken. A stored preference still wins.
+  // Below 860px the catalog is a drawer over the canvas rather than a column
+  // beside it (a 220px column left a phone ~170px of canvas). Seeded
+  // synchronously so a phone never paints the desktop layout first.
   const narrow =
-    isClient && typeof matchMedia === 'function' && matchMedia('(max-width: 900px)').matches
+    isClient && typeof matchMedia === 'function' && matchMedia(COMPACT_QUERY).matches
+  const embed = initial.embed === true
 
   // Path URLs — `/atlas/button/` rather than `/atlas/?c=button`.
   //
@@ -304,7 +428,12 @@ export function createModel(
   const routeBase = hasRoutes ? pathBase(location.pathname, pathId) : ''
 
   const brandId = signal(initial.brand ?? prefs.brand ?? 'ember')
-  const dark = signal(initial.dark ?? prefs.dark ?? true)
+  // The chrome AND the preview follow the SHARED Pyreon theme preference
+  // (`pyreon-theme`, else the OS). A link's `?dark=` still wins for what it
+  // names — a screenshot of a bug is mode-specific, and an embedding host
+  // sets the mode this way.
+  let preferDark = readThemeMode() === 'dark'
+  const dark = signal(initial.dark ?? preferDark)
   // The link's component id, RESOLVED against the catalog — never used raw.
   //
   // A link naming a component that no longer exists falls back to the first one
@@ -372,6 +501,7 @@ export function createModel(
   )
   const outline = signal(false)
   const measure = signal(false)
+  const layout = signal<CanvasLayout>(parseLayout(initial.layout) ?? 'centered')
   const locale = signal<string>(
     locales.find((l) => l.id === initial.locale)?.id ?? locales[0]?.id ?? 'en',
   )
@@ -576,27 +706,51 @@ export function createModel(
   const clearActions = () => actions.set([])
 
   const searchOpen = signal(false)
-  const sidebarW = signal(prefs.sidebarW ?? 272)
-  const panelW = signal(prefs.panelW ?? 352)
-  const sidebarOpen = signal(prefs.sidebarOpen ?? !narrow)
-  const panelOpen = signal(prefs.panelOpen ?? !narrow)
+  const sidebarW = signal(prefs.sidebarW ?? 220)
+  // The design splits the main column ~46 / 54 between canvas and panels
+  // (40 / 60 when the catalog is a drawer and the panels need the room).
+  const panelFrac = signal(prefs.panelFrac ?? (narrow ? 0.6 : 0.54))
+  const grid = signal(true)
   // Compact layout is its own state, not the desktop flags reinterpreted: a
   // desktop preference of "sidebar open" must not open a drawer over the
   // canvas the moment the same workbench is viewed on a phone.
   const compact = signal(narrow)
   const drawerOpen = signal(false)
-  const sheetOpen = signal(false)
   const renderTick = signal(0)
-  effect(() => {
-    writePrefs({
-      brand: brandId(),
-      dark: dark(),
-      sidebarW: sidebarW(),
-      panelW: panelW(),
-      sidebarOpen: sidebarOpen(),
-      panelOpen: panelOpen(),
+  // A guest in someone else's page leaves their storage alone.
+  if (!embed) {
+    effect(() => {
+      writePrefs({
+        brand: brandId(),
+        sidebarW: sidebarW(),
+        panelFrac: panelFrac(),
+      })
     })
-  })
+  }
+  const toggleTheme = () => {
+    const next = !dark.peek()
+    if (embed) return dark.set(next)
+    // The preference first: the URL effect compares `dark` against it, and
+    // it runs synchronously inside `dark.set`.
+    preferDark = next
+    writeThemeMode(next ? 'dark' : 'light')
+    dark.set(next)
+  }
+  const syncTheme = () => {
+    if (initial.dark !== undefined) return
+    preferDark = readThemeMode() === 'dark'
+    dark.set(preferDark)
+  }
+  // The chrome's colours are CSS custom properties keyed on the root's
+  // `data-theme` (see ./theme) — this keeps the attribute in step with the
+  // mode, including a mode a link chose. The inline head script set it before
+  // first paint; this is the same value unless the link overrides it.
+  if (isClient) {
+    const root = document.documentElement
+    effect(() => {
+      root.setAttribute('data-theme', dark() ? 'dark' : 'light')
+    })
+  }
 
   let searchEl: HTMLInputElement | null = null
   const searchRef = (el: HTMLInputElement | null) => {
@@ -651,7 +805,7 @@ export function createModel(
   // `pseudo` is read INSIDE the accessor so the preview re-renders when the
   // forced state flips; a catalog spreads it onto its root (`{...ctx.pseudo}`)
   // to opt into pseudo-state forcing.
-  const makeRenderCtx = (appearance: Appearance) => ({
+  const makeRenderCtx = (appearance: Appearance, recording?: RecordingPermissions) => ({
     logAction,
     setValue: (key: string, v: unknown) => setValue(selId(), key, v),
     get pseudo() {
@@ -663,7 +817,7 @@ export function createModel(
     // A getter, so each render reads the CURRENT role rather than the one that
     // happened to be active when the context object was built.
     get can() {
-      return permissions().can
+      return (recording ?? permissions()).can
     },
     // A getter, so a component reading it re-renders when the state changes.
     get query() {
@@ -682,14 +836,174 @@ export function createModel(
   //
   // `appearance` renders the same component under another mode / brand — the
   // Theme Lab's tiles. Omitted, it is the workbench's own.
+  //
+  // The workbench's own preview passes LIVE values (see ./live-args): a control
+  // edit updates the mounted component in place, the way a parent passing a
+  // reactive prop would, instead of throwing it away. Only a key the catalog's
+  // `render` reads while rendering re-mounts it (through `remountOn`). The
+  // Theme Lab's tiles keep plain values — they are snapshots, not the subject.
+  // Re-mount trigger for the preview alone. A restart that also re-mounts the
+  // theme provider does NOT bump it: the provider's re-mount already builds
+  // the preview afresh, and bumping both re-ran the old preview accessor too —
+  // a second, stray mount that counted every binding twice.
+  const mountEpoch = signal(0)
+  let restarts = 0
+  // Re-mount when the SET of keys changes: the props object has one getter
+  // per key, and a key that did not exist when it was built has no getter.
+  const keySet = computed(() => Object.keys(vals()).join('\u0000'), { equals: (a, b) => a === b })
+  let live: { id: string; epoch: number; args: LiveArgs } | null = null
+  // Re-mount trigger for the keys `render` read while rendering. The watcher
+  // bumps it from inside its own run, so the re-mount is queued behind the
+  // component's bindings of the same key: they update in place first (their
+  // fire is real and counted — locked by binding-rows-live.test.ts), and only
+  // then is the preview rebuilt. The watcher is Atlas's own node, so coverage
+  // ignores it.
+  const remountBump = signal(0)
+  let remountWatch: Effect | null = null
+  const watchRemount = (args: LiveArgs, keys: readonly string[]): Effect | null => {
+    if (keys.length === 0) return null
+    const cells = keys.map((k) => args.cell(k))
+    let first = true
+    const watch = detached(() =>
+      effect(() => {
+        for (const c of cells) c()
+        if (first) {
+          first = false
+          return
+        }
+        untrack(() => remountBump.update((n) => n + 1))
+      }),
+    )
+    const id = _rdNodeId(watch)
+    if (id !== undefined) ignored.add(id)
+    return watch
+  }
+  let scope = emptyScope('')
+  const ignored = new Set<number>()
+  const liveFor = (id: string, epoch: number): LiveArgs => {
+    if (live && live.id === id && live.epoch === epoch) return live.args
+    live?.args.dispose()
+    live = { id, epoch, args: createLiveArgs(() => vals()) }
+    ignored.clear()
+    scope = emptyScope(id)
+    return live.args
+  }
+  // A reactive-graph id taken NOW: a probe signal's id is above every node
+  // created before it. Dev only — the registry does not exist in production.
+  const probe = (): number | undefined => {
+    if (process.env.NODE_ENV === 'production') return undefined
+    const id = _rdNodeId(signal(0))
+    if (id !== undefined) ignored.add(id)
+    return id
+  }
   const preview = (appearance?: Appearance): VNodeChildAtom | VNodeChildAtom[] => {
     const entry = sel()
     if (!entry) return null
+    if (appearance) {
+      return h(
+        PermissionsProvider,
+        { value: permissions().can },
+        entry.render(vals(), makeRenderCtx(appearance)) as VNodeChildAtom,
+      )
+    }
+    void mountEpoch()
+    const args = liveFor(entry.id, restarts)
+    void keySet()
+    let start: number | undefined
+    const keys = Object.keys(untrack(vals))
+    const { out, keys: readWhileRendering } = args.rendering(() =>
+      entry.render(args.props(keys), renderCtx),
+    )
+    // The keys `render` read itself: changing one re-mounts (see `watchRemount`).
+    void remountBump()
+    remountWatch?.dispose()
+    remountWatch = null
+    const done = (): void => {
+      remountWatch = watchRemount(args, readWhileRendering)
+      const end = probe()
+      if (start === undefined || end === undefined) return
+      // Deferred: this runs inside the mount, and a reader of the scope
+      // should see the subtree settled, not write state mid-mount.
+      queueMicrotask(() => previewMounts.set(previewMounts.peek() + 1))
+      scope = {
+        component: entry.id,
+        // Bounded: a remount key edited all session long keeps the latest
+        // windows; the nodes of the oldest mounts drop out of the scope.
+        mounts: [...scope.mounts, { start, end }].slice(-MAX_MOUNTS),
+        props: scope.props,
+        remount: new Set([...scope.remount, ...readWhileRendering]),
+        changed: args.changed(),
+        ignore: ignored,
+        context: scope.context,
+      }
+    }
     return h(
       PermissionsProvider,
       { value: permissions().can },
-      entry.render(vals(), appearance ? makeRenderCtx(appearance) : renderCtx) as VNodeChildAtom,
+      h(MountMark, { at: () => (start = probe()) }),
+      out as VNodeChildAtom,
+      // Mounted LAST, after the component's whole subtree.
+      h(MountMark, { at: done }),
     )
+  }
+  const previewMounts = signal(0)
+  // The scope is cleared NOW, not when the re-mount lands: until then it
+  // would describe the mount the new recording cannot see.
+  const themeEpoch = signal(0)
+  const restartPreview = (options?: { theme?: boolean }) => {
+    scope = emptyScope(scope.component)
+    restarts += 1
+    if (options?.theme === false) mountEpoch.update((n) => n + 1)
+    else themeEpoch.update((n) => n + 1)
+  }
+  let themeCells: {
+    epoch: number
+    theme: Computed<ThemeTokens>
+    mode: Computed<'light' | 'dark'>
+  } | null = null
+  const previewTheme = () => {
+    const epoch = themeEpoch()
+    if (themeCells && themeCells.epoch === epoch) return themeCells
+    themeCells?.theme.dispose()
+    themeCells?.mode.dispose()
+    themeCells = detached(() => ({
+      epoch,
+      theme: computed(() => theme()),
+      mode: computed<'light' | 'dark'>(() => (dark() ? 'dark' : 'light')),
+    }))
+    return themeCells
+  }
+  // The cells map grows as bindings read keys after the last mount, so the
+  // id→key map is refreshed on every read rather than frozen at mount.
+  const previewScope = (): PreviewScope => {
+    if (!live) return scope
+    const props = new Map<number, string>()
+    for (const [key, cell] of live.args.cells()) {
+      const id = _rdNodeId(cell)
+      if (id !== undefined) props.set(id, key)
+    }
+    const context = new Map<number, string>()
+    if (themeCells) {
+      const t = _rdNodeId(themeCells.theme)
+      const md = _rdNodeId(themeCells.mode)
+      if (t !== undefined) context.set(t, 'theme')
+      if (md !== undefined) context.set(md, 'mode')
+    }
+    return { ...scope, props, changed: live.args.changed(), context }
+  }
+
+  const previewAs = (roleId: string) => {
+    const role = roles.find((r) => r.id === roleId) ?? roles[0]!
+    const recording = recordingPermissions(role)
+    const entry = sel()
+    const node: VNodeChildAtom = entry
+      ? h(
+          PermissionsProvider,
+          { value: recording.can },
+          entry.render(vals(), makeRenderCtx({}, recording)) as VNodeChildAtom,
+        )
+      : null
+    return { node, recording }
   }
 
   // The a11y verdict is probed from the RENDERED preview, not asserted.
@@ -864,6 +1178,7 @@ export function createModel(
       // catalog, and a `Tree`'s whole `data` in every URL is not a link
       // anyone pastes.
       const next: UrlState = {
+        ...(embed ? { embed: true } : {}),
         c: selId(),
         p: String(addon()),
         args: editedArgs(values()[selId()], initialArgs(sel())),
@@ -876,8 +1191,12 @@ export function createModel(
         ...(pseudo() ? { pseudo: pseudo() as string } : {}),
         query: queryState(),
         role: permissionSet(),
+        layout: layout(),
       }
-      if (!urlStateChanged(lastWritten, next, urlDefaults)) return
+      // `dark` is written only when it differs from the shared preference:
+      // the preference is the source of truth, a link records an override.
+      const defaults: UrlDefaults = { ...urlDefaults, dark: preferDark }
+      if (!urlStateChanged(lastWritten, next, defaults)) return
       lastWritten = next
       // `nextQuery`, because both obvious names are taken in this scope:
       // `query` is the search-box signal and `search` is the search function.
@@ -894,7 +1213,7 @@ export function createModel(
         forQuery = { ...next }
         delete forQuery.c
       }
-      const nextQuery = serializeUrlState(forQuery, urlDefaults)
+      const nextQuery = serializeUrlState(forQuery, defaults)
       if (hasRoutes) {
         // An ABSOLUTE path, not the bare `?query` below. That form resolves
         // against the current directory, so once the URL is `/atlas/button/`
@@ -908,9 +1227,9 @@ export function createModel(
   }
 
   return {
-    catalog, groups, total, title: opts.title ?? 'atlas', subtitle: opts.subtitle ?? '',
+    catalog, groups, total, title: opts.title ?? 'Atlas', subtitle: opts.subtitle ?? '',
     brandId, dark, selId, query, filter, zoomIdx, view, addon, actions,
-    viewport, background, pseudo, outline, measure, locale, pseudoLocale, permissionSet, permissions, queryState, queryResult,
+    viewport, background, pseudo, outline, measure, layout, locale, pseudoLocale, permissionSet, permissions, queryState, queryResult,
     previewElement: () => previewEl,
     overlayOpen,
     overlayHostRef,
@@ -918,8 +1237,8 @@ export function createModel(
     wrapped: catalog.wrapped === true,
     viewports, backgrounds, locales, roles, viewportPreset, backgroundPreset, dir,
     brand, theme, sel, vals, visibleGroups, tree, browseIds, collapsed, isCollapsed, toggleGroup, noResults, matchCount, activeScenario, renderTick, a11y, previewEmpty,
-    setValue, selectScenario, runPlay, reset, logAction, clearActions, search, searchHits, preview, searchRef, focusSearch, previewRef,
-    searchOpen, sidebarW, panelW, sidebarOpen, panelOpen, compact, drawerOpen, sheetOpen,
+    setValue, selectScenario, runPlay, reset, logAction, clearActions, search, searchHits, preview, previewAs, restartPreview, previewScope, previewTheme, previewMounts, searchRef, focusSearch, previewRef,
+    searchOpen, sidebarW, panelFrac, grid, compact, drawerOpen, embed, toggleTheme, syncTheme,
   }
 }
 
@@ -933,11 +1252,8 @@ const PREFS_KEY = 'atlas:prefs'
 
 interface Prefs {
   brand?: string
-  dark?: boolean
   sidebarW?: number
-  panelW?: number
-  sidebarOpen?: boolean
-  panelOpen?: boolean
+  panelFrac?: number
 }
 
 function readPrefs(): Prefs {
@@ -950,11 +1266,10 @@ function readPrefs(): Prefs {
     const p = parsed as Record<string, unknown>
     const out: Prefs = {}
     if (typeof p.brand === 'string') out.brand = p.brand
-    if (typeof p.dark === 'boolean') out.dark = p.dark
     if (typeof p.sidebarW === 'number' && Number.isFinite(p.sidebarW)) out.sidebarW = p.sidebarW
-    if (typeof p.panelW === 'number' && Number.isFinite(p.panelW)) out.panelW = p.panelW
-    if (typeof p.sidebarOpen === 'boolean') out.sidebarOpen = p.sidebarOpen
-    if (typeof p.panelOpen === 'boolean') out.panelOpen = p.panelOpen
+    if (typeof p.panelFrac === 'number' && p.panelFrac >= 0.2 && p.panelFrac <= 0.8) {
+      out.panelFrac = p.panelFrac
+    }
     return out
   } catch {
     return {}

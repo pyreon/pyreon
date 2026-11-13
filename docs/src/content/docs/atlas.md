@@ -3,6 +3,10 @@ title: Atlas
 description: The AI-native component workbench — derives, verifies, and serves a machine-readable component catalog from your source.
 ---
 
+<ProductPitch id="atlas" />
+
+<LiveDemo id="atlas" />
+
 `@pyreon/atlas` is a component workbench that inverts Storybook's model: **you don't author stories — Atlas derives them.** Your components and their TypeScript types are the source of truth. Atlas infers controls from prop types, generates scenarios from variant axes (rocketstyle dimensions included), verifies every scenario with a six-check pipeline, and writes the result as a machine-readable catalog that both humans (the workbench) and AI assistants (the agent guide) consume.
 
 <PackageBadge name="@pyreon/atlas" href="/docs/atlas" />
@@ -32,19 +36,42 @@ Atlas works with **zero config** — `atlas scan` / `atlas dev` need nothing at 
 
 ### `atlas scan` — derive + verify the catalog
 
-```bash
-pyreon atlas scan .
-# atlas: discovered 11 component(s), 44 scenario(s) — 42 verified, 2 failing, 0 unverified.
-#   checks: a11y 12/14 ✗ · interaction 44/44 · ssrParity 44/44 · leak 44/44
-#   not run: reactivityCoverage, snapshot — browser-only — run `atlas verify-browser`
-#   → atlas-catalog.json
-#   → atlas-agent-guide.md
-# atlas: 2 failing scenario(s):
-#   ✗ button--empty
-#       a11y: missing accessible name: "label" is empty
+```text
+$ pyreon atlas scan . --no-mount --no-write
+atlas scan · . · static (--no-mount)
+
+  components   6
+  scenarios   22  2 failing · 12 verified · 8 unverified
+  checks      a11y 12/14 ✗
+  not run     interaction, ssrParity, leak — mounting is disabled for this run (`--no-mount`) — the
+              scan stayed static
+              reactivityCoverage, snapshot — browser-only — run `atlas verify-browser` to measure
+              this (a Node scan cannot)
+
+  ! 3 file(s) export something PascalCase that produced no component:
+    3× a chained/member call — rocketstyle chains are found by the runtime pass (needs `theme` in
+      your config); other member-call wrappers are not unwrapped
+      · src/components/Chip.tsx — Chip
+      · src/components/Stack.tsx — Stack
+      · src/demo-catalog.tsx — DemoButton, DemoBadge, IconDot
+    Not necessarily wrong — a provider, a schema or a const belongs here too.
+    But a component you expected in the catalog would show up in this list.
+
+  ✗ 2 failing scenarios
+  ✗ button--empty  Button
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+  ✗ badge--empty  Badge
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+  Run atlas verify <Component> to re-check one component on its own.
+
+✗ 2 failing scenarios · 12 verified · 8 unverified · 6 components · 137 ms
 ```
 
-The **`checks:` line is the one to read**. `42 verified` counts *scenarios*, not checks — a package where `@pyreon/runtime-server` does not resolve can report every scenario verified having run only two of the six. The tally says which ran, which failed, and the `not run:` lines say why the rest did not.
+The **`checks` row is the one to read**. `42 verified` counts *scenarios*, not checks — a package where `@pyreon/runtime-server` does not resolve can report every scenario verified having run only two of the six. The tally says which ran, which failed, and the `not run` rows say why the rest did not.
 
 The scan discovers components (static TypeScript scan + rocketstyle runtime detection), derives controls and scenarios, **mounts every scenario** through a real module loader, and runs the node half of the verify pipeline. It writes two artifacts:
 
@@ -67,15 +94,24 @@ The first positional is the **component name** (matching `atlas verify`), the se
 
 ### `atlas verify` — re-check one component
 
-```bash
-pyreon atlas verify Button
-# atlas verify Button: 1 component(s), 15 scenario(s)
-#   checks: a11y 14/15 ✗ · interaction 15/15 · ssrParity 15/15 · leak 15/15
-#
-# ✗ button--empty
-#     a11y: missing accessible name: "label" is empty
-#
-# 1 failing · 14 verified · 0 unverified
+```text
+$ pyreon atlas verify Button --no-mount
+atlas verify Button · 1 component · 9 scenarios · static (--no-mount)
+
+  scenarios  9  1 failing · 8 verified · 0 unverified
+  checks     a11y 8/9 ✗
+  not run    interaction, ssrParity, leak — mounting is disabled for this run (`--no-mount`) — the
+             scan stayed static
+             reactivityCoverage, snapshot — browser-only — run `atlas verify-browser` to measure
+             this (a Node scan cannot)
+
+  ✗ 1 failing scenario
+  ✗ button--empty  Button
+     ✗ a11y [missing-accessible-name] · missing accessible name: "label" is empty
+        ↳ src/components/index.tsx
+        fix: Give "label" a non-empty value, or an aria-label if the text is genuinely decorative.
+
+✗ 1 failing scenario · 8 verified · 0 unverified · 141 ms
 ```
 
 The **write → verify → fix loop**. Discovery still walks the project — a component's file is not known until it does — but mounting, exercising, hydrating and GC-probing run only for the match. On `@pyreon/ui-components` (108 components, 1090 scenarios) that is 1.35s for a full scan against 0.90s scoped to one component's 60; the verify work drops ~18× while discovery dominates the residual, so it is a **focus** tool first and a speed tool second.
@@ -130,24 +166,43 @@ The first positional is the **component** (matching `atlas check`); the director
 
 Both `atlas scan` and `atlas verify` take `--check`, which compares the run against the **committed** `atlas-catalog.json` instead of rewriting it:
 
-```bash
-pyreon atlas scan . --check
-# atlas --check: REGRESSED — 2 check(s) started failing
-#   ✗ button--empty — now failing: interaction
+```text
+$ pyreon atlas scan . --check
+…
+  ✗ atlas --check: REGRESSED — 1 check(s) started failing
+    ✗ counter--default — now failing: interaction
+
+✗ regressed against the committed catalog (--check) · 1 failing scenario · 0 verified · 0 unverified
+  · 1 component · 158 ms
 ```
 
 Absolute counts answer *"how is it now"*. They cannot answer *"did I help"*, which is the question anyone iterating actually has — and the only signal an agent can use to decide whether to keep a change or back it out.
 
 **A check that stops running counts as a regression.** This is the case counts structurally cannot catch, because losing coverage makes the numbers *improve*:
 
-```bash
-# baseline: 2 failing
-pyreon atlas scan . --check --no-mount
-# atlas: discovered 1 component(s), 2 scenario(s) — 0 verified, 0 failing, 2 unverified.
-#                                                              ^^^^^^^^^ looks fixed
-# atlas --check: REGRESSED — 4 check(s) stopped running
-#   ✗ button--empty — no longer checked: interaction, leak
-#     (coverage lost — the failure did not go away, the check did)
+```text
+# baseline: a mounted scan, committed
+$ pyreon atlas scan . --check --no-mount
+atlas scan · . · static (--no-mount) · ratchet (--check)
+
+  components  1
+  scenarios   3  1 failing · 2 verified · 0 unverified
+  checks      a11y 2/3 ✗
+  not run     interaction, ssrParity, leak — mounting is disabled for this run (`--no-mount`) — the
+              scan stayed static
+              reactivityCoverage, snapshot — browser-only — run `atlas verify-browser` to measure
+              this (a Node scan cannot)
+
+  ✗ atlas --check: REGRESSED — 6 check(s) stopped running
+    ✗ button--default — no longer checked: interaction, leak (coverage lost — the failure did not go
+      away, the check did)
+    ✗ button--empty — no longer checked: interaction, leak (coverage lost — the failure did not go
+      away, the check did)
+    ✗ button--long-content — no longer checked: interaction, leak (coverage lost — the failure did
+      not go away, the check did)
+
+✗ regressed against the committed catalog (--check) · 1 failing scenario · 2 verified · 0 unverified
+  · 1 component · 64 ms
 ```
 
 Delete a wrapper from `atlas.config.ts` and every mount-dependent check drops to `skip`: the failures vanish, the counts improve, and the catalog looks better than it did. Losing coverage is the one way to "fix" a red catalog that must never read as green.
@@ -181,17 +236,25 @@ Explicit entries win — Vite matches in order, and these are placed first.
 pyreon atlas dev . --port=5210
 ```
 
-Real Vite + the real Pyreon compiler over your source. The workbench ships:
+Real Vite + the real Pyreon compiler over your source. The workbench is the Pyreon app shell: a 48px top bar (Canvas / Docs / Lab, ⌘K search, the theme toggle), the **catalog** on the left, and in the main column the **scenario strip**, the **canvas** and the **13 panels** under it (the split is draggable, and ↑↓ on the divider). Below 860px the catalog becomes a drawer: a modal that takes focus, keeps Tab inside, and closes on Escape, the scrim, or a choice — focus returns to its toggle.
 
-- **Sidebar** — the derived catalog, nested by directory, with per-scenario verdict dots (ok / fail / unverified — three states, never smoothed). It has its own persistent filter (the ⌘K dialog's query is the dialog's, cleared on exit), parts sit under their parent, a long scenario list is capped with a "show all" row, and ↑↓ walk exactly the rows it shows.
+- **Catalog** — the derived components, nested by directory, each with ONE verdict dot folded from its scenarios: filled green when every scenario passed, red when one failed, a hollow amber ring when nothing verified it (never smoothed into a pass). It has its own persistent filter (the ⌘K dialog's query is the dialog's, cleared on exit), parts sit under their parent, and ↑↓ walk exactly the rows it shows.
+- **Scenario strip** — the selected component's scenarios as tabs above the canvas, each with its verdict dot; the active one's verdict is the chip on the right, and an authored `play` script gets a ▶ there. Editing a control leaves every tab unselected ("edited args") — the canvas no longer shows a verified state verbatim.
+- **Panels** — Controls, Schema, Actions, A11y, Perf, Permissions, Query, Store, Update cause, Reactive coverage, Lens, Canvas (zoom, grid, measure, layout) and Addons (viewport, background, preview brand, outline, pseudo state, locale, pseudo-locale). A panel with nothing for the selected component stays one click away in the fainter ink. Every panel but Controls, Actions, A11y, Canvas and Addons loads its body the first time its tab opens.
+- **Canvas → Layout** — `centered` (the default), `padded` (top-left with a 16px gutter, how a form or a table sits in a page) or `fullscreen` (no gutter, no surface edge, the whole stage) — Storybook's `layout`, carried in the link as `?layout=`.
+- **Permissions panel** — the scenario rendered as EVERY role sees it, side by side, each under its own recording `can()`. Each card lists the keys that render consulted (✓ granted / ✗ denied) and a verdict against the role's policy (the shipped roles, or `presets.roles` in atlas.config.ts): an enabled action whose label starts with a known verb (`Delete`, `Remove`, `Save`, `Edit`, …) rendered for a role whose consulted key for that verb was denied, or — with no `can()` behind it — for a role the policy withholds that verb from, is flagged (`"Delete" rendered for viewer with no can() check · policy: admin only`). A component that consulted no key is reported as unguarded on every card. A disabled action is not a leak. Clicking a role's chip renders the canvas as that role (`?role=`).
+- **Schema panel** — where every control comes from: the schema, a rocketstyle dimension, the prop type, the content seed, `defineComponent`, or the hand-written catalog entry. Under `atlas dev`, a prop added to the source while the workbench is open is marked `new` and "added N min ago" (since the rescan that found it). With a schema, the live values are validated against it.
+- **Reactive coverage panel** — every DOM binding of the selected component by name (`aria-busy ← loading`, `class ← variant, size, mode, theme`), its kind, how many times it updated after its mount, and a status mark (✓ covered, ○ never fired, ↻ rebuilt by a re-mount). Bindings that never fired come first, each with what would exercise it — the control to change, the state to interact with, or the theme switch. The % bar reads the same rows. Record re-mounts the preview so every binding is counted from its first run, and the list re-samples as you work. Control edits update the mounted component in place (a key the catalog's `render` reads itself still re-mounts it), which is what lets a binding's update be counted at all.
+- **Theme** — the chrome follows the shared Pyreon preference: `localStorage['pyreon-theme']` (`'light' | 'dark'`), otherwise `prefers-color-scheme`. The `atlas dev` / `atlas build` shells apply it before first paint; the toggle writes it, so the docs site, Loom and Atlas agree, and another tab's change is picked up live. The preview renders under its own brand tokens (Addons → Brand), so the chrome never restyles the component under test.
+- **`?embed`** — the bare app for an iframe (a product page, your docs): no theme toggle (the host owns the mode — pass `&dark=0` or `&dark=1`), no writes to the host's storage, and the flag survives the workbench's own URL rewrites so a reload inside the frame stays embedded.
 - **Live rescan** — a change to a scanned file re-derives the catalog and reloads the workbench (debounced, serialised; a failed rescan keeps the previous catalog and says so). A component added or a variant declared after boot shows up without a restart.
-- **Links** — the URL carries the component, the addon tab, the edited controls, the viewport / background / locale, the brand and appearance, the view (`?view=docs`), a forced pseudo state, the Data panel's query state and the active role. Chrome preferences (brand, appearance, panel widths, what is open) persist per browser; a link wins for what it names.
+- **Links** — the URL carries the component, the addon tab, the edited controls, the viewport / background / locale, the preview brand, the mode (only when it differs from your shared preference), the view (`?view=docs`), a forced pseudo state, the Query panel's state, the active role and the stage layout. Preferences (preview brand, catalog width, panel split) persist per browser; a link wins for what it names.
 - **Controls** — editors inferred from prop types: booleans, strings, selects, numbers, colors.
-- **Canvas addons** — viewport presets, backgrounds, zoom, a **measure overlay** (hover any element for its real layout box), and pseudo-state forcing (`:hover` / `:focus` / `:active`).
+- **Canvas and Addons panels** — zoom, the stage grid, a **measure overlay** (hover any element for its real layout box); viewport presets, backgrounds (theme surface, fixed light / dark, a transparency checker), pseudo-state forcing (`:hover` / `:focus` / `:active`), locale with RTL, and pseudo-locale.
 - **A11y panel** — static checks plus **axe-core on demand**, scoped to the preview, with findings that highlight the offending element on hover.
 - **Docs view** — an autodocs page per component: description, live preview, props table, usage, scenarios (each one a link that opens the canvas in exactly that state), and lazy-loaded source.
 - **Actions log** — every event handler fired, with arguments.
-- **Reactivity Lens** — which signals drive what, live.
+- **Reactivity Lens** — the compiler's live / static verdict per expression, with a **Fix:** line under a verdict worth acting on: a detector footgun shows the detector's own rewrite, a baked-once read shows how to read the value live.
 
 Components living in files that import `@pyreon/atlas` are treated as workbench *hosts* and excluded from the nav (matched on import specifiers, never on file content).
 
@@ -243,7 +306,7 @@ pyreon atlas build . --out atlas-dist --base /my-repo/
 # atlas build: 108 component(s) → /…/atlas-dist
 ```
 
-Compiles the workbench into plain files for any static host: one URL per component (`/button/`), no server. The two panels Node answers in `atlas dev` — the Docs source block and the Reactivity Lens — are baked at build time into one small JSON file per component under `_atlas/rpc/`, fetched when that component's panel asks. File paths in them are project-relative, so a public deploy does not publish your machine's directory layout. The site is a production build: the dev-only analysis panels (Why?, Perf, reactive coverage) live in `atlas dev`.
+Compiles the workbench into plain files for any static host: one URL per component (`/button/`), no server. The two panels Node answers in `atlas dev` — the Docs source block and the Reactivity Lens — are baked at build time into one small JSON file per component under `_atlas/rpc/`, fetched when that component's panel asks. File paths in them are project-relative, so a public deploy does not publish your machine's directory layout. The site is a production build: the dev-only analysis panels (Update cause, Perf, Reactive coverage) live in `atlas dev`.
 
 The output directory is **emptied first**, so it must be new, empty, or a previous `atlas build` output (marked by a `.atlas-build-output` file). `--out .`, the source directory, or a non-empty directory atlas did not write is refused before anything is touched.
 
@@ -295,7 +358,7 @@ export const presets = {
 
 - **`theme`** — your design tokens. This is what resolves rocketstyle `variant` / `size` axes: those chains are call expressions the static scanner can't see, so Atlas loads them and reads the dimensions — which requires the theme their callbacks dereference. Without it, rocketstyle components are still discovered but lose their axes.
 - **`wrapper`** — the providers your components genuinely need to mount (`PyreonUI`, a `PermissionsProvider`, …). Without it, provider-dependent scenarios honestly **fail** with `threw while mounted` — they are not quietly skipped.
-  In the workbench it also receives the **appearance** to render in — `mode` (`'light' | 'dark'`), `dark` and `brand` (`{ id, name, accent }`), each an **accessor** (`AtlasWrapperProps` from `@pyreon/atlas/core`). Forward `mode` to your provider — `h(PyreonUI, { theme, mode: props.mode }, props.children)` — or the dark workbench renders your components in their light mode. Map `props.brand().id` to one of your own themes to make the Theme Lab's brand tiles mean something; a wrapper that never reads `brand` makes the Lab show one tile per mode and say why, rather than tile identical cards. All three are absent under `atlas scan`, so treat a missing accessor as "use your default".
+  In the workbench it also receives the **appearance** to render in — `mode` (`'light' | 'dark'`), `dark` and `brand` (`{ id, name, accent }`), each an **accessor** (`AtlasWrapperProps` from `@pyreon/atlas/core`). Forward `mode` to your provider — `h(PyreonUI, { theme, mode: props.mode }, props.children)` — or a dark workbench renders your components in their light mode. Map `props.brand().id` to one of your own themes to make Addons → Brand and the Lab's brand tiles mean something; a wrapper that never reads `brand` makes the Lab show one tile per mode and say why, rather than tile identical cards. All three are absent under `atlas scan`, so treat a missing accessor as "use your default".
 - **`presets`** — per-project viewports, locales (RTL supported), and permission roles for the canvas toolbars. Each family replaces the shipped defaults; omitted families keep them.
 - **`scenarios`** — authored scenarios with `play` scripts (below). Authored entries win over generated ones with the same id. Args stay **live**: a render-prop child (`children: (state) => …`) or an `h()` tree written here reaches the canvas intact — the JSON catalog marks them as living in the config. An authored `Default` is the base every derived scenario is built on, so `size=medium` on a render-prop component is the authored composition at medium size, not an empty base.
 - **`matrix`** — how variant scenarios are derived from a component's axes. `'axes'` (default) fans one axis at a time (`Default` plus one scenario per axis value, the other axes at their defaults — `Σ|axis|`); `'full'` crosses every axis (`Π|axis|`) — opt in when the axes genuinely interact, knowing a `state × size × variant` component then carries 60+ scenarios. `Default` renders the component's own default: an axis the component defaults in its body (`props.size ?? 'md'`) uses that value, an optional axis with no readable default is left unset, and only a required axis is pinned to its first value.
@@ -358,3 +421,11 @@ The scan runs `play` **instead of** the automatic click-walk; a throw fails the 
 - `verify-browser` can't drive components defined in workbench-host files — the summary names each one (`notDriven`), never silently skips.
 - The leak check skips (never fake-passes) without a GC hook.
 - Reactive coverage is a **measurement**, not a threshold gate — the findings carry the numbers; judge them.
+
+<BenchCallout id="atlas" />
+
+<ComingFrom id="atlas" />
+
+<InlineSell id="design" />
+
+<CrossSell id="atlas" />

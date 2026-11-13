@@ -3,6 +3,10 @@ title: Feature
 description: Schema-driven CRUD primitives with auto-generated hooks for lists, forms, tables, and stores.
 ---
 
+<ProductPitch id="feature" />
+
+<LiveDemo id="feature" />
+
 `@pyreon/feature` eliminates CRUD boilerplate by deriving an entire feature's data layer from a single schema definition. Define your entity once with `defineFeature`, and get reactive hooks for listing, fetching, searching, creating, updating, and deleting records — all composed from `@pyreon/query` (server state), `@pyreon/form` (forms + validation), `@pyreon/table` (tables), and `@pyreon/store` (client-side cache).
 
 <PackageBadge name="@pyreon/feature" href="/docs/feature" />
@@ -861,3 +865,11 @@ A typical CRUD feature needs list queries, detail queries, search, create / upda
 `defineFeature` replaces that with roughly ten lines. You declare the schema and the API base path; the package generates every hook, infers form fields and table columns from the schema, applies optimistic updates, and keeps the client cache in sync.
 
 This is especially valuable in AI-assisted workflows: instead of reviewing 200 lines of boilerplate line by line, an agent produces a single `defineFeature` call — declarative, auditable at a glance, and consistent across every feature in the app.
+
+<BenchCallout id="feature" />
+
+<ComingFrom id="feature" />
+
+<InlineSell id="form" />
+
+<CrossSell id="feature" />

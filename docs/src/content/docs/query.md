@@ -3,6 +3,10 @@ title: Query
 description: Reactive data fetching powered by TanStack Query with fine-grained signal integration.
 ---
 
+<ProductPitch id="query" />
+
+<LiveDemo id="query" />
+
 `@pyreon/query` is the Pyreon adapter for [TanStack Query](https://tanstack.com/query). It wraps TanStack Query's observer pattern with Pyreon's fine-grained reactivity signals, so each property (`data`, `error`, `isPending`, etc.) is an independent signal that only triggers updates for the effects that depend on it.
 
 <PackageBadge name="@pyreon/query" href="/docs/query" />
@@ -1582,3 +1586,11 @@ streaming operation, built on this hook.
 | `UseSuspenseQueriesResult`       | Return type of `useSuspenseQueries`                        |
 | `QueryData` / `QueryError`       | Extract the data / error type from a query result         |
 | `HydrationBoundaryProps` / `IsRestoringProviderProps` | Props for those components                |
+
+<BenchCallout id="query" />
+
+<ComingFrom id="query" />
+
+<InlineSell id="http" />
+
+<CrossSell id="query" />

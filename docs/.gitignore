@@ -1,3 +1,7 @@
 .pyreon/
 node_modules/
 dist/
+# Generated at build time (vite-plugins/atlas-demo.ts)
+public/demos/
+# The e2e build with no post published yet (e2e-configs/docs.config.ts)
+dist-scheduled/

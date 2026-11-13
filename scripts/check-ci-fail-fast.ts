@@ -182,7 +182,14 @@ export function findCiSchedulingViolations(workflow: string, setupAction: string
   return errors
 }
 
-/** Cache actions must archive immutable records, even while cancelled workers run. */
+/**
+ * Cache actions must archive immutable records, even while cancelled workers run.
+ *
+ * A job may restore more than one store (the default branch's, then the ref's
+ * own). Every hydrate after the first must pass `--merge`: without it the
+ * snapshot REPLACES the live directory and the earlier store is silently
+ * discarded, which reads as an ordinary cold cache.
+ */
 export function findNativeCacheSnapshotViolations(workflow: string): string[] {
   const errors: string[] = []
   const live = '.cache/pyreon-native-validate'
@@ -190,11 +197,14 @@ export function findNativeCacheSnapshotViolations(workflow: string): string[] {
   const condition = (step: string) => /^ {8}if:\s*(.+)$/m.exec(step)?.[1]?.trim() ?? ''
   for (const job of parseJobBlocks(workflow)) {
     const steps = job.body.split(/^ {6}- /m).slice(1)
+    let restores = 0
     steps.forEach((step, index) => {
       if (!/^\s+key:\s*native-verdicts-ci-/m.test(step)) return
       const kind = /uses: actions\/cache\/(restore|save)@/.exec(step)?.[1]
       const adjacent = steps[index + (kind === 'restore' ? 1 : -1)] ?? ''
-      const command = kind === 'restore' ? `${archive} ${live}` : `${live} ${archive}`
+      const merging = kind === 'restore' && restores++ > 0
+      const command =
+        kind === 'restore' ? `${archive} ${live}${merging ? ' --merge' : ''}` : `${live} ${archive}`
       if (
         !kind ||
         !step.includes(`path: ${archive}\n`) ||
@@ -203,7 +213,9 @@ export function findNativeCacheSnapshotViolations(workflow: string): string[] {
         (kind === 'save' && !condition(step).includes('always()'))
       )
         errors.push(
-          `${job.name}: native cache ${kind ?? 'action'} must use a matching immutable snapshot step`,
+          merging
+            ? `${job.name}: a second native cache restore must hydrate with --merge, or it discards the first store`
+            : `${job.name}: native cache ${kind ?? 'action'} must use a matching immutable snapshot step`,
         )
     })
   }

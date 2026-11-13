@@ -37,6 +37,8 @@ export interface LensFinding {
   suspect: boolean
   /** the static-detector code, for footguns */
   code?: string
+  /** the detector's suggested rewrite, for footguns */
+  fix?: string
 }
 
 /**
@@ -76,7 +78,7 @@ export interface LensResult {
  */
 export function toLensLines(
   source: string,
-  findings: readonly { kind: string; line: number; column: number; detail: string; code?: string }[],
+  findings: readonly { kind: string; line: number; column: number; detail: string; code?: string; fix?: string }[],
 ): LensLine[] {
   const text = source.split('\n')
   const lines: LensLine[] = text.map((t, i) => ({ line: i + 1, text: t, findings: [] }))
@@ -92,6 +94,7 @@ export function toLensLines(
       column: f.column,
       suspect: isSuspect(f.kind),
       ...(f.code !== undefined ? { code: f.code } : {}),
+      ...(f.fix !== undefined ? { fix: f.fix } : {}),
     })
   }
   return lines
@@ -170,7 +173,7 @@ export function lensMethod(ctx: LensContext): RpcMethod {
     const result = analyze(source, abs)
     const lines = toLensLines(
       source,
-      result.findings as { kind: string; line: number; column: number; detail: string }[],
+      result.findings as { kind: string; line: number; column: number; detail: string; code?: string; fix?: string }[],
     )
     return { path: abs, lines, ...summarize(lines) } satisfies LensResult
   }

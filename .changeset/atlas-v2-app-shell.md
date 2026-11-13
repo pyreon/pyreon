@@ -1,0 +1,7 @@
+---
+'@pyreon/atlas': minor
+---
+
+The workbench UI is now the Pyreon app shell (Atlas v2): a 48px top bar, a catalog with one verdict dot per component, a scenario strip above the canvas, and the 13 panels under it in the design order (Controls, Schema, Actions, A11y, Perf, Permissions, Query, Store, Update cause, Reactive coverage, Lens, Canvas, Addons). Below 860px the catalog is a modal drawer (focus moves in, Tab stays inside, Escape closes and returns focus). The chrome follows the shared Pyreon theme preference (`localStorage['pyreon-theme']`, else `prefers-color-scheme`), applied before first paint by the `atlas dev` / `atlas build` shells; its colours live in one file (`CHROME_PALETTES`, emitted as `--atlas-*` custom properties) and every text role passes 4.5:1 in both modes. The preview renders under its own brand tokens, picked in Addons → Brand. `?embed` renders the bare app for an iframe. The Addons → Background "checker" preset now actually draws its grid (it rendered plain white).
+
+Breaking (0.x): the profile menu, status bar, sidebar/panel collapse toggles and the compact bottom sheet are gone; the canvas zoom moved to the Canvas panel; viewport, background, outline, pseudo state and locale moved from the Canvas panel to the new Addons panel; panel titles "Roles", "Data", "Why?" and "Reactivity" are now "Permissions", "Query", "Update cause" and "Reactive coverage" (link ids unchanged); the default title is "Atlas"; `atlas:prefs` no longer stores the mode, the panel width or open flags.

@@ -1,0 +1,13 @@
+{
+  "route": "/newsletter",
+  "destination": "the Pyreon newsletter",
+  "meta": {
+    "title": "Newsletter · Pyreon",
+    "description": "The Pyreon newsletter: what shipped, what we measured, what is next."
+  },
+  "redirect": {
+    "title": "Taking you to {destination}.",
+    "text": "If nothing happens in a second, use the link below.",
+    "cta": "Continue to {destination}"
+  }
+}

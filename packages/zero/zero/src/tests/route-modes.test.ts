@@ -147,7 +147,7 @@ describe('formatRouteModeTable', () => {
 
   it('renders counts header + one glyph line per route', () => {
     const lines = formatRouteModeTable(entries, 'ssg')
-    expect(lines[0]).toContain('Route modes (app: ssg)')
+    expect(lines[0]).toContain('Route modes · app: ssg ·')
     expect(lines[0]).toContain('1 ssg ○')
     expect(lines[0]).toContain('1 ssr λ')
     expect(lines[0]).toContain('1 isr ⟳')

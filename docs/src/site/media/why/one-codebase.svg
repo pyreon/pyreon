@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa pw-one-codebase" viewBox="0 0 960 500" width="960" height="500" role="img" aria-labelledby="pw-one-codebase-t pw-one-codebase-d" fill="none">
+<title id="pw-one-codebase-t">One App.tsx, three build lanes: web, iOS and Android</title>
+<desc id="pw-one-codebase-d">One src/App.tsx feeds three lanes. Web: Vite builds it against @pyreon/runtime-dom into the DOM, with SSR and hydration. iOS: pyreon-native emits SwiftUI .swift files that Xcode builds into the app. Android: pyreon-native emits Compose .kt files that Gradle builds into the app. The iOS and Android lanes are labelled experimental. A trace runs down each lane in turn. A note says CI runs XCUITest on a Simulator and Compose tests on an emulator.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.pw-one-codebase{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.pw-one-codebase .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.pw-one-codebase .pw-one-codebase-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.pw-one-codebase *{animation:none!important;transition:none!important}.pw-one-codebase .pw-one-codebase-rm{opacity:1}.pw-one-codebase .pw-one-codebase-am{opacity:0}}
+
+.pw-one-codebase .ln{stroke:var(--px-hint);stroke-width:1.5;fill:none}
+.pw-one-codebase .dash{stroke:var(--px-hint);stroke-width:1.5;stroke-dasharray:3 5;fill:none}
+.pw-one-codebase .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pw-one-codebase .bx2{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+.pw-one-codebase .lab{fill:var(--px-fog);font-size:14px;letter-spacing:.04em}
+.pw-one-codebase .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.pw-one-codebase .val{fill:var(--px-text);font-size:20px;font-weight:500}
+.pw-one-codebase .big{fill:var(--px-strong);font-size:24px;font-weight:600;letter-spacing:-.02em}
+.pw-one-codebase .code{fill:var(--px-text);font-size:15px}
+.pw-one-codebase .kw{fill:var(--px-accent-text)} .pw-one-codebase .fn{fill:var(--px-link)} .pw-one-codebase .str{fill:var(--px-warm)} .pw-one-codebase .ty{fill:var(--px-violet)}
+.pw-one-codebase .dim{fill:var(--px-fog)}
+.pw-one-codebase .hint{fill:var(--px-hint);font-size:13px}
+.pw-one-codebase .ember{stroke:url(#pw-one-codebase-egu);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:36 900;fill:none}
+.pw-one-codebase .emberS{stroke:url(#pw-one-codebase-egu);stroke-width:2.5;stroke-linecap:round;fill:none}
+.pw-one-codebase .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.pw-one-codebase .ok{fill:var(--px-ok)} .pw-one-codebase .warm{fill:var(--px-warm)} .pw-one-codebase .hot{fill:var(--px-accent)} .pw-one-codebase .errF{fill:var(--px-err)}
+.pw-one-codebase .okT{fill:var(--px-ok)} .pw-one-codebase .warmT{fill:var(--px-warm)} .pw-one-codebase .hotT{fill:var(--px-accent-text)} .pw-one-codebase .errT{fill:var(--px-err)}
+.pw-one-codebase .okS{stroke:var(--px-ok)} .pw-one-codebase .errS{stroke:var(--px-err)}
+.pw-one-codebase .gfill{fill:url(#pw-one-codebase-eg)}
+@media (prefers-reduced-motion: reduce){.pw-one-codebase .ember{opacity:0}}
+
+.pw-one-codebase .chip{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pw-one-codebase .exp{fill:none;stroke:var(--px-warn);stroke-width:1.2}
+.pw-one-codebase .expT{fill:var(--px-warn);font-size:11px;letter-spacing:.12em}
+@keyframes pw-one-codebase-t0{0%{stroke-dashoffset:60;opacity:0}6.9444%{stroke-dashoffset:60;opacity:1}18.0556%{stroke-dashoffset:-600;opacity:1}18.0694%{stroke-dashoffset:60;opacity:0}100%{stroke-dashoffset:60;opacity:0}}
+@keyframes pw-one-codebase-r0{0%{opacity:0}18.0556%{opacity:0}19.1667%{opacity:1}20.8333%{opacity:0}100%{opacity:0}}
+.pw-one-codebase .t0{stroke-dasharray:60 1200}
+@keyframes pw-one-codebase-t1{0%{stroke-dashoffset:60;opacity:0}36.1111%{stroke-dashoffset:60;opacity:1}47.2222%{stroke-dashoffset:-612;opacity:1}47.2361%{stroke-dashoffset:60;opacity:0}100%{stroke-dashoffset:60;opacity:0}}
+@keyframes pw-one-codebase-r1{0%{opacity:0}47.2222%{opacity:0}48.3333%{opacity:1}50.0000%{opacity:0}100%{opacity:0}}
+.pw-one-codebase .t1{stroke-dasharray:60 1200}
+@keyframes pw-one-codebase-t2{0%{stroke-dashoffset:60;opacity:0}65.2778%{stroke-dashoffset:60;opacity:1}76.3889%{stroke-dashoffset:-606;opacity:1}76.4028%{stroke-dashoffset:60;opacity:0}100%{stroke-dashoffset:60;opacity:0}}
+@keyframes pw-one-codebase-r2{0%{opacity:0}76.3889%{opacity:0}77.5000%{opacity:1}79.1667%{opacity:0}100%{opacity:0}}
+.pw-one-codebase .t2{stroke-dasharray:60 1200}
+.pw-one-codebase .t0{animation:pw-one-codebase-t0 7200ms linear infinite}
+.pw-one-codebase .r0{animation:pw-one-codebase-r0 7200ms linear infinite}
+.pw-one-codebase .t1{animation:pw-one-codebase-t1 7200ms linear infinite}
+.pw-one-codebase .r1{animation:pw-one-codebase-r1 7200ms linear infinite}
+.pw-one-codebase .t2{animation:pw-one-codebase-t2 7200ms linear infinite}
+.pw-one-codebase .r2{animation:pw-one-codebase-r2 7200ms linear infinite}
+</style>
+<defs><linearGradient id="pw-one-codebase-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pw-one-codebase-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="960" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pw-one-codebase-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pw-one-codebase-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<text class="m eb" x="24" y="34">ONE CODEBASE · THREE BUILDS</text>
+<rect class="bx" x="24" y="150" width="210" height="200" rx="14"/>
+<text class="m hint" x="40" y="176">src/App.tsx</text>
+<text class="m code" x="40" y="210" font-size="14">&lt;<tspan class="ty">Stack</tspan> gap=<tspan class="str">"md"</tspan>&gt;</text>
+<text class="m code" x="56" y="236" font-size="14">&lt;<tspan class="ty">Text</tspan>&gt;{count}…</text>
+<text class="m code" x="56" y="262" font-size="14">&lt;<tspan class="ty">Button</tspan></text>
+<text class="m code" x="72" y="288" font-size="14">onPress={…}&gt;</text>
+<text class="m code" x="40" y="314" font-size="14">&lt;/<tspan class="ty">Stack</tspan>&gt;</text>
+<rect class="ring pw-one-codebase-rm" x="20" y="146" width="218" height="208" rx="17"/><path class="ln" d="M234 250 C 252 250, 252 110, 270 110 L 800 110"/><path class="ember t0" d="M234 250 C 252 250, 252 110, 270 110 L 800 110"/><text class="m lab" x="270" y="76" style="fill:var(--px-text)">web</text><rect class="chip" x="270" y="90" width="236" height="40" rx="10"/><text class="m lab" x="388" y="115" text-anchor="middle" style="fill:var(--px-text);letter-spacing:0">Vite + @pyreon/runtime-dom</text><path d="M526 105 L534 110 L526 115" class="ln"/><rect class="chip" x="540" y="90" width="70" height="40" rx="10"/><text class="m lab" x="575" y="115" text-anchor="middle" style="fill:var(--px-text);letter-spacing:0">DOM</text><path d="M630 105 L638 110 L630 115" class="ln"/><rect class="chip" x="644" y="90" width="156" height="40" rx="10"/><text class="m lab" x="722" y="115" text-anchor="middle" style="fill:var(--px-text);letter-spacing:0">SSR + hydration</text><rect class="ring r0" x="640" y="86" width="164" height="48" rx="13" opacity="0"/><path class="ln" d="M234 250 C 252 250, 252 250, 270 250 L 812 250"/><path class="ember t1" d="M234 250 C 252 250, 252 250, 270 250 L 812 250"/><path class="emberS pw-one-codebase-rm" d="M234 250 C 252 250, 252 250, 270 250 L 812 250"/><text class="m lab" x="270" y="216" style="fill:var(--px-text)">iOS</text><rect class="exp" x="313" y="200" width="112" height="22" rx="11"/><text class="m expT" x="369" y="215" text-anchor="middle">EXPERIMENTAL</text><rect class="chip" x="270" y="230" width="136" height="40" rx="10"/><text class="m lab" x="338" y="255" text-anchor="middle" style="fill:var(--px-text);letter-spacing:0">pyreon-native</text><path d="M426 245 L434 250 L426 255" class="ln"/><rect class="chip" x="440" y="230" width="160" height="40" rx="10"/><text class="m lab" x="520" y="255" text-anchor="middle" style="fill:var(--px-text);letter-spacing:0">SwiftUI · .swift</text><path d="M620 245 L628 250 L620 255" class="ln"/><rect class="chip" x="634" y="230" width="80" height="40" rx="10"/><text class="m lab" x="674" y="255" text-anchor="middle" style="fill:var(--px-text);letter-spacing:0">Xcode</text><path d="M734 245 L742 250 L734 255" class="ln"/><rect class="chip" x="748" y="230" width="64" height="40" rx="10"/><text class="m lab" x="780" y="255" text-anchor="middle" style="fill:var(--px-text);letter-spacing:0">app</text><rect class="ring r1" x="744" y="226" width="72" height="48" rx="13" opacity="0"/><path class="ln" d="M234 250 C 252 250, 252 390, 270 390 L 806 390"/><path class="ember t2" d="M234 250 C 252 250, 252 390, 270 390 L 806 390"/><text class="m lab" x="270" y="356" style="fill:var(--px-text)">Android</text><rect class="exp" x="349" y="340" width="112" height="22" rx="11"/><text class="m expT" x="405" y="355" text-anchor="middle">EXPERIMENTAL</text><rect class="chip" x="270" y="370" width="136" height="40" rx="10"/><text class="m lab" x="338" y="395" text-anchor="middle" style="fill:var(--px-text);letter-spacing:0">pyreon-native</text><path d="M426 385 L434 390 L426 395" class="ln"/><rect class="chip" x="440" y="370" width="150" height="40" rx="10"/><text class="m lab" x="515" y="395" text-anchor="middle" style="fill:var(--px-text);letter-spacing:0">Compose · .kt</text><path d="M610 385 L618 390 L610 395" class="ln"/><rect class="chip" x="624" y="370" width="84" height="40" rx="10"/><text class="m lab" x="666" y="395" text-anchor="middle" style="fill:var(--px-text);letter-spacing:0">Gradle</text><path d="M728 385 L736 390 L728 395" class="ln"/><rect class="chip" x="742" y="370" width="64" height="40" rx="10"/><text class="m lab" x="774" y="395" text-anchor="middle" style="fill:var(--px-text);letter-spacing:0">app</text><rect class="ring r2" x="738" y="366" width="72" height="48" rx="13" opacity="0"/>
+<line x1="24" y1="452" x2="936" y2="452" style="stroke:var(--px-line2)" stroke-width="1"/>
+<text class="m hint" x="24" y="480">CI: XCUITest on a Simulator · Compose tests on an emulator</text>
+<text class="m hint" x="936" y="480" text-anchor="end">the same file, three idiomatic outputs</text>
+</svg>

@@ -1,4 +1,4 @@
-import { txt } from '../../factory'
+import { tintText, txt } from '../../factory'
 
 const Badge = txt
   .config({ name: 'Badge' })
@@ -16,10 +16,10 @@ const Badge = txt
     paddingTop: t.spacing.xxxSmall,
     paddingBottom: t.spacing.xxxSmall,
   }))
-  .states((t) => ({
+  .states((t, m) => ({
     primary: {
       backgroundColor: t.color.system.primary[100],
-      color: t.color.system.primary[800],
+      color: tintText(t, m, 'primary'),
     },
     secondary: {
       backgroundColor: t.color.system.base[100],
@@ -27,15 +27,15 @@ const Badge = txt
     },
     success: {
       backgroundColor: t.color.system.success[100],
-      color: t.color.system.success[800],
+      color: tintText(t, m, 'success'),
     },
     error: {
       backgroundColor: t.color.system.error[100],
-      color: t.color.system.error[800],
+      color: tintText(t, m, 'error'),
     },
     warning: {
       backgroundColor: t.color.system.warning[100],
-      color: t.color.system.warning[800],
+      color: tintText(t, m, 'warning'),
     },
   }))
   .sizes((t) => ({
@@ -69,8 +69,10 @@ const Badge = txt
       borderStyle: 'solid',
       borderColor: 'currentColor',
     },
+    // Text only. It used to fade the whole badge with `opacity: 0.8`, which
+    // fades the text with it (4.0:1 for ember text on its tint).
     subtle: {
-      opacity: 0.8,
+      backgroundColor: 'transparent',
     },
   }))
 

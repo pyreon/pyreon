@@ -1,13 +1,11 @@
 ---
-title: "Pyreon-specific Linter — API Reference"
-description: "Pyreon-specific linter — 140 rules across 26 categories, config files, watch mode, AST cache, CLI + LSP"
+title: "@pyreon/lint — API Reference"
+description: "Pyreon-specific linter — 134 rules across 25 categories, config files, watch mode, AST cache, CLI + LSP"
 ---
-
-# @pyreon/lint — API Reference
 
 > **Generated** from `lint`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [lint](/docs/lint).
 
-Pyreon-specific lint rules powered by `oxc-parser`. Covers reactivity (18), JSX (12), lifecycle (6), performance (5), SSR (5), architecture (11), store (3), form (4), styling (5), hooks (3), accessibility (3), router (5), SSG (3), security (3), frontend (12), query (2), rx (1), i18n (1), storage (1), http (2), isomorphic (6), backend (7), web-perf (7), portable (6), js (3), style (6) — 140 rules total. Programmatic API (`lint` sync, `lintAsync` parallel across a worker pool for large runs, `lintFile`), CLI (`pyreon-lint`), watch mode (fs.watch + 100ms debounce + AstCache), LSP server, and `.pyreonlintrc.json` config with per-rule options via ESLint-style tuple form. Every rule belongs to one of eleven GROUPS — the axes the categories do not capture (what knowledge a rule requires, WHERE a file runs, and which platforms it must survive): `pyreon` (54, framework semantics), `pkg` (27, per-library and dependency-gated), `a11y` (15, accessibility), `internal` (6, encodes the Pyreon repo and is never on in a shipped preset), `isomorphic` (6, the hydration contract for files that render on both sides), `security` (3, exploitable shapes), `backend` (7, server-role files), `web-perf` (7, client-role files), `portable` (6, must survive iOS + Android), `js` (3, language shapes oxlint cannot express), `style` (6, how code reads — opt-in, turned on by the `readable` preset layers). A rule declares `appliesTo` (a list of file ROLES) and the RUNNER gates it — resolved by `resolveFileRole`, which reads `node:` imports, fs-router api routes, island declarations and entry files, and defaults to `shared` because an isomorphic file must satisfy both sides. Categories live underneath, so a query rule is group `pkg`, category `query`. A rule may also declare `scanTarget` (`'source'` default, `'test'`, `'packageConfig'`, or a LIST of them) — the files it is ABOUT — so a health gate can collect them; without it a rule whose subject is a test file or a package-root config can never fire against a source-only scan. The list form exists because a rule can be about more than one surface: `no-require-in-esm` declares `['source', 'test']`, since a `.test.ts` in a `"type": "module"` package throws `require is not defined` under real Node exactly as `src/` does. Resolve it through `scanTargetsOf` / `targetsScan` rather than comparing with `===`, which silently matches nothing against a list. A whole group can be set in one line via the `groups` config key, applied after the preset and before per-rule entries so an explicit rule always wins. Options shared by more than one rule go in the top-level `settings` key: `portablePaths` names the directories that must lower to SwiftUI and Compose, and five of the six `portable` rules need that same answer, so repeating it per rule makes the config a hand-maintained subset of the registry. A `settings` key is seeded into the options of a rule only when that rule DECLARES it in `meta.schema`, per-rule options win, and a key no rule declares is reported as a config error. Two independent reasons a rule can be off in a shipped preset. **Opt-in best-practice rules** (`meta.optIn` — the `frontend`/`query`/`rx`/`i18n`/`storage` categories plus the `form`/`router` opt-in rules): off in `recommended`/`strict`/`app`/`lib`, enabled wholesale by the `best-practices` preset or per-rule config. **Monorepo-scoped rules** (`meta.scope: 'monorepo'` — `no-circular-import`, `no-cross-layer-import`, `no-error-without-prefix`, `no-query-selector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`): these encode the Pyreon repository itself — its layer order, its private internal packages, its `[Pyreon]` error prefix — so EVERY consumer preset forces them off, `best-practices` included, and the Pyreon repo re-enables them by id in its own `.pyreonlintrc.json`. Library-scoped opt-in rules auto-gate on the project’s `package.json` dependencies (a project that doesn’t use `@pyreon/query` never sees query rules). Notable rules: `pyreon/no-process-dev-gate` (auto-fixable), `pyreon/query-options-as-function` (auto-fixable — wraps the options object literal in `() => (...)`; also a proactive MCP `validate` detector), `pyreon/require-img-alt` / `pyreon/img-requires-dimensions` / `pyreon/no-discarded-optimize-fields` (a11y + CLS — the last flags a raw `<img src={x.src}>` that discards a `?optimize` descriptor), `pyreon/heading-order` (a11y — flags a skipped heading level), `pyreon/color-contrast` (a11y — literal-hex contrast pairs), `pyreon/i18n-prefer-trans-for-rich-jsx`, `pyreon/prefer-typed-search-params`.
+Pyreon-specific lint rules powered by `oxc-parser`. Covers reactivity (18), JSX (11), lifecycle (6), performance (5), SSR (5), architecture (11), store (3), form (4), styling (5), hooks (3), accessibility (3), router (5), SSG (3), security (3), frontend (12), query (2), rx (1), i18n (1), storage (1), http (2), isomorphic (6), backend (7), web-perf (7), portable (6), js (3) — 134 rules total. Programmatic API (`lint` sync, `lintAsync` parallel across a worker pool for large runs, `lintFile`), CLI (`pyreon-lint`), watch mode (fs.watch + 100ms debounce + AstCache), LSP server, and `.pyreonlintrc.json` config with per-rule options via ESLint-style tuple form. Every rule belongs to one of ten GROUPS — the axes the categories do not capture (what knowledge a rule requires, WHERE a file runs, and which platforms it must survive): `pyreon` (54, framework semantics), `pkg` (27, per-library and dependency-gated), `a11y` (15, accessibility), `internal` (6, encodes the Pyreon repo and is never on in a shipped preset), `isomorphic` (6, the hydration contract for files that render on both sides), `security` (3, exploitable shapes), `backend` (7, server-role files), `web-perf` (7, client-role files), `portable` (6, must survive iOS + Android), `js` (3, language shapes oxlint cannot express). A rule declares `appliesTo` (a list of file ROLES) and the RUNNER gates it — resolved by `resolveFileRole`, which reads `node:` imports, fs-router api routes, island declarations and entry files, and defaults to `shared` because an isomorphic file must satisfy both sides. Categories live underneath, so a query rule is group `pkg`, category `query`. A rule may also declare `scanTarget` (`'source'` default, `'test'`, `'packageConfig'`, or a LIST of them) — the files it is ABOUT — so a health gate can collect them; without it a rule whose subject is a test file or a package-root config can never fire against a source-only scan. The list form exists because a rule can be about more than one surface: `no-require-in-esm` declares `['source', 'test']`, since a `.test.ts` in a `"type": "module"` package throws `require is not defined` under real Node exactly as `src/` does. Resolve it through `scanTargetsOf` / `targetsScan` rather than comparing with `===`, which silently matches nothing against a list. A whole group can be set in one line via the `groups` config key, applied after the preset and before per-rule entries so an explicit rule always wins. Options shared by more than one rule go in the top-level `settings` key: `portablePaths` names the directories that must lower to SwiftUI and Compose, and five of the six `portable` rules need that same answer, so repeating it per rule makes the config a hand-maintained subset of the registry. A `settings` key is seeded into the options of a rule only when that rule DECLARES it in `meta.schema`, per-rule options win, and a key no rule declares is reported as a config error. Two independent reasons a rule can be off in a shipped preset. **Opt-in best-practice rules** (`meta.optIn` — the `frontend`/`query`/`rx`/`i18n`/`storage` categories plus the `form`/`router` opt-in rules): off in `recommended`/`strict`/`app`/`lib`, enabled wholesale by the `best-practices` preset or per-rule config. **Monorepo-scoped rules** (`meta.scope: 'monorepo'` — `no-circular-import`, `no-cross-layer-import`, `no-error-without-prefix`, `no-query-selector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`): these encode the Pyreon repository itself — its layer order, its private internal packages, its `[Pyreon]` error prefix — so EVERY consumer preset forces them off, `best-practices` included, and the Pyreon repo re-enables them by id in its own `.pyreonlintrc.json`. Library-scoped opt-in rules auto-gate on the project’s `package.json` dependencies (a project that doesn’t use `@pyreon/query` never sees query rules). Notable rules: `pyreon/no-process-dev-gate` (auto-fixable), `pyreon/query-options-as-function` (auto-fixable — wraps the options object literal in `() => (...)`; also a proactive MCP `validate` detector), `pyreon/require-img-alt` / `pyreon/img-requires-dimensions` / `pyreon/no-discarded-optimize-fields` (a11y + CLS — the last flags a raw `<img src={x.src}>` that discards a `?optimize` descriptor), `pyreon/heading-order` (a11y — flags a skipped heading level), `pyreon/color-contrast` (a11y — literal-hex contrast pairs), `pyreon/i18n-prefer-trans-for-rich-jsx`, `pyreon/prefer-typed-search-params`.
 
 ## Multiplatform
 
@@ -19,17 +17,14 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 ## Features
 
-- 140 rules across 26 categories
+- 134 rules across 25 categories
 - lint(options) programmatic API + lintFile() low-level entry
 - CLI: pyreon-lint with --preset / --fix / --watch / --format / --rule-options
-- Base presets recommended, strict, app, lib, best-practices — composable with the readable / readable-strict layers: `"preset": ["recommended", "readable"]`
-- Readable preset: autofixable blank lines between declarations, before a return and between component sections (setup → behaviour → render), plus JSX depth and nested-ternary limits; ships matching oxlint (`@pyreon/lint/oxlint/readable.json`) and oxfmt (`@pyreon/lint/oxfmt`) presets
-- LSP code actions: a quick fix per fixable finding and a `source.fixAll.pyreon` action for fix-on-save
+- 4 presets: recommended, strict, app, lib
 - Per-rule options via tuple form in config or `--rule-options id='{json}'`
 - AstCache (FNV-1a hash) for repeat runs
 - LSP server for IDE integration (startLspServer)
-- Whole-file opt-out with a mandatory reason: // pyreon-lint-disable-file &lt;rule&gt; -- &lt;why&gt;
-- Inline suppression: // pyreon-lint-ignore &lt;rule&gt; OR // pyreon-lint-disable-next-line &lt;rule&gt; (both accept a trailing `-- reason`) — the same comment also silences a `pyreon doctor` / MCP `validate` DETECTOR finding, by its bare code or the prefixed id the tool prints (`pyreon-patterns/as-unknown-as-vnodechild`)
+- Inline suppression: // pyreon-lint-ignore &lt;rule&gt; OR // pyreon-lint-disable-next-line &lt;rule&gt; — the same comment also silences a `pyreon doctor` / MCP `validate` DETECTOR finding, by its bare code or the prefixed id the tool prints (`pyreon-patterns/as-unknown-as-vnodechild`)
 
 ## Complete example
 
@@ -61,8 +56,7 @@ const fileResult = lintFile('app.tsx', source, allRules, config, cache)
 //   pyreon-lint --preset strict --quiet                    # CI mode
 //   pyreon-lint --fix                                      # auto-fix
 //   pyreon-lint --watch src/                               # watch mode
-//   pyreon-lint --preset recommended,readable --fix        # readable spacing, fixed
-//   pyreon-lint --list                                     # list all 140 rules
+//   pyreon-lint --list                                     # list all 134 rules
 //   pyreon-lint --why-off pyreon/rx-prefer-pipe            # explain a silent rule
 //   pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/
 ```
@@ -71,11 +65,10 @@ const fileResult = lintFile('app.tsx', source, allRules, config, cache)
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`lint`](#lint-function) | function | 140 rules across 26 categories. |
+| [`lint`](#lint-function) | function | 134 rules across 25 categories. |
 | [`lintAsync`](#lintasync-function) | function | Same options + same `LintResult` shape as `lint()`, but fans the file set out across a `worker_threads` pool for large r |
 | [`lintFile`](#lintfile-function) | function | Low-level single-file API. |
 | [`cli`](#cli-function) | function | CLI entry. |
-| [`readable`](#readable-constant) | constant | The readability layer. |
 | [`no-process-dev-gate`](#no-process-dev-gate-constant) | constant | The `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'` pattern works in vitest (Node, `process` i |
 | [`require-browser-smoke-test`](#require-browser-smoke-test-constant) | constant | Locks in the durability of the T1.1 browser smoke harness (PRs #224, #227, #229, #231). |
 
@@ -87,7 +80,7 @@ const fileResult = lintFile('app.tsx', source, allRules, config, cache)
 lint(options?: LintOptions): LintResult
 ```
 
-140 rules across 26 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`, `best-practices`, composable with the `readable` / `readable-strict` layers (`preset: ["recommended", "readable"]`). Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. `exemptPaths` is honoured CENTRALLY for every rule (the runner skips an exempt file before the rule runs), so it means the same thing everywhere rather than only in rules that opted in. Wrong-typed options surface on `result.configDiagnostics`, as does a `rules`/`groups`/`settings` key that names nothing — a mistyped rule id used to be silently ignored, which is indistinguishable from working. Uses `oxc-parser` with AST caching.
+134 rules across 25 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. `exemptPaths` is honoured CENTRALLY for every rule (the runner skips an exempt file before the rule runs), so it means the same thing everywhere rather than only in rules that opted in. Wrong-typed options surface on `result.configDiagnostics`, as does a `rules`/`groups`/`settings` key that names nothing — a mistyped rule id used to be silently ignored, which is indistinguishable from working. Uses `oxc-parser` with AST caching.
 
 **Example**
 
@@ -168,7 +161,7 @@ const result = lintFile("app.tsx", source, allRules, config, cache, configSink)
 ### `cli` `function`
 
 ```ts
-pyreon-lint [--preset name] [--fix] [--format text|json|compact] [--quiet] [--watch] [--list] [--config path] [--ignore path] [--rule id=severity] [--rule-options id='{json}'] [path...]
+pyreon-lint [--preset name] [--fix] [--format text|json|compact|gha] [--quiet] [--watch] [--list] [--config path] [--ignore path] [--rule id=severity] [--rule-options id='{json}'] [path...]
 ```
 
 CLI entry. Config: `.pyreonlintrc.json` (reference `schema/pyreonlintrc.schema.json` for IDE autocomplete) or `package.json`'s `'pyreonlint'` field. Ignore: `.pyreonlintignore` + `.gitignore`. Watch: `fs.watch` recursive with 100ms debounce. `--rule-options id='{json}'` passes per-rule options on a single run.
@@ -180,47 +173,14 @@ pyreon-lint --preset strict --quiet    # CI mode
 pyreon-lint --fix                       # auto-fix
 pyreon-lint --watch src/                # watch mode
 pyreon-lint --init                      # scaffold .pyreonlintrc.json for this project
-pyreon-lint --list                      # list all 140 rules
+pyreon-lint --list                      # list all 134 rules
 pyreon-lint --why-off no-window-in-ssr  # why a rule will (or will not) run here
 pyreon-lint --format json               # machine-readable
+pyreon-lint --format gha                # GitHub Actions annotations
 pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/
 ```
 
 **See also:** `lint`
-
----
-
-### `readable` `constant`
-
-```ts
-preset: readable | readable-strict (layers — compose after a base preset)
-```
-
-The readability layer. `readable` turns on, at `warn`: `pyreon/padding-between-declarations` (auto-fixable — a blank line between adjacent top-level statements or class members when either is multi-line; overload signatures and the import block are exempt), `pyreon/padding-before-return` (auto-fixable — before a `return` that follows a multi-line statement or 3+ statements; options `minStatements`, `afterMultiline`), `pyreon/padding-between-component-sections` (auto-fixable — a component reads setup → behaviour → render; handlers and effects share the behaviour section because `effect()` runs at creation, so forcing effects above handlers would invite a TDZ `ReferenceError`), `pyreon/max-jsx-depth` (`max` 6, names the subtree to extract) and `pyreon/no-nested-ternary-branch` (no ternary in another’s test or consequent; flat chains allowed up to `maxOutcomes` 4). `readable-strict` adds `pyreon/padding-around-multiline-blocks` (auto-fixable — a blank line around every multi-line `if`/`for`/`try`/`switch` inside a function) and tightens to depth 5 and 3 outcomes. Layers set only their own rules, so `["strict", "readable"]` keeps strict’s errors and adds readability warnings, never errors. The fixes only INSERT blank lines between statements, which oxfmt preserves, so `--fix` and the formatter never fight. Size limits and import order belong to the other tools: extend `@pyreon/lint/oxlint/readable.json` from `.oxlintrc.json`, and `export { readable as default } from '@pyreon/lint/oxfmt'` from `oxfmt.config.ts`. Generated files (`@generated` / `do not edit` in the first 3 lines) are skipped; a whole file opts out with `// pyreon-lint-disable-file <rule> -- <reason>` (the reason is required).
-
-**Example**
-
-```tsx
-// .pyreonlintrc.json
-{ "preset": ["recommended", "readable"] }
-
-// .oxlintrc.json
-{ "extends": ["./node_modules/@pyreon/lint/oxlint/readable.json"] }
-
-// oxfmt.config.ts
-export { readable as default } from '@pyreon/lint/oxfmt'
-
-// .vscode/settings.json — fix on save
-{ "editor.codeActionsOnSave": { "source.fixAll.pyreon": "explicit" } }
-```
-
-**Common mistakes**
-
-- Putting `readable` FIRST in the list — a base preset after it resets every rule, readable ones included; layers go last
-- Expecting `readable` to enforce function length or complexity — those are oxlint’s rules, enabled by extending `@pyreon/lint/oxlint/readable.json`
-- A file-level disable without a reason — it is ignored and reported, because nobody could tell when it is safe to remove
-
-**See also:** `lint` · `cli`
 
 ---
 

@@ -25,6 +25,8 @@ import {
 } from '@pyreon/core'
 import {
   _noopDispose,
+  _rdDropBinding,
+  _rdLabelBinding,
   batch,
   effectScope,
   getContextOwner,
@@ -281,104 +283,96 @@ const VOID_ELEMENTS = new Set([
 export const SVG_NS = 'http://www.w3.org/2000/svg'
 export const MATHML_NS = 'http://www.w3.org/1998/Math/MathML'
 
-// Tags that require namespace-aware creation. Exported so `_tpl` (template.ts)
-// can decide when a template STRING is rooted at a foreign (SVG/MathML) element
-// and must be parsed in the right namespace — see `_tpl`'s foreign-root wrap.
-export const SVG_TAGS = new Set([
-  'svg',
-  'circle',
-  'ellipse',
-  'line',
-  'path',
-  'polygon',
-  'polyline',
-  'rect',
-  'g',
-  'defs',
-  'symbol',
-  'use',
-  'text',
-  'tspan',
-  'textPath',
-  'image',
-  'clipPath',
-  'mask',
-  'pattern',
-  'marker',
-  'linearGradient',
-  'radialGradient',
-  'stop',
-  'filter',
-  'feBlend',
-  'feColorMatrix',
-  'feComponentTransfer',
-  'feComposite',
-  'feConvolveMatrix',
-  'feDiffuseLighting',
-  'feDisplacementMap',
-  'feFlood',
-  'feGaussianBlur',
-  'feImage',
-  'feMerge',
-  'feMergeNode',
-  'feMorphology',
-  'feOffset',
-  'feSpecularLighting',
-  'feTile',
-  'feTurbulence',
-  'animate',
-  'animateMotion',
-  'animateTransform',
-  'set',
-  'desc',
-  'title',
-  'metadata',
-  'foreignObject',
-])
+// ─── Element namespace ───────────────────────────────────────────────────────
+//
+// An h() element's namespace comes from the PARENT it is inserted into, the way
+// the HTML parser's tree construction decides it: inside SVG content an element
+// is SVG (except below `<foreignObject>`, an HTML integration point), inside
+// MathML it is MathML (except below a text integration point — `mi`, `mo`, `mn`,
+// `ms`, `mtext` — or an `annotation-xml` with an HTML encoding), and in HTML
+// content only `<svg>` and `<math>` open a foreign subtree.
+//
+// The parent is the only source that is right for EVERY entry point. A depth
+// counter plus a tag list (what this replaced) only knew about ancestors mounted
+// in the same synchronous pass, so anything mounted LATER into an existing
+// `<svg>` — a `<Show>` branch, a reactive child, a `<For>` row, a slot, the
+// fresh mount after a hydration mismatch — fell back to the list, and every SVG
+// element missing from it (`feDropShadow`, `feFuncA`, `mpath`, `switch`, …)
+// became an inert HTML element. The counter also put HTML below
+// `<foreignObject>` in the SVG namespace (#4453).
+//
+// Cost on the common path: while `mountElement` builds an element's children,
+// that element and its children's namespace are held in two module slots, so a
+// nested child resolves by an identity compare — no DOM read. Only a mount into
+// some OTHER parent (a top-level or late mount) reads `parent.namespaceURI`, plus
+// `localName` when the parent is foreign. The slots are restored when the
+// element's children are done, so they never outlive the synchronous pass.
 
-export const MATHML_TAGS = new Set([
-  'math',
-  'mi',
-  'mo',
-  'mn',
-  'ms',
-  'mtext',
-  'mspace',
-  'mrow',
-  'mfrac',
-  'msqrt',
-  'mroot',
-  'msub',
-  'msup',
-  'msubsup',
-  'munder',
-  'mover',
-  'munderover',
-  'mtable',
-  'mtr',
-  'mtd',
-  'mpadded',
-  'mphantom',
-  'menclose',
-])
+const NS_HTML = 0
+const NS_SVG = 1
+const NS_MATHML = 2
 
-/** Track SVG context depth — children of <svg> inherit the SVG namespace. */
-let _svgDepth = 0
-let _mathmlDepth = 0
+let _nsParent: Node | null = null
+let _nsChildren = NS_HTML
 
-function createElementWithNS(tag: string): Element {
-  if (_svgDepth > 0 || SVG_TAGS.has(tag)) return document.createElementNS(SVG_NS, tag)
-  if (_mathmlDepth > 0 || MATHML_TAGS.has(tag)) return document.createElementNS(MATHML_NS, tag)
-  return document.createElement(tag)
+/** The namespace context the CHILDREN of a foreign element are parsed in. */
+function childNsOfForeign(el: Element, ns: string | null, localName: string): number {
+  if (ns === SVG_NS) return localName === 'foreignObject' ? NS_HTML : NS_SVG
+  if (ns === MATHML_NS) {
+    if (
+      localName === 'mi' ||
+      localName === 'mo' ||
+      localName === 'mn' ||
+      localName === 'ms' ||
+      localName === 'mtext'
+    )
+      return NS_HTML
+    if (localName === 'annotation-xml') {
+      const enc = el.getAttribute('encoding')?.toLowerCase()
+      return enc === 'text/html' || enc === 'application/xhtml+xml' ? NS_HTML : NS_MATHML
+    }
+    return NS_MATHML
+  }
+  return NS_HTML
+}
+
+function childNsOf(parent: Node): number {
+  if (parent === _nsParent) return _nsChildren
+  // `namespaceURI` is an Element member: a DocumentFragment, ShadowRoot or
+  // Document parent reads `undefined` and is HTML content.
+  const ns = (parent as Element).namespaceURI
+  if (ns === SVG_NS || ns === MATHML_NS) {
+    return childNsOfForeign(parent as Element, ns, (parent as Element).localName)
+  }
+  return NS_HTML
+}
+
+function createElementIn(ns: number, tag: string): Element {
+  if (ns === NS_HTML) {
+    if (tag === 'svg') return document.createElementNS(SVG_NS, tag)
+    if (tag === 'math') return document.createElementNS(MATHML_NS, tag)
+    return document.createElement(tag)
+  }
+  if (ns === NS_SVG) return document.createElementNS(SVG_NS, tag)
+  // MathML content: `<svg>` (inside `annotation-xml`) is SVG, the rest MathML.
+  // Not modelled: the parser keeps `mglyph`/`malignmark` MathML directly below
+  // a text integration point; here they follow the HTML rule like any tag.
+  if (tag === 'svg') return document.createElementNS(SVG_NS, tag)
+  return document.createElementNS(MATHML_NS, tag)
+}
+
+/** The namespace URI `createElementIn(ns, tag)` gives, without asking the DOM. */
+function nsUriOf(ns: number, tag: string): string | null {
+  if (ns === NS_SVG) return SVG_NS
+  if (tag === 'svg') return SVG_NS
+  if (ns === NS_MATHML || tag === 'math') return MATHML_NS
+  return null
 }
 
 function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup {
   const tag = vnode.type as string
-  const el = createElementWithNS(tag)
-  const isSvg = tag === 'svg'
-  const isMathml = tag === 'math'
-  if (isSvg) _svgDepth++
-  if (isMathml) _mathmlDepth++
+  const parentNs = childNsOf(parent)
+  const el = createElementIn(parentNs, tag)
 
   if (process.env.NODE_ENV !== 'production' && (vnode.children?.length ?? 0) > 0 && VOID_ELEMENTS.has(vnode.type as string)) {
     console.warn(
@@ -395,12 +389,26 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
   let propCleanup: Cleanup | null =
     props !== EMPTY_PROPS ? applyProps(el, props, isSelect ? 'value' : undefined) : null
 
-  // Mount children inside element context — nested elements can skip DOM removal closures
+  // Mount children inside element context — nested elements can skip DOM removal closures.
+  // The element's own children resolve their namespace from the slots below
+  // without touching the DOM; an HTML element in HTML content (the common case)
+  // decides it with two compares.
+  const prevNsParent = _nsParent
+  const prevNsChildren = _nsChildren
+  _nsParent = el
+  _nsChildren =
+    parentNs === NS_HTML && tag !== 'svg' && tag !== 'math'
+      ? NS_HTML
+      : childNsOfForeign(el, nsUriOf(parentNs, tag), tag)
   _elementDepth++
-  const childCleanup = mountChildren(vnode.children ?? [], el, null)
-  _elementDepth--
-  if (isSvg) _svgDepth--
-  if (isMathml) _mathmlDepth--
+  let childCleanup: Cleanup
+  try {
+    childCleanup = mountChildren(vnode.children ?? [], el, null)
+  } finally {
+    _elementDepth--
+    _nsParent = prevNsParent
+    _nsChildren = prevNsChildren
+  }
 
   // `<select value>` — deferred until after children (PZ-09): the property
   // assignment selects a matching <option>, so the options must exist first. Runs
@@ -752,6 +760,11 @@ function mountComponent(
     parent.insertBefore(boundaryStart!, anchor)
     parent.insertBefore(boundaryEnd, anchor)
   }
+  // Dev-only: remember where this component's output starts, so devtools
+  // records the component's OWN first element rather than the parent's.
+  const devEnd = process.env.NODE_ENV !== 'production' ? (boundaryEnd ?? anchor) : null
+  const devBefore =
+    process.env.NODE_ENV !== 'production' ? (devEnd ? devEnd.previousSibling : parent.lastChild) : null
   try {
     subtreeCleanup = output != null ? mountChild(output, parent, boundaryEnd ?? anchor) : noop
     if (boundaryEnd !== null) {
@@ -785,7 +798,22 @@ function mountComponent(
 
   if (process.env.NODE_ENV !== 'production') {
     _mountingStack!.pop()
-    const firstEl = parent instanceof Element ? parent.firstElementChild : null
+    // The first element this component inserted: walk from just after
+    // `devBefore` to the end marker. `parent.firstElementChild` (the old
+    // read) is the FIRST SIBLING's element for every component but the
+    // first, so highlight, the picker and the devtools inspector all
+    // pointed at the wrong DOM.
+    let firstEl: Element | null = null
+    for (
+      let n = devBefore ? devBefore.nextSibling : parent.firstChild;
+      n !== null && n !== devEnd;
+      n = n.nextSibling
+    ) {
+      if (n.nodeType === 1) {
+        firstEl = n as Element
+        break
+      }
+    }
     registerComponent(compId!, componentName, firstEl, devParentId!)
     _devInspectable(compId!, scope, mergedProps)
   }
@@ -1039,6 +1067,10 @@ export function bindPolymorphicText(
 ): Cleanup {
   const core = createPolyTextCore(text, parentAtSetup, getContextOwner())
   const dispose = renderEffect(() => core.apply(child()))
+  // Dev: a text binding at its caller (the compiled template, for the emitted
+  // `bindPolymorphicText(() => expr, text, el)`).
+  if (process.env.NODE_ENV !== 'production')
+    _rdLabelBinding(dispose, 'text', text, undefined, 1)
   // Dead binding whose value was text: nothing re-runs it and the core holds
   // no subtree, so there is nothing to tear down. A first value that mounted a
   // subtree keeps the core's disposer (it removes that subtree).
@@ -1182,15 +1214,20 @@ function mountAccessorChild(
     }
   })
   if (firstRunError !== FIRST_RUN_OK) {
+    if (process.env.NODE_ENV !== 'production') _rdDropBinding(disposeEffect)
     disposeEffect()
     throw firstRunError
   }
   if (handoff !== null) {
     // Drop the dispatcher's first-run subscriptions — the machinery's own
-    // effect owns the binding from here.
+    // effect owns the binding from here. Dev: and its graph node — the
+    // machinery's effect is the binding's node.
+    if (process.env.NODE_ENV !== 'production') _rdDropBinding(disposeEffect)
     disposeEffect()
     return handoff
   }
+  // Dev: this dispatcher is a text binding; its creation site is this file.
+  if (process.env.NODE_ENV !== 'production') _rdLabelBinding(disposeEffect, 'text', text, undefined, null)
   // Textish — this dispatcher IS the binding (bindPolymorphicText's shape).
   if (depthAtEntry > 0) {
     // Dead (tracked nothing): the core is in text mode and can never leave it,

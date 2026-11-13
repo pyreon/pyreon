@@ -1,12 +1,12 @@
 import { el } from '../../kit'
 
 /**
- * The filter's own non-scrolling row. It used to sit INSIDE the scrolling
- * list, whose `overflow: auto` clipped the focus ring at the sidebar edge.
+ * The filter's own non-scrolling row. Inside the scrolling list,
+ * `overflow: auto` clipped the focus ring at the catalog edge.
  */
 export const FilterWrap = el
   .attrs({ tag: 'div', contentDirection: 'rows', contentAlignX: 'block' })
   .theme(() => ({
     flex: 'none',
-    padding: '0 12px 8px',
+    padding: '8px 12px 4px',
   }))

@@ -120,8 +120,8 @@ describe('outline', () => {
 })
 
 describe('addon tabs', () => {
-  it('ships the four panel tabs in order', () => {
-    expect(ADDON_TABS.map((a) => a.id)).toEqual(['controls', 'actions', 'a11y', 'canvas'])
+  it('ships the five built-in tabs in order', () => {
+    expect(ADDON_TABS.map((a) => a.id)).toEqual(['controls', 'actions', 'a11y', 'canvas', 'addons'])
   })
 
   it('gives every tab a title and a hint (the panel renders both)', () => {

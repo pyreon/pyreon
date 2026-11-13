@@ -1,9 +1,7 @@
 ---
-title: "Permissions — API Reference"
+title: "@pyreon/permissions — API Reference"
 description: "Reactive permissions — RBAC, ABAC, feature flags, subscription tiers"
 ---
-
-# @pyreon/permissions — API Reference
 
 > **Generated** from `permissions`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [permissions](/docs/permissions).
 

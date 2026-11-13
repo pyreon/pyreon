@@ -3,8 +3,6 @@ title: "SSR, SSG & ISR"
 description: "How to choose and configure rendering modes in a @pyreon/zero app — static (SSG), server-rendered (SSR), incremental (ISR), or SPA — including per-route hybrid rendering."
 ---
 
-# SSR, SSG & ISR
-
 `@pyreon/zero` renders your app four ways, app-wide or **per route**:
 
 - **SSG** (`'ssg'`) — prerender to static HTML at build time. Fastest, cheapest, CDN-friendly.

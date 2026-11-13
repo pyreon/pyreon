@@ -145,6 +145,59 @@ Real-file authoring (real type-checking, real refactor support, real lint) close
 | `class`        | `string` (optional)  | `'pyreon-example'` | className on the outer wrapper.                                                                                |
 | `title`        | `string` (optional)  | none               | Optional title shown above the rendered example.                                                               |
 
+## Blog — `@pyreon/zero-content/blog`
+
+A production blog on a content collection: paginated index, post pages, tag pages, reading time, previous/next, related posts, Open Graph / Twitter / JSON-LD, and restylable components. Drafts and posts dated after the build reach none of them.
+
+```ts
+// content.config.ts
+import { defineConfig } from '@pyreon/zero-content'
+import { blogCollection } from '@pyreon/zero-content/blog'
+
+export default defineConfig({ collections: { blog: blogCollection() } })
+```
+
+```ts
+// src/blog.ts
+import 'virtual:zero-content/collections'
+import { defineBlog } from '@pyreon/zero-content/blog'
+
+export const blog = defineBlog({
+  siteUrl: 'https://example.com',
+  title: 'Example blog',
+  description: 'Notes from the team.',
+  feedPath: '/blog/rss.xml',
+})
+```
+
+```tsx
+// src/routes/blog/index.tsx
+import { blog } from '../../blog'
+export default blog.IndexPage
+
+// src/routes/blog/page/[page].tsx   → getStaticPaths = blog.pagePaths, default blog.IndexPage
+// src/routes/blog/[slug].tsx        → getStaticPaths = blog.postPaths, default blog.PostPage
+// src/routes/blog/tags/[tag]/index.tsx       → getStaticPaths = blog.tagPaths,     default blog.TagPage
+// src/routes/blog/tags/[tag]/page/[page].tsx → getStaticPaths = blog.tagPagePaths, default blog.TagPage
+```
+
+Optional default styles: `import '@pyreon/zero-content/blog.css'` before your own stylesheet (one-class specificity; colours from `--pyreon-blog-*` variables, falling back to the surrounding text colour). The RSS feed stays in the plugin's `seo.rss` option.
+
+To render a page type with your own design system instead, pass `views`. Each view gets the page's computed data as props; the blog still decides what exists (published posts only, not-found pages) and writes the head tags:
+
+```tsx
+defineBlog({
+  // …
+  views: {
+    index: (v) => <MyIndex posts={v.posts} page={v.page} pageCount={v.pageCount} href={v.href} tags={v.tags} />,
+    tag: (v) => <MyTagPage tag={v.tag} posts={v.posts} />,
+    post: (v) => <MyPost post={v.post} body={<v.Content />} toc={v.headings} next={v.next} previous={v.previous} />,
+  },
+})
+```
+
+Full guide: [pyreon.dev/docs/blog](https://pyreon.dev/docs/blog).
+
 ## Conventions
 
 Every path/filename the plugin treats specially, in one place. **`<root>`** is the Vite root.

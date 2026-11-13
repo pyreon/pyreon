@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test'
 import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { waitForHydration } from './hydration-barrier'
+import { waitForDocs } from './docs-islands'
+import { waitForNav } from './site-islands'
 
 // Discover the runnable files independently of the gallery generator. A new
 // example gets a real-browser check; a generator omission cannot silently pass.
@@ -17,7 +18,7 @@ test.describe('complete docs example gallery', () => {
       const errors: string[] = []
       page.on('pageerror', (error) => errors.push(error.message))
       await page.goto('/docs/examples')
-      await waitForHydration(page)
+      await waitForDocs(page)
       const example = page.locator(`[data-example-file="./examples/${path}"]`)
       await expect(example).toHaveCount(1)
       await example.scrollIntoViewIfNeeded()
@@ -118,7 +119,7 @@ test.describe('docs rendering', () => {
   })
   test('document example renders and edits its real markdown output', async ({ page }) => {
     await page.goto('/docs/document')
-    await waitForHydration(page)
+    await waitForDocs(page)
     const example = page.locator('.pyreon-example').filter({ hasText: 'One document tree' })
     await example.scrollIntoViewIfNeeded()
     const title = example.getByRole('textbox', { name: 'Title', exact: true })
@@ -140,7 +141,7 @@ test.describe('docs rendering', () => {
       if (request.resourceType() === 'fetch' && /users.*\.json/.test(request.url())) requests.push(request.url())
     })
     await page.goto('/docs/query')
-    await waitForHydration(page)
+    await waitForDocs(page)
     const example = page.locator('.pyreon-example').filter({ hasText: 'useQuery — fetch + cache by key' })
     await example.scrollIntoViewIfNeeded()
     await expect(example).toContainText('Ada Lovelace')
@@ -155,7 +156,7 @@ test.describe('docs rendering', () => {
     expect(external).toEqual([])
   })
 
-  test('homepage and catalog represent every public framework package', async ({ page }) => {
+  test('the package catalog lists every public framework package', async ({ page }) => {
     const root = resolve(__dirname, '..')
     const groups: { category: string; names: string[] }[] = []
     for (const category of readdirSync(resolve(root, 'packages'))) {
@@ -168,313 +169,155 @@ test.describe('docs rendering', () => {
       if (names.length) groups.push({ category, names })
     }
     const total = groups.reduce((count, group) => count + group.names.length, 0)
-    await page.goto('/')
-    await waitForHydration(page)
-    await expect(page.locator('.px-eco-total')).toContainText(`${total} packages`)
-    await expect(page.locator('.px-eco-total')).toContainText(`${groups.length} categories`)
-    for (const group of groups) {
-      const card = page.locator('.px-panel').filter({ has: page.locator('.px-eco-cat', { hasText: new RegExp(`^${group.category}$`) }) })
-      await expect(card.locator('.px-mono-label')).toHaveText(String(group.names.length))
-    }
-    await page.getByRole('link', { name: `All ${total} packages`, exact: true }).click()
-    await expect(page).toHaveURL(/\/docs\/package-catalog/)
+    // (The old landing's ecosystem panel is gone; the catalog is the list.)
+    expect(total).toBeGreaterThan(0)
+    await page.goto('/docs/package-catalog')
+    await waitForDocs(page)
     for (const group of groups) {
       for (const name of group.names) {
-        await expect(page.locator('.docs-content table').getByRole('link', { name, exact: true })).toBeVisible()
+        await expect(page.locator('.dx-prose table').getByRole('link', { name, exact: true })).toBeVisible()
       }
     }
   })
-  test('small-phone header fits and the docs drawer is operable', async ({ page }) => {
+  test('small-phone: the Browse docs drawer is operable and the page fits', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 568 })
     await page.goto('/docs/getting-started')
-    await page.waitForLoadState('networkidle')
+    await waitForDocs(page)
 
-    const hamburger = page.locator('.docs-header__hamburger')
-    const drawer = page.locator('#docs-navigation-drawer')
-    await expect(hamburger).toBeVisible()
-    await expect(hamburger).toHaveAttribute('aria-expanded', 'false')
+    const button = page.locator('.dx-drawer-btn')
+    const drawer = page.locator('#dx-drawer')
+    await expect(button).toBeVisible()
+    await expect(button).toHaveAttribute('aria-expanded', 'false')
     await expect(drawer).toBeHidden()
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
 
-    await hamburger.click()
-    await expect(hamburger).toHaveAttribute('aria-expanded', 'true')
-    await expect(drawer).toBeInViewport()
-    await expect(page.locator('html')).toHaveClass(/docs-drawer-scroll-locked/)
+    await button.click()
+    await expect(button).toHaveAttribute('aria-expanded', 'true')
+    await expect(drawer).toBeVisible()
+    // A modal dialog: focus moves in, the page behind does not scroll.
+    expect(await page.evaluate(() => document.querySelector('#dx-drawer')?.contains(document.activeElement))).toBe(true)
+    expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).toBe('hidden')
 
     await page.keyboard.press('Escape')
-    await expect(hamburger).toHaveAttribute('aria-expanded', 'false')
-    await expect(hamburger).toBeFocused()
-    await expect(page.locator('html')).not.toHaveClass(/docs-drawer-scroll-locked/)
+    await expect(button).toHaveAttribute('aria-expanded', 'false')
+    await expect(button).toBeFocused()
+    await expect(drawer).toBeHidden()
+    expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).not.toBe('hidden')
+
+    // A link in the drawer navigates and closes it.
+    await button.click()
+    await drawer.locator('a[href="/docs/router"]').click()
+    await page.waitForURL('**/docs/router')
     await expect(drawer).toBeHidden()
   })
 
-  for (const width of [320, 375, 768]) {
-    test(`mobile primary navigation works from the homepage at ${width}px`, async ({ page }) => {
-      await page.setViewportSize({ width, height: 812 })
-      await page.goto('/')
-      await waitForHydration(page)
-      const hamburger = page.locator('.docs-header__hamburger')
-      const drawer = page.locator('#docs-navigation-drawer')
-      const docs = drawer.getByRole('link', { name: 'Docs', exact: true })
-      const blog = drawer.getByRole('link', { name: 'Blog', exact: true })
-      const components = drawer.getByRole('link', { name: 'Components', exact: true })
-      await expect(hamburger).toBeVisible()
-      await expect(hamburger).toHaveAttribute('aria-expanded', 'false')
-      await expect(drawer).toBeHidden()
-      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
-
-      await hamburger.click()
-      await expect(drawer).toBeInViewport()
-      await expect(hamburger).toHaveAttribute('aria-expanded', 'true')
-      await expect(docs).toBeVisible()
-      await expect(docs).toBeFocused()
-      await expect(components).toHaveAttribute('href', '/atlas/')
-      await expect(blog).toHaveAttribute('href', '/blog')
-      await expect(components).toHaveAttribute('data-allow-reload', '')
-      await page.keyboard.press('Tab')
-      await expect(blog).toBeFocused()
-      await page.keyboard.press('Tab')
-      await expect(components).toBeFocused()
-      await page.keyboard.press('Tab')
-      await expect(hamburger).toBeFocused()
-      await page.keyboard.press('Escape')
-      await expect(drawer).toBeHidden()
-      await expect(hamburger).toBeFocused()
-      await expect(page.locator('html')).not.toHaveClass(/docs-drawer-scroll-locked/)
-
-      await hamburger.click()
-      await page.locator('.docs-drawer-backdrop').click({ position: { x: width - 8, y: 80 } })
-      await expect(drawer).toBeHidden()
-      await expect(hamburger).toBeFocused()
-
-      await hamburger.click()
-      await docs.click()
-      await expect(page).toHaveURL(/\/docs\/getting-started\/?$/)
-      await expect(hamburger).toHaveAttribute('aria-expanded', 'false')
-      await expect(drawer).toBeHidden()
-      await expect(page.locator('html')).not.toHaveClass(/docs-drawer-scroll-locked/)
-      await hamburger.click()
-      await expect(components).toBeVisible()
-      await expect(drawer.locator('.pyreon-sidebar')).toBeVisible()
-      await page.setViewportSize({ width: 1024, height: 812 })
-      await expect(hamburger).toBeHidden()
-      await expect(page.locator('html')).not.toHaveClass(/docs-drawer-scroll-locked/)
-      await expect(page.locator('.docs-mobile-nav')).toBeHidden()
-    })
-  }
-
-  test('mobile primary navigation is available on the 404 page', async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 812 })
-    await page.goto('/missing-mobile-navigation-page')
-    await waitForHydration(page)
-    await expect(page.locator('.docs-header__hamburger')).toBeVisible()
-    await page.locator('.docs-header__hamburger').click()
-    const docs = page.locator('#docs-navigation-drawer').getByRole('link', { name: 'Docs', exact: true })
-    await expect(docs).toBeVisible()
-    await docs.click()
-    await expect(page).toHaveURL(/\/docs\/getting-started\/?$/)
-  })
-
-  test('desktop homepage keeps a full-width layout and visible primary links', async ({ page }) => {
+  test('the homepage is the marketing home and its nav leads into the docs home', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto('/')
-    await waitForHydration(page)
-    await expect(page.locator('.docs-header__hamburger')).toBeHidden()
-    await expect(page.locator('.docs-header__nav').getByRole('link', { name: 'Docs', exact: true })).toBeVisible()
-    await expect(page.locator('.docs-header__nav').getByRole('link', { name: 'Components', exact: true })).toBeVisible()
-    await expect(page.locator('#docs-navigation-drawer')).toBeHidden()
-    const main = await page.locator('.docs-main').boundingBox()
-    expect(main?.x).toBe(0)
-    expect(main?.width).toBe(1440)
+    await waitForNav(page)
+    // The marketing home: static HTML, one h1, no docs reading shell.
+    await expect(page.locator('h1')).toHaveCount(1)
+    await expect(page.locator('.dx')).toHaveCount(0)
+    await page.locator('header').first().locator('a[href="/docs"]').first().click()
+    await page.waitForURL('**/docs')
+    await waitForDocs(page)
+    // The docs home: its hero h1, the four start paths, the product tiles.
+    await expect(page.locator('h1:visible')).toHaveCount(1)
+    await expect(page.locator('.dx-home__title')).toBeVisible()
+    await expect(page.locator('.dx-path')).toHaveCount(4)
+    expect(await page.locator('.dx-tilecard').count()).toBeGreaterThan(3)
+    // The package catalog lives in the docs (Reference), not on the homepage.
+    await expect(page.locator('.dx-aside a[href="/docs/package-catalog"]')).toBeAttached()
   })
 
-  test('landing page renders the PyreonLanding component (real signal counter)', async ({
-    page,
-  }) => {
-    await page.goto('/')
-    // PR #1399 renamed `.pyreon-landing` → `.px-landing` to restore the
-    // 1240px max-width container; the e2e selector was missed during
-    // that refactor. Both classes accepted defensively.
-    await expect(page.locator('.px-landing, .pyreon-landing')).toBeVisible()
-    await expect(page.locator('.px-hero h1')).toContainText(
-      /Reactivity that knows/,
-    )
-    // The hero counter advertises a live signal; the digit element is
-    // populated by reactivity, not static markup.
-    const digit = page.locator('.px-digit')
-    await expect(digit).toBeVisible()
-    const firstValue = await digit.textContent()
-    expect(firstValue?.trim()).toMatch(/^\d+$/)
-  })
-
-  test('sidebar navigation between Core Framework pages works', async ({
-    page,
-  }) => {
+  test('sidebar navigation between docs pages works', async ({ page }) => {
     await page.goto('/docs/getting-started')
-    // Wait for the dev-mode async content-route resolution + Suspense
-    // unwrap before asserting on the rendered article. `defineContentRoute`
-    // dynamically imports the markdown body chunk; under cold-start the
-    // chunk fetch + transform + JSX-emit pipeline can take >5s, which
-    // was the documented PR #1438 flake. `networkidle` is the
-    // load-bearing wait — the chunk completes before then.
-    await page.waitForLoadState('networkidle')
-    await expect(
-      page.locator('article.docs-content h1, article.docs-content h2').first(),
-    ).toBeVisible({ timeout: 15_000 })
-    // Click the Core Framework "Router" sidebar link. Exact-match
-    // selector — `hasText: 'Router'` would also pick up "Router setup"
-    // in the Patterns group (strict-mode violation).
-    await page
-      .locator('a.pyreon-sidebar__link[href="/docs/router"]')
-      .click()
+    await waitForDocs(page)
+    await expect(page.locator('h1:visible')).toHaveCount(1, { timeout: 15_000 })
+    await page.locator('.dx-aside a.dx-side__link[href="/docs/router"]').click()
     await page.waitForURL('**/docs/router')
-    await page.waitForLoadState('networkidle')
-    await expect(
-      page.locator('article.docs-content h1, article.docs-content h2').first(),
-    ).toBeVisible({ timeout: 15_000 })
-    // The active class flips to the new route's sidebar entry.
-    await expect(
-      page.locator(
-        'a.pyreon-sidebar__link--active[href="/docs/router"]',
-      ),
-    ).toBeVisible()
+    await expect(page.locator('h1:visible')).toHaveCount(1, { timeout: 15_000 })
+    // aria-current follows the route, and the product's sub-pages open under it.
+    await expect(page.locator('.dx-aside a[aria-current="page"][href="/docs/router"]')).toBeVisible()
   })
 
-  test('sidebar persists across docs→docs navigation (no remount → scroll kept, no flash)', async ({
-    page,
-  }) => {
-    // Short viewport so the (tall) sidebar overflows and is scrollable.
-    // Width stays desktop (>768px) so the sidebar is the sticky rail, not
-    // the mobile drawer.
-    await page.setViewportSize({ width: 1280, height: 500 })
-    await page.goto('/docs/getting-started')
-    await page.waitForLoadState('networkidle')
-    await expect(page.locator('.pyreon-sidebar')).toBeVisible()
-
-    // Tag the live sidebar element with an expando + scroll it to the bottom.
-    // BOTH are wiped if the layout re-mounts the sidebar on navigation (a new
-    // <nav> has no expando and scrollTop 0) — the exact double-bug reported:
-    // the menu flashing out/in AND its scroll resetting to the top.
-    const before = await page.evaluate(() => {
-      const el = document.querySelector('.pyreon-sidebar') as HTMLElement
-      ;(el as unknown as { __remountProbe?: string }).__remountProbe = 'persisted'
-      el.scrollTop = 99999 // clamp to max scroll
-      return el.scrollTop
+  test('a page load keeps the current page in view in the sidebar', async ({ page }) => {
+    // Short viewport so the (tall) sidebar scrolls; desktop width so it is the
+    // sticky column, not the drawer. Docs links are page loads (static pages),
+    // so the sidebar starts at the top; the enhance island scrolls it to the
+    // current page.
+    await page.setViewportSize({ width: 1280, height: 600 })
+    await page.goto('/docs/reference/zero')
+    await waitForDocs(page)
+    const box = await page.evaluate(() => {
+      const aside = document.querySelector('.dx-aside') as HTMLElement
+      const current = aside.querySelector('[aria-current="page"]') as HTMLElement
+      const a = aside.getBoundingClientRect()
+      const c = current.getBoundingClientRect()
+      return { scrolled: aside.scrollTop, top: c.top - a.top, bottom: a.bottom - c.bottom }
     })
-    // Sanity: the sidebar is actually scrollable in this viewport.
-    expect(before).toBeGreaterThan(0)
-
-    // Navigate docs→docs via a sidebar link. Programmatic click (not Playwright's
-    // auto-scroll-into-view click) so the manual scrollTop above is undisturbed.
-    await page.evaluate(() => {
-      ;(
-        document.querySelector(
-          'a.pyreon-sidebar__link[href="/docs/router"]',
-        ) as HTMLElement
-      ).click()
-    })
-    await page.waitForURL('**/docs/router')
-    await page.waitForLoadState('networkidle')
-    await expect(
-      page.locator('article.docs-content h1, article.docs-content h2').first(),
-    ).toBeVisible({ timeout: 15_000 })
-
-    // The sidebar never disappears.
-    await expect(page.locator('.pyreon-sidebar')).toBeVisible()
-
-    const after = await page.evaluate(() => {
-      const el = document.querySelector('.pyreon-sidebar') as HTMLElement
-      return {
-        probe: (el as unknown as { __remountProbe?: string }).__remountProbe,
-        scrollTop: el.scrollTop,
-      }
-    })
-    // Root cause: the SAME element survived (no unmount/remount of the sidebar)…
-    expect(after.probe).toBe('persisted')
-    // …so its scroll position is preserved (the bug reset it to 0).
-    expect(after.scrollTop).toBe(before)
+    expect(box.scrolled).toBeGreaterThan(0)
+    expect(box.top).toBeGreaterThanOrEqual(0)
+    expect(box.bottom).toBeGreaterThanOrEqual(0)
   })
 
-  test('navigating landing → docs renders code blocks without a setup crash', async ({
-    page,
-  }) => {
-    // Regression: clicking "Docs" from the landing page used to throw
-    // `[Pyreon] <CodeBlock> threw during setup: HierarchyRequestError`
-    // (repeated, one per code block) — the docs code samples rendered
-    // broken on first navigation. Root cause: <CodeBlock> conditionally
-    // rendered its filename header + line-number gutter, which the
-    // compiler lowered to `_mountSlot` placeholders INTERLEAVED with the
-    // static-element ref walks for the body/pre/copy-button. On a fresh
-    // client mount the empty slots removed their `<!>` markers, the walks
-    // landed on the wrong node, and a later `insertBefore` hit a Comment
-    // parent. Fix: the header + gutter wrappers are always-rendered (an
-    // `--empty` class hides them) so no slot precedes a ref'd element.
-    const setupErrors: string[] = []
+  test('code blocks render, copy their code, and code-group tabs switch', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
     page.on('console', (m) => {
-      if (m.type() === 'error' && /threw during setup|HierarchyRequestError/.test(m.text())) {
-        setupErrors.push(m.text())
-      }
+      if (m.type() === 'error') errors.push(m.text())
     })
-    page.on('pageerror', (e) => {
-      if (/HierarchyRequestError|nextSibling/.test(e.message)) {
-        setupErrors.push('PAGEERROR: ' + e.message)
-      }
-    })
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('/docs/getting-started')
+    await waitForDocs(page)
+    const block = page.locator('.dx-prose .code-block').first()
+    await expect(block.locator('pre').first()).toBeVisible()
+    await block.hover()
+    await block.locator('.code-block__copy').click()
+    await expect(block.locator('.code-block__copy')).toHaveText('Copied')
+    const copied = await page.evaluate(() => navigator.clipboard.readText())
+    expect(copied.length).toBeGreaterThan(0)
+    expect(await block.locator('.code-block__pre').innerText()).toContain(copied.split('\n')[0]!.trim())
 
-    await page.goto('/')
-    await page.waitForLoadState('networkidle')
-    // The landing "Docs" CTA points at the getting-started page.
-    await page.locator('a[href="/docs/getting-started"]').first().click()
-    await page.waitForURL('**/docs/getting-started')
-    await page.waitForLoadState('networkidle')
-    await expect(
-      page.locator('article.docs-content h1, article.docs-content h2').first(),
-    ).toBeVisible({ timeout: 15_000 })
-
-    // No <CodeBlock> setup crash on the navigation.
-    expect(setupErrors).toEqual([])
-    // …and the code blocks actually rendered their Shiki content (the
-    // crash left them empty / unmounted).
-    const codeBlocks = page.locator('.code-block')
-    expect(await codeBlocks.count()).toBeGreaterThan(0)
-    await expect(codeBlocks.first().locator('pre').first()).toBeVisible()
+    // An install code group: the second tab shows the second panel.
+    const group = page.locator('.dx-prose .code-group').first()
+    await group.scrollIntoViewIfNeeded()
+    const tabs = group.locator('.code-group__tab')
+    await tabs.nth(1).click()
+    await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true')
+    await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'false')
+    await expect(group.locator('.code-group__panels')).toHaveAttribute('data-active', '1')
+    await expect(group.locator('.code-group__panels > *').nth(1)).toBeVisible()
+    await expect(group.locator('.code-group__panels > *').nth(0)).toBeHidden()
+    await tabs.nth(1).press('ArrowRight')
+    await expect(tabs.nth(2)).toBeFocused()
+    expect(errors).toEqual([])
   })
 
-  test('Toc scroll-spy activates as headings enter the viewport', async ({
-    page,
-  }) => {
-    await page.goto('/docs/reactivity')
-    await page.waitForLoadState('networkidle')
-    // Click a Toc link and verify it scrolls + activates.
-    const tocLinks = page.locator('.pyreon-toc__link')
-    const count = await tocLinks.count()
-    expect(count).toBeGreaterThan(2)
-    // Click the second Toc link and assert it becomes active.
-    const target = tocLinks.nth(1)
+  test('the TOC scroll-spy marks the section in view', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('/docs/reactivity-rules')
+    await waitForDocs(page)
+    const tocLinks = page.locator('.dx-rail .dx-toc__link')
+    expect(await tocLinks.count()).toBeGreaterThan(2)
+    const target = tocLinks.nth(2)
     const href = await target.getAttribute('href')
     expect(href).toMatch(/^#/)
     await target.click()
-    // IntersectionObserver fires async; give it a tick.
-    await page.waitForTimeout(500)
-    // At least ONE toc link is active (the IntersectionObserver picked
-    // one in view).
-    const activeCount = await page.locator('.pyreon-toc__link--active').count()
-    expect(activeCount).toBeGreaterThan(0)
+    await expect(target).toHaveAttribute('aria-current', 'location')
+    await expect(page.locator('.dx-rail .dx-toc__link[aria-current]')).toHaveCount(1)
   })
 
   test('404 renders the PyreonNotFound branded page for unknown routes', async ({
     page,
   }) => {
     await page.goto('/docs/this-page-does-not-exist-deliberately')
-    // The docs catch-all wires `notFound: PyreonNotFound` into
-    // `defineContentRoute('docs', { ... })` so unknown `/docs/<slug>`
-    // URLs render the SAME branded 404 as fs-router's top-level
-    // `_404.tsx`. Wait for the Suspense-resolved 404 to mount.
+    // Docs pages are static: an unknown /docs URL gets the host's 404.html,
+    // the site's one branded 404 (the same as any other unknown URL).
     await page.waitForLoadState('networkidle')
-    await expect(page.locator('.px-nf')).toBeVisible({ timeout: 15_000 })
-    await expect(page.locator('.px-nf-h1')).toContainText(
-      /This path has no readers/,
-    )
+    await expect(page.locator('.s-nf')).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('.s-nf h1')).toContainText(/signal not found/)
   })
 
   test('router.md renders APICard call sites (custom-component parity)', async ({
@@ -491,133 +334,80 @@ test.describe('docs rendering', () => {
     await expect(apiCards.first().locator('.api-name')).toBeVisible()
   })
 
-  test('header chrome renders: brand logo, search button, theme toggle, GitHub link', async ({
-    page,
-  }) => {
-    await page.goto('/')
-    // SVG brand mark (one for light, one for dark — only one visible at a time)
-    await expect(page.locator('.docs-brand__mark').first()).toBeVisible()
-    await expect(page.locator('.docs-brand__wordmark')).toHaveText('pyreon')
-    // Cmd+K search trigger button
-    await expect(page.locator('.docs-header__search-btn')).toBeVisible()
-    await expect(page.locator('.docs-header__search-btn')).toContainText(
-      /Search/,
-    )
-    // Theme toggle button — defaults to sun icon (dark mode)
-    await expect(page.locator('.docs-theme-toggle')).toBeVisible()
-    // GitHub icon link
-    const githubIcon = page.locator('.docs-header__icon-link')
-    await expect(githubIcon).toBeVisible()
-    await expect(githubIcon).toHaveAttribute('href', /github\.com\/pyreon/)
+  test('the docs share the site header: logo, primary nav, theme toggle, GitHub link', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('/docs/router')
+    await waitForDocs(page)
+    const header = page.locator('header').first()
+    await expect(header.getByRole('link', { name: 'Pyreon home' })).toBeVisible()
+    await expect(header.locator('a[href="/docs"][aria-current="page"]')).toBeVisible()
+    await expect(page.getByTestId('theme-toggle')).toBeVisible()
+    await expect(header.getByRole('link', { name: 'Pyreon on GitHub' })).toBeVisible()
+    // The docs search entry sits at the top of the sidebar.
+    await expect(page.locator('.dx-aside .dx-search')).toContainText('Search docs')
   })
 
-  test('theme toggle flips data-theme on <html> and persists to localStorage', async ({
-    page,
-  }) => {
-    await page.goto('/')
-    // Wait for FOUC script to set the initial theme.
-    const initial = await page.locator('html').getAttribute('data-theme')
-    expect(initial).toBe('dark')
-    // Click the toggle and expect data-theme to flip to light.
-    await page.locator('.docs-theme-toggle').click()
+  test('theme toggle flips data-theme on <html> and persists to localStorage', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.goto('/docs/router')
+    await waitForDocs(page)
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+    await page.getByTestId('theme-toggle').click()
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
-    // localStorage was updated (same key as VitePress for seamless
-    // cut-over).
-    const stored = await page.evaluate(() =>
-      localStorage.getItem('vitepress-theme-appearance'),
-    )
-    expect(stored).toBe('light')
-    // Toggle back — round-trip.
-    await page.locator('.docs-theme-toggle').click()
+    expect(await page.evaluate(() => localStorage.getItem('pyreon-theme'))).toBe('light')
+    await page.getByTestId('theme-toggle').click()
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   })
 
-  test('Cmd+K opens search overlay; Escape closes it', async ({ page }) => {
+  test('Cmd+K opens the search dialog; results are grouped, keyboard-driven, and Escape closes it', async ({ page }) => {
     await page.goto('/docs/getting-started')
-    await page.waitForLoadState('networkidle')
-    // Trigger the keyboard shortcut. The Search component branches on the
-    // platform — `navigator.userAgent.includes('Mac') ? e.metaKey : e.ctrlKey`
-    // — so pressing Meta opens the panel on a macOS dev machine and does
-    // NOTHING on the Linux CI runner, where the component is listening for
-    // Control. Playwright's `ControlOrMeta` resolves the same way the
-    // component does, so the spec follows the product rather than one OS.
-    // A cold dev server transforms the whole markdown collection before
-    // answering this request. Start the result assertion only once the
-    // required index has arrived; keep typing during loading so this still
-    // exercises a query entered before the index is ready.
+    await waitForDocs(page)
+    // The search code and the index load on first open.
     await Promise.all([
-      page.waitForResponse(
-        (response) => new URL(response.url()).pathname === '/search-index-docs.json',
-        { timeout: 0 }, // The existing whole-test deadline owns this setup wait.
-      ).then(async (response) => {
+      page.waitForResponse((response) => new URL(response.url()).pathname === '/search-index-docs.json', { timeout: 0 }).then((response) => {
         expect(response.ok()).toBe(true)
-        expect(await response.finished()).toBeNull()
       }),
       (async () => {
         await page.keyboard.press('ControlOrMeta+k')
-        await expect(page.locator('.pyreon-search__panel')).toBeVisible()
-        await expect(page.locator('.pyreon-search__input')).toBeVisible()
-        await page.locator('.pyreon-search__input').fill('signal')
+        await expect(page.locator('dialog.dx-sdlg')).toBeVisible()
+        await expect(page.locator('.dx-search-input')).toBeFocused()
+        await page.locator('.dx-search-input').fill('signal')
       })(),
     ])
     await expect(async () => {
-      const resultCount = await page.locator('.pyreon-search__result').count()
-      expect(resultCount).toBeGreaterThan(0)
+      expect(await page.locator('.dx-search-hit').count()).toBeGreaterThan(0)
     }).toPass({ timeout: 15_000 })
-    // The reactive class flip on the `<search>` host is the precise binding
-    // that died when the compiler re-invoked `useSearch()` per use site: the
-    // overlay's open state lived in an instance no binding was subscribed to,
-    // so the class stayed `pyreon-search` and the panel never rendered.
-    await expect(page.locator('search.pyreon-search--open')).toHaveCount(1)
-    // A result must actually navigate (SPA push, not a dead node).
-    const first = page.locator('.pyreon-search__result a').first()
-    const href = await first.getAttribute('href')
-    expect(href).toMatch(/^\/docs\//)
-    await first.click()
-    await expect(page).toHaveURL(new RegExp(href!.split('#')[0]!.replace(/\//g, '\\/')))
-    await expect(page.locator('.pyreon-search__panel')).not.toBeVisible()
+    expect(await page.locator('.dx-search-group').count()).toBeGreaterThan(1)
+    await page.keyboard.press('ArrowDown')
+    const selected = page.locator('.dx-search-hit[aria-selected="true"]')
+    await expect(selected).toHaveCount(1)
+    const href = (await selected.getAttribute('href'))!
+    expect(href).toMatch(/^\/docs/)
+    await expect(page.locator('.dx-search-input')).toHaveAttribute('aria-activedescendant', (await selected.getAttribute('id'))!)
+    await page.keyboard.press('Enter')
+    await expect(page).toHaveURL(new RegExp(href.split('#')[0]!.replace(/\//g, '\\/')))
+    await expect(page.locator('dialog.dx-sdlg')).not.toBeVisible()
+    // A result is a page load: wait for the new page's islands.
+    await waitForDocs(page)
 
-    // Escape closes the overlay (re-open first — the click above closed it).
-    await page.keyboard.press('ControlOrMeta+k')
-    await expect(page.locator('.pyreon-search__panel')).toBeVisible()
+    // Re-open from the sidebar's search box; Escape closes it and focus returns.
+    await page.locator('.dx-aside .dx-search').click()
+    await expect(page.locator('dialog.dx-sdlg')).toBeVisible()
+    await page.locator('.dx-search-input').fill('form')
     await page.keyboard.press('Escape')
-    await expect(page.locator('.pyreon-search__panel')).not.toBeVisible()
-    await expect(page.locator('search.pyreon-search--open')).toHaveCount(0)
+    await expect(page.locator('dialog.dx-sdlg')).not.toBeVisible()
+    await expect(page.locator('.dx-aside .dx-search')).toBeFocused()
   })
 
-  test('sidebar group collapse state persists to localStorage', async ({
-    page,
-  }) => {
-    await page.goto('/docs/getting-started')
-    await page.waitForLoadState('networkidle')
-    // Take the FIRST group rather than naming one. This spec used to look for
-    // a "Patterns" group; the sidebar was later reorganised and the group is
-    // gone, so the spec asserted against an element that could never exist —
-    // undetected because the docs suite was not registered in CI. Reading the
-    // group's own label keeps the localStorage assertion exact without
-    // hard-coding navigation copy.
-    const group = page.locator('.pyreon-sidebar__group').first()
-    const groupTitle = group.locator('.pyreon-sidebar__group-title')
-    await expect(groupTitle).toBeVisible()
-    // `textContent`, not `innerText`: the group title is uppercased by CSS
-    // `text-transform`, and `innerText` returns the RENDERED text, which would
-    // not match the label the sidebar actually persists.
-    const groupLabel = ((await groupTitle.textContent()) ?? '').trim()
-    // Before click — expanded. Sidebar keeps the list ALWAYS mounted
-    // (CSS grid-template-rows 1fr ↔ 0fr animation needs something to
-    // animate); collapse state lives on `.pyreon-sidebar__collapse`'s
-    // `data-collapsed` attribute. So we assert the data-attribute,
-    // not the DOM-presence of the list.
-    const collapseEl = group.locator('.pyreon-sidebar__collapse')
-    await expect(collapseEl).toHaveAttribute('data-collapsed', 'false')
-    await groupTitle.click()
-    // After click — collapsed (data-collapsed flips to "true").
-    await expect(collapseEl).toHaveAttribute('data-collapsed', 'true')
-    // localStorage records the toggle.
-    const stored = await page.evaluate(() =>
-      localStorage.getItem('pyreon-docs-sidebar-collapsed'),
-    )
-    expect(stored).toContain(groupLabel)
+  test('the active product opens its sub-pages in the sidebar', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('/docs/ssr')
+    await waitForDocs(page)
+    // /docs/ssr sits under Zero: Zero's sub-pages show, the page is current.
+    await expect(page.locator('.dx-aside .dx-sub a[href="/docs/ssr"][aria-current="page"]')).toBeVisible()
+    await expect(page.locator('.dx-aside .dx-sub a[href="/docs/ssg"]')).toBeVisible()
+    // Another product's sub-pages stay closed.
+    await expect(page.locator('.dx-aside .dx-sub a[href="/docs/patterns/form-fields"]')).toHaveCount(0)
   })
 
   test('<Example> share="key" — click in one example reactively updates another (the killer Pyreon docs DX)', async ({
@@ -850,6 +640,8 @@ test.describe('docs rendering', () => {
     // updates the rendered list (the "a synced value IS a signal" contract).
     await page.goto('/docs/sync')
     await page.waitForLoadState('networkidle')
+    // The overview's pitch and live demo come first; bring the example near the viewport (it lazy-mounts).
+    await page.locator('[data-example-file="./examples/sync/synced-list-crdt"]').scrollIntoViewIfNeeded()
     const example = page.locator('[data-testid=synced-list]')
     await expect(example).toBeVisible({ timeout: 15_000 })
     const items = example.locator('.sl-item')
@@ -975,3 +767,5 @@ test.describe('the charts page mounts every mark it documents', () => {
     expect(headers.some((h) => h.includes('(lower)')), headers.join(' | ')).toBe(true)
   })
 })
+
+// The blog, /open, /showcase and the stable links (/discord, /newsletter): site-project.spec.ts.

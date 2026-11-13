@@ -22,7 +22,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      'markdown/MDX content pipeline for zero\'s web rendering',
+      'markdown/MDX content pipeline and blog module for zero\'s web rendering: a Vite plugin, SSG/SSR pages and document head tags — nothing here has a native target',
   },
   features: [
     'Compile-time .md/.mdx → Pyreon JSX (no dangerouslySetInnerHTML — full reactivity + tree-shaking preserved)',
@@ -42,6 +42,10 @@ export default defineManifest({
     'Built-in layout components — `<Sidebar>` with groups + active highlighting, `<Toc>` with scroll-spy via IntersectionObserver',
     'Frontmatter JSON Schema + .vscode-settings emission — autocomplete + validation in any .md file via the YAML extension',
     'Inherits zero\'s perf stack — image/font auto-wire, script defer default, resource hints, view transitions',
+    '`@pyreon/zero-content/blog` — a production blog in five one-line routes: `blogCollection()` (frontmatter schema + publish dates), `defineBlog()` (paginated index, post, tag pages, `getStaticPaths`), queries (tags + counts, previous/next, related, reading time counted at build), SEO (Open Graph, `article:*`, Twitter, JSON-LD `BlogPosting`/`Blog`), restylable components; drafts and future-dated posts reach no surface',
+    'Every compiled content module exports `wordCount` (prose + code) and `excerpt` (first paragraph), surfaced on `CollectionEntry` — reading time and teasers without walking the page in the browser',
+    '`getCollection` reads one metadata chunk per collection (`virtual:zero-content/meta/<name>`: frontmatter, slug, headings, word count, excerpt — no bodies); an entry body loads only when `render()` is called',
+    'Entries ship the collection schema\'s PARSED frontmatter — defaults applied, values typed as the schema outputs them (a `Date` stays a `Date`) — so runtime data matches the generated `CollectionSchemas` types',
   ],
   longExample: `// vite.config.ts
 import pyreon from '@pyreon/vite-plugin'
@@ -145,7 +149,7 @@ export default defineComponents({ Playground, APIReference })`,
       kind: 'function',
       signature: 'getCollection<K extends keyof CollectionSchemas>(name: K): Promise<CollectionEntry<CollectionSchemas[K]>[]>',
       summary:
-        "Runtime query — returns every entry in a collection. Data shape inferred from the collection's zod schema via the generated `.pyreon/content-types.d.ts`. Each entry exposes a `render()` lazy loader to get the page component.",
+        "Runtime query — returns every entry in a collection. `data` is the collection schema's PARSED output (defaults applied, values typed as the schema outputs them — a `Date` stays a `Date`), matching the generated `.pyreon/content-types.d.ts`. Entries come from the collection's metadata chunk (frontmatter, headings, `wordCount`, `excerpt` — no bodies); `render()` loads the entry's page component on demand, so a listing never pulls in bodies.",
       example: `import { getCollection } from '@pyreon/zero-content'
 
 const posts = await getCollection('blog')
@@ -549,6 +553,42 @@ search.query.set('signal')
         'Gating the empty state on `results().length === 0` alone — during the debounce/index-load window results are momentarily empty for a query that WILL match; gate on `status() === \'ready\'` too, as shown above',
         'Building a search index yourself instead of calling `loadSearchIndex` — the module-level cache is what keeps the ~200 KB index from being fetched/parsed once per mounted search UI',
       ],
+    },
+    {
+      name: 'blogCollection / defineBlog (@pyreon/zero-content/blog)',
+      kind: 'function',
+      signature:
+        "blogCollection(options?: { path?: string; unpublished?: 'omit' | 'runtime' }): CollectionDefinition · defineBlog(config: BlogConfig): Blog",
+      summary:
+        "A production blog on a content collection. `blogCollection()` is a `pages` collection with a dependency-free Standard Schema for post frontmatter (title, description, date, updated?, slug?, tags?, cover?, coverAlt?, author?, canonical?, draft? — unknown fields are a build error), `date` as the publish date, and `unpublished: 'omit'` by default. `defineBlog({ siteUrl, title, description, … })` returns the queries (`getPosts()` — published, newest first; `getPost`, `getTags` with counts), four route components (`IndexPage` for `/blog` and `/blog/page/[page]`, `PostPage`, `TagPage` for `/blog/tags/[tag]` and `/blog/tags/[tag]/page/[page]`, paginated like the index) and their `getStaticPaths` (`pagePaths`, `postPaths`, `tagPaths`, `tagPagePaths`). Listings read the collection's metadata chunk, so no listing loads a post body. Every listing, count, page count, previous/next and related list derives from the published posts only, and `PostPage` renders an unpublished entry only in development (with a Draft/Scheduled notice), whatever the `unpublished` mode bundled. Each page sets its head through `blogPostHead`/`blogListHead`: title, description, canonical, Open Graph + `article:*`, Twitter card, JSON-LD `BlogPosting` (post), `Blog` (index) or `CollectionPage` (tag). After every post `postEnd` renders a call-to-action box (`cta`, off unless given — turn it off when posts carry their own closing), share links (`share`, on), a feed link (`feed`, on with `feedPath`) and a newsletter form (`newsletter`, renders nothing while its action is empty). Components (`PostList`, `PostCard`, `PostHeader`, `PostMeta`, `TagList`, `Pagination`, `PostNav`, `RelatedPosts`, `PostEnd`, `CallToAction`, `ShareLinks`, `NewsletterForm`) are exported for custom pages, and `views: { index, tag, post }` replaces a page type's markup with the site's own component, which receives the computed page data (`BlogListView`: posts, page, page count, total, pager URLs, top tags, the tag; `BlogPostView`: post, body component, headings for a table of contents, previous/next, related, absolute URL, preview status) while the blog keeps the queries, not-found handling, head tags and static paths. The optional stylesheet `@pyreon/zero-content/blog.css` has one-class specificity and takes its colours from the host via `--pyreon-blog-*` variables. RSS stays in the content plugin's `seo.rss`.",
+      example: `// content.config.ts
+import { defineConfig } from '@pyreon/zero-content'
+import { blogCollection } from '@pyreon/zero-content/blog'
+export default defineConfig({ collections: { blog: blogCollection() } })
+
+// src/blog.ts
+import 'virtual:zero-content/collections'
+import { defineBlog } from '@pyreon/zero-content/blog'
+export const blog = defineBlog({
+  siteUrl: 'https://example.com',
+  title: 'Example blog',
+  description: 'Notes from the team.',
+  feedPath: '/blog/rss.xml',
+})
+
+// src/routes/blog/index.tsx          export default blog.IndexPage
+// src/routes/blog/page/[page].tsx    export const getStaticPaths = blog.pagePaths; export default blog.IndexPage
+// src/routes/blog/[slug].tsx         export const getStaticPaths = blog.postPaths; export default blog.PostPage
+// src/routes/blog/tags/[tag]/index.tsx        export const getStaticPaths = blog.tagPaths;     export default blog.TagPage
+// src/routes/blog/tags/[tag]/page/[page].tsx  export const getStaticPaths = blog.tagPagePaths; export default blog.TagPage`,
+      mistakes: [
+        "Forgetting `import 'virtual:zero-content/collections'` in the file that calls `defineBlog` — the SSG render and `getStaticPaths` read the collection registry it populates; without it `getPosts()` throws `No content collection registry available`",
+        'Expecting `/blog/page/1` to exist — page 1 is `/blog`; `pagePaths` lists pages 2..n and the index route treats `1` as not found (no duplicate URL)',
+        'A frontmatter `slug` that differs from the file name — the URL comes from the file; `postPaths` fails the build naming both',
+        'Importing `@pyreon/zero-content/blog.css` AFTER the site stylesheet — it has one-class specificity, so it must come first for the site\'s class rules to win',
+        'Treating `entry.data.date` as a string — the schema outputs `BlogPostData` (dates as `Date`, `tags`/`author` as lists, `draft` boolean) and that parsed output is what ships',
+      ],
+      seeAlso: ['defineCollection', 'getCollection'],
     },
     {
       name: 'generateSitemap / generateRssFeed / generateLlmsTxt',

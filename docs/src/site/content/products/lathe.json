@@ -1,0 +1,437 @@
+{
+ "id": "lathe",
+ "route": "/products/lathe",
+ "name": "Lathe",
+ "package": "@pyreon/lathe",
+ "category": "tools · api clients",
+ "hero": {
+  "title": "121 lines of OpenAPI in. 1,133 lines of typed client you never write.",
+  "emberWord": "never",
+  "lede": "Lathe turns your OpenAPI spec into validated schemas, typed endpoints and query hooks for Pyreon, plus mocks, fake-data factories, docs and MCP tools. It fails CI when the committed client is stale, names every hook a breaking spec change touches, and can emit native modules that it compiles for iOS and Android before telling you they work.",
+  "install": "bun add -D @pyreon/lathe",
+  "ctaShort": "Try it",
+  "facts": [
+   {
+    "key": "reads",
+    "value": "OpenAPI 3.0, 3.1, Swagger 2.0<small>Swagger 2.0 is up-converted; split specs are bundled from their `$ref`s.</small>"
+   },
+   {
+    "key": "plugins",
+    "value": "10, from types to MCP tools<small>Pick any; Lathe adds what they import and says what came along.</small>"
+   },
+   {
+    "key": "migrates from",
+    "value": "orval, hey-api, kubb, openapi-typescript<small>`lathe init` reads the old config as text and lists what it could not map.</small>"
+   },
+   {
+    "key": "native",
+    "value": "{dot:warn}iOS and Android, experimental<small>The multiplatform target compiles its own output and reports reach per operation.</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "1,133",
+   "label": "lines of generated TypeScript from the 121-line Bookshelf spec (4 models, 4 operations): schemas, client, hooks, keys, mocks, factories, Atlas scenarios and native modules.",
+   "source": "examples/lathe-bookshelf: `wc -l openapi.yaml` = 121; `cat src/gen/*.ts src/gen/*/*.ts src/gen/*.tsx | wc -l` = 1,133"
+  },
+  {
+   "stat": "0 of 29",
+   "label": "files rewritten when `lathe check` runs on an unchanged spec. Output is deterministic, so a stale client is a diff, and a diff is exit 1.",
+   "source": "`lathe check` in a copy of examples/lathe-bookshelf, 2026-11-11: \"0 of 29 file(s) written (everything already current)\", exit 0"
+  },
+  {
+   "stat": "6",
+   "label": "functions and hooks named by `lathe diff` when one enum value left the spec, with `--fail-on-breaking` turning it into exit 1.",
+   "source": "`lathe diff HEAD:examples/lathe-bookshelf/openapi.yaml <edited copy> --format github --fail-on-breaking`, 2026-11-11"
+  }
+ ],
+ "why": {
+  "title": "Your API client, generated and kept honest.",
+  "items": [
+   {
+    "title": "One spec, the whole surface",
+    "text": "Schemas, a typed client, `useQuery` and `useMutation` hooks with their query keys, deterministic mocks, `createBook(overrides?)` factories, Atlas scenarios, Markdown docs and MCP tool definitions. Fixtures live in `./gen/dev`, which `./gen/index.ts` never imports, so they cannot reach a page bundle."
+   },
+   {
+    "title": "API changes show up in the PR",
+    "text": "`lathe diff main:openapi.yaml openapi.yaml --format github` puts breaking changes first, each naming the generated code it affects: \"affects createBook, useCreateBook (books); getBook, useGetBook (books); listBooks, useListBooks (books)\"."
+   },
+   {
+    "title": "Responses are checked, not trusted",
+    "text": "Every response is validated against the generated schema by default (`responseValidation: 'strict'`), so a backend that drifts fails at the boundary instead of three components later. `'warn'` and `'off'` exist when you need them."
+   },
+   {
+    "title": "Switch without a rewrite weekend",
+    "text": "`lathe init` reads your orval, hey-api or kubb config, or the openapi-typescript script in package.json, maps it, and lists what it could not map with what to do instead. It never runs your old config and never writes into the old generator's output."
+   }
+  ]
+ },
+ "difference": {
+  "title": "The client you hand-write today, and the one line that replaces it.",
+  "before": {
+   "label": "React + TanStack Query, by hand",
+   "caption": "A type copied from the docs, a key to keep in sync, a body nobody checks.",
+   "code": "// api/books.ts: written by hand, kept in sync by hope\nimport { useQuery } from '@tanstack/react-query'\n\nexport type Book = {\n  id: string\n  title: string\n  status: 'available' | 'borrowed' | 'lost'\n}\n\nexport function useBook(bookId: string) {\n  return useQuery({\n    queryKey: ['books', bookId], // match it in every invalidateQueries\n    queryFn: async (): Promise<Book> => {\n      const res = await fetch(`https://bookshelf.example/v1/books/${bookId}`)\n      if (!res.ok) throw new Error(`GET /books/${bookId}: ${res.status}`)\n      return res.json() // a promise, not a check\n    },\n  })\n}\n\n// BookPage.tsx\nexport function BookPage({ id }: { id: string }) {\n  const book = useBook(id)\n  return <h1>{book.data?.title}</h1>\n}"
+  },
+  "after": {
+   "label": "Pyreon + Lathe",
+   "caption": "URL, method, key and schema come from the spec. The response is validated.",
+   "code": "// $ lathe generate   (writes ./src/gen from openapi.yaml)\nimport { useGetBook } from './gen'\n\nexport function BookPage(props: { id: string }) {\n  const book = useGetBook(() => ({ params: { bookId: props.id } }))\n  return <h1>{book.data()?.title}</h1>\n}"
+  }
+ },
+ "comingFrom": [
+  {
+   "lib": "orval",
+   "title": "Same hooks, read as signals. No `.data.data`.",
+   "before": "// orval 8 (react-query client, default fetch httpClient) — generated into ./api\nimport { useCreateBook, useGetBook, useListBooks } from './api/books'\n\nexport function Books({ bookId }: { bookId: string }) {\n  const books = useListBooks()\n  const book = useGetBook(bookId)\n  const create = useCreateBook()\n  return (\n    <section>\n      <h2>{book.data?.data.title}</h2>\n      <ul>\n        {books.data?.data.map((b) => <li key={b.id}>{b.title}</li>)}\n      </ul>\n      <button onClick={() => create.mutate({ data: { title: 'Dune' } })}>Add</button>\n    </section>\n  )\n}",
+   "after": "import { For } from '@pyreon/core'\nimport { useCreateBook, useGetBook, useListBooks } from './gen'\n\nexport function Books(props: { bookId: string }) {\n  const books = useListBooks()\n  const book = useGetBook(() => ({ params: { bookId: props.bookId } }))\n  const create = useCreateBook()\n  return (\n    <section>\n      <h2>{book.data()?.title}</h2>\n      <ul>\n        <For each={() => books.data() ?? []} by={(b) => b.id}>\n          {(b) => <li>{b.title}</li>}\n        </For>\n      </ul>\n      <button onClick={() => create.mutate({ json: { title: 'Dune' } })}>Add</button>\n    </section>\n  )\n}",
+   "note": "Hook arguments are an accessor, so a new `bookId` refetches. Mutation bodies say their encoding: `json`, `form`, `multipart` or `body`. `lathe init` maps `client: 'react-query'` to `plugins: queries`, `mock: true` to `mocks, faker`, and lists `override.mutator` for you to move into `configureApi({ use })`."
+  },
+  {
+   "lib": "openapi-typescript + openapi-fetch",
+   "title": "Call the operation by name, not by path string.",
+   "before": "// openapi-typescript + openapi-fetch\nimport createClient from 'openapi-fetch'\nimport type { paths } from './api/v1'\n\nconst client = createClient<paths>({ baseUrl: 'https://bookshelf.example/v1' })\n\nconst { data, error } = await client.GET('/books/{bookId}', {\n  params: { path: { bookId: '1' } },\n})\nif (error) throw error\nconsole.log(data.title) // typed, but nothing checked the body",
+   "after": "import { configureApi, getBook } from './gen'\n\nconfigureApi({ baseUrl: 'https://bookshelf.example/v1' })\n\n// Resolves to a validated Book; a non-2xx status rejects.\nconst book = await getBook({ params: { bookId: '1' } })\nconsole.log(book.title)",
+   "note": "Path parameters are `params`, query parameters `query`, the body `json`. There is no `{ data, error }` pair: the call resolves to the validated body and rejects on a non-2xx status with the status and parsed body. `lathe init` finds the `openapi-typescript spec -o file` script and reads the paths from it."
+  },
+  {
+   "lib": "hey-api",
+   "title": "A generated hook instead of an options factory to spread.",
+   "before": "// @hey-api/openapi-ts with the @tanstack/react-query plugin\nimport { useMutation, useQuery } from '@tanstack/react-query'\nimport { createBookMutation, getBookOptions } from './client/@tanstack/react-query.gen'\n\nexport function BookView({ bookId }: { bookId: string }) {\n  const book = useQuery(getBookOptions({ path: { bookId } }))\n  const create = useMutation(createBookMutation())\n  return (\n    <>\n      <h1>{book.data?.title}</h1>\n      <button onClick={() => create.mutate({ body: { title: 'Dune' } })}>Add</button>\n    </>\n  )\n}",
+   "after": "import { useCreateBook, useGetBook } from './gen'\n\nexport function BookView(props: { bookId: string }) {\n  const book = useGetBook(() => ({ params: { bookId: props.bookId } }))\n  const create = useCreateBook()\n  return (\n    <>\n      <h1>{book.data()?.title}</h1>\n      <button onClick={() => create.mutate({ json: { title: 'Dune' } })}>Add</button>\n    </>\n  )\n}",
+   "note": "`@hey-api/sdk` maps to `plugins: client`, `@tanstack/react-query` to `queries`, `zod` to `validator: 'zod'`. A mutation already invalidates the reads it can change (`createBook` refetches `getBook` and `listBooks`); pass `invalidates` to change that."
+  }
+ ],
+ "extraSectionsHtml": "<section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">real output</div><h2>Delete one enum value from the spec. Here is what CI sees.</h2><p>The repo's <code>examples/lathe-bookshelf</code>, with <code>lost</code> removed from <code>Book.status</code> and the client not regenerated. Every line below is what the command printed.</p></div><div class=\"card\"><div class=\"in\"><pre>$ lathe check\nlathe / Bookshelf 1.2.0\n  4 models  4 operations  target=multiplatform\n  plugins: schemas, client, queries, mocks, faker, atlas, docs (+components - required by them)\n\n  (25 unchanged files, one \"·\" line each, omitted)\n  ~ src/gen/schemas/Book.ts\n  ~ src/gen/faker.ts\n  ~ src/gen/docs/models.md\n  ~ src/gen/api-surface.json\n\n  0 of 29 file(s) written\n\n  contract  1 breaking  0 additive\n    ! [field-type-changed] Book.status enum(\"available\"|\"borrowed\"|\"lost\") → enum(\"available\"|\"borrowed\")\n\n  native reach  3/4 operations\n    web-only 1 op(s): createBook\n      `POST` lowers through mutations, which PMTC does not yet recognise; GET operations on this client DO reach native.\n\n  lowers authors.native.tsx swift  [PyreonQuery&lt; PyreonZodSchema_ PyreonSchemaError]  compiled\n  lowers authors.native.tsx kotlin  [PyreonQuery&lt; PyreonZodSchema_ PyreonSchemaError]  compiled\n  lowers books.native.tsx swift  [PyreonQuery&lt; PyreonZodSchema_ PyreonSchemaError]  compiled\n  lowers books.native.tsx kotlin  [PyreonQuery&lt; PyreonZodSchema_ PyreonSchemaError]  compiled\n  all modules together swift  compiled\n  all modules together kotlin  compiled\n\n  STALE: 4 generated file(s) differ from the spec:\n    schemas/Book.ts\n    faker.ts\n    docs/models.md\n    api-surface.json\n\n  Fix: run `lathe generate` and commit the result.\n$ echo $?\n1</pre></div></div></div></section>",
+ "demo": {
+  "title": "Pick what to generate.",
+  "text": "Choose plugins. Lathe adds whatever they import and tells you what came along. The file list is what `lathe generate` writes for the Bookshelf example spec.",
+  "component": "DemoLathe",
+  "reference": "pkg-lathe.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"card\"><div class=\"in\"><span class=\"label\">plugins</span><div class=\"lt-pl\" id=\"lt-pl\"></div></div></div>\n  <div class=\"card lx-code\"><div class=\"in\"><div class=\"lx-code-h\"><span>src/gen/</span><span class=\"sp\"></span><span id=\"lt-n\"></span></div><pre id=\"lt-tree\" style=\"padding:20px 24px;min-height:300px\"></pre></div></div>\n</div>",
+  "referenceCss": ".lt-pl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.lt-pl button{display:flex;justify-content:space-between;gap:8px;height:42px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--mist);font-family:var(--mono);font-size:12.5px;cursor:pointer;align-items:center}.lt-pl button[aria-pressed=\"true\"]{border-color:rgba(255,94,26,.55);background:rgba(255,94,26,.08);color:var(--ivory)}.lt-pl button.dep{border-style:dashed;color:var(--ivory)}.lt-pl small{font-size:10.5px;color:var(--fog)}",
+  "referenceJs": "(function(){var P={types:[],schemas:[],client:['schemas'],queries:['client'],mocks:['client'],faker:['schemas'],components:['queries'],atlas:['components','mocks'],docs:[],mcp:['client']},F={types:['types.ts'],schemas:['schemas.ts','schemas/Author.ts','schemas/Book.ts','schemas/Entity.ts','schemas/NewBook.ts'],client:['client.ts','endpoints/index.ts','endpoints/authors.ts','endpoints/books.ts'],queries:['keys.ts','queries/index.ts','queries/authors.ts','queries/books.ts'],mocks:['mocks.ts'],faker:['faker.ts'],components:['components.tsx'],atlas:['atlas.scenarios.ts','atlas.wrapper.tsx'],docs:['docs/index.md','docs/authors.md','docs/books.md','docs/models.md'],mcp:['mcp.ts']},sel={queries:1};\nfunction closure(){var out={};function add(k){if(out[k])return;out[k]=1;P[k].forEach(add)}Object.keys(sel).forEach(add);return out}\nfunction r(){var c=closure();document.getElementById('lt-pl').innerHTML=Object.keys(P).map(function(k){var on=!!sel[k],dep=!on&&c[k];return '<button type=\"button\" data-p=\"'+k+'\" aria-pressed=\"'+on+'\" class=\"'+(dep?'dep':'')+'\"><span>'+k+'</span><small>'+(on?'selected':dep?'required':'')+'</small></button>'}).join('');document.querySelectorAll('[data-p]').forEach(function(b){b.onclick=function(){var k=b.dataset.p;if(sel[k])delete sel[k];else sel[k]=1;r()}});var files=[];Object.keys(P).forEach(function(k){if(c[k])files=files.concat(F[k])});if(c.mocks||c.faker)files.push('dev.ts');files.push('index.ts','package.json','lathe-manifest.json','api-surface.json');var added=Object.keys(P).filter(function(k){return c[k]&&!sel[k]});document.getElementById('lt-n').textContent=files.length+' files';document.getElementById('lt-tree').innerHTML='<span class=\"c\">// plugins: '+Object.keys(sel).join(', ')+(added.length?' (+'+added.join(', +')+' - required by them)':'')+'</span>\\n'+files.map(function(f,i){return(i===files.length-1?'└─ ':'├─ ')+(f.indexOf('/')>0?'<span class=\"p\">'+f.split('/')[0]+'/</span>'+f.split('/')[1]:f)}).join('\\n')}r();})();",
+  "spec": "Dependencies are the real plugin graph (packages/tools/lathe/src/core/config.ts): client→schemas, queries→client, mocks→client, faker→schemas, components→queries, atlas→components+mocks, mcp→client; types and docs stand alone. File names and counts are exactly what `lathe generate --target web --plugins <selection>` writes for examples/lathe-bookshelf/openapi.yaml: `queries` alone is 17 files, all ten plugins are 29. `dev.ts` appears when mocks or faker is selected; index.ts, package.json, lathe-manifest.json and api-surface.json always. The header line uses the CLI's own format: \"plugins: atlas (+schemas, +client, +queries, +components, +mocks - required by them)\". The demo should call `generate()` from `@pyreon/lathe/core` on the bundled spec rather than hard-code the map, if bundle size allows."
+ },
+ "features": {
+  "title": "The whole pipeline.",
+  "items": [
+   {
+    "name": "`lathe init`",
+    "text": "detects orval, hey-api, kubb or openapi-typescript and writes the `lathe` section of `pyreon.config.ts`"
+   },
+   {
+    "name": "`lathe check`",
+    "text": "regenerates in memory and exits 1 when the committed client is stale"
+   },
+   {
+    "name": "`lathe diff`",
+    "text": "breaking and additive contract changes as text, Markdown, GitHub annotations or JSON"
+   },
+   {
+    "name": "Vite plugin",
+    "text": "`@pyreon/lathe/vite` regenerates on spec changes; `checkOnBuild` turns a stale client into a build error"
+   },
+   {
+    "name": "Four HTTP clients",
+    "text": "`pyreon`, `fetch`, `axios` or `ky`; every file except `client.ts`, `mocks.ts` and `dev.ts` is byte-identical across them"
+   },
+   {
+    "name": "Two schema libraries",
+    "text": "`@pyreon/validate` or Zod, both reaching native"
+   },
+   {
+    "name": "Streams",
+    "text": "Server-Sent Events and NDJSON as validated async iterators and `use<Op>Stream` signals, with reconnect and `Last-Event-ID`"
+   },
+   {
+    "name": "Webhooks",
+    "text": "typed payloads and a `webhookHandler` that calls your own signature check and caps bodies at 1 MiB"
+   },
+   {
+    "name": "MCP tools",
+    "text": "each JSON-callable operation as a tool definition whose `call` runs the generated endpoint through your auth and middleware"
+   },
+   {
+    "name": "Loss notes",
+    "text": "anything the spec says that the client cannot honour becomes a note with a stable code and a JSON pointer"
+   }
+  ]
+ },
+ "api": {
+  "title": "Flags, plugins, config and what the client exports.",
+  "groups": [
+   {
+    "name": "CLI flags",
+    "items": [
+     "--target",
+     "--plugins",
+     "--client",
+     "--validator",
+     "--dry-run",
+     "--watch",
+     "--strict-native",
+     "--fail-on-breaking",
+     "--format",
+     "--json"
+    ]
+   },
+   {
+    "name": "plugins",
+    "items": [
+     "types",
+     "schemas",
+     "client",
+     "queries",
+     "mocks",
+     "faker",
+     "components",
+     "atlas",
+     "docs",
+     "mcp"
+    ]
+   },
+   {
+    "name": "pyreon.config.ts · lathe",
+    "items": [
+     "input",
+     "output",
+     "target",
+     "plugins",
+     "client",
+     "validator",
+     "baseUrl",
+     "responseValidation",
+     "filters",
+     "patches",
+     "operations",
+     "naming",
+     "streams",
+     "projects",
+     "remoteRefs",
+     "int64",
+     "format"
+    ]
+   },
+   {
+    "name": "generated (./gen)",
+    "items": [
+     "use<Op>()",
+     "use<Op>Stream()",
+     "<op>()",
+     "configureApi",
+     "keys",
+     "optimisticUpdate",
+     "webhookHandler"
+    ]
+   },
+   {
+    "name": "generated (./gen/dev)",
+    "items": [
+     "installMocks",
+     "mockOperation",
+     "resetMocks",
+     "mockCalls",
+     "seedFaker",
+     "create<Model>()"
+    ]
+   },
+   {
+    "name": "programmatic (@pyreon/lathe/core · @pyreon/lathe/vite)",
+    "items": [
+     "lathe",
+     "generate",
+     "resolveConfig",
+     "definePlugin",
+     "contractDiff",
+     "loadOpenApi"
+    ]
+   },
+   {
+    "name": "MCP tools (@pyreon/mcp)",
+    "items": [
+     "get_api_client",
+     "get_api_operation",
+     "explain_api_diff"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Response headers are not generated",
+   "text": "They are reported as a `response-headers` loss note. Header and cookie parameters are typed call arguments."
+  },
+  {
+   "title": "Mutations stay on the web",
+   "text": "The native compiler lowers reads, not mutations, so each `POST` is reported `web-only` with that reason. GET operations and typed streams reach native, and only with an absolute `baseUrl`."
+  },
+  {
+   "title": "No surprise network calls",
+   "text": "A remote `$ref` is reported, not fetched, until you set `remoteRefs: 'fetch'` or run `lathe pull`."
+  },
+  {
+   "title": "Webhook signatures are your hook",
+   "text": "`webhookHandler` calls your `verify`; it does not know any vendor's signing scheme."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/query",
+   "category": "fundamentals",
+   "name": "Query",
+   "text": "The generated hooks are `@pyreon/query` hooks, keys included.",
+   "package": "@pyreon/query"
+  },
+  {
+   "href": "/products/validation",
+   "category": "fundamentals",
+   "name": "Validation",
+   "text": "Generated schemas validate every response.",
+   "package": "@pyreon/validate"
+  },
+  {
+   "href": "/products/atlas",
+   "category": "tools",
+   "name": "Atlas",
+   "text": "Browse every generated read with mocked data in the workbench.",
+   "package": "@pyreon/atlas"
+  }
+ ],
+ "recipes": [
+  {
+   "title": "An API contract check on every pull request",
+   "text": "`lathe diff` takes git refs. Breaking changes become `::error` annotations on the PR, and `lathe check` fails if someone edited the spec without regenerating.",
+   "code": "# .github/workflows/api-contract.yml\nname: API contract\non:\n  pull_request:\n    paths: ['openapi.yaml']\njobs:\n  contract:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n        with: { fetch-depth: 0 }\n      - uses: oven-sh/setup-bun@v2\n      - run: bun install\n      - run: bunx lathe diff origin/main:openapi.yaml openapi.yaml --format github --fail-on-breaking\n      - run: bunx lathe check"
+  },
+  {
+   "title": "Tests against the spec, no server, no MSW",
+   "text": "Mocks are middleware on the generated client, so they behave the same in node and the browser. Factories respect the spec's constraints and are reproducible from a seed. This file passes under vitest against the Bookshelf client.",
+   "code": "import { afterEach, beforeEach, expect, it } from 'vitest'\nimport { createBook, installMocks, mockOperation, resetMocks, seedFaker } from './gen/dev'\nimport { getBook, listBooks } from './gen'\n\nbeforeEach(() => {\n  installMocks()\n  seedFaker(42)\n})\nafterEach(() => resetMocks())\n\nit('shows a lost book', async () => {\n  const lost = createBook({ status: 'lost' })\n  mockOperation('getBook', { json: lost })\n  expect((await getBook({ params: { bookId: lost.id } })).status).toBe('lost')\n})\n\nit('survives a 404', async () => {\n  mockOperation('getBook', { status: 404, json: { message: 'no such book' } })\n  await expect(getBook({ params: { bookId: 'missing' } })).rejects.toMatchObject({ status: 404 })\n})\n\nit('lists from spec-derived fixtures', async () => {\n  expect((await listBooks()).length).toBeGreaterThan(0)\n})"
+  },
+  {
+   "title": "Auth that follows the signed-in user",
+   "text": "`headers` is re-read on every request, so a new token applies to the next call. Middleware wraps every request, streams included.",
+   "code": "import type { HttpMiddleware } from '@pyreon/http'\nimport { signal } from '@pyreon/reactivity'\nimport { configureApi } from './gen'\n\nconst token = signal('')\n\nconst retryOn401: HttpMiddleware = async (req, next) => {\n  const res = await next(req)\n  return res.status === 401 ? next(req) : res\n}\n\nconfigureApi({\n  headers: () => ({ Authorization: `Bearer ${token()}` }),\n  use: [retryOn401],\n})"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Do I have to keep orval (or hey-api) installed during the move?",
+   "a": "No. `lathe init` reads the old config as text and never runs it. If the old output directory still holds the old client, Lathe writes beside it so the app keeps working until your imports move."
+  },
+  {
+   "q": "Will mocks and fake data end up in my production bundle?",
+   "a": "They cannot. `./gen/index.ts` never names `./mocks`, `./faker` or `./components`, so no import edge exists for a bundler to follow, and the generated `package.json` declares `sideEffects` so the rest tree-shakes. The Bookshelf example checks it: `grep -c '@faker-js' dist/assets/*.js` prints 0."
+  },
+  {
+   "q": "What happens to the parts of my spec Lathe cannot represent?",
+   "a": "Each one becomes a note with a stable code (`response-headers`, `unsupported-security`, `int64-precision`…), a JSON pointer into the spec and a severity. They print in the terminal and land in the generated reference pages under \"Not represented\"."
+  },
+  {
+   "q": "Which operations reach iOS and Android?",
+   "a": "With `target: 'multiplatform'` and an absolute `baseUrl`: GET operations (path parameters become component props) and typed SSE or NDJSON streams. Mutations stay web-only. Lathe runs the native compiler over its own output, checks for the lowering markers, and type-checks with `swiftc` and `kotlinc` when they are installed; without the compiler it says the check was skipped. The native targets are experimental."
+  },
+  {
+   "q": "Can I add my own output?",
+   "a": "Yes. A `--plugins` entry that is not a built-in name is loaded as a plugin module (a path or a package), written with `definePlugin` from `@pyreon/lathe/core`."
+  }
+ ],
+ "end": {
+  "title": "Your spec already knows the API. Let it write the client.",
+  "cta": "Read the Lathe guide"
+ },
+ "benchmarks": null,
+ "glyphSvg": "<path d=\"M14 60 H106 M14 34 V86 M106 34 V86\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\" stroke-linecap=\"square\"/><circle cx=\"60\" cy=\"60\" r=\"24\" fill=\"url(#eg)\"/>",
+ "sources": [
+  {
+   "claim": "121-line spec, 1,133 generated TS lines, 4 models / 4 operations, 29 files",
+   "path": "examples/lathe-bookshelf/openapi.yaml; src/gen/*; `lathe check` header \"4 models 4 operations\""
+  },
+  {
+   "claim": "\"0 of 29 file(s) written (everything already current)\", exit 0",
+   "path": "`node packages/tools/lathe/bin/lathe.js check` in a copy of examples/lathe-bookshelf, 2026-11-11"
+  },
+  {
+   "claim": "Stale run output (extra section): 4 files differ, 1 breaking change, exit 1",
+   "path": "same copy with `lost` removed from Book.status in openapi.yaml"
+  },
+  {
+   "claim": "lathe diff names createBook/useCreateBook/getBook/useGetBook/listBooks/useListBooks; git ref input; --fail-on-breaking exit 1",
+   "path": "`lathe diff HEAD:examples/lathe-bookshelf/openapi.yaml <edited> --format github --fail-on-breaking` run from the repo root"
+  },
+  {
+   "claim": "lathe init mappings for orval, openapi-typescript(+openapi-fetch, openapi-react-query), hey-api; unmapped mutator listed",
+   "path": "`lathe init --dry-run --yes` in three scratch projects (.scratch/tools/atlas-lathe/init-*), 2026-11-11; packages/tools/lathe/src/cli/init/"
+  },
+  {
+   "claim": "kubb detection",
+   "path": "`lathe --help` \"Init options: --from orval|hey-api|kubb|openapi-typescript|spec\"; docs/src/content/docs/lathe-from-kubb.md"
+  },
+  {
+   "claim": "Plugin graph and the 10 plugin names",
+   "path": "packages/tools/lathe/src/core/config.ts lines 73-90"
+  },
+  {
+   "claim": "Demo file lists: queries alone 17 files, all ten 29",
+   "path": "`lathe generate --target web --plugins <p> --out ./plug-<p>` per plugin on the Bookshelf spec"
+  },
+  {
+   "claim": "All Lathe-side code (difference after, three comingFrom after blocks, auth recipe) typechecks against the generated client",
+   "path": "`tsc --noEmit -p tsconfig.json` in the Bookshelf copy with the snippets under src/page/ (a deliberate wrong call `useGetBook(() => ({ id }))` fails with TS2322, so the check bites); TSX also through transformJSX from @pyreon/compiler"
+  },
+  {
+   "claim": "Test recipe passes",
+   "path": "vitest run src/page/test-recipe.test.ts in the Bookshelf copy: 3 passed"
+  },
+  {
+   "claim": "responseValidation strict by default",
+   "path": "docs/src/content/docs/lathe.md \"Response validation is configurable\""
+  },
+  {
+   "claim": "Client selectable; non-client files byte-identical across clients",
+   "path": "docs/src/content/docs/lathe.md \"The HTTP client is selectable\"; packages/tools/lathe/src/tests/adapter-*.test.ts"
+  },
+  {
+   "claim": "Dev isolation: index.ts never names ./faker, ./mocks, ./components; grep -c @faker-js = 0",
+   "path": ".agents/guides/tools/README.md \"Output layout\"; examples/lathe-bookshelf/README.md"
+  },
+  {
+   "claim": "Native reach rules: absolute baseUrl, GET with path params, typed streams, mutations web-only",
+   "path": "packages/tools/lathe/src/core/generate.ts lines 575-610 (hasNativeStreamComponent)"
+  },
+  {
+   "claim": "Typed SSE stream reaches native (PyreonStream< marker, compiled)",
+   "path": "scratch spec with one text/event-stream GET, `lathe generate --target multiplatform` → \"native reach 1/1\", \"lowers prices.native.tsx swift [PyreonStream< …] compiled\""
+  },
+  {
+   "claim": "\"compiled\" is a real swiftc/kotlinc type-check (cached by content hash)",
+   "path": "packages/tools/lathe/src/verify/lower.ts runCompile; packages/native/compiler/src/validate-cache.ts; PYREON_VALIDATE_NO_CACHE=1 run took 5.4 s vs 0.1 s cached"
+  },
+  {
+   "claim": "Webhook bodies capped at 1 MiB; signature is your verify",
+   "path": "docs/src/content/docs/lathe.md \"Honest limits\""
+  },
+  {
+   "claim": "MCP plugin: call runs the generated endpoint; MCP server tools get_api_client/get_api_operation/explain_api_diff",
+   "path": "docs/src/content/docs/lathe.md \"MCP tools, generated from the spec\"; packages/tools/mcp/src/manifest.ts lines 340-375"
+  },
+  {
+   "claim": "Swagger 2.0 up-converted; OpenAPI 3.0/3.1",
+   "path": "packages/tools/lathe/src/input/swagger2.ts; docs lathe.md \"Honest limits\""
+  },
+  {
+   "claim": "Native targets are experimental",
+   "path": "repo status docs (native packages); hero fact uses {dot:warn}"
+  },
+  {
+   "claim": "Released: no headline feature is newer than the published version",
+   "path": "git log <npm-latest release tag>..HEAD -- packages/tools/lathe shows only #4211 (arg validation) and #4214 (MDX escaping)"
+  },
+  {
+   "claim": "Rival code: orval react-query hooks take positional path params and return AxiosResponse (book.data?.data); mutate({ data }); openapi-fetch client.GET(path, { params: { path } }) → { data, error }; hey-api getBookOptions/createBookMutation with { path } / { body }",
+   "path": "public docs of orval (orval.dev/guides/react-query), openapi-fetch (openapi-ts.dev/openapi-fetch), hey-api (heyapi.dev/openapi-ts/plugins/tanstack-query); mirrors docs/src/content/docs/lathe-from-*.md; not run here"
+  }
+ ]
+}

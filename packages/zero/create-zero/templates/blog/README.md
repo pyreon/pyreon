@@ -1,6 +1,6 @@
 # {{name}}
 
-A [Pyreon Zero](https://pyreon.dev/docs/zero) blog — markdown-style TSX posts, static site generation, RSS + SEO baked in.
+A [Pyreon Zero](https://pyreon.dev/docs/zero) blog — markdown posts, static site generation, tags, pagination, RSS and SEO (Open Graph, Twitter cards, JSON-LD) built in. It runs on [`@pyreon/zero-content/blog`](https://pyreon.dev/docs/blog), the same module as pyreon.dev/blog.
 
 ## Getting started
 
@@ -11,49 +11,46 @@ bun run dev          # → http://localhost:3000
 
 ## What's in this project
 
-- **`src/content/posts/`** — your blog posts as TSX (one file per post: title, date, tags, body)
+- **`src/content/blog/`** — your posts, one markdown file each (the file name is the URL)
+- **`content.config.ts`** — declares the `blog` collection (`blogCollection()`: frontmatter schema + publish dates)
+- **`src/blog.ts`** — the blog: site URL, title, authors, page size, and what follows every post (`postEnd`: call to action, share links, RSS, newsletter) (`defineBlog`)
+- **`src/routes/blog/`** — five one-line routes: the index and its pages, a post, a tag page and its pages
 - **`src/routes/index.tsx`** — landing page with the latest posts
-- **`src/routes/blog/index.tsx`** — full posts list (paginated, tag-filtered)
-- **`src/routes/blog/[slug].tsx`** — individual post page (dynamic route)
 - **`src/routes/about.tsx`** — about page
-- **`src/routes/api/rss.ts`** — RSS feed at `/rss.xml`
-- **`src/lib/posts.ts`** — post discovery + sorting (uses `import.meta.glob`)
+- **`vite.config.ts`** — the content plugin also writes the RSS feed to `/blog/rss.xml`
 
 ### Adding a post
 
-Drop a new file under `src/content/posts/<slug>.tsx`:
+Create `src/content/blog/hello-pyreon.md`:
 
-```tsx
-export const meta = {
-  title: 'Hello, Pyreon',
-  date: '2026-05-25',
-  tags: ['announcement'],
-  excerpt: 'A short summary that appears in the listing and RSS feed.',
-}
+```md
+---
+title: Hello, Pyreon
+description: A short summary for the listing, the meta description and the RSS feed.
+date: 2026-05-25
+tags: [announcement]
+# cover: /covers/hello.png   (a file in public/)
+# draft: true
+---
 
-export default function Post() {
-  return (
-    <article>
-      <h1>{meta.title}</h1>
-      <p>Your post body — anything JSX can express.</p>
-    </article>
-  )
-}
+Your post, in markdown.
 ```
 
-The post auto-appears in the listing, gets a per-route HTML at build time, and lands in the RSS feed.
+It appears in the listing, on its tag pages and in the RSS feed, and gets its own prerendered page.
+
+### Scheduling a post
+
+`date` is the publish date. A post dated in the future is left out of every build made before that day and appears with the first build on or after it — deploy on a schedule (a daily CI job) and posts go live on their date. Preview the future with `PYREON_CONTENT_NOW=2026-06-01 bun run build`. In `bun run dev`, drafts and scheduled posts open at their URL (marked as such) but stay out of the listings.
 
 ## Scripts
 
-| Command           | What it does                                                 |
-| ----------------- | ------------------------------------------------------------ |
-| `bun run dev`     | Dev server with HMR                                          |
-| `bun run build`   | Pre-render every post + index → static HTML                  |
-| `bun run preview` | Serve the production build locally                           |
-| `bun run doctor`  | Audit the project (lint + types + perf budgets)              |
-| `bun run lint`    | Run oxlint and `@pyreon/lint` with the `readable` preset     |
-| `bun run format`  | Format with oxfmt (`oxfmt.config.ts`)                        |
-| `bun run fix`     | Format, then apply every lint autofix (blank lines, imports) |
+| Command | What it does |
+| --- | --- |
+| `bun run dev` | Dev server with HMR |
+| `bun run build` | Pre-render the index, every post and tag page → static HTML |
+| `bun run preview` | Serve the production build locally |
+| `bun run doctor` | Audit the project (lint + types + perf budgets) |
+| `bun run lint` | Run `@pyreon/lint` (Pyreon-specific rules) |
 
 ## Deploying
 

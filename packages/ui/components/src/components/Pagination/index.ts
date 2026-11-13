@@ -1,4 +1,4 @@
-import { disabledState, el, focusRing } from '../../factory'
+import { disabledState, el, focusRing, solidFill } from '../../factory'
 
 const Pagination = el
   .config({ name: 'Pagination' })
@@ -67,11 +67,7 @@ export const PaginationItem = el
     disabled: disabledState(),
   }))
   .states((t) => ({
-    active: {
-      backgroundColor: t.color.system.primary.base,
-      color: t.color.system.light.base,
-      hover: { backgroundColor: t.color.system.primary[600] },
-    },
+    active: solidFill(t, 'primary'),
   }))
 
 /** Previous-page button (localizable default aria-label). */

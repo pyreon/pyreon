@@ -94,6 +94,8 @@ describe('the top-level dispatch', () => {
     // signal — `atlas scna` would otherwise pass silently forever.
     expect(await run('scna')).toBe(1)
     expect(errText()).toContain('unknown command')
+    // The shared failure shape (rule 4): symbol · source · problem, then fix:.
+    expect(errText()).toMatch(/^✗ atlas · unknown command ".*"\.\n {3}fix: run `atlas --help` for the list of commands\n$/)
     expect(errText(), 'and say where to look').toContain('--help')
   })
 
@@ -162,7 +164,7 @@ describe('atlas scan', () => {
     project()
     await run('scan', dir)
     expect(outText()).toMatch(/\d+ verified/)
-    expect(outText(), 'and name what did not run').toContain('not run:')
+    expect(outText(), 'and name what did not run').toMatch(/not run\s+\S/)
     expect(outText(), 'each with a reason').toMatch(/browser-only|no plugin claimed|no GC hook/)
   })
 

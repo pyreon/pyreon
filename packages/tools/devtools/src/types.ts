@@ -45,6 +45,8 @@ export interface ReactiveNode {
   fires: number
   /** `performance.now()` of the most recent fire, or null. */
   lastFire: number | null
+  /** Source location of the creation call, when the runtime captured one. */
+  loc?: SourceLocation
 }
 
 export interface ReactiveEdge {
@@ -86,9 +88,18 @@ export interface ReactiveFire {
   cascade: number
 }
 
-// Exact structural mirror of @pyreon/runtime-dom's `PyreonReactiveDevtools`.
-// Keep these in lockstep — the page-hook consumes this shape and a
-// framework version skew would break the bridge.
+/** The part of runtime-dom's `BoundReactiveNode` the hook reads (it never keeps the text node). */
+export interface BoundReactiveNodeLike {
+  id: number
+  name: string
+  kind: ReactiveNodeKind
+}
+
+// Structural subset of @pyreon/runtime-dom's `PyreonReactiveDevtools` that the
+// page-hook uses. `src/tests/framework-integration.test.ts` asserts the
+// framework's interface is assignable to it, so a rename or removal there
+// fails `tsc`. `nodesForElement` is optional because frameworks before the
+// DOM→signal picker do not ship it; the inspector then shows no reads.
 export interface ReactiveDevtools {
   activate(): void
   deactivate(): void
@@ -96,6 +107,7 @@ export interface ReactiveDevtools {
   getFires(): ReactiveFire[]
   getUpdateCause(nodeId: number): UpdateCause | null
   formatUpdateCause(cause: UpdateCause): string
+  nodesForElement?(el: Element): BoundReactiveNodeLike[]
 }
 
 export interface PyreonDevtools {
@@ -122,24 +134,77 @@ declare global {
 // --- Panel -> Page messages ---
 
 export type PanelMessage =
+  | { type: 'hello' }
   | { type: 'get-all' }
   | { type: 'highlight'; id: string }
   | { type: 'toggle-overlay'; enabled: boolean }
   | { type: 'reactive-activate' }
   | { type: 'reactive-deactivate' }
-  | { type: 'reactive-poll' }
+  /** `graph: false` skips the graph walk (the profiler polls fires only). */
+  | { type: 'reactive-poll'; graph?: boolean }
   | { type: 'reactive-eval'; expr: string }
+  | { type: 'inspect'; id: string }
+  | { type: 'console-subscribe' }
+  | { type: 'console-clear' }
 
 // --- Page -> Panel messages ---
 
 export type HookMessage =
   | { type: 'all-result'; entries: SerializedEntry[] }
-  | { type: 'component-mount'; entry: SerializedEntry }
-  | { type: 'component-unmount'; id: string }
-  | { type: 'pyreon-detected'; version: string }
-  | { type: 'reactive-available'; available: boolean }
-  | { type: 'reactive-snapshot'; graph: ReactiveGraph; fires: ReactiveFire[] }
+  /**
+   * Mounts and unmounts coalesced over ~100 ms, so a page that mounts
+   * 10,000 components sends a handful of messages, not 10,000.
+   * `mounted` is capped (it only drives the "just mounted" pulse);
+   * `mountedTotal` is the real count.
+   */
+  | { type: 'components-changed'; mounted: string[]; mountedTotal: number; unmounted: string[] }
+  | { type: 'pyreon-detected'; version: string; host: string; reactive: boolean }
+  | {
+      type: 'reactive-snapshot'
+      /** `null` when the poll asked for fires only. */
+      graph: ReactiveGraph | null
+      fires: ReactiveFire[]
+      /** The page's `performance.now()` at snapshot time (fire `ts` share its clock). */
+      now: number
+    }
   | { type: 'reactive-eval-result'; ok: boolean; result: string }
+  | { type: 'component-detail'; detail: ComponentDetail }
+  | { type: 'console-entries'; entries: ConsoleEntry[]; reset: boolean }
+
+/** A reactive node displayed as text inside a component's DOM. */
+export interface ComponentRead {
+  id: number
+  name: string
+  kind: ReactiveNodeKind
+  loc?: SourceLocation
+  value: string
+  fires: number
+  lastFire: number | null
+}
+
+/** What the inspector shows for one component. Plain data, no page objects. */
+export interface ComponentDetail {
+  id: string
+  /** The component's first DOM element still exists. */
+  hasElement: boolean
+  /** Signals/computeds whose values are text inside the component's DOM. */
+  reads: ComponentRead[]
+  /** Cause of the most recent update among `reads`, or null when none fired. */
+  cause: UpdateCause | null
+  /** The page's `performance.now()` when the detail was read. */
+  now: number
+}
+
+export type ConsoleLevel = 'warn' | 'error'
+
+/** A `[Pyreon]` console warning or error captured in the page. */
+export interface ConsoleEntry {
+  seq: number
+  /** `Date.now()` in the page. */
+  time: number
+  level: ConsoleLevel
+  text: string
+}
 
 // --- Wire message wrappers (include source for filtering) ---
 

@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { main } from '../cli/main'
-import { isInternalHost, refOriginPolicy } from '../cli/pull'
+import { isInternalHost, pullSpec, refOriginPolicy } from '../cli/pull'
 import { parseArgv } from '../cli/run'
 
 const SPEC = `openapi: 3.1.0
@@ -454,5 +454,46 @@ describe('refOriginPolicy: which URLs a remote document may make lathe fetch', (
     expect(isInternalHost(new URL('http://172.32.0.1/').hostname)).toBe(false)
     expect(isInternalHost(new URL('http://[2001:db8::1]/').hostname)).toBe(false)
     expect(isInternalHost(new URL('https://example.test/').hostname)).toBe(false)
+  })
+})
+
+describe('pull output in the shared terminal theme', () => {
+  const ESC = String.fromCharCode(27)
+  const show = (x: string): string => x.split(ESC).join('␛')
+  const pulled = async (color: 0 | 1 | 2 | 3): Promise<string> => {
+    const dir = mkdtempSync(join(tmpdir(), 'lathe-pull-theme-'))
+    const lines: string[] = []
+    const dest = join(dir, 'openapi.yaml')
+    await pullSpec(`http://127.0.0.1:${port}/spec.yaml`, dest, { out: (t) => lines.push(t), color })
+    await pullSpec(`http://127.0.0.1:${port}/spec.yaml`, dest, { out: (t) => lines.push(t), color })
+    rmSync(dir, { recursive: true, force: true })
+    return lines.join('').split(dir).join('<dir>')
+  }
+
+  it('fetched then unchanged, at every colour level; NO_COLOR is complete', async () => {
+    const plain = await pulled(0)
+    expect(plain).toMatch(/^ {2}✓ fetched {2}<dir>\/openapi\.yaml · \d+ bytes\n {4}next: review the diff, then run lathe generate\n {2}✓ spec unchanged {2}<dir>\/openapi\.yaml\n$/)
+    for (const level of [1, 2, 3] as const) {
+      const coloured = await pulled(level)
+      expect(coloured).toContain(ESC)
+      expect(coloured.replace(new RegExp(`${ESC}\\[[0-9;]*m`, 'g'), '')).toBe(plain)
+    }
+    expect(show(await pulled(3))).toMatchSnapshot()
+  })
+
+  it('a failure is ✗ lathe pull · problem, then fix:', async () => {
+    const err = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const dir = mkdtempSync(join(tmpdir(), 'lathe-pull-theme-'))
+    const code = await pullSpec(`http://127.0.0.1:${port}/private`, join(dir, 'x.yaml'), {})
+    const said = err.mock.calls.map((c) => String(c[0])).join('')
+    err.mockRestore()
+    rmSync(dir, { recursive: true, force: true })
+    expect(code).toBe(1)
+    expect(said.split(`${port}`).join('<port>')).toBe(
+      '✗ lathe pull · http://127.0.0.1:<port>/private responded 401 Unauthorized\n' +
+        // Wrapped at 100 columns with a hanging indent (rule 6).
+        '   fix: the spec is behind auth: pass `--token <token>` (or set LATHE_TOKEN), or `--header "Name:\n' +
+        '        value"`\n',
+    )
   })
 })

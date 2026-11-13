@@ -1,0 +1,203 @@
+{
+  "id": "vue",
+  "route": "/compare/vue",
+  "rival": "Vue",
+  "rivalMeasured": "vue 3.5.44 and Vue 3.6 Vapor 3.6.0-rc.11",
+  "hook": {
+    "eyebrow": "Pyreon vs Vue",
+    "title": "Vue's reactivity without `.value`. In 1.6× less JavaScript.",
+    "lede": "Pyreon signals are refs you call: `count()` reads, `count.set()` writes. Components are plain TSX, the same keyed-table app ships 17.2 KB against Vue's 27.4 KB, and compiled SSR came out ahead of Vue 3 at every size we measured."
+  },
+  "proof": [
+    {
+      "stat": "1.6×",
+      "label": "less JavaScript: 17.2 KB against Vue's 27.4 KB for the same keyed-table app (gzip)",
+      "condition": "final pass, sizes are deterministic",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+    },
+    {
+      "stat": "1.68×",
+      "label": "faster compiled SSR at 10 rows (1.80 against 3.03 µs); 1.35× at 100 rows, 1.14× at 1,000",
+      "condition": "one run; Vue's async renderToString awaited",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–245"
+    },
+    {
+      "stat": "1.4×",
+      "label": "faster when a memoised value blocks an update (memo wall): 11 µs against 16 µs",
+      "condition": "real Chromium, both runs",
+      "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 123"
+    }
+  ],
+  "table": {
+    "title": "Pyreon and Vue, line by line.",
+    "note": "Two Vues are in the record: Vue 3, the release you ship today, and Vue 3.6 Vapor, a release candidate that ties Pyreon on most raw DOM operations. Synthetic, author-run, Apple M3 Max, real Chromium unless noted. Reproduce: pyreon.dev/docs/benchmarks",
+    "rows": [
+      {
+        "topic": "Bundle, same keyed-table app (gzip)",
+        "pyreon": "17.2 KB",
+        "rival": "27.4 KB",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+      },
+      {
+        "topic": "Compiled SSR, 10 / 100 / 1,000 rows",
+        "pyreon": "1.80 / 11.64 / 109.9 µs",
+        "rival": "3.03 / 15.66 / 124.9 µs (one run)",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–243 (one run)"
+      },
+      {
+        "topic": "Memo wall: blocked update",
+        "pyreon": "11 / 11 µs",
+        "rival": "16 / 16 µs (Vue was the fastest rival)",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 123 (both runs)"
+      },
+      {
+        "topic": "Hydration, 320-component page",
+        "pyreon": "4.02 ms",
+        "rival": "4.47 ms; both adopt all 2,206 server nodes (one run)",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §4, line 231 (one run)"
+      },
+      {
+        "topic": "Row board vs Vue 3: partial update / clear rows",
+        "pyreon": "705 µs / 130 µs",
+        "rival": "1.04 ms / 255 µs",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 85 and 89 (run 1)"
+      },
+      {
+        "topic": "12-field form, keystroke with validation",
+        "pyreon": "460 µs",
+        "rival": "2,260 µs (vee-validate, one run)",
+        "verdict": "pyreon",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §6, line 276 (one run)"
+      },
+      {
+        "topic": "Row board vs Vue 3.6 Vapor (RC)",
+        "pyreon": "Clear rows 1.11–1.12× faster.",
+        "rival": "Create 1,000, replace, partial update, swap and remove: ties in both runs.",
+        "verdict": "tie",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 99–101"
+      },
+      {
+        "topic": "Hydration, 1,000-row keyed table",
+        "pyreon": "6.07 / 6.04 ms total; framework walk tied",
+        "rival": "6.02 / 5.99 ms: Vue has the faster median in both runs, 1.01× in run 2",
+        "verdict": "rival",
+        "source": "00-brief/BENCHMARKS-2026-11-05.md §4, lines 224–229"
+      },
+      {
+        "topic": "Authoring",
+        "pyreon": "TSX functions; styling through styler or plain CSS.",
+        "rival": "Single-file components: template, script and scoped style together.",
+        "verdict": "different",
+        "source": "docs/src/content/docs/migrating-from-vue.md"
+      },
+      {
+        "topic": "Native apps",
+        "pyreon": "PMTC compiles the same components to SwiftUI and Compose (experimental).",
+        "rival": "No first-party native target.",
+        "verdict": "pyreon",
+        "source": "docs/src/content/docs/multiplatform.md"
+      },
+      {
+        "topic": "Ecosystem and maturity",
+        "pyreon": "Pre-1.0.",
+        "rival": "Nuxt, Pinia, Vue Router and years in production.",
+        "verdict": "rival",
+        "source": "00-brief/facts.md (status labels)"
+      }
+    ]
+  },
+  "code": {
+    "title": "The same search box, twice.",
+    "caption": "Vue's `v-model` is shorter than the Pyreon input line, fair's fair. What changes is `.value`, and that the template becomes TSX your editor and `tsc` already understand.",
+    "rival": {
+      "label": "Vue 3 single-file component",
+      "file": "Search.vue",
+      "code": "<script setup lang=\"ts\">\nimport { computed, ref } from 'vue'\n\ntype Item = { id: number; name: string }\nconst props = defineProps<{ items: Item[] }>()\n\nconst query = ref('')\nconst visible = computed(() =>\n  props.items.filter((i) => i.name.toLowerCase().includes(query.value.toLowerCase())),\n)\n</script>\n\n<template>\n  <div>\n    <input v-model=\"query\" />\n    <p>{{ visible.length }} matches</p>\n    <ul>\n      <li v-for=\"i in visible\" :key=\"i.id\">{{ i.name }}</li>\n    </ul>\n  </div>\n</template>"
+    },
+    "pyreon": {
+      "label": "Pyreon",
+      "file": "Search.tsx",
+      "code": "import { For } from '@pyreon/core'\nimport { computed, signal } from '@pyreon/reactivity'\n\ntype Item = { id: number; name: string }\n\nexport function Search(props: { items: Item[] }) {\n  const query = signal('')\n  const visible = computed(() =>\n    props.items.filter((i) => i.name.toLowerCase().includes(query().toLowerCase())),\n  )\n\n  return (\n    <div>\n      <input value={query()} onInput={(e) => query.set(e.currentTarget.value)} />\n      <p>{visible().length} matches</p>\n      <ul>\n        <For each={visible} by={(i) => i.id}>\n          {(i) => <li>{i.name}</li>}\n        </For>\n      </ul>\n    </div>\n  )\n}"
+    },
+    "checked": "Vue side: parsed and compiled with `@vue/compiler-sfc` 3.5.44 (script and template, 0 errors). Pyreon side: typechecked against the repo's `tsconfig` (0 errors), compiled with the real JSX compiler (`transformJSX`) and mounted in happy-dom; typing into the input filters the list."
+  },
+  "deletes": {
+    "title": "What you stop writing.",
+    "items": [
+      {
+        "what": "`.value` on every ref read and write",
+        "instead": "`count()` to read, `count.set(v)` or `count.update(fn)` to write."
+      },
+      {
+        "what": "A template language beside TypeScript (`v-if`, `v-for`, `v-model`, `:prop`, `@event`)",
+        "instead": "TSX: `<Show>`, `<For by>`, `value` plus `onInput`, ordinary props and handlers."
+      }
+    ]
+  },
+  "pickTheOther": {
+    "title": "When to pick Vue",
+    "items": [
+      "You like single-file components with templates and scoped styles.",
+      "You depend on Nuxt modules or the wider Vue ecosystem.",
+      "Raw DOM speed is your only criterion: Vue 3.6 Vapor (RC) ties Pyreon on most row-board operations.",
+      "You hydrate very large keyed tables: Vue was marginally faster there (1.01×, one of two runs)."
+    ]
+  },
+  "migrate": {
+    "title": "Keep your composables while you move.",
+    "text": "`@pyreon/vue-compat` runs `ref`, `reactive`, `computed`, `watch`, lifecycle hooks and `provide`/`inject` on Pyreon. Templates move to TSX.",
+    "href": "/migrate/vue",
+    "label": "Migrate from Vue"
+  },
+  "cta": {
+    "title": "Call your refs. Ship less.",
+    "command": "npm create @pyreon/zero@latest",
+    "secondary": {
+      "label": "Every result, including where we lose",
+      "href": "/docs/benchmarks"
+    }
+  },
+  "sources": [
+    {
+      "claim": "Bundle Vue 27.4 KB vs Pyreon 17.2 KB (1.59× → 1.6×)",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+    },
+    {
+      "claim": "Compiled SSR vs Vue 3: 1.68× / 1.35× / 1.14×, one run, Vue awaited",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–245"
+    },
+    {
+      "claim": "Memo wall blocked 11 vs Vue 16 µs, win 1.39–1.40× both runs",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §2, line 123"
+    },
+    {
+      "claim": "App page hydration 4.02 vs Vue 4.47 ms, one run",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §4, line 231"
+    },
+    {
+      "claim": "Hydration 1,000 rows: Vue faster median both runs, 1.01× in run 2; walk tie",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §4, lines 224–229"
+    },
+    {
+      "claim": "Vue 3 partial update 1.04 ms, clear 255 µs vs Pyreon 705 / 130 µs (run 1)",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 85, 89"
+    },
+    {
+      "claim": "Vapor RC ties create 1,000 / replace / partial / swap / remove; Pyreon clear 1.11–1.12×",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 99–101"
+    },
+    {
+      "claim": "vee-validate keystroke (change mode) 2,260 vs 460 µs, one run",
+      "path": "00-brief/BENCHMARKS-2026-11-05.md §6, line 276"
+    },
+    {
+      "claim": "Vue Search SFC compiles with @vue/compiler-sfc 3.5.44",
+      "path": "/tmp/wt-site-content/.scratch/site-compare/rivals/{Search.vue,check.mjs}"
+    }
+  ]
+}

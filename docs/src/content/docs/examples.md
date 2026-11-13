@@ -3,8 +3,6 @@ title: "Examples"
 description: "A gallery of 116 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
-# Examples
-
 Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 116 examples across 44 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
 
 ## Shared state and effects

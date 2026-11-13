@@ -136,6 +136,16 @@ describe('reactivity-lens — footgun merge (existing detectPyreonPatterns)', ()
     expect(fg.some((f) => f.code === 'props-destructured-body')).toBe(true)
   })
 
+  it("a detector footgun carries the detector's suggested rewrite as `fix`", () => {
+    // Atlas's Lens panel prints it under the verdict ("Fix: …"); without it a
+    // reader is told WHAT is wrong but has to go find what to write instead.
+    const src = `function C(){ return <For each={items()} key={(i) => i.id}>{(i) => <li>{i}</li>}</For> }`
+    const fg = find(src, 'footgun').find((f) => f.code === 'for-with-key')
+    expect(fg?.fix).toBe('by={(i) => i.id}')
+    // Structural findings carry none.
+    expect(find(src, 'reactive').every((f) => f.fix === undefined)).toBe(true)
+  })
+
   it('findings are sorted by (line, column)', () => {
     const src = [
       `function C(props){`,

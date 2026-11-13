@@ -1,67 +1,48 @@
-import { For } from '@pyreon/core'
-import { useHead } from '@pyreon/head'
-import { Link } from '@pyreon/zero/link'
-
-import { posts } from '../lib/posts'
+import { Suspense } from "@pyreon/core"
+import type { ComponentFn, VNodeChild } from "@pyreon/core"
+import { useHead } from "@pyreon/head"
+import { Link } from "@pyreon/zero/link"
+import { PostList } from "@pyreon/zero-content/blog"
+import { blog } from "../blog"
 
 export const meta = {
-  title: 'Blog',
-  description: 'A statically-rendered Pyreon Zero blog.',
+  title: "Blog",
+  description: "A statically-rendered Pyreon Zero blog.",
 }
+
+/**
+ * The five newest posts. An async component under <Suspense>: the static
+ * build awaits it, so the HTML already holds the list.
+ */
+const RecentPosts = (async (): Promise<VNodeChild> => {
+  const posts = await blog.getPosts()
+  return (
+    <>
+      <PostList posts={posts.slice(0, 5)} coverSize={blog.config.coverSize} />
+      {posts.length > 5 ? (
+        <p>
+          <Link href="/blog">View all {posts.length} posts →</Link>
+        </p>
+      ) : null}
+    </>
+  )
+}) as unknown as ComponentFn
 
 export default function Home() {
   useHead({
     title: meta.title,
-    meta: [{ name: 'description', content: meta.description }],
+    meta: [{ name: "description", content: meta.description }],
   })
-
-  // Show the 5 most recent posts on the homepage
-  const recent = posts.slice(0, 5)
 
   return (
     <>
       <h1>Blog</h1>
       <p>
-        Recent writing, statically rendered. Subscribe via <a href="/api/rss">RSS</a>.
+        Recent writing, statically rendered. Subscribe via <a href="/blog/rss.xml">RSS</a>.
       </p>
-
-      <ul class="post-list">
-        <For
-          each={recent}
-          by={(post) => post.slug}
-        >
-          {(post) => (
-            <li>
-              <h2 class="post-title">
-                <Link
-                  href={`/blog/${post.slug}`}
-                  prefetch="hover"
-                >
-                  {post.title}
-                </Link>
-              </h2>
-              <div class="post-meta">{post.date}</div>
-              <p class="post-summary">{post.description}</p>
-              {post.tags && post.tags.length > 0 ? (
-                <div class="tags">
-                  <For
-                    each={post.tags}
-                    by={(t) => t}
-                  >
-                    {(t) => <span class="tag">#{t}</span>}
-                  </For>
-                </div>
-              ) : null}
-            </li>
-          )}
-        </For>
-      </ul>
-
-      {posts.length > recent.length ? (
-        <p>
-          <Link href="/blog">View all {posts.length} posts →</Link>
-        </p>
-      ) : null}
+      <Suspense fallback={null}>
+        <RecentPosts />
+      </Suspense>
     </>
   )
 }

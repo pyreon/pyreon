@@ -1,9 +1,7 @@
 ---
-title: "Animation Presets — API Reference"
+title: "@pyreon/kinetic-presets — API Reference"
 description: "122 animation presets + 5 configurable factories + 5 composition utilities for @pyreon/kinetic"
 ---
-
-# @pyreon/kinetic-presets — API Reference
 
 > **Generated** from `kinetic-presets`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [kinetic-presets](/docs/kinetic-presets).
 

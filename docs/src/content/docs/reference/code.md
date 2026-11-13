@@ -1,9 +1,7 @@
 ---
-title: "Code Editor — API Reference"
+title: "@pyreon/code — API Reference"
 description: "Reactive code editor — CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages"
 ---
-
-# @pyreon/code — API Reference
 
 > **Generated** from `code`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [code](/docs/code).
 

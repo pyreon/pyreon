@@ -4,8 +4,6 @@ summary: "createRouter with typed routes, named navigation, loaders, and RouterV
 seeAlso: [signal-writes, reactive-context]
 ---
 
-# Router setup
-
 ## The pattern
 
 Define routes at module scope, wrap the app in a provider, mount `<RouterView />`:

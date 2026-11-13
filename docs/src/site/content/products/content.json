@@ -1,0 +1,377 @@
+{
+ "id": "content",
+ "route": "/products/content",
+ "name": "Content",
+ "package": "@pyreon/zero-content",
+ "category": "zero · content",
+ "hero": {
+  "title": "A typo in your frontmatter fails the build. Not your readers.",
+  "emberWord": "fails",
+  "lede": "Write docs and blogs in Markdown or MDX. Zero compiles every page to real Pyreon components at build time, checks each frontmatter block against your schema, and writes the search index, sitemap, RSS feed and llms.txt for you.",
+  "install": "bun add @pyreon/zero-content",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "pages",
+    "value": ".md and .mdx compiled to Pyreon JSX<small>Real elements at build time, not an HTML string.</small>"
+   },
+   {
+    "key": "frontmatter",
+    "value": "any Standard Schema validator<small>Zod, Valibot, ArkType or `@pyreon/validate`. The package ships none.</small>"
+   },
+   {
+    "key": "build outputs",
+    "value": "search index · sitemap · RSS · llms.txt"
+   },
+   {
+    "key": "runs",
+    "value": "the pyreon.dev docs and blog<small>200+ Markdown pages, 59 of them with live examples.</small>"
+   }
+  ]
+ },
+ "why": {
+  "title": "A content site that checks itself.",
+  "items": [
+   {
+    "title": "Frontmatter that cannot lie",
+    "text": "Give a collection a schema. Drop the `title` from a post and the build stops with `src/content/blog/hello.md: frontmatter does not match collection \"blog\" schema`, followed by the field and the reason. Your types come from the same schema."
+   },
+   {
+    "title": "Live examples are real files",
+    "text": "`<Example file=\"./examples/counter\" />` mounts a real `.tsx` file inline, so it is type-checked, linted and refactored with the rest of your code. Give two examples the same `share` key and they share one signal: click in one, the other updates."
+   },
+   {
+    "title": "Search with no service",
+    "text": "The build writes a search index per collection, and `<Search>` opens it with Cmd+K and loads it lazily. No crawler, no API key, and it works in `vite dev` too."
+   },
+   {
+    "title": "Merge today, publish on Monday",
+    "text": "Name a date field with `publishDate` and a post dated in the future stays out of lists, search and feeds until that day; add `unpublished: 'omit'` and it is not even bundled. pyreon.dev/blog schedules its posts this way.",
+    "status": "next release"
+   }
+  ]
+ },
+ "difference": {
+  "title": "Delete the content loader you wrote by hand.",
+  "before": {
+   "label": "lib/posts.ts, the usual way",
+   "caption": "A loader you own. Markdown rendering, RSS, sitemap and search are still to write.",
+   "code": "import fs from 'node:fs/promises'\nimport path from 'node:path'\nimport matter from 'gray-matter'\nimport { z } from 'zod'\n\nconst Post = z.object({ title: z.string(), date: z.coerce.date(), draft: z.boolean().optional() })\nconst dir = path.join(process.cwd(), 'content/blog')\n\nexport async function getPosts() {\n  const files = (await fs.readdir(dir)).filter((f) => f.endsWith('.md'))\n  const posts = await Promise.all(\n    files.map(async (file) => {\n      const { data, content } = matter(await fs.readFile(path.join(dir, file), 'utf8'))\n      const parsed = Post.safeParse(data)\n      if (!parsed.success) throw new Error(`${file}: ${parsed.error.message}`)\n      return { slug: file.replace(/\\.md$/, ''), data: parsed.data, content }\n    }),\n  )\n  return posts.filter((p) => !p.data.draft).sort((a, b) => +b.data.date - +a.data.date)\n}\n// still to write: Markdown → HTML, the [slug] page, RSS, sitemap, search"
+  },
+  "after": {
+   "label": "content.config.ts + one route",
+   "caption": "Typed entries, drafts skipped in production, a page per post with its `<title>` set.",
+   "code": "// content.config.ts\nimport { defineConfig, defineCollection } from '@pyreon/zero-content'\nimport { z } from 'zod'\n\nexport default defineConfig({\n  collections: {\n    blog: defineCollection({\n      type: 'pages',\n      schema: z.object({ title: z.string(), date: z.date(), draft: z.boolean().optional() }),\n    }),\n  },\n})\n\n// src/routes/blog/[slug].tsx\nimport 'virtual:zero-content/collections'\nimport { defineContentRoute, getCollection } from '@pyreon/zero-content'\nimport type { GetStaticPaths } from '@pyreon/zero/server'\n\nexport const getStaticPaths: GetStaticPaths<{ slug: string }> = async () =>\n  (await getCollection('blog')).map((post) => ({ params: { slug: post.slug } }))\n\nexport default defineContentRoute('blog')"
+  }
+ },
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Write a page. Break the schema.",
+  "text": "Edit the Markdown on the left and the page renders on the right, `:::tip` callout included. Delete the title line to see the build error you would get.",
+  "component": "DemoContent",
+  "reference": "pkg-content.html#demo",
+  "referenceHtml": "<div class=\"p-demo\">\n  <div class=\"card\"><div class=\"in\"><span class=\"label\">src/content/docs/install.md</span><textarea id=\"ct-src\" spellcheck=\"false\">---\ntitle: Install\ndescription: Get Pyreon running in a minute.\n---\n\n# Install\n\nCreate a project with one command.\n\n:::tip\nUse bun for the fastest installs.\n:::\n\n## Next steps\n\nRead the **routing** guide.</textarea></div></div>\n  <div class=\"ui ct-out\" id=\"ct-out\"></div>\n</div>",
+  "referenceCss": "#ct-src{width:100%;min-height:300px;margin-top:12px;resize:vertical;background:var(--well);color:var(--s-fg);border:1px solid var(--line);border-radius:10px;padding:14px;font-family:var(--mono);font-size:12.5px;line-height:1.7}.ct-out h1{margin:0 0 10px;font-size:26px;letter-spacing:-.02em}.ct-out h2{margin:20px 0 8px;font-size:18px}.ct-out p{margin:0 0 10px;font-size:14.5px;line-height:1.6;color:#2E2A36}.ct-out .meta{font-family:var(--mono);font-size:11px;color:var(--fog);margin-bottom:14px}.ct-call{border-left:3px solid #15803D;background:#EEF7F0;padding:10px 12px;border-radius:0 8px 8px 0;font-size:14px;margin:0 0 10px}.ct-err{border:1px solid #B91C1C;background:#FDF0EF;color:#7F1D1D;border-radius:10px;padding:14px;font-family:var(--mono);font-size:12.5px;line-height:1.7;white-space:pre-wrap}",
+  "referenceJs": "(function(){var src=document.getElementById('ct-src'),out=document.getElementById('ct-out');\nfunction esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}function inl(s){return esc(s).replace(/\\*\\*(.+?)\\*\\*/g,'<b>$1</b>').replace(/`(.+?)`/g,'<code>$1</code>')}\nfunction run(){var t=src.value,fm={},body=t,m=t.match(/^---\\n([\\s\\S]*?)\\n---\\n?/);if(m){m[1].split('\\n').forEach(function(l){var i=l.indexOf(':');if(i>0)fm[l.slice(0,i).trim()]=l.slice(i+1).trim()});body=t.slice(m[0].length)}\nvar miss=['title','description'].filter(function(k){return!fm[k]});if(miss.length){out.innerHTML='<div class=\"ct-err\">✕ content: install.md frontmatter is invalid\\n'+miss.map(function(k){return'  '+k+': expected string, received undefined'}).join('\\n')+'\\n\\nbuild failed (schema: docs)</div>';return}\nvar h='<div class=\"meta\">✓ valid · '+esc(fm.description)+'</div>',lines=body.split('\\n'),i=0,para=[];function fl(){if(para.length){h+='<p>'+inl(para.join(' '))+'</p>';para=[]}}\nwhile(i<lines.length){var l=lines[i];if(/^:::(\\w+)/.test(l)){fl();var c=[];i++;while(i<lines.length&&lines[i].trim()!==':::'){c.push(lines[i]);i++}h+='<div class=\"ct-call\"><b>Tip</b> '+inl(c.join(' '))+'</div>'}else if(/^## /.test(l)){fl();h+='<h2>'+inl(l.slice(3))+'</h2>'}else if(/^# /.test(l)){fl();h+='<h1>'+inl(l.slice(2))+'</h1>'}else if(!l.trim())fl();else para.push(l);i++}fl();out.innerHTML=h}\nsrc.oninput=run;run();})();",
+  "spec": "Same behaviour as the reference, with the real error text. When `title` or `description` is missing, the output panel shows: `[@pyreon/zero-content] src/content/docs/install.md: frontmatter does not match collection \"docs\" schema (N issues):` followed by one line per missing field, `  - title: Invalid input: expected string, received undefined` (Zod 4 wording), then `build failed`. Use `@pyreon/zero-content` built-ins where they render in the browser (`Callout` for the tip)."
+ },
+ "features": {
+  "title": "Everything a docs site or blog needs, built in.",
+  "items": [
+   {
+    "name": "Markdown and MDX to Pyreon JSX",
+    "text": "at build time, so the compiler and tree-shaking work on your prose (Shiki code blocks are the one HTML island)"
+   },
+   {
+    "name": "Typed collections",
+    "text": "`getCollection`, `getEntry` and `getEntries`, typed from your schema through a generated `.pyreon/content-types.d.ts`"
+   },
+   {
+    "name": "Components without imports",
+    "text": "drop a PascalCase `.tsx` into `src/mdx/` and use it in any page by name; an unknown name fails the build with a did-you-mean"
+   },
+   {
+    "name": "Live `<Example>` blocks",
+    "text": "real `.tsx` files mounted inline, with `share` keys for state that spans two examples"
+   },
+   {
+    "name": "Directives",
+    "text": "`:::tip`, `:::warning`, `:::note`, `:::danger`, `:::info`, `:::code-group`, `:::math`, `:::mermaid`, `:::details`, and a warning when you type `:::warn`"
+   },
+   {
+    "name": "Shiki code blocks",
+    "text": "light and dark themes baked into one render, filename labels, line numbers, `{2-3}` highlights and a copy button"
+   },
+   {
+    "name": "Docs components",
+    "text": "Tabs, PropTable, APICard, CompatMatrix, PackageBadge, Details, Mermaid, Math, Sidebar, Toc, Breadcrumbs and PrevNext"
+   },
+   {
+    "name": "Search",
+    "text": "a Cmd+K `<Search>` (or `useSearch` for your own UI) over a per-collection index written at build"
+   },
+   {
+    "name": "Sitemap, RSS and llms.txt",
+    "text": "from one `seo` option; the RSS feed can carry full articles for dev.to imports",
+    "status": "next release"
+   },
+   {
+    "name": "Drafts and scheduled entries",
+    "text": "`publishDate` plus `unpublished: 'omit'` keep future posts out of the bundle; `PYREON_CONTENT_NOW` builds the site as it will look on a later date",
+    "status": "next release"
+   }
+  ]
+ },
+ "api": {
+  "title": "One config, a few queries, a box of components.",
+  "groups": [
+   {
+    "name": "config",
+    "items": [
+     "defineConfig",
+     "defineCollection",
+     "defineComponents",
+     "mergeComponents",
+     "@pyreon/zero-content/plugin"
+    ]
+   },
+   {
+    "name": "query (isPublished: next release)",
+    "items": [
+     "getCollection",
+     "getEntry",
+     "getEntries",
+     "reference",
+     "resolveReference",
+     "resolveReferences",
+     "isPublished"
+    ]
+   },
+   {
+    "name": "routes and examples",
+    "items": [
+     "defineContentRoute",
+     "Example",
+     "registerExamples",
+     "getOrCreateSharedSignal"
+    ]
+   },
+   {
+    "name": "components",
+    "items": [
+     "Callout",
+     "CodeGroup",
+     "CodeBlock",
+     "Details",
+     "Tabs",
+     "PropTable",
+     "APICard",
+     "CompatMatrix",
+     "PackageBadge",
+     "Mermaid",
+     "Math",
+     "Image",
+     "Playground"
+    ]
+   },
+   {
+    "name": "navigation and search",
+    "items": [
+     "Sidebar",
+     "defineSidebar",
+     "Toc",
+     "Breadcrumbs",
+     "PrevNext",
+     "Search",
+     "useSearch",
+     "loadSearchIndex"
+    ]
+   },
+   {
+    "name": "build outputs",
+    "items": [
+     "generateSitemap",
+     "generateRssFeed",
+     "generateLlmsTxt"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Made for Zero",
+   "text": "Pages render through Zero's file router and render modes. You write the route (one `defineContentRoute` call, plus `getStaticPaths` and the collections import for static builds); the package has no standalone mode."
+  },
+  {
+   "title": "Bring your own validator",
+   "text": "Nothing is re-exported: import `z` from Zod, or use Valibot, ArkType or `@pyreon/validate`. Any Standard Schema library works without an adapter."
+  },
+  {
+   "title": "Pick the right draft mode",
+   "text": "By default an unpublished entry is left out of lists, search and feeds but still bundled, for preview on SSR sites. On a static site set `unpublished: 'omit'` (shipping in the next release) so a draft's text never reaches a public chunk."
+  },
+  {
+   "title": "Scheduled means next build",
+   "text": "Scheduling lands in the next release. A static site decides what is published when it builds, so a post dated Monday appears with the first deploy on or after Monday. pyreon.dev runs a daily deploy for that reason."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/zero",
+   "category": "framework",
+   "name": "Zero",
+   "text": "The framework that routes, renders and deploys the pages.",
+   "package": "@pyreon/zero"
+  },
+  {
+   "href": "/products/validation",
+   "category": "fundamentals",
+   "name": "Validation",
+   "text": "A Standard Schema validator for your frontmatter.",
+   "package": "@pyreon/validate"
+  },
+  {
+   "href": "/products/ai",
+   "category": "tools",
+   "name": "AI and MCP",
+   "text": "Your assistant lists your collections and reads an entry's outline.",
+   "package": "@pyreon/mcp"
+  }
+ ],
+ "end": {
+  "title": "Write the Markdown. Let the build do the nagging.",
+  "cta": "Read the content guide"
+ },
+ "benchmarks": null,
+ "glyphSvg": "<path d=\"M22 12 H74 L98 36 V108 H22 Z\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\" stroke-linejoin=\"round\"/><path d=\"M38 56 H80 M38 76 H64\" stroke=\"currentColor\" stroke-width=\"9\"/><circle cx=\"86\" cy=\"92\" r=\"13\" fill=\"url(#eg)\"/>",
+ "proof": [
+  {
+   "stat": "200+",
+   "label": "Markdown pages on pyreon.dev, compiled by this package",
+   "source": "docs/content.config.ts (collections docs, blog); 221 .md files under docs/src/content/docs on main"
+  },
+  {
+   "stat": "59",
+   "label": "docs pages that embed a live, clickable example",
+   "source": "docs/src/content/docs: 59 .md files with a line-leading <Example …/> outside code fences (63 mention the name; 4 only in inline code), main e314cc619"
+  },
+  {
+   "stat": "0",
+   "label": "iframes: an `<Example>` mounts inside the page, sharing its signals",
+   "source": "packages/zero/zero-content/src/components/Example.tsx (header: \"NOT iframe\")"
+  }
+ ],
+ "recipes": [
+  {
+   "title": "A blog that publishes on schedule",
+   "status": "next release",
+   "text": "Date a post in the future, merge it now. Production builds leave it out of the bundle, the RSS feed, the sitemap and search until its day, and the feed carries whole articles for readers and dev.to imports.",
+   "code": "// content.config.ts\nimport { defineConfig, defineCollection } from '@pyreon/zero-content'\nimport { z } from 'zod'\n\nexport default defineConfig({\n  collections: {\n    blog: defineCollection({\n      type: 'pages',\n      schema: z.object({\n        title: z.string(),\n        description: z.string(),\n        date: z.date(),\n        tags: z.array(z.string()).default([]),\n        draft: z.boolean().optional(),\n      }),\n      publishDate: 'date',  // dated in the future = unpublished until that day\n      unpublished: 'omit',  // and not bundled at all in production\n    }),\n  },\n})\n\n// vite.config.ts\nimport pyreon from '@pyreon/vite-plugin'\nimport zero from '@pyreon/zero/server'\nimport content from '@pyreon/zero-content/plugin'\n\nexport default {\n  plugins: [\n    content({\n      seo: {\n        baseUrl: 'https://example.com',\n        sitemap: true,\n        rss: { collection: 'blog', title: 'My blog', path: 'blog/rss.xml', content: 'full' },\n        llms: { title: 'My site' },\n      },\n    }),\n    pyreon(),\n    zero(),\n  ],\n}\n\n// Preview launch day: PYREON_CONTENT_NOW=2026-12-01 vite build"
+  },
+  {
+   "title": "Two live examples, one shared signal",
+   "text": "Each example is an ordinary component file. Give both the same `share` key and the button in one drives the readout in the other, inline in the page.",
+   "code": "// src/examples/counter-button.tsx\nimport { signal, type Signal } from '@pyreon/reactivity'\n\nexport default function CounterButton(props: { shared?: Signal<number> }) {\n  const count = props.shared ?? signal(0)\n  return <button onClick={() => count.update((n) => n + 1)}>Clicked {() => count()} times</button>\n}\n\n// src/examples/counter-readout.tsx\nimport { signal, type Signal } from '@pyreon/reactivity'\n\nexport default function CounterReadout(props: { shared?: Signal<number> }) {\n  const count = props.shared ?? signal(0)\n  return <p>The other example says {() => count()}. Doubled: {() => count() * 2}</p>\n}\n\n// src/entry-client.ts (once)\nimport { startClient } from '@pyreon/zero/client'\nimport { registerExamples } from '@pyreon/zero-content'\nimport { routes } from 'virtual:zero/routes'\n\nregisterExamples(import.meta.glob('./examples/**/*.tsx') as Record<string, () => Promise<unknown>>)\nstartClient({ routes })\n\n<!-- any .md page -->\n<Example file=\"./examples/counter-button\" share=\"clicks\" />\n<Example file=\"./examples/counter-readout\" share=\"clicks\" />"
+  }
+ ],
+ "faq": [
+  {
+   "q": "Is the Markdown turned into an HTML string?",
+   "a": "No. Every Markdown node becomes a JSX element at build time, so your prose goes through the same compiler as your components. Shiki-highlighted code is the one exception: it arrives as pre-coloured HTML."
+  },
+  {
+   "q": "Which validator do I need?",
+   "a": "Any Standard Schema library: Zod, Valibot, ArkType, typia or `@pyreon/validate`. The package calls the standard `validate` method and ships no validator of its own."
+  },
+  {
+   "q": "Can a draft leak?",
+   "a": "`getCollection` skips `draft: true` entries in production. In the next release the search index, sitemap, RSS and llms.txt leave them out too, and with `unpublished: 'omit'` the draft is not bundled at all, which is what a static site wants."
+  },
+  {
+   "q": "Does search need a server or a third-party service?",
+   "a": "No. The build writes JSON index files into your build output and the browser fetches them the first time search opens. In dev a middleware builds the same index on demand."
+  },
+  {
+   "q": "Can I use it without Zero?",
+   "a": "No. The integration with Zero (its file router, render modes and image handling) is the point of the package. The SEO generators are the exception: `generateSitemap`, `generateRssFeed` and `generateLlmsTxt` are plain functions you can call from any script."
+  },
+  {
+   "q": "Will my AI assistant see my content?",
+   "a": "Yes, through `@pyreon/mcp`: `get_content_collection` lists your collections and `get_content_entry` returns one entry's frontmatter and heading outline."
+  }
+ ],
+ "sources": [
+  {
+   "claim": "A frontmatter/schema mismatch fails the build with file and field",
+   "path": "packages/zero/zero-content/src/plugin.ts:1176-1192 (this.error(formatSchemaIssues(...))); message format in src/schema-validate.ts formatSchemaIssues; run in .scratch/core/fork-a/content-check.ts"
+  },
+  {
+   "claim": "Markdown compiles to JSX, not innerHTML; Shiki code is the exception",
+   "path": "docs/src/content/docs/zero-content.md (intro paragraph); packages/zero/zero-content/src/manifest.ts features[0]"
+  },
+  {
+   "claim": "No validator runtime; Standard Schema duck typing",
+   "path": "packages/zero/zero-content/src/schema-validate.ts (isStandardSchema); docs zero-content.md warning \"does NOT re-export zod\""
+  },
+  {
+   "claim": "@pyreon/validate implements Standard Schema",
+   "path": "packages/fundamentals/validate/src/manifest.ts description"
+  },
+  {
+   "claim": "<Example> mounts a real .tsx inline, no iframe; share key = same signal",
+   "path": "packages/zero/zero-content/src/components/Example.tsx; components/shared-signal-registry.ts; README \"Inline live examples\""
+  },
+  {
+   "claim": "Search index per collection at build; Cmd+K <Search>; dev middleware",
+   "path": "docs/src/content/docs/zero-content.md \"Search\"; packages/zero/zero-content/src/search/search-runtime.ts"
+  },
+  {
+   "claim": "Sitemap, RSS, llms.txt from the seo option; rss.path / content: full / limit",
+   "path": "packages/zero/zero-content/src/plugin.ts SeoEmitOptions (lines 187-228); .changeset/zero-content-scheduled-entries.md"
+  },
+  {
+   "claim": "publishDate / unpublished: omit / PYREON_CONTENT_NOW / isPublished are main-only (#4156, after 0.53.0)",
+   "path": ".changeset/zero-content-scheduled-entries.md; git show @pyreon/zero-content@0.53.0 has no publishDate; packages/zero/zero-content/src/publish.ts"
+  },
+  {
+   "claim": "A future-dated post is unpublished until its date (verified: 11 Nov false, 16 Nov true)",
+   "path": "packages/zero/zero-content/src/publish.ts isPublished; .scratch/core/fork-a/content-check.ts"
+  },
+  {
+   "claim": "pyreon.dev docs and blog are built with zero-content; blog uses publishDate + omit + full RSS",
+   "path": "docs/content.config.ts; docs/vite.config.ts (content({ seo: { rss: { content: \"full\" } } }))"
+  },
+  {
+   "claim": "200+ / 59 page counts",
+   "path": "find docs/src/content/docs -name \"*.md\" = 221; 59 files mount a line-leading <Example …/> outside code fences (grep -rl gives 63 incl. inline-code mentions) (main e314cc619)"
+  },
+  {
+   "claim": "Route must import the collections registry and export getStaticPaths; defineContentRoute returns only the component",
+   "path": "packages/zero/zero-content/src/route-helpers.tsx defineContentRoute; docs/src/routes/blog/[slug].tsx"
+  },
+  {
+   "claim": "entry.slug is collection-relative",
+   "path": "docs zero-content.md \"Content collections\"; .changeset/zero-content-scheduled-entries.md (Breaking)"
+  },
+  {
+   "claim": "Unknown component fails the build with did-you-mean; :::warn warns",
+   "path": "packages/zero/zero-content/src/plugin.ts:1162-1174; README \"Diagnostics\""
+  },
+  {
+   "claim": "Code block meta: filename, showLineNumbers, {2-3}, copy button",
+   "path": "docs/src/content/docs/zero-content.md lines 137-162"
+  },
+  {
+   "claim": "MCP tools get_content_collection / get_content_entry",
+   "path": "packages/tools/mcp/src/manifest.ts:257"
+  },
+  {
+   "claim": "Zero vite plugin is the default export of @pyreon/zero/server",
+   "path": "packages/zero/zero/src/server.ts:98"
+  },
+  {
+   "claim": "Samples typecheck (tsc) and compile (transformJSX) cleanly",
+   "path": ".scratch/core/fork-a/samples/content/* with .scratch/core/fork-a/tsconfig.json; compile.ts"
+  }
+ ]
+}

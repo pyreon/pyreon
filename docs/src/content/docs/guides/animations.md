@@ -3,8 +3,6 @@ title: "Animations & Transitions"
 description: "How to animate enter/leave, collapse, and staggered children in Pyreon with @pyreon/kinetic and the 120+ @pyreon/kinetic-presets."
 ---
 
-# Animations & Transitions
-
 `@pyreon/kinetic` wraps components in CSS-transition-driven animations — enter/leave, height collapse, staggered children, and grouped list transitions — with no animation runtime, just classes and transitions. `@pyreon/kinetic-presets` ships 120+ ready-made transition objects.
 
 ## When to use it

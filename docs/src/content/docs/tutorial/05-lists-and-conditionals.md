@@ -3,8 +3,6 @@ title: "5. Lists & conditionals"
 description: "Tutorial chapter 5 — render dynamic lists with keyed <For> and conditional UI with <Show>, the fine-grained control-flow primitives."
 ---
 
-# 5. Lists & conditionals
-
 Because components run once, nothing re-renders a list or a branch for you. The compiler does wrap `{todos().map(...)}` and `{cond() && <X />}` in a reactive slot, so they update — but bluntly: every change rebuilds the whole list (no keys, no preserved row DOM), and every flip remounts the branch. Pyreon gives you **control-flow components** that update precisely: `<For>` for lists, `<Show>` for conditionals.
 
 ## Lists — `<For>`

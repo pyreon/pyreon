@@ -4,8 +4,6 @@ description: Public Pyreon framework packages, with links to their guides or sou
 generated_by: docs/scripts/gen-package-catalog.ts
 ---
 
-# Package catalog
-
 77 public framework packages across 6 categories, discovered from `packages/<category>/<package>`. This inventory describes the current source tree; see each package on npm for the published version.
 
 The platform-specific compiler binaries under `packages/core/compiler/npm/` are optional dependencies of [@pyreon/compiler](/docs/compiler) and are not included in this framework package count.

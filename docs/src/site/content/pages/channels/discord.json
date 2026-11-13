@@ -1,0 +1,13 @@
+{
+  "route": "/discord",
+  "destination": "the Pyreon Discord",
+  "meta": {
+    "title": "Discord · Pyreon",
+    "description": "The Pyreon Discord: questions, show-and-tell, and talking to the people who build it."
+  },
+  "redirect": {
+    "title": "Taking you to {destination}.",
+    "text": "If nothing happens in a second, use the link below.",
+    "cta": "Continue to {destination}"
+  }
+}

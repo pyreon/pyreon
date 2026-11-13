@@ -1,9 +1,7 @@
 ---
-title: "Multi-Dimensional Styling — API Reference"
+title: "@pyreon/rocketstyle — API Reference"
 description: "Multi-dimensional component styling — states, sizes, variants, custom dimensions, dark/light mode, all cached"
 ---
-
-# @pyreon/rocketstyle — API Reference
 
 > **Generated** from `rocketstyle`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [rocketstyle](/docs/rocketstyle).
 

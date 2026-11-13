@@ -75,6 +75,9 @@ pyreon-lint --format json
 # Compact one-line-per-diagnostic output
 pyreon-lint --format compact
 
+# GitHub Actions annotations (inline on the PR diff)
+pyreon-lint --format gha
+
 # Override a specific rule's severity
 pyreon-lint --rule pyreon/no-classname=off
 
@@ -95,7 +98,7 @@ pyreon-lint --lsp
 | `[path...]`                   | Files or directories to lint (default: `.`). Directories are walked recursively.            |
 | `--preset <names>`            | Preset or comma list composed left to right: `recommended` (default), `strict`, `app`, `lib`, `best-practices`, `readable`, `readable-strict`. Overrides the config file's `preset` |
 | `--fix`                       | Apply auto-fixes for fixable diagnostics, writing changes back to disk                       |
-| `--format <fmt>`              | Output format: `text` (default), `json`, `compact`                                           |
+| `--format <fmt>`              | Output format: `text` (default), `json`, `compact`, `gha` (GitHub annotations)               |
 | `--quiet`                     | Only show errors (hide warnings and infos)                                                   |
 | `--watch`                     | Watch mode — re-lint on file changes (`fs.watch` recursive + 100ms debounce + AST cache)     |
 | `--list`                      | List all rules (`id`, category, severity, description, `[fixable]`) and the total count      |

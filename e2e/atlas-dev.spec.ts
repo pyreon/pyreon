@@ -16,6 +16,12 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { expect, test } from '@playwright/test'
 
+// The workbench follows the shared theme preference, and with nothing stored
+// that is the OS's. The fixture project's components were authored against
+// the dark default (its Badge does not pass contrast on the light preview
+// surface), so pin the scheme rather than inherit headless Chromium's light.
+test.use({ colorScheme: 'dark' })
+
 test.describe('atlas dev', () => {
   test('serves the workbench with a catalog derived from real components', async ({ page }) => {
     const errors: string[] = []
@@ -57,7 +63,7 @@ test.describe('atlas dev', () => {
     // change the PAINTED style — the same CSS a real pointer hover applies.
     await page.goto('/')
     await page.getByRole('button', { name: 'Chip', exact: true }).click()
-    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('addon-tab-addons').click()
 
     const chip = page.getByTestId('canvas-preview').locator('span').first()
     const opacity = () => chip.evaluate((el) => getComputedStyle(el).opacity)
@@ -92,9 +98,12 @@ test.describe('atlas dev', () => {
     await page.getByTestId('role-anonymous').click()
     await expect(btn).toBeDisabled()
 
-    const summary = (await page.getByTestId('perm-summary').textContent()) ?? ''
-    expect(summary).toMatch(/1 key\(s\) consulted/)
-    expect(summary).toMatch(/1 denied/)
+    // Its card, rendered under its own recording: one key, denied. The
+    // disabled Delete is not a leak — a greyed-out action is how "you may
+    // not" is usually said — so the card passes.
+    await expect(page.getByTestId('role-keys-anonymous')).toHaveText('posts.delete ✗')
+    await expect(page.getByTestId('role-card-anonymous')).toHaveAttribute('data-verdict', 'ok')
+    await expect(page.getByTestId('role-keys-ops')).toHaveText('posts.delete ✓')
   })
 
   test('a project-defined viewport preset pins the real canvas width', async ({ page }) => {
@@ -106,19 +115,18 @@ test.describe('atlas dev', () => {
     // preset.
     await page.setViewportSize({ width: 1800, height: 950 })
     await page.goto('/')
-    await page.getByTestId('addon-tab-canvas').click()
+    await page.getByTestId('addon-tab-addons').click()
     await page.getByTestId('viewport-kiosk').click()
     const frame = page.getByTestId('canvas-frame')
     await expect.poll(() => frame.evaluate((el) => getComputedStyle(el).width)).toBe('900px')
     expect(await frame.evaluate((el) => el.getAttribute('style'))).toBeNull()
   })
 
-  test('derived scenarios appear in the sidebar WITH their verify verdicts', async ({ page }) => {
+  test('derived scenarios appear in the scenario strip WITH their verify verdicts', async ({ page }) => {
     // The pipeline's core output — the variant matrix, the edge cases, and
-    // their pass/fail labels — was previously invisible in the workbench: the
-    // sidebar listed components only. Selecting a component expands its
-    // scenarios; each carries the SAME three-state verdict `atlas scan`
-    // publishes.
+    // their pass/fail labels. Selecting a component fills the strip above the
+    // canvas with its scenarios; each carries the SAME three-state verdict
+    // `atlas scan` publishes, and the catalog row folds them into one dot.
     await page.goto('/')
     await page.getByRole('button', { name: 'Chip', exact: true }).click()
     // The all-defaults cell of the variant fan is named `Default` — the state
@@ -132,6 +140,7 @@ test.describe('atlas dev', () => {
     await page.getByRole('button', { name: 'Button', exact: true }).click()
     const empty = page.getByTestId('scenario-button--empty')
     await expect(empty.locator('[data-verdict]')).toHaveAttribute('data-verdict', 'fail')
+    await expect(page.getByTestId('component-button')).toHaveAttribute('data-verdict', 'fail')
 
     // Clicking a scenario applies its pinned args — the canvas renders exactly
     // the state the verdict covered (here: the empty label).
@@ -304,8 +313,8 @@ test.describe('atlas dev', () => {
     const at100 = await label.textContent()
     // Zoom to 125% and hover again: the box grows on screen, the number does
     // not — it is the component's layout size, not the scaled rect.
-    await page.getByText('+', { exact: true }).first().click()
-    await expect(page.getByTestId('zoom-label')).toHaveText('125%')
+    await page.getByTestId('zoom-125').click()
+    await expect(page.getByTestId('zoom-125')).toHaveAttribute('aria-pressed', 'true')
     // The zoom `size` prop drives a CSS-TRANSITIONED `transform: scale(...)`
     // on the preview surface (`PreviewSurface.ts`'s `transition: transform
     // <t.motion.base> ease`). The label above flips synchronously (a signal
@@ -525,11 +534,27 @@ test.describe('URL state', () => {
     await expect(page.locator('input[placeholder]').last()).toHaveValue('Shipped')
   })
 
+  test('a control edit updates a DERIVED component in place, not by re-mounting it', async ({ page }) => {
+    // The generated render merges live args by descriptor (`__merge`), so the
+    // component's own bindings read each control — an object spread there
+    // would read every getter once and re-mount the preview on every edit.
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Badge' }).click()
+    const root = page.getByTestId('canvas-preview').locator(':scope > *').first()
+    await root.evaluate((el) => {
+      ;(el as HTMLElement & { __probe?: number }).__probe = 1
+    })
+    await page.getByTestId('addon-tab-controls').click()
+    await page.locator('input[placeholder]').last().fill('Live edit')
+    await expect(page.getByTestId('canvas-preview')).toContainText('Live edit')
+    expect(await root.evaluate((el) => (el as HTMLElement & { __probe?: number }).__probe)).toBe(1)
+  })
+
   test('canvas state is shareable, and a stale component id degrades', async ({ page }) => {
     // `kiosk` is a preset from the project's atlas.config.ts — the shipped
     // `tablet` id no longer exists here, which is itself the point: the link
     // vocabulary follows the project's presets.
-    await page.goto('/?c=badge&viewport=kiosk&p=canvas')
+    await page.goto('/?c=badge&viewport=kiosk&p=addons')
     await expect(page.getByTestId('canvas-name')).toContainText('Badge')
     // The link named a viewport; it must be applied, not merely stored.
     await expect(page.getByTestId('viewport-kiosk')).toHaveAttribute('data-rocketstyle', /.+/)
@@ -706,5 +731,89 @@ export function Counter() {
       `a @pyreon/* package went through the dependency optimizer (optimized: ${optimized.join(', ')})`,
     ).toEqual([])
     expect(errors.filter((e) => /Multiple instances|failed to load/i.test(e)), logs.join('')).toEqual([])
+  })
+})
+
+// The two #4440 parts only `atlas dev` can show: a control that appears on a
+// rescan is marked "added N min ago", and the Lens prints the detector's
+// rewrite under a footgun ("Fix:"). A throwaway project OUTSIDE the repo, so
+// editing its source cannot disturb the shared workshop server; created and
+// removed by the test.
+test.describe('atlas dev — provenance, "added" and the Lens fix (#4440)', () => {
+  const ROOT = resolve(process.cwd())
+  const BIN = resolve(ROOT, 'packages/tools/atlas/bin/atlas.js')
+  const FX = join(realpathSync(mkdtempSync(join(tmpdir(), 'atlas-parts-'))), 'ws')
+  const PORT = 5463
+  let server: ChildProcess | undefined
+
+  test.afterAll(() => {
+    server?.kill('SIGKILL')
+    rmSync(join(FX, '..'), { recursive: true, force: true })
+  })
+
+  test('a prop typed while the workbench is open is marked new; the Lens says how to fix a footgun', async ({
+    page,
+  }) => {
+    test.setTimeout(240_000)
+    mkdirSync(join(FX, 'src'), { recursive: true })
+    mkdirSync(join(FX, 'node_modules/@pyreon'), { recursive: true })
+    writeFileSync(join(FX, 'package.json'), JSON.stringify({ name: 'parts-fixture', private: true, type: 'module' }))
+    for (const [name, rel] of [
+      ['core', 'packages/core/core'],
+      ['reactivity', 'packages/core/reactivity'],
+      ['runtime-dom', 'packages/core/runtime-dom'],
+    ] as const) {
+      symlinkSync(resolve(ROOT, rel), join(FX, 'node_modules/@pyreon', name), 'dir')
+    }
+    // Destructured props: the `props-destructured` footgun, whose detector
+    // carries a suggested rewrite.
+    const card = join(FX, 'src/Card.tsx')
+    writeFileSync(card, `export function Card({ title }: { title: string }) {\n  return <h2>{title}</h2>\n}\n`)
+
+    const logs: string[] = []
+    server = spawn('node', [BIN, 'dev', FX, `--port=${PORT}`], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
+    server.stdout?.on('data', (d) => logs.push(String(d)))
+    server.stderr?.on('data', (d) => logs.push(String(d)))
+    await expect
+      .poll(async () => (await fetch(`http://localhost:${PORT}/`).catch(() => null))?.ok ?? false, {
+        timeout: 120_000,
+      })
+      .toBe(true)
+
+    // Provenance: the scanned prop reads as a prop type, with no "added" — it
+    // was there at boot.
+    await page.goto(`http://localhost:${PORT}/?c=card&p=schema`)
+    // The row whose FIELD cell is exactly `key` (plus the "new" chip, if any) —
+    // `title` is also a substring of `subtitle`.
+    const rowOf = (key: string) =>
+      page.locator('[data-testid="schema-field"]').filter({
+        has: page.locator('td[data-v="key"]', { hasText: new RegExp(`^${key}(new)?$`) }),
+      })
+    const source = (key: string) => rowOf(key).getByTestId('schema-source')
+    await expect(source('title'), logs.join('').slice(-1200)).toHaveText('prop type', { timeout: 30_000 })
+
+    // The Lens: the footgun's "Fix:" is the detector's own rewrite.
+    await page.getByTestId('addon-tab-lens').click()
+    await page.getByTestId('lens-analyse').click()
+    await expect(page.locator('[data-testid="lens-fix"]').first()).toContainText('Fix:', { timeout: 30_000 })
+    await expect(page.locator('[data-testid="lens-fix"]').first()).toContainText('props.x')
+
+    // Type a new prop into the source: the rescan reloads the page with it,
+    // marked as added just now.
+    writeFileSync(
+      card,
+      `export function Card({ title, subtitle }: { title: string; subtitle?: string }) {\n  return <h2>{title}{subtitle}</h2>\n}\n`,
+    )
+    await expect
+      .poll(
+        async () => {
+          await page.goto(`http://localhost:${PORT}/?c=card&p=schema`)
+          return (await source('subtitle').textContent({ timeout: 5_000 }).catch(() => '')) ?? ''
+        },
+        { timeout: 90_000, intervals: [2_000] },
+      )
+      .toBe('prop type · added just now')
+    await expect(rowOf('subtitle').locator('td[data-v="key"]')).toHaveText('subtitlenew')
+    await expect(source('title')).toHaveText('prop type')
   })
 })

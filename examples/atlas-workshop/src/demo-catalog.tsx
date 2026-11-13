@@ -172,6 +172,30 @@ export const demoCatalog: WorkbenchCatalog = {
       ),
     },
     {
+      id: 'row-actions', name: 'Row actions', group: 'Foundations', status: 'beta',
+      desc: 'A row toolbar with one guard missing: Edit asks can(), Delete does not. Open Permissions to see the missing guard flagged.',
+      controls: [
+        { key: 'label', label: 'Row', type: 'text', default: 'Q3 report' },
+      ],
+      // The bug this example exists to show: `Edit` is guarded, `Delete` is
+      // not — so every role sees Delete, and the Permissions panel judges it
+      // against each role's policy instead of everyone discovering it in
+      // production.
+      render: (v, ctx) => (
+        <>
+          <DemoBadge variant={'soft' as never}>{String(v.label)}</DemoBadge>
+          {ctx.can('posts.update') ? (
+            <DemoButton {...ctx.pseudo} variant={'outline' as never} onClick={() => ctx.logAction('onClick', 'edit')}>
+              Edit
+            </DemoButton>
+          ) : null}
+          <DemoButton {...ctx.pseudo} variant={'solid' as never} onClick={() => ctx.logAction('onClick', 'delete')}>
+            Delete
+          </DemoButton>
+        </>
+      ),
+    },
+    {
       id: 'badge', name: 'Badge', group: 'Foundations', status: 'stable',
       desc: 'Compact status and metadata labels.',
       // The schema is the single declaration of this component's prop shape.

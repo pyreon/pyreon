@@ -1,0 +1,14 @@
+{
+ "id": "atlas",
+ "og": {
+  "src": "/media/og/products/atlas.png",
+  "width": 1200,
+  "height": 630,
+  "alt": "Atlas (@pyreon/atlas): Write the component. Atlas writes the scenarios and tests every one."
+ },
+ "hero": {
+  "kind": "picture",
+  "file": "products/atlas/hero-dark.png",
+  "alt": "The atlas workbench on the example workshop: a Foundations list of six components (Button, Project list, Danger zone, Badge, Text field, Toggle), the Button rendered on a dotted canvas as an ember Get started button, and the A11y panel reporting 3 passing structural checks (accessible name, semantic role, keyboard operable), 0 warnings and 0 violations, with axe-core available on demand."
+ }
+}

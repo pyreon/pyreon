@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa pq-reactivity" viewBox="0 0 640 400" width="640" height="400" role="img" aria-labelledby="pq-reactivity-t pq-reactivity-d" fill="none">
+<title id="pq-reactivity-t">A signal write reaches only the nodes that read it</title>
+<desc id="pq-reactivity-d">Schematic signal graph: count.set(2) travels from the count signal to the computed double and on to the two places that read it, a Badge text node and a document.title effect. A separate theme signal and the class it feeds stay grey: they do not depend on count, so they never run.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.pq-reactivity{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.pq-reactivity .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.pq-reactivity .pq-reactivity-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.pq-reactivity *{animation:none!important;transition:none!important}.pq-reactivity .pq-reactivity-rm{opacity:1}.pq-reactivity .pq-reactivity-am{opacity:0}}
+
+.pq-reactivity .ln{stroke:var(--px-hint);stroke-width:1.5;fill:none}
+.pq-reactivity .dash{stroke:var(--px-hint);stroke-width:1.5;stroke-dasharray:3 5;fill:none}
+.pq-reactivity .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pq-reactivity .bx2{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+.pq-reactivity .lab{fill:var(--px-fog);font-size:14px;letter-spacing:.04em}
+.pq-reactivity .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.pq-reactivity .val{fill:var(--px-text);font-size:20px;font-weight:500}
+.pq-reactivity .big{fill:var(--px-strong);font-size:24px;font-weight:600;letter-spacing:-.02em}
+.pq-reactivity .code{fill:var(--px-text);font-size:15px}
+.pq-reactivity .kw{fill:var(--px-accent-text)} .pq-reactivity .fn{fill:var(--px-link)} .pq-reactivity .str{fill:var(--px-warm)} .pq-reactivity .ty{fill:var(--px-violet)}
+.pq-reactivity .dim{fill:var(--px-fog)}
+.pq-reactivity .hint{fill:var(--px-hint);font-size:13px}
+.pq-reactivity .ember{stroke:url(#pq-reactivity-egu);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:36 900;fill:none}
+.pq-reactivity .emberS{stroke:url(#pq-reactivity-egu);stroke-width:2.5;stroke-linecap:round;fill:none}
+.pq-reactivity .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.pq-reactivity .ok{fill:var(--px-ok)} .pq-reactivity .warm{fill:var(--px-warm)} .pq-reactivity .hot{fill:var(--px-accent)} .pq-reactivity .errF{fill:var(--px-err)}
+.pq-reactivity .okT{fill:var(--px-ok)} .pq-reactivity .warmT{fill:var(--px-warm)} .pq-reactivity .hotT{fill:var(--px-accent-text)} .pq-reactivity .errT{fill:var(--px-err)}
+.pq-reactivity .okS{stroke:var(--px-ok)} .pq-reactivity .errS{stroke:var(--px-err)}
+.pq-reactivity .gfill{fill:url(#pq-reactivity-eg)}
+@media (prefers-reduced-motion: reduce){.pq-reactivity .ember{opacity:0}}
+
+.pq-reactivity .node{fill:var(--px-card);stroke:var(--px-fog);stroke-width:1.5}
+.pq-reactivity .cold{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pq-reactivity .nl{fill:var(--px-text);font-size:17px}
+.pq-reactivity .nv{fill:var(--px-fog);font-size:14px}
+.pq-reactivity .sk{fill:var(--px-hint);font-size:13px}
+@keyframes pq-reactivity-a{0.0000%{opacity:1;animation-timing-function:step-end}14.2857%{opacity:0;animation-timing-function:step-end}67.1429%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-reactivity-b{0.0000%{opacity:0;animation-timing-function:step-end}14.2857%{opacity:1;animation-timing-function:step-end}67.1429%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-reactivity-da{0.0000%{opacity:1;animation-timing-function:step-end}17.1429%{opacity:0;animation-timing-function:step-end}67.1429%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-reactivity-db{0.0000%{opacity:0;animation-timing-function:step-end}17.1429%{opacity:1;animation-timing-function:step-end}67.1429%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-reactivity-ra{0.0000%{opacity:1;animation-timing-function:step-end}20.0000%{opacity:0;animation-timing-function:step-end}70.0000%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-reactivity-rb{0.0000%{opacity:0;animation-timing-function:step-end}20.0000%{opacity:1;animation-timing-function:step-end}70.0000%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-reactivity-ca{0.0000%{opacity:0;animation-timing-function:step-end}14.2857%{opacity:1;animation-timing-function:step-end}64.2857%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-reactivity-cb{0.0000%{opacity:1;animation-timing-function:step-end}14.2857%{opacity:0;animation-timing-function:step-end}64.2857%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-reactivity-f0{0%{opacity:0}14.2857%{opacity:0}15.4286%{opacity:1}17.1429%{opacity:0}64.2857%{opacity:0}65.4286%{opacity:1}67.1429%{opacity:0}100%{opacity:0}}
+@keyframes pq-reactivity-f1{0%{opacity:0}17.1429%{opacity:0}18.2857%{opacity:1}20.0000%{opacity:0}67.1429%{opacity:0}68.2857%{opacity:1}70.0000%{opacity:0}100%{opacity:0}}
+@keyframes pq-reactivity-f2{0%{opacity:0}20.0000%{opacity:0}21.1429%{opacity:1}22.8571%{opacity:0}70.0000%{opacity:0}71.1429%{opacity:1}72.8571%{opacity:0}100%{opacity:0}}
+@keyframes pq-reactivity-e1{0%{stroke-dashoffset:36;opacity:0}14.2857%{stroke-dashoffset:36;opacity:1}17.1429%{stroke-dashoffset:-210;opacity:1}17.1571%{stroke-dashoffset:36;opacity:0}64.2857%{stroke-dashoffset:36;opacity:1}67.1429%{stroke-dashoffset:-210;opacity:1}67.1571%{stroke-dashoffset:36;opacity:0}100%{stroke-dashoffset:36;opacity:0}}
+@keyframes pq-reactivity-e2{0%{stroke-dashoffset:36;opacity:0}17.1429%{stroke-dashoffset:36;opacity:1}20.0000%{stroke-dashoffset:-210;opacity:1}20.0143%{stroke-dashoffset:36;opacity:0}67.1429%{stroke-dashoffset:36;opacity:1}70.0000%{stroke-dashoffset:-210;opacity:1}70.0143%{stroke-dashoffset:36;opacity:0}100%{stroke-dashoffset:36;opacity:0}}
+.pq-reactivity .a{animation:pq-reactivity-a 7000ms linear infinite}
+.pq-reactivity .b{animation:pq-reactivity-b 7000ms linear infinite}
+.pq-reactivity .da{animation:pq-reactivity-da 7000ms linear infinite}
+.pq-reactivity .db{animation:pq-reactivity-db 7000ms linear infinite}
+.pq-reactivity .ra{animation:pq-reactivity-ra 7000ms linear infinite}
+.pq-reactivity .rb{animation:pq-reactivity-rb 7000ms linear infinite}
+.pq-reactivity .ca{animation:pq-reactivity-ca 7000ms linear infinite}
+.pq-reactivity .cb{animation:pq-reactivity-cb 7000ms linear infinite}
+.pq-reactivity .f0{animation:pq-reactivity-f0 7000ms linear infinite}
+.pq-reactivity .f1{animation:pq-reactivity-f1 7000ms linear infinite}
+.pq-reactivity .f2{animation:pq-reactivity-f2 7000ms linear infinite}
+.pq-reactivity .e1{animation:pq-reactivity-e1 7000ms linear infinite}
+.pq-reactivity .e2{animation:pq-reactivity-e2 7000ms linear infinite}
+@media (prefers-reduced-motion: reduce){.pq-reactivity .a,.pq-reactivity .da,.pq-reactivity .ra,.pq-reactivity .cb{opacity:0}.pq-reactivity .b,.pq-reactivity .db,.pq-reactivity .rb,.pq-reactivity .ca{opacity:1}}
+</style>
+<defs><linearGradient id="pq-reactivity-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-reactivity-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="640" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-reactivity-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-reactivity-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<text class="m eb" x="24" y="34">SIGNAL GRAPH · A WRITE REACHES ITS READERS</text>
+<!-- edges -->
+<path class="ln" d="M101 150 C 170 150, 190 120, 249 120"/>
+<path class="ln" d="M271 120 C 330 120, 360 90, 429 90"/>
+<path class="ln" d="M271 120 C 330 120, 360 190, 429 190"/>
+<path class="ln" d="M101 300 C 170 300, 190 300, 249 300"/>
+<path class="ln" d="M271 300 C 330 300, 360 300, 429 300"/>
+<path class="ember e1" d="M101 150 C 170 150, 190 120, 249 120"/>
+<path class="ember e2" d="M271 120 C 330 120, 360 90, 429 90"/>
+<path class="ember e2" d="M271 120 C 330 120, 360 190, 429 190"/>
+<path class="pq-reactivity-rm emberS" d="M101 150 C 170 150, 190 120, 249 120 M271 120 C 330 120, 360 90, 429 90 M271 120 C 330 120, 360 190, 429 190"/>
+<!-- sources -->
+<circle class="node" cx="90" cy="150" r="11"/><circle class="hot f0" cx="90" cy="150" r="11" opacity="0"/><circle class="ring pq-reactivity-rm" cx="90" cy="150" r="17"/>
+<text class="m nl" x="60" y="196">count</text>
+<text class="m nv a" x="60" y="218">= 1</text><text class="m nv b" x="60" y="218" opacity="0">= 2</text>
+<circle class="cold" cx="90" cy="300" r="11"/>
+<text class="m nl" x="60" y="346" style="fill:var(--px-fog)">theme</text>
+<text class="m nv" x="60" y="368">= 'dark'</text>
+<!-- computeds -->
+<circle class="node" cx="260" cy="120" r="11"/><circle class="hot f1" cx="260" cy="120" r="11" opacity="0"/>
+<text class="m nl" x="226" y="76">double</text>
+<text class="m nv da" x="226" y="160">= 2</text><text class="m nv db" x="226" y="160" opacity="0">= 4</text>
+<circle class="cold" cx="260" cy="300" r="11"/>
+<text class="m nl" x="226" y="346" style="fill:var(--px-fog)">cls</text>
+<text class="m sk" x="226" y="368">skipped</text>
+<!-- readers -->
+<circle class="node" cx="440" cy="90" r="11"/><circle class="hot f2" cx="440" cy="90" r="11" opacity="0"/>
+<text class="m nl" x="464" y="86">&lt;Badge&gt;</text>
+<text class="m nv ra" x="464" y="108">text: 2</text><text class="m nv rb" x="464" y="108" opacity="0">text: 4</text>
+<circle class="node" cx="440" cy="190" r="11"/><circle class="hot f2" cx="440" cy="190" r="11" opacity="0"/>
+<text class="m nl" x="464" y="186">effect</text>
+<text class="m nv ra" x="464" y="208">title: 2</text><text class="m nv rb" x="464" y="208" opacity="0">title: 4</text>
+<circle class="cold" cx="440" cy="300" r="11"/>
+<text class="m nl" x="464" y="296" style="fill:var(--px-fog)">&lt;div class&gt;</text>
+<text class="m sk" x="464" y="318">never re-runs</text>
+<!-- caption -->
+<line x1="24" y1="374" x2="616" y2="374" style="stroke:var(--px-line2)" stroke-width="1"/>
+<text class="m lab ca" x="24" y="394" style="fill:var(--px-text)" opacity="0">count.set(2)</text>
+<text class="m lab cb" x="24" y="394" style="fill:var(--px-text)">count.set(1)</text>
+<text class="m hint" x="616" y="394" text-anchor="end">computeds re-track every run</text>
+</svg>

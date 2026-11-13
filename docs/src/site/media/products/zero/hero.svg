@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa pq-zero" viewBox="0 0 640 400" width="640" height="400" role="img" aria-labelledby="pq-zero-t pq-zero-d" fill="none">
+<title id="pq-zero-t">A Zero build prints the render mode it picked for every route</title>
+<desc id="pq-zero-d">Terminal output of a real Pyreon Zero build with mode: 'auto': the route table lists /, /about, /counter and /posts/:id as static (ssg), /dashboard and /posts as server-rendered (ssr) and /news as incrementally regenerated (isr), then Build complete in 561 ms.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.pq-zero{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.pq-zero .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.pq-zero .pq-zero-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.pq-zero *{animation:none!important;transition:none!important}.pq-zero .pq-zero-rm{opacity:1}.pq-zero .pq-zero-am{opacity:0}}
+
+.pq-zero .tw{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pq-zero .tb{fill:var(--px-raised)}
+.pq-zero .tt{fill:var(--px-fog);font-size:12px;letter-spacing:.06em}
+.pq-zero .ln{font-size:13px;white-space:pre}
+.pq-zero .c-cmd{fill:var(--px-strong)} .pq-zero .c-dim{fill:var(--px-fog)} .pq-zero .c-txt{fill:var(--px-mist)}
+.pq-zero .c-ok{fill:var(--px-ok)} .pq-zero .c-hot{fill:var(--px-accent-text)} .pq-zero .c-warm{fill:var(--px-warm)} .pq-zero .c-link{fill:var(--px-link)}
+.pq-zero .c-pr{fill:var(--px-link)}
+@keyframes pq-zero-in{from{opacity:0}to{opacity:1}}
+@keyframes pq-zero-ul{0%{stroke-dashoffset:var(--len);opacity:0}1%{opacity:1}100%{stroke-dashoffset:0;opacity:1}}
+@keyframes pq-zero-pulse{0%{opacity:0}40%{opacity:.9}100%{opacity:0}}
+.pq-zero .rv{animation:pq-zero-in 160ms ease-out both}
+.pq-zero .ul{stroke:var(--px-accent);stroke-width:2.5;stroke-linecap:round}
+.pq-zero .ulA{animation:pq-zero-ul 200ms cubic-bezier(.2,.7,.3,1) 1225ms both}
+.pq-zero .glow{fill:var(--px-accent);animation:pq-zero-pulse 200ms ease-out 1225ms both;opacity:0}
+.pq-zero .cap{fill:var(--px-hint);font-size:12.5px}
+</style>
+<defs><linearGradient id="pq-zero-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-zero-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="640" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-zero-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-zero-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+<rect class="tw" x="16" y="14" width="608" height="352" rx="14"/>
+<path class="tb" d="M17 48 V28 a13 13 0 0 1 13 -13 H610 a13 13 0 0 1 13 13 V48 Z"/>
+<circle cx="36" cy="32" r="4.5" style="fill:var(--px-bar)"/><circle cx="51" cy="32" r="4.5" style="fill:var(--px-bar)"/><circle cx="66" cy="32" r="4.5" style="fill:var(--px-bar)"/>
+<text class="m tt" x="320" y="36" text-anchor="middle">deploy-demo · bun run build</text>
+<text class="m ln rv" x="34" y="66" style="animation-delay:150ms"><tspan class="c-pr">$ </tspan><tspan class="c-cmd">bun run build</tspan></text>
+<text class="m ln rv" x="34" y="87" style="animation-delay:225ms"><tspan class="c-dim">⋯ client and server bundles (vite) ⋯</tspan></text>
+<text class="m ln rv" x="34" y="108" style="animation-delay:300ms"><tspan class="c-dim">[zero:ssr] Built …/dist/server/entry-server.js [adapter: vercel]</tspan></text>
+<text class="m ln rv" x="34" y="129" style="animation-delay:375ms"><tspan class="c-dim">[zero] </tspan><tspan class="c-cmd">Route modes (app: auto)</tspan><tspan class="c-txt"> — 4 ssg ○ · 2 ssr λ · 1 isr ⟳</tspan></text>
+<rect class="glow" x="82.6" y="113" width="191.4" height="23" rx="5"/>
+<line class="ul ulA" x1="88.6" y1="134" x2="268" y2="134" style="--len:179.4;stroke-dasharray:179.4"/>
+<text class="m ln rv" x="34" y="150" style="animation-delay:450ms"><tspan class="c-ok">  ○ ssg  </tspan><tspan class="c-txt">/</tspan></text>
+<text class="m ln rv" x="34" y="171" style="animation-delay:525ms"><tspan class="c-ok">  ○ ssg  </tspan><tspan class="c-txt">/about</tspan></text>
+<text class="m ln rv" x="34" y="192" style="animation-delay:600ms"><tspan class="c-ok">  ○ ssg  </tspan><tspan class="c-txt">/counter</tspan></text>
+<text class="m ln rv" x="34" y="213" style="animation-delay:675ms"><tspan class="c-link">  λ ssr  </tspan><tspan class="c-txt">/dashboard</tspan></text>
+<text class="m ln rv" x="34" y="234" style="animation-delay:750ms"><tspan class="c-warm">  ⟳ isr  </tspan><tspan class="c-txt">/news</tspan></text>
+<text class="m ln rv" x="34" y="255" style="animation-delay:825ms"><tspan class="c-link">  λ ssr  </tspan><tspan class="c-txt">/posts</tspan></text>
+<text class="m ln rv" x="34" y="276" style="animation-delay:900ms"><tspan class="c-ok">  ○ ssg  </tspan><tspan class="c-txt">/posts/:id</tspan></text>
+<text class="m ln rv" x="34" y="297" style="animation-delay:975ms"><tspan class="c-txt"></tspan></text>
+<text class="m ln rv" x="34" y="318" style="animation-delay:1050ms"><tspan class="c-ok">  ✓ </tspan><tspan class="c-cmd">Build complete in 561 ms</tspan></text>
+<text class="m cap" x="20" y="390">real output · mode: 'auto' (experimental) infers each route's mode</text>
+</svg>

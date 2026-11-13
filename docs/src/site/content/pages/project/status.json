@@ -1,0 +1,168 @@
+{
+  "id": "status",
+  "route": "/status",
+  "title": "Status",
+  "lede": "Pyreon is pre-1.0. This page says what that means: how versions change, which parts are mature, which are experimental, and which directions are under consideration. Nothing here is a dated commitment.",
+  "sections": [
+    {
+      "kind": "list",
+      "title": "Versioning",
+      "items": [
+        {
+          "title": "Pre-1.0, one version for everything",
+          "text": "Every published `@pyreon/*` package is released as one fixed version group, so every release gives all of them the same version number. The current version is in any package's `package.json` and on npm."
+        },
+        {
+          "title": "Breaking changes are minor bumps",
+          "text": "While the version is `0.x`, a breaking change ships as a `minor` release. Patch releases do not intentionally break APIs. Every consumer-affecting change in a published package carries a changeset, and CI refuses a changeset that declares a major bump."
+        },
+        {
+          "title": "Release notes",
+          "text": "Each package's `CHANGELOG.md`, also served by the MCP `get_changelog` tool, so an AI assistant can read what changed between your version and the latest."
+        },
+        {
+          "title": "Version skew",
+          "text": "`pyreon info` reports the installed `@pyreon/*` versions and flags skew; `pyreon upgrade` aligns them."
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "title": "What is mature and what is experimental",
+      "columns": [
+        "Area",
+        "State"
+      ],
+      "rows": [
+        [
+          "Reactivity, core, runtime-dom, router, head, server, vite-plugin",
+          "Core web framework; the surface most apps use. Pre-1.0 versioning rules apply."
+        ],
+        [
+          "`@pyreon/zero` (SSR, SSG, ISR, SPA, islands)",
+          "Web meta-framework with build-time mode verification (`verify-modes`) and real-browser end-to-end suites in CI."
+        ],
+        [
+          "Fundamentals (`store`, `form`, `query`, `table`, `i18n`, `validation`, …)",
+          "Libraries for the web; several also have native runtimes."
+        ],
+        [
+          "Native targets (iOS / Android via PMTC)",
+          "{dot:warn}Experimental."
+        ]
+      ]
+    },
+    {
+      "kind": "story",
+      "title": "What \"device-proven\" means",
+      "text": [
+        "The native targets are measured, not described. The multi-platform docs carry a weighted capability matrix: each category is credited only for behaviour asserted on a real iOS Simulator or Android emulator (a user-visible effect checked by an XCUITest or Compose test), not for code that merely compiles. A CI gate recomputes the headline figure from the table, so it cannot drift from the evidence.",
+        "Use the matrix to decide. If the capabilities your app needs are credited at the device level, they are exercised in CI; if not, treat them as unproven. The matrix also shows the weakest rows, such as payments, crash reporting, store release and push."
+      ]
+    },
+    {
+      "kind": "links",
+      "title": "Check the evidence",
+      "items": [
+        {
+          "label": "Capability matrix",
+          "href": "/docs/multiplatform",
+          "text": "The weighted, device-level matrix at the bottom of the multi-platform page."
+        },
+        {
+          "label": "Library status",
+          "href": "/docs/multiplatform-libraries",
+          "text": "Which libraries have native runtimes."
+        },
+        {
+          "label": "Pyreon vs Expo, React Native, Flutter",
+          "href": "/docs/compare-app-frameworks",
+          "text": "The comparison, including where Pyreon is behind."
+        }
+      ]
+    },
+    {
+      "kind": "list",
+      "title": "Promises you can rely on",
+      "items": [
+        {
+          "title": "Named failures over silent ones",
+          "text": "Code outside the native subset almost always gets a named compiler warning instead of a silent miscompile, and CI gates exist to close the rest."
+        },
+        {
+          "title": "Comparisons in one place",
+          "text": "Claims about other frameworks live on one page, including where Pyreon is behind."
+        },
+        {
+          "title": "Generated docs are checked",
+          "text": "API references, `llms.txt` and the MCP reference are generated from package manifests and verified in CI, so they do not silently describe an older API."
+        }
+      ]
+    },
+    {
+      "kind": "list",
+      "title": "On the way to 1.0: directions under consideration",
+      "text": "There is no dated 1.0 plan. These directions are not scheduled and may change; they are the biggest gaps the comparison page identifies against the leading app ecosystems.",
+      "items": [
+        {
+          "title": "Native errors and store submission",
+          "text": "Native errors mapped back to the `.tsx` source, and a documented sign-and-submit path for TestFlight and Play. The rebuild-and-relaunch loop already ships as `pyreon-native dev`."
+        },
+        {
+          "title": "A stronger third-party native story",
+          "text": "More first-party service bindings (payments, push providers, analytics) and a documented way for packages to ship their own `native/` sources, building on `useNativeModule`."
+        },
+        {
+          "title": "Updates between store releases",
+          "text": "A documented answer using data-driven remote configuration and WebView islands, stated alongside what cannot be done within store rules."
+        },
+        {
+          "title": "AI-agent readiness for native projects",
+          "text": "The multi-platform scaffold already writes `AGENTS.md`, `CLAUDE.md` and `.mcp.json`; the editor-specific rules the web scaffold can generate are not included yet."
+        },
+        {
+          "title": "End-to-end test recipes",
+          "text": "Recipes for generated apps and a CI template for building them."
+        }
+      ]
+    },
+    {
+      "kind": "note",
+      "text": "Progress on the native side shows in the matrix; everything else shows in the changelogs. If a gap on this list blocks you, say so in a GitHub issue. It is the most useful input we can get.",
+      "href": "https://github.com/pyreon/pyreon/issues"
+    }
+  ],
+  "end": {
+    "title": "Pre-1.0, and specific about it.",
+    "cta": {
+      "label": "Read the stability page",
+      "href": "/docs/stability-and-direction"
+    }
+  },
+  "sources": [
+    {
+      "claim": "Fixed version group; breaking = minor in 0.x; CI refuses major; CHANGELOG.md + get_changelog; pyreon info / upgrade",
+      "path": "docs/src/content/docs/stability-and-direction.md \"Versioning\""
+    },
+    {
+      "claim": "Mature vs experimental table",
+      "path": "docs/src/content/docs/stability-and-direction.md \"What is mature and what is experimental\""
+    },
+    {
+      "claim": "Device-proven definition, weighted matrix, CI gate, weakest rows",
+      "path": "docs/src/content/docs/stability-and-direction.md \"What device-proven means\""
+    },
+    {
+      "claim": "Compatibility promises",
+      "path": "docs/src/content/docs/stability-and-direction.md \"Compatibility promises you can rely on\""
+    },
+    {
+      "claim": "Five directions, not scheduled",
+      "path": "docs/src/content/docs/stability-and-direction.md \"Directions under consideration\""
+    },
+    {
+      "claim": "Matrix lives on the multi-platform page (percentage deliberately not quoted)",
+      "path": "docs/src/content/docs/multiplatform.md \"Production capability matrix (weighted, rung-labeled)\""
+    }
+  ]
+}

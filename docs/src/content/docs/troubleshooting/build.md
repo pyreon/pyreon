@@ -3,8 +3,6 @@ title: "Build Pipeline Mistakes"
 description: "Common build pipeline mistakes in Pyreon and how to fix them."
 ---
 
-# Build Pipeline Mistakes
-
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
 ### A compiler hook whose first test witness is a method that lowers BY NAME proves nothing — pick a receiver-TYPE-dependent method, then bisect

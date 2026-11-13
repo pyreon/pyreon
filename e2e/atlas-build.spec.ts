@@ -112,6 +112,16 @@ test.describe('atlas build — static site', () => {
     })
   })
 
+  test('Reactive coverage says it needs a development build — no Record, no fabricated 100%', async ({ page }) => {
+    // A production build has no reactive graph: an empty one would compute as
+    // a perfect score, and a Record button would record nothing.
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'Reactive coverage' }).click()
+    await expect(page.getByTestId('coverage-unavailable')).toContainText('needs a development build')
+    await expect(page.getByTestId('coverage-toggle')).toHaveCount(0)
+    await expect(page.getByTestId('coverage-percent')).toHaveCount(0)
+  })
+
   /**
    * Path URLs — `/button/` rather than `/?c=button`.
    *

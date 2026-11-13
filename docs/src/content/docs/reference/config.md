@@ -1,9 +1,7 @@
 ---
-title: "Ecosystem Config — API Reference"
+title: "@pyreon/config — API Reference"
 description: "One `pyreon.config.ts` for the whole ecosystem — a typed section per package"
 ---
-
-# @pyreon/config — API Reference
 
 > **Generated** from `config`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest.
 

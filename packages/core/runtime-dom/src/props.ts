@@ -1,7 +1,7 @@
 import type { ClassValue, Props } from '@pyreon/core'
 import { cx, isElementEventHandlerAttr, isSafeImageDataUri, isUnsafeUrl, normalizeStyleValue, toKebabCase, isUrlAttr } from '@pyreon/core'
 
-import { batch, renderEffect } from '@pyreon/reactivity'
+import { _rdLabelBinding, _rdNoteTarget, batch, renderEffect } from '@pyreon/reactivity'
 import { DELEGATED_EVENTS, delegatedPropName } from './delegate'
 
 type Cleanup = () => void
@@ -105,6 +105,8 @@ export function applyProps(el: Element, props: Props, skipKey?: string): Cleanup
         if (typeof value === 'function') value = (value as () => unknown)()
         applyStaticProp(el, key, value)
       })
+      // Dev: the setter named this binding; drop the creation site (this file).
+      if (process.env.NODE_ENV !== 'production') _rdLabelBinding(c, null, null, undefined, null)
     } else {
       c = applyProp(el, key, props[key])
     }
@@ -195,6 +197,7 @@ export function bindSpread(el: Element, getProps: () => Props): Cleanup {
     inner?.()
     inner = applyPropsWithRef(el, getProps())
   })
+  if (process.env.NODE_ENV !== 'production') _rdLabelBinding(stop, 'attr', el, '...spread', null)
   return () => {
     stop()
     inner?.()
@@ -218,9 +221,12 @@ export function bindSpread(el: Element, getProps: () => Props): Cleanup {
 export function applySelectValueProp(el: Element, props: Props): Cleanup | null {
   const descriptor = Object.getOwnPropertyDescriptor(props, 'value')
   if (descriptor?.get) {
-    return renderEffect(() =>
+    const d = renderEffect(() =>
       applyStaticProp(el, 'value', (props as Record<string, unknown>).value),
     )
+    // Dev: the setter names the binding; drop the creation site (this file).
+    if (process.env.NODE_ENV !== 'production') _rdLabelBinding(d, null, null, undefined, null)
+    return d
   }
   return applyProp(el, 'value', props.value)
 }
@@ -404,6 +410,7 @@ export function _markAdoptedHtmlEl(el: Element): void {
  * as before.
  */
 export function applyDangerousHtml(el: Element, value: unknown): void {
+  if (process.env.NODE_ENV !== 'production') _rdNoteTarget(el, 'prop', 'innerHTML')
   if (_adoptedHtmlEls.has(el)) {
     // Hydration adoption: the server children ARE the parse of __html.
     _adoptedHtmlEls.delete(el)
@@ -414,6 +421,12 @@ export function applyDangerousHtml(el: Element, value: unknown): void {
 }
 
 function applyStaticProp(el: Element, key: string, value: unknown): void {
+  if (process.env.NODE_ENV !== 'production')
+    _rdNoteTarget(
+      el,
+      key === 'class' || key === 'className' ? 'class' : key === 'style' ? 'style' : key === 'innerHTML' || key === 'dangerouslySetInnerHTML' ? 'prop' : 'attr',
+      key,
+    )
   if (process.env.NODE_ENV !== 'production' && typeof value === 'function') {
     // Defensive: function values must be unwrapped via `renderEffect` before
     // reaching here. Seeing one means a new special-case branch upstream skipped
@@ -464,7 +477,7 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
   // renderEffect rather than effect since mountElement's cleanup array owns the
   // lifecycle.
   if (typeof value === 'function') {
-    return renderEffect(() => {
+    const d = renderEffect(() => {
       // The accessor's RESULT can itself be an accessor. The compiler inlines a
       // prop-derived function-valued const at its use site, so
       // `const tabIndexFor = () => …` passed as `tabIndex={tabIndexFor}` on a
@@ -477,6 +490,9 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
       if (typeof resolved === 'function') resolved = (resolved as () => unknown)()
       applyStaticProp(el, key, resolved)
     })
+    // Dev: the setter names the binding; drop the creation site (this file).
+    if (process.env.NODE_ENV !== 'production') _rdLabelBinding(d, null, null, undefined, null)
+    return d
   }
 
   applyStaticProp(el, key, value)
@@ -542,6 +558,7 @@ export function applyStyleOnce(el: HTMLElement, value: unknown): void {
  * number→px + stale-key removal; null → clear).
  */
 export function applyStyleProp(el: HTMLElement, value: unknown): void {
+  if (process.env.NODE_ENV !== 'production') _rdNoteTarget(el, 'style')
   if (typeof value === 'string') {
     // Skip-if-equal: reactive style effects re-run with unchanged output, and
     // an unconditional cssText assign is a full parse + style invalidation
@@ -625,6 +642,7 @@ export function applyStyleProp(el: HTMLElement, value: unknown): void {
 // is a read-only `SVGAnimatedString`) — which is why flow edges rendered nothing
 // once `_tpl` gave them the correct SVG namespace.
 export function applyClassProp(el: Element, value: unknown): void {
+  if (process.env.NODE_ENV !== 'production') _rdNoteTarget(el, 'class')
   const resolved = (typeof value === 'string' ? value : cx(value as ClassValue)) || ''
   // Skip-if-equal: reactive class effects re-run with unchanged output, and
   // hydration-adoption's initial run writes the value the SSR attr already
@@ -704,6 +722,61 @@ export function foreignAttrNamespace(el: Element, key: string): string | null {
 }
 
 /**
+ * The HTML parser's "adjust SVG attributes" table (HTML Standard §13.2.6.5):
+ * the ONLY attribute names SVG content keeps in camelCase. The tokenizer
+ * lowercases every attribute name, then restores exactly these on SVG elements
+ * (MathML restores only `definitionURL`). It is a closed list fixed by the spec.
+ */
+const SVG_CASED_ATTRS = new Set([
+  'attributeName', 'attributeType', 'baseFrequency', 'baseProfile', 'calcMode',
+  'clipPathUnits', 'diffuseConstant', 'edgeMode', 'filterUnits', 'glyphRef',
+  'gradientTransform', 'gradientUnits', 'kernelMatrix', 'kernelUnitLength', 'keyPoints',
+  'keySplines', 'keyTimes', 'lengthAdjust', 'limitingConeAngle', 'markerHeight',
+  'markerUnits', 'markerWidth', 'maskContentUnits', 'maskUnits', 'numOctaves', 'pathLength',
+  'patternContentUnits', 'patternTransform', 'patternUnits', 'pointsAtX', 'pointsAtY',
+  'pointsAtZ', 'preserveAlpha', 'preserveAspectRatio', 'primitiveUnits', 'refX', 'refY',
+  'repeatCount', 'repeatDur', 'requiredExtensions', 'requiredFeatures', 'specularConstant',
+  'specularExponent', 'spreadMethod', 'startOffset', 'stdDeviation', 'stitchTiles',
+  'surfaceScale', 'systemLanguage', 'tableValues', 'targetX', 'targetY', 'textLength',
+  'viewBox', 'viewTarget', 'xChannelSelector', 'yChannelSelector', 'zoomAndPan',
+])
+
+const SVG_NS_URI = 'http://www.w3.org/2000/svg'
+const MATHML_NS_URI = 'http://www.w3.org/1998/Math/MathML'
+
+/**
+ * The attribute name the HTML parser would have given `key` on this element.
+ *
+ * `setAttribute` lowercases the name only on an HTML element. On an SVG or
+ * MathML element it keeps the case, so `tabIndex` became a `tabIndex` attribute
+ * that Chromium ignores (not focusable, not in the tab order — #4466), while the
+ * same name in markup (SSR bytes, a compiled `_tpl` bake) parses to `tabindex`.
+ * Applying the parser's rule — lowercase, then restore the SVG table above —
+ * makes an ASSIGNED attribute land exactly where a PARSED one does, for every
+ * HTML IDL name JSX spells in camelCase (`tabIndex`, `autoFocus`, `crossOrigin`,
+ * `referrerPolicy`, …), with `viewBox`/`preserveAspectRatio`/… untouched.
+ *
+ * Cost: a lowercase name (every `data-*`/`aria-*` and nearly every attribute)
+ * costs one `toLowerCase`, which V8 answers without allocating when nothing
+ * changes, and never reads the DOM. Sinks that already know the element is HTML
+ * (where `setAttribute` lowercases by itself) skip the call entirely (profiled
+ * on the flow mount, #4485).
+ */
+export function foreignAttrName(el: Element, key: string): string {
+  const lower = key.toLowerCase()
+  if (lower === key) return key
+  const ns = el.namespaceURI
+  if (ns === SVG_NS_URI) return SVG_CASED_ATTRS.has(key) ? key : lower
+  if (ns === MATHML_NS_URI) return key === 'definitionURL' ? key : lower
+  return key
+}
+
+/** `removeAttribute` under the name `foreignAttrName` writes. */
+function removeAttr(el: Element, key: string): void {
+  el.removeAttribute(foreignAttrName(el, key))
+}
+
+/**
  * `setAttribute`, upgraded to `setAttributeNS` for the foreign-content
  * qualified names the HTML parser namespaces. The ONE sink both
  * `setStaticProp` (h() path) and `applyAttrProp` (`_setAttr`, compiled path)
@@ -715,7 +788,8 @@ export function foreignAttrNamespace(el: Element, key: string): string | null {
  * removing an XLink-namespaced `xlink:href` correctly in Chromium. Adding a
  * namespaced removal path would be a second spelling with nothing to gain.
  */
-function setAttrNsAware(el: Element, key: string, value: string): void {
+function setAttrNsAware(el: Element, rawKey: string, value: string): void {
+  const key = foreignAttrName(el, rawKey)
   const ns = foreignAttrNamespace(el, key)
   if (ns === null) el.setAttribute(key, value)
   else el.setAttributeNS(ns, key, value)
@@ -763,6 +837,7 @@ function applyMediaMutedProp(el: Element, value: unknown): void {
 }
 
 export function applyAttrProp(el: Element, key: string, value: unknown): void {
+  if (process.env.NODE_ENV !== 'production') _rdNoteTarget(el, 'attr', key)
   // Event-handler NAMES first — BEFORE the accessor resolution below, which is
   // the load-bearing ordering. `_setAttr` is the compiled sink for every generic
   // dynamic attribute, and a lowercase handler name reaches it (the compiler's
@@ -797,7 +872,7 @@ export function applyAttrProp(el: Element, key: string, value: unknown): void {
   if (isBlockedUrl(el, key, value)) return
   if (key === 'muted') applyMediaMutedProp(el, value)
   if (value == null) {
-    el.removeAttribute(key)
+    removeAttr(el, key)
     return
   }
   if (typeof value === 'boolean') {
@@ -806,7 +881,7 @@ export function applyAttrProp(el: Element, key: string, value: unknown): void {
     } else if (value) {
       setAttrNsAware(el, key, '')
     } else {
-      el.removeAttribute(key)
+      removeAttr(el, key)
     }
     return
   }
@@ -838,6 +913,7 @@ const DEFAULT_VALUE_INIT = Symbol('pyreon.defaultValueInit')
  * function prop as an accessor; this mirrors it.
  */
 export function applyDomProp(el: Element, key: string, value: unknown): void {
+  if (process.env.NODE_ENV !== 'production') _rdNoteTarget(el, 'prop', key)
   if (typeof value === 'function') value = (value as () => unknown)()
   if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
     applyValueProp(el, value)
@@ -858,6 +934,9 @@ export function applyDomProp(el: Element, key: string, value: unknown): void {
 export function applyDomPropStatic(el: Element, key: string, value: unknown): void {
   if (typeof value === 'function') {
     const read = value as () => unknown
+    // Not relabelled: `applyDomProp` names the binding (`prop`), and taking the
+    // disposer just to move its creation site off this file would add a
+    // variable to the production build. Its `loc` therefore points here.
     renderEffect(() => applyDomProp(el, key, read()))
     return
   }
@@ -895,6 +974,7 @@ export function applyDomPropStatic(el: Element, key: string, value: unknown): vo
  * identically on both, so matching them is the industry-normal behaviour.
  */
 export function applyValueProp(el: Element, value: unknown): void {
+  if (process.env.NODE_ENV !== 'production') _rdNoteTarget(el, 'prop', 'value')
   const node = el as HTMLInputElement
   // A function is an ACCESSOR, exactly as on the h() path (`applyProp`'s
   // function branch). A named binding — `value={getValue}`, a function-valued
@@ -1071,7 +1151,7 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
       applyValueProp(el, value)
       return
     }
-    el.removeAttribute(key)
+    removeAttr(el, key)
     return
   }
 
@@ -1090,7 +1170,7 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
 
   if (typeof value === 'boolean') {
     if (value) setAttrNsAware(el, key, '')
-    else el.removeAttribute(key)
+    else removeAttr(el, key)
     return
   }
 
@@ -1099,6 +1179,13 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   // so `el[key] = value` throws "has only a getter". React/Vue/Solid skip the
   // property-assignment optimization for non-HTML elements for the same reason.
   if (el.namespaceURI && el.namespaceURI !== XHTML_NS) {
+    // `textContent` is a Node PROPERTY with no content attribute; on an HTML
+    // element it takes the `key in el` route below. Writing it as an attribute
+    // here left `<text textContent="…">` empty.
+    if (key === 'textContent') {
+      el.textContent = String(value)
+      return
+    }
     // `setAttrNsAware`, not a bare `setAttribute`: this is the branch every
     // SVG/MathML attribute lands in, and it is where a QUALIFIED name
     // (`xlink:href`) needs the namespace the HTML parser would have given it.
@@ -1117,7 +1204,10 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   // marker carried its name in SSR HTML but lost it on every client mount.
   // Matches React/Vue/Solid.
   if (key.startsWith('data-') || key.startsWith('aria-')) {
-    setAttrNsAware(el, key, String(value))
+    // HTML element (the foreign branch returned above): `setAttribute`
+    // lowercases the name itself and no qualified name applies, so the plain
+    // call is exactly what `setAttrNsAware` would do here, minus its checks.
+    el.setAttribute(key, String(value))
     return
   }
 

@@ -3,8 +3,6 @@ title: 'Live Program Inlay Hints (LPIH)'
 description: Surface live runtime data — signal fire counts, effect re-runs — directly at the source line in your editor, the same way TypeScript shows inferred types.
 ---
 
-# Live Program Inlay Hints
-
 LPIH surfaces **live runtime data at the source line** in your editor — signal fire counts, effect re-run counts, subscriber counts — rendered as ghost text inlay hints. The same surface TypeScript uses for inferred types, now showing your reactive program's actual runtime behavior.
 
 ```tsx

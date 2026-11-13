@@ -3,7 +3,9 @@ title: Hotkeys
 description: Reactive keyboard shortcut management for Pyreon — scope-aware, modifier keys, sequential combos, lifecycle-managed
 ---
 
-# @pyreon/hotkeys
+<ProductPitch id="hotkeys" />
+
+<LiveDemo id="hotkeys" />
 
 <PackageBadge name="@pyreon/hotkeys" />
 
@@ -692,3 +694,11 @@ The registry (`registerHotkey`, scopes, conflict reporting) is web only. On iOS 
 | `UseHotkeyOptions` | `HotkeyOptions` with `target?: EventTarget \| (() => EventTarget \| null \| undefined)` | Options for `useHotkey`. |
 | `InputKind` | `'input' \| 'textarea' \| 'select' \| 'contenteditable'` | Element kinds for `enableOnInputs`. |
 | `HotkeyEntry` | `{ shortcut: string; combo: KeyCombo; sequence: KeyCombo[]; handler; options }` | A fully-resolved registry entry (internal shape). For sequential combos, `combo` is the first step and `sequence` holds the rest. |
+
+<BenchCallout id="hotkeys" />
+
+<ComingFrom id="hotkeys" />
+
+<InlineSell id="a11y" />
+
+<CrossSell id="hotkeys" />

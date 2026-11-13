@@ -39,7 +39,7 @@ describe('elements <List> on native', () => {
   it('a keyed object List lowers to a Stack of its rows on both targets', () => {
     const swift = transform(KEYED, { target: 'swift' })
     expect(swift.warnings).toEqual([])
-    expect(swift.code).toContain('HStack(spacing: 8) {')
+    expect(swift.code).toContain('HStack(alignment: .top, spacing: 8) {')
     expect(swift.code).toContain('ForEach(rows, id: \\.id) { pyreonItem in')
     expect(swift.code).toContain('RowView(id: pyreonItem.id, name: pyreonItem.name)')
     const kotlin = transform(KEYED, { target: 'kotlin' })

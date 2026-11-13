@@ -1,3 +1,4 @@
+import { availableParallelism } from 'node:os'
 import { defineNodeConfig } from '@pyreon/vitest-config'
 
 // The Kotlin/Swift emit tests spawn a real `kotlinc` / `swiftc` toolchain to
@@ -39,19 +40,23 @@ export default defineNodeConfig({
   coverageExclude: ['src/kotlin-daemon.ts'],
   overrides: {
     test: {
-      // One warm Kotlin compiler JVM for the whole run (see
+      // Warm Kotlin compiler JVMs for the whole run, one per worker (see
       // src/kotlin-daemon.ts): the forks pool starts a process per test
       // file, so without this every file would pay its own JVM start and
       // cold first compile. Workers attach through the env var it publishes.
       globalSetup: ['./src/tests/global-setup-kotlin-daemon.ts'],
       testTimeout: 180_000,
-      // Every worker shares one Kotlin compiler JVM. Parallel files enqueue
-      // compiles behind one another, so a cold request spends its timeout
-      // waiting for other tests and may start a fallback JVM while the shared
-      // compiler is still busy. Library relocations change the stubs and
-      // legitimately invalidate the verdict cache: cold runs must work too.
-      // Serialize files in every lane; keep all real compiles and deadlines.
-      fileParallelism: false,
+      // Files run in PARALLEL. They were serialized while every worker shared
+      // ONE compiler JVM: parallel files enqueued behind one another, so a
+      // cold request spent its timeout waiting for other tests' compiles. A
+      // JVM per worker removes the queue, and the serial run it replaces left
+      // three of a CI runner's four cores idle while a cold verdict cache
+      // (any stub or chart-engine edit) cost 37-60 minutes.
+      //
+      // Capped at four: each worker brings a compiler JVM, and every cold
+      // check is a CPU-bound compiler process of its own. `--maxWorkers`
+      // overrides it and the daemon count follows.
+      maxWorkers: Math.min(4, availableParallelism()),
     },
   },
 })

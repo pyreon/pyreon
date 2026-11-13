@@ -15,6 +15,7 @@
  */
 import { catalogReplacer, componentKey, type ComponentIntelligence, type PropControl } from '../core'
 import { relative } from 'node:path'
+import type { WorkbenchControl } from '../ui/catalog'
 
 /** A component paired with the absolute path it is imported from. */
 export interface CatalogEntrySource {
@@ -91,20 +92,22 @@ export function toWorkbenchControl(
   control: PropControl,
   /** The component's content seed for this prop — the default when the prop declares none. */
   seeded?: unknown,
-): {
-  key: string
-  label: string
-  type: 'text' | 'enum' | 'bool' | 'number' | 'color'
-  options?: readonly string[]
-  default: unknown
-  /**
-   * Threaded to the docs table. Which props are REQUIRED, and what an enum
-   * ACCEPTS, are the two facts that decide whether a usage is correct — and
-   * they are exactly what `atlas check` validates against. A props table
-   * without them documents the shape but not the contract.
-   */
-  required?: boolean
-} {
+  /** When `atlas dev` first saw this control on a rescan (see `WorkbenchControl.addedAt`). */
+  addedAt?: number,
+): WorkbenchControl {
+  const meta = {
+    ...(control.source ? { source: control.source } : {}),
+    ...(addedAt ? { addedAt } : {}),
+  }
+  return { ...toControlShape(control, seeded), ...meta }
+}
+
+/**
+ * The editor shape for one control. Threaded to the docs table: which props
+ * are REQUIRED, and what an enum ACCEPTS, are the two facts that decide
+ * whether a usage is correct — exactly what `atlas check` validates against.
+ */
+function toControlShape(control: PropControl, seeded: unknown): WorkbenchControl {
   const label = control.name
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .replace(/^./, (c) => c.toUpperCase())
@@ -193,6 +196,12 @@ export interface GenerateOptions {
    * `Core/Forms`, not `Packages/Core/Src/Forms`.
    */
   projects?: readonly { name: string; dir: string }[]
+  /**
+   * When a control first appeared during this `atlas dev` session, by
+   * component key and control key — `undefined` for one present at boot.
+   * See `ControlHistory`.
+   */
+  addedAt?: (componentKey: string, controlKey: string) => number | undefined
 }
 
 /**
@@ -329,7 +338,10 @@ export function generateCatalogModule(
     "import { h } from '@pyreon/core'",
     // The SAME materializer the verify harness uses — one implementation, so a
     // seed that verified renders identically on the canvas.
-    "import { materializeContent as __content } from '@pyreon/atlas/core'",
+    // `__merge` / `__set` / `__arg` keep the workbench's LIVE args live: an
+    // object spread or an assignment would read each getter once, at render
+    // time, and re-mount the component on every control edit.
+    "import { argReader as __arg, materializeContent as __content, mergeArgs as __merge, setArg as __set } from '@pyreon/atlas/core'",
     '',
   ]
 
@@ -446,7 +458,9 @@ export function generateCatalogModule(
     const { component } = entry
     const controls = component.controls
       .filter(isEditableControl)
-      .map((c) => toWorkbenchControl(c, component.content?.[c.name]))
+      .map((c) =>
+        toWorkbenchControl(c, component.content?.[c.name], options.addedAt?.(componentKey(component), c.name)),
+      )
     // The discovered EVENT surface. `reactive` means only "function-valued";
     // it also includes render props such as `children`/`renderItem`. Fabricating
     // one of those changes component behaviour even when the user supplied no
@@ -545,16 +559,18 @@ export function generateCatalogModule(
     const base = options.configPath
       ? `__authored(${lit(key)}, ${lit(component.name)}, "Default", {})`
       : '{}'
-    lines.push(`        const merged = { ...${JSON.stringify(component.content ?? {})}, ...${base}, ...props }`)
+    lines.push(`        const merged = __merge(${JSON.stringify(component.content ?? {})}, ${base}, props)`)
     if (reactiveProps.length > 0) {
       lines.push(`        for (const name of ${JSON.stringify(reactiveProps)}) {`)
-      lines.push(`          const user = merged[name]`)
-      lines.push(`          merged[name] = (...args) => {`)
+      // Looked up when the event fires, not now (see `argReader`).
+      lines.push(`          const user = __arg(merged, name)`)
+      lines.push(`          __set(merged, name, (...args) => {`)
       lines.push(
         `            ctx.logAction(name, args.length ? String(args[0]?.type ?? args[0]) : '')`,
       )
-      lines.push(`            if (typeof user === 'function') user(...args)`)
-      lines.push(`          }`)
+      lines.push(`            const fn = user()`)
+      lines.push(`            if (typeof fn === 'function') fn(...args)`)
+      lines.push(`          })`)
       lines.push(`        }`)
     }
     // An overlay seeded `open: true` closes the way a real app closes it:
@@ -562,10 +578,10 @@ export function generateCatalogModule(
     // dismiss the preview and the Controls panel shows it dismissed.
     if (controls.some((c) => c.key === 'open')) {
       lines.push(`        if (typeof merged.onClose !== 'function') {`)
-      lines.push(`          merged.onClose = () => { ctx.logAction('onClose', ''); ctx.setValue('open', false) }`)
+      lines.push(`          __set(merged, 'onClose', () => { ctx.logAction('onClose', ''); ctx.setValue('open', false) })`)
       lines.push(`        }`)
     }
-    lines.push(`        if (Comp.IS_ROCKETSTYLE) Object.assign(merged, ctx.pseudo)`)
+    lines.push(`        if (Comp.IS_ROCKETSTYLE) for (const [k, v] of Object.entries(ctx.pseudo)) __set(merged, k, v)`)
     lines.push(`        const { props: __p, children: __c } = __content(merged, h)`)
     if (options.configPath) {
       lines.push(`        const __el = h(__Perms, { value: ctx.can }, h(Comp, __p, ...__c))`)

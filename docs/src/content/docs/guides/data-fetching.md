@@ -3,8 +3,6 @@ title: "Data Fetching & Caching"
 description: "How to fetch, cache, mutate, and reactively refetch server data in Pyreon with @pyreon/query — the signal-native TanStack Query adapter."
 ---
 
-# Data Fetching & Caching
-
 Fetch server data, cache it, keep it fresh, and mutate it — with `@pyreon/query`, Pyreon's adapter over TanStack Query. Every result field (`data`, `error`, `isFetching`) is an independent signal, so reading one doesn't subscribe a component to the others, and a refetch patches only the DOM that actually changed.
 
 ## When to use it
