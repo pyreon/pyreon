@@ -495,10 +495,7 @@ const checks: ClaimCheck[] = [
         file: 'packages/zero/create-zero/src/prompts.ts',
         pattern: /Include @pyreon\/lint\? \((\d+) Pyreon-specific rules\)/,
       },
-      // The marketing site (pyreon.dev). These files are synced from the
-      // staging content set (09-site/content) by docs/scripts/sync-site-content.ts:
-      // fix a drift THERE first, then re-sync, or the next sync restores it.
-      // They said "133" for two rule additions because nothing compared them.
+      // pyreon.dev, synced from the 09-site staging set: see doc-claims-site.ts.
       ...SITE_LINT_RULE_CLAIMS,
     ],
   },

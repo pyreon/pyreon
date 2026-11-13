@@ -6,6 +6,10 @@ import type { ClaimSpec } from './doc-claims'
  * `docs/scripts/sync-site-content.ts`), except `extra-sections.more.ts`, the
  * typed copy of a product page's extra sections. JSON strings escape their
  * quotes, so a pattern spans `\\"` where the reader sees `"`.
+ *
+ * Fix a drift in the staging set first, then re-sync, or the next sync
+ * restores the old number. The site said "133" through two rule additions
+ * because none of these files was a claim surface.
  */
 const SITE = 'docs/src/site/content'
 
