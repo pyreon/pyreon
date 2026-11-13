@@ -68,6 +68,24 @@ describe('zero-app-checks — first-load JS', () => {
     expect(firstLoadJsGzip(join(d, 'index.html'), d).files).toBe(3)
   })
 
+  it('measures the same bytes wherever the repository is checked out', () => {
+    // A zero build writes absolute route-module paths into the client bundle.
+    // Two checkouts of one commit must measure equal, or a pull request's base
+    // (built in another directory) differs from its head with no code change.
+    const build = (root: string): string =>
+      tmp({
+        'index.html': '<script type="module" src="/assets/entry.js"></script>',
+        'assets/entry.js': `const routes=[${Array.from({ length: 12 }, (_, i) => JSON.stringify(`${root}/examples/app/src/routes/r${i}.ts`)).join(',')}]`,
+      })
+    const a = build('/home/runner/work/pyreon/pyreon')
+    const b = build('/home/runner/work/_temp/size-base-tree')
+    const raw = (d: string): number => firstLoadJsGzip(join(d, 'index.html'), d).bytes
+    expect(raw(a)).not.toBe(raw(b))
+    expect(firstLoadJsGzip(join(a, 'index.html'), a, '/home/runner/work/pyreon/pyreon').bytes).toBe(
+      firstLoadJsGzip(join(b, 'index.html'), b, '/home/runner/work/_temp/size-base-tree').bytes,
+    )
+  })
+
   it('judges a built route against its ceiling file, in the mode the environment names', () => {
     const d = app()
     const budgets = join(d, 'budgets')

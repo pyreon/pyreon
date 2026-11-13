@@ -35,6 +35,19 @@ export type SizeMode = 'pr' | 'main' | 'local'
  */
 export const NOISE_BYTES = 4
 
+/**
+ * The same band for built routes, which is wider.
+ *
+ * A route's first-load JS is about ten chunks that import each other by
+ * content-hashed file name. A zero build writes absolute route-module paths
+ * into the client route table, so the same commit built in another directory
+ * gets different hashes; the measurement strips the paths, but the hashed
+ * names still compress differently. Measured on ssr-showcase, one commit in
+ * two directories: 1 to 5 B per route. The base of a pull request is always
+ * built in another directory than its head.
+ */
+export const ROUTE_NOISE_BYTES = 32
+
 /** A pull request may grow an entry by this fraction of its base size … */
 export const GROWTH_ALLOWANCE_FRACTION = 0.02
 /** … and never by less than this, so a tiny entry is not held to a few bytes. */
@@ -131,7 +144,7 @@ const pct = (part: number, whole: number): string =>
  * Judge one entry. `base` is required in `pr` mode (pass `undefined` sizes for
  * an entry that is new) and ignored otherwise.
  */
-export function judgeEntry(mode: SizeMode, entry: SizeEntry, base?: BaseEntry): Verdict {
+export function judgeEntry(mode: SizeMode, entry: SizeEntry, base?: BaseEntry, noise: number = NOISE_BYTES): Verdict {
   const { id, size, ceiling } = entry
   const baseSize = mode === 'pr' ? base?.size : undefined
   const make = (code: VerdictCode, fail: boolean, message: string): Verdict => ({
@@ -152,7 +165,7 @@ export function judgeEntry(mode: SizeMode, entry: SizeEntry, base?: BaseEntry): 
     )
   }
 
-  const over = size > ceiling + NOISE_BYTES
+  const over = size > ceiling + noise
   const overText = `${size} B is over its ceiling of ${ceiling} B by ${size - ceiling} B (${pct(size - ceiling, ceiling)})`
 
   if (mode === 'local') {
@@ -185,7 +198,7 @@ export function judgeEntry(mode: SizeMode, entry: SizeEntry, base?: BaseEntry): 
   }
 
   const growth = size - base.size
-  const grew = growth > NOISE_BYTES
+  const grew = growth > noise
   const ceilingChanged = base.ceiling === undefined || base.ceiling !== ceiling
   const delta = `${growth >= 0 ? '+' : ''}${growth} B (${base.size} → ${size} B)`
 
@@ -244,6 +257,7 @@ export function judgeFamily(
   mode: SizeMode,
   entries: readonly SizeEntry[],
   base: BaseFamily | undefined,
+  noise: number = NOISE_BYTES,
 ): Verdict[] {
   if (mode === 'pr' && base === undefined) {
     throw new Error(
@@ -251,9 +265,9 @@ export function judgeFamily(
     )
   }
   return entries.map((entry) => {
-    if (mode !== 'pr' || base === undefined) return judgeEntry(mode, entry)
+    if (mode !== 'pr' || base === undefined) return judgeEntry(mode, entry, undefined, noise)
     const size = base.sizes === null ? entry.size : base.sizes[entry.id]
-    return judgeEntry(mode, entry, { size, ceiling: base.ceilings[entry.id] })
+    return judgeEntry(mode, entry, { size, ceiling: base.ceilings[entry.id] }, noise)
   })
 }
 

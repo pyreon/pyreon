@@ -63,6 +63,16 @@ function seedLib(base: string): void {
       if (existsSync(lib) && existsSync(target)) cpSync(lib, join(target, 'lib'), { recursive: true })
     }
   }
+  // The compiler's native binary is an untracked build artifact. Route cells
+  // compile through it when it exists and through the JS backend when it does
+  // not, and the two emit a few bytes apart, so the base must use whichever
+  // backend the head has. (CI's Build job has none at this point.)
+  const native = join('packages', 'core', 'compiler', 'native')
+  if (existsSync(join(REPO_ROOT, native)) && existsSync(join(base, native))) {
+    for (const file of readdirSync(join(REPO_ROOT, native))) {
+      if (file.endsWith('.node')) cpSync(join(REPO_ROOT, native, file), join(base, native, file))
+    }
+  }
   const manifest = join(REPO_ROOT, '.bootstrap-cache.json')
   if (existsSync(manifest)) cpSync(manifest, join(base, '.bootstrap-cache.json'))
 }

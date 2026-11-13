@@ -27,6 +27,7 @@ import {
   judgeFamily,
   resolveBasePath,
   resolveSizeMode,
+  ROUTE_NOISE_BYTES,
   type SizeBaseFile,
   type SizeMode,
 } from './size-budget-policy'
@@ -113,8 +114,22 @@ export function htmlEntryScripts(html: string, clientDir: string, base = '/'): s
   return [...out]
 }
 
-/** Gzipped bytes of the first-load JS closure for a page's HTML. */
-export function firstLoadJsGzip(htmlPath: string, clientDir: string): { bytes: number; files: number } {
+/**
+ * Gzipped bytes of the first-load JS closure for a page's HTML.
+ *
+ * `checkoutRoot`, when given, is removed from the code before it is measured.
+ * A zero build writes the absolute path of every route module into the client
+ * route table, so the same commit built in two directories differs (measured:
+ * 374 raw bytes, 13 to 16 B gzipped, between two checkouts of one commit of
+ * ssr-showcase). A size that depends on where the repository is checked out is
+ * not a property of the code, and the base of a pull request is necessarily
+ * built in a different directory than its head.
+ */
+export function firstLoadJsGzip(
+  htmlPath: string,
+  clientDir: string,
+  checkoutRoot?: string,
+): { bytes: number; files: number } {
   const seen = new Set<string>()
   const queue = htmlEntryScripts(readFileSync(htmlPath, 'utf-8'), clientDir)
   if (queue.length === 0) {
@@ -126,9 +141,10 @@ export function firstLoadJsGzip(htmlPath: string, clientDir: string): { bytes: n
     if (seen.has(f)) continue
     seen.add(f)
     if (!existsSync(f)) throw new Error(`[zero-app-checks] ${htmlPath} references missing ${f}`)
-    const code = readFileSync(f)
+    const raw = readFileSync(f, 'utf-8')
+    const code = checkoutRoot ? raw.replaceAll(checkoutRoot, '') : raw
     bytes += gzipSync(code, { level: 9 }).length
-    for (const spec of staticImports(code.toString('utf-8'))) queue.push(resolve(dirname(f), spec))
+    for (const spec of staticImports(raw)) queue.push(resolve(dirname(f), spec))
   }
   return { bytes, files: seen.size }
 }
@@ -145,10 +161,11 @@ export function measureRoutes(
   example: string,
   clientDir: string,
   routes: Record<string, string>,
+  checkoutRoot?: string,
 ): Record<string, number> {
   const sizes: Record<string, number> = {}
   for (const [route, html] of Object.entries(routes)) {
-    sizes[`${example}:${route}`] = firstLoadJsGzip(html, clientDir).bytes
+    sizes[`${example}:${route}`] = firstLoadJsGzip(html, clientDir, checkoutRoot).bytes
   }
   return sizes
 }
@@ -176,6 +193,7 @@ export function judgeRouteSizes(
     mode,
     Object.entries(sizes).map(([id, size]) => ({ id, size, ceiling: ceilings[id] })),
     base,
+    ROUTE_NOISE_BYTES,
   )
   const { lines, failed } = formatVerdicts('route first-load JS', mode, verdicts)
   const unmeasured = Object.keys(ceilings).filter((id) => !(id in sizes))
@@ -198,8 +216,9 @@ export function checkRouteSizes(
   clientDir: string,
   routes: Record<string, string>,
   budgetsDir: string,
+  checkoutRoot?: string,
 ): void {
-  const sizes = measureRoutes(example, clientDir, routes)
+  const sizes = measureRoutes(example, clientDir, routes, checkoutRoot)
   const out = process.env['PYREON_SIZE_ROUTES_OUT']
   if (out) {
     recordRouteSizes(out, sizes)

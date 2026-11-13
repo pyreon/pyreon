@@ -992,6 +992,7 @@ const MATRIX: Cell[] = [
         dist,
         routeHtmlMap(dist, SSR_SHOWCASE_SIZED_ROUTES),
         sizeBudgetsDir(REPO_ROOT),
+        REPO_ROOT,
       )
       assertClientClean(dist, {
         forbiddenSentinels: ['SERVER_ONLY_SENTINEL_q7x9', 'ACTION_HANDLER_SENTINEL_z3k8'],
@@ -2238,7 +2239,7 @@ async function runCell(cell: Cell): Promise<CellResult> {
     if (MEASURE_ROUTES_TO) {
       recordRouteSizes(
         MEASURE_ROUTES_TO,
-        measureRoutes(cell.example, distDir, routeHtmlMap(distDir, cell.ssgPaths ?? [])),
+        measureRoutes(cell.example, distDir, routeHtmlMap(distDir, cell.ssgPaths ?? []), REPO_ROOT),
       )
     } else {
       // Smoke (may be async — platform-function cells import + invoke the entry).

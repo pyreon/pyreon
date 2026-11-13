@@ -28,6 +28,7 @@ import {
   NOISE_BYTES,
   resolveBasePath,
   resolveSizeMode,
+  ROUTE_NOISE_BYTES,
 } from '../../../../../scripts/size-budget-policy'
 
 const entry = (size: number, ceiling: number | undefined) => ({ id: '@pyreon/x', size, ceiling })
@@ -118,6 +119,19 @@ describe('pr mode: a change is judged on the bytes IT adds', () => {
     // The base has sizes but no ceiling for the entry: the ceiling is new on
     // this change, so the ceiling is the rule.
     expect(judgeEntry('pr', entry(10300, 11000), { size: 10000, ceiling: undefined }).fail).toBe(false)
+  })
+})
+
+describe('the noise band is per family', () => {
+  it('a route over its ceiling on the base is not failed for build-directory jitter', () => {
+    // One commit built in two directories measured 1 to 5 B apart per route:
+    // more than the package band, and the base is always built elsewhere.
+    const drifted = { id: 'app:/', size: 57643, ceiling: 57000 }
+    expect(judgeEntry('pr', drifted, { size: 57638, ceiling: 57000 }).fail).toBe(true)
+    expect(judgeEntry('pr', drifted, { size: 57638, ceiling: 57000 }, ROUTE_NOISE_BYTES).fail).toBe(false)
+    // Real growth on top of the breach still fails.
+    const grown = { ...drifted, size: 57638 + ROUTE_NOISE_BYTES + 1 }
+    expect(judgeEntry('pr', grown, { size: 57638, ceiling: 57000 }, ROUTE_NOISE_BYTES).fail).toBe(true)
   })
 })
 
