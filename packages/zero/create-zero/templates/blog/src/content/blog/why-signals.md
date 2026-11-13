@@ -8,7 +8,7 @@ tags: [pyreon, signals]
 A Pyreon component runs **once**. When state changes, the framework does not call the component again and diff the result; the signal that changed updates the one text node or attribute that reads it.
 
 ```tsx
-import { signal } from "@pyreon/reactivity"
+import { signal } from '@pyreon/reactivity'
 
 function Counter() {
   const count = signal(0)

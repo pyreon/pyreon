@@ -58,8 +58,10 @@ export function generateViteConfig(config: ProjectConfig): string {
     }),`
     : ''
 
-  return `import pyreon from '@pyreon/vite-plugin'
-import zero from '@pyreon/zero/server'${adapterImport}${contentImport}
+  // oxfmt sorts imports by specifier: `@pyreon/zero-content/plugin` comes
+  // before `@pyreon/zero/server` ('-' sorts before '/').
+  return `import pyreon from '@pyreon/vite-plugin'${contentImport}
+import zero from '@pyreon/zero/server'${adapterImport}
 
 // One config surface: fonts, SEO, favicons, og-images, and AI discoverability
 // are all fields on zero() — no separate plugin imports needed.
