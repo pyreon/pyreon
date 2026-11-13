@@ -12,7 +12,8 @@
  *   - gen-native-crossing-table (per-package native crossing table drifted from the coverage registry)
  *   - check-changeset-required (no changeset for published-pkg source change)
  *   - check-no-major-changesets (a `major` bump is illegal while Pyreon is 0.x)
- *   - check-bundle-budgets   (new publishable package missing entry)
+ *   - check-bundle-budgets   (local mode: a package that fails to bundle or has no
+ *                             ceiling; over-ceiling sizes are printed, CI judges them)
  *   - check-distribution    (sideEffects / source-map invariants)
  *   - check-declarations    (published .d.ts: imports declared + strict compile)
  *   - check-esm-only        (no CJS-enabling export condition)

@@ -33,15 +33,16 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { isUpdateMode, shouldLowerUnscoped } from '../../../../../scripts/bundle-budget-policy'
+import { isUpdateMode } from '../../../../../scripts/bundle-budget-policy'
+import { nextCeiling } from '../../../../../scripts/size-budget-policy'
 
 describe('--update lowers only when the package is named', () => {
   it('an UNSCOPED --update never lowers — a stale lib/ can only measure low', () => {
-    expect(shouldLowerUnscoped(false)).toBe(false)
+    expect(nextCeiling(15872, 12288, false)).toEqual({ value: 15872, action: 'refused' })
   })
 
   it('a SCOPED --update=@pyreon/pkg lowers — naming it is the deliberate act', () => {
-    expect(shouldLowerUnscoped(true)).toBe(true)
+    expect(nextCeiling(15872, 12288, true)).toEqual({ value: 13517, action: 'lower' })
   })
 })
 

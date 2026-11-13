@@ -1,0 +1,7 @@
+{
+  "package": "@pyreon/core",
+  "bundle": 8232,
+  "imports": {
+    "jsx": 683
+  }
+}

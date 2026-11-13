@@ -4,8 +4,10 @@
  *
  * For every published `@pyreon/*` package, bundles the BUILT main entry
  * (`lib/index.js` — the exact code that ships to npm, not the TS source)
- * with Bun's bundler (minified, workspace-externalized) and asserts the
- * gzipped size is ≤ the budget locked in `scripts/bundle-budgets.json`.
+ * with Bun's bundler (minified, workspace-externalized) and judges the
+ * gzipped size: on a pull request against the same package on the commit it
+ * merges into, on the default branch against the package's ceiling in
+ * `scripts/size-budgets/packages/`. The rules are in `size-budget-policy.ts`.
  *
  * A gate that derives a NUMBER has to be able to say the number is invalid,
  * so every bundle is checked before it is compared to a budget — see
@@ -20,9 +22,9 @@
  * unpacked. The 6.8 MB number was misleading (3.8 MB was source maps,
  * the elk lazy-chunk is correctly architected) — but the audit was
  * the wrong shape of catch. We don't want eyeballed `du -sh` to be
- * the tool that flags bundle regressions. A locked-budget CI gate is
- * the structural answer: any PR that grows a main entry past its
- * budget fails to merge until the budget is explicitly bumped.
+ * the tool that flags bundle regressions. A CI gate is the structural
+ * answer: a PR that grows a main entry past the per-PR allowance fails
+ * until it accepts the growth by setting that package's ceiling.
  *
  * Externalization: bundling externalizes `@pyreon/*` and `node:*` so
  * each measurement reflects the UNIQUE bytes that package adds to a
@@ -32,10 +34,13 @@
  * they're only fetched when the consumer invokes the feature.
  *
  * Run:
- *   bun run check-bundle-budgets          # exit non-zero if over budget
- *   bun run check-bundle-budgets --json   # machine-readable
- *   bun run check-bundle-budgets --update # regenerate budgets from current sizes
- *                                         # (use AFTER intentional growth)
+ *   bun run check-bundle-budgets                       # local: build and measurement failures, ceilings reported
+ *   bun run check-bundle-budgets --mode=main           # fail on any package over its ceiling
+ *   bun run check-bundle-budgets --mode=pr --base=<f>  # fail on this change's own growth (f: size-base.ts output)
+ *   bun run check-bundle-budgets --json                # machine-readable
+ *   bun run check-bundle-budgets --measure-only --json # sizes only, no ceilings read
+ *   bun run check-bundle-budgets --update=@pyreon/pkg  # accept that package's size: set its ceiling
+ *   bun run check-bundle-budgets --update              # seed new packages, raise the ones over
  */
 
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -46,8 +51,17 @@ import { gzipSync } from 'node:zlib'
 import { staticClosureCode } from './bundle-static-closure'
 import { parseSync, Visitor } from 'oxc-parser'
 
-import { isUpdateMode, shouldLowerUnscoped } from './bundle-budget-policy'
+import { isUpdateMode } from './bundle-budget-policy'
 import { isModuleEntry } from './is-entry'
+import {
+  formatVerdicts,
+  judgeFamily,
+  nextCeiling,
+  resolveBasePath,
+  resolveSizeMode,
+  type SizeBaseFile,
+} from './size-budget-policy'
+import { ceilingFile, loadCeilings, resolveBudgetsDir, writeCeiling } from './size-budget-store'
 
 // Minimal ambient for Bun's bundler, so this file stays importable from a
 // program without `@types/bun`. Its sibling `check-import-budgets.ts` already
@@ -80,19 +94,6 @@ declare const Bun: {
 // `import.meta.dir` is absent from TypeScript's `ImportMeta` unless a program
 // declares bun types, so reaching for it breaks any tsconfig that does not.
 const REPO_ROOT = resolve(import.meta.dirname, '..')
-/**
- * Override the budgets file. Companion to `--packages-root=`, and used by the
- * same regression test: the thin-headroom ratchet is a property of the FILE, so
- * it can only be exercised against a controlled one. Production runs never pass it.
- */
-function getBudgetsPath(): string {
-  const flag = process.argv.find((arg) => arg.startsWith('--budgets='))
-  if (flag) return resolve(flag.slice('--budgets='.length))
-  return join(REPO_ROOT, 'scripts', 'bundle-budgets.json')
-}
-
-const BUDGETS_PATH = getBudgetsPath()
-
 /**
  * Process-scoped scratch root for bundler output and the barrel-safe entries.
  *
@@ -549,107 +550,6 @@ const REACH_RATIO_FLOOR_BYTES = 4096
 const MIN_REACH_RATIO = 0.05
 
 /**
- * The minimum headroom every budget carries: 1.5% of the measured size, and
- * never less than 64 B. A budget set to within a few bytes of today's size
- * turns the next unrelated PR that adds a line to the package red, so a budget
- * that close is reported as a failure of the BUDGET, in the same place as the
- * other measurement-validity checks above.
- *
- * The verdict is a function of the measured bytes and the budget only — never
- * of the machine. Until 2026-11 a run outside CI inflated its measurement by a
- * presumed 1.1% "macOS is smaller than ubuntu" delta before judging. That delta
- * no longer exists: with the pinned bun, the same `lib/` bundles and gzips to
- * identical bytes on macOS arm64 and the ubuntu runner (`@pyreon/core` read
- * 7867 B in both on 2026-11-10; #4266 found every package bit-identical across
- * macOS arm64, Linux arm64 and Linux x64). The deltas observed in 2026-09 came
- * from mismatched bun versions and stale `lib/` trees, not from the platform.
- * The inflation therefore made the local verdict STRICTER than CI's on the same
- * bytes: `@pyreon/server` (6139 B measured on both, budget 6280) passed CI and
- * failed every local `validate-fast` (#4288). A stale `lib/` is the remaining
- * way two machines disagree, and the fix for that is rebuilding, not a fudge
- * factor.
- */
-const HEADROOM_FRACTION = 0.015
-const HEADROOM_FLOOR_BYTES = 64
-
-/**
- * Prints the KNOWN thin-headroom debt on every run, green or red.
- *
- * Grandfathered entries are visible rather than silent: a list that is only
- * consulted when something fails is a list nobody reads, and the whole failure
- * mode here is that the condition is invisible until CI disagrees with you.
- */
-function printThinHeadroom(
-  known: { name: string; current: number; budget: number; headroom: number; required: number }[],
-  recovered: string[],
-): void {
-  /* eslint-disable no-console */
-  if (known.length > 0) {
-    console.log(
-      `  ⚠ ${known.length} budget(s) sit below the ~${(HEADROOM_FRACTION * 100).toFixed(1)}% minimum headroom (grandfathered in "_thinHeadroom"):`,
-    )
-    for (const t of known) {
-      console.log(
-        `      ${t.name}: ${t.headroom} B of headroom, needs ${Math.ceil(t.required)} B — raise to ${suggestedBudget(t.current)} B to retire it`,
-      )
-    }
-  }
-  for (const name of recovered) {
-    console.log(
-      `  ✓ ${name} now has enough headroom — remove it from "_thinHeadroom" in scripts/bundle-budgets.json (the list only shrinks)`,
-    )
-  }
-  /* eslint-enable no-console */
-}
-
-/**
- * Whether a budget carries the minimum headroom over a measurement.
- *
- * Takes no notion of which machine measured: the same bytes get the same
- * verdict in CI and on a laptop. See {@link HEADROOM_FRACTION} for why the
- * former "inflate when not in CI" arm was removed.
- */
-export function headroomIsSufficient(measured: number, budget: number): boolean {
-  return budget - measured >= requiredHeadroom(measured)
-}
-
-/**
- * Is this budget THIN — under budget, but without the minimum headroom?
- *
- * A budget the measurement already exceeds is a violation, not thin. One
- * predicate, used by the loop and tested.
- */
-export function isThinHeadroom(measured: number, budget: number): boolean {
-  return measured <= budget && !headroomIsSufficient(measured, budget)
-}
-
-/** The minimum headroom a budget needs over a measurement. */
-export function requiredHeadroom(measured: number): number {
-  return Math.max(HEADROOM_FLOOR_BYTES, measured * HEADROOM_FRACTION)
-}
-
-/**
- * How much a SUGGESTED budget carries beyond the bare minimum.
- *
- * Deliberately larger than {@link HEADROOM_FRACTION}: a suggestion pinned to
- * the minimum turns red again with the next PR that adds a few bytes to the
- * package, and when the 2026-09 platform deltas were real (mismatched bun
- * versions, measured at 1.66% on `@pyreon/toast`) it was short three times in
- * one afternoon. Being generous costs a few dozen bytes of slack; being short
- * costs a CI round trip.
- */
-const SUGGESTION_MARGIN = 0.03
-
-/**
- * A budget to set: {@link SUGGESTION_MARGIN} over the measurement, plus the
- * minimum headroom that larger figure would be asked for.
- */
-export function suggestedBudget(measured: number): number {
-  const worstCaseRemote = measured * (1 + SUGGESTION_MARGIN)
-  return Math.ceil(worstCaseRemote + requiredHeadroom(worstCaseRemote))
-}
-
-/**
  * Decides whether a bundle is a MEASUREMENT or a measurement FAILURE, and
  * returns the failure's explanation (or `null` when the number is sound).
  *
@@ -971,12 +871,26 @@ async function main(): Promise<void> {
     })),
   ].sort((a, b) => a.name.localeCompare(b.name))
 
-  // ── Update mode: write fresh budgets and exit ─────────────────────
+  const budgetsDir = resolveBudgetsDir(args, REPO_ROOT)
+
+  // ── Measure only: sizes for another program (size-base.ts), no verdict ──
+  //
+  // Reads no ceilings, so the tree being measured does not need any: the base
+  // of a pull request is measured with THIS script, and a base commit is not
+  // required to carry the same layout. Build failures are reported in the JSON
+  // and are the caller's to judge, so this exits 0.
+  if (args.includes('--measure-only')) {
+    // eslint-disable-next-line no-console
+    if (jsonMode) console.log(JSON.stringify({ measured, failures, unmeasurable, repaired, env: measureEnv }, null, 2))
+    return
+  }
+
+  // ── Update mode: set ceilings from the measurement and exit ───────────
   if (updateMode) {
     if (unmeasurable.length > 0) {
       // eslint-disable-next-line no-console
       console.error(
-        `✗ Cannot regenerate budgets — ${unmeasurable.length} package(s) could not be measured:`,
+        `✗ Cannot set ceilings — ${unmeasurable.length} package(s) could not be measured:`,
       )
       for (const u of unmeasurable) {
         // eslint-disable-next-line no-console
@@ -986,7 +900,7 @@ async function main(): Promise<void> {
     }
     if (failures.length > 0) {
       // eslint-disable-next-line no-console
-      console.error(`✗ Cannot regenerate budgets — ${failures.length} package(s) failed to bundle:`)
+      console.error(`✗ Cannot set ceilings — ${failures.length} package(s) failed to bundle:`)
       for (const f of failures) {
         // eslint-disable-next-line no-console
         console.error(`  ${f.name}: ${f.error.split('\n')[0]}`)
@@ -997,98 +911,35 @@ async function main(): Promise<void> {
       )
       process.exit(1)
     }
-    // Previous budgets, so `--update` can be a RATCHET rather than a reset.
-    //
-    // It used to rewrite EVERY entry to `current × 1.25` unconditionally, which
-    // meant a PR that legitimately grew ONE package silently RAISED the budget
-    // of every other package that happened to sit below its own — handing out
-    // headroom nobody asked for, buried in a ~50-line diff no reviewer can read
-    // as anything but noise. That is the same failure the lint baseline is
-    // designed against: a ceiling that can be lifted wholesale is not a ratchet.
-    let previous: Record<string, number> = {}
-    try {
-      const raw = JSON.parse(readFileSync(BUDGETS_PATH, 'utf8')) as Record<string, unknown>
-      for (const [k, v] of Object.entries(raw)) {
-        if (!k.startsWith('_') && typeof v === 'number') previous[k] = v
-      }
-    } catch {
-      previous = {}
+    // `--update=@pyreon/foo` names one package: its ceiling is set from the
+    // measurement, up or down, and that edit is what accepts growth on a pull
+    // request. Unnamed, `--update` is a ratchet that only seeds and raises —
+    // see `nextCeiling` for why it never lowers.
+    const only = args.find((a) => a.startsWith('--update='))?.slice('--update='.length)
+    if (only !== undefined && !measured.some((r) => r.name === only)) {
+      // eslint-disable-next-line no-console
+      console.error(`✗ --update=${only}: no such measured package. Names are the package.json "name", e.g. @pyreon/core.`)
+      process.exit(1)
     }
-    // Optional scope: `--update=@pyreon/foo` touches only that package. Useful
-    // when you know exactly which budget your change moved.
+    const previous = loadCeilings(budgetsDir).bundle
+    const changed: string[] = []
     const refused: string[] = []
-    const onlyArg = args.find((a) => a.startsWith('--update='))
-    const only = onlyArg?.slice('--update='.length)
-
-    let carriedThinHeadroom: unknown
-    try {
-      carriedThinHeadroom = (
-        JSON.parse(readFileSync(BUDGETS_PATH, 'utf8')) as Record<string, unknown>
-      )._thinHeadroom
-    } catch {
-      carriedThinHeadroom = undefined
-    }
-    const budgets: Record<string, unknown> = {
-      _doc: "Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, and every bare-module import auto-collected from each package's lib/ tree — this is the unique code each package adds to a consumer bundle. Seeded at 25% headroom. `--update` is a RATCHET: it RAISES a budget only for a package that is actually OVER (intentional growth, reviewed in the same PR), and LOWERS one only when you NAME it (`--update=@pyreon/pkg`) — a stale or partial lib/ measures SMALLER than the real package, so an unscoped drop is far more likely to be a bad measurement than a real shrink. Everything else stays byte-identical.",
-      _units: 'bytes (gzipped)',
-      ...(carriedThinHeadroom === undefined ? {} : { _thinHeadroom: carriedThinHeadroom }),
-    }
-    const raised: string[] = []
-    const lowered: string[] = []
-    const seeded: string[] = []
     for (const r of measured) {
-      const ideal = Math.ceil((r.gzip * 1.25) / 256) * 256
+      if (only !== undefined && r.name !== only) continue
       const prev = previous[r.name]
-      if (only !== undefined && r.name !== only && prev !== undefined) {
-        budgets[r.name] = prev
+      const { value, action } = nextCeiling(prev, r.gzip, only !== undefined)
+      if (action === 'refused') {
+        refused.push(`${r.name} ${prev} → ${value} (measured ${r.gzip})`)
         continue
       }
-      if (prev === undefined) {
-        budgets[r.name] = ideal
-        seeded.push(`${r.name} → ${ideal}`)
-      } else if (r.gzip > prev) {
-        // OVER budget: this is the intentional-growth case the doc describes.
-        budgets[r.name] = ideal
-        raised.push(`${r.name} ${prev} → ${ideal} (measured ${r.gzip})`)
-      } else if (ideal < prev) {
-        // Shrank: tighten. A ratchet that never lowers stops protecting anything.
-        //
-        // But a LARGE apparent shrink is almost never a real one — it is a stale
-        // or partial `lib/`, which `--update` otherwise commits as truth. That
-        // happened: `@pyreon/validate` was ratcheted 15872 → 15360, a value that
-        // implies a ~12288 B measurement, while the package really measures
-        // ~15016 B locally and 15473 B on CI. The budget landed BELOW what CI
-        // measures, so the gate failed on a package the branch never touched —
-        // twice, on two different branches, because the wrong value was committed
-        // and travelled.
-        //
-        // A drop past this threshold is therefore treated as unmeasured rather
-        // than as shrinkage: keep the previous budget and say why. Real shrinkage
-        // of this size is rare and gets there in steps, or via
-        // `--update=@pyreon/pkg`, which is scoped and deliberate.
-        if (!shouldLowerUnscoped(only !== undefined)) {
-          const dropPct = ((prev - ideal) / prev) * 100
-          budgets[r.name] = prev
-          refused.push(`${r.name} ${prev} → ${ideal} (−${dropPct.toFixed(1)}%, measured ${r.gzip})`)
-          continue
-        }
-        budgets[r.name] = ideal
-        lowered.push(`${r.name} ${prev} → ${ideal}`)
-      } else {
-        // Within budget and not meaningfully smaller — leave it EXACTLY alone,
-        // so the diff names only what actually moved.
-        budgets[r.name] = prev
-      }
+      if (action === 'keep') continue
+      const file = writeCeiling(budgetsDir, 'bundle', r.name, value)
+      const mark = action === 'lower' ? '▼' : action === 'seed' ? '+' : '▲'
+      changed.push(`${mark} ${r.name} ${prev ?? 'none'} → ${value} (measured ${r.gzip}) in ${file}`)
     }
-    writeFileSync(BUDGETS_PATH, JSON.stringify(budgets, null, 2) + '\n')
     /* eslint-disable no-console */
-    const unchanged = measured.length - raised.length - lowered.length - seeded.length
-    console.log(
-      `✓ bundle budgets — ${raised.length} raised, ${lowered.length} lowered, ${seeded.length} seeded, ${unchanged} unchanged`,
-    )
-    for (const l of raised) console.log(`  ▲ ${l}`)
-    for (const l of lowered) console.log(`  ▼ ${l}`)
-    for (const l of seeded) console.log(`  + ${l}`)
+    console.log(`✓ bundle ceilings — ${changed.length} changed, ${measured.length - changed.length} unchanged`)
+    for (const l of changed) console.log(`  ${l}`)
     for (const l of refused) {
       console.log(
         `  ⚠ not lowered: ${l} — an unscoped --update never lowers, because a stale \`lib/\` can only measure LOW. If this shrink is real, scope it: --update=${l.split(' ')[0]}`,
@@ -1098,18 +949,35 @@ async function main(): Promise<void> {
     return
   }
 
-  // ── Check mode: load budgets, compare, fail on drift ─────────────
-  let budgetsRaw: string
-  try {
-    budgetsRaw = readFileSync(BUDGETS_PATH, 'utf8')
-  } catch {
-    // eslint-disable-next-line no-console
-    console.error(
-      '✗ scripts/bundle-budgets.json not found. Run `bun run check-bundle-budgets --update` to seed it.',
-    )
-    process.exit(1)
+  // ── Check mode: judge every measured package ─────────────────────────
+  const mode = resolveSizeMode(args, process.env)
+  const ceilings = loadCeilings(budgetsDir).bundle
+  const basePath = resolveBasePath(args, process.env)
+  let base: SizeBaseFile | undefined
+  if (mode === 'pr') {
+    if (basePath === undefined) {
+      // eslint-disable-next-line no-console
+      console.error(
+        '✗ check-bundle-budgets: pr mode needs the base measurement. Run `bun scripts/size-base.ts --out=<file>` and pass --base=<file> (or PYREON_SIZE_BASE).',
+      )
+      process.exit(1)
+    }
+    try {
+      base = JSON.parse(readFileSync(basePath, 'utf8')) as SizeBaseFile
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `✗ check-bundle-budgets: cannot read the base measurement at ${basePath} (${err instanceof Error ? err.message : String(err)}). The "Prepare size base" step writes it; fix that step first.`,
+      )
+      process.exit(1)
+    }
   }
-  const budgets = JSON.parse(budgetsRaw) as Record<string, number | string | object>
+
+  const verdicts = judgeFamily(
+    mode,
+    measured.map((r) => ({ id: r.name, size: r.gzip, ceiling: ceilings[r.name] })),
+    base?.bundle,
+  )
 
   interface Violation {
     name: string
@@ -1117,196 +985,85 @@ async function main(): Promise<void> {
     budget: number
     overBy: number
     overByPct: number
+    code: string
+    message: string
   }
-  interface MissingBudget {
-    name: string
-    current: number
-  }
-
+  // `violations` and `missing` keep the shape `pyreon doctor` reads. A growth
+  // failure is a violation too: `budget` is then the size the change was
+  // allowed to reach.
   const violations: Violation[] = []
-  const missing: MissingBudget[] = []
-
-  // ── Thin budgets (headroom below the minimum, see HEADROOM_FRACTION) ──
-  //
-  // Ratcheted rather than gated outright, and the distinction is deliberate: a
-  // thin budget is a defect in the BUDGET FILE, not in the package, so failing
-  // on the ones that already exist would redden every unrelated PR — the
-  // red-on-arrival shape this repo treats as a dead gate. What must not happen
-  // is CREATING a new one, so an entry that is thin and not grandfathered in
-  // `_thinHeadroom` fails, and the list can only shrink.
-  const thinRaw = budgets._thinHeadroom
-  const grandfathered = new Set(
-    thinRaw && typeof thinRaw === 'object' && !Array.isArray(thinRaw)
-      ? Object.keys(thinRaw as Record<string, string>).filter((k) => !k.startsWith('_'))
-      : [],
-  )
-  interface ThinBudget {
-    name: string
-    current: number
-    budget: number
-    headroom: number
-    required: number
-  }
-  const thinNew: ThinBudget[] = []
-  const thinKnown: ThinBudget[] = []
-  const recovered: string[] = []
-
-  for (const r of measured) {
-    const budget = budgets[r.name]
-    if (typeof budget !== 'number') {
-      missing.push({ name: r.name, current: r.gzip })
+  const missing: { name: string; current: number }[] = []
+  for (const v of verdicts) {
+    if (!v.fail) continue
+    if (v.code === 'missing-ceiling' || v.ceiling === undefined) {
+      missing.push({ name: v.id, current: v.size })
       continue
     }
-    // Judged on the measured bytes alone, with no `CI` branch: the same bytes
-    // must get the same verdict on every machine (see HEADROOM_FRACTION).
-    const headroom = budget - r.gzip
-    const required = requiredHeadroom(r.gzip)
-    if (isThinHeadroom(r.gzip, budget)) {
-      const entry = { name: r.name, current: r.gzip, budget, headroom, required }
-      if (grandfathered.has(r.name)) thinKnown.push(entry)
-      else thinNew.push(entry)
-    } else if (grandfathered.has(r.name)) {
-      recovered.push(r.name)
-    }
-    if (r.gzip > budget) {
-      const overBy = r.gzip - budget
-      violations.push({
-        name: r.name,
-        current: r.gzip,
-        budget,
-        overBy,
-        overByPct: (overBy / budget) * 100,
-      })
-    }
+    const limit = v.code === 'growth' && v.baseSize !== undefined ? v.baseSize : v.ceiling
+    const overBy = v.size - limit
+    violations.push({
+      name: v.id,
+      current: v.size,
+      budget: limit,
+      overBy,
+      overByPct: limit > 0 ? (overBy / limit) * 100 : 0,
+      code: v.code,
+      message: v.message,
+    })
   }
+  const notes = verdicts.filter((v) => !v.fail && v.code !== 'ok').map((v) => ({ name: v.id, code: v.code, message: v.message }))
 
   if (jsonMode) {
     // eslint-disable-next-line no-console
     console.log(
       JSON.stringify(
-        {
-          violations,
-          missing,
-          failures,
-          unmeasurable,
-          repaired,
-          thinNew,
-          thinKnown,
-          recovered,
-          measured,
-          env: measureEnv,
-        },
+        { mode, violations, missing, failures, unmeasurable, repaired, notes, measured, env: measureEnv },
         null,
         2,
       ),
     )
-  } else if (
-    violations.length === 0 &&
-    missing.length === 0 &&
-    failures.length === 0 &&
-    unmeasurable.length === 0 &&
-    thinNew.length === 0
-  ) {
-    // eslint-disable-next-line no-console
-    console.log(`✓ All ${measured.length} package(s) within budget.`)
+  } else {
+    /* eslint-disable no-console */
+    const { lines } = formatVerdicts('bundle sizes', mode, verdicts)
+    for (const line of lines) (line.startsWith('✓') || line.startsWith('  ·') ? console.log : console.error)(line)
+    if (missing.length > 0) {
+      console.error(
+        `\nNew package? Run \`bun run check-bundle-budgets --update\` to seed its ceiling in scripts/size-budgets/packages/, and review the value in the diff.`,
+      )
+    }
+    if (violations.length > 0) {
+      console.error(
+        `\nCeilings live one file per package (e.g. scripts/size-budgets/${ceilingFile('bundle', violations[0]?.name ?? '@pyreon/core')}); \`--update=<package>\` writes the value, never edit it by hand.`,
+      )
+    }
     if (repaired.length > 0) {
       // The repair is reported rather than applied silently: a barrel that only
       // measures correctly through the wrapper is a real condition of the built
       // output, and a gate that quietly heals one hides it until it changes shape.
-      // eslint-disable-next-line no-console
       console.log(
         `  note: ${repaired.length} package(s) bundle their entry to an invalid module directly and were measured through the barrel-safe entry: ${repaired.join(', ')}`,
       )
     }
-  } else {
-    if (violations.length > 0) {
-      // eslint-disable-next-line no-console
-      console.error(`✗ ${violations.length} package(s) over budget:\n`)
-      for (const v of violations) {
-        // An overage smaller than the minimum headroom usually means several
-        // merged PRs each added a little to a budget that had been set close to
-        // its measurement, so none of them crossed it alone. Say so, instead of
-        // leaving the next person to bisect a few dozen bytes. (`--update`
-        // gives 25% headroom; these are hand-set values.)
-        const withinMargin = v.overBy <= requiredHeadroom(v.current)
-        const note = withinMargin
-          ? `\n      ↳ that is within the ~${(HEADROOM_FRACTION * 100).toFixed(1)}% minimum headroom — the budget was set too close to its measurement. Find which merges added the bytes, then raise the entry by hand with ~3% over the new measurement and name what the bytes bought.`
-          : ''
-        // eslint-disable-next-line no-console
-        console.error(
-          `  ${v.name}: ${(v.current / 1024).toFixed(2)} KB > budget ${(v.budget / 1024).toFixed(2)} KB (over by ${(v.overBy / 1024).toFixed(2)} KB, +${v.overByPct.toFixed(1)}%)${note}`,
-        )
-      }
-      // eslint-disable-next-line no-console
-      console.error(
-        `\nIf this growth is intentional, bump the budget in scripts/bundle-budgets.json. The bump itself is a PR signal: "this package legitimately got bigger".`,
-      )
-    }
-    if (missing.length > 0) {
-      // eslint-disable-next-line no-console
-      console.error(`\n✗ ${missing.length} package(s) missing budget entry:\n`)
-      for (const m of missing) {
-        // eslint-disable-next-line no-console
-        console.error(`  ${m.name}: ${(m.current / 1024).toFixed(2)} KB (no entry)`)
-      }
-      // eslint-disable-next-line no-console
-      console.error(
-        `\nNew package? Run \`bun run check-bundle-budgets --update\` to add it. Review the value in the diff.`,
-      )
-    }
-    if (thinNew.length > 0) {
-      // eslint-disable-next-line no-console
-      console.error(
-        `\n✗ ${thinNew.length} budget(s) have LESS than the minimum headroom:\n`,
-      )
-      for (const t of thinNew) {
-        // eslint-disable-next-line no-console
-        console.error(
-          `  ${t.name}: budget ${t.budget} B is only ${Math.floor(t.headroom)} B above the measured ${t.current} B — needs at least ${Math.ceil(t.required)} B (~${(HEADROOM_FRACTION * 100).toFixed(1)}%). Suggested budget: ${suggestedBudget(t.current)} B.`,
-        )
-      }
-      // eslint-disable-next-line no-console
-      console.error(
-        `\nA budget this close to its measurement turns red on the next PR that adds a few bytes to the package, whoever wrote it. The verdict is the same on every machine (it reads only the measured bytes), so a different local result means a stale lib/: rebuild before comparing. Find what grew the package, then raise the entry by hand and name what the bytes bought. If it genuinely must stay this tight, add the package to "_thinHeadroom" in scripts/bundle-budgets.json with a reason — that list can only shrink.`,
-      )
-    }
     if (unmeasurable.length > 0) {
-      // eslint-disable-next-line no-console
       console.error(
-        `\n✗ ${unmeasurable.length} package(s) could not be MEASURED (their budget is guarding nothing):\n`,
+        `\n✗ ${unmeasurable.length} package(s) could not be MEASURED (their ceiling is guarding nothing):\n`,
       )
-      for (const u of unmeasurable) {
-        // eslint-disable-next-line no-console
-        console.error(`  ${u.name}: ${u.reason}`)
-      }
-      // eslint-disable-next-line no-console
+      for (const u of unmeasurable) console.error(`  ${u.name}: ${u.reason}`)
       console.error(
-        `\nThis is a failure of the gate, not of the package: a budget compared against a bundle that shook to nothing can never fail, which is worse than having no budget. Do NOT "fix" it by lowering the budget to the reported size. Fix the measurement.`,
+        `\nThis is a failure of the gate, not of the package: a ceiling compared against a bundle that shook to nothing can never fail, which is worse than having none. Do NOT "fix" it by lowering the ceiling to the reported size. Fix the measurement.`,
       )
     }
     if (failures.length > 0) {
-      // eslint-disable-next-line no-console
       console.error(`\n✗ ${failures.length} package(s) failed to bundle:\n`)
-      for (const f of failures) {
-        // eslint-disable-next-line no-console
-        console.error(`  ${f.name}: ${f.error.split('\n')[0]}`)
-      }
-      // eslint-disable-next-line no-console
+      for (const f of failures) console.error(`  ${f.name}: ${f.error.split('\n')[0]}`)
       console.error(
-        `\nThese packages are not contributing to the budget gate — likely an unresolved third-party dep. The auto-external scan walks each package's lib/ tree for bare-module imports, but it can miss specifiers buried in dynamic strings or vendored chunks. Either declare the dep in the package's package.json or add it explicitly.`,
+        `\nThese packages are not contributing to the size gate — likely an unresolved third-party dep. The auto-external scan walks each package's lib/ tree for bare-module imports, but it can miss specifiers buried in dynamic strings or vendored chunks. Either declare the dep in the package's package.json or add it explicitly.`,
       )
     }
+    /* eslint-enable no-console */
   }
 
-  if (!jsonMode) printThinHeadroom(thinKnown, recovered)
-
-  if (
-    violations.length > 0 ||
-    missing.length > 0 ||
-    failures.length > 0 ||
-    unmeasurable.length > 0 ||
-    thinNew.length > 0
-  ) {
+  if (violations.length > 0 || missing.length > 0 || failures.length > 0 || unmeasurable.length > 0) {
     process.exit(1)
   }
 }

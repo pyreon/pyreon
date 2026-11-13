@@ -1,0 +1,8 @@
+{
+  "package": "@pyreon/hooks",
+  "bundle": 11776,
+  "imports": {
+    "useAuth": 731,
+    "useEventListener": 768
+  }
+}
