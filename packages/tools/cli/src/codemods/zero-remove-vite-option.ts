@@ -32,7 +32,7 @@ export const zeroRemoveViteOption: Codemod = {
     'Remove the never-read `vite` option from `zero({...})` (kept as a comment to move into defineConfig).',
   matches: (p) => /(^|\/)vite\.config\.[mc]?[jt]s$/.test(p),
   transform(source) {
-    if (!/\bzero\s*\(/.test(source) || !/\bvite\s*:/.test(source)) return null
+    if (!/\bzero\s*\(/.test(source) || !/\bvite\b/.test(source)) return null
     const ts = loadTs()
     const sf = ts.createSourceFile('vite.config.ts', source, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TS)
     const edits: { start: number; end: number; text: string }[] = []
