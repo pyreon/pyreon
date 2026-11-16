@@ -72,7 +72,8 @@ export const getStaticPaths: GetStaticPaths<{ id: string }> = () =>
 
 export async function loader(ctx: LoaderContext) {
   await new Promise((r) => setTimeout(r, 50))
-  const post = POSTS[ctx.params.id]
+  const id = ctx.params.id
+  const post = id === undefined ? undefined : POSTS[id]
   if (!post) throw new Error('Post not found')
 
   return { post }
