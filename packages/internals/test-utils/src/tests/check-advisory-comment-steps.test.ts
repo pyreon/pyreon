@@ -120,7 +120,12 @@ describe('checkWorkflowText — notifier exemption', () => {
   })
 
   it('the exemption list is explicit and minimal', () => {
-    expect([...NOTIFIER_WORKFLOWS]).toEqual(['native-device-nightly-status.yml', 'published-state.yml', 'zero-freshness.yml'])
+    expect([...NOTIFIER_WORKFLOWS]).toEqual([
+      'native-device-nightly-status.yml',
+      'published-state.yml',
+      'zero-freshness.yml',
+      'size-ceiling-status.yml',
+    ])
   })
 })
 

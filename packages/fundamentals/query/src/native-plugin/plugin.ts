@@ -52,10 +52,12 @@ function fieldOf(site: ReceiverSite, fields: ReadonlySet<string>): string | unde
   return fields.has(read.property) ? read.property : undefined
 }
 
-const queryDecl: DeclEmitter = {
-  // The declaration was a closed `query` compiler kind before it moved here; the struct names the
-  // compiler derives from a declaration's shape hash it under that name, so emitted names did not move.
-  legacyKind: 'query',
+/**
+ * The `PyreonQuery` container and its harness, keyed by nothing but the payload (a {@link QueryPayload}). Exported so a
+ * package whose hook IS a keyed query (`@pyreon/feature`'s `useList()`) declares the same container with the same
+ * harness instead of a second copy of the runtime's driver.
+ */
+export const queryContainerDecl: DeclEmitter = {
   swift: queryDeclSwift,
   kotlin: queryDeclKotlin,
   lifecycle: {
@@ -71,6 +73,13 @@ const queryDecl: DeclEmitter = {
     swift: (d, ctx) => ({ pending: `${ctx.ident(d.name)}.isPending`, error: `${ctx.ident(d.name)}.error != nil` }),
     kotlin: (d, ctx) => ({ pending: `${ctx.ident(d.name)}.isPending.value`, error: `${ctx.ident(d.name)}.error.value != null` }),
   },
+}
+
+const queryDecl: DeclEmitter = {
+  // The declaration was a closed `query` compiler kind before it moved here; the struct names the
+  // compiler derives from a declaration's shape hash it under that name, so emitted names did not move.
+  legacyKind: 'query',
+  ...queryContainerDecl,
 }
 
 const streamDecl: DeclEmitter = {
@@ -103,7 +112,7 @@ const streamDecl: DeclEmitter = {
  * `const m = useMutation<T>(ep.mutation())` → a `PyreonMutation<T>` container. It has NO lifecycle harness: nothing runs
  * at mount. Each `m.mutate(…)` / `m.mutateAsync(…)` call site builds and sends its own request (see `mutation.ts`).
  */
-const mutationDecl: DeclEmitter = {
+export const mutationDecl: DeclEmitter = {
   swift: mutationDeclSwift,
   kotlin: mutationDeclKotlin,
   typing: {
@@ -112,7 +121,7 @@ const mutationDecl: DeclEmitter = {
   },
 }
 
-const mutationReceiver: ReceiverLowering = {
+export const mutationReceiver: ReceiverLowering = {
   swift: {
     expr(site, ctx) {
       if (site.kind !== 'call') return undefined
@@ -131,7 +140,7 @@ const mutationReceiver: ReceiverLowering = {
 /** The query client has no native counterpart: `useQuery` is self-contained, so emitting nothing is the whole lowering. */
 const queryClientDecl: DeclEmitter = { legacyKind: 'query-client', swift: () => '', kotlin: () => '' }
 
-const queryReceiver: ReceiverLowering = {
+export const queryReceiver: ReceiverLowering = {
   swift: {
     // `q.data()` / `q.isPending()` → a plain @Observable property read. `refetch` is a real method
     // (parens preserved by the generic call emit), so it is not a field here.

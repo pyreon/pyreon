@@ -29,7 +29,7 @@
     "@pyreon/validation": "workspace:^",
     "@pyreon/vue-compat": "workspace:^",
     "@pyreon/zero": "workspace:^",
-    "@tanstack/query-core": "^5.105.0",
+    "@tanstack/query-core": "^5.107.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -39,6 +39,6 @@
     "@pyreon/vite-plugin": "workspace:^",
     "@pyreon/zero-cli": "workspace:^",
     "typescript": "^6.0.3",
-    "vite": "^8.3.5"
+    "vite": "^8.3.8"
   }
 }
