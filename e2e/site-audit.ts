@@ -139,11 +139,12 @@ export function auditLayout(touch: boolean): { scroll: number; wide: string[]; c
         if (block && (block.textContent ?? '').trim().length > (e.textContent ?? '').trim().length + 15) continue
       }
       // A live demo shows the package's own components at the package's sizes
-      // (the design-system demo's sm/md buttons, the flow canvas): its chrome is
-      // kit code and is checked, the product inside it is not restyled.
-      if (e.closest('pyreon-island[data-component=DemoDesign], pyreon-island[data-component=DemoFlow]')) continue
-      // The skip link sits off-screen until focused.
-      if (b.bottom < 0 || b.right < 0) continue
+      // (the design-system demo's sm/md buttons, the flow canvas), and a docs
+      // live example renders the very code printed beside it: neither is
+      // restyled. Their surrounding chrome is kit code and is checked.
+      if (e.closest('pyreon-island[data-component=DemoDesign], pyreon-island[data-component=DemoFlow], pyreon-island[data-component=DocsExample]')) continue
+      // Off-screen or visually hidden until focused (a skip link, sr-only text): not a target yet.
+      if (b.bottom < 0 || b.right < 0 || (b.width <= 1 && b.height <= 1)) continue
       if (b.height < 43.5 || b.width < 24) tap.push(`${name(e)} "${(e.textContent || e.getAttribute('aria-label') || '').trim().slice(0, 24)}" ${Math.round(b.width)}x${Math.round(b.height)}`)
     }
   }

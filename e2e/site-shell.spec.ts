@@ -154,8 +154,9 @@ test.describe('anchors land below the fixed nav', () => {
       await page.setViewportSize({ width: 390, height: 844 })
       await page.goto(route)
       await waitForNav(page)
-      await page.evaluate((id) => document.querySelector(id)!.scrollIntoView(), target)
-      const [top, navBottom] = await page.evaluate((id) => [document.querySelector(id)!.getBoundingClientRect().top, document.querySelector('.s-bar')!.getBoundingClientRect().bottom], target)
+      // getElementById: a heading id may start with a digit, which is not a valid CSS selector.
+      await page.evaluate((id) => document.getElementById(id.slice(1))!.scrollIntoView(), target)
+      const [top, navBottom] = await page.evaluate((id) => [document.getElementById(id.slice(1))!.getBoundingClientRect().top, document.querySelector('.s-bar')!.getBoundingClientRect().bottom], target)
       expect(top, `${target} lands under the nav`).toBeGreaterThanOrEqual(navBottom + 8)
     })
   }
@@ -225,10 +226,13 @@ test.describe('typography', () => {
     await waitForNav(page)
     const gaps = await page.evaluate(() =>
       [...document.querySelectorAll('ul[aria-label=Status] li')].map((li) => {
-        const dot = li.querySelector('[aria-hidden=true]')!.getBoundingClientRect()
+        const dotEl = li.querySelector('[aria-hidden=true]')!
+        const dot = dotEl.getBoundingClientRect()
+        // The label is everything after the dot (text or a link; hydration markers are comments).
         const range = document.createRange()
-        range.selectNodeContents(li.lastChild!)
-        const first = range.getClientRects()[0]!
+        range.setStartAfter(dotEl)
+        range.setEndAfter(li.lastChild!)
+        const first = [...range.getClientRects()].find((r) => r.width > 0)!
         return Math.abs(dot.top + dot.height / 2 - (first.top + first.height / 2))
       }),
     )
