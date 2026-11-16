@@ -22,6 +22,7 @@ export {
   scanMutations,
   type Callbacks as MutationCallbacks,
   type MutateBinding,
+  type MutateQueryEffects,
   type MutateRequest,
 } from './native-plugin/mutation'
 export type { QueryPayload } from './native-plugin/types'

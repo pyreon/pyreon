@@ -32,8 +32,7 @@
 // state. The network call itself stays INJECTED — the runtime never builds
 // a request — so the tests drive it with stub fetchers, and the Kotlin twin
 // stays one-for-one. Deferred to follow-ups (disclosed, not implied away):
-// prefetch, query invalidation across instances, retries/backoff, and
-// persistence.
+// prefetch, retries/backoff, and persistence.
 //
 // ## The cache is process-global and keyed by `queryKey`
 //
@@ -46,6 +45,24 @@
 // distinct value, so an unbounded cache grows for the life of the process.
 // Evicting is always safe: a live `PyreonQuery` keeps its own `data`, so an
 // evicted key costs only a refetch on its next stale check.
+//
+// ## The cache is also the query CLIENT: invalidation across instances
+//
+// The web's `queryClient.invalidateQueries({ queryKey: [root] })` marks every
+// query under `root` stale and refetches the ones a component is observing.
+// The native analogue lives here, because every `PyreonQuery` already holds
+// its cache: a query that registered a request (`run`) is LIVE, and
+// `invalidateQueries(root)` marks every cached entry under `root` stale and
+// refetches every live query under it. Keys are the colon-joined web keys
+// (`['todo', 5]` → `todo:5`), so "under `root`" is `root` itself or a key that
+// starts with `root:`. `setQueryData` is `queryClient.setQueryData` for an
+// optimistic write, returning the rollback; `settleMutation` runs a
+// mutation's request and applies both on its outcome.
+//
+// The live registry holds WEAK references keyed by identity, and a query
+// removes itself in `deinit` — so a screen that goes away never stays
+// reachable through the registry (and a dead weak entry is pruned on the
+// next scan as a backstop).
 
 import Foundation
 import Observation
@@ -58,7 +75,18 @@ public final class PyreonQueryCache: @unchecked Sendable {
     private struct Entry {
         let value: Any
         let at: Date
+        /// Set by `invalidateQueries`: the value is still served (no blank),
+        /// but it is stale whatever its age, so the next check refetches.
+        var invalidated = false
     }
+
+    /// A query that registered a request — what `invalidateQueries` refetches.
+    private struct Live {
+        weak var query: (any PyreonLiveQuery)?
+        var key: String
+    }
+    /// Live queries by identity. Weak, and removed by the query's `deinit`.
+    private var live: [ObjectIdentifier: Live] = [:]
     private var store: [String: Entry] = [:]
     /// Keys from least to most recently used. Bounded by `maxEntries`, so the
     /// linear moves stay small.
@@ -79,12 +107,13 @@ public final class PyreonQueryCache: @unchecked Sendable {
     }
 
     /// The cached value for `key` and its age in seconds, or nil on a miss.
-    /// A hit counts as a use for eviction.
+    /// A hit counts as a use for eviction. An invalidated entry is infinitely
+    /// old, so it is stale whatever the query's `staleSeconds`.
     func lookup<T>(_ key: String, as _: T.Type) -> (value: T, ageSeconds: TimeInterval)? {
         lock.lock(); defer { lock.unlock() }
         guard let e = store[key], let typed = e.value as? T else { return nil }
         touch(key)
-        return (typed, Date().timeIntervalSince(e.at))
+        return (typed, e.invalidated ? .infinity : Date().timeIntervalSince(e.at))
     }
 
     func write(_ key: String, _ value: Any) {
@@ -115,6 +144,123 @@ public final class PyreonQueryCache: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         store.removeAll()
         recency.removeAll()
+        live.removeAll()
+    }
+
+    // MARK: - The query client: live queries, invalidation, optimistic writes
+
+    /// Number of live (registered) queries — for tests and diagnostics.
+    public var liveCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        live = live.filter { $0.value.query != nil }
+        return live.count
+    }
+
+    func register(_ query: any PyreonLiveQuery, key: String) {
+        lock.lock(); defer { lock.unlock() }
+        live[ObjectIdentifier(query)] = Live(query: query, key: key)
+    }
+
+    /// A registered query changed its key; an unregistered one stays out.
+    func rekey(_ query: any PyreonLiveQuery, key: String) {
+        lock.lock(); defer { lock.unlock() }
+        live[ObjectIdentifier(query)]?.key = key
+    }
+
+    func unregister(_ id: ObjectIdentifier) {
+        lock.lock(); defer { lock.unlock() }
+        live.removeValue(forKey: id)
+    }
+
+    /// The live queries whose key passes `matches`, as strong references.
+    /// Prunes dead weak entries. Caller holds the lock.
+    private func liveLocked(_ matches: (String) -> Bool) -> [any PyreonLiveQuery] {
+        var out: [any PyreonLiveQuery] = []
+        for (id, entry) in live {
+            guard let query = entry.query else { live.removeValue(forKey: id); continue }
+            if matches(entry.key) { out.append(query) }
+        }
+        return out
+    }
+
+    /// `queryClient.invalidateQueries({ queryKey: [root] })`: every cached
+    /// entry under `root` (the key `root`, or one starting with `root:`) is
+    /// marked stale — still served, refetched on its next check — and every
+    /// LIVE query under it refetches now. Callable from any thread; the
+    /// refetches start on the main actor. The returned task settles when
+    /// they all have (the emitted code ignores it).
+    @discardableResult
+    public func invalidateQueries(_ root: String) -> _Concurrency.Task<Void, Never> {
+        let prefix = root + ":"
+        let matches: (String) -> Bool = { $0 == root || $0.hasPrefix(prefix) }
+        lock.lock()
+        for key in store.keys where matches(key) { store[key]?.invalidated = true }
+        let queries = liveLocked(matches)
+        lock.unlock()
+        return _Concurrency.Task { @MainActor in
+            let running = queries.compactMap { $0.refetch() }
+            for task in running { await task.value }
+        }
+    }
+
+    /// `queryClient.setQueryData(key, updater)` for an optimistic write: the
+    /// cached value under exactly `key` (or, when the cache evicted it, a live
+    /// query's data) is passed to `update`, and the result is written to the
+    /// cache and shown by every live query on that key. A fetch those queries
+    /// have in flight is dropped (`cancelQueries`), so it cannot overwrite the
+    /// optimistic value. Returns the rollback, or nil when there was no value
+    /// to update — the web writes the PARTIAL patch then, which no typed
+    /// record can hold, so nothing is written. Call on the main thread.
+    @available(iOS 17.0, macOS 14.0, *)
+    public func setQueryData<T>(_ key: String, as _: T.Type, _ update: (T) -> T) -> PyreonQueryRollback? {
+        lock.lock()
+        let previous = store[key]
+        let holders = liveLocked { $0 == key }.compactMap { $0 as? PyreonQuery<T> }
+        lock.unlock()
+        guard let base = (previous?.value as? T) ?? holders.lazy.compactMap({ $0.data }).first else { return nil }
+        let next = update(base)
+        write(key, next)
+        var restores: [() -> Void] = []
+        for query in holders {
+            let before = query.data
+            query.cancelFetch()
+            query.setData(next)
+            restores.append { [weak query] in query?.setData(before) }
+        }
+        return PyreonQueryRollback { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            if let previous {
+                self.store[key] = previous
+                self.touch(key)
+            } else {
+                self.store.removeValue(forKey: key)
+                self.recency.removeAll { $0 == key }
+            }
+            self.lock.unlock()
+            for restore in restores { restore() }
+        }
+    }
+
+    /// A mutation's request, settled the way the web's `onSuccess` /
+    /// `onError` settle the queries: success invalidates every query under
+    /// `root`; a failure rolls the optimistic write back and invalidates
+    /// nothing. A CANCELLED request rolls back AND invalidates — whether the
+    /// server applied the write is unknown, so the queries ask it.
+    public func settleMutation<T>(
+        invalidating root: String,
+        rollback: PyreonQueryRollback? = nil,
+        _ operation: () async throws -> T
+    ) async throws -> T {
+        do {
+            let value = try await operation()
+            invalidateQueries(root)
+            return value
+        } catch {
+            if let rollback { await rollback.rollback() }
+            if error is CancellationError { invalidateQueries(root) }
+            throw error
+        }
     }
 
     /// Move `key` to the most-recently-used end. Caller holds the lock.
@@ -124,9 +270,31 @@ public final class PyreonQueryCache: @unchecked Sendable {
     }
 }
 
+/// What the cache's live registry can do with a query of any type.
+protocol PyreonLiveQuery: AnyObject {
+    @discardableResult func refetch() -> _Concurrency.Task<Void, Never>?
+}
+
+/// Undo of one optimistic `setQueryData`: restores the cached value and every
+/// live query's data as they were. Runs at most once.
+public final class PyreonQueryRollback: @unchecked Sendable {
+    private var restore: (() -> Void)?
+
+    init(_ restore: @escaping () -> Void) {
+        self.restore = restore
+    }
+
+    @MainActor
+    public func rollback() {
+        let run = restore
+        restore = nil
+        run?()
+    }
+}
+
 @available(iOS 17.0, macOS 14.0, *)
 @Observable
-public final class PyreonQuery<T> {
+public final class PyreonQuery<T>: PyreonLiveQuery {
     /// The decoded result, or nil before the first successful load.
     public private(set) var data: T?
     /// The most recent failure, or nil on success / before first load.
@@ -161,6 +329,11 @@ public final class PyreonQuery<T> {
         }
     }
 
+    // A query leaves the live registry with the view that owned it.
+    deinit {
+        cache.unregister(ObjectIdentifier(self))
+    }
+
     /// Re-point this query at a RUNTIME-computed cache key (a `queryKey` built
     /// from a prop / route-param / signal). The compiler-emitted
     /// `.task(id: key)` calls this before the staleness check, so a key change
@@ -179,6 +352,7 @@ public final class PyreonQuery<T> {
         isPending = false
         queryKey = key
         data = cache.lookup(key, as: T.self)?.value
+        cache.rekey(self, key: key)
     }
 
     /// Whether a fetch is needed right now: no cached value, or the cached
@@ -224,6 +398,8 @@ public final class PyreonQuery<T> {
     @MainActor
     public func run(_ fetcher: @escaping () async throws -> T) async {
         self.fetcher = fetcher
+        // Holding a request makes it LIVE: an invalidation of its key refetches it.
+        cache.register(self, key: queryKey)
         guard isStale else { return }
         await fetch(fetcher)
     }
@@ -239,6 +415,19 @@ public final class PyreonQuery<T> {
         return _Concurrency.Task { @MainActor [weak self] in
             await self?.fetch(fetcher)
         }
+    }
+
+    /// An optimistic write (`PyreonQueryCache.setQueryData`) or its rollback.
+    func setData(_ value: T?) {
+        data = value
+    }
+
+    /// `cancelQueries`: a fetch in flight settles nothing (its response would
+    /// overwrite an optimistic value), and the in-flight flags clear.
+    func cancelFetch() {
+        generation += 1
+        isFetching = false
+        isPending = false
     }
 
     @MainActor

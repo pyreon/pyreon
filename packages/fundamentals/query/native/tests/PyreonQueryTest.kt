@@ -173,6 +173,126 @@ fun testQueryKeyChangeDropsTheOldKeysResponse() {
     check(PyreonQueryCache.lookup<Int>("b") == null) { "nor cached under the new key" }
 }
 
+fun testInvalidateRefetchesLiveQueriesUnderTheRootOnly() {
+    PyreonQueryCache.clearAll()
+    var calls = 0
+    val list = PyreonQuery<Int>("todo:list", staleMillis = 60_000)
+    val one = PyreonQuery<Int>("todo:7", staleMillis = 60_000)
+    val other = PyreonQuery<Int>("todos:list", staleMillis = 60_000)
+    list.runNow { calls++; 1 }
+    one.runNow { calls++; 2 }
+    other.runNow { calls++; 3 }
+    check(calls == 3 && PyreonQueryCache.liveCount == 3) { "three live queries, each fetched once" }
+    PyreonQueryCache.invalidateQueries("todo")
+    check(calls == 5) { "both `todo` queries refetched, ignoring their fresh cache" }
+    check(!list.isFetching.value && !one.isFetching.value) { "the refetches settled" }
+    check(other.data.value == 3) { "`todos` is not under `todo`" }
+    PyreonQueryCache.invalidateQueries("user")
+    check(calls == 5) { "no live query under `user`" }
+}
+
+fun testInvalidatedEntryIsServedButStale() {
+    PyreonQueryCache.clearAll()
+    PyreonQueryCache.write("todo:list", 1)
+    check(!PyreonQuery<Int>("todo:list", staleMillis = 60_000).isStale) { "fresh before the invalidation" }
+    PyreonQueryCache.invalidateQueries("todo")
+    val after = PyreonQuery<Int>("todo:list", staleMillis = 60_000)
+    check(after.data.value == 1) { "an invalidated value is still served on mount" }
+    check(after.isStale) { "but it is stale whatever staleMillis says" }
+    var calls = 0
+    after.runNow { calls++; 2 }
+    check(calls == 1 && after.data.value == 2) { "so mounting refetches it" }
+    check(!after.isStale) { "and the refetched value is fresh again" }
+}
+
+fun testForgottenQueryLeavesTheRegistry() {
+    PyreonQueryCache.clearAll()
+    var calls = 0
+    val q = PyreonQuery<Int>("todo:list")
+    check(PyreonQueryCache.liveCount == 0) { "a query that never ran is not live" }
+    q.runNow { calls++; calls }
+    check(PyreonQueryCache.liveCount == 1) { "running registers it" }
+    q.setKey("todo:8")
+    PyreonQueryCache.invalidateQueries("todo:8")
+    check(calls == 2) { "the registry follows a key change" }
+    q.onForgotten() // Compose: the composable that remembered it left
+    check(PyreonQueryCache.liveCount == 0) { "a forgotten query is unregistered" }
+    PyreonQueryCache.invalidateQueries("todo")
+    check(calls == 2) { "and an invalidation no longer reaches it" }
+    val abandoned = PyreonQuery<Int>("todo:list")
+    abandoned.runNow { 1 }
+    abandoned.onAbandoned()
+    check(PyreonQueryCache.liveCount == 0) { "an abandoned query is unregistered too" }
+}
+
+fun testSettleMutationInvalidatesOnSuccessOnly() {
+    PyreonQueryCache.clearAll()
+    var calls = 0
+    val list = PyreonQuery<Int>("todo:list", staleMillis = 60_000)
+    list.runNow { calls++; calls }
+    var thrown: Throwable? = null
+    start {
+        try {
+            PyreonQueryCache.settleMutation<Int>("todo") { throw RuntimeException("boom") }
+        } catch (t: Throwable) {
+            thrown = t
+        }
+    }
+    check(thrown?.message == "boom") { "a failed mutation rethrows" }
+    check(calls == 1) { "a failed mutation invalidates nothing" }
+    var saved = 0
+    start { saved = PyreonQueryCache.settleMutation("todo") { 42 } }
+    check(saved == 42) { "a successful mutation returns its value" }
+    check(calls == 2 && list.data.value == 2) { "a successful mutation refetches the live `todo` query" }
+}
+
+fun testSettleMutationCancelledRollsBackAndInvalidates() {
+    PyreonQueryCache.clearAll()
+    PyreonQueryCache.write("todo:1", 10)
+    var calls = 0
+    val one = PyreonQuery<Int>("todo:1", staleMillis = 60_000)
+    one.runNow { calls++; 10 }
+    check(calls == 0) { "fresh hit" }
+    val rollback = PyreonQueryCache.setQueryData<Int>("todo:1") { 11 }
+    start {
+        try {
+            PyreonQueryCache.settleMutation("todo", rollback) { throw kotlin.coroutines.cancellation.CancellationException("left") }
+        } catch (_: kotlin.coroutines.cancellation.CancellationException) {}
+    }
+    check(calls == 1) { "a cancelled mutation's outcome is unknown, so the queries refetch" }
+    check(one.data.value == 10) { "and the optimistic value was rolled back first" }
+}
+
+fun testSetQueryDataIsOptimisticAndRollsBack() {
+    PyreonQueryCache.clearAll()
+    PyreonQueryCache.write("todo:1", 10)
+    val gates = Gates()
+    val one = PyreonQuery<Int>("todo:1", staleMillis = 60_000)
+    val twin = PyreonQuery<Int>("todo:1", staleMillis = 60_000)
+    val other = PyreonQuery<Int>("todo:2", staleMillis = 60_000)
+    one.runNow { gates.wait() }
+    twin.runNow { 10 }
+    other.runNow { 20 }
+    one.refetch()
+    check(one.isFetching.value) { "a fetch is in flight" }
+    val rollback = PyreonQueryCache.setQueryData<Int>("todo:1") { it + 1 }
+    check(rollback != null) { "a cached value was patched" }
+    check(one.data.value == 11 && twin.data.value == 11) { "every live query on the key shows the optimistic value" }
+    check(other.data.value == 20) { "another key is untouched" }
+    check(PyreonQueryCache.lookup<Int>("todo:1")?.first == 11) { "the cache holds the optimistic value" }
+    check(!one.isFetching.value) { "the in-flight fetch is cancelled" }
+    gates.parked[0].resume(99)
+    check(one.data.value == 11) { "the cancelled fetch cannot overwrite the optimistic value" }
+    rollback!!.rollback()
+    check(one.data.value == 10 && twin.data.value == 10) { "rollback restores every query" }
+    check(PyreonQueryCache.lookup<Int>("todo:1")?.first == 10) { "and the cache" }
+    rollback.rollback()
+    check(one.data.value == 10) { "a second rollback is a no-op" }
+    check(PyreonQueryCache.setQueryData<Int>("todo:3") { it + 1 } == null) { "nothing cached: nothing to patch" }
+    check(PyreonQueryCache.lookup<Int>("todo:3") == null) { "and nothing is written" }
+    check(PyreonQueryCache.setQueryData<String>("todo:1") { it + "x" } == null) { "a value of another type is not patched" }
+}
+
 fun main() {
     testQueryFetchesOnMissThenServesFromCache()
     testQueryStaleServesCachedThenRefetches()
@@ -184,5 +304,11 @@ fun main() {
     testQueryRefetchInFlightThenFailureKeepsData()
     testQueryStaleResponseNeverOverwritesANewerOne()
     testQueryKeyChangeDropsTheOldKeysResponse()
+    testInvalidateRefetchesLiveQueriesUnderTheRootOnly()
+    testInvalidatedEntryIsServedButStale()
+    testForgottenQueryLeavesTheRegistry()
+    testSettleMutationInvalidatesOnSuccessOnly()
+    testSettleMutationCancelledRollsBackAndInvalidates()
+    testSetQueryDataIsOptimisticAndRollsBack()
     println("[PyreonQueryTest] all smoke tests passed")
 }
