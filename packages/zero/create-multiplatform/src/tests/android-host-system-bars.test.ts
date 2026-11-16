@@ -17,7 +17,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { buildScaffold } from '../scaffold'
-import { listNativeHosts } from '../../../../../scripts/native-example-hosts'
+import { exampleHostDirs } from './example-hosts'
 
 const repo = fileURLToPath(new URL('../../../../../', import.meta.url))
 
@@ -37,9 +37,7 @@ function activities(dir: string): string[] {
 
 /** Hosts = activities that mount a Compose tree (`setContent {`). */
 // Both example layouts: native-<app>-android/ and native-<app>/android/.
-const androidHostDirs = listNativeHosts(repo)
-  .filter((h) => h.platform === 'android')
-  .map((h) => h.dir)
+const androidHostDirs = exampleHostDirs(repo, 'android')
 const exampleHosts = androidHostDirs
   .flatMap((d) => activities(join(repo, d)))
   .map((path) => ({ path: path.slice(repo.length), src: readFileSync(path, 'utf8') }))

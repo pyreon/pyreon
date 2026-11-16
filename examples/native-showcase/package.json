@@ -14,7 +14,7 @@
     "xcode": "bash scripts/xcode-setup.sh",
     "check": "bun ../../packages/native/cli/src/cli.ts check --source=src/TodayApp.tsx",
     "lint": "oxlint .",
-    "test": "echo '[native-showcase] device tests run with xcodebuild test / gradle connectedDebugAndroidTest (see README)'",
+    "test": "echo '[native-showcase] no unit tests; the device tests and how to run them are in README.md'",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

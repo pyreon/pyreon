@@ -21,7 +21,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { buildScaffold } from '../scaffold'
-import { listNativeHosts } from '../../../../../scripts/native-example-hosts'
+import { exampleHostDirs } from './example-hosts'
 
 const PHASE_KEYS = ['preBuildScripts', 'postBuildScripts'] as const
 
@@ -80,9 +80,10 @@ describe('scaffold ios/project.yml — structure', () => {
 describe('example iOS projects — structure', () => {
   const repo = new URL('../../../../../', import.meta.url)
   // Both example layouts: native-<app>-ios/ and native-<app>/ios/.
-  const ymls = listNativeHosts(fileURLToPath(repo))
-    .filter((h) => h.platform === 'ios')
-    .map((h) => ({ d: h.dir, text: readFileSync(new URL(`${h.dir}/project.yml`, repo), 'utf8') }))
+  const ymls = exampleHostDirs(fileURLToPath(repo), 'ios').map((d) => ({
+    d,
+    text: readFileSync(new URL(`${d}/project.yml`, repo), 'utf8'),
+  }))
 
   it('finds the example projects', () => {
     expect(ymls.length).toBeGreaterThanOrEqual(5)

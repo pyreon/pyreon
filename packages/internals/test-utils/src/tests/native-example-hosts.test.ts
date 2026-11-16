@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { listNativeHosts } from '../../../../../scripts/native-example-hosts'
+import { exampleHostDirs } from '../../../../zero/create-multiplatform/src/tests/example-hosts'
 
 const REPO = resolve(import.meta.dirname, '../../../../..')
 
@@ -41,5 +42,16 @@ describe('listNativeHosts', () => {
       'examples/native-showcase/ios',
     ])
     expect(hosts.filter((h) => h.layout === 'split').length).toBeGreaterThanOrEqual(10)
+  })
+
+  it('agrees with the restated listing the create-multiplatform tests use', () => {
+    for (const platform of ['ios', 'android'] as const) {
+      expect(exampleHostDirs(REPO, platform)).toEqual(
+        listNativeHosts(REPO)
+          .filter((h) => h.platform === platform)
+          .map((h) => h.dir)
+          .sort(),
+      )
+    }
   })
 })
