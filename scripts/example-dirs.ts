@@ -13,10 +13,27 @@
  * names the fix.
  */
 import { existsSync, readdirSync, statSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
-/** The repository root (this file lives in `scripts/`). */
-export const REPO_ROOT = resolve(import.meta.dirname, '..')
+/**
+ * The repository root: the nearest directory, from the working directory up,
+ * that holds this file. Found by walking rather than from `import.meta`,
+ * because Playwright loads its configs (which import this module) as CommonJS,
+ * where `import.meta` is a syntax error.
+ */
+function findRepoRoot(start: string): string {
+  let dir = resolve(start)
+  for (;;) {
+    if (existsSync(join(dir, 'scripts', 'example-dirs.ts')) && existsSync(join(dir, 'examples'))) return dir
+    const parent = dirname(dir)
+    // Not inside the repository (a script copied into a temp fixture): use
+    // the start directory; a lookup there then fails with "does not exist".
+    if (parent === dir) return resolve(start)
+    dir = parent
+  }
+}
+
+export const REPO_ROOT = findRepoRoot(process.cwd())
 
 /** Folders under `examples/` that group examples; they are never examples themselves. */
 export const EXAMPLE_GROUPS = ['compat', 'fixtures', 'fixtures/cpa'] as const
