@@ -113,6 +113,21 @@ describe('vite-config — compat flag emits compat option', () => {
   })
 })
 
+describe('vite-config — the SSG sitemap lists getStaticPaths routes', () => {
+  // Without useSsgPaths the sitemap walks file-system routes only, so every
+  // dynamic page (each blog post) was missing from a scaffolded SSG app's
+  // sitemap.xml. verify-modes' cpa-pw-blog cell asserts the built output.
+  it('ssg reads the prerendered-paths manifest', () => {
+    expect(generateViteConfig(base({ renderMode: 'ssg' }))).toContain(
+      "sitemap: { origin: 'https://example.com', useSsgPaths: true }",
+    )
+  })
+
+  it('a per-request mode has no manifest to read and does not ask for one', () => {
+    expect(generateViteConfig(base({ renderMode: 'ssr-stream' }))).not.toContain('useSsgPaths')
+  })
+})
+
 describe('vite-config — ISR mode + typed routes (zero-modes-dx N)', () => {
   it("isr mode emits `mode: 'isr'` with a default revalidate window", () => {
     const out = generateViteConfig(base({ renderMode: 'isr' }))

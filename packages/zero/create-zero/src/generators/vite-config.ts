@@ -58,6 +58,14 @@ export function generateViteConfig(config: ProjectConfig): string {
     }),`
     : ''
 
+  // Under SSG the sitemap reads the prerendered-paths manifest, so the URLs
+  // `getStaticPaths` enumerates (every blog post) are listed; without it only
+  // file-system routes appear and every dynamic page is missing.
+  const sitemap =
+    config.renderMode === 'ssg'
+      ? `{ origin: 'https://example.com', useSsgPaths: true }`
+      : `{ origin: 'https://example.com' }`
+
   // oxfmt sorts imports by specifier: `@pyreon/zero-content/plugin` comes
   // before `@pyreon/zero/server` ('-' sorts before '/').
   return `import pyreon from '@pyreon/vite-plugin'${contentImport}
@@ -82,7 +90,7 @@ export default {
 
       // sitemap.xml + robots.txt at build time — set your real origin once.
       seo: {
-        sitemap: { origin: 'https://example.com' },
+        sitemap: ${sitemap},
         robots: {
           rules: [{ userAgent: '*', allow: ['/'] }],
           sitemap: 'https://example.com/sitemap.xml',
