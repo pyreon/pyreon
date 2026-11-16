@@ -63,7 +63,7 @@ describe('useQuery() — runtime key + templated URL', () => {
     )
     expect(r.code).toContain('LaunchedEffect("user:${userId}") {')
     expect(r.code).toContain('q.setKey("user:${userId}")')
-    expect(r.code).toContain('java.net.URL("https://api.example.com/users/${userId}").readText()')
+    expect(r.code).toContain('PyreonHttp.send(PyreonHttpRequest(url = "https://api.example.com/users/${userId}"), fallback = PyreonHttpOkHttp) }.body')
   })
 
   it.runIf(isSwiftcAvailable())('Swift runtime-key emit typechecks against the stubs', () => {
