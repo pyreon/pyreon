@@ -347,6 +347,8 @@ export const art = {
   /** Charts that repeat figures printed beside them (aria-hidden): a lower floor, so they fit a desktop proof cell. */
   decorativeMinScale: 0.66,
   maxMinWidth: 640,
+  /** On a phone a card's chart reaches into the card's side padding (proof cells and compact cards pad 22px), so it fits without scrolling. */
+  phoneBleed: 22,
 } as const
 
 // ─── Motion ───────────────────────────────────────────────────────────────

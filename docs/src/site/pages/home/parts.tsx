@@ -1,5 +1,5 @@
 import { el, focusRing, pair, tone, txt, type LinkAttrs, tapArea } from '../../kit/bases'
-import { breakpoints, font, gradient, radius, syntax, text, weight } from '../../theme'
+import { art, breakpoints, font, gradient, radius, syntax, text, weight } from '../../theme'
 
 /**
  * Styled pieces of the homepage that no other page uses (server-rendered
@@ -410,7 +410,14 @@ export const CardNum = txt.config({ name: 'HomeCardNum' }).attrs({ tag: 'span' }
 export const Arrow = txt.config({ name: 'HomeArrow' }).attrs({ tag: 'span', 'aria-hidden': 'true' }).theme((_t, m) => ({ color: tone(m, 'accent'), marginLeft: 'auto' }))
 
 /** The chart under a proof number (theme-aware inline SVG). */
-export const ChartSlot = el.config({ name: 'HomeChartSlot' }).attrs({ block: true }).theme(() => ({ marginTop: 14, maxWidth: 420 }))
+export const ChartSlot = el
+  .config({ name: 'HomeChartSlot' })
+  .attrs({ block: true })
+  .theme(() => ({
+    marginTop: 14,
+    maxWidth: 420,
+    extendCss: `@media (max-width: ${breakpoints.sm - 0.02}px) { margin-left: -${art.phoneBleed}px; margin-right: -${art.phoneBleed}px; }`,
+  }))
 
 /** A proof card's label (`.strip .l`). */
 export const StripLabel = txt
