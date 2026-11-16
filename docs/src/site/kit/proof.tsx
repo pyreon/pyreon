@@ -74,7 +74,7 @@ const ProseLink = el
     // On touch screens the hit area grows to the tap-target height without
     // moving anything: the padding is cancelled by an equal negative margin.
     extendCss: `text-underline-offset: 4px; text-decoration-thickness: 1px;
-      ${touch.media} { padding-top: ${touch.linkPad}px; padding-bottom: ${touch.linkPad}px; margin-top: -${touch.linkPad}px; margin-bottom: -${touch.linkPad}px; }`,
+      ${touch.media} { padding-top: ${touch.linkPad}; padding-bottom: ${touch.linkPad}; margin-top: calc(-1 * ${touch.linkPad}); margin-bottom: calc(-1 * ${touch.linkPad}); }`,
     hover: { color: tone(m, 'strong') },
     focus: focusRing(m),
   }))

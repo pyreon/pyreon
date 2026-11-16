@@ -1,6 +1,6 @@
 import type { VNodeChild } from '@pyreon/core'
 import { For, Show } from '@pyreon/core'
-import { breakpoints, font, radius, text, weight } from '../theme'
+import { breakpoints, font, radius, text, touch, weight } from '../theme'
 import { el, focusRing, tone, txt, type LinkAttrs } from './bases'
 import { CodeBlock } from './code'
 import { GlowCard } from './cards'
@@ -366,11 +366,14 @@ const InlineLink = el
   .config({ name: 'InlineLink' })
   .attrs<LinkAttrs>({ tag: 'a' })
   .theme((_t, m) => ({
+    // Inline, not the Element base's inline-flex: it flows and wraps with the text around it.
+    display: 'inline',
     color: tone(m, 'link'),
     textDecoration: 'underline',
     fontWeight: weight.regular,
     borderRadius: 2,
-    extendCss: 'text-underline-offset: 3px; text-decoration-thickness: 1px;',
+    extendCss: `text-underline-offset: 3px; text-decoration-thickness: 1px;
+      ${touch.media} { padding-top: ${touch.linkPad}; padding-bottom: ${touch.linkPad}; margin-top: calc(-1 * ${touch.linkPad}); margin-bottom: calc(-1 * ${touch.linkPad}); }`,
     hover: { color: tone(m, 'text') },
     focus: focusRing(m),
   }))

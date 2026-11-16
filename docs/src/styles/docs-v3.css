@@ -1792,9 +1792,13 @@
   .dx-toc-inline__summary { padding-top: 14px; padding-bottom: 14px; }
   .dx-toc__link { display: flex; align-items: center; min-height: 44px; }
   .dx-more { display: inline-flex; align-items: center; min-height: 44px; margin-top: 6px; }
-  .dx-anchor { display: inline-block; padding: 13px 6px; margin: -13px -6px -13px 0; }
+  .dx-anchor { display: inline-block; padding: calc((44px - 1em) / 2) 6px; margin: calc((1em - 44px) / 2) -6px calc((1em - 44px) / 2) 0; }
   .dx-helpful button, .dx-why__compiled > summary { min-height: 44px; }
+  /* The code block's bar grows with its 44px copy button, so the button sits inside it. */
+  .dx .code-block__header, .dx .code-block__header--empty { min-height: 52px; }
+  .dx .code-block[data-lang][data-lang]::before { height: 52px; }
+  .dx .code-block__copy { top: 4px; }
   /* Plain links (breadcrumbs, link lists, card titles, banners): a 44px hit
      area from padding cancelled by an equal negative margin, so no line moves. */
-  .dx a:not([class]) { padding-top: 13px; padding-bottom: 13px; margin-top: -13px; margin-bottom: -13px; }
+  .dx a:not([class]) { padding-top: calc((44px - 1em) / 2); padding-bottom: calc((44px - 1em) / 2); margin-top: calc((1em - 44px) / 2); margin-bottom: calc((1em - 44px) / 2); }
 }

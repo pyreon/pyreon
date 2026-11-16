@@ -325,8 +325,8 @@ export const breakpoints = { xs: 0, sm: 576, md: 768, lg: 992, xl: 1200 } as con
 export const touch = {
   media: `@media (max-width: ${breakpoints.lg - 0.02}px), (pointer: coarse)`,
   tapTarget: 44,
-  /** Extra hit area above and below a 14px text link (18px line box) to reach `tapTarget`. */
-  linkPad: 13,
+  /** Hit area added above and below a text link to reach `tapTarget` (an inline box is its font's content area, at least 1em tall). */
+  linkPad: 'calc((44px - 1em) / 2)',
 } as const
 
 /** `@media` for "nav collapsed" / "nav expanded" (960px is not a theme breakpoint). */
@@ -338,9 +338,10 @@ export const navMedia = {
 /**
  * Inline SVG art (charts, diagrams) is drawn at a fixed width with text at
  * 11-22px. It never renders below `minScale` of that width (capped at
- * `maxMinWidth`, the rule the story pages' wide diagrams already used); on a
- * narrower screen it scrolls sideways in its own box instead of shrinking its
- * labels to a few pixels.
+ * `maxMinWidth`, the rule the story pages' wide diagrams already used) on a
+ * phone (below the md breakpoint); narrower, it scrolls sideways in its own
+ * box instead of shrinking its labels to a few pixels. From md up a drawing
+ * fits its column, so a half-width desktop column never cuts one off.
  */
 export const art = {
   minScale: 0.8,
