@@ -61,7 +61,7 @@ export default function LiveChatRoute() {
         <ChannelSidebar data-testid="channel-rail">
           <SidebarHeader>
             <SidebarTitle>Pyreon HQ</SidebarTitle>
-            <SidebarSubtitle>live server · SSE</SidebarSubtitle>
+            <SidebarSubtitle>live server (dev server) · SSE</SidebarSubtitle>
           </SidebarHeader>
           <div>
             <SidebarLabel>Channels</SidebarLabel>
