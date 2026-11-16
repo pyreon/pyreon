@@ -3,7 +3,7 @@
 // also answers a health endpoint — so Playwright's HTTP readiness probe on the
 // port succeeds while the same port brokers WebSocket sync.
 //
-//   bun examples/sync-yjs-demo/relay.ts        # ws://127.0.0.1:5186
+//   bun examples/fixtures/sync-yjs/relay.ts        # ws://127.0.0.1:5186
 //   SYNC_RELAY_PORT=9000 bun …/relay.ts        # custom port
 //
 // Open the demo in two SEPARATE browsers/profiles pointed at

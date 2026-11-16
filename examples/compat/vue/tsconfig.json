@@ -1,0 +1,9 @@
+{
+  "extends": "@pyreon/tsconfig/example.json",
+  "compilerOptions": {
+    "paths": {
+      "vue": ["../../../packages/tools/vue-compat/src/index.ts"],
+      "vue/*": ["../../../packages/tools/vue-compat/src/*"]
+    }
+  }
+}

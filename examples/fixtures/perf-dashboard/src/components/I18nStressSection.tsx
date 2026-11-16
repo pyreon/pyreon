@@ -4,7 +4,7 @@
  * journeys (render, interpolate, localeFlip, plural).
  *
  * Window helper `__pyreon_perf_i18n` is the journey driver — it lets
- * `examples/perf-dashboard/src/journeys.ts` deterministically seed scale
+ * `examples/fixtures/perf-dashboard/src/journeys.ts` deterministically seed scale
  * and run loops without going through the DOM. Loop journeys (interpolate,
  * plural) call `t()` directly in a tight loop; render journeys
  * (rendered, localeFlip) drive a `renderScale` signal that fans out into

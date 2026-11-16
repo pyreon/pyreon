@@ -6,12 +6,18 @@
     "packages/*/*",
     "packages/core/compiler/npm/*",
     "examples/*",
+    "examples/compat/*",
+    "examples/fixtures/*",
+    "examples/fixtures/cpa/*",
     "docs"
   ],
   "pyreon": {
     "doctor": {
       "excludeRoots": [
         "examples/*",
+        "examples/compat/*",
+        "examples/fixtures/*",
+        "examples/fixtures/cpa/*",
         "docs",
         "packages/core/compiler/npm/*"
       ]

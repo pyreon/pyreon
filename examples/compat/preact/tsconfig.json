@@ -3,13 +3,13 @@
   "compilerOptions": {
     "paths": {
       "preact": [
-        "../../packages/tools/preact-compat/src/index.ts"
+        "../../../packages/tools/preact-compat/src/index.ts"
       ],
       "preact/hooks": [
-        "../../packages/tools/preact-compat/src/hooks.ts"
+        "../../../packages/tools/preact-compat/src/hooks.ts"
       ],
       "@preact/signals": [
-        "../../packages/tools/preact-compat/src/signals.ts"
+        "../../../packages/tools/preact-compat/src/signals.ts"
       ]
     }
   }

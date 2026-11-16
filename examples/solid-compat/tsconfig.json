@@ -1,9 +1,0 @@
-{
-  "extends": "@pyreon/tsconfig/example.json",
-  "compilerOptions": {
-    "paths": {
-      "solid-js": ["../../packages/tools/solid-compat/src/index.ts"],
-      "solid-js/*": ["../../packages/tools/solid-compat/src/*"]
-    }
-  }
-}

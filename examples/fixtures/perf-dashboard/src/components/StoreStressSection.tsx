@@ -3,8 +3,8 @@
  *
  * Doesn't render anything visually meaningful (a few buttons + a status
  * line); the real entry point is the window helper at
- * `window.__pyreon_perf_stores`, which `examples/perf-dashboard/src/main.tsx`
- * exposes and `examples/perf-dashboard/src/journeys.ts` drives via
+ * `window.__pyreon_perf_stores`, which `examples/fixtures/perf-dashboard/src/main.tsx`
+ * exposes and `examples/fixtures/perf-dashboard/src/journeys.ts` drives via
  * `page.evaluate()`. Mirroring the form journey's pattern: avoid Playwright
  * `.click()` cost and `Object.is` short-circuits by going straight at the
  * primitive surface.

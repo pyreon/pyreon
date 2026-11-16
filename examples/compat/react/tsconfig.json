@@ -3,10 +3,10 @@
   "compilerOptions": {
     "paths": {
       "react": [
-        "../../packages/tools/react-compat/src/index.ts"
+        "../../../packages/tools/react-compat/src/index.ts"
       ],
       "react-dom/client": [
-        "../../packages/tools/react-compat/src/dom.ts"
+        "../../../packages/tools/react-compat/src/dom.ts"
       ]
     }
   }

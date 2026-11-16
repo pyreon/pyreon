@@ -3,13 +3,13 @@
   "compilerOptions": {
     "paths": {
       "svelte": [
-        "../../packages/tools/svelte-compat/src/index.ts"
+        "../../../packages/tools/svelte-compat/src/index.ts"
       ],
       "svelte/store": [
-        "../../packages/tools/svelte-compat/src/index.ts"
+        "../../../packages/tools/svelte-compat/src/index.ts"
       ],
       "svelte/jsx-runtime": [
-        "../../packages/tools/svelte-compat/src/jsx-runtime.ts"
+        "../../../packages/tools/svelte-compat/src/jsx-runtime.ts"
       ]
     }
   }
