@@ -14,9 +14,9 @@
  *   warned-ok     compiles, but the compiler warned (a warning on code that compiles is a false positive worth reading)
  *   warned-fail   does not compile, and the compiler warned — the contract working: a named warning, not a silent break
  *   incomplete    does not compile, no warning, but ONLY because the example is a fragment: the symbol the toolchain
- *                 cannot find is not a Pyreon export (`price`, `api`, `doc`, …) — the snippet relies on helpers it never
+ *                 cannot find is not imported from a Pyreon package (`price`, `api`, `doc`, …) — the snippet relies on helpers it never
  *                 defines. The repo's TypeScript example gate (`check-manifest-examples`) excludes the same class
- *   SILENT-FAIL   does not compile and the compiler said NOTHING, about a Pyreon export — the defect class this sweep
+ *   SILENT-FAIL   does not compile and the compiler said NOTHING, about a Pyreon import — the defect class this sweep
  *                 exists to drive to zero
  *
  * Usage:
@@ -89,6 +89,25 @@ function splitImports(code: string): { imports: string[]; body: string } {
   return { imports, body: body.trim() }
 }
 
+/**
+ * Names the given import lines bind: what is inside the braces (or a default / namespace binding), NOT the module path —
+ * `import type { X } from '@pyreon/kinetic'` does not import `kinetic`. With `pyreonOnly`, only `@pyreon/*` imports.
+ */
+function importedNames(imports: readonly string[], pyreonOnly = false): Set<string> {
+  const names = new Set<string>()
+  for (const line of imports) {
+    const m = /^import\s+(?:type\s+)?(?:([\w$]+)\s*,?\s*)?(?:\{([^}]*)\})?(?:\*\s+as\s+([\w$]+))?\s*from\s*['"]([^'"]+)['"]/.exec(line)
+    if (!m || (pyreonOnly && !m[4]!.startsWith('@pyreon/'))) continue
+    if (m[1]) names.add(m[1])
+    if (m[3]) names.add(m[3])
+    for (const part of (m[2] ?? '').split(',')) {
+      const name = part.trim().replace(/^type\s+/, '').split(/\s+as\s+/).pop()
+      if (name) names.add(name)
+    }
+  }
+  return names
+}
+
 /** An example that already declares a component (or exports) is module-level code and is used as written. */
 const declaresComponent = (body: string): boolean =>
   /\bexport\s+(default\s+)?(function|const|class)\b/.test(body) ||
@@ -102,19 +121,7 @@ const declaresComponent = (body: string): boolean =>
  */
 function buildSource(pkg: string, apiNames: readonly string[], example: string): string {
   const { imports, body } = splitImports(example)
-  // Names the example itself imports: what is inside the braces (or a default / namespace binding), NOT the module path —
-  // `import type { X } from '@pyreon/kinetic'` does not import `kinetic`.
-  const own = new Set<string>()
-  for (const line of imports) {
-    const m = /^import\s+(?:type\s+)?(?:([\w$]+)\s*,?\s*)?(?:\{([^}]*)\})?(?:\*\s+as\s+([\w$]+))?\s*from/.exec(line)
-    if (!m) continue
-    if (m[1]) own.add(m[1])
-    if (m[3]) own.add(m[3])
-    for (const part of (m[2] ?? '').split(',')) {
-      const name = part.trim().replace(/^type\s+/, '').split(/\s+as\s+/).pop()
-      if (name) own.add(name)
-    }
-  }
+  const own = importedNames(imports)
   // Value APIs of the package the example uses but did not import: import them, as a reader would.
   const wanted = apiNames.filter((n) => !own.has(n) && new RegExp(`\\b${n}\\b`).test(body))
   const head = [
@@ -151,12 +158,14 @@ function unresolvedSymbol(error: string | undefined): string | 'any-member' | un
   return undefined
 }
 
-function bucket(compiles: boolean, warnings: number, error: string | undefined, pyreonExports: ReadonlySet<string>): Bucket {
+function bucket(compiles: boolean, warnings: number, error: string | undefined, pyreonImports: ReadonlySet<string>): Bucket {
   if (compiles) return warnings === 0 ? 'clean' : 'warned-ok'
   if (warnings > 0) return 'warned-fail'
   const symbol = unresolvedSymbol(error)
-  // Missing symbol that is NOT a Pyreon export: the example is a fragment, not a compiler gap.
-  if (symbol !== undefined && (symbol === 'any-member' || !pyreonExports.has(symbol))) return 'incomplete'
+  // Missing symbol the compiled source does not import from a Pyreon package: the example is a fragment, not a compiler
+  // gap. Judged by the IMPORTS, not by "some package exports this name": `useUpdateEffect(() => value(), …)` never
+  // declares `value`, and `@pyreon/unistyle` happening to export a `value` made that free name look like a survivor.
+  if (symbol !== undefined && (symbol === 'any-member' || !pyreonImports.has(symbol))) return 'incomplete'
   return 'SILENT-FAIL'
 }
 
@@ -177,8 +186,6 @@ async function main(): Promise<number> {
   }
 
   const manifests = (await loadManifests()).filter((m) => !only || m.name === only)
-  const pyreonExports = new Set<string>()
-  for (const m of await loadManifests()) for (const a of m.api ?? []) for (const n of a.name.split(/[^\w$]+/)) if (n) pyreonExports.add(n)
   const records: Record_[] = []
   for (const m of manifests) {
     // An entry may document several exports at once (`nestValues / flattenValues`): each is a name the example may use.
@@ -186,6 +193,7 @@ async function main(): Promise<number> {
     for (const entry of m.api ?? []) {
       if (!entry.example?.trim()) continue
       const source = buildSource(m.name, apiNames, entry.example)
+      const pyreonImports = importedNames(splitImports(source).imports, true)
       // A compiler THROW (a syntax error in the example as wrapped) is the compiler speaking loudly, so it counts as a
       // warned failure, never a silent one.
       const attempt = (target: 'swift' | 'kotlin') => {
@@ -205,8 +213,8 @@ async function main(): Promise<number> {
       records.push({
         pkg: m.name,
         api: entry.name,
-        swift: bucket(sv.ok, sv.warnings, sv.error, pyreonExports),
-        kotlin: bucket(kv.ok, kv.warnings, kv.error, pyreonExports),
+        swift: bucket(sv.ok, sv.warnings, sv.error, pyreonImports),
+        kotlin: bucket(kv.ok, kv.warnings, kv.error, pyreonImports),
         swiftWarnings: sv.warnings,
         kotlinWarnings: kv.warnings,
         ...(sv.error ? { swiftError: sv.error } : {}),
@@ -245,7 +253,7 @@ async function main(): Promise<number> {
       console.log(`  ${r.pkg} :: ${r.api}   swift=${r.swift}${r.swiftError ? ` (${r.swiftError})` : ''}   kotlin=${r.kotlin}${r.kotlinError ? ` (${r.kotlinError})` : ''}`)
     }
   }
-  console.log(`\n${silent.length} example(s) fail to compile on at least one target, naming a Pyreon export, without any warning.`)
+  console.log(`\n${silent.length} example(s) fail to compile on at least one target, naming a Pyreon import, without any warning.`)
   if (jsonOut) writeFileSync(jsonOut, JSON.stringify(records, null, 1))
   return 0
 }
