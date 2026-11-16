@@ -633,7 +633,8 @@ class TasksAppInstrumentedTest {
 
     /**
      * @pyreon/feature's CRUD hooks against the loopback server's /groceries, and useQuery's refetch() (same script as
-     * the iOS test): a native mutation does not refresh the queries, so Refresh's refetch() must show each write.
+     * the iOS test): Refresh's refetch() reloads after the plain reset mutation; each feature mutation refreshes the
+     * feature's live queries itself, with no Refresh tap.
      */
     @Test
     fun featureCrudAndRefetch() {
@@ -651,18 +652,14 @@ class TasksAppInstrumentedTest {
 
         composeRule.onNodeWithTag("crud-add").performClick()
         waitForTagText("crud-writes", "success/success/idle/idle")
-        composeRule.onNodeWithTag("crud-count").assertTextEquals("2")
-        composeRule.onNodeWithTag("crud-refresh").performClick()
         waitForTagText("crud-count", "3")
 
         composeRule.onNodeWithTag("crud-done").performClick()
         waitForTagText("crud-writes", "success/success/success/idle")
-        composeRule.onNodeWithTag("crud-refresh").performClick()
         waitForTagText("crud-milk-done", "true")
 
         composeRule.onNodeWithTag("crud-delete").performClick()
         waitForTagText("crud-writes", "success/success/success/success")
-        composeRule.onNodeWithTag("crud-refresh").performClick()
         waitForTagText("crud-count", "2")
 
         composeRule.onNodeWithTag("crud-back").performClick()

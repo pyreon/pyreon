@@ -860,9 +860,9 @@ function StreamsScreen() {
   )
 }
 
-// @pyreon/feature's CRUD hooks against the loopback server's /groceries, plus refetch(): native has no shared query
-// client, so a mutation does not refresh the list or the record — the Refresh button's refetch() does, and the counts
-// it shows prove each write reached the server and each refetch re-ran its request.
+// @pyreon/feature's CRUD hooks against the loopback server's /groceries, plus refetch(). A feature mutation refreshes
+// the feature's live queries itself (as on the web); the reset is a plain endpoint mutation that invalidates nothing,
+// so the Refresh button's refetch() is what reloads after it.
 function CrudScreen() {
   const navigate = useNavigate()
   const list = Grocery.useList()

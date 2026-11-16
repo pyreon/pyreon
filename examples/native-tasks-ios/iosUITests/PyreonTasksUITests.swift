@@ -441,9 +441,10 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "streams-back did not return to tasks")
     }
 
-    /// @pyreon/feature's CRUD hooks against the loopback server's /groceries, and useQuery's refetch(). A mutation does
-    /// not refresh the queries natively, so each write is followed by Refresh (list.refetch() + milk.refetch()): the
-    /// count and the done flag change only if the write reached the server AND the refetch re-ran its request.
+    /// @pyreon/feature's CRUD hooks against the loopback server's /groceries, and useQuery's refetch(). The reset is
+    /// a plain endpoint mutation, which invalidates nothing, so Refresh (list.refetch() + milk.refetch()) is what
+    /// reloads the seeded rows. A feature mutation refreshes the feature's live queries itself, as on the web: after
+    /// each write the count / done flag change with NO Refresh tap.
     func test_featureCrudAndRefetch() throws {
         let app = XCUIApplication()
         app.launch()
@@ -470,19 +471,15 @@ final class PyreonTasksUITests: XCTestCase {
 
         tapAfterScrolling(app.buttons["crud-add"].firstMatch, in: app)
         XCTAssertTrue(waitForLabelContaining(writes, "success/success/", timeout: 15), "useCreate did not succeed: '\(writes.label)'")
-        XCTAssertEqual(count.label, "2", "a native create must not refresh the list by itself")
-        tapAfterScrolling(refresh, in: app)
-        XCTAssertTrue(waitForLabel(count, "3", timeout: 15), "refetch() after create did not show 3 rows: '\(count.label)'")
+        XCTAssertTrue(waitForLabel(count, "3", timeout: 15), "useCreate did not refresh useList by itself: '\(count.label)'")
 
         tapAfterScrolling(app.buttons["crud-done"].firstMatch, in: app)
         XCTAssertTrue(waitForLabelContaining(writes, "success/success/success/", timeout: 15), "useUpdate did not succeed: '\(writes.label)'")
-        tapAfterScrolling(refresh, in: app)
-        XCTAssertTrue(waitForLabel(milkDone, "true", timeout: 15), "refetch() after update did not show Milk done: '\(milkDone.label)'")
+        XCTAssertTrue(waitForLabel(milkDone, "true", timeout: 15), "useUpdate did not refresh useById by itself: '\(milkDone.label)'")
 
         tapAfterScrolling(app.buttons["crud-delete"].firstMatch, in: app)
         XCTAssertTrue(waitForLabel(writes, "success/success/success/success", timeout: 15), "useDelete did not succeed: '\(writes.label)'")
-        tapAfterScrolling(refresh, in: app)
-        XCTAssertTrue(waitForLabel(count, "2", timeout: 15), "refetch() after delete did not show 2 rows: '\(count.label)'")
+        XCTAssertTrue(waitForLabel(count, "2", timeout: 15), "useDelete did not refresh useList by itself: '\(count.label)'")
 
         tapAfterScrolling(app.buttons["crud-back"].firstMatch, in: app)
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "crud-back did not return to tasks")
