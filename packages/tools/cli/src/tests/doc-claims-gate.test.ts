@@ -374,6 +374,75 @@ describe('the scaffolder prompt carries the lint rule count', () => {
   })
 })
 
+describe('a source of truth the counter cannot read counts ZERO, not a crash', () => {
+  // Each counter parses one declaration out of a source file. When the file
+  // exists but the declaration was renamed or reshaped, the counter must
+  // return 0 (every claim then drifts, loudly) rather than throw and take the
+  // doctor run down, or keep a number it can no longer derive. The well-formed
+  // control proves the same fixture is read when the shape is right.
+  const actualOf = (r: GateResult, id: string): string | undefined =>
+    forCheck(r, id)
+      .map((f) => /Actual: (\d+)\.|actual (\d+)/.exec(f.message))
+      .map((m) => m?.[1] ?? m?.[2])
+      .find((n) => n !== undefined)
+
+  const cases: Array<[string, string, string, string]> = [
+    [
+      'lint-rule-count',
+      'packages/tools/lint/src/rules/index.ts',
+      'export const rules = [a, b]\n',
+      'export const allRules: Rule[] = [\n  a,\n  b,\n]\n',
+    ],
+    [
+      'detector-code-count',
+      'packages/core/compiler/src/pyreon-intercept.ts',
+      'export type PyreonCode = string\n',
+      "export type PyreonDiagnosticCode =\n  | 'one'\n  | 'two'\n",
+    ],
+    [
+      'react-detector-code-count',
+      'packages/core/compiler/src/react-intercept.ts',
+      'export type ReactCode = string\n',
+      "export type ReactDiagnosticCode =\n  | 'one'\n  | 'two'\n",
+    ],
+    [
+      'doc-format-count',
+      'packages/fundamentals/document/src/types.ts',
+      'export type Format = string\n',
+      "export type OutputFormat = 'pdf' | 'docx'\n\nexport type X = 1\n",
+    ],
+    [
+      'canonical-primitive-count',
+      'packages/native/compiler/src/canonical-primitives.ts',
+      'export const PRIMITIVES = []\n',
+      "export const CANONICAL_PRIMITIVES = new Set([\n  'Stack',\n  'Text',\n])\n",
+    ],
+  ]
+
+  for (const [id, file, unreadable, readable] of cases) {
+    it(`${id}: reads 0 from an unrecognised ${file.split('/').pop()}, 2 from the real shape`, async () => {
+      build({ [file]: unreadable })
+      expect(actualOf(await run(), id)).toBe('0')
+      rmSync(root, { recursive: true, force: true })
+      root = mkdtempSync(join(tmpdir(), 'pyreon-docclaims-'))
+      build({ [file]: readable })
+      expect(actualOf(await run(), id)).toBe('2')
+    })
+  }
+
+  it('counts packages and manifests past a stray FILE in packages/', async () => {
+    build({
+      'packages/README.md': '# packages\n',
+      'packages/tools/a/package.json': '{"name":"@pyreon/a"}\n',
+      'packages/tools/a/src/manifest.ts': 'export default {}\n',
+      'packages/tools/b/package.json': '{"name":"@pyreon/b"}\n',
+    })
+    const r = await run()
+    expect(actualOf(r, 'package-count')).toBe('2')
+    expect(actualOf(r, 'manifest-count')).toBe('1')
+  })
+})
+
 describe('the marketing site carries the lint counts', () => {
   // pyreon.dev said "133 lint rules in 25 categories" while the registry held
   // 140 in 26: its content files (synced from the 09-site staging set) were
