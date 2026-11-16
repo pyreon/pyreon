@@ -1802,3 +1802,10 @@
      area from padding cancelled by an equal negative margin, so no line moves. */
   .dx a:not([class]) { padding-top: calc((44px - 1em) / 2); padding-bottom: calc((44px - 1em) / 2); margin-top: calc((1em - 44px) / 2); margin-bottom: calc((1em - 44px) / 2); }
 }
+
+/* On a phone the pitch's calls to action share one edge, like the marketing
+   heroes (kit/cta.tsx ctaStackOnPhone, sm = 576px): the command and the
+   "Product page" pill each take the full width. */
+@media (max-width: 575.98px) {
+  .dx-pitch__ctas > * { flex: 1 1 100%; justify-content: center; }
+}
