@@ -9,7 +9,7 @@ import { h } from '@pyreon/core'
 import { __resetReactiveDevtoolsForTesting, computed, signal } from '@pyreon/reactivity'
 import { _bindText, mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CONSOLE_CAP, createHook, type Hook, MOUNTED_IDS_CAP } from './hook'
+import { compactGraph, CONSOLE_CAP, createHook, fileBase, type Hook, MOUNTED_IDS_CAP } from './hook'
 import type { HookMessage, PyreonDevtools } from './types'
 
 type TextSource = Parameters<typeof _bindText>[0]
@@ -272,5 +272,70 @@ describe('createHook', () => {
     expect(out.map((m) => m.type)).toEqual(['pyreon-detected', 'all-result', 'component-detail'])
     expect((out[0] as Extract<HookMessage, { type: 'pyreon-detected' }>).reactive).toBe(false)
     h1.dispose()
+  })
+
+  it('console capture stringifies what a page can throw: message-only error events, circular and undefined arguments', () => {
+    vi.useFakeTimers()
+    mountApp()
+    const fake = { warn: vi.fn(), error: vi.fn() }
+    const target = new EventTarget()
+    const h1 = start({ console: fake, errorTarget: target as unknown as Window })
+    h1.handle({ type: 'console-subscribe' })
+    // A script error with no Error object only carries a message.
+    const ev = new Event('error') as Event & { message?: string }
+    ev.message = '[Pyreon] script error without an object'
+    target.dispatchEvent(ev)
+    const circular: Record<string, unknown> = { tag: '[Pyreon]' }
+    circular.self = circular
+    fake.warn('[Pyreon] circular', circular)
+    fake.warn('[Pyreon] undefined', undefined)
+    vi.advanceTimersByTime(150)
+    expect(last('console-entries').entries.map((e) => e.text)).toEqual([
+      '[Pyreon] script error without an object',
+      '[Pyreon] circular [object Object]',
+      '[Pyreon] undefined undefined',
+    ])
+    h1.dispose()
+    hook = null
+  })
+
+  it('console capture is optional: no console and no error target installs nothing and still disposes', () => {
+    mountApp()
+    const h1 = start()
+    h1.handle({ type: 'console-subscribe' })
+    expect(last('console-entries')).toMatchObject({ entries: [], reset: true })
+    h1.dispose()
+    hook = null
+  })
+
+  it('reactive-eval reports a thrown non-Error as its string form', () => {
+    mountApp()
+    const h1 = start()
+    h1.handle({ type: 'reactive-eval', expr: 'throw "plain string"' })
+    expect(last('reactive-eval-result')).toMatchObject({ ok: false, result: 'plain string' })
+    h1.dispose()
+    hook = null
+  })
+
+  it('compactGraph reduces dev-server URLs to base names and leaves nodes without a location alone', () => {
+    const withLoc = {
+      id: 1,
+      kind: 'signal',
+      name: 'a',
+      value: '',
+      subscribers: 0,
+      fires: 0,
+      lastFire: null,
+      loc: { file: 'http://localhost:5173/src/Composer.tsx?t=1', line: 3 },
+    }
+    const without = { ...withLoc, id: 2, loc: undefined }
+    delete (without as { loc?: unknown }).loc
+    const edges = [{ from: 1, to: 2 }]
+    const out = compactGraph({ nodes: [withLoc, without], edges } as never)
+    expect(out.nodes[0]?.loc).toEqual({ file: 'Composer.tsx', line: 3 })
+    expect(out.nodes[1]).toBe(without)
+    expect(out.edges).toBe(edges)
+    expect(fileBase('/a/b/c.ts#frag')).toBe('c.ts')
+    expect(fileBase('plain.ts')).toBe('plain.ts')
   })
 })
