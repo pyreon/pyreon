@@ -3097,6 +3097,7 @@ export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): str
           const message = inlineObjectTypeWarningKotlin(t)
           if (!_emitWarnings.includes(message)) _emitWarnings.push(message)
         }
+
         return 'Any'
       }
       return registerKotlinSynthClass(
