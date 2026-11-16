@@ -132,11 +132,11 @@ ${navMedia.expanded}{.${C.sheet}{display:none}}
 :root[data-theme=light] .${C.onlyDark},:root:not([data-theme=light]) .${C.onlyLight}{display:none}
 .${C.svgArt}{display:block;width:100%}
 .${C.svgArt} svg{display:block;width:100%;height:auto}
-.${C.loop}{position:relative;margin:0}
-.${C.loopVideo}{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity ${motion.hover}}
 [data-art]{overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain}
 [data-art] svg{min-width:var(--art-min,0)}
 [data-art]:focus-visible{${focus}}
+.${C.loop}{position:relative;margin:0}
+.${C.loopVideo}{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity ${motion.hover}}
 .${C.loopPlaying} .${C.loopVideo}{opacity:1}
 .${C.loopToggle}{${reset}position:absolute;right:10px;bottom:10px;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:${radius.pill}px;background:${v('glass')};color:${v('text')};border:1px solid ${v('line2')};cursor:pointer}
 .${C.loopToggle}:focus-visible{${focus}}

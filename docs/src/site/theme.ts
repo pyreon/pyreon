@@ -318,10 +318,6 @@ export const section = {
 /** Breakpoints (min-width, px), as the unified theme sets them. */
 export const breakpoints = { xs: 0, sm: 576, md: 768, lg: 992, xl: 1200 } as const
 
-/** `@media` for "nav collapsed" / "nav expanded" (960px is not a theme breakpoint). */
-export const navMedia = {
-  collapsed: `@media (max-width: ${layout.navCollapse - 0.02}px)`,
-  expanded: `@media (min-width: ${layout.navCollapse}px)`,
 /**
  * Touch screens: a phone or tablet width, or a coarse pointer at any width.
  * Every control there is at least `tapTarget` px tall (WCAG 2.5.5).
@@ -333,6 +329,24 @@ export const touch = {
   linkPad: 13,
 } as const
 
+/** `@media` for "nav collapsed" / "nav expanded" (960px is not a theme breakpoint). */
+export const navMedia = {
+  collapsed: `@media (max-width: ${layout.navCollapse - 0.02}px)`,
+  expanded: `@media (min-width: ${layout.navCollapse}px)`,
+} as const
+
+/**
+ * Inline SVG art (charts, diagrams) is drawn at a fixed width with text at
+ * 11-22px. It never renders below `minScale` of that width (capped at
+ * `maxMinWidth`, the rule the story pages' wide diagrams already used); on a
+ * narrower screen it scrolls sideways in its own box instead of shrinking its
+ * labels to a few pixels.
+ */
+export const art = {
+  minScale: 0.8,
+  /** Charts that repeat figures printed beside them (aria-hidden): a lower floor, so they fit a desktop proof cell. */
+  decorativeMinScale: 0.66,
+  maxMinWidth: 640,
 } as const
 
 // ─── Motion ───────────────────────────────────────────────────────────────
@@ -350,20 +364,6 @@ export const motion = {
     duration: 200,
     easing: 'cubic-bezier(.2,.7,.3,1)',
     ring: 'rgba(255,94,26,.55)',
-/**
- * Inline SVG art (charts, diagrams) is drawn at a fixed width with text at
- * 11-22px. It never renders below `minScale` of that width (capped at
- * `maxMinWidth`, the rule the story pages' wide diagrams already used); on a
- * narrower screen it scrolls sideways in its own box instead of shrinking its
- * labels to a few pixels.
- */
-export const art = {
-  minScale: 0.8,
-  /** Charts that repeat figures printed beside them (aria-hidden): a lower floor, so they fit a desktop proof cell. */
-  decorativeMinScale: 0.66,
-  maxMinWidth: 640,
-} as const
-
     edge: 'rgba(255,94,26,.7)',
     fade: 'rgba(255,94,26,0)',
   },

@@ -82,9 +82,9 @@ const css = (m: ModeFn): string => `
   & .code-block pre code { font: inherit; background: none; padding: 0; }
   [data-theme='dark'] & .shiki span, [data-theme='dark'] & .shiki { color: var(--shiki-dark, inherit) !important; }
   & .code-block__copy { position: absolute; top: 6px; right: 8px; height: 28px; padding: 0 12px; border: 1px solid ${tone(m, 'line2')}; border-radius: ${radius.pill}px; background: transparent; color: ${tone(m, 'mist')}; font-family: ${font.mono}; font-size: 11.5px; cursor: pointer; }
+  ${touch.media} { & .code-block__copy { height: ${touch.tapTarget}px; } }
   & .code-block__copy:hover { color: ${tone(m, 'text')}; border-color: ${tone(m, 'lineHover')}; }
   & .code-block__copy:focus-visible { outline: 2px solid ${tone(m, 'focus')}; outline-offset: 2px; }
-  ${touch.media} { & .code-block__copy { height: ${touch.tapTarget}px; } }
 `
 
 /** The post body wrapper. Block layout (not the kit's flex column), so margins between blocks collapse as in prose. */

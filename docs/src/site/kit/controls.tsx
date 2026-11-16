@@ -163,6 +163,7 @@ const SegButton = el
     hover: { color: tone(m, 'text') },
     focus: focusRing(m),
     pressed: { backgroundColor: tone(m, 'line'), color: tone(m, 'text') },
+    extendCss: tapArea,
   }))
 
 /**
@@ -176,7 +177,6 @@ export function Segmented<T extends string>(props: {
   onChange: (v: T) => void
   label: string
 }) {
-    extendCss: tapArea,
   return (
     <SegBox aria-label={props.label}>
       <For each={() => props.options} by={(o) => o}>

@@ -183,13 +183,13 @@ const CellLabel = txt
     display: 'block',
     marginTop: 6,
     maxWidth: 380,
+    textWrap: 'balance',
     fontFamily: font.sans,
     fontSize: 17,
     lineHeight: 1.35,
     fontWeight: weight.medium,
     color: tone(m, 'strong'),
   }))
-    textWrap: 'balance',
 
 const CellMono = txt
   .config({ name: 'ProofBandDetail' })
@@ -239,15 +239,15 @@ export function ProofBand(props: {
   id?: string | undefined
 }) {
   const items = props.items.slice(0, 3)
+  // One numeral size per band: a long number in one cell steps every cell
+  // down, so the labels under the numbers start on one line.
+  const size = items.some((i) => numeralSize(i.stat) === 'long') ? 'long' : 'default'
   // One column until 992px: a long numeral ("1.94–1.95×") does not fit a third of a tablet.
   const cols = `grid-template-columns: minmax(0, 1fr); @media (min-width: ${breakpoints.lg}px) { grid-template-columns: repeat(${items.length}, minmax(0, 1fr)); }`
   return (
     <Band id={props.id} aria-label={props.title ? undefined : 'In numbers'}>
       <Show when={() => !!props.title}>
         <BandTitle>{renderInline(props.title ?? '')}</BandTitle>
-  // One numeral size per band: a long number in one cell steps every cell
-  // down, so the labels under the numbers start on one line.
-  const size = items.some((i) => numeralSize(i.stat) === 'long') ? 'long' : 'default'
       </Show>
       <Cells css={cols}>
         <For each={items} by={(i) => i.stat + i.label}>

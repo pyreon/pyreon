@@ -88,7 +88,7 @@ export function Diagram(props: {
   svg: string
   caption?: string | undefined
   id?: string | undefined
-  /** The box may scroll sideways (a wide chart on a phone): make it reachable by keyboard. */
+  /** The name of the box when it scrolls sideways (a wide chart on a phone); defaults to the SVG's title. */
   scrollLabel?: string | undefined
 }) {
   return (
