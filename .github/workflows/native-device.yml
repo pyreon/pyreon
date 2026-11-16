@@ -599,6 +599,30 @@ jobs:
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
+      # Today (examples/native-showcase, the pyreon.dev home-page demo). One
+      # package per app, the create-multiplatform layout: ios/ and android/
+      # beside the shared src/. BUILD ONLY: it proves the emitted Swift links
+      # against real SwiftUI on the Simulator SDK. Its UITests
+      # (ios/UITests/) are not run in CI yet.
+      # Placed BEFORE the emulator/simulator test steps on purpose: a build-only
+      # check must not be skipped because an earlier app's device test failed.
+      - name: Emit + xcodegen + build — native-showcase/ios (build only)
+        timeout-minutes: 12
+        if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' showcase ')
+        working-directory: examples/native-showcase/ios
+        run: |
+          set -o pipefail
+          bash ../scripts/build-ios.sh
+          xcodegen generate
+          xcodebuild build \
+            -workspace "$PYREON_IOS_WS" \
+            -derivedDataPath "$PYREON_IOS_DD" \
+            -scheme PyreonShowcase \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+
       - name: Run UITest on iOS Simulator (Phase 2.2 launch-and-render smoke)
         id: uitest-todomvc
         timeout-minutes: 12
@@ -862,28 +886,6 @@ jobs:
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
             -configuration Debug
 
-      # Today (examples/native-showcase, the pyreon.dev home-page demo). One
-      # package per app, the create-multiplatform layout: ios/ and android/
-      # beside the shared src/. BUILD ONLY: it proves the emitted Swift links
-      # against real SwiftUI on the Simulator SDK. Its UITests
-      # (ios/UITests/) are not run in CI yet.
-      - name: Emit + xcodegen + build — native-showcase/ios (build only)
-        timeout-minutes: 12
-        if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' showcase ')
-        working-directory: examples/native-showcase/ios
-        run: |
-          set -o pipefail
-          bash ../scripts/build-ios.sh
-          xcodegen generate
-          xcodebuild build \
-            -workspace "$PYREON_IOS_WS" \
-            -derivedDataPath "$PYREON_IOS_DD" \
-            -scheme PyreonShowcase \
-            -sdk iphonesimulator \
-            -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
-
       - name: Upload iOS test results
         # A selected test step must leave diagnostic evidence, including on failure.
         # Skipped app lanes have no result bundle to upload.
@@ -1106,6 +1108,18 @@ jobs:
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' todomvc ')
         working-directory: examples/native-todomvc-android
         run: bash "$GITHUB_WORKSPACE/scripts/native-gradle.sh" assembleDebug --stacktrace
+
+      # Today (examples/native-showcase/android). BUILD ONLY: assembleDebug
+      # proves the emitted Compose compiles and links; its instrumented test
+      # (android/app/src/androidTest/) is not run in CI yet, so no emulator.
+      # Placed BEFORE the emulator/simulator test steps on purpose: a build-only
+      # check must not be skipped because an earlier app's device test failed.
+      - name: Emit Kotlin + build debug APK — native-showcase/android (build only)
+        if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' showcase ')
+        working-directory: examples/native-showcase/android
+        run: |
+          bash ../scripts/build-android.sh
+          bash "$GITHUB_WORKSPACE/scripts/native-gradle.sh" assembleDebug --stacktrace
 
       - name: Enable KVM for emulator
         # `reactivecircus/android-emulator-runner` requires KVM
@@ -1483,16 +1497,6 @@ jobs:
       # 10 GB budget at once (2026-11-02), evicting the small, hot verdict
       # stores first. Identical Gradle files declare identical dependencies,
       # so an existing entry never needs re-saving.
-      # Today (examples/native-showcase/android). BUILD ONLY: assembleDebug
-      # proves the emitted Compose compiles and links; its instrumented test
-      # (android/app/src/androidTest/) is not run in CI yet, so no emulator.
-      - name: Emit Kotlin + build debug APK — native-showcase/android (build only)
-        if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' showcase ')
-        working-directory: examples/native-showcase/android
-        run: |
-          bash ../scripts/build-android.sh
-          bash "$GITHUB_WORKSPACE/scripts/native-gradle.sh" assembleDebug --stacktrace
-
       - name: Save Gradle dependency cache (main only)
         if: always() && github.ref == 'refs/heads/main' && steps.gradle-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
