@@ -275,8 +275,8 @@ const VITE_CONFIG_NAMES = [
  * nearest `vite.config.*` (bounded by `boundary`) and looks for an EXPLICIT
  * `mode: 'ssg'`. `getStaticPaths` only matters under SSG — SPA / SSR / ISR
  * apps (and any app that doesn't opt into SSG) never prerender, so flagging
- * a missing enumerator there is a false positive (e.g. `examples/chat` +
- * `examples/docs-pyreon` are `mode: 'spa'`). Conservative + matching this
+ * a missing enumerator there is a false positive (e.g. `examples/kanban` is
+ * `mode: 'spa'`). Conservative + matching this
  * file's "false negatives acceptable, false positives must be rare" stance:
  * flag ONLY on an explicit `mode: 'ssg'` (SSG is opt-in; a computed/absent
  * mode is treated as not-SSG).

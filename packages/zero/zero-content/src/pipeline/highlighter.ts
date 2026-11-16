@@ -6,8 +6,8 @@ import { createHighlighter, type Highlighter, isPlainLang, isSpecialLang } from 
 // loads grammars + theme files — expensive enough that re-creating per
 // `.md` file would dominate the build time on a docs-sized site).
 //
-// Themes default to `github-light` + `github-dark` — proven, well-
-// tested, and the existing examples/docs-pyreon prototype uses them.
+// Themes default to `github-light` + `github-dark` — proven and well
+// tested.
 // Custom Pyreon-branded themes can land as a follow-up; the highlighter
 // accepts arbitrary theme objects via the `themes` option.
 //
