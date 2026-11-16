@@ -324,8 +324,8 @@ export default function Post() { return null }`,
   it('does NOT fire for a dynamic route in a `mode: "spa"` app (SPA never prerenders)', () => {
     // The whole premise — "under mode:'ssg' the route is silently skipped" —
     // doesn't apply to SPA/SSR/ISR apps, which never prerender. Flagging a
-    // missing getStaticPaths there was a false positive (e.g. examples/chat,
-    // examples/docs-pyreon are both mode:'spa').
+    // missing getStaticPaths there was a false positive (e.g. examples/kanban
+    // is mode:'spa').
     const fixture = makeFixture()
     try {
       // Overwrite the default SSG config with SPA.

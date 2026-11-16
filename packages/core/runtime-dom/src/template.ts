@@ -1220,7 +1220,7 @@ function deferTpl(
  * render of the real component) and the compiler emits ONE `_rsCollapse`
  * call instead of the 5-layer wrapper mount (rocketstyle → attrs HOC →
  * Element → Wrapper → styled). Measured 44× wall-clock, mountChild 9→1
- * (see examples/experiments/e2-static-rocketstyle/RESULTS.md).
+ * (see .agents/guides/internals/references/experiments/e2-static-rocketstyle.md).
  *
  * Dual-emit (RFC decision 1): both the light- and dark-resolved class
  * strings are baked in; `isDark` is the app's live mode accessor (the
