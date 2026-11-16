@@ -865,6 +865,12 @@ With an absolute literal `api` (`'https://api.example.com/todos'`), the CRUD hoo
 
 A relative or computed `api`, a custom `fetcher`, `useSearch`, `useForm`, `useTable`, `useStore` and every `useList` option except a literal `staleTime` stay web and are warned by name.
 
+How the lowered hooks match the web helper (`createFetcher`), identically on both targets:
+
+- **Errors.** A non-2xx answer rejects with the web's error: `error.message` is the body's `message` when the server sends a non-empty string one, otherwise `<METHOD> <url> failed: <status>`. Natively that is `PyreonHttpMessageError`, which also carries `status` and, when the body has a truthy `errors`, its JSON text. `q.error()?.message`, an `onError` parameter's `.message` and a caught error's `.message` all read that string. A non-string `message` is not read; the default message stands.
+- **No content.** A `204` on `useCreate` / `useUpdate` resolves with no data: the status is `success` and `data` is absent, as the web's `undefined`. Natively the `onSuccess` data and an awaited `mutateAsync` result are therefore optional, so read them with `?.` (`t?.id ?? ''`), which is valid on the web too. A `204` on `useList` / `useById` is still a decode error natively, where the web resolves `undefined`.
+- **Missing fields.** A record that lacks a schema field decodes that field to its `initialValues` default (`''` / `0` / `false`) on both targets, where the web leaves it `undefined`. An unknown extra key is ignored. A field that is present but `null` or of the wrong type is a decode error on both.
+
 ## Why
 
 A typical CRUD feature needs list queries, detail queries, search, create / update / delete mutations, optimistic updates, a validated form for both create and edit, table columns, and a client cache — easily ~200 lines of repetitive wiring per entity.

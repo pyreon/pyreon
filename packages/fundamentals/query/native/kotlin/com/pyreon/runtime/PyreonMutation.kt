@@ -15,6 +15,15 @@
 // no kotlinx-coroutines import (a `suspend` function is a language feature),
 // verifies alone against the stub set, and unit-tests with a stub operation.
 //
+// ## No content
+//
+// An operation that may answer with NO CONTENT (`@pyreon/feature`'s create /
+// update, where the web resolves `undefined` for a 204) uses `runOrEmpty` /
+// `runAsyncOrEmpty`: the operation returns `T?`, a `null` is a SUCCESS with no
+// data, and the callbacks (`PyreonMutationCallbacksOrEmpty<T>`, which is
+// `PyreonMutationCallbacks<T?>`) receive `T?` — `onSuccess` fires for it, as
+// the web's `onSuccess(undefined)` does. The Swift `orEmpty:` twin.
+//
 // ## Disposal
 //
 // When the composition leaves, the scope is cancelled: the suspended
@@ -35,6 +44,20 @@ public class PyreonMutationCallbacks<T>(
     public val onError: ((Throwable) -> Unit)? = null,
     public val onSettled: ((T?, Throwable?) -> Unit)? = null,
 )
+
+/** The callbacks of a call whose success may carry no data (a 204): `onSuccess` receives `null` for it. */
+public typealias PyreonMutationCallbacksOrEmpty<T> = PyreonMutationCallbacks<T?>
+
+/** The same callbacks for the state machine, which settles `T?`; a plain operation never yields `null`. */
+@Suppress("UNCHECKED_CAST")
+private fun <T> PyreonMutationCallbacks<T>.orEmpty(): PyreonMutationCallbacks<T?> {
+    val success = onSuccess
+    return PyreonMutationCallbacks(
+        onSuccess = success?.let { cb -> { value: T? -> cb(value as T) } },
+        onError = onError,
+        onSettled = onSettled,
+    )
+}
 
 /** Reactive mutation container — the Compose half of `useMutation`. */
 public class PyreonMutation<T> {
@@ -76,6 +99,15 @@ public class PyreonMutation<T> {
         operation: suspend (R) -> T,
         options: PyreonMutationCallbacks<T> = PyreonMutationCallbacks(),
         call: PyreonMutationCallbacks<T> = PyreonMutationCallbacks(),
+    ): Unit = runOrEmpty(mine, input, operation, options.orEmpty(), call.orEmpty())
+
+    /** [run] for an operation that may answer with no content: a `null` result is a success with no data. */
+    public suspend fun <R> runOrEmpty(
+        mine: Int,
+        input: R,
+        operation: suspend (R) -> T?,
+        options: PyreonMutationCallbacksOrEmpty<T> = PyreonMutationCallbacks(),
+        call: PyreonMutationCallbacksOrEmpty<T> = PyreonMutationCallbacks(),
     ) {
         try {
             settle(mine, input, operation, options, call)
@@ -92,15 +124,27 @@ public class PyreonMutation<T> {
         operation: suspend (R) -> T,
         options: PyreonMutationCallbacks<T> = PyreonMutationCallbacks(),
         call: PyreonMutationCallbacks<T> = PyreonMutationCallbacks(),
-    ): T = settle(begin(), input, operation, options, call)
+    ): T {
+        // A plain operation never yields null, so the cast cannot fail.
+        @Suppress("UNCHECKED_CAST")
+        return settle(begin(), input, operation, options.orEmpty(), call.orEmpty()) as T
+    }
+
+    /** [runAsync] for an operation that may answer with no content: resolves `null` for it. */
+    public suspend fun <R> runAsyncOrEmpty(
+        input: R,
+        operation: suspend (R) -> T?,
+        options: PyreonMutationCallbacksOrEmpty<T> = PyreonMutationCallbacks(),
+        call: PyreonMutationCallbacksOrEmpty<T> = PyreonMutationCallbacks(),
+    ): T? = settle(begin(), input, operation, options, call)
 
     private suspend fun <R> settle(
         mine: Int,
         input: R,
-        operation: suspend (R) -> T,
-        options: PyreonMutationCallbacks<T>,
-        call: PyreonMutationCallbacks<T>,
-    ): T {
+        operation: suspend (R) -> T?,
+        options: PyreonMutationCallbacksOrEmpty<T>,
+        call: PyreonMutationCallbacksOrEmpty<T>,
+    ): T? {
         val value = try {
             operation(input)
         } catch (e: kotlin.coroutines.cancellation.CancellationException) {
@@ -124,7 +168,7 @@ public class PyreonMutation<T> {
         return generation
     }
 
-    private fun succeed(value: T, mine: Int, options: PyreonMutationCallbacks<T>, call: PyreonMutationCallbacks<T>) {
+    private fun succeed(value: T?, mine: Int, options: PyreonMutationCallbacksOrEmpty<T>, call: PyreonMutationCallbacksOrEmpty<T>) {
         options.onSuccess?.invoke(value)
         options.onSettled?.invoke(value, null)
         if (mine != generation) return
@@ -135,7 +179,7 @@ public class PyreonMutation<T> {
         call.onSettled?.invoke(value, null)
     }
 
-    private fun fail(failure: Throwable, mine: Int, options: PyreonMutationCallbacks<T>, call: PyreonMutationCallbacks<T>) {
+    private fun fail(failure: Throwable, mine: Int, options: PyreonMutationCallbacksOrEmpty<T>, call: PyreonMutationCallbacksOrEmpty<T>) {
         options.onError?.invoke(failure)
         options.onSettled?.invoke(null, failure)
         if (mine != generation) return

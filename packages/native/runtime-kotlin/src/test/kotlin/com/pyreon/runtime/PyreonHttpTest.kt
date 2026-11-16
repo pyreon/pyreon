@@ -406,7 +406,53 @@ fun testUploadReachesTheExecutor() {
     check(up != null && up.file.name == "blob" && up.file.type == "text/plain") { "a raw file body: $up" }
 }
 
+// ── PyreonHttpMessageError (`@pyreon/feature`'s error contract) ────────────
+
+fun testMessageErrorReadsTheBody() {
+    fun err(status: Int, body: String) = PyreonHttpResponse(status, body = body).messageError("PUT", "https://a.dev/todos/a b")
+    val plain = err(500, "")
+    check(plain.message == "PUT https://a.dev/todos/a b failed: 500" && plain.status == 500 && plain.errors == null) {
+        "no body → the default message: ${plain.message}"
+    }
+    check(err(422, """{"message":"Title is required"}""").message == "Title is required") { "the body's message" }
+    check(err(400, """{"message":""}""").message == "PUT https://a.dev/todos/a b failed: 400") { "an empty message is falsy" }
+    check(err(400, """{"message":7}""").message == "PUT https://a.dev/todos/a b failed: 400") { "a non-string message is not read" }
+    check(err(400, "<html>oops</html>").message == "PUT https://a.dev/todos/a b failed: 400") { "a non-JSON body keeps the default" }
+    check(err(400, """{"message":"x",}""").message == "PUT https://a.dev/todos/a b failed: 400") { "invalid JSON keeps the default" }
+    check(err(400, """{"message":"a","message":"b"}""").message == "b") { "a duplicate key keeps its LAST value" }
+    check(err(400, "{\"message\":\"caf\\u00e9 \\\"q\\\" \\ud83d\\ude42\"}").message == "café \"q\" 🙂") { "escapes decode" }
+    val withErrors = err(422, """{"message":"Invalid","errors": {"title" : ["required"]} }""")
+    check(withErrors.errors == """{"title" : ["required"]}""") { "errors is the value's JSON text: ${withErrors.errors}" }
+    check(err(422, """{"errors":0}""").errors == null && err(422, """{"errors":false}""").errors == null) { "falsy errors are absent" }
+    check(err(422, """[{"message":"x"}]""").message == "PUT https://a.dev/todos/a b failed: 422") { "a non-object body has no message" }
+    check(plain.toString() == "Error: PUT https://a.dev/todos/a b failed: 500") { "String(error) as the web renders it" }
+}
+
+fun testMiddlewareRejectThrowsTheBuiltError() {
+    val ok = PyreonHttpPipeline.run(
+        PyreonHttpRequest.get("https://a.dev/x"),
+        listOf(PyreonHttpMiddleware.Reject { it.messageError("GET", "https://a.dev/x") }),
+        Recorder().env(),
+    ) { PyreonHttpResponse(204) }
+    check(ok.status == 204) { "a 2xx passes through" }
+    var thrown: Throwable? = null
+    try {
+        PyreonHttpPipeline.run(
+            PyreonHttpRequest.get("https://a.dev/x"),
+            listOf(PyreonHttpMiddleware.Reject { it.messageError("GET", "https://a.dev/x") }),
+            Recorder().env(),
+        ) { PyreonHttpResponse(404, body = """{"message":"Not here"}""") }
+    } catch (e: Throwable) {
+        thrown = e
+    }
+    check(thrown is PyreonHttpMessageError && thrown.message == "Not here" && (thrown as PyreonHttpMessageError).status == 404) {
+        "a non-2xx throws the built error: $thrown"
+    }
+}
+
 fun main() {
+    testMessageErrorReadsTheBody()
+    testMiddlewareRejectThrowsTheBuiltError()
     testMiddlewareBearerSetsHeaderOnce()
     testMiddlewareBearerNullOrEmptyTokenSendsNoHeader()
     testMiddlewareBearerStaysOnBaseOrigin()

@@ -8,6 +8,13 @@
 //     m.isPending / m.isSuccess / m.isError / m.isIdle / m.status
 //     m.reset()              // back to idle
 //
+// An operation that may answer with NO CONTENT (`@pyreon/feature`'s create /
+// update, where the web's helper resolves `undefined` for a 204) uses the
+// `orEmpty:` entry points: the operation returns `T?`, a `nil` is a SUCCESS
+// with no data (`status == "success"`, `data == nil`), and the callbacks
+// (`PyreonMutationCallbacksOrEmpty`) receive `T?` — `onSuccess` fires for it,
+// as the web's `onSuccess(undefined)` does.
+//
 // ## Transport-agnostic on purpose
 //
 // The container owns the STATE MACHINE and the callback order; the request is
@@ -56,6 +63,38 @@ public struct PyreonMutationCallbacks<T> {
     }
 }
 
+/// The callbacks of an `orEmpty:` call, whose success may carry no data (a 204):
+/// `onSuccess` receives `nil` for it. A separate type rather than
+/// `PyreonMutationCallbacks<T?>`, whose `onSettled` would take a `T??`.
+public struct PyreonMutationCallbacksOrEmpty<T> {
+    public var onSuccess: ((T?) -> Void)?
+    public var onError: ((Error) -> Void)?
+    public var onSettled: ((T?, Error?) -> Void)?
+
+    public init(
+        onSuccess: ((T?) -> Void)? = nil,
+        onError: ((Error) -> Void)? = nil,
+        onSettled: ((T?, Error?) -> Void)? = nil
+    ) {
+        self.onSuccess = onSuccess
+        self.onError = onError
+        self.onSettled = onSettled
+    }
+}
+
+extension PyreonMutationCallbacks {
+    /// The same callbacks for the state machine, which settles `T?`. A plain
+    /// operation never yields `nil`, so `onSuccess` always receives a value.
+    var orEmpty: PyreonMutationCallbacksOrEmpty<T> {
+        let success = onSuccess
+        return PyreonMutationCallbacksOrEmpty(
+            onSuccess: success.map { cb in { value in if let value { cb(value) } } },
+            onError: onError,
+            onSettled: onSettled
+        )
+    }
+}
+
 /// Observable mutation container — the SwiftUI half of `useMutation`.
 @available(iOS 17.0, macOS 14.0, *)
 @Observable
@@ -93,6 +132,17 @@ public final class PyreonMutation<T> {
         options: PyreonMutationCallbacks<T> = PyreonMutationCallbacks(),
         call: PyreonMutationCallbacks<T> = PyreonMutationCallbacks()
     ) {
+        mutate(input, orEmpty: { try await operation($0) }, options: options.orEmpty, call: call.orEmpty)
+    }
+
+    /// `mutate` for an operation that may answer with no content: a `nil`
+    /// result is a success with no data, and `onSuccess` receives `nil`.
+    public func mutate<R>(
+        _ input: R,
+        orEmpty operation: @escaping (R) async throws -> T?,
+        options: PyreonMutationCallbacksOrEmpty<T> = PyreonMutationCallbacksOrEmpty(),
+        call: PyreonMutationCallbacksOrEmpty<T> = PyreonMutationCallbacksOrEmpty()
+    ) {
         let mine = begin()
         // Spelled through its module: an app's own `Task` model shares this module and would shadow it.
         _Concurrency.Task { @MainActor [weak self] in
@@ -114,6 +164,19 @@ public final class PyreonMutation<T> {
         options: PyreonMutationCallbacks<T> = PyreonMutationCallbacks(),
         call: PyreonMutationCallbacks<T> = PyreonMutationCallbacks()
     ) async throws -> T {
+        // A plain operation never yields nil, so the unwrap cannot fail.
+        try await mutateAsync(input, orEmpty: { try await operation($0) }, options: options.orEmpty, call: call.orEmpty)!
+    }
+
+    /// `mutateAsync` for an operation that may answer with no content: resolves
+    /// `nil` for it (the web's `await mutateAsync(v)` is `undefined`).
+    @discardableResult
+    public func mutateAsync<R>(
+        _ input: R,
+        orEmpty operation: @escaping (R) async throws -> T?,
+        options: PyreonMutationCallbacksOrEmpty<T> = PyreonMutationCallbacksOrEmpty(),
+        call: PyreonMutationCallbacksOrEmpty<T> = PyreonMutationCallbacksOrEmpty()
+    ) async throws -> T? {
         let mine = begin()
         do {
             let value = try await operation(input)
@@ -137,7 +200,7 @@ public final class PyreonMutation<T> {
         return generation
     }
 
-    private func succeed(_ value: T, _ mine: Int, options: PyreonMutationCallbacks<T>, call: PyreonMutationCallbacks<T>) {
+    private func succeed(_ value: T?, _ mine: Int, options: PyreonMutationCallbacksOrEmpty<T>, call: PyreonMutationCallbacksOrEmpty<T>) {
         options.onSuccess?(value)
         options.onSettled?(value, nil)
         guard mine == generation else { return }
@@ -148,7 +211,7 @@ public final class PyreonMutation<T> {
         call.onSettled?(value, nil)
     }
 
-    private func fail(_ failure: Error, _ mine: Int, options: PyreonMutationCallbacks<T>, call: PyreonMutationCallbacks<T>) {
+    private func fail(_ failure: Error, _ mine: Int, options: PyreonMutationCallbacksOrEmpty<T>, call: PyreonMutationCallbacksOrEmpty<T>) {
         options.onError?(failure)
         options.onSettled?(nil, failure)
         guard mine == generation else { return }
