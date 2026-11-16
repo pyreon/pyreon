@@ -31,6 +31,11 @@
 // It is equally usable by hand-written SwiftUI code.
 
 import Foundation
+// On Linux, URLSession / URLRequest / HTTPURLResponse live in a separate
+// module. Apple platforms have no such module, so the import is conditional.
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// HTTP method. Raw value is the wire verb.
 public enum PyreonHttpMethod: String, Sendable {
