@@ -1,6 +1,6 @@
 import type { VNodeChild } from '@pyreon/core'
 import { For } from '@pyreon/core'
-import { breakpoints, font, motion, radius, text, touch, weight } from '../theme'
+import { font, motion, radius, text, touch, weight } from '../theme'
 import { el, focusRing, tone, txt, type LinkAttrs, type ButtonAttrs, tapArea } from './bases'
 import { CommandLine } from './command'
 import { CopyButtonIsland } from './islands'
@@ -97,19 +97,6 @@ export function Pill(props: {
 export function InstallCommand(props: { command: string; variant?: 'default' | 'hot' | undefined }) {
   return <CommandLine command={props.command} variant={props.variant} copy={<CopyButtonIsland text={props.command} />} />
 }
-
-/**
- * A row of call-to-action controls that wraps. On a phone every control takes
- * the full width, so a stack of pills and the install command shares one
- * edge instead of ending at three different widths.
- */
-export const ctaStackOnPhone = `@media (max-width: ${breakpoints.sm - 0.02}px) { & > * { flex: 1 1 100%; justify-content: center; } }`
-
-/** The pills after an install command: they wrap as one group, so the command never strands one pill on a line of its own. */
-export const PillGroup = el
-  .config({ name: 'PillGroup' })
-  .attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 12 })
-  .theme(() => ({ flexWrap: 'wrap', minWidth: 0, extendCss: ctaStackOnPhone }))
 
 /** `.p-api .chips span` — a mono tag. */
 export const Chip = txt
