@@ -1,9 +1,9 @@
 // Today: a small todo app, written once.
 //
 // This one file is the whole app on three targets:
-//   web      examples/native-showcase-web      rendered to HTML, then hydrated
-//   iOS      examples/native-showcase-ios      compiled to SwiftUI by PMTC
-//   Android  examples/native-showcase-android  compiled to Jetpack Compose by PMTC
+//   web      index.html + src/entry-*        rendered to HTML, then hydrated
+//   iOS      ios/                            compiled to SwiftUI by PMTC
+//   Android  android/                        compiled to Jetpack Compose by PMTC
 //
 // It uses only signals and the canonical @pyreon/primitives, so every line
 // lowers on both native toolchains (`bun run check` in examples/native-showcase
