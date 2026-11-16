@@ -48,7 +48,7 @@ const Table = el
         letter-spacing: ${text.eyebrowTight.tracking}; text-transform: uppercase; color: ${tone(m, 'fog')};
         padding: 14px 18px; border-bottom: 1px solid ${tone(m, 'line')}; }
       & tbody th, & tbody td { text-align: left; vertical-align: top; padding: 14px 18px; border-bottom: 1px solid ${tone(m, 'line')};
-        overflow-wrap: anywhere; }
+        overflow-wrap: break-word; }
       & tbody tr:last-child th, & tbody tr:last-child td { border-bottom: 0; }
       & tbody th { color: ${tone(m, 'text')}; font-weight: ${weight.regular}; }
       & td[data-num] { font-family: ${font.mono}; font-size: ${text.mono.size}px; white-space: nowrap; }
