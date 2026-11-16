@@ -1,7 +1,7 @@
 // The Kotlin half of the `@pyreon/query` lowering: the `remember`ed containers and the
 // `LaunchedEffect` / `DisposableEffect` harnesses that drive them.
 
-import { kotlinHttpRequestArgs, kotlinSendLines, type EmitContext, type ExtDecl } from '@pyreon/native-compiler/plugin-api'
+import { kotlinHttpRequestArgs, kotlinSendLines, type EmitContext, type ExtDecl, type KotlinEmitContext } from '@pyreon/native-compiler/plugin-api'
 import type { QueryPayload, StreamPayload } from './types'
 
 const query = (d: ExtDecl): QueryPayload => d.payload as unknown as QueryPayload
@@ -32,12 +32,13 @@ export function streamDeclKotlin(d: ExtDecl, ctx: EmitContext): string {
 }
 
 /**
- * useQuery: a `LaunchedEffect(Unit)` per decl, guarded on `isStale` so a FRESH cache hit skips the
- * network entirely (serving the hydrated value). The stale/miss path drives the same begin →
- * resolve|reject machine as useFetch — a background refresh of already-cached data flips only
- * isFetching, never isPending, so the UI never blanks.
+ * useQuery: a `LaunchedEffect` per decl that hands the query the request it builds (`run`), with a
+ * launcher on the composable's `rememberCoroutineScope()`. The query KEEPS both, so `q.refetch()`
+ * re-runs the request later on that scope — cancelled when the composable leaves — and fetches it
+ * now only when the cache is stale (a fresh hit serves the hydrated value). A background refresh of
+ * already-cached data flips only isFetching, never isPending, so the UI never blanks.
  */
-export function queryLifecycleKotlin(decl: ExtDecl, ctx: EmitContext): readonly string[] {
+export function queryLifecycleKotlin(decl: ExtDecl, ctx: KotlinEmitContext): readonly string[] {
   const d = query(decl)
   const lines: string[] = []
   const name = ctx.ident(decl.name)
@@ -52,32 +53,29 @@ export function queryLifecycleKotlin(decl: ExtDecl, ctx: EmitContext): readonly 
   } else {
     lines.push(`LaunchedEffect(Unit) {`)
   }
-  lines.push(`  if (${name}.isStale) {`)
-  lines.push(`    ${name}.begin()`)
+  // The request lambda: everything it reads (a URL param, a header token, a body) is read each time it RUNS, so a
+  // refetch sends current values. A failure is the runtime's to record (`error`), so the lambda just throws.
+  lines.push(`  ${name}.run(launch = { __refetch -> ${ctx.coroutineScope()}.launch { __refetch() } }) {`)
   if (d.valueExpr !== undefined) {
-    // A DIRECT-VALUE queryFn (`() => <expr>`): resolve the computed value. No network, no decode, no
-    // throwing call — so no try/catch.
-    lines.push(`    ${name}.resolve(${ctx.expr(d.valueExpr, 0)})`)
+    // A DIRECT-VALUE queryFn (`() => <expr>`): the computed value. No network, no decode.
+    lines.push(`    ${ctx.expr(d.valueExpr, 0)}`)
   } else {
     const kotlinUrl = d.urlExpr !== undefined ? ctx.expr(d.urlExpr, 0) : ctx.stringLiteral(d.url as string)
-    lines.push(`    try {`)
     if (d.method || d.headers || d.headerExprs || d.body !== undefined || d.bodyExpr !== undefined || d.upload !== undefined || d.middleware !== undefined) {
       // Mirrors the Swift PyreonHttp branch: a request with a VERB, headers, or a body goes through
-      // PyreonHttp (readText() can express none of them). Header and body expressions are evaluated
-      // here, inside the harness — i.e. when THIS run builds the request, so a token is current.
+      // PyreonHttp (readText() can express none of them).
       const args = kotlinHttpRequestArgs(
         { method: d.method, url: kotlinUrl, headers: d.headers, headerExprs: d.headerExprs, body: d.body, bodyExpr: d.bodyExpr, upload: d.upload },
         ctx,
         `Declaration ${decl.name}: useQuery queryFn fetch`,
       )
       // The client's `use: [...]`, when present, is applied around the request with the web's onion semantics.
-      for (const line of kotlinSendLines(args, d.middleware !== undefined ? ctx.expr(d.middleware, 0) : undefined)) lines.push(`      ${line}`)
-      lines.push(`      ${name}.resolve(PyreonFetchJson.decodeFromString<${ctx.typeText(d.type)}>(__response.body))`)
+      for (const line of kotlinSendLines(args, d.middleware !== undefined ? ctx.expr(d.middleware, 0) : undefined)) lines.push(`    ${line}`)
+      lines.push(`    PyreonFetchJson.decodeFromString<${ctx.typeText(d.type)}>(__response.body)`)
     } else {
-      lines.push(`      val body = withContext(Dispatchers.IO) { java.net.URL(${kotlinUrl}).readText() }`)
-      lines.push(`      ${name}.resolve(PyreonFetchJson.decodeFromString<${ctx.typeText(d.type)}>(body))`)
+      lines.push(`    val body = withContext(Dispatchers.IO) { java.net.URL(${kotlinUrl}).readText() }`)
+      lines.push(`    PyreonFetchJson.decodeFromString<${ctx.typeText(d.type)}>(body)`)
     }
-    lines.push(`    } catch (e: Throwable) { ${name}.reject(e) }`)
   }
   lines.push(`  }`)
   lines.push(`}`)

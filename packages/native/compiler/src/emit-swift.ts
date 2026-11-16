@@ -54,7 +54,7 @@ import {
   lowerPluginRefModifiers,
   pluginAsyncState,
   tailLifecycleDecls,
-  pluginLifecycleLines,
+  swiftLifecycleLines,
   persistenceFor,
   pluginDeclIsCallable,
   pluginDeclUsesRouter,
@@ -2248,7 +2248,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Rate limiters: attach the state-capturing action post-init, exactly as
   // the form's onSubmit below.
   for (const d of earlyLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2)))
+    for (const line of swiftLifecycleLines(d, swiftEmitContext(2)))
       lines.push(line === '' ? '' : `      ${line}`)
   }
   // onMount bodies → .onAppear on the stable host (sync statements; the
@@ -2292,7 +2292,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // (`useFlow` disposes its listeners; a caller-owned `createFlow` does not).
   for (const d of c.decls) {
     if (!isHeadLifecycleDecl(d)) continue
-    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2)))
+    for (const line of swiftLifecycleLines(d, swiftEmitContext(2)))
       lines.push(line === '' ? '' : `      ${line}`)
   }
   // useHotkey → a hidden shortcut Button in `.background`.
@@ -2308,7 +2308,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // A plugin container that binds its source and sinks here (`midOrder`) — closures over the component's own state,
   // which a property initializer cannot capture.
   for (const d of midLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2)))
+    for (const line of swiftLifecycleLines(d, swiftEmitContext(2)))
       lines.push(line === '' ? '' : `      ${line}`)
   }
   // Service lifecycle (services.ts `lifecycle`): START the live monitor. These
@@ -2337,7 +2337,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // A plugin's lifecycle that is emitted AFTER the compiler's own (`useQuery`, `useStream`), ordered by
   // `tailOrder` then declaration order — the fetch → query → stream grouping these harnesses always had.
   for (const d of tailLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2)))
+    for (const line of swiftLifecycleLines(d, swiftEmitContext(2)))
       lines.push(line === '' ? '' : `      ${line}`)
   }
   lines.push(`  }`)
