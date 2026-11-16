@@ -423,12 +423,13 @@ jobs:
       - name: Detect scaffold-relevant changes
         id: scaffold
         run: |
-          # All seven scaffold fixtures currently fit on one runner after
-          # removing repeated root bootstrap. The adaptive batcher can grow
-          # to three batches if the measured workload grows. `emit` writes BOTH
+          # The scaffold cells are packed by measured weight (ci-batch.ts);
+          # the adaptive batcher can grow to three batches if the workload
+          # grows. The four app-<x>-compat cells also run the compat runtime
+          # suite in Chromium against each fresh scaffold's dev server. `emit` writes BOTH
           # outputs on every exit path so the cell job can never see a
           # `has=true` with an empty matrix.
-          CELLS='["cpa-smoke-app-vercel","cpa-smoke-app-static","cpa-smoke-blog-cloudflare","cpa-smoke-dashboard-vercel-full","cpa-smoke-dashboard-node-supabase","cpa-smoke-app-node","cpa-smoke-monorepo-vercel"]'
+          CELLS='["cpa-smoke-app-vercel","cpa-smoke-app-static","cpa-smoke-blog-cloudflare","cpa-smoke-dashboard-vercel-full","cpa-smoke-dashboard-node-supabase","cpa-smoke-app-node","cpa-smoke-monorepo-vercel","cpa-smoke-app-react-compat","cpa-smoke-app-vue-compat","cpa-smoke-app-solid-compat","cpa-smoke-app-preact-compat"]'
           emit() {
             echo "has=$1" >> "$GITHUB_OUTPUT"
             if [ "$1" = "true" ]; then
@@ -471,6 +472,14 @@ jobs:
           packages/zero/meta/
           packages/core/
           packages/tools/vite-plugin/
+          packages/tools/react-compat/
+          packages/tools/vue-compat/
+          packages/tools/solid-compat/
+          packages/tools/preact-compat/
+          packages/internals/playwright-config/
+          e2e/cpa-app-compat.spec.ts
+          e2e/cpa-app-compat.shared.ts
+          e2e-configs/cpa-compat-scaffold.config.ts
           packages/fundamentals/
           packages/ui-system/
           scripts/scaffold-smoke.ts
@@ -1299,7 +1308,7 @@ jobs:
   # branch-protection's expectations even if a cell gets renamed).
   #
   # ## Path-scoping (perf): PRs that don't touch the scaffolder OR any
-  # template skip the matrix entirely. All 6 cells share the same
+  # template skip the matrix entirely. All cells share the same
   # scaffold-relevant input surface (the cells differ only in template ×
   # adapter combinations — the SCAFFOLDER + the templates are the same
   # source) so it's all-or-nothing. Install's decide steps gate the matrix;
@@ -1338,17 +1347,18 @@ jobs:
           key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-install-cache-${{ runner.os }}-
       # `cpa-smoke-app-node` drives the built server in real Chromium (the
-      # hydration check) and fails if no browser can launch — install it
-      # only for the batch that carries that cell.
-      - name: Restore Playwright browsers (hydration cell)
-        if: ${{ contains(matrix.members, 'cpa-smoke-app-node') }}
+      # hydration check) and the `-compat` cells run the compat runtime suite;
+      # both fail if no browser can launch — install it only for a batch that
+      # carries one of them.
+      - name: Restore Playwright browsers (browser cells)
+        if: ${{ contains(matrix.members, 'cpa-smoke-app-node') || contains(matrix.members, '-compat') }}
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: playwright-chromium-${{ runner.os }}-
-      - name: Install Playwright Chromium (hydration cell)
-        if: ${{ contains(matrix.members, 'cpa-smoke-app-node') }}
+      - name: Install Playwright Chromium (browser cells)
+        if: ${{ contains(matrix.members, 'cpa-smoke-app-node') || contains(matrix.members, '-compat') }}
         run: bash scripts/install-playwright.sh chromium
       # scaffold-smoke.ts accepts positional cell filters and runs the
       # matches sequentially:
