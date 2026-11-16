@@ -29,7 +29,7 @@ const css = (m: ModeFn): string => `
   & a:hover { text-decoration-thickness: 2px; color: ${tone(m, 'strong')}; }
   & a:focus-visible { outline: 2px solid ${tone(m, 'focus')}; outline-offset: 2px; }
 
-  & h2, & h3 { color: ${tone(m, 'text')}; font-weight: ${weight.medium}; scroll-margin-top: 104px; text-wrap: balance; }
+  & h2, & h3 { color: ${tone(m, 'text')}; font-weight: ${weight.medium}; scroll-margin-top: ${layout.anchorOffset}px; text-wrap: balance; }
   & h2 { margin: 60px 0 18px; font-size: clamp(28px, 3.2vw, 38px); line-height: 1.12; letter-spacing: -.035em; }
   & h3 { margin: 40px 0 12px; font-size: 22px; line-height: 1.3; letter-spacing: -.02em; }
   & h2 a, & h3 a { color: inherit; text-decoration: none; }

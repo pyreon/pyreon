@@ -62,6 +62,9 @@ const ProseLink = el
   .config({ name: 'ProseLink' })
   .attrs<LinkAttrs>({ tag: 'a' })
   .theme((_t, m) => ({
+    // Inline, not the Element base's inline-flex: a link that wraps must flow
+    // like text, or the whole link drops below the status dot before it.
+    display: 'inline',
     fontFamily: font.sans,
     fontSize: 14,
     color: tone(m, 'text'),
@@ -183,6 +186,7 @@ const CellLabel = txt
     fontWeight: weight.medium,
     color: tone(m, 'strong'),
   }))
+    textWrap: 'balance',
 
 const CellMono = txt
   .config({ name: 'ProofBandDetail' })
@@ -238,13 +242,16 @@ export function ProofBand(props: {
     <Band id={props.id} aria-label={props.title ? undefined : 'In numbers'}>
       <Show when={() => !!props.title}>
         <BandTitle>{renderInline(props.title ?? '')}</BandTitle>
+  // One numeral size per band: a long number in one cell steps every cell
+  // down, so the labels under the numbers start on one line.
+  const size = items.some((i) => numeralSize(i.stat) === 'long') ? 'long' : 'default'
       </Show>
       <Cells css={cols}>
         <For each={items} by={(i) => i.stat + i.label}>
           {(i) => (
             <Cell>
               <span>
-                <Numeral size={numeralSize(i.stat)}>{i.stat}</Numeral> <CellLabel>{renderInline(i.label)}</CellLabel>
+                <Numeral size={size}>{i.stat}</Numeral> <CellLabel>{renderInline(i.label)}</CellLabel>
               </span>
               <Show when={() => !!(i.detail ?? i.source)}>
                 <CellMono>{renderInline(i.detail ?? i.source ?? '')}</CellMono>

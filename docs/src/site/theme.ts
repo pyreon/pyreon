@@ -232,7 +232,8 @@ export const display = {
   /** The hook hero: bold, tighter, one ember word. [C3] */
   hook: { min: 44, vw: 7.2, max: 112, lineHeight: 0.94, tracking: '-.055em', weight: 700 },
   section: { min: 32, vw: 4.2, max: 56, lineHeight: 0.98, tracking: '-.045em', weight: 500 },
-  landingSection: { min: 38, vw: 5, max: 70, lineHeight: 0.98, tracking: '-.045em', weight: 500 },
+  /** `cqi`: in a half-width column (a container) the size follows the column, not the screen. */
+  landingSection: { min: 38, vw: 5, cqi: 10.5, max: 70, lineHeight: 0.98, tracking: '-.045em', weight: 500 },
   end: { min: 34, vw: 4.6, max: 60, lineHeight: 1.04, tracking: '-.045em', weight: 500 },
   /** Big proof numerals (the cards' `.big`). [A4] */
   numeral: { min: 64, vw: 8, max: 132, lineHeight: 0.86, tracking: '-.06em', weight: 700 },
@@ -241,8 +242,8 @@ export const display = {
   stat: { min: 30, vw: 4, max: 46, lineHeight: 1.05, tracking: '-.03em', weight: 500 },
 } as const
 
-export const clampSize = (d: { min: number; vw: number; max: number }): string =>
-  `clamp(${d.min}px, ${d.vw}vw, ${d.max}px)`
+export const clampSize = (d: { min: number; vw: number; max: number; cqi?: number }): string =>
+  d.cqi === undefined ? `clamp(${d.min}px, ${d.vw}vw, ${d.max}px)` : `clamp(${d.min}px, min(${d.vw}vw, ${d.cqi}cqi), ${d.max}px)`
 
 /** Fixed text sizes (px), line heights, tracking and weights. */
 export const text = {

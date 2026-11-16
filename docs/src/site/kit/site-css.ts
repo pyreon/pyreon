@@ -38,6 +38,9 @@ export const SITE_CSS = `@layer site{
 pyreon-island{display:contents}
 *,*::before,*::after{box-sizing:border-box}
 body{margin:0}
+:where(h1,h2,h3,h4,summary,figcaption){text-wrap-style:balance}
+:where(p,li,dd,blockquote){text-wrap-style:pretty}
+:where(#site-main [id]):not(:where(.dx *)){scroll-margin-top:${layout.anchorOffset}px}
 .${C.srOnly}{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 
 .${C.header}{position:fixed;top:${layout.navTop}px;left:0;right:0;z-index:${z.nav};padding:0 ${layout.gutter.xs}px;pointer-events:none}

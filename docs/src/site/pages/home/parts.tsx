@@ -22,6 +22,8 @@ export const Split = el
     gap: { xs: 40, lg: 64 },
     alignItems: 'start',
     gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1fr) minmax(0, 1fr)' },
+    // Each column is a size container, so a landing heading in it sizes to the column (theme.ts display.landingSection.cqi).
+    extendCss: '& > * { container-type: inline-size; }',
   }))
 
 export const Stack = el

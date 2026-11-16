@@ -21,6 +21,9 @@ import type { PlannedPost } from '../planned'
 /** Dates print in this locale, always in UTC (the same day on every machine). */
 export const BLOG_LOCALE = 'en-GB'
 
+/** The date and the reading time wrap together, so a line never ends on its "·". */
+const MetaGroup = txt.config({ name: 'BlogMetaGroup' }).attrs({ tag: 'span' }).theme(() => ({ whiteSpace: 'nowrap' }))
+
 const MetaRow = el
   .config({ name: 'BlogMeta' })
   .attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 10 })
@@ -88,9 +91,9 @@ export function CardMeta(props: { post: BlogPost; label?: string | undefined }) 
     <MetaRow>
       {props.label ? <PostChip state="accent">{props.label}</PostChip> : null}
       {topic ? <PostChip state={props.label ? 'default' : 'accent'}>{topic.name}</PostChip> : null}
-      <time datetime={isoDay(p.date)}>{formatPostDate(p.date, BLOG_LOCALE)}</time>
-      <Dot>·</Dot>
-      <span>{`${p.readingMinutes} min read`}</span>
+      <MetaGroup>
+        <time datetime={isoDay(p.date)}>{formatPostDate(p.date, BLOG_LOCALE)}</time> <Dot>·</Dot> {`${p.readingMinutes} min read`}
+      </MetaGroup>
     </MetaRow>
   )
 }
