@@ -47,13 +47,13 @@
     "@jridgewell/trace-mapping": "^0.3.31",
     "@pyreon/compiler": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
-    "magic-string": "^1.4.4",
-    "oxc-parser": "^0.155.0"
+    "magic-string": "^1.4.5",
+    "oxc-parser": "^0.159.0"
   },
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "vite": "^8.3.5"
+    "vite": "^8.3.8"
   },
   "publishConfig": {
     "access": "public"

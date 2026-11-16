@@ -57,9 +57,9 @@
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^5.0.5",
+    "@vitest/browser-playwright": "^5.1.0",
     "happy-dom": "^21.0.4",
-    "rolldown": "^1.2.15"
+    "rolldown": "^1.3.2"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",

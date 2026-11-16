@@ -28,22 +28,22 @@
     "formik": "^2.4.9",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-hook-form": "^7.91.0",
-    "solid-js": "^1.9.17",
+    "react-hook-form": "^7.92.0",
+    "solid-js": "^1.9.19",
     "svelte": "^5.57.3",
     "vee-validate": "^4.15.1",
-    "vue": "^3.5.44",
+    "vue": "^3.5.45",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "playwright": "^1.64.1",
+    "playwright": "^1.65.1",
     "typescript": "^6.0.3",
-    "vite": "^8.3.5"
+    "vite": "^8.3.8"
   }
 }
