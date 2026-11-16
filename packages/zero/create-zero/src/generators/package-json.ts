@@ -161,7 +161,7 @@ export function generatePackageJson(
     // — the repo's own example apps only compile because the monorepo hoists
     // `@types/bun` from root; a fresh app has no such hoist. See the
     // matching entry on the monorepo `ui`/`types` package templates.
-    '@types/bun': '^1.3.14',
+    '@types/bun': '^1.4.4',
     '@pyreon/vite-plugin': pyreonVersion('@pyreon/vite-plugin'),
     '@pyreon/zero-cli': pyreonVersion('@pyreon/zero-cli'),
     typescript: '^6.0.3',
