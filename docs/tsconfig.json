@@ -2,6 +2,7 @@
   "extends": "@pyreon/typescript/app",
   "compilerOptions": {
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "moduleResolution": "bundler",
     "module": "ESNext",
     "target": "ESNext",
