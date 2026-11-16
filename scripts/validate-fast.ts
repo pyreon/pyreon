@@ -115,6 +115,9 @@ const GATES: Gate[] = [
   // "license": "MIT". A published package without either ships with no stated
   // terms; an example without either is code people copy with none.
   { name: 'check-license-coverage', cmd: 'bun scripts/check-license-coverage.ts' },
+  // examples/README.md is the index of every example (curated, fixture,
+  // native host, benchmark); an add, move or removal updates it in the same PR.
+  { name: 'check-examples-index', cmd: 'bun scripts/check-examples-index.ts' },
   { name: 'gen-docs --check', cmd: 'bun run gen-docs --check' },
   // The OTHER half of the generator pair. `gen-docs` regenerates llms/api-reference;
   // `gen-all.ts` regenerates the docs-site reference/troubleshooting/examples pages
