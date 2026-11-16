@@ -62,9 +62,14 @@ describe('check-tsconfig-presets', () => {
 
   it('flags a config with no extends at all', () => {
     scaffold()
+    // An example is a package (scripts/example-dirs.ts); grouped ones count too.
+    mk('examples/loner/package.json', { name: 'loner' })
     mk('examples/loner/tsconfig.json', { compilerOptions: { noEmit: true } })
+    mk('examples/fixtures/nested/package.json', { name: 'nested' })
+    mk('examples/fixtures/nested/tsconfig.json', { compilerOptions: { noEmit: true } })
     const findings = checkTsconfigPresets(dir)
     expect(findings.some((f) => f.file === 'examples/loner/tsconfig.json')).toBe(true)
+    expect(findings.some((f) => f.file === 'examples/fixtures/nested/tsconfig.json')).toBe(true)
   })
 
   it('never scans user-shipped template trees', () => {
