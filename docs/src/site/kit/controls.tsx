@@ -134,7 +134,9 @@ export const Chip = txt
 
 const SegBox = el
   .config({ name: 'Segmented' })
-  .attrs({ tag: 'fieldset', contentDirection: 'inline', gap: 2 })
+  // A labelled group, not a <fieldset>: a fieldset lays its children out in an
+  // inner box that cannot wrap, so the last option was cut off at 320px.
+  .attrs({ tag: 'div', role: 'group', contentDirection: 'inline', gap: 2 })
   .theme((_t, m) => ({
     margin: 0,
     minWidth: 0,
