@@ -410,6 +410,29 @@ describe('the marketing site carries the lint counts', () => {
       expect(onHome(r, 'lint-category-count')).toEqual([])
     })
   })
+
+  it('reports a stale count in a blog post and in the share-image alt text', () => {
+    // The blog posts and the /docs/cli share image said 133 after the
+    // registry reached 140; they were not claim surfaces either.
+    const POST = 'docs/src/content/blog/a-framework-your-ai-assistant-cant-misuse.md'
+    const OG = 'docs/src/site/content/_docs-og.json'
+    build({
+      ...repo(4, 2),
+      [POST]: 'is the broader rule set: 3 rules in 1 categories, from reactivity to SSR.\n',
+      [OG]: '{ "alt": "next to 4 lint rules", "again": "next to 3 lint rules" }\n',
+    })
+    return run().then((r) => {
+      const drift = (id: string, file: string): string[] =>
+        forCheck(r, id)
+          .filter((f) => f.code.endsWith('-drift') && f.location?.relPath === file)
+          .map((f) => f.message)
+      expect(drift('lint-rule-count', POST)).toEqual([`lint rule count: ${POST} claims 3, actual 4.`])
+      expect(drift('lint-category-count', POST)).toEqual([`lint category count: ${POST} claims 1, actual 2.`])
+      expect(drift('lint-rule-count', OG)).toEqual([
+        `lint rule count: ${OG} claims 3 (one of 2 occurrences), actual 4.`,
+      ])
+    })
+  })
 })
 
 describe('a JSON claim is read as the reader sees it', () => {

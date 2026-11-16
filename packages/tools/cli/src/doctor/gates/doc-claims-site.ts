@@ -25,8 +25,16 @@ export interface ClaimSpec {
  * Fix a drift in the staging set first, then re-sync, or the next sync
  * restores the old number. The site said "133" through two rule additions
  * because none of these files was a claim surface.
+ *
+ * The blog posts and the docs share-image alt text quote the count too. A
+ * post's source is the marketing pack's `05-blog/B*.md`; the alt text comes
+ * from the pack's `09-site/assets` manifest through
+ * `docs/scripts/sync-site-assets.ts` into `_docs-og.json` and `_assets.json`.
+ * The share image itself prints the same sentence, so re-render it whenever
+ * this alt text changes.
  */
 const SITE = 'docs/src/site/content'
+const BLOG = 'docs/src/content/blog'
 
 export const SITE_LINT_RULE_CLAIMS: ClaimSpec[] = [
   { file: `${SITE}/products/tooling.json`, pattern: /(\d+) lint rules that know/ },
@@ -43,6 +51,11 @@ export const SITE_LINT_RULE_CLAIMS: ClaimSpec[] = [
   { file: `${SITE}/pages/why/ai-ready.json`, pattern: /"text": "(\d+) rules in \d+ categories/ },
   { file: `${SITE}/pages/why/ai-ready.json`, pattern: /"claim": "(\d+) lint rules, \d+ categories/ },
   { file: `${SITE}/extra-sections.more.ts`, pattern: /title: '(\d+) rules that know the framework'/ },
+  { file: `${SITE}/_docs-og.json`, pattern: /next to (\d+) lint rules/, all: true },
+  { file: `${SITE}/_assets.json`, pattern: /next to (\d+) lint rules/, all: true },
+  { file: `${BLOG}/introducing-pyreon.md`, pattern: /`@pyreon\/lint` has (\d+) rules/ },
+  { file: `${BLOG}/a-framework-your-ai-assistant-cant-misuse.md`, pattern: /broader rule set: (\d+) rules in \d+ categories/ },
+  { file: `${BLOG}/seven-rules-of-fine-grained-reactivity.md`, pattern: /`@pyreon\/lint`\*\*: (\d+) rules/ },
 ]
 
 export const SITE_LINT_CATEGORY_CLAIMS: ClaimSpec[] = [
@@ -53,4 +66,5 @@ export const SITE_LINT_CATEGORY_CLAIMS: ClaimSpec[] = [
   { file: `${SITE}/pages/why/ai-ready.json`, pattern: /"label": "lint rules in (\d+) categories/ },
   { file: `${SITE}/pages/why/ai-ready.json`, pattern: /"text": "\d+ rules in (\d+) categories/ },
   { file: `${SITE}/pages/why/ai-ready.json`, pattern: /"claim": "\d+ lint rules, (\d+) categories/ },
+  { file: `${BLOG}/a-framework-your-ai-assistant-cant-misuse.md`, pattern: /broader rule set: \d+ rules in (\d+) categories/ },
 ]
