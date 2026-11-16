@@ -17,4 +17,5 @@ export const ctaStackOnPhone = `@media (max-width: ${breakpoints.sm - 0.02}px) {
 export const PillGroup = el
   .config({ name: 'PillGroup' })
   .attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 12 })
-  .theme(() => ({ flexWrap: 'wrap', minWidth: 0, extendCss: ctaStackOnPhone }))
+  // Shrink-wrapped beside the command (a block group took the whole row and always wrapped).
+  .theme(() => ({ width: 'auto', flex: '0 1 auto', flexWrap: 'wrap', minWidth: 0, extendCss: ctaStackOnPhone }))
