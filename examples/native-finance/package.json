@@ -2,11 +2,11 @@
   "name": "@pyreon/example-native-finance",
   "version": "0.50.3",
   "private": true,
-  "description": "PRIVATE / EXPERIMENTAL \u2014 Phase-5 finance-tracker showcase. SINGLE source compiles to web + iOS + Android, exercising the data/services hook emit (#1689): useAuth<User> auth-state container, useDatabase persistence, a cross-screen defineStore reactive ledger, computed balance, validated useForm, multi-screen routing + store-backed auth-gate, and canonical primitives. The verified mirror lives at packages/native/compiler/src/fixtures/showcase-finance.tsx (swiftc + kotlinc gated).",
+  "description": "PRIVATE / EXPERIMENTAL \u2014 Phase-5 finance-tracker showcase. SINGLE source compiles to web + iOS + Android, exercising the data/services hook emit (#1689): useAuth<User> auth-state container, useDatabase persistence, a cross-screen defineStore reactive ledger, computed balance, validated useForm, multi-screen routing + store-backed auth-gate, and canonical primitives. native-examples-compile.test.ts in @pyreon/native-compiler compiles this source on both targets (swiftc typecheck + kotlinc).",
   "license": "MIT",
   "scripts": {
     "lint": "echo '[native-finance] no TS lint surface; skipping'",
-    "test": "echo '[native-finance] no test surface; PMTC emit covered by @pyreon/native-compiler validate-swift/validate-kotlin tests (showcase-finance fixture)'",
+    "test": "echo '[native-finance] no test surface; PMTC emit covered by @pyreon/native-compiler native-examples-compile.test.ts'",
     "typecheck": "echo '[native-finance] @ts-nocheck on source; PMTC handles typing'"
   },
   "devDependencies": {

@@ -12,7 +12,7 @@ import {
  *
  * The gate exists to stop a warning-free UNCOMPILABLE emit from reading as
  * "crosses", and half of it was doing exactly that. The Kotlin failure found in
- * `examples/native-viz` would not have been caught by it.
+ * `examples/native-viz` (now the `showcase-viz.tsx` compiler fixture) would not have been caught by it.
  *
  * So targets are named, and a REQUESTED target whose toolchain is absent FAILS
  * rather than logs. These lock that policy, which is the part a green CI log

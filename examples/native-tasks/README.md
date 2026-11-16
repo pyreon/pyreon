@@ -54,21 +54,14 @@ bun run build:kotlin      # emits generated/kotlin/TasksApp.kt
 
 # Validate Swift parses cleanly against a real Swift toolchain:
 swiftc -parse generated/swift/TasksApp.swift
-# → exit 0; locked-in via the `validate-swift.test.ts` fixture loop
-#   under `showcase-tasks.tsx`.
+# → exit 0
 ```
 
-**Swift emit: locked via CI gate** — `showcase-tasks.tsx` is in the
-`validate-swift.test.ts` fixture loop, so the same `swiftc -parse`
-pass that protects the canonical primitives now protects this
-showcase end-to-end.
-
-**Kotlin emit: also locked via CI gate.** `showcase-tasks.tsx` is now in the
-`validate-kotlin.test.ts` fixture loop too, matching the Swift side above —
-the 3 limitations that originally blocked it (missing synthetic data classes
-for prop-passed object shapes, missing router-kotlin stubs for
-`useNavigate`/`useParams`, and the resulting `tasks.length` dispatch failure)
-have all closed.
+**Both emits are locked by a CI gate.** `native-examples-compile.test.ts` in
+`@pyreon/native-compiler` compiles this `src/TasksApp.tsx` itself (no copy)
+on both targets: `swiftc -typecheck` against the SwiftUI and runtime stubs, and
+`kotlinc`. It used to be checked through a hand-kept fixture copy,
+`showcase-tasks.tsx`, which had drifted far from this file and was removed.
 
 ## Roadmap
 

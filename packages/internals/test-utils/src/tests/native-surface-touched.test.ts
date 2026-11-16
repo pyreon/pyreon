@@ -160,7 +160,7 @@ describe('selectApps — synthetic surfaces', () => {
     expect(selectApps(['bun.lock'], S)).toMatchObject({ ios: 'all', android: 'all' })
   })
   it('a native example no lane builds selects nothing', () => {
-    expect(selectApps(['examples/native-viz/src/x.tsx'], S)).toMatchObject({ ios: 'none', android: 'none' })
+    expect(selectApps(['examples/native-tasks-web/src/x.tsx'], S)).toMatchObject({ ios: 'none', android: 'none' })
   })
 })
 
@@ -189,5 +189,27 @@ describe('deriveAppSurfaces — the real example apps', () => {
     const wired = surfaces.filter((s) => s.platform === 'ios' && s.roots.includes('packages/fundamentals/flow/native/swift/')).map((s) => s.app).sort()
     expect(wired.length).toBeGreaterThan(0)
     expect(selectApps(['packages/fundamentals/flow/native/swift/X.swift'], surfaces)).toMatchObject({ ios: wired, android: 'none' })
+  })
+})
+
+// The single-directory layout (examples/native-showcase/{src,ios,android}):
+// its host edits reach only that platform, the shared source both, and the
+// web entry files no lane.
+describe('deriveAppSurfaces — a single-layout app', () => {
+  const surfaces = deriveAppSurfaces(REPO)
+  it('an iOS host edit selects only the iOS showcase lane', () => {
+    expect(selectApps(['examples/native-showcase/ios/Sources/App.swift'], surfaces)).toMatchObject({
+      ios: ['showcase'],
+      android: 'none',
+    })
+  })
+  it('the shared source selects the showcase on both platforms', () => {
+    expect(selectApps(['examples/native-showcase/src/TodayApp.tsx'], surfaces)).toMatchObject({
+      ios: ['showcase'],
+      android: ['showcase'],
+    })
+  })
+  it('a web-only file of the app selects no lane', () => {
+    expect(selectApps(['examples/native-showcase/index.html'], surfaces)).toMatchObject({ ios: 'none', android: 'none' })
   })
 })

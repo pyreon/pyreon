@@ -1,5 +1,5 @@
 // @ts-nocheck — PMTC handles typing; tsc multi-child JSX limitations
-// noisy (same `@ts-nocheck` rationale as showcase-tasks.tsx).
+// noisy (same `@ts-nocheck` rationale as native-tasks/src/TasksApp.tsx).
 //
 // PMTC Finance Tracker — SINGLE source for web, iOS, Android.
 //

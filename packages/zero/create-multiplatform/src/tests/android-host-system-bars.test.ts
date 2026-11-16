@@ -17,6 +17,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { buildScaffold } from '../scaffold'
+import { exampleHostDirs } from './example-hosts'
 
 const repo = fileURLToPath(new URL('../../../../../', import.meta.url))
 
@@ -35,9 +36,10 @@ function activities(dir: string): string[] {
 }
 
 /** Hosts = activities that mount a Compose tree (`setContent {`). */
-const exampleHosts = readdirSync(join(repo, 'examples'))
-  .filter((d) => d.endsWith('-android'))
-  .flatMap((d) => activities(join(repo, 'examples', d)))
+// Both example layouts: native-<app>-android/ and native-<app>/android/.
+const androidHostDirs = exampleHostDirs(repo, 'android')
+const exampleHosts = androidHostDirs
+  .flatMap((d) => activities(join(repo, d)))
   .map((path) => ({ path: path.slice(repo.length), src: readFileSync(path, 'utf8') }))
   .filter((h) => code(h.src).includes('setContent {'))
 
@@ -47,7 +49,7 @@ const exampleHosts = readdirSync(join(repo, 'examples'))
  * would put dark icons on that dark page; these keep the default `enableEdgeToEdge()`,
  * whose bar icons follow the system mode. Each still pads for the system bars.
  */
-const SELF_PAINTED_HOSTS = new Set(['examples/native-showcase-android/app/src/main/kotlin/com/pyreon/MainActivity.kt'])
+const SELF_PAINTED_HOSTS = new Set(['examples/native-showcase/android/app/src/main/kotlin/com/pyreon/MainActivity.kt'])
 
 const scaffold = buildScaffold({ name: 'demo-app' })
 const scaffoldHost = {
@@ -104,9 +106,7 @@ describe('Android hosts: system bars', () => {
   it('every host keeps the light window theme the light bar style assumes', () => {
     const manifests = [
       scaffold.find((f) => f.path === 'android/app/src/main/AndroidManifest.xml')?.content ?? '',
-      ...readdirSync(join(repo, 'examples'))
-        .filter((d) => d.endsWith('-android'))
-        .map((d) => readFileSync(join(repo, 'examples', d, 'app/src/main/AndroidManifest.xml'), 'utf8')),
+      ...androidHostDirs.map((d) => readFileSync(join(repo, d, 'app/src/main/AndroidManifest.xml'), 'utf8')),
     ]
     let hosts = 0
     for (const m of manifests) {
