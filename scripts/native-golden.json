@@ -3102,8 +3102,8 @@
       "warnings": 0
     },
     "golden-fixture:hooks-containers-07.tsx|swift": {
-      "sha": "803120fd917feb12e8ced567f13dad34da9fb7d631cc589be0e73dfdd9cbf69a",
-      "bytes": 387,
+      "sha": "0ba9edb7a100a549b73ecb38eca960e731dcff5eeee4d2f2caa4605489d05890",
+      "bytes": 438,
       "warnings": 2
     },
     "golden-fixture:hooks-containers-07.tsx|kotlin": {
@@ -3192,8 +3192,8 @@
       "warnings": 0
     },
     "golden-fixture:http-03.tsx|swift": {
-      "sha": "2a8556a96abc6de636241a57e05842ee59b4850180045194743246f4a007776d",
-      "bytes": 398,
+      "sha": "e69e63ad203b5559106b08fcc3d27b677cde6e47d4b6c1143e834c9eaff58d74",
+      "bytes": 448,
       "warnings": 1
     },
     "golden-fixture:http-03.tsx|kotlin": {
