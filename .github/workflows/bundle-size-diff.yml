@@ -43,7 +43,10 @@ concurrency:
 jobs:
   diff:
     name: Bundle size diff
-    if: github.event.pull_request.draft == false
+    # Skip the release PR (changeset-release/main): it only bumps versions and changelogs,
+    # so base and head both miss the source-hashed lib cache and build from scratch,
+    # which exceeded the 15-minute limit on PR #3888. A size diff of a bump carries no information.
+    if: github.event.pull_request.draft == false && github.head_ref != 'changeset-release/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

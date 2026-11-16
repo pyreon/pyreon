@@ -42,10 +42,32 @@ name: Required Check Autoheal
 # Re-running that stale SHA enters the branch concurrency group again and can
 # cancel the CURRENT device build. The PR head SHA is authoritative: autoheal
 # may act only while the cancelled run still belongs to the PR's current head.
+#
+# THIRD class, the one that stranded four PRs in one day: GitHub never
+# assigns a hosted macOS runner. The job (`Validate emitted Swift (real-SDK
+# typecheck, macOS)` in Native Compiler Validation, `iOS — xcodebuild
+# (Simulator SDK)` in Native Device Build) sits queued, then is marked
+# `cancelled` with ZERO steps exactly 15 minutes later, with the check-run
+# annotation "The job was not acquired by Runner of type hosted even after
+# multiple attempts". Unlike the classes above, the RUN's conclusion is
+# `failure`, not `cancelled`, so the conclusion filter alone never saw it.
+# The rule is therefore per JOB, not per run: a completed pull_request run is
+# healable when EVERY non-successful job is one that never started (cancelled,
+# no steps, not-acquired annotation). One genuinely failed job anywhere in the
+# run (a mixed run included) keeps the whole run red and un-retried — a real
+# failure must stay loud. `rerun-failed-jobs` re-runs only the unstarted job,
+# so the sibling that already passed (e.g. the Linux job) is not repeated.
+# The decision logic is covered by
+# packages/internals/test-utils/src/tests/required-check-autoheal.test.ts,
+# which executes THIS script against mocked GitHub responses.
+#
+# Limits: a `workflow_run` workflow runs only from the default branch, so a
+# change to this file cannot be exercised on its own PR.
 on:
   workflow_run:
     workflows:
       - Native Device Build
+      - Native Compiler Validation
     types: [completed]
 
 # Nothing at the workflow level (Scorecard TokenPermissionsID): the one job
@@ -54,7 +76,7 @@ permissions: {}
 
 jobs:
   heal:
-    if: github.event.workflow_run.conclusion == 'cancelled' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.run_attempt < 2
+    if: (github.event.workflow_run.conclusion == 'cancelled' || github.event.workflow_run.conclusion == 'failure') && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.run_attempt < 2
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -117,6 +139,53 @@ jobs:
               return
             }
 
+            // A run that concluded `cancelled` keeps the original contract (an
+            // external cancel, possibly mid-build). Any other conclusion
+            // (`failure`) is healable only when every non-successful job never
+            // started: cancelled, zero steps, and GitHub's "not acquired by
+            // Runner" annotation. Uncertainty fails closed (no rerun).
+            let cause = 'was cancelled from outside the workflow (not a job failure)'
+            if (run.conclusion !== 'cancelled') {
+              const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: run.id,
+                filter: 'latest',
+                per_page: 100,
+              })
+              const ok = new Set(['success', 'skipped', 'neutral'])
+              const bad = jobs.filter((j) => !ok.has(j.conclusion))
+              if (bad.length === 0) {
+                core.notice(`run ${run.id} concluded ${run.conclusion} with no non-successful job — nothing to heal.`)
+                return
+              }
+              const unstarted = []
+              for (const j of bad) {
+                if (j.conclusion !== 'cancelled' || (j.steps ?? []).length > 0) {
+                  core.notice(`run ${run.id}: job "${j.name}" genuinely ${j.conclusion} — a real failure stays red, not rerunning.`)
+                  return
+                }
+                let notAcquired = false
+                try {
+                  const annotations = await github.paginate(github.rest.checks.listAnnotations, {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    check_run_id: j.id,
+                    per_page: 100,
+                  })
+                  notAcquired = annotations.some((a) => /not acquired by runner/i.test(a.message ?? ''))
+                } catch (err) {
+                  core.warning(`could not read annotations for job ${j.id}: ${err}`)
+                }
+                if (!notAcquired) {
+                  core.notice(`run ${run.id}: job "${j.name}" was cancelled without the runner-not-acquired annotation — not rerunning.`)
+                  return
+                }
+                unstarted.push(j.name)
+              }
+              cause = `never got a runner (GitHub: "The job was not acquired by Runner of type hosted even after multiple attempts"; ${unstarted.map((n) => '`' + n + '`').join(', ')} ran no steps)`
+            }
+
             await github.rest.actions.reRunWorkflowFailedJobs({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -132,7 +201,7 @@ jobs:
                   repo: context.repo.repo,
                   issue_number: pr.number,
                   body:
-                    `\`Native Device Build\` was cancelled from outside the workflow (not a job failure) — ` +
+                    `\`${run.name}\` ${cause} — ` +
                     `re-running the failed/cancelled jobs automatically: ${run.html_url}\n\n` +
                     `If this happens a second time on the same commit, treat it as a real signal rather than retrying again.`,
                 })

@@ -116,12 +116,15 @@ function legacyRejectionIsCompilerOutput(error: string): boolean {
  *   - the swiftc DRIVER, which exits an ordinary 1 and says `error: compile command failed due to signal 15` when the
  *     compiler process it spawned was killed
  *
- * Both are the OS or a runner cap ending the compile, not the source being wrong. Matching exact phrases from the
+ * Both are the OS or a runner cap ending the compile, not the source being wrong. The driver's
+ * `error: input file '…' was modified during the build` is the same kind of non-verdict: an input changed under the
+ * compile (an edit, a checkout), so its output describes no single version of the source the key was built from —
+ * cached, it is served for that key forever after. Matching exact phrases from the
  * toolchains' own crash reporting is the one place the classifier reads text: there is no structural alternative, and a
  * source diagnostic cannot contain these (they are not rendered from user code).
  */
 const KILL_NOTICE =
-  /(^|\s)\d+\s+(Killed|Terminated|Aborted|Segmentation fault)\b|compile command failed due to signal \d+/
+  /(^|\s)\d+\s+(Killed|Terminated|Aborted|Segmentation fault)\b|compile command failed due to signal \d+|error: input file '[^'\n]*' was modified during the build/
 
 /**
  * A STORED rejection whose text is a kill notice. Entries written before kills were recognised are poisoned this way

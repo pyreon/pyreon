@@ -54,7 +54,7 @@ import {
   lowerPluginRefModifiers,
   pluginAsyncState,
   tailLifecycleDecls,
-  pluginLifecycleLines,
+  swiftLifecycleLines,
   persistenceFor,
   pluginDeclIsCallable,
   pluginDeclUsesRouter,
@@ -152,6 +152,7 @@ import {
   typeContainsFunction,
   typeIsOptional,
   unwrapOptionalType,
+  isInlineObjectAnnotation,
   registerComponentFnReturns,
   widenFloatLocals,
   widenFloatSignals,
@@ -1670,6 +1671,11 @@ function emitSwiftModuleDecl(md: ModuleDeclIR): string {
     // Swift infers from `= initial`.
     return `private ${kw} ${swiftIdent(md.name)} = ${initial}`
   }
+  // An inline object annotation over an object / array literal names no type the file declares, and there is no
+  // component to synthesize one in: the literal's own struct already IS the type, so let the target infer it.
+  if (isInlineObjectAnnotation(md.type) && (md.initial.kind === 'object' || md.initial.kind === 'array')) {
+    return `private ${kw} ${swiftIdent(md.name)} = ${initial}`
+  }
   return `private ${kw} ${swiftIdent(md.name)}: ${swiftType(md.type)} = ${initial}`
 }
 
@@ -2082,6 +2088,9 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(emitSwiftStruct(s))
     lines.push('')
   }
+  // Structs synthesized while the declarations and body emit (a plugin's inline type argument) land here at the end.
+  const synthStructsAt = lines.length
+  const synthStructsEmitted = synth.structs.length
   const generics = [...slotGenerics, ...(isLayout ? ['Content: View'] : [])]
   lines.push(
     generics.length > 0
@@ -2249,7 +2258,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Rate limiters: attach the state-capturing action post-init, exactly as
   // the form's onSubmit below.
   for (const d of earlyLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2)))
+    for (const line of swiftLifecycleLines(d, swiftEmitContext(2)))
       lines.push(line === '' ? '' : `      ${line}`)
   }
   // onMount bodies → .onAppear on the stable host (sync statements; the
@@ -2293,7 +2302,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // (`useFlow` disposes its listeners; a caller-owned `createFlow` does not).
   for (const d of c.decls) {
     if (!isHeadLifecycleDecl(d)) continue
-    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2)))
+    for (const line of swiftLifecycleLines(d, swiftEmitContext(2)))
       lines.push(line === '' ? '' : `      ${line}`)
   }
   // useHotkey → a hidden shortcut Button in `.background`.
@@ -2309,7 +2318,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // A plugin container that binds its source and sinks here (`midOrder`) — closures over the component's own state,
   // which a property initializer cannot capture.
   for (const d of midLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2)))
+    for (const line of swiftLifecycleLines(d, swiftEmitContext(2)))
       lines.push(line === '' ? '' : `      ${line}`)
   }
   // Service lifecycle (services.ts `lifecycle`): START the live monitor. These
@@ -2338,7 +2347,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // A plugin's lifecycle that is emitted AFTER the compiler's own (`useQuery`, `useStream`), ordered by
   // `tailOrder` then declaration order — the fetch → query → stream grouping these harnesses always had.
   for (const d of tailLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'swift', swiftEmitContext(2)))
+    for (const line of swiftLifecycleLines(d, swiftEmitContext(2)))
       lines.push(line === '' ? '' : `      ${line}`)
   }
   lines.push(`  }`)
@@ -2376,6 +2385,12 @@ function emitSwiftComponent(c: ComponentIR): string {
   if (_hostStateDecls.length > 0) {
     lines.splice(pyreonHostStateAt, 0, ..._hostStateDecls.map((l) => `  ${l}`))
     _hostStateDecls = []
+  }
+  if (synth.structs.length > synthStructsEmitted) {
+    // Emitting a struct can synthesize a nested one, so drain until the list stops growing.
+    const late: string[] = []
+    for (let i = synthStructsEmitted; i < synth.structs.length; i++) late.push(emitSwiftStruct(synth.structs[i]!), '')
+    lines.splice(synthStructsAt, 0, ...late)
   }
   // A plugin's deferred values (a chart handle's series count) are known only once the body has emitted.
   const joined = _pluginScope.finalize(lines.join('\n'))
@@ -4136,6 +4151,26 @@ interface SwiftSynthCtx {
 
 /** The struct-synthesis context of the component being emitted — what `EmitContext.rowType` / `rowFields` resolve against. */
 let _activeSynth: SwiftSynthCtx | undefined
+/** Set while a caller asked for a type's spelling WITHOUT synthesis (`typeText(t, { synthesize: false })`). */
+let _typeSynthesisSuppressed = false
+
+function withoutTypeSynthesis<T>(run: () => T): T {
+  const outer = _typeSynthesisSuppressed
+  _typeSynthesisSuppressed = true
+  try {
+    return run()
+  } finally {
+    _typeSynthesisSuppressed = outer
+  }
+}
+
+/** The warning for an inline object type with no struct to become (shared wording with emit-kotlin). */
+function inlineObjectTypeWarning(t: Extract<TypeIR, { kind: 'object' }>): string {
+  return (
+    `an inline object type \`{ ${t.fields.map((f) => f.name).join('; ')} }\` is used where no struct can be synthesized ` +
+    `for it (outside a component), so it has no native type. Declare it as a named \`interface\` or \`type\` and use the name.`
+  )
+}
 
 /**
  * `UserPage` + `params` → `UserPageParam`; `TasksListPage` + `tasks` →
@@ -4145,7 +4180,8 @@ let _activeSynth: SwiftSynthCtx | undefined
  */
 function synthesizeSwiftTypeName(componentName: string, declName?: string): string {
   if (!declName) return `${componentName}Data`
-  const stripped = declName.endsWith('s') ? declName.slice(0, -1) : declName
+  // A one-letter `s` must not strip to nothing: the name would be the component's own.
+  const stripped = declName.endsWith('s') && declName.length > 1 ? declName.slice(0, -1) : declName
   return componentName + stripped.charAt(0).toUpperCase() + stripped.slice(1)
 }
 
@@ -4247,17 +4283,29 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
       // This is a TYPE site: a name-only match may have incompatible fields.
       const declared = _structTypedKeyToName.get(key)
       if (declared !== undefined) return declared
-      if (synth !== undefined) {
-        const name = synthesizeSwiftTypeName(synth.componentName, declName)
-        registerSwiftSynthStruct(t, synth, name, key)
+      // A position that passes no context still sits inside the component being emitted (a plugin's type argument,
+      // a lambda parameter, a local's annotation): the shape belongs to that component's structs. Any struct
+      // synthesized after the component's struct list was written is spliced in when the component finishes.
+      const ctx = synth ?? (_typeSynthesisSuppressed ? undefined : _activeSynth)
+      if (ctx !== undefined) {
+        let name = synthesizeSwiftTypeName(ctx.componentName, declName)
+        // The derived name already names a DIFFERENT shape (two inline type arguments in one component both derive
+        // `<Component>Data`): this shape gets its own struct. Reusing the name retyped one value as the other shape.
+        if (ctx.structs.some((s) => s.name === name)) name = uniqueSwiftStructName(ctx, name)
+        registerSwiftSynthStruct(t, ctx, name, key)
         return name
       }
-      // No synthesis context (legacy positions). A single-field labeled
-      // tuple is ILLEGAL Swift ("cannot create a single-element tuple
-      // with an element label") — degrade to the bare field type so the
-      // emit at least parses; member access on it won't typecheck, which
-      // swiftc reports at the use site.
-      if (t.fields.length === 1) return swiftType(t.fields[0]!.type)
+      if (t.fields.length === 0) return 'Any'
+      // No struct can be declared here. Several fields spell a labelled tuple, which has the same members. A
+      // single-field labelled tuple is illegal Swift, and collapsing it to the field's own type silently retyped the
+      // value (`{ ok: boolean }` decoded as `Bool`), so that position is named instead.
+      if (t.fields.length === 1) {
+        if (!_typeSynthesisSuppressed) {
+          const message = inlineObjectTypeWarning(t)
+          if (!_emitWarnings.includes(message)) _emitWarnings.push(message)
+        }
+        return 'Any'
+      }
       const fields = t.fields.map((f) => `${swiftIdent(f.name)}: ${swiftType(f.type)}`).join(', ')
       return `(${fields})`
     }
@@ -7014,7 +7062,10 @@ function swiftEmitContext(indent: number): SwiftEmitContext {
       isFunctionName: (name) => _functionNames.has(name),
       child: emitSwiftChild,
       generic: emitSwiftGeneric,
-      typeText: (type) => swiftType(type),
+      // Against the component's own synthesis context, like the Kotlin twin: an inline object type argument
+      // (`useMutation<{ ok: boolean }>`) is a named Codable struct, never a degraded tuple or a single field's type.
+      typeText: (type, options) =>
+        options?.synthesize === false ? withoutTypeSynthesis(() => swiftType(type)) : swiftType(type, _activeSynth),
       rowType: (element) => swiftType(element, _activeSynth),
       rowFields: (element) => resolveSwiftStructFields(element, _activeSynth),
       inferType: (e) => inferType(e, _activeInferCtx),
