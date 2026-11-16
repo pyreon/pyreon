@@ -3,7 +3,7 @@ import { useHead } from '@pyreon/head'
 import productsJson from '../content/_products.json'
 import type { ProductsIndexPage } from '../content/types-site'
 import { el, tone, txt } from '../kit/bases'
-import { GlowCard, Glyph } from '../kit/cards'
+import { CardFoot, GlowCard, Glyph } from '../kit/cards'
 import { InstallCommand } from '../kit/controls'
 import { inlineText } from '../kit/inline'
 import { AutoGrid, Section, Wrap } from '../kit/layout'
@@ -95,19 +95,20 @@ export function ProductsIndex() {
                                 {p.name}
                                 {p.status ? <StatusBadge>{p.status}</StatusBadge> : null}
                               </Heading>
-                              <Pkg>{p.package}</Pkg>
                             </div>
                           </CardTop>
                           <Lede size="small">{renderInline(p.pitch)}</Lede>
-                          <Show when={() => !!p.proof}>
-                            <div>
-                              <Numeral tag="span" size="strip">
-                                {p.proof?.stat}
-                              </Numeral>
-                              <ProofLine>{renderInline(p.proof?.label ?? '')}</ProofLine>
-                              <Caveat>{p.proof?.condition}</Caveat>
-                            </div>
-                          </Show>
+                          <CardFoot label={<Pkg>{p.package}</Pkg>}>
+                            <Show when={() => !!p.proof}>
+                              <div>
+                                <Numeral tag="span" size="card">
+                                  {p.proof?.stat}
+                                </Numeral>
+                                <ProofLine>{renderInline(p.proof?.label ?? '')}</ProofLine>
+                                <Caveat>{p.proof?.condition}</Caveat>
+                              </div>
+                            </Show>
+                          </CardFoot>
                         </GlowCard>
                       </li>
                     )}
