@@ -1,6 +1,6 @@
 // Device test for the Today showcase on a real iOS Simulator.
 //
-// The app is ../native-showcase/src/TodayApp.tsx compiled to SwiftUI. Every
+// The app is ../../src/TodayApp.tsx compiled to SwiftUI. Every
 // identifier below is a `data-testid` in that source, which PMTC emits as
 // `.accessibilityIdentifier(...)`; the web build exposes the same strings as
 // `data-testid` and the Android build as Compose test tags.

@@ -1,6 +1,6 @@
 // Device test for the Today showcase on a real Android emulator.
 //
-// The app is ../native-showcase/src/TodayApp.tsx compiled to Jetpack Compose.
+// The app is examples/native-showcase/src/TodayApp.tsx compiled to Jetpack Compose.
 // Every tag below is a `data-testid` in that source, which PMTC emits as
 // `Modifier.testTag(...)`; the iOS build exposes the same strings as
 // accessibility identifiers and the web build as `data-testid`.

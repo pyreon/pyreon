@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Single-activity Compose host. MainActivity calls setContent { TodayApp() },
-  where TodayApp is generated from ../native-showcase/src/TodayApp.tsx.
+  where TodayApp is generated from examples/native-showcase/src/TodayApp.tsx.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application

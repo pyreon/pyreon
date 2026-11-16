@@ -10,7 +10,7 @@ const { render } = (await import(join(root, 'dist-server/entry-server.js'))) as 
 const htmlPath = join(root, 'dist/index.html')
 const html = readFileSync(htmlPath, 'utf8')
 if (!html.includes('<!--app-->')) {
-  throw new Error('[native-showcase-web] dist/index.html has no <!--app--> marker')
+  throw new Error('[native-showcase] dist/index.html has no <!--app--> marker')
 }
 writeFileSync(htmlPath, html.replace('<!--app-->', await render()))
-console.log('[native-showcase-web] prerendered dist/index.html')
+console.log('[native-showcase] prerendered dist/index.html')

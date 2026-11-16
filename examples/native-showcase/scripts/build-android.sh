@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# build.sh — compile the shared showcase source (../native-showcase/src) to
-# Kotlin / Jetpack Compose. Run standalone (`./scripts/build.sh`) or from the
-# Gradle `pyreonCompile` task that `preBuild` depends on.
+# build-android.sh — compile the shared showcase source (src/TodayApp.tsx) to
+# Kotlin / Jetpack Compose for the Android host in android/. Run standalone
+# (`bun run build:android`) or from the Gradle `pyreonCompile` task that
+# `preBuild` depends on.
 #
 # The source is the SAME directory the web and iOS hosts build: one file,
 # three targets.
@@ -10,10 +11,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-SRC_DIR="$(cd "${PROJECT_DIR}/../native-showcase/src" && pwd)"
+SRC_DIR="${PROJECT_DIR}/src"
 # Output lands inside the Gradle source tree so Compose picks it up
 # at compile time without extra source-set wiring.
-OUT_DIR="${PROJECT_DIR}/app/src/main/kotlin/com/pyreon/generated"
+OUT_DIR="${PROJECT_DIR}/android/app/src/main/kotlin/com/pyreon/generated"
 
 # Walk up to find the monorepo root (carries package.json with workspaces).
 REPO_ROOT="${PROJECT_DIR}"
@@ -25,14 +26,14 @@ while [[ "${REPO_ROOT}" != "/" ]]; do
 done
 
 if [[ "${REPO_ROOT}" == "/" ]]; then
-    echo "[build.sh] could not locate monorepo root (no package.json with workspaces found above ${PROJECT_DIR})"
+    echo "[build-android.sh] could not locate monorepo root (no package.json with workspaces found above ${PROJECT_DIR})"
     exit 1
 fi
 
-echo "[build.sh] project dir: ${PROJECT_DIR}"
-echo "[build.sh] repo root:   ${REPO_ROOT}"
-echo "[build.sh] source dir:  ${SRC_DIR}"
-echo "[build.sh] output dir:  ${OUT_DIR}"
+echo "[build-android.sh] project dir: ${PROJECT_DIR}"
+echo "[build-android.sh] repo root:   ${REPO_ROOT}"
+echo "[build-android.sh] source dir:  ${SRC_DIR}"
+echo "[build-android.sh] output dir:  ${OUT_DIR}"
 
 mkdir -p "${OUT_DIR}"
 

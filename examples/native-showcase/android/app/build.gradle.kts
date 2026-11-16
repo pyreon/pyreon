@@ -30,8 +30,8 @@ android {
         getByName("main") {
             kotlin {
                 // The base runtime + router the generated Kotlin imports.
-                srcDir("../../../packages/native/runtime-kotlin/src/main/kotlin")
-                srcDir("../../../packages/native/router-kotlin/src/main/kotlin")
+                srcDir("../../../../packages/native/runtime-kotlin/src/main/kotlin")
+                srcDir("../../../../packages/native/router-kotlin/src/main/kotlin")
             }
         }
     }
@@ -59,11 +59,12 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
 }
 
-// Compile ../native-showcase/src/*.tsx → app/src/main/kotlin/com/pyreon/generated/
+// Compile ../../src/TodayApp.tsx → app/src/main/kotlin/com/pyreon/generated/
 // before every build.
 tasks.register<Exec>("pyreonCompile") {
-    workingDir = projectDir.parentFile
-    commandLine("bash", "scripts/build.sh")
+    // The app root (examples/native-showcase): android/app → android → root.
+    workingDir = projectDir.parentFile.parentFile
+    commandLine("bash", "scripts/build-android.sh")
 }
 
 tasks.named("preBuild") {
