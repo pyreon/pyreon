@@ -441,6 +441,53 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "streams-back did not return to tasks")
     }
 
+    /// @pyreon/feature's CRUD hooks against the loopback server's /groceries, and useQuery's refetch(). A mutation does
+    /// not refresh the queries natively, so each write is followed by Refresh (list.refetch() + milk.refetch()): the
+    /// count and the done flag change only if the write reached the server AND the refetch re-ran its request.
+    func test_featureCrudAndRefetch() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+        tapAfterScrolling(app.buttons["tasks-crud"].firstMatch, in: app)
+        XCTAssertTrue(app.otherElements["crud-page"].firstMatch.waitForExistence(timeout: 15), "CRUD page did not render")
+
+        let count = app.staticTexts["crud-count"].firstMatch
+        let milkDone = app.staticTexts["crud-milk-done"].firstMatch
+        let writes = app.staticTexts["crud-writes"].firstMatch
+        let refresh = app.buttons["crud-refresh"].firstMatch
+
+        tapAfterScrolling(app.buttons["crud-reset"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabelContaining(writes, "success/", timeout: 15), "reset did not succeed: '\(writes.label)'")
+        tapAfterScrolling(refresh, in: app)
+        XCTAssertTrue(waitForLabel(count, "2", timeout: 15), "useList did not load the two seeded rows: '\(count.label)'")
+        XCTAssertTrue(waitForLabel(milkDone, "false", timeout: 15), "useById('1') did not load Milk: '\(milkDone.label)'")
+
+        tapAfterScrolling(app.buttons["crud-add"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabelContaining(writes, "success/success/", timeout: 15), "useCreate did not succeed: '\(writes.label)'")
+        XCTAssertEqual(count.label, "2", "a native create must not refresh the list by itself")
+        tapAfterScrolling(refresh, in: app)
+        XCTAssertTrue(waitForLabel(count, "3", timeout: 15), "refetch() after create did not show 3 rows: '\(count.label)'")
+
+        tapAfterScrolling(app.buttons["crud-done"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabelContaining(writes, "success/success/success/", timeout: 15), "useUpdate did not succeed: '\(writes.label)'")
+        tapAfterScrolling(refresh, in: app)
+        XCTAssertTrue(waitForLabel(milkDone, "true", timeout: 15), "refetch() after update did not show Milk done: '\(milkDone.label)'")
+
+        tapAfterScrolling(app.buttons["crud-delete"].firstMatch, in: app)
+        XCTAssertTrue(waitForLabel(writes, "success/success/success/success", timeout: 15), "useDelete did not succeed: '\(writes.label)'")
+        tapAfterScrolling(refresh, in: app)
+        XCTAssertTrue(waitForLabel(count, "2", timeout: 15), "refetch() after delete did not show 2 rows: '\(count.label)'")
+
+        tapAfterScrolling(app.buttons["crud-back"].firstMatch, in: app)
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "crud-back did not return to tasks")
+    }
+
     /// useInfiniteQuery, useLatest, useMediaQuery and useKeyboard on the device.
     ///
     /// Infinite query: three pages from the loopback server's /pages. The count must climb 1 -> 2 -> 3 and

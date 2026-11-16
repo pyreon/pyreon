@@ -632,6 +632,44 @@ class TasksAppInstrumentedTest {
     }
 
     /**
+     * @pyreon/feature's CRUD hooks against the loopback server's /groceries, and useQuery's refetch() (same script as
+     * the iOS test): a native mutation does not refresh the queries, so Refresh's refetch() must show each write.
+     */
+    @Test
+    fun featureCrudAndRefetch() {
+        composeRule.onNodeWithTag("login-username").performTextInput("abcde")
+        composeRule.onNodeWithTag("login-submit").performClick()
+        assertTagDisplayed("tasks-page", "after login-submit")
+        composeRule.onNodeWithTag("tasks-crud").performScrollTo().performClick()
+        assertTagDisplayed("crud-page", "after tasks-crud (/tasks -> /crud)")
+
+        composeRule.onNodeWithTag("crud-reset").performClick()
+        waitForTagText("crud-writes", "success/idle/idle/idle")
+        composeRule.onNodeWithTag("crud-refresh").performClick()
+        waitForTagText("crud-count", "2")
+        waitForTagText("crud-milk-done", "false")
+
+        composeRule.onNodeWithTag("crud-add").performClick()
+        waitForTagText("crud-writes", "success/success/idle/idle")
+        composeRule.onNodeWithTag("crud-count").assertTextEquals("2")
+        composeRule.onNodeWithTag("crud-refresh").performClick()
+        waitForTagText("crud-count", "3")
+
+        composeRule.onNodeWithTag("crud-done").performClick()
+        waitForTagText("crud-writes", "success/success/success/idle")
+        composeRule.onNodeWithTag("crud-refresh").performClick()
+        waitForTagText("crud-milk-done", "true")
+
+        composeRule.onNodeWithTag("crud-delete").performClick()
+        waitForTagText("crud-writes", "success/success/success/success")
+        composeRule.onNodeWithTag("crud-refresh").performClick()
+        waitForTagText("crud-count", "2")
+
+        composeRule.onNodeWithTag("crud-back").performClick()
+        assertTagDisplayed("tasks-page", "after crud-back (/crud -> /tasks)")
+    }
+
+    /**
      * useInfiniteQuery, useLatest, useMediaQuery and useKeyboard on the emulator (same assertions as the iOS test,
      * plus a real key press: the Compose test rule can deliver a hardware key, the simulator cannot).
      */

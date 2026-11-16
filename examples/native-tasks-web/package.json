@@ -22,6 +22,7 @@
     "@pyreon/core": "workspace:*",
     "@pyreon/dnd": "workspace:*",
     "@pyreon/elements": "workspace:*",
+    "@pyreon/feature": "workspace:*",
     "@pyreon/flow": "workspace:*",
     "@pyreon/form": "workspace:*",
     "@pyreon/hooks": "workspace:*",

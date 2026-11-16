@@ -66,6 +66,7 @@ import { Container, Row, Col } from '@pyreon/coolgrid'
 import { Element } from '@pyreon/elements'
 import { createMachine } from '@pyreon/machine'
 import { useHotkey } from '@pyreon/hotkeys'
+import { defineFeature } from '@pyreon/feature'
 import { rocketstyle } from '@pyreon/rocketstyle'
 import { styled } from '@pyreon/styler'
 import { zodSchema } from '@pyreon/validation'
@@ -153,6 +154,17 @@ interface StreamTick {
   n: number
   resumed: string
 }
+
+// scripts/stream-server.ts /groceries: an in-memory REST collection seeded with two rows ('1' Milk, '2' Bread).
+const Grocery = defineFeature({
+  name: 'grocery',
+  schema: { id: 'string', title: 'string', done: 'boolean' },
+  api: 'http://127.0.0.1:8791/groceries',
+})
+interface GroceryReset {
+  ok: boolean
+}
+const resetGroceries = streams.endpoint('POST /groceries-reset')
 
 // scripts/stream-server.ts /pages: three pages of two items; the last has no `nextCursor`.
 interface FeedItem {
@@ -407,7 +419,10 @@ function TasksPage() {
             <Button onPress={() => navigate('/streams')} data-testid="tasks-streams">
               Streams
             </Button>
-            <Button onPress={() => navigate('/requests')} data-testid="tasks-requests">
+            <Button onPress={() => navigate('/crud')} data-testid="tasks-crud">
+            CRUD
+          </Button>
+          <Button onPress={() => navigate('/requests')} data-testid="tasks-requests">
               Requests
             </Button>
             <Button onPress={() => navigate('/webhost')} data-testid="tasks-webhost">
@@ -839,6 +854,50 @@ function StreamsScreen() {
         Start rows
       </Button>
       <Button onPress={() => navigate('/tasks')} data-testid="streams-back">
+        Back to tasks
+      </Button>
+    </Stack>
+  )
+}
+
+// @pyreon/feature's CRUD hooks against the loopback server's /groceries, plus refetch(): native has no shared query
+// client, so a mutation does not refresh the list or the record — the Refresh button's refetch() does, and the counts
+// it shows prove each write reached the server and each refetch re-ran its request.
+function CrudScreen() {
+  const navigate = useNavigate()
+  const list = Grocery.useList()
+  const milk = Grocery.useById(() => '1')
+  const create = Grocery.useCreate()
+  const update = Grocery.useUpdate()
+  const remove = Grocery.useDelete()
+  const reset = useMutation<GroceryReset>(resetGroceries.mutation())
+  return (
+    <Stack gap={3} padding={4} data-testid="crud-page">
+      <Text data-testid="crud-count">{`${list.data()?.length ?? 0}`}</Text>
+      <Text data-testid="crud-milk-done">{`${milk.data()?.done ?? false}`}</Text>
+      <Text data-testid="crud-writes">{`${reset.status()}/${create.status()}/${update.status()}/${remove.status()}`}</Text>
+      <Button onPress={() => reset.mutate({ json: {} })} data-testid="crud-reset">
+        Reset
+      </Button>
+      <Button onPress={() => create.mutate({ title: 'Eggs', done: false })} data-testid="crud-add">
+        Add
+      </Button>
+      <Button onPress={() => update.mutate({ id: '1', data: { done: true } })} data-testid="crud-done">
+        Milk done
+      </Button>
+      <Button onPress={() => remove.mutate('2')} data-testid="crud-delete">
+        Delete bread
+      </Button>
+      <Button
+        onPress={() => {
+          list.refetch()
+          milk.refetch()
+        }}
+        data-testid="crud-refresh"
+      >
+        Refresh
+      </Button>
+      <Button onPress={() => navigate('/tasks')} data-testid="crud-back">
         Back to tasks
       </Button>
     </Stack>
@@ -2362,6 +2421,11 @@ export function TasksApp() {
       {
         path: '/streams',
         component: StreamsScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/crud',
+        component: CrudScreen,
         beforeEnter: () => useApp().store.isAuthed(),
       },
       {

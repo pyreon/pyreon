@@ -22,6 +22,9 @@
 //   PUT /echo    The raw-body twin of POST /echo.
 //   GET /pages   Cursor pages for the useInfiniteQuery proof: `?cursor=0|1|2`, two
 //                items each, `nextCursor` present on pages 0 and 1, absent on 2.
+//   /groceries   An in-memory REST collection for the @pyreon/feature CRUD proof: GET (list), POST (create, assigns
+//                an id), GET|PUT|DELETE /groceries/<id>. POST /groceries-reset restores the two seeded rows, so a
+//                test that resets first replays the same script on every iteration.
 //   GET /health  200 — the CI readiness poll.
 //   /webview/*   The <WebView> origin-scope proof (#4215), served on two
 //                origins (127.0.0.1 and localhost); see webview-scope-pages.ts.
@@ -43,6 +46,27 @@ import { handleWebViewScope } from './webview-scope-pages'
 
 const port = Number(process.env.PYREON_STREAM_PORT ?? 8791)
 
+type Grocery = { id: string; title: string; done: boolean }
+const seedGroceries = (): Grocery[] => [
+  { id: '1', title: 'Milk', done: false },
+  { id: '2', title: 'Bread', done: false },
+]
+let groceries = seedGroceries()
+let nextGroceryId = 3
+const readJson = (req: import('node:http').IncomingMessage): Promise<Record<string, unknown>> =>
+  new Promise((resolve) => {
+    const chunks: Buffer[] = []
+    req.on('data', (c: Buffer) => chunks.push(c))
+    req.on('end', () => {
+      const text = Buffer.concat(chunks).toString('utf8')
+      resolve(text === '' ? {} : (JSON.parse(text) as Record<string, unknown>))
+    })
+  })
+const sendJson = (res: import('node:http').ServerResponse, status: number, body: unknown): void => {
+  res.writeHead(status, { 'content-type': 'application/json' })
+  res.end(JSON.stringify(body))
+}
+
 const server = createServer((req, res) => {
   const path = (req.url ?? '/').split('?')[0]
   // CORS, so the WEB build of the same source (a Vite origin) can read the
@@ -50,7 +74,7 @@ const server = createServer((req, res) => {
   // request is preflighted.
   res.setHeader('access-control-allow-origin', '*')
   res.setHeader('access-control-allow-headers', 'accept, last-event-id, content-type, x-client')
-  res.setHeader('access-control-allow-methods', 'GET, POST, PUT, OPTIONS')
+  res.setHeader('access-control-allow-methods', 'GET, POST, PUT, DELETE, OPTIONS')
   if (req.method === 'OPTIONS') {
     res.writeHead(204)
     res.end()
@@ -107,6 +131,39 @@ const server = createServer((req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify(reply))
     })
+    return
+  }
+  if (path === '/groceries-reset') {
+    groceries = seedGroceries()
+    nextGroceryId = 3
+    sendJson(res, 200, { ok: true })
+    return
+  }
+  if (path === '/groceries' || path.startsWith('/groceries/')) {
+    const id = path === '/groceries' ? undefined : decodeURIComponent(path.slice('/groceries/'.length))
+    void (async () => {
+      if (id === undefined && req.method === 'GET') return sendJson(res, 200, groceries)
+      if (id === undefined && req.method === 'POST') {
+        const body = await readJson(req)
+        const row: Grocery = { id: String(nextGroceryId++), title: String(body.title ?? ''), done: body.done === true }
+        groceries.push(row)
+        return sendJson(res, 201, row)
+      }
+      const row = groceries.find((g) => g.id === id)
+      if (row === undefined) return sendJson(res, 404, { message: 'not found' })
+      if (req.method === 'GET') return sendJson(res, 200, row)
+      if (req.method === 'PUT') {
+        const body = await readJson(req)
+        Object.assign(row, body, { id: row.id })
+        return sendJson(res, 200, row)
+      }
+      if (req.method === 'DELETE') {
+        groceries = groceries.filter((g) => g.id !== id)
+        res.writeHead(204)
+        return res.end()
+      }
+      sendJson(res, 405, { message: 'method not allowed' })
+    })()
     return
   }
   if (path === '/pages') {
