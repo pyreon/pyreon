@@ -1,5 +1,0 @@
-{
-  "extends": "@pyreon/tsconfig/example.json",
-  "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules", "**/results/**"]
-}
