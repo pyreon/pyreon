@@ -212,7 +212,7 @@ describe('parse.ts — useQuery option parsing', () => {
   })
 
   it('lowers a DIRECT-VALUE queryFn and a TEMPLATE-url queryFn', () => {
-    expect(q(`() => ({ queryKey: ['a'], queryFn: () => ({ ok: true }) })`).code).toContain('q.resolve(')
+    expect(q(`() => ({ queryKey: ['a'], queryFn: () => ({ ok: true }) })`).code).toMatch(/await q\.run \{\s*return /)
     expect(q('() => ({ queryKey: [\'a\', n()], queryFn: () => fetch(`https://x/${n()}`) })').code).toContain(
       'URL(string: "https://x/\\(n)")',
     )
