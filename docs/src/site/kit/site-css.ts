@@ -117,11 +117,11 @@ ${navMedia.expanded}{.${C.sheet}{display:none}}
 .${C.sheetFoot} li{flex:1 1 0;min-width:max-content}
 .${C.sheetFoot} a{display:flex;align-items:center;justify-content:center;height:${touch.tapTarget + 10}px;padding:0 18px;border:1px solid ${v('line2')};border-radius:${radius.pill}px;color:${v('text')};font-weight:${weight.medium}}
 
-.${C.cmd}{display:flex;align-items:center;gap:14px;height:50px;width:fit-content;max-width:100%;min-width:0;padding:0 8px 0 14px;border-radius:${radius.pill}px;border:1px solid ${v('line2')};background:${v('sheen')};font-family:${font.mono};font-size:12px;color:${v('text')}}
+.${C.cmd}{display:flex;align-items:center;gap:14px;min-height:50px;width:fit-content;max-width:100%;min-width:0;padding:6px 8px 6px 14px;border-radius:${radius.pill}px;border:1px solid ${v('line2')};background:${v('sheen')};font-family:${font.mono};font-size:12px;color:${v('text')}}
 @media (min-width:576px){.${C.cmd}{padding-left:22px;font-size:${text.ui.size}px}}
 @media (max-width:575.98px){.${C.cmd}{width:100%}}
 .${C.cmdHot}{border-color:${v('hotRing')};box-shadow:${v('hotGlow')}}
-.${C.cmdText}{display:block;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:inherit;color:inherit;background:none;padding:0;border:0}
+.${C.cmdText}{display:block;flex:1 1 auto;min-width:0;white-space:normal;overflow-wrap:anywhere;font:inherit;line-height:1.5;color:inherit;background:none;padding:0;border:0}
 .${C.cmdPrompt}{color:${v('prompt')};margin-right:8px}
 .${C.copy}{${reset}display:inline-flex;align-items:center;flex-shrink:0;height:34px;padding:0 14px;border-radius:${radius.pill}px;background:${v('line')};color:${v('mist')};font-family:${font.mono};font-size:11.5px;cursor:pointer;transition:color ${motion.hover}}
 .${C.copy}:hover{color:${v('text')}}
@@ -178,7 +178,7 @@ ${touch.media}{
 .${C.mark}{min-height:${touch.tapTarget}px}
 .${C.iconLink},.${C.iconButton},.${C.menuButton}{width:${touch.tapTarget}px;height:${touch.tapTarget}px}
 .${C.pill}{height:${touch.tapTarget}px}
-.${C.cmd}{height:${touch.tapTarget + 10}px}
+.${C.cmd}{min-height:${touch.tapTarget + 10}px;padding-top:5px;padding-bottom:5px}
 .${C.copy}{height:${touch.tapTarget}px}
 .${C.loopToggle}{width:${touch.tapTarget}px;height:${touch.tapTarget}px}
 .${C.smallLink}{min-height:${touch.tapTarget}px}
