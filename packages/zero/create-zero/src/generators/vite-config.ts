@@ -27,9 +27,9 @@ export function generateViteConfig(config: ProjectConfig): string {
 
   // Adapter wiring — `static` has no factory (dist/ IS the artefact).
   const adapter = ADAPTERS[config.adapter]
-  const adapterImport = adapter.viteFactory
-    ? `\nimport { ${adapter.viteFactory} } from '@pyreon/zero/server'`
-    : ''
+  // One import per module: a second `from '@pyreon/zero/server'` line trips
+  // `import/no-duplicates` in a project that lints with it.
+  const zeroImport = adapter.viteFactory ? `zero, { ${adapter.viteFactory} }` : 'zero'
   // One option per line: the scaffolded `oxfmt.config.ts` formats an object
   // that wraps one property per line, so anything else is rewritten by the
   // project's first `bun run format`.
@@ -69,7 +69,7 @@ export function generateViteConfig(config: ProjectConfig): string {
   // oxfmt sorts imports by specifier: `@pyreon/zero-content/plugin` comes
   // before `@pyreon/zero/server` ('-' sorts before '/').
   return `import pyreon from '@pyreon/vite-plugin'${contentImport}
-import zero from '@pyreon/zero/server'${adapterImport}
+import ${zeroImport} from '@pyreon/zero/server'
 
 // One config surface: fonts, SEO, favicons, og-images, and AI discoverability
 // are all fields on zero() — no separate plugin imports needed.

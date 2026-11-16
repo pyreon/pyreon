@@ -113,6 +113,16 @@ describe('vite-config — compat flag emits compat option', () => {
   })
 })
 
+describe('vite-config — one import per module', () => {
+  // Two `from '@pyreon/zero/server'` lines failed `import/no-duplicates`.
+  for (const adapter of ['vercel', 'cloudflare', 'netlify', 'node', 'bun', 'static'] as const) {
+    it(`${adapter}: @pyreon/zero/server is imported once`, () => {
+      const out = generateViteConfig(base({ adapter }))
+      expect(out.match(/from '@pyreon\/zero\/server'/g)).toHaveLength(1)
+    })
+  }
+})
+
 describe('vite-config — the SSG sitemap lists getStaticPaths routes', () => {
   // Without useSsgPaths the sitemap walks file-system routes only, so every
   // dynamic page (each blog post) was missing from a scaffolded SSG app's

@@ -1,6 +1,5 @@
 import pyreon from '@pyreon/vite-plugin'
-import zero from '@pyreon/zero/server'
-import { vercelAdapter } from '@pyreon/zero/server'
+import zero, { vercelAdapter } from '@pyreon/zero/server'
 
 // One config surface: fonts, SEO, favicons, og-images, and AI discoverability
 // are all fields on zero() — no separate plugin imports needed.
