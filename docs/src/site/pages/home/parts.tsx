@@ -351,6 +351,23 @@ export const ProductCell = el
     third: { gridColumn: { lg: 'span 2' } },
   }))
 
+/**
+ * A compat tile's package name: `@pyreon/` then the name, which never breaks.
+ * Below sm the name steps down to the eyebrow size, so the longest
+ * (`svelte-compat`, `preact-compat`) fits a two-column phone tile whole and
+ * every tile breaks the same way.
+ */
+export const CompatPkg = txt
+  .config({ name: 'HomeCompatPkg' })
+  .attrs({ tag: 'span' })
+  .theme((_t, m) => ({
+    fontFamily: font.mono,
+    fontSize: { xs: text.eyebrowTight.size, sm: 12 },
+    lineHeight: 1.5,
+    color: tone(m, 'fog'),
+    extendCss: '& > span { white-space: nowrap; }',
+  }))
+
 /** `.compat` — the five compat layer tiles. */
 export const CompatGrid = el
   .config({ name: 'HomeCompat' })
@@ -365,33 +382,7 @@ export const CompatGrid = el
     extendCss: equalCards + lastOddSpans(breakpoints.xs, breakpoints.md),
   }))
 
-/** `.term` — the reproduce command, one `$` line per step. */
-export const Terminal = el
-  .config({ name: 'HomeTerminal' })
-  .attrs({ block: true })
-  .theme((_t, m) => ({
-    position: 'relative',
-    minWidth: 0,
-    overflowX: 'auto',
-    paddingTop: 18,
-    paddingBottom: 18,
-    paddingLeft: 20,
-    paddingRight: 20,
-    borderRadius: radius.pane,
-    border: '1px solid',
-    borderColor: tone(m, 'line'),
-    backgroundColor: m(syntax.light.bg, syntax.dark.bg),
-    fontFamily: font.mono,
-    fontSize: { xs: 12, md: 13 },
-    lineHeight: 1.85,
-    color: m(syntax.light.fg, syntax.dark.fg),
-    focus: focusRing(m),
-    extendCss: 'font-variant-ligatures: none; white-space: pre;',
-  }))
 
-export const Prompt = txt.config({ name: 'HomePrompt' }).attrs({ tag: 'span', 'aria-hidden': 'true' }).theme((_t, m) => ({ color: tone(m, 'prompt'), marginRight: 10 }))
-
-export const TermFoot = el.config({ name: 'HomeTermFoot' }).attrs({ block: true, contentDirection: 'inline', contentAlignX: 'right' }).theme(() => ({ marginTop: 12 }))
 
 /** Status column label: dot + mono label in the status colour. */
 export const StatusLabel = txt
@@ -407,7 +398,6 @@ export const Bullets = el
 
 export const CardNum = txt.config({ name: 'HomeCardNum' }).attrs({ tag: 'span' }).theme((_t, m) => ({ fontFamily: font.mono, fontSize: 11.5, color: tone(m, 'accent') }))
 
-export const Arrow = txt.config({ name: 'HomeArrow' }).attrs({ tag: 'span', 'aria-hidden': 'true' }).theme((_t, m) => ({ color: tone(m, 'accent'), marginLeft: 'auto' }))
 
 /** The chart under a proof number (theme-aware inline SVG). */
 export const ChartSlot = el

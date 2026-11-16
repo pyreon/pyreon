@@ -176,6 +176,8 @@ export const Numeral = txt
     default: {},
     long: { fontSize: 'clamp(32px, min(5.4vw, 17cqi), 90px)' },
     strip: { fontSize: 'clamp(40px, 4vw, 58px)' },
+    /** A proof number inside a product card: one step under `strip`, so a card with a number and one without share a row without a half-empty card. */
+    card: { fontSize: 'clamp(34px, 3vw, 44px)' },
   }))
 
 const CellLabel = txt
@@ -308,7 +310,7 @@ const HookTitle = txt
     marginBottom: 28,
     maxWidth: '14ch',
     fontFamily: font.sans,
-    fontSize: { xs: 'clamp(40px, 11.6vw, 46px)', md: clampSize(display.hook) },
+    fontSize: { xs: clampSize(display.hookPhone), md: clampSize(display.hook) },
     lineHeight: display.hook.lineHeight,
     letterSpacing: display.hook.tracking,
     fontWeight: display.hook.weight,

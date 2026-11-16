@@ -5,10 +5,9 @@ import { HOME, type HomeAi, type HomeHero, type HomeOnce, type HomeSectionData, 
 import type { ProductsIndexPage } from '../../content/types-site'
 import { SITE_NAME, SITE_ORIGIN, usePageHead } from '../../head'
 import { VerdictChip } from '../../kit/bench'
-import { GlowCard, Glyph } from '../../kit/cards'
-import { CodeBlock, CodeDiff } from '../../kit/code'
+import { CardFoot, GlowCard, Glyph } from '../../kit/cards'
+import { CodeBlock, CodeDiff, TerminalCard } from '../../kit/code'
 import { InstallCommand, Pill } from '../../kit/controls'
-import { CopyButtonIsland } from '../../kit/islands'
 import { AutoGrid, Section, SectionHead, Wrap } from '../../kit/layout'
 import { AnimatedSvg, Loop } from '../../kit/media'
 import { Reveal } from '../../kit/motion'
@@ -25,7 +24,6 @@ import proofRows from '../../media/home/proof-rows-10k.svg?raw'
 import proofSsr from '../../media/home/proof-ssr.svg?raw'
 import runsOnceTree from '../../media/home/runs-once-tree.svg?raw'
 import {
-  Arrow,
   BenchList,
   BenchRow,
   Bullets,
@@ -33,6 +31,7 @@ import {
   ChartSlot,
   CompareTable,
   CompatGrid,
+  CompatPkg,
   DefList,
   Finding,
   MapTable,
@@ -49,7 +48,6 @@ import {
   PhoneTargetsHead,
   ProductCell,
   ProductsGrid,
-  Prompt,
   Row,
   Split,
   Stack,
@@ -62,8 +60,6 @@ import {
   TargetLabel,
   TargetLabels,
   TargetsGrid,
-  TermFoot,
-  Terminal,
   Ticks,
   WideOnly,
 } from './parts'
@@ -496,18 +492,18 @@ function Products(props: { s: SectionOf<'products'> }) {
                     {f.p.name}
                     {f.p.status ? <StatusBadge>{f.p.status}</StatusBadge> : null}
                   </Heading>
-                  <Mono>{f.p.package}</Mono>
                   <Lede size="small">{renderInline(f.p.pitch)}</Lede>
-                  <Show when={() => !!f.p.proof}>
-                    <Lede size="small">
-                      <Numeral tag="span" size="strip" style="font-size:22px">
-                        {f.p.proof?.stat}
-                      </Numeral>{' '}
-                      {renderInline(f.p.proof?.label ?? '')}
-                    </Lede>
-                    <Mono>{f.p.proof?.condition}</Mono>
-                  </Show>
-                  <Arrow>→</Arrow>
+                  <CardFoot label={<Mono>{f.p.package}</Mono>}>
+                    <Show when={() => !!f.p.proof}>
+                      <Lede size="small">
+                        <Numeral tag="span" size="strip" style="font-size:22px">
+                          {f.p.proof?.stat}
+                        </Numeral>{' '}
+                        {renderInline(f.p.proof?.label ?? '')}
+                      </Lede>
+                      <Mono>{f.p.proof?.condition}</Mono>
+                    </Show>
+                  </CardFoot>
                 </GlowCard>
               </ProductCell>
             )}
@@ -538,8 +534,12 @@ function Migrate(props: { s: SectionOf<'migrate'> }) {
                     <Heading tag="h3" size="step" style="margin:0">
                       {l.name}
                     </Heading>
-                    {/* A break opportunity after the scope: "@pyreon/" then "react-compat", never "react-" / "compat". */}
-                    <Mono>{l.package.split('/').flatMap((part, i) => (i === 0 ? [part] : ['/', <wbr />, part]))}</Mono>
+                    {/* "@pyreon/" then the whole name: one break opportunity, after the scope. */}
+                    <CompatPkg>
+                      {l.package.slice(0, l.package.indexOf('/') + 1)}
+                      <wbr />
+                      <span>{l.package.slice(l.package.indexOf('/') + 1)}</span>
+                    </CompatPkg>
                   </GlowCard>
                 </li>
               )}
@@ -607,19 +607,7 @@ function Evidence(props: { s: SectionOf<'evidence'> }) {
             {link(s.link)}
           </Stack>
           <div>
-            <Terminal tag="section" tabIndex={0} aria-label={s.title}>
-              <For each={commandSteps(s.command).map((line, i) => ({ line, i }))} by={(l) => l.i}>
-                {(l) => (
-                  <div>
-                    <Prompt>$</Prompt>
-                    {l.line}
-                  </div>
-                )}
-              </For>
-            </Terminal>
-            <TermFoot>
-              <CopyButtonIsland text={s.command} />
-            </TermFoot>
+            <TerminalCard label="bash" lines={commandSteps(s.command)} copy={s.command} aria-label={s.title} />
           </div>
         </Split>
         <div style="margin-top:40px">

@@ -1,7 +1,8 @@
 import { For, Show } from '@pyreon/core'
-import { diff, font, gradient, radius, syntax, text, weight } from '../theme'
+import { color, diff, font, gradient, radius, syntax, text, weight } from '../theme'
 import { el, focusRing, pair, tone, txt } from './bases'
 import { GlowCard } from './cards'
+import { CopyButtonIsland } from './islands'
 import { AutoGrid } from './layout'
 import { Eyebrow, renderInline, VisuallyHidden } from './type'
 
@@ -14,7 +15,8 @@ import { Eyebrow, renderInline, VisuallyHidden } from './type'
  */
 const CodeHead = el
   .config({ name: 'CodeHead' })
-  .attrs({ block: true, gap: 6 })
+  // A row: the label (and caption) on the left, the copy button, when the card has one, on the right.
+  .attrs({ block: true, contentDirection: 'inline', contentAlignX: 'spaceBetween', contentAlignY: 'center', gap: 14 })
   .theme((_t, m) => ({
     paddingTop: 18,
     paddingBottom: 16,
@@ -102,18 +104,58 @@ export function CodeCard(props: {
   html?: string | undefined
   state?: 'default' | 'hot' | undefined
   rail?: 'none' | 'del' | 'ins' | undefined
+  /** Text the card's copy button copies; no button without it. */
+  copy?: string | undefined
 }) {
   return (
     <GlowCard state={props.state} padding="flush">
       <Rail state={props.rail ?? 'none'}>
         <CodeHead>
-          <Eyebrow state={props.state === 'hot' ? 'accent' : 'default'}>{renderInline(props.label)}</Eyebrow>
-          <Show when={() => !!props.caption}>
-            <Caption>{renderInline(props.caption ?? '')}</Caption>
-          </Show>
+          <HeadText>
+            <Eyebrow state={props.state === 'hot' ? 'accent' : 'default'}>{renderInline(props.label)}</Eyebrow>
+            <Show when={() => !!props.caption}>
+              <Caption>{renderInline(props.caption ?? '')}</Caption>
+            </Show>
+          </HeadText>
+          {props.copy ? <CopyButtonIsland text={props.copy} /> : null}
         </CodeHead>
         <CodeBlock code={props.code} html={props.html} label={props.label} />
       </Rail>
+    </GlowCard>
+  )
+}
+
+const HeadText = el.config({ name: 'CodeHeadText' }).attrs({ block: true, gap: 6 }).theme(() => ({ minWidth: 0 }))
+
+/** The `$` of a terminal line: the prompt colour, through the Shiki variables the code body reads. */
+const promptVars = `--shiki-light:${color.prompt.light};--shiki-dark:${color.prompt.dark};margin-right:10px`
+
+/**
+ * A shell session as a code card: the same frame and head as `CodeCard`
+ * (label left, copy button right) and one `$`-prompted line per step. The
+ * button copies `copy`, the whole command as one line.
+ */
+export function TerminalCard(props: { label: string; lines: readonly string[]; copy: string; 'aria-label'?: string | undefined }) {
+  return (
+    <GlowCard padding="flush">
+      <CodeHead>
+        <HeadText>
+          <Eyebrow>{renderInline(props.label)}</Eyebrow>
+        </HeadText>
+        <CopyButtonIsland text={props.copy} />
+      </CodeHead>
+      <CodeBody tag="pre" tabIndex={0} aria-label={props['aria-label'] ?? props.label}>
+        <For each={props.lines.map((line, i) => ({ line, i }))} by={(l) => l.i}>
+          {(l) => (
+            <div>
+              <span aria-hidden="true" style={promptVars}>
+                $
+              </span>
+              {l.line}
+            </div>
+          )}
+        </For>
+      </CodeBody>
     </GlowCard>
   )
 }
