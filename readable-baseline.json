@@ -1,6 +1,6 @@
 {
   "description": "Readable ratchet — `readable` style findings per (file, rule) may only DECREASE, and a file not listed here must have none. Checked by `bun scripts/check-pyreon-lint-ratchet.ts` (validate-fast + CI). Fix new findings with `bunx pyreon-lint --fix <file>` (the spacing rules are autofixable), then tighten with `bun scripts/check-readable-ratchet.ts --update`. Never raise a count to absorb a finding.",
-  "total": 11566,
+  "total": 11563,
   "files": {
     "packages/core/compiler/src/charts-migration.ts": {"pyreon/padding-before-return":2},
     "packages/core/compiler/src/content-audit.ts": {"pyreon/padding-before-return":13},
@@ -1358,7 +1358,6 @@
     "packages/internals/test-utils/src/tests/registry-visibility.test.ts": {"pyreon/padding-before-return":1,"pyreon/padding-between-declarations":1},
     "packages/internals/test-utils/src/tests/release-provenance-preflight.test.ts": {"pyreon/padding-before-return":1},
     "packages/internals/test-utils/src/tests/release-smoke-dump-race.test.ts": {"pyreon/padding-before-return":1},
-    "packages/internals/test-utils/src/tests/required-check-autoheal.test.ts": {"pyreon/padding-before-return":2,"pyreon/padding-between-declarations":1},
     "packages/internals/test-utils/src/tests/run-pool.test.ts": {"pyreon/padding-before-return":1},
     "packages/internals/test-utils/src/tests/scaffold-native-dependencies.test.ts": {"pyreon/padding-between-declarations":2},
     "packages/internals/test-utils/src/tests/scaffold-smoke-triggers.test.ts": {"pyreon/padding-before-return":1},
