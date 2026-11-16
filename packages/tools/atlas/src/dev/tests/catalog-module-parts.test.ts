@@ -70,7 +70,7 @@ describe('authored args stay LIVE in the module', () => {
     // A derived scenario's copy carries only JSON; the render's base supplies
     // the rest from the authored Default.
     expect(code).toContain('name: "Empty", source: "auto-edge", args: {"children":"","maxHeight":48}')
-    expect(code).toContain('...__authored("Spoiler", "Spoiler", "Default", {}), ...props')
+    expect(code).toContain('__merge({}, __authored("Spoiler", "Spoiler", "Default", {}), props)')
   })
 
   it('drops non-JSON values from a derived scenario rather than shipping a marker string as a prop', () => {

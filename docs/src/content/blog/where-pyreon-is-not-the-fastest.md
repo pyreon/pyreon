@@ -195,4 +195,4 @@ npm create @pyreon/zero@latest
 
 - Docs: [pyreon.dev/docs](/docs). The rules that keep an app on the fast path: [the seven rules of fine-grained reactivity](/blog/seven-rules-of-fine-grained-reactivity).
 - Star the repo: [github.com/pyreon/pyreon](https://github.com/pyreon/pyreon)
-- Talk to us on [Discord](https://pyreon.dev/discord) or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues). Found a harness bug? That is our favourite kind of issue.
+- Questions, ideas, a bug: open an issue on [GitHub](https://github.com/pyreon/pyreon/issues), where every answer stays findable for the next person. Found a harness bug? That is our favourite kind of issue.

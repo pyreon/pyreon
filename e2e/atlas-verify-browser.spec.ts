@@ -30,6 +30,7 @@ const CATALOG = join(WORKSHOP, 'atlas-catalog.json')
 
 interface CatalogJson {
   components: {
+    name: string
     scenarios: {
       id: string
       verify?: {
@@ -101,6 +102,17 @@ test('scan → create baselines → compare → merged catalog verdicts', () => 
     return m ? Number(m[1]) : 0
   })
   expect(Math.max(...totals)).toBeGreaterThan(0)
+  // Every LATER scenario of a component measures its own mount too. Scenario
+  // args update the mounted component in place, so the runner re-mounts per
+  // scenario; without that, every scenario after a component's first read 0.
+  for (const c of catalog.components) {
+    const measured = c.scenarios
+      .filter((s) => s.verify?.snapshot.status !== 'skip')
+      .map((s) => Number((s.verify?.reactivityCoverage.findings?.[0]?.message ?? '').match(/of (\d+) reactive node/)?.[1] ?? 0))
+    if (measured.length > 1 && measured[0]! > 0) {
+      expect(Math.min(...measured.slice(1)), `${c.name}: a later scenario measured nothing`).toBeGreaterThan(0)
+    }
+  }
 
   // Merged verdicts recompute checked with the browser pair included.
   const sample = driven.find((s) => s.verify && s.verify.checked >= 3)

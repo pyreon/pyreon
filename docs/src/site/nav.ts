@@ -1,4 +1,3 @@
-import { SITE_LINKS } from '../site-links'
 import navJson from './content/_nav.json'
 import productIndex from './content/products/_index.json'
 import type { ProductIndex } from './content/types'
@@ -10,8 +9,11 @@ import type { MegaItem, NavMenuItem, SiteLink, SiteNav } from './content/types-s
  * into `content/`, never edited here); this module only adapts it:
  *
  *   - `showWhen` items are kept when their condition holds in this build
- *     (`SHOWN`): /showcase and /open are pages here; the Discord icon waits
- *     until `/discord` redirects (SITE_LINKS.discord is set).
+ *     (`SHOWN`): /showcase and /open are pages here.
+ *   - Links to a channel that is not open (`/discord`, `/newsletter`) never
+ *     reach this module: the channel gate (`gateChannels` in site-links.ts)
+ *     drops them when the JSON is imported, so the Discord icon, the mobile
+ *     sheet and the footer show them only once their address is set.
  *   - `HREF_ALIASES` maps a destination the content names before it exists
  *     onto the page that serves it today.
  *
@@ -33,7 +35,6 @@ export const resolveHref = (href: string): string => HREF_ALIASES[href] ?? href
 const SHOWN: Readonly<Record<string, boolean>> = {
   '/showcase': true,
   '/open': true,
-  '/discord': SITE_LINKS.discord !== null,
 }
 
 export function isShown(item: { href?: string | undefined; showWhen?: string | undefined }): boolean {

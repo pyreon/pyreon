@@ -119,8 +119,12 @@ export function insightSummary(rows: readonly InsightRow[]): string {
 export interface InsightSession {
   /** Snapshot the current node ids as "not ours". */
   baseline(): void
-  /** Insights for nodes that appeared since the baseline. */
-  sample(): InsightRow[]
+  /**
+   * Insights for nodes that appeared since the baseline — or, given `only`,
+   * for exactly those nodes (the previewed component's, so a smell in the
+   * workbench's own chrome is never reported as the component's).
+   */
+  sample(only?: ReadonlySet<number>): InsightRow[]
 }
 
 export function createInsightSession(): InsightSession {
@@ -129,9 +133,9 @@ export function createInsightSession(): InsightSession {
     baseline() {
       before = new Set(getReactiveGraph().nodes.map((n) => n.id))
     },
-    sample() {
+    sample(only) {
       const graph = getReactiveGraph()
-      const nodes = graph.nodes.filter((n) => !before.has(n.id))
+      const nodes = graph.nodes.filter((n) => (only ? only.has(n.id) : !before.has(n.id)))
       const ours = new Set(nodes.map((n) => n.id))
       const edges = graph.edges.filter((e) => ours.has(e.from) && ours.has(e.to))
       return insightRows(describeReactiveGraph({ nodes, edges }).insights)

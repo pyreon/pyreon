@@ -26,6 +26,21 @@ function mdFiles(d: string): string[] {
   })
 }
 
+describe('docs page list (_docs.json#current)', () => {
+  // `current.pages` is not rendered, so the built-site link crawl
+  // (e2e/site-links.spec.ts) never sees it; the sidebar half of _docs.json is
+  // covered by nav.test.ts and the crawl. The content pack's site checker reads
+  // these hrefs as links, so each must name a page that exists here.
+  it('names every docs page once, with its route, and nothing else', () => {
+    const { current } = read('_docs.json') as { current: { pageCount: number; pages: { path: string; href: string }[] } }
+    const files = mdFiles(pagesDir).map((f) => relative(pagesDir, f).replace(/\\/g, '/')).sort()
+    const hrefOf = (path: string) => (path === 'index.md' ? '/docs' : `/docs/${path.replace(/\.md$/, '')}`)
+    expect(current.pages.map((p) => p.path).sort()).toEqual(files)
+    expect(current.pages.filter((p) => p.href !== hrefOf(p.path))).toEqual([])
+    expect(current.pageCount).toBe(files.length)
+  })
+})
+
 describe('docs pages', () => {
   // The docs layout prints the frontmatter title as the page's one h1, with
   // the inline "On this page" under it; a Markdown `# heading` would be a

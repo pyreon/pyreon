@@ -17,7 +17,7 @@ import siteReleases from './vite-plugins/site-releases'
 import publishLlmsTxt from './vite-plugins/publish-llms-txt'
 import staticPages from './vite-plugins/static-pages'
 import { blogBench, blogPlanned } from './vite-plugins/blog'
-import { SITE_LINKS } from './src/site-links'
+import channelGate from './vite-plugins/channel-gate'
 
 // Pyreon-native docs site, powered by @pyreon/zero + @pyreon/zero-content.
 //
@@ -45,6 +45,10 @@ export default defineConfig({
   plugins: [
     // tokens.css → `@layer docs`, below the UI system's layers (see the plugin).
     legacyCssLayer(),
+    // Content JSON → without links to a channel that is not open (Discord,
+    // newsletter: src/site-links.ts), before the plugins below read the same
+    // files; /discord and /newsletter as static redirects once they are open.
+    channelGate(),
     // Product content JSON → Shiki-highlighted code at build time.
     productContent(),
     // Story / compare / migrate / project content JSON → highlighted code at build time.
@@ -59,7 +63,7 @@ export default defineConfig({
     // content() compiles the post (src/blog/bench.ts).
     blogBench({ moreLabel: blogCopy.bench.more }),
     // virtual:pyreon-blog-planned — the scheduled posts "Up next" lists.
-    blogPlanned(),
+    blogPlanned({ benchMoreLabel: blogCopy.bench.more }),
     content({
       highlighter: {
         themes: { light: pyreonSyntaxLight, dark: pyreonSyntaxDark },
@@ -123,14 +127,11 @@ export default defineConfig({
         origin: 'https://pyreon.dev',
         useSsgPaths: true,
         trailingSlash: 'never',
-        // A stable link that forwards (/discord, /newsletter once switched on)
-        // is a redirect, not a page worth indexing.
+        // /discord and /newsletter (written by channelGate once switched on)
+        // are redirect files, not prerendered routes, so they never appear.
         // /why and /compare are redirects to their first page (sitemap
         // decision "merge"), not pages.
         exclude: [
-          ...Object.entries(SITE_LINKS)
-            .filter(([, target]) => target !== null)
-            .map(([key]) => `/${key}`),
           // Exactly these two: their pages (/why/<id>, /compare/<id>) stay listed.
           /^\/why$/,
           /^\/compare$/,

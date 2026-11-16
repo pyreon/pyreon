@@ -719,6 +719,10 @@ export const checked = {
      "href": "https://github.com/pyreon/pyreon"
     },
     {
+     "label": "Read the blog",
+     "href": "/blog"
+    },
+    {
      "label": "Join the Discord",
      "href": "/discord"
     },
@@ -756,14 +760,14 @@ export const checked = {
    "state": "redirect pending",
    "nav": "icon",
    "footer": "Community",
-   "note": "Not on main. On feat/site-redesign the page exists and forwards once SITE_LINKS.discord is set (null on 11 Nov, so it points to GitHub issues). Invite due before 16 Nov."
+   "note": "Removed from the site until SITE_LINKS.discord (docs/src/site-links.ts) has an address; every link to it, the route and this entry come back when it is set."
   },
   {
    "href": "/newsletter",
    "state": "redirect pending",
    "nav": "none",
    "footer": "Community",
-   "note": "Not on main. On feat/site-redesign the page exists and forwards once SITE_LINKS.newsletter is set (null on 11 Nov, so it offers the RSS feed). Sign-up due before 16 Nov."
+   "note": "Removed from the site until SITE_LINKS.newsletter (docs/src/site-links.ts) has an address; every link to it, the route and this entry come back when it is set."
   }
  ],
  "sources": [

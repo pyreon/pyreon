@@ -27,7 +27,7 @@ function postsOfBuild(): string[] {
 const posts = postsOfBuild()
 const POST = '/blog/components-run-once'
 const TAG = '/blog/tags/javascript'
-const ROUTES = ['/blog', '/blog/page/2', POST, TAG, '/showcase', '/open', '/discord', '/newsletter']
+const ROUTES = ['/blog', '/blog/page/2', POST, TAG, '/showcase', '/open']
 
 function collectErrors(page: Page): string[] {
   const errors: string[] = []
@@ -88,12 +88,10 @@ test.describe('build output', () => {
     }
   })
 
-  test('the sitemap lists every page, and leaves out a stable link once it redirects', () => {
+  test('the sitemap lists every page, and never a stable link (a redirect, or nothing while closed)', () => {
     const sitemap = readFileSync(resolve(DIST, 'sitemap.xml'), 'utf8')
     for (const route of ['/blog', POST, TAG, '/showcase', '/open']) expect(sitemap, route).toContain(`<loc>https://pyreon.dev${route}</loc>`)
-    for (const key of Object.keys(SITE_LINKS) as (keyof typeof SITE_LINKS)[]) {
-      expect(sitemap.includes(`<loc>https://pyreon.dev/${key}</loc>`), key).toBe(SITE_LINKS[key] === null)
-    }
+    for (const key of Object.keys(SITE_LINKS)) expect(sitemap, key).not.toContain(`<loc>https://pyreon.dev/${key}</loc>`)
   })
 })
 
@@ -311,25 +309,27 @@ test.describe('/open', () => {
 })
 
 test.describe('/discord and /newsletter', () => {
-  test.use({ permissions: ['clipboard-read', 'clipboard-write'] })
-
-  test('/newsletter copies the feed address by pointer', async ({ page }) => {
-    test.skip(SITE_LINKS.newsletter !== null, 'the newsletter is open: /newsletter redirects')
-    await page.goto('/newsletter')
-    const button = page.locator('#site-main .s-copy')
-    await button.scrollIntoViewIfNeeded()
-    await page.locator('#site-main .s-copy[data-hydrated]').waitFor({ state: 'attached' })
-    await button.click()
-    await expect(button).toHaveText('copied')
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('https://pyreon.dev/blog/rss.xml')
-  })
-
-  test('/discord sends people to GitHub while the server is not open', async ({ page }) => {
-    test.skip(SITE_LINKS.discord !== null, 'the Discord is open: /discord redirects')
-    await page.goto('/discord')
-    await expect(page.locator('#site-main a[href="https://github.com/pyreon/pyreon/issues/new/choose"]')).toBeVisible()
-    await expect(page.locator('#site-main a[href="/community"]')).toBeVisible()
-  })
+  // Built only while the channel has an address (docs/src/site-links.ts):
+  // a redirect then, nothing at all before.
+  for (const key of Object.keys(SITE_LINKS) as (keyof typeof SITE_LINKS)[]) {
+    const target = SITE_LINKS[key]
+    if (target === null) {
+      test(`/${key} does not exist while the channel is closed`, async ({ page }) => {
+        expect(existsSync(resolve(DIST, key, 'index.html')), `dist/${key}/index.html`).toBe(false)
+        expect(existsSync(resolve(DIST, `${key}.html`)), `dist/${key}.html`).toBe(false)
+        expect(readFileSync(resolve(DIST, 'sitemap.xml'), 'utf8')).not.toContain(`https://pyreon.dev/${key}<`)
+        const res = await page.goto(`/${key}`)
+        expect(res?.status()).toBe(404)
+        await expect(page.locator('h1')).toContainText('signal not found')
+      })
+    } else {
+      test(`/${key} forwards to the channel`, () => {
+        const html = readFileSync(resolve(DIST, key, 'index.html'), 'utf8')
+        expect(html).toContain('http-equiv="refresh"')
+        expect(html).toContain(target)
+      })
+    }
+  }
 })
 
 test.describe('contrast', () => {

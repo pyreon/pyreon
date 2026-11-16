@@ -47,9 +47,9 @@ beforeEach(() => {
 const rendered = (m: ReturnType<typeof createModel>): string => {
   const out = m.preview()
   // The preview is wrapped in a PermissionsProvider; the component's own output
-  // is its single child.
+  // sits between the two mount marks that scope coverage to it.
   const children = (out as { children?: unknown[] }).children
-  return String(children?.[0])
+  return String(children?.[1])
 }
 
 describe('ctx.locale', () => {

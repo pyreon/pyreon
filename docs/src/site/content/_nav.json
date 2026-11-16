@@ -109,8 +109,7 @@
     {
       "kind": "discord",
       "href": "/discord",
-      "ariaLabel": "Join the Pyreon Discord",
-      "showWhen": "the /discord redirect is live"
+      "ariaLabel": "Join the Pyreon Discord"
     },
     {
       "kind": "theme",

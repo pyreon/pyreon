@@ -338,7 +338,10 @@ export function generateCatalogModule(
     "import { h } from '@pyreon/core'",
     // The SAME materializer the verify harness uses — one implementation, so a
     // seed that verified renders identically on the canvas.
-    "import { materializeContent as __content } from '@pyreon/atlas/core'",
+    // `__merge` / `__set` / `__arg` keep the workbench's LIVE args live: an
+    // object spread or an assignment would read each getter once, at render
+    // time, and re-mount the component on every control edit.
+    "import { argReader as __arg, materializeContent as __content, mergeArgs as __merge, setArg as __set } from '@pyreon/atlas/core'",
     '',
   ]
 
@@ -556,16 +559,18 @@ export function generateCatalogModule(
     const base = options.configPath
       ? `__authored(${lit(key)}, ${lit(component.name)}, "Default", {})`
       : '{}'
-    lines.push(`        const merged = { ...${JSON.stringify(component.content ?? {})}, ...${base}, ...props }`)
+    lines.push(`        const merged = __merge(${JSON.stringify(component.content ?? {})}, ${base}, props)`)
     if (reactiveProps.length > 0) {
       lines.push(`        for (const name of ${JSON.stringify(reactiveProps)}) {`)
-      lines.push(`          const user = merged[name]`)
-      lines.push(`          merged[name] = (...args) => {`)
+      // Looked up when the event fires, not now (see `argReader`).
+      lines.push(`          const user = __arg(merged, name)`)
+      lines.push(`          __set(merged, name, (...args) => {`)
       lines.push(
         `            ctx.logAction(name, args.length ? String(args[0]?.type ?? args[0]) : '')`,
       )
-      lines.push(`            if (typeof user === 'function') user(...args)`)
-      lines.push(`          }`)
+      lines.push(`            const fn = user()`)
+      lines.push(`            if (typeof fn === 'function') fn(...args)`)
+      lines.push(`          })`)
       lines.push(`        }`)
     }
     // An overlay seeded `open: true` closes the way a real app closes it:
@@ -573,10 +578,10 @@ export function generateCatalogModule(
     // dismiss the preview and the Controls panel shows it dismissed.
     if (controls.some((c) => c.key === 'open')) {
       lines.push(`        if (typeof merged.onClose !== 'function') {`)
-      lines.push(`          merged.onClose = () => { ctx.logAction('onClose', ''); ctx.setValue('open', false) }`)
+      lines.push(`          __set(merged, 'onClose', () => { ctx.logAction('onClose', ''); ctx.setValue('open', false) })`)
       lines.push(`        }`)
     }
-    lines.push(`        if (Comp.IS_ROCKETSTYLE) Object.assign(merged, ctx.pseudo)`)
+    lines.push(`        if (Comp.IS_ROCKETSTYLE) for (const [k, v] of Object.entries(ctx.pseudo)) __set(merged, k, v)`)
     lines.push(`        const { props: __p, children: __c } = __content(merged, h)`)
     if (options.configPath) {
       lines.push(`        const __el = h(__Perms, { value: ctx.can }, h(Comp, __p, ...__c))`)

@@ -61,12 +61,12 @@ Fifteen posts was the opening. From here, the project runs on recurring formats,
 | **60-Second Build** | Tuesday | one small thing built start to finish, in a short video |
 | **Under the Hood** | Wednesday | a thread on how one feature works inside, like how `<For by>` keeps rows |
 | **One Codebase** | Thursday | the same screen on the web, an iPhone and an Android phone |
-| **Ship Friday** | Friday | things people built with Pyreon that week, from Discord's #show-and-tell |
+| **Ship Friday** | Friday | things people built with Pyreon that week, sent in by you |
 | **Ask the Framework** | twice a month | an AI assistant building a feature with the Pyreon MCP, recorded |
-| **State of Pyreon** | first Monday of the month | what shipped and what's next, as a short video and in the [newsletter](https://pyreon.dev/newsletter) |
+| **State of Pyreon** | first Monday of the month | what shipped and what's next, as a short video, with every release on [GitHub](https://github.com/pyreon/pyreon/releases) |
 | **Live build** | monthly | an hour of building something real, live, with questions in chat |
 
-Built something? Post it in #show-and-tell on [Discord](https://pyreon.dev/discord). Ship Friday is made of your projects.
+Built something? Open an issue on [GitHub](https://github.com/pyreon/pyreon/issues/new/choose) with a link and a line about it. Ship Friday is made of your projects.
 
 > **A post is a snapshot. The record is live. If they disagree, trust the record.**
 
@@ -95,4 +95,4 @@ npm create @pyreon/multiplatform@latest
 - Docs: [pyreon.dev/docs](/docs)
 - Live numbers: [pyreon.dev/open](https://pyreon.dev/open)
 - Star the repo: [github.com/pyreon/pyreon](https://github.com/pyreon/pyreon)
-- Talk to us on [Discord](https://pyreon.dev/discord), get State of Pyreon in the [newsletter](https://pyreon.dev/newsletter), or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues).
+- Follow every release on [GitHub](https://github.com/pyreon/pyreon/releases), get each post the day it is out with the [RSS feed](https://pyreon.dev/blog/rss.xml), and bring questions, ideas or bugs to the [issues](https://github.com/pyreon/pyreon/issues).

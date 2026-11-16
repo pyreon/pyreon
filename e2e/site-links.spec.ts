@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { channelOf, openChannels } from '../docs/src/site-links'
 
 /**
  * Every internal link in the built site resolves: an `href` to a path must
@@ -83,5 +84,28 @@ test.describe('internal links', () => {
       }
     }
     expect(broken, `${broken.length} broken internal link(s)`).toEqual([])
+  })
+})
+
+test.describe('closed channels', () => {
+  // docs/src/site-links.ts: a channel with no address (Discord, newsletter)
+  // has no page and no link anywhere in the built site, docs included.
+  test('no page links a channel that is not open, or the channel itself', () => {
+    expect(existsSync(dist), 'build docs/ first').toBe(true)
+    const open = new Set<string>(openChannels())
+    const found: string[] = []
+    for (const f of htmlFiles(dist)) {
+      const html = markup(readFileSync(f, 'utf8'))
+      for (const m of html.matchAll(/<(?:a|area|link)\b[^>]*?\shref="([^"]*)"/g)) {
+        const href = decode(m[1] ?? '')
+        const key = channelOf(href)
+        if (key && !open.has(key)) found.push(`${routeOf(f)} → ${href}`)
+        // ...and no link straight to a channel's own host either.
+        const host = /^https:\/\/(?:[a-z0-9-]+\.)*(discord\.gg|discord\.com|buttondown\.com|substack\.com)\//i.exec(href)?.[1]
+        if (host && !open.has(host.startsWith('discord') ? 'discord' : 'newsletter')) found.push(`${routeOf(f)} → ${href}`)
+      }
+    }
+    expect(found, `${found.length} link(s) to a closed channel`).toEqual([])
+    for (const key of ['discord', 'newsletter']) if (!open.has(key)) expect(existsSync(join(dist, key)), `dist/${key}/`).toBe(false)
   })
 })

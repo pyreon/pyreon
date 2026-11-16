@@ -238,7 +238,12 @@ export function materializeContent<N>(
   h: (type: unknown, props?: unknown, ...children: unknown[]) => N,
 ): { props: Record<string, unknown>; children: N[] | unknown[] } {
   if (!('children' in args)) return { props: args, children: [] }
-  const { children, ...props } = args
+  // Copied by DESCRIPTOR, not spread: the workbench hands live args whose
+  // props are getters (a control edit updates the mounted component in place),
+  // and a rest spread would read every one of them right here — once, at
+  // render time — and pin the component to those values.
+  const { children } = args
+  const props = withoutKey(args, 'children')
   if (isContentBlocks(children)) {
     const count = Math.max(1, Math.min(12, Math.floor(children.count) || BLOCKS))
     const tag = children.tag === 'li' ? 'li' : children.tag === 'option' ? 'option' : 'div'
@@ -254,6 +259,54 @@ export function materializeContent<N>(
   }
   if (children === undefined) return { props, children: [] }
   return { props, children: [children] }
+}
+
+/** A copy of `source` without `key`, keeping every other property's descriptor (getters stay getters). */
+function withoutKey(source: Record<string, unknown>, key: string): Record<string, unknown> {
+  const descriptors = Object.getOwnPropertyDescriptors(source)
+  delete descriptors[key]
+  return Object.defineProperties({}, descriptors) as Record<string, unknown>
+}
+
+/**
+ * Merge arg objects left to right (a later source wins, key by key), keeping
+ * each property's DESCRIPTOR. The generated catalog merges its content seed,
+ * the authored Default and the workbench's live values this way: an object
+ * spread would read the live values' getters once, at render time, and the
+ * component would never see a control edit without being re-mounted.
+ */
+export function mergeArgs(...sources: ReadonlyArray<Record<string, unknown>>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const source of sources) {
+    const descriptors = Object.getOwnPropertyDescriptors(source)
+    for (const key of Object.keys(descriptors)) {
+      Object.defineProperty(out, key, { ...descriptors[key], configurable: true, enumerable: true })
+    }
+  }
+  return out
+}
+
+/**
+ * Set one arg on a merged object, replacing whatever was there (a getter
+ * included — plain assignment to a getter-only property throws).
+ */
+export function setArg(target: Record<string, unknown>, key: string, value: unknown): void {
+  Object.defineProperty(target, key, { value, writable: true, enumerable: true, configurable: true })
+}
+
+/**
+ * Read an arg WITHOUT keeping a getter's value: the getter's own read runs at
+ * call time. The generated catalog wraps a handler prop with this so the
+ * user's handler is looked up when the event fires, not when the preview
+ * rendered — a render-time read would make the key re-mount the preview.
+ */
+export function argReader(source: Record<string, unknown>, key: string): () => unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(source, key)
+  if (!descriptor) return () => undefined
+  const get = descriptor.get
+  if (get) return () => get.call(source)
+  const value = descriptor.value as unknown
+  return () => value
 }
 
 /** Seed args UNDER a scenario's own — an authored value always wins, key by key. */

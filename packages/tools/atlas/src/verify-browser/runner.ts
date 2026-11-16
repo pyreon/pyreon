@@ -483,6 +483,11 @@ export async function runBrowserVerify(
               bridge.activate()
               const before = new Set(bridge.getGraph().nodes.map((n) => n.id))
               m.selectScenario(${JSON.stringify(component.id)}, ${JSON.stringify(scenario.id)})
+              // A scenario's args now UPDATE the mounted component in place, so
+              // re-mount it: this diff measures the nodes the scenario's own
+              // mount creates. The theme provider stays mounted — it is the
+              // workbench's, not the scenario's.
+              m.restartPreview({ theme: false })
               await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
               const surface = m.previewElement()
               const clickable = surface ? surface.querySelectorAll('button,[role="button"],a[href],input,select') : []

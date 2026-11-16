@@ -141,8 +141,6 @@ test.describe('build output', () => {
     '/blog/tags/signals': SHELL,
     '/showcase': SHELL,
     '/open': SHELL, // the download chart loads only near it
-    '/discord': SHELL,
-    '/newsletter': SHELL,
     '/404.html': SHELL,
     '/docs': 53,
     '/docs/form': 98, // an overview page with its product demo

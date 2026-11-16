@@ -155,6 +155,14 @@ describe('trapTab', () => {
     return e.defaultPrevented
   }
 
+  it('holds focus in a container with nothing focusable instead of letting Tab escape it', () => {
+    const empty = document.createElement('div')
+    empty.innerHTML = '<p>no controls</p>'
+    document.body.append(empty)
+    expect(tab(empty)).toBe(true)
+    empty.remove()
+  })
+
   it('lists the focusable elements, skipping disabled ones', () => {
     const box = setup()
     expect(focusables(box).map((el) => el.id)).toEqual(['a', 'b', 'd'])

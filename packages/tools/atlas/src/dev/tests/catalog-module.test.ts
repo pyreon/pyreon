@@ -274,7 +274,10 @@ describe('the render ctx (derived catalogs are NOT ctx-blind)', () => {
     expect(code).toContain('ctx.logAction(name,')
     // An authored function value still runs AFTER the log — observation must
     // never swallow behaviour.
-    expect(code).toContain("if (typeof user === 'function') user(...args)")
+    expect(code).toContain("if (typeof fn === 'function') fn(...args)")
+    // ...looked up when the event fires, never read at render time (a
+    // render-time read would re-mount the preview on every edit of it).
+    expect(code).toContain('const user = __arg(merged, name)')
   })
 
   it('does not fabricate render props while instrumenting event handlers', () => {
@@ -308,7 +311,7 @@ describe('the render ctx (derived catalogs are NOT ctx-blind)', () => {
     const code = generateCatalogModule([{ component: ci({}), file: '/p/src/X.tsx' }], {
       root: '/p/src',
     })
-    expect(code).toContain('if (Comp.IS_ROCKETSTYLE) Object.assign(merged, ctx.pseudo)')
+    expect(code).toContain('if (Comp.IS_ROCKETSTYLE) for (const [k, v] of Object.entries(ctx.pseudo)) __set(merged, k, v)')
   })
 
   it('emits no injection loop when nothing is reactive', () => {
@@ -404,17 +407,18 @@ describe('content seed in the generated module', () => {
       [{ component: ci({ content: { children: 'Button' } }), file: '/p/src/Button.tsx' }],
       { root: '/p' },
     )
-    expect(code).toContain("import { materializeContent as __content } from '@pyreon/atlas/core'")
+    expect(code).toContain("materializeContent as __content")
+    expect(code).toContain("mergeArgs as __merge")
     // Seed, then the authored Default's live args (none without a config),
     // then the control values — the order the content plugin verified in.
-    expect(code).toContain('const merged = { ...{"children":"Button"}, ...{}, ...props }')
+    expect(code).toContain('const merged = __merge({"children":"Button"}, {}, props)')
     expect(code).toContain('const { props: __p, children: __c } = __content(merged, h)')
     expect(code).toContain('return h(Comp, __p, ...__c)')
   })
 
   it('emits an empty seed — not a missing one — for a component without content', () => {
     const code = generateCatalogModule([{ component: ci(), file: '/p/src/Button.tsx' }], { root: '/p' })
-    expect(code).toContain('const merged = { ...{}, ...{}, ...props }')
+    expect(code).toContain('const merged = __merge({}, {}, props)')
   })
 
   it('uses the seed as a text control default the panel starts from', () => {

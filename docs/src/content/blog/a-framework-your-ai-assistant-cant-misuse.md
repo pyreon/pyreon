@@ -272,4 +272,4 @@ The new app already has `.mcp.json` in it. Point your assistant at it and ask fo
 
 - Docs: [MCP server setup](/docs/mcp), [Reactivity Lens](/docs/reactivity-lens), [`pyreon check`](/docs/cli)
 - Star the repo: [github.com/pyreon/pyreon](https://github.com/pyreon/pyreon)
-- Talk to us on [Discord](https://pyreon.dev/discord) or open an issue on [GitHub](https://github.com/pyreon/pyreon/issues).
+- Questions, ideas, a bug: open an issue on [GitHub](https://github.com/pyreon/pyreon/issues), where every answer stays findable for the next person.

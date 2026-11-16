@@ -84,7 +84,8 @@ const EXPLAIN: Record<ReactiveCoverageEntry['reason'], string> = {
 function where(entry: ReactiveCoverageEntry): string {
   const loc = entry.loc
   if (!loc?.file) return ''
-  const file = loc.file.split('/').slice(-2).join('/')
+  // A dev server's cache-busting query (`?t=…`) is not part of the file.
+  const file = loc.file.replace(/\?.*$/, '').split('/').slice(-2).join('/')
   return loc.line ? `${file}:${loc.line}` : file
 }
 

@@ -18,9 +18,17 @@ import type { WorkbenchModel } from '../../model'
 
 export function PreviewTheme(props: { model: WorkbenchModel; children?: VNodeChild }) {
   const m = props.model
-  return (
-    <PyreonUI theme={(() => m.theme()) as never} mode={() => (m.dark() ? 'dark' : 'light')}>
-      {props.children}
-    </PyreonUI>
-  )
+  // Through the model's per-recording theme cells (`previewTheme`), and
+  // re-mounted with them: when Reactive coverage starts a recording, the
+  // provider's own nodes are created inside it, so a binding that reads the
+  // theme is traced back to `theme` / `mode` instead of to state the
+  // recording cannot see.
+  return () => {
+    const cells = m.previewTheme()
+    return (
+      <PyreonUI theme={(() => cells.theme()) as never} mode={() => cells.mode()}>
+        {props.children}
+      </PyreonUI>
+    )
+  }
 }

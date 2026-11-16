@@ -411,7 +411,12 @@ export const checked = {
      {
       "label": "Good first issues",
       "href": "https://github.com/pyreon/pyreon/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22",
-      "text": "Issues picked for newcomers. If the list is empty, tell us on Discord what you would like to work on."
+      "text": "Issues picked for newcomers. If the list is empty, open an issue saying what you would like to work on and we will find you a first task.",
+      "withChannel": {
+       "discord": {
+        "text": "Issues picked for newcomers. If the list is empty, tell us on Discord what you would like to work on."
+       }
+      }
      },
      {
       "label": "Help wanted",
@@ -447,13 +452,19 @@ export const checked = {
   "end": {
    "title": "Come for the signals. Stay for the changelog.",
    "cta": {
-    "label": "Join the Discord",
-    "href": "https://pyreon.dev/discord"
+    "label": "Watch the releases",
+    "href": "https://github.com/pyreon/pyreon/releases",
+    "withChannel": {
+     "discord": {
+      "label": "Join the Discord",
+      "href": "https://pyreon.dev/discord"
+     }
+    }
    }
   },
   "sources": [
    {
-    "claim": "Stable links /discord, /newsletter, /open (stats refreshed daily); never quote counts",
+    "claim": "Live stats at /open (refreshed daily); never quote counts. /discord and /newsletter appear only once their address is set in docs/src/site-links.ts",
     "path": "00-brief/facts.md \"Identity\""
    },
    {

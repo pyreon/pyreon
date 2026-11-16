@@ -1,0 +1,7 @@
+---
+'@pyreon/atlas': minor
+---
+
+Reactive coverage lists every DOM binding of the selected component by name — `aria-busy ← loading`, `class ← variant, size, mode, theme` — with its kind, how many times it updated after its mount, and a status mark (✓ covered, ○ never fired, ↻ rebuilt by a re-mount). Bindings that never fired come first, each saying what would exercise it: the control to change, the state to interact with, or the theme switch. The % bar reads the same rows. Record re-mounts the preview so its bindings are counted from their first run, and the list re-samples while recording. A production build shows that coverage needs a development build, with no Record button.
+
+Control edits now update the previewed component in place instead of re-mounting it: `render` receives live values, one getter per key. Before, every edit re-mounted the component, so every binding only ran at mount and the panel read 0%. A key the catalog's `render` reads itself (to branch on it) still re-mounts the preview when it changes. The generated catalog keeps the getters through the new `mergeArgs`, `setArg` and `argReader` helpers in `@pyreon/atlas/core`, and `materializeContent` no longer reads every prop when it splits off `children`. The model gains `restartPreview()`, `previewScope()`, `previewTheme()` and `previewMounts`; `atlas verify-browser` re-mounts each scenario before measuring it.
