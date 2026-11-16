@@ -421,6 +421,7 @@ describe('the marketing site carries the lint counts', () => {
       [POST]: 'is the broader rule set: 3 rules in 1 categories, from reactivity to SSR.\n',
       [OG]: '{ "alt": "next to 4 lint rules", "again": "next to 3 lint rules" }\n',
     })
+
     return run().then((r) => {
       const drift = (id: string, file: string): string[] =>
         forCheck(r, id)
