@@ -431,7 +431,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // handshake completes, so "WS: open" alone would pass against a dead
     // server; only the echo proves a live socket.
     //
-    // Requires the echo server: `bun examples/native-router-demo/ios/scripts/ws-echo-server.ts`
+    // Requires the echo server: `bun examples/native-router-demo/scripts/ws-echo-server.ts`
     // (CI starts it in the workflow step; locally the device-test recipe does).
     func test_webSocketEchoRoundTripsOnDevice() throws {
         let app = XCUIApplication()
@@ -474,7 +474,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // The decode itself is implied by any of the three rendering at all — the
     // reply is only readable as EchoReply if PyreonHttp -> JSONDecoder ran.
     //
-    // Requires the fixture: `bun examples/native-router-demo/ios/scripts/ws-echo-server.ts`
+    // Requires the fixture: `bun examples/native-router-demo/scripts/ws-echo-server.ts`
     func test_httpVerbAndBodyReachTheWire() throws {
         let app = XCUIApplication()
         app.launch()
