@@ -447,7 +447,7 @@ function listArg(name: string): string[] | undefined {
 }
 
 /** The self workflow at the head (cwd) and at the comparison base. */
-function selfWorkflow(file: string): SelfWorkflow {
+function readSelfWorkflow(file: string): SelfWorkflow {
   let head: string | Error
   try {
     head = readFileSync(file, 'utf8')
@@ -495,7 +495,7 @@ if (import.meta.main) {
       decision = decideDevice(
         files,
         readAtHead,
-        selfWorkflow(self!),
+        readSelfWorkflow(self!),
         deviceJobs,
         pluginSurface,
         readBase,
@@ -539,7 +539,7 @@ if (import.meta.main) {
       // failure to answer it runs the job.
       let mac: Decision
       try {
-        mac = classifyMacosLane(files, readAtHead, selfWorkflow(self), macosJobs, pluginSurface, readBase)
+        mac = classifyMacosLane(files, readAtHead, readSelfWorkflow(self), macosJobs, pluginSurface, readBase)
       } catch (err) {
         mac = { run: true, reasons: ['macOS decision failed (' + String(err) + ') — running (fail-closed)'] }
       }
