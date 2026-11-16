@@ -4,7 +4,7 @@ import { font, gradient, motion, paper, radius, text } from '../theme'
 import { el, focusRing, tone, txt, type LinkAttrs } from './bases'
 import { Glyph } from './glyph'
 import { useLinkClick } from './link'
-import { Eyebrow, Lede } from './type'
+import { Eyebrow, Lede, renderInline } from './type'
 
 const CardFrame = el
   .config({ name: 'GlowCard' })
@@ -148,7 +148,7 @@ export function PackageCard(props: { pkg: string; kind: string; text: string; st
     <GlowCard padding="compact" state={props.state}>
       <PkgName>{props.pkg}</PkgName>
       <Eyebrow>{props.kind}</Eyebrow>
-      <Lede size="small">{props.text}</Lede>
+      <Lede size="small">{renderInline(props.text)}</Lede>
     </GlowCard>
   )
 }

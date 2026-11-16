@@ -91,8 +91,8 @@ const Badge = rsBadge({ name: 'Badge', component: 'span' })
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`rocketstyle`](#rocketstyle-function) | function | Factory initializer (default + named export). |
-| [`.withTheme()`](#withtheme-function) | function | Bind a theme TYPE to the factory `rocketstyle(config)` returns, so every `.theme()` and dimension callback built from it |
-| [`.config()`](#config-function) | function | Reconfigure the builder: rename (`name` → `displayName`), swap the base (`component`), wire parent-child pseudo-state co |
+| [`.withTheme()`](#withtheme-function) | function | Bind a theme TYPE to the factory `rocketstyle(config)` returns, so every `.theme()` and dimension callback built from it… |
+| [`.config()`](#config-function) | function | Reconfigure the builder: rename (`name` → `displayName`), swap the base (`component`), wire parent-child pseudo-state… |
 | [`.attrs()`](#attrs-function) | function | Inject default props into the wrapped component. |
 | [`.theme()`](#theme-function) | function | Always-applied base styles, merged under every dimension slice. |
 | [`.states() / .sizes() / .variants()`](#states-sizes-variants-function) | function | Single-value dimension definition methods (from the default dimension map). |
@@ -101,10 +101,10 @@ const Badge = rsBadge({ name: 'Badge', component: 'span' })
 | [`.compose()`](#compose-function) | function | Wrap the component in named higher-order components. |
 | [`.statics()`](#statics-function) | function | Attach arbitrary static metadata. |
 | [`Provider`](#provider-component) | component | Tree-level theme + mode provider. |
-| [`context`](#context-constant) | constant | The raw reactive context object backing `Provider` — RE-EXPORTED from `@pyreon/ui-core`, so it is the SAME context `&lt;Pyr |
+| [`context`](#context-constant) | constant | The raw reactive context object backing `Provider` — RE-EXPORTED from `@pyreon/ui-core`, so it is the SAME context… |
 | [`isRocketComponent`](#isrocketcomponent-function) | function | Runtime type guard — `true` when a value was created by `rocketstyle()` (checks the own `IS_ROCKETSTYLE` marker). |
-| [`resolveTheme`](#resolvetheme-function) | function | Resolve a `$rocketstyle` value inside `styled()` / `.styles()` interpolation functions — handles both the function-acces |
-| [`resolveModeVar`](#resolvemodevar-function) | function | Under `init({ cssVariables: true })`, `mode(light, dark)` pairs are emitted as hashed CSS custom properties (`var(--px-m |
+| [`resolveTheme`](#resolvetheme-function) | function | Resolve a `$rocketstyle` value inside `styled()` / `.styles()` interpolation functions — handles both the… |
+| [`resolveModeVar`](#resolvemodevar-function) | function | Under `init({ cssVariables: true })`, `mode(light, dark)` pairs are emitted as hashed CSS custom properties… |
 
 ## API
 

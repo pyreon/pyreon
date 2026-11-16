@@ -28,22 +28,22 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`useOidc`](#useoidc-hook) | hook | A reactive OIDC sign-in with the SAME surface on web, iOS and Android — the shared-source entry point. |
-| [`sessionStorageFlowStore`](#sessionstorageflowstore-function) | function | The browser flow store `useOidc` uses by default: pending sign-ins (state, nonce, PKCE verifier) in `sessionStorage`, re |
-| [`beginAuthorization`](#beginauthorization-function) | function | Builds the authorization redirect (code flow, S256 PKCE, state, nonce) and returns the `PendingFlow` that must survive t |
-| [`parseCallback`](#parsecallback-function) | function | Validates the redirect back from the provider in a fixed order — expiry, provider error, state, `iss` (RFC 9207), then t |
-| [`exchangeCode`](#exchangecode-function) | function | Exchanges the authorization code using the PKCE verifier (public client, no secret) and rejects anything that is not a b |
-| [`discover`](#discover-function) | function | Fetches OIDC discovery and validates it: https-only (loopback http allowed for dev), the document issuer must equal the  |
+| [`sessionStorageFlowStore`](#sessionstorageflowstore-function) | function | The browser flow store `useOidc` uses by default: pending sign-ins (state, nonce, PKCE verifier) in `sessionStorage`,… |
+| [`beginAuthorization`](#beginauthorization-function) | function | Builds the authorization redirect (code flow, S256 PKCE, state, nonce) and returns the `PendingFlow` that must survive… |
+| [`parseCallback`](#parsecallback-function) | function | Validates the redirect back from the provider in a fixed order — expiry, provider error, state, `iss` (RFC 9207), then… |
+| [`exchangeCode`](#exchangecode-function) | function | Exchanges the authorization code using the PKCE verifier (public client, no secret) and rejects anything that is not a… |
+| [`discover`](#discover-function) | function | Fetches OIDC discovery and validates it: https-only (loopback http allowed for dev), the document issuer must equal the… |
 | [`createAuth`](#createauth-function) | function | Reactive auth state machine over the OIDC primitives. |
 | [`signSession`](#signsession-function) | function | Signs a session into a cookie-safe `body.signature` string (HMAC-SHA256 over Web Crypto). |
 | [`verifySession`](#verifysession-function) | function | Verifies a `signSession` value: HMAC against each secret in turn (rotation), then expiry and `sub`. |
-| [`createAttemptLimiter`](#createattemptlimiter-function) | function | Fixed-window attempt limiter for brute-forceable checks (TOTP codes, passkey and password attempts): at most `max` attem |
+| [`createAttemptLimiter`](#createattemptlimiter-function) | function | Fixed-window attempt limiter for brute-forceable checks (TOTP codes, passkey and password attempts): at most `max`… |
 | [`github`](#github-constant) | constant | Endpoints for GitHub (OAuth2, not OIDC — there is no ID token; read identity from the user API with the access token). |
-| [`verifyIdToken`](#verifyidtoken-function) | function | Verifies an OIDC ID token on Web Crypto: algorithm allowlist (RS256 and ES256 only — `none` and every HS* alg are refuse |
+| [`verifyIdToken`](#verifyidtoken-function) | function | Verifies an OIDC ID token on Web Crypto: algorithm allowlist (RS256 and ES256 only — `none` and every HS* alg are… |
 | [`runStrategy`](#runstrategy-function) | function | Passport bridge (`@pyreon/auth/passport`, server only). |
-| [`verifyTotp`](#verifytotp-function) | function | RFC 6238 TOTP second factor (HMAC-SHA1, 6 digits, 30 s) on Web Crypto, verified against the RFC test vectors and compati |
-| [`verifyAssertion`](#verifyassertion-function) | function | Server-side WebAuthn sign-in (passkey assertion) verification for ES256 and RS256 credentials on Web Crypto; the type of |
-| [`verifyRegistration`](#verifyregistration-function) | function | Server-side WebAuthn passkey registration for ES256 (P-256) and RS256 (RSA &gt;= 2048 bits, used by Windows Hello) credenti |
-| [`createGuard`](#createguard-function) | function | Framework-neutral route guard: returns `true` or `{ redirect }` to the login path carrying an open-redirect-safe `return |
+| [`verifyTotp`](#verifytotp-function) | function | RFC 6238 TOTP second factor (HMAC-SHA1, 6 digits, 30 s) on Web Crypto, verified against the RFC test vectors and… |
+| [`verifyAssertion`](#verifyassertion-function) | function | Server-side WebAuthn sign-in (passkey assertion) verification for ES256 and RS256 credentials on Web Crypto; the type of… |
+| [`verifyRegistration`](#verifyregistration-function) | function | Server-side WebAuthn passkey registration for ES256 (P-256) and RS256 (RSA &gt;= 2048 bits, used by Windows Hello)… |
+| [`createGuard`](#createguard-function) | function | Framework-neutral route guard: returns `true` or `{ redirect }` to the login path carrying an open-redirect-safe… |
 
 ## API
 

@@ -131,7 +131,7 @@ function Hero(props: { s: HomeHero }) {
               {(t) => (
                 <TargetLabel>
                   <Mono state="upper">{t.label}</Mono>
-                  <span>{t.caption}</span>
+                  <span>{renderInline(t.caption)}</span>
                 </TargetLabel>
               )}
             </For>
@@ -143,7 +143,7 @@ function Hero(props: { s: HomeHero }) {
               </For>
             </ul>
           </VisuallyHidden>
-          <Note>{v.note}</Note>
+          <Note>{renderInline(v.note)}</Note>
         </div>
       </TargetsGrid>
       <PhoneOnly>
@@ -323,7 +323,7 @@ function Compare(props: { s: SectionOf<'compare'> }) {
             </For>
           </AutoGrid>
         </NarrowOnly>
-        <Note>{s.note}</Note>
+        <Note>{renderInline(s.note)}</Note>
         <Note>
           <Mono>source: {s.source}</Mono>
         </Note>
@@ -353,7 +353,7 @@ function Platforms(props: { s: SectionOf<'platforms'>; media: HomeHero['visual']
             <InstallCommand command={s.install} />
             <Row>
               <StatusDot state={s.status.dot} />
-              <TextLink href={resolveHref(s.status.href)}>{s.status.text}</TextLink>
+              <TextLink href={resolveHref(s.status.href)}>{renderInline(s.status.text)}</TextLink>
             </Row>
             {link(s.link)}
           </Stack>
@@ -443,7 +443,7 @@ function Audiences(props: { s: SectionOf<'audiences'> }) {
                 <GlowCard state={x.n === '01' ? 'hot' : 'default'}>
                   <CardNum>{x.n}</CardNum>
                   <Heading tag="h3" size="step" style="margin:0">
-                    {x.item.title}
+                    {renderInline(x.item.title)}
                   </Heading>
                   <Lede size="small">{renderInline(x.item.text)}</Lede>
                   <Row aria-label="Products">
@@ -552,7 +552,7 @@ function Status(props: { s: SectionOf<'status'> }) {
                     {c.label}
                   </StatusLabel>
                   <Heading tag="h3" size="step" style="margin:0">
-                    {c.title}
+                    {renderInline(c.title)}
                   </Heading>
                   <Bullets>
                     <For each={c.items} by={(i) => i}>
@@ -611,7 +611,7 @@ function Evidence(props: { s: SectionOf<'evidence'> }) {
               {(i) => (
                 <GlowCard>
                   <Heading tag="h3" size="step" style="margin:0">
-                    {i.title}
+                    {renderInline(i.title)}
                   </Heading>
                   <Lede size="small">{renderInline(i.text)}</Lede>
                 </GlowCard>

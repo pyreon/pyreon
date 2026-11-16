@@ -48,3 +48,21 @@ export const escFlow = (s: string): string => {
 /** YAML-safe double-quoted scalar (values may contain `:`, `@`, `"`). */
 export const yaml = (s: string): string =>
   '"' + String(s ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ') + '"'
+
+/**
+ * At most `max` characters of `s`, cut at a word boundary that is not inside
+ * an inline code span, with an ellipsis when it was cut. A plain `slice` could
+ * end mid-span and leave one backtick, which renders literally.
+ */
+export const clip = (s: string, max: number): string => {
+  const str = String(s ?? '')
+  if (str.length <= max) return str
+  let cut = max
+  for (const m of str.matchAll(CODE_SPAN)) {
+    const start = m.index
+    const end = start + m[0].length
+    if (cut > start && cut < end) cut = start
+  }
+  const space = str.lastIndexOf(' ', cut)
+  return `${str.slice(0, space > 0 ? space : cut).trimEnd()}…`
+}

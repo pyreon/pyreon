@@ -2,6 +2,7 @@ import type { VNodeChild } from '@pyreon/core'
 import { For, Show } from '@pyreon/core'
 import { breakpoints, font, radius, text, weight } from '../theme'
 import { el, tone, txt } from './bases'
+import { renderInline } from './type'
 
 /**
  * `DataTable` — a real `<table>` (caption, column headers, row headers) that
@@ -87,7 +88,7 @@ export function DataTable(props: {
     <Frame>
       <Table aria-label={props.label}>
         <Show when={() => !!props.caption}>
-          <caption>{props.caption}</caption>
+          <caption>{renderInline(props.caption ?? '')}</caption>
         </Show>
         <thead>
           <tr>

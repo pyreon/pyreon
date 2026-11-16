@@ -236,7 +236,7 @@ export function ProductPage(props: { data: ProductData }) {
                   {(c) => (
                     <Stack>
                       <Heading tag="h3" size="card">
-                        {c.title}
+                        {renderInline(c.title)}
                       </Heading>
                       <ComingFrom lib={c.lib} before={c.before} after={c.after} beforeHtml={c.beforeHtml} afterHtml={c.afterHtml} note={c.note} />
                     </Stack>
@@ -349,7 +349,7 @@ export function ProductPage(props: { data: ProductData }) {
                     <Heading tag="h3" size="card">
                       {r.name}
                     </Heading>
-                    <Lede size="small">{r.text}</Lede>
+                    <Lede size="small">{renderInline(r.text)}</Lede>
                     <Eyebrow state="accent">{`${r.package} →`}</Eyebrow>
                   </GlowCard>
                 )}
@@ -364,7 +364,7 @@ export function ProductPage(props: { data: ProductData }) {
         <Wrap>
           <EndInner>
             <Heading tag="h2" size="end">
-              {d.end.title}
+              {renderInline(d.end.title)}
             </Heading>
             <CenteredCtas>
               {unreleased ? <NextReleaseNote text={d.hero.install} /> : <InstallCommand command={d.hero.install} variant="hot" />}

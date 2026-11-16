@@ -86,7 +86,7 @@ export function TextLink(props: { href: string; children?: VNodeChild }) {
 export function CaveatLine(props: { text: string; link?: { label: string; href: string } | undefined }) {
   return (
     <CaveatBox>
-      <Caveat>{props.text}</Caveat>
+      <Caveat>{renderInline(props.text)}</Caveat>
       {props.link ? <TextLink href={props.link.href}>{props.link.label}</TextLink> : null}
     </CaveatBox>
   )
@@ -237,7 +237,7 @@ export function ProofBand(props: {
   return (
     <Band id={props.id} aria-label={props.title ? undefined : 'In numbers'}>
       <Show when={() => !!props.title}>
-        <BandTitle>{props.title}</BandTitle>
+        <BandTitle>{renderInline(props.title ?? '')}</BandTitle>
       </Show>
       <Cells css={cols}>
         <For each={items} by={(i) => i.stat + i.label}>
@@ -247,10 +247,10 @@ export function ProofBand(props: {
                 <Numeral size={numeralSize(i.stat)}>{i.stat}</Numeral> <CellLabel>{renderInline(i.label)}</CellLabel>
               </span>
               <Show when={() => !!(i.detail ?? i.source)}>
-                <CellMono>{i.detail ?? i.source}</CellMono>
+                <CellMono>{renderInline(i.detail ?? i.source ?? '')}</CellMono>
               </Show>
               <Show when={() => !!i.condition}>
-                <CellMono>{i.condition}</CellMono>
+                <CellMono>{renderInline(i.condition ?? '')}</CellMono>
               </Show>
               {i.href ? <TextLink href={i.href}>See the row →</TextLink> : null}
               {i.visual ?? null}
@@ -438,7 +438,7 @@ export function HookHero(props: {
               {(s) => (
                 <li>
                   <StatusDot state={s.dot} />
-                  {s.href ? <TextLink href={s.href}>{s.text}</TextLink> : s.text}
+                  {s.href ? <TextLink href={s.href}>{renderInline(s.text)}</TextLink> : renderInline(s.text)}
                 </li>
               )}
             </For>

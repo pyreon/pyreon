@@ -107,7 +107,7 @@ export function CodeCard(props: {
     <GlowCard state={props.state} padding="flush">
       <Rail state={props.rail ?? 'none'}>
         <CodeHead>
-          <Eyebrow state={props.state === 'hot' ? 'accent' : 'default'}>{props.label}</Eyebrow>
+          <Eyebrow state={props.state === 'hot' ? 'accent' : 'default'}>{renderInline(props.label)}</Eyebrow>
           <Show when={() => !!props.caption}>
             <Caption>{renderInline(props.caption ?? '')}</Caption>
           </Show>

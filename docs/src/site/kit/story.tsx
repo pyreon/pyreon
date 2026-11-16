@@ -100,7 +100,7 @@ export function Diagram(props: {
         dangerouslySetInnerHTML={{ __html: props.svg }}
       />
       <Show when={() => !!props.caption}>
-        <FigCaption>{props.caption}</FigCaption>
+        <FigCaption>{renderInline(props.caption ?? '')}</FigCaption>
       </Show>
     </Figure>
   )
@@ -317,7 +317,7 @@ export function LinkCards(props: { items: readonly { label: string; href: string
         {(i) => (
           <GlowCard href={i.href} padding="compact">
             <Heading tag="h3" size="step">
-              {`${i.label} →`}
+              {renderInline(`${i.label} →`)}
             </Heading>
             <Lede size="small">{renderInline(i.text)}</Lede>
           </GlowCard>

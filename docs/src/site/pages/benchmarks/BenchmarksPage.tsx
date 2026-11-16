@@ -227,9 +227,9 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
         <Wrap>
           <Eyebrow>{fill(T.hero.eyebrow, { date: recordDate, count: d.competitors.length })}</Eyebrow>
           <Heading tag="h1" size="hero">
-            {T.hero.title}
+            {renderInline(T.hero.title)}
           </Heading>
-          <Lede size="hero">{T.hero.lede}</Lede>
+          <Lede size="hero">{renderInline(T.hero.lede)}</Lede>
           <HeroStats aria-label={T.hero.statsLabel}>
             <For each={d.heroStats} by={(s) => s.stat + s.label}>
               {(s) => (
@@ -527,7 +527,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
                   <li>
                     <GlowCard padding="compact">
                       <Heading tag="h3" size="step">
-                        {b.title}
+                        {renderInline(b.title)}
                       </Heading>
                       <Lede size="small">{renderInline(b.text)}</Lede>
                       <Mono>

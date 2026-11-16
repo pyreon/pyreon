@@ -200,7 +200,7 @@ export function ProjectPageView(props: { view: ProjectView }) {
           <Hero>
             <Eyebrow>{d.id === 'status' ? 'Status and direction' : d.title}</Eyebrow>
             <Heading tag="h1" size="hero">
-              {d.title}
+              {renderInline(d.title)}
             </Heading>
             <Lede size="hero">{renderInline(d.lede)}</Lede>
           </Hero>
@@ -210,7 +210,7 @@ export function ProjectPageView(props: { view: ProjectView }) {
       <Section size="end">
         <Wrap>
           <Heading tag="h2" size="end">
-            {d.end.title}
+            {renderInline(d.end.title)}
           </Heading>
           <EndRow>{ctaNode}</EndRow>
         </Wrap>
