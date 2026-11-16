@@ -632,6 +632,31 @@ class TasksAppInstrumentedTest {
     }
 
     /**
+     * useMediaQuery('(prefers-color-scheme: dark)') reads true under the system night mode. The mode is switched
+     * before the first interaction (the activity recreates) and always restored, so later tests see the default.
+     */
+    @Test
+    fun hooksMediaQueryReadsNightMode() {
+        val ui = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+        ui.executeShellCommand("cmd uimode night yes").close()
+        try {
+            composeRule.waitUntil(15_000) {
+                composeRule.onAllNodesWithTag("login-username").fetchSemanticsNodes().isNotEmpty() &&
+                    (composeRule.activity.resources.configuration.uiMode and
+                        android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+            }
+            composeRule.onNodeWithTag("login-username").performTextInput("abcde")
+            composeRule.onNodeWithTag("login-submit").performClick()
+            assertTagDisplayed("tasks-page", "after login-submit")
+            composeRule.onNodeWithTag("tasks-hooks").performScrollTo().performClick()
+            assertTagDisplayed("hooks-page", "after tasks-hooks (/tasks -> /hooks)")
+            waitForTagText("hooks-dark", "dark")
+        } finally {
+            ui.executeShellCommand("cmd uimode night no").close()
+        }
+    }
+
+    /**
      * useInfiniteQuery, useLatest, useMediaQuery and useKeyboard on the emulator (same assertions as the iOS test,
      * plus a real key press: the Compose test rule can deliver a hardware key, the simulator cannot).
      */

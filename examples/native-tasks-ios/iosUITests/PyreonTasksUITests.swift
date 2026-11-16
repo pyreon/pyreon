@@ -441,6 +441,27 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "streams-back did not return to tasks")
     }
 
+    /// useMediaQuery('(prefers-color-scheme: dark)') reads true when the app runs in dark appearance.
+    /// The app host runs in dark appearance under `-PyreonUITestDarkAppearance` (see ios/App.swift). Switching the
+    /// simulator from the test with `XCUIDevice.appearance` failed on CI (all three attempts read `light`), and a
+    /// `-AppleInterfaceStyle` launch argument is a macOS default that does nothing on iOS.
+    func test_hooksMediaQueryReadsDarkAppearance() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-PyreonUITestDarkAppearance"]
+        app.launch()
+        let username = app.textFields["login-username"].firstMatch
+        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        username.tap()
+        username.typeText("abcde")
+        dismissKeyboard(app)
+        app.buttons["login-submit"].firstMatch.tap()
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+        tapAfterScrolling(app.buttons["tasks-hooks"].firstMatch, in: app)
+        XCTAssertTrue(app.otherElements["hooks-page"].firstMatch.waitForExistence(timeout: 15), "Hooks page did not render")
+        let dark = app.staticTexts["hooks-dark"].firstMatch
+        XCTAssertTrue(waitForLabel(dark, "dark", timeout: 10), "useMediaQuery('(prefers-color-scheme: dark)') must be true in dark appearance: '\(dark.label)'")
+    }
+
     /// useInfiniteQuery, useLatest, useMediaQuery and useKeyboard on the device.
     ///
     /// Infinite query: three pages from the loopback server's /pages. The count must climb 1 -> 2 -> 3 and
