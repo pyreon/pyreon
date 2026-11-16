@@ -20,8 +20,9 @@
  * A fixture is exactly the scaffolder's output plus `toWorkspaceFixture`:
  * the package becomes a private workspace member (`@pyreon/example-<dir>`,
  * `@pyreon/*` deps on `workspace:^`, the repo tsconfig preset, the root
- * LICENSE). Never hand-edit a fixture: change the template or the
- * scaffolder, then regenerate.
+ * LICENSE, no nested `.oxlintrc.json`), plus the declared fixture-only
+ * `extraFiles` and `appends`. Never hand-edit a fixture: change the template
+ * or the scaffolder, then regenerate.
  *
  * The compat-mode runtime gate (`--compat react|vue|solid|preact`) lives in
  * `scripts/scaffold-smoke.ts`, which scaffolds those apps fresh, so it has
@@ -159,6 +160,11 @@ export function toWorkspaceFixture(dir: string, name: string, licenseText: strin
 
   // check-license-coverage: every workspace carries the root LICENSE.
   writeFileSync(join(dir, 'LICENSE'), licenseText)
+
+  // The repo's root oxlint config and its ratchets govern workspace files. A
+  // nested `.oxlintrc.json` would make the root `oxlint .` lint this directory
+  // with the scaffold's own preset instead, moving the repo-wide baselines.
+  rmSync(join(dir, '.oxlintrc.json'), { force: true })
 }
 
 /** Scaffold `fixture` into `parent/<name>` and normalise it. */
@@ -210,13 +216,29 @@ export interface FixtureDrift {
   changed: string[]
 }
 
+/**
+ * The fixture's files as git sees them: tracked plus untracked-not-ignored,
+ * so build output the fixture's own `.gitignore` excludes (`.pyreon/`,
+ * generated route types) never counts as drift, while a new unignored file
+ * does. Falls back to a plain walk outside a git checkout.
+ */
+export function listCommittedFiles(dir: string): string[] {
+  const res = spawnSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', '.'], {
+    cwd: dir,
+    encoding: 'utf8',
+  })
+  if (res.status !== 0) return listFixtureFiles(dir)
+  const files = res.stdout.split('\0').filter((f) => f !== '' && existsSync(join(dir, f)))
+  return [...new Set(files)].sort()
+}
+
 /** Compare a committed fixture against a fresh, normalised scaffold. */
 export function diffFixture(
   committedDir: string,
   freshDir: string,
   extraFiles: readonly string[] = [],
 ): FixtureDrift {
-  const committed = new Set(listFixtureFiles(committedDir))
+  const committed = new Set(listCommittedFiles(committedDir))
   const fresh = new Set(listFixtureFiles(freshDir))
   const allowed = new Set(extraFiles)
   const missing = [
