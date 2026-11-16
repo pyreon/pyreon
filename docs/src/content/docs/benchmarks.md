@@ -449,8 +449,9 @@ overnight run; the bundle-budget history points the first 0.5KB at
 runtime-dom changes for hydration and compiled-accessor correctness.
 
 Every published package's main-entry size and canonical minimal-import size are
-also locked by CI budget gates (`scripts/bundle-budgets.json`,
-`scripts/import-budgets.json`), so growth cannot land unnoticed.
+also gated in CI (ceilings in `scripts/size-budgets/`): a pull request that
+grows one by more than 2% has to accept the growth explicitly, so growth cannot
+land unnoticed.
 
 Reproduce: `cd examples/benchmark && bun bench-bundle.ts`
 

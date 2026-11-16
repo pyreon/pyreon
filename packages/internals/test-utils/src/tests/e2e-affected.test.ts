@@ -104,12 +104,12 @@ describe('selectSuites', () => {
   // full run — while every OTHER scripts/ file still does, and a budget file
   // riding along with real code still gets that code's suites.
   it('budget data files do not force a full run; other scripts/ files still do', () => {
-    expect(forcesFullRun('scripts/import-budgets.json')).toBe(false)
-    expect(forcesFullRun('scripts/bundle-budgets.json')).toBe(false)
+    expect(forcesFullRun('scripts/size-budgets/packages/core.json')).toBe(false)
+    expect(forcesFullRun('scripts/size-budgets/apps/ssr-showcase.json')).toBe(false)
     expect(forcesFullRun('scripts/check-bundle-budgets.ts')).toBe(true)
     expect(forcesFullRun('scripts/serve-ssg.ts')).toBe(true)
-    expect(selectSuites(['scripts/import-budgets.json', 'scripts/bundle-budgets.json'])).toEqual([])
-    const withCode = selectSuites(['scripts/import-budgets.json', 'examples/ssr-showcase/src/routes/index.tsx'])
+    expect(selectSuites(['scripts/size-budgets/packages/core.json', 'scripts/size-budgets/apps/ssr-showcase.json'])).toEqual([])
+    const withCode = selectSuites(['scripts/size-budgets/packages/core.json', 'examples/ssr-showcase/src/routes/index.tsx'])
     expect(withCode.length).toBeGreaterThan(0)
     expect(withCode.length).toBeLessThan(SUITES.length)
   })

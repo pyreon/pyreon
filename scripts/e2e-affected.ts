@@ -538,11 +538,11 @@ export type { Suite }
  * True when a changed path has broad/unknowable blast radius and the
  * conservative response is to run the FULL suite. Exported for unit tests.
  */
-/** Budget data read only by the budget gates — see `forcesFullRun`. */
-export const BUDGET_DATA_FILES: ReadonlySet<string> = new Set([
-  'scripts/bundle-budgets.json',
-  'scripts/import-budgets.json',
-])
+/**
+ * Size-ceiling data (one file per owner), read only by the size gates — see
+ * `forcesFullRun`.
+ */
+export const SIZE_BUDGET_DATA_DIR = 'scripts/size-budgets/'
 
 export function forcesFullRun(path: string, e2eScripts?: ReadonlySet<string>): boolean {
   if (path === 'bun.lock' || path === 'package.json') return true
@@ -559,11 +559,11 @@ export function forcesFullRun(path: string, e2eScripts?: ReadonlySet<string>): b
   // The size-budget DATA files are the one exception under `scripts/`: no e2e
   // spec, e2e config, example build, or served page reads them — only the
   // budget gates do. Measured 2026-09-23 over one week of PRs: 83 of the 124
-  // pushes that ran ALL 30 suites were forced by these two files ALONE
+  // pushes that ran ALL 30 suites were forced by the two former budget tables ALONE
   // (parallel sessions bump budgets constantly), i.e. ~57% of all e2e
   // suite-runs. A budget file changing still runs whatever suites the PR's
   // OTHER files select, so this narrows only the "unknown blast radius" arm.
-  if (BUDGET_DATA_FILES.has(path)) return false
+  if (path.startsWith(SIZE_BUDGET_DATA_DIR)) return false
   // With the derived reachable set (`e2eReachableScripts`), a `scripts/` file
   // forces the full run only when something an e2e suite executes can reach
   // it. Without it — unit tests, or a derivation that threw — every

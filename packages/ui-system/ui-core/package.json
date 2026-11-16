@@ -56,7 +56,7 @@
     "@pyreon/typescript": "workspace:^",
     "@pyreon/unistyle": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^5.0.5",
+    "@vitest/browser-playwright": "^5.1.0",
     "@vitus-labs/tools-rolldown": "^2.8.0"
   },
   "peerDependencies": {

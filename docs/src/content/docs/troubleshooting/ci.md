@@ -179,9 +179,9 @@ Under `sideEffects: false`, bundling a pure re-export barrel entry (rolldown's `
 
 ---
 
-### A budget with less headroom than platform noise gives a verdict per machine
+### An absolute size budget checked on every PR fails the wrong PR
 
-Gzip size differs between macOS and the ubuntu runner by ~1%, so a budget inside that band can be green locally and red in CI. `check-bundle-budgets` checks headroom on every run against `requiredHeadroom` and prints the exact value to raise to. It is a ratchet: a new thin entry fails; existing ones are listed in `_thinHeadroom` in `scripts/bundle-budgets.json` with a reason naming what retires them, warn on every run, and are flagged for removal once they recover.
+Branch protection does not require an up-to-date branch, so several PRs each add bytes under the number against their own base and main ends over it; every open PR then fails for bytes it did not add, and each one raises the same line to a different value and conflicts. Judge a PR on its own delta against the commit it merges into (`scripts/size-base.ts`), and judge the absolute ceiling on main, where the sum is visible. A "minimum headroom" rule on PRs is the same defect: an unrelated merge uses the headroom and the next PR fails. Keep one ceiling file per owner (`scripts/size-budgets/`) so PRs on different packages cannot conflict. Tests: `size-budget-policy.test.ts`, `size-budget-store.test.ts`.
 
 ---
 
@@ -193,9 +193,9 @@ A gate red on arrival (`Coverage (Full)`, in `.github/workflows/ci-main.yml`) ca
 
 ---
 
-### `--update` must not silently lower budgets
+### `--update` must not silently lower ceilings
 
-A stale or partial `lib/` measures small, so an unscoped relock commits budgets below what CI measures. Raises and new entries always apply; lowering requires naming the target (`--update=@pyreon/pkg`). Both `check-bundle-budgets` and `check-import-budgets` (`relockBudgets`) share this rule via `scripts/bundle-budget-policy.ts`. Parse `--update=X` explicitly — `args.includes('--update')` never matches it. Test the wiring, not only the pure helper: `bundle-budget-drop-guard.test.ts`, `import-budget-relock.test.ts`.
+A stale or partial `lib/` measures small, so an unscoped relock commits ceilings below what CI measures. Unscoped, `--update` seeds new entries and raises ones that are over; lowering, and accepting growth still under the ceiling, requires naming the target (`--update=@pyreon/pkg`). All three size gates share this rule via `nextCeiling` in `scripts/size-budget-policy.ts`, and the value is a function of the measurement (`ceilingFor`), so two people accepting the same size write the same number. Parse `--update=X` explicitly — `args.includes('--update')` never matches it. Test the wiring, not only the pure helper: `bundle-budget-drop-guard.test.ts`, `import-budget-relock.test.ts`, `check-bundle-budgets-failures.test.ts`.
 
 ---
 

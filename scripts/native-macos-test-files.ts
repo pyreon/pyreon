@@ -11,7 +11,7 @@
 //
 // On PRs and main pushes the job now runs only the files this selects. The
 // nightly still runs the full suite uncached, so the macOS Swift compiler
-// (6.1 there vs 6.0.3 on Linux) keeps covering every stub-validated file once
+// (Xcode's compiler there vs 6.4.2 on Linux) keeps covering every stub-validated file once
 // a day — the only extra signal the duplicate run carried.
 //
 // Selection is by CONTENT, not by a hand-kept list, so a new real-SDK test is

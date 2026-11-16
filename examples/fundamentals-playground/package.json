@@ -43,8 +43,8 @@
     "@pyreon/validation": "workspace:*",
     "@pyreon/virtual": "workspace:*",
     "@pyreon/zero": "workspace:*",
-    "@tanstack/query-core": "^5.105.0",
-    "@tanstack/virtual-core": "^3.19.8",
+    "@tanstack/query-core": "^5.107.1",
+    "@tanstack/virtual-core": "^3.19.11",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -54,7 +54,7 @@
     "@pyreon/vitest-config": "workspace:*",
     "happy-dom": "^21.0.4",
     "typescript": "^6.0.3",
-    "vite": "^8.3.5",
-    "vitest": "^5.0.5"
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
   }
 }
