@@ -1793,4 +1793,8 @@
   .dx-toc__link { display: flex; align-items: center; min-height: 44px; }
   .dx-more { display: inline-flex; align-items: center; min-height: 44px; margin-top: 6px; }
   .dx-anchor { display: inline-block; padding: 13px 6px; margin: -13px -6px -13px 0; }
+  .dx-helpful button, .dx-why__compiled > summary { min-height: 44px; }
+  /* Plain links (breadcrumbs, link lists, card titles, banners): a 44px hit
+     area from padding cancelled by an equal negative margin, so no line moves. */
+  .dx a:not([class]) { padding-top: 13px; padding-bottom: 13px; margin-top: -13px; margin-bottom: -13px; }
 }

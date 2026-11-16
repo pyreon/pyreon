@@ -149,7 +149,8 @@ const Cell = el
     paddingRight: { xs: 22, md: 44 },
     borderTop: '1px solid',
     borderColor: tone(m, 'line'),
-    extendCss: `@media (min-width: ${breakpoints.lg}px) { border-top: 0; & + & { border-left: 1px solid ${tone(m, 'line')}; } }`,
+    // A size container: a long numeral ("1.94–1.95×") sizes to its cell, not the screen.
+    extendCss: `container-type: inline-size; @media (min-width: ${breakpoints.lg}px) { border-top: 0; & + & { border-left: 1px solid ${tone(m, 'line')}; } }`,
   }))
 
 /** A huge gradient numeral (700, -.06em, .86). Light mode uses the AA-safe stops. [A4] */
@@ -172,7 +173,7 @@ export const Numeral = txt
   }))
   .sizes(() => ({
     default: {},
-    long: { fontSize: 'clamp(48px, 5.4vw, 90px)' },
+    long: { fontSize: 'clamp(32px, min(5.4vw, 17cqi), 90px)' },
     strip: { fontSize: 'clamp(40px, 4vw, 58px)' },
   }))
 
@@ -194,7 +195,7 @@ const CellLabel = txt
 const CellMono = txt
   .config({ name: 'ProofBandDetail' })
   .attrs({ tag: 'span' })
-  .theme((_t, m) => ({ display: 'block', fontFamily: font.mono, fontSize: 12, lineHeight: 1.55, color: tone(m, 'fog') }))
+  .theme((_t, m) => ({ display: 'block', fontFamily: font.mono, fontSize: 12, lineHeight: 1.55, color: tone(m, 'fog'), overflowWrap: 'anywhere' }))
 
 const BandFoot = el
   .config({ name: 'ProofBandFoot' })
