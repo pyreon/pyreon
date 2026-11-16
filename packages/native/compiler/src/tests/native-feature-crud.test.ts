@@ -70,7 +70,8 @@ describe('@pyreon/feature CRUD hooks — native lowering', () => {
     it('useList → a keyed PyreonQuery of the schema struct, GET <api> through PyreonHttp', () => {
       expect(code).toContain('@State private var list = PyreonQuery<[PyreonFeatureSchema_Todo]>(queryKey: "todo:list", staleSeconds: 5)')
       expect(code).toContain(`PyreonHttpRequest(method: .get, url: "${API}")`)
-      expect(code).toContain('list.resolve(try __response.decode([PyreonFeatureSchema_Todo].self))')
+      expect(code).toContain('await list.run {')
+      expect(code).toContain('return try __response.decode([PyreonFeatureSchema_Todo].self)')
       expect(code).toContain('list.data?.count')
       expect(code).toContain('list.isPending ?')
     })
@@ -80,7 +81,8 @@ describe('@pyreon/feature CRUD hooks — native lowering', () => {
       expect(code).toContain('.task(id: "todo:\\(id)") {')
       expect(code).toContain('one.setKey("todo:\\(id)")')
       expect(code).toContain(`PyreonHttpRequest(method: .get, url: "${API}/\\(PyreonURL.encodePathParam(id))")`)
-      expect(code).toContain('one.resolve(try __response.decode(PyreonFeatureSchema_Todo.self))')
+      expect(code).toContain('await one.run {')
+      expect(code).toContain('return try __response.decode(PyreonFeatureSchema_Todo.self)')
     })
 
     it('useCreate → PyreonMutation, POST <api> with the JSON body (fire-and-forget and awaited)', () => {
@@ -119,7 +121,8 @@ describe('@pyreon/feature CRUD hooks — native lowering', () => {
     it('useList / useById → remembered PyreonQuery with the same requests', () => {
       expect(code).toContain('val list = remember { PyreonQuery<List<PyreonFeatureSchema_Todo>>(queryKey = "todo:list", staleMillis = 5000L) }')
       expect(code).toContain(`PyreonHttpRequest(method = PyreonHttpMethod.GET, url = "${API}")`)
-      expect(code).toContain('list.resolve(PyreonFetchJson.decodeFromString<List<PyreonFeatureSchema_Todo>>(__response.body))')
+      expect(code).toContain('list.run(launch = { __refetch -> pyreonAsyncScope.launch { __refetch() } }) {')
+      expect(code).toContain('PyreonFetchJson.decodeFromString<List<PyreonFeatureSchema_Todo>>(__response.body)')
       expect(code).toContain('LaunchedEffect("todo:${id}") {')
       expect(code).toContain(`PyreonHttpRequest(method = PyreonHttpMethod.GET, url = "${API}/\${PyreonURL.encodePathParam(id)}")`)
       expect(code).toContain('list.data.value?.length')

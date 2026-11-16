@@ -145,9 +145,12 @@ jobs:
           # fail-closed: every uncertainty RUNS the lanes; see native-validate.yml
           # for the two over-matches the inline regex it replaced carried).
           # Fail-closed: any diff failure → run=true.
+          # An edit to THIS file selects a platform only when that platform's own
+          # job block (or the top-level env/permissions/defaults) changed, so a
+          # Linux-only or Android-only edit leaves the iOS lane alone.
           git fetch origin "$BASE_REF" || true
           if FILES=$(git diff --name-only "origin/${BASE_REF}...HEAD"); then
-            printf '%s\n' "$FILES" | bun scripts/native-surface-touched.ts --self=.github/workflows/native-device.yml --apps
+            printf '%s\n' "$FILES" | bun scripts/native-surface-touched.ts --self=.github/workflows/native-device.yml --apps --ios-jobs=ios-build --android-jobs=android-build
           else
             all_lanes
             echo "diff failed → every lane (fail-closed)"
