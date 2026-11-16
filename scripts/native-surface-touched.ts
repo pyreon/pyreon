@@ -30,7 +30,7 @@
  * unreadable manifest, an empty file list, a deleted package.json.
  */
 
-import { appendFileSync, existsSync, readdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, join, normalize, relative } from 'node:path'
 import { listNativeHosts } from './native-example-hosts'

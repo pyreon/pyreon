@@ -29,7 +29,7 @@
  * ~6-minute round trip on the same PR. Both checks exist so a toolchain bump
  * costs one second instead of one job.
  */
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { listNativeHosts } from './native-example-hosts'
 
