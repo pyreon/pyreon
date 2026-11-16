@@ -9,3 +9,4 @@ Scaffold fixes, found by testing the fixtures against fresh scaffolder output:
 - An SSG scaffold's `sitemap.xml` lists the pages `getStaticPaths` enumerates (every blog post). The generated config now sets `sitemap.useSsgPaths`; without it only file-system routes appeared.
 - The generated `vite.config.ts` imports `@pyreon/zero/server` once (`import zero, { vercelAdapter } from …`); two imports from the same module failed `import/no-duplicates`.
 - New projects declare `@types/bun` at `^1.4.4`.
+- The app template's post route and the dashboard's invoice route typecheck under `noUncheckedIndexedAccess` (a route param is `string | undefined` there).
