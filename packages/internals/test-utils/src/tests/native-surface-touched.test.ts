@@ -160,7 +160,7 @@ describe('selectApps — synthetic surfaces', () => {
     expect(selectApps(['bun.lock'], S)).toMatchObject({ ios: 'all', android: 'all' })
   })
   it('a native example no lane builds selects nothing', () => {
-    expect(selectApps(['examples/native-viz/src/x.tsx'], S)).toMatchObject({ ios: 'none', android: 'none' })
+    expect(selectApps(['examples/native-tasks-web/src/x.tsx'], S)).toMatchObject({ ios: 'none', android: 'none' })
   })
 })
 
