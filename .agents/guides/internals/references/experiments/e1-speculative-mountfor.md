@@ -1,5 +1,7 @@
 # E1: Speculative monomorphic `mountFor`
 
+> Archived decision record. Verdict: DEFER. The experiment code, raw `results/*.json` and tests lived in `examples/experiments/e1-speculative-mountfor/` and were removed when `examples/` was consolidated; read them with `git show 6f6f9f5e4:examples/experiments/e1-speculative-mountfor/<file>`. Paths below that point into that directory refer to that commit.
+
 ## Question
 
 Does an append-only fast path with deopt-to-LIS save ≥15% wall-clock on append-heavy lists with ≤2% regression on shuffle-heavy?

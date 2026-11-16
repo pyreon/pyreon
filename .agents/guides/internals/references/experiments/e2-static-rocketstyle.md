@@ -1,5 +1,7 @@
 # E2: Compile-time wrapper-collapse for rocketstyle
 
+> Archived decision record. Verdict: GRADUATE. The experiment code, raw `results/*.json` and tests lived in `examples/experiments/e2-static-rocketstyle/` and were removed when `examples/` was consolidated; read them with `git show 6f6f9f5e4:examples/experiments/e2-static-rocketstyle/<file>`. Paths below that point into that directory refer to that commit.
+
 ## Question
 
 Does compile-time resolution of rocketstyle dimension props for literal-prop call sites collapse 5+ wrapper layers into a single `_tpl()` cloneNode operation, dropping mountChild by 3-5× and boot wall-clock by 50-70%?

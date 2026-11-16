@@ -1,5 +1,7 @@
 # E5: Actor-model bug repro
 
+> Archived decision record. Verdict: GRADUATE. The experiment code, raw `results/*.json` and tests lived in `examples/experiments/e5-actor-model/` and were removed when `examples/` was consolidated; read them with `git show 6f6f9f5e4:examples/experiments/e5-actor-model/<file>`. Paths below that point into that directory refer to that commit.
+
 ## Question
 
 Does message-passing actually prevent reactivity bugs, or just relocate them?
@@ -16,7 +18,7 @@ Pick two bug patterns documented in `.agents/rules/anti-patterns.md` that signal
 1. **Pattern A — stale-capture race between sibling handlers**: parent passes a signal to N children; each child captures the value (not the accessor) at component setup; handlers reference the stale capture; one child's update silently overwrites another's.
 2. **Pattern B — stale-closure async fetch race**: user clicks A → user clicks B before A's fetch resolves; A's late response overwrites B's data; UI shows wrong user.
 
-For each pattern: ship a `signalVersion()` that reproduces the bug + an `actorVersion()` that uses the minimal `actor<S, M>(initial, reducer)` library from [`actor.ts`](./actor.ts). Test that:
+For each pattern: ship a `signalVersion()` that reproduces the bug + an `actorVersion()` that uses the minimal `actor<S, M>(initial, reducer)` library from `actor.ts`. Test that:
 - The signal version actually reproduces the bug under realistic input.
 - The actor version produces correct results without any vigilance fix (no AbortController, no request-id discipline at the call site, etc).
 

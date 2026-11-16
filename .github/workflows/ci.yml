@@ -1071,10 +1071,10 @@ jobs:
               done)
               ;;
             # Example apps live outside packages/, as the typecheck cell's
-            # pseudo-category does. Their vitest suites (ui-showcase routes,
-            # fundamentals-playground, lathe-bookshelf, experiments,
-            # native-viz's emit check) ran nowhere in CI before: only the
-            # local pre-push hook's closure reached them.
+            # pseudo-category does. Their vitest suites (for example the
+            # ui-showcase routes, fundamentals-playground, lathe-bookshelf)
+            # ran nowhere in CI before: only the local pre-push hook's
+            # closure reached them.
             examples)
               AFFECTED_ARGS="--category=examples"
               FULL_FILTER="--filter=./examples/*"
