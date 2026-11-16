@@ -276,14 +276,14 @@ describe('which changed paths make the base worth rebuilding', () => {
       'scripts/check-bundle-budgets.ts',
       'scripts/size-budgets/packages/core.json',
       'docs/src/content/docs/cli.md',
-      'examples/ssr-showcase/src/routes/index.tsx',
+      'examples/fixtures/ssr-showcase/src/routes/index.tsx',
     ]) {
       expect(movesLibSizes(path), path).toBe(false)
     }
   })
 
   it('an example source moves route sizes, and so does anything that moves a lib/', () => {
-    expect(movesRouteSizes('examples/ssr-showcase/src/routes/index.tsx')).toBe(true)
+    expect(movesRouteSizes('examples/fixtures/ssr-showcase/src/routes/index.tsx')).toBe(true)
     expect(movesRouteSizes('packages/core/router/src/index.ts')).toBe(true)
     expect(movesRouteSizes('scripts/size-budgets/apps/ssr-showcase.json')).toBe(false)
   })

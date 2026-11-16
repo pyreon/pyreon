@@ -101,7 +101,7 @@ GRADUATE → next step is **NOT another experiment** but a real RFC/plan:
    - Run the rocketstyle dimension chain in the compiler.
    - Emit the resolved class string + a `_tpl()` cloneNode call for the final DOM element.
    - For non-resolvable call sites, emit the current `h(Component, ...)` path unchanged.
-2. **Estimate scope before committing.** Audit `examples/ui-showcase` and `examples/perf-dashboard` (or the bokisch.com app if available) for the % of rocketstyle call sites with literal dimension props. Target: ≥40% resolvable to justify the compiler work.
+2. **Estimate scope before committing.** Audit `examples/ui-showcase` and `examples/fixtures/perf-dashboard` (or the bokisch.com app if available) for the % of rocketstyle call sites with literal dimension props. Target: ≥40% resolvable to justify the compiler work.
 3. **Engineering cost: ~4-6 weeks** for a focused compiler pass. Ship as a feature flag in `@pyreon/compiler` so apps can opt in.
 
 ## What lands in this PR

@@ -87,6 +87,9 @@ runs:
           node_modules
           packages/*/*/node_modules
           examples/*/node_modules
+          examples/compat/*/node_modules
+          examples/fixtures/*/node_modules
+          examples/fixtures/cpa/*/node_modules
           docs/node_modules
         key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
     # Cache misses and cache-service outages fall back to a fresh install.
@@ -108,7 +111,7 @@ runs:
         PYREON_BOOTSTRAP_SKIP: '1'
       run: |
         echo "::warning::node_modules exact-key miss — installing a clean dependency tree."
-        rm -rf node_modules packages/*/*/node_modules examples/*/node_modules docs/node_modules
+        rm -rf node_modules packages/*/*/node_modules examples/*/node_modules examples/compat/*/node_modules examples/fixtures/*/node_modules examples/fixtures/cpa/*/node_modules docs/node_modules
         bun install --frozen-lockfile
     # lib/ differs per push (source changes), so the per-run key stays the
     # PRIMARY (exact-fresh) attempt — but it now degrades through the

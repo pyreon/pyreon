@@ -1,6 +1,6 @@
 /**
  * End-to-end SSG smoke test. Programmatically runs Vite build with `mode:
- * "ssg"` against the real `examples/ssr-showcase` project (which has a
+ * "ssg"` against the real `examples/fixtures/ssr-showcase` project (which has a
  * complete fs-router setup, layouts, api routes, and multiple pages —
  * exercising every code path the unit tests can't). Asserts:
  *
@@ -29,7 +29,7 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const SHOWCASE_DIR = resolve(here, '../../../../../examples/ssr-showcase')
+const SHOWCASE_DIR = resolve(here, '../../../../../examples/fixtures/ssr-showcase')
 const SSR_SHOWCASE_VITE_CONFIG = join(SHOWCASE_DIR, 'vite.config.ts')
 
 const ENABLED = process.env.PYREON_SSG_E2E === '1'
@@ -54,7 +54,7 @@ export default defineConfig({
   await rm(join(SHOWCASE_DIR, '__pyreon-zero-ssg-entry.js'), { force: true })
 })
 
-describe('zero SSG end-to-end (against examples/ssr-showcase)', () => {
+describe('zero SSG end-to-end (against examples/fixtures/ssr-showcase)', () => {
   it.runIf(ENABLED && existsSync(SHOWCASE_DIR))(
     'mode: "ssg" produces per-route HTML with route-correct content',
     async () => {
@@ -139,7 +139,7 @@ export default defineConfig({
         'Run it with:  PYREON_SSG_E2E=1 bun run --cwd packages/zero/zero test ssg-end-to-end',
         '',
         'It is deliberately opt-in: each spec drives a real nested Vite SSG build',
-        'of examples/ssr-showcase and carries a 120s budget. `verify-modes` covers',
+        'of examples/fixtures/ssr-showcase and carries a 120s budget. `verify-modes` covers',
         'the same bug CLASS at the artifact level on every PR, which is why this',
         'is a gap rather than an outage — but the gap should be visible.',
       ].join('\n'),

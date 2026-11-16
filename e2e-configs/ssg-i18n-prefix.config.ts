@@ -24,11 +24,11 @@ export default definePlaywrightConfig({
     {
       // cwd: '..' — webServer commands run from the config file's
       // directory by default; this config lives in e2e-configs/ but
-      // `scripts/serve-ssg.ts` and `examples/ssr-showcase/dist` are
+      // `scripts/serve-ssg.ts` and `examples/fixtures/ssr-showcase/dist` are
       // repo-root-relative.
       cwd: '..',
       command:
-        'bun run --filter=@pyreon/example-ssr-showcase build:i18n-prefix && bun scripts/serve-ssg.ts examples/ssr-showcase/dist 5200',
+        'bun run --filter=@pyreon/example-ssr-showcase build:i18n-prefix && bun scripts/serve-ssg.ts examples/fixtures/ssr-showcase/dist 5200',
       port: 5200,
       timeout: 180_000,
     },

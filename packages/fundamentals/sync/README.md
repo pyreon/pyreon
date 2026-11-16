@@ -85,7 +85,7 @@ disconnected merge with no lost op.
 For same-origin **tabs / windows**, `connectViaBroadcastChannel(doc, room)` syncs
 over `BroadcastChannel` (zero network, the canonical local-first multi-tab
 transport) with a minimal state-vector handshake so a late-joining tab converges,
-not just live edits. The `examples/sync-yjs-demo` app + its real-Chromium
+not just live edits. The `examples/fixtures/sync-yjs` app + its real-Chromium
 two-tab e2e (`e2e/sync-yjs-demo.spec.ts`) prove the headline end-to-end: an edit
 in one tab patches exactly the bound text node in the other (compiled
 `_bindText`), no re-render.
@@ -126,7 +126,7 @@ body.set(textareaEl.value)    // or a whole-text replace (minimal prefix/suffix 
 ```
 
 Two tabs typing concurrently converge to a string containing **both** their
-edits (proven by the `examples/sync-yjs-demo` textarea + its real-Chromium
+edits (proven by the `examples/fixtures/sync-yjs` textarea + its real-Chromium
 two-tab e2e). It is engine-specific (lives in `@pyreon/sync/yjs`) — collaborative
 text is inherently coupled to the CRDT's text type, so it is not behind the
 engine-neutral seam.

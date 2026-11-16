@@ -123,7 +123,7 @@ result.diff    // formatted diff
 - Harness API (`perfHarness.snapshot / reset / record / diff / formatDiff / overlay`, plus `install` / `uninstall`)
 - Overlay (shadow-DOM panel, Ctrl+Shift+P toggle, reset/record/export buttons)
 - Instrumentation across 11 layers, 66+ counters — full catalog in [`COUNTERS.md`](./COUNTERS.md)
-- `examples/perf-dashboard` — real-app-shape stress rig; auto-installs the harness in dev so counters are live from boot
+- `examples/fixtures/perf-dashboard` — real-app-shape stress rig; auto-installs the harness in dev so counters are live from boot
 - `scripts/perf/record.ts` + `scripts/perf/diff.ts` — Playwright recorder + regression comparator (`bun run perf:record --app <name> --journey <name>` / `bun run perf:diff <baseline> <current>`)
 - `.github/workflows/perf.yml` — advisory CI (manual + `perf`-labelled PRs + nightly)
 - Tree-shake regression test (`treeshake.test.ts`) — Vite-production-bundles each instrumented file and asserts both the `__pyreon_count__` identifier and every counter name string are absent

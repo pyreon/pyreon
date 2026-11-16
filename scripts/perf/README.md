@@ -17,7 +17,7 @@ What it does:
 5. Takes the median of each counter, median wall-clock ms, median heap bytes
 6. Writes `perf-results/<git-sha>-<app>-<journey>.json`
 
-Journey catalog: each example exports a `journeys` object from `src/journeys.ts` keyed by journey name, value is an async function taking a Playwright `page`. See `examples/perf-dashboard/src/journeys.ts` for the reference.
+Journey catalog: each example exports a `journeys` object from `src/journeys.ts` keyed by journey name, value is an async function taking a Playwright `page`. See `examples/fixtures/perf-dashboard/src/journeys.ts` for the reference.
 
 Exit codes (so CI can classify failures):
 

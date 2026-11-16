@@ -110,7 +110,7 @@ export function renderSsrEntrySource(options: RenderSsrEntryOptions): string {
     return _ssgEntryRenderer(options.locales)
   }
   // SSR / ISR: canonical createServer body. Same module shape as
-  // `examples/ssr-showcase/src/entry-server.ts`.
+  // `examples/fixtures/ssr-showcase/src/entry-server.ts`.
   return `import { routes } from "virtual:zero/routes"
 import { routeMiddleware } from "virtual:zero/route-middleware"
 import { apiRoutes } from "virtual:zero/api-routes"

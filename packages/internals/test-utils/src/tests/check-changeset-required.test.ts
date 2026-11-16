@@ -68,7 +68,7 @@ const PACKAGES: PackageInfo[] = [
   { name: '@pyreon/ui-components', dir: `${REPO}/packages/ui/components`, private: true },
   { name: '@pyreon/devtools', dir: `${REPO}/packages/tools/devtools`, private: true },
   { name: '@pyreon/zero', dir: `${REPO}/packages/zero/zero`, private: false },
-  { name: '@pyreon/example-playground', dir: `${REPO}/examples/playground`, private: true },
+  { name: '@pyreon/example-playground', dir: `${REPO}/examples/fixtures/playground`, private: true },
   { name: '@pyreon/docs', dir: `${REPO}/docs`, private: true },
 ]
 
@@ -106,7 +106,7 @@ describe('findOwningPackage', () => {
 
   it('handles example workspaces', () => {
     const owner = findOwningPackage(
-      'examples/playground/src/main.tsx',
+      'examples/fixtures/playground/src/main.tsx',
       PACKAGES,
       REPO,
     )
@@ -192,10 +192,10 @@ describe('isConsumerAffectingFile', () => {
   })
 
   describe('IGNORED packages (per changeset config) — NOT consumer-affecting', () => {
-    it('rejects examples/playground (in .changeset/config.json ignore)', () => {
+    it('rejects examples/fixtures/playground (in .changeset/config.json ignore)', () => {
       expect(
         isConsumerAffectingFile(
-          'examples/playground/src/main.tsx',
+          'examples/fixtures/playground/src/main.tsx',
           PACKAGES,
           IGNORED,
           REPO,
@@ -504,7 +504,7 @@ describe('consumerPackagesTouched', () => {
   it('returns only the published packages from a mixed list', () => {
     const files = [
       'packages/core/router/src/router.ts',
-      'examples/playground/src/main.tsx',
+      'examples/fixtures/playground/src/main.tsx',
       'scripts/foo.ts',
       'packages/internals/manifest/src/index.ts',
     ]
@@ -600,7 +600,7 @@ describe('evaluateGate', () => {
     const res = evaluateGate(
       ok({
         files: [
-          'examples/playground/src/main.tsx',
+          'examples/fixtures/playground/src/main.tsx',
           'docs/src/content/docs/index.md',
         ],
       }),
@@ -722,7 +722,7 @@ describe('discoverPackages + readChangesetIgnore', () => {
       name: '@pyreon/test-utils',
       private: true,
     })
-    writePkg('examples/playground', {
+    writePkg('examples/fixtures/playground', {
       name: '@pyreon/example-playground',
       private: true,
     })

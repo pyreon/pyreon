@@ -3,7 +3,7 @@ import { definePlaywrightConfig } from '@pyreon/playwright-config'
 /**
  * Edge-runtime deploy artifacts, RUN in their real runtimes.
  *
- * `examples/edge-runtimes` is built once per edge adapter (by
+ * `examples/fixtures/edge-runtimes` is built once per edge adapter (by
  * `test:e2e:edge-runtimes`, before Playwright starts), and each emitted
  * artifact is served by the runtime it deploys to:
  *

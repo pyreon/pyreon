@@ -25,6 +25,7 @@
  */
 import { copyFileSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
+import { listExampleDirs } from './example-dirs'
 
 const REPO_ROOT = resolve(import.meta.dirname, '..')
 const CANON = join(REPO_ROOT, 'LICENSE')
@@ -36,7 +37,6 @@ const CANON = join(REPO_ROOT, 'LICENSE')
  */
 const WORKSPACE_ROOTS: Array<{ dir: string; depth: number }> = [
   { dir: 'packages', depth: 2 },
-  { dir: 'examples', depth: 1 },
   { dir: 'docs', depth: 0 },
   { dir: 'contrib', depth: 2 },
 ]
@@ -132,6 +132,8 @@ function workspaces(): string[] {
     }
   }
   for (const { dir, depth } of WORKSPACE_ROOTS) visit(join(REPO_ROOT, dir), depth)
+  // Examples sit at examples/* and inside the group folders (scripts/example-dirs.ts).
+  for (const ex of listExampleDirs(REPO_ROOT)) found.push(join(REPO_ROOT, 'examples', ex, 'package.json'))
   return found.sort()
 }
 

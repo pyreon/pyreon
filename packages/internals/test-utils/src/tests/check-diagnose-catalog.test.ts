@@ -258,7 +258,7 @@ describe('isSensitiveSourceFile', () => {
     })
 
     it('rejects a file under examples/', () => {
-      expect(isSensitiveSourceFile('examples/playground/src/main.tsx')).toBe(
+      expect(isSensitiveSourceFile('examples/fixtures/playground/src/main.tsx')).toBe(
         false,
       )
     })

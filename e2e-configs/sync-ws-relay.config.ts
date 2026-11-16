@@ -8,7 +8,7 @@ import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config
  * sync, this proves the relay path — the genuinely cross-device case.
  *
  * Two webServers: the example's Vite dev server, and the relay (booted from
- * `examples/sync-yjs-demo/relay.ts`, which attaches the WS relay to a plain http
+ * `examples/fixtures/sync-yjs/relay.ts`, which attaches the WS relay to a plain http
  * server with a health endpoint so this port answers Playwright's HTTP readiness
  * probe). Separate config (own webServers) — Playwright boots ALL listed servers
  * regardless of `--project`, so isolating it avoids boot-time resource
@@ -26,7 +26,7 @@ export default definePlaywrightConfig({
       // cwd: '..' — webServer commands run from the config file's directory by
       // default; the relay script path is repo-root-relative.
       cwd: '..',
-      command: 'bun examples/sync-yjs-demo/relay.ts',
+      command: 'bun examples/fixtures/sync-yjs/relay.ts',
       port: 5186,
       timeout: 60_000,
     },

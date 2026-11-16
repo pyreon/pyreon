@@ -37,7 +37,7 @@ const Quote: ComponentFn<{ who: string }> = (p) => h('p', { class: 'q' }, `quote
 const makeLazy = () =>
   lazy<{ who: string }>(() => new Promise((r) => setTimeout(() => r({ default: Quote }), 20)))
 
-// The `examples/playground` /primitives shape: the Suspense child is an ACCESSOR
+// The `examples/fixtures/playground` /primitives shape: the Suspense child is an ACCESSOR
 // that renders a plain ELEMENT until a flag flips. With `ssrTemplate` that
 // element lowers to `_ssr(...)`, a RawHtml object with no `type` — the Suspense
 // wait-for-lazy probe must treat it as "not a lazy", not crash on it.

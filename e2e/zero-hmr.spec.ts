@@ -34,7 +34,7 @@ import { expect, test } from '@playwright/test'
 // Playwright runs with cwd = the config's directory (the worktree root).
 const PROBE = resolve(
   process.cwd(),
-  'examples/ssr-showcase/src/routes/hmr-probe.tsx',
+  'examples/fixtures/ssr-showcase/src/routes/hmr-probe.tsx',
 )
 
 test('editing a route component hot-updates the DOM in place, no reload, signal preserved', async ({

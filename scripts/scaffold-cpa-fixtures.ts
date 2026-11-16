@@ -5,9 +5,9 @@
  * The Playwright runtime gate (`bun run test:e2e:cpa`) targets three
  * committed fixture apps:
  *
- *   examples/cpa-pw-app   (template=app,       adapter=vercel)
- *   examples/cpa-pw-blog  (template=blog,      adapter=static)
- *   examples/cpa-pw-dash  (template=dashboard, adapter=vercel,
+ *   examples/fixtures/cpa/app   (template=app,       adapter=vercel)
+ *   examples/fixtures/cpa/blog  (template=blog,      adapter=static)
+ *   examples/fixtures/cpa/dash  (template=dashboard, adapter=vercel,
  *                         no integrations — exercises the in-memory stub)
  *
  * They are committed rather than scaffolded per run so CI pays no scaffold +
@@ -51,10 +51,13 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
+import { exampleDir } from './example-dirs'
 
 export interface Fixture {
-  /** Directory name under `examples/` (also the scaffolded project name). */
+  /** The scaffolded project name; the package is `@pyreon/example-<name>`. */
   name: string
+  /** Where the fixture lives, under `examples/`. */
+  dir: string
   /** create-zero flags. */
   args: string[]
   /**
@@ -86,10 +89,12 @@ export const revalidate = 3600
 export const FIXTURES: readonly Fixture[] = [
   {
     name: 'cpa-pw-app',
+    dir: 'fixtures/cpa/app',
     args: ['--template', 'app', '--adapter', 'vercel', '--yes'],
   },
   {
     name: 'cpa-pw-blog',
+    dir: 'fixtures/cpa/blog',
     args: ['--template', 'blog', '--adapter', 'static', '--yes'],
     // e2e/cpa-blog.spec.ts (catch-all streaming route) and the verify-modes
     // cpa-pw-blog cells (404.html, the ISR revalidate handler).
@@ -98,6 +103,7 @@ export const FIXTURES: readonly Fixture[] = [
   },
   {
     name: 'cpa-pw-dash',
+    dir: 'fixtures/cpa/dash',
     // No integrations: tests the in-memory stub end-to-end. The
     // supabase-integrated dashboard requires a live backend / mock layer.
     args: ['--template', 'dashboard', '--adapter', 'vercel', '--integrations', '', '--yes'],
@@ -111,7 +117,6 @@ export const FIXTURES: readonly Fixture[] = [
 ]
 
 const REPO_ROOT = resolve(import.meta.dirname, '..')
-const EXAMPLES_DIR = join(REPO_ROOT, 'examples')
 const SCAFFOLDER = join(REPO_ROOT, 'packages/zero/create-zero/src/index.ts')
 
 /** Paths inside a fixture that are install or build output, never compared. */
@@ -281,18 +286,18 @@ function check(): number {
   try {
     for (const fixture of FIXTURES) {
       const fresh = scaffoldFixture(fixture, tmp)
-      const drift = diffFixture(join(EXAMPLES_DIR, fixture.name), fresh, fixture.extraFiles)
+      const drift = diffFixture(exampleDir(fixture.dir, REPO_ROOT), fresh, fixture.extraFiles)
       const lines = [
         ...drift.missing.map((f) => `missing  ${f}`),
         ...drift.extra.map((f) => `extra    ${f}`),
         ...drift.changed.map((f) => `changed  ${f}`),
       ]
       if (lines.length === 0) {
-        console.log(`✓ examples/${fixture.name} matches create-zero`)
+        console.log(`✓ examples/${fixture.dir} matches create-zero`)
         continue
       }
       drifted++
-      console.error(`✗ examples/${fixture.name} differs from what create-zero emits today:`)
+      console.error(`✗ examples/${fixture.dir} differs from what create-zero emits today:`)
       for (const l of lines) console.error(`    ${l}`)
     }
   } finally {
@@ -314,7 +319,7 @@ function regenerate(): void {
     for (const fixture of FIXTURES) {
       console.log(`──── ${fixture.name} ────`)
       const fresh = scaffoldFixture(fixture, tmp)
-      const target = join(EXAMPLES_DIR, fixture.name)
+      const target = join(REPO_ROOT, 'examples', fixture.dir)
       // Keep install output (no full reinstall) and the fixture-only files.
       const keep = new Set(fixture.extraFiles ?? [])
       for (const f of listFixtureFiles(target)) if (!keep.has(f)) rmSync(join(target, f))

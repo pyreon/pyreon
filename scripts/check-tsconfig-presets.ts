@@ -15,6 +15,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { listExampleDirs } from './example-dirs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -155,7 +156,10 @@ export function checkTsconfigPresets(root: string): Finding[] {
   const findings: Finding[] = []
   const files = [
     ...tsconfigsUnder(root, 'packages', 2),
-    ...tsconfigsUnder(root, 'examples', 1),
+    // examples/* and examples/<group>/* (scripts/example-dirs.ts)
+    ...listExampleDirs(root, { allowNone: true })
+      .map((ex) => path.join('examples', ex, 'tsconfig.json'))
+      .filter((f) => existsSync(path.join(root, f))),
   ].filter(
     (f) =>
       !f.includes('/templates/') &&

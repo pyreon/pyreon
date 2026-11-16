@@ -11,7 +11,7 @@ process.env.PYREON_E2E_SERVER_STDERR = STDERR_LOG
 /**
  * ISR node-deploy real-Chromium gate.
  *
- * Builds `examples/ssr-showcase` in `mode: 'isr'` (node adapter) and runs the
+ * Builds `examples/fixtures/ssr-showcase` in `mode: 'isr'` (node adapter) and runs the
  * EMITTED `node dist/index.js` — whose handler is wrapped by
  * `createISRHandler` (per-request SSR + in-process LRU caching). Proves the
  * ISR deploy artifact (a) builds + boots, (b) server-renders + HYDRATES (same
@@ -34,7 +34,7 @@ export default definePlaywrightConfig({
   webServer: [
     {
       command:
-        'bun run --filter=@pyreon/example-ssr-showcase build:isr && node ../examples/ssr-showcase/dist/index.js 2> ' + JSON.stringify(STDERR_LOG),
+        'bun run --filter=@pyreon/example-ssr-showcase build:isr && node ../examples/fixtures/ssr-showcase/dist/index.js 2> ' + JSON.stringify(STDERR_LOG),
       port: 5207,
       timeout: 180_000,
     },

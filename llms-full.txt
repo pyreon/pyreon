@@ -3144,7 +3144,7 @@ loom scan · . · 148 packages
      compat:'react' ALIASES react-dom (and react-dom/client) to @pyreon/react-compat/dom. Installing
      the real react-dom would defeat the example, whose entire point is that React-shaped code runs
      with no React present.)
-     ↳ examples/react-compat/src/main.tsx
+     ↳ examples/compat/react/src/main.tsx
   ℹ phantom-type-dep · `@pyreon/create-zero` imports `@pyreon/server` type-only but never declares
      it — erased at runtime, so consumers are unaffected, but typecheck resolves it through hoisting
      luck; declare it in devDependencies

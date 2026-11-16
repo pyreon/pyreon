@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 /**
  * Real-Chromium runtime gate for the `app` template scaffolded by
- * create-pyreon-app. Boots the pre-scaffolded `examples/cpa-pw-app`
+ * create-pyreon-app. Boots the pre-scaffolded `examples/fixtures/cpa/app`
  * fixture and exercises:
  *
  *   1. SSR landing renders with expected content

@@ -239,7 +239,7 @@ export const checked = {
           ]
         },
         {
-          "dir": "react-compat",
+          "dir": "compat/react",
           "title": "React, Vue, Solid, Preact and Svelte compat",
           "summary": "Five apps, each written against its framework's own API (React hooks, the Vue Composition API, Solid signals, Preact hooks, Svelte stores) and running on Pyreon's reactive engine through one compiler option.",
           "highlights": [
@@ -248,25 +248,25 @@ export const checked = {
             "reactivity",
             "runtime-dom"
           ],
-          "run": "cd examples/react-compat && bun run dev -- --port 5177",
+          "run": "cd examples/compat/react && bun run dev -- --port 5177",
           "open": "http://localhost:5177",
           "liveDemo": "/showcase/react-compat/",
           "alsoSource": [
             {
               "label": "Vue",
-              "dir": "vue-compat"
+              "dir": "compat/vue"
             },
             {
               "label": "Solid",
-              "dir": "solid-compat"
+              "dir": "compat/solid"
             },
             {
               "label": "Preact",
-              "dir": "preact-compat"
+              "dir": "compat/preact"
             },
             {
               "label": "Svelte",
-              "dir": "svelte-compat"
+              "dir": "compat/svelte"
             }
           ]
         }

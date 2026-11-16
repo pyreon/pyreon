@@ -251,7 +251,7 @@
  "recipes": [
   {
    "title": "Run a React app on Pyreon",
-   "text": "Swap the React Vite plugin for Pyreon's. Imports from react and react-dom resolve to the compat layer; for TypeScript, map `react` to the compat package in `paths`, as `examples/react-compat/tsconfig.json` does.",
+   "text": "Swap the React Vite plugin for Pyreon's. Imports from react and react-dom resolve to the compat layer; for TypeScript, map `react` to the compat package in `paths`, as `examples/compat/react/tsconfig.json` does.",
    "code": "// vite.config.ts\nimport pyreon from '@pyreon/vite-plugin'\nimport { defineConfig } from 'vite'\n\nexport default defineConfig({\n  // replaces @vitejs/plugin-react: react, react-dom, react-dom/client\n  // and the JSX runtime now resolve to @pyreon/react-compat\n  plugins: [pyreon({ compat: 'react' })],\n})",
    "status": "next release"
   },
@@ -336,7 +336,7 @@
   },
   {
    "claim": "React example imports from react in 15 files",
-   "path": "grep -rln \"from 'react'\" examples/react-compat/src | wc -l = 15; examples/react-compat/vite.config.ts uses pyreon({ compat: 'react' })"
+   "path": "grep -rln \"from 'react'\" examples/compat/react/src | wc -l = 15; examples/compat/react/vite.config.ts uses pyreon({ compat: 'react' })"
   },
   {
    "claim": "difference before-side runs unchanged on react-compat",

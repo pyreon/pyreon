@@ -47,7 +47,7 @@
  * <dist> <port>` — zero deps.
  *
  * @example
- *   bun scripts/serve-ssg.ts examples/ssr-showcase/dist 5199
+ *   bun scripts/serve-ssg.ts examples/fixtures/ssr-showcase/dist 5199
  */
 
 import { readFileSync, existsSync } from 'node:fs'

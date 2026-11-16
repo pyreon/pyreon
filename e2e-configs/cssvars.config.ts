@@ -2,7 +2,7 @@ import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config
 
 /**
  * Real-app dogfood gate for the CSS-variables theming mode
- * (`init({ cssVariables: true })`). Drives `examples/cssvars-bench` — a grid
+ * (`init({ cssVariables: true })`). Drives `examples/fixtures/cssvars` — a grid
  * of real @pyreon/ui-components + mode(a,b) boxes with a visible dark/light
  * toggle — in real Chromium, proving the mode works end-to-end: a toggle is
  * one documentElement[data-theme] write, the cascade re-resolves var pairs,

@@ -81,7 +81,7 @@ export function createTabbedEditor(config: TabbedEditorConfig = {}): TabbedEdito
     ...filteredConfig,
     /* v8 ignore start — onChange fires only on DOM-driven CodeMirror
        edits; happy-dom unit tests never trigger it. Covered by real
-       browser tests via examples/playground. */
+       browser tests via examples/fixtures/playground. */
     onChange: (value) => {
       const id = activeTabId.peek()
       if (id) {

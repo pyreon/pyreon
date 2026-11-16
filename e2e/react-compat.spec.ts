@@ -5,7 +5,7 @@
  * app" — vitest-browser smoke tests prove the shim's surface but not
  * that an app shipping React code runs end-to-end through Pyreon's
  * reactive engine. This suite exercises the example app at
- * `examples/react-compat` to close that gap.
+ * `examples/compat/react` to close that gap.
  *
  * **Critical compat-layer gotcha (re-render shape):**
  * react-compat re-renders by replacing the entire component subtree on

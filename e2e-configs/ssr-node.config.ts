@@ -11,7 +11,7 @@ process.env.PYREON_E2E_SERVER_STDERR = STDERR_LOG
 /**
  * SSR node-deploy real-Chromium gate (Bug A + C).
  *
- * Builds `examples/ssr-showcase` in `mode: 'ssr'` with the default node
+ * Builds `examples/fixtures/ssr-showcase` in `mode: 'ssr'` with the default node
  * adapter, then runs the EMITTED `node dist/index.js` HTTP server (NOT a
  * vite dev/preview server) — the actual production deploy artifact.
  *
@@ -33,7 +33,7 @@ export default definePlaywrightConfig({
   webServer: [
     {
       command:
-        'bun run --filter=@pyreon/example-ssr-showcase build:ssr && node ../examples/ssr-showcase/dist/index.js 2> ' + JSON.stringify(STDERR_LOG),
+        'bun run --filter=@pyreon/example-ssr-showcase build:ssr && node ../examples/fixtures/ssr-showcase/dist/index.js 2> ' + JSON.stringify(STDERR_LOG),
       port: 5203,
       timeout: 180_000,
     },

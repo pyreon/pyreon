@@ -1,4 +1,6 @@
+import { join } from 'node:path'
 import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config'
+import { exampleDir, REPO_ROOT } from '../scripts/example-dirs'
 
 /**
  * Real-Chromium gate for the 5 compat layers
@@ -41,10 +43,11 @@ export default definePlaywrightConfig({
   webServer: LAYERS.flatMap(({ name, port, libPort }) => [
     viteDevServer(`@pyreon/example-${name}-compat`, port),
     {
-      // `cwd` is relative to this config's directory. Node runs the
-      // workspace-root `vite` binary, as `zero-hmr.config.ts` does.
-      command: `node ../../node_modules/.bin/vite --config ../../e2e-configs/shipped-lib.vite.config.ts --port ${libPort} --strictPort`,
-      cwd: `../examples/${name}-compat`,
+      // Node runs the workspace-root `vite` binary, as `zero-hmr.config.ts`
+      // does. Absolute paths: the app lives in examples/compat/<name>, and
+      // exampleDir() fails loudly if it ever moves.
+      command: `node ${join(REPO_ROOT, 'node_modules/.bin/vite')} --config ${join(REPO_ROOT, 'e2e-configs/shipped-lib.vite.config.ts')} --port ${libPort} --strictPort`,
+      cwd: exampleDir(`compat/${name}`),
       port: libPort,
     },
   ]),

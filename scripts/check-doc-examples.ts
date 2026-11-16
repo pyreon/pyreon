@@ -48,6 +48,7 @@
 import { execSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
+import { exampleDir } from './example-dirs'
 
 const REPO_ROOT = resolve(import.meta.dirname, '..')
 const DOCS_DIR = join(REPO_ROOT, 'docs', 'src', 'content', 'docs')
@@ -79,7 +80,7 @@ const CACHE_DIR = join(REPO_ROOT, '.cache', 'doc-examples')
  * hook, a changed argument shape or a removed export fails here instead of in
  * a reader's editor.
  */
-const LATHE_EXAMPLE_CLIENT = join(REPO_ROOT, 'examples', 'lathe-bookshelf', 'src', 'gen')
+const LATHE_EXAMPLE_CLIENT = join(exampleDir('lathe-bookshelf', REPO_ROOT), 'src', 'gen')
 const MARKER = '// @check'
 
 // ─── Discover @pyreon/* workspace paths for tsconfig path-aliases ─────────

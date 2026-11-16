@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 /**
  * Real-Chromium runtime gate for the `blog` template scaffolded by
- * create-pyreon-app. Boots the pre-scaffolded `examples/cpa-pw-blog`
+ * create-pyreon-app. Boots the pre-scaffolded `examples/fixtures/cpa/blog`
  * fixture and exercises:
  *
  *   1. SSR landing renders the post-list (the markdown collection compiled
@@ -64,7 +64,7 @@ test.describe('cpa-blog — runtime', () => {
 
   test('/api/echo/:path* — catch-all + streaming response', async ({ request }) => {
     // Two-pronged regression canary for the dev API dispatcher (paired with
-    // `examples/cpa-pw-blog/src/routes/api/echo/[...path].ts`):
+    // `examples/fixtures/cpa/blog/src/routes/api/echo/[...path].ts`):
     //
     //   1. Catch-all matching: a `[...path].ts` route compiles to URL pattern
     //      `:path*`. The dispatcher's pre-check must accept multi-segment

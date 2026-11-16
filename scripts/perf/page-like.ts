@@ -12,7 +12,7 @@
 // `locator().waitFor()`, which creates no handle.
 
 import type { Page } from 'playwright'
-import type { PageLike } from '../../examples/perf-dashboard/src/journeys'
+import type { PageLike } from '../../examples/fixtures/perf-dashboard/src/journeys'
 
 export function toPageLike(page: Page): PageLike {
   return {

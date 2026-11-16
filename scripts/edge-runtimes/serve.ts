@@ -1,5 +1,5 @@
 /**
- * Run one of `examples/edge-runtimes`' built deploy artifacts in its REAL
+ * Run one of `examples/fixtures/edge-runtimes`' built deploy artifacts in its REAL
  * runtime (the Playwright webServer command for `e2e/edge-runtimes.spec.ts`).
  *
  *   bun scripts/edge-runtimes/serve.ts <deno|netlify|vercel|cloudflare> <port>
@@ -9,8 +9,9 @@
  * sequentially, because the four builds share one example directory.
  */
 import { spawn } from 'node:child_process'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { edgeToolBin, edgeToolsDir } from './tools'
+import { exampleDir } from '../example-dirs'
 
 const RUNTIMES = ['deno', 'netlify', 'vercel', 'cloudflare'] as const
 type Runtime = (typeof RUNTIMES)[number]
@@ -21,7 +22,7 @@ if (!RUNTIMES.includes(runtime) || !port) {
   process.exit(2)
 }
 
-const example = resolve(import.meta.dirname, '../../examples/edge-runtimes')
+const example = exampleDir('fixtures/edge-runtimes')
 const here = import.meta.dirname
 const denoFlags = ['run', '--allow-net', '--allow-read', '--allow-env']
 

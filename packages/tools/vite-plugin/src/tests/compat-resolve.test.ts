@@ -184,7 +184,7 @@ describe('compat-mode resolveId — framework-importer carve-out', () => {
   // Bisect-verified: when the helper checked `name.startsWith('@pyreon/')`
   // alone (without the `/examples/` exclusion), all 4 compat-layer e2e
   // suites failed in CI with `section.demo` never rendering.
-  const exampleAppImporter = `${repoRoot}/examples/react-compat/src/Foo.tsx`
+  const exampleAppImporter = `${repoRoot}/examples/compat/react/src/Foo.tsx`
 
   it('does NOT redirect @pyreon/core/jsx-runtime when imported FROM @pyreon/zero workspace source (react)', async () => {
     const plugin = bootstrap({ compat: 'react' })

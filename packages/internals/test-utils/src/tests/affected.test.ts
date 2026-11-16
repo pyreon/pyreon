@@ -102,7 +102,7 @@ describe('isRootFile', () => {
   it.each([
     'packages/core/runtime-dom/vitest.config.ts', // a PACKAGE vitest config is not root
     'packages/core/reactivity/src/signal.ts',
-    'examples/playground/src/App.tsx',
+    'examples/fixtures/playground/src/App.tsx',
     'docs/src/content/docs/zero.md',
     'README.md',
     'CLAUDE.md',
@@ -147,7 +147,7 @@ describe('isDocsOnlyChange — Layer-2 heavy-job gate', () => {
     expect(isDocsOnlyChange(['.github/workflows/ci.yml'])).toBe(false)
     expect(isDocsOnlyChange(['scripts/affected.ts'])).toBe(false)
     expect(isDocsOnlyChange(['package.json'])).toBe(false)
-    expect(isDocsOnlyChange(['examples/playground/src/App.tsx'])).toBe(false)
+    expect(isDocsOnlyChange(['examples/fixtures/playground/src/App.tsx'])).toBe(false)
     expect(isDocsOnlyChange(['packages/fundamentals/code/src/editor.ts'])).toBe(false)
   })
 
