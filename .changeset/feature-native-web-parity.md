@@ -1,5 +1,5 @@
 ---
-'@pyreon/feature': patch
+'@pyreon/feature': minor
 '@pyreon/query': patch
 '@pyreon/native-compiler': patch
 '@pyreon/native-runtime-swift': patch
