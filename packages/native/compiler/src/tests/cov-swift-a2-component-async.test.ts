@@ -72,7 +72,7 @@ export function App(props: { uid: number }) {
 }`)
 
   it('a STATIC literal key keeps the plain `.task {}` and never re-keys', () => {
-    expect(out).toContain('.task {\n        if qs.isStale {')
+    expect(out).toContain('.task {\n        await qs.run {')
     expect(out).not.toContain('qs.setKey(')
   })
 
@@ -81,23 +81,23 @@ export function App(props: { uid: number }) {
     expect(out).toContain('qk.setKey("u:\\(q)")')
   })
 
-  it('a DIRECT-VALUE queryFn resolves the computed value — no network, no do/catch', () => {
+  it('a DIRECT-VALUE queryFn hands the runtime a closure returning the computed value — no network', () => {
     // the key here is a literal, so `.task(id:)` takes the JSON-stringified
     // queryKey rather than an emitted expression
     expect(out).toContain('.task(id: "v") {')
     expect(out).toContain('qv.setKey("v")')
-    expect(out).toContain('qv.resolve(uid * 2)')
+    expect(out).toMatch(/await qv\.run \{\s*return uid \* 2\s*\}/)
   })
 
   it('a query carrying a verb/headers/body routes through PyreonHttp with the status guard', () => {
     expect(out).toContain('PyreonHttpRequest(method: .post, url: "https://x/m", headers: ["X-E": "f", "content-type": "text/plain;charset=UTF-8"], body: Data("{}".utf8))')
-    expect(out).toContain('qm.resolve(try __response.decode(U.self))')
+    expect(out).toContain('return try __response.decode(U.self)')
   })
 
-  it('every query guards on `isStale`, so a FRESH cache hit skips the network', () => {
+  it('every query hands its request to the runtime (which skips a FRESH cache hit and keeps it for refetch)', () => {
     for (const n of ['qs', 'qk', 'qv', 'qm']) {
-      expect(out).toContain(`if ${n}.isStale {`)
-      expect(out).toContain(`${n}.begin()`)
+      expect(out).toContain(`await ${n}.run {`)
+      expect(out).not.toContain(`${n}.begin()`)
     }
   })
 })

@@ -69,7 +69,7 @@ import {
   pluginAsyncState,
   persistenceFor,
   pluginDeclIsCallable,
-  pluginLifecycleLines,
+  kotlinLifecycleLines,
   tailLifecycleDecls,
   serviceFor,
   isPluginElement,
@@ -1501,13 +1501,13 @@ function emitKotlinComponent(c: ComponentIR): string {
   }
   // Callback wiring after declarations are available, before component mount effects.
   for (const d of earlyLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2)))
+    for (const line of kotlinLifecycleLines(d, kotlinEmitContext(2)))
       lines.push(line === '' ? '' : `  ${line}`)
   }
   // A plugin container that binds its source and sinks here (`midOrder`): closures over the component's own state,
   // which is not in scope inside the container's own initializer.
   for (const d of midLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2)))
+    for (const line of kotlinLifecycleLines(d, kotlinEmitContext(2)))
       lines.push(line === '' ? '' : `  ${line}`)
   }
   // Phase 4: a `LaunchedEffect(Unit)` per useFetch decl runs the fetch on
@@ -1562,13 +1562,13 @@ function emitKotlinComponent(c: ComponentIR): string {
   // (`useFlow` disposes its listeners; a caller-owned `createFlow` does not).
   for (const d of c.decls) {
     if (!isHeadLifecycleDecl(d)) continue
-    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2)))
+    for (const line of kotlinLifecycleLines(d, kotlinEmitContext(2)))
       lines.push(line === '' ? '' : `  ${line}`)
   }
   // A plugin's lifecycle that is emitted AFTER the compiler's own (`useQuery`, `useStream`), ordered by
   // `tailOrder` then declaration order — the fetch → query → stream grouping these harnesses always had.
   for (const d of tailLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2)))
+    for (const line of kotlinLifecycleLines(d, kotlinEmitContext(2)))
       lines.push(line === '' ? '' : `  ${line}`)
   }
   // While emitting a layout's body, its `<RouterView />` emits `content()`.
@@ -1577,6 +1577,9 @@ function emitKotlinComponent(c: ComponentIR): string {
   // LaunchedEffect harness, before the JSX). If the JSX below emits an async
   // handler, one `rememberCoroutineScope()` val is spliced in here.
   const asyncScopeInsertIndex = lines.length
+  // A harness above that asked for the scope (`useQuery` registers a launcher for `refetch()`) reads it, so it goes
+  // above the harnesses too — a local declaration can only see what precedes it.
+  const harnessesNeedAsyncScope = _hasAsyncHandler && !declsNeedAsyncScope
   // A component that returns `null` / `undefined` renders NOTHING — a @Composable
   // returns Unit, so emit an empty body rather than a stray `null` expression
   // statement (valid-but-pointless in Kotlin; the Swift sibling `nil` was a hard
@@ -1597,7 +1600,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   // `pyreonAsyncScope.launch { … }`; hoist its coroutine scope to the composable
   // top (rememberCoroutineScope() must run at composable scope, not in a lambda).
   if (_hasAsyncHandler) {
-    lines.splice(declsNeedAsyncScope ? declStartIndex : asyncScopeInsertIndex, 0, `  val ${PYREON_ASYNC_SCOPE} = rememberCoroutineScope()`)
+    lines.splice(declsNeedAsyncScope || harnessesNeedAsyncScope ? declStartIndex : asyncScopeInsertIndex, 0, `  val ${PYREON_ASYNC_SCOPE} = rememberCoroutineScope()`)
   }
   // A composition local must be read at composable scope, never inside the `onClick` lambda that uses it.
   if (_needsAndroidContext) {

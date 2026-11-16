@@ -11,7 +11,7 @@
 //   • a TEMPLATE-literal fetch URL (`fetch(`/users/${userId}`)`) → native
 //     string interpolation inside the harness (self/params in scope).
 //   • a DIRECT-VALUE queryFn (`() => <expr>` / `async () => <expr>`, no fetch,
-//     no await) → `resolve(<expr>)`, no URLSession/decode.
+//     no await) → a request closure returning `<expr>`, no URLSession/decode.
 //
 // Bisect: neuter `tryQueryKeyParts`'s `hasExpr` branch (return `{ literal }`
 // always) → the runtime-key specs fall back to the old bail warning; restore
@@ -48,7 +48,7 @@ describe('useQuery() — runtime key + templated URL', () => {
     // Harness keyed on the runtime key string; setKey re-points the cache.
     expect(r.code).toContain('.task(id: "user:\\(userId)") {')
     expect(r.code).toContain('q.setKey("user:\\(userId)")')
-    expect(r.code).toContain('if q.isStale {')
+    expect(r.code).toContain('await q.run {')
     // The templated URL is interpolated inside the harness.
     expect(r.code).toContain(
       'URLSession.shared.data(from: URL(string: "https://api.example.com/users/\\(userId)")!)',
@@ -100,7 +100,7 @@ describe('useQuery() — signal key + direct-value queryFn', () => {
     )
     expect(r.code).toContain('.task(id: "k:\\(id)") {')
     expect(r.code).toContain('q.setKey("k:\\(id)")')
-    expect(r.code).toContain('q.resolve(id)')
+    expect(r.code).toMatch(/await q\.run \{\s*return id\s*\}/)
     // No network path for a direct-value fetcher.
     expect(r.code).not.toContain('URLSession')
   })
@@ -110,7 +110,7 @@ describe('useQuery() — signal key + direct-value queryFn', () => {
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('LaunchedEffect("k:${id}") {')
     expect(r.code).toContain('q.setKey("k:${id}")')
-    expect(r.code).toContain('q.resolve(id)')
+    expect(r.code).toMatch(/q\.run\(launch = \{ __refetch -> pyreonAsyncScope\.launch \{ __refetch\(\) \} \}\) \{\s*id\s*\}/)
     expect(r.code).not.toContain('java.net.URL')
   })
 
