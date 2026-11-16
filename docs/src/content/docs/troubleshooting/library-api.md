@@ -203,3 +203,9 @@ Whatever a template ships is what a deployed app runs until someone replaces it,
 `@pyreon/kinetic`'s stagger renderers filtered children on `'type' in child`, but the compiler lowers literal markup (`<li>Install</li>`) to a pre-built `_tpl` item on the client and `_ssr` raw HTML on the server, so the docs' own stagger example rendered an empty `<ol>`. A forwarded `children` arrives as an accessor, and around a user's own `() => items.map(…)` as an accessor returning an accessor (one `typeof === 'function'` unwrap threw `children is not iterable`). **Rule: flatten children by unwrapping EVERY accessor level and every array/fragment; decorate a `_tpl` item by setting the extras on its element at mount (it has no props to clone), and pass raw server HTML through. Test it through the real compiler: kinetic's browser suite runs `@pyreon/vite-plugin` for exactly this.** Kinetic's group renderers also rebuilt every row on each change, so a removed row never unmounted: a keyed animated list keeps one row per key (`<For by>`), flips that row's `show` to leave, and drops it from its own `onAfterLeave`.
 
 ---
+
+### Lowering a web "no data" without checking what the library above does with it
+
+A 204 makes `@pyreon/http`'s `.json()` and `@pyreon/feature`'s fetcher resolve `undefined`, but TanStack Query v5 FAILS a query whose `queryFn` resolves `undefined` (`<queryHash> data is undefined`, no retry) while a mutation SUCCEEDS with it, and `useFetch(endpoint(…))` settles with no data. The native lowering mirrors each path (`PyreonQueryDataUndefined` for a query, `resolveEmpty()` / `orEmpty` otherwise); a blanket "204 = success with no data" would make a native query succeed where the web one errors. Read the consuming library's source before claiming a web behaviour. Locked by `native-query-web-parity.test.ts` and the web corpora in `@pyreon/http` / `@pyreon/feature`.
+
+---

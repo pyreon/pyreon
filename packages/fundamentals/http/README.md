@@ -300,6 +300,8 @@ expect(handle.calls).toHaveLength(1)
 
 The compile-time half of the endpoint DSL ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon native`), not in `@pyreon/native-compiler`: a same-file `createHttp({ baseUrl })` + `client.endpoint('GET /users/:id')` is scanned as metadata that emits nothing, and a call of an endpoint resolves to a concrete request (URL templated and percent-encoded, query serialised, literal headers and json body baked, a runtime `:param` rendered as native string interpolation). `useFetch` (`@pyreon/hooks`) and `useQuery` / `useStream` (`@pyreon/query`) read it through the compiler's request-source seam. `--no-plugins` builds treat the package like any unclaimed library.
 
+Every lowered request (`useFetch`, `useQuery`, `useMutation`, an awaited or fired endpoint call) runs through the client's `throwHttpErrors` check as its outermost middleware layer, so a non-2xx rejects with this package's `HttpError` message — `[Pyreon] <METHOD> <url> — HTTP <status>`, the URL redacted — named `ClientError` / `ServerError`. An answer without JSON (204 / 205 / 304 / empty) is `undefined`, as `.json()` makes it: `useFetch` settles with no data, a mutation succeeds with none, and a `useQuery` fails with TanStack's `<queryHash> data is undefined`.
+
 ## License
 
 MIT

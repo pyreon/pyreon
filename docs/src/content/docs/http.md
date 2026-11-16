@@ -399,6 +399,11 @@ The client covers the common path; these are the building blocks underneath it.
 
 The client itself is web/Node only — the transport and middleware run on `fetch`. On iOS and Android (PMTC), same-file endpoint calls lower to the native networking runtime instead: `useFetch<T>(getUser({ params: { id: '1' } }))` becomes a `PyreonFetch`, `useQuery<T>(() => getUser.query({ params: { id: '1' } }))` a cached `PyreonQuery`, and `useStream` over `openEventStream` / `openNdjsonStream` with a same-file endpoint a `PyreonStream`. A computed `baseUrl` stays web.
 
+Errors and empty answers behave as the client defines them, on both targets:
+
+- **A non-2xx rejects with `HttpError`.** Every lowered request runs through the client's `throwHttpErrors` check as the outermost layer, after any `use` middleware, so `error.message` is the web's `[Pyreon] <METHOD> <url> — HTTP <status>`, the URL redacted (no query string, fragment or userinfo), and the error is named `ClientError` (4xx), `ServerError` (5xx) or `HttpError`.
+- **An answer without JSON is `undefined`.** A `204`, `205` or `304`, or an empty body: `useFetch` settles with no data, a `useMutation` succeeds with none, and a `useQuery` fails with TanStack's `<queryHash> data is undefined`, the hash written from the web key (`["GET","/users/:id",{"params":{"id":"1"}}]`, including a literal `keyScope`).
+
 The client's middleware crosses too, when the `use` array is a literal the compiler can read:
 
 ```ts
@@ -428,7 +433,7 @@ function SignIn() {
   const save = useMutation<Profile>(saveProfile.mutation())
 
   const submit = async () => {
-    // Lowers to PyreonHttp.call: a non-2xx rejects and ends the handler here.
+    // Lowers to PyreonHttp.call: a non-2xx rejects with HttpError and ends the handler here.
     await signIn({ json: { email: email() }, headers: { 'x-client': 'app' } })
     save.mutate({ params: { id: 'me' }, json: { email: email() } })
   }

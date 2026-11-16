@@ -347,6 +347,8 @@ Full docs: [pyreon.dev/docs/query](https://pyreon.dev/docs/query) (or `docs/src/
 
 Natively the process-wide `PyreonQueryCache` is the query client: a query that registered its request is live until its view goes away, `invalidateQueries(root)` marks every key `root` or `root:…` stale and refetches the live ones, and `setQueryData` writes optimistically and returns the rollback. `@pyreon/feature`'s CRUD mutations settle through it, so a successful save refreshes the feature's lists and records as on the web.
 
+`useQueryClient()` binds it in shared code: `qc.invalidateQueries({ queryKey: ['users'] })` (with `exact`, or with no filter) and `useMutation({ invalidates: [['users']] })` lower onto it. A native key is the web key's parts joined with `:`, so a key part the join cannot hold faithfully (a string containing `:`, an object / array / boolean / `null` part, an `@pyreon/http` endpoint key starting with an HTTP method), another filter, and every other client method are refused with a warning naming them. An endpoint query's error reads `@pyreon/http`'s `HttpError` message, and a `204` fails it with TanStack's `<queryHash> data is undefined`, as on the web.
+
 ## License
 
 MIT

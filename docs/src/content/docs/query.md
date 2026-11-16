@@ -1429,6 +1429,25 @@ Type re-exports include `QueryKey`, `QueryFilters`, `MutationFilters`, `Dehydrat
 
 The full client wraps TanStack Query, a JavaScript runtime cache, so `QueryClient` configuration, devtools, and infinite / suspense queries are web only. On iOS and Android (PMTC), `useQuery` (key + fetcher, loading / error / data state) lowers to the native `PyreonQuery` runtime, `useMutation` over a same-file `@pyreon/http` endpoint (`useMutation<T>(ep.mutation())`, or `mutationFn: (vars) => ep({ json: vars })`) lowers to `PyreonMutation` — each `mutate` / `mutateAsync` builds its request at the call site from runtime values, see [Sending what the user entered](/docs/http#sending-what-the-user-entered) — and `useStream` over `openEventStream` / `openNdjsonStream` lowers to `PyreonStream`.
 
+The native query client is `PyreonQueryCache`. `useQueryClient()` (or `new QueryClient()`) binds it, and invalidation lowers with the web's key semantics:
+
+```tsx
+const qc = useQueryClient()
+const save = useMutation<User>({
+  mutationFn: (user: User) => saveUser({ json: user }),
+  onSuccess: () => {
+    qc.invalidateQueries({ queryKey: ['users'] }) // every ['users', …] query refetches
+  },
+})
+const add = useMutation<User>({ ...saveUser.mutation(), invalidates: [['users', 'list']] })
+```
+
+- A native key is the web key's parts joined with `:` (`['user', id]` → `user:<id>`), so the web's prefix match is "the key, or a key starting with `key:`", and `exact: true` is equality. `invalidateQueries()` with no filter invalidates every query.
+- A key part the join cannot hold faithfully is refused with a warning naming it: a string containing `:`, an object, array, boolean or `null` part, and a key that starts with an HTTP method (an `@pyreon/http` endpoint query is keyed natively by its resolved `METHOD:url`, so no web key prefix names it). So are the other filters (`refetchType` other than `'active'`, `type`, `predicate`, `stale`, `fetchStatus`) and every other client method (`setQueryData`, `getQueryData`, …).
+- On the web, `invalidateQueries` resolves once the refetches it started have settled, and a `useMutation` option callback that returns it keeps the mutation pending until then. Natively the call starts the refetches and returns, so an awaited or returned invalidation is reported.
+
+Errors and empty answers read as they do on the web: `q.error()?.message` is `@pyreon/http`'s `HttpError` message (`[Pyreon] GET https://api.example.com/users/1 — HTTP 404`, the URL without its query string) for an endpoint query, and a `204` on an endpoint query fails it with TanStack's own error, `["GET","/users/:id",{"params":{"id":"1"}}] data is undefined`. A `204` on a `useMutation` over an endpoint is a success with no data, so read its `onSuccess` value with `?.`.
+
 ## WebSocket Subscriptions — `useSubscription()`
 
 Connect a WebSocket to the query cache for realtime data updates. Auto-reconnects with exponential backoff.
