@@ -476,14 +476,27 @@ function splitSubsetBlocks(css: string): Array<{ subset: string; text: string }>
 export function pickPreloadHrefs(css: string, primarySubset: string, limit: number): string[] {
   if (limit <= 0) return []
   const hrefOf = (text: string): string | undefined => text.match(/url\((\/[^)]+)\)/)?.[1]
+  const familyOf = (text: string): string => text.match(/font-family:\s*['"]?([^'";]+)/)?.[1]?.trim() ?? ''
   const blocks = splitSubsetBlocks(css)
-  const all = blocks.map((b) => hrefOf(b.text)).filter((h): h is string => h !== undefined)
-  const primary = blocks
-    .filter((b) => b.subset === primarySubset)
-    .map((b) => hrefOf(b.text))
-    .filter((h): h is string => h !== undefined)
-  const chosen = primary.length > 0 ? primary : all
-  return chosen.slice(0, limit)
+  const primary = blocks.filter((b) => b.subset === primarySubset)
+  const chosen = primary.some((b) => hrefOf(b.text) !== undefined) ? primary : blocks
+  // One file per FAMILY. A variable font serves every weight from one file,
+  // so css2 repeats the same URL for 400, 500 and 600: taking the first
+  // `limit` blocks preloaded one family's file twice and never reached the
+  // next family (the display font swapped in late and its headings re-wrapped).
+  const seenFamily = new Set<string>()
+  const seenHref = new Set<string>()
+  const out: string[] = []
+  for (const b of chosen) {
+    const href = hrefOf(b.text)
+    const family = familyOf(b.text)
+    if (href === undefined || seenHref.has(href) || seenFamily.has(family)) continue
+    seenFamily.add(family)
+    seenHref.add(href)
+    out.push(href)
+    if (out.length === limit) break
+  }
+  return out
 }
 
 /**
