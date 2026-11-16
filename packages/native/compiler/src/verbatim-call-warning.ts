@@ -56,12 +56,9 @@ function scanCode(code: string, start: number, close: ')' | '}' | undefined): { 
     if (close !== undefined && c === close && depth === 0) return { out, end: i + 1 }
     if (open !== undefined && c === open) depth++
     else if (close !== undefined && c === close) depth--
-    if (c === '/' && n === '/') {
-      while (i < code.length && code[i] !== '\n') i++
-    } else if (c === '/' && n === '*') {
-      i += 2
-      while (i < code.length && !(code[i] === '*' && code[i + 1] === '/')) i++
-      i += 2
+    const afterComment = c === '/' ? skipComment(code, i, n) : undefined
+    if (afterComment !== undefined) {
+      i = afterComment
     } else if (c === '"') {
       const triple = code.startsWith('"""', i)
       const s = scanString(code, i + (triple ? 3 : 1), triple)
@@ -73,7 +70,24 @@ function scanCode(code: string, start: number, close: ')' | '}' | undefined): { 
       i++
     }
   }
+
   return { out, end: i }
+}
+
+/** The index just past a line or block comment starting at `i`, or undefined when none starts there. */
+function skipComment(code: string, i: number, next: string | undefined): number | undefined {
+  if (next === '/') {
+    let j = i
+    while (j < code.length && code[j] !== '\n') j++
+
+    return j
+  }
+
+  if (next !== '*') return undefined
+  let j = i + 2
+  while (j < code.length && !(code[j] === '*' && code[j + 1] === '/')) j++
+
+  return j + 2
 }
 
 /** Scan a string body from `start` to its closing quote, returning only the code of its interpolations. */
@@ -93,6 +107,7 @@ function scanString(code: string, start: number, triple: boolean): { out: string
       i += c === '\\' ? 2 : 1
     }
   }
+
   return { out, end: i }
 }
 
