@@ -1,7 +1,8 @@
 import { expect, type Page, test } from '@playwright/test'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { waitForNav } from './site-islands'
+import { auditLayout, SITE_WIDTHS, TOUCH_WIDTHS, trackShiftsScript } from './site-audit'
+import { waitForIslands, waitForNav } from './site-islands'
 
 /**
  * pyreon.dev marketing shell, against the production SSG build (served like
@@ -12,8 +13,27 @@ import { waitForNav } from './site-islands'
  * the server DOM, and the contrast of every text node on the kit gallery,
  * the homepage and the docs in both themes.
  */
-const WIDTHS = [320, 390, 768, 1024, 1440]
-const ROUTES = ['/', '/products', '/products/form', '/products/reactivity', '/products/a11y', '/brand/kit', '/blog', '/showcase', '/open', '/404-check']
+const WIDTHS = SITE_WIDTHS
+/** One page of every type the site has. */
+const ROUTES = [
+  '/',
+  '/products',
+  '/products/form',
+  '/products/reactivity',
+  '/products/a11y',
+  '/why/one-codebase',
+  '/compare/react',
+  '/migrate/react',
+  '/benchmarks',
+  '/brand/kit',
+  '/blog',
+  '/blog/where-pyreon-is-not-the-fastest',
+  '/showcase',
+  '/open',
+  '/docs',
+  '/docs/router',
+  '/404-check',
+]
 
 /** Records element nodes removed from #app during load: hydration that adopts the server DOM removes none. */
 async function trackRemovals(page: Page): Promise<void> {
@@ -88,43 +108,23 @@ test.describe('hydration', () => {
   }
 })
 
-test.describe('no horizontal page scroll', () => {
+test.describe('no horizontal page scroll, no clipped text', () => {
   for (const width of WIDTHS) {
     test(`at ${width}px`, async ({ page }) => {
+      test.setTimeout(180_000)
       await page.setViewportSize({ width, height: 900 })
       for (const route of ROUTES) {
         await page.goto(route)
         await waitForNav(page)
         const r = await page.evaluate(auditLayout, false)
         expect(r.scroll, `${route} scrollWidth`).toBeLessThanOrEqual(0)
-        expect(r.offenders, `${route} content wider than the page`).toEqual([])
+        expect(r.wide, `${route} content wider than the page`).toEqual([])
+        expect(r.clipped, `${route} text cut off by its box`).toEqual([])
       }
     })
   }
 })
 
-test.describe('Products and Why menus (desktop)', () => {
-  test.use({ viewport: { width: 1440, height: 900 } })
-
-  test('open by keyboard, links follow in tab order, Escape returns focus', async ({ page }) => {
-    await page.goto('/')
-    await waitForNav(page)
-    const button = page.locator('[aria-controls=site-products-menu]')
-    await button.focus()
-    await expect(button).toHaveAttribute('aria-expanded', 'false')
-    await expect(page.locator('#site-products-menu')).toBeHidden()
-    await page.keyboard.press('Enter')
-    await expect(button).toHaveAttribute('aria-expanded', 'true')
-    await expect(page.locator('#site-products-menu')).toBeVisible()
-    await expect(page.locator('#site-products-menu a[href^="/products/"]')).toHaveCount(40)
-    await page.keyboard.press('Tab')
-    await expect(page.locator(':focus')).toHaveAttribute('href', '/products/zero')
-    await page.keyboard.press('Escape')
-    await expect(button).toHaveAttribute('aria-expanded', 'false')
-    await expect(button).toBeFocused()
-  })
-
-  test('one menu at a time; click outside closes', async ({ page }) => {
 test.describe('tap targets on touch screens', () => {
   // theme.ts `touch`: below 992px every control is at least 44px tall; a
   // link inside running text is exempt (WCAG 2.5.8).
@@ -256,6 +256,28 @@ test.describe('typography', () => {
   })
 })
 
+test.describe('Products and Why menus (desktop)', () => {
+  test.use({ viewport: { width: 1440, height: 900 } })
+
+  test('open by keyboard, links follow in tab order, Escape returns focus', async ({ page }) => {
+    await page.goto('/')
+    await waitForNav(page)
+    const button = page.locator('[aria-controls=site-products-menu]')
+    await button.focus()
+    await expect(button).toHaveAttribute('aria-expanded', 'false')
+    await expect(page.locator('#site-products-menu')).toBeHidden()
+    await page.keyboard.press('Enter')
+    await expect(button).toHaveAttribute('aria-expanded', 'true')
+    await expect(page.locator('#site-products-menu')).toBeVisible()
+    await expect(page.locator('#site-products-menu a[href^="/products/"]')).toHaveCount(40)
+    await page.keyboard.press('Tab')
+    await expect(page.locator(':focus')).toHaveAttribute('href', '/products/zero')
+    await page.keyboard.press('Escape')
+    await expect(button).toHaveAttribute('aria-expanded', 'false')
+    await expect(button).toBeFocused()
+  })
+
+  test('one menu at a time; click outside closes', async ({ page }) => {
     await page.goto('/')
     await waitForNav(page)
     await page.click('[aria-controls=site-products-menu]')
@@ -338,7 +360,7 @@ test.describe('theme', () => {
 })
 
 test.describe('contrast on the kit gallery and the homepage', () => {
-  for (const [route, theme] of [['/brand/kit', 'dark'], ['/brand/kit', 'light'], ['/', 'dark'], ['/', 'light'], ['/404-check', 'dark'], ['/404-check', 'light']] as const) {
+  for (const [route, theme] of [['/brand/kit', 'dark'], ['/brand/kit', 'light'], ['/', 'dark'], ['/', 'light'], ['/404-check', 'dark'], ['/404-check', 'light'], ['/docs', 'dark'], ['/docs', 'light'], ['/docs/router', 'dark'], ['/docs/router', 'light']] as const) {
     test(`every text node on ${route} passes WCAG AA (${theme})`, async ({ browser }) => {
       const ctx = await browser.newContext({ colorScheme: theme, viewport: { width: 1440, height: 900 } })
       const page = await ctx.newPage()
