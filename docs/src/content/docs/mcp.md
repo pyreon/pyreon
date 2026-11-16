@@ -1020,7 +1020,7 @@ The report is a build artifact, so a report older than a day is flagged with its
 `@pyreon/sized-map`, `@pyreon/core`, `@pyreon/reactivity`, `@pyreon/runtime-dom`
 
 ## Depended on by (29)
-`@pyreon/docs`, `@pyreon/example-ai-reference`, ..., `@pyreon/zero`, `@pyreon/zero-content`
+`@pyreon/docs`, `@pyreon/example-app-showcase`, ..., `@pyreon/zero`, `@pyreon/zero-content`
 
 > Loom reads DECLARED truth — …
 ```

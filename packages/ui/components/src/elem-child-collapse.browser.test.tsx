@@ -12,8 +12,9 @@ import { Button } from './index'
 /**
  * Element-child collapse — real `@pyreon/ui-components` Button, real Chromium.
  *
- * This is the CI-gated proof (the `examples/experiments/e2-static-rocketstyle`
- * E2 file is a one-off, un-gated measurement). It exercises the REAL Button
+ * This is the CI-gated proof (the E2 experiment was a one-off, un-gated
+ * measurement; its record is
+ * `.agents/guides/internals/references/experiments/e2-static-rocketstyle.md`). It exercises the REAL Button
  * wrapping a static ELEMENT child (`<span class="ico">…</span>`) — the shape
  * element-child collapse targets — and proves, against the actual component:
  *
