@@ -1,0 +1,28 @@
+{
+  "name": "@pyreon/example-native-counter",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — Counter plus device APIs (geolocation, haptics, share, picker): one source (src/Counter.tsx) built for iOS (ios/) and Android (android/) from this one directory, the layout create-multiplatform scaffolds. Device-gated in native-device.yml.",
+  "scripts": {
+    "build:ios": "bash scripts/build-ios.sh",
+    "build:android": "bash scripts/build-android.sh",
+    "xcode": "bash scripts/xcode-setup.sh",
+    "check": "bun ../../packages/native/cli/src/cli.ts check --source=src/Counter.tsx",
+    "lint": "echo '[native-counter] no TS lint surface; skipping'",
+    "test": "echo '[native-counter] no unit tests; device tests run in native-device.yml (see README)'",
+    "typecheck": "echo '[native-counter] no TS typecheck surface'"
+  },
+  "devDependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/flow": "workspace:*",
+    "@pyreon/store": "workspace:*",
+    "@pyreon/hooks": "workspace:*",
+    "@pyreon/i18n": "workspace:*",
+    "@pyreon/machine": "workspace:*",
+    "@pyreon/native-cli": "workspace:*",
+    "@pyreon/primitives": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/rocketstyle": "workspace:*"
+  }
+}

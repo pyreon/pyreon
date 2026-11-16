@@ -2,11 +2,14 @@
   "name": "@pyreon/example-native-finance",
   "version": "0.50.3",
   "private": true,
-  "description": "PRIVATE / EXPERIMENTAL \u2014 Phase-5 finance-tracker showcase. SINGLE source compiles to web + iOS + Android, exercising the data/services hook emit (#1689): useAuth<User> auth-state container, useDatabase persistence, a cross-screen defineStore reactive ledger, computed balance, validated useForm, multi-screen routing + store-backed auth-gate, and canonical primitives. native-examples-compile.test.ts in @pyreon/native-compiler compiles this source on both targets (swiftc typecheck + kotlinc).",
+  "description": "PRIVATE — the REAL-APP device gate: one source (src/FinanceApp.tsx) built as an iOS app (ios/) and an Android app (android/) from this one directory, the layout create-multiplatform scaffolds. Multi-screen routing, useAuth, useForm, a cross-screen store, useDatabase. native-examples-compile.test.ts in @pyreon/native-compiler compiles this source on both targets.",
   "license": "MIT",
   "scripts": {
+    "build:ios": "bash scripts/build-ios.sh",
+    "build:android": "bash scripts/build-android.sh",
+    "check": "bun ../../packages/native/cli/src/cli.ts check --source=src/FinanceApp.tsx",
     "lint": "echo '[native-finance] no TS lint surface; skipping'",
-    "test": "echo '[native-finance] no test surface; PMTC emit covered by @pyreon/native-compiler native-examples-compile.test.ts'",
+    "test": "echo '[native-finance] no unit tests; device tests run in native-device.yml (see README)'",
     "typecheck": "echo '[native-finance] @ts-nocheck on source; PMTC handles typing'"
   },
   "devDependencies": {
