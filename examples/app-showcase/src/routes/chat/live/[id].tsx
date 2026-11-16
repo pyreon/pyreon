@@ -250,7 +250,7 @@ function LiveChannel() {
         <ComposerInput
           placeholder={() => `Message #${channel?.name ?? channelId}`}
           value={() => draft}
-          onInput={(e) => {
+          onInput={(e: Event) => {
             draft = (e.currentTarget as HTMLInputElement).value
           }}
           data-testid="message-input"
