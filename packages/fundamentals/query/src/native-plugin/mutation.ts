@@ -37,7 +37,10 @@ import {
   type ExtExprIR,
   type HttpRequestParts,
   type KotlinEmitContext,
+  type ExtExprSpec,
   type MethodCallRecognizer,
+  type MethodCallSite,
+  type ModuleParseContext,
   type ModuleScan,
   type ParseContext,
   type StatementIR,
@@ -61,7 +64,7 @@ interface Callback {
 }
 
 /** The three callbacks one layer (the options, or one call) may carry. */
-interface Callbacks {
+export interface Callbacks {
   readonly onSuccess?: Callback
   readonly onError?: Callback
   readonly onSettled?: Callback
@@ -390,6 +393,44 @@ export const recognizeMutateCall: MethodCallRecognizer = (site, ctx) => {
   // fields (without it an `s.number()` field stayed an integer and a fractional reply failed to decode), and with no
   // schema an integer-default field is named (#3956).
   if (!isVoid(binding.type)) ctx.recordDecode(binding.type, resolved.response)
+  return mutateCallSpec(site, ctx, { name, type: binding.type, options: binding.options }, resolved)
+}
+
+/** The request one `mutate` call site sends — a resolved endpoint call, or a request another plugin built itself. */
+export interface MutateRequest {
+  readonly method: string
+  /** The URL as a constant — with `:name` placeholders when `urlExpr` builds the real one. */
+  readonly url: string
+  readonly urlExpr?: ExprIR | undefined
+  readonly headers?: Readonly<Record<string, string>> | undefined
+  readonly headerExprs?: Readonly<Record<string, ExprIR>> | undefined
+  readonly body?: string | undefined
+  readonly bodyExpr?: ExprIR | undefined
+  readonly upload?: ExprIR | undefined
+}
+
+/** The container a call site settles: its binding, the decoded type, and the callbacks its declaration carried. */
+export interface MutateBinding {
+  readonly name: string
+  readonly type: TypeIR
+  readonly options: Callbacks
+}
+
+/**
+ * `<binding>.mutate(vars, callbacks?)` / `.mutateAsync(…)` lowered to the `PyreonMutation` call that sends `request`.
+ * The call-level callbacks are read from the site's second argument. Exported so a package whose hook IS a mutation
+ * (`@pyreon/feature`'s `useCreate()`) drives the same container and the same emit with a request it builds itself.
+ * Register {@link mutateExpr} / {@link mutateAsyncExpr} under {@link MUTATE_TYPE} / {@link MUTATE_ASYNC_TYPE} in the
+ * caller's `exprs`, and run {@link scanMutations} in its `scanModule` so an awaited `mutateAsync` is recognized.
+ */
+export function mutateCallSpec(
+  site: MethodCallSite,
+  ctx: ModuleParseContext,
+  binding: MutateBinding,
+  resolved: MutateRequest,
+): ExtExprSpec {
+  const name = binding.name
+  const where = `${name}.${site.method}`
   const parse = (fn: AnyNode) => callbackOf(ctx.functionDeclaration(`__${name}_cb`, fn))
   const call = readCallbacks(site.args[1] as AnyNode | undefined, where, (m) => ctx.report(`${where}: ${m}`), parse)
   const args: ExprIR[] = []
@@ -414,7 +455,7 @@ export const recognizeMutateCall: MethodCallRecognizer = (site, ctx) => {
   }
   // Only an AWAITED `mutateAsync` is the throwing, value-returning form; an un-awaited one is a fire-and-forget
   // `mutate` (the state carries the outcome either way).
-  const awaited = site.method === 'mutateAsync' && facts.awaited.has(site.node)
+  const awaited = site.method === 'mutateAsync' && mutationFacts(ctx).awaited.has(site.node)
   return { type: awaited ? MUTATE_ASYNC_TYPE : MUTATE_TYPE, payload: payload as never, args }
 }
 

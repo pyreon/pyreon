@@ -141,6 +141,7 @@ import {
   typeContainsFunction,
   typeIsOptional,
   unwrapOptionalType,
+  isInlineObjectAnnotation,
   registerComponentFnReturns,
   widenFloatLocals,
   widenFloatSignals,
@@ -1227,11 +1228,41 @@ function emitKotlinModuleDecl(md: ModuleDeclIR): string {
   if (md.type.kind === 'unknown') {
     return `private ${kw} ${kotlinIdent(md.name)} = ${initial}`
   }
+  // An inline object annotation over an object / array literal names no type the file declares, and there is no
+  // component to synthesize one in: the literal's own struct already IS the type, so let the target infer it.
+  if (isInlineObjectAnnotation(md.type) && (md.initial.kind === 'object' || md.initial.kind === 'array')) {
+    return `private ${kw} ${kotlinIdent(md.name)} = ${initial}`
+  }
   return `private ${kw} ${kotlinIdent(md.name)}: ${kotlinType(md.type)} = ${initial}`
 }
 
 /** The component being emitted's `KotlinCtx` — what `EmitContext.statements` emits statements against. */
 let _activeKotlinCtx: KotlinCtx | undefined
+/**
+ * The ctx of the component being emitted, set for exactly its emit (unlike `_activeKotlinCtx`, which a member scope
+ * swaps and nothing clears): where an inline object type at a position that passes no ctx synthesizes its class.
+ */
+let _componentSynthKotlin: KotlinCtx | undefined
+/** Set while a caller asked for a type's spelling WITHOUT synthesis (`typeText(t, { synthesize: false })`). */
+let _typeSynthesisSuppressedKotlin = false
+
+function withoutTypeSynthesisKotlin<T>(run: () => T): T {
+  const outer = _typeSynthesisSuppressedKotlin
+  _typeSynthesisSuppressedKotlin = true
+  try {
+    return run()
+  } finally {
+    _typeSynthesisSuppressedKotlin = outer
+  }
+}
+
+/** The warning for an inline object type with no data class to become (shared wording with emit-swift). */
+function inlineObjectTypeWarningKotlin(t: Extract<TypeIR, { kind: 'object' }>): string {
+  return (
+    `an inline object type \`{ ${t.fields.map((f) => f.name).join('; ')} }\` is used where no struct can be synthesized ` +
+    `for it (outside a component), so it has no native type. Declare it as a named \`interface\` or \`type\` and use the name.`
+  )
+}
 
 interface KotlinCtx {
   /** Anonymous object types synthesized as named data classes. */
@@ -1416,6 +1447,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   }
   // The component's emit context, for a plugin that emits a statement list (`EmitContext.statements`).
   _activeKotlinCtx = ctx
+  _componentSynthKotlin = ctx
   // Expose the component's inference ctx to the object-literal emit so a
   // non-literal field (`{ id: count() }`) gets its data-class field type
   // inferred (mirrors the Swift `_exprInferCtx`).
@@ -1483,6 +1515,10 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.push(emitKotlinDataClass(synth))
     lines.push('')
   }
+  // A class synthesized AFTER this point (a plugin's `typeText` over an inline object type, emitted with the body)
+  // is spliced in here once the component is done, so it is declared rather than referenced and silently dropped.
+  const synthClassesAt = lines.length
+  const synthClassesEmitted = ctx.synthesizedDataClasses.length
   // Phase 3 (nested routes) — a LAYOUT component gains a trailing
   // `content: @Composable () -> Unit` slot; its `<RouterView />` becomes
   // `content()` so the matched child fills it.
@@ -1604,6 +1640,12 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.splice(declsNeedAndroidContext ? declStartIndex : asyncScopeInsertIndex, 0, `  val ${PYREON_ANDROID_CONTEXT} = LocalContext.current`)
   }
   lines.push(`}`)
+  if (ctx.synthesizedDataClasses.length > synthClassesEmitted) {
+    const late: string[] = []
+    for (let i = synthClassesEmitted; i < ctx.synthesizedDataClasses.length; i++) late.push(emitKotlinDataClass(ctx.synthesizedDataClasses[i]!), '')
+    lines.splice(synthClassesAt, 0, ...late)
+  }
+  _componentSynthKotlin = undefined
   _activePropsParamName = undefined
   _signalNames = new Set()
   _functionNames = moduleFunctionNamesKotlin()
@@ -3039,7 +3081,6 @@ export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): str
       // `ProfileMeta`) and the field is rewritten to a typeRef — without the
       // rewrite `emitKotlinDataClass` renders the nested object as `Any`,
       // which is NOT `@Serializable` and breaks a real Android build.
-      if (!ctx) return 'Any'
       // A shape the file already names — declared, lifted from a prop, or
       // synthesized earlier — IS that type. Synthesizing a second class for it
       // gave one value two nominal types (`GetItemDataData` vs
@@ -3047,10 +3088,21 @@ export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): str
       // the two meet. Mirrors emit-swift's `swiftType` object case.
       const known = knownKotlinShape(t)
       if (known !== undefined) return known
+      // A position that passes no context still sits inside the component being emitted (a lambda parameter, a
+      // local's annotation, a `JSON.parse<…>` target): the shape is one of that component's data classes, spliced in
+      // when the component finishes if it was synthesized after the class list was written.
+      const synthCtx = ctx ?? (_typeSynthesisSuppressedKotlin ? undefined : _componentSynthKotlin)
+      if (synthCtx === undefined) {
+        if (t.fields.length > 0 && !_typeSynthesisSuppressedKotlin) {
+          const message = inlineObjectTypeWarningKotlin(t)
+          if (!_emitWarnings.includes(message)) _emitWarnings.push(message)
+        }
+        return 'Any'
+      }
       return registerKotlinSynthClass(
         t,
-        ctx,
-        synthesizeDataClassName(ctx.componentName, signalName),
+        synthCtx,
+        synthesizeDataClassName(synthCtx.componentName, signalName),
       )
     }
     case 'null':
@@ -3137,7 +3189,8 @@ function synthesizeDataClassName(componentName: string, signalName?: string): st
   // `TodoList` + `entries` → `TodoListEntry`
   // Fallback: `TodoListData`
   if (!signalName) return `${componentName}Data`
-  const stripped = signalName.endsWith('s') ? signalName.slice(0, -1) : signalName
+  // A one-letter `s` must not strip to nothing: the name would be the component's own.
+  const stripped = signalName.endsWith('s') && signalName.length > 1 ? signalName.slice(0, -1) : signalName
   return componentName + stripped.charAt(0).toUpperCase() + stripped.slice(1)
 }
 
@@ -3186,9 +3239,17 @@ function valueFitsKotlinField(value: ExprIR, field: TypeIR): boolean {
 function registerKotlinSynthClass(
   t: Extract<TypeIR, { kind: 'object' }>,
   ctx: KotlinCtx,
-  name: string,
+  derivedName: string,
 ): string {
-  if (ctx.synthesizedDataClasses.some((s) => s.name === name)) return name
+  let name = derivedName
+  const taken = ctx.synthesizedDataClasses.find((s) => s.name === name)
+  if (taken !== undefined) {
+    // Same name, same shape: the class this type already is. A DIFFERENT shape under the derived name (two inline
+    // type arguments in one component both derive `<Component>Data`) gets its own class — returning the taken name
+    // silently retyped the second value as the first shape.
+    if (_structTypedKeyToName.get(structShapeKey(t.fields)) === name) return name
+    name = uniqueKotlinClassName(ctx, name)
+  }
   // Index the class under BOTH keys, as `registerSwiftSynthStruct` does, so an object literal of this shape emits as
   // `AppPt(…)`. Kotlin registered it under neither, so every literal synthesised its own `__ObjN` instead: harmless
   // while every row had identical value types, but a column mixing `1.5` and `3` gave the rows DIFFERENT classes,
@@ -5684,7 +5745,9 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
       generic: emitKotlinGeneric,
       // Against the component's own `KotlinCtx`: an inline object type (a query's `{ data: { id: string } }`) synthesizes a named data class there.
       typeText: (type, options) =>
-        kotlinType(type, options?.synthesize === false ? undefined : _activeKotlinCtx),
+        options?.synthesize === false
+          ? withoutTypeSynthesisKotlin(() => kotlinType(type))
+          : kotlinType(type, _activeKotlinCtx),
       rowType: resolveKotlinRowTypeName,
       rowFields: resolveKotlinStructFields,
       inferType: (e) => inferType(e, _kotlinExprInferCtx),

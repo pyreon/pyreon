@@ -118,8 +118,8 @@ export function isRootFile(path: string): boolean {
 /**
  * A standalone tooling script under `scripts/` (mapped to @pyreon/test-utils).
  *
- * `.json` is included deliberately: gate-INPUT data files (`import-budgets.json`,
- * `bundle-budgets.json`, `lint-baseline.json`, …) live here, their logic is
+ * `.json` is included deliberately: gate-INPUT data files (the ceilings under
+ * `size-budgets/`, `lint-baseline.json`, …) live here, their logic is
  * tested from @pyreon/test-utils, and — load-bearing — `e2e-affected.ts`
  * treats ANY `scripts/**` change as unknown-blast-radius → run ALL suites.
  * If this classifier returns false for a shape e2e-affected returns true for,

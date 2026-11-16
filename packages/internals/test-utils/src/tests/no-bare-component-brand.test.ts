@@ -11,7 +11,7 @@
  * @pyreon/elements, importing just <Portal> paid the whole 7.5KB gz; the
  * PURE-form fix took it to 2.39KB (Element 4.02KB). The components pin each
  * other, so a single offending file taxes every SIBLING import — which is why
- * the aggregate is ALSO locked in scripts/import-budgets.json
+ * the aggregate is ALSO locked by the import ceilings in scripts/size-budgets/packages/elements.json
  * (@pyreon/elements::portal / ::element) and why this guard exists per-file.
  *
  * The allowed form (identity, call sites, stack traces unchanged):

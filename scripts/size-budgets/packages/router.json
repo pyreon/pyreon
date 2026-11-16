@@ -1,0 +1,7 @@
+{
+  "package": "@pyreon/router",
+  "bundle": 15616,
+  "imports": {
+    "basic": 3866
+  }
+}

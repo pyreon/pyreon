@@ -11,8 +11,9 @@
 // `.min()`, `.email()`, … on device and returns what THAT LIBRARY returns on the web — zod's `{ success, data }`, or
 // `@pyreon/validate`'s `{ ok, value | issues }` (whose `.parse` is the same method). What no struct can carry (`.refine()`, …) is
 // reported BY NAME by the schema walker; zod's throwing `.parse()` and a library with no `.safeParse` method are reported too. A
-// non-literal schema (a variable, `v.pipe(…)`, ArkType), a non-literal name and the CRUD runtime (`useList`,
-// `useById`, …) fall to the Tier-2 diagnostic.
+// non-literal schema (a variable, `v.pipe(…)`, ArkType) and a non-literal name fall to the Tier-2 diagnostic. The CRUD
+// hooks (`useList`, `useById`, `useCreate`, `useUpdate`, `useDelete`) lower onto `@pyreon/query`'s native containers when
+// `api` is an absolute literal URL; every other generated hook is named (see `crud.ts`).
 
 import {
   createSchemaItem,
@@ -43,6 +44,17 @@ import {
   type ModuleScan,
   type TopLevelRecognizer,
 } from '@pyreon/native-compiler/plugin-api'
+import {
+  crudCallElsewhere,
+  crudDecls,
+  crudExprs,
+  crudFacts,
+  crudReceivers,
+  finishCrud,
+  recognizeCrudDecl,
+  recognizeCrudMutate,
+  scanCrud,
+} from './crud'
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
 type AnyNode = any
@@ -173,6 +185,21 @@ function scanFeatures(scan: ModuleScan): void {
 const recognizeFeatureSchemaCall: MethodCallRecognizer = (site, ctx) => {
   const facts = featureFacts(ctx)
   if (facts.schemaBindings.size === 0) return undefined
+  return recognizeSchemaMethod(site, ctx, facts)
+}
+
+/** Every method call: a feature schema's validator call, or a generated hook called where it cannot lower. */
+const recognizeFeatureMethodCall: MethodCallRecognizer = (site, ctx) => {
+  const schema = recognizeFeatureSchemaCall(site, ctx)
+  if (schema !== undefined) return schema
+  return crudCallElsewhere(site, ctx)
+}
+
+function recognizeSchemaMethod(
+  site: Parameters<MethodCallRecognizer>[0],
+  ctx: Parameters<MethodCallRecognizer>[1],
+  facts: FeatureFacts,
+): ReturnType<MethodCallRecognizer> {
   const node = site.node as AnyNode
   const callee = node.callee as AnyNode | undefined
   if (callee?.type !== 'MemberExpression' || callee.computed || callee.property?.type !== 'Identifier') return undefined
@@ -215,6 +242,7 @@ const recognizeFeatureSchemaCall: MethodCallRecognizer = (site, ctx) => {
 
 /** Give each feature schema whose `safeParse` lowered the `safeParseResult` that call goes through. */
 const finishFeature: ModuleFinish = ({ items, report, fileState }) => {
+  finishCrud(items, FEATURE_PLUGIN_NAME, ITEM_TYPE, report, crudFacts({ fileState }))
   for (const binding of featureFacts({ fileState }).safeParseBindings) {
     const name = schemaStructName(binding)
     const item = items.find(
@@ -259,7 +287,8 @@ const recognizeFeature: TopLevelRecognizer = (node, ctx): ExtItemSpec | undefine
     } else if (keyName === 'schema') {
       schemaNode = valueNode
     }
-    // `api`, `fetcher`, `initialValues` and `validate` are deliberately dropped: the CRUD runtime is not ported.
+    // `api` and `fetcher` are read by the CRUD scan (`crud.ts`); `initialValues` and `validate` belong to `useForm`, which
+    // does not lower.
   }
 
   if (!featureName) {
@@ -409,6 +438,8 @@ const featureItem: ModuleItemEmitter = {
   kotlin(item) {
     const f = payloadOf(item)
     const lines: string[] = []
+    // `@Serializable`, as Swift's struct is `Codable`: the CRUD hooks decode the feature's records into it.
+    lines.push(`@Serializable`)
     lines.push(`data class PyreonFeatureSchema_${f.bindingName}(`)
     for (const field of f.fields) {
       const t = field.type === 'string' ? 'String' : field.type === 'number' ? KOTLIN_INT : 'Boolean'
@@ -434,9 +465,15 @@ export const featurePlugin: CompilerPlugin = Object.freeze({
   modules: Object.freeze([FEATURE_PLUGIN_NAME]),
   topLevel: recognizeFeature,
   items: Object.freeze({ [ITEM_TYPE]: featureItem, [SCHEMA_ITEM_TYPE]: createSchemaItem() }),
-  scanModule: scanFeatures,
-  methodCalls: Object.freeze({ '*': recognizeFeatureSchemaCall }),
-  exprs: Object.freeze({ safeParse: safeParseExpr, result: validateResultExpr }),
+  scanModule: (scan: ModuleScan) => {
+    scanFeatures(scan)
+    scanCrud(scan)
+  },
+  declCalls: recognizeCrudDecl,
+  decls: crudDecls,
+  receivers: crudReceivers,
+  methodCalls: Object.freeze({ mutate: recognizeCrudMutate, mutateAsync: recognizeCrudMutate, '*': recognizeFeatureMethodCall }),
+  exprs: Object.freeze({ safeParse: safeParseExpr, result: validateResultExpr, ...crudExprs }),
   refineStructs: createSchemaStructRefinement(FEATURE_PLUGIN_NAME),
   finishModule: finishFeature,
   // A `defineFeature` call the top-level recognizer did not lower (a call inside a component body, a destructured binding, a
