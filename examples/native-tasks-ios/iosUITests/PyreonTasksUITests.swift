@@ -442,14 +442,12 @@ final class PyreonTasksUITests: XCTestCase {
     }
 
     /// useMediaQuery('(prefers-color-scheme: dark)') reads true when the app runs in dark appearance.
-    /// The device appearance is switched with `XCUIDevice.appearance` (a launch argument such as
-    /// `-AppleInterfaceStyle` is a macOS default and does nothing on iOS) and restored on exit, so later tests see
-    /// the light appearance CI pins.
+    /// The app host runs in dark appearance under `-PyreonUITestDarkAppearance` (see ios/App.swift). Switching the
+    /// simulator from the test with `XCUIDevice.appearance` failed on CI (all three attempts read `light`), and a
+    /// `-AppleInterfaceStyle` launch argument is a macOS default that does nothing on iOS.
     func test_hooksMediaQueryReadsDarkAppearance() throws {
-        let previous = XCUIDevice.shared.appearance
-        XCUIDevice.shared.appearance = .dark
-        defer { XCUIDevice.shared.appearance = previous }
         let app = XCUIApplication()
+        app.launchArguments += ["-PyreonUITestDarkAppearance"]
         app.launch()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
