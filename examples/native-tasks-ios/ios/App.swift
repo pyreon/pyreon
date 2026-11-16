@@ -10,7 +10,15 @@ import SwiftUI
 struct PyreonTasksApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            // `-PyreonUITestDarkAppearance` (UI tests only) runs the app in dark appearance: it sets the window's
+            // style, so SwiftUI's `colorScheme` environment — what `useMediaQuery('(prefers-color-scheme: dark)')`
+            // reads — becomes `.dark`. Switching the simulator from inside a test (`XCUIDevice.appearance`) did not
+            // reliably reach the app on CI's simulator, which also pins the device to light.
+            if ProcessInfo.processInfo.arguments.contains("-PyreonUITestDarkAppearance") {
+                ContentView().preferredColorScheme(.dark)
+            } else {
+                ContentView()
+            }
         }
     }
 }
