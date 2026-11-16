@@ -208,7 +208,7 @@
   },
   {
    "title": "check and lint are different engines",
-   "text": "`pyreon check` runs the compiler's detectors on changed files. The lint rules (96 on in `recommended`) run under `pyreon lint`. `pyreon doctor` runs both."
+   "text": "`pyreon check` runs the compiler's detectors on changed files. The lint rules (97 on in `recommended`) run under `pyreon lint`. `pyreon doctor` runs both."
   },
   {
    "title": "Review --fix on React code",
