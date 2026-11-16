@@ -98,6 +98,49 @@ export const TargetLabel = el
   .attrs({ tag: 'li', block: true, gap: 4 })
   .theme((_t, m) => ({ fontFamily: font.mono, fontSize: 12, color: tone(m, 'text') }))
 
+/**
+ * The hero's three targets on a phone, as text. The trace illustration is
+ * drawn for 960px: on a 320-390px screen its labels were 4-8px tall. This is
+ * the same picture stacked: one source, an ember rail, three targets.
+ */
+export const PhoneTargets = el
+  .config({ name: 'HomePhoneTargets' })
+  .attrs({ tag: 'ul', block: true })
+  .theme((_t, m) => ({
+    position: 'relative',
+    listStyle: 'none',
+    margin: 0,
+    marginLeft: 13,
+    padding: 0,
+    paddingLeft: 26,
+    extendCss: `&::before { content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 1px; background: ${pair(m, gradient.ember)}; }`,
+  }))
+
+export const PhoneTarget = el
+  .config({ name: 'HomePhoneTarget' })
+  .attrs({ tag: 'li', block: true, gap: 2 })
+  .theme((_t, m) => ({
+    position: 'relative',
+    paddingTop: 9,
+    paddingBottom: 9,
+    fontFamily: font.mono,
+    fontSize: text.mono.size,
+    lineHeight: 1.5,
+    color: tone(m, 'fog'),
+    extendCss: `&::before { content: ''; position: absolute; left: -30px; top: 14px; width: 9px; height: 9px; border-radius: 50%; border: 1px solid ${tone(m, 'accent')}; background: ${tone(m, 'bg')}; }`,
+  }))
+
+export const PhoneTargetName = txt
+  .config({ name: 'HomePhoneTargetName' })
+  .attrs({ tag: 'span' })
+  .theme((_t, m) => ({ display: 'block', fontFamily: font.sans, fontSize: text.step.size, lineHeight: 1.25, fontWeight: weight.semibold, letterSpacing: text.step.tracking, color: tone(m, 'strong') }))
+
+/** The brand mark at the top of the phone targets rail. */
+export const PhoneTargetsHead = el
+  .config({ name: 'HomePhoneTargetsHead' })
+  .attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 12 })
+  .theme(() => ({ marginBottom: 6 }))
+
 export const Mono = txt
   .config({ name: 'HomeMono' })
   .attrs({ tag: 'span' })

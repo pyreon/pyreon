@@ -5,6 +5,7 @@ import { el, focusRing, tone, txt, type LinkAttrs } from './bases'
 import { CodeBlock } from './code'
 import { GlowCard } from './cards'
 import { AutoGrid } from './layout'
+import { artBox } from './media'
 import { useLinkClick } from './link'
 import { Eyebrow, Heading, Lede, renderInline, StatusBadge } from './type'
 
@@ -94,9 +95,8 @@ export function Diagram(props: {
     <Figure id={props.id}>
       <div
         data-svg=""
-        tabIndex={props.scrollLabel ? 0 : undefined}
-        role={props.scrollLabel ? 'region' : undefined}
-        aria-label={props.scrollLabel}
+        {...artBox(props.svg)}
+        aria-label={props.scrollLabel ?? artBox(props.svg)['aria-label']}
         dangerouslySetInnerHTML={{ __html: props.svg }}
       />
       <Show when={() => !!props.caption}>

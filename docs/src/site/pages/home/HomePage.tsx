@@ -5,7 +5,7 @@ import { HOME, type HomeAi, type HomeHero, type HomeOnce, type HomeSectionData, 
 import type { ProductsIndexPage } from '../../content/types-site'
 import { SITE_NAME, SITE_ORIGIN, usePageHead } from '../../head'
 import { VerdictChip } from '../../kit/bench'
-import { GlowCard } from '../../kit/cards'
+import { GlowCard, Glyph } from '../../kit/cards'
 import { CodeBlock, CodeDiff } from '../../kit/code'
 import { InstallCommand, Pill } from '../../kit/controls'
 import { CopyButtonIsland } from '../../kit/islands'
@@ -15,7 +15,6 @@ import { Reveal } from '../../kit/motion'
 import { CaveatLine, EndCTA, HookHero, Numeral, ProofBand, TextLink } from '../../kit/proof'
 import { Heading, Lede, renderInline, StatusBadge, StatusDot, VisuallyHidden } from '../../kit/type'
 import { productName, resolveHref } from '../../nav'
-import heroTrace from '../../media/home/hero-trace.svg?raw'
 import proofBundle from '../../media/home/proof-bundle.svg?raw'
 import proofCharts from '../../media/home/proof-charts.svg?raw'
 import proofFlow from '../../media/home/proof-flow.svg?raw'
@@ -44,6 +43,10 @@ import {
   PaneHead,
   PhoneLoop,
   PhoneOnly,
+  PhoneTarget,
+  PhoneTargetName,
+  PhoneTargets,
+  PhoneTargetsHead,
   ProductCell,
   ProductsGrid,
   Prompt,
@@ -93,7 +96,7 @@ const STRIP_CHARTS: Readonly<Record<string, { svg: string; file: string }>> = {
 function ChartArt(props: { svg: string; file: string }) {
   return (
     <ChartSlot aria-hidden="true">
-      <AnimatedSvg file={props.file} markup={props.svg} />
+      <AnimatedSvg file={props.file} markup={props.svg} decorative />
     </ChartSlot>
   )
 }
@@ -147,7 +150,20 @@ function Hero(props: { s: HomeHero }) {
         </div>
       </TargetsGrid>
       <PhoneOnly>
-        <AnimatedSvg file="home/hero-trace.svg" markup={heroTrace} />
+        <PhoneTargetsHead>
+          <Glyph id="pyreon" size={30} />
+          <Mono state="upper">{v.file.slice(v.file.lastIndexOf('/') + 1)}</Mono>
+        </PhoneTargetsHead>
+        <PhoneTargets aria-label="The three targets">
+          <For each={v.targets} by={(t) => t.label}>
+            {(t) => (
+              <PhoneTarget>
+                <PhoneTargetName>{t.label}</PhoneTargetName>
+                <span>{renderInline(t.caption)}</span>
+              </PhoneTarget>
+            )}
+          </For>
+        </PhoneTargets>
       </PhoneOnly>
     </HookHero>
   )
