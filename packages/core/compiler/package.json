@@ -72,8 +72,8 @@
   },
   "dependencies": {
     "@jridgewell/sourcemap-codec": "^1.5.5",
-    "magic-string": "^1.4.4",
-    "oxc-parser": "^0.155.0",
+    "magic-string": "^1.4.5",
+    "oxc-parser": "^0.159.0",
     "typescript": ">=5.0.0 <7.0.0"
   },
   "devDependencies": {

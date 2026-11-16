@@ -35,7 +35,8 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
-import { assertClientClean, assertRouteBudgets } from './zero-app-checks'
+import { assertClientClean, checkRouteSizes, measureRoutes, recordRouteSizes, routeHtmlMap } from './zero-app-checks'
+import { sizeBudgetsDir } from './size-budget-store'
 import {
   assertRunsUnderWorkerd,
   invokeIsolated,
@@ -47,7 +48,15 @@ import {
 
 type Mode = 'ssr' | 'ssg' | 'spa' | 'isr' | 'auto'
 
+/** The ssr-showcase routes whose first-load JS is size-judged. */
+const SSR_SHOWCASE_SIZED_ROUTES = ['/', '/about', '/island-demo']
+
 interface Cell {
+  /**
+   * `ssgPaths` are size-judged routes. `size-base.ts` builds exactly these
+   * cells on a pull request's base commit to learn the routes' base sizes.
+   */
+  sizeRoutes?: boolean
   /** Example dir name under `examples/` */
   example: string
   /** Rendering mode under test */
@@ -961,7 +970,8 @@ const MATRIX: Cell[] = [
   {
     example: 'ssr-showcase',
     mode: 'ssg',
-    ssgPaths: ['/', '/about', '/island-demo'],
+    ssgPaths: SSR_SHOWCASE_SIZED_ROUTES,
+    sizeRoutes: true,
     smoke: (dist) => {
       // SSG must produce per-route HTML files with route-correct content.
       // Identical files for both paths = the per-path router URL isn't
@@ -974,17 +984,15 @@ const MATRIX: Cell[] = [
       // Cleanup of the temporary SSR sub-build dir
       assertFileDoesNotExist(join(dist, '.zero-ssg-server'))
       // A5 — per-route first-load JS (entry + modulepreloads + their static
-      // import closure, gzipped) against `scripts/zero-app-budgets.json`,
-      // and no server code in the static output.
-      assertRouteBudgets(
+      // import closure, gzipped), judged against the ceilings in
+      // `scripts/size-budgets/apps/ssr-showcase.json`, and no server code in
+      // the static output.
+      checkRouteSizes(
         'ssr-showcase',
         dist,
-        {
-          '/': homePath,
-          '/about': aboutPath,
-          '/island-demo': join(dist, 'island-demo', 'index.html'),
-        },
-        join(REPO_ROOT, 'scripts', 'zero-app-budgets.json'),
+        routeHtmlMap(dist, SSR_SHOWCASE_SIZED_ROUTES),
+        sizeBudgetsDir(REPO_ROOT),
+        REPO_ROOT,
       )
       assertClientClean(dist, {
         forbiddenSentinels: ['SERVER_ONLY_SENTINEL_q7x9', 'ACTION_HANDLER_SENTINEL_z3k8'],
@@ -2096,7 +2104,20 @@ const MATRIX: Cell[] = [
 
 // ─── Per-cell harness ───────────────────────────────────────────────────────
 
-const REPO_ROOT = resolve(import.meta.dir, '..')
+/**
+ * `PYREON_VERIFY_MODES_ROOT` points the harness at ANOTHER checkout, and
+ * `PYREON_SIZE_ROUTES_MEASURE` (a file path) makes it build only the
+ * `sizeRoutes` cells there and record their route sizes, skipping every smoke
+ * assertion. That is how `size-base.ts` measures a pull request's base commit
+ * with THIS file's cell definitions and measuring code: the base's own copy of
+ * this script may assert things the base's examples no longer satisfy, or
+ * measure differently, and either would show up as a size change that is not
+ * one.
+ */
+const REPO_ROOT = process.env['PYREON_VERIFY_MODES_ROOT']
+  ? resolve(process.env['PYREON_VERIFY_MODES_ROOT'])
+  : resolve(import.meta.dir, '..')
+const MEASURE_ROUTES_TO = process.env['PYREON_SIZE_ROUTES_MEASURE']
 const VERIFY_CONFIG_NAME = 'vite.config.verify.ts'
 
 function cellId(c: Cell): string {
@@ -2215,8 +2236,15 @@ async function runCell(cell: Cell): Promise<CellResult> {
       await runViteBuild(exampleDir, VERIFY_CONFIG_NAME)
     }
 
-    // Smoke (may be async — platform-function cells import + invoke the entry).
-    await cell.smoke(distDir, exampleDir)
+    if (MEASURE_ROUTES_TO) {
+      recordRouteSizes(
+        MEASURE_ROUTES_TO,
+        measureRoutes(cell.example, distDir, routeHtmlMap(distDir, cell.ssgPaths ?? []), REPO_ROOT),
+      )
+    } else {
+      // Smoke (may be async — platform-function cells import + invoke the entry).
+      await cell.smoke(distDir, exampleDir)
+    }
 
     return { cell, ok: true, durationMs: Date.now() - start }
   } catch (error) {
@@ -2256,6 +2284,7 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2))
   const cells = MATRIX.filter(
     (c) =>
+      (!MEASURE_ROUTES_TO || c.sizeRoutes === true) &&
       (!args.example || c.example === args.example) &&
       (!args.mode || c.mode === args.mode) &&
       (!args.adapter || c.adapter === args.adapter),

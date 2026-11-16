@@ -49,7 +49,7 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "esbuild": "^0.28.2",
-    "parse5": "^7.3.0"
+    "parse5": "^8.1.1"
   },
   "publishConfig": {
     "access": "public"

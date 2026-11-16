@@ -3,6 +3,7 @@ import { defineNodeConfig } from '@pyreon/vitest-config'
 export default defineNodeConfig({
   category: 'zero',
   environment: 'happy-dom',
+  setupFiles: ['./src/tests/setup.ts'],
   // JSX components (<Search>, <Sidebar>, <Toc>) — overlay, keyboard
   // handler, scroll-spy via IntersectionObserver — are covered by the
   // Chromium-backed browser tests (vitest.browser.config.ts), not by

@@ -108,9 +108,12 @@ const kotlinLiteral = (v: string | number | boolean): string =>
 function emitted(target: 'swift' | 'kotlin'): string {
   const { code, warnings } = transform(DECL, { target })
   expect(warnings).toEqual([])
+  // `@Serializable` (the feature data class, so the CRUD hooks can decode records into it) is kotlinx's annotation, and
+  // kotlinx is not on this harness's classpath — the same reason `kotlinSchemaRuntime` drops its serialization half. The
+  // schema verdicts this file checks never serialize, so the annotation goes with the imports.
   return code
     .split('\n')
-    .filter((l) => !/^\s*(import|package)\b/.test(l))
+    .filter((l) => !/^\s*(import|package)\b/.test(l) && !/^\s*@Serializable\s*$/.test(l))
     .join('\n')
 }
 
