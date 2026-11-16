@@ -97,14 +97,8 @@ export default function InvoiceDetail() {
 
   onMount(() => {
     const id = route().params.id
-
-    if (id === undefined) {
-      notFound.set(true)
-
-      return
-    }
-
-    void invoiceById(id).then((found) => {
+    const lookup = id === undefined ? Promise.resolve(null) : invoiceById(id)
+    void lookup.then((found) => {
       if (!found) notFound.set(true)
       else inv.set(found)
     })
