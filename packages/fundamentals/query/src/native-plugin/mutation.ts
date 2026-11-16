@@ -147,6 +147,7 @@ function endpointCall(node: AnyNode, ctx: ParseContext): { name: string; arg: An
   const call = unwrapTypeLayers(node) as AnyNode
   if (call?.type !== 'CallExpression' || call.callee?.type !== 'Identifier') return undefined
   const name = call.callee.name as string
+
   return ctx.requests.has(name) ? { name, arg: (call.arguments as AnyNode[] | undefined)?.[0] } : undefined
 }
 
@@ -157,6 +158,7 @@ function endpointMutation(node: AnyNode, ctx: ParseContext): { name: string; opt
   const callee = call.callee as AnyNode
   if (callee?.type !== 'MemberExpression' || callee.computed || callee.property?.name !== 'mutation') return undefined
   if (callee.object?.type !== 'Identifier' || !ctx.requests.has(callee.object.name as string)) return undefined
+
   return { name: callee.object.name as string, opts: (call.arguments as AnyNode[] | undefined)?.[0] }
 }
 
@@ -170,6 +172,7 @@ function returnedExpr(fn: AnyNode): AnyNode | undefined {
   }
   body = unwrapTypeLayers(body) as AnyNode
   if (body?.type === 'AwaitExpression') body = unwrapTypeLayers(body.argument as AnyNode) as AnyNode
+
   return body
 }
 
@@ -184,6 +187,7 @@ function callbackOf(decl: {
   const only = decl.body.length === 1 ? decl.body[0] : undefined
   const body: readonly StatementIR[] =
     only?.kind === 'return' && only.expr !== undefined ? [{ kind: 'expr', expr: only.expr }] : decl.body
+
   return { params: decl.params.map((p) => p.name), body }
 }
 
@@ -209,8 +213,10 @@ function readCallback(
     report(
       `\`${label}\` may take at most ${max === 1 ? 'one plain parameter (the data or the error)' : 'two plain parameters (the data and the error)'} natively — the variables and the context have no native carrier. It is IGNORED on iOS and Android.`,
     )
+
     return undefined
   }
+
   return parse(fn)
 }
 
@@ -233,6 +239,7 @@ function readCallbacks(
       if (cb !== undefined) out.onSettled = cb
     }
   }
+
   return out
 }
 
@@ -285,6 +292,7 @@ export function recognizeMutation(_call: CallSite, ctx: ParseContext): ExtDeclSp
           report(
             '`mutationFn` must return a call of a same-file `@pyreon/http` endpoint — `(vars) => ep({ json: vars })`, declared with `const ep = api.endpoint(\'POST /path\')` — because that is where the native request is read from. A `fetch(…)` body, a multi-statement function or an imported endpoint does not lower; declare the endpoint in this file.',
           )
+
           return null
         }
         const param = params[0]?.name as string | undefined
@@ -306,10 +314,12 @@ export function recognizeMutation(_call: CallSite, ctx: ParseContext): ExtDeclSp
     report(
       'native lowering needs the mutation to name a same-file `@pyreon/http` endpoint — `useMutation(ep.mutation())`, or `useMutation({ mutationFn: (vars) => ep({ json: vars }) })` — because the request is read from it. This declaration stays web.',
     )
+
     return null
   }
   const type = ctx.typeArg()
   mutationFacts(ctx).bindings.set(name, { type, source, options })
+
   return { type: MUTATION_TYPE, payload: { type } as never }
 }
 
@@ -338,6 +348,7 @@ function substitute(node: AnyNode, param: string, replacement: AnyNode): AnyNode
     } else out[key] = substitute(value, param, replacement)
   }
   if ((node.type === 'Property' || node.type === 'ObjectProperty') && node.shorthand === true) out.shorthand = false
+
   return out
 }
 
@@ -393,6 +404,7 @@ export const recognizeMutateCall: MethodCallRecognizer = (site, ctx) => {
   // fields (without it an `s.number()` field stayed an integer and a fractional reply failed to decode), and with no
   // schema an integer-default field is named (#3956).
   if (!isVoid(binding.type)) ctx.recordDecode(binding.type, resolved.response)
+
   return mutateCallSpec(site, ctx, { name, type: binding.type, options: binding.options }, resolved)
 }
 
@@ -456,6 +468,7 @@ export function mutateCallSpec(
   // Only an AWAITED `mutateAsync` is the throwing, value-returning form; an un-awaited one is a fire-and-forget
   // `mutate` (the state carries the outcome either way).
   const awaited = site.method === 'mutateAsync' && mutationFacts(ctx).awaited.has(site.node)
+
   return { type: awaited ? MUTATE_ASYNC_TYPE : MUTATE_TYPE, payload: payload as never, args }
 }
 
@@ -472,6 +485,7 @@ function partsOf(e: ExtExprIR, url: (literal: string | undefined, expr: ExprIR |
   const upload = p.hasUpload === true ? e.args[i++] : undefined
   const headerExprs: Record<string, ExprIR> = {}
   for (const h of p.headerExprNames) headerExprs[h] = e.args[i++] as ExprIR
+
   return {
     method: p.method,
     url: url(p.url, urlExpr),
@@ -499,6 +513,7 @@ function callbackLocals(
   })
   // onSuccess's data is never absent.
   if (kinds.length === 1 && kinds[0] === 'data' && cb.params[0] !== undefined) out.set(cb.params[0], data)
+
   return out
 }
 
@@ -508,11 +523,13 @@ function swiftCallbacks(c: Callbacks, data: TypeIR, ctx: EmitContext): string | 
     const params = names.map((n, i) => (cb.params[i] !== undefined ? ctx.ident(cb.params[i] as string) : '_'))
     const lines = ctx.statements(cb.body, ctx.indent + 2, callbackLocals(cb, kinds, data))
     if (lines.length === 0) return `{ ${params.join(', ')} in }`
+
     return `{ ${params.join(', ')} in\n${lines.join('\n')}\n${ctx.pad(ctx.indent)}}`
   }
   if (c.onSuccess) parts.push(`onSuccess: ${closure(c.onSuccess, ['data'], ['data'])}`)
   if (c.onError) parts.push(`onError: ${closure(c.onError, ['error'], ['error'])}`)
   if (c.onSettled) parts.push(`onSettled: ${closure(c.onSettled, ['data', 'error'], ['data', 'error'])}`)
+
   return parts.length === 0 ? undefined : `PyreonMutationCallbacks(${parts.join(', ')})`
 }
 
@@ -522,11 +539,13 @@ function kotlinCallbacks(c: Callbacks, data: TypeIR, ctx: EmitContext): string |
     const params = Array.from({ length: arity }, (_, i) => (cb.params[i] !== undefined ? ctx.ident(cb.params[i] as string) : '_'))
     const lines = ctx.statements(cb.body, ctx.indent + 2, callbackLocals(cb, kinds, data))
     if (lines.length === 0) return `{ ${params.join(', ')} -> }`
+
     return `{ ${params.join(', ')} ->\n${lines.join('\n')}\n${ctx.pad(ctx.indent)}}`
   }
   if (c.onSuccess) parts.push(`onSuccess = ${lambda(c.onSuccess, 1, ['data'])}`)
   if (c.onError) parts.push(`onError = ${lambda(c.onError, 1, ['error'])}`)
   if (c.onSettled) parts.push(`onSettled = ${lambda(c.onSettled, 2, ['data', 'error'])}`)
+
   return parts.length === 0 ? undefined : `PyreonMutationCallbacks(${parts.join(', ')})`
 }
 
@@ -558,6 +577,7 @@ function swiftEmit(e: ExtExprIR, ctx: EmitContext, method: 'mutate' | 'mutateAsy
   if (options !== undefined) extra.push(`options: ${options}`)
   if (call !== undefined) extra.push(`call: ${call}`)
   const tail = extra.length > 0 ? `, ${extra.join(', ')}` : ''
+
   return `${ctx.ident(p.binding)}.${method}(${request}, ${swiftOperation(p.type, ctx)}${tail})`
 }
 

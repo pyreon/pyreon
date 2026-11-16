@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+/* oxlint-disable complexity -- main() is a linear CLI flow of flag parsing and reporting; each branch is a flat guard */
 /**
  * check-route-budgets — first-load JS per built zero route.
  *
