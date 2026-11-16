@@ -12,6 +12,9 @@ import {
   classifyMacosLane,
   decideDevice,
   isAndroidGradleConfig,
+  isDeviceTestSource,
+  lockfileInertForNative,
+  macosGraphFiles,
   type AppSurface,
   type SelfWorkflow,
 } from '../../../../../scripts/native-surface-touched'
@@ -111,6 +114,79 @@ describe('macOS typecheck — what MUST start it', () => {
   })
   it('a Gradle file mixed with an iOS source file', () => {
     expect(mac(['examples/native-counter-android/build.gradle.kts', 'examples/native-counter-ios/src/Counter.tsx']).run).toBe(true)
+  })
+})
+
+describe('macOS typecheck — device tests and inert lockfile changes', () => {
+  const UITEST = 'examples/native-counter-ios/iosUITests/PyreonCounterUITests.swift'
+  const KTTEST = 'examples/native-tasks-android/app/src/androidTest/kotlin/com/pyreon/TasksAppInstrumentedTest.kt'
+  const INTL = 'examples/native-tasks-android/app/src/androidTest/kotlin/com/pyreon/IntlDifferentialCases.kt'
+  const run = (files: string[], present: string[]) =>
+    classifyMacosLane(files, (p) => (present.includes(p) ? 'x' : null), same(VALIDATE, validateText), MAC_JOBS, new Set(), () => null)
+  it('an XCUITest / instrumented-test edit that still exists starts no macOS job', () => {
+    expect(run([UITEST, KTTEST], [UITEST, KTTEST]).run).toBe(false)
+  })
+  it('a deleted device-test file still starts it (the directory may be gone)', () => {
+    expect(run([UITEST], []).run).toBe(true)
+  })
+  it('the androidTest file the macOS suite reads by name still starts it', () => {
+    expect(isDeviceTestSource(INTL)).toBe(false)
+    expect(run([INTL], [INTL]).run).toBe(true)
+  })
+  it('only the device-test directories are exempt', () => {
+    for (const f of [
+      'examples/native-counter-ios/src/Counter.tsx',
+      'examples/native-counter-ios/ios/AppDelegate.swift',
+      'examples/native-counter-android/app/src/main/kotlin/com/pyreon/MainActivity.kt',
+      'examples/native-counter-ios/iosUITests/../src/Counter.tsx',
+    ])
+      expect(isDeviceTestSource(f), f).toBe(false)
+  })
+
+  const lock = (csstype: string, bench = '1.0.0'): string => `{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": { "name": "root" },
+    "packages/native/compiler": { "name": "@pyreon/native-compiler", "dependencies": { "csstype": "^3" } },
+    "packages/bench/bench": { "name": "@pyreon/bench", "devDependencies": { "tinybench": "^2" } },
+  },
+  "packages": {
+    "@pyreon/native-compiler": ["@pyreon/native-compiler@workspace:packages/native/compiler"],
+    "csstype": ["csstype@${csstype}", "", {}, "sha512-c${csstype}"],
+    "tinybench": ["tinybench@${bench}", "", {}, "sha512-t${bench}"],
+  },
+}
+`
+  const manifest = (extra: Record<string, unknown> = {}): string =>
+    JSON.stringify({ name: 'root', scripts: { a: 'x' }, devDependencies: { vitest: '5' }, ...extra })
+  const files = (head: Record<string, string | null>, base: Record<string, string | null>) => [
+    (p: string) => head[p] ?? null,
+    (p: string) => base[p] ?? null,
+  ]
+  it('a web-only dependency bump with a new root script is inert', () => {
+    const [h, b] = files(
+      { 'bun.lock': lock('3.1.0', '2.0.0'), 'package.json': manifest({ scripts: { a: 'x', b: 'y' } }) },
+      { 'bun.lock': lock('3.1.0'), 'package.json': manifest() },
+    )
+    expect(lockfileInertForNative(h!, b!)).toBe(true)
+    expect(macosGraphFiles(['bun.lock', 'package.json', '.github/workflows/ci.yml', 'docs/x.md'], h!, b!)).toEqual(['docs/x.md'])
+    expect(classifyMacosLane(['bun.lock'], h!, same(VALIDATE, validateText), MAC_JOBS, new Set(), b!).run).toBe(false)
+  })
+  it.each([
+    ['a native workspace dependency moved', { 'bun.lock': lock('3.2.0'), 'package.json': manifest() }],
+    ['a root dependency moved', { 'bun.lock': lock('3.1.0'), 'package.json': manifest({ devDependencies: { vitest: '6' } }) }],
+    ['a root override was added', { 'bun.lock': lock('3.1.0'), 'package.json': manifest({ overrides: { csstype: '3' } }) }],
+    ['the lockfile does not parse', { 'bun.lock': '{nope', 'package.json': manifest() }],
+    ['the root manifest does not parse', { 'bun.lock': lock('3.1.0'), 'package.json': '{nope' }],
+    ['the lockfile is missing at the head', { 'package.json': manifest() }],
+  ])('%s: not inert, the job runs', (_label, head) => {
+    const [h, b] = files(head, { 'bun.lock': lock('3.1.0'), 'package.json': manifest() })
+    expect(lockfileInertForNative(h!, b!)).toBe(false)
+    expect(macosGraphFiles(['bun.lock', 'package.json'], h!, b!)).toEqual(['bun.lock', 'package.json'])
+    expect(classifyMacosLane(['bun.lock'], h!, same(VALIDATE, validateText), MAC_JOBS, new Set(), b!).run).toBe(true)
+  })
+  it('no readable base is never inert', () => {
+    expect(lockfileInertForNative(() => 'x', undefined)).toBe(false)
   })
 })
 
@@ -243,7 +319,8 @@ describe('the workflows are wired to the decision (a skipped job still reports s
     expect(macJob()).toContain("failure() && needs.decide.result != 'success'")
   })
   it('decide drops workflow files from the macOS graph input and answers a workflow-only diff itself', () => {
-    expect(validateText).toContain("grep -v '^\\.github/workflows/' \"$FILES\" > \"$FILES_MAC\" || true")
+    expect(validateText).toContain('--macos-graph-files="$FILES_MAC"')
+    expect(validateText).toContain('elif [ -s "$FILES" ]; then\n            GRAPH_MAC=\'\'')
     expect(validateText).toContain('--macos-jobs=validate-swift-typecheck')
     expect(validateText).toMatch(/echo "macos=true" >> "\$GITHUB_OUTPUT"\n\s+echo "graph-macos=true"/)
   })

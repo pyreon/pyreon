@@ -30,10 +30,11 @@
  * unreadable manifest, an empty file list, a deleted package.json.
  */
 
-import { appendFileSync, existsSync, readdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, join, normalize, relative } from 'node:path'
 import { deriveNativePluginSurface } from './native-plugin-surface'
+import { lockClosure, nativeWorkspaces, parseLockfile } from './native-inputs-fingerprint'
 import { laneChanged } from './native-workflow-surface'
 
 export interface Decision {
@@ -166,6 +167,87 @@ export function isAndroidGradleConfig(file: string): boolean {
   return ANDROID_GRADLE_CONFIG.test(file) && !file.split('/').includes('..')
 }
 
+/**
+ * Device-test sources: XCUITest and Android instrumented tests run only in the
+ * device lanes. The macOS suite checks that an `iosUITests` or `androidTest`
+ * DIRECTORY exists (`native-examples-compile.test.ts`) and reads one androidTest
+ * file by name (`intl-differential.test.ts`); it never reads any other file in
+ * them. A deleted file reads as null and so still starts the job, which keeps
+ * "the last device test was removed" visible.
+ */
+const DEVICE_TEST_SOURCE =
+  /^examples\/native-[^/]+-(?:ios\/iosUITests|android\/app\/src\/androidTest)\/(?!.*IntlDifferentialCases\.kt$)/
+
+export function isDeviceTestSource(file: string): boolean {
+  return DEVICE_TEST_SOURCE.test(file) && !file.split('/').includes('..')
+}
+
+/** Root `package.json` keys that no job of the native workflows reads. */
+const INERT_ROOT_KEYS = ['scripts', 'version', 'description', 'keywords', 'repository', 'homepage', 'bugs']
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_k, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as object).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  )
+}
+
+/**
+ * Can this PR's change to `bun.lock` and the root `package.json` leave what the
+ * macOS typecheck installs and runs untouched? The same proof the device lanes'
+ * fingerprint uses: the dependency closure of the native workspaces and the
+ * root `overrides` are identical, and the root manifest differs, if at all, only
+ * in keys no native job reads (its `scripts`: the macOS job runs
+ * `bun scripts/…` directly, never a root script). Anything unreadable is "no".
+ */
+export function lockfileInertForNative(
+  read: (path: string) => string | null,
+  readBase: ((path: string) => string | null) | undefined,
+): boolean {
+  if (!readBase) return false
+  try {
+    const sides = [read, readBase].map((r) => ({
+      lock: r('bun.lock'),
+      manifest: r('package.json'),
+    }))
+    if (sides.some((x) => x.lock === null || x.manifest === null)) return false
+    const closure = (text: string): string => {
+      const lock = parseLockfile(text)
+      return lockClosure(lock, nativeWorkspaces(lock)).join('\n')
+    }
+    const [head, base] = sides as [{ lock: string; manifest: string }, { lock: string; manifest: string }]
+    if (closure(head.lock) !== closure(base.lock)) return false
+    const strip = (text: string): string => {
+      const json = JSON.parse(text) as Record<string, unknown>
+      for (const key of INERT_ROOT_KEYS) delete json[key]
+      return stableJson(json)
+    }
+    return strip(head.manifest) === strip(base.manifest)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The changed files the dependency-graph question should see for the macOS
+ * lane: workflow files are answered by the lane's own job block, and a
+ * lockfile/root-manifest change that is provably inert for the native
+ * workspaces is not a graph input. Every other path is passed through.
+ */
+export function macosGraphFiles(
+  files: readonly string[],
+  read: (path: string) => string | null,
+  readBase: ((path: string) => string | null) | undefined,
+): string[] {
+  const inert = files.some((f) => f === 'bun.lock' || f === 'package.json')
+    ? lockfileInertForNative(read, readBase)
+    : false
+  return files.filter(
+    (f) => !f.startsWith('.github/workflows/') && !(inert && (f === 'bun.lock' || f === 'package.json')),
+  )
+}
+
 /** The workflow file a decision belongs to, with both sides of it. */
 export interface SelfWorkflow {
   file: string
@@ -181,7 +263,8 @@ export interface SelfWorkflow {
  * the path classifier says native (Android Gradle configuration excluded), the
  * macOS job block (or the top-level `env`/`permissions`/`defaults` it inherits)
  * changed, or it is a script/local action that block names. Any other workflow
- * file starts nothing.
+ * file starts nothing, and neither do a device-test source file or a lockfile
+ * change that leaves the native workspaces' dependency closure identical.
  */
 export function classifyMacosLane(
   files: readonly string[],
@@ -200,8 +283,11 @@ export function classifyMacosLane(
   if (selfTouched && lane.changed) reasons.push(self.file + ' — ' + lane.reason)
   const named = new Set(lane.named)
   const rest: string[] = []
+  const lockInert = files.includes('bun.lock') && lockfileInertForNative(read, readBase)
   for (const f of files) {
     if (f === self.file || isAndroidGradleConfig(f)) continue
+    if (f === 'bun.lock' && lockInert) continue
+    if (isDeviceTestSource(f) && read(f) !== null) continue
     if (named.has(f)) reasons.push(f + ' — named by the macOS job')
     else rest.push(f)
   }
@@ -542,6 +628,12 @@ if (import.meta.main) {
         mac = classifyMacosLane(files, readAtHead, readSelfWorkflow(self), macosJobs, pluginSurface, readBase)
       } catch (err) {
         mac = { run: true, reasons: ['macOS decision failed (' + String(err) + ') — running (fail-closed)'] }
+      }
+      // The list the shell hands to `affected.ts` for `graph-macos`.
+      const graphOut = process.argv.find((a) => a.startsWith('--macos-graph-files='))?.slice('--macos-graph-files='.length)
+      if (graphOut) {
+        const graphFiles = macosGraphFiles(files, readAtHead, readBase)
+        writeFileSync(graphOut, graphFiles.length > 0 ? graphFiles.join('\n') + '\n' : '')
       }
       for (const r of mac.reasons) console.log('  macOS: ' + r)
       console.log(mac.run ? 'macOS lane needed' : 'macOS lane not needed — skips (reports success)')

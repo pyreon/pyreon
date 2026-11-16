@@ -174,7 +174,9 @@ jobs:
           fi
           # `--macos-jobs` also emits `macos`: the same question for the macOS job
           # alone (see scripts/native-surface-touched.ts, classifyMacosLane).
-          bun scripts/native-surface-touched.ts --self=.github/workflows/native-validate.yml --macos-jobs=validate-swift-typecheck < "$FILES"
+          FILES_MAC=$(mktemp)
+          cp "$FILES" "$FILES_MAC"
+          bun scripts/native-surface-touched.ts --self=.github/workflows/native-validate.yml --macos-jobs=validate-swift-typecheck --macos-graph-files="$FILES_MAC" < "$FILES"
           # `graph` — the DEPENDENCY-GRAPH half. `@pyreon/native-compiler` has
           # RUNTIME deps on `@pyreon/charts` and `@pyreon/compiler` (the chart
           # engine sources are PMTC input), so a PR that touches neither
@@ -192,15 +194,16 @@ jobs:
           else
             echo "graph=false" >> "$GITHUB_OUTPUT"
           fi
-          # `graph-macos` — the same graph question without the workflow files.
-          # A workflow file other than ci.yml maps to a leaf seed outside this
-          # category, and ci.yml is a root file that escalates every cell to
-          # `--filter=*`; neither defines the macOS job (its own block is read
-          # by the path classifier above). A diff that is ONLY workflow files
-          # leaves an empty list, which affected.ts reads as unknowable, so that
-          # case is answered here instead of being sent to it.
-          FILES_MAC=$(mktemp)
-          grep -v '^\.github/workflows/' "$FILES" > "$FILES_MAC" || true
+          # `graph-macos` — the same graph question over the files the macOS lane
+          # can be reached through (`macosGraphFiles`): workflow files are
+          # answered by the lane's own job block, and a lockfile / root-manifest
+          # change that leaves the native workspaces' dependency closure
+          # identical is not an input. ci.yml is a root file to affected.ts and
+          # used to escalate this job to `--filter=*`. A list the filter emptied
+          # (a diff of only such files) must not reach affected.ts, which reads
+          # an empty list as unknowable, so that case is answered here.
+          # `$FILES_MAC` starts as a copy of the full list, so a classifier that
+          # failed to write it leaves the unfiltered list (fail-closed).
           if [ -s "$FILES_MAC" ]; then
             GRAPH_MAC=$(bun scripts/affected.ts --files-from-stdin --category=native/compiler < "$FILES_MAC") || GRAPH_MAC='--filter=*'
           elif [ -s "$FILES" ]; then
