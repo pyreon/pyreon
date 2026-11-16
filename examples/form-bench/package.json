@@ -14,7 +14,7 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@hookform/resolvers": "^6.0.0",
+    "@hookform/resolvers": "^7.0.6",
     "@pyreon/core": "workspace:*",
     "@pyreon/form": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
