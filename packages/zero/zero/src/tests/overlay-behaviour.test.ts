@@ -285,6 +285,7 @@ describe('showDevOverlay — inline mode in a shadow root', () => {
     expect(a.shadowRoot?.querySelector('[data-pz-ol]')?.getAttribute('data-theme')).toBe('light')
     const b = showDevOverlay(report({ kind: 'hydration' })) as HTMLElement
     expect(document.body.contains(a)).toBe(false)
+    expect(document.body.contains(b)).toBe(true)
     expect(document.querySelectorAll('pyreon-dev-overlay')).toHaveLength(1)
     key('Escape')
   })
