@@ -111,7 +111,7 @@ export const EVENT_HANDLER_ATTRS = new Set([
   'ondragexit', 'ondragleave', 'ondragover', 'ondragstart', 'ondrop', 'ondurationchange',
   'onemptied', 'onencrypted', 'onend', 'onended', 'onenterpictureinpicture', 'onerror', 'onfocus',
   'onfocusin', 'onfocusout', 'onformdata', 'onfullscreenchange', 'onfullscreenerror',
-  'ongamepadconnected', 'ongamepaddisconnected', 'ongotpointercapture', 'onhashchange', 'oninput',
+  'ongamepadconnected', 'ongamepaddisconnected', 'ongotpointercapture', 'onhashchange', 'oninput', 'oninstallresult',
   'oninvalid', 'onkeydown', 'onkeypress', 'onkeyup', 'onlanguagechange', 'onleavepictureinpicture',
   'onload', 'onloadeddata', 'onloadedmetadata', 'onloadstart', 'onlostpointercapture', 'onmessage',
   'onmessageerror', 'onmousedown', 'onmouseenter', 'onmouseleave', 'onmousemove', 'onmouseout',

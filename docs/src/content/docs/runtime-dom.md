@@ -63,7 +63,7 @@ So the subpaths are not a size lever. Import from the main entry and let your bu
 `/sanitizer` is the one that stands alone — **1,177 B gz** with nothing else pulled in — because sanitizing a string of HTML has no reason to drag in a renderer.
 
 :::note{title="Numbers are measured, not estimated"}
-Reproduce them with `bun run check-import-budgets`, which gates `mount` and `mount + hydrateRoot` against `scripts/import-budgets.json`. Sizes move as the renderer changes; the shape of the finding — main entry and subpath are equivalent — is what to rely on.
+Reproduce them with `bun run check-import-budgets`, which gates `mount` and `mount + hydrateRoot` against the ceilings in `scripts/size-budgets/packages/runtime-dom.json`. Sizes move as the renderer changes; the shape of the finding — main entry and subpath are equivalent — is what to rely on.
 :::
 
 ## Core Concepts

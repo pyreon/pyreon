@@ -1,0 +1,7 @@
+{
+  "package": "@pyreon/dnd",
+  "bundle": 4525,
+  "imports": {
+    "useDraggable": 1020
+  }
+}

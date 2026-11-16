@@ -1,0 +1,7 @@
+{
+  "package": "@pyreon/flow",
+  "bundle": 26305,
+  "imports": {
+    "core": 21970
+  }
+}

@@ -10,3 +10,18 @@
  */
 export { queryPlugin, queryPlugin as default } from './native-plugin/plugin'
 export { queryStubs } from './native-plugin/stubs'
+// Building blocks for a package whose own hook IS a query or a mutation (`@pyreon/feature`'s CRUD hooks): the same
+// containers, harnesses and call-site emit, driven by a request that package builds itself.
+export { mutationDecl, mutationReceiver, queryContainerDecl, queryReceiver } from './native-plugin/plugin'
+export {
+  MUTATE_ASYNC_TYPE,
+  MUTATE_TYPE,
+  mutateAsyncExpr,
+  mutateCallSpec,
+  mutateExpr,
+  scanMutations,
+  type Callbacks as MutationCallbacks,
+  type MutateBinding,
+  type MutateRequest,
+} from './native-plugin/mutation'
+export type { QueryPayload } from './native-plugin/types'
