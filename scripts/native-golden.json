@@ -7371,12 +7371,12 @@
       "bytes": 2485,
       "warnings": 0
     },
-    "example:native-counter-ios/Counter.tsx|swift": {
+    "example:native-counter/Counter.tsx|swift": {
       "sha": "15cf7e20f25c5a62242bc20d8ced7da447daa3494b7a664d26f095e67cdcdc63",
       "bytes": 21958,
       "warnings": 0
     },
-    "example:native-counter-ios/Counter.tsx|kotlin": {
+    "example:native-counter/Counter.tsx|kotlin": {
       "sha": "9516d8cada0d52fb2e249b7229c4e1be05b7ff5f80ad325de519dfd04d0f0c53",
       "bytes": 20792,
       "warnings": 0
@@ -7391,12 +7391,12 @@
       "bytes": 7149,
       "warnings": 0
     },
-    "example:native-router-demo-ios/RouterApp.tsx|swift": {
+    "example:native-router-demo/RouterApp.tsx|swift": {
       "sha": "b7af385bcafb3904599e6193db340f9e2e8b265ed71f3903027c577fcd71e868",
       "bytes": 38161,
       "warnings": 1
     },
-    "example:native-router-demo-ios/RouterApp.tsx|kotlin": {
+    "example:native-router-demo/RouterApp.tsx|kotlin": {
       "sha": "7016161325c926ae18fb9a0b4ec558d030adb55d940035dbab4c1cfc50ac67a6",
       "bytes": 32282,
       "warnings": 1

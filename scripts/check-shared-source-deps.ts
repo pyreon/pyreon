@@ -6,8 +6,8 @@
  * ## The bug class
  *
  * PMTC's whole claim is ONE source, THREE targets. The examples encode that
- * literally: `examples/native-router-demo-web/src/entry-client.tsx` imports
- * `RouterApp` from `../../native-router-demo-ios/src/RouterApp`, and the two
+ * literally: `examples/native-router-demo/src/entry-client.tsx` imports
+ * `RouterApp` from `examples/native-router-demo/src/RouterApp`, and the two
  * native siblings compile the SAME file through the native CLI.
  *
  * The three targets do not consume it the same way, and that asymmetry is the

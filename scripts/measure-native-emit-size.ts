@@ -67,7 +67,7 @@ interface SourceInput {
 const SOURCES: SourceInput[] = [
   {
     name: 'native-counter (minimal)',
-    path: 'examples/native-counter-ios/src/Counter.tsx',
+    path: 'examples/native-counter/src/Counter.tsx',
   },
   {
     name: 'native-todomvc (real-app)',

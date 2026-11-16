@@ -1220,7 +1220,7 @@ const MATRIX: Cell[] = [
   // native-router-demo-web — Phase R1.5 build-shape gate. Sibling of
   // native-todomvc-web's smoke cell; this one proves the multiplatform
   // *routing* story builds correctly. The web entry-client imports
-  // RouterApp directly from native-router-demo-ios/src/RouterApp.tsx
+  // RouterApp directly from native-router-demo/src/RouterApp.tsx
   // (path identity), so this cell exercises both:
   //   - the @pyreon/router web runtime (createRouter, RouterProvider,
   //     RouterView, useNavigate, useParams)
@@ -1231,7 +1231,7 @@ const MATRIX: Cell[] = [
   // primitive's web impl and the build fails OR the bundled JS loses
   // the testid + the user-visible page-name strings.
   {
-    example: 'native-router-demo-web',
+    example: 'native-router-demo',
     mode: 'spa',
     useExampleConfig: true,
     smoke: (dist) => {

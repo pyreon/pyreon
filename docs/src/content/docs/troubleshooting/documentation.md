@@ -61,7 +61,7 @@ PMTC compared `callee.name === 'useOnline'` at about sixty sites, so a user's ow
 
 ### SwiftUI presentation modifiers on `EmptyView()` never present
 
-`EmptyView` is not in the render tree, so `.sheet`/`.alert`/`.popover` attached to it are inert, and it still typechecks. PMTC's `<Modal>` anchors to `Color.clear.frame(width: 0, height: 0).sheet(…)`. Compose composes a `Dialog` node and has no such requirement, so check each target on a device when the mechanisms differ. Reference: `packages/native/compiler/src/emit-swift.ts` (Modal); test `examples/native-counter-ios/iosUITests/PyreonCounterUITests.swift`.
+`EmptyView` is not in the render tree, so `.sheet`/`.alert`/`.popover` attached to it are inert, and it still typechecks. PMTC's `<Modal>` anchors to `Color.clear.frame(width: 0, height: 0).sheet(…)`. Compose composes a `Dialog` node and has no such requirement, so check each target on a device when the mechanisms differ. Reference: `packages/native/compiler/src/emit-swift.ts` (Modal); test `examples/native-counter/ios/UITests/PyreonCounterUITests.swift`.
 
 ---
 

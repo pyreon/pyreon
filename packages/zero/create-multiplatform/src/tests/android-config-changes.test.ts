@@ -4,7 +4,7 @@
 // recreates MainActivity, and every compiler-emitted
 // `remember { mutableStateOf(...) }` starts over: counters reset, forms empty,
 // a flow graph reloads. Proven on a device by
-// `examples/native-counter-android`'s `stateSurvivesRotationAndThemeSwitch`,
+// `examples/native-counter/android`'s `stateSurvivesRotationAndThemeSwitch`,
 // which fails without the attribute. This locks the attribute in the scaffold
 // AND in every example, since an example copied from an old one is how the
 // gap spreads.

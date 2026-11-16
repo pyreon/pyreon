@@ -7,7 +7,7 @@
  *
  * What it replaces: `xcodebuild test -retry-tests-on-failure -test-iterations 3
  * -test-repetition-relaunch-enabled YES`. Measured on run 43120354638
- * (2026-11-12, native-counter-ios): ONE failing test made xcodebuild execute
+ * (2026-11-12, native-counter/ios): ONE failing test made xcodebuild execute
  * the WHOLE suite three times (28, 56, then 84 `Test Case` results; 9 minutes
  * per pass), so a single flake cost +18 macOS minutes on the smallest big
  * suite and cannot fit the job timeout on the largest one (23–30 minutes per

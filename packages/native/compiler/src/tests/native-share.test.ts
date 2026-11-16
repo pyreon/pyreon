@@ -12,7 +12,7 @@
 //         non-Composable `remember` lambda — Android needs a Context for
 //         `startActivity`) + `remember { PyreonShare(shareCtx) }`.
 //
-// Behaviour is device-proven in examples/native-counter-ios's XCUITest
+// Behaviour is device-proven in examples/native-counter/ios's XCUITest
 // (tapping Share opens the system share sheet — an OBSERVABLE proof,
 // stronger than haptics). This spec locks the EMIT SHAPE + is the bisect
 // target.

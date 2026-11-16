@@ -207,8 +207,8 @@ export function deriveAppSurfaces(repoRoot: string): AppSurface[] {
           roots.add(asRoot(target))
           const parent = dirname(target)
           // Only a SHARED source home (examples/native-finance) is claimed whole;
-          // when the source lives in a sibling LANE app (native-counter-android
-          // reads native-counter-ios/src), claiming that app's whole dir would
+          // when the source lives in a sibling LANE app (native-counter/android
+          // reads native-counter/src), claiming that app's whole dir would
           // run this lane for an iOS-only UITest edit.
           if (parent !== dir && parent.startsWith('examples/native-') && !APP_DIR.test(parent))
             roots.add(asRoot(parent))

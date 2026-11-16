@@ -5,7 +5,7 @@
 // default so records survive relaunch. The WEB half did not exist — no
 // implementation, no export, no type anywhere in `packages/`.
 //
-// That is not a hypothetical gap. `examples/native-counter-ios/src/Counter.tsx`
+// That is not a hypothetical gap. `examples/native-counter/src/Counter.tsx`
 // — the kitchen-sink example, 19 passing XCUITests — imports `useDatabase`
 // from `@pyreon/primitives`, which does not export it. PMTC never resolves
 // imports (it matches hook NAMES), and that example is one of four with no

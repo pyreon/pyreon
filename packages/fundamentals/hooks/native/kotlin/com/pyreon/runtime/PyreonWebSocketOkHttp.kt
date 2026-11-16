@@ -37,7 +37,7 @@
 //   IllegalArgumentException: Detected multithreaded access to
 //   SnapshotStateObserver
 //
-// This is not theoretical and it is not latent. `native-router-demo-android`
+// This is not theoretical and it is not latent. `native-router-demo/android`
 // calls `useWebSocket`, and its device gate fails intermittently with exactly
 // that error on `tenThousandRowListIsLazyAndDeepRowReachable` — a 10,000-row
 // lazy list is simply the frame most likely to still be laying out when a
