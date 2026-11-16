@@ -28,8 +28,10 @@
  *      `packages/<cat>/<pkg>/native/**` (except the JSX compiler's Rust crate),
  *      every other `examples/native-*` directory (shared app sources,
  *      fixtures, fixture servers).
- *   3. The lanes' own definition: `.github/workflows/native-device.yml`, every
- *      root `scripts/…` file that workflow names, this script, `.bun-version`.
+ *   3. The lanes' own definition: each platform's own job block of
+ *      `.github/workflows/native-device.yml` (hashed into that platform's apps
+ *      only), every root `scripts/…` file that workflow names, this script,
+ *      `.bun-version`.
  *   4. From `bun.lock`: the resolved entries of the dependency closure of the
  *      native workspaces (`packages/native/*`, `examples/native-*`) — their
  *      declared dependencies of every kind, then `dependencies` /
@@ -55,6 +57,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, readlinkSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { listNativeHosts } from './native-example-hosts'
+import { laneSurface } from './native-workflow-surface'
 
 export type Platform = 'ios' | 'android'
 export interface GatedApp {
@@ -74,6 +77,8 @@ export interface Fingerprint {
 
 const JSX_COMPILER_CRATE = 'packages/core/compiler/native/'
 const WORKFLOW = '.github/workflows/native-device.yml'
+/** The workflow job that builds each platform; its block is that platform's definition. */
+const LANE_JOB: Record<Platform, string> = { ios: 'ios-build', android: 'android-build' }
 const SELF = 'scripts/native-inputs-fingerprint.ts'
 
 /** Directories whose content never reaches a device build input. */
@@ -176,7 +181,10 @@ export function sharedInputs(root: string, apps: readonly GatedApp[]): string[] 
     if (f.startsWith('examples/native-')) return !appDirs.some((d) => f.startsWith(d))
     return false
   })
-  for (const f of [WORKFLOW, SELF, '.bun-version', ...workflowScripts(root)]) files.push(f)
+  // The workflow file itself is NOT hashed here: `laneDefinition` hashes each
+  // platform's own job block into that platform's apps, so an edit to the
+  // other platform's job, to a decide job or to a comment moves no app.
+  for (const f of [SELF, '.bun-version', ...workflowScripts(root)]) files.push(f)
   return [...new Set(files)].sort()
 }
 
@@ -305,6 +313,16 @@ export function nativeWorkspaces(lock: Lockfile): string[] {
 
 // ── fingerprint ──────────────────────────────────────────────────────────────
 
+/**
+ * What of the device workflow defines `platform`'s lane: its job block plus the
+ * inherited top-level sections (`native-workflow-surface.ts`). When the block
+ * cannot be found the whole file stands in, which can only widen the hash.
+ */
+export function laneDefinition(root: string, platform: Platform): string {
+  const text = readFileSync(join(root, WORKFLOW), 'utf8')
+  return laneSurface(text, [LANE_JOB[platform]])?.text ?? text
+}
+
 export function fingerprint(root: string): Fingerprint {
   const apps = gatedApps(root)
   const shared = createHash('sha256')
@@ -319,6 +337,7 @@ export function fingerprint(root: string): Fingerprint {
   const out: Fingerprint = { shared: sharedHash, apps: {} }
   for (const app of apps) {
     const h = createHash('sha256').update(`shared\0${sharedHash}\0`)
+    h.update(`lane\0${app.platform}\0${laneDefinition(root, app.platform)}\0`)
     hashFiles(root, walk(root, app.dir), h)
     out.apps[`${app.platform}:${app.key}`] = h.digest('hex')
   }

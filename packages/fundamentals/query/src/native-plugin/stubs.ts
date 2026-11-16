@@ -13,9 +13,9 @@ import type { StubAugmentation } from '@pyreon/native-compiler/plugin-api'
 
 export const QUERY_SWIFT_STUBS = `// PyreonQuery — the cached data container a \`useQuery\` decl emits. Mirrors
 // runtime-swift's PyreonQuery.swift: \`data\`/\`error\`/\`isPending\`/\`isFetching\`
-// are private(set) (driven via begin/resolve/reject), \`isStale\` is a computed
-// getter the emit's \`.task\` reads, and the init takes \`queryKey\` +
-// defaulted \`staleSeconds\`. A superset stub would MASK a real mismatch, so
+// are private(set), the emit's \`.task\` hands the request to \`run\` (which
+// \`refetch\` re-runs), and the init takes \`queryKey\` + defaulted
+// \`staleSeconds\`. A superset stub would MASK a real mismatch, so
 // the signatures track the runtime exactly.
 public final class PyreonQueryCache {
   public static let shared = PyreonQueryCache()
@@ -35,8 +35,8 @@ public final class PyreonQuery<T> {
   public func begin() {}
   public func resolve(_ value: T) {}
   public func reject(_ failure: Error) {}
-  public func load(_ fetcher: @escaping () throws -> T) {}
-  public func refetch() {}
+  @MainActor public func run(_ fetcher: @escaping () async throws -> T) async {}
+  @discardableResult public func refetch() -> _Concurrency.Task<Void, Never>? { nil }
 }
 `
 
@@ -120,7 +120,8 @@ public final class PyreonStream<E> {
 export const QUERY_KOTLIN_STUBS = `// PyreonQuery — mirror of @pyreon/native-runtime-kotlin's PyreonQuery.kt.
 // The cached data container a \`useQuery\` decl emits: MutableState fields
 // (\`data\`/\`error\`/\`isPending\`/\`isFetching\` — the emit reads \`.value\`),
-// an \`isStale\` getter the emit's LaunchedEffect guards on, and a ctor taking
+// the suspend \`run\` the emit's LaunchedEffect hands the request and a
+// launcher to (\`refetch\` re-runs it), and a ctor taking
 // \`queryKey\` + defaulted \`staleMillis\`. Signatures track the runtime exactly.
 class PyreonQuery<T>(queryKey: String, val staleMillis: Long = 0) {
   var queryKey: String = queryKey
@@ -134,6 +135,7 @@ class PyreonQuery<T>(queryKey: String, val staleMillis: Long = 0) {
   fun begin() {}
   fun resolve(value: T) {}
   fun reject(e: Throwable) {}
+  suspend fun run(launch: (suspend () -> Unit) -> Unit, fetcher: suspend () -> T) {}
   fun refetch() {}
 }
 
