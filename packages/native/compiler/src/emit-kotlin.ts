@@ -1228,11 +1228,6 @@ function emitKotlinModuleDecl(md: ModuleDeclIR): string {
   if (md.type.kind === 'unknown') {
     return `private ${kw} ${kotlinIdent(md.name)} = ${initial}`
   }
-  // An inline object annotation over an object / array literal names no type the file declares, and there is no
-  // component to synthesize one in: the literal's own struct already IS the type, so let the target infer it.
-  if (isInlineObjectAnnotation(md.type) && (md.initial.kind === 'object' || md.initial.kind === 'array')) {
-    return `private ${kw} ${kotlinIdent(md.name)} = ${initial}`
-  }
   return `private ${kw} ${kotlinIdent(md.name)}: ${kotlinType(md.type)} = ${initial}`
 }
 
@@ -1760,7 +1755,13 @@ function emitKotlinModuleState(state: DeclIR[]): string {
       lines.push(`    var ${kotlinIdent(d.name)} by mutableStateOf<${kotlinType(t)}>(${init})`)
     } else if (d.kind === 'computed' && d.expr !== undefined) {
       const t = inferType(d.expr, _kotlinExprInferCtx)
-      lines.push(`    val ${kotlinIdent(d.name)}: ${kotlinType(t)} get() = ${emitKotlinExpr(d.expr, 0)}`)
+      // An object-literal value (`computed(() => ({ v: base(), w: 2 }))`) constructs its own data class: let the getter
+      // infer it, as a component's `derivedStateOf` does. `Any` failed the first field read.
+      let ex = d.expr
+      while (ex.kind === 'paren') ex = ex.inner
+      const literal = ex.kind === 'object' || (ex.kind === 'array' && ex.elements.length > 0)
+      const typeText = literal && (t.kind === 'unknown' || isInlineObjectAnnotation(t)) ? '' : `: ${kotlinType(t)}`
+      lines.push(`    val ${kotlinIdent(d.name)}${typeText} get() = ${emitKotlinExpr(d.expr, 0)}`)
     }
   }
   lines.push('}')
