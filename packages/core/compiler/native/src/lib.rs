@@ -6262,6 +6262,7 @@ const SSR_EVENT_HANDLER_ATTRS: &[&str] = &[
     "ongotpointercapture",
     "onhashchange",
     "oninput",
+    "oninstallresult",
     "oninvalid",
     "onkeydown",
     "onkeypress",

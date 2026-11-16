@@ -56,9 +56,9 @@
     "@pyreon/runtime-dom": "workspace:^"
   },
   "dependencies": {
-    "@tiptap/core": "^3.32.0",
-    "@tiptap/pm": "^3.32.0",
-    "@tiptap/starter-kit": "^3.32.0",
+    "@tiptap/core": "^3.34.0",
+    "@tiptap/pm": "^3.34.0",
+    "@tiptap/starter-kit": "^3.34.0",
     "@pyreon/primitives": "workspace:^"
   },
   "devDependencies": {
@@ -68,7 +68,7 @@
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^5.0.5"
+    "@vitest/browser-playwright": "^5.1.0"
   },
   "publishConfig": {
     "access": "public"
