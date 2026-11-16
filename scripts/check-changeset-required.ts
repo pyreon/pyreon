@@ -78,6 +78,7 @@
  */
 
 import { gitChangedFilesZ } from './changed-files'
+import { expandChangesetPatterns } from './changeset-patterns'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { isTestPath } from './test-paths'
@@ -559,7 +560,14 @@ function main(): void {
     process.exit(1)
   }
   const packages = discoverPackages(repoRoot)
-  const ignoredNames = new Set(readChangesetIgnore(repoRoot))
+  // `ignore` entries may be globs (`@pyreon/example-*`), expanded the way
+  // changesets expands them.
+  const ignoredNames = new Set(
+    expandChangesetPatterns(
+      readChangesetIgnore(repoRoot),
+      packages.map((p) => p.name),
+    ),
+  )
 
   // A changeset that declares no package records nothing. Read the ADDED ones
   // here (side effects stay out of `evaluateGate`); a deleted changeset has no
