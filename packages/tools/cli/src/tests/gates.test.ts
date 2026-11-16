@@ -1142,7 +1142,7 @@ describe('_parseBundleBudgetsOutput', () => {
     expect(over.severity).toBe('error')
     expect(over.message).toContain('@pyreon/big')
     expect(over.message).toContain('+25.0%')
-    expect(over.location?.relPath).toBe('scripts/bundle-budgets.json')
+    expect(over.location?.relPath).toBe('scripts/size-budgets/packages')
     expect(over.fix).toContain('--update')
 
     const missing = findings.find(

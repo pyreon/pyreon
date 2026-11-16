@@ -1,0 +1,7 @@
+{
+  "package": "@pyreon/store",
+  "bundle": 3855,
+  "imports": {
+    "defineStore": 2700
+  }
+}
