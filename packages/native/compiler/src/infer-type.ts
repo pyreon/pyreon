@@ -722,6 +722,13 @@ export function unwrapOptionalType(t: TypeIR): TypeIR {
   return nonNull.length === 1 ? nonNull[0]! : t
 }
 
+/** An annotation that is an inline object type, or an array of one: a shape with no declared name. */
+export function isInlineObjectAnnotation(t: TypeIR): boolean {
+  const u = unwrapOptionalType(t)
+  if (u.kind === 'object') return u.fields.length > 0
+  return u.kind === 'array' && isInlineObjectAnnotation(u.element)
+}
+
 /**
  * Classify a CONDITION expression for optional-truthiness lowering. JS treats
  * an optional/nullable as truthy-when-PRESENT and a `!optional` as truthy-when-

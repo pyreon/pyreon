@@ -2,6 +2,8 @@
 
 Plain Mode (the `'use plain'` dialect) has its own file: [plain-mode.md](./plain-mode.md).
 
+Concluded architecture experiments (E1 speculative `mountFor`: DEFER; E2 static rocketstyle collapse: GRADUATE; E5 actor model: GRADUATE) keep their decision records in [references/experiments/](./references/experiments/). Code comments cite them; the experiment code itself is in git history.
+
 ## Compiler
 
 Two backends: a Rust native binary (napi-rs, 3.7–8.9× faster) and a JS fallback used per call when native throws. Any emit change lands in both in the same PR. `native-equivalence.test.ts` checks the curated JavaScript output with a parser and compares native bytes when the binary is installed; `fuzz-equivalence.test.ts` independently checks generated JavaScript in all compilation modes. JavaScript syntax, option and lens contracts run without the optional binary. Backend agreement alone cannot prove valid output.

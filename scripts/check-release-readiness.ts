@@ -51,6 +51,7 @@
 
 import { readFile, readdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { matchesAnyChangesetPattern } from './changeset-patterns'
 import { isReleaseRepository } from './release-repository'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
@@ -208,7 +209,7 @@ function checkFixedGroupCoverage(
   for (const group of changeset.fixed ?? []) {
     for (const name of group) fixedSet.add(name)
   }
-  const ignoreSet = new Set<string>(changeset.ignore ?? [])
+  const ignorePatterns = changeset.ignore ?? []
 
   const out: Violation[] = []
   for (const { path, manifest } of packages) {
@@ -217,7 +218,7 @@ function checkFixedGroupCoverage(
     if (PLATFORM_STUB_NAMES.has(manifest.name)) continue
     // Already covered:
     if (fixedSet.has(manifest.name)) continue
-    if (ignoreSet.has(manifest.name)) continue
+    if (matchesAnyChangesetPattern(manifest.name, ignorePatterns)) continue
 
     out.push({
       package: manifest.name,

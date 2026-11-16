@@ -17,6 +17,7 @@ import {
   type GateInputs,
   type PackageInfo,
 } from '../../../../../scripts/check-changeset-required'
+import { expandChangesetPatterns } from '../../../../../scripts/changeset-patterns'
 
 /**
  * Tests for the changeset-required gate (`scripts/check-changeset-required.ts`).
@@ -41,7 +42,7 @@ import {
  * Contract pinned here:
  *
  *  - Files in a PRIVATE package → NOT consumer-affecting.
- *  - Files in a changeset-`ignore`d package (examples / docs / ai-reference)
+ *  - Files in a changeset-`ignore`d package (examples / docs)
  *    → NOT consumer-affecting.
  *  - Files outside `packages/` / `examples/` / `docs/` → NOT
  *    consumer-affecting (the workflow-level `git diff -- 'packages/**'`
@@ -799,10 +800,15 @@ describe('real-repo smoke (the actual Pyreon monorepo)', () => {
     expect(privateNames).toContain('@pyreon/devtools')
   })
 
-  it('reads the real ignore list', () => {
+  it('reads the real ignore list, whose example glob covers every example workspace', () => {
     const ignore = readChangesetIgnore(REPO_ROOT)
-    expect(ignore).toContain('@pyreon/example-playground')
+    expect(ignore).toContain('@pyreon/example-*')
     expect(ignore).toContain('@pyreon/docs')
+    const packages = discoverPackages(REPO_ROOT)
+    const ignored = new Set(expandChangesetPatterns(ignore, packages.map((p) => p.name)))
+    const examples = packages.filter((p) => p.dir.includes('/examples/'))
+    expect(examples.length).toBeGreaterThan(10)
+    for (const example of examples) expect(ignored.has(example.name)).toBe(true)
   })
 
   it('PR #1167\'s file list correctly skips the gate (the regression this fix prevents)', () => {
