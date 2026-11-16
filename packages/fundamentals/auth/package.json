@@ -61,10 +61,10 @@
     "@pyreon/native-compiler": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@types/oidc-provider": "9.12.1",
-    "@vitest/browser-playwright": "^5.0.5",
+    "@types/oidc-provider": "9.13.1",
+    "@vitest/browser-playwright": "^5.1.0",
     "bun-types": "^1.4.4",
-    "oidc-provider": "9.13.0"
+    "oidc-provider": "9.15.0"
   },
   "publishConfig": {
     "access": "public"

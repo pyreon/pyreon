@@ -377,9 +377,11 @@ async function loadPdfMakeUncached(): Promise<any> {
 
   if (server) {
     // The Node entry reads fonts from its own virtual filesystem (base64).
+    // pdfmake 0.3.14 renamed the instance's `virtualfs` to `sharedVirtualfs`;
+    // the peer range still admits earlier 0.3.x releases, so accept both.
+    const virtualfs = pdfMake.sharedVirtualfs ?? pdfMake.virtualfs
     for (const name of Object.keys(vfs)) {
-      if (!pdfMake.virtualfs.existsSync(name))
-        pdfMake.virtualfs.writeFileSync(name, vfs[name], 'base64')
+      if (!virtualfs.existsSync(name)) virtualfs.writeFileSync(name, vfs[name], 'base64')
     }
     // Without explicit policies the Node entry warns on every render. Images
     // reach pdfmake only as `data:` URIs (see `resolveImageSrc`), and the
