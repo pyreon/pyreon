@@ -14,3 +14,7 @@ declare module 'virtual:zero/api-routes' {
   import type { ApiRouteEntry } from '@pyreon/zero/api-routes'
   export const apiRoutes: ApiRouteEntry[]
 }
+
+declare module 'virtual:zero/actions' {
+  export {}
+}

@@ -1,9 +1,9 @@
 import pyreon from '@pyreon/vite-plugin'
 import content from '@pyreon/zero-content/plugin'
 import zero from '@pyreon/zero/server'
-import { fontPlugin } from '@pyreon/zero/font'
-import { seoPlugin } from '@pyreon/zero/seo'
 
+// One config surface: fonts, SEO, favicons, og-images, and AI discoverability
+// are all fields on zero() — no separate plugin imports needed.
 export default {
   plugins: [
     // Markdown posts (src/content/blog) + /blog/rss.xml. Drafts and posts
@@ -21,26 +21,26 @@ export default {
       },
     }),
     pyreon(),
-    zero({ mode: 'ssg' }),
+    zero({
+      mode: 'ssg',
+      typedRoutes: true,
 
-    // Google Fonts — self-hosted at build time, CDN in dev
-    fontPlugin({
-      google: ['Inter:wght@400;500;600;700;800', 'JetBrains Mono:wght@400'],
-      fallbacks: {
-        Inter: { fallback: 'Arial', sizeAdjust: 1.07, ascentOverride: 90 },
+      // Google Fonts — self-hosted at build time (CDN in dev), preloaded,
+      // with auto size-adjusted fallbacks that eliminate font-swap CLS
+      // (use `font-family: var(--pyreon-font-inter)` in your CSS/theme).
+      font: {
+        google: ['Inter:wght@400;500;600;700;800', 'JetBrains Mono:wght@400'],
+        subsets: ['latin'],
+        fallbackAdjust: true,
       },
-    }),
 
-    // Generate sitemap.xml and robots.txt at build time.
-    // `useSsgPaths: true` reads the resolved-paths manifest the SSG plugin
-    // emits at closeBundle, so dynamic blog routes (`/blog/[slug]`)
-    // enumerated via getStaticPaths land in sitemap.xml — without it,
-    // only the static routes (`/`, `/about`, `/blog`) would appear.
-    seoPlugin({
-      sitemap: { origin: 'https://example.com', useSsgPaths: true },
-      robots: {
-        rules: [{ userAgent: '*', allow: ['/'] }],
-        sitemap: 'https://example.com/sitemap.xml',
+      // sitemap.xml + robots.txt at build time — set your real origin once.
+      seo: {
+        sitemap: { origin: 'https://example.com', useSsgPaths: true },
+        robots: {
+          rules: [{ userAgent: '*', allow: ['/'] }],
+          sitemap: 'https://example.com/sitemap.xml',
+        },
       },
     }),
   ],

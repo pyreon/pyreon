@@ -10,8 +10,9 @@ import { lintFile } from '../runner'
  * the gap between the two is where rules die quietly:
  *
  * - `no-unvalidated-request-body` passed its fixture and reported NOTHING on
- *   `examples/cpa-pw-app-solid/src/routes/api/posts.ts`, a real handler with
- *   the exact defect. Two reasons, both invisible to a fixture: the receiver
+ *   the `create-zero` app template's `src/routes/api/posts.ts` (then committed
+ *   as `examples/cpa-pw-app-solid`; the template now validates the body), a
+ *   real handler with the exact defect. Two reasons, both invisible to a fixture: the receiver
  *   is `ctx.request`, not a bare `req`, and the value is wrapped in an `as`
  *   cast — which is precisely what makes an unvalidated body FEEL validated.
  * - `no-module-mutable-in-handler` and `require-native-compat-marker` both

@@ -43,13 +43,15 @@ If you scaffolded with `--integrations email`, you also get `src/lib/email.ts` (
 
 ## Scripts
 
-| Command | What it does |
-| --- | --- |
-| `bun run dev` | Dev server with signal-preserving HMR |
-| `bun run build` | Build for production (client + server bundles) |
-| `bun run preview` | Serve the production build locally |
-| `bun run doctor` | Audit the project (lint + types + perf budgets) |
-| `bun run lint` | Run `@pyreon/lint` (Pyreon-specific rules) |
+| Command           | What it does                                                 |
+| ----------------- | ------------------------------------------------------------ |
+| `bun run dev`     | Dev server with signal-preserving HMR                        |
+| `bun run build`   | Build for production (client + server bundles)               |
+| `bun run preview` | Serve the production build locally                           |
+| `bun run doctor`  | Audit the project (lint + types + perf budgets)              |
+| `bun run lint`    | Run oxlint and `@pyreon/lint` with the `readable` preset     |
+| `bun run format`  | Format with oxfmt (`oxfmt.config.ts`)                        |
+| `bun run fix`     | Format, then apply every lint autofix (blank lines, imports) |
 
 ## Env variables
 

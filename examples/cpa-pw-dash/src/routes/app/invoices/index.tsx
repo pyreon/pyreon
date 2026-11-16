@@ -1,18 +1,20 @@
-import { state } from '@pyreon/core/plain'
-import { onMount } from "@pyreon/core"
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
-import { type Invoice, invoiceTotal, listInvoices } from "../../../lib/db"
+import { cx, For, onMount } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
+import { signal } from '@pyreon/reactivity'
+import { Link } from '@pyreon/zero/link'
 
-export const meta = { title: "Invoices" }
+import { type Invoice, invoiceTotal, listInvoices } from '../../../lib/db'
+import { formatDate, formatMoney } from '../../../lib/format'
+
+export const meta = { title: 'Invoices' }
 
 export default function Invoices() {
   useHead({ title: meta.title })
 
-  let invoices = state.raw<Invoice[]>([])
+  const invoices = signal<Invoice[]>([])
 
   onMount(() => {
-    void listInvoices().then((i) => { invoices = i })
+    void listInvoices().then((i) => invoices.set(i))
   })
 
   return (
@@ -34,26 +36,32 @@ export default function Invoices() {
           </tr>
         </thead>
         <tbody>
-          {() =>
-            invoices.map((inv) => (
+          <For
+            each={invoices}
+            by={(inv) => inv.id}
+          >
+            {(inv) => (
               <tr>
                 <td>
                   <Link href={`/app/invoices/${inv.id}`}>{inv.number}</Link>
                 </td>
                 <td>{inv.customer.name}</td>
-                <td>${invoiceTotal(inv).toLocaleString()}</td>
+                <td>${formatMoney(invoiceTotal(inv))}</td>
                 <td>
-                  <span class={`pill ${inv.status}`}>{inv.status}</span>
+                  <span class={cx(['pill', inv.status])}>{inv.status}</span>
                 </td>
-                <td>{inv.issuedAt.toLocaleDateString()}</td>
+                <td>{formatDate(inv.issuedAt)}</td>
                 <td>
-                  <Link href={`/app/invoices/${inv.id}`} class="btn btn-secondary">
+                  <Link
+                    href={`/app/invoices/${inv.id}`}
+                    class="btn btn-secondary"
+                  >
                     Open →
                   </Link>
                 </td>
               </tr>
-            ))
-          }
+            )}
+          </For>
         </tbody>
       </table>
     </>

@@ -1,17 +1,19 @@
-import { state } from '@pyreon/core/plain'
-import { onMount } from "@pyreon/core"
-import { useHead } from "@pyreon/head"
-import { listUsers, type User } from "../../lib/db"
+import { For, onMount } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
+import { signal } from '@pyreon/reactivity'
 
-export const meta = { title: "Users" }
+import { listUsers, type User } from '../../lib/db'
+import { formatDate } from '../../lib/format'
+
+export const meta = { title: 'Users' }
 
 export default function Users() {
   useHead({ title: meta.title })
 
-  let users = state.raw<User[]>([])
+  const users = signal<User[]>([])
 
   onMount(() => {
-    void listUsers().then((u) => { users = u })
+    void listUsers().then((u) => users.set(u))
   })
 
   return (
@@ -31,18 +33,21 @@ export default function Users() {
           </tr>
         </thead>
         <tbody>
-          {() =>
-            users.map((u) => (
+          <For
+            each={users}
+            by={(u) => u.id}
+          >
+            {(u) => (
               <tr>
                 <td>{u.name}</td>
                 <td>{u.email}</td>
                 <td>
                   <span class="pill">{u.role}</span>
                 </td>
-                <td>{u.createdAt.toLocaleDateString()}</td>
+                <td>{formatDate(u.createdAt)}</td>
               </tr>
-            ))
-          }
+            )}
+          </For>
         </tbody>
       </table>
     </>

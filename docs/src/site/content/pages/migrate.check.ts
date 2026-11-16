@@ -226,7 +226,7 @@ export const checked = {
         },
         {
           "claim": "Covered by unit, browser and Playwright e2e tests",
-          "path": "packages/tools/react-compat/src/tests/; packages/tools/react-compat/src/*.browser.test.tsx; e2e/react-compat.spec.ts; e2e/cpa-app-react-compat.spec.ts"
+          "path": "packages/tools/react-compat/src/tests/; packages/tools/react-compat/src/*.browser.test.tsx; e2e/react-compat.spec.ts; e2e/cpa-app-compat.spec.ts (scaffold-smoke cpa-smoke-app-react-compat)"
         },
         {
           "claim": "Pyreon Counter compiles, typechecks and updates on click",
@@ -339,7 +339,7 @@ export const checked = {
         },
         {
           "claim": "Covered by unit, browser and Playwright e2e tests",
-          "path": "packages/tools/vue-compat/src/tests/; e2e/vue-compat.spec.ts; e2e/cpa-app-vue-compat.spec.ts"
+          "path": "packages/tools/vue-compat/src/tests/; e2e/vue-compat.spec.ts; e2e/cpa-app-compat.spec.ts (scaffold-smoke cpa-smoke-app-vue-compat)"
         }
       ]
     },
@@ -430,7 +430,7 @@ export const checked = {
         },
         {
           "claim": "Covered by unit, browser and Playwright e2e tests",
-          "path": "packages/tools/solid-compat/src/tests/; e2e/solid-compat.spec.ts; e2e/cpa-app-solid-compat.spec.ts"
+          "path": "packages/tools/solid-compat/src/tests/; e2e/solid-compat.spec.ts; e2e/cpa-app-compat.spec.ts (scaffold-smoke cpa-smoke-app-solid-compat)"
         }
       ]
     },
@@ -516,7 +516,7 @@ export const checked = {
         },
         {
           "claim": "Covered by unit, browser and Playwright e2e tests",
-          "path": "packages/tools/preact-compat/src/tests/; e2e/preact-compat.spec.ts; e2e/cpa-app-preact-compat.spec.ts"
+          "path": "packages/tools/preact-compat/src/tests/; e2e/preact-compat.spec.ts; e2e/cpa-app-compat.spec.ts (scaffold-smoke cpa-smoke-app-preact-compat)"
         }
       ]
     },

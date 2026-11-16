@@ -16,6 +16,78 @@
 
 import { PYREON_DEP_RANGE } from './own-version'
 
+/** The width of the oxfmt preset the scaffold ships (`@pyreon/lint/oxfmt`). */
+const PRINT_WIDTH = 100
+
+/**
+ * A JSON file in the shape the shipped formatter gives it, so a new project's
+ * first `bun run format` leaves it alone. `JSON.stringify(_, null, 2)` already
+ * matches oxfmt for objects (an expanded object stays expanded); the one
+ * difference is arrays: oxfmt puts an array of plain values on one line when
+ * that line fits in the print width.
+ */
+export function jsonFile(value: unknown): string {
+  const lines = JSON.stringify(value, null, 2).split('\n')
+  const out: string[] = []
+  let i = 0
+
+  // A line walk, not a regex: a backtracking pattern over the indentation
+  // is polynomial on long runs of spaces (CodeQL js/polynomial-redos).
+  while (i < lines.length) {
+    const line = lines[i] as string
+    const collapsed = line.endsWith('[') ? collapseScalarArray(lines, i) : null
+
+    if (collapsed && collapsed.text.length <= PRINT_WIDTH) {
+      out.push(collapsed.text)
+      i = collapsed.next
+    } else {
+      out.push(line)
+      i++
+    }
+  }
+
+  return `${out.join('\n')}\n`
+}
+
+/**
+ * The array opened on `lines[start]` as one line, when every element is a
+ * plain value; `next` is the line after its closing bracket.
+ */
+function collapseScalarArray(lines: string[], start: number): { text: string; next: number } | null {
+  const open = lines[start] as string
+  const indent = open.length - open.trimStart().length
+  const itemIndent = ' '.repeat(indent + 2)
+  const items: string[] = []
+  let j = start + 1
+
+  for (; j < lines.length; j++) {
+    const line = lines[j] as string
+    if (!line.startsWith(itemIndent) || line[indent + 2] === ' ') break
+    const item = line.slice(indent + 2)
+    const bare = item.endsWith(',') ? item.slice(0, -1) : item
+    if (!isJsonScalar(bare)) break
+    items.push(bare)
+  }
+
+  const close = lines[j]
+  if (items.length === 0 || close === undefined) return null
+  const closing = close.slice(indent)
+  if (close.slice(0, indent).trim() !== '' || (closing !== ']' && closing !== '],')) return null
+
+  return { text: `${open}${items.join(', ')}${closing}`, next: j + 1 }
+}
+
+function isJsonScalar(text: string): boolean {
+  if (text.startsWith('{') || text.startsWith('[')) return false
+  try {
+    JSON.parse(text)
+
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** A single file the scaffold emits, relative to the project root. */
 export interface FileSpec {
   /** POSIX-style relative path, e.g. `ios/Sources/App.swift`. */
@@ -117,15 +189,24 @@ export function buildScaffold(opts: ScaffoldOptions): FileSpec[] {
 // runtimes; PMTC compiles the same tags to SwiftUI (iOS) + Compose
 // (Android) via its canonical-primitives table.
 
-import { signal } from '@pyreon/reactivity'
 import { Stack, Text, Button } from '@pyreon/primitives'
+import { signal } from '@pyreon/reactivity'
 
 export function App() {
   const count = signal(0)
+
   return (
-    <Stack gap="md" align="center">
+    <Stack
+      gap="md"
+      align="center"
+    >
       <Text data-testid="count">{count}</Text>
-      <Button data-testid="increment" onPress={() => count.set(count() + 1)}>Increment</Button>
+      <Button
+        data-testid="increment"
+        onPress={() => count.set(count() + 1)}
+      >
+        Increment
+      </Button>
     </Stack>
   )
 }
@@ -142,14 +223,14 @@ appId: ${bundleId}
     clearState: true
 - assertVisible:
     id: count
-    text: "0"
+    text: '0'
 - tapOn:
     id: increment
 - tapOn:
     id: increment
 - assertVisible:
     id: count
-    text: "2"
+    text: '2'
 `,
   )
 
@@ -181,7 +262,7 @@ android/keystore.properties
   )
   add(
     'package.json',
-    `${JSON.stringify(
+    jsonFile(
       {
         name,
         version: '0.0.0',
@@ -191,7 +272,11 @@ android/keystore.properties
           dev: 'vite',
           build: 'vite build',
           preview: 'vite preview',
-          lint: 'pyreon-lint .',
+          lint: 'oxlint && pyreon-lint .',
+          format: 'oxfmt',
+          // Formatter first, then the lint fixes: they only ADD blank lines
+          // between statements, which the formatter keeps, so one pass is stable.
+          fix: 'oxfmt && oxlint --fix && pyreon-lint --fix .',
           'build:ios': 'bash scripts/build-ios.sh',
           'build:android': 'bash scripts/build-android.sh',
           // Release lane: self-signed keystore (credential-free — Play App
@@ -209,26 +294,30 @@ android/keystore.properties
           '@pyreon/reactivity': PYREON_DEP_RANGE,
           '@pyreon/runtime-dom': PYREON_DEP_RANGE,
         },
+        // Sorted by name, as the formatter sorts package.json dependency maps.
         devDependencies: {
-          '@pyreon/vite-plugin': PYREON_DEP_RANGE,
+          '@pyreon/lint': PYREON_DEP_RANGE,
           '@pyreon/native-cli': PYREON_DEP_RANGE,
           // Native runtimes — installed into node_modules so the iOS
           // SPM project (project.yml `packages:`) and the Android Gradle
           // source-sets reference them by node_modules path. The emitted
           // Swift `import PyreonRuntime`/`PyreonRouter` + Kotlin
           // `PyreonReactivity`/`PyreonFetch`/… resolve against these.
-          '@pyreon/native-runtime-swift': PYREON_DEP_RANGE,
+          '@pyreon/native-router-kotlin': PYREON_DEP_RANGE,
           '@pyreon/native-router-swift': PYREON_DEP_RANGE,
           '@pyreon/native-runtime-kotlin': PYREON_DEP_RANGE,
-          '@pyreon/native-router-kotlin': PYREON_DEP_RANGE,
-          '@pyreon/lint': PYREON_DEP_RANGE,
+          '@pyreon/native-runtime-swift': PYREON_DEP_RANGE,
+          '@pyreon/vite-plugin': PYREON_DEP_RANGE,
+          // The readable setup's other two halves: oxlint (size limits, via
+          // `.oxlintrc.json` extending `@pyreon/lint/oxlint/readable.json`)
+          // and oxfmt (formatting, via `oxfmt.config.ts`).
+          oxfmt: '^0.74.0',
+          oxlint: '^1.89.0',
           typescript: '^6.0.0',
           vite: '^8.0.0',
         },
       },
-      null,
-      2,
-    )}\n`,
+    ),
   )
   // A multiplatform app's shared source has to survive THREE targets, and the
   // `portable` rule group is the only thing that says so before a build does.
@@ -250,20 +339,63 @@ android/keystore.properties
   // construct: it names the shape and keeps going.
   add(
     '.pyreonlintrc.json',
-    `${JSON.stringify(
+    jsonFile(
       {
         $schema: 'node_modules/@pyreon/lint/schema/pyreonlintrc.schema.json',
-        preset: 'recommended',
+        // `readable` adds the blank-line, component-section, JSX-depth and
+        // ternary rules; block padding is the strict tier's spacing rule, on
+        // here because new code pays nothing for it.
+        preset: ['recommended', 'readable'],
         groups: { portable: 'warn' },
+        rules: { 'pyreon/padding-around-multiline-blocks': 'warn' },
         // Shared, not per-rule: FIVE portable rules need to know which files
         // must lower, and listing them one by one makes this config a
         // hand-maintained subset of the rule registry — a sixth portable rule
         // would then be silently inert here.
         settings: { portablePaths: ['src/'] },
       },
-      null,
-      2,
-    )}\n`,
+    ),
+  )
+  add(
+    '.oxlintrc.json',
+    jsonFile(
+      {
+        $schema: './node_modules/oxlint/configuration_schema.json',
+        extends: ['./node_modules/@pyreon/lint/oxlint/readable.json'],
+        ignorePatterns: ['dist', 'ios', 'android'],
+      },
+    ),
+  )
+  add(
+    'oxfmt.config.ts',
+    `// Formatting: Pyreon's house style, sorted imports, one JSX attribute per line
+// when a tag wraps. Blank lines between statements are @pyreon/lint's job
+// (\`bun run fix\`); the formatter keeps them.
+export { readableStrict as default } from '@pyreon/lint/oxfmt'
+`,
+  )
+  // Editor: recommend the oxc extension (oxfmt + oxlint) and run the fixes on
+  // save. Inert in every other editor; the same files create-zero writes.
+  add(
+    '.vscode/extensions.json',
+    `{
+  "recommendations": ["oxc.oxc-vscode"]
+}
+`,
+  )
+  add(
+    '.vscode/settings.json',
+    `{
+  // oxfmt formats on save (oxfmt.config.ts); the fix-all actions add the
+  // readable blank lines (@pyreon/lint) and apply oxlint's fixes.
+  "editor.defaultFormatter": "oxc.oxc-vscode",
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.oxc": "explicit",
+    "source.fixAll.pyreon": "explicit"
+  }
+}
+`,
   )
   add(
     'index.html',
@@ -271,12 +403,21 @@ android/keystore.properties
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
     <title>${pascal} — Web</title>
   </head>
   <body>
-    <div id="app" data-testid="app-root"></div>
-    <script type="module" src="/src/entry-web.tsx"></script>
+    <div
+      id="app"
+      data-testid="app-root"
+    ></div>
+    <script
+      type="module"
+      src="/src/entry-web.tsx"
+    ></script>
   </body>
 </html>
 `,
@@ -295,6 +436,7 @@ export default defineConfig({
     'src/entry-web.tsx',
     `// Web entry — boots the shared App into #app via @pyreon/runtime-dom.
 import { mount } from '@pyreon/runtime-dom'
+
 import { App } from './App'
 
 const root = document.getElementById('app')
@@ -304,7 +446,7 @@ mount(App, root)
   )
   add(
     'tsconfig.json',
-    `${JSON.stringify(
+    jsonFile(
       {
         compilerOptions: {
           target: 'ESNext',
@@ -318,9 +460,7 @@ mount(App, root)
         },
         include: ['src', 'vite.config.ts'],
       },
-      null,
-      2,
-    )}\n`,
+    ),
   )
 
   // ── iOS target (XcodeGen) ─────────────────────────────────────────────────
@@ -1039,7 +1179,7 @@ npm run release:android   # generates a self-signed keystore if absent, then ass
 \`\`\`
 
 The keystore is SELF-SIGNED and generated locally (\`android/release.keystore\`
-+ \`android/keystore.properties\`, both gitignored) — Play App Signing re-signs
+and \`android/keystore.properties\`, both gitignored) — Play App Signing re-signs
 store uploads, so this key is enough to install and run the real release
 artifact on a device today. When you create a Play Console upload key, point
 \`android/keystore.properties\` at it; nothing else changes. To re-run the
@@ -1069,7 +1209,15 @@ defineNativeModule<Bluetooth>('Bluetooth', { connect: async () => false })
 
 function Pairing() {
   const bt = useNativeModule<Bluetooth>('Bluetooth')
-  return <Button onPress={() => { void bt.connect('cuff') }}>Connect</Button>
+  return (
+    <Button
+      onPress={() => {
+        void bt.connect('cuff')
+      }}
+    >
+      Connect
+    </Button>
+  )
 }
 \`\`\`
 
@@ -1107,7 +1255,7 @@ setup.
   add('CLAUDE.md', agentInstructions(name))
   add(
     '.mcp.json',
-    `${JSON.stringify({ mcpServers: { pyreon: { command: 'bunx', args: ['@pyreon/mcp'] } } }, null, 2)}\n`,
+    jsonFile({ mcpServers: { pyreon: { command: 'bunx', args: ['@pyreon/mcp'] } } }),
   )
 
   return files
@@ -1125,13 +1273,13 @@ A Pyreon multi-platform project: **one source (\`src/App.tsx\`) renders on web, 
 - \`bun run build:ios\` / \`bun run build:android\` — compile \`src\` to Swift / Kotlin and build the native project.
 - \`npx pyreon-native dev --target=ios\` (or \`android\`) — watch \`src\`, rebuild, reinstall and relaunch on the running simulator/emulator. A rebuild loop, not hot reload.
 - \`bun run e2e:ios\` / \`bun run e2e:android\` — build and launch on the device, then run the Maestro flows in \`.maestro/\`. Give elements a \`data-testid\` and select them with \`id:\`.
-- \`bun run lint\` — Pyreon lint rules.
+- \`bun run lint\` — oxlint and the Pyreon lint rules, with the \`readable\` preset. \`bun run fix\` formats and applies every autofix (blank lines between declarations, before a return, between component sections).
 
 ## Rules that matter
 
 - **Components run once.** State is \`signal()\`, derived values are \`computed()\`; read with \`count()\`, write with \`count.set(v)\` / \`count.update(fn)\`. Never destructure \`props\` (it captures once) — read \`props.x\`.
 - **Use \`@pyreon/primitives\` in shared source:** \`<Stack>\`, \`<Inline>\`, \`<Layer>\`, \`<Scroll>\`, \`<Text>\`, \`<Heading>\`, \`<Image>\`, \`<Button>\`, \`<Press>\`, \`<Field>\`, \`<Toggle>\`, \`<Modal>\`, \`<Link>\`, … One event name per concept: \`onPress\`.
-- **The native compiler accepts a narrow, declarative subset.** Anything outside it produces a *named warning* from \`pyreon-native check\` and does not run on the device. Fix warnings by name; do not silence them.
+- **The native compiler accepts a narrow, declarative subset.** Anything outside it produces a _named warning_ from \`pyreon-native check\` and does not run on the device. Fix warnings by name; do not silence them.
 - **Device features come from hooks the compiler recognizes** (for example \`useStorage\`, \`useFetch\`, \`useGeolocation\`, \`usePush\`, \`useAuth\`). For anything else, \`useNativeModule('Name')\` calls a Swift/Kotlin class you write in \`ios/\` and \`android/\` — see README.md.
 - **Lists:** \`<For each={items} by={(item) => item.id}>\` — the prop is \`by\`, not \`key\`.
 - **Native routing** is an explicit \`createRouter({ routes: [...] })\` array (no file-based routing on native).

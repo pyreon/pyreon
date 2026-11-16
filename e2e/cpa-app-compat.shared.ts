@@ -2,9 +2,10 @@ import { expect, test, type Page } from '@playwright/test'
 
 /**
  * Shared spec body for the compat-mode runtime gate. The 4 compat
- * fixtures (cpa-pw-app-{react,vue,solid,preact}) all scaffold from the
- * same `app` template — only `pyreon({ compat: <x> })` and the matching
- * `@pyreon/<x>-compat` dep change. They share the exact same shape, so
+ * scaffolds (`create-zero --template app --compat {react,vue,solid,preact}`,
+ * produced fresh by `scripts/scaffold-smoke.ts` and run through
+ * `cpa-app-compat.spec.ts`) all come from the same `app` template — only
+ * `pyreon({ compat: <x> })` and the matching `@pyreon/<x>-compat` dep change. They share the exact same shape, so
  * the gate proves the SAME end-to-end contract for all 4 that the
  * non-compat `cpa-app` spec proves for its baseline:
  *

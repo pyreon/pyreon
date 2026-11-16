@@ -70,3 +70,31 @@ describe('unscoped package-runner commands in docs', () => {
     expect(result.findings.some((f) => f.code === 'doc-claims/unscoped-runner-command')).toBe(true)
   })
 })
+
+describe('the bin scan and the docs walk take the shapes real repos have', () => {
+  it('reads a string `bin` as the bin named after the package', () => {
+    // `"bin": "bin/zero.js"` is npm's shorthand for a bin named after the
+    // package; reading only the object form would leave `npx zero` unchecked.
+    put('packages/zero/zero/package.json', JSON.stringify({ name: '@pyreon/zero', bin: 'bin/zero.js' }))
+    expect(pyreonBins(root).get('zero')).toBe('@pyreon/zero')
+  })
+
+  it('skips a stray FILE beside the package groups, and a package.json that is not JSON', () => {
+    put('packages/README.md', '# packages\n')
+    put('packages/tools/broken/package.json', '{ not json')
+    expect([...pyreonBins(root).keys()].sort()).toEqual(['lathe', 'pyreon'])
+  })
+
+  it('reads the LAST line of a file with no trailing newline to its end', () => {
+    // The line text is cut at the next newline; with none left, the slice
+    // must run to the end of the file. Cut at index -1 instead, a contrast
+    // line ending in the package name loses its last character, stops
+    // naming the package, and is reported as a bare instruction.
+    put('packages/tools/lathe/README.md', '# lathe\n\n`npx lathe` is not ours; ours is @pyreon/lathe')
+    expect(codes()).toEqual([])
+    put('packages/tools/lathe/README.md', '# lathe\n\nnpx lathe init')
+    expect(codes()).toEqual([
+      'packages/tools/lathe/README.md:3: `npx lathe` runs the npm package named "lathe", not @pyreon/lathe, when it is not installed locally.',
+    ])
+  })
+})

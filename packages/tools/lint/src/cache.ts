@@ -1,4 +1,5 @@
 import { SizedMap } from '@pyreon/sized-map'
+import type { SourceComment } from './types'
 import type { LineIndex } from './utils/source'
 
 /**
@@ -12,7 +13,12 @@ import type { LineIndex } from './utils/source'
  */
 const DEFAULT_MAX_ENTRIES = 256
 
-type AstEntry = { program: unknown; lineIndex: LineIndex }
+type AstEntry = {
+  program: unknown
+  lineIndex: LineIndex
+  /** The parser's comment list — comments are not AST nodes. Optional for callers that predate it. */
+  comments?: readonly SourceComment[] | undefined
+}
 
 /**
  * LRU-bounded in-memory cache for parsed ASTs keyed by file content hash.

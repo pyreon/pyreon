@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-cpa-pw-blog",
-  "version": "0.50.3",
+  "version": "0.0.1",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -8,11 +8,13 @@
     "dev": "zero dev",
     "build": "zero build",
     "preview": "zero preview",
+    "typecheck": "tsc --noEmit",
     "doctor": "zero doctor",
     "doctor:fix": "zero doctor --fix",
     "doctor:ci": "zero doctor --ci",
-    "lint": "pyreon-lint .",
-    "typecheck": "tsc --noEmit"
+    "lint": "oxlint && pyreon-lint .",
+    "format": "oxfmt",
+    "fix": "oxfmt && oxlint --fix && pyreon-lint --fix ."
   },
   "dependencies": {
     "@pyreon/core": "workspace:^",
@@ -32,7 +34,10 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:^",
     "@pyreon/zero-cli": "workspace:^",
+    "@types/bun": "^1.4.4",
+    "oxfmt": "^0.74.0",
+    "oxlint": "^1.89.0",
     "typescript": "^6.0.3",
-    "vite": "^8.3.8"
+    "vite": "^8.0.16"
   }
 }

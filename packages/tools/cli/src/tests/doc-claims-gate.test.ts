@@ -374,6 +374,137 @@ describe('the scaffolder prompt carries the lint rule count', () => {
   })
 })
 
+describe('a source of truth the counter cannot read counts ZERO, not a crash', () => {
+  // Each counter parses one declaration out of a source file. When the file
+  // exists but the declaration was renamed or reshaped, the counter must
+  // return 0 (every claim then drifts, loudly) rather than throw and take the
+  // doctor run down, or keep a number it can no longer derive. The well-formed
+  // control proves the same fixture is read when the shape is right.
+  const actualOf = (r: GateResult, id: string): string | undefined =>
+    forCheck(r, id)
+      .map((f) => /Actual: (\d+)\.|actual (\d+)/.exec(f.message))
+      .map((m) => m?.[1] ?? m?.[2])
+      .find((n) => n !== undefined)
+
+  const cases: Array<[string, string, string, string]> = [
+    [
+      'lint-rule-count',
+      'packages/tools/lint/src/rules/index.ts',
+      'export const rules = [a, b]\n',
+      'export const allRules: Rule[] = [\n  a,\n  b,\n]\n',
+    ],
+    [
+      'detector-code-count',
+      'packages/core/compiler/src/pyreon-intercept.ts',
+      'export type PyreonCode = string\n',
+      "export type PyreonDiagnosticCode =\n  | 'one'\n  | 'two'\n",
+    ],
+    [
+      'react-detector-code-count',
+      'packages/core/compiler/src/react-intercept.ts',
+      'export type ReactCode = string\n',
+      "export type ReactDiagnosticCode =\n  | 'one'\n  | 'two'\n",
+    ],
+    [
+      'doc-format-count',
+      'packages/fundamentals/document/src/types.ts',
+      'export type Format = string\n',
+      "export type OutputFormat = 'pdf' | 'docx'\n\nexport type X = 1\n",
+    ],
+    [
+      'canonical-primitive-count',
+      'packages/native/compiler/src/canonical-primitives.ts',
+      'export const PRIMITIVES = []\n',
+      "export const CANONICAL_PRIMITIVES = new Set([\n  'Stack',\n  'Text',\n])\n",
+    ],
+  ]
+
+  for (const [id, file, unreadable, readable] of cases) {
+    it(`${id}: reads 0 from an unrecognised ${file.split('/').pop()}, 2 from the real shape`, async () => {
+      build({ [file]: unreadable })
+      expect(actualOf(await run(), id)).toBe('0')
+      rmSync(root, { recursive: true, force: true })
+      root = mkdtempSync(join(tmpdir(), 'pyreon-docclaims-'))
+      build({ [file]: readable })
+      expect(actualOf(await run(), id)).toBe('2')
+    })
+  }
+
+  it('counts packages and manifests past a stray FILE in packages/', async () => {
+    build({
+      'packages/README.md': '# packages\n',
+      'packages/tools/a/package.json': '{"name":"@pyreon/a"}\n',
+      'packages/tools/a/src/manifest.ts': 'export default {}\n',
+      'packages/tools/b/package.json': '{"name":"@pyreon/b"}\n',
+    })
+    const r = await run()
+    expect(actualOf(r, 'package-count')).toBe('2')
+    expect(actualOf(r, 'manifest-count')).toBe('1')
+  })
+})
+
+describe('the marketing site carries the lint counts', () => {
+  // pyreon.dev said "133 lint rules in 25 categories" while the registry held
+  // 140 in 26: its content files (synced from the 09-site staging set) were
+  // not claim surfaces, so two rule additions passed without touching them.
+  const rules = (n: number): string =>
+    `export const allRules: Rule[] = [\n${Array.from({ length: n }, (_, i) => `  rule${i},`).join('\n')}\n]\n`
+  const category = (name: string): string => `export default { meta: { category: '${name}' } }\n`
+  const HOME = 'docs/src/site/content/_home.json'
+  const home = (n: number, cats: number): string =>
+    `{\n "items": [\n    {\n     "name": "${n} lint rules",\n     "text": "In ${cats} categories, from props to SSR."\n    }\n ]\n}\n`
+  const repo = (claimed: number, claimedCats: number): Record<string, string> => ({
+    'packages/tools/lint/src/rules/index.ts': rules(4),
+    'packages/tools/lint/src/rules/jsx/a.ts': category('jsx'),
+    'packages/tools/lint/src/rules/style/b.ts': category('style'),
+    [HOME]: home(claimed, claimedCats),
+  })
+  const onHome = (r: GateResult, id: string): Finding[] =>
+    forCheck(r, id).filter((f) => f.code.endsWith('-drift') && f.location?.relPath === HOME)
+
+  it('reports a stale site rule count and category count', () => {
+    build(repo(3, 1))
+    return run().then((r) => {
+      expect(onHome(r, 'lint-rule-count').map((f) => f.message)).toEqual([
+        `lint rule count: ${HOME} claims 3, actual 4.`,
+      ])
+      expect(onHome(r, 'lint-category-count').length).toBe(1)
+    })
+  })
+
+  it('stays quiet when the site matches the registry', () => {
+    build(repo(4, 2))
+    return run().then((r) => {
+      expect(onHome(r, 'lint-rule-count')).toEqual([])
+      expect(onHome(r, 'lint-category-count')).toEqual([])
+    })
+  })
+
+  it('reports a stale count in a blog post and in the share-image alt text', () => {
+    // The blog posts and the /docs/cli share image said 133 after the
+    // registry reached 140; they were not claim surfaces either.
+    const POST = 'docs/src/content/blog/a-framework-your-ai-assistant-cant-misuse.md'
+    const OG = 'docs/src/site/content/_docs-og.json'
+    build({
+      ...repo(4, 2),
+      [POST]: 'is the broader rule set: 3 rules in 1 categories, from reactivity to SSR.\n',
+      [OG]: '{ "alt": "next to 4 lint rules", "again": "next to 3 lint rules" }\n',
+    })
+
+    return run().then((r) => {
+      const drift = (id: string, file: string): string[] =>
+        forCheck(r, id)
+          .filter((f) => f.code.endsWith('-drift') && f.location?.relPath === file)
+          .map((f) => f.message)
+      expect(drift('lint-rule-count', POST)).toEqual([`lint rule count: ${POST} claims 3, actual 4.`])
+      expect(drift('lint-category-count', POST)).toEqual([`lint category count: ${POST} claims 1, actual 2.`])
+      expect(drift('lint-rule-count', OG)).toEqual([
+        `lint rule count: ${OG} claims 3 (one of 2 occurrences), actual 4.`,
+      ])
+    })
+  })
+})
+
 describe('a JSON claim is read as the reader sees it', () => {
   // `package.json` may store any character as a `\uXXXX` escape, and
   // `changeset version` re-serialises the file on every release — so a
