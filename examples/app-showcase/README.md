@@ -25,7 +25,7 @@ Each section lives under `src/routes/<section>/` and is registered in [src/secti
 | Blog            | ✅ available   | `zero` SSG, `head`, router loaders, file routing (`[slug]`), `url-state`     |
 | Dashboard       | ✅ available   | `query`, `table`, `charts`, `virtual`, `permissions`, `toast`, `coolgrid`    |
 | Forms Wizard    | ✅ available   | `form`, `validation` (zod), `state-tree` (snapshots + patches), `machine`    |
-| Chat            | ✅ available   | `store`, `virtual`, `machine` (connection FSM), `toast`, `reactivity`        |
+| Chat            | ✅ available   | `store`, `virtual`, `machine` (connection FSM), `toast`, `reactivity`; the live view (`/chat/live/:id`): `query` (`useQuery`, `useSSE`, `useMutation`), `url-state` |
 | Kanban          | ✅ available   | `state-tree` (snapshot undo), `permissions`, `hotkeys`, native HTML5 DnD     |
 | I18n Shop       | ✅ available   | `i18n` (3 locales), `store`, `storage` (persisted cart), `url-state`         |
 | Invoice Builder | ✅ available   | `document` (PDF/DOCX/HTML/MD export), `store`, `reactivity`, `toast`         |
@@ -61,7 +61,8 @@ examples/app-showcase/
 │   │   ├── forms-wizard/
 │   │   │   └── index.tsx    ← /forms-wizard (form + validation + state-tree + machine)
 │   │   ├── chat/
-│   │   │   └── index.tsx    ← /chat (store + virtual + machine + toast)
+│   │   │   ├── index.tsx    ← /chat (store + virtual + machine + toast)
+│   │   │   └── live/[id].tsx ← /chat/live/:id (query useQuery + useSSE + useMutation, url-state)
 │   │   ├── kanban/
 │   │   │   └── index.tsx    ← /kanban (state-tree undo + permissions + hotkeys + DnD)
 │   │   ├── shop/
@@ -124,7 +125,8 @@ examples/app-showcase/
 │       │   ├── format.ts
 │       │   ├── styled.ts
 │       │   └── data/
-│       │       ├── eventBus.ts       ← mock chat server (replaces SSE)
+│       │       ├── devServer.ts      ← dev-server SSE / history / send endpoints for /chat/live
+│       │       ├── eventBus.ts       ← in-browser mock server for /chat
 │       │       ├── seed.ts
 │       │       └── types.ts
 │       ├── kanban/
