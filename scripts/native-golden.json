@@ -2252,13 +2252,13 @@
       "warnings": 0
     },
     "golden-fixture:feature-09.tsx|swift": {
-      "sha": "6179ab98e9a0f82ea76e15905ee3900a3f25dbac46e49024915c9a86e9a9db60",
-      "bytes": 3120,
+      "sha": "aee4a6993a7eb5ceeffabd49261e2d8eb304d3bc9ef0ef1f6ac7872ee46b9d67",
+      "bytes": 2921,
       "warnings": 3
     },
     "golden-fixture:feature-09.tsx|kotlin": {
-      "sha": "d0f463da4c557ce47ed2b5f9dbecd004e487bf6f4d61248b4a285e14721f095a",
-      "bytes": 3762,
+      "sha": "d63f67cd365d7fccb96091114f3e03d0d5b7376c5c8dc177cf436ab89a321019",
+      "bytes": 3675,
       "warnings": 3
     },
     "golden-fixture:flow-01.tsx|swift": {
@@ -7792,13 +7792,13 @@
       "warnings": 0
     },
     "registry:@pyreon/feature|swift": {
-      "sha": "ffdbea5360993bb2793840677d7dd1efe864587241920523d018e9a59a57f8f2",
-      "bytes": 3420,
+      "sha": "787e75779100f35dee8f31657bfb95da3d3a24e54d9330ff00f5a5bb2b7fd6b7",
+      "bytes": 3319,
       "warnings": 0
     },
     "registry:@pyreon/feature|kotlin": {
-      "sha": "2905f46437d186b2a471f5a240cb20674a6bed85958663ed3d2a45f54ebae832",
-      "bytes": 3498,
+      "sha": "bbcfcd8f5f0097642f618a8f41fbfc0235adee2391ae40341fff819ae9a192a8",
+      "bytes": 3503,
       "warnings": 0
     },
     "registry:@pyreon/hotkeys|swift": {
