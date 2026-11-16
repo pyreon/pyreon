@@ -35,7 +35,20 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  closeSync,
+  cpSync,
+  existsSync,
+  fstatSync,
+  mkdtempSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+  writeSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
 
@@ -182,12 +195,22 @@ export function scaffoldFixture(fixture: Fixture, parent: string): string {
   toWorkspaceFixture(dir, fixture.name, readFileSync(join(REPO_ROOT, 'LICENSE'), 'utf8'))
   for (const [file, text] of Object.entries(fixture.appends ?? {})) {
     const path = join(dir, file)
-    if (!existsSync(path)) {
+    // One open, no exists-then-write window: append to the file the
+    // scaffolder just wrote, and fail loudly when it no longer writes it.
+    let fd: number
+    try {
+      fd = openSync(path, 'r+') // never creates: a missing file is ENOENT
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       throw new Error(
         `[scaffold-cpa-fixtures] ${fixture.name}: the template no longer emits ${file}, which the fixture appends to. Move the append to the file that now owns that route.`,
       )
     }
-    writeFileSync(path, readFileSync(path, 'utf8') + text)
+    try {
+      writeSync(fd, text, fstatSync(fd).size)
+    } finally {
+      closeSync(fd)
+    }
   }
   return dir
 }
