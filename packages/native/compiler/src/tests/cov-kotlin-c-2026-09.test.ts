@@ -1028,7 +1028,8 @@ export function App() {
   const tree = signal({ title: 'x', child: [{ id: 1 }], items: [{ name: 'b' }] })
   return <Text>{tree().title}</Text>
 }`)
-    expect(out).toContain('fun describeErr(err: Throwable): String = err.message')
+    // `Throwable.message` is `String?`, so the read goes through the accessor that returns a `String`.
+    expect(out).toContain('fun describeErr(err: Throwable): String = pyreonErrorMessage(err)')
     // `child` does not end in `s`, so it is used as-is; `items` singularizes
     expect(out).toContain('data class AppTreeChild(val id: Long)')
     expect(out).toContain('data class AppTreeItem(val name: String)')

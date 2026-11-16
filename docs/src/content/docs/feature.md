@@ -856,7 +856,13 @@ const useDashboard = defineStore('dashboard', () => {
 
 ## Multiplatform
 
-The runtime half — the generated hooks, the network fetcher, and form / validator integration — runs on the web. On iOS and Android (PMTC), the declaration half crosses: `defineFeature({ name, schema })` with a **literal field-type map** (`schema: { id: 'string', done: 'boolean' }`) emits a Codable struct plus a module-scope constant carrying `name` and `initialValues`, reachable under the source binding name (`Todo.name`). A runtime schema (Zod / Valibot / ArkType) is not introspected there and warns by name. Swift and Kotlin share one namespace for types and values, so a file cannot declare both `const Todo = defineFeature(...)` and a type named `Todo`.
+On iOS and Android (PMTC), `defineFeature({ name, schema })` with a **literal field-type map** (`schema: { id: 'string', done: 'boolean' }`) or an object literal of scalar validators emits a Codable struct plus a module-scope constant carrying `name` and `initialValues`, reachable under the source binding name (`Todo.name`). With an absolute literal `api`, `useList()`, `useById(id)`, `useCreate()`, `useUpdate()` and `useDelete()` lower onto `@pyreon/query`'s native containers and send the web's requests. The form, table, store and search hooks, a custom `fetcher` and the cross-query invalidation stay on the web and warn by name. A runtime schema held in a variable is not introspected and warns by name. Swift and Kotlin share one namespace for types and values, so a file cannot declare both `const Todo = defineFeature(...)` and a type named `Todo`.
+
+How the lowered hooks match the web helper (`createFetcher`), identically on both targets:
+
+- **Errors.** A non-2xx answer rejects with the web's error: `error.message` is the body's `message` when the server sends a non-empty string one, otherwise `<METHOD> <url> failed: <status>`. Natively that is `PyreonHttpMessageError`, which also carries `status` and, when the body has a truthy `errors`, its JSON text. `q.error()?.message`, an `onError` parameter's `.message` and a caught error's `.message` all read that string. A non-string `message` is not read; the default message stands.
+- **No content.** A `204` on `useCreate` / `useUpdate` resolves with no data: the status is `success` and `data` is absent, as the web's `undefined`. Natively the `onSuccess` data and an awaited `mutateAsync` result are therefore optional, so read them with `?.` (`t?.id ?? ''`), which is valid on the web too. A `204` on `useList` / `useById` is still a decode error natively, where the web resolves `undefined`.
+- **Missing fields.** A record that lacks a schema field decodes that field to its `initialValues` default (`''` / `0` / `false`) on both targets, where the web leaves it `undefined`. An unknown extra key is ignored. A field that is present but `null` or of the wrong type is a decode error on both.
 
 ## Why
 

@@ -31,7 +31,7 @@ export function Todos(props: { id: string }) {
   const saved = signal('')
   const add = async () => {
     const t = await create.mutateAsync({ title: 'x', done: false })
-    saved.set(t.id)
+    saved.set(t?.id ?? '')
   }
   return (
     <Stack>
@@ -40,7 +40,7 @@ export function Todos(props: { id: string }) {
       <Text>{one.data()?.title ?? ''}</Text>
       <Text>{saved()}</Text>
       <Button onPress={add}>Add</Button>
-      <Button onPress={() => create.mutate({ title: 'y', done: false }, { onSuccess: (t) => saved.set(t.id) })}>Add 2</Button>
+      <Button onPress={() => create.mutate({ title: 'y', done: false }, { onSuccess: (t) => saved.set(t?.id ?? '') })}>Add 2</Button>
       <Button onPress={() => update.mutate({ id: props.id, data: { done: true } })}>Done</Button>
       <Button onPress={() => remove.mutate(props.id)}>Delete</Button>
       <Text>{remove.isPending() ? 'Deleting' : ''}</Text>
@@ -88,9 +88,12 @@ describe('@pyreon/feature CRUD hooks — native lowering', () => {
       expect(code).toContain(
         `create.mutate(PyreonHttpRequest(method: .post, url: "${API}", headers: ["content-type": "application/json"], body: Data((PyreonJSON.stringify(`,
       )
-      expect(code).toContain('call: PyreonMutationCallbacks(onSuccess: { t in')
+      // A 204 resolves with no data (`orEmpty`), so the callbacks receive an optional record.
+      expect(code).toContain('call: PyreonMutationCallbacksOrEmpty(onSuccess: { t in')
       expect(code).toContain(`try await create.mutateAsync(PyreonHttpRequest(method: .post, url: "${API}"`)
-      expect(code).toContain('{ __request in try await PyreonHttp.call(__request).decode(PyreonFeatureSchema_Todo.self) }')
+      expect(code).toContain(
+        `orEmpty: { __request in let __response = try await PyreonHttp.send(__request, middleware: [.reject { $0.messageError(method: "POST", url: "${API}") }] as [PyreonHttpMiddleware]); guard __response.isOK else { throw PyreonHttpError.badStatus(__response.status) }; return try __response.status == 204 ? nil : __response.decode(PyreonFeatureSchema_Todo.self) }`,
+      )
     })
 
     it('useUpdate → PUT <api>/<id> with `data` as the JSON body', () => {
@@ -103,7 +106,7 @@ describe('@pyreon/feature CRUD hooks — native lowering', () => {
     it('useDelete → a Void PyreonMutation, DELETE <api>/<id> with no body and no decode', () => {
       expect(code).toContain('@State private var remove = PyreonMutation<Void>()')
       expect(code).toContain(
-        `remove.mutate(PyreonHttpRequest(method: .delete, url: "${API}/\\(PyreonURL.encodePathParam(id))"), { __request in _ = try await PyreonHttp.call(__request) })`,
+        `remove.mutate(PyreonHttpRequest(method: .delete, url: "${API}/\\(PyreonURL.encodePathParam(id))"), { __request in let __response = try await PyreonHttp.send(__request, middleware: [.reject { $0.messageError(method: "DELETE", url: "${API}/\\(id)") }] as [PyreonHttpMiddleware]); guard __response.isOK else { throw PyreonHttpError.badStatus(__response.status) } })`,
       )
       expect(code).toContain('remove.isPending ?')
     })
@@ -131,7 +134,7 @@ describe('@pyreon/feature CRUD hooks — native lowering', () => {
       expect(code).toContain(
         `PyreonHttpRequest(method = PyreonHttpMethod.POST, url = "${API}", headers = mapOf("content-type" to "application/json"), body = PyreonJson.stringify(`,
       )
-      expect(code).toContain(`create.runAsync(PyreonHttpRequest(method = PyreonHttpMethod.POST`)
+      expect(code).toContain(`create.runAsyncOrEmpty(PyreonHttpRequest(method = PyreonHttpMethod.POST`)
       expect(code).toContain(`PyreonHttpRequest(method = PyreonHttpMethod.PUT, url = "${API}/\${PyreonURL.encodePathParam(id)}", headers = mapOf("content-type" to "application/json")`)
       expect(code).toContain(`PyreonHttpRequest(method = PyreonHttpMethod.DELETE, url = "${API}/\${PyreonURL.encodePathParam(id)}").let { __request -> remove.begin()`)
     })

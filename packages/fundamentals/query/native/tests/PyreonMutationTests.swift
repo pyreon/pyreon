@@ -81,5 +81,30 @@ func runPyreonMutationTests() async {
         try? await Task.sleep(nanoseconds: 200_000_000)
         precondition(fired == 0, "a released container runs no callback")
     }
+    // No content (a 204 on `@pyreon/feature`'s create / update): an `orEmpty:` nil is a SUCCESS with no data,
+    // and onSuccess fires with nil — the web's `onSuccess(undefined)`.
+    do {
+        let m = PyreonMutation<String>()
+        var log: [String] = []
+        let value = try? await m.mutateAsync(
+            "req",
+            orEmpty: { _ in nil },
+            options: PyreonMutationCallbacksOrEmpty(
+                onSuccess: { log.append("options.onSuccess:\($0 ?? "nil")") },
+                onSettled: { d, e in log.append("options.onSettled:\(d ?? "nil"):\(e == nil)") }
+            ),
+            call: PyreonMutationCallbacksOrEmpty(onSuccess: { log.append("call.onSuccess:\($0 ?? "nil"):\(m.status)") })
+        )
+        precondition(value == .some(nil), "mutateAsync resolves nil, not a throw: \(String(describing: value))")
+        precondition(m.isSuccess && m.data == nil && m.error == nil, "no content is success with no data")
+        precondition(
+            log == ["options.onSuccess:nil", "options.onSettled:nil:true", "call.onSuccess:nil:success"],
+            "no-content callbacks: \(log)"
+        )
+        // A value through the same entry point is an ordinary success.
+        m.mutate("x", orEmpty: { r in "ok:\(r)" })
+        for _ in 0..<100 where m.data == nil { await Task.yield() }
+        precondition(m.isSuccess && m.data == "ok:x", "orEmpty with data")
+    }
     print("[PyreonMutationTests] all smoke tests passed")
 }

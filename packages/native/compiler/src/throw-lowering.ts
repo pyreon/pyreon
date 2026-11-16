@@ -17,7 +17,7 @@
 // position in a warning so the author can add the `try`/`catch` that makes all three agree.
 
 import { syncThrowingPluginExpr } from './registry-lookup'
-import type { ExprIR, StatementIR } from './types'
+import type { ExprIR, StatementIR, TypeIR } from './types'
 
 /** Every nested statement list of `s` — the one place that knows which statement kinds own a body. */
 export function childStatementLists(s: StatementIR): StatementIR[][] {
@@ -40,6 +40,20 @@ export function childStatementLists(s: StatementIR): StatementIR[][] {
     default:
       return []
   }
+}
+
+/**
+ * Whether `t` is the `Error` object a container's `error()` / an `onError` parameter is typed as (`ERROR_OBJECT`),
+ * optionally with `null` / `undefined` — the receivers whose `.message` reads through {@link ERROR_MESSAGE_FN}.
+ */
+export function isErrorObjectType(t: TypeIR): boolean {
+  const isError = (b: TypeIR): boolean => b.kind === 'typeRef' && b.name === 'Error' && b.args.length === 0
+  if (isError(t)) return true
+  return (
+    t.kind === 'union' &&
+    t.branches.some(isError) &&
+    t.branches.every((b) => isError(b) || b.kind === 'null' || b.kind === 'undefined')
+  )
 }
 
 /** The name the runtime-free message accessor is emitted under, on both targets. */

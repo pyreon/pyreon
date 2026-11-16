@@ -354,6 +354,10 @@ interface MutateCallPayload {
   readonly hasBodyExpr: boolean
   /** A streamed body (multipart / file) occupies the slot after the body. */
   readonly hasUpload?: boolean
+  /** Middleware wrapped around the send (see {@link MutateRequest.middleware}); its expression is the LAST arg. */
+  readonly hasMiddleware?: boolean
+  /** A 204 resolves with no data (see {@link MutateRequest.noContent}). */
+  readonly noContent?: boolean
   readonly options: Callbacks
   readonly call: Callbacks
 }
@@ -407,6 +411,18 @@ export interface MutateRequest {
   readonly body?: string | undefined
   readonly bodyExpr?: ExprIR | undefined
   readonly upload?: ExprIR | undefined
+  /**
+   * A `[PyreonHttpMiddleware]` / `List<PyreonHttpMiddleware>` expression the send runs through — how a package that owns
+   * its error contract (`@pyreon/feature`'s `.reject { $0.messageError(…) }`) makes a non-2xx reject with ITS error.
+   */
+  readonly middleware?: ExprIR | undefined
+  /**
+   * A `204 No Content` answer RESOLVES with no data instead of failing to decode — what a web mutationFn that returns
+   * `undefined` for a 204 does (`@pyreon/feature`'s create / update). The container then settles through its `orEmpty`
+   * entry points: `data` stays nil, the status is `success`, `onSuccess` receives the absent value, and an awaited
+   * `mutateAsync` is `T | undefined`. Ignored for a mutation that decodes nothing.
+   */
+  readonly noContent?: boolean | undefined
 }
 
 /** The container a call site settles: its binding, the decoded type, and the callbacks its declaration carried. */
@@ -439,6 +455,8 @@ export function mutateCallSpec(
   if (resolved.upload !== undefined) args.push(resolved.upload)
   const headerExprNames = Object.keys(resolved.headerExprs ?? {})
   for (const h of headerExprNames) args.push((resolved.headerExprs as Record<string, ExprIR>)[h] as ExprIR)
+  if (resolved.middleware !== undefined) args.push(resolved.middleware)
+  const noContent = resolved.noContent === true && !isVoid(binding.type)
   const payload: MutateCallPayload = {
     binding: name,
     type: binding.type,
@@ -450,6 +468,8 @@ export function mutateCallSpec(
     hasUrlExpr: resolved.urlExpr !== undefined,
     hasBodyExpr: resolved.bodyExpr !== undefined,
     ...(resolved.upload !== undefined ? { hasUpload: true } : {}),
+    ...(resolved.middleware !== undefined ? { hasMiddleware: true } : {}),
+    ...(noContent ? { noContent: true } : {}),
     options: binding.options,
     call,
   }
@@ -463,6 +483,9 @@ const payloadOf = (e: ExtExprIR): MutateCallPayload => e.payload as unknown as M
 
 /** Whether the mutation decodes nothing (no `useMutation<T>`): the response is checked, not read. */
 const isVoid = (t: TypeIR): boolean => t.kind === 'unknown' || t.kind === 'undefined'
+
+/** The middleware expression a call site's send runs through, when its request carried one (always the last arg). */
+const middlewareOf = (e: ExtExprIR): ExprIR | undefined => (payloadOf(e).hasMiddleware === true ? e.args[e.args.length - 1] : undefined)
 
 function partsOf(e: ExtExprIR, url: (literal: string | undefined, expr: ExprIR | undefined) => string): HttpRequestParts {
   const p = payloadOf(e)
@@ -490,6 +513,7 @@ function callbackLocals(
   cb: Callback,
   kinds: readonly ('data' | 'error')[],
   data: TypeIR,
+  noContent = false,
 ): Map<string, TypeIR> {
   const out = new Map<string, TypeIR>()
   cb.params.forEach((p, i) => {
@@ -497,52 +521,73 @@ function callbackLocals(
     if (kind === 'data') out.set(p, { kind: 'union', branches: [data, { kind: 'undefined' }] })
     else if (kind === 'error') out.set(p, ERROR_TYPE)
   })
-  // onSuccess's data is never absent.
-  if (kinds.length === 1 && kinds[0] === 'data' && cb.params[0] !== undefined) out.set(cb.params[0], data)
+  // onSuccess's data is never absent — unless a 204 resolves with none.
+  if (kinds.length === 1 && kinds[0] === 'data' && cb.params[0] !== undefined && !noContent) out.set(cb.params[0], data)
   return out
 }
 
-function swiftCallbacks(c: Callbacks, data: TypeIR, ctx: EmitContext): string | undefined {
+function swiftCallbacks(c: Callbacks, data: TypeIR, ctx: EmitContext, noContent = false): string | undefined {
   const parts: string[] = []
   const closure = (cb: Callback, names: readonly string[], kinds: readonly ('data' | 'error')[]): string => {
     const params = names.map((n, i) => (cb.params[i] !== undefined ? ctx.ident(cb.params[i] as string) : '_'))
-    const lines = ctx.statements(cb.body, ctx.indent + 2, callbackLocals(cb, kinds, data))
+    const lines = ctx.statements(cb.body, ctx.indent + 2, callbackLocals(cb, kinds, data, noContent))
     if (lines.length === 0) return `{ ${params.join(', ')} in }`
     return `{ ${params.join(', ')} in\n${lines.join('\n')}\n${ctx.pad(ctx.indent)}}`
   }
   if (c.onSuccess) parts.push(`onSuccess: ${closure(c.onSuccess, ['data'], ['data'])}`)
   if (c.onError) parts.push(`onError: ${closure(c.onError, ['error'], ['error'])}`)
   if (c.onSettled) parts.push(`onSettled: ${closure(c.onSettled, ['data', 'error'], ['data', 'error'])}`)
-  return parts.length === 0 ? undefined : `PyreonMutationCallbacks(${parts.join(', ')})`
+  return parts.length === 0 ? undefined : `${noContent ? 'PyreonMutationCallbacksOrEmpty' : 'PyreonMutationCallbacks'}(${parts.join(', ')})`
 }
 
-function kotlinCallbacks(c: Callbacks, data: TypeIR, ctx: EmitContext): string | undefined {
+function kotlinCallbacks(c: Callbacks, data: TypeIR, ctx: EmitContext, noContent = false): string | undefined {
   const parts: string[] = []
   const lambda = (cb: Callback, arity: number, kinds: readonly ('data' | 'error')[]): string => {
     const params = Array.from({ length: arity }, (_, i) => (cb.params[i] !== undefined ? ctx.ident(cb.params[i] as string) : '_'))
-    const lines = ctx.statements(cb.body, ctx.indent + 2, callbackLocals(cb, kinds, data))
+    const lines = ctx.statements(cb.body, ctx.indent + 2, callbackLocals(cb, kinds, data, noContent))
     if (lines.length === 0) return `{ ${params.join(', ')} -> }`
     return `{ ${params.join(', ')} ->\n${lines.join('\n')}\n${ctx.pad(ctx.indent)}}`
   }
   if (c.onSuccess) parts.push(`onSuccess = ${lambda(c.onSuccess, 1, ['data'])}`)
   if (c.onError) parts.push(`onError = ${lambda(c.onError, 1, ['error'])}`)
   if (c.onSettled) parts.push(`onSettled = ${lambda(c.onSettled, 2, ['data', 'error'])}`)
-  return parts.length === 0 ? undefined : `PyreonMutationCallbacks(${parts.join(', ')})`
+  // `PyreonMutationCallbacksOrEmpty<T>` is `PyreonMutationCallbacks<T?>`: name the type so `onSuccess` takes `T?`.
+  if (parts.length === 0) return undefined
+  return noContent ? `PyreonMutationCallbacksOrEmpty<${ctx.typeText(data)}>(${parts.join(', ')})` : `PyreonMutationCallbacks(${parts.join(', ')})`
 }
 
 const WHERE = (e: ExtExprIR): string => `${payloadOf(e).binding}.mutate:`
 
-/** The Swift operation closure: send (rejecting a non-2xx) and decode into `T`. */
-function swiftOperation(type: TypeIR, ctx: EmitContext): string {
-  if (isVoid(type)) return `{ __request in _ = try await PyreonHttp.call(__request) }`
-  return `{ __request in try await PyreonHttp.call(__request).decode(${ctx.typeText(type)}.self) }`
+/** The Swift operation closure: send (rejecting a non-2xx) and decode into `T` — or, for `noContent`, nil on a 204. */
+function swiftOperation(e: ExtExprIR, ctx: EmitContext): string {
+  const p = payloadOf(e)
+  const type = p.type
+  const mw = middlewareOf(e)
+  if (mw === undefined && p.noContent !== true) {
+    if (isVoid(type)) return `{ __request in _ = try await PyreonHttp.call(__request) }`
+    return `{ __request in try await PyreonHttp.call(__request).decode(${ctx.typeText(type)}.self) }`
+  }
+  const send = `let __response = try await PyreonHttp.send(__request${mw !== undefined ? `, middleware: ${ctx.expr(mw, 0)}` : ''}); guard __response.isOK else { throw PyreonHttpError.badStatus(__response.status) }`
+  if (isVoid(type)) return `{ __request in ${send} }`
+  // `try` leads the whole expression: Swift rejects it to the right of the ternary's operator.
+  const decode = `__response.decode(${ctx.typeText(type)}.self)`
+  return `{ __request in ${send}; return try ${p.noContent === true ? `__response.status == 204 ? nil : ${decode}` : decode} }`
 }
 
-/** The Kotlin operation lambda: the blocking send off the main thread, then the decode. */
-function kotlinOperation(type: TypeIR, ctx: EmitContext): string {
-  const send = `withContext(Dispatchers.IO) { PyreonHttp.call(__r, fallback = PyreonHttpOkHttp) }`
+/** The Kotlin operation lambda: the blocking send off the main thread, then the decode (`null` on a 204 for `noContent`). */
+function kotlinOperation(e: ExtExprIR, ctx: EmitContext): string {
+  const p = payloadOf(e)
+  const type = p.type
+  const mw = middlewareOf(e)
+  if (mw === undefined && p.noContent !== true) {
+    const send = `withContext(Dispatchers.IO) { PyreonHttp.call(__r, fallback = PyreonHttpOkHttp) }`
+    if (isVoid(type)) return `{ __r -> ${send}; Unit }`
+    return `{ __r -> PyreonFetchJson.decodeFromString<${ctx.typeText(type)}>(${send}.body) }`
+  }
+  const send = `val __response = withContext(Dispatchers.IO) { PyreonHttp.send(__r, fallback = PyreonHttpOkHttp${mw !== undefined ? `, middleware = ${ctx.expr(mw, 0)}` : ''}) }; if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`
   if (isVoid(type)) return `{ __r -> ${send}; Unit }`
-  return `{ __r -> PyreonFetchJson.decodeFromString<${ctx.typeText(type)}>(${send}.body) }`
+  const decode = `PyreonFetchJson.decodeFromString<${ctx.typeText(type)}>(__response.body)`
+  return `{ __r -> ${send}; ${p.noContent === true ? `if (__response.status == 204) null else ${decode}` : decode} }`
 }
 
 function swiftEmit(e: ExtExprIR, ctx: EmitContext, method: 'mutate' | 'mutateAsync'): string {
@@ -553,12 +598,13 @@ function swiftEmit(e: ExtExprIR, ctx: EmitContext, method: 'mutate' | 'mutateAsy
     WHERE(e),
   )})`
   const extra: string[] = []
-  const options = swiftCallbacks(p.options, p.type, ctx)
-  const call = swiftCallbacks(p.call, p.type, ctx)
+  const noContent = p.noContent === true
+  const options = swiftCallbacks(p.options, p.type, ctx, noContent)
+  const call = swiftCallbacks(p.call, p.type, ctx, noContent)
   if (options !== undefined) extra.push(`options: ${options}`)
   if (call !== undefined) extra.push(`call: ${call}`)
   const tail = extra.length > 0 ? `, ${extra.join(', ')}` : ''
-  return `${ctx.ident(p.binding)}.${method}(${request}, ${swiftOperation(p.type, ctx)}${tail})`
+  return `${ctx.ident(p.binding)}.${method}(${request}, ${noContent ? 'orEmpty: ' : ''}${swiftOperation(e, ctx)}${tail})`
 }
 
 function kotlinEmit(e: ExtExprIR, ctx: KotlinEmitContext, awaited: boolean): string {
@@ -569,18 +615,20 @@ function kotlinEmit(e: ExtExprIR, ctx: KotlinEmitContext, awaited: boolean): str
     WHERE(e),
   )})`
   const extra: string[] = []
-  const options = kotlinCallbacks(p.options, p.type, ctx)
-  const call = kotlinCallbacks(p.call, p.type, ctx)
+  const noContent = p.noContent === true
+  const options = kotlinCallbacks(p.options, p.type, ctx, noContent)
+  const call = kotlinCallbacks(p.call, p.type, ctx, noContent)
   if (options !== undefined) extra.push(`options = ${options}`)
   if (call !== undefined) extra.push(`call = ${call}`)
   const tail = extra.length > 0 ? `, ${extra.join(', ')}` : ''
   const m = ctx.ident(p.binding)
-  const op = kotlinOperation(p.type, ctx)
+  const op = kotlinOperation(e, ctx)
+  const suffix = noContent ? 'OrEmpty' : ''
   // Awaited inside an async handler's coroutine: a plain suspend call that returns the data or throws.
-  if (awaited) return `${m}.runAsync(${request}, ${op}${tail})`
+  if (awaited) return `${m}.runAsync${suffix}(${request}, ${op}${tail})`
   // Fire and forget from any callback: build the request and BEGIN on the calling thread (the web flips to pending
   // before its first await), then settle on the composable's scope — cancelled, with nothing written, if it leaves.
-  return `${request}.let { __request -> ${m}.begin().let { __mine -> ${ctx.coroutineScope()}.launch { ${m}.run(__mine, __request, ${op}${tail}) } } }`
+  return `${request}.let { __request -> ${m}.begin().let { __mine -> ${ctx.coroutineScope()}.launch { ${m}.run${suffix}(__mine, __request, ${op}${tail}) } } }`
 }
 
 export const mutateExpr: ExprEmitter = {
@@ -595,7 +643,12 @@ export const mutateAsyncExpr: ExprEmitter = {
   kotlin: (e, ctx) => kotlinEmit(e, ctx, true),
   typing: {
     // `await m.mutateAsync(v)` is the decoded data.
-    type: (e) => (isVoid(payloadOf(e).type) ? { kind: 'undefined' } : payloadOf(e).type),
+    // A `noContent` call resolves with no data on a 204, so its result may be absent.
+    type: (e) => {
+      const p = payloadOf(e)
+      if (isVoid(p.type)) return { kind: 'undefined' }
+      return p.noContent === true ? { kind: 'union', branches: [p.type, { kind: 'undefined' }] } : p.type
+    },
   },
 }
 
