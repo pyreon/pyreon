@@ -114,6 +114,13 @@ jobs:
       # `graph` gates `validate` and `validate-swift-typecheck`, never the
       # device lanes — see their `if:`.
       graph: ${{ steps.diff.outputs.graph }}
+      # `macos` / `graph-macos` gate `validate-swift-typecheck` ONLY. They are
+      # the same two questions (path classifier, dependency graph) asked about
+      # the macOS job's own inputs: an Android Gradle file and every workflow
+      # file but this job's own block start no macOS runner. A skip needs an
+      # explicit 'false' from both; an empty output runs the job.
+      macos: ${{ steps.diff.outputs.macos }}
+      graph-macos: ${{ steps.diff.outputs.graph-macos }}
     steps:
       # The classifier reads changed package.json manifests at the PR head, so
       # it needs the merge-ref checkout and both parents to inspect removed
@@ -151,6 +158,8 @@ jobs:
           elif [ "$EVENT" != "pull_request" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "graph=true" >> "$GITHUB_OUTPUT"
+            echo "macos=true" >> "$GITHUB_OUTPUT"
+            echo "graph-macos=true" >> "$GITHUB_OUTPUT"
             echo "non-PR event — always validate"
             exit 0
           fi
@@ -163,7 +172,9 @@ jobs:
           if [ "$EVENT" = "pull_request" ]; then
             gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename' > "$FILES"
           fi
-          bun scripts/native-surface-touched.ts --self=.github/workflows/native-validate.yml < "$FILES"
+          # `--macos-jobs` also emits `macos`: the same question for the macOS job
+          # alone (see scripts/native-surface-touched.ts, classifyMacosLane).
+          bun scripts/native-surface-touched.ts --self=.github/workflows/native-validate.yml --macos-jobs=validate-swift-typecheck < "$FILES"
           # `graph` — the DEPENDENCY-GRAPH half. `@pyreon/native-compiler` has
           # RUNTIME deps on `@pyreon/charts` and `@pyreon/compiler` (the chart
           # engine sources are PMTC input), so a PR that touches neither
@@ -180,6 +191,28 @@ jobs:
             echo "native-compiler in the affected graph ($GRAPH) — the Linux suite runs"
           else
             echo "graph=false" >> "$GITHUB_OUTPUT"
+          fi
+          # `graph-macos` — the same graph question without the workflow files.
+          # A workflow file other than ci.yml maps to a leaf seed outside this
+          # category, and ci.yml is a root file that escalates every cell to
+          # `--filter=*`; neither defines the macOS job (its own block is read
+          # by the path classifier above). A diff that is ONLY workflow files
+          # leaves an empty list, which affected.ts reads as unknowable, so that
+          # case is answered here instead of being sent to it.
+          FILES_MAC=$(mktemp)
+          grep -v '^\.github/workflows/' "$FILES" > "$FILES_MAC" || true
+          if [ -s "$FILES_MAC" ]; then
+            GRAPH_MAC=$(bun scripts/affected.ts --files-from-stdin --category=native/compiler < "$FILES_MAC") || GRAPH_MAC='--filter=*'
+          elif [ -s "$FILES" ]; then
+            GRAPH_MAC=''
+          else
+            GRAPH_MAC='--filter=*'
+          fi
+          if [ -n "$GRAPH_MAC" ]; then
+            echo "graph-macos=true" >> "$GITHUB_OUTPUT"
+            echo "native-compiler in the affected graph outside workflow files ($GRAPH_MAC) — the macOS typecheck can run"
+          else
+            echo "graph-macos=false" >> "$GITHUB_OUTPUT"
           fi
 
   validate:
@@ -731,7 +764,8 @@ jobs:
     needs: decide
     # Fail-closed: a decide that could not run must not SKIP the gate.
     #
-    # `run || graph`, like `validate`: a PR that reaches the emit only through
+    # `macos || graph-macos`, the macOS counterpart of `validate`'s `run || graph`
+    # (decide computes both, see its outputs): a PR that reaches the emit only through
     # the dependency graph (@pyreon/compiler, query, http, validate, …) changes
     # what PMTC lowers, so the real-SDK blocks must see it too. This job used
     # to key on `run` alone, and the local pre-push hook's reverse-dependency
@@ -739,7 +773,7 @@ jobs:
     # PR. The hook is direct-only now, so CI owns that coverage.
     # Skipped in the merge queue (see the header): the PR ran it, and a macOS
     # slot wait at the head of the queue would hold every group behind it.
-    if: github.event_name != 'merge_group' && ((success() && (needs.decide.outputs.run == 'true' || needs.decide.outputs.graph == 'true')) || (failure() && needs.decide.result != 'success'))
+    if: github.event_name != 'merge_group' && ((success() && (needs.decide.outputs.macos != 'false' || needs.decide.outputs['graph-macos'] != 'false')) || (failure() && needs.decide.result != 'success'))
     # macOS runners ship the REAL SwiftUI SDK, which the Linux swift toolchain
     # the `validate` job above uses does NOT — so `isSwiftUIAvailable()` is
     # true here and the ~58 `it.skipIf(!isSwiftUIAvailable())` real-SDK
