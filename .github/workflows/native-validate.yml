@@ -91,10 +91,10 @@ concurrency:
 env:
   # Pinned tool versions for reproducibility. Bump deliberately;
   # the nightly drift run catches issues from upstream changes.
-  SWIFT_VERSION: '6.0'
-  # Exact release the Linux job downloads (SWIFT_VERSION stays the 6.0 line for cache keys).
-  SWIFT_RELEASE: '6.0.3'
-  KOTLIN_VERSION: '2.0.21'
+  SWIFT_VERSION: '6.4'
+  # Exact release the Linux job downloads (SWIFT_VERSION stays the 6.4 line for cache keys).
+  SWIFT_RELEASE: '6.4.2'
+  KOTLIN_VERSION: '2.4.21'
   # Which compile-verdict store a run SAVES to. The default branch writes the
   # shared `validate` lineage that every ref can read; any other ref writes its
   # own `validate-branch` lineage. The two names share no prefix, so the
@@ -324,7 +324,7 @@ jobs:
         # detached `.sig` next to it verifies against swift.org/keys/all-keys.asc).
         # ubuntu-24.04 runners are x86_64.
         env:
-          SWIFT_SHA256: '33e923609f6d89ee455af0a017ae4941ce16878c4940882cbf6a1656de294e8b'
+          SWIFT_SHA256: '2e9ebec040ad459dd89a6d093a02d8314939135104850fae4d5c0f174fb3ba8c'
         run: |
           set -euo pipefail
           TGZ="$HOME/.cache/pyreon-dl/swift-${SWIFT_RELEASE}-RELEASE-ubuntu24.04.tar.gz"
@@ -381,7 +381,7 @@ jobs:
         # Bump KOTLIN_SHA256 when bumping KOTLIN_VERSION — the `.sha256` is
         # published next to the asset (…/kotlin-compiler-<V>.zip.sha256).
         env:
-          KOTLIN_SHA256: '0352c0a45bd22f80f6b26e485cd04da8047baa5de54865281fb9f89a4a7bcf2a'
+          KOTLIN_SHA256: '7cc140e76daf416a0424a5557f99afd7ca89ebd463ea1101261e3e01c33e75cd'
         run: |
           set -euo pipefail
           ZIP="$HOME/.cache/pyreon-dl/kotlin-compiler-${KOTLIN_VERSION}.zip"
