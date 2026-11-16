@@ -14,7 +14,7 @@ import { ExtraCallout, ExtraPackageCard, NextReleaseNote } from '../kit/extras'
 import { ExtraMoreBody, isExtraMore } from '../kit/extra'
 import { comingFromTitle, RecipeCard } from '../kit/recipe'
 import { BeforeAfter, ComingFrom } from '../kit/code'
-import { InstallCommand, Pill } from '../kit/controls'
+import { ctaStackOnPhone, InstallCommand, Pill } from '../kit/controls'
 import { useLinkClick } from '../kit/link'
 import { AutoGrid, Section, SectionHead, Wrap } from '../kit/layout'
 import { Reveal } from '../kit/motion'
@@ -59,7 +59,7 @@ const HeroGrid = el
 const Ctas = el
   .config({ name: 'ProductCtas' })
   .attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 12 })
-  .theme(() => ({ flexWrap: 'wrap' }))
+  .theme(() => ({ flexWrap: 'wrap', extendCss: ctaStackOnPhone }))
 
 const CenteredCtas = el
   .config({ name: 'ProductEndCtas' })

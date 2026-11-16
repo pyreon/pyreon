@@ -538,7 +538,8 @@ function Migrate(props: { s: SectionOf<'migrate'> }) {
                     <Heading tag="h3" size="step" style="margin:0">
                       {l.name}
                     </Heading>
-                    <Mono>{l.package}</Mono>
+                    {/* A break opportunity after the scope: "@pyreon/" then "react-compat", never "react-" / "compat". */}
+                    <Mono>{l.package.split('/').flatMap((part, i) => (i === 0 ? [part] : ['/', <wbr />, part]))}</Mono>
                   </GlowCard>
                 </li>
               )}

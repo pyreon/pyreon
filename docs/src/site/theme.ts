@@ -297,6 +297,10 @@ export const layout = {
   /** Below this width the nav collapses into the menu button + sheet (_nav.json mobile.breakpoint). */
   navCollapse: 960,
   sheetPadTop: 88,
+  /** Where an anchor target lands: below the fixed nav (navTop + navHeight) with a gap. */
+  anchorOffset: 88,
+  /** The narrowest a prose table cell gets; below it the table scrolls in its own box. */
+  tableCellMin: '10ch',
 } as const
 
 /** Section rhythm (px). `tight` = sections after the first on product pages. [A10] */

@@ -3,7 +3,7 @@ import { For, Show } from '@pyreon/core'
 import { keyframes } from '@pyreon/styler'
 import { breakpoints, clampSize, color, display, font, gradient, motion, radius, section, text, texture, touch, weight } from '../theme'
 import { el, focusRing, pair, tone, txt, type LinkAttrs } from './bases'
-import { InstallCommand, Pill } from './controls'
+import { ctaStackOnPhone, InstallCommand, Pill, PillGroup } from './controls'
 import { useLinkClick } from './link'
 import { Wrap } from './layout'
 import { Eyebrow, renderInline, StatusDot } from './type'
@@ -348,7 +348,10 @@ const HookLede = txt
     color: tone(m, 'mist'),
   }))
 
-const CtaRow = el.config({ name: 'CtaRow' }).attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 12 }).theme(() => ({ flexWrap: 'wrap' }))
+const CtaRow = el
+  .config({ name: 'CtaRow' })
+  .attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 12 })
+  .theme(() => ({ flexWrap: 'wrap', extendCss: ctaStackOnPhone }))
 
 const StatusRow = el
   .config({ name: 'StatusRow' })
@@ -434,13 +437,15 @@ export function HookHero(props: {
         </Show>
         <CtaRow>
           {props.install ? <InstallCommand command={props.install} variant="hot" /> : null}
-          <For each={props.ctas ?? []} by={(c) => c.href}>
-            {(c) => (
-              <Pill href={c.href} size="lg">
-                {c.label}
-              </Pill>
-            )}
-          </For>
+          <PillGroup>
+            <For each={props.ctas ?? []} by={(c) => c.href}>
+              {(c) => (
+                <Pill href={c.href} size="lg">
+                  {c.label}
+                </Pill>
+              )}
+            </For>
+          </PillGroup>
         </CtaRow>
         <Show when={() => (props.status?.length ?? 0) > 0}>
           <StatusRow aria-label="Status">

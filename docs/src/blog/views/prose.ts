@@ -21,7 +21,7 @@ const css = (m: ModeFn): string => `
   color: ${tone(m, 'mist')};
   overflow-wrap: break-word;
 
-  & > :first-child { margin-top: 0; }
+  & > :first-child, & > :first-child > :first-child { margin-top: 0; }
   & p { margin: 0 0 22px; }
   & strong { color: ${tone(m, 'text')}; font-weight: ${weight.medium}; }
   & em { font-style: italic; }
@@ -70,6 +70,8 @@ const css = (m: ModeFn): string => `
   & table { display: block; max-width: 100%; overflow-x: auto; margin: 0 0 26px; border-collapse: collapse; font-size: 15px; line-height: 1.55; }
   & th, & td { padding: 10px 14px; border-bottom: 1px solid ${tone(m, 'line')}; text-align: left; vertical-align: top; }
   & th { color: ${tone(m, 'text')}; font-weight: ${weight.medium}; border-bottom-color: ${tone(m, 'line2')}; white-space: nowrap; }
+  & td { min-width: ${layout.tableCellMin}; }
+  & td code, & th code { overflow-wrap: normal; }
 
   & .code-block { position: relative; margin: 24px 0 30px; border: 1px solid ${tone(m, 'line')}; border-radius: ${radius.pane}px; background: ${m(syntax.light.bg, syntax.dark.bg)}; overflow: hidden; }
   & .code-block__header { height: 40px; padding: 0 16px; border-bottom: 1px solid ${tone(m, 'line')}; font-family: ${font.mono}; font-size: ${text.mono.size}px; line-height: 40px; color: ${tone(m, 'fog')}; }

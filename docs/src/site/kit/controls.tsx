@@ -98,6 +98,19 @@ export function InstallCommand(props: { command: string; variant?: 'default' | '
   return <CommandLine command={props.command} variant={props.variant} copy={<CopyButtonIsland text={props.command} />} />
 }
 
+/**
+ * A row of call-to-action controls that wraps. On a phone every control takes
+ * the full width, so a stack of pills and the install command shares one
+ * edge instead of ending at three different widths.
+ */
+export const ctaStackOnPhone = `@media (max-width: ${breakpoints.sm - 0.02}px) { & > * { flex: 1 1 100%; justify-content: center; } }`
+
+/** The pills after an install command: they wrap as one group, so the command never strands one pill on a line of its own. */
+export const PillGroup = el
+  .config({ name: 'PillGroup' })
+  .attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 12 })
+  .theme(() => ({ flexWrap: 'wrap', minWidth: 0, extendCss: ctaStackOnPhone }))
+
 /** `.p-api .chips span` — a mono tag. */
 export const Chip = txt
   .config({ name: 'Chip' })
