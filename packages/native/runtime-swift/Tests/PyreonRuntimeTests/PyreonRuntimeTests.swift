@@ -213,6 +213,50 @@ final class PyreonRuntimeTests: XCTestCase {
         }
     }
 
+    // MARK: - `@pyreon/http`'s HttpError and `useFetch`'s error (the web corpus runs in native-query-web-parity.test.ts)
+
+    func testHttpErrorIsTheWebHttpError() {
+        let e = PyreonHttpResponse(status: 404, body: Data(#"{"message":"ignored"}"#.utf8))
+            .httpError(method: "GET", url: "https://u:p@a.dev/users/1?token=s#f")
+        XCTAssertEqual(e.message, "[Pyreon] GET https://a.dev/users/1 \u{2014} HTTP 404", "redacted, the body not read")
+        XCTAssertEqual(e.name, "ClientError")
+        XCTAssertEqual(e.status, 404)
+        XCTAssertEqual(String(describing: e), "ClientError: [Pyreon] GET https://a.dev/users/1 \u{2014} HTTP 404")
+        XCTAssertEqual(PyreonHttpResponse(status: 503).httpError(method: "POST", url: "/x").name, "ServerError")
+        XCTAssertEqual(PyreonHttpResponse(status: 302).httpError(method: "POST", url: "/x").name, "HttpError")
+        let f = PyreonHttpResponse(status: 500).fetchError(url: "https://a.dev/x?q=1")
+        XCTAssertEqual(f.message, "[Pyreon] useFetch https://a.dev/x?q=1: HTTP 500", "useFetch names the url as written")
+        XCTAssertEqual((f as Error as? LocalizedError)?.errorDescription, f.message)
+    }
+
+    func testIsNoContentIsTheHttpJsonRule() {
+        for status in [204, 205, 304] {
+            XCTAssertTrue(PyreonHttpResponse(status: status, body: Data("{}".utf8)).isNoContent, "\(status) carries no body")
+        }
+        XCTAssertTrue(PyreonHttpResponse(status: 200).isNoContent, "an empty body")
+        XCTAssertFalse(PyreonHttpResponse(status: 200, body: Data("null".utf8)).isNoContent)
+    }
+
+    func testMiddlewareThrowHttpErrorsNamesTheSentRequest() async throws {
+        let ok = try await PyreonHttpPipeline.run(
+            PyreonHttpRequest.get("https://a.dev/x"),
+            middleware: [.throwHttpErrors],
+            env: Recorder().env()
+        ) { _ in PyreonHttpResponse(status: 204) }
+        XCTAssertEqual(ok.status, 204, "a 2xx passes through")
+        do {
+            // Outermost, as the lowered requests place it: the bearer layer inside has run, and the URL is the sent one.
+            _ = try await PyreonHttpPipeline.run(
+                PyreonHttpRequest(method: .delete, url: "https://a.dev/api/u/1?x=1"),
+                middleware: [.throwHttpErrors, .bearer(baseUrl: "https://a.dev/api", crossOrigin: false, token: { "t" })],
+                env: Recorder().env()
+            ) { _ in PyreonHttpResponse(status: 500) }
+            XCTFail("a non-2xx must throw")
+        } catch let e as PyreonHttpMessageError {
+            XCTAssertEqual(e, PyreonHttpMessageError(message: "[Pyreon] DELETE https://a.dev/api/u/1 \u{2014} HTTP 500", status: 500, name: "ServerError"))
+        }
+    }
+
     func testMiddlewareBearerReplacesAuthorizationOnce() async throws {
         let t = Scripted(200)
         var reads = 0

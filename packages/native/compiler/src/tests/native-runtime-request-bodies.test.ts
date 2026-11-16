@@ -164,7 +164,8 @@ export function C() {
     expect(kotlin.warnings).toEqual([])
     expect(swift.code).toContain('try await PyreonHttp.call(PyreonHttpRequest(method: .post, url: "https://x.test/api/session"')
     expect(swift.code).toMatch(/do \{[\s\S]*try await PyreonHttp\.call[\s\S]*status = "in"[\s\S]*\} catch \{ print\("\[Pyreon\] Unhandled error in an async handler/)
-    expect(kotlin.code).toContain('withContext(Dispatchers.IO) { PyreonHttp.call(__request, fallback = PyreonHttpOkHttp) }')
+    // Through the client's `throwHttpErrors` layer, so the rejection is the web's `HttpError`.
+    expect(kotlin.code).toContain('withContext(Dispatchers.IO) { PyreonHttp.call(__request, fallback = PyreonHttpOkHttp, middleware = listOf<PyreonHttpMiddleware>(PyreonHttpMiddleware.ThrowHttpErrors)) }')
     // Uncaught inside `launch` would crash the app; a cancellation still propagates.
     expect(kotlin.code).toContain('if (e is kotlin.coroutines.cancellation.CancellationException) throw e')
   })

@@ -213,6 +213,11 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
     '@pyreon/query',
     'const q = useQuery<Resp>(() => ({ queryKey: ["k"], queryFn: () => fetch("/x"), staleTime: 0 }))',
   ],
+  [
+    'useQueryClient',
+    '@pyreon/query',
+    "const qc = useQueryClient(); const go = () => { qc.invalidateQueries({ queryKey: ['k', 1] }); qc.invalidateQueries({ queryKey: ['k'], exact: true }); qc.invalidateQueries() }",
+  ],
   ['useMediaQuery', '@pyreon/hooks', "const d = useMediaQuery('(prefers-color-scheme: dark)')"],
   ['useLatest', '@pyreon/hooks', 'const l = useLatest(0); const n = l.current'],
   ['useShare', '@pyreon/hooks', 'const s = useShare()'],

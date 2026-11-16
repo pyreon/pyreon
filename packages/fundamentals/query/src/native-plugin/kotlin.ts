@@ -71,9 +71,17 @@ export function queryLifecycleKotlin(decl: ExtDecl, ctx: KotlinEmitContext): rea
       )
       // The client's `use: [...]`, when present, is applied around the request with the web's onion semantics.
       for (const line of kotlinSendLines(args, d.middleware !== undefined ? ctx.expr(d.middleware, 0) : undefined)) lines.push(`    ${line}`)
+      if (d.undefinedData !== undefined) {
+        // The web's fetcher resolves `undefined` for this answer, and TanStack FAILS the query with this error.
+        const test = d.undefinedData.when === 'empty' ? '__response.isNoContent' : '__response.status == 204'
+        lines.push(`    if (${test}) throw PyreonQueryDataUndefined(${ctx.expr(d.undefinedData.queryHash, 0)})`)
+      }
       lines.push(`    PyreonFetchJson.decodeFromString<${ctx.typeText(d.type)}>(__response.body)`)
     } else {
-      lines.push(`    val body = withContext(Dispatchers.IO) { java.net.URL(${kotlinUrl}).readText() }`)
+      // A bare `fetch(url)` queryFn: the web's `fetch` resolves whatever the status, and `r.json()` reads the body — so,
+      // like the Swift twin's URLSession read, the body is decoded without a status check. (`URL.readText()` threw on a
+      // 4xx / 5xx, so Android failed a query iOS and the web resolved.)
+      lines.push(`    val body = withContext(Dispatchers.IO) { PyreonHttp.send(PyreonHttpRequest(url = ${kotlinUrl}), fallback = PyreonHttpOkHttp) }.body`)
       lines.push(`    PyreonFetchJson.decodeFromString<${ctx.typeText(d.type)}>(body)`)
     }
   }

@@ -318,6 +318,9 @@ export const recognizeCrudDecl: DeclCallRecognizer = (site, ctx) => {
       // An explicit verb routes the request through `PyreonHttp`; the middleware rejects a non-2xx with the web's error.
       method: 'GET',
       middleware: errorsMiddleware('GET', literalUrl(api)),
+      // The web fetcher resolves `undefined` for a 204, which TanStack fails as `<hash> data is undefined`; the key is
+      // `[name, 'list', params]`, `params` an empty object when no option lowers.
+      undefinedData: { when: '204', queryHash: { kind: 'literal', value: `${JSON.stringify([info.featureName, 'list', {}])}` } },
     }
     return { type: CRUD_QUERY_TYPE, payload: payload as never }
   }
@@ -351,6 +354,11 @@ export const recognizeCrudDecl: DeclCallRecognizer = (site, ctx) => {
       staleMillis: 0,
       method: 'GET',
       middleware: errorsMiddleware('GET', displayIdUrl(api, id)),
+      // A 204 fails the query as on the web: the key `[name, id]`, its id written by the web-identical `JSON.stringify`.
+      undefinedData: {
+        when: '204',
+        queryHash: { kind: 'template', quasis: [`[${JSON.stringify(info.featureName)},`, ']'], exprs: [{ kind: 'json-stringify', arg: id }] },
+      },
     }
     return { type: CRUD_QUERY_TYPE, payload: payload as never }
   }

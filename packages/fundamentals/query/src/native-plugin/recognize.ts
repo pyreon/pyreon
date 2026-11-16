@@ -23,7 +23,8 @@ import {
   type StatementIR,
   type TypeIR,
 } from '@pyreon/native-compiler/plugin-api'
-import { QUERY_CLIENT_TYPE, QUERY_TYPE, STREAM_TYPE } from './names'
+import { QUERY_TYPE, STREAM_TYPE } from './names'
+import type { QueryPayload } from './types'
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
 type AnyNode = any
@@ -248,6 +249,7 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
       middleware?: ExprIR
       bodyExpr?: ExprIR
       upload?: ExprIR
+      undefinedData?: QueryPayload['undefinedData']
     } = {}
     if (resolved.upload !== undefined) eqReq.upload = resolved.upload
     if (resolved.method && resolved.method !== 'GET') eqReq.method = resolved.method
@@ -256,6 +258,16 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
     if (resolved.body !== undefined) eqReq.body = resolved.body
     if (resolved.middleware !== undefined) eqReq.middleware = resolved.middleware
     if (resolved.bodyExpr !== undefined) eqReq.bodyExpr = resolved.bodyExpr
+    if (resolved.emptyAsUndefined === true) {
+      // The endpoint's `.json()` resolves a bodyless / empty answer as `undefined`, which TanStack fails as
+      // `<queryHash> data is undefined`. Without a hash the message cannot be spelled: the decode error stands, NAMED.
+      if (resolved.queryHash !== undefined) eqReq.undefinedData = { when: 'empty', queryHash: resolved.queryHash }
+      else {
+        ctx.report(
+          `Declaration ${name}: the web fails this query with \`<queryKey> data is undefined\` when the endpoint answers without JSON (a 204), and its key cannot be spelled natively (a non-literal \`keyScope\`, a spread or a computed key in \`params\` / \`query\`) — natively that answer is a decode error with a different message.`,
+        )
+      }
+    }
     if (resolved.urlExpr !== undefined) {
       eqReq.urlExpr = resolved.urlExpr
       // The cache key MUST carry the runtime parts too. A key built from the
@@ -1014,16 +1026,3 @@ function parseFetchInitObject(
 }
 
 
-/**
- * `const client = new QueryClient()` from `@pyreon/query` → a `query-client` declaration, which
- * emits NOTHING.
- *
- * On the web the client is mandatory: `useQuery` reads it from `<QueryClientProvider>` and throws
- * `No QueryClient found` without one. The native lowering is self-contained — `useQuery` becomes a
- * `PyreonQuery` that holds its own state — so there is no client for the binding to be, and emitting
- * nothing is the whole lowering. Recognizing it is what stops the generic path from emitting
- * `let client = ""` (an unused junk binding) beside the transparent provider.
- */
-export function recognizeQueryClient(call: CallSite): ExtDeclSpec | null | undefined {
-  return call.construct === true ? { type: QUERY_CLIENT_TYPE } : undefined
-}

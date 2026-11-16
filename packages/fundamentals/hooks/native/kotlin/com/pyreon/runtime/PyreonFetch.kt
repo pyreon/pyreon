@@ -140,6 +140,17 @@ public class PyreonFetch<T> {
     }
 
     /**
+     * Complete with NO data: what `useFetch(endpoint(…))` settles when
+     * `@pyreon/http` resolves an answer without JSON as `undefined`. The
+     * Swift `resolveEmpty()`.
+     */
+    public fun resolveEmpty() {
+        data.value = null
+        error.value = null
+        isPending.value = false
+    }
+
+    /**
      * Complete with a failure: set `error`, end pending. Leaves any prior
      * `data` in place (stale-while-error), matching the web contract.
      */

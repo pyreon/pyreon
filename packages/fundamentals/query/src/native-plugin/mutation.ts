@@ -51,6 +51,7 @@ import {
   swiftIdent,
 } from '@pyreon/native-compiler/plugin-api'
 import { MUTATION_TYPE } from './names'
+import { invalidatesStatements } from './client'
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
 type AnyNode = any
@@ -84,6 +85,13 @@ interface MutationBinding {
   readonly type: TypeIR
   readonly source: MutationSource
   readonly options: Callbacks
+  /**
+   * The declared type admits `undefined` (`useMutation<Reply | undefined>`): an answer the source resolves as `undefined`
+   * (`@pyreon/http`'s `.json()` for a 204) settles as success with no data. Without it the declared type promises a
+   * value, so such an answer stays a decode error — the web would hand the author `undefined` where the type said it
+   * cannot be, and the `r.name` after it throws there.
+   */
+  readonly admitsUndefined: boolean
 }
 
 interface MutationFacts {
@@ -131,7 +139,7 @@ export function scanMutations(scan: ModuleScan): void {
 const UNLOWERED_OPTIONS: ReadonlyMap<string, string> = new Map([
   [
     'invalidates',
-    'native queries are self-contained containers with no shared client to invalidate — a mounted query does not re-fetch. Call its `refetch()` from `onSuccess` instead',
+    'its keys are endpoint keys (`[method, path]`), and a native endpoint query is keyed by its resolved `METHOD:url`, so no such prefix names it. Invalidate by your own query keys instead — `useMutation({ invalidates: [[\'users\']] })` lowers',
   ],
   ['onMutate', 'an optimistic-update context has no native carrier'],
   ['retry', 'native mutations run once (the web default is no retry, too)'],
@@ -247,6 +255,7 @@ export function recognizeMutation(_call: CallSite, ctx: ParseContext): ExtDeclSp
   const arg = unwrapTypeLayers(ctx.args[0] as AnyNode) as AnyNode
   let source: MutationSource | undefined
   let options: Callbacks = {}
+  let invalidates: readonly StatementIR[] = []
   const endpointOptions = (opts: AnyNode | undefined): void => {
     for (const prop of (opts?.type === 'ObjectExpression' ? (opts.properties as AnyNode[]) : []) ?? []) {
       const key = prop.type === 'SpreadElement' ? undefined : propName(prop)
@@ -300,9 +309,20 @@ export function recognizeMutation(_call: CallSite, ctx: ParseContext): ExtDeclSp
         }
         continue
       }
+      if (key === 'invalidates') {
+        // `@pyreon/query`'s shorthand: on success, invalidate each key BEFORE the author's `onSuccess` runs.
+        const verdict = invalidatesStatements(prop.value as AnyNode, ctx)
+        if ('refused' in verdict) report(`option \`invalidates\` is IGNORED on iOS and Android: ${verdict.refused}.`)
+        else invalidates = verdict.statements
+        continue
+      }
       report(`option \`${key}\` is IGNORED on iOS and Android (${UNLOWERED_OPTIONS.get(key) ?? 'it has no native counterpart'}).`)
     }
     options = readCallbacks(arg, 'useMutation', report, parse)
+    if (invalidates.length > 0) {
+      const own = options.onSuccess
+      options = { ...options, onSuccess: { params: own?.params ?? [], body: [...invalidates, ...(own?.body ?? [])] } }
+    }
   }
   if (source === undefined) {
     report(
@@ -310,8 +330,13 @@ export function recognizeMutation(_call: CallSite, ctx: ParseContext): ExtDeclSp
     )
     return null
   }
-  const type = ctx.typeArg()
-  mutationFacts(ctx).bindings.set(name, { type, source, options })
+  const declared = ctx.typeArg()
+  // `Reply | undefined` is a `Reply` container whose call sites may settle with no data (see `admitsUndefined`).
+  const nullish = (b: TypeIR): boolean => b.kind === 'undefined' || b.kind === 'null'
+  const admitsUndefined = declared.kind === 'union' && declared.branches.some(nullish) && declared.branches.some((b) => !nullish(b))
+  const kept = admitsUndefined && declared.kind === 'union' ? declared.branches.filter((b) => !nullish(b)) : []
+  const type: TypeIR = !admitsUndefined ? declared : kept.length === 1 ? (kept[0] as TypeIR) : { kind: 'union', branches: kept }
+  mutationFacts(ctx).bindings.set(name, { type, source, options, admitsUndefined })
   return { type: MUTATION_TYPE, payload: { type } as never }
 }
 
@@ -358,8 +383,8 @@ interface MutateCallPayload {
   readonly hasUpload?: boolean
   /** Middleware wrapped around the send (see {@link MutateRequest.middleware}); its expression is the LAST arg. */
   readonly hasMiddleware?: boolean
-  /** A 204 resolves with no data (see {@link MutateRequest.noContent}). */
-  readonly noContent?: boolean
+  /** A 204 (`true`) or any answer without JSON (`'empty'`) resolves with no data (see {@link MutateRequest.noContent}). */
+  readonly noContent?: true | 'empty'
   readonly options: Callbacks
   readonly call: Callbacks
   /** The query-key root a success invalidates (see {@link MutateQueryEffects}). */
@@ -397,13 +422,19 @@ export const recognizeMutateCall: MethodCallRecognizer = (site, ctx) => {
     allowRuntimeParams: true,
     streaming: false,
     runtimeValues: true,
+    // The send runs through the client's `use: [...]` and its status check, so a non-2xx rejects with the source's
+    // error (`@pyreon/http`'s `HttpError`) rather than a bare status.
+    middleware: true,
   })
   if (resolved === null) return null
   // The response decodes into `useMutation<T>`'s T: record it, so the endpoint's `response` schema refines T's number
   // fields (without it an `s.number()` field stayed an integer and a fractional reply failed to decode), and with no
   // schema an integer-default field is named (#3956).
   if (!isVoid(binding.type)) ctx.recordDecode(binding.type, resolved.response)
-  return mutateCallSpec(site, ctx, { name, type: binding.type, options: binding.options }, resolved)
+  // A source that resolves an answer without JSON as `undefined` (`@pyreon/http`'s `.json()`): the web mutation SUCCEEDS
+  // with no data, so the native one does too — when the declared type admits it (see `admitsUndefined`).
+  const request: MutateRequest = resolved.emptyAsUndefined === true && binding.admitsUndefined ? { ...resolved, noContent: 'empty' } : resolved
+  return mutateCallSpec(site, ctx, { name, type: binding.type, options: binding.options }, request)
 }
 
 /** The request one `mutate` call site sends — a resolved endpoint call, or a request another plugin built itself. */
@@ -427,8 +458,11 @@ export interface MutateRequest {
    * `undefined` for a 204 does (`@pyreon/feature`'s create / update). The container then settles through its `orEmpty`
    * entry points: `data` stays nil, the status is `success`, `onSuccess` receives the absent value, and an awaited
    * `mutateAsync` is `T | undefined`. Ignored for a mutation that decodes nothing.
+   *
+   * `true` is that rule for a 204 only (a helper that tests `res.status === 204`); `'empty'` is `@pyreon/http`'s
+   * `.json()` rule — a bodyless status (204 / 205 / 304) or an empty body (`PyreonHttpResponse.isNoContent`).
    */
-  readonly noContent?: boolean | undefined
+  readonly noContent?: boolean | 'empty' | undefined
 }
 
 /** The container a call site settles: its binding, the decoded type, and the callbacks its declaration carried. */
@@ -488,7 +522,7 @@ export function mutateCallSpec(
   }
   // The middleware is ALWAYS the last arg (see `middlewareOf`); the optimistic patch sits right before it.
   if (resolved.middleware !== undefined) args.push(resolved.middleware)
-  const noContent = resolved.noContent === true && !isVoid(binding.type)
+  const noContent = resolved.noContent !== undefined && resolved.noContent !== false && !isVoid(binding.type) ? resolved.noContent : undefined
   const payload: MutateCallPayload = {
     binding: name,
     type: binding.type,
@@ -501,7 +535,7 @@ export function mutateCallSpec(
     hasBodyExpr: resolved.bodyExpr !== undefined,
     ...(resolved.upload !== undefined ? { hasUpload: true } : {}),
     ...(resolved.middleware !== undefined ? { hasMiddleware: true } : {}),
-    ...(noContent ? { noContent: true } : {}),
+    ...(noContent !== undefined ? { noContent } : {}),
     options: binding.options,
     call,
     ...(effects !== undefined ? { invalidates: effects.invalidates } : {}),
@@ -514,6 +548,10 @@ export function mutateCallSpec(
 }
 
 const payloadOf = (e: ExtExprIR): MutateCallPayload => e.payload as unknown as MutateCallPayload
+
+/** The runtime test for an answer that resolves with no data (see {@link MutateRequest.noContent}). */
+const swiftNoContent = (rule: true | 'empty'): string => (rule === 'empty' ? '__response.isNoContent' : '__response.status == 204')
+const kotlinNoContent = (rule: true | 'empty'): string => (rule === 'empty' ? '__response.isNoContent' : '__response.status == 204')
 
 /** Whether the mutation decodes nothing (no `useMutation<T>`): the response is checked, not read. */
 const isVoid = (t: TypeIR): boolean => t.kind === 'unknown' || t.kind === 'undefined'
@@ -632,7 +670,7 @@ function swiftSend(e: ExtExprIR, ctx: EmitContext, request: string): string {
   const p = payloadOf(e)
   const type = p.type
   const mw = middlewareOf(e)
-  if (mw === undefined && p.noContent !== true) {
+  if (mw === undefined && p.noContent === undefined) {
     if (isVoid(type)) return `_ = try await PyreonHttp.call(${request})`
     return `try await PyreonHttp.call(${request}).decode(${ctx.typeText(type)}.self)`
   }
@@ -640,7 +678,7 @@ function swiftSend(e: ExtExprIR, ctx: EmitContext, request: string): string {
   if (isVoid(type)) return send
   // `try` leads the whole expression: Swift rejects it to the right of the ternary's operator.
   const decode = `__response.decode(${ctx.typeText(type)}.self)`
-  return `${send}; return try ${p.noContent === true ? `__response.status == 204 ? nil : ${decode}` : decode}`
+  return `${send}; return try ${p.noContent !== undefined ? `${swiftNoContent(p.noContent)} ? nil : ${decode}` : decode}`
 }
 
 /**
@@ -662,7 +700,7 @@ function kotlinSend(e: ExtExprIR, ctx: EmitContext, request: string): string {
   const p = payloadOf(e)
   const type = p.type
   const mw = middlewareOf(e)
-  if (mw === undefined && p.noContent !== true) {
+  if (mw === undefined && p.noContent === undefined) {
     const send = `withContext(Dispatchers.IO) { PyreonHttp.call(${request}, fallback = PyreonHttpOkHttp) }`
     if (isVoid(type)) return `${send}; Unit`
     return `PyreonFetchJson.decodeFromString<${ctx.typeText(type)}>(${send}.body)`
@@ -670,7 +708,7 @@ function kotlinSend(e: ExtExprIR, ctx: EmitContext, request: string): string {
   const send = `val __response = withContext(Dispatchers.IO) { PyreonHttp.send(${request}, fallback = PyreonHttpOkHttp${mw !== undefined ? `, middleware = ${ctx.expr(mw, 0)}` : ''}) }; if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`
   if (isVoid(type)) return `${send}; Unit`
   const decode = `PyreonFetchJson.decodeFromString<${ctx.typeText(type)}>(__response.body)`
-  return `${send}; ${p.noContent === true ? `if (__response.status == 204) null else ${decode}` : decode}`
+  return `${send}; ${p.noContent !== undefined ? `if (${kotlinNoContent(p.noContent)}) null else ${decode}` : decode}`
 }
 
 /** The Kotlin operation lambda — through `PyreonQueryCache.settleMutation` when the call invalidates queries. */
@@ -702,7 +740,7 @@ function swiftEmit(e: ExtExprIR, ctx: EmitContext, method: 'mutate' | 'mutateAsy
     WHERE(e),
   )})`
   const extra: string[] = []
-  const noContent = p.noContent === true
+  const noContent = p.noContent !== undefined
   const options = swiftCallbacks(p.options, p.type, ctx, noContent)
   const call = swiftCallbacks(p.call, p.type, ctx, noContent)
   if (options !== undefined) extra.push(`options: ${options}`)
@@ -722,7 +760,7 @@ function kotlinEmit(e: ExtExprIR, ctx: KotlinEmitContext, awaited: boolean): str
     WHERE(e),
   )})`
   const extra: string[] = []
-  const noContent = p.noContent === true
+  const noContent = p.noContent !== undefined
   const options = kotlinCallbacks(p.options, p.type, ctx, noContent)
   const call = kotlinCallbacks(p.call, p.type, ctx, noContent)
   if (options !== undefined) extra.push(`options = ${options}`)
@@ -757,7 +795,7 @@ export const mutateAsyncExpr: ExprEmitter = {
     type: (e) => {
       const p = payloadOf(e)
       if (isVoid(p.type)) return { kind: 'undefined' }
-      return p.noContent === true ? { kind: 'union', branches: [p.type, { kind: 'undefined' }] } : p.type
+      return p.noContent !== undefined ? { kind: 'union', branches: [p.type, { kind: 'undefined' }] } : p.type
     },
   },
 }

@@ -81,6 +81,15 @@ fun testFetchResolveLandsValue() {
     check(!f.isPending.value) { "resolve → not pending" }
 }
 
+fun testFetchResolveEmptySettlesWithNoData() {
+    val f = PyreonFetch<Int>()
+    f.resolve(1)
+    f.begin()
+    f.resolveEmpty()
+    check(f.data.value == null) { "resolveEmpty → no data (the web's undefined)" }
+    check(f.error.value == null && !f.isPending.value) { "resolveEmpty → settled, no error" }
+}
+
 fun testFetchRejectRecordsError() {
     val f = PyreonFetch<Int>()
     f.begin()
@@ -99,6 +108,7 @@ fun testFetchRejectKeepsStaleData() {
 }
 
 fun main() {
+    testFetchResolveEmptySettlesWithNoData()
     testFetchInitialState()
     testFetchLoadSuccess()
     testFetchLoadFailure()

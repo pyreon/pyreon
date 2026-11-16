@@ -117,6 +117,8 @@ interface CallPayload {
   readonly hasBodyExpr: boolean
   /** A streamed body (multipart / file) occupies the slot after the body. */
   readonly hasUpload?: boolean
+  /** The client's middleware — always led by its `throwHttpErrors` status check — is the LAST arg. */
+  readonly hasMiddleware?: boolean
 }
 
 /** Recognize an endpoint call in an expression position the scan classified. */
@@ -140,6 +142,9 @@ export const recognizeEndpointCall: CallExprRecognizer = (site, ctx) => {
     allowRuntimeParams: true,
     streaming: false,
     runtimeValues: true,
+    // The send runs through the client's `use: [...]` and its `throwHttpErrors` check, so a non-2xx rejects with the
+    // web's `HttpError` and a client with middleware lowers instead of staying web.
+    middleware: true,
   })
   if (resolved === null) return null
   const args: ExprIR[] = []
@@ -148,6 +153,7 @@ export const recognizeEndpointCall: CallExprRecognizer = (site, ctx) => {
   if (resolved.upload !== undefined) args.push(resolved.upload)
   const headerExprNames = Object.keys(resolved.headerExprs ?? {})
   for (const h of headerExprNames) args.push((resolved.headerExprs as Record<string, ExprIR>)[h] as ExprIR)
+  if (resolved.middleware !== undefined) args.push(resolved.middleware)
   const payload: CallPayload = {
     role,
     method: resolved.method,
@@ -158,6 +164,7 @@ export const recognizeEndpointCall: CallExprRecognizer = (site, ctx) => {
     hasUrlExpr: resolved.urlExpr !== undefined,
     hasBodyExpr: resolved.bodyExpr !== undefined,
     ...(resolved.upload !== undefined ? { hasUpload: true } : {}),
+    ...(resolved.middleware !== undefined ? { hasMiddleware: true } : {}),
   }
   return { type: HTTP_CALL_TYPE, payload: payload as never, args }
 }
@@ -184,23 +191,31 @@ function partsOf(e: ExtExprIR, url: (literal: string | undefined, expr: ExprIR |
 
 const WHERE = 'An awaited endpoint call:'
 
+/** The middleware expression a call carries (always its last arg), when it has one. */
+const middlewareOf = (e: ExtExprIR): ExprIR | undefined =>
+  (e.payload as unknown as CallPayload).hasMiddleware === true ? e.args[e.args.length - 1] : undefined
+
 export const endpointCallExpr: ExprEmitter = {
   // The core writes `try await` around it and wraps the enclosing Task / coroutine (see the file header).
   throws: true,
   swift(e, ctx) {
     const parts = partsOf(e, (literal, expr) => (expr !== undefined ? ctx.expr(expr, 0) : swiftStr(literal ?? '')))
     const request = `PyreonHttpRequest(${swiftHttpRequestArgs(parts, ctx, WHERE)})`
-    if ((e.payload as unknown as CallPayload).role === 'awaited') return `PyreonHttp.call(${request})`
+    const mw = middlewareOf(e)
+    const tail = mw !== undefined ? `, middleware: ${ctx.expr(mw, 0)}` : ''
+    if ((e.payload as unknown as CallPayload).role === 'awaited') return `PyreonHttp.call(${request}${tail})`
     // Not awaited on the web: the request is sent and the handler moves on; a rejection is unhandled. The request
     // is built HERE, as an argument — a `Task { … }` body runs after the handler returns and would read later state.
-    return `PyreonHttp.fire(${request})`
+    return `PyreonHttp.fire(${request}${tail})`
   },
   kotlin(e, ctx) {
     const parts = partsOf(e, (literal, expr) => (expr !== undefined ? ctx.expr(expr, 0) : kotlinStr(literal ?? '')))
     // The request is BUILT on the calling thread — reading the component's state where the web reads it, at the
     // call — and only the blocking send moves to the IO dispatcher.
     const request = `PyreonHttpRequest(${kotlinHttpRequestArgs(parts, ctx, WHERE)})`
-    const send = `withContext(Dispatchers.IO) { PyreonHttp.call(__request, fallback = PyreonHttpOkHttp) }`
+    const mw = middlewareOf(e)
+    const tail = mw !== undefined ? `, middleware = ${ctx.expr(mw, 0)}` : ''
+    const send = `withContext(Dispatchers.IO) { PyreonHttp.call(__request, fallback = PyreonHttpOkHttp${tail}) }`
     if ((e.payload as unknown as CallPayload).role === 'awaited') return `${request}.let { __request -> ${send} }`
     // Fire-and-forget: built before the launch, sent inside it, a failure reported rather than crashing the app.
     return `${request}.let { __request -> ${ctx.coroutineScope()}.launch { try { ${send} } catch (e: Throwable) { if (e is kotlin.coroutines.cancellation.CancellationException) throw e; System.err.println("[Pyreon] Unhandled error in an endpoint call: $e") } } }`

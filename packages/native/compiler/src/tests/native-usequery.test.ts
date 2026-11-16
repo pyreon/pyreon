@@ -62,7 +62,8 @@ describe('useQuery() emit', () => {
     expect(r.code).toContain('\\(q.isPending)')
     expect(r.code).toContain('\\(q.isFetching)')
     expect(r.code).toContain('\\(q.data)')
-    expect(r.code).toContain('\\(q.error)')
+    // `error` is an optional Error: an absent one renders empty, as the web renders `null` (not `nil`).
+    expect(r.code).toContain('\\((q.error).map { "\\($0)" } ?? "")')
   })
 
   it('Kotlin: remembered PyreonQuery, a LaunchedEffect that registers the request, .value reads', () => {
@@ -74,13 +75,14 @@ describe('useQuery() emit', () => {
     expect(r.code).toContain(
       'LaunchedEffect(Unit) {\n    q.run(launch = { __refetch -> pyreonAsyncScope.launch { __refetch() } }) {',
     )
-    expect(r.code).toContain('java.net.URL("https://api.example.com/todos/1").readText()')
+    // A bare `fetch(url)` reads the body whatever the status, as the web's `fetch` + `r.json()` and the Swift twin do.
+    expect(r.code).toContain('PyreonHttp.send(PyreonHttpRequest(url = "https://api.example.com/todos/1"), fallback = PyreonHttpOkHttp) }.body')
     expect(r.code).toContain('PyreonFetchJson.decodeFromString<Todo>(body)')
     // Reactive member reads append .value (Compose MutableState) — all four.
     expect(r.code).toContain('${q.isPending.value}')
     expect(r.code).toContain('${q.isFetching.value}')
     expect(r.code).toContain('${q.data.value}')
-    expect(r.code).toContain('${q.error.value}')
+    expect(r.code).toContain('${q.error.value ?: ""}')
   })
 
   it('warns + does not lower when queryKey is NOT an array', () => {

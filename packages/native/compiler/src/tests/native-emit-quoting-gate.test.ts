@@ -129,6 +129,14 @@ const ALLOWED: Record<string, readonly (readonly [string, string])[]> = {
     ["typeof item === 'object' ? JSON.stringify(item)", `${JSON_DATA} (a query-param value, held as a literal IR string)`],
     ["typeof lit.value === 'object' ? JSON.stringify(lit.value)", `${JSON_DATA} (a query-param value, held as a literal IR string)`],
     ['body = JSON.stringify(literal.value)', `${JSON_DATA} (the request body the web's \`json:\` option sends)`],
+    ['return [JSON.stringify(scalar)]', `${JSON_DATA} (a part of the web query key's hash, held in a literal / template IR string)`],
+    ["out.push(`${i === 0 ? '' : ','}${JSON.stringify(key)}:`", `${JSON_DATA} (an object key inside the query-key hash)`],
+    ['const pieces: JsonPiece[] = [JSON.stringify(prefix)', `${JSON_DATA} (the query-key hash's prefix)`],
+    ['sections.push([`${JSON.stringify(name)}:`', `${JSON_DATA} (the query-key hash's \`params\` / \`query\` key)`],
+  ],
+  'fundamentals/feature/src/native-plugin/crud.ts': [
+    ["queryHash: { kind: 'literal', value: `${JSON.stringify([info.featureName, 'list', {}])}` }", `${JSON_DATA} (the web list key's hash, a literal IR string)`],
+    ['quasis: [`[${JSON.stringify(info.featureName)},`', `${JSON_DATA} (the web record key's hash, a template IR quasi)`],
   ],
   'fundamentals/url-state/src/native-plugin/plugin.ts': [
     ['useUrlState(${JSON.stringify(key)}, …)', DIAGNOSTIC],

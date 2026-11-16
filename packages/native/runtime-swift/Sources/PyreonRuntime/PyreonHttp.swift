@@ -119,6 +119,12 @@ public struct PyreonHttpResponse: Sendable {
     public func decode<T: Decodable>(_ type: T.Type) throws -> T {
         try JSONDecoder().decode(T.self, from: body)
     }
+
+    /// Whether `@pyreon/http`'s `.json()` resolves this answer as `undefined`
+    /// instead of parsing it: a status defined to carry no body (204 / 205 /
+    /// 304), or an empty body. The lowered endpoint requests settle it as "no
+    /// data" (a query then fails the way TanStack fails undefined data).
+    public var isNoContent: Bool { status == 204 || status == 205 || status == 304 || body.isEmpty }
 }
 
 /// HTTP failures distinct from URLSession's own errors.
@@ -166,21 +172,29 @@ extension PyreonHttpError: LocalizedError {
 /// `error.message` (`pyreonErrorMessage`) reads the same string the web shows.
 /// Mirrors the Kotlin `PyreonHttpMessageError` one-for-one; both read the body
 /// with the same scanner (`PyreonHttpErrorBody`), so they agree byte for byte.
+///
+/// The other web paths that reject with a message of their own use it too:
+/// `@pyreon/http`'s `HttpError` (`httpError(method:url:)`, named `ClientError`
+/// / `ServerError` / `HttpError` as on the web) and `useFetch`'s
+/// (`fetchError(url:)`).
 public struct PyreonHttpMessageError: LocalizedError, CustomStringConvertible, Equatable {
     public let message: String
     public let status: Int
     /// The JSON text of the body's `errors`, when it is truthy.
     public let errors: String?
+    /// The web error's `name` — what `String(error)` prints before the message.
+    public let name: String
 
-    public init(message: String, status: Int, errors: String? = nil) {
+    public init(message: String, status: Int, errors: String? = nil, name: String = "Error") {
         self.message = message
         self.status = status
         self.errors = errors
+        self.name = name
     }
 
     public var errorDescription: String? { message }
-    /// `String(error)` on the web: `Error: <message>`.
-    public var description: String { "Error: \(message)" }
+    /// `String(error)` on the web: `<name>: <message>`.
+    public var description: String { "\(name): \(message)" }
 }
 
 extension PyreonHttpResponse {
@@ -193,6 +207,26 @@ extension PyreonHttpResponse {
             status: status,
             errors: body?.errors
         )
+    }
+
+    /// The `HttpError` `@pyreon/http` throws for this (non-2xx) answer to
+    /// `method url` (`throwHttpErrors`, its default): `[Pyreon] <METHOD>
+    /// <url> — HTTP <status>`, the URL redacted as the web redacts it (no
+    /// query, fragment or userinfo), named `ServerError` for a 5xx,
+    /// `ClientError` for a 4xx and `HttpError` otherwise.
+    public func httpError(method: String, url: String) -> PyreonHttpMessageError {
+        PyreonHttpMessageError(
+            message: "[Pyreon] \(method) \(PyreonHttpPipeline.redactURL(url)) \u{2014} HTTP \(status)",
+            status: status,
+            name: status >= 500 ? "ServerError" : status >= 400 ? "ClientError" : "HttpError"
+        )
+    }
+
+    /// The error `@pyreon/hooks`' `useFetch(url)` rejects with for this
+    /// (non-2xx) answer: `[Pyreon] useFetch <url>: HTTP <status>`, the URL as
+    /// the caller wrote it.
+    public func fetchError(url: String) -> PyreonHttpMessageError {
+        PyreonHttpMessageError(message: "[Pyreon] useFetch \(url): HTTP \(status)", status: status)
     }
 }
 
@@ -528,6 +562,32 @@ public enum PyreonHttp {
         return response
     }
 
+    /// `call` through the client's lowered middleware (`send(_:middleware:)`)
+    /// — what an awaited `@pyreon/http` endpoint call lowers to: the
+    /// `throwHttpErrors` layer rejects with the web's `HttpError`, and the
+    /// status check here stays the backstop for a chain without it.
+    @discardableResult
+    public static func call(
+        _ request: PyreonHttpRequest,
+        middleware: [PyreonHttpMiddleware],
+        session: URLSession = .shared
+    ) async throws -> PyreonHttpResponse {
+        let response = try await send(request, middleware: middleware, session: session)
+        guard response.isOK else { throw PyreonHttpError.badStatus(response.status) }
+        return response
+    }
+
+    /// `fire` through the client's lowered middleware — a NOT awaited endpoint call.
+    public static func fire(_ request: PyreonHttpRequest, middleware: [PyreonHttpMiddleware], session: URLSession = .shared) {
+        _Concurrency.Task {
+            do {
+                try await call(request, middleware: middleware, session: session)
+            } catch {
+                print("[Pyreon] Unhandled error in an endpoint call: \(error)")
+            }
+        }
+    }
+
     /// An endpoint call that is NOT awaited — on the web, a Promise nobody
     /// reads: the request goes out, the handler moves on, a rejection is
     /// unhandled. The request is an ARGUMENT, so it is built from the values
@@ -617,6 +677,12 @@ public enum PyreonHttpMiddleware {
     /// a client created with `throwHttpErrors: false` that rejects with its own
     /// error — runs through the same pipeline as every other request.
     case reject((PyreonHttpResponse) -> Error)
+    /// `@pyreon/http`'s `throwHttpErrors` (its default): a non-2xx answer from
+    /// the layers inside is thrown as `httpError(method:url:)` of the request
+    /// as it was SENT — the request the web's `HttpError` names. The lowered
+    /// endpoint requests put it outermost, where the web client checks the
+    /// status: after every `use: [...]` layer has run.
+    case throwHttpErrors
 }
 
 /// Everything the pipeline needs from the outside world, injectable for tests.
@@ -710,6 +776,10 @@ public enum PyreonHttpPipeline {
         case let .reject(error):
             let response = try await next()
             if !response.isOK { throw error(response) }
+            return response
+        case .throwHttpErrors:
+            let response = try await next()
+            if !response.isOK { throw response.httpError(method: box.request.method.rawValue, url: box.request.url) }
             return response
         case let .logger(production):
             if !production && !env.isDebug { return try await next() }

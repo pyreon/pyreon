@@ -229,6 +229,33 @@ struct PyreonQueryTests {
             check(calls.count == 5, "no live query under `user`")
         }
 
+        // invalidateQueries(key, exact: true) reaches only that key; the
+        // filterless invalidateAllQueries() reaches every live query.
+        do {
+            let cache = PyreonQueryCache()
+            let calls = Calls()
+            let list = PyreonQuery<Int>(queryKey: "todo", staleSeconds: 60, cache: cache)
+            let one = PyreonQuery<Int>(queryKey: "todo:7", staleSeconds: 60, cache: cache)
+            let other = PyreonQuery<Int>(queryKey: "user", staleSeconds: 60, cache: cache)
+            await list.run { calls.next(1) }
+            await one.run { calls.next(2) }
+            await other.run { calls.next(3) }
+            await cache.invalidateQueries("todo", exact: true).value
+            check(calls.count == 4, "exact: only the key `todo` itself, not `todo:7`")
+            await cache.invalidateQueries("todo", exact: false).value
+            check(calls.count == 6, "not exact: the root and everything under it")
+            await cache.invalidateAllQueries().value
+            check(calls.count == 9, "no filter: every live query")
+        }
+
+        // TanStack's undefined-data error, as the web message spells it.
+        do {
+            let e = PyreonQueryDataUndefined(queryHash: #"["todo",5]"#)
+            check(e.message == #"["todo",5] data is undefined"#, "the web message")
+            check((e as Error as? LocalizedError)?.errorDescription == e.message, "error.message reads it")
+            check(String(describing: e) == #"Error: ["todo",5] data is undefined"#, "String(error)")
+        }
+
         // An invalidated entry with no live query is still SERVED (no blank)
         // but stale whatever its age: the next screen to mount refetches it.
         do {

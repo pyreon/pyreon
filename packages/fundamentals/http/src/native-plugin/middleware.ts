@@ -58,6 +58,8 @@ export interface RetryEntry {
 export type MiddlewareEntry =
   | { readonly kind: 'bearer'; readonly crossOrigin: boolean }
   | RetryEntry
+  /** `throwHttpErrors` (the client's default): not a `use` entry — the client's own status check, prepended outermost. */
+  | { readonly kind: 'throwHttpErrors' }
   | { readonly kind: 'logger'; readonly production: boolean }
 
 interface ScannedEntry {
@@ -79,7 +81,7 @@ interface MiddlewarePayload {
   readonly entries: readonly MiddlewareEntry[]
 }
 
-const NO_MIDDLEWARE: ClientMiddleware = { entries: [], unlowerable: [] }
+export const NO_MIDDLEWARE: ClientMiddleware = { entries: [], unlowerable: [] }
 
 /** Top-level `const x = signal(…)` / `computed(…)`: the compiler skips those ("belong inside a component"), so a token reading one would reference nothing. */
 function moduleReactiveNames(body: readonly AnyNode[]): Set<string> {
@@ -334,11 +336,12 @@ export function middlewareExpr(
   mw: ClientMiddleware,
   baseUrl: string,
   ctx: ParseContext,
-): ExprIR | undefined {
-  if (mw.entries.length === 0) return undefined
+): ExprIR {
   const args: ExprIR[] = []
   for (const e of mw.entries) if (e.tokenNode !== undefined) args.push(ctx.expr(e.tokenNode))
-  const payload: MiddlewarePayload = { baseUrl, entries: mw.entries.map((e) => e.entry) }
+  // The web client checks the status AFTER its `use` chain returns (`throwHttpErrors`, the default), and rejects with
+  // `HttpError` naming the request as sent — so the native check is the OUTERMOST layer, around every `use` entry.
+  const payload: MiddlewarePayload = { baseUrl, entries: [{ kind: 'throwHttpErrors' }, ...mw.entries.map((e) => e.entry)] }
   return {
     kind: 'ext-expr',
     plugin: HTTP_PLUGIN_NAME,
@@ -394,6 +397,8 @@ export const middlewareExprEmitter: ExprEmitter = {
         }
         case 'logger':
           return `.logger(production: ${entry.production})`
+        case 'throwHttpErrors':
+          return '.throwHttpErrors'
       }
     })
     return `[${items.join(', ')}] as [PyreonHttpMiddleware]`
@@ -418,6 +423,8 @@ export const middlewareExprEmitter: ExprEmitter = {
         }
         case 'logger':
           return `PyreonHttpMiddleware.Logger(production = ${entry.production})`
+        case 'throwHttpErrors':
+          return 'PyreonHttpMiddleware.ThrowHttpErrors'
       }
     })
     return `listOf<PyreonHttpMiddleware>(${items.join(', ')})`

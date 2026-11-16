@@ -111,6 +111,19 @@ export interface ResolvedRequest {
    * middleware resolved for any other caller is reported and stays web, so no consumer can drop it in silence.
    */
   readonly middleware?: ExprIR | undefined
+  /**
+   * The source resolves an answer that carries no JSON — a bodyless status (204 / 205 / 304) or an empty body — as
+   * `undefined` instead of parsing it (`@pyreon/http`'s `.json()`); the runtime test is `PyreonHttpResponse.isNoContent`.
+   * A caller that decodes settles such an answer as "no data" (a fetch resolves empty, a mutation succeeds with nothing)
+   * — or, for a query, fails it the way TanStack fails undefined data (see {@link queryHash}).
+   */
+  readonly emptyAsUndefined?: boolean | undefined
+  /**
+   * The web query key's TanStack hash (`JSON.stringify` of the key with object keys sorted) as a string expression —
+   * what the web's `<queryHash> data is undefined` error names. Set by a source whose `.query()` builds the key, when
+   * the key can be spelled natively.
+   */
+  readonly queryHash?: ExprIR | undefined
 }
 
 /** What the CALLER can honour. */

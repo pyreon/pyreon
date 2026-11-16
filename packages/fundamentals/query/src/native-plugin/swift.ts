@@ -70,6 +70,13 @@ export function queryLifecycleSwift(decl: ExtDecl, ctx: EmitContext): readonly s
       )
       // The client's `use: [...]`, when present, is applied around the request with the web's onion semantics.
       for (const line of swiftSendLines(args, d.middleware !== undefined ? ctx.expr(d.middleware, 0) : undefined)) lines.push(`    ${line}`)
+      if (d.undefinedData !== undefined) {
+        // The web's fetcher resolves `undefined` for this answer, and TanStack FAILS the query with this error.
+        const test = d.undefinedData.when === 'empty' ? '__response.isNoContent' : '__response.status == 204'
+        lines.push(`    if ${test} {`)
+        lines.push(`      throw PyreonQueryDataUndefined(queryHash: ${ctx.expr(d.undefinedData.queryHash, 0)})`)
+        lines.push(`    }`)
+      }
       lines.push(`    return try __response.decode(${ctx.typeText(d.type)}.self)`)
     } else {
       lines.push(`    let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${swiftUrl})!)`)

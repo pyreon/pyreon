@@ -138,10 +138,19 @@ public object PyreonQueryCache {
      * stale — still served, refetched on its next check — and every LIVE query
      * under it refetches now, on its composable's scope. Call on the main thread.
      */
-    public fun invalidateQueries(root: String) {
+    public fun invalidateQueries(root: String): Unit = invalidate { under(root, it) }
+
+    /** `invalidateQueries({ queryKey, exact })`: with [exact], only the query keyed exactly [key]; without, [key] is a root. */
+    public fun invalidateQueries(key: String, exact: Boolean): Unit =
+        if (exact) invalidate { it == key } else invalidateQueries(key)
+
+    /** `invalidateQueries()` with no filter: every query. */
+    public fun invalidateAllQueries(): Unit = invalidate { true }
+
+    private fun invalidate(matches: (String) -> Boolean) {
         val queries = synchronized(lock) {
-            for ((key, entry) in store) if (under(root, key)) entry.invalidated = true
-            live.entries.filter { under(root, it.value) }.map { it.key }
+            for ((key, entry) in store) if (matches(key)) entry.invalidated = true
+            live.entries.filter { matches(it.value) }.map { it.key }
         }
         for (query in queries) query.refetch()
     }
@@ -206,6 +215,21 @@ public object PyreonQueryCache {
         invalidateQueries(invalidating)
         return value
     }
+}
+
+/**
+ * The error TanStack Query fails a query with when its fetcher resolves
+ * `undefined` (a 204 from an `@pyreon/http` endpoint `.query()` or
+ * `@pyreon/feature`'s `useList` / `useById`): `<queryHash> data is undefined`.
+ * The Swift `PyreonQueryDataUndefined`.
+ */
+public class PyreonQueryDataUndefined(public val queryHash: String) : Exception("$queryHash data is undefined") {
+    /** `String(error)` on the web. */
+    override fun toString(): String = "Error: $message"
+
+    override fun equals(other: Any?): Boolean = other is PyreonQueryDataUndefined && other.queryHash == queryHash
+
+    override fun hashCode(): Int = queryHash.hashCode()
 }
 
 /** Undo of one optimistic [PyreonQueryCache.setQueryData]: restores the cached

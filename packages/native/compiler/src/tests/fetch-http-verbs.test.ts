@@ -73,15 +73,15 @@ describe('useFetch init — the verb reaches the emitted request', () => {
     expect(kotlin(POST)).toContain('if (!__response.isOk) throw PyreonHttpError.BadStatus')
   })
 
-  it('leaves a BARE useFetch on the existing device-proven GET path', () => {
-    // Deliberate: that path is device-proven, and re-routing it would put a
-    // proven path behind a brand-new Android executor. Unifying the two once
-    // this one is device-proven is the follow-up.
+  it('routes a BARE useFetch through PyreonHttp too, so a non-2xx rejects with the web hook\'s error', () => {
+    // The bare URLSession read (iOS) handed ANY status to the decoder and the bare `readText()` (Android) threw its own
+    // IOException text, while the web rejects with `[Pyreon] useFetch <url>: HTTP <status>`. One path now, the one every
+    // endpoint request, query and mutation already sends through.
     const GET = src(`const p = useFetch<Item>('http://h/i')`)
-    expect(swift(GET)).toContain('URLSession.shared.data(from:')
-    expect(swift(GET)).not.toContain('PyreonHttp.send(')
-    expect(kotlin(GET)).toContain('readText()')
-    expect(kotlin(GET)).not.toContain('PyreonHttp.send(')
+    expect(swift(GET)).not.toContain('URLSession.shared.data(from:')
+    expect(swift(GET)).toContain('middleware: [.reject { $0.fetchError(url: "http://h/i") }] as [PyreonHttpMiddleware]')
+    expect(kotlin(GET)).not.toContain('readText()')
+    expect(kotlin(GET)).toContain('PyreonHttpMiddleware.Reject { it.fetchError("http://h/i") }')
   })
 
   it('carries a verb with no body (a DELETE / PUT)', () => {

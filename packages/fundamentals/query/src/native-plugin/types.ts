@@ -30,6 +30,13 @@ export interface QueryPayload {
   bodyExpr?: ExprIR
   /** A streamed body (`multipart` / a raw `body`) from an endpoint `.query()`, built per run. */
   upload?: ExprIR
+  /**
+   * The answer the web's fetcher resolves as `undefined`, which TanStack fails as `<queryHash> data is undefined` rather
+   * than decoding: `'empty'` is `@pyreon/http`'s `.json()` rule (a bodyless 204 / 205 / 304 or an empty body,
+   * `PyreonHttpResponse.isNoContent`), `'204'` a helper that tests `res.status === 204` (`@pyreon/feature`). `queryHash`
+   * is the web key's hash, a string expression. Only for a request sent through `PyreonHttp` (it reads the status).
+   */
+  undefinedData?: { readonly when: 'empty' | '204'; readonly queryHash: ExprIR }
 }
 
 /** The payload of a `stream` declaration (see `recognizeStream`). */

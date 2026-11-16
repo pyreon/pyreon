@@ -25,14 +25,14 @@ export function P() {
 }`).code
     expect(out).toContain(
       // A string body with no type gets the Fetch standard's default, as the web sends it.
-      'PyreonHttp.send(PyreonHttpRequest(method = PyreonHttpMethod.POST, url = "https://x.dev/a", headers = mapOf("X-A" to "1", "content-type" to "text/plain;charset=UTF-8"), body = "{}"), fallback = PyreonHttpOkHttp)',
+      'PyreonHttp.send(PyreonHttpRequest(method = PyreonHttpMethod.POST, url = "https://x.dev/a", headers = mapOf("X-A" to "1", "content-type" to "text/plain;charset=UTF-8"), body = "{}"), fallback = PyreonHttpOkHttp, middleware = listOf<PyreonHttpMiddleware>(PyreonHttpMiddleware.Reject { it.fetchError("https://x.dev/a") }))',
     )
-    // a non-2xx rejects rather than handing an error page to the decoder
+    // a non-2xx rejects with the web hook's error rather than handing an error page to the decoder
     expect(out).toContain('if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)')
     expect(out).not.toContain('readText()')
   })
 
-  it('a plain GET keeps the readText path (PyreonHttp is only for what readText cannot express)', () => {
+  it('a plain GET goes through PyreonHttp too, so a non-2xx rejects with the web hook\'s error', () => {
     const out = kt(`import { useFetch } from '@pyreon/hooks'
 import { Stack, Text } from '@pyreon/primitives'
 interface Item { id: string }
@@ -40,8 +40,8 @@ export function P() {
   const p = useFetch<Item>('https://x.dev/a')
   return (<Stack><Text>{p.data()?.id ?? 'none'}</Text></Stack>)
 }`).code
-    expect(out).toContain('java.net.URL("https://x.dev/a").readText()')
-    expect(out).not.toContain('PyreonHttp.send')
+    expect(out).toContain('PyreonHttp.send(PyreonHttpRequest(method = PyreonHttpMethod.GET, url = "https://x.dev/a"), fallback = PyreonHttpOkHttp, middleware = listOf<PyreonHttpMiddleware>(PyreonHttpMiddleware.Reject { it.fetchError("https://x.dev/a") }))')
+    expect(out).not.toContain('readText()')
   })
 
   it('useQuery: a REACTIVE key re-keys the LaunchedEffect; a static key uses Unit', () => {

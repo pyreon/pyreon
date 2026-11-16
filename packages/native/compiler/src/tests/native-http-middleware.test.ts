@@ -47,7 +47,8 @@ describe('the lowerable middleware reaches both native requests, in order', () =
     const r = swift(FULL)
     expect(r.warnings).toEqual([])
     const list =
-      '[.bearer(baseUrl: "https://api.example.com", crossOrigin: false, token: { PyreonStore_auth.shared.token }), .retry(PyreonRetryPolicy(limit: 3, statuses: [503])), .logger(production: false)] as [PyreonHttpMiddleware]'
+      // Led by the client's own status check (`throwHttpErrors`), which the web runs after the `use` chain returns.
+      '[.throwHttpErrors, .bearer(baseUrl: "https://api.example.com", crossOrigin: false, token: { PyreonStore_auth.shared.token }), .retry(PyreonRetryPolicy(limit: 3, statuses: [503])), .logger(production: false)] as [PyreonHttpMiddleware]'
     // Once per harness: the fetch and the query.
     expect(r.code.split(`middleware: ${list}`).length - 1).toBe(2)
   })
@@ -56,7 +57,7 @@ describe('the lowerable middleware reaches both native requests, in order', () =
     const r = kotlin(FULL)
     expect(r.warnings).toEqual([])
     const list =
-      'middleware = listOf<PyreonHttpMiddleware>(PyreonHttpMiddleware.Bearer(baseUrl = "https://api.example.com", crossOrigin = false, token = { PyreonStore_auth.token }), PyreonHttpMiddleware.Retry(PyreonRetryPolicy(limit = 3, statuses = listOf(503))), PyreonHttpMiddleware.Logger(production = false))'
+      'middleware = listOf<PyreonHttpMiddleware>(PyreonHttpMiddleware.ThrowHttpErrors, PyreonHttpMiddleware.Bearer(baseUrl = "https://api.example.com", crossOrigin = false, token = { PyreonStore_auth.token }), PyreonHttpMiddleware.Retry(PyreonRetryPolicy(limit = 3, statuses = listOf(503))), PyreonHttpMiddleware.Logger(production = false))'
     expect(r.code.split(list).length - 1).toBe(2)
   })
 
@@ -76,7 +77,7 @@ describe('the lowerable middleware reaches both native requests, in order', () =
     )
     expect(r.warnings).toEqual([])
     expect(r.code).toContain(
-      'middleware: [.retry(PyreonRetryPolicy()), .bearer(baseUrl: "https://api.example.com", crossOrigin: true, token: { "static-token" })] as [PyreonHttpMiddleware]',
+      'middleware: [.throwHttpErrors, .retry(PyreonRetryPolicy()), .bearer(baseUrl: "https://api.example.com", crossOrigin: true, token: { "static-token" })] as [PyreonHttpMiddleware]',
     )
   })
 
@@ -95,15 +96,17 @@ describe('the lowerable middleware reaches both native requests, in order', () =
   it('forwardHeaders is a no-op on a client (as in a browser) — no warning, and nothing to apply', () => {
     const r = swift(app(`forwardHeaders(['cookie'])`, 'forwardHeaders'))
     expect(r.warnings).toEqual([])
-    expect(r.code).not.toContain('middleware:')
+    // Only the client's own status check, which every endpoint request carries.
+    expect(r.code).not.toMatch(/middleware: \[(?!\.throwHttpErrors\] as)/)
     expect(r.code).toContain('PyreonHttp.send(')
   })
 
-  it('a client without `use` emits exactly what it did before', () => {
+  it('a client without `use` carries only its status check — `throwHttpErrors`, the web\'s HttpError', () => {
     const plain = app('').replace(', use: []', '')
     const r = swift(plain.replace(/^import \{ bearer.*\n/m, ''))
     expect(r.warnings).toEqual([])
-    expect(r.code).not.toContain('middleware')
+    expect(r.code.match(/middleware: \[\.throwHttpErrors\] as \[PyreonHttpMiddleware\]/g)?.length).toBe(2)
+    expect(r.code).not.toMatch(/\.bearer|\.retry|\.logger/)
   })
 })
 

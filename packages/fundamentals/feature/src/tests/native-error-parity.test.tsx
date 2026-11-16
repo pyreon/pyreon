@@ -31,6 +31,14 @@ function mountWith<T>(client: QueryClient, fn: () => T): { result: T; unmount: (
   }
 }
 
+const noContentFeature = () =>
+  defineFeature<{ title: string }>({
+    name: 'q204',
+    schema: { title: 'string' } as never,
+    api: ERROR_API,
+    fetcher: (async () => new Response(null, { status: 204 })) as typeof fetch,
+  })
+
 describe('CRUD error parity corpus — the web behaviour', () => {
   for (const c of ERROR_CASES) {
     it(c.name, async () => {
@@ -54,6 +62,29 @@ describe('CRUD error parity corpus — the web behaviour', () => {
       expect(err.status).toBe(c.status)
       if (c.errors === undefined) expect('errors' in err).toBe(false)
       else expect(err.errors).toEqual(JSON.parse(c.errors))
+    })
+  }
+
+  // A 204 on a QUERY is not "no data": the fetcher resolves `undefined`, and TanStack fails the query with
+  // `<queryHash> data is undefined` — the error the native `useList` / `useById` throw (`PyreonQueryDataUndefined`).
+  for (const [label, hook, message] of [
+    ['useList', (f: ReturnType<typeof noContentFeature>) => f.useList(), '["q204","list",{}] data is undefined'],
+    ['useById(5)', (f: ReturnType<typeof noContentFeature>) => f.useById(5), '["q204",5] data is undefined'],
+    ['useById(\'a"b\')', (f: ReturnType<typeof noContentFeature>) => f.useById('a"b'), '["q204","a\\"b"] data is undefined'],
+  ] as const) {
+    it(`a 204 on ${label} fails the query as TanStack does`, async () => {
+      const feature = noContentFeature()
+      const { result: q, unmount } = mountWith(new QueryClient({ defaultOptions: { queries: { retry: false } } }), () => hook(feature))
+      const original = console.error
+      console.error = () => {}
+      try {
+        for (let i = 0; i < 20 && q.error() == null; i++) await new Promise((r) => setTimeout(r, 20))
+      } finally {
+        console.error = original
+      }
+      expect((q.error() as Error | null)?.message).toBe(message)
+      expect(q.data()).toBeUndefined()
+      unmount()
     })
   }
 

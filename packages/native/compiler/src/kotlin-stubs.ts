@@ -1274,6 +1274,7 @@ class PyreonFetch<T> {
   val isPending: MutableState<Boolean> = mutableStateOf(false)
   fun begin() {}
   fun resolve(value: T) {}
+  fun resolveEmpty() {}
   fun reject(e: Throwable) {}
   fun refetch() {}
 }
@@ -1311,6 +1312,7 @@ data class PyreonHttpResponse(
   val body: String = "",
 ) {
   val isOk: Boolean get() = status in 200..299
+  val isNoContent: Boolean get() = false
 }
 sealed class PyreonHttpError(message: String) : Exception(message) {
   class InvalidUrl(val url: String) : PyreonHttpError("invalid url: " + url)
@@ -1330,7 +1332,11 @@ object PyreonHttp {
     fallback: PyreonHttpExecutor? = null,
     middleware: List<PyreonHttpMiddleware> = emptyList(),
   ): PyreonHttpResponse = PyreonHttpResponse(200)
-  fun call(request: PyreonHttpRequest, fallback: PyreonHttpExecutor? = null): PyreonHttpResponse = PyreonHttpResponse(200)
+  fun call(
+    request: PyreonHttpRequest,
+    fallback: PyreonHttpExecutor? = null,
+    middleware: List<PyreonHttpMiddleware> = emptyList(),
+  ): PyreonHttpResponse = PyreonHttpResponse(200)
 }
 // The lowered \`createHttp({ use: [...] })\` middleware. Mirrors the REAL
 // PyreonHttp.kt surface: \`maxDelay\` is a Double, every policy field is
@@ -1348,10 +1354,13 @@ sealed class PyreonHttpMiddleware {
   class Retry(val policy: PyreonRetryPolicy = PyreonRetryPolicy()) : PyreonHttpMiddleware()
   class Logger(val production: Boolean = false) : PyreonHttpMiddleware()
   class Reject(val error: (PyreonHttpResponse) -> Throwable) : PyreonHttpMiddleware()
+  object ThrowHttpErrors : PyreonHttpMiddleware()
 }
 // The error \`@pyreon/feature\`'s lowered CRUD hooks reject with (\`Reject { it.messageError(…) }\`).
-class PyreonHttpMessageError(message: String, val status: Int, val errors: String? = null) : Exception(message)
+class PyreonHttpMessageError(message: String, val status: Int, val errors: String? = null, val name: String = "Error") : Exception(message)
 fun PyreonHttpResponse.messageError(method: String, url: String): PyreonHttpMessageError = PyreonHttpMessageError(method + url, status)
+fun PyreonHttpResponse.httpError(method: String, url: String): PyreonHttpMessageError = PyreonHttpMessageError(method + url, status)
+fun PyreonHttpResponse.fetchError(url: String): PyreonHttpMessageError = PyreonHttpMessageError(url, status)
 // PyreonURL — the runtime path-param encoder a templated endpoint URL calls.
 // Mirrors the REAL PyreonURL surface: four overloads (String / Int / Long /
 // Double), one per type a \`PathParams\` value can take once the compiler has

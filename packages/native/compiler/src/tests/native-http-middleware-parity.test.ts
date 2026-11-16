@@ -272,7 +272,9 @@ async function runWeb(s: Scenario): Promise<string> {
       if (step < 0) throw new TypeError('offline')
       return toHttpResponse(new Response(null, { status: step, headers: s.respHeaders ?? {} }), req)
     })(request)
-    final = String(res.status)
+    // The client's own status check (`throwHttpErrors`, its default) runs AFTER the `use` chain returns: a non-2xx
+    // rejects with `HttpError`. The emitted list carries it as its outermost layer.
+    final = res.ok ? String(res.status) : `HttpError ${res.status}`
   } catch {
     final = 'error'
   } finally {
@@ -379,6 +381,8 @@ func scenario${i}() async -> String {
             return PyreonHttpResponse(status: step, headers: [${resp || ':'}])
         }
         final = String(res.status)
+    } catch let e as PyreonHttpMessageError {
+        final = (e.name == "Error" ? "?" : "HttpError") + " " + String(e.status)
     } catch { final = "error" }
     return [String(auths.count), auths.joined(separator: ","), sleeps.map(fmt).joined(separator: ","), final,
             logs.joined(separator: ";"), String(PyreonStore_auth.shared.reads)].joined(separator: "|")
@@ -416,6 +420,8 @@ fun scenario${i}(): String {
             if (step < 0) throw java.io.IOException("offline")
             PyreonHttpResponse(step, mapOf<String, String>(${resp}))
         }.status.toString()
+    } catch (e: PyreonHttpMessageError) {
+        (if (e.name == "Error") "?" else "HttpError") + " " + e.status
     } catch (e: java.io.IOException) { "error" }
     return listOf(auths.size.toString(), auths.joinToString(","), sleeps.joinToString(",") { fmt(it) }, final,
         logs.joinToString(";"), PyreonStore_auth.reads.toString()).joinToString("|")

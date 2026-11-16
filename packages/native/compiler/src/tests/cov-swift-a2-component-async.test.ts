@@ -32,11 +32,10 @@ export function App() {
   return (<Stack><Text>{() => \`\${f1.data()?.id}\${f2.data()?.id}\${f3.data()?.id}\${f4.data()?.id}\`}</Text></Stack>)
 }`)
 
-  it('a BARE GET keeps the hand-written URLSession call and decodes directly', () => {
-    expect(out).toContain(
-      'let (bytes, _) = try await URLSession.shared.data(from: URL(string: "https://x/1")!)',
-    )
-    expect(out).toContain('f1.resolve(try JSONDecoder().decode(U.self, from: bytes))')
+  it('a BARE GET goes through PyreonHttp too, rejecting a non-2xx with the web hook\'s error', () => {
+    expect(out).toContain('PyreonHttpRequest(method: .get, url: "https://x/1")')
+    expect(out).toContain('middleware: [.reject { $0.fetchError(url: "https://x/1") }] as [PyreonHttpMiddleware]')
+    expect(out).toContain('f1.resolve(try __response.decode(U.self))')
   })
 
   it('a VERB, HEADERS or a BODY — any one of the three — routes through PyreonHttp', () => {

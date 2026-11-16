@@ -89,12 +89,12 @@ const SITES: Record<string, Site> = {
     swift: [
       'struct PageData: Codable {',
       'PyreonFetch<PageData>()',
-      'decode(PageData.self, from: bytes)',
+      '__response.decode(PageData.self)',
     ],
     kotlin: [
       'data class PageData(val ok: Boolean)',
       'PyreonFetch<PageData>()',
-      'decodeFromString<PageData>(body)',
+      'decodeFromString<PageData>(__response.body)',
     ],
     swiftNot: ['PyreonFetch<Bool>', 'decode(Bool.self'],
   },

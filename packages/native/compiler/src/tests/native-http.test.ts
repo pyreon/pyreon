@@ -70,10 +70,19 @@ describe('endpoint DSL — Swift lowering', () => {
     expect(r.code).toContain('PyreonHttp.send(')
   })
 
-  it('resolves BYTE-IDENTICALLY to a literal `/api/users/1` GET useFetch', () => {
-    expect(fetchLines(r.code, SWIFT_FETCH_RE)).toBe(
-      fetchLines(swift(LITERAL_GET).code, SWIFT_FETCH_RE),
-    )
+  it('sends the request a literal `/api/users/1` GET useFetch sends — with the endpoint\'s error contract', () => {
+    const literal = swift(LITERAL_GET).code
+    const request = 'PyreonHttpRequest(method: .get, url: "/api/users/1")'
+    expect(r.code).toContain(request)
+    expect(literal).toContain(request)
+    // Same request, different rejection: the web endpoint throws `HttpError`, the web `useFetch(url)` its own error.
+    const strip = (code: string): string =>
+      fetchLines(code, SWIFT_FETCH_RE)
+        .replace(/middleware: .*/g, 'middleware: <contract>')
+        .replace(/if __response\.isNoContent \{ user\.resolveEmpty\(\) \} else \{ (.*) \}/, '$1')
+    expect(strip(r.code)).toBe(strip(literal))
+    expect(r.code).toContain('middleware: [.throwHttpErrors] as [PyreonHttpMiddleware]')
+    expect(literal).toContain('middleware: [.reject { $0.fetchError(url: "/api/users/1") }] as [PyreonHttpMiddleware]')
   })
 
   it('type-checks against the SwiftUI stubs', () => {
@@ -98,10 +107,18 @@ describe('endpoint DSL — Kotlin lowering', () => {
     expect(r.code).toContain('PyreonHttpMethod.GET')
   })
 
-  it('resolves BYTE-IDENTICALLY to a literal `/api/users/1` GET useFetch', () => {
-    expect(fetchLines(r.code, KOTLIN_FETCH_RE)).toBe(
-      fetchLines(kotlin(LITERAL_GET).code, KOTLIN_FETCH_RE),
-    )
+  it('sends the request a literal `/api/users/1` GET useFetch sends — with the endpoint\'s error contract', () => {
+    const literal = kotlin(LITERAL_GET).code
+    const request = 'PyreonHttpRequest(method = PyreonHttpMethod.GET, url = "/api/users/1")'
+    expect(r.code).toContain(request)
+    expect(literal).toContain(request)
+    const strip = (code: string): string =>
+      fetchLines(code, KOTLIN_FETCH_RE)
+        .replace(/middleware = .*\)$/gm, 'middleware = <contract>)')
+        .replace(/if \(__response\.isNoContent\) user\.resolveEmpty\(\) else (.*)/, '$1')
+    expect(strip(r.code)).toBe(strip(literal))
+    expect(r.code).toContain('middleware = listOf<PyreonHttpMiddleware>(PyreonHttpMiddleware.ThrowHttpErrors)')
+    expect(literal).toContain('middleware = listOf<PyreonHttpMiddleware>(PyreonHttpMiddleware.Reject { it.fetchError("/api/users/1") })')
   })
 
   it('type-checks against the Compose stubs', () => {

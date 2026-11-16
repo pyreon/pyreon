@@ -23,7 +23,17 @@ import {
 } from './mutation'
 import { infiniteDecl, infiniteReceiver, recognizeInfiniteQuery } from './infinite'
 import { INFINITE_QUERY_TYPE, MUTATION_TYPE, QUERY_CLIENT_TYPE, QUERY_PLUGIN_NAME, QUERY_TYPE, STREAM_TYPE } from './names'
-import { recognizeQuery, recognizeQueryClient, recognizeStream, scanQuery } from './recognize'
+import { recognizeQuery, recognizeStream, scanQuery } from './recognize'
+import {
+  INVALIDATE_TYPE,
+  invalidateQueriesExpr,
+  recognizeInvalidateQueries,
+  recognizeQueryClient,
+  recognizeUnloweredClientMethod,
+  recognizeUseQueryClient,
+  scanQueryClient,
+  UNLOWERED_CLIENT_METHODS,
+} from './client'
 import { queryStubs } from './stubs'
 import { queryDeclSwift, queryLifecycleSwift, streamDeclSwift, streamLifecycleSwift } from './swift'
 import type { QueryPayload, StreamPayload } from './types'
@@ -72,6 +82,12 @@ export const queryContainerDecl: DeclEmitter = {
   asyncState: {
     swift: (d, ctx) => ({ pending: `${ctx.ident(d.name)}.isPending`, error: `${ctx.ident(d.name)}.error != nil` }),
     kotlin: (d, ctx) => ({ pending: `${ctx.ident(d.name)}.isPending.value`, error: `${ctx.ident(d.name)}.error.value != null` }),
+  },
+  // `q.error()` is the optional error OBJECT on every layer, so `q.error()?.message` reads the error's message (the
+  // web's `HttpError` / TanStack text) instead of a `message` member a native `Error` does not have.
+  typing: {
+    callRead: (_d, property) => (property === 'error' ? { kind: 'union', branches: [ERROR_OBJECT, { kind: 'undefined' }] } : undefined),
+    member: (_d, property) => (property === 'error' ? { kind: 'union', branches: [ERROR_OBJECT, { kind: 'null' }] } : undefined),
   },
 }
 
@@ -137,7 +153,7 @@ export const mutationReceiver: ReceiverLowering = {
   },
 }
 
-/** The query client has no native counterpart: `useQuery` is self-contained, so emitting nothing is the whole lowering. */
+/** The query client binding emits nothing: natively the client is the process-wide `PyreonQueryCache` its calls name. */
 const queryClientDecl: DeclEmitter = { legacyKind: 'query-client', swift: () => '', kotlin: () => '' }
 
 export const queryReceiver: ReceiverLowering = {
@@ -211,6 +227,7 @@ export const queryPlugin: CompilerPlugin = {
   scanModule: (scan) => {
     scanQuery(scan)
     scanMutations(scan)
+    scanQueryClient(scan)
   },
   calls: {
     useQuery: recognizeQuery,
@@ -218,11 +235,17 @@ export const queryPlugin: CompilerPlugin = {
     useMutation: recognizeMutation,
     useInfiniteQuery: recognizeInfiniteQuery,
     QueryClient: recognizeQueryClient,
+    useQueryClient: recognizeUseQueryClient,
   },
   // A container is view state (`@State` / `remember`), which has no meaning at file scope.
   componentOnlyCalls: ['useMutation'],
-  methodCalls: { mutate: recognizeMutateCall, mutateAsync: recognizeMutateCall },
-  exprs: { [MUTATE_TYPE]: mutateExpr, [MUTATE_ASYNC_TYPE]: mutateAsyncExpr },
+  methodCalls: {
+    mutate: recognizeMutateCall,
+    mutateAsync: recognizeMutateCall,
+    invalidateQueries: recognizeInvalidateQueries,
+    ...Object.fromEntries(UNLOWERED_CLIENT_METHODS.map((m) => [m, recognizeUnloweredClientMethod])),
+  },
+  exprs: { [MUTATE_TYPE]: mutateExpr, [MUTATE_ASYNC_TYPE]: mutateAsyncExpr, [INVALIDATE_TYPE]: invalidateQueriesExpr },
   destructureCalls: ['useQuery'],
   decls: {
     [QUERY_TYPE]: queryDecl,

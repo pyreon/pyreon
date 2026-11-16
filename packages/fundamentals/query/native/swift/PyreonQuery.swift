@@ -192,7 +192,23 @@ public final class PyreonQueryCache: @unchecked Sendable {
     @discardableResult
     public func invalidateQueries(_ root: String) -> _Concurrency.Task<Void, Never> {
         let prefix = root + ":"
-        let matches: (String) -> Bool = { $0 == root || $0.hasPrefix(prefix) }
+        return invalidate { $0 == root || $0.hasPrefix(prefix) }
+    }
+
+    /// `invalidateQueries({ queryKey, exact })`: with `exact`, only the query
+    /// keyed exactly `key` (TanStack's exact match); without, `key` is a root.
+    @discardableResult
+    public func invalidateQueries(_ key: String, exact: Bool) -> _Concurrency.Task<Void, Never> {
+        exact ? invalidate { $0 == key } : invalidateQueries(key)
+    }
+
+    /// `invalidateQueries()` with no filter: every query.
+    @discardableResult
+    public func invalidateAllQueries() -> _Concurrency.Task<Void, Never> {
+        invalidate { _ in true }
+    }
+
+    private func invalidate(_ matches: @escaping (String) -> Bool) -> _Concurrency.Task<Void, Never> {
         lock.lock()
         for key in store.keys where matches(key) { store[key]?.invalidated = true }
         let queries = liveLocked(matches)
@@ -273,6 +289,21 @@ public final class PyreonQueryCache: @unchecked Sendable {
 /// What the cache's live registry can do with a query of any type.
 protocol PyreonLiveQuery: AnyObject {
     @discardableResult func refetch() -> _Concurrency.Task<Void, Never>?
+}
+
+/// The error TanStack Query fails a query with when its fetcher resolves
+/// `undefined` — what the web's `@pyreon/http` endpoint `.query()` and
+/// `@pyreon/feature`'s `useList` / `useById` resolve for a 204: `<queryHash>
+/// data is undefined`, `queryHash` being the web key's hash
+/// (`JSON.stringify` with object keys sorted, `["todo",5]`). The lowered
+/// harness throws it for that answer instead of decoding an empty body.
+public struct PyreonQueryDataUndefined: LocalizedError, CustomStringConvertible, Equatable {
+    public let queryHash: String
+    public init(queryHash: String) { self.queryHash = queryHash }
+    public var message: String { "\(queryHash) data is undefined" }
+    public var errorDescription: String? { message }
+    /// `String(error)` on the web.
+    public var description: String { "Error: \(message)" }
 }
 
 /// Undo of one optimistic `setQueryData`: restores the cached value and every

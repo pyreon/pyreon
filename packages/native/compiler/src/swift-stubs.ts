@@ -1577,6 +1577,7 @@ public final class PyreonFetch<T> {
   public init() {}
   public func begin() {}
   public func resolve(_ value: T) {}
+  public func resolveEmpty() {}
   public func reject(_ failure: Error) {}
   public func load(_ fetcher: @escaping () throws -> T) {}
   public func refetch() {}
@@ -1618,6 +1619,7 @@ public struct PyreonHttpResponse: Sendable {
   public let status: Int = 0
   public var isOK: Bool { true }
   public var text: String { "" }
+  public var isNoContent: Bool { false }
   public func decode<T: Decodable>(_ type: T.Type) throws -> T {
     throw PyreonHttpError.invalidURL("stub")
   }
@@ -1640,7 +1642,12 @@ public enum PyreonHttp {
   public static func call(_ request: PyreonHttpRequest) async throws -> PyreonHttpResponse {
     PyreonHttpResponse()
   }
+  @discardableResult
+  public static func call(_ request: PyreonHttpRequest, middleware: [PyreonHttpMiddleware]) async throws -> PyreonHttpResponse {
+    PyreonHttpResponse()
+  }
   public static func fire(_ request: PyreonHttpRequest) {}
+  public static func fire(_ request: PyreonHttpRequest, middleware: [PyreonHttpMiddleware]) {}
 }
 // The lowered \`createHttp({ use: [...] })\` middleware. Mirrors the REAL
 // PyreonHttp.swift surface: \`maxDelay\` is a Double, every policy field is
@@ -1660,18 +1667,22 @@ public enum PyreonHttpMiddleware {
   case retry(PyreonRetryPolicy)
   case logger(production: Bool)
   case reject((PyreonHttpResponse) -> Error)
+  case throwHttpErrors
 }
 // The error \`@pyreon/feature\`'s lowered CRUD hooks reject with (\`.reject { $0.messageError(…) }\`).
 public struct PyreonHttpMessageError: LocalizedError, CustomStringConvertible, Equatable {
   public let message: String
   public let status: Int
   public let errors: String?
-  public init(message: String, status: Int, errors: String? = nil) { self.message = message; self.status = status; self.errors = errors }
+  public let name: String
+  public init(message: String, status: Int, errors: String? = nil, name: String = "Error") { self.message = message; self.status = status; self.errors = errors; self.name = name }
   public var errorDescription: String? { message }
   public var description: String { message }
 }
 extension PyreonHttpResponse {
   public func messageError(method: String, url: String) -> PyreonHttpMessageError { PyreonHttpMessageError(message: "", status: status) }
+  public func httpError(method: String, url: String) -> PyreonHttpMessageError { PyreonHttpMessageError(message: "", status: status) }
+  public func fetchError(url: String) -> PyreonHttpMessageError { PyreonHttpMessageError(message: "", status: status) }
 }
 // PyreonURL — the runtime path-param encoder a templated endpoint URL calls.
 // Mirrors the REAL PyreonURL surface: three overloads (String / Int / Double),

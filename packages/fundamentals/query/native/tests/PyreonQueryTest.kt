@@ -191,6 +191,29 @@ fun testInvalidateRefetchesLiveQueriesUnderTheRootOnly() {
     check(calls == 5) { "no live query under `user`" }
 }
 
+fun testInvalidateExactAndAll() {
+    PyreonQueryCache.clearAll()
+    var calls = 0
+    val list = PyreonQuery<Int>("todo", staleMillis = 60_000)
+    val one = PyreonQuery<Int>("todo:7", staleMillis = 60_000)
+    val other = PyreonQuery<Int>("user", staleMillis = 60_000)
+    list.runNow { calls++; 1 }
+    one.runNow { calls++; 2 }
+    other.runNow { calls++; 3 }
+    PyreonQueryCache.invalidateQueries("todo", exact = true)
+    check(calls == 4) { "exact: only the key `todo` itself, not `todo:7`" }
+    PyreonQueryCache.invalidateQueries("todo", exact = false)
+    check(calls == 6) { "not exact: the root and everything under it" }
+    PyreonQueryCache.invalidateAllQueries()
+    check(calls == 9) { "no filter: every live query" }
+}
+
+fun testDataUndefinedIsTanStacksError() {
+    val e = PyreonQueryDataUndefined("[\"todo\",5]")
+    check(e.message == "[\"todo\",5] data is undefined") { "the web message: ${e.message}" }
+    check(e.toString() == "Error: [\"todo\",5] data is undefined") { "String(error): $e" }
+}
+
 fun testInvalidatedEntryIsServedButStale() {
     PyreonQueryCache.clearAll()
     PyreonQueryCache.write("todo:list", 1)
@@ -306,6 +329,8 @@ fun main() {
     testQueryKeyChangeDropsTheOldKeysResponse()
     testInvalidateRefetchesLiveQueriesUnderTheRootOnly()
     testInvalidatedEntryIsServedButStale()
+    testInvalidateExactAndAll()
+    testDataUndefinedIsTanStacksError()
     testForgottenQueryLeavesTheRegistry()
     testSettleMutationInvalidatesOnSuccessOnly()
     testSettleMutationCancelledRollsBackAndInvalidates()

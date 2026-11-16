@@ -22,7 +22,7 @@ import {
   type ParseContext,
   type ResolvedRequest,
 } from '@pyreon/native-compiler/plugin-api'
-import { middlewareExpr, middlewareNames, scanClientMiddleware, type ClientMiddleware } from './middleware'
+import { middlewareExpr, middlewareNames, NO_MIDDLEWARE, scanClientMiddleware, type ClientMiddleware } from './middleware'
 import { scanCallRoles } from './call'
 import { encodeForm } from '../body'
 // The web's OWN path-segment encoder (`applyPathParams` calls it), imported
@@ -58,6 +58,8 @@ export interface EndpointDef {
   responseType?: string
   /** The `response` schema when it names a same-module schema binding — evidence for the decode type's number fields. */
   responseSchema?: { binding: string; array: boolean }
+  /** The declaration's `keyScope` (a string literal), or `null` when it is not one. Absent: the client's applies. */
+  keyScope?: string | null
 }
 
 export interface HttpFacts {
@@ -67,13 +69,20 @@ export interface HttpFacts {
   readonly endpoints: Map<string, EndpointDef>
   /** Client binding → its scanned `use: [...]` middleware (absent = none). */
   readonly middleware: Map<string, ClientMiddleware>
+  /** Client binding → its `keyScope` (a string literal), or `null` when it is not one. Absent: no scope. */
+  readonly keyScopes: Map<string, string | null>
 }
 
 const FACTS_KEY = '@pyreon/http:facts'
 
 /** The facts this file's scan recorded. Other plugins read them through the request source, never this. */
 export function httpFacts(source: { fileState<T>(key: string, init: () => T): T }): HttpFacts {
-  return source.fileState<HttpFacts>(FACTS_KEY, () => ({ clients: new Map(), endpoints: new Map(), middleware: new Map() }))
+  return source.fileState<HttpFacts>(FACTS_KEY, () => ({
+    clients: new Map(),
+    endpoints: new Map(),
+    middleware: new Map(),
+    keyScopes: new Map(),
+  }))
 }
 
 /**
@@ -456,6 +465,12 @@ function collectHttpClients(body: AnyNode[], scan: ModuleScan, facts: HttpFacts)
         scan.lowered('*', sch.name)
       }
       facts.clients.set(name, baseUrl)
+      // The query keys' namespace — only the hash a 204's error names reads it (native keys are not the web's).
+      const scope = readObjectProp(cfg, 'keyScope') as AnyNode | undefined
+      if (scope !== undefined) {
+        const literal = literalScalar(scope)
+        facts.keyScopes.set(name, typeof literal === 'string' ? literal : null)
+      }
       // Read once here: the array is file-scope metadata, like the client. Its bearer tokens are lowered per call site.
       const mw = scanClientMiddleware(cfg, scan)
       if (mw.entries.length > 0 || mw.unlowerable.length > 0) facts.middleware.set(name, mw)
@@ -506,6 +521,7 @@ function collectEndpointDefs(body: AnyNode[], facts: HttpFacts): void {
       // once on the endpoint was dropped from every native request in silence.
       const declUnlowerable: string[] = []
       let responseType: string | undefined
+      let keyScope: string | null | undefined
       let responseSchema: { binding: string; array: boolean } | undefined
       const optsArg = init.arguments?.[1] as AnyNode | undefined
       const declHeaders = readLiteralHeaders(readObjectProp(optsArg, 'headers'), (what) =>
@@ -533,6 +549,13 @@ function collectEndpointDefs(body: AnyNode[], facts: HttpFacts): void {
           else declUnlowerable.push(key)
           continue
         }
+        if (key === 'keyScope') {
+          // It namespaces the web's cache key, which native keys do not follow; only the hash a 204's error names
+          // reads it.
+          const literal = literalScalar(prop.value as AnyNode | undefined)
+          keyScope = typeof literal === 'string' ? literal : null
+          continue
+        }
         if (key === 'throwHttpErrors') {
           // The native harness ALWAYS rejects a non-2xx, so `true` matches it
           // exactly and only an opt-OUT is unhonourable.
@@ -551,6 +574,7 @@ function collectEndpointDefs(body: AnyNode[], facts: HttpFacts): void {
         declUnlowerable,
         ...(responseType !== undefined ? { responseType } : {}),
         ...(responseSchema !== undefined ? { responseSchema } : {}),
+        ...(keyScope !== undefined ? { keyScope } : {}),
       })
     }
   }
@@ -949,13 +973,128 @@ function resolveEndpointParts(
   } = {}
   if (upload !== undefined) extras.upload = upload
   if (sawRuntimeParam || sawRuntimeQuery) extras.urlExpr = { kind: 'template', quasis, exprs }
-  const middleware = mw !== undefined ? middlewareExpr(mw, baseUrl, ctx) : undefined
-  if (middleware !== undefined) extras.middleware = middleware
+  // A caller that applies middleware gets the client's status check too (`throwHttpErrors`, prepended), so a non-2xx
+  // rejects with the web's `HttpError` even on a client without `use`.
+  if (allowMiddleware) extras.middleware = middlewareExpr(mw ?? NO_MIDDLEWARE, baseUrl, ctx)
+  // `.json()` (the default `responseType`) resolves a bodyless / empty answer as `undefined`.
+  const json = def.responseType === undefined || def.responseType === 'json'
+  const queryHash = json ? endpointQueryHash(def, facts.keyScopes.get(def.clientName), arg, ctx) : undefined
   if (Object.keys(headers).length > 0) extras.headers = headers
   if (Object.keys(headerExprs).length > 0) extras.headerExprs = headerExprs
   if (body !== undefined) extras.body = body
   if (bodyExpr !== undefined) extras.bodyExpr = bodyExpr
-  return { url, method: def.method, ...extras, ...(def.responseSchema !== undefined ? { response: def.responseSchema } : {}) }
+  return {
+    url,
+    method: def.method,
+    ...extras,
+    ...(def.responseSchema !== undefined ? { response: def.responseSchema } : {}),
+    ...(json ? { emptyAsUndefined: true } : {}),
+    ...(queryHash !== undefined ? { queryHash } : {}),
+  }
+}
+
+/** One piece of a JSON text being assembled: compile-time text, or a runtime value serialized by `JSON.stringify`. */
+type JsonPiece = string | ExprIR
+/** A property `JSON.stringify` drops (an `undefined` value). */
+const DROPPED = Symbol('dropped')
+
+/**
+ * The JSON text of `node` as the web's key hash writes it — `JSON.stringify` with every plain object's keys SORTED —
+ * as pieces: literals at compile time, a runtime value through the web-identical `JSON.stringify` lowering. `undefined`
+ * when the shape cannot be spelled (a spread, a computed key); {@link DROPPED} for an `undefined` value.
+ */
+function jsonPieces(node: AnyNode | undefined, ctx: ParseContext): JsonPiece[] | typeof DROPPED | undefined {
+  const v = unwrapTypeLayers(node) as AnyNode | undefined
+  if (v === undefined) return DROPPED
+  if (v.type === 'Identifier' && v.name === 'undefined') return DROPPED
+  if ((v.type === 'Literal' || v.type === 'NullLiteral') && v.value === null && v.regex === undefined) return ['null']
+  const scalar = literalScalar(v)
+  if (scalar !== undefined) return [JSON.stringify(scalar)]
+  if (v.type === 'ArrayExpression') {
+    const out: JsonPiece[] = ['[']
+    let first = true
+    for (const el of (v.elements as AnyNode[] | undefined) ?? []) {
+      if (el === null || el?.type === 'SpreadElement') return undefined
+      const p = jsonPieces(el, ctx)
+      if (p === undefined) return undefined
+      if (!first) out.push(',')
+      first = false
+      // An `undefined` array element is written `null`.
+      out.push(...(p === DROPPED ? ['null'] : p))
+    }
+    out.push(']')
+    return out
+  }
+  if (v.type === 'ObjectExpression') return objectPieces(v, ctx)
+  return [{ kind: 'json-stringify', arg: ctx.expr(v) }]
+}
+
+/** An object literal's JSON with its keys sorted (TanStack's `hashKey`), or `undefined` when a key is not static. */
+function objectPieces(obj: AnyNode, ctx: ParseContext): JsonPiece[] | undefined {
+  const entries: [string, JsonPiece[]][] = []
+  for (const prop of (obj.properties as AnyNode[] | undefined) ?? []) {
+    if (prop.type === 'SpreadElement' || hasDynamicKey(prop)) return undefined
+    const key = propName(prop)
+    if (key === undefined) return undefined
+    const p = jsonPieces(prop.value as AnyNode | undefined, ctx)
+    if (p === undefined) return undefined
+    if (p !== DROPPED) entries.push([key, p])
+  }
+  entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  const out: JsonPiece[] = ['{']
+  entries.forEach(([key, p], i) => {
+    out.push(`${i === 0 ? '' : ','}${JSON.stringify(key)}:`, ...p)
+  })
+  out.push('}')
+  return out
+}
+
+/**
+ * The hash TanStack gives the key `endpoint.query(arg)` builds — `[keyScope?, method, path, { params?, query? }]`,
+ * the scope object present only for a non-empty `params` / `query` (`buildKey` in `@pyreon/http`'s `endpoint.ts`) — as
+ * a string expression: the text the web's `<queryHash> data is undefined` names. `undefined` when it cannot be spelled
+ * natively (a non-literal `keyScope`, a spread or computed key); the caller then keeps its decode error and says so.
+ * A runtime value is serialized by the web-identical `JSON.stringify`; one that is `undefined` at runtime, or an
+ * object whose keys the web would sort, is the documented narrowing.
+ */
+function endpointQueryHash(
+  def: EndpointDef,
+  clientScope: string | null | undefined,
+  arg: AnyNode | undefined,
+  ctx: ParseContext,
+): ExprIR | undefined {
+  const scope = def.keyScope !== undefined ? def.keyScope : clientScope
+  if (scope === null) return undefined
+  const prefix = scope === undefined ? [def.method, def.pathTemplate] : [scope, def.method, def.pathTemplate]
+  const pieces: JsonPiece[] = [JSON.stringify(prefix).slice(0, -1)]
+  const sections: JsonPiece[][] = []
+  for (const name of ['params', 'query'] as const) {
+    const obj = unwrapTypeLayers(readObjectProp(arg, name)) as AnyNode | undefined
+    if (obj === undefined || isNullishLiteral(obj)) continue
+    if (obj.type !== 'ObjectExpression') return undefined
+    // `isEmpty`: an object with no keys adds no scope entry.
+    if (((obj.properties as AnyNode[] | undefined) ?? []).length === 0) continue
+    const p = objectPieces(obj, ctx)
+    if (p === undefined) return undefined
+    sections.push([`${JSON.stringify(name)}:`, ...p])
+  }
+  if (sections.length > 0) {
+    pieces.push(',{')
+    sections.forEach((p, i) => pieces.push(...(i === 0 ? [] : [',']), ...p))
+    pieces.push('}')
+  }
+  pieces.push(']')
+  // Fold into one template: adjacent text joins a quasi, each runtime value opens the next.
+  const quasis: string[] = ['']
+  const exprs: ExprIR[] = []
+  for (const p of pieces) {
+    if (typeof p === 'string') quasis[quasis.length - 1] += p
+    else {
+      exprs.push(p)
+      quasis.push('')
+    }
+  }
+  return exprs.length === 0 ? { kind: 'literal', value: quasis[0] as string } : { kind: 'template', quasis, exprs }
 }
 
 

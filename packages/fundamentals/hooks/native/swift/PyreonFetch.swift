@@ -87,6 +87,15 @@ public final class PyreonFetch<T> {
         isPending = false
     }
 
+    /// Complete with NO data: what `useFetch(endpoint(…))` settles when
+    /// `@pyreon/http` resolves an answer without JSON (a 204 / 205 / 304 or an
+    /// empty body) as `undefined` — `data` absent, no error, not pending.
+    public func resolveEmpty() {
+        data = nil
+        error = nil
+        isPending = false
+    }
+
     /// Complete with a failure: set `error`, end pending. Leaves any prior
     /// `data` in place (stale-while-error), matching the web contract.
     public func reject(_ failure: Error) {

@@ -450,7 +450,51 @@ fun testMiddlewareRejectThrowsTheBuiltError() {
     }
 }
 
+// ── `@pyreon/http`'s HttpError and `useFetch`'s error (the Swift twin runs the same cases) ──
+
+fun testHttpErrorIsTheWebHttpError() {
+    val e = PyreonHttpResponse(404, body = """{"message":"ignored"}""").httpError("GET", "https://u:p@a.dev/users/1?token=s#f")
+    check(e.message == "[Pyreon] GET https://a.dev/users/1 \u2014 HTTP 404") { "redacted, the body not read: ${e.message}" }
+    check(e.name == "ClientError" && e.status == 404) { "a 4xx is a ClientError: ${e.name}" }
+    check(e.toString() == "ClientError: [Pyreon] GET https://a.dev/users/1 \u2014 HTTP 404") { "String(error): $e" }
+    check(PyreonHttpResponse(503).httpError("POST", "/x").name == "ServerError") { "a 5xx is a ServerError" }
+    check(PyreonHttpResponse(302).httpError("POST", "/x").name == "HttpError") { "otherwise an HttpError" }
+    val f = PyreonHttpResponse(500).fetchError("https://a.dev/x?q=1")
+    check(f.message == "[Pyreon] useFetch https://a.dev/x?q=1: HTTP 500") { "useFetch names the url as written: ${f.message}" }
+}
+
+fun testIsNoContentIsTheHttpJsonRule() {
+    for (status in listOf(204, 205, 304)) check(PyreonHttpResponse(status, body = "{}").isNoContent) { "$status carries no body" }
+    check(PyreonHttpResponse(200).isNoContent) { "an empty body" }
+    check(!PyreonHttpResponse(200, body = "null").isNoContent) { "a JSON null is content" }
+}
+
+fun testMiddlewareThrowHttpErrorsNamesTheSentRequest() {
+    val ok = PyreonHttpPipeline.run(
+        PyreonHttpRequest.get("https://a.dev/x"),
+        listOf(PyreonHttpMiddleware.ThrowHttpErrors),
+        Recorder().env(),
+    ) { PyreonHttpResponse(204) }
+    check(ok.status == 204) { "a 2xx passes through" }
+    var thrown: Throwable? = null
+    try {
+        PyreonHttpPipeline.run(
+            PyreonHttpRequest(PyreonHttpMethod.DELETE, "https://a.dev/api/u/1?x=1"),
+            listOf(PyreonHttpMiddleware.ThrowHttpErrors, PyreonHttpMiddleware.Bearer("https://a.dev/api") { "t" }),
+            Recorder().env(),
+        ) { PyreonHttpResponse(500) }
+    } catch (e: Throwable) {
+        thrown = e
+    }
+    check(thrown == PyreonHttpMessageError("[Pyreon] DELETE https://a.dev/api/u/1 \u2014 HTTP 500", 500, name = "ServerError")) {
+        "the web's HttpError of the sent request: $thrown"
+    }
+}
+
 fun main() {
+    testHttpErrorIsTheWebHttpError()
+    testIsNoContentIsTheHttpJsonRule()
+    testMiddlewareThrowHttpErrorsNamesTheSentRequest()
     testMessageErrorReadsTheBody()
     testMiddlewareRejectThrowsTheBuiltError()
     testMiddlewareBearerSetsHeaderOnce()

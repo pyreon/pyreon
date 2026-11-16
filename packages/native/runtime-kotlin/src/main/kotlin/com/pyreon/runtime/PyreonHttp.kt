@@ -88,6 +88,13 @@ public data class PyreonHttpResponse(
 ) {
     /** True for a 2xx status. */
     public val isOk: Boolean get() = status in 200..299
+
+    /**
+     * Whether `@pyreon/http`'s `.json()` resolves this answer as `undefined`
+     * instead of parsing it: a status defined to carry no body (204 / 205 /
+     * 304), or an empty body. The Swift `isNoContent`.
+     */
+    public val isNoContent: Boolean get() = status == 204 || status == 205 || status == 304 || body.isEmpty()
 }
 
 /**
@@ -139,14 +146,16 @@ public class PyreonHttpMessageError(
     message: String,
     public val status: Int,
     public val errors: String? = null,
+    /** The web error's `name` — what `String(error)` prints before the message. */
+    public val name: String = "Error",
 ) : Exception(message) {
-    /** `String(error)` on the web: `Error: <message>`. */
-    override fun toString(): String = "Error: $message"
+    /** `String(error)` on the web: `<name>: <message>`. */
+    override fun toString(): String = "$name: $message"
 
     override fun equals(other: Any?): Boolean =
-        other is PyreonHttpMessageError && other.message == message && other.status == status && other.errors == errors
+        other is PyreonHttpMessageError && other.message == message && other.status == status && other.errors == errors && other.name == name
 
-    override fun hashCode(): Int = (message.hashCode() * 31 + status) * 31 + errors.hashCode()
+    override fun hashCode(): Int = ((message.hashCode() * 31 + status) * 31 + errors.hashCode()) * 31 + name.hashCode()
 }
 
 /** The error `@pyreon/feature` throws for this (non-2xx) answer to `method url` (`url` as the web's message spells it). */
@@ -158,6 +167,23 @@ public fun PyreonHttpResponse.messageError(method: String, url: String): PyreonH
         errors = fields?.errors,
     )
 }
+
+/**
+ * The `HttpError` `@pyreon/http` throws for this (non-2xx) answer to `method url`
+ * (`throwHttpErrors`, its default): `[Pyreon] <METHOD> <url> — HTTP <status>`,
+ * the URL redacted as the web redacts it, named `ServerError` / `ClientError` /
+ * `HttpError` by status. The Swift `httpError(method:url:)`.
+ */
+public fun PyreonHttpResponse.httpError(method: String, url: String): PyreonHttpMessageError =
+    PyreonHttpMessageError(
+        message = "[Pyreon] $method ${PyreonHttpPipeline.redactUrl(url)} \u2014 HTTP $status",
+        status = status,
+        name = if (status >= 500) "ServerError" else if (status >= 400) "ClientError" else "HttpError",
+    )
+
+/** The error `useFetch(url)` rejects with for this (non-2xx) answer: `[Pyreon] useFetch <url>: HTTP <status>`. */
+public fun PyreonHttpResponse.fetchError(url: String): PyreonHttpMessageError =
+    PyreonHttpMessageError(message = "[Pyreon] useFetch $url: HTTP $status", status = status)
 
 /**
  * The two fields `@pyreon/feature` reads from an error body, by a small
@@ -427,8 +453,12 @@ public object PyreonHttp {
      * compiler emits it, off the main thread, for an endpoint awaited in an
      * event handler. Blocking, like [send].
      */
-    public fun call(request: PyreonHttpRequest, fallback: PyreonHttpExecutor? = null): PyreonHttpResponse {
-        val response = send(request, fallback)
+    public fun call(
+        request: PyreonHttpRequest,
+        fallback: PyreonHttpExecutor? = null,
+        middleware: List<PyreonHttpMiddleware> = emptyList(),
+    ): PyreonHttpResponse {
+        val response = send(request, fallback, middleware)
         if (!response.isOk) throw PyreonHttpError.BadStatus(response.status)
         return response
     }
@@ -730,6 +760,14 @@ public sealed class PyreonHttpMiddleware {
      * through the same pipeline as every other request. The Swift `.reject`.
      */
     public class Reject(public val error: (PyreonHttpResponse) -> Throwable) : PyreonHttpMiddleware()
+
+    /**
+     * `@pyreon/http`'s `throwHttpErrors` (its default): a non-2xx answer from
+     * the layers inside is thrown as [httpError] of the request as it was
+     * SENT. The lowered endpoint requests put it outermost. The Swift
+     * `.throwHttpErrors`.
+     */
+    public object ThrowHttpErrors : PyreonHttpMiddleware()
 }
 
 /** Everything the pipeline needs from the outside world, injectable for tests. */
@@ -803,6 +841,11 @@ public object PyreonHttpPipeline {
             is PyreonHttpMiddleware.Reject -> {
                 val response = next()
                 if (!response.isOk) throw mw.error(response)
+                response
+            }
+            is PyreonHttpMiddleware.ThrowHttpErrors -> {
+                val response = next()
+                if (!response.isOk) throw response.httpError(box.request.method.verb, box.request.url)
                 response
             }
             is PyreonHttpMiddleware.Logger -> {

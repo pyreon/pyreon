@@ -59,6 +59,11 @@ interface FetchPayload {
   readonly bodyExpr?: ExprIR
   /** A streamed body (`multipart` / a raw `body`) from an endpoint call, built on mount. */
   readonly upload?: ExprIR
+  /**
+   * An endpoint call (`useFetch(ep(…))`), whose promise resolves `undefined` for an answer without JSON (a bodyless 204 /
+   * 205 / 304 or an empty body): the container then settles with no data instead of failing to decode.
+   */
+  readonly emptyAsUndefined?: boolean
 }
 
 const payloadOf = (d: ExtDecl): FetchPayload => d.payload as unknown as FetchPayload
@@ -86,6 +91,7 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
   // method, then feeds the path below exactly as if the author had written `useFetch<T>('/api/users/1', { method: 'GET' })`.
   // Reactive params / a non-literal client baseUrl bail (the source pushes the warning) and the call stays web.
   let resolvedUrl: string | undefined
+  let emptyAsUndefined = false
   let resolvedEndpoint:
     | {
         method?: string | undefined
@@ -112,6 +118,7 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
     ctx.recordDecode(type, resolved.response)
     resolvedUrl = resolved.url
     resolvedEndpoint = resolved
+    emptyAsUndefined = resolved.emptyAsUndefined === true
   }
   // A module-scope `const` counts: naming an endpoint once and reusing it is ordinary, and the value is as known at build time
   // as an inline string.
@@ -227,45 +234,41 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
   // integer-default field a fractional payload would fail to decode (#3956). The endpoint path recorded it above, with its schema.
   if (resolvedEndpoint === undefined) ctx.recordDecode(type, undefined)
   // The IR inside the payload (`TypeIR`) is JSON, which `ExtPayload` cannot express structurally.
-  return { type: FETCH_TYPE, payload: { type, url, ...req } as unknown as ExtPayload }
+  return { type: FETCH_TYPE, payload: { type, url, ...req, ...(emptyAsUndefined ? { emptyAsUndefined } : {}) } as unknown as ExtPayload }
 }
 
-const hasRequestInit = (p: FetchPayload): boolean =>
-  Boolean(
-    p.method ||
-      p.headers ||
-      p.headerExprs ||
-      p.body !== undefined ||
-      p.bodyExpr !== undefined ||
-      p.urlExpr !== undefined ||
-      p.upload !== undefined ||
-      p.middleware !== undefined,
-  )
+/**
+ * The middleware a harness sends through: an endpoint's (its client's `use: [...]`, led by `@pyreon/http`'s
+ * `throwHttpErrors` check), or — for `useFetch(url)` — the one layer that rejects a non-2xx with the web hook's own
+ * error, `[Pyreon] useFetch <url>: HTTP <status>`.
+ */
+function harnessMiddleware(p: FetchPayload, ctx: EmitContext, swift: boolean): string {
+  if (p.middleware !== undefined) return ctx.expr(p.middleware, 0)
+  const url = swift ? swiftStr(p.url) : kotlinStr(p.url)
+  return swift
+    ? `[.reject { $0.fetchError(url: ${url}) }] as [PyreonHttpMiddleware]`
+    : `listOf<PyreonHttpMiddleware>(PyreonHttpMiddleware.Reject { it.fetchError(${url}) })`
+}
 
 /** `.task { … }` on the stable-identity host: begin → request → resolve | reject. Lines are relative to the modifier's own indentation. */
 function swiftHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
   const p = payloadOf(d)
   const name = ctx.ident(d.name)
   const lines: string[] = [`.task {`, `  ${name}.begin()`, `  do {`]
-  if (hasRequestInit(p)) {
-    // A request with a VERB, headers, or a body goes through PyreonHttp — the runtime that has shipped on both targets with full verb
-    // support. The bare-GET path below is left alone deliberately: it is device-proven, and re-routing it would put a proven path
-    // behind a brand-new Android executor.
-    const where = `Declaration ${d.name}: useFetch`
-    // Header and body expressions are evaluated as the request is built, inside the harness.
-    const args = swiftHttpRequestArgs(
-      { method: p.method, url: p.urlExpr !== undefined ? ctx.expr(p.urlExpr, 0) : swiftStr(p.url), headers: p.headers, headerExprs: p.headerExprs, body: p.body, bodyExpr: p.bodyExpr, upload: p.upload },
-      ctx,
-      where,
-    )
-    // A non-2xx must REJECT rather than decode (see `swiftSendLines`). The client's `use: [...]`, when present, is applied
-    // around the request with the web's onion semantics.
-    for (const line of swiftSendLines(args, p.middleware !== undefined ? ctx.expr(p.middleware, 0) : undefined)) lines.push(`    ${line}`)
-    lines.push(`    ${name}.resolve(try __response.decode(${ctx.typeText(p.type)}.self))`)
-  } else {
-    lines.push(`    let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${swiftStr(p.url)})!)`)
-    lines.push(`    ${name}.resolve(try JSONDecoder().decode(${ctx.typeText(p.type)}.self, from: bytes))`)
-  }
+  // Every request goes through PyreonHttp, so a non-2xx REJECTS with the web's error (see `harnessMiddleware`) rather
+  // than handing an error page to the decoder — the bare-URLSession path this replaced read any status as data.
+  const where = `Declaration ${d.name}: useFetch`
+  // Header and body expressions are evaluated as the request is built, inside the harness.
+  const args = swiftHttpRequestArgs(
+    { method: p.method, url: p.urlExpr !== undefined ? ctx.expr(p.urlExpr, 0) : swiftStr(p.url), headers: p.headers, headerExprs: p.headerExprs, body: p.body, bodyExpr: p.bodyExpr, upload: p.upload },
+    ctx,
+    where,
+  )
+  for (const line of swiftSendLines(args, harnessMiddleware(p, ctx, true))) lines.push(`    ${line}`)
+  const resolve = `${name}.resolve(try __response.decode(${ctx.typeText(p.type)}.self))`
+  // The web's endpoint promise resolves `undefined` for an answer without JSON: settled, no data.
+  if (p.emptyAsUndefined === true) lines.push(`    if __response.isNoContent { ${name}.resolveEmpty() } else { ${resolve} }`)
+  else lines.push(`    ${resolve}`)
   lines.push(`  } catch { ${name}.reject(error) }`, `}`)
   return lines
 }
@@ -275,21 +278,17 @@ function kotlinHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
   const p = payloadOf(d)
   const name = ctx.ident(d.name)
   const lines: string[] = [`LaunchedEffect(Unit) {`, `  ${name}.begin()`, `  try {`]
-  if (hasRequestInit(p)) {
-    // Mirrors the Swift branch one-for-one; `readText()` below cannot express a verb, headers or a body.
-    const where = `Declaration ${d.name}: useFetch`
-    const args = kotlinHttpRequestArgs(
-      { method: p.method, url: p.urlExpr !== undefined ? ctx.expr(p.urlExpr, 0) : kotlinStr(p.url), headers: p.headers, headerExprs: p.headerExprs, body: p.body, bodyExpr: p.bodyExpr, upload: p.upload },
-      ctx,
-      where,
-    )
-    // A non-2xx REJECTS rather than decoding (see `kotlinSendLines`).
-    for (const line of kotlinSendLines(args, p.middleware !== undefined ? ctx.expr(p.middleware, 0) : undefined)) lines.push(`    ${line}`)
-    lines.push(`    ${name}.resolve(PyreonFetchJson.decodeFromString<${ctx.typeText(p.type)}>(__response.body))`)
-  } else {
-    lines.push(`    val body = withContext(Dispatchers.IO) { java.net.URL(${kotlinStr(p.url)}).readText() }`)
-    lines.push(`    ${name}.resolve(PyreonFetchJson.decodeFromString<${ctx.typeText(p.type)}>(body))`)
-  }
+  // Mirrors the Swift harness one-for-one: every request through PyreonHttp, a non-2xx rejected with the web's error.
+  const where = `Declaration ${d.name}: useFetch`
+  const args = kotlinHttpRequestArgs(
+    { method: p.method, url: p.urlExpr !== undefined ? ctx.expr(p.urlExpr, 0) : kotlinStr(p.url), headers: p.headers, headerExprs: p.headerExprs, body: p.body, bodyExpr: p.bodyExpr, upload: p.upload },
+    ctx,
+    where,
+  )
+  for (const line of kotlinSendLines(args, harnessMiddleware(p, ctx, false))) lines.push(`    ${line}`)
+  const resolve = `${name}.resolve(PyreonFetchJson.decodeFromString<${ctx.typeText(p.type)}>(__response.body))`
+  if (p.emptyAsUndefined === true) lines.push(`    if (__response.isNoContent) ${name}.resolveEmpty() else ${resolve}`)
+  else lines.push(`    ${resolve}`)
   lines.push(`  } catch (e: Throwable) { ${name}.reject(e) }`, `}`)
   return lines
 }
