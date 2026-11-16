@@ -1,6 +1,6 @@
 import { For } from '@pyreon/core'
 import { font, text, weight } from '../theme'
-import { el, focusRing, tone, txt, type LinkAttrs } from '../kit/bases'
+import { el, focusRing, tone, txt, type LinkAttrs, tapArea } from '../kit/bases'
 import { Glyph } from '../kit/cards'
 import { InstallCommand } from '../kit/controls'
 import { isFileHref, useLinkClick } from '../kit/link'
@@ -79,6 +79,7 @@ const FooterLink = el
     borderRadius: 4,
     hover: { color: tone(m, 'text') },
     focus: focusRing(m),
+    extendCss: tapArea,
   }))
 
 const Bottom = el

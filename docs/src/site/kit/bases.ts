@@ -1,7 +1,7 @@
 import { Element, Text } from '@pyreon/elements'
 import rocketstyle, { type ThemeModeCallback } from '@pyreon/rocketstyle'
 import { makeItResponsive, styles } from '@pyreon/unistyle'
-import { color, type ColorKey } from '../theme'
+import { color, touch, type ColorKey } from '../theme'
 
 /**
  * `el` / `txt` — the same two bases `@pyreon/ui-components` builds on
@@ -109,3 +109,10 @@ export type ButtonAttrs = {
   disabled?: boolean | undefined
   onClick?: ((e: MouseEvent) => void) | undefined
 }
+
+/**
+ * On touch screens (theme.ts `touch`) a control is at least `tapTarget` tall,
+ * its content centred. For `extendCss` on a link or button that is not inside
+ * running text.
+ */
+export const tapArea = `${touch.media} { min-height: ${touch.tapTarget}px; display: inline-flex; align-items: center; }`

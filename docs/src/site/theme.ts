@@ -318,6 +318,17 @@ export const breakpoints = { xs: 0, sm: 576, md: 768, lg: 992, xl: 1200 } as con
 export const navMedia = {
   collapsed: `@media (max-width: ${layout.navCollapse - 0.02}px)`,
   expanded: `@media (min-width: ${layout.navCollapse}px)`,
+/**
+ * Touch screens: a phone or tablet width, or a coarse pointer at any width.
+ * Every control there is at least `tapTarget` px tall (WCAG 2.5.5).
+ */
+export const touch = {
+  media: `@media (max-width: ${breakpoints.lg - 0.02}px), (pointer: coarse)`,
+  tapTarget: 44,
+  /** Extra hit area above and below a 14px text link (18px line box) to reach `tapTarget`. */
+  linkPad: 13,
+} as const
+
 } as const
 
 // ─── Motion ───────────────────────────────────────────────────────────────

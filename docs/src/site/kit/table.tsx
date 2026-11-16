@@ -1,6 +1,6 @@
 import type { VNodeChild } from '@pyreon/core'
 import { For, Show } from '@pyreon/core'
-import { breakpoints, font, radius, text, weight } from '../theme'
+import { breakpoints, font, radius, text, touch, weight } from '../theme'
 import { el, tone, txt } from './bases'
 import { renderInline } from './type'
 
@@ -137,6 +137,7 @@ const Disclosure = el
       & > summary:hover { color: ${tone(m, 'text')}; }
       & > summary:focus-visible { outline: 2px solid ${tone(m, 'focus')}; outline-offset: 3px; }
       & > summary + * { margin-top: 12px; }
+      ${touch.media} { & > summary { display: inline-flex; align-items: center; min-height: ${touch.tapTarget}px; padding: 0; } }
     `,
   }))
 

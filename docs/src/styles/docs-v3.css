@@ -1776,3 +1776,15 @@
   .dx-anchor { transition: none; }
 }
 }
+
+/* Touch screens (theme.ts `touch`: below 992px or a coarse pointer): every
+   docs control is at least 44px tall. The heading anchor and inline "more"
+   links grow their hit area without moving the text around them. */
+@media (max-width: 991.98px), (pointer: coarse) {
+  .dx-skip, .dx-drawer-btn, .dx-action, .code-group__tab, .dx-demo__tab, .dx .package-badge, .dx-pitch__link, .dx-sell .dx-pitch__link, .code-block__copy { min-height: 44px; }
+  .dx-action, .code-group__tab, .dx-demo__tab, .dx .package-badge, .code-block__copy { display: inline-flex; align-items: center; }
+  .dx-toc-inline__summary { padding-top: 14px; padding-bottom: 14px; }
+  .dx-toc__link { display: flex; align-items: center; min-height: 44px; }
+  .dx-more { display: inline-flex; align-items: center; min-height: 44px; margin-top: 6px; }
+  .dx-anchor { display: inline-block; padding: 13px 6px; margin: -13px -6px -13px 0; }
+}

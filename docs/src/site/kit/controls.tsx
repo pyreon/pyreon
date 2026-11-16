@@ -1,7 +1,7 @@
 import type { VNodeChild } from '@pyreon/core'
 import { For } from '@pyreon/core'
-import { font, motion, radius, text, weight } from '../theme'
-import { el, focusRing, tone, txt, type LinkAttrs, type ButtonAttrs } from './bases'
+import { breakpoints, font, motion, radius, text, touch, weight } from '../theme'
+import { el, focusRing, tone, txt, type LinkAttrs, type ButtonAttrs, tapArea } from './bases'
 import { CommandLine } from './command'
 import { CopyButtonIsland } from './islands'
 import { isFileHref, useLinkClick } from './link'
@@ -25,6 +25,7 @@ const PillBase = el
     color: tone(m, 'text'),
     backgroundColor: 'transparent',
     transition: `border-color ${motion.hover}, background-color ${motion.hover}, transform ${motion.hover}`,
+    extendCss: `${touch.media} { min-height: ${touch.tapTarget}px; }`,
     hover: { borderColor: tone(m, 'lineHover') },
     focus: focusRing(m),
   }))
@@ -162,6 +163,7 @@ export function Segmented<T extends string>(props: {
   onChange: (v: T) => void
   label: string
 }) {
+    extendCss: tapArea,
   return (
     <SegBox aria-label={props.label}>
       <For each={() => props.options} by={(o) => o}>

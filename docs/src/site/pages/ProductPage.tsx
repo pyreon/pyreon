@@ -5,7 +5,7 @@ import type { ExtraSection, ProductData } from '../content/model'
 import { DEMOS } from '../demos/registry'
 import { HeroVisualFigure, InlineSvg } from '../demos/_asset'
 import { PRODUCTS, productHref } from '../nav'
-import { gradient } from '../theme'
+import { gradient, touch } from '../theme'
 import { el, pair, tone } from '../kit/bases'
 import { BenchmarkTable } from '../kit/bench'
 import { FactList, FeatureList, Faq, LimitNote, NumberedCards, StatRow, StepCards, ApiGroups } from '../kit/blocks'
@@ -97,7 +97,8 @@ const SwitchLink = el
     borderRadius: 9999,
     hover: { color: tone(m, 'text'), borderColor: tone(m, 'line2') },
     focus: { outlineWidth: '2px', outlineStyle: 'solid', outlineColor: tone(m, 'focus'), outlineOffset: '2px' },
-    extendCss: `&[aria-current='page'] { color: ${tone(m, 'text')}; border-color: ${tone(m, 'currentBorder')}; background: ${tone(m, 'currentFill')}; }`,
+    extendCss: `&[aria-current='page'] { color: ${tone(m, 'text')}; border-color: ${tone(m, 'currentBorder')}; background: ${tone(m, 'currentFill')}; }
+      ${touch.media} { min-height: ${touch.tapTarget}px; display: inline-flex; align-items: center; }`,
   }))
 
 function Extra(props: { section: ExtraSection; svgs?: Record<string, { alt: string; svg: string }> | undefined }) {

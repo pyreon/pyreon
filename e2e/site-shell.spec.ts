@@ -6,9 +6,11 @@ import { waitForNav } from './site-islands'
 /**
  * pyreon.dev marketing shell, against the production SSG build (served like
  * pyreon.dev by e2e-configs/docs.config.ts): the nav and its two menus, the
- * mobile sheet, the theme toggle (persisted, no flash), page width at the
- * five design widths, hydration adopting the server DOM, and the contrast of
- * every text node on the kit gallery in both themes.
+ * mobile sheet, the theme toggle (persisted, no flash), page width and
+ * clipped text at the seven widths, tap targets on touch screens, anchors
+ * landing below the nav, layout shift, equal card rows, hydration adopting
+ * the server DOM, and the contrast of every text node on the kit gallery,
+ * the homepage and the docs in both themes.
  */
 const WIDTHS = [320, 390, 768, 1024, 1440]
 const ROUTES = ['/', '/products', '/products/form', '/products/reactivity', '/products/a11y', '/brand/kit', '/blog', '/showcase', '/open', '/404-check']
@@ -123,6 +125,137 @@ test.describe('Products and Why menus (desktop)', () => {
   })
 
   test('one menu at a time; click outside closes', async ({ page }) => {
+test.describe('tap targets on touch screens', () => {
+  // theme.ts `touch`: below 992px every control is at least 44px tall; a
+  // link inside running text is exempt (WCAG 2.5.8).
+  for (const width of TOUCH_WIDTHS) {
+    test(`every control is at least 44px at ${width}px`, async ({ page }) => {
+      test.setTimeout(180_000)
+      await page.setViewportSize({ width, height: 900 })
+      for (const route of ROUTES) {
+        await page.goto(route)
+        await waitForNav(page)
+        await waitForIslands(page)
+        const r = await page.evaluate(auditLayout, true)
+        expect(r.tap, `${route} controls under 44px`).toEqual([])
+      }
+    })
+  }
+})
+
+test.describe('anchors land below the fixed nav', () => {
+  for (const [route, target] of [
+    ['/products/form#benchmarks', '#benchmarks'],
+    ['/products/form#demo', '#demo'],
+    ['/benchmarks#ssr', '#ssr'],
+    ['/blog/where-pyreon-is-not-the-fastest#1-deep-trees-cost-us-the-most', '#1-deep-trees-cost-us-the-most'],
+  ] as const) {
+    test(route, async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.goto(route)
+      await waitForNav(page)
+      await page.evaluate((id) => document.querySelector(id)!.scrollIntoView(), target)
+      const [top, navBottom] = await page.evaluate((id) => [document.querySelector(id)!.getBoundingClientRect().top, document.querySelector('.s-bar')!.getBoundingClientRect().bottom], target)
+      expect(top, `${target} lands under the nav`).toBeGreaterThanOrEqual(navBottom + 8)
+    })
+  }
+})
+
+test.describe('layout shift', () => {
+  for (const width of [390, 1440]) {
+    test(`every page type settles with CLS under 0.05 at ${width}px`, async ({ browser }) => {
+      test.setTimeout(180_000)
+      const ctx = await browser.newContext({ viewport: { width, height: 900 } })
+      await ctx.addInitScript(trackShiftsScript)
+      const page = await ctx.newPage()
+      const shifts: string[] = []
+      for (const route of ROUTES) {
+        await page.goto(route)
+        await waitForNav(page)
+        await waitForIslands(page)
+        await page.waitForTimeout(300)
+        const cls = await page.evaluate(() => (window as unknown as { __cls: number }).__cls)
+        if (cls >= 0.05) shifts.push(`${route}: ${cls.toFixed(3)}`)
+      }
+      expect(shifts).toEqual([])
+      await ctx.close()
+    })
+  }
+})
+
+test.describe('cards in a row share one height', () => {
+  // A kit grid's items stretch to the row (the Element base's flex-start
+  // alignment used to stop them), so a row of cards ends on one line.
+  for (const [route, grid] of [
+    ['/products/form', 'ol'],
+    ['/products', 'ul'],
+    ['/', 'ul'],
+  ] as const) {
+    for (const width of [768, 1440]) {
+      test(`${route} at ${width}px`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 900 })
+        await page.goto(route)
+        await waitForNav(page)
+        const ragged = await page.evaluate((tag) => {
+          const out: string[] = []
+          for (const g of document.querySelectorAll<HTMLElement>(`#site-main ${tag}`)) {
+            if (getComputedStyle(g).display !== 'grid') continue
+            const rows = new Map<number, number[]>()
+            for (const li of g.children) {
+              const card = li.firstElementChild ?? li
+              const b = card.getBoundingClientRect()
+              if (b.height < 60) continue
+              const top = Math.round(li.getBoundingClientRect().top)
+              rows.set(top, [...(rows.get(top) ?? []), Math.round(b.height)])
+            }
+            for (const [top, hs] of rows) if (hs.length > 1 && Math.max(...hs) - Math.min(...hs) > 1) out.push(`row at ${top}: ${hs.join('/')}`)
+          }
+          return out
+        }, grid)
+        expect(ragged).toEqual([])
+      })
+    }
+  }
+})
+
+test.describe('typography', () => {
+  test('a status dot stays on the line of its label (a link that wraps flows like text)', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 800 })
+    await page.goto('/')
+    await waitForNav(page)
+    const gaps = await page.evaluate(() =>
+      [...document.querySelectorAll('ul[aria-label=Status] li')].map((li) => {
+        const dot = li.querySelector('[aria-hidden=true]')!.getBoundingClientRect()
+        const range = document.createRange()
+        range.selectNodeContents(li.lastChild!)
+        const first = range.getClientRects()[0]!
+        return Math.abs(dot.top + dot.height / 2 - (first.top + first.height / 2))
+      }),
+    )
+    for (const g of gaps) expect(g).toBeLessThan(8)
+  })
+
+  test('inline code in content renders as code, never as backticks', async ({ page }) => {
+    for (const route of ['/products/form', '/products/hotkeys', '/products/http', '/why/full-stack', '/releases', '/docs/core']) {
+      await page.goto(route)
+      await waitForNav(page)
+      const raw = await page.evaluate(() => {
+        const out: string[] = []
+        const walker = document.createTreeWalker(document.querySelector('#site-main')!, NodeFilter.SHOW_TEXT)
+        for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+          const host = t.parentElement
+          if (!host || !t.textContent?.includes('`') || host.closest('pre, code, script, style, svg, [data-raw-output]')) continue
+          // Terminal transcripts print the tool's own output verbatim.
+          if (host.closest('figure') && getComputedStyle(host).fontFamily.includes('Mono')) continue
+          out.push(t.textContent.trim().slice(0, 60))
+        }
+        return out
+      })
+      expect(raw, route).toEqual([])
+    }
+  })
+})
+
     await page.goto('/')
     await waitForNav(page)
     await page.click('[aria-controls=site-products-menu]')

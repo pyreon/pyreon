@@ -1,6 +1,6 @@
 import type { VNodeChild } from '@pyreon/core'
 import { PyreonUI } from '@pyreon/ui-core'
-import { font, gradient, motion, paper, radius, text } from '../theme'
+import { font, gradient, motion, paper, radius, text, touch } from '../theme'
 import { el, focusRing, tone, txt, type LinkAttrs } from './bases'
 import { Glyph } from './glyph'
 import { useLinkClick } from './link'
@@ -164,6 +164,8 @@ const PaperBox = el
     padding: { xs: 18, sm: 26 },
     fontFamily: font.system,
     boxShadow: paper.ring,
+    // The demo app's own fields and buttons reach the tap-target height on touch screens.
+    extendCss: `${touch.media} { & :is(input:not([type='checkbox']):not([type='radio']), select, button) { min-height: ${touch.tapTarget}px; } }`,
   }))
 
 /**

@@ -1,4 +1,4 @@
-import { color, font, gradient, layout, motion, navMedia, radius, text, weight, z, type ColorKey } from '../theme'
+import { color, font, gradient, layout, motion, navMedia, radius, text, touch, weight, z, type ColorKey } from '../theme'
 
 const pulse = motion.pulse
 import { C } from './classes'
@@ -113,7 +113,9 @@ ${navMedia.expanded}{.${C.sheet}{display:none}}
 .${C.smallLink}[aria-current]{color:${v('text')}}
 .${C.smallLink}:focus-visible{${focus};border-radius:${radius.small}px}
 .${C.sheetInstall}{margin-top:28px}
-.${C.sheetFoot}{display:flex;flex-wrap:wrap;gap:0 20px;list-style:none;margin:20px 0 0;padding:0}
+.${C.sheetFoot}{display:flex;flex-wrap:wrap;gap:10px;list-style:none;margin:12px 0 0;padding:0}
+.${C.sheetFoot} li{flex:1 1 0;min-width:max-content}
+.${C.sheetFoot} a{display:flex;align-items:center;justify-content:center;height:${touch.tapTarget + 10}px;padding:0 18px;border:1px solid ${v('line2')};border-radius:${radius.pill}px;color:${v('text')};font-weight:${weight.medium}}
 
 .${C.cmd}{display:flex;align-items:center;gap:14px;height:50px;width:fit-content;max-width:100%;min-width:0;padding:0 8px 0 14px;border-radius:${radius.pill}px;border:1px solid ${v('line2')};background:${v('sheen')};font-family:${font.mono};font-size:12px;color:${v('text')}}
 @media (min-width:576px){.${C.cmd}{padding-left:22px;font-size:${text.ui.size}px}}
@@ -172,4 +174,14 @@ ${navMedia.expanded}{.${C.sheet}{display:none}}
 .${C.nfLink}:focus-visible{${focus}}
 .${C.nfLinkLabel}{font-size:17px;font-weight:${weight.medium};color:${v('strong')}}
 @media (max-width:479.98px){.${C.counterMetric}{padding:14px 12px}.${C.counterLabel}{letter-spacing:.08em}}
+${touch.media}{
+.${C.mark}{min-height:${touch.tapTarget}px}
+.${C.iconLink},.${C.iconButton},.${C.menuButton}{width:${touch.tapTarget}px;height:${touch.tapTarget}px}
+.${C.pill}{height:${touch.tapTarget}px}
+.${C.cmd}{height:${touch.tapTarget + 10}px}
+.${C.copy}{height:${touch.tapTarget}px}
+.${C.loopToggle}{width:${touch.tapTarget}px;height:${touch.tapTarget}px}
+.${C.smallLink}{min-height:${touch.tapTarget}px}
+.${C.panelFoot} a{display:inline-flex;align-items:center;min-height:${touch.tapTarget}px}
+}
 }`

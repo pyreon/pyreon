@@ -337,14 +337,15 @@ const FaqItem = el
   .theme((_t, m) => ({
     borderBottom: '1px solid',
     borderColor: tone(m, 'line'),
-    paddingTop: 18,
-    paddingBottom: 18,
   }))
 
 const FaqQuestion = txt
   .config({ name: 'FaqQuestion' })
   .attrs({ tag: 'summary' })
   .theme((_t, m) => ({
+    // The padding sits on the summary, so the whole row is the tap target.
+    paddingTop: 18,
+    paddingBottom: 18,
     cursor: 'pointer',
     fontFamily: font.sans,
     fontSize: 17,
@@ -359,8 +360,9 @@ const FaqAnswer = txt
   .config({ name: 'FaqAnswer' })
   .attrs({ tag: 'p' })
   .theme((_t, m) => ({
-    marginTop: 10,
+    marginTop: -8,
     marginBottom: 0,
+    paddingBottom: 18,
     maxWidth: 720,
     fontFamily: font.sans,
     fontSize: text.body.size,

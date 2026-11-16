@@ -3,7 +3,7 @@ import type { BlogPost, BlogTag, BlogTagCount } from '@pyreon/zero-content/blog'
 import { formatPostDate, isoDay } from '@pyreon/zero-content/blog'
 import { fill } from '../../site/content/channels'
 import type { BlogChannel, Cta } from '../../site/content/types-site'
-import { el, focusRing, tone, txt, type LinkAttrs } from '../../site/kit/bases'
+import { el, focusRing, tone, txt, type LinkAttrs, tapArea } from '../../site/kit/bases'
 import { GlowCard } from '../../site/kit/cards'
 import { Pill } from '../../site/kit/controls'
 import { AutoGrid } from '../../site/kit/layout'
@@ -121,7 +121,7 @@ const TagLink = el
     transition: `border-color ${motion.hover}, color ${motion.hover}`,
     hover: { borderColor: tone(m, 'lineHover'), color: tone(m, 'text') },
     focus: focusRing(m),
-    extendCss: `&[aria-current] { border-color: ${tone(m, 'accent')}; background-color: ${tone(m, 'glow')}; color: ${tone(m, 'strong')}; }`,
+    extendCss: `&[aria-current] { border-color: ${tone(m, 'accent')}; background-color: ${tone(m, 'glow')}; color: ${tone(m, 'strong')}; } ${tapArea}`,
   }))
 
 const TagCount = txt

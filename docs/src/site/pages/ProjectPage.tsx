@@ -2,7 +2,7 @@ import type { VNodeChild } from '@pyreon/core'
 import { For, Show } from '@pyreon/core'
 import type { ProjectPage as Data } from '../content/types-site'
 import type { ReleaseData } from '../releases/parse'
-import { el, focusRing, tone, txt, type LinkAttrs } from '../kit/bases'
+import { el, focusRing, tone, txt, type LinkAttrs, tapArea } from '../kit/bases'
 import { GlowCard } from '../kit/cards'
 import { Chip, InstallCommand, Pill } from '../kit/controls'
 import { inlineText } from '../kit/inline'
@@ -57,7 +57,9 @@ const Entry = txt
 const PrLink = el
   .config({ name: 'ReleasePr' })
   .attrs<LinkAttrs>({ tag: 'a' })
-  .theme((_t, m) => ({ fontFamily: font.mono, fontSize: text.mono.size, color: tone(m, 'link'), focus: focusRing(m), borderRadius: 2 }))
+  .theme((_t, m) => ({ fontFamily: font.mono, fontSize: text.mono.size, color: tone(m, 'link'), focus: focusRing(m), borderRadius: 2,
+    extendCss: tapArea,
+  }))
 
 const Version = txt
   .config({ name: 'ReleaseVersion' })

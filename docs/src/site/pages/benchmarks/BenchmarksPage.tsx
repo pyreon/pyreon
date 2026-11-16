@@ -1,7 +1,7 @@
 import { For, Show } from '@pyreon/core'
 import { fill } from '../../content/fill'
 import type { BenchJumpId, BenchmarksPage as Data } from '../../content/types-site'
-import { el, focusRing, tone, txt, type LinkAttrs } from '../../kit/bases'
+import { el, focusRing, tone, txt, type LinkAttrs, tapArea } from '../../kit/bases'
 import { LimitNote, NumberedCards } from '../../kit/blocks'
 import { GlowCard } from '../../kit/cards'
 import { CodeCard } from '../../kit/code'
@@ -92,6 +92,7 @@ const JumpLink = el
     textDecoration: 'none',
     hover: { color: tone(m, 'text'), borderColor: tone(m, 'lineHover') },
     focus: focusRing(m),
+    extendCss: tapArea,
   }))
 
 const HeroStats = el

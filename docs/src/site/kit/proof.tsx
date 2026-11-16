@@ -1,7 +1,7 @@
 import type { VNodeChild } from '@pyreon/core'
 import { For, Show } from '@pyreon/core'
 import { keyframes } from '@pyreon/styler'
-import { breakpoints, clampSize, color, display, font, gradient, motion, radius, section, text, texture, weight } from '../theme'
+import { breakpoints, clampSize, color, display, font, gradient, motion, radius, section, text, texture, touch, weight } from '../theme'
 import { el, focusRing, pair, tone, txt, type LinkAttrs } from './bases'
 import { InstallCommand, Pill } from './controls'
 import { useLinkClick } from './link'
@@ -70,7 +70,10 @@ const ProseLink = el
     color: tone(m, 'text'),
     textDecoration: 'underline',
     borderRadius: 2,
-    extendCss: 'text-underline-offset: 4px; text-decoration-thickness: 1px;',
+    // On touch screens the hit area grows to the tap-target height without
+    // moving anything: the padding is cancelled by an equal negative margin.
+    extendCss: `text-underline-offset: 4px; text-decoration-thickness: 1px;
+      ${touch.media} { padding-top: ${touch.linkPad}px; padding-bottom: ${touch.linkPad}px; margin-top: -${touch.linkPad}px; margin-bottom: -${touch.linkPad}px; }`,
     hover: { color: tone(m, 'strong') },
     focus: focusRing(m),
   }))

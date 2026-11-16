@@ -1,5 +1,5 @@
-import { el, focusRing, pair, tone, txt, type LinkAttrs } from '../../kit/bases'
-import { breakpoints, font, radius, syntax, text, weight } from '../../theme'
+import { el, focusRing, pair, tone, txt, type LinkAttrs, tapArea } from '../../kit/bases'
+import { breakpoints, font, gradient, radius, syntax, text, weight } from '../../theme'
 
 /**
  * Styled pieces of the homepage that no other page uses (server-rendered
@@ -321,6 +321,7 @@ export const TagLink = el
     fontSize: 11.5,
     color: tone(m, 'mist'),
     textDecoration: 'none',
+    extendCss: tapArea,
     hover: { color: tone(m, 'text'), borderColor: tone(m, 'lineHover') },
     focus: focusRing(m),
   }))

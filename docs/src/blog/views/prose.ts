@@ -1,5 +1,5 @@
 import { el, pair, tone, type ModeFn } from '../../site/kit/bases'
-import { breakpoints, font, gradient, radius, syntax, text, weight } from '../../site/theme'
+import { breakpoints, font, gradient, layout, radius, syntax, text, touch, weight } from '../../site/theme'
 
 /** Width of a bench block's number column (fits `130 µs`, `17.2 KB`, `34.7×` at 34px). */
 const BENCH_NUMBER = '8.5rem'
@@ -55,6 +55,7 @@ const css = (m: ModeFn): string => `
   & .blog-bench li > strong:first-child, & .blog-bench li > p:first-child > strong:first-child { display: inline-block; width: ${BENCH_NUMBER}; margin-left: calc(-${BENCH_NUMBER} - 16px); margin-right: 12px; vertical-align: baseline; font-size: 34px; line-height: 1.1; font-weight: ${weight.medium}; letter-spacing: -.04em; font-variant-numeric: tabular-nums; white-space: nowrap; background-image: ${pair(m, gradient.ember)}; -webkit-background-clip: text; background-clip: text; color: transparent; }
   & .blog-bench > p:last-child { margin: 0; padding: 12px 20px; font-family: ${font.mono}; font-size: ${text.caption.size}px; line-height: 1.5; }
   & .blog-bench > p:last-child a { color: ${tone(m, 'mist')}; text-decoration: none; }
+  ${touch.media} { & .blog-bench > p:last-child a { display: inline-flex; align-items: center; min-height: ${touch.tapTarget}px; } }
   & .blog-bench > p:last-child a:hover { color: ${tone(m, 'text')}; text-decoration: underline; text-decoration-color: ${tone(m, 'accent')}; }
   @media (max-width: ${breakpoints.sm - 0.02}px) {
     & .blog-bench li { padding-left: 20px; }
@@ -81,6 +82,7 @@ const css = (m: ModeFn): string => `
   & .code-block__copy { position: absolute; top: 6px; right: 8px; height: 28px; padding: 0 12px; border: 1px solid ${tone(m, 'line2')}; border-radius: ${radius.pill}px; background: transparent; color: ${tone(m, 'mist')}; font-family: ${font.mono}; font-size: 11.5px; cursor: pointer; }
   & .code-block__copy:hover { color: ${tone(m, 'text')}; border-color: ${tone(m, 'lineHover')}; }
   & .code-block__copy:focus-visible { outline: 2px solid ${tone(m, 'focus')}; outline-offset: 2px; }
+  ${touch.media} { & .code-block__copy { height: ${touch.tapTarget}px; } }
 `
 
 /** The post body wrapper. Block layout (not the kit's flex column), so margins between blocks collapse as in prose. */
