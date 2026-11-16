@@ -260,6 +260,112 @@ test.describe('typography', () => {
   })
 })
 
+test.describe('install commands', () => {
+  // The page's main call to action: never cut to "npm create @pyreon/zero…".
+  // It wraps inside its pill at a sensible break instead (CommandText).
+  for (const width of [320, 360, 390]) {
+    test(`every install command shows its whole text at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 })
+      for (const route of ['/', '/products', '/products/zero', '/docs/zero', '/blog']) {
+        await page.goto(route)
+        await waitForNav(page)
+        const cut = await page.evaluate(() =>
+          [...document.querySelectorAll<HTMLElement>('#site-main .s-cmd code, #site-footer .s-cmd code')]
+            .filter((c) => c.getBoundingClientRect().width > 0)
+            .filter((c) => {
+              const cs = getComputedStyle(c)
+              return c.scrollWidth > c.clientWidth + 1 || cs.textOverflow === 'ellipsis' || (cs.whiteSpace === 'nowrap' && /hidden|clip/.test(cs.overflowX))
+            })
+            .map((c) => c.textContent),
+        )
+        expect(cut, `${route}: commands cut at ${width}px`).toEqual([])
+      }
+    })
+  }
+
+  test('the copy button copies the whole command', async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: 320, height: 800 }, permissions: ['clipboard-read', 'clipboard-write'] })
+    const page = await ctx.newPage()
+    await page.goto('/')
+    await waitForNav(page)
+    const button = page.locator('#site-main .s-cmd button').first()
+    await button.locator('xpath=ancestor-or-self::*[@data-hydrated]').first().waitFor({ state: 'attached' })
+    await button.click()
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('npm create @pyreon/zero@latest')
+    await ctx.close()
+  })
+})
+
+test.describe('product cards', () => {
+  // Rows of equal-height cards: a card without a proof number must not sit
+  // half empty beside one with a number (CardFoot pins the bottom).
+  for (const route of ['/products', '/']) {
+    for (const width of [768, 1024, 1440, 1920]) {
+      test(`${route}: no card is more than about 40% empty at ${width}px`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 900 })
+        await page.goto(route)
+        await waitForNav(page)
+        const empty = await page.evaluate(() => {
+          const out: string[] = []
+          for (const li of document.querySelectorAll('#site-main ul > li')) {
+            const card = li.querySelector(':scope > a')
+            const inner = card?.firstElementChild
+            if (!card || !inner) continue
+            const box = inner.getBoundingClientRect()
+            if (box.height < 100) continue
+            const kids = [...inner.children].map((k) => k.getBoundingClientRect()).filter((b) => b.height > 0).sort((a, b) => a.top - b.top)
+            let gap = box.bottom - kids[kids.length - 1]!.bottom - Number.parseFloat(getComputedStyle(inner).paddingBottom)
+            for (let i = 1; i < kids.length; i++) gap = Math.max(gap, kids[i]!.top - kids[i - 1]!.bottom)
+            if (gap / box.height > 0.42) out.push(`${card.getAttribute('href')}: ${(gap / box.height).toFixed(2)}`)
+          }
+          return out
+        })
+        expect(empty).toEqual([])
+      })
+    }
+  }
+})
+
+test.describe('hero headings at 320px', () => {
+  // Display headings step down one size on the smallest phones (theme.ts
+  // display.*.phone), so a hero that ends in a long word keeps two words on
+  // its last line. Not listed: /products/flow ("Drag one node. / Nothing
+  // else / re-renders."), whose balanced three lines cannot put two words
+  // last at any hero size.
+  test('no hero heading ends on a single word', async ({ page }) => {
+    test.setTimeout(180_000)
+    await page.setViewportSize({ width: 320, height: 800 })
+    const orphans: string[] = []
+    for (const route of [
+      '/', '/products', '/products/form', '/products/reactivity', '/products/design', '/products/native', '/products/zero',
+      '/products/tooling', '/products/atlas', '/products/charts', '/products/query', '/products/router', '/products/ai',
+      '/products/content', '/why/one-codebase', '/why/components-run-once', '/why/full-stack', '/why/performance',
+      '/why/ai-ready', '/compare/react', '/compare/vue', '/migrate', '/migrate/react', '/benchmarks', '/blog',
+    ]) {
+      await page.goto(route)
+      await waitForNav(page)
+      const last = await page.evaluate(() => {
+        const h = document.querySelector('#site-main h1')!
+        const tops: number[] = []
+        const walker = document.createTreeWalker(h, NodeFilter.SHOW_TEXT)
+        for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+          for (const m of t.textContent!.matchAll(/\S+/g)) {
+            const r = document.createRange()
+            r.setStart(t, m.index!)
+            r.setEnd(t, m.index! + m[0].length)
+            const rect = r.getClientRects()[0]
+            if (rect) tops.push(Math.round(rect.top))
+          }
+        }
+        const lastTop = tops[tops.length - 1]!
+        return { lines: new Set(tops).size, onLast: tops.filter((t) => Math.abs(t - lastTop) < 4).length, text: h.textContent!.trim() }
+      })
+      if (last.lines > 1 && last.onLast === 1) orphans.push(`${route}: ${last.text}`)
+    }
+    expect(orphans).toEqual([])
+  })
+})
+
 test.describe('Products and Why menus (desktop)', () => {
   test.use({ viewport: { width: 1440, height: 900 } })
 
