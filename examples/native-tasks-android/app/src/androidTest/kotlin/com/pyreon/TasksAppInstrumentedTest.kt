@@ -60,10 +60,11 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.pinch
@@ -130,6 +131,78 @@ class TasksAppInstrumentedTest {
         // 1ms keeps the goal (no multi-second `delay` for `waitForIdle` to sit
         // behind) without leaving anything on screen.
         PyreonToast.defaultDurationMillis = 1
+    }
+
+    /**
+     * Keep the soft keyboard out of this window for the whole test.
+     *
+     * The host pads its content for `safeDrawing`, which includes the keyboard:
+     * when the keyboard shows, the page loses its lower third (883 px of 2400
+     * on the CI profile). `performTextInput` returns as soon as the text is
+     * set; the keyboard arrives later, on its own schedule, and Compose's idle
+     * sync does not wait for it. A `performScrollTo()` that ran before that saw
+     * the tall page and scrolled nothing; by the time `performClick()` ran the
+     * button lay outside the scroller's viewport (`boundsInRoot` empty), and a
+     * click on a clipped node does nothing. The test then timed out one line
+     * later with the page unchanged:
+     *
+     *  - "tag='req-upload-parts' expected='Parts: note=…'", node text 'Parts:
+     *    none' (three runs);
+     *  - "after tasks-select (/tasks -> /select) | tag='select-page' not
+     *    displayed | ROUTER SAID: nothing", still on /tasks — the keyboard
+     *    raised by typing the login name landed on the NEXT page (three runs,
+     *    always a button in the lower half of the columns).
+     *
+     * Reproduced on an API 33 emulator without a hardware keyboard by scrolling
+     * before typing and clicking once the keyboard was up: 3 of 3 runs failed
+     * with exactly that text; 3 of 3 passed with this flag. An emulator WITH a
+     * hardware keyboard never shows the soft one, which is why these tests
+     * always passed locally.
+     *
+     * `FLAG_ALT_FOCUSABLE_IM` tells the window manager this window does not use
+     * an input method, so none is shown for it. Typing is unaffected:
+     * `performTextInput` writes through the field's semantics action and
+     * `input text` delivers key events, neither of which needs the keyboard.
+     * What this gives up: no test here sees the layout with the keyboard up.
+     */
+    @Before
+    fun keepSoftKeyboardOut() {
+        composeRule.runOnUiThread {
+            composeRule.activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+        }
+    }
+
+    /** The keyboard's height in the window insets right now (0 when it is not shown). */
+    private fun softKeyboardHeight(): Int = composeRule.runOnUiThread {
+        ViewCompat.getRootWindowInsets(composeRule.activity.window.decorView)
+            ?.getInsets(WindowInsetsCompat.Type.ime())?.bottom ?: 0
+    }
+
+    /**
+     * The contract [keepSoftKeyboardOut] exists for, checked on the device:
+     * typing into a field leaves the page as tall as it was. Without the flag
+     * the keyboard arrives within this window on an emulator that has no
+     * hardware keyboard (the CI profile) and the assertion names its height.
+     * A NEGATIVE needs a bounded window to look in; this one ends as soon as a
+     * keyboard is seen.
+     */
+    @Test
+    fun typingLeavesTheSoftKeyboardOutOfTheLayout() {
+        val heightBefore = composeRule.onRoot().fetchSemanticsNode().size.height
+        composeRule.onNodeWithTag("login-username").performTextInput("abcde")
+        val deadline = SystemClock.uptimeMillis() + 3_000
+        var seen = 0
+        while (seen == 0 && SystemClock.uptimeMillis() < deadline) {
+            seen = softKeyboardHeight()
+            if (seen == 0) SystemClock.sleep(50)
+        }
+        assertTrue(
+            "typing brought up a soft keyboard $seen px tall: it resizes the page under every later scroll and click",
+            seen == 0,
+        )
+        val heightAfter = composeRule.onRoot().fetchSemanticsNode().size.height
+        assertTrue("the page changed height while typing ($heightBefore -> $heightAfter px)", heightBefore == heightAfter)
+        composeRule.onNodeWithTag("login-username").assertTextContains("abcde")
     }
 
     /**
@@ -487,10 +560,8 @@ class TasksAppInstrumentedTest {
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
 
         // ── CodeMirror ───────────────────────────────────────────────────────────────────────────
-        // Typing the login name opened the soft keyboard. A CI emulator shows it (a local one with a hardware keyboard
-        // does not), it covers the lower half of the screen, and a WebView region under it is not in the accessibility
-        // tree — so the editor looked absent although it had rendered. Close it before reading anything.
-        dismissSoftKeyboard(device)
+        // No soft keyboard covers the editors: see `keepSoftKeyboardOut`. (A WebView region under a keyboard is not
+        // in the accessibility tree, so an editor there looks absent although it rendered.)
         composeRule.onNodeWithTag("gal-code-webview").performScrollTo().assertExists()
         // CodeMirror's content is exposed to accessibility as text once the editor has booted.
         // The FIRST WebView of a process pays for the WebView implementation's cold start (a native library load plus
@@ -518,8 +589,6 @@ class TasksAppInstrumentedTest {
         assertTrue("the edit counter did not move", (textOf("gal-code-edits").toIntOrNull() ?: 0) > editsBefore)
 
         // ── TipTap ───────────────────────────────────────────────────────────────────────────────
-        // The typing above reopened the soft keyboard; close it before reading the next editor.
-        dismissSoftKeyboard(device)
         composeRule.onNodeWithTag("gal-rich-webview").performScrollTo().assertExists()
         assertTrue(
             "TipTap never rendered the pushed HTML (failure: ${textOf("gal-rich-failure")}; visible: ${webTexts(device)})",
@@ -536,21 +605,6 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("gal-rich-webview").performScrollTo().performClick()
         device.executeShellCommand("input text ZZ")
         composeRule.waitUntil(timeoutMillis = 15_000) { (textOf("gal-rich-edits").toIntOrNull() ?: 0) > richEditsAfterPush }
-    }
-
-    /**
-     * Close the soft keyboard when (and only when) it is showing. An unconditional BACK would navigate away from the
-     * page whenever the keyboard is already hidden, which is the usual state on a local emulator with a hardware
-     * keyboard. Ask the window insets, which report IME visibility the same way on every API level that has them.
-     */
-    private fun dismissSoftKeyboard(device: UiDevice) {
-        val shown = composeRule.runOnUiThread {
-            ViewCompat.getRootWindowInsets(composeRule.activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) == true
-        }
-        if (shown) {
-            device.pressBack()
-            device.waitForIdle()
-        }
     }
 
     /** Every text the accessibility tree currently shows, for a failure message (the WebView is opaque to Compose). */
@@ -2090,7 +2144,6 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
         composeRule.onNodeWithTag("login-submit").performClick()
         assertTagDisplayed("tasks-page", "after login-submit")
-        dismissSoftKeyboard(device)
         composeRule.onNodeWithTag("tasks-webhost").performScrollTo().performClick()
         assertTagDisplayed("webhost-page", "after tasks-webhost")
 
