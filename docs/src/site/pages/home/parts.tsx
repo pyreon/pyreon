@@ -9,6 +9,10 @@ import { breakpoints, font, radius, syntax, text, weight } from '../../theme'
 /** Cards in a row share one height (the grid stretches the item; the card fills it). */
 const equalCards = '& > li { display: flex; } & > li > * { flex: 1 1 auto; min-width: 0; }'
 
+/** In a two-column stretch of an odd-count grid, the last card takes the whole row instead of half of it. */
+const lastOddSpans = (from: number, below: number) =>
+  `@media (min-width: ${from}px) and (max-width: ${below - 0.02}px) { & > li:last-child:nth-child(odd) { grid-column: 1 / -1; } }`
+
 /** Two columns from 960px (`.split` / `.once`): text left, the visual right. */
 export const Split = el
   .config({ name: 'HomeSplit' })
@@ -138,8 +142,12 @@ export const StripGrid = el
     listStyle: 'none',
     margin: 0,
     padding: 0,
-    gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(5, minmax(0, 1fr))' },
-    extendCss: equalCards,
+    // Five cards: one column, then two (the odd last card takes the row),
+    // then two over three. Five in a row left each chart at 42% of its
+    // drawn size, its labels about 5px tall.
+    gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(6, minmax(0, 1fr))' },
+    extendCss: `${equalCards} ${lastOddSpans(breakpoints.md, breakpoints.xl)}
+      @media (min-width: ${breakpoints.xl}px) { & > li { grid-column: span 2; } & > li:nth-child(-n + 2) { grid-column: span 3; } }`,
   }))
 
 /** The comparison table's scroll region (it scrolls inside itself, never the page). */
@@ -308,7 +316,7 @@ export const CompatGrid = el
     margin: 0,
     padding: 0,
     gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))', xl: 'repeat(5, minmax(0, 1fr))' },
-    extendCss: equalCards,
+    extendCss: equalCards + lastOddSpans(breakpoints.xs, breakpoints.md),
   }))
 
 /** `.term` — the reproduce command, one `$` line per step. */
