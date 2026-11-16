@@ -12,7 +12,8 @@
  *   - gen-native-crossing-table (per-package native crossing table drifted from the coverage registry)
  *   - check-changeset-required (no changeset for published-pkg source change)
  *   - check-no-major-changesets (a `major` bump is illegal while Pyreon is 0.x)
- *   - check-bundle-budgets   (new publishable package missing entry)
+ *   - check-bundle-budgets   (local mode: a package that fails to bundle or has no
+ *                             ceiling; over-ceiling sizes are printed, CI judges them)
  *   - check-distribution    (sideEffects / source-map invariants)
  *   - check-declarations    (published .d.ts: imports declared + strict compile)
  *   - check-esm-only        (no CJS-enabling export condition)
@@ -115,6 +116,9 @@ const GATES: Gate[] = [
   // "license": "MIT". A published package without either ships with no stated
   // terms; an example without either is code people copy with none.
   { name: 'check-license-coverage', cmd: 'bun scripts/check-license-coverage.ts' },
+  // examples/README.md is the index of every example (curated, fixture,
+  // native host, benchmark); an add, move or removal updates it in the same PR.
+  { name: 'check-examples-index', cmd: 'bun scripts/check-examples-index.ts' },
   { name: 'gen-docs --check', cmd: 'bun run gen-docs --check' },
   // The OTHER half of the generator pair. `gen-docs` regenerates llms/api-reference;
   // `gen-all.ts` regenerates the docs-site reference/troubleshooting/examples pages

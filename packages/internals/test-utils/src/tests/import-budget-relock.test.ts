@@ -47,7 +47,7 @@ describe('check-import-budgets --update direction rule', () => {
   it('lowers when the scenario is NAMED — tightening stays available', () => {
     const { budgets, lowered, refused } = relockBudgets([m('a::x', 1000)], { 'a::x': 3000 }, 'a::x')
 
-    expect(budgets['a::x']).toBe(1030) // 1000 * 1.03, ceil
+    expect(budgets['a::x']).toBe(1100) // ceilingFor(1000)
     expect(lowered).toBe(1)
     expect(refused).toEqual([])
   })
@@ -59,27 +59,36 @@ describe('check-import-budgets --update direction rule', () => {
       'a::x',
     )
 
-    expect(budgets['a::x']).toBe(1030)
+    expect(budgets['a::x']).toBe(1100)
     expect(budgets['b::y']).toBe(3000)
     expect(lowered).toBe(1)
   })
 
-  it('RAISES always apply unscoped — that is the reviewed case', () => {
+  it('an OVER scenario is raised unscoped — that is the reviewed case', () => {
     const { budgets, refused } = relockBudgets([m('a::x', 5000)], { 'a::x': 3000 }, undefined)
 
-    expect(budgets['a::x']).toBe(5150)
+    expect(budgets['a::x']).toBe(5500)
     expect(refused).toEqual([])
   })
 
   it('seeds a scenario that has no budget yet', () => {
     const { budgets, lowered, refused } = relockBudgets([m('new::z', 1000)], {}, undefined)
 
-    expect(budgets['new::z']).toBe(1030)
+    expect(budgets['new::z']).toBe(1100)
     expect(lowered).toBe(0)
     expect(refused).toEqual([])
   })
 
-  it('a budget equal to the measurement is untouched and not counted as lowered', () => {
+  it('a scenario under its ceiling is left byte-identical unscoped, however close', () => {
+    // Raising every ceiling that is nearer than the headroom would rewrite most
+    // of the files on any unscoped run; only an entry that is OVER moves.
+    const { budgets, refused } = relockBudgets([m('a::x', 1029)], { 'a::x': 1030 }, undefined)
+
+    expect(budgets['a::x']).toBe(1030)
+    expect(refused).toEqual([])
+  })
+
+  it('a ceiling the measurement fits under is untouched and not counted as lowered', () => {
     const { budgets, lowered, refused } = relockBudgets([m('a::x', 1000)], { 'a::x': 1030 }, undefined)
 
     expect(budgets['a::x']).toBe(1030)

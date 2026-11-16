@@ -1,0 +1,7 @@
+{
+  "package": "@pyreon/reactivity",
+  "bundle": 9831,
+  "imports": {
+    "signals": 4180
+  }
+}

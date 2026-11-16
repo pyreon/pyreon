@@ -394,7 +394,7 @@ Libraries are compiled by any bundler (Vite, Webpack, Rolldown, esbuild, Rollup,
 
 ### Bare top-level component-brand assignments
 
-[guard: `no-bare-component-brand.test.ts`]: `Component.displayName = name` (or `.pkgName`, `.PYREON__COMPONENT`, `.isText`) at module top level must run whenever any binding of the module is used, so components in the package pin each other into every bundle. Brand on the export: `export default /* @__PURE__ */ Object.assign(Component, { displayName: name, … })` (nest `nativeCompat(...)` if needed). The aggregate is locked in `scripts/import-budgets.json` (`@pyreon/elements::portal`, `::element`).
+[guard: `no-bare-component-brand.test.ts`]: `Component.displayName = name` (or `.pkgName`, `.PYREON__COMPONENT`, `.isText`) at module top level must run whenever any binding of the module is used, so components in the package pin each other into every bundle. Brand on the export: `export default /* @__PURE__ */ Object.assign(Component, { displayName: name, … })` (nest `nativeCompat(...)` if needed). The aggregate is locked by the `portal` and `element` import ceilings in `scripts/size-budgets/packages/elements.json`.
 
 ---
 

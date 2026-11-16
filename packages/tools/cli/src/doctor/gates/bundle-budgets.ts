@@ -2,12 +2,12 @@
  * bundle-budgets gate — programmatic API.
  *
  * Locks the gzipped main-entry size of every published `@pyreon/*`
- * package against `scripts/bundle-budgets.json` (current + 25% headroom).
+ * package against its ceiling in `scripts/size-budgets/packages/`.
  * Three classes of finding land here:
  *
  *   1. **violations** — package bundles past its budget (real regression).
  *      Severity: `error`. Code: `bundle-budgets/over-budget`.
- *   2. **missing** — package has no entry in `bundle-budgets.json` yet
+ *   2. **missing** — package has no ceiling file yet
  *      (new published package — author needs to commit a budget).
  *      Severity: `warning`. Code: `bundle-budgets/missing-budget`.
  *   3. **failures** — the bundler couldn't measure a package (unresolved
@@ -80,7 +80,7 @@ export const _parseBundleBudgetsOutput = (
 ): { findings: Finding[]; scanned: number } => {
   const result = JSON.parse(raw) as ScriptOutput
   const findings: Finding[] = []
-  const budgetsRelPath = 'scripts/bundle-budgets.json'
+  const budgetsRelPath = 'scripts/size-budgets/packages'
   const budgetsPath = join(cwd, budgetsRelPath)
 
   for (const v of result.violations) {
@@ -89,9 +89,9 @@ export const _parseBundleBudgetsOutput = (
       severity: 'error',
       code: 'bundle-budgets/over-budget',
       gate: 'bundle-budgets',
-      message: `${v.name}: ${formatKB(v.current)} > budget ${formatKB(v.budget)} (over by ${formatKB(v.overBy)}, +${v.overByPct.toFixed(1)}%). If growth is intentional, bump the value in scripts/bundle-budgets.json — the bump itself is the PR signal.`,
+      message: `${v.name}: ${formatKB(v.current)} > budget ${formatKB(v.budget)} (over by ${formatKB(v.overBy)}, +${v.overByPct.toFixed(1)}%). If growth is intentional, accept it with --update=${v.name}, which sets the ceiling in scripts/size-budgets/packages/.`,
       location: { path: budgetsPath, relPath: budgetsRelPath },
-      fix: `Run \`bun run check-bundle-budgets --update\` to regenerate budgets after intentional growth.`,
+      fix: `Run \`bun run check-bundle-budgets --update=${v.name}\` to accept intentional growth.`,
     })
   }
 
@@ -162,7 +162,7 @@ export const runBundleBudgetsGate = async (
     // non-zero, attaching `.stdout` to the error object.
     let out: string
     try {
-      out = execFileSync(opts.bun ?? 'bun', ['run', scriptPath, '--json'], {
+      out = execFileSync(opts.bun ?? 'bun', ['run', scriptPath, '--json', '--mode=main'], {
         cwd: opts.cwd,
         encoding: 'utf8',
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -183,7 +183,7 @@ export const runBundleBudgetsGate = async (
   } catch (err) {
     // Script failure — surface as a single ERROR finding so the
     // gate doesn't silently skip. Captures parse errors, script-not-
-    // found, missing bundle-budgets.json, etc.
+    // found, an unreadable ceiling file, etc.
     findings.push({
       category: 'performance',
       severity: 'error',

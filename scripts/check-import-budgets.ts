@@ -34,10 +34,18 @@
  * job is regression detection on a consistent method, not a byte-exact
  * prediction of one specific consumer bundler.
  *
+ * Verdict: on a pull request each scenario is judged on the bytes THIS change
+ * adds (against the commit it merges into); on the default branch against its
+ * ceiling in `scripts/size-budgets/packages/<package>.json`. The rules are in
+ * `size-budget-policy.ts`, shared with `check-bundle-budgets`.
+ *
  * Run:
- *   bun run check-import-budgets          # exit non-zero on regression
- *   bun run check-import-budgets --json   # machine-readable
- *   bun run check-import-budgets --update # relock budgets from current sizes
+ *   bun run check-import-budgets                       # local: build failures, ceilings reported
+ *   bun run check-import-budgets --mode=main           # fail on any scenario over its ceiling
+ *   bun run check-import-budgets --mode=pr --base=<f>  # fail on this change's own growth
+ *   bun run check-import-budgets --json                # machine-readable
+ *   bun run check-import-budgets --update=<id>         # accept that scenario's size: set its ceiling
+ *   bun run check-import-budgets --update              # seed new scenarios, raise the ones over
  */
 
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -47,7 +55,17 @@ import { gzipSync } from 'node:zlib'
 import { staticClosureCode } from './bundle-static-closure'
 import { parseSync, Visitor } from 'oxc-parser'
 
-import { isUpdateMode, shouldLowerUnscoped } from './bundle-budget-policy'
+import { isUpdateMode } from './bundle-budget-policy'
+import {
+  formatVerdicts,
+  judgeFamily,
+  nextCeiling,
+  NOISE_BYTES,
+  resolveBasePath,
+  resolveSizeMode,
+  type SizeBaseFile,
+} from './size-budget-policy'
+import { loadCeilings, resolveBudgetsDir, writeCeiling } from './size-budget-store'
 
 // Minimal ambient for Bun's bundler. This script is a Bun bin entry, but
 // its pure helpers are imported by `@pyreon/test-utils`, whose tsconfig
@@ -80,9 +98,6 @@ function repoRoot(): string {
   // ImportMeta type doesn't declare it.
   const dir = (import.meta as { dir?: string }).dir ?? process.cwd()
   return resolve(dir, '..')
-}
-function budgetsPath(): string {
-  return join(repoRoot(), 'scripts', 'import-budgets.json')
 }
 
 /** A canonical minimal import a real app writes, + the package it targets. */
@@ -340,7 +355,7 @@ export interface BudgetRegression {
  * fails, because the budget is re-locked at the new measured value on `--update`
  * and the slack does not accumulate.
  */
-export const VERSION_NOISE_BYTES = 4
+export const VERSION_NOISE_BYTES = NOISE_BYTES
 
 /**
  * The table label for one scenario, sharing the VERDICT's threshold.
@@ -363,18 +378,19 @@ export function compareToBudgets(
   measured: MeasuredImport[],
   budgets: Record<string, number>,
 ): { regressions: BudgetRegression[]; missing: string[] } {
+  // The default-branch verdict of the shared policy: over the ceiling by more
+  // than the noise band, or no ceiling at all.
+  const verdicts = judgeFamily(
+    'main',
+    measured.filter((m) => !m.failed).map((m) => ({ id: m.id, size: m.gzip, ceiling: budgets[m.id] })),
+    undefined,
+  )
   const regressions: BudgetRegression[] = []
   const missing: string[] = []
-  for (const m of measured) {
-    if (m.failed) continue
-    const budget = budgets[m.id]
-    if (budget === undefined) {
-      missing.push(m.id)
-      continue
-    }
-    if (m.gzip > budget + VERSION_NOISE_BYTES) {
-      regressions.push({ id: m.id, gzip: m.gzip, budget, overBy: m.gzip - budget })
-    }
+  for (const v of verdicts) {
+    if (!v.fail) continue
+    if (v.ceiling === undefined) missing.push(v.id)
+    else regressions.push({ id: v.id, gzip: v.size, budget: v.ceiling, overBy: v.size - v.ceiling })
   }
   return { regressions, missing }
 }
@@ -519,8 +535,10 @@ async function measureScenario(s: Scenario): Promise<MeasuredImport> {
  * `@pyreon/validate` below what CI measures and reddened a gate on two branches
  * that had not touched the package.
  *
- * Raises always apply (that is the reviewed case). Lowering requires naming the
- * scenario, which is the review signal.
+ * A scenario over its ceiling is raised (that is the reviewed case); one under
+ * it is left byte-identical. Lowering, and accepting growth that is still under
+ * the ceiling, requires naming the scenario. The value is `ceilingFor` of the
+ * measurement — see `nextCeiling` in `size-budget-policy.ts`.
  */
 export function relockBudgets(
   measured: readonly MeasuredImport[],
@@ -532,25 +550,24 @@ export function relockBudgets(
   let lowered = 0
 
   for (const m of measured) {
-    // Lock current size + 3% headroom so minor bundler-version byte jitter
-    // doesn't flake the gate; a real regression (this gate targets the ~1 KB
-    // tree-shaking-broke class) still trips it.
-    const next = Math.ceil(m.gzip * 1.03)
     const prev = previous[m.id]
-
-    if (prev !== undefined && next < prev && !shouldLowerUnscoped(scope === m.id)) {
+    const { value, action } = nextCeiling(prev, m.gzip, scope === m.id)
+    // A named update touches the named scenario only.
+    if (scope !== undefined && scope !== m.id && prev !== undefined) {
       budgets[m.id] = prev
-      const pct = (((next - prev) / prev) * 100).toFixed(1)
+      continue
+    }
+    if (action === 'refused') {
+      budgets[m.id] = value
       refused.push(
-        `  ⚠ not lowered: ${m.id} ${prev} → ${next} (${pct}%, measured ${m.gzip}) — ` +
+        `  ⚠ not lowered: ${m.id} stays ${value} (measured ${m.gzip}) — ` +
           `an unscoped --update never lowers, because a stale build can only measure LOW. ` +
           `If this shrink is real, scope it: --update=${m.id}`,
       )
       continue
     }
-
-    budgets[m.id] = next
-    if (prev !== undefined && next < prev) lowered += 1
+    budgets[m.id] = value
+    if (action === 'lower') lowered += 1
   }
 
   return { budgets, refused, lowered }
@@ -569,6 +586,13 @@ async function main(): Promise<void> {
   for (const s of SCENARIOS) measured.push(await measureScenario(s))
 
   const failures = measured.filter((m) => m.failed)
+  const budgetsDir = resolveBudgetsDir(args, repoRoot())
+
+  // Sizes for another program (size-base.ts): no ceilings read, no verdict.
+  if (args.includes('--measure-only')) {
+    if (jsonMode) console.log(JSON.stringify({ measured, failures }, null, 2))
+    return
+  }
 
   if (updateMode) {
     if (failures.length > 0) {
@@ -576,45 +600,72 @@ async function main(): Promise<void> {
       for (const f of failures) console.error(`  ✗ ${f.id}: ${f.error?.split('\n')[0]}`)
       process.exit(1)
     }
-    let previous: Record<string, number> = {}
-    try {
-      previous = JSON.parse(readFileSync(budgetsPath(), 'utf-8')) as Record<string, number>
-    } catch {
-      // No budgets file yet — first seed, nothing to protect.
+    if (scope !== undefined && !measured.some((m) => m.id === scope)) {
+      console.error(`[check-import-budgets] --update=${scope}: no such scenario. Ids look like @pyreon/core::jsx.`)
+      process.exit(1)
     }
-
+    const previous = loadCeilings(budgetsDir).imports
     const { budgets, refused, lowered } = relockBudgets(measured, previous, scope)
-    writeFileSync(budgetsPath(), `${JSON.stringify(budgets, null, 2)}\n`)
-    console.log(
-      `[check-import-budgets] Relocked ${measured.length} budget(s), ${lowered} lowered → ${budgetsPath()}`,
-    )
+    let changed = 0
+    for (const [id, value] of Object.entries(budgets)) {
+      if (previous[id] === value) continue
+      const file = writeCeiling(budgetsDir, 'imports', id, value)
+      console.log(`  ${previous[id] ?? 'none'} → ${value}  ${id}  (${file})`)
+      changed += 1
+    }
+    console.log(`[check-import-budgets] ${changed} ceiling(s) changed, ${lowered} lowered.`)
     for (const line of refused) console.warn(line)
     return
   }
 
-  let budgets: Record<string, number> = {}
-  try {
-    budgets = JSON.parse(readFileSync(budgetsPath(), 'utf8'))
-  } catch {
-    console.error(`[check-import-budgets] No budgets file at ${budgetsPath()}. Run --update first.`)
-    process.exit(1)
+  const mode = resolveSizeMode(args, process.env)
+  const budgets = loadCeilings(budgetsDir).imports
+  const basePath = resolveBasePath(args, process.env)
+  let base: SizeBaseFile | undefined
+  if (mode === 'pr') {
+    if (basePath === undefined) {
+      console.error(
+        '[check-import-budgets] pr mode needs the base measurement. Run `bun scripts/size-base.ts --out=<file>` and pass --base=<file> (or PYREON_SIZE_BASE).',
+      )
+      process.exit(1)
+    }
+    try {
+      base = JSON.parse(readFileSync(basePath, 'utf8')) as SizeBaseFile
+    } catch (err) {
+      console.error(
+        `[check-import-budgets] cannot read the base measurement at ${basePath} (${err instanceof Error ? err.message : String(err)}). The "Prepare size base" step writes it; fix that step first.`,
+      )
+      process.exit(1)
+    }
   }
 
-  const { regressions, missing } = compareToBudgets(measured, budgets)
+  const ok = measured.filter((m) => !m.failed)
+  const verdicts = judgeFamily(
+    mode,
+    ok.map((m) => ({ id: m.id, size: m.gzip, ceiling: budgets[m.id] })),
+    base?.imports,
+  )
+  const failing = verdicts.filter((v) => v.fail)
+  const missing = failing.filter((v) => v.code === 'missing-ceiling').map((v) => v.id)
+  const regressions = failing
+    .filter((v) => v.code !== 'missing-ceiling')
+    .map((v) => ({ id: v.id, gzip: v.size, budget: v.ceiling, baseGzip: v.baseSize, code: v.code, message: v.message }))
 
   if (jsonMode) {
-    console.log(JSON.stringify({ measured, regressions, missing, failures }, null, 2))
+    console.log(JSON.stringify({ mode, measured, regressions, missing, failures }, null, 2))
   } else {
-    for (const m of measured) {
-      if (m.failed) continue
+    for (const m of ok) {
       const budget = budgets[m.id]
       const tag = budgetTag(m.gzip, budget)
       console.log(
         `  ${tag.padEnd(4)} ${m.id.padEnd(38)} gz=${String(m.gzip).padStart(5)}` +
-          (budget !== undefined ? `  budget=${budget}` : ''),
+          (budget !== undefined ? `  ceiling=${budget}` : ''),
       )
     }
     for (const f of failures) console.error(`  ✗ FAILED ${f.id}: ${f.error?.split('\n')[0]}`)
+    const { lines } = formatVerdicts('minimal imports', mode, verdicts)
+    console.log('')
+    for (const line of lines) (line.startsWith('✓') || line.startsWith('  ·') ? console.log : console.error)(line)
   }
 
   // Surface failures + regressions; exit non-zero (the
@@ -624,26 +675,15 @@ async function main(): Promise<void> {
       console.error(`\n[check-import-budgets] ${failures.length} scenario(s) failed to BUILD.`)
     process.exit(1)
   }
-  if (missing.length > 0) {
-    if (!jsonMode)
-      console.error(
-        `\n[check-import-budgets] ${missing.length} scenario(s) have no budget — run --update: ${missing.join(', ')}`,
-      )
-    process.exit(1)
-  }
-  if (regressions.length > 0) {
-    if (!jsonMode) {
-      console.error(`\n[check-import-budgets] ${regressions.length} minimal-import REGRESSION(s):`)
-      for (const r of regressions)
-        console.error(`  ✗ ${r.id}: ${r.gzip} > budget ${r.budget} (over by ${r.overBy} B)`)
+  if (failing.length > 0) {
+    if (!jsonMode && regressions.length > 0) {
       console.error(
         'A minimal import got bigger — an optional feature likely stopped tree-shaking. ' +
-          'Investigate before bumping the budget with --update.',
+          'Investigate before accepting the size with --update=<id>.',
       )
     }
     process.exit(1)
   }
-  if (!jsonMode) console.log(`\n[check-import-budgets] all ${measured.length} scenario(s) within budget.`)
 }
 
 if (import.meta.main) await main()
