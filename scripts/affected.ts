@@ -86,6 +86,7 @@
  */
 
 import { gitChangedFilesZ } from './changed-files'
+import { listExampleDirs } from './example-dirs'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -285,13 +286,11 @@ export function discoverWorkspaces(root: string = ROOT): Workspace[] {
     }
   }
 
-  // examples/<example>
-  const examplesRoot = join(root, 'examples')
-  if (existsSync(examplesRoot)) {
-    for (const ex of readdirSync(examplesRoot)) {
-      const exPath = join(examplesRoot, ex)
+  // examples/<example>, examples/<group>/<example> (scripts/example-dirs.ts)
+  {
+    for (const ex of listExampleDirs(root, { allowNone: true })) {
+      const exPath = join(root, 'examples', ex)
       const pkgJson = join(exPath, 'package.json')
-      if (!existsSync(pkgJson)) continue
       const json = readPkg(pkgJson)
       if (!json.name) continue
       result.push({

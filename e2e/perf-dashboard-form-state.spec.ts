@@ -11,7 +11,7 @@ import { expect, test } from '@playwright/test'
  * would pass unit tests against the mock environment but ship the
  * regression to consumers.
  *
- * The forms-stress section in `examples/perf-dashboard` exposes the
+ * The forms-stress section in `examples/fixtures/perf-dashboard` exposes the
  * exact hook surface used by `scripts/perf/record.ts`'s journey
  * driver — same code path, same counter contract, same atomic
  * computeds shared via per-form WeakMap. We just exercise it from a

@@ -15,7 +15,7 @@ import { type ConfigEnv, loadConfigFromFile, type Plugin, type UserConfig } from
  * had no `jsxDEV`, so `vite` dev failed for every consumer while the in-repo
  * e2e stayed green).
  *
- * Usage: `vite --config ../../e2e-configs/shipped-lib.vite.config.ts` with the
+ * Usage: `vite --config <repo>/e2e-configs/shipped-lib.vite.config.ts` with the
  * example as `cwd`.
  */
 function dropBunCondition(): Plugin {

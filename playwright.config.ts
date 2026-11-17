@@ -9,11 +9,11 @@ import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config
  *   playground    ✓ wired to CI — covers reactivity, mount, bench
  *                   (signal → DOM, computed, batching, conditional
  *                   rendering, list reconciliation, perf). Targets
- *                   `examples/playground` which exposes `window.__pyreon`
+ *                   `examples/fixtures/playground` which exposes `window.__pyreon`
  *                   for direct primitive access from tests.
  *
  *   ssr-showcase  ✓ wired to CI — covers SSR + hydration + nav +
- *                   loaders + theme. Targets `examples/ssr-showcase`.
+ *                   loaders + theme. Targets `examples/fixtures/ssr-showcase`.
  *                   Was previously disabled (zero's dev-SSR auto-loaded
  *                   `_layout.tsx` AND fs-router emitted it as a parent
  *                   route → double mount). Fixed alongside this re-enable.

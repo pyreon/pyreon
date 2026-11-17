@@ -35,6 +35,7 @@
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { baselineTotalError, parseBaseline } from './baseline-total'
+import { exampleDir } from './example-dirs'
 
 const REPO_ROOT = resolve(import.meta.dirname, '..')
 const BASELINE_NAME = 'scripts/app-loc-baseline.json'
@@ -120,7 +121,7 @@ function measure(): Baseline {
   const apps: Record<string, AppCount> = {}
   let total = 0
   for (const app of APPS) {
-    const src = join(REPO_ROOT, 'examples', app, 'src')
+    const src = join(exampleDir(app, REPO_ROOT), 'src')
     const files = walk(src)
     let code = 0
     for (const f of files) code += countCodeLines(readFileSync(f, 'utf8'))

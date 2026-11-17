@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 /**
  * SSG subpath / base-path runtime gate (PR E).
  *
- * Targets `examples/ssr-showcase` BUILT under `vite.config.subpath.ts`
+ * Targets `examples/fixtures/ssr-showcase` BUILT under `vite.config.subpath.ts`
  * (with `zero({ base: '/blog/' })`) and SERVED via `vite preview` at
  * `http://localhost:5198` — config in `e2e-configs/ssg-subpath.config.ts`.
  *
