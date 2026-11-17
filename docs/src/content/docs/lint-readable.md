@@ -232,7 +232,7 @@ const label = !ready ? 'waiting' : failed ? 'failed' : 'done'
 
 ### `pyreon/consistent-signal-read` — auto-fixed
 
-One way to read a signal in JSX: `count()`, as everywhere else. The compiler also accepts a bare `{count}` and calls it for you, but only for a `const` signal or computed it can see; TypeScript types the bare name as the signal, so `count > 0`, `count + 1` and a component prop typed `string` do not type-check; and inside a handler nested in JSX the auto-call depends on the element. The called form holds in every position.
+One way to read a signal in JSX: `count()`, as everywhere else. The compiler also accepts a bare `{count}` and calls it for you, but only for a `const` signal or computed it can see; and TypeScript types the bare name as the signal, so `count > 0`, `count + 1` and a component prop typed `string` do not type-check. The called form holds in every position.
 
 ```tsx
 const count = signal(0)

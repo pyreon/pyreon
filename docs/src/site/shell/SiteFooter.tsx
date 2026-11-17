@@ -4,7 +4,7 @@ import { el, focusRing, tone, txt, type LinkAttrs, tapArea } from '../kit/bases'
 import { Glyph } from '../kit/cards'
 import { InstallCommand } from '../kit/controls'
 import { isFileHref, useLinkClick } from '../kit/link'
-import { Wrap } from '../kit/layout'
+import { Wrap } from '../kit/primitives'
 import { FOOTER } from '../nav'
 import { MarkLink, Wordmark } from './parts'
 

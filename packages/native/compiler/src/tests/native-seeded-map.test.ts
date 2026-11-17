@@ -32,7 +32,7 @@ describe('seeded new Map([[k,v],…]) → native dict literal', () => {
   it('Swift: emits a dict literal + inferred [K: V], no warning', () => {
     const r = transform(MAP, { target: 'swift' })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('["apple": 3, "pear": 2]')
+    expect(r.code).toContain('PyreonMap<String, Int>([("apple", 3), ("pear", 2)])')
     expect(r.code).toContain('PyreonMap<String, Int>')
   })
 
