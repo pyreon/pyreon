@@ -2687,8 +2687,8 @@
       "warnings": 0
     },
     "golden-fixture:flow-45.tsx|kotlin": {
-      "sha": "2d25806120e55aa341d12a09db728072c8409a8fc0292e1d1c260f6974b58935",
-      "bytes": 19292,
+      "sha": "e0423c36a031173d837ab3e4d0b03287e0f0065c7e18b91a41bc7a121a0954da",
+      "bytes": 19334,
       "warnings": 0
     },
     "golden-fixture:flow-46.tsx|swift": {
@@ -7377,8 +7377,8 @@
       "warnings": 0
     },
     "example:native-counter/Counter.tsx|kotlin": {
-      "sha": "9516d8cada0d52fb2e249b7229c4e1be05b7ff5f80ad325de519dfd04d0f0c53",
-      "bytes": 20792,
+      "sha": "3ccab9b499d90d5bcbcc446e50152d38222accf439359ac6ff4efe9a13fbf82e",
+      "bytes": 20834,
       "warnings": 0
     },
     "example:native-finance/FinanceApp.tsx|swift": {

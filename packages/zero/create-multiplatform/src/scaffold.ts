@@ -842,6 +842,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("androidx.core:core-ktx:1.19.1")
+    // useBiometrics — PyreonBiometricsAndroid.kt (BiometricManager + BiometricPrompt).
+    implementation("androidx.biometric:biometric:1.1.0")
     // <Icon> emit references Icons.Filled.* at compile time (core set).
     implementation("androidx.compose.material:material-icons-core")
     // Remote <Image src="http…"> → Coil's AsyncImage.
@@ -1005,9 +1007,9 @@ package ${androidPkg}
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -1027,6 +1029,8 @@ import ${androidPkg}.generated.App
 // too; without it the icons are white on that light strip and the clock is unreadable.
 //
 // The Box does two things the emitted App() cannot do for itself:
+//  - FragmentActivity (a ComponentActivity subclass): useBiometrics shows
+//    BiometricPrompt, which needs a fragment host.
 //  - safeDrawingPadding(): on Android 15+ (API 35) apps draw edge-to-edge, so
 //    without it the top of the screen sits UNDER the status bar and is hidden.
 //  - testTagsAsResourceId: Compose exposes data-testid (Modifier.testTag) only
@@ -1038,7 +1042,7 @@ import ${androidPkg}.generated.App
 // the path to the router. The launch intent is only read on a FRESH start: after a recreate the same
 // intent is still attached, and replaying it would navigate the user back to the link.
 @OptIn(ExperimentalComposeUiApi::class)
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) PyreonDeepLink.receive(intent?.data)

@@ -1620,6 +1620,7 @@ const status = signal<'idle' | 'unlocked' | 'denied'>('idle')
 - Calling `bio.authenticate(...)` WITHOUT `await` inside a plain (non-async) handler — it returns a `Promise<boolean>`, not a boolean, so the gate never applies. Mark the handler `async` and `await` the result (PMTC wraps that async handler in a native `Task`/coroutine scope).
 - Expecting the WEB `authenticate` to actually authenticate — v1 resolves `false` (a real WebAuthn assertion needs a server challenge + a registered credential, out of scope for a client-only hook). For web biometric auth drive the WebAuthn API with your backend; the native paths (Face ID / Touch ID / BiometricPrompt) are the real gate.
 - Treating a `false` result as an error — `authenticate` never rejects; failure, cancellation, and an unavailable / unenrolled device all resolve `false`. Branch on the boolean, do not wrap it in `try/catch`.
+- An Android host that is a plain `ComponentActivity`, or a build without `androidx.biometric:biometric` — BiometricPrompt needs a `FragmentActivity` (the scaffold's `MainActivity` is one) and the library on the classpath. Without the activity, `authenticate` resolves `false` and logs why; without the library the app does not compile.
 
 **See also:** `useNotifications` · `useShare`
 

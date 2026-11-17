@@ -99,9 +99,10 @@ describe('M4.5 async-await lowering — Kotlin', () => {
     expect(out).not.toContain('rememberCoroutineScope()')
   })
 
-  it('emits remember { PyreonBiometrics() }', () => {
+  it('emits remember { PyreonBiometrics(context) } — the real BiometricPrompt gate needs the Context', () => {
     const out = transform(SRC, { target: 'kotlin' }).code
-    expect(out).toContain('val bio = remember { PyreonBiometrics() }')
+    expect(out).toContain('val bioCtx = LocalContext.current')
+    expect(out).toContain('val bio = remember { PyreonBiometrics(bioCtx) }')
   })
 
   it('emits ZERO warnings', () => {
