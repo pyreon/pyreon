@@ -14,13 +14,13 @@ import reactivity from '../content/products/reactivity.json'
 import { el, tone, txt } from '../kit/bases'
 import { BenchmarkTable, CompareBars, VerdictChip } from '../kit/bench'
 import { ApiGroups, Faq, FactList, FeatureList, LimitNote, NumberedCards, StatRow, StepCards } from '../kit/blocks'
-import { EmberGradientDefs, GlowCard, Glyph, PackageCard, ProductTag } from '../kit/cards'
+import { EmberGradientDefs, GlowCard, Glyph, PackageCard, PackageName, ProductTag } from '../kit/cards'
 import { BeforeAfter, CodeCard, CodeDiff } from '../kit/code'
 import { Chip, InstallCommand, Pill } from '../kit/controls'
 import { AutoGrid, Rule, Section, SectionHead, Wrap } from '../kit/layout'
 import { Reveal } from '../kit/motion'
 import { Badge } from '../kit/badge'
-import { CaveatLine, EndCTA, HookHero, ProofBand, QuoteBlock, StatCard } from '../kit/proof'
+import { CaveatLine, EndCTA, HookHero, Numeral, ProofBand, QuoteBlock, StatBody, StatCard } from '../kit/proof'
 import { Code, Eyebrow, Heading, Lede, renderInline, StatusBadge, StatusDot } from '../kit/type'
 import { color, font, type ColorKey } from '../theme'
 
@@ -269,6 +269,27 @@ export function KitGallery() {
                 <StatCard stat={STRIP_ITEM.stat} label={STRIP_ITEM.label} lines={[STRIP_ITEM.rival]} note={STRIP_ITEM.condition} />
               </AutoGrid>
             ) : null}
+          </Specimen>
+
+          <Specimen name="Numeral: default · long · strip · card">
+            <Row>
+              <Numeral>4×</Numeral>
+              <Numeral size="long">1.94–1.95×</Numeral>
+              <Numeral size="strip">8.7×</Numeral>
+              <Numeral size="card">2.6×</Numeral>
+            </Row>
+          </Specimen>
+
+          <Specimen name="StatBody: band (the parts sit on the surface that holds them)">
+            {STRIP_ITEM ? (
+              <GlowCard padding="stat">
+                <StatBody size="band" numeral="default" stat={STRIP_ITEM.stat} label={STRIP_ITEM.label} lines={[STRIP_ITEM.rival]} note={STRIP_ITEM.condition} />
+              </GlowCard>
+            ) : null}
+          </Specimen>
+
+          <Specimen name="PackageName">
+            <PackageName>@pyreon/charts</PackageName>
           </Specimen>
 
           <Specimen name="Badge: win · tie · split · loss · info">

@@ -48,7 +48,7 @@ export const Numeral = txt
   }))
 
 const Label = txt
-  .config({ name: 'StatLabel' })
+  .config({ name: 'StatBodyLabel' })
   .attrs({ tag: 'span' })
   .theme((_t, m) => ({
     display: 'block',
