@@ -99,6 +99,8 @@ The helpers (`kit/media.tsx`, `kit/assets.ts`; examples on `/brand/kit`):
 | `<Poster file />` | The dark/light posters of an animated SVG or chart. |
 | `<Loop media={…} eager? />` | A silent loop from a content `media` block: posters as HTML, a small island for the video (loads near the viewport, follows theme and screen width, pauses off-screen and under reduced motion, pause button). |
 | `<AnimatedSvg file markup={raw} />` | Inline an animated or theme-aware SVG: `import art from '../media/<path>.svg?raw'`. Or `src={url}` with `?url` for an `<img>` (follows only the OS scheme). |
+| `<StatCard stat label lines? note? chart? href? />` (`kit/stat.tsx`) | A benchmark number with its proof chart in a compact card; `ProofBand` cells render the same `StatBody`. Every part starts at the card's one inset (`inset` in `theme.ts`), and `note` is dropped when the chart's footnote already starts with it. Never give a block inside a card its own horizontal inset or a negative margin. |
+| `<Badge tone />` (`kit/badge.tsx`) | The pill badge (`win` ember fill, `tie`, `split`, `loss`, `info`); `VerdictChip` and `CompareChip` map their verdicts onto it. |
 | `shareImage(route)` | The share image record for a route (`usePageHead` uses it). |
 | `asset(file)`, `pictureOf(file)`, `mediaUrl(file)` | The manifest record, picture data, served URL. |
 

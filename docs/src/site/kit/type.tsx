@@ -1,5 +1,5 @@
 import type { VNodeChild } from '@pyreon/core'
-import { clampSize, display, font, text, weight } from '../theme'
+import { clampSize, display, font, radius, text, weight } from '../theme'
 import { el, tone, txt } from './bases'
 import { parseInline } from './inline'
 
@@ -111,7 +111,7 @@ export const StatusDot = el
   .theme(() => ({
     width: 8,
     height: 8,
-    borderRadius: 9999,
+    borderRadius: radius.pill,
     display: 'inline-block',
     marginRight: 8,
     verticalAlign: '1px',
@@ -180,7 +180,7 @@ export const StatusBadge = txt
     paddingRight: 7,
     paddingTop: 1,
     paddingBottom: 1,
-    borderRadius: 9999,
+    borderRadius: radius.pill,
     border: '1px solid',
     borderColor: tone(m, 'warn'),
     color: tone(m, 'warn'),
