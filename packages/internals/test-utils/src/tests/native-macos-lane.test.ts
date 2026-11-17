@@ -153,12 +153,18 @@ describe('macOS typecheck — device tests and inert lockfile changes', () => {
       'examples/native-counter-ios/ios/AppDelegate.swift',
       'examples/native-counter-android/app/src/main/kotlin/com/pyreon/MainActivity.kt',
       'examples/native-counter-ios/iosUITests/../src/Counter.tsx',
+    ])
+      expect(isDeviceTestSource(f), f).toBe(false)
+  })
+  it('only the device-test directories are exempt in a one-folder app', () => {
+    for (const f of [
       'examples/native-counter/src/Counter.tsx',
       'examples/native-counter/ios/Sources/App.swift',
       'examples/native-counter/ios/UITests/../Sources/App.swift',
       'examples/native-counter/android/app/src/main/kotlin/com/pyreon/MainActivity.kt',
-    ])
+    ]) {
       expect(isDeviceTestSource(f), f).toBe(false)
+    }
   })
 
   const lock = (csstype: string, bench = '1.0.0'): string => `{
@@ -234,11 +240,17 @@ describe('macOS typecheck — unknown or malformed input runs it (fail-closed)',
       'examples/native-counter-android/app/src/main/kotlin/build.gradle.kts.kt',
       'examples/native-counter-ios/build.gradle.kts',
       'examples/native-counter-android/gradle/../scripts/build.sh',
+    ])
+      expect(isAndroidGradleConfig(f), f).toBe(false)
+  })
+  it('the gradle exemption is exact in a one-folder app too', () => {
+    for (const f of [
       'examples/native-counter/ios/build.gradle.kts',
       'examples/native-counter/android/gradle/../../scripts/build-android.sh',
       'examples/native-counter/build.gradle.kts',
-    ])
+    ]) {
       expect(isAndroidGradleConfig(f), f).toBe(false)
+    }
   })
 })
 
