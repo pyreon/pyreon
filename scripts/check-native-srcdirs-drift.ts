@@ -123,13 +123,13 @@ export function compareSets(
  */
 export const ANDROID_PAIRS: readonly { host: string; shared: string }[] = [
   { host: 'native-tasks-android/app/build.gradle.kts', shared: 'native-tasks' },
-  { host: 'native-finance-android/app/build.gradle.kts', shared: 'native-finance' },
+  { host: 'native-finance/android/app/build.gradle.kts', shared: 'native-finance' },
 ]
 export const IOS_PAIRS: readonly { host: string; shared: string }[] = [
   { host: 'native-tasks-ios/project.yml', shared: 'native-tasks' },
-  { host: 'native-finance-ios/project.yml', shared: 'native-finance' },
+  { host: 'native-finance/ios/project.yml', shared: 'native-finance' },
   // Counter's shared source and package.json live in the iOS host itself.
-  { host: 'native-counter-ios/project.yml', shared: 'native-counter-ios' },
+  { host: 'native-counter/ios/project.yml', shared: 'native-counter' },
 ]
 
 /** Every pair path (relative to `examples/`) that does not exist. */

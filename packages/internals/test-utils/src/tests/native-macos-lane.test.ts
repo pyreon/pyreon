@@ -59,6 +59,15 @@ describe('macOS typecheck — what must NOT start it', () => {
     ]
     expect(mac(files).run).toBe(false)
   })
+  it('the same Gradle change in a one-folder app (native-<app>/android)', () => {
+    const files = [
+      'examples/native-counter/android/build.gradle.kts',
+      'examples/native-counter/android/app/build.gradle.kts',
+      'examples/native-counter/android/settings.gradle.kts',
+      'examples/native-counter/android/gradle.properties',
+    ]
+    expect(mac(files).run).toBe(false)
+  })
   it('an unrelated workflow bump (ci.yml, or another workflow pinning trufflehog)', () => {
     expect(mac(['.github/workflows/ci.yml']).run).toBe(false)
     expect(mac(['.github/workflows/secret-scan.yml']).run).toBe(false)
@@ -127,6 +136,11 @@ describe('macOS typecheck — device tests and inert lockfile changes', () => {
   it('an XCUITest / instrumented-test edit that still exists starts no macOS job', () => {
     expect(run([UITEST, KTTEST], [UITEST, KTTEST]).run).toBe(false)
   })
+  it('the same edit in a one-folder app (native-<app>/ios/UITests, native-<app>/android/…/androidTest)', () => {
+    const ui = 'examples/native-counter/ios/UITests/PyreonCounterUITests.swift'
+    const kt = 'examples/native-counter/android/app/src/androidTest/kotlin/com/pyreon/CounterInstrumentedTest.kt'
+    expect(run([ui, kt], [ui, kt]).run).toBe(false)
+  })
   it('a deleted device-test file still starts it (the directory may be gone)', () => {
     expect(run([UITEST], []).run).toBe(true)
   })
@@ -140,6 +154,16 @@ describe('macOS typecheck — device tests and inert lockfile changes', () => {
       'examples/native-counter-ios/ios/AppDelegate.swift',
       'examples/native-counter-android/app/src/main/kotlin/com/pyreon/MainActivity.kt',
       'examples/native-counter-ios/iosUITests/../src/Counter.tsx',
+    ]) {
+      expect(isDeviceTestSource(f), f).toBe(false)
+    }
+  })
+  it('only the device-test directories are exempt in a one-folder app', () => {
+    for (const f of [
+      'examples/native-counter/src/Counter.tsx',
+      'examples/native-counter/ios/Sources/App.swift',
+      'examples/native-counter/ios/UITests/../Sources/App.swift',
+      'examples/native-counter/android/app/src/main/kotlin/com/pyreon/MainActivity.kt',
     ]) {
       expect(isDeviceTestSource(f), f).toBe(false)
     }
@@ -218,6 +242,15 @@ describe('macOS typecheck — unknown or malformed input runs it (fail-closed)',
       'examples/native-counter-android/app/src/main/kotlin/build.gradle.kts.kt',
       'examples/native-counter-ios/build.gradle.kts',
       'examples/native-counter-android/gradle/../scripts/build.sh',
+    ]) {
+      expect(isAndroidGradleConfig(f), f).toBe(false)
+    }
+  })
+  it('the gradle exemption is exact in a one-folder app too', () => {
+    for (const f of [
+      'examples/native-counter/ios/build.gradle.kts',
+      'examples/native-counter/android/gradle/../../scripts/build-android.sh',
+      'examples/native-counter/build.gradle.kts',
     ]) {
       expect(isAndroidGradleConfig(f), f).toBe(false)
     }

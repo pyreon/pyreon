@@ -13,7 +13,7 @@
 //         hoisted out of the non-Composable `remember` lambda) +
 //         `remember { PyreonHaptics(hHaptic) }`; methods flow through.
 //
-// Behaviour is device-proven in examples/native-counter-ios's XCUITest
+// Behaviour is device-proven in examples/native-counter/ios's XCUITest
 // (the increment tap fires `haptics.impact("light")` — builds + runs +
 // does not crash; haptics have no observable UI, an honest-weak R4).
 // This spec locks the EMIT SHAPE + is the bisect target.

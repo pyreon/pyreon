@@ -9618,7 +9618,7 @@ function emitKotlinRouteDispatch(
       // When the target component declares a typed `params` prop, the
       // synthesized data class is constructed from the dict — a raw-Map
       // pass where `UserPageParam` is expected is a kotlinc type error
-      // (the bug that kept native-router-demo-android red).
+      // (the bug that kept native-router-demo/android red).
       const inv = kotlinRouteParamsInvocation(target.component, indent + 4)
       lines.push(
         `${innerPad}PyreonRouter.matchPath(currentPath, ${kotlinStr(route.path)}) != null -> {`,
