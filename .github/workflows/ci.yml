@@ -799,7 +799,7 @@ jobs:
           exit 1
       - name: Secrets Scan (trufflehog, verified only)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        uses: trufflesecurity/trufflehog@ea68ca03c865c5f324e86e849ced20ed3cf9dbbb # v3.99.8
+        uses: trufflesecurity/trufflehog@3bd2b5887eb0efb8fa18bfd1d296032924e4ffdc # v3.99.9
         with:
           # Pinned to the action's own release — the default is `latest`.
           version: 3.97.0
