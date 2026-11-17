@@ -1492,6 +1492,9 @@ jobs:
             # /webhost geolocation proof: give the emulator a fix (the test also accepts an answered-but-unavailable position).
             adb emu geo fix -122.0090 37.3349 || true
             gradle connectedCheck --stacktrace
+            # CRA-3: an uncaught JVM exception captured and reported on the next launch. Two `am instrument` runs against one
+            # install (the crash ends the run that causes it); connectedCheck above skips both phases.
+            bash ../scripts/crash-device-test.sh
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
 
       # Saved only when the EXACT key missed. The key used to end in
