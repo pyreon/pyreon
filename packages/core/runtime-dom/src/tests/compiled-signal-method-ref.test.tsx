@@ -156,9 +156,9 @@ for (const [name, compile] of BACKENDS) {
   return <div><button id="u" onClick={() => count.update((n) => n * 2)}>u</button><button id="t" onClick={count.trigger}>t</button>{() => { fired.set(fired.peek() + 1); return count() }}</div>`,
       )
       const before = exposed.fired!() as number
-      ;(root.querySelector('#t') as HTMLButtonElement).click()
+      root.querySelector<HTMLButtonElement>('#t')!.click()
       expect(exposed.fired!()).toBe(before + 1)
-      ;(root.querySelector('#u') as HTMLButtonElement).click()
+      root.querySelector<HTMLButtonElement>('#u')!.click()
       expect(exposed.count!()).toBe(2)
     })
 
@@ -182,7 +182,7 @@ for (const [name, compile] of BACKENDS) {
       // each <li> ref wrote the element, the last one wins
       expect(root.querySelectorAll('li')).toHaveLength(3)
       expect(exposed.last!()).toBe(root.querySelectorAll('li')[2])
-      ;(root.querySelector('ul') as HTMLUListElement).click()
+      root.querySelector<HTMLUListElement>('ul')!.click()
       expect(exposed.last!()).toBe(8)
     })
   })

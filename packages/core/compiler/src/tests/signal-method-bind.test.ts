@@ -40,6 +40,7 @@ try {
 // `sel` (createSelector) is not in the list: its `subscribe` is an own
 // closure, receiver-independent, so it stays as written.
 const SIGNALS = ['el', 'value', 'count', 'dbl']
+
 const METHODS = new Set([
   'set',
   'update',
@@ -91,6 +92,7 @@ const MODES = [
 ]
 
 type Run = (src: string, ssr: boolean) => string
+
 const BACKENDS: Array<[string, Run]> = [
   ['js', (src, ssr) => transformJSX_JS(src, 'c.tsx', { ssr }).code],
 ]
@@ -102,55 +104,60 @@ if (nativeTransform) {
 
 type Node = { type: string; [k: string]: unknown }
 
+const TYPE_LAYERS = [
+  'ParenthesizedExpression',
+  'TSAsExpression',
+  'TSNonNullExpression',
+  'TSSatisfiesExpression',
+]
+
+function unwrapLayers(n: Node): Node {
+  let cur = n
+  while (TYPE_LAYERS.includes(cur.type)) {
+    cur = cur.expression as Node
+  }
+
+  return cur
+}
+
+/** `node` is an uncalled, unbound `<signal>.<method>` member: its text, else null. */
+function detachedRef(node: Node, parent: Node | null): string | null {
+  if (node.type !== 'MemberExpression' || node.computed) return null
+  const obj = unwrapLayers(node.object as Node)
+  const prop = node.property as Node
+  if (obj.type !== 'Identifier' || !SIGNALS.includes(obj.name as string)) return null
+  if (!METHODS.has(prop.name as string)) return null
+  const called = parent?.type === 'CallExpression' && parent.callee === node
+  // `sig.set.bind(sig)`: this member is the object of a `.bind` member.
+  const bound =
+    parent?.type === 'MemberExpression' &&
+    (parent.property as Node).name === 'bind' &&
+    parent.object === node
+
+  return called || bound ? null : `${obj.name as string}.${prop.name as string}`
+}
+
 /** Detached `<signal>.<method>` references left in the emitted program. */
 function detachedMethodRefs(code: string): string[] {
   const { program, errors } = parseSync('out.tsx', code)
   expect(errors, code).toEqual([])
   const found: string[] = []
-  const unwrap = (n: Node): Node => {
-    let cur = n
-    while (
-      [
-        'ParenthesizedExpression',
-        'TSAsExpression',
-        'TSNonNullExpression',
-        'TSSatisfiesExpression',
-      ].includes(cur.type)
-    )
-      cur = cur.expression as Node
-    return cur
-  }
   const visit = (n: unknown, parent: Node | null): void => {
     if (!n || typeof n !== 'object') return
     if (Array.isArray(n)) {
       for (const x of n) visit(x, parent)
+
       return
     }
     const node = n as Node
-    if (node.type === 'MemberExpression' && !node.computed) {
-      const obj = unwrap(node.object as Node)
-      const prop = node.property as Node
-      if (
-        obj.type === 'Identifier' &&
-        SIGNALS.includes(obj.name as string) &&
-        METHODS.has(prop.name as string)
-      ) {
-        const called = parent?.type === 'CallExpression' && parent.callee === node
-        // `sig.set.bind(sig)`: this member is the object of a `.bind` member
-        // that is itself called with the same signal.
-        const bound =
-          parent?.type === 'MemberExpression' &&
-          (parent.property as Node).name === 'bind' &&
-          parent.object === node
-        if (!called && !bound) found.push(`${obj.name as string}.${prop.name as string}`)
-      }
-    }
+    const ref = detachedRef(node, parent)
+    if (ref) found.push(ref)
     for (const [k, v] of Object.entries(node)) {
-      if (k === 'parent') continue
-      if (v && typeof v === 'object') visit(v, node)
+      if (k !== 'parent' && v && typeof v === 'object') visit(v, node)
     }
   }
   visit(program, null)
+
   return found
 }
 
