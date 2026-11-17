@@ -2,7 +2,7 @@
  * A compiled template that is a COMPONENT's child (`_tpl(html, bind, 1)`) is created while the parent's JSX arguments
  * are evaluated — before the enclosing component's setup. It must not build (and so must not mount the components its
  * bind holds) until it is mounted: otherwise those components set up under the wrong owner and never see the context
- * the enclosing component provides. Seen as `examples/chat`'s routed page throwing "No QueryClient found" under a
+ * the enclosing component provides. Seen as the then-standalone `examples/chat`'s routed page throwing "No QueryClient found" under a
  * `<QueryClientProvider>` layout.
  */
 import type { VNodeChild } from '@pyreon/core'

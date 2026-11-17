@@ -152,6 +152,14 @@ const SUITES: Suite[] = [
       ...RENDER_CORE,
       'packages/fundamentals/flow/',
       'packages/fundamentals/dnd/',
+      // charts + virtual: their own specs here; query, url-state, toast and
+      // router: the live chat view (moved from the standalone examples/chat).
+      'packages/fundamentals/charts/',
+      'packages/fundamentals/virtual/',
+      'packages/fundamentals/query/',
+      'packages/fundamentals/url-state/',
+      'packages/fundamentals/toast/',
+      'packages/core/router/',
       'examples/app-showcase/',
       'e2e/app-showcase-',
     ],
@@ -209,20 +217,6 @@ const SUITES: Suite[] = [
       'packages/zero/zero/',
       'examples/hn-clone/',
       'e2e/hn-clone',
-    ],
-  },
-  {
-    name: 'chat',
-    script: 'test:e2e:chat',
-    triggers: [
-      ...RENDER_CORE,
-      'packages/fundamentals/query/',
-      'packages/fundamentals/url-state/',
-      'packages/fundamentals/toast/',
-      'packages/fundamentals/state-tree/',
-      'packages/fundamentals/hooks/',
-      'examples/chat/',
-      'e2e/chat',
     ],
   },
   {

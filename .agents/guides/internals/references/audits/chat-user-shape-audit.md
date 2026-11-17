@@ -1,5 +1,7 @@
 # Chat audit — walls hit
 
+> Archived audit record. The standalone `examples/chat` app it audited was folded into `examples/app-showcase` (the live chat view, `src/routes/chat/live/[id].tsx`, backed by `src/sections/chat/data/devServer.ts`); its e2e coverage moved to `e2e/app-showcase-chat-live.spec.ts`. Paths below that point into `examples/chat/` refer to the app as it was; read it with `git show 6f6f9f5e4:examples/chat/<file>`.
+
 Third user-shape audit (T4.3). Following hn-clone (PR #960, W1-W17) and
 kanban (PR #982, W18-W23). Domain: real-time chat with live SSE stream
 + virtualized message list — the streaming-primitive surface area no

@@ -1,6 +1,6 @@
 {
   "description": "Readable ratchet — `readable` style findings per (file, rule) may only DECREASE, and a file not listed here must have none. Checked by `bun scripts/check-pyreon-lint-ratchet.ts` (validate-fast + CI). Fix new findings with `bunx pyreon-lint --fix <file>` (the spacing rules are autofixable), then tighten with `bun scripts/check-readable-ratchet.ts --update`. Never raise a count to absorb a finding.",
-  "total": 11562,
+  "total": 11561,
   "files": {
     "packages/core/compiler/src/charts-migration.ts": {"pyreon/padding-before-return":2},
     "packages/core/compiler/src/content-audit.ts": {"pyreon/padding-before-return":13},
@@ -2710,7 +2710,6 @@
     "packages/zero/zero-content/src/blog/schema.ts": {"pyreon/padding-before-return":2},
     "packages/zero/zero-content/src/blog/seo.ts": {"pyreon/padding-before-return":4},
     "packages/zero/zero-content/src/components/APICard.tsx": {"pyreon/padding-before-return":1},
-    "packages/zero/zero-content/src/components/Callout.tsx": {"pyreon/padding-before-return":1},
     "packages/zero/zero-content/src/components/CodeBlock.tsx": {"pyreon/padding-between-component-sections":1},
     "packages/zero/zero-content/src/components/CompatMatrix.tsx": {"pyreon/padding-before-return":2},
     "packages/zero/zero-content/src/components/Example.tsx": {"pyreon/padding-before-return":4},

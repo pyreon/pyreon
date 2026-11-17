@@ -2,7 +2,7 @@
 
 Every example is a private workspace package (`@pyreon/example-*`). The top level holds the apps worth reading, the native apps and the benchmark harnesses; `compat/` holds one app per framework compat layer, and `fixtures/` holds apps that exist for a test suite and are not written to be read. This index lists every one. Code that needs an example's directory goes through `scripts/example-dirs.ts`, which fails on a missing example.
 
-New to Pyreon? Scaffold an app with `bun create zero`, then read [app-showcase](./app-showcase/), then the reference app that matches your render mode: [hn-clone](./hn-clone/) (SSG), [kanban](./kanban/) or [chat](./chat/) (SPA), [islands-showcase](./islands-showcase/) (islands).
+New to Pyreon? Scaffold an app with `bun create zero`, then read [app-showcase](./app-showcase/), then the reference app that matches your render mode: [hn-clone](./hn-clone/) (SSG), [kanban](./kanban/) (SPA), [islands-showcase](./islands-showcase/) (islands).
 
 Run any app from the repo root after `bun install`:
 
@@ -17,10 +17,9 @@ Examples are never published and never versioned: `.changeset/config.json` ignor
 
 | Example | What it shows |
 | --- | --- |
-| [app-showcase](./app-showcase/) | One Zero app with every package in real feature slices (blog, shop, kanban, chat, flow, …) |
+| [app-showcase](./app-showcase/) | One Zero app with every package in real feature slices (blog, shop, kanban, chat, flow, …); `/chat/live` is the chat against a real server (SSE stream, optimistic send) |
 | [hn-clone](./hn-clone/) | SSG reference app: a read-heavy Hacker News reader |
 | [kanban](./kanban/) | SPA reference app: write-heavy CRUD with state-tree, dnd and i18n |
-| [chat](./chat/) | SPA reference app: channels, a live SSE stream, a virtualized list, optimistic send |
 | [collab-board](./collab-board/) | Real-time collaboration with `@pyreon/sync` |
 | [islands-showcase](./islands-showcase/) | `@pyreon/server` islands, one per hydration strategy |
 | [ui-showcase](./ui-showcase/) | Every `@pyreon/ui-components` component |

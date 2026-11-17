@@ -1,6 +1,6 @@
 {
   "description": "Readable oxlint ratchet — findings of `@pyreon/lint/oxlint/readable.json` (via scripts/oxlint-readable.jsonc) per (file, rule) may only DECREASE, and a file not listed here must have none. Checked by `bun scripts/check-readable-oxlint-ratchet.ts` (validate-fast + CI). Split the function, or fix with `bunx oxlint -c scripts/oxlint-readable.jsonc --fix <file>` for curly / newline-after-import / else-return; then tighten with `--update`. Never raise a count to absorb a finding.",
-  "total": 3388,
+  "total": 3384,
   "files": {
     "contrib/moltar/pyreon/bench-vs-typia.mjs": {"eslint(complexity)":1,"eslint(no-else-return)":4},
     "docs/scripts/gen-examples-gallery.ts": {"eslint(curly)":2},
@@ -84,8 +84,6 @@
     "examples/benchmark/src/impl/vanilla.ts": {"eslint(max-lines-per-function)":1},
     "examples/benchmark/src/impl/vue-vapor.ts": {"eslint(max-lines-per-function)":1},
     "examples/benchmark/src/impl/vue.ts": {"eslint(max-lines-per-function)":1},
-    "examples/chat/src/routes/channels/[id].tsx": {"eslint(max-lines-per-function)":1},
-    "examples/chat/vite.config.ts": {"eslint(max-lines-per-function)":1},
     "examples/fixtures/cpa/app/src/routes/index.tsx": {"eslint(max-lines-per-function)":1},
     "examples/fixtures/perf-dashboard/src/components/ReactivityStressSection.tsx": {"eslint(curly)":1},
     "examples/fixtures/playground/src/entry-client.ts": {"import(newline-after-import)":1},
@@ -1524,7 +1522,7 @@
     "scripts/native-example-sweep.ts": {"eslint(complexity)":1},
     "scripts/native-inputs-fingerprint.ts": {"eslint(curly)":2},
     "scripts/native-plugin-surface.ts": {"eslint(complexity)":1,"eslint(curly)":8},
-    "scripts/native-surface-touched.ts": {"eslint(complexity)":1,"eslint(curly)":8},
+    "scripts/native-surface-touched.ts": {"eslint(complexity)":1,"eslint(curly)":6},
     "scripts/pre-push-plan.ts": {"eslint(complexity)":1,"eslint(curly)":2},
     "scripts/pre-push.ts": {"eslint(complexity)":1,"eslint(max-lines-per-function)":1},
     "scripts/set-ci-apt-mirror.ts": {"eslint(curly)":1},

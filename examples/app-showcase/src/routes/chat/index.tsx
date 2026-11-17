@@ -1,4 +1,5 @@
 import { onMount, onUnmount } from '@pyreon/core'
+import { RouterLink } from '@pyreon/router'
 import { Toaster } from '@pyreon/toast'
 import { ChannelList } from '../../sections/chat/ChannelList'
 import { MessageComposer } from '../../sections/chat/MessageComposer'
@@ -36,9 +37,9 @@ import { useChat } from '../../sections/chat/store'
  *   • @pyreon/styler   — every visual element is a styled component
  *
  * The mock event bus replaces a real WebSocket / SSE connection so the
- * demo runs entirely client-side. Swapping in a real bus is a matter
- * of replacing `chatBus.send` / `chatBus.subscribe` with the actual
- * transport — the route shape stays unchanged.
+ * demo runs entirely client-side. /chat/live/:id is the same chat against
+ * a real server (history over HTTP, an SSE stream, an optimistic send
+ * mutation, a URL-synced search).
  */
 export default function ChatRoute() {
   const chat = useChat()
@@ -84,6 +85,9 @@ export default function ChatRoute() {
               )
             }}
           </ChatHeaderText>
+          <RouterLink to="/chat/live/general" data-testid="chat-live-link">
+            Live server →
+          </RouterLink>
           {() => {
             const state = connectionMachine() as ConnectionState
             return (
