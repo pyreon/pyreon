@@ -1377,6 +1377,20 @@ fn is_active_signal(name: &str, ctx: &Ctx) -> bool {
     ctx.signal_vars.contains(name) && !ctx.shadowed_signals.contains(name)
 }
 
+/// A bare identifier the Plain Mode pre-pass wrote for `signalOf(x)`
+/// (`SIGNAL_OF_MARK` directly before it): the signal ITSELF, never a read.
+/// Every bare-signal-as-read site goes through `is_signal_read`. Mirrors
+/// `isIdentityRef` in jsx.ts.
+fn is_identity_ref(start: u32, ctx: &Ctx) -> bool {
+    ctx.source[..start as usize].ends_with(plain::SIGNAL_OF_MARK)
+}
+
+/// A bare identifier that READS an active signal (not a `signalOf` identity).
+/// Mirrors `isSignalRead` in jsx.ts.
+fn is_signal_read(id: &IdentifierReference, ctx: &Ctx) -> bool {
+    is_active_signal(id.name.as_str(), ctx) && !is_identity_ref(id.span.start, ctx)
+}
+
 /// `sig()` — a zero-arg call of an active signal/computed — returns the callee
 /// name. Mirrors jsx.ts `bareSignalCallee`.
 fn bare_signal_callee(expr: &Expression, ctx: &Ctx) -> Option<String> {
@@ -2085,7 +2099,7 @@ fn is_dynamic_impl(expr: &Expression, ctx: &mut Ctx) -> bool {
             return true;
         }
         // Signal variable reference — treated as dynamic (will be auto-called)
-        if is_active_signal(id.name.as_str(), ctx) {
+        if is_signal_read(id, ctx) {
             return true;
         }
     }
@@ -2227,9 +2241,7 @@ fn has_fixed_deps(expr: &Expression, cond: bool, ctx: &mut Ctx) -> bool {
             if !is_dynamic(expr, ctx) {
                 return true;
             }
-            if is_active_signal(id.name.as_str(), ctx)
-                && !ctx.prop_derived_vars.contains_key(id.name.as_str())
-            {
+            if is_signal_read(id, ctx) && !ctx.prop_derived_vars.contains_key(id.name.as_str()) {
                 return !cond;
             }
             false
@@ -3600,7 +3612,7 @@ fn slice_expr(expr: &Expression, ctx: &mut Ctx) -> String {
 /// pre-gate; `collect_signal_idents` computes its own (wider) reachability.
 fn references_signal_var(expr: &Expression, ctx: &Ctx) -> bool {
     if let Expression::Identifier(id) = expr {
-        if is_active_signal(id.name.as_str(), ctx) {
+        if is_signal_read(id, ctx) {
             return true;
         }
     }
@@ -4064,8 +4076,7 @@ fn collect_signal_idents(
     }
 
     if let Expression::Identifier(id) = expr {
-        if is_active_signal(id.name.as_str(), ctx) && !shadows.iter().any(|n| n == id.name.as_str())
-        {
+        if is_signal_read(id, ctx) && !shadows.iter().any(|n| n == id.name.as_str()) {
             out.push((id.span.start, id.span.end));
         }
         return;
@@ -9416,7 +9427,7 @@ fn try_direct_signal_ref(
     // `{count()}` are the same read); see the JS twin.
     if allow_bare_signal {
         if let Expression::Identifier(id) = inner {
-            if is_active_signal(id.name.as_str(), ctx) {
+            if is_signal_read(id, ctx) {
                 return Some((id.name.to_string(), false, None));
             }
         }

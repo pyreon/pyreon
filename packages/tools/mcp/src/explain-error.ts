@@ -24,6 +24,7 @@
  */
 
 import { detectPyreonPatterns, detectReactPatterns } from '@pyreon/compiler/analyze'
+import { describeUnreadable, prepareSnippet } from './snippet-input'
 import { type AntiPatternEntry } from './anti-patterns'
 
 /**
@@ -233,6 +234,33 @@ function formatTrace(trace: TraceEntry[]): string {
 }
 
 /**
+ * The "static analysis" section for the failing component's source. Source
+ * the parser cannot read gets the reason, never "no anti-patterns detected".
+ */
+function staticAnalysisSection(componentSource: string, fname: string): string {
+  const prepared = prepareSnippet(componentSource, fname)
+  const source = prepared.kind === 'ok' || prepared.kind === 'syntax-error' ? prepared.code : ''
+  const diags =
+    source === ''
+      ? []
+      : [...detectReactPatterns(source, fname), ...detectPyreonPatterns(source, fname)].sort(
+          (a, b) => a.line - b.line,
+        )
+  const list = diags
+    .map((d) => `- **${d.code}** (line ${d.line}): ${d.message}\n  Fix: \`${d.suggested}\``)
+    .join('\n')
+
+  if (prepared.kind !== 'ok') {
+    const partial = diags.length > 0 ? `\n\nIn the part that did parse:\n${list}` : ''
+
+    return `## Static analysis\n\n${describeUnreadable(prepared, fname, 'checked for anti-patterns')}${partial}`
+  }
+  if (diags.length > 0) return `## Static issues in the component source (${diags.length})\n\n${list}`
+
+  return `## Static analysis\n\nNo Pyreon/React anti-patterns detected in the supplied component source. The bug is likely logic-level or data-shape, not a known footgun — focus on the reactive run-up above.`
+}
+
+/**
  * Builds the markdown dossier. Pure (no IO) — the caller injects the
  * anti-pattern catalogue + optional component source. Returns the text
  * the MCP tool hands back; the consuming agent reasons over it.
@@ -273,25 +301,7 @@ export function buildErrorDossier(report: ErrorReport, opts: DossierOptions = {}
 
   // 3. Static analysis of the failing component (optional)
   if (opts.componentSource) {
-    const fname = `${report.component ?? 'component'}.tsx`
-    const diags = [
-      ...detectReactPatterns(opts.componentSource, fname),
-      ...detectPyreonPatterns(opts.componentSource, fname),
-    ].sort((a, b) => a.line - b.line)
-    if (diags.length > 0) {
-      sections.push(
-        `## Static issues in the component source (${diags.length})\n\n${diags
-          .map(
-            (d) =>
-              `- **${d.code}** (line ${d.line}): ${d.message}\n  Fix: \`${d.suggested}\``,
-          )
-          .join('\n')}`,
-      )
-    } else {
-      sections.push(
-        `## Static analysis\n\nNo Pyreon/React anti-patterns detected in the supplied component source. The bug is likely logic-level or data-shape, not a known footgun — focus on the reactive run-up above.`,
-      )
-    }
+    sections.push(staticAnalysisSection(opts.componentSource, `${report.component ?? 'component'}.tsx`))
   }
 
   // 4. Correlated anti-pattern catalogue entries

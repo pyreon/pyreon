@@ -52,7 +52,8 @@ export interface Finding {
   line: number
   column: number
   code: string
-  source: 'pyreon' | 'react'
+  /** `syntax`: the file does not parse, so the detectors cannot vouch for it. */
+  source: 'pyreon' | 'react' | 'syntax'
   message: string
   suggested: string
   fixable: boolean
@@ -126,9 +127,50 @@ function resolveTargets(opts: CheckOptions): { files: string[]; fromGit: boolean
   return { files: gitChangedFiles(opts.cwd), fromGit: true }
 }
 
+type Analyze = typeof import('@pyreon/compiler/analyze')
+
+/** Both detector sets' findings for one file, each behind its cheap pre-filter. */
+function detectFindings(analyze: Analyze, code: string, file: string): Finding[] {
+  const out: Finding[] = []
+  if (analyze.hasPyreonPatterns(code)) {
+    for (const d of analyze.detectPyreonPatterns(code, file)) {
+      out.push({ file, line: d.line, column: d.column, code: d.code, source: 'pyreon', message: d.message, suggested: d.suggested, fixable: d.fixable })
+    }
+  }
+  if (analyze.hasReactPatterns(code)) {
+    for (const d of analyze.detectReactPatterns(code, file)) {
+      out.push({ file, line: d.line, column: d.column, code: d.code, source: 'react', message: d.message, suggested: d.suggested, fixable: d.fixable })
+    }
+  }
+
+  return out
+}
+
+/** The finding for a file that does not parse (its first syntax error), or null. */
+function syntaxErrorFinding(
+  file: string,
+  errors: ReadonlyArray<{ message: string; line: number; column: number }>,
+): Finding | null {
+  const first = errors[0]
+  if (!first) return null
+  const more = errors.length - 1
+  const moreText = more > 0 ? ` (${more} more syntax error${more === 1 ? '' : 's'} in this file)` : ''
+
+  return {
+    file,
+    line: first.line,
+    column: first.column,
+    code: 'syntax-error',
+    source: 'syntax',
+    message: `${first.message}${moreText} The file does not parse, so the detectors cannot vouch for it.`,
+    suggested: 'fix the syntax error, then run pyreon check again',
+    fixable: false,
+  }
+}
+
 export async function check(opts: CheckOptions): Promise<number> {
-  const { detectPyreonPatterns, hasPyreonPatterns, detectReactPatterns, hasReactPatterns, migratePyreonCode, migrateReactCode } =
-    await import('@pyreon/compiler/analyze')
+  const analyze = await import('@pyreon/compiler/analyze')
+  const { migratePyreonCode, migrateReactCode, findSyntaxErrors } = analyze
 
   const started = performance.now()
   const { files, fromGit } = resolveTargets(opts)
@@ -154,7 +196,14 @@ export async function check(opts: CheckOptions): Promise<number> {
     }
     const rel = relative(opts.cwd, abs) || abs
 
-    if (opts.fix) {
+    // The detectors parse with a recovering parser, so a file that does not
+    // parse yields no findings and would pass. Its first syntax error is a
+    // finding instead, and `--fix` leaves it alone (a codemod over a mangled
+    // tree can corrupt it). The detectors still run on what did parse.
+    const syntaxError = syntaxErrorFinding(rel, findSyntaxErrors(code, rel))
+    if (syntaxError) findings.push(syntaxError)
+
+    if (opts.fix && !syntaxError) {
       const p = migratePyreonCode(code, rel)
       const r = migrateReactCode(p.code, rel)
       const fixedCode = r.code
@@ -173,16 +222,7 @@ export async function check(opts: CheckOptions): Promise<number> {
     }
 
     // Re-detect on the (possibly fixed) code so `--fix` reports only what remains.
-    if (hasPyreonPatterns(code)) {
-      for (const d of detectPyreonPatterns(code, rel)) {
-        findings.push({ file: rel, line: d.line, column: d.column, code: d.code, source: 'pyreon', message: d.message, suggested: d.suggested, fixable: d.fixable })
-      }
-    }
-    if (hasReactPatterns(code)) {
-      for (const d of detectReactPatterns(code, rel)) {
-        findings.push({ file: rel, line: d.line, column: d.column, code: d.code, source: 'react', message: d.message, suggested: d.suggested, fixable: d.fixable })
-      }
-    }
+    findings.push(...detectFindings(analyze, code, rel))
   }
 
   findings.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column)
