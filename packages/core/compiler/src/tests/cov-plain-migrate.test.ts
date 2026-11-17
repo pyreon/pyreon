@@ -54,7 +54,8 @@ describe('migrateToPlain — decline paths', () => {
     const out = migrateToPlain(`${SIG}const b = signal(1)\nexport const dd = b.direct\n`)
     expect(codes(out)).toEqual([])
     expect(out.code).toContain('export const dd = signalOf(b).direct')
-    expect(transformPlain(out.code!, 'x.ts')!.code).toContain('export const dd = b.direct')
+    // The identity reference carries the JSX pass's do-not-auto-call mark.
+    expect(transformPlain(out.code!, 'x.ts')!.code).toContain('export const dd = /*@pyreon:signal*/b.direct')
   })
 
   it('an OPTIONAL call `x?.()` is not a plain read', () => {

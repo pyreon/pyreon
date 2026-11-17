@@ -36,7 +36,8 @@ const RATCHET: PerFileRatchet = {
     'per (file, rule) may only DECREASE, and a file not listed here must have none. Checked by ' +
     '`bun scripts/check-readable-oxlint-ratchet.ts` (validate-fast + CI). Split the function, or fix with ' +
     '`bunx oxlint -c scripts/oxlint-readable.jsonc --fix <file>` for curly / newline-after-import / else-return; ' +
-    'then tighten with `--update`. Never raise a count to absorb a finding.',
+    'An ordinary PR does not edit this file; `--update` only tightens. Raising needs `--allow-raise` and is for a ' +
+    'file that predates the ratchet. The file is generated: never edit or merge it by hand.',
   updateCommand: 'bun scripts/check-readable-oxlint-ratchet.ts --update',
   fixHint: [
     'See them: `bun run lint:readable`. Braces, the blank line after imports and `else` after `return`',

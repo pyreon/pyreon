@@ -86,7 +86,7 @@ This is the tool's response, unedited:
 ```text
 Found 5 issues:
 
-1. **props-destructured** (line 4)
+1. **props-destructured** (line 4, column 26)
    Destructuring props at the component signature captures the values ONCE
    during setup — subsequent signal writes in the parent do not update the
    destructured locals. Access `props.x` directly, or use
@@ -95,20 +95,20 @@ Found 5 issues:
    Fix: `(props: Props) => /* read props.x directly */`
    Auto-fixable: no
 
-2. **class-name-prop** (line 9)
+2. **class-name-prop** (line 9, column 14)
    'className' is a React JSX attribute. Use 'class' in Pyreon (standard HTML).
    Current: `className="users"`
    Fix: `class="users"`
    Auto-fixable: yes
 
-3. **on-change-input** (line 11)
+3. **on-change-input** (line 11, column 30)
    onChange on <input> fires on blur in Pyreon (native DOM behavior). For
    keypress-by-keypress updates, use onInput.
    Current: `onChange={(e) => query(e.target.value)}`
    Fix: `onInput={(e) => query(e.target.value)}`
    Auto-fixable: yes
 
-4. **signal-write-as-call** (line 11)
+4. **signal-write-as-call** (line 11, column 47)
    `query(value)` does NOT write the signal — `signal()` is the read-only
    callable surface and ignores its arguments. Use `query.set(value)` to
    assign or `query.update((prev) => …)` to derive from the previous value.
@@ -118,12 +118,11 @@ Found 5 issues:
    Fix: `query.set(e.target.value)`
    Auto-fixable: yes
 
-5. **for-missing-by** (line 12)
-   <For each={...}> requires a `by` prop so the keyed reconciler can
-   preserve item identity across reorders. Without `by`, every update
-   remounts the full list.
+5. **for-missing-by** (line 12, column 7)
+   <For each={...}> requires a `by` prop: it keys the rows, and a <For>
+   without one throws when it mounts.
    Current: `<For each={visible}>`
-   Fix: `<For each={items} by={(item) => item.id}>`
+   Fix: `<For each={visible} by={(item) => item.id}>`
    Auto-fixable: no
 ```
 
@@ -228,7 +227,7 @@ export function UserList(props: { users: User[]; title: string }) {
       <h2>{props.title}</h2>
       <input value={query()} onInput={(e) => query.set(e.currentTarget.value)} />
       <ul>
-        <For each={visible} by={(u) => u.id}>{(u) => <li>{u.name}</li>}</For>
+        <For each={visible()} by={(u) => u.id}>{(u) => <li>{u.name}</li>}</For>
       </ul>
     </section>
   )
@@ -258,7 +257,7 @@ We could have written this post with five clean catches and stopped. We publish 
 - **No measured effect on assistants yet.** We have not run an evaluation of how often assistants write correct Pyreon with and without the MCP server. This post shows what the tools return. It does not show that a given model calls them or follows them. If you run that comparison, we want to see it.
 - **Static detection has edges.** The detectors run without a type checker and without cross-file data flow (see the sixth bug). They also need context: a fragment that leaves out `const query = signal('')` cannot tell a signal write from a function call, so `query(value)` in that fragment comes back clean. Pass whole files.
 - **The catalog is finite.** A mistake outside the 21 Pyreon codes and the React set passes.
-- **Wording moves between releases.** The output above was re-run on `main` in November 2026 (0.53.0). Codes are stable; message text can change.
+- **Wording moves between releases.** The output above was re-run on `main` in November 2026. Codes are stable; message text can change.
 - **The Lens needs an LSP setup.** The VS Code extension lives in the repo at `packages/tools/lint/vscode` and is installed by symlink; it is not on the Marketplace yet. Other editors register `pyreon-lint --lsp` by hand.
 - **Pyreon is pre-1.0.** An API the assistant learned can change in a minor release, which is why `get_changelog` exists: the assistant can read what changed between your installed version and the latest.
 

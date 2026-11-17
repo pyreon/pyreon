@@ -20,6 +20,27 @@
 
 import XCTest
 
+private extension XCUIElement {
+    /// `waitForExistence(timeout:)` with the same contract and none of its
+    /// flat cost: true as soon as the element exists, false at the deadline.
+    ///
+    /// XCTest evaluates that wait's predicate for the FIRST time one second
+    /// after the call, so an element that is already on screen still costs
+    /// 1.03 s. In one CI job (2026-11-17) 427 of 456 such waits were answered
+    /// by that first poll and took 487 s between them. This asks at once, then
+    /// ten times a second. Held for every suite by
+    /// `ios-device-test-harness.test.ts`.
+    func waitToExist(timeout: TimeInterval) -> Bool {
+        if exists { return true }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            if exists { return true }
+        }
+        return false
+    }
+}
+
 final class PyreonFinanceUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -48,7 +69,7 @@ final class PyreonFinanceUITests: XCTestCase {
     private func signOutIfSignedIn(_ app: XCUIApplication) {
         guard app.otherElements["dashboard-page"].exists else { return }
         app.buttons["dash-logout"].tap()
-        _ = app.otherElements["login-page"].waitForExistence(timeout: 15)
+        _ = app.otherElements["login-page"].waitToExist(timeout: 15)
     }
 
     /// Launch, and guarantee we start on the LOGIN screen.
@@ -71,14 +92,14 @@ final class PyreonFinanceUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         XCTAssertTrue(
-            app.otherElements["login-page"].waitForExistence(timeout: 30)
+            app.otherElements["login-page"].waitToExist(timeout: 30)
                 || app.otherElements["dashboard-page"].exists,
             "App did not render either screen", file: file, line: line,
         )
-        if app.otherElements["dashboard-page"].waitForExistence(timeout: 3) {
+        if app.otherElements["dashboard-page"].waitToExist(timeout: 3) {
             app.buttons["dash-logout"].tap()
             XCTAssertTrue(
-                app.otherElements["login-page"].waitForExistence(timeout: 15),
+                app.otherElements["login-page"].waitToExist(timeout: 15),
                 "Could not sign out of a rehydrated session", file: file, line: line,
             )
         }
@@ -93,11 +114,11 @@ final class PyreonFinanceUITests: XCTestCase {
         let app = launchOnLoginScreen()
 
         XCTAssertTrue(
-            app.otherElements["login-page"].waitForExistence(timeout: 30),
+            app.otherElements["login-page"].waitToExist(timeout: 30),
             "Login page did not render — the RouterProvider's initial route did not mount"
         )
         XCTAssertTrue(
-            app.staticTexts["auth-status"].waitForExistence(timeout: 10),
+            app.staticTexts["auth-status"].waitToExist(timeout: 10),
             "auth-status text missing — the useAuth<User> container did not emit"
         )
         XCTAssertEqual(
@@ -114,13 +135,13 @@ final class PyreonFinanceUITests: XCTestCase {
         let app = launchOnLoginScreen()
 
         let field = app.textFields["login-username"]
-        XCTAssertTrue(field.waitForExistence(timeout: 30), "Username field did not render")
+        XCTAssertTrue(field.waitToExist(timeout: 30), "Username field did not render")
         field.tap()
         field.typeText("ab")
         app.buttons["login-submit"].tap()
 
         XCTAssertTrue(
-            app.staticTexts["login-error"].waitForExistence(timeout: 10),
+            app.staticTexts["login-error"].waitToExist(timeout: 10),
             "Expected the useForm validator's message — a <3-character username should be rejected"
         )
         XCTAssertFalse(
@@ -140,13 +161,13 @@ final class PyreonFinanceUITests: XCTestCase {
         let app = launchOnLoginScreen()
 
         let field = app.textFields["login-username"]
-        XCTAssertTrue(field.waitForExistence(timeout: 30), "Username field did not render")
+        XCTAssertTrue(field.waitToExist(timeout: 30), "Username field did not render")
         field.tap()
         field.typeText("alice")
         app.buttons["login-submit"].tap()
 
         XCTAssertTrue(
-            app.otherElements["dashboard-page"].waitForExistence(timeout: 15),
+            app.otherElements["dashboard-page"].waitToExist(timeout: 15),
             "Did not reach the dashboard — useAuth.beginSignIn / the store flag / the "
                 + "route guard / navigate() broke somewhere in the chain"
         )
@@ -169,17 +190,17 @@ final class PyreonFinanceUITests: XCTestCase {
         let app = launchOnLoginScreen()
 
         let field = app.textFields["login-username"]
-        XCTAssertTrue(field.waitForExistence(timeout: 30), "Username field did not render")
+        XCTAssertTrue(field.waitToExist(timeout: 30), "Username field did not render")
         field.tap()
         field.typeText("alice")
         app.buttons["login-submit"].tap()
 
         XCTAssertTrue(
-            app.otherElements["dashboard-page"].waitForExistence(timeout: 15),
+            app.otherElements["dashboard-page"].waitToExist(timeout: 15),
             "Did not reach the dashboard"
         )
         XCTAssertTrue(
-            app.descendants(matching: .any)["spend-pie"].waitForExistence(timeout: 10),
+            app.descendants(matching: .any)["spend-pie"].waitToExist(timeout: 10),
             "PieChart did not render — the @pyreon/charts lowering or the "
                 + "PyreonPieChart runtime view broke on-device"
         )
@@ -194,12 +215,12 @@ final class PyreonFinanceUITests: XCTestCase {
         let app = launchOnLoginScreen()
 
         let field = app.textFields["login-username"]
-        XCTAssertTrue(field.waitForExistence(timeout: 30), "Username field did not render")
+        XCTAssertTrue(field.waitToExist(timeout: 30), "Username field did not render")
         field.tap()
         field.typeText("alice")
         app.buttons["login-submit"].tap()
         XCTAssertTrue(
-            app.otherElements["dashboard-page"].waitForExistence(timeout: 15),
+            app.otherElements["dashboard-page"].waitToExist(timeout: 15),
             "Did not reach the dashboard"
         )
 
@@ -240,17 +261,17 @@ final class PyreonFinanceUITests: XCTestCase {
         let app = launchOnLoginScreen()
 
         let field = app.textFields["login-username"]
-        XCTAssertTrue(field.waitForExistence(timeout: 30), "Username field did not render")
+        XCTAssertTrue(field.waitToExist(timeout: 30), "Username field did not render")
         field.tap()
         field.typeText("alice")
         app.buttons["login-submit"].tap()
         XCTAssertTrue(
-            app.otherElements["dashboard-page"].waitForExistence(timeout: 15),
+            app.otherElements["dashboard-page"].waitToExist(timeout: 15),
             "Did not reach the dashboard"
         )
 
         let desc = app.textFields["new-tx-desc"]
-        XCTAssertTrue(desc.waitForExistence(timeout: 10), "Add-transaction field did not render")
+        XCTAssertTrue(desc.waitToExist(timeout: 10), "Add-transaction field did not render")
         desc.tap()
         desc.typeText("Coffee")
         let amount = app.textFields["new-tx-amount"]
@@ -314,12 +335,12 @@ final class PyreonFinanceUITests: XCTestCase {
         let app = launchOnLoginScreen()
 
         let field = app.textFields["login-username"]
-        XCTAssertTrue(field.waitForExistence(timeout: 15), "Username field did not render")
+        XCTAssertTrue(field.waitToExist(timeout: 15), "Username field did not render")
         field.tap()
         field.typeText("alice")
         app.buttons["login-submit"].tap()
         XCTAssertTrue(
-            app.otherElements["dashboard-page"].waitForExistence(timeout: 15),
+            app.otherElements["dashboard-page"].waitToExist(timeout: 15),
             "Sign-in did not reach the dashboard"
         )
 
@@ -327,7 +348,7 @@ final class PyreonFinanceUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["dashboard-page"].waitForExistence(timeout: 20),
+            app.otherElements["dashboard-page"].waitToExist(timeout: 20),
             "Session did NOT rehydrate after a cold relaunch — the launch read of "
                 + "PyreonSecureStorage, the auth-container restore, the store flag, or "
                 + "the route guard broke somewhere in the chain"
@@ -335,18 +356,18 @@ final class PyreonFinanceUITests: XCTestCase {
 
         app.buttons["dash-logout"].tap()
         XCTAssertTrue(
-            app.otherElements["login-page"].waitForExistence(timeout: 15),
+            app.otherElements["login-page"].waitToExist(timeout: 15),
             "Sign-out did not return to the login screen"
         )
 
         app.terminate()
         app.launch()
         XCTAssertTrue(
-            app.otherElements["login-page"].waitForExistence(timeout: 20),
+            app.otherElements["login-page"].waitToExist(timeout: 20),
             "Login screen did not render after signing out and relaunching"
         )
         XCTAssertFalse(
-            app.otherElements["dashboard-page"].waitForExistence(timeout: 3),
+            app.otherElements["dashboard-page"].waitToExist(timeout: 3),
             "A signed-OUT session rehydrated — secrets.remove did not clear the "
                 + "persisted token, so logout leaks the session across launches"
         )
