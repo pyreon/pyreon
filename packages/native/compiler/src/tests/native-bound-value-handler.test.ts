@@ -21,15 +21,18 @@ function App() {
   const edits = signal(0)
   return (<Stack>${jsx}</Stack>)
 }`
+
 const swift = (jsx: string) => {
   const r = transform(app(jsx), { target: 'swift' })
   expect(r.warnings).toEqual([])
   return r.code
 }
+
 const kotlin = (jsx: string) => transform(app(jsx), { target: 'kotlin' }).code
 
 const FIELD = '<Field value={draft} onChangeText={(t) => { draft.set(t.toUpperCase()); edits.set(edits() + 1) }} />'
 const TOGGLE = '<Toggle value={on} onChange={(v) => { on.set(v); edits.set(edits() + 1) }} />'
+
 const TABS =
   '<Tabs value={tab} onChange={(v) => { tab.set(v); edits.set(edits() + 1) }}><Tab value="a" label="A"><Text>a</Text></Tab></Tabs>'
 

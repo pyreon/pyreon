@@ -8003,6 +8003,7 @@ function swiftProjectedSignal(value: ExprIR, handler: ExprIR | undefined): strin
   if (handler.kind !== 'arrow') return called ? undefined : name
   if (handler.params.length !== 1) return undefined
   const body = stripSwiftClosureBody(emitSwiftAction(handler, 0))
+
   return body === `${swiftIdent(name)} = ${swiftIdent(handler.params[0]!)}` ? name : undefined
 }
 
