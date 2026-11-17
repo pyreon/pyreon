@@ -117,7 +117,7 @@ export function exprCallsThrowing(expr: unknown, throwingFns: ReadonlySet<string
       node.callee.name !== undefined &&
       throwingFns.has(node.callee.name)
     )
-      return true
+      {return true}
 
     return Object.values(n).some(walk)
   }
