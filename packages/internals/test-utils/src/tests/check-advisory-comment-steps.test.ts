@@ -125,6 +125,7 @@ describe('checkWorkflowText — notifier exemption', () => {
       'published-state.yml',
       'zero-freshness.yml',
       'size-ceiling-status.yml',
+      'main-red-status.yml',
     ])
   })
 })

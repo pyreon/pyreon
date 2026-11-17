@@ -6,7 +6,7 @@ description: The six published packages behind PMTC — the compiler, its CLI, a
 The multiplatform story is told from the app's side in [Multi-Platform (PMTC)](/docs/multiplatform). This page is the other side: the **six packages** that story runs on. All six are published to npm; none of them had a page until now, which made them hard to reason about when one showed up in a lockfile or an error message.
 
 :::warning{title="Experimental"}
-All six are published (`publishConfig.access: public`, part of the fixed native release group) because the toolchain needs to resolve them — a scaffolded app installs them like any other dependency — not because their APIs are settled. Treat them as internals of the PMTC toolchain rather than libraries to build against directly.
+All six are published (`publishConfig.access: public`, part of the fixed native release group) because the toolchain needs to resolve them — a scaffolded app installs them like any other dependency — not because their APIs are settled. Treat them as internals of the PMTC toolchain rather than libraries to build against directly. The maturity of what they produce is tracked per area in [Maturity by area](/docs/multiplatform#maturity-by-area); the native targets are Experimental overall.
 :::
 
 ## The six

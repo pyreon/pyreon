@@ -97,65 +97,95 @@ function sameBits(a: Pt[], b: Pt[]): string | null {
 }
 
 const CASES = 3000
+const CHUNKS = 6
+const CHUNK_SIZE = CASES / CHUNKS
 
-// Backstop, derived rather than guessed: this is deterministic CPU work (3000
-// series averaging ~10k values, generated AND re-reduced by the reference), 6.4s
-// on a quiet machine under v8 coverage. `Coverage (Full)` runs four packages in
-// parallel on a shared runner, where the same work took more than the 20s default
-// (≥3.1x slower) and failed the lane on every main push. 60s is ~9x the measured
-// local figure; the fuzz keeps all CASES, since fewer would quietly weaken it.
-const FUZZ_TIMEOUT_MS = 60_000
+// Each chunk is its own test, so each has its own budget. As ONE test the corpus
+// (30.5M values: generated, reduced by the engine and re-reduced by the
+// reference) shared a single deadline. Measured on a quiet machine: 2.0s
+// uninstrumented, 6.4s under v8 coverage (block counters make the two reducing
+// loops 4.8x slower). `Coverage (Full)` runs four packages at once on a four-core
+// runner, where this package's whole coverage run takes 102-255s against 11s on
+// that machine (9-22x), so the single test sat at 60-140s: it timed out at the
+// 20s default, then at 60s (2026-11-17). Raising the number again would only
+// move the edge.
+//
+// A chunk is a sixth of the work: 1.0s under coverage locally, so 9-22s in that
+// job. 60s leaves 2.7x over the slowest run observed; `check-coverage.ts` logs
+// any test of 5s or more ("slow under coverage"), which is where to read the
+// next measurement. No case is dropped: fewer cases would quietly weaken the fuzz.
+const CHUNK_TIMEOUT_MS = 60_000
+
+/**
+ * One fuzzed series, seeded by its own index, so a failing case replays alone
+ * and a chunk does not depend on the cases before it.
+ */
+function runCase(t: number): { diff: string | null; reduced: boolean; kind: number; n: number } {
+  const r = rng(0x5eed + Math.imul(t, 0x9e3779b1))
+  const n = 8 + Math.floor(r() * 20_000)
+  const kind = t % 6
+  let walk = 0
+  const vals = Array.from({ length: n }, (_, i) => {
+    switch (kind) {
+      case 0:
+        return r()
+      case 1:
+        return Math.round(r() * 5)
+      case 2:
+        return 1 + 1e-12 * r()
+      case 3:
+        return Math.sin(i) * 1e6
+      case 4:
+        // Neighbouring doubles: distinct values that share one y.
+        return 1 + Math.floor(r() * 4) * Number.EPSILON
+      default:
+        walk += r() - 0.5
+        return walk
+    }
+  })
+  if (t % 97 === 0) vals[Math.floor(r() * n)] = Number.NaN
+  let lo = Infinity
+  let hi = -Infinity
+  for (const v of vals) {
+    if (v < lo) lo = v
+    if (v > hi) hi = v
+  }
+  const pad = (t % 5) * 0.1
+  const dom: Domain =
+    t % 13 === 0
+      ? { min: lo, max: lo } // flat
+      : t % 7 === 0
+        ? { min: hi, max: lo, inverse: t % 2 === 0 } // falling
+        : t % 11 === 1
+          ? { min: lo + (hi - lo) / 3, max: hi - (hi - lo) / 3, inverse: t % 2 === 0 } // narrower than the data
+          : { min: lo - (t % 3), max: hi + pad, inverse: t % 2 === 0 }
+  const plot: Rect = { x: 13.3 * (t % 3), y: 7, w: 100 + (t % 9) * 37, h: t % 11 === 0 ? 0 : 300 }
+  const got = m4CategoryPoints(vals, plot, dom)
+
+  return { diff: sameBits(got, m4Reference(vals, plot, dom)), reduced: got.length > 0, kind, n }
+}
 
 describe('m4CategoryPoints value filter', () => {
-  it(`returns exactly the every-y loop's points across ${CASES} fuzzed series`, { timeout: FUZZ_TIMEOUT_MS }, () => {
-    const r = rng(0x5eed)
-    let reduced = 0
-    for (let t = 0; t < CASES; t++) {
-      const n = 8 + Math.floor(r() * 20_000)
-      const kind = t % 6
-      let walk = 0
-      const vals = Array.from({ length: n }, (_, i) => {
-        switch (kind) {
-          case 0:
-            return r()
-          case 1:
-            return Math.round(r() * 5)
-          case 2:
-            return 1 + 1e-12 * r()
-          case 3:
-            return Math.sin(i) * 1e6
-          case 4:
-            // Neighbouring doubles: distinct values that share one y.
-            return 1 + Math.floor(r() * 4) * Number.EPSILON
-          default:
-            walk += r() - 0.5
-            return walk
-        }
-      })
-      if (t % 97 === 0) vals[Math.floor(r() * n)] = Number.NaN
-      let lo = Infinity
-      let hi = -Infinity
-      for (const v of vals) {
-        if (v < lo) lo = v
-        if (v > hi) hi = v
+  const chunks = Array.from({ length: CHUNKS }, (_, c) => c * CHUNK_SIZE)
+
+  it.each(chunks)(
+    `returns exactly the every-y loop's points for fuzzed series %i onwards (${CHUNK_SIZE} of ${CASES})`,
+    { timeout: CHUNK_TIMEOUT_MS },
+    (start) => {
+      let reduced = 0
+      for (let t = start; t < start + CHUNK_SIZE; t++) {
+        const result = runCase(t)
+        if (result.reduced) reduced++
+        expect(result.diff, `case ${t} (kind ${result.kind}, n ${result.n})`).toBeNull()
       }
-      const pad = (t % 5) * 0.1
-      const dom: Domain =
-        t % 13 === 0
-          ? { min: lo, max: lo } // flat
-          : t % 7 === 0
-            ? { min: hi, max: lo, inverse: t % 2 === 0 } // falling
-            : t % 11 === 1
-              ? { min: lo + (hi - lo) / 3, max: hi - (hi - lo) / 3, inverse: t % 2 === 0 } // narrower than the data
-              : { min: lo - (t % 3), max: hi + pad, inverse: t % 2 === 0 }
-      const plot: Rect = { x: 13.3 * (t % 3), y: 7, w: 100 + (t % 9) * 37, h: t % 11 === 0 ? 0 : 300 }
-      const got = m4CategoryPoints(vals, plot, dom)
-      if (got.length > 0) reduced++
-      const diff = sameBits(got, m4Reference(vals, plot, dom))
-      expect(diff, `case ${t} (kind ${kind}, n ${n})`).toBeNull()
-    }
-    // The fuzz must exercise the reducing path, not only the declines.
-    expect(reduced).toBeGreaterThan(CASES * 0.8)
+      // The fuzz must exercise the reducing path, not only the declines.
+      expect(reduced).toBeGreaterThan(CHUNK_SIZE * 0.8)
+    },
+  )
+
+  it('the chunks cover every case exactly once', () => {
+    expect(Number.isInteger(CHUNK_SIZE)).toBe(true)
+    expect(chunks.at(-1)! + CHUNK_SIZE).toBe(CASES)
   })
 
   it('the frozen reference agrees with reducing the placed points', () => {
