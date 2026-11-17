@@ -3519,18 +3519,16 @@ export function transformJSX_JS(
   /**
    * Walk a JSX expression the emit does NOT slice (a function child —
    * `<Comp>{() => count + 1}</Comp>`, `<For>{(r) => …}</For>` — or any other
-   * unwrapped value), auto-calling its bare signals first.
+   * unwrapped value), applying `sliceExpr`'s identifier edits first.
    *
-   * A sliced expression gets `autoCallSignals` over its whole span, nested
-   * functions included. An unsliced one is WALKED instead (so its nested JSX
-   * still compiles to templates), and the walk itself never rewrites an
-   * identifier — so a bare signal inside a function child was auto-called on
-   * a template element and left as the function on every other path. The
-   * identifiers come from the same collector `sliceExpr` uses (same scope,
-   * identity and write-target rules); those inside nested JSX are left to
-   * that JSX's own emit, which the walk reaches next. Each is a zero-width
-   * `()` insertion, disjoint from every edit the walk makes (those cover JSX
-   * only). Mirrored by `auto_call_unsliced` in the Rust backend.
+   * A sliced expression gets the signal auto-call and prop-derived inlining
+   * over its whole span, nested functions included. An unsliced one is WALKED
+   * instead (so its nested JSX still compiles to templates), and the walk
+   * itself never rewrites an identifier — so a bare signal (or a prop-derived
+   * const) inside a function child was rewritten on a template element and
+   * left as written on every other path. `sliceUnsliced` makes the same
+   * identifier edits, leaving those inside nested JSX to that JSX's own emit,
+   * which the walk reaches next.
    */
   function walkUnslicedExpr(expr: N): void {
     sliceUnsliced(expr)
