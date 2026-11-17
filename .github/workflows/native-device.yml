@@ -346,14 +346,18 @@ jobs:
     #   counter / finance / router-demo / tasks UITest      13.2 / 4.7 / 10.5 / 29.7
     #   device-SDK archive                                  5.0
     #     => 82m if every step is at its worst at once; observed totals 64-81m.
+    #   + todomvc RELEASE UITest (2026-11-17, REL-2)         ~6  (ESTIMATED from a
+    #     local run: a cold Release build of the app and both runtimes, then the
+    #     3-test suite; replace with the slowest green CI value once measured)
+    #     => 88m.
     #
-    # 95 is that sum +15%. It holds only because a retry no longer re-runs a
+    # 100 is that sum +14%; before the release lane it was 95, 82m +15%. It holds only because a retry no longer re-runs a
     # whole suite (scripts/native-ios-uitest.ts re-runs the failed tests alone): under
     # the old xcodebuild retry flags one flaky tasks test added two more
     # 23-30 minute passes, which no timeout near this one can absorb. Each
     # step also carries its own `timeout-minutes` (1.5-2x its slowest green
     # run), so a hang fails in that step, by name, instead of at minute 95.
-    timeout-minutes: 95
+    timeout-minutes: 100
     permissions:
       contents: read
     # Which apps this run tests (see the `changes` job). EMPTY → `all`,
@@ -889,12 +893,43 @@ jobs:
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
             -configuration Debug
 
+      # ── Release & distribution: the iOS RELEASE-configuration UI lane ──
+      # Every other iOS UI suite runs the Debug configuration. This one runs
+      # the TodoMVC suite against the Release build on the Simulator — the
+      # twin of the Android release lane (the same suite against the R8-minified
+      # release APK). Release is where Swift's whole-module optimizer (`-O`)
+      # runs and where Xcode stops splitting the app into a `.debug.dylib`, so
+      # an optimizer-only or packaging-only break shows up here and nowhere
+      # else. After the debug suites so a release-only failure never hides
+      # their results. `assert-ios-release-lane.sh` refuses a vacuous pass: a
+      # missing Release product, a Debug-shaped one (the debug dylib), an
+      # .xctestrun that points anywhere but Release-iphonesimulator, or a run
+      # with no passing test.
+      - name: Run UITest in the RELEASE configuration — native-todomvc/ios
+        id: uitest-todomvc-release
+        timeout-minutes: 15
+        if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' todomvc ')
+        working-directory: examples/native-todomvc/ios
+        run: |
+          set -o pipefail
+          bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/native-todomvc-release" -- \
+            xcodebuild test \
+            -parallel-testing-enabled NO \
+            -workspace "$PYREON_IOS_WS" \
+            -derivedDataPath "$PYREON_IOS_DD" \
+            -scheme PyreonTodoMVC \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
+            -configuration Release
+          bash ../scripts/assert-ios-release-lane.sh "$PYREON_IOS_DD" "$GITHUB_WORKSPACE/.ci-ios-results/native-todomvc-release"
+
       - name: Upload iOS test results
         # A selected test step must leave diagnostic evidence, including on failure.
         # Skipped app lanes have no result bundle to upload.
         if: >-
           ${{ !cancelled() && (
             steps.uitest-todomvc.outcome == 'success' || steps.uitest-todomvc.outcome == 'failure' ||
+            steps.uitest-todomvc-release.outcome == 'success' || steps.uitest-todomvc-release.outcome == 'failure' ||
             steps.uitest-counter.outcome == 'success' || steps.uitest-counter.outcome == 'failure' ||
             steps.uitest-finance.outcome == 'success' || steps.uitest-finance.outcome == 'failure' ||
             steps.uitest-router.outcome == 'success' || steps.uitest-router.outcome == 'failure' ||
