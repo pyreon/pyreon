@@ -7,6 +7,7 @@
  */
 import { _lc, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { _tpl, mount } from '../index'
 import { Transition } from '../transition'
@@ -39,8 +40,7 @@ describe('<Transition> over a compiled child in Chromium (#4382)', () => {
     hosts.push(host)
     const child = _lc(() => _tpl('<div class="box">x</div>', () => null, 1))
     mount(h(Transition, { name: 'fade', show: () => show() }, child as never), host)
-    const first = host.querySelector('.box') as HTMLElement
-    expect(first).not.toBeNull()
+    const first = query<HTMLElement>(host, '.box')
 
     show.set(false)
     await frames(2)
@@ -55,8 +55,7 @@ describe('<Transition> over a compiled child in Chromium (#4382)', () => {
 
     show.set(true)
     await frames(2)
-    const entered = host.querySelector('.box') as HTMLElement
-    expect(entered).not.toBeNull()
+    const entered = query<HTMLElement>(host, '.box')
     expect(entered.classList.contains('fade-enter-active')).toBe(true)
   })
 })
