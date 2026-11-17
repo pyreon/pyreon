@@ -43,6 +43,7 @@ struct PyreonBluetoothTests {
             PyreonCameraTests.runAll()
             PyreonSpeechTests.runAll()
             PyreonCrashReporterTests.runAll()
+            PyreonFetchTests.runAll()
         }
         print("[PyreonBluetoothTests] all assertions passed")
         // This directory's single @main also drives the sibling suites — see
