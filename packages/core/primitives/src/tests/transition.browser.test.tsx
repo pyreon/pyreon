@@ -85,6 +85,19 @@ describe('<Transition> — real CSS transitions', () => {
     expect(cs.transitionTimingFunction).toBe('linear')
   })
 
+  // `easing="spring"` rides a CSS `linear()` curve: a real engine has to
+  // accept it as a timing function, or the element would fall back to `ease`.
+  it('a spring arms a linear() timing function the engine accepts', async () => {
+    const on = signal(false)
+    const root = render(
+      h(Transition, { show: () => on(), duration: 500, easing: 'spring', bounce: 0.3 }, h('span', null, 'body')),
+    )
+    on.set(true)
+    const cs = getComputedStyle(root)
+    expect(cs.transitionTimingFunction.startsWith('linear(')).toBe(true)
+    expect(Number.parseFloat(cs.transitionDuration)).toBeGreaterThan(0.5)
+  })
+
   // The load-bearing assertion of this file. `el.style.transition = …`
   // resets `transition-delay` to 0s in a spec-compliant engine; longhand
   // writes leave it alone. A consumer who set their own delay must keep it.

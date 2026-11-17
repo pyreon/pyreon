@@ -26,6 +26,7 @@ import { state as plainState } from '@pyreon/core/plain'
 import { signal } from '@pyreon/reactivity'
 import { createRouter, useLoaderData, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 import { type EchoReply, usePostEcho } from './hooks'
+import { SpringPage } from './SpringPage'
 import { defineTheme, styled } from '@pyreon/styler'
 import { s } from '@pyreon/validate'
 
@@ -996,6 +997,7 @@ export function RouterApp() {
       { path: '/users/:id', component: UserPage },
       { path: '/styles', component: StylesPage },
       { path: '/motion', component: MotionPage },
+      { path: '/spring', component: SpringPage },
       { path: '/biglist', component: BigListPage },
       { path: '/a11y', component: A11yPage },
       { path: '/anim', component: AnimPage },

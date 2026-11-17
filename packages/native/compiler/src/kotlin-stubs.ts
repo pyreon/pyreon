@@ -1468,22 +1468,29 @@ val LinearEasing: Easing = Easing()
 val FastOutSlowInEasing: Easing = Easing()
 val FastOutLinearInEasing: Easing = Easing()
 val LinearOutSlowInEasing: Easing = Easing()
-class TweenSpec
+// The real tween/spring both return a FiniteAnimationSpec, which is what every
+// enter/exit transition takes — so a spring spec has to be accepted wherever a
+// tween is (<Transition easing="spring">).
+open class FiniteAnimationSpec
+class TweenSpec : FiniteAnimationSpec()
+class SpringSpec : FiniteAnimationSpec()
 fun tween(durationMillis: Int, easing: Easing): TweenSpec = TweenSpec()
+@Suppress("UNUSED_PARAMETER")
+fun spring(dampingRatio: Float = 1f, stiffness: Float = 1500f): SpringSpec = SpringSpec()
 class EnterTransition
 class ExitTransition
-fun fadeIn(animationSpec: TweenSpec): EnterTransition = EnterTransition()
-fun fadeOut(animationSpec: TweenSpec): ExitTransition = ExitTransition()
+fun fadeIn(animationSpec: FiniteAnimationSpec): EnterTransition = EnterTransition()
+fun fadeOut(animationSpec: FiniteAnimationSpec): ExitTransition = ExitTransition()
 // A <Transition name> maps to a real enter/exit pair rather than always
 // fading, so the stub mirrors the Compose functions that emit can now
 // produce. ` +
   ` composes transitions in Compose, hence the operator stubs.
-fun scaleIn(animationSpec: TweenSpec): EnterTransition = EnterTransition()
-fun scaleOut(animationSpec: TweenSpec): ExitTransition = ExitTransition()
-fun slideInVertically(animationSpec: TweenSpec, initialOffsetY: (Int) -> Int = { it }): EnterTransition = EnterTransition()
-fun slideOutVertically(animationSpec: TweenSpec, targetOffsetY: (Int) -> Int = { it }): ExitTransition = ExitTransition()
-fun slideInHorizontally(animationSpec: TweenSpec, initialOffsetX: (Int) -> Int = { it }): EnterTransition = EnterTransition()
-fun slideOutHorizontally(animationSpec: TweenSpec, targetOffsetX: (Int) -> Int = { it }): ExitTransition = ExitTransition()
+fun scaleIn(animationSpec: FiniteAnimationSpec): EnterTransition = EnterTransition()
+fun scaleOut(animationSpec: FiniteAnimationSpec): ExitTransition = ExitTransition()
+fun slideInVertically(animationSpec: FiniteAnimationSpec, initialOffsetY: (Int) -> Int = { it }): EnterTransition = EnterTransition()
+fun slideOutVertically(animationSpec: FiniteAnimationSpec, targetOffsetY: (Int) -> Int = { it }): ExitTransition = ExitTransition()
+fun slideInHorizontally(animationSpec: FiniteAnimationSpec, initialOffsetX: (Int) -> Int = { it }): EnterTransition = EnterTransition()
+fun slideOutHorizontally(animationSpec: FiniteAnimationSpec, targetOffsetX: (Int) -> Int = { it }): ExitTransition = ExitTransition()
 operator fun EnterTransition.plus(other: EnterTransition): EnterTransition = this
 operator fun ExitTransition.plus(other: ExitTransition): ExitTransition = this
 @Composable

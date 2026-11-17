@@ -260,12 +260,22 @@ export function conditionalKotlinImports(emitted: string): string {
   // symbols the star imports don't cover — the exact stub-masked-symbol
   // class (the validate loop's stubs resolve them regardless of import;
   // only the real gradle build catches the miss, and it did).
-  if (/\bfadeIn\(/.test(emitted)) {
-    imports.push('import androidx.compose.animation.fadeIn')
-    imports.push('import androidx.compose.animation.fadeOut')
+  // Every enter/exit transition a `<Transition name>` preset can produce
+  // (fade, scale, the four slides) lives in androidx.compose.animation, so the
+  // import is DERIVED from what the emit contains. The arm used to cover
+  // fadeIn/fadeOut only, so any `name="scale"` / `name="slideUp"` transition
+  // failed the real gradle build with "Unresolved reference 'scaleIn'" — a
+  // gap the kotlinc stub gate cannot see, since its stubs resolve every symbol.
+  for (const m of new Set(emitted.match(/\b(?:(?:fade|scale)(?:In|Out)|slide(?:In|Out)(?:Vertically|Horizontally))(?=\()/g) ?? [])) {
+    imports.push(`import androidx.compose.animation.${m}`)
   }
   if (/\btween\(/.test(emitted)) {
     imports.push('import androidx.compose.animation.core.tween')
+  }
+  // <Transition easing="spring">: `spring(dampingRatio =, stiffness =)` is the
+  // same sub-package as tween.
+  if (/\bspring\(dampingRatio = /.test(emitted)) {
+    imports.push('import androidx.compose.animation.core.spring')
   }
   for (const easing of ['LinearEasing', 'FastOutSlowInEasing', 'FastOutLinearInEasing', 'LinearOutSlowInEasing']) {
     if (emitted.includes(easing)) {

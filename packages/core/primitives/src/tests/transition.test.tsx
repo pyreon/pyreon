@@ -15,6 +15,7 @@ import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { signal } from '@pyreon/reactivity'
 import { Transition, TransitionGroup } from '../index'
+import { springTiming } from '../web/Transition'
 import type { TransitionPreset } from '../index'
 
 function render(vnode: ReturnType<typeof h>): {
@@ -537,5 +538,43 @@ describe('<TransitionGroup> — measurement state machine', () => {
     expect(ro?.disconnected).toBe(false)
     unmount()
     expect(ro?.disconnected).toBe(true)
+  })
+})
+
+// `easing="spring"` (ANI-2): the same damped spring the native targets run —
+// SwiftUI's definition, `duration` the response, `bounce` the overshoot — as a
+// CSS `linear()` curve that lasts until the spring SETTLES.
+describe('<Transition easing="spring">', () => {
+  it('a critically damped spring settles after its response, without overshoot', () => {
+    // (1 + w0 t) e^(-w0 t) = 0.001 at w0 t ≈ 9.23; w0 = 2π / 2 s.
+    const t = springTiming(2000, 0)
+    expect(t.ms).toBeGreaterThan(2900)
+    expect(t.ms).toBeLessThan(3000)
+    const stops = t.css.slice('linear('.length, -1).split(', ').map(Number)
+    expect(stops[0]).toBe(0)
+    expect(stops.at(-1)).toBe(1)
+    expect(Math.max(...stops)).toBeLessThanOrEqual(1)
+    // monotone: no overshoot without bounce
+    expect(stops.every((v, i) => i === 0 || v >= (stops[i - 1] as number))).toBe(true)
+  })
+
+  it('a bouncy spring overshoots and takes longer to settle', () => {
+    const t = springTiming(2000, 0.8)
+    const stops = t.css.slice('linear('.length, -1).split(', ').map(Number)
+    expect(Math.max(...stops)).toBeGreaterThan(1.3)
+    // e^(-ζ w0 t) / sqrt(1 - ζ²) = 0.001 with ζ = 0.2 → about 11 s
+    expect(t.ms).toBeGreaterThan(10_000)
+  })
+
+  it('arms the curve and the settle time, not the response, on the element', () => {
+    const on = signal(false)
+    const { root, unmount } = render(
+      h(Transition, { show: () => on(), duration: 2000, easing: 'spring', bounce: 0.5 }, h('span', null, 'x')),
+    )
+    on.set(true)
+    const expected = springTiming(2000, 0.5)
+    expect(root.style.transitionDuration).toBe(`${expected.ms}ms`)
+    expect(root.style.transitionTimingFunction.startsWith('linear(')).toBe(true)
+    unmount()
   })
 })

@@ -57,6 +57,45 @@ const DEFAULT_DURATION_MS = 300
 const DEFAULT_EASING: TransitionEasing = 'ease-in-out'
 /** Only these two properties animate, so only these two are armed. */
 const ANIMATED_PROPERTIES = 'opacity, transform'
+
+/**
+ * A `spring` timing as CSS: the curve sampled from the same damped spring the
+ * native targets run (SwiftUI's definition — `responseMs` is the period of the
+ * undamped oscillation, damping fraction `1 - bounce`), and the time it takes
+ * to settle within 0.1% of its target, which is how long the transition runs.
+ * Exported for its unit test.
+ */
+export function springTiming(responseMs: number, bounce: number): { ms: number; css: string } {
+  const zeta = 1 - Math.min(Math.max(bounce, 0), 0.99)
+  const w0 = (2 * Math.PI) / (Math.max(responseMs, 1) / 1000)
+  const position = (t: number): number => {
+    if (zeta >= 1) return 1 - (1 + w0 * t) * Math.exp(-w0 * t)
+    const wd = w0 * Math.sqrt(1 - zeta * zeta)
+    return 1 - Math.exp(-zeta * w0 * t) * (Math.cos(wd * t) + ((zeta * w0) / wd) * Math.sin(wd * t))
+  }
+
+  // The envelope bounds every later deviation, so the first time it drops
+  // under the tolerance is when the spring has settled for good.
+  const envelope = (t: number): number =>
+    zeta >= 1 ? (1 + w0 * t) * Math.exp(-w0 * t) : Math.exp(-zeta * w0 * t) / Math.sqrt(1 - zeta * zeta)
+  let settle = 0
+  while (envelope(settle) > 0.001 && settle < 10) settle += 0.001
+  const stops: string[] = []
+  const samples = 40
+  for (let i = 0; i <= samples; i++) stops.push(String(Math.round(position((settle * i) / samples) * 1000) / 1000))
+  stops[samples] = '1'
+
+  return { ms: Math.round(settle * 1000), css: `linear(${stops.join(', ')})` }
+}
+
+/**
+ * One side's CSS timing. A spring runs until it SETTLES, so its transition
+ * (and the settle timer) last longer than `duration`, which is its response.
+ */
+function sideTiming(ms: number, easing: TransitionEasing, bounce: number | undefined): { ms: number; css: string } {
+  return easing === 'spring' ? springTiming(ms, bounce ?? 0) : { ms, css: easing }
+}
+
 /**
  * Headroom for the `transitionend` safety timer. `transitionend` can
  * legitimately never fire — a zero duration, an ancestor going
@@ -120,6 +159,8 @@ export const Transition = (props: TransitionProps): VNode => {
   const leaveMs = props.leaveDuration ?? props.duration ?? DEFAULT_DURATION_MS
   const enterEase = props.enterEasing ?? props.easing ?? DEFAULT_EASING
   const leaveEase = props.leaveEasing ?? props.easing ?? DEFAULT_EASING
+  const enterTiming = sideTiming(enterMs, enterEase, props.bounce)
+  const leaveTiming = sideTiming(leaveMs, leaveEase, props.bounce)
 
   let el: HTMLElement | null = null
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -167,10 +208,10 @@ export const Transition = (props: TransitionProps): VNode => {
     node.style.transitionTimingFunction = ''
   }
 
-  const armTransition = (node: HTMLElement, ms: number, easing: TransitionEasing): void => {
+  const armTransition = (node: HTMLElement, t: { ms: number; css: string }): void => {
     node.style.transitionProperty = ANIMATED_PROPERTIES
-    node.style.transitionDuration = `${ms}ms`
-    node.style.transitionTimingFunction = easing
+    node.style.transitionDuration = `${t.ms}ms`
+    node.style.transitionTimingFunction = t.css
   }
 
   /** Snap to an end state with no animation (initial paint / reconcile). */
@@ -201,10 +242,10 @@ export const Transition = (props: TransitionProps): VNode => {
     node.style.opacity = hidden.opacity
     node.style.transform = hidden.transform
     flushStyles(node)
-    armTransition(node, enterMs, enterEase)
+    armTransition(node, enterTiming)
     node.style.opacity = '1'
     node.style.transform = 'none'
-    scheduleSettle(enterMs, () => {
+    scheduleSettle(enterTiming.ms, () => {
       // Resting shown state carries no inline animation styles, so a
       // consumer's own CSS is back in charge once the enter completes.
       clearArmedTransition(node)
@@ -219,10 +260,10 @@ export const Transition = (props: TransitionProps): VNode => {
     node.style.opacity = '1'
     node.style.transform = 'none'
     flushStyles(node)
-    armTransition(node, leaveMs, leaveEase)
+    armTransition(node, leaveTiming)
     node.style.opacity = hidden.opacity
     node.style.transform = hidden.transform
-    scheduleSettle(leaveMs, () => {
+    scheduleSettle(leaveTiming.ms, () => {
       clearArmedTransition(node)
       node.style.display = 'none'
     })

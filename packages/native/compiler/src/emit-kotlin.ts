@@ -183,7 +183,7 @@ import {
   resolveRouteTarget,
 } from './route-ir-helpers'
 import { literalColorMode } from './color-mode'
-import { unknownTransitionPresetWarning } from './transition-presets'
+import { readTransitionBounce, transitionBounce, unknownTransitionPresetWarning } from './transition-presets'
 import {
   binderName,
   narrowExpr,
@@ -7038,6 +7038,28 @@ function emitKotlinWalledTagAsChildren(
  * (decelerate) → LinearOutSlowInEasing, ease-in-out → FastOutSlowInEasing
  * (also the no-easing default when a duration is set — CSS's `ease`
  * analog), linear → LinearEasing. */
+/**
+ * The Compose animation spec for one side of a `<Transition>`: a `tween` with
+ * the mapped easing, or for `spring` the same physical spring SwiftUI's
+ * `.spring(duration:bounce:)` runs — damping ratio `1 - bounce`, stiffness
+ * `(2π / response)²` with the response in seconds.
+ */
+function kotlinTransitionSpec(durationMs: number | undefined, easing: string | undefined, bounce: number): string {
+  if (easing === 'spring') {
+    const secs = (durationMs ?? 300) / 1000
+    const stiffness = ((2 * Math.PI) / secs) ** 2
+    return `spring(dampingRatio = ${kotlinFloatLiteral(1 - transitionBounce(bounce))}, stiffness = ${kotlinFloatLiteral(Math.round(stiffness * 1000) / 1000)})`
+  }
+
+  return `tween(durationMillis = ${durationMs ?? 300}, easing = ${kotlinEasingFor(easing)})`
+}
+
+function kotlinFloatLiteral(n: number): string {
+  const s = String(Math.round(n * 1e6) / 1e6)
+
+  return `${s.includes('.') ? s : `${s}.0`}f`
+}
+
 function kotlinEasingFor(easing: string | undefined): string {
   return easing === 'linear'
     ? 'LinearEasing'
@@ -7189,15 +7211,16 @@ function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
       `${body}\n${' '.repeat(indent)}}`
     )
   }
+  const bounce = readTransitionBounce(e, readStaticAttrKotlin(e, 'bounce'), (m) => _emitWarnings.push(m))
   if (asymmetric) {
-    const enterSpec = `tween(durationMillis = ${enterDur ?? duration ?? 300}, easing = ${kotlinEasingFor(enterEase ?? easing)})`
-    const exitSpec = `tween(durationMillis = ${leaveDur ?? duration ?? 300}, easing = ${kotlinEasingFor(leaveEase ?? easing)})`
+    const enterSpec = kotlinTransitionSpec(enterDur ?? duration, enterEase ?? easing, bounce)
+    const exitSpec = kotlinTransitionSpec(leaveDur ?? duration, leaveEase ?? easing, bounce)
     return (
       `AnimatedVisibility(visible = ${cond}, enter = ${kotlinTransitionForName(transitionName, enterSpec).enter}, exit = ${kotlinTransitionForName(transitionName, exitSpec).exit}) {\n` +
       `${body}\n${' '.repeat(indent)}}`
     )
   }
-  const spec = `tween(durationMillis = ${duration ?? 300}, easing = ${kotlinEasingFor(easing)})`
+  const spec = kotlinTransitionSpec(duration, easing, bounce)
   return (
     `AnimatedVisibility(visible = ${cond}, enter = ${kotlinTransitionForName(transitionName, spec).enter}, exit = ${kotlinTransitionForName(transitionName, spec).exit}) {\n` +
     `${body}\n${' '.repeat(indent)}}`

@@ -458,6 +458,8 @@ public struct Animation {
   public static func easeIn(duration: Double) -> Animation { Animation() }
   public static func easeOut(duration: Double) -> Animation { Animation() }
   public static func easeInOut(duration: Double) -> Animation { Animation() }
+  // <Transition easing="spring">: SwiftUI's duration/bounce spring (iOS 17+).
+  public static func spring(duration: Double = 0.5, bounce: Double = 0.0, blendDuration: Double = 0) -> Animation { Animation() }
 }
 // Mirrors SwiftUI's AnyTransition surface the emit uses. \`asymmetric\` and the
 // per-side \`animation(_:)\` were MISSING, so the asymmetric enter/leave emit

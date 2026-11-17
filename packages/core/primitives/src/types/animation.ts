@@ -57,8 +57,16 @@ export type TransitionPreset =
  * `ease-out` → `.easeOut` / `LinearOutSlowInEasing`, `ease-in-out` →
  * `.easeInOut` / `FastOutSlowInEasing` (also the default), `linear` →
  * `.linear` / `LinearEasing`.
+ *
+ * `spring` is a physical spring with SwiftUI's definition: the `duration` is
+ * its response (the period of the undamped oscillation) and `bounce` (0 by
+ * default, critically damped) how far it overshoots. iOS
+ * `.spring(duration:bounce:)`; Android `spring(dampingRatio = 1 - bounce,
+ * stiffness = (2π / duration)²)`, the same spring; web a CSS `linear()` curve
+ * sampled from it, run until it settles — so the transition lasts longer than
+ * `duration`, as it does natively.
  */
-export type TransitionEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
+export type TransitionEasing = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'spring'
 
 /**
  * `<Transition>` — animate a subtree in and out of view.
@@ -83,6 +91,12 @@ export interface TransitionProps extends ChildrenProp, HtmlPassthroughProps {
   duration?: number
   /** Symmetric timing function. Defaults to `ease-in-out`. */
   easing?: TransitionEasing
+  /**
+   * How far a `spring` overshoots, 0 (no overshoot, the default) to just
+   * under 1. Read only with `easing="spring"` (or a spring enter/leave
+   * easing). Must be a static literal on native.
+   */
+  bounce?: number
   /** Enter-side duration override; falls back to `duration`. Must be a static literal. */
   enterDuration?: number
   /** Leave-side duration override; falls back to `duration`. Must be a static literal. */

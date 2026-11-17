@@ -54,3 +54,26 @@ export function unknownTransitionPresetWarning(name: string | undefined): string
     `native answer — this warns rather than refuses precisely because it usually is.`
   )
 }
+
+/** A spring's overshoot, clamped to what both targets accept: 0 (critically damped) to just under 1. */
+export function transitionBounce(bounce: number): number {
+  return Math.min(Math.max(bounce, 0), 0.99)
+}
+
+/**
+ * `<Transition bounce>` as a number. It must be a static literal (the native
+ * spring is built at compile time), so a dynamic one is named and the spring
+ * falls back to no overshoot.
+ */
+export function readTransitionBounce(
+  e: { readonly attrs: readonly { readonly kind: string; readonly name?: string }[] },
+  raw: unknown,
+  warn: (message: string) => void,
+): number {
+  if (typeof raw === 'number') return raw
+  if (e.attrs.some((a) => a.kind === 'attr' && a.name === 'bounce')) {
+    warn('<Transition bounce>: must be a static number from 0 to 1; got a non-literal — the spring falls back to no overshoot.')
+  }
+
+  return 0
+}

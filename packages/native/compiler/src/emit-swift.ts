@@ -201,7 +201,7 @@ import {
   resolveRouteTarget,
 } from './route-ir-helpers'
 import { literalColorMode } from './color-mode'
-import { unknownTransitionPresetWarning } from './transition-presets'
+import { readTransitionBounce, transitionBounce, unknownTransitionPresetWarning } from './transition-presets'
 import {
   binderName,
   narrowExpr,
@@ -8589,9 +8589,16 @@ function emitSwiftWalledTagAsChildren(
 /** CSS-easing → SwiftUI Animation factory. `duration` is SECONDS here
  * (converted from the ms prop). A duration with no easing takes
  * `.easeInOut` — the closest analog of CSS's default `ease`. */
-function swiftAnimationFor(durationMs: number | undefined, easing: string | undefined): string {
+function swiftAnimationFor(
+  durationMs: number | undefined,
+  easing: string | undefined,
+  bounce = 0,
+): string {
   if (durationMs === undefined && easing === undefined) return '.default'
   const secs = ((durationMs ?? 300) / 1000).toString()
+  // `spring`: SwiftUI's own definition is the cross-target one (the duration
+  // is the response, `bounce` the overshoot), so this is a direct spelling.
+  if (easing === 'spring') return `.spring(duration: ${secs}, bounce: ${transitionBounce(bounce)})`
   const fn =
     easing === 'linear'
       ? 'linear'
@@ -8708,7 +8715,8 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     leaveDur !== undefined ||
     enterEase !== undefined ||
     leaveEase !== undefined
-  const anim = swiftAnimationFor(duration, easing)
+  const bounce = readTransitionBounce(e, readStaticAttr(e, 'bounce'), (m) => _emitWarnings.push(m))
+  const anim = swiftAnimationFor(duration, easing, bounce)
   const inner = ' '.repeat(indent + 6)
   const body = e.children.map((c) => inner + emitSwiftChild(c, indent + 6)).join('\n')
   const p = ' '.repeat(indent)
@@ -8726,8 +8734,8 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     // `AnyTransition.opacity` unconditionally, so adding `enterDuration` to a
     // `name="slideUp"` transition silently turned it into a fade on iOS while
     // Android kept the slide.
-    const insertion = swiftAnimationFor(enterDur ?? duration, enterEase ?? easing)
-    const removal = swiftAnimationFor(leaveDur ?? duration, leaveEase ?? easing)
+    const insertion = swiftAnimationFor(enterDur ?? duration, enterEase ?? easing, bounce)
+    const removal = swiftAnimationFor(leaveDur ?? duration, leaveEase ?? easing, bounce)
     return (
       `ZStack {\n` +
       `${p}  if ${cond} {\n` +

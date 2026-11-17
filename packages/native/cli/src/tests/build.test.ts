@@ -714,6 +714,26 @@ export function Reset() {
   })
 })
 
+  it('Kotlin <Transition name> presets pull every enter/exit transition they use, and spring', () => {
+    // The import arm covered fadeIn/fadeOut only, so name="scale" / name="slideUp" failed the real gradle build
+    // ("Unresolved reference 'scaleIn'") while the stub gate, which resolves every symbol, passed.
+    const scaled = conditionalKotlinImports(
+      'AnimatedVisibility(visible = on, enter = fadeIn(animationSpec = spring(dampingRatio = 0.2f, stiffness = 9.87f)) + scaleIn(animationSpec = spring(dampingRatio = 0.2f, stiffness = 9.87f)), exit = fadeOut(animationSpec = spring(dampingRatio = 0.2f, stiffness = 9.87f)) + scaleOut(animationSpec = spring(dampingRatio = 0.2f, stiffness = 9.87f))) {}',
+    )
+    for (const m of ['fadeIn', 'fadeOut', 'scaleIn', 'scaleOut']) {
+      expect(scaled).toContain(`import androidx.compose.animation.${m}`)
+    }
+    expect(scaled).toContain('import androidx.compose.animation.core.spring')
+    expect(scaled).not.toContain('slideIn')
+    const slid = conditionalKotlinImports(
+      'AnimatedVisibility(visible = on, enter = slideInVertically(animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)) { it } + fadeIn(animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)), exit = slideOutHorizontally(animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)) { -it }) {}',
+    )
+    expect(slid).toContain('import androidx.compose.animation.slideInVertically')
+    expect(slid).toContain('import androidx.compose.animation.slideOutHorizontally')
+    expect(slid).not.toContain('scaleIn')
+    expect(slid).not.toContain('animation.core.spring')
+  })
+
 it('Kotlin conditional imports: <Transition duration/easing> fade specs pull the animation sub-package symbols', () => {
   const emitted = `AnimatedVisibility(visible = on, enter = fadeIn(animationSpec = tween(durationMillis = 2500, easing = LinearEasing)), exit = fadeOut(animationSpec = tween(durationMillis = 2500, easing = LinearEasing))) {}`
   const out = conditionalKotlinImports(emitted)
