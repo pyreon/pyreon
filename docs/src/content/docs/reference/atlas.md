@@ -82,15 +82,15 @@ export const scenarios = {
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`atlas scan`](#atlas-scan-function) | function | Discover components (static TS scan + rocketstyle runtime detection), derive controls and variant scenarios, MOUNT each  |
-| [`atlas check`](#atlas-check-function) | function | Validates a PROPOSED usage against the catalog's already-derived contract — catches the value that typechecks in JS but  |
-| [`atlas verify`](#atlas-verify-function) | function | Re-check ONE component and report WHICH check failed and why — the write → verify → fix loop, for a person or an agent i |
+| [`atlas scan`](#atlas-scan-function) | function | Discover components (static TS scan + rocketstyle runtime detection), derive controls and variant scenarios, MOUNT each… |
+| [`atlas check`](#atlas-check-function) | function | Validates a PROPOSED usage against the catalog's already-derived contract — catches the value that typechecks in JS but… |
+| [`atlas verify`](#atlas-verify-function) | function | Re-check ONE component and report WHICH check failed and why — the write → verify → fix loop, for a person or an agent… |
 | [`VerifyFinding`](#verifyfinding-type) | type | One thing a verify check found — catalog `version: 2`. |
-| [`atlas dev`](#atlas-dev-function) | function | Boot the workbench: real Vite + the real Pyreon compiler over your source, a derived catalog in the sidebar (nested by d |
-| [`atlas build`](#atlas-build-function) | function | Compile the workbench into a STATIC, deployable site — the same derived catalog `atlas dev` serves, as plain files for P |
+| [`atlas dev`](#atlas-dev-function) | function | Boot the workbench: real Vite + the real Pyreon compiler over your source, a derived catalog in the sidebar (nested by… |
+| [`atlas build`](#atlas-build-function) | function | Compile the workbench into a STATIC, deployable site — the same derived catalog `atlas dev` serves, as plain files for… |
 | [`atlas verify-browser`](#atlas-verify-browser-function) | function | The browser half of verification, in real Chromium (playwright-core is an OPTIONAL peer — scan/dev work without it). |
 | [`createAtlas`](#createatlas-function) | function | The programmatic pipeline factory behind the CLI: `discover → decorate → verify → graph`, plugin-driven. |
-| [`defineAtlas`](#defineatlas-function) | function | Identity helper for a typed `createAtlas(...)` options object — returns its argument unchanged, purely for editor DX (au |
+| [`defineAtlas`](#defineatlas-function) | function | Identity helper for a typed `createAtlas(...)` options object — returns its argument unchanged, purely for editor DX… |
 | [`atlas init`](#atlas-init-function) | function | Writes the config the workspace already implies — the ONE file you author by hand. |
 | [`AtlasConfig.projects (monorepo — one site, several packages)`](#atlasconfigprojects-monorepo-one-site-several-packages-type) | type | Scan several packages into ONE catalog, each filed under its own `name` (the sidebar reads `Core/Forms/Button`). |
 | [`AtlasConfig.scenarios (authored scenarios + play)`](#atlasconfigscenarios-authored-scenarios-play-function) | function | Authored scenarios in `atlas.config.ts`, keyed by component name. |

@@ -1,0 +1,14 @@
+{
+  "extends": "@pyreon/tsconfig/example.json",
+  "compilerOptions": {
+    "types": [
+      "bun",
+      "vite/client"
+    ]
+  },
+  "include": [
+    "src",
+    "env.d.ts",
+    "vite.config.ts"
+  ]
+}

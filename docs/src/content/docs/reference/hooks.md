@@ -117,42 +117,42 @@ const idle = useIdle(30_000)               // Signal<boolean> — true after 30s
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`useSecureStorage`](#usesecurestorage-hook) | hook | The imperative secret store for auth tokens / API keys / PII — the cross-platform boundary secrets must go through inste |
+| [`useSecureStorage`](#usesecurestorage-hook) | hook | The imperative secret store for auth tokens / API keys / PII — the cross-platform boundary secrets must go through… |
 | [`useControllableState`](#usecontrollablestate-hook) | hook | Canonical controlled/uncontrolled state pattern. |
 | [`useEventListener`](#useeventlistener-hook) | hook | Register a DOM event listener with automatic cleanup on unmount. |
 | [`useClickOutside`](#useclickoutside-hook) | hook | Fire a callback when the user clicks outside the referenced element. |
 | [`useElementSize`](#useelementsize-hook) | hook | Reactive element size via `ResizeObserver`. |
-| [`useFocusTrap`](#usefocustrap-hook) | hook | Trap focus inside the element returned by `getEl()` — Tab/Shift+Tab edge wrapping PLUS focusin containment (a programmat |
-| [`useInertOthers`](#useinertothers-hook) | hook | Apply the native `inert` attribute to everything OUTSIDE the element returned by `getEl()` — each ancestor level's sibli |
-| [`useFocusReturn`](#usefocusreturn-hook) | hook | The companion to useFocusTrap: captures the focused element (the trigger) when `isOpen()` flips true and restores focus  |
+| [`useFocusTrap`](#usefocustrap-hook) | hook | Trap focus inside the element returned by `getEl()` — Tab/Shift+Tab edge wrapping PLUS focusin containment (a… |
+| [`useInertOthers`](#useinertothers-hook) | hook | Apply the native `inert` attribute to everything OUTSIDE the element returned by `getEl()` — each ancestor level's… |
+| [`useFocusReturn`](#usefocusreturn-hook) | hook | The companion to useFocusTrap: captures the focused element (the trigger) when `isOpen()` flips true and restores focus… |
 | [`useBreakpoint`](#usebreakpoint-hook) | hook | Returns a reactive accessor for the currently active breakpoint NAME (`() => string` — e.g. |
 | [`useDebouncedValue`](#usedebouncedvalue-hook) | hook | Returns a debounced signal that only updates after `delayMs` of source-signal idle. |
-| [`useFetch`](#usefetch-hook) | hook | Thin reactive JSON fetch matching the multiplatform `useFetch<T>(url)` contract — the SAME call in a shared `.tsx` compi |
-| [`useClipboard`](#useclipboard-hook) | hook | `navigator.clipboard.writeText` wrapped with a reactive `copied` flag that auto-resets after `options.timeout` ms (defau |
+| [`useFetch`](#usefetch-hook) | hook | Thin reactive JSON fetch matching the multiplatform `useFetch<T>(url)` contract — the SAME call in a shared `.tsx`… |
+| [`useClipboard`](#useclipboard-hook) | hook | `navigator.clipboard.writeText` wrapped with a reactive `copied` flag that auto-resets after `options.timeout` ms… |
 | [`useDialog`](#usedialog-hook) | hook | Native `<dialog>` element wrapper. |
 | [`useTimeAgo`](#usetimeago-hook) | hook | Reactive "5 minutes ago" / "in 2 hours" relative-time string. |
 | [`useInfiniteScroll`](#useinfinitescroll-hook) | hook | `IntersectionObserver`-based infinite loading. |
-| [`useMergedRef`](#usemergedref-hook) | hook | Combine multiple refs into a single callback ref — used when forwarding `props.ref` while also keeping a local ref to th |
-| [`useUpdateEffect`](#useupdateeffect-hook) | hook | Watch-style effect that skips the initial run — tracks `source` and fires `callback(newVal, oldVal)` only when `source`' |
+| [`useMergedRef`](#usemergedref-hook) | hook | Combine multiple refs into a single callback ref — used when forwarding `props.ref` while also keeping a local ref to… |
+| [`useUpdateEffect`](#useupdateeffect-hook) | hook | Watch-style effect that skips the initial run — tracks `source` and fires `callback(newVal, oldVal)` only when… |
 | [`useIsomorphicLayoutEffect`](#useisomorphiclayouteffect-hook) | hook | Runs a layout-phase effect on the client (synchronous, before paint) and a no-op on the server. |
 | [`useCounter`](#usecounter-hook) | hook | Reactive numeric counter — the numeric companion to useToggle. |
-| [`useWindowScroll`](#usewindowscroll-hook) | hook | Track the window scroll offset reactively via a passive `scroll` listener (auto-removed on unmount), plus an SSR-safe im |
-| [`useDocumentVisibility`](#usedocumentvisibility-hook) | hook | Track the Page Visibility state (`document.visibilityState`) reactively — `"hidden"` when the tab is backgrounded/minimi |
-| [`useIdle`](#useidle-hook) | hook | Reactive user-idle detection — `true` once no activity event (pointer / key / scroll / wheel by default) has fired for ` |
+| [`useWindowScroll`](#usewindowscroll-hook) | hook | Track the window scroll offset reactively via a passive `scroll` listener (auto-removed on unmount), plus an SSR-safe… |
+| [`useDocumentVisibility`](#usedocumentvisibility-hook) | hook | Track the Page Visibility state (`document.visibilityState`) reactively — `"hidden"` when the tab is… |
+| [`useIdle`](#useidle-hook) | hook | Reactive user-idle detection — `true` once no activity event (pointer / key / scroll / wheel by default) has fired for… |
 | [`useToggle`](#usetoggle-hook) | hook | Boolean signal with named controls. |
 | [`useHover`](#usehover-hook) | hook | Track hover state. |
 | [`useFocus`](#usefocus-hook) | hook | Track focus state. |
 | [`useMediaQuery`](#usemediaquery-hook) | hook | Reactive `matchMedia`. |
 | [`useColorScheme`](#usecolorscheme-hook) | hook | Reactive OS color-scheme accessor — `computed` over `(prefers-color-scheme: dark)` (wraps `useMediaQuery`). |
-| [`useSizeClass`](#usesizeclass-hook) | hook | Reactive size-class accessor — `computed` over `(min-width: 600px)` (wraps `useMediaQuery`), mapping wide → `'regular'`, |
+| [`useSizeClass`](#usesizeclass-hook) | hook | Reactive size-class accessor — `computed` over `(min-width: 600px)` (wraps `useMediaQuery`), mapping wide → `'regular'`,… |
 | [`useReducedMotion`](#usereducedmotion-hook) | hook | Reactive accessor for `(prefers-reduced-motion: reduce)` (a thin `useMediaQuery` wrapper). |
-| [`useOnline`](#useonline-hook) | hook | Reactive network status accessor — seeded from `navigator.onLine` (or `true` on the server), updated by `online`/`offlin |
+| [`useOnline`](#useonline-hook) | hook | Reactive network status accessor — seeded from `navigator.onLine` (or `true` on the server), updated by… |
 | [`useDeviceInfo`](#usedeviceinfo-hook) | hook | Describe the device — platform branching, real screen geometry, device context for analytics. |
 | [`useSafeArea`](#usesafearea-hook) | hook | The safe-area insets of the current display — notch / Dynamic Island, home indicator, gesture bar, rounded corners. |
 | [`useSpeech`](#usespeech-hook) | hook | Speak text aloud — `speechSynthesis` on the web, `AVSpeechSynthesizer` on iOS, `TextToSpeech` on Android. |
 | [`useDeviceMotion`](#usedevicemotion-hook) | hook | Device motion — shake gestures, tilt controls. |
 | [`useScreenOrientation`](#usescreenorientation-hook) | hook | Which way the display is oriented. |
-| [`useCamera`](#usecamera-hook) | hook | Take a photo with the device camera, through the SYSTEM capture UI on every target — `<input capture>` on the web, UIIma |
+| [`useCamera`](#usecamera-hook) | hook | Take a photo with the device camera, through the SYSTEM capture UI on every target — `<input capture>` on the web,… |
 | [`useAudioRecorder`](#useaudiorecorder-hook) | hook | Record from the microphone — voice notes, voice messages, dictation. |
 | [`useWakeLock`](#usewakelock-hook) | hook | Keep the screen awake — video, navigation, recipe steps. |
 | [`useBluetooth`](#usebluetooth-hook) | hook | Bluetooth DISCOVERY only, on all three targets — Web Bluetooth, CoreBluetooth, and the Android adapter. |
@@ -161,29 +161,29 @@ const idle = useIdle(30_000)               // Signal<boolean> — true after 30s
 | [`useWindowResize`](#usewindowresize-hook) | hook | Reactive window size accessor (default debounce 200ms). |
 | [`useInterval`](#useinterval-hook) | hook | Declarative `setInterval`. |
 | [`useTimeout`](#usetimeout-hook) | hook | Declarative `setTimeout` that STARTS immediately at setup (fires once after `delay`ms unless `delay` is `null`). |
-| [`useDebouncedCallback`](#usedebouncedcallback-hook) | hook | Returns a debounced wrapper that resets a timer on each call and invokes `callback` after `delay`ms of quiet, plus `.can |
-| [`useThrottledCallback`](#usethrottledcallback-hook) | hook | Returns a throttled wrapper (rate-limited to once per `delay`ms; leading + trailing edge, latest-args) with a `.cancel() |
+| [`useDebouncedCallback`](#usedebouncedcallback-hook) | hook | Returns a debounced wrapper that resets a timer on each call and invokes `callback` after `delay`ms of quiet, plus… |
+| [`useThrottledCallback`](#usethrottledcallback-hook) | hook | Returns a throttled wrapper (rate-limited to once per `delay`ms; leading + trailing edge, latest-args) with a… |
 | [`useLatest`](#uselatest-hook) | hook | Wraps `value` in a mutable `{ current }` ref object. |
-| [`useKeyboard`](#usekeyboard-hook) | hook | Registers a `keydown` (or `keyup`) listener on `options.target` (default `document`) that fires `handler` only when `eve |
+| [`useKeyboard`](#usekeyboard-hook) | hook | Registers a `keydown` (or `keyup`) listener on `options.target` (default `document`) that fires `handler` only when… |
 | [`useScrollLock`](#usescrolllock-hook) | hook | Lock/unlock body scroll (sets `document.body.style.overflow = "hidden"`). |
 | [`useHaptics`](#usehaptics-hook) | hook | Imperative haptic feedback. |
 | [`useShare`](#useshare-hook) | hook | Imperative Web Share API wrapper (lowers to native `PyreonShare` under PMTC). |
 | [`useLinking`](#uselinking-hook) | hook | Imperative external-link opener. |
 | [`useNotifications`](#usenotifications-hook) | hook | Imperative LOCAL notifications (Web Notifications API; lowers to native `PyreonNotifications` under PMTC). |
-| [`useFilePicker`](#usefilepicker-hook) | hook | Pick a document/file from the device — UIDocumentPickerViewController (iOS), the Storage Access Framework `OpenDocument` |
-| [`useImagePicker`](#useimagepicker-hook) | hook | Pick an image from the device's photo library — PHPickerViewController (iOS), the Android Photo Picker (`PickVisualMedia |
+| [`useFilePicker`](#usefilepicker-hook) | hook | Pick a document/file from the device — UIDocumentPickerViewController (iOS), the Storage Access Framework `OpenDocument`… |
+| [`useImagePicker`](#useimagepicker-hook) | hook | Pick an image from the device's photo library — PHPickerViewController (iOS), the Android Photo Picker… |
 | [`fileFromUri`](#filefromuri-function) | function | Turn the URI a picker or the camera resolved into a file a request can send. |
-| [`useBiometrics`](#usebiometrics-hook) | hook | A biometric authentication gate — Face ID / Touch ID (iOS `LAContext`), BiometricPrompt (Android), feature-detected on t |
-| [`useGeolocation`](#usegeolocation-hook) | hook | Reactive device position, shared across web / iOS / Android — the web half of the hook PMTC has always lowered natively  |
-| [`useMap`](#usemap-hook) | hook | Map STATE — camera, markers, selection — shared across web / iOS / Android, mirroring the native `PyreonMapState` contai |
-| [`useWebSocket`](#usewebsocket-hook) | hook | A live TEXT socket, shared across web / iOS / Android, mirroring the native `PyreonWebSocket` container field-for-field  |
-| [`useAuth`](#useauth-hook) | hook | The device-proven auth-STATE container, shared across web / iOS / Android — mirrors the native `PyreonAuth<User>` field- |
-| [`usePush`](#usepush-hook) | hook | Push-notification STATE + INJECTED REGISTRATION, shared across web / iOS / Android, mirroring the native `PyreonPushNoti |
-| [`usePayments`](#usepayments-hook) | hook | In-app-purchase STATE + INJECTED STORE ACTIONS, shared across web / iOS / Android, mirroring the native `PyreonPayments` |
-| [`useDatabase`](#usedatabase-hook) | hook | A tiny, SYNCHRONOUS document store, shared across web / iOS / Android, mirroring the native `PyreonDatabase` container ( |
+| [`useBiometrics`](#usebiometrics-hook) | hook | A biometric authentication gate — Face ID / Touch ID (iOS `LAContext`), BiometricPrompt (Android), feature-detected on… |
+| [`useGeolocation`](#usegeolocation-hook) | hook | Reactive device position, shared across web / iOS / Android — the web half of the hook PMTC has always lowered natively… |
+| [`useMap`](#usemap-hook) | hook | Map STATE — camera, markers, selection — shared across web / iOS / Android, mirroring the native `PyreonMapState`… |
+| [`useWebSocket`](#usewebsocket-hook) | hook | A live TEXT socket, shared across web / iOS / Android, mirroring the native `PyreonWebSocket` container field-for-field… |
+| [`useAuth`](#useauth-hook) | hook | The device-proven auth-STATE container, shared across web / iOS / Android — mirrors the native `PyreonAuth<User>`… |
+| [`usePush`](#usepush-hook) | hook | Push-notification STATE + INJECTED REGISTRATION, shared across web / iOS / Android, mirroring the native… |
+| [`usePayments`](#usepayments-hook) | hook | In-app-purchase STATE + INJECTED STORE ACTIONS, shared across web / iOS / Android, mirroring the native `PyreonPayments`… |
+| [`useDatabase`](#usedatabase-hook) | hook | A tiny, SYNCHRONOUS document store, shared across web / iOS / Android, mirroring the native `PyreonDatabase` container… |
 | [`useCrashReporter`](#usecrashreporter-hook) | hook | The web half of the cross-platform crash-reporter container (`PyreonCrashReporter` natively). |
-| [`useAppState`](#useappstate-hook) | hook | Reactive app lifecycle phase — returns an ACCESSOR (call it in a reactive scope: `state()`), mirroring the native lifecy |
-| [`setCrashTransport`](#setcrashtransport-function) | function | Register (or clear, with `undefined`) the function that actually uploads a crash report string — the app-wired vendor tr |
+| [`useAppState`](#useappstate-hook) | hook | Reactive app lifecycle phase — returns an ACCESSOR (call it in a reactive scope: `state()`), mirroring the native… |
+| [`setCrashTransport`](#setcrashtransport-function) | function | Register (or clear, with `undefined`) the function that actually uploads a crash report string — the app-wired vendor… |
 
 ## API
 

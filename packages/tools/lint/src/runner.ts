@@ -12,6 +12,7 @@ import type {
   RuleFix,
   RuleOptions,
   Severity,
+  SourceComment,
   VisitorCallbacks,
 } from './types'
 import { JS_EXTENSIONS } from './utils/index'
@@ -75,6 +76,7 @@ function createRuleContext(
   lineIndex: LineIndex,
   sourceText: string,
   filePath: string,
+  comments: readonly SourceComment[] = [],
 ): RuleContext {
   return {
     report(partial) {
@@ -89,6 +91,9 @@ function createRuleContext(
     },
     getSourceText() {
       return sourceText
+    },
+    getComments() {
+      return comments
     },
     getFilePath() {
       return filePath
@@ -213,10 +218,12 @@ export function lintFile(
   // Try cache first
   let lineIndex: LineIndex
   let program: any
+  let comments: readonly SourceComment[] | undefined
   const cached = cache?.get(sourceText)
-  if (cached) {
+  if (cached?.comments) {
     lineIndex = cached.lineIndex
     program = cached.program
+    comments = cached.comments
   } else {
     lineIndex = new LineIndex(sourceText)
     try {
@@ -225,11 +232,16 @@ export function lintFile(
         lang: getLang(ext),
       })
       program = result.program
+      comments = result.comments as readonly SourceComment[]
     } catch {
       return { filePath, diagnostics: [] }
     }
-    cache?.set(sourceText, { program, lineIndex })
+    cache?.set(sourceText, { program, lineIndex, comments })
   }
+
+  const directives = readFileDirectives(sourceText, lineIndex)
+  let generated: boolean | undefined
+  const isGenerated = (): boolean => (generated ??= isGeneratedSource(sourceText))
 
   const diagnostics: Diagnostic[] = []
   // Resolved at most once per file, and only when a rule actually asks.
@@ -318,6 +330,15 @@ export function lintFile(
     // forgotten role gate is silent: the rule simply runs where it should not.
     if (rule.meta.appliesTo && !roleMatches(rule.meta.appliesTo, fileRole())) continue
 
+    // A generated file is never edited by hand, so a finding about how it
+    // READS cannot be acted on. Central, like the two gates above.
+    if (rule.meta.skipGenerated && isGenerated()) continue
+
+    // `// pyreon-lint-disable-file <id> -- reason` turns the rule off for the
+    // whole file. Skipping `create()` is cheaper than filtering findings, and
+    // it is exactly what the directive says.
+    if (directives.disabledRules.has(rule.meta.id) || directives.disableAll) continue
+
     const ctx = createRuleContext(
       rule,
       severity,
@@ -326,6 +347,7 @@ export function lintFile(
       lineIndex,
       sourceText,
       filePath,
+      comments,
     )
     allCallbacks.push(rule.create(ctx))
     if (rule.meta.plainLowered) plainLoweredRules.push({ rule, severity, options })
@@ -344,24 +366,27 @@ export function lintFile(
   //   // pyreon-lint-ignore <rule-id>                  — suppress one rule
   //   // pyreon-lint-disable-next-line                 — alias of `ignore`
   //   // pyreon-lint-disable-next-line <rule-id>       — alias of `ignore <rule-id>`
+  // Each form accepts a comma list of ids and a trailing `-- reason`:
+  //   // pyreon-lint-disable-next-line pyreon/max-jsx-depth -- table layout, see #123
   // The `disable-next-line` form is the convention several rule docstrings
   // already document — we accept both so the docs and runtime match.
   // Word-boundary matching prevents typos like `// pyreon-lint-ignored` from
   // accidentally being treated as suppressions.
   const lines = sourceText.split('\n')
-  const SUPPRESS_RE = /^\/\/\s*pyreon-lint-(?:ignore|disable-next-line)(?:\s+(\S+))?\s*$/
   const filtered = diagnostics.filter((d) => {
     const prevLineIdx = d.loc.line - 2
     if (prevLineIdx < 0) return true
     const prevLine = lines[prevLineIdx]?.trim() ?? ''
-    const match = SUPPRESS_RE.exec(prevLine)
-    if (!match) return true
-    const ruleId = match[1]
+    const directive = parseSuppression(prevLine)
+    if (!directive) return true
     // Bare suppression (no rule id) → suppress every diagnostic on next line.
-    if (!ruleId) return false
-    // Rule-specific suppression → drop only the matching rule.
-    return ruleId !== d.ruleId
+    if (directive.ruleIds.length === 0) return false
+    // Rule-specific suppression → drop only the matching rules.
+    return !directive.ruleIds.includes(d.ruleId)
   })
+  // A file-level disable that gives no reason is ignored, and says so: an
+  // opt-out nobody can explain is the one nobody can ever remove.
+  filtered.push(...directives.problems)
 
   filtered.sort((a, b) => a.span.start - b.span.start)
   return { filePath, diagnostics: filtered }
@@ -399,6 +424,31 @@ export function fixEdits(fix: RuleFix): Fix[] {
  *    gone.
  */
 export function applyFixes(sourceText: string, diagnostics: Diagnostic[]): string {
+  const applied = selectFixEdits(diagnostics)
+  if (applied.length === 0) return sourceText
+  // Apply end-to-start so earlier offsets stay valid.
+  const ordered = [...applied].sort((a, b) => b.span.start - a.span.start)
+  let result = sourceText
+  for (const edit of ordered) {
+    result = result.slice(0, edit.span.start) + edit.replacement + result.slice(edit.span.end)
+  }
+
+  return result
+}
+
+/**
+ * The edits `applyFixes` would make, in source order — whole fixes only, the
+ * first of two overlapping fixes wins, and IDENTICAL edits collapse to one.
+ *
+ * The collapse matters for zero-width insertions: two rules that both want a
+ * blank line before the same `return` (the component-section rule and the
+ * return rule) each insert `\n` at the same offset. Applying both would give
+ * two blank lines; they are one intent, so they are one edit.
+ *
+ * Exported so the LSP can turn the same selection into editor `TextEdit`s
+ * instead of replacing the whole document.
+ */
+export function selectFixEdits(diagnostics: readonly Diagnostic[]): Fix[] {
   type Candidate = { edits: Fix[]; start: number; end: number }
 
   const candidates: Candidate[] = []
@@ -412,25 +462,126 @@ export function applyFixes(sourceText: string, diagnostics: Diagnostic[]): strin
       end: Math.max(...edits.map((e) => e.span.end)),
     })
   }
-  if (candidates.length === 0) return sourceText
+  if (candidates.length === 0) return []
 
   // Source order, so "first one wins" is deterministic rather than
   // dependent on rule registration order.
   candidates.sort((a, b) => a.start - b.start || a.end - b.end)
 
   const applied: Fix[] = []
+  const seen = new Set<string>()
   let claimedUpTo = -1
   for (const c of candidates) {
+    const keys = c.edits.map((e) => `${e.span.start}:${e.span.end}:${e.replacement}`)
+    // Every edit already made by an earlier fix → the same intent; skip it.
+    if (keys.every((k) => seen.has(k))) continue
     if (c.start < claimedUpTo) continue // overlaps something already applied
     applied.push(...c.edits)
+    for (const k of keys) seen.add(k)
     claimedUpTo = Math.max(claimedUpTo, c.end)
   }
 
-  // Apply end-to-start so earlier offsets stay valid.
-  applied.sort((a, b) => b.span.start - a.span.start)
-  let result = sourceText
-  for (const edit of applied) {
-    result = result.slice(0, edit.span.start) + edit.replacement + result.slice(edit.span.end)
+  return applied
+}
+
+// ── Suppression directives ──────────────────────────────────────────────────
+
+/** Parsed `// pyreon-lint-…` directive: rule ids (empty = all) and the stated reason. */
+interface Suppression {
+  ruleIds: string[]
+  reason: string | undefined
+}
+
+const NEXT_LINE_RE = /^\/\/\s*pyreon-lint-(?:ignore|disable-next-line)(?=\s|$)(.*)$/
+const FILE_RE = /^\/\/\s*pyreon-lint-disable-file(?=\s|$)(.*)$/
+
+/**
+ * Split a directive's tail into rule ids and a `-- reason`.
+ * `" pyreon/a, pyreon/b -- why"` → `{ ruleIds: ['pyreon/a', 'pyreon/b'], reason: 'why' }`.
+ */
+function parseDirectiveTail(tail: string): Suppression {
+  const dash = tail.search(/(?:^|\s)--(?:\s|$)/)
+  const idsPart = dash === -1 ? tail : tail.slice(0, dash)
+  const reasonPart = dash === -1 ? '' : tail.slice(dash).replace(/^\s*--/, '').trim()
+  const ruleIds = idsPart
+    .split(/[\s,]+/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+
+  return { ruleIds, reason: reasonPart || undefined }
+}
+
+/** `// pyreon-lint-disable-next-line [ids] [-- reason]` on a trimmed line, or null. */
+export function parseSuppression(trimmedLine: string): Suppression | null {
+  const m = NEXT_LINE_RE.exec(trimmedLine)
+  if (!m) return null
+  return parseDirectiveTail(m[1] ?? '')
+}
+
+interface FileDirectives {
+  disabledRules: Set<string>
+  disableAll: boolean
+  /** Findings about malformed directives (a file-level disable with no reason). */
+  problems: Diagnostic[]
+}
+
+const NO_DIRECTIVES: FileDirectives = { disabledRules: new Set(), disableAll: false, problems: [] }
+
+/**
+ * Read every `// pyreon-lint-disable-file <ids> -- <reason>` line.
+ *
+ * The reason is MANDATORY. A whole-file opt-out silences a rule for code that
+ * does not exist yet, so the next reader needs to know why it is there and
+ * when it can go. A directive without one is not honoured, and the runner adds
+ * a finding that says what to write.
+ */
+function readFileDirectives(sourceText: string, lineIndex: LineIndex): FileDirectives {
+  if (!sourceText.includes('pyreon-lint-disable-file')) return NO_DIRECTIVES
+  const out: FileDirectives = { disabledRules: new Set(), disableAll: false, problems: [] }
+  let offset = 0
+  for (const raw of sourceText.split('\n')) {
+    const lineStart = offset
+    offset += raw.length + 1
+    const trimmed = raw.trim()
+    const m = FILE_RE.exec(trimmed)
+    if (!m) continue
+    const { ruleIds, reason } = parseDirectiveTail(m[1] ?? '')
+    if (!reason) {
+      const start = lineStart + raw.indexOf(trimmed)
+      out.problems.push({
+        ruleId: 'pyreon-lint/disable-file-reason',
+        severity: 'warn',
+        message:
+          'Give this file-level disable a reason: `// pyreon-lint-disable-file <rule-id> -- <why>`. ' +
+          'Without one it is ignored, because nobody could ever tell when it is safe to remove.',
+        span: { start, end: start + trimmed.length },
+        loc: lineIndex.locate(start),
+      })
+      continue
+    }
+    if (ruleIds.length === 0) out.disableAll = true
+    for (const id of ruleIds) out.disabledRules.add(id)
   }
-  return result
+
+  return out
+}
+
+const GENERATED_RE = /@generated\b|\bGENERATED\b[^\n]*\bby\b|\bdo not edit\b/i
+
+/**
+ * Does the file declare itself generated in its first three lines?
+ * (`// @generated`, `// GENERATED by scripts/x.ts`, `/* Do not edit *\/`)
+ */
+export function isGeneratedSource(sourceText: string): boolean {
+  let end = -1
+  for (let i = 0; i < 3; i++) {
+    const next = sourceText.indexOf('\n', end + 1)
+    if (next === -1) {
+      end = sourceText.length
+      break
+    }
+    end = next
+  }
+
+  return GENERATED_RE.test(sourceText.slice(0, end))
 }

@@ -68,36 +68,14 @@ describe.skipIf(skipCondition)('Kotlin emit — kotlinc validates each fixture',
     'synth-prop-types.tsx',
     // Router-hook stub regression: useNavigate / useParams.
     'router-hooks.tsx',
-    // Gap 5 showcase (STORE-BACKED — see the fixture header). In BOTH
-    // validate loops: a cross-screen defineStore (auth flag + Task[]
-    // list — `object PyreonStore_app` with mutableStateOf fields), the
-    // store-read beforeEnter guard in the dispatcher, typed route
-    // params (`/tasks/:id` + synthesized TaskDetailPageParam +
-    // dispatcher construction), .set() spread-append / map-toggle
-    // through the store, and Text-wrapped value-expression children.
-    // The ORIGINAL scaffold was Swift-loop-only because its emit
-    // didn't compile under kotlinc (tuple literals, `.update()`,
-    // prop-less dispatch of prop-requiring components).
-    'showcase-tasks.tsx',
-    // The webview-host archetype. Mirror of `examples/native-viz/src/VizApp.tsx`
-    // — an ECharts option object and a ProseMirror document, the two payload
-    // shapes that had no synthesizable struct and emitted a tuple. The example
-    // did not build on Android at all until `<WebView data>` lowered literals
-    // as JSON and a literal omitting an optional field stopped falling through
-    // to synthesis. The coverage gate previously certified this whole mechanism
-    // on a WARNING COUNT; this compiles it.
-    'showcase-viz.tsx',
-    // The multiplatform analytical-app proof — mirror of
-    // `examples/native-analytics/src/AnalyticsApp.tsx`. Heavy data table
-    // + inline reduce/fold totals + String()→toString() numeric coercion
-    // + escape-hatch WebView chart (const-ref'd HTML). Locks the
-    // example's emit through the kotlinc gate.
+    // The multiplatform analytical-app proof (formerly examples/native-analytics, now
+    // only here): a heavy data table (keyed <For>), inline reduce column totals,
+    // String() numeric coercion, Plain Mode state, and a chart hosted in a native
+    // WebView with a const-ref'd HTML payload.
     'showcase-analytics.tsx',
-    // The finance-tracker archetype proof (Phase 5 / #1689): useAuth<User> +
-    // useDatabase in a real app shape — auth-state reads/transitions,
-    // reactive store ledger, computed balance, validated useForm, string-keyed
-    // db ops, routing + auth-gate. Locks the emit through the kotlinc gate.
-    'showcase-finance.tsx',
+    // examples/native-tasks/src/TasksApp.tsx and examples/native-finance/src/FinanceApp.tsx are not
+    // copied here: native-examples-compile.test.ts compiles the real sources on both targets
+    // (Swift typecheck against stubs, kotlinc). Their hand-kept mirrors had drifted.
     // Dynamic <WebView html={signal-derived}> — reactive-reload bridge slice;
     // locks the dynamic-html emit through the toolchain gate.
     'webview-dynamic.tsx',
@@ -314,12 +292,12 @@ const TODOMVC_SOURCE_PATH = (() => {
   return resolve(
     here,
     '..', '..', '..', '..', '..',
-    'examples', 'native-todomvc-ios', 'src', 'TodoApp.tsx',
+    'examples', 'native-todomvc', 'src', 'TodoApp.tsx',
   )
 })()
 
 describe.skipIf(skipCondition)('K-FINAL — real TodoMVC emit typechecks via kotlinc + K4 stubs', () => {
-  it('transform()-emitted Kotlin for examples/native-todomvc-ios/src/TodoApp.tsx is typecheck-clean', () => {
+  it('transform()-emitted Kotlin for examples/native-todomvc/src/TodoApp.tsx is typecheck-clean', () => {
     const source = readFileSync(TODOMVC_SOURCE_PATH, 'utf8')
     const out = transform(source, { target: 'kotlin' })
 

@@ -3,12 +3,12 @@ import { island } from '@pyreon/zero'
 import type { BlogPost, BlogPostView } from '@pyreon/zero-content/blog'
 import { shareTargets } from '@pyreon/zero-content/blog'
 import { BLOG_COPY } from '../../site/content/channels'
-import { el, focusRing, tone, txt, type LinkAttrs } from '../../site/kit/bases'
+import { el, focusRing, tone, txt, type LinkAttrs, tapArea } from '../../site/kit/bases'
 import { Glyph } from '../../site/kit/cards'
 import { C } from '../../site/kit/classes'
 import { Section, Wrap } from '../../site/kit/layout'
 import { Eyebrow, Heading, Lede } from '../../site/kit/type'
-import { breakpoints, font, layout, radius, text, weight } from '../../site/theme'
+import { breakpoints, font, layout, radius, text, touch, weight } from '../../site/theme'
 import { EndCard, PostMetaLine, splitAt, SubscribeBand, TagChips } from './parts'
 import { PostProse } from './prose'
 
@@ -41,6 +41,7 @@ const BackLink = el
     borderRadius: 4,
     hover: { color: tone(m, 'text') },
     focus: focusRing(m),
+    extendCss: tapArea,
   }))
 
 const Byline = el
@@ -67,7 +68,7 @@ const Author = txt
     fontSize: text.body.size,
     fontWeight: weight.medium,
     color: tone(m, 'text'),
-    extendCss: `& a { color: inherit; text-decoration: underline; text-decoration-color: ${tone(m, 'accent')}; text-underline-offset: 3px; border-radius: 2px; } & a:focus-visible { outline: 2px solid ${tone(m, 'focus')}; outline-offset: 2px; }`,
+    extendCss: `& a { color: inherit; text-decoration: underline; text-decoration-color: ${tone(m, 'accent')}; text-underline-offset: 3px; border-radius: 2px; } & a:focus-visible { outline: 2px solid ${tone(m, 'focus')}; outline-offset: 2px; } ${touch.media} { & a { display: inline-flex; align-items: center; min-height: ${touch.tapTarget}px; } }`,
   }))
 
 const Body = el
@@ -156,6 +157,7 @@ const ShareLink = el
     textDecoration: 'none',
     hover: { borderColor: tone(m, 'lineHover') },
     focus: focusRing(m),
+    extendCss: tapArea,
   }))
 
 /** The end row's copy-link button: below 992px only (the rail has one above). The island wires it. */

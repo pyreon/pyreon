@@ -62,7 +62,7 @@ export function SectionHead(props: {
     <HeadBox state={props.align === 'center' ? 'center' : 'default'}>
       <Eyebrow>{props.label}</Eyebrow>
       <Heading tag="h2" id={props.id} size={props.level === 'landing' ? 'landingSection' : 'section'}>
-        {props.title}
+        {renderInline(props.title)}
       </Heading>
       <Show when={() => !!props.text}>
         <Lede size="section">{renderInline(props.text ?? '')}</Lede>

@@ -88,7 +88,7 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`defineStore`](#definestore-function) | function | Define a composition-style store. |
-| [`defineSchemaStore`](#defineschemastore-function) | function | Define a schema-validated store (a separate export from `defineStore`, so a plain store's bundle never carries the valid |
+| [`defineSchemaStore`](#defineschemastore-function) | function | Define a schema-validated store (a separate export from `defineStore`, so a plain store's bundle never carries the… |
 | [`SchemaStoreApi`](#schemastoreapi-type) | type | Return type of the schema-driven `defineStore` overload — STRICTLY TYPED from the schema. |
 | [`DeepPartial`](#deeppartial-type) | type | Recursive partial — every property optional at every depth. |
 | [`SchemaStoreConfig`](#schemastoreconfig-type) | type | Config object passed as the 2nd arg of the schema-mode `defineStore` overload. |
@@ -101,8 +101,8 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())
 | [`dehydrateStores`](#dehydratestores-function) | function | SERVER side of the SSR store-hydration handshake (the `@pyreon/store` analogue of TanStack Query `dehydrate`). |
 | [`hydrateStores`](#hydratestores-function) | function | CLIENT side of the SSR store-hydration handshake. |
 | [`StoreState`](#storestate-type) | type | Derive the UNWRAPPED per-field value shape of a store from its api object — the inverse of `SignalsOf`. |
-| [`StoreActions`](#storeactions-type) | type | Derive the ACTIONS surface of a store from its api object — the plain function fields of the setup return (schema stores |
-| [`signal`](#signal-function) | function | Convenience re-exports of the four `@pyreon/reactivity` primitives a `setup()` function reaches for constantly, so a sto |
+| [`StoreActions`](#storeactions-type) | type | Derive the ACTIONS surface of a store from its api object — the plain function fields of the setup return (schema… |
+| [`signal`](#signal-function) | function | Convenience re-exports of the four `@pyreon/reactivity` primitives a `setup()` function reaches for constantly, so a… |
 
 ## API
 

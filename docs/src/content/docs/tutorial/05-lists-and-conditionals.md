@@ -12,12 +12,12 @@ Because components run once, nothing re-renders a list or a branch for you. The 
 ```tsx
 import { For } from '@pyreon/core'
 
-<For each={todos} by={(t) => t.id}>
+<For each={todos()} by={(t) => t.id}>
   {(todo) => <li>{todo.text}</li>}
 </For>
 ```
 
-Pass the **signal** to `each` (not `todos()`), and give `by` a stable id. Here's a live keyed list — add items and watch only the new row mount:
+Read the signal in `each` (`todos()`: the compiler passes a signal read in a prop as a reactive prop), and give `by` a stable id. Here's a live keyed list — add items and watch only the new row mount:
 
 <Example file="./examples/tutorial/todo-1-list" />
 
@@ -26,7 +26,7 @@ Pass the **signal** to `each` (not `todos()`), and give `by` a stable id. Here's
 ```tsx
 import { Show } from '@pyreon/core'
 
-<Show when={loggedIn} fallback={<LoginButton />}>
+<Show when={loggedIn()} fallback={<LoginButton />}>
   <Dashboard />
 </Show>
 ```

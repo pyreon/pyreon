@@ -120,8 +120,8 @@ const View = () => {
 | [`isReference`](#isreference-function) | function | Type-guard that returns true if a value is a ReferenceSchema produced by `reference()`. |
 | [`Table`](#table-component) | component | Render the table `useTable()` already computes — thead, tbody, sorting handlers and the sort indicator. |
 | [`Field`](#field-component) | component | Render ONE schema field — label, typed control and error — from the feature's own `fields`. |
-| [`createFieldComponent / createTableComponent`](#createfieldcomponent-createtablecomponent-function) | function | The factories `defineFeature` calls internally to build the bound `feature.Field` and `feature.Table` components — every |
-| [`extractFields`](#extractfields-function) | function | Introspect a schema object and return an array of `FieldInfo` describing each field (name, type, optional, label, plus e |
+| [`createFieldComponent / createTableComponent`](#createfieldcomponent-createtablecomponent-function) | function | The factories `defineFeature` calls internally to build the bound `feature.Field` and `feature.Table` components — every… |
+| [`extractFields`](#extractfields-function) | function | Introspect a schema object and return an array of `FieldInfo` describing each field (name, type, optional, label, plus… |
 | [`defaultInitialValues`](#defaultinitialvalues-function) | function | Generate sensible default initial values from extracted field info. |
 
 ## API

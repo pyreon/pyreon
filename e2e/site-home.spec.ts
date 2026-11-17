@@ -257,15 +257,126 @@ test.describe('homepage', () => {
     await ctx.close()
   })
 
-  test('on a phone the hero shows the trace and the platforms section carries the loop', async ({ browser }) => {
+  test('on a phone the hero lists the three targets as text and the platforms section carries the loop', async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } })
     const page = await ctx.newPage()
     await page.goto('/')
     await expect(page.locator('#hero video')).toBeHidden()
-    await expect(page.locator('#hero svg[role=img]').first()).toBeVisible()
+    // The trace illustration's labels were 4-8px tall at this width: the hero
+    // carries the same three targets as text, at a readable size.
+    const targets = page.locator('#hero ul[aria-label="The three targets"]').filter({ visible: true }).locator('li')
+    await expect(targets).toHaveCount(3)
+    await expect(targets.first()).toBeVisible()
+    for (const size of await targets.evaluateAll((lis) => lis.map((li) => Number.parseFloat(getComputedStyle(li).fontSize)))) expect(size).toBeGreaterThanOrEqual(12)
     await expect(page.locator('#platforms figure')).toBeAttached()
     await ctx.close()
   })
+})
+
+/**
+ * The stat blocks (kit/stat.tsx: the proof band's cells and the stat cards)
+ * and the badge (kit/badge.tsx), measured in a real browser on a phone.
+ */
+test.describe('stat blocks and badges', () => {
+  type StatLayout = { label: string; inset: number; edges: { part: string; left: number }[]; html: string[]; drawn: string[]; artOverflow: number; svgTextOut: string[] }
+
+  /** Every stat block on the page: the left edge of each part relative to its surface, and the leaf texts. */
+  const statLayouts = (page: import('@playwright/test').Page) =>
+    page.locator('[data-stat]').evaluateAll((heads): StatLayout[] =>
+      heads.map((head) => {
+        const surface = head.parentElement as HTMLElement
+        const box = surface.getBoundingClientRect()
+        const edges: { part: string; left: number }[] = []
+        for (const child of Array.from(surface.children) as HTMLElement[]) {
+          const r = child.getBoundingClientRect()
+          if (r.width === 0) continue
+          edges.push({ part: child.tagName.toLowerCase() + (child.textContent ?? '').trim().slice(0, 24), left: Math.round(r.left - box.left) })
+          // A chart's own first text column (the "LOWER IS BETTER" eyebrow, the row labels) starts at x=0 of its drawing.
+          const svg = child.querySelector('svg')
+          const first = svg?.querySelector('text')
+          if (first) edges.push({ part: `chart text "${(first.textContent ?? '').slice(0, 20)}"`, left: Math.round(first.getBoundingClientRect().left - box.left) })
+        }
+        const leafTexts = (sel: string) =>
+          Array.from(surface.querySelectorAll(sel))
+            .filter((e) => e.children.length === 0)
+            .map((e) => (e.textContent ?? '').trim())
+            .filter((t) => t.length > 0)
+        const art = surface.querySelector<HTMLElement>('[data-art]')
+        const svg = surface.querySelector('svg')
+        const svgBox = svg?.getBoundingClientRect()
+        const svgTextOut = svg && svgBox
+          ? Array.from(svg.querySelectorAll('text')).filter((t) => t.getBoundingClientRect().right > svgBox.right + 0.5).map((t) => t.textContent ?? '')
+          : []
+        return {
+          label: (head.textContent ?? '').trim().slice(0, 40),
+          inset: Math.round(head.getBoundingClientRect().left - box.left),
+          edges,
+          html: leafTexts('span, h3, p'),
+          drawn: leafTexts('svg text'),
+          artOverflow: art ? art.scrollWidth - art.clientWidth : 0,
+          svgTextOut,
+        }
+      }),
+    )
+
+  for (const width of [320, 375]) {
+    test(`at ${width}px every part of a stat block shares the surface's one inset, and the chart fits`, async ({ browser }) => {
+      const ctx = await browser.newContext({ viewport: { width, height: 800 } })
+      const page = await ctx.newPage()
+      await page.goto('/')
+      const blocks = await statLayouts(page)
+      expect(blocks.length, 'stat blocks on the homepage').toBeGreaterThanOrEqual(8)
+      for (const b of blocks) {
+        // One inset per surface: the numeral, the caption, the chart and the chart's own text
+        // all start at it (a chart used to bleed into the padding: two left edges).
+        for (const e of b.edges) expect(Math.abs(e.left - b.inset), `${b.label}: ${e.part} starts at ${e.left}px, the numeral at ${b.inset}px`).toBeLessThanOrEqual(1)
+        // Scaled down on a phone: 16px, not the 22px tablet inset.
+        expect(b.inset, `${b.label}: inset`).toBeLessThanOrEqual(17)
+        expect(b.artOverflow, `${b.label}: the chart scrolls in its box`).toBeLessThanOrEqual(0)
+        expect(b.svgTextOut, `${b.label}: chart labels past the drawing`).toEqual([])
+      }
+      await ctx.close()
+    })
+  }
+
+  test('a stat block states its run condition once (the chart footnote carries it when there is a chart)', async ({ page }) => {
+    await page.goto('/')
+    for (const b of await statLayouts(page)) {
+      // A printed line repeated as a line, or as the first `·` part of the chart's footnote.
+      // (The chart redrawing the numbers is the point of the chart: an exact match in the drawing is fine.)
+      for (const note of new Set(b.html)) {
+        const repeats = [...b.html.filter((t) => t === note), ...[...b.html, ...b.drawn].filter((t) => t.startsWith(`${note} · `))]
+        expect(repeats, `${b.label}: "${note}" printed ${repeats.length} times`).toHaveLength(1)
+      }
+    }
+  })
+
+  for (const path of ['/products/charts/', '/compare/react/', '/benchmarks/']) {
+    test(`${path}: a gradient badge paints one gradient from its border box, at the weight of every other badge`, async ({ page }) => {
+      await page.goto(path)
+      const badges = await page.locator('span').evaluateAll((els) =>
+        els
+          .filter((e) => {
+            const cs = getComputedStyle(e)
+            return cs.borderRadius.startsWith('9999') && cs.borderTopStyle === 'solid' && e.children.length === 0 && (e.textContent ?? '').trim() !== ''
+          })
+          .map((e) => {
+            const cs = getComputedStyle(e)
+            return { text: e.textContent, gradient: cs.backgroundImage.includes('gradient'), origin: cs.backgroundOrigin, repeat: cs.backgroundRepeat, weight: cs.fontWeight, border: cs.borderTopWidth }
+          }),
+      )
+      const filled = badges.filter((b) => b.gradient)
+      expect(filled.length, 'gradient badges').toBeGreaterThan(0)
+      for (const b of filled) {
+        // With the padding-box origin the gradient tiles under the 1px transparent border: the
+        // opposite stop shows at each rounded end and a seam runs along the padding edge.
+        expect(b.origin, `"${b.text}" background-origin`).toBe('border-box')
+        expect(b.repeat, `"${b.text}" background-repeat`).toBe('no-repeat')
+      }
+      // Semibold JetBrains Mono at 10.5px draws the "I" of WIN heavier than W and N.
+      expect(new Set(badges.map((b) => b.weight)), 'badge weights').toEqual(new Set(['400']))
+    })
+  }
 })
 
 test.describe('404', () => {

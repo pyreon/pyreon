@@ -93,21 +93,21 @@ const errors = validate({ email: 'x', age: 5 })  // sync schema → plain record
 | [`valibotField`](#valibotfield-function) | function | Create a per-field validator from a Valibot schema. |
 | [`arktypeSchema`](#arktypeschema-function) | function | Create a typed whole-form schema adapter from an ArkType type. |
 | [`arktypeField`](#arktypefield-function) | function | Create a per-field validator from an ArkType type. |
-| [`standardSchemaToValidator`](#standardschematovalidator-function) | function | Convert a RAW Standard Schema (any library exposing `~standard` — Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, `@py |
-| [`isStandardSchema`](#isstandardschema-function) | function | Runtime type guard — detect a Standard Schema-compliant schema by its `~standard` property (an object carrying a `valida |
+| [`standardSchemaToValidator`](#standardschematovalidator-function) | function | Convert a RAW Standard Schema (any library exposing `~standard` — Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema,… |
+| [`isStandardSchema`](#isstandardschema-function) | function | Runtime type guard — detect a Standard Schema-compliant schema by its `~standard` property (an object carrying a… |
 | [`isPyreonAdapter`](#ispyreonadapter-function) | function | Runtime type guard — detect a Pyreon TypedSchemaAdapter (Tier A.1) by its `_infer` brand plus a callable `parse`. |
-| [`wrapStandardSchema`](#wrapstandardschema-function) | function | Convert a Standard Schema into a synchronous parser returning `SchemaParseResult<T>` (`&#123; ok: true, value &#125; \| &#123; ok: false |
-| [`extractParseFn`](#extractparsefn-function) | function | The primary schema-driven entry point for `@pyreon/store` + `@pyreon/state-tree`: accept EITHER a Pyreon TypedSchemaAdap |
+| [`wrapStandardSchema`](#wrapstandardschema-function) | function | Convert a Standard Schema into a synchronous parser returning `SchemaParseResult<T>`… |
+| [`extractParseFn`](#extractparsefn-function) | function | The primary schema-driven entry point for `@pyreon/store` + `@pyreon/state-tree`: accept EITHER a Pyreon… |
 | [`formatIssues`](#formatissues-function) | function | Format normalized schema issues into a readable multi-line `[Pyreon] Schema validation failed (<op>): ...` message. |
-| [`issuesToRecord`](#issuestorecord-function) | function | Collapse an array of normalized `ValidationIssue` (`{ path, message }`) into a flat field→error record — the shape `@pyr |
-| [`flattenIssuePath`](#flattenissuepath-function) | function | Normalize a Standard-Schema-style issue path (an array of `PropertyKey`s, or of `{ key }` wrappers — libraries emit eith |
+| [`issuesToRecord`](#issuestorecord-function) | function | Collapse an array of normalized `ValidationIssue` (`{ path, message }`) into a flat field→error record — the shape… |
+| [`flattenIssuePath`](#flattenissuepath-function) | function | Normalize a Standard-Schema-style issue path (an array of `PropertyKey`s, or of `{ key }` wrappers — libraries emit… |
 | [`TypedSchemaAdapter`](#typedschemaadapter-type) | type | The object every `zodSchema()` / `valibotSchema()` / `arktypeSchema()` returns. |
-| [`InferSchema`](#inferschema-type) | type | Extract the inferred output type from EITHER a Pyreon TypedSchemaAdapter (reads `_infer`, Tier A.1) OR a raw Standard Sc |
+| [`InferSchema`](#inferschema-type) | type | Extract the inferred output type from EITHER a Pyreon TypedSchemaAdapter (reads `_infer`, Tier A.1) OR a raw Standard… |
 | [`SchemaValidateFn`](#schemavalidatefn-type) | type | The whole-object validator contract — maps a values object to a per-key error record (sync or async). |
-| [`ValidateFn`](#validatefn-type) | type | The single-field validator contract — receives the field value, all current values (for cross-field checks), and an opti |
+| [`ValidateFn`](#validatefn-type) | type | The single-field validator contract — receives the field value, all current values (for cross-field checks), and an… |
 | [`ValidationError`](#validationerror-type) | type | A single field's error value — the message string, or `undefined` for "no error". |
-| [`StandardSchemaLike`](#standardschemalike-type) | type | The Standard Schema (https://standardschema.dev) shape `@pyreon/validation` owns so any consumer can accept a raw schema |
-| [`ValidationIssue`](#validationissue-type) | type | The normalized issue shape every adapter produces before calling `issuesToRecord` — a dot-separated field `path` (`addre |
+| [`StandardSchemaLike`](#standardschemalike-type) | type | The Standard Schema (https://standardschema.dev) shape `@pyreon/validation` owns so any consumer can accept a raw schema… |
+| [`ValidationIssue`](#validationissue-type) | type | The normalized issue shape every adapter produces before calling `issuesToRecord` — a dot-separated field `path`… |
 
 ## API
 

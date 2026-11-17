@@ -36,6 +36,7 @@ import { rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import { assertClientClean, checkRouteSizes, measureRoutes, recordRouteSizes, routeHtmlMap } from './zero-app-checks'
+import { findExample } from './example-dirs'
 import { sizeBudgetsDir } from './size-budget-store'
 import {
   assertRunsUnderWorkerd,
@@ -1184,7 +1185,7 @@ const MATRIX: Cell[] = [
   // and the build fails or the produced HTML loses the testid + the
   // primitive-rendered text content.
   {
-    example: 'native-todomvc-web',
+    example: 'native-todomvc',
     mode: 'spa',
     useExampleConfig: true,
     smoke: (dist) => {
@@ -1220,7 +1221,7 @@ const MATRIX: Cell[] = [
   // native-router-demo-web — Phase R1.5 build-shape gate. Sibling of
   // native-todomvc-web's smoke cell; this one proves the multiplatform
   // *routing* story builds correctly. The web entry-client imports
-  // RouterApp directly from native-router-demo-ios/src/RouterApp.tsx
+  // RouterApp directly from native-router-demo/src/RouterApp.tsx
   // (path identity), so this cell exercises both:
   //   - the @pyreon/router web runtime (createRouter, RouterProvider,
   //     RouterView, useNavigate, useParams)
@@ -1231,7 +1232,7 @@ const MATRIX: Cell[] = [
   // primitive's web impl and the build fails OR the bundled JS loses
   // the testid + the user-visible page-name strings.
   {
-    example: 'native-router-demo-web',
+    example: 'native-router-demo',
     mode: 'spa',
     useExampleConfig: true,
     smoke: (dist) => {
@@ -1279,11 +1280,11 @@ const MATRIX: Cell[] = [
   // (#1457) + Android (#1458) ALSO builds and bundles on web.
   //
   // Bisect-verifiable: break the TasksApp source path in the entry
-  // (`../../native-tasks/src/TasksApp`) OR remove a primitive's web
+  // (`examples/native-tasks/src/TasksApp`) OR remove a primitive's web
   // impl AND the build fails OR the bundled JS loses the testids /
   // user-visible strings the smoke asserts.
   {
-    example: 'native-tasks-web',
+    example: 'native-tasks',
     mode: 'spa',
     useExampleConfig: true,
     smoke: (dist) => {
@@ -1365,7 +1366,7 @@ const MATRIX: Cell[] = [
     smoke: (dist) => {
       assertFileContains(join(dist, 'index.html'), 'id="app"')
 
-      // Inline-Defer regression gate. examples/playground/src/pages/About.tsx
+      // Inline-Defer regression gate. examples/fixtures/playground/src/pages/About.tsx
       // uses `<Defer when={open}><DeferredFixture /></Defer>` — the compiler
       // pass (`@pyreon/compiler` `transformDeferInline`) should:
       //   1. Rewrite the JSX to `<Defer chunk={() => import(...)} ...>`.
@@ -1861,7 +1862,7 @@ const MATRIX: Cell[] = [
   // Uses the example's own vite.config.ts (which wires getStaticPaths +
   // seoPlugin + fontPlugin together) — see useExampleConfig: true.
   {
-    example: 'cpa-pw-blog',
+    example: 'fixtures/cpa/blog',
     mode: 'ssg',
     useExampleConfig: true,
     smoke: (dist) => {
@@ -1884,10 +1885,10 @@ const MATRIX: Cell[] = [
       // Pre-PR-F: sitemap walks file-system routes and skips `[slug]`
       // (silent regex filter) — the blog post URLs would be absent.
       // Post-PR-F: useSsgPaths reads the manifest, blog post URLs land
-      // in sitemap.xml. The slugs are the markdown files in `examples/cpa-pw-blog/src/content/blog/`.
+      // in sitemap.xml. The slugs are the markdown files in `examples/fixtures/cpa/blog/src/content/blog/`.
       assertFileContains(sitemapPath, 'https://example.com/about')
       assertFileContains(sitemapPath, 'https://example.com/blog')
-      // Blog post slugs come from `examples/cpa-pw-blog/src/content/blog/`.
+      // Blog post slugs come from `examples/fixtures/cpa/blog/src/content/blog/`.
       assertFileContains(sitemapPath, '/blog/welcome')
       assertFileContains(sitemapPath, '/blog/why-signals')
       assertFileContains(sitemapPath, '/blog/static-vs-ssr')
@@ -2062,7 +2063,7 @@ const MATRIX: Cell[] = [
   // Bisect: drop the __routeRules inlining from renderSsgEntrySource →
   // /about prerenders with real content → the DoesNotContain assert fails.
   {
-    example: 'cpa-pw-blog',
+    example: 'fixtures/cpa/blog',
     mode: 'ssg',
     routeRules: { '/about': { renderMode: 'spa' } },
     smoke: (dist) => {
@@ -2198,7 +2199,8 @@ interface CellResult {
 }
 
 async function runCell(cell: Cell): Promise<CellResult> {
-  const exampleDir = join(REPO_ROOT, 'examples', cell.example)
+  // Throws when the example moved: a cell must never build a missing app.
+  const exampleDir = findExample(cell.example, REPO_ROOT).dir
   const distDir = join(exampleDir, 'dist')
   const verifyConfig = join(exampleDir, VERIFY_CONFIG_NAME)
   // The vercel adapter is the one that stages OUTSIDE dist/ (Build Output API

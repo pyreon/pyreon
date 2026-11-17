@@ -2376,7 +2376,7 @@ On the web, forward reports to a vendor (Sentry, your own endpoint) with `setCra
 | `useMergedRef` | `<T>(...refs) => RefCallback<T>` | Merge multiple ref callbacks into one |
 | `useUpdateEffect` | `(source, callback) => void` | Like `effect()` but skips the first (mount) run |
 | `useIsomorphicLayoutEffect` | `(fn) => void` | Layout effect on the client, `effect()` on the server |
-| `useSizeClass` | `() => () => 'compact' | 'regular'` | Reactive `'compact' | 'regular'` size class |
+| `useSizeClass` | `() => () => 'compact' \| 'regular'` | Reactive `'compact' \| 'regular'` size class |
 | `useDebouncedCallback` | `(callback, delay) => callback & { cancel, flush }` | Debounce a callback invocation |
 | `useThrottledCallback` | `(callback, delay) => callback & { cancel }` | Throttle a callback invocation |
 | `useInterval` | `(callback, delay) => void` | Reactive `setInterval` with auto-cleanup |

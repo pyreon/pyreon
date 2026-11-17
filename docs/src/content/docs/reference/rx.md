@@ -103,7 +103,7 @@ const staticResult = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]
 | [`groupBy`](#groupby-function) | function | Group items into buckets by key. |
 | [`countBy`](#countby-function) | function | Count items per key bucket. |
 | [`search`](#search-function) | function | Case-insensitive **substring** filter across the named fields. |
-| [`debounce`](#debounce-function) | function | Debounce a SIGNAL value (the whole emitted value, not array items — it is not a collection transform and does not curry  |
+| [`debounce`](#debounce-function) | function | Debounce a SIGNAL value (the whole emitted value, not array items — it is not a collection transform and does not curry… |
 | [`throttle`](#throttle-function) | function | Throttle a SIGNAL value to at most one emission per `ms`. |
 
 ## API

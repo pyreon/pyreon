@@ -1,0 +1,175 @@
+# XcodeGen project spec — turns this directory into an iOS Xcode
+# project without committing the .xcodeproj's brittle binary format.
+#
+# Usage:
+#   xcodegen generate   (run from this directory)
+#   open PyreonRouterDemo.xcodeproj
+#
+# Or one-command:
+#   ./scripts/xcode-setup.sh && open PyreonRouterDemo.xcodeproj
+#
+# Mirror of `examples/native-counter/ios/project.yml` — same xcodegen
+# pattern + same Pyreon → Swift compile preBuildScript. The only
+# differences: project name + bundle id + generated-output filename.
+
+name: PyreonRouterDemo
+
+options:
+  bundleIdPrefix: com.pyreon
+  deploymentTarget:
+    iOS: '17.0'
+
+# The single iOS app target. SwiftUI-only — no AppDelegate, no
+# storyboards. Hosts the compiler-emitted RouterApp + HomePage +
+# AboutPage + UserPage + the navigation-dispatch shell.
+targets:
+  PyreonRouterDemo:
+    # Pre-build script — runs the Pyreon compile loop BEFORE Swift
+    # compilation. Without this, you'd have to remember to run
+    # `./scripts/build-ios.sh` manually before every Xcode build. The script
+    # is idempotent — re-running it just overwrites `generated/`.
+    preBuildScripts:
+      - script: |
+          # Run from the project directory regardless of how Xcode invokes us.
+          bash "${SRCROOT}/../scripts/build-ios.sh"
+        name: '[Pyreon] Compile .tsx → generated/RouterApp.swift'
+        runOnlyWhenInstalling: false
+        basedOnDependencyAnalysis: false
+    type: application
+    platform: iOS
+    deploymentTarget: '17.0'
+
+    sources:
+      - path: Sources
+        type: group
+      - path: generated
+      - path: ../../../packages/fundamentals/form/native/swift
+      - path: ../../../packages/fundamentals/store/native/swift
+      - path: ../../../packages/fundamentals/state-tree/native/swift
+      - path: ../../../packages/fundamentals/machine/native/swift
+      - path: ../../../packages/fundamentals/i18n/native/swift
+      - path: ../../../packages/fundamentals/permissions/native/swift
+      - path: ../../../packages/fundamentals/query/native/swift
+      - path: ../../../packages/fundamentals/storage/native/swift
+      - path: ../../../packages/fundamentals/hooks/native/swift
+        type: group
+        # `optional: true` — `generated/` may not exist before the first
+        # build (it's gitignored). xcodegen tolerates the missing dir;
+        # the preBuildScript creates it.
+        optional: true
+
+    # Depends on the @pyreon/native-router-swift package (the runtime
+    # PyreonRouter / RouterProvider / NavigationLink helpers). Local
+    # SPM package reference — same shape native-todomvc/ios uses for
+    # its runtime deps.
+    dependencies:
+      - package: PyreonRuntime
+      - package: PyreonRouter
+
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDevelopmentRegion: en
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleInfoDictionaryVersion: '6.0'
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: 0.0.1
+        CFBundleVersion: '1'
+        # The custom scheme the deep-link device test opens. Without a
+        # registered URL type the OS has nothing to hand the app and
+        # `simctl openurl` fails before any Pyreon code runs.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.pyreon.PyreonRouterDemo
+            CFBundleURLSchemes: [pyreondemo]
+        # Media-row remote image: AsyncImage fetches over URLSession, which
+        # App Transport Security gates — cleartext http://localhost is
+        # BLOCKED by default (the ws test never hit this because the ws
+        # runtime uses Network.framework, which ATS does not cover).
+        # NSAllowsLocalNetworking permits loopback/local cleartext ONLY —
+        # not arbitrary http.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        LSRequiresIPhoneOS: true
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UILaunchScreen: {}
+        UIRequiredDeviceCapabilities:
+          - armv7
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+
+    entitlements:
+      path: PyreonRouterDemo.entitlements
+
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pyreon.PyreonRouterDemo
+        # Explicit CODE_SIGN_ENTITLEMENTS: xcodegen's `entitlements:` block
+        # alone did NOT embed under ad-hoc simulator signing — verified via
+        # `codesign -d --entitlements :-` reading an EMPTY dict on the built
+        # app, i.e. the keychain entitlement "fix" had never applied.
+        CODE_SIGN_ENTITLEMENTS: PyreonRouterDemo.entitlements
+        ENABLE_BITCODE: NO
+        SWIFT_VERSION: '5.0'
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_ALLOWED: YES
+        CODE_SIGNING_REQUIRED: YES
+
+      configs:
+        Debug:
+          SWIFT_OPTIMIZATION_LEVEL: -Onone
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: -O
+
+  # Gap 7 part (a) — XCUITest launch + multi-route navigation smoke.
+  # Asserts the app boots on the iOS Simulator, home-page renders,
+  # navigates to about-page, navigates back, and the dynamic
+  # `:id` segment populates useParams() correctly.
+  # See `iosUITests/PyreonRouterDemoUITests.swift`. Mirror of the
+  # TodoMVC + counter UITest target wiring.
+  PyreonRouterDemoUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: '17.0'
+
+    sources:
+      - path: UITests
+        type: group
+
+    dependencies:
+      - target: PyreonRouterDemo
+
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pyreon.PyreonRouterDemoUITests
+        TEST_TARGET_NAME: PyreonRouterDemo
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        SWIFT_VERSION: '5.0'
+
+# Explicit scheme so `xcodebuild -scheme PyreonRouterDemo test`
+# reliably picks up the UITest target. Same shape as TodoMVC/counter.
+schemes:
+  PyreonRouterDemo:
+    build:
+      targets:
+        PyreonRouterDemo: all
+        PyreonRouterDemoUITests: [test]
+    test:
+      gatherCoverageData: false
+      targets:
+        - PyreonRouterDemoUITests
+    run:
+      config: Debug
+
+# Local SPM package reference — the @pyreon/native-router-swift
+# package lives in the monorepo at packages/native/router-swift.
+# xcodegen resolves the relative path to an SPM dependency.
+packages:
+  PyreonRuntime:
+    path: ../../../packages/native/runtime-swift
+  PyreonRouter:
+    path: ../../../packages/native/router-swift

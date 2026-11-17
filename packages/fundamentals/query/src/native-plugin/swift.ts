@@ -32,10 +32,10 @@ export function streamDeclSwift(d: ExtDecl, ctx: EmitContext): string {
 }
 
 /**
- * useQuery: a `.task` per decl, guarded on `isStale` so a FRESH cache hit skips the network (serving
- * the hydrated value). The stale/miss path drives the same begin → resolve|reject machine as
- * useFetch; a background refresh flips only isFetching, never isPending, so already-shown data never
- * blanks.
+ * useQuery: a `.task` per decl that hands the query the request it builds (`run`). The query KEEPS
+ * that request, so `q.refetch()` re-runs it later — from a tap, long after the task returned — and
+ * fetches it now only when the cache is stale (a fresh hit serves the hydrated value). A background
+ * refresh flips only isFetching, never isPending, so already-shown data never blanks.
  */
 export function queryLifecycleSwift(decl: ExtDecl, ctx: EmitContext): readonly string[] {
   const d = query(decl)
@@ -52,32 +52,29 @@ export function queryLifecycleSwift(decl: ExtDecl, ctx: EmitContext): readonly s
   } else {
     lines.push(`.task {`)
   }
-  lines.push(`  if ${name}.isStale {`)
-  lines.push(`    ${name}.begin()`)
+  // The request closure: everything it reads (a URL param, a header token, a body) is read each time it RUNS, so a
+  // refetch sends current values. A failure is the runtime's to record (`error`), so the closure just throws.
+  lines.push(`  await ${name}.run {`)
   if (d.valueExpr !== undefined) {
-    // A DIRECT-VALUE queryFn (`() => <expr>`): resolve the computed value. No network, no decode,
-    // no throwing call — so no `do`/`catch`.
-    lines.push(`    ${name}.resolve(${ctx.expr(d.valueExpr, 0)})`)
+    // A DIRECT-VALUE queryFn (`() => <expr>`): the computed value. No network, no decode.
+    lines.push(`    return ${ctx.expr(d.valueExpr, 0)}`)
   } else {
     const swiftUrl = d.urlExpr !== undefined ? ctx.expr(d.urlExpr, 0) : ctx.stringLiteral(d.url as string)
-    lines.push(`    do {`)
     if (d.method || d.headers || d.headerExprs || d.body !== undefined || d.bodyExpr !== undefined || d.upload !== undefined || d.middleware !== undefined) {
       // A request with a VERB, headers, or a body routes through PyreonHttp — exactly like useFetch's
-      // method/headers path. Header and body expressions are evaluated here, inside the harness — i.e.
-      // when THIS run builds the request, so a token is current.
+      // method/headers path.
       const args = swiftHttpRequestArgs(
         { method: d.method, url: swiftUrl, headers: d.headers, headerExprs: d.headerExprs, body: d.body, bodyExpr: d.bodyExpr, upload: d.upload },
         ctx,
         `Declaration ${decl.name}: useQuery queryFn fetch`,
       )
       // The client's `use: [...]`, when present, is applied around the request with the web's onion semantics.
-      for (const line of swiftSendLines(args, d.middleware !== undefined ? ctx.expr(d.middleware, 0) : undefined)) lines.push(`      ${line}`)
-      lines.push(`      ${name}.resolve(try __response.decode(${ctx.typeText(d.type)}.self))`)
+      for (const line of swiftSendLines(args, d.middleware !== undefined ? ctx.expr(d.middleware, 0) : undefined)) lines.push(`    ${line}`)
+      lines.push(`    return try __response.decode(${ctx.typeText(d.type)}.self)`)
     } else {
-      lines.push(`      let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${swiftUrl})!)`)
-      lines.push(`      ${name}.resolve(try JSONDecoder().decode(${ctx.typeText(d.type)}.self, from: bytes))`)
+      lines.push(`    let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${swiftUrl})!)`)
+      lines.push(`    return try JSONDecoder().decode(${ctx.typeText(d.type)}.self, from: bytes)`)
     }
-    lines.push(`    } catch { ${name}.reject(error) }`)
   }
   lines.push(`  }`)
   lines.push(`}`)

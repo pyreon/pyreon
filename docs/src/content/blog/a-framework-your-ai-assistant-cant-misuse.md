@@ -129,7 +129,7 @@ Found 5 issues:
 
 (Long lines wrapped for the page.) Every finding carries a code, a line, the offending text, a concrete replacement and whether it is safe to apply mechanically. An assistant can apply three of them without thinking and has enough context for the other two.
 
-`validate` merges two detector families from the compiler: `detectReactPatterns` (habits from React) and `detectPyreonPatterns` (Pyreon used wrong, 20 mistake codes today). When the snippet imports `@pyreon/primitives`, a third family checks for code that compiles for the web but cannot lower to iOS or Android.
+`validate` merges two detector families from the compiler: `detectReactPatterns` (habits from React) and `detectPyreonPatterns` (Pyreon used wrong, 21 mistake codes today). When the snippet imports `@pyreon/primitives`, a third family checks for code that compiles for the web but cannot lower to iOS or Android.
 
 ### `explain_reactivity`: the map, not only the bugs
 
@@ -195,7 +195,7 @@ On the snippet (first two findings shown):
   5 findings in 1 file  ·  some are auto-fixable with --fix
 ```
 
-[`@pyreon/lint`](/docs/lint) is the broader rule set: 133 rules in 25 categories, from reactivity to SSR to accessibility. On the same file it reports the same five problems under its own rule names:
+[`@pyreon/lint`](/docs/lint) is the broader rule set: 141 rules in 26 categories, from reactivity to SSR to accessibility. On the same file it reports the same five problems under its own rule names:
 
 ```text
   4:25  error    Destructured props in component function …           pyreon/no-props-destructure
@@ -257,7 +257,7 @@ We could have written this post with five clean catches and stopped. We publish 
 
 - **No measured effect on assistants yet.** We have not run an evaluation of how often assistants write correct Pyreon with and without the MCP server. This post shows what the tools return. It does not show that a given model calls them or follows them. If you run that comparison, we want to see it.
 - **Static detection has edges.** The detectors run without a type checker and without cross-file data flow (see the sixth bug). They also need context: a fragment that leaves out `const query = signal('')` cannot tell a signal write from a function call, so `query(value)` in that fragment comes back clean. Pass whole files.
-- **The catalog is finite.** A mistake outside the 20 Pyreon codes and the React set passes.
+- **The catalog is finite.** A mistake outside the 21 Pyreon codes and the React set passes.
 - **Wording moves between releases.** The output above was re-run on `main` in November 2026 (0.53.0). Codes are stable; message text can change.
 - **The Lens needs an LSP setup.** The VS Code extension lives in the repo at `packages/tools/lint/vscode` and is installed by symlink; it is not on the Marketplace yet. Other editors register `pyreon-lint --lsp` by hand.
 - **Pyreon is pre-1.0.** An API the assistant learned can change in a minor release, which is why `get_changelog` exists: the assistant can read what changed between your installed version and the latest.

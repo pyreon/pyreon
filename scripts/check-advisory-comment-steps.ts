@@ -60,6 +60,8 @@ export const NOTIFIER_WORKFLOWS = new Set([
   'zero-freshness.yml',
   // The sticky issue is how a size-ceiling breach on main reaches a person.
   'size-ceiling-status.yml',
+  // The sticky issue is how a red run on the default branch reaches a person.
+  'main-red-status.yml',
 ])
 
 /** Octokit calls that write a PR comment / issue — the steps this gate covers. */

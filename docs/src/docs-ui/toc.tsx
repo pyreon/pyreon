@@ -1,3 +1,5 @@
+import { CodeSpans } from './code-spans'
+
 export interface TocHeading {
   level: number
   text: string
@@ -77,7 +79,7 @@ function TocList(props: { entries: readonly TocHeading[] }) {
       {props.entries.map((h) => (
         <li class={h.level === 3 ? 'dx-toc__item dx-toc__item--sub' : 'dx-toc__item'}>
           <a href={`#${h.slug}`} class="dx-toc__link">
-            {h.text}
+            <CodeSpans text={h.text} />
           </a>
         </li>
       ))}

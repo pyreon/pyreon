@@ -1,9 +1,4 @@
-import { signal } from "@pyreon/reactivity"
-import { For, onMount } from "@pyreon/core"
-import { useHead } from "@pyreon/head"
-import { useRoute } from "@pyreon/router"
-import type { GetStaticPaths } from "@pyreon/zero/server"
-import { Link } from "@pyreon/zero/link"
+import { cx, For, onMount } from '@pyreon/core'
 import {
   DocDocument,
   DocPage,
@@ -14,12 +9,17 @@ import {
   DocSpacer,
   DocDivider,
   extractDocNode,
-} from "@pyreon/document-primitives"
-import { render } from "@pyreon/document"
-import { type Invoice, invoiceById, invoiceTotal } from "../../../lib/db"
+} from '@pyreon/document-primitives'
+import { useHead } from '@pyreon/head'
+import { signal } from '@pyreon/reactivity'
+import { useRoute } from '@pyreon/router'
+import { Link } from '@pyreon/zero/link'
+import type { GetStaticPaths } from '@pyreon/zero/server'
+
+import { type Invoice, type InvoiceItem, invoiceById, invoiceTotal } from '../../../lib/db'
 import { formatDate, formatMoney } from '../../../lib/format'
 
-export const meta = { title: "Invoice" }
+export const meta = { title: 'Invoice' }
 
 /**
  * Enumerate the dynamic `:id` values for SSG prerendering. The dashboard
@@ -33,8 +33,8 @@ export const meta = { title: "Invoice" }
  * query / API fetch) when configuring SSG deploys.
  */
 export const getStaticPaths: GetStaticPaths<{ id: string }> = () => [
-  { params: { id: "demo-001" } },
-  { params: { id: "demo-002" } },
+  { params: { id: 'demo-001' } },
+  { params: { id: 'demo-002' } },
 ]
 
 /**
@@ -70,7 +70,7 @@ function InvoiceTemplate(inv: Invoice) {
 
         <DocTable
           rows={[
-            ["Description", "Qty", "Unit price", "Line total"],
+            ['Description', 'Qty', 'Unit price', 'Line total'],
             ...inv.items.map((it) => [
               it.description,
               String(it.qty),
@@ -97,7 +97,8 @@ export default function InvoiceDetail() {
 
   onMount(() => {
     const id = route().params.id
-    void invoiceById(id).then((found) => {
+    const lookup = id === undefined ? Promise.resolve(null) : invoiceById(id)
+    void lookup.then((found) => {
       if (!found) notFound.set(true)
       else inv.set(found)
     })
@@ -108,12 +109,14 @@ export default function InvoiceDetail() {
   async function exportPdf() {
     const found = inv()
     if (!found) return
+    // Loaded on click: the renderer is only needed when someone exports.
+    const { render } = await import('@pyreon/document')
     const node = extractDocNode(InvoiceTemplate(found))
-    const result = await render(node, "pdf")
-    if (typeof window === "undefined") return
-    const blob = result instanceof Blob ? result : new Blob([result as BlobPart], { type: "application/pdf" })
+    const result = await render(node, 'pdf')
+    const blob =
+      result instanceof Blob ? result : new Blob([result as BlobPart], { type: 'application/pdf' })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
+    const a = document.createElement('a')
     a.href = url
     a.download = `${found.number}.pdf`
     a.click()
@@ -127,7 +130,7 @@ export default function InvoiceDetail() {
     // `InvoiceTemplate` renders both the PDF above and the email body —
     // no re-authoring per channel.
     alert(
-      "Email send is wired up via Resend (lib/email.ts). The same template renders to email HTML — try the PDF export above to see the document-primitives output.",
+      'Email send is wired up via Resend (lib/email.ts). The same template renders to email HTML — try the PDF export above to see the document-primitives output.',
     )
   }
 
@@ -144,6 +147,7 @@ export default function InvoiceDetail() {
     }
 
     const found = inv()
+
     if (!found) {
       return (
         <>
@@ -158,7 +162,7 @@ export default function InvoiceDetail() {
       <>
         <div class="app-page-header">
           <h1>{found.number}</h1>
-          <span class={`pill ${found.status}`}>{found.status}</span>
+          <span class={cx(['pill', found.status])}>{found.status}</span>
         </div>
 
         <div class="invoice-detail">
@@ -171,40 +175,27 @@ export default function InvoiceDetail() {
             <p>{found.customer.name}</p>
             <p>{found.customer.email}</p>
             <p>{found.customer.address}</p>
-            <table>
-              <thead>
-                <tr>
-                  <th>Description</th>
-                  <th>Qty</th>
-                  <th>Unit price</th>
-                  <th>Line total</th>
-                </tr>
-              </thead>
-              <tbody>
-                <For each={found.items} by={(it) => it.description}>{(it) => (
-                  <tr>
-                    <td>{it.description}</td>
-                    <td>{it.qty}</td>
-                    <td>${formatMoney(it.unitPrice)}</td>
-                    <td>${formatMoney(it.qty * it.unitPrice)}</td>
-                  </tr>
-                )}</For>
-              </tbody>
-            </table>
+            <InvoiceLines items={found.items} />
             <div class="total">Total: ${formatMoney(invoiceTotal(found))}</div>
           </div>
 
           <aside class="invoice-actions">
             <strong>Actions</strong>
-            <button class="btn btn-primary" onClick={exportPdf}>
+            <button
+              class="btn btn-primary"
+              onClick={exportPdf}
+            >
               Export to PDF
             </button>
-            <button class="btn btn-secondary" onClick={sendEmail}>
+            <button
+              class="btn btn-secondary"
+              onClick={sendEmail}
+            >
               Send by email
             </button>
             <p style="font-size: 0.8125rem; color: var(--c-text-muted); margin-top: 1rem;">
-              The preview above and the PDF export are rendered from the SAME{" "}
-              <code>InvoiceTemplate</code> component tree. That's what{" "}
+              The preview above and the PDF export are rendered from the SAME{' '}
+              <code>InvoiceTemplate</code> component tree. That's what{' '}
               <code>@pyreon/document-primitives</code> buys you.
             </p>
           </aside>
@@ -212,4 +203,35 @@ export default function InvoiceDetail() {
       </>
     )
   }
+}
+
+/** The line-item table, its own component so the page's JSX stays shallow. */
+function InvoiceLines(props: { items: InvoiceItem[] }) {
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th>Qty</th>
+          <th>Unit price</th>
+          <th>Line total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <For
+          each={props.items}
+          by={(it) => it.description}
+        >
+          {(it) => (
+            <tr>
+              <td>{it.description}</td>
+              <td>{it.qty}</td>
+              <td>${formatMoney(it.unitPrice)}</td>
+              <td>${formatMoney(it.qty * it.unitPrice)}</td>
+            </tr>
+          )}
+        </For>
+      </tbody>
+    </table>
+  )
 }

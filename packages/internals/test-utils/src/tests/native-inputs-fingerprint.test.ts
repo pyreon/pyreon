@@ -193,6 +193,47 @@ describe('native-inputs-fingerprint — what MUST move it', () => {
   })
 })
 
+describe('native-inputs-fingerprint — the workflow is hashed per platform lane', () => {
+  const workflow = (opts: { ios?: string; android?: string; changes?: string; env?: string } = {}) =>
+    [
+      `env:\n  TOOL: ${opts.env ?? '1'}`,
+      'jobs:',
+      '  changes:',
+      `    steps: [${opts.changes ?? 'a'}]`,
+      '  ios-build:',
+      `    steps: [${opts.ios ?? 'a'}]`,
+      '  android-build:',
+      `    steps: [${opts.android ?? 'a'}]`,
+      '',
+    ].join('\n')
+  const withWorkflow = (text: string): Fingerprint => {
+    write('.github/workflows/native-device.yml', text)
+    return fp()
+  }
+  it('an edit to the Android job moves the Android apps only', () => {
+    const before = withWorkflow(workflow())
+    const after = withWorkflow(workflow({ android: 'b' }))
+    expect(after.apps['android:demo']).not.toBe(before.apps['android:demo'])
+    expect(after.apps['ios:demo']).toBe(before.apps['ios:demo'])
+  })
+  it('an edit to the iOS job moves the iOS apps only', () => {
+    const before = withWorkflow(workflow())
+    const after = withWorkflow(workflow({ ios: 'b' }))
+    expect(after.apps['ios:demo']).not.toBe(before.apps['ios:demo'])
+    expect(after.apps['android:demo']).toBe(before.apps['android:demo'])
+  })
+  it('an edit to a decide job or a comment moves no app', () => {
+    const before = withWorkflow(workflow())
+    expect(withWorkflow(workflow({ changes: 'b' }))).toEqual(before)
+    expect(withWorkflow('# a new comment\n' + workflow())).toEqual(before)
+  })
+  it('an inherited top-level env change moves every app (fail-closed)', () => {
+    const before = withWorkflow(workflow())
+    const after = withWorkflow(workflow({ env: '2' }))
+    for (const app of Object.keys(before.apps)) expect(after.apps[app], app).not.toBe(before.apps[app])
+  })
+})
+
 describe('narrow', () => {
   const base: Fingerprint = { shared: 's', apps: { 'ios:a': '1', 'ios:b': '2', 'android:a': '3' } }
   it('keeps only changed apps, and says none when nothing changed', () => {
@@ -219,10 +260,12 @@ describe('the real repository — input-list guards', () => {
     const workflow = readFileSync(join(REPO, '.github/workflows/native-device.yml'), 'utf8')
     const used = new Set(
       [
-        ...workflow.matchAll(/working-directory:\s*(examples\/native-[\w-]+-(?:ios|android))\b/g),
+        // Both layouts: examples/native-<app>-ios and examples/native-<app>/ios.
+        ...workflow.matchAll(/working-directory:\s*(examples\/native-[\w-]+?[-/](?:ios|android))\b/g),
       ].map((m) => m[1]!),
     )
-    expect(used.size).toBeGreaterThan(0)
+    // Every app the device lanes build: six apps, two hosts each.
+    expect(used.size).toBeGreaterThanOrEqual(10)
     const gated = new Set(gatedApps(REPO).map((a) => a.dir))
     for (const dir of used) expect(gated, dir).toContain(dir)
   })

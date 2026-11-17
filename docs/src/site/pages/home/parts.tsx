@@ -1,5 +1,5 @@
-import { el, focusRing, pair, tone, txt, type LinkAttrs } from '../../kit/bases'
-import { breakpoints, font, radius, syntax, text, weight } from '../../theme'
+import { el, focusRing, pair, tone, txt, type LinkAttrs, tapArea } from '../../kit/bases'
+import { breakpoints, font, gradient, radius, syntax, text, weight } from '../../theme'
 
 /**
  * Styled pieces of the homepage that no other page uses (server-rendered
@@ -8,6 +8,10 @@ import { breakpoints, font, radius, syntax, text, weight } from '../../theme'
 
 /** Cards in a row share one height (the grid stretches the item; the card fills it). */
 const equalCards = '& > li { display: flex; } & > li > * { flex: 1 1 auto; min-width: 0; }'
+
+/** In a two-column stretch of an odd-count grid, the last card takes the whole row instead of half of it. */
+const lastOddSpans = (from: number, below: number) =>
+  `@media (min-width: ${from}px) and (max-width: ${below - 0.02}px) { & > li:last-child:nth-child(odd) { grid-column: 1 / -1; } }`
 
 /** Two columns from 960px (`.split` / `.once`): text left, the visual right. */
 export const Split = el
@@ -18,6 +22,8 @@ export const Split = el
     gap: { xs: 40, lg: 64 },
     alignItems: 'start',
     gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1fr) minmax(0, 1fr)' },
+    // Each column is a size container, so a landing heading in it sizes to the column (theme.ts display.landingSection.cqi).
+    extendCss: '& > * { container-type: inline-size; }',
   }))
 
 export const Stack = el
@@ -92,6 +98,49 @@ export const TargetLabel = el
   .attrs({ tag: 'li', block: true, gap: 4 })
   .theme((_t, m) => ({ fontFamily: font.mono, fontSize: 12, color: tone(m, 'text') }))
 
+/**
+ * The hero's three targets on a phone, as text. The trace illustration is
+ * drawn for 960px: on a 320-390px screen its labels were 4-8px tall. This is
+ * the same picture stacked: one source, an ember rail, three targets.
+ */
+export const PhoneTargets = el
+  .config({ name: 'HomePhoneTargets' })
+  .attrs({ tag: 'ul', block: true })
+  .theme((_t, m) => ({
+    position: 'relative',
+    listStyle: 'none',
+    margin: 0,
+    marginLeft: 13,
+    padding: 0,
+    paddingLeft: 26,
+    extendCss: `&::before { content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 1px; background: ${pair(m, gradient.ember)}; }`,
+  }))
+
+export const PhoneTarget = el
+  .config({ name: 'HomePhoneTarget' })
+  .attrs({ tag: 'li', block: true, gap: 2 })
+  .theme((_t, m) => ({
+    position: 'relative',
+    paddingTop: 9,
+    paddingBottom: 9,
+    fontFamily: font.mono,
+    fontSize: text.mono.size,
+    lineHeight: 1.5,
+    color: tone(m, 'fog'),
+    extendCss: `&::before { content: ''; position: absolute; left: -30px; top: 14px; width: 9px; height: 9px; border-radius: 50%; border: 1px solid ${tone(m, 'accent')}; background: ${tone(m, 'bg')}; }`,
+  }))
+
+export const PhoneTargetName = txt
+  .config({ name: 'HomePhoneTargetName' })
+  .attrs({ tag: 'span' })
+  .theme((_t, m) => ({ display: 'block', fontFamily: font.sans, fontSize: text.step.size, lineHeight: 1.25, fontWeight: weight.semibold, letterSpacing: text.step.tracking, color: tone(m, 'strong') }))
+
+/** The brand mark at the top of the phone targets rail. */
+export const PhoneTargetsHead = el
+  .config({ name: 'HomePhoneTargetsHead' })
+  .attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 12 })
+  .theme(() => ({ marginBottom: 6 }))
+
 export const Mono = txt
   .config({ name: 'HomeMono' })
   .attrs({ tag: 'span' })
@@ -138,8 +187,12 @@ export const StripGrid = el
     listStyle: 'none',
     margin: 0,
     padding: 0,
-    gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(5, minmax(0, 1fr))' },
-    extendCss: equalCards,
+    // Five cards: one column, then two (the odd last card takes the row),
+    // then two over three. Five in a row left each chart at 42% of its
+    // drawn size, its labels about 5px tall.
+    gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(6, minmax(0, 1fr))' },
+    extendCss: `${equalCards} ${lastOddSpans(breakpoints.md, breakpoints.xl)}
+      @media (min-width: ${breakpoints.xl}px) { & > li { grid-column: span 2; } & > li:nth-child(-n + 2) { grid-column: span 3; } }`,
   }))
 
 /** The comparison table's scroll region (it scrolls inside itself, never the page). */
@@ -268,6 +321,7 @@ export const TagLink = el
     fontSize: 11.5,
     color: tone(m, 'mist'),
     textDecoration: 'none',
+    extendCss: tapArea,
     hover: { color: tone(m, 'text'), borderColor: tone(m, 'lineHover') },
     focus: focusRing(m),
   }))
@@ -297,6 +351,23 @@ export const ProductCell = el
     third: { gridColumn: { lg: 'span 2' } },
   }))
 
+/**
+ * A compat tile's package name: `@pyreon/` then the name, which never breaks.
+ * Below sm the name steps down to the eyebrow size, so the longest
+ * (`svelte-compat`, `preact-compat`) fits a two-column phone tile whole and
+ * every tile breaks the same way.
+ */
+export const CompatPkg = txt
+  .config({ name: 'HomeCompatPkg' })
+  .attrs({ tag: 'span' })
+  .theme((_t, m) => ({
+    fontFamily: font.mono,
+    fontSize: { xs: text.eyebrowTight.size, sm: 12 },
+    lineHeight: 1.5,
+    color: tone(m, 'fog'),
+    extendCss: '& > span { white-space: nowrap; }',
+  }))
+
 /** `.compat` — the five compat layer tiles. */
 export const CompatGrid = el
   .config({ name: 'HomeCompat' })
@@ -308,36 +379,10 @@ export const CompatGrid = el
     margin: 0,
     padding: 0,
     gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))', xl: 'repeat(5, minmax(0, 1fr))' },
-    extendCss: equalCards,
+    extendCss: equalCards + lastOddSpans(breakpoints.xs, breakpoints.md),
   }))
 
-/** `.term` — the reproduce command, one `$` line per step. */
-export const Terminal = el
-  .config({ name: 'HomeTerminal' })
-  .attrs({ block: true })
-  .theme((_t, m) => ({
-    position: 'relative',
-    minWidth: 0,
-    overflowX: 'auto',
-    paddingTop: 18,
-    paddingBottom: 18,
-    paddingLeft: 20,
-    paddingRight: 20,
-    borderRadius: radius.pane,
-    border: '1px solid',
-    borderColor: tone(m, 'line'),
-    backgroundColor: m(syntax.light.bg, syntax.dark.bg),
-    fontFamily: font.mono,
-    fontSize: { xs: 12, md: 13 },
-    lineHeight: 1.85,
-    color: m(syntax.light.fg, syntax.dark.fg),
-    focus: focusRing(m),
-    extendCss: 'font-variant-ligatures: none; white-space: pre;',
-  }))
 
-export const Prompt = txt.config({ name: 'HomePrompt' }).attrs({ tag: 'span', 'aria-hidden': 'true' }).theme((_t, m) => ({ color: tone(m, 'prompt'), marginRight: 10 }))
-
-export const TermFoot = el.config({ name: 'HomeTermFoot' }).attrs({ block: true, contentDirection: 'inline', contentAlignX: 'right' }).theme(() => ({ marginTop: 12 }))
 
 /** Status column label: dot + mono label in the status colour. */
 export const StatusLabel = txt
@@ -353,13 +398,3 @@ export const Bullets = el
 
 export const CardNum = txt.config({ name: 'HomeCardNum' }).attrs({ tag: 'span' }).theme((_t, m) => ({ fontFamily: font.mono, fontSize: 11.5, color: tone(m, 'accent') }))
 
-export const Arrow = txt.config({ name: 'HomeArrow' }).attrs({ tag: 'span', 'aria-hidden': 'true' }).theme((_t, m) => ({ color: tone(m, 'accent'), marginLeft: 'auto' }))
-
-/** The chart under a proof number (theme-aware inline SVG). */
-export const ChartSlot = el.config({ name: 'HomeChartSlot' }).attrs({ block: true }).theme(() => ({ marginTop: 14, maxWidth: 420 }))
-
-/** A proof card's label (`.strip .l`). */
-export const StripLabel = txt
-  .config({ name: 'HomeStripLabel' })
-  .attrs({ tag: 'h3' })
-  .theme((_t, m) => ({ margin: 0, marginTop: 10, fontFamily: font.sans, fontSize: 15, lineHeight: 1.35, fontWeight: weight.medium, color: tone(m, 'strong') }))

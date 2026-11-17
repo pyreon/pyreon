@@ -594,15 +594,14 @@ export function lowerPluginIntrinsic(
   return undefined
 }
 
-/** The Swift modifier lines / Compose effect lines the `ext` declaration `d` contributes to its component's lifecycle. */
-export function pluginLifecycleLines(
-  d: ExtDecl,
-  target: Target,
-  ctx: EmitContext,
-): readonly string[] {
-  const lifecycle = extDeclLifecycle(d)
-  if (lifecycle === undefined) return []
-  return (target === 'swift' ? lifecycle.swift?.(d, ctx) : lifecycle.kotlin?.(d, ctx)) ?? []
+/** The Swift modifier lines the `ext` declaration `d` contributes to its component's lifecycle. */
+export function swiftLifecycleLines(d: ExtDecl, ctx: EmitContext): readonly string[] {
+  return extDeclLifecycle(d)?.swift?.(d, ctx) ?? []
+}
+
+/** The Compose effect lines the `ext` declaration `d` contributes to its component's lifecycle. */
+export function kotlinLifecycleLines(d: ExtDecl, ctx: KotlinEmitContext): readonly string[] {
+  return extDeclLifecycle(d)?.kotlin?.(d, ctx) ?? []
 }
 
 /** The ext declarations of `decls` whose lifecycle is a TAIL one, in emit order (`tailOrder`, then declaration order). */

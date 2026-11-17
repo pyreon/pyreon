@@ -81,7 +81,7 @@ import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
 | [`Container`](#container-component) | component | Outermost grid boundary. |
 | [`Row`](#row-component) | component | Flex-wrap row. |
 | [`Col`](#col-component) | component | Individual column. |
-| [`Provider`](#provider-component) | component | Re-export of `@pyreon/unistyle`'s low-level theme provider — enriches the theme (pre-computed sorted breakpoints + media |
+| [`Provider`](#provider-component) | component | Re-export of `@pyreon/unistyle`'s low-level theme provider — enriches the theme (pre-computed sorted breakpoints +… |
 | [`theme`](#theme-constant) | constant | Default Bootstrap-4-style grid theme: 5 breakpoints (xs–xl), a 12-column grid, and responsive container max-widths. |
 
 ## API

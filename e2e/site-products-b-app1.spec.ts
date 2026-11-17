@@ -295,7 +295,7 @@ test.describe('rx demo', () => {
   const names = (demo: Locator) => demo.locator('ul:not([aria-label]) > li > span').evaluateAll((s) => s.map((x) => x.firstChild?.textContent ?? ''))
   const prices = (demo: Locator) => demo.locator('ul:not([aria-label]) > li > b').evaluateAll((b) => b.map((x) => Number(x.textContent?.slice(1))))
   const option = (demo: Locator, group: string, name: string) =>
-    demo.locator(`fieldset[aria-label="${group}"]`).getByRole('button', { name, exact: true })
+    demo.getByRole('group', { name: group, exact: true }).getByRole('button', { name, exact: true })
 
   test('each input change re-runs the pipe once; order follows the chosen sort', async ({ page }) => {
     const errors = collectErrors(page)

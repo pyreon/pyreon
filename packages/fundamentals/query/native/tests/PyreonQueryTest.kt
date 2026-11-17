@@ -4,19 +4,43 @@
 
 package com.pyreon.runtime
 
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlin.coroutines.startCoroutine
+import kotlin.coroutines.suspendCoroutine
+
+/** Start a suspend block on the calling thread; it runs until its first suspension. */
+private fun start(block: suspend () -> Unit) {
+    block.startCoroutine(Continuation(EmptyCoroutineContext) { it.getOrThrow() })
+}
+
+/** The launcher the emitted harness passes (`scope.launch`), stood in by [start]. */
+private val launchNow: (suspend () -> Unit) -> Unit = { start(it) }
+
+/** `run` with stub fetchers that never suspend, driven to completion here. */
+private fun <T> PyreonQuery<T>.runNow(fetcher: suspend () -> T) = start { run(launchNow, fetcher) }
+
+/** Fetchers that park until the test releases them, in any order. */
+private class Gates {
+    val parked = ArrayList<Continuation<Int>>()
+    suspend fun wait(): Int = suspendCoroutine { parked.add(it) }
+}
+
 fun testQueryFetchesOnMissThenServesFromCache() {
     PyreonQueryCache.clearAll()
     var calls = 0
     val q1 = PyreonQuery<Int>("count", staleMillis = 60_000)
     check(q1.data.value == null) { "fresh query starts with no data" }
-    q1.load { calls++; 42 }
+    q1.runNow { calls++; 42 }
     check(q1.data.value == 42) { "load resolved the value" }
     check(calls == 1) { "one fetch on a miss" }
     check(!q1.isPending.value) { "not pending after resolve" }
     // Second instance, same key, still fresh: hydrates, NO fetch.
     val q2 = PyreonQuery<Int>("count", staleMillis = 60_000)
     check(q2.data.value == 42) { "second instance hydrated from the shared cache" }
-    q2.load { calls++; 99 }
+    q2.runNow { calls++; 99 }
     check(calls == 1) { "a fresh cache hit must NOT refetch" }
     check(q2.data.value == 42) { "still the cached value" }
 }
@@ -28,7 +52,7 @@ fun testQueryStaleServesCachedThenRefetches() {
     check(q.data.value == 1) { "stale value served immediately (no UI blank)" }
     check(q.isStale) { "staleMillis 0 means immediately stale" }
     var calls = 0
-    q.load { calls++; 2 }
+    q.runNow { calls++; 2 }
     check(calls == 1) { "a stale value triggers a background refetch" }
     check(q.data.value == 2) { "refetch updated the value" }
 }
@@ -36,7 +60,7 @@ fun testQueryStaleServesCachedThenRefetches() {
 fun testQueryBackgroundRefreshDoesNotBlankUI() {
     PyreonQueryCache.clearAll()
     val q = PyreonQuery<Int>("b", staleMillis = 0)
-    q.load { 7 }
+    q.runNow { 7 }
     check(q.data.value == 7)
     q.begin()
     check(!q.isPending.value) { "a refetch of shown data must not flip isPending" }
@@ -49,7 +73,7 @@ fun testQueryBackgroundRefreshDoesNotBlankUI() {
 fun testQueryRejectKeepsStaleData() {
     PyreonQueryCache.clearAll()
     val q = PyreonQuery<Int>("e")
-    q.load { 5 }
+    q.runNow { 5 }
     q.begin()
     q.reject(RuntimeException("boom"))
     check(q.error.value != null) { "error is set" }
@@ -80,11 +104,85 @@ fun testQueryCacheEvictsLeastRecentlyUsed() {
     }
 }
 
+fun testQueryRefetchRerunsTheRegisteredRequestIgnoringFreshness() {
+    PyreonQueryCache.clearAll()
+    var calls = 0
+    val q = PyreonQuery<Int>("r", staleMillis = 60_000)
+    q.runNow { calls++; calls }
+    check(q.data.value == 1 && calls == 1) { "the first run fetches on a miss" }
+    check(!q.isStale) { "the cache is fresh after the first fetch" }
+    q.refetch()
+    check(calls == 2) { "refetch re-runs the registered request even when the cache is fresh" }
+    check(q.data.value == 2) { "refetch replaces data on success" }
+    check(!q.isFetching.value && !q.isPending.value) { "refetch settles its flags" }
+    check(PyreonQueryCache.lookup<Int>("r")?.first == 2) { "refetch writes through to the cache" }
+}
+
+fun testQueryRefetchBeforeRunIsANoop() {
+    PyreonQueryCache.clearAll()
+    val q = PyreonQuery<Int>("none")
+    q.refetch()
+    check(!q.isFetching.value && q.data.value == null) { "nothing to refetch before run registered a request" }
+}
+
+fun testQueryRefetchInFlightThenFailureKeepsData() {
+    PyreonQueryCache.clearAll()
+    PyreonQueryCache.write("f", 1)
+    val gates = Gates()
+    val q = PyreonQuery<Int>("f", staleMillis = 60_000)
+    q.runNow { gates.wait() }
+    check(gates.parked.isEmpty()) { "a fresh hit does not fetch" }
+    q.refetch()
+    check(gates.parked.size == 1) { "refetch started the request" }
+    check(q.isFetching.value) { "isFetching while the refetch is in flight" }
+    check(!q.isPending.value) { "a refetch of shown data never flips isPending" }
+    gates.parked[0].resumeWithException(RuntimeException("boom"))
+    check(q.error.value?.message == "boom") { "a failed refetch sets error" }
+    check(q.data.value == 1) { "a failed refetch keeps the last good data" }
+    check(!q.isFetching.value) { "a failed refetch settles isFetching" }
+}
+
+fun testQueryStaleResponseNeverOverwritesANewerOne() {
+    PyreonQueryCache.clearAll()
+    PyreonQueryCache.write("s", 0)
+    val gates = Gates()
+    val q = PyreonQuery<Int>("s", staleMillis = 60_000)
+    q.runNow { gates.wait() }
+    q.refetch() // older
+    q.refetch() // newer
+    check(gates.parked.size == 2) { "both requests are in flight" }
+    gates.parked[1].resume(2) // the newer request answers first
+    check(q.data.value == 2) { "the newer response is applied" }
+    check(!q.isFetching.value) { "settled by the newer response" }
+    gates.parked[0].resume(1) // the slow, older one arrives late
+    check(q.data.value == 2) { "a stale response must not overwrite a newer one" }
+    check(PyreonQueryCache.lookup<Int>("s")?.first == 2) { "nor overwrite the cache" }
+}
+
+fun testQueryKeyChangeDropsTheOldKeysResponse() {
+    PyreonQueryCache.clearAll()
+    val gates = Gates()
+    val q = PyreonQuery<Int>("")
+    q.setKey("a")
+    q.runNow { gates.wait() }
+    check(q.isFetching.value) { "fetching key a" }
+    q.setKey("b")
+    check(!q.isFetching.value) { "a key change abandons the old key's fetch" }
+    gates.parked[0].resume(1)
+    check(q.data.value == null) { "the old key's response is not shown for the new key" }
+    check(PyreonQueryCache.lookup<Int>("b") == null) { "nor cached under the new key" }
+}
+
 fun main() {
     testQueryFetchesOnMissThenServesFromCache()
     testQueryStaleServesCachedThenRefetches()
     testQueryBackgroundRefreshDoesNotBlankUI()
     testQueryRejectKeepsStaleData()
     testQueryCacheEvictsLeastRecentlyUsed()
+    testQueryRefetchRerunsTheRegisteredRequestIgnoringFreshness()
+    testQueryRefetchBeforeRunIsANoop()
+    testQueryRefetchInFlightThenFailureKeepsData()
+    testQueryStaleResponseNeverOverwritesANewerOne()
+    testQueryKeyChangeDropsTheOldKeysResponse()
     println("[PyreonQueryTest] all smoke tests passed")
 }

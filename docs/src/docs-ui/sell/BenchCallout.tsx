@@ -5,6 +5,7 @@ import { When } from '../when'
 import { SLOT_IDS } from './slots'
 import { VerdictChip } from '../../site/kit/bench'
 import { formatMeasure, RECORD_LINE } from '../../site/kit/verdict'
+import { CodeSpans } from '../code-spans'
 
 /**
  * `<BenchCallout id="form" />` — the product's benchmark result inside its
@@ -30,28 +31,28 @@ export default function BenchCallout(props: { id: string }) {
           </span>
         </When>
         <div>
-          <b>{b.h}</b>
-          <p>{b.p}</p>
+          <b><CodeSpans text={b.h} /></b>
+          <p><CodeSpans text={b.p} /></p>
         </div>
       </div>
       <ul class="dx-bench__rows">
         <For each={b.rows} by={(r) => r.op}>
           {(r) => (
             <li class="dx-bench__row">
-              <span class="dx-bench__op">{r.op}</span>
+              <span class="dx-bench__op"><CodeSpans text={r.op} /></span>
               <span class="dx-bench__vals">
                 <When on={r.pyreon != null && r.rival != null && r.unit !== 'x'}>
                   <b>{formatMeasure(r.pyreon ?? 0, r.unit)}</b> vs {formatMeasure(r.rival ?? 0, r.unit)}
                 </When>
               </span>
-              <span class="dx-bench__lab">{r.label}</span>
+              <span class="dx-bench__lab"><CodeSpans text={r.label} /></span>
               <VerdictChip verdict={r.verdict} />
             </li>
           )}
         </For>
       </ul>
       <p class="dx-caveat">
-        <span>{`${b.rival} · ${RECORD_LINE} · ${b.run} · author-run, synthetic · `}</span>
+        <span><CodeSpans text={`${b.rival} · ${RECORD_LINE} · ${b.run} · author-run, synthetic · `} /></span>
         <a href="/benchmarks">
           Every result, including where we lose →
         </a>

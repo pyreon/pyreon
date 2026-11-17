@@ -51,7 +51,7 @@ on:
       - 'packages/ui-system/**'
       # The live showcase demos built into /showcase/<name>/ below.
       - 'examples/collab-board/**'
-      - 'examples/react-compat/**'
+      - 'examples/compat/react/**'
       - '.github/workflows/docs.yml'
   # Also run the BUILD job (not deploy) on PRs touching the docs source or the
   # framework packages the docs build depends on — so a docs-SITE build break
@@ -85,7 +85,7 @@ on:
       - 'packages/ui-system/**'
       # The live showcase demos built into /showcase/<name>/ below.
       - 'examples/collab-board/**'
-      - 'examples/react-compat/**'
+      - 'examples/compat/react/**'
       - '.github/workflows/docs.yml'
   # Scheduled publishing. A blog post dated in the future is left out of every
   # build that runs before its date (zero-content `publish.ts`), so it goes
@@ -255,8 +255,12 @@ jobs:
         # takes about a second. A failure fails the deploy for the same reason
         # as Atlas: the gallery would otherwise link to a 404.
         run: |
-          for demo in collab-board react-compat; do
-            (cd "examples/$demo" && bash ../../scripts/gnu-timeout.sh --verbose --signal=KILL 2m \
+          # <published name>=<directory under examples/>. The URL name is kept
+          # (/showcase/react-compat/) while the app lives in examples/compat/react.
+          for pair in collab-board=collab-board react-compat=compat/react; do
+            demo="${pair%%=*}"
+            dir="${pair#*=}"
+            (cd "examples/$dir" && bash "$GITHUB_WORKSPACE/scripts/gnu-timeout.sh" --verbose --signal=KILL 2m \
               bunx vite build --base "/showcase/$demo/" --outDir "$GITHUB_WORKSPACE/docs/dist/showcase/$demo" --emptyOutDir) \
               2>&1 | tee ".cache/docs-ci/showcase-$demo.log"
             test -f "docs/dist/showcase/$demo/index.html"

@@ -5,7 +5,7 @@ import type { ExtraSection, ProductData } from '../content/model'
 import { DEMOS } from '../demos/registry'
 import { HeroVisualFigure, InlineSvg } from '../demos/_asset'
 import { PRODUCTS, productHref } from '../nav'
-import { gradient } from '../theme'
+import { gradient, radius, touch } from '../theme'
 import { el, pair, tone } from '../kit/bases'
 import { BenchmarkTable } from '../kit/bench'
 import { FactList, FeatureList, Faq, LimitNote, NumberedCards, StatRow, StepCards, ApiGroups } from '../kit/blocks'
@@ -15,6 +15,7 @@ import { ExtraMoreBody, isExtraMore } from '../kit/extra'
 import { comingFromTitle, RecipeCard } from '../kit/recipe'
 import { BeforeAfter, ComingFrom } from '../kit/code'
 import { InstallCommand, Pill } from '../kit/controls'
+import { ctaStackOnPhone } from '../kit/cta'
 import { useLinkClick } from '../kit/link'
 import { AutoGrid, Section, SectionHead, Wrap } from '../kit/layout'
 import { Reveal } from '../kit/motion'
@@ -59,7 +60,7 @@ const HeroGrid = el
 const Ctas = el
   .config({ name: 'ProductCtas' })
   .attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 12 })
-  .theme(() => ({ flexWrap: 'wrap' }))
+  .theme(() => ({ flexWrap: 'wrap', extendCss: ctaStackOnPhone }))
 
 const CenteredCtas = el
   .config({ name: 'ProductEndCtas' })
@@ -94,10 +95,11 @@ const SwitchLink = el
     paddingRight: 14,
     border: '1px solid',
     borderColor: tone(m, 'line'),
-    borderRadius: 9999,
+    borderRadius: radius.pill,
     hover: { color: tone(m, 'text'), borderColor: tone(m, 'line2') },
     focus: { outlineWidth: '2px', outlineStyle: 'solid', outlineColor: tone(m, 'focus'), outlineOffset: '2px' },
-    extendCss: `&[aria-current='page'] { color: ${tone(m, 'text')}; border-color: ${tone(m, 'currentBorder')}; background: ${tone(m, 'currentFill')}; }`,
+    extendCss: `&[aria-current='page'] { color: ${tone(m, 'text')}; border-color: ${tone(m, 'currentBorder')}; background: ${tone(m, 'currentFill')}; }
+      ${touch.media} { min-height: ${touch.tapTarget}px; display: inline-flex; align-items: center; }`,
   }))
 
 function Extra(props: { section: ExtraSection; svgs?: Record<string, { alt: string; svg: string }> | undefined }) {
@@ -236,7 +238,7 @@ export function ProductPage(props: { data: ProductData }) {
                   {(c) => (
                     <Stack>
                       <Heading tag="h3" size="card">
-                        {c.title}
+                        {renderInline(c.title)}
                       </Heading>
                       <ComingFrom lib={c.lib} before={c.before} after={c.after} beforeHtml={c.beforeHtml} afterHtml={c.afterHtml} note={c.note} />
                     </Stack>
@@ -349,7 +351,7 @@ export function ProductPage(props: { data: ProductData }) {
                     <Heading tag="h3" size="card">
                       {r.name}
                     </Heading>
-                    <Lede size="small">{r.text}</Lede>
+                    <Lede size="small">{renderInline(r.text)}</Lede>
                     <Eyebrow state="accent">{`${r.package} →`}</Eyebrow>
                   </GlowCard>
                 )}
@@ -364,7 +366,7 @@ export function ProductPage(props: { data: ProductData }) {
         <Wrap>
           <EndInner>
             <Heading tag="h2" size="end">
-              {d.end.title}
+              {renderInline(d.end.title)}
             </Heading>
             <CenteredCtas>
               {unreleased ? <NextReleaseNote text={d.hero.install} /> : <InstallCommand command={d.hero.install} variant="hot" />}

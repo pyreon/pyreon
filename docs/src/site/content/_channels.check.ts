@@ -208,7 +208,7 @@ export const checked = {
           "liveDemo": "/showcase/collab-board/"
         },
         {
-          "dir": "native-tasks-web",
+          "dir": "native-tasks",
           "title": "Tasks, on the web and on device",
           "summary": "A tasks app written once in `examples/native-tasks/src/TasksApp.tsx`: sign-in, task lists and detail screens, a dashboard and a chart gallery. The same source compiles to SwiftUI for iOS and Jetpack Compose for Android.",
           "highlights": [
@@ -220,26 +220,12 @@ export const checked = {
             "form",
             "auth"
           ],
-          "run": "cd examples/native-tasks-web && bun run dev -- --port 5204",
+          "run": "cd examples/native-tasks && bun run dev -- --port 5204",
           "open": "http://localhost:5204",
-          "note": "Sign in with any name of three or more characters.",
-          "alsoSource": [
-            {
-              "label": "Shared source",
-              "dir": "native-tasks"
-            },
-            {
-              "label": "iOS project",
-              "dir": "native-tasks-ios"
-            },
-            {
-              "label": "Android project",
-              "dir": "native-tasks-android"
-            }
-          ]
+          "note": "Sign in with any name of three or more characters."
         },
         {
-          "dir": "react-compat",
+          "dir": "compat/react",
           "title": "React, Vue, Solid, Preact and Svelte compat",
           "summary": "Five apps, each written against its framework's own API (React hooks, the Vue Composition API, Solid signals, Preact hooks, Svelte stores) and running on Pyreon's reactive engine through one compiler option.",
           "highlights": [
@@ -248,25 +234,25 @@ export const checked = {
             "reactivity",
             "runtime-dom"
           ],
-          "run": "cd examples/react-compat && bun run dev -- --port 5177",
+          "run": "cd examples/compat/react && bun run dev -- --port 5177",
           "open": "http://localhost:5177",
           "liveDemo": "/showcase/react-compat/",
           "alsoSource": [
             {
               "label": "Vue",
-              "dir": "vue-compat"
+              "dir": "compat/vue"
             },
             {
               "label": "Solid",
-              "dir": "solid-compat"
+              "dir": "compat/solid"
             },
             {
               "label": "Preact",
-              "dir": "preact-compat"
+              "dir": "compat/preact"
             },
             {
               "label": "Svelte",
-              "dir": "svelte-compat"
+              "dir": "compat/svelte"
             }
           ]
         }

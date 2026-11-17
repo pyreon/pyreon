@@ -1,7 +1,7 @@
 import { Element, Text } from '@pyreon/elements'
 import rocketstyle, { type ThemeModeCallback } from '@pyreon/rocketstyle'
 import { makeItResponsive, styles } from '@pyreon/unistyle'
-import { color, type ColorKey } from '../theme'
+import { color, touch, type ColorKey } from '../theme'
 
 /**
  * `el` / `txt` — the same two bases `@pyreon/ui-components` builds on
@@ -21,6 +21,18 @@ function split(theme: Record<string, unknown> = {}) {
   return { hover, focus, active, disabled, pressed, rest }
 }
 
+/** Whether a theme's `display` (plain or per-breakpoint) is ever `grid`. */
+const isGrid = (display: unknown): boolean =>
+  display === 'grid' || (typeof display === 'object' && display !== null && Object.values(display).includes('grid'))
+
+/**
+ * Element's base class aligns its children for a flex box (`align-items:
+ * flex-start`). On a grid that stops the rows from stretching, so cards in
+ * one row ended at different heights. A kit grid gets the CSS grid default
+ * back; a component that sets its own `alignItems` still wins (it comes after).
+ */
+const gridItems = 'align-items: stretch; justify-items: stretch;'
+
 export const el = rs({ name: 'SiteBase', component: Element }).styles(
   (css) => css`
     ${({ href, onClick, $rocketstyle, $rocketstate }) => {
@@ -28,6 +40,7 @@ export const el = rs({ name: 'SiteBase', component: Element }).styles(
       const s = split($rocketstyle)
       const r = (theme: unknown) => makeItResponsive({ theme: theme as never, styles, css: css as never })
       return css`
+        ${isGrid(s.rest.display) ? gridItems : ''}
         ${r(s.rest)};
         ${!disabled && (onClick || href) ? css`cursor: pointer;` : ''};
         ${!disabled ? css`&:hover { ${r(s.hover)}; }` : ''};
@@ -96,3 +109,10 @@ export type ButtonAttrs = {
   disabled?: boolean | undefined
   onClick?: ((e: MouseEvent) => void) | undefined
 }
+
+/**
+ * On touch screens (theme.ts `touch`) a control is at least `tapTarget` tall,
+ * its content centred. For `extendCss` on a link or button that is not inside
+ * running text.
+ */
+export const tapArea = `${touch.media} { min-height: ${touch.tapTarget}px; display: inline-flex; align-items: center; }`

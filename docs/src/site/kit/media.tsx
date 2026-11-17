@@ -1,4 +1,5 @@
 import { For } from '@pyreon/core'
+import { art } from '../theme'
 import { asset, mediaUrl, type PictureData, pictureOf, posterOf, themePair } from './assets'
 import { C } from './classes'
 import { LoopPlayerIsland } from './islands'
@@ -122,6 +123,46 @@ export function Loop(props: { media: LoopMedia; eager?: boolean | undefined; siz
   )
 }
 
+/** The width an asset-set SVG is drawn at (its `viewBox`), or undefined. */
+function drawnWidth(markup: string): number | undefined {
+  const m = /viewBox="\s*[\d.-]+[\s,]+[\d.-]+[\s,]+([\d.]+)/.exec(markup)
+  return m ? Number(m[1]) : undefined
+}
+
+/** The SVG's own `<title>`, to name the box when it scrolls. */
+function svgTitle(markup: string): string | undefined {
+  const m = /<title[^>]*>([^<]+)<\/title>/.exec(markup)
+  return m ? m[1]!.trim() : undefined
+}
+
+/**
+ * Attributes for the box around inline SVG art: the narrowest the drawing
+ * may get (`art` in theme.ts) as `--art-min`, and, because the box scrolls
+ * sideways when the screen is narrower than that, a keyboard stop with the
+ * drawing's title as its name. `decorative` art (aria-hidden, the figures are
+ * printed beside it) gets no keyboard stop. Styled by `[data-art]` in
+ * site-css.ts.
+ */
+export interface ArtBoxAttrs {
+  'data-art': ''
+  style: string
+  tabIndex: number | undefined
+  role: string | undefined
+  'aria-label': string | undefined
+}
+
+export function artBox(markup: string, decorative = false): ArtBoxAttrs {
+  const w = drawnWidth(markup)
+  const min = w ? Math.min(Math.round(w * (decorative ? art.decorativeMinScale : art.minScale)), art.maxMinWidth) : 0
+  return {
+    'data-art': '',
+    style: `--art-min:${min}px`,
+    tabIndex: decorative ? undefined : 0,
+    role: decorative ? undefined : 'region',
+    'aria-label': decorative ? undefined : svgTitle(markup),
+  }
+}
+
 /**
  * An animated or theme-aware SVG from the asset set.
  *
@@ -135,10 +176,18 @@ export function Loop(props: { media: LoopMedia; eager?: boolean | undefined; siz
  * Animations play on load (the hero once, others a calm loop); none needs
  * JavaScript.
  */
-export function AnimatedSvg(props: { file: string; markup?: string | undefined; src?: string | undefined; alt?: string | undefined; eager?: boolean | undefined }) {
+export function AnimatedSvg(props: {
+  file: string
+  markup?: string | undefined
+  src?: string | undefined
+  alt?: string | undefined
+  eager?: boolean | undefined
+  /** The figures are printed beside it (the box is aria-hidden): no keyboard stop when it scrolls. */
+  decorative?: boolean | undefined
+}) {
   const a = asset(props.file)
   if (props.markup !== undefined) {
-    return <div class={C.svgArt} dangerouslySetInnerHTML={{ __html: props.markup }} />
+    return <div class={C.svgArt} {...artBox(props.markup, props.decorative)} dangerouslySetInnerHTML={{ __html: props.markup }} />
   }
   return (
     <img

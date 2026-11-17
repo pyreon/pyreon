@@ -2,12 +2,13 @@ import { expect, type Page, test } from '@playwright/test'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { hydrateIsland, replacedIslandRoots, trackIslandRoots, waitForIslands, waitForNav } from './site-islands'
+import { SITE_WIDTHS } from './site-audit'
 
 /**
  * The app-building-blocks and visual-and-tools product pages (twenty), against
  * the production SSG build: prerendered with their share tags and hero visual,
  * hydration adopts the server DOM with no console errors, no horizontal page
- * scroll at the five design widths, the demo island hydrates when scrolled to
+ * scroll at the seven site widths, the demo island hydrates when scrolled to
  * (and heavy packages load only then), and every text node in the hero and the
  * demo passes WCAG AA in both themes. Per-demo interaction (keyboard and
  * pointer) lives in site-products-b-*.spec.ts.
@@ -15,7 +16,7 @@ import { hydrateIsland, replacedIslandRoots, trackIslandRoots, waitForIslands, w
 const APP = ['feature', 'i18n', 'permissions', 'urlstate', 'hotkeys', 'rx', 'dnd', 'toast', 'table', 'virtual']
 const TOOLS = ['charts', 'editor', 'flow', 'document', 'atlas', 'lathe', 'loom', 'tooling', 'ai', 'migrate']
 const IDS = [...APP, ...TOOLS]
-const WIDTHS = [320, 390, 768, 1024, 1440]
+const WIDTHS = SITE_WIDTHS
 /** Chunks of a heavy package, matched in a script URL. */
 const HEAVY: Record<string, RegExp> = {
   charts: /charts/i,

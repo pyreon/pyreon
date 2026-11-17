@@ -141,14 +141,16 @@ function pair(a: number, b: number): { lo: number; hi: number } {
   return { lo: a < b ? a : b, hi: a < b ? b : a }
 }
 `
-  it('warns on Kotlin, where the two synthesized data classes disagree', () => {
-    const { warnings } = transform(SRC, { target: 'kotlin' })
-    expect(warnings.filter((w) => w.includes('ANONYMOUS object type'))).toHaveLength(1)
-  })
-
-  it('does not warn on Swift, which emits a valid tuple', () => {
-    const { warnings } = transform(SRC, { target: 'swift' })
-    expect(warnings).toEqual([])
+  // Was: Kotlin's return type and returned value synthesized two different data classes (warned), and Swift emitted a
+  // labelled tuple. The return shape is now one declared struct named after the function (module-inline-object-types.ts).
+  it('the return shape is one named struct on both targets, with no warning', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const { code, warnings } = transform(SRC, { target })
+      expect(warnings, target).toEqual([])
+      expect(code, target).toContain(target === 'swift' ? 'struct PairResult: Codable {' : 'data class PairResult(')
+      expect(code, target).toContain(target === 'swift' ? '-> PairResult' : '): PairResult')
+    }
+    expectCompiles(SRC)
   })
 
   it('does not warn once the shape is NAMED — the remedy the warning gives', () => {

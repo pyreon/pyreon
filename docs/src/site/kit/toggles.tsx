@@ -1,6 +1,6 @@
 import { For } from '@pyreon/core'
 import { font, motion, radius, text } from '../theme'
-import { el, focusRing, tone, type ButtonAttrs } from './bases'
+import { el, focusRing, tone, type ButtonAttrs, tapArea } from './bases'
 
 /**
  * `ToggleChips` — one choice out of several, as a row of pill buttons with
@@ -42,6 +42,7 @@ const Chip = el
     hover: { color: tone(m, 'text'), borderColor: tone(m, 'lineHover') },
     focus: focusRing(m),
     pressed: { color: tone(m, 'text'), borderColor: tone(m, 'currentBorder'), backgroundColor: tone(m, 'currentFill') },
+    extendCss: tapArea,
   }))
 
 const Count = el

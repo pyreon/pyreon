@@ -90,7 +90,7 @@ const WindowList = () => {
 | --- | --- | --- |
 | [`useVirtualizer`](#usevirtualizer-hook) | hook | Create an element-scoped virtualizer. |
 | [`useWindowVirtualizer`](#usewindowvirtualizer-hook) | hook | Create a window-scoped virtualizer that uses the browser window as the scroll container. |
-| [`Virtualizer`](#virtualizer-class) | class | The `@tanstack/virtual-core` engine `useVirtualizer`/`useWindowVirtualizer` build on top of, re-exported for single-impo |
+| [`Virtualizer`](#virtualizer-class) | class | The `@tanstack/virtual-core` engine `useVirtualizer`/`useWindowVirtualizer` build on top of, re-exported for… |
 
 ## API
 

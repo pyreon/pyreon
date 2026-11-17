@@ -12,9 +12,10 @@ import { Eyebrow, renderInline, VisuallyHidden } from './type'
  * the page theme, so no highlighter ships to the browser. Without `html` the
  * code renders as plain text in the theme's foreground colour.
  */
-const CodeHead = el
+export const CodeHead = el
   .config({ name: 'CodeHead' })
-  .attrs({ block: true, gap: 6 })
+  // A row: the label (and caption) on the left, the copy button, when the card has one, on the right.
+  .attrs({ block: true, contentDirection: 'inline', contentAlignX: 'spaceBetween', contentAlignY: 'center', gap: 14 })
   .theme((_t, m) => ({
     paddingTop: 18,
     paddingBottom: 16,
@@ -42,7 +43,7 @@ const shikiCss = `
   [data-theme='dark'] & span { color: var(--shiki-dark); font-style: var(--shiki-dark-font-style, inherit); }
 `
 
-const CodeBody = el
+export const CodeBody = el
   .config({ name: 'CodeBody' })
   .attrs({ block: true, tag: 'div' })
   .theme((_t, m) => ({
@@ -107,16 +108,20 @@ export function CodeCard(props: {
     <GlowCard state={props.state} padding="flush">
       <Rail state={props.rail ?? 'none'}>
         <CodeHead>
-          <Eyebrow state={props.state === 'hot' ? 'accent' : 'default'}>{props.label}</Eyebrow>
-          <Show when={() => !!props.caption}>
-            <Caption>{renderInline(props.caption ?? '')}</Caption>
-          </Show>
+          <HeadText>
+            <Eyebrow state={props.state === 'hot' ? 'accent' : 'default'}>{renderInline(props.label)}</Eyebrow>
+            <Show when={() => !!props.caption}>
+              <Caption>{renderInline(props.caption ?? '')}</Caption>
+            </Show>
+          </HeadText>
         </CodeHead>
         <CodeBlock code={props.code} html={props.html} label={props.label} />
       </Rail>
     </GlowCard>
   )
 }
+
+export const HeadText = el.config({ name: 'CodeHeadText' }).attrs({ block: true, gap: 6 }).theme(() => ({ minWidth: 0 }))
 
 /** `.p-ps` — before / after, side by side from 960px; "after" is the hot card. */
 export function BeforeAfter(props: {

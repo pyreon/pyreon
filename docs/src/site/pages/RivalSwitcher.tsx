@@ -1,5 +1,5 @@
 import { For } from '@pyreon/core'
-import { el, focusRing, tone, type LinkAttrs } from '../kit/bases'
+import { el, focusRing, tone, type LinkAttrs, tapArea } from '../kit/bases'
 import { Wrap } from '../kit/layout'
 import { useLinkClick } from '../kit/link'
 import { Eyebrow } from '../kit/type'
@@ -37,7 +37,7 @@ const Item = el
     borderRadius: radius.pill,
     hover: { color: tone(m, 'text'), borderColor: tone(m, 'line2') },
     focus: focusRing(m),
-    extendCss: `&[aria-current='page'] { color: ${tone(m, 'text')}; border-color: ${tone(m, 'currentBorder')}; background: ${tone(m, 'currentFill')}; }`,
+    extendCss: `&[aria-current='page'] { color: ${tone(m, 'text')}; border-color: ${tone(m, 'currentBorder')}; background: ${tone(m, 'currentFill')}; } ${tapArea}`,
   }))
 
 export function RivalSwitcher(props: { label: string; current: string; items: readonly { id: string; href: string; label: string }[] }) {

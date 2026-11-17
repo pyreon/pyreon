@@ -28,7 +28,7 @@ export default function TodoToggle() {
 
   return (
     <ul class="example-col example-list">
-      <For each={todos} by={(t) => t.id}>
+      <For each={todos()} by={(t) => t.id}>
         {(todo) => (
           <li class="example-row example-card">
             <input

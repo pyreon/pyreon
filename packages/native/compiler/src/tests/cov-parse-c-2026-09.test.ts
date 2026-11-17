@@ -92,13 +92,11 @@ describe('parse.ts — useQuery options-function shapes', () => {
 })
 
 describe('parse.ts — tryQueryFnValue (direct-value queryFn)', () => {
-  it('a single-return block body lowers to a direct resolve', () => {
-    expect(q(`() => ({ queryKey: ['a'], queryFn: () => { return { ok: true } } })`).code).toContain(
-      'q.resolve(',
-    )
+  it('a single-return block body lowers to a direct-value request closure', () => {
+    expect(q(`() => ({ queryKey: ['a'], queryFn: () => { return { ok: true } } })`).code).toMatch(/await q\.run \{\s*return /)
     expect(
       q(`() => ({ queryKey: ['a'], queryFn: function () { return { ok: true } } })`).code,
-    ).toContain('q.resolve(')
+    ).toMatch(/await q\.run \{\s*return /)
   })
 
   it('a multi-statement block, an empty return, an await, or a non-function bails by name', () => {
@@ -1018,7 +1016,7 @@ describe('parse.ts — useQuery residual arms', () => {
   })
 
   it('a direct-value queryFn whose returned array has a hole still lowers (the null hole is walked past)', () => {
-    expect(q(`() => ({ queryKey: ['a'], queryFn: () => [1, , 2] })`).code).toContain('q.resolve(')
+    expect(q(`() => ({ queryKey: ['a'], queryFn: () => [1, , 2] })`).code).toMatch(/await q\.run \{\s*return /)
   })
 })
 

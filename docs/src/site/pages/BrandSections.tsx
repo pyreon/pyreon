@@ -1,6 +1,6 @@
 import { For } from '@pyreon/core'
 import type { SiteSection } from '../content/types-site'
-import { el, focusRing, tone, txt, type LinkAttrs } from '../kit/bases'
+import { el, focusRing, tone, txt, type LinkAttrs, tapArea } from '../kit/bases'
 import { GlowCard } from '../kit/cards'
 import { AutoGrid, SectionHead } from '../kit/layout'
 import { InlineText } from '../kit/story'
@@ -31,7 +31,7 @@ const Download = el
     color: tone(m, 'link'),
     textDecoration: 'underline',
     borderRadius: 2,
-    extendCss: 'text-underline-offset: 3px;',
+    extendCss: `text-underline-offset: 3px; ${tapArea}`,
     focus: focusRing(m),
   }))
 

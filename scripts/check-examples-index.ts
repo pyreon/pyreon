@@ -16,35 +16,9 @@
  *
  * Usage: bun scripts/check-examples-index.ts
  */
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, resolve } from 'node:path'
-
-const REPO_ROOT = resolve(import.meta.dirname, '..')
-
-/** Directories that are never example roots (installs, build output). */
-const SKIP = new Set(['node_modules', 'dist', 'lib', '.zero', '.turbo', 'build'])
-
-/**
- * Every example workspace directory under `examplesRoot`, as a path relative
- * to it (`app-showcase`, or `compat/react` once examples are grouped). A
- * directory with a `package.json` is an example and is not descended into.
- */
-export function listExampleDirs(examplesRoot: string): string[] {
-  const out: string[] = []
-  const walk = (rel: string, depth: number): void => {
-    const abs = rel ? join(examplesRoot, rel) : examplesRoot
-    for (const name of readdirSync(abs).sort()) {
-      if (SKIP.has(name) || name.startsWith('.')) continue
-      const childRel = rel ? `${rel}/${name}` : name
-      const childAbs = join(examplesRoot, childRel)
-      if (!statSync(childAbs).isDirectory()) continue
-      if (existsSync(join(childAbs, 'package.json'))) out.push(childRel)
-      else if (depth < 3) walk(childRel, depth + 1)
-    }
-  }
-  walk('', 0)
-  return out
-}
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { listExampleDirs, REPO_ROOT } from './example-dirs'
 
 /** The `./<path>/` directory links in the README, without the `./` and trailing `/`. */
 export function readmeExampleLinks(readme: string): string[] {
@@ -76,7 +50,8 @@ function main(): void {
     console.error('[check-examples-index] ✗ examples/README.md is missing. Add it: it is the index of every example.')
     process.exit(1)
   }
-  const dirs = listExampleDirs(examplesRoot)
+  // The shared listing throws on an empty scan; keep this gate's own message.
+  const dirs = listExampleDirs(REPO_ROOT, { allowNone: true })
   if (dirs.length === 0) {
     console.error('[check-examples-index] ✗ found ZERO example directories under examples/ — the scan is wrong.')
     process.exit(1)
@@ -87,9 +62,9 @@ function main(): void {
     return
   }
   for (const d of unlisted)
-    console.error(`[check-examples-index] ✗ examples/${d} is not in examples/README.md. Add a row linking ](./${d}/) with one line on what it shows or tests.`)
+    {console.error(`[check-examples-index] ✗ examples/${d} is not in examples/README.md. Add a row linking ](./${d}/) with one line on what it shows or tests.`)}
   for (const l of dangling)
-    console.error(`[check-examples-index] ✗ examples/README.md links ./${l}/, which is not an example directory. Remove or fix the row.`)
+    {console.error(`[check-examples-index] ✗ examples/README.md links ./${l}/, which is not an example directory. Remove or fix the row.`)}
   process.exit(1)
 }
 

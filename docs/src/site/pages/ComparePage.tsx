@@ -154,7 +154,7 @@ export function ComparePage(props: { view: CompareView }) {
             <MigrateRow>
               <Eyebrow state="accent">{T.migrate.eyebrow}</Eyebrow>
               <Heading tag="h2" size="card">
-                {d.migrate.title}
+                {renderInline(d.migrate.title)}
               </Heading>
               <Lede size="card">{renderInline(d.migrate.text)}</Lede>
               <div>
@@ -172,7 +172,7 @@ export function ComparePage(props: { view: CompareView }) {
         <Wrap>
           <Stack>
             <Heading tag="h2" size="card">
-              {d.pickTheOther.title}
+              {renderInline(d.pickTheOther.title)}
             </Heading>
             <PlainList>
               <For each={d.pickTheOther.items} by={(i) => i}>

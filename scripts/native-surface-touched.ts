@@ -30,10 +30,13 @@
  * unreadable manifest, an empty file list, a deleted package.json.
  */
 
-import { appendFileSync, existsSync, readdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, join, normalize, relative } from 'node:path'
+import { listNativeHosts } from './native-example-hosts'
 import { deriveNativePluginSurface } from './native-plugin-surface'
+import { lockClosure, nativeWorkspaces, parseLockfile } from './native-inputs-fingerprint'
+import { laneChanged } from './native-workflow-surface'
 
 export interface Decision {
   run: boolean
@@ -132,6 +135,246 @@ export function classifyNativeSurface(
   return { run: reasons.length > 0, reasons }
 }
 
+// ── Lane-specific decisions ─────────────────────────────────────────────────
+//
+// `classifyNativeSurface` answers "can this PR change anything native?". The
+// two macOS jobs ask something narrower, because a macOS minute is the scarcest
+// one the org has (about three concurrent runners; on 2026-11-16 three jobs ran
+// while eight queued and GitHub cancelled short ones as "not acquired"):
+//
+//   - `Validate emitted Swift (real-SDK typecheck, macOS)` reads the emitter,
+//     the runtime packages, the example build scripts and its own definition.
+//     It does not read an Android example's Gradle configuration, and it does
+//     not run for an edit to a workflow file that is not its own.
+//   - `iOS — xcodebuild` builds the iOS apps; the Android lane's job block is
+//     not part of it, and the reverse.
+//
+// Both compare the lane's OWN job block at the base and at the head
+// (`native-workflow-surface.ts`), never the whole workflow file.
+
+/**
+ * Gradle build configuration of an Android example app. Nothing the macOS jobs
+ * read points at these files: the macOS suite reads each example's
+ * `scripts/*.sh` and one androidTest `.kt`, and the iOS lane builds from
+ * `project.yml`. (`check-native-srcdirs-drift`, which reads them, is a Linux
+ * gate.) The Android lane still selects the app: `selectApps` is unchanged.
+ */
+// Both example layouts: `native-<app>-android/` and `native-<app>/android/`.
+const ANDROID_GRADLE_CONFIG =
+  /^examples\/native-[^/]+(?:-android|\/android)\/(?:(?:app\/)?build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties|gradlew(?:\.bat)?|gradle\/.+)$/
+
+export function isAndroidGradleConfig(file: string): boolean {
+  // `..` never appears in a git path; refuse it anyway so the `gradle/` arm
+  // cannot be walked out of.
+  return ANDROID_GRADLE_CONFIG.test(file) && !file.split('/').includes('..')
+}
+
+/**
+ * Device-test sources: XCUITest and Android instrumented tests run only in the
+ * device lanes. The macOS suite checks that an `iosUITests` or `androidTest`
+ * DIRECTORY exists (`native-examples-compile.test.ts`) and reads one androidTest
+ * file by name (`intl-differential.test.ts`); it never reads any other file in
+ * them. A deleted file reads as null and so still starts the job, which keeps
+ * "the last device test was removed" visible.
+ */
+// Both example layouts: `native-<app>-ios/iosUITests` and `native-<app>/ios/UITests`.
+const DEVICE_TEST_SOURCE =
+  /^examples\/native-[^/]+(?:-ios\/iosUITests|\/ios\/UITests|[-/]android\/app\/src\/androidTest)\/(?!.*IntlDifferentialCases\.kt$)/
+
+export function isDeviceTestSource(file: string): boolean {
+  return DEVICE_TEST_SOURCE.test(file) && !file.split('/').includes('..')
+}
+
+/** Root `package.json` keys that no job of the native workflows reads. */
+const INERT_ROOT_KEYS = ['scripts', 'version', 'description', 'keywords', 'repository', 'homepage', 'bugs']
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_k, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as object).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  )
+}
+
+/**
+ * Can this PR's change to `bun.lock` and the root `package.json` leave what the
+ * macOS typecheck installs and runs untouched? The same proof the device lanes'
+ * fingerprint uses: the dependency closure of the native workspaces and the
+ * root `overrides` are identical, and the root manifest differs, if at all, only
+ * in keys no native job reads (its `scripts`: the macOS job runs
+ * `bun scripts/…` directly, never a root script). Anything unreadable is "no".
+ */
+export function lockfileInertForNative(
+  read: (path: string) => string | null,
+  readBase: ((path: string) => string | null) | undefined,
+): boolean {
+  if (!readBase) return false
+  try {
+    const sides = [read, readBase].map((r) => ({
+      lock: r('bun.lock'),
+      manifest: r('package.json'),
+    }))
+    if (sides.some((x) => x.lock === null || x.manifest === null)) return false
+    const closure = (text: string): string => {
+      const lock = parseLockfile(text)
+      return lockClosure(lock, nativeWorkspaces(lock)).join('\n')
+    }
+    const [head, base] = sides as [{ lock: string; manifest: string }, { lock: string; manifest: string }]
+    if (closure(head.lock) !== closure(base.lock)) return false
+    const strip = (text: string): string => {
+      const json = JSON.parse(text) as Record<string, unknown>
+      for (const key of INERT_ROOT_KEYS) delete json[key]
+      return stableJson(json)
+    }
+    return strip(head.manifest) === strip(base.manifest)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The changed files the dependency-graph question should see for the macOS
+ * lane: workflow files are answered by the lane's own job block, and a
+ * lockfile/root-manifest change that is provably inert for the native
+ * workspaces is not a graph input. Every other path is passed through.
+ */
+export function macosGraphFiles(
+  files: readonly string[],
+  read: (path: string) => string | null,
+  readBase: ((path: string) => string | null) | undefined,
+): string[] {
+  const inert = files.some((f) => f === 'bun.lock' || f === 'package.json')
+    ? lockfileInertForNative(read, readBase)
+    : false
+  return files.filter(
+    (f) => !f.startsWith('.github/workflows/') && !(inert && (f === 'bun.lock' || f === 'package.json')),
+  )
+}
+
+/** The workflow file a decision belongs to, with both sides of it. */
+export interface SelfWorkflow {
+  file: string
+  /** Content at the head; an Error when it could not be read. */
+  head: string | Error
+  /** Content at the base; null when the file is new, an Error when unreadable. */
+  base: string | null | Error
+}
+
+/**
+ * Does the macOS typecheck need to run? `macosJobs` are the job ids that make
+ * up the macOS lane (`validate-swift-typecheck`). A changed file counts when:
+ * the path classifier says native (Android Gradle configuration excluded), the
+ * macOS job block (or the top-level `env`/`permissions`/`defaults` it inherits)
+ * changed, or it is a script/local action that block names. Any other workflow
+ * file starts nothing, and neither do a device-test source file or a lockfile
+ * change that leaves the native workspaces' dependency closure identical.
+ */
+export function classifyMacosLane(
+  files: readonly string[],
+  read: (path: string) => string | null,
+  self: SelfWorkflow,
+  macosJobs: readonly string[],
+  base: BaseInputs = {},
+): Decision {
+  const { pluginSurface, readBase } = base
+  if (files.length === 0) return { run: true, reasons: ['empty file list — running (fail-closed)'] }
+  const reasons: string[] = []
+  const selfTouched = files.includes(self.file)
+  // The named scripts come from the head's surface even when the file itself is
+  // untouched, so a script edit the job runs is still seen.
+  const lane = laneChanged(self.head, selfTouched ? self.base : self.head, macosJobs)
+  if (selfTouched && lane.changed) reasons.push(self.file + ' — ' + lane.reason)
+  const named = new Set(lane.named)
+  const rest: string[] = []
+  const lockInert = files.includes('bun.lock') && lockfileInertForNative(read, readBase)
+  for (const f of files) {
+    if (f === self.file || isAndroidGradleConfig(f)) continue
+    if (f === 'bun.lock' && lockInert) continue
+    if (isDeviceTestSource(f) && read(f) !== null) continue
+    if (named.has(f)) reasons.push(f + ' — named by the macOS job')
+    else rest.push(f)
+  }
+  if (rest.length > 0) reasons.push(...classifyNativeSurface(rest, read, undefined, pluginSurface, readBase).reasons)
+  return { run: reasons.length > 0, reasons }
+}
+
+/** What a decision compares against: the plugin surface and the base revision's files. */
+export interface BaseInputs {
+  pluginSurface?: ReadonlySet<string> | Error | undefined
+  readBase?: ((path: string) => string | null) | undefined
+}
+
+export interface DeviceLaneJobs {
+  ios: readonly string[]
+  android: readonly string[]
+}
+
+export interface DeviceDecision {
+  run: boolean
+  selection: AppSelection
+  reasons: string[]
+}
+
+/**
+ * The device workflow's decision: which lanes run. The path classifier and
+ * `selectApps` pick the apps; an edit to the workflow file selects a platform
+ * ONLY when that platform's job block (or the inherited top-level sections)
+ * changed. Every failure to compare selects both platforms.
+ */
+export function decideDevice(
+  files: readonly string[],
+  read: (path: string) => string | null,
+  self: SelfWorkflow,
+  jobs: DeviceLaneJobs,
+  inputs: BaseInputs & { surfaces: () => AppSurface[] },
+): DeviceDecision {
+  const { pluginSurface, readBase, surfaces } = inputs
+  const every = (reason: string): DeviceDecision => ({
+    run: true,
+    selection: { ios: 'all', android: 'all', reasons: [reason] },
+    reasons: [reason],
+  })
+  if (files.length === 0) return every('empty file list — every lane (fail-closed)')
+  const rest = files.filter((f) => f !== self.file)
+  const selfTouched = files.length !== rest.length
+  const reasons: string[] = []
+  const lanes = { ios: false, android: false }
+  if (selfTouched) {
+    for (const platform of ['ios', 'android'] as const) {
+      const lane = laneChanged(self.head, self.base, jobs[platform])
+      if (lane.changed) {
+        lanes[platform] = true
+        reasons.push(self.file + ' — ' + platform + ' ' + lane.reason)
+      }
+    }
+  }
+  let d: Decision = { run: false, reasons: [] }
+  if (rest.length > 0) d = classifyNativeSurface(rest, read, undefined, pluginSurface, readBase)
+  reasons.push(...d.reasons)
+  let sel: AppSelection = { ios: 'none', android: 'none', reasons: [] }
+  if (d.run) {
+    try {
+      const surfaceFiles = d.reasons.map((r) => r.split(' — ')[0]!).filter((f) => rest.includes(f))
+      sel =
+        surfaceFiles.length === d.reasons.length
+          ? selectApps(surfaceFiles, surfaces())
+          : { ios: 'all', android: 'all', reasons: ['fail-closed run (no file list) — every lane'] }
+    } catch (err) {
+      sel = {
+        ios: 'all',
+        android: 'all',
+        reasons: ['app derivation failed (' + String(err) + ') — every lane'],
+      }
+    }
+  }
+  const selection: AppSelection = {
+    ios: lanes.ios ? 'all' : sel.ios,
+    android: lanes.android ? 'all' : sel.android,
+    reasons: [...sel.reasons],
+  }
+  return { run: d.run || lanes.ios || lanes.android, selection, reasons }
+}
+
 // ── Per-app lane selection (native-device.yml) ───────────────────────────────
 //
 // native-device.yml runs every example app's device lane (5 iOS UITest suites
@@ -150,7 +393,8 @@ export function classifyNativeSurface(
 // Fail-closed: a native-surface file claimed by NO app on either platform (the
 // compiler, the CLI, bun.lock, the workflow, a gate script, a manifest) runs
 // EVERY app on BOTH platforms. The single exception is a native example that
-// no lane builds (native-viz, a *-web sibling): no lane can observe it.
+// no lane builds (a *-web sibling, a single-layout app's web entry files):
+// no lane can observe it.
 
 export type Platform = 'ios' | 'android'
 export interface AppSurface {
@@ -171,12 +415,18 @@ function asRoot(p: string): string {
 /** Derive every device-lane app's surface from the files on disk. */
 export function deriveAppSurfaces(repoRoot: string): AppSurface[] {
   const out: AppSurface[] = []
-  for (const name of readdirSync(join(repoRoot, 'examples')).sort()) {
-    const dir = 'examples/' + name
-    const m = APP_DIR.exec(dir)
-    if (!m) continue
-    const platform = m[2] as Platform
+  for (const host of listNativeHosts(repoRoot)) {
+    const { dir, platform } = host
     const roots = new Set<string>([asRoot(dir)])
+    if (host.layout === 'single') {
+      // One package per app (`examples/native-<app>/{ios,android}`): this
+      // platform's host, the shared source, its own emit script and the
+      // package manifest. The other platform's host and the web entry files
+      // are not this lane's input.
+      roots.add(asRoot(host.appRoot + '/src'))
+      roots.add(host.buildScript)
+      roots.add(host.appRoot + '/package.json')
+    }
     const refsIn = (file: string, pattern: RegExp): void => {
       const abs = join(repoRoot, file)
       if (!existsSync(abs)) return
@@ -191,7 +441,7 @@ export function deriveAppSurfaces(repoRoot: string): AppSurface[] {
     // build script's PROJECT_DIR is the app dir, so resolve against it, and
     // claim the sibling example as a whole (its package.json, fixtures, …).
     const build = join(repoRoot, dir, 'scripts/build.sh')
-    if (existsSync(build)) {
+    if (host.layout === 'split' && existsSync(build)) {
       const src = /SRC_DIR=.*\$\{PROJECT_DIR\}\/([^"\s)]+)/.exec(readFileSync(build, 'utf8'))
       if (src) {
         const target = relative(repoRoot, join(repoRoot, dir, src[1]!))
@@ -199,8 +449,8 @@ export function deriveAppSurfaces(repoRoot: string): AppSurface[] {
           roots.add(asRoot(target))
           const parent = dirname(target)
           // Only a SHARED source home (examples/native-finance) is claimed whole;
-          // when the source lives in a sibling LANE app (native-counter-android
-          // reads native-counter-ios/src), claiming that app's whole dir would
+          // when the source lives in a sibling LANE app (native-counter/android
+          // reads native-counter/src), claiming that app's whole dir would
           // run this lane for an iOS-only UITest edit.
           if (parent !== dir && parent.startsWith('examples/native-') && !APP_DIR.test(parent))
             roots.add(asRoot(parent))
@@ -213,7 +463,7 @@ export function deriveAppSurfaces(repoRoot: string): AppSurface[] {
       refsIn(dir + '/settings.gradle.kts', /"(\.\.\/[^"]+)"/g)
       refsIn(dir + '/app/build.gradle.kts', /"(\.\.\/[^"]+)"/g)
     }
-    out.push({ platform, app: m[1]!, roots: [...roots].sort() })
+    out.push({ platform, app: host.app, roots: [...roots].sort() })
   }
   return out
 }
@@ -292,8 +542,35 @@ export function comparisonManifestReader(repoRoot: string): (path: string) => st
   }
 }
 
+function listArg(name: string): string[] | undefined {
+  const v = process.argv.find((a) => a.startsWith('--' + name + '='))?.slice(name.length + 3)
+  return v ? v.split(',').filter(Boolean) : undefined
+}
+
+/** The self workflow at the head (cwd) and at the comparison base. */
+function readSelfWorkflow(file: string): SelfWorkflow {
+  let head: string | Error
+  try {
+    head = readFileSync(file, 'utf8')
+  } catch (err) {
+    head = err instanceof Error ? err : new Error(String(err))
+  }
+  let base: string | null | Error
+  try {
+    base = comparisonManifestReader(process.cwd())(file)
+  } catch (err) {
+    // A path that is absent at the base reads as an error from `git show`;
+    // either way the comparison is impossible, so the lane counts as changed.
+    base = err instanceof Error ? err : new Error(String(err))
+  }
+  return { file, head, base }
+}
+
 if (import.meta.main) {
   const self = process.argv.find((a) => a.startsWith('--self='))?.slice('--self='.length)
+  const macosJobs = listArg('macos-jobs')
+  const iosJobs = listArg('ios-jobs')
+  const androidJobs = listArg('android-jobs')
   // Read the inherited descriptor: reopening /dev/stdin fails for socket-backed
   // child-process stdin on Linux (ENXIO), even though descriptor 0 is readable.
   const files = readFileSync(0, 'utf8')
@@ -306,46 +583,98 @@ if (import.meta.main) {
   } catch (error) {
     pluginSurface = error instanceof Error ? error : new Error(String(error))
   }
-  const d = classifyNativeSurface(
-    files,
-    readAtHead,
-    self,
-    pluginSurface,
-    comparisonManifestReader(process.cwd()),
-  )
-  for (const r of d.reasons) console.log('  ' + r)
-  console.log(
-    d.run
-      ? 'native surface touched — validating'
-      : 'no native-surface change — native lanes skip (report success)',
-  )
-  if (process.env.GITHUB_OUTPUT)
-    appendFileSync(process.env.GITHUB_OUTPUT, 'run=' + String(d.run) + '\n')
-  // `--apps`: also emit the per-platform device-lane selection. Any error in
-  // the derivation falls back to every lane — never to fewer.
-  if (process.argv.includes('--apps')) {
-    let sel: AppSelection
+  const out = (key: string, value: string): void => {
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, key + '=' + value + '\n')
+  }
+  const readBase = comparisonManifestReader(process.cwd())
+  const deviceJobs = self && iosJobs && androidJobs ? { ios: iosJobs, android: androidJobs } : undefined
+  if (process.argv.includes('--apps') && deviceJobs) {
+    // Device lanes: the workflow file selects a platform only through that
+    // platform's own job block.
+    let decision: DeviceDecision
     try {
-      // `reasons` entries are "<file> — <why>"; select from the files alone.
-      const surfaceFiles = d.reasons.map((r) => r.split(' — ')[0]!).filter((f) => files.includes(f))
-      sel = d.run
-        ? surfaceFiles.length === d.reasons.length
-          ? selectApps(surfaceFiles, deriveAppSurfaces(process.cwd()))
-          : { ios: 'all', android: 'all', reasons: ['fail-closed run (no file list) — every lane'] }
-        : { ios: 'none', android: 'none', reasons: [] }
+      decision = decideDevice(
+        files,
+        readAtHead,
+        readSelfWorkflow(self!),
+        deviceJobs,
+        { pluginSurface, readBase, surfaces: () => deriveAppSurfaces(process.cwd()) },
+      )
     } catch (err) {
-      sel = {
-        ios: 'all',
-        android: 'all',
-        reasons: ['app derivation failed (' + String(err) + ') — every lane'],
+      const reason = 'device decision failed (' + String(err) + ') — every lane'
+      decision = {
+        run: true,
+        selection: { ios: 'all', android: 'all', reasons: [reason] },
+        reasons: [reason],
       }
     }
-    for (const r of sel.reasons) console.log('  lanes: ' + r)
-    console.log('iOS apps: ' + formatApps(sel.ios) + ' | Android apps: ' + formatApps(sel.android))
-    if (process.env.GITHUB_OUTPUT)
-      appendFileSync(
-        process.env.GITHUB_OUTPUT,
-        'ios-apps=' + formatApps(sel.ios) + '\nandroid-apps=' + formatApps(sel.android) + '\n',
-      )
+    for (const r of decision.reasons) console.log('  ' + r)
+    console.log(
+      decision.run
+        ? 'native surface touched — validating'
+        : 'no native-surface change — native lanes skip (report success)',
+    )
+    out('run', String(decision.run))
+    for (const r of decision.selection.reasons) console.log('  lanes: ' + r)
+    console.log(
+      'iOS apps: ' +
+        formatApps(decision.selection.ios) +
+        ' | Android apps: ' +
+        formatApps(decision.selection.android),
+    )
+    out('ios-apps', formatApps(decision.selection.ios))
+    out('android-apps', formatApps(decision.selection.android))
+  } else {
+    const d = classifyNativeSurface(files, readAtHead, self, pluginSurface, readBase)
+    for (const r of d.reasons) console.log('  ' + r)
+    console.log(
+      d.run
+        ? 'native surface touched — validating'
+        : 'no native-surface change — native lanes skip (report success)',
+    )
+    out('run', String(d.run))
+    if (self && macosJobs) {
+      // The macOS lane asks a narrower question than `run` (see above). Any
+      // failure to answer it runs the job.
+      let mac: Decision
+      try {
+        mac = classifyMacosLane(files, readAtHead, readSelfWorkflow(self), macosJobs, { pluginSurface, readBase })
+      } catch (err) {
+        mac = { run: true, reasons: ['macOS decision failed (' + String(err) + ') — running (fail-closed)'] }
+      }
+      // The list the shell hands to `affected.ts` for `graph-macos`.
+      const graphOut = process.argv.find((a) => a.startsWith('--macos-graph-files='))?.slice('--macos-graph-files='.length)
+      if (graphOut) {
+        const graphFiles = macosGraphFiles(files, readAtHead, readBase)
+        writeFileSync(graphOut, graphFiles.length > 0 ? graphFiles.join('\n') + '\n' : '')
+      }
+      for (const r of mac.reasons) console.log('  macOS: ' + r)
+      console.log(mac.run ? 'macOS lane needed' : 'macOS lane not needed — skips (reports success)')
+      out('macos', String(mac.run))
+    }
+    // `--apps`: also emit the per-platform device-lane selection. Any error in
+    // the derivation falls back to every lane — never to fewer.
+    if (process.argv.includes('--apps')) {
+      let sel: AppSelection
+      try {
+        // `reasons` entries are "<file> — <why>"; select from the files alone.
+        const surfaceFiles = d.reasons.map((r) => r.split(' — ')[0]!).filter((f) => files.includes(f))
+        sel = d.run
+          ? surfaceFiles.length === d.reasons.length
+            ? selectApps(surfaceFiles, deriveAppSurfaces(process.cwd()))
+            : { ios: 'all', android: 'all', reasons: ['fail-closed run (no file list) — every lane'] }
+          : { ios: 'none', android: 'none', reasons: [] }
+      } catch (err) {
+        sel = {
+          ios: 'all',
+          android: 'all',
+          reasons: ['app derivation failed (' + String(err) + ') — every lane'],
+        }
+      }
+      for (const r of sel.reasons) console.log('  lanes: ' + r)
+      console.log('iOS apps: ' + formatApps(sel.ios) + ' | Android apps: ' + formatApps(sel.android))
+      out('ios-apps', formatApps(sel.ios))
+      out('android-apps', formatApps(sel.android))
+    }
   }
 }

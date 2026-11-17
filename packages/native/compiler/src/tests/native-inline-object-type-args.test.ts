@@ -11,7 +11,7 @@
 // The class is every position that spells a TypeIR without passing a synthesis context: plugin type arguments
 // (useQuery, useMutation, useInfiniteQuery, useStream, useFetch, useAuth, useLoaderData), `JSON.parse(…) as {…}`, and
 // a local's annotation. Each now synthesizes in the component it sits in; a position OUTSIDE any component (a
-// module-scope signal) is named by a warning instead of being silently retyped.
+// module-scope signal) is a struct named after its binding (native-inline-object-module-scope.test.ts).
 
 import { describe, expect, it } from 'vitest'
 import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
@@ -265,7 +265,7 @@ describe('inline object type arguments become named types', () => {
   })
 
   it.each(['swift', 'kotlin'] as const)(
-    'outside any component (a module-scope signal) the type is NAMED by a warning on %s, not collapsed',
+    'outside any component (a module-scope signal) the type is a struct named after the binding on %s, not collapsed',
     (target) => {
       const r = transform(
         component(
@@ -275,12 +275,9 @@ describe('inline object type arguments become named types', () => {
         ),
         { target },
       )
-      expect(
-        r.warnings.some(
-          (w) =>
-            w.includes('inline object type `{ ok }`') && w.includes('named `interface` or `type`'),
-        ),
-      ).toBe(true)
+      // Every module-scope site is covered in native-inline-object-module-scope.test.ts.
+      expect(r.warnings.filter((w) => w.includes('inline object type'))).toEqual([])
+      expect(r.code).toContain(target === 'swift' ? 'var flag: FlagType = FlagType(ok: true)' : 'mutableStateOf<FlagType>(')
       expect(r.code).not.toMatch(/var flag: Bool\b/)
     },
   )

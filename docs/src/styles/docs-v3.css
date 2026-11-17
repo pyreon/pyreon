@@ -3,8 +3,11 @@
 
    Colours, fonts and radii are ONLY `var(--dx-…)`: `src/docs-ui/tokens.ts`
    builds them from `site/theme.ts` and the docs layout puts them in the head.
+   Scale tokens (space, radius, type sizes, leading, tracking, durations,
+   easings, z layers) are `var(--s-…)`, generated from the same file by
+   `site/theme-vars.ts` and present on every page; new rules use them.
    Layout numbers follow visual-alignment.md §D; the breakpoints below are
-   `docsLayout` in tokens.ts (railBreak 1180, drawerBreak 960, narrow 640),
+   `docsLayout` in site/theme.ts (railBreak 1180, drawerBreak 960, narrow 640),
    and `docs-v3-css.test.ts` fails if they drift apart.
 
    In the `docs` cascade layer (declared first in index.html): the UI kit's
@@ -902,7 +905,7 @@
   position: absolute;
   left: -9999px;
   top: 76px;
-  z-index: 60;
+  z-index: var(--s-z-docsSkip);
   padding: 8px 14px;
   border-radius: 8px;
   background: var(--dx-solid-bg);
@@ -1064,7 +1067,7 @@
 .dx-ask { position: relative; }
 .dx-ask__menu {
   position: absolute;
-  z-index: 30;
+  z-index: var(--s-z-docsMenu);
   top: calc(100% + 6px);
   left: 0;
   display: grid;
@@ -1229,6 +1232,12 @@
 .dx-prose :where(th) { background: var(--dx-raised); color: var(--dx-text); font-weight: 500; white-space: nowrap; }
 .dx-prose :where(tr:last-child td) { border-bottom: 0; }
 .dx-prose :where(td:first-child) { color: var(--dx-text); }
+/* In a table, code keeps its words whole and every cell keeps a readable
+   width: on a phone the table grows and scrolls in its box instead of
+   breaking `RouteRecord[]` into one letter per line. */
+.dx-prose :where(td, th) :where(code), .dx :where(.prop-table, .compat-matrix) :where(td, th) :where(code) { overflow-wrap: normal; word-break: normal; }
+.dx-prose :where(td), .dx :where(.prop-table, .compat-matrix) :where(td) { min-width: 10ch; }
+.dx-prose :where(td:first-child), .dx :where(.prop-table) :where(td:first-child) { white-space: nowrap; }
 .dx-anchor {
   margin-left: .35em;
   color: var(--dx-fog) !important;
@@ -1576,7 +1585,7 @@
 .dx-home__sec h2 { margin: 0 0 12px; font-size: 30px; font-weight: 500; letter-spacing: -.03em; line-height: 1.15; color: var(--dx-strong); scroll-margin-top: 90px; }
 .dx-home__text { margin: 0 0 22px; font-size: 16px; line-height: 1.65; color: var(--dx-mist); max-width: 68ch; }
 .dx-home code, .dx-banner code { font-family: var(--dx-mono); font-size: .88em; }
-.dx-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.dx-tiles { list-style: none; margin: 0; padding: 0; max-width: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .dx-tiles li { margin: 0; }
 .dx-tilecard { display: flex; gap: 14px; height: 100%; padding: 14px 16px; border: 1px solid var(--dx-line); border-radius: var(--dx-r-pane); background: var(--dx-card); color: var(--dx-text) !important; text-decoration: none !important; }
 .dx-tilecard:hover { border-color: var(--dx-line-hover); }
@@ -1620,14 +1629,14 @@
 .dx-counter__metrics dt { font-family: var(--dx-mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--dx-fog); }
 .dx-counter__metrics dd { margin: 4px 0 0; font-size: 24px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--dx-strong); }
 .dx-counter__metrics .dx-counter__live { color: var(--dx-accent-text); }
-.dx-proof { list-style: none; margin: 36px 0 0; padding: 22px 0 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; border-top: 1px solid var(--dx-line); }
+.dx-proof { list-style: none; margin: 36px 0 0; padding: 22px 0 0; max-width: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; border-top: 1px solid var(--dx-line); }
 .dx-proof li { display: grid; align-content: start; gap: 6px; margin: 0; }
 .dx-proof__stat { font-size: clamp(30px, 3.2vw, 40px); font-weight: 700; line-height: .95; letter-spacing: -.05em; background: var(--dx-ember); -webkit-background-clip: text; background-clip: text; color: transparent; padding-bottom: .06em; }
 .dx-proof__label { font-size: 13px; line-height: 1.45; color: var(--dx-mist); }
 .dx-proof__cond { font-family: var(--dx-mono); font-size: 10.5px; line-height: 1.5; color: var(--dx-fog); }
 .dx-caveat { margin: 18px 0 0; font-family: var(--dx-mono); font-size: 11.5px; line-height: 1.6; color: var(--dx-fog); max-width: 78ch; }
 .dx-caveat a { color: var(--dx-text); }
-.dx-new { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--dx-line); }
+.dx-new { list-style: none; margin: 0; padding: 0; max-width: none; border-top: 1px solid var(--dx-line); }
 .dx-new__item { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 6px 16px; align-items: start; margin: 0; padding: 14px 0; border-bottom: 1px solid var(--dx-line); }
 .dx-new__area { font-family: var(--dx-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--dx-fog); padding-top: 3px; }
 .dx-new__title { font-weight: 500; color: var(--dx-strong) !important; text-decoration: none !important; }
@@ -1775,4 +1784,31 @@
   .dx-counter__value--pulse { text-decoration: underline 2px var(--dx-accent); }
   .dx-anchor { transition: none; }
 }
+}
+
+/* Touch screens (theme.ts `touch`: below 992px or a coarse pointer): every
+   docs control is at least 44px tall. The heading anchor and inline "more"
+   links grow their hit area without moving the text around them. */
+@media (max-width: 991.98px), (pointer: coarse) {
+  .dx-skip, .dx-drawer-btn, .dx-action, .code-group__tab, .dx-demo__tab, .dx .package-badge, .dx-pitch__link, .dx-sell .dx-pitch__link, .code-block__copy { min-height: 44px; }
+  .dx-action, .code-group__tab, .dx-demo__tab, .dx .package-badge, .code-block__copy { display: inline-flex; align-items: center; }
+  .dx-toc-inline__summary { padding-top: 14px; padding-bottom: 14px; }
+  .dx-toc__link { display: flex; align-items: center; min-height: 44px; }
+  .dx-more { display: inline-flex; align-items: center; min-height: 44px; margin-top: 6px; }
+  .dx-anchor { display: inline-block; padding: calc((44px - 1em) / 2) 6px; margin: calc((1em - 44px) / 2) -6px calc((1em - 44px) / 2) 0; }
+  .dx-helpful button, .dx-why__compiled > summary { min-height: 44px; }
+  /* The code block's bar grows with its 44px copy button, so the button sits inside it. */
+  .dx .code-block__header, .dx .code-block__header--empty { min-height: 52px; }
+  .dx .code-block[data-lang][data-lang]::before { height: 52px; }
+  .dx .code-block__copy { top: 4px; }
+  /* Plain links (breadcrumbs, link lists, card titles, banners): a 44px hit
+     area from padding cancelled by an equal negative margin, so no line moves. */
+  .dx a:not([class]) { padding-top: calc((44px - 1em) / 2); padding-bottom: calc((44px - 1em) / 2); margin-top: calc((1em - 44px) / 2); margin-bottom: calc((1em - 44px) / 2); }
+}
+
+/* On a phone the pitch's calls to action share one edge, like the marketing
+   heroes (kit/cta.tsx ctaStackOnPhone, sm = 576px): the command and the
+   "Product page" pill each take the full width. */
+@media (max-width: 575.98px) {
+  .dx-pitch__ctas > * { flex: 1 1 100%; justify-content: center; }
 }

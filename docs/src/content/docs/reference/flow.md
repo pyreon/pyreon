@@ -117,7 +117,7 @@ flow.fromJSON({ nodes, edges })    // restore from saved state
 | [`Panel`](#panel-component) | component | Overlay panel positioned absolutely relative to the flow viewport. |
 | [`NodeResizer`](#noderesizer-component) | component | Render drag handles inside a custom node to resize it. |
 | [`NodeToolbar`](#nodetoolbar-component) | component | A floating toolbar placed beside its host node (default `position: "top"`, `offset` 8px). |
-| [`flowStyles`](#flowstyles-constant) | constant | The package stylesheet as ONE plain string — every `.pyreon-flow-*` rule with its `--pyreon-flow-*` custom-property fall |
+| [`flowStyles`](#flowstyles-constant) | constant | The package stylesheet as ONE plain string — every `.pyreon-flow-*` rule with its `--pyreon-flow-*` custom-property… |
 | [`EdgeLabelRenderer`](#edgelabelrenderer-component) | component | HTML edge labels for CUSTOM edges. |
 | [`BaseEdge`](#baseedge-component) | component | The visible part of a CUSTOM edge: its stroke, markers and an optional label (React Flow `<BaseEdge>`). |
 | [`EdgeText`](#edgetext-component) | component | A text label at a point in flow coordinates, in the built-in edge-label style (11px, `--pyreon-flow-edge-label`). |

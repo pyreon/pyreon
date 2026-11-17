@@ -171,16 +171,18 @@ describe('String.length is UTF-16 units on every target', () => {
 })
 
 describe('toFixed is locale-INVARIANT on Android', () => {
-  // `"%.2f".format(x)` uses Locale.getDefault() — under Locale.GERMANY it
-  // yields `1234,57` where JS and Swift give `1234.57`.
-  it('Kotlin passes Locale.ROOT', () => {
+  // `"%.2f".format(x)` used Locale.getDefault() — under Locale.GERMANY it yielded `1234,57` where JS gives
+  // `1234.57`. Both targets now call the runtime's `pyreonToFixed`, which formats no locale at all (its rounding is
+  // proven against the web in native-number-format-parity.test.ts).
+  it('Kotlin calls the locale-free runtime formatter', () => {
     const r = kotlinOf(APP(`  const out = computed(() => (nums()[0] / 2).toFixed(2))`))
-    expect(r.code).toContain('"%.2f".format(java.util.Locale.ROOT,')
+    expect(r.code).toContain('pyreonToFixed(')
+    expect(r.code).not.toContain('.format(')
   })
-  it('Swift needs no change — String(format:) with no locale is already invariant', () => {
+  it('Swift calls the same runtime formatter', () => {
     const r = swiftOf(APP(`  const out = computed(() => (nums()[0] / 2).toFixed(2))`))
-    expect(r.code).toContain('String(format: "%.2f"')
-    expect(r.code).not.toContain('locale:')
+    expect(r.code).toContain('pyreonToFixed(')
+    expect(r.code).not.toContain('String(format:')
   })
 })
 

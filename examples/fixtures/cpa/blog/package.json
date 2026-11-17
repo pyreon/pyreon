@@ -1,0 +1,43 @@
+{
+  "name": "@pyreon/example-cpa-pw-blog",
+  "version": "0.0.1",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "zero dev",
+    "build": "zero build",
+    "preview": "zero preview",
+    "typecheck": "tsc --noEmit",
+    "doctor": "zero doctor",
+    "doctor:fix": "zero doctor --fix",
+    "doctor:ci": "zero doctor --ci",
+    "lint": "oxlint && pyreon-lint .",
+    "format": "oxfmt",
+    "fix": "oxfmt && oxlint --fix && pyreon-lint --fix ."
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/head": "workspace:^",
+    "@pyreon/meta": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/router": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/runtime-server": "workspace:^",
+    "@pyreon/server": "workspace:^",
+    "@pyreon/zero": "workspace:^",
+    "@pyreon/zero-content": "workspace:^"
+  },
+  "devDependencies": {
+    "@pyreon/lint": "workspace:^",
+    "@pyreon/mcp": "workspace:^",
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vite-plugin": "workspace:^",
+    "@pyreon/zero-cli": "workspace:^",
+    "@types/bun": "^1.4.4",
+    "oxfmt": "^0.74.0",
+    "oxlint": "^1.89.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16"
+  }
+}

@@ -4,7 +4,7 @@
  * Proves what the unit + integration tests can't: the vite-plugin actually
  * inlines ZERO_PUBLIC_* into the CLIENT bundle (fixing the browser-{} bug), and
  * the ZERO_PUBLIC_ security boundary holds end-to-end (a non-public var never
- * reaches the browser). Runs against examples/ssr-showcase (5175), whose
+ * reaches the browser). Runs against examples/fixtures/ssr-showcase (5175), whose
  * `.env` carries the fixtures.
  */
 import { expect, test } from '@playwright/test'

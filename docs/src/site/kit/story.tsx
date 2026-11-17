@@ -1,10 +1,11 @@
 import type { VNodeChild } from '@pyreon/core'
 import { For, Show } from '@pyreon/core'
-import { breakpoints, font, radius, text, weight } from '../theme'
+import { breakpoints, font, radius, text, touch, weight } from '../theme'
 import { el, focusRing, tone, txt, type LinkAttrs } from './bases'
 import { CodeBlock } from './code'
 import { GlowCard } from './cards'
 import { AutoGrid } from './layout'
+import { artBox } from './media'
 import { useLinkClick } from './link'
 import { Eyebrow, Heading, Lede, renderInline, StatusBadge } from './type'
 
@@ -87,20 +88,19 @@ export function Diagram(props: {
   svg: string
   caption?: string | undefined
   id?: string | undefined
-  /** The box may scroll sideways (a wide chart on a phone): make it reachable by keyboard. */
+  /** The name of the box when it scrolls sideways (a wide chart on a phone); defaults to the SVG's title. */
   scrollLabel?: string | undefined
 }) {
   return (
     <Figure id={props.id}>
       <div
         data-svg=""
-        tabIndex={props.scrollLabel ? 0 : undefined}
-        role={props.scrollLabel ? 'region' : undefined}
-        aria-label={props.scrollLabel}
+        {...artBox(props.svg)}
+        aria-label={props.scrollLabel ?? artBox(props.svg)['aria-label']}
         dangerouslySetInnerHTML={{ __html: props.svg }}
       />
       <Show when={() => !!props.caption}>
-        <FigCaption>{props.caption}</FigCaption>
+        <FigCaption>{renderInline(props.caption ?? '')}</FigCaption>
       </Show>
     </Figure>
   )
@@ -317,7 +317,7 @@ export function LinkCards(props: { items: readonly { label: string; href: string
         {(i) => (
           <GlowCard href={i.href} padding="compact">
             <Heading tag="h3" size="step">
-              {`${i.label} →`}
+              {renderInline(`${i.label} →`)}
             </Heading>
             <Lede size="small">{renderInline(i.text)}</Lede>
           </GlowCard>
@@ -366,11 +366,14 @@ const InlineLink = el
   .config({ name: 'InlineLink' })
   .attrs<LinkAttrs>({ tag: 'a' })
   .theme((_t, m) => ({
+    // Inline, not the Element base's inline-flex: it flows and wraps with the text around it.
+    display: 'inline',
     color: tone(m, 'link'),
     textDecoration: 'underline',
     fontWeight: weight.regular,
     borderRadius: 2,
-    extendCss: 'text-underline-offset: 3px; text-decoration-thickness: 1px;',
+    extendCss: `text-underline-offset: 3px; text-decoration-thickness: 1px;
+      ${touch.media} { padding-top: ${touch.linkPad}; padding-bottom: ${touch.linkPad}; margin-top: calc(-1 * ${touch.linkPad}); margin-bottom: calc(-1 * ${touch.linkPad}); }`,
     hover: { color: tone(m, 'text') },
     focus: focusRing(m),
   }))

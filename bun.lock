@@ -359,35 +359,6 @@
         "zustand": "^5.0.16",
       },
     },
-    "examples/chat": {
-      "name": "@pyreon/example-chat",
-      "version": "0.50.3",
-      "dependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/form": "workspace:*",
-        "@pyreon/head": "workspace:*",
-        "@pyreon/hooks": "workspace:*",
-        "@pyreon/query": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/router": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/runtime-server": "workspace:*",
-        "@pyreon/state-tree": "workspace:*",
-        "@pyreon/storage": "workspace:*",
-        "@pyreon/toast": "workspace:*",
-        "@pyreon/url-state": "workspace:*",
-        "@pyreon/virtual": "workspace:*",
-        "@pyreon/zero": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/typescript": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "@pyreon/zero-cli": "workspace:*",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
     "examples/collab-board": {
       "name": "@pyreon/example-collab-board",
       "version": "0.50.0",
@@ -417,9 +388,89 @@
         "vite": "^8.3.8",
       },
     },
-    "examples/cpa-pw-app": {
+    "examples/compat/preact": {
+      "name": "@pyreon/example-preact-compat",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/preact-compat": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
+    "examples/compat/react": {
+      "name": "@pyreon/example-react-compat",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/react-compat": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
+    "examples/compat/solid": {
+      "name": "@pyreon/example-solid-compat",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/solid-compat": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
+    "examples/compat/svelte": {
+      "name": "@pyreon/example-svelte-compat",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/svelte-compat": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
+    "examples/compat/vue": {
+      "name": "@pyreon/example-vue-compat",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/vue-compat": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
+    "examples/fixtures/cpa/app": {
       "name": "@pyreon/example-cpa-pw-app",
-      "version": "0.50.3",
+      "version": "0.0.1",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/form": "workspace:^",
@@ -434,8 +485,8 @@
         "@pyreon/store": "workspace:^",
         "@pyreon/validation": "workspace:^",
         "@pyreon/zero": "workspace:^",
-        "@tanstack/query-core": "^5.107.1",
-        "zod": "^4.6.7",
+        "@tanstack/query-core": "^5.101.2",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@pyreon/lint": "workspace:^",
@@ -443,137 +494,16 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:^",
         "@pyreon/zero-cli": "workspace:^",
+        "@types/bun": "^1.4.4",
+        "oxfmt": "^0.74.0",
+        "oxlint": "^1.89.0",
         "typescript": "^6.0.3",
-        "vite": "^8.3.8",
+        "vite": "^8.0.16",
       },
     },
-    "examples/cpa-pw-app-preact": {
-      "name": "@pyreon/example-cpa-pw-app-preact",
-      "version": "0.50.3",
-      "dependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/form": "workspace:^",
-        "@pyreon/head": "workspace:^",
-        "@pyreon/meta": "workspace:^",
-        "@pyreon/preact-compat": "workspace:^",
-        "@pyreon/query": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
-        "@pyreon/router": "workspace:^",
-        "@pyreon/runtime-dom": "workspace:^",
-        "@pyreon/runtime-server": "workspace:^",
-        "@pyreon/server": "workspace:^",
-        "@pyreon/store": "workspace:^",
-        "@pyreon/validation": "workspace:^",
-        "@pyreon/zero": "workspace:^",
-        "@tanstack/query-core": "^5.107.1",
-        "zod": "^4.6.7",
-      },
-      "devDependencies": {
-        "@pyreon/lint": "workspace:^",
-        "@pyreon/mcp": "workspace:^",
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:^",
-        "@pyreon/zero-cli": "workspace:^",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
-    "examples/cpa-pw-app-react": {
-      "name": "@pyreon/example-cpa-pw-app-react",
-      "version": "0.50.3",
-      "dependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/form": "workspace:^",
-        "@pyreon/head": "workspace:^",
-        "@pyreon/meta": "workspace:^",
-        "@pyreon/query": "workspace:^",
-        "@pyreon/react-compat": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
-        "@pyreon/router": "workspace:^",
-        "@pyreon/runtime-dom": "workspace:^",
-        "@pyreon/runtime-server": "workspace:^",
-        "@pyreon/server": "workspace:^",
-        "@pyreon/store": "workspace:^",
-        "@pyreon/validation": "workspace:^",
-        "@pyreon/zero": "workspace:^",
-        "@tanstack/query-core": "^5.107.1",
-        "zod": "^4.6.7",
-      },
-      "devDependencies": {
-        "@pyreon/lint": "workspace:^",
-        "@pyreon/mcp": "workspace:^",
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:^",
-        "@pyreon/zero-cli": "workspace:^",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
-    "examples/cpa-pw-app-solid": {
-      "name": "@pyreon/example-cpa-pw-app-solid",
-      "version": "0.50.3",
-      "dependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/form": "workspace:^",
-        "@pyreon/head": "workspace:^",
-        "@pyreon/meta": "workspace:^",
-        "@pyreon/query": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
-        "@pyreon/router": "workspace:^",
-        "@pyreon/runtime-dom": "workspace:^",
-        "@pyreon/runtime-server": "workspace:^",
-        "@pyreon/server": "workspace:^",
-        "@pyreon/solid-compat": "workspace:^",
-        "@pyreon/store": "workspace:^",
-        "@pyreon/validation": "workspace:^",
-        "@pyreon/zero": "workspace:^",
-        "@tanstack/query-core": "^5.107.1",
-        "zod": "^4.6.7",
-      },
-      "devDependencies": {
-        "@pyreon/lint": "workspace:^",
-        "@pyreon/mcp": "workspace:^",
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:^",
-        "@pyreon/zero-cli": "workspace:^",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
-    "examples/cpa-pw-app-vue": {
-      "name": "@pyreon/example-cpa-pw-app-vue",
-      "version": "0.50.3",
-      "dependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/form": "workspace:^",
-        "@pyreon/head": "workspace:^",
-        "@pyreon/meta": "workspace:^",
-        "@pyreon/query": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
-        "@pyreon/router": "workspace:^",
-        "@pyreon/runtime-dom": "workspace:^",
-        "@pyreon/runtime-server": "workspace:^",
-        "@pyreon/server": "workspace:^",
-        "@pyreon/store": "workspace:^",
-        "@pyreon/validation": "workspace:^",
-        "@pyreon/vue-compat": "workspace:^",
-        "@pyreon/zero": "workspace:^",
-        "@tanstack/query-core": "^5.107.1",
-        "zod": "^4.6.7",
-      },
-      "devDependencies": {
-        "@pyreon/lint": "workspace:^",
-        "@pyreon/mcp": "workspace:^",
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:^",
-        "@pyreon/zero-cli": "workspace:^",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
-    "examples/cpa-pw-blog": {
+    "examples/fixtures/cpa/blog": {
       "name": "@pyreon/example-cpa-pw-blog",
-      "version": "0.50.3",
+      "version": "0.0.1",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/head": "workspace:^",
@@ -592,13 +522,16 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:^",
         "@pyreon/zero-cli": "workspace:^",
+        "@types/bun": "^1.4.4",
+        "oxfmt": "^0.74.0",
+        "oxlint": "^1.89.0",
         "typescript": "^6.0.3",
-        "vite": "^8.3.8",
+        "vite": "^8.0.16",
       },
     },
-    "examples/cpa-pw-dash": {
+    "examples/fixtures/cpa/dash": {
       "name": "@pyreon/example-cpa-pw-dash",
-      "version": "0.50.3",
+      "version": "0.0.1",
       "dependencies": {
         "@pyreon/connector-document": "workspace:^",
         "@pyreon/core": "workspace:^",
@@ -614,10 +547,11 @@
         "@pyreon/runtime-server": "workspace:^",
         "@pyreon/server": "workspace:^",
         "@pyreon/store": "workspace:^",
+        "@pyreon/table": "workspace:^",
         "@pyreon/validation": "workspace:^",
         "@pyreon/zero": "workspace:^",
-        "@tanstack/query-core": "^5.107.1",
-        "zod": "^4.6.7",
+        "@tanstack/query-core": "^5.101.2",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@pyreon/lint": "workspace:^",
@@ -625,11 +559,14 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:^",
         "@pyreon/zero-cli": "workspace:^",
+        "@types/bun": "^1.4.4",
+        "oxfmt": "^0.74.0",
+        "oxlint": "^1.89.0",
         "typescript": "^6.0.3",
-        "vite": "^8.3.8",
+        "vite": "^8.0.16",
       },
     },
-    "examples/cssvars-bench": {
+    "examples/fixtures/cssvars": {
       "name": "@pyreon/example-cssvars-bench",
       "version": "0.50.3",
       "dependencies": {
@@ -651,7 +588,7 @@
         "vite": "^8.3.8",
       },
     },
-    "examples/edge-runtimes": {
+    "examples/fixtures/edge-runtimes": {
       "name": "@pyreon/example-edge-runtimes",
       "version": "0.50.2",
       "dependencies": {
@@ -661,6 +598,91 @@
         "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
         "@pyreon/zero": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "@types/bun": "^1.4.4",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
+    "examples/fixtures/perf-dashboard": {
+      "name": "@pyreon/example-perf-dashboard",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/form": "workspace:*",
+        "@pyreon/i18n": "workspace:*",
+        "@pyreon/perf-harness": "workspace:*",
+        "@pyreon/query": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/rx": "workspace:*",
+        "@pyreon/store": "workspace:*",
+        "@pyreon/styler": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
+    "examples/fixtures/playground": {
+      "name": "@pyreon/example-playground",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/head": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/router": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/zero": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "@types/bun": "^1.4.4",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
+    "examples/fixtures/ssr-showcase": {
+      "name": "@pyreon/example-ssr-showcase",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/a11y": "workspace:*",
+        "@pyreon/coolgrid": "workspace:*",
+        "@pyreon/core": "workspace:*",
+        "@pyreon/elements": "workspace:*",
+        "@pyreon/head": "workspace:*",
+        "@pyreon/hooks": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/rocketstyle": "workspace:*",
+        "@pyreon/router": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/styler": "workspace:*",
+        "@pyreon/ui-core": "workspace:*",
+        "@pyreon/unistyle": "workspace:*",
+        "@pyreon/zero": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "@types/bun": "^1.4.4",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
+    "examples/fixtures/sync-yjs": {
+      "name": "@pyreon/example-sync-yjs",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/sync": "workspace:*",
       },
       "devDependencies": {
         "@pyreon/tsconfig": "workspace:*",
@@ -881,26 +903,9 @@
         "vitest": "^5.1.0",
       },
     },
-    "examples/native-analytics": {
-      "name": "@pyreon/example-native-analytics",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/native-cli": "workspace:*",
-        "@pyreon/primitives": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-      },
-    },
-    "examples/native-counter-android": {
-      "name": "@pyreon/example-native-counter-android",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/native-cli": "workspace:*",
-      },
-    },
-    "examples/native-counter-ios": {
-      "name": "@pyreon/example-native-counter-ios",
-      "version": "0.50.0",
+    "examples/native-counter": {
+      "name": "@pyreon/example-native-counter",
+      "version": "0.0.0",
       "devDependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/flow": "workspace:*",
@@ -933,48 +938,9 @@
         "@pyreon/store": "workspace:*",
       },
     },
-    "examples/native-finance-android": {
-      "name": "@pyreon/example-native-finance-android",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/native-cli": "workspace:*",
-      },
-    },
-    "examples/native-finance-ios": {
-      "name": "@pyreon/example-native-finance-ios",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/native-cli": "workspace:*",
-      },
-    },
-    "examples/native-router-demo-android": {
-      "name": "@pyreon/example-native-router-demo-android",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/native-cli": "workspace:*",
-      },
-    },
-    "examples/native-router-demo-ios": {
-      "name": "@pyreon/example-native-router-demo-ios",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/attrs": "workspace:*",
-        "@pyreon/coolgrid": "workspace:*",
-        "@pyreon/core": "workspace:*",
-        "@pyreon/elements": "workspace:*",
-        "@pyreon/form": "workspace:*",
-        "@pyreon/hooks": "workspace:*",
-        "@pyreon/native-cli": "workspace:*",
-        "@pyreon/primitives": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/router": "workspace:*",
-        "@pyreon/styler": "workspace:*",
-        "@pyreon/validate": "workspace:*",
-      },
-    },
-    "examples/native-router-demo-web": {
-      "name": "@pyreon/example-native-router-demo-web",
-      "version": "0.50.3",
+    "examples/native-router-demo": {
+      "name": "@pyreon/example-native-router-demo",
+      "version": "0.0.0",
       "dependencies": {
         "@pyreon/attrs": "workspace:*",
         "@pyreon/coolgrid": "workspace:*",
@@ -990,6 +956,7 @@
         "@pyreon/validate": "workspace:*",
       },
       "devDependencies": {
+        "@pyreon/native-cli": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "@types/bun": "^1.4.4",
@@ -1000,30 +967,6 @@
     "examples/native-showcase": {
       "name": "@pyreon/example-native-showcase",
       "version": "0.0.0",
-      "devDependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/native-cli": "workspace:*",
-        "@pyreon/primitives": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-      },
-    },
-    "examples/native-showcase-android": {
-      "name": "@pyreon/example-native-showcase-android",
-      "version": "0.0.0",
-      "devDependencies": {
-        "@pyreon/native-cli": "workspace:*",
-      },
-    },
-    "examples/native-showcase-ios": {
-      "name": "@pyreon/example-native-showcase-ios",
-      "version": "0.0.0",
-      "devDependencies": {
-        "@pyreon/native-cli": "workspace:*",
-      },
-    },
-    "examples/native-showcase-web": {
-      "name": "@pyreon/example-native-showcase-web",
-      "version": "0.0.0",
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/primitives": "workspace:*",
@@ -1032,6 +975,7 @@
         "@pyreon/runtime-server": "workspace:*",
       },
       "devDependencies": {
+        "@pyreon/native-cli": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "@types/bun": "^1.4.4",
@@ -1051,9 +995,11 @@
         "@pyreon/charts": "workspace:*",
         "@pyreon/code": "workspace:*",
         "@pyreon/coolgrid": "workspace:*",
+        "@pyreon/core": "workspace:*",
         "@pyreon/dnd": "workspace:*",
         "@pyreon/elements": "workspace:*",
         "@pyreon/flow": "workspace:*",
+        "@pyreon/form": "workspace:*",
         "@pyreon/hooks": "workspace:*",
         "@pyreon/hotkeys": "workspace:*",
         "@pyreon/http": "workspace:*",
@@ -1061,13 +1007,18 @@
         "@pyreon/kinetic": "workspace:*",
         "@pyreon/machine": "workspace:*",
         "@pyreon/permissions": "workspace:*",
+        "@pyreon/primitives": "workspace:*",
         "@pyreon/query": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
         "@pyreon/rich-text": "workspace:*",
         "@pyreon/rocketstyle": "workspace:*",
+        "@pyreon/router": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
         "@pyreon/rx": "workspace:*",
         "@pyreon/sized-map": "workspace:*",
         "@pyreon/state-tree": "workspace:*",
         "@pyreon/storage": "workspace:*",
+        "@pyreon/store": "workspace:*",
         "@pyreon/styler": "workspace:*",
         "@pyreon/sync": "workspace:*",
         "@pyreon/table": "workspace:*",
@@ -1079,102 +1030,17 @@
         "zod": "^4.6.7",
       },
       "devDependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/flow": "workspace:*",
-        "@pyreon/form": "workspace:*",
-        "@pyreon/machine": "workspace:*",
         "@pyreon/native-cli": "workspace:*",
-        "@pyreon/primitives": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/router": "workspace:*",
-        "@pyreon/store": "workspace:*",
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "@types/bun": "^1.4.4",
         "esbuild": "^0.28.2",
-      },
-    },
-    "examples/native-tasks-android": {
-      "name": "@pyreon/example-native-tasks-android",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/native-cli": "workspace:*",
-      },
-    },
-    "examples/native-tasks-ios": {
-      "name": "@pyreon/example-native-tasks-ios",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/native-cli": "workspace:*",
-      },
-    },
-    "examples/native-tasks-web": {
-      "name": "@pyreon/example-native-tasks-web",
-      "version": "0.50.3",
-      "dependencies": {
-        "@pyreon/a11y": "workspace:*",
-        "@pyreon/attrs": "workspace:*",
-        "@pyreon/auth": "workspace:*",
-        "@pyreon/charts": "workspace:*",
-        "@pyreon/coolgrid": "workspace:*",
-        "@pyreon/core": "workspace:*",
-        "@pyreon/dnd": "workspace:*",
-        "@pyreon/elements": "workspace:*",
-        "@pyreon/flow": "workspace:*",
-        "@pyreon/form": "workspace:*",
-        "@pyreon/hooks": "workspace:*",
-        "@pyreon/hotkeys": "workspace:*",
-        "@pyreon/http": "workspace:*",
-        "@pyreon/i18n": "workspace:*",
-        "@pyreon/kinetic": "workspace:*",
-        "@pyreon/machine": "workspace:*",
-        "@pyreon/permissions": "workspace:*",
-        "@pyreon/primitives": "workspace:*",
-        "@pyreon/query": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/rocketstyle": "workspace:*",
-        "@pyreon/router": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/rx": "workspace:*",
-        "@pyreon/sized-map": "workspace:*",
-        "@pyreon/state-tree": "workspace:*",
-        "@pyreon/storage": "workspace:*",
-        "@pyreon/store": "workspace:*",
-        "@pyreon/styler": "workspace:*",
-        "@pyreon/sync": "workspace:*",
-        "@pyreon/table": "workspace:*",
-        "@pyreon/toast": "workspace:*",
-        "@pyreon/ui-core": "workspace:*",
-        "@pyreon/unistyle": "workspace:*",
-        "@pyreon/url-state": "workspace:*",
-        "@pyreon/validation": "workspace:*",
-        "zod": "^4.6.7",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "@types/bun": "^1.4.4",
         "typescript": "^6.0.3",
         "vite": "^8.3.8",
       },
     },
-    "examples/native-todomvc-android": {
-      "name": "@pyreon/example-native-todomvc-android",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/native-cli": "workspace:*",
-      },
-    },
-    "examples/native-todomvc-ios": {
-      "name": "@pyreon/example-native-todomvc-ios",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/native-cli": "workspace:*",
-        "@pyreon/primitives": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/storage": "workspace:*",
-      },
-    },
-    "examples/native-todomvc-web": {
-      "name": "@pyreon/example-native-todomvc-web",
+    "examples/native-todomvc": {
+      "name": "@pyreon/example-native-todomvc",
       "version": "0.50.3",
       "dependencies": {
         "@pyreon/core": "workspace:*",
@@ -1184,100 +1050,10 @@
         "@pyreon/storage": "workspace:*",
       },
       "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "@types/bun": "^1.4.4",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
-    "examples/native-viz": {
-      "name": "@pyreon/example-native-viz",
-      "version": "0.0.1",
-      "devDependencies": {
-        "@codemirror/state": "^6.7.6",
-        "@codemirror/view": "^6.43.15",
-        "@pyreon/code": "workspace:*",
-        "@pyreon/core": "workspace:*",
-        "@pyreon/flow": "workspace:*",
         "@pyreon/native-cli": "workspace:*",
-        "@pyreon/primitives": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/rich-text": "workspace:*",
-        "@tiptap/core": "^3.34.0",
-        "@tiptap/starter-kit": "^3.34.0",
-        "codemirror": "^6.0.2",
-      },
-    },
-    "examples/perf-dashboard": {
-      "name": "@pyreon/example-perf-dashboard",
-      "version": "0.50.0",
-      "dependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/form": "workspace:*",
-        "@pyreon/i18n": "workspace:*",
-        "@pyreon/perf-harness": "workspace:*",
-        "@pyreon/query": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/rx": "workspace:*",
-        "@pyreon/store": "workspace:*",
-        "@pyreon/styler": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
-    "examples/playground": {
-      "name": "@pyreon/example-playground",
-      "version": "0.50.0",
-      "dependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/head": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/router": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/zero": "workspace:*",
-      },
-      "devDependencies": {
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "@types/bun": "^1.4.4",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
-    "examples/preact-compat": {
-      "name": "@pyreon/example-preact-compat",
-      "version": "0.50.0",
-      "dependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/preact-compat": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
-    "examples/react-compat": {
-      "name": "@pyreon/example-react-compat",
-      "version": "0.50.0",
-      "dependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/react-compat": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
         "typescript": "^6.0.3",
         "vite": "^8.3.8",
       },
@@ -1302,49 +1078,6 @@
         "vite": "^8.3.8",
       },
     },
-    "examples/solid-compat": {
-      "name": "@pyreon/example-solid-compat",
-      "version": "0.50.0",
-      "dependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/solid-compat": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
-    "examples/ssr-showcase": {
-      "name": "@pyreon/example-ssr-showcase",
-      "version": "0.50.0",
-      "dependencies": {
-        "@pyreon/a11y": "workspace:*",
-        "@pyreon/coolgrid": "workspace:*",
-        "@pyreon/core": "workspace:*",
-        "@pyreon/elements": "workspace:*",
-        "@pyreon/head": "workspace:*",
-        "@pyreon/hooks": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/rocketstyle": "workspace:*",
-        "@pyreon/router": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/styler": "workspace:*",
-        "@pyreon/ui-core": "workspace:*",
-        "@pyreon/unistyle": "workspace:*",
-        "@pyreon/zero": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "@types/bun": "^1.4.4",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
     "examples/stacks-bench": {
       "name": "@pyreon/example-stacks-bench",
       "version": "0.50.0",
@@ -1364,39 +1097,6 @@
         "@types/bun": "^1.4.4",
         "autocannon": "9.0.0",
         "playwright": "1.65.1",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
-    "examples/svelte-compat": {
-      "name": "@pyreon/example-svelte-compat",
-      "version": "0.50.0",
-      "dependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/svelte-compat": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
-    "examples/sync-yjs-demo": {
-      "name": "@pyreon/example-sync-yjs",
-      "version": "0.50.0",
-      "dependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/sync": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "@types/bun": "^1.4.4",
         "typescript": "^6.0.3",
         "vite": "^8.3.8",
       },
@@ -1439,22 +1139,6 @@
         "typescript": "^6.0.3",
         "vite": "^8.3.8",
         "vitest": "^5.1.0",
-      },
-    },
-    "examples/vue-compat": {
-      "name": "@pyreon/example-vue-compat",
-      "version": "0.50.0",
-      "dependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/vue-compat": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
       },
     },
     "packages/core/compiler": {
@@ -3489,6 +3173,7 @@
       "devDependencies": {
         "@pyreon/ansi": "workspace:*",
         "@pyreon/compiler": "workspace:*",
+        "@pyreon/lint": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@pyreon/zero": "workspace:*",
@@ -4433,27 +4118,17 @@
 
     "@pyreon/example-benchmark": ["@pyreon/example-benchmark@workspace:examples/benchmark"],
 
-    "@pyreon/example-chat": ["@pyreon/example-chat@workspace:examples/chat"],
-
     "@pyreon/example-collab-board": ["@pyreon/example-collab-board@workspace:examples/collab-board"],
 
-    "@pyreon/example-cpa-pw-app": ["@pyreon/example-cpa-pw-app@workspace:examples/cpa-pw-app"],
+    "@pyreon/example-cpa-pw-app": ["@pyreon/example-cpa-pw-app@workspace:examples/fixtures/cpa/app"],
 
-    "@pyreon/example-cpa-pw-app-preact": ["@pyreon/example-cpa-pw-app-preact@workspace:examples/cpa-pw-app-preact"],
+    "@pyreon/example-cpa-pw-blog": ["@pyreon/example-cpa-pw-blog@workspace:examples/fixtures/cpa/blog"],
 
-    "@pyreon/example-cpa-pw-app-react": ["@pyreon/example-cpa-pw-app-react@workspace:examples/cpa-pw-app-react"],
+    "@pyreon/example-cpa-pw-dash": ["@pyreon/example-cpa-pw-dash@workspace:examples/fixtures/cpa/dash"],
 
-    "@pyreon/example-cpa-pw-app-solid": ["@pyreon/example-cpa-pw-app-solid@workspace:examples/cpa-pw-app-solid"],
+    "@pyreon/example-cssvars-bench": ["@pyreon/example-cssvars-bench@workspace:examples/fixtures/cssvars"],
 
-    "@pyreon/example-cpa-pw-app-vue": ["@pyreon/example-cpa-pw-app-vue@workspace:examples/cpa-pw-app-vue"],
-
-    "@pyreon/example-cpa-pw-blog": ["@pyreon/example-cpa-pw-blog@workspace:examples/cpa-pw-blog"],
-
-    "@pyreon/example-cpa-pw-dash": ["@pyreon/example-cpa-pw-dash@workspace:examples/cpa-pw-dash"],
-
-    "@pyreon/example-cssvars-bench": ["@pyreon/example-cssvars-bench@workspace:examples/cssvars-bench"],
-
-    "@pyreon/example-edge-runtimes": ["@pyreon/example-edge-runtimes@workspace:examples/edge-runtimes"],
+    "@pyreon/example-edge-runtimes": ["@pyreon/example-edge-runtimes@workspace:examples/fixtures/edge-runtimes"],
 
     "@pyreon/example-form-bench": ["@pyreon/example-form-bench@workspace:examples/form-bench"],
 
@@ -4467,71 +4142,41 @@
 
     "@pyreon/example-lathe-bookshelf": ["@pyreon/example-lathe-bookshelf@workspace:examples/lathe-bookshelf"],
 
-    "@pyreon/example-native-analytics": ["@pyreon/example-native-analytics@workspace:examples/native-analytics"],
-
-    "@pyreon/example-native-counter-android": ["@pyreon/example-native-counter-android@workspace:examples/native-counter-android"],
-
-    "@pyreon/example-native-counter-ios": ["@pyreon/example-native-counter-ios@workspace:examples/native-counter-ios"],
+    "@pyreon/example-native-counter": ["@pyreon/example-native-counter@workspace:examples/native-counter"],
 
     "@pyreon/example-native-finance": ["@pyreon/example-native-finance@workspace:examples/native-finance"],
 
-    "@pyreon/example-native-finance-android": ["@pyreon/example-native-finance-android@workspace:examples/native-finance-android"],
-
-    "@pyreon/example-native-finance-ios": ["@pyreon/example-native-finance-ios@workspace:examples/native-finance-ios"],
-
-    "@pyreon/example-native-router-demo-android": ["@pyreon/example-native-router-demo-android@workspace:examples/native-router-demo-android"],
-
-    "@pyreon/example-native-router-demo-ios": ["@pyreon/example-native-router-demo-ios@workspace:examples/native-router-demo-ios"],
-
-    "@pyreon/example-native-router-demo-web": ["@pyreon/example-native-router-demo-web@workspace:examples/native-router-demo-web"],
+    "@pyreon/example-native-router-demo": ["@pyreon/example-native-router-demo@workspace:examples/native-router-demo"],
 
     "@pyreon/example-native-showcase": ["@pyreon/example-native-showcase@workspace:examples/native-showcase"],
 
-    "@pyreon/example-native-showcase-android": ["@pyreon/example-native-showcase-android@workspace:examples/native-showcase-android"],
-
-    "@pyreon/example-native-showcase-ios": ["@pyreon/example-native-showcase-ios@workspace:examples/native-showcase-ios"],
-
-    "@pyreon/example-native-showcase-web": ["@pyreon/example-native-showcase-web@workspace:examples/native-showcase-web"],
-
     "@pyreon/example-native-tasks": ["@pyreon/example-native-tasks@workspace:examples/native-tasks"],
 
-    "@pyreon/example-native-tasks-android": ["@pyreon/example-native-tasks-android@workspace:examples/native-tasks-android"],
+    "@pyreon/example-native-todomvc": ["@pyreon/example-native-todomvc@workspace:examples/native-todomvc"],
 
-    "@pyreon/example-native-tasks-ios": ["@pyreon/example-native-tasks-ios@workspace:examples/native-tasks-ios"],
+    "@pyreon/example-perf-dashboard": ["@pyreon/example-perf-dashboard@workspace:examples/fixtures/perf-dashboard"],
 
-    "@pyreon/example-native-tasks-web": ["@pyreon/example-native-tasks-web@workspace:examples/native-tasks-web"],
+    "@pyreon/example-playground": ["@pyreon/example-playground@workspace:examples/fixtures/playground"],
 
-    "@pyreon/example-native-todomvc-android": ["@pyreon/example-native-todomvc-android@workspace:examples/native-todomvc-android"],
+    "@pyreon/example-preact-compat": ["@pyreon/example-preact-compat@workspace:examples/compat/preact"],
 
-    "@pyreon/example-native-todomvc-ios": ["@pyreon/example-native-todomvc-ios@workspace:examples/native-todomvc-ios"],
-
-    "@pyreon/example-native-todomvc-web": ["@pyreon/example-native-todomvc-web@workspace:examples/native-todomvc-web"],
-
-    "@pyreon/example-native-viz": ["@pyreon/example-native-viz@workspace:examples/native-viz"],
-
-    "@pyreon/example-perf-dashboard": ["@pyreon/example-perf-dashboard@workspace:examples/perf-dashboard"],
-
-    "@pyreon/example-playground": ["@pyreon/example-playground@workspace:examples/playground"],
-
-    "@pyreon/example-preact-compat": ["@pyreon/example-preact-compat@workspace:examples/preact-compat"],
-
-    "@pyreon/example-react-compat": ["@pyreon/example-react-compat@workspace:examples/react-compat"],
+    "@pyreon/example-react-compat": ["@pyreon/example-react-compat@workspace:examples/compat/react"],
 
     "@pyreon/example-real-bench": ["@pyreon/example-real-bench@workspace:examples/real-bench"],
 
-    "@pyreon/example-solid-compat": ["@pyreon/example-solid-compat@workspace:examples/solid-compat"],
+    "@pyreon/example-solid-compat": ["@pyreon/example-solid-compat@workspace:examples/compat/solid"],
 
-    "@pyreon/example-ssr-showcase": ["@pyreon/example-ssr-showcase@workspace:examples/ssr-showcase"],
+    "@pyreon/example-ssr-showcase": ["@pyreon/example-ssr-showcase@workspace:examples/fixtures/ssr-showcase"],
 
     "@pyreon/example-stacks-bench": ["@pyreon/example-stacks-bench@workspace:examples/stacks-bench"],
 
-    "@pyreon/example-svelte-compat": ["@pyreon/example-svelte-compat@workspace:examples/svelte-compat"],
+    "@pyreon/example-svelte-compat": ["@pyreon/example-svelte-compat@workspace:examples/compat/svelte"],
 
-    "@pyreon/example-sync-yjs": ["@pyreon/example-sync-yjs@workspace:examples/sync-yjs-demo"],
+    "@pyreon/example-sync-yjs": ["@pyreon/example-sync-yjs@workspace:examples/fixtures/sync-yjs"],
 
     "@pyreon/example-ui-showcase": ["@pyreon/example-ui-showcase@workspace:examples/ui-showcase"],
 
-    "@pyreon/example-vue-compat": ["@pyreon/example-vue-compat@workspace:examples/vue-compat"],
+    "@pyreon/example-vue-compat": ["@pyreon/example-vue-compat@workspace:examples/compat/vue"],
 
     "@pyreon/feature": ["@pyreon/feature@workspace:packages/fundamentals/feature"],
 
@@ -6893,6 +6538,12 @@
 
     "@oxc-resolver/binding-wasm32-wasi/@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.2.2", "", { "dependencies": { "@tybys/wasm-util": "^0.10.3" }, "peerDependencies": { "@emnapi/core": "^1.7.1 || ^2.0.0-alpha.3", "@emnapi/runtime": "^1.7.1 || ^2.0.0-alpha.3" } }, "sha512-JfB4kuJQjaoHuCTseIINHtHWeJnvgEcxjwA5t/Y00ZgaOO1Crz3fjT/p8kT28zA/Caz7oiUMn3d6H2yOVCVwuw=="],
 
+    "@pyreon/example-cpa-pw-app/oxfmt": ["oxfmt@0.74.0", "", { "dependencies": { "tinypool": "2.2.0" }, "optionalDependencies": { "@oxfmt/binding-android-arm-eabi": "0.74.0", "@oxfmt/binding-android-arm64": "0.74.0", "@oxfmt/binding-darwin-arm64": "0.74.0", "@oxfmt/binding-darwin-x64": "0.74.0", "@oxfmt/binding-freebsd-x64": "0.74.0", "@oxfmt/binding-linux-arm-gnueabihf": "0.74.0", "@oxfmt/binding-linux-arm-musleabihf": "0.74.0", "@oxfmt/binding-linux-arm64-gnu": "0.74.0", "@oxfmt/binding-linux-arm64-musl": "0.74.0", "@oxfmt/binding-linux-ppc64-gnu": "0.74.0", "@oxfmt/binding-linux-riscv64-gnu": "0.74.0", "@oxfmt/binding-linux-riscv64-musl": "0.74.0", "@oxfmt/binding-linux-s390x-gnu": "0.74.0", "@oxfmt/binding-linux-x64-gnu": "0.74.0", "@oxfmt/binding-linux-x64-musl": "0.74.0", "@oxfmt/binding-openharmony-arm64": "0.74.0", "@oxfmt/binding-win32-arm64-msvc": "0.74.0", "@oxfmt/binding-win32-ia32-msvc": "0.74.0", "@oxfmt/binding-win32-x64-msvc": "0.74.0" }, "peerDependencies": { "@astrojs/compiler-rs": "^0.4.0 || ^0.5.0", "svelte": "^5.0.0", "vite-plus": "*" }, "optionalPeers": ["@astrojs/compiler-rs", "svelte", "vite-plus"], "bin": { "oxfmt": "bin/oxfmt" } }, "sha512-G4OP7FgwGYZR5ttRpCOOfJdyRsSyvtn34vSXnjDq6Oqed5Dufg5mB44mank+51nAdHOKuTJ0lj0mksY7L+N61A=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt": ["oxfmt@0.74.0", "", { "dependencies": { "tinypool": "2.2.0" }, "optionalDependencies": { "@oxfmt/binding-android-arm-eabi": "0.74.0", "@oxfmt/binding-android-arm64": "0.74.0", "@oxfmt/binding-darwin-arm64": "0.74.0", "@oxfmt/binding-darwin-x64": "0.74.0", "@oxfmt/binding-freebsd-x64": "0.74.0", "@oxfmt/binding-linux-arm-gnueabihf": "0.74.0", "@oxfmt/binding-linux-arm-musleabihf": "0.74.0", "@oxfmt/binding-linux-arm64-gnu": "0.74.0", "@oxfmt/binding-linux-arm64-musl": "0.74.0", "@oxfmt/binding-linux-ppc64-gnu": "0.74.0", "@oxfmt/binding-linux-riscv64-gnu": "0.74.0", "@oxfmt/binding-linux-riscv64-musl": "0.74.0", "@oxfmt/binding-linux-s390x-gnu": "0.74.0", "@oxfmt/binding-linux-x64-gnu": "0.74.0", "@oxfmt/binding-linux-x64-musl": "0.74.0", "@oxfmt/binding-openharmony-arm64": "0.74.0", "@oxfmt/binding-win32-arm64-msvc": "0.74.0", "@oxfmt/binding-win32-ia32-msvc": "0.74.0", "@oxfmt/binding-win32-x64-msvc": "0.74.0" }, "peerDependencies": { "@astrojs/compiler-rs": "^0.4.0 || ^0.5.0", "svelte": "^5.0.0", "vite-plus": "*" }, "optionalPeers": ["@astrojs/compiler-rs", "svelte", "vite-plus"], "bin": { "oxfmt": "bin/oxfmt" } }, "sha512-G4OP7FgwGYZR5ttRpCOOfJdyRsSyvtn34vSXnjDq6Oqed5Dufg5mB44mank+51nAdHOKuTJ0lj0mksY7L+N61A=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt": ["oxfmt@0.74.0", "", { "dependencies": { "tinypool": "2.2.0" }, "optionalDependencies": { "@oxfmt/binding-android-arm-eabi": "0.74.0", "@oxfmt/binding-android-arm64": "0.74.0", "@oxfmt/binding-darwin-arm64": "0.74.0", "@oxfmt/binding-darwin-x64": "0.74.0", "@oxfmt/binding-freebsd-x64": "0.74.0", "@oxfmt/binding-linux-arm-gnueabihf": "0.74.0", "@oxfmt/binding-linux-arm-musleabihf": "0.74.0", "@oxfmt/binding-linux-arm64-gnu": "0.74.0", "@oxfmt/binding-linux-arm64-musl": "0.74.0", "@oxfmt/binding-linux-ppc64-gnu": "0.74.0", "@oxfmt/binding-linux-riscv64-gnu": "0.74.0", "@oxfmt/binding-linux-riscv64-musl": "0.74.0", "@oxfmt/binding-linux-s390x-gnu": "0.74.0", "@oxfmt/binding-linux-x64-gnu": "0.74.0", "@oxfmt/binding-linux-x64-musl": "0.74.0", "@oxfmt/binding-openharmony-arm64": "0.74.0", "@oxfmt/binding-win32-arm64-msvc": "0.74.0", "@oxfmt/binding-win32-ia32-msvc": "0.74.0", "@oxfmt/binding-win32-x64-msvc": "0.74.0" }, "peerDependencies": { "@astrojs/compiler-rs": "^0.4.0 || ^0.5.0", "svelte": "^5.0.0", "vite-plus": "*" }, "optionalPeers": ["@astrojs/compiler-rs", "svelte", "vite-plus"], "bin": { "oxfmt": "bin/oxfmt" } }, "sha512-G4OP7FgwGYZR5ttRpCOOfJdyRsSyvtn34vSXnjDq6Oqed5Dufg5mB44mank+51nAdHOKuTJ0lj0mksY7L+N61A=="],
+
     "@reduxjs/toolkit/immer": ["immer@11.2.10", "", {}, "sha512-pzANBj+0A9u+prdhBJ14DVi44vCvVUQzBa8DKt6I0AMCokPHtt722BK9IX5bFC70xUSU9TnzLRIJLTGqIzjEFw=="],
 
     "@solidjs/web/seroval-plugins": ["seroval-plugins@1.6.7", "", { "peerDependencies": { "seroval": "^1.0" } }, "sha512-4Nk35ttD3DTDJW4hgw5StsVAPeU6qnDFnULAouw6tQ7oLTV/ICXrWpsXo2EE52eSP2joUMazbVf52mFEcADqRw=="],
@@ -7356,6 +7007,120 @@
     "@oxc-parser/binding-wasm32-wasi/@emnapi/core/@emnapi/wasi-threads": ["@emnapi/wasi-threads@1.2.1", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-uTII7OYF+/Mes/MrcIOYp5yOtSMLBWSIoLPpcgwipoiKbli6k322tcoFsxoIIxPDqW01SQGAgko4EzZi2BNv2w=="],
 
     "@oxc-resolver/binding-wasm32-wasi/@emnapi/core/@emnapi/wasi-threads": ["@emnapi/wasi-threads@1.2.2", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-android-arm-eabi": ["@oxfmt/binding-android-arm-eabi@0.74.0", "", { "os": "android", "cpu": "arm" }, "sha512-xxQwrf5EPI5zxvuCTW8r6tzCTjPQ+h6+HqJ0iRKRy2zS1yBllt/xLVjoIyUc+FnR7g0a5g1SZv2yyDYhTItLbA=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-android-arm64": ["@oxfmt/binding-android-arm64@0.74.0", "", { "os": "android", "cpu": "arm64" }, "sha512-FJW3sATVvrWbV64al8xofCPZj4500Z/1W0ad7Tg1rcCUyh0EMbuSrsf3jsZS7CEbwQ5fQ0mRhmkc129GFgofSQ=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-darwin-arm64": ["@oxfmt/binding-darwin-arm64@0.74.0", "", { "os": "darwin", "cpu": "arm64" }, "sha512-TfmNKBD30dGyMu9GCLiaw2rt/z7fms9LS+5cKcNOyWst0QgAs8oZs6wPxMbVaaDVE0/PCdCosgWM1vbu6f5NUg=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-darwin-x64": ["@oxfmt/binding-darwin-x64@0.74.0", "", { "os": "darwin", "cpu": "x64" }, "sha512-5Usf8+DfC4Q3o/MD8FkN47GrI6y0KbhQ4KhZ2HGzMZcXjcW1AeldwbUn51aKih+1TVuJFF9qkNm6X1nzm6NYng=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-freebsd-x64": ["@oxfmt/binding-freebsd-x64@0.74.0", "", { "os": "freebsd", "cpu": "x64" }, "sha512-eL+1O3gykw1XihbZh2MRAciQvU2988LByrnjhyo/dmNG74X4oZ7XzigRoWPRFLfJCp8hzRkp/LbEhwe7uuT2eA=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-linux-arm-gnueabihf": ["@oxfmt/binding-linux-arm-gnueabihf@0.74.0", "", { "os": "linux", "cpu": "arm" }, "sha512-Xt0QtO2hJ4stnul8IL4LJGVLyp0xnc6ccN9fZ30yuubv8FWSRYxWwd1Za62KsEqAfmPSazoS/cLSUUJpja6npA=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-linux-arm-musleabihf": ["@oxfmt/binding-linux-arm-musleabihf@0.74.0", "", { "os": "linux", "cpu": "arm" }, "sha512-/4wYQ0gZl4vUR0QoBTGaay73FmQ1GAjUa9z9101TR2xbGNrg4a+grazlR0yzEOe3/E+PJr5BGfj66MMzm/54vg=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-linux-arm64-gnu": ["@oxfmt/binding-linux-arm64-gnu@0.74.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-846bKzF+HJd+JkOFh3rxzmYvSq4Cm+GMT+p+mW7S13ZYo6GAAGv8bL8cAOi/XcdeMqxEJDCIMTVQLVBXHMCdig=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-linux-arm64-musl": ["@oxfmt/binding-linux-arm64-musl@0.74.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-nI5FJwZ4Flo6CBdscpwxymZXxO3m3IErQJX55ZS6h+ObfGXu8FostL85L/RWPFaCLnIVE4/WfLw+2q8XvVEeUA=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-linux-ppc64-gnu": ["@oxfmt/binding-linux-ppc64-gnu@0.74.0", "", { "os": "linux", "cpu": "ppc64" }, "sha512-BoQYKuqUdsKAFAkK6DLBvkdv4+t0hppSm79sB0wIcE2o/eOwNj+6Z3OlKY4q3Eta/tlssP65FaS9vHn8TeF7vQ=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-linux-riscv64-gnu": ["@oxfmt/binding-linux-riscv64-gnu@0.74.0", "", { "os": "linux", "cpu": "none" }, "sha512-FSroRrM12+jCdSQklF9aOxsKpI6wFs4ZCo/1cSYG80RWZS6z4LV+l9tXRMT8lDGu+yohIZBwi9M76FzGPFDE2A=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-linux-riscv64-musl": ["@oxfmt/binding-linux-riscv64-musl@0.74.0", "", { "os": "linux", "cpu": "none" }, "sha512-0VLQD0dhGBLY9Ik/w+otMvD81D0YXi4VDwql65macV+O9UzmSWmUr6CKf+dMtysDeC0PnG3y6kBkRO08BJx52g=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-linux-s390x-gnu": ["@oxfmt/binding-linux-s390x-gnu@0.74.0", "", { "os": "linux", "cpu": "s390x" }, "sha512-6X7BbZNz34+OHM6Oqjf6TRcUyRn6aRcB4VtIDZAF/uQRyeVhg+G2hv6MlMvmnRekVSyTJ/8rG/u8W2dRFW6glg=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-linux-x64-gnu": ["@oxfmt/binding-linux-x64-gnu@0.74.0", "", { "os": "linux", "cpu": "x64" }, "sha512-4kYIQK53yJXrxwxSzx8H2bojlf6/KezLGYLRXzV9QCCkoiCsvBTCid9Bg83dUPTLPa3g9K0730f6MKDbck1+OA=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-linux-x64-musl": ["@oxfmt/binding-linux-x64-musl@0.74.0", "", { "os": "linux", "cpu": "x64" }, "sha512-MfWz4wDREjp/JQDmuxtKieix4FHGa1z5rBvB3betdcPwZvf5fqeQrlCm1mmoyuUVQOh9Pt3M61HwN94kJCxw7Q=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-openharmony-arm64": ["@oxfmt/binding-openharmony-arm64@0.74.0", "", { "os": "none", "cpu": "arm64" }, "sha512-6rmAApkq5s1kbDjvNI6Nl5A+JqQkLORb2sR941pf5HWsrd01WGKyagK/B4vX9+kh1FfvRkNgEu59FHvVk4H8cQ=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-win32-arm64-msvc": ["@oxfmt/binding-win32-arm64-msvc@0.74.0", "", { "os": "win32", "cpu": "arm64" }, "sha512-+5SpRUnZNGeXTyumHnpHa791tQtt04qZs076WT8eTcGF2OJ631VLnf7S0kQSPuDG+PtJM0phadEB2WAr5n1w9g=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-win32-ia32-msvc": ["@oxfmt/binding-win32-ia32-msvc@0.74.0", "", { "os": "win32", "cpu": "ia32" }, "sha512-1Fg+wYBO3Dsti1QX+/6EYHjeQzLC84tLOAqPu/r7ah3UJlUs9C/DB703Ay9Vcg+8VMzqZA2P5VGhzJraVUD4OQ=="],
+
+    "@pyreon/example-cpa-pw-app/oxfmt/@oxfmt/binding-win32-x64-msvc": ["@oxfmt/binding-win32-x64-msvc@0.74.0", "", { "os": "win32", "cpu": "x64" }, "sha512-y9jXUgPBm2TZIWbQhMYRRYAQM57+r4fbykgc+j24ICIIZl+pcuoNhnq1CRGm3oFiHnEUnZO00qOtSPGQdJ2ziQ=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-android-arm-eabi": ["@oxfmt/binding-android-arm-eabi@0.74.0", "", { "os": "android", "cpu": "arm" }, "sha512-xxQwrf5EPI5zxvuCTW8r6tzCTjPQ+h6+HqJ0iRKRy2zS1yBllt/xLVjoIyUc+FnR7g0a5g1SZv2yyDYhTItLbA=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-android-arm64": ["@oxfmt/binding-android-arm64@0.74.0", "", { "os": "android", "cpu": "arm64" }, "sha512-FJW3sATVvrWbV64al8xofCPZj4500Z/1W0ad7Tg1rcCUyh0EMbuSrsf3jsZS7CEbwQ5fQ0mRhmkc129GFgofSQ=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-darwin-arm64": ["@oxfmt/binding-darwin-arm64@0.74.0", "", { "os": "darwin", "cpu": "arm64" }, "sha512-TfmNKBD30dGyMu9GCLiaw2rt/z7fms9LS+5cKcNOyWst0QgAs8oZs6wPxMbVaaDVE0/PCdCosgWM1vbu6f5NUg=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-darwin-x64": ["@oxfmt/binding-darwin-x64@0.74.0", "", { "os": "darwin", "cpu": "x64" }, "sha512-5Usf8+DfC4Q3o/MD8FkN47GrI6y0KbhQ4KhZ2HGzMZcXjcW1AeldwbUn51aKih+1TVuJFF9qkNm6X1nzm6NYng=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-freebsd-x64": ["@oxfmt/binding-freebsd-x64@0.74.0", "", { "os": "freebsd", "cpu": "x64" }, "sha512-eL+1O3gykw1XihbZh2MRAciQvU2988LByrnjhyo/dmNG74X4oZ7XzigRoWPRFLfJCp8hzRkp/LbEhwe7uuT2eA=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-linux-arm-gnueabihf": ["@oxfmt/binding-linux-arm-gnueabihf@0.74.0", "", { "os": "linux", "cpu": "arm" }, "sha512-Xt0QtO2hJ4stnul8IL4LJGVLyp0xnc6ccN9fZ30yuubv8FWSRYxWwd1Za62KsEqAfmPSazoS/cLSUUJpja6npA=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-linux-arm-musleabihf": ["@oxfmt/binding-linux-arm-musleabihf@0.74.0", "", { "os": "linux", "cpu": "arm" }, "sha512-/4wYQ0gZl4vUR0QoBTGaay73FmQ1GAjUa9z9101TR2xbGNrg4a+grazlR0yzEOe3/E+PJr5BGfj66MMzm/54vg=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-linux-arm64-gnu": ["@oxfmt/binding-linux-arm64-gnu@0.74.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-846bKzF+HJd+JkOFh3rxzmYvSq4Cm+GMT+p+mW7S13ZYo6GAAGv8bL8cAOi/XcdeMqxEJDCIMTVQLVBXHMCdig=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-linux-arm64-musl": ["@oxfmt/binding-linux-arm64-musl@0.74.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-nI5FJwZ4Flo6CBdscpwxymZXxO3m3IErQJX55ZS6h+ObfGXu8FostL85L/RWPFaCLnIVE4/WfLw+2q8XvVEeUA=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-linux-ppc64-gnu": ["@oxfmt/binding-linux-ppc64-gnu@0.74.0", "", { "os": "linux", "cpu": "ppc64" }, "sha512-BoQYKuqUdsKAFAkK6DLBvkdv4+t0hppSm79sB0wIcE2o/eOwNj+6Z3OlKY4q3Eta/tlssP65FaS9vHn8TeF7vQ=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-linux-riscv64-gnu": ["@oxfmt/binding-linux-riscv64-gnu@0.74.0", "", { "os": "linux", "cpu": "none" }, "sha512-FSroRrM12+jCdSQklF9aOxsKpI6wFs4ZCo/1cSYG80RWZS6z4LV+l9tXRMT8lDGu+yohIZBwi9M76FzGPFDE2A=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-linux-riscv64-musl": ["@oxfmt/binding-linux-riscv64-musl@0.74.0", "", { "os": "linux", "cpu": "none" }, "sha512-0VLQD0dhGBLY9Ik/w+otMvD81D0YXi4VDwql65macV+O9UzmSWmUr6CKf+dMtysDeC0PnG3y6kBkRO08BJx52g=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-linux-s390x-gnu": ["@oxfmt/binding-linux-s390x-gnu@0.74.0", "", { "os": "linux", "cpu": "s390x" }, "sha512-6X7BbZNz34+OHM6Oqjf6TRcUyRn6aRcB4VtIDZAF/uQRyeVhg+G2hv6MlMvmnRekVSyTJ/8rG/u8W2dRFW6glg=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-linux-x64-gnu": ["@oxfmt/binding-linux-x64-gnu@0.74.0", "", { "os": "linux", "cpu": "x64" }, "sha512-4kYIQK53yJXrxwxSzx8H2bojlf6/KezLGYLRXzV9QCCkoiCsvBTCid9Bg83dUPTLPa3g9K0730f6MKDbck1+OA=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-linux-x64-musl": ["@oxfmt/binding-linux-x64-musl@0.74.0", "", { "os": "linux", "cpu": "x64" }, "sha512-MfWz4wDREjp/JQDmuxtKieix4FHGa1z5rBvB3betdcPwZvf5fqeQrlCm1mmoyuUVQOh9Pt3M61HwN94kJCxw7Q=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-openharmony-arm64": ["@oxfmt/binding-openharmony-arm64@0.74.0", "", { "os": "none", "cpu": "arm64" }, "sha512-6rmAApkq5s1kbDjvNI6Nl5A+JqQkLORb2sR941pf5HWsrd01WGKyagK/B4vX9+kh1FfvRkNgEu59FHvVk4H8cQ=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-win32-arm64-msvc": ["@oxfmt/binding-win32-arm64-msvc@0.74.0", "", { "os": "win32", "cpu": "arm64" }, "sha512-+5SpRUnZNGeXTyumHnpHa791tQtt04qZs076WT8eTcGF2OJ631VLnf7S0kQSPuDG+PtJM0phadEB2WAr5n1w9g=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-win32-ia32-msvc": ["@oxfmt/binding-win32-ia32-msvc@0.74.0", "", { "os": "win32", "cpu": "ia32" }, "sha512-1Fg+wYBO3Dsti1QX+/6EYHjeQzLC84tLOAqPu/r7ah3UJlUs9C/DB703Ay9Vcg+8VMzqZA2P5VGhzJraVUD4OQ=="],
+
+    "@pyreon/example-cpa-pw-blog/oxfmt/@oxfmt/binding-win32-x64-msvc": ["@oxfmt/binding-win32-x64-msvc@0.74.0", "", { "os": "win32", "cpu": "x64" }, "sha512-y9jXUgPBm2TZIWbQhMYRRYAQM57+r4fbykgc+j24ICIIZl+pcuoNhnq1CRGm3oFiHnEUnZO00qOtSPGQdJ2ziQ=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-android-arm-eabi": ["@oxfmt/binding-android-arm-eabi@0.74.0", "", { "os": "android", "cpu": "arm" }, "sha512-xxQwrf5EPI5zxvuCTW8r6tzCTjPQ+h6+HqJ0iRKRy2zS1yBllt/xLVjoIyUc+FnR7g0a5g1SZv2yyDYhTItLbA=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-android-arm64": ["@oxfmt/binding-android-arm64@0.74.0", "", { "os": "android", "cpu": "arm64" }, "sha512-FJW3sATVvrWbV64al8xofCPZj4500Z/1W0ad7Tg1rcCUyh0EMbuSrsf3jsZS7CEbwQ5fQ0mRhmkc129GFgofSQ=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-darwin-arm64": ["@oxfmt/binding-darwin-arm64@0.74.0", "", { "os": "darwin", "cpu": "arm64" }, "sha512-TfmNKBD30dGyMu9GCLiaw2rt/z7fms9LS+5cKcNOyWst0QgAs8oZs6wPxMbVaaDVE0/PCdCosgWM1vbu6f5NUg=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-darwin-x64": ["@oxfmt/binding-darwin-x64@0.74.0", "", { "os": "darwin", "cpu": "x64" }, "sha512-5Usf8+DfC4Q3o/MD8FkN47GrI6y0KbhQ4KhZ2HGzMZcXjcW1AeldwbUn51aKih+1TVuJFF9qkNm6X1nzm6NYng=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-freebsd-x64": ["@oxfmt/binding-freebsd-x64@0.74.0", "", { "os": "freebsd", "cpu": "x64" }, "sha512-eL+1O3gykw1XihbZh2MRAciQvU2988LByrnjhyo/dmNG74X4oZ7XzigRoWPRFLfJCp8hzRkp/LbEhwe7uuT2eA=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-linux-arm-gnueabihf": ["@oxfmt/binding-linux-arm-gnueabihf@0.74.0", "", { "os": "linux", "cpu": "arm" }, "sha512-Xt0QtO2hJ4stnul8IL4LJGVLyp0xnc6ccN9fZ30yuubv8FWSRYxWwd1Za62KsEqAfmPSazoS/cLSUUJpja6npA=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-linux-arm-musleabihf": ["@oxfmt/binding-linux-arm-musleabihf@0.74.0", "", { "os": "linux", "cpu": "arm" }, "sha512-/4wYQ0gZl4vUR0QoBTGaay73FmQ1GAjUa9z9101TR2xbGNrg4a+grazlR0yzEOe3/E+PJr5BGfj66MMzm/54vg=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-linux-arm64-gnu": ["@oxfmt/binding-linux-arm64-gnu@0.74.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-846bKzF+HJd+JkOFh3rxzmYvSq4Cm+GMT+p+mW7S13ZYo6GAAGv8bL8cAOi/XcdeMqxEJDCIMTVQLVBXHMCdig=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-linux-arm64-musl": ["@oxfmt/binding-linux-arm64-musl@0.74.0", "", { "os": "linux", "cpu": "arm64" }, "sha512-nI5FJwZ4Flo6CBdscpwxymZXxO3m3IErQJX55ZS6h+ObfGXu8FostL85L/RWPFaCLnIVE4/WfLw+2q8XvVEeUA=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-linux-ppc64-gnu": ["@oxfmt/binding-linux-ppc64-gnu@0.74.0", "", { "os": "linux", "cpu": "ppc64" }, "sha512-BoQYKuqUdsKAFAkK6DLBvkdv4+t0hppSm79sB0wIcE2o/eOwNj+6Z3OlKY4q3Eta/tlssP65FaS9vHn8TeF7vQ=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-linux-riscv64-gnu": ["@oxfmt/binding-linux-riscv64-gnu@0.74.0", "", { "os": "linux", "cpu": "none" }, "sha512-FSroRrM12+jCdSQklF9aOxsKpI6wFs4ZCo/1cSYG80RWZS6z4LV+l9tXRMT8lDGu+yohIZBwi9M76FzGPFDE2A=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-linux-riscv64-musl": ["@oxfmt/binding-linux-riscv64-musl@0.74.0", "", { "os": "linux", "cpu": "none" }, "sha512-0VLQD0dhGBLY9Ik/w+otMvD81D0YXi4VDwql65macV+O9UzmSWmUr6CKf+dMtysDeC0PnG3y6kBkRO08BJx52g=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-linux-s390x-gnu": ["@oxfmt/binding-linux-s390x-gnu@0.74.0", "", { "os": "linux", "cpu": "s390x" }, "sha512-6X7BbZNz34+OHM6Oqjf6TRcUyRn6aRcB4VtIDZAF/uQRyeVhg+G2hv6MlMvmnRekVSyTJ/8rG/u8W2dRFW6glg=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-linux-x64-gnu": ["@oxfmt/binding-linux-x64-gnu@0.74.0", "", { "os": "linux", "cpu": "x64" }, "sha512-4kYIQK53yJXrxwxSzx8H2bojlf6/KezLGYLRXzV9QCCkoiCsvBTCid9Bg83dUPTLPa3g9K0730f6MKDbck1+OA=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-linux-x64-musl": ["@oxfmt/binding-linux-x64-musl@0.74.0", "", { "os": "linux", "cpu": "x64" }, "sha512-MfWz4wDREjp/JQDmuxtKieix4FHGa1z5rBvB3betdcPwZvf5fqeQrlCm1mmoyuUVQOh9Pt3M61HwN94kJCxw7Q=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-openharmony-arm64": ["@oxfmt/binding-openharmony-arm64@0.74.0", "", { "os": "none", "cpu": "arm64" }, "sha512-6rmAApkq5s1kbDjvNI6Nl5A+JqQkLORb2sR941pf5HWsrd01WGKyagK/B4vX9+kh1FfvRkNgEu59FHvVk4H8cQ=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-win32-arm64-msvc": ["@oxfmt/binding-win32-arm64-msvc@0.74.0", "", { "os": "win32", "cpu": "arm64" }, "sha512-+5SpRUnZNGeXTyumHnpHa791tQtt04qZs076WT8eTcGF2OJ631VLnf7S0kQSPuDG+PtJM0phadEB2WAr5n1w9g=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-win32-ia32-msvc": ["@oxfmt/binding-win32-ia32-msvc@0.74.0", "", { "os": "win32", "cpu": "ia32" }, "sha512-1Fg+wYBO3Dsti1QX+/6EYHjeQzLC84tLOAqPu/r7ah3UJlUs9C/DB703Ay9Vcg+8VMzqZA2P5VGhzJraVUD4OQ=="],
+
+    "@pyreon/example-cpa-pw-dash/oxfmt/@oxfmt/binding-win32-x64-msvc": ["@oxfmt/binding-win32-x64-msvc@0.74.0", "", { "os": "win32", "cpu": "x64" }, "sha512-y9jXUgPBm2TZIWbQhMYRRYAQM57+r4fbykgc+j24ICIIZl+pcuoNhnq1CRGm3oFiHnEUnZO00qOtSPGQdJ2ziQ=="],
 
     "@tanstack/react-form/@tanstack/react-store/@tanstack/store": ["@tanstack/store@0.11.0", "", {}, "sha512-WlzzCt3xi0G6pCAJu1U+2jiECwabETDpQDi3hfkFZvJii9AuZqEKbOiVarX1/bWhTNjU486yQtJCCasi/0q+Cw=="],
 

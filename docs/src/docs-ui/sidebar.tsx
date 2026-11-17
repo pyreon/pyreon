@@ -1,5 +1,6 @@
 import type { VNodeChild } from '@pyreon/core'
 import { h } from '@pyreon/core'
+import { CodeSpans } from './code-spans'
 import { DocsGlyph as Glyph } from './glyph'
 import { groupId, isActive, normalizeDocsPath, SIDEBAR, type DocsSidebarItem, type SidebarBadge } from './nav'
 
@@ -26,7 +27,7 @@ function ItemLink(props: { item: DocsSidebarItem; path: string; sub?: boolean; o
       onClick: props.onNavigate,
     },
     props.item.productId ? h(Glyph, { id: props.item.productId, size: 16 }) : null,
-    h('span', { class: 'dx-side__text' }, props.item.title),
+    h('span', { class: 'dx-side__text' }, h(CodeSpans, { text: props.item.title })),
     props.item.badge ? h(Badge, { badge: props.item.badge }) : null,
   )
 }

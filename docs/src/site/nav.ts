@@ -89,6 +89,8 @@ export const START: NavLink & { command: string | undefined } = {
 }
 
 export const MOBILE = {
+  /** Below this width the bar collapses into the menu button (theme.ts layout.navCollapse is the same value; nav.test.ts locks it). */
+  breakpoint: NAV.mobile.breakpoint,
   open: NAV.mobile.button.open,
   close: NAV.mobile.button.close,
   big: NAV.mobile.sheet.big.filter(isShown).map((l) => ({ label: l.label, href: resolveHref(l.href) })),

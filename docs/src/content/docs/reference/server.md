@@ -83,10 +83,10 @@ function useUser() {
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`createHandler`](#createhandler-function) | function | Build a production SSR handler from your `App`, `routes`, and optional template / client entry / middleware. |
-| [`renderPage`](#renderpage-function) | function | The ONE string-mode page-render pipeline — preload (lazy components + loaders, with `redirect()` catching) → render with |
+| [`renderPage`](#renderpage-function) | function | The ONE string-mode page-render pipeline — preload (lazy components + loaders, with `redirect()` catching) → render with… |
 | [`island`](#island-function) | function | Wrap a lazily-loaded component in a `<pyreon-island>` boundary with a hydration strategy. |
 | [`serverIsland`](#serverisland-function) | function | The INVERSE of `island()`: a static (CDN/ISR/prerender-cacheable) page with per-request SERVER-rendered holes. |
-| [`activateServerIslands`](#activateserverislands-function) | function | The MANUAL document-scan activator for `<pyreon-server-island>` markers, for static / no-full-hydrate hosts that are NOT |
+| [`activateServerIslands`](#activateserverislands-function) | function | The MANUAL document-scan activator for `<pyreon-server-island>` markers, for static / no-full-hydrate hosts that are NOT… |
 | [`useRequestLocals`](#userequestlocals-function) | function | Read middleware `ctx.locals` inside components during SSR (and inside server-island fragments / server loaders). |
 | [`hydrateIslands`](#hydrateislands-function) | function | Client-side counterpart to `island()`. |
 | [`hydrateIslandsAuto`](#hydrateislandsauto-function) | function | Auto-discovered counterpart to `hydrateIslands()`. |

@@ -1,6 +1,6 @@
 import { For } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { font, radius, text } from '../theme'
+import { font, radius, text, touch } from '../theme'
 import { el, focusRing, tone, txt } from '../kit/bases'
 import { GlowCard } from '../kit/cards'
 import { CodeBlock } from '../kit/code'
@@ -108,7 +108,7 @@ const FileButton = el
   })
   .theme((_t, m) => ({
     width: '100%',
-    minHeight: 40,
+    minHeight: touch.tapTarget,
     paddingLeft: 12,
     paddingRight: 10,
     border: '1px solid',

@@ -2,7 +2,7 @@ import { expect, type Browser, type Page, test } from '@playwright/test'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { SITE_LINKS } from '../docs/src/site-links'
-import { auditContrast } from './site-audit'
+import { auditContrast, SITE_WIDTHS } from './site-audit'
 import { waitForIsland, waitForNav } from './site-islands'
 
 /**
@@ -12,10 +12,10 @@ import { waitForIsland, waitForNav } from './site-islands'
  * and the second index page exist): every page is prerendered with its own
  * head; the islands (nav, copy buttons, the post tools, the download chart)
  * hydrate with no errors and work by keyboard and pointer; no horizontal page
- * scroll at the five design widths; post bodies keep a readable measure and
+ * scroll at the seven site widths; post bodies keep a readable measure and
  * the dark syntax theme; every text node passes WCAG AA in both themes.
  */
-const WIDTHS = [320, 390, 768, 1024, 1440]
+const WIDTHS = SITE_WIDTHS
 const DIST = resolve(__dirname, '../docs/dist')
 
 /** Published posts of this build, newest first, read from its RSS feed. */
@@ -281,7 +281,7 @@ test.describe('/showcase', () => {
   test('every example links its source on GitHub', async ({ page }) => {
     await page.goto('/showcase')
     const sources = await page.locator('a[href^="https://github.com/pyreon/pyreon/tree/main/examples/"]').evaluateAll((as) => as.map((a) => a.getAttribute('href')))
-    for (const dir of ['app-showcase', 'hn-clone', 'collab-board', 'native-tasks-web', 'react-compat']) expect(sources).toContain(`https://github.com/pyreon/pyreon/tree/main/examples/${dir}`)
+    for (const dir of ['app-showcase', 'hn-clone', 'collab-board', 'native-tasks', 'compat/react']) expect(sources).toContain(`https://github.com/pyreon/pyreon/tree/main/examples/${dir}`)
   })
 })
 

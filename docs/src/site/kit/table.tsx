@@ -1,7 +1,8 @@
 import type { VNodeChild } from '@pyreon/core'
 import { For, Show } from '@pyreon/core'
-import { breakpoints, font, radius, text, weight } from '../theme'
+import { breakpoints, font, radius, text, touch, weight } from '../theme'
 import { el, tone, txt } from './bases'
+import { renderInline } from './type'
 
 /**
  * `DataTable` — a real `<table>` (caption, column headers, row headers) that
@@ -47,7 +48,7 @@ const Table = el
         letter-spacing: ${text.eyebrowTight.tracking}; text-transform: uppercase; color: ${tone(m, 'fog')};
         padding: 14px 18px; border-bottom: 1px solid ${tone(m, 'line')}; }
       & tbody th, & tbody td { text-align: left; vertical-align: top; padding: 14px 18px; border-bottom: 1px solid ${tone(m, 'line')};
-        overflow-wrap: anywhere; }
+        overflow-wrap: break-word; }
       & tbody tr:last-child th, & tbody tr:last-child td { border-bottom: 0; }
       & tbody th { color: ${tone(m, 'text')}; font-weight: ${weight.regular}; }
       & td[data-num] { font-family: ${font.mono}; font-size: ${text.mono.size}px; white-space: nowrap; }
@@ -87,7 +88,7 @@ export function DataTable(props: {
     <Frame>
       <Table aria-label={props.label}>
         <Show when={() => !!props.caption}>
-          <caption>{props.caption}</caption>
+          <caption>{renderInline(props.caption ?? '')}</caption>
         </Show>
         <thead>
           <tr>
@@ -136,6 +137,7 @@ const Disclosure = el
       & > summary:hover { color: ${tone(m, 'text')}; }
       & > summary:focus-visible { outline: 2px solid ${tone(m, 'focus')}; outline-offset: 3px; }
       & > summary + * { margin-top: 12px; }
+      ${touch.media} { & > summary { display: inline-flex; align-items: center; min-height: ${touch.tapTarget}px; padding: 0; } }
     `,
   }))
 

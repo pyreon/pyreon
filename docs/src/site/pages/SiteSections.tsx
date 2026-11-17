@@ -87,7 +87,7 @@ function Body(props: { s: SiteSection }): VNodeChild {
       return (
         <>
           <Heading tag="h2" size="section">
-            {s.title}
+            {renderInline(s.title)}
           </Heading>
           <Prose paragraphs={s.text} />
         </>

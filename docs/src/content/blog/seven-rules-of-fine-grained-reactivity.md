@@ -38,7 +38,7 @@ Pyreon components **run once**. There is no re-render pass to pick up a value yo
 
 Seven rules cover it. Learn them over one coffee, and "why didn't it update?" stops being a question. Each rule below comes with the tool that catches the mistake:
 
-- **`@pyreon/lint`**: 133 rules, run as `pyreon-lint` or through its LSP server (`pyreon-lint --lsp`).
+- **`@pyreon/lint`**: 141 rules, run as `pyreon-lint` or through its LSP server (`pyreon-lint --lsp`).
 - **Compiler detectors**: the checks behind the MCP `validate` tool and the `pyreon check` CLI (`pyreon check --fix` applies the mechanically safe fixes).
 - **Reactivity Lens**: the compiler's own live/static verdict, shown as inlay hints in your editor through the same LSP server.
 

@@ -71,14 +71,14 @@ const styles = resolveStyles({ fontSize: '1.5rem', color: '#222', padding: '12px
 | --- | --- | --- |
 | [`extractDocumentTree`](#extractdocumenttree-function) | function | Walk a Pyreon VNode tree and extract a `DocNode` tree for `@pyreon/document`. |
 | [`resolveStyles`](#resolvestyles-function) | function | Convert a rocketstyle `$rocketstyle` theme object into a `ResolvedStyles` object compatible with `@pyreon/document`. |
-| [`parseCssDimension`](#parsecssdimension-function) | function | Parse a CSS dimension to a number: numbers pass through, `"14px"` → 14, `"1.5rem"` / `"1.5em"` → 1.5 × rootSize, `"12pt" |
-| [`parseBoxModel`](#parseboxmodel-function) | function | Parse a CSS padding/margin shorthand to the document tuple format: `8` → `8`, `"8px 16px"` → `[8, 16]`, the 3-value shor |
-| [`parseFontWeight`](#parsefontweight-function) | function | Parse a CSS font-weight: numbers pass through, the keywords `"normal"` / `"bold"` pass through AS STRINGS, numeric strin |
-| [`parseLineHeight`](#parselineheight-function) | function | Parse a CSS line-height to a plain number: numbers pass through (a unitless ratio like `1.5` stays `1.5`), dimension str |
+| [`parseCssDimension`](#parsecssdimension-function) | function | Parse a CSS dimension to a number: numbers pass through, `"14px"` → 14, `"1.5rem"` / `"1.5em"` → 1.5 × rootSize,… |
+| [`parseBoxModel`](#parseboxmodel-function) | function | Parse a CSS padding/margin shorthand to the document tuple format: `8` → `8`, `"8px 16px"` → `[8, 16]`, the 3-value… |
+| [`parseFontWeight`](#parsefontweight-function) | function | Parse a CSS font-weight: numbers pass through, the keywords `"normal"` / `"bold"` pass through AS STRINGS, numeric… |
+| [`parseLineHeight`](#parselineheight-function) | function | Parse a CSS line-height to a plain number: numbers pass through (a unitless ratio like `1.5` stays `1.5`), dimension… |
 | [`ExtractOptions`](#extractoptions-type) | type | Options for `extractDocumentTree`. |
 | [`VarResolver`](#varresolver-type) | type | Maps a style value to a render-target-evaluable one. |
 | [`DocumentMarker`](#documentmarker-type) | type | Marker interface: components carrying `_documentType` are extractable. |
-| [`DocNode`](#docnode-type) | type | The format-agnostic document node — re-exported from `@pyreon/document` (along with `DocChild = DocNode \| string`, the ` |
+| [`DocNode`](#docnode-type) | type | The format-agnostic document node — re-exported from `@pyreon/document` (along with `DocChild = DocNode \| string`, the… |
 
 ## API
 

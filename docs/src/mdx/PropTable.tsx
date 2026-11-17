@@ -1,4 +1,5 @@
 import { When } from '../docs-ui/when'
+import { CodeSpans } from '../docs-ui/code-spans'
 interface Prop {
   name: string
   type: string
@@ -50,7 +51,7 @@ export function PropTable(props: PropTableProps) {
                   <span class="dash">—</span>
                 </When>
               </td>
-              <td>{p.description}</td>
+              <td><CodeSpans text={p.description} /></td>
             </tr>
           ))}
         </tbody>

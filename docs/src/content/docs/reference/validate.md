@@ -97,7 +97,7 @@ const $sameResult = parseReactive(sameSchema, $email)
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`withField`](#withfield-function) | function | Attach Pyreon field metadata (label, hint, placeholder, i18n keys, autoFocus, autoComplete, defaultValue) to any Standar |
+| [`withField`](#withfield-function) | function | Attach Pyreon field metadata (label, hint, placeholder, i18n keys, autoFocus, autoComplete, defaultValue) to any… |
 | [`getMeta`](#getmeta-function) | function | Read the Pyreon field metadata attached via withField(). |
 | [`resolveMetaField`](#resolvemetafield-function) | function | Read a metadata field through optional i18n. |
 | [`parseReactive`](#parsereactive-function) | function | Reactively parse `source` through `schema`. |
@@ -106,18 +106,18 @@ const $sameResult = parseReactive(sameSchema, $email)
 | [`formatError`](#formaterror-function) | function | Resolve a single issue to a human-readable string. |
 | [`formatErrors`](#formaterrors-function) | function | Resolve an array of issues to strings via the same per-issue logic as formatError. |
 | [`formatErrorsByPath`](#formaterrorsbypath-function) | function | Build a per-field error map keyed by the issue's path joined with `.`. |
-| [`toFormValidator`](#toformvalidator-function) | function | Adapt an `s.*` schema directly into `@pyreon/form`'s `schema` validator shape — a `(values) =&gt; Record&lt;field, errorMessag |
-| [`toJsonSchema`](#tojsonschema-function) | function | Emit a JSON Schema (draft 2020-12) document from an `s` schema — for OpenAPI specs, AI structured-output constraints, ed |
-| [`serverCheck`](#servercheck-function) | function | Declare a server-only validation step on a shared schema — the async/privileged tier of the client/server split (unique- |
-| [`registerServerCheck`](#registerservercheck-function) | function | Register the heavy/privileged half of a `.serverCheck(key)` — the implementation that must NEVER reach the client bundle |
-| [`catch`](#catch-function) | function | On parse FAILURE, discard the issues this schema produced and return a fallback instead of erroring — resilient parsing  |
+| [`toFormValidator`](#toformvalidator-function) | function | Adapt an `s.*` schema directly into `@pyreon/form`'s `schema` validator shape — a… |
+| [`toJsonSchema`](#tojsonschema-function) | function | Emit a JSON Schema (draft 2020-12) document from an `s` schema — for OpenAPI specs, AI structured-output constraints,… |
+| [`serverCheck`](#servercheck-function) | function | Declare a server-only validation step on a shared schema — the async/privileged tier of the client/server split… |
+| [`registerServerCheck`](#registerservercheck-function) | function | Register the heavy/privileged half of a `.serverCheck(key)` — the implementation that must NEVER reach the client bundle… |
+| [`catch`](#catch-function) | function | On parse FAILURE, discard the issues this schema produced and return a fallback instead of erroring — resilient parsing… |
 | [`readonly`](#readonly-function) | function | Freeze the parsed output and mark it `Readonly<T>` at the type level (Zod's `.readonly`). |
 | [`array`](#array-function) | function | Wrap this schema in an array — `s.string().array()` ≡ `s.array(s.string())` (Zod's `.array`). |
 | [`or`](#or-function) | function | Union this schema with another — `a.or(b)` ≡ `s.union(a, b)` (Zod's `.or`). |
 | [`and`](#and-function) | function | Intersect this schema with another — `a.and(b)` ≡ `s.intersection(a, b)` (Zod's `.and`). |
 | [`pipe`](#pipe-function) | function | Validate with this schema, then feed the (validated, transformed) output into `target` (Zod's `.pipe`). |
-| [`superRefine`](#superrefine-function) | function | Like `.refine`, but the callback may add ANY number of issues (or none) via `ctx.addIssue({ message, path? })` — for cro |
-| [`preprocess`](#preprocess-function) | function | Transform the raw input BEFORE `schema` validates it (Zod's `z.preprocess`) — for trim/coerce/normalize that must happen |
+| [`superRefine`](#superrefine-function) | function | Like `.refine`, but the callback may add ANY number of issues (or none) via `ctx.addIssue({ message, path? })` — for… |
+| [`preprocess`](#preprocess-function) | function | Transform the raw input BEFORE `schema` validates it (Zod's `z.preprocess`) — for trim/coerce/normalize that must happen… |
 | [`nonoptional`](#nonoptional-function) | function | Reject `undefined` (Zod 4's `.nonoptional`) — re-requires a present value, e.g. |
 | [`stringbool`](#stringbool-function) | function | Coerce a boolean-ish STRING to a real boolean (Zod 4's `z.stringbool`). |
 | [`never`](#never-function) | function | Accepts NO value (Zod's `z.never`) — every input is a validation error, including `undefined`. |

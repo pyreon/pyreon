@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SITE_LINKS } from '../../site-links'
+import { layout } from '../theme'
 import { BAR_LINKS, FOOTER, HREF_ALIASES, ICON_LINKS, isCurrent, isShown, MEGA_COLUMNS, MOBILE, productIdOf, PRODUCTS, resolveHref, WHY_MENU } from '../nav'
 
 describe('navigation data (_nav.json + _index.json)', () => {
@@ -51,5 +52,9 @@ describe('navigation data (_nav.json + _index.json)', () => {
     expect(isCurrent('/blog/tags/x', '/blog')).toBe(true)
     expect(isCurrent('/blogger', '/blog')).toBe(false)
     expect(isCurrent('/docs', '/')).toBe(false)
+  })
+
+  it('collapses at the breakpoint the theme styles for (the nav island reads it from the nav data)', () => {
+    expect(MOBILE.breakpoint).toBe(layout.navCollapse)
   })
 })

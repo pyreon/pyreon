@@ -1,0 +1,7 @@
+{
+  "$schema": "node_modules/@pyreon/lint/schema/pyreonlintrc.schema.json",
+  "preset": ["recommended", "readable"],
+  "rules": {
+    "pyreon/padding-around-multiline-blocks": "warn"
+  }
+}

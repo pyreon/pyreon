@@ -40,6 +40,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { type LintBaseline, compareToBaseline } from './check-lint-ratchet'
+import { baselineTotalError, parseBaseline } from './baseline-total'
 
 export const BASELINE_PATH = 'leak-baseline.json'
 
@@ -77,6 +78,7 @@ export function countLeakFindings(parsed: unknown, repoRoot: string): Record<str
     const key = `${detector}::${file}`
     counts[key] = (counts[key] ?? 0) + 1
   }
+
   return counts
 }
 
@@ -112,6 +114,7 @@ function runAuditJson(repoRoot: string): unknown {
     }
     const out = existsSync(outFile) ? readFileSync(outFile, 'utf8') : ''
     if (!out.trim()) throw new Error('[leak-ratchet] audit-leak-classes produced no JSON output')
+
     return JSON.parse(out)
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -133,6 +136,7 @@ function main(): void {
     console.log(
       `[leak-ratchet] baseline updated: ${total} finding(s) across ${Object.keys(current).length} detector/file key(s)`,
     )
+
     return
   }
 
@@ -142,7 +146,12 @@ function main(): void {
     )
     process.exit(1)
   }
-  const baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) as LintBaseline
+  const baseline = parseBaseline<LintBaseline>(BASELINE_PATH, readFileSync(BASELINE_PATH, 'utf8'), 'bun scripts/check-leak-ratchet.ts --update')
+  const inconsistent = baselineTotalError(BASELINE_PATH, baseline.total, baseline.rules, 'bun scripts/check-leak-ratchet.ts --update')
+  if (inconsistent) {
+    console.error(inconsistent)
+    process.exit(1)
+  }
   const { regressions, improvements } = compareToBaseline(current, baseline.rules)
 
   if (jsonMode) {

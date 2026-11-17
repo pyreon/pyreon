@@ -11,7 +11,7 @@
  *
  * and nothing else: the test's name and its exception exist only in the HTML
  * report, which lives on the runner and in an artifact. Measured 2026-11-12
- * (runs 43195120647 and 43171644513): two red `native-tasks-android` steps,
+ * (runs 43195120647 and 43171644513): two red `native-tasks/android` steps,
  * neither naming a test; the causes (`hostedEditorsRoundTrip` timing out on a
  * typed edit, and a `CalledFromWrongThreadException` inside
  * `requestsCarryRuntimeValuesAndRejectNon2xx`) were readable only after
@@ -24,6 +24,7 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { listNativeHosts } from './native-example-hosts'
 
 export interface ConnectedFailure {
   className: string
@@ -72,14 +73,15 @@ function htmlFiles(dir: string): string[] {
   return out
 }
 
-/** Every failure under `examples/native-*-android/app/build/reports/androidTests`. */
+/**
+ * Every failure under each Android host's `app/build/reports/androidTests`,
+ * in both example layouts (`native-<app>-android/` and `native-<app>/android/`).
+ */
 export function collectFailures(root: string): Array<ConnectedFailure & { report: string }> {
-  const examples = join(root, 'examples')
-  if (!existsSync(examples)) return []
+  if (!existsSync(join(root, 'examples'))) return []
   const out: Array<ConnectedFailure & { report: string }> = []
-  for (const app of readdirSync(examples).sort()) {
-    if (!/^native-.*-android$/.test(app)) continue
-    for (const file of htmlFiles(join(examples, app, 'app/build/reports/androidTests')).sort()) {
+  for (const host of listNativeHosts(root).filter((h) => h.platform === 'android')) {
+    for (const file of htmlFiles(join(root, host.dir, 'app/build/reports/androidTests')).sort()) {
       for (const f of parseClassReport(readFileSync(file, 'utf8'))) {
         out.push({ ...f, report: relative(root, file) })
       }

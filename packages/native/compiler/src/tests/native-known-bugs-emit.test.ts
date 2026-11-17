@@ -249,8 +249,8 @@ describe('2e. number methods: a radix on an integer and a dynamic digit count lo
     expect(rhs(kt.code, 'a')).toBe('n.toString(16)')
   })
   it('toFixed(dynamic)', () => {
-    expect(rhs(sw.code, 'c')).toBe('String(format: "%.\\(n)f", f)')
-    expect(rhs(kt.code, 'c')).toBe('"%.${n}f".format(java.util.Locale.ROOT, f)')
+    expect(rhs(sw.code, 'c')).toBe('pyreonToFixed(f, n)')
+    expect(rhs(kt.code, 'c')).toBe('pyreonToFixed(f, n)')
     expect(sw.warnings).toEqual([])
     expect(kt.warnings).toEqual([])
   })
@@ -285,17 +285,20 @@ export function App(){ return <Text>{f({ c: "x" })}{g({ a: 1, b: "y" })}{String(
 `
 
 describe('3. an inline-object parameter is typed as the struct its call-site literal constructs', () => {
+  // The parameter's shape is a declared struct named after it (module-inline-object-types.ts); the call-site literal
+  // constructs that same struct, and one shape used by two helpers (`g`, `h`) is one struct.
   const sw = swift(INLINE_PARAM)
   const kt = kotlin(INLINE_PARAM)
   it('Swift: the struct, not a tuple (nor a single-field collapse to the bare field type)', () => {
-    expect(sw.code).toContain('func f(_ t: __Obj0) -> String')
-    expect(sw.code).toContain('func g(_ u: __Obj1) -> String')
-    expect(sw.code).toContain('func h(_ rows: [__Obj1]) -> Int')
-    expect(sw.code).toContain('f(__Obj0(c: "x"))')
+    expect(sw.code).toContain('func f(_ t: FTType) -> String')
+    expect(sw.code).toContain('func g(_ u: GUType) -> String')
+    expect(sw.code).toContain('func h(_ rows: [GUType]) -> Int')
+    expect(sw.code).toContain('f(FTType(c: "x"))')
   })
   it('Kotlin: the SAME data class the literal builds, not a per-helper PyreonHelpers<Param>', () => {
-    expect(kt.code).toContain('fun f(t: __Obj0): String')
-    expect(kt.code).toContain('fun g(u: __Obj1): String')
+    expect(kt.code).toContain('fun f(t: FTType): String')
+    expect(kt.code).toContain('fun g(u: GUType): String')
+    expect(kt.code).toContain('f(FTType(c = "x"))')
     expect(kt.code).not.toContain('PyreonHelpers')
   })
   it.skipIf(!isSwiftcAvailable())('swiftc accepts it', () => {

@@ -116,7 +116,6 @@ const KNOWN_NARROW: Record<'swift' | 'kotlin', ReadonlySet<string>> = {
     'PyreonPayments.restored',
     'PyreonPushNotifications.notificationReceived',
     'PyreonPushNotifications.start',
-    'PyreonQuery.load',
     'PyreonToast.defaultDurationMillis',
     'PyreonToast.remove',
     'PyreonWebSocket.closed',
@@ -214,8 +213,10 @@ export function kotlinMembers(src: string, type: string): Set<string> {
   const out = new Set<string>()
   if (body === null) return out
   // Kotlin members are public by DEFAULT, so visibility is expressed by the
-  // ABSENCE of a modifier — the negative lookbehind is what carries it.
-  const re = /(?<!private )(?<!internal )(?<!protected )\b(?:fun|val|var)\s+([A-Za-z_][A-Za-z0-9_]*)/g
+  // ABSENCE of a modifier — the negative lookbehind is what carries it. Other modifiers may sit between the
+  // visibility and the keyword (`private suspend fun`), so the lookbehind skips them.
+  const re =
+    /(?<!\b(?:private|internal|protected)\s+(?:(?:suspend|inline|override|open|final|abstract|lateinit|const|operator|infix|tailrec)\s+)*)\b(?:fun|val|var)\s+([A-Za-z_][A-Za-z0-9_]*)/g
   for (const m of depthZeroProjection(body).matchAll(re)) out.add(m[1]!)
   return out
 }
@@ -333,6 +334,7 @@ describe('the extractors themselves', () => {
       val copied: Boolean get() = false
       private var hidden = 1
       internal fun skipMe() {}
+      private suspend fun skipMeToo() {}
     }`,
       'X',
     )

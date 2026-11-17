@@ -18,11 +18,18 @@
 // The isPending/isFetching split is the whole point of a cache: a
 // background refresh of already-shown data must NOT blank the UI.
 //
-// COROUTINE-FREE like PyreonFetch — the async network call lives in the
-// compiler-emitted LaunchedEffect harness that calls load(); the container
-// stays synchronous, dependency-light, and unit-testable with a stub
-// fetcher. Deferred (disclosed): mutations, infinite queries, prefetch,
-// cross-instance invalidation, retries, persistence.
+// The query OWNS its request: the compiler-emitted LaunchedEffect harness
+// hands the request it built to run(), which keeps it and fetches when the
+// cache is stale. Keeping it is what makes refetch() work — it re-runs that
+// same request, ignoring staleness, long after the harness returned. Every
+// fetch takes a generation number, so a slow response that a newer fetch (or
+// a key change) superseded never overwrites the newer state.
+//
+// kotlinx-free: the harness also hands over a LAUNCHER (it wraps the
+// composable's rememberCoroutineScope), so refetch() can start a coroutine
+// that is cancelled when the composable leaves, without this file importing
+// kotlinx.coroutines — the tests drive it with the stdlib alone. Deferred
+// (disclosed): prefetch, cross-instance invalidation, retries, persistence.
 
 package com.pyreon.runtime
 
@@ -116,7 +123,15 @@ public class PyreonQuery<T>(
     /** True whenever a fetch is in flight, foreground or background. */
     public val isFetching: MutableState<Boolean> = mutableStateOf(false)
 
-    private var lastFetcher: (() -> T)? = null
+    /** The request the harness registered through [run]; [refetch] re-runs it. */
+    private var fetcher: (suspend () -> T)? = null
+
+    /** Starts a coroutine on the composable's scope (registered with the request). */
+    private var launcher: ((suspend () -> Unit) -> Unit)? = null
+
+    /** Bumped by every fetch and every key change: a response settles state
+     *  only while its own generation is still the latest. */
+    private var generation = 0
 
     init {
         // Hydrate synchronously from the shared cache so a second screen
@@ -133,6 +148,11 @@ public class PyreonQuery<T>(
      *  keyless to mirror the SwiftUI `@State`-default constraint. */
     public fun setKey(key: String) {
         if (key == queryKey) return
+        // A fetch still in flight belongs to the OLD key: drop its result (it
+        // must not be cached under the new key) and its in-flight flags.
+        generation += 1
+        isFetching.value = false
+        isPending.value = false
         queryKey = key
         data.value = PyreonQueryCache.lookup<T>(key)?.first
     }
@@ -168,23 +188,50 @@ public class PyreonQuery<T>(
         isFetching.value = false
     }
 
-    /** Run a synchronous fetcher; skips when the cache is fresh. */
-    public fun load(fetcher: () -> T) {
-        lastFetcher = fetcher
+    /**
+     * Register the request and fetch it when the cache is stale (a fresh hit
+     * keeps the hydrated value and skips the network). The emitted
+     * LaunchedEffect calls this with the request it builds and a [launch]
+     * that starts a coroutine on the composable's scope; the query keeps both
+     * so [refetch] can re-run the request later.
+     */
+    public suspend fun run(launch: (suspend () -> Unit) -> Unit, fetcher: suspend () -> T) {
+        this.fetcher = fetcher
+        this.launcher = launch
         if (!isStale) return
-        reload()
+        fetch(fetcher)
     }
 
-    /** Force a fetch, ignoring staleness. */
-    public fun refetch(): Unit = reload()
+    /**
+     * Force a fetch of the registered request, ignoring staleness (the user
+     * pulled to refresh). isFetching is true until it settles; on success data
+     * is replaced, on failure error is set and data kept. A no-op before the
+     * harness registered a request.
+     */
+    public fun refetch() {
+        val request = fetcher ?: return
+        val launch = launcher ?: return
+        launch { fetch(request) }
+    }
 
-    private fun reload() {
-        val fetcher = lastFetcher ?: return
+    private suspend fun fetch(request: suspend () -> T) {
+        generation += 1
+        val mine = generation
         begin()
-        try {
-            resolve(fetcher())
+        val value = try {
+            request()
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            // The composable left (or its key changed): not a failure to show.
+            if (mine == generation) {
+                isFetching.value = false
+                isPending.value = false
+            }
+            throw e
         } catch (t: Throwable) {
-            reject(t)
+            if (mine == generation) reject(t)
+            return
         }
+        // Superseded: a newer fetch owns the state.
+        if (mine == generation) resolve(value)
     }
 }

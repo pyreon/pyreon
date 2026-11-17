@@ -2,7 +2,7 @@ import { For } from '@pyreon/core'
 import type { ExtraSection } from '../content/model'
 import { font, radius, text } from '../theme'
 import { el, tone, txt } from './bases'
-import { GlowCard } from './cards'
+import { GlowCard, PackageName } from './cards'
 import { InstallCommand, Pill } from './controls'
 import { TextLink } from './proof'
 import { Eyebrow, Heading, Lede, renderInline, StatusBadge } from './type'
@@ -16,11 +16,6 @@ import { Eyebrow, Heading, Lede, renderInline, StatusBadge } from './type'
 
 type PackageItem = Extract<ExtraSection, { kind: 'packages' }>['items'][number]
 type Callout = Extract<ExtraSection, { kind: 'callout' }>
-
-const PkgName = txt
-  .config({ name: 'ExtraPackageName' })
-  .attrs({ tag: 'span' })
-  .theme((_t, m) => ({ fontFamily: font.mono, fontSize: 11.5, color: tone(m, 'accentText'), overflowWrap: 'anywhere' }))
 
 const BigPkgName = txt
   .config({ name: 'ExtraPackageNameLarge' })
@@ -43,7 +38,7 @@ export function ExtraPackageCard(props: { item: PackageItem }) {
   }
   return (
     <GlowCard padding="compact" state={i.hot ? 'hot' : 'default'}>
-      <PkgName>{i.pkg}</PkgName>
+      <PackageName>{i.pkg}</PackageName>
       <Eyebrow>{i.role}</Eyebrow>
       <Lede size="small">{renderInline(i.text)}</Lede>
       {i.link ? <TextLink href={i.link.href}>{i.link.label}</TextLink> : null}
@@ -77,7 +72,7 @@ export function ExtraCallout(props: { section: Callout }) {
         <div>
           <Eyebrow state="accent">{s.label}</Eyebrow>
           <Heading tag="h2" size="card">
-            {s.title}
+            {renderInline(s.title)}
           </Heading>
           <CalloutText>{renderInline(s.text)}</CalloutText>
         </div>

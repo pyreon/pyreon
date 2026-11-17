@@ -2,7 +2,7 @@ import { For } from '@pyreon/core'
 import type { ExtraSectionMore } from '../content/extra-sections.more'
 import { font, radius, text, weight } from '../theme'
 import { el, tone, txt } from './bases'
-import { GlowCard } from './cards'
+import { GlowCard, PackageName } from './cards'
 import { ApiGroups } from './blocks'
 import { CodeCard } from './code'
 import { AutoGrid } from './layout'
@@ -13,11 +13,6 @@ import { Eyebrow, Heading, Lede, renderInline } from './type'
  * (terminal output, tool cards, a data table, chip groups, package rows).
  * The product template renders the section head; this renders what is under it.
  */
-
-const Mono = txt
-  .config({ name: 'ExtraMono' })
-  .attrs({ tag: 'span' })
-  .theme((_t, m) => ({ fontFamily: font.mono, fontSize: 11.5, color: tone(m, 'accentText'), overflowWrap: 'anywhere' }))
 
 const Rows = el.config({ name: 'ExtraRows' }).attrs({ block: true, gap: 12 })
 
@@ -47,7 +42,7 @@ const Prompt = txt.config({ name: 'ExtraPrompt' }).attrs({ tag: 'span', 'aria-hi
 function InlinePackageCard(props: { pkg: string; role: string; text: string; hot?: boolean | undefined }) {
   return (
     <GlowCard padding="compact" state={props.hot ? 'hot' : 'default'}>
-      <Mono>{props.pkg}</Mono>
+      <PackageName>{props.pkg}</PackageName>
       <Eyebrow>{props.role}</Eyebrow>
       <Lede size="small">{renderInline(props.text)}</Lede>
     </GlowCard>
@@ -120,9 +115,9 @@ export function ExtraMoreBody(props: { section: ExtraSectionMore }) {
           <For each={s.items} by={(i) => i.name}>
             {(i) => (
               <GlowCard padding="compact" state={i.hot ? 'hot' : 'default'}>
-                <Mono>{i.name}</Mono>
+                <PackageName>{i.name}</PackageName>
                 <Heading tag="h3" size="step">
-                  {i.title}
+                  {renderInline(i.title)}
                 </Heading>
                 <Lede size="small">{renderInline(i.text)}</Lede>
                 <Cmd>

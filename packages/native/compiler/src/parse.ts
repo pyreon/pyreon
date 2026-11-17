@@ -88,6 +88,7 @@ import type {
   ExtModuleItem,
 } from './types'
 import { collectDeclaredTypeNames, liftInlineObjectStructs } from './inline-object-structs'
+import { liftModuleInlineObjectTypes } from './module-inline-object-types'
 import { liftSlotParamStructs, planViewBlock } from './render-slots'
 import { disambiguateValueTypeNames } from './value-type-namespaces'
 import { DEFAULT_THEME, mergeTheme, parseThemeDefinition, type ThemeTable } from './theme-native'
@@ -548,6 +549,24 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     if (mds) moduleDecls.push(...mds)
   }
 
+  // Every inline object type OUTSIDE every component (a module binding's annotation, a module signal's type
+  // argument, a helper's parameter / return / local, a module `JSON.parse(…) as { … }`) becomes a declared struct
+  // named after its binding, before the float refinements read structs — see module-inline-object-types.ts.
+  structs.push(
+    ...liftModuleInlineObjectTypes({
+      moduleDecls,
+      helperFns: ctx.helperFns,
+      structs,
+      taken: new Set([
+        ...declaredTypeNames,
+        ...enums.map((e) => e.name),
+        ...components.map((c) => c.name),
+        ...moduleDecls.map((md) => md.name),
+        ...ctx.helperFns.map((h) => h.name),
+      ]),
+    }),
+  )
+
   // A render prop's inline object PARAMETER type (`render: (item: { title:
   // string }) => VNodeChild`) is lifted to a declared struct, so the prop's
   // declaration and the object literal its body passes agree on one type —
@@ -669,7 +688,13 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // Router guards are shaped first: their parameter is the native path, which return inference needs.
   lowerRouterGuards(components, ctx.helperFns, ctx.warnings, buildInferenceCtx([], structs, [], undefined, undefined, moduleConsts))
   typeJsonParseReturns([...ctx.helperFns, ...components.flatMap((c) => c.decls.filter((d) => d.kind === 'function'))])
-  warnUntypedJsonParse([ctx.helperFns, components], ctx.warnings)
+  // `const x: T = JSON.parse(s)` decodes into `T` at module scope and as a component's `const` too, not only as a
+  // function-body local: both were left untyped and emitted the call as `""` — at module scope with no warning.
+  for (const md of moduleDecls) if (md.reactive === undefined) typeJsonParse(md.initial, md.type)
+  for (const c of components) {
+    for (const d of c.decls) if (d.kind === 'value' && d.type !== undefined) typeJsonParse(d.expr, d.type)
+  }
+  warnUntypedJsonParse([ctx.helperFns, components, moduleDecls], ctx.warnings)
   // With every named-struct Int→Double refinement settled and every `JSON.parse` typed (a helper's return type is read
   // just above), name the decode-type fields that are STILL the integer default. A typed `JSON.parse` is a decode like a
   // fetch's, with no response schema to refine it.

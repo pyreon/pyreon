@@ -79,7 +79,7 @@ isAttrsComponent(Button)                        // true (IS_ATTRS marker)
 | [`.config()`](#config-function) | function | Reconfigure the builder: rename (`name` → new `displayName`) or swap the underlying base component (`component`). |
 | [`.compose()`](#compose-function) | function | Attach named higher-order components. |
 | [`.statics()`](#statics-function) | function | Attach arbitrary metadata, readable on the component's `.meta` object. |
-| [`.getDefaultAttrs()`](#getdefaultattrs-function) | function | Resolve the accumulated `.attrs()` chain for a given props bag — every callback in the chain runs against `props` and th |
+| [`.getDefaultAttrs()`](#getdefaultattrs-function) | function | Resolve the accumulated `.attrs()` chain for a given props bag — every callback in the chain runs against `props` and… |
 | [`isAttrsComponent`](#isattrscomponent-function) | function | Runtime type guard — `true` when a value was created by `attrs()` (checks the own `IS_ATTRS` marker). |
 
 ## API

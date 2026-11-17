@@ -29,6 +29,7 @@
  *   - check-mcp-docs        (MCP tool added without docs/src/content/docs/mcp.md section)
  *   - loom-scan             (dependency-fabric errors: phantom deps, runtime cycles, drift)
  *   - check-advisory-comment-steps (advisory PR-comment step that can turn a check red)
+ *   - check-main-red-watchlist (a workflow the red-default-branch alarm does not watch)
  *   - check-leak-ratchet    (a leak-class finding grew above its committed baseline)
  *   - check-counter-catalog (a dev counter emitted with no COUNTERS.md row, or a stale row)
  *   - check-zero-feature-coverage (a documented zero feature has no real-build test)
@@ -40,12 +41,16 @@
  *   - check-compiler-boundary (library knowledge inside a compiler grew above its committed baseline)
  *   - check-native-plugin-types (a library-owned plugin names a Swift/Kotlin type nothing declares)
  *   - check-pyreon-lint-ratchet (@pyreon/lint advisory-finding count over framework src grew above baseline)
+ *     — the same run also gates readable-baseline.json: a file gained a `readable` style finding
+ *   - check-readable-oxlint-ratchet (a file gained a finding of @pyreon/lint/oxlint/readable.json)
+ *   - check-site-design     (pyreon.dev: a docs/src file gained a design-token literal, a styled
+ *                            component outside the kit, a kit-boundary break, a gallery gap or an a11y gap)
  *   - gen-docs --check      (manifest edited but generated files stale)
  *   - check-generated-fresh (the OTHER half of the pair: `anti-patterns.md` /
  *                            manifest edits leave the docs-site reference,
  *                            troubleshooting and examples pages stale)
  *
- * 59 gates, ~4-15s warm on an unloaded machine. The point is: catch ALL the
+ * 64 gates, ~4-15s warm on an unloaded machine. The point is: catch ALL the
  * cheap-to-detect failures locally with ONE command before pushing.
  *
  * That number is worth keeping honest, because it is what decides whether
@@ -103,10 +108,23 @@ const GATES: Gate[] = [
   // runtime — regressions (a snippet that starts warning, a co-source that
   // vanished) fail here. Runs the real compiler over ~22 snippets (~1-2s).
   { name: 'check-native-coverage', cmd: 'bun scripts/check-native-coverage.ts' },
+  // Also gates readable-baseline.json (per-file `readable` style findings may
+  // only go down) from the SAME doctor run — no second lint pass.
   { name: 'check-pyreon-lint-ratchet', cmd: 'bun scripts/check-pyreon-lint-ratchet.ts' },
+  // The oxlint half of `readable` (size, complexity, depth, params, import
+  // placement), frozen per file in readable-oxlint-baseline.json. ~1s.
+  { name: 'check-readable-oxlint-ratchet', cmd: 'bun scripts/check-readable-oxlint-ratchet.ts' },
+  // pyreon.dev's design system: per (file, rule) counts of design-token literals,
+  // styled components outside the kit, kit-boundary and island-runtime breaks,
+  // gallery gaps and a11y gaps in docs/src may only go down. Static, ~0.1s.
+  // Contract: .agents/guides/ui-system/site-design-system.md.
+  { name: 'check-site-design', cmd: 'bun scripts/check-site-design.ts' },
   // App-side line count across the reference apps — the framework's "write
   // less code" claim, ratcheted so it cannot quietly drift the wrong way.
   { name: 'check-app-loc', cmd: 'bun scripts/check-app-loc.ts' },
+  // The committed create-zero e2e fixtures (examples/cpa-pw-*) equal what the
+  // scaffolder emits today; a template change regenerates them in the same PR.
+  { name: 'check-cpa-fixtures', cmd: 'bun scripts/scaffold-cpa-fixtures.ts --check' },
   // Every dev counter emitted in any package's src has a COUNTERS.md row and
   // every row an emitter. perf-harness's drift test enforces the same, but
   // only runs when perf-harness is in a PR's test closure; #4236 added a
@@ -287,6 +305,12 @@ const GATES: Gate[] = [
   {
     name: 'check-advisory-comment-steps',
     cmd: 'bun scripts/check-advisory-comment-steps.ts',
+  },
+  // `workflow_run` has no wildcard: a workflow missing from the alarm's list
+  // can be red on the default branch with nobody told.
+  {
+    name: 'check-main-red-watchlist',
+    cmd: 'bun scripts/check-main-red-watchlist.ts',
   },
 ]
 

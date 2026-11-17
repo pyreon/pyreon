@@ -86,7 +86,7 @@ const docs = await getCollection('docs')
 | [`defineCollection`](#definecollection-function) | function | Per-collection definition. |
 | [`defineComponents`](#definecomponents-function) | function | Wrap a map of MDX components. |
 | [`getCollection`](#getcollection-function) | function | Runtime query — returns every entry in a collection. |
-| [`getEntry`](#getentry-function) | function | Sibling of `getCollection` for a SINGLE known slug instead of the whole collection — returns `undefined` (never throws)  |
+| [`getEntry`](#getentry-function) | function | Sibling of `getCollection` for a SINGLE known slug instead of the whole collection — returns `undefined` (never throws)… |
 | [`getEntries`](#getentries-function) | function | Batch sibling of `getEntry` — resolves multiple entries by slug in parallel. |
 | [`Callout`](#callout-component) | component | Built-in callout box. |
 | [`CodeGroup`](#codegroup-component) | component | Tabbed code blocks. |
@@ -95,21 +95,21 @@ const docs = await getCollection('docs')
 | [`registerExamples`](#registerexamples-function) | function | Register the consumer's example files for `<Example file="./...">` lookups. |
 | [`getOrCreateSharedSignal`](#getorcreatesharedsignal-function) | function | Module-level registry of `Signal<T>` instances keyed by string. |
 | [`Details`](#details-component) | component | Thin wrapper around native `<details>`/`<summary>` for a collapsible disclosure section. |
-| [`Tabs`](#tabs-component) | component | A generic tab strip with one active panel at a time — distinct from `<CodeGroup>` in that labels can be any string and p |
-| [`PropTable`](#proptable-component) | component | Renders a Markdown-style props reference table from a STATIC, author-supplied row list — no runtime introspection, so th |
-| [`APICard`](#apicard-component) | component | Renders a heading + signature + short description block for ONE API surface entry — the inline structural block authors  |
-| [`CompatMatrix`](#compatmatrix-component) | component | Renders a feature × platform compatibility table — one status cell per intersection: ✓ supported, ✗ unsupported, 🚧 part |
+| [`Tabs`](#tabs-component) | component | A generic tab strip with one active panel at a time — distinct from `<CodeGroup>` in that labels can be any string and… |
+| [`PropTable`](#proptable-component) | component | Renders a Markdown-style props reference table from a STATIC, author-supplied row list — no runtime introspection, so… |
+| [`APICard`](#apicard-component) | component | Renders a heading + signature + short description block for ONE API surface entry — the inline structural block authors… |
+| [`CompatMatrix`](#compatmatrix-component) | component | Renders a feature × platform compatibility table — one status cell per intersection: ✓ supported, ✗ unsupported, 🚧… |
 | [`PackageBadge`](#packagebadge-component) | component | A static panel showing a package name, optional version, and one or more per-package-manager install commands. |
 | [`Mermaid`](#mermaid-component) | component | Renders a mermaid diagram source string as an SVG. |
 | [`Math`](#math-component) | component | Renders a LaTeX expression via KaTeX. |
 | [`Sidebar`](#sidebar-component) | component | Collection-driven navigation. |
 | [`Breadcrumbs`](#breadcrumbs-component) | component | Renders a `Home › Section › Page` crumb trail derived from the current URL. |
-| [`PrevNext`](#prevnext-component) | component | Renders "← Previous" / "Next →" links derived from a flattened entry list and the current path — `entries` is typically  |
-| [`Toc`](#toc-component) | component | Page table-of-contents with scroll-spy: renders a flat list of headings (level 2–3 by default) and tracks which is curre |
+| [`PrevNext`](#prevnext-component) | component | Renders "← Previous" / "Next →" links derived from a flattened entry list and the current path — `entries` is typically… |
+| [`Toc`](#toc-component) | component | Page table-of-contents with scroll-spy: renders a flat list of headings (level 2–3 by default) and tracks which is… |
 | [`Playground`](#playground-component) | component | DEPRECATED in favor of `<Example>` — flagged by the `pyreon/no-playground-in-docs` lint rule. |
 | [`Search / useSearch`](#search-usesearch-hook) | hook | `useSearch` is the headless search state — build a custom search UI on top of it. |
 | [`blogCollection / defineBlog (@pyreon/zero-content/blog)`](#blogcollection-defineblog-pyreonzero-contentblog-function) | function | A production blog on a content collection. |
-| [`generateSitemap / generateRssFeed / generateLlmsTxt`](#generatesitemap-generaterssfeed-generatellmstxt-function) | function | DEPRECATED — all three are thin build-script helpers kept for back-compat and superseded by richer `@pyreon/zero` equiva |
+| [`generateSitemap / generateRssFeed / generateLlmsTxt`](#generatesitemap-generaterssfeed-generatellmstxt-function) | function | DEPRECATED — all three are thin build-script helpers kept for back-compat and superseded by richer `@pyreon/zero`… |
 
 ## API
 

@@ -93,13 +93,13 @@ await doc.toNotion()    // Notion blocks
 | [`Document`](#document-component) | component | Root primitive for document trees. |
 | [`download`](#download-function) | function | Browser helper that renders a document node tree and triggers a file download in one call. |
 | [`Heading`](#heading-component) | component | A heading block. |
-| [`Text`](#text-component) | component | A paragraph / run of text with inline styling props (bold, italic, underline, strikethrough, size, color, align, lineHei |
+| [`Text`](#text-component) | component | A paragraph / run of text with inline styling props (bold, italic, underline, strikethrough, size, color, align,… |
 | [`Table`](#table-component) | component | A data table. |
 | [`List / ListItem`](#list-listitem-component) | component | A bulleted (default) or numbered list. |
 | [`Code`](#code-component) | component | A code block. |
 | [`Link`](#link-component) | component | An inline hyperlink. |
 | [`Image`](#image-component) | component | An image. |
-| [`Button`](#button-component) | component | A call-to-action button — a LINK styled as a button (renders as an Outlook-safe 'bulletproof button' in email, a styled  |
+| [`Button`](#button-component) | component | A call-to-action button — a LINK styled as a button (renders as an Outlook-safe 'bulletproof button' in email, a styled… |
 | [`Page / Section / Row / Column / Divider / Spacer / Quote / PageBreak`](#page-section-row-column-divider-spacer-quote-pagebreak-component) | component | The structural / layout primitives. |
 | [`registerRenderer / unregisterRenderer / isDocNode`](#registerrenderer-unregisterrenderer-isdocnode-function) | function | The extension + guard API. |
 

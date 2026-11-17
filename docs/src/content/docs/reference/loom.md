@@ -49,7 +49,7 @@ loom scan · . · 148 packages
      compat:'react' ALIASES react-dom (and react-dom/client) to @pyreon/react-compat/dom. Installing
      the real react-dom would defeat the example, whose entire point is that React-shaped code runs
      with no React present.)
-     ↳ examples/react-compat/src/main.tsx
+     ↳ examples/compat/react/src/main.tsx
   ℹ phantom-type-dep · `@pyreon/create-zero` imports `@pyreon/server` type-only but never declares
      it — erased at runtime, so consumers are unaffected, but typecheck resolves it through hoisting
      luck; declare it in devDependencies
@@ -68,8 +68,8 @@ $ loom dev . --port=5230   # the observatory UI over the same report
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`loom scan`](#loom-scan-function) | function | Read the workspace, analyze the dependency fabric, and report. |
-| [`loom dev`](#loom-dev-function) | function | The observatory: a tool-app layout over the scan report — a top bar (workspace name, view switch, error / warning / info |
-| [`loom build`](#loom-build-function) | function | Prerenders the observatory to a STANDALONE STATIC SITE — one prerendered page per view (graph / matrix / cycles / impact |
+| [`loom dev`](#loom-dev-function) | function | The observatory: a tool-app layout over the scan report — a top bar (workspace name, view switch, error / warning / info… |
+| [`loom build`](#loom-build-function) | function | Prerenders the observatory to a STANDALONE STATIC SITE — one prerendered page per view (graph / matrix / cycles / impact… |
 | [`buildReport`](#buildreport-function) | function | The programmatic engine behind the CLI — scan the workspace, analyze the graph, run every detector, fold the stats. |
 
 ## API

@@ -61,7 +61,7 @@ exports[`--init > renders at truecolor dark 1`] = `
 `;
 
 exports[`--list > renders at truecolor (one level is enough: the roles are the reporter’s) 1`] = `
-"␛[1mpyreon-lint --list␛[22m ␛[38;2;138;134;150m· 134 rules in 10 groups␛[39m
+"␛[1mpyreon-lint --list␛[22m ␛[38;2;138;134;150m· 141 rules in 11 groups␛[39m
 
   ␛[1mPYREON␛[22m ␛[38;2;138;134;150m(54) — framework semantics — nothing outside Pyreon can know these␛[39m
     pyreon/no-async-effect  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;248;113;113merror␛[39m
@@ -76,8 +76,9 @@ exports[`--list > renders at truecolor (one level is enough: the roles are the r
     pyreon/no-signal-in-loop  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;248;113;113merror␛[39m
       Disallow creating signals or computeds inside loops.
     pyreon/no-signal-in-props  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;250;204;21mwarn␛[39m
-      Signal call in component prop — value captured once unless compiler wraps it. Use props.x
-      pattern for reactivity.
+      Signal call in a component prop in a file the Pyreon compiler does not lower (tests, compat
+      projects) — the value is captured once. Compiled files are exempt: there the compiler makes
+      the prop reactive.
     pyreon/no-nested-effect  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;250;204;21mwarn␛[39m
       Warn against nesting effect() inside another effect().
     pyreon/no-peek-in-tracked  ␛[38;2;138;134;150mreactivity␛[39m  ␛[38;2;248;113;113merror␛[39m

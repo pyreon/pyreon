@@ -83,9 +83,9 @@ const TabExample = () => (
 | [`hydrateRoot`](#hydrateroot-function) | function | Hydrate server-rendered HTML. |
 | [`Transition`](#transition-component) | component | CSS-based enter/leave animation wrapper. |
 | [`TransitionGroup`](#transitiongroup-component) | component | Animate list item additions and removals with CSS transitions. |
-| [`KeepAlive`](#keepalive-component) | component | Mount children ONCE and keep them alive when hidden — when `active()` returns false the children are CSS-hidden (`displa |
+| [`KeepAlive`](#keepalive-component) | component | Mount children ONCE and keep them alive when hidden — when `active()` returns false the children are CSS-hidden… |
 | [`_tpl`](#_tpl-function) | function | Compiler-internal: instantiate a cached template and run its bindings. |
-| [`_bindText`](#_bindtext-function) | function | Compiler-internal: bind a SIGNAL (anything carrying `._v` + `.direct`) to a text node via `TextNode.data` assignment, re |
+| [`_bindText`](#_bindtext-function) | function | Compiler-internal: bind a SIGNAL (anything carrying `._v` + `.direct`) to a text node via `TextNode.data` assignment,… |
 | [`sanitizeHtml`](#sanitizehtml-function) | function | Sanitize an HTML string. |
 | [`__PYREON_DEVTOOLS__`](#__pyreon_devtools__-constant) | constant | Browser devtools hook, installed automatically on the first `mount()` (no-op on the server). |
 

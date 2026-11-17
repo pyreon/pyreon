@@ -114,18 +114,18 @@ const User = () => {
 | [`useSearchParams`](#usesearchparams-hook) | hook | Access and update URL search params as a reactive tuple. |
 | [`useBlocker`](#useblocker-hook) | hook | Block navigations while a condition holds. |
 | [`onBeforeRouteLeave`](#onbeforerouteleave-function) | function | Register a per-component navigation guard that fires when leaving the current route. |
-| [`onBeforeRouteUpdate`](#onbeforerouteupdate-function) | function | Register a per-component navigation guard that fires when the route updates but the same component stays mounted (e.g.,  |
+| [`onBeforeRouteUpdate`](#onbeforerouteupdate-function) | function | Register a per-component navigation guard that fires when the route updates but the same component stays mounted (e.g.,… |
 | [`useNavigate`](#usenavigate-function) | function | Returns an imperative navigate function. |
 | [`useParams`](#useparams-function) | function | Returns a SNAPSHOT map of the current route's path params (`{ id: '42' }` for `/user/:id`). |
 | [`useValidatedSearch`](#usevalidatedsearch-function) | function | Returns a REACTIVE ACCESSOR `() => T` for the current route's VALIDATED search params. |
 | [`notFound / NotFoundBoundary`](#notfound-notfoundboundary-function) | function | The Next.js-style 404 pair. |
 | [`lazy`](#lazy-function) | function | Code-split a route component. |
-| [`LoaderData`](#loaderdata-type) | type | Derive a route loader's RESOLVED data type from the loader function itself — pair with `useLoaderData&lt;LoaderData&lt;typeof  |
+| [`LoaderData`](#loaderdata-type) | type | Derive a route loader's RESOLVED data type from the loader function itself — pair with… |
 | [`getActiveRouter / setActiveRouter`](#getactiverouter-setactiverouter-function) | function | The module-level FALLBACK a hook resolves against when no `<RouterProvider>` context is above it. |
-| [`classifyHref / toRouterPath`](#classifyhref-torouterpath-function) | function | The classification `<RouterLink>` uses internally to decide client-side-navigate vs plain-anchor-behavior, exported for  |
+| [`classifyHref / toRouterPath`](#classifyhref-torouterpath-function) | function | The classification `<RouterLink>` uses internally to decide client-side-navigate vs plain-anchor-behavior, exported for… |
 | [`classifyRedirectTarget / safeRedirectLocation`](#classifyredirecttarget-saferedirectlocation-function) | function | The open-redirect guard `redirect()` runs its target through. |
 | [`serializeLoaderData / stringifyLoaderDataForScript / stringifyLoaderData / hydrateLoaderData`](#serializeloaderdata-stringifyloaderdataforscript-stringifyloaderdata-hydrateloaderdata-function) | function | The SSR ⇄ client loader-data transit pipeline `@pyreon/server`/`@pyreon/zero` build on. |
-| [`resolveRoute / buildPath / findRouteByName / parseQuery / parseQueryMulti / stringifyQuery`](#resolveroute-buildpath-findroutebyname-parsequery-parsequerymulti-stringifyquery-function) | function | Match utilities re-exported for SSR route pre-fetching and custom tooling that needs to match a path against a route TRE |
+| [`resolveRoute / buildPath / findRouteByName / parseQuery / parseQueryMulti / stringifyQuery`](#resolveroute-buildpath-findroutebyname-parsequery-parsequerymulti-stringifyquery-function) | function | Match utilities re-exported for SSR route pre-fetching and custom tooling that needs to match a path against a route… |
 
 ## API
 

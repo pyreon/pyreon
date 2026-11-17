@@ -104,7 +104,7 @@ tabbed.openTab({ id: 'readme', name: 'README.md', language: 'markdown', value: '
 | [`registerLanguage`](#registerlanguage-function) | function | Register (or replace) a language loader in the grammar registry `loadLanguage` reads from. |
 | [`minimapExtension`](#minimapextension-function) | function | CodeMirror extension that renders a canvas-based code overview minimap. |
 | [`useEditorSignal`](#useeditorsignal-function) | function | Component hook that two-way-binds an editor to a signal WITH automatic cleanup. |
-| [`getAvailableLanguages`](#getavailablelanguages-function) | function | Return every supported language identifier (the keys of the internal grammar-loader registry) — for building a language  |
+| [`getAvailableLanguages`](#getavailablelanguages-function) | function | Return every supported language identifier (the keys of the internal grammar-loader registry) — for building a language… |
 | [`darkTheme / lightTheme / resolveTheme`](#darktheme-lighttheme-resolvetheme-constant) | constant | The built-in editor themes. |
 
 ## API

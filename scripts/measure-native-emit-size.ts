@@ -67,11 +67,11 @@ interface SourceInput {
 const SOURCES: SourceInput[] = [
   {
     name: 'native-counter (minimal)',
-    path: 'examples/native-counter-ios/src/Counter.tsx',
+    path: 'examples/native-counter/src/Counter.tsx',
   },
   {
     name: 'native-todomvc (real-app)',
-    path: 'examples/native-todomvc-ios/src/TodoApp.tsx',
+    path: 'examples/native-todomvc/src/TodoApp.tsx',
   },
   // Per-fixture coverage is a follow-up — add as the canonical-vocab
   // fixtures (B5 / B5.2 / B5.3 / B5.4 / B5.5) merge to main. The script

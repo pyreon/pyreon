@@ -3,7 +3,7 @@ import type { BlogPost, BlogTag, BlogTagCount } from '@pyreon/zero-content/blog'
 import { formatPostDate, isoDay } from '@pyreon/zero-content/blog'
 import { fill } from '../../site/content/channels'
 import type { BlogChannel, Cta } from '../../site/content/types-site'
-import { el, focusRing, tone, txt, type LinkAttrs } from '../../site/kit/bases'
+import { el, focusRing, tone, txt, type LinkAttrs, tapArea } from '../../site/kit/bases'
 import { GlowCard } from '../../site/kit/cards'
 import { Pill } from '../../site/kit/controls'
 import { AutoGrid } from '../../site/kit/layout'
@@ -20,6 +20,9 @@ import type { PlannedPost } from '../planned'
 
 /** Dates print in this locale, always in UTC (the same day on every machine). */
 export const BLOG_LOCALE = 'en-GB'
+
+/** The date and the reading time wrap together, so a line never ends on its "·". */
+const MetaGroup = txt.config({ name: 'BlogMetaGroup' }).attrs({ tag: 'span' }).theme(() => ({ whiteSpace: 'nowrap' }))
 
 const MetaRow = el
   .config({ name: 'BlogMeta' })
@@ -88,9 +91,9 @@ export function CardMeta(props: { post: BlogPost; label?: string | undefined }) 
     <MetaRow>
       {props.label ? <PostChip state="accent">{props.label}</PostChip> : null}
       {topic ? <PostChip state={props.label ? 'default' : 'accent'}>{topic.name}</PostChip> : null}
-      <time datetime={isoDay(p.date)}>{formatPostDate(p.date, BLOG_LOCALE)}</time>
-      <Dot>·</Dot>
-      <span>{`${p.readingMinutes} min read`}</span>
+      <MetaGroup>
+        <time datetime={isoDay(p.date)}>{formatPostDate(p.date, BLOG_LOCALE)}</time> <Dot>·</Dot> {`${p.readingMinutes} min read`}
+      </MetaGroup>
     </MetaRow>
   )
 }
@@ -118,7 +121,7 @@ const TagLink = el
     transition: `border-color ${motion.hover}, color ${motion.hover}`,
     hover: { borderColor: tone(m, 'lineHover'), color: tone(m, 'text') },
     focus: focusRing(m),
-    extendCss: `&[aria-current] { border-color: ${tone(m, 'accent')}; background-color: ${tone(m, 'glow')}; color: ${tone(m, 'strong')}; }`,
+    extendCss: `&[aria-current] { border-color: ${tone(m, 'accent')}; background-color: ${tone(m, 'glow')}; color: ${tone(m, 'strong')}; } ${tapArea}`,
   }))
 
 const TagCount = txt

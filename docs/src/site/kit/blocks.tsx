@@ -51,7 +51,7 @@ export function FactList(props: { facts: readonly { key: string; value: string }
       <For each={props.facts} by={(f) => f.key}>
         {(f) => (
           <FactRow>
-            <FactKey>{f.key}</FactKey>
+            <FactKey>{renderInline(f.key)}</FactKey>
             <FactValue>{renderInline(f.value)}</FactValue>
           </FactRow>
         )}
@@ -78,7 +78,7 @@ export function NumberedCards(props: { items: readonly { title: string; text: st
                   {String(it.i + 1).padStart(2, '0')}
                 </Eyebrow>
                 <Heading tag="h3" size="card">
-                  {it.title}
+                  {renderInline(it.title)}
                   {it.status ? <StatusBadge>{it.status}</StatusBadge> : null}
                 </Heading>
                 <Lede size="card">{renderInline(it.text)}</Lede>
@@ -102,7 +102,7 @@ export function StepCards(props: { items: readonly { title: string; text: string
             <GlowCard state={it.i === 0 ? 'hot' : 'default'}>
               <Eyebrow state="accent">{`step ${it.i + 1}`}</Eyebrow>
               <Heading tag="h3" size="step">
-                {it.title}
+                {renderInline(it.title)}
               </Heading>
               <Lede size="card">{renderInline(it.text)}</Lede>
             </GlowCard>
@@ -258,7 +258,7 @@ const LimitTitle = txt
 export function LimitNote(props: { title: string; text: string }) {
   return (
     <LimitBox>
-      <LimitTitle>{props.title}</LimitTitle>
+      <LimitTitle>{renderInline(props.title)}</LimitTitle>
       <Lede size="small">{renderInline(props.text)}</Lede>
     </LimitBox>
   )
@@ -337,14 +337,15 @@ const FaqItem = el
   .theme((_t, m) => ({
     borderBottom: '1px solid',
     borderColor: tone(m, 'line'),
-    paddingTop: 18,
-    paddingBottom: 18,
   }))
 
 const FaqQuestion = txt
   .config({ name: 'FaqQuestion' })
   .attrs({ tag: 'summary' })
   .theme((_t, m) => ({
+    // The padding sits on the summary, so the whole row is the tap target.
+    paddingTop: 18,
+    paddingBottom: 18,
     cursor: 'pointer',
     fontFamily: font.sans,
     fontSize: 17,
@@ -359,8 +360,9 @@ const FaqAnswer = txt
   .config({ name: 'FaqAnswer' })
   .attrs({ tag: 'p' })
   .theme((_t, m) => ({
-    marginTop: 10,
+    marginTop: -8,
     marginBottom: 0,
+    paddingBottom: 18,
     maxWidth: 720,
     fontFamily: font.sans,
     fontSize: text.body.size,
@@ -381,7 +383,7 @@ export function Faq(props: { items: readonly { q: string; a: string }[] }) {
       <For each={props.items} by={(f) => f.q}>
         {(f) => (
           <FaqItem>
-            <FaqQuestion>{f.q}</FaqQuestion>
+            <FaqQuestion>{renderInline(f.q)}</FaqQuestion>
             <FaqAnswer>{renderInline(f.a)}</FaqAnswer>
           </FaqItem>
         )}

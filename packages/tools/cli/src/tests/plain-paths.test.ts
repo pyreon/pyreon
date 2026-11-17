@@ -14,6 +14,7 @@ beforeEach(() => {
     logs.push(a.map(String).join(' '))
   })
 })
+
 afterEach(() => {
   vi.restoreAllMocks()
   rmSync(tmp, { recursive: true, force: true })
@@ -26,10 +27,12 @@ const opts = (over: Partial<PlainOptions>): PlainOptions => ({
   write: false,
   ...over,
 })
+
 const write = (name: string, src: string): string => {
   const p = join(tmp, name)
   mkdirSync(dirname(p), { recursive: true })
   writeFileSync(p, src, 'utf8')
+
   return p
 }
 

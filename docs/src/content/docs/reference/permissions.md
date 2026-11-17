@@ -91,7 +91,7 @@ const AdminPanel = () => {
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`createPermissions`](#createpermissions-function) | function | Create a reactive permissions instance. |
-| [`can.assert`](#canassert-function) | function | Throw if a permission is NOT granted — the imperative companion to the reactive `can()` check, for route loaders, naviga |
+| [`can.assert`](#canassert-function) | function | Throw if a permission is NOT granted — the imperative companion to the reactive `can()` check, for route loaders,… |
 | [`PermissionsProvider`](#permissionsprovider-component) | component | Context provider that makes a permissions instance available to descendant components via `usePermissions()`. |
 | [`usePermissions`](#usepermissions-hook) | hook | Consume the nearest `PermissionsProvider` value. |
 

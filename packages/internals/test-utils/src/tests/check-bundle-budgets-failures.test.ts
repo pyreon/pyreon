@@ -260,6 +260,7 @@ function setupFixturePackagesDir(opts: {
       ),
     )
   }
+
   return root
 }
 
@@ -295,6 +296,7 @@ function runCheck(
   } catch {
     json = null
   }
+
   return { status: result.status, json, stderr: result.stderr ?? '' }
 }
 
@@ -470,6 +472,7 @@ describe('scripts/check-bundle-budgets.ts failure surfacing', () => {
       const dir = realpathSync(mkdtempSync(join(tmpdir(), 'pyreon-budgets-dir-')))
       budgetsDir = dir
       if (ceiling !== undefined) writeCeiling(dir, 'bundle', NAME, ceiling)
+
       return dir
     }
 
@@ -488,6 +491,7 @@ describe('scripts/check-bundle-budgets.ts failure surfacing', () => {
           routes: family,
         }),
       )
+
       return file
     }
 
@@ -510,6 +514,7 @@ describe('scripts/check-bundle-budgets.ts failure surfacing', () => {
       const json = runCheck(root, {}, ['--measure-only']).json as JsonOutput
       const entry = json.measured.find((m) => m.name === NAME)
       expect(entry).toBeDefined()
+
       return entry!.gzip
     }
 

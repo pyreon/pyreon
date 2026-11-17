@@ -2,7 +2,7 @@
 
 Plain Mode (the `'use plain'` dialect) has its own file: [plain-mode.md](./plain-mode.md).
 
-Concluded architecture experiments (E1 speculative `mountFor`: DEFER; E2 static rocketstyle collapse: GRADUATE; E5 actor model: GRADUATE) keep their decision records in [references/experiments/](./references/experiments/). Code comments cite them; the experiment code itself is in git history.
+Concluded architecture experiments (E1 speculative `mountFor`: DEFER; E2 static rocketstyle collapse: GRADUATE; E5 actor model: GRADUATE) keep their decision records in [references/experiments/](./references/experiments/). Code comments cite them; the experiment code itself is in git history. The chat user-shape audit (W24–W25, from the folded `examples/chat`) is in [references/audits/](./references/audits/).
 
 ## Compiler
 
@@ -111,7 +111,7 @@ Default-on in dev. The Vite plugin injects `virtual:pyreon/dev-error-printer`, w
 
 ## Dev perf counters
 
-Framework packages emit counters via `globalThis.__pyreon_count__?.('name')` with no import of `@pyreon/perf-harness`, behind the bare `process.env.NODE_ENV !== 'production'` gate so they tree-shake. Every name has exactly one row in `packages/internals/perf-harness/COUNTERS.md` (drift-tested in both directions; the count is not gated, so count the rows rather than trusting a prose total). Consumer API: `perfHarness.snapshot()/reset()/record()/diff()/overlay()`; automation in `examples/perf-dashboard`, `bun run perf:record` / `perf:diff`, and the advisory `perf.yml`.
+Framework packages emit counters via `globalThis.__pyreon_count__?.('name')` with no import of `@pyreon/perf-harness`, behind the bare `process.env.NODE_ENV !== 'production'` gate so they tree-shake. Every name has exactly one row in `packages/internals/perf-harness/COUNTERS.md` (drift-tested in both directions; the count is not gated, so count the rows rather than trusting a prose total). Consumer API: `perfHarness.snapshot()/reset()/record()/diff()/overlay()`; automation in `examples/fixtures/perf-dashboard`, `bun run perf:record` / `perf:diff`, and the advisory `perf.yml`.
 
 ## Signal implementation
 

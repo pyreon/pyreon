@@ -220,7 +220,7 @@ Every `.attrs()` value is a **default**, not a required prop — the consumer ca
 When you wrap a layout-aware base component (such as `@pyreon/elements`' `Element`, which the `@pyreon/ui-components` bases use), the convention is: **layout props go in `.attrs()`** (`tag`, `contentDirection`, `contentAlignX`, `contentAlignY`, `gap`, `block` — these drive the Element's inner flex layout; on a compound Element with `beforeContent`/`afterContent`, the slot axis uses `direction`, `alignX`, `alignY`), and **visual CSS goes in `.theme()`** (colors, spacing, borders, shadows — these style the outer wrapper). A bare `rocketstyle('div')` component only forwards whatever props the wrapped component understands; the layout-prop convention applies through Element-based bases.
 :::
 
-### `.styles(css => css\`...\`)` — escape hatch to raw CSS
+### ``.styles(css => css`...`)`` — escape hatch to raw CSS
 
 `.styles()` gives you the styler's tagged-template `css` helper directly, for cases the dimension model can't express (pseudo-selectors keyed on resolved state, complex interpolation, etc.). Interpolation functions receive `$rocketstyle` (the fully resolved theme object) and `$rocketstate` (the active dimension values + pseudo state):
 
@@ -538,7 +538,7 @@ Every method returns a new `RocketStyleComponent` (immutable builder).
 | `.variants(cb)` | same as `.states` | The `variant` dimension. |
 | `.multiple(cb)` | same as `.states` | The multi-value `multiple` dimension. |
 | `.modifiers(cb)` | same as `.states` | The multi-value + transform `modifier` dimension. |
-| `.styles(cb)` | `((css) => css\`…\`) => …` | Raw styler `css` escape hatch. Interpolation fns get `$rocketstyle` + `$rocketstate`. |
+| `.styles(cb)` | ``((css) => css`…`) => …`` | Raw styler `css` escape hatch. Interpolation fns get `$rocketstyle` + `$rocketstate`. |
 | `.compose(hocs)` | `(Record<string, Hoc \| false \| null>) => …` | Wrap in named HOCs (falsy values skipped). |
 | `.statics(meta)` | `(object) => …` | Attach static metadata (readable on `.meta`). |
 

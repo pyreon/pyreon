@@ -30,33 +30,85 @@ export const THIRD_PARTY_SCHEMA_LIBRARIES: ReadonlySet<string> = new Set(['zod',
 /** A function imported from a Pyreon package, by local name (see `collectAliasImports`). */
 export type PyreonFunctionImports = ReadonlyMap<string, { readonly source: string; readonly imported: string }>
 
-/** Strip string literals and comments so a name inside embedded HTML / JS text does not count as a call. */
+/**
+ * Strip string literals and comments so a name inside embedded HTML / JS text does not count as a call.
+ *
+ * An INTERPOLATION inside a string is code, not text, and is kept: Swift's `"\(f(x))"` and Kotlin's `"${f(x)}"` are
+ * where a JS template literal lands, and an unlowered call there (`` `<b>${escapeJsonForScript(s)}</b>` ``) survives
+ * verbatim exactly like one outside a string. Stripping the whole literal hid it, and the build failed with no warning.
+ */
 function stripLiteralsAndComments(code: string): string {
+  return scanCode(code, 0, undefined).out
+}
+
+/**
+ * Scan `code` from `start` as CODE, dropping comments and string text. With a `close` character, stop at the first
+ * unbalanced `close` (the end of an interpolation) and return the index just past it.
+ */
+function scanCode(code: string, start: number, close: ')' | '}' | undefined): { out: string; end: number } {
+  const open = close === ')' ? '(' : close === '}' ? '{' : undefined
   let out = ''
-  let i = 0
+  let depth = 0
+  let i = start
   while (i < code.length) {
     const c = code[i]!
     const n = code[i + 1]
-    if (c === '/' && n === '/') {
-      while (i < code.length && code[i] !== '\n') i++
-    } else if (c === '/' && n === '*') {
-      i += 2
-      while (i < code.length && !(code[i] === '*' && code[i + 1] === '/')) i++
-      i += 2
-    } else if (c === '"' && code.startsWith('"""', i)) {
-      i += 3
-      while (i < code.length && !code.startsWith('"""', i)) i++
-      i += 3
+    if (close !== undefined && c === close && depth === 0) return { out, end: i + 1 }
+    if (open !== undefined && c === open) depth++
+    else if (close !== undefined && c === close) depth--
+    const afterComment = c === '/' ? skipComment(code, i, n) : undefined
+    if (afterComment !== undefined) {
+      i = afterComment
     } else if (c === '"') {
-      i++
-      while (i < code.length && code[i] !== '"') i += code[i] === '\\' ? 2 : 1
-      i++
+      const triple = code.startsWith('"""', i)
+      const s = scanString(code, i + (triple ? 3 : 1), triple)
+      // The literal's text is dropped; its interpolations stay, separated so they cannot glue onto a neighbour.
+      out += ` ${s.out} `
+      i = s.end
     } else {
       out += c
       i++
     }
   }
-  return out
+
+  return { out, end: i }
+}
+
+/** The index just past a line or block comment starting at `i`, or undefined when none starts there. */
+function skipComment(code: string, i: number, next: string | undefined): number | undefined {
+  if (next === '/') {
+    let j = i
+    while (j < code.length && code[j] !== '\n') j++
+
+    return j
+  }
+
+  if (next !== '*') return undefined
+  let j = i + 2
+  while (j < code.length && !(code[j] === '*' && code[j + 1] === '/')) j++
+
+  return j + 2
+}
+
+/** Scan a string body from `start` to its closing quote, returning only the code of its interpolations. */
+function scanString(code: string, start: number, triple: boolean): { out: string; end: number } {
+  let out = ''
+  let i = start
+  while (i < code.length) {
+    if (triple ? code.startsWith('"""', i) : code[i] === '"') return { out, end: i + (triple ? 3 : 1) }
+    const c = code[i]!
+    const n = code[i + 1]
+    // Swift `\(…)` and Kotlin `${…}`: the expression inside is code.
+    if ((c === '\\' && n === '(') || (c === '$' && n === '{')) {
+      const inner = scanCode(code, i + 2, c === '\\' ? ')' : '}')
+      out += ` ${inner.out} `
+      i = inner.end
+    } else {
+      i += c === '\\' ? 2 : 1
+    }
+  }
+
+  return { out, end: i }
 }
 
 /**

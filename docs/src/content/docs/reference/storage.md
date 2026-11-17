@@ -78,7 +78,7 @@ const secret = useEncrypted('api-key', '')
 | [`useStorage`](#usestorage-hook) | hook | Create a reactive signal backed by localStorage. |
 | [`useCookie`](#usecookie-hook) | hook | Reactive signal backed by browser cookies. |
 | [`useSessionStorage`](#usesessionstorage-hook) | hook | Per-tab ephemeral reactive storage. |
-| [`useMemoryStorage`](#usememorystorage-hook) | hook | In-memory reactive signal that mimics the storage hook shape — useful as an SSR-safe fallback (its byte store is request |
+| [`useMemoryStorage`](#usememorystorage-hook) | hook | In-memory reactive signal that mimics the storage hook shape — useful as an SSR-safe fallback (its byte store is… |
 | [`setCookieSource`](#setcookiesource-function) | function | Tell `useCookie` how to read cookies during SSR. |
 | [`useIndexedDB`](#useindexeddb-hook) | hook | Reactive signal backed by IndexedDB for large data. |
 | [`createStorage`](#createstorage-function) | function | Factory for custom storage backends. |

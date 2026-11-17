@@ -1,5 +1,5 @@
-import { font, radius, text, weight, z } from '../theme'
-import { el, focusRing, tone, txt, type LinkAttrs } from '../kit/bases'
+import { font, radius, text, touch, weight, z } from '../theme'
+import { el, focusRing, tone, txt, type LinkAttrs, tapArea } from '../kit/bases'
 
 /**
  * Server-rendered pieces of the marketing shell (skip link, the footer's
@@ -14,6 +14,7 @@ export const SkipLink = el
     top: 8,
     left: 8,
     zIndex: z.skip,
+    minHeight: touch.tapTarget,
     paddingTop: 10,
     paddingBottom: 10,
     paddingLeft: 16,
@@ -37,6 +38,7 @@ export const MarkLink = el
     color: tone(m, 'strong'),
     textDecoration: 'none',
     borderRadius: radius.small,
+    extendCss: tapArea,
     focus: focusRing(m),
   }))
 

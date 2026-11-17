@@ -23,7 +23,7 @@ import { describe, expect, it } from 'vitest'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(HERE, '../../../../..')
-const SCRIPT = join(REPO_ROOT, 'examples/native-todomvc-android/scripts/release-smoke.sh')
+const SCRIPT = join(REPO_ROOT, 'examples/native-todomvc/scripts/release-smoke.sh')
 
 const PKG = 'com.pyreon.PyreonTodoMVC'
 
@@ -75,9 +75,10 @@ interface RunResult {
 function runSmoke(mode: 'race' | 'rendered' | 'blank' | 'dialog' | 'dialog-clears'): RunResult {
   const dir = mkdtempSync(join(tmpdir(), 'pyreon-smoke-'))
   mkdirSync(join(dir, 'scripts'), { recursive: true })
-  mkdirSync(join(dir, 'app/build/outputs/apk/release'), { recursive: true })
+  // The app's layout: the script in scripts/, the Gradle project in android/.
+  mkdirSync(join(dir, 'android/app/build/outputs/apk/release'), { recursive: true })
   mkdirSync(join(dir, 'bin'), { recursive: true })
-  writeFileSync(join(dir, 'app/build/outputs/apk/release/app-release.apk'), 'not-a-real-apk')
+  writeFileSync(join(dir, 'android/app/build/outputs/apk/release/app-release.apk'), 'not-a-real-apk')
   cpSync(SCRIPT, join(dir, 'scripts/release-smoke.sh'))
   chmodSync(join(dir, 'scripts/release-smoke.sh'), 0o755)
 

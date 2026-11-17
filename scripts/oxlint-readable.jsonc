@@ -1,0 +1,51 @@
+{
+  // The oxlint half of the `readable` preset, for THIS repository: only the
+  // shipped readable thresholds (size, complexity, depth, params, import
+  // placement), with every other oxlint rule off — those are `.oxlintrc.json`'s
+  // job and stay at their documented zero. Findings are frozen per file in
+  // `readable-oxlint-baseline.json` by `scripts/check-readable-oxlint-ratchet.ts`.
+  "$schema": "../node_modules/oxlint/configuration_schema.json",
+  "extends": ["../packages/tools/lint/oxlint/readable.json"],
+  "categories": { "correctness": "off" },
+  "ignorePatterns": [
+    "dist",
+    "lib",
+    "node_modules",
+    ".turbo",
+    "templates",
+    "atlas-dist",
+    "atlas-dist-e2e",
+    "**/*.d.ts",
+    "**/*.generated.*",
+    "**/fixtures/**",
+    "**/golden-fixtures/**",
+    "**/native-golden/**",
+    "**/api-reference.ts",
+    "**/bench/typia/generated.js",
+    "examples/stacks-bench/apps"
+  ],
+  "overrides": [
+    {
+      // Hot paths: long, branchy or deeply nested ON PURPOSE. The JSX
+      // transform must stay byte-equivalent with the Rust backend (one
+      // function mirrors one Rust function), the native emitters are one
+      // switch per IR node kind, batching and hydration keep one closure so
+      // the engine stays monomorphic (see BENCHMARKS.md). Splitting them for a
+      // size limit costs correctness or speed; they are exempt from the size
+      // and complexity limits only, not from import placement.
+      "files": [
+        "packages/core/compiler/src/jsx.ts",
+        "packages/native/compiler/src/emit-swift.ts",
+        "packages/native/compiler/src/emit-kotlin.ts",
+        "packages/core/reactivity/src/batch.ts",
+        "packages/core/runtime-dom/src/hydrate.ts"
+      ],
+      "rules": {
+        "max-lines-per-function": "off",
+        "max-lines": "off",
+        "complexity": "off",
+        "max-depth": "off"
+      }
+    }
+  ]
+}

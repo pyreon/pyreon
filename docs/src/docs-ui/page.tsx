@@ -2,6 +2,7 @@ import type { VNodeChild } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { DocsGlyph as Glyph } from './glyph'
 import { Badge } from './sidebar'
+import { CodeSpans } from './code-spans'
 import { editUrlOf, SITE_ORIGIN } from './actions'
 import { useDocsData, type RailProduct } from './data'
 import { prevNextOf, trailOf, type PageLink } from './nav'
@@ -11,7 +12,7 @@ import { InlineToc, RailToc, tocEntries, type TocHeading } from './toc'
 
 export function Breadcrumbs(props: { path: string; title: string }) {
   const t = trailOf(props.path)
-  const link = (href: string, text: string) => h('li', null, h('a', { href }, text))
+  const link = (href: string, text: string) => h('li', null, h('a', { href }, h(CodeSpans, { text })))
   // h(): the middle crumbs are conditional children (#4385).
   return h(
     'nav',
@@ -22,7 +23,7 @@ export function Breadcrumbs(props: { path: string; title: string }) {
       link('/docs', 'Docs'),
       t && t.item.href !== '/docs' ? h('li', null, h('span', null, t.group.group)) : null,
       t?.parent ? link(t.parent.href, t.parent.title) : null,
-      h('li', null, h('span', { 'aria-current': 'page' }, t?.item.title ?? props.title)),
+      h('li', null, h('span', { 'aria-current': 'page' }, h(CodeSpans, { text: t?.item.title ?? props.title }))),
     ),
   )
 }
@@ -49,7 +50,7 @@ function PrevNext(props: { path: string }) {
       'a',
       { class: `dx-pn__link dx-pn__link--${dir}`, href: l.href, rel: dir },
       h('small', null, dir === 'prev' ? 'Previous' : 'Next'),
-      dir === 'prev' ? `← ${l.title}` : `${l.title} →`,
+      h(CodeSpans, { text: dir === 'prev' ? `← ${l.title}` : `${l.title} →` }),
     )
   // h(): either card may be absent (#4385).
   return h(
@@ -118,7 +119,7 @@ export function DocsPage(props: {
         ? null
         : product
           ? h(PitchHead, { product })
-          : h('header', { class: 'dx-head' }, h('h1', { class: 'dx-title' }, props.title), props.description ? h('p', { class: 'dx-desc' }, props.description) : null),
+          : h('header', { class: 'dx-head' }, h('h1', { class: 'dx-title' }, h(CodeSpans, { text: props.title })), props.description ? h('p', { class: 'dx-desc' }, h(CodeSpans, { text: props.description })) : null),
       entries.length > 0 ? h(InlineToc, { entries }) : null,
       h('div', { class: 'dx-prose', id: 'dx-article', tabIndex: -1 }, props.children),
       h(DocsHelpfulIsland, { title: props.title, url }),

@@ -71,18 +71,18 @@ const myPreset: Preset = {
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`presets`](#presets-constant) | constant | The full catalog as one `as const` map — 122 entries, every one also available as a named export (`fadeUp`, `bounceIn`,  |
+| [`presets`](#presets-constant) | constant | The full catalog as one `as const` map — 122 entries, every one also available as a named export (`fadeUp`, `bounceIn`,… |
 | [`createFade`](#createfade-function) | function | Factory for fade presets. |
 | [`createSlide`](#createslide-function) | function | Factory for slide presets — same shape as `createFade` but `direction` defaults to `'up'` (always includes movement). |
 | [`createScale`](#createscale-function) | function | Factory for scale presets — enters from `scale(from)` + opacity 0 to `scale(1)` + opacity 1; leave reverses. |
-| [`createRotate`](#createrotate-function) | function | Factory for rotation presets — enters from `rotate(-degrees)` + opacity 0 to `rotate(0)`; the leave ends at `rotate(+deg |
+| [`createRotate`](#createrotate-function) | function | Factory for rotation presets — enters from `rotate(-degrees)` + opacity 0 to `rotate(0)`; the leave ends at… |
 | [`createBlur`](#createblur-function) | function | Factory for blur presets — enters from `blur(amount)` + opacity 0 to `blur(0px)` + opacity 1. |
 | [`compose`](#compose-function) | function | Merge multiple presets into one. |
 | [`withDuration`](#withduration-function) | function | Return a copy of the preset with new durations — replaces the FIRST duration token (e.g. |
-| [`withEasing`](#witheasing-function) | function | Return a copy of the preset with new easing — replaces the TRAILING easing token (`ease`, `ease-in`, `ease-out`, `ease-i |
-| [`withDelay`](#withdelay-function) | function | Return a copy of the preset with a transition delay — inserts the delay after the first duration in the transition strin |
-| [`reverse`](#reverse-function) | function | Swap the enter and leave phases of a preset — ALL fields are swapped, style-form (`enterStyle` ↔ `leaveStyle`, `enterToS |
-| [`Preset`](#preset-type) | type | A preset is a plain object with up to 12 optional fields: six style-form (`enterStyle` / `enterToStyle` : `CSSProperties |
+| [`withEasing`](#witheasing-function) | function | Return a copy of the preset with new easing — replaces the TRAILING easing token (`ease`, `ease-in`, `ease-out`,… |
+| [`withDelay`](#withdelay-function) | function | Return a copy of the preset with a transition delay — inserts the delay after the first duration in the transition… |
+| [`reverse`](#reverse-function) | function | Swap the enter and leave phases of a preset — ALL fields are swapped, style-form (`enterStyle` ↔ `leaveStyle`,… |
+| [`Preset`](#preset-type) | type | A preset is a plain object with up to 12 optional fields: six style-form (`enterStyle` / `enterToStyle` :… |
 
 ## API
 

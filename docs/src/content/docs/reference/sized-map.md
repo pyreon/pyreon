@@ -27,7 +27,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`SizedMap`](#sizedmap-class) | class | Bounded `Map<K, V>` that evicts the oldest entry when `maxEntries` is exceeded, relying on the native Map insertion-orde |
+| [`SizedMap`](#sizedmap-class) | class | Bounded `Map<K, V>` that evicts the oldest entry when `maxEntries` is exceeded, relying on the native Map… |
 | [`SizedMapOptions`](#sizedmapoptions-type) | type | Constructor options. |
 
 ## API

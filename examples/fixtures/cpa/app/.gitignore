@@ -1,0 +1,6 @@
+node_modules
+dist
+.DS_Store
+*.local
+.pyreon
+src/pyreon-routes.d.ts

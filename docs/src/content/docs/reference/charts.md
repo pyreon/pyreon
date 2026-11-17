@@ -65,22 +65,22 @@ rows.set([...rows(), { month: 'Apr', revenue: 190, target: 180 }])
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`Chart`](#chart-component) | component | The chart — `<Chart data x>` with MARK CHILDREN, from `@pyreon/charts`. |
-| [`Sma`](#sma-component) | component | The INDICATOR marks, from `@pyreon/charts`: `<Sma y window>` (simple moving average), `<Ema y window>` (exponential), `&lt; |
-| [`PlotChart`](#plotchart-component) | component | The array form of `<Chart>`, from `@pyreon/charts/engine`: the same engine, with marks passed as a `marks={[…]}` array o |
-| [`ChartThemeProvider`](#chartthemeprovider-component) | component | Provides ONE theme to every chart below it, in layers: the mode's built-in theme (or an outer provider's), then `theme`  |
-| [`BoxplotChart`](#boxplotchart-component) | component | A boxplot per category from RAW SAMPLES: `values={(d) => d.samples}` is reduced with `fiveNumber` (min, q1, median, q3,  |
-| [`sma`](#sma-function) | function | Indicator MARKS over a value accessor, for the finance and telemetry charts that draw a signal beside its smoothing: `sm |
+| [`Sma`](#sma-component) | component | The INDICATOR marks, from `@pyreon/charts`: `<Sma y window>` (simple moving average), `<Ema y window>` (exponential),… |
+| [`PlotChart`](#plotchart-component) | component | The array form of `<Chart>`, from `@pyreon/charts/engine`: the same engine, with marks passed as a `marks={[…]}` array… |
+| [`ChartThemeProvider`](#chartthemeprovider-component) | component | Provides ONE theme to every chart below it, in layers: the mode's built-in theme (or an outer provider's), then `theme`… |
+| [`BoxplotChart`](#boxplotchart-component) | component | A boxplot per category from RAW SAMPLES: `values={(d) => d.samples}` is reduced with `fiveNumber` (min, q1, median, q3,… |
+| [`sma`](#sma-function) | function | Indicator MARKS over a value accessor, for the finance and telemetry charts that draw a signal beside its smoothing:… |
 | [`chartToSvg`](#charttosvg-function) | function | Render a chart to a standalone `<svg>` STRING. |
 | [`Arc`](#arc-component) | component | The pie and donut mark: `<Chart data><Arc value label /></Chart>`. |
-| [`Candle`](#candle-component) | component | The candlestick mark: `<Chart data x><Candle open high low close /></Chart>`, one period per row, the chart's `x` labell |
-| [`Cell`](#cell-component) | component | The heatmap mark: `<Chart data><Cell x y value /></Chart>` — two categorical axes, a value per cell, colour as the third |
+| [`Candle`](#candle-component) | component | The candlestick mark: `<Chart data x><Candle open high low close /></Chart>`, one period per row, the chart's `x`… |
+| [`Cell`](#cell-component) | component | The heatmap mark: `<Chart data><Cell x y value /></Chart>` — two categorical axes, a value per cell, colour as the third… |
 | [`RadarChart`](#radarchart-component) | component | Radar (spider) chart from `@pyreon/charts` — one polygon per datum over shared spokes. |
 | [`TreemapChart`](#treemapchart-component) | component | The hierarchy families of Pyreon's own engine share ONE data shape: `TreeNode { name, value?, children?, color? }`. |
 | [`MapChart`](#mapchart-component) | component | GeoJSON regions filled by value. |
 | [`GanttChart`](#ganttchart-component) | component | The Gantt family — one row per task on a calendar-aligned time axis. |
-| [`createChartHandle`](#createcharthandle-function) | function | The imperative handle (ECharts `dispatchAction`) for ONE `<PlotChart handle>`: a link (`zoom`, `hover`) plus `selected`  |
-| [`createChartLink`](#createchartlink-function) | function | Linked charts (ECharts `connect`): a shared `{ zoom, hover }` pair of signals that every `<PlotChart link>` in a group u |
-| [`sonifyValues`](#sonifyvalues-function) | function | A series as sound: each value maps linearly to a pitch between `minHz` and `maxHz` (`valueToHz` — a FINITE value outside |
+| [`createChartHandle`](#createcharthandle-function) | function | The imperative handle (ECharts `dispatchAction`) for ONE `<PlotChart handle>`: a link (`zoom`, `hover`) plus `selected`… |
+| [`createChartLink`](#createchartlink-function) | function | Linked charts (ECharts `connect`): a shared `{ zoom, hover }` pair of signals that every `<PlotChart link>` in a group… |
+| [`sonifyValues`](#sonifyvalues-function) | function | A series as sound: each value maps linearly to a pitch between `minHz` and `maxHz` (`valueToHz` — a FINITE value outside… |
 
 ## API
 

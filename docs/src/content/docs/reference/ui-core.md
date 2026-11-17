@@ -71,19 +71,19 @@ const InvertedSection = () => (
 | [`useThemeValue`](#usethemevalue-hook) | hook | Deep-reads a dot-path from the styler theme (e.g. |
 | [`useRootSize`](#userootsize-hook) | hook | Reads the styler theme root font size (default `16`) and returns it plus `pxToRem` / `remToPx` converters. |
 | [`useSpacing`](#usespacing-hook) | hook | Returns a `spacing(multiplier)` function producing a px string. |
-| [`cssVariablesPrePaintScript`](#cssvariablesprepaintscript-function) | function | Build the blocking pre-paint script that sets the CSS-variables mode attribute on `document.documentElement` BEFORE firs |
-| [`init`](#init-function) | function | The escape hatch `<PyreonUI>` calls internally to configure the ui-system-wide `Configuration` singleton (`config.css`/` |
-| [`get / set / merge / pick / omit / isEmpty / isEqual`](#get-set-merge-pick-omit-isempty-isequal-function) | function | Zero-dependency object utilities the ui-system builds its HOC/prop pipelines on — `@pyreon/lodash` without the dependenc |
+| [`cssVariablesPrePaintScript`](#cssvariablesprepaintscript-function) | function | Build the blocking pre-paint script that sets the CSS-variables mode attribute on `document.documentElement` BEFORE… |
+| [`init`](#init-function) | function | The escape hatch `<PyreonUI>` calls internally to configure the ui-system-wide `Configuration` singleton… |
+| [`get / set / merge / pick / omit / isEmpty / isEqual`](#get-set-merge-pick-omit-isempty-isequal-function) | function | Zero-dependency object utilities the ui-system builds its HOC/prop pipelines on — `@pyreon/lodash` without the… |
 | [`throttle`](#throttle-function) | function | Rate-limits `fn` to at most once per `wait` ms. |
 | [`compose`](#compose-function) | function | Right-to-left function composition — `compose(f, g, h)(x)` is `f(g(h(x)))`. |
-| [`resolveSlot`](#resolveslot-function) | function | Resolves a slot prop (`beforeContent`, `afterContent`, `content` — the pattern `@pyreon/elements`' Element/Text/List use |
-| [`isPyreonComponent`](#ispyreoncomponent-function) | function | Detects whether a function value is a Pyreon COMPONENT (framework-marked via `IS_ROCKETSTYLE`/`PYREON__COMPONENT`, or us |
-| [`render`](#render-function) | function | A flexible one-shot renderer used internally by the ui-system's content/slot props: primitives (string/number/boolean) a |
-| [`useStableValue`](#usestablevalue-hook) | hook | Returns a referentially-stable version of `value` — the returned reference only changes when the new value is no longer  |
-| [`HTML_TAGS / HTML_TEXT_TAGS`](#html_tags-html_text_tags-constant) | constant | The two tag allowlists `@pyreon/elements`' Element/Text bases dispatch on: `HTML_TAGS` is every recognized host tag (use |
+| [`resolveSlot`](#resolveslot-function) | function | Resolves a slot prop (`beforeContent`, `afterContent`, `content` — the pattern `@pyreon/elements`' Element/Text/List use… |
+| [`isPyreonComponent`](#ispyreoncomponent-function) | function | Detects whether a function value is a Pyreon COMPONENT (framework-marked via `IS_ROCKETSTYLE`/`PYREON__COMPONENT`, or… |
+| [`render`](#render-function) | function | A flexible one-shot renderer used internally by the ui-system's content/slot props: primitives (string/number/boolean)… |
+| [`useStableValue`](#usestablevalue-hook) | hook | Returns a referentially-stable version of `value` — the returned reference only changes when the new value is no longer… |
+| [`HTML_TAGS / HTML_TEXT_TAGS`](#html_tags-html_text_tags-constant) | constant | The two tag allowlists `@pyreon/elements`' Element/Text bases dispatch on: `HTML_TAGS` is every recognized host tag… |
 | [`getThemeEngine / setThemeEngine`](#getthemeengine-setthemeengine-function) | function | @internal — the registration seam that breaks the `ui-core ↔ unistyle` dependency cycle. |
-| [`resolveCssVariables`](#resolvecssvariables-function) | function | The single defaulted view of `config.cssVariables` — every CSS-variables-mode consumer (`<PyreonUI>`, rocketstyle's `mod |
-| [`hoistNonReactStatics`](#hoistnonreactstatics-function) | function | Copies non-framework static properties (walking the prototype chain) from `source` onto `target` — the Pyreon equivalent |
+| [`resolveCssVariables`](#resolvecssvariables-function) | function | The single defaulted view of `config.cssVariables` — every CSS-variables-mode consumer (`<PyreonUI>`, rocketstyle's… |
+| [`hoistNonReactStatics`](#hoistnonreactstatics-function) | function | Copies non-framework static properties (walking the prototype chain) from `source` onto `target` — the Pyreon equivalent… |
 
 ## API
 

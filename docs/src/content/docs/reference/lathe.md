@@ -99,14 +99,14 @@ lathe generate · 1 project
 | --- | --- | --- |
 | [`generate`](#generate-function) | function | The whole pipeline, pure: spec text in, file CONTENTS out. |
 | [`generateAsync`](#generateasync-function) | function | `generate`, awaiting plugin hooks that return promises — what the CLI and the Vite plugin run. |
-| [`resolveConfig`](#resolveconfig-function) | function | Fills defaults and validates one project's settings, and is where the whole option surface lives: `plugins` (which emitt |
+| [`resolveConfig`](#resolveconfig-function) | function | Fills defaults and validates one project's settings, and is where the whole option surface lives: `plugins` (which… |
 | [`definePlugin`](#defineplugin-function) | function | Declares a third-party Lathe plugin, listed in `plugins` beside the built-in names. |
-| [`formatFiles`](#formatfiles-function) | function | Applies the `format` config hook to generated files, preserving order, skipping Lathe's own bookkeeping (`lathe-manifest |
+| [`formatFiles`](#formatfiles-function) | function | Applies the `format` config hook to generated files, preserving order, skipping Lathe's own bookkeeping… |
 | [`verifyNative`](#verifynative-function) | function | Runs the real native compiler over the generated `.native.tsx` modules on both targets and returns a per-file verdict. |
-| [`contractDiff`](#contractdiff-function) | function | The client-contract diff `lathe diff` prints, as data: every change classified `breaking` or `additive` from the CLIENT' |
+| [`contractDiff`](#contractdiff-function) | function | The client-contract diff `lathe diff` prints, as data: every change classified `breaking` or `additive` from the… |
 | [`loadOpenApi`](#loadopenapi-function) | function | Parses OpenAPI 3.x or Swagger 2.0 (JSON or YAML text) into the spec-agnostic IR. |
-| [`resolveProjects`](#resolveprojects-function) | function | The multi-spec sibling of `resolveConfig` — ALWAYS returns a list, so a config with no `projects` array resolves to a on |
-| [`resolveTransform / worstVerdict`](#resolvetransform-worstverdict-function) | function | `resolveTransform` resolves the CONSUMING PROJECT's own `@pyreon/native-compiler` (dynamic `import()`, never bundled) —  |
+| [`resolveProjects`](#resolveprojects-function) | function | The multi-spec sibling of `resolveConfig` — ALWAYS returns a list, so a config with no `projects` array resolves to a… |
+| [`resolveTransform / worstVerdict`](#resolvetransform-worstverdict-function) | function | `resolveTransform` resolves the CONSUMING PROJECT's own `@pyreon/native-compiler` (dynamic `import()`, never bundled) —… |
 
 ## API
 

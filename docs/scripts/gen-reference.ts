@@ -26,7 +26,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { findManifests } from '../../packages/internals/manifest/src/discovery'
 import { dedupeSlug, slugify } from '../../packages/zero/zero-content/src/pipeline/emit-jsx'
-import { escFlow, fence, yaml } from './_md-safe'
+import { clip, escFlow, fence, yaml } from './_md-safe'
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const OUT_DIR = join(REPO_ROOT, 'docs', 'src', 'content', 'docs', 'reference')
@@ -211,7 +211,7 @@ function renderPage(m: any): string {
       // Table cells are plain-text flow content: escape `<`/`>` (the MDX-ish
       // pipeline would otherwise read `Signal<T>` as a JSX tag and choke on
       // the `|` cell delimiter) and the pipe itself.
-      const raw = String(e.summary ?? '').split(/(?<=\.)\s/)[0].slice(0, 120)
+      const raw = clip(String(e.summary ?? '').split(/(?<=\.)\s/)[0] ?? '', 120)
       const oneLine = escFlow(raw).replace(/\|/g, '\\|').replace(/\n/g, ' ')
       out.push(`| [\`${e.name}\`](#${apiAnchors[index]}) | ${KIND_LABEL[e.kind] ?? e.kind} | ${oneLine} |`)
     }

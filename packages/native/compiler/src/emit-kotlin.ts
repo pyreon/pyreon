@@ -69,7 +69,7 @@ import {
   pluginAsyncState,
   persistenceFor,
   pluginDeclIsCallable,
-  pluginLifecycleLines,
+  kotlinLifecycleLines,
   tailLifecycleDecls,
   serviceFor,
   isPluginElement,
@@ -750,13 +750,6 @@ function collectLayoutComponentNamesKotlin(components: ComponentIR[]): Set<strin
  */
 let _emitWarnings: string[] = []
 
-// JS-faithful `String(double)` — see the Swift twin's doc comment for why
-// this is `private` (file-scoped) rather than the bare top-level default:
-// the checked-in chart engine emits the SAME idiom under the SAME name, and
-// in a real app both land in one module — `private` lets each file repeat
-// the declaration without an "invalid redeclaration" the moment they're
-// compiled together.
-let _needsKotlinNumString = false
 /** The file's helpers that can let an error escape (see throw-lowering.ts). */
 let _kotlinThrowingFns: ReadonlySet<string> = new Set()
 /** Whether the statement being emitted may throw without terminating the app — the Swift twin's `_swiftThrowCtx`. */
@@ -775,8 +768,6 @@ function withKotlinThrowCtx<T>(ctx: 'none' | 'throws' | 'do', fn: () => T): T {
     _kotlinThrowCtx = prev
   }
 }
-const KOTLIN_NUM_STRING = `private fun pyreonNumString(v: Double): String =
-    if (v == Math.rint(v) && Math.abs(v) < 1e15) v.toLong().toString() else v.toString()`
 /**
  * Module-level `const X = <string|number|boolean literal>` bindings,
  * name → value (Kotlin mirror of emit-swift's `_constStringMap`). Lets
@@ -843,7 +834,6 @@ export function emitKotlin(
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _kotlinLayout.reset()
-  _needsKotlinNumString = false
   // Module-scope signals / computeds are the file's shared state (module-state.ts).
   const moduleState = moduleStateDecls(moduleDecls)
   moduleDecls = moduleDecls.filter((md) => !isModuleState(md))
@@ -1080,7 +1070,6 @@ export function emitKotlin(
   for (const c of [...components, ...preparedComponents])
     componentParts.push(emitKotlinComponent(c))
   // consulted AFTER helper + component emission — the flag is set during it
-  if (_needsKotlinNumString) parts.push(KOTLIN_NUM_STRING)
   if (_needsKotlinThrown) parts.push(KOTLIN_THROWN_PREAMBLE)
   // Emit synthesized anonymous-object data classes (collected during
   // component emit) at module scope — Kotlin allows top-level forward refs.
@@ -1107,7 +1096,6 @@ export function emitKotlin(
   _needsKotlinKeepAliveWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
-  _needsKotlinNumString = false
   return { code: parts.join('\n\n'), warnings }
 }
 
@@ -1226,11 +1214,6 @@ function emitKotlinModuleDecl(md: ModuleDeclIR): string {
   const kw = md.mutable ? 'var' : 'val'
   const initial = withExpectedTypeKotlin(md.type, () => emitKotlinExpr(md.initial, 0))
   if (md.type.kind === 'unknown') {
-    return `private ${kw} ${kotlinIdent(md.name)} = ${initial}`
-  }
-  // An inline object annotation over an object / array literal names no type the file declares, and there is no
-  // component to synthesize one in: the literal's own struct already IS the type, so let the target infer it.
-  if (isInlineObjectAnnotation(md.type) && (md.initial.kind === 'object' || md.initial.kind === 'array')) {
     return `private ${kw} ${kotlinIdent(md.name)} = ${initial}`
   }
   return `private ${kw} ${kotlinIdent(md.name)}: ${kotlinType(md.type)} = ${initial}`
@@ -1537,13 +1520,13 @@ function emitKotlinComponent(c: ComponentIR): string {
   }
   // Callback wiring after declarations are available, before component mount effects.
   for (const d of earlyLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2)))
+    for (const line of kotlinLifecycleLines(d, kotlinEmitContext(2)))
       lines.push(line === '' ? '' : `  ${line}`)
   }
   // A plugin container that binds its source and sinks here (`midOrder`): closures over the component's own state,
   // which is not in scope inside the container's own initializer.
   for (const d of midLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2)))
+    for (const line of kotlinLifecycleLines(d, kotlinEmitContext(2)))
       lines.push(line === '' ? '' : `  ${line}`)
   }
   // Phase 4: a `LaunchedEffect(Unit)` per useFetch decl runs the fetch on
@@ -1598,13 +1581,13 @@ function emitKotlinComponent(c: ComponentIR): string {
   // (`useFlow` disposes its listeners; a caller-owned `createFlow` does not).
   for (const d of c.decls) {
     if (!isHeadLifecycleDecl(d)) continue
-    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2)))
+    for (const line of kotlinLifecycleLines(d, kotlinEmitContext(2)))
       lines.push(line === '' ? '' : `  ${line}`)
   }
   // A plugin's lifecycle that is emitted AFTER the compiler's own (`useQuery`, `useStream`), ordered by
   // `tailOrder` then declaration order — the fetch → query → stream grouping these harnesses always had.
   for (const d of tailLifecycleDecls(c.decls)) {
-    for (const line of pluginLifecycleLines(d, 'kotlin', kotlinEmitContext(2)))
+    for (const line of kotlinLifecycleLines(d, kotlinEmitContext(2)))
       lines.push(line === '' ? '' : `  ${line}`)
   }
   // While emitting a layout's body, its `<RouterView />` emits `content()`.
@@ -1613,6 +1596,9 @@ function emitKotlinComponent(c: ComponentIR): string {
   // LaunchedEffect harness, before the JSX). If the JSX below emits an async
   // handler, one `rememberCoroutineScope()` val is spliced in here.
   const asyncScopeInsertIndex = lines.length
+  // A harness above that asked for the scope (`useQuery` registers a launcher for `refetch()`) reads it, so it goes
+  // above the harnesses too — a local declaration can only see what precedes it.
+  const harnessesNeedAsyncScope = _hasAsyncHandler && !declsNeedAsyncScope
   // A component that returns `null` / `undefined` renders NOTHING — a @Composable
   // returns Unit, so emit an empty body rather than a stray `null` expression
   // statement (valid-but-pointless in Kotlin; the Swift sibling `nil` was a hard
@@ -1633,7 +1619,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   // `pyreonAsyncScope.launch { … }`; hoist its coroutine scope to the composable
   // top (rememberCoroutineScope() must run at composable scope, not in a lambda).
   if (_hasAsyncHandler) {
-    lines.splice(declsNeedAsyncScope ? declStartIndex : asyncScopeInsertIndex, 0, `  val ${PYREON_ASYNC_SCOPE} = rememberCoroutineScope()`)
+    lines.splice(declsNeedAsyncScope || harnessesNeedAsyncScope ? declStartIndex : asyncScopeInsertIndex, 0, `  val ${PYREON_ASYNC_SCOPE} = rememberCoroutineScope()`)
   }
   // A composition local must be read at composable scope, never inside the `onClick` lambda that uses it.
   if (_needsAndroidContext) {
@@ -1760,7 +1746,13 @@ function emitKotlinModuleState(state: DeclIR[]): string {
       lines.push(`    var ${kotlinIdent(d.name)} by mutableStateOf<${kotlinType(t)}>(${init})`)
     } else if (d.kind === 'computed' && d.expr !== undefined) {
       const t = inferType(d.expr, _kotlinExprInferCtx)
-      lines.push(`    val ${kotlinIdent(d.name)}: ${kotlinType(t)} get() = ${emitKotlinExpr(d.expr, 0)}`)
+      // An object-literal value (`computed(() => ({ v: base(), w: 2 }))`) constructs its own data class: let the getter
+      // infer it, as a component's `derivedStateOf` does. `Any` failed the first field read.
+      let ex = d.expr
+      while (ex.kind === 'paren') ex = ex.inner
+      const literal = ex.kind === 'object' || (ex.kind === 'array' && ex.elements.length > 0)
+      const typeText = literal && (t.kind === 'unknown' || isInlineObjectAnnotation(t)) ? '' : `: ${kotlinType(t)}`
+      lines.push(`    val ${kotlinIdent(d.name)}${typeText} get() = ${emitKotlinExpr(d.expr, 0)}`)
     }
   }
   lines.push('}')
@@ -2692,7 +2684,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
         Number.isInteger(s.expr.value)
       ) {
         const kw = s.mutable ? 'var' : 'val'
-        return `${kw} ${kotlinIdent(s.name)} = ${s.expr.value}.0`
+        return `${kw} ${kotlinIdent(s.name)} = ${wholeDoubleLiteral(s.expr.value)}`
       }
       const emptyLiteral =
         (s.expr.kind === 'array' && s.expr.elements.length === 0) ||
@@ -3097,6 +3089,7 @@ export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): str
           const message = inlineObjectTypeWarningKotlin(t)
           if (!_emitWarnings.includes(message)) _emitWarnings.push(message)
         }
+
         return 'Any'
       }
       return registerKotlinSynthClass(
@@ -3405,7 +3398,7 @@ function intLiteralAsDouble(x: ExprIR, otherIsDouble: boolean): string | null {
   const lit = x.kind === 'unary' && x.op === '-' ? x.argument : x
   if (lit.kind !== 'literal' || typeof lit.value !== 'number' || lit.float === true) return null
   if (!Number.isInteger(lit.value)) return null
-  return `${x === lit ? '' : '-'}${lit.value}.0`
+  return `${x === lit ? '' : '-'}${wholeDoubleLiteral(lit.value)}`
 }
 
 /**
@@ -3626,7 +3619,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // seed matches a Double accumulation. A genuinely-fractional value
       // already renders with its decimal (`12.5`).
       if (typeof e.value === 'number' && e.float === true && Number.isInteger(e.value)) {
-        return `${e.value}.0`
+        return wholeDoubleLiteral(e.value)
       }
       // An integer literal is a `Long` — the Kotlin width of a TS integer
       // `number` (see `kotlinType`). The suffix is what makes it one where
@@ -3799,8 +3792,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           (sArgT.kind === 'number' && sArgT.float === true) ||
           (sArgT.kind === 'typeRef' && (sArgT.name === 'Double' || sArgT.name === 'Float'))
         ) {
-          _needsKotlinNumString = true
-          return `pyreonNumString(${emitKotlinExpr(e.args[0]!, indent)})`
+          return `pyreonNumberString(${emitKotlinExpr(e.args[0]!, indent)})`
         }
         return `(${emitKotlinExpr(e.args[0]!, indent)}).toString()`
       }
@@ -4715,41 +4707,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             }
             break
           case 'toFixed': {
-            // JS `n.toFixed(d)` → Kotlin `"%.<d>f".format(Locale.ROOT, n)`
-            // (the analytical currency/percent format; `String.format` is
-            // a kotlin.text stdlib extension — no import needed). v1:
-            // literal digit count (or 0-arg default 0) — a dynamic count
-            // falls through to the generic emit.
-            //
-            // `Locale.ROOT` is load-bearing, not tidiness. The 1-arg
-            // `"%.2f".format(x)` uses `Locale.getDefault()`, so the DECIMAL
-            // SEPARATOR follows the device: executed under `Locale.GERMANY`
-            // it yields `1234,57` where JS `toFixed` and the Swift emit both
-            // give `1234.57`. A number formatted for display is one thing; a
-            // number that silently changes shape per device is a data bug
-            // (it round-trips differently, sorts differently, and breaks any
-            // downstream `toDouble()`). JS `toFixed` is locale-INVARIANT, so
-            // the lowering must be too — the fully-qualified name avoids
-            // adding an import to every emitted file.
-            const digits =
-              e.args.length === 0
-                ? '0'
-                : e.args[0]!.kind === 'literal' && typeof e.args[0]!.value === 'number'
-                  ? String(e.args[0]!.value)
-                  : null
-            if (digits !== null) {
-              return `"%.${digits}f".format(java.util.Locale.ROOT, ${obj})`
-            }
-            // A DYNAMIC digit count builds the same format string at runtime
-            // (it used to fall through to a verbatim `n.toFixed(d)`).
-            if (e.args.length === 1) {
-              const dT = inferType(e.args[0]!, _kotlinExprInferCtx)
-              const d =
-                dT.kind === 'number' && dT.float === true
-                  ? `(${argExprs[0]!}).toInt()`
-                  : argExprs[0]!
-              return `"%.\${${d}}f".format(java.util.Locale.ROOT, ${obj})`
-            }
+            // JS `n.toFixed(d)` → the runtime's `pyreonToFixed` (PyreonNumber.kt), never
+            // `"%.<d>f".format(…)`: `java.util.Formatter` rounds the SHORTEST decimal form half up, so
+            // `(1.005).toFixed(2)` printed "1.01" and `(1.45).toFixed(1)` "1.5" with no warning (the web prints
+            // "1.00" / "1.4", because it rounds the double's exact value). Locale-invariant by construction — the
+            // 1-arg `String.format` used `Locale.getDefault()` and printed `1234,57` under a German locale.
+            if (e.args.length === 0) return `pyreonToFixed(${obj}, 0)`
+            if (e.args.length === 1) return `pyreonToFixed(${obj}, ${argExprs[0]!})`
             break
           }
           case 'toString': {
@@ -5020,8 +4984,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           // A DOUBLE operand takes the JS-faithful formatter (`250.0` →
           // `"250"`, as JS prints it) — see the Swift twin.
           if (t.kind === 'number' && t.float === true) {
-            _needsKotlinNumString = true
-            return `pyreonNumString(${emitted})`
+            return `pyreonNumberString(${emitted})`
           }
           return t.kind === 'number' || t.kind === 'boolean' ? `(${emitted}).toString()` : emitted
         }
@@ -5694,6 +5657,33 @@ function kotlinMemberScope<T>(scope: MemberEmitScope, run: () => T): T {
   }
 }
 
+type KotlinPluginHooks = Parameters<typeof createKotlinEmitContext>[0]
+
+/** A plugin's statement block, emitted with its extra locals and callback control in scope. */
+const emitKotlinPluginStatements: KotlinPluginHooks['statements'] = (stmts, at, locals, options) => {
+  const saved = _kotlinExprInferCtx.locals
+  if (locals !== undefined) {
+    _kotlinExprInferCtx.locals = new Map([...saved, ...locals])
+    seedHandlerLocals([...stmts], _kotlinExprInferCtx)
+  }
+  const control = options?.kotlin
+  const callbackCtx: KotlinCtx =
+    control === undefined
+      ? _activeKotlinCtx!
+      : {
+          ..._activeKotlinCtx!,
+          ...(control.returnLabel === undefined ? {} : { lambdaLabel: control.returnLabel }),
+          ...(control.discardReturnValue === undefined
+            ? {}
+            : { discardReturnValue: control.discardReturnValue }),
+        }
+  try {
+    return emitKotlinStmtLines(stmts, at, callbackCtx).map((l) => l.slice(at))
+  } finally {
+    _kotlinExprInferCtx.locals = saved
+  }
+}
+
 function kotlinEmitContext(indent: number): KotlinEmitContext {
   return createKotlinEmitContext(
     {
@@ -5761,29 +5751,7 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
       memberScope: kotlinMemberScope,
       observableIdent: kotlinIdent,
       functionDeclaration: (decl) => emitKotlinFunction(decl, _activeKotlinCtx!),
-      statements: (stmts, at, locals, options) => {
-        const saved = _kotlinExprInferCtx.locals
-        if (locals !== undefined) {
-          _kotlinExprInferCtx.locals = new Map([...saved, ...locals])
-          seedHandlerLocals([...stmts], _kotlinExprInferCtx)
-        }
-        const control = options?.kotlin
-        const callbackCtx: KotlinCtx =
-          control === undefined
-            ? _activeKotlinCtx!
-            : {
-                ..._activeKotlinCtx!,
-                ...(control.returnLabel === undefined ? {} : { lambdaLabel: control.returnLabel }),
-                ...(control.discardReturnValue === undefined
-                  ? {}
-                  : { discardReturnValue: control.discardReturnValue }),
-              }
-        try {
-          return emitKotlinStmtLines(stmts, at, callbackCtx).map((l) => l.slice(at))
-        } finally {
-          _kotlinExprInferCtx.locals = saved
-        }
-      },
+      statements: emitKotlinPluginStatements,
       intArg: kotlinIntArg,
       coroutineScope: () => {
         _hasAsyncHandler = true
@@ -7914,7 +7882,7 @@ function emitKotlinMessageHandler(handler: ExprIR): string {
  * it and the emit fell back to a tuple. In Kotlin a tuple is named arguments
  * with no constructor, and `encode` is `inline fun <reified T>`, so the build
  * died on `cannot infer type for type parameter 'T'`. That is why
- * `examples/native-viz`, the charts webview example, did not build on Android.
+ * `examples/native-viz` (now the `showcase-viz.tsx` compiler fixture), the charts webview example, did not build on Android.
  *
  * So build the JSON at COMPILE time and interpolate the runtime parts. Anything
  * else (an identifier, a signal read, a call) keeps the plain `encode(expr)`
@@ -8792,7 +8760,7 @@ function kotlinCanvasNumber(
   prop: string,
   fallback: number | undefined,
 ): string {
-  const lit = (v: number): string => (Number.isInteger(v) ? `${v}.0` : String(v))
+  const lit = (v: number): string => (Number.isInteger(v) ? wholeDoubleLiteral(v) : String(v))
   const a = e.attrs.find(
     (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === prop,
   )
@@ -9608,7 +9576,7 @@ function emitKotlinRouteDispatch(
       // When the target component declares a typed `params` prop, the
       // synthesized data class is constructed from the dict — a raw-Map
       // pass where `UserPageParam` is expected is a kotlinc type error
-      // (the bug that kept native-router-demo-android red).
+      // (the bug that kept native-router-demo/android red).
       const inv = kotlinRouteParamsInvocation(target.component, indent + 4)
       lines.push(
         `${innerPad}PyreonRouter.matchPath(currentPath, ${kotlinStr(route.path)}) != null -> {`,
