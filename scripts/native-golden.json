@@ -7391,14 +7391,24 @@
       "bytes": 7149,
       "warnings": 0
     },
+    "example:native-router-demo/ReorderPage.tsx|swift": {
+      "sha": "bc7ae59a9c18879964f1cd170aee7049dd6362fd0685552546018404ddf7e6c6",
+      "bytes": 2396,
+      "warnings": 0
+    },
+    "example:native-router-demo/ReorderPage.tsx|kotlin": {
+      "sha": "01fa7d3ca9517fee2d3f21b01510d85c65a6d057456822fda05ba79b514b98cc",
+      "bytes": 2279,
+      "warnings": 0
+    },
     "example:native-router-demo/RouterApp.tsx|swift": {
-      "sha": "9781fee8335a8e214be7c08e58b13702dbc5d29ad05a5e26d8de1601a0bf0657",
-      "bytes": 37932,
+      "sha": "0a6dfc62235004f6651920554ee1a06ce03c281acbfba4ebd45026452ad191a7",
+      "bytes": 38040,
       "warnings": 1
     },
     "example:native-router-demo/RouterApp.tsx|kotlin": {
-      "sha": "db1cf98900b2567b869dcf98eb2a42cdf48ce36a1719b396a548351258a86884",
-      "bytes": 32146,
+      "sha": "23ca33cd5c4d8f7c76d2c044885cf57b5fd574cc98a38bc48d76b2378b18b5bd",
+      "bytes": 32227,
       "warnings": 1
     },
     "example:native-showcase/TodayApp.tsx|swift": {
