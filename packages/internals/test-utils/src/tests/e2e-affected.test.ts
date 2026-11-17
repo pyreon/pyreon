@@ -159,6 +159,11 @@ describe('selectSuites', () => {
     // nothing ever ran them. Lock the registration, not just the script.
     expect(selectSuites(['docs/src/components/Header.tsx']).map((s) => s.name)).toContain('docs')
     expect(selectSuites(['docs/src/routes/_layout.tsx']).map((s) => s.name)).toContain('docs')
+    // The marketing site, the docs shell, their stylesheets and the site specs
+    // are site code too: their budgets and contrast checks live in this suite.
+    for (const f of ['docs/src/site/kit/cards.tsx', 'docs/src/docs-ui/toc.tsx', 'docs/src/styles/docs-v3.css', 'docs/src/blog/views/prose.ts', 'e2e/site-home.spec.ts', 'e2e-configs/docs.config.ts']) {
+      expect(selectSuites([f]).map((s) => s.name), f).toContain('docs')
+    }
   })
 
   it('a compiler change selects the docs suite', () => {

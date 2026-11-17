@@ -120,6 +120,8 @@ function buildLib(): LintConfig {
  * this repository's p99 that only flags genuine outliers (JSX depth 6, a
  * ternary chain of more than 4 outcomes). Thresholds are measured, not taste:
  * see the "Readable preset" docs page for the distributions behind them.
+ * `consistent-signal-read` asks for one signal-read form in JSX (`count()`),
+ * fixed wherever the compiler emits the same code for both forms.
  *
  * A layer sets ONLY its own rules, so it composes on top of any base preset
  * without undoing it: `["strict", "readable"]` keeps strict's errors and adds
@@ -133,6 +135,7 @@ function buildReadable(): LintConfig {
       'pyreon/padding-between-component-sections': 'warn',
       'pyreon/max-jsx-depth': ['warn', { max: 6 }],
       'pyreon/no-nested-ternary-branch': ['warn', { maxOutcomes: 4 }],
+      'pyreon/consistent-signal-read': ['warn', { form: 'called' }],
     },
   }
 }

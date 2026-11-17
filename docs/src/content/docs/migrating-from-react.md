@@ -143,7 +143,7 @@ function TodoList() {
   useHead(() => ({ title: `${todos().length} todos` }))
   return (
     <ul>
-      <For each={visible} by={t => t.id}>{t => <li>{t.text}</li>}</For>
+      <For each={visible()} by={t => t.id}>{t => <li>{t.text}</li>}</For>
     </ul>
   )
 }

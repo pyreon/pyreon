@@ -1,6 +1,6 @@
 import type { VNodeChild } from '@pyreon/core'
 import { PyreonUI } from '@pyreon/ui-core'
-import { font, gradient, motion, paper, radius, text, touch } from '../theme'
+import { font, gradient, inset, motion, paper, radius, text, touch } from '../theme'
 import { el, focusRing, tone, txt, type LinkAttrs } from './bases'
 import { Glyph } from './glyph'
 import { useLinkClick } from './link'
@@ -47,19 +47,22 @@ const CardInner = el
     hot: { backgroundImage: `radial-gradient(90% 120% at 0% 0%, ${tone(m, 'glow')}, transparent 60%)` },
   }))
   .sizes(() => ({
-    card: { padding: { xs: 24, sm: 32 } },
-    compact: { paddingTop: 20, paddingBottom: 20, paddingLeft: 22, paddingRight: 22, gap: 6 },
+    card: { padding: inset.card },
+    compact: { paddingTop: inset.compactY, paddingBottom: inset.compactY, paddingLeft: inset.compact, paddingRight: inset.compact, gap: 6 },
+    stat: { paddingTop: inset.compactY, paddingBottom: inset.compactY, paddingLeft: inset.stat, paddingRight: inset.stat, gap: 6 },
     flush: { padding: 0, gap: 0 },
   }))
 
 /**
  * `.card > .in` — 1px gradient border, 22px radius, inner highlight.
- * state: default | hot (ember glow). padding: card (32) | compact (22) | flush (0).
+ * state: default | hot (ember glow). padding: card (`inset.card`) | compact
+ * (`inset.compact`) | stat (`inset.stat`) | flush (0): every child shares
+ * that one inset, none bleeds into it.
  * With `href` the whole card is one link.
  */
 export function GlowCard(props: {
   state?: 'default' | 'hot' | undefined
-  padding?: 'card' | 'compact' | 'flush' | undefined
+  padding?: 'card' | 'compact' | 'stat' | 'flush' | undefined
   href?: string | undefined
   'aria-label'?: string | undefined
   children?: VNodeChild
@@ -133,7 +136,8 @@ export function ProductTag(props: { glyph?: string | undefined; id?: string | un
   )
 }
 
-const PkgName = txt
+/** A package or identifier name in a card (mono, accent): one style for every card that prints one. */
+export const PackageName = txt
   .config({ name: 'PackageName' })
   .attrs({ tag: 'span' })
   .theme((_t, m) => ({ fontFamily: font.mono, fontSize: 11.5, color: tone(m, 'accentText'), overflowWrap: 'anywhere' }))
@@ -146,7 +150,7 @@ const PkgName = txt
 export function PackageCard(props: { pkg: string; kind: string; text: string; state?: 'default' | 'hot' | undefined }) {
   return (
     <GlowCard padding="compact" state={props.state}>
-      <PkgName>{props.pkg}</PkgName>
+      <PackageName>{props.pkg}</PackageName>
       <Eyebrow>{props.kind}</Eyebrow>
       <Lede size="small">{renderInline(props.text)}</Lede>
     </GlowCard>

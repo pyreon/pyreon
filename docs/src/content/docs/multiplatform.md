@@ -6,19 +6,60 @@ title: Multi-Platform Pyreon
 
 <LiveDemo id="native" />
 
-> **Status:** PMTC (Pyreon Multi-Target Compiler) is **experimental — demo-quality, not production-ready.** The single number for "how much is device-proven" is the gated weighted matrix at the bottom of this page (`check-multiplatform-matrix` fails CI when its headline disagrees with its table) — do not quote a score from memory or from an older revision of this page. The 22-primitive canonical vocabulary spans all three targets — every primitive has a real web DOM runtime AND emits SwiftUI + Jetpack Compose. **Be precise about what "validated" means**, because the layers differ sharply in strength:
+> **Status:** PMTC (Pyreon Multi-Target Compiler) is **Experimental overall**, and the reason is specific: the *shipping path* is not ready — store release, crash reporting and background/push are rated Not ready, so you cannot yet take one source to both stores and read symbolicated crash stacks from it. Individual areas are further along than the overall label; each has its own tier, derived from the matrix in [Maturity by area](#maturity-by-area). **Beta areas:** Core UI & layout, Lists & keyed rendering, Navigation & routing, State, Forms & validation, Networking, Platform APIs, Gestures. **Not-ready areas:** Offline / sync, Payments, Background / push, Release & distribution, Crash reporting & observability. The single number for "how much is device-proven" is the gated weighted matrix at the bottom of this page (`check-multiplatform-matrix` fails CI when its headline disagrees with its table) — do not quote a score from memory or from an older revision of this page. The 22-primitive canonical vocabulary spans all three targets — every primitive has a real web DOM runtime AND emits SwiftUI + Jetpack Compose. **Be precise about what "validated" means**, because the layers differ sharply in strength:
 > - **(1) Per-PR gate — SYNTAX + STUB TYPE-CHECK.** `swiftc -parse` (syntax, accepts unresolved types) runs on every emit; `kotlinc` type-resolves against Compose **stubs**; and `swiftc -typecheck` type-resolves against SwiftUI+PyreonRuntime **stubs** (`swift-stubs.ts`, the Swift sibling of `kotlin-stubs.ts`) — the stubs' generic constraints mirror the real SDK EXACTLY (`animation<V: Equatable>`, so a `[Todo]` value is correctly REJECTED) so this catches the type-corruption class that pure `-parse` waves through. **Scope:** the stub `-typecheck` now covers the 2 example apps + **all 37** compiler fixtures — canonical primitives, common modifiers, i18n/machine/permissions/link/webview, the rx fixtures, the router-hook surface (`PyreonRouter`/`useNavigate`/`useParams`/`matchPath`/`RouterProvider`), the `PyreonForm` binding surface, and every `@Observable` fixture including the two LARGE showcase apps (`showcase-finance`/`showcase-tasks`, closed by M-gate.1f with `PyreonAuth`/`PyreonDatabase`/`PyreonFetch` + `LazyVStack`/`Color`/`Font.custom`/`.foregroundColor`/`.task`/`navigationDestination` stubs, all mirrored from runtime-swift). It also compiles an example's **app-provided** `useNativeModule` classes alongside the emit — the framework cannot stub a class the app owns, and a synthesized stand-in would mask a mismatched method name. The gate keeps earning its keep by SURFACING real emitter bugs that were then FIXED so the emitted native code actually compiles: rx `.first`/`.last`/`.min`/`.average` now infer Optional/Double bindings; a null-returning component emits `EmptyView()` not `body { nil }`; a top-level object-shape `interface` is SYNTHESIZED into a struct/data-class; and — found while closing the showcase apps — `useDatabase`'s `get`/`delete`/`find` emitted Swift WITHOUT the argument labels the runtime declares (`delete(_ collection:id:)`), so those calls had never compiled. Argument labels are a TYPE-level concern, which is exactly why only a `-typecheck` gate could see it — see the silent-failure cliff below.
 > - **(2) Real-toolchain BUILD of the gated example apps** — `xcodebuild` (full Swift compile) + `gradle assembleDebug` — via the `native-device` workflow (auto-runs on native-path PRs; **REQUIRED** — both build jobs are branch-protection required checks, promoted after the 14-green-nightly streak gate passed). This is the only place type-checking against the REAL SDK (not stubs) happens, and only for those apps.
 > - **(3) Launch + interaction UI smokes** — XCUITest (iOS Simulator) + Compose-instrumented-test (Android Emulator). Strong for the **Tasks/Counter/Router** examples (login validation, store mutation, typed-params nav, content-asserted fetch, Suspense/ErrorBoundary all assert real behaviour); **launch-only for TodoMVC**; **build-only for the Today showcase** (`examples/native-showcase`: both hosts build in CI, its device tests do not run there yet).
 >
 > Layers 2–3 run **automatically on every PR that touches the native pipeline** (`packages/native/**` / `examples/native-*/**`, via the workflow's fail-closed `changes` job — the repo is public, so the macOS runner is free; the `native-device` label remains the manual opt-in for path-external changes) plus the nightly schedule. **Their conclusion is REQUIRED**: `iOS — xcodebuild (Simulator SDK)`, `Android — gradlew assembleDebug`, `Validate emitted Swift + Kotlin`, and `Validate emitted Swift (real-SDK typecheck, macOS)` are all in branch protection's required checks (promoted after the encoded `check-native-device-streak.ts` gate — 14 consecutive green nightlies — passed; the workflow shape is required-check-safe by construction: job-level skips, no trigger-level path filter, so a non-native PR satisfies the checks via skip). So a PR that touches the native pipeline cannot merge unless its emit **builds and runs its UI assertions on a real iOS Simulator and Android Emulator**. What stays weaker: only the gated example apps get that treatment — a capability no gated app exercises still ships on stub-typecheck strength alone.
 
+## Maturity by area
+
+Each area's tier is **derived from its row in the [production capability matrix](#production-capability-matrix-weighted-rung-labeled)** — the matrix stays the source of truth, and `scripts/check-multiplatform-matrix.ts` fails validate-fast and CI when a tier below (or a "Beta / Not-ready areas" summary on any docs page) disagrees with it. The rule, applied to the R4+ fraction:
+
+- **Beta** — fraction ≥ 0.8: the area's behavior is asserted on a device on both platforms; the remaining gaps are named in its matrix row.
+- **Experimental** — 0.4 ≤ fraction < 0.8: a real part is device-proven, a real part is not. Read the row before relying on it.
+- **Not ready** — fraction < 0.4: mostly unproven on a device, or missing.
+
+| Area | Tier |
+| --- | --- |
+| Core UI & layout (16 non-media primitives) | Beta |
+| Lists & keyed rendering | Beta |
+| Navigation & routing | Beta |
+| State (signals/computed/stores) | Beta |
+| Forms & validation | Beta |
+| Networking (fetch/ws/http) | Beta |
+| Storage (kv/secure/db) | Experimental |
+| Auth | Experimental |
+| Platform APIs (haptics/share/link/notifs/camera/biometrics/files/deep links/lifecycle) | Beta |
+| Animations & transitions | Experimental |
+| Gestures | Beta |
+| Adaptive / tablet layout | Experimental |
+| Media (image display/picker/AV) | Experimental |
+| Accessibility | Experimental |
+| i18n | Experimental |
+| Styling & design system | Experimental |
+| Offline / sync | Not ready |
+| Maps / geolocation | Experimental |
+| Payments | Not ready |
+| Background / push | Not ready |
+| Release & distribution (archive/signing/store) | Not ready |
+| Crash reporting & observability | Not ready |
+| Charts (plot engine) | Experimental |
+
+**Why the overall label is still Experimental.** A Beta area means that part of an app behaves on a device. It does not mean an app built from it can ship: the release path (Release & distribution, Crash reporting & observability, Background / push) is Not ready. The overall label drops from Experimental only when all four of these hold:
+
+1. **One real app has shipped to both stores** (App Store and Play) from one source.
+2. **Crash stacks are readable** — a production crash on either platform symbolicates back to a usable stack.
+3. **The matrix headline reaches roughly 85%** device-proven.
+4. **A sustained period passes with no silent miscompile found** — every out-of-subset input produces a named warning, not wrong native code.
+
 ## The pitch
 
 Write your app once. Run it on the web, iOS, and Android — each rendered with the platform's native primitives. (Web runs live today; iOS/Android are emitted as SwiftUI/Compose and build cleanly for the example apps — read "What runs on native" and the validation Status above for the honest scope, including which packages are web-only.)
 
 ```tsx
-// Adapted from examples/native-todomvc-ios/src/TodoApp.tsx — single source, three targets
+// Adapted from examples/native-todomvc/src/TodoApp.tsx — single source, three targets
 import { signal } from '@pyreon/reactivity'
 import { For } from '@pyreon/core'
 import { useStorage } from '@pyreon/storage'
@@ -557,7 +598,7 @@ Foundation rollout (A–E):
 | **A** | Architectural foundation: canonical primitives package + web runtimes | ✅ Done — every canonical primitive has a web DOM runtime |
 | **B** | PMTC compiler emit for iOS + Android (extends `canonical-primitives.ts` table) | ✅ Done — every canonical primitive emits for iOS (Swift) and Android (Compose) |
 | **C** | `@pyreon/native-router-{swift,kotlin}` runtime adapters + routes emit (path + component) | ✅ Done |
-| **D** | Web target for PMTC + `examples/native-todomvc-web/` consuming the shared source | ✅ Done |
+| **D** | Web target for PMTC + `examples/native-todomvc/` consuming the shared source | ✅ Done |
 | **E** | TodoMVC migration to canonical vocab — closes the cross-platform contract | ✅ Done |
 
 ONE `TodoApp.tsx` source → THREE example apps (web, iOS, Android), all typecheck-clean.
@@ -1828,12 +1869,12 @@ lane.
 
 ### TodoMVC reference walkthrough (locally verified, June 2026)
 
-The `examples/native-todomvc-{web,ios,android}` apps form the **canonical proof** of the single-source contract. The shared TodoApp source (`examples/native-todomvc-ios/src/TodoApp.tsx`) renders on all three targets without modification.
+The `examples/native-todomvc` app (web host at its root, `ios/`, `android/`) forms the **canonical proof** of the single-source contract. The shared TodoApp source (`examples/native-todomvc/src/TodoApp.tsx`) renders on all three targets without modification.
 
 **Web** (a real running app in the browser):
 
 ```bash
-cd examples/native-todomvc-web
+cd examples/native-todomvc
 bun run build      # 88 modules → 35 KB JS bundle, 13 KB gzipped
 bun run dev        # http://localhost:5173/
 ```
@@ -1843,8 +1884,8 @@ Then in a browser: type, hit Enter, toggle, filter All/Active/Completed, click C
 **iOS Swift emit**:
 
 ```bash
-bash examples/native-todomvc-ios/scripts/build.sh
-# → examples/native-todomvc-ios/generated/TodoApp.swift
+bash examples/native-todomvc/scripts/build-ios.sh
+# → examples/native-todomvc/ios/generated/TodoApp.swift
 ```
 
 The emitted file opens with the import preamble (`import SwiftUI` / `PyreonRuntime` / `PyreonRouter`) and emits idiomatic SwiftUI: `@PyreonAppStorage("pyreon-todomvc:todos")` for persistence, `@State` for local signals, `VStack(spacing: 8)` / `HStack` for layout, `TextField(..., text: $draft)` with `.onSubmit { addTodo() }`, `ForEach` keyed by id, `Button(action:)`. The `data-testid="todo-app"` JSX attribute becomes `.accessibilityIdentifier("todo-app")` so the same string works on the iOS UI test.
@@ -1856,15 +1897,15 @@ swiftc -typecheck \
   -target arm64-apple-macos14.0 \
   packages/native/runtime-swift/Sources/PyreonRuntime/*.swift \
   packages/native/router-swift/Sources/PyreonRouter/*.swift \
-  examples/native-todomvc-ios/generated/TodoApp.swift
+  examples/native-todomvc/ios/generated/TodoApp.swift
 # → exit 0 (zero errors)
 ```
 
 **Android Kotlin emit**:
 
 ```bash
-bash examples/native-todomvc-android/scripts/build.sh
-# → examples/native-todomvc-android/app/src/main/kotlin/com/pyreon/generated/TodoApp.kt
+bash examples/native-todomvc/scripts/build-android.sh
+# → examples/native-todomvc/android/app/src/main/kotlin/com/pyreon/generated/TodoApp.kt
 ```
 
 The emitted file opens with `package com.pyreon.generated`, the Compose import preamble (`androidx.compose.runtime.*` / `material.*` / `kotlinx.serialization.Serializable` / `com.pyreon.runtime.*`), and emits idiomatic Compose: `var todos by rememberPyreonStorage<List<Todo>>(...)`, `var filter by remember { mutableStateOf(Filter.all) }`, `val visible by remember { derivedStateOf { ... } }`, `Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("todo-app"))`, `TextField` with `KeyboardOptions(imeAction = ImeAction.Done)` + `KeyboardActions(onDone = { addTodo() })`, `LazyColumn { items(visible, key = { it.id }) { ... } }`, `Button(onClick = ...)`.
@@ -1875,7 +1916,7 @@ Verify against the framework's `validateKotlin` (same Compose stub set the `vali
 bun -e "
   import('./packages/native/compiler/src/validate.ts').then(async (m) => {
     const { readFileSync } = await import('node:fs')
-    const src = readFileSync('examples/native-todomvc-android/app/src/main/kotlin/com/pyreon/generated/TodoApp.kt', 'utf8')
+    const src = readFileSync('examples/native-todomvc/android/app/src/main/kotlin/com/pyreon/generated/TodoApp.kt', 'utf8')
     // Strip the package + wildcard imports (the stub set is in default package).
     const stripped = src.split('\n')
       .filter(l => !l.startsWith('package ') && !l.startsWith('import androidx') && !l.startsWith('import kotlinx') && !l.startsWith('import com.pyreon'))
@@ -1899,7 +1940,7 @@ The runtime packages exist, with one reactive container per data/service hook:
 - Compiler source: `packages/native/compiler/src/` — `emit-swift.ts` / `emit-kotlin.ts` per-target emit; `canonical-primitives.ts` shared name maps + token resolution
 - Native runtime packages: `packages/native/runtime-swift/`, `packages/native/runtime-kotlin/`
 - Web runtime: `packages/core/primitives/src/web/` — all 22 canonical primitives plus `Transition`, `TransitionGroup`, `WebView` and the escape hatches
-- Example apps: `examples/native-todomvc-{ios,android,web}/` + `examples/native-router-demo-{ios,web}/` — `native-router-demo/ios` ships a full XcodeGen host shell (#1105) so `bash scripts/build.sh` produces a buildable Xcode project, not a source-only stub. `examples/native-todomvc-web/README.md` was also corrected (#1106) so it no longer references a fictional `src/TodoApp.tsx` — the one-source contract (Phase E3) keeps the shared TodoApp source in `examples/native-todomvc-ios/src/`.
+- Example apps: `examples/native-todomvc/` + `examples/native-router-demo/` — `native-router-demo/ios` ships a full XcodeGen host shell (#1105) so `bash ../scripts/build-ios.sh` produces a buildable Xcode project, not a source-only stub. `examples/native-todomvc/README.md` was also corrected (#1106) so it no longer references a fictional `src/TodoApp.tsx` — the one-source contract (Phase E3) keeps the shared TodoApp source in `examples/native-todomvc/src/`.
 - Native validation gates: `.github/workflows/native-validate.yml` (compiler fixtures and real-SDK Swift typechecks) and `.github/workflows/native-device.yml` (example builds and Simulator/emulator tests); selected automatically for relevant PRs, with nightly and manual runs. The `native-device` label forces every device lane.
 - `.agents/guides/multiplatform/README.md` — agent-context summary of the layered model
 

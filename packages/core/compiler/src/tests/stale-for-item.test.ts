@@ -313,7 +313,7 @@ describe('for-stale-item-field — syntax variants of each half', () => {
 
 describe('for-stale-item-field — the shipped native-todomvc source', () => {
   const HERE = dirname(fileURLToPath(import.meta.url))
-  const SRC = resolve(HERE, '../../../../../examples/native-todomvc-ios/src/TodoApp.tsx')
+  const SRC = resolve(HERE, '../../../../../examples/native-todomvc/src/TodoApp.tsx')
 
   it('is clean (the row reads the live value by id)', () => {
     expect(hits(readFileSync(SRC, 'utf8'))).toEqual([])

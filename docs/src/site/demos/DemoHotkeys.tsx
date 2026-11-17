@@ -230,7 +230,6 @@ export default function DemoHotkeys() {
               <For each={SHORTCUTS.map((s, i) => ({ s, i }))} by={(e) => e.s.keys}>
                 {(e) => (
                   // The compiler wraps this read in _rp(), so the row re-styles on a hit or a scope change.
-                  // pyreon-lint-disable-next-line pyreon/no-signal-in-props
                   <Row state={hit() === e.i ? 'hit' : e.s.scope && !editorOn() ? 'off' : 'idle'}>
                     <span>
                       {e.s.label}

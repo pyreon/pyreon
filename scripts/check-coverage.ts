@@ -951,6 +951,11 @@ export async function runCoverage(
         if (status.reason === 'interrupted') throw new Error('Vitest run was interrupted')
         const succeeded = report.success && status.reason === 'passed' && status.errors.length === 0
         const testResults = [...report.testResults]
+        for (const slow of slowestTests(report.testResults)) {
+          console.log(
+            `    slow under coverage: ${pkgName} "${slow.name}" ${(slow.ms / 1000).toFixed(1)}s`,
+          )
+        }
         if (status.errors.length) {
           testResults.push({
             assertionResults: status.errors.map((error) => ({
@@ -978,6 +983,37 @@ export async function runCoverage(
   } finally {
     rmSync(reportDir, { recursive: true, force: true })
   }
+}
+
+/** A test at or above this duration under coverage is named in the log. */
+export const SLOW_TEST_LOG_MS = 5000
+
+/**
+ * The slowest tests of one package's coverage run, from vitest's JSON report.
+ *
+ * A test's duration under coverage, with four packages sharing the runner, is
+ * several times its duration in the Test cells, and a timeout is the first
+ * anyone hears of it (the charts M4 fuzz: 2s uninstrumented, over 60s here).
+ * The log line is the measurement a derived timeout needs. It names at most
+ * `limit` tests at or above `minMs` (a quarter of the shared 20s default), so
+ * a healthy package prints nothing.
+ */
+export function slowestTests(
+  testResults: readonly unknown[],
+  minMs: number = SLOW_TEST_LOG_MS,
+  limit = 3,
+): Array<{ name: string; ms: number }> {
+  const slow: Array<{ name: string; ms: number }> = []
+  for (const file of testResults) {
+    const assertions = (file as { assertionResults?: unknown }).assertionResults
+    if (!Array.isArray(assertions)) continue
+    for (const assertion of assertions) {
+      const { fullName, duration } = assertion as { fullName?: unknown; duration?: unknown }
+      if (typeof fullName !== 'string' || typeof duration !== 'number') continue
+      if (duration >= minMs) slow.push({ name: fullName, ms: duration })
+    }
+  }
+  return slow.sort((a, b) => b.ms - a.ms).slice(0, limit)
 }
 
 /** Incomplete executions cannot establish coverage, even if a summary printed. */

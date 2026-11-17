@@ -60,7 +60,7 @@ targets:
 
     # Depends on the @pyreon/native-router-swift package (the runtime
     # PyreonRouter / RouterProvider / NavigationLink helpers). Local
-    # SPM package reference — same shape native-todomvc-ios uses for
+    # SPM package reference — same shape native-todomvc/ios uses for
     # its runtime deps.
     dependencies:
       - package: PyreonRuntime

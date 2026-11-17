@@ -255,6 +255,21 @@ const SUITES: Suite[] = [
       // cost that gets a suite disabled again).
       'docs/src/components/',
       'docs/src/routes/',
+      // The marketing site, the docs reading shell, their stylesheets and the
+      // blog: the code ten site-* projects of this suite test (pages, islands,
+      // contrast, widths, the JavaScript budgets). Without these a site PR ran
+      // none of them. Synced site content (`docs/src/site/content/`) renders
+      // through the same templates, so it is included.
+      'docs/src/site/',
+      'docs/src/docs-ui/',
+      'docs/src/styles/',
+      'docs/src/blog/',
+      'docs/src/showcase/',
+      'docs/src/open/',
+      'docs/src/mdx/',
+      'docs/src/entry-client.ts',
+      'docs/src/site-links.ts',
+      'docs/index.html',
       // A live `<Example>` is site CODE — it mounts, it can throw, and the
       // suite asserts it paints. Prose stays free; these do not.
       'docs/src/examples/',
@@ -268,6 +283,9 @@ const SUITES: Suite[] = [
       'docs/vite.config.ts',
       'docs/content.config.ts',
       'e2e/docs.spec.ts',
+      'e2e/docs-islands.ts',
+      'e2e/site-',
+      'e2e-configs/docs.config.ts',
     ],
   },
   {
@@ -388,7 +406,7 @@ const SUITES: Suite[] = [
       // any change to a web primitive (Stack/Inline/Field/Button/Press/Text)
       // can break the spec.
       'packages/core/primitives/',
-      'examples/native-todomvc-web/',
+      'examples/native-todomvc/',
       'e2e/native-todomvc-web',
     ],
   },
@@ -408,7 +426,7 @@ const SUITES: Suite[] = [
       'packages/core/primitives/',
       'packages/fundamentals/',
       'examples/native-tasks/',
-      'examples/native-tasks-web/',
+      'examples/native-tasks/',
       'e2e/native-tasks-web',
     ],
   },
