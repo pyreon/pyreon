@@ -139,8 +139,18 @@ type IslandLoader = () => Promise<{ default: ComponentFn } | ComponentFn>
  * Hydrate all `<pyreon-island>` elements on the page.
  *
  * Only loads JavaScript for components that are actually present in the HTML.
- * Respects hydration strategies (load, idle, visible, media, never). Returns
- * a cleanup function that disconnects any pending observers/listeners.
+ * Respects hydration strategies (load, idle, visible, media, never).
+ *
+ * Returns a cleanup that ENDS every island this call scheduled: a trigger that
+ * has not fired is cancelled (observer / idle callback / media and interaction
+ * listeners), a chunk still loading never mounts, and a hydrated island is
+ * unmounted (`onUnmount`, effects and `onMount` cleanups run; its DOM is
+ * removed). A static page has no component tree that could notice island DOM
+ * leaving, so a host that removes or replaces island DOM itself (an
+ * `innerHTML` swap, its own client-side navigation) calls this cleanup; an
+ * HMR entry passes it to `import.meta.hot.dispose`. An island that is already
+ * live (hydrated by an earlier call that was not cleaned up) is not hydrated
+ * a second time.
  *
  * **`hydrate: 'never'` islands do NOT require a registry entry** — the whole
  * point of the strategy is shipping zero client JS, so importing the loader
@@ -183,7 +193,7 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
     w.__pyreon_island_hydrate_active__ = true
   }
 
-  const islands = document.querySelectorAll('pyreon-island')
+  const islands = document.querySelectorAll('pyreon-island:not([data-island-hydrated])')
   const cleanups: (() => void)[] = []
 
   for (const el of islands) {
@@ -236,12 +246,11 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
     if (prefetchCleanup) cleanups.push(prefetchCleanup)
 
     if (process.env.NODE_ENV !== 'production') _count('island.scheduled')
-    const cleanup = scheduleHydration(el as HTMLElement, loader, propsJson, strategy)
-    if (cleanup) cleanups.push(cleanup)
+    cleanups.push(scheduleHydration(el as HTMLElement, loader, propsJson, strategy))
   }
 
   return () => {
-    for (const fn of cleanups) fn()
+    for (const fn of cleanups.splice(0)) fn()
     if (process.env.NODE_ENV !== 'production') {
       const w = window as Window & { __pyreon_island_hydrate_active__?: boolean }
       w.__pyreon_island_hydrate_active__ = false
@@ -383,6 +392,19 @@ export function hydrateIslandsAuto(registry?: AutoIslandRegistry): () => void {
   return hydrateIslands(registry.__pyreonIslandRegistry)
 }
 
+/**
+ * Schedule one island's hydration and return the ONE function that ends its
+ * lifetime, whatever stage it reached:
+ *   - trigger pending (IntersectionObserver / idle callback / matchMedia or
+ *     interaction listeners) → cancelled;
+ *   - chunk in flight → the island never mounts when it lands;
+ *   - hydrated → the root is unmounted (`onUnmount`, effects and `onMount`
+ *     cleanups run) and `data-island-hydrated` is cleared, so a later
+ *     `hydrateIslands()` may hydrate the element afresh.
+ * Idempotent. Every removal path calls it: the `island()` marker's unmount
+ * (router navigation, the router HMR swap, `<Show>` / `<For>`, a parent
+ * re-render, Suspense) and the cleanup `hydrateIslands()` returns.
+ */
 export function scheduleHydration(
   el: HTMLElement,
   loader: IslandLoader,
@@ -398,15 +420,36 @@ export function scheduleHydration(
   // crashes. `null`/omitted (static islands apps via `hydrateIslands`) keeps
   // the prior detached-root behavior.
   owner?: EffectScope | null,
-): (() => void) | null {
+): () => void {
   /* v8 ignore next */
-  if (isServer) return null
-  let cancelled = false
+  if (isServer) return () => {}
+  let disposed = false
+  let unmount: (() => void) | null = null
   const hydrate = (): Promise<void> => {
-    if (cancelled) return Promise.resolve()
-    return hydrateIsland(el, loader, propsJson, owner)
+    if (disposed) return Promise.resolve()
+    return hydrateIsland(el, loader, propsJson, owner, () => disposed).then((u) => {
+      unmount = u
+    })
   }
+  const cancel = startTrigger(el, strategy, hydrate)
+  return () => {
+    if (disposed) return
+    disposed = true
+    cancel?.()
+    if (unmount) {
+      unmount()
+      unmount = null
+      el.removeAttribute('data-island-hydrated')
+    }
+  }
+}
 
+/** Arm the hydration trigger for `strategy`; returns how to disarm it (null: nothing to disarm). */
+function startTrigger(
+  el: HTMLElement,
+  strategy: HydrationStrategy,
+  hydrate: () => Promise<void>,
+): (() => void) | null {
   switch (strategy) {
     case 'load':
       hydrate()
@@ -415,16 +458,10 @@ export function scheduleHydration(
     case 'idle': {
       if ('requestIdleCallback' in window) {
         const id = requestIdleCallback(hydrate)
-        return () => {
-          cancelled = true
-          cancelIdleCallback(id)
-        }
+        return () => cancelIdleCallback(id)
       }
       const id = setTimeout(hydrate, 200)
-      return () => {
-        cancelled = true
-        clearTimeout(id)
-      }
+      return () => clearTimeout(id)
     }
 
     case 'visible':
@@ -456,10 +493,7 @@ export function scheduleHydration(
           }
         }
         mql.addEventListener('change', onChange)
-        return () => {
-          cancelled = true
-          mql.removeEventListener('change', onChange)
-        }
+        return () => mql.removeEventListener('change', onChange)
       }
       // interaction(<events>) — comma-separated event names
       if (strategy.startsWith('interaction(')) {
@@ -667,8 +701,9 @@ async function hydrateIsland(
   el: HTMLElement,
   loader: IslandLoader,
   propsJson: string,
-  owner?: EffectScope | null,
-): Promise<void> {
+  owner: EffectScope | null | undefined,
+  isDisposed: () => boolean,
+): Promise<(() => void) | null> {
   const name = el.getAttribute('data-component') ?? 'unknown'
   try {
     let props: Record<string, unknown>
@@ -686,10 +721,14 @@ async function hydrateIsland(
       console.error(`Invalid island props JSON for "${name}"`, parseErr)
       el.setAttribute('data-island-error', 'invalid-props')
       if (process.env.NODE_ENV !== 'production') _count('island.error')
-      return
+      return null
     }
 
     const mod = await loader()
+    // The island left the page while its chunk loaded (or another scheduler
+    // already hydrated this element): mounting now would start an instance
+    // nothing will ever dispose.
+    if (isDisposed() || el.hasAttribute('data-island-hydrated')) return null
     const Comp = typeof mod === 'function' ? mod : mod.default
     // Re-establish the marker's captured owner so the island's hydration root
     // parents to it (hydrate.ts sets `scope._parent = getContextOwner()`),
@@ -700,15 +739,21 @@ async function hydrateIsland(
     // hydration walk, so the page counter cannot reach it). Absent on a marker the client created itself.
     const idPrefix = el.getAttribute('data-id-prefix')
     const tree = idPrefix === null ? h(Comp, props) : h(_IslandIds, { prefix: idPrefix }, h(Comp, props))
-    runWithContextOwner(owner ?? null, () => hydrateRoot(el, tree))
+    // An empty marker (one the client rendered itself, or one a previous
+    // instance's unmount emptied) has nothing to adopt: mount into it.
+    const unmount = runWithContextOwner(owner ?? null, () =>
+      el.firstChild === null ? mount(tree, el) : hydrateRoot(el, tree),
+    )
     // Stamp the "live" marker only after hydrateRoot returns, so tests and
     // devtools can wait for it (a static page never sets data-pyreon-hydrated).
     el.setAttribute('data-island-hydrated', '')
     if (process.env.NODE_ENV !== 'production') _count('island.hydrated')
+    return unmount
   } catch (err) {
     console.error(`Failed to hydrate island "${name}"`, err)
     el.setAttribute('data-island-error', 'hydration-failed')
     if (process.env.NODE_ENV !== 'production') _count('island.error')
+    return null
   }
 }
 
