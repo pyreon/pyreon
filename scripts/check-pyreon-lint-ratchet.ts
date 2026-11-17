@@ -32,6 +32,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { type LintBaseline, compareToBaseline } from './check-lint-ratchet'
 import { checkReadable, readableCodes } from './check-readable-ratchet'
+import { baselineTotalError, parseBaseline } from './baseline-total'
 
 export const BASELINE_PATH = 'pyreon-lint-baseline.json'
 
@@ -63,6 +64,7 @@ export function countPyreonFindings(
     if (exclude.has(code)) continue
     counts[code] = (counts[code] ?? 0) + 1
   }
+
   return counts
 }
 
@@ -102,6 +104,7 @@ export function runPyreonLintJson(): unknown {
     }
     const out = existsSync(outFile) ? readFileSync(outFile, 'utf8') : ''
     if (!out.trim()) throw new Error('[pyreon-lint-ratchet] doctor produced no JSON output')
+
     return JSON.parse(out)
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -123,6 +126,7 @@ function main(): void {
     console.log(
       `[pyreon-lint-ratchet] baseline updated: ${total} advisory finding(s) across ${Object.keys(current).length} rule(s)`,
     )
+
     return
   }
 
@@ -132,7 +136,12 @@ function main(): void {
     )
     process.exit(1)
   }
-  const baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) as LintBaseline
+  const baseline = parseBaseline<LintBaseline>(BASELINE_PATH, readFileSync(BASELINE_PATH, 'utf8'), 'bun scripts/check-pyreon-lint-ratchet.ts --update')
+  const inconsistent = baselineTotalError(BASELINE_PATH, baseline.total, baseline.rules, 'bun scripts/check-pyreon-lint-ratchet.ts --update')
+  if (inconsistent) {
+    console.error(inconsistent)
+    process.exit(1)
+  }
   const { regressions, improvements } = compareToBaseline(current, baseline.rules)
   // The readable per-file ratchet reads the SAME report — one lint run gates both.
   const readableOk = jsonMode ? true : checkReadable(parsed)

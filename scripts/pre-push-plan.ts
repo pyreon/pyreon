@@ -47,6 +47,7 @@ import {
   docInputConsumer,
   findOwningWorkspace,
   isE2eFile,
+  isProsePath,
   isRootFile,
   isScriptFile,
   isWorkflowFile,
@@ -125,8 +126,6 @@ export function isNativeToolchainWorkspace(ws: Workspace, root: string): boolean
   return ws.dir.startsWith(join(root, 'packages', 'native') + sep)
 }
 
-const PROSE = [/\.mdx?$/i, /^\.agents\//, /^\.changeset\//, /^llms(-full)?\.txt$/, /^LICENSE/, /^\.gitignore$/]
-
 /** The rule for one changed path that no workspace owns (see `PATH_RULES`). */
 export function classifyRootPath(path: string): Exclude<RuleId, 'package'> {
   if (/^tsconfig.*\.json$/.test(path)) return 'root-tsconfig'
@@ -137,7 +136,8 @@ export function classifyRootPath(path: string): Exclude<RuleId, 'package'> {
   if (isScriptFile(path)) return 'script'
   if (isE2eFile(path) || path.startsWith('e2e/') || path.startsWith('.claude/') || path.startsWith('.githooks/'))
     return 'repo-file'
-  if (PROSE.some((re) => re.test(path))) return 'prose'
+  if (isProsePath(path)) return 'prose'
+
   return 'unknown-root'
 }
 
@@ -201,6 +201,7 @@ export function targetTestFiles(
   for (const [file, text] of tests) {
     if (all.some((res) => res[0]!.test(text) || res[1]!.test(text))) out.push(file)
   }
+
   return out.sort()
 }
 
@@ -302,6 +303,7 @@ export function computePlan(opts: {
     else if (/^vitest\b/.test(byName.get(name)!.scripts.test!)) groups['native-vitest'].push(name)
     else groups['native-script'].push(name)
   }
+
   return {
     unknownDiff,
     rules,
@@ -363,6 +365,7 @@ export function computePassKeys(opts: {
       h = computeFileListHash(root, treeFiles.get(name) ?? [], name)
       treeMemo.set(name, h)
     }
+
     return h
   }
 
@@ -384,6 +387,7 @@ export function computePassKeys(opts: {
     ]
     out.set(name, computeFileListHash(root, [], parts.join('\n')))
   }
+
   return out
 }
 
@@ -405,6 +409,7 @@ export function parseCache(text: string | null): PassCache {
       return { version: PASS_CACHE_VERSION, entries: {} }
     const entries: Record<string, number> = {}
     for (const [k, v] of Object.entries(raw.entries)) if (typeof v === 'number') entries[k] = v
+
     return { version: PASS_CACHE_VERSION, entries }
   } catch {
     // A corrupt store is an empty store: everything re-runs, nothing is skipped.
@@ -420,6 +425,7 @@ export function recordPasses(cache: PassCache, keys: readonly string[], now: num
     .filter(([, t]) => now - t <= PASS_CACHE_MAX_AGE_MS)
     .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
     .slice(0, PASS_CACHE_MAX_ENTRIES)
+
   return { version: PASS_CACHE_VERSION, entries: Object.fromEntries(kept) }
 }
 
@@ -458,6 +464,7 @@ export function detectKotlinHome(): string | null {
   for (const home of [resolve(bin, '..'), resolve(bin, '..', 'libexec')]) {
     if (existsSync(join(home, 'lib', 'kotlin-compiler.jar'))) return home
   }
+
   return null
 }
 
@@ -478,6 +485,7 @@ export function discoverWithScripts(root: string): WorkspaceInfo[] {
     const pkg = JSON.parse(readFileSync(join(ws.dir, 'package.json'), 'utf8')) as {
       scripts?: Record<string, string>
     }
+
     return { ...ws, scripts: pkg.scripts ?? {} }
   })
 }
@@ -489,6 +497,7 @@ export function gitFiles(root: string): string[] {
     encoding: 'utf8',
     maxBuffer: 256 * 1024 * 1024,
   })
+
   return out.split('\0').filter(Boolean)
 }
 
@@ -517,5 +526,6 @@ export function readTargetingSources(
       if (text !== undefined) scriptFiles.set(f, text)
     }
   }
+
   return { testFiles, scriptFiles }
 }
