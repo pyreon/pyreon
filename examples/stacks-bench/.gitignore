@@ -1,5 +1,8 @@
-# Measurement output (FIRST-PASS numbers go in the PR, not the repo)
-results/
+# A run's raw output: results/<runId>/. Ignored until a run is published;
+# results/README.md states where a published run goes and what it must meet.
+results/*
+!results/README.md
+!results/published/
 # The repo root ignores every `lib` directory (package build output). Here `lib/` is
 # source: the harness modules and each arm's own src/lib.
 !lib/

@@ -33,6 +33,7 @@ describe('gen-docs — compiler snapshot', () => {
       'compiler/diagnoseError',
       'compiler/emitValidator',
       'compiler/filePathToUrlPath',
+      'compiler/findSyntaxErrors',
       'compiler/formatIslandAudit',
       'compiler/formatReactivityLens',
       'compiler/formatSsgAudit',

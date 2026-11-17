@@ -1,6 +1,5 @@
 {
   "description": "Site design ratchet — design findings per (file, rule) in docs/src may only DECREASE, and a file not listed here must have none. Checked by `bun scripts/check-site-design.ts` (validate-fast + Fast Gates). Rules and fixes: .agents/guides/ui-system/site-design-system.md. Tighten with `--update`; never raise a count to absorb a finding.",
-  "total": 2200,
   "files": {
     "docs/src/blog/views/BlogListView.tsx": {"kit/extend-css":2,"kit/internal-import":1,"kit/styled-outside":4,"literal/space":3},
     "docs/src/blog/views/BlogPostView.tsx": {"kit/extend-css":8,"kit/internal-import":1,"kit/styled-outside":21,"literal/font-size":1,"literal/radius":2,"literal/space":26},

@@ -84,6 +84,20 @@ export interface PlainOptions {
 }
 
 const PLAIN_SOURCE = '@pyreon/core/plain'
+
+/**
+ * Prefix the pre-pass writes before the bare signal it lowers `signalOf(x)` to:
+ * `signalOf(count)` → `/*@pyreon:signal*\/count`. The JSX pass auto-calls a
+ * bare known signal inside JSX (`count` → `count()`), which would turn the
+ * identity escape hatch back into a read; an identifier carrying this prefix is
+ * the signal itself on every element path, so both JSX backends skip it
+ * (`isIdentityRef` in jsx.ts, `is_identity_ref` in native/src/lib.rs). A
+ * comment, so every other consumer of the pre-pass output (PMTC, source maps)
+ * sees the same bare reference as before, and classic code — which never
+ * contains it — compiles byte-identically. Mirrored by `SIGNAL_OF_MARK` in
+ * `native/src/plain.rs`.
+ */
+export const SIGNAL_OF_MARK = '/*@pyreon:signal*/'
 const REACTIVITY_SOURCE = '@pyreon/reactivity'
 
 /**
@@ -1286,12 +1300,13 @@ export function transformPlain(
           if (role === 'signalOf') {
             // `signalOf(x)` — the escape hatch to the binding's SIGNAL identity
             // (pass it to an API that takes a signal, store it, two-way bind).
-            // Compiles to the bare signal reference: no read, no tracking.
+            // Compiles to the bare signal reference: no read, no tracking —
+            // marked so the JSX pass does not auto-call it (SIGNAL_OF_MARK).
             const args: N[] = node.arguments ?? []
             const arg = args.length === 1 ? unwrapTs(args[0]) : null
             const b = arg?.type === 'Identifier' ? lookup(arg.name) : null
             if (arg && b && (b.kind === 'state' || b.kind === 'store' || b.kind === 'derived' || b.kind === 'imported-state')) {
-              ms.overwrite(node.start, node.end, arg.name)
+              ms.overwrite(node.start, node.end, SIGNAL_OF_MARK + arg.name)
               return
             }
             warn(

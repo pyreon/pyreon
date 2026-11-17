@@ -36,7 +36,7 @@ export function App() {
     expect(out).toContain(
       'let (bytes, _) = try await URLSession.shared.data(from: URL(string: "https://x/1")!)',
     )
-    expect(out).toContain('f1.resolve(try JSONDecoder().decode(U.self, from: bytes))')
+    expect(out).toContain('f1.resolve(try PyreonJSON.decode(U.self, from: bytes))')
   })
 
   it('a VERB, HEADERS or a BODY — any one of the three — routes through PyreonHttp', () => {

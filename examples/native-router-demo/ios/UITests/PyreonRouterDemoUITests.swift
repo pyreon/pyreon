@@ -31,6 +31,27 @@
 import UIKit
 import XCTest
 
+private extension XCUIElement {
+    /// `waitForExistence(timeout:)` with the same contract and none of its
+    /// flat cost: true as soon as the element exists, false at the deadline.
+    ///
+    /// XCTest evaluates that wait's predicate for the FIRST time one second
+    /// after the call, so an element that is already on screen still costs
+    /// 1.03 s. In one CI job (2026-11-17) 427 of 456 such waits were answered
+    /// by that first poll and took 487 s between them. This asks at once, then
+    /// ten times a second. Held for every suite by
+    /// `ios-device-test-harness.test.ts`.
+    func waitToExist(timeout: TimeInterval) -> Bool {
+        if exists { return true }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            if exists { return true }
+        }
+        return false
+    }
+}
+
 final class PyreonRouterDemoUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -47,7 +68,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         // somehow appears more than once in the tree.
         let homePage = app.otherElements["home-page"].firstMatch
         XCTAssertTrue(
-            homePage.waitForExistence(timeout: 30),
+            homePage.waitToExist(timeout: 30),
             "Home page (accessibilityIdentifier=\"home-page\") did not appear within 30s — R1.1 (home renders at launch) regressed"
         )
     }
@@ -59,7 +80,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         // Wait for home, then tap the "Go to About" button.
         let homePage = app.otherElements["home-page"].firstMatch
         XCTAssertTrue(
-            homePage.waitForExistence(timeout: 30),
+            homePage.waitToExist(timeout: 30),
             "Home page did not render within 30s"
         )
 
@@ -77,7 +98,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         // Assert the about-page identifier appears post-navigation.
         let aboutPage = app.otherElements["about-page"].firstMatch
         XCTAssertTrue(
-            aboutPage.waitForExistence(timeout: 15),
+            aboutPage.waitToExist(timeout: 15),
             "About page did not render within 5s after tapping \"Go to About\" — router push did not commit"
         )
 
@@ -90,7 +111,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         backToHome.tap()
 
         XCTAssertTrue(
-            homePage.waitForExistence(timeout: 15),
+            homePage.waitToExist(timeout: 15),
             "Did not return to home page within 5s after tapping \"Back to Home\""
         )
     }
@@ -104,7 +125,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
 
         let homePage = app.otherElements["home-page"].firstMatch
         XCTAssertTrue(
-            homePage.waitForExistence(timeout: 30),
+            homePage.waitToExist(timeout: 30),
             "Home page did not render within 30s"
         )
 
@@ -117,7 +138,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
 
         let userPage = app.otherElements["user-page"].firstMatch
         XCTAssertTrue(
-            userPage.waitForExistence(timeout: 15),
+            userPage.waitToExist(timeout: 15),
             "User page did not render within 5s after tapping \"View user 42\""
         )
 
@@ -128,7 +149,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         // "42" from the route segment.
         let profileText = app.staticTexts["Profile for user 42"]
         XCTAssertTrue(
-            profileText.waitForExistence(timeout: 2),
+            profileText.waitToExist(timeout: 2),
             "Expected \"Profile for user 42\" text not found — useParams() did not populate id=\"42\" from the route segment"
         )
     }
@@ -149,7 +170,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
 
@@ -163,14 +184,14 @@ final class PyreonRouterDemoUITests: XCTestCase {
         //     Button  label: 'About via Link'
         let link = app.otherElements["home-link-about"]
         XCTAssertTrue(
-            link.waitForExistence(timeout: 10),
+            link.waitToExist(timeout: 10),
             "home-link-about not queryable — data-testid did not reach "
                 + "accessibilityIdentifier on the emitted PyreonLink"
         )
         link.tap()
 
         XCTAssertTrue(
-            app.otherElements["about-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["about-page"].firstMatch.waitToExist(timeout: 15),
             "About page did not render after tapping the Link — PyreonLink "
                 + "resolved no router from the environment, so router?.push "
                 + "silently no-oped"
@@ -201,7 +222,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
 
         let heading = app.staticTexts["core-heading"]
         XCTAssertTrue(
-            heading.waitForExistence(timeout: 30),
+            heading.waitToExist(timeout: 30),
             "core-heading missing — <Heading> did not render or its "
                 + "data-testid did not reach accessibilityIdentifier"
         )
@@ -227,7 +248,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         let left = app.staticTexts["spacer-left"]
         let right = app.staticTexts["spacer-right"]
         XCTAssertTrue(
-            left.waitForExistence(timeout: 30),
+            left.waitToExist(timeout: 30),
             "spacer-left missing — the <Inline> row did not render"
         )
         XCTAssertTrue(right.exists, "spacer-right missing")
@@ -250,7 +271,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         let under = app.staticTexts["layer-under"]
         let over = app.staticTexts["layer-over"]
         XCTAssertTrue(
-            under.waitForExistence(timeout: 30),
+            under.waitToExist(timeout: 30),
             "layer-under missing — the <Layer> subtree did not render"
         )
         XCTAssertTrue(over.exists, "layer-over missing")
@@ -275,30 +296,30 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["Go to About"].tap()
         XCTAssertTrue(
-            app.otherElements["about-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["about-page"].firstMatch.waitToExist(timeout: 15),
             "About page did not render"
         )
 
         let count = app.staticTexts["tag-count"]
-        XCTAssertTrue(count.waitForExistence(timeout: 10), "tag-count missing")
+        XCTAssertTrue(count.waitToExist(timeout: 10), "tag-count missing")
         XCTAssertEqual(count.label, "Tags: 1")
         XCTAssertTrue(app.staticTexts["tag: alpha"].exists, "initial row missing")
 
         app.buttons["tag-add"].tap()
         XCTAssertTrue(
-            app.staticTexts["tag: beta"].waitForExistence(timeout: 10),
+            app.staticTexts["tag: beta"].waitToExist(timeout: 10),
             "appended row did not render"
         )
         XCTAssertEqual(count.label, "Tags: 2")
 
         app.buttons["tag-remove"].tap()
         XCTAssertTrue(
-            app.staticTexts["Tags: 1"].waitForExistence(timeout: 10),
+            app.staticTexts["Tags: 1"].waitToExist(timeout: 10),
             "count did not drop after remove-first"
         )
         XCTAssertFalse(app.staticTexts["tag: alpha"].exists, "removed row still rendered")
@@ -324,16 +345,16 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["View motion"].tap()
         XCTAssertTrue(
-            app.otherElements["motion-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["motion-page"].firstMatch.waitToExist(timeout: 15),
             "Motion page did not render"
         )
         let box = app.staticTexts["slow-box"]
-        XCTAssertTrue(box.waitForExistence(timeout: 10), "slow box missing pre-toggle")
+        XCTAssertTrue(box.waitToExist(timeout: 10), "slow box missing pre-toggle")
 
         app.buttons["motion-toggle"].tap()
         XCTAssertTrue(
@@ -342,7 +363,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
         app.buttons["motion-toggle"].tap()
         XCTAssertTrue(
-            box.waitForExistence(timeout: 6),
+            box.waitToExist(timeout: 6),
             "slow box did not return after show — the configured animation gate is stuck"
         )
     }
@@ -358,12 +379,12 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         let a = app.staticTexts["adaptive-a"]
         let b = app.staticTexts["adaptive-b"]
-        XCTAssertTrue(a.waitForExistence(timeout: 10), "adaptive-a missing")
+        XCTAssertTrue(a.waitToExist(timeout: 10), "adaptive-a missing")
         XCTAssertTrue(b.exists, "adaptive-b missing")
         let gap = b.frame.minY - a.frame.maxY
         XCTAssertEqual(
@@ -392,19 +413,19 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["View styles"].tap()
         XCTAssertTrue(
-            app.otherElements["styles-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["styles-page"].firstMatch.waitToExist(timeout: 15),
             "Styles page did not render"
         )
 
         let title = app.staticTexts["Styles"]
         let sm = app.staticTexts["card-sm-child"]
         let xl = app.staticTexts["card-xl-child"]
-        XCTAssertTrue(sm.waitForExistence(timeout: 10), "card-sm-child missing")
+        XCTAssertTrue(sm.waitToExist(timeout: 10), "card-sm-child missing")
         XCTAssertTrue(xl.exists, "card-xl-child missing")
 
         let titleToSm = sm.frame.minY - title.frame.maxY
@@ -438,21 +459,21 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["View user 42"].tap()
         XCTAssertTrue(
-            app.otherElements["user-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["user-page"].firstMatch.waitToExist(timeout: 15),
             "User page did not render"
         )
         XCTAssertTrue(
-            app.staticTexts["ws-status"].waitForExistence(timeout: 10),
+            app.staticTexts["ws-status"].waitToExist(timeout: 10),
             "ws-status missing — the WebSocket section did not render"
         )
 
         app.buttons["ws-send"].tap()
-        if !app.staticTexts["Echo: echo:ping-42"].waitForExistence(timeout: 10) {
+        if !app.staticTexts["Echo: echo:ping-42"].waitToExist(timeout: 10) {
             XCTFail(
                 "echo never rendered — live state: "
                     + "\"\(app.staticTexts["ws-status"].label) / "
@@ -480,17 +501,17 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["View http"].tap()
         XCTAssertTrue(
-            app.otherElements["http-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["http-page"].firstMatch.waitToExist(timeout: 15),
             "http page did not render"
         )
 
         // The server echoes the METHOD it received.
-        if !app.staticTexts["Method: POST"].waitForExistence(timeout: 15) {
+        if !app.staticTexts["Method: POST"].waitToExist(timeout: 15) {
             XCTFail(
                 "the server did not see a POST — live state: "
                     + "\"\(app.staticTexts["http-method"].label) / "
@@ -503,7 +524,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         // ...and the BODY. Asserted separately because a fix that carried the
         // verb but dropped the payload would pass the check above.
         XCTAssertTrue(
-            app.staticTexts["Body: {\"name\":\"pyreon\"}"].waitForExistence(timeout: 10),
+            app.staticTexts["Body: {\"name\":\"pyreon\"}"].waitToExist(timeout: 10),
             "the request body never reached the server — got "
                 + "\"\(app.staticTexts["http-body"].label)\""
         )
@@ -511,14 +532,14 @@ final class PyreonRouterDemoUITests: XCTestCase {
         // ...and a header whose VALUE is built at runtime (a signal-backed Bearer token). A literal-only lowering would
         // drop it and the server would echo an empty authorization.
         XCTAssertTrue(
-            app.staticTexts["Auth: Bearer tok-42"].waitForExistence(timeout: 10),
+            app.staticTexts["Auth: Bearer tok-42"].waitToExist(timeout: 10),
             "the runtime Authorization header never reached the server — got "
                 + "\"\(app.staticTexts["http-auth"].label)\""
         )
 
         // A non-2xx must surface as an ERROR, not as a decode failure.
         XCTAssertTrue(
-            app.staticTexts["Bad: rejected"].waitForExistence(timeout: 10),
+            app.staticTexts["Bad: rejected"].waitToExist(timeout: 10),
             "the 500 from /boom did not reject — got "
                 + "\"\(app.staticTexts["http-bad"].label)\""
         )
@@ -546,13 +567,13 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.staticTexts["secure-value"].waitForExistence(timeout: 30),
+            app.staticTexts["secure-value"].waitToExist(timeout: 30),
             "secure-value missing — the secure-storage section did not render"
         )
         app.buttons["secure-save"].tap()
         // The save handler reads BACK through the store, so this label proves
         // the same-process write→read round trip.
-        if !app.staticTexts["Secret: s3cret"].waitForExistence(timeout: 10) {
+        if !app.staticTexts["Secret: s3cret"].waitToExist(timeout: 10) {
             // Name the failing HALF in the message: the app renders
             // "Secret: write-failed" / "Secret: read-failed" / the value.
             XCTFail(
@@ -565,10 +586,10 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.staticTexts["secure-value"].waitForExistence(timeout: 30),
+            app.staticTexts["secure-value"].waitToExist(timeout: 30),
             "secure-value missing after relaunch"
         )
-        if !app.staticTexts["Secret: s3cret"].waitForExistence(timeout: 10) {
+        if !app.staticTexts["Secret: s3cret"].waitToExist(timeout: 10) {
             XCTFail(
                 "secret did not survive terminate+relaunch — live state: "
                     + "\"\(app.staticTexts["secure-value"].label)\""
@@ -588,16 +609,16 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["View motion"].tap()
         XCTAssertTrue(
-            app.otherElements["motion-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["motion-page"].firstMatch.waitToExist(timeout: 15),
             "Motion page did not render"
         )
         let zone = app.buttons["swipe-zone"].firstMatch
-        XCTAssertTrue(zone.waitForExistence(timeout: 10), "swipe zone missing")
+        XCTAssertTrue(zone.waitToExist(timeout: 10), "swipe zone missing")
         XCTAssertTrue(
             app.staticTexts["Swiped: none"].firstMatch.exists,
             "status should start at none"
@@ -605,19 +626,19 @@ final class PyreonRouterDemoUITests: XCTestCase {
 
         zone.swipeLeft()
         XCTAssertTrue(
-            app.staticTexts["Swiped: left"].firstMatch.waitForExistence(timeout: 5),
+            app.staticTexts["Swiped: left"].firstMatch.waitToExist(timeout: 5),
             "left swipe did not fire onSwipeLeft (status: \(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Swiped:'")).firstMatch.label))"
         )
 
         zone.swipeRight()
         XCTAssertTrue(
-            app.staticTexts["Swiped: right"].firstMatch.waitForExistence(timeout: 5),
+            app.staticTexts["Swiped: right"].firstMatch.waitToExist(timeout: 5),
             "right swipe did not fire onSwipeRight"
         )
 
         zone.tap()
         XCTAssertTrue(
-            app.staticTexts["Swiped: tap"].firstMatch.waitForExistence(timeout: 5),
+            app.staticTexts["Swiped: tap"].firstMatch.waitToExist(timeout: 5),
             "tap no longer fires onPress — the drag gesture swallowed it"
         )
     }
@@ -633,17 +654,17 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["View motion"].tap()
         let zone = app.otherElements["gesture-zone"].firstMatch
-        XCTAssertTrue(zone.waitForExistence(timeout: 15), "gesture zone missing")
+        XCTAssertTrue(zone.waitToExist(timeout: 15), "gesture zone missing")
         XCTAssertTrue(app.staticTexts["Pan: none"].firstMatch.exists, "pan should start at none")
         // The vector <Canvas> inside the region renders (its <CanvasText> label
         // is a real Text in the accessibility tree).
         XCTAssertTrue(
-            app.staticTexts["Drag or pinch here"].firstMatch.waitForExistence(timeout: 5),
+            app.staticTexts["Drag or pinch here"].firstMatch.waitToExist(timeout: 5),
             "the <Canvas> inside the gesture zone did not render its CanvasText"
         )
 
@@ -651,13 +672,13 @@ final class PyreonRouterDemoUITests: XCTestCase {
         let to = zone.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
         from.press(forDuration: 0.1, thenDragTo: to)
         XCTAssertTrue(
-            app.staticTexts["Pan: right"].firstMatch.waitForExistence(timeout: 5),
+            app.staticTexts["Pan: right"].firstMatch.waitToExist(timeout: 5),
             "a rightward drag did not end as 'right' (status: \(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Pan:'")).firstMatch.label))"
         )
 
         zone.pinch(withScale: 2.5, velocity: 1)
         XCTAssertTrue(
-            app.staticTexts["Pinch: in"].firstMatch.waitForExistence(timeout: 5),
+            app.staticTexts["Pinch: in"].firstMatch.waitToExist(timeout: 5),
             "a spreading pinch did not end as 'in' (status: \(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Pinch:'")).firstMatch.label))"
         )
     }
@@ -676,16 +697,16 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["View big list"].tap()
         XCTAssertTrue(
-            app.otherElements["biglist-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["biglist-page"].firstMatch.waitToExist(timeout: 15),
             "Big list page did not render"
         )
         XCTAssertTrue(
-            app.staticTexts["Row 0"].firstMatch.waitForExistence(timeout: 10),
+            app.staticTexts["Row 0"].firstMatch.waitToExist(timeout: 10),
             "Row 0 missing — 10k-row creation failed or hung"
         )
         XCTAssertFalse(
@@ -718,12 +739,12 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["View a11y"].tap()
         XCTAssertTrue(
-            app.otherElements["a11y-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["a11y-page"].firstMatch.waitToExist(timeout: 15),
             "A11y page did not render"
         )
         if !app.buttons["Add item"].firstMatch.exists {
@@ -760,16 +781,16 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["View media"].tap()
         XCTAssertTrue(
-            app.otherElements["media-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["media-page"].firstMatch.waitToExist(timeout: 15),
             "Media page did not render"
         )
         let el = app.descendants(matching: .any)["remote-dot"].firstMatch
-        XCTAssertTrue(el.waitForExistence(timeout: 15), "remote-dot element missing")
+        XCTAssertTrue(el.waitToExist(timeout: 15), "remote-dot element missing")
 
         var sawRed = false
         let deadline = Date().addingTimeInterval(20)
@@ -822,19 +843,19 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["View anim"].tap()
         XCTAssertTrue(
-            app.otherElements["anim-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["anim-page"].firstMatch.waitToExist(timeout: 15),
             "Anim page did not render"
         )
 
         let slow = app.staticTexts["asym-slow-leave"]
         let fast = app.staticTexts["asym-fast-leave"]
-        XCTAssertTrue(slow.waitForExistence(timeout: 10), "asymmetric slow-leave box missing")
-        XCTAssertTrue(fast.waitForExistence(timeout: 10), "asymmetric fast-leave box missing")
+        XCTAssertTrue(slow.waitToExist(timeout: 10), "asymmetric slow-leave box missing")
+        XCTAssertTrue(fast.waitToExist(timeout: 10), "asymmetric fast-leave box missing")
 
         app.buttons["anim-toggle"].tap()
         XCTAssertTrue(
@@ -863,11 +884,11 @@ final class PyreonRouterDemoUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 3.5)
         app.buttons["anim-toggle"].tap()
         XCTAssertTrue(
-            slow.waitForExistence(timeout: 15),
+            slow.waitToExist(timeout: 15),
             "asymmetric slow-leave box never came back — the insertion side is broken"
         )
         XCTAssertTrue(
-            fast.waitForExistence(timeout: 15),
+            fast.waitToExist(timeout: 15),
             "asymmetric fast-leave box never came back"
         )
     }
@@ -893,52 +914,52 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["View offline"].tap()
         XCTAssertTrue(
-            app.otherElements["offline-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["offline-page"].firstMatch.waitToExist(timeout: 15),
             "Offline page did not render"
         )
 
         // Known-empty start so the counts below are unambiguous.
         app.buttons["clear-note"].tap()
         XCTAssertTrue(
-            app.staticTexts["Notes: 0"].waitForExistence(timeout: 10),
+            app.staticTexts["Notes: 0"].waitToExist(timeout: 10),
             "Could not clear the store before the durability check"
         )
 
         app.buttons["write-note"].tap()
         XCTAssertTrue(
-            app.staticTexts["Notes: 1"].waitForExistence(timeout: 10),
+            app.staticTexts["Notes: 1"].waitToExist(timeout: 10),
             "The write did not land in the database"
         )
 
         app.terminate()
         app.launch()
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render after relaunch"
         )
         app.buttons["View offline"].tap()
         XCTAssertTrue(
-            app.otherElements["offline-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["offline-page"].firstMatch.waitToExist(timeout: 15),
             "Offline page did not render after relaunch"
         )
 
         XCTAssertTrue(
-            app.staticTexts["Notes: 1"].waitForExistence(timeout: 15),
+            app.staticTexts["Notes: 1"].waitToExist(timeout: 15),
             "The record did not survive process death — the database is not persisting"
         )
         XCTAssertTrue(
-            app.staticTexts["State: restored"].waitForExistence(timeout: 10),
+            app.staticTexts["State: restored"].waitToExist(timeout: 10),
             "The presence check did not resolve the stored record after relaunch"
         )
 
         // Leave the store clean for whichever test runs next.
         app.buttons["clear-note"].tap()
-        _ = app.staticTexts["Notes: 0"].waitForExistence(timeout: 10)
+        _ = app.staticTexts["Notes: 0"].waitToExist(timeout: 10)
     }
 
     // Platform-APIs row — INBOUND deep links, which had no vocabulary at all
@@ -962,14 +983,14 @@ final class PyreonRouterDemoUITests: XCTestCase {
         // XCTest delivers through the OS without depending on Safari UI.
         app.launch()
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.terminate()
 
         XCUIDevice.shared.system.open(try XCTUnwrap(URL(string: "pyreondemo://about")))
         XCTAssertTrue(
-            app.otherElements["about-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["about-page"].firstMatch.waitToExist(timeout: 30),
             "A cold launch via pyreondemo://about did not open the about route — the "
                 + "pending link was not consumed by the router's initialPath"
         )
@@ -977,7 +998,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         // WARM: the app is already running; hand it a different link.
         XCUIDevice.shared.system.open(try XCTUnwrap(URL(string: "pyreondemo://styles")))
         XCTAssertTrue(
-            app.otherElements["styles-page"].firstMatch.waitForExistence(timeout: 20),
+            app.otherElements["styles-page"].firstMatch.waitToExist(timeout: 20),
             "A warm deep link did not navigate — the live router is not receiving "
                 + "links, so every link after launch is dropped"
         )
@@ -1001,19 +1022,19 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["View styles"].tap()
         XCTAssertTrue(
-            app.otherElements["styles-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["styles-page"].firstMatch.waitToExist(timeout: 15),
             "Styles page did not render"
         )
 
         let narrow = app.staticTexts["grid-text-narrow"].firstMatch
         let wide = app.staticTexts["grid-text-wide"].firstMatch
-        XCTAssertTrue(narrow.waitForExistence(timeout: 10), "narrow column text missing")
-        XCTAssertTrue(wide.waitForExistence(timeout: 10), "wide column text missing")
+        XCTAssertTrue(narrow.waitToExist(timeout: 10), "narrow column text missing")
+        XCTAssertTrue(wide.waitToExist(timeout: 10), "wide column text missing")
 
         // The measurement is each glyph's CENTRE, not a column edge:
         // `containerRelativeFrame(count:span:)` sizes the column and the
@@ -1055,19 +1076,19 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["View styles"].tap()
         XCTAssertTrue(
-            app.otherElements["styles-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["styles-page"].firstMatch.waitToExist(timeout: 15),
             "Styles page did not render"
         )
 
         let marker = app.staticTexts["element-marker"].firstMatch
         let child = app.staticTexts["element-child"].firstMatch
-        XCTAssertTrue(marker.waitForExistence(timeout: 10), "marker text missing")
-        XCTAssertTrue(child.waitForExistence(timeout: 10), "element child text missing")
+        XCTAssertTrue(marker.waitToExist(timeout: 10), "marker text missing")
+        XCTAssertTrue(child.waitToExist(timeout: 10), "element child text missing")
 
         let gap = child.frame.minY - marker.frame.maxY
         XCTAssertEqual(
@@ -1093,17 +1114,17 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["View media"].tap()
         XCTAssertTrue(
-            app.otherElements["media-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["media-page"].firstMatch.waitToExist(timeout: 15),
             "Media page did not render"
         )
 
         XCTAssertTrue(
-            app.staticTexts["Video: playing"].waitForExistence(timeout: 30),
+            app.staticTexts["Video: playing"].waitToExist(timeout: 30),
             "Video status never reached playing — the AVPlayer pipeline did "
                 + "not start (observed: \(app.staticTexts["video-status"].firstMatch.label))"
         )
@@ -1120,72 +1141,72 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["Go to About"].tap()
         XCTAssertTrue(
-            app.otherElements["about-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["about-page"].firstMatch.waitToExist(timeout: 15),
             "About page did not render"
         )
         app.buttons["View lifecycle"].tap()
         XCTAssertTrue(
-            app.otherElements["lifecycle-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["lifecycle-page"].firstMatch.waitToExist(timeout: 15),
             "Lifecycle page did not render"
         )
         app.buttons["View errors"].tap()
         XCTAssertTrue(
-            app.otherElements["errors-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["errors-page"].firstMatch.waitToExist(timeout: 15),
             "Errors page did not render"
         )
-        XCTAssertTrue(app.staticTexts["Result: none"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Result: none"].waitToExist(timeout: 10))
 
         app.buttons["Parse valid"].tap()
         XCTAssertTrue(
-            app.staticTexts["Result: qty 3"].waitForExistence(timeout: 10),
+            app.staticTexts["Result: qty 3"].waitToExist(timeout: 10),
             "The non-throwing path did not render its value"
         )
-        XCTAssertTrue(app.staticTexts["Finally: 1"].waitForExistence(timeout: 10), "finally did not run on success")
+        XCTAssertTrue(app.staticTexts["Finally: 1"].waitToExist(timeout: 10), "finally did not run on success")
 
         app.buttons["Parse empty"].tap()
         XCTAssertTrue(
-            app.staticTexts["Result: error: required"].waitForExistence(timeout: 10),
+            app.staticTexts["Result: error: required"].waitToExist(timeout: 10),
             "The thrown error was not caught, or its message was lost"
         )
-        XCTAssertTrue(app.staticTexts["Finally: 2"].waitForExistence(timeout: 10), "finally did not run on failure")
+        XCTAssertTrue(app.staticTexts["Finally: 2"].waitToExist(timeout: 10), "finally did not run on failure")
 
         app.buttons["Parse negative"].tap()
         XCTAssertTrue(
-            app.staticTexts["Result: error: negative: -2"].waitForExistence(timeout: 10),
+            app.staticTexts["Result: error: negative: -2"].waitToExist(timeout: 10),
             "A RangeError's interpolated message was not carried"
         )
-        XCTAssertTrue(app.staticTexts["Finally: 3"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Finally: 3"].waitToExist(timeout: 10))
 
         // JSON.parse: a typed decode (the unknown `note` key ignored, as on the web) and a malformed input that
         // throws into the page's catch.
-        XCTAssertTrue(app.staticTexts["JSON: none"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["JSON: none"].waitToExist(timeout: 10))
         app.buttons["Decode order"].tap()
         XCTAssertTrue(
-            app.staticTexts["JSON: A1 x2"].waitForExistence(timeout: 10),
+            app.staticTexts["JSON: A1 x2"].waitToExist(timeout: 10),
             "JSON.parse did not decode into the named type"
         )
         app.buttons["Decode malformed"].tap()
         XCTAssertTrue(
-            app.staticTexts["JSON: malformed"].waitForExistence(timeout: 10),
+            app.staticTexts["JSON: malformed"].waitToExist(timeout: 10),
             "A malformed JSON.parse was not caught"
         )
 
         // A schema's .parse(x): the native struct's own parse, which throws on a constraint violation — caught, with
         // a message naming the field and rule.
-        XCTAssertTrue(app.staticTexts["Schema: none"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Schema: none"].waitToExist(timeout: 10))
         app.buttons["Check order"].tap()
         XCTAssertTrue(
-            app.staticTexts["Schema: ok B7"].waitForExistence(timeout: 10),
+            app.staticTexts["Schema: ok B7"].waitToExist(timeout: 10),
             "A valid schema .parse(x) did not return the parsed value"
         )
         app.buttons["Check empty SKU"].tap()
         XCTAssertTrue(
-            app.staticTexts["Schema: rejected sku"].waitForExistence(timeout: 10),
+            app.staticTexts["Schema: rejected sku"].waitToExist(timeout: 10),
             "A failing schema .parse(x) did not return { ok: false, issues } naming the field"
         )
     }
@@ -1203,7 +1224,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         // Reached from ABOUT, not home: the home nav column is at its fold
@@ -1214,16 +1235,16 @@ final class PyreonRouterDemoUITests: XCTestCase {
         // navigate the same way.
         app.buttons["Go to About"].tap()
         XCTAssertTrue(
-            app.otherElements["about-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["about-page"].firstMatch.waitToExist(timeout: 15),
             "About page did not render"
         )
         app.buttons["View lifecycle"].tap()
         XCTAssertTrue(
-            app.otherElements["lifecycle-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["lifecycle-page"].firstMatch.waitToExist(timeout: 15),
             "Lifecycle page did not render"
         )
         XCTAssertTrue(
-            app.staticTexts["BG: false"].waitForExistence(timeout: 10),
+            app.staticTexts["BG: false"].waitToExist(timeout: 10),
             "Initial sticky flag not rendered — the container reads did not lower"
         )
         XCTAssertTrue(
@@ -1237,17 +1258,17 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.activate()
 
         XCTAssertTrue(
-            app.otherElements["lifecycle-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["lifecycle-page"].firstMatch.waitToExist(timeout: 15),
             "Lifecycle page did not restore after re-activation"
         )
         XCTAssertTrue(
-            app.staticTexts["BG: true"].waitForExistence(timeout: 10),
+            app.staticTexts["BG: true"].waitToExist(timeout: 10),
             "Sticky wasBackgrounded never flipped — the lifecycle observers "
                 + "did not start (observed: \(app.staticTexts["bg-flag"].firstMatch.label), "
                 + "\(app.staticTexts["phase-text"].firstMatch.label))"
         )
         XCTAssertTrue(
-            app.staticTexts["Phase: active"].waitForExistence(timeout: 10),
+            app.staticTexts["Phase: active"].waitToExist(timeout: 10),
             "Phase did not return to active after re-activation"
         )
     }
@@ -1264,19 +1285,19 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["View styles"].tap()
         XCTAssertTrue(
-            app.otherElements["styles-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["styles-page"].firstMatch.waitToExist(timeout: 15),
             "Styles page did not render"
         )
 
         let a = app.staticTexts["attrs-a"].firstMatch
         let b = app.staticTexts["attrs-b"].firstMatch
-        XCTAssertTrue(a.waitForExistence(timeout: 10), "attrs-a missing")
-        XCTAssertTrue(b.waitForExistence(timeout: 10), "attrs-b missing")
+        XCTAssertTrue(a.waitToExist(timeout: 10), "attrs-a missing")
+        XCTAssertTrue(b.waitToExist(timeout: 10), "attrs-b missing")
 
         let gap = b.frame.minY - a.frame.maxY
         XCTAssertEqual(
@@ -1304,19 +1325,19 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["View styles"].tap()
         XCTAssertTrue(
-            app.otherElements["styles-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["styles-page"].firstMatch.waitToExist(timeout: 15),
             "Styles page did not render"
         )
 
         let body = app.staticTexts["typo-body"].firstMatch
         let display = app.staticTexts["typo-display"].firstMatch
-        XCTAssertTrue(body.waitForExistence(timeout: 10), "typo-body text missing")
-        XCTAssertTrue(display.waitForExistence(timeout: 10), "typo-display text missing")
+        XCTAssertTrue(body.waitToExist(timeout: 10), "typo-body text missing")
+        XCTAssertTrue(display.waitToExist(timeout: 10), "typo-display text missing")
 
         let bodyH = body.frame.height
         let displayH = display.frame.height
@@ -1330,7 +1351,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
 
         XCTAssertTrue(
-            app.staticTexts["accent-chip"].firstMatch.waitForExistence(timeout: 10),
+            app.staticTexts["accent-chip"].firstMatch.waitToExist(timeout: 10),
             "accent chip missing — the colour-token styled(Text) did not render"
         )
     }
@@ -1357,12 +1378,12 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["View push"].tap()
         XCTAssertTrue(
-            app.otherElements["push-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["push-page"].firstMatch.waitToExist(timeout: 15),
             "Push page did not render"
         )
 
@@ -1373,7 +1394,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         for label in ["Allow", "OK"] {
             let button = springboard.buttons[label]
-            if button.waitForExistence(timeout: 3) {
+            if button.waitToExist(timeout: 3) {
                 button.tap()
                 break
             }
@@ -1392,7 +1413,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
             // TEST_RUNNER_PYREON_PUSH_INJECTED — a bare env var does NOT
             // reach the runner).
             XCTAssertTrue(
-                app.staticTexts["Push: none"].waitForExistence(timeout: 10),
+                app.staticTexts["Push: none"].waitToExist(timeout: 10),
                 "Push page did not commit its initial state — the container "
                     + "start() crashed or the reads never rendered"
             )
@@ -1403,7 +1424,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         // delegate's willPresent must land it in the container and SwiftUI
         // must re-render the read. 60s is ~20 injection attempts.
         XCTAssertTrue(
-            app.staticTexts["Push: Hello from Pyreon"].waitForExistence(timeout: 60),
+            app.staticTexts["Push: Hello from Pyreon"].waitToExist(timeout: 60),
             "Injected APNs payload never rendered — delivery through the "
                 + "UNUserNotificationCenter delegate did not reach the container "
                 + "(observed: \(app.staticTexts["push-title"].firstMatch.label))"
@@ -1420,23 +1441,23 @@ final class PyreonRouterDemoUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         XCTAssertTrue(
-            app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30),
+            app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
         )
         app.buttons["Go to About"].tap()
         XCTAssertTrue(
-            app.otherElements["about-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["about-page"].firstMatch.waitToExist(timeout: 15),
             "About page did not render"
         )
         app.buttons["View loaded"].tap()
         XCTAssertTrue(
-            app.otherElements["loaded-page"].firstMatch.waitForExistence(timeout: 15),
+            app.otherElements["loaded-page"].firstMatch.waitToExist(timeout: 15),
             "Loaded page did not render — did the route loader store its data?"
         )
         XCTAssertEqual(app.staticTexts["loaded-title"].firstMatch.label, "Title: Loaded title")
         XCTAssertEqual(app.staticTexts["loaded-views"].firstMatch.label, "Views: 42")
         XCTAssertTrue(
-            app.staticTexts["Mounted with: Loaded title"].waitForExistence(timeout: 10),
+            app.staticTexts["Mounted with: Loaded title"].waitToExist(timeout: 10),
             "onMount ran without the loader data (observed: \(app.staticTexts["loaded-mounted"].firstMatch.label))"
         )
     }
@@ -1450,19 +1471,19 @@ final class PyreonRouterDemoUITests: XCTestCase {
     func test_tabsKeepEachTabsStateAndSplitPushesDetail() throws {
         let app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30))
+        XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30))
         app.buttons["home-to-navigation"].tap()
 
         XCTAssertTrue(
-            app.staticTexts["nav-feed-title"].waitForExistence(timeout: 15),
+            app.staticTexts["nav-feed-title"].waitToExist(timeout: 15),
             "Feed tab content did not render after navigating to /navigation"
         )
         let tabBar = app.tabBars.firstMatch
-        XCTAssertTrue(tabBar.waitForExistence(timeout: 10), "no tab bar — <Tabs> did not lower to a TabView")
+        XCTAssertTrue(tabBar.waitToExist(timeout: 10), "no tab bar — <Tabs> did not lower to a TabView")
         XCTAssertTrue(tabBar.buttons["Mail"].exists && tabBar.buttons["Me"].exists, "tab bar items missing")
 
         let draft = app.textFields["nav-feed-draft"]
-        XCTAssertTrue(draft.waitForExistence(timeout: 10))
+        XCTAssertTrue(draft.waitToExist(timeout: 10))
         draft.tap()
         // Return submits the field, which dismisses the keyboard. The keyboard
         // has to be gone before the tab switch: iOS lays it OVER the tab bar,
@@ -1478,19 +1499,19 @@ final class PyreonRouterDemoUITests: XCTestCase {
 
         tabBar.buttons["Me"].tap()
         let tap = app.buttons["nav-me-tap"]
-        XCTAssertTrue(tap.waitForExistence(timeout: 10), "Me tab did not render")
+        XCTAssertTrue(tap.waitToExist(timeout: 10), "Me tab did not render")
         tap.tap()
         tap.tap()
         XCTAssertEqual(tap.label, "Tapped 2")
 
         tabBar.buttons["Feed"].tap()
-        XCTAssertTrue(app.staticTexts["nav-feed-echo"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["nav-feed-echo"].waitToExist(timeout: 10))
         XCTAssertEqual(
             app.staticTexts["nav-feed-echo"].label, "Draft: hello",
             "the Feed tab lost its typed draft across a tab switch"
         )
         tabBar.buttons["Me"].tap()
-        XCTAssertTrue(tap.waitForExistence(timeout: 10))
+        XCTAssertTrue(tap.waitToExist(timeout: 10))
         XCTAssertEqual(
             tap.label, "Tapped 2",
             "the Me tab's child @State reset across a tab switch — the tab was rebuilt"
@@ -1499,21 +1520,21 @@ final class PyreonRouterDemoUITests: XCTestCase {
         // <Split> on a compact iPhone: list → push detail → system back.
         tabBar.buttons["Mail"].tap()
         let row = app.buttons["nav-mail-row-welcome"]
-        XCTAssertTrue(row.waitForExistence(timeout: 10), "Split sidebar did not render")
+        XCTAssertTrue(row.waitToExist(timeout: 10), "Split sidebar did not render")
         row.tap()
         let subject = app.staticTexts["nav-mail-subject"]
-        XCTAssertTrue(subject.waitForExistence(timeout: 10), "Split detail was not pushed")
+        XCTAssertTrue(subject.waitToExist(timeout: 10), "Split detail was not pushed")
         XCTAssertEqual(subject.label, "Subject: Welcome")
         let back = app.navigationBars.buttons.element(boundBy: 0)
-        XCTAssertTrue(back.waitForExistence(timeout: 10), "no navigation back button on the pushed detail")
+        XCTAssertTrue(back.waitToExist(timeout: 10), "no navigation back button on the pushed detail")
         back.tap()
         XCTAssertTrue(
-            app.buttons["nav-mail-row-invoice"].waitForExistence(timeout: 10),
+            app.buttons["nav-mail-row-invoice"].waitToExist(timeout: 10),
             "system back did not return to the Split sidebar"
         )
         // onBack cleared the selection, so the row can be picked again.
         app.buttons["nav-mail-row-invoice"].tap()
-        XCTAssertTrue(subject.waitForExistence(timeout: 10))
+        XCTAssertTrue(subject.waitToExist(timeout: 10))
         XCTAssertEqual(subject.label, "Subject: Invoice")
     }
 
@@ -1526,15 +1547,15 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.launchArguments = ["-pyreonTabsDemo"]
         app.launch()
         XCTAssertTrue(
-            app.staticTexts["tabs-feed-title"].waitForExistence(timeout: 30),
+            app.staticTexts["tabs-feed-title"].waitToExist(timeout: 30),
             "TabsApp did not open on the Feed tab's root"
         )
         let tabBar = app.tabBars.firstMatch
-        XCTAssertTrue(tabBar.waitForExistence(timeout: 10), "no tab bar — <Tabs router> did not lower to a TabView")
+        XCTAssertTrue(tabBar.waitToExist(timeout: 10), "no tab bar — <Tabs router> did not lower to a TabView")
 
         // Push inside Feed: the detail renders AND the tab bar is still on screen.
         app.buttons["tabs-feed-open"].tap()
-        XCTAssertTrue(app.staticTexts["tabs-feed-post-title"].waitForExistence(timeout: 15), "push inside the Feed tab did not render")
+        XCTAssertTrue(app.staticTexts["tabs-feed-post-title"].waitToExist(timeout: 15), "push inside the Feed tab did not render")
         XCTAssertTrue(
             tabBar.buttons["Me"].isHittable,
             "the tab bar is not hittable after a push — the push covered it instead of staying inside the tab"
@@ -1542,27 +1563,27 @@ final class PyreonRouterDemoUITests: XCTestCase {
 
         // Switch to Me and push there.
         tabBar.buttons["Me"].tap()
-        XCTAssertTrue(app.staticTexts["tabs-me-title"].waitForExistence(timeout: 10), "Me tab root did not render")
+        XCTAssertTrue(app.staticTexts["tabs-me-title"].waitToExist(timeout: 10), "Me tab root did not render")
         app.buttons["tabs-me-open"].tap()
-        XCTAssertTrue(app.staticTexts["tabs-me-settings-title"].waitForExistence(timeout: 15), "push inside the Me tab did not render")
+        XCTAssertTrue(app.staticTexts["tabs-me-settings-title"].waitToExist(timeout: 15), "push inside the Me tab did not render")
 
         // Back to Feed: its stack was kept — still on the post.
         tabBar.buttons["Feed"].tap()
         XCTAssertTrue(
-            app.staticTexts["tabs-feed-post-title"].waitForExistence(timeout: 10),
+            app.staticTexts["tabs-feed-post-title"].waitToExist(timeout: 10),
             "the Feed tab lost its pushed post across a tab switch"
         )
 
         // Re-tapping the active tab pops it to its root.
         tabBar.buttons["Feed"].tap()
-        XCTAssertTrue(app.staticTexts["tabs-feed-title"].waitForExistence(timeout: 10), "re-tapping Feed did not pop to its root")
+        XCTAssertTrue(app.staticTexts["tabs-feed-title"].waitToExist(timeout: 10), "re-tapping Feed did not pop to its root")
         let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.staticTexts["tabs-feed-post-title"])
         XCTAssertEqual(XCTWaiter().wait(for: [gone], timeout: 10), .completed, "the post is still on the Feed stack after a re-tap")
 
         // Me still holds its settings page.
         tabBar.buttons["Me"].tap()
         XCTAssertTrue(
-            app.staticTexts["tabs-me-settings-title"].waitForExistence(timeout: 10),
+            app.staticTexts["tabs-me-settings-title"].waitToExist(timeout: 10),
             "the Me tab lost its pushed settings page"
         )
     }
@@ -1572,18 +1593,18 @@ final class PyreonRouterDemoUITests: XCTestCase {
     func test_inlineBeforeEachGuardBlocksNavigation() throws {
         let app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30), "Home page did not render")
+        XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30), "Home page did not render")
         app.buttons["Go to About"].tap()
-        XCTAssertTrue(app.otherElements["about-page"].firstMatch.waitForExistence(timeout: 15), "About page did not render")
+        XCTAssertTrue(app.otherElements["about-page"].firstMatch.waitToExist(timeout: 15), "About page did not render")
         app.buttons["Try guarded"].tap()
         // The guard answers synchronously; give a blocked navigation every chance to (wrongly) render.
         XCTAssertFalse(
-            app.otherElements["guarded-page"].firstMatch.waitForExistence(timeout: 3),
+            app.otherElements["guarded-page"].firstMatch.waitToExist(timeout: 3),
             "The beforeEach guard did not block /guarded"
         )
         XCTAssertTrue(app.otherElements["about-page"].firstMatch.exists, "A blocked navigation must leave the current page")
         // And the guard blocks only that path: an allowed navigation still goes through.
         app.buttons["View loaded"].tap()
-        XCTAssertTrue(app.otherElements["loaded-page"].firstMatch.waitForExistence(timeout: 15), "An allowed navigation was blocked")
+        XCTAssertTrue(app.otherElements["loaded-page"].firstMatch.waitToExist(timeout: 15), "An allowed navigation was blocked")
     }
 }

@@ -522,13 +522,15 @@ describe('Phase B — <Field> emit', () => {
     // `Field(value: …)`, an invalid SwiftUI symbol (`cannot find 'Field'
     // in scope`) that `-parse` accepted. Now emits a custom Binding
     // (mirrors Toggle's Shape 2), with the arrow param bound in the setter.
+    // (A handler that only sets `draft` is the `$draft` binding itself, so the
+    // handler here does more, which keeps the Binding shape.)
     const out = tx(
-      `<Field value={draft()} onChange={(v) => draft.set(v)} placeholder="N" />`,
+      `<Field value={draft()} onChange={(v) => draft.set(v.trim())} placeholder="N" />`,
       'swift',
     )
     expect(out).toContain('TextField("N", text: Binding(')
     expect(out).toContain('get: { draft }')
-    expect(out).toContain('set: { v in draft = v }')
+    expect(out).toContain('set: { v in draft = v.trimmingCharacters(')
     expect(out).not.toContain('Field(value:') // NOT the generic fallback
   })
 
@@ -683,9 +685,10 @@ describe('Phase B — <Toggle> emit (canonical binary toggle; Compose Switch vs 
     // set-closure emitted `{ _ in on = v }` — `v` unbound (`-parse`
     // passed, real `-typecheck` failed with `cannot find 'v'`). The
     // setter must bind the arrow's param as the closure parameter.
-    const out = tx(`<Toggle value={done()} onChange={(v) => done.set(v)} />`, 'swift')
-    expect(out).toContain('set: { v in done = v }')
-    expect(out).not.toContain('set: { _ in done = v }')
+    // (`(v) => done.set(v)` alone is the `$done` binding; this handler does more.)
+    const out = tx(`<Toggle value={done()} onChange={(v) => done.set(!v)} />`, 'swift')
+    expect(out).toContain('set: { v in done = !v }')
+    expect(out).not.toContain('set: { _ in done = !v }')
   })
 
   it('Kotlin: <Toggle value={props.todo.done} onChange={props.onToggle}> → Switch(checked = expr)', () => {
@@ -1712,7 +1715,7 @@ describe('Phase 4.1 — useFetch emit (PyreonFetch container + async harness)', 
     expect(out).toContain('.task {')
     expect(out).toContain('user.begin()')
     expect(out).toContain('URLSession.shared.data(from: URL(string: "/api/user")!)')
-    expect(out).toContain('user.resolve(try JSONDecoder().decode(User.self, from: bytes))')
+    expect(out).toContain('user.resolve(try PyreonJSON.decode(User.self, from: bytes))')
     expect(out).toContain('catch { user.reject(error) }')
     // Swift field access is a plain @Observable property read.
     expect(out).toContain('user.data')

@@ -1059,6 +1059,9 @@ public enum PyreonJSON {
   public static func stringify<T: Encodable>(_ value: T) -> String { "" }
   // JSON.parse(s) lowers here — Decodable, and THROWS, as in the runtime.
   public static func parse<T: Decodable>(_ type: T.Type, _ text: String) throws -> T { fatalError() }
+  // Every emitted decode of a fetch / query / stream body (keeps each object's key order).
+  public static func decoder(for data: Data) -> JSONDecoder { JSONDecoder() }
+  public static func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T { fatalError() }
 }
 // PyreonSchema — copied VERBATIM from runtime-swift's PyreonSchema.swift
 // (schema-stub-parity.test.ts asserts it byte-for-byte). Every emitted schema
@@ -1688,6 +1691,9 @@ public func pyreonRound(_ x: Double) -> Double { 0 }
 public func pyreonParseInt(_ text: String, _ radix: Int? = nil) -> Int? { nil }
 public func pyreonParseFloat(_ text: String) -> Double { 0 }
 public func pyreonToNumber(_ text: String) -> Double { 0 }
+// str.split(sep) / [...str] (PyreonSlice.swift). Mirror the real signatures.
+public func pyreonSplit(_ s: String, _ separator: String, _ limit: Int? = nil) -> [String] { [] }
+public func pyreonCodePoints(_ s: String) -> [String] { [] }
 // PyreonDate — JS Date as epoch milliseconds (PyreonDate.swift). Mirrors the real surface.
 public func pyreonDateFrom(_ text: String) -> Double { 0 }
 public func pyreonDateFrom(_ ms: Double) -> Double { 0 }

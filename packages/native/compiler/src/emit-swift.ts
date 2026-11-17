@@ -4442,6 +4442,20 @@ function emitSwiftIndexedClosure(
 }
 
 /**
+ * A `Map` / `Record` LITERAL, typed by itself: `PyreonMap<K, V>([(k, v), …])`, never the bare dictionary literal
+ * `[k: v, …]`. A bare literal is a `PyreonMap` only where something pins the type (an annotation, a typed
+ * parameter); anywhere else — an unannotated local, `[…].keys` — Swift makes it a `Dictionary`, whose iteration
+ * order follows a per-process-seeded hash, so `Object.keys(record)` / `[...map.keys()]` came out in a different
+ * order on every launch, and a repeated key trapped. The pair list keeps the web's rule for a repeated key (first
+ * position, last value). Without a known map type the generic arguments are left to Swift's inference.
+ */
+function swiftMapLiteral(pairs: (readonly [string, string])[], mt: Extract<TypeIR, { kind: 'map' }> | undefined): string {
+  const ctor = mt === undefined ? 'PyreonMap' : swiftType(mt)
+  if (pairs.length === 0) return `${ctor}()`
+  return `${ctor}([${pairs.map(([k, v]) => `(${k}, ${v})`).join(', ')}])`
+}
+
+/**
  * `new Map(src.map((x) => [k, v]))` → `PyreonMap(src.map { x in (k, v) })`. A repeated key keeps its
  * first position and takes the last value, as JS `Map` does (`Dictionary(uniqueKeysWithValues:)` trapped). `x` is bound to the source's element type while the two
  * halves emit, so a type-gated lowering inside them sees a typed receiver.
@@ -4994,6 +5008,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const mapForm = arrayFromMapRewrite(e)
           if (mapForm !== null) return emitSwiftExpr(mapForm, indent)
           if (e.args.length === 1 && e.args[0]!.kind !== 'object') {
+            // A string iterates by CODE POINT on the web; `Array(str)` gave Characters (grapheme clusters).
+            if (unwrapOptionalType(inferType(e.args[0]!, _activeInferCtx)).kind === 'string') {
+              return `pyreonCodePoints(${emitSwiftExpr(e.args[0]!, indent)})`
+            }
+
             return `Array(${emitSwiftExpr(e.args[0]!, indent)})`
           }
           // Any OTHER `Array.from({ length: n }, …)` shape — the 1-arg form (no
@@ -5656,6 +5675,16 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // (Foundation; multi-char separator, returns [String], faithful
             // to JS string-separator split). Kotlin's `split` matches JS
             // as-is, so it needs no mapping there.
+            // A STRING separator goes through `pyreonSplit`: `components(separatedBy: "")` returned the whole string
+            // as one element, where the web splits into UTF-16 code units.
+            if (
+              recvKind === 'string' &&
+              objDot === '.' &&
+              (e.args.length === 1 || e.args.length === 2) &&
+              inferType(e.args[0]!, _activeInferCtx).kind === 'string'
+            ) {
+              return `pyreonSplit(${obj}, ${argExprs.join(', ')})`
+            }
             if (e.args.length === 1)
               return `${obj}${objDot}components(separatedBy: ${argExprs[0]!})`
             if (e.args.length === 2) {
@@ -6645,12 +6674,18 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           return `${src}`
         }
         if (e.pairsFrom !== undefined) return emitSwiftMapFromPairs(e, e.pairsFrom, indent)
-        // Seeded `new Map([[k,v],…])` → a dict literal `[k: v, …]`.
+        // Seeded `new Map([[k,v],…])` → `PyreonMap([(k, v), …])`. Never a bare dictionary literal: where nothing
+        // pins its type (an unannotated local, a chained read) Swift makes it a `Dictionary`, whose order is a
+        // per-process hash (see `swiftMapLiteral`).
         if (e.entries && e.entries.length > 0) {
-          const body = e.entries
-            .map(([k, v]) => `${emitSwiftExpr(k, indent)}: ${emitSwiftExpr(v, indent)}`)
-            .join(', ')
-          return `[${body}]`
+          const mt = _expectedType?.kind === 'map' ? _expectedType : undefined
+          return swiftMapLiteral(
+            e.entries.map(([k, v]) => [
+              withExpectedType(mt?.key, () => emitSwiftExpr(k, indent)),
+              withExpectedType(mt?.value, () => emitSwiftExpr(mt ? asFloatLiteral(v, mt.value) : v, indent)),
+            ]),
+            mt,
+          )
         }
         return `PyreonMap<${swiftType(e.keyType!)}, ${swiftType(e.valueType!)}>()`
       }
@@ -6684,9 +6719,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // pre-fix `a + [9].count` where `.count` bound to `[9]` → a type error).
       // Pre-fix only a single LEADING spread + literal tail emitted, multi-
       // spread emitted `a + [b]` (wrapping b), and nothing was parenthesised.
+      // `[...str]` iterates a string by CODE POINT (`pyreonCodePoints`), not by Swift Character.
+      const stringSpreads = new Set(
+        e.elements.flatMap((el) =>
+          el.kind === 'spread' && inferType(el.argument, _activeInferCtx).kind === 'string' ? [el.argument] : [],
+        ),
+      )
       const spreadConcat = buildArraySpreadConcat(
         e.elements,
-        (el) => emitSwiftExpr(el, indent),
+        (el) => (stringSpreads.has(el) ? `pyreonCodePoints(${emitSwiftExpr(el, indent)})` : emitSwiftExpr(el, indent)),
         (r) => `[${r}]`,
       )
       if (spreadConcat !== null) return spreadConcat
@@ -6723,15 +6764,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // struct-synthesized. A spread has no dictionary form here, so it keeps
       // the struct path.
       if (_expectedType?.kind === 'map' && (!e.spreads || e.spreads.length === 0)) {
-        const vT = _expectedType.value
-        if (e.fields.length === 0) return '[:]'
-        const entries = e.fields
-          .map(
-            (f) =>
-              `${swiftStr(f.name)}: ${withExpectedType(vT, () => emitSwiftExpr(asFloatLiteral(f.value, vT), indent))}`,
-          )
-          .join(', ')
-        return `[${entries}]`
+        const mt = _expectedType
+        const vT = mt.value
+        return swiftMapLiteral(
+          e.fields.map((f) => [
+            swiftStr(f.name),
+            withExpectedType(vT, () => emitSwiftExpr(asFloatLiteral(f.value, vT), indent)),
+          ]),
+          mt,
+        )
       }
       // G4 — partial-update form. When the object has EXACTLY ONE
       // spread and that spread argument is a bare identifier (typical
@@ -7975,6 +8016,36 @@ function emitSwiftActionBody(handler: ExprIR, indent: number): string {
 // (`emitSwiftAction` always returns a `{ ... }` closure, including `{ }`).
 function stripSwiftClosureBody(closure: string): string {
   return closure.replace(/^\{/, '').replace(/\}$/, '').trim()
+}
+
+/**
+ * The signal a `value` attribute binds through SwiftUI's `$signal` projection,
+ * or `undefined` when the element needs a custom `Binding(get:set:)`.
+ *
+ * `value={sig}` binds two-way by itself, so a change handler is redundant ONLY
+ * when it is absent or does exactly what the binding does (`(v) => sig.set(v)`).
+ * Any other handler (`draft.set(t.trim())`, a second write, a call) must run on
+ * every edit: projecting `$sig` dropped it on iOS while Compose ran it, a silent
+ * divergence with no warning. Those handlers go through the `Binding` shape.
+ *
+ * The called read `value={sig()}` with exactly that setter is the same binding,
+ * so it projects too: both spellings emit `$sig`. Without a handler the called
+ * read stays a read (nothing writes the signal back), so it does not project.
+ */
+function swiftProjectedSignal(value: ExprIR, handler: ExprIR | undefined): string | undefined {
+  const called =
+    value.kind === 'call' && value.args.length === 0 && value.optional !== true && value.callee.kind === 'identifier'
+  const name = value.kind === 'identifier' ? value.name : called ? (value.callee as { name: string }).name : undefined
+  if (name === undefined || !_signalNames.has(name)) return undefined
+  if (handler === undefined) return called ? undefined : name
+  // A handler passed by reference (`onChangeText={save}`): the `Binding` shape
+  // would call it as `save()`, without the value, so the bare signal keeps the
+  // projection (the earlier behaviour) and the called read keeps the Binding.
+  if (handler.kind !== 'arrow') return called ? undefined : name
+  if (handler.params.length !== 1) return undefined
+  const body = stripSwiftClosureBody(emitSwiftAction(handler, 0))
+
+  return body === `${swiftIdent(name)} = ${swiftIdent(handler.params[0]!)}` ? name : undefined
 }
 
 /**
@@ -10059,8 +10130,8 @@ function emitSwiftNavPane(children: readonly ChildIR[], indent: number): string 
  * from the literal `<Tab>` entries; each tab's content is one `case`.
  *
  * `value` follows `<Toggle>`'s two shapes: a bare signal binds two-way
- * (`$tab`, `onChange` redundant), any other expression needs `onChange` and
- * becomes a custom `Binding`.
+ * (`$tab`, when `onChange` is absent or only sets that signal), anything else
+ * needs `onChange` and becomes a custom `Binding` (see `swiftProjectedSignal`).
  */
 function emitSwiftTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const routerBound = e.attrs.find(
@@ -10076,8 +10147,9 @@ function emitSwiftTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   const { tabs, warnings } = planTabs(e)
   for (const w of warnings) pushEmitWarning(w)
   let binding: string
-  if (valueAttr !== undefined && valueAttr.value.kind === 'identifier' && _signalNames.has(valueAttr.value.name)) {
-    binding = `$${swiftIdent(valueAttr.value.name)}`
+  const projected = valueAttr === undefined ? undefined : swiftProjectedSignal(valueAttr.value, onChange?.handler)
+  if (valueAttr !== undefined && projected !== undefined) {
+    binding = `$${swiftIdent(projected)}`
   } else if (valueAttr !== undefined && onChange !== undefined) {
     const getExpr = emitSwiftExpr(unwrapAccessorArrow(valueAttr.value), indent)
     const setter = emitSwiftCallbackArg(onChange.handler, indent + 4)
@@ -10566,15 +10638,12 @@ function emitSwiftField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
       a.kind === 'event' && (a.name === 'changetext' || a.name === 'change'),
   )
-  const isBareSignal =
-    valueAttr !== undefined &&
-    valueAttr.value.kind === 'identifier' &&
-    _signalNames.has(valueAttr.value.name)
+  const projected = valueAttr === undefined ? undefined : swiftProjectedSignal(valueAttr.value, onChangeAttr?.handler)
   let textArg: string
   if (bindingExpr !== undefined) {
     textArg = bindingExpr
-  } else if (isBareSignal) {
-    textArg = `$${swiftIdent((valueAttr!.value as Extract<ExprIR, { kind: 'identifier' }>).name)}`
+  } else if (projected !== undefined) {
+    textArg = `$${swiftIdent(projected)}`
   } else if (valueAttr !== undefined && onChangeAttr !== undefined) {
     // Unwrap a zero-arg accessor arrow: `value={() => v()}` is a reactive read,
     // so the Binding get must return `v`, not the closure `{ v }` (which would
@@ -10760,9 +10829,10 @@ function emitSwiftSelect(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
  *
  * Canonical contract: `value` MUST name a signal in scope (matches the
  * `<Field value={signal}>` shape). The two-way binding via SwiftUI's
- * `$signal` projection writes back automatically, so the user-supplied
- * `onChange` handler is REDUNDANT on Swift — drop it and emit the
- * binding directly. (Compose Switch needs `onCheckedChange` explicitly
+ * `$signal` projection writes back automatically, so an `onChange` that only
+ * sets that signal is redundant on Swift and the binding is emitted directly;
+ * a handler that does more goes through a custom `Binding` so it still runs
+ * (`swiftProjectedSignal`). (Compose Switch needs `onCheckedChange` explicitly
  * because Kotlin doesn't have property-wrapper bindings; per-target
  * idiom split, mirrors the Field emit pattern.)
  *
@@ -10782,8 +10852,8 @@ function emitSwiftToggle(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   //
   // 1. `value={signal}` — bare identifier matching a signal in scope.
   //    Emit as SwiftUI's two-way binding-projection (`$signal`).
-  //    Idiomatic + minimal; the user-supplied `onChange` is redundant
-  //    because the binding writes back automatically.
+  //    Idiomatic + minimal; used only when `onChange` is absent or only
+  //    sets the same signal, since the binding writes back automatically.
   //
   // 2. `value={expr}` — any other expression (member access, function
   //    call, complex expr). Used for parent-owns-state patterns like
@@ -10792,9 +10862,13 @@ function emitSwiftToggle(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   //    reads via the expression + writes via the `onChange` handler.
   //    This unblocks <Checkbox> → <Toggle> migration for the common
   //    parent-owns-state shape.
-  if (valueAttr.value.kind === 'identifier' && _signalNames.has(valueAttr.value.name)) {
+  const onChange = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+  )
+  const projected = swiftProjectedSignal(valueAttr.value, onChange?.handler)
+  if (projected !== undefined) {
     // Shape 1 — signal binding projection.
-    const sig = swiftIdent(valueAttr.value.name)
+    const sig = swiftIdent(projected)
     let result = `Toggle("", isOn: $${sig})`
     const disabledMod = swiftDisabledModifier(e)
     if (disabledMod) {
@@ -10805,9 +10879,6 @@ function emitSwiftToggle(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   }
 
   // Shape 2 — custom Binding. Requires `onChange` to handle writes.
-  const onChange = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
-  )
   if (!onChange) {
     // No onChange handler — can't write back. Fall through to generic.
     return emitSwiftGeneric(e, indent)

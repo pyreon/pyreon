@@ -32,6 +32,27 @@
 import UIKit
 import XCTest
 
+private extension XCUIElement {
+    /// `waitForExistence(timeout:)` with the same contract and none of its
+    /// flat cost: true as soon as the element exists, false at the deadline.
+    ///
+    /// XCTest evaluates that wait's predicate for the FIRST time one second
+    /// after the call, so an element that is already on screen still costs
+    /// 1.03 s. In one CI job (2026-11-17) 427 of 456 such waits were answered
+    /// by that first poll and took 487 s between them. This asks at once, then
+    /// ten times a second. Held for every suite by
+    /// `ios-device-test-harness.test.ts`.
+    func waitToExist(timeout: TimeInterval) -> Bool {
+        if exists { return true }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            if exists { return true }
+        }
+        return false
+    }
+}
+
 final class PyreonTasksUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -87,6 +108,14 @@ final class PyreonTasksUITests: XCTestCase {
     /// how the boxplot band assertion first failed on the simulator.
     /// Coordinate gestures and screenshots need the whole canvas; layout-only
     /// checks need a visible, hittable portion. Both use the same bounded scroll.
+    ///
+    /// Every element read here is an accessibility round trip (0.3 s on the CI
+    /// runner on this screen, whose fifteen hosted WebViews make each snapshot
+    /// slow), and this loop ran about forty times in one test. So a drag costs
+    /// the two reads that prove the page stopped, and nothing else: the settled
+    /// frame is the next attempt's frame, and the gesture points are checked as
+    /// numbers against the window read once on entry. A drag itself is 3–4 s
+    /// whatever its velocity, so callers visit the page in its own order.
     private func scrollGalleryOnScreen(_ element: XCUIElement, in app: XCUIApplication, fullyVisible: Bool = true, file: StaticString = #filePath, line: UInt = #line) {
         let scroll = app.scrollViews["gal-scroll"].firstMatch
         let window = app.windows.firstMatch.frame
@@ -99,36 +128,47 @@ final class PyreonTasksUITests: XCTestCase {
         // centre depended on the scroll position, so the damage moved around:
         // the box zoom, map pan and trail checks each failed intermittently.
         let viewport = scroll.frame.intersection(window)
-        var frames: [CGRect] = []
-        for _ in 0..<16 {
-            let frame = element.frame
-            frames.append(frame)
-            let visible = fullyVisible
-                ? window.contains(frame)
-                : frame.intersects(window) && element.isHittable
-            if !frame.isEmpty && visible { break }
+        let origin = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
+        func isVisible(_ frame: CGRect) -> Bool {
+            if frame.isEmpty { return false }
+            return fullyVisible ? window.contains(frame) : frame.intersects(window) && element.isHittable
+        }
+        // Whatever ran before may have left the page coasting: judge a frame
+        // that has held still, never the first one read.
+        var frame = waitForScrollToSettle(element, file: file, line: line)
+        var frames: [CGRect] = [frame]
+        var visible = isVisible(frame)
+        var drags = 0
+        while !visible && drags < 16 {
             // Aim at the viewport centre rather than fling a fixed distance.
             // Far-away charts make useful progress; nearby charts do not overshoot.
             let delta = (top + bottom) / 2 - frame.midY
             let distance = min(abs(delta), viewport.height * 0.6)
             var drag = delta > 0 ? distance : -distance
-            var start = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
-                .withOffset(CGVector(dx: viewport.minX + viewport.width * 0.02, dy: viewport.midY - drag / 2))
+            let stuck = frames.count > 1 && frame == frames[frames.count - 2]
+            var startPoint = CGPoint(x: window.minX + viewport.minX + viewport.width * 0.02, y: window.minY + viewport.midY - drag / 2)
+            var start = origin.withOffset(CGVector(dx: startPoint.x - window.minX, dy: startPoint.y - window.minY))
+            var end = origin.withOffset(CGVector(dx: startPoint.x - window.minX, dy: startPoint.y - window.minY + drag))
             // Blank padding is not hit-testable at every scroll offset. If the
             // gutter did not move, drag actual noninteractive content instead.
-            if frames.count > 1 && frame == frames[frames.count - 2],
-               let origin = galleryScrollOrigin(scroll, viewport: viewport, down: drag > 0) {
-                start = origin.point
-                drag = (drag > 0 ? 1 : -1) * min(abs(drag), origin.room)
+            if stuck, let fallback = galleryScrollOrigin(scroll, viewport: viewport, down: drag > 0) {
+                drag = (drag > 0 ? 1 : -1) * min(abs(drag), fallback.room)
+                start = fallback.point
+                startPoint = start.screenPoint
+                end = start.withOffset(CGVector(dx: 0, dy: drag))
             }
-            let end = start.withOffset(CGVector(dx: 0, dy: drag))
-            assertPointsOnScreen([start, end], in: app, file: file, line: line)
+            assertPointsOnScreen([startPoint, CGPoint(x: startPoint.x, y: startPoint.y + drag)], window: window, file: file, line: line)
+            // `.slow` is the only velocity that moves the page by the finger's
+            // travel (340 of 350 pt measured). `.default` and `.fast` carry it
+            // 1.4 and 1.75 times as far and are no quicker: the time the finger
+            // saves is spent waiting for the page to stop.
             start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.3)
-            waitForScrollToSettle(element, file: file, line: line)
+            drags += 1
+            frame = waitForScrollToSettle(element, file: file, line: line)
+            frames.append(frame)
+            visible = isVisible(frame)
         }
-        waitForScrollToSettle(element, file: file, line: line)
-        let visible = fullyVisible ? window.contains(element.frame) : element.frame.intersects(window) && element.isHittable
-        XCTAssertTrue(element.exists && !element.frame.isEmpty && visible, "gallery target never reached required visibility (fullFrame=\(fullyVisible)): frame=\(element.frame), window=\(window), attempts=\(frames)", file: file, line: line)
+        XCTAssertTrue(element.exists && !frame.isEmpty && visible, "gallery target never reached required visibility (fullFrame=\(fullyVisible)): frame=\(frame), window=\(window), attempts=\(frames)", file: file, line: line)
     }
 
     /// Prefer ordinary Text nodes. The early gallery has only canvases, so
@@ -169,28 +209,59 @@ final class PyreonTasksUITests: XCTestCase {
         return nil
     }
 
+    /// Lifts a tap-only canvas until `point` sits well inside the window. `scrollIntoView` stops once the canvas is
+    /// hittable, which can leave it at the bottom edge with the point a pixel below the window (seen on a 393x852
+    /// iPhone 16). The drag starts on the canvas's own visible top strip: a canvas with only a tap gesture lets a
+    /// drag through to the page's scroll view, while blank padding is not hit-testable at every offset. One measured
+    /// drag, at most three times, then the caller's `assertPointsOnScreen` judges the result.
+    private func liftTapOnlyCanvas(_ canvas: XCUIElement, until point: () -> XCUICoordinate, in app: XCUIApplication) {
+        let window = app.windows.firstMatch.frame
+        for _ in 0..<3 {
+            let y = point().screenPoint.y
+            if y > window.minY + 100 && y < window.maxY - 120 { return }
+            let frame = canvas.frame.intersection(window)
+            if frame.isEmpty { return }
+            let start = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: frame.midX, dy: frame.minY + min(20, frame.height / 2)))
+            let wanted = (window.minY + window.maxY) / 2 - y
+            let room = y > window.midY ? -(start.screenPoint.y - window.minY - 60) : window.maxY - 60 - start.screenPoint.y
+            let drag = wanted < 0 ? max(wanted, room) : min(wanted, room)
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: drag)), withVelocity: .slow, thenHoldForDuration: 0.3)
+            waitForScrollToSettle(canvas)
+        }
+    }
+
     /// Point checks also cover gestures that only need a visible portion of a canvas.
     /// A brush at y=60 remains reachable when its unused bottom edge is clipped.
     private func assertPointsOnScreen(_ points: [XCUICoordinate], in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        let window = app.windows.firstMatch.frame
+        assertPointsOnScreen(points.map(\.screenPoint), window: app.windows.firstMatch.frame, file: file, line: line)
+    }
+
+    /// The same check on points the caller already holds as numbers: an
+    /// `XCUICoordinate` resolves its element again on every `screenPoint`
+    /// read, and the scroll loop knows where it is about to press.
+    private func assertPointsOnScreen(_ points: [CGPoint], window: CGRect, file: StaticString = #filePath, line: UInt = #line) {
         for point in points {
-            XCTAssertTrue(window.contains(point.screenPoint), "gesture coordinate is off screen: point=\(point.screenPoint), window=\(window)", file: file, line: line)
+            XCTAssertTrue(window.contains(point), "gesture coordinate is off screen: point=\(point), window=\(window)", file: file, line: line)
         }
     }
 
     /// A drag leaves the scroll view coasting, and a tap during that coast only
     /// stops it: the tap never reaches the control. Wait until the element has
     /// held still for two reads before anything taps or drags on it.
-    private func waitForScrollToSettle(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+    /// Returns the frame it settled on, so a caller does not read it again.
+    @discardableResult
+    private func waitForScrollToSettle(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) -> CGRect {
         let initial = element.frame
         var last = initial
         for _ in 0..<20 {
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
             let now = element.frame
-            if now == last { return }
+            if now == last { return now }
             last = now
         }
         XCTFail("scroll did not settle: initial=\(initial), final=\(last)", file: file, line: line)
+        return last
     }
 
     private func colorPixels(_ png: Data, _ r: Int, _ g: Int, _ b: Int) -> Int {
@@ -363,7 +434,7 @@ final class PyreonTasksUITests: XCTestCase {
     @discardableResult
     private func navigateToToolkit(_ app: XCUIApplication) -> XCUIElement {
         let username = app.textFields["login-username"].firstMatch
-        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         // Five characters in one go, deliberately. The big test types "ab"
         // first BECAUSE that fails the min-length validator and must NOT
         // navigate -- copying only that half is why the first run of this
@@ -377,14 +448,14 @@ final class PyreonTasksUITests: XCTestCase {
         submit.tap()
 
         let tasksPage = app.otherElements["tasks-page"].firstMatch
-        XCTAssertTrue(tasksPage.waitForExistence(timeout: 20), "Tasks page did not render after login")
+        XCTAssertTrue(tasksPage.waitToExist(timeout: 20), "Tasks page did not render after login")
 
         let toolkitBtn = app.buttons["tasks-toolkit"].firstMatch
-        XCTAssertTrue(toolkitBtn.waitForExistence(timeout: 20), "Toolkit button missing")
+        XCTAssertTrue(toolkitBtn.waitToExist(timeout: 20), "Toolkit button missing")
         toolkitBtn.tap()
 
         let toolkitPage = app.otherElements["toolkit-page"].firstMatch
-        XCTAssertTrue(toolkitPage.waitForExistence(timeout: 15), "Toolkit page did not render")
+        XCTAssertTrue(toolkitPage.waitToExist(timeout: 15), "Toolkit page did not render")
         return toolkitPage
     }
 
@@ -405,17 +476,17 @@ final class PyreonTasksUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         let username = app.textFields["login-username"].firstMatch
-        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
         username.typeText("abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
-        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
 
         let nav = app.buttons["tasks-streams"].firstMatch
-        XCTAssertTrue(nav.waitForExistence(timeout: 15), "Streams button missing on tasks page")
+        XCTAssertTrue(nav.waitToExist(timeout: 15), "Streams button missing on tasks page")
         tapAfterScrolling(nav, in: app)
-        XCTAssertTrue(app.otherElements["streams-page"].firstMatch.waitForExistence(timeout: 15), "Streams page did not render")
+        XCTAssertTrue(app.otherElements["streams-page"].firstMatch.waitToExist(timeout: 15), "Streams page did not render")
 
         // `enabled: () => rowsOn()` is false at mount: nothing may open.
         let ndStatus = app.staticTexts["nd-status"].firstMatch
@@ -438,7 +509,7 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(waitForLabel(ndStatus, "closed", timeout: 10), "NDJSON did not close after its rows: '\(ndStatus.label)'")
 
         tapAfterScrolling(app.buttons["streams-back"].firstMatch, in: app)
-        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "streams-back did not return to tasks")
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 15), "streams-back did not return to tasks")
     }
 
     /// useMediaQuery('(prefers-color-scheme: dark)') reads true when the app runs in dark appearance.
@@ -450,14 +521,14 @@ final class PyreonTasksUITests: XCTestCase {
         app.launchArguments += ["-PyreonUITestDarkAppearance"]
         app.launch()
         let username = app.textFields["login-username"].firstMatch
-        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
         username.typeText("abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
-        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
         tapAfterScrolling(app.buttons["tasks-hooks"].firstMatch, in: app)
-        XCTAssertTrue(app.otherElements["hooks-page"].firstMatch.waitForExistence(timeout: 15), "Hooks page did not render")
+        XCTAssertTrue(app.otherElements["hooks-page"].firstMatch.waitToExist(timeout: 15), "Hooks page did not render")
         let dark = app.staticTexts["hooks-dark"].firstMatch
         XCTAssertTrue(waitForLabel(dark, "dark", timeout: 10), "useMediaQuery('(prefers-color-scheme: dark)') must be true in dark appearance: '\(dark.label)'")
     }
@@ -474,15 +545,15 @@ final class PyreonTasksUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         let username = app.textFields["login-username"].firstMatch
-        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
         username.typeText("abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
-        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
 
         tapAfterScrolling(app.buttons["tasks-hooks"].firstMatch, in: app)
-        XCTAssertTrue(app.otherElements["hooks-page"].firstMatch.waitForExistence(timeout: 15), "Hooks page did not render")
+        XCTAssertTrue(app.otherElements["hooks-page"].firstMatch.waitToExist(timeout: 15), "Hooks page did not render")
 
         let pages = app.staticTexts["hooks-pages"].firstMatch
         let more = app.staticTexts["hooks-more"].firstMatch
@@ -506,7 +577,7 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["hooks-key"].firstMatch.label, "0", "useKeyboard's bound counter did not render")
 
         tapAfterScrolling(app.buttons["hooks-back"].firstMatch, in: app)
-        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "hooks-back did not return to tasks")
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 15), "hooks-back did not return to tasks")
     }
 
     /// `<Field kind="date" | "time" | "datetime">` (#3980) on the device: the
@@ -520,22 +591,22 @@ final class PyreonTasksUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         let username = app.textFields["login-username"].firstMatch
-        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
         username.typeText("abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
-        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
 
         let nav = app.buttons["tasks-dates"].firstMatch
-        XCTAssertTrue(nav.waitForExistence(timeout: 15), "Dates button missing on tasks page")
+        XCTAssertTrue(nav.waitToExist(timeout: 15), "Dates button missing on tasks page")
         tapAfterScrolling(nav, in: app)
-        XCTAssertTrue(app.otherElements["dates-page"].firstMatch.waitForExistence(timeout: 15), "Dates page did not render")
+        XCTAssertTrue(app.otherElements["dates-page"].firstMatch.waitToExist(timeout: 15), "Dates page did not render")
 
         let dayValue = app.staticTexts["dates-day-value"].firstMatch
         XCTAssertTrue(waitForLabel(dayValue, "2026-10-22", timeout: 10), "initial: '\(dayValue.label)'")
         let dayField = app.otherElements["dates-day"].firstMatch
-        XCTAssertTrue(dayField.waitForExistence(timeout: 10), "date field missing:\n\(app.debugDescription)")
+        XCTAssertTrue(dayField.waitToExist(timeout: 10), "date field missing:\n\(app.debugDescription)")
         let picker = dayField.datePickers.firstMatch
         XCTAssertTrue(picker.exists, "the date field holds no DatePicker:\n\(dayField.debugDescription)")
 
@@ -546,7 +617,7 @@ final class PyreonTasksUITests: XCTestCase {
         // "Friday 23. 10." in cs_CZ), and the grid is the only collection view
         // on screen while the calendar is open.
         let day23 = app.collectionViews.buttons.matching(NSPredicate(format: "label MATCHES %@", ".*\\b23\\b.*")).firstMatch
-        if !day23.waitForExistence(timeout: 5) { print("DIAG-DATES calendar:\n\(app.debugDescription)") }
+        if !day23.waitToExist(timeout: 5) { print("DIAG-DATES calendar:\n\(app.debugDescription)") }
         XCTAssertTrue(day23.exists, "the calendar did not open")
         day23.tap()
         XCTAssertTrue(waitForLabel(dayValue, "2026-10-23", timeout: 10), "a picked day did not reach the signal: '\(dayValue.label)'")
@@ -604,27 +675,27 @@ final class PyreonTasksUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         let username = app.textFields["login-username"].firstMatch
-        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
         username.typeText("abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
-        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
 
         let nav = app.buttons["tasks-select"].firstMatch
-        XCTAssertTrue(nav.waitForExistence(timeout: 15), "Select button missing on tasks page")
+        XCTAssertTrue(nav.waitToExist(timeout: 15), "Select button missing on tasks page")
         tapAfterScrolling(nav, in: app)
-        XCTAssertTrue(app.otherElements["select-page"].firstMatch.waitForExistence(timeout: 15), "Select page did not render")
+        XCTAssertTrue(app.otherElements["select-page"].firstMatch.waitToExist(timeout: 15), "Select page did not render")
 
         let value = app.staticTexts["select-value"].firstMatch
         XCTAssertTrue(waitForLabel(value, "none", timeout: 10), "initial selection: '\(value.label)'")
         let picker = app.descendants(matching: .any).matching(identifier: "select-fruit").firstMatch
-        XCTAssertTrue(picker.waitForExistence(timeout: 10), "picker missing:\n\(app.debugDescription)")
+        XCTAssertTrue(picker.waitToExist(timeout: 10), "picker missing:\n\(app.debugDescription)")
 
         // Control -> program, through the real menu.
         picker.tap()
         let apple = app.buttons["Apple"].firstMatch
-        if !apple.waitForExistence(timeout: 5) { print("DIAG-SELECT menu:\n\(app.debugDescription)") }
+        if !apple.waitToExist(timeout: 5) { print("DIAG-SELECT menu:\n\(app.debugDescription)") }
         XCTAssertTrue(apple.exists, "the menu did not open with the options")
         // The disabled option is listed but not enabled.
         let durian = app.buttons["Durian"].firstMatch
@@ -664,21 +735,22 @@ final class PyreonTasksUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         let username = app.textFields["login-username"].firstMatch
-        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
         username.typeText("abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
-        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
 
         let nav = app.buttons["tasks-requests"].firstMatch
-        XCTAssertTrue(nav.waitForExistence(timeout: 15), "Requests button missing on tasks page")
+        XCTAssertTrue(nav.waitToExist(timeout: 15), "Requests button missing on tasks page")
         tapAfterScrolling(nav, in: app)
-        XCTAssertTrue(app.scrollViews["requests-page"].firstMatch.waitForExistence(timeout: 15)
-            || app.otherElements["requests-page"].firstMatch.waitForExistence(timeout: 5), "Requests page did not render")
+        // Either element type, in ONE wait: the page is an `Other` on the simulators CI
+        // resolves, so asking for the ScrollView first waited its whole 15 s out on every run.
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "requests-page").firstMatch.waitToExist(timeout: 20), "Requests page did not render")
 
         let draft = app.textFields["req-draft"].firstMatch
-        XCTAssertTrue(draft.waitForExistence(timeout: 10), "draft field missing")
+        XCTAssertTrue(draft.waitToExist(timeout: 10), "draft field missing")
         draft.tap()
         draft.typeText("Grace Hopper")
         dismissKeyboard(app)
@@ -711,7 +783,7 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertEqual(direct.label, "Direct: failing", "a rejected await did not end the handler")
 
         tapAfterScrolling(app.buttons["requests-back"].firstMatch, in: app)
-        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 15), "requests-back did not return to tasks")
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 15), "requests-back did not return to tasks")
     }
 
     /// `Intl` (#3980) on the device: the emitted `PyreonDateTimeFormat` /
@@ -727,17 +799,17 @@ final class PyreonTasksUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         let username = app.textFields["login-username"].firstMatch
-        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
         username.typeText("abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
-        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
 
         let nav = app.buttons["tasks-intl"].firstMatch
-        XCTAssertTrue(nav.waitForExistence(timeout: 15), "Intl button missing on tasks page")
+        XCTAssertTrue(nav.waitToExist(timeout: 15), "Intl button missing on tasks page")
         tapAfterScrolling(nav, in: app)
-        XCTAssertTrue(app.otherElements["intl-page"].firstMatch.waitForExistence(timeout: 15), "Intl page did not render")
+        XCTAssertTrue(app.otherElements["intl-page"].firstMatch.waitToExist(timeout: 15), "Intl page did not render")
 
         let meeting = app.staticTexts["intl-meeting"].firstMatch
         XCTAssertTrue(waitForLabel(meeting, "22.10.2026, 10:00", timeout: 10), "de-DE medium/short in Berlin: '\(meeting.label)'")
@@ -768,21 +840,21 @@ final class PyreonTasksUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         let username = app.textFields["login-username"].firstMatch
-        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
         username.typeText("abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
-        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
 
         let nav = app.buttons["tasks-fields"].firstMatch
-        XCTAssertTrue(nav.waitForExistence(timeout: 15), "Fields button missing on tasks page")
+        XCTAssertTrue(nav.waitToExist(timeout: 15), "Fields button missing on tasks page")
         tapAfterScrolling(nav, in: app)
-        XCTAssertTrue(app.otherElements["fields-page"].firstMatch.waitForExistence(timeout: 15), "Fields page did not render")
+        XCTAssertTrue(app.otherElements["fields-page"].firstMatch.waitToExist(timeout: 15), "Fields page did not render")
 
         let single = app.descendants(matching: .any).matching(identifier: "fields-single").firstMatch
         let notes = app.descendants(matching: .any).matching(identifier: "fields-notes").firstMatch
-        XCTAssertTrue(notes.waitForExistence(timeout: 10), "multiline field missing:\n\(app.debugDescription)")
+        XCTAssertTrue(notes.waitToExist(timeout: 10), "multiline field missing:\n\(app.debugDescription)")
 
         let oneRow = single.frame.height
         let fourRows = notes.frame.height
@@ -829,16 +901,16 @@ final class PyreonTasksUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         let username = app.textFields["login-username"].firstMatch
-        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
         username.typeText("abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
-        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
         tapAfterScrolling(app.buttons["tasks-requests"].firstMatch, in: app)
 
         let draft = app.textFields["req-draft"].firstMatch
-        XCTAssertTrue(draft.waitForExistence(timeout: 15), "draft field missing")
+        XCTAssertTrue(draft.waitToExist(timeout: 15), "draft field missing")
         draft.tap()
         draft.typeText("Ada L")
         dismissKeyboard(app)
@@ -883,14 +955,14 @@ final class PyreonTasksUITests: XCTestCase {
         )
 
         let record = app.buttons["toolkit-crash-record"].firstMatch
-        XCTAssertTrue(record.waitForExistence(timeout: 10), "Record-error button missing")
+        XCTAssertTrue(record.waitToExist(timeout: 10), "Record-error button missing")
         record.tap()
 
         // SURVIVED: the statement after recordError still ran, and the app is
         // still answering.
         let note = app.staticTexts["toolkit-crash-note"].firstMatch
         XCTAssertTrue(
-            note.waitForExistence(timeout: 10),
+            note.waitToExist(timeout: 10),
             "Crash note missing after recording"
         )
         XCTAssertEqual(note.label, "survived", "App did not survive recordError")
@@ -901,7 +973,7 @@ final class PyreonTasksUITests: XCTestCase {
         navigateToToolkit(app)
 
         let had = app.staticTexts["toolkit-crash-had"].firstMatch
-        XCTAssertTrue(had.waitForExistence(timeout: 15), "Crash flag missing after relaunch")
+        XCTAssertTrue(had.waitToExist(timeout: 15), "Crash flag missing after relaunch")
         XCTAssertEqual(
             had.label,
             "true",
@@ -923,16 +995,16 @@ final class PyreonTasksUITests: XCTestCase {
         app.launch()
 
         let status = app.staticTexts["sso-status"].firstMatch
-        XCTAssertTrue(status.waitForExistence(timeout: 30), "SSO status did not render — useOidc failed to construct")
+        XCTAssertTrue(status.waitToExist(timeout: 30), "SSO status did not render — useOidc failed to construct")
         XCTAssertEqual(status.label, "signedOut", "a fresh install starts signed out")
 
         let signIn = app.buttons["sso-signin"].firstMatch
-        XCTAssertTrue(signIn.waitForExistence(timeout: 15), "SSO sign-in button missing")
+        XCTAssertTrue(signIn.waitToExist(timeout: 15), "SSO sign-in button missing")
         signIn.tap()
 
         let error = app.staticTexts["sso-error"].firstMatch
         XCTAssertTrue(
-            error.waitForExistence(timeout: 45),
+            error.waitToExist(timeout: 45),
             "no SSO error after sign-in against an unresolvable issuer; status=\(status.label)"
         )
         XCTAssertEqual(error.label, "network_error", "a DNS failure must surface as network_error")
@@ -945,7 +1017,7 @@ final class PyreonTasksUITests: XCTestCase {
 
         let loginPage = app.otherElements["login-page"].firstMatch
         XCTAssertTrue(
-            loginPage.waitForExistence(timeout: 30),
+            loginPage.waitToExist(timeout: 30),
             "Login page did not render within 30s"
         )
 
@@ -956,7 +1028,7 @@ final class PyreonTasksUITests: XCTestCase {
         // emit threads (the testid contract).
         let brandLogo = app.images["brand-logo"].firstMatch
         XCTAssertTrue(
-            brandLogo.waitForExistence(timeout: 15),
+            brandLogo.waitToExist(timeout: 15),
             "Bundled brand logo missing — did scripts/build.sh materialize Assets.xcassets from examples/native-tasks/assets?"
         )
 
@@ -969,7 +1041,7 @@ final class PyreonTasksUITests: XCTestCase {
         // smoke, paired with the deterministic materializer unit test).
         let brandTitle = app.staticTexts["brand-title"].firstMatch
         XCTAssertTrue(
-            brandTitle.waitForExistence(timeout: 15),
+            brandTitle.waitToExist(timeout: 15),
             "Branded title missing — the custom-font Text did not render"
         )
     }
@@ -988,24 +1060,24 @@ final class PyreonTasksUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         let username = app.textFields["login-username"].firstMatch
-        XCTAssertTrue(username.waitForExistence(timeout: 30))
+        XCTAssertTrue(username.waitToExist(timeout: 30))
         username.tap()
         username.typeText("abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
         let gallery = app.buttons["tasks-gallery"].firstMatch
-        XCTAssertTrue(gallery.waitForExistence(timeout: 20))
+        XCTAssertTrue(gallery.waitToExist(timeout: 20))
         gallery.tap()
 
         // ── CodeMirror ───────────────────────────────────────────────────────────────────────────
         let codeView = app.descendants(matching: .any).matching(identifier: "gal-code-webview").firstMatch
-        XCTAssertTrue(codeView.waitForExistence(timeout: 20), "gal-code-webview missing on the gallery")
+        XCTAssertTrue(codeView.waitToExist(timeout: 20), "gal-code-webview missing on the gallery")
         scrollIntoView(codeView, in: app, maxSwipes: 40)
         let codeFailure = app.staticTexts["gal-code-failure"].firstMatch
         let codeValue = app.staticTexts["gal-code-value"].firstMatch
         // The editor boots inside the WebView: CodeMirror's content is exposed to accessibility as text.
         let bootedText = app.webViews.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "answer")).firstMatch
-        XCTAssertTrue(bootedText.waitForExistence(timeout: 30), "CodeMirror never rendered the pushed value (failure: \(codeFailure.label)); tree: \(app.webViews.firstMatch.debugDescription)")
+        XCTAssertTrue(bootedText.waitToExist(timeout: 30), "CodeMirror never rendered the pushed value (failure: \(codeFailure.label)); tree: \(app.webViews.firstMatch.debugDescription)")
         XCTAssertEqual(codeFailure.label, "none", "the hosted CodeMirror reported a host failure")
 
         // FORWARD: replace the value from native; the editor shows it.
@@ -1013,7 +1085,7 @@ final class PyreonTasksUITests: XCTestCase {
         scrollIntoView(replace, in: app, maxSwipes: 16)
         replace.tap()
         let replacedText = app.webViews.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "replaced")).firstMatch
-        XCTAssertTrue(replacedText.waitForExistence(timeout: 15), "the value pushed from native never reached CodeMirror; tree: \(app.webViews.firstMatch.debugDescription)")
+        XCTAssertTrue(replacedText.waitToExist(timeout: 15), "the value pushed from native never reached CodeMirror; tree: \(app.webViews.firstMatch.debugDescription)")
 
         // REVERSE: type into the editor; the keystrokes reach the native signal.
         scrollIntoView(codeView, in: app, maxSwipes: 16)
@@ -1029,7 +1101,7 @@ final class PyreonTasksUITests: XCTestCase {
         scrollIntoView(richView, in: app, maxSwipes: 16)
         let richFailure = app.staticTexts["gal-rich-failure"].firstMatch
         let richBooted = app.webViews.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "hosted")).firstMatch
-        XCTAssertTrue(richBooted.waitForExistence(timeout: 30), "TipTap never rendered the pushed HTML (failure: \(richFailure.label)); tree: \(app.webViews.firstMatch.debugDescription)")
+        XCTAssertTrue(richBooted.waitToExist(timeout: 30), "TipTap never rendered the pushed HTML (failure: \(richFailure.label)); tree: \(app.webViews.firstMatch.debugDescription)")
         XCTAssertEqual(richFailure.label, "none", "the hosted TipTap reported a host failure")
 
         // FORWARD: the replacement HTML lands in the editor.
@@ -1037,7 +1109,7 @@ final class PyreonTasksUITests: XCTestCase {
         scrollIntoView(richReplace, in: app, maxSwipes: 16)
         richReplace.tap()
         let richReplaced = app.webViews.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Replaced paragraph")).firstMatch
-        XCTAssertTrue(richReplaced.waitForExistence(timeout: 15), "the HTML pushed from native never reached TipTap; tree: \(app.webViews.firstMatch.debugDescription)")
+        XCTAssertTrue(richReplaced.waitToExist(timeout: 15), "the HTML pushed from native never reached TipTap; tree: \(app.webViews.firstMatch.debugDescription)")
         // A pushed replacement is NOT an edit: it must not echo back through onChange.
         let richEdits = app.staticTexts["gal-rich-edits"].firstMatch
         let richEditsAfterPush = Int(richEdits.label) ?? 0
@@ -1053,17 +1125,17 @@ final class PyreonTasksUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         let username = app.textFields["login-username"].firstMatch
-        XCTAssertTrue(username.waitForExistence(timeout: 30))
+        XCTAssertTrue(username.waitToExist(timeout: 30))
         username.tap()
         username.typeText("abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
         let gallery = app.buttons["tasks-gallery"].firstMatch
-        XCTAssertTrue(gallery.waitForExistence(timeout: 20))
+        XCTAssertTrue(gallery.waitToExist(timeout: 20))
         gallery.tap()
 
         let chart = app.descendants(matching: .any).matching(identifier: "gal-grammar-bars").firstMatch
-        XCTAssertTrue(chart.waitForExistence(timeout: 15))
+        XCTAssertTrue(chart.waitToExist(timeout: 15))
         scrollIntoView(chart, in: app, maxSwipes: 16)
         let scroll = app.scrollViews["gal-scroll"].firstMatch
         let window = app.windows.firstMatch.frame
@@ -1110,7 +1182,7 @@ final class PyreonTasksUITests: XCTestCase {
         app.launch()
 
         let username = app.textFields["login-username"].firstMatch
-        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing on login page")
+        XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing on login page")
         // `.roundedBorder` draws a ~34pt box; a bare field is only its ~22pt line.
         XCTAssertGreaterThanOrEqual(username.frame.height, 30, "login field has no box: \(username.frame)")
         username.tap()
@@ -1121,7 +1193,7 @@ final class PyreonTasksUITests: XCTestCase {
         submit.tap()
 
         let page = app.otherElements["tasks-page"].firstMatch
-        XCTAssertTrue(page.waitForExistence(timeout: 15), "Tasks page did not render after login")
+        XCTAssertTrue(page.waitToExist(timeout: 15), "Tasks page did not render after login")
         let navBar = app.navigationBars.firstMatch
         XCTAssertTrue(navBar.exists, "no navigation bar on the pushed tasks screen")
         XCTAssertLessThan(
@@ -1144,7 +1216,7 @@ final class PyreonTasksUITests: XCTestCase {
         // start at the page's leading edge (the element's frame is its content
         // box, inside the padding), not centred within the page.
         let icon = app.images["header-icon"].firstMatch
-        XCTAssertTrue(icon.waitForExistence(timeout: 15), "header icon missing")
+        XCTAssertTrue(icon.waitToExist(timeout: 15), "header icon missing")
         XCTAssertEqual(icon.frame.minX, page.frame.minX, accuracy: 4, "header is not leading-aligned: \(icon.frame) in \(page.frame)")
         XCTAssertEqual(field.frame.minX, page.frame.minX, accuracy: 2, "field is not leading-aligned: \(field.frame) in \(page.frame)")
         XCTAssertEqual(add.frame.minX, page.frame.minX, accuracy: 2, "action column is not leading-aligned: \(add.frame) in \(page.frame)")
@@ -1158,7 +1230,7 @@ final class PyreonTasksUITests: XCTestCase {
         // guard on /tasks reads it and admits the navigation.
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(
-            username.waitForExistence(timeout: 30),
+            username.waitToExist(timeout: 30),
             "Username field missing on login page"
         )
         username.tap()
@@ -1176,7 +1248,7 @@ final class PyreonTasksUITests: XCTestCase {
 
         let validationError = app.staticTexts["At least 3 characters"].firstMatch
         XCTAssertTrue(
-            validationError.waitForExistence(timeout: 15),
+            validationError.waitToExist(timeout: 15),
             "Validator error text did not render — form.submit() did not run the validator"
         )
         XCTAssertTrue(
@@ -1193,7 +1265,7 @@ final class PyreonTasksUITests: XCTestCase {
 
         let tasksPage = app.otherElements["tasks-page"].firstMatch
         XCTAssertTrue(
-            tasksPage.waitForExistence(timeout: 15),
+            tasksPage.waitToExist(timeout: 15),
             "Tasks page did not render within 5s after login — the store-backed beforeEnter gate did not admit the navigation"
         )
 
@@ -1201,7 +1273,7 @@ final class PyreonTasksUITests: XCTestCase {
         // <Icon name="star"> maps to SF Symbol star.fill via ICON_MAP.
         let headerIcon = app.images["header-icon"].firstMatch
         XCTAssertTrue(
-            headerIcon.waitForExistence(timeout: 15),
+            headerIcon.waitToExist(timeout: 15),
             "Header icon missing — the canonical icon name did not map to an SF Symbol"
         )
 
@@ -1220,7 +1292,7 @@ final class PyreonTasksUITests: XCTestCase {
 
         let newRow = app.staticTexts["Verify on the simulator"].firstMatch
         XCTAssertTrue(
-            newRow.waitForExistence(timeout: 15),
+            newRow.waitToExist(timeout: 15),
             "Added task did not appear — store .set() list mutation did not re-render"
         )
 
@@ -1232,13 +1304,13 @@ final class PyreonTasksUITests: XCTestCase {
 
         let detailPage = app.otherElements["task-detail-page"].firstMatch
         XCTAssertTrue(
-            detailPage.waitForExistence(timeout: 15),
+            detailPage.waitToExist(timeout: 15),
             "Task-detail page did not render within 5s — typed-params dispatch did not match /tasks/1"
         )
 
         let paramText = app.staticTexts["Viewing task 1"].firstMatch
         XCTAssertTrue(
-            paramText.waitForExistence(timeout: 15),
+            paramText.waitToExist(timeout: 15),
             "Typed param text missing — TaskDetailPageParam(id:) was not constructed from the matched segment"
         )
 
@@ -1248,7 +1320,7 @@ final class PyreonTasksUITests: XCTestCase {
         back.tap()
 
         XCTAssertTrue(
-            tasksPage.waitForExistence(timeout: 15),
+            tasksPage.waitToExist(timeout: 15),
             "Did not return to tasks page within 5s after Back"
         )
 
@@ -1265,13 +1337,13 @@ final class PyreonTasksUITests: XCTestCase {
 
         let quotesPage = app.otherElements["quotes-page"].firstMatch
         XCTAssertTrue(
-            quotesPage.waitForExistence(timeout: 15),
+            quotesPage.waitToExist(timeout: 15),
             "Quotes page did not render — /quotes route dispatch failed"
         )
 
         let firstQuote = app.staticTexts["Make it work, make it right, make it fast."].firstMatch
         XCTAssertTrue(
-            firstQuote.waitForExistence(timeout: 20),
+            firstQuote.waitToExist(timeout: 20),
             "Fetched quote text did not render — the URLSession harness did not resolve data from the fixture server (is the CI file server on 8787 up?)"
         )
 
@@ -1280,7 +1352,7 @@ final class PyreonTasksUITests: XCTestCase {
         quotesBack.tap()
 
         XCTAssertTrue(
-            tasksPage.waitForExistence(timeout: 15),
+            tasksPage.waitToExist(timeout: 15),
             "Did not return to tasks page after quotes Back"
         )
 
@@ -1308,19 +1380,19 @@ final class PyreonTasksUITests: XCTestCase {
         // (Other vs ScrollView, content-dependent) doesn't break the assert.
         let vocabPage = app.descendants(matching: .any)["vocab-page"].firstMatch
         XCTAssertTrue(
-            vocabPage.waitForExistence(timeout: 15),
+            vocabPage.waitToExist(timeout: 15),
             "Vocab page did not render — /vocab dispatch failed (Scroll wrap broke the screen?)"
         )
         let openModal = app.buttons["vocab-open-modal"].firstMatch
         XCTAssertTrue(
-            openModal.waitForExistence(timeout: 15),
+            openModal.waitToExist(timeout: 15),
             "Open-dialog button missing — the Modal/Button subtree did not render inside the Scroll"
         )
         let vocabBack = app.buttons["vocab-back"].firstMatch
         XCTAssertTrue(vocabBack.exists, "Back button missing on vocab page")
         tapAfterScrolling(vocabBack, in: app)
         XCTAssertTrue(
-            tasksPage.waitForExistence(timeout: 15),
+            tasksPage.waitToExist(timeout: 15),
             "Did not return to tasks after vocab Back"
         )
 
@@ -1339,9 +1411,9 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(flowNav.exists, "Flow button missing on tasks page")
         tapAfterScrolling(flowNav, in: app)
         let flowPage = app.otherElements["flow-page"].firstMatch
-        XCTAssertTrue(flowPage.waitForExistence(timeout: 15), "Flow page did not render")
+        XCTAssertTrue(flowPage.waitToExist(timeout: 15), "Flow page did not render")
         let nodeCount = app.staticTexts["flow-node-count"].firstMatch
-        XCTAssertTrue(nodeCount.waitForExistence(timeout: 10), "flow-node-count missing")
+        XCTAssertTrue(nodeCount.waitToExist(timeout: 10), "flow-node-count missing")
         XCTAssertEqual(nodeCount.label, "2", "seeded node count")
         XCTAssertEqual(app.staticTexts["flow-edge-count"].firstMatch.label, "2", "seeded edge count")
         XCTAssertEqual(app.staticTexts["flow-zoom"].firstMatch.label, "zoom 1.0", "initial zoom")
@@ -1355,7 +1427,7 @@ final class PyreonTasksUITests: XCTestCase {
         // not follow the canvas scaleEffect, so at any other zoom a node's
         // reported frame is distorted and a coordinate drag misses it.
         let canvas = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Task flow")).firstMatch
-        XCTAssertTrue(canvas.waitForExistence(timeout: 10), "Flow canvas (ariaLabel) did not render")
+        XCTAssertTrue(canvas.waitToExist(timeout: 10), "Flow canvas (ariaLabel) did not render")
         // The `wire` custom edge draws ARBITRARY SVG path data (a template
         // literal), parsed by the native runtime: its #16a34a stroke must paint.
         let wireGreen = colorPixels(canvas.screenshot().pngRepresentation, 0x16, 0xa3, 0x4a)
@@ -1379,12 +1451,12 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertLessThanOrEqual(abs(badgeSide - 16), 1.5, "the <svg> badge measures \(badgeSide)pt a side (\(badgePx) px), its size is 16x16")
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "minimap")).firstMatch.exists, "MiniMap chrome missing")
         let startNode = app.staticTexts["Start"].firstMatch
-        XCTAssertTrue(startNode.waitForExistence(timeout: 5), "node 'Start' did not render on the canvas")
+        XCTAssertTrue(startNode.waitToExist(timeout: 5), "node 'Start' did not render on the canvas")
         XCTAssertTrue(app.staticTexts["End"].firstMatch.exists, "node 'End' did not render on the canvas")
-        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "source handle out")).firstMatch.waitForExistence(timeout: 5), "source handle did not render")
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "source handle out")).firstMatch.waitToExist(timeout: 5), "source handle did not render")
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "target handle in")).firstMatch.exists, "target handle did not render")
         let aPos = app.staticTexts["flow-a-pos"].firstMatch
-        XCTAssertTrue(aPos.waitForExistence(timeout: 5), "flow-a-pos missing")
+        XCTAssertTrue(aPos.waitToExist(timeout: 5), "flow-a-pos missing")
         let before = aPos.label
         // The label reacts to an engine-driven move — the discriminator that
         // separates "the position channel is live" from "the drag gesture ran".
@@ -1454,13 +1526,13 @@ final class PyreonTasksUITests: XCTestCase {
         app.buttons["Fit view"].firstMatch.tap()
 
         tapAfterScrolling(app.buttons["flow-back"].firstMatch, in: app)
-        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 10), "flow-back did not return to tasks")
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 10), "flow-back did not return to tasks")
 
         // F6 scale proof: 400 nodes with culling on. Every assertion is a COUNT
         // or an identity, so it is deterministic on any simulator; a timing
         // would not be.
         tapAfterScrolling(app.buttons["tasks-flow-scale"].firstMatch, in: app)
-        XCTAssertTrue(app.otherElements["flow-scale-page"].firstMatch.waitForExistence(timeout: 15), "Flow scale page did not render")
+        XCTAssertTrue(app.otherElements["flow-scale-page"].firstMatch.waitToExist(timeout: 15), "Flow scale page did not render")
         let scaleTotal = app.staticTexts["flow-scale-total"].firstMatch
         XCTAssertEqual(scaleTotal.label, "0", "the scale flow starts empty")
         app.buttons["flow-scale-load"].firstMatch.tap()
@@ -1469,7 +1541,7 @@ final class PyreonTasksUITests: XCTestCase {
         func node(_ index: Int) -> XCUIElement {
             app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "grid node \(index)")).firstMatch
         }
-        XCTAssertTrue(node(0).waitForExistence(timeout: 10), "the first grid node did not render at the origin viewport")
+        XCTAssertTrue(node(0).waitToExist(timeout: 10), "the first grid node did not render at the origin viewport")
         // The ceiling: a phone canvas shows a few columns of 200pt-spaced nodes.
         // Mounting all 400 would mean culling is off.
         let mountedAtOrigin = gridNodes.count
@@ -1482,7 +1554,7 @@ final class PyreonTasksUITests: XCTestCase {
         // Panning swaps WHICH nodes are mounted: node 0 leaves, node 170 (row 8,
         // column 10, placed exactly at the new viewport origin) arrives.
         app.buttons["flow-scale-pan"].firstMatch.tap()
-        XCTAssertTrue(node(170).waitForExistence(timeout: 10), "panning did not mount the node now at the viewport origin")
+        XCTAssertTrue(node(170).waitToExist(timeout: 10), "panning did not mount the node now at the viewport origin")
         XCTAssertFalse(node(0).exists, "node 0 stayed mounted after it was panned far off screen")
         XCTAssertLessThanOrEqual(gridNodes.count, 40, "culling mounted \(gridNodes.count) nodes after the pan")
         // A node that scrolled in is live: dragging it reaches the engine.
@@ -1502,7 +1574,7 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter().wait(for: [zoomed], timeout: 5), .completed, "pinching did not zoom the scale flow (label: \(scaleZoom.label))")
         XCTAssertLessThan(gridNodes.count, 200, "culling mounted \(gridNodes.count) of 400 nodes after zooming out")
         tapAfterScrolling(app.buttons["flow-scale-back"].firstMatch, in: app)
-        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 10), "flow-scale-back did not return to tasks")
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 10), "flow-scale-back did not return to tasks")
 
         let lifecycleNav = app.buttons["tasks-lifecycle"].firstMatch
         XCTAssertTrue(lifecycleNav.exists, "Lifecycle button missing on tasks page")
@@ -1510,14 +1582,14 @@ final class PyreonTasksUITests: XCTestCase {
 
         let lifecyclePage = app.otherElements["lifecycle-page"].firstMatch
         XCTAssertTrue(
-            lifecyclePage.waitForExistence(timeout: 15),
+            lifecyclePage.waitToExist(timeout: 15),
             "Lifecycle page did not render"
         )
         // DIAGNOSTIC: check the GOOD fetch (Suspense content) first — if it
         // renders, the fetch+observation pipeline works and the host
         // fixture server is reachable. Then the error path.
         let suspenseContent = app.staticTexts["lc-quote"].firstMatch
-        if !suspenseContent.waitForExistence(timeout: 20) {
+        if !suspenseContent.waitToExist(timeout: 20) {
             print("DIAG-HIERARCHY:\n\(app.debugDescription)")
         }
         XCTAssertTrue(
@@ -1525,7 +1597,7 @@ final class PyreonTasksUITests: XCTestCase {
             "Suspense content did not render after the fetch settled"
         )
         let errorFallback = app.staticTexts["lc-error"].firstMatch
-        if !errorFallback.waitForExistence(timeout: 20) {
+        if !errorFallback.waitToExist(timeout: 20) {
             print("DIAG-HIERARCHY-ERR:\n\(app.debugDescription)")
         }
         XCTAssertTrue(
@@ -1536,7 +1608,7 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(lifecycleBack.exists, "Back button missing on lifecycle page")
         lifecycleBack.tap()
         XCTAssertTrue(
-            tasksPage.waitForExistence(timeout: 15),
+            tasksPage.waitToExist(timeout: 15),
             "Did not return to tasks after lifecycle Back"
         )
 
@@ -1555,11 +1627,11 @@ final class PyreonTasksUITests: XCTestCase {
 
         let statsPage = app.otherElements["stats-page"].firstMatch
         XCTAssertTrue(
-            statsPage.waitForExistence(timeout: 15),
+            statsPage.waitToExist(timeout: 15),
             "Stats page did not render"
         )
         let statsTotal = app.staticTexts["stats-total"].firstMatch
-        XCTAssertTrue(statsTotal.waitForExistence(timeout: 10), "Stats total missing")
+        XCTAssertTrue(statsTotal.waitToExist(timeout: 10), "Stats total missing")
         XCTAssertEqual(statsTotal.label, "247", "Object.values reduce total wrong")
         let statsHigh = app.staticTexts["stats-high"].firstMatch
         XCTAssertTrue(statsHigh.exists, "Stats high-count missing")
@@ -1573,7 +1645,7 @@ final class PyreonTasksUITests: XCTestCase {
         // non-zero frame proves the host was laid out (GeometryReader +
         // .frame(height:)), not merely present in the tree.
         let statsFlow = app.descendants(matching: .any).matching(identifier: "stats-flow").firstMatch
-        XCTAssertTrue(statsFlow.waitForExistence(timeout: 10), "Sankey chart canvas missing on stats page")
+        XCTAssertTrue(statsFlow.waitToExist(timeout: 10), "Sankey chart canvas missing on stats page")
         XCTAssertGreaterThan(statsFlow.frame.height, 100, "Sankey chart canvas has no height")
         XCTAssertGreaterThan(statsFlow.frame.width, 100, "Sankey chart canvas has no width")
         // #3257: `onSelectIndex` — a tap on the canvas runs the engine's hit test
@@ -1583,7 +1655,7 @@ final class PyreonTasksUITests: XCTestCase {
         // (88, 80) from the canvas origin lands on node 0; the bound text proves
         // the gesture reached the state, not merely that a gesture exists.
         let flowPick = app.staticTexts["stats-flow-pick"].firstMatch
-        XCTAssertTrue(flowPick.waitForExistence(timeout: 10), "flow pick text missing")
+        XCTAssertTrue(flowPick.waitToExist(timeout: 10), "flow pick text missing")
         XCTAssertEqual(flowPick.label, "-1", "no tap yet, pick should be -1")
         let flowPoint = statsFlow.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 88, dy: 80))
         assertPointsOnScreen([flowPoint], in: app)
@@ -1599,7 +1671,7 @@ final class PyreonTasksUITests: XCTestCase {
         // origin is inside the first bar — every bar spans that height, with
         // or without the preset strip that shortens the plot from below.
         let statsBars = app.descendants(matching: .any).matching(identifier: "stats-bars").firstMatch
-        XCTAssertTrue(statsBars.waitForExistence(timeout: 10), "bar chart canvas missing on stats page")
+        XCTAssertTrue(statsBars.waitToExist(timeout: 10), "bar chart canvas missing on stats page")
         XCTAssertGreaterThan(statsBars.frame.height, 100, "bar chart canvas has no height")
         // The canvas carries the engine's DATA DESCRIPTION as its accessibility
         // label — the sentence the web `aria-label` reads — so VoiceOver says
@@ -1616,7 +1688,7 @@ final class PyreonTasksUITests: XCTestCase {
             "the description does not carry the painted series and categories (label: \(barsLabel))"
         )
         let barPick = app.staticTexts["stats-bars-pick"].firstMatch
-        XCTAssertTrue(barPick.waitForExistence(timeout: 10), "bar pick text missing")
+        XCTAssertTrue(barPick.waitToExist(timeout: 10), "bar pick text missing")
         XCTAssertEqual(barPick.label, "-1", "no tap yet, bar pick should be -1")
         XCTAssertTrue(app.windows.firstMatch.frame.contains(statsBars.frame), "bar gestures require the whole canvas on screen: \(statsBars.frame)")
         statsBars.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0)).withOffset(CGVector(dx: 90, dy: 100)).tap()
@@ -1702,7 +1774,7 @@ final class PyreonTasksUITests: XCTestCase {
         // chart's plot (x 50 → W-30, y 60) selects every row → '0-2' through the
         // named onBrush; a tap on the plot clears it → 'none'.
         let statsBrush = app.descendants(matching: .any).matching(identifier: "stats-brush").firstMatch
-        XCTAssertTrue(statsBrush.waitForExistence(timeout: 10), "brush chart canvas missing on stats page")
+        XCTAssertTrue(statsBrush.waitToExist(timeout: 10), "brush chart canvas missing on stats page")
         let brushSel = app.staticTexts["stats-brush-sel"].firstMatch
 
         // The INDICATOR marks, on the device. `sma` lowers to the crossing
@@ -1715,13 +1787,13 @@ final class PyreonTasksUITests: XCTestCase {
         // produced numbers. A chart that emitted nothing would still have a
         // label, so the title alone would not prove anything.
         let indicators = app.descendants(matching: .any).matching(identifier: "stats-indicators").firstMatch
-        XCTAssertTrue(indicators.waitForExistence(timeout: 10), "indicator chart canvas missing on stats page")
+        XCTAssertTrue(indicators.waitToExist(timeout: 10), "indicator chart canvas missing on stats page")
         XCTAssertGreaterThan(indicators.frame.height, 60, "indicator chart canvas has no height")
         let indLabel = indicators.label
         XCTAssertTrue(indLabel.contains("Weekly load"), "indicator chart label lost its title: \(indLabel)")
         XCTAssertTrue(indLabel.contains("upper bound"), "the bollinger band did not describe its two bounds: \(indLabel)")
         XCTAssertTrue(indLabel.contains("lower bound"), "the bollinger band did not describe its two bounds: \(indLabel)")
-        XCTAssertTrue(brushSel.waitForExistence(timeout: 10), "brush selection text missing")
+        XCTAssertTrue(brushSel.waitToExist(timeout: 10), "brush selection text missing")
         XCTAssertEqual(brushSel.label, "none", "no brush yet, selection should be none")
         let brushOrigin = statsBrush.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
         let brushStart = brushOrigin.withOffset(CGVector(dx: 50, dy: 60))
@@ -1742,7 +1814,7 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(statsBack.exists, "Back button missing on stats page")
         statsBack.tap()
         XCTAssertTrue(
-            tasksPage.waitForExistence(timeout: 15),
+            tasksPage.waitToExist(timeout: 15),
             "Did not return to tasks after stats Back"
         )
 
@@ -1751,12 +1823,12 @@ final class PyreonTasksUITests: XCTestCase {
         // its top slab reads 'Leads', a button drops that stage, and the SAME tap
         // then reads 'Qualified' — the hit test ran over the re-laid-out canvas.
         let dashNav = app.buttons["tasks-dashboard"].firstMatch
-        XCTAssertTrue(dashNav.waitForExistence(timeout: 10), "Dashboard button missing on tasks page")
+        XCTAssertTrue(dashNav.waitToExist(timeout: 10), "Dashboard button missing on tasks page")
         dashNav.tap()
         let dashPage = app.otherElements["dash-page"].firstMatch
-        XCTAssertTrue(dashPage.waitForExistence(timeout: 15), "Dashboard page did not render")
+        XCTAssertTrue(dashPage.waitToExist(timeout: 15), "Dashboard page did not render")
         let dashFunnel = app.descendants(matching: .any).matching(identifier: "dash-funnel").firstMatch
-        XCTAssertTrue(dashFunnel.waitForExistence(timeout: 10), "funnel canvas missing on dashboard")
+        XCTAssertTrue(dashFunnel.waitToExist(timeout: 10), "funnel canvas missing on dashboard")
         let dashStage = app.staticTexts["dash-stage"].firstMatch
         XCTAssertEqual(dashStage.label, "none", "no funnel tap yet")
         let funnelTop = dashFunnel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 30))
@@ -1786,7 +1858,9 @@ final class PyreonTasksUITests: XCTestCase {
         scrollIntoView(dashRadar, in: app)
         waitForScrollToSettle(dashRadar)
         XCTAssertTrue(dashRadar.isHittable, "radar canvas never became hittable")
-        let radarPoint = dashRadar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 46))
+        let radarVertex = { dashRadar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 46)) }
+        liftTapOnlyCanvas(dashRadar, until: radarVertex, in: app)
+        let radarPoint = radarVertex()
         assertPointsOnScreen([radarPoint], in: app)
         radarPoint.tap()
         XCTAssertTrue(waitForLabel(radarHit, "S0A0", timeout: 10), "tap on the radar's first vertex did not report series 0 / axis 0 (label: \(radarHit.label))")
@@ -1800,6 +1874,7 @@ final class PyreonTasksUITests: XCTestCase {
         scrollIntoView(dashBox, in: app)
         waitForScrollToSettle(dashBox)
         XCTAssertTrue(dashBox.isHittable, "boxplot canvas never became hittable")
+        liftTapOnlyCanvas(dashBox, until: { dashBox.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)) }, in: app)
         let boxPoint = dashBox.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.5))
         let boxRightPoint = dashBox.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
         assertPointsOnScreen([boxPoint, boxRightPoint], in: app)
@@ -1808,7 +1883,7 @@ final class PyreonTasksUITests: XCTestCase {
         boxRightPoint.tap()
         XCTAssertTrue(waitForLabel(boxPick, "1", timeout: 10), "tap on the right band did not select box 1 (label: \(boxPick.label))")
         app.buttons["dash-back"].firstMatch.tap()
-        XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after dashboard Back")
+        XCTAssertTrue(tasksPage.waitToExist(timeout: 15), "Did not return to tasks after dashboard Back")
 
         // The GALLERY — the ten chart families that had never rendered on a
         // device. Nine of nineteen lowered hosts were device-proven before
@@ -1823,7 +1898,7 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(galleryBtn.exists, "Chart gallery button missing on tasks page")
         galleryBtn.tap()
         let galPage = app.otherElements["gal-page"].firstMatch
-        XCTAssertTrue(galPage.waitForExistence(timeout: 15), "Chart gallery page did not render")
+        XCTAssertTrue(galPage.waitToExist(timeout: 15), "Chart gallery page did not render")
         for id in [
             "gal-calendar", "gal-candlestick", "gal-gantt", "gal-graph", "gal-map",
             "gal-parallel", "gal-polar", "gal-river", "gal-sunburst", "gal-tree",
@@ -1835,10 +1910,17 @@ final class PyreonTasksUITests: XCTestCase {
             // an off-screen element's `exists` is true while its frame is not
             // meaningful — the same trap that made the boxplot assertion read
             // an off-screen tap as a failed hit test.
-            XCTAssertTrue(canvas.waitForExistence(timeout: 10), "\(id) canvas missing on the gallery")
+            XCTAssertTrue(canvas.waitToExist(timeout: 10), "\(id) canvas missing on the gallery")
             scrollGalleryOnScreen(canvas, in: app, fullyVisible: false)
             XCTAssertFalse(canvas.frame.isEmpty, "\(id) rendered with an empty frame — it laid out to nothing")
         }
+        // The checks below run in PAGE ORDER, not in the order they were written. The
+        // loop above ends at the last canvas, so they step back up to the grammar bars,
+        // the route trail and the map, then go down once: toolbox, brush, series, growth,
+        // the hosted flow, save, Back. Each drag of this page is 3–4 s on a simulator
+        // (6–7 s on the CI runner); in written order the page was crossed four times, 39
+        // drags. Every check owns its chart and its labels, so the order changes nothing
+        // they assert.
         // The stable `<Chart>` grammar on device: a tap on the first bar
         // reaches the chart's `onSelect` with index 0, through the same host
         // the grammar desugars to at compile time.
@@ -1850,12 +1932,21 @@ final class PyreonTasksUITests: XCTestCase {
         // appearance (it runs light), because the provider pins SwiftUI's
         // colorScheme for its subtree.
         let colorMode = app.staticTexts["gal-color-mode"].firstMatch
-        XCTAssertTrue(colorMode.waitForExistence(timeout: 10), "gal-color-mode missing on the gallery")
+        XCTAssertTrue(colorMode.waitToExist(timeout: 10), "gal-color-mode missing on the gallery")
         XCTAssertEqual(colorMode.label, "dark", "useColorMode() under a pinned provider")
         selectFirstGrammarBar(grammarBars, in: app)
+        // The geo route trail MOVES too: two screenshots half a second apart differ.
+        let geoTrail = app.descendants(matching: .any).matching(identifier: "gal-geo-trail").firstMatch
+        XCTAssertTrue(geoTrail.waitToExist(timeout: 10), "gal-geo-trail canvas missing on the gallery")
+        // The animated chart must be visible before either screenshot. Reuse
+        // the same bounded scroll path as gestures, including its safe label origin.
+        scrollGalleryOnScreen(geoTrail, in: app)
+        let geoTrailBefore = geoTrail.screenshot().pngRepresentation
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        XCTAssertNotEqual(geoTrailBefore, geoTrail.screenshot().pngRepresentation, "gal-geo-trail did not move between frames (frame \(geoTrail.frame), window \(app.windows.firstMatch.frame))")
         // The map ROAMS: a horizontal drag pans it, so its canvas differs.
         let roamMap = app.descendants(matching: .any).matching(identifier: "gal-map").firstMatch
-        XCTAssertTrue(roamMap.waitForExistence(timeout: 10), "gal-map canvas missing on the gallery")
+        XCTAssertTrue(roamMap.waitToExist(timeout: 10), "gal-map canvas missing on the gallery")
         scrollGalleryOnScreen(roamMap, in: app)
         let mapBefore = roamMap.screenshot().pngRepresentation
         let mapGrab = roamMap.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5))
@@ -1864,7 +1955,7 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertNotEqual(mapBefore, roamMap.screenshot().pngRepresentation, "dragging the roaming map did not pan it")
         // The toolbox (dataZoom, back, dataView, line, bar, restore — right-aligned, 25pt apart at the top).
         let toolbox = app.descendants(matching: .any).matching(identifier: "gal-toolbox").firstMatch
-        XCTAssertTrue(toolbox.waitForExistence(timeout: 10), "gal-toolbox missing on the gallery")
+        XCTAssertTrue(toolbox.waitToExist(timeout: 10), "gal-toolbox missing on the gallery")
         scrollGalleryOnScreen(toolbox, in: app)
         let tbOrigin = toolbox.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
         let tool = { (i: Int) -> XCUICoordinate in tbOrigin.withOffset(CGVector(dx: toolbox.frame.width - 9.5 - 25.0 * Double(5 - i), dy: 9.5)) }
@@ -1877,7 +1968,7 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(waitForLabel(tbZoom, "0-100", timeout: 5), "back did not undo the box zoom (label: \(tbZoom.label))")
         tool(2).tap()
         let dataView = app.descendants(matching: .any).matching(identifier: "pyreon-dataview").firstMatch
-        XCTAssertTrue(dataView.waitForExistence(timeout: 5), "the data view did not open")
+        XCTAssertTrue(dataView.waitToExist(timeout: 5), "the data view did not open")
         app.buttons["pyreon-dataview-close"].firstMatch.tap()
         let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: dataView)
         XCTAssertEqual(XCTWaiter().wait(for: [closed], timeout: 5), .completed, "the data view did not close")
@@ -1890,15 +1981,9 @@ final class PyreonTasksUITests: XCTestCase {
         scrollGalleryOnScreen(hReset, in: app)
         hReset.tap()
         XCTAssertTrue(waitForLabel(tbZoom, "0-100", timeout: 5), "the handle's restore did not reset the window (label: \(tbZoom.label))")
-        // saveAsImage on a family chart: the offscreen PNG reaches onSaveImage.
-        let saveChart = app.descendants(matching: .any).matching(identifier: "gal-save").firstMatch
-        XCTAssertTrue(saveChart.waitForExistence(timeout: 10), "gal-save missing on the gallery")
-        scrollGalleryOnScreen(saveChart, in: app)
-        app.buttons["pyreon-save-image"].firstMatch.tap()
-        XCTAssertTrue(waitForLabel(app.staticTexts["gal-saved"].firstMatch, "data:image/png;", timeout: 15), "saveAsImage did not hand onSaveImage a PNG (label: \(app.staticTexts["gal-saved"].firstMatch.label))")
         // The area brush: a lineX drag over the middle bars reports some of them; a tap clears it.
         let areaChart = app.descendants(matching: .any).matching(identifier: "gal-brush").firstMatch
-        XCTAssertTrue(areaChart.waitForExistence(timeout: 10), "gal-brush missing on the gallery")
+        XCTAssertTrue(areaChart.waitToExist(timeout: 10), "gal-brush missing on the gallery")
         scrollGalleryOnScreen(areaChart, in: app)
         let areaOrigin = areaChart.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
         let areaCount = app.staticTexts["gal-brush-count"].firstMatch
@@ -1909,7 +1994,7 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(waitForLabel(areaCount, "1:0", timeout: 5), "a tap did not clear the brush (label: \(areaCount.label))")
         // selectedMode="series": a tap pins the whole series it lands on and still reports the datum under it.
         let seriesChart = app.descendants(matching: .any).matching(identifier: "gal-series-select").firstMatch
-        XCTAssertTrue(seriesChart.waitForExistence(timeout: 10), "gal-series-select missing on the gallery")
+        XCTAssertTrue(seriesChart.waitToExist(timeout: 10), "gal-series-select missing on the gallery")
         scrollGalleryOnScreen(seriesChart, in: app)
         let seriesOrigin = seriesChart.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
         let seriesDatum = app.staticTexts["gal-series-select-datum"].firstMatch
@@ -1918,21 +2003,12 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter().wait(for: [seriesPicked], timeout: 5), .completed, "selectedMode series did not report a datum on tap (label: \(seriesDatum.label))")
         // universalTransition: toggling from 3 to 5 rows morphs instead of crashing, and settles on the new count.
         let growthChart = app.descendants(matching: .any).matching(identifier: "gal-growth").firstMatch
-        XCTAssertTrue(growthChart.waitForExistence(timeout: 10), "gal-growth missing on the gallery")
+        XCTAssertTrue(growthChart.waitToExist(timeout: 10), "gal-growth missing on the gallery")
         scrollGalleryOnScreen(app.buttons["gal-growth-toggle"].firstMatch, in: app)
         app.buttons["gal-growth-toggle"].firstMatch.tap()
         XCTAssertTrue(waitForLabel(app.staticTexts["gal-growth-count"].firstMatch, "5", timeout: 5), "universalTransition row-count toggle did not settle on 5 (label: \(app.staticTexts["gal-growth-count"].firstMatch.label))")
         app.buttons["gal-growth-toggle"].firstMatch.tap()
         XCTAssertTrue(waitForLabel(app.staticTexts["gal-growth-count"].firstMatch, "3", timeout: 5), "universalTransition row-count toggle did not settle back on 3 (label: \(app.staticTexts["gal-growth-count"].firstMatch.label))")
-        // The geo route trail MOVES too: two screenshots half a second apart differ.
-        let geoTrail = app.descendants(matching: .any).matching(identifier: "gal-geo-trail").firstMatch
-        XCTAssertTrue(geoTrail.waitForExistence(timeout: 10), "gal-geo-trail canvas missing on the gallery")
-        // The animated chart must be visible before either screenshot. Reuse
-        // the same bounded scroll path as gestures, including its safe label origin.
-        scrollGalleryOnScreen(geoTrail, in: app)
-        let geoTrailBefore = geoTrail.screenshot().pngRepresentation
-        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        XCTAssertNotEqual(geoTrailBefore, geoTrail.screenshot().pngRepresentation, "gal-geo-trail did not move between frames (frame \(geoTrail.frame), window \(app.windows.firstMatch.frame))")
         // `@pyreon/flow/webview` on device: the graph + `fit-view` command are pushed
         // INTO the WKWebView, the hosted renderer fits and posts `viewport-change`
         // BACK over the reverse bridge into native Text — page→host proven without
@@ -1940,7 +2016,7 @@ final class PyreonTasksUITests: XCTestCase {
         // count moving 1→2 (not 3) proves the reactive push AND that `initial-fit`
         // ran once only.
         let flowWebView = app.descendants(matching: .any).matching(identifier: "gal-flow-webview").firstMatch
-        XCTAssertTrue(flowWebView.waitForExistence(timeout: 10), "gal-flow-webview missing on the gallery")
+        XCTAssertTrue(flowWebView.waitToExist(timeout: 10), "gal-flow-webview missing on the gallery")
         let flowWebEvent = app.staticTexts["gal-flow-webview-event"].firstMatch
         XCTAssertTrue(waitForLabel(flowWebEvent, "viewport-change", timeout: 20), "the hosted flow's initial fit-view never reached the host (label: \(flowWebEvent.label))")
         let flowWebEvents = app.staticTexts["gal-flow-webview-events"].firstMatch
@@ -1997,13 +2073,19 @@ final class PyreonTasksUITests: XCTestCase {
         scrollGalleryOnScreen(flowReloadSwap, in: app)
         flowReloadSwap.tap()
         XCTAssertTrue(waitForLabel(flowReloadStatus, "b:3", timeout: 20), "the reloaded page never received the graph and answered (label: \(flowReloadStatus.label))")
+        // saveAsImage on a family chart: the offscreen PNG reaches onSaveImage.
+        let saveChart = app.descendants(matching: .any).matching(identifier: "gal-save").firstMatch
+        XCTAssertTrue(saveChart.waitToExist(timeout: 10), "gal-save missing on the gallery")
+        scrollGalleryOnScreen(saveChart, in: app)
+        app.buttons["pyreon-save-image"].firstMatch.tap()
+        XCTAssertTrue(waitForLabel(app.staticTexts["gal-saved"].firstMatch, "data:image/png;", timeout: 15), "saveAsImage did not hand onSaveImage a PNG (label: \(app.staticTexts["gal-saved"].firstMatch.label))")
         // gal-back is the LAST element on the gallery; the checks above leave the page
         // scrolled wherever their subject sat, so a bare tap can land off-screen on
         // nothing (intermittent "Did not return to tasks"). Android scrolls to it too.
         let galBack = app.buttons["gal-back"].firstMatch
         scrollGalleryOnScreen(galBack, in: app)
         galBack.tap()
-        XCTAssertTrue(tasksPage.waitForExistence(timeout: 15), "Did not return to tasks after gallery Back")
+        XCTAssertTrue(tasksPage.waitToExist(timeout: 15), "Did not return to tasks after gallery Back")
 
         // Phase 5b: the TOOLKIT screen — the one place eleven packages that had
         // only ever been snippet-proven actually run. The web e2e asserts the
@@ -2018,13 +2100,13 @@ final class PyreonTasksUITests: XCTestCase {
 
         let toolkitPage = app.otherElements["toolkit-page"].firstMatch
         XCTAssertTrue(
-            toolkitPage.waitForExistence(timeout: 15),
+            toolkitPage.waitToExist(timeout: 15),
             "Toolkit page did not render"
         )
 
         // i18n: the TRANSLATED title. A missing catalogue renders the key.
         let toolkitTitle = app.staticTexts["toolkit-title"].firstMatch
-        XCTAssertTrue(toolkitTitle.waitForExistence(timeout: 10), "Toolkit title missing")
+        XCTAssertTrue(toolkitTitle.waitToExist(timeout: 10), "Toolkit title missing")
         XCTAssertEqual(toolkitTitle.label, "Toolkit", "i18n lookup did not resolve")
 
         // url-state: the default reaches the view through the router's query.
@@ -2045,11 +2127,11 @@ final class PyreonTasksUITests: XCTestCase {
         // this one was covered by it and never visible. It now lives in its own
         // pass-through window above the app.
         let toolkitSave = app.buttons["toolkit-save"].firstMatch
-        XCTAssertTrue(toolkitSave.waitForExistence(timeout: 10), "Toolkit Save button missing")
+        XCTAssertTrue(toolkitSave.waitToExist(timeout: 10), "Toolkit Save button missing")
         toolkitSave.tap()
         let toastCard = app.descendants(matching: .any)["pyreon-toast"].firstMatch
         XCTAssertTrue(
-            toastCard.waitForExistence(timeout: 3),
+            toastCard.waitToExist(timeout: 3),
             "toast(i18n.t('saved')) fired on a pushed screen but no toast appeared"
         )
         XCTAssertTrue(
@@ -2060,7 +2142,7 @@ final class PyreonTasksUITests: XCTestCase {
         // only inside a card, so this tap reaching the button also proves the
         // card is hit-testable while the rest of the screen passes through.
         let dismissToast = app.buttons["pyreon-toast-dismiss"].firstMatch
-        XCTAssertTrue(dismissToast.waitForExistence(timeout: 3), "the toast has no dismiss button")
+        XCTAssertTrue(dismissToast.waitToExist(timeout: 3), "the toast has no dismiss button")
         dismissToast.tap()
         let gone = NSPredicate(format: "exists == false")
         expectation(for: gone, evaluatedWith: toastCard)
@@ -2123,7 +2205,7 @@ final class PyreonTasksUITests: XCTestCase {
         // to nothing, or to an invented view, fails here. The web e2e asserts
         // the computed CSS, which is the half only a browser can see.
         XCTAssertTrue(
-            app.staticTexts["toolkit-card-text"].firstMatch.waitForExistence(timeout: 10),
+            app.staticTexts["toolkit-card-text"].firstMatch.waitToExist(timeout: 10),
             "styled() wrapper did not render its child"
         )
         XCTAssertTrue(
@@ -2183,7 +2265,7 @@ final class PyreonTasksUITests: XCTestCase {
         // That indirection is the point: asserting INSIDE a WKWebView is what
         // XCUITest cannot do reliably.
         let bridge = app.staticTexts["toolkit-bridge"].firstMatch
-        XCTAssertTrue(bridge.waitForExistence(timeout: 15), "Bridge readout missing")
+        XCTAssertTrue(bridge.waitToExist(timeout: 15), "Bridge readout missing")
         // The page loads asynchronously, so poll rather than assert once.
         let echoed = NSPredicate(format: "label == %@", "ping")
         expectation(for: echoed, evaluatedWith: bridge, handler: nil)
@@ -2241,7 +2323,7 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(toolkitBack.exists, "Back button missing on toolkit page")
         tapAfterScrolling(toolkitBack, in: app)
         XCTAssertTrue(
-            tasksPage.waitForExistence(timeout: 15),
+            tasksPage.waitToExist(timeout: 15),
             "Did not return to tasks after toolkit Back"
         )
 
@@ -2252,7 +2334,7 @@ final class PyreonTasksUITests: XCTestCase {
 
         let loginAfterLogout = app.otherElements["login-page"].firstMatch
         XCTAssertTrue(
-            loginAfterLogout.waitForExistence(timeout: 15),
+            loginAfterLogout.waitToExist(timeout: 15),
             "Did not return to login page within 5s after Logout — store flag flip + navigate did not commit"
         )
     }
@@ -2262,16 +2344,16 @@ final class PyreonTasksUITests: XCTestCase {
     /// Login -> tasks -> the /webhost screen.
     private func navigateToWebHost(_ app: XCUIApplication) {
         let username = app.textFields["login-username"].firstMatch
-        XCTAssertTrue(username.waitForExistence(timeout: 30), "Username field missing")
+        XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
         username.typeText("abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
-        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitForExistence(timeout: 20), "Tasks page did not render after login")
+        XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
         let open = app.buttons["tasks-webhost"].firstMatch
-        XCTAssertTrue(open.waitForExistence(timeout: 20), "Web host button missing")
+        XCTAssertTrue(open.waitToExist(timeout: 20), "Web host button missing")
         open.tap()
-        XCTAssertTrue(app.otherElements["webhost-page"].firstMatch.waitForExistence(timeout: 15), "Web host page did not render")
+        XCTAssertTrue(app.otherElements["webhost-page"].firstMatch.waitToExist(timeout: 15), "Web host page did not render")
     }
 
     /// A page hosted in `<WebView grow>` on a REAL simulator:
@@ -2294,7 +2376,7 @@ final class PyreonTasksUITests: XCTestCase {
 
         let result = app.staticTexts["webhost-result"].firstMatch
         let web = app.webViews.firstMatch
-        XCTAssertTrue(web.waitForExistence(timeout: 20), "hosted WKWebView missing")
+        XCTAssertTrue(web.waitToExist(timeout: 20), "hosted WKWebView missing")
 
         // ── SIZING ─────────────────────────────────────────────────────────
         // The page posts its viewport height on load.
@@ -2309,25 +2391,25 @@ final class PyreonTasksUITests: XCTestCase {
         // ── alert ──────────────────────────────────────────────────────────
         web.buttons["Alert"].firstMatch.tap()
         let alert = app.alerts.firstMatch
-        XCTAssertTrue(alert.waitForExistence(timeout: 10), "alert() presented nothing")
+        XCTAssertTrue(alert.waitToExist(timeout: 10), "alert() presented nothing")
         XCTAssertTrue(alert.staticTexts["hello from the page"].exists, "alert shows the page's message")
         alert.buttons["OK"].tap()
         XCTAssertTrue(waitForLabel(result, "alert:done", timeout: 10), "alert() never returned (label: \(result.label))")
 
         // ── confirm: Cancel, then OK ───────────────────────────────────────
         web.buttons["Confirm"].firstMatch.tap()
-        XCTAssertTrue(alert.waitForExistence(timeout: 10), "confirm() presented nothing")
+        XCTAssertTrue(alert.waitToExist(timeout: 10), "confirm() presented nothing")
         XCTAssertTrue(alert.staticTexts["Proceed?"].exists, "confirm shows the page's question")
         alert.buttons["Cancel"].tap()
         XCTAssertTrue(waitForLabel(result, "confirm:false", timeout: 10), "confirm() Cancel (label: \(result.label))")
         web.buttons["Confirm"].firstMatch.tap()
-        XCTAssertTrue(alert.waitForExistence(timeout: 10), "second confirm() presented nothing")
+        XCTAssertTrue(alert.waitToExist(timeout: 10), "second confirm() presented nothing")
         alert.buttons["OK"].tap()
         XCTAssertTrue(waitForLabel(result, "confirm:true", timeout: 10), "confirm() OK (label: \(result.label))")
 
         // ── prompt: replace the default text ───────────────────────────────
         web.buttons["Prompt"].firstMatch.tap()
-        XCTAssertTrue(alert.waitForExistence(timeout: 10), "prompt() presented nothing")
+        XCTAssertTrue(alert.waitToExist(timeout: 10), "prompt() presented nothing")
         let field = alert.textFields.firstMatch
         XCTAssertTrue(field.exists, "prompt has a text field")
         XCTAssertEqual(field.value as? String, "guest", "prompt carries the page's default text")
@@ -2355,7 +2437,7 @@ final class PyreonTasksUITests: XCTestCase {
 
         // ── target="_blank" ────────────────────────────────────────────────
         let link = web.links["External link"].firstMatch
-        XCTAssertTrue(link.waitForExistence(timeout: 10), "external link missing: \(app.debugDescription.prefix(2000))")
+        XCTAssertTrue(link.waitToExist(timeout: 10), "external link missing: \(app.debugDescription.prefix(2000))")
         link.tap()
         let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
         XCTAssertTrue(
@@ -2363,7 +2445,7 @@ final class PyreonTasksUITests: XCTestCase {
             "target=_blank did not hand the URL to Safari (page said \(result.label), app state \(app.state.rawValue))"
         )
         app.activate()
-        XCTAssertTrue(app.otherElements["webhost-page"].firstMatch.waitForExistence(timeout: 15), "the hosted page was replaced instead of kept")
+        XCTAssertTrue(app.otherElements["webhost-page"].firstMatch.waitToExist(timeout: 15), "the hosted page was replaced instead of kept")
 
         // ── file input ─────────────────────────────────────────────────────
         // WKWebView presents its own chooser on iOS (no delegate needed). Its
@@ -2371,13 +2453,21 @@ final class PyreonTasksUITests: XCTestCase {
         // input is live. Choosing a file needs a photo library / Files content
         // the simulator does not reliably have, so it is dismissed instead.
         let fileControl = web.buttons["Pick a file"].firstMatch.exists ? web.buttons["Pick a file"].firstMatch : web.staticTexts["Pick a file"].firstMatch
-        fileControl.tap()
         let choices = ["Photo Library", "Choose File", "Take Photo", "Take Photo or Video", "Choose Files"]
         let chooserDeadline = Date().addingTimeInterval(10)
         var shown: String?
+        // The app has only just come back from Safari, and a tap that lands while
+        // it is still returning to the foreground is dropped: no chooser, and the
+        // page is unchanged. So the tap is repeated, every 3 s inside the same
+        // 10 s budget, until a chooser answers. (The old `waitForExistence` above
+        // hid this behind its one-second first poll.)
         while Date() < chooserDeadline && shown == nil {
-            shown = choices.first { app.buttons[$0].exists || app.otherElements[$0].exists || app.staticTexts[$0].exists }
-            if shown == nil { RunLoop.current.run(until: Date().addingTimeInterval(0.3)) }
+            fileControl.tap()
+            let tapDeadline = min(chooserDeadline, Date().addingTimeInterval(3))
+            while Date() < tapDeadline && shown == nil {
+                shown = choices.first { app.buttons[$0].exists || app.otherElements[$0].exists || app.staticTexts[$0].exists }
+                if shown == nil { RunLoop.current.run(until: Date().addingTimeInterval(0.3)) }
+            }
         }
         XCTAssertNotNil(shown, "tapping the file input presented no chooser: \(app.debugDescription.prefix(1500))")
         // Dismiss: tap outside the menu.
