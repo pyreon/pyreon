@@ -1028,6 +1028,36 @@ final class PyreonCounterUITests: XCTestCase {
         )
     }
 
+    // ADP-1 — the REGULAR half of the size class, on an iPad. These two run
+    // only on an iPad Simulator: CI's iPad lane (native-device.yml, "iPad
+    // lane") runs them with `-only-testing`, and on an iPhone they skip, since
+    // a phone can never produce `.regular` horizontally in portrait. Together
+    // with the iPhone tests above, the same build reads BOTH values of the live
+    // environment, so the hook cannot be a baked constant either way.
+    func test_sizeClassReadsRegularOnPad() throws {
+        try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "iPad lane only")
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(
+            app.staticTexts["Size: regular"].waitForExistence(timeout: 30),
+            "Expected \"Size: regular\" on an iPad — useSizeClass did not read the regular horizontal size class"
+        )
+        XCTAssertFalse(app.staticTexts["Size: compact"].exists, "an iPad rendered the compact size class")
+    }
+
+    // The regular branch of the size-class Stack↔Inline swap: on an iPad the
+    // `if cond { HStack } else { VStack }` lowering must take the HStack arm.
+    func test_adaptiveLayoutRendersRegularBranchOnPad() throws {
+        try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "iPad lane only")
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(
+            app.staticTexts["Layout: wide"].waitForExistence(timeout: 30),
+            "Adaptive Stack↔Inline did not render the regular branch on an iPad"
+        )
+        XCTAssertFalse(app.staticTexts["Layout: narrow"].exists, "the compact branch rendered on an iPad")
+    }
+
     // Tier-2 i18n (createI18n) asserted in the REAL render tree — the first
     // DEVICE assertion of an emit that has only ever been R2/compile-proven
     // (tier2-i18n-emit.test.ts). The shared Counter.tsx has

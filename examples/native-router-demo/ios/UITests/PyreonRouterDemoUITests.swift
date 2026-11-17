@@ -1538,6 +1538,52 @@ final class PyreonRouterDemoUITests: XCTestCase {
         XCTAssertEqual(subject.label, "Subject: Invoice")
     }
 
+    // ADP-2 — the WIDE half of <Tabs> and <Split>, on an iPad (CI's iPad
+    // lane runs it with `-only-testing`; it skips on an iPhone). The test above
+    // proves the phone layout. In a regular-width window:
+    //   <Split> inside the router lays out two panes side by side, the detail
+    //           shown with no selection, and a row tap updates the detail while
+    //           the list stays on screen (nothing is pushed);
+    //   <Tabs>  is the iPad tab bar at the TOP of the window (iOS 18's
+    //           `.sidebarAdaptable`), where the phone's sits at the bottom.
+    // Asserted by frames, so a host that ignored the size class fails on
+    // geometry rather than on a missing element.
+    func test_splitShowsTwoPanesAndTabsMoveToTheTopOnPad() throws {
+        try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "iPad lane only")
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30))
+        app.buttons["home-to-navigation"].tap()
+        XCTAssertTrue(app.staticTexts["nav-feed-title"].waitForExistence(timeout: 15), "Feed tab did not render")
+
+        let window = app.windows.firstMatch.frame
+        let mailTab = app.buttons["Mail"].firstMatch
+        XCTAssertTrue(mailTab.waitForExistence(timeout: 10), "no Mail tab item")
+        XCTAssertLessThan(
+            mailTab.frame.midY, window.midY,
+            "the iPad tab bar is not at the top of the window: Mail tab \(mailTab.frame) in window \(window)"
+        )
+        mailTab.tap()
+
+        let welcome = app.buttons["nav-mail-row-welcome"]
+        let subject = app.staticTexts["nav-mail-subject"]
+        XCTAssertTrue(welcome.waitForExistence(timeout: 10), "Split list did not render")
+        XCTAssertTrue(subject.waitForExistence(timeout: 10), "Split detail is not shown beside the list with no selection")
+        XCTAssertEqual(subject.label, "Subject: none")
+        XCTAssertLessThanOrEqual(
+            welcome.frame.maxX, subject.frame.minX,
+            "the Split panes are not side by side: list row \(welcome.frame), detail \(subject.frame)"
+        )
+
+        app.buttons["nav-mail-row-invoice"].tap()
+        let deadline = Date().addingTimeInterval(10)
+        while subject.label != "Subject: Invoice" && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        XCTAssertEqual(subject.label, "Subject: Invoice", "the detail did not follow the row tap")
+        XCTAssertTrue(welcome.isHittable, "a row tap pushed over the list instead of updating the detail pane")
+    }
+
     /// Tab-bar router (#4060): `createRouter({ tabs })` + `<Tabs router>` — each tab is its own
     /// `NavigationStack` inside the `TabView`. Before, the router's one stack wrapped the TabView, so a push from
     /// inside a tab COVERED the tab bar; here it stays, every tab keeps its stack across a switch, and re-tapping
