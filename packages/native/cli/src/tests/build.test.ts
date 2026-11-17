@@ -326,6 +326,33 @@ describe('@pyreon/native-cli build', () => {
     expect(twice.split('detectTapGestures').length - 1).toBe(1)
   })
 
+  it('Kotlin conditional imports: every Compose enter/exit transition builder the emit names', () => {
+    // A `slide-*` or `scale-in` <Transition> lowered to slideInHorizontally /
+    // scaleIn with no import, so the real `gradle assembleDebug` failed with
+    // `Unresolved reference 'slideInHorizontally'` while the stub-concatenating
+    // kotlinc gate passed. Only fadeIn/fadeOut had an arm.
+    const slide = conditionalKotlinImports(
+      'AnimatedVisibility(visible = v, enter = slideInHorizontally(animationSpec = s) { it } + fadeIn(animationSpec = s), exit = slideOutHorizontally(animationSpec = s) { it } + fadeOut(animationSpec = s))',
+    )
+    for (const fn of ['slideInHorizontally', 'slideOutHorizontally', 'fadeIn', 'fadeOut']) {
+      expect(slide).toContain(`import androidx.compose.animation.${fn}`)
+    }
+    const scale = conditionalKotlinImports('enter = fadeIn() + scaleIn(), exit = fadeOut() + scaleOut()')
+    expect(scale).toContain('import androidx.compose.animation.scaleIn')
+    expect(scale).toContain('import androidx.compose.animation.scaleOut')
+    const vertical = conditionalKotlinImports('enter = slideInVertically { it }, exit = slideOutVertically { it }')
+    expect(vertical).toContain('import androidx.compose.animation.slideInVertically')
+    expect(vertical).toContain('import androidx.compose.animation.slideOutVertically')
+    // A builder no emit uses yet resolves by its name shape.
+    expect(conditionalKotlinImports('enter = expandVertically()')).toContain(
+      'import androidx.compose.animation.expandVertically',
+    )
+    // The `.scale(` transform modifier is ui.draw's, never an animation import.
+    const transform = conditionalKotlinImports('Modifier.scale(2f)')
+    expect(transform).not.toContain('import androidx.compose.animation.scale')
+    expect(transform).toContain('import androidx.compose.ui.draw.scale')
+  })
+
   it('Kotlin conditional imports: <Field kind> pulls PasswordVisualTransformation + VisualTransformation', () => {
     // <Field kind="password"> emits `PasswordVisualTransformation()`; the
     // dynamic show/hide toggle also emits `VisualTransformation.None`. Both live

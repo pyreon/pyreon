@@ -135,6 +135,14 @@ function sourceMapHeader(originalPath: string): string {
  * `withContext` / `Dispatchers` / `Json` imports only surfaced on the
  * first REAL `gradle assembleDebug` of a useFetch screen.
  */
+/**
+ * Compose's enter/exit transition builders: `fadeIn`, `scaleOut`, `slideInHorizontally`, `expandVertically`, … — all
+ * in `androidx.compose.animation`, none covered by a star import. Followed by `(` OR `{`: the trailing-lambda form
+ * (`slideInVertically { it }`) is the `.clickable` trap the predicates above already document.
+ */
+const COMPOSE_TRANSITION_BUILDER =
+  /(?<![.\w])(?:(?:fade|scale|slide|expand|shrink)(?:In|Out)(?:Horizontally|Vertically)?|(?:expand|shrink)(?:Horizontally|Vertically))(?=\s*[({])/g
+
 export function conditionalKotlinImports(emitted: string): string {
   const imports: string[] = []
   // `delay` is emitted by the useInterval / useTimeout lowering. Unqualified
@@ -260,9 +268,17 @@ export function conditionalKotlinImports(emitted: string): string {
   // symbols the star imports don't cover — the exact stub-masked-symbol
   // class (the validate loop's stubs resolve them regardless of import;
   // only the real gradle build catches the miss, and it did).
-  if (/\bfadeIn\(/.test(emitted)) {
-    imports.push('import androidx.compose.animation.fadeIn')
-    imports.push('import androidx.compose.animation.fadeOut')
+  //
+  // Every enter/exit transition a preset can emit is imported by its own call,
+  // not just the fade: `slide-*` and `scale-in` lowered to slideIn/Out… and
+  // scaleIn/Out with NO import, so any slide or scale <Transition> failed the
+  // real Android build with "Unresolved reference 'slideInHorizontally'" while
+  // the stub-concatenating validate loop passed it. Found by the router demo's
+  // presets page, the first Android build to render one.
+  // Keyed on the builder NAME SHAPE rather than a list, so a builder no emit
+  // uses yet (expandVertically, shrinkHorizontally, …) resolves too.
+  for (const fn of new Set(emitted.match(COMPOSE_TRANSITION_BUILDER) ?? [])) {
+    imports.push(`import androidx.compose.animation.${fn}`)
   }
   if (/\btween\(/.test(emitted)) {
     imports.push('import androidx.compose.animation.core.tween')
