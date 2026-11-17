@@ -4,11 +4,18 @@
  * @pyreon/zero and each rival stack, each a production build served by the
  * framework's own documented Node server.
  *
- *   bun bench-stacks.ts <stackId…>   measure the listed arms (all when none), one after another,
- *                                    writing results/<id>.json
- *   bun bench-stacks.ts --report     print the comparison tables from results/*.json
+ *   bun bench-stacks.ts [stackId…] [--wait-quiet [maxLoad]]
+ *       measure the listed arms (all when none), one after another, into a new
+ *       run directory: results/<runId>/run.json + results/<runId>/<id>.json
+ *   bun bench-stacks.ts --report [runId]
+ *       print the tables of a run (the newest when none is named) and whether it
+ *       meets the conditions of results/README.md
  *
- * Per arm, in order:
+ * `STACKS_RUN_ID=<id>` makes several invocations write into one run directory.
+ * The file shapes are `RunManifest` (lib/run.ts) and `ArmResult` (lib/result.ts).
+ *
+ * Arms are measured in a fixed order (zero first, then alphabetical), each one
+ * completely before the next. Per arm, in order:
  *   1. data module drift check + correctness gate (lib/gate.ts) on its own server start;
  *   2. STARTS (default 5) independent server starts, each:
  *        cold start (spawn → first 200 on /items) →
@@ -23,16 +30,31 @@
  * start) that is the ordinary bootstrap over starts.
  *
  * AUTHOR-JUDGE: written and judged by the Pyreon authors. One app shape (a
- * 100-row list page); every number is FIRST-PASS until reproduced.
+ * 100-row list page); every number is FIRST-PASS until reproduced. No result of
+ * this suite is published; results/README.md states what a publishable run needs.
  */
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import * as os from 'node:os'
 import { join } from 'node:path'
 import { chromium } from 'playwright'
 import { clusterBootstrapCI95, medianOf } from '../benchmark/cluster-bootstrap'
+import { parseWaitQuiet, waitForQuietMachine } from '../benchmark/machine-load'
 import { type Inventory, inventory, type LoadSample, timedLoad } from './lib/browser'
 import { runGate } from './lib/gate'
+import type { ArmResult } from './lib/result'
+import {
+  assertNode,
+  DEFAULT_KNOBS,
+  latestRunId,
+  newRunId,
+  nodeVersion,
+  openRun,
+  readRun,
+  RESULT_SCHEMA,
+  runConditions,
+  saveArm,
+} from './lib/run'
 import {
   assertDataIdentical,
   installedVersions,
@@ -43,48 +65,15 @@ import {
   startServer,
 } from './lib/stacks'
 
-const STARTS = Number(process.env.STACKS_STARTS ?? 5)
-const BSTARTS = Number(process.env.STACKS_BSTARTS ?? 2)
-const LOADS = Number(process.env.STACKS_LOADS ?? 8)
-const CONNECTIONS = 50
-const DURATION_S = Number(process.env.STACKS_DURATION ?? 10)
-const WARMUP_S = 3
-const TTFB_N = 200
-const RESULTS = join(ROOT, 'results')
+const STARTS = Number(process.env.STACKS_STARTS ?? DEFAULT_KNOBS.starts)
+const BSTARTS = Number(process.env.STACKS_BSTARTS ?? DEFAULT_KNOBS.browserStarts)
+const LOADS = Number(process.env.STACKS_LOADS ?? DEFAULT_KNOBS.loads)
+const CONNECTIONS = DEFAULT_KNOBS.connections
+const DURATION_S = Number(process.env.STACKS_DURATION ?? DEFAULT_KNOBS.durationS)
+const WARMUP_S = DEFAULT_KNOBS.warmupS
+const TTFB_N = DEFAULT_KNOBS.ttfbRequests
 const AUTOCANNON = join(ROOT, 'node_modules', 'autocannon', 'autocannon.js')
 const TTFB_CLIENT = join(ROOT, 'lib', 'ttfb-client.mjs')
-
-interface ArmResult {
-  id: string
-  label: string
-  versions: Record<string, string>
-  node: string
-  chromium: string
-  hydration: StackManifest['hydration']
-  streaming: string
-  notes: string[]
-  docs: string[]
-  gateNotes: string[]
-  load: { before: number[]; after: number[] }
-  wallMs: number
-  /** One entry per server start. */
-  server: {
-    coldStartMs: number
-    rps: number
-    p50: number
-    p99: number
-    errors: number
-    non2xx: number
-    bytesPerReq: number
-    ttfb: number[]
-    ttlb: number[]
-    contentEncoding: string | null
-    transferEncoding: string | null
-  }[]
-  /** One array of loads per (browser) server start. */
-  browser: LoadSample[][]
-  inventory: Inventory
-}
 
 function run(cmd: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -124,8 +113,10 @@ async function measureArm(
   dir: string,
   m: StackManifest,
   chromiumVersion: string,
+  runId: string,
 ): Promise<ArmResult> {
   const t0 = performance.now()
+  const startedAt = new Date().toISOString()
   const load = { before: os.loadavg(), after: [] as number[] }
   assertDataIdentical(dir, m)
   const port = portFor(m.id)
@@ -206,6 +197,8 @@ async function measureArm(
     }
     load.after = os.loadavg()
     return {
+      schema: RESULT_SCHEMA,
+      runId,
       id: m.id,
       label: m.label,
       versions: installedVersions(dir, m),
@@ -217,6 +210,7 @@ async function measureArm(
       docs: m.docs,
       gateNotes,
       load,
+      startedAt,
       wallMs: performance.now() - t0,
       server,
       browser: browserRuns,
@@ -248,16 +242,24 @@ interface Row {
   digits: number
 }
 
-function report(): void {
-  const results = readdirSync(RESULTS)
-    .filter((x) => x.endsWith('.json'))
-    .map((x) => JSON.parse(readFileSync(join(RESULTS, x), 'utf8')) as ArmResult)
-    .sort((a, b) => (a.id === 'zero' ? -1 : b.id === 'zero' ? 1 : a.id.localeCompare(b.id)))
-  if (results.length === 0) throw new Error('no results/*.json — run `bun bench-stacks.ts` first')
+function report(runId: string): void {
+  const { manifest, arms } = readRun(runId)
+  const results = [...arms].sort((a, b) =>
+    a.id === 'zero' ? -1 : b.id === 'zero' ? 1 : a.id.localeCompare(b.id),
+  )
+  if (results.length === 0) throw new Error(`[stacks-bench] run ${runId} holds no arm result`)
 
-  console.log('# Stacks benchmark — FIRST-PASS\n')
+  console.log(`# Stacks benchmark — FIRST-PASS — run ${runId}\n`)
   console.log(
-    `node ${results[0]!.node} · ${results[0]!.chromium} · ${os.cpus()[0]?.model} × ${os.cpus().length}\n`,
+    `harness ${manifest.harness.commit ?? 'unknown commit'}${manifest.harness.dirty ? ' (uncommitted changes)' : ''} · node ${manifest.tools.node} · bun ${manifest.tools.bun} · ${manifest.tools.chromium} · ${manifest.machine.cpuModel} × ${manifest.machine.logicalCores} · ${manifest.machine.platform}/${manifest.machine.arch} · zero from ${manifest.zeroSource ?? 'n/a'} · order ${manifest.order.join(', ')}\n`,
+  )
+  const conditions = runConditions(manifest, results)
+  console.log('## Conditions of results/README.md\n')
+  for (const c of conditions) console.log(`- ${c.ok ? 'met' : 'NOT MET'}: ${c.name} (${c.detail})`)
+  console.log(
+    conditions.every((c) => c.ok)
+      ? '\nThis run meets the single-run conditions. A verdict still needs a second complete run that agrees.\n'
+      : '\nNOT PUBLISHABLE: this run fails the conditions marked above.\n',
   )
   console.log('## Versions and audit notes\n')
   for (const r of results) {
@@ -392,22 +394,45 @@ function report(): void {
 
 // ── main ─────────────────────────────────────────────────────────────────────
 
-if (process.argv.includes('--report')) {
-  report()
+const argv = process.argv.slice(2)
+if (argv.includes('--report')) {
+  const named = argv[argv.indexOf('--report') + 1]
+  const runId = named && !named.startsWith('--') ? named : latestRunId()
+  if (!runId) {
+    throw new Error('[stacks-bench] no run under results/; run `bun bench-stacks.ts` first')
+  }
+  report(runId)
   process.exit(0)
 }
-if (!existsSync(AUTOCANNON))
+if (!existsSync(AUTOCANNON)) {
   throw new Error(`autocannon not found at ${AUTOCANNON} — run bun install at the repo root`)
-mkdirSync(RESULTS, { recursive: true })
-const ids = process.argv.slice(2).filter((a) => !a.startsWith('--'))
+}
+const waitQuiet = parseWaitQuiet(argv)
+const ids = argv.filter(
+  (a, i) => !a.startsWith('--') && !(argv[i - 1] === '--wait-quiet' && Number(a) > 0),
+)
 const stacks = loadStacks(ids)
+const node = nodeVersion()
+assertNode(node)
 const cv = await chromium.launch().then(async (b) => {
   const v = b.version()
   await b.close()
   return `Chromium ${v}`
 })
+const manifest = openRun(process.env.STACKS_RUN_ID ?? newRunId(), {
+  knobs: {
+    ...DEFAULT_KNOBS,
+    starts: STARTS,
+    browserStarts: BSTARTS,
+    loads: LOADS,
+    durationS: DURATION_S,
+  },
+  waitQuiet,
+  chromium: cv,
+  node,
+})
 console.log(
-  `[bench-stacks] ${stacks.map((s) => s.m.id).join(', ')} · node ${process.versions.node} (servers: ${(await run('node', ['-v'])).trim()}) · ${cv} · starts ${STARTS} × (${WARMUP_S}s warmup + ${DURATION_S}s @ c=${CONNECTIONS}), browser ${BSTARTS} × ${LOADS} loads · load ${os
+  `[bench-stacks] run ${manifest.runId} · ${stacks.map((s) => s.m.id).join(', ')} · bun ${process.versions.bun} (servers: node ${node}) · ${cv} · starts ${STARTS} × (${WARMUP_S}s warmup + ${DURATION_S}s @ c=${CONNECTIONS}), browser ${BSTARTS} × ${LOADS} loads · load ${os
     .loadavg()
     .map((x) => x.toFixed(1))
     .join('/')}`,
@@ -417,9 +442,10 @@ for (const { dir, m } of stacks) {
     console.log(`- ${m.id}: SKIPPED (${m.skip})`)
     continue
   }
+  if (waitQuiet !== null) await waitForQuietMachine('bench-stacks', waitQuiet)
   console.log(`▸ ${m.label}`)
-  const r = await measureArm(dir, m, cv)
-  r.node = (await run('node', ['-v'])).trim()
-  writeFileSync(join(RESULTS, `${m.id}.json`), JSON.stringify(r, null, 1))
-  console.log(`  wall ${(r.wallMs / 1000).toFixed(0)} s → results/${m.id}.json`)
+  const r = await measureArm(dir, m, cv, manifest.runId)
+  r.node = node
+  saveArm(manifest, r)
+  console.log(`  wall ${(r.wallMs / 1000).toFixed(0)} s → results/${manifest.runId}/${m.id}.json`)
 }
