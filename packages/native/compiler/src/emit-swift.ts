@@ -2366,8 +2366,8 @@ function emitSwiftComponent(c: ComponentIR): string {
     for (const d of c.decls) {
       if (d.kind !== 'service' || d.hook !== svc.hook) continue
       const name = swiftIdent(d.name)
-      lines.push(`      .onAppear { ${name}.start() }`)
-      if (svc.lifecycle === 'start-stop') lines.push(`      .onDisappear { ${name}.stop() }`)
+      if (svc.lifecycle !== 'stop') lines.push(`      .onAppear { ${name}.start() }`)
+      if (svc.lifecycle !== 'start') lines.push(`      .onDisappear { ${name}.stop() }`)
     }
   }
   // A plugin's lifecycle that is emitted AFTER the compiler's own (`useQuery`, `useStream`), ordered by
