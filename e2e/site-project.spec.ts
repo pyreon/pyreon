@@ -281,7 +281,7 @@ test.describe('/showcase', () => {
   test('every example links its source on GitHub', async ({ page }) => {
     await page.goto('/showcase')
     const sources = await page.locator('a[href^="https://github.com/pyreon/pyreon/tree/main/examples/"]').evaluateAll((as) => as.map((a) => a.getAttribute('href')))
-    for (const dir of ['app-showcase', 'hn-clone', 'collab-board', 'native-tasks-web', 'react-compat']) expect(sources).toContain(`https://github.com/pyreon/pyreon/tree/main/examples/${dir}`)
+    for (const dir of ['app-showcase', 'hn-clone', 'collab-board', 'native-tasks-web', 'compat/react']) expect(sources).toContain(`https://github.com/pyreon/pyreon/tree/main/examples/${dir}`)
   })
 })
 

@@ -171,7 +171,7 @@ Four addresses that posts link to, so they must never move.
   the examples from the repository. The copy is `_channels.json` (`showcase`);
   the screenshots are real captures from the asset set (slot `showcase-card`,
   synced by `scripts/sync-site-assets.ts`). The deploy also builds
-  `examples/collab-board` and `examples/react-compat` into `/showcase/<name>/`
+  `examples/collab-board` and `examples/compat/react` into `/showcase/<name>/`
   as live demos (see `.github/workflows/docs.yml`).
 - **`/discord`** and **`/newsletter`**: stable links driven by
   `src/site-links.ts`, copy from `_channels.json`. They are not routes:

@@ -36,7 +36,7 @@ For the few non-`vite dev` boots (build-then-serve SSG, `vite preview`,
 webServer: [
   {
     command:
-      'bun run --filter=@pyreon/example-ssr-showcase build:i18n && bun scripts/serve-ssg.ts examples/ssr-showcase/dist 5199',
+      'bun run --filter=@pyreon/example-ssr-showcase build:i18n && bun scripts/serve-ssg.ts examples/fixtures/ssr-showcase/dist 5199',
     port: 5199,
     timeout: 180_000,
   },

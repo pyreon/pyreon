@@ -427,7 +427,7 @@ test.describe("zero <Link> prefetch — no modulepreload MIME error", () => {
 });
 
 /**
- * Server functions — `examples/ssr-showcase/src/routes/form-actions.tsx`: a
+ * Server functions — `examples/fixtures/ssr-showcase/src/routes/form-actions.tsx`: a
  * route `action` export submitted through `<Form>`. The same form must work
  * with JavaScript DISABLED (real POST → server runs the action → re-render or
  * 303) and enhanced WITH JavaScript (fetch, no navigation, loaders revalidate).
@@ -474,7 +474,7 @@ test.describe("server functions (<Form> + route action)", () => {
   });
 
   /**
-   * `defineAction(schema, handler)` — `examples/ssr-showcase/src/routes/form-actions-validated.tsx`.
+   * `defineAction(schema, handler)` — `examples/fixtures/ssr-showcase/src/routes/form-actions-validated.tsx`.
    * The Standard Schema runs on the server before the handler: an invalid
    * form answers 422 with per-field messages, a valid one reaches the handler
    * with the parsed (coerced) output — with and without JavaScript.
