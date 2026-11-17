@@ -97,6 +97,7 @@
     "@pyreon/styler": "workspace:*",
     "@pyreon/ui-core": "workspace:*",
     "@pyreon/unistyle": "workspace:*",
+    "@pyreon/validation": "workspace:*",
     "axe-core": "^4.14.1",
     "typescript": ">=5.0.0 <7.0.0"
   },

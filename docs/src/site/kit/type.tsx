@@ -168,26 +168,3 @@ export const VisuallyHidden = txt
     whiteSpace: 'nowrap',
     extendCss: 'clip: rect(0 0 0 0); clip-path: inset(50%); margin: -1px; padding: 0; border: 0;',
   }))
-
-/** "next release" / "experimental" marker on an item (outline, warn colour). */
-export const StatusBadge = txt
-  .config({ name: 'StatusBadge' })
-  .attrs({ tag: 'span' })
-  .theme((_t, m) => ({
-    display: 'inline-block',
-    marginLeft: 8,
-    paddingLeft: 7,
-    paddingRight: 7,
-    paddingTop: 1,
-    paddingBottom: 1,
-    borderRadius: radius.pill,
-    border: '1px solid',
-    borderColor: tone(m, 'warn'),
-    color: tone(m, 'warn'),
-    fontFamily: font.mono,
-    fontSize: 10,
-    letterSpacing: '.1em',
-    textTransform: 'uppercase',
-    verticalAlign: '2px',
-    whiteSpace: 'nowrap',
-  }))

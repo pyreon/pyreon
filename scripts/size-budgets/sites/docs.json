@@ -1,0 +1,31 @@
+{
+  "site": "docs",
+  "routes": {
+    "(shell)": 49664,
+    "/": 52736,
+    "/404.html": 50688,
+    "/benchmarks": 50688,
+    "/blog": 50688,
+    "/blog/components-run-once": 51712,
+    "/blog/tags/reactivity": 50688,
+    "/brand": 50688,
+    "/brand/kit": 86528,
+    "/community": 50688,
+    "/compare/react": 50688,
+    "/docs": 53248,
+    "/docs/form": 100352,
+    "/docs/guides/testing": 53248,
+    "/docs/reference/core": 53248,
+    "/docs/reference/form": 53248,
+    "/migrate": 50688,
+    "/migrate/react": 50688,
+    "/open": 50688,
+    "/products": 50688,
+    "/products/charts": 50688,
+    "/products/form": 91136,
+    "/releases": 50688,
+    "/showcase": 50688,
+    "/status": 50688,
+    "/why/components-run-once": 93458
+  }
+}

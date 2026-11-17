@@ -35,6 +35,17 @@ describe('isStandardSchema', () => {
   ])('isStandardSchema(%j) === %j', (input, expected) => {
     expect(isStandardSchema(input)).toBe(expected)
   })
+
+  // ArkType's `type(...)` is a CALLABLE that carries `~standard`; an
+  // object-only guard skipped validation for it entirely.
+  it('accepts a callable schema carrying `~standard` (ArkType shape)', () => {
+    const callable = Object.assign((input: unknown) => input, makeSchema({ validate: (v) => ({ value: v }) }))
+    expect(isStandardSchema(callable)).toBe(true)
+  })
+
+  it('rejects a plain function without `~standard`', () => {
+    expect(isStandardSchema(() => ({}))).toBe(false)
+  })
 })
 
 describe('validateAgainstSchema', () => {

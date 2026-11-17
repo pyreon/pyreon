@@ -56,7 +56,7 @@
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.types-tests.json",
     "lint": "oxlint ."
   },
   "peerDependencies": {
@@ -68,6 +68,7 @@
   "dependencies": {
     "@pyreon/head": "workspace:^",
     "@pyreon/router": "workspace:^",
+    "@standard-schema/spec": "^1.1.0",
     "esbuild": "^0.28.2",
     "hast-util-to-html": "^9.0.6",
     "mdast-util-to-hast": "^13.2.2",

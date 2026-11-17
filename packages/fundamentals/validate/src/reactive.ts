@@ -22,7 +22,7 @@
  */
 
 import { type Computed, type Signal, computed, watch } from '@pyreon/reactivity'
-import type { Output, StandardSchemaIssue, StandardSchemaResult, StandardSchemaV1 } from './types'
+import type { Output, StandardSchemaV1 } from './types'
 
 /**
  * Source the validator reads. Accepts a `Signal<T>` directly OR a
@@ -44,12 +44,15 @@ function read<T>(source: ReactiveSource<T>): T {
 }
 
 /**
- * The synchronous-or-async parse result shape — exposes `value` on
- * success and `issues` on failure. Mirrors Standard Schema's `Result<T>`
- * exactly (so downstream code that already handles StdSchema results
- * just works).
+ * The parse result shape — `value` on success, `issues` on failure. It is
+ * Standard Schema's `Result<T>` with the failure branch's `value` spelled as
+ * `undefined`, so `result.value` reads as `T | undefined` without narrowing
+ * first (the spec's own failure result has no `value` key at all). Code that
+ * already handles a Standard Schema result accepts it unchanged.
  */
-export type ParseResult<T> = StandardSchemaResult<T>
+export type ParseResult<T> =
+  | StandardSchemaV1.SuccessResult<T>
+  | (StandardSchemaV1.FailureResult & { readonly value?: undefined })
 
 /**
  * Reactively parse `source` through `schema`. Returns a `Computed<ParseResult>`
@@ -97,7 +100,7 @@ export function parseReactive<S extends StandardSchemaV1<unknown, unknown>>(
             message:
               '[Pyreon] schema is async — use parseReactiveAsync(schema, source) instead of parseReactive()',
             path: [],
-          } satisfies StandardSchemaIssue,
+          } satisfies StandardSchemaV1.Issue,
         ],
       }
     }

@@ -3,7 +3,8 @@ import { fill, SHOWCASE_COPY } from '../site/content/channels'
 import type { ShowcaseExample } from '../site/content/types-site'
 import { el, tone, txt } from '../site/kit/bases'
 import { GlowCard } from '../site/kit/cards'
-import { Chip, InstallCommand, Pill } from '../site/kit/controls'
+import { InstallCommand, Pill } from '../site/kit/controls'
+import { Tag } from '../site/kit/tag'
 import { ctaStackOnPhone } from '../site/kit/cta'
 import { Section, SectionHead } from '../site/kit/layout'
 import { AutoGrid, Cluster, Stack, Wrap } from '../site/kit/primitives'
@@ -12,6 +13,7 @@ import { Reveal } from '../site/kit/motion'
 import { Eyebrow, Heading, Lede, renderInline } from '../site/kit/type'
 import { usePageHead } from '../site/head'
 import { breakpoints, font, radius, space, text } from '../site/theme'
+import { Note } from '../site/kit/note'
 
 /**
  * `/showcase` — apps from the repository, every screenshot a real capture
@@ -80,10 +82,6 @@ const ShotCaption = txt
     color: tone(m, 'mist'),
   }))
 
-const Note = txt
-  .config({ name: 'ShowcaseNote' })
-  .attrs({ tag: 'p' })
-  .theme((_t, m) => ({ margin: 0, fontFamily: font.mono, fontSize: text.mono.size, lineHeight: 1.6, color: tone(m, 'fog') }))
 
 function Packages(props: { names: readonly string[] }) {
   return (
@@ -91,7 +89,7 @@ function Packages(props: { names: readonly string[] }) {
       <For each={props.names} by={(n) => n}>
         {(n) => (
           <li>
-            <Chip>{`@pyreon/${n}`}</Chip>
+            <Tag>{`@pyreon/${n}`}</Tag>
           </li>
         )}
       </For>
@@ -106,7 +104,7 @@ function RunAndLinks(props: { example: ShowcaseExample }) {
   return (
     <>
       <InstallCommand command={ex.run} />
-      <Note>
+      <Note size="mono" leading="relaxed">
         {fill(labels.open, { url: ex.open })}
         {ex.note ? <>{' · '}{renderInline(ex.note)}</> : null}
       </Note>

@@ -15,7 +15,10 @@
  *   2. Sample `performance.memory.usedJSHeapSize` after each cycle
  *   3. Least-squares linear regression on (cycle, heap)
  *   4. Report slope, R², CV per journey
- *   5. Flag any journey whose slope exceeds the threshold
+ *   5. A journey whose slope exceeds the threshold runs confirmation cycles;
+ *      it is flagged only if the heap keeps growing through them. One
+ *      allocation step (a hash table that doubles once) reads as a slope over
+ *      15 samples — `perf/leak-verdict.ts` has the rule and its derivation.
  *
  * Output:
  *   - Markdown table sorted by slope descending (worst first)
@@ -27,7 +30,8 @@
  *   2 — server didn't start
  *   3 — browser navigation or sweep threw mid-flight
  *   4 — `performance.memory` / `gc` unavailable (see leak-audit.ts for context)
- *   6 — sweep completed BUT at least one journey exceeded threshold
+ *   6 — sweep completed BUT at least one journey leaks (over the threshold,
+ *       and still growing through its confirmation cycles)
  */
 import { execSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -35,8 +39,8 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Page } from 'playwright'
 import { journeys } from '../examples/fixtures/perf-dashboard/src/journeys'
-import { linearRegression } from './leak-audit'
 import { forceGcTwice, HEAP_AUDIT_CHROMIUM_ARGS } from './perf/heap'
+import { DEFAULT_MAX_CONFIRM_CYCLES, type HeapGrowthVerdict, judgeHeapGrowth } from './perf/leak-verdict'
 import { toPageLike } from './perf/page-like'
 import { startServer as startViteServer } from './perf/server'
 
@@ -48,6 +52,8 @@ interface Args {
   cycles: number
   warmup: number
   thresholdBytesPerCycle: number
+  /** Most confirmation cycles one journey may take; 0 flags an over-threshold window at once. */
+  maxConfirmCycles: number
   jsonOut: string | undefined
   journeys: string[] | undefined
   mode: 'dev' | 'preview'
@@ -59,6 +65,7 @@ function parseArgs(argv: string[]): Args {
     cycles: 15,
     warmup: 3,
     thresholdBytesPerCycle: 50_000,
+    maxConfirmCycles: DEFAULT_MAX_CONFIRM_CYCLES,
     mode: 'preview',
   }
   for (let i = 0; i < argv.length; i++) {
@@ -68,6 +75,7 @@ function parseArgs(argv: string[]): Args {
     else if (a === '--cycles' && v) { args.cycles = Number(v); i++ }
     else if (a === '--warmup' && v) { args.warmup = Number(v); i++ }
     else if (a === '--threshold' && v) { args.thresholdBytesPerCycle = Number(v); i++ }
+    else if (a === '--confirm-max' && v) { args.maxConfirmCycles = Number(v); i++ }
     else if (a === '--json' && v) { args.jsonOut = v; i++ }
     else if (a === '--journeys' && v) { args.journeys = v.split(',').map((s) => s.trim()); i++ }
     else if (a === '--mode' && (v === 'dev' || v === 'preview')) { args.mode = v; i++ }
@@ -103,11 +111,26 @@ interface JourneyResult {
   rSquared: number
   cv: number
   samples: number[]
+  /** Why the verdict is what it is (`perf/leak-verdict.ts`). */
+  reason: HeapGrowthVerdict['reason']
+  /** The cycles that confirmed or cleared an over-threshold window, when they ran. */
+  confirmation?: HeapGrowthVerdict['confirmation']
   leakDetected: boolean
   failed?: string
 }
 
-async function runJourney(page: Page, journey: string, cycles: number, warmup: number, threshold: number): Promise<JourneyResult> {
+async function sampleCycles(page: Page, journey: string, cycles: number): Promise<number[]> {
+  const samples: number[] = []
+  for (let i = 0; i < cycles; i++) {
+    await runOneCycle(page, journey)
+    await forceGcTwice(page)
+    samples.push(await sampleHeap(page))
+  }
+  return samples
+}
+
+async function runJourney(page: Page, journey: string, args: Args): Promise<JourneyResult> {
+  const { cycles, warmup, thresholdBytesPerCycle: threshold, maxConfirmCycles } = args
   try {
     // Warmup
     for (let i = 0; i < warmup; i++) {
@@ -115,15 +138,13 @@ async function runJourney(page: Page, journey: string, cycles: number, warmup: n
     }
     await forceGcTwice(page)
 
-    // Timed cycles
-    const samples: number[] = []
-    for (let i = 0; i < cycles; i++) {
-      await runOneCycle(page, journey)
-      await forceGcTwice(page)
-      samples.push(await sampleHeap(page))
-    }
-
-    const { slope, intercept, rSquared } = linearRegression(samples)
+    // Timed cycles, then — only for a window over the threshold — the
+    // confirmation cycles that tell a one-time allocation from growth.
+    const samples = await sampleCycles(page, journey, cycles)
+    const verdict = await judgeHeapGrowth(samples, threshold, maxConfirmCycles, (more) =>
+      sampleCycles(page, journey, more),
+    )
+    const { slope, intercept, rSquared } = verdict
     const mean = samples.reduce((s, x) => s + x, 0) / samples.length
     const stddev = Math.sqrt(
       samples.reduce((s, x) => s + (x - mean) ** 2, 0) / Math.max(samples.length - 1, 1),
@@ -143,7 +164,9 @@ async function runJourney(page: Page, journey: string, cycles: number, warmup: n
       rSquared,
       cv,
       samples,
-      leakDetected: slope > threshold,
+      reason: verdict.reason,
+      ...(verdict.confirmation ? { confirmation: verdict.confirmation } : {}),
+      leakDetected: verdict.leak,
     }
   } catch (err) {
     return {
@@ -157,6 +180,7 @@ async function runJourney(page: Page, journey: string, cycles: number, warmup: n
       rSquared: 0,
       cv: 0,
       samples: [],
+      reason: 'within-threshold',
       leakDetected: false,
       failed: (err as Error).message,
     }
@@ -174,6 +198,12 @@ function fmtMB(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(2)}MB`
 }
 
+/** ", then 0.31KB/cycle over 40 more" — what the confirmation cycles measured, when they ran. */
+function confirmedNote(r: JourneyResult): string {
+  if (!r.confirmation) return ''
+  return `, then ${fmtKB(r.confirmation.slope)}/cycle over ${r.confirmation.cycles} more`
+}
+
 function printReport(results: JourneyResult[], threshold: number): void {
   // Sort: leaks first, then by slope descending
   const sorted = [...results].sort((a, b) => {
@@ -185,6 +215,7 @@ function printReport(results: JourneyResult[], threshold: number): void {
   console.log()
   console.log('─'.repeat(110))
   console.log(`  Leak-audit sweep — ${results.length} journey(s), threshold ${fmtKB(threshold)}/cycle`)
+  console.log('  Slope is the first window. Over the threshold, further cycles decide: still growing = leak.')
   console.log('─'.repeat(110))
   console.log(`  ${'Journey'.padEnd(36)}${'Slope'.padStart(14)}${'R²'.padStart(8)}${'CV'.padStart(10)}${'Start MB'.padStart(12)}${'End MB'.padStart(12)}  Verdict`)
   console.log('─'.repeat(110))
@@ -199,7 +230,8 @@ function printReport(results: JourneyResult[], threshold: number): void {
     const startStr = fmtMB(r.firstSampleBytes).padStart(12)
     const endStr = fmtMB(r.lastSampleBytes).padStart(12)
     const verdict = r.leakDetected
-      ? `🚨 LEAK (${(r.slopeBytesPerCycle / threshold).toFixed(2)}× over)`
+      ? `🚨 LEAK (${(r.slopeBytesPerCycle / threshold).toFixed(2)}× over${confirmedNote(r)})`
+      : r.confirmation ? `✓ one-time step${confirmedNote(r)}`
       : r.cv < 0.001 ? '✓ flat' : '✓ ok'
     console.log(`  ${r.journey.padEnd(36)}${slopeStr}${r2Str}${cvStr}${startStr}${endStr}  ${verdict}`)
   }
@@ -217,7 +249,7 @@ function printReport(results: JourneyResult[], threshold: number): void {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2))
   console.log(`[leak-sweep] app=${args.app} mode=${args.mode}`)
-  console.log(`[leak-sweep] cycles=${args.cycles} warmup=${args.warmup} threshold=${args.thresholdBytesPerCycle} bytes/cycle`)
+  console.log(`[leak-sweep] cycles=${args.cycles} warmup=${args.warmup} threshold=${args.thresholdBytesPerCycle} bytes/cycle confirm-max=${args.maxConfirmCycles} cycles`)
 
   let server
   try {
@@ -269,14 +301,14 @@ async function main(): Promise<void> {
       const j = targetJourneys[i]!
       process.stdout.write(`[leak-sweep] [${(i + 1).toString().padStart(2)}/${targetJourneys.length}] ${j.padEnd(40)} `)
       const start = Date.now()
-      const result = await runJourney(page, j, args.cycles, args.warmup, args.thresholdBytesPerCycle)
+      const result = await runJourney(page, j, args)
       const elapsed = ((Date.now() - start) / 1000).toFixed(1)
       if (result.failed) {
         process.stdout.write(`✗ ERROR (${elapsed}s): ${result.failed.slice(0, 50)}\n`)
       } else {
         const verdict = result.leakDetected
-          ? `🚨 LEAK ${fmtKB(result.slopeBytesPerCycle)}/cycle`
-          : `✓ ${fmtKB(result.slopeBytesPerCycle)}/cycle`
+          ? `🚨 LEAK ${fmtKB(result.slopeBytesPerCycle)}/cycle${confirmedNote(result)}`
+          : `✓ ${fmtKB(result.slopeBytesPerCycle)}/cycle${confirmedNote(result)}`
         process.stdout.write(`${verdict} (${elapsed}s)\n`)
       }
       results.push(result)
@@ -298,6 +330,7 @@ async function main(): Promise<void> {
         cycles: args.cycles,
         warmup: args.warmup,
         thresholdBytesPerCycle: args.thresholdBytesPerCycle,
+        maxConfirmCycles: args.maxConfirmCycles,
         totalJourneys: results.length,
         leaksDetected: results.filter((r) => r.leakDetected).length,
         failedJourneys: results.filter((r) => r.failed).length,
