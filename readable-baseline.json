@@ -1,6 +1,6 @@
 {
   "description": "Readable ratchet — `readable` style findings per (file, rule) may only DECREASE, and a file not listed here must have none. Checked by `bun scripts/check-pyreon-lint-ratchet.ts` (validate-fast + CI). Fix new findings with `bunx pyreon-lint --fix <file>` (the spacing rules are autofixable), then tighten with `bun scripts/check-readable-ratchet.ts --update`. Never raise a count to absorb a finding.",
-  "total": 11560,
+  "total": 11557,
   "files": {
     "packages/core/compiler/src/charts-migration.ts": {"pyreon/padding-before-return":2},
     "packages/core/compiler/src/content-audit.ts": {"pyreon/padding-before-return":13},
@@ -1419,9 +1419,9 @@
     "packages/native/compiler/src/date-lowering.ts": {"pyreon/padding-before-return":2},
     "packages/native/compiler/src/effect-deps.ts": {"pyreon/padding-before-return":1},
     "packages/native/compiler/src/element-lowering.ts": {"pyreon/padding-before-return":2},
-    "packages/native/compiler/src/emit-kotlin.ts": {"pyreon/no-nested-ternary-branch":8,"pyreon/padding-before-return":240,"pyreon/padding-between-declarations":14},
+    "packages/native/compiler/src/emit-kotlin.ts": {"pyreon/no-nested-ternary-branch":8,"pyreon/padding-before-return":239,"pyreon/padding-between-declarations":13},
     "packages/native/compiler/src/emit-style.ts": {"pyreon/padding-before-return":2},
-    "packages/native/compiler/src/emit-swift.ts": {"pyreon/no-nested-ternary-branch":4,"pyreon/padding-before-return":246,"pyreon/padding-between-declarations":12},
+    "packages/native/compiler/src/emit-swift.ts": {"pyreon/no-nested-ternary-branch":4,"pyreon/padding-before-return":246,"pyreon/padding-between-declarations":11},
     "packages/native/compiler/src/emit-tokens.ts": {"pyreon/padding-before-return":2},
     "packages/native/compiler/src/expr-lowering.ts": {"pyreon/padding-before-return":2},
     "packages/native/compiler/src/expr-utils.ts": {"pyreon/padding-before-return":42,"pyreon/padding-between-declarations":1},
