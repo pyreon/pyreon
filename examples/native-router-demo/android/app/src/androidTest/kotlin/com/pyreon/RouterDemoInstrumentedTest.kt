@@ -1410,4 +1410,128 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithTag("nav-mail-row-invoice").performClick()
         composeRule.onNodeWithTag("nav-mail-subject").assertTextEquals("Subject: Invoice")
     }
+
+    // Animations row (ANI-1) — a GESTURE-DRIVEN transform, read by bounds while
+    // the finger is still down. `<Gesture onPan>` writes `panX` on every move
+    // and `<Canvas translateX={panX}>` lowers to `Modifier.offset(x = panX.dp)`,
+    // so mid-drag the canvas must sit displaced by the drag distance, and on
+    // release (`phase === 'end'` resets panX) it must come back. A transform
+    // that only applied on 'end', or a dropped translateX, fails the mid-drag
+    // bound; the verdict-text test above cannot see either.
+    @Test
+    fun panGestureMovesTheCanvasWhileTheFingerIsDown() {
+        composeRule.onNodeWithText("View motion").performClick()
+        composeRule.onNodeWithTag("motion-page").assertIsDisplayed()
+        val rest = composeRule.onNodeWithTag("plan-canvas").getUnclippedBoundsInRoot()
+
+        val zone = composeRule.onNodeWithTag("gesture-zone")
+        zone.performTouchInput {
+            down(center)
+            // Several small steps: one big jump can land as a single event the
+            // detector reads as the slop crossing, with no translation after it.
+            repeat(10) { moveBy(Offset(15f, 0f)) }
+        }
+        composeRule.waitForIdle()
+        val moved = composeRule.onNodeWithTag("plan-canvas").getUnclippedBoundsInRoot()
+        val shift = moved.left - rest.left
+        check(shift > 20.dp) {
+            "the canvas did not follow the finger mid-drag: rest=$rest during=$moved (shift $shift)"
+        }
+        check(moved.top == rest.top) { "a horizontal pan moved the canvas vertically: rest=$rest during=$moved" }
+
+        zone.performTouchInput { up() }
+        composeRule.waitForIdle()
+        val released = composeRule.onNodeWithTag("plan-canvas").getUnclippedBoundsInRoot()
+        check(released.left == rest.left) { "the canvas did not return on release: rest=$rest after=$released" }
+        composeRule.onNodeWithTag("pan-status").assertTextEquals("Pan: right")
+    }
+
+    // Animations row (ANI-1) — the SLIDE and SCALE presets, measured halfway
+    // through a 2000ms linear exit on the compose test clock. A preset that
+    // degraded to a plain fade (or to no animation) keeps the node at its
+    // resting bounds mid-exit, so the geometry is the assertion:
+    //   slide-left → the box is displaced to the right of where it rests
+    //                (`slideOutHorizontally { it }`, the web's translateX(100%));
+    //   scale-in   → the box is smaller than its resting size.
+    @Test
+    fun slideAndScalePresetsMoveAndResizeMidAnimation() {
+        composeRule.onNodeWithText("View presets").performClick()
+        composeRule.onNodeWithTag("presets-page").assertIsDisplayed()
+        val slideRest = composeRule.onNodeWithTag("slide-box").getUnclippedBoundsInRoot()
+        val scaleRest = composeRule.onNodeWithTag("scale-box").getUnclippedBoundsInRoot()
+        val scaleRestInk = inkWidth("scale-track")
+        check(scaleRestInk > 0) { "the scale box drew nothing at rest" }
+
+        composeRule.mainClock.autoAdvance = false
+        try {
+            composeRule.onNodeWithTag("slide-toggle").performClick()
+            composeRule.onNodeWithTag("scale-toggle").performClick()
+            composeRule.mainClock.advanceTimeBy(1000)
+            val slideMid = composeRule.onNodeWithTag("slide-box").getUnclippedBoundsInRoot()
+            val scaleMid = composeRule.onNodeWithTag("scale-box").getUnclippedBoundsInRoot()
+            check(slideMid.left - slideRest.left > 20.dp) {
+                "slide-left did not move the box mid-exit: rest=$slideRest mid=$slideMid"
+            }
+            // A scale is a graphics-layer transform, which semantics bounds do
+            // not include (the node keeps its layout size), so the scale is
+            // read from PIXELS: the inked width of the track mid-exit against
+            // the same capture at rest. The fade that rides along lightens the
+            // ink but does not narrow it.
+            val midInk = inkWidth("scale-track")
+            check(midInk in 1 until (scaleRestInk * 0.85f).toInt()) {
+                "scale-in did not shrink the box mid-exit: inked width $midInk px at rest $scaleRestInk px " +
+                    "(layout bounds rest=$scaleRest mid=$scaleMid)"
+            }
+
+            composeRule.mainClock.advanceTimeBy(1500)
+            composeRule.onNodeWithTag("slide-box").assertDoesNotExist()
+            composeRule.onNodeWithTag("scale-box").assertDoesNotExist()
+        } finally {
+            composeRule.mainClock.autoAdvance = true
+        }
+    }
+
+    /** Width in pixels of everything the node draws that differs from its top-left pixel. */
+    private fun inkWidth(tag: String): Int {
+        val bmp = composeRule.onNodeWithTag(tag).captureToImage().asAndroidBitmap()
+        val bg = bmp.getPixel(0, 0)
+        var minX = Int.MAX_VALUE
+        var maxX = -1
+        for (y in 0 until bmp.height) for (x in 0 until bmp.width) {
+            if (bmp.getPixel(x, y) != bg) {
+                if (x < minX) minX = x
+                if (x > maxX) maxX = x
+            }
+        }
+        return if (maxX < 0) 0 else maxX - minX + 1
+    }
+
+    // Animations row (ANI-1) — useReducedMotion reads the OS setting LIVE. On
+    // Android that is the global animator duration scale ("Remove animations"
+    // sets it to 0), which the hook observes for the screen's lifetime. The
+    // CI emulator boots with animations disabled, so the test sets BOTH values
+    // itself and restores the original in a finally.
+    @Test
+    fun reducedMotionFollowsTheAnimatorDurationScale() {
+        val instr = InstrumentationRegistry.getInstrumentation()
+        val original = shell(instr, "settings get global animator_duration_scale").trim()
+        try {
+            shell(instr, "settings put global animator_duration_scale 1")
+            composeRule.onNodeWithText("View presets").performClick()
+            composeRule.waitUntil(timeoutMillis = 10_000) {
+                composeRule.onAllNodesWithText("Reduced motion: false").fetchSemanticsNodes().isNotEmpty()
+            }
+            shell(instr, "settings put global animator_duration_scale 0")
+            composeRule.waitUntil(timeoutMillis = 10_000) {
+                composeRule.onAllNodesWithText("Reduced motion: true").fetchSemanticsNodes().isNotEmpty()
+            }
+            shell(instr, "settings put global animator_duration_scale 1")
+            composeRule.waitUntil(timeoutMillis = 10_000) {
+                composeRule.onAllNodesWithText("Reduced motion: false").fetchSemanticsNodes().isNotEmpty()
+            }
+        } finally {
+            val restore = if (original == "null" || original.isEmpty()) "1" else original
+            shell(instr, "settings put global animator_duration_scale $restore")
+        }
+    }
 }

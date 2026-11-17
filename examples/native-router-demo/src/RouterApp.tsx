@@ -16,9 +16,9 @@
 // targets — provable by `ls` + `diff`.
 
 import { For, onMount } from '@pyreon/core'
-import { useAppState, useDatabase, useFetch, useOnline, usePush, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
+import { useAppState, useDatabase, useFetch, useOnline, usePush, useReducedMotion, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
-import { Audio, Button, Canvas, CanvasCircle, CanvasLine, CanvasPath, CanvasRect, CanvasText, Field, Gesture, Heading, Image, Inline, Layer, Link, Press, Spacer, Split, Stack, Tab, Tabs, Text, Video } from '@pyreon/primitives'
+import { Audio, Button, Canvas, CanvasCircle, CanvasLine, CanvasPath, CanvasRect, CanvasText, Field, Gesture, Heading, Image, Inline, Layer, Link, Press, Spacer, Split, Stack, Tab, Tabs, Text, Transition, Video } from '@pyreon/primitives'
 import { attrs } from '@pyreon/attrs'
 import { Element } from '@pyreon/elements'
 import { Col, Container, Row } from '@pyreon/coolgrid'
@@ -181,6 +181,43 @@ function AnimPage() {
       >
         <Text data-testid="asym-fast-leave">Asym Fast Leave</Text>
       </Transition>
+      <Button onPress={() => navigate('/')}>Back to Home</Button>
+    </Stack>
+  )
+}
+
+// Animations row — the SLIDE and SCALE presets, and useReducedMotion. Their own
+// page, one transition per toggle, for the reason AnimPage gives: several
+// transitions driven by one signal broke the iOS re-show. Each preset runs for
+// 2000ms (linear), so the Android test can stop the compose clock halfway and
+// measure the element mid-animation: a slide is displaced from where it rests,
+// a scale is smaller than its resting size. The reduced-motion line reads the
+// OS setting live (Android `animator_duration_scale`, iOS Reduce Motion).
+function PresetsPage() {
+  const navigate = useNavigate()
+  const reduced = useReducedMotion()
+  let slideOn = plainState<boolean>(true)
+  let scaleOn = plainState<boolean>(true)
+  return (
+    <Stack gap={3} padding={4} data-testid="presets-page">
+      <Text>Presets</Text>
+      <Text data-testid="reduced-motion">Reduced motion: {reduced()}</Text>
+      <Button onPress={() => { slideOn = !slideOn }} data-testid="slide-toggle">
+        Toggle Slide
+      </Button>
+      <Stack data-testid="slide-track">
+        <Transition show={() => slideOn} name="slide-left" duration={2000} easing="linear">
+          <Text data-testid="slide-box">Slide Box</Text>
+        </Transition>
+      </Stack>
+      <Button onPress={() => { scaleOn = !scaleOn }} data-testid="scale-toggle">
+        Toggle Scale
+      </Button>
+      <Stack data-testid="scale-track">
+        <Transition show={() => scaleOn} name="scale-in" duration={2000} easing="linear">
+          <Text data-testid="scale-box">Scale Box</Text>
+        </Transition>
+      </Stack>
       <Button onPress={() => navigate('/')}>Back to Home</Button>
     </Stack>
   )
@@ -602,6 +639,7 @@ function HomePage() {
       </Inline>
       <Inline gap={2}>
         <Button onPress={() => navigate('/offline')}>View offline</Button>
+        <Button onPress={() => navigate('/presets')}>View presets</Button>
       </Inline>
       <Inline gap={2}>
         <Button onPress={() => navigate('/push')}>View push</Button>
@@ -996,6 +1034,7 @@ export function RouterApp() {
       { path: '/users/:id', component: UserPage },
       { path: '/styles', component: StylesPage },
       { path: '/motion', component: MotionPage },
+      { path: '/presets', component: PresetsPage },
       { path: '/biglist', component: BigListPage },
       { path: '/a11y', component: A11yPage },
       { path: '/anim', component: AnimPage },

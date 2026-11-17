@@ -347,6 +347,31 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Animations row (ANI-1) — the slide and scale presets run their show →
+    // hide → show cycle on iOS, and useReducedMotion reports the Simulator's
+    // setting (Reduce Motion is off on a fresh Simulator). As the test above
+    // explains, XCUITest cannot read a SwiftUI transition mid-flight, so the
+    // GEOMETRY of the presets is the Android half's assertion; this proves the
+    // emitted `.transition(.move(edge: .trailing))` and `.transition(.scale)`
+    // build and gate the views on a device.
+    func test_slideAndScalePresetsShowAndHideAndReducedMotionReads() throws {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30), "Home page did not render")
+        app.buttons["View presets"].tap()
+        XCTAssertTrue(app.otherElements["presets-page"].firstMatch.waitForExistence(timeout: 15), "Presets page did not render")
+        XCTAssertEqual(app.staticTexts["reduced-motion"].label, "Reduced motion: false")
+
+        for (box, toggle) in [("slide-box", "slide-toggle"), ("scale-box", "scale-toggle")] {
+            let el = app.staticTexts[box]
+            XCTAssertTrue(el.waitForExistence(timeout: 10), "\(box) missing before the toggle")
+            app.buttons[toggle].tap()
+            XCTAssertTrue(el.waitForNonExistence(timeout: 6), "\(box) did not leave after hide")
+            app.buttons[toggle].tap()
+            XCTAssertTrue(el.waitForExistence(timeout: 6), "\(box) did not return after show")
+        }
+    }
+
     // Adaptive row — the COMPACT half of the responsive-prop proof on the
     // iPhone simulator: the A→B vertical gap carries the compact token
     // (2 → 8pt; a regular resolution would read 24pt, a dropped adaptive
