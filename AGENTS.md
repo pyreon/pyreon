@@ -37,6 +37,7 @@ Read the matching file **before** working in its area, and prefer it over memory
 | `.agents/guides/internals/` | `packages/core/{compiler,reactivity,runtime-dom,runtime-server}`, JSX lowering, batching, SSR, HMR, Plain Mode |
 | `.agents/guides/fundamentals/` | any `packages/fundamentals/*` package (router per-package files under `references/`) |
 | `.agents/guides/ui-system/` | `packages/ui-system/**`, `packages/ui/**` |
+| `.agents/guides/ui-system/site-design-system.md` | `docs/src/site/**`, `docs/src/docs-ui/**`, `docs/src/styles/**`, `docs/src/blog/**` (pyreon.dev's tokens, kit layers, design ratchets, visual sweep) |
 | `.agents/guides/multiplatform/` | `packages/native/**`, `@pyreon/primitives`, iOS/Android work |
 | `.agents/guides/zero/` | `packages/zero/**`, render modes, deploy adapters, dev TLS |
 | `.agents/guides/tools/` | atlas, lathe, loom, `@pyreon/testing`, the `pyreon` CLI and `doctor` |
