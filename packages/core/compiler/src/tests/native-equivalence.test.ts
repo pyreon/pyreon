@@ -2688,8 +2688,10 @@ describe('templatizeComponentChildren syntax and optional native parity', () => 
       'const A = () => <Provider><div class="k"><b>x</b></div><p>y</p></Provider>',
     ))
 
-  // ── Scope: the option is client-only and additive ──
-  test('SSR is unaffected by the option', () => {
+  // ── Scope: the option is additive ──
+  // SSR reads it only to know which elements the client templates (#4385 D:
+  // fixed placeholder children are bracketed); this source has none.
+  test('SSR is unaffected by the option when no child is a placeholder', () => {
     const src = 'const A = () => <div class="b"><Leaf /></div>'
     const js = transformJSX_JS(src, 'test.tsx', { ssr: true, templatizeComponentChildren: true })
     expect(js.code).toBe(transformJSX_JS(src, 'test.tsx', { ssr: true }).code)
@@ -3136,4 +3138,100 @@ describe('JS syntax and optional native parity — static-prop fold', () => {
     ['map callback param', 'const Outer = (props) => <div>{list.map((p) => <R a={p.a} b={props.b} />)}</div>'],
   ]
   for (const [name, src] of cases) test(name, () => compare(src, 'test.tsx'))
+})
+
+// ─── SSR ranges for client placeholders (#4385 case D) ───────────────────────
+// Every child the client template lowers to `<!>` is a range on the server; a
+// FIXED child gets `_slot(x)` (h() path) or `<!--$-->` + `_escSole(x)` +
+// `<!--/$-->` (`_ssr` path), only where the client templates the element. The
+// expected strings are the JS emit's own contract (no backend agreement
+// involved); the native backend must then match byte for byte in every mode.
+function compareSsrAllModes(input: string) {
+  for (const ssrTemplate of [false, true]) {
+    for (const tcc of [false, true]) {
+      const js = transformJSX_JS(input, 'test.tsx', {
+        ssr: true,
+        ssrTemplate,
+        templatizeComponentChildren: tcc,
+      })
+      assertJavaScript(js.code)
+      if (!nativeTransform) continue
+      const rs = nativeTransform(input, 'test.tsx', true, null, false, undefined, ssrTemplate, tcc)
+      expect(rs.code, `ssrTemplate=${ssrTemplate} tcc=${tcc}`).toBe(js.code)
+      expectSameMap(rs, js)
+    }
+  }
+}
+
+describe('SSR brackets a fixed child on a client placeholder (#4385 D)', () => {
+  const ssrH = (src: string, tcc = false) =>
+    transformJSX_JS(src, 'test.tsx', { ssr: true, templatizeComponentChildren: tcc }).code
+  const ssrT = (src: string, tcc = false) =>
+    transformJSX_JS(src, 'test.tsx', { ssr: true, ssrTemplate: true, templatizeComponentChildren: tcc }).code
+
+  test('a mid static conditional: `_slot` on the h() path, baked range on `_ssr`', () => {
+    const src = 'const A = () => <span>{flag ? <b>{flag}</b> : null}<i /></span>'
+    expect(ssrH(src)).toContain('<span>{_slot(flag ? <b>{flag}</b> : null)}<i /></span>')
+    expect(ssrH(src)).toContain('import { _slot } from "@pyreon/core"')
+    expect(ssrT(src)).toContain('_ssr(["<span><!--$-->", "<!--/$--><i></i></span>"], _escSole(')
+  })
+  test('a sole child takes no range (both sides elide it)', () => {
+    expect(ssrH('const A = () => <span>{flag ? <b /> : null}</span>')).not.toContain('_slot')
+  })
+  test('a literal, an accessor and a reactive child keep their own form', () => {
+    const out = ssrH('const A = (p) => <span><b />{"lit"}{() => x}{p.y}<i /></span>')
+    expect(out).not.toContain('_slot')
+    expect(out).toContain('{() => x}{() => p.y}')
+  })
+  test('a static text mix the client fuses into one node takes no range', () => {
+    expect(ssrH('const A = () => <span>a{v}b</span>')).not.toContain('_slot')
+  })
+  test('an element the client does not template (component child mid-run) takes no range', () => {
+    const src = 'const A = () => <span><Comp />{v}<i /></span>'
+    expect(ssrH(src, true)).not.toContain('_slot')
+  })
+  test('JSX inside a placeholder child is raw on the client, so its children take no range', () => {
+    const out = ssrH('const A = () => <span>{flag ? <b><i />{v}<u /></b> : null}<s /></span>')
+    expect(out.match(/_slot\(/g)?.length).toBe(1)
+  })
+  test('a <For> row the client templates brackets its fixed field', () => {
+    const src = 'const A = () => <ul><For each={rows} by={(r) => r.id}>{(r) => <li><b />{r.name}<i /></li>}</For></ul>'
+    expect(ssrH(src)).toContain('<li><b />{_slot(r.name)}<i /></li>')
+    expect(ssrT(src)).toContain('"<li><b></b><!--$-->" + _h0 + "<!--/$--><i></i></li>"')
+  })
+  test('a `.map` item is sliced on the client, so it takes no range', () => {
+    expect(ssrH('const A = () => <ul><b />{xs.map((x) => <li><b />{x}<i /></li>)}</ul>')).not.toContain('_slot')
+  })
+  test('an element the client templates only with templatizeComponentChildren', () => {
+    // `<p>` absorbs `<Comp />` only with the option; without it `<div>` holds a
+    // component and stays on the h() path.
+    const src = 'const A = () => <div><b />{v}<p><Comp /></p></div>'
+    expect(ssrH(src, false)).not.toContain('_slot')
+    expect(ssrH(src, true)).toContain('{_slot(v)}')
+  })
+
+  describeNative('native parity in every SSR mode', () => {
+    const corpus = [
+      'const A = () => <span>{flag ? <b>{flag}</b> : null}<i /></span>',
+      'const A = () => <span><i />{v}<i /></span>',
+      'const A = () => <span>{v}{w}<i /></span>',
+      'const A = () => <span>a{flag ? <b /> : null}b</span>',
+      'const A = () => <span><>{v}</></span>',
+      'const A = () => <span><b />{(<u>u</u>) as never}</span>',
+      'const A = () => <span><b />{v as never}<i /></span>',
+      'const A = ({ children }) => <div><h1>t</h1>{children}</div>',
+      'const A = () => <span>{flag && <b><i />{v}<u /></b>}<s /></span>',
+      'const A = () => <ul><For each={rows} by={(r) => r.id}>{(r) => <li><b />{r.name}<i /></li>}</For></ul>',
+      'const A = () => <div><b />{v}<p><Comp /></p></div>',
+      'const A = () => <div><Comp />{v}<p /></div>',
+      'const A = () => <section><Show when={() => true}><span><b />{v}</span></Show></section>',
+      'const A = () => <Show fallback={<div><b />{v}<i /></div>}><p /></Show>',
+      'const A = () => <div class={x ? <b /> : "c"}><b />{v}</div>',
+      'const A = () => <svg><g />{v}<path /></svg>',
+      'const A = () => <ul><b />{xs.map((x) => <li><b />{x}<i /></li>)}</ul>',
+      'const A = () => <p>{flag ? <span><b />{v}</span> : null}</p>',
+      'const A = () => <p><b />{<span><b />{v}<i /></span>}</p>',
+    ]
+    for (const src of corpus) test(src, () => compareSsrAllModes(src))
+  })
 })

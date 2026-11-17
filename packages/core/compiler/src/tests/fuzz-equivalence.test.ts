@@ -106,6 +106,30 @@ interface Ctx {
    * its own stream keeps every earlier draw sequence unchanged.
    */
   rnd4: () => number
+  /**
+   * A FIFTH independent stream for FIXED (non-reactive) children in placeholder
+   * positions (#4385 D): the SSR emit brackets them only where the client
+   * templates the element, so the arm crosses child kind × position × the
+   * template decision. Its own stream keeps every earlier draw unchanged.
+   */
+  rnd5: () => number
+}
+
+/** A fixed child the client template lowers to a `<!>` placeholder when it is
+ *  not its element's sole child. Free identifiers are static to both backends. */
+function genFixedChild(c: Ctx): string {
+  return pick(c.rnd5, [
+    '{fixC ? <b>{fixV}</b> : null}',
+    '{fixC && <i>x</i>}',
+    '{fixV}',
+    '{fixV as never}',
+    '{(<u>u</u>) as never}',
+    '<>{fixV}</>',
+    'a{fixC ? <b /> : null}b',
+    '{children}',
+    '{row.label}',
+    `<For each={fixList} by={(r) => r.id}>{(r) => <li><b />{r.name}<i /></li>}</For>`,
+  ])
 }
 
 /** Functions holding a bare signal — value reads, identity uses, shadowing. */
@@ -245,6 +269,7 @@ function genAttrs(c: Ctx): string {
 }
 
 function genChild(c: Ctx): string {
+  if (c.rnd5() < 0.12) return genFixedChild(c)
   if (c.pd && c.rnd2() < 0.12) {
     const e = PD_EXPRS[Math.floor(c.rnd2() * PD_EXPRS.length)]!
     return c.rnd2() < 0.3 ? `{() => ${e}}` : `{${e}}`
@@ -385,7 +410,8 @@ function genComponent(seed: number): string {
   const pd = props && rnd2() < 0.5
   const rnd3 = mulberry32((seed ^ 0x51ed270b) >>> 0)
   const rnd4 = mulberry32((seed ^ 0x2545f491) >>> 0)
-  const c: Ctx = { rnd, signals, props, depth: 0, idc: { n: 0 }, helpers, pd, rnd2, rnd3, rnd4 }
+  const rnd5 = mulberry32((seed ^ 0x7f4a7c15) >>> 0)
+  const c: Ctx = { rnd, signals, props, depth: 0, idc: { n: 0 }, helpers, pd, rnd2, rnd3, rnd4, rnd5 }
   const lines: string[] = [`import { signal, computed } from "@pyreon/reactivity"`]
   lines.push(...helperLines)
   const body: string[] = []
@@ -482,12 +508,27 @@ const MODES: {
   // parent kinds × child kinds, which is exactly where the space between the
   // known shapes lives.
   { label: 'client-tpl-components', ssr: false, ssrTemplate: false, templatizeComponentChildren: true },
+  // The SSR emit reads the CLIENT's option to work out which elements the
+  // client templates, and brackets their fixed placeholder children (#4385 D),
+  // so both SSR emits are a function of it too.
+  { label: 'ssr-tpl-components', ssr: true, ssrTemplate: false, templatizeComponentChildren: true },
+  {
+    label: 'ssr-template-tpl-components',
+    ssr: true,
+    ssrTemplate: true,
+    templatizeComponentChildren: true,
+  },
 ]
 
 describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
   test(`${SEEDS} seeds × ${MODES.length} modes are byte-identical`, { timeout: SWEEP_TIMEOUT_MS }, () => {
     const failures: string[] = []
     let firstDivergence = ''
+    // Reach of the fixed-child arm (#4385 D): both SSR emits must actually
+    // bracket a placeholder child somewhere in the sweep, or the arm proves
+    // nothing about them.
+    let slotEmits = 0
+    let bakedSlotEmits = 0
     for (let seed = 1; seed <= SEEDS; seed++) {
       const src = genComponent(seed)
       for (const { label, ssr, ssrTemplate, templatizeComponentChildren: tcc } of MODES) {
@@ -497,6 +538,12 @@ describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
           templatizeComponentChildren: tcc === true,
         })
         const js = jsResult.code
+        if (ssr && !ssrTemplate && js.includes('_slot(')) slotEmits++
+        // A hole between `<!--$-->` and `<!--/$-->` statics, in an emit that
+        // carries `_escSole` (the bracketed form; a sole hole never has markers).
+        if (ssrTemplate && js.includes('<!--$-->", "<!--/$-->') && js.includes('_escSole(')) {
+          bakedSlotEmits++
+        }
         let rs: string
         let rsMappings: string | undefined
         try {
@@ -554,6 +601,8 @@ describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
       }
     }
     expect(failures, `divergent seeds: ${failures.join(', ')}${firstDivergence}`).toEqual([])
+    expect(slotEmits).toBeGreaterThan(0)
+    expect(bakedSlotEmits).toBeGreaterThan(0)
   })
 
 })

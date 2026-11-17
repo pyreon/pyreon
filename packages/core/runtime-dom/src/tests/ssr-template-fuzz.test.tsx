@@ -166,7 +166,19 @@ function childSrc(n: Node): string {
 }
 
 // ── spec → h() oracle (applies the h()-path wrap rules) ──────────────────────
-function elOracle(el: ElNode, ctx: FuzzCtx, mode: 'recursed' | 'mapitem', it?: Record<string, string>): VNode {
+// `inTpl`: the CLIENT lowers this element into a `_tpl` (a recursed element
+// reached from the root through element children: every generated element
+// qualifies). Inside one, every non-sole, non-literal child is a `<!>`
+// placeholder, and a FIXED one is bracketed in one range on the server
+// (#4385 D). A conditional's branch elements and `.map` items are sliced into
+// the client bind as raw source, so they never are.
+function elOracle(
+  el: ElNode,
+  ctx: FuzzCtx,
+  mode: 'recursed' | 'mapitem',
+  it?: Record<string, string>,
+  inTpl = false,
+): VNode {
   const props: Record<string, unknown> = {}
   // A dynamic attr is a dep member access (`data.fN`) — NOT wrapped (deps
   // aren't signals), so the h() oracle passes the bare value; renderProp does
@@ -208,7 +220,30 @@ function elOracle(el: ElNode, ctx: FuzzCtx, mode: 'recursed' | 'mapitem', it?: R
       return h(el.tag, Object.keys(props).length ? props : null, fused as never)
     }
   }
-  const kids = el.children.map((n) => childOracle(n, ctx, mode, it))
+  // The client's STATIC text fusion (`fuseTextChildren(el, true)`): only text
+  // and value children, two or more parts after folding adjacent literal text
+  // (an empty literal folds away). Such an element has no placeholder.
+  let parts = 0
+  let lastLit = false
+  for (const n of el.children) {
+    if (n.k === 'text') {
+      if (n.s !== '' && !lastLit) {
+        parts++
+        lastLit = true
+      }
+      continue
+    }
+    lastLit = false
+    parts++
+  }
+  const staticFused =
+    el.children.length >= 2 &&
+    el.children.every((n) => n.k === 'text' || n.k === 'bare' || n.k === 'sig') &&
+    parts >= 2
+  const sole = el.children.length === 1
+  const kids = el.children.map((n) =>
+    childOracle(n, ctx, mode, it, inTpl && mode === 'recursed', inTpl && mode === 'recursed' && !staticFused && !sole),
+  )
   return h(el.tag, Object.keys(props).length ? props : null, ...kids)
 }
 // Mirror the compiler's `isDynamic` for the fuzz spec: a child is dynamic iff
@@ -236,7 +271,9 @@ function childOracle(
   n: Node,
   ctx: FuzzCtx,
   mode: 'recursed' | 'mapitem',
-  it?: Record<string, string>,
+  it: Record<string, string> | undefined,
+  inTpl: boolean,
+  placeholder: boolean,
 ): VNodeChild {
   switch (n.k) {
     case 'text':
@@ -246,6 +283,11 @@ function childOracle(
       // the item element's own children use the `it` param, not data — but our
       // generator only puts `bare`(data) refs, `text`, and nested els in items,
       // so `it` is unused for values. (The map RECEIVER uses `it`.)
+      // A placeholder child is bracketed: `_slot(data.fN)` is an accessor.
+      if (placeholder) {
+        const v = ctx.data[n.ref]
+        return () => v
+      }
       return ctx.data[n.ref]
     case 'sig': {
       const s = ctx.sigs[n.ref]!
@@ -281,10 +323,10 @@ function childOracle(
       // Wrap in an accessor iff the h() path would (`shouldWrap` = `isDynamic`).
       // renderNode then adds `<!--$-->…<!--/$-->` when non-sole / elides when
       // sole, mirroring the fast path's `should_wrap` bake vs `_escSole`.
-      return nodeIsDynamic(n) ? () => branch() : branch()
+      return nodeIsDynamic(n) || placeholder ? () => branch() : branch()
     }
     case 'el':
-      return elOracle(n, ctx, mode, it)
+      return elOracle(n, ctx, mode, it, inTpl)
   }
 }
 
@@ -345,7 +387,7 @@ describe('SSR fast path — render-fuzz byte-identity', () => {
       let slow: string
       try {
         fast = await renderToString(evalFast(src, fastCtx))
-        slow = await renderToString(elOracle(spec, slowCtx, 'recursed'))
+        slow = await renderToString(elOracle(spec, slowCtx, 'recursed', undefined, true))
       } catch (err) {
         failures.push(`seed=${seed} threw: ${(err as Error).message}\n  src=${src}`)
         continue

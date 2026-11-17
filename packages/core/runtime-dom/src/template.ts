@@ -222,6 +222,16 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
   // the hydrator adopts over the whole child list exactly as it does for a real
   // sole slot. No cleanup is threaded because this is the STATIC path — the
   // content leaves with the clone, as it did before.
+  //
+  // A MARKED range (#4385 D): the SSR compile brackets every fixed child the
+  // client lowers to a placeholder, so an adopted placeholder is usually the
+  // slot's own `<!--$-->` — a trailing range the verifier left in place, or a
+  // mid range it parked. Its extent is the range, never the parent's whole
+  // child list, so it is handed over as `_mountSlot` hands over its own.
+  if (_slotHydrator !== null && isRangeOpen(placeholder)) {
+    _slotHydrator(value as never, parent as Element, placeholder as Comment)
+    return
+  }
   if (
     _slotHydrator !== null &&
     !isCloneSlotPlaceholder(placeholder) &&
@@ -242,14 +252,16 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
     // adopts but its one dynamic text is swapped for a fresh node. "By
     // construction" holds when server and client agree; when they do not, the
     // write is a correction, which dev reports (#4419).
+    // Coerced as a child is (`mountChild`): nullish and `false` render nothing.
+    const text = value == null || value === false ? '' : String(value)
     if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
       const before = (placeholder as Text).data
-      ;(placeholder as Text).data = value as string
+      ;(placeholder as Text).data = text
       reportTextWrite(placeholder, before, 'text')
 
       return
     }
-    ;(placeholder as Text).data = value as string
+    ;(placeholder as Text).data = text
   } else {
     // Nullish renders as EMPTY, not as the literal text "null". `String(null)`
     // is `"null"`, and this branch used to hand that straight to
@@ -258,7 +270,7 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
     // and SSR (`renderNode(null)` -> `''`) both render nothing. A client/server
     // text divergence in the same file as its correct sibling.
     parent.replaceChild(
-      document.createTextNode(value == null ? '' : (value as string)),
+      document.createTextNode(value == null || value === false ? '' : String(value)),
       placeholder,
     )
   }

@@ -490,6 +490,21 @@ export function _fuse(...parts: unknown[]): string | unknown[] {
 }
 
 /**
+ * SSR half of the compiled-template placeholder contract (#4385). A fixed
+ * child the client template lowers to a `<!>` placeholder must be a
+ * `<!--$-->…<!--/$-->` range in the server HTML, and `renderNode` brackets
+ * exactly the children that are functions. So the SSR compile emits
+ * `{_slot(x)}` there: an accessor around a plain value (one range), and the
+ * value itself when it already is one (still one range, never two).
+ *
+ * The value is read where the compile put it, as the plain child was, so
+ * nothing about evaluation order changes. Emitted by the compiler only.
+ */
+export function _slot(v: unknown): () => unknown {
+  return typeof v === 'function' ? (v as () => unknown) : () => v
+}
+
+/**
  * Wrap a JSX spread source so its getter-shaped reactive props survive
  * the JS-level object spread that esbuild's automatic JSX runtime emits
  * for `<Comp {...source}>`.

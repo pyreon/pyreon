@@ -21,7 +21,7 @@
  * a non-Pyreon script attached silently gone.
  */
 import { transformJSX } from '@pyreon/compiler'
-import { _fuse, _lc, For, Fragment, h } from '@pyreon/core'
+import { _fuse, _lc, _slot, For, Fragment, h } from '@pyreon/core'
 import { _bind, signal, renderEffect } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
@@ -71,6 +71,7 @@ const RUNTIME_DEPS = {
   _setValue,
   _fuse,
   _lc,
+  _slot,
   bindPolymorphicText,
   h,
   Fragment,
