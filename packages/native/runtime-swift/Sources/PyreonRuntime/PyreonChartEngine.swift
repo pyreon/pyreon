@@ -11360,7 +11360,7 @@ public func layoutSingleAxis(_ axis: SingleAxisSpec, _ points: [SingleAxisPoint]
     } else {
       var index = 0
       for v in niceTicks(lo, hi, 6) {
-        ticks.append(SingleAxisTick(x: px(v), label: pyreonNumString(v), index: index))
+        ticks.append(SingleAxisTick(x: px(v), label: pyreonNumberString(v), index: index))
         index += 1
       }
     }
@@ -13976,9 +13976,3 @@ public func binValues(_ values: [Double], _ count: Double) -> [Bin] {
   }
 
 public func binLabel(_ b: Bin) -> String { "\(plain(b.x0))–\(plain(b.x1))" }
-
-private func pyreonNumString(_ v: Double) -> String {
-    if v.isNaN { return "NaN" }
-    if v.isInfinite { return v < 0 ? "-Infinity" : "Infinity" }
-    return v.rounded() == v && v.magnitude < 1e15 ? String(Int(v)) : String(v)
-}
