@@ -52,16 +52,9 @@ export function Todos(props: { id: string }) {
 const swiftOf = (src: string) => transform(src, { target: 'swift' })
 const kotlinOf = (src: string) => transform(src, { target: 'kotlin' })
 
-/** The three by-design warnings: the mutations do not invalidate the queries natively. */
-const INVALIDATION = /invalidates every `todo` query[\s\S]*Native queries share no query client/
-
 describe('@pyreon/feature CRUD hooks — native lowering', () => {
-  it('names only the invalidation gap for the five lowered hooks', () => {
-    for (const r of [swiftOf(SRC), kotlinOf(SRC)]) {
-      expect(r.warnings).toHaveLength(3)
-      for (const w of r.warnings) expect(w).toMatch(INVALIDATION)
-      expect(r.warnings[1]).toContain('optimistically')
-    }
+  it('the five lowered hooks lower with no warning — the mutations refresh the queries as on the web', () => {
+    for (const r of [swiftOf(SRC), kotlinOf(SRC)]) expect(r.warnings).toEqual([])
   })
 
   describe('Swift', () => {
@@ -94,21 +87,40 @@ describe('@pyreon/feature CRUD hooks — native lowering', () => {
       expect(code).toContain('call: PyreonMutationCallbacksOrEmpty(onSuccess: { t in')
       expect(code).toContain(`try await create.mutateAsync(PyreonHttpRequest(method: .post, url: "${API}"`)
       expect(code).toContain(
-        `orEmpty: { __request in let __response = try await PyreonHttp.send(__request, middleware: [.reject { $0.messageError(method: "POST", url: "${API}") }] as [PyreonHttpMiddleware]); guard __response.isOK else { throw PyreonHttpError.badStatus(__response.status) }; return try __response.status == 204 ? nil : __response.decode(PyreonFeatureSchema_Todo.self) }`,
+        `orEmpty: { __request in try await PyreonQueryCache.shared.settleMutation(invalidating: "todo") { let __response = try await PyreonHttp.send(__request, middleware: [.reject { $0.messageError(method: "POST", url: "${API}") }] as [PyreonHttpMiddleware]); guard __response.isOK else { throw PyreonHttpError.badStatus(__response.status) }; return try __response.status == 204 ? nil : __response.decode(PyreonFeatureSchema_Todo.self) } }`,
+      )
+    })
+
+    it('a successful create / update / delete invalidates every `todo` query (the web\'s invalidateQueries([name]))', () => {
+      expect(code).toContain(`orEmpty: { __request in try await PyreonQueryCache.shared.settleMutation(invalidating: "todo") { let __response = try await PyreonHttp.send(__request, middleware: [.reject { $0.messageError(method: "POST", url: "${API}") }] as [PyreonHttpMiddleware]); guard __response.isOK else { throw PyreonHttpError.badStatus(__response.status) }; return try`)
+      expect(code).toContain(
+        `{ __request in try await PyreonQueryCache.shared.settleMutation(invalidating: "todo") { let __response = try await PyreonHttp.send(__request, middleware: [.reject { $0.messageError(method: "DELETE", url: "${API}/\\(id)") }] as [PyreonHttpMiddleware]); guard __response.isOK else { throw PyreonHttpError.badStatus(__response.status) } } }`,
+      )
+      // Both create call sites (fire-and-forget and awaited) and the update settle through it.
+      expect(code.match(/settleMutation\(invalidating: "todo"/g)).toHaveLength(4)
+    })
+
+    it('useUpdate writes `data` into the cached `todo:<id>` record first — the key useById reads — and rolls back on failure', () => {
+      expect(code).toContain(
+        'PyreonQueryCache.shared.setQueryData("todo:\\(id)", as: PyreonFeatureSchema_Todo.self, { __old in var __new = __old; __new.done = true; return __new })',
+      )
+      expect(code).toContain('one.setKey("todo:\\(id)")')
+      expect(code).toContain(
+        `orEmpty: { __input in try await PyreonQueryCache.shared.settleMutation(invalidating: "todo", rollback: __input.1) { let __response = try await PyreonHttp.send(__input.0, middleware: [.reject { $0.messageError(method: "PUT", url: "${API}/\\(id)") }] as [PyreonHttpMiddleware]); guard __response.isOK else { throw PyreonHttpError.badStatus(__response.status) }; return try __response.status == 204 ? nil : __response.decode(PyreonFeatureSchema_Todo.self) } }`,
       )
     })
 
     it('useUpdate → PUT <api>/<id> with `data` as the JSON body', () => {
       expect(code).toContain('@State private var update = PyreonMutation<PyreonFeatureSchema_Todo>()')
       expect(code).toMatch(
-        /update\.mutate\(PyreonHttpRequest\(method: \.put, url: "https:\/\/api\.example\.com\/todos\/\\\(PyreonURL\.encodePathParam\(id\)\)", headers: \["content-type": "application\/json"\], body: Data\(\(PyreonJSON\.stringify\(__Obj\w*\(done: true\)\)\)\.utf8\)\)/,
+        /update\.mutate\(\(PyreonHttpRequest\(method: \.put, url: "https:\/\/api\.example\.com\/todos\/\\\(PyreonURL\.encodePathParam\(id\)\)", headers: \["content-type": "application\/json"\], body: Data\(\(PyreonJSON\.stringify\(__Obj\w*\(done: true\)\)\)\.utf8\)\)/,
       )
     })
 
     it('useDelete → a Void PyreonMutation, DELETE <api>/<id> with no body and no decode', () => {
       expect(code).toContain('@State private var remove = PyreonMutation<Void>()')
       expect(code).toContain(
-        `remove.mutate(PyreonHttpRequest(method: .delete, url: "${API}/\\(PyreonURL.encodePathParam(id))"), { __request in let __response = try await PyreonHttp.send(__request, middleware: [.reject { $0.messageError(method: "DELETE", url: "${API}/\\(id)") }] as [PyreonHttpMiddleware]); guard __response.isOK else { throw PyreonHttpError.badStatus(__response.status) } })`,
+        `remove.mutate(PyreonHttpRequest(method: .delete, url: "${API}/\\(PyreonURL.encodePathParam(id))"), { __request in try await PyreonQueryCache.shared.settleMutation(invalidating: "todo") { let __response = try await PyreonHttp.send(__request, middleware: [.reject { $0.messageError(method: "DELETE", url: "${API}/\\(id)") }] as [PyreonHttpMiddleware]); guard __response.isOK else { throw PyreonHttpError.badStatus(__response.status) } } }`,
       )
       expect(code).toContain('remove.isPending ?')
     })
@@ -140,6 +152,19 @@ describe('@pyreon/feature CRUD hooks — native lowering', () => {
       expect(code).toContain(`create.runAsyncOrEmpty(PyreonHttpRequest(method = PyreonHttpMethod.POST`)
       expect(code).toContain(`PyreonHttpRequest(method = PyreonHttpMethod.PUT, url = "${API}/\${PyreonURL.encodePathParam(id)}", headers = mapOf("content-type" to "application/json")`)
       expect(code).toContain(`PyreonHttpRequest(method = PyreonHttpMethod.DELETE, url = "${API}/\${PyreonURL.encodePathParam(id)}").let { __request -> remove.begin()`)
+    })
+
+    it('the mutations settle through PyreonQueryCache: success invalidates `todo`, useUpdate writes optimistically', () => {
+      // create / delete: the web helper's error (middleware) and, for create, nil on a 204 — inside the settle.
+      expect(code).toContain('{ __r -> PyreonQueryCache.settleMutation("todo") { val __response = withContext(Dispatchers.IO) { PyreonHttp.send(__r, fallback = PyreonHttpOkHttp, middleware = ')
+      expect(code).toContain('if (__response.status == 204) null else PyreonFetchJson.decodeFromString<PyreonFeatureSchema_Todo>(__response.body) } }')
+      expect(code).toContain('if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status); Unit } }')
+      expect(code).toContain('PyreonQueryCache.setQueryData<PyreonFeatureSchema_Todo>("todo:${id}") { __old -> __old.copy(done = true) }')
+      expect(code).toContain('one.setKey("todo:${id}")')
+      expect(code).toContain(
+        '{ __r -> PyreonQueryCache.settleMutation("todo", __r.second) { val __response = withContext(Dispatchers.IO) { PyreonHttp.send(__r.first, fallback = PyreonHttpOkHttp, middleware = ',
+      )
+      expect(code.match(/settleMutation\("todo"/g)).toHaveLength(4)
     })
   })
 
@@ -246,6 +271,109 @@ export function A() { const l = Todo.useList(); return <Text>x</Text> }
 `
       expect(swiftOf(src).warnings.join('\n')).toContain('`PyreonFeatureSchema_Todo` is not declared')
     })
+  })
+
+  describe('the optimistic useUpdate write', () => {
+    const update = (data: string, props = 'p: { id: string; t: string; n: number }') =>
+      `${feature().replace("schema: { id: 'string', title: 'string', done: 'boolean' }", "schema: { id: 'string', title: 'string', done: 'boolean', rank: 'number' }")}
+export function A(${props}) {
+  const u = Todo.useUpdate()
+  return <Button onPress={() => u.mutate({ id: p.id, data: ${data} })}>x</Button>
+}`
+
+    it('patches every field of a literal `data` drawn from the schema, with runtime values', () => {
+      const src = update('{ title: p.t, rank: p.n, done: false }')
+      const swift = swiftOf(src)
+      expect(swift.warnings).toEqual([])
+      expect(swift.code).toContain('{ __old in var __new = __old; __new.title = t; __new.rank = n; __new.done = false; return __new }')
+      const kotlin = kotlinOf(src)
+      expect(kotlin.warnings).toEqual([])
+      expect(kotlin.code).toContain('__old.copy(title = t, rank = n, done = false)')
+    })
+
+    it.each([
+      ['a non-literal `data`', 'p.draft', '`data` is not an object literal'],
+      ['a spread in `data`', '{ ...p.draft }', 'a spread or a computed key'],
+      ['a field the schema does not declare', '{ color: "red" }', '`data.color` is not a field of the schema'],
+    ])('%s skips only the optimistic write, named — the request and the invalidation still lower', (_label, data, why) => {
+      const src = update(data, 'p: { id: string; draft: { title: string } }')
+      for (const r of [swiftOf(src), kotlinOf(src)]) {
+        const w = r.warnings.join('\n')
+        expect(w).toContain(why)
+        expect(w).toContain('OPTIMISTIC write the web shows in `useById(id)` before the server answers is skipped natively')
+        expect(r.code).not.toContain('setQueryData')
+        expect(r.code).toMatch(/settleMutation\(invalidating: "todo"\)|settleMutation\("todo"\)/)
+      }
+    })
+
+    it.each([
+      ['a string into a boolean field', '{ done: "yes" }', '`data.done` is not a boolean'],
+      ['a fraction into a whole-number field', '{ rank: 1.5 }', '`data.rank` is not a whole number'],
+    ])('%s skips the optimistic write at emit, named', (_label, data, why) => {
+      for (const r of [swiftOf(update(data)), kotlinOf(update(data))]) {
+        expect(r.warnings.join('\n')).toContain(why)
+        expect(r.code).not.toContain('setQueryData')
+        expect(r.code).toMatch(/settleMutation\(invalidating: "todo"\)|settleMutation\("todo"\)/)
+      }
+    })
+
+    it('reads the schema even when the component sits ABOVE the declaration', () => {
+      const src = `
+import { Button } from '@pyreon/primitives'
+import { defineFeature } from '@pyreon/feature'
+export function A(p: { id: string }) {
+  const u = Todo.useUpdate()
+  return <Button onPress={() => u.mutate({ id: p.id, data: { done: true } })}>x</Button>
+}
+export const Todo = defineFeature({ name: 'todo', schema: { id: 'string', done: 'boolean' }, api: '${API}' })
+`
+      const r = swiftOf(src)
+      expect(r.warnings).toEqual([])
+      expect(r.code).toContain('__new.done = true')
+    })
+
+    it('reads a validator-object schema too', () => {
+      const src = `
+import { Button } from '@pyreon/primitives'
+import { defineFeature } from '@pyreon/feature'
+import { z } from 'zod'
+export const Todo = defineFeature({ name: 'todo', schema: z.object({ id: z.string(), done: z.boolean() }), api: '${API}' })
+export function A(p: { id: string }) {
+  const u = Todo.useUpdate()
+  return <Button onPress={() => u.mutate({ id: p.id, data: { done: true } })}>x</Button>
+}
+`
+      expect(kotlinOf(src).code).toContain('__old.copy(done = true)')
+    })
+  })
+
+  // A screen that only mutates (no list on it) still names PyreonQueryCache, so the cache stub must be appended for it.
+  const MUTATIONS_ONLY = `${feature()}
+export function Edit(props: { id: string }) {
+  const update = Todo.useUpdate()
+  const remove = Todo.useDelete()
+  const save = async () => { await update.mutateAsync({ id: props.id, data: { title: 'x', done: true } }) }
+  return (
+    <Stack>
+      <Button onPress={save}>Save</Button>
+      <Button onPress={() => remove.mutate(props.id)}>Delete</Button>
+    </Stack>
+  )
+}
+`
+
+  it.runIf(isSwiftcAvailable())('a mutations-only screen type-checks against the stubs (Swift)', () => {
+    const r = swiftOf(MUTATIONS_ONLY)
+    expect(r.code).not.toContain('PyreonQuery<')
+    const v = validateSwiftWithStubs(r.code)
+    expect(v.ok, v.error).toBe(true)
+  })
+
+  it.runIf(isKotlincAvailable())('a mutations-only screen compiles against the stubs (Kotlin)', () => {
+    const r = kotlinOf(MUTATIONS_ONLY)
+    expect(r.code).not.toContain('PyreonQuery<')
+    const v = validateKotlin(r.code)
+    expect(v.ok, v.error).toBe(true)
   })
 
   it.runIf(isSwiftcAvailable())('the Swift output type-checks against the stubs', () => {

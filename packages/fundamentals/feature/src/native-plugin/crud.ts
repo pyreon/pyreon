@@ -8,6 +8,13 @@
 //   const edit = Todo.useUpdate()      → PyreonMutation<PyreonFeatureSchema_Todo>  PUT    <api>/<id>     json: vars.data
 //   const del = Todo.useDelete()       → PyreonMutation<Void>                      DELETE <api>/<id>
 //
+// What the mutations do to the queries is the web's, through `PyreonQueryCache` (the native query client): a
+// successful create / update / delete invalidates every `<name>` query — the web's
+// `invalidateQueries({ queryKey: [name] })`, natively every cached key `<name>` or `<name>:…` is marked stale and every
+// mounted one refetches — and `useUpdate` writes `{ id, data }` into the cached `[name, id]` record optimistically
+// before the request, rolling it back if the request fails. The optimistic write needs `data` to be an object literal
+// of the schema's own fields (it is applied field by field to the typed record); any other `data` skips it, NAMED.
+//
 // The wire format is `define-feature.ts`'s `createFetcher`, which sends through `@pyreon/http`: an absolute `api` is
 // the request URL as written, the id is ONE path segment encoded by the web's own `encodePathParam` (here the
 // runtime's `PyreonURL.encodePathParam`, which mirrors it), a `json` body is `JSON.stringify(vars)` with
@@ -38,6 +45,7 @@ import {
   queryContainerDecl,
   queryReceiver,
   scanMutations,
+  type MutateQueryEffects,
   type QueryPayload,
 } from '@pyreon/query/native-plugin'
 import {
@@ -88,7 +96,10 @@ const UNLOWERED_HOOKS: ReadonlyMap<string, string> = new Map([
     'useStore',
     'the feature store (`@pyreon/store`) does not lower. Hold the selection in a `signal`',
   ],
-  ['queryKey', 'there is no native query client whose cache the key could address'],
+  [
+    'queryKey',
+    'the key addresses the web `QueryClient` (`useQueryClient()`), which does not lower. The feature\'s own mutations already refresh its queries natively',
+  ],
 ])
 
 /** A feature binding's CRUD facts, recorded by the scan before any component is parsed. */
@@ -108,12 +119,25 @@ interface CrudFacts {
   readonly used: Set<string>
   /** Mutation bindings (`const add = Todo.useCreate()`) → the feature and the hook. */
   readonly mutations: Map<string, { readonly feature: string; readonly hook: string; readonly type: TypeIR }>
+  /** Each feature's schema fields as its record struct declares them — recorded by the plugin's scan. */
+  readonly schemas: Map<string, readonly SchemaField[]>
+}
+
+/** One field of a feature's record struct. */
+export interface SchemaField {
+  readonly name: string
+  readonly type: 'string' | 'number' | 'boolean'
 }
 
 const FACTS_KEY = '@pyreon/feature:crud'
 
 export function crudFacts(source: { fileState<T>(key: string, init: () => T): T }): CrudFacts {
-  return source.fileState<CrudFacts>(FACTS_KEY, () => ({ features: new Map(), used: new Set(), mutations: new Map() }))
+  return source.fileState<CrudFacts>(FACTS_KEY, () => ({
+    features: new Map(),
+    used: new Set(),
+    mutations: new Map(),
+    schemas: new Map(),
+  }))
 }
 
 /** The struct `defineFeature` declares for a binding's schema — the decoded element type. */
@@ -354,9 +378,6 @@ export const recognizeCrudDecl: DeclCallRecognizer = (site, ctx) => {
   }
   const type: TypeIR = hook === 'useDelete' ? { kind: 'undefined' } : element
   facts.mutations.set(ctx.declName, { feature: binding, hook, type })
-  ctx.warn(
-    `${subject}: on the web a successful ${hook === 'useCreate' ? 'create' : hook === 'useUpdate' ? 'update' : 'delete'} invalidates every \`${info.featureName}\` query, so a mounted \`${binding}.useList()\` / \`${binding}.useById()\` refetches${hook === 'useUpdate' ? ', and `useById(id)` shows the change optimistically before the server answers' : ''}. Native queries share no query client, so neither happens on iOS and Android: the request is sent and the mutation's own state settles, but every mounted query keeps the data it had until it remounts.`,
-  )
 
   return { type: CRUD_MUTATION_TYPE, payload: { type } as never }
 }
@@ -379,7 +400,11 @@ export const recognizeCrudMutate: MethodCallRecognizer = (site, ctx) => {
   const facts = crudFacts(ctx)
   const m = facts.mutations.get(receiver.name as string)
   if (m === undefined) return undefined
-  const api = facts.features.get(m.feature)?.api as string
+  const info = facts.features.get(m.feature) as CrudFeature
+  const api = info.api as string
+  // The web's `onSuccess`: `invalidateQueries({ queryKey: [name] })` — every query of the feature.
+  const featureName = info.featureName as string
+  const invalidate = { invalidates: featureName }
   const name = receiver.name as string
   const where = `\`${name}.${site.method}(…)\``
   const vars = unwrapTypeLayers(site.args[0] as AnyNode | undefined)
@@ -395,16 +420,18 @@ export const recognizeCrudMutate: MethodCallRecognizer = (site, ctx) => {
       bodyExpr: { kind: 'json-stringify', arg: ctx.expr(vars) },
       middleware: errorsMiddleware('POST', literalUrl(api)),
       noContent: true,
-    })
+    }, invalidate)
   }
   if (m.hook === 'useDelete') {
     const id = ctx.expr(vars)
-    return mutateCallSpec(site, ctx, binding, {
-      method: 'DELETE',
-      url: api,
-      urlExpr: idUrl(api, id),
-      middleware: errorsMiddleware('DELETE', displayIdUrl(api, id)),
-    })
+
+    return mutateCallSpec(
+      site,
+      ctx,
+      binding,
+      { method: 'DELETE', url: api, urlExpr: idUrl(api, id), middleware: errorsMiddleware('DELETE', displayIdUrl(api, id)) },
+      invalidate,
+    )
   }
   // useUpdate: `{ id, data }` — read statically, because the id goes in the URL and the data in the body.
   if (vars.type !== 'ObjectExpression') {
@@ -434,16 +461,65 @@ export const recognizeCrudMutate: MethodCallRecognizer = (site, ctx) => {
     return ctx.unsupported(site.node, where, '`useUpdate()` needs both `id` (the URL) and `data` (the JSON body) — pass `{ id, data }`')
   }
   const id = ctx.expr(idNode)
+  const optimistic = optimisticPatch(dataNode, facts.schemas.get(m.feature) ?? [], { featureName, id, where: `\`${name}.${site.method}(…)\`` }, ctx)
 
-  return mutateCallSpec(site, ctx, binding, {
-    method: 'PUT',
-    url: api,
-    urlExpr: idUrl(api, id),
-    headers: JSON_HEADERS,
-    bodyExpr: { kind: 'json-stringify', arg: ctx.expr(dataNode) },
-    middleware: errorsMiddleware('PUT', displayIdUrl(api, id)),
-    noContent: true,
-  })
+  return mutateCallSpec(
+    site,
+    ctx,
+    binding,
+    {
+      method: 'PUT',
+      url: api,
+      urlExpr: idUrl(api, id),
+      headers: JSON_HEADERS,
+      bodyExpr: { kind: 'json-stringify', arg: ctx.expr(dataNode) },
+      middleware: errorsMiddleware('PUT', displayIdUrl(api, id)),
+      noContent: true,
+    },
+    { ...invalidate, ...(optimistic !== undefined ? { optimistic } : {}) },
+  )
+}
+
+const FIELD_TYPES: Readonly<Record<SchemaField['type'], TypeIR>> = {
+  string: { kind: 'string' },
+  number: { kind: 'number' },
+  boolean: { kind: 'boolean' },
+}
+
+/**
+ * The web's `onMutate` for `useUpdate`: `setQueryData([name, id], (old) => ({ ...old, ...data }))`. Natively the cached
+ * record is a typed struct, so the patch is applied FIELD BY FIELD — which needs `data` to be an object literal of the
+ * schema's own fields. Anything else keeps the request and the invalidation and skips only the optimistic write, NAMED.
+ */
+function optimisticPatch(
+  dataNode: AnyNode,
+  schema: readonly SchemaField[],
+  target: { featureName: string; id: ExprIR; where: string },
+  ctx: { expr(node: AnyNode): ExprIR; report(message: string): void },
+): MutateQueryEffects['optimistic'] {
+  const { featureName, id, where } = target
+  const skip = (why: string): undefined => {
+    ctx.report(
+      `${where}: ${why}, so the OPTIMISTIC write the web shows in \`useById(id)\` before the server answers is skipped natively — the request is sent, and every \`${featureName}\` query refreshes when it succeeds.`,
+    )
+
+    return undefined
+  }
+  const data = unwrapTypeLayers(dataNode)
+  if (data?.type !== 'ObjectExpression') {
+    return skip('`data` is not an object literal, so its fields cannot be read at compile time — write `data: { done: true }`')
+  }
+  const fields: { name: string; type: TypeIR; value: ExprIR }[] = []
+  for (const prop of (data.properties as AnyNode[] | undefined) ?? []) {
+    const key = prop.type === 'SpreadElement' ? undefined : propName(prop)
+    if (key === undefined) return skip('`data` holds a spread or a computed key, which cannot be read at compile time')
+    const field = schema.find((f) => f.name === key)
+    if (field === undefined) return skip(`\`data.${key}\` is not a field of the schema's record`)
+    fields.push({ name: key, type: FIELD_TYPES[field.type], value: ctx.expr(prop.value as AnyNode) })
+  }
+  if (fields.length === 0) return undefined
+  // The web keys the record `[name, id]` — the key `useById(id)` uses natively.
+  return { key: { kind: 'template', quasis: [`${featureName}:`, ''], exprs: [id] }, fields }
 }
 
 /**

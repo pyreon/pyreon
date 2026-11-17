@@ -71,11 +71,8 @@ const swift = transform(SRC, { target: 'swift' })
 const kotlin = transform(SRC, { target: 'kotlin' })
 
 describe('@pyreon/feature CRUD — web parity on iOS and Android (emit)', () => {
-  it('lowers without a new warning (only the by-design invalidation gap)', () => {
-    for (const r of [swift, kotlin]) {
-      expect(r.warnings).toHaveLength(3)
-      for (const w of r.warnings) expect(w).toMatch(/Native queries share no query client/)
-    }
+  it('lowers without a warning (the mutations refresh the feature queries natively, so no invalidation gap is left to report)', () => {
+    for (const r of [swift, kotlin]) expect(r.warnings).toEqual([])
   })
 
   it('every request rejects with the web helper error, naming the URL as the web message does (the id raw)', () => {
@@ -105,8 +102,8 @@ describe('@pyreon/feature CRUD — web parity on iOS and Android (emit)', () => 
     const sw = swift.code
     const kt = kotlin.code
     expect(sw).toContain('try await create.mutateAsync(PyreonHttpRequest(method: .post')
-    expect(sw).toMatch(/create\.mutateAsync\([^\n]*orEmpty: \{ __request in [^\n]*return try __response\.status == 204 \? nil : __response\.decode\(PyreonFeatureSchema_Todo\.self\) \}\)/)
-    expect(sw).toMatch(/update\.mutate\([^\n]*orEmpty: \{ __request in [^\n]*__response\.status == 204 \? nil/)
+    expect(sw).toMatch(/create\.mutateAsync\([^\n]*orEmpty: \{ __request in [^\n]*return try __response\.status == 204 \? nil : __response\.decode\(PyreonFeatureSchema_Todo\.self\) \} \}/)
+    expect(sw).toMatch(/update\.mutate\([^\n]*orEmpty: \{ __input in [^\n]*__response\.status == 204 \? nil/)
     expect(sw).toContain('call: PyreonMutationCallbacksOrEmpty(onSuccess: { t in')
     expect(sw).not.toMatch(/remove\.mutate\([^\n]*orEmpty/)
     expect(kt).toMatch(/create\.runAsyncOrEmpty\([^\n]*if \(__response\.status == 204\) null else PyreonFetchJson\.decodeFromString<PyreonFeatureSchema_Todo>\(__response\.body\)/)

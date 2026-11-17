@@ -54,6 +54,7 @@ import {
   recognizeCrudDecl,
   recognizeCrudMutate,
   scanCrud,
+  type SchemaField,
 } from './crud'
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
@@ -170,6 +171,60 @@ function scanFeatures(scan: ModuleScan): void {
       }
     }
   }
+}
+
+/**
+ * The fields the record struct of each file-scope feature declares, recorded BEFORE any component is parsed (a component
+ * can sit above the declaration) for the CRUD lowering's optimistic `useUpdate` write, which patches the struct field by
+ * field. The same rule {@link recognizeFeature} applies — a scalar validator, or a `'string' | 'number' | 'boolean'`
+ * literal — minus its diagnostics, which the declaration reports once.
+ */
+function scanSchemaFields(scan: ModuleScan): void {
+  const schemas = crudFacts(scan).schemas
+  for (const node of scan.body as readonly AnyNode[]) {
+    for (const d of topLevelDeclarators(node) as readonly AnyNode[]) {
+      const schemaNode = defineFeatureSchemaNode(d)
+      const validators = validatorObject(schemaNode)
+      const fieldMap = validators ?? schemaNode
+      if (fieldMap?.type !== 'ObjectExpression') continue
+      schemas.set(d.id.name as string, schemaFieldsOf(fieldMap, validators !== undefined))
+    }
+  }
+}
+
+/** The `schema:` value of a `const x = defineFeature({ … })` declarator, or `undefined` for any other declarator. */
+function defineFeatureSchemaNode(d: AnyNode): AnyNode | undefined {
+  const init = unwrapTypeLayers(d.init as AnyNode | undefined)
+  if (d.id?.type !== 'Identifier' || init?.type !== 'CallExpression' || init.callee?.type !== 'Identifier') return undefined
+  if (init.callee.name !== 'defineFeature') return undefined
+  const config = unwrapTypeLayers(((init.arguments as AnyNode[] | undefined) ?? [])[0])
+  if (config?.type !== 'ObjectExpression') return undefined
+  const schemaProp = ((config.properties as AnyNode[] | undefined) ?? []).find(
+    (p) => (p?.type === 'Property' || p?.type === 'ObjectProperty') && !hasDynamicKey(p) && staticPropKey(p) === 'schema',
+  )
+
+  return unwrapTypeLayers(schemaProp?.value as AnyNode | undefined)
+}
+
+/** The scalar type one schema entry declares: a scalar validator, or a `'string' | 'number' | 'boolean'` literal. */
+function schemaFieldType(value: AnyNode | undefined, fromValidators: boolean): FieldType | undefined {
+  if (fromValidators) return scalarValidator(value)?.type
+  if (value?.type === 'Literal' && typeof value.value === 'string' && SCALARS.has(value.value)) return value.value as FieldType
+
+  return undefined
+}
+
+function schemaFieldsOf(fieldMap: AnyNode, fromValidators: boolean): SchemaField[] {
+  const fields: SchemaField[] = []
+  for (const entry of (fieldMap.properties as AnyNode[] | undefined) ?? []) {
+    if ((entry?.type !== 'Property' && entry?.type !== 'ObjectProperty') || hasDynamicKey(entry)) continue
+    const name = staticPropKey(entry)
+    if (!name) continue
+    const type = schemaFieldType(unwrapTypeLayers(entry.value as AnyNode | undefined), fromValidators)
+    if (type !== undefined) fields.push({ name, type })
+  }
+
+  return fields
 }
 
 /**
@@ -497,6 +552,7 @@ export const featurePlugin: CompilerPlugin = Object.freeze({
   scanModule: (scan: ModuleScan) => {
     scanFeatures(scan)
     scanCrud(scan)
+    scanSchemaFields(scan)
   },
   declCalls: recognizeCrudDecl,
   decls: crudDecls,
