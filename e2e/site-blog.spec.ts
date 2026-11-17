@@ -3,7 +3,7 @@ import { type ChildProcess, spawn } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import blogCopy from '../docs/src/site/content/pages/channels/blog.json'
-import { auditContrast } from './site-audit'
+import { auditContrast, SITE_WIDTHS } from './site-audit'
 import { waitForIsland, waitForNav } from './site-islands'
 
 /**
@@ -25,7 +25,7 @@ const SCHEDULED = resolve(ROOT, 'docs/dist-scheduled')
 const POSTS_DIR = resolve(ROOT, 'docs/src/content/blog')
 const SCHEDULED_PORT = 5192
 const SCHEDULED_URL = `http://localhost:${SCHEDULED_PORT}`
-const WIDTHS = [320, 390, 768, 1024, 1440]
+const WIDTHS = SITE_WIDTHS
 const slugs = readdirSync(POSTS_DIR)
   .filter((f) => f.endsWith('.md'))
   .map((f) => f.slice(0, -3))

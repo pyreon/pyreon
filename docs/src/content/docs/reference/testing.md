@@ -77,27 +77,27 @@ test('effect re-runs only when its dep changes', () => {
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`render`](#render-function) | function | Mount a Pyreon VNode into an isolated container (a fresh `<div>` appended to `baseElement`, default `document.body`) via |
+| [`render`](#render-function) | function | Mount a Pyreon VNode into an isolated container (a fresh `<div>` appended to `baseElement`, default `document.body`) via… |
 | [`cleanup`](#cleanup-function) | function | Unmount every live `render()` result (each `unmount()` disposes the tree + removes its container). |
 | [`renderHook`](#renderhook-function) | function | Test a hook in isolation. |
-| [`expectSignal`](#expectsignal-function) | function | Assert how many times a signal/computed fired, by reading its node's `fires` count from Pyreon's reactive graph (`getRea |
+| [`expectSignal`](#expectsignal-function) | function | Assert how many times a signal/computed fired, by reading its node's `fires` count from Pyreon's reactive graph… |
 | [`expectEffect`](#expecteffect-function) | function | Assert whether an effect re-runs in response to an action. |
 | [`expectGarbageCollected`](#expectgarbagecollected-function) | function | ASYNC. |
 | [`expectNoReactiveLeak`](#expectnoreactiveleak-function) | function | ASYNC. |
-| [`Testing Library re-exports`](#testing-library-re-exports-function) | function | The full `@testing-library/dom` surface is re-exported VERBATIM — same functions, same signatures, same ARIA + accessibl |
-| [`renderForm`](#renderform-function) | function | renderHook-style harness for `useForm` — runs your setup inside a probe component (no hand-written form component) and r |
-| [`fillForm`](#fillform-function) | function | Fill a REAL rendered form by ACCESSIBLE LABEL: keys are `getByLabelText` matchers (register()'s `labelProps()` wires the |
-| [`submitForm`](#submitform-function) | function | Submit a REAL rendered form: locates the `<form>` element (scope itself, a descendant, or an ancestor via `closest`) and |
+| [`Testing Library re-exports`](#testing-library-re-exports-function) | function | The full `@testing-library/dom` surface is re-exported VERBATIM — same functions, same signatures, same ARIA +… |
+| [`renderForm`](#renderform-function) | function | renderHook-style harness for `useForm` — runs your setup inside a probe component (no hand-written form component) and… |
+| [`fillForm`](#fillform-function) | function | Fill a REAL rendered form by ACCESSIBLE LABEL: keys are `getByLabelText` matchers (register()'s `labelProps()` wires the… |
+| [`submitForm`](#submitform-function) | function | Submit a REAL rendered form: locates the `<form>` element (scope itself, a descendant, or an ancestor via `closest`) and… |
 | [`expectForm`](#expectform-function) | function | Fluent assertions over a `FormState` (the package's `expectSignal` convention — no `expect.extend`). |
 | [`renderWithTheme`](#renderwiththeme-function) | function | Render `ui` wrapped in `<PyreonUI theme mode>` so rocketstyle / styler / ui-components resolve a real theme. |
-| [`expectComputedStyle`](#expectcomputedstyle-function) | function | Computed-style assertion with VALUE NORMALIZATION on both sides: each value round-trips through `getComputedStyle` on a  |
+| [`expectComputedStyle`](#expectcomputedstyle-function) | function | Computed-style assertion with VALUE NORMALIZATION on both sides: each value round-trips through `getComputedStyle` on a… |
 | [`renderWithRouter`](#renderwithrouter-function) | function | ASYNC render harness for `@pyreon/router`. |
 | [`expectRouter`](#expectrouter-function) | function | Fluent current-route assertion. |
-| [`installStoreReset`](#installstorereset-function) | function | Registers `afterEach(resetAllStores)` for the current test file (or suite-wide from a vitest `setupFiles` module): every |
-| [`withFreshStore`](#withfreshstore-function) | function | Scoped isolation for ONE store: disposes any pre-existing instance with the same id, hands `fn` a GUARANTEED-FRESH insta |
-| [`renderWithI18n`](#renderwithi18n-function) | function | Render `ui` under `<I18nProvider>` — pass `locale` + `messages` (any `createI18n` option flows through) or a pre-built ` |
-| [`expectToast`](#expecttoast-function) | function | Toast assertions against the STORE (`toast()` works headless, so these work with OR without a mounted `<Toaster>` — no p |
-| [`renderWithQueryClient`](#renderwithqueryclient-function) | function | Render `ui` under `<QueryClientProvider>` with a FRESH ISOLATED test client per call (the TanStack testing convention):  |
+| [`installStoreReset`](#installstorereset-function) | function | Registers `afterEach(resetAllStores)` for the current test file (or suite-wide from a vitest `setupFiles` module): every… |
+| [`withFreshStore`](#withfreshstore-function) | function | Scoped isolation for ONE store: disposes any pre-existing instance with the same id, hands `fn` a GUARANTEED-FRESH… |
+| [`renderWithI18n`](#renderwithi18n-function) | function | Render `ui` under `<I18nProvider>` — pass `locale` + `messages` (any `createI18n` option flows through) or a pre-built… |
+| [`expectToast`](#expecttoast-function) | function | Toast assertions against the STORE (`toast()` works headless, so these work with OR without a mounted `<Toaster>` — no… |
+| [`renderWithQueryClient`](#renderwithqueryclient-function) | function | Render `ui` under `<QueryClientProvider>` with a FRESH ISOLATED test client per call (the TanStack testing convention):… |
 
 ## API
 

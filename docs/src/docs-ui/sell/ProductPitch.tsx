@@ -2,6 +2,7 @@ import type { ProductData } from '../../site/content/model'
 import { DocsGlyph as Glyph } from '../glyph'
 import { InstallCommand } from '../../site/kit/controls'
 import { Inline } from '../inline'
+import { CodeSpans } from '../code-spans'
 
 /**
  * `<ProductPitch id="form" />` in an overview page's Markdown marks where the
@@ -45,7 +46,7 @@ export function PitchHead(props: { product: ProductData }) {
       <dl class="dx-facts">
         {p.hero.facts.slice(0, 3).map((f) => (
           <div>
-            <dt>{f.key}</dt>
+            <dt><CodeSpans text={f.key} /></dt>
             <dd><Inline text={f.value} /></dd>
           </div>
         ))}

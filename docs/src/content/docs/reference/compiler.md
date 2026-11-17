@@ -33,33 +33,33 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`transformJSX`](#transformjsx-function) | function | The production entry point. |
-| [`transformPlain`](#transformplain-function) | function | The Plain Mode pre-pass — a source-to-source rewrite that runs automatically inside `transformJSX` BEFORE either backend |
+| [`transformPlain`](#transformplain-function) | function | The Plain Mode pre-pass — a source-to-source rewrite that runs automatically inside `transformJSX` BEFORE either… |
 | [`migrateToPlain`](#migratetoplain-function) | function | The classic → Plain Mode codemod, and the analysis behind the `pyreon plain` readiness report. |
 | [`transformJSX_JS`](#transformjsx_js-function) | function | The pure-JS reactive pass (parses via `oxc-parser`). |
 | [`analyzeReactivity`](#analyzereactivity-function-experimental) | function | Reactivity-Lens entry point (experimental). |
-| [`formatReactivityLens`](#formatreactivitylens-function-experimental) | function | Renders an `analyzeReactivity` result as an annotated-source CLI / debug view — each spanned expression gets an inline ` |
-| [`analyzeValidate`](#analyzevalidate-function-experimental) | function | Build-time analogue of @pyreon/validate's runtime JIT: reads `s.*` schema DEFINITIONS from source and parses each into a |
-| [`emitValidator`](#emitvalidator-function-experimental) | function | Emits a monomorphic, fully-inlined validator FUNCTION SOURCE for an emittable `analyzeValidate` IR node — straight-line  |
-| [`detectReactPatterns`](#detectreactpatterns-function) | function | AST-based detector for "coming from React" mistakes — 19 codes today: React-package imports (`react-import`, `react-dom- |
-| [`migrateReactCode`](#migratereactcode-function) | function | One-shot React→Pyreon codemod whose output updates: `useState`→`signal` with every read rewritten to `x()` and every set |
+| [`formatReactivityLens`](#formatreactivitylens-function-experimental) | function | Renders an `analyzeReactivity` result as an annotated-source CLI / debug view — each spanned expression gets an inline… |
+| [`analyzeValidate`](#analyzevalidate-function-experimental) | function | Build-time analogue of @pyreon/validate's runtime JIT: reads `s.*` schema DEFINITIONS from source and parses each into a… |
+| [`emitValidator`](#emitvalidator-function-experimental) | function | Emits a monomorphic, fully-inlined validator FUNCTION SOURCE for an emittable `analyzeValidate` IR node — straight-line… |
+| [`detectReactPatterns`](#detectreactpatterns-function) | function | AST-based detector for "coming from React" mistakes — 19 codes today: React-package imports (`react-import`,… |
+| [`migrateReactCode`](#migratereactcode-function) | function | One-shot React→Pyreon codemod whose output updates: `useState`→`signal` with every read rewritten to `x()` and every… |
 | [`migratePyreonCode`](#migratepyreoncode-function) | function | Pyreon→correct-Pyreon codemod (the parallel to `migrateReactCode`). |
 | [`hasReactPatterns`](#hasreactpatterns-function) | function | Fast regex pre-filter — returns whether `code` is worth a full `detectReactPatterns` AST walk. |
-| [`diagnoseError`](#diagnoseerror-function) | function | Maps a raw runtime/build error string to a structured `ErrorDiagnosis` (likely cause + actionable fix) for known Pyreon  |
-| [`detectPyreonPatterns`](#detectpyreonpatterns-function) | function | AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 21 codes today (`for-missing-by`, `for- |
-| [`hasPyreonPatterns`](#haspyreonpatterns-function) | function | Fast regex pre-filter for `detectPyreonPatterns` — deliberately loose (the AST walker is the precise gate); only has to  |
-| [`auditTestEnvironment`](#audittestenvironment-function) | function | Scans every `*.test.ts(x)` under `startDir` for the mock-vnode anti-pattern (constructing `{ type, props, children }` li |
-| [`formatTestAudit`](#formattestaudit-function) | function | Human-readable renderer for an `auditTestEnvironment` result; `options.minRisk` filters the floor (`high` \| `medium` \| ` |
-| [`auditIslands`](#auditislands-function) | function | Project-wide syntactic island audit — five cross-file detectors (`duplicate-name`, `never-with-registry-entry`, `registr |
+| [`diagnoseError`](#diagnoseerror-function) | function | Maps a raw runtime/build error string to a structured `ErrorDiagnosis` (likely cause + actionable fix) for known Pyreon… |
+| [`detectPyreonPatterns`](#detectpyreonpatterns-function) | function | AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 21 codes today (`for-missing-by`,… |
+| [`hasPyreonPatterns`](#haspyreonpatterns-function) | function | Fast regex pre-filter for `detectPyreonPatterns` — deliberately loose (the AST walker is the precise gate); only has to… |
+| [`auditTestEnvironment`](#audittestenvironment-function) | function | Scans every `*.test.ts(x)` under `startDir` for the mock-vnode anti-pattern (constructing `{ type, props, children }`… |
+| [`formatTestAudit`](#formattestaudit-function) | function | Human-readable renderer for an `auditTestEnvironment` result; `options.minRisk` filters the floor (`high` \| `medium` \|… |
+| [`auditIslands`](#auditislands-function) | function | Project-wide syntactic island audit — five cross-file detectors (`duplicate-name`, `never-with-registry-entry`,… |
 | [`formatIslandAudit`](#formatislandaudit-function) | function | Text renderer for an `auditIslands` result — each finding with file path + line/column + an actionable fix suggestion. |
-| [`auditSsg`](#auditssg-function) | function | Project-wide syntactic SSG audit — three detectors: `404-outside-layout-dir` (`_404.tsx` not co-located with `_layout.ts |
+| [`auditSsg`](#auditssg-function) | function | Project-wide syntactic SSG audit — three detectors: `404-outside-layout-dir` (`_404.tsx` not co-located with… |
 | [`formatSsgAudit`](#formatssgaudit-function) | function | Text renderer for an `auditSsg` result — file path + line/column + actionable fix per finding. |
 | [`transformDeferInline`](#transformdeferinline-function) | function | Standalone pre-pass that inlines `<Defer>` namespace-import boundaries. |
-| [`composeMappings`](#composemappings-function) | function | Compose the `mappings` of two single-source V3 maps from positioned-edit transforms: `outer` maps C → B, `inner` maps B  |
-| [`generateContext`](#generatecontext-function) | function | Project scanner — walks the source tree and produces a structured `ProjectContext` (routes, islands, components) that `@ |
-| [`filePathToUrlPath`](#filepathtourlpath-function) | function | The `@pyreon/zero` fs-route convention: extension-stripped route file path → URL pattern (`index` collapses, `[id]` → `: |
-| [`isApiRoute`](#isapiroute-function) | function | True for a zero file-based API route: a `.ts`/`.js` file inside the TOP-LEVEL `api/` directory of the routes dir (path i |
-| [`apiFilePathToPattern`](#apifilepathtopattern-function) | function | API route file path → URL pattern, keeping the `api/` prefix (it IS part of the URL): `api/posts.ts` → `/api/posts`, `ap |
-| [`deriveIslandName`](#deriveislandname-function) | function | The island auto-name derivation: `const X = island(…)` (no explicit `name:`) in file F gets the registry name `X$&lt;fnv1a6 |
+| [`composeMappings`](#composemappings-function) | function | Compose the `mappings` of two single-source V3 maps from positioned-edit transforms: `outer` maps C → B, `inner` maps B… |
+| [`generateContext`](#generatecontext-function) | function | Project scanner — walks the source tree and produces a structured `ProjectContext` (routes, islands, components) that… |
+| [`filePathToUrlPath`](#filepathtourlpath-function) | function | The `@pyreon/zero` fs-route convention: extension-stripped route file path → URL pattern (`index` collapses, `[id]` →… |
+| [`isApiRoute`](#isapiroute-function) | function | True for a zero file-based API route: a `.ts`/`.js` file inside the TOP-LEVEL `api/` directory of the routes dir (path… |
+| [`apiFilePathToPattern`](#apifilepathtopattern-function) | function | API route file path → URL pattern, keeping the `api/` prefix (it IS part of the URL): `api/posts.ts` → `/api/posts`,… |
+| [`deriveIslandName`](#deriveislandname-function) | function | The island auto-name derivation: `const X = island(…)` (no explicit `name:`) in file F gets the registry name… |
 
 ## API
 

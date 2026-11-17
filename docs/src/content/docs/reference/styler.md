@@ -33,23 +33,23 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | --- | --- | --- |
 | [`defineTheme`](#definetheme-function) | function | Declare the app's design tokens. |
 | [`styled`](#styled-function) | function | Component factory. |
-| [`css`](#css-function) | function | Tagged-template that returns a LAZY `CSSResult` — it is NOT a class name or a CSS string until resolved by `styled()`, ` |
-| [`keyframes`](#keyframes-function) | function | Tagged-template returning a `KeyframesResult` whose string form is the GENERATED, content-hashed `@keyframes` animation  |
-| [`createGlobalStyle`](#createglobalstyle-function) | function | Returns a `ComponentFn` that injects GLOBAL CSS (resets, `:root` tokens, body styles) when MOUNTED — it is not a side-ef |
+| [`css`](#css-function) | function | Tagged-template that returns a LAZY `CSSResult` — it is NOT a class name or a CSS string until resolved by `styled()`,… |
+| [`keyframes`](#keyframes-function) | function | Tagged-template returning a `KeyframesResult` whose string form is the GENERATED, content-hashed `@keyframes` animation… |
+| [`createGlobalStyle`](#createglobalstyle-function) | function | Returns a `ComponentFn` that injects GLOBAL CSS (resets, `:root` tokens, body styles) when MOUNTED — it is not a… |
 | [`useCSS`](#usecss-hook) | hook | Resolves a `CSSResult` (from the `css` tagged template) to an injected class-name string inside a component. |
 | [`useTheme`](#usetheme-hook) | hook | Returns the current theme as a SNAPSHOT at call time. |
 | [`useThemeAccessor`](#usethemeaccessor-hook) | hook | Returns the raw `() => T` theme accessor (not a snapshot). |
 | [`ThemeProvider`](#themeprovider-component) | component | Provides a theme to the reactive `ThemeContext`. |
 | [`ThemeContext`](#themecontext-constant) | constant | The reactive context backing the theme. |
-| [`createSheet`](#createsheet-function) | function | Creates an ISOLATED `StyleSheet` instance (its own FNV-1a dedup cache + rule registry) instead of the shared singleton ` |
-| [`StyleSheet`](#stylesheet-class) | class | The CSS injection engine: FNV-1a content hashing, a dedup cache (identical CSS → one rule), and SSR support (collect rul |
-| [`sheet`](#sheet-constant) | constant | The process-wide singleton `StyleSheet` that `styled()` / `css` / `keyframes` / `createGlobalStyle` inject into by defau |
-| [`resolve`](#resolve-function) | function | Low-level: resolve a tagged-template (strings + interpolations) against a `props` object into a final CSS string (functi |
-| [`normalizeCSS`](#normalizecss-function) | function | Normalizes a raw CSS string (whitespace/format canonicalization) so identical-intent CSS hashes to the same FNV-1a key a |
-| [`resolveValue`](#resolvevalue-function) | function | Resolves a SINGLE interpolation against `props`: invokes function interpolations with `props`, flattens nested `CSSResul |
+| [`createSheet`](#createsheet-function) | function | Creates an ISOLATED `StyleSheet` instance (its own FNV-1a dedup cache + rule registry) instead of the shared singleton… |
+| [`StyleSheet`](#stylesheet-class) | class | The CSS injection engine: FNV-1a content hashing, a dedup cache (identical CSS → one rule), and SSR support (collect… |
+| [`sheet`](#sheet-constant) | constant | The process-wide singleton `StyleSheet` that `styled()` / `css` / `keyframes` / `createGlobalStyle` inject into by… |
+| [`resolve`](#resolve-function) | function | Low-level: resolve a tagged-template (strings + interpolations) against a `props` object into a final CSS string… |
+| [`normalizeCSS`](#normalizecss-function) | function | Normalizes a raw CSS string (whitespace/format canonicalization) so identical-intent CSS hashes to the same FNV-1a key… |
+| [`resolveValue`](#resolvevalue-function) | function | Resolves a SINGLE interpolation against `props`: invokes function interpolations with `props`, flattens nested… |
 | [`clearNormCache`](#clearnormcache-function) | function | Clears the `normalizeCSS` memo cache. |
-| [`buildProps`](#buildprops-function) | function | Builds the final prop object forwarded to the rendered element: merges the generated class, drops `$`-transient props, a |
-| [`filterProps`](#filterprops-function) | function | Returns a copy of `props` keeping ONLY known HTML attributes plus `data-*` / `aria-*` (an allowlist, not a denylist); `$ |
+| [`buildProps`](#buildprops-function) | function | Builds the final prop object forwarded to the rendered element: merges the generated class, drops `$`-transient props,… |
+| [`filterProps`](#filterprops-function) | function | Returns a copy of `props` keeping ONLY known HTML attributes plus `data-*` / `aria-*` (an allowlist, not a denylist);… |
 | [`isDynamic`](#isdynamic-function) | function | True when an interpolation is a function (signal accessor / props reader) — i.e. |
 | [`hash / hashUpdate / hashFinalize / HASH_INIT`](#hash-hashupdate-hashfinalize-hash_init-function) | function | The FNV-1a non-cryptographic hash styler uses for compact, deduped class names + rule keys. |
 | [`setStyleExtraction`](#setstyleextraction-function) | function | Internal dependency-injection seam for Custom-Property Style Extraction (CPSE). |
