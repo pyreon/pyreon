@@ -17,6 +17,7 @@ export function queryDeclKotlin(d: ExtDecl, ctx: EmitContext): string {
     p.queryKeyExpr !== undefined || p.urlExpr !== undefined || p.valueExpr !== undefined
       ? '""'
       : ctx.stringLiteral(p.queryKey)
+
   return `val ${ctx.ident(d.name)} = remember { PyreonQuery<${ctx.typeText(p.type)}>(queryKey = ${key}, staleMillis = ${p.staleMillis}L) }`
 }
 
@@ -79,6 +80,7 @@ export function queryLifecycleKotlin(decl: ExtDecl, ctx: KotlinEmitContext): rea
   }
   lines.push(`  }`)
   lines.push(`}`)
+
   return lines
 }
 
@@ -139,5 +141,6 @@ export function streamLifecycleKotlin(decl: ExtDecl, ctx: EmitContext): readonly
   }
   out.push(`  onDispose { ${name}.stop() }`)
   out.push(`}`)
+
   return out
 }

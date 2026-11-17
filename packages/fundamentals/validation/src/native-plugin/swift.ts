@@ -42,6 +42,7 @@ function swiftFieldType(t: ZodFieldType, integer = true): string {
   } else {
     elem = `PyreonZodSchema_${t.element.schemaName}`
   }
+
   return `[${elem}]`
 }
 
@@ -61,6 +62,7 @@ function swiftFieldInitial(t: ZodFieldType): string {
     // Initialize nested object with its own default constructor
     return `PyreonZodSchema_${t.schemaName}()`
   }
+
   return '[]'
 }
 
@@ -263,6 +265,7 @@ function emitSwiftDiscriminatedUnion(zs: ZodSchemaDefnIR): string {
   lines.push(`        catch { return .failure(.missingOrWrongType(field: "?", expected: "?")) }`)
   lines.push(`    }`)
   lines.push(`}`)
+
   return lines.join('\n') + '\n'
 }
 
@@ -478,6 +481,7 @@ export function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
     lines.push(``)
     lines.push(`let ${zs.bindingName} = PyreonZodSchema_${zs.bindingName}()`)
   }
+
   return lines.join('\n')
 }
 

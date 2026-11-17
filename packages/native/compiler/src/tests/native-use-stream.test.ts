@@ -298,6 +298,7 @@ describe('useStream emit compiles against the REAL runtime source', () => {
         const code = swift(src).code.replace(/\bFeed\b/g, `Feed${i}`).replace(/\bLogLine\b/g, `LogLine${i}`)
         const p = join(dir, `App${i}.swift`)
         writeFileSync(p, `import SwiftUI\nimport Foundation\n${code}`)
+
         return p
       })
       // PyreonURL lives in the core runtime; the stream emit's runtime :param uses it.
@@ -347,6 +348,7 @@ describe('useStream emit compiles against the REAL runtime source', () => {
         const code = kotlin(src).code.replace(/\bFeed\b/g, `Feed${i}`).replace(/\bLogLine\b/g, `LogLine${i}`)
         const p = join(dir, `App${i}.kt`)
         writeFileSync(p, code)
+
         return p
       })
       execFileSync('kotlinc', ['-nowarn', '-d', join(dir, 'out'), join(dir, 'Stubs.kt'), join(dir, 'PyreonStream.kt'), join(dir, 'PyreonStreamAndroid.kt'), join(dir, 'AndroidOs.kt'), ...inputs], {

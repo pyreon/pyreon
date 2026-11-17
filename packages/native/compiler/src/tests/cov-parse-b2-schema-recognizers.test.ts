@@ -13,9 +13,11 @@ import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 const AK = `import { arktypeSchema } from '@pyreon/validation'
 declare const type: any
 `
+
 const Z = `import { zodSchema } from '@pyreon/validation'
 import { z } from 'zod'
 `
+
 const VB = `import { valibotSchema } from '@pyreon/validation'
 import * as v from 'valibot'
 declare const safeParse: <T>(s: unknown, i: unknown) => T
@@ -23,6 +25,7 @@ declare const safeParse: <T>(s: unknown, i: unknown) => T
 
 const swift = (src: string) => transform(src, { target: 'swift' })
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })
+
 /** Every `PyreonZodSchema_*` struct/data class/enum name the emit produced. */
 const schemaNames = (code: string): string[] =>
   [...code.matchAll(/(?:struct|data class|enum) (PyreonZodSchema_\w*)/g)].map((m) => m[1]!)

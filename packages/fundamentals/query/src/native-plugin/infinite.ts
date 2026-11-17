@@ -62,6 +62,7 @@ function pageParamBinding(fn: AnyNode): string | undefined {
     // `{ pageParam = 0 }` — a default is bound to the same name.
     if (value?.type === 'AssignmentPattern' && value.left?.type === 'Identifier') return value.left.name as string
   }
+
   return undefined
 }
 
@@ -71,6 +72,7 @@ function returnedExpression(fn: AnyNode): AnyNode | undefined {
   if (body?.type !== 'BlockStatement') return body
   const statements = (body.body as AnyNode[] | undefined) ?? []
   const only = statements[0]
+
   return statements.length === 1 && only?.type === 'ReturnStatement' ? (only.argument as AnyNode | undefined) : undefined
 }
 
@@ -93,6 +95,7 @@ function nextParamField(fn: AnyNode): { last: string; field: string } | undefine
   if (expr?.type !== 'MemberExpression' || expr.computed === true) return undefined
   if (expr.object?.type !== 'Identifier' || expr.object.name !== first.name) return undefined
   if (expr.property?.type !== 'Identifier') return undefined
+
   return { last: first.name as string, field: expr.property.name as string }
 }
 
@@ -176,6 +179,7 @@ export function recognizeInfiniteQuery(_call: CallSite, ctx: ParseContext): ExtD
     ...(url === undefined ? {} : { url }),
     ...(urlExpr === undefined ? {} : { urlExpr }),
   }
+
   return { type: INFINITE_QUERY_TYPE, payload: body as unknown as NonNullable<ExtDeclSpec['payload']> }
 }
 
@@ -196,6 +200,7 @@ export function infiniteLifecycleSwift(decl: ExtDecl, ctx: EmitContext): readonl
   const name = ctx.ident(decl.name)
   const url = p.urlExpr !== undefined ? ctx.expr(p.urlExpr, 0) : ctx.stringLiteral(p.url as string)
   const page = ctx.typeText(p.pageType)
+
   return [
     '.task {',
     `  ${name}.getNextParam = { ${ctx.ident(p.lastPageName)} in pyreonPageParam(${ctx.ident(p.lastPageName)}.${ctx.ident(p.nextField)}) }`,
@@ -226,6 +231,7 @@ export function infiniteLifecycleKotlin(decl: ExtDecl, ctx: EmitContext): readon
   const name = ctx.ident(decl.name)
   const url = p.urlExpr !== undefined ? ctx.expr(p.urlExpr, 0) : ctx.stringLiteral(p.url as string)
   const page = ctx.typeText(p.pageType)
+
   return [
     'LaunchedEffect(Unit) {',
     `  ${name}.getNextParam = { ${ctx.ident(p.lastPageName)} -> pyreonPageParam(${ctx.ident(p.lastPageName)}.${ctx.ident(p.nextField)}) }`,
@@ -285,6 +291,7 @@ function fieldOf(site: ReceiverSite): string | undefined {
   }
   const read = site.expr
   if (read.object.kind !== 'identifier') return undefined
+
   return INFINITE_FIELDS.has(read.property) ? read.property : undefined
 }
 

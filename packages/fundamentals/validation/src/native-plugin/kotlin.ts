@@ -36,6 +36,7 @@ function kotlinFieldType(t: ZodFieldType, integer = true): string {
   } else {
     elem = `PyreonZodSchema_${t.element.schemaName}`
   }
+
   return `List<${elem}>`
 }
 
@@ -47,6 +48,7 @@ function kotlinFieldInitial(t: ZodFieldType, integer = true): string {
     // Initialize nested object with its own default constructor
     return `PyreonZodSchema_${t.schemaName}()`
   }
+
   return 'emptyList()'
 }
 
@@ -274,6 +276,7 @@ function emitKotlinDiscriminatedUnion(zs: ZodSchemaDefnIR): string {
   lines.push(`        }`)
   lines.push(`    }`)
   lines.push(`}`)
+
   return lines.join('\n') + '\n'
 }
 
@@ -486,6 +489,7 @@ export function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
     lines.push(``)
     lines.push(`val ${zs.bindingName} = PyreonZodSchema_${zs.bindingName}()`)
   }
+
   return lines.join('\n')
 }
 

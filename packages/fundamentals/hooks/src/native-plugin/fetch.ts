@@ -120,6 +120,7 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
     ctx.warn(
       `useFetch needs a statically-known url — an inline string, or a module-scope \`const\` holding one. The url is BAKED into the native request, so a computed one cannot be resolved at build time. Got ${urlArg?.type ?? 'nothing'}.`,
     )
+
     return null
   }
   const url = resolvedUrl ?? (constUrl as string)
@@ -267,6 +268,7 @@ function swiftHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
     lines.push(`    ${name}.resolve(try PyreonJSON.decode(${ctx.typeText(p.type)}.self, from: bytes))`)
   }
   lines.push(`  } catch { ${name}.reject(error) }`, `}`)
+
   return lines
 }
 
@@ -291,6 +293,7 @@ function kotlinHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
     lines.push(`    ${name}.resolve(PyreonJson.decode<${ctx.typeText(p.type)}>(body))`)
   }
   lines.push(`  } catch (e: Throwable) { ${name}.reject(e) }`, `}`)
+
   return lines
 }
 
@@ -362,6 +365,7 @@ function fieldOf(site: ReceiverSite): string | undefined {
   }
   const read = site.expr
   if (read.object.kind !== 'identifier') return undefined
+
   return FETCH_FIELDS.has(read.property) ? read.property : undefined
 }
 
