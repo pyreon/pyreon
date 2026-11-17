@@ -953,6 +953,29 @@ final class PyreonCounterUITests: XCTestCase {
         )
     }
 
+    // useDatabase — the rest of the surface: get, find, update and delete.
+    // Mirror of the Android `databaseGetFindUpdateDeleteRunOnDevice`; the
+    // rendered line is each result in order (see that test for the key).
+    // Run CRUD clears its collection first, so the expected line is absolute.
+    func test_databaseGetFindUpdateDeleteRunOnDevice() throws {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Count: 0"].waitForExistence(timeout: 30), "App did not render")
+
+        let run = app.buttons["Run CRUD"]
+        bringFullyOnScreen(run, in: app)
+        XCTAssertTrue(run.waitForExistence(timeout: 10), "Run CRUD button missing")
+        run.tap()
+
+        let predicate = NSPredicate(format: "label BEGINSWITH %@", "CRUD ")
+        let line = app.staticTexts.containing(predicate).firstMatch
+        let expected = "CRUD n:2>2 get:updated find:1/1 del:true/false c2:gone left:1"
+        XCTAssertTrue(
+            waitForLabel(line, expected, timeout: 15),
+            "database CRUD rendered \"\(line.exists ? line.label : "<missing>")\", expected \"\(expected)\""
+        )
+    }
+
     func test_accessibilityLabelReachesTree() throws {
         let app = XCUIApplication()
         app.launch()

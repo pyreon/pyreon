@@ -5378,7 +5378,9 @@ const open = db.find('notes', 'done', 'false')`,
     notes: 'A tiny, SYNCHRONOUS document store, shared across web / iOS / Android, mirroring the native `PyreonDatabase` container (file-backed on both native targets — records survive relaunch). The API is synchronous because the native one is (`get` returns `PyreonRecord?`, not a promise) — that rules out IndexedDB for the web half, so `localStorage` backs it: synchronous, persistent across reloads, ~5 MB per origin. This is for small app-state record sets, NOT a real database: `find` is a linear scan (as it is natively), and every `PyreonRecord.fields` value is a STRING on every target (`[String: String]` natively) — serialize numbers/dates yourself. See also: useSecureStorage, useStorage (in @pyreon/storage).',
     mistakes: `- Storing a number or boolean directly in \`fields\` — every value is a STRING on every target (native \`[String: String]\`); serialize (\`String(n)\`) on write, parse on read
 - Expecting \`get\`/\`find\` to be async — the whole point is a SYNCHRONOUS API matching the native container; no \`await\`, no promise
-- Using this for a real dataset — it is \`localStorage\`-backed (~5 MB/origin) with a linear-scan \`find\`, meant for small app-state record sets, not a production database`,
+- Using this for a real dataset — it is \`localStorage\`-backed (~5 MB/origin) with a linear-scan \`find\`, meant for small app-state record sets, not a production database
+- Reading a field with a dot (\`rec.fields.title\`) in code that also compiles to native — \`fields\` is a dictionary there (\`[String: String]\` / \`Map<String, String>\`), so the dot read does not compile on iOS or Android. Read it by key with a fallback: \`rec.fields['title'] ?? ''\`
+- Expecting \`delete\` to return true for an id that is not there — it returns whether a record was removed, on every target; there is no separate \`update\`, because \`insert\` with an existing id replaces that record`,
   },
 
   'hooks/useCrashReporter': {
