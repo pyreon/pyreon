@@ -3,18 +3,19 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { waitForDocs } from './docs-islands'
+import { SITE_WIDTHS } from './site-audit'
 
 /**
  * The Docs v3 reading shell, against the production SSG build (run by the
  * `docs` project of e2e-configs/docs.config.ts, which matches this file):
  * one page of each type (docs home, product overview with its selling slots,
- * guide, API reference) at the five design widths in both themes, the reader
+ * guide, API reference) at the seven site widths in both themes, the reader
  * tools, the slots, that islands adopt the server DOM, the contrast of every
  * text node in the reading column and the rail, and the weight of each page
  * type (docs pages are static HTML with islands: no router app, no styling
  * runtime, and no marketing-only CSS).
  */
-const WIDTHS = [320, 390, 768, 1024, 1440]
+const WIDTHS = SITE_WIDTHS
 const PAGES = { home: '/docs', overview: '/docs/form', guide: '/docs/guides/forms', reference: '/docs/reference/form' } as const
 const DIST = resolve(__dirname, '../docs/dist')
 
@@ -64,7 +65,7 @@ test.describe('docs build output', () => {
 test.describe('docs page types', () => {
   for (const [kind, path] of Object.entries(PAGES)) {
     for (const theme of ['dark', 'light'] as const) {
-      test(`${kind} (${path}) in ${theme}: renders, adopts the server DOM, no overflow at five widths`, async ({ page }) => {
+      test(`${kind} (${path}) in ${theme}: renders, adopts the server DOM, no overflow at seven widths`, async ({ page }) => {
         const errors = collectErrors(page)
         await trackRemovals(page)
         await page.emulateMedia({ colorScheme: theme })

@@ -55,6 +55,19 @@ describe('<Callout>', () => {
     cleanup()
   })
 
+  it('renders backtick spans in the title as code, and names the aside without the backticks', () => {
+    const { container, cleanup } = mountReactive(
+      <Callout type="tip" title="`by`, not `key`">
+        body
+      </Callout>,
+    )
+    const title = container.querySelector('.callout__title')!
+    expect([...title.querySelectorAll('code')].map((c) => c.textContent)).toEqual(['by', 'key'])
+    expect(title.textContent).toBe('by, not key')
+    expect(container.querySelector('aside')!.getAttribute('aria-label')).toBe('by, not key')
+    cleanup()
+  })
+
   it('renders rich children inside the body', () => {
     const { container, cleanup } = mountReactive(
       <Callout type="warning">

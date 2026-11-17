@@ -62,10 +62,10 @@ A full, end-to-end usage of the package:
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`mcp_overview`](#mcp_overview-constant) | constant | Returns a markdown table of every registered MCP tool with a one-sentence "when to use" description and a one-line examp |
+| [`mcp_overview`](#mcp_overview-constant) | constant | Returns a markdown table of every registered MCP tool with a one-sentence "when to use" description and a one-line… |
 | [`get_browser_smoke_status`](#get_browser_smoke_status-constant) | constant | Companion to the `pyreon/require-browser-smoke-test` lint rule. |
 | [`get_api`](#get_api-constant) | constant | Look up any Pyreon API by `package` (e.g. |
-| [`validate`](#validate-constant) | constant | Two AST-based detectors run in parallel: `detectReactPatterns` flags "coming from React" mistakes (`useState`, `useEffec |
+| [`validate`](#validate-constant) | constant | Two AST-based detectors run in parallel: `detectReactPatterns` flags "coming from React" mistakes (`useState`,… |
 | [`explain_reactivity`](#explain_reactivity-constant) | constant | The compiler's per-expression reactivity VERDICT for a snippet. |
 | [`migrate_react`](#migrate_react-constant) | constant | Convert React code to Pyreon that updates. |
 | [`migrate_pyreon`](#migrate_pyreon-constant) | constant | The Pyreon → correct-Pyreon codemod (parallel to `migrate_react`). |
@@ -73,18 +73,18 @@ A full, end-to-end usage of the package:
 | [`explain_error`](#explain_error-constant) | constant | The rich-context sibling of `diagnose`. |
 | [`get_routes`](#get_routes-constant) | constant | List every route in the current project — path, loader presence, guards, params, and named-route name. |
 | [`get_components`](#get_components-constant) | constant | List every component in the current project with its props and signal usage. |
-| [`get_content_collection`](#get_content_collection-constant) | constant | List the `@pyreon/zero-content` collections declared in the project's `content.config.{ts,mts,js,mjs}` (name, type, entr |
-| [`get_content_entry`](#get_content_entry-constant) | constant | Fetch one content entry: its path, title and size, the parsed frontmatter as key/value pairs, and the heading outline (c |
-| [`get_atlas_catalog`](#get_atlas_catalog-constant) | constant | Serve the VERIFIED component catalog `atlas scan` writes (`atlas-catalog.json`) — every component with its real props, a |
-| [`get_dependency_fabric`](#get_dependency_fabric-constant) | constant | Serve the workspace dependency graph `loom scan` writes (`loom-report.json`): the shape (packages, edges, depth), runtim |
-| [`get_atlas_component`](#get_atlas_component-constant) | constant | Prescriptive usage for ONE catalogued component: required and optional props with their exact allowed values, which prop |
-| [`get_api_client`](#get_api_client-constant) | constant | Serve the generated API client `lathe generate` wrote — every operation with its method, path, summary and the exact sym |
-| [`get_api_operation`](#get_api_operation-constant) | constant | One generated operation's TYPED signature: each parameter with its location (path/query) and whether it is required, the |
-| [`explain_api_diff`](#explain_api_diff-constant) | constant | The client-contract diff between two versions of an API — each side a spec (JSON/YAML), an `api-surface.json`, or `&lt;git- |
-| [`get_pattern`](#get_pattern-constant) | constant | Fetch a canonical "how do I do X" pattern body from `docs/src/content/docs/patterns/` (the same files the docs site rend |
+| [`get_content_collection`](#get_content_collection-constant) | constant | List the `@pyreon/zero-content` collections declared in the project's `content.config.{ts,mts,js,mjs}` (name, type,… |
+| [`get_content_entry`](#get_content_entry-constant) | constant | Fetch one content entry: its path, title and size, the parsed frontmatter as key/value pairs, and the heading outline… |
+| [`get_atlas_catalog`](#get_atlas_catalog-constant) | constant | Serve the VERIFIED component catalog `atlas scan` writes (`atlas-catalog.json`) — every component with its real props,… |
+| [`get_dependency_fabric`](#get_dependency_fabric-constant) | constant | Serve the workspace dependency graph `loom scan` writes (`loom-report.json`): the shape (packages, edges, depth),… |
+| [`get_atlas_component`](#get_atlas_component-constant) | constant | Prescriptive usage for ONE catalogued component: required and optional props with their exact allowed values, which… |
+| [`get_api_client`](#get_api_client-constant) | constant | Serve the generated API client `lathe generate` wrote — every operation with its method, path, summary and the exact… |
+| [`get_api_operation`](#get_api_operation-constant) | constant | One generated operation's TYPED signature: each parameter with its location (path/query) and whether it is required, the… |
+| [`explain_api_diff`](#explain_api_diff-constant) | constant | The client-contract diff between two versions of an API — each side a spec (JSON/YAML), an `api-surface.json`, or… |
+| [`get_pattern`](#get_pattern-constant) | constant | Fetch a canonical "how do I do X" pattern body from `docs/src/content/docs/patterns/` (the same files the docs site… |
 | [`get_anti_patterns`](#get_anti_patterns-constant) | constant | Browse the anti-patterns catalog from `.agents/rules/anti-patterns.md`, token-frugal by default. |
 | [`get_changelog`](#get_changelog-constant) | constant | Recent release notes for any `@pyreon/*` package without scraping `git log`. |
-| [`audit_test_environment`](#audit_test_environment-constant) | constant | Scan every `*.test.{ts,tsx}` under `packages/` for the mock-vnode anti-pattern that caused PR #197\'s silent metadata dr |
+| [`audit_test_environment`](#audit_test_environment-constant) | constant | Scan every `*.test.{ts,tsx}` under `packages/` for the mock-vnode anti-pattern that caused PR #197\'s silent metadata… |
 | [`audit_islands`](#audit_islands-constant) | constant | Project-wide cross-file islands audit (PR C of the islands DX roadmap). |
 
 ## API

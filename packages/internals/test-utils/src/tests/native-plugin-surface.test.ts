@@ -29,7 +29,7 @@ function fixture(): string {
   const root = mkdtempSync(join(tmpdir(), 'native-plugin-selector-'))
   owned.push(root)
   mkdirSync(join(root, 'scripts'))
-  for (const script of ['native-plugin-surface.ts', 'native-surface-touched.ts'])
+  for (const script of ['native-plugin-surface.ts', 'native-surface-touched.ts', 'native-workflow-surface.ts', 'native-inputs-fingerprint.ts'])
     copyFileSync(join(REPO, 'scripts', script), join(root, 'scripts', script))
   put(
     root,

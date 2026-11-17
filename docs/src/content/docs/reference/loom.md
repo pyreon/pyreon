@@ -68,8 +68,8 @@ $ loom dev . --port=5230   # the observatory UI over the same report
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`loom scan`](#loom-scan-function) | function | Read the workspace, analyze the dependency fabric, and report. |
-| [`loom dev`](#loom-dev-function) | function | The observatory: a tool-app layout over the scan report — a top bar (workspace name, view switch, error / warning / info |
-| [`loom build`](#loom-build-function) | function | Prerenders the observatory to a STANDALONE STATIC SITE — one prerendered page per view (graph / matrix / cycles / impact |
+| [`loom dev`](#loom-dev-function) | function | The observatory: a tool-app layout over the scan report — a top bar (workspace name, view switch, error / warning / info… |
+| [`loom build`](#loom-build-function) | function | Prerenders the observatory to a STANDALONE STATIC SITE — one prerendered page per view (graph / matrix / cycles / impact… |
 | [`buildReport`](#buildreport-function) | function | The programmatic engine behind the CLI — scan the workspace, analyze the graph, run every detector, fold the stats. |
 
 ## API

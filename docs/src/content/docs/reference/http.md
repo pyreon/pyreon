@@ -63,19 +63,19 @@ console.log(user.name)
 | [`createHttp`](#createhttp-function) | function | Create an HTTP client. |
 | [`HttpClient`](#httpclient-type) | type | A configured client. |
 | [`endpoint`](#endpoint-function) | function | Declare a reusable endpoint. |
-| [`encodeForm`](#encodeform-function) | function | The `application/x-www-form-urlencoded` serializer behind the `form` request option, exported so a transport or a genera |
-| [`HttpMiddleware`](#httpmiddleware-type) | type | Onion middleware, chosen over axios-style interceptor arrays because it is the only shape that expresses what people act |
+| [`encodeForm`](#encodeform-function) | function | The `application/x-www-form-urlencoded` serializer behind the `form` request option, exported so a transport or a… |
+| [`HttpMiddleware`](#httpmiddleware-type) | type | Onion middleware, chosen over axios-style interceptor arrays because it is the only shape that expresses what people… |
 | [`retry`](#retry-function) | function | Replay a failed request. |
 | [`standardSchema`](#standardschema-constant) | constant | The resolver that enables schema objects in `.json(schema)` and `endpoint({ response })`. |
 | [`runWithRequest`](#runwithrequest-function) | function | Establish the per-request SSR context, from `@pyreon/http/server`. |
 | [`openEventStream`](#openeventstream-function) | function | Server-Sent Events over any transport, from `@pyreon/http/stream`. |
 | [`losslessJson`](#losslessjson-constant) | constant | A JSON codec from `@pyreon/http/json` that keeps 64-bit integers exact. |
-| [`RequestError`](#requesterror-class) | class | The common base of every error this package throws — `catch (e) { if (e instanceof RequestError) … }` covers the whole f |
-| [`buildUrl`](#buildurl-function) | function | The full URL-resolution pipeline `createHttp`/`endpoint` build every request URL through: `applyPathParams` (substitutes |
-| [`compose`](#compose-function) | function | Fold a middleware array (outermost first) over a transport into one callable — what `createHttp({ use })` does internall |
+| [`RequestError`](#requesterror-class) | class | The common base of every error this package throws — `catch (e) { if (e instanceof RequestError) … }` covers the whole… |
+| [`buildUrl`](#buildurl-function) | function | The full URL-resolution pipeline `createHttp`/`endpoint` build every request URL through: `applyPathParams` (substitutes… |
+| [`compose`](#compose-function) | function | Fold a middleware array (outermost first) over a transport into one callable — what `createHttp({ use })` does… |
 | [`createFetchTransport`](#createfetchtransport-function) | function | Build a `fetch`-backed `Transport`. |
-| [`getAmbientRequest`](#getambientrequest-function) | function | Read the inbound request currently in scope — `undefined` in the browser, and `undefined` on any server that has not opt |
-| [`defineEndpoint`](#defineendpoint-function) | function | The standalone form of `client.endpoint(spec, options)` — the method is a thin wrapper (`(spec, opts) =&gt; defineEndpoint( |
+| [`getAmbientRequest`](#getambientrequest-function) | function | Read the inbound request currently in scope — `undefined` in the browser, and `undefined` on any server that has not… |
+| [`defineEndpoint`](#defineendpoint-function) | function | The standalone form of `client.endpoint(spec, options)` — the method is a thin wrapper… |
 | [`createMock`](#createmock-function) | function | Stub responses as middleware, from `@pyreon/http/mock`. |
 
 ## API

@@ -1,5 +1,5 @@
 import { el, pair, tone, type ModeFn } from '../../site/kit/bases'
-import { breakpoints, font, gradient, radius, syntax, text, weight } from '../../site/theme'
+import { breakpoints, font, gradient, layout, radius, syntax, text, touch, weight } from '../../site/theme'
 
 /** Width of a bench block's number column (fits `130 µs`, `17.2 KB`, `34.7×` at 34px). */
 const BENCH_NUMBER = '8.5rem'
@@ -21,7 +21,7 @@ const css = (m: ModeFn): string => `
   color: ${tone(m, 'mist')};
   overflow-wrap: break-word;
 
-  & > :first-child { margin-top: 0; }
+  & > :first-child, & > :first-child > :first-child { margin-top: 0; }
   & p { margin: 0 0 22px; }
   & strong { color: ${tone(m, 'text')}; font-weight: ${weight.medium}; }
   & em { font-style: italic; }
@@ -29,7 +29,7 @@ const css = (m: ModeFn): string => `
   & a:hover { text-decoration-thickness: 2px; color: ${tone(m, 'strong')}; }
   & a:focus-visible { outline: 2px solid ${tone(m, 'focus')}; outline-offset: 2px; }
 
-  & h2, & h3 { color: ${tone(m, 'text')}; font-weight: ${weight.medium}; scroll-margin-top: 104px; text-wrap: balance; }
+  & h2, & h3 { color: ${tone(m, 'text')}; font-weight: ${weight.medium}; scroll-margin-top: ${layout.anchorOffset}px; text-wrap: balance; }
   & h2 { margin: 60px 0 18px; font-size: clamp(28px, 3.2vw, 38px); line-height: 1.12; letter-spacing: -.035em; }
   & h3 { margin: 40px 0 12px; font-size: 22px; line-height: 1.3; letter-spacing: -.02em; }
   & h2 a, & h3 a { color: inherit; text-decoration: none; }
@@ -55,6 +55,7 @@ const css = (m: ModeFn): string => `
   & .blog-bench li > strong:first-child, & .blog-bench li > p:first-child > strong:first-child { display: inline-block; width: ${BENCH_NUMBER}; margin-left: calc(-${BENCH_NUMBER} - 16px); margin-right: 12px; vertical-align: baseline; font-size: 34px; line-height: 1.1; font-weight: ${weight.medium}; letter-spacing: -.04em; font-variant-numeric: tabular-nums; white-space: nowrap; background-image: ${pair(m, gradient.ember)}; -webkit-background-clip: text; background-clip: text; color: transparent; }
   & .blog-bench > p:last-child { margin: 0; padding: 12px 20px; font-family: ${font.mono}; font-size: ${text.caption.size}px; line-height: 1.5; }
   & .blog-bench > p:last-child a { color: ${tone(m, 'mist')}; text-decoration: none; }
+  ${touch.media} { & .blog-bench > p:last-child a { display: inline-flex; align-items: center; min-height: ${touch.tapTarget}px; } }
   & .blog-bench > p:last-child a:hover { color: ${tone(m, 'text')}; text-decoration: underline; text-decoration-color: ${tone(m, 'accent')}; }
   @media (max-width: ${breakpoints.sm - 0.02}px) {
     & .blog-bench li { padding-left: 20px; }
@@ -69,6 +70,8 @@ const css = (m: ModeFn): string => `
   & table { display: block; max-width: 100%; overflow-x: auto; margin: 0 0 26px; border-collapse: collapse; font-size: 15px; line-height: 1.55; }
   & th, & td { padding: 10px 14px; border-bottom: 1px solid ${tone(m, 'line')}; text-align: left; vertical-align: top; }
   & th { color: ${tone(m, 'text')}; font-weight: ${weight.medium}; border-bottom-color: ${tone(m, 'line2')}; white-space: nowrap; }
+  & td { min-width: ${layout.tableCellMin}; }
+  & td code, & th code { overflow-wrap: normal; }
 
   & .code-block { position: relative; margin: 24px 0 30px; border: 1px solid ${tone(m, 'line')}; border-radius: ${radius.pane}px; background: ${m(syntax.light.bg, syntax.dark.bg)}; overflow: hidden; }
   & .code-block__header { height: 40px; padding: 0 16px; border-bottom: 1px solid ${tone(m, 'line')}; font-family: ${font.mono}; font-size: ${text.mono.size}px; line-height: 40px; color: ${tone(m, 'fog')}; }
@@ -79,6 +82,8 @@ const css = (m: ModeFn): string => `
   & .code-block pre code { font: inherit; background: none; padding: 0; }
   [data-theme='dark'] & .shiki span, [data-theme='dark'] & .shiki { color: var(--shiki-dark, inherit) !important; }
   & .code-block__copy { position: absolute; top: 6px; right: 8px; height: 28px; padding: 0 12px; border: 1px solid ${tone(m, 'line2')}; border-radius: ${radius.pill}px; background: transparent; color: ${tone(m, 'mist')}; font-family: ${font.mono}; font-size: 11.5px; cursor: pointer; }
+  ${touch.media} { & .code-block__copy { height: ${touch.tapTarget}px; } }
+  ${touch.media} { & a { padding-top: ${touch.linkPad}; padding-bottom: ${touch.linkPad}; margin-top: calc(-1 * ${touch.linkPad}); margin-bottom: calc(-1 * ${touch.linkPad}); } }
   & .code-block__copy:hover { color: ${tone(m, 'text')}; border-color: ${tone(m, 'lineHover')}; }
   & .code-block__copy:focus-visible { outline: 2px solid ${tone(m, 'focus')}; outline-offset: 2px; }
 `

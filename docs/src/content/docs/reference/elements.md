@@ -36,9 +36,9 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`Overlay`](#overlay-component) | component | A positioned layer (dropdown / modal / tooltip / popover) with an optional backdrop, driven internally by `useOverlay`. |
 | [`useOverlay`](#useoverlay-hook) | hook | The positioning + interaction engine `Overlay` is built on, exposed for headless consumers. |
 | [`OverlayProvider`](#overlayprovider-component) | component | Context provider that lets nested overlays coordinate (a child overlay blocks its parent from closing while it is open). |
-| [`Portal`](#portal-component) | component | Renders children OUTSIDE the parent DOM hierarchy — into a PER-INSTANCE wrapper element (default `<div>`, configurable v |
+| [`Portal`](#portal-component) | component | Renders children OUTSIDE the parent DOM hierarchy — into a PER-INSTANCE wrapper element (default `<div>`, configurable… |
 | [`Iterator`](#iterator-component) | component | The data-iteration helper backing `List`, exported as `Iterator` from the package root. |
-| [`Util`](#util-component) | component | Injects a `className` and/or inline `style` into its CHILD, adding NO DOM node of its own — it CLONES the child (via cor |
+| [`Util`](#util-component) | component | Injects a `className` and/or inline `style` into its CHILD, adding NO DOM node of its own — it CLONES the child (via… |
 | [`Provider`](#provider-component) | component | Re-export of `@pyreon/unistyle`'s low-level theme provider (marked `@internal` / `@deprecated` in source). |
 
 ## API

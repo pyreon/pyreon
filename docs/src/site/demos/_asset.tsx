@@ -2,7 +2,7 @@ import { For } from '@pyreon/core'
 import type { HeroVisual, PictureSource, ThemedPicture as ThemedPictureData } from '../content/visuals'
 import { font, radius, text } from '../theme'
 import { el, tone, txt } from '../kit/bases'
-import { Loop, Picture } from '../kit/media'
+import { artBox, Loop, Picture } from '../kit/media'
 
 /**
  * The product page's hero visual (inline animated SVG, a capture through the
@@ -26,7 +26,7 @@ const SvgBox = el
 export function InlineSvg(props: { svg: string }) {
   return (
     <SvgBox>
-      <div dangerouslySetInnerHTML={{ __html: props.svg }} />
+      <div {...artBox(props.svg)} dangerouslySetInnerHTML={{ __html: props.svg }} />
     </SvgBox>
   )
 }

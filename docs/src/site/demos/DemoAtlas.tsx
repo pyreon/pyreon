@@ -1,7 +1,7 @@
 import { onMount, onUnmount, Show } from '@pyreon/core'
 import { effect, signal } from '@pyreon/reactivity'
 import { font, radius, text } from '../theme'
-import { el, focusRing, type LinkAttrs, tone, txt } from '../kit/bases'
+import { el, focusRing, type LinkAttrs, tone, txt, tapArea } from '../kit/bases'
 import { colorMode } from '../color-mode'
 import { Code, Eyebrow } from '../kit/type'
 import { KitScope } from '../kit/scope'
@@ -75,6 +75,7 @@ const OpenLink = el
     textDecoration: 'underline',
     textUnderlineOffset: '3px',
     focus: focusRing(m),
+    extendCss: tapArea,
   }))
 
 const Stage = el

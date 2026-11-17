@@ -72,14 +72,14 @@ await download(tree, 'resume.md')
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`extractDocNode`](#extractdocnode-function) | function | 18 primitives: `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocIm |
+| [`extractDocNode`](#extractdocnode-function) | function | 18 primitives: `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`,… |
 | [`createDocumentExport`](#createdocumentexport-function) | function | Wrapper around `extractDocNode`. |
 | [`DocDocument`](#docdocument-component) | component | Root container for a document tree — produces a `_documentType: "document"` node. |
 | [`DocPage`](#docpage-component) | component | A page boundary inside a `DocDocument`. |
 | [`DocSection`](#docsection-component) | component | Semantic grouping inside a page. |
 | [`DocRow`](#docrow-component) | component | Horizontal layout container — children flow inline with a fixed 8px gap. |
 | [`DocColumn`](#doccolumn-component) | component | A column inside a row layout. |
-| [`DocHeading`](#docheading-component) | component | Heading text — `level` (`"h1"` through `"h6"`) controls both visual size and the semantic level emitted to outputs (HTML |
+| [`DocHeading`](#docheading-component) | component | Heading text — `level` (`"h1"` through `"h6"`) controls both visual size and the semantic level emitted to outputs (HTML… |
 | [`DocText`](#doctext-component) | component | Paragraph / inline text. |
 | [`DocLink`](#doclink-component) | component | Hyperlink within text. |
 | [`DocImage`](#docimage-component) | component | An image embedded in the document. |
@@ -92,8 +92,8 @@ await download(tree, 'resume.md')
 | [`DocButton`](#docbutton-component) | component | Call-to-action button. |
 | [`DocQuote`](#docquote-component) | component | Block quote — sets off a quoted passage with an indented left border. |
 | [`DocPageBreak`](#docpagebreak-component) | component | Explicit page boundary inside a `DocPage`. |
-| [`DocumentPreview`](#documentpreview-component) | component | A paper-sized PREVIEW wrapper for a document-primitive tree — it renders the Doc* subtree as centered white pages (gray  |
-| [`documentTheme`](#documenttheme-constant) | constant | The default theme object for document styling/export — a plain nested config of `colors` (primary / text / background /  |
+| [`DocumentPreview`](#documentpreview-component) | component | A paper-sized PREVIEW wrapper for a document-primitive tree — it renders the Doc* subtree as centered white pages (gray… |
+| [`documentTheme`](#documenttheme-constant) | constant | The default theme object for document styling/export — a plain nested config of `colors` (primary / text / background /… |
 
 ## API
 
