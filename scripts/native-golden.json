@@ -152,8 +152,8 @@
       "warnings": 0
     },
     "fixture:every-primitive.tsx|swift": {
-      "sha": "fe9390e4bc7a77bcd2f3fb04912c28da2b94c042b61ebf511e2d71e979345935",
-      "bytes": 7713,
+      "sha": "0d2afab890f40754dccc8b47384c5e0e2189ba9f938f0750169e97ff6eeb39c1",
+      "bytes": 7571,
       "warnings": 0
     },
     "fixture:every-primitive.tsx|kotlin": {
@@ -2682,8 +2682,8 @@
       "warnings": 0
     },
     "golden-fixture:flow-45.tsx|swift": {
-      "sha": "a3e56ee2008f2470e77ef9397b11e704f86cc7ca2926ecbaf2fba9bc12bcb218",
-      "bytes": 20154,
+      "sha": "a7e8f7f590a88c7a4ef48fbc78b7537fb6caf9740d517a55f6eb7c09ffbd110f",
+      "bytes": 20055,
       "warnings": 0
     },
     "golden-fixture:flow-45.tsx|kotlin": {
@@ -7372,8 +7372,8 @@
       "warnings": 0
     },
     "example:native-counter/Counter.tsx|swift": {
-      "sha": "15cf7e20f25c5a62242bc20d8ced7da447daa3494b7a664d26f095e67cdcdc63",
-      "bytes": 21958,
+      "sha": "d0756ad55ee3c3441ce3eb73944a8c308c45794c2e9bb4a61866ac8872e30e32",
+      "bytes": 21859,
       "warnings": 0
     },
     "example:native-counter/Counter.tsx|kotlin": {

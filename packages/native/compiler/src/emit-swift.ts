@@ -7986,13 +7986,24 @@ function stripSwiftClosureBody(closure: string): string {
  * Any other handler (`draft.set(t.trim())`, a second write, a call) must run on
  * every edit: projecting `$sig` dropped it on iOS while Compose ran it, a silent
  * divergence with no warning. Those handlers go through the `Binding` shape.
+ *
+ * The called read `value={sig()}` with exactly that setter is the same binding,
+ * so it projects too: both spellings emit `$sig`. Without a handler the called
+ * read stays a read (nothing writes the signal back), so it does not project.
  */
 function swiftProjectedSignal(value: ExprIR, handler: ExprIR | undefined): string | undefined {
-  if (value.kind !== 'identifier' || !_signalNames.has(value.name)) return undefined
-  if (handler === undefined) return value.name
-  if (handler.kind !== 'arrow' || handler.params.length !== 1) return undefined
+  const called =
+    value.kind === 'call' && value.args.length === 0 && value.optional !== true && value.callee.kind === 'identifier'
+  const name = value.kind === 'identifier' ? value.name : called ? (value.callee as { name: string }).name : undefined
+  if (name === undefined || !_signalNames.has(name)) return undefined
+  if (handler === undefined) return called ? undefined : name
+  // A handler passed by reference (`onChangeText={save}`): the `Binding` shape
+  // would call it as `save()`, without the value, so the bare signal keeps the
+  // projection (the earlier behaviour) and the called read keeps the Binding.
+  if (handler.kind !== 'arrow') return called ? undefined : name
+  if (handler.params.length !== 1) return undefined
   const body = stripSwiftClosureBody(emitSwiftAction(handler, 0))
-  return body === `${swiftIdent(value.name)} = ${swiftIdent(handler.params[0]!)}` ? value.name : undefined
+  return body === `${swiftIdent(name)} = ${swiftIdent(handler.params[0]!)}` ? name : undefined
 }
 
 /**
@@ -10095,7 +10106,7 @@ function emitSwiftTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   for (const w of warnings) pushEmitWarning(w)
   let binding: string
   const projected = valueAttr === undefined ? undefined : swiftProjectedSignal(valueAttr.value, onChange?.handler)
-  if (projected !== undefined) {
+  if (valueAttr !== undefined && projected !== undefined) {
     binding = `$${swiftIdent(projected)}`
   } else if (valueAttr !== undefined && onChange !== undefined) {
     const getExpr = emitSwiftExpr(unwrapAccessorArrow(valueAttr.value), indent)

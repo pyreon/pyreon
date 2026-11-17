@@ -5,6 +5,8 @@
 // `onChangeText={(t) => { draft.set(t.toUpperCase()); edits.set(edits() + 1) }}`
 // never ran on iOS while Compose ran it — no warning, different behaviour per
 // platform. A handler that does more now goes through `Binding(get:set:)`.
+// The called read with exactly the setter (`value={draft()} onChangeText={(t) =>
+// draft.set(t)}`) is the same binding and now emits `$draft` too.
 
 import { describe, expect, it } from 'vitest'
 import { transform } from './first-party-plugins'
@@ -62,6 +64,27 @@ describe('bare-signal value with a change handler that does more than set it', (
       swift('<Tabs value={tab} onChange={(v) => tab.set(v)}><Tab value="a" label="A"><Text>a</Text></Tab></Tabs>'),
     ).toContain('selection: $tab')
     expect(swift('<Field value={draft} />')).toContain('text: $draft')
+  })
+
+  it('the called read with the plain setter is the same binding: `$signal` too', () => {
+    expect(swift('<Field value={draft()} onChangeText={(t) => draft.set(t)} />')).toContain('text: $draft')
+    expect(swift('<Toggle value={on()} onChange={(v) => on.set(v)} />')).toContain('isOn: $on')
+    expect(
+      swift('<Tabs value={tab()} onChange={(v) => tab.set(v)}><Tab value="a" label="A"><Text>a</Text></Tab></Tabs>'),
+    ).toContain('selection: $tab')
+    // A handler that does more keeps the Binding in the called form as well.
+    expect(swift('<Field value={draft()} onChangeText={(t) => draft.set(t.trim())} />')).toContain('get: { draft }')
+  })
+
+  it('a handler passed by reference keeps the earlier shapes (its value argument is a separate gap)', () => {
+    const src = (jsx: string) => `import { Stack, Field } from '@pyreon/primitives'
+import { signal } from '@pyreon/reactivity'
+function App() {
+  const draft = signal('')
+  const save = (t: string) => draft.set(t)
+  return (<Stack>${jsx}</Stack>)
+}`
+    expect(transform(src('<Field value={draft} onChangeText={save} />'), { target: 'swift' }).code).toContain('text: $draft')
   })
 
   it('a handler that sets a DIFFERENT signal is not redundant', () => {
