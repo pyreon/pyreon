@@ -414,7 +414,7 @@ export const recognizeCrudMutate: MethodCallRecognizer = (site, ctx) => {
     return ctx.unsupported(site.node, where, '`useUpdate()` needs both `id` (the URL) and `data` (the JSON body) — pass `{ id, data }`')
   }
   const id = ctx.expr(idNode)
-  const optimistic = optimisticPatch(dataNode, facts.schemas.get(m.feature) ?? [], featureName, id, ctx, `\`${name}.${site.method}(…)\``)
+  const optimistic = optimisticPatch(dataNode, facts.schemas.get(m.feature) ?? [], { featureName, id, where: `\`${name}.${site.method}(…)\`` }, ctx)
 
   return mutateCallSpec(
     site,
@@ -445,11 +445,10 @@ const FIELD_TYPES: Readonly<Record<SchemaField['type'], TypeIR>> = {
 function optimisticPatch(
   dataNode: AnyNode,
   schema: readonly SchemaField[],
-  featureName: string,
-  id: ExprIR,
+  target: { featureName: string; id: ExprIR; where: string },
   ctx: { expr(node: AnyNode): ExprIR; report(message: string): void },
-  where: string,
 ): MutateQueryEffects['optimistic'] {
+  const { featureName, id, where } = target
   const skip = (why: string): undefined => {
     ctx.report(
       `${where}: ${why}, so the OPTIMISTIC write the web shows in \`useById(id)\` before the server answers is skipped natively — the request is sent, and every \`${featureName}\` query refreshes when it succeeds.`,
