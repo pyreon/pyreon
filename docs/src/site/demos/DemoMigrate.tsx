@@ -4,7 +4,7 @@ import { el, tone, txt } from '../kit/bases'
 import { GlowCard } from '../kit/cards'
 import { CodeCard, CodeDiff } from '../kit/code'
 import { Segmented } from '../kit/controls'
-import { AutoGrid } from '../kit/layout'
+import { AutoGrid } from '../kit/primitives/auto-grid'
 import { Code, Eyebrow, Heading } from '../kit/type'
 import { CHECK_AFTER, CHECK_BEFORE, type Framework, MIGRATIONS } from './_capture-migrate'
 import { lines, Replay, type ReplayLine } from './_replay-b'
@@ -59,7 +59,7 @@ export default function DemoMigrate() {
         {() => {
           const m = MIGRATIONS[fw()]
           return (
-            <AutoGrid cols={3} gap={12}>
+            <AutoGrid cols={3} gap={150}>
               <GlowCard padding="compact">
                 <Eyebrow>step 1 · today · illustrative diff</Eyebrow>
                 <Heading size="step" tag="h3">

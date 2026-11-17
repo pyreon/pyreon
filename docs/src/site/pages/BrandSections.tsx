@@ -2,7 +2,8 @@ import { For } from '@pyreon/core'
 import type { SiteSection } from '../content/types-site'
 import { el, focusRing, tone, txt, type LinkAttrs, tapArea } from '../kit/bases'
 import { GlowCard } from '../kit/cards'
-import { AutoGrid, SectionHead } from '../kit/layout'
+import { SectionHead } from '../kit/layout'
+import { AutoGrid } from '../kit/primitives'
 import { InlineText } from '../kit/story'
 import { Eyebrow, Heading, Lede, renderInline } from '../kit/type'
 import { font, radius, text, weight } from '../theme'
@@ -96,7 +97,7 @@ export function BrandSection(props: { s: BrandSectionData }) {
       return (
         <>
           <SectionHead label="logo" title={s.title} text={s.text} />
-          <AutoGrid min={230} gap={12}>
+          <AutoGrid min={230} gap={150}>
             <For each={s.items} by={(i) => i.href}>
               {(i) => (
                 <GlowCard padding="compact">
@@ -117,7 +118,7 @@ export function BrandSection(props: { s: BrandSectionData }) {
       return (
         <>
           <SectionHead label="colour" title={s.title} text={s.text} />
-          <AutoGrid min={170} gap={12} tag="ul">
+          <AutoGrid min={170} gap={150} tag="ul">
             <For each={s.swatches} by={(w) => w.hex + w.name}>
               {(w) => (
                 <li>
@@ -143,7 +144,7 @@ export function BrandSection(props: { s: BrandSectionData }) {
       return (
         <>
           <SectionHead label="type" title={s.title} />
-          <AutoGrid min={300} gap={12}>
+          <AutoGrid min={300} gap={150}>
             <For each={s.faces} by={(f) => f.name}>
               {(f) => (
                 <GlowCard>

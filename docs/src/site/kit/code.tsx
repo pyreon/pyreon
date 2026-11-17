@@ -2,7 +2,8 @@ import { For, Show } from '@pyreon/core'
 import { diff, font, gradient, radius, syntax, text, weight } from '../theme'
 import { el, focusRing, pair, tone, txt } from './bases'
 import { GlowCard } from './cards'
-import { AutoGrid } from './layout'
+import { Stack } from './primitives/stack'
+import { AutoGrid } from './primitives/auto-grid'
 import { Eyebrow, renderInline, VisuallyHidden } from './type'
 
 /**
@@ -108,12 +109,12 @@ export function CodeCard(props: {
     <GlowCard state={props.state} padding="flush">
       <Rail state={props.rail ?? 'none'}>
         <CodeHead>
-          <HeadText>
+          <Stack gap={75} alignX="left" shrink>
             <Eyebrow state={props.state === 'hot' ? 'accent' : 'default'}>{renderInline(props.label)}</Eyebrow>
             <Show when={() => !!props.caption}>
               <Caption>{renderInline(props.caption ?? '')}</Caption>
             </Show>
-          </HeadText>
+          </Stack>
         </CodeHead>
         <CodeBlock code={props.code} html={props.html} label={props.label} />
       </Rail>
@@ -121,15 +122,13 @@ export function CodeCard(props: {
   )
 }
 
-export const HeadText = el.config({ name: 'CodeHeadText' }).attrs({ block: true, gap: 6 }).theme(() => ({ minWidth: 0 }))
-
 /** `.p-ps` — before / after, side by side from 960px; "after" is the hot card. */
 export function BeforeAfter(props: {
   before: { label: string; caption: string; code: string; codeHtml?: string | undefined }
   after: { label: string; caption: string; code: string; codeHtml?: string | undefined }
 }) {
   return (
-    <AutoGrid cols={2} gap={16}>
+    <AutoGrid cols={2} gap={200}>
       <CodeCard label={props.before.label} caption={props.before.caption} code={props.before.code} html={props.before.codeHtml} rail="del" />
       <CodeCard label={props.after.label} caption={props.after.caption} code={props.after.code} html={props.after.codeHtml} state="hot" rail="ins" />
     </AutoGrid>
@@ -278,7 +277,7 @@ export function ComingFrom(props: {
   note?: string | undefined
 }) {
   return (
-    <AutoGrid cols={2} gap={16}>
+    <AutoGrid cols={2} gap={200}>
       <CodeCard label={props.lib} code={props.before} html={props.beforeHtml} rail="del" />
       <CodeCard label="Pyreon" caption={props.note} code={props.after} html={props.afterHtml} state="hot" rail="ins" />
     </AutoGrid>

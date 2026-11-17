@@ -203,7 +203,7 @@ export function infiniteLifecycleSwift(decl: ExtDecl, ctx: EmitContext): readonl
     '    _Concurrency.Task { @MainActor in',
     '      do {',
     `        let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${url})!)`,
-    `        ${name}.resolve(try JSONDecoder().decode(${page}.self, from: bytes), param: ${ctx.ident(p.pageParamName)})`,
+    `        ${name}.resolve(try PyreonJSON.decode(${page}.self, from: bytes), param: ${ctx.ident(p.pageParamName)})`,
     `      } catch { ${name}.reject(error) }`,
     '    }',
     '  }',
