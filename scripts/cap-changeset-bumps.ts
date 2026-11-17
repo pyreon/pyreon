@@ -88,7 +88,7 @@ for (const f of files) {
 if (capping) {
   if (touched > 0) {
     // oxlint-disable-next-line no-console
-    console.log(`[cap-bumps] capped ${touched} changeset(s) at minor (0.x policy)`)
+    console.log(`[cap-bumps] capped ${touched} changeset(s) at minor (no approved major in scripts/major-release.ts)`)
   } else {
     // oxlint-disable-next-line no-console
     console.log('[cap-bumps] no major bumps to cap — clean')
