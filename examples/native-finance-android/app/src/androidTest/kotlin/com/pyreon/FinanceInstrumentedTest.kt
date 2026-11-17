@@ -23,7 +23,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.test.onNodeWithTag
@@ -43,6 +43,21 @@ import androidx.compose.ui.test.onAllNodesWithTag
 class FinanceInstrumentedTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
+
+    /**
+     * Keep the soft keyboard out of this window for the whole test: the host
+     * pads for `safeDrawing`, which includes the keyboard, so its arrival —
+     * some time after `performTextInput` returned — resizes the page between a
+     * scroll and the click that follows, and the click lands on a clipped node.
+     * Typing does not need it. The full account, with the reproduction, is on
+     * `keepSoftKeyboardOut` in `TasksAppInstrumentedTest`.
+     */
+    @Before
+    fun keepSoftKeyboardOut() {
+        composeRule.runOnUiThread {
+            composeRule.activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+        }
+    }
 
     /// Guarantee every test starts on the LOGIN screen.
     ///
