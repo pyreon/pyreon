@@ -93,7 +93,7 @@ Implements the pyreon.dev design canvas `Devtools.html`: the app-shell patterns 
 
 ## Verification
 
-`bun run verify` (after `bun run build`) launches Chromium with the built extension (`--load-extension=dist`, headless; `HEADED=1` shows the window), opens a running Pyreon dev app (`APP_URL`, default `http://localhost:5180`; `examples/perf-dashboard` serves on 5800), and checks:
+`bun run verify` (after `bun run build`) launches Chromium with the built extension (`--load-extension=dist`, headless; `HEADED=1` shows the window), opens a running Pyreon dev app (`APP_URL`, default `http://localhost:5180`; `examples/fixtures/perf-dashboard` serves on 5800), and checks:
 
 1. every `dist/` file is present and the IIFE entries do not reference an undeclared `exports`;
 2. the content script and page hook inject, and the hook exposes the component and `reactive` surfaces;

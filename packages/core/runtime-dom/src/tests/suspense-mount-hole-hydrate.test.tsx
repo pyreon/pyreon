@@ -1,6 +1,6 @@
 /**
  * A `<Suspense>` hydrated as a TRAILING MOUNT HOLE of a compiled template —
- * the `examples/playground` /primitives shape, found by the playground e2e:
+ * the `examples/fixtures/playground` /primitives shape, found by the playground e2e:
  *
  *   <div class="card"><h2>…</h2><button>…</button>
  *     <Suspense fallback={…}>{() => (show() ? <Lazy /> : <p>idle</p>)}</Suspense>

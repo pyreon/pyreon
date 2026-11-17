@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test'
  * SSG i18n `prefix`-strategy real-Chromium runtime gate (PR L3 follow-
  * up to PR L1).
  *
- * Targets `examples/ssr-showcase` BUILT under `vite.config.i18n-prefix.ts`
+ * Targets `examples/fixtures/ssr-showcase` BUILT under `vite.config.i18n-prefix.ts`
  * (with `zero({ i18n: { locales: ['en','de','cs'], defaultLocale: 'en',
  * strategy: 'prefix' } })`) and SERVED via `scripts/serve-ssg.ts` at
  * `http://localhost:5200` — config in `e2e-configs/ssg-i18n-prefix.config.ts`.
