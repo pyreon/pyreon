@@ -22,6 +22,7 @@ function mountWith<T>(client: QueryClient, fn: () => T): { result: T; unmount: (
     </QueryClientProvider>,
     el,
   )
+
   return {
     result: result as T,
     unmount: () => {

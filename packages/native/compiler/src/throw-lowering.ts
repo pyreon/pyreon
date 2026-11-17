@@ -35,6 +35,7 @@ export function childStatementLists(s: StatementIR): StatementIR[][] {
       const out = [s.body]
       if (s.catchBody) out.push(s.catchBody)
       if (s.finallyBody) out.push(s.finallyBody)
+
       return out
     }
     default:
@@ -84,6 +85,7 @@ export function arrowThrowsUncaught(arrow: unknown, throwingFns: ReadonlySet<str
   const a = arrow as { kind?: string; body?: unknown; stmts?: StatementIR[]; async?: boolean }
   if (a.kind !== 'arrow' || a.async === true) return false
   if (a.stmts !== undefined && a.stmts.length > 0) return statementsThrowUncaught(a.stmts, throwingFns)
+
   return exprCallsThrowing(a.body, throwingFns)
 }
 
@@ -92,6 +94,7 @@ export function rethrowingCallbackArgs(expr: unknown, throwingFns: ReadonlySet<s
   const n = expr as { kind?: string; callee?: { kind?: string; property?: string }; args?: unknown[] }
   if (n.kind !== 'call' || n.callee?.kind !== 'member' || n.callee.property === undefined) return []
   if (!RETHROWING_ARRAY_METHODS.has(n.callee.property)) return []
+
   return (n.args ?? []).filter((a) => arrowThrowsUncaught(a, throwingFns))
 }
 
@@ -115,8 +118,10 @@ export function exprCallsThrowing(expr: unknown, throwingFns: ReadonlySet<string
       throwingFns.has(node.callee.name)
     )
       return true
+
     return Object.values(n).some(walk)
   }
+
   return walk(expr)
 }
 
@@ -168,6 +173,7 @@ export function statementsThrowUncaught(
     }
     if (childStatementLists(s).some((l) => statementsThrowUncaught(l, throwingFns))) return true
   }
+
   return false
 }
 
@@ -198,6 +204,7 @@ export function computeThrowingFunctions(
       }
     }
   }
+
   return throwing
 }
 
@@ -224,6 +231,7 @@ export function rewriteCaughtMessage(stmts: StatementIR[], param: string): State
         callee: { kind: 'identifier', name: ERROR_MESSAGE_FN },
         args: [{ kind: 'identifier', name: param }],
       }
+
       return call
     }
     // `String(e)` — Swift has no `String(_:)` for an `Error`; both targets describe it as JavaScript does.
@@ -240,10 +248,12 @@ export function rewriteCaughtMessage(stmts: StatementIR[], param: string): State
         callee: { kind: 'identifier', name: ERROR_STRING_FN },
         args: [{ kind: 'identifier', name: param }],
       }
+
       return described
     }
     const out: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(n)) out[k] = map(v)
+
     return out
   }
   const isParam = (n: unknown): boolean => {
@@ -251,6 +261,7 @@ export function rewriteCaughtMessage(stmts: StatementIR[], param: string): State
     while (cur?.kind === 'paren') cur = cur.inner as typeof cur
     return cur?.kind === 'identifier' && cur.name === param
   }
+
   return map(stmts) as StatementIR[]
 }
 
@@ -261,6 +272,7 @@ export function containsAwait(n: unknown): boolean {
   const node = n as { kind?: string }
   if (node.kind === 'arrow') return false
   if (node.kind === 'await') return true
+
   return Object.values(n).some(containsAwait)
 }
 
@@ -282,6 +294,7 @@ export function anonymousCatchBinder(catchBody: unknown): string {
   visit(catchBody)
   let name = 'pyreonCaught'
   for (let i = 2; used.has(name); i++) name = `pyreonCaught${i}`
+
   return name
 }
 

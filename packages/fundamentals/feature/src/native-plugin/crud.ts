@@ -434,6 +434,7 @@ export const recognizeCrudMutate: MethodCallRecognizer = (site, ctx) => {
     return ctx.unsupported(site.node, where, '`useUpdate()` needs both `id` (the URL) and `data` (the JSON body) — pass `{ id, data }`')
   }
   const id = ctx.expr(idNode)
+
   return mutateCallSpec(site, ctx, binding, {
     method: 'PUT',
     url: api,

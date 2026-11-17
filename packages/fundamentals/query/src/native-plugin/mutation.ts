@@ -537,6 +537,7 @@ function callbackLocals(
   })
   // onSuccess's data is never absent — unless a 204 resolves with none.
   if (kinds.length === 1 && kinds[0] === 'data' && cb.params[0] !== undefined && !noContent) out.set(cb.params[0], data)
+
   return out
 }
 
@@ -589,6 +590,7 @@ function swiftOperation(e: ExtExprIR, ctx: EmitContext): string {
   if (isVoid(type)) return `{ __request in ${send} }`
   // `try` leads the whole expression: Swift rejects it to the right of the ternary's operator.
   const decode = `__response.decode(${ctx.typeText(type)}.self)`
+
   return `{ __request in ${send}; return try ${p.noContent === true ? `__response.status == 204 ? nil : ${decode}` : decode} }`
 }
 
@@ -605,6 +607,7 @@ function kotlinOperation(e: ExtExprIR, ctx: EmitContext): string {
   const send = `val __response = withContext(Dispatchers.IO) { PyreonHttp.send(__r, fallback = PyreonHttpOkHttp${mw !== undefined ? `, middleware = ${ctx.expr(mw, 0)}` : ''}) }; if (!__response.isOk) throw PyreonHttpError.BadStatus(__response.status)`
   if (isVoid(type)) return `{ __r -> ${send}; Unit }`
   const decode = `PyreonFetchJson.decodeFromString<${ctx.typeText(type)}>(__response.body)`
+
   return `{ __r -> ${send}; ${p.noContent === true ? `if (__response.status == 204) null else ${decode}` : decode} }`
 }
 

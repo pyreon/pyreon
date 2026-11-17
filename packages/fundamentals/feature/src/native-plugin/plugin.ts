@@ -63,6 +63,7 @@ export const FEATURE_PLUGIN_NAME = '@pyreon/feature'
 const ITEM_TYPE = 'feature'
 
 type FieldType = 'string' | 'number' | 'boolean'
+
 interface FeaturePayload {
   bindingName: string
   featureName: string
@@ -93,6 +94,7 @@ function scalarValidator(node: AnyNode | undefined): { type: FieldType; chain: s
     chain.push(method)
     cur = object
   }
+
   return null
 }
 
@@ -101,6 +103,7 @@ function validatorObject(node: AnyNode | undefined): AnyNode | undefined {
   if (node?.type !== 'CallExpression' || node.callee?.type !== 'MemberExpression' || node.callee.computed) return undefined
   if (node.callee.property?.name !== 'object' || unwrapTypeLayers(node.callee.object)?.type !== 'Identifier') return undefined
   const arg = unwrapTypeLayers(((node.arguments as AnyNode[] | undefined) ?? [])[0])
+
   return arg?.type === 'ObjectExpression' ? arg : undefined
 }
 
@@ -137,6 +140,7 @@ function featureValidatorSchema(init: AnyNode | undefined): AnyNode | undefined 
     const value = unwrapTypeLayers(prop.value as AnyNode | undefined)
     return validatorObject(value) !== undefined ? value : undefined
   }
+
   return undefined
 }
 
@@ -216,6 +220,7 @@ function recognizeSchemaMethod(
     if (method === 'parse' || method === 'safeParse') {
       return { type: 'result', payload: { schemaName: schemaStructName(binding) }, args: [arg()] }
     }
+
     return ctx.unsupported(node, subject, 'only `.parse(x)` / `.safeParse(x)` on a feature schema lower to native. Keep this call in a web-only helper.')
   }
   if (library === 'zod') {
@@ -223,6 +228,7 @@ function recognizeSchemaMethod(
       facts.safeParseBindings.add(binding)
       return { type: 'safeParse', payload: { schemaName: schemaStructName(binding) }, args: [arg()] }
     }
+
     return ctx.unsupported(
       node,
       subject,
@@ -231,6 +237,7 @@ function recognizeSchemaMethod(
         : 'only `.safeParse(x)` on a zod feature schema lowers to native. Keep this call in a web-only helper.',
     )
   }
+
   return ctx.unsupported(
     node,
     subject,
@@ -295,6 +302,7 @@ const recognizeFeature: TopLevelRecognizer = (node, ctx): ExtItemSpec | undefine
     ctx.report(
       `defineFeature declaration \`${bindingName}\`: \`name\` field is missing or not a string literal — v1 emit requires the literal shape. Falling back to tier2 silent-drop.`,
     )
+
     return undefined
   }
   // `z.object({ … })` reads through to its field map; the validators are read per field below.
@@ -304,6 +312,7 @@ const recognizeFeature: TopLevelRecognizer = (node, ctx): ExtItemSpec | undefine
     ctx.report(
       `defineFeature declaration \`${bindingName}\`: \`schema\` is not a literal object — only the literal field-type map (\`{ id: 'string', ... }\`) or an object literal of scalar validators (\`z.object({ id: z.string() })\`) lower. A schema held in a variable, \`v.pipe(…)\` and ArkType fall through to tier2 silent-drop.`,
     )
+
     return undefined
   }
 
@@ -391,6 +400,7 @@ const recognizeFeature: TopLevelRecognizer = (node, ctx): ExtItemSpec | undefine
     ctx.report(`defineFeature declaration \`${bindingName}\`: no recognized schema fields. Falling back to tier2 silent-drop.`)
     return undefined
   }
+
   return { type: ITEM_TYPE, name: bindingName, payload: { bindingName, featureName, fields } }
 }
 
@@ -450,6 +460,7 @@ const featureItem: ModuleItemEmitter = {
     // disambiguation renames.
     lines.push(``)
     lines.push(`let ${f.bindingName} = PyreonFeature_${f.bindingName}.self`)
+
     return [lines.join('\n')]
   },
   kotlin(item) {
@@ -471,6 +482,7 @@ const featureItem: ModuleItemEmitter = {
     lines.push(`}`)
     lines.push(``)
     lines.push(`val ${f.bindingName} = PyreonFeature_${f.bindingName}`)
+
     return [lines.join('\n')]
   },
 }

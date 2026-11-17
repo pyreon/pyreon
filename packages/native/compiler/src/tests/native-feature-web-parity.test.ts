@@ -184,11 +184,13 @@ function kotlinxToolchain(): { classpath: string; plugin: string; stdlib: string
       const f = join(dir, h, `${artifact}-${version}.jar`)
       if (existsSync(f)) return f
     }
+
     return undefined
   }
   const core = jar('kotlinx-serialization-core-jvm', '1.9.0')
   const json = jar('kotlinx-serialization-json-jvm', '1.9.0')
   if (core === undefined || json === undefined) return undefined
+
   return { classpath: `${core}:${json}`, plugin, stdlib }
 }
 
@@ -293,6 +295,7 @@ const swiftStruct = (): string => {
   const code = swift.code
   const start = code.indexOf('struct PyreonFeatureSchema_Todo: Codable {')
   const end = code.indexOf('enum PyreonFeature_Todo {')
+
   return code.slice(start, end)
 }
 
