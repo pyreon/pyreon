@@ -18,15 +18,13 @@ import { collectSignalBindings } from '../../utils/signal-bindings'
  * - TypeScript types a bare signal as the signal, so `count > 0`, `count + 1`,
  *   `style={{ color }}` values and component props typed `string`/`number` are
  *   type errors in the bare form.
- * - Inside a function nested in JSX (an event handler, a render callback) the
- *   auto-call depends on how the element is emitted: it applies on template
- *   elements and not on component props or childless elements.
  *
  * `form: 'called'` (the default) asks for `count()` wherever the compiler would
  * otherwise auto-call, and autofixes it (inserting `()` cannot change the
- * compiled output there). A bare signal inside a function nested in JSX is
- * reported without a fix, because adding the call changes behaviour on the
- * paths that do not auto-call.
+ * compiled output there). That includes a bare signal inside a function nested
+ * in JSX (an event handler, a `ref`, a render callback): the compiler reads it
+ * there on every element path, so both forms compile to the same code. The
+ * one read left to the author is the whole value of a component prop (below).
  *
  * `form: 'bare'` asks for `{count}` only where the bare form is type-safe and
  * compiles identically: as the WHOLE expression of a JSX child or of an
@@ -195,8 +193,9 @@ function checkCalled(site: Site, report: Report): void {
   if (site.isCall) return
   if (zone.nested) {
     report({
-      message: `\`${name}\` is a signal used without a call inside a function in JSX. The compiler auto-calls it there only on some elements (template elements, not component props or childless elements). Write \`${name}()\` for the value; to pass the signal itself, build the function outside the JSX.`,
+      message: `Read the signal as \`${name}()\`. Inside a function in JSX the compiler reads the bare form too, on every element, so the code is the same; \`${name}()\` also type-checks and works outside JSX. To pass the signal itself, use \`{ ${name} }\` or build the function outside the JSX.`,
       span,
+      fix: { span: { start: node.end, end: node.end }, replacement: '()' },
     })
 
     return
