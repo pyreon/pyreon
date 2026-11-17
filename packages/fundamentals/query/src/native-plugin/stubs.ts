@@ -17,11 +17,20 @@ export const QUERY_SWIFT_STUBS = `// PyreonQuery — the cached data container a
 // \`refetch\` re-runs), and the init takes \`queryKey\` + defaulted
 // \`staleSeconds\`. A superset stub would MASK a real mismatch, so
 // the signatures track the runtime exactly.
+public final class PyreonQueryRollback {
+  @MainActor public func rollback() {}
+}
 public final class PyreonQueryCache {
   public static let shared = PyreonQueryCache()
-  public init() {}
+  public var maxEntries: Int = 100
+  public init(maxEntries: Int = 100) {}
+  public var count: Int { 0 }
+  public var liveCount: Int { 0 }
   public func invalidate(_ key: String) {}
   public func clearAll() {}
+  @discardableResult public func invalidateQueries(_ root: String) -> _Concurrency.Task<Void, Never> { _Concurrency.Task {} }
+  public func setQueryData<T>(_ key: String, as _: T.Type, _ update: (T) -> T) -> PyreonQueryRollback? { nil }
+  public func settleMutation<T>(invalidating root: String, rollback: PyreonQueryRollback? = nil, _ operation: () async throws -> T) async throws -> T { try await operation() }
 }
 public final class PyreonQuery<T> {
   public private(set) var data: T?
@@ -123,7 +132,21 @@ export const QUERY_KOTLIN_STUBS = `// PyreonQuery — mirror of @pyreon/native-r
 // the suspend \`run\` the emit's LaunchedEffect hands the request and a
 // launcher to (\`refetch\` re-runs it), and a ctor taking
 // \`queryKey\` + defaulted \`staleMillis\`. Signatures track the runtime exactly.
-class PyreonQuery<T>(queryKey: String, val staleMillis: Long = 0) {
+// PyreonQueryCache is the query client a feature mutation settles through.
+class PyreonQueryRollback {
+  fun rollback() {}
+}
+object PyreonQueryCache {
+  var maxEntries: Int = 100
+  val count: Int get() = 0
+  val liveCount: Int get() = 0
+  fun invalidate(key: String) {}
+  fun clearAll() {}
+  fun invalidateQueries(root: String) {}
+  inline fun <reified T> setQueryData(key: String, noinline update: (T) -> T): PyreonQueryRollback? = null
+  suspend fun <T> settleMutation(invalidating: String, rollback: PyreonQueryRollback? = null, operation: suspend () -> T): T = operation()
+}
+class PyreonQuery<T>(queryKey: String, val staleMillis: Long = 0) : RememberObserver {
   var queryKey: String = queryKey
     private set
   val data: MutableState<T?> = mutableStateOf(null)
@@ -137,6 +160,10 @@ class PyreonQuery<T>(queryKey: String, val staleMillis: Long = 0) {
   fun reject(e: Throwable) {}
   suspend fun run(launch: (suspend () -> Unit) -> Unit, fetcher: suspend () -> T) {}
   fun refetch() {}
+  fun dispose() {}
+  override fun onRemembered() {}
+  override fun onForgotten() {}
+  override fun onAbandoned() {}
 }
 
 `
@@ -243,12 +270,12 @@ class PyreonInfiniteQuery<Page>(val queryKey: String, val initialParam: String) 
 
 export const queryStubs: StubAugmentation = {
   swift: (source) =>
-    (/\bPyreonQuery\b/.test(source) ? QUERY_SWIFT_STUBS : '') +
+    (/\bPyreonQuery(Cache)?\b/.test(source) ? QUERY_SWIFT_STUBS : '') +
     (/\bPyreonMutation\b/.test(source) ? MUTATION_SWIFT_STUBS : '') +
     (/\bPyreonStream\b/.test(source) ? STREAM_SWIFT_STUBS : '') +
     (/\bPyreonInfiniteQuery\b/.test(source) ? INFINITE_SWIFT_STUBS : ''),
   kotlin: (source) =>
-    (/\bPyreonQuery\b/.test(source) ? QUERY_KOTLIN_STUBS : '') +
+    (/\bPyreonQuery(Cache)?\b/.test(source) ? QUERY_KOTLIN_STUBS : '') +
     (/\bPyreonMutation\b/.test(source) ? MUTATION_KOTLIN_STUBS : '') +
     (/\bPyreonStream\b/.test(source) ? STREAM_KOTLIN_STUBS : '') +
     (/\bPyreonInfiniteQuery\b/.test(source) ? INFINITE_KOTLIN_STUBS : ''),
