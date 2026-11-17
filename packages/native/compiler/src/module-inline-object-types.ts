@@ -73,6 +73,7 @@ function isTypeIR(v: unknown): v is TypeIR {
     )
   }
   if (kind === 'function') return 'returnType' in v && !('body' in v)
+
   return true
 }
 
@@ -97,7 +98,34 @@ export function liftModuleInlineObjectTypes(scope: ModuleInlineTypeScope): Struc
     if (!byShape.has(key)) byShape.set(key, st.name)
   }
   const lifted: StructIR[] = []
+  const liftType = typeLifter(taken, byShape, lifted)
+  const walk = annotationWalker(liftType)
 
+  for (const md of scope.moduleDecls) {
+    const base = pascal(md.name)
+    md.type = liftType(md.type, `${base}Type`)
+    walk(md.initial, base)
+  }
+  for (const fn of scope.helperFns) {
+    const base = pascal(fn.name)
+    for (const p of fn.params) {
+      p.type = liftType(p.type, `${base}${pascal(p.name)}Type`)
+      walk(p.defaultValue, base)
+    }
+    fn.returnType = liftType(fn.returnType, `${base}Result`)
+    walk(fn.body, base)
+  }
+
+  return lifted
+}
+
+type LiftType = (t: TypeIR, name: string) => TypeIR
+
+/**
+ * Replace each inline object type under a type with a reference to a declared struct: an existing struct of the same
+ * shape when there is one, otherwise a new one named `name` (made unique against `taken`) appended to `lifted`.
+ */
+function typeLifter(taken: Set<string>, byShape: Map<string, string>, lifted: StructIR[]): LiftType {
   const liftObject = (t: ObjectType, name: string): TypeIR => {
     // An empty object type has nothing to name; the emitters already give it `Any`.
     if (t.fields.length === 0) return t
@@ -113,10 +141,11 @@ export function liftModuleInlineObjectTypes(scope: ModuleInlineTypeScope): Struc
     taken.add(unique)
     byShape.set(key, unique)
     lifted.push({ name: unique, fields })
+
     return { kind: 'typeRef', name: unique, args: [] }
   }
 
-  const liftType = (t: TypeIR, name: string): TypeIR => {
+  const liftType: LiftType = (t, name) => {
     switch (t.kind) {
       case 'object':
         return liftObject(t, name)
@@ -144,75 +173,65 @@ export function liftModuleInlineObjectTypes(scope: ModuleInlineTypeScope): Struc
     }
   }
 
-  /**
-   * Rewrite every annotation inside an expression / statement tree. A node that binds a name (a local, a `const`)
-   * names the types under it after itself; anything else inherits the owner's base.
-   */
+  return liftType
+}
+
+/**
+ * Rewrite every annotation inside an expression / statement tree. A node that binds a name (a local, a `const`)
+ * names the types under it after itself; anything else inherits the owner's base.
+ */
+function annotationWalker(liftType: LiftType): (node: unknown, base: string) => void {
+  const walkParams = (value: unknown[], local: string): void => {
+    for (const p of value) {
+      if (p !== null && typeof p === 'object' && typeof (p as { name?: unknown }).name === 'string') {
+        const param = p as { name: string; type?: unknown; defaultValue?: unknown }
+        if (isTypeIR(param.type)) {
+          param.type = liftType(param.type, `${local}${pascal(param.name)}Type`)
+        }
+        walk(param.defaultValue, local)
+      }
+    }
+  }
+
+  const liftParamTypes = (rec: Record<string, unknown>, value: unknown[], local: string): unknown[] => {
+    const params = Array.isArray(rec.params) ? (rec.params as unknown[]) : []
+
+    return value.map((p, i) =>
+      isTypeIR(p)
+        ? liftType(p, `${local}${pascal(typeof params[i] === 'string' ? (params[i] as string) : `arg${i}`)}Type`)
+        : p,
+    )
+  }
+
   const walk = (node: unknown, base: string): void => {
     if (node === null || typeof node !== 'object') return
     if (Array.isArray(node)) {
       for (const n of node) walk(n, base)
+
       return
     }
     const rec = node as Record<string, unknown>
     // A plugin's payload is its own JSON, not IR the core may rewrite.
     if (rec.kind === 'ext-expr' || rec.kind === 'ext') {
       walk(rec.args, base)
+
       return
     }
     // A JSX-returning arrow is a VIEW (a view helper, or a PascalCase component taking a props object), not data: an
     // inline object parameter is what marks it a component, which render-slots.ts classifies and names. Leave it.
     if (rec.kind === 'arrow' && exprContainsJsx(rec as unknown as ExprIR)) return
-    const local =
-      typeof rec.name === 'string' && typeof rec.kind === 'string'
-        ? `${base}${pascal(rec.name)}`
-        : base
+    const local = typeof rec.name === 'string' && typeof rec.kind === 'string' ? `${base}${pascal(rec.name)}` : base
     for (const [key, value] of Object.entries(rec)) {
-      if (key === 'payload') continue
-      if (TYPE_KEYS.has(key) && isTypeIR(value)) {
-        rec[key] = liftType(value, `${local}Type`)
-      } else if (key === 'paramTypes' && Array.isArray(value)) {
-        const params = Array.isArray(rec.params) ? (rec.params as unknown[]) : []
-        rec[key] = value.map((p, i) =>
-          isTypeIR(p)
-            ? liftType(
-                p,
-                `${local}${pascal(typeof params[i] === 'string' ? (params[i] as string) : `arg${i}`)}Type`,
-              )
-            : p,
-        )
-      } else if (key === 'params' && Array.isArray(value)) {
-        for (const p of value) {
-          if (
-            p !== null &&
-            typeof p === 'object' &&
-            typeof (p as { name?: unknown }).name === 'string'
-          ) {
-            const param = p as { name: string; type?: unknown; defaultValue?: unknown }
-            if (isTypeIR(param.type))
-              param.type = liftType(param.type, `${local}${pascal(param.name)}Type`)
-            walk(param.defaultValue, local)
-          }
-        }
-      } else if (value !== null && typeof value === 'object') {
-        walk(value, local)
-      }
+      if (key !== 'payload') rewriteEntry(rec, key, value, local)
     }
   }
 
-  for (const md of scope.moduleDecls) {
-    const base = pascal(md.name)
-    md.type = liftType(md.type, `${base}Type`)
-    walk(md.initial, base)
+  const rewriteEntry = (rec: Record<string, unknown>, key: string, value: unknown, local: string): void => {
+    if (TYPE_KEYS.has(key) && isTypeIR(value)) rec[key] = liftType(value, `${local}Type`)
+    else if (key === 'paramTypes' && Array.isArray(value)) rec[key] = liftParamTypes(rec, value, local)
+    else if (key === 'params' && Array.isArray(value)) walkParams(value, local)
+    else if (value !== null && typeof value === 'object') walk(value, local)
   }
-  for (const fn of scope.helperFns) {
-    const base = pascal(fn.name)
-    for (const p of fn.params) {
-      p.type = liftType(p.type, `${base}${pascal(p.name)}Type`)
-      walk(p.defaultValue, base)
-    }
-    fn.returnType = liftType(fn.returnType, `${base}Result`)
-    walk(fn.body, base)
-  }
-  return lifted
+
+  return walk
 }

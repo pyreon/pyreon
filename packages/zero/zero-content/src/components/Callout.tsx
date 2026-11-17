@@ -49,6 +49,7 @@ export function calloutTitleParts(title: string): readonly { code: boolean; text
     last = m.index + m[0].length
   }
   if (last < title.length) parts.push({ code: false, text: title.slice(last) })
+
   return parts
 }
 
@@ -57,6 +58,7 @@ export function Callout(props: CalloutProps): VNodeChild {
   const title = props.title ?? DEFAULT_TITLES[props.type]
   const parts = calloutTitleParts(title)
   const cls = `callout callout--${props.type}`
+
   return (
     <aside class={cls} role="note" aria-label={parts.map((p) => p.text).join('')}>
       <header class="callout__header">
