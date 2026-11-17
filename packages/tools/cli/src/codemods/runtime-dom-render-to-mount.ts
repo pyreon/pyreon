@@ -65,6 +65,136 @@ function isMemberName(ts: TS, id: Identifier): boolean {
   return false
 }
 
+interface Ctx {
+  ts: TS
+  sf: import('typescript').SourceFile
+  source: string
+  edits: { start: number; end: number; text: string }[]
+}
+
+interface ImportScan {
+  plainRender: import('typescript').ImportSpecifier | undefined
+  mountImported: boolean
+  namespaces: Set<string>
+}
+
+const replace = (ctx: Ctx, n: Node, text: string): void => {
+  ctx.edits.push({ start: n.getStart(ctx.sf), end: n.getEnd(), text })
+}
+
+const fromModule = (ts: TS, spec: import('typescript').Expression | undefined): boolean =>
+  spec !== undefined && ts.isStringLiteral(spec) && spec.text === MODULE
+
+/** `render` specifiers of imports from the module. Aliased ones are rewritten here. */
+function scanImport(ctx: Ctx, named: import('typescript').NamedImportBindings, scan: ImportScan): void {
+  const { ts } = ctx
+  if (ts.isNamespaceImport(named)) {
+    scan.namespaces.add(named.name.text)
+    return
+  }
+  for (const el of named.elements) {
+    const imported = (el.propertyName ?? el.name).text
+    if (imported === 'mount' && el.name.text === 'mount') scan.mountImported = true
+    if (imported !== 'render') continue
+    // `render as r` keeps its local name: only the imported name changes.
+    if (el.propertyName !== undefined) replace(ctx, el.propertyName, 'mount')
+    else scan.plainRender = el
+  }
+}
+
+/** `export { render } from '@pyreon/runtime-dom'` keeps its public name. */
+function rewriteReExport(ctx: Ctx, clause: import('typescript').NamedExports): void {
+  for (const el of clause.elements) {
+    if ((el.propertyName ?? el.name).text !== 'render') continue
+    if (el.propertyName !== undefined) replace(ctx, el.propertyName, 'mount')
+    else replace(ctx, el, 'mount as render')
+  }
+}
+
+function scanModuleStatements(ctx: Ctx): ImportScan {
+  const { ts } = ctx
+  const scan: ImportScan = { plainRender: undefined, mountImported: false, namespaces: new Set() }
+  for (const st of ctx.sf.statements) {
+    if (ts.isImportDeclaration(st) && fromModule(ts, st.moduleSpecifier)) {
+      const named = st.importClause?.namedBindings
+      if (named !== undefined) scanImport(ctx, named, scan)
+    } else if (ts.isExportDeclaration(st) && fromModule(ts, st.moduleSpecifier)) {
+      const clause = st.exportClause
+      if (clause !== undefined && ts.isNamedExports(clause)) rewriteReExport(ctx, clause)
+    }
+  }
+
+  return scan
+}
+
+/** What an identifier named `render` / `mount` (not a member name) means for the rename. */
+function classify(ts: TS, node: Identifier, mountImported: boolean): 'conflict' | 'ref' | 'ignore' {
+  const p = node.parent
+  const name = node.text
+  if (ts.isExportSpecifier(p)) {
+    // `export { render }` of the local binding: keep that public name.
+    return p.parent.parent.moduleSpecifier === undefined ? 'conflict' : 'ignore'
+  }
+  if (isDeclarationName(ts, node)) {
+    const ourImport = ts.isImportSpecifier(p) && fromModule(ts, p.parent.parent.parent.moduleSpecifier)
+    return ourImport ? 'ignore' : 'conflict'
+  }
+  // `{ mount }` would capture the renamed binding — leave the body alone.
+  if (ts.isShorthandPropertyAssignment(p) && name === 'mount') return 'conflict'
+  if (name === 'render') return 'ref'
+  // A `mount` reference with no `mount` import is some other binding.
+  return mountImported ? 'ignore' : 'conflict'
+}
+
+/** Collect `render` references, rewrite `ns.render`, and detect an unsafe rename. */
+function scanBody(ctx: Ctx, scan: ImportScan): { refs: Identifier[]; conflict: boolean } {
+  const { ts } = ctx
+  const refs: Identifier[] = []
+  let conflict = false
+  const visit = (node: Node): void => {
+    if (ts.isIdentifier(node)) {
+      if ((node.text === 'render' || node.text === 'mount') && !isMemberName(ts, node)) {
+        const kind = classify(ts, node, scan.mountImported)
+        if (kind === 'conflict') conflict = true
+        else if (kind === 'ref') refs.push(node)
+      }
+    } else if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      scan.namespaces.has(node.expression.text) &&
+      node.name.text === 'render'
+    ) {
+      replace(ctx, node.name, 'mount')
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(ctx.sf)
+
+  return { refs, conflict }
+}
+
+/** Turn `import { render }` into `mount`, or drop it when `mount` is already imported. */
+function rewritePlainImport(ctx: Ctx, spec: import('typescript').ImportSpecifier, mountImported: boolean): void {
+  if (!mountImported) {
+    replace(ctx, spec, 'mount')
+    return
+  }
+  const list = spec.parent.elements
+  if (list.length === 1) {
+    // `import { render } from …` next to a separate `mount` import: drop the declaration.
+    const decl = spec.parent.parent.parent
+    const end = ctx.source[decl.getEnd()] === '\n' ? decl.getEnd() + 1 : decl.getEnd()
+    ctx.edits.push({ start: decl.getStart(ctx.sf), end, text: '' })
+
+    return
+  }
+  // Drop the specifier together with one adjacent comma.
+  const i = list.indexOf(spec)
+  const start = i > 0 ? (list[i - 1] as Node).getEnd() : spec.getStart(ctx.sf)
+  const end = i > 0 ? spec.getEnd() : (list[i + 1] as Node).getStart(ctx.sf)
+  ctx.edits.push({ start, end, text: '' })
+}
+
 /**
  * `@pyreon/runtime-dom` 0.54 removed `render`, which was `export const render
  * = mount` — the same function under a second name. Switching an import to
@@ -91,109 +221,18 @@ export const runtimeDomRenderToMount: Codemod = {
     const ts = loadTs()
     const kind = /\.[mc]?tsx$|\.jsx$/.test(relPath) ? ts.ScriptKind.TSX : ts.ScriptKind.TS
     const sf = ts.createSourceFile(relPath, source, ts.ScriptTarget.ESNext, true, kind)
-    const edits: { start: number; end: number; text: string }[] = []
-    const replace = (n: Node, text: string): void => {
-      edits.push({ start: n.getStart(sf), end: n.getEnd(), text })
+    const ctx: Ctx = { ts, sf, source, edits: [] }
+    const scan = scanModuleStatements(ctx)
+    const { refs, conflict } = scanBody(ctx, scan)
+    if (scan.plainRender !== undefined && conflict) {
+      replace(ctx, scan.plainRender, 'mount as render')
+    } else if (scan.plainRender !== undefined) {
+      rewritePlainImport(ctx, scan.plainRender, scan.mountImported)
+      for (const ref of refs) replace(ctx, ref, ts.isShorthandPropertyAssignment(ref.parent) ? 'render: mount' : 'mount')
     }
-
-    const fromModule = (spec: import('typescript').Expression | undefined): boolean =>
-      spec !== undefined && ts.isStringLiteral(spec) && spec.text === MODULE
-
-    let plainRender: import('typescript').ImportSpecifier | undefined
-    let mountImported = false
-    const namespaces = new Set<string>()
-    for (const st of sf.statements) {
-      if (ts.isImportDeclaration(st) && fromModule(st.moduleSpecifier)) {
-        const named = st.importClause?.namedBindings
-        if (named === undefined) continue
-        if (ts.isNamespaceImport(named)) {
-          namespaces.add(named.name.text)
-          continue
-        }
-        for (const el of named.elements) {
-          const imported = (el.propertyName ?? el.name).text
-          if (imported === 'mount' && el.name.text === 'mount') mountImported = true
-          if (imported !== 'render') continue
-          // `render as r` keeps its local name: only the imported name changes.
-          if (el.propertyName !== undefined) replace(el.propertyName, 'mount')
-          else plainRender = el
-        }
-      } else if (ts.isExportDeclaration(st) && fromModule(st.moduleSpecifier)) {
-        const clause = st.exportClause
-        if (clause === undefined || !ts.isNamedExports(clause)) continue
-        for (const el of clause.elements) {
-          if ((el.propertyName ?? el.name).text !== 'render') continue
-          if (el.propertyName !== undefined) replace(el.propertyName, 'mount')
-          else replace(el, 'mount as render')
-        }
-      }
-    }
-
-    // Every identifier named `render` / `mount`, to rename references and to
-    // find a declaration that would make renaming unsafe.
-    const renderRefs: Identifier[] = []
-    let conflict = false
-    const visit = (node: Node): void => {
-      if (ts.isIdentifier(node)) {
-        const name = node.text
-        if ((name === 'render' || name === 'mount') && !isMemberName(ts, node)) {
-          const p = node.parent
-          const ourImport = ts.isImportSpecifier(p) && fromModule(p.parent.parent.parent.moduleSpecifier)
-          if (ts.isExportSpecifier(p)) {
-            // `export { render }` of the local binding: keep that public name.
-            if (p.parent.parent.moduleSpecifier === undefined) conflict = true
-          } else if (isDeclarationName(ts, node)) {
-            if (!ourImport) conflict = true
-          } else if (ts.isShorthandPropertyAssignment(p) && name === 'mount') {
-            // `{ mount }` would capture the renamed binding — leave the body alone.
-            conflict = true
-          } else if (name === 'render') {
-            renderRefs.push(node)
-          } else if (!mountImported) {
-            // A `mount` reference with no `mount` import is some other binding.
-            conflict = true
-          }
-        }
-      } else if (
-        ts.isPropertyAccessExpression(node) &&
-        ts.isIdentifier(node.expression) &&
-        namespaces.has(node.expression.text) &&
-        node.name.text === 'render'
-      ) {
-        replace(node.name, 'mount')
-      }
-      ts.forEachChild(node, visit)
-    }
-    visit(sf)
-
-    if (plainRender !== undefined) {
-      if (conflict) {
-        replace(plainRender, 'mount as render')
-      } else {
-        const list = plainRender.parent.elements
-        if (mountImported && list.length === 1) {
-          // `import { render } from …` next to a separate `mount` import: drop the declaration.
-          const decl = plainRender.parent.parent.parent
-          const end = source[decl.getEnd()] === '\n' ? decl.getEnd() + 1 : decl.getEnd()
-          edits.push({ start: decl.getStart(sf), end, text: '' })
-        } else if (mountImported) {
-          // Drop the specifier together with one adjacent comma.
-          const i = list.indexOf(plainRender)
-          const start = i > 0 ? (list[i - 1] as Node).getEnd() : plainRender.getStart(sf)
-          const end = i > 0 ? plainRender.getEnd() : (list[i + 1] as Node).getStart(sf)
-          edits.push({ start, end, text: '' })
-        } else {
-          replace(plainRender, 'mount')
-        }
-        for (const ref of renderRefs) {
-          replace(ref, ts.isShorthandPropertyAssignment(ref.parent) ? 'render: mount' : 'mount')
-        }
-      }
-    }
-
-    if (edits.length === 0) return null
+    if (ctx.edits.length === 0) return null
     let out = source
-    for (const e of edits.sort((a, b) => b.start - a.start)) out = out.slice(0, e.start) + e.text + out.slice(e.end)
+    for (const e of ctx.edits.sort((a, b) => b.start - a.start)) out = out.slice(0, e.start) + e.text + out.slice(e.end)
 
     return out
   },
