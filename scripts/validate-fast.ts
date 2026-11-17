@@ -45,6 +45,7 @@
  *   - check-readable-oxlint-ratchet (a file gained a finding of @pyreon/lint/oxlint/readable.json)
  *   - check-site-design     (pyreon.dev: a docs/src file gained a design-token literal, a styled
  *                            component outside the kit, a kit-boundary break, a gallery gap or an a11y gap)
+ *   - check-krausest-entry  (the staged js-framework-benchmark entry drifted from upstream's rules)
  *   - gen-docs --check      (manifest edited but generated files stale)
  *   - check-generated-fresh (the OTHER half of the pair: `anti-patterns.md` /
  *                            manifest edits leave the docs-site reference,
@@ -137,6 +138,12 @@ const GATES: Gate[] = [
   // examples/README.md is the index of every example (curated, fixture,
   // native host, benchmark); an add, move or removal updates it in the same PR.
   { name: 'check-examples-index', cmd: 'bun scripts/check-examples-index.ts' },
+  // The entry staged for krausest/js-framework-benchmark (contrib/krausest) is
+  // not a workspace member, so nothing else notices when it stops meeting
+  // upstream's rules: exact pins, an npm lockfile in sync with package.json,
+  // the metadata block, the row markup the real compiler emits, and the same
+  // row idioms as the local bench arm. Offline, ~0.1s.
+  { name: 'check-krausest-entry', cmd: 'bun scripts/check-krausest-entry.ts' },
   { name: 'gen-docs --check', cmd: 'bun run gen-docs --check' },
   // The OTHER half of the generator pair. `gen-docs` regenerates llms/api-reference;
   // `gen-all.ts` regenerates the docs-site reference/troubleshooting/examples pages
