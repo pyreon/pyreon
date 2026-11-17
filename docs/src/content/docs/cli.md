@@ -353,8 +353,8 @@ Letter grades:
 | `--only <gates>` | Run ONLY the listed comma-separated gates. Takes precedence over `--full` and the default set. |
 | `--skip <gates>` | Exclude the listed comma-separated gates (applied after `--only`). |
 | `--format <text\|json\|gha>` | Output format (default: `text`). |
-| `--json` | Shortcut for `--format=json` — emits the full `DoctorReport`. |
-| `--gha` | Shortcut for `--format=gha` — GitHub Actions annotation lines. |
+| `--json` | Shortcut for `--format json` — emits the full `DoctorReport`. |
+| `--gha` | Shortcut for `--format gha` — GitHub Actions annotation lines. |
 | `--ci` | Exit non-zero on **error** findings only (advisory `best-practices` errors excluded; warnings/info never fail). |
 | `--audit-min-risk <high\|medium\|low>` | Minimum risk floor for the `audit-tests` gate (default: `medium`). |
 | `--roots <globs>` | Comma-separated globs (relative to cwd) that replace workspace-root discovery for the file-scanning gates. |
@@ -393,7 +393,7 @@ The human-readable renderer (`--format=text`, the default) prints, in order:
 
 The look is the shared Pyreon CLI theme from `@pyreon/ansi`, the same one `pyreon-lint` and the `zero build` summary use: truecolor when the terminal advertises it (`COLORTERM=truecolor`), 16 colours otherwise, plain when `NO_COLOR` is set, `TERM=dumb`, or output is piped (`FORCE_COLOR=1` opts back in, `FORCE_COLOR=3` forces truecolor). Light terminals get their own palette via `COLORFGBG` or `PYREON_CLI_THEME=light`; symbols fall back to ASCII (`v x ! i ->`) when the locale is not UTF-8. File paths are OSC 8 hyperlinks in terminals that support them (iTerm2, WezTerm, kitty, VS Code).
 
-#### JSON (`--json` / `--format=json`)
+#### JSON (`--json` / `--format json`)
 
 Emits the full `DoctorReport` as pretty-printed JSON — the stable shape consumed by AI agents, CI dashboards, and third-party tooling.
 
@@ -445,7 +445,7 @@ Top-level keys: `score`, `grade`, `categories` (always 6 entries, `included` fla
 The `timestamp` + `score` fields make it easy to track health across commits — write `pyreon doctor --json` to an artifact in CI and compare the score between the base branch and the PR.
 :::
 
-#### GitHub Actions (`--gha` / `--format=gha`)
+#### GitHub Actions (`--gha` / `--format gha`)
 
 Emits one `::error` / `::warning` / `::notice` workflow-command line per finding, which GitHub renders as **inline annotations** in the PR's "Files changed" tab. Doctor `error` → GHA `error`, `warning` → `warning`, `info` → `notice`. A summary `::notice::` header carries the score + totals.
 
@@ -702,8 +702,8 @@ console.log(context.components.length, 'components')
 | `--only <gates>` | comma list | — | Run ONLY these gates. |
 | `--skip <gates>` | comma list | — | Skip these gates. |
 | `--format <fmt>` | `text\|json\|gha` | `text` | Output format. |
-| `--json` | boolean | off | Shortcut for `--format=json`. |
-| `--gha` | boolean | off | Shortcut for `--format=gha`. |
+| `--json` | boolean | off | Shortcut for `--format json`. |
+| `--gha` | boolean | off | Shortcut for `--format gha`. |
 | `--ci` | boolean | off | Exit non-zero on non-advisory error findings. |
 | `--audit-min-risk <r>` | `high\|medium\|low` | `medium` | Minimum risk for the `audit-tests` gate. |
 | `--roots <globs>` | comma list | workspace-discovered | Override scan-root discovery for the file-scanning gates (relative to cwd). |

@@ -142,7 +142,7 @@ The `best-practices` category (opt-in best-practice `@pyreon/lint` rules) is **a
 
 **Text** (default — TTY): score banner, per-category bars, top-N findings, skipped-gates footer. Colors degrade via `@pyreon/ansi` (`NO_COLOR` / `FORCE_COLOR` honored). File paths are OSC-8 hyperlinks in terminals that support them.
 
-**JSON** (`--json` / `--format=json`) — emits the full `DoctorReport`:
+**JSON** (`--json` / `--format json`) — emits the full `DoctorReport`:
 
 ```json
 {
@@ -170,7 +170,7 @@ The `best-practices` category (opt-in best-practice `@pyreon/lint` rules) is **a
 }
 ```
 
-**GitHub Actions** (`--gha` / `--format=gha`) — one `::error`/`::warning`/`::notice` per finding, rendered as inline annotations in the PR's "Files changed" tab:
+**GitHub Actions** (`--gha` / `--format gha`) — one `::error`/`::warning`/`::notice` per finding, rendered as inline annotations in the PR's "Files changed" tab:
 
 ```text
 ::notice::pyreon doctor score: 92/100 (A) — 1 errors, 1 warnings, 0 info

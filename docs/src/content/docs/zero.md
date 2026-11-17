@@ -87,7 +87,7 @@ For non-Vite bundlers, you need the equivalent configuration manually:
 - **Rollup**: `@rollup/plugin-node-resolve` + `dedupe: ['@pyreon/<name>', ...]`.
 - **esbuild**: no native dedupe; use a plugin or symlinks.
 
-`pyreon doctor --check-dedup` audits any consumer's lockfile (`bun.lock` / `package-lock.json` / `pnpm-lock.yaml`) for `@pyreon/*` packages with more than one resolved version — surfaces duplicates BEFORE runtime detection fires.
+`pyreon doctor --only check-dedup` audits any consumer's lockfile (`bun.lock` / `package-lock.json` / `pnpm-lock.yaml`) for `@pyreon/*` packages with more than one resolved version — surfaces duplicates BEFORE runtime detection fires.
 
 ## Configuration
 

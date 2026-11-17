@@ -85,8 +85,8 @@ function printUsage(): void {
     --only <gates>                   Run ONLY these gates (comma-separated).
     --skip <gates>                   Skip these gates (comma-separated).
     --format text|json|gha           Output format (default: text).
-    --json                           Shortcut for --format=json.
-    --gha                            Shortcut for --format=gha (GitHub Actions annotations).
+    --json                           Shortcut for --format json.
+    --gha                            Shortcut for --format gha (GitHub Actions annotations).
     --ci                             Exit non-zero on error findings only.
     --audit-min-risk high|medium|low Minimum risk for test-env audit (default: medium).
     --roots <globs>                  Scan roots for file gates (comma-separated globs,
@@ -127,6 +127,7 @@ const parseGateList = async (raw: string | undefined): Promise<GateName[] | unde
   if (invalid.length > 0) {
     return usageError(`Unknown gate(s): ${invalid.join(', ')}.`, `use one of ${VALID_GATES.join(', ')}`)
   }
+
   return names as GateName[]
 }
 
@@ -153,6 +154,29 @@ const DOCTOR_BOOLEAN_FLAGS = new Set(['--fix', '--json', '--gha', '--ci', '--ful
 const DOCTOR_VALUE_FLAGS = new Set(['--format', '--only', '--skip', '--roots', '--audit-min-risk'])
 
 /**
+ * The gate a flag-shaped selector meant: the legacy `--check-<x>` /
+ * `--audit-tests` flags (removed in 0.54) and the `--check-dedup` /
+ * `--check-pyreon-patterns` spellings older docs taught all name a gate.
+ */
+const gateForFlag = (a: string): GateName | undefined => {
+  const bare = a.replace(/^--/, '')
+  const stripped = bare.replace(/^check-/, '')
+  return [bare, stripped, `${stripped}-audit`].find((g): g is GateName => VALID_GATES.includes(g as GateName))
+}
+
+/** The fix for one rejected argument: its replacement when it names a gate or joins a value with `=`. */
+const doctorFlagHint = (a: string): string => {
+  const gate = gateForFlag(a)
+  if (gate !== undefined) return `${a} is not a flag; select that gate with --only ${gate}`
+  const joined = /^(--[a-z-]+)=(.*)$/.exec(a)
+  if (joined && DOCTOR_VALUE_FLAGS.has(joined[1] as string)) {
+    return `pass the value as a separate argument: ${joined[1]} ${joined[2]}`
+  }
+
+  return 'run `pyreon doctor --help` for the flags; select gates with --only <gate>[,<gate>] (e.g. --only islands-audit)'
+}
+
+/**
  * Fail on an unknown `pyreon doctor` argument. Ignoring it is worse than it
  * looks: a typo'd or removed selector (`--check-ssg`) would silently widen the
  * run to EVERY gate, so a CI script fails on gates it never opted into.
@@ -165,10 +189,7 @@ const rejectUnknownDoctorFlags = async (): Promise<void> => {
       continue
     }
     if (DOCTOR_BOOLEAN_FLAGS.has(a)) continue
-    await usageError(
-      `pyreon doctor: unknown argument '${a}'.`,
-      'run `pyreon doctor --help` for the flags; select gates with --only <gate>[,<gate>] (e.g. --only islands-audit)',
-    )
+    await usageError(`pyreon doctor: unknown argument '${a}'.`, doctorFlagHint(a))
   }
 }
 
@@ -199,6 +220,7 @@ async function main(): Promise<void> {
       json: args.includes('--json'),
     })
     if (exitCode > 0) process.exit(exitCode)
+
     return
   }
 
@@ -306,6 +328,7 @@ async function main(): Promise<void> {
     const { runCli } = await import('@pyreon/lint')
     const code = await runCli(args.slice(1))
     if (code !== null) process.exit(code)
+
     return
   }
 
@@ -339,6 +362,7 @@ async function main(): Promise<void> {
     if (options.ci && exitCode > 0) {
       process.exit(1)
     }
+
     return
   }
 
@@ -347,6 +371,7 @@ async function main(): Promise<void> {
     const outIdx = args.indexOf('--out')
     const outPath = outIdx >= 0 ? args[outIdx + 1] : undefined
     await generateContext({ cwd: process.cwd(), outPath })
+
     return
   }
 

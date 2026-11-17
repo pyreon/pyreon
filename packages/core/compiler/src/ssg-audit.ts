@@ -31,8 +31,9 @@
  *   - Per-code synthetic-fixture tests in `tests/ssg-audit.test.ts`
  *     (one fixture per finding type, bisect-verified by reverting the
  *     detector's match condition)
- *   - Doctor wiring at `packages/tools/cli/src/doctor.ts:checkSsg`,
- *     CLI flag `pyreon doctor --only ssg-audit [--json]`
+ *   - Doctor wiring: the `ssg-audit` gate in
+ *     `packages/tools/cli/src/doctor/gates/ssg-audit.ts`, selected with
+ *     `pyreon doctor --only ssg-audit [--json]`
  *
  * Same syntactic-only style as `island-audit.ts` — no type-check pass,
  * no module resolution. False negatives acceptable; false positives
