@@ -4,10 +4,18 @@
  * grids, mono captions and show/hide blocks. Contract and when to use which:
  * `.agents/guides/ui-system/site-design-system.md` ("Primitives").
  */
-export { Box, Cluster, Stack } from './box'
-export type { BoxProps, ClusterProps, LayoutTag, StackProps } from './box'
-export { AutoGrid, Grid } from './grid'
-export type { AutoGridProps, GridProps, GridTag } from './grid'
+export { Box } from './box'
+export type { BoxProps } from './box'
+export { Cluster } from './cluster'
+export type { ClusterProps } from './cluster'
+export type { LayoutTag } from './shared'
+export { Stack } from './stack'
+export type { StackProps } from './stack'
+export { AutoGrid } from './auto-grid'
+export type { AutoGridProps } from './auto-grid'
+export { Grid } from './grid'
+export type { GridProps } from './grid'
+export type { GridTag } from './grid-shared'
 export { Icon } from './icon'
 export type { A11yProps, AlignX, AlignY, Breakpoint, Responsive } from './space'
 export { Text } from './text'

@@ -2,8 +2,8 @@ import { For, Show } from '@pyreon/core'
 import { diff, font, gradient, radius, syntax, text, weight } from '../theme'
 import { el, focusRing, pair, tone, txt } from './bases'
 import { GlowCard } from './cards'
-import { Stack } from './primitives/box'
-import { AutoGrid } from './primitives/grid'
+import { Stack } from './primitives/stack'
+import { AutoGrid } from './primitives/auto-grid'
 import { Eyebrow, renderInline, VisuallyHidden } from './type'
 
 /**

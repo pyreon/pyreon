@@ -44,7 +44,7 @@ Import them from the folder's index (`kit/primitives`; an island imports the one
 - **Responsive values** use the theme breakpoints (`xs`…`xl`); a width that is not one (the home page's 700px `split`) is a named token in `theme.ts` with a query in `media.up` / `media.down`, never inside `breakpoints` (that object feeds the UI system and its generated CSS).
 - **Display type is not `Text`.** Headings are `Heading`, copy paragraphs `Lede`, the section label `Eyebrow` (`kit/type.tsx`); `Text` is for the small text pages used to style themselves.
 - **Static layout.** Layout props are read once when the primitive renders; a layout that changes at runtime switches between two primitives (or uses `Visible`).
-- **Islands.** The primitives use the styling runtime (except `Icon`, which is plain markup), so only an island already rooted in `KitScope` (product demos, the benchmark islands) uses them, and it imports the primitive's own file (`kit/primitives/box`), not the index: the index pulls every primitive (and coolgrid) into the island, about 1.4 KB gzip measured on a benchmark island. Kit files do the same. Static pages import the index.
+- **Islands.** The primitives use the styling runtime (except `Icon`, which is plain markup), so only an island already rooted in `KitScope` (product demos, the benchmark islands) uses them, and it imports the primitive's own file (`kit/primitives/stack`), not the index: the index pulls every primitive (and coolgrid) into the island, about 1.4 KB gzip measured on a benchmark island. Kit files do the same. Static pages import the index.
 
 ## Conventions
 

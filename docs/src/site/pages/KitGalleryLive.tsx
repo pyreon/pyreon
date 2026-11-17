@@ -2,7 +2,7 @@ import { signal } from '@pyreon/reactivity'
 import { DemoSurface, GlowCard } from '../kit/cards'
 import { Pill, Segmented } from '../kit/controls'
 import { Meters, PaperButton, PaperHint } from '../kit/demo'
-import { AutoGrid } from '../kit/primitives'
+import { AutoGrid } from '../kit/primitives/auto-grid'
 import { KitScope } from '../kit/scope'
 import { el } from '../kit/bases'
 

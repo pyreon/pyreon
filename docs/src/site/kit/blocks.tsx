@@ -2,8 +2,9 @@ import { For } from '@pyreon/core'
 import { clampSize, display, font, gradient, radius, text, weight } from '../theme'
 import { el, pair, tone, txt } from './bases'
 import { GlowCard } from './cards'
-import { Cluster, Stack } from './primitives/box'
-import { AutoGrid } from './primitives/grid'
+import { Cluster } from './primitives/cluster'
+import { Stack } from './primitives/stack'
+import { AutoGrid } from './primitives/auto-grid'
 import { Eyebrow, Heading, Lede, renderInline, StatusBadge } from './type'
 
 // ─── FactList ─────────────────────────────────────────────────────────────
