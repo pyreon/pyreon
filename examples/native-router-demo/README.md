@@ -1,6 +1,6 @@
 # native-router-demo: Router demo
 
-> **Experimental.** The native targets (PMTC → SwiftUI and Jetpack Compose) are demo-quality. See `docs/src/content/docs/multiplatform.md`.
+> **Experimental.** The native targets (PMTC → SwiftUI and Jetpack Compose) are Experimental overall: the store-release and crash-reporting path is not ready yet. Each area has its own tier (Beta / Experimental / Not ready) in the "Maturity by area" table of `docs/src/content/docs/multiplatform.md`.
 
 One source, [`src/RouterApp.tsx`](src/RouterApp.tsx): router, tabs, a websocket and audio. This directory holds the source and every host, the layout `bun create multiplatform` scaffolds:
 

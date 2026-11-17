@@ -5,7 +5,12 @@ import {
   MATRIX_DOC,
   computeTotals,
   parseMatrixRows,
+  parseTierTable,
+  shortName,
+  tierFor,
   verifyHeadline,
+  verifyTierSummaries,
+  verifyTiers,
 } from '../../../../../scripts/check-multiplatform-matrix'
 
 const HEADING = '## Production capability matrix'
@@ -101,5 +106,131 @@ describe('check-multiplatform-matrix — against the REAL doc', () => {
     expect(rows.length).toBeGreaterThanOrEqual(20)
     const totals = computeTotals(rows)
     expect(verifyHeadline(md, totals)).toEqual([])
+    const tiers = parseTierTable(md)
+    expect(tiers.issues).toEqual([])
+    expect(verifyTiers(rows, tiers.rows)).toEqual([])
+    const summaries = verifyTierSummaries(md, rows, MATRIX_DOC)
+    expect(summaries.issues).toEqual([])
+    expect(summaries.found).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('check-multiplatform-matrix — tierFor', () => {
+  it('is Beta at exactly 0.8 and above', () => {
+    expect(tierFor(0.8)).toBe('Beta')
+    expect(tierFor(1.0)).toBe('Beta')
+  })
+
+  it('is Experimental from exactly 0.4 up to just below 0.8', () => {
+    expect(tierFor(0.79)).toBe('Experimental')
+    expect(tierFor(0.4)).toBe('Experimental')
+  })
+
+  it('is Not ready below 0.4', () => {
+    expect(tierFor(0.39)).toBe('Not ready')
+    expect(tierFor(0)).toBe('Not ready')
+  })
+})
+
+const TIER_HEADING = '## Maturity by area'
+const TIER_HEADER = '| Area | Tier |\n| --- | --- |\n'
+const MATRIX = [
+  { category: 'Core UI (primitives)', weight: 10, fraction: 1.0 },
+  { category: 'Storage', weight: 7, fraction: 0.7 },
+  { category: 'Payments', weight: 2, fraction: 0.0 },
+]
+
+function tierDoc(rows: string): string {
+  return `intro\n\n${TIER_HEADING}\n\nrules\n\n${TIER_HEADER}${rows}\nafter\n`
+}
+
+describe('check-multiplatform-matrix — parseTierTable + verifyTiers', () => {
+  const good =
+    '| Core UI (primitives) | Beta |\n| Storage | Experimental |\n| Payments | Not ready |'
+
+  it('accepts a table whose areas match the matrix and whose tiers match tierFor', () => {
+    const { rows, issues } = parseTierTable(tierDoc(good))
+    expect(issues).toEqual([])
+    expect(rows).toEqual([
+      { area: 'Core UI (primitives)', tier: 'Beta' },
+      { area: 'Storage', tier: 'Experimental' },
+      { area: 'Payments', tier: 'Not ready' },
+    ])
+    expect(verifyTiers(MATRIX, rows)).toEqual([])
+  })
+
+  it('accepts a bolded tier cell', () => {
+    const { rows } = parseTierTable(tierDoc('| Storage | **Experimental** |'))
+    expect(rows[0]!.tier).toBe('Experimental')
+  })
+
+  it('a WRONG tier is a failure naming the fraction and the derived tier', () => {
+    const { rows } = parseTierTable(
+      tierDoc(good.replace('| Storage | Experimental |', '| Storage | Beta |')),
+    )
+    const issues = verifyTiers(MATRIX, rows)
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toContain('"Storage" says Beta but its fraction 0.7 makes it Experimental')
+  })
+
+  it('a MISSING area is a failure', () => {
+    const { rows } = parseTierTable(
+      tierDoc('| Core UI (primitives) | Beta |\n| Storage | Experimental |'),
+    )
+    const issues = verifyTiers(MATRIX, rows)
+    expect(issues.some((i) => i.includes('"Payments" has no row'))).toBe(true)
+  })
+
+  it('an EXTRA area (not a matrix category) is a failure', () => {
+    const { rows } = parseTierTable(tierDoc(`${good}\n| Telepathy | Beta |`))
+    const issues = verifyTiers(MATRIX, rows)
+    expect(issues.some((i) => i.includes('"Telepathy" is not a matrix category'))).toBe(true)
+  })
+
+  it('a duplicate area is a failure', () => {
+    const { rows } = parseTierTable(tierDoc(`${good}\n| Payments | Not ready |`))
+    expect(verifyTiers(MATRIX, rows).some((i) => i.includes('duplicate area "Payments"'))).toBe(
+      true,
+    )
+  })
+
+  it('an EMPTY table is a failure, never a clean pass', () => {
+    const { rows, issues } = parseTierTable(tierDoc(''))
+    expect(rows).toEqual([])
+    expect(issues.some((i) => i.includes('ZERO data rows'))).toBe(true)
+  })
+
+  it('a missing section or header is a failure', () => {
+    expect(parseTierTable('nothing here').issues.some((i) => i.includes('not found'))).toBe(true)
+    expect(
+      parseTierTable(`${TIER_HEADING}\n\nno table`).issues.some((i) => i.includes('header')),
+    ).toBe(true)
+  })
+})
+
+describe('check-multiplatform-matrix — verifyTierSummaries', () => {
+  it('shortName strips the trailing scope parenthetical', () => {
+    expect(shortName('Core UI (primitives)')).toBe('Core UI')
+    expect(shortName('Storage')).toBe('Storage')
+  })
+
+  it('accepts a summary listing exactly the tier, by short or full name', () => {
+    const md =
+      'x **Beta areas:** Core UI. y **Not-ready areas:** Payments. **Experimental areas:** Storage.'
+    expect(verifyTierSummaries(md, MATRIX, 'p.md')).toEqual({ issues: [], found: 3 })
+    expect(
+      verifyTierSummaries('**Beta areas:** Core UI (primitives).', MATRIX, 'p.md').issues,
+    ).toEqual([])
+  })
+
+  it('flags a summary that is missing an area, lists a wrong-tier area, or names a non-category', () => {
+    const { issues } = verifyTierSummaries('**Beta areas:** Storage, Telepathy.', MATRIX, 'p.md')
+    expect(issues.some((i) => i.includes('missing "Core UI"'))).toBe(true)
+    expect(issues.some((i) => i.includes('"Storage", which is Experimental'))).toBe(true)
+    expect(issues.some((i) => i.includes('"Telepathy", which is not a matrix category'))).toBe(true)
+  })
+
+  it('reports zero summaries found when there are none', () => {
+    expect(verifyTierSummaries('no summaries', MATRIX, 'p.md')).toEqual({ issues: [], found: 0 })
   })
 })
