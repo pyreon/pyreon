@@ -130,17 +130,17 @@ describe('Kotlin expr: array/String method lowerings', () => {
     expect(out).toContain('xs.dropLast(1)')
   })
 
-  it('toFixed: a LITERAL digit count formats Locale.ROOT; a DYNAMIC count interpolates it', () => {
+  it('toFixed: a literal, an omitted and a DYNAMIC digit count all lower to the runtime pyreonToFixed', () => {
     const out = kt(`  const a = computed(() => rows()[0].price.toFixed(2))
   const b = computed(() => rows()[0].price.toFixed())`).code
-    expect(out).toContain('"%.2f".format(java.util.Locale.ROOT,')
+    expect(out).toContain('pyreonToFixed(rows[0].price, 2L)')
     // 0-arg defaults to 0 digits (JS toFixed() === toFixed(0))
-    expect(out).toContain('"%.0f".format(java.util.Locale.ROOT,')
-    // A DYNAMIC digit count builds the same format string at runtime (it
-    // used to re-emit a verbatim `.toFixed(n)`, which Kotlin has no member for).
+    expect(out).toContain('pyreonToFixed(rows[0].price, 0)')
+    expect(out).not.toContain('.format(')
+    // A DYNAMIC digit count (it used to re-emit a verbatim `.toFixed(n)`, which Kotlin has no member for).
     const dyn = kt(`  const n = signal<number>(2)
   const a = computed(() => rows()[0].price.toFixed(n()))`)
-    expect(dyn.code).toContain('"%.${n}f".format(java.util.Locale.ROOT, rows[0].price)')
+    expect(dyn.code).toContain('pyreonToFixed(rows[0].price, n)')
     expect(dyn.code).not.toContain('.toFixed(n)')
   })
 
