@@ -38,6 +38,7 @@ function activities(dir: string): string[] {
 /** Hosts = activities that mount a Compose tree (`setContent {`). */
 // Both example layouts: native-<app>-android/ and native-<app>/android/.
 const androidHostDirs = exampleHostDirs(repo, 'android')
+
 const exampleHosts = androidHostDirs
   .flatMap((d) => activities(join(repo, d)))
   .map((path) => ({ path: path.slice(repo.length), src: readFileSync(path, 'utf8') }))
