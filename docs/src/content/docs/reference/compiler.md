@@ -40,6 +40,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`formatReactivityLens`](#formatreactivitylens-function-experimental) | function | Renders an `analyzeReactivity` result as an annotated-source CLI / debug view — each spanned expression gets an inline… |
 | [`analyzeValidate`](#analyzevalidate-function-experimental) | function | Build-time analogue of @pyreon/validate's runtime JIT: reads `s.*` schema DEFINITIONS from source and parses each into a… |
 | [`emitValidator`](#emitvalidator-function-experimental) | function | Emits a monomorphic, fully-inlined validator FUNCTION SOURCE for an emittable `analyzeValidate` IR node — straight-line… |
+| [`findSyntaxErrors`](#findsyntaxerrors-function) | function | Every syntax error the TypeScript parser reports for `code`, in source order, as… |
 | [`detectReactPatterns`](#detectreactpatterns-function) | function | AST-based detector for "coming from React" mistakes — 19 codes today: React-package imports (`react-import`,… |
 | [`migrateReactCode`](#migratereactcode-function) | function | One-shot React→Pyreon codemod whose output updates: `useState`→`signal` with every read rewritten to `x()` and every… |
 | [`migratePyreonCode`](#migratepyreoncode-function) | function | Pyreon→correct-Pyreon codemod (the parallel to `migrateReactCode`). |
@@ -280,6 +281,27 @@ validate("a@b.co").length // 0
 ```
 
 **See also:** `analyzeValidate`
+
+---
+
+### `findSyntaxErrors` `function`
+
+```ts
+findSyntaxErrors(code: string, filename?: string): SourceSyntaxError[]
+```
+
+Every syntax error the TypeScript parser reports for `code`, in source order, as `{ message, line (1-based), column (0-based) }`; empty means it parsed. The detectors, codemods and Reactivity Lens parse with an error-recovering parser and return nothing for code they cannot read, so call this first and never turn their empty result into a clean verdict for input with syntax errors (the MCP `validate` tool, `pyreon check` and `audit_islands` do). Parse mode follows the filename: `.ts`/`.mts`/`.cts` as TypeScript, `.jsx` as JSX, `.js`/`.mjs`/`.cjs` as JavaScript, anything else as TSX. Syntax only: no type checking. A markdown-fenced block parses (the backticks are template literals), so strip fences before calling it.
+
+**Example**
+
+```tsx
+import { findSyntaxErrors } from "@pyreon/compiler/analyze"
+
+findSyntaxErrors("export const C = () => <div>", "C.tsx")[0]
+// { message: "JSX element 'div' has no corresponding closing tag.", line: 1, column: 24 }
+```
+
+**See also:** `detectPyreonPatterns` · `detectReactPatterns`
 
 ---
 
