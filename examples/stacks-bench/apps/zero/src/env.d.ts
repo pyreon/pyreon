@@ -1,4 +1,4 @@
-// Ambient types for zero's virtual modules (same declarations as examples/ssr-showcase/src/env.d.ts).
+// Ambient types for zero's virtual modules (same declarations as examples/fixtures/ssr-showcase/src/env.d.ts).
 declare module 'virtual:zero/routes' {
   import type { RouteRecord } from '@pyreon/router'
   export const routes: RouteRecord[]

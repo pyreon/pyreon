@@ -28,6 +28,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 import { measureRouteSizes } from './check-route-budgets'
+import { EXAMPLE_GROUPS } from './example-dirs'
 import { listDirIfExists } from './fs-read'
 import { movesLibSizes, movesRouteSizes, type SizeBaseFile } from './size-budget-policy'
 import { loadCeilings, sizeBudgetsDir } from './size-budget-store'
@@ -102,7 +103,12 @@ function linkNodeModules(base: string): boolean {
   // Which workspaces have a `node_modules`, and which of them the base also
   // has, is read from directory listings, never probed per path.
   const groups = ['node_modules']
-  const parents = ['.', 'examples', ...listDirIfExists(join(REPO_ROOT, 'packages')).map((c) => join('packages', c.name))]
+  const parents = [
+    '.',
+    'examples',
+    ...EXAMPLE_GROUPS.map((g) => join('examples', g)),
+    ...listDirIfExists(join(REPO_ROOT, 'packages')).map((c) => join('packages', c.name)),
+  ]
   for (const parent of parents) {
     const inBase = new Set(listDirIfExists(join(base, parent)).map((e) => e.name))
     for (const entry of listDirIfExists(join(REPO_ROOT, parent))) {

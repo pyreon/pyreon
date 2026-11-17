@@ -2,7 +2,7 @@ import { defineNodeConfig } from '@pyreon/vitest-config'
 
 // overlay.ts is a DOM-heavy draggable floating panel with shadow DOM
 // + pointer drag events — needs real browser. Exercised by Chromium
-// e2e via examples/perf-dashboard.
+// e2e via examples/fixtures/perf-dashboard.
 export default defineNodeConfig({
   category: 'internals',
   // happy-dom spec-parity hashchange-echo guard for the router counter tests
