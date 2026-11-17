@@ -6,7 +6,7 @@ import { SectionHead } from '../kit/layout'
 import { AutoGrid } from '../kit/primitives'
 import { InlineText } from '../kit/story'
 import { Eyebrow, Heading, Lede, renderInline } from '../kit/type'
-import { font, radius, text, weight } from '../theme'
+import { badge, font, radius, text, weight } from '../theme'
 
 /**
  * The brand page's own section kinds (`logos`, `palette`, `type`, `dodont`).
@@ -80,7 +80,7 @@ const DoDontList = el
 const Verdict = txt
   .config({ name: 'BrandDoDontLabel' })
   .attrs({ tag: 'b' })
-  .theme(() => ({ display: 'block', fontFamily: font.mono, fontSize: 10.5, letterSpacing: '.12em', textTransform: 'uppercase', fontWeight: weight.medium, marginBottom: 4 }))
+  .theme(() => ({ display: 'block', fontFamily: font.mono, fontSize: badge.size, letterSpacing: badge.tracking, textTransform: 'uppercase', fontWeight: weight.medium, marginBottom: 4 }))
   .states((_t, m) => ({ ok: { color: tone(m, 'ok') }, err: { color: tone(m, 'err') }, why: { color: tone(m, 'fog') } }))
 
 const Bar = el

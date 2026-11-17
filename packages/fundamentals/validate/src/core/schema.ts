@@ -18,7 +18,7 @@
  * loader validators, etc.) without an adapter.
  */
 
-import type { FieldMeta, StandardSchemaIssue, StandardSchemaV1 } from '../types'
+import type { FieldMeta, StandardSchemaV1 } from '../types'
 import { META_SLOT } from '../types'
 import { type PyreonIssue, ValidationError, snapshotPath } from './issue'
 import type { JitFastValidator, JitValidator } from './jit'
@@ -262,7 +262,7 @@ export abstract class Schema<T> {
           {
             message: `[Pyreon] parse threw: ${err instanceof Error ? err.message : String(err)}`,
             path: [],
-          } satisfies StandardSchemaIssue,
+          } satisfies StandardSchemaV1.Issue,
         ],
       }
     }
@@ -975,7 +975,7 @@ function parseGeneral<T>(schema: Schema<T>, input: unknown): Result<T> {
         {
           message: '[Pyreon] schema is async — use parseAsync(input) instead of parse()',
           path: [],
-        } satisfies StandardSchemaIssue,
+        } satisfies StandardSchemaV1.Issue,
       ],
     }
   }

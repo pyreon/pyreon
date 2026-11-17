@@ -45,6 +45,7 @@ export const GALLERY_FILES = [
   `${SRC}/site/pages/KitGalleryLive.tsx`,
   `${SRC}/site/pages/KitScopePills.tsx`,
   `${SRC}/site/pages/KitGalleryPrimitives.tsx`,
+  `${SRC}/site/pages/KitGalleryFamilies.tsx`,
 ]
 
 const inKit = (p: string): boolean => p.startsWith(KIT)

@@ -209,7 +209,7 @@ const form = useForm({
 })
 ```
 
-The same works for a raw `v.object(...)` (Valibot 1+), `type(...)` (ArkType 2+), an Effect `Schema`, or a `@pyreon/validate` `s` schema. `useForm`'s `schema` option accepts a plain `SchemaValidateFn`, a `TypedSchemaAdapter`, **or** a `StandardSchemaLike` -- it detects which via `isStandardSchema` and routes accordingly.
+The same works for a raw `v.object(...)` (Valibot 1+), `type(...)` (ArkType 2+), an Effect `Schema`, or a `@pyreon/validate` `s` schema. `useForm`'s `schema` option accepts a plain `SchemaValidateFn`, a `TypedSchemaAdapter`, **or** a `StandardSchemaV1` -- it detects which via `isStandardSchema` and routes accordingly.
 
 ## The Standard Schema Bridge
 
@@ -1226,10 +1226,10 @@ The adapters wrap JavaScript schema libraries (zod / valibot / arktype), so they
 
 | Function                             | Signature                                                                   | Description                                                                                                                    |
 | ------------------------------------ | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `standardSchemaToValidator(schema)`  | `<TValues>(schema: StandardSchemaLike) => SchemaValidateFn<TValues>`         | Convert a raw Standard Schema into a whole-object `SchemaValidateFn` (sync fast-path: sync schema → plain record; async schema → Promise). The bridge behind passing a raw schema. |
-| `isStandardSchema(value)`            | `(value: unknown) => value is StandardSchemaShape<unknown>`                  | Type guard — detect a Standard Schema by its `~standard` property.                                                            |
+| `standardSchemaToValidator(schema)`  | `<TValues>(schema: StandardSchemaV1) => SchemaValidateFn<TValues>`           | Convert a raw Standard Schema into a whole-object `SchemaValidateFn` (sync fast-path: sync schema → plain record; async schema → Promise). The bridge behind passing a raw schema. |
+| `isStandardSchema(value)`            | `(value: unknown) => value is StandardSchemaV1`                              | Type guard — detect a Standard Schema by its `~standard.validate` function (objects and callables; `version` / `vendor` are not checked at runtime). |
 | `isPyreonAdapter(value)`             | `(value: unknown) => value is PyreonAdapterShape<Record<string, unknown>>`   | Type guard — detect a Pyreon `TypedSchemaAdapter` (`_infer` + callable `parse`).                                              |
-| `wrapStandardSchema(schema)`         | `<T>(schema: StandardSchemaShape) => (value) => SchemaParseResult<T>`        | Convert a Standard Schema into a sync coerced-value parser (async → `Promise` return). `@internal`.                          |
+| `wrapStandardSchema(schema)`         | `<T>(schema: StandardSchemaV1) => (value) => SchemaParseResult<T>`           | Convert a Standard Schema into a sync coerced-value parser (async → `Promise` return). `@internal`.                          |
 | `extractParseFn(schema)`             | `<T>(schema: unknown) => (value) => SchemaParseResult<T>`                    | Uniform sync parser from a `TypedSchemaAdapter` OR a raw Standard Schema. Throws on neither. Store / state-tree entry point.  |
 | `formatIssues(issues, op)`           | `(issues: SchemaIssue[], op: string) => string`                             | Format normalized issues into a readable `[Pyreon] Schema validation failed (<op>): ...` message.                            |
 
@@ -1258,11 +1258,9 @@ These types are **owned by `@pyreon/validation`** (the gate has zero Pyreon deps
 | `TypedSchemaAdapter<TValues>` | `{ _infer; validator: SchemaValidateFn<TValues>; parse?: (v) => ParseResult<TValues> }` | What `zodSchema` / `valibotSchema` / `arktypeSchema` return   |
 | `ValidationIssue`             | `&#123; path: string; message: string &#125;`                                         | Normalized issue with dot-separated path (aliased `SchemaIssue`) |
 | `ParseResult<T>`              | `&#123; ok: true; value: T &#125; \| &#123; ok: false; issues: ValidationIssue[] &#125;` | Sync parse result (aliased `SchemaParseResult`)              |
-| `StandardSchemaLike<Output>`  | `&#123; '~standard': &#123; types?; validate &#125; &#125;`                            | The `~standard` shape `standardSchemaToValidator` accepts      |
 | `InferSchema<S>`              | `S['_infer'] \| S['~standard']['types']['output'] \| Record<string, unknown>`         | Infer field types from an adapter or a raw schema             |
 | `SchemaAdapter<TSchema>`      | `<TValues>(schema: TSchema) => SchemaValidateFn<TValues>`                             | Generic schema adapter type                                   |
 | `FieldAdapter<TSchema>`       | `<T>(schema: TSchema) => ValidateFn<T>`                                               | Generic field adapter type                                   |
 | `SchemaIssue` / `SchemaParseResult` | Aliases of `ValidationIssue` / `ParseResult`                                     | Names used by the store / state-tree schema modes             |
-| `StandardSchemaV1` / `StandardSchemaIssue` / `StandardSchemaResult` | The Standard Schema v1 interface, issue and result types | For typing your own Standard Schema producers or consumers   |
-| `StandardSchemaShape<T>`      | A value carrying `~standard`                                                          | What `isStandardSchema` narrows to                            |
+| `StandardSchemaV1<In, Out>`   | Re-exported from the types-only `@standard-schema/spec`; issue and result shapes are `StandardSchemaV1.Issue` / `StandardSchemaV1.Result<Out>` | The Standard Schema contract: what `standardSchemaToValidator` / `wrapStandardSchema` accept and `isStandardSchema` narrows to |
 | `PyreonAdapterShape<T>`       | A value carrying `_infer` + callable `parse`                                          | What `isPyreonAdapter` narrows to                             |

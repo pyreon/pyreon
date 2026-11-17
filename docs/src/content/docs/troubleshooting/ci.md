@@ -5,6 +5,12 @@ description: "Common ci / build gate mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### A least-squares slope over a short window reads ONE allocation step as per-cycle growth
+
+A step of `S` bytes in the middle of `n` samples has slope `1.5·S·n/(n²−1)`, a tenth of the step at 15 samples. The nightly leak sweep was red for six nights on `domConditionalToggle-1000` at 93,675 bytes/cycle ("91 KB") against a 50,000-byte threshold: the dev component registry's two `Map`s (constant live size, 1,001 entries churned per cycle) each doubled their table once, 2 × 458,752 bytes, and nothing grew over the next 40 cycles. With one such map the same journey had sat at 47,197 bytes, 94% of the threshold. Do not raise the threshold and do not drop the journey: confirm. A container that grew by `G` bytes has `G` bytes of headroom, so a journey leaking above the threshold `τ` must grow it again within `G/τ` cycles; run `2·⌈G/τ⌉` further cycles and clear the window only when their slope is at most `τ/2` (a one-time step reads zero; a real leak, linear or amortized through a geometric container, reads at least 0.55 τ). Diagnose the same way it was found: heap snapshots before and after the step, diffed by type — a byte delta with an object-count delta of zero is one backing store growing, and its retainer names the holder. Reference: `scripts/perf/leak-verdict.ts` (`judgeHeapGrowth`), `packages/internals/test-utils/src/tests/leak-verdict.test.ts`.
+
+---
+
 ### A green retry report hides which spec flaked
 
 Playwright's dot reporter lists names after its `N flaky` summary without `(retry #N)` markers. Parse anchored count lines and their bounded title block, retain names without inventing retry indices, and merge them with explicit retry titles. Inspect artifacts even when jobs pass. Reference: `scripts/ci-flake-report.ts`, `ci-flake-report.test.ts`.
@@ -181,7 +187,7 @@ Under `sideEffects: false`, bundling a pure re-export barrel entry (rolldown's `
 
 ### An absolute size budget checked on every PR fails the wrong PR
 
-Branch protection does not require an up-to-date branch, so several PRs each add bytes under the number against their own base and main ends over it; every open PR then fails for bytes it did not add, and each one raises the same line to a different value and conflicts. Judge a PR on its own delta against the commit it merges into (`scripts/size-base.ts`), and judge the absolute ceiling on main, where the sum is visible. A "minimum headroom" rule on PRs is the same defect: an unrelated merge uses the headroom and the next PR fails. Keep one ceiling file per owner (`scripts/size-budgets/`) so PRs on different packages cannot conflict. Tests: `size-budget-policy.test.ts`, `size-budget-store.test.ts`.
+Branch protection does not require an up-to-date branch, so several PRs each add bytes under the number against their own base and main ends over it; every open PR then fails for bytes it did not add, and each one raises the same line to a different value and conflicts. Judge a PR on its own delta against the commit it merges into (`scripts/size-base.ts`), and judge the absolute ceiling on main, where the sum is visible. A "minimum headroom" rule on PRs is the same defect: an unrelated merge uses the headroom and the next PR fails. Keep one ceiling file per owner (`scripts/size-budgets/`) so PRs on different packages cannot conflict. A byte constant asserted in an e2e spec is the same absolute budget in another place: the pyreon.dev page budgets lived in two site specs, `main` sat 31 B under one, and three PRs to unrelated packages failed a required e2e cell. A size belongs in a ceiling file judged by the policy (`check-site-budgets`); a spec asserts what a page loads, not how many bytes. Tests: `size-budget-policy.test.ts`, `size-budget-store.test.ts`, `site-budgets.test.ts`.
 
 ---
 
