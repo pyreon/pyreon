@@ -10524,7 +10524,7 @@ function emitSwiftPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
       ).replace(/^\{/, '{ _ in')})`
     : ''
 
-  // `onSwipeLeft` / `onSwipeRight` → a HIGH-PRIORITY DragGesture — NOT
+  // `onSwipeLeft` / `onSwipeRight` (and `onSwipeUp` / `onSwipeDown`) → a HIGH-PRIORITY DragGesture — NOT
   // `.simultaneousGesture` like long-press. Device-found: a SwiftUI
   // Button fires on touch-up-INSIDE regardless of drag distance, so a
   // simultaneous drag and the tap BOTH fired on a real swipe and the tap
@@ -10538,27 +10538,39 @@ function emitSwiftPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   // swipe; ±40pt end-translation threshold matches the Compose emit and
   // the web polyfill. Handlers are `() -> Void` closures from
   // `emitSwiftAction` — invoked in place via `(<closure>)()`.
-  const onSwipeLeft = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'swipeleft',
-  )
-  const onSwipeRight = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'swiperight',
-  )
-  let swipeGesture = ''
-  if (onSwipeLeft || onSwipeRight) {
-    const branches: string[] = []
-    if (onSwipeLeft) {
-      branches.push(
-        `if value.translation.width < -40 { (${emitSwiftAction(onSwipeLeft.handler, indent)})() }`,
+  const swipeAttr = (name: string) =>
+    e.attrs.find((a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === name)
+  // One axis's branches: the negative direction, then (`else`) the positive one.
+  const swipeAxis = (axis: 'width' | 'height', neg: string, pos: string): string[] => {
+    const onNeg = swipeAttr(neg)
+    const onPos = swipeAttr(pos)
+    const out: string[] = []
+    if (onNeg) out.push(`if value.translation.${axis} < -40 { (${emitSwiftAction(onNeg.handler, indent)})() }`)
+    if (onPos) {
+      out.push(
+        `${onNeg ? 'else ' : ''}if value.translation.${axis} > 40 { (${emitSwiftAction(onPos.handler, indent)})() }`,
       )
     }
-    if (onSwipeRight) {
-      branches.push(
-        `${onSwipeLeft ? 'else ' : ''}if value.translation.width > 40 { (${emitSwiftAction(onSwipeRight.handler, indent)})() }`,
-      )
-    }
-    swipeGesture = `.highPriorityGesture(DragGesture(minimumDistance: 20).onEnded { value in if abs(value.translation.width) > abs(value.translation.height) { ${branches.join(' ')} } })`
+    return out
   }
+  // `onSwipeUp` / `onSwipeDown` ride the SAME drag behind a vertical-dominance
+  // guard (SwiftUI's translation.height is positive downward, like the web's
+  // clientY), so one gesture is at most one swipe.
+  const horizontal = swipeAxis('width', 'swipeleft', 'swiperight')
+  const vertical = swipeAxis('height', 'swipeup', 'swipedown')
+  const guarded: string[] = []
+  if (horizontal.length > 0) {
+    guarded.push(`if abs(value.translation.width) > abs(value.translation.height) { ${horizontal.join(' ')} }`)
+  }
+  if (vertical.length > 0) {
+    guarded.push(
+      `${guarded.length > 0 ? 'else ' : ''}if abs(value.translation.height) > abs(value.translation.width) { ${vertical.join(' ')} }`,
+    )
+  }
+  const swipeGesture =
+    guarded.length > 0
+      ? `.highPriorityGesture(DragGesture(minimumDistance: 20).onEnded { value in ${guarded.join(' ')} })`
+      : ''
 
   const pad = ' '.repeat(indent + 2)
   const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')

@@ -383,10 +383,10 @@ Styled CTA. Web `<button>` (filled blue by default); iOS `Button` with `.buttonS
 ### `Press` `component`
 
 ```ts
-(props: { onPress: () => void; onLongPress?: () => void; onSwipeLeft?: () => void; onSwipeRight?: () => void; disabled?: boolean; children }) => VNode
+(props: { onPress: () => void; onLongPress?: () => void; onSwipeLeft?: () => void; onSwipeRight?: () => void; onSwipeUp?: () => void; onSwipeDown?: () => void; disabled?: boolean; children }) => VNode
 ```
 
-Unstyled tap target (no chrome). Web `<div role="button">`; iOS `Button {}` (plain); Android `Box(clickable)`. Use to make arbitrary content tappable; supports `onLongPress` and `onSwipeLeft`/`onSwipeRight` (horizontally-dominant ≥40px swipe — iOS high-priority DragGesture, Android direction-locked drag detector, web pointer-delta polyfill; taps still fire `onPress`).
+Unstyled tap target (no chrome). Web `<div role="button">`; iOS `Button {}` (plain); Android `Box(clickable)`. Use to make arbitrary content tappable; supports `onLongPress`, `onSwipeLeft`/`onSwipeRight` and `onSwipeUp`/`onSwipeDown` (a ≥40px swipe along the dominant axis — iOS one high-priority DragGesture, Android a direction-locked drag detector per axis, web a pointer-delta polyfill that sets `touch-action` for a vertical swipe; taps still fire `onPress`).
 
 **Example**
 

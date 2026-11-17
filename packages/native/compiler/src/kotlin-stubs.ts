@@ -579,6 +579,14 @@ class PointerInputScope {
     onDragCancel: () -> Unit = {},
     onHorizontalDrag: (PointerInputChange, Float) -> Unit,
   ) {}
+  // <Press onSwipeUp/onSwipeDown>: the vertical twin, same real signature.
+  @Suppress("UNUSED_PARAMETER", "RedundantSuspendModifier")
+  suspend fun detectVerticalDragGestures(
+    onDragStart: (Offset) -> Unit = {},
+    onDragEnd: () -> Unit = {},
+    onDragCancel: () -> Unit = {},
+    onVerticalDrag: (PointerInputChange, Float) -> Unit,
+  ) {}
 }
 
 // Modifier — Compose's chainable layout/decorator API. Real Modifier

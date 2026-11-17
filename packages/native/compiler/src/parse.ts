@@ -7994,11 +7994,13 @@ function warnIfMissingRequiredProp(tag: string, attrs: AttrIR[], ctx: ParseCtx):
         (a.name === 'press' ||
           a.name === 'longpress' ||
           a.name === 'swipeleft' ||
-          a.name === 'swiperight'),
+          a.name === 'swiperight' ||
+          a.name === 'swipeup' ||
+          a.name === 'swipedown'),
     )
   ) {
     ctx.warnings.push(
-      '<Press> without an `onPress`, `onLongPress`, or `onSwipeLeft`/`onSwipeRight` handler emits a no-op clickable element on both targets (button with empty action / Box with no-op clickable modifier). Add `onPress={fn}` or use the plain primitive directly.',
+      '<Press> without an `onPress`, `onLongPress`, or `onSwipe*` handler emits a no-op clickable element on both targets (button with empty action / Box with no-op clickable modifier). Add `onPress={fn}` or use the plain primitive directly.',
     )
   }
 

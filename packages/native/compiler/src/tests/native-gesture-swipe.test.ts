@@ -14,7 +14,8 @@
 // locks the EMIT SHAPE + is the bisect target.
 
 import { describe, expect, it } from 'vitest'
-import { transform } from './first-party-plugins'
+import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
+import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 
 const SRC = `import { signal } from '@pyreon/reactivity'
 export function App() {
@@ -96,5 +97,77 @@ describe('<Press onSwipeLeft/onSwipeRight> gesture emit', () => {
         `${target}: ${JSON.stringify(out.warnings)}`,
       ).toBe(false)
     }
+  })
+})
+
+// Vertical swipe (GES-1): `onSwipeUp` / `onSwipeDown` ride the same drag on
+// iOS behind a vertical-dominance guard, and a second direction-locked
+// detector (`detectVerticalDragGestures`) on Android.
+const VSRC = `import { signal } from '@pyreon/reactivity'
+export function App() {
+  const dir = signal<string>('none')
+  return (
+    <VStack>
+      <Press
+        onPress={() => dir.set('tap')}
+        onSwipeLeft={() => dir.set('left')}
+        onSwipeRight={() => dir.set('right')}
+        onSwipeUp={() => dir.set('up')}
+        onSwipeDown={() => dir.set('down')}
+      ><Text>Swipe me</Text></Press>
+    </VStack>
+  )
+}`
+
+describe('<Press onSwipeUp/onSwipeDown> gesture emit', () => {
+  it('Swift: one high-priority drag, horizontal branch first, then the vertical-dominance branch', () => {
+    const out = transform(VSRC, { target: 'swift' })
+    expect(out.code.match(/\.highPriorityGesture\(DragGesture/g)).toHaveLength(1)
+    expect(out.code).toContain(
+      '} else if abs(value.translation.height) > abs(value.translation.width) { if value.translation.height < -40 {',
+    )
+    expect(out.code).toMatch(/if value\.translation\.height < -40 \{ \(\{\s*dir = "up"/)
+    expect(out.code).toMatch(/else if value\.translation\.height > 40 \{ \(\{\s*dir = "down"/)
+    expect(out.warnings).toEqual([])
+  })
+
+  it('Kotlin: a vertical detector beside the horizontal one, each with its own accumulator', () => {
+    const out = transform(VSRC, { target: 'kotlin' })
+    expect(out.code).toContain('detectHorizontalDragGestures(')
+    expect(out.code).toContain(
+      '.pointerInput(Unit) { val swipeThreshold = 40.dp.toPx(); var dragTotal = 0f; detectVerticalDragGestures(onDragStart = { dragTotal = 0f }',
+    )
+    expect(out.code).toContain('onVerticalDrag = { _, amount -> dragTotal += amount }')
+    expect(out.code).toMatch(/if \(dragTotal < -swipeThreshold\) run\(\{\s*dir = "up"/)
+    expect(out.code).toMatch(/else if \(dragTotal > swipeThreshold\) run\(\{\s*dir = "down"/)
+    expect(out.warnings).toEqual([])
+  })
+
+  it('a vertical-only swipe emits no horizontal guard or detector, and does not warn', () => {
+    const src = `import { signal } from '@pyreon/reactivity'
+export function App() {
+  const n = signal<number>(0)
+  return <Press onSwipeDown={() => n.set(1)}><Text>x</Text></Press>
+}`
+    const swift = transform(src, { target: 'swift' })
+    expect(swift.code).toContain(
+      '.highPriorityGesture(DragGesture(minimumDistance: 20).onEnded { value in if abs(value.translation.height) > abs(value.translation.width) { if value.translation.height > 40 {',
+    )
+    expect(swift.code).not.toContain('abs(value.translation.width) > abs(value.translation.height)')
+    expect(swift.warnings).toEqual([])
+    const kotlin = transform(src, { target: 'kotlin' })
+    expect(kotlin.code).toContain('detectVerticalDragGestures(')
+    expect(kotlin.code).not.toContain('detectHorizontalDragGestures(')
+    expect(kotlin.warnings).toEqual([])
+  })
+
+  it.skipIf(!isSwiftcAvailable())('both directions on both axes typecheck (Swift)', () => {
+    const r = validateSwiftWithStubs(transform(VSRC, { target: 'swift' }).code)
+    expect(r.ok, String(r.error)).toBe(true)
+  })
+
+  it.skipIf(!isKotlincAvailable())('both directions on both axes compile (Kotlin)', () => {
+    const r = validateKotlin(transform(VSRC, { target: 'kotlin' }).code)
+    expect(r.ok, String(r.error)).toBe(true)
   })
 })

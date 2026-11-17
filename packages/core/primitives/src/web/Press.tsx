@@ -30,9 +30,11 @@ export const Press = (props: PressProps): VNode => {
   // handler SUPPRESSES the click the browser dispatches after the same
   // pointerup (one gesture must not be both a swipe and a press) —
   // matching the native lowering, where the drag recognizer claims the
-  // gesture. Thresholds mirror the native emits: ≥40px end-delta,
-  // horizontally dominant.
-  const hasSwipe = props.onSwipeLeft !== undefined || props.onSwipeRight !== undefined
+  // gesture. Thresholds mirror the native emits: ≥40px end-delta along the
+  // dominant axis.
+  const hasHorizontalSwipe = props.onSwipeLeft !== undefined || props.onSwipeRight !== undefined
+  const hasVerticalSwipe = props.onSwipeUp !== undefined || props.onSwipeDown !== undefined
+  const hasSwipe = hasHorizontalSwipe || hasVerticalSwipe
   let swipeStartX = 0
   let swipeStartY = 0
   let suppressClick = false
@@ -84,10 +86,14 @@ export const Press = (props: PressProps): VNode => {
         if (hasSwipe && !props.disabled && e.type === 'pointerup') {
           const dx = e.clientX - swipeStartX
           const dy = e.clientY - swipeStartY
-          if (Math.abs(dx) >= 40 && Math.abs(dx) > Math.abs(dy)) {
+          if (hasHorizontalSwipe && Math.abs(dx) >= 40 && Math.abs(dx) > Math.abs(dy)) {
             suppressClick = true
             if (dx < 0) props.onSwipeLeft?.()
             else props.onSwipeRight?.()
+          } else if (hasVerticalSwipe && Math.abs(dy) >= 40 && Math.abs(dy) > Math.abs(dx)) {
+            suppressClick = true
+            if (dy < 0) props.onSwipeUp?.()
+            else props.onSwipeDown?.()
           }
         }
       }
@@ -97,6 +103,11 @@ export const Press = (props: PressProps): VNode => {
     cursor: props.disabled ? 'not-allowed' : 'pointer',
     'user-select': 'none',
   }
+  // A touch drag the browser claims as a scroll or zoom ends in
+  // `pointercancel`, never `pointerup`, so the swipe never fires. A vertical
+  // swipe keeps the horizontal pan for the browser (`pan-x`); with both axes
+  // the element takes every touch drag (`none`).
+  if (hasVerticalSwipe) computedStyle['touch-action'] = hasHorizontalSwipe ? 'none' : 'pan-x'
   const attrs: Record<string, unknown> = {
     ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
     role: 'button',

@@ -8892,7 +8892,8 @@ function emitKotlinPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
     ? `.combinedClickable(${enabledPrefix}onClick = ${action}, onLongClick = ${emitKotlinAction(onLongPress.handler, indent)})`
     : `.clickable(${enabledPrefix}onClick = ${action})`
 
-  // `onSwipeLeft` / `onSwipeRight` → `pointerInput { detectHorizontalDragGestures }`.
+  // `onSwipeLeft` / `onSwipeRight` → `pointerInput { detectHorizontalDragGestures }`
+  // (`onSwipeUp` / `onSwipeDown` → `detectVerticalDragGestures`).
   // The detector is direction-locked (only claims horizontally-dominant
   // drags), so taps still reach `.clickable` and vertical scrolls pass
   // through. Deltas ACCUMULATE across the gesture (`onHorizontalDrag`
@@ -8904,25 +8905,30 @@ function emitKotlinPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   // composable's lifetime, so `onDragStart` must reset the accumulator
   // per gesture. Handlers are `() -> Unit` lambdas from
   // `emitKotlinAction` — invoked via the stdlib non-extension `run(block)`.
-  const onSwipeLeft = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'swipeleft',
-  )
-  const onSwipeRight = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'swiperight',
-  )
-  let swipeInput = ''
-  if (onSwipeLeft || onSwipeRight) {
+  const swipeAttr = (name: string) =>
+    e.attrs.find((a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === name)
+  // One direction-locked detector per axis, each its own `pointerInput` with
+  // its own accumulator: a horizontal and a vertical detector on one node
+  // compete for the touch slop, and the one whose axis the drag crosses first
+  // consumes it, so one gesture is at most one swipe.
+  const swipeAxis = (detector: string, onDrag: string, neg: string, pos: string): string => {
+    const onNeg = swipeAttr(neg)
+    const onPos = swipeAttr(pos)
+    if (!onNeg && !onPos) return ''
     const branches: string[] = []
-    if (onSwipeLeft) {
-      branches.push(`if (dragTotal < -swipeThreshold) run(${emitKotlinAction(onSwipeLeft.handler, indent)})`)
-    }
-    if (onSwipeRight) {
+    if (onNeg) branches.push(`if (dragTotal < -swipeThreshold) run(${emitKotlinAction(onNeg.handler, indent)})`)
+    if (onPos) {
       branches.push(
-        `${onSwipeLeft ? 'else ' : ''}if (dragTotal > swipeThreshold) run(${emitKotlinAction(onSwipeRight.handler, indent)})`,
+        `${onNeg ? 'else ' : ''}if (dragTotal > swipeThreshold) run(${emitKotlinAction(onPos.handler, indent)})`,
       )
     }
-    swipeInput = `.pointerInput(Unit) { val swipeThreshold = 40.dp.toPx(); var dragTotal = 0f; detectHorizontalDragGestures(onDragStart = { dragTotal = 0f }, onDragEnd = { ${branches.join(' ')} }, onHorizontalDrag = { _, amount -> dragTotal += amount }) }`
+
+    return `.pointerInput(Unit) { val swipeThreshold = 40.dp.toPx(); var dragTotal = 0f; ${detector}(onDragStart = { dragTotal = 0f }, onDragEnd = { ${branches.join(' ')} }, ${onDrag} = { _, amount -> dragTotal += amount }) }`
   }
+  // `onSwipeUp` / `onSwipeDown`: drag deltas are positive DOWNWARD, as on the web.
+  const swipeInput =
+    swipeAxis('detectHorizontalDragGestures', 'onHorizontalDrag', 'swipeleft', 'swiperight') +
+    swipeAxis('detectVerticalDragGestures', 'onVerticalDrag', 'swipeup', 'swipedown')
   const gestures = `${clickable}${swipeInput}`
   const modifier = layoutModifier !== '' ? `${layoutModifier}${gestures}` : `Modifier${gestures}`
 

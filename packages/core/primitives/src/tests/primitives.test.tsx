@@ -708,6 +708,57 @@ describe('<Press> happy-dom unit', () => {
     unmount()
   })
 
+  it('onSwipeUp/onSwipeDown fire on a ≥40px vertically-dominant delta and suppress the click', () => {
+    let up = 0
+    let down = 0
+    let left = 0
+    let press = 0
+    const { container, unmount } = mountTest(
+      h(
+        Press,
+        { onPress: () => press++, onSwipeLeft: () => left++, onSwipeUp: () => up++, onSwipeDown: () => down++ },
+        'x',
+      ),
+    )
+    const root = container.firstElementChild as HTMLDivElement
+    // Both axes handled: the element takes every touch drag from the browser.
+    expect(root.style.getPropertyValue('touch-action')).toBe('none')
+    // Up: dy −70, dx 10.
+    root.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 200 }))
+    root.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 110, clientY: 130 }))
+    root.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect([up, down, left, press]).toEqual([1, 0, 0, 0])
+    // Down: dy +60.
+    root.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100 }))
+    root.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 100, clientY: 160 }))
+    root.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect([up, down, left, press]).toEqual([1, 1, 0, 0])
+    // A horizontally-dominant drag is still the horizontal swipe, never a vertical one.
+    root.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 100 }))
+    root.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 120, clientY: 150 }))
+    expect([up, down, left, press]).toEqual([1, 1, 1, 0])
+    unmount()
+  })
+
+  it('a vertical-only swipe zone leaves horizontal pans to the browser and ignores horizontal drags', () => {
+    let down = 0
+    let press = 0
+    const { container, unmount } = mountTest(h(Press, { onPress: () => press++, onSwipeDown: () => down++ }, 'x'))
+    const root = container.firstElementChild as HTMLDivElement
+    expect(root.style.getPropertyValue('touch-action')).toBe('pan-x')
+    root.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 100 }))
+    root.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 100, clientY: 110 }))
+    root.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect([down, press]).toEqual([0, 1])
+    unmount()
+  })
+
+  it('a horizontal-only swipe zone keeps the default touch-action', () => {
+    const { container, unmount } = mountTest(h(Press, { onPress: () => {}, onSwipeLeft: () => {} }, 'x'))
+    expect((container.firstElementChild as HTMLDivElement).style.getPropertyValue('touch-action')).toBe('')
+    unmount()
+  })
+
   it('pointerleave never fires a swipe (drag cancel semantics)', () => {
     let left = 0
     const { container, unmount } = mountTest(

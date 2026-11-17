@@ -41,6 +41,19 @@ export interface PressProps extends ChildrenProp, HtmlPassthroughProps {
   onSwipeLeft?: () => void
   /** Right-swipe counterpart of `onSwipeLeft` — same thresholds/lowering. */
   onSwipeRight?: () => void
+  /**
+   * Fires when a VERTICALLY-dominant swipe ends ≥40px/pt/dp UPWARD. Web:
+   * the same pointer-delta polyfill (the element gets `touch-action: pan-x`,
+   * or `none` alongside a horizontal handler, so the browser does not claim
+   * the drag as a page scroll). iOS: the same high-priority `DragGesture`
+   * with a vertical-dominance guard. Android: `pointerInput {
+   * detectVerticalDragGestures }` (direction-locked — taps and horizontal
+   * drags pass through). A vertical swipe zone inside a vertical `<Scroll>`
+   * claims the drags that start on it, so the list does not scroll from there.
+   */
+  onSwipeUp?: () => void
+  /** Downward counterpart of `onSwipeUp` — same thresholds/lowering. */
+  onSwipeDown?: () => void
   disabled?: boolean
 }
 
