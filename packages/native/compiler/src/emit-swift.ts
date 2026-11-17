@@ -145,6 +145,7 @@ import {
   inferTypeValue,
   objectLengthRangeForm,
   optionalMemberTernary,
+  recordObservation,
   rewriteObjectMapCall,
   rewriteObjectKeys,
   rewriteObjectValues,
@@ -4857,6 +4858,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // known, so the rewrite lowers to a plain string-array literal;
       // recursing into the array emit produces the precise `[String]`.
       {
+        const record = recordObservation(e, _exprInferCtx)
+        if (record !== null) return `${record.fn}(${emitSwiftExpr(record.arg, indent)})`
         const rw = rewriteObjectMapCall(e, _exprInferCtx) ?? rewriteObjectKeys(e, _exprInferCtx)
         if (rw !== null) return emitSwiftExpr(rw, indent)
       }
