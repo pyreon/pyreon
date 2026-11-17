@@ -3,7 +3,8 @@ import { createCompiler, type CompilerPlugin } from '../index'
 
 // `DeclEmitter.typing.member` types the PROPERTY read `<binding>.<property>` on a plugin declaration's container (the native
 // shape), as `typing.callRead` types the zero-argument call. A member the declaration says may be absent comes back as a
-// nullable union — which is what makes both emitters wrap its interpolation (`(g.level).map { … }`) instead of printing `Optional(…)`.
+// nullable union, and one it types as a string reads bare. An UNTYPED read is routed through `pyreonOptionalText` too (it may be
+// absent), so the typing is what lets a present member skip the wrapper.
 const toy = (withMember: boolean): CompilerPlugin => ({
   name: '@acme/gizmo',
   apiVersion: 2,
@@ -17,7 +18,11 @@ const toy = (withMember: boolean): CompilerPlugin => ({
         ? {
             typing: {
               member: (_d: unknown, property: string) =>
-                property === 'level' ? { kind: 'union' as const, branches: [{ kind: 'number' as const }, { kind: 'null' as const }] } : undefined,
+                property === 'level'
+                  ? { kind: 'union' as const, branches: [{ kind: 'number' as const }, { kind: 'null' as const }] }
+                  : property === 'name'
+                    ? { kind: 'string' as const }
+                    : undefined,
             },
           }
         : {}),
@@ -33,15 +38,18 @@ export function App() {
 }`
 
 describe('typing.member', () => {
-  it('types a property read on the container, so an optional member is wrapped and an untyped one is not', () => {
+  it('types a property read on the container: an optional member is wrapped, a present string one is not', () => {
     const swift = createCompiler({ plugins: [toy(true)] }).transform(SRC, { target: 'swift' }).code
-    expect(swift).toContain('(g.level).map {')
-    expect(swift).not.toContain('(g.name).map {')
+    expect(swift).toContain('pyreonOptionalText(g.level, "")')
+    expect(swift).toContain('Text(verbatim: "\\(g.name)")')
     const kotlin = createCompiler({ plugins: [toy(true)] }).transform(SRC, { target: 'kotlin' }).code
-    expect(kotlin).toMatch(/g\.level[^\n]*(?:let|\?)/)
+    expect(kotlin).toContain('${pyreonOptionalText(g.level, "")}')
+    expect(kotlin).toContain('Text(text = "${g.name}")')
   })
 
-  it('without a typing the read is not typed at all', () => {
-    expect(createCompiler({ plugins: [toy(false)] }).transform(SRC, { target: 'swift' }).code).not.toContain('(g.level).map {')
+  it('without a typing neither read is typed, so both take the absent-safe wrapper', () => {
+    const swift = createCompiler({ plugins: [toy(false)] }).transform(SRC, { target: 'swift' }).code
+    expect(swift).toContain('pyreonOptionalText(g.level, "")')
+    expect(swift).toContain('pyreonOptionalText(g.name, "")')
   })
 })

@@ -1373,6 +1373,8 @@ fun pyreonRound(x: Double): Double = 0.0
 fun pyreonParseInt(text: String, radix: Int? = null): Long? = null
 fun pyreonParseFloat(text: String): Double = 0.0
 fun pyreonToNumber(text: String): Double = 0.0
+// pyreonOptionalText — an optional value as the web's text (PyreonNumber.kt). Mirrors the real signature.
+fun pyreonOptionalText(value: Any?, absent: String): String = ""
 // PyreonDate — JS Date as epoch milliseconds (PyreonDate.kt). Mirrors the real surface.
 fun pyreonDateFrom(text: String): Double = 0.0
 fun pyreonDateFrom(ms: Number): Double = 0.0

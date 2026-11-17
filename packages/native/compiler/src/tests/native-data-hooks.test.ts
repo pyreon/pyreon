@@ -242,9 +242,9 @@ export function TagsDemo() {
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('@State private var tags = PyreonFieldArray(["alpha"])')
     // Accessor unwraps — the web call parens must be GONE:
-    expect(r.code).toContain('Tags: \\(tags.length)')
+    expect(r.code).toContain('Tags: \\(pyreonOptionalText(tags.length, ""))')
     expect(r.code).toContain('ForEach(tags.items, id: \\.key) { item in')
-    expect(r.code).toContain('\\(item.value)')
+    expect(r.code).toContain('\\(pyreonOptionalText(item.value, ""))')
     expect(r.code).not.toContain('tags.items()')
     expect(r.code).not.toContain('item.value()')
     // Methods stay CALLS — append positional, move labelled:
@@ -256,9 +256,9 @@ export function TagsDemo() {
     const r = transform(APP, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain('val tags = remember { PyreonFieldArray(listOf("alpha")) }')
-    expect(r.code).toContain('Tags: ${tags.length}')
+    expect(r.code).toContain('Tags: ${pyreonOptionalText(tags.length, "")}')
     expect(r.code).toContain('items(tags.items, key = { it.key }) { item ->')
-    expect(r.code).toContain('${item.value}')
+    expect(r.code).toContain('${pyreonOptionalText(item.value, "")}')
     expect(r.code).not.toContain('tags.items()')
     expect(r.code).not.toContain('item.value()')
     expect(r.code).toContain('tags.append("new")')

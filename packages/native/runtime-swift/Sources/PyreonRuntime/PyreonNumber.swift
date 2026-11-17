@@ -246,3 +246,20 @@ public func pyreonToNumber(_ text: String) -> Double {
     }
     return pyreonDecimalPrefix(s, whole: true) ?? .nan
 }
+
+// MARK: - An optional value as text (template literals, `'text' + x`, `String(x)`)
+
+/// JavaScript's text for a value that may be absent: the value as the web prints it, or `absent` (`"undefined"` /
+/// `"null"`, the spelling its TypeScript type names). Swift's `"\(x)"` over an optional prints the DEBUG description
+/// — `Optional(3)`, `Optional("b")`, `nil` — so `` `Picked: ${xs.find(p)}` `` read `Picked: Optional(2)` on iOS.
+/// A non-optional argument is promoted, so the emitter may route any interpoland it cannot prove present here.
+public func pyreonOptionalText<T>(_ v: T?, _ absent: String) -> String {
+    guard let v else { return absent }
+    return "\(v)"
+}
+
+/// The Double overload: a present value prints through `pyreonNumberString` (`7`, not `7.0`).
+public func pyreonOptionalText(_ v: Double?, _ absent: String) -> String {
+    guard let v else { return absent }
+    return pyreonNumberString(v)
+}

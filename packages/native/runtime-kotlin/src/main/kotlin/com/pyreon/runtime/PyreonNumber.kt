@@ -210,3 +210,16 @@ fun pyreonToNumber(text: String): Double {
     }
     return pyreonDecimalPrefix(s, 0, whole = true) ?: Double.NaN
 }
+
+/**
+ * JavaScript's text for a value that may be absent: the value as the web prints it, or [absent] (`"undefined"` /
+ * `"null"`, the spelling its TypeScript type names). Kotlin's `"${x}"` prints `null` for every absence, where the web
+ * prints `undefined` for an optional field, `.find`, `.at`, `map.get` and `?.`. A Double prints through
+ * [pyreonNumberString] (`7`, not `7.0`).
+ */
+fun pyreonOptionalText(value: Any?, absent: String): String = when (value) {
+    null -> absent
+    is Double -> pyreonNumberString(value)
+    is Float -> pyreonNumberString(value)
+    else -> value.toString()
+}

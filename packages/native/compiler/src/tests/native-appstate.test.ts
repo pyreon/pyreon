@@ -43,7 +43,7 @@ describe('useAppState() lifecycle emit (never-wired class, third member)', () =>
     // The accessor form `app()` lowers to the phase read; the sticky flag is
     // a bare @Observable member read.
     expect(r.code).toContain('Phase: \\(app.phase)')
-    expect(r.code).toContain('BG: \\(app.wasBackgrounded)')
+    expect(r.code).toContain('BG: \\(pyreonOptionalText(app.wasBackgrounded, ""))')
   })
 
   it('Kotlin: lowers to the SELF-INSTALLING composable with .value reads', () => {
@@ -53,7 +53,7 @@ describe('useAppState() lifecycle emit (never-wired class, third member)', () =>
     expect(r.code).toContain('Phase: ${app.phase.value}')
     // wasBackgrounded is Compose MutableState too — a missing .value renders
     // the state object's toString instead of the boolean.
-    expect(r.code).toContain('BG: ${app.wasBackgrounded.value}')
+    expect(r.code).toContain('BG: ${pyreonOptionalText(app.wasBackgrounded.value, "")}')
   })
 
   it.skipIf(!isSwiftcAvailable())('Swift: emit type-checks against the stub', () => {

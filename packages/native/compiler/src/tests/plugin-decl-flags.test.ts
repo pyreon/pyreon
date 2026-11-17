@@ -29,13 +29,13 @@ const kotlin = (flags: Parameters<typeof toy>[0]) => createCompiler({ plugins: [
 
 describe('DeclEmitter.callable', () => {
   it('keeps the parentheses of a zero-argument call of the binding on both targets', () => {
-    expect(swift({ callable: true })).toContain('"\\(t())"')
-    expect(kotlin({ callable: true })).toContain('${t()}')
+    expect(swift({ callable: true })).toContain('"\\(pyreonOptionalText(t(), ""))"')
+    expect(kotlin({ callable: true })).toContain('${pyreonOptionalText(t(), "")}')
   })
 
   it('without it an unknown identifier reads as a property, as before', () => {
-    expect(swift({})).toContain('"\\(t)"')
-    expect(kotlin({})).toContain('${t}')
+    expect(swift({})).toContain('"\\(pyreonOptionalText(t, ""))"')
+    expect(kotlin({})).toContain('${pyreonOptionalText(t, "")}')
   })
 })
 

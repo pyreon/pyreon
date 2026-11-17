@@ -155,14 +155,16 @@ export function Row({ qty }: P) {
 })
 
 describe('optional values in Text render EMPTY when absent (JSX parity)', () => {
-  it('Swift: optional interpolation maps to "" — never `Optional(x)`', () => {
+  it('Swift: optional interpolation goes through pyreonOptionalText(x, "") — never `Optional(x)`', () => {
     const out = transform(NAMED_REF_APP, { target: 'swift' }).code
-    expect(out).toContain('Text(verbatim: "\\((label).map { "\\($0)" } ?? "")")')
+    expect(out).toContain('Text(verbatim: "\\(pyreonOptionalText(label, ""))")')
+    expect(out).not.toContain('Optional(')
   })
 
-  it('Kotlin: optional interpolation gets `?: ""` — never a literal "null"', () => {
+  it('Kotlin: optional interpolation goes through pyreonOptionalText(x, "") — never a literal "null"', () => {
     const out = transform(NAMED_REF_APP, { target: 'kotlin' }).code
-    expect(out).toContain('Text(text = "${label ?: ""}")')
+    expect(out).toContain('Text(text = "${pyreonOptionalText(label, "")}")')
+    expect(out).not.toContain('"null"')
   })
 
   it('a ??-collapsed read stays a PLAIN interpolation (no double guard)', () => {
