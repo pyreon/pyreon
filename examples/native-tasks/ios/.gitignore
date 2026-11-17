@@ -1,0 +1,23 @@
+# Xcode + xcodegen generated artifacts
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+
+# Pyreon-emitted Swift lands inside generated/ but is gitignored —
+# `../scripts/build-ios.sh` regenerates it on every Xcode build.
+generated/
+
+# node_modules
+node_modules/
+
+# Asset pipeline output — `../scripts/build-ios.sh` rematerializes the shared
+# assets/ into the catalog on every build.
+Sources/Assets.xcassets/
+Sources/fonts/
+
+# Web-host bridge — `../scripts/build-ios.sh` rematerializes `webhost/` on every
+# build (the CLI writes it to `<outDir>/webhost`), same as the asset outputs
+# above. It was the one materialized output missing from this list, so every
+# local build left the tree dirty.
+Sources/webhost/

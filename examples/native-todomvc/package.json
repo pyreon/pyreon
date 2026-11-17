@@ -1,0 +1,35 @@
+{
+  "name": "@pyreon/example-native-todomvc",
+  "version": "0.50.3",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — the PMTC TodoMVC reference: one source (src/TodoApp.tsx) built for the web (index.html + vite), iOS (ios/) and Android (android/, with the R8 release lane) from this one directory, the layout create-multiplatform scaffolds. Device-gated in native-device.yml; the web build is e2e-tested.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build:ios": "bash scripts/build-ios.sh",
+    "build:android": "bash scripts/build-android.sh",
+    "xcode": "bash scripts/xcode-setup.sh",
+    "check": "bun ../../packages/native/cli/src/cli.ts check --source=src/TodoApp.tsx",
+    "lint": "oxlint .",
+    "test": "echo '[native-todomvc] no unit tests; device tests run in native-device.yml, the web build in test:e2e:native-todomvc-web'",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/primitives": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/storage": "workspace:*"
+  },
+  "devDependencies": {
+    "@pyreon/native-cli": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vite-plugin": "workspace:*",
+    "@types/bun": "^1.4.4",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.8"
+  }
+}
