@@ -5,7 +5,8 @@ import { el, tone, txt } from './bases'
 import { GlowCard, PackageName } from './cards'
 import { InstallCommand, Pill } from './controls'
 import { TextLink } from './proof'
-import { Eyebrow, Heading, Lede, renderInline, StatusBadge } from './type'
+import { Eyebrow, Heading, Lede, renderInline } from './type'
+import { Badge } from './badge'
 
 /**
  * Pieces for the typed extra sections (`content/extra-sections.ts`) beyond
@@ -118,7 +119,7 @@ const NoteBox = el
 export function NextReleaseNote(props: { text: string }) {
   return (
     <NoteBox>
-      <StatusBadge>next release</StatusBadge>
+      <Badge tone="experimental" size="sm" placement="after">next release</Badge>
       <span>{props.text.replace(/^\s*#\s*/, '')}</span>
     </NoteBox>
   )

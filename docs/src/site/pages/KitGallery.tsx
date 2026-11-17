@@ -16,15 +16,17 @@ import { BenchmarkTable, CompareBars, VerdictChip } from '../kit/bench'
 import { ApiGroups, Faq, FactList, FeatureList, LimitNote, NumberedCards, StatRow, StepCards } from '../kit/blocks'
 import { EmberGradientDefs, GlowCard, Glyph, PackageCard, PackageName, ProductTag } from '../kit/cards'
 import { BeforeAfter, CodeCard, CodeDiff } from '../kit/code'
-import { Chip, InstallCommand, Pill } from '../kit/controls'
+import { InstallCommand, Pill } from '../kit/controls'
 import { Rule, Section, SectionHead } from '../kit/layout'
 import { AutoGrid, Wrap } from '../kit/primitives'
 import { PrimitiveSpecimens } from './KitGalleryPrimitives'
+import { FamilySpecimens } from './KitGalleryFamilies'
 import { Reveal } from '../kit/motion'
 import { Badge } from '../kit/badge'
+import { Tag } from '../kit/tag'
 import { CaveatLine, EndCTA, HookHero, Numeral, ProofBand, QuoteBlock, StatBody, StatCard } from '../kit/proof'
-import { Code, Eyebrow, Heading, Lede, renderInline, StatusBadge, StatusDot } from '../kit/type'
-import { color, font, type ColorKey } from '../theme'
+import { Code, Eyebrow, Heading, Lede, renderInline, StatusDot } from '../kit/type'
+import { color, font, text, type ColorKey } from '../theme'
 
 // The gallery's interactive specimens: one island (the page is static).
 const KitLiveIsland = island(() => import('./KitGalleryLive'), { name: 'KitGalleryLive', hydrate: 'visible', prefetch: 'idle' })
@@ -51,7 +53,7 @@ const Name = txt
   .theme((_t, m) => ({
     margin: 0,
     fontFamily: font.mono,
-    fontSize: 12,
+    fontSize: text.mono.size,
     fontWeight: 500,
     letterSpacing: '.04em',
     color: tone(m, 'accentText'),
@@ -72,7 +74,7 @@ function Specimen(props: { name: string; children?: VNodeChild }) {
 const Swatch = el
   .config({ name: 'KitSwatch' })
   .attrs({ block: true, gap: 6 })
-  .theme((_t, m) => ({ padding: 12, borderRadius: 12, border: '1px solid', borderColor: tone(m, 'line'), fontFamily: font.mono, fontSize: 11.5, color: tone(m, 'mist') }))
+  .theme((_t, m) => ({ padding: 12, borderRadius: 12, border: '1px solid', borderColor: tone(m, 'line'), fontFamily: font.mono, fontSize: text.caveat.size, color: tone(m, 'mist') }))
 
 const Chip2 = el.config({ name: 'KitChipColour' }).attrs({ block: true }).theme(() => ({ height: 36, borderRadius: 8, border: '1px solid rgba(128,128,128,.25)' }))
 
@@ -95,7 +97,7 @@ function Scope(props: { mode: 'dark' | 'light' }) {
           <VerdictChip verdict="win" />
           <VerdictChip verdict="tie" />
           <VerdictChip verdict="loss" />
-          <Chip>signal()</Chip>
+          <Tag>signal()</Tag>
         </Row>
         <InstallCommand command="npm create @pyreon/zero@latest" />
       </ScopeBox>
@@ -132,7 +134,9 @@ export function KitGallery() {
 
           <PrimitiveSpecimens Specimen={Specimen} />
 
-          <Specimen name="Eyebrow · Heading · Lede · Code · StatusDot · StatusBadge">
+          <FamilySpecimens Specimen={Specimen} />
+
+          <Specimen name="Eyebrow · Heading · Lede · Code · StatusDot · Badge sm">
             <Eyebrow>eyebrow default</Eyebrow>
             <Eyebrow state="accent">eyebrow accent</Eyebrow>
             <Heading tag="h2" size="section">
@@ -140,7 +144,7 @@ export function KitGallery() {
             </Heading>
             <Heading tag="h3" size="card">
               Heading card
-              <StatusBadge>next release</StatusBadge>
+              <Badge tone="experimental" size="sm" placement="after">next release</Badge>
             </Heading>
             <Lede size="section">{renderInline('Lede section with `inline code`, {dot:ok} ok, {dot:warn} warn and {dot:err} err dots.')}</Lede>
             <Lede size="card">
@@ -148,7 +152,7 @@ export function KitGallery() {
             </Lede>
           </Specimen>
 
-          <Specimen name="Pill · InstallCommand · Chip · Segmented">
+          <Specimen name="Pill · InstallCommand · Tag · Segmented">
             <Row>
               <Pill href="/docs">Ghost md</Pill>
               <Pill href="/docs" size="lg">
@@ -166,9 +170,9 @@ export function KitGallery() {
               <InstallCommand command="npm create @pyreon/zero@latest" variant="hot" />
             </Row>
             <Row>
-              <Chip>useForm</Chip>
-              <Chip>useField</Chip>
-              <Chip>FormProvider</Chip>
+              <Tag>useForm</Tag>
+              <Tag>useField</Tag>
+              <Tag>FormProvider</Tag>
             </Row>
           </Specimen>
 

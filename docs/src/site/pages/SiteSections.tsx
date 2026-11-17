@@ -3,18 +3,18 @@ import { For, Show } from '@pyreon/core'
 import { htmlOf, type WhyMeta } from '../content/pages'
 import whyMeta from '../content/pages/why/_meta.json'
 import type { SiteSection } from '../content/types-site'
-import { tone, txt } from '../kit/bases'
 import { Faq } from '../kit/blocks'
 import { CodeCard } from '../kit/code'
 import { Section, SectionHead } from '../kit/layout'
-import { AutoGrid, Stack, Wrap } from '../kit/primitives'
+import { AutoGrid, Box, Stack, Wrap } from '../kit/primitives'
 import { Reveal } from '../kit/motion'
 import { CaveatLine, ProofBand, QuoteBlock } from '../kit/proof'
 import { CompareStrip, ItemCards, LinkCards, Prose, StepList, StorySplit } from '../kit/story'
 import { DataTable } from '../kit/table'
 import { Heading, renderInline } from '../kit/type'
-import { font, text } from '../theme'
 import { BrandSection, isBrandSection } from './BrandSections'
+import { Note } from '../kit/note'
+import { keepRanges } from '../kit/stat'
 
 /**
  * Renders the content set's `SiteSection` union (`types-site.ts`) for the
@@ -38,10 +38,6 @@ export interface SectionFigure {
   node: VNodeChild
 }
 
-const Caption = txt
-  .config({ name: 'SiteSectionCaption' })
-  .attrs({ tag: 'p' })
-  .theme((_t, m) => ({ margin: 0, marginTop: 14, maxWidth: 760, fontFamily: font.mono, fontSize: text.caveat.size, lineHeight: 1.6, color: tone(m, 'fog') }))
 
 const L = (whyMeta as unknown as WhyMeta).template.sections
 
@@ -65,7 +61,9 @@ function Body(props: { s: SiteSection }): VNodeChild {
             <CodeCard label={s.before.label} code={s.before.code} html={htmlOf(s.before)} rail="del" />
             <CodeCard label={s.after.label} code={s.after.code} html={htmlOf(s.after)} state="hot" rail="ins" />
           </AutoGrid>
-          <Caption>{renderInline(s.caption)}</Caption>
+          <Box padTop={175}>
+            <Note measure>{keepRanges(s.caption)}</Note>
+          </Box>
         </>
       )
     case 'code':
@@ -78,7 +76,9 @@ function Body(props: { s: SiteSection }): VNodeChild {
             </For>
           </AutoGrid>
           <Show when={() => !!s.caption}>
-            <Caption>{renderInline(s.caption ?? '')}</Caption>
+            <Box padTop={175}>
+              <Note measure>{keepRanges(s.caption ?? '')}</Note>
+            </Box>
           </Show>
         </>
       )
