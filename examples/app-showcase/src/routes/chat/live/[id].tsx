@@ -1,3 +1,4 @@
+/* oxlint-disable max-lines-per-function -- LiveChannel is one Plain Mode component: its `messages` and `draft` state is written by the history query, the stream, the send mutation and the composer, and read by the render; splitting it would thread that state through props */
 import { useHead } from '@pyreon/head'
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useSSE } from '@pyreon/query'
 import { effect, untrack } from '@pyreon/reactivity'
