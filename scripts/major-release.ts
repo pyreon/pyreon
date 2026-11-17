@@ -12,11 +12,11 @@
  * one `major` changeset — see the Release runbook in
  * `.agents/guides/ci/README.md`.
  *
- * The approval covers ONE transition: from the major below it (and from its
- * own release candidates, while the major changeset is still pending in pre
- * mode). Once the approved version itself is the current stable version, the
- * switch is inert: a further `major` would produce the next major, which it
- * does not name.
+ * The approval covers ONE transition: from the major below it, and from its
+ * own release candidates (a `major` changeset merged during the rc series
+ * still lands in the same `N.0.0`). Once the approved version itself is the
+ * current stable version, the switch is inert: a further `major` would
+ * produce the next major, which it does not name.
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -37,8 +37,7 @@ export function readFixedGroupVersion(root: string): string {
  * May a `major` changeset take the fixed group from `current` to `approved`?
  * True only when `approved` is `N.0.0` and either `current` is a version of
  * major N-1 (including its prereleases), or `current` is a prerelease of
- * `N.0.0` itself (the release-candidate series, during which the consumed
- * major changeset stays in `.changeset/` until pre mode exits).
+ * `N.0.0` itself (the release-candidate series).
  */
 export function majorReleaseAllowed(current: string, approved: string | null = APPROVED_MAJOR): boolean {
   if (approved === null) return false

@@ -120,7 +120,7 @@ describe('the major switch — exactly the approved transition', () => {
     expect(majorOffenders(files)).toEqual(["one-oh.md: '@pyreon/core': major"])
     expect(checkNoMajor(files, '0.54.0', null).ok).toBe(false)
     expect(checkNoMajor(files, '0.54.0', '1.0.0')).toMatchObject({ ok: true, approvedTarget: '1.0.0' })
-    // During the rc series the consumed major changeset stays in .changeset/.
+    // A major merged during the rc series still lands in the approved 1.0.0.
     expect(checkNoMajor(files, '1.0.0-rc.3', '1.0.0').ok).toBe(true)
     expect(checkNoMajor(files, '1.0.0', '1.0.0').ok).toBe(false)
   })
@@ -263,5 +263,7 @@ describe('wiring — the workflows and publish.ts use the channel', () => {
     const src = read('scripts/publish.ts')
     expect(src).toContain('resolvePublishTag(pkg.version, explicitTag, preState)')
     expect(src).toContain("args.push('--tag', distTag)")
+    // Internal lockstep edges go through the exact-pin rule (publish-ranges.test.ts).
+    expect(src).toContain('lockstep: fixedGroup.has(pkgName) && fixedGroup.has(name)')
   })
 })
