@@ -661,6 +661,9 @@ jobs:
       - name: Lint Ratchet (pyreon-lint advisory baseline)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run check-pyreon-lint-ratchet
+      - name: Lint Ratchet (readable oxlint per-file baseline)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bun run check-readable-oxlint-ratchet
       - name: Leak Ratchet (audit-leak-classes baseline)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run check-leak-ratchet

@@ -1,13 +1,14 @@
-import { Suspense } from "@pyreon/core"
-import type { ComponentFn, VNodeChild } from "@pyreon/core"
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
-import { PostList } from "@pyreon/zero-content/blog"
-import { blog } from "../blog"
+import { Suspense } from '@pyreon/core'
+import type { ComponentFn, VNodeChild } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
+import { PostList } from '@pyreon/zero-content/blog'
+import { Link } from '@pyreon/zero/link'
+
+import { blog } from '../blog'
 
 export const meta = {
-  title: "Blog",
-  description: "A statically-rendered Pyreon Zero blog.",
+  title: 'Blog',
+  description: 'A statically-rendered Pyreon Zero blog.',
 }
 
 /**
@@ -18,7 +19,10 @@ const RecentPosts = (async (): Promise<VNodeChild> => {
   const posts = await blog.getPosts()
   return (
     <>
-      <PostList posts={posts.slice(0, 5)} coverSize={blog.config.coverSize} />
+      <PostList
+        posts={posts.slice(0, 5)}
+        coverSize={blog.config.coverSize}
+      />
       {posts.length > 5 ? (
         <p>
           <Link href="/blog">View all {posts.length} posts →</Link>
@@ -31,7 +35,7 @@ const RecentPosts = (async (): Promise<VNodeChild> => {
 export default function Home() {
   useHead({
     title: meta.title,
-    meta: [{ name: "description", content: meta.description }],
+    meta: [{ name: 'description', content: meta.description }],
   })
 
   return (

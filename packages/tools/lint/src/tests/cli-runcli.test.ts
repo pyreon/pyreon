@@ -65,3 +65,28 @@ describe('runCli — exit-code contract', () => {
     expect(await quiet(() => runCli([root, '--quiet']))).toBe(0)
   })
 })
+
+describe('runCli — the config file’s preset', () => {
+  it('is honoured when no --preset is given', async () => {
+    // Regression: `--preset` defaulted to 'recommended', and an explicit preset
+    // wins over the config file — so every CLI run ignored the file's preset,
+    // and `"preset": ["recommended", "readable"]` turned nothing on.
+    const root = fixture(
+      'a.ts',
+      'export function f() {\n  g()\n  g()\n  g()\n  return 1\n}\ndeclare function g(): void\n',
+    )
+    const config = join(root, '.pyreonlintrc.json')
+    writeFileSync(config, JSON.stringify({ preset: ['recommended', 'readable'] }))
+    const out: string[] = []
+    const spy = vi.spyOn(console, 'log').mockImplementation((s: unknown) => void out.push(String(s)))
+    try {
+      await runCli([root, '--config', config, '--format', 'json'])
+    } finally {
+      spy.mockRestore()
+    }
+    const ids = (JSON.parse(out.join('\n')) as { files: { diagnostics: { ruleId: string }[] }[] }).files
+      .flatMap((f) => f.diagnostics)
+      .map((d) => d.ruleId)
+    expect(ids).toContain('pyreon/padding-before-return')
+  })
+})

@@ -3,11 +3,12 @@ import { resolve } from 'node:path'
 import { formatElapsed, header, onInterrupt, plural, term, verdict } from '@pyreon/ansi'
 import { AstCache } from './cache'
 import { createIgnoreFilter } from './config/ignore'
-import { getPreset } from './config/presets'
+import { loadConfig, loadConfigFromPath } from './config/loader'
+import { resolveLintConfig } from './lint'
 import { formatCompact, formatGha, formatJSON, formatText } from './reporter'
 import { allRules } from './rules/index'
 import { lintFile } from './runner'
-import type { LintConfig, LintOptions, LintResult, Severity } from './types'
+import type { LintConfig, LintOptions, LintResult } from './types'
 import { hasJsExtension } from './utils/index'
 
 function formatOutput(result: LintResult, format: string, elapsedMs: number): string {
@@ -34,13 +35,12 @@ function formatOutput(result: LintResult, format: string, elapsedMs: number): st
  */
 export function watchAndLint(options: LintOptions & { format: string }): void {
   const cache = new AstCache()
-  const preset = options.preset ?? 'recommended'
-  const config = getPreset(preset)
-
-  applyOverrides(config, options.ruleOverrides)
-  applyOptionsOverrides(config, options.ruleOptionsOverrides)
-
   const cwd = resolve('.')
+  // The same resolution `lint()` uses — the watcher used to start from the
+  // bare preset and never read `.pyreonlintrc.json` at all.
+  const fileConfig = options.config ? loadConfigFromPath(options.config) : loadConfig(cwd)
+  const config = resolveLintConfig(fileConfig, options)
+
   const isIgnored = createIgnoreFilter(cwd, options.ignore)
 
   const runs = { count: 0 }
@@ -81,31 +81,6 @@ export function watchAndLint(options: LintOptions & { format: string }): void {
     } catch {
       console.error(`[pyreon-lint] Could not watch: ${dir}`)
     }
-  }
-}
-
-function applyOverrides(
-  config: LintConfig,
-  overrides?: Record<string, Severity> | undefined,
-): void {
-  if (!overrides) return
-  for (const [id, severity] of Object.entries(overrides)) {
-    config.rules[id] = severity
-  }
-}
-
-function applyOptionsOverrides(
-  config: LintConfig,
-  overrides?: Record<string, Record<string, unknown>> | undefined,
-): void {
-  if (!overrides) return
-  for (const [id, opts] of Object.entries(overrides)) {
-    const existing = config.rules[id]
-    const [severity, current]: [Severity, Record<string, unknown>] = Array.isArray(existing)
-      ? [existing[0] as Severity, (existing[1] ?? {}) as Record<string, unknown>]
-      : [(existing ?? 'off') as Severity, {}]
-    if (severity === 'off') continue
-    config.rules[id] = [severity, { ...current, ...opts }] as const
   }
 }
 

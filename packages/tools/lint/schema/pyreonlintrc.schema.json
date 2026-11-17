@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://pyreon.dev/schemas/pyreonlintrc.json",
   "title": "@pyreon/lint configuration",
-  "description": "Schema for .pyreonlintrc.json \u2014 configures the @pyreon/lint linter. Reference this in your config via `\"$schema\": \"./node_modules/@pyreon/lint/schema/pyreonlintrc.schema.json\"` for IDE autocomplete + validation.",
+  "description": "Schema for .pyreonlintrc.json — configures the @pyreon/lint linter. Reference this in your config via `\"$schema\": \"./node_modules/@pyreon/lint/schema/pyreonlintrc.schema.json\"` for IDE autocomplete + validation.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -10,27 +10,36 @@
       "type": "string"
     },
     "preset": {
-      "description": "Base preset to extend. Recommended is the safe default. `lib`=strict+architecture; `app`=disable lib-only rules; `best-practices`=recommended + all opt-in best-practice rules (library rules self-gate on package.json deps).",
-      "enum": [
-        "recommended",
-        "strict",
-        "app",
-        "lib",
-        "best-practices"
+      "description": "Base preset, or a list composed LEFT TO RIGHT: `[\"recommended\", \"readable\"]`. Base presets set every rule: `recommended` is the safe default; `strict` promotes warnings to errors; `lib`=strict+architecture; `app`=disable lib-only rules; `best-practices`=recommended + all opt-in best-practice rules (library rules self-gate on package.json deps). Layer presets set only their own rules, so they never undo the base: `readable` adds the readability rules (blank lines between declarations, before a return and between component sections, JSX depth 6, no ternary inside a branch); `readable-strict` adds paragraph spacing inside functions and tighter limits. A list of layers alone starts from `recommended`.",
+      "oneOf": [
+        {
+          "$ref": "#/definitions/presetName"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/presetName"
+          },
+          "minItems": 1
+        }
       ]
     },
     "settings": {
       "type": "object",
-      "description": "Options shared by every rule that DECLARES them in its schema. Some options are a property of the project rather than of one rule \u2014 `portablePaths` names the directories whose source must survive three targets, and five rules need that same answer. A key here is seeded into a rule's options only when that rule declares it; per-rule options always win.",
+      "description": "Options shared by every rule that DECLARES them in its schema. Some options are a property of the project rather than of one rule — `portablePaths` names the directories whose source must survive three targets, and five rules need that same answer. A key here is seeded into a rule's options only when that rule declares it; per-rule options always win.",
       "properties": {
         "portablePaths": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Path substrings whose files must lower to SwiftUI / Compose. Read by every rule in the `portable` group that needs to know which files travel."
         },
         "exemptPaths": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Path substrings exempt from the rules that support it."
         }
       }
@@ -42,11 +51,11 @@
       "properties": {
         "pyreon": {
           "$ref": "#/definitions/severity",
-          "description": "Framework semantics \u2014 reactivity, JSX, lifecycle, SSR/SSG."
+          "description": "Framework semantics — reactivity, JSX, lifecycle, SSR/SSG."
         },
         "a11y": {
           "$ref": "#/definitions/severity",
-          "description": "Accessibility \u2014 standard markup plus Pyreon primitives, toast, dialog, overlay."
+          "description": "Accessibility — standard markup plus Pyreon primitives, toast, dialog, overlay."
         },
         "pkg": {
           "$ref": "#/definitions/severity",
@@ -58,7 +67,7 @@
         },
         "security": {
           "$ref": "#/definitions/severity",
-          "description": "Exploitable shapes \u2014 script URLs, opener leakage, unsanitized HTML sinks."
+          "description": "Exploitable shapes — script URLs, opener leakage, unsanitized HTML sinks."
         },
         "isomorphic": {
           "$ref": "#/definitions/severity",
@@ -66,11 +75,11 @@
         },
         "backend": {
           "$ref": "#/definitions/severity",
-          "description": "Server-role files \u2014 request handlers, api routes, anything importing `node:`."
+          "description": "Server-role files — request handlers, api routes, anything importing `node:`."
         },
         "web-perf": {
           "$ref": "#/definitions/severity",
-          "description": "Client-role files \u2014 main-thread work that shows up as jank or layout shift, plus teardown that only goes wrong in a real browser."
+          "description": "Client-role files — main-thread work that shows up as jank or layout shift, plus teardown that only goes wrong in a real browser."
         },
         "portable": {
           "$ref": "#/definitions/severity",
@@ -79,6 +88,10 @@
         "js": {
           "$ref": "#/definitions/severity",
           "description": "Language and module-system shapes oxlint cannot express."
+        },
+        "style": {
+          "$ref": "#/definitions/severity",
+          "description": "How code reads — blank lines between declarations, before a return and between component sections, JSX depth, ternary shape. Off in every base preset; the `readable` layers turn it on."
         }
       }
     },
@@ -147,6 +160,17 @@
         }
       },
       "additionalProperties": true
+    },
+    "presetName": {
+      "enum": [
+        "recommended",
+        "strict",
+        "app",
+        "lib",
+        "best-practices",
+        "readable",
+        "readable-strict"
+      ]
     }
   }
 }

@@ -1,6 +1,6 @@
 {
   "$schema": "./packages/tools/lint/schema/pyreonlintrc.schema.json",
-  "preset": "strict",
+  "preset": ["strict", "readable"],
   "rules": {
     "pyreon/anchor-is-valid": "error",
     "pyreon/color-contrast": "warn",

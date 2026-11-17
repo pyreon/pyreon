@@ -359,35 +359,6 @@
         "zustand": "^5.0.16",
       },
     },
-    "examples/chat": {
-      "name": "@pyreon/example-chat",
-      "version": "0.50.3",
-      "dependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/form": "workspace:*",
-        "@pyreon/head": "workspace:*",
-        "@pyreon/hooks": "workspace:*",
-        "@pyreon/query": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/router": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/runtime-server": "workspace:*",
-        "@pyreon/state-tree": "workspace:*",
-        "@pyreon/storage": "workspace:*",
-        "@pyreon/toast": "workspace:*",
-        "@pyreon/url-state": "workspace:*",
-        "@pyreon/virtual": "workspace:*",
-        "@pyreon/zero": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/typescript": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "@pyreon/zero-cli": "workspace:*",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
     "examples/collab-board": {
       "name": "@pyreon/example-collab-board",
       "version": "0.50.0",
@@ -3316,6 +3287,7 @@
       "devDependencies": {
         "@pyreon/ansi": "workspace:*",
         "@pyreon/compiler": "workspace:*",
+        "@pyreon/lint": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@pyreon/zero": "workspace:*",
@@ -4259,8 +4231,6 @@
     "@pyreon/example-atlas-workshop": ["@pyreon/example-atlas-workshop@workspace:examples/atlas-workshop"],
 
     "@pyreon/example-benchmark": ["@pyreon/example-benchmark@workspace:examples/benchmark"],
-
-    "@pyreon/example-chat": ["@pyreon/example-chat@workspace:examples/chat"],
 
     "@pyreon/example-collab-board": ["@pyreon/example-collab-board@workspace:examples/collab-board"],
 

@@ -30,7 +30,9 @@ const TOOLS_WITH_DOCTOR_LINE: ReadonlySet<AiToolId> = new Set<AiToolId>(['claude
 function loadPrinciples(tool: AiToolId): string {
   const raw = readFileSync(join(SHARED_AI_ROOT, 'principles.md'), 'utf8')
   const suffix = TOOLS_WITH_DOCTOR_LINE.has(tool) ? DOCTOR_SUFFIX : ''
-  return raw.replace(/\{\{commandsSuffix\}\}/g, suffix)
+  // Trimmed: the overlay supplies the surrounding blank lines, and a trailing
+  // newline here would leave the double blank line a formatter removes.
+  return raw.replace(/\{\{commandsSuffix\}\}/g, suffix).trimEnd()
 }
 
 export async function applyAiTools(config: ProjectConfig): Promise<void> {

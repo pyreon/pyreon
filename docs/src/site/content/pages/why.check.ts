@@ -664,8 +664,8 @@ export const checked = {
               "source": "docs/src/content/docs/mcp.md"
             },
             {
-              "stat": "133",
-              "label": "lint rules in 25 categories in `@pyreon/lint`",
+              "stat": "140",
+              "label": "lint rules in 26 categories in `@pyreon/lint`",
               "condition": "count from AGENTS.md on main",
               "source": "AGENTS.md"
             },
@@ -714,7 +714,7 @@ export const checked = {
             },
             {
               "title": "`@pyreon/lint`",
-              "text": "133 rules in 25 categories, with an LSP server, watch mode and an AST cache. Silence one line with `// pyreon-lint-ignore <rule>`."
+              "text": "140 rules in 26 categories, with an LSP server, watch mode and an AST cache. Silence one line with `// pyreon-lint-ignore <rule>`."
             },
             {
               "title": "`llms.txt`",
@@ -833,7 +833,7 @@ export const checked = {
           "path": "packages/core/compiler/src/{pyreon-intercept,react-intercept}.ts; docs/src/content/docs/mcp.md"
         },
         {
-          "claim": "133 lint rules, 25 categories; LSP, watch mode, AST cache",
+          "claim": "140 lint rules, 26 categories; LSP, watch mode, AST cache",
           "path": "AGENTS.md \"Notable package facts\""
         },
         {

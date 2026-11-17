@@ -1,6 +1,7 @@
-import type { ApiContext } from "@pyreon/zero/api-routes"
-import { signOut } from "../../lib/auth"
-import { clearedSessionCookie, readSessionId } from "../../lib/session-cookie"
+import type { ApiContext } from '@pyreon/zero/api-routes'
+
+import { signOut } from '../../lib/auth'
+import { clearedSessionCookie, readSessionId } from '../../lib/session-cookie'
 
 /**
  * POST /api/signout — ends the session and clears the cookie, then sends the
@@ -13,6 +14,6 @@ export async function POST(ctx: ApiContext) {
 
   return new Response(null, {
     status: 303,
-    headers: { "set-cookie": clearedSessionCookie(ctx.request), location: "/" },
+    headers: { 'set-cookie': clearedSessionCookie(ctx.request), location: '/' },
   })
 }

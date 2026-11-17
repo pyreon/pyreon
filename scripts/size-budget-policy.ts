@@ -1,3 +1,4 @@
+/* oxlint-disable complexity -- judgeEntry is the one decision table for the verdict codes; splitting it would scatter the policy */
 /**
  * size-budget-policy — how a measured size is judged, for all three size gates
  * (`check-bundle-budgets`, `check-import-budgets`, `check-route-budgets`).

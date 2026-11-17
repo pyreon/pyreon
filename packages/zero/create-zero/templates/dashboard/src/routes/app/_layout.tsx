@@ -1,9 +1,10 @@
-import { signal } from "@pyreon/reactivity"
-import { onMount } from "@pyreon/core"
-import { RouterView, useRouter } from "@pyreon/router"
-import { Link } from "@pyreon/zero/link"
-import { ThemeToggle } from "@pyreon/zero/theme"
-import type { SessionInfo } from "../../lib/auth"
+import { onMount } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+import { RouterView, useRouter } from '@pyreon/router'
+import { Link } from '@pyreon/zero/link'
+import { ThemeToggle } from '@pyreon/zero/theme'
+
+import type { SessionInfo } from '../../lib/auth'
 
 /**
  * Auth-gated route group. Every `/app/*` route runs through this layout,
@@ -25,9 +26,10 @@ export function layout() {
   onMount(() => {
     void fetchSession().then((info) => {
       if (!info) {
-        void router.push("/login")
+        void router.push('/login')
         return
       }
+
       session.set(info)
     })
   })
@@ -36,16 +38,32 @@ export function layout() {
     <div class="app-shell">
       <aside class="app-sidebar">
         <div class="brand">Dashboard</div>
-        <Link href="/app/dashboard" prefetch="hover" exactActiveClass="nav-active">
+        <Link
+          href="/app/dashboard"
+          prefetch="hover"
+          exactActiveClass="nav-active"
+        >
           Overview
         </Link>
-        <Link href="/app/users" prefetch="hover" exactActiveClass="nav-active">
+        <Link
+          href="/app/users"
+          prefetch="hover"
+          exactActiveClass="nav-active"
+        >
           Users
         </Link>
-        <Link href="/app/invoices" prefetch="hover" activeClass="nav-active">
+        <Link
+          href="/app/invoices"
+          prefetch="hover"
+          activeClass="nav-active"
+        >
           Invoices
         </Link>
-        <Link href="/app/settings" prefetch="hover" activeClass="nav-active">
+        <Link
+          href="/app/settings"
+          prefetch="hover"
+          activeClass="nav-active"
+        >
           Settings
         </Link>
 
@@ -55,8 +73,17 @@ export function layout() {
             return s ? <div>{s.email}</div> : <div>Loading…</div>
           }}
           <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem; align-items: center;">
-            <form method="post" action="/api/signout" style="display: inline;">
-              <button type="submit" class="btn-link">Sign out</button>
+            <form
+              method="post"
+              action="/api/signout"
+              style="display: inline;"
+            >
+              <button
+                type="submit"
+                class="btn-link"
+              >
+                Sign out
+              </button>
             </form>
             <ThemeToggle />
           </div>
@@ -76,7 +103,7 @@ export function layout() {
  */
 async function fetchSession(): Promise<SessionInfo | null> {
   try {
-    const res = await fetch("/api/session", { credentials: "same-origin" })
+    const res = await fetch('/api/session', { credentials: 'same-origin' })
     if (!res.ok) return null
     return ((await res.json()) as { session: SessionInfo | null }).session
   } catch {
