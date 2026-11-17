@@ -56,7 +56,7 @@ export const MIGRATIONS: Record<Framework, Migration> = {
     "from": "plugins: [solid()]",
     "to": "plugins: [pyreon({ compat: 'solid' })]",
     "before": "import { createEffect, createSignal, Show } from 'solid-js'\n\nexport function Toggle() {\n  const [open, setOpen] = createSignal(false)\n  createEffect(() => console.log('open:', open()))\n  return (\n    <>\n      <button onClick={() => setOpen(!open())}>Toggle</button>\n      <Show when={open()}>\n        <p>Hello</p>\n      </Show>\n    </>\n  )\n}",
-    "after": "import { Show } from '@pyreon/core'\nimport { effect, signal } from '@pyreon/reactivity'\n\nexport function Toggle() {\n  const open = signal(false)\n  effect(() => console.log('open:', open()))\n  return (\n    <>\n      <button onClick={() => open.update((v) => !v)}>Toggle</button>\n      <Show when={open}>\n        <p>Hello</p>\n      </Show>\n    </>\n  )\n}",
+    "after": "import { Show } from '@pyreon/core'\nimport { effect, signal } from '@pyreon/reactivity'\n\nexport function Toggle() {\n  const open = signal(false)\n  effect(() => console.log('open:', open()))\n  return (\n    <>\n      <button onClick={() => open.update((v) => !v)}>Toggle</button>\n      <Show when={open()}>\n        <p>Hello</p>\n      </Show>\n    </>\n  )\n}",
     "note": "Signals, stores, resources and control flow. A compat component re-runs as a whole, not node by node."
   },
   "Svelte": {
