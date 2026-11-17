@@ -212,6 +212,18 @@ describe('generateRouteModule', () => {
     expect(code).toContain('lazy(() => import("/src/routes/index.tsx")')
   })
 
+  it('tags a lazy route with its file path by default, and omits the tag when asked', () => {
+    // Dev (HMR) and every server graph (modulepreload lookup) read the id; a
+    // production client build passes `hmrIds: false` so the absolute path of
+    // the checkout is not shipped to browsers.
+    const tagged = generateRouteModule(['index.tsx'], '/abs/checkout/src/routes')
+    expect(tagged).toContain('{ hmrId: "/abs/checkout/src/routes/index.tsx" }')
+    const bare = generateRouteModule(['index.tsx'], '/abs/checkout/src/routes', { hmrIds: false })
+    expect(bare).not.toContain('hmrId')
+    // The import specifier stays: the bundler resolves and rewrites it.
+    expect(bare).toContain('lazy(() => import("/abs/checkout/src/routes/index.tsx"))')
+  })
+
   it('emits no `import * as` when no metadata is detected', () => {
     const code = generateRouteModule(['index.tsx'], '/src/routes')
     expect(code).not.toContain('import * as')

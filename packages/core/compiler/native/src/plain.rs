@@ -30,6 +30,11 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::CompilerWarning;
 
 const PLAIN_SOURCE: &str = "@pyreon/core/plain";
+
+/// Prefix written before the bare signal `signalOf(x)` lowers to, so the JSX
+/// pass never auto-calls it (`is_identity_ref` in lib.rs). Mirrors
+/// `SIGNAL_OF_MARK` in plain.ts, whose doc comment states the contract.
+pub(crate) const SIGNAL_OF_MARK: &str = "/*@pyreon:signal*/";
 const REACTIVITY_SOURCE: &str = "@pyreon/reactivity";
 
 #[napi(object)]
@@ -1993,7 +1998,7 @@ impl<'a> P<'a> {
                     return;
                 }
                 Some(Marker::SignalOf) => {
-                    // `signalOf(x)` → the bare signal reference (mirror of plain.ts).
+                    // `signalOf(x)` → the marked bare signal reference (mirror of plain.ts).
                     let arg = if call.arguments.len() == 1 {
                         call.arguments[0].as_expression().map(unwrap_ts)
                     } else {
@@ -2005,7 +2010,7 @@ impl<'a> P<'a> {
                             Some(Bind::State | Bind::Store | Bind::Derived | Bind::ImportedState)
                         );
                         if ok {
-                            let text = a.name.to_string();
+                            let text = format!("{}{}", SIGNAL_OF_MARK, a.name);
                             self.ms.overwrite(call.span.start, call.span.end, text);
                             return;
                         }

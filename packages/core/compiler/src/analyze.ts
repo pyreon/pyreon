@@ -14,6 +14,8 @@ export {
   hasReactPatterns,
   migrateReactCode,
 } from './react-intercept'
+export type { SourceSyntaxError } from './syntax-check'
+export { findSyntaxErrors } from './syntax-check'
 export type { PyreonDiagnostic, PyreonDiagnosticCode } from './pyreon-intercept'
 export { detectPyreonPatterns, hasPyreonPatterns } from './pyreon-intercept'
 export type {

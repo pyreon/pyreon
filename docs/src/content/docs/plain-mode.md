@@ -124,7 +124,7 @@ const toggle = () => { theme = theme === 'light' ? 'dark' : 'light' }
 const total = derived.from(cart.total)
 ```
 
-All three compile to the bare signal — no wrapper, no copy. For an API that takes an **accessor** (`items: () => T[]`), the natural plain form is simply an arrow: `useSortable({ items: () => items, … })`.
+All three compile to the bare signal — no wrapper, no copy. `signalOf(x)` stays the signal inside JSX too, on every element: `<Field value={signalOf(draft)} />` hands `Field` the signal it can `.set()`, and so does `onClick={() => register(signalOf(draft))}` on any element or component. (A plain read in JSX, `<Field value={draft} />`, passes the live value.) For an API that takes an **accessor** (`items: () => T[]`), the natural plain form is simply an arrow: `useSortable({ items: () => items, … })`.
 
 > **TypeScript note.** Inside a call argument whose sibling properties are arrow functions, TypeScript infers generic parameters from the contextual type before the argument, so `useSortable({ items: signalOf(items), by: (it) => it.id })` can type `it` as `unknown`. Pin it with `signalOf<typeof items>(items)` — the codemod emits that form automatically in those positions.
 

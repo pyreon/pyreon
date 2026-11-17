@@ -216,7 +216,8 @@ import { onMount } from '@pyreon/core'
 import { Stack, Text, Button } from '@pyreon/primitives'
 
 enum Mode { Focus = 'focus', Break = 'break' }
-type Saved = { minutes: number }
+type Int = number
+type Saved = { minutes: Int }
 
 const sessions = signal(0)
 const label = computed(() => `${sessions()} sessions today`)
@@ -246,15 +247,15 @@ export function FocusTimer() {
 
   return (
     <Stack gap="md">
-      <Text>{label}</Text>
-      <Text>{seconds} s</Text>
+      <Text>{label()}</Text>
+      <Text>{seconds()} s</Text>
       <Button onPress={() => restore('{"minutes":5}')}>Restore</Button>
     </Stack>
   )
 }
 ```
 
-Zero warnings on both targets. The Swift, trimmed:
+`pyreon-native check` reports zero warnings on both targets. The Swift, trimmed:
 
 ```swift
 enum Mode: String, Codable {
@@ -283,20 +284,22 @@ struct FocusTimer: View {
     let id = PyreonTimers.setInterval(1000, { seconds = seconds + 1 })
     return { PyreonTimers.clear(id) }
   }
+  @State private var __pyEffect1Cleanup: (() -> Void)? = nil
+  private func __pyEffect1Run() { __pyEffect1Cleanup?(); __pyEffect1Cleanup = __pyEffect1() }
   private func restore(_ raw: String) {
     do {
       let saved = (try PyreonJSON.parse(Saved.self, raw))
       seconds = saved.minutes * 60
-    } catch {
+    } catch _ {
       problem = "Saved session is unreadable"
     }
   }
   var body: some View {
     ZStack {
-      VStack(spacing: 12) {
+      VStack(alignment: .leading, spacing: 12) {
         Text(verbatim: "\(PyreonModuleState.shared.label)")
         Text(verbatim: "\(seconds) s")
-        Button("Restore") { restore("{\"minutes\":5}") }
+        Button("Restore") { restore("{\"minutes\":5}") }.buttonStyle(.borderedProminent)
       }
     }
       .onAppear { __pyEffect0() }
@@ -313,7 +316,7 @@ What happened there:
 - **`effect()` in a component body** becomes a function that runs on appear and again whenever a signal it reads changes: `.onChange(of: seconds)` on iOS, `DisposableEffect(seconds)` on Android. The compiler works out the dependency list for you, so you still never write one.
 - **`setInterval` / `setTimeout`** lower to a small `PyreonTimers` runtime with the web's contract: callbacks on the main thread, ids never reused, clearing an unknown id is a no-op. The cleanup your `onMount` returns runs on disappear.
 - **`throw`, `try`, `catch` and `finally`** lower to Swift `do`/`catch` and Kotlin `try`/`catch`/`finally`.
-- **`JSON.parse(raw) as Saved`** becomes a typed, throwing decode into the generated struct (`PyreonJSON.parse(Saved.self, raw)` / `PyreonJson.parse<Saved>(raw)`). A schema's `.parse(x)` lowers the same way, as a throwing native call.
+- **`JSON.parse(raw) as Saved`** becomes a typed, throwing decode into the generated struct (`PyreonJSON.parse(Saved.self, raw)` / `PyreonJson.parse<Saved>(raw)`). A schema's `.parse(x)` lowers the same way, as a throwing native call. `minutes: Int` (the cross-target alias `type Int = number`) says the field is a whole number. Leave it a plain `number` and `check` warns you that a fractional value would fail the decode.
 - **TypeScript `enum`s** become native enums (`enum Mode: String` / `enum class Mode`), and a signal holding one stores its raw value.
 - **JavaScript `Date`** lowers too: natively, a date is its epoch milliseconds, so `Date.now()` and `new Date(ms)` work, and formatting goes through `Intl.DateTimeFormat`.
 

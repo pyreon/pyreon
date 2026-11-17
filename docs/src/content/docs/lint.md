@@ -245,6 +245,10 @@ src/tests/fixtures/
 
 `.gitignore` patterns are respected automatically in addition to `.pyreonlintignore`. Pass `--ignore <path>` to load a custom ignore file.
 
+## Files that do not parse
+
+oxc recovers from syntax errors and returns a partial program, so rules run on a broken file would find little and report it clean. A file with a parse error instead gets one `error` diagnostic, `pyreon-lint/parse-error` (`Parsing error: <oxc message>` at the error's position), and no rules run on it and no fixes are applied, the ESLint convention. It counts toward the error total, so `pyreon-lint`, the LSP and the `lint` gate of `pyreon doctor` all fail on it.
+
 ## Inline suppression
 
 Suppress a diagnostic on the **immediately following line** with a comment. Two equivalent syntaxes are accepted — `pyreon-lint-ignore` (short) and `pyreon-lint-disable-next-line` (long-form, the convention several rule docstrings use):
