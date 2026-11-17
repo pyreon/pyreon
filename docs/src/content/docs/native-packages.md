@@ -151,6 +151,7 @@ pyreon-native dev       --target=<ios|android> [--app=<dir>] [--device=<name|id>
 pyreon-native wire      [--app=<dir>] [--android-out=<file>] [--ios-out=<dir>] [--json]
 pyreon-native plugins   [--app=<dir>] [--verify]
 pyreon-native explain   <file.tsx> [--app=<dir>] [--no-plugins]
+pyreon-native symbolicate <report.json> [--symbols=<dir>] [--mapping=<file>] [--dsym=<path>] [--retrace=<path>]
 ```
 
 | Command | Does |
@@ -163,8 +164,28 @@ pyreon-native explain   <file.tsx> [--app=<dir>] [--no-plugins]
 | `dev` | The on-device edit loop: watches the source, compiles in memory, and on a real change runs an incremental `xcodebuild` / `gradle` build, installs it on the booted simulator or emulator and relaunches the app. `--once` runs one build-install-launch cycle and exits. |
 | `plugins` | Lists the service registry (each hook and the plugin that owns it), the call recognizers, the element lowerings, and every package-declared plugin (`pyreon.native.plugin` in a package's `package.json`). `--verify` checks that each service's Swift/Kotlin types are declared in that package's own native sources. |
 | `explain` | Compiles one file for both targets and prints, per service hook it uses, the owning plugin and the declaration each target emits. |
+| `symbolicate` | Turns a `useCrashReporter()` report from a **release** build back into a readable stack. Android runs R8 `retrace` (Android SDK command-line tools, any OS) with that build's `mapping.txt`; iOS runs `atos` (Xcode, macOS only) with that build's dSYM over the report's raw return addresses. The symbols are looked up under `--symbols` (default `./symbols`, where the scaffold's release lanes retain them: `android/<version>-<buildNumber>/mapping.txt`, `ios/<version>-<buildNumber>/<App>.app.dSYM`) by the report's R8 mapping id or dSYM UUID; `--mapping` / `--dsym` name a file directly, `--retrace` the launcher. Symbols from a different build are refused (exit `2`), because retrace and atos would print a plausible but wrong stack. The readable stack goes to stdout. |
 
-Exit codes: `0` success, `1` usage error, `2` a compiler/build error on a source file (or a broken `wire` declaration).
+Exit codes: `0` success, `1` usage error, `2` a compiler/build error on a source file (or a broken `wire` declaration, or a `symbolicate` report with no matching symbols).
+
+### Readable crash stacks: `symbolicate`
+
+A release build's crash stack is unreadable on purpose — R8 renames Android classes and methods (`at b.a.a(r8-map-id-4fb6…:3)`), and an iOS release binary reports bare addresses. Three pieces make it readable again:
+
+1. **The release lanes keep the symbols.** The scaffold's Android release build copies R8's `mapping.txt` to `symbols/android/<versionName>-<versionCode>/` after every `assembleRelease`/`bundleRelease`; `npm run release:ios` archives for the device SDK and copies the dSYM to `symbols/ios/<version>-<build>/`, checking its UUID against the binary. `symbols/` is gitignored: archive it with every release you ship.
+2. **Every report names its build.** `useCrashReporter()` reports carry `build` (app id, version, build number) and, on Android, `build.mappingId` — the R8 map id the minified frames themselves name — and on iOS `image` (the executable's LC_UUID, load address, arch) plus the raw `addresses`.
+3. **`pyreon-native symbolicate report.json --symbols=symbols`** picks the matching file by that identity and runs the standard tool: R8 `retrace` for Android (Android SDK command-line tools, works on any OS), `atos` for iOS (macOS with Xcode).
+
+```text
+$ pyreon-native symbolicate crash.json --symbols=symbols
+java.lang.IllegalStateException: discount code rejected: SAVE10
+	at com.example.shop.CheckoutService.rejectCode(ProofApp.kt:15)
+	at com.example.shop.CheckoutService.applyDiscount(ProofApp.kt:11)
+	at com.example.shop.ProofAppKt.main(ProofApp.kt:26)
+symbolicated with symbols/android/1.4.0-42/mapping.txt (R8 retrace)
+```
+
+iOS frames resolve to the generated Swift (`TodoApp.addTodo() (in PyreonTodoMVC) (TodoApp.swift:32)`), not to the `.tsx` line: the emit has no per-line source map. Frames in system frameworks print as `(outside <App>)`. Uploading reports is still yours to wire (`setCrashTransport` / `PyreonCrashTransportRegistry`).
 
 ### `check` is the one to reach for
 

@@ -377,6 +377,35 @@ describe('buildScaffold — native runtime delivery wiring (local-proof-found fi
     expect(pg).toContain('kotlinx-serialization')
     expect(pg).toContain('NO manual rules')
   })
+
+  // A release crash is only readable with THAT build's R8 mapping / dSYM.
+  // Both used to exist only inside build output the next build replaces, so
+  // a shipped build's stack could never be symbolicated. Each release lane
+  // now files its symbols under symbols/<platform>/<version>-<build>/, the
+  // layout `pyreon-native symbolicate` reads.
+  it('release lanes retain crash symbols where pyreon-native symbolicate looks', () => {
+    const g = get('android/app/build.gradle.kts')
+    expect(g).toContain('import com.android.build.api.artifact.SingleArtifact')
+    expect(g).toContain('onVariants(selector().withBuildType("release"))')
+    expect(g).toContain('SingleArtifact.OBFUSCATION_MAPPING_FILE')
+    expect(g).toContain('"../symbols/android/" + name + "-" + code')
+    expect(g).toMatch(/it\.name == "assembleRelease" \|\| it\.name == "bundleRelease"[\s\S]*finalizedBy\(retain\)/)
+
+    const archive = get('scripts/archive-ios.sh')
+    expect(archive).toContain('xcodebuild archive')
+    expect(archive).toContain("-destination 'generic/platform=iOS'")
+    expect(archive).toContain('DEST="symbols/ios/${VERSION}-${BUILD}"')
+    expect(archive).toContain('cp -R "${DSYM}" "${DEST}/"')
+    // The retained dSYM is checked against the binary, not assumed.
+    expect(archive).toContain('[ "${BIN_UUID}" = "${DSYM_UUID}" ]')
+    const archiveParse = spawnSync('bash', ['-n'], { input: archive, encoding: 'utf8' })
+    expect(archiveParse.status, archiveParse.stderr).toBe(0)
+
+    const pkg = JSON.parse(get('package.json')) as { scripts: Record<string, string> }
+    expect(pkg.scripts['release:ios']).toBe('bash scripts/archive-ios.sh')
+    expect(get('.gitignore')).toMatch(/^symbols\/$/m)
+    expect(get('README.md')).toContain('npx pyreon-native symbolicate crash.json --symbols=symbols')
+  })
 })
 
 describe('buildScaffold — the shared App.tsx is real PMTC-compilable source', () => {

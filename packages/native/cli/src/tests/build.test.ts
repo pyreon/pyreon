@@ -75,13 +75,19 @@ describe('@pyreon/native-cli build', () => {
     )
     expect(nonTier2Warnings).toEqual([])
 
-    // Every output exists + has the .swift extension + carries the
-    // source-map directive.
+    // Every output exists + has the .swift extension + names its source
+    // in a provenance COMMENT — never a `#sourceLocation` directive. With
+    // no per-statement line map, `#sourceLocation(file: "App.tsx", line: 1)`
+    // relabels generated line N as App.tsx line N, so compile errors and
+    // symbolicated crash frames (atos over the dSYM) pointed at whatever
+    // the .tsx held on that line — observed: a release-archive frame in
+    // `TodoApp.addTodo()` resolved to `TodoApp.tsx:31`, a comment.
     for (const output of result.outputs) {
       expect(output.output.endsWith('.swift')).toBe(true)
       const written = readFileSync(output.output, 'utf8')
       expect(written).toBe(output.code)
-      expect(written.startsWith('#sourceLocation(file: "')).toBe(true)
+      expect(written.startsWith('// pyreon-source: ')).toBe(true)
+      expect(written).not.toContain('#sourceLocation')
     }
   })
 
@@ -189,7 +195,7 @@ describe('@pyreon/native-cli build', () => {
     const direct = transform(source, { target: 'swift' }).code
     // The build prepends a source-map header + an import preamble; strip
     // both before comparing. Format:
-    //   line 0: #sourceLocation(...)
+    //   line 0: // pyreon-source: <path>
     //   lines 1..N: imports
     //   blank line
     //   then: emitted code

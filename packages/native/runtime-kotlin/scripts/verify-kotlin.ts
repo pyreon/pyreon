@@ -389,6 +389,35 @@ open class Context {
 }
 `
 
+// PyreonCrashReporterAndroid-only stubs — the Context the factory touches
+// (filesDir for the report file; packageName + packageManager for the build
+// identity stamped on every report) and the PackageManager/PackageInfo
+// surface it reads, mirrored EXACTLY (no superset). Own Context rather than
+// widening the database one: a stub broader than a service's real surface
+// masks breakage in that service.
+const ANDROID_CRASH_CONTEXT_STUBS = `package android.content
+
+import java.io.File
+
+open class Context {
+  open val filesDir: File get() = File(System.getProperty("java.io.tmpdir"), "pyreon-stub-files")
+  open val packageName: String get() = "com.pyreon.stub"
+  open val packageManager: android.content.pm.PackageManager get() = android.content.pm.PackageManager()
+}
+`
+const ANDROID_CRASH_PM_STUBS = `package android.content.pm
+
+open class PackageInfo {
+  @JvmField var versionName: String? = null
+  @Deprecated("API 28: longVersionCode") @JvmField var versionCode: Int = 0
+}
+
+open class PackageManager {
+  open fun getPackageInfo(packageName: String, flags: Int): PackageInfo = PackageInfo()
+  open class NameNotFoundException : Exception()
+}
+`
+
 // PyreonSecureStorageAndroid-only stub — the android.security.keystore
 // surface KeystoreSecureBackend touches, mirrored EXACTLY (no superset).
 // javax.crypto / java.security / java.util.Base64 are real JDK classes
@@ -1756,13 +1785,16 @@ try {
     SERVICE === 'PyreonDatabaseAndroid' ||
     SERVICE === 'PyreonStorageAndroid' ||
     SERVICE === 'PyreonStorage' ||
-    SERVICE === 'PyreonSecureStorageAndroid' ||
-    SERVICE === 'PyreonCrashReporterAndroid'
+    SERVICE === 'PyreonSecureStorageAndroid'
   ) {
     writeFileSync(androidContentDatabasePath, ANDROID_CONTENT_DATABASE_STUBS, 'utf8')
   }
-  // PyreonCrashReporterAndroid also needs the Compose LocalContext platform stub.
+  // PyreonCrashReporterAndroid: its own Context + PackageManager stubs, and
+  // the Compose LocalContext platform stub.
+  const androidCrashPmPath = join(tempDir, 'AndroidContentPm.kt')
   if (SERVICE === 'PyreonCrashReporterAndroid') {
+    writeFileSync(androidContentDatabasePath, ANDROID_CRASH_CONTEXT_STUBS, 'utf8')
+    writeFileSync(androidCrashPmPath, ANDROID_CRASH_PM_STUBS, 'utf8')
     writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')
   }
   const androidKeystorePath = join(tempDir, 'AndroidKeystore.kt')
@@ -2123,6 +2155,7 @@ try {
     SERVICE === 'PyreonCrashReporterAndroid'
       ? [
           androidContentDatabasePath,
+          androidCrashPmPath,
           composePlatformPath,
           resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonCrashReporter.kt'),
           resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonStorageBackends.kt'),

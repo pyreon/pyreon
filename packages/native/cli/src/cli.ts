@@ -15,6 +15,7 @@ import { check, watchCheck, type CheckResult } from './check'
 import { materializeAssets, type AssetTarget } from './assets'
 import { stageWebBundle, webBundleOutSubdir, type WebBundleTarget } from './web-bundle'
 import { startLspServer } from './lsp'
+import { parseReport, symbolicate } from './symbolicate'
 import { scanFontDir } from './fonts'
 import { renderAndroidSrcDirsFile, stageIosWiring, wireApp } from './wire'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -93,6 +94,16 @@ interface ParsedArgs {
   device?: string
   /** `dev` only: poll interval in ms. */
   interval?: number
+  /** `symbolicate` only: the report file (first positional). */
+  report?: string
+  /** `symbolicate` only: root of the retained symbols (default `./symbols`). */
+  symbols?: string
+  /** `symbolicate` only: explicit R8 mapping.txt. */
+  mapping?: string
+  /** `symbolicate` only: explicit .dSYM bundle. */
+  dsym?: string
+  /** `symbolicate` only: the R8 retrace executable. */
+  retrace?: string
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -143,6 +154,7 @@ function parseArgs(argv: string[]): ParsedArgs {
       i++
     } else {
       if (out.command === 'explain' && out.file === undefined) out.file = a
+      else if (out.command === 'symbolicate' && out.report === undefined) out.report = a
       continue
     }
     if (key === 'plugin') (out.plugins ??= []).push(value)
@@ -161,6 +173,10 @@ function parseArgs(argv: string[]): ParsedArgs {
     else if (key === 'app-source') out.appSource = value
     else if (key === 'device') out.device = value
     else if (key === 'interval') out.interval = Number(value)
+    else if (key === 'symbols') out.symbols = value
+    else if (key === 'mapping') out.mapping = value
+    else if (key === 'dsym') out.dsym = value
+    else if (key === 'retrace') out.retrace = value
   }
   return out
 }
@@ -195,6 +211,7 @@ Usage:
   pyreon-native wire   [--app=<dir>] [--android-out=<file>] [--ios-out=<dir>] [--json]
   pyreon-native plugins [--app=<dir>] [--verify]
   pyreon-native explain <file.tsx> [--app=<dir>] [--no-plugins]
+  pyreon-native symbolicate <report.json> [--symbols=<dir>] [--mapping=<mapping.txt>] [--dsym=<App.app.dSYM>] [--retrace=<path>]
 
 dev is the on-device edit loop: it watches the source, compiles it in memory
 (warnings in milliseconds), and on a real change runs an incremental
@@ -246,6 +263,18 @@ explain compiles one file for both targets and prints, per service hook it
 uses, the owning plugin and the declaration each target emits, per call a plugin
 recognized (a code-shaped declaration), its owner and type, and, per element
 a registered lowering claims, the plugin that owns that lowering.
+
+symbolicate turns a useCrashReporter() report (the lastCrash JSON, or what
+your transport received) from a RELEASE build back into a readable stack.
+Android runs R8 retrace (Android SDK cmdline-tools; any OS) with the build's
+mapping.txt; iOS runs atos (Xcode; macOS only) with the build's dSYM. The
+symbols are looked up under --symbols (default ./symbols, where release builds
+retain them: android/<version>-<buildNumber>/mapping.txt and
+ios/<version>-<buildNumber>/<App>.app.dSYM) by the report's R8 mapping id or
+dSYM UUID; --mapping / --dsym name a file directly. Symbols from a different
+build are refused: they would print a plausible but wrong stack. The readable
+stack goes to stdout. Exit 0 on success, 1 on a usage error, 2 when the
+report cannot be symbolicated (no matching symbols, tool missing).
 
 Plugins declared by dependencies (pyreon.native.plugin) load automatically for
 build/check, and only when the source imports one of the package's modules. The
@@ -470,6 +499,9 @@ export function main(argv: string[], compiler?: Pick<NativeCompiler, 'transform'
   }
   if (parsed.command === 'wire') {
     return runWire(parsed)
+  }
+  if (parsed.command === 'symbolicate') {
+    return runSymbolicate(parsed)
   }
   if (parsed.command === 'plugins' || parsed.command === 'explain') {
     usageError(`${parsed.command} needs plugin loading — call mainWithPlugins()`)
@@ -821,4 +853,38 @@ function runCheck(parsed: ParsedArgs): number {
     emit(failure(outFor(), 'check', err instanceof Error ? err.message : String(err)))
     return 2
   }
+}
+
+function runSymbolicate(parsed: ParsedArgs): number {
+  if (parsed.report === undefined || parsed.report === '') {
+    usageError('symbolicate requires a report file (pyreon-native symbolicate <report.json>)')
+    return 1
+  }
+  const path = resolve(parsed.report)
+  if (!existsSync(path)) {
+    usageError(`report file not found: ${parsed.report}`)
+    return 1
+  }
+  const report = parseReport(readFileSync(path, 'utf8'))
+  if (typeof report === 'string') {
+    usageError(`${parsed.report}: ${report}`)
+    return 1
+  }
+  const result = symbolicate(report, {
+    symbols: parsed.symbols,
+    mapping: parsed.mapping,
+    dsym: parsed.dsym,
+    retrace: parsed.retrace,
+  })
+  if (!result.ok) {
+    const t = createTerm({ isTTY: Boolean(process.stderr.isTTY) })
+    console.error(
+      finding(t, { severity: 'error', source: 'pyreon-native symbolicate', message: result.error, fix: result.fix }, { indent: 0, width: t.width }).join('\n'),
+    )
+    return 2
+  }
+  // The stack is the product: stdout, pipeable. Provenance goes to stderr.
+  console.log(result.stack)
+  console.error(`symbolicated with ${displayPath(result.symbolsFile, process.cwd())} (${result.tool === 'atos' ? 'atos' : 'R8 retrace'})`)
+  return 0
 }

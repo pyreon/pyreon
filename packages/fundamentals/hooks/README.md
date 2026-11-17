@@ -128,7 +128,7 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 | `useKeyboard(key, handler, { ignoreInputs? })` | Single-key listener; `ignoreInputs: true` skips keys typed into editable fields |
 | `useOnline()` | `Signal<boolean>` from `navigator.onLine` |
 | `useAppState()` | `() => 'active' \| 'inactive' \| 'background'` — app lifecycle phase; mirrors SwiftUI `ScenePhase` / Android `ProcessLifecycleOwner` so one shared source reads the same value on web + iOS + Android. Reports `'active'` during SSR |
-| `useCrashReporter()` | `{ lastCrash, hadCrash, recordError, breadcrumb, clear, start }` — captures crashes (`window.onerror` + `unhandledrejection`), persists to `localStorage`, and rehydrates the previous session's report on `start()`. The vendor transport is app-wired via `setCrashTransport` |
+| `useCrashReporter()` | `{ lastCrash, hadCrash, recordError, breadcrumb, clear, start }` — captures crashes (`window.onerror` + `unhandledrejection`), persists to `localStorage`, and rehydrates the previous session's report on `start()`. The vendor transport is app-wired via `setCrashTransport`. Reports are a `CrashReport` JSON object, the same shape on every platform; native ones carry the build identity (`build`, plus R8 `mappingId` on Android, `image` UUID/load address + `addresses` on iOS) that `pyreon-native symbolicate` uses to make a release stack readable |
 | `useDocumentVisibility()` | `() => 'visible' \| 'hidden'` from the Page Visibility API |
 | `useIdle(timeoutMs?, opts?)` | `Signal<boolean>` — true after `timeoutMs` of no activity |
 
