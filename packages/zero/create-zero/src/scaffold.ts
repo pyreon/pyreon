@@ -103,6 +103,15 @@ async function scaffoldFlat(config: ProjectConfig): Promise<void> {
     }
   }
 
+  // 3b. Compat overlay (`templates/_shared/_compat/<template>/`). A compat
+  //     project's JSX goes to the compat runtime, not the Pyreon compiler, so
+  //     a template file written in Plain Mode (a compile-time dialect) would
+  //     throw at runtime there; the overlay swaps in a signals version.
+  if (config.compat !== 'none') {
+    const compatOverlay = join(SHARED_ROOT, '_compat', config.template)
+    if (existsSync(compatOverlay)) await copyOverlay(compatOverlay, config.targetDir)
+  }
+
   // 4. Adapter overlay.
   await adapterFor(config.adapter).apply(config)
 

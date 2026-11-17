@@ -350,6 +350,7 @@ describe('the lifted struct decodes and re-encodes (executed)', () => {
     const start = lines.findIndex((l) => l.startsWith(`struct ${name}: Codable {`))
     if (start < 0) throw new Error(`struct ${name} not in emit`)
     const end = lines.findIndex((l, i) => i > start && l === '}')
+
     return lines.slice(start, end + 1).join('\n')
   }
 

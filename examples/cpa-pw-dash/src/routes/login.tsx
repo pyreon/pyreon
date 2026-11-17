@@ -1,59 +1,53 @@
-import { state } from '@pyreon/core/plain'
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
-import { useRouter } from "@pyreon/router"
+import { useHead } from '@pyreon/head'
+import { signal } from '@pyreon/reactivity'
+import { useRouter } from '@pyreon/router'
+import { Link } from '@pyreon/zero/link'
 
-export const meta = { title: "Sign in" }
+import { postCredentials } from '../lib/post-credentials'
+
+export const meta = { title: 'Sign in' }
 
 export default function Login() {
   useHead({ title: meta.title })
 
-  let email = state("demo@example.com")
-  let password = state("demo1234")
-  let error = state<string | null>(null)
-  let submitting = state(false)
+  // The demo account exists only under `vite dev` (see `lib/auth.ts`), so the
+  // form is pre-filled only there. Production builds (client and server)
+  // replace `process.env.NODE_ENV` with "production", so a deployed login
+  // page starts empty. Pre-filling is only a convenience: the account itself
+  // is what `lib/auth.ts` refuses to create outside development.
+  const isDev = process.env.NODE_ENV !== 'production'
+  const email = signal(isDev ? 'demo@example.com' : '')
+  const password = signal(isDev ? 'demo1234' : '')
+  const error = signal<string | null>(null)
+  const submitting = signal(false)
 
   const router = useRouter()
 
   async function handleSubmit(e: Event) {
     e.preventDefault()
-    error = null
-    submitting = true
+    error.set(null)
+    submitting.set(true)
 
-    // Route the sign-in through the server endpoint so the SSR-side
-    // `sessions` Map is populated. Calling `signIn(email, password)` directly
-    // here would only populate the BROWSER module's Map — the server has its
-    // own under Vite dev's split-realm module instances, and SSR loaders
-    // (e.g. `/app/_layout.tsx`'s auth gate) would still see no session on
-    // the next full-page navigation. The endpoint sets `Set-Cookie: sid=...`
-    // on success; the browser stores it automatically.
-    let res: Response
-    try {
-      res = await fetch("/api/signin", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: email, password: password }),
-      })
-    } catch {
-      submitting = false
-      error = "Network error — please try again"
+    // The server checks the password and sets the session cookie (HttpOnly,
+    // so this page never sees the id). Works unchanged with the Supabase
+    // overlay, which swaps `lib/auth.ts` underneath the endpoint.
+    const message = await postCredentials('/api/signin', email(), password())
+    submitting.set(false)
+
+    if (message) {
+      error.set(message)
       return
     }
 
-    submitting = false
-
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { error?: string }
-      error = body.error ?? "Sign in failed"
-      return
-    }
-
-    await router.push("/app/dashboard")
+    await router.push('/app/dashboard')
   }
 
   return (
     <div class="auth-shell">
-      <form class="auth-card" onSubmit={handleSubmit}>
+      <form
+        class="auth-card"
+        onSubmit={handleSubmit}
+      >
         <h1>Sign in</h1>
 
         <div class="field">
@@ -62,7 +56,7 @@ export default function Login() {
             id="email"
             type="email"
             value={email}
-            onInput={(e) => { email = (e.currentTarget as HTMLInputElement).value }}
+            onInput={(e) => email.set((e.currentTarget as HTMLInputElement).value)}
             required
           />
         </div>
@@ -73,15 +67,20 @@ export default function Login() {
             id="password"
             type="password"
             value={password}
-            onInput={(e) => { password = (e.currentTarget as HTMLInputElement).value }}
+            onInput={(e) => password.set((e.currentTarget as HTMLInputElement).value)}
             required
           />
         </div>
 
-        {() => (error ? <div class="error">{error}</div> : null)}
+        {() => (error() ? <div class="error">{error()}</div> : null)}
 
-        <button type="submit" class="btn btn-primary" disabled={submitting} style="width: 100%; justify-content: center; margin-top: 1rem;">
-          {() => (submitting ? "Signing in…" : "Sign in")}
+        <button
+          type="submit"
+          class="btn btn-primary"
+          disabled={submitting}
+          style="width: 100%; justify-content: center; margin-top: 1rem;"
+        >
+          {() => (submitting() ? 'Signing in…' : 'Sign in')}
         </button>
 
         <p style="margin-top: 1rem; font-size: 0.875rem; color: var(--c-text-muted); text-align: center;">

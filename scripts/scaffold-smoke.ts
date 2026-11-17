@@ -77,6 +77,13 @@ interface Cell {
    * route and to drive a real browser against the deployed shape.
    */
   serverSmoke?: (origin: string) => Promise<void>
+  /**
+   * Run the compat-mode runtime suite (`e2e/cpa-app-compat.spec.ts`) in real
+   * Chromium against this scaffold's DEV server. Dev, not preview: the bug
+   * the suite was written for (an OXC `importSource` resolution failure under
+   * compat) only showed in the workspace dev pipeline.
+   */
+  compatRuntime?: true
 }
 
 // ─── Smoke helpers ──────────────────────────────────────────────────────────
@@ -379,7 +386,10 @@ const MATRIX: Cell[] = [
     // and catch the regression.
   },
 
-  // app + vercel × {react,vue,solid,preact} — compat-mode build smokes.
+  // app + vercel × {react,vue,solid,preact} — compat-mode build smokes, plus
+  // the compat runtime suite against each fresh scaffold's dev server (it
+  // replaced the committed examples/cpa-pw-app-<x> copies, which could only
+  // drift from the template).
   // Closes the "compat package shim ABI changed and broke scaffolded apps"
   // gap. The 4 compat layers (react/vue/solid/preact) each ship as
   // @pyreon/<x>-compat — apps configured with `--compat=<x>` get the
@@ -400,6 +410,7 @@ const MATRIX: Cell[] = [
         assertFileContains(join(dir, 'vite.config.ts'), `compat: '${compat}'`)
         assertPackageDep(dir, `@pyreon/${compat}-compat`)
       },
+      compatRuntime: true,
     }),
   ),
 ]
@@ -491,6 +502,26 @@ async function assertCounterHydrates(url: string): Promise<void> {
     if (errors.length > 0) throw new Error(`page errors during hydration:\n${errors.join('\n')}`)
   } finally {
     await browser.close()
+  }
+}
+
+/**
+ * Runs the compat runtime suite against the scaffold's dev server. The cell
+ * is a workspace member under `examples/`, so the config boots it with
+ * `bun run --filter=<cell> dev`. Fails closed: a Playwright failure, or no
+ * launchable Chromium, fails the cell.
+ */
+function runCompatRuntimeE2e(cell: Cell): void {
+  if (!cell.compat) throw new Error(`${cell.name}: compatRuntime needs a compat layer`)
+  const result = spawnSync(
+    'bunx',
+    ['playwright', 'test', '--config=e2e-configs/cpa-compat-scaffold.config.ts'],
+    { cwd: REPO_ROOT, stdio: 'inherit', env: { ...process.env, CPA_COMPAT: cell.compat } },
+  )
+  if (result.status !== 0) {
+    throw new Error(
+      `compat runtime suite failed for ${cell.compat} (exit ${result.status}). Reproduce: bun scripts/scaffold-smoke.ts --keep ${cell.name}`,
+    )
   }
 }
 
@@ -1059,6 +1090,7 @@ async function runCell(cell: Cell, opts: { keep: boolean }): Promise<CellResult>
       await runDoctorCiIsolated(projectDir)
     }
     if (cell.serverSmoke) await runServerSmoke(projectDir, cell.serverSmoke)
+    if (cell.compatRuntime) runCompatRuntimeE2e(cell)
 
     // Optional second pass: assert `bun run preview` actually serves the
     // built output (catches "build passes but preview 404s" regressions).

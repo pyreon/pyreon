@@ -16,9 +16,11 @@ export function exampleHostDirs(repoRoot: string, platform: 'ios' | 'android'): 
   const out: string[] = []
   for (const name of readdirSync(examples)) {
     if (!statSync(join(examples, name)).isDirectory()) continue
-    if (new RegExp(`^native-.+-${platform}$`).test(name)) out.push(`examples/${name}`)
-    else if (name.startsWith('native-') && existsSync(join(examples, name, platform, project)))
-      {out.push(`examples/${name}/${platform}`)}
+    if (new RegExp(`^native-.+-${platform}$`).test(name)) {
+      out.push(`examples/${name}`)
+    } else if (name.startsWith('native-') && existsSync(join(examples, name, platform, project))) {
+      out.push(`examples/${name}/${platform}`)
+    }
   }
 
   return out.sort()
