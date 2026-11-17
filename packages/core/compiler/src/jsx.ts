@@ -185,8 +185,6 @@ export interface TransformResult {
   reactivityLens?: ReactivitySpan[]
 }
 
-// Props that should never be wrapped in a reactive getter
-const SKIP_PROPS = new Set(['key', 'ref'])
 // Event handler pattern: onClick, onInput, onMouseEnter, …
 const EVENT_RE = /^on[A-Z]/
 // Hoisted so the literal isn't re-allocated per call on the SSR attr / template
@@ -1565,6 +1563,34 @@ export function transformJSX_JS(
    * unresolved key, the option absent, or any non-handler non-literal
    * shape ⇒ keep the normal mount (return false).
    */
+  /**
+   * Re-emit a collapse site's peeled attribute expression as the component's
+   * normal (h()-path) mount would: an `on*` handler gets the signal auto-call
+   * (`autoCallUnwrappedAttrValue`), a dynamic prop's ternary test the full
+   * `sliceExpr` its `_rp(() => …)` wrap would get. A verbatim source slice left
+   * `count + 1` in a handler and `() => (active) ? 0 : 1` in the dispatcher
+   * (always the truthy variant). The span always names a node of `node`'s own
+   * attributes (the detectors took it from there); the source slice is only a
+   * defensive fallback.
+   */
+  function collapseAttrExprText(node: N, start: number, end: number): string {
+    for (const attr of jsxAttrs(node)) {
+      if (attr.type !== 'JSXAttribute' || attr.value?.type !== 'JSXExpressionContainer') continue
+      const e = attr.value.expression
+      if (!e || e.type === 'JSXEmptyExpression') continue
+      if (e.start === start && e.end === end) {
+        const raw = code.slice(start, end)
+
+        return signalVars.size > shadowedSignals.size ? autoCallSignals(raw, e) : raw
+      }
+      if (e.type === 'ConditionalExpression' && e.test.start === start && e.test.end === end) {
+        return sliceExpr(e.test)
+      }
+    }
+
+    return code.slice(start, end)
+  }
+
   function tryPartialCollapse(node: N, tag: string): boolean {
     const cfg = options.collapseRocketstyle
     if (!cfg) return false
@@ -1578,7 +1604,7 @@ export function transformJSX_JS(
     // re-emitted verbatim from its source span (paren-wrapped so an
     // arrow / sequence expr stays a single argument).
     const handlerObj = `{ ${handlers
-      .map((h) => `${JSON.stringify(h.name)}: (${code.slice(h.exprStart, h.exprEnd)})`)
+      .map((h) => `${JSON.stringify(h.name)}: (${collapseAttrExprText(node, h.exprStart, h.exprEnd)})`)
       .join(', ')} }`
     const call =
       `__rsCollapseH(${JSON.stringify(site.templateHtml)}, ` +
@@ -1672,7 +1698,7 @@ export function transformJSX_JS(
       falsySite.lightClass,
       falsySite.darkClass,
     ]
-    const condSrc = code.slice(dynamicProp.condStart, dynamicProp.condEnd)
+    const condSrc = collapseAttrExprText(node, dynamicProp.condStart, dynamicProp.condEnd)
 
     // Handler-combined sites route to `__rsCollapseDynH(...)` (PR A
     // runtime helper) — handlers re-attached after the class dispatcher
@@ -1683,7 +1709,7 @@ export function transformJSX_JS(
     let call: string
     if (handlers.length > 0) {
       const handlerObj = `{ ${handlers
-        .map((h) => `${JSON.stringify(h.name)}: (${code.slice(h.exprStart, h.exprEnd)})`)
+        .map((h) => `${JSON.stringify(h.name)}: (${collapseAttrExprText(node, h.exprStart, h.exprEnd)})`)
         .join(', ')} }`
       call =
         `__rsCollapseDynH(${JSON.stringify(truthySite.templateHtml)}, ` +
@@ -1780,15 +1806,6 @@ export function transformJSX_JS(
     const text = sliced.startsWith('{') ? `() => (${sliced})` : `() => ${sliced}`
     replacements.push({ start, end, text })
     lens(start, end, 'reactive', 'live — re-evaluates whenever its signals change')
-  }
-
-  function hoistOrWrap(expr: N): void {
-    const hoistName = maybeHoist(expr)
-    if (hoistName) {
-      replacements.push({ start: expr.start as number, end: expr.end as number, text: hoistName })
-    } else if (shouldWrap(expr)) {
-      wrap(expr)
-    }
   }
 
   // ── Lazy component children ───────────────────────────────────────────────
@@ -1955,7 +1972,7 @@ export function transformJSX_JS(
     // rewrites one of these nodes wholesale (rocketstyle collapse) must know the
     // text is headed for an argument, not a JSX child slot.
     for (const hole of holes) argPositionNodes.add(hole)
-    for (const hole of holes) walkNode(hole)
+    for (const hole of holes) walkUnslicedExpr(hole)
     return true
   }
 
@@ -3216,7 +3233,7 @@ export function transformJSX_JS(
     // The preserved subtrees are NOT covered by any replacement above, so they
     // still need their normal visit — reactive props, nested templates, signal
     // auto-call. This is the whole point of preserving rather than re-emitting.
-    for (const p of preserved) walkNode(p.node)
+    for (const p of preserved) walkUnslicedExpr(p.node)
 
     needsSsrImport = true
     return true
@@ -3342,12 +3359,43 @@ export function transformJSX_JS(
     needsWrapSpreadImport = true
   }
 
+  /**
+   * Auto-call the bare signals of an h()-path attribute value the walk does NOT
+   * wrap or hoist — an `on*` handler, a `ref`, a function-valued prop
+   * (`render={() => …}`), or a static value holding one — with the same
+   * `autoCallSignals` pass the template path runs over the identical attribute
+   * (`emitEventListener` / `emitRef` slice the whole value). Before this the
+   * h() path left the value verbatim, so `onClick={() => count.set(count + 1)}`
+   * auto-called `count` on `<button>x</button>` and set the signal to its own
+   * source text plus "1" on `<Button/>`, a childless `<div/>`, a
+   * spread-carrying element and every SSR render. Nested JSX in the value stays
+   * as written (not walked), exactly as inside a template-path handler.
+   *
+   * Auto-call only: prop-derived inlining inside handlers still differs between
+   * the paths (the template path inlines, this one does not) — inlining a
+   * stateful initializer there would mint a new signal per call, so it is not
+   * extended here. Pushes nothing when nothing needs calling.
+   */
+  function autoCallUnwrappedAttrValue(expr: N): void {
+    if (signalVars.size === 0 || signalVars.size <= shadowedSignals.size) return
+    const start = expr.start as number
+    const end = expr.end as number
+    const raw = code.slice(start, end)
+    const called = autoCallSignals(raw, expr)
+    if (called !== raw) replacements.push({ start, end, text: called })
+  }
+
   function handleJsxAttribute(node: N, parentElement: N): void {
     const name = jsxAttrName(node)
-    if (SKIP_PROPS.has(name) || EVENT_RE.test(name)) return
+    if (name === 'key') return
     if (!node.value || node.value.type !== 'JSXExpressionContainer') return
     const expr = node.value.expression
     if (!expr || expr.type === 'JSXEmptyExpression') return
+    if (name === 'ref' || EVENT_RE.test(name)) {
+      autoCallUnwrappedAttrValue(expr)
+
+      return
+    }
 
     const tagName = jsxTagName(parentElement)
     const isComponent = tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
@@ -3387,9 +3435,18 @@ export function transformJSX_JS(
           'reactive-prop',
           'live prop — signal reads here are tracked into the component',
         )
+      } else {
+        autoCallUnwrappedAttrValue(expr)
       }
     } else {
-      hoistOrWrap(expr)
+      const hoistName = maybeHoist(expr)
+      if (hoistName) {
+        replacements.push({ start: expr.start as number, end: expr.end as number, text: hoistName })
+      } else if (shouldWrap(expr)) {
+        wrap(expr)
+      } else {
+        autoCallUnwrappedAttrValue(expr)
+      }
     }
   }
 
@@ -3462,7 +3519,49 @@ export function transformJSX_JS(
       wrap(expr)
       return
     }
+    walkUnslicedExpr(expr)
+  }
+
+  /**
+   * Walk a JSX expression the emit does NOT slice (a function child —
+   * `<Comp>{() => count + 1}</Comp>`, `<For>{(r) => …}</For>` — or any other
+   * unwrapped value), auto-calling its bare signals first.
+   *
+   * A sliced expression gets `autoCallSignals` over its whole span, nested
+   * functions included. An unsliced one is WALKED instead (so its nested JSX
+   * still compiles to templates), and the walk itself never rewrites an
+   * identifier — so a bare signal inside a function child was auto-called on
+   * a template element and left as the function on every other path. The
+   * identifiers come from the same collector `sliceExpr` uses (same scope,
+   * identity and write-target rules); those inside nested JSX are left to
+   * that JSX's own emit, which the walk reaches next. Each is a zero-width
+   * `()` insertion, disjoint from every edit the walk makes (those cover JSX
+   * only). Mirrored by `auto_call_unsliced` in the Rust backend.
+   */
+  function walkUnslicedExpr(expr: N): void {
+    autoCallUnsliced(expr)
     walkNode(expr)
+  }
+
+  function autoCallUnsliced(expr: N): void {
+    if (signalVars.size === 0 || signalVars.size <= shadowedSignals.size) return
+    if (expr.type === 'JSXElement' || expr.type === 'JSXFragment') return
+    const idents = collectSignalCallIdents(expr)
+    if (idents.length === 0) return
+    const jsxSpans: { start: number; end: number }[] = []
+    const findJsx = (n: N): void => {
+      if (n.type === 'JSXElement' || n.type === 'JSXFragment') {
+        jsxSpans.push({ start: n.start as number, end: n.end as number })
+
+        return
+      }
+      forEachChildFast(n, findJsx)
+    }
+    findJsx(expr)
+    for (const id of idents) {
+      if (jsxSpans.some((sp) => id.start >= sp.start && id.end <= sp.end)) continue
+      replacements.push({ start: id.end, end: id.end, text: '()' })
+    }
   }
 
   /** Component tag — uppercase first letter. Lowercase = DOM element. */

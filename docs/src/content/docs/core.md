@@ -1978,6 +1978,15 @@ const ContactForm = defineComponent(() => {
     })
   }
 
+  // Built outside the JSX: inside JSX the compiler reads a bare signal as its
+  // value (`name` → `name()`), so code that passes the signal ITSELF lives here.
+  const onName = (e: InputEvent & { currentTarget: HTMLInputElement }) =>
+    updateField(name, 'name', e.currentTarget.value)
+  const onEmail = (e: InputEvent & { currentTarget: HTMLInputElement }) =>
+    updateField(email, 'email', e.currentTarget.value)
+  const onMessage = (e: InputEvent & { currentTarget: HTMLTextAreaElement }) =>
+    updateField(message, 'message', e.currentTarget.value)
+
   const isValid = () =>
     !name().error &&
     !email().error &&
@@ -2013,7 +2022,7 @@ const ContactForm = defineComponent(() => {
           <label>Name</label>
           <input
             value={name().value}
-            onInput={(e) => updateField(name, 'name', e.currentTarget.value)}
+            onInput={onName}
           />
           <Show when={() => name().touched && name().error}>
             <span class="error">{name().error}</span>
@@ -2024,7 +2033,7 @@ const ContactForm = defineComponent(() => {
           <input
             type="email"
             value={email().value}
-            onInput={(e) => updateField(email, 'email', e.currentTarget.value)}
+            onInput={onEmail}
           />
           <Show when={() => email().touched && email().error}>
             <span class="error">{email().error}</span>
@@ -2034,7 +2043,7 @@ const ContactForm = defineComponent(() => {
           <label>Message</label>
           <textarea
             value={message().value}
-            onInput={(e) => updateField(message, 'message', e.currentTarget.value)}
+            onInput={onMessage}
           />
           <Show when={() => message().touched && message().error}>
             <span class="error">{message().error}</span>
