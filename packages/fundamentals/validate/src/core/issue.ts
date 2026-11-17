@@ -8,9 +8,9 @@
  * User-defined `.refine()` calls accept the same shape.
  */
 
-import type { PyreonIssue, StandardSchemaIssue } from '../types'
+import type { PyreonIssue } from '../types'
 
-export type { PyreonIssue, StandardSchemaIssue }
+export type { PyreonIssue }
 
 /**
  * Path segment — accepts both bare PropertyKey AND StdSchema's

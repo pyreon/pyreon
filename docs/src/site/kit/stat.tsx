@@ -1,6 +1,6 @@
 import type { VNodeChild } from '@pyreon/core'
 import { For } from '@pyreon/core'
-import { clampSize, display, font, gradient, stat, weight } from '../theme'
+import { clampSize, display, font, gradient, leading, stat, text, weight } from '../theme'
 import { el, pair, tone, txt } from './bases'
 import { GlowCard } from './cards'
 import { AnimatedSvg } from './media'
@@ -9,8 +9,10 @@ import { renderInline } from './type'
 /**
  * The stat block: a gradient numeral with what it measures, the raw figures,
  * the run condition and, optionally, a proof chart of the same figures. One
- * component for the proof band's cells (`size="band"`) and the stat cards
- * (`StatCard`, `size="card"`).
+ * component for every number the site proves something with, in four sizes:
+ * `band` (the proof band's cells), `strip` (the stat cards, `StatCard`),
+ * `product` (a product card's foot) and `hero` (the benchmarks hero row).
+ * The numeral's own size is chosen separately (`numeral`).
  *
  * Layout contract: the block adds NO horizontal inset of its own. Its parts
  * are direct children of the surface that holds it (a proof band cell, a
@@ -45,6 +47,8 @@ export const Numeral = txt
     strip: { fontSize: clampSize(display.numeralStrip) },
     /** A proof number inside a product card: one step under `strip`, so a card with a number and one without share a row without a half-empty card. */
     card: { fontSize: clampSize(display.numeralCard) },
+    /** A numeral inside a line of copy (the home page's featured product cards). */
+    inline: { fontSize: display.numeralInline },
   }))
 
 const Label = txt
@@ -58,9 +62,12 @@ const Label = txt
     fontWeight: weight.medium,
     color: tone(m, 'strong'),
   }))
-  .sizes(() => ({
+  .sizes((_t, m) => ({
     band: { marginTop: stat.band.labelGap, maxWidth: stat.band.labelMaxWidth, textWrap: 'balance', fontSize: stat.band.labelSize },
-    card: { marginTop: stat.card.labelGap, fontSize: stat.card.labelSize },
+    strip: { marginTop: stat.strip.labelGap, fontSize: stat.strip.labelSize },
+    /** In a product card the label is the card's copy: regular weight, mist. */
+    product: { fontSize: stat.product.labelSize, lineHeight: stat.product.labelLineHeight, fontWeight: weight.regular, color: tone(m, 'mist') },
+    hero: { fontSize: stat.hero.labelSize },
   }))
 
 /**
@@ -81,7 +88,13 @@ const Detail = txt
     color: tone(m, 'fog'),
     overflowWrap: 'anywhere',
   }))
-  .sizes(() => ({ band: { textWrap: 'pretty' }, card: { textWrap: 'balance' } }))
+  .sizes(() => ({
+    band: { textWrap: 'pretty' },
+    strip: { textWrap: 'balance' },
+    /** A product card's and the benchmarks hero's run condition: the caveat style (`text.caveat`). [A8] */
+    product: { fontSize: text.caveat.size, letterSpacing: text.caveat.tracking, lineHeight: leading.normal, textWrap: 'balance' },
+    hero: { fontSize: text.caveat.size, letterSpacing: text.caveat.tracking, textWrap: 'balance' },
+  }))
 
 /** A numeric range ("2.5–8.7×") stays on one line: a wrapped caption never breaks it at the dash. */
 const NoBreak = txt.config({ name: 'StatNoBreak' }).attrs({ tag: 'span' }).theme(() => ({ whiteSpace: 'nowrap' }))
@@ -144,7 +157,10 @@ export interface StatProps {
 }
 
 /** The parts of a stat, as siblings of the surface that holds them. */
-export function StatBody(props: StatProps & { size: 'band' | 'card'; numeral: 'default' | 'long' | 'strip' }) {
+export type StatSize = 'band' | 'strip' | 'product' | 'hero'
+export type NumeralSize = 'default' | 'long' | 'strip' | 'card' | 'inline'
+
+export function StatBody(props: StatProps & { size: StatSize; numeral: NumeralSize }) {
   const chart = props.chart
   const note = props.note && !(chart && chartCarriesNote(chart.svg, props.note)) ? props.note : undefined
   return (
@@ -154,7 +170,7 @@ export function StatBody(props: StatProps & { size: 'band' | 'card'; numeral: 'd
         <Numeral tag="span" size={props.numeral}>
           {props.stat}
         </Numeral>{' '}
-        <Label tag={props.size === 'card' ? 'h3' : 'span'} size={props.size}>
+        <Label tag={props.size === 'strip' ? 'h3' : 'span'} size={props.size}>
           {renderInline(props.label)}
         </Label>
       </span>
@@ -176,7 +192,7 @@ export function StatBody(props: StatProps & { size: 'band' | 'card'; numeral: 'd
 export function StatCard(props: StatProps & { href?: string | undefined }) {
   return (
     <GlowCard href={props.href} padding="stat">
-      <StatBody {...props} size="card" numeral="strip" />
+      <StatBody {...props} size="strip" numeral="strip" />
     </GlowCard>
   )
 }

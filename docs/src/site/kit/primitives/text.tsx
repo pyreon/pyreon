@@ -1,6 +1,6 @@
 import type { VNodeChild } from '@pyreon/core'
 import { h } from '@pyreon/core'
-import { font, leading, text } from '../../theme'
+import { badge, font, leading, text, weight } from '../../theme'
 import { tone as toneOf, txt } from '../bases'
 
 /**
@@ -13,15 +13,21 @@ import { tone as toneOf, txt } from '../bases'
  * without `leading` the line height is the Text element's own (1).
  */
 
-/** mono: `text.mono` (12px) mono · label: the eyebrow's uppercase tracked mono · caption / small / body: sans at `text.caption` / `text.small` / `text.body`. */
-export type TextVariant = 'mono' | 'label' | 'caption' | 'small' | 'body'
+/**
+ * mono: `text.mono` (12px) mono · caveat: the caveat line's mono (`text.caveat`, 11.5px, tracked) ·
+ * label: the eyebrow's uppercase tracked mono · badge: the badge lettering (`badge`, 10.5px uppercase mono) ·
+ * caption / small / body: sans at `text.caption` / `text.small` / `text.body`.
+ */
+export type TextVariant = 'mono' | 'caveat' | 'label' | 'badge' | 'caption' | 'small' | 'body'
 /** The text colours from `theme.ts` `color`. */
-export type TextTone = 'fog' | 'mist' | 'text' | 'strong' | 'accent' | 'accentText'
+export type TextTone = 'fog' | 'mist' | 'text' | 'strong' | 'accent' | 'accentText' | 'ok' | 'warn' | 'err'
 export type TextLeading = keyof typeof leading
 export type TextTag = 'span' | 'p' | 'div' | 'b' | 'strong' | 'em' | 'small' | 'code' | 'li' | 'dt' | 'dd' | 'figcaption'
 
 const variants = () => ({
   mono: { fontFamily: font.mono, fontSize: text.mono.size },
+  caveat: { fontFamily: font.mono, fontSize: text.caveat.size, letterSpacing: text.caveat.tracking },
+  badge: { fontFamily: font.mono, fontSize: badge.size, letterSpacing: badge.tracking, textTransform: 'uppercase' },
   label: { fontFamily: font.mono, fontSize: text.eyebrow.size, letterSpacing: text.eyebrow.tracking, textTransform: 'uppercase' },
   caption: { fontFamily: font.sans, fontSize: text.caption.size },
   small: { fontFamily: font.sans, fontSize: text.small.size },
@@ -35,6 +41,9 @@ const tones = (_t: unknown, m: Parameters<typeof toneOf>[0]) => ({
   strong: { color: toneOf(m, 'strong') },
   accent: { color: toneOf(m, 'accent') },
   accentText: { color: toneOf(m, 'accentText') },
+  ok: { color: toneOf(m, 'ok') },
+  warn: { color: toneOf(m, 'warn') },
+  err: { color: toneOf(m, 'err') },
 })
 
 const leadings = () =>
@@ -43,6 +52,7 @@ const leadings = () =>
 const textFlags = () => ({
   block: { display: 'block' },
   anywhere: { overflowWrap: 'anywhere' },
+  medium: { fontWeight: weight.medium },
 })
 
 // variant → `variant`, tone → `state`, leading → `size`, flags → `multiple`: the
@@ -57,6 +67,8 @@ export interface TextProps {
   block?: boolean | undefined
   /** Break long unspaced strings (package names, paths) anywhere instead of overflowing. */
   anywhere?: boolean | undefined
+  /** The medium weight (500); otherwise the weight is inherited. */
+  medium?: boolean | undefined
   tag?: TextTag | undefined
   id?: string | undefined
   'aria-hidden'?: 'true' | undefined
@@ -64,9 +76,10 @@ export interface TextProps {
 }
 
 export function Text(props: TextProps) {
-  const flags: ('block' | 'anywhere')[] = []
+  const flags: ('block' | 'anywhere' | 'medium')[] = []
   if (props.block) flags.push('block')
   if (props.anywhere) flags.push('anywhere')
+  if (props.medium) flags.push('medium')
 
   return h(
     TextBase,
