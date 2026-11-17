@@ -169,6 +169,28 @@ final class PyreonTasksUITests: XCTestCase {
         return nil
     }
 
+    /// Lifts a tap-only canvas until `point` sits well inside the window. `scrollIntoView` stops once the canvas is
+    /// hittable, which can leave it at the bottom edge with the point a pixel below the window (seen on a 393x852
+    /// iPhone 16). The drag starts on the canvas's own visible top strip: a canvas with only a tap gesture lets a
+    /// drag through to the page's scroll view, while blank padding is not hit-testable at every offset. One measured
+    /// drag, at most three times, then the caller's `assertPointsOnScreen` judges the result.
+    private func liftTapOnlyCanvas(_ canvas: XCUIElement, until point: () -> XCUICoordinate, in app: XCUIApplication) {
+        let window = app.windows.firstMatch.frame
+        for _ in 0..<3 {
+            let y = point().screenPoint.y
+            if y > window.minY + 100 && y < window.maxY - 120 { return }
+            let frame = canvas.frame.intersection(window)
+            if frame.isEmpty { return }
+            let start = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: frame.midX, dy: frame.minY + min(20, frame.height / 2)))
+            let wanted = (window.minY + window.maxY) / 2 - y
+            let room = y > window.midY ? -(start.screenPoint.y - window.minY - 60) : window.maxY - 60 - start.screenPoint.y
+            let drag = wanted < 0 ? max(wanted, room) : min(wanted, room)
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: drag)), withVelocity: .slow, thenHoldForDuration: 0.3)
+            waitForScrollToSettle(canvas)
+        }
+    }
+
     /// Point checks also cover gestures that only need a visible portion of a canvas.
     /// A brush at y=60 remains reachable when its unused bottom edge is clipped.
     private func assertPointsOnScreen(_ points: [XCUICoordinate], in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
@@ -1786,7 +1808,9 @@ final class PyreonTasksUITests: XCTestCase {
         scrollIntoView(dashRadar, in: app)
         waitForScrollToSettle(dashRadar)
         XCTAssertTrue(dashRadar.isHittable, "radar canvas never became hittable")
-        let radarPoint = dashRadar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 46))
+        let radarVertex = { dashRadar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 46)) }
+        liftTapOnlyCanvas(dashRadar, until: radarVertex, in: app)
+        let radarPoint = radarVertex()
         assertPointsOnScreen([radarPoint], in: app)
         radarPoint.tap()
         XCTAssertTrue(waitForLabel(radarHit, "S0A0", timeout: 10), "tap on the radar's first vertex did not report series 0 / axis 0 (label: \(radarHit.label))")
@@ -1800,6 +1824,7 @@ final class PyreonTasksUITests: XCTestCase {
         scrollIntoView(dashBox, in: app)
         waitForScrollToSettle(dashBox)
         XCTAssertTrue(dashBox.isHittable, "boxplot canvas never became hittable")
+        liftTapOnlyCanvas(dashBox, until: { dashBox.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)) }, in: app)
         let boxPoint = dashBox.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.5))
         let boxRightPoint = dashBox.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
         assertPointsOnScreen([boxPoint, boxRightPoint], in: app)
