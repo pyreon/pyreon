@@ -1750,6 +1750,9 @@
     "packages/fundamentals/http": {
       "name": "@pyreon/http",
       "version": "0.53.0",
+      "dependencies": {
+        "@standard-schema/spec": "^1.1.0",
+      },
       "devDependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/form": "workspace:^",
@@ -2160,6 +2163,9 @@
     "packages/fundamentals/validation": {
       "name": "@pyreon/validation",
       "version": "0.53.0",
+      "dependencies": {
+        "@standard-schema/spec": "^1.1.0",
+      },
       "devDependencies": {
         "@happy-dom/global-registrator": "21.0.4",
         "@pyreon/core": "workspace:^",
@@ -2365,6 +2371,7 @@
         "@pyreon/styler": "workspace:*",
         "@pyreon/ui-core": "workspace:*",
         "@pyreon/unistyle": "workspace:*",
+        "@pyreon/validation": "workspace:*",
         "axe-core": "^4.14.1",
         "typescript": ">=5.0.0 <7.0.0",
       },
@@ -3239,6 +3246,7 @@
         "@pyreon/server": "workspace:^",
         "@pyreon/sized-map": "workspace:*",
         "@pyreon/vite-plugin": "workspace:^",
+        "@standard-schema/spec": "^1.1.0",
         "oxc-parser": "^0.159.0",
         "vite": "^8.3.8",
       },
@@ -3268,6 +3276,7 @@
       "dependencies": {
         "@pyreon/head": "workspace:^",
         "@pyreon/router": "workspace:^",
+        "@standard-schema/spec": "^1.1.0",
         "esbuild": "^0.28.2",
         "hast-util-to-html": "^9.0.6",
         "mdast-util-to-hast": "^13.2.2",

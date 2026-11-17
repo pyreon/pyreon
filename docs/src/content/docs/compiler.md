@@ -908,6 +908,7 @@ function Profile(props) {
 | `const d = new Date(props.ts)`, `new Intl.NumberFormat(props.locale)` | Yes | Value constructors (`Date`, `URL`, `RegExp`, `Intl.*`) |
 | `const c = props.cache ?? new Map()` | No | Any other `new` creates a new object per evaluation |
 | `const label = cx(props.a)` | Yes | An unrecognised call is assumed to compute a value |
+| `const el = <img alt={props.alt} />`, `const el = props.f ? <b /> : <i />`, `const row = () => <li>{props.x}</li>` | No | JSX anywhere in the initializer: the element's own bindings are already live (see below) |
 | `console.log(x)` where `x` is prop-derived | No | Non-JSX usage stays static (captured value) |
 
 ### Initializers that create state are never inlined
@@ -928,6 +929,12 @@ function Counter(props: { shared?: Signal<number> }) {
 ```
 
 `props.shared` is read once, at setup. That is what this pattern wants (the parent decides at mount); if the parent may later pass a different signal, read `props.shared` where you use it instead.
+
+### Initializers that hold JSX are never inlined
+
+A `const` whose initializer contains JSX anywhere (an element, a fragment, a ternary or `&&` branch, a `.map` callback, an array or object entry, a function body) is referenced, not inlined, on every path. The JSX inside it compiles once, with its own live bindings: `const el = <img alt={props.alt} />` emits `alt={() => props.alt}`, so `{el}` follows the prop. An inlined copy was the original source, so its JSX was never lowered. It read `props.alt` once, and it built a new element, with new component state, on every read.
+
+The one thing a `const` cannot do is choose a different element later. `const el = props.f ? <b /> : <i />` picks its branch at setup. When the choice must follow the prop, put it where it is used, `{() => (props.f ? <b /> : <i />)}` or `<Show when={() => props.f}>`, or make the `const` a function and call it: `const el = () => (props.f ? <b /> : <i />)` with `{el()}`.
 
 ### Every use site, the same rule
 

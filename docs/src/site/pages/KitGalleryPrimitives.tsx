@@ -1,9 +1,9 @@
 import type { VNodeChild } from '@pyreon/core'
 import { For } from '@pyreon/core'
 import { GlowCard } from '../kit/cards'
-import { Chip } from '../kit/controls'
 import { AutoGrid, Box, Cluster, Grid, Icon, Stack, Text, Visible, Wrap } from '../kit/primitives'
 import type { TextLeading, TextTone, TextVariant } from '../kit/primitives'
+import { Tag } from '../kit/tag'
 
 /**
  * `/brand/kit`, layer 1: every primitive (`kit/primitives/`) in its variants.
@@ -14,7 +14,7 @@ import type { TextLeading, TextTone, TextVariant } from '../kit/primitives'
 type SpecimenFrame = (props: { name: string; children?: VNodeChild }) => VNodeChild
 
 const ITEMS = ['one', 'two', 'three', 'four', 'five', 'six'] as const
-const chips = (n: number) => ITEMS.slice(0, n).map((i) => <Chip>{i}</Chip>)
+const chips = (n: number) => ITEMS.slice(0, n).map((i) => <Tag>{i}</Tag>)
 
 const cards = (n: number) =>
   ITEMS.slice(0, n).map((i) => (
@@ -61,7 +61,7 @@ function LayoutSpecimens(props: { Specimen: SpecimenFrame }) {
             <For each={['ul', 'li', 'no bullets']} by={(t) => t}>
               {(t) => (
                 <li>
-                  <Chip>{t}</Chip>
+                  <Tag>{t}</Tag>
                 </li>
               )}
             </For>
@@ -101,7 +101,7 @@ function GridSpecimens(props: { Specimen: SpecimenFrame }) {
             <For each={[...ITEMS]} by={(i) => i}>
               {(i) => (
                 <li>
-                  <Chip>{i}</Chip>
+                  <Tag>{i}</Tag>
                 </li>
               )}
             </For>
@@ -185,20 +185,20 @@ function VisibleIconSpecimens(props: { Specimen: SpecimenFrame }) {
       <Specimen name="Visible: from split · below split · from md · below md (resize to see them swap)">
         <Cluster gap={150}>
           <Visible from="split">
-            <Chip>
+            <Tag>
               <span id="kit-visible-from-split">from split (≥ 700px)</span>
-            </Chip>
+            </Tag>
           </Visible>
           <Visible below="split">
-            <Chip>
+            <Tag>
               <span id="kit-visible-below-split">below split (&lt; 700px)</span>
-            </Chip>
+            </Tag>
           </Visible>
           <Visible from="md">
-            <Chip>from md (≥ 768px)</Chip>
+            <Tag>from md (≥ 768px)</Tag>
           </Visible>
           <Visible below="md">
-            <Chip>below md (&lt; 768px)</Chip>
+            <Tag>below md (&lt; 768px)</Tag>
           </Visible>
         </Cluster>
       </Specimen>

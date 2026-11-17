@@ -5,7 +5,8 @@ import type {
   ValidateFn,
   ValidationIssue,
 } from './types'
-import type { InferSchema, StandardSchemaTyped } from './schema'
+import type { StandardTypedV1 } from '@standard-schema/spec'
+import type { InferSchema } from './schema'
 import { emptyErrors, flattenIssuePath, formLevelError, issuesToRecord } from './utils'
 
 /**
@@ -70,7 +71,7 @@ function arkIssuesToGeneric(errors: ArkErrors): ValidationIssue[] {
  * form.register('email')    // ✅ OK
  * form.register('invalid')  // ❌ Type error!
  */
-export function arktypeSchema<S extends ArkTypeCallable & StandardSchemaTyped>(
+export function arktypeSchema<S extends ArkTypeCallable & StandardTypedV1<unknown, Record<string, unknown>>>(
   schema: S,
 ): TypedSchemaAdapter<InferSchema<S>>
 export function arktypeSchema<TValues extends Record<string, unknown>>(

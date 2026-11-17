@@ -328,7 +328,10 @@ export function createImage(
       />
     )
 
-    const placeholderEl = props.placeholder
+    // A function so the placeholder follows `props.placeholder`: a const
+    // holding JSX is referenced, never inlined, so a plain const would pick
+    // its branch once at setup.
+    const placeholderEl = () => props.placeholder
       ? (
           <img
             src={props.placeholder}
@@ -360,7 +363,7 @@ export function createImage(
         containerRef={img.containerRef}
         class={props.class}
         containerStyle={img.containerStyle}
-        placeholder={placeholderEl}
+        placeholder={placeholderEl()}
         image={imageEl}
       />
     )
@@ -473,6 +476,7 @@ export function Image(props: ImageDescriptorProps | ImageUrlProps): any {
       width?: number
       height?: number
     }
+
     return (
       <img
         src={desc ? desc.src : (src as string)}
@@ -504,6 +508,7 @@ export function Image(props: ImageDescriptorProps | ImageUrlProps): any {
       formats: desc.formats,
     }
     const merged = mergeProps(descDefaults, rest as Partial<ImageProps>) as ImageProps
+
     return <ImageInner {...merged} />
   }
 
@@ -558,5 +563,6 @@ export function OptimizedImage(props: OptimizedImageProps): any {
   // splitProps (not destructuring) so the display props keep their reactive
   // getters; `source` is a static build-time descriptor with no reactivity.
   const [local, rest] = splitProps(props, ['source'])
+
   return <Image {...local.source} {...rest} />
 }
