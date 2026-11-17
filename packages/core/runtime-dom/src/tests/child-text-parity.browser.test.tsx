@@ -27,13 +27,16 @@ const VALUES: [string, () => unknown, string][] = [
 ]
 
 const hosts: HTMLElement[] = []
+
 afterEach(() => {
   for (const el of hosts.splice(0)) el.remove()
 })
+
 function host(): HTMLElement {
   const el = document.createElement('div')
   document.body.appendChild(el)
   hosts.push(el)
+
   return el
 }
 

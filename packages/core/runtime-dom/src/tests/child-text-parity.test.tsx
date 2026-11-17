@@ -84,6 +84,7 @@ function build(src: string, get: () => unknown, ssr: boolean): { App: () => unkn
     }
   }
   const fn = new Function(...Object.keys(DEPS), 'get', `${lower(code)}\nreturn App`)
+
   return { App: fn(...Object.values(DEPS), get) as () => unknown, code }
 }
 
@@ -151,6 +152,7 @@ async function streamToString(vnode: unknown): Promise<string> {
 }
 
 const hosts: HTMLElement[] = []
+
 afterEach(() => {
   for (const el of hosts.splice(0)) el.remove()
 })

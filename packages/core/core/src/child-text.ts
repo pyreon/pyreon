@@ -47,6 +47,7 @@ export function _isStructuralChild(v: unknown): boolean {
     for (let i = 0; i < v.length; i++) if (_isStructuralChild(v[i])) return true
     return false
   }
+
   return _isVNodeLike(v)
 }
 
@@ -63,5 +64,6 @@ export function _childText(v: unknown): string {
     for (let i = 0; i < v.length; i++) s += _childText(v[i])
     return s
   }
+
   return String(v as number)
 }
