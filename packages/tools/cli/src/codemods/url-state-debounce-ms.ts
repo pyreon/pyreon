@@ -57,6 +57,7 @@ export const urlStateDebounceMs: Codemod = {
       if (first === undefined) return undefined
       if (ts.isObjectLiteralExpression(first)) return args[1]
       if (ts.isStringLiteral(first) || ts.isNoSubstitutionTemplateLiteral(first) || args.length >= 3) return args[2]
+
       return undefined
     }
 
@@ -89,6 +90,7 @@ export const urlStateDebounceMs: Codemod = {
     if (edits.length === 0) return null
     let out = source
     for (const e of edits.sort((a, b) => b.start - a.start)) out = out.slice(0, e.start) + e.text + out.slice(e.end)
+
     return out
   },
 }

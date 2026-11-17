@@ -16,6 +16,7 @@ beforeEach(() => {
   history.replaceState(null, '', '/')
   setUrlRouter(null)
 })
+
 afterEach(() => {
   vi.restoreAllMocks()
 })
