@@ -249,11 +249,11 @@ const countCanonicalPrimitives = (repoRoot: string): number => {
   return [...m[1]!.matchAll(/^\s*'[A-Za-z]+',?\s*$/gm)].length
 }
 
-/** Packages carrying a `src/manifest.ts` — the docs pipeline's input set. */
-const countManifests = (repoRoot: string): number => {
+/** Every `packages/<category>/<package>` directory with a readable package.json, plus its `private` flag. */
+const workspacePackages = (repoRoot: string): Array<{ dir: string; isPrivate: boolean }> => {
   const pkgsDir = join(repoRoot, 'packages')
-  if (!existsSync(pkgsDir)) return 0
-  let count = 0
+  if (!existsSync(pkgsDir)) return []
+  const out: Array<{ dir: string; isPrivate: boolean }> = []
   for (const cat of readdirSync(pkgsDir)) {
     const catDir = join(pkgsDir, cat)
     try {
@@ -262,38 +262,28 @@ const countManifests = (repoRoot: string): number => {
       continue
     }
     for (const pkg of readdirSync(catDir)) {
-      if (existsSync(join(catDir, pkg, 'src', 'manifest.ts'))) count++
-    }
-  }
-  return count
-}
-
-const countPublishedPackages = (repoRoot: string): number => {
-  const pkgsDir = join(repoRoot, 'packages')
-  if (!existsSync(pkgsDir)) return 0
-  let count = 0
-  for (const cat of readdirSync(pkgsDir)) {
-    const catDir = join(pkgsDir, cat)
-    try {
-      if (!statSync(catDir).isDirectory()) continue
-    } catch {
-      continue
-    }
-    for (const pkg of readdirSync(catDir)) {
-      const pj = join(catDir, pkg, 'package.json')
-      if (!existsSync(pj)) continue
       try {
-        const json = JSON.parse(readFileSync(pj, 'utf8')) as {
-          private?: boolean
-        }
-        if (json.private !== true) count++
+        const json = JSON.parse(readFileSync(join(catDir, pkg, 'package.json'), 'utf8')) as { private?: boolean }
+        out.push({ dir: join(catDir, pkg), isPrivate: json.private === true })
       } catch {
-        // unparseable package.json — skip (don't count)
+        // no readable package.json: not a package, don't count
       }
     }
   }
-  return count
+  return out
 }
+
+const countPublishedPackages = (repoRoot: string): number =>
+  workspacePackages(repoRoot).filter((p) => !p.isPrivate).length
+
+/**
+ * PUBLISHED packages carrying a `src/manifest.ts`. A private package with a
+ * manifest (an unpublished package still feeds the docs pipeline) is not
+ * counted: the claim is "N of M published packages have a manifest", and the
+ * exempt figure is derived as published minus manifested.
+ */
+const countManifests = (repoRoot: string): number =>
+  workspacePackages(repoRoot).filter((p) => !p.isPrivate && existsSync(join(p.dir, 'src', 'manifest.ts'))).length
 
 /**
  * NOTE — AGENTS.md (formerly CLAUDE.md) is not a claim site for the hook count or the document

@@ -186,12 +186,12 @@ return <Greeting name={_rpd(user)} tone="warm" />
 | `const { title } = props` | no | destructuring copies the value |
 | `const x = count()` in the body | no | read once, at setup |
 | `<Show when={() => x()}>` | yes | explicit accessor |
-| `<For each={items} by={(i) => i.id}>` | yes | keyed reactive list |
+| `<For each={items()} by={(i) => i.id}>` | yes | keyed reactive list |
 | `items().map(...)` in the body | no | evaluated once; use `<For>` |
 
 Two consequences of "the body runs once" surprise people coming from React.
 
-**An early return pins the component.** `if (loading()) return <Skeleton />` is evaluated once. If `loading` was true at mount, that component is a skeleton forever. Use `<Show when={loading} fallback={...}>`, or return an accessor.
+**An early return pins the component.** `if (loading()) return <Skeleton />` is evaluated once. If `loading` was true at mount, that component is a skeleton forever. Use `<Show when={loading()} fallback={...}>`, or return an accessor.
 
 **Hooks can be conditional.** React forbids `if (x) useState()` because it identifies hooks by call order across renders. Pyreon has no second render, so a hook is an ordinary function call that has to happen during setup. This is legal:
 
@@ -214,7 +214,7 @@ What is not legal is calling a hook after setup has finished: inside a click han
 `<For>` takes the list and a key function. The key prop is `by`, because JSX reserves `key`:
 
 ```tsx
-<For each={todos} by={(t) => t.id}>
+<For each={todos()} by={(t) => t.id}>
   {(t) => <li class={t.done() ? 'done' : ''}>{t.title()}</li>}
 </For>
 ```
@@ -264,7 +264,7 @@ And on the design side:
 
 - **Static-by-default reads take a little learning.** A React developer expects everything in the body to be current. Here, a plain read in the body is a snapshot. The compiler and the lint rules catch the common forms; a read buried in non-JSX code (a `.filter()` over a signal in the body, say) is still yours to wrap in `computed()`.
 - **Prefer to skip the rules entirely?** Plain Mode (experimental) lets you write `let count = state(0); count++` with destructured props that stay live, and the `'use plain'` dialect compiles it to the same signal code. This post covers the default dialect.
-- **Pyreon is pre-1.0 (0.53.0 today).** Breaking changes ship as minor versions.
+- **Pyreon is pre-1.0.** Breaking changes ship as minor versions.
 
 Want to check any of this yourself? Paste a component into `transformJSX` (exported from `@pyreon/compiler`) and read what comes back. These rules are not conventions we ask you to follow. They are what the compiler emits.
 

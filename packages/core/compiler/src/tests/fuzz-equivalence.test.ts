@@ -106,6 +106,16 @@ interface Ctx {
    * its own stream keeps every earlier draw sequence unchanged.
    */
   rnd4: () => number
+  /**
+   * A FIFTH independent stream for the prop-derived INITIALIZER arm: a const
+   * `pq` whose initializer reads props and may hold a stateful factory, `new`
+   * or a write ANYWHERE in it (never inlinable — inlining would mint fresh
+   * state per read) or only pure reads (inlined), used on every element path,
+   * handlers and function children included. Its own stream keeps every
+   * earlier draw sequence unchanged.
+   */
+  rnd5: () => number
+  pq: boolean
 }
 
 /** Functions holding a bare signal — value reads, identity uses, shadowing. */
@@ -167,6 +177,72 @@ const PD_EXPRS = [
   'cnd && <b>{ph.m()}</b>', // JSX nested in an expression, child position
   '<b title={ph.m()} />', // JSX nested in an expression, attr position
 ]
+
+/**
+ * Initializers for the prop-derived const `pq`: a factory / `new` / write at
+ * every depth and operand position (not inlined), the inlinable controls
+ * (pure reads, an unknown call, a function that is only created), and the
+ * expression kinds the native gate once enumerated past (tagged template,
+ * sequence, spread argument).
+ */
+const PQ_INITS = [
+  'props.shared ?? signal(0)',
+  'props.shared || computed(() => 1)',
+  'props.x ? signal(1) : props.y',
+  'mk(props.x, signal(0))',
+  '{ v: props.x, s: signal(0) }',
+  '[props.x, createStore({})]',
+  '`${props.x}${useId()}`',
+  'props.m ?? new Map()',
+  'new Date(props.x)',
+  'new AbortController(props.x)',
+  'new Intl.NumberFormat(props.x)',
+  'mk(mk2(props.x, useX()))',
+  'props.o?.useThing()',
+  'Array.from({ length: props.x }, () => signal(0))',
+  '(() => signal(props.x))()',
+  'props.x++',
+  '(props.x as any) ?? effect(() => {})',
+  'class { v = props.x }',
+  'props.x',
+  'props.x + "-q"',
+  'mk(props.x)',
+  '() => signal(props.x)',
+  '{ on: () => signal(0), v: props.x }',
+  'tag`${props.x}`',
+  '(0, props.x)',
+  'mk(...props.items)',
+  // Hygiene: the inlined text mentions `tag`, which some use sites re-bind.
+  'props.x + tag',
+  '(y) => props.f(y, tag)',
+]
+
+/** Use sites of `pq` on every element path. */
+function genPqSite(c: Ctx): string {
+  return pick(c.rnd5, [
+    '<p>{pq}</p>',
+    '<p title={pq}>x</p>',
+    '<Comp9 v={pq} />',
+    '<Comp9>{pq}</Comp9>',
+    '<button onClick={() => use(pq)}>x</button>',
+    '<Comp9 onClick={() => use(pq)} />',
+    '<i onClick={() => use(pq)} />',
+    '<b {...rest} onClick={() => use(pq)}>x</b>',
+    '<b ref={(el) => use(el, pq)}>x</b>',
+    '<Comp9 render={() => use(pq)} />',
+    '<Comp9>{() => use(pq)}</Comp9>',
+    '<Comp9>{(r) => <b>{r}{pq}</b>}</Comp9>',
+    '<Comp9>{() => [1].map((i) => use(i, pq))}</Comp9>',
+    '<Comp9>{(pq) => use(pq)}</Comp9>',
+    '<Comp9 data={{ pq }} />',
+    // A binding of a name `pq`'s inlined text mentions (`tag`) between the
+    // declaration and the use: inlining there would capture it.
+    '<ul>{[1].map((tag) => <li title={pq} onClick={() => use(pq, tag)}>x</li>)}</ul>',
+    '<Comp9>{(tag) => use(pq, tag)}</Comp9>',
+    '<Comp9 render={(tag) => <b>{pq}</b>} />',
+    '<p>{[1].map((props) => use(pq, props))}</p>',
+  ])
+}
 
 const pick = <T,>(rnd: () => number, arr: T[]): T => arr[Math.floor(rnd() * arr.length)]!
 const TAGS = ['div', 'span', 'ul', 'li', 'section', 'p', 'h1', 'button', 'main', 'a', 'b', 'i']
@@ -385,7 +461,9 @@ function genComponent(seed: number): string {
   const pd = props && rnd2() < 0.5
   const rnd3 = mulberry32((seed ^ 0x51ed270b) >>> 0)
   const rnd4 = mulberry32((seed ^ 0x2545f491) >>> 0)
-  const c: Ctx = { rnd, signals, props, depth: 0, idc: { n: 0 }, helpers, pd, rnd2, rnd3, rnd4 }
+  const rnd5 = mulberry32((seed ^ 0x6c8e9cf5) >>> 0)
+  const pq = props && rnd5() < 0.5
+  const c: Ctx = { rnd, signals, props, depth: 0, idc: { n: 0 }, helpers, pd, rnd2, rnd3, rnd4, rnd5, pq }
   const lines: string[] = [`import { signal, computed } from "@pyreon/reactivity"`]
   lines.push(...helperLines)
   const body: string[] = []
@@ -394,6 +472,7 @@ function genComponent(seed: number): string {
   // A prop-derived NON-stateful const (`mk` is neither a hook/factory name nor
   // in the explicit stateful list), so it is inlined at its use sites.
   if (pd) body.push(`  const ph = mk(props.x)`)
+  if (pq) body.push(`  const tag = "t"`, `  const pq = ${pick(rnd5, PQ_INITS)}`)
   if (rnd() < 0.3) body.push(`  const el = <b>static</b>`)
   // PZ-02 scope-awareness: occasionally SHADOW a helper with a non-JSX fn —
   // calls inside App must then stay on the reactive-text path (both backends).
@@ -422,7 +501,11 @@ function genComponent(seed: number): string {
   const appLines = [
     `function App(${props ? 'props' : ''}) {`,
     ...body,
-    `  return ${genElement(c)}`,
+    // The `pq` sites ride in a fragment beside the element only when the arm
+    // is drawn, so every other seed's return is byte-for-byte unchanged.
+    pq
+      ? `  return <>${genElement(c)}${Array.from({ length: 1 + Math.floor(rnd5() * 3) }, () => genPqSite(c)).join('')}</>`
+      : `  return ${genElement(c)}`,
     `}`,
   ]
   // Wrapper form (backend-parity #1/#2 shapes): the component is the same body
@@ -580,6 +663,57 @@ describe('seeded JavaScript fallback — client + SSR', () => {
           ).toEqual([])
         }
       }
+    },
+  )
+
+  // Backend agreement cannot see a bug both backends share: a member tag
+  // (`<Ns.CompN>`) once compiled as a DOM element in BOTH, so its props were
+  // unbranded arrows (#4368). The metamorphic oracle: renaming every member tag
+  // to an identifier (`NsCompN`) must not change the emit beyond the tag text.
+  // Run for each backend that is present, every mode.
+  test(
+    `${SEEDS} seeds: a member tag compiles like the same component bound to an identifier`,
+    { timeout: SWEEP_TIMEOUT_MS },
+    () => {
+      const backends: Array<[string, (src: string, m: (typeof MODES)[number]) => string]> = [
+        [
+          'JS',
+          (src, m) =>
+            transformJSX_JS(src, 'fuzz.tsx', {
+              ssr: m.ssr,
+              ssrTemplate: m.ssrTemplate,
+              templatizeComponentChildren: m.templatizeComponentChildren === true,
+            }).code,
+        ],
+      ]
+      if (nativeTransform) {
+        const nt = nativeTransform
+        backends.push([
+          'native',
+          (src, m) =>
+            nt(src, 'fuzz.tsx', m.ssr, null, false, undefined, m.ssrTemplate === true, m.templatizeComponentChildren === true)
+              .code,
+        ])
+      }
+      let exercised = 0
+      const failures: string[] = []
+      for (let seed = 1; seed <= SEEDS; seed++) {
+        const src = genComponent(seed)
+        if (!src.includes('<Ns.Comp')) continue
+        exercised++
+        const renamed = src.replace(/(<\/?)Ns\.Comp/g, '$1NsComp')
+        for (const m of MODES) {
+          for (const [name, run] of backends) {
+            const viaMember = run(src, m)
+            const viaIdent = run(renamed, m).replace(/(<\/?)NsComp/g, '$1Ns.Comp')
+            if (viaMember !== viaIdent && failures.length < 5) {
+              failures.push(`seed=${seed} mode=${m.label} backend=${name}\n${src}\n── member ──\n${viaMember}\n── identifier ──\n${viaIdent}`)
+            }
+          }
+        }
+      }
+      expect(exercised, 'the grammar stopped generating member tags').toBeGreaterThan(SEEDS * 0.05)
+      expect(failures, failures.join('\n\n')).toEqual([])
     },
   )
 

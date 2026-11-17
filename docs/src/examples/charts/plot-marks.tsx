@@ -50,12 +50,11 @@ export default function PlotMarks(props: { shared?: Signal<number> }) {
       </div>
 
       {/*
-        `data` is an ACCESSOR, so the chart repaints whenever `rows` changes.
-        Passing `data={rows()}` instead would read the signal once at setup and
-        the chart would never update.
+        `data={rows()}` is a signal read in a prop: the compiler passes it as a
+        reactive prop, so the chart repaints whenever `rows` changes.
       */}
       <Chart<Row>
-        data={() => rows()}
+        data={rows()}
         x="month"
         height={260}
         format={currency('$')}
@@ -72,7 +71,7 @@ export default function PlotMarks(props: { shared?: Signal<number> }) {
       </Chart>
 
       {/* A second chart over the same rows — bars, no curve, values drawn on. */}
-      <Chart<Row> data={() => rows()} x="month" height={200} format={currency('$')} title="Monthly revenue (bars)">
+      <Chart<Row> data={rows()} x="month" height={200} format={currency('$')} title="Monthly revenue (bars)">
         <Bar y="revenue" color="#16a34a" label="Revenue" showValues />
       </Chart>
     </div>
