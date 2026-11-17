@@ -10,7 +10,7 @@
 // Kotlin: `val linkingCtx = LocalContext.current` + `remember { PyreonLinking(linkingCtx) }`
 //         (Android needs a Context for `startActivity(ACTION_VIEW)`).
 //
-// Behaviour is device-proven in examples/native-counter-ios's XCUITest
+// Behaviour is device-proven in examples/native-counter/ios's XCUITest
 // (tapping Open backgrounds the app / foregrounds Safari — an observable
 // proof). This spec locks the EMIT SHAPE + is the bisect target.
 

@@ -2,18 +2,34 @@
   "name": "@pyreon/example-native-showcase",
   "version": "0.0.0",
   "private": true,
-  "description": "PRIVATE / EXPERIMENTAL — Today, a small todo app written once in src/TodayApp.tsx and built for the web (native-showcase-web), iOS / SwiftUI (native-showcase-ios) and Android / Jetpack Compose (native-showcase-android).",
+  "description": "PRIVATE / EXPERIMENTAL — Today, a small todo app written once in src/TodayApp.tsx and built for the web (index.html + vite), iOS / SwiftUI (ios/) and Android / Jetpack Compose (android/) from this one directory, the layout create-multiplatform scaffolds.",
   "license": "MIT",
+  "type": "module",
   "scripts": {
-    "check": "bun ../../packages/native/cli/src/cli.ts check --source=src",
-    "lint": "echo '[native-showcase] no TS lint surface; skipping'",
-    "test": "echo '[native-showcase] no test surface; device tests live in the -ios and -android hosts'",
-    "typecheck": "echo '[native-showcase] typechecked through native-showcase-web'"
+    "dev": "vite",
+    "build": "vite build && vite build --ssr src/entry-server.ts --outDir dist-server && bun scripts/prerender.ts",
+    "preview": "vite preview",
+    "build:ios": "bash scripts/build-ios.sh",
+    "build:android": "bash scripts/build-android.sh",
+    "xcode": "bash scripts/xcode-setup.sh",
+    "check": "bun ../../packages/native/cli/src/cli.ts check --source=src/TodayApp.tsx",
+    "lint": "oxlint .",
+    "test": "echo '[native-showcase] no unit tests; the device tests and how to run them are in README.md'",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/primitives": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/runtime-server": "workspace:*"
   },
   "devDependencies": {
-    "@pyreon/core": "workspace:*",
     "@pyreon/native-cli": "workspace:*",
-    "@pyreon/primitives": "workspace:*",
-    "@pyreon/reactivity": "workspace:*"
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vite-plugin": "workspace:*",
+    "@types/bun": "^1.4.4",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.8"
   }
 }

@@ -49,6 +49,7 @@
 import { readdirSync, readFileSync, existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { listNativeHosts } from './native-example-hosts'
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const WORKFLOWS = join(REPO_ROOT, '.github', 'workflows')
@@ -103,11 +104,12 @@ function iosProjects(): { path: string; source: string }[] {
   const examples = join(REPO_ROOT, 'examples')
   if (!existsSync(examples)) return []
   const out: { path: string; source: string }[] = []
-  for (const dir of readdirSync(examples)) {
-    if (!/^native-.*-ios$/.test(dir)) continue
-    const yml = join(examples, dir, 'project.yml')
+  // Both example layouts (native-<app>-ios/ and native-<app>/ios/).
+  for (const host of listNativeHosts(REPO_ROOT)) {
+    if (host.platform !== 'ios') continue
+    const yml = join(REPO_ROOT, host.dir, 'project.yml')
     if (!existsSync(yml)) continue
-    out.push({ path: `examples/${dir}/project.yml`, source: readFileSync(yml, 'utf8') })
+    out.push({ path: `${host.dir}/project.yml`, source: readFileSync(yml, 'utf8') })
   }
   return out
 }

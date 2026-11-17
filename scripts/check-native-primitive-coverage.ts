@@ -96,7 +96,7 @@ if (unused.length > 0) {
   console.error(
     `[check-native-primitive-coverage] ✗ ${unused.length} primitive(s) are used by NO native example, so no device gate ever compiles them:\n` +
       unused.map((p) => `  <${p}>`).join('\n') +
-      `\n\nAdd each to a gated example (see the <Audio> row in examples/native-router-demo-ios/src/RouterApp.tsx).` +
+      `\n\nAdd each to a gated example (see the <Audio> row in examples/native-router-demo/src/RouterApp.tsx).` +
       `\nA primitive nothing builds is where <Audio> hid an emit that referenced types no runtime defined.`,
   )
   process.exit(1)

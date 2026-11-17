@@ -9,6 +9,7 @@
   "include": [
     "src",
     "env.d.ts",
+    "vite.config.ts",
     "content.config.ts"
   ]
 }

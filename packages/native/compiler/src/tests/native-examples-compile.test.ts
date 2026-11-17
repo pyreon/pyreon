@@ -11,7 +11,8 @@ import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plug
  *
  * The fixture corpus covers shapes someone thought to write a fixture for. The
  * examples are what a person actually reads, copies, and scaffolds from — and
- * one of them (`native-viz`, the charts webview showcase) did not build on
+ * one of them (`native-viz`, the webview showcase, since moved into the
+ * `showcase-viz.tsx` fixture) did not build on
  * Android at all, while the gate that certified its mechanism was counting
  * warnings. A warning count answers "did the frontend complain"; only a compile
  * answers "does the output build".
@@ -28,13 +29,13 @@ function nativeExampleApps(): Array<[string, string]> {
   // Discovery reads each example's own BUILD SCRIPT, which is the ground truth
   // for what PMTC compiles there. Matching a filename convention instead is a
   // guess, and the first cut of this file proved it: `*App.tsx` silently missed
-  // `native-counter-ios/src/Counter.tsx` — the same list-disagrees-with-reality
+  // `native-counter/src/Counter.tsx` — the same list-disagrees-with-reality
   // hole this file exists to close, reintroduced by the file itself.
   //
   // A script may name its source either way, so both are tried and the one that
   // EXISTS wins: relative to its own example (`src/TasksApp.tsx`) or to the
   // repo root, which is how the platform wrappers reach the shared source
-  // (`examples/native-finance/src/FinanceApp.tsx` from `native-finance-ios`).
+  // (`examples/native-finance/src/FinanceApp.tsx` from `native-finance/ios`).
   // Keying the result by resolved path dedupes the two wrappers that name the
   // same shared file.
   //
@@ -66,7 +67,7 @@ const ALL = nativeExampleApps()
 
 /**
  * A shared source using `useNativeModule` names a class the APP provides
- * (`ios/DeviceInfo.swift`, `app/src/main/kotlin/.../DeviceInfo.kt`) — the FFI
+ * (`ios/Sources/DeviceInfo.swift`, `android/app/src/main/kotlin/.../DeviceInfo.kt`) — the FFI
  * escape hatch. The compiler does not know that type by design, so the stub
  * environment cannot resolve it and never could. Excluded, with the reason
  * CHECKED rather than asserted: the split is computed from the source, so it
@@ -93,8 +94,13 @@ describe('every native example compiles on both targets', () => {
     // And it is not uncovered, just covered somewhere else: the app-provided
     // class only exists in a real build, which is what the device gate runs.
     const dir = path.slice(0, path.lastIndexOf('/src/'))
+    // Both example layouts: hosts beside the source (native-<app>/ios/UITests,
+    // native-<app>/android/app/src/androidTest) or a split -ios / -android dir.
     const hasDeviceTest =
-      existsSync(join(dir, 'iosUITests')) || existsSync(join(dir, 'app/src/androidTest'))
+      existsSync(join(dir, 'ios/UITests')) ||
+      existsSync(join(dir, 'android/app/src/androidTest')) ||
+      existsSync(join(dir, 'iosUITests')) ||
+      existsSync(join(dir, 'app/src/androidTest'))
     expect(hasDeviceTest, `${dir} has no device test to cover what the stub gate cannot`).toBe(true)
   })
 

@@ -13,7 +13,7 @@ import { transform } from './first-party-plugins'
  * constructor in Kotlin (and `encode` is `inline fun <reified T>`, so the build
  * died on `cannot infer type for type parameter 'T'`), and on Swift a labelled
  * tuple that is not `Encodable`, so `encode` cannot serialize it. That is why
- * `examples/native-viz`, the charts webview example, did not build on Android.
+ * `examples/native-viz` (now the `showcase-viz.tsx` compiler fixture), the charts webview example, did not build on Android.
  *
  * The fix builds the JSON at COMPILE time and interpolates the runtime parts,
  * so live data still flows.

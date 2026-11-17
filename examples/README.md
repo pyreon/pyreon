@@ -41,18 +41,16 @@ Each app is shaped like the source framework and runs on its Pyreon compat layer
 
 ## Multiplatform: one source, web + iOS + Android
 
-One `.tsx` source compiled by PMTC to SwiftUI and Jetpack Compose, plus a web host. `bun create multiplatform` scaffolds the same thing as one directory (`src/`, `ios/`, `android/`, web entry); these apps still split each target into its own host package.
+One `.tsx` source compiled by PMTC to SwiftUI and Jetpack Compose, plus a web host. `bun create multiplatform` scaffolds this as one directory (`src/`, `ios/`, `android/`, web entry). Today, Counter, Router demo and Finance use that layout; Tasks and TodoMVC still split each target into its own host package. The analytics and viz apps that were compile-only now live as `packages/native/compiler/src/fixtures/showcase-{analytics,viz}.tsx`.
 
 | App | Source | Hosts | Role |
 | --- | --- | --- | --- |
 | Tasks | [native-tasks](./native-tasks/) | [web](./native-tasks-web/) · [iOS](./native-tasks-ios/) · [Android](./native-tasks-android/) | The multi-feature showcase: store, auth gate, editors, charts. Device-gated in CI |
-| Today | [native-showcase](./native-showcase/) | [web](./native-showcase-web/) · [iOS](./native-showcase-ios/) · [Android](./native-showcase-android/) | The pyreon.dev home-page demo |
+| Today | [native-showcase](./native-showcase/) (`src/`) | web (root) · iOS (`ios/`) · Android (`android/`), one package | The pyreon.dev home-page demo. CI builds both native hosts; its device tests are not run in CI yet |
 | TodoMVC | in the iOS host | [web](./native-todomvc-web/) · [iOS](./native-todomvc-ios/) · [Android](./native-todomvc-android/) | The oldest PMTC device gate |
-| Counter | in the iOS host | [iOS](./native-counter-ios/) · [Android](./native-counter-android/) | Device APIs: geolocation, haptics, share, picker. Device-gated |
-| Router demo | in the iOS host | [web](./native-router-demo-web/) · [iOS](./native-router-demo-ios/) · [Android](./native-router-demo-android/) | Router, tabs, websocket, audio. Device-gated |
-| Finance | [native-finance](./native-finance/) | [iOS](./native-finance-ios/) · [Android](./native-finance-android/) | Real-app device gate: auth, form, store, routing |
-| Analytics | [native-analytics](./native-analytics/) | none (compile-only) | Data table plus a WebView chart |
-| Viz | [native-viz](./native-viz/) | none (compile-only) | flow, CodeMirror and TipTap in WebViews |
+| Counter | [native-counter](./native-counter/) (`src/`) | iOS (`ios/`) · Android (`android/`), one package | Device APIs: geolocation, haptics, share, picker. Device-gated |
+| Router demo | [native-router-demo](./native-router-demo/) (`src/`) | web (root) · iOS (`ios/`) · Android (`android/`), one package | Router, tabs, websocket, audio. Device-gated; the web build is e2e-tested |
+| Finance | [native-finance](./native-finance/) (`src/`) | iOS (`ios/`) · Android (`android/`), one package | Real-app device gate: auth, form, store, routing |
 
 ## Test fixtures
 
@@ -66,8 +64,7 @@ Apps that exist for a test suite. They are not written to be read; change them t
 | [cssvars-bench](./cssvars-bench/) | The CSS-variables theming e2e suite and `scripts/bench-cssvars.ts` |
 | [perf-dashboard](./perf-dashboard/) | `@pyreon/perf-harness` journeys (`perf.yml`) and the leak sweep (`leak-sweep.yml`) |
 | [sync-yjs-demo](./sync-yjs-demo/) | The `@pyreon/sync` CRDT e2e suites (surgical update, merge, state-vector catch-up) |
-| [cpa-pw-app](./cpa-pw-app/) · [cpa-pw-blog](./cpa-pw-blog/) · [cpa-pw-dash](./cpa-pw-dash/) | Committed `create-zero` output for `bun run test:e2e:cpa`; regenerate with `bun scripts/scaffold-cpa-fixtures.ts` |
-| [cpa-pw-app-react](./cpa-pw-app-react/) · [cpa-pw-app-vue](./cpa-pw-app-vue/) · [cpa-pw-app-solid](./cpa-pw-app-solid/) · [cpa-pw-app-preact](./cpa-pw-app-preact/) | `cpa-pw-app` scaffolded with `--compat <framework>`, for the same suite |
+| [cpa-pw-app](./cpa-pw-app/) · [cpa-pw-blog](./cpa-pw-blog/) · [cpa-pw-dash](./cpa-pw-dash/) | `create-zero` output for `bun run test:e2e:cpa`, exactly what the scaffolder emits plus declared fixture-only files. Regenerate with `bun scripts/scaffold-cpa-fixtures.ts`; `--check` (validate-fast) fails on drift. The `--compat` variants are scaffolded fresh by `scripts/scaffold-smoke.ts` instead of committed |
 
 ## Benchmarks
 

@@ -30,9 +30,10 @@
  * unreadable manifest, an empty file list, a deleted package.json.
  */
 
-import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, join, normalize, relative } from 'node:path'
+import { listNativeHosts } from './native-example-hosts'
 import { deriveNativePluginSurface } from './native-plugin-surface'
 import { lockClosure, nativeWorkspaces, parseLockfile } from './native-inputs-fingerprint'
 import { laneChanged } from './native-workflow-surface'
@@ -158,8 +159,9 @@ export function classifyNativeSurface(
  * `project.yml`. (`check-native-srcdirs-drift`, which reads them, is a Linux
  * gate.) The Android lane still selects the app: `selectApps` is unchanged.
  */
+// Both example layouts: `native-<app>-android/` and `native-<app>/android/`.
 const ANDROID_GRADLE_CONFIG =
-  /^examples\/native-[^/]+-android\/(?:(?:app\/)?build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties|gradlew(?:\.bat)?|gradle\/.+)$/
+  /^examples\/native-[^/]+(?:-android|\/android)\/(?:(?:app\/)?build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties|gradlew(?:\.bat)?|gradle\/.+)$/
 
 export function isAndroidGradleConfig(file: string): boolean {
   // `..` never appears in a git path; refuse it anyway so the `gradle/` arm
@@ -175,8 +177,9 @@ export function isAndroidGradleConfig(file: string): boolean {
  * them. A deleted file reads as null and so still starts the job, which keeps
  * "the last device test was removed" visible.
  */
+// Both example layouts: `native-<app>-ios/iosUITests` and `native-<app>/ios/UITests`.
 const DEVICE_TEST_SOURCE =
-  /^examples\/native-[^/]+-(?:ios\/iosUITests|android\/app\/src\/androidTest)\/(?!.*IntlDifferentialCases\.kt$)/
+  /^examples\/native-[^/]+(?:-ios\/iosUITests|\/ios\/UITests|[-/]android\/app\/src\/androidTest)\/(?!.*IntlDifferentialCases\.kt$)/
 
 export function isDeviceTestSource(file: string): boolean {
   return DEVICE_TEST_SOURCE.test(file) && !file.split('/').includes('..')
@@ -271,9 +274,9 @@ export function classifyMacosLane(
   read: (path: string) => string | null,
   self: SelfWorkflow,
   macosJobs: readonly string[],
-  pluginSurface?: ReadonlySet<string> | Error,
-  readBase?: (path: string) => string | null,
+  base: BaseInputs = {},
 ): Decision {
+  const { pluginSurface, readBase } = base
   if (files.length === 0) return { run: true, reasons: ['empty file list — running (fail-closed)'] }
   const reasons: string[] = []
   const selfTouched = files.includes(self.file)
@@ -293,6 +296,12 @@ export function classifyMacosLane(
   }
   if (rest.length > 0) reasons.push(...classifyNativeSurface(rest, read, undefined, pluginSurface, readBase).reasons)
   return { run: reasons.length > 0, reasons }
+}
+
+/** What a decision compares against: the plugin surface and the base revision's files. */
+export interface BaseInputs {
+  pluginSurface?: ReadonlySet<string> | Error | undefined
+  readBase?: ((path: string) => string | null) | undefined
 }
 
 export interface DeviceLaneJobs {
@@ -317,10 +326,9 @@ export function decideDevice(
   read: (path: string) => string | null,
   self: SelfWorkflow,
   jobs: DeviceLaneJobs,
-  pluginSurface: ReadonlySet<string> | Error | undefined,
-  readBase: ((path: string) => string | null) | undefined,
-  surfaces: () => AppSurface[],
+  inputs: BaseInputs & { surfaces: () => AppSurface[] },
 ): DeviceDecision {
+  const { pluginSurface, readBase, surfaces } = inputs
   const every = (reason: string): DeviceDecision => ({
     run: true,
     selection: { ios: 'all', android: 'all', reasons: [reason] },
@@ -385,7 +393,8 @@ export function decideDevice(
 // Fail-closed: a native-surface file claimed by NO app on either platform (the
 // compiler, the CLI, bun.lock, the workflow, a gate script, a manifest) runs
 // EVERY app on BOTH platforms. The single exception is a native example that
-// no lane builds (native-viz, a *-web sibling): no lane can observe it.
+// no lane builds (a *-web sibling, a single-layout app's web entry files):
+// no lane can observe it.
 
 export type Platform = 'ios' | 'android'
 export interface AppSurface {
@@ -406,12 +415,18 @@ function asRoot(p: string): string {
 /** Derive every device-lane app's surface from the files on disk. */
 export function deriveAppSurfaces(repoRoot: string): AppSurface[] {
   const out: AppSurface[] = []
-  for (const name of readdirSync(join(repoRoot, 'examples')).sort()) {
-    const dir = 'examples/' + name
-    const m = APP_DIR.exec(dir)
-    if (!m) continue
-    const platform = m[2] as Platform
+  for (const host of listNativeHosts(repoRoot)) {
+    const { dir, platform } = host
     const roots = new Set<string>([asRoot(dir)])
+    if (host.layout === 'single') {
+      // One package per app (`examples/native-<app>/{ios,android}`): this
+      // platform's host, the shared source, its own emit script and the
+      // package manifest. The other platform's host and the web entry files
+      // are not this lane's input.
+      roots.add(asRoot(host.appRoot + '/src'))
+      roots.add(host.buildScript)
+      roots.add(host.appRoot + '/package.json')
+    }
     const refsIn = (file: string, pattern: RegExp): void => {
       const abs = join(repoRoot, file)
       if (!existsSync(abs)) return
@@ -426,7 +441,7 @@ export function deriveAppSurfaces(repoRoot: string): AppSurface[] {
     // build script's PROJECT_DIR is the app dir, so resolve against it, and
     // claim the sibling example as a whole (its package.json, fixtures, …).
     const build = join(repoRoot, dir, 'scripts/build.sh')
-    if (existsSync(build)) {
+    if (host.layout === 'split' && existsSync(build)) {
       const src = /SRC_DIR=.*\$\{PROJECT_DIR\}\/([^"\s)]+)/.exec(readFileSync(build, 'utf8'))
       if (src) {
         const target = relative(repoRoot, join(repoRoot, dir, src[1]!))
@@ -434,8 +449,8 @@ export function deriveAppSurfaces(repoRoot: string): AppSurface[] {
           roots.add(asRoot(target))
           const parent = dirname(target)
           // Only a SHARED source home (examples/native-finance) is claimed whole;
-          // when the source lives in a sibling LANE app (native-counter-android
-          // reads native-counter-ios/src), claiming that app's whole dir would
+          // when the source lives in a sibling LANE app (native-counter/android
+          // reads native-counter/src), claiming that app's whole dir would
           // run this lane for an iOS-only UITest edit.
           if (parent !== dir && parent.startsWith('examples/native-') && !APP_DIR.test(parent))
             roots.add(asRoot(parent))
@@ -448,7 +463,7 @@ export function deriveAppSurfaces(repoRoot: string): AppSurface[] {
       refsIn(dir + '/settings.gradle.kts', /"(\.\.\/[^"]+)"/g)
       refsIn(dir + '/app/build.gradle.kts', /"(\.\.\/[^"]+)"/g)
     }
-    out.push({ platform, app: m[1]!, roots: [...roots].sort() })
+    out.push({ platform, app: host.app, roots: [...roots].sort() })
   }
   return out
 }
@@ -583,9 +598,7 @@ if (import.meta.main) {
         readAtHead,
         readSelfWorkflow(self!),
         deviceJobs,
-        pluginSurface,
-        readBase,
-        () => deriveAppSurfaces(process.cwd()),
+        { pluginSurface, readBase, surfaces: () => deriveAppSurfaces(process.cwd()) },
       )
     } catch (err) {
       const reason = 'device decision failed (' + String(err) + ') — every lane'
@@ -625,7 +638,7 @@ if (import.meta.main) {
       // failure to answer it runs the job.
       let mac: Decision
       try {
-        mac = classifyMacosLane(files, readAtHead, readSelfWorkflow(self), macosJobs, pluginSurface, readBase)
+        mac = classifyMacosLane(files, readAtHead, readSelfWorkflow(self), macosJobs, { pluginSurface, readBase })
       } catch (err) {
         mac = { run: true, reasons: ['macOS decision failed (' + String(err) + ') — running (fail-closed)'] }
       }

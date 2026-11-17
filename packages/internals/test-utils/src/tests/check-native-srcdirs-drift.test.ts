@@ -1,10 +1,13 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  ANDROID_PAIRS,
   compareSets,
   declaredPyreonDeps,
+  IOS_PAIRS,
+  missingPairPaths,
   packagesInGradle,
   packagesInWiring,
 } from '../../../../../scripts/check-native-srcdirs-drift'
@@ -82,5 +85,23 @@ describe('declaredPyreonDeps', () => {
 
   it('returns 0 when there are no dependencies at all', () => {
     expect(declaredPyreonDeps(write(JSON.stringify({ name: 'x' })))).toBe(0)
+  })
+})
+
+describe('pair paths must exist (a missing one fails, it is never skipped)', () => {
+  it('names every missing host or shared path', () => {
+    const pairs = [
+      { host: 'a-ios/project.yml', shared: 'a' },
+      { host: 'b-ios/project.yml', shared: 'b-renamed' },
+    ]
+    const present = new Set(['a-ios/project.yml', 'a', 'b-ios/project.yml'])
+    expect(missingPairPaths(pairs, (rel) => present.has(rel))).toEqual(['b-renamed'])
+  })
+
+  it('every pair the real gate compares exists in this checkout', () => {
+    const examples = join(import.meta.dirname, '../../../../../examples')
+    const pairs = [...ANDROID_PAIRS, ...IOS_PAIRS]
+    expect(pairs.length).toBeGreaterThanOrEqual(5)
+    expect(missingPairPaths(pairs, (rel) => existsSync(join(examples, rel)))).toEqual([])
   })
 })

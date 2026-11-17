@@ -114,6 +114,9 @@ const GATES: Gate[] = [
   // App-side line count across the reference apps — the framework's "write
   // less code" claim, ratcheted so it cannot quietly drift the wrong way.
   { name: 'check-app-loc', cmd: 'bun scripts/check-app-loc.ts' },
+  // The committed create-zero e2e fixtures (examples/cpa-pw-*) equal what the
+  // scaffolder emits today; a template change regenerates them in the same PR.
+  { name: 'check-cpa-fixtures', cmd: 'bun scripts/scaffold-cpa-fixtures.ts --check' },
   // Every dev counter emitted in any package's src has a COUNTERS.md row and
   // every row an emitter. perf-harness's drift test enforces the same, but
   // only runs when perf-harness is in a PR's test closure; #4236 added a

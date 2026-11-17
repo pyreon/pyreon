@@ -552,7 +552,7 @@ jobs:
           {
             echo '<?xml version="1.0" encoding="UTF-8"?>'
             echo '<Workspace version = "1.0">'
-            for p in native-todomvc-ios/PyreonTodoMVC native-counter-ios/PyreonCounter native-finance-ios/PyreonFinance native-router-demo-ios/PyreonRouterDemo native-tasks-ios/PyreonTasks; do
+            for p in native-todomvc-ios/PyreonTodoMVC native-counter/ios/PyreonCounter native-finance/ios/PyreonFinance native-router-demo/ios/PyreonRouterDemo native-tasks-ios/PyreonTasks native-showcase/ios/PyreonShowcase; do
               echo "   <FileRef location = \"absolute:$GITHUB_WORKSPACE/examples/$p.xcodeproj\"></FileRef>"
             done
             echo '</Workspace>'
@@ -597,6 +597,30 @@ jobs:
             -workspace "$PYREON_IOS_WS" \
             -derivedDataPath "$PYREON_IOS_DD" \
             -scheme PyreonTodoMVC \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+
+      # Today (examples/native-showcase, the pyreon.dev home-page demo). One
+      # package per app, the create-multiplatform layout: ios/ and android/
+      # beside the shared src/. BUILD ONLY: it proves the emitted Swift links
+      # against real SwiftUI on the Simulator SDK. Its UITests
+      # (ios/UITests/) are not run in CI yet.
+      # Placed BEFORE the emulator/simulator test steps on purpose: a build-only
+      # check must not be skipped because an earlier app's device test failed.
+      - name: Emit + xcodegen + build — native-showcase/ios (build only)
+        timeout-minutes: 12
+        if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' showcase ')
+        working-directory: examples/native-showcase/ios
+        run: |
+          set -o pipefail
+          bash ../scripts/build-ios.sh
+          xcodegen generate
+          xcodebuild build \
+            -workspace "$PYREON_IOS_WS" \
+            -derivedDataPath "$PYREON_IOS_DD" \
+            -scheme PyreonShowcase \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
             -configuration Debug \
@@ -647,7 +671,7 @@ jobs:
 
       # ── Gap 7 part (a) — XCUITest coverage beyond TodoMVC ──
       # The audit (2026-06-05 native-readiness) explicitly calls out
-      # "native-router-demo-ios + native-counter-ios have no test
+      # "native-router-demo/ios + native-counter/ios have no test
       # coverage." These steps close that — same xcodegen + xcodebuild
       # test pattern as the TodoMVC steps above. The Simulator stays
       # booted across the 3 example apps so device boot-time cost is
@@ -677,7 +701,7 @@ jobs:
       #
       # Pinned to the same 37.3349 the XCUITest asserts; changing one without
       # the other surfaces as a confusing timeout rather than a clear mismatch.
-      - name: Grant location + inject a fix — native-counter-ios
+      - name: Grant location + inject a fix — native-counter/ios
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' counter ')
         run: |
           set -euo pipefail
@@ -696,16 +720,16 @@ jobs:
           xcrun simctl ui "$UDID" appearance light
           echo "appearance: light"
 
-      - name: Emit + xcodegen + UITest — native-counter-ios
+      - name: Emit + xcodegen + UITest — native-counter/ios
         id: uitest-counter
         timeout-minutes: 30
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' counter ')
-        working-directory: examples/native-counter-ios
+        working-directory: examples/native-counter/ios
         run: |
           set -o pipefail
-          bash scripts/build.sh
+          bash ../scripts/build-ios.sh
           xcodegen generate
-          bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD")" -- \
+          bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/native-counter" -- \
             xcodebuild test \
             -parallel-testing-enabled NO \
             -workspace "$PYREON_IOS_WS" \
@@ -724,16 +748,16 @@ jobs:
       # this app found a locale-formatting bug the demos structurally could
       # not (SwiftUI's LocalizedStringKey grouping shows below 1000 as-is,
       # so the counter's "Count: 0" never surfaced it; a 2700 balance did).
-      - name: Emit + xcodegen + UITest — native-finance-ios (real-app gate)
+      - name: Emit + xcodegen + UITest — native-finance/ios (real-app gate)
         id: uitest-finance
         timeout-minutes: 12
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' finance ')
-        working-directory: examples/native-finance-ios
+        working-directory: examples/native-finance/ios
         run: |
           set -o pipefail
-          bash scripts/build.sh
+          bash ../scripts/build-ios.sh
           xcodegen generate
-          bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD")" -- \
+          bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/native-finance" -- \
             xcodebuild test \
             -parallel-testing-enabled NO \
             -workspace "$PYREON_IOS_WS" \
@@ -747,10 +771,10 @@ jobs:
       # Simulator shares the host loopback, so a background bun process is
       # all it takes. Started here (not globally) because ONLY the
       # router-demo suite touches the socket.
-      - name: Start ws echo server — native-router-demo-ios
+      - name: Start ws echo server — native-router-demo/ios
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' router-demo ')
         run: |
-          nohup bun examples/native-router-demo-ios/scripts/ws-echo-server.ts > /tmp/ws-echo.log 2>&1 &
+          nohup bun examples/native-router-demo/scripts/ws-echo-server.ts > /tmp/ws-echo.log 2>&1 &
           # POLL for readiness, never a fixed sleep. `sleep 1` raced bun's
           # startup on a loaded runner and failed the whole iOS job AFTER every
           # suite had already passed — 8 minutes of green work discarded because
@@ -769,11 +793,11 @@ jobs:
             exit 1
           fi
 
-      - name: Emit + xcodegen + UITest — native-router-demo-ios
+      - name: Emit + xcodegen + UITest — native-router-demo/ios
         id: uitest-router
         timeout-minutes: 25
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' router-demo ')
-        working-directory: examples/native-router-demo-ios
+        working-directory: examples/native-router-demo/ios
         # POLICY (enforced by scripts/check-ios-signing-policy.ts): a step that
         # RUNS the app carries no `CODE_SIGNING_ALLOWED=NO`. An UNSIGNED app has
         # no signature entitlements, and the simulator's securityd DENIES
@@ -787,9 +811,9 @@ jobs:
         # them touch the keychain.
         run: |
           set -o pipefail
-          bash scripts/build.sh
+          bash ../scripts/build-ios.sh
           xcodegen generate
-          bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD")" -- \
+          bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/native-router-demo" -- \
             xcodebuild test \
             -parallel-testing-enabled NO \
             -workspace "$PYREON_IOS_WS" \
@@ -1028,7 +1052,7 @@ jobs:
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/jars-9
             ~/.gradle/caches/transforms-4
-          key: gradle-deps-${{ runner.os }}-${{ hashFiles('examples/native-*-android/**/*.gradle.kts', 'examples/native-*-android/gradle.properties') }}
+          key: gradle-deps-${{ runner.os }}-${{ hashFiles('examples/native-*-android/**/*.gradle.kts', 'examples/native-*-android/gradle.properties', 'examples/native-*/android/**/*.gradle.kts', 'examples/native-*/android/gradle.properties') }}
           restore-keys: gradle-deps-${{ runner.os }}-
 
       # No bun tarball-store restore here, on measurement (2026-09-07, PR #3344):
@@ -1087,6 +1111,18 @@ jobs:
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' todomvc ')
         working-directory: examples/native-todomvc-android
         run: bash "$GITHUB_WORKSPACE/scripts/native-gradle.sh" assembleDebug --stacktrace
+
+      # Today (examples/native-showcase/android). BUILD ONLY: assembleDebug
+      # proves the emitted Compose compiles and links; its instrumented test
+      # (android/app/src/androidTest/) is not run in CI yet, so no emulator.
+      # Placed BEFORE the emulator/simulator test steps on purpose: a build-only
+      # check must not be skipped because an earlier app's device test failed.
+      - name: Emit Kotlin + build debug APK — native-showcase/android (build only)
+        if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' showcase ')
+        working-directory: examples/native-showcase/android
+        run: |
+          bash ../scripts/build-android.sh
+          bash "$GITHUB_WORKSPACE/scripts/native-gradle.sh" assembleDebug --stacktrace
 
       - name: Enable KVM for emulator
         # `reactivecircus/android-emulator-runner` requires KVM
@@ -1199,22 +1235,22 @@ jobs:
         run: bash scripts/assert-release-lane.sh
 
       # ── The REAL-APP gate, Android half ──
-      # The iOS job builds + tests native-finance-ios; this is its counterpart,
+      # The iOS job builds + tests native-finance/ios; this is its counterpart,
       # compiling the SAME examples/native-finance/src/FinanceApp.tsx. It is the
       # load-bearing half for the ui-system lowering: Compose takes a reactive
       # text colour as a `Text(color = …)` CONSTRUCTOR ARG (SwiftUI uses a
       # modifier), so only a real `assembleDebug` proves that arg is type-correct.
-      - name: Emit Kotlin (PMTC .tsx → generated/*.kt) — native-finance-android
+      - name: Emit Kotlin (PMTC .tsx → generated/*.kt) — native-finance/android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' finance ')
-        working-directory: examples/native-finance-android
-        run: bash scripts/build.sh
+        working-directory: examples/native-finance/android
+        run: bash ../scripts/build-android.sh
 
-      - name: Build debug APK — native-finance-android (real-app gate)
+      - name: Build debug APK — native-finance/android (real-app gate)
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' finance ')
-        working-directory: examples/native-finance-android
+        working-directory: examples/native-finance/android
         run: bash "$GITHUB_WORKSPACE/scripts/native-gradle.sh" assembleDebug --stacktrace
 
-      - name: Run Compose instrumented test on Android Emulator — native-finance-android
+      - name: Run Compose instrumented test on Android Emulator — native-finance/android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' finance ')
         # SHA-pinned like the steps above. Asserts the COMPOSED flow (useForm
         # validation → the useAuth transition → a store-backed route guard → a
@@ -1234,7 +1270,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           disk-size: 4096M
-          working-directory: examples/native-finance-android
+          working-directory: examples/native-finance/android
           # LAST line: kill the emulator ourselves. `adb emu kill` alone
           # sometimes leaves qemu running; the action then waits on its
           # output pipe until the job timeout — observed on main and on
@@ -1248,17 +1284,17 @@ jobs:
       # Same shape as native-todomvc-android above — Emit Kotlin →
       # assembleDebug → connectedCheck.
 
-      - name: Emit Kotlin (PMTC .tsx → generated/*.kt) — native-counter-android
+      - name: Emit Kotlin (PMTC .tsx → generated/*.kt) — native-counter/android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' counter ')
-        working-directory: examples/native-counter-android
-        run: bash scripts/build.sh
+        working-directory: examples/native-counter/android
+        run: bash ../scripts/build-android.sh
 
-      - name: Build debug APK — native-counter-android
+      - name: Build debug APK — native-counter/android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' counter ')
-        working-directory: examples/native-counter-android
+        working-directory: examples/native-counter/android
         run: bash "$GITHUB_WORKSPACE/scripts/native-gradle.sh" assembleDebug --stacktrace
 
-      - name: Run Espresso test on Android Emulator — native-counter-android
+      - name: Run Espresso test on Android Emulator — native-counter/android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' counter ')
         # SHA-pinned same as the TodoMVC step above so supply-chain
         # hardening is consistent. Fresh emulator boot per step
@@ -1285,7 +1321,7 @@ jobs:
           # contain a Gradle build". First surfaced on the first
           # run that ever REACHED this step (the build steps before
           # it use step-level working-directory and were fine).
-          working-directory: examples/native-counter-android
+          working-directory: examples/native-counter/android
           # LAST line: kill the emulator ourselves. `adb emu kill` alone
           # sometimes leaves qemu running; the action then waits on its
           # output pipe until the job timeout — observed on main and on
@@ -1298,17 +1334,17 @@ jobs:
       # Was previously not in the device matrix; closes the audit's
       # Phase C "router-demo-android no test coverage" gap.
 
-      - name: Emit Kotlin (PMTC .tsx → generated/*.kt) — native-router-demo-android
+      - name: Emit Kotlin (PMTC .tsx → generated/*.kt) — native-router-demo/android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' router-demo ')
-        working-directory: examples/native-router-demo-android
-        run: bash scripts/build.sh
+        working-directory: examples/native-router-demo/android
+        run: bash ../scripts/build-android.sh
 
-      - name: Build debug APK — native-router-demo-android
+      - name: Build debug APK — native-router-demo/android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' router-demo ')
-        working-directory: examples/native-router-demo-android
+        working-directory: examples/native-router-demo/android
         run: bash "$GITHUB_WORKSPACE/scripts/native-gradle.sh" assembleDebug --stacktrace
 
-      - name: Run Espresso test on Android Emulator — native-router-demo-android
+      - name: Run Espresso test on Android Emulator — native-router-demo/android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' router-demo ')
         # A hang after the tests (see the kill line in `script`) fails in
         # minutes instead of consuming the 60-minute job budget.
@@ -1330,7 +1366,7 @@ jobs:
           # contain a Gradle build". First surfaced on the first
           # run that ever REACHED this step (the build steps before
           # it use step-level working-directory and were fine).
-          working-directory: examples/native-router-demo-android
+          working-directory: examples/native-router-demo/android
           # The useWebSocket device proof: start the loopback echo server on
           # the HOST, then `adb reverse` so the DEVICE's localhost:8790
           # reaches it — the shared-source URL stays one literal for all
@@ -1355,7 +1391,7 @@ jobs:
             # logcat FATAL and from the app's window never appearing, neither of
             # which depends on a dialog being drawn.
             adb shell settings put global hide_error_dialogs 1 || true
-            nohup bun ../native-router-demo-ios/scripts/ws-echo-server.ts > /tmp/ws-echo.log 2>&1 &
+            nohup bun ../scripts/ws-echo-server.ts > /tmp/ws-echo.log 2>&1 &
             adb reverse tcp:8790 tcp:8790
             gradle connectedCheck --stacktrace
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
@@ -1472,7 +1508,7 @@ jobs:
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/jars-9
             ~/.gradle/caches/transforms-4
-          key: gradle-deps-${{ runner.os }}-${{ hashFiles('examples/native-*-android/**/*.gradle.kts', 'examples/native-*-android/gradle.properties') }}
+          key: gradle-deps-${{ runner.os }}-${{ hashFiles('examples/native-*-android/**/*.gradle.kts', 'examples/native-*-android/gradle.properties', 'examples/native-*/android/**/*.gradle.kts', 'examples/native-*/android/gradle.properties') }}
 
       # `gradle connectedCheck` says only "There were failing tests. See the
       # report at: file:///…": no test name, no exception. On 2026-11-12 two
@@ -1498,6 +1534,7 @@ jobs:
           name: android-connected-reports
           path: |
             examples/native-*-android/app/build/reports/androidTests/
+            examples/native-*/android/app/build/reports/androidTests/
             /tmp/fixture-server.log
             /tmp/stream-server.log
           retention-days: 14

@@ -19,12 +19,14 @@ function extractScript(): string {
     if (l.trim() !== '' && !l.startsWith('            ')) break
     body.push(l.slice(12))
   }
+
   return body.join('\n')
 }
 
 const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
   ...args: string[]
 ) => (...args: unknown[]) => Promise<void>
+
 const heal = new AsyncFunction('github', 'context', 'core', extractScript())
 
 const NOT_ACQUIRED = 'The job was not acquired by Runner of type hosted even after multiple attempts'
@@ -92,6 +94,7 @@ async function run(o: Opts = {}) {
   const context = { payload, repo: { owner: 'o', repo: 'r' } }
   const core = { notice() {}, warning() {} }
   await heal(github, context, core)
+
   return calls
 }
 
