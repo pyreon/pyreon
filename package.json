@@ -6,12 +6,18 @@
     "packages/*/*",
     "packages/core/compiler/npm/*",
     "examples/*",
+    "examples/compat/*",
+    "examples/fixtures/*",
+    "examples/fixtures/cpa/*",
     "docs"
   ],
   "pyreon": {
     "doctor": {
       "excludeRoots": [
         "examples/*",
+        "examples/compat/*",
+        "examples/fixtures/*",
+        "examples/fixtures/cpa/*",
         "docs",
         "packages/core/compiler/npm/*"
       ]
@@ -108,6 +114,7 @@
     "scaffold-smoke": "bun scripts/scaffold-smoke.ts",
     "scaffold-cpa-fixtures": "bun scripts/scaffold-cpa-fixtures.ts",
     "check-advisory-comment-steps": "bun scripts/check-advisory-comment-steps.ts",
+    "check-main-red-watchlist": "bun scripts/check-main-red-watchlist.ts",
     "check-bundle-budgets": "bun scripts/check-bundle-budgets.ts",
     "check-import-budgets": "bun scripts/check-import-budgets.ts",
     "check-route-budgets": "bun scripts/check-route-budgets.ts",

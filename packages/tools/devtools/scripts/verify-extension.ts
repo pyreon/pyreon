@@ -149,7 +149,7 @@ try {
   pass(`Loaded ${APP_URL}`)
 } catch {
   fail(`Could not reach ${APP_URL} — is the dev server running?`)
-  info(`  Hint: cd examples/perf-dashboard && bun run dev`)
+  info(`  Hint: cd examples/fixtures/perf-dashboard && bun run dev`)
   await context.close()
   process.exit(1)
 }
