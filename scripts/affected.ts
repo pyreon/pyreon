@@ -34,11 +34,20 @@
  * mapped there as a LEAF seed (no dependent expansion — test-utils is a
  * universal devDependency, so expanding it would re-run ~all 60 packages).
  *
+ * ## Repository-level files
+ *
+ * A changed file that no workspace owns and no rule above maps (a ratchet
+ * baseline at the root, a lint config, a hook, `perf-results/**`) selects the
+ * workspaces whose tests read it (`repoFileReaders`, see
+ * `scripts/repo-file-readers.ts`) as leaf seeds. When nobody is known to read
+ * it, it selects `--filter=*`, like a root file. It never selects nothing.
+ *
  * ## Empty case
  *
- * If no files map to any workspace and no root files changed (e.g. only
- * `README.md` at root edited), emit an empty string. CI jobs must treat
- * empty as "skip gracefully" (succeed without running anything).
+ * Only prose selects nothing: Markdown, `.agents/**`, `.changeset/**`,
+ * `llms*.txt`, `LICENSE`, `.gitignore` (`isProsePath`), unless a package parses
+ * it (`DOC_INPUT_CONSUMERS`). CI jobs must treat empty as "skip gracefully"
+ * (succeed without running anything).
  *
  * ## Category filter (P3b — sharding)
  *
