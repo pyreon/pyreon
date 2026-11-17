@@ -187,7 +187,7 @@ export type JsonLiteralPart =
  * {}, series: [{ type: 'bar', data: revenue() }] }`) has heterogeneous nested
  * shapes and empty objects; no struct can be synthesized for it, so the emit
  * fell back to a tuple — which is invalid Kotlin, and on Swift a non-`Codable`
- * value that `encode` cannot serialize. That is why `examples/native-viz`, the
+ * value that `encode` cannot serialize. That is why `examples/native-viz` (now the `showcase-viz.tsx` compiler fixture), the
  * charts webview example, did not build on Android.
  *
  * Static parts become JSON text at COMPILE time; anything else (a signal read,

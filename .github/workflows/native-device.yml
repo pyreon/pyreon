@@ -552,7 +552,7 @@ jobs:
           {
             echo '<?xml version="1.0" encoding="UTF-8"?>'
             echo '<Workspace version = "1.0">'
-            for p in native-todomvc-ios/PyreonTodoMVC native-counter-ios/PyreonCounter native-finance-ios/PyreonFinance native-router-demo-ios/PyreonRouterDemo native-tasks-ios/PyreonTasks; do
+            for p in native-todomvc-ios/PyreonTodoMVC native-counter-ios/PyreonCounter native-finance-ios/PyreonFinance native-router-demo-ios/PyreonRouterDemo native-tasks-ios/PyreonTasks native-showcase/ios/PyreonShowcase; do
               echo "   <FileRef location = \"absolute:$GITHUB_WORKSPACE/examples/$p.xcodeproj\"></FileRef>"
             done
             echo '</Workspace>'
@@ -597,6 +597,30 @@ jobs:
             -workspace "$PYREON_IOS_WS" \
             -derivedDataPath "$PYREON_IOS_DD" \
             -scheme PyreonTodoMVC \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+
+      # Today (examples/native-showcase, the pyreon.dev home-page demo). One
+      # package per app, the create-multiplatform layout: ios/ and android/
+      # beside the shared src/. BUILD ONLY: it proves the emitted Swift links
+      # against real SwiftUI on the Simulator SDK. Its UITests
+      # (ios/UITests/) are not run in CI yet.
+      # Placed BEFORE the emulator/simulator test steps on purpose: a build-only
+      # check must not be skipped because an earlier app's device test failed.
+      - name: Emit + xcodegen + build — native-showcase/ios (build only)
+        timeout-minutes: 12
+        if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' showcase ')
+        working-directory: examples/native-showcase/ios
+        run: |
+          set -o pipefail
+          bash ../scripts/build-ios.sh
+          xcodegen generate
+          xcodebuild build \
+            -workspace "$PYREON_IOS_WS" \
+            -derivedDataPath "$PYREON_IOS_DD" \
+            -scheme PyreonShowcase \
             -sdk iphonesimulator \
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
             -configuration Debug \
@@ -1028,7 +1052,7 @@ jobs:
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/jars-9
             ~/.gradle/caches/transforms-4
-          key: gradle-deps-${{ runner.os }}-${{ hashFiles('examples/native-*-android/**/*.gradle.kts', 'examples/native-*-android/gradle.properties') }}
+          key: gradle-deps-${{ runner.os }}-${{ hashFiles('examples/native-*-android/**/*.gradle.kts', 'examples/native-*-android/gradle.properties', 'examples/native-*/android/**/*.gradle.kts', 'examples/native-*/android/gradle.properties') }}
           restore-keys: gradle-deps-${{ runner.os }}-
 
       # No bun tarball-store restore here, on measurement (2026-09-07, PR #3344):
@@ -1087,6 +1111,18 @@ jobs:
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' todomvc ')
         working-directory: examples/native-todomvc-android
         run: bash "$GITHUB_WORKSPACE/scripts/native-gradle.sh" assembleDebug --stacktrace
+
+      # Today (examples/native-showcase/android). BUILD ONLY: assembleDebug
+      # proves the emitted Compose compiles and links; its instrumented test
+      # (android/app/src/androidTest/) is not run in CI yet, so no emulator.
+      # Placed BEFORE the emulator/simulator test steps on purpose: a build-only
+      # check must not be skipped because an earlier app's device test failed.
+      - name: Emit Kotlin + build debug APK — native-showcase/android (build only)
+        if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' showcase ')
+        working-directory: examples/native-showcase/android
+        run: |
+          bash ../scripts/build-android.sh
+          bash "$GITHUB_WORKSPACE/scripts/native-gradle.sh" assembleDebug --stacktrace
 
       - name: Enable KVM for emulator
         # `reactivecircus/android-emulator-runner` requires KVM
@@ -1472,7 +1508,7 @@ jobs:
             ~/.gradle/caches/modules-2
             ~/.gradle/caches/jars-9
             ~/.gradle/caches/transforms-4
-          key: gradle-deps-${{ runner.os }}-${{ hashFiles('examples/native-*-android/**/*.gradle.kts', 'examples/native-*-android/gradle.properties') }}
+          key: gradle-deps-${{ runner.os }}-${{ hashFiles('examples/native-*-android/**/*.gradle.kts', 'examples/native-*-android/gradle.properties', 'examples/native-*/android/**/*.gradle.kts', 'examples/native-*/android/gradle.properties') }}
 
       # `gradle connectedCheck` says only "There were failing tests. See the
       # report at: file:///…": no test name, no exception. On 2026-11-12 two

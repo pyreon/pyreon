@@ -18,7 +18,7 @@
 // It is the SINGLE tested implementation of that contract, so each
 // package's bundle entry is thin and identical across platforms instead of
 // hand-rolling the `window.__pyreonData` / `pyreonPostMessage` wiring (as
-// `examples/native-analytics` does inline). See `WebView` + `WebViewProps`.
+// native-compiler's `showcase-analytics.tsx` fixture does inline). See `WebView` + `WebViewProps`.
 
 import { isServer } from '@pyreon/reactivity'
 

@@ -15,11 +15,13 @@
 //      silently turn the gate into a no-op.
 
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { buildScaffold } from '../scaffold'
+import { exampleHostDirs } from './example-hosts'
 
 const PHASE_KEYS = ['preBuildScripts', 'postBuildScripts'] as const
 
@@ -76,10 +78,12 @@ describe('scaffold ios/project.yml — structure', () => {
 })
 
 describe('example iOS projects — structure', () => {
-  const examples = new URL('../../../../../examples/', import.meta.url)
-  const ymls = readdirSync(examples)
-    .filter((d) => /^native-.*-ios$/.test(d))
-    .map((d) => ({ d, text: readFileSync(new URL(`${d}/project.yml`, examples), 'utf8') }))
+  const repo = new URL('../../../../../', import.meta.url)
+  // Both example layouts: native-<app>-ios/ and native-<app>/ios/.
+  const ymls = exampleHostDirs(fileURLToPath(repo), 'ios').map((d) => ({
+    d,
+    text: readFileSync(new URL(`${d}/project.yml`, repo), 'utf8'),
+  }))
 
   it('finds the example projects', () => {
     expect(ymls.length).toBeGreaterThanOrEqual(5)

@@ -263,7 +263,7 @@ import { FlowWebView } from '@pyreon/flow/webview'
 
 It is still a WebView, with a JSON bridge. The diagram is opaque to native gestures and to the platform accessibility tree, so prefer the native host unless the browser renderer itself is the requirement. Without an explicit height it defaults to 150pt (iOS) or 150dp (Android). `buildFlowHostHtml()` returns the self-contained host page, for hosting it in a plain `<WebView>` yourself.
 
-See `examples/native-tasks` (native `<Flow>` and `<FlowWebView>` side by side) and `examples/native-viz` for one-source multiplatform apps.
+See `examples/native-tasks` (native `<Flow>` and `<FlowWebView>` side by side) for a one-source multiplatform app.
 
 ## Documentation
 

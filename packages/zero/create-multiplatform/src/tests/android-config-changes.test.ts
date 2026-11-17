@@ -9,9 +9,11 @@
 // AND in every example, since an example copied from an old one is how the
 // gap spreads.
 
-import { readdirSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { buildScaffold } from '../scaffold'
+import { exampleHostDirs } from './example-hosts'
 
 /** Every change Compose can absorb by recomposing; the React Native default set. */
 const REQUIRED = ['orientation', 'screenSize', 'screenLayout', 'smallestScreenSize', 'uiMode', 'keyboard', 'keyboardHidden']
@@ -23,10 +25,12 @@ function launcherConfigChanges(manifest: string): string[] | null {
   return attr ? attr[1]!.split('|') : []
 }
 
-const examplesDir = new URL('../../../../../examples/', import.meta.url)
-const exampleManifests = readdirSync(examplesDir)
-  .filter((d) => /^native-.*-android$/.test(d))
-  .map((d) => ({ name: d, text: readFileSync(new URL(`${d}/app/src/main/AndroidManifest.xml`, examplesDir), 'utf8') }))
+const repo = new URL('../../../../../', import.meta.url)
+// Both example layouts: native-<app>-android/ and native-<app>/android/.
+const exampleManifests = exampleHostDirs(fileURLToPath(repo), 'android').map((d) => ({
+  name: d,
+  text: readFileSync(new URL(`${d}/app/src/main/AndroidManifest.xml`, repo), 'utf8'),
+}))
 
 describe('the Android launcher activity keeps its state across configuration changes', () => {
   it('the scaffold declares every change Compose absorbs', () => {

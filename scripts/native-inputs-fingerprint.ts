@@ -56,15 +56,18 @@ import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, readlinkSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
+import { listNativeHosts } from './native-example-hosts'
 import { laneSurface } from './native-workflow-surface'
 
 export type Platform = 'ios' | 'android'
 export interface GatedApp {
-  /** Repo-relative directory, e.g. `examples/native-tasks-ios`. */
+  /** Repo-relative host directory, e.g. `examples/native-tasks-ios` or `examples/native-showcase/ios`. */
   dir: string
   platform: Platform
   /** The key the device lanes select by (`tasks`, `router-demo`). */
   key: string
+  /** Repo-relative emit script the lane runs before building the host. */
+  buildScript: string
 }
 export interface Fingerprint {
   shared: string
@@ -72,7 +75,6 @@ export interface Fingerprint {
   apps: Record<string, string>
 }
 
-const APP_DIR = /^native-(.+)-(ios|android)$/
 const JSX_COMPILER_CRATE = 'packages/core/compiler/native/'
 const WORKFLOW = '.github/workflows/native-device.yml'
 /** The workflow job that builds each platform; its block is that platform's definition. */
@@ -86,10 +88,11 @@ function skippedDir(name: string): boolean {
 
 export function gatedApps(root: string): GatedApp[] {
   const out: GatedApp[] = []
-  for (const name of readdirSync(join(root, 'examples')).sort()) {
-    const m = APP_DIR.exec(name)
-    if (!m || !existsSync(join(root, 'examples', name, 'scripts', 'build.sh'))) continue
-    out.push({ dir: `examples/${name}`, platform: m[2] as Platform, key: m[1]! })
+  // Both example layouts (one package per platform, or one per app with
+  // ios/ and android/ inside); see scripts/native-example-hosts.ts.
+  for (const host of listNativeHosts(root)) {
+    if (!existsSync(join(root, host.buildScript))) continue
+    out.push({ dir: host.dir, platform: host.platform, key: host.app, buildScript: host.buildScript })
   }
   if (out.length === 0) throw new Error('no gated native apps found under examples/')
   return out
@@ -341,10 +344,10 @@ export function fingerprint(root: string): Fingerprint {
   return out
 }
 
-/** Run every gated app's own `scripts/build.sh` — the lanes' emit step. */
+/** Run every gated app's own emit script — the lanes' emit step. */
 export function emit(root: string): void {
   for (const app of gatedApps(root)) {
-    execFileSync('bash', [join(app.dir, 'scripts', 'build.sh')], {
+    execFileSync('bash', [app.buildScript], {
       cwd: root,
       stdio: ['ignore', 2, 2],
     })

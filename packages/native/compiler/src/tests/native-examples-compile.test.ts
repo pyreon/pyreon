@@ -11,7 +11,8 @@ import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plug
  *
  * The fixture corpus covers shapes someone thought to write a fixture for. The
  * examples are what a person actually reads, copies, and scaffolds from — and
- * one of them (`native-viz`, the charts webview showcase) did not build on
+ * one of them (`native-viz`, the webview showcase, since moved into the
+ * `showcase-viz.tsx` fixture) did not build on
  * Android at all, while the gate that certified its mechanism was counting
  * warnings. A warning count answers "did the frontend complain"; only a compile
  * answers "does the output build".
