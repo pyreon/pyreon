@@ -18,7 +18,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'service-backend',
     rationale:
-      'useForm v2 + useFieldArray lower to PyreonForm/PyreonFieldArray; device-proven both platforms',
+      'useForm v2 + useFieldArray lower to PyreonForm/PyreonFieldArray, and useWatch(form, field), useFormState(form, selector over isValid/isSubmitting/isDirty) and resetField lower to computeds and runtime methods over them; device-proven both platforms. focusOnError and async debounced validators are not lowered.',
   },
   longExample: `import { useForm, useField, useFieldArray, useWatch, useFormState, FormProvider } from '@pyreon/form'
 import { zodSchema } from '@pyreon/validation/zod'

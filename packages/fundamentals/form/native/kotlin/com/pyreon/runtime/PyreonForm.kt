@@ -129,6 +129,20 @@ public class PyreonForm(
     public val isValid: Boolean
         get() = errors.value.isEmpty()
 
+    /** True when any value differs from its initial value (the web's
+     * `form.isDirty()` / `useFormState(form, s => s.isDirty)`). */
+    public val isDirty: Boolean
+        get() = values.value != initial
+
+    /** Restore ONE field to its initial value and clear its error and touched
+     * flag — the web's `form.resetField(name, { keepError, keepTouched })`. */
+    public fun resetField(name: String, keepError: Boolean = false, keepTouched: Boolean = false) {
+        val start = initial[name]
+        values.value = if (start == null) values.value - name else values.value + (name to start)
+        if (!keepError) errors.value = errors.value - name
+        if (!keepTouched) touched.value = touched.value - name
+    }
+
     /** Enter the submitting state. */
     public fun beginSubmit() {
         isSubmitting.value = true

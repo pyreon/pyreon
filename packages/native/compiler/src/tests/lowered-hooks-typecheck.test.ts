@@ -68,6 +68,13 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ['useFetch', '@pyreon/hooks', 'const f = useFetch<Resp>("https://x.dev/a")'],
   ['useFilePicker', '@pyreon/hooks', 'const p = useFilePicker()'],
   ['useForm', '@pyreon/form', 'const fm = useForm({ fields: {} })'],
+  // `useForm` is unimported here on purpose: a name neither imported nor declared still lowers (snippets omit imports).
+  [
+    'useFormState',
+    '@pyreon/form',
+    "const fm = useForm({ initialValues: { a: '' } }); const ok = useFormState(fm, (s) => s.isValid && !s.isSubmitting && s.isDirty)",
+  ],
+  ['useWatch', '@pyreon/form', "const fm = useForm({ initialValues: { a: '' } }); const a = useWatch(fm, 'a')"],
   ['useFlow', '@pyreon/flow', 'const flow = useFlow<Resp>({ nodes: [], edges: [] })'],
   [
     'useFieldArray',

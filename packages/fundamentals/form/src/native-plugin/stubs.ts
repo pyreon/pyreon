@@ -35,6 +35,8 @@ public final class PyreonForm {
   public func setError(_ name: String, _ message: String?) {}
   public func setTouched(_ name: String, _ isTouched: Bool = true) {}
   public var isValid: Bool { true }
+  public var isDirty: Bool { false }
+  public func resetField(_ name: String, keepError: Bool = false, keepTouched: Bool = false) {}
   public func beginSubmit() {}
   public func endSubmit() {}
   public func reset() {}
@@ -113,6 +115,10 @@ class PyreonForm(
   fun handleSubmit() = submit()
   fun beginSubmit() { isSubmitting.value = true }
   fun endSubmit() { isSubmitting.value = false }
+  val isDirty: Boolean get() = false
+  fun resetField(name: String, keepError: Boolean = false, keepTouched: Boolean = false) {}
+  // reset() exists on the real runtime; the stub lacked it, so a \`form.reset()\` the runtime accepts failed this gate.
+  fun reset() {}
 }
 
 // PyreonFieldArray — dynamic form lists, mirrored exactly (items/length are

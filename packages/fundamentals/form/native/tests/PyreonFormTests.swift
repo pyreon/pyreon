@@ -90,6 +90,28 @@ struct PyreonFormTests {
         check(form.errors["email"] == nil, "cleared error")
         check(form.isValid, "cleared → valid")
 
+        // isDirty follows the values against their initial snapshot
+        form = PyreonForm(initialValues: ["email": ""])
+        check(!form.isDirty, "fresh form is clean")
+        form.setValue("email", "ab")
+        check(form.isDirty, "an edited value is dirty")
+        form.setValue("email", "")
+        check(!form.isDirty, "back to the initial value is clean again")
+
+        // resetField restores ONE field and clears its error + touched; options keep them
+        form = PyreonForm(initialValues: ["email": "", "name": "x"])
+        form.setValue("email", "ab"); form.setValue("name", "y")
+        form.setError("email", "too short"); form.setTouched("email")
+        form.resetField("email")
+        eq(form.values["email"], "", "resetField restores the initial value")
+        eq(form.values["name"], "y", "resetField leaves other fields alone")
+        check(form.errors["email"] == nil, "resetField clears the error")
+        check(form.touched["email"] == nil, "resetField clears touched")
+        form.setValue("email", "ab"); form.setError("email", "kept"); form.setTouched("email")
+        form.resetField("email", keepError: true, keepTouched: true)
+        eq(form.errors["email"], "kept", "keepError keeps the error")
+        eq(form.touched["email"], true, "keepTouched keeps touched")
+
         // setTouched
         form = PyreonForm()
         check(form.touched["email"] == nil, "untouched initially")

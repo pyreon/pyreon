@@ -5,7 +5,7 @@ import type {
   ExtPayload,
   ExprIR,
 } from '@pyreon/native-compiler/plugin-api'
-import { FORM_TYPE, ARRAY_TYPE, type FormPayload } from './types'
+import { FORM_TYPE, ARRAY_TYPE, STATE_EXPR, WATCH_EXPR, type FormPayload } from './types'
 type AnyNode = AstNode & Record<string, any>
 
 export const recognizeForm: CallRecognizer = (_call, ctx) => {
@@ -123,4 +123,95 @@ export const recognizeFieldArray: CallRecognizer = (_call, ctx) => {
     }
   }
   return { type: ARRAY_TYPE, payload: { initial } }
+}
+
+/** The form-level flags a `useFormState` selector can read, all present on both runtimes. */
+const FORM_STATE_FLAGS = new Set(['isValid', 'isSubmitting', 'isDirty'])
+
+const formArg = (arg: AnyNode | undefined): string | undefined =>
+  arg?.type === 'Identifier' ? (arg.name as string) : undefined
+
+/**
+ * `useWatch(form, 'email')` — a computed reading one form value. Lowers to the same read as `form.values.email`, so it
+ * tracks the field exactly as a `<Text>{form.values.email}</Text>` would. The multi-field and whole-form overloads
+ * return arrays / objects of signals, which the native string-valued form has no shape for; they are refused by name.
+ */
+export const recognizeWatch: CallRecognizer = (_call, ctx) => {
+  const form = formArg(ctx.args[0] as AnyNode | undefined)
+  const field = ctx.args[1] as AnyNode | undefined
+  if (
+    form === undefined ||
+    ctx.args.length !== 2 ||
+    (field?.type !== 'Literal' && field?.type !== 'StringLiteral') ||
+    typeof field.value !== 'string'
+  ) {
+    ctx.report(
+      `useWatch \`${ctx.declName}\`: native lowers the single-field form \`useWatch(form, 'field')\` (a form binding and a string literal). The multi-field and whole-form overloads have no native shape; watch each field on its own.`,
+    )
+
+    return null
+  }
+  const read: ExprIR = {
+    kind: 'member',
+    object: { kind: 'member', object: { kind: 'identifier', name: form }, property: 'values' },
+    property: field.value,
+  }
+
+  return { computed: { type: WATCH_EXPR, args: [read] } }
+}
+
+/**
+ * `useFormState(form, (s) => s.isValid && !s.isSubmitting && s.isDirty)` — a computed over the form-level flags. The
+ * selector's `s.<flag>` reads become the form's own `form.<flag>()` reads, which the form receiver lowers on each
+ * target. Only `isValid`, `isSubmitting` and `isDirty` exist natively; any other summary field, a block body or a
+ * missing selector is refused by name.
+ */
+export const recognizeFormState: CallRecognizer = (_call, ctx) => {
+  const form = formArg(ctx.args[0] as AnyNode | undefined)
+  const fn = ctx.args[1] as AnyNode | undefined
+  const param = ((fn?.params as AnyNode[] | undefined)?.[0] as AnyNode | undefined)?.name as string | undefined
+  const refuse = (why: string): null => {
+    ctx.report(`useFormState \`${ctx.declName}\`: ${why}`)
+
+    return null
+  }
+  if (
+    form === undefined ||
+    fn?.type !== 'ArrowFunctionExpression' ||
+    (fn.params as AnyNode[]).length !== 1 ||
+    param === undefined ||
+    fn.body?.type === 'BlockStatement'
+  ) {
+    return refuse(
+      'native lowers `useFormState(form, (s) => <expression>)` — a form binding and a one-parameter expression selector. The summary object itself has no native shape.',
+    )
+  }
+  let unsupported: string | undefined
+  const rewrite = (e: unknown): unknown => {
+    if (Array.isArray(e)) return e.map(rewrite)
+    if (e === null || typeof e !== 'object') return e
+    const node = e as Record<string, unknown>
+    const object = node.object as Record<string, unknown> | undefined
+    if (node.kind === 'member' && object?.kind === 'identifier' && object.name === param) {
+      const flag = node.property as string
+      if (!FORM_STATE_FLAGS.has(flag)) unsupported ??= flag
+
+      return {
+        kind: 'call',
+        callee: { kind: 'member', object: { kind: 'identifier', name: form }, property: flag },
+        args: [],
+      }
+    }
+    if (node.kind === 'identifier' && node.name === param) unsupported ??= param
+
+    return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, rewrite(v)]))
+  }
+  const body = rewrite(ctx.expr(fn.body)) as ExprIR
+  if (unsupported !== undefined) {
+    return refuse(
+      `the selector reads \`${unsupported}\`; native forms carry ${[...FORM_STATE_FLAGS].map((f) => `\`${f}\``).join(', ')} only.`,
+    )
+  }
+
+  return { computed: { type: STATE_EXPR, args: [body] } }
 }

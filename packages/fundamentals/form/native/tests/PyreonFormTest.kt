@@ -83,7 +83,30 @@ fun testFormSubmitGate() {
     check(!form.isSubmitting.value) { "submitting flag resets" }
 }
 
+fun testFormIsDirtyAndResetField() {
+    val form = PyreonForm(initialValues = mapOf("email" to "", "name" to "x"))
+    check(!form.isDirty) { "fresh form is clean" }
+    form.setValue("email", "ab")
+    form.setValue("name", "y")
+    check(form.isDirty) { "an edited value is dirty" }
+    form.setError("email", "too short")
+    form.setTouched("email")
+    form.resetField("email")
+    check(form.values.value["email"] == "") { "resetField restores the initial value" }
+    check(form.values.value["name"] == "y") { "resetField leaves other fields alone" }
+    check(!form.errors.value.containsKey("email")) { "resetField clears the error" }
+    check(!form.touched.value.containsKey("email")) { "resetField clears touched" }
+    form.setValue("name", "x")
+    check(!form.isDirty) { "back to every initial value is clean again" }
+    form.setError("email", "kept")
+    form.setTouched("email")
+    form.resetField("email", keepError = true, keepTouched = true)
+    check(form.errors.value["email"] == "kept") { "keepError keeps the error" }
+    check(form.touched.value["email"] == true) { "keepTouched keeps touched" }
+}
+
 fun main() {
+    testFormIsDirtyAndResetField()
     testFormValidatorFlow()
     testFormSubmitGate()
     testFormInitialValues()

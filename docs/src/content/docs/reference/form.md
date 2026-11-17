@@ -11,7 +11,7 @@ Signal-based form management for Pyreon. Each field (`value`, `error`, `touched`
 
 **Tier:** Service backend — the API is shared; the native runtimes host it
 
-useForm v2 + useFieldArray lower to PyreonForm/PyreonFieldArray; device-proven both platforms
+useForm v2 + useFieldArray lower to PyreonForm/PyreonFieldArray, and useWatch(form, field), useFormState(form, selector over isValid/isSubmitting/isDirty) and resetField lower to computeds and runtime methods over them; device-proven both platforms. focusOnError and async debounced validators are not lowered.
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 

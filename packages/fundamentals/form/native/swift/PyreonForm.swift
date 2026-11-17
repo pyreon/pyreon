@@ -143,6 +143,18 @@ public final class PyreonForm {
     /// True when no field carries an error.
     public var isValid: Bool { errors.isEmpty }
 
+    /// True when any value differs from its initial value (the web's
+    /// `form.isDirty()` / `useFormState(form, s => s.isDirty)`).
+    public var isDirty: Bool { values != initialValues }
+
+    /// Restore ONE field to its initial value and clear its error and touched
+    /// flag — the web's `form.resetField(name, { keepError, keepTouched })`.
+    public func resetField(_ name: String, keepError: Bool = false, keepTouched: Bool = false) {
+        values[name] = initialValues[name]
+        if !keepError { errors[name] = nil }
+        if !keepTouched { touched[name] = nil }
+    }
+
     /// Enter the submitting state.
     public func beginSubmit() { isSubmitting = true }
 

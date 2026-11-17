@@ -22,6 +22,38 @@ const mapRead = (site: ReceiverSite, ctx: EmitContext): string | undefined => {
   const state = ctx.target === 'kotlin' ? '.value' : ''
   return `(${ctx.ident(site.receiver.name)}.${object.property}${state}[${ctx.stringLiteral(e.property)}] ${ctx.target === 'swift' ? '??' : '?:'} ${fallback})`
 }
+/**
+ * `form.resetField('email', { keepError: true })` — the options object becomes the runtimes' labelled / named
+ * booleans. Only literal `true` / `false` options lower; anything else declines (and the verbatim call fails to
+ * compile rather than guessing).
+ */
+const resetField = (site: ReceiverSite, ctx: EmitContext): string | undefined => {
+  const e = site.expr
+  if (
+    e.kind !== 'call' ||
+    e.callee.kind !== 'member' ||
+    e.callee.object.kind !== 'identifier' ||
+    e.callee.property !== 'resetField' ||
+    e.args.length < 1 ||
+    e.args.length > 2
+  ) {
+    return undefined
+  }
+
+  const opts: string[] = []
+  const options = e.args[1]
+  if (options !== undefined) {
+    if (options.kind !== 'object') return undefined
+    for (const field of options.fields as readonly { name: string; value: ExprIR }[]) {
+      if (!['keepError', 'keepTouched'].includes(field.name)) return undefined
+      if (field.value.kind !== 'literal' || typeof field.value.value !== 'boolean') return undefined
+      opts.push(`${field.name}${ctx.target === 'swift' ? ':' : ' ='} ${field.value.value}`)
+    }
+  }
+
+  return `${ctx.ident(site.receiver.name)}.resetField(${[ctx.expr(e.args[0]!), ...opts].join(', ')})`
+}
+
 const formRead = (site: ReceiverSite, ctx: EmitContext): string | undefined => {
   const mapped = mapRead(site, ctx)
   if (mapped !== undefined) return mapped
@@ -31,9 +63,11 @@ const formRead = (site: ReceiverSite, ctx: EmitContext): string | undefined => {
     e.args.length === 0 &&
     e.callee.kind === 'member' &&
     e.callee.object.kind === 'identifier' &&
-    ['isValid', 'isSubmitting'].includes(e.callee.property)
+    ['isValid', 'isSubmitting', 'isDirty'].includes(e.callee.property)
   )
-    return `${ctx.ident(site.receiver.name)}.${ctx.ident(e.callee.property)}`
+    return `${ctx.ident(site.receiver.name)}.${ctx.ident(e.callee.property)}${ctx.target === 'kotlin' && e.callee.property === 'isSubmitting' ? '.value' : ''}`
+  const reset = resetField(site, ctx)
+  if (reset !== undefined) return reset
   if (
     ctx.target === 'kotlin' &&
     e.kind === 'member' &&

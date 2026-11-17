@@ -5,6 +5,10 @@ export const FORM_TYPE = 'form'
 export const ARRAY_TYPE = 'fieldArray'
 export const VALUES_TYPE = 'form-values'
 export const ROW_TYPE = 'field-array-row'
+/** `useWatch(form, 'field')` — a computed over one form value. */
+export const WATCH_EXPR = 'form-watch'
+/** `useFormState(form, (s) => …)` — a computed over the form-level flags. */
+export const STATE_EXPR = 'form-state'
 
 export interface FormPayload {
   initialValues: { key: string; value: string }[]
