@@ -1029,12 +1029,11 @@ function isSoleSpacePlaceholder(el: Element): boolean {
   return only !== null && only === el.lastChild && only.nodeType === 3 && (only as Text).data === ' '
 }
 
-/** Server content holding an element, NOT wrapped in one marked range. */
-function holdsUnmarkedElements(el: Element): boolean {
-  if (el.firstElementChild === null) return false
+/** The element's whole child list is ONE marked `<!--$-->…<!--/$-->` range. */
+function isOneMarkedRange(el: Element): boolean {
   const f = el.firstChild
 
-  return !(f !== null && f.nodeType === 8 && (f as Comment).data === '$' && matchingCloseIsLastChild(f as Comment, el))
+  return f !== null && f.nodeType === 8 && (f as Comment).data === '$' && matchingCloseIsLastChild(f as Comment, el)
 }
 
 /**
@@ -1163,22 +1162,14 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
     // actually elided — a sole slot whose vnode child was an ARRAY rather than an
     // accessor still gets its markers — so fall through to the marked path when
     // the range really is there.
-    if (expected.soleSlots[at] === true) {
-      const f = el.firstChild
-      const marked =
-        f !== null &&
-        f.nodeType === 8 &&
-        (f as Comment).data === '$' &&
-        matchingCloseIsLastChild(f as Comment, el)
-      if (!marked) return true
-    }
+    if (expected.soleSlots[at] === true && !isOneMarkedRange(el)) return true
     // SOLE DYNAMIC TEXT HOLDING ELEMENTS (#4385). A polymorphic text binding
     // (`{parts(row)}` rendering `['a ', <Code/>, ' b']`) is a single `' '`
     // placeholder in the template, and SSR renders the value's elements
     // marker-less (a sole accessor child). The element's whole child list is
     // the slot's content, exactly as for a sole `<!>` slot above; the binding
     // adopts it through the slot hydrator. A marked range falls through.
-    if (expected.soleTexts[at] === true && holdsUnmarkedElements(el)) {
+    if (expected.soleTexts[at] === true && el.firstElementChild !== null && !isOneMarkedRange(el)) {
       ;(soleTextParks ??= []).push(el)
 
       return true

@@ -33,67 +33,67 @@ export function _parkText(text: Text, open: Comment | null): void {
 }
 
 /**
+ * Consume `text`'s brand: the open marker of its range, `null` for a sole
+ * slot, or `undefined` when the node is not (or no longer) a parked placeholder.
+ */
+export function _takeParkedText(text: Text): Comment | null | undefined {
+  const open = (text as ParkedText)[PARKED_TEXT]
+  if (open !== undefined) {
+    ;(text as ParkedText)[PARKED_TEXT] = undefined
+    _parkedPending--
+  }
+
+  return open
+}
+
+/**
  * The placeholders branded during ONE adoption build. A binding that writes
  * `.data` directly (the selector-ternary and signal-method emits) never consumes
  * a brand. In agreement it never meets one (its server content is one text
  * node), but on a divergence the server's nodes would stay beside the text it
  * writes. So the build that branded them sweeps any left unconsumed after its
- * bind: the server content goes (what the slot did before) and the rewrite is
- * reported. Frames nest (a bind hydrates holes whose components build their own
- * templates): save/restore, never reset.
+ * bind (`sweepParkedTexts` in `template.ts`): the server content goes (what the
+ * slot did before) and the rewrite is reported. Frames nest (a bind hydrates
+ * holes whose components build their own templates): save/restore, never reset.
  */
 let _batch: Text[] | null = null
 
 export function _beginParkBatch(): Text[] | null {
   const prev = _batch
   _batch = null
+
   return prev
 }
 
-export function _endParkBatch(
-  prev: Text[] | null,
-  clearRange: (open: Comment) => string,
-  report: (text: Text, serverText: string) => void,
-): void {
+/** Close the batch opened by `_beginParkBatch`; returns what it branded. */
+export function _endParkBatch(prev: Text[] | null): Text[] | null {
   const mine = _batch
   _batch = prev
-  if (mine === null) return
-  for (const text of mine) {
-    const open = (text as ParkedText)[PARKED_TEXT]
-    if (open === undefined) continue
-    ;(text as ParkedText)[PARKED_TEXT] = undefined
-    _parkedPending--
-    const parent = text.parentNode
-    if (parent === null) continue
-    let server = ''
-    if (open === null) {
-      // Sole slot: every other child of the element is server content.
-      for (let n = parent.firstChild; n !== null; ) {
-        const nx = n.nextSibling
-        if (n !== text) {
-          server += n.textContent ?? ''
-          parent.removeChild(n)
-        }
-        n = nx
-      }
-    } else {
-      server = clearRange(open)
-    }
-    report(text, server)
-  }
+
+  return mine
 }
 
-export type ParkedTextHydrator = (
-  child: VNodeChild | VNodeChild[],
+/**
+ * The slot hydrator, registered by `hydrateRoot` (never at module load, so CSR
+ * bundles tree-shake it exactly like the `_tpl` adopt verifier). ONE seam for
+ * both of its consumers: a compiled `_mountSlot` / `_setChild` (`template.ts`)
+ * and a parked text placeholder (below). It lives here because `mount.ts`
+ * (`bindPolymorphicText`) must reach it without importing `template.ts`.
+ *
+ * `open === null` means a MARKER-LESS range: the slot was its element's SOLE
+ * child, so SSR elided the `<!--$-->` pair and the extent is the parent's whole
+ * child list. See `_mountSlot`.
+ */
+export type SlotHydrator = (
+  children: VNodeChild | VNodeChild[],
   parent: Node,
   open: Comment | null,
 ) => () => void
 
-let _hydrator: ParkedTextHydrator | null = null
+export let _slotHydrator: SlotHydrator | null = null
 
-/** Registered by `hydrateRoot` (never at module load, so CSR bundles tree-shake it). */
-export function _setParkedTextHydrator(h: ParkedTextHydrator): void {
-  _hydrator = h
+export function _setSlotHydrator(h: SlotHydrator): void {
+  _slotHydrator = h
 }
 
 /**
@@ -101,12 +101,13 @@ export function _setParkedTextHydrator(h: ParkedTextHydrator): void {
  * for `child`; returns the slot's cleanup, or `null` for an ordinary text node.
  */
 export function _adoptParkedText(text: Text, child: () => VNodeChild): (() => void) | null {
-  const open = (text as ParkedText)[PARKED_TEXT]
-  if (open === undefined || _hydrator === null) return null
-  ;(text as ParkedText)[PARKED_TEXT] = undefined
-  _parkedPending--
+  const open = _takeParkedText(text)
+  if (open === undefined) return null
   const parent = text.parentNode as Node
   parent.removeChild(text)
+
   // The binding's accessor IS a reactive child: the hydrator primes it once.
-  return _hydrator(child as unknown as VNodeChild, parent, open)
+  // A placeholder is only ever parked by an adoption build, and adoption runs
+  // under `hydrateRoot`, which registered the hydrator first.
+  return (_slotHydrator as SlotHydrator)(child as unknown as VNodeChild, parent, open)
 }
