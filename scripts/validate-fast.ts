@@ -29,6 +29,7 @@
  *   - check-mcp-docs        (MCP tool added without docs/src/content/docs/mcp.md section)
  *   - loom-scan             (dependency-fabric errors: phantom deps, runtime cycles, drift)
  *   - check-advisory-comment-steps (advisory PR-comment step that can turn a check red)
+ *   - check-main-red-watchlist (a workflow the red-default-branch alarm does not watch)
  *   - check-leak-ratchet    (a leak-class finding grew above its committed baseline)
  *   - check-counter-catalog (a dev counter emitted with no COUNTERS.md row, or a stale row)
  *   - check-zero-feature-coverage (a documented zero feature has no real-build test)
@@ -297,6 +298,12 @@ const GATES: Gate[] = [
   {
     name: 'check-advisory-comment-steps',
     cmd: 'bun scripts/check-advisory-comment-steps.ts',
+  },
+  // `workflow_run` has no wildcard: a workflow missing from the alarm's list
+  // can be red on the default branch with nobody told.
+  {
+    name: 'check-main-red-watchlist',
+    cmd: 'bun scripts/check-main-red-watchlist.ts',
   },
 ]
 
