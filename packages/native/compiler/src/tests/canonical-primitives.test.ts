@@ -1706,14 +1706,14 @@ describe('Phase 4.1 — useFetch emit (PyreonFetch container + async harness)', 
     }
   `
 
-  it('Swift: emits @State PyreonFetch<T> + a .task harness via begin/resolve/reject', () => {
+  it('Swift: emits @State PyreonFetch<T> + a .task harness that REGISTERS the request (run), so refetch() re-runs it', () => {
     const out = transform(FETCH_SRC, { target: 'swift' }).code
     expect(out).toContain('@State private var user = PyreonFetch<User>()')
     expect(out).toContain('.task {')
-    expect(out).toContain('user.begin()')
+    expect(out).toContain('await user.run {')
+    expect(out).not.toContain('user.begin()')
     expect(out).toContain('URLSession.shared.data(from: URL(string: "/api/user")!)')
-    expect(out).toContain('user.resolve(try JSONDecoder().decode(User.self, from: bytes))')
-    expect(out).toContain('catch { user.reject(error) }')
+    expect(out).toContain('return try JSONDecoder().decode(User.self, from: bytes)')
     // Swift field access is a plain @Observable property read.
     expect(out).toContain('user.data')
     expect(out).not.toContain('user.data.value')
@@ -1723,16 +1723,16 @@ describe('Phase 4.1 — useFetch emit (PyreonFetch container + async harness)', 
     const out = transform(FETCH_SRC, { target: 'kotlin' }).code
     expect(out).toContain('val user = remember { PyreonFetch<User>() }')
     expect(out).toContain('LaunchedEffect(Unit) {')
-    expect(out).toContain('user.begin()')
+    expect(out).toMatch(/user\.run\(launch = \{ __refetch -> \w+\.launch \{ __refetch\(\) \} \}\) \{/)
+    expect(out).not.toContain('user.begin()')
     expect(out).toContain('java.net.URL("/api/user").readText()')
     // `PyreonFetchJson`, not the bare `Json`: kotlinx's default THROWS on a
     // key the target type does not declare, where Swift's JSONDecoder ignores
     // it — so the same shared source decoded on iOS and threw on Android
     // against any real API. The invariant this line guards is unchanged (the
-    // harness resolves the container by decoding the response); only the
-    // reader it decodes with is now the parity-configured one.
-    expect(out).toContain('user.resolve(PyreonFetchJson.decodeFromString<User>(body))')
-    expect(out).toContain('user.reject(e)')
+    // harness's request decodes the response); only the reader it decodes
+    // with is now the parity-configured one.
+    expect(out).toContain('PyreonFetchJson.decodeFromString<User>(body)')
     // Kotlin field access reads through Compose MutableState `.value`.
     expect(out).toContain('user.data.value')
   })

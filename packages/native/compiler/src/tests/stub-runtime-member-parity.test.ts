@@ -103,7 +103,6 @@ const KNOWN_NARROW: Record<'swift' | 'kotlin', ReadonlySet<string>> = {
     'PyreonAppState.stop',
     'PyreonAppState.update',
     'PyreonCrashReporter.isMonitoring',
-    'PyreonFetch.load',
     'PyreonNetworkStatus.isMonitoring',
     'PyreonNetworkStatus.start',
     'PyreonNetworkStatus.stop',

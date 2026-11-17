@@ -1275,6 +1275,8 @@ class PyreonFetch<T> {
   fun begin() {}
   fun resolve(value: T) {}
   fun reject(e: Throwable) {}
+  fun load(fetcher: () -> T) {}
+  suspend fun run(launch: (suspend () -> Unit) -> Unit, fetcher: suspend () -> T) {}
   fun refetch() {}
 }
 

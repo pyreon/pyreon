@@ -1579,7 +1579,8 @@ public final class PyreonFetch<T> {
   public func resolve(_ value: T) {}
   public func reject(_ failure: Error) {}
   public func load(_ fetcher: @escaping () throws -> T) {}
-  public func refetch() {}
+  @MainActor public func run(_ fetcher: @escaping () async throws -> T) async {}
+  @discardableResult public func refetch() -> _Concurrency.Task<Void, Never>? { nil }
 }
 // PyreonHttp — what a \`useFetch(url, { method, headers, body })\` decl emits.
 // Mirrors the REAL PyreonHttp.swift surface exactly (a superset stub masks):
