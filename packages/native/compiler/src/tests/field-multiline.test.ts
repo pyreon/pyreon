@@ -69,7 +69,8 @@ describe('<Field multiline> — emit', () => {
     const { swift, kotlin } = both(
       `<Field multiline value={notes()} onChangeText={(v) => notes.set(v)} />`,
     )
-    expect(swift.code).toMatch(/TextField\("", text: Binding\([\s\S]*\), axis: \.vertical\)/)
+    // A handler that only sets `notes` is the `$notes` binding on iOS.
+    expect(swift.code).toContain('TextField("", text: $notes, axis: .vertical)')
     expect(kotlin.code).toContain(
       'TextField(value = notes, onValueChange = { v -> notes = v }, singleLine = false',
     )
