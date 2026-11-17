@@ -189,17 +189,35 @@ export function island<P extends Props = Props>(
       // owner-based context removed the global stack that previously let a
       // late mount find ancestor providers.
       const capturedOwner = getContextOwner()
+      // The island's lifetime is the marker's: when the marker unmounts — a
+      // router navigation or HMR swap, `<Show>` / `<For>`, a parent re-render,
+      // Suspense — the returned cleanup ends it through the scheduler's ONE
+      // dispose (cancel a pending trigger or prefetch, drop an in-flight
+      // chunk, unmount a hydrated root). `gone` covers an unmount that lands
+      // before the scheduler module has loaded.
       onMount(() => {
         if (!islandEl) return
+        let gone = false
+        let stop: (() => void) | null = null
         // Scheduler is client-only — the dynamic import keeps it out of the SSR
         // module graph and avoids a static `client` ↔ `island` import cycle.
         void import('./client').then(({ scheduleHydration, schedulePrefetch }) => {
-          if (!islandEl) return
+          if (gone || !islandEl) return
           const isleLoader = loader as () => Promise<{ default: ComponentFn } | ComponentFn>
-          if (prefetch !== 'none') schedulePrefetch(islandEl, isleLoader, prefetch)
-          scheduleHydration(islandEl, isleLoader, serializedProps, hydrate, capturedOwner)
+          const stopPrefetch = prefetch !== 'none' ? schedulePrefetch(islandEl, isleLoader, prefetch) : null
+          const stopHydration = scheduleHydration(islandEl, isleLoader, serializedProps, hydrate, capturedOwner)
+          stop = () => {
+            stopPrefetch?.()
+            stopHydration()
+          }
         })
+
+        return () => {
+          gone = true
+          stop?.()
+        }
       })
+
       return h('pyreon-island', {
         ...attrs,
         ref: (e: Element | null) => {
@@ -215,6 +233,7 @@ export function island<P extends Props = Props>(
     // NOW, before the loader awaits, so it follows document order rather than the order the chunks resolve in.
     const idPrefix = _nextIslandIdPrefix()
     attrs['data-id-prefix'] = idPrefix
+
     return loader().then((mod) => {
       const Comp = typeof mod === 'function' ? mod : mod.default
       return h('pyreon-island', attrs, h(_IslandIds, { prefix: idPrefix }, h(Comp, props)))
@@ -309,6 +328,7 @@ function serializeIslandProps(
           `Falling back to empty props. ${(err as Error).message}`,
       )
     }
+
     return '{}'
   }
 }

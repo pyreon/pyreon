@@ -7,12 +7,14 @@
  *   packages/<name>.json   { "package": "@pyreon/core", "bundle": 8232,
  *                            "imports": { "jsx": 683 } }
  *   apps/<example>.json    { "app": "ssr-showcase", "routes": { "/": 56950 } }
+ *   sites/<site>.json      { "site": "docs", "routes": { "/": 52736 } }
  *
  * `bundle` is the package's main-entry ceiling (`check-bundle-budgets`),
  * `imports` its minimal-import scenarios (`check-import-budgets`, id
  * `<package>::<scenario>`), `routes` an example's first-load JS per route
- * (`check-route-budgets`, id `<example>:<route>`). All values are gzipped
- * bytes.
+ * (`check-route-budgets`, id `<example>:<route>`), `site` the JavaScript a
+ * page of a built site requests on load (`check-site-budgets`, id
+ * `<site>:<route>`). All values are gzipped bytes.
  *
  * Per owner, because the three former shared tables put every package on
  * adjacent lines of one file: two pull requests that each touched a different
@@ -31,6 +33,7 @@ export interface Ceilings {
   bundle: Record<string, number>
   imports: Record<string, number>
   routes: Record<string, number>
+  site: Record<string, number>
 }
 
 interface PackageFile {
@@ -41,6 +44,11 @@ interface PackageFile {
 
 interface AppFile {
   app: string
+  routes: Record<string, number>
+}
+
+interface SiteFile {
+  site: string
   routes: Record<string, number>
 }
 
@@ -65,6 +73,7 @@ export function packageFileName(pkg: string): string {
 /** The file that holds an id's ceiling, relative to the budgets directory. */
 export function ceilingFile(family: keyof Ceilings, id: string): string {
   if (family === 'routes') return join('apps', `${splitRouteId(id).app}.json`)
+  if (family === 'site') return join('sites', `${splitRouteId(id).app}.json`)
   const pkg = family === 'imports' ? splitImportId(id).pkg : id
   return join('packages', packageFileName(pkg))
 }
@@ -77,7 +86,7 @@ function splitImportId(id: string): { pkg: string; scenario: string } {
 
 function splitRouteId(id: string): { app: string; route: string } {
   const at = id.indexOf(':')
-  if (at < 0) throw new Error(`[Pyreon] size budgets: "${id}" is not an <example>:<route> id.`)
+  if (at < 0) throw new Error(`[Pyreon] size budgets: "${id}" is not an <example>:<route> or <site>:<route> id.`)
   return { app: id.slice(0, at), route: id.slice(at + 1) }
 }
 
@@ -105,11 +114,31 @@ function jsonFiles(dir: string): string[] {
 const isBytes = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0
 
 /**
+ * Reads every `{ "<nameKey>": owner, "routes": { route: bytes } }` file in
+ * `dir` into `out`, keyed `<owner>:<route>`.
+ */
+function loadRouteOwners(dir: string, nameKey: 'app' | 'site', out: Record<string, number>): void {
+  for (const file of jsonFiles(dir)) {
+    const data = readJson<{ app?: unknown; site?: unknown; routes?: Record<string, unknown> }>(file) ?? {}
+    const owner = data[nameKey]
+    if (typeof owner !== 'string') {
+      throw new Error(`[Pyreon] size budgets: ${file} has no "${nameKey}" name. Add it.`)
+    }
+    for (const [route, value] of Object.entries(data.routes ?? {})) {
+      if (!isBytes(value)) {
+        throw new Error(`[Pyreon] size budgets: routes["${route}"] in ${file} must be a byte count.`)
+      }
+      out[`${owner}:${route}`] = value
+    }
+  }
+}
+
+/**
  * Every ceiling under `dir`. A directory that does not exist reads as empty:
  * that is the state of a base commit from before the per-owner layout.
  */
 export function loadCeilings(dir: string): Ceilings {
-  const out: Ceilings = { bundle: {}, imports: {}, routes: {} }
+  const out: Ceilings = { bundle: {}, imports: {}, routes: {}, site: {} }
   for (const file of jsonFiles(join(dir, 'packages'))) {
     const data = readJson<Partial<PackageFile>>(file) ?? {}
     if (typeof data.package !== 'string') {
@@ -127,23 +156,16 @@ export function loadCeilings(dir: string): Ceilings {
       out.imports[`${data.package}::${scenario}`] = value
     }
   }
-  for (const file of jsonFiles(join(dir, 'apps'))) {
-    const data = readJson<Partial<AppFile>>(file) ?? {}
-    if (typeof data.app !== 'string') {
-      throw new Error(`[Pyreon] size budgets: ${file} has no "app" name. Add it.`)
-    }
-    for (const [route, value] of Object.entries(data.routes ?? {})) {
-      if (!isBytes(value)) throw new Error(`[Pyreon] size budgets: routes["${route}"] in ${file} must be a byte count.`)
-      out.routes[`${data.app}:${route}`] = value
-    }
-  }
+  loadRouteOwners(join(dir, 'apps'), 'app', out.routes)
+  loadRouteOwners(join(dir, 'sites'), 'site', out.site)
+
   return out
 }
 
 const sorted = (record: Record<string, number>): Record<string, number> =>
   Object.fromEntries(Object.entries(record).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
 
-function write(file: string, data: PackageFile | AppFile): void {
+function write(file: string, data: PackageFile | AppFile | SiteFile): void {
   mkdirSync(join(file, '..'), { recursive: true })
   writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`)
 }
@@ -159,6 +181,12 @@ export function writeCeiling(dir: string, family: keyof Ceilings, id: string, va
     const { app, route } = splitRouteId(id)
     const prev = readJson<Partial<AppFile>>(file) ?? {}
     write(file, { app, routes: sorted({ ...prev.routes, [route]: value }) })
+    return rel
+  }
+  if (family === 'site') {
+    const { app: site, route } = splitRouteId(id)
+    const prev = readJson<Partial<SiteFile>>(file) ?? {}
+    write(file, { site, routes: sorted({ ...prev.routes, [route]: value }) })
     return rel
   }
   const pkg = family === 'imports' ? splitImportId(id).pkg : id

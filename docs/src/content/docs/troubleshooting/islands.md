@@ -37,6 +37,12 @@ Context is owner-based, and a late `hydrateRoot` has no parent owner, so `useCon
 
 ---
 
+### [FIXED, 2026-11] A deferred mount that drops the dispose it was handed (#4387).
+
+`hydrateIsland` called `hydrateRoot` and discarded the unmount it returned, `scheduleHydration`'s cancel was ignored by `island()`, and the marker registered no unmount, so a client-side navigation away from an island left its `onUnmount` unrun and its effects, timers, listeners and pending triggers (IntersectionObserver, idle callback, matchMedia, interaction listeners, prefetch) alive; a chunk still loading mounted into a detached marker; a second `hydrateIslands()` hydrated a live island again. **Rule: whatever starts a root owns its end. `scheduleHydration` returns ONE idempotent dispose for every stage (cancel the trigger, drop an in-flight chunk, unmount a hydrated root and clear `data-island-hydrated`); every removal path calls it** — the `island()` marker's `onMount` cleanup (router navigation and HMR swap, `<Show>`/`<For>`, parent re-render, Suspense all unmount the marker) and the cleanup `hydrateIslands()` returns (static pages: the host owns removal it performs itself, e.g. an `innerHTML` swap — not observed, by design: no MutationObserver in the shell). Leak contract: no module-level registry; each island's state lives in its dispose closure, held by the marker's mount cleanup or the `hydrateIslands` cleanup array (emptied when called). An empty marker (client-rendered, or emptied by a previous unmount) is `mount`ed into rather than hydrated. Locks: `server/src/tests/island-lifecycle.browser.test.tsx` (every path in real Chromium, 50-navigation instance count), `island-dispose.test.tsx`, and the `#4387` specs in `e2e/zero-islands.spec.ts` (50 history round trips in a zero SSG app) — bisect-verified.
+
+---
+
 ### Registering a `hydrate: 'never'` island in `hydrateIslands({ ... })`
 
 The loader never runs, but the import still pulls the component into the client bundle. Drop the entry.

@@ -92,7 +92,7 @@ Exit codes:
 | 3 | browser navigation or journey threw |
 | 4 | `performance.memory` unavailable (need Chrome / Chromium) |
 | 5 | `globalThis.gc` unavailable (`--expose-gc` not honored) |
-| 6 | LEAK DETECTED — slope exceeds threshold |
+| 6 | LEAK DETECTED — slope exceeds threshold and the heap keeps growing through the confirmation cycles (see the sweep section) |
 
 **Intentionally NOT a required CI gate.** Heap-growth is environmentally noisy (background GC, JIT warmup, allocator fragmentation) — false positives would erode the gate's credibility. Use cases:
 
@@ -109,10 +109,12 @@ The pure `linearRegression()` math export is unit-tested at `packages/internals/
 Runs `leak-audit`'s methodology across every journey in an example, sharing one server + browser session for the whole sweep (10-15× faster than invoking `leak-audit.ts` N times with per-invocation overhead).
 
 ```bash
-bun run perf:leak-sweep --app perf-dashboard [--cycles 15] [--warmup 3] [--threshold 50000] [--journeys j1,j2] [--json out.json]
+bun run perf:leak-sweep --app perf-dashboard [--cycles 15] [--warmup 3] [--threshold 50000] [--confirm-max 120] [--journeys j1,j2] [--json out.json]
 ```
 
-Output: markdown table sorted by slope descending (worst first), plus JSON archive. Each journey gets the same statistical treatment (linear-regression slope, R², CV — same machinery as `leak-audit.ts`). Exit codes match `leak-audit.ts`: 0 = all clean, 6 = at least one journey exceeded threshold.
+A journey whose slope exceeds the threshold is not flagged yet. It runs `2·⌈range/threshold⌉` further cycles (at most `--confirm-max`, default 120; `0` restores flag-at-once) and is a leak only when the slope over those cycles alone is still above half the threshold. One allocation step — a hash table that doubles once while its live size stays constant — has a least-squares slope of a tenth of its size over 15 samples, and one window cannot tell it from the first step of a real leak. The rule, its derivation and the incident behind it are in [`leak-verdict.ts`](./leak-verdict.ts); the JSON keeps both windows (`samples`, `confirmation.samples`) and a `reason` per journey.
+
+Output: markdown table sorted by slope descending (worst first), plus JSON archive. Each journey gets the same statistical treatment (linear-regression slope, R², CV — same machinery as `leak-audit.ts`). Exit codes match `leak-audit.ts`: 0 = all clean, 6 = at least one journey leaks.
 
 Baseline captured at `perf-results/baseline-leak-sweep-perf-dashboard.json` — full 43-journey result against the dedup-merged state (post-#768). **All 43 journeys had slope = 0 KB/cycle** (heap rock-solid at 9.54 MB across 15 cycles each). This is the "everything is clean" reference point for future diff runs.
 

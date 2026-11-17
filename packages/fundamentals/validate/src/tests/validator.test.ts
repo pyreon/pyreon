@@ -400,12 +400,8 @@ describe('Standard Schema v1 compliance', () => {
     const { isStandardSchema, wrapStandardSchema } = await import('@pyreon/validation')
     const schema = s.object({ name: s.string() })
     expect(isStandardSchema(schema)).toBe(true)
-    // Cast: @pyreon/validation's StandardSchemaShape uses a looser
-    // `{ value } | { issues }` shape (no mutual-undefined discriminator);
-    // our schema uses the strict discriminator. Runtime is identical;
-    // the cast resolves the typecheck-only mismatch.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const parser = wrapStandardSchema<{ name: string }>(schema as any)
+    // Both packages share the one `StandardSchemaV1` type, so no cast.
+    const parser = wrapStandardSchema<{ name: string }>(schema)
     const r = parser({ name: 'Alice' })
     expect(r).toEqual({ ok: true, value: { name: 'Alice' } })
   })

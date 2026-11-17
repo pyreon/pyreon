@@ -5,46 +5,34 @@
 // specific validator package; users bring their own.
 //
 // See https://standardschema.dev for the protocol; the relevant call
-// is `schema['~standard'].validate(value)`.
+// is `schema['~standard'].validate(value)`. The contract's type is the
+// official, types-only `@standard-schema/spec` package.
 
-/** Minimal Standard Schema interface — enough to call `validate`. */
-export interface StandardSchemaLike<TInput = unknown, TOutput = unknown> {
-  '~standard': {
-    version: 1
-    vendor: string
-    validate: (input: TInput) => Promise<
-      | { value: TOutput; issues?: undefined }
-      | { issues: ReadonlyArray<StandardSchemaIssue> }
-    > | { value: TOutput; issues?: undefined } | { issues: ReadonlyArray<StandardSchemaIssue> }
-  }
-}
-
-export interface StandardSchemaIssue {
-  message: string
-  path?: ReadonlyArray<PropertyKey | { key: PropertyKey }>
-}
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 /**
  * Whether a value implements the Standard Schema protocol — i.e. has a
  * `~standard.validate` function. Used to skip non-schema values when
  * the user passes a plain object as a placeholder.
+ *
+ * A schema may be a FUNCTION: ArkType's `type(...)` is callable and carries
+ * `~standard`, so the guard accepts `typeof 'function'` as well as objects.
+ * `version` / `vendor` are not inspected — nothing here reads them.
  */
-export function isStandardSchema(value: unknown): value is StandardSchemaLike {
+export function isStandardSchema(value: unknown): value is StandardSchemaV1 {
+  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return false
+  const std = (value as { '~standard'?: unknown })['~standard']
   return (
-    value !== null &&
-    typeof value === 'object' &&
-    '~standard' in value &&
-    typeof (value as Record<string, unknown>)['~standard'] === 'object' &&
-    typeof (
-      (value as { '~standard': { validate?: unknown } })['~standard'].validate
-    ) === 'function'
+    typeof std === 'object' &&
+    std !== null &&
+    typeof (std as { validate?: unknown }).validate === 'function'
   )
 }
 
 export interface ValidateResult<T> {
   ok: boolean
   value: T | null
-  issues: StandardSchemaIssue[]
+  issues: StandardSchemaV1.Issue[]
 }
 
 /**
@@ -52,7 +40,7 @@ export interface ValidateResult<T> {
  * always resolves; never throws.
  */
 export async function validateAgainstSchema<T>(
-  schema: StandardSchemaLike<unknown, T>,
+  schema: StandardSchemaV1<unknown, T>,
   input: unknown,
 ): Promise<ValidateResult<T>> {
   const result = await Promise.resolve(schema['~standard'].validate(input))
@@ -67,7 +55,7 @@ export async function validateAgainstSchema<T>(
  * Vite plugin's `this.error()` call.
  */
 export function formatSchemaIssues(
-  issues: ReadonlyArray<StandardSchemaIssue>,
+  issues: ReadonlyArray<StandardSchemaV1.Issue>,
   fileLabel: string,
   collection: string,
 ): string {
@@ -86,7 +74,7 @@ ${lines.join('\n')}`
  * @internal exported for testing
  */
 export function formatIssuePath(
-  path: ReadonlyArray<PropertyKey | { key: PropertyKey }> | undefined,
+  path: StandardSchemaV1.Issue['path'],
 ): string {
   if (!path || path.length === 0) return ''
   return path
