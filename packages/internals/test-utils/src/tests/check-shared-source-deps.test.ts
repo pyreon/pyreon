@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { pyreonImports, sharedSourceOf } from '../../../../../scripts/check-shared-source-deps'
+import { pyreonImports, sharedSourceOf, webEntries } from '../../../../../scripts/check-shared-source-deps'
 
 describe('pyreonImports', () => {
   it('collects static imports, side-effect imports, and re-exports', () => {
@@ -69,6 +69,14 @@ describe('sharedSourceOf', () => {
     expect(sharedSourceOf(join(only, 'entry-client.tsx'))).toBeNull()
   })
 
+  it('resolves a one-folder app entry that imports the source beside it', () => {
+    const src = join(root, 'native-demo', 'src')
+    mkdirSync(src, { recursive: true })
+    writeFileSync(join(src, 'App.tsx'), 'export const App = () => null\n')
+    writeFileSync(join(src, 'entry-client.tsx'), `import '@pyreon/unistyle'\nimport { App } from './App'\n`)
+    expect(sharedSourceOf(join(src, 'entry-client.tsx'))).toBe(join(src, 'App.tsx'))
+  })
+
   it('returns null when the referenced source does not exist', () => {
     const web = join(root, 'dangling-web', 'src')
     mkdirSync(web, { recursive: true })
@@ -77,5 +85,23 @@ describe('sharedSourceOf', () => {
       `import { App } from '../../nope/src/Missing'\n`,
     )
     expect(sharedSourceOf(join(web, 'entry-client.tsx'))).toBeNull()
+  })
+})
+
+describe('webEntries', () => {
+  it('finds a split web host and a one-folder app, never a web-only example', () => {
+    const ex = mkdtempSync(join(tmpdir(), 'pyreon-web-entries-'))
+    const put = (rel: string, text = '{}'): void => {
+      mkdirSync(join(ex, rel, '..'), { recursive: true })
+      writeFileSync(join(ex, rel), text)
+    }
+    put('old-web/package.json')
+    put('old-web/src/entry-client.tsx', '')
+    put('native-app/package.json')
+    put('native-app/src/entry-client.tsx', '')
+    put('native-app/ios/project.yml', '')
+    put('plain-spa/package.json')
+    put('plain-spa/src/entry-client.tsx', '')
+    expect(webEntries(ex).map((e) => e.label)).toEqual(['examples/native-app', 'examples/old-web'])
   })
 })

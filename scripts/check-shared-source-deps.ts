@@ -29,8 +29,10 @@
  *
  * ## How it works
  *
- * For every `examples/*-web` package whose entry imports a shared source out
- * of a sibling example:
+ * For every web entry of a native app — `src/entry-client.tsx` of a one-folder
+ * app (`examples/native-<app>/`, web host at its root beside `ios/` and
+ * `android/`), or any entry of a split `examples/*-web` host — that imports the
+ * app source:
  *
  *  1. Resolve the shared source file the entry points at.
  *  2. Collect its bare `@pyreon/*` imports (static + `export … from`).
@@ -75,19 +77,43 @@ export function pyreonImports(source: string): string[] {
 }
 
 /**
- * The shared source a web entry points at, if any. Matches a relative import
- * that escapes this example (`../../<other-example>/src/<Name>`) — the literal
- * shape the tri-target examples use.
+ * The shared source a web entry points at, if any: the first relative import
+ * that resolves to a `.tsx`/`.ts` file — `./<Name>` beside the entry in a
+ * one-folder app, `../../<other-example>/src/<Name>` from a split web host.
  */
 export function sharedSourceOf(entryFile: string): string | null {
   const src = readFileSync(entryFile, 'utf8')
-  const m = src.match(/from\s*['"](\.\.\/\.\.\/[^'"]+)['"]/)
-  if (!m) return null
-  const base = resolve(dirname(entryFile), m[1]!)
-  for (const ext of ['.tsx', '.ts']) {
-    if (existsSync(base + ext)) return base + ext
+  for (const m of src.matchAll(/from\s*['"](\.\.?\/[^'"]+)['"]/g)) {
+    const base = resolve(dirname(entryFile), m[1]!)
+    for (const ext of ['.tsx', '.ts']) {
+      if (existsSync(base + ext)) return base + ext
+    }
   }
   return null
+}
+
+/** The web entries of the native apps under `examplesDir`, each with the package that bundles it. */
+export function webEntries(examplesDir: string): { pkg: string; entry: string; label: string }[] {
+  const out: { pkg: string; entry: string; label: string }[] = []
+  for (const dir of readdirSync(examplesDir).sort()) {
+    const root = join(examplesDir, dir)
+    const pkg = join(root, 'package.json')
+    const srcDir = join(root, 'src')
+    if (!existsSync(pkg) || !existsSync(srcDir)) continue
+    if (dir.endsWith('-web')) {
+      // Split layout: the web host is its own package.
+      for (const entry of readdirSync(srcDir).sort()) {
+        if (/\.tsx?$/.test(entry)) out.push({ pkg, entry: join(srcDir, entry), label: `examples/${dir}` })
+      }
+    } else if (
+      existsSync(join(srcDir, 'entry-client.tsx')) &&
+      (existsSync(join(root, 'ios')) || existsSync(join(root, 'android')))
+    ) {
+      // One folder per app: the web entry beside the shared source.
+      out.push({ pkg, entry: join(srcDir, 'entry-client.tsx'), label: `examples/${dir}` })
+    }
+  }
+  return out
 }
 
 function declaredDeps(pkgJsonPath: string): Set<string> {
@@ -105,30 +131,19 @@ function main(): number {
   const findings: Finding[] = []
   let checked = 0
 
-  for (const dir of readdirSync(EXAMPLES)) {
-    if (!dir.endsWith('-web')) continue
-    const webDir = join(EXAMPLES, dir)
-    const pkgJson = join(webDir, 'package.json')
-    const srcDir = join(webDir, 'src')
-    if (!existsSync(pkgJson) || !existsSync(srcDir)) continue
+  for (const { pkg, entry, label } of webEntries(EXAMPLES)) {
+    const shared = sharedSourceOf(entry)
+    if (shared === null) continue
 
-    for (const entry of readdirSync(srcDir)) {
-      if (!/\.tsx?$/.test(entry)) continue
-      const shared = sharedSourceOf(join(srcDir, entry))
-      if (shared === null) continue
-
-      checked += 1
-      const declared = declaredDeps(pkgJson)
-      const missing = pyreonImports(readFileSync(shared, 'utf8')).filter(
-        (spec) => !declared.has(spec),
-      )
-      if (missing.length > 0) {
-        findings.push({
-          webPackage: `examples/${dir}`,
-          sharedSource: shared.replace(`${REPO_ROOT}/`, ''),
-          missing,
-        })
-      }
+    checked += 1
+    const declared = declaredDeps(pkg)
+    const missing = pyreonImports(readFileSync(shared, 'utf8')).filter((spec) => !declared.has(spec))
+    if (missing.length > 0) {
+      findings.push({
+        webPackage: label,
+        sharedSource: shared.replace(`${REPO_ROOT}/`, ''),
+        missing,
+      })
     }
   }
 
@@ -138,8 +153,8 @@ function main(): number {
   if (checked === 0) {
     console.error(
       '✗ check-shared-source-deps: found NO tri-target web example to check.\n' +
-        '  The repo has web examples that import a shared source from a native\n' +
-        '  sibling; if that is still true, this gate stopped detecting them and\n' +
+        '  The repo has native apps whose web entry imports their shared source;\n' +
+        '  if that is still true, this gate stopped detecting them and\n' +
         '  is silently protecting nothing. Fix the detection in\n' +
         '  scripts/check-shared-source-deps.ts.',
     )
