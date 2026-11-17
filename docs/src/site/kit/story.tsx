@@ -11,6 +11,7 @@ import { useLinkClick } from './link'
 import { Eyebrow, Heading, Lede, renderInline } from './type'
 import { Badge } from './badge'
 import { Note } from './note'
+import { keepRanges } from './stat'
 
 /**
  * Blocks for the story, migrate and project pages (visual-alignment.md,
@@ -93,7 +94,7 @@ export function Diagram(props: {
         dangerouslySetInnerHTML={{ __html: props.svg }}
       />
       <Show when={() => !!props.caption}>
-        <Note tag="figcaption">{renderInline(props.caption ?? '')}</Note>
+        <Note tag="figcaption">{keepRanges(props.caption ?? '')}</Note>
       </Show>
     </Figure>
   )

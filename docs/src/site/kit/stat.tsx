@@ -92,8 +92,8 @@ const Detail = txt
     band: { textWrap: 'pretty' },
     strip: { textWrap: 'balance' },
     /** A product card's and the benchmarks hero's run condition: the caveat style (`text.caveat`). [A8] */
-    product: { fontSize: text.caveat.size, letterSpacing: text.caveat.tracking, lineHeight: leading.normal },
-    hero: { fontSize: text.caveat.size, letterSpacing: text.caveat.tracking },
+    product: { fontSize: text.caveat.size, letterSpacing: text.caveat.tracking, lineHeight: leading.normal, textWrap: 'balance' },
+    hero: { fontSize: text.caveat.size, letterSpacing: text.caveat.tracking, textWrap: 'balance' },
   }))
 
 /** A numeric range ("2.5–8.7×") stays on one line: a wrapped caption never breaks it at the dash. */

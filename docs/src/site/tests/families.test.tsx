@@ -263,7 +263,8 @@ describe('Note replaces the hand-written caveats, captions and hints', () => {
     const TableNote = caveatOf('TableNote', { marginTop: 12, letterSpacing: text.caveat.tracking, lineHeight: 1.6 })
     const got = await both(<Note>x</Note>, h(Note, null, 'x'))
     const caveat = await renderRoot(h(Caveat, null, 'x'))
-    expect(got.open).toBe(caveat.open)
+    // `data-caveat`: the global wrap rule balances it (site-css.ts), so no caveat ends on an orphan word.
+    expect(got.open).toBe(caveat.open.replace('<p>', '<p data-caveat="">'))
     expect(cssDiff(caveat.css, got.css)).toEqual(['||display'])
     expect(cssDiff(withoutMargin((await renderRoot(h(TableNote, null, 'x'))).css), got.css)).toEqual(['||display', '||margin'])
   })
@@ -284,7 +285,7 @@ describe('Note replaces the hand-written caveats, captions and hints', () => {
       .theme((_t, m) => ({ fontFamily: font.mono, fontSize: text.caveat.size, letterSpacing: text.caveat.tracking, lineHeight: 1.6, color: tone(m, 'fog') }))
     const want = await renderRoot(h(DiagramCaption, null, 'x'))
     const got = await both(<Note tag="figcaption">x</Note>, h(Note, { tag: 'figcaption' }, 'x'))
-    expect(got.open).toBe(want.open)
+    expect(got.open).toBe(want.open.replace('<figcaption>', '<figcaption data-caveat="">'))
     // A figcaption is a block already; a margin of 0 is its default.
     expect(cssDiff(want.css, got.css)).toEqual(['||display', '||margin'])
   })
@@ -344,7 +345,7 @@ describe('StatBody sizes replace the page-local stat parts', () => {
     const [, , numeral, label, detail] = viaJsx
     expect(numeral?.css).toEqual(want[2]?.css)
     expect(cssDiff(want[3]?.css ?? {}, label?.css ?? {})).toEqual(['||margin'])
-    expect(cssDiff(want[4]?.css ?? {}, detail?.css ?? {})).toEqual(['||letter-spacing', '||overflow-wrap'])
+    expect(cssDiff(want[4]?.css ?? {}, detail?.css ?? {})).toEqual(['||letter-spacing', '||overflow-wrap', '||text-wrap'])
   })
 
   it('product: the products index card proof (numeral card, label 13.5px mist, the condition in the caveat style)', async () => {
@@ -370,7 +371,7 @@ describe('StatBody sizes replace the page-local stat parts', () => {
     const [, , numeral, label, detail] = viaJsx
     expect(numeral?.css).toEqual(want[1]?.css)
     expect(cssDiff(want[2]?.css ?? {}, label?.css ?? {})).toEqual(['||display', '||font-weight'])
-    expect(cssDiff(want[3]?.css ?? {}, detail?.css ?? {})).toEqual(['||display', '||letter-spacing', '||margin', '||overflow-wrap'])
+    expect(cssDiff(want[3]?.css ?? {}, detail?.css ?? {})).toEqual(['||display', '||letter-spacing', '||margin', '||overflow-wrap', '||text-wrap'])
   })
 
   it("Numeral size inline: the featured product card's 22px, without an inline style", async () => {

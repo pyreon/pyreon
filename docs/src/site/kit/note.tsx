@@ -12,6 +12,10 @@ import { tone as toneOf, txt } from './bases'
  *
  * Sizes:
  * - `caveat`: mono at `text.caveat` (11.5px, .01em). Every caveat, condition and footnote. [A8]
+ *   Wrapped `balance` (no line ends on an orphan word; `pretty` left one): through `data-caveat` and
+ *   the global wrap rules in `site-css.ts`, because the unlayered `:where(p){text-wrap-style:pretty}`
+ *   there outranks any layered component rule. Pass `keepRanges(text)` (`kit/stat.tsx`)
+ *   as children so a number range ("2.5–8.7×") never breaks at its dash.
  * - `mono`: mono at `text.mono` (12px). A status line (a live tile's hint, "updated …").
  * - `caption`: sans at `text.caption` (12.5px). A caption under a figure or a fact.
  * - `ui`: sans at `text.ui` (13.5px). The explainer under a demo.
@@ -75,7 +79,15 @@ export function Note(props: NoteProps) {
   const size = props.size ?? 'caveat'
   return h(
     NoteBase,
-    { tag: props.tag ?? 'p', variant: size, state: props.tone ?? 'fog', size: props.leading ?? DEFAULT_LEADING[size], multiple: props.measure ? ['measure'] : [], id: props.id },
+    {
+      tag: props.tag ?? 'p',
+      variant: size,
+      state: props.tone ?? 'fog',
+      size: props.leading ?? DEFAULT_LEADING[size],
+      multiple: props.measure ? ['measure'] : [],
+      id: props.id,
+      'data-caveat': size === 'caveat' ? '' : undefined,
+    },
     props.children,
   )
 }

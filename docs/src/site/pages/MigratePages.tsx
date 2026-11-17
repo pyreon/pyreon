@@ -20,6 +20,7 @@ import { emberWordOf } from './ember'
 import { RivalSwitcher } from './RivalSwitcher'
 import { WideDiagram } from './WideDiagram'
 import { Note } from '../kit/note'
+import { keepRanges } from '../kit/stat'
 
 /**
  * `/migrate` and `/migrate/<framework>` (`content/pages/migrate/*`): the
@@ -196,7 +197,7 @@ function SetupSection(props: { layer: MigrateLayerView['layer']; labels: Migrate
                   <div>
                     <CodeCard label={c.file} code={c.code} html={htmlOf(c)} />
                     <Box padTop={125}>
-                      <Note>{renderInline(c.note)}</Note>
+                      <Note>{keepRanges(c.note)}</Note>
                     </Box>
                   </div>
                 )}
@@ -273,7 +274,7 @@ export function MigrateLayerPage(props: { view: MigrateLayerView }) {
                   <CodeCard label={`${p.after.label} · ${p.after.file}`} code={p.after.code} html={htmlOf(p.after)} state="hot" rail="ins" />
                 </AutoGrid>
                 <Box padTop={125}>
-                  <Note>{renderInline(p.note)}</Note>
+                  <Note>{keepRanges(p.note)}</Note>
                 </Box>
               </Wrap>
             </Section>

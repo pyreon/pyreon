@@ -14,6 +14,7 @@ import { DataTable } from '../kit/table'
 import { Heading, renderInline } from '../kit/type'
 import { BrandSection, isBrandSection } from './BrandSections'
 import { Note } from '../kit/note'
+import { keepRanges } from '../kit/stat'
 
 /**
  * Renders the content set's `SiteSection` union (`types-site.ts`) for the
@@ -61,7 +62,7 @@ function Body(props: { s: SiteSection }): VNodeChild {
             <CodeCard label={s.after.label} code={s.after.code} html={htmlOf(s.after)} state="hot" rail="ins" />
           </AutoGrid>
           <Box padTop={175}>
-            <Note measure>{renderInline(s.caption)}</Note>
+            <Note measure>{keepRanges(s.caption)}</Note>
           </Box>
         </>
       )
@@ -76,7 +77,7 @@ function Body(props: { s: SiteSection }): VNodeChild {
           </AutoGrid>
           <Show when={() => !!s.caption}>
             <Box padTop={175}>
-              <Note measure>{renderInline(s.caption ?? '')}</Note>
+              <Note measure>{keepRanges(s.caption ?? '')}</Note>
             </Box>
           </Show>
         </>

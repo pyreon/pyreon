@@ -21,6 +21,7 @@ import { emberWordOf } from './ember'
 import { RivalSwitcher } from './RivalSwitcher'
 import { WideDiagram } from './WideDiagram'
 import { Note } from '../kit/note'
+import { keepRanges } from '../kit/stat'
 
 /**
  * `/compare/<rival>` — one template for the six rival pages
@@ -125,7 +126,7 @@ export function ComparePage(props: { view: CompareView }) {
               <CodeCard label={`${d.code.pyreon.label} · ${d.code.pyreon.file}`} code={d.code.pyreon.code} html={htmlOf(d.code.pyreon)} state="hot" rail="ins" />
             </AutoGrid>
             <Box padTop={175}>
-              <Note>{renderInline(d.code.checked)}</Note>
+              <Note>{keepRanges(d.code.checked)}</Note>
             </Box>
           </Wrap>
         </Section>
