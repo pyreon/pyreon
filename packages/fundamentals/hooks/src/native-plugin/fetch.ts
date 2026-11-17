@@ -124,6 +124,7 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
     ctx.warn(
       `useFetch needs a statically-known url — an inline string, or a module-scope \`const\` holding one. The url is BAKED into the native request, so a computed one cannot be resolved at build time. Got ${urlArg?.type ?? 'nothing'}.`,
     )
+
     return null
   }
   const url = resolvedUrl ?? (constUrl as string)
@@ -272,6 +273,7 @@ function swiftHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
   }
   // A failure is the runtime's to record (`error`), so the closure just throws.
   lines.push(`  }`, `}`)
+
   return lines
 }
 
@@ -297,6 +299,7 @@ function kotlinHarness(d: ExtDecl, ctx: KotlinEmitContext): readonly string[] {
   }
   // A failure is the runtime's to record (`error`), so the lambda just throws.
   lines.push(`  }`, `}`)
+
   return lines
 }
 
@@ -368,6 +371,7 @@ function fieldOf(site: ReceiverSite): string | undefined {
   }
   const read = site.expr
   if (read.object.kind !== 'identifier') return undefined
+
   return FETCH_FIELDS.has(read.property) ? read.property : undefined
 }
 

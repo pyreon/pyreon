@@ -32,6 +32,7 @@ function tx(jsxBody: string, target: 'swift' | 'kotlin'): string {
       return ${jsxBody}
     }
   `
+
   return transform(source, { target }).code
 }
 
@@ -47,6 +48,7 @@ function txWithTodoProps(jsxBody: string, target: 'swift' | 'kotlin'): string {
       return ${jsxBody}
     }
   `
+
   return transform(source, { target }).code
 }
 
@@ -808,6 +810,7 @@ function txRouter(componentBody: string, target: 'swift' | 'kotlin'): string {
       ${componentBody}
     }
   `
+
   return transform(source, { target }).code
 }
 
@@ -2094,6 +2097,7 @@ describe('Cross-platform a11y vocabulary → SwiftUI a11y modifiers (P5 native, 
     expect(out).toContain('.accessibilityAddTraits(.isHeader)')
   })
 })
+
 describe('Cross-platform a11y vocabulary → Compose semantics (P5 native, Android)', () => {
   it('Kotlin: accessibilityLabel → .semantics { contentDescription = "..." }', () => {
     const out = tx(`<Stack accessibilityLabel="Close menu"><Text>x</Text></Stack>`, 'kotlin')
