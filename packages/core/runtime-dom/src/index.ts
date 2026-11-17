@@ -138,6 +138,3 @@ export function mount(root: VNodeChild, container: Element): () => void {
     unmount()
   }
 }
-
-/** Alias for `mount` */
-export const render = mount
