@@ -5,7 +5,7 @@ description: "The library-agnostic validation gate — Standard Schema bridge + 
 
 > **Generated** from `validation`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [validation](/docs/validation).
 
-The stack-wide validation gate — the library-agnostic contract every Pyreon data package (`@pyreon/form`, `@pyreon/store`, `@pyreon/state-tree`, `@pyreon/feature`) consumes. Owns the validation contract types (`ValidationError` / `ValidateFn` / `SchemaValidateFn`) and the Standard Schema bridge, with ZERO pyreon dependencies (the consumers depend on it, not the reverse). Accept a RAW Standard Schema (Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, `@pyreon/validate` `s`) directly — no wrapper, no cast — via `standardSchemaToValidator`, or use the duck-typed `zodSchema` / `valibotSchema` / `arktypeSchema` adapters (which add the `_infer` brand + a sync `parse` for schema-driven state). Zero dependencies — schema libraries are detected by duck-typing the `~standard` contract, with no peer-dependency records declared.
+The stack-wide validation gate — the library-agnostic contract every Pyreon data package (`@pyreon/form`, `@pyreon/store`, `@pyreon/state-tree`, `@pyreon/feature`) consumes. Owns the validation contract types (`ValidationError` / `ValidateFn` / `SchemaValidateFn`) and the Standard Schema bridge, with ZERO pyreon dependencies (the consumers depend on it, not the reverse). Accept a RAW Standard Schema (Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, `@pyreon/validate` `s`) directly — no wrapper, no cast — via `standardSchemaToValidator`, or use the duck-typed `zodSchema` / `valibotSchema` / `arktypeSchema` adapters (which add the `_infer` brand + a sync `parse` for schema-driven state). Zero runtime dependencies — its one dependency is the types-only `@standard-schema/spec` (the contract's official type, erased at build); schema libraries are detected by duck-typing the `~standard` contract, with no peer-dependency records declared.
 
 ## Multiplatform
 
@@ -106,7 +106,7 @@ const errors = validate({ email: 'x', age: 5 })  // sync schema → plain record
 | [`SchemaValidateFn`](#schemavalidatefn-type) | type | The whole-object validator contract — maps a values object to a per-key error record (sync or async). |
 | [`ValidateFn`](#validatefn-type) | type | The single-field validator contract — receives the field value, all current values (for cross-field checks), and an… |
 | [`ValidationError`](#validationerror-type) | type | A single field's error value — the message string, or `undefined` for "no error". |
-| [`StandardSchemaLike`](#standardschemalike-type) | type | The Standard Schema (https://standardschema.dev) shape `@pyreon/validation` owns so any consumer can accept a raw schema… |
+| [`StandardSchemaV1`](#standardschemav1-type) | type | The Standard Schema (https://standardschema.dev) contract — the `~standard` property Zod ≥3.24 / Valibot ≥1 / ArkType ≥2… |
 | [`ValidationIssue`](#validationissue-type) | type | The normalized issue shape every adapter produces before calling `issuesToRecord` — a dot-separated field `path`… |
 
 ## API
@@ -258,7 +258,7 @@ validators: { age: arktypeField(type('number > 18')) }
 ### `standardSchemaToValidator` `function`
 
 ```ts
-<TValues>(schema: StandardSchemaLike) => SchemaValidateFn<TValues>
+<TValues>(schema: StandardSchemaV1) => SchemaValidateFn<TValues>
 ```
 
 Convert a RAW Standard Schema (any library exposing `~standard` — Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, `@pyreon/validate` `s`) into a whole-object `SchemaValidateFn` — `(values) => per-key error record`. This is the bridge that lets a consumer accept a raw schema with no `zodSchema()` wrapper and no cast: `useForm({ schema: z.object(...) })`. Issue paths flatten to dot-strings (`address.city`); first message per path wins. SYNC FAST-PATH: a synchronously-validating schema (zod/valibot/arktype sync trees, `s`) returns the error record DIRECTLY — no Promise allocation, no microtask hop per call (the keystroke path in `@pyreon/form` `validateOn`); a genuinely async schema still returns a Promise the caller awaits. Wrapper tax bench-proven ≈0ns over the raw library call (`bun run bench:validation`).
@@ -278,7 +278,7 @@ const errors = validate({ email: 'x', age: 5 })  // sync schema → plain record
 **Common mistakes**
 
 - Passing a Pyreon adapter (the result of zodSchema()) instead of the RAW schema — the adapter is already a validator; pass z.object(...) directly, or use adapter.validator
-- Expecting a synchronous return — the produced validator is always async (returns a Promise); always await it
+- Assuming the produced validator always returns a Promise — a synchronous schema returns the error record directly; `await` the result to handle both
 - Assuming a non-object schema works — the output is a per-key record keyed on the top-level fields, so the schema must describe an object shape
 
 **See also:** `isStandardSchema` · `zodSchema` · `InferSchema`
@@ -288,10 +288,10 @@ const errors = validate({ email: 'x', age: 5 })  // sync schema → plain record
 ### `isStandardSchema` `function`
 
 ```ts
-(value: unknown) => value is StandardSchemaLike<unknown>
+(value: unknown) => value is StandardSchemaV1
 ```
 
-Runtime type guard — detect a Standard Schema-compliant schema by its `~standard` property (an object carrying a `validate` function). Accepts a value whose `typeof` is `object` OR `function` — ArkType schemas are CALLABLE (`type("string")(input)` validates) yet still carry `~standard`, so a callable is a valid Standard Schema; a plain function WITHOUT `~standard` is still rejected. Used by the universal gate to decide whether a `schema` option is a raw Standard Schema (→ standardSchemaToValidator) vs a Pyreon TypedSchemaAdapter (→ isPyreonAdapter) vs a plain validator function. Zero library imports — pure duck-typing, so it never breaks on a validator-library major bump.
+Runtime type guard — detect a Standard Schema-compliant schema by its `~standard` property (an object carrying a `validate` function). Accepts a value whose `typeof` is `object` OR `function` — ArkType schemas are CALLABLE (`type("string")(input)` validates) yet still carry `~standard`, so a callable is a valid Standard Schema; a plain function WITHOUT `~standard` is still rejected. Only `~standard.validate` is checked at runtime — `version` / `vendor` are not, so a hand-rolled schema that omits them is still validated. Used by the universal gate to decide whether a `schema` option is a raw Standard Schema (→ standardSchemaToValidator) vs a Pyreon TypedSchemaAdapter (→ isPyreonAdapter) vs a plain validator function. Zero library imports — pure duck-typing, so it never breaks on a validator-library major bump.
 
 **Example**
 
@@ -341,7 +341,7 @@ if (isPyreonAdapter(schema)) {
 ### `wrapStandardSchema` `function`
 
 ```ts
-<T>(schema: StandardSchemaShape<unknown>) => (value: unknown) => SchemaParseResult<T>
+<T>(schema: StandardSchemaV1) => (value: unknown) => SchemaParseResult<T>
 ```
 
 Convert a Standard Schema into a synchronous parser returning `SchemaParseResult<T>` (`{ ok: true, value } | { ok: false, issues }`). Unlike standardSchemaToValidator (which returns per-key ERRORS for forms), this returns the coerced VALUE on success — what `@pyreon/store` / `@pyreon/state-tree` need. Surfaces async validation as a `Promise` return so callers can detect and reject async-only schemas. @internal — most consumers go through extractParseFn.
@@ -518,7 +518,7 @@ type Values = InferSchema<typeof schema> // { id: string; n: number }
 
 - Expecting inference when a raw schema omits its `~standard.types` phantom — the spec makes `types?` optional; real libraries emit it, but a hand-rolled ~standard without it falls back to Record&lt;string, unknown&gt;
 
-**See also:** `TypedSchemaAdapter` · `StandardSchemaLike`
+**See also:** `TypedSchemaAdapter` · `StandardSchemaV1`
 
 ---
 
@@ -592,28 +592,31 @@ const err: ValidationError = isValid ? undefined : 'Required'
 
 ---
 
-### `StandardSchemaLike` `type`
+### `StandardSchemaV1` `type`
 
 ```ts
-interface StandardSchemaLike<Output = unknown> { readonly "~standard": { readonly types?: { readonly output: Output }; readonly validate: (value: unknown) => StandardSchemaResult | Promise<StandardSchemaResult> } }
+interface StandardSchemaV1<Input = unknown, Output = Input> { readonly '~standard': StandardSchemaV1.Props<Input, Output> }
 ```
 
-The Standard Schema (https://standardschema.dev) shape `@pyreon/validation` owns so any consumer can accept a raw schema with no adapter and no cast — the `~standard` property Zod ≥3.24 / Valibot ≥1 / ArkType ≥2 / Effect Schema / `@pyreon/validate` `s` all expose. `standardSchemaToValidator` takes this type; `useForm({ schema })` accepts it directly.
+The Standard Schema (https://standardschema.dev) contract — the `~standard` property Zod ≥3.24 / Valibot ≥1 / ArkType ≥2 / Effect Schema / `@pyreon/validate` `s` all implement. Re-exported from the official types-only `@standard-schema/spec` package, which is the ONE definition every @pyreon package uses (no package re-declares it). The issue and result shapes are its namespace members: `StandardSchemaV1.Issue`, `StandardSchemaV1.Result<Output>`. `standardSchemaToValidator` / `wrapStandardSchema` take it, `isStandardSchema` narrows to it, and `useForm({ schema })` accepts it directly.
 
 **Example**
 
 ```tsx
-import type { StandardSchemaLike } from '@pyreon/validation'
+import type { StandardSchemaV1 } from '@pyreon/validation'
 import { standardSchemaToValidator } from '@pyreon/validation'
 
-function adapt<T extends Record<string, unknown>>(s: StandardSchemaLike) {
+function adapt<T extends Record<string, unknown>>(s: StandardSchemaV1) {
   return standardSchemaToValidator<T>(s)
 }
+
+const issue: StandardSchemaV1.Issue = { message: 'Required', path: ['email'] }
 ```
 
 **Common mistakes**
 
-- Confusing it with StandardSchemaShape — near-identical duck-types; standardSchemaToValidator takes StandardSchemaLike, wrapStandardSchema / isStandardSchema use StandardSchemaShape
+- Reading `result.value` without narrowing — the spec failure result has no `value` key; discriminate on `result.issues` (a valibot failure carries BOTH `value` and `issues`)
+- Hand-writing a schema object without `version: 1` and `vendor` — the type requires both, even though `isStandardSchema` only checks `validate` at runtime
 
 **See also:** `standardSchemaToValidator` · `isStandardSchema`
 
@@ -641,7 +644,7 @@ const issues: ValidationIssue[] = [{ path: 'address.city', message: 'Required' }
 
 ## Package-level notes
 
-> **Note:** Zero dependencies — no peer-dependency records at all: schema libraries are detected by duck-typing the `~standard` (Standard Schema) contract. Install only the one you use — the adapters are tree-shaken per import path (`@pyreon/validation/zod`, `@pyreon/validation/valibot`, `@pyreon/validation/arktype`).
+> **Note:** Zero runtime dependencies — the one dependency is the types-only `@standard-schema/spec` (the Standard Schema contract's official type, erased at build), and there are no peer-dependency records: schema libraries are detected by duck-typing the `~standard` (Standard Schema) contract. Install only the one you use — the adapters are tree-shaken per import path (`@pyreon/validation/zod`, `@pyreon/validation/valibot`, `@pyreon/validation/arktype`).
 
 > **Raw Standard Schema needs no wrapper:** Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, and `@pyreon/validate`'s `s` all expose `~standard`, so you can pass the schema DIRECTLY (`useForm({ schema: z.object(...) })`) — the gate bridges it via `standardSchemaToValidator`. Reach for `zodSchema()` / `valibotSchema()` / `arktypeSchema()` when you want the `_infer`-branded typed adapter, the sync `parse` path (schema-driven `@pyreon/store` / `@pyreon/state-tree`), or a library that is not Standard-Schema-compliant.
 

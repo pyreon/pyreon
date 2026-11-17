@@ -59,6 +59,9 @@
     "lint": "oxlint .",
     "bench:validation": "NODE_ENV=production bun bench/validation-bench.ts"
   },
+  "dependencies": {
+    "@standard-schema/spec": "^1.1.0"
+  },
   "peerDependencies": {
     "@pyreon/native-compiler": "workspace:^"
   },

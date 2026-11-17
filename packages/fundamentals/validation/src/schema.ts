@@ -15,13 +15,8 @@
  */
 
 import { emptyErrors, flattenIssuePath } from './utils'
-import type {
-  ParseResult,
-  SchemaValidateFn,
-  StandardSchemaLike,
-  ValidationError,
-  ValidationIssue,
-} from './types'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
+import type { ParseResult, SchemaValidateFn, ValidationError, ValidationIssue } from './types'
 
 /**
  * Alias for `ValidationIssue` — re-exported under the schema-store /
@@ -47,7 +42,7 @@ export type SchemaParseResult<T> = ParseResult<T>
  * `useForm({ schema: myZodSchema })`.
  */
 export function standardSchemaToValidator<TValues extends Record<string, unknown>>(
-  schema: StandardSchemaLike,
+  schema: StandardSchemaV1,
 ): SchemaValidateFn<TValues> {
   type Errors = Partial<Record<keyof TValues, ValidationError>>
   const toErrors = (result: unknown): Errors => {
@@ -93,15 +88,6 @@ export interface PyreonAdapterShape<T extends Record<string, unknown>> {
 }
 
 /**
- * @deprecated Historical name for the Standard Schema shape. Use
- * `StandardSchemaV1` (strict spec type) or `StandardSchemaLike` (lax accept
- * type) from `./types` — the canonical, single-source contract. Kept as a lax
- * alias so existing `isStandardSchema` / `wrapStandardSchema` consumers compile
- * unchanged.
- */
-export type StandardSchemaShape<T> = StandardSchemaLike<T>
-
-/**
  * Extract the inferred output type from either adapter shape.
  *   Tier A.1 → `_infer`
  *   Tier A.2 → `~standard.types.output`
@@ -130,18 +116,6 @@ export type InferSchema<S> = S extends {
         // branch instead, so inference is UNIVERSAL across every schema lib.
         InferFromValidate<S>
     : InferFromValidate<S>
-
-/**
- * A Standard Schema that exposes the OPTIONAL `~standard.types` phantom with an
- * object output — the structural shape the adapter overloads
- * (`valibotSchema` / `arktypeSchema`) use to infer the form's `TValues` from
- * the schema itself. Valibot ≥1 and ArkType ≥2 both carry it.
- */
-export interface StandardSchemaTyped {
-  readonly '~standard': {
-    readonly types?: { readonly output: Record<string, unknown> } | undefined
-  }
-}
 
 /**
  * Fallback inference: read the output type from a Standard Schema's `validate`
@@ -198,10 +172,15 @@ export function isPyreonAdapter(
  * (`@pyreon/form`, `@pyreon/store`, `@pyreon/state-tree`, `@pyreon/validate`,
  * `@pyreon/feature`) SKIPPED validation for a raw ArkType schema, reporting
  * VALID while the schema would REJECT.
+ *
+ * The runtime check is deliberately the minimum every consumer relies on — a
+ * callable `~standard.validate`. `version` / `vendor` are not inspected (no
+ * consumer reads them), so a hand-rolled schema that omits them is still
+ * validated rather than silently skipped.
  */
 export function isStandardSchema(
   value: unknown,
-): value is StandardSchemaLike<unknown> {
+): value is StandardSchemaV1 {
   if (value == null || (typeof value !== 'object' && typeof value !== 'function'))
     return false
   const std = (value as { '~standard'?: unknown })['~standard']
@@ -221,7 +200,7 @@ export function isStandardSchema(
  * Standard-Schema-derived parsers. Most users go through `extractParseFn`.
  */
 export function wrapStandardSchema<T extends Record<string, unknown>>(
-  schema: StandardSchemaShape<unknown>,
+  schema: StandardSchemaV1,
 ): (value: unknown) => SchemaParseResult<T> {
   return (value: unknown) => {
     try {

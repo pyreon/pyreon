@@ -22,7 +22,7 @@
  */
 
 import { type Computed, type Signal, computed, watch } from '@pyreon/reactivity'
-import type { Output, StandardSchemaIssue, StandardSchemaResult, StandardSchemaV1 } from './types'
+import type { Output, StandardSchemaV1 } from './types'
 
 /**
  * Source the validator reads. Accepts a `Signal<T>` directly OR a
@@ -49,7 +49,7 @@ function read<T>(source: ReactiveSource<T>): T {
  * exactly (so downstream code that already handles StdSchema results
  * just works).
  */
-export type ParseResult<T> = StandardSchemaResult<T>
+export type ParseResult<T> = StandardSchemaV1.Result<T>
 
 /**
  * Reactively parse `source` through `schema`. Returns a `Computed<ParseResult>`
@@ -97,7 +97,7 @@ export function parseReactive<S extends StandardSchemaV1<unknown, unknown>>(
             message:
               '[Pyreon] schema is async — use parseReactiveAsync(schema, source) instead of parseReactive()',
             path: [],
-          } satisfies StandardSchemaIssue,
+          } satisfies StandardSchemaV1.Issue,
         ],
       }
     }

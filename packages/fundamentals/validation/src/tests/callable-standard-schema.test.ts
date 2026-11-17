@@ -26,7 +26,7 @@ import {
   standardSchemaToValidator,
   wrapStandardSchema,
 } from '../schema'
-import type { StandardSchemaLike } from '../types'
+import type { StandardSchemaV1 } from '../types'
 
 // A raw ArkType schema — CALLABLE (`typeof === 'function'`) and carrying
 // `~standard`. This is the exact shape a user passes when they do
@@ -51,11 +51,11 @@ describe('isStandardSchema — callable schema (ArkType)', () => {
     expect(isStandardSchema(fake)).toBe(false)
   })
 
-  it('narrows to StandardSchemaLike so consumers can call `~standard.validate`', () => {
+  it('narrows to StandardSchemaV1 so consumers can call `~standard.validate`', () => {
     const value: unknown = arkUser
     if (isStandardSchema(value)) {
       // Reachable ONLY because the guard now accepts callables.
-      const std: StandardSchemaLike = value
+      const std: StandardSchemaV1 = value
       expect(typeof std['~standard'].validate).toBe('function')
     } else {
       throw new Error('expected the raw ArkType schema to be a Standard Schema')
@@ -68,7 +68,7 @@ describe('standardSchemaToValidator — callable schema (ArkType)', () => {
   // validate through the `~standard` entrypoint (NOT by calling the schema
   // itself, and NOT via a Zod-specific `.safeParse`).
   const validate = standardSchemaToValidator<{ name: string; age: number }>(
-    arkUser as unknown as StandardSchemaLike,
+    arkUser as unknown as StandardSchemaV1,
   )
 
   it('returns {} for valid input', async () => {
@@ -88,7 +88,7 @@ describe('standardSchemaToValidator — callable schema (ArkType)', () => {
 
 describe('wrapStandardSchema — callable schema (ArkType)', () => {
   const parse = wrapStandardSchema<{ name: string; age: number }>(
-    arkUser as unknown as StandardSchemaLike,
+    arkUser as unknown as StandardSchemaV1,
   )
 
   it('returns ok:true with the coerced value for valid input', () => {

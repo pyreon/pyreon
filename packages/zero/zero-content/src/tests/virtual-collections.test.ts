@@ -86,11 +86,11 @@ describe('renderContentTypes', () => {
     // of `ContentConfig.default.collections...` so the file works
     // under both `moduleResolution: bundler` AND `nodenext` without
     // needing `allowImportingTsExtensions`.
-    expect(out).toContain(`"docs": StandardSchemaV1.InferOutput<`)
+    expect(out).toContain(`"docs": InferSchemaOutput<`)
     expect(out).toContain(
       `(typeof import("../content.config"))['default']['collections']["docs"]['schema']`,
     )
-    expect(out).toContain(`"blog": StandardSchemaV1.InferOutput<`)
+    expect(out).toContain(`"blog": InferSchemaOutput<`)
     expect(out).toContain(
       `(typeof import("../content.config"))['default']['collections']["blog"]['schema']`,
     )
@@ -103,7 +103,7 @@ describe('renderContentTypes', () => {
       root: '/abs/proj',
     })
     expect(out).toContain(
-      `import type { StandardSchemaV1 } from '@pyreon/zero-content/schema'`,
+      `import type { InferSchemaOutput } from '@pyreon/zero-content/schema'`,
     )
   })
 
