@@ -692,7 +692,10 @@ class TasksAppInstrumentedTest {
     @Test
     fun hooksMediaQueryReadsNightMode() {
         val ui = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
-        ui.executeShellCommand("cmd uimode night yes").close()
+        // Reading the output to the end is what waits for the command; `.close()` alone returns at once.
+        fun shell(cmd: String): String =
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(ui.executeShellCommand(cmd)).use { String(it.readBytes()) }
+        shell("cmd uimode night yes")
         try {
             composeRule.waitUntil(15_000) {
                 composeRule.onAllNodesWithTag("login-username").fetchSemanticsNodes().isNotEmpty() &&
@@ -706,7 +709,7 @@ class TasksAppInstrumentedTest {
             assertTagDisplayed("hooks-page", "after tasks-hooks (/tasks -> /hooks)")
             waitForTagText("hooks-dark", "dark")
         } finally {
-            ui.executeShellCommand("cmd uimode night no").close()
+            shell("cmd uimode night no")
         }
     }
 
