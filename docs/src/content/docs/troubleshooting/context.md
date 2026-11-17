@@ -48,7 +48,7 @@ A nullish handler is legal and ignored (`applyEventProp` in `runtime-dom/src/pro
 
 The `*-compat` JSX runtimes wrap user components in `wrapCompatComponent`, so a helper using `provide()` / `onMount()` / `onUnmount()` / `effect()` at body scope runs outside Pyreon's setup frame and breaks on re-render.
   - Call `nativeCompat(MyHelper)` from `@pyreon/core` (`core/src/compat-marker.ts`) so compat runtimes route it through `h()`. Framework components (`RouterView`, `PyreonUI`, `FormProvider`, …) are already marked.
-  - Unit tests cannot see this (a single synchronous mount keeps context); the cpa-app-compat e2e suites (`e2e/cpa-app-*-compat.spec.ts`) catch it.
+  - Unit tests cannot see this (a single synchronous mount keeps context); the compat runtime suite (`e2e/cpa-app-compat.spec.ts`, run by the `cpa-smoke-app-<x>-compat` cells of `scripts/scaffold-smoke.ts` against fresh `--compat` scaffolds) catches it.
 
 ---
 

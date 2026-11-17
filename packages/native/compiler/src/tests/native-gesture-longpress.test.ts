@@ -7,7 +7,7 @@
 // swiftc which typechecks either form). Android: `combinedClickable(
 // onClick, onLongClick)` (the idiomatic Compose long-press surface).
 //
-// Behavior is device-proven in examples/native-counter-ios's XCUITest
+// Behavior is device-proven in examples/native-counter/ios's XCUITest
 // `test_longPressResetsCounter` (a >=0.5s hold resets the counter, R4
 // local Simulator pass). This spec locks the EMIT SHAPE + is the bisect
 // target (neuter the emit → these fail).

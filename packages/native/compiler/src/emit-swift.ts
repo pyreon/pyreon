@@ -4292,6 +4292,7 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
         // `<Component>Data`): this shape gets its own struct. Reusing the name retyped one value as the other shape.
         if (ctx.structs.some((s) => s.name === name)) name = uniqueSwiftStructName(ctx, name)
         registerSwiftSynthStruct(t, ctx, name, key)
+
         return name
       }
       if (t.fields.length === 0) return 'Any'
@@ -4303,6 +4304,7 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
           const message = inlineObjectTypeWarning(t)
           if (!_emitWarnings.includes(message)) _emitWarnings.push(message)
         }
+
         return 'Any'
       }
       // Several fields would spell a labelled tuple: the right members, but not `Codable` (decoding into it fails) and

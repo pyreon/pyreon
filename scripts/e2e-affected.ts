@@ -418,12 +418,11 @@ const SUITES: Suite[] = [
       ...RENDER_CORE,
       // The router demo exercises @pyreon/router's runtime + primitives'
       // DOM impls — any router or primitive change can break it. The
-      // iOS source lives at native-router-demo-ios but is consumed by
-      // web; both example dirs trigger.
+      // shared source and the web host live in one directory,
+      // examples/native-router-demo.
       'packages/core/primitives/',
       'packages/core/router/',
-      'examples/native-router-demo-ios/',
-      'examples/native-router-demo-web/',
+      'examples/native-router-demo/',
       'e2e/native-router-demo-web',
     ],
   },

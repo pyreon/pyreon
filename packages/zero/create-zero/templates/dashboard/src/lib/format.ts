@@ -38,5 +38,10 @@ export function formatNumber(value: number): string {
  */
 export function formatDate(value: Date | string | number): string {
   const d = value instanceof Date ? value : new Date(value)
-  return d.toLocaleDateString(LOCALE, { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' })
+  return d.toLocaleDateString(LOCALE, {
+    timeZone: 'UTC',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
 }

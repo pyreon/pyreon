@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/lint'
-description: Pyreon-specific linter — 134 rules across 25 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, and opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage). CLI, programmatic API, watch mode, AST cache, and an LSP server.
+description: Pyreon-specific linter — 140 rules across 26 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage), and a readable style preset. CLI, programmatic API, watch mode, AST cache, and an LSP server.
 ---
 
 `@pyreon/lint` is a framework-specific linter that catches Pyreon anti-patterns at the AST level — bare signal reads in JSX, props destructuring that breaks reactivity, browser globals in SSR code, bundler-coupled dev gates, and dozens more. It is powered by [`oxc-parser`](https://oxc.rs) for fast ESTree/TS-ESTree parsing, ships a CLI (`pyreon-lint`), a programmatic API (`lint` / `lintFile`), watch mode, an AST cache, and an LSP server for editor integration.
@@ -96,7 +96,7 @@ pyreon-lint --lsp
 | Flag                          | Description                                                                                  |
 | ----------------------------- | -------------------------------------------------------------------------------------------- |
 | `[path...]`                   | Files or directories to lint (default: `.`). Directories are walked recursively.            |
-| `--preset <name>`             | Preset: `recommended` (default), `strict`, `app`, `lib`, `best-practices`                    |
+| `--preset <names>`            | Preset or comma list composed left to right: `recommended` (default), `strict`, `app`, `lib`, `best-practices`, `readable`, `readable-strict`. Overrides the config file's `preset` |
 | `--fix`                       | Apply auto-fixes for fixable diagnostics, writing changes back to disk                       |
 | `--format <fmt>`              | Output format: `text` (default), `json`, `compact`, `gha` (GitHub annotations)               |
 | `--quiet`                     | Only show errors (hide warnings and infos)                                                   |
@@ -263,9 +263,31 @@ const x = someBroadlyFlaggedExpression()
 
 Omitting the rule id suppresses all rules on the next line; including it suppresses only that rule. The comment must match exactly — word-boundary matching means a typo like `// pyreon-lint-ignored` is **not** treated as a suppression (so a misspelled directive fails loudly rather than silently disabling the rule).
 
+Both forms take a comma list of ids and a trailing reason after `--`. Give one; the next reader needs to know why the exception exists:
+
+```tsx
+// pyreon-lint-disable-next-line pyreon/max-jsx-depth, pyreon/no-nested-ternary-branch -- mirrors the spec's table layout
+```
+
+To turn a rule off for a **whole file**, use `pyreon-lint-disable-file`. The reason is **mandatory**: a file-level disable without one is ignored and reported, because nobody could ever tell when it is safe to remove.
+
+```ts
+// pyreon-lint-disable-file pyreon/padding-before-return -- hot path: kept dense on purpose, see BENCHMARKS.md
+```
+
+Omit the ids (`// pyreon-lint-disable-file -- vendored copy of upstream`) to turn off every rule for the file.
+
 ## Presets
 
-`@pyreon/lint` ships five presets. The first four cover the common lifecycle (dev → CI → app/library); `best-practices` opts you into the full opinionated rule surface.
+`@pyreon/lint` ships five base presets and two layers. The first four base presets cover the common lifecycle (dev → CI → app/library); `best-practices` opts you into the full opinionated rule surface. The `readable` and `readable-strict` **layers** add the readability rules on top of any base preset — see [Readable preset](/docs/lint-readable).
+
+`preset` takes one name or a list composed **left to right**. A base preset sets every rule; a layer sets only its own, so it never undoes the base:
+
+```json
+{ "preset": ["recommended", "readable"] }
+```
+
+`["strict", "readable"]` keeps strict's errors and adds readability **warnings**. Put layers last: a base preset after a layer resets it. A layer on its own (`"preset": "readable"`) sits on `recommended`. The CLI takes the same list as `--preset recommended,readable`.
 
 | Preset           | Built from                                | Use for                                    |
 | ---------------- | ----------------------------------------- | ------------------------------------------ |
@@ -273,7 +295,9 @@ Omitting the rule id suppresses all rules on the next line; including it suppres
 | `strict`         | `recommended` with all `warn` → `error`   | CI and pre-commit gating                   |
 | `app`            | `recommended` minus library-only rules    | Pyreon **applications**                    |
 | `lib`            | `strict` with all architecture rules forced to `error` | Pyreon **packages / libraries**   |
-| `best-practices` | `recommended` **plus every opt-in rule enabled** | Projects that want the full a11y/CLS + library-usage best-practice surface |
+| `best-practices` | `recommended` **plus every opt-in rule enabled** (except `style`) | Projects that want the full a11y/CLS + library-usage best-practice surface |
+| `readable` (layer) | The readability rules at `warn`, p99 thresholds | Any project — blank lines, component sections, JSX depth, ternaries |
+| `readable-strict` (layer) | `readable` plus block padding, p95 thresholds | New code |
 
 ### `recommended`
 
@@ -396,7 +420,7 @@ What remains opt-in is deliberately a different class: **layout shift** (`img-re
 
 ### Rule groups
 
-Every rule belongs to one of ten **groups** — the axis the 25 categories don't capture: *what knowledge does this rule require, where does the file run, and which platforms must it survive?*
+Every rule belongs to one of eleven **groups** — the axis the 26 categories don't capture: *what knowledge does this rule require, where does the file run, and which platforms must it survive?*
 
 | group | rules | what it is |
 | --- | --- | --- |
@@ -409,6 +433,7 @@ Every rule belongs to one of ten **groups** — the axis the 25 categories don't
 | `a11y` | 15 | Accessibility — standard markup plus Pyreon's own surfaces (toast, dialog, overlay, primitives). |
 | `pkg` | 27 | Per-library. Each self-activates on a declared dependency, so you only see rules for libraries you use. |
 | `js` | 3 | Language-level shapes oxlint cannot express on its own. |
+| `style` | 6 | How code reads — blank lines, component sections, JSX depth, ternary shape. Off in every base preset; the [`readable` layers](/docs/lint-readable) turn it on. |
 | `internal` | 6 | Encodes the Pyreon repository itself. **Never on in a shipped preset.** |
 
 Categories live underneath, so a query rule is `group: 'pkg'`, `category: 'query'`. Set a whole group in one line — applied after the preset and **before** per-rule entries, so an explicit rule always wins:
@@ -480,7 +505,7 @@ pyreon-lint --why-off pyreon/rx-prefer-pipe
 
 The dependency gate is checked relative to a file, so pass a path (`pyreon-lint --why-off <id> src/`) when you want that reason evaluated. An unknown id exits non-zero and suggests the near miss. Programmatic equivalent: `explainRuleState(id, { config, filePath })`.
 
-There are **134 rules across 25 categories**. Six of them are **monorepo-scoped** (`meta.scope: 'monorepo'`) — `no-circular-import`, `no-cross-layer-import`, `no-error-without-prefix`, `no-query-selector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`. They encode the Pyreon repository's own conventions (its layer order, its private internal packages, its `[Pyreon]` error prefix) rather than anything about Pyreon-the-framework, so **every preset a consumer selects forces them off**, `best-practices` included. The Pyreon repo re-enables them by id in its own `.pyreonlintrc.json`, which keeps that dependency visible in config instead of hidden inside a shared preset. `query`, `rx`, `i18n`, `storage`, `http`, and `portable` are wholesale opt-in best-practice categories — off in the standard presets. `frontend` is mixed (6 of 12 on by default); the rest of the opt-in surface is individual rules scattered across otherwise-mandatory categories, marked `ᵒ` below. Run `pyreon-lint --list` for the authoritative list with live severities.
+There are **140 rules across 26 categories**. Six of them are **monorepo-scoped** (`meta.scope: 'monorepo'`) — `no-circular-import`, `no-cross-layer-import`, `no-error-without-prefix`, `no-query-selector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`. They encode the Pyreon repository's own conventions (its layer order, its private internal packages, its `[Pyreon]` error prefix) rather than anything about Pyreon-the-framework, so **every preset a consumer selects forces them off**, `best-practices` included. The Pyreon repo re-enables them by id in its own `.pyreonlintrc.json`, which keeps that dependency visible in config instead of hidden inside a shared preset. `query`, `rx`, `i18n`, `storage`, `http`, and `portable` are wholesale opt-in best-practice categories — off in the standard presets. `frontend` is mixed (6 of 12 on by default); the rest of the opt-in surface is individual rules scattered across otherwise-mandatory categories, marked `ᵒ` below. Run `pyreon-lint --list` for the authoritative list with live severities.
 
 ### Categories at a glance
 
@@ -511,6 +536,7 @@ There are **134 rules across 25 categories**. Six of them are **monorepo-scoped*
 | `web-perf`        | 7     | 1 of 7  | Client-role runtime perf — reflow, LCP hints, third-party scripts, passive listeners, rAF leaks |
 | `portable`        | 6     | ✅ all  | Must survive iOS + Android — PMTC subset, canonical primitives, `nativeCompat()` |
 | `js`              | 3     | 1 of 3  | Language shapes oxlint cannot express — swallowed errors, ESM `require()`, dropped error cause |
+| `style`           | 6     | ✅ all  | How code reads — blank lines, component sections, JSX depth, ternary shape ([readable preset](/docs/lint-readable)) |
 
 Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — enable via `best-practices` or per-rule config; library-scoped ones additionally auto-gate on `package.json` deps.
 
@@ -799,6 +825,19 @@ Language-level shapes oxlint cannot express — each needs project context (a pa
 | `pyreon/no-require-in-esm`                  | error    | `require()` in a `"type": "module"` package throws at runtime — and Bun defines `require` in ESM, so a bun-run test suite cannot catch it |
 | `pyreon/require-error-cause`                | warn     | Re-throwing inside `catch` without `{ cause }` discards the original error — the surviving stack points at where you noticed, not where it broke |
 
+### Style (6) ᵒ
+
+How code reads. Every rule is opt-in (`info` by default) and turned on by the `readable` / `readable-strict` layers. Full guidance with examples: [Readable preset](/docs/lint-readable).
+
+| Rule                                          | Fix | Description |
+| --------------------------------------------- | --- | ----------- |
+| `pyreon/padding-between-declarations`        | ✅  | A blank line between adjacent top-level statements or class members when either spans lines |
+| `pyreon/padding-before-return`               | ✅  | A blank line before a `return` that follows a multi-line statement or 3+ statements |
+| `pyreon/padding-between-component-sections`  | ✅  | A blank line between a component's setup, behaviour and render sections |
+| `pyreon/padding-around-multiline-blocks`     | ✅  | A blank line around a multi-line `if` / `for` / `try` / `switch` inside a function (`readable-strict`) |
+| `pyreon/max-jsx-depth`                       |     | A component's JSX nests at most `max` deep (6; 5 in strict) — names the subtree to extract |
+| `pyreon/no-nested-ternary-branch`            |     | No ternary inside another's test or consequent; flat chains up to `maxOutcomes` (4; 3 in strict) |
+
 ## Notable Rules
 
 ### `pyreon/no-process-dev-gate` (auto-fixable)
@@ -1076,7 +1115,18 @@ import { startLspServer } from '@pyreon/lint'
 startLspServer() // speaks JSON-RPC over stdin/stdout
 ```
 
-The server advertises `textDocumentSync: full` and `inlayHintProvider: true`. On `textDocument/didOpen` / `didChange` it publishes diagnostics; on `textDocument/inlayHint` it renders structural reactivity facts as end-of-span ghost text. When the `PYREON_LPIH_CACHE` environment variable points at a live-program-inlay-hints cache file, the server also overlays **live runtime data** — signal fire counts, effect re-runs — at the source line that created each primitive (`🔥 signal fired N×`). `PYREON_LPIH_PATH_MAP` (format `from1=to1;from2=to2`) remaps host paths to container paths for dev-container / remote setups.
+The server lints each document with the config that governs its directory — the nearest `.pyreonlintrc.json`, re-read when the file changes — so the editor shows exactly what the CLI reports.
+
+It advertises `codeActionProvider` with a **quick fix** for every auto-fixable finding (plus "fix all of this rule in this file") and a **`source.fixAll.pyreon`** action that applies every non-overlapping fix in the document — the same edits `--fix` makes. Run it on save in VS Code:
+
+```json
+// .vscode/settings.json
+{
+  "editor.codeActionsOnSave": { "source.fixAll.pyreon": "explicit" }
+}
+```
+
+The server also advertises `textDocumentSync: full` and `inlayHintProvider: true`. On `textDocument/didOpen` / `didChange` it publishes diagnostics; on `textDocument/inlayHint` it renders structural reactivity facts as end-of-span ghost text. When the `PYREON_LPIH_CACHE` environment variable points at a live-program-inlay-hints cache file, the server also overlays **live runtime data** — signal fire counts, effect re-runs — at the source line that created each primitive (`🔥 signal fired N×`). `PYREON_LPIH_PATH_MAP` (format `from1=to1;from2=to2`) remaps host paths to container paths for dev-container / remote setups.
 
 ## CI integration
 

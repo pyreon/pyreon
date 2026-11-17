@@ -87,9 +87,9 @@ function main(): void {
     return
   }
   for (const d of unlisted)
-    console.error(`[check-examples-index] ✗ examples/${d} is not in examples/README.md. Add a row linking ](./${d}/) with one line on what it shows or tests.`)
+    {console.error(`[check-examples-index] ✗ examples/${d} is not in examples/README.md. Add a row linking ](./${d}/) with one line on what it shows or tests.`)}
   for (const l of dangling)
-    console.error(`[check-examples-index] ✗ examples/README.md links ./${l}/, which is not an example directory. Remove or fix the row.`)
+    {console.error(`[check-examples-index] ✗ examples/README.md links ./${l}/, which is not an example directory. Remove or fix the row.`)}
   process.exit(1)
 }
 

@@ -34,7 +34,7 @@ import { isKotlincAvailable } from '../validate'
 import { transform, validateKotlin } from './first-party-plugins'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const COUNTER = join(HERE, '../../../../../examples/native-counter-ios/src/Counter.tsx')
+const COUNTER = join(HERE, '../../../../../examples/native-counter/src/Counter.tsx')
 
 /** The app's own `useNativeModule` class — supplied, never stubbed. */
 const APP_OWNED = `

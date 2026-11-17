@@ -346,5 +346,5 @@ If any of the three fail with errors about un-emitted shapes, check [`pmtc-suppo
 - [Multi-Platform (PMTC)](./multiplatform.md) — the architectural overview
 - [PMTC Supported TypeScript](./pmtc-supported-typescript.md) — what shapes compile
 - [`docs/create-multiplatform.md`](./create-multiplatform.md) — the scaffolder
-- [`examples/native-counter-ios/`](https://github.com/pyreon/pyreon/tree/main/examples/native-counter-ios) — minimal iOS reference
+- [`examples/native-counter/ios/`](https://github.com/pyreon/pyreon/tree/main/examples/native-counter/ios) — minimal iOS reference
 - [`examples/native-todomvc-{ios,android,web}/`](https://github.com/pyreon/pyreon/tree/main/examples) — full one-source 3-target reference

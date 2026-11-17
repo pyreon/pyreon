@@ -56,8 +56,9 @@ function emitExample(relPath: string): string {
  * Net effect: the gate gets STRONGER. An FFI contract break in an example now
  * fails per-PR on Linux instead of waiting for the ~35-minute device build.
  */
-function appSwiftSources(exampleDir: string): string {
-  const dir = resolve(REPO_ROOT, exampleDir, 'ios')
+/** The app-provided Swift in an iOS host's source folder (`<app>/ios/Sources`). */
+function appSwiftSources(sourcesDir: string): string {
+  const dir = resolve(REPO_ROOT, sourcesDir)
   return readdirSync(dir)
     .filter((f) => f.endsWith('.swift'))
     // App.swift / ContentView.swift are the SwiftUI host shell (@main, scene
@@ -92,13 +93,13 @@ describe('Swift emit — swiftc -typecheck against stubs (Linux-viable type gate
     // The two SHIPPED example apps — the real emits that carry the `.animation`
     // class the device gate caught in M2.8. Locking them here means that class is
     // now caught PER-PR on Linux, not days later on the device gate.
-    it('native-counter-ios Counter.tsx emit typechecks clean', () => {
+    it('native-counter/ios Counter.tsx emit typechecks clean', () => {
       // Compiled WITH the app's own `useNativeModule` class — the emit
       // references `DeviceInfo`, which is app-owned and therefore unstubable
       // (see `appSwiftSources`). This makes the gate catch an FFI contract
       // break (renamed method, wrong arity) per-PR on Linux.
       const res = validateSwiftWithStubs(
-        `${emitExample('examples/native-counter-ios/src/Counter.tsx')}\n${appSwiftSources('examples/native-counter-ios')}`,
+        `${emitExample('examples/native-counter/src/Counter.tsx')}\n${appSwiftSources('examples/native-counter/ios/Sources')}`,
       )
       expect(res.ok, res.error ?? '').toBe(true)
     })
@@ -141,9 +142,11 @@ describe('Swift emit — swiftc -typecheck against stubs (Linux-viable type gate
     // Plus the two marker protocols PyreonStoreProtocol / PyreonModelProtocol
     // (`: AnyObject {}`, mirroring runtime-swift). Bisect-locked below.
     //
-    // COMPLETE (37 of 37, M-gate.1f) — the two LARGE @Observable showcase apps
-    // (showcase-finance · showcase-tasks) now type-check too, so the gate covers
-    // the WHOLE fixture corpus. Closing them needed the service-tier stub surface
+    // COMPLETE (M-gate.1f) — the two LARGE @Observable showcase apps (then
+    // fixture mirrors of native-finance / native-tasks; the real example sources
+    // now type-check in native-examples-compile.test.ts) type-checked too, so the
+    // gate covers the WHOLE fixture corpus. showcase-viz needs the flow plugin
+    // and is compiled in showcase-viz-native.test.ts. Closing them needed the service-tier stub surface
     // (PyreonAuth / PyreonDatabase / PyreonFetch / RouterProvider / matchPath /
     // LazyVStack / Color / Font.custom / .foregroundColor / .task /
     // navigationDestination), all mirrored from runtime-swift + router-swift.
@@ -178,9 +181,6 @@ describe('Swift emit — swiftc -typecheck against stubs (Linux-viable type gate
       'rx-full.tsx',
       'rx-lowering.tsx',
       'showcase-analytics.tsx',
-      'showcase-finance.tsx',
-      'showcase-tasks.tsx',
-      'showcase-viz.tsx',
       'synth-prop-types.tsx',
       'tier2-feature.tsx',
       'tier2-form.tsx',

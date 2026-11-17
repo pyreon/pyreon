@@ -16,7 +16,8 @@
  *   4. Apply adapter overlay (`templates/_shared/_adapters/<adapter>/`).
  *   5. Apply integration overlays (`templates/_shared/_integrations/<int>/`).
  *   6. Apply AI tooling overlays (`templates/_shared/_ai/<tool>/`).
- *   7. Apply lint overlay (`templates/_shared/_lint/`) when enabled.
+ *   7. Apply lint overlay (`templates/_shared/_lint/`) and write the
+ *      generated `.oxlintrc.json` when enabled.
  *   8. Generate `package.json` and `vite.config.ts` (runtime — computed).
  *
  * Monorepo branch (template === 'monorepo'):
@@ -35,6 +36,7 @@ import { writeFile } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { adapterFor } from './adapters'
 import { applyAiTools } from './ai-tools'
+import { generateOxlintConfig } from './generators/oxlint-config'
 import { generatePackageJson } from './generators/package-json'
 import { generateViteConfig } from './generators/vite-config'
 import { applyIntegrations } from './integrations'
@@ -101,6 +103,15 @@ async function scaffoldFlat(config: ProjectConfig): Promise<void> {
     }
   }
 
+  // 3b. Compat overlay (`templates/_shared/_compat/<template>/`). A compat
+  //     project's JSX goes to the compat runtime, not the Pyreon compiler, so
+  //     a template file written in Plain Mode (a compile-time dialect) would
+  //     throw at runtime there; the overlay swaps in a signals version.
+  if (config.compat !== 'none') {
+    const compatOverlay = join(SHARED_ROOT, '_compat', config.template)
+    if (existsSync(compatOverlay)) await copyOverlay(compatOverlay, config.targetDir)
+  }
+
   // 4. Adapter overlay.
   await adapterFor(config.adapter).apply(config)
 
@@ -113,6 +124,7 @@ async function scaffoldFlat(config: ProjectConfig): Promise<void> {
   // 7. Lint config opt-in.
   if (config.lint) {
     await copyOverlay(join(SHARED_ROOT, '_lint'), config.targetDir)
+    await writeFile(join(config.targetDir, '.oxlintrc.json'), generateOxlintConfig())
   }
 
   // 8. Generated files (deps + plugins are computed).

@@ -44,13 +44,15 @@ It appears in the listing, on its tag pages and in the RSS feed, and gets its ow
 
 ## Scripts
 
-| Command | What it does |
-| --- | --- |
-| `bun run dev` | Dev server with HMR |
-| `bun run build` | Pre-render the index, every post and tag page → static HTML |
-| `bun run preview` | Serve the production build locally |
-| `bun run doctor` | Audit the project (lint + types + perf budgets) |
-| `bun run lint` | Run `@pyreon/lint` (Pyreon-specific rules) |
+| Command           | What it does                                                 |
+| ----------------- | ------------------------------------------------------------ |
+| `bun run dev`     | Dev server with HMR                                          |
+| `bun run build`   | Pre-render the index, every post and tag page → static HTML  |
+| `bun run preview` | Serve the production build locally                           |
+| `bun run doctor`  | Audit the project (lint + types + perf budgets)              |
+| `bun run lint`    | Run oxlint and `@pyreon/lint` with the `readable` preset     |
+| `bun run format`  | Format with oxfmt (`oxfmt.config.ts`)                        |
+| `bun run fix`     | Format, then apply every lint autofix (blank lines, imports) |
 
 ## Deploying
 

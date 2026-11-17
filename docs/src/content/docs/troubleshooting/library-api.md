@@ -73,7 +73,7 @@ Valibot's failure result carries both `value` (the raw input) and `issues`, so a
 
 ### Reading observable properties in an `@Observable` class's `init`
 
-The macro turns a read of `self.x` into an observation registration. When `init` runs inside a SwiftUI view's init, SwiftUI rebuilds the view, constructs a second instance, discards it, and the discarded instance's `deinit` releases process-wide state (for `PyreonRouter`: the deep-link listener, so warm links were dropped). Compute from local parameters only; make helpers `static` and pass values in (`initialPathAllowed`, `resolveChainInStatic` in `packages/native/router-swift/Sources/PyreonRouter/PyreonRouter.swift`). XCTest has no observation context, so only an on-device XCUITest that asserts a warm deep link catches it: `examples/native-router-demo-ios/iosUITests/PyreonRouterDemoUITests.swift:test_deepLinkOpensTheRouteColdAndWarm`.
+The macro turns a read of `self.x` into an observation registration. When `init` runs inside a SwiftUI view's init, SwiftUI rebuilds the view, constructs a second instance, discards it, and the discarded instance's `deinit` releases process-wide state (for `PyreonRouter`: the deep-link listener, so warm links were dropped). Compute from local parameters only; make helpers `static` and pass values in (`initialPathAllowed`, `resolveChainInStatic` in `packages/native/router-swift/Sources/PyreonRouter/PyreonRouter.swift`). XCTest has no observation context, so only an on-device XCUITest that asserts a warm deep link catches it: `examples/native-router-demo/ios/UITests/PyreonRouterDemoUITests.swift:test_deepLinkOpensTheRouteColdAndWarm`.
 
 ---
 

@@ -1,10 +1,11 @@
-import { computed, signal } from "@pyreon/reactivity"
-import { onMount } from "@pyreon/core"
-import { useHead } from "@pyreon/head"
-import { type Invoice, invoiceTotal, listInvoices, listUsers, type User } from "../../lib/db"
+import { cx, For, onMount } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
+import { computed, signal } from '@pyreon/reactivity'
+
+import { type Invoice, invoiceTotal, listInvoices, listUsers, type User } from '../../lib/db'
 import { formatMoney } from '../../lib/format'
 
-export const meta = { title: "Overview" }
+export const meta = { title: 'Overview' }
 
 export default function Dashboard() {
   useHead({ title: meta.title })
@@ -21,12 +22,12 @@ export default function Dashboard() {
 
   const revenue = computed(() =>
     invoices()
-      .filter((i) => i.status === "paid")
+      .filter((i) => i.status === 'paid')
       .reduce((sum, i) => sum + invoiceTotal(i), 0),
   )
   const outstanding = computed(() =>
     invoices()
-      .filter((i) => i.status === "pending")
+      .filter((i) => i.status === 'pending')
       .reduce((sum, i) => sum + invoiceTotal(i), 0),
   )
 
@@ -45,7 +46,7 @@ export default function Dashboard() {
         <div class="stat-card">
           <div class="label">Invoices</div>
           <div class="value">{() => invoices().length}</div>
-          <div class="delta">{() => invoices().filter((i) => i.status === "paid").length} paid</div>
+          <div class="delta">{() => invoices().filter((i) => i.status === 'paid').length} paid</div>
         </div>
         <div class="stat-card">
           <div class="label">Revenue</div>
@@ -55,8 +56,11 @@ export default function Dashboard() {
         <div class="stat-card">
           <div class="label">Outstanding</div>
           <div class="value">{() => `$${formatMoney(outstanding())}`}</div>
-          <div class="delta" style="color: var(--c-warning);">
-            {() => invoices().filter((i) => i.status === "pending").length} pending
+          <div
+            class="delta"
+            style="color: var(--c-warning);"
+          >
+            {() => invoices().filter((i) => i.status === 'pending').length} pending
           </div>
         </div>
       </div>
@@ -72,20 +76,21 @@ export default function Dashboard() {
           </tr>
         </thead>
         <tbody>
-          {() =>
-            invoices()
-              .slice(0, 5)
-              .map((inv) => (
-                <tr>
-                  <td>{inv.number}</td>
-                  <td>{inv.customer.name}</td>
-                  <td>${formatMoney(invoiceTotal(inv))}</td>
-                  <td>
-                    <span class={`pill ${inv.status}`}>{inv.status}</span>
-                  </td>
-                </tr>
-              ))
-          }
+          <For
+            each={() => invoices().slice(0, 5)}
+            by={(inv) => inv.id}
+          >
+            {(inv) => (
+              <tr>
+                <td>{inv.number}</td>
+                <td>{inv.customer.name}</td>
+                <td>${formatMoney(invoiceTotal(inv))}</td>
+                <td>
+                  <span class={cx(['pill', inv.status])}>{inv.status}</span>
+                </td>
+              </tr>
+            )}
+          </For>
         </tbody>
       </table>
     </>

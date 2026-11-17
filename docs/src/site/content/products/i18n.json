@@ -386,7 +386,7 @@
   },
   {
    "claim": "Native tier service-backend: t(), plurals, locale switching lowered to PyreonI18n and asserted on device",
-   "path": "packages/fundamentals/i18n/src/manifest.ts multiplatform; examples/native-counter-ios/iosUITests/PyreonCounterUITests.swift"
+   "path": "packages/fundamentals/i18n/src/manifest.ts multiplatform; examples/native-counter/ios/UITests/PyreonCounterUITests.swift"
   },
   {
    "claim": "Native plural table covers en de fr es it pt nl cs sk pl ru uk ar he ja zh ko tr",

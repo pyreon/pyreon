@@ -62,11 +62,11 @@ Project configs register it for the common tools: `.mcp.json` (Claude Code; appr
 - `packages/internals/` (private): test-utils, manifest, perf-harness, ansi, vitest-config, playwright-config, tsconfig
 - `packages/ui/` (private): ui-theme, ui-components, ui-primitives
 
-Plus `docs/` (the docs site, built on `@pyreon/zero` — 225 doc pages covering all packages) and `examples/`.
+Plus `docs/` (the docs site, built on `@pyreon/zero` — 226 doc pages covering all packages) and `examples/`.
 
 Notable package facts:
 
-- `@pyreon/lint` — Pyreon-specific linter — 134 rules, 25 categories, with config files, watch mode, an AST cache and an LSP server.
+- `@pyreon/lint` — Pyreon-specific linter — 140 rules, 26 categories, with config files, watch mode, an AST cache and an LSP server. Its `readable` preset layer (blank lines, component sections, JSX depth, ternaries) is on in this repo behind a per-file baseline (`readable-baseline.json`); see `.agents/rules/code-style.md`.
 - `@pyreon/compiler` — JSX transform with a Rust (napi-rs) backend and a JS fallback that must stay byte-identical (`native-equivalence.test.ts`, `fuzz-equivalence.test.ts`). Any emit change lands in both backends in one PR.
 - `@pyreon/test-utils` (private, framework-internal) is not `@pyreon/testing` (the public Testing-Library-style kit).
 

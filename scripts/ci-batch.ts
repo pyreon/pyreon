@@ -110,7 +110,9 @@ const WEIGHTS: Record<BatchProfile, Record<string, number>> = {
     'https-dev': 2,
     // Not yet measured in CI: one Vite dev server, 5 specs, ~4s locally.
     'zero-dev-overlay': 4,
-    cpa: 44,
+    // Measured at 44 with seven dev servers; four compat fixtures moved to the
+    // scaffold profile, leaving three. Scaled estimate until re-measured.
+    cpa: 19,
     'native-tasks-web': 19,
     'native-todomvc-web': 8,
     'native-router-demo-web': 10,
@@ -123,6 +125,12 @@ const WEIGHTS: Record<BatchProfile, Record<string, number>> = {
     'cpa-smoke-dashboard-node-supabase': 7,
     'cpa-smoke-app-node': 6,
     'cpa-smoke-monorepo-vercel': 6,
+    // Measured locally (4.7-5.5s: install, build, typecheck, doctor and the
+    // Chromium compat runtime suite); not yet measured in CI.
+    'cpa-smoke-app-react-compat': 8,
+    'cpa-smoke-app-vue-compat': 8,
+    'cpa-smoke-app-solid-compat': 8,
+    'cpa-smoke-app-preact-compat': 8,
   },
 }
 
