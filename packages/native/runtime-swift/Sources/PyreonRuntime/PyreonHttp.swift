@@ -117,7 +117,7 @@ public struct PyreonHttpResponse: Sendable {
 
     /// Decode the body as `T` (JSON). Throws on decode failure.
     public func decode<T: Decodable>(_ type: T.Type) throws -> T {
-        try JSONDecoder().decode(T.self, from: body)
+        try PyreonJSON.decode(T.self, from: body)
     }
 }
 

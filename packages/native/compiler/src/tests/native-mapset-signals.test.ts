@@ -158,7 +158,7 @@ function App() {
     // lowers to a real dict literal on both targets.
     expect((sw.warnings ?? []).some((w) => w.includes('seeded `new Map'))).toBe(false)
     expect((kt.warnings ?? []).some((w) => w.includes('seeded `new Map'))).toBe(false)
-    expect(sw.code).toContain('PyreonMap<String, Int> = ["a": 1]')
+    expect(sw.code).toContain('PyreonMap<String, Int> = PyreonMap<String, Int>([("a", 1)])')
     expect(kt.code).toContain('mutableMapOf("a" to 1L)')
 
     // UNCHANGED HALF — the invariant THIS suite exists to protect: the signal's

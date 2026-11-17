@@ -73,7 +73,7 @@ export function queryLifecycleSwift(decl: ExtDecl, ctx: EmitContext): readonly s
       lines.push(`    return try __response.decode(${ctx.typeText(d.type)}.self)`)
     } else {
       lines.push(`    let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${swiftUrl})!)`)
-      lines.push(`    return try JSONDecoder().decode(${ctx.typeText(d.type)}.self, from: bytes)`)
+      lines.push(`    return try PyreonJSON.decode(${ctx.typeText(d.type)}.self, from: bytes)`)
     }
   }
   lines.push(`  }`)
