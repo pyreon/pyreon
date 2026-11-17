@@ -38,6 +38,7 @@ function kotlinUnder(dir: string): string[] {
     if (statSync(p).isDirectory()) out.push(...kotlinUnder(p))
     else if (name.endsWith('.kt') && p.includes('/src/androidTest/')) out.push(p)
   }
+
   return out
 }
 
