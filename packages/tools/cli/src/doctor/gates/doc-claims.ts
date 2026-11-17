@@ -249,7 +249,12 @@ const countCanonicalPrimitives = (repoRoot: string): number => {
   return [...m[1]!.matchAll(/^\s*'[A-Za-z]+',?\s*$/gm)].length
 }
 
-/** Packages carrying a `src/manifest.ts` — the docs pipeline's input set. */
+/**
+ * PUBLISHED packages carrying a `src/manifest.ts`. A private package with a
+ * manifest (an unpublished package still feeds the docs pipeline) is not
+ * counted: the claim is "N of M published packages have a manifest", and the
+ * exempt figure is derived from it as published minus manifested.
+ */
 const countManifests = (repoRoot: string): number => {
   const pkgsDir = join(repoRoot, 'packages')
   if (!existsSync(pkgsDir)) return 0
@@ -262,7 +267,15 @@ const countManifests = (repoRoot: string): number => {
       continue
     }
     for (const pkg of readdirSync(catDir)) {
-      if (existsSync(join(catDir, pkg, 'src', 'manifest.ts'))) count++
+      if (!existsSync(join(catDir, pkg, 'src', 'manifest.ts'))) continue
+      try {
+        const json = JSON.parse(readFileSync(join(catDir, pkg, 'package.json'), 'utf8')) as {
+          private?: boolean
+        }
+        if (json.private !== true) count++
+      } catch {
+        // no readable package.json — not a package, don't count
+      }
     }
   }
   return count
