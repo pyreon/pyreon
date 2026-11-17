@@ -8198,6 +8198,36 @@ function stripSwiftClosureBody(closure: string): string {
 }
 
 /**
+ * The signal a `value` attribute binds through SwiftUI's `$signal` projection,
+ * or `undefined` when the element needs a custom `Binding(get:set:)`.
+ *
+ * `value={sig}` binds two-way by itself, so a change handler is redundant ONLY
+ * when it is absent or does exactly what the binding does (`(v) => sig.set(v)`).
+ * Any other handler (`draft.set(t.trim())`, a second write, a call) must run on
+ * every edit: projecting `$sig` dropped it on iOS while Compose ran it, a silent
+ * divergence with no warning. Those handlers go through the `Binding` shape.
+ *
+ * The called read `value={sig()}` with exactly that setter is the same binding,
+ * so it projects too: both spellings emit `$sig`. Without a handler the called
+ * read stays a read (nothing writes the signal back), so it does not project.
+ */
+function swiftProjectedSignal(value: ExprIR, handler: ExprIR | undefined): string | undefined {
+  const called =
+    value.kind === 'call' && value.args.length === 0 && value.optional !== true && value.callee.kind === 'identifier'
+  const name = value.kind === 'identifier' ? value.name : called ? (value.callee as { name: string }).name : undefined
+  if (name === undefined || !_signalNames.has(name)) return undefined
+  if (handler === undefined) return called ? undefined : name
+  // A handler passed by reference (`onChangeText={save}`): the `Binding` shape
+  // would call it as `save()`, without the value, so the bare signal keeps the
+  // projection (the earlier behaviour) and the called read keeps the Binding.
+  if (handler.kind !== 'arrow') return called ? undefined : name
+  if (handler.params.length !== 1) return undefined
+  const body = stripSwiftClosureBody(emitSwiftAction(handler, 0))
+
+  return body === `${swiftIdent(name)} = ${swiftIdent(handler.params[0]!)}` ? name : undefined
+}
+
+/**
  * Resolve a handler expression to a function-typed identifier name,
  * if it is one. Handles bare identifiers AND props-member accesses
  * (`props.onRemove` where `props` is the active component's first
@@ -10319,8 +10349,8 @@ function emitSwiftNavPane(children: readonly ChildIR[], indent: number): string 
  * from the literal `<Tab>` entries; each tab's content is one `case`.
  *
  * `value` follows `<Toggle>`'s two shapes: a bare signal binds two-way
- * (`$tab`, `onChange` redundant), any other expression needs `onChange` and
- * becomes a custom `Binding`.
+ * (`$tab`, when `onChange` is absent or only sets that signal), anything else
+ * needs `onChange` and becomes a custom `Binding` (see `swiftProjectedSignal`).
  */
 function emitSwiftTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const routerBound = e.attrs.find(
@@ -10336,8 +10366,9 @@ function emitSwiftTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   const { tabs, warnings } = planTabs(e)
   for (const w of warnings) pushEmitWarning(w)
   let binding: string
-  if (valueAttr !== undefined && valueAttr.value.kind === 'identifier' && _signalNames.has(valueAttr.value.name)) {
-    binding = `$${swiftIdent(valueAttr.value.name)}`
+  const projected = valueAttr === undefined ? undefined : swiftProjectedSignal(valueAttr.value, onChange?.handler)
+  if (valueAttr !== undefined && projected !== undefined) {
+    binding = `$${swiftIdent(projected)}`
   } else if (valueAttr !== undefined && onChange !== undefined) {
     const getExpr = emitSwiftExpr(unwrapAccessorArrow(valueAttr.value), indent)
     const setter = emitSwiftCallbackArg(onChange.handler, indent + 4)
@@ -10843,15 +10874,12 @@ function emitSwiftField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
       a.kind === 'event' && (a.name === 'changetext' || a.name === 'change'),
   )
-  const isBareSignal =
-    valueAttr !== undefined &&
-    valueAttr.value.kind === 'identifier' &&
-    _signalNames.has(valueAttr.value.name)
+  const projected = valueAttr === undefined ? undefined : swiftProjectedSignal(valueAttr.value, onChangeAttr?.handler)
   let textArg: string
   if (bindingExpr !== undefined) {
     textArg = bindingExpr
-  } else if (isBareSignal) {
-    textArg = `$${swiftIdent((valueAttr!.value as Extract<ExprIR, { kind: 'identifier' }>).name)}`
+  } else if (projected !== undefined) {
+    textArg = `$${swiftIdent(projected)}`
   } else if (valueAttr !== undefined && onChangeAttr !== undefined) {
     // Unwrap a zero-arg accessor arrow: `value={() => v()}` is a reactive read,
     // so the Binding get must return `v`, not the closure `{ v }` (which would
@@ -11042,9 +11070,10 @@ function emitSwiftSelect(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
  *
  * Canonical contract: `value` MUST name a signal in scope (matches the
  * `<Field value={signal}>` shape). The two-way binding via SwiftUI's
- * `$signal` projection writes back automatically, so the user-supplied
- * `onChange` handler is REDUNDANT on Swift — drop it and emit the
- * binding directly. (Compose Switch needs `onCheckedChange` explicitly
+ * `$signal` projection writes back automatically, so an `onChange` that only
+ * sets that signal is redundant on Swift and the binding is emitted directly;
+ * a handler that does more goes through a custom `Binding` so it still runs
+ * (`swiftProjectedSignal`). (Compose Switch needs `onCheckedChange` explicitly
  * because Kotlin doesn't have property-wrapper bindings; per-target
  * idiom split, mirrors the Field emit pattern.)
  *
@@ -11064,8 +11093,8 @@ function emitSwiftToggle(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   //
   // 1. `value={signal}` — bare identifier matching a signal in scope.
   //    Emit as SwiftUI's two-way binding-projection (`$signal`).
-  //    Idiomatic + minimal; the user-supplied `onChange` is redundant
-  //    because the binding writes back automatically.
+  //    Idiomatic + minimal; used only when `onChange` is absent or only
+  //    sets the same signal, since the binding writes back automatically.
   //
   // 2. `value={expr}` — any other expression (member access, function
   //    call, complex expr). Used for parent-owns-state patterns like
@@ -11074,9 +11103,13 @@ function emitSwiftToggle(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   //    reads via the expression + writes via the `onChange` handler.
   //    This unblocks <Checkbox> → <Toggle> migration for the common
   //    parent-owns-state shape.
-  if (valueAttr.value.kind === 'identifier' && _signalNames.has(valueAttr.value.name)) {
+  const onChange = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+  )
+  const projected = swiftProjectedSignal(valueAttr.value, onChange?.handler)
+  if (projected !== undefined) {
     // Shape 1 — signal binding projection.
-    const sig = swiftIdent(valueAttr.value.name)
+    const sig = swiftIdent(projected)
     let result = `Toggle("", isOn: $${sig})`
     const disabledMod = swiftDisabledModifier(e)
     if (disabledMod) {
@@ -11088,9 +11121,6 @@ function emitSwiftToggle(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   }
 
   // Shape 2 — custom Binding. Requires `onChange` to handle writes.
-  const onChange = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
-  )
   if (!onChange) {
     // No onChange handler — can't write back. Fall through to generic.
     return emitSwiftGeneric(e, indent)
