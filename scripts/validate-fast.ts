@@ -29,6 +29,7 @@
  *   - check-mcp-docs        (MCP tool added without docs/src/content/docs/mcp.md section)
  *   - loom-scan             (dependency-fabric errors: phantom deps, runtime cycles, drift)
  *   - check-advisory-comment-steps (advisory PR-comment step that can turn a check red)
+ *   - check-main-red-watchlist (a workflow the red-default-branch alarm does not watch)
  *   - check-leak-ratchet    (a leak-class finding grew above its committed baseline)
  *   - check-counter-catalog (a dev counter emitted with no COUNTERS.md row, or a stale row)
  *   - check-zero-feature-coverage (a documented zero feature has no real-build test)
@@ -44,12 +45,13 @@
  *   - check-readable-oxlint-ratchet (a file gained a finding of @pyreon/lint/oxlint/readable.json)
  *   - check-site-design     (pyreon.dev: a docs/src file gained a design-token literal, a styled
  *                            component outside the kit, a kit-boundary break, a gallery gap or an a11y gap)
+ *   - check-krausest-entry  (the staged js-framework-benchmark entry drifted from upstream's rules)
  *   - gen-docs --check      (manifest edited but generated files stale)
  *   - check-generated-fresh (the OTHER half of the pair: `anti-patterns.md` /
  *                            manifest edits leave the docs-site reference,
  *                            troubleshooting and examples pages stale)
  *
- * 64 gates, ~4-15s warm on an unloaded machine. The point is: catch ALL the
+ * 66 gates, ~4-15s warm on an unloaded machine. The point is: catch ALL the
  * cheap-to-detect failures locally with ONE command before pushing.
  *
  * That number is worth keeping honest, because it is what decides whether
@@ -136,6 +138,12 @@ const GATES: Gate[] = [
   // examples/README.md is the index of every example (curated, fixture,
   // native host, benchmark); an add, move or removal updates it in the same PR.
   { name: 'check-examples-index', cmd: 'bun scripts/check-examples-index.ts' },
+  // The entry staged for krausest/js-framework-benchmark (contrib/krausest) is
+  // not a workspace member, so nothing else notices when it stops meeting
+  // upstream's rules: exact pins, an npm lockfile in sync with package.json,
+  // the metadata block, the row markup the real compiler emits, and the same
+  // row idioms as the local bench arm. Offline, ~0.1s.
+  { name: 'check-krausest-entry', cmd: 'bun scripts/check-krausest-entry.ts' },
   { name: 'gen-docs --check', cmd: 'bun run gen-docs --check' },
   // The OTHER half of the generator pair. `gen-docs` regenerates llms/api-reference;
   // `gen-all.ts` regenerates the docs-site reference/troubleshooting/examples pages
@@ -304,6 +312,12 @@ const GATES: Gate[] = [
   {
     name: 'check-advisory-comment-steps',
     cmd: 'bun scripts/check-advisory-comment-steps.ts',
+  },
+  // `workflow_run` has no wildcard: a workflow missing from the alarm's list
+  // can be red on the default branch with nobody told.
+  {
+    name: 'check-main-red-watchlist',
+    cmd: 'bun scripts/check-main-red-watchlist.ts',
   },
 ]
 

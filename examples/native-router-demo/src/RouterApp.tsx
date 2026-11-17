@@ -1,5 +1,5 @@
 // @ts-nocheck — PMTC handles typing; tsc multi-child JSX limitations
-// noisy. See native-todomvc-ios/src/TodoApp.tsx for the same pattern.
+// noisy. See native-todomvc/src/TodoApp.tsx for the same pattern.
 //
 // PMTC Router Demo — the SINGLE source for web, iOS, and Android.
 //

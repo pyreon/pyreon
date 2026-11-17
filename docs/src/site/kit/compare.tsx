@@ -1,7 +1,8 @@
 import { For } from '@pyreon/core'
 import type { CompareVerdict } from '../content/types-site'
-import { font, radius, text, verdict } from '../theme'
-import { el, pair, tone, txt } from './bases'
+import { font, text } from '../theme'
+import { Badge, type BadgeTone } from './badge'
+import { el, tone, txt } from './bases'
 import { DataTable } from './table'
 import { renderInline } from './type'
 
@@ -41,34 +42,12 @@ export function compareChipMeaning(v: CompareVerdict, rival: string): string {
   }
 }
 
-const Chip = txt
-  .config({ name: 'CompareChip' })
-  .attrs({ tag: 'span' })
-  .theme(() => ({
-    display: 'inline-block',
-    fontFamily: font.mono,
-    fontSize: 10.5,
-    letterSpacing: '.12em',
-    textTransform: 'uppercase',
-    lineHeight: 1.4,
-    paddingTop: 4,
-    paddingBottom: 4,
-    paddingLeft: 9,
-    paddingRight: 9,
-    borderRadius: radius.pill,
-    border: '1px solid',
-    whiteSpace: 'nowrap',
-  }))
-  .states((_t, m) => ({
-    pyreon: { backgroundImage: verdict.winFill, color: verdict.winText, borderColor: 'transparent', fontWeight: 600 },
-    rival: { color: pair(m, verdict.loss), borderColor: pair(m, verdict.loss) },
-    tie: { color: pair(m, verdict.tie), borderColor: pair(m, verdict.tie) },
-    different: { color: pair(m, verdict.info), borderColor: pair(m, verdict.info) },
-  }))
+/** A compare verdict in the badge vocabulary: a Pyreon win is a win, the rival's is a loss. */
+const COMPARE_TONE: Readonly<Record<CompareVerdict, BadgeTone>> = { pyreon: 'win', rival: 'loss', tie: 'tie', different: 'info' }
 
 export function CompareChip(props: { verdict: CompareVerdict; rival: string }) {
   const v = COMPARE_VERDICTS.includes(props.verdict) ? props.verdict : 'different'
-  return <Chip state={v}>{compareChipLabel(v, props.rival)}</Chip>
+  return <Badge tone={COMPARE_TONE[v]}>{compareChipLabel(v, props.rival)}</Badge>
 }
 
 const LegendList = el

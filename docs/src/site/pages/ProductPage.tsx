@@ -5,7 +5,7 @@ import type { ExtraSection, ProductData } from '../content/model'
 import { DEMOS } from '../demos/registry'
 import { HeroVisualFigure, InlineSvg } from '../demos/_asset'
 import { PRODUCTS, productHref } from '../nav'
-import { gradient, touch } from '../theme'
+import { gradient, radius, touch } from '../theme'
 import { el, pair, tone } from '../kit/bases'
 import { BenchmarkTable } from '../kit/bench'
 import { FactList, FeatureList, Faq, LimitNote, NumberedCards, StatRow, StepCards, ApiGroups } from '../kit/blocks'
@@ -95,7 +95,7 @@ const SwitchLink = el
     paddingRight: 14,
     border: '1px solid',
     borderColor: tone(m, 'line'),
-    borderRadius: 9999,
+    borderRadius: radius.pill,
     hover: { color: tone(m, 'text'), borderColor: tone(m, 'line2') },
     focus: { outlineWidth: '2px', outlineStyle: 'solid', outlineColor: tone(m, 'focus'), outlineOffset: '2px' },
     extendCss: `&[aria-current='page'] { color: ${tone(m, 'text')}; border-color: ${tone(m, 'currentBorder')}; background: ${tone(m, 'currentFill')}; }

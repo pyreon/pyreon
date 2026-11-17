@@ -86,8 +86,8 @@ export function App(){
   return (<Stack><Text>{String(out())}</Text></Stack>)
 }`)
     expect(rs.code).toContain('var out: Double {')
-    expect(rs.code).toContain('pyreonNumString(out)')
-    expect(rs.code).toContain('func pyreonNumString')
+    expect(rs.code).toContain('pyreonNumberString(out)')
+    expect(rs.code).not.toContain('pyreonNumString')
   })
 
   // `Date.parse` lowers too now (date-lowering.ts — native-date.test.ts covers its semantics).

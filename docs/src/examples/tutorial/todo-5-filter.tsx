@@ -78,7 +78,7 @@ export default function TodoFilter() {
         </button>
       </div>
       <ul class="example-col example-list">
-        <For each={visible} by={(t) => t.id}>
+        <For each={visible()} by={(t) => t.id}>
           {(todo) => (
             <li class="example-row example-card">
               <input

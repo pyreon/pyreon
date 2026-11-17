@@ -67,7 +67,7 @@ export const TYPECHECK_ONLY = new Set([
   // /select page), and is typechecked here against the mirrored M3 surface.
   'PyreonSelect',
   // android.icu exists only on a device; the emulator RUNS it against the V8
-  // table (examples/native-tasks-android IntlDifferentialTest).
+  // table (examples/native-tasks/android IntlDifferentialTest).
   'PyreonIntl',
   // Resolves `content://` through a real ContentResolver: nothing to run without a device.
   'PyreonUploadAndroid',

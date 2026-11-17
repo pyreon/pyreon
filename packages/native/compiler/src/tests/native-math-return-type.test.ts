@@ -64,7 +64,9 @@ export function App(){
     for (const [fn, wrap] of [
       ['ceil', 'ceil('],
       ['floor', 'floor('],
-      ['round', '.rounded()'],
+      // `Math.round` is the runtime's JS-rule `pyreonRound` (this used to match `.rounded()` inside the emitted
+      // number formatter, which is gone — the formatter is the runtime's now).
+      ['round', 'pyreonRound('],
       ['trunc', 'trunc('],
     ] as const) {
       const code = sw(C(`  const pc=computed(()=>Math.${fn}(rows().length/2))`))
@@ -137,11 +139,11 @@ export function App(){
   // prints "3"; a numeric label must read identically on all three.
   it('String(Double) formats like JS on both targets', () => {
     const swCode = sw(C(`  const pc=computed(()=>Math.ceil(rows().length/2))`))
-    expect(swCode).toContain('pyreonNumString(pc)')
-    expect(swCode).toContain('func pyreonNumString')
+    expect(swCode).toContain('pyreonNumberString(pc)')
+    expect(swCode).not.toContain('pyreonNumString')
     const ktCode = kt(C(`  const pc=computed(()=>Math.ceil(rows().length/2.0))`))
-    expect(ktCode).toContain('pyreonNumString(')
-    expect(ktCode).toContain('fun pyreonNumString')
+    expect(ktCode).toContain('pyreonNumberString(')
+    expect(ktCode).not.toContain('pyreonNumString')
   })
 
   // An Int arg keeps the plain String()/toString() emit — no helper included.

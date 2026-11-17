@@ -143,8 +143,8 @@ describe(ID, () => {
 
   it('the shipped native-todomvc source is clean on both surfaces', () => {
     const here = dirname(fileURLToPath(import.meta.url))
-    const src = readFileSync(resolve(here, '../../../../../examples/native-todomvc-ios/src/TodoApp.tsx'), 'utf8')
-    expect(lintHits(src, 'examples/native-todomvc-ios/src/TodoApp.tsx')).toEqual([])
+    const src = readFileSync(resolve(here, '../../../../../examples/native-todomvc/src/TodoApp.tsx'), 'utf8')
+    expect(lintHits(src, 'examples/native-todomvc/src/TodoApp.tsx')).toEqual([])
     expect(detectorHits(src)).toEqual([])
   })
 })

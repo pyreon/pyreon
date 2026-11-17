@@ -34,7 +34,7 @@ export default function Users() {
         </thead>
         <tbody>
           <For
-            each={users}
+            each={users()}
             by={(u) => u.id}
           >
             {(u) => (

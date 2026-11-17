@@ -139,7 +139,6 @@ export default function DemoDnd() {
         <CodeBlock
           label="The tasks signal"
           // The compiler wraps this read in _rp(), so CodeBlock's {props.code} follows the signal.
-          // pyreon-lint-disable-next-line pyreon/no-signal-in-props
           code={json()}
         />
       </DemoPanel>

@@ -23,7 +23,7 @@ description: The readable lint preset — blank lines as paragraph breaks, compo
 
 | Tier | Adds | Use for |
 | --- | --- | --- |
-| `readable` | blank lines between declarations, before a `return` and between component sections (all auto-fixed); JSX depth 6; ternary chains of up to 4 outcomes | Any project. Every rule is either fixed for you or a limit that only flags genuine outliers (near this repository's p99). |
+| `readable` | blank lines between declarations, before a `return` and between component sections (all auto-fixed); JSX depth 6; ternary chains of up to 4 outcomes; one signal-read form, `count()` (auto-fixed) | Any project. Every rule is either fixed for you or a limit that only flags genuine outliers (near this repository's p99). |
 | `readable-strict` | `readable`, plus a blank line around every multi-line `if` / `for` / `while` / `try` / `switch` inside a function; JSX depth 5; ternary chains of up to 3 outcomes | New code, where the extra spacing costs nothing. The scaffolds use `readable` plus the block-padding rule. |
 
 Both are **layers**: they set only their own rules, so they compose on top of any base preset. Put them last in the list:
@@ -162,7 +162,7 @@ export function Counter(props: { step: number }) {
   const count = signal(0)
   const increment = () => count.update((n) => n + props.step)
   effect(() => console.log(count()))
-  return <button onClick={increment}>{count}</button>
+  return <button onClick={increment}>{count()}</button>
 }
 
 // after
@@ -172,7 +172,7 @@ export function Counter(props: { step: number }) {
   const increment = () => count.update((n) => n + props.step)
   effect(() => console.log(count()))
 
-  return <button onClick={increment}>{count}</button>
+  return <button onClick={increment}>{count()}</button>
 }
 ```
 
@@ -229,6 +229,24 @@ const label = ready ? (failed ? 'failed' : 'done') : 'waiting'
 // fine — a flat chain
 const label = !ready ? 'waiting' : failed ? 'failed' : 'done'
 ```
+
+### `pyreon/consistent-signal-read` — auto-fixed
+
+One way to read a signal in JSX: `count()`, as everywhere else. The compiler also accepts a bare `{count}` and calls it for you, but only for a `const` signal or computed it can see; TypeScript types the bare name as the signal, so `count > 0`, `count + 1` and a component prop typed `string` do not type-check; and inside a handler nested in JSX the auto-call depends on the element. The called form holds in every position.
+
+```tsx
+const count = signal(0)
+
+// flagged, fixed to count()
+<span>{count}</span>
+<For each={todos} by={(t) => t.id}>…</For>
+
+// flagged, not fixed: the value is meant (write count()), but adding the call by
+// machine would change the paths that do not auto-call
+<Button onClick={() => count.set(count + 1)}>+</Button>
+```
+
+The fix only inserts `()` where the compiler emits the same code for both forms (on a component prop the called form takes the faster `_rpd` path). It reports without fixing the whole value of a component prop (on iOS and Android `<Field value={draft}>` is a two-way binding) and a bare signal inside a function in JSX. It skips Plain Mode files (`count` IS the read there), files the Pyreon compiler does not lower (tests, compat projects, a foreign `@jsxImportSource`, where `{count}` is live and `{count()}` is read once), names bound more than once in a file, object shorthand `{ count }` and spreads (identity uses), and `on*` / `ref` values. `["warn", { "form": "bare" }]` flips it: `{count}` wherever the bare form type-checks and compiles the same (the whole expression of a child or a DOM attribute), and nothing elsewhere.
 
 ## Opting out
 
