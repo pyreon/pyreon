@@ -1,5 +1,6 @@
 import { playwright } from '@vitest/browser-playwright'
 import { defineBrowserConfig } from '@pyreon/vitest-config'
+import { compiledFixtures } from './vitest.compiled-fixtures'
 
 // The same browser suite, run in WebKit and Firefox in addition to Chromium.
 // `defineBrowserConfig`'s `instances` array is MERGED (concatenated), so this
@@ -11,6 +12,7 @@ import { defineBrowserConfig } from '@pyreon/vitest-config'
 // CI runs this via `scripts/browser-engines.ts` whenever runtime-dom is
 // affected.
 export default defineBrowserConfig(playwright(), {
+  plugins: [compiledFixtures()],
   test: {
     browser: {
       instances: [{ browser: 'webkit' }, { browser: 'firefox' }],
