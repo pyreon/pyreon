@@ -18,6 +18,7 @@
 import { For, onMount } from '@pyreon/core'
 import { useAppState, useDatabase, useFetch, useOnline, usePush, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
+import { useStorage } from '@pyreon/storage'
 import { Audio, Button, Canvas, CanvasCircle, CanvasLine, CanvasPath, CanvasRect, CanvasText, Field, Gesture, Heading, Image, Inline, Layer, Link, Press, Spacer, Split, Stack, Tab, Tabs, Text, Video } from '@pyreon/primitives'
 import { attrs } from '@pyreon/attrs'
 import { Element } from '@pyreon/elements'
@@ -206,6 +207,10 @@ function OfflinePage() {
   // on NEITHER target until `database.get` joined SERVICE_METHOD_RETURNS.
   const net = useOnline()
   const db = useDatabase()
+  // The key-value third of the storage row: a persisted SIGNAL. After a
+  // process death its rendered value can only have come off the platform's
+  // kv store (Android `FileStorageBackend`, iOS `UserDefaults`).
+  const kv = useStorage('router-demo:kv', 'unset')
   let noteCount = plainState<number>(0)
   let state = plainState<string>('empty')
   onMount(() => {
@@ -221,6 +226,7 @@ function OfflinePage() {
       <Text data-testid="net-status">Online: {net.isOnline}</Text>
       <Text data-testid="note-count">Notes: {noteCount}</Text>
       <Text data-testid="note-state">State: {state}</Text>
+      <Text data-testid="kv-value">KV: {kv()}</Text>
       <Button
         onPress={() => {
           db.insert('notes', { id: 'n1', fields: { body: 'written-offline' } })
@@ -230,6 +236,9 @@ function OfflinePage() {
         data-testid="write-note"
       >
         Write Note
+      </Button>
+      <Button onPress={() => kv.set('kv-saved')} data-testid="kv-save">
+        Save KV
       </Button>
       <Button
         onPress={() => {

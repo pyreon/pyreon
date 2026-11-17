@@ -311,9 +311,8 @@ describe('TodoMVC gap-tracking baseline', () => {
     // for the symbol to resolve (compiler doesn't auto-emit imports —
     // same convention as iOS).
     //
-    // Native-typed storage signals continue to use the direct
-    // `rememberSaveable { mutableStateOf(...) }` shape — see the
-    // separate native-typed test below.
+    // Native-typed storage signals take the same file-backed shape — see
+    // the separate native-typed test below.
     const out = transform(source, { target: 'kotlin' })
     expect(out.code).toContain('var todos by rememberPyreonStorage<List<Todo>>("pyreon-todomvc:todos", listOf())')
     // Negative: the old Saver-inline boilerplate must NOT appear.
@@ -322,9 +321,12 @@ describe('TodoMVC gap-tracking baseline', () => {
     expect(out.code).not.toContain('Json.decodeFromString')
   })
 
-  it('Phase 2 — useStorage<string> on Kotlin uses direct rememberSaveable (no Saver)', () => {
-    // Confirms the predicate works — native-typed storage signals
-    // continue to emit the direct shape, no kotlinx-Json Saver overhead.
+  it('Phase 2 — useStorage<string> on Kotlin is file-backed too, never rememberSaveable', () => {
+    // A scalar used to take `rememberSaveable { mutableStateOf(…) }`, which
+    // lives in the saved-instance-state Bundle and is dropped on a cold
+    // launch, so the value reset on every app start (web localStorage and iOS
+    // @AppStorage keep it). Caught on device by the router demo's
+    // process-death script.
     const minimalSource = `
       import { useStorage } from '@pyreon/storage'
       export function Settings() {
@@ -333,9 +335,8 @@ describe('TodoMVC gap-tracking baseline', () => {
       }
     `
     const out = transform(minimalSource, { target: 'kotlin' })
-    expect(out.code).toContain('var username by rememberSaveable { mutableStateOf("guest") }')
-    expect(out.code).not.toContain('Json.encodeToString')
-    expect(out.code).not.toContain('Json.decodeFromString')
+    expect(out.code).toContain('var username by rememberPyreonStorage<String>("user:name", "guest")')
+    expect(out.code).not.toContain('rememberSaveable')
   })
 
   it('Phase 2 — object-shape `type Todo = {...}` emits Swift `struct Todo: Codable` with `var` fields', () => {

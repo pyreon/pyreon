@@ -1394,6 +1394,7 @@ jobs:
             nohup bun ../scripts/ws-echo-server.ts > /tmp/ws-echo.log 2>&1 &
             adb reverse tcp:8790 tcp:8790
             gradle connectedCheck --stacktrace
+            bash ../scripts/process-death-android.sh
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
 
       # Tasks showcase — Gap 5 PR-5.3(c) closure on the Android side.
