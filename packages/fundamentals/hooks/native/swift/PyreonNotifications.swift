@@ -28,6 +28,38 @@ import Foundation
 import UserNotifications
 #endif
 
+#if canImport(UserNotifications)
+/// Presents a notification that arrives while the app is in the FOREGROUND.
+///
+/// Without a `UNUserNotificationCenter` delegate, iOS answers its own
+/// `willPresent` with "present nothing": the notification is neither shown
+/// nor kept in Notification Center (the system log reads `shouldPresentAlert:
+/// NO`, `Saving notification: NO`). `notify` fires one second after the tap
+/// that called it, so the app is almost always still in the foreground, and
+/// the notification vanished — while Android posts it and the web shows it.
+/// Presenting it as a banner, in the list and with its sound restores parity.
+///
+/// Installed once, and only when the app has no delegate of its own: an app
+/// that set one keeps full control of foreground presentation. The center
+/// holds its delegate weakly, so the instance is kept here for the process's
+/// lifetime (one object, never replaced).
+final class PyreonForegroundNotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = PyreonForegroundNotificationPresenter()
+
+    static func installIfUnset(on center: UNUserNotificationCenter) {
+        if center.delegate == nil { center.delegate = shared }
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .list, .sound])
+    }
+}
+#endif
+
 /// Local-notification wrapper — the SwiftUI half of `useNotifications`.
 public final class PyreonNotifications {
     public init() {}
@@ -45,6 +77,7 @@ public final class PyreonNotifications {
     public func notify(_ title: String, _ body: String) {
         #if canImport(UserNotifications)
         let center = UNUserNotificationCenter.current()
+        PyreonForegroundNotificationPresenter.installIfUnset(on: center)
         center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
             guard granted else { return }
             let content = UNMutableNotificationContent()
