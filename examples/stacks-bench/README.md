@@ -52,7 +52,7 @@ Exact installed versions are written into every result (`stack.json` → `packag
 | Chromium                      | the build Playwright downloads           | correctness gate and browser rows                                                                                        |
 | git                           | any                                      | the run manifest records the commit                                                                                      |
 
-The load generator ([autocannon](https://github.com/mcollina/autocannon)) and Playwright are pinned dependencies of the harness package; `bun install` fetches them. Nothing else is installed globally. About 3 GB of disk is used (the repository's `node_modules`, the nine arms and Chromium). macOS and Linux are supported; Windows is untested.
+The load generator ([autocannon](https://github.com/mcollina/autocannon)) and Playwright are pinned dependencies of the harness package; `bun install` fetches them. Nothing else is installed globally. About 4 GB of disk is used (the repository's `node_modules`, the nine arms and Chromium). macOS and Linux are supported; Windows is untested.
 
 ### Build every arm
 
@@ -65,7 +65,7 @@ bun setup.ts                              # npm ci + production build of all nin
 bun gate.ts                               # correctness gate for every arm; prints no timing
 ```
 
-`bun setup.ts` takes arm ids (`bun setup.ts next nuxt`) and `--zero=workspace` (see above; that source needs a plain `bun install`, without `--ignore-scripts`, so the monorepo's packages are built). Expect about ten minutes for the first setup on a fast connection, most of it `npm ci`, and under a minute for the gate.
+`bun setup.ts` takes arm ids (`bun setup.ts next nuxt`) and `--zero=workspace` (see above; that source needs a plain `bun install`, without `--ignore-scripts`, so the monorepo's packages are built). The first setup downloads and builds nine apps: allow several minutes (under a minute once npm's cache is warm). The gate takes a few seconds per arm.
 
 ### Run the benchmark
 
@@ -74,7 +74,7 @@ bun bench-stacks.ts --wait-quiet 4        # measure every arm → results/<runId
 bun bench-stacks.ts --report              # tables of the newest run, and whether it is publishable
 ```
 
-A full run with the defaults takes about twenty minutes. It measures the arms one after another in a fixed order (zero first, then alphabetical by id). `--wait-quiet [maxLoad]` waits before every arm until the 1-minute load average is at or under the ceiling. Name arms to measure a subset (`bun bench-stacks.ts zero next`); such a run is for development and is reported as not publishable.
+A full run with the defaults takes roughly twenty minutes; that figure is estimated from the settings (nine arms, seven server starts each), not timed on a quiet machine. It measures the arms one after another in a fixed order (zero first, then alphabetical by id). `--wait-quiet [maxLoad]` waits before every arm until the 1-minute load average is at or under the ceiling. Name arms to measure a subset (`bun bench-stacks.ts zero next`); such a run is for development and is reported as not publishable.
 
 Settings: `STACKS_STARTS` (5), `STACKS_DURATION` (10 s), `STACKS_BSTARTS` (2), `STACKS_LOADS` (8). `STACKS_RUN_ID` makes several invocations write into one run directory; `run-locked.sh <lock> [ids…]` uses it to run one arm per invocation of a machine-wide lock script on a shared machine.
 

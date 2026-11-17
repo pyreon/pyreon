@@ -109,7 +109,7 @@ Read any number from this suite with these in mind.
 
 ## Re-running it
 
-You need bun (the version in the repository's `.bun-version`), Node.js 24.15 or newer with npm, and git. Chromium, autocannon and Playwright are installed by the commands below. Allow about 3 GB of disk.
+You need bun (the version in the repository's `.bun-version`), Node.js 24.15 or newer with npm, and git. Chromium, autocannon and Playwright are installed by the commands below. Allow about 4 GB of disk.
 
 ```bash
 git clone https://github.com/pyreon/pyreon.git && cd pyreon
@@ -127,7 +127,7 @@ bun bench-stacks.ts --wait-quiet 4    # measure every arm
 bun bench-stacks.ts --report          # tables for that run, and whether it is publishable
 ```
 
-Setup takes about ten minutes on a fast connection and a full run about twenty. Each run writes a directory, `results/<runId>/`, with a manifest (machine, tool versions, the repository commit, settings, arm order) and one JSON file per arm holding every raw sample. [`results/README.md`](https://github.com/pyreon/pyreon/blob/main/examples/stacks-bench/results/README.md) documents both files field by field.
+The first setup downloads and builds nine apps, so allow several minutes. A full run takes roughly twenty minutes with the default settings (estimated from the settings, not timed on a quiet machine). Each run writes a directory, `results/<runId>/`, with a manifest (machine, tool versions, the repository commit, settings, arm order) and one JSON file per arm holding every raw sample. [`results/README.md`](https://github.com/pyreon/pyreon/blob/main/examples/stacks-bench/results/README.md) documents both files field by field.
 
 A CI job builds every arm from its lockfile on Linux and runs the correctness gate, on each pull request that touches the benchmark and once a week. It measures nothing; it keeps the commands above working.
 
