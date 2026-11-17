@@ -41,6 +41,7 @@ interface Step {
   name: string
   conclusion: string
 }
+
 interface Job {
   id: number
   name: string
@@ -48,6 +49,7 @@ interface Job {
   steps: Step[]
   html_url: string
 }
+
 interface Run {
   id: number
   run_number: number
@@ -61,6 +63,7 @@ interface Run {
   html_url: string
   head_commit: { message: string }
 }
+
 interface Issue {
   number: number
   title: string
@@ -70,6 +73,7 @@ interface Issue {
 }
 
 let nextJobId = 1000
+
 const job = (name: string, conclusion: string, steps: Step[] = [{ name: 'Run', conclusion }]): Job => ({
   id: nextJobId++,
   name,

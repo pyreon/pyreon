@@ -27,6 +27,7 @@ const alarm = (names: string[]) =>
 
 const pushWorkflow = (name: string) => `name: ${name}\non:\n  push:\n    branches: [main]\njobs: {}\n`
 const prWorkflow = (name: string) => `name: ${name}\non:\n  pull_request:\n    types: [opened]\n  merge_group:\njobs: {}\n`
+
 const follower = (name: string, condition: string) =>
   `name: ${name}\non:\n  workflow_run:\n    workflows:\n      - CI\n    types: [completed]\njobs:\n  heal:\n    if: ${condition}\n    runs-on: ubuntu-latest\n`
 
@@ -36,6 +37,7 @@ const base = {
   'nightly.yml': 'name: Nightly\non:\n  schedule:\n    - cron: "0 3 * * *"\n  workflow_dispatch:\njobs: {}\n',
   'pr-gates.yml': prWorkflow('PR Gates'),
 }
+
 const exempt = { [ALARM_WORKFLOW]: 'self', 'pr-gates.yml': 'pull-request-only' } as const
 
 describe('check-main-red-watchlist — the repository', () => {
