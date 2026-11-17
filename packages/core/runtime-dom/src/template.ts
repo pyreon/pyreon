@@ -228,16 +228,9 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
   // slot's own `<!--$-->` — a trailing range the verifier left in place, or a
   // mid range it parked. Its extent is the range, never the parent's whole
   // child list, so it is handed over as `_mountSlot` hands over its own.
-  if (_slotHydrator !== null && isRangeOpen(placeholder)) {
-    _slotHydrator(value as never, parent as Element, placeholder as Comment)
-    return
-  }
-  if (
-    _slotHydrator !== null &&
-    !isCloneSlotPlaceholder(placeholder) &&
-    !isMidSlotText(placeholder)
-  ) {
-    _slotHydrator(value as never, parent as Element, null)
+  const open = isRangeOpen(placeholder)
+  if (_slotHydrator !== null && (open || (!isCloneSlotPlaceholder(placeholder) && !isMidSlotText(placeholder)))) {
+    _slotHydrator(value as never, parent as Element, open ? (placeholder as Comment) : null)
     return
   }
   // A function is an accessor (see `_setChild`) — mount it reactively.
@@ -253,15 +246,14 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
     // construction" holds when server and client agree; when they do not, the
     // write is a correction, which dev reports (#4419).
     // Coerced as a child is (`mountChild`): nullish and `false` render nothing.
-    const text = value == null || value === false ? '' : String(value)
     if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
       const before = (placeholder as Text).data
-      ;(placeholder as Text).data = text
+      ;(placeholder as Text).data = value == null || value === false ? '' : String(value)
       reportTextWrite(placeholder, before, 'text')
 
       return
     }
-    ;(placeholder as Text).data = text
+    ;(placeholder as Text).data = value == null || value === false ? '' : String(value)
   } else {
     // Nullish renders as EMPTY, not as the literal text "null". `String(null)`
     // is `"null"`, and this branch used to hand that straight to

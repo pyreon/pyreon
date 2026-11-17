@@ -2810,17 +2810,7 @@ export function transformJSX_JS(
     // `cond ? <el> : …`) so the taken branch builds a string, not a VNode. The
     // reconstructed text is byte-identical through `_esc`/`_escSole` (see
     // `ssrLowerNestedElements`); null keeps the pre-existing `sliceExpr` path.
-    const outerClient = ssrClient
-    const outerOwner = ssrOwner
-    ssrClient = inner
-    ssrOwner = null
-    let lowered: string | null
-    try {
-      lowered = ssrLowerNestedElements(expr)
-    } finally {
-      ssrClient = outerClient
-      ssrOwner = outerOwner
-    }
+    const lowered = ssrLowerNestedIn(expr, inner)
     if (lowered === null && containsJsx(expr)) {
       // JSX the two lowerings above could not turn into a string — a `.map`
       // whose item holds a COMPONENT (`items.map(i => <li><Link/></li>)`), a
@@ -2841,22 +2831,7 @@ export function transformJSX_JS(
         mode === 'recursed' &&
         sliceExpr(expr) === code.slice(expr.start as number, expr.end as number)
       ) {
-        if (sole) {
-          needsEscSoleImport = true
-          ssrEmitSourceHole(buf, expr, '_escSole(', ')', inner)
-        } else if (marks) {
-          needsEscSoleImport = true
-          ssrEmitStatic(buf, '<!--$-->')
-          ssrEmitSourceHole(buf, expr, '_escSole(', ')', inner)
-          ssrEmitStatic(buf, '<!--/$-->')
-        } else {
-          // Same marker decision as the generated path below.
-          const wrapped = shouldWrap(expr)
-          needsEscImport = true
-          if (wrapped) ssrEmitStatic(buf, '<!--$-->')
-          ssrEmitSourceHole(buf, expr, '_esc(', ')', inner)
-          if (wrapped) ssrEmitStatic(buf, '<!--/$-->')
-        }
+        ssrEmitPreservedExprHole(buf, expr, sole, marks, inner)
         return true
       }
       // Kept as generated text: the hole RENDERS whatever VNodes it builds as
@@ -2868,14 +2843,53 @@ export function transformJSX_JS(
     } else if (lowered !== null && ssrLowerResidualJsx) {
       buf.deferJsx = true
     }
-    const exprText = lowered ?? sliceExpr(expr)
+    ssrEmitExprHole(buf, lowered ?? sliceExpr(expr), expr, sole, marks)
+
+    return true
+  }
+
+  /** `ssrLowerNestedElements` under the client-template state of the JSX inside. */
+  function ssrLowerNestedIn(expr: N, inner: number): string | null {
+    const outerClient = ssrClient
+    const outerOwner = ssrOwner
+    ssrClient = inner
+    ssrOwner = null
+    try {
+      return ssrLowerNestedElements(expr)
+    } finally {
+      ssrClient = outerClient
+      ssrOwner = outerOwner
+    }
+  }
+
+  /** A PRESERVED expression hole (see `ssrSerializeExprChild`), bracketed like the generated one. */
+  function ssrEmitPreservedExprHole(buf: SsrBuf, expr: N, sole: boolean, marks: boolean, inner: number): void {
+    if (sole || marks) {
+      needsEscSoleImport = true
+      if (marks) ssrEmitStatic(buf, '<!--$-->')
+      ssrEmitSourceHole(buf, expr, '_escSole(', ')', inner)
+      if (marks) ssrEmitStatic(buf, '<!--/$-->')
+
+      return
+    }
+    // Same marker decision as the generated path.
+    const wrapped = shouldWrap(expr)
+    needsEscImport = true
+    if (wrapped) ssrEmitStatic(buf, '<!--$-->')
+    ssrEmitSourceHole(buf, expr, '_esc(', ')', inner)
+    if (wrapped) ssrEmitStatic(buf, '<!--/$-->')
+  }
+
+  /** A GENERATED expression hole and the range markers its position takes. */
+  function ssrEmitExprHole(buf: SsrBuf, exprText: string, expr: N, sole: boolean, marks: boolean): void {
     // SOLE child of this element → no markers on EITHER side, whatever the
     // expression's static shape; `_escSole` decides from the runtime value
     // kind, which is the only thing that determines whether `_esc` would have
     // added them. See `soleAccessorChild` in @pyreon/runtime-server.
     if (sole) {
       emitEscSoleHole(buf, exprText)
-      return true
+
+      return
     }
     if (shouldWrap(expr)) {
       // The h() path wraps a dynamic child in `() => expr` → renderNode adds
@@ -2895,7 +2909,6 @@ export function transformJSX_JS(
     } else {
       emitEscHole(buf, exprText)
     }
-    return true
   }
 
   /**
@@ -3580,6 +3593,7 @@ export function transformJSX_JS(
     if (clientTplComponents && templateAbsorbsComponent(el) && templateMountIsEagerlyOrdered(el)) {
       return false
     }
+
     return templateElementCount(el, true, clientTplComponents) >= 1
   }
 
@@ -3619,6 +3633,7 @@ export function transformJSX_JS(
     const u = unwrapTypeLayers(expr)
     if (literalChildText(u) !== null) return false
     if (u.type === 'ArrowFunctionExpression' || u.type === 'FunctionExpression') return false
+
     return !shouldWrap(wrapNode)
   }
 
@@ -3633,6 +3648,7 @@ export function transformJSX_JS(
       } finally {
         ssrClient = SSR_CLIENT_IN
       }
+
       return
     }
     handleJsxExpressionChild(node, parentJsx, false)
@@ -3649,6 +3665,7 @@ export function transformJSX_JS(
         end: expr.end as number,
         text: marks ? `_slot(${hoistName})` : hoistName,
       })
+
       return
     }
     if (shouldWrap(expr)) {
@@ -3721,6 +3738,7 @@ export function transformJSX_JS(
       replacements.push({ start: expr.start as number, end: expr.start as number, text: '_slot(' })
       walkUnslicedExpr(expr)
       replacements.push({ start: expr.end as number, end: expr.end as number, text: ')' })
+
       return
     }
     walkUnslicedExpr(expr)

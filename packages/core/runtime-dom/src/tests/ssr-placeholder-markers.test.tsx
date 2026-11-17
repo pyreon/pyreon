@@ -42,6 +42,7 @@ const DEPS: Record<string, unknown> = {
   For,
   Show,
 }
+
 const SSR_DEPS: Record<string, unknown> = {
   ...DEPS,
   ...Object.fromEntries(Object.entries(server).filter(([k]) => k.startsWith('_'))),
@@ -57,6 +58,7 @@ const lower = (code: string) =>
 
 type Side = 'client' | 'h' | 'ssr'
 type Transform = typeof transformJSX
+
 const BACKENDS: [string, Transform][] = [
   // `transformJSX` takes the native binary when it is installed.
   ['default', transformJSX],
@@ -114,6 +116,7 @@ async function roundTrip(serverApp: () => unknown, clientApp: () => unknown) {
 }
 
 const Comp = () => h('em', null, 'c')
+
 const rows = [
   { id: 1, name: 'one' },
   { id: 2, name: 'two' },
@@ -259,11 +262,16 @@ function mulberry32(seed: number) {
     a = (a + 0x6d2b79f5) | 0
     let t = Math.imul(a ^ (a >>> 15), 1 | a)
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
 
-const TAGS = ['div', 'span', 'p', 'section', 'b', 'i']
+// Tags the HTML parser nests as written (`<p>` closes before a block, and a
+// formatting tag around a block is re-parented), so the parsed template and the
+// parsed server HTML are the trees the compiler saw.
+const TAGS = ['div', 'span', 'section', 'article']
+
 const LEAVES = [
   'txt',
   '{flag ? <b>{flag}</b> : null}',
@@ -352,6 +360,8 @@ function tokens(el: Element, server: boolean): string[] {
   return out
 }
 
+const ORACLE_SIGNAL = signal('S')
+
 describe('pairing oracle: client placeholders and server ranges line up', () => {
   const SEEDS = Math.max(1, Number(process.env.PYREON_FUZZ_SEEDS) || 120)
   for (const [backendName, backend] of BACKENDS) {
@@ -364,7 +374,7 @@ describe('pairing oracle: client placeholders and server ranges line up', () => 
           for (let seed = 1; seed <= SEEDS; seed++) {
             const src = genTree(seed)
             const clientCode = backend(src, 'case.tsx', { templatizeComponentChildren: tcc }).code
-            const App = compile(src, { ...scope(), sig: signal('S') }, side, backend, tcc)
+            const App = compile(src, { ...scope(), sig: ORACLE_SIGNAL }, side, backend, tcc)
             const host = document.createElement('div')
             host.innerHTML = await renderToString(h(App as never, { label: 'L' }) as never)
             for (const html of templateHtmls(clientCode)) {

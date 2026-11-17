@@ -603,15 +603,22 @@ const MODES: {
   },
 ]
 
+/**
+ * Reach of the fixed-child arm (#4385 D): both SSR emits must actually bracket
+ * a placeholder child somewhere in the sweep, or the arm proves nothing about
+ * them. The `_ssr` form is a hole between `<!--$-->` and `<!--/$-->` statics in
+ * an emit carrying `_escSole` (a sole hole never has markers).
+ */
+function noteSlotReach(reach: { slot: number; baked: number }, js: string, ssr: boolean, ssrTemplate: boolean) {
+  if (ssr && !ssrTemplate && js.includes('_slot(')) reach.slot++
+  if (ssrTemplate && js.includes('<!--$-->", "<!--/$-->') && js.includes('_escSole(')) reach.baked++
+}
+
 describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
   test(`${SEEDS} seeds × ${MODES.length} modes are byte-identical`, { timeout: SWEEP_TIMEOUT_MS }, () => {
     const failures: string[] = []
     let firstDivergence = ''
-    // Reach of the fixed-child arm (#4385 D): both SSR emits must actually
-    // bracket a placeholder child somewhere in the sweep, or the arm proves
-    // nothing about them.
-    let slotEmits = 0
-    let bakedSlotEmits = 0
+    const reach = { slot: 0, baked: 0 }
     for (let seed = 1; seed <= SEEDS; seed++) {
       const src = genComponent(seed)
       for (const { label, ssr, ssrTemplate, templatizeComponentChildren: tcc } of MODES) {
@@ -621,12 +628,7 @@ describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
           templatizeComponentChildren: tcc === true,
         })
         const js = jsResult.code
-        if (ssr && !ssrTemplate && js.includes('_slot(')) slotEmits++
-        // A hole between `<!--$-->` and `<!--/$-->` statics, in an emit that
-        // carries `_escSole` (the bracketed form; a sole hole never has markers).
-        if (ssrTemplate && js.includes('<!--$-->", "<!--/$-->') && js.includes('_escSole(')) {
-          bakedSlotEmits++
-        }
+        noteSlotReach(reach, js, ssr, ssrTemplate)
         let rs: string
         let rsMappings: string | undefined
         try {
@@ -684,8 +686,8 @@ describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
       }
     }
     expect(failures, `divergent seeds: ${failures.join(', ')}${firstDivergence}`).toEqual([])
-    expect(slotEmits).toBeGreaterThan(0)
-    expect(bakedSlotEmits).toBeGreaterThan(0)
+    expect(reach.slot).toBeGreaterThan(0)
+    expect(reach.baked).toBeGreaterThan(0)
   })
 
 })

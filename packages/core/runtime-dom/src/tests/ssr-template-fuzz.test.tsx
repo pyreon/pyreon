@@ -220,31 +220,33 @@ function elOracle(
       return h(el.tag, Object.keys(props).length ? props : null, fused as never)
     }
   }
-  // The client's STATIC text fusion (`fuseTextChildren(el, true)`): only text
-  // and value children, two or more parts after folding adjacent literal text
-  // (an empty literal folds away). Such an element has no placeholder.
+  const tpl = inTpl && mode === 'recursed'
+  const pos = { inTpl: tpl, placeholder: tpl && !staticallyFused(el.children) && el.children.length !== 1 }
+  const kids = el.children.map((n) => childOracle(n, ctx, mode, it, pos))
+
+  return h(el.tag, Object.keys(props).length ? props : null, ...kids)
+}
+
+// The client's STATIC text fusion (`fuseTextChildren(el, true)`): only text and
+// value children, two or more parts after folding adjacent literal text (an
+// empty literal folds away). Such an element has no placeholder.
+function staticallyFused(children: Node[]): boolean {
+  if (children.length < 2 || !children.every((n) => n.k === 'text' || n.k === 'bare' || n.k === 'sig')) {
+    return false
+  }
   let parts = 0
   let lastLit = false
-  for (const n of el.children) {
-    if (n.k === 'text') {
-      if (n.s !== '' && !lastLit) {
-        parts++
-        lastLit = true
-      }
-      continue
+  for (const n of children) {
+    if (n.k !== 'text') {
+      lastLit = false
+      parts++
+    } else if (n.s !== '' && !lastLit) {
+      parts++
+      lastLit = true
     }
-    lastLit = false
-    parts++
   }
-  const staticFused =
-    el.children.length >= 2 &&
-    el.children.every((n) => n.k === 'text' || n.k === 'bare' || n.k === 'sig') &&
-    parts >= 2
-  const sole = el.children.length === 1
-  const kids = el.children.map((n) =>
-    childOracle(n, ctx, mode, it, inTpl && mode === 'recursed', inTpl && mode === 'recursed' && !staticFused && !sole),
-  )
-  return h(el.tag, Object.keys(props).length ? props : null, ...kids)
+
+  return parts >= 2
 }
 // Mirror the compiler's `isDynamic` for the fuzz spec: a child is dynamic iff
 // it contains a non-pure CALL (a signal read `sN()` or a `.map`). A `data.fN`
@@ -272,8 +274,7 @@ function childOracle(
   ctx: FuzzCtx,
   mode: 'recursed' | 'mapitem',
   it: Record<string, string> | undefined,
-  inTpl: boolean,
-  placeholder: boolean,
+  { inTpl, placeholder }: { inTpl: boolean; placeholder: boolean },
 ): VNodeChild {
   switch (n.k) {
     case 'text':
