@@ -29,7 +29,7 @@
  */
 
 import MagicString, { SourceMap } from 'magic-string'
-import { detectPlain, transformPlain, type PlainTransformResult } from './plain'
+import { detectPlain, SIGNAL_OF_MARK, transformPlain, type PlainTransformResult } from './plain'
 import { parseSync } from 'oxc-parser'
 import { REACT_EVENT_REMAP } from './event-names'
 import { loadNativeBinding } from './load-native'
@@ -490,6 +490,40 @@ function jsxTagName(node: N): string {
 }
 
 /**
+ * The ONE tag rule, shared by every "is this a component?" decision (#4368).
+ * An identifier tag names a DOM element when its first character is an ASCII
+ * lowercase letter (`div`, `my-el`) — the rule the downstream JSX transforms
+ * (TypeScript, esbuild, oxc, Babel) use to choose a string tag over a value —
+ * and a component otherwise (`Comp`, `_Comp`, `$Comp`). Mirrors
+ * `is_lower_case` / `is_component_tag` in `native/src/lib.rs`.
+ */
+function isLowerCase(s: string): boolean {
+  const c = s.charCodeAt(0)
+  return c >= 97 && c <= 122
+}
+
+/** Identifier tag that names a component (see `isLowerCase`). */
+function isComponentTag(tag: string): boolean {
+  return tag.length > 0 && !isLowerCase(tag)
+}
+
+/**
+ * Is this JSX element a COMPONENT? A member tag (`<m.X>`, `<UI.Button>`,
+ * `<Ctx.Provider>`, `<motion.div>`, `<this.X>`) always is — it names a value,
+ * as in every JSX dialect — and an identifier tag is by `isComponentTag`. A
+ * namespaced tag (`<svg:a>`) is not. Every component form compiles the same:
+ * `_rp` / `_pp` / `_rpd` props, `_wrapSpread` spreads, accessor children,
+ * `_lc` for a sole template child. Mirrors `is_component_element` (lib.rs).
+ */
+function isComponentElement(node: N): boolean {
+  const name = node?.openingElement?.name
+  if (!name) return false
+  if (name.type === 'JSXMemberExpression') return true
+
+  return name.type === 'JSXIdentifier' && isComponentTag(name.name as string)
+}
+
+/**
  * The QUALIFIED name of a JSX attribute — the ONE reader for the whole emitter.
  *
  * `xlink:href` parses as a `JSXNamespacedName`, not a `JSXIdentifier`, and every
@@ -618,8 +652,7 @@ export function scanCollapsibleSites(
       const tag = jsxTagName(node)
       const imp = tag ? imports.get(tag) : undefined
       if (
-        tag &&
-        tag.charAt(0) !== tag.charAt(0).toLowerCase() &&
+        isComponentTag(tag) &&
         imp &&
         collapsibleSources.has(imp.source)
       ) {
@@ -760,7 +793,7 @@ export function detectStaticElementChild(node: N): StaticChildNode | null {
   if (node?.type !== 'JSXElement') return null
   const tag = jsxTagName(node)
   // Component (uppercase first char) → has its own reactivity → bail.
-  if (!tag || tag.charAt(0) !== tag.charAt(0).toLowerCase()) return null
+  if (!tag || !isLowerCase(tag)) return null
 
   const props: Record<string, string> = {}
   for (const attr of jsxAttrs(node)) {
@@ -1537,7 +1570,7 @@ export function transformJSX_JS(
     const cfg = options.collapseRocketstyle
     if (!cfg) return false
     const tag = jsxTagName(node)
-    if (!tag || tag.charAt(0) === tag.charAt(0).toLowerCase()) return false
+    if (!isComponentTag(tag)) return false
     if (!cfg.candidates.has(tag)) return false
     // Shared bail catalogue — IDENTICAL to scanCollapsibleSites (the
     // plugin scans with the same predicate, so its resolved `sites`
@@ -1870,7 +1903,7 @@ export function transformJSX_JS(
   function isSoleComponentChild(node: N): boolean {
     const parent = findParent(node)
     if (!parent || parent.type !== 'JSXElement') return false
-    if (!isComponentTag(jsxTagName(parent))) return false
+    if (!isComponentElement(parent)) return false
     const kids = jsxChildren(parent).filter(
       (c: N) => !(c.type === 'JSXText' && !cleanJsxText(c.value ?? c.raw ?? '')),
     )
@@ -1916,15 +1949,12 @@ export function transformJSX_JS(
     if (parent.type === 'JSXFragment') return true
     if (parent.type === 'JSXExpressionContainer') return true
     if (parent.type !== 'JSXElement') return false
-    const tag = jsxTagName(parent)
-    // `jsxTagName` reports '' for a member/namespaced tag (`<Ctx.Provider>`),
-    // which `isComponentTag` would then read as "not a component". Those parents
-    // ARE components and are NEVER `_lc`-wrapped (the compiler classifies no
-    // member tag as a component anywhere), so they are always eager.
-    if (tag === '') return true
-    if (!isComponentTag(tag)) return false
+    // A component parent — identifier or member tag (`<Ctx.Provider>`), one
+    // rule (`isComponentElement`) — is eager unless this is its `_lc`-deferred
+    // sole child. A namespaced tag (`<svg:a>`, `jsxTagName` == '') stays eager.
+    if (isComponentElement(parent)) return !isSoleComponentChild(node)
 
-    return !isSoleComponentChild(node)
+    return jsxTagName(parent) === ''
   }
 
   /** Does this element tree absorb any COMPONENT child into its template? */
@@ -2995,8 +3025,7 @@ export function transformJSX_JS(
       // so the bytes (including a sync child's absence of markers and an async
       // child's `<!--$pas-->`/`<!--$pae-->` sentinels) are identical by
       // construction rather than by re-derivation.
-      const childTag = jsxTagName(child)
-      if (mode === 'recursed' && childTag && !isLowerCase(childTag)) {
+      if (mode === 'recursed' && isComponentElement(child)) {
         if (!ssrComponentChildEligible(child)) return false
         ssrEmitSourceHole(buf, child)
         needsSsrNodeImport = true
@@ -3408,9 +3437,7 @@ export function transformJSX_JS(
    * wrap there.
    */
   function handleJsxSpreadAttribute(attr: N, parentElement: N): void {
-    const tagName = jsxTagName(parentElement)
-    const isComponent = tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
-    if (!isComponent) return
+    if (!isComponentElement(parentElement)) return
     const arg = attr.argument
     if (!arg) return
     // Skip already-wrapped sources (idempotent compilation guard).
@@ -3463,8 +3490,7 @@ export function transformJSX_JS(
       return
     }
 
-    const tagName = jsxTagName(parentElement)
-    const isComponent = tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
+    const isComponent = isComponentElement(parentElement)
 
     if (isComponent) {
       const isSingleJsx = expr.type === 'JSXElement' || expr.type === 'JSXFragment'
@@ -3541,7 +3567,7 @@ export function transformJSX_JS(
       // reactive end-to-end.
       if (
         parentJsx &&
-        isComponentTag(jsxTagName(parentJsx)) &&
+        isComponentElement(parentJsx) &&
         isStableReference(expr) &&
         !referencesSignalVar(expr)
       ) {
@@ -3649,11 +3675,6 @@ export function transformJSX_JS(
     }
   }
 
-  /** Component tag — uppercase first letter. Lowercase = DOM element. */
-  function isComponentTag(tag: string): boolean {
-    return tag.length > 0 && tag.charAt(0) !== tag.charAt(0).toLowerCase()
-  }
-
   /**
    * A JSX child this template may ABSORB as a mounted component
    * (`templatizeComponentChildren`) rather than bail on.
@@ -3671,8 +3692,7 @@ export function transformJSX_JS(
     // element — `jsxTagName` reports '' for it, so the uppercase test alone
     // would misread it as "not a component".
     if (name.type !== 'JSXIdentifier') return true
-
-    return isComponentTag(name.name)
+    return isComponentTag(name.name as string)
   }
 
   /**
@@ -4030,6 +4050,25 @@ export function transformJSX_JS(
   /** Check if an identifier name is an active (non-shadowed) signal variable. */
   function isActiveSignal(name: string): boolean {
     return signalVars.has(name) && !shadowedSignals.has(name)
+  }
+
+  /**
+   * A bare identifier the Plain Mode pre-pass wrote for `signalOf(x)`
+   * (`/*@pyreon:signal*\/x`, see `SIGNAL_OF_MARK`): the signal ITSELF, never a
+   * read. Every place that treats a bare known signal as a read — the
+   * auto-call collector, the dynamic / fixed-deps classifiers, the bare
+   * `_bindText` / `_bindDirect` fast path, the component-child carve-out —
+   * goes through `isSignalRead`, so identity survives on every element path.
+   * Mirrored by `is_identity_ref` in the Rust backend.
+   */
+  function isIdentityRef(node: N): boolean {
+    const start = node.start as number
+    return start >= SIGNAL_OF_MARK.length && code.startsWith(SIGNAL_OF_MARK, start - SIGNAL_OF_MARK.length)
+  }
+
+  /** A bare identifier that READS an active signal (not a `signalOf` identity). */
+  function isSignalRead(node: N): boolean {
+    return node.type === 'Identifier' && isActiveSignal(node.name) && !isIdentityRef(node)
   }
 
   /** `sig()` — a zero-arg call of an active signal/computed — returns the callee name, else null. */
@@ -4827,7 +4866,7 @@ export function transformJSX_JS(
       }
     }
     // Signal variable reference — treated as dynamic (will be auto-called)
-    if (node.type === 'Identifier' && isActiveSignal(node.name)) {
+    if (isSignalRead(node)) {
       const parent = findParent(node)
       if (
         parent &&
@@ -4938,7 +4977,7 @@ export function transformJSX_JS(
         if (!isDynamic(node)) return true
         // A bare known signal is auto-called (one stable dep); a prop-derived
         // const is an opaque getter chain.
-        if (isActiveSignal(node.name) && !propDerivedVars.has(node.name)) return !cond
+        if (isSignalRead(node) && !propDerivedVars.has(node.name)) return !cond
         return false
       }
       case 'MemberExpression': {
@@ -5895,7 +5934,7 @@ export function transformJSX_JS(
       // `_bindText` is text-FIRST, not text-only (it upgrades to a subtree
       // mount on the first VNode-shaped value), so it covers every value a
       // bare signal child can hold, exactly like the general path did.
-      if (allowBareSignal && inner.type === 'Identifier' && isActiveSignal(inner.name)) {
+      if (allowBareSignal && isSignalRead(inner)) {
         return { ref: inner.name, isMember: false, receiver: null }
       }
       if (inner.type !== 'CallExpression') return null
@@ -7310,7 +7349,7 @@ export function transformJSX_JS(
 
   /** Check if an expression references any tracked signal variable. */
   function referencesSignalVar(node: N): boolean {
-    if (node.type === 'Identifier' && isActiveSignal(node.name)) {
+    if (isSignalRead(node)) {
       const parent = findParent(node)
       if (
         parent &&
@@ -7573,12 +7612,7 @@ export function transformJSX_JS(
         node.left.type !== 'VariableDeclaration'
       )
         markAssignTarget(node.left)
-      if (
-        node.type === 'Identifier' &&
-        isActiveSignal(node.name) &&
-        !shadowed.has(node.name) &&
-        !assignTargets.has(node)
-      ) {
+      if (isSignalRead(node) && !shadowed.has(node.name) && !assignTargets.has(node)) {
         const parent = findParent(node)
         // Skip property name positions (obj.name)
         if (
@@ -7947,10 +7981,6 @@ function isChildrenExpression(node: N, expr: string): boolean {
   if (expr.endsWith('.children') || expr === 'children') return true
 
   return false
-}
-
-function isLowerCase(s: string): boolean {
-  return s.length > 0 && s[0] === s[0]?.toLowerCase()
 }
 
 function containsJSXInExpr(node: N): boolean {

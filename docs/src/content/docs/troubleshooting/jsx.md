@@ -91,7 +91,7 @@ Both emits must wrap `{props.children}` using the same `shouldWrap` predicate th
 `<Provider><div>{useCtx()}</div></Provider>` passes `_tpl(…)` as an argument, so its `renderEffect`s would snapshot the pre-`provide()` context owner and read the default.
   - Fix: a component's sole child is emitted `{_lc(() => _tpl(…))}`, a memoized untracked thunk branded `REACTIVE_PROP`. `makeReactiveProps` turns it into a getter that returns the value, so structural consumers (`Switch`, kinetic `resolveChildren`, Iterator, compat `Children.*`) are unaffected.
   - A compiled template may only construct DOM. Any emitted work ordered against a component's setup (a binding, a context read, a nested mount) must be deferred until the component reads `props.children`.
-  - Limitation: multi-child parents and member-expression tags (`<Ctx.Provider>`) stay eager.
+  - Limitation: multi-child parents stay eager. A member-expression tag (`<Ctx.Provider>`) is a component like any other (#4368), so its sole child is `_lc`-deferred too.
   - Template-emission changes need the `ui-showcase-regression` e2e: this class needs a provider above a templatized element, which synthetic fixtures lack. Reference: `core/src/props.ts:_lc`, `compiler/src/jsx.ts:isSoleComponentChild`/`braceTemplateChild`, `native/src/lib.rs:brace_template_child`. Locked by `runtime-dom/src/tests/lazy-component-children.test.tsx` + the `_lc` block in `compiler/src/tests/native-equivalence.test.ts`.
 
 ---
@@ -99,7 +99,7 @@ Both emits must wrap `{props.children}` using the same `shouldWrap` predicate th
 ### Absorbing component children into a template (`templatizeComponentChildren`)
 
 The option bakes an element skeleton and mounts trailing component children into the clone. It is default on in `@pyreon/vite-plugin` and opt-in in the `@pyreon/compiler` primitive. Three requirements:
-  - Ordering: a `_tpl` bind runs when its call expression evaluates. Under a component parent only the `_lc`-deferred sole child may absorb; every eager-argument position (multi-child component parent, member/namespaced tag — `jsxTagName` returns `''` there, so an uppercase test would misread it as a DOM tag — fragment, expression container) bails to `h()` (`templateMountIsEagerlyOrdered`).
+  - Ordering: a `_tpl` bind runs when its call expression evaluates. Under a component parent only the `_lc`-deferred sole child may absorb; every eager-argument position (multi-child component parent — identifier or member tag, one rule — namespaced tag, fragment, expression container) bails to `h()` (`templateMountIsEagerlyOrdered`).
   - The absorbed child is a preserved hole that is walked, never a source slice (a slice drops `_rp`, `_lc` and nested `_tpl`).
   - The absorbed child's element needs a phase-1 ref const (the two-phase rule above).
   - Only the shape `[element*][component+]` (components in one trailing run) is absorbed; any other arrangement emits byte-identically to the option being off. Locked by `runtime-dom/src/tests/templatize-component-children.test.tsx`.

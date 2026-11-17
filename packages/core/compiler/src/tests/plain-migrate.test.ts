@@ -131,7 +131,7 @@ export const read = () => kept()
     expect(r.code).toContain(`import { state, signalOf } from '@pyreon/core/plain'`)
     // compiling back yields the classic identity use byte-for-byte
     const back = transformPlain(r.code!, 'x.ts')!.code
-    expect(back).toContain('subscribeSomewhere(passed)')
+    expect(back).toContain('subscribeSomewhere(/*@pyreon:signal*/passed)')
     expect(back).toContain('const passed = signal(1)')
   })
 
@@ -170,7 +170,7 @@ export function F() {
     // the aliased markers compile back to the classic code
     const back = transformPlain(r.code!, 'x.tsx')!.code
     expect(back).toContain('const passed = signal(1)')
-    expect(back).toContain('subscribeSomewhere(passed, signalOf, state)')
+    expect(back).toContain('subscribeSomewhere(/*@pyreon:signal*/passed, signalOf, state)')
   })
 
   it('an EXPORTED signal declines — its importers still call it', () => {

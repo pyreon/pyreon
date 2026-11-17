@@ -240,13 +240,13 @@ const count = signal(0)
 // flagged, fixed to count()
 <span>{count}</span>
 <For each={todos} by={(t) => t.id}>…</For>
+<Button onClick={() => count.set(count + 1)}>+</Button> // → count.set(count() + 1)
 
-// flagged, not fixed: the value is meant (write count()), but adding the call by
-// machine would change the paths that do not auto-call
-<Button onClick={() => count.set(count + 1)}>+</Button>
+// flagged, not fixed: on iOS and Android this is a two-way binding
+<Field value={draft} />
 ```
 
-The fix only inserts `()` where the compiler emits the same code for both forms (on a component prop the called form takes the faster `_rpd` path). It reports without fixing the whole value of a component prop (on iOS and Android `<Field value={draft}>` is a two-way binding) and a bare signal inside a function in JSX. It skips Plain Mode files (`count` IS the read there), files the Pyreon compiler does not lower (tests, compat projects, a foreign `@jsxImportSource`, where `{count}` is live and `{count()}` is read once), names bound more than once in a file, object shorthand `{ count }` and spreads (identity uses), and `on*` / `ref` values. `["warn", { "form": "bare" }]` flips it: `{count}` wherever the bare form type-checks and compiles the same (the whole expression of a child or a DOM attribute), and nothing elsewhere.
+The fix only inserts `()` where the compiler emits the same code for both forms (on a component prop the called form takes the faster `_rpd` path). Inside a function in JSX (a handler, `ref`, render prop or function child) the compiler reads a bare signal on every element, so that is fixed too. It reports without fixing the whole value of a component prop (on iOS and Android `<Field value={draft}>` is a two-way binding). It skips Plain Mode files (`count` IS the read there), files the Pyreon compiler does not lower (tests, compat projects, a foreign `@jsxImportSource`, where `{count}` is live and `{count()}` is read once), names bound more than once in a file, object shorthand `{ count }` and spreads (identity uses), and `on*` / `ref` values. `["warn", { "form": "bare" }]` flips it: `{count}` wherever the bare form type-checks and compiles the same (the whole expression of a child or a DOM attribute), and nothing elsewhere.
 
 ## Opting out
 
