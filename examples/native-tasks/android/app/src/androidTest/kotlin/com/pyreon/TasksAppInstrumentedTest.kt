@@ -416,7 +416,20 @@ class TasksAppInstrumentedTest {
     private fun textOf(tag: String): String =
         composeRule.onNodeWithTag(tag).fetchSemanticsNode().config.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text } ?: ""
 
-    private fun assertTagDisplayed(tag: String, where: String) {
+    /**
+     * `assertIsDisplayed()` on a node inside a `<Scroll>`. A Compose scroller
+     * keeps every child COMPOSED however far off-screen, so the node exists but
+     * is not displayed until it is scrolled into view: whether a bare assertion
+     * passes then depends on the emulator viewport and on where the previous
+     * `performScrollTo()` left the list (`toolkit-card-text` is ABOVE
+     * `toolkit-crdt-map`, so scrolling down to the map scrolls it away).
+     * Scroll to the node first, then assert, with [assertTagDisplayed]'s
+     * wait-for-existence and its tag / where / tags-on-screen failure message.
+     */
+    private fun assertTagDisplayedAfterScroll(tag: String, where: String) =
+        assertTagDisplayed(tag, where, scrollFirst = true)
+
+    private fun assertTagDisplayed(tag: String, where: String, scrollFirst: Boolean = false) {
         try {
             // WAIT first, exactly as the pre-helper assertions did
             // (`waitUntil(15_000) { onAllNodesWithTag(tag)… }`): a route change
@@ -427,6 +440,7 @@ class TasksAppInstrumentedTest {
             composeRule.waitUntil(timeoutMillis = 15_000) {
                 composeRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
             }
+            if (scrollFirst) composeRule.onNodeWithTag(tag).performScrollTo()
             composeRule.onNodeWithTag(tag).assertIsDisplayed()
         } catch (e: Throwable) {
             // `n.config.toString()` rather than a typed read: `describeTimeout`
@@ -1174,9 +1188,7 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("vocab-page")
             .assertIsDisplayed()
 
-        composeRule
-            .onNodeWithTag("vocab-remote-img")
-            .assertIsDisplayed()
+        assertTagDisplayedAfterScroll("vocab-remote-img", "vocab: remote Image")
 
         composeRule
             .onNodeWithTag("vocab-open-modal")
@@ -1468,9 +1480,7 @@ class TasksAppInstrumentedTest {
         composeRule
             .onNodeWithTag("stats-high")
             .assertTextEquals("2")
-        composeRule
-            .onNodeWithTag("stats-average")
-            .assertIsDisplayed()
+        assertTagDisplayedAfterScroll("stats-average", "stats: average node")
         // #3255: the plot engine's native HOST — `<SankeyChart>` lowers to a
         // Compose Canvas (PyreonChartCanvas) walking the generated engine's
         // draw list; the testid rides Modifier.testTag on that canvas.
@@ -2036,16 +2046,16 @@ class TasksAppInstrumentedTest {
         // styling is not assertable through the semantics tree, so assert what
         // is — that each styled wrapper renders its CHILDREN. The web e2e
         // asserts the computed CSS, which only a browser can see.
-        composeRule.onNodeWithTag("toolkit-card-text").assertIsDisplayed()
-        composeRule.onNodeWithTag("toolkit-rocket-text").assertIsDisplayed()
-        composeRule.onNodeWithTag("toolkit-el-a").assertIsDisplayed()
-        composeRule.onNodeWithTag("toolkit-el-b").assertIsDisplayed()
+        assertTagDisplayedAfterScroll("toolkit-card-text", "toolkit: styler Card child")
+        assertTagDisplayedAfterScroll("toolkit-rocket-text", "toolkit: rocketstyle child")
+        assertTagDisplayedAfterScroll("toolkit-el-a", "toolkit: Element child a")
+        assertTagDisplayedAfterScroll("toolkit-el-b", "toolkit: Element child b")
 
         // attrs + coolgrid: structural wrappers, so what the semantics tree can
         // see is that each renders its leaf. The web e2e asserts attrs' baked
         // `gap` default, which needs a computed style.
-        composeRule.onNodeWithTag("toolkit-attrs-text").assertIsDisplayed()
-        composeRule.onNodeWithTag("toolkit-grid-cell").assertIsDisplayed()
+        assertTagDisplayedAfterScroll("toolkit-attrs-text", "toolkit: attrs child")
+        assertTagDisplayedAfterScroll("toolkit-grid-cell", "toolkit: coolgrid cell")
         // hotkeys: the counter renders at its initial value. The PRESS is not
         // asserted here — the focused key handler needs a hardware keyboard the
         // emulator has no reliable way to drive, so the web e2e owns that half.
