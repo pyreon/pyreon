@@ -389,6 +389,10 @@ const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: st
   { name: 'pyreonDateTimezoneOffset', file: 'PyreonDate.swift' },
   { name: 'pyreonDateISO', file: 'PyreonDate.swift' },
   { name: 'pyreonDateMake', file: 'PyreonDate.swift' },
+  // A `Date` struct field's ISO-string codec (date-json.ts), named as an attribute (`@PyreonISODate var at`).
+  { name: 'PyreonISODate', file: 'PyreonDate.swift' },
+  { name: 'PyreonOptionalISODate', file: 'PyreonDate.swift' },
+  { name: 'PyreonISODates', file: 'PyreonDate.swift' },
   { name: 'pyreonSlice', file: 'PyreonSlice.swift' },
   { name: 'pyreonSliceIndex', file: 'PyreonSlice.swift' },
   { name: 'pyreonSubstring', file: 'PyreonSlice.swift' },
@@ -437,7 +441,7 @@ function swiftRuntimeHelpers(source: string): string {
   const linked = new Set<string>()
   for (const { name, file } of SWIFT_RUNTIME_HELPERS) {
     // A runtime TYPE is named in an annotation (`PyreonMap<String, Int>`) as often as it is constructed.
-    const named = source.includes(`${name}(`) || source.includes(`${name}<`)
+    const named = source.includes(`${name}(`) || source.includes(`${name}<`) || source.includes(`@${name} `)
     if (!named || source.includes(`func ${name}`) || linked.has(file)) continue
     linked.add(file)
     const text = readIfPresent(join(NATIVE_PACKAGES_DIR, 'runtime-swift/Sources/PyreonRuntime', file))

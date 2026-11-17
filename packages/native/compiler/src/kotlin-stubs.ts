@@ -432,9 +432,18 @@ fun Switch(
 // functions are reachable to kotlinc. No real (de)serialization;
 // stub callers receive a default-constructed value on decode.
 
+// The real annotation's \`with\` parameter: a \`Date\` property names its ISO-string serializer
+// (\`@Serializable(with = PyreonDateSerializer::class)\`, date-json.ts).
 @Target(AnnotationTarget.CLASS, AnnotationTarget.PROPERTY, AnnotationTarget.TYPE)
 @Retention(AnnotationRetention.RUNTIME)
-annotation class Serializable
+annotation class Serializable(val with: kotlin.reflect.KClass<out KSerializer<*>> = KSerializer::class)
+
+// kotlinx's serializer interface, as far as an annotation names it.
+interface KSerializer<T>
+
+// runtime-kotlin's PyreonDateJson.kt: a \`Date\` property crosses JSON as the web's ISO string.
+object PyreonDateSerializer : KSerializer<Double>
+object PyreonDateListSerializer : KSerializer<List<Double>>
 
 object Json {
   inline fun <reified T> encodeToString(value: T): String = value.toString()

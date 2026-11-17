@@ -6737,8 +6737,9 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       // `ReadonlyArray<T>` is the long spelling of `readonly T[]` — the same
       // runtime array, lowered as one (see the TSTypeOperator case).
       if (name === 'ReadonlyArray' && args.length === 1) return { kind: 'array', element: args[0]! }
-      // A `Date` is its epoch milliseconds natively (date-lowering.ts).
-      if (name === 'Date' && args.length === 0) return { kind: 'number', float: true }
+      // A `Date` is its epoch milliseconds natively (date-lowering.ts); the mark keeps a `Date` FIELD crossing JSON as
+      // its ISO string (date-json.ts).
+      if (name === 'Date' && args.length === 0) return { kind: 'number', float: true, date: true }
       // TypeScript's BUILT-IN utility types. Neither Swift nor Kotlin has any
       // of these names, so the pass-through arm below emitted the TS spelling
       // verbatim — `Partial<ChartTheme>` became `private let T:
