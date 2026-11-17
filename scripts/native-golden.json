@@ -7392,13 +7392,13 @@
       "warnings": 0
     },
     "example:native-router-demo/RouterApp.tsx|swift": {
-      "sha": "9781fee8335a8e214be7c08e58b13702dbc5d29ad05a5e26d8de1601a0bf0657",
-      "bytes": 37932,
+      "sha": "164f365d85480954e9059e7c018dc18d05da800faa57a5f9ff530c7a94269f6c",
+      "bytes": 38274,
       "warnings": 1
     },
     "example:native-router-demo/RouterApp.tsx|kotlin": {
-      "sha": "db1cf98900b2567b869dcf98eb2a42cdf48ce36a1719b396a548351258a86884",
-      "bytes": 32146,
+      "sha": "3c0da11d358a0560042cefc212306d43b99a408d88d42e008af3601e268f1dae",
+      "bytes": 32474,
       "warnings": 1
     },
     "example:native-showcase/TodayApp.tsx|swift": {

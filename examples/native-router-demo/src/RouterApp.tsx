@@ -208,11 +208,15 @@ function OfflinePage() {
   const db = useDatabase()
   let noteCount = plainState<number>(0)
   let state = plainState<string>('empty')
+  // A field read THROUGH the record (`found.fields.body`): natively the field bag is a dictionary / map, and this dot
+  // path was emitted verbatim and failed both builds with no warning. It now lowers to a subscript.
+  let noteBody = plainState<string>('none')
   onMount(() => {
     noteCount = db.count('notes')
     const found = db.get('notes', 'n1')
     if (found) {
       state = 'restored'
+      noteBody = found.fields.body
     }
   })
   return (
@@ -221,11 +225,16 @@ function OfflinePage() {
       <Text data-testid="net-status">Online: {net.isOnline}</Text>
       <Text data-testid="note-count">Notes: {noteCount}</Text>
       <Text data-testid="note-state">State: {state}</Text>
+      <Text data-testid="note-body">Body: {noteBody}</Text>
       <Button
         onPress={() => {
           db.insert('notes', { id: 'n1', fields: { body: 'written-offline' } })
           noteCount = db.count('notes')
           state = 'written'
+          const saved = db.get('notes', 'n1')
+          if (saved) {
+            noteBody = saved.fields.body
+          }
         }}
         data-testid="write-note"
       >
@@ -236,6 +245,7 @@ function OfflinePage() {
           db.delete('notes', 'n1')
           noteCount = db.count('notes')
           state = 'cleared'
+          noteBody = 'none'
         }}
         data-testid="clear-note"
       >

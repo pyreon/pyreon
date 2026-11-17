@@ -40,6 +40,15 @@ const PLUGIN_NAME = '@pyreon/hooks'
 const ERROR_OBJECT: TypeIR = { kind: 'typeRef', name: 'Error', args: [] }
 const nullable = (t: TypeIR): TypeIR => ({ kind: 'union', branches: [t, { kind: 'null' }] })
 
+/** The runtimes' `PyreonRecord`: an id and a string-to-string field bag. */
+const DB_RECORD: TypeIR = {
+  kind: 'object',
+  fields: [
+    { name: 'id', type: { kind: 'string' } },
+    { name: 'fields', type: { kind: 'map', key: { kind: 'string' }, value: { kind: 'string' } } },
+  ],
+}
+
 const WEBSOCKET_FIELDS: ReadonlySet<string> = new Set(['lastMessage', 'messages', 'isConnected', 'error'])
 const MAP_FIELDS: ReadonlySet<string> = new Set(['camera', 'markers', 'selectedMarkerId'])
 const AUTH_FIELDS: ReadonlySet<string> = new Set(['status', 'user', 'error'])
@@ -94,8 +103,13 @@ export const databaseDecl: DeclEmitter = {
   kotlin: (d, ctx) => kotlinCtxDecl(d, ctx, 'PyreonDatabase'),
   // `db.get(collection, id)` returns an optional RECORD on both runtimes, which makes the most common database shape — read a row,
   // branch on whether it exists — fail on both targets without this ("optional type cannot be used as a boolean"). The branch is
-  // `unknown`, not a record type: the condition lowering only needs the type to be OPTIONAL.
-  typing: { methodReturn: (_d, method) => (method === 'get' ? nullable({ kind: 'unknown' }) : undefined) },
+  // A RECORD type — `{ id, fields: Record<string, string> }`, the runtimes' `PyreonRecord` — so a field read through the record
+  // (`rec.fields.title`) is typed: it lowers to a dictionary / map subscript. Typed `unknown`, it was emitted verbatim as
+  // `.fields.title`, which neither runtime has, and failed both builds with no warning.
+  typing: {
+    methodReturn: (_d, method) =>
+      method === 'get' ? nullable(DB_RECORD) : method === 'all' || method === 'find' ? { kind: 'array', element: DB_RECORD } : undefined,
+  },
 }
 
 export const secureStorageDecl: DeclEmitter = {

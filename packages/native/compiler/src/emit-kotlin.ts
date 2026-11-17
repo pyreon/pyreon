@@ -174,6 +174,7 @@ import {
   styleToNativeModifiers,
   styleUsesPressedState,
 } from './style-to-native'
+import { recordEmptyValue } from './record-dot-read'
 import {
   type FlatRouteEntry,
   flattenRouteTree,
@@ -4914,6 +4915,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const k = lowerMathConstant(e.property)
         if (k !== null) return k
       }
+      // `rec.fields.title` on a string-keyed record → a subscript (see record-dot-read.ts).
+      if (e.optional !== true && !KOTLIN_RECORD_MAP_MEMBERS.has(e.property)) {
+        const mapT = inferType(e.object, _kotlinExprInferCtx)
+        if (mapT.kind === 'map' && mapT.key.kind === 'string') {
+          const empty = recordEmptyValue(mapT.value, 'kotlin')
+          if (empty !== null) return `(${emitKotlinExpr(e.object, indent)}[${kotlinStr(e.property)}] ?: ${empty})`
+          const w = `A dot read \`.${e.property}\` of a string-keyed record whose values are not strings, numbers or booleans has no native lowering (a dictionary / map has no \`.${e.property}\`). It does not compile on iOS or Android; read it with \`record['${e.property}']\` from a typed shape instead.`
+          if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+        }
+      }
       // v2 (form-binding arc) — per-field dict access on a form
       // container: `form.values.email` → `form.values.value["email"
       // ?: ""` (the MutableState map needs `.value` + the subscript;
@@ -9490,6 +9501,8 @@ function subtreeHasRouterView(node: unknown): boolean {
   if (n.kind === 'jsx-element' && n.tag === 'RouterView') return true
   return Object.values(node).some(subtreeHasRouterView)
 }
+
+const KOTLIN_RECORD_MAP_MEMBERS: ReadonlySet<string> = new Set(['get', 'set', 'has', 'delete', 'clear', 'keys', 'values', 'entries', 'forEach', 'size'])
 
 /**
  * R1.2 — emit a Compose `when`-dispatch block for the given routes.

@@ -192,6 +192,7 @@ import {
   styleUsesPressedState,
   swiftTextTypographyModifiers,
 } from './style-to-native'
+import { recordEmptyValue } from './record-dot-read'
 import {
   type FlatRouteEntry,
   flattenRouteTree,
@@ -1743,6 +1744,21 @@ function warnUnmappedMemberMethod(e: Extract<ExprIR, { kind: 'call' }>): void {
   if (w !== undefined && !_emitWarnings.includes(w)) _emitWarnings.push(w)
 }
 
+/**
+ * A component's own binding or prop named `body` becomes a member of the emitted SwiftUI `View`, whose `body` is its
+ * required content property: `@State private var body` beside `var body: some View` is "invalid redeclaration", and
+ * nothing named it. Named here so the author renames it (Kotlin functions have no such member, so it compiles there).
+ */
+function warnSwiftViewMemberCollision(c: ComponentIR): void {
+  const names = [
+    ...c.decls.map((d) => ('name' in d && typeof d.name === 'string' ? d.name : undefined)),
+    ...c.props.map((p) => p.name),
+  ]
+  if (!names.includes('body')) return
+  const w = `Component ${c.name}: a binding or prop named \`body\` collides with SwiftUI's \`View.body\` and does not compile on iOS ("invalid redeclaration of 'body'"). Rename it (\`content\`, \`text\`, …).`
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+}
+
 function emitSwiftComponent(c: ComponentIR): string {
   // A fresh plugin scope per component; the outer one is restored at the end (and a file start installs a new module scope).
   const outerPluginScope = _pluginScope
@@ -1750,6 +1766,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Local binding names may repeat in unrelated components. Seed the kind,
   // bounds and reset value together, and release them with this component.
   _activeComponentName = c.name
+  warnSwiftViewMemberCollision(c)
   // Store field types thread into the inference ctx so computeds over
   // store reads (`useApp().store.tasks().filter(...).length`) infer a
   // concrete return type instead of degrading to Any.
@@ -2691,6 +2708,19 @@ function resolveSwiftStructFields(
 /** The pending / failed conditions of one async source (a plugin declaration that declares `asyncState`). */
 function asyncStateSwift(d: DeclIR, indent: number): { pending: string; error: string } {
   return pluginAsyncState(d, 'swift', swiftEmitContext(indent))!
+}
+
+/**
+ * A dot read of a STRING-KEYED record (`rec.fields.title` on `Record<string, string>`, `PyreonRecord.fields`). Natively
+ * the record is a dictionary / map, which has no `.title`: the read was emitted verbatim and failed both builds with no
+ * warning. It lowers to a subscript with the value type's empty value for an absent key, as `useParams` fields do.
+ * `null` when the receiver is not such a map, or its value type has no empty value (the caller then warns).
+ */
+const RECORD_MAP_MEMBERS: ReadonlySet<string> = new Set(['get', 'set', 'has', 'delete', 'clear', 'keys', 'values', 'entries', 'forEach', 'size'])
+
+function pushRecordDotWarning(property: string): void {
+  const w = `A dot read \`.${property}\` of a string-keyed record whose values are not strings, numbers or booleans has no native lowering (a dictionary / map has no \`.${property}\`). It does not compile on iOS or Android; read it with \`record['${property}']\` from a typed shape instead.`
+  if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
 }
 
 function emitSwiftDecl(
@@ -6164,6 +6194,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (k !== null) return k
       }
 
+      // `rec.fields.title` on a string-keyed record → a subscript (see `swiftRecordDotRead`).
+      if (e.optional !== true && !RECORD_MAP_MEMBERS.has(e.property)) {
+        const mapT = inferType(e.object, _activeInferCtx)
+        if (mapT.kind === 'map' && mapT.key.kind === 'string') {
+          const empty = recordEmptyValue(mapT.value, 'swift')
+          if (empty !== null) return `(${emitSwiftExpr(e.object, indent)}[${swiftStr(e.property)}] ?? ${empty})`
+          pushRecordDotWarning(e.property)
+        }
+      }
       // `m.size` (Map/Set property) → Swift `.count`, typed off the receiver.
       if (e.property === 'size') {
         const szT = inferType(e.object, _activeInferCtx)
