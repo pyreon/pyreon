@@ -4,7 +4,8 @@ import { fill, OPEN_COPY } from '../site/content/channels'
 import { el, tone, txt } from '../site/kit/bases'
 import { GlowCard } from '../site/kit/cards'
 import { Pill } from '../site/kit/controls'
-import { AutoGrid, Section, SectionHead, Wrap } from '../site/kit/layout'
+import { Section, SectionHead } from '../site/kit/layout'
+import { AutoGrid, Cluster, Stack, Wrap } from '../site/kit/primitives'
 import { CaveatLine } from '../site/kit/proof'
 import { Reveal } from '../site/kit/motion'
 import { LinkCards } from '../site/kit/story'
@@ -27,8 +28,6 @@ import { formatTimestamp, type OpenStats } from './stats'
 const TrendChartIsland = island(() => import('./TrendChart'), { name: 'OpenTrendChart', hydrate: 'visible' })
 
 const Hero = el.config({ name: 'OpenHero' }).attrs({ block: true, contentAlignX: 'block', gap: 22 }).theme(() => ({ maxWidth: 860 }))
-const Row = el.config({ name: 'OpenRow' }).attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 10 }).theme(() => ({ flexWrap: 'wrap' }))
-const Stack = el.config({ name: 'OpenStack' }).attrs({ block: true, contentAlignX: 'block', gap: 18 })
 
 const Updated = txt
   .config({ name: 'OpenUpdated' })
@@ -108,7 +107,7 @@ function Tile(props: { tile: TileView }) {
 
 function Tiles(props: { tiles: readonly TileView[] }) {
   return (
-    <AutoGrid min={220} gap={12} tag="ul">
+    <AutoGrid min={220} gap={150} tag="ul">
       <For each={props.tiles} by={(t) => t.label}>
         {(t) => (
           <li>
@@ -144,7 +143,7 @@ export function OpenStatsView(props: { stats: OpenStats }) {
               {c.hero.title}
             </Heading>
             <Lede size="hero">{renderInline(c.hero.lede)}</Lede>
-            <Row>
+            <Cluster gap={125} alignY="center">
               <For each={c.hero.actions} by={(a) => a.label}>
                 {(a) => (
                   <Pill href={a.href ?? '/'} variant="solid">
@@ -152,7 +151,7 @@ export function OpenStatsView(props: { stats: OpenStats }) {
                   </Pill>
                 )}
               </For>
-            </Row>
+            </Cluster>
             <Updated>
               {`${c.updated} `}
               <time datetime={stats.generatedAt}>{formatTimestamp(stats.generatedAt)}</time>
@@ -164,7 +163,7 @@ export function OpenStatsView(props: { stats: OpenStats }) {
       <Section size="tight" aria-labelledby="open-work">
         <Wrap>
           <SectionHead id="open-work" label={c.work.label} title={c.work.title} text={c.work.text} />
-          <Stack>
+          <Stack gap={225}>
             <Tiles tiles={c.work.tiles.map((t) => tileView(stats, t))} />
             <CaveatLine text={c.work.note} link={c.work.noteLink} />
           </Stack>
@@ -175,7 +174,7 @@ export function OpenStatsView(props: { stats: OpenStats }) {
         <Section aria-labelledby="open-npm">
           <Wrap>
             <SectionHead id="open-npm" label={c.downloads.label} title={c.downloads.title} text={c.downloads.text} />
-            <Stack>
+            <Stack gap={225}>
               <Tiles tiles={downloadTiles(stats, c)} />
               <DownloadTrend stats={stats} />
             </Stack>
@@ -187,9 +186,9 @@ export function OpenStatsView(props: { stats: OpenStats }) {
         <Section size="tight" aria-labelledby="open-community">
           <Wrap>
             <SectionHead id="open-community" label={c.community.label} title={c.community.title} text={c.community.text} />
-            <Stack>
+            <Stack gap={225}>
               <Tiles tiles={c.community.tiles.map((t) => tileView(stats, t))} />
-              <Row>
+              <Cluster gap={125} alignY="center">
                 <For each={c.community.actions.map((a, i) => ({ a, i }))} by={(x) => x.i}>
                   {(x) => (
                     <Pill href={x.a.href ?? '/'} variant={x.i === 0 ? 'solid' : 'ghost'}>
@@ -197,7 +196,7 @@ export function OpenStatsView(props: { stats: OpenStats }) {
                     </Pill>
                   )}
                 </For>
-              </Row>
+              </Cluster>
             </Stack>
           </Wrap>
         </Section>

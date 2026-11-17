@@ -67,7 +67,7 @@
   "after": {
    "label": "with @pyreon/dnd",
    "caption": "One hook. Pointer, keyboard, announcements and auto-scroll included; you get the reordered array.",
-   "code": "import { For } from '@pyreon/core'\nimport { useSortable } from '@pyreon/dnd'\nimport { signal } from '@pyreon/reactivity'\n\nconst tasks = signal<Task[]>(initial)\n\nconst Tasks = () => {\n  const { containerRef, itemRef } = useSortable({\n    items: tasks,\n    by: (t) => t.id,\n    label: (t) => t.title,\n    onReorder: (next) => tasks.set(next),\n  })\n  return (\n    <ul ref={containerRef}>\n      <For each={tasks} by={(t) => t.id}>\n        {(t) => <li ref={itemRef(t.id)}>{t.title}</li>}\n      </For>\n    </ul>\n  )\n}"
+   "code": "import { For } from '@pyreon/core'\nimport { useSortable } from '@pyreon/dnd'\nimport { signal } from '@pyreon/reactivity'\n\nconst tasks = signal<Task[]>(initial)\n\nconst Tasks = () => {\n  const { containerRef, itemRef } = useSortable({\n    items: tasks,\n    by: (t) => t.id,\n    label: (t) => t.title,\n    onReorder: (next) => tasks.set(next),\n  })\n  return (\n    <ul ref={containerRef}>\n      <For each={tasks()} by={(t) => t.id}>\n        {(t) => <li ref={itemRef(t.id)}>{t.title}</li>}\n      </For>\n    </ul>\n  )\n}"
   }
  },
  "comingFrom": [
@@ -75,7 +75,7 @@
    "lib": "react-beautiful-dnd",
    "title": "Same company's engine, without the render props.",
    "before": "<DragDropContext\n  onDragEnd={(r) => {\n    if (!r.destination) return\n    setTasks((ts) => reorder(ts, r.source.index, r.destination!.index))\n  }}\n>\n  <Droppable droppableId=\"tasks\">\n    {(provided) => (\n      <ul ref={provided.innerRef} {...provided.droppableProps}>\n        {tasks.map((t, i) => (\n          <Draggable key={t.id} draggableId={t.id} index={i}>\n            {(p) => (\n              <li ref={p.innerRef} {...p.draggableProps} {...p.dragHandleProps}>\n                {t.title}\n              </li>\n            )}\n          </Draggable>\n        ))}\n        {provided.placeholder}\n      </ul>\n    )}\n  </Droppable>\n</DragDropContext>",
-   "after": "const { containerRef, itemRef } = useSortable({\n  items: tasks,\n  by: (t) => t.id,\n  label: (t) => t.title,\n  onReorder: (next) => tasks.set(next),\n})\n\n<ul ref={containerRef}>\n  <For each={tasks} by={(t) => t.id}>\n    {(t) => <li ref={itemRef(t.id)}>{t.title}</li>}\n  </For>\n</ul>",
+   "after": "const { containerRef, itemRef } = useSortable({\n  items: tasks,\n  by: (t) => t.id,\n  label: (t) => t.title,\n  onReorder: (next) => tasks.set(next),\n})\n\n<ul ref={containerRef}>\n  <For each={tasks()} by={(t) => t.id}>\n    {(t) => <li ref={itemRef(t.id)}>{t.title}</li>}\n  </For>\n</ul>",
    "note": "react-beautiful-dnd is no longer maintained, and Atlassian points its users to Pragmatic drag and drop, the engine under `@pyreon/dnd`. Boards across lists: give each list the same `groupId` and handle `onCrossListDrop` / `onCrossListReceive`."
   }
  ],
@@ -138,7 +138,7 @@
   {
    "title": "A drop indicator that touches two rows, not all of them",
    "text": "`isOverKey(id)` and `overEdge()` are signals. The line appears above or below the hovered card, and a hover move updates only the row it left and the row it entered.",
-   "code": "const s = useSortable({\n  items: tasks,\n  by: (t) => t.id,\n  label: (t) => t.title,\n  onReorder: (next) => tasks.set(next),\n})\n\n<ul ref={s.containerRef}>\n  <For each={tasks} by={(t) => t.id}>\n    {(t) => (\n      <li\n        ref={s.itemRef(t.id)}\n        class={() => (s.isOverKey(t.id) ? `drop-${s.overEdge()}` : '')}\n        data-active={() => s.isActive(t.id)}\n      >\n        {t.title}\n      </li>\n    )}\n  </For>\n</ul>"
+   "code": "const s = useSortable({\n  items: tasks,\n  by: (t) => t.id,\n  label: (t) => t.title,\n  onReorder: (next) => tasks.set(next),\n})\n\n<ul ref={s.containerRef}>\n  <For each={tasks()} by={(t) => t.id}>\n    {(t) => (\n      <li\n        ref={s.itemRef(t.id)}\n        class={() => (s.isOverKey(t.id) ? `drop-${s.overEdge()}` : '')}\n        data-active={() => s.isActive(t.id)}\n      >\n        {t.title}\n      </li>\n    )}\n  </For>\n</ul>"
   },
   {
    "title": "An avatar drop zone that says no politely",

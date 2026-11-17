@@ -208,7 +208,7 @@ export const checked = {
           "liveDemo": "/showcase/collab-board/"
         },
         {
-          "dir": "native-tasks-web",
+          "dir": "native-tasks",
           "title": "Tasks, on the web and on device",
           "summary": "A tasks app written once in `examples/native-tasks/src/TasksApp.tsx`: sign-in, task lists and detail screens, a dashboard and a chart gallery. The same source compiles to SwiftUI for iOS and Jetpack Compose for Android.",
           "highlights": [
@@ -220,23 +220,9 @@ export const checked = {
             "form",
             "auth"
           ],
-          "run": "cd examples/native-tasks-web && bun run dev -- --port 5204",
+          "run": "cd examples/native-tasks && bun run dev -- --port 5204",
           "open": "http://localhost:5204",
-          "note": "Sign in with any name of three or more characters.",
-          "alsoSource": [
-            {
-              "label": "Shared source",
-              "dir": "native-tasks"
-            },
-            {
-              "label": "iOS project",
-              "dir": "native-tasks-ios"
-            },
-            {
-              "label": "Android project",
-              "dir": "native-tasks-android"
-            }
-          ]
+          "note": "Sign in with any name of three or more characters."
         },
         {
           "dir": "compat/react",

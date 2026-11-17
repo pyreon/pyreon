@@ -406,7 +406,7 @@ const SUITES: Suite[] = [
       // any change to a web primitive (Stack/Inline/Field/Button/Press/Text)
       // can break the spec.
       'packages/core/primitives/',
-      'examples/native-todomvc-web/',
+      'examples/native-todomvc/',
       'e2e/native-todomvc-web',
     ],
   },
@@ -426,7 +426,7 @@ const SUITES: Suite[] = [
       'packages/core/primitives/',
       'packages/fundamentals/',
       'examples/native-tasks/',
-      'examples/native-tasks-web/',
+      'examples/native-tasks/',
       'e2e/native-tasks-web',
     ],
   },

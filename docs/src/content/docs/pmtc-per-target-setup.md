@@ -270,7 +270,7 @@ Three patterns, in order of confidence:
 | Per-target entry (`src/App.tsx` + `src/web-only.ts` + `src/ios-only.swift`) | Need substantial platform-specific code | More boilerplate; clearer division |
 | Three separate apps with copy-paste source | Hard requirements for divergent behavior on each platform | Loses the one-source benefit; PMTC adds nothing |
 
-The canonical pattern is the first. Read `examples/native-todomvc-{ios,android,web}/README.md` to see how each consumes the SAME `examples/native-todomvc-ios/src/TodoApp.tsx`.
+The canonical pattern is the first. Read `examples/native-todomvc/README.md` to see how each host consumes the SAME `examples/native-todomvc/src/TodoApp.tsx`.
 
 ---
 
@@ -347,4 +347,4 @@ If any of the three fail with errors about un-emitted shapes, check [`pmtc-suppo
 - [PMTC Supported TypeScript](./pmtc-supported-typescript.md) — what shapes compile
 - [`docs/create-multiplatform.md`](./create-multiplatform.md) — the scaffolder
 - [`examples/native-counter/ios/`](https://github.com/pyreon/pyreon/tree/main/examples/native-counter/ios) — minimal iOS reference
-- [`examples/native-todomvc-{ios,android,web}/`](https://github.com/pyreon/pyreon/tree/main/examples) — full one-source 3-target reference
+- [`examples/native-todomvc/`](https://github.com/pyreon/pyreon/tree/main/examples/native-todomvc) — full one-source 3-target reference

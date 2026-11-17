@@ -97,6 +97,45 @@ interface Ctx {
    * original 300-seed corpus byte-for-byte the same shape it was.
    */
   rnd3: () => number
+  /**
+   * A FOURTH independent stream for the nested-function × element-path arm: a
+   * bare signal inside a handler / ref / render-prop / function child on a
+   * component, a childless or void element, a spread-carrying element. Both
+   * backends once AGREED on leaving those bare everywhere but template
+   * elements, so the byte-equality gate alone could not see it; drawing from
+   * its own stream keeps every earlier draw sequence unchanged.
+   */
+  rnd4: () => number
+}
+
+/** Functions holding a bare signal — value reads, identity uses, shadowing. */
+function genNestedFn(c: Ctx): string {
+  const s = pick(c.rnd4, c.signals)
+  return pick(c.rnd4, [
+    `() => ${s}.set(${s} + 1)`,
+    `function () { ${s}.set(${s} + 1) }`,
+    `async () => { await 0; ${s}.set(${s} + 1) }`,
+    `() => [1].forEach(() => ${s}.set(${s} + 1))`,
+    `(e) => use(${s}, e)`,
+    `() => use({ ${s} })`,
+    `() => [${s}, 1]`,
+    `() => { return ${s} }`,
+    `(${s}) => use(${s} + 1)`,
+    `() => ${s}.set`,
+    `() => <i title={${s} + 1}>{${s}}</i>`,
+  ])
+}
+
+/** A function in JSX-CHILD position (render callback, IIFE, nested handler). */
+function genNestedFnChild(c: Ctx): string {
+  const s = pick(c.rnd4, c.signals)
+  return pick(c.rnd4, [
+    `{() => ${s} + 1}`,
+    `{(() => ${s} + 1)()}`,
+    `{function () { return ${s} }}`,
+    `{() => <b onClick={() => ${s}.set(${s} + 1)}>x</b>}`,
+    `{(r) => <li>{r}{${s}}</li>}`,
+  ])
 }
 
 /**
@@ -199,6 +238,9 @@ function genAttrs(c: Ctx): string {
     else if (r < 0.9) parts.push(`title={(${genExpr(c)}) as string}`)
     else parts.push(`title="${'t' + Math.floor(c.rnd() * 10)}"`)
   }
+  if (c.signals.length && c.rnd4() < 0.3) {
+    parts.push(`${pick(c.rnd4, [...EVENTS, 'ref', 'render', 'data-fn'])}={${genNestedFn(c)}}`)
+  }
   return parts.length ? ' ' + parts.join(' ') : ''
 }
 
@@ -254,6 +296,15 @@ function genChild(c: Ctx): string {
  * and an uppercase test would misread as a DOM element.
  */
 function genComponentChild(c: Ctx): string {
+  const out = genComponentChildBase(c)
+  // Nested-function arm: a component whose child is a function (render
+  // callback, IIFE, nested handler) — appended as a sibling so the base draw
+  // sequence is untouched.
+  if (c.signals.length && c.rnd4() < 0.25) return `<>${out}<Comp9>${genNestedFnChild(c)}</Comp9></>`
+  return out
+}
+
+function genComponentChildBase(c: Ctx): string {
   const r = c.rnd()
   const n = c.idc.n++ % 3
   if (r < 0.4) return `<Comp${n}${genAttrs(c)} />`
@@ -333,7 +384,8 @@ function genComponent(seed: number): string {
   const rnd2 = mulberry32((seed ^ 0x9e3779b9) >>> 0)
   const pd = props && rnd2() < 0.5
   const rnd3 = mulberry32((seed ^ 0x51ed270b) >>> 0)
-  const c: Ctx = { rnd, signals, props, depth: 0, idc: { n: 0 }, helpers, pd, rnd2, rnd3 }
+  const rnd4 = mulberry32((seed ^ 0x2545f491) >>> 0)
+  const c: Ctx = { rnd, signals, props, depth: 0, idc: { n: 0 }, helpers, pd, rnd2, rnd3, rnd4 }
   const lines: string[] = [`import { signal, computed } from "@pyreon/reactivity"`]
   lines.push(...helperLines)
   const body: string[] = []

@@ -2,7 +2,9 @@ import { For } from '@pyreon/core'
 import { clampSize, display, font, gradient, radius, text, weight } from '../theme'
 import { el, pair, tone, txt } from './bases'
 import { GlowCard } from './cards'
-import { AutoGrid } from './layout'
+import { Cluster } from './primitives/cluster'
+import { Stack } from './primitives/stack'
+import { AutoGrid } from './primitives/auto-grid'
 import { Eyebrow, Heading, Lede, renderInline, StatusBadge } from './type'
 
 // ─── FactList ─────────────────────────────────────────────────────────────
@@ -179,14 +181,6 @@ export function FeatureList(props: { items: readonly { name: string; text: strin
 
 // ─── ApiGroups ────────────────────────────────────────────────────────────
 
-const ChipRow = el
-  .config({ name: 'ApiChips' })
-  .attrs({ tag: 'ul', block: true, contentDirection: 'inline', gap: 6 })
-  .theme(() => ({ flexWrap: 'wrap', listStyle: 'none', margin: 0, padding: 0 }))
-
-const GroupBox = el.config({ name: 'ApiGroup' }).attrs({ block: true, gap: 10 })
-const GroupsBox = el.config({ name: 'ApiGroups' }).attrs({ block: true, gap: 22 })
-
 const ApiChip = txt
   .config({ name: 'ApiChip' })
   .attrs({ tag: 'li' })
@@ -209,20 +203,20 @@ const ApiChip = txt
 /** `.p-api` — exports grouped by role, as mono chips. */
 export function ApiGroups(props: { groups: readonly { name: string; items: readonly string[] }[] }) {
   return (
-    <GroupsBox>
+    <Stack gap={275} alignX="left">
       <For each={props.groups} by={(g) => g.name}>
         {(g) => (
-          <GroupBox>
+          <Stack gap={125} alignX="left">
             <Eyebrow>{`${g.name} · ${g.items.length}`}</Eyebrow>
-            <ChipRow aria-label={g.name}>
+            <Cluster tag="ul" gap={75} aria-label={g.name}>
               <For each={g.items} by={(x) => x}>
                 {(x) => <ApiChip>{x}</ApiChip>}
               </For>
-            </ChipRow>
-          </GroupBox>
+            </Cluster>
+          </Stack>
         )}
       </For>
-    </GroupsBox>
+    </Stack>
   )
 }
 

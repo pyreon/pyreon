@@ -47,7 +47,7 @@ const TODOMVC_SOURCE_PATH = join(
   '..',
   '..',
   'examples',
-  'native-todomvc-ios',
+  'native-todomvc',
   'src',
   'TodoApp.tsx',
 )

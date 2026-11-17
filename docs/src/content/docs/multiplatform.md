@@ -59,7 +59,7 @@ Each area's tier is **derived from its row in the [production capability matrix]
 Write your app once. Run it on the web, iOS, and Android — each rendered with the platform's native primitives. (Web runs live today; iOS/Android are emitted as SwiftUI/Compose and build cleanly for the example apps — read "What runs on native" and the validation Status above for the honest scope, including which packages are web-only.)
 
 ```tsx
-// Adapted from examples/native-todomvc-ios/src/TodoApp.tsx — single source, three targets
+// Adapted from examples/native-todomvc/src/TodoApp.tsx — single source, three targets
 import { signal } from '@pyreon/reactivity'
 import { For } from '@pyreon/core'
 import { useStorage } from '@pyreon/storage'
@@ -598,7 +598,7 @@ Foundation rollout (A–E):
 | **A** | Architectural foundation: canonical primitives package + web runtimes | ✅ Done — every canonical primitive has a web DOM runtime |
 | **B** | PMTC compiler emit for iOS + Android (extends `canonical-primitives.ts` table) | ✅ Done — every canonical primitive emits for iOS (Swift) and Android (Compose) |
 | **C** | `@pyreon/native-router-{swift,kotlin}` runtime adapters + routes emit (path + component) | ✅ Done |
-| **D** | Web target for PMTC + `examples/native-todomvc-web/` consuming the shared source | ✅ Done |
+| **D** | Web target for PMTC + `examples/native-todomvc/` consuming the shared source | ✅ Done |
 | **E** | TodoMVC migration to canonical vocab — closes the cross-platform contract | ✅ Done |
 
 ONE `TodoApp.tsx` source → THREE example apps (web, iOS, Android), all typecheck-clean.
@@ -1869,12 +1869,12 @@ lane.
 
 ### TodoMVC reference walkthrough (locally verified, June 2026)
 
-The `examples/native-todomvc-{web,ios,android}` apps form the **canonical proof** of the single-source contract. The shared TodoApp source (`examples/native-todomvc-ios/src/TodoApp.tsx`) renders on all three targets without modification.
+The `examples/native-todomvc` app (web host at its root, `ios/`, `android/`) forms the **canonical proof** of the single-source contract. The shared TodoApp source (`examples/native-todomvc/src/TodoApp.tsx`) renders on all three targets without modification.
 
 **Web** (a real running app in the browser):
 
 ```bash
-cd examples/native-todomvc-web
+cd examples/native-todomvc
 bun run build      # 88 modules → 35 KB JS bundle, 13 KB gzipped
 bun run dev        # http://localhost:5173/
 ```
@@ -1884,8 +1884,8 @@ Then in a browser: type, hit Enter, toggle, filter All/Active/Completed, click C
 **iOS Swift emit**:
 
 ```bash
-bash examples/native-todomvc-ios/scripts/build.sh
-# → examples/native-todomvc-ios/generated/TodoApp.swift
+bash examples/native-todomvc/scripts/build-ios.sh
+# → examples/native-todomvc/ios/generated/TodoApp.swift
 ```
 
 The emitted file opens with the import preamble (`import SwiftUI` / `PyreonRuntime` / `PyreonRouter`) and emits idiomatic SwiftUI: `@PyreonAppStorage("pyreon-todomvc:todos")` for persistence, `@State` for local signals, `VStack(spacing: 8)` / `HStack` for layout, `TextField(..., text: $draft)` with `.onSubmit { addTodo() }`, `ForEach` keyed by id, `Button(action:)`. The `data-testid="todo-app"` JSX attribute becomes `.accessibilityIdentifier("todo-app")` so the same string works on the iOS UI test.
@@ -1897,15 +1897,15 @@ swiftc -typecheck \
   -target arm64-apple-macos14.0 \
   packages/native/runtime-swift/Sources/PyreonRuntime/*.swift \
   packages/native/router-swift/Sources/PyreonRouter/*.swift \
-  examples/native-todomvc-ios/generated/TodoApp.swift
+  examples/native-todomvc/ios/generated/TodoApp.swift
 # → exit 0 (zero errors)
 ```
 
 **Android Kotlin emit**:
 
 ```bash
-bash examples/native-todomvc-android/scripts/build.sh
-# → examples/native-todomvc-android/app/src/main/kotlin/com/pyreon/generated/TodoApp.kt
+bash examples/native-todomvc/scripts/build-android.sh
+# → examples/native-todomvc/android/app/src/main/kotlin/com/pyreon/generated/TodoApp.kt
 ```
 
 The emitted file opens with `package com.pyreon.generated`, the Compose import preamble (`androidx.compose.runtime.*` / `material.*` / `kotlinx.serialization.Serializable` / `com.pyreon.runtime.*`), and emits idiomatic Compose: `var todos by rememberPyreonStorage<List<Todo>>(...)`, `var filter by remember { mutableStateOf(Filter.all) }`, `val visible by remember { derivedStateOf { ... } }`, `Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("todo-app"))`, `TextField` with `KeyboardOptions(imeAction = ImeAction.Done)` + `KeyboardActions(onDone = { addTodo() })`, `LazyColumn { items(visible, key = { it.id }) { ... } }`, `Button(onClick = ...)`.
@@ -1916,7 +1916,7 @@ Verify against the framework's `validateKotlin` (same Compose stub set the `vali
 bun -e "
   import('./packages/native/compiler/src/validate.ts').then(async (m) => {
     const { readFileSync } = await import('node:fs')
-    const src = readFileSync('examples/native-todomvc-android/app/src/main/kotlin/com/pyreon/generated/TodoApp.kt', 'utf8')
+    const src = readFileSync('examples/native-todomvc/android/app/src/main/kotlin/com/pyreon/generated/TodoApp.kt', 'utf8')
     // Strip the package + wildcard imports (the stub set is in default package).
     const stripped = src.split('\n')
       .filter(l => !l.startsWith('package ') && !l.startsWith('import androidx') && !l.startsWith('import kotlinx') && !l.startsWith('import com.pyreon'))
@@ -1940,7 +1940,7 @@ The runtime packages exist, with one reactive container per data/service hook:
 - Compiler source: `packages/native/compiler/src/` — `emit-swift.ts` / `emit-kotlin.ts` per-target emit; `canonical-primitives.ts` shared name maps + token resolution
 - Native runtime packages: `packages/native/runtime-swift/`, `packages/native/runtime-kotlin/`
 - Web runtime: `packages/core/primitives/src/web/` — all 22 canonical primitives plus `Transition`, `TransitionGroup`, `WebView` and the escape hatches
-- Example apps: `examples/native-todomvc-{ios,android,web}/` + `examples/native-router-demo-{ios,web}/` — `native-router-demo/ios` ships a full XcodeGen host shell (#1105) so `bash scripts/build.sh` produces a buildable Xcode project, not a source-only stub. `examples/native-todomvc-web/README.md` was also corrected (#1106) so it no longer references a fictional `src/TodoApp.tsx` — the one-source contract (Phase E3) keeps the shared TodoApp source in `examples/native-todomvc-ios/src/`.
+- Example apps: `examples/native-todomvc/` + `examples/native-router-demo/` — `native-router-demo/ios` ships a full XcodeGen host shell (#1105) so `bash ../scripts/build-ios.sh` produces a buildable Xcode project, not a source-only stub. `examples/native-todomvc/README.md` was also corrected (#1106) so it no longer references a fictional `src/TodoApp.tsx` — the one-source contract (Phase E3) keeps the shared TodoApp source in `examples/native-todomvc/src/`.
 - Native validation gates: `.github/workflows/native-validate.yml` (compiler fixtures and real-SDK Swift typechecks) and `.github/workflows/native-device.yml` (example builds and Simulator/emulator tests); selected automatically for relevant PRs, with nightly and manual runs. The `native-device` label forces every device lane.
 - `.agents/guides/multiplatform/README.md` — agent-context summary of the layered model
 

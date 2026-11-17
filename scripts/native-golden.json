@@ -2232,14 +2232,14 @@
       "warnings": 0
     },
     "golden-fixture:feature-09.tsx|swift": {
-      "sha": "aee4a6993a7eb5ceeffabd49261e2d8eb304d3bc9ef0ef1f6ac7872ee46b9d67",
-      "bytes": 2921,
-      "warnings": 3
+      "sha": "bac929bafd0742876edcb0200c5b9254589703811b4ad43e316674a4d73961a5",
+      "bytes": 3315,
+      "warnings": 0
     },
     "golden-fixture:feature-09.tsx|kotlin": {
-      "sha": "d63f67cd365d7fccb96091114f3e03d0d5b7376c5c8dc177cf436ab89a321019",
-      "bytes": 3675,
-      "warnings": 3
+      "sha": "731baaa1f6d79a592a6b65c1d993f1fbb5ac220559970c19b91200c59609e5d5",
+      "bytes": 3935,
+      "warnings": 0
     },
     "golden-fixture:flow-01.tsx|swift": {
       "sha": "e2c4dd764ea80fca3c9d7d4d6448fa707eb62234f9f905cf8c63eb399cd25802",
@@ -7421,12 +7421,12 @@
       "bytes": 183682,
       "warnings": 1
     },
-    "example:native-todomvc-ios/TodoApp.tsx|swift": {
+    "example:native-todomvc/TodoApp.tsx|swift": {
       "sha": "984e973cdef6c1239d52ea486df58da58dec43524fd4d9a010c08080b55edcb6",
       "bytes": 2829,
       "warnings": 0
     },
-    "example:native-todomvc-ios/TodoApp.tsx|kotlin": {
+    "example:native-todomvc/TodoApp.tsx|kotlin": {
       "sha": "6eb6bc75eba6ecc5f027c0c3fdd9bf73da05e722fbb2218823e8d2798afed668",
       "bytes": 3085,
       "warnings": 0

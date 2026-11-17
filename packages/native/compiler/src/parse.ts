@@ -1685,6 +1685,20 @@ function collectObjectLiterals(e: ExprIR): Extract<ExprIR, { kind: 'object' }>[]
   return []
 }
 
+/** The TS spelling of an integer decode target, for its warning: `number`, `number[]`, `Record<string, number>`. */
+function decodeTargetText(t: TypeIR): string {
+  switch (t.kind) {
+    case 'array':
+      return `${decodeTargetText(t.element)}[]`
+    case 'map':
+      return `Record<string, ${decodeTargetText(t.value)}>`
+    case 'union':
+      return t.branches.map(decodeTargetText).join(' | ')
+    default:
+      return t.kind
+  }
+}
+
 /** `id`, `userId`, `user_id`, `userID` — the field names the integer default is right for by construction. */
 const isIdShapedField = (name: string): boolean => name === 'id' || /(?:[a-z0-9]Id|ID|_id)$/.test(name)
 
@@ -1707,18 +1721,33 @@ function warnIntegerDecodeFields(
   decodes: ParseCtx['responseDecodes'],
   warnings: string[],
 ): void {
-  if (structs.length === 0 || decodes.length === 0) return
+  // No early return on an empty struct list: an inline object or a bare `number` target has no struct to declare.
+  if (decodes.length === 0) return
   const byName = new Map(structs.map((s) => [s.name, s]))
   const visited = new Set<string>()
-  const ordered: StructIR[] = []
+  const visitedInline = new Set<TypeIR>()
+  // A declared struct by its name; an INLINE object type (`useFetch<{ price: number }>` before its struct is
+  // synthesized, a nested `{ … }` field) by its field list — both decode the same way.
+  const ordered: { name: string; fields: readonly { name: string; type: TypeIR }[] }[] = []
   const visit = (t: TypeIR): void => {
     switch (t.kind) {
       case 'array':
       case 'set':
         visit(t.element)
         return
+      case 'map':
+        // `Record<string, Pts>` decodes every value as `Pts`.
+        visit(t.value)
+        return
       case 'union':
         for (const b of t.branches) visit(b)
+        return
+      case 'object':
+        if (visitedInline.has(t)) return
+        visitedInline.add(t)
+        ordered.push({ name: `{ ${t.fields.map((f) => f.name).join(', ')} }`, fields: t.fields })
+        for (const f of t.fields) visit(f.type)
+
         return
       case 'typeRef': {
         const s = byName.get(t.name)
@@ -1736,9 +1765,23 @@ function warnIntegerDecodeFields(
   const isInteger = (t: TypeIR): boolean =>
     (t.kind === 'number' && t.float !== true) ||
     (t.kind === 'array' && isInteger(t.element)) ||
+    // `Record<string, number>` holds integers: `{"x":1.5}` fails the decode like a field would.
+    (t.kind === 'map' && isInteger(t.value)) ||
     (t.kind === 'union' &&
       t.branches.some((b) => b.kind !== 'null' && b.kind !== 'undefined') &&
       t.branches.every((b) => b.kind === 'null' || b.kind === 'undefined' || isInteger(b)))
+  // A BARE integer target (`useFetch<number>`, `useFetch<number[]>`, `useQuery<Record<string, number>>`) has no field to
+  // name; it fails the same way on `42.5` / `[1, 2.5]`.
+  const bare = new Set<string>()
+  for (const d of decodes) {
+    if (d.response !== undefined || !isInteger(d.type)) continue
+    const shown = decodeTargetText(d.type)
+    if (bare.has(shown)) continue
+    bare.add(shown)
+    warnings.push(
+      `A native JSON decode (a fetch, query, mutation, stream or \`JSON.parse\`) targets \`${shown}\`, an INTEGER on native (Swift \`Int\` / Kotlin \`Long\`) — TS \`number\` carries no int/float distinction. A fractional value (\`1.5\`) fails the WHOLE decode on iOS and Android, silently. Declare \`type Double = number\` and use it in the type argument; if it is always a whole number, use \`type Int = number\` to say so.`,
+    )
+  }
   for (const s of ordered) {
     // An id is the case the integer default exists for, and it is in nearly every response type — warning on it would bury the
     // fields that matter and fail every zero-warning gate over a correct lowering.

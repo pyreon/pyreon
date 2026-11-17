@@ -117,7 +117,7 @@ function App() {
           <For each={rows} by={(row: Row) => row.id}>
             {(row: Row) => (
               <tr class={() => (isSelected(row.id) ? 'danger' : '')}>
-                <td class="col-md-1">{String(row.id)}</td>
+                <td class="col-md-1">{row.id}</td>
                 <td class="col-md-4">
                   <a onClick={() => select(row.id)}>{() => row.label()}</a>
                 </td>

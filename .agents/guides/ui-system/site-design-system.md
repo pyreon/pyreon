@@ -7,7 +7,7 @@ The design system of the docs app (`docs/src/`): the marketing site, the docs re
 | Layer | Where | Contains | Rule |
 | --- | --- | --- | --- |
 | 0 Tokens | `docs/src/site/theme.ts` | colour pairs, gradients, `space`, `radius`, `text` roles, `leading`, `tracking`, `shadow`, `breakpoints` + `media`, `duration` / `easing` / `motion` / `reducedMotion`, `z`, `layout`, `section`, `docsLayout` | The only file with raw values (hex, px, easing, z). |
-| 1 Primitives | `docs/src/site/kit/primitives/` (from S2) | Box, Stack, Cluster, Grid, Wrap, Text roles, Visible, Icon | No outer margin; layout props take token keys. |
+| 1 Primitives | `docs/src/site/kit/primitives/` | Box, Stack, Cluster, Grid, AutoGrid, Wrap, Text, Visible, Icon | No outer margin; layout props take token keys. |
 | 2 Components | `docs/src/site/kit/*.tsx`, one file per family | GlowCard, Pill/Tag, Note, CodeBlock, Segmented, tables, proof blocks, media | Built from primitives and tokens; every exported component is on `/brand/kit`. |
 | 3 Patterns | `docs/src/site/patterns/` (from S4) | PageHero, Section + SectionHead, EndCTA, switchers | Take the synced content types as props; hold no copy or numbers. |
 | Islands | `kit/classes.ts` (`C`) + `kit/site-css.ts` | Plain markup the shell's islands render | No styling runtime in an island outside `site/demos/`. |
@@ -22,6 +22,29 @@ Pages (`site/pages/**`, `blog/**`, `showcase/**`, `open/**`) compose layers 1–
 - **Breakpoints** cannot be custom properties: use `media.up.md` / `media.down.md` (`theme.ts`); a width that is not a theme breakpoint gets a named token first.
 
 `space` keys count eighths of the 8px base ×100 (`100` = 8px, `150` = 12px, `25` = 2px). The scales hold every even value the site already used, so converting a literal never moves a pixel; odd values (3, 5, 7, 9, 11, 13 px) are not steps, and snapping one is a visual change in its own PR.
+
+## Primitives
+
+Import them from the folder's index (`kit/primitives`; an island imports the one file it needs, see below); every one is on `/brand/kit` (`site/pages/KitGalleryPrimitives.tsx`). A page or kit component reaches for a primitive before it defines a styled `el` of its own: a stack, a row, a grid, a mono caption or a show/hide block is never a new definition.
+
+| Use | When | Props |
+| --- | --- | --- |
+| `Stack` | children in a column with one gap between them | `gap`, `alignX` (`block` default: stretch), `alignY`, `tag`, `shrink`, `selfStart`, `inline` |
+| `Cluster` | a row that wraps: chips, pills, links, actions | `gap`, `alignX`, `alignY`, `nowrap`, `tag` (`ul` drops the bullets) |
+| `Box` | a block with padding and nothing else | `pad`, `padX`, `padY`, `padTop`, `padBottom` |
+| `Grid` | equal columns, the count set per breakpoint | `columns` (`3` or `{ xs: 1, lg: 6 }`), `gap`, `tag` |
+| `AutoGrid` | as many columns as fit (`min` px), or `cols` from `lg` | `min`, `cols`, `colsBelow`, `gap` |
+| `Wrap` | the page column with its gutters | none |
+| `Text` | small inline or block text in a set style | `variant` (`mono`, `label`, `caption`, `small`, `body`), `tone`, `leading`, `block`, `anywhere`, `tag` |
+| `Visible` | a block shown only from a width up or only below it (CSS, both in the HTML) | `from` or `below`: `sm`, `md`, `lg`, `xl`, `split` (700px, `layout.split`) |
+| `Icon` | an inline UI SVG; say what it is for | `size`, `box`, and `aria-label` (named) or `aria-hidden="true"` (decorative) |
+
+- **No outer margin.** A primitive never sets `margin` (a `ul`/`ol` resets its own to 0). Space between siblings is the parent's `gap`; space above a lone block is a `Box` `padTop` or the parent `Stack`.
+- **Gap and padding take `space` keys** (`gap={150}` is 12px, `theme.ts` `space`), or one per breakpoint (`{ xs: 150, md: 250 }`). Never pixels: the prop types accept the keys only.
+- **Responsive values** use the theme breakpoints (`xs`…`xl`); a width that is not one (the home page's 700px `split`) is a named token in `theme.ts` with a query in `media.up` / `media.down`, never inside `breakpoints` (that object feeds the UI system and its generated CSS).
+- **Display type is not `Text`.** Headings are `Heading`, copy paragraphs `Lede`, the section label `Eyebrow` (`kit/type.tsx`); `Text` is for the small text pages used to style themselves.
+- **Static layout.** Layout props are read once when the primitive renders; a layout that changes at runtime switches between two primitives (or uses `Visible`).
+- **Islands.** The primitives use the styling runtime (except `Icon`, which is plain markup), so only an island already rooted in `KitScope` (product demos, the benchmark islands) uses them, and it imports the primitive's own file (`kit/primitives/stack`), not the index: the index pulls every primitive (and coolgrid) into the island, about 1.4 KB gzip measured on a benchmark island. Kit files do the same. Static pages import the index.
 
 ## Conventions
 
@@ -55,9 +78,9 @@ Add it to `theme.ts` next to its family, with a doc comment saying what it is fo
 | `kit/styled-outside`, `kit/extend-css` | a `.config({ name })`, `rocketstyle(` / `styled(` definition or `extendCss` outside `site/kit/` and `site/demos/` |
 | `kit/duplicate-name` | a styled-component name defined more than once (the kit's definition counts as the first) |
 | `kit/imports-app` | the kit importing pages, shell, demos, blog, docs or routes |
-| `kit/internal-import` | a file outside the kit (and demos) importing `kit/bases` or `kit/site-css`, or a kit subfolder's file other than its index |
+| `kit/internal-import` | a file outside the kit (and demos) importing `kit/bases` or `kit/site-css`, or a kit subfolder's file other than its index (`kit/primitives/*` files are public one by one) |
 | `kit/island-styling-runtime` | an island declared outside `site/demos/` whose static import graph reaches a styling-runtime package |
-| `kit/gallery-missing` | an exported component of a top-level `kit/*.tsx` file that no gallery file names |
+| `kit/gallery-missing` | an exported component of a top-level `kit/*.tsx` file or of `kit/primitives/` that no gallery file names |
 | `a11y/focus-missing` | a styled definition with `tag: 'a' / 'button' / 'summary'` and no focus style (tags passed at the use site are not seen) |
 | `a11y/motion-unguarded` | a `transition` / `animation` / `@keyframes` in a file that never mentions reduced motion (per file: one guard covers the file) |
 
