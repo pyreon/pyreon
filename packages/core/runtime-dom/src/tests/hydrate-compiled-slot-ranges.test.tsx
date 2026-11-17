@@ -78,6 +78,7 @@ const RUNTIME_DEPS = {
   For,
   signal,
 }
+
 const DEP_NAMES = Object.keys(RUNTIME_DEPS)
 const DEP_VALUES = Object.values(RUNTIME_DEPS)
 
@@ -123,6 +124,7 @@ function build(source: string, globals: Record<string, unknown>, ssr: boolean): 
   assertDepsCover(code)
   const body = lowerResidualJsx(code.replace(/^import[^\n]*\n/gm, '').replace(/^export\s+/gm, ''))
   const fn = new Function(...DEP_NAMES, ...Object.keys(globals), `${body}\nreturn App`)
+
   return fn(...DEP_VALUES, ...Object.values(globals)) as () => unknown
 }
 
@@ -131,6 +133,7 @@ function snapshot(host: HTMLElement): Node[] {
   const out: Node[] = []
   const walk = document.createTreeWalker(host, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT)
   for (let n = walk.nextNode(); n; n = walk.nextNode()) out.push(n)
+
   return out
 }
 
@@ -152,6 +155,7 @@ async function ssrThenHydrate(
   document.body.appendChild(host)
   const before = snapshot(host)
   const dispose = hydrateRoot(host, h(build(source, globals, false) as never, null))
+
   return {
     host,
     before,
@@ -164,6 +168,7 @@ async function ssrThenHydrate(
 }
 
 const hosts: HTMLElement[] = []
+
 const track = <T extends { host: HTMLElement }>(r: T): T => {
   hosts.push(r.host)
   return r
@@ -422,6 +427,7 @@ describe('the hydrated tree matches a fresh client render', () => {
     }
     stop()
     r.dispose()
+
     return out
   }
 

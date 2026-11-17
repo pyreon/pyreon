@@ -5410,6 +5410,7 @@ export function transformJSX_JS(
         ssrClient = prevClient
         ssrOwner = prevOwner
       }
+
       return
     }
     if (node.type === 'JSXExpressionContainer') {
@@ -5490,6 +5491,7 @@ export function transformJSX_JS(
         end: node.closingElement.start as number,
         text: `{() => ${fusedH}}`,
       })
+
       return
     }
     for (const child of jsxChildren(node)) {
@@ -5766,6 +5768,7 @@ export function transformJSX_JS(
       return 0
     }
     if (child.type === 'JSXFragment') return templateFragmentCount(child, absorbComponents, tplComp)
+
     return -1
   }
 

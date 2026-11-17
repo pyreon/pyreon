@@ -55,6 +55,7 @@ function evalSsr(src: string, deps: Record<string, unknown> = {}): unknown {
   const depValues = [_ssr, _ssrChildren, _ssrItem, _ssrForKeyed, _esc, _escSole, _lc, _fuse, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, _ssrNode, _ssrDeferred, signal, For, h, Fragment, ...Object.values(deps)]
   // eslint-disable-next-line no-new-func
   const fn = new Function(...depNames, `${lowered}\nreturn Node`)
+
   return fn(...depValues)
 }
 

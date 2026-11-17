@@ -27,9 +27,11 @@ function mulberry32(seed: number) {
     a = (a + 0x6d2b79f5) | 0
     let t = Math.imul(a ^ (a >>> 15), 1 | a)
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
+
 const pick = <T,>(r: () => number, xs: T[]): T => xs[Math.floor(r() * xs.length)]!
 
 // Runtime context shared by BOTH representations. The signal reads / bare refs
@@ -60,6 +62,7 @@ const DYN_ATTR_NAMES = ['class', 'id', 'title', 'data-x', 'tabIndex', 'className
 const FALSE_ATTR_NAMES = ['hidden', 'aria-hidden', 'title']
 
 type AttrSpec = { name: string; value: string; dyn: boolean; ref?: string; lit?: 'false' }
+
 type Node =
   | { k: 'text'; s: string }
   | { k: 'bare'; ref: string }
@@ -67,6 +70,7 @@ type Node =
   | { k: 'map'; ref: string; item: ElNode }
   | { k: 'cond'; sigCond: boolean; cref: string; shape: 'and' | 'ternEl' | 'ternNull'; a: ElNode; b: ElNode | null }
   | ElNode
+
 interface ElNode {
   k: 'el'
   tag: string
@@ -96,6 +100,7 @@ function genEl(r: () => number, depth: number, mode: 'recursed' | 'mapitem'): El
   const children: Node[] = []
   const nKids = depth >= 3 ? Math.floor(r() * 2) : 1 + Math.floor(r() * 2)
   for (let i = 0; i < nKids; i++) children.push(genChild(r, depth, mode))
+
   return { k: 'el', tag, attrs, children }
 }
 
@@ -119,6 +124,7 @@ function genChild(r: () => number, depth: number, mode: 'recursed' | 'mapitem'):
     const cref = sigCond ? pick(r, ['s0', 's2']) : pick(r, ['f0', 'f3'])
     const shapeRoll = r()
     const shape = shapeRoll < 0.4 ? 'and' : shapeRoll < 0.7 ? 'ternEl' : 'ternNull'
+
     return {
       k: 'cond',
       sigCond,
@@ -128,6 +134,7 @@ function genChild(r: () => number, depth: number, mode: 'recursed' | 'mapitem'):
       b: shape === 'ternEl' ? genEl(r, depth + 1, 'recursed') : null,
     }
   }
+
   return genEl(r, depth + 1, mode)
 }
 
@@ -137,11 +144,13 @@ function attrSrc(a: AttrSpec): string {
   if (a.lit === 'false') return `${a.name}={false}`
   return a.dyn ? `${a.name}={data.${a.ref}}` : `${a.name}="${a.value}"`
 }
+
 function elSrc(el: ElNode): string {
   const attrs = el.attrs.map((a) => ` ${attrSrc(a)}`).join('')
   const kids = el.children.map(childSrc).join('')
   return `<${el.tag}${attrs}>${kids}</${el.tag}>`
 }
+
 function childSrc(n: Node): string {
   switch (n.k) {
     case 'text':
@@ -158,6 +167,7 @@ function childSrc(n: Node): string {
       const cond = n.sigCond ? `${n.cref}()` : `data.${n.cref}`
       if (n.shape === 'and') return `{${cond} && ${elSrc(n.a)}}`
       const els = n.shape === 'ternNull' ? 'null' : elSrc(n.b!)
+
       return `{${cond} ? ${elSrc(n.a)} : ${els}}`
     }
     case 'el':
@@ -248,6 +258,7 @@ function staticallyFused(children: Node[]): boolean {
 
   return parts >= 2
 }
+
 // Mirror the compiler's `isDynamic` for the fuzz spec: a child is dynamic iff
 // it contains a non-pure CALL (a signal read `sN()` or a `.map`). A `data.fN`
 // member on a non-props identifier is NOT dynamic (same as `isDynamic`'s
@@ -289,6 +300,7 @@ function childOracle(
         const v = ctx.data[n.ref]
         return () => v
       }
+
       return ctx.data[n.ref]
     case 'sig': {
       const s = ctx.sigs[n.ref]!
@@ -319,6 +331,7 @@ function childOracle(
         const a = elOracle(n.a, ctx, 'recursed', it)
         if (n.shape === 'and') return cval && a
         const b = n.shape === 'ternNull' ? null : elOracle(n.b!, ctx, 'recursed', it)
+
         return cval ? a : b
       }
       // Wrap in an accessor iff the h() path would (`shouldWrap` = `isDynamic`).
@@ -369,6 +382,7 @@ function evalFast(src: string, ctx: FuzzCtx): VNode {
     'a1',
     `${body}\nreturn Node`,
   )
+
   return fn(_ssr, _ssrChildren, _ssrItem, _esc, _escSole, _fuse, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, ctx.data, ctx.sigs.s0, ctx.sigs.s1, ctx.sigs.s2, ctx.arrs.a0, ctx.arrs.a1)
 }
 
