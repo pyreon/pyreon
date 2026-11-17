@@ -143,6 +143,8 @@ pyreon check · 3 files · git-changed files
 ✗ 2 findings in 1 file · 1 auto-fixable with --fix · 3 files checked · 41 ms
 ```
 
+A file that does not parse is a `syntax-error` finding (the parser's first error and its position) and fails the run: the detectors parse with an error-recovering parser and would otherwise find nothing in it and pass it. `--fix` leaves such a file untouched.
+
 Each finding follows the shared terminal theme: symbol and code, the message, `↳ file:line:col` (a clickable link in terminals that support OSC 8), then `fix:`. An empty run prints `ℹ No changed .ts/.tsx files to check · …` rather than a success mark, and Ctrl-C ends the run with `! interrupted` and exit code 130.
 
 **How it differs from the neighbours:** `pyreon doctor` is the whole-project health audit (all gates + a 0-100 score, slower); `pyreon lint` runs the `@pyreon/lint` **rule set** (a different engine). `pyreon check` is the fast, file-scoped **compiler-detector** pass — the quickest way to answer "did I introduce a Pyreon anti-pattern in this file / my diff?" `--fix` applies `migratePyreonCode` + `migrateReactCode` (only the mechanically-safe fixes; anything else stays reported so it still gates).
