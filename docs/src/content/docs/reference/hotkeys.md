@@ -93,8 +93,8 @@ useHotkey('escape', () => closeModal(), { enableOnInputs: true })
 | [`registerHotkey`](#registerhotkey-function) | function | Imperative hotkey registration for non-component contexts (stores, global setup). |
 | [`getHotkeyConflicts`](#gethotkeyconflicts-function) | function | Detect registered shortcuts that would fire on the SAME keystroke within the SAME scope. |
 | [`enableScope / disableScope / getActiveScopes`](#enablescope-disablescope-getactivescopes-function) | function | The reference-counted scope-activation API. |
-| [`getRegisteredHotkeys`](#getregisteredhotkeys-function) | function | Return a SNAPSHOT array of every registered hotkey — `{ shortcut, scope, description? }` per entry (`description` omitte |
-| [`trigger`](#trigger-function) | function | Programmatically fire the handlers bound to `shortcut` (window-target bindings), as if the user pressed it — command pal |
+| [`getRegisteredHotkeys`](#getregisteredhotkeys-function) | function | Return a SNAPSHOT array of every registered hotkey — `{ shortcut, scope, description? }` per entry (`description`… |
+| [`trigger`](#trigger-function) | function | Programmatically fire the handlers bound to `shortcut` (window-target bindings), as if the user pressed it — command… |
 | [`getPressedKeys / isKeyPressed`](#getpressedkeys-iskeypressed-function) | function | Live held-key introspection. |
 | [`parseShortcut / matchesCombo / formatCombo / splitShortcutList`](#parseshortcut-matchescombo-formatcombo-splitshortcutlist-function) | function | The combo utilities. |
 

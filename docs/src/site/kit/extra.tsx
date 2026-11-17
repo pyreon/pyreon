@@ -122,7 +122,7 @@ export function ExtraMoreBody(props: { section: ExtraSectionMore }) {
               <GlowCard padding="compact" state={i.hot ? 'hot' : 'default'}>
                 <Mono>{i.name}</Mono>
                 <Heading tag="h3" size="step">
-                  {i.title}
+                  {renderInline(i.title)}
                 </Heading>
                 <Lede size="small">{renderInline(i.text)}</Lede>
                 <Cmd>

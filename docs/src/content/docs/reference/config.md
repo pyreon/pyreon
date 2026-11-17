@@ -52,7 +52,7 @@ export default defineConfig({
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`defineConfig`](#defineconfig-function) | function | Identity helper that gives a config file types and editor completion without the author writing `satisfies PyreonConfig` |
+| [`defineConfig`](#defineconfig-function) | function | Identity helper that gives a config file types and editor completion without the author writing `satisfies PyreonConfig`… |
 | [`CONFIG_FILENAMES`](#config_filenames-constant) | constant | The filenames a loader tries, in order. |
 | [`sectionFrom`](#sectionfrom-function) | function | Read one tool's section out of a loaded config module, accepting either a default export or a named one. |
 

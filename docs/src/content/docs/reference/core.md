@@ -133,33 +133,33 @@ const Card = () => {
 | [`provide`](#provide-function) | function | Push a context value for all descendant components. |
 | [`useContext`](#usecontext-function) | function | Read the nearest provided value for a context. |
 | [`Show`](#show-component) | component | Reactive conditional rendering. |
-| [`Async`](#async-component) | component | Renders one of pending / error / empty / data from any async-shaped source, replacing the hand-written guard chain at a  |
+| [`Async`](#async-component) | component | Renders one of pending / error / empty / data from any async-shaped source, replacing the hand-written guard chain at a… |
 | [`use`](#use-function) | function | Composes element behaviours into a single ref. |
 | [`Switch`](#switch-component) | component | Multi-branch conditional rendering. |
 | [`Match`](#match-component) | component | A branch inside a `<Switch>`. |
 | [`For`](#for-component) | component | Keyed reactive list rendering. |
-| [`Suspense`](#suspense-component) | component | Async boundary that shows `fallback` while any `lazy()` component or async component inside is loading — at ANY depth: a |
+| [`Suspense`](#suspense-component) | component | Async boundary that shows `fallback` while any `lazy()` component or async component inside is loading — at ANY depth: a… |
 | [`ErrorBoundary`](#errorboundary-component) | component | Catches render errors thrown by descendant components. |
 | [`lazy`](#lazy-function) | function | Wrap a dynamic import for code splitting. |
 | [`Dynamic`](#dynamic-component) | component | Renders a component by reference or string tag name. |
 | [`cx`](#cx-function) | function | Combine a class value into a single string. |
 | [`useControllableState`](#usecontrollablestate-function) | function | The controlled/uncontrolled state pattern, as one primitive. |
-| [`useColorMode`](#usecolormode-function) | function | The framework-wide light/dark mode, as an accessor — the ONE source every package reads, so `<PyreonUI>`, charts, flow a |
+| [`useColorMode`](#usecolormode-function) | function | The framework-wide light/dark mode, as an accessor — the ONE source every package reads, so `<PyreonUI>`, charts, flow… |
 | [`splitProps`](#splitprops-function) | function | Split a props object into two parts: the picked keys and the rest. |
 | [`mergeProps`](#mergeprops-function) | function | Merge multiple props objects with last-source-wins semantics. |
-| [`removeUndefinedProps`](#removeundefinedprops-function) | function | Copy a props object, dropping keys whose DATA value is exactly `undefined` while preserving every getter-shaped (reactiv |
-| [`createUniqueId`](#createuniqueid-function) | function | Generate a unique string ID ("pyreon-1", "pyreon-2", ...) that is consistent between server and client when called in th |
+| [`removeUndefinedProps`](#removeundefinedprops-function) | function | Copy a props object, dropping keys whose DATA value is exactly `undefined` while preserving every getter-shaped… |
+| [`createUniqueId`](#createuniqueid-function) | function | Generate a unique string ID ("pyreon-1", "pyreon-2", ...) that is consistent between server and client when called in… |
 | [`Portal`](#portal-component) | component | Render children into a DOM element outside the component tree (typically `document.body`). |
 | [`mapArray`](#maparray-function) | function | Low-level reactive array mapping used internally by `<For>`. |
 | [`createRef`](#createref-function) | function | Create a mutable ref object (`{ current: T \| null }`) for holding DOM element references. |
-| [`elementRef`](#elementref-function) | function | A single value that is BOTH a ref and the `() => T \| null` accessor element-consuming hooks take (`useElementSize`, `use |
-| [`nativeCompat`](#nativecompat-function) | function | Mark a Pyreon framework component as "self-managing" so compat layers (`@pyreon/{react,preact,vue,solid}-compat`) skip t |
+| [`elementRef`](#elementref-function) | function | A single value that is BOTH a ref and the `() => T \| null` accessor element-consuming hooks take (`useElementSize`,… |
+| [`nativeCompat`](#nativecompat-function) | function | Mark a Pyreon framework component as "self-managing" so compat layers (`@pyreon/{react,preact,vue,solid}-compat`) skip… |
 | [`isNativeCompat`](#isnativecompat-function) | function | Compat-layer-side: read whether a function has been marked as a Pyreon native framework component via `nativeCompat()`. |
-| [`NATIVE_COMPAT_MARKER`](#native_compat_marker-constant) | constant | The well-known registry symbol (`Symbol.for("pyreon:native-compat")`) used to mark a component as a Pyreon native framew |
-| [`Defer`](#defer-component) | component | Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): `when={accessor}` loads once the acces |
-| [`registerErrorHandler / reportError`](#registererrorhandler-reporterror-function) | function | `registerErrorHandler` is the telemetry hook for Sentry/Datadog/custom error reporting — called whenever a component thr |
-| [`isClient / isServer`](#isclient-isserver-constant) | constant | Re-exported from `@pyreon/reactivity` for convenience — `isServer = typeof document === 'undefined'`, `isClient` its inv |
-| [`escapeJsonForScript`](#escapejsonforscript-function) | function | Neutralise JSON TEXT for the body of an inline `<script>`: every `<` becomes `\u003C` (so `</script`, `<!--` and `&lt;scrip |
+| [`NATIVE_COMPAT_MARKER`](#native_compat_marker-constant) | constant | The well-known registry symbol (`Symbol.for("pyreon:native-compat")`) used to mark a component as a Pyreon native… |
+| [`Defer`](#defer-component) | component | Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): `when={accessor}` loads once the… |
+| [`registerErrorHandler / reportError`](#registererrorhandler-reporterror-function) | function | `registerErrorHandler` is the telemetry hook for Sentry/Datadog/custom error reporting — called whenever a component… |
+| [`isClient / isServer`](#isclient-isserver-constant) | constant | Re-exported from `@pyreon/reactivity` for convenience — `isServer = typeof document === 'undefined'`, `isClient` its… |
+| [`escapeJsonForScript`](#escapejsonforscript-function) | function | Neutralise JSON TEXT for the body of an inline `<script>`: every `<` becomes `\u003C` (so `</script`, `<!--` and… |
 | [`defineComponent`](#definecomponent-function) | function | An identity wrapper — returns `fn` unchanged. |
 | [`ExtractProps`](#extractprops-type) | type | Extracts the props type from a `ComponentFn`. |
 | [`HigherOrderComponent`](#higherordercomponent-type) | type | Typed HOC pattern where `HOP` is the props the HOC adds and `P` is the wrapped component's own props. |

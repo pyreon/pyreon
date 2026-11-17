@@ -1,9 +1,10 @@
 import type { VNodeChild } from '@pyreon/core'
 import { For, Show } from '@pyreon/core'
 import { keyframes } from '@pyreon/styler'
-import { breakpoints, clampSize, color, display, font, gradient, motion, radius, section, text, texture, weight } from '../theme'
+import { breakpoints, clampSize, color, display, font, gradient, motion, radius, section, text, texture, touch, weight } from '../theme'
 import { el, focusRing, pair, tone, txt, type LinkAttrs } from './bases'
 import { InstallCommand, Pill } from './controls'
+import { ctaStackOnPhone, PillGroup } from './cta'
 import { useLinkClick } from './link'
 import { Wrap } from './layout'
 import { Eyebrow, renderInline, StatusDot } from './type'
@@ -62,12 +63,18 @@ const ProseLink = el
   .config({ name: 'ProseLink' })
   .attrs<LinkAttrs>({ tag: 'a' })
   .theme((_t, m) => ({
+    // Inline, not the Element base's inline-flex: a link that wraps must flow
+    // like text, or the whole link drops below the status dot before it.
+    display: 'inline',
     fontFamily: font.sans,
     fontSize: 14,
     color: tone(m, 'text'),
     textDecoration: 'underline',
     borderRadius: 2,
-    extendCss: 'text-underline-offset: 4px; text-decoration-thickness: 1px;',
+    // On touch screens the hit area grows to the tap-target height without
+    // moving anything: the padding is cancelled by an equal negative margin.
+    extendCss: `text-underline-offset: 4px; text-decoration-thickness: 1px;
+      ${touch.media} { padding-top: ${touch.linkPad}; padding-bottom: ${touch.linkPad}; margin-top: calc(-1 * ${touch.linkPad}); margin-bottom: calc(-1 * ${touch.linkPad}); }`,
     hover: { color: tone(m, 'strong') },
     focus: focusRing(m),
   }))
@@ -86,7 +93,7 @@ export function TextLink(props: { href: string; children?: VNodeChild }) {
 export function CaveatLine(props: { text: string; link?: { label: string; href: string } | undefined }) {
   return (
     <CaveatBox>
-      <Caveat>{props.text}</Caveat>
+      <Caveat>{renderInline(props.text)}</Caveat>
       {props.link ? <TextLink href={props.link.href}>{props.link.label}</TextLink> : null}
     </CaveatBox>
   )
@@ -143,7 +150,8 @@ const Cell = el
     paddingRight: { xs: 22, md: 44 },
     borderTop: '1px solid',
     borderColor: tone(m, 'line'),
-    extendCss: `@media (min-width: ${breakpoints.lg}px) { border-top: 0; & + & { border-left: 1px solid ${tone(m, 'line')}; } }`,
+    // A size container: a long numeral ("1.94–1.95×") sizes to its cell, not the screen.
+    extendCss: `container-type: inline-size; @media (min-width: ${breakpoints.lg}px) { border-top: 0; & + & { border-left: 1px solid ${tone(m, 'line')}; } }`,
   }))
 
 /** A huge gradient numeral (700, -.06em, .86). Light mode uses the AA-safe stops. [A4] */
@@ -166,8 +174,10 @@ export const Numeral = txt
   }))
   .sizes(() => ({
     default: {},
-    long: { fontSize: 'clamp(48px, 5.4vw, 90px)' },
+    long: { fontSize: 'clamp(32px, min(5.4vw, 17cqi), 90px)' },
     strip: { fontSize: 'clamp(40px, 4vw, 58px)' },
+    /** A proof number inside a product card: one step under `strip`, so a card with a number and one without share a row without a half-empty card. */
+    card: { fontSize: 'clamp(34px, 3vw, 44px)' },
   }))
 
 const CellLabel = txt
@@ -177,6 +187,7 @@ const CellLabel = txt
     display: 'block',
     marginTop: 6,
     maxWidth: 380,
+    textWrap: 'balance',
     fontFamily: font.sans,
     fontSize: 17,
     lineHeight: 1.35,
@@ -187,7 +198,7 @@ const CellLabel = txt
 const CellMono = txt
   .config({ name: 'ProofBandDetail' })
   .attrs({ tag: 'span' })
-  .theme((_t, m) => ({ display: 'block', fontFamily: font.mono, fontSize: 12, lineHeight: 1.55, color: tone(m, 'fog') }))
+  .theme((_t, m) => ({ display: 'block', fontFamily: font.mono, fontSize: 12, lineHeight: 1.55, color: tone(m, 'fog'), overflowWrap: 'anywhere' }))
 
 const BandFoot = el
   .config({ name: 'ProofBandFoot' })
@@ -232,25 +243,28 @@ export function ProofBand(props: {
   id?: string | undefined
 }) {
   const items = props.items.slice(0, 3)
+  // One numeral size per band: a long number in one cell steps every cell
+  // down, so the labels under the numbers start on one line.
+  const size = items.some((i) => numeralSize(i.stat) === 'long') ? 'long' : 'default'
   // One column until 992px: a long numeral ("1.94–1.95×") does not fit a third of a tablet.
   const cols = `grid-template-columns: minmax(0, 1fr); @media (min-width: ${breakpoints.lg}px) { grid-template-columns: repeat(${items.length}, minmax(0, 1fr)); }`
   return (
     <Band id={props.id} aria-label={props.title ? undefined : 'In numbers'}>
       <Show when={() => !!props.title}>
-        <BandTitle>{props.title}</BandTitle>
+        <BandTitle>{renderInline(props.title ?? '')}</BandTitle>
       </Show>
       <Cells css={cols}>
         <For each={items} by={(i) => i.stat + i.label}>
           {(i) => (
             <Cell>
               <span>
-                <Numeral size={numeralSize(i.stat)}>{i.stat}</Numeral> <CellLabel>{renderInline(i.label)}</CellLabel>
+                <Numeral size={size}>{i.stat}</Numeral> <CellLabel>{renderInline(i.label)}</CellLabel>
               </span>
               <Show when={() => !!(i.detail ?? i.source)}>
-                <CellMono>{i.detail ?? i.source}</CellMono>
+                <CellMono>{renderInline(i.detail ?? i.source ?? '')}</CellMono>
               </Show>
               <Show when={() => !!i.condition}>
-                <CellMono>{i.condition}</CellMono>
+                <CellMono>{renderInline(i.condition ?? '')}</CellMono>
               </Show>
               {i.href ? <TextLink href={i.href}>See the row →</TextLink> : null}
               {i.visual ?? null}
@@ -296,7 +310,7 @@ const HookTitle = txt
     marginBottom: 28,
     maxWidth: '14ch',
     fontFamily: font.sans,
-    fontSize: { xs: 'clamp(40px, 11.6vw, 46px)', md: clampSize(display.hook) },
+    fontSize: { xs: clampSize(display.hookPhone), md: clampSize(display.hook) },
     lineHeight: display.hook.lineHeight,
     letterSpacing: display.hook.tracking,
     fontWeight: display.hook.weight,
@@ -338,7 +352,10 @@ const HookLede = txt
     color: tone(m, 'mist'),
   }))
 
-const CtaRow = el.config({ name: 'CtaRow' }).attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 12 }).theme(() => ({ flexWrap: 'wrap' }))
+const CtaRow = el
+  .config({ name: 'CtaRow' })
+  .attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 12 })
+  .theme(() => ({ flexWrap: 'wrap', extendCss: ctaStackOnPhone }))
 
 const StatusRow = el
   .config({ name: 'StatusRow' })
@@ -424,13 +441,15 @@ export function HookHero(props: {
         </Show>
         <CtaRow>
           {props.install ? <InstallCommand command={props.install} variant="hot" /> : null}
-          <For each={props.ctas ?? []} by={(c) => c.href}>
-            {(c) => (
-              <Pill href={c.href} size="lg">
-                {c.label}
-              </Pill>
-            )}
-          </For>
+          <PillGroup>
+            <For each={props.ctas ?? []} by={(c) => c.href}>
+              {(c) => (
+                <Pill href={c.href} size="lg">
+                  {c.label}
+                </Pill>
+              )}
+            </For>
+          </PillGroup>
         </CtaRow>
         <Show when={() => (props.status?.length ?? 0) > 0}>
           <StatusRow aria-label="Status">
@@ -438,7 +457,7 @@ export function HookHero(props: {
               {(s) => (
                 <li>
                   <StatusDot state={s.dot} />
-                  {s.href ? <TextLink href={s.href}>{s.text}</TextLink> : s.text}
+                  {s.href ? <TextLink href={s.href}>{renderInline(s.text)}</TextLink> : renderInline(s.text)}
                 </li>
               )}
             </For>

@@ -108,8 +108,8 @@ const table = useTable(() => ({
 | [`useTable`](#usetable-hook) | hook | Create a reactive TanStack Table v9 instance. |
 | [`flexRender`](#flexrender-function) | function | Render a TanStack Table column definition template (header, cell, or footer). |
 | [`flexRenderCell`](#flexrendercell-function) | function | Fine-grained per-cell renderer for live cell values. |
-| [`visibleCells`](#visiblecells-function) | function | Fine-grained visible-cells accessor for a row — the cells-LIST companion to `flexRenderCell`, for the inner `<For>` of a |
-| [`createTableState`](#createtablestate-function) | function | The dependency-free, MULTIPLATFORM-portable table-state core — the alternative to `useTable` (which binds `@tanstack/tab |
+| [`visibleCells`](#visiblecells-function) | function | Fine-grained visible-cells accessor for a row — the cells-LIST companion to `flexRenderCell`, for the inner `<For>` of a… |
+| [`createTableState`](#createtablestate-function) | function | The dependency-free, MULTIPLATFORM-portable table-state core — the alternative to `useTable` (which binds… |
 
 ## API
 

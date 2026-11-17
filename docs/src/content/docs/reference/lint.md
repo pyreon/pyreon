@@ -66,10 +66,10 @@ const fileResult = lintFile('app.tsx', source, allRules, config, cache)
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`lint`](#lint-function) | function | 134 rules across 25 categories. |
-| [`lintAsync`](#lintasync-function) | function | Same options + same `LintResult` shape as `lint()`, but fans the file set out across a `worker_threads` pool for large r |
+| [`lintAsync`](#lintasync-function) | function | Same options + same `LintResult` shape as `lint()`, but fans the file set out across a `worker_threads` pool for large… |
 | [`lintFile`](#lintfile-function) | function | Low-level single-file API. |
 | [`cli`](#cli-function) | function | CLI entry. |
-| [`no-process-dev-gate`](#no-process-dev-gate-constant) | constant | The `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'` pattern works in vitest (Node, `process` i |
+| [`no-process-dev-gate`](#no-process-dev-gate-constant) | constant | The `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'` pattern works in vitest (Node, `process`… |
 | [`require-browser-smoke-test`](#require-browser-smoke-test-constant) | constant | Locks in the durability of the T1.1 browser smoke harness (PRs #224, #227, #229, #231). |
 
 ## API

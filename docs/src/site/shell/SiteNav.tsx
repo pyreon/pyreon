@@ -20,7 +20,6 @@ import {
   THEME_LABEL,
   WHY_MENU,
 } from '../nav'
-import { navMedia } from '../theme'
 
 const PRODUCTS_ID = 'site-products-menu'
 const WHY_ID = 'site-why-menu'
@@ -325,7 +324,9 @@ export default function SiteNav(props: { path: string }) {
     }
   })
   // Crossing the 960px collapse closes whichever navigation is going away.
-  const expanded = useMediaQuery(navMedia.expanded.replace('@media ', ''))
+  // The breakpoint comes from the nav data, not theme.ts: importing the theme
+  // here shipped every site token to every page with the nav island.
+  const expanded = useMediaQuery(`(min-width: ${MOBILE.breakpoint}px)`)
   watch(expanded, (wide) => (wide ? closeSheet() : closeMenu()))
 
   // Tests and tools wait for this: the server HTML is visible before the

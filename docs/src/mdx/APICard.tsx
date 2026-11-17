@@ -1,4 +1,5 @@
 import { h } from '@pyreon/core'
+import { CodeSpans } from '../docs-ui/code-spans'
 
 interface APICardProps {
   name: string
@@ -32,6 +33,6 @@ export function APICard(props: APICardProps) {
       h('code', { class: 'api-name' }, props.name),
     ),
     props.signature ? h('div', { class: 'api-signature' }, h('code', null, props.signature)) : null,
-    props.description ? h('div', { class: 'api-desc' }, props.description) : null,
+    props.description ? h('div', { class: 'api-desc' }, h(CodeSpans, { text: props.description })) : null,
   )
 }

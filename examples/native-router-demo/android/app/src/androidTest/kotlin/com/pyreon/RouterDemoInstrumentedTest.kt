@@ -40,7 +40,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -62,6 +62,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import android.os.ParcelFileDescriptor
 import com.pyreon.router.PyreonDeepLink
 import com.pyreon.runtime.PyreonSecureStorage
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -70,6 +71,21 @@ import org.junit.runner.RunWith
 class RouterDemoInstrumentedTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
+
+    /**
+     * Keep the soft keyboard out of this window for the whole test: the host
+     * pads for `safeDrawing`, which includes the keyboard, so its arrival —
+     * some time after `performTextInput` returned — resizes the page between a
+     * scroll and the click that follows, and the click lands on a clipped node.
+     * Typing does not need it. The full account, with the reproduction, is on
+     * `keepSoftKeyboardOut` in `TasksAppInstrumentedTest`.
+     */
+    @Before
+    fun keepSoftKeyboardOut() {
+        composeRule.runOnUiThread {
+            composeRule.activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+        }
+    }
 
     @Test
     fun appLaunchesOnHomeRoute() {
@@ -677,9 +693,9 @@ class RouterDemoInstrumentedTest {
             "compact gap is $gapCompact, expected the compact token (2 → 8dp)"
         }
 
-        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val instr = InstrumentationRegistry.getInstrumentation()
         try {
-            uiAutomation.executeShellCommand("wm size 1600x2560").close()
+            shell(instr, "wm size 1600x2560")
             composeRule.waitUntil(timeoutMillis = 10_000) {
                 val a = composeRule.onNodeWithTag("adaptive-a").getUnclippedBoundsInRoot()
                 val b = composeRule.onNodeWithTag("adaptive-b").getUnclippedBoundsInRoot()
@@ -692,7 +708,7 @@ class RouterDemoInstrumentedTest {
                 "regular gap is $gapRegular, expected the regular token (6 → 24dp)"
             }
         } finally {
-            uiAutomation.executeShellCommand("wm size reset").close()
+            shell(instr, "wm size reset")
         }
     }
 

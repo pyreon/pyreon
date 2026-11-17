@@ -45,7 +45,7 @@ import kotlin.math.roundToInt
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -82,6 +82,41 @@ import org.junit.runner.RunWith
 class CounterInstrumentedTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
+
+    /**
+     * Grant a runtime permission and return only once the app HOLDS it.
+     *
+     * These tests used `executeShellCommand("pm grant …").close()`. That call
+     * starts the command and returns; closing its output pipe at once does not
+     * wait for it, and can end it before it has run. A tap that reached the
+     * engine first found the permission missing, so the engine asked for it:
+     * the system permission dialog took the foreground, the activity paused,
+     * and the next Compose query failed with "No compose hierarchies found in
+     * the app" (the recorder test, run 43944822568). The geolocation watch, in
+     * the same position, reported an error and no fix ever rendered ("geo fix
+     * never rendered — observed: [Geo: ]", run 43187190057).
+     *
+     * `grantRuntimePermission` is a synchronous call into the package manager.
+     * The check after it names the permission if the grant still did not hold.
+     */
+    private fun grant(permission: String) {
+        val instr = InstrumentationRegistry.getInstrumentation()
+        val context = instr.targetContext
+        instr.uiAutomation.grantRuntimePermission(context.packageName, permission)
+        check(context.checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            "$permission is still not granted to ${context.packageName} after grantRuntimePermission; " +
+                "a tap would raise the system permission dialog over the app"
+        }
+    }
+
+    /**
+     * Run a shell command through UiAutomation and wait for it to finish:
+     * reading its output to the end is what makes it synchronous (see [grant]).
+     */
+    private fun shell(cmd: String): String =
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(cmd),
+        ).use { String(it.readBytes()) }
 
     @Test
     fun directNativeFlowRendersNodes() {
@@ -880,10 +915,7 @@ class CounterInstrumentedTest {
     // must then start a real MediaRecorder and the state must flip.
     @Test
     fun audioRecorderStartsOnceMicrophoneIsGranted() {
-        val instr = InstrumentationRegistry.getInstrumentation()
-        instr.uiAutomation
-            .executeShellCommand("pm grant ${instr.targetContext.packageName} android.permission.RECORD_AUDIO")
-            .close()
+        grant(android.Manifest.permission.RECORD_AUDIO)
         composeRule.onNodeWithTag("probe-record").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 15_000) {
             composeRule.onAllNodesWithText("Recording: on").fetchSemanticsNodes().isNotEmpty()
@@ -900,18 +932,17 @@ class CounterInstrumentedTest {
     @Test
     fun bluetoothScanFollowsTheAdapterState() {
         val instr = InstrumentationRegistry.getInstrumentation()
-        val pkg = instr.targetContext.packageName
-        instr.uiAutomation.executeShellCommand("pm grant $pkg android.permission.BLUETOOTH_SCAN").close()
+        grant(android.Manifest.permission.BLUETOOTH_SCAN)
         val adapter = (instr.targetContext.getSystemService(Context.BLUETOOTH_SERVICE)
             as android.bluetooth.BluetoothManager).adapter
-        instr.uiAutomation.executeShellCommand("cmd bluetooth_manager disable").close()
+        shell("cmd bluetooth_manager disable")
         composeRule.waitUntil(timeoutMillis = 30_000) { !adapter.isEnabled }
 
         composeRule.onNodeWithTag("probe-scan").performScrollTo().performClick()
         composeRule.onNodeWithTag("probe-bt-state").performScrollTo()
             .assertTextEquals("Bluetooth: available-idle")
 
-        instr.uiAutomation.executeShellCommand("cmd bluetooth_manager enable").close()
+        shell("cmd bluetooth_manager enable")
         composeRule.waitUntil(timeoutMillis = 60_000) { adapter.isEnabled }
         composeRule.onNodeWithTag("probe-scan").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 15_000) {
@@ -1181,10 +1212,8 @@ class CounterInstrumentedTest {
     fun geolocationDeliversMockGpsFixEndToEnd() {
         val instr = InstrumentationRegistry.getInstrumentation()
         val pkg = instr.targetContext.packageName
-        instr.uiAutomation
-            .executeShellCommand("pm grant $pkg android.permission.ACCESS_FINE_LOCATION")
-            .close()
-        instr.uiAutomation.executeShellCommand("appops set $pkg android:mock_location allow").close()
+        grant(android.Manifest.permission.ACCESS_FINE_LOCATION)
+        shell("appops set $pkg android:mock_location allow")
         // The device's MASTER location switch must be ON, or the runtime's
         // provider pick dead-ends: with location globally off,
         // isProviderEnabled(GPS) reports false even for an added+enabled
@@ -1194,7 +1223,7 @@ class CounterInstrumentedTest {
         // let this test pass locally while failing every CI run — reproduced
         // exactly by flipping the local switch off). The test owns this
         // precondition like it owns the permission + mock-location appop.
-        instr.uiAutomation.executeShellCommand("cmd location set-location-enabled true").close()
+        shell("cmd location set-location-enabled true")
         // The appop grant is asynchronous-ish through the shell — poll until
         // addTestProvider stops throwing SecurityException rather than sleeping.
         val lm =
