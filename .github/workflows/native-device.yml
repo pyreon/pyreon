@@ -1290,6 +1290,8 @@ jobs:
             gradle -PpyreonReleaseTests connectedCheck --stacktrace
             gradle assembleRelease --stacktrace
             bash ../scripts/release-smoke.sh
+            # The store format: bundleRelease → bundletool --local-testing → split install → the same render check.
+            bash ../scripts/aab-smoke.sh
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
       - name: Assert the release lane tested a minified RELEASE build
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' todomvc ')
