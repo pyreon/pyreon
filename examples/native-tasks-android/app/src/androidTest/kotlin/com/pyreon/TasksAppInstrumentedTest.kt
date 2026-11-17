@@ -74,6 +74,13 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import android.os.SystemClock
+import android.content.res.Configuration
+import android.provider.Settings
+import android.view.Choreographer
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.isFocused
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.click
@@ -479,10 +486,8 @@ class TasksAppInstrumentedTest {
     @Test
     fun hostedEditorsRoundTrip() {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
-        composeRule.onNodeWithTag("login-submit").performClick()
-        assertTagDisplayed("tasks-page", "after login-submit")
-        composeRule.onNodeWithTag("tasks-gallery").performScrollTo().performClick()
-        assertTagDisplayed("gal-page", "after tasks-gallery (/tasks -> /gallery)")
+        navigateVia("login-submit", "tasks-page", "after login-submit")
+        navigateVia("tasks-gallery", "gal-page", "after tasks-gallery (/tasks -> /gallery)")
 
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
 
@@ -611,10 +616,8 @@ class TasksAppInstrumentedTest {
     @Test
     fun streamsReconnectWithLastEventIdAndGatedNdjson() {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
-        composeRule.onNodeWithTag("login-submit").performClick()
-        assertTagDisplayed("tasks-page", "after login-submit")
-        composeRule.onNodeWithTag("tasks-streams").performScrollTo().performClick()
-        assertTagDisplayed("streams-page", "after tasks-streams (/tasks -> /streams)")
+        navigateVia("login-submit", "tasks-page", "after login-submit")
+        navigateVia("tasks-streams", "streams-page", "after tasks-streams (/tasks -> /streams)")
 
         // `enabled: () => rowsOn()` is false at mount: nothing may open.
         waitForTagText("nd-status", "idle")
@@ -627,8 +630,7 @@ class TasksAppInstrumentedTest {
         waitForTagText("nd-sum", "6")
         waitForTagText("nd-status", "closed")
 
-        composeRule.onNodeWithTag("streams-back").performClick()
-        assertTagDisplayed("tasks-page", "after streams-back (/streams -> /tasks)")
+        navigateVia("streams-back", "tasks-page", "after streams-back (/streams -> /tasks)")
     }
 
     /**
@@ -646,10 +648,8 @@ class TasksAppInstrumentedTest {
                         android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
             }
             composeRule.onNodeWithTag("login-username").performTextInput("abcde")
-            composeRule.onNodeWithTag("login-submit").performClick()
-            assertTagDisplayed("tasks-page", "after login-submit")
-            composeRule.onNodeWithTag("tasks-hooks").performScrollTo().performClick()
-            assertTagDisplayed("hooks-page", "after tasks-hooks (/tasks -> /hooks)")
+            navigateVia("login-submit", "tasks-page", "after login-submit")
+            navigateVia("tasks-hooks", "hooks-page", "after tasks-hooks (/tasks -> /hooks)")
             waitForTagText("hooks-dark", "dark")
         } finally {
             ui.executeShellCommand("cmd uimode night no").close()
@@ -663,10 +663,8 @@ class TasksAppInstrumentedTest {
     @Test
     fun hooksInfiniteQueryLatestMediaQueryKeyboard() {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
-        composeRule.onNodeWithTag("login-submit").performClick()
-        assertTagDisplayed("tasks-page", "after login-submit")
-        composeRule.onNodeWithTag("tasks-hooks").performScrollTo().performClick()
-        assertTagDisplayed("hooks-page", "after tasks-hooks (/tasks -> /hooks)")
+        navigateVia("login-submit", "tasks-page", "after login-submit")
+        navigateVia("tasks-hooks", "hooks-page", "after tasks-hooks (/tasks -> /hooks)")
 
         waitForTagText("hooks-pages", "1")
         composeRule.onNodeWithTag("hooks-more").assertTextEquals("true")
@@ -688,8 +686,7 @@ class TasksAppInstrumentedTest {
         composeRule.onNodeWithTag("hooks-page").performKeyInput { keyDown(Key.K); keyUp(Key.K) }
         waitForTagText("hooks-key", "1")
 
-        composeRule.onNodeWithTag("hooks-back").performClick()
-        assertTagDisplayed("tasks-page", "after hooks-back (/hooks -> /tasks)")
+        navigateVia("hooks-back", "tasks-page", "after hooks-back (/hooks -> /tasks)")
     }
 
     /**
@@ -725,13 +722,110 @@ class TasksAppInstrumentedTest {
         composeRule.waitForIdle()
     }
 
+    /**
+     * Whether the window currently shows the soft keyboard, as the insets the
+     * app last received say.
+     */
+    private fun imeShown(): Boolean = composeRule.runOnUiThread {
+        ViewCompat.getRootWindowInsets(composeRule.activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) == true
+    }
+
+    /**
+     * Whether the soft keyboard SHOULD be on screen right now: a text field has
+     * focus and the device has no usable hardware keyboard (or is told to show
+     * the soft one anyway). This is the rule the IME itself applies
+     * (`InputMethodService.onEvaluateInputViewShown`), so it holds on the CI
+     * emulator, which shows the keyboard, and on a local one with a hardware
+     * keyboard, which does not.
+     */
+    private fun imeExpected(): Boolean {
+        val focusedField = composeRule
+            .onAllNodes(isFocused() and hasSetTextAction(), useUnmergedTree = true)
+            .fetchSemanticsNodes()
+            .isNotEmpty()
+        if (!focusedField) return false
+        val activity = composeRule.activity
+        val config = activity.resources.configuration
+        val noHardKeyboard = config.keyboard == Configuration.KEYBOARD_NOKEYS ||
+            config.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_YES
+        val showAnyway = Settings.Secure.getInt(activity.contentResolver, "show_ime_with_hard_keyboard", 0) == 1
+        return noHardKeyboard || showAnyway
+    }
+
+    /** Block until the next frame has been drawn, so a layout pass can run. */
+    private fun awaitFrame() {
+        val drawn = CountDownLatch(1)
+        composeRule.runOnUiThread { Choreographer.getInstance().postFrameCallback { drawn.countDown() } }
+        assertTrue("no frame was drawn within 5s", drawn.await(5, TimeUnit.SECONDS))
+        composeRule.waitForIdle()
+    }
+
+    /**
+     * Tap a control the way every step of this file must: on a layout that has
+     * stopped moving.
+     *
+     * `performClick()` reads the node's bounds once and injects the touch there.
+     * The host pads its content with `safeDrawingPadding()`, which includes the
+     * soft keyboard, so the keyboard showing or hiding resizes the screen. It
+     * does so ASYNCHRONOUSLY: the app asks the system to hide the keyboard when
+     * the focused login field leaves composition, and the new insets arrive some
+     * frames later. Compose's idle sync does not know a change is on its way.
+     * When it lands between the test reading the bounds and the touch arriving,
+     * the actions scroller grows, its offset is clamped, the buttons slide down,
+     * and the tap hits the space where the button used to be. The app is then
+     * still on /tasks 15s later: "AT: after tasks-dates (/tasks -> /dates) |
+     * tag='dates-page' not displayed", and the same for `tasks-fields` and
+     * `tasks-requests`. The keyboard coming UP after typing moves the layout the
+     * same way, which fits "Parts: none" after typing into `req-draft` and
+     * tapping `req-upload`.
+     *
+     * So: first wait for the keyboard to reach the state the focus implies (no
+     * focused field: hidden; a focused field on a soft-keyboard device: shown),
+     * then scroll to the control, then wait until its position is the same on
+     * two consecutive frames, and only then tap. Every wait here ends on a
+     * condition, not a duration, and a dropped tap still fails the step.
+     */
+    private fun tap(tag: String) {
+        val expected = imeExpected()
+        try {
+            composeRule.waitUntil(timeoutMillis = 10_000) { imeShown() == expected }
+        } catch (e: Throwable) {
+            throw AssertionError(
+                "before tapping '$tag': the soft keyboard is ${if (imeShown()) "showing" else "hidden"} " +
+                    "but should be ${if (expected) "showing (a text field has focus)" else "hidden (no text field has focus)"}",
+                e,
+            )
+        }
+        composeRule.waitForIdle()
+        val inScroller = composeRule
+            .onAllNodes(hasScrollAction() and hasAnyDescendant(hasTestTag(tag)))
+            .fetchSemanticsNodes()
+            .isNotEmpty()
+        if (inScroller) composeRule.onNodeWithTag(tag).performScrollTo()
+        var before = composeRule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+        var settled = false
+        repeat(30) {
+            if (settled) return@repeat
+            awaitFrame()
+            val now = composeRule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+            settled = now == before
+            before = now
+        }
+        assertTrue("'$tag' was still moving after 30 frames (last at $before): no tap can be aimed at it", settled)
+        composeRule.onNodeWithTag(tag).performClick()
+    }
+
+    /** Tap a control that leaves the screen, and prove the next screen rendered. */
+    private fun navigateVia(tag: String, page: String, where: String) {
+        tap(tag)
+        assertTagDisplayed(page, where)
+    }
+
     @Test
     fun dateFieldsPickThroughTheNativeDatePicker() {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
-        composeRule.onNodeWithTag("login-submit").performClick()
-        assertTagDisplayed("tasks-page", "after login-submit")
-        composeRule.onNodeWithTag("tasks-dates").performScrollTo().performClick()
-        assertTagDisplayed("dates-page", "after tasks-dates (/tasks -> /dates)")
+        navigateVia("login-submit", "tasks-page", "after login-submit")
+        navigateVia("tasks-dates", "dates-page", "after tasks-dates (/tasks -> /dates)")
 
         waitForTagText("dates-day-value", "2026-10-22")
         fingerTap("dates-day")
@@ -786,10 +880,8 @@ class TasksAppInstrumentedTest {
     @Test
     fun selectChoosesThroughTheNativePicker() {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
-        composeRule.onNodeWithTag("login-submit").performClick()
-        assertTagDisplayed("tasks-page", "after login-submit")
-        composeRule.onNodeWithTag("tasks-select").performScrollTo().performClick()
-        assertTagDisplayed("select-page", "after tasks-select (/tasks -> /select)")
+        navigateVia("login-submit", "tasks-page", "after login-submit")
+        navigateVia("tasks-select", "select-page", "after tasks-select (/tasks -> /select)")
 
         waitForTagText("select-value", "none")
         composeRule.onAllNodesWithText("Pick a fruit").fetchSemanticsNodes().let {
@@ -826,13 +918,11 @@ class TasksAppInstrumentedTest {
     @Test
     fun requestsCarryRuntimeValuesAndRejectNon2xx() {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
-        composeRule.onNodeWithTag("login-submit").performClick()
-        assertTagDisplayed("tasks-page", "after login-submit")
-        composeRule.onNodeWithTag("tasks-requests").performScrollTo().performClick()
-        assertTagDisplayed("requests-page", "after tasks-requests (/tasks -> /requests)")
+        navigateVia("login-submit", "tasks-page", "after login-submit")
+        navigateVia("tasks-requests", "requests-page", "after tasks-requests (/tasks -> /requests)")
 
         composeRule.onNodeWithTag("req-draft").performScrollTo().performTextInput("Grace Hopper")
-        composeRule.onNodeWithTag("req-mutate").performScrollTo().performClick()
+        tap("req-mutate")
         waitForTagText("req-status", "Status: success")
         composeRule.onNodeWithTag("req-method").assertTextEquals("Method: POST")
         composeRule.onNodeWithTag("req-query").assertTextEquals("Query: tag=Grace+Hopper&page=3")
@@ -852,8 +942,7 @@ class TasksAppInstrumentedTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("req-direct-status").assertTextEquals("Direct: failing")
 
-        composeRule.onNodeWithTag("requests-back").performScrollTo().performClick()
-        assertTagDisplayed("tasks-page", "after requests-back (/requests -> /tasks)")
+        navigateVia("requests-back", "tasks-page", "after requests-back (/requests -> /tasks)")
     }
 
     /**
@@ -865,10 +954,8 @@ class TasksAppInstrumentedTest {
     @Test
     fun intlFormatsLikeTheWebAndFollowsARuntimeTimeZone() {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
-        composeRule.onNodeWithTag("login-submit").performClick()
-        assertTagDisplayed("tasks-page", "after login-submit")
-        composeRule.onNodeWithTag("tasks-intl").performScrollTo().performClick()
-        assertTagDisplayed("intl-page", "after tasks-intl (/tasks -> /intl)")
+        navigateVia("login-submit", "tasks-page", "after login-submit")
+        navigateVia("tasks-intl", "intl-page", "after tasks-intl (/tasks -> /intl)")
 
         waitForTagText("intl-meeting", "22.10.2026, 10:00")
         composeRule.onNodeWithTag("intl-price").assertTextEquals("$1,234.50")
@@ -891,10 +978,8 @@ class TasksAppInstrumentedTest {
     @Test
     fun multilineFieldIsATextAreaBothWays() {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
-        composeRule.onNodeWithTag("login-submit").performClick()
-        assertTagDisplayed("tasks-page", "after login-submit")
-        composeRule.onNodeWithTag("tasks-fields").performScrollTo().performClick()
-        assertTagDisplayed("fields-page", "after tasks-fields (/tasks -> /fields)")
+        navigateVia("login-submit", "tasks-page", "after login-submit")
+        navigateVia("tasks-fields", "fields-page", "after tasks-fields (/tasks -> /fields)")
 
         fun heightOf(tag: String): Float =
             composeRule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot.height
@@ -957,13 +1042,11 @@ class TasksAppInstrumentedTest {
     @Test
     fun uploadsAMultipartFormAndARawFile() {
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
-        composeRule.onNodeWithTag("login-submit").performClick()
-        assertTagDisplayed("tasks-page", "after login-submit")
-        composeRule.onNodeWithTag("tasks-requests").performScrollTo().performClick()
-        assertTagDisplayed("requests-page", "after tasks-requests (/tasks -> /requests)")
+        navigateVia("login-submit", "tasks-page", "after login-submit")
+        navigateVia("tasks-requests", "requests-page", "after tasks-requests (/tasks -> /requests)")
 
         composeRule.onNodeWithTag("req-draft").performScrollTo().performTextInput("Ada L")
-        composeRule.onNodeWithTag("req-upload").performScrollTo().performClick()
+        tap("req-upload")
         waitForTagText("req-upload-parts", "Parts: note=note.txt|text/plain|Hello Pyreon;caption=Ada L;n=1;n=2")
         composeRule.onNodeWithTag("req-upload-type").assertTextEquals("Upload type: multipart/form-data")
 
@@ -1000,11 +1083,7 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("login-username")
             .performTextInput("cde")
 
-        composeRule
-            .onNodeWithTag("login-submit")
-            .performClick()
-
-        assertTagDisplayed("tasks-page", "after login-submit (first entry to /tasks)")
+        navigateVia("login-submit", "tasks-page", "after login-submit (first entry to /tasks)")
 
         // Icon-mapping arc (PR-1.3): the header's canonical
         // <Icon name="star"> references Icons.Filled.Star at compile
@@ -1020,10 +1099,7 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("new-task-title")
             .performTextInput("Verify on the emulator")
 
-        composeRule
-            .onNodeWithTag("new-task-add")
-            .performScrollTo()
-            .performClick()
+        tap("new-task-add")
 
         composeRule
             .onNodeWithText("Verify on the emulator")
@@ -1031,25 +1107,14 @@ class TasksAppInstrumentedTest {
 
         // Phase 3: typed-params route — /tasks/1 constructs
         // TaskDetailPageParam(id = "1") in the dispatcher (auth-gated).
-        composeRule
-            .onNodeWithTag("tasks-open-first")
-            .performScrollTo()
-            .performClick()
-
-        composeRule
-            .onNodeWithTag("task-detail-page")
-            .assertIsDisplayed()
+        navigateVia("tasks-open-first", "task-detail-page", "after tasks-open-first (/tasks -> /tasks/1)")
 
         composeRule
             .onNodeWithText("Viewing task 1")
             .assertIsDisplayed()
 
         // Phase 4: back to the list.
-        composeRule
-            .onNodeWithTag("detail-back")
-            .performClick()
-
-        assertTagDisplayed("tasks-page", "after detail-back (/tasks/1 -> /tasks)")
+        navigateVia("detail-back", "tasks-page", "after detail-back (/tasks/1 -> /tasks)")
 
         // Phase 5: networked fetch (the fetch-arc device proof) — the
         // quotes screen runs useFetch<Quote[]> through the emitted
@@ -1060,14 +1125,7 @@ class TasksAppInstrumentedTest {
         // CONTENT so a 200-with-wrong-body can't pass. waitUntil
         // because the request crosses a real network hop — Compose's
         // idle-sync does NOT cover URLSession-style background work.
-        composeRule
-            .onNodeWithTag("tasks-quotes")
-            .performScrollTo()
-            .performClick()
-
-        composeRule
-            .onNodeWithTag("quotes-page")
-            .assertIsDisplayed()
+        navigateVia("tasks-quotes", "quotes-page", "after tasks-quotes (/tasks -> /quotes)")
 
         try {
             composeRule.waitUntil(timeoutMillis = 20_000) {
@@ -1096,11 +1154,7 @@ class TasksAppInstrumentedTest {
             )
         }
 
-        composeRule
-            .onNodeWithTag("quotes-back")
-            .performClick()
-
-        assertTagDisplayed("tasks-page", "after quotes-back (/quotes -> /tasks)")
+        navigateVia("quotes-back", "tasks-page", "after quotes-back (/quotes -> /tasks)")
 
         // Vocabulary-completion proof: Scroll (verticalScroll) + remote
         // Image (Coil AsyncImage over the fixture server) + Modal
@@ -1108,14 +1162,7 @@ class TasksAppInstrumentedTest {
         // stub-masked until this screen. A missing import fails the
         // gradle build (this test can't run); a rendered node proves the
         // import + render.
-        composeRule
-            .onNodeWithTag("tasks-vocab")
-            .performScrollTo()
-            .performClick()
-
-        composeRule
-            .onNodeWithTag("vocab-page")
-            .assertIsDisplayed()
+        navigateVia("tasks-vocab", "vocab-page", "after tasks-vocab (/tasks -> /vocab)")
 
         composeRule
             .onNodeWithTag("vocab-remote-img")
@@ -1137,10 +1184,7 @@ class TasksAppInstrumentedTest {
         composeRule
             .onNodeWithTag("vocab-close-modal")
             .performClick()
-        composeRule
-            .onNodeWithTag("vocab-back")
-            .performClick()
-        assertTagDisplayed("tasks-page", "after vocab-back (/vocab -> /tasks)")
+        navigateVia("vocab-back", "tasks-page", "after vocab-back (/vocab -> /tasks)")
 
         // Phase 5.5: lifecycle (Phase 2 real-semantics proof). The
         // ErrorBoundary wraps a fetch to a MISSING path → rejects →
@@ -1151,8 +1195,7 @@ class TasksAppInstrumentedTest {
         // tasks page and FlowScreen are plain Stacks (no Scroll ancestor), and
         // scrollToNode throws without one — the scroll-first rule is for
         // Column(verticalScroll) pages only.
-        composeRule.onNodeWithTag("tasks-flow").performScrollTo().performClick()
-        assertTagDisplayed("flow-page", "after tasks-flow (/tasks -> /flow)")
+        navigateVia("tasks-flow", "flow-page", "after tasks-flow (/tasks -> /flow)")
         composeRule.onNodeWithTag("flow-node-count").assertTextEquals("2")
         composeRule.onNodeWithTag("flow-edge-count").assertTextEquals("2")
         composeRule.onNodeWithTag("flow-zoom").assertTextEquals("zoom 1.0")
@@ -1312,13 +1355,11 @@ class TasksAppInstrumentedTest {
         repeat(5) { composeRule.onNodeWithContentDescription("Zoom in").performClick() }
         composeRule.onNodeWithTag("flow-zoom").assertTextEquals("zoom 2.0")
         composeRule.onNodeWithContentDescription("Fit view").performClick()
-        composeRule.onNodeWithTag("flow-back").performClick()
-        assertTagDisplayed("tasks-page", "after flow-back (/flow -> /tasks)")
+        navigateVia("flow-back", "tasks-page", "after flow-back (/flow -> /tasks)")
 
         // F6 scale proof: 400 nodes with culling on. Every assertion is a COUNT
         // or an identity, so it is deterministic on any emulator.
-        composeRule.onNodeWithTag("tasks-flow-scale").performScrollTo().performClick()
-        assertTagDisplayed("flow-scale-page", "after tasks-flow-scale (/tasks -> /flow-scale)")
+        navigateVia("tasks-flow-scale", "flow-scale-page", "after tasks-flow-scale (/tasks -> /flow-scale)")
         composeRule.onNodeWithTag("flow-scale-total").assertTextEquals("0")
         composeRule.onNodeWithTag("flow-scale-load").performClick()
         waitForTagText("flow-scale-total", "400")
@@ -1369,26 +1410,16 @@ class TasksAppInstrumentedTest {
         }
         composeRule.waitUntil(5_000) { textOf("flow-scale-zoom") != zoomBefore }
         check(mountedGridNodes() < 200) { "culling mounted ${mountedGridNodes()} of 400 nodes after zooming out" }
-        composeRule.onNodeWithTag("flow-scale-back").performClick()
-        assertTagDisplayed("tasks-page", "after flow-scale-back (/flow-scale -> /tasks)")
+        navigateVia("flow-scale-back", "tasks-page", "after flow-scale-back (/flow-scale -> /tasks)")
 
-        composeRule
-            .onNodeWithTag("tasks-lifecycle")
-            .performScrollTo()
-            .performClick()
-        composeRule
-            .onNodeWithTag("lifecycle-page")
-            .assertIsDisplayed()
+        navigateVia("tasks-lifecycle", "lifecycle-page", "after tasks-lifecycle (/tasks -> /lifecycle)")
         composeRule.waitUntil(timeoutMillis = 20_000) {
             composeRule
                 .onAllNodesWithTag("lc-error")
                 .fetchSemanticsNodes()
                 .isNotEmpty()
         }
-        composeRule
-            .onNodeWithTag("lifecycle-back")
-            .performClick()
-        assertTagDisplayed("tasks-page", "after lifecycle-back (/lifecycle -> /tasks)")
+        navigateVia("lifecycle-back", "tasks-page", "after lifecycle-back (/lifecycle -> /tasks)")
 
         // Phase 5.6: stats — the 2026-07 P1-sprint vocabulary in one page
         // (Object.keys/values over a declared struct, seeded reduce, Double
@@ -1398,13 +1429,7 @@ class TasksAppInstrumentedTest {
         // texts asserted exactly; Double TEXT deliberately not (Swift and
         // Kotlin stringify Doubles differently) — the average node
         // existing at all proves the Double pipeline.
-        composeRule
-            .onNodeWithTag("tasks-stats")
-            .performScrollTo()
-            .performClick()
-        composeRule
-            .onNodeWithTag("stats-page")
-            .assertIsDisplayed()
+        navigateVia("tasks-stats", "stats-page", "after tasks-stats (/tasks -> /stats)")
         composeRule
             .onNodeWithTag("stats-total")
             .assertTextEquals("247")
@@ -1577,11 +1602,7 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("stats-brush")
             .performTouchInput { click(Offset(60f * flowDensity, 60f * flowDensity)) }
         waitForTagText("stats-brush-sel", "none")
-        composeRule
-            .onNodeWithTag("stats-back")
-            .performScrollTo()
-            .performClick()
-        assertTagDisplayed("tasks-page", "after stats-back (/stats -> /tasks)")
+        navigateVia("stats-back", "tasks-page", "after stats-back (/stats -> /tasks)")
 
         // #3279: the DASHBOARD — the native wave's gate: six families on one
         // shared-source page; the funnel repaints from a signal (tap reads
@@ -1591,11 +1612,7 @@ class TasksAppInstrumentedTest {
         // it, so there is no scrollable ancestor for performScrollTo() to use —
         // the sibling `tasks-stats` button above is tapped the same way. The
         // first run to reach this line failed on exactly that.
-        composeRule
-            .onNodeWithTag("tasks-dashboard")
-            .performScrollTo()
-            .performClick()
-        assertTagDisplayed("dash-page", "after tasks-dashboard (/tasks -> /dashboard)")
+        navigateVia("tasks-dashboard", "dash-page", "after tasks-dashboard (/tasks -> /dashboard)")
         composeRule
             .onNodeWithTag("dash-stage")
             .assertTextEquals("none")
@@ -1641,11 +1658,7 @@ class TasksAppInstrumentedTest {
             .onNodeWithTag("dash-box")
             .performTouchInput { click(Offset(width * 0.8f, height / 2f)) }
         waitForTagText("dash-box-pick", "1")
-        composeRule
-            .onNodeWithTag("dash-back")
-            .performScrollTo()
-            .performClick()
-        assertTagDisplayed("tasks-page", "after dash-back (/dashboard -> /tasks)")
+        navigateVia("dash-back", "tasks-page", "after dash-back (/dashboard -> /tasks)")
 
         // The GALLERY — the ten chart families that had never rendered on a
         // device. Nine of nineteen lowered hosts were device-proven before
@@ -1657,11 +1670,7 @@ class TasksAppInstrumentedTest {
         // semantics action, so `performScrollTo()` here fails before the click.
         // Inside the gallery, scroll each chart into view: ten charts do not fit
         // on a phone, and an off-screen assertion is not device render proof.
-        composeRule
-            .onNodeWithTag("tasks-gallery")
-            .performScrollTo()
-            .performClick()
-        assertTagDisplayed("gal-page", "after tasks-gallery (/tasks -> /gallery)")
+        navigateVia("tasks-gallery", "gal-page", "after tasks-gallery (/tasks -> /gallery)")
         for (tag in listOf(
             "gal-calendar", "gal-candlestick", "gal-gantt", "gal-graph", "gal-map",
             "gal-parallel", "gal-polar", "gal-river", "gal-sunburst", "gal-tree",
@@ -1819,11 +1828,7 @@ class TasksAppInstrumentedTest {
         waitForTagText("gal-flow-webview-reload-status", "a:3")
         composeRule.onNodeWithTag("gal-flow-webview-reload-swap").performScrollTo().performClick()
         waitForTagText("gal-flow-webview-reload-status", "b:3")
-        composeRule
-            .onNodeWithTag("gal-back")
-            .performScrollTo()
-            .performClick()
-        assertTagDisplayed("tasks-page", "after gal-back (/gallery -> /tasks)")
+        navigateVia("gal-back", "tasks-page", "after gal-back (/gallery -> /tasks)")
 
         // Phase 5b: the TOOLKIT screen — where eleven previously snippet-only
         // packages actually run. The web e2e asserts the same values in a
@@ -1832,10 +1837,7 @@ class TasksAppInstrumentedTest {
         //
         // Values, not existence: a permissions container that wrongly denies
         // renders "false", which is displayed just as happily as "true".
-        composeRule
-            .onNodeWithTag("tasks-toolkit")
-            .performScrollTo()
-            .performClick()
+        tap("tasks-toolkit")
 
         composeRule.waitUntil(timeoutMillis = 15_000) {
             composeRule
@@ -1997,7 +1999,7 @@ class TasksAppInstrumentedTest {
         // validation: the schema-driven form. `isValid` derives from errors and
         // an untouched field has none, so submit is what runs the schema.
         composeRule.onNodeWithTag("toolkit-schema-name").performScrollTo().performTextInput("ab")
-        composeRule.onNodeWithTag("toolkit-schema-submit").performClick()
+        tap("toolkit-schema-submit")
         waitForTagText("toolkit-schema-valid", "false")
 
         // WebView bridge — mirror of the iOS assertion. The hosted page echoes
@@ -2046,23 +2048,14 @@ class TasksAppInstrumentedTest {
         // This was unreachable until the static-route dispatch fix landed: the
         // test died at the `toolkit-filter` wait three lines up, so the bare
         // click below had never once run.
-        composeRule
-            .onNodeWithTag("toolkit-back")
-            .performScrollTo()
-            .performClick()
-        assertTagDisplayed("tasks-page", "after toolkit-back (/toolkit?filter=done -> /tasks)")
+        navigateVia("toolkit-back", "tasks-page", "after toolkit-back (/toolkit?filter=done -> /tasks)")
 
         // Phase 6: logout — flips the store flag back; lands on /login.
         // Returning from the long toolkit page can preserve a scroll position
         // that leaves the header action outside the viewport. Compose still
         // finds that semantics node, but a bare click then targets off-screen
         // coordinates and silently leaves the route unchanged.
-        composeRule
-            .onNodeWithTag("tasks-logout")
-            .performScrollTo()
-            .performClick()
-
-        assertTagDisplayed("login-page", "after tasks-logout (/tasks -> /login)")
+        navigateVia("tasks-logout", "login-page", "after tasks-logout (/tasks -> /login)")
     }
 
     // ── Hosted web flow: browser chrome + fill sizing (#3982, #3956 item 5) ─────────────────────────────────
@@ -2113,11 +2106,9 @@ class TasksAppInstrumentedTest {
         val device = UiDevice.getInstance(instrumentation)
 
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
-        composeRule.onNodeWithTag("login-submit").performClick()
-        assertTagDisplayed("tasks-page", "after login-submit")
+        navigateVia("login-submit", "tasks-page", "after login-submit")
         dismissSoftKeyboard(device)
-        composeRule.onNodeWithTag("tasks-webhost").performScrollTo().performClick()
-        assertTagDisplayed("webhost-page", "after tasks-webhost")
+        navigateVia("tasks-webhost", "webhost-page", "after tasks-webhost")
 
         // ── SIZING ───────────────────────────────────────────────────────────────────────────────
         waitForWebResult("the page never reported its viewport", 120_000) { it.startsWith("size:") }
