@@ -170,7 +170,28 @@ jobs:
           # runner time (50 min macOS swiftc + 50 min iOS + 30 min Android) per
           # affected PR, on 6 of the last 40 PRs.
           if [ "$EVENT" = "pull_request" ]; then
-            gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename' > "$FILES"
+            # GitHub answers this endpoint with HTTP 500 under load ("this diff is
+            # temporarily unavailable"). A bare call exits the step non-zero and
+            # turns a required check red for a reason no code change caused
+            # (PR #4533, 2026-11-17). Retry, then fail CLOSED like every other
+            # uncertainty here: a diff nobody could read runs all lanes.
+            LISTED=''
+            for attempt in 1 2 3 4; do
+              if gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename' > "$FILES"; then
+                LISTED=1
+                break
+              fi
+              echo "::warning::could not list the pull request's files (attempt $attempt of 4)"
+              sleep $((attempt * 10))
+            done
+            if [ -z "$LISTED" ]; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+              echo "graph=true" >> "$GITHUB_OUTPUT"
+              echo "macos=true" >> "$GITHUB_OUTPUT"
+              echo "graph-macos=true" >> "$GITHUB_OUTPUT"
+              echo "::warning::the pull request's file list stayed unavailable — running every native lane"
+              exit 0
+            fi
           fi
           # `--macos-jobs` also emits `macos`: the same question for the macOS job
           # alone (see scripts/native-surface-touched.ts, classifyMacosLane).
