@@ -1,41 +1,15 @@
 import { For } from '@pyreon/core'
 import type { Benchmarks, BenchmarkRow } from '../content/model'
-import { font, gradient, motion, radius, text, verdict } from '../theme'
+import { font, gradient, motion, radius, text } from '../theme'
+import { Badge } from './badge'
 import { el, pair, tone, txt } from './bases'
 import { Pill } from './controls'
 import { renderInline } from './type'
 import { barWidths, formatMeasure, normalizeVerdict, RECORD_LINE, verdictLabel } from './verdict'
 
-const Chip = txt
-  .config({ name: 'VerdictChip' })
-  .attrs({ tag: 'span' })
-  .theme(() => ({
-    flexShrink: 0,
-    display: 'inline-block',
-    fontFamily: font.mono,
-    fontSize: 10.5,
-    letterSpacing: '.12em',
-    textTransform: 'uppercase',
-    lineHeight: 1.4,
-    paddingTop: 4,
-    paddingBottom: 4,
-    paddingLeft: 9,
-    paddingRight: 9,
-    borderRadius: radius.pill,
-    border: '1px solid',
-    whiteSpace: 'nowrap',
-  }))
-  .states((_t, m) => ({
-    win: { backgroundImage: verdict.winFill, color: verdict.winText, borderColor: 'transparent', fontWeight: 600 },
-    tie: { color: pair(m, verdict.tie), borderColor: pair(m, verdict.tie) },
-    split: { color: pair(m, verdict.split), borderColor: pair(m, verdict.split) },
-    loss: { color: pair(m, verdict.loss), borderColor: pair(m, verdict.loss) },
-    info: { color: pair(m, verdict.info), borderColor: pair(m, verdict.info) },
-  }))
-
-/** `.bx-chip` — win (ember fill, ink text) · tie · split · loss · measured. */
+/** A benchmark verdict as a `Badge`: win (ember fill, ink text) · tie · split · loss · measured. */
 export function VerdictChip(props: { verdict: string }) {
-  return <Chip state={normalizeVerdict(props.verdict)}>{verdictLabel(props.verdict)}</Chip>
+  return <Badge tone={normalizeVerdict(props.verdict)}>{verdictLabel(props.verdict)}</Badge>
 }
 
 const BarRow = el

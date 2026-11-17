@@ -750,13 +750,6 @@ function collectLayoutComponentNamesKotlin(components: ComponentIR[]): Set<strin
  */
 let _emitWarnings: string[] = []
 
-// JS-faithful `String(double)` — see the Swift twin's doc comment for why
-// this is `private` (file-scoped) rather than the bare top-level default:
-// the checked-in chart engine emits the SAME idiom under the SAME name, and
-// in a real app both land in one module — `private` lets each file repeat
-// the declaration without an "invalid redeclaration" the moment they're
-// compiled together.
-let _needsKotlinNumString = false
 /** The file's helpers that can let an error escape (see throw-lowering.ts). */
 let _kotlinThrowingFns: ReadonlySet<string> = new Set()
 /** Whether the statement being emitted may throw without terminating the app — the Swift twin's `_swiftThrowCtx`. */
@@ -775,8 +768,6 @@ function withKotlinThrowCtx<T>(ctx: 'none' | 'throws' | 'do', fn: () => T): T {
     _kotlinThrowCtx = prev
   }
 }
-const KOTLIN_NUM_STRING = `private fun pyreonNumString(v: Double): String =
-    if (v == Math.rint(v) && Math.abs(v) < 1e15) v.toLong().toString() else v.toString()`
 /**
  * Module-level `const X = <string|number|boolean literal>` bindings,
  * name → value (Kotlin mirror of emit-swift's `_constStringMap`). Lets
@@ -843,7 +834,6 @@ export function emitKotlin(
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _kotlinLayout.reset()
-  _needsKotlinNumString = false
   // Module-scope signals / computeds are the file's shared state (module-state.ts).
   const moduleState = moduleStateDecls(moduleDecls)
   moduleDecls = moduleDecls.filter((md) => !isModuleState(md))
@@ -1080,7 +1070,6 @@ export function emitKotlin(
   for (const c of [...components, ...preparedComponents])
     componentParts.push(emitKotlinComponent(c))
   // consulted AFTER helper + component emission — the flag is set during it
-  if (_needsKotlinNumString) parts.push(KOTLIN_NUM_STRING)
   if (_needsKotlinThrown) parts.push(KOTLIN_THROWN_PREAMBLE)
   // Emit synthesized anonymous-object data classes (collected during
   // component emit) at module scope — Kotlin allows top-level forward refs.
@@ -1107,7 +1096,6 @@ export function emitKotlin(
   _needsKotlinKeepAliveWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
-  _needsKotlinNumString = false
   return { code: parts.join('\n\n'), warnings }
 }
 
@@ -2696,7 +2684,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
         Number.isInteger(s.expr.value)
       ) {
         const kw = s.mutable ? 'var' : 'val'
-        return `${kw} ${kotlinIdent(s.name)} = ${s.expr.value}.0`
+        return `${kw} ${kotlinIdent(s.name)} = ${wholeDoubleLiteral(s.expr.value)}`
       }
       const emptyLiteral =
         (s.expr.kind === 'array' && s.expr.elements.length === 0) ||
@@ -3410,7 +3398,7 @@ function intLiteralAsDouble(x: ExprIR, otherIsDouble: boolean): string | null {
   const lit = x.kind === 'unary' && x.op === '-' ? x.argument : x
   if (lit.kind !== 'literal' || typeof lit.value !== 'number' || lit.float === true) return null
   if (!Number.isInteger(lit.value)) return null
-  return `${x === lit ? '' : '-'}${lit.value}.0`
+  return `${x === lit ? '' : '-'}${wholeDoubleLiteral(lit.value)}`
 }
 
 /**
@@ -3631,7 +3619,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // seed matches a Double accumulation. A genuinely-fractional value
       // already renders with its decimal (`12.5`).
       if (typeof e.value === 'number' && e.float === true && Number.isInteger(e.value)) {
-        return `${e.value}.0`
+        return wholeDoubleLiteral(e.value)
       }
       // An integer literal is a `Long` — the Kotlin width of a TS integer
       // `number` (see `kotlinType`). The suffix is what makes it one where
@@ -3804,8 +3792,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           (sArgT.kind === 'number' && sArgT.float === true) ||
           (sArgT.kind === 'typeRef' && (sArgT.name === 'Double' || sArgT.name === 'Float'))
         ) {
-          _needsKotlinNumString = true
-          return `pyreonNumString(${emitKotlinExpr(e.args[0]!, indent)})`
+          return `pyreonNumberString(${emitKotlinExpr(e.args[0]!, indent)})`
         }
         return `(${emitKotlinExpr(e.args[0]!, indent)}).toString()`
       }
@@ -4720,41 +4707,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             }
             break
           case 'toFixed': {
-            // JS `n.toFixed(d)` → Kotlin `"%.<d>f".format(Locale.ROOT, n)`
-            // (the analytical currency/percent format; `String.format` is
-            // a kotlin.text stdlib extension — no import needed). v1:
-            // literal digit count (or 0-arg default 0) — a dynamic count
-            // falls through to the generic emit.
-            //
-            // `Locale.ROOT` is load-bearing, not tidiness. The 1-arg
-            // `"%.2f".format(x)` uses `Locale.getDefault()`, so the DECIMAL
-            // SEPARATOR follows the device: executed under `Locale.GERMANY`
-            // it yields `1234,57` where JS `toFixed` and the Swift emit both
-            // give `1234.57`. A number formatted for display is one thing; a
-            // number that silently changes shape per device is a data bug
-            // (it round-trips differently, sorts differently, and breaks any
-            // downstream `toDouble()`). JS `toFixed` is locale-INVARIANT, so
-            // the lowering must be too — the fully-qualified name avoids
-            // adding an import to every emitted file.
-            const digits =
-              e.args.length === 0
-                ? '0'
-                : e.args[0]!.kind === 'literal' && typeof e.args[0]!.value === 'number'
-                  ? String(e.args[0]!.value)
-                  : null
-            if (digits !== null) {
-              return `"%.${digits}f".format(java.util.Locale.ROOT, ${obj})`
-            }
-            // A DYNAMIC digit count builds the same format string at runtime
-            // (it used to fall through to a verbatim `n.toFixed(d)`).
-            if (e.args.length === 1) {
-              const dT = inferType(e.args[0]!, _kotlinExprInferCtx)
-              const d =
-                dT.kind === 'number' && dT.float === true
-                  ? `(${argExprs[0]!}).toInt()`
-                  : argExprs[0]!
-              return `"%.\${${d}}f".format(java.util.Locale.ROOT, ${obj})`
-            }
+            // JS `n.toFixed(d)` → the runtime's `pyreonToFixed` (PyreonNumber.kt), never
+            // `"%.<d>f".format(…)`: `java.util.Formatter` rounds the SHORTEST decimal form half up, so
+            // `(1.005).toFixed(2)` printed "1.01" and `(1.45).toFixed(1)` "1.5" with no warning (the web prints
+            // "1.00" / "1.4", because it rounds the double's exact value). Locale-invariant by construction — the
+            // 1-arg `String.format` used `Locale.getDefault()` and printed `1234,57` under a German locale.
+            if (e.args.length === 0) return `pyreonToFixed(${obj}, 0)`
+            if (e.args.length === 1) return `pyreonToFixed(${obj}, ${argExprs[0]!})`
             break
           }
           case 'toString': {
@@ -5025,8 +4984,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           // A DOUBLE operand takes the JS-faithful formatter (`250.0` →
           // `"250"`, as JS prints it) — see the Swift twin.
           if (t.kind === 'number' && t.float === true) {
-            _needsKotlinNumString = true
-            return `pyreonNumString(${emitted})`
+            return `pyreonNumberString(${emitted})`
           }
           return t.kind === 'number' || t.kind === 'boolean' ? `(${emitted}).toString()` : emitted
         }
@@ -8802,7 +8760,7 @@ function kotlinCanvasNumber(
   prop: string,
   fallback: number | undefined,
 ): string {
-  const lit = (v: number): string => (Number.isInteger(v) ? `${v}.0` : String(v))
+  const lit = (v: number): string => (Number.isInteger(v) ? wholeDoubleLiteral(v) : String(v))
   const a = e.attrs.find(
     (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === prop,
   )

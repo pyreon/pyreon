@@ -142,8 +142,8 @@ describe('Kotlin expr: String() / Date / Object statics', () => {
   const b = computed(() => String(dn()))`).code
     // Kotlin `3.0.toString()` is "3.0" but the web prints "3"
     expect(out).toContain('(n).toString()')
-    expect(out).toContain('pyreonNumString(dn)')
-    expect(out).toContain('fun pyreonNumString')
+    expect(out).toContain('pyreonNumberString(dn)')
+    expect(out).not.toContain('pyreonNumString')
   })
 
   it('Date.now() is epoch millis as a Double; Date.parse lowers to the runtime; an unknown Date static warns NAMED', () => {

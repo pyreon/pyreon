@@ -6,6 +6,7 @@ import { HOME, type HomeHero } from '../content/home'
 import { shareImage } from '../kit/assets'
 import { AnimatedSvg, Loop, Picture, Poster } from '../kit/media'
 import notFoundArt from '../media/illustrations/404.svg?raw'
+import proofChartsArt from '../media/home/proof-charts.svg?raw'
 import { PyreonUI } from '@pyreon/ui-core'
 import type { ProductData } from '../content/model'
 import form from '../content/products/form.json'
@@ -13,14 +14,15 @@ import reactivity from '../content/products/reactivity.json'
 import { el, tone, txt } from '../kit/bases'
 import { BenchmarkTable, CompareBars, VerdictChip } from '../kit/bench'
 import { ApiGroups, Faq, FactList, FeatureList, LimitNote, NumberedCards, StatRow, StepCards } from '../kit/blocks'
-import { EmberGradientDefs, GlowCard, Glyph, PackageCard, ProductTag } from '../kit/cards'
+import { EmberGradientDefs, GlowCard, Glyph, PackageCard, PackageName, ProductTag } from '../kit/cards'
 import { BeforeAfter, CodeCard, CodeDiff } from '../kit/code'
 import { Chip, InstallCommand, Pill } from '../kit/controls'
 import { Rule, Section, SectionHead } from '../kit/layout'
 import { AutoGrid, Wrap } from '../kit/primitives'
 import { PrimitiveSpecimens } from './KitGalleryPrimitives'
 import { Reveal } from '../kit/motion'
-import { CaveatLine, EndCTA, HookHero, ProofBand, QuoteBlock } from '../kit/proof'
+import { Badge } from '../kit/badge'
+import { CaveatLine, EndCTA, HookHero, Numeral, ProofBand, QuoteBlock, StatBody, StatCard } from '../kit/proof'
 import { Code, Eyebrow, Heading, Lede, renderInline, StatusBadge, StatusDot } from '../kit/type'
 import { color, font, type ColorKey } from '../theme'
 
@@ -29,6 +31,8 @@ const KitLiveIsland = island(() => import('./KitGalleryLive'), { name: 'KitGalle
 // The forced-theme panels' button Pills (a button outside an island does nothing on a static page).
 const KitScopePillsIsland = island(() => import('./KitScopePills'), { name: 'KitScopePills', hydrate: 'visible' })
 const HERO_MEDIA = (HOME.sections.find((s) => s.kind === 'hero') as HomeHero).visual.media
+// The homepage's first proof card (the charts number), so the specimen prints a locked figure.
+const STRIP_ITEM = HOME.sections.flatMap((s) => (s.kind === 'strip' ? s.items : []))[0]
 
 const FORM = form as unknown as ProductData
 const REACTIVITY = reactivity as unknown as ProductData
@@ -260,6 +264,46 @@ export function KitGallery() {
                 { value: '24', label: 'MCP tools' },
               ]}
             />
+          </Specimen>
+
+          <Specimen name="StatCard: with its chart (the note shows once, in the chart's footnote) · without a chart">
+            {STRIP_ITEM ? (
+              <AutoGrid min={280} gap={150}>
+                <StatCard stat={STRIP_ITEM.stat} label={STRIP_ITEM.label} lines={[STRIP_ITEM.rival]} note={STRIP_ITEM.condition} chart={{ svg: proofChartsArt, file: 'home/proof-charts.svg' }} />
+                <StatCard stat={STRIP_ITEM.stat} label={STRIP_ITEM.label} lines={[STRIP_ITEM.rival]} note={STRIP_ITEM.condition} />
+              </AutoGrid>
+            ) : null}
+          </Specimen>
+
+          <Specimen name="Numeral: default · long · strip · card">
+            <Row>
+              <Numeral>4×</Numeral>
+              <Numeral size="long">1.94–1.95×</Numeral>
+              <Numeral size="strip">8.7×</Numeral>
+              <Numeral size="card">2.6×</Numeral>
+            </Row>
+          </Specimen>
+
+          <Specimen name="StatBody: band (the parts sit on the surface that holds them)">
+            {STRIP_ITEM ? (
+              <GlowCard padding="stat">
+                <StatBody size="band" numeral="default" stat={STRIP_ITEM.stat} label={STRIP_ITEM.label} lines={[STRIP_ITEM.rival]} note={STRIP_ITEM.condition} />
+              </GlowCard>
+            ) : null}
+          </Specimen>
+
+          <Specimen name="PackageName">
+            <PackageName>@pyreon/charts</PackageName>
+          </Specimen>
+
+          <Specimen name="Badge: win · tie · split · loss · info">
+            <Row>
+              <Badge tone="win">win</Badge>
+              <Badge tone="tie">tie</Badge>
+              <Badge tone="split">split</Badge>
+              <Badge tone="loss">loss</Badge>
+              <Badge tone="info">measured</Badge>
+            </Row>
           </Specimen>
 
           <Specimen name="VerdictChip · CompareBars · BenchmarkTable · CaveatLine">

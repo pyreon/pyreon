@@ -1,13 +1,16 @@
 import type { VNodeChild } from '@pyreon/core'
 import { For, Show } from '@pyreon/core'
 import { keyframes } from '@pyreon/styler'
-import { breakpoints, clampSize, color, display, font, gradient, motion, radius, section, text, texture, touch, weight } from '../theme'
+import { breakpoints, clampSize, color, display, font, gradient, inset, motion, radius, section, text, texture, touch, weight } from '../theme'
 import { el, focusRing, pair, tone, txt, type LinkAttrs } from './bases'
 import { InstallCommand, Pill } from './controls'
 import { ctaStackOnPhone, PillGroup } from './cta'
 import { useLinkClick } from './link'
 import { Wrap } from './primitives/wrap'
+import { keepRanges, numeralSize, StatBody, type StatChartSource } from './stat'
 import { Eyebrow, renderInline, StatusDot } from './type'
+
+export { chartCarriesNote, chartFootnote, Numeral, numeralSize, StatBody, StatCard, type StatChartSource } from './stat'
 
 /**
  * The marketing devices carried onto the site (visual-alignment.md §C):
@@ -35,9 +38,6 @@ const punchCss = (m: Mode, flare: 'corner' | 'center') => `
     background: ${pair(m, gradient.flare)};
   }
 `
-
-/** Large numbers step down when they are long (ranges, "2.0–2.1×"), so they stay on one line. [A4] */
-export const numeralSize = (stat: string): 'default' | 'long' => ([...stat].length > 5 ? 'long' : 'default')
 
 // ─── CaveatLine ───────────────────────────────────────────────────────────
 
@@ -93,7 +93,7 @@ export function TextLink(props: { href: string; children?: VNodeChild }) {
 export function CaveatLine(props: { text: string; link?: { label: string; href: string } | undefined }) {
   return (
     <CaveatBox>
-      <Caveat>{renderInline(props.text)}</Caveat>
+      <Caveat>{keepRanges(props.text)}</Caveat>
       {props.link ? <TextLink href={props.link.href}>{props.link.label}</TextLink> : null}
     </CaveatBox>
   )
@@ -121,8 +121,8 @@ const BandTitle = txt
   .theme((_t, m) => ({
     margin: 0,
     paddingTop: { xs: 28, md: 44 },
-    paddingLeft: { xs: 22, md: 44 },
-    paddingRight: { xs: 22, md: 44 },
+    paddingLeft: inset.cell,
+    paddingRight: inset.cell,
     maxWidth: 760,
     fontFamily: font.sans,
     fontSize: 'clamp(22px, 2.2vw, 30px)',
@@ -144,68 +144,22 @@ const Cell = el
   .attrs({ tag: 'li', block: true, gap: 8, contentAlignY: 'top' })
   .theme((_t, m) => ({
     minWidth: 0,
-    paddingTop: { xs: 26, md: 30 },
-    paddingBottom: { xs: 26, md: 30 },
-    paddingLeft: { xs: 22, md: 44 },
-    paddingRight: { xs: 22, md: 44 },
+    paddingTop: inset.cellY,
+    paddingBottom: inset.cellY,
+    paddingLeft: inset.cell,
+    paddingRight: inset.cell,
     borderTop: '1px solid',
     borderColor: tone(m, 'line'),
     // A size container: a long numeral ("1.94–1.95×") sizes to its cell, not the screen.
     extendCss: `container-type: inline-size; @media (min-width: ${breakpoints.lg}px) { border-top: 0; & + & { border-left: 1px solid ${tone(m, 'line')}; } }`,
   }))
 
-/** A huge gradient numeral (700, -.06em, .86). Light mode uses the AA-safe stops. [A4] */
-export const Numeral = txt
-  .config({ name: 'Numeral' })
-  .attrs({ tag: 'span' })
-  .theme((_t, m) => ({
-    display: 'block',
-    fontFamily: font.sans,
-    fontSize: { xs: 'clamp(64px, 22vw, 96px)', md: clampSize(display.numeral) },
-    lineHeight: display.numeral.lineHeight,
-    letterSpacing: display.numeral.tracking,
-    fontWeight: display.numeral.weight,
-    backgroundImage: pair(m, gradient.ember),
-    backgroundClip: 'text',
-    color: 'transparent',
-    paddingBottom: '0.08em',
-    whiteSpace: 'nowrap',
-    extendCss: '-webkit-background-clip: text; font-variant-numeric: tabular-nums;',
-  }))
-  .sizes(() => ({
-    default: {},
-    long: { fontSize: 'clamp(32px, min(5.4vw, 17cqi), 90px)' },
-    strip: { fontSize: 'clamp(40px, 4vw, 58px)' },
-    /** A proof number inside a product card: one step under `strip`, so a card with a number and one without share a row without a half-empty card. */
-    card: { fontSize: 'clamp(34px, 3vw, 44px)' },
-  }))
-
-const CellLabel = txt
-  .config({ name: 'ProofBandLabel' })
-  .attrs({ tag: 'span' })
-  .theme((_t, m) => ({
-    display: 'block',
-    marginTop: 6,
-    maxWidth: 380,
-    textWrap: 'balance',
-    fontFamily: font.sans,
-    fontSize: 17,
-    lineHeight: 1.35,
-    fontWeight: weight.medium,
-    color: tone(m, 'strong'),
-  }))
-
-const CellMono = txt
-  .config({ name: 'ProofBandDetail' })
-  .attrs({ tag: 'span' })
-  .theme((_t, m) => ({ display: 'block', fontFamily: font.mono, fontSize: 12, lineHeight: 1.55, color: tone(m, 'fog'), overflowWrap: 'anywhere' }))
-
 const BandFoot = el
   .config({ name: 'ProofBandFoot' })
   .attrs({ block: true, contentAlignX: 'block' })
   .theme(() => ({
-    paddingLeft: { xs: 22, md: 44 },
-    paddingRight: { xs: 22, md: 44 },
+    paddingLeft: inset.cell,
+    paddingRight: inset.cell,
     paddingBottom: { xs: 22, md: 28 },
   }))
 
@@ -225,8 +179,8 @@ export interface ProofItem {
   /** Record source (shown when there is no detail). */
   source?: string | undefined
   href?: string | undefined
-  /** A small chart of the same figures under the text (the asset set's proof charts). */
-  visual?: VNodeChild
+  /** A small chart of the same figures under the text (the asset set's proof charts); its footnote replaces the condition line when it carries it. */
+  chart?: StatChartSource | undefined
 }
 
 /**
@@ -257,17 +211,16 @@ export function ProofBand(props: {
         <For each={items} by={(i) => i.stat + i.label}>
           {(i) => (
             <Cell>
-              <span>
-                <Numeral size={size}>{i.stat}</Numeral> <CellLabel>{renderInline(i.label)}</CellLabel>
-              </span>
-              <Show when={() => !!(i.detail ?? i.source)}>
-                <CellMono>{renderInline(i.detail ?? i.source ?? '')}</CellMono>
-              </Show>
-              <Show when={() => !!i.condition}>
-                <CellMono>{renderInline(i.condition ?? '')}</CellMono>
-              </Show>
-              {i.href ? <TextLink href={i.href}>See the row →</TextLink> : null}
-              {i.visual ?? null}
+              <StatBody
+                size="band"
+                numeral={size}
+                stat={i.stat}
+                label={i.label}
+                lines={[i.detail ?? i.source ?? '']}
+                note={i.condition}
+                chart={i.chart}
+                extra={i.href ? <TextLink href={i.href}>See the row →</TextLink> : undefined}
+              />
             </Cell>
           )}
         </For>

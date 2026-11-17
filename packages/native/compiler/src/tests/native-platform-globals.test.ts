@@ -203,8 +203,8 @@ const expected = [
   'uuid true',
 ].join('\n')
 
-// `pyreonNumString` is the file-level helper the emitter writes for `String(number)`.
-const FNS = ['cmp', 'nums', 'uuidShape', 'pyreonNumString']
+// `String(number)` lowers to the runtime's `pyreonNumberString`, linked by `runtimeNumber`.
+const FNS = ['cmp', 'nums', 'uuidShape']
 
 describe('the lowered globals behave like the web', () => {
   it.runIf(swiftOk)('Swift', () => {

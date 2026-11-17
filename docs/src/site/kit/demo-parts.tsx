@@ -203,7 +203,7 @@ export const PaperTag = txt
     paddingBottom: 2,
     paddingLeft: 9,
     paddingRight: 9,
-    borderRadius: 9999,
+    borderRadius: radius.pill,
     fontFamily: font.mono,
     fontSize: 12,
     lineHeight: 1.5,
