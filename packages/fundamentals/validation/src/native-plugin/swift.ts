@@ -47,11 +47,18 @@ function swiftFieldType(t: ZodFieldType, integer = true): string {
 }
 
 /**
- * The cast that reads one input value as the field type. A `Double` field reads a whole number too: a JSON-shaped
- * input map holds `3` as an `Int`, and `as? Double` rejects a Swift `Int`.
+ * The cast that reads one input value as the field type, accepting what the web accepts. A `Double` field reads a
+ * whole number too: a JSON-shaped input map holds `3` as an `Int`, and `as? Double` rejects a Swift `Int`. An `Int`
+ * (`.int()`) field reads a whole `Double` too: the web's `s.number().int()` accepts `3.0`, which is the number 3, and
+ * `as? Int` rejects a Swift `Double`. A fractional, non-finite or out-of-range value is still a wrong type.
  */
 function swiftRead(expr: string, t: string): string {
-  return t === 'Double' ? `((${expr} as? Double) ?? (${expr} as? Int).map(Double.init))` : `${expr} as? ${t}`
+  if (t === 'Double') return `((${expr} as? Double) ?? (${expr} as? Int).map(Double.init))`
+  if (t === 'Int') {
+    return `((${expr} as? Int) ?? (${expr} as? Double).flatMap { $0.rounded(.towardZero) == $0 && abs($0) < 9.2e18 ? Int($0) : nil })`
+  }
+
+  return `${expr} as? ${t}`
 }
 
 function swiftFieldInitial(t: ZodFieldType): string {
