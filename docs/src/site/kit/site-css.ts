@@ -2,6 +2,7 @@ import { breakpoints, color, font, gradient, layout, motion, navMedia, radius, t
 
 const pulse = motion.pulse
 import { C } from './classes'
+import { SCALE_VARS_CSS } from '../theme-vars'
 
 /**
  * The plain stylesheet for the site's ISLANDS (the nav, copy buttons, the
@@ -33,6 +34,7 @@ const reset = 'margin:0;padding:0;border:0;background:none;font:inherit;color:in
 export const SITE_CSS_KEY = 'pyreon-site-islands-v1'
 
 export const SITE_CSS = `@layer site{
+${SCALE_VARS_CSS}
 :root,[data-theme=dark]{${vars('dark')}}
 [data-theme=light]{${vars('light')}}
 pyreon-island{display:contents}
