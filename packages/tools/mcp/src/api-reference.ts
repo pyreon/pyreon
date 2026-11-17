@@ -1480,7 +1480,7 @@ const base = signal(1.0)
   'primitives/Tabs': {
     signature: '(props: { value: string | (() => string); onChange: (next: string) => void; children: <Tab> elements } | { router: TabsRouter; children: <Tab> elements }) => VNode',
     example: `const tab = signal('feed')
-<Tabs value={tab} onChange={(v) => tab.set(v)}>
+<Tabs value={tab()} onChange={(v) => tab.set(v)}>
   <Tab value="feed" label="Feed" icon="home"><FeedScreen /></Tab>
   <Tab value="me" label="Me" icon="person"><ProfileScreen /></Tab>
 </Tabs>`,
@@ -1710,6 +1710,15 @@ const src = emitValidator(info.node)
 const validate = new Function("return " + src)()
 validate("a@b.co").length // 0`,
     notes: '[EXPERIMENTAL] Emits a monomorphic, fully-inlined validator FUNCTION SOURCE for an emittable `analyzeValidate` IR node — straight-line `typeof` / regex / comparison checks specialized to the exact shape, with NO op-array traversal or per-check closure dispatch (the typia-class approach). Returns an arrow expression `(input) => Issue[]` (zero issues ⟺ valid). Throws on an `unsupported` node — guard with `isEmittable` first. Wiring this into @pyreon/vite-plugin (replacing runtime schema construction at a call site) is a follow-up; this is the pure, independently-testable foundation. See also: analyzeValidate.',
+  },
+
+  'compiler/findSyntaxErrors': {
+    signature: 'findSyntaxErrors(code: string, filename?: string): SourceSyntaxError[]',
+    example: `import { findSyntaxErrors } from "@pyreon/compiler/analyze"
+
+findSyntaxErrors("export const C = () => <div>", "C.tsx")[0]
+// { message: "JSX element 'div' has no corresponding closing tag.", line: 1, column: 24 }`,
+    notes: 'Every syntax error the TypeScript parser reports for `code`, in source order, as `{ message, line (1-based), column (0-based) }`; empty means it parsed. The detectors, codemods and Reactivity Lens parse with an error-recovering parser and return nothing for code they cannot read, so call this first and never turn their empty result into a clean verdict for input with syntax errors (the MCP `validate` tool, `pyreon check` and `audit_islands` do). Parse mode follows the filename: `.ts`/`.mts`/`.cts` as TypeScript, `.jsx` as JSX, `.js`/`.mjs`/`.cjs` as JavaScript, anything else as TSX. Syntax only: no type checking. A markdown-fenced block parses (the backticks are template literals), so strip fences before calling it. See also: detectPyreonPatterns, detectReactPatterns.',
   },
 
   'compiler/detectReactPatterns': {
@@ -2491,7 +2500,7 @@ const CommandPalette = island(
 
 // Hydration strategies: "load" | "idle" | "visible" | "interaction" | "media" | "never"
 // Prefetch strategies:  "none" (default) | "idle" | "visible"`,
-    notes: 'Wrap a lazily-loaded component in a `<pyreon-island>` boundary with a hydration strategy. The rest of the page stays HTML-only; only the island fetches its JS bundle and hydrates. Strategies: `"load"` (immediate), `"idle"` (`requestIdleCallback`), `"visible"` (IntersectionObserver), `"interaction"` (first focus/click/pointerenter/touchstart — also `"interaction(<events>)"` for custom event lists; clicks are REPLAYED on the equivalent live element after hydration so the first click both wakes the island AND fires the action), `"media(query)"` (matchMedia), `"never"` (HTML-only, no JS). Props passed to islands are JSON-serialized — non-JSON values (functions, symbols, undefined, children) are stripped. Pair with `prefetch: "idle"` or `"visible"` to pre-warm the chunk BEFORE the hydration trigger fires — eliminates the blank-while-fetching flash on deferred-strategy islands. Prefetch is a no-op for `hydrate: "load"` (loader runs synchronously already) and `hydrate: "never"` (defeats the zero-JS strategy). See also: createHandler, hydrateIslands, hydrateIslandsAuto.',
+    notes: 'Wrap a lazily-loaded component in a `<pyreon-island>` boundary with a hydration strategy. The rest of the page stays HTML-only; only the island fetches its JS bundle and hydrates. Strategies: `"load"` (immediate), `"idle"` (`requestIdleCallback`), `"visible"` (IntersectionObserver), `"interaction"` (first focus/click/pointerenter/touchstart — also `"interaction(<events>)"` for custom event lists; clicks are REPLAYED on the equivalent live element after hydration so the first click both wakes the island AND fires the action), `"media(query)"` (matchMedia), `"never"` (HTML-only, no JS). Props passed to islands are JSON-serialized — non-JSON values (functions, symbols, undefined, children) are stripped. Pair with `prefetch: "idle"` or `"visible"` to pre-warm the chunk BEFORE the hydration trigger fires — eliminates the blank-while-fetching flash on deferred-strategy islands. Prefetch is a no-op for `hydrate: "load"` (loader runs synchronously already) and `hydrate: "never"` (defeats the zero-JS strategy). **Lifetime:** an island ends when its marker unmounts — a router navigation, the router HMR swap, `<Show>` / `<For>`, a parent re-render, a Suspense swap: a hydrated island is unmounted (`onUnmount`, effects and `onMount` cleanups run), a trigger that has not fired is cancelled, a chunk still loading never mounts. Navigating back mounts one fresh instance. See also: createHandler, hydrateIslands, hydrateIslandsAuto.',
     mistakes: `- Passing function props (event handlers, callbacks) — silently stripped during JSON serialization, the island sees \`undefined\`
 - Passing children to an island — stripped; islands cannot render arbitrary descendant trees from props
 - Forgetting to wire client-side hydration — under \`@pyreon/vite-plugin\` use \`hydrateIslandsAuto(registry)\` (the registry is auto-generated from \`island()\` calls); without a plugin use the manual \`hydrateIslands({ Name: () => import("./Path") })\`
@@ -2560,10 +2569,11 @@ hydrateIslands({
   // hydrate: "never" islands are intentionally omitted —
   // registering them defeats the zero-JS contract.
 })`,
-    notes: 'Client-side counterpart to `island()`. Walks every `<pyreon-island>` element on the page and schedules hydration per its `data-hydrate` strategy. Manual form: the user maintains the `Name → loader` mapping by hand (must match every `island()` `name` field). Returns a cleanup function that disconnects pending observers / listeners. Use `hydrateIslandsAuto()` under `@pyreon/vite-plugin` to skip the manual sync. Imported from `@pyreon/server/client`, NOT from `@pyreon/server` (server-only entry). See also: island, hydrateIslandsAuto.',
+    notes: 'Client-side counterpart to `island()`. Walks every `<pyreon-island>` element on the page and schedules hydration per its `data-hydrate` strategy. Manual form: the user maintains the `Name → loader` mapping by hand (must match every `island()` `name` field). Returns a cleanup that ENDS every island it scheduled: pending triggers are cancelled, in-flight chunks never mount, hydrated islands are unmounted (`onUnmount` / effects / `onMount` cleanups run, their DOM is removed). A static page has no component tree to notice island DOM leaving, so a host that removes or replaces island DOM itself (an `innerHTML` swap, its own navigation) calls this cleanup; HMR passes it to `import.meta.hot.dispose`. An island already live from an earlier call is never hydrated twice. Use `hydrateIslandsAuto()` under `@pyreon/vite-plugin` to skip the manual sync. Imported from `@pyreon/server/client`, NOT from `@pyreon/server` (server-only entry). See also: island, hydrateIslandsAuto.',
     mistakes: `- Registry key must match the \`island()\` \`name\` field exactly — typo / drift causes runtime \`data-island-error="no-loader"\`. Use \`hydrateIslandsAuto()\` to eliminate this manual sync.
 - Including a \`hydrate: "never"\` island in the registry — defeats the strategy by pulling its module into the client bundle. Skip never-islands; the runtime short-circuits silently for them.
-- Importing from \`@pyreon/server\` instead of \`@pyreon/server/client\` — the main entry is server-only and stubs/throws on client-side use.`,
+- Importing from \`@pyreon/server\` instead of \`@pyreon/server/client\` — the main entry is server-only and stubs/throws on client-side use.
+- Replacing island DOM (an \`innerHTML\` swap, a hand-rolled page transition) without calling the returned cleanup — the island's effects, timers and listeners keep running against detached DOM. Removal the framework did not perform is not observed; call the cleanup.`,
   },
 
   'server/hydrateIslandsAuto': {
@@ -7632,10 +7642,11 @@ function MyComp(props) {
   return <For each={items}>{...}</For>  // → for-missing-by
 }
 \` })`,
-    notes: 'Two AST-based detectors run in parallel: `detectReactPatterns` flags "coming from React" mistakes (`useState`, `useEffect`, `className`, `onChange` on inputs, React-package imports), and `detectPyreonPatterns` flags "using Pyreon wrong" mistakes (`<For>` missing `by`, props destructured at component signature, `typeof process` dev gates, raw `addEventListener`, `Date.now() + Math.random()` IDs). Diagnostics are merged + sorted by line / column for top-down reading. See also: get_anti_patterns, migrate_react.',
+    notes: 'Two AST-based detectors run in parallel: `detectReactPatterns` flags "coming from React" mistakes (`useState`, `useEffect`, `className`, `onChange` on inputs, React-package imports), and `detectPyreonPatterns` flags "using Pyreon wrong" mistakes (`<For>` missing `by`, props destructured at component signature, `typeof process` dev gates, raw `addEventListener`, `Date.now() + Math.random()` IDs). Diagnostics are merged + sorted by line / column for top-down reading. Input is syntax-checked first, and input that does not parse never gets the `✓ No issues found` line: a syntax error is the verdict (`✗ Syntax error at line L, column C: <parser message>`), with any detector findings from the part that parsed listed under it. Input wrapped in ONE markdown code fence (backticks or tildes, language tag optional) is unwrapped and validated, and the result says the fence was stripped; several fences or prose around the code are reported as markdown, not guessed at. Empty input and non-JS/TS filenames (`.vue`, `.svelte`) are reported as such. `explain_reactivity`, `migrate_react`, `migrate_pyreon` and the `componentSource` of `diagnose` / `explain_error` follow the same rules. See also: get_anti_patterns, migrate_react.',
     mistakes: `- Treating zero diagnostics as "the code is correct" — \`validate\` is a STATIC detector. It catches the documented anti-patterns from \`.agents/rules/anti-patterns.md\` but does NOT verify runtime semantics, cross-file consistency, type correctness, or compiler output. Pair with \`tsc\` + tests for full coverage.
 - Omitting the \`filename\` arg for path-sensitive detectors — some detectors (e.g. \`pyreon/no-window-in-ssr\` with its \`exemptPaths\` option) need the path to know whether the file is server-only-exempt. Without it the diagnostic may misfire or fail to fire.
-- Running \`validate\` on a snippet that is NOT a full file — detectors expect complete syntax (every \`import\`, every \`function\`). Passing a partial expression yields no diagnostics, which can be mistaken for "clean".
+- Passing a partial snippet that does not parse (an unclosed tag, a fragment cut mid-statement) — the tool reports the syntax error instead of validating. Pass a complete file or a complete statement list.
+- Pasting prose plus code, or several fenced blocks, into \`code\` — only a single surrounding fence is stripped. Pass the source of one file.
 - Calling \`validate\` after the code is already merged — it's a pre-commit / before-paste tool. After-the-fact use is fine but the maximum value is catching the bug BEFORE it ships.`,
   },
 

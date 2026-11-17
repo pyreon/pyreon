@@ -29,7 +29,7 @@
  */
 
 import MagicString, { SourceMap } from 'magic-string'
-import { detectPlain, transformPlain, type PlainTransformResult } from './plain'
+import { detectPlain, SIGNAL_OF_MARK, transformPlain, type PlainTransformResult } from './plain'
 import { parseSync } from 'oxc-parser'
 import { REACT_EVENT_REMAP } from './event-names'
 import { loadNativeBinding } from './load-native'
@@ -478,6 +478,40 @@ function jsxTagName(node: N): string {
 }
 
 /**
+ * The ONE tag rule, shared by every "is this a component?" decision (#4368).
+ * An identifier tag names a DOM element when its first character is an ASCII
+ * lowercase letter (`div`, `my-el`) — the rule the downstream JSX transforms
+ * (TypeScript, esbuild, oxc, Babel) use to choose a string tag over a value —
+ * and a component otherwise (`Comp`, `_Comp`, `$Comp`). Mirrors
+ * `is_lower_case` / `is_component_tag` in `native/src/lib.rs`.
+ */
+function isLowerCase(s: string): boolean {
+  const c = s.charCodeAt(0)
+  return c >= 97 && c <= 122
+}
+
+/** Identifier tag that names a component (see `isLowerCase`). */
+function isComponentTag(tag: string): boolean {
+  return tag.length > 0 && !isLowerCase(tag)
+}
+
+/**
+ * Is this JSX element a COMPONENT? A member tag (`<m.X>`, `<UI.Button>`,
+ * `<Ctx.Provider>`, `<motion.div>`, `<this.X>`) always is — it names a value,
+ * as in every JSX dialect — and an identifier tag is by `isComponentTag`. A
+ * namespaced tag (`<svg:a>`) is not. Every component form compiles the same:
+ * `_rp` / `_pp` / `_rpd` props, `_wrapSpread` spreads, accessor children,
+ * `_lc` for a sole template child. Mirrors `is_component_element` (lib.rs).
+ */
+function isComponentElement(node: N): boolean {
+  const name = node?.openingElement?.name
+  if (!name) return false
+  if (name.type === 'JSXMemberExpression') return true
+
+  return name.type === 'JSXIdentifier' && isComponentTag(name.name as string)
+}
+
+/**
  * The QUALIFIED name of a JSX attribute — the ONE reader for the whole emitter.
  *
  * `xlink:href` parses as a `JSXNamespacedName`, not a `JSXIdentifier`, and every
@@ -604,8 +638,7 @@ export function scanCollapsibleSites(
       const tag = jsxTagName(node)
       const imp = tag ? imports.get(tag) : undefined
       if (
-        tag &&
-        tag.charAt(0) !== tag.charAt(0).toLowerCase() &&
+        isComponentTag(tag) &&
         imp &&
         collapsibleSources.has(imp.source)
       ) {
@@ -744,7 +777,7 @@ export function detectStaticElementChild(node: N): StaticChildNode | null {
   if (node?.type !== 'JSXElement') return null
   const tag = jsxTagName(node)
   // Component (uppercase first char) → has its own reactivity → bail.
-  if (!tag || tag.charAt(0) !== tag.charAt(0).toLowerCase()) return null
+  if (!tag || !isLowerCase(tag)) return null
 
   const props: Record<string, string> = {}
   for (const attr of jsxAttrs(node)) {
@@ -1511,7 +1544,7 @@ export function transformJSX_JS(
     const cfg = options.collapseRocketstyle
     if (!cfg) return false
     const tag = jsxTagName(node)
-    if (!tag || tag.charAt(0) === tag.charAt(0).toLowerCase()) return false
+    if (!isComponentTag(tag)) return false
     if (!cfg.candidates.has(tag)) return false
     // Shared bail catalogue — IDENTICAL to scanCollapsibleSites (the
     // plugin scans with the same predicate, so its resolved `sites`
@@ -1566,8 +1599,8 @@ export function transformJSX_JS(
    */
   /**
    * Re-emit a collapse site's peeled attribute expression as the component's
-   * normal (h()-path) mount would: an `on*` handler gets the signal auto-call
-   * (`autoCallUnwrappedAttrValue`), a dynamic prop's ternary test the full
+   * normal (h()-path) mount would: an `on*` handler the `sliceExpr` of
+   * `sliceUnwrappedAttrValue`, a dynamic prop's ternary test the full
    * `sliceExpr` its `_rp(() => …)` wrap would get. A verbatim source slice left
    * `count + 1` in a handler and `() => (active) ? 0 : 1` in the dispatcher
    * (always the truthy variant). The span always names a node of `node`'s own
@@ -1579,11 +1612,7 @@ export function transformJSX_JS(
       if (attr.type !== 'JSXAttribute' || attr.value?.type !== 'JSXExpressionContainer') continue
       const e = attr.value.expression
       if (!e || e.type === 'JSXEmptyExpression') continue
-      if (e.start === start && e.end === end) {
-        const raw = code.slice(start, end)
-
-        return signalVars.size > shadowedSignals.size ? autoCallSignals(raw, e) : raw
-      }
+      if (e.start === start && e.end === end) return sliceExpr(e)
       if (e.type === 'ConditionalExpression' && e.test.start === start && e.test.end === end) {
         return sliceExpr(e.test)
       }
@@ -1842,7 +1871,7 @@ export function transformJSX_JS(
   function isSoleComponentChild(node: N): boolean {
     const parent = findParent(node)
     if (!parent || parent.type !== 'JSXElement') return false
-    if (!isComponentTag(jsxTagName(parent))) return false
+    if (!isComponentElement(parent)) return false
     const kids = jsxChildren(parent).filter(
       (c: N) => !(c.type === 'JSXText' && !cleanJsxText(c.value ?? c.raw ?? '')),
     )
@@ -1886,14 +1915,12 @@ export function transformJSX_JS(
     if (parent.type === 'JSXFragment') return true
     if (parent.type === 'JSXExpressionContainer') return true
     if (parent.type !== 'JSXElement') return false
-    const tag = jsxTagName(parent)
-    // `jsxTagName` reports '' for a member/namespaced tag (`<Ctx.Provider>`),
-    // which `isComponentTag` would then read as "not a component". Those parents
-    // ARE components and are NEVER `_lc`-wrapped (the compiler classifies no
-    // member tag as a component anywhere), so they are always eager.
-    if (tag === '') return true
-    if (!isComponentTag(tag)) return false
-    return !isSoleComponentChild(node)
+    // A component parent — identifier or member tag (`<Ctx.Provider>`), one
+    // rule (`isComponentElement`) — is eager unless this is its `_lc`-deferred
+    // sole child. A namespaced tag (`<svg:a>`, `jsxTagName` == '') stays eager.
+    if (isComponentElement(parent)) return !isSoleComponentChild(node)
+
+    return jsxTagName(parent) === ''
   }
 
   /** Does this element tree absorb any COMPONENT child into its template? */
@@ -2937,8 +2964,7 @@ export function transformJSX_JS(
       // so the bytes (including a sync child's absence of markers and an async
       // child's `<!--$pas-->`/`<!--$pae-->` sentinels) are identical by
       // construction rather than by re-derivation.
-      const childTag = jsxTagName(child)
-      if (mode === 'recursed' && childTag && !isLowerCase(childTag)) {
+      if (mode === 'recursed' && isComponentElement(child)) {
         if (!ssrComponentChildEligible(child)) return false
         ssrEmitSourceHole(buf, child)
         needsSsrNodeImport = true
@@ -3341,9 +3367,7 @@ export function transformJSX_JS(
    * wrap there.
    */
   function handleJsxSpreadAttribute(attr: N, parentElement: N): void {
-    const tagName = jsxTagName(parentElement)
-    const isComponent = tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
-    if (!isComponent) return
+    if (!isComponentElement(parentElement)) return
     const arg = attr.argument
     if (!arg) return
     // Skip already-wrapped sources (idempotent compilation guard).
@@ -3361,29 +3385,27 @@ export function transformJSX_JS(
   }
 
   /**
-   * Auto-call the bare signals of an h()-path attribute value the walk does NOT
-   * wrap or hoist — an `on*` handler, a `ref`, a function-valued prop
-   * (`render={() => …}`), or a static value holding one — with the same
-   * `autoCallSignals` pass the template path runs over the identical attribute
-   * (`emitEventListener` / `emitRef` slice the whole value). Before this the
+   * Slice an h()-path attribute value the walk does NOT wrap or hoist — an
+   * `on*` handler, a `ref`, a function-valued prop (`render={() => …}`), or a
+   * static value holding one — through `sliceExpr`, exactly as the template
+   * path slices the identical attribute (`emitEventListener` / `emitRef`): bare
+   * signals are auto-called and prop-derived consts inlined. Before #4536 the
    * h() path left the value verbatim, so `onClick={() => count.set(count + 1)}`
    * auto-called `count` on `<button>x</button>` and set the signal to its own
    * source text plus "1" on `<Button/>`, a childless `<div/>`, a
-   * spread-carrying element and every SSR render. Nested JSX in the value stays
-   * as written (not walked), exactly as inside a template-path handler.
-   *
-   * Auto-call only: prop-derived inlining inside handlers still differs between
-   * the paths (the template path inlines, this one does not) — inlining a
-   * stateful initializer there would mint a new signal per call, so it is not
-   * extended here. Pushes nothing when nothing needs calling.
+   * spread-carrying element and every SSR render; until the stateful-initializer
+   * rule (`initMintsState`) a handler there also read a prop-derived const's
+   * SETUP value (`const label = props.label`) where the template element read
+   * the live prop. One function for every element path, so they cannot drift.
+   * Nested JSX in the value stays as written (not walked), exactly as inside a
+   * template-path handler. Pushes nothing when the slice is the source text.
    */
-  function autoCallUnwrappedAttrValue(expr: N): void {
-    if (signalVars.size === 0 || signalVars.size <= shadowedSignals.size) return
+  function sliceUnwrappedAttrValue(expr: N): void {
     const start = expr.start as number
     const end = expr.end as number
     const raw = code.slice(start, end)
-    const called = autoCallSignals(raw, expr)
-    if (called !== raw) replacements.push({ start, end, text: called })
+    const sliced = sliceExpr(expr)
+    if (sliced !== raw) replacements.push({ start, end, text: sliced })
   }
 
   function handleJsxAttribute(node: N, parentElement: N): void {
@@ -3393,13 +3415,12 @@ export function transformJSX_JS(
     const expr = node.value.expression
     if (!expr || expr.type === 'JSXEmptyExpression') return
     if (name === 'ref' || EVENT_RE.test(name)) {
-      autoCallUnwrappedAttrValue(expr)
+      sliceUnwrappedAttrValue(expr)
 
       return
     }
 
-    const tagName = jsxTagName(parentElement)
-    const isComponent = tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
+    const isComponent = isComponentElement(parentElement)
 
     if (isComponent) {
       const isSingleJsx = expr.type === 'JSXElement' || expr.type === 'JSXFragment'
@@ -3437,7 +3458,7 @@ export function transformJSX_JS(
           'live prop — signal reads here are tracked into the component',
         )
       } else {
-        autoCallUnwrappedAttrValue(expr)
+        sliceUnwrappedAttrValue(expr)
       }
     } else {
       const hoistName = maybeHoist(expr)
@@ -3446,7 +3467,7 @@ export function transformJSX_JS(
       } else if (shouldWrap(expr)) {
         wrap(expr)
       } else {
-        autoCallUnwrappedAttrValue(expr)
+        sliceUnwrappedAttrValue(expr)
       }
     }
   }
@@ -3476,7 +3497,7 @@ export function transformJSX_JS(
       // reactive end-to-end.
       if (
         parentJsx &&
-        isComponentTag(jsxTagName(parentJsx)) &&
+        isComponentElement(parentJsx) &&
         isStableReference(expr) &&
         !referencesSignalVar(expr)
       ) {
@@ -3526,29 +3547,40 @@ export function transformJSX_JS(
   /**
    * Walk a JSX expression the emit does NOT slice (a function child —
    * `<Comp>{() => count + 1}</Comp>`, `<For>{(r) => …}</For>` — or any other
-   * unwrapped value), auto-calling its bare signals first.
+   * unwrapped value), applying `sliceExpr`'s identifier edits first.
    *
-   * A sliced expression gets `autoCallSignals` over its whole span, nested
-   * functions included. An unsliced one is WALKED instead (so its nested JSX
-   * still compiles to templates), and the walk itself never rewrites an
-   * identifier — so a bare signal inside a function child was auto-called on
-   * a template element and left as the function on every other path. The
-   * identifiers come from the same collector `sliceExpr` uses (same scope,
-   * identity and write-target rules); those inside nested JSX are left to
-   * that JSX's own emit, which the walk reaches next. Each is a zero-width
-   * `()` insertion, disjoint from every edit the walk makes (those cover JSX
-   * only). Mirrored by `auto_call_unsliced` in the Rust backend.
+   * A sliced expression gets the signal auto-call and prop-derived inlining
+   * over its whole span, nested functions included. An unsliced one is WALKED
+   * instead (so its nested JSX still compiles to templates), and the walk
+   * itself never rewrites an identifier — so a bare signal (or a prop-derived
+   * const) inside a function child was rewritten on a template element and
+   * left as written on every other path. `sliceUnsliced` makes the same
+   * identifier edits, leaving those inside nested JSX to that JSX's own emit,
+   * which the walk reaches next.
    */
   function walkUnslicedExpr(expr: N): void {
-    autoCallUnsliced(expr)
+    sliceUnsliced(expr)
     walkNode(expr)
   }
 
-  function autoCallUnsliced(expr: N): void {
-    if (signalVars.size === 0 || signalVars.size <= shadowedSignals.size) return
+  /**
+   * The identifier edits `sliceExpr` would make, applied to a WALKED
+   * expression: bare signals get a zero-width `()`, and — under the same
+   * `accessesProps` gate `sliceExpr` uses — prop-derived consts are inlined, so
+   * `<Comp>{() => label}</Comp>` reads the live prop exactly as
+   * `<div>{() => label}</div>` does. Edits inside nested JSX are left to that
+   * JSX's own emit, which the walk reaches next; the rest cover identifiers
+   * only, disjoint from the walk's edits (those cover JSX only). Mirrored by
+   * `slice_unsliced` in the Rust backend.
+   */
+  function sliceUnsliced(expr: N): void {
     if (expr.type === 'JSXElement' || expr.type === 'JSXFragment') return
-    const idents = collectSignalCallIdents(expr)
-    if (idents.length === 0) return
+    const callSignals = signalVars.size > 0 && signalVars.size > shadowedSignals.size
+    const inline = propDerivedVars.size > 0 && accessesProps(expr)
+    if (!callSignals && !inline) return
+    const idents = callSignals ? collectSignalCallIdents(expr) : []
+    const pdEdits = inline ? propDerivedEdits(expr.start as number, expr.end as number, expr) : []
+    if (idents.length === 0 && pdEdits.length === 0) return
     const jsxSpans: { start: number; end: number }[] = []
     const findJsx = (n: N): void => {
       if (n.type === 'JSXElement' || n.type === 'JSXFragment') {
@@ -3559,15 +3591,16 @@ export function transformJSX_JS(
       forEachChildFast(n, findJsx)
     }
     findJsx(expr)
+    const inJsx = (start: number, end: number): boolean =>
+      jsxSpans.some((sp) => start >= sp.start && end <= sp.end)
     for (const id of idents) {
-      if (jsxSpans.some((sp) => id.start >= sp.start && id.end <= sp.end)) continue
+      if (inJsx(id.start, id.end)) continue
       replacements.push({ start: id.end, end: id.end, text: '()' })
     }
-  }
-
-  /** Component tag — uppercase first letter. Lowercase = DOM element. */
-  function isComponentTag(tag: string): boolean {
-    return tag.length > 0 && tag.charAt(0) !== tag.charAt(0).toLowerCase()
+    for (const e of pdEdits) {
+      if (inJsx(e.start, e.end)) continue
+      replacements.push(e)
+    }
   }
 
   /**
@@ -3587,7 +3620,7 @@ export function transformJSX_JS(
     // element — `jsxTagName` reports '' for it, so the uppercase test alone
     // would misread it as "not a component".
     if (name.type !== 'JSXIdentifier') return true
-    return isComponentTag(name.name)
+    return isComponentTag(name.name as string)
   }
 
   /**
@@ -3665,6 +3698,44 @@ export function transformJSX_JS(
   // ── Prop-derived variable tracking (collected during the single walk) ─────
   const propsNames = new Set<string>()
   const propDerivedVars = new Map<string, { start: number; end: number }>()
+  /**
+   * Hygiene for the inliner: every identifier name an alias's INLINED text
+   * mentions (its initializer's identifiers plus, transitively, those of the
+   * aliases it references), keyed by the initializer's start (per binding,
+   * never per name). Inlining splices that text at a use site, so a binding
+   * between the declaration and the use that re-binds one of these names would
+   * CAPTURE it: `const lbl = props.l + tag` inlined into
+   * `items.map((tag) => <li title={lbl}/>)` read the map parameter. Such a use
+   * keeps the const (the value captured at setup) — see `enterPropDerivedScope`
+   * and `propDerivedEdits`. Written once per binding at registration.
+   */
+  const aliasFreeNames = new Map<number, Set<string>>()
+  function collectAliasFreeNames(init: N): Set<string> {
+    const out = new Set<string>()
+    const visit = (n: N): void => {
+      if (n.type === 'Identifier') {
+        const p = findParent(n)
+        if (!(p && p.type === 'MemberExpression' && p.property === n && !p.computed)) {
+          out.add(n.name)
+          const alias = propDerivedVars.get(n.name)
+          const transitive = alias ? aliasFreeNames.get(alias.start) : undefined
+          if (transitive) for (const x of transitive) out.add(x)
+        }
+      }
+      forEachChildFast(n, visit)
+    }
+    visit(init)
+
+    return out
+  }
+  /** Does a binding of any of `names` capture a name `alias`'s inlined text mentions? */
+  function aliasCapturedBy(span: { start: number }, names: Iterable<string>): boolean {
+    const free = aliasFreeNames.get(span.start)
+    if (!free) return false
+    for (const n of names) if (free.has(n)) return true
+
+    return false
+  }
   // Lexical scoping of the registry above (issue #3815). The map is keyed by
   // NAME, but a prop-derived const is only in scope inside the block that
   // declares it — without scoping, `function A(props){ const label = props.label }`
@@ -3900,6 +3971,25 @@ export function transformJSX_JS(
     return signalVars.has(name) && !shadowedSignals.has(name)
   }
 
+  /**
+   * A bare identifier the Plain Mode pre-pass wrote for `signalOf(x)`
+   * (`/*@pyreon:signal*\/x`, see `SIGNAL_OF_MARK`): the signal ITSELF, never a
+   * read. Every place that treats a bare known signal as a read — the
+   * auto-call collector, the dynamic / fixed-deps classifiers, the bare
+   * `_bindText` / `_bindDirect` fast path, the component-child carve-out —
+   * goes through `isSignalRead`, so identity survives on every element path.
+   * Mirrored by `is_identity_ref` in the Rust backend.
+   */
+  function isIdentityRef(node: N): boolean {
+    const start = node.start as number
+    return start >= SIGNAL_OF_MARK.length && code.startsWith(SIGNAL_OF_MARK, start - SIGNAL_OF_MARK.length)
+  }
+
+  /** A bare identifier that READS an active signal (not a `signalOf` identity). */
+  function isSignalRead(node: N): boolean {
+    return node.type === 'Identifier' && isActiveSignal(node.name) && !isIdentityRef(node)
+  }
+
   /** `sig()` — a zero-arg call of an active signal/computed — returns the callee name, else null. */
   function bareSignalCallee(node: N): string | null {
     if (node.type !== 'CallExpression' || (node.arguments?.length ?? 0) !== 0) return null
@@ -3978,6 +4068,63 @@ export function transformJSX_JS(
       if (containsJsx(kids[i]!)) return true
     }
     return false
+  }
+
+  /**
+   * Would evaluating this initializer TWICE be observable — does it mint
+   * state anywhere, not only at its root?
+   *
+   * Prop-derived inlining re-evaluates the initializer at every JSX use site.
+   * `isStatefulCall` keeps a ROOT factory call (`const m = createModel(props.x)`)
+   * out of it, but a factory one level down was still inlined:
+   * `const count = props.shared ?? signal(0)` became `(props.shared ?? signal(0))`
+   * at each use, so with no `shared` prop the click updated one fresh signal and
+   * the text read another (the documented standalone `<Example>` counter never
+   * updated). The rule is "anywhere in the expression": either side of
+   * `??`/`||`/`&&`, ternary branches, call arguments and callees, object/array
+   * and template literals, and the body of a function the evaluation can
+   * invoke — one passed to a call or used as its callee
+   * (`Array.from({ length: props.n }, () => signal(0))`, an IIFE). Stateful means a call `isStatefulCall` classifies (STATEFUL_CALLS
+   * and the `useX`/`createX` convention, identifier or member callee) or a
+   * `new` (each evaluation constructs a distinct object: `new Map()`,
+   * `new AbortController()`, `new IntersectionObserver(…)`) other than a
+   * value constructor (`isValueConstructor`: `Date`, `URL`, `RegExp`,
+   * `Intl.*`, whose results are used as values — `new Date(props.ts)` stays
+   * inlined and live), and so does a
+   * class expression (a new constructor identity, static blocks run). A write in the
+   * initializer (`=`, `+=`, `++`, `delete`) is observable the same way, and
+   * `await` / `yield` cannot move into the synchronous accessor the use site
+   * becomes, so those keep the const too.
+   *
+   * Two things stay inlinable, as before: a call to an unrecognised callee
+   * (`cx(props.a)`, see `isFactoryConventionName`), and a function that is
+   * only created, never invoked, by the evaluation — the initializer itself
+   * (`const f = () => signal(props.x)`) or an object-literal method:
+   * evaluating a function expression runs nothing, so inlining it is
+   * equivalent to reading the const. Native mirrors this in
+   * `init_mints_state` (`native/src/lib.rs`).
+   */
+  function initMintsState(init: N): boolean {
+    // `invocable`: can evaluating the initializer run this node's function
+    // body? Only as a call/`new` callee or argument (through parentheses and
+    // type layers). A function anywhere else — the initializer itself, an
+    // object-literal method, a `??` fallback — is only CREATED by evaluation.
+    const visit = (node: N, invocable: boolean): boolean => {
+      const t = node.type
+      if (FUNCTION_NODE_TYPES.has(t)) {
+        if (!invocable) return false
+      } else if (mintsStateHere(node)) {
+        return true
+      }
+      const kidsInvocable = TYPE_LAYER_NODE_TYPES.has(t) ? invocable : t === 'CallExpression'
+      for (const kid of childrenMap.get(node) ?? []) {
+        if (visit(kid, kidsInvocable)) return true
+      }
+
+      return false
+    }
+
+    return visit(init, false)
   }
 
   /** Check if an expression references any prop-derived variable.
@@ -4063,8 +4210,13 @@ export function transformJSX_JS(
         // so referencing the const by name is both correct and sufficient —
         // there is no reactivity to preserve and nothing to gain.
         if (ssr && containsJsx(decl.init)) continue
+        // A factory call or `new` ANYWHERE in the initializer (not only at
+        // its root, checked above): inlining would mint fresh state per use
+        // site. The const keeps the value it captured at setup.
+        if (initMintsState(decl.init)) continue
         // Direct prop read OR transitive (references another prop-derived var)
         if (readsFromProps(decl.init) || referencesPropDerived(decl.init)) {
+          aliasFreeNames.set(decl.init.start as number, collectAliasFreeNames(decl.init))
           propDerivedLog.push({ name: decl.id.name, prev: propDerivedVars.get(decl.id.name) })
           propDerivedVars.set(decl.id.name, {
             start: decl.init.start as number,
@@ -4317,13 +4469,18 @@ export function transformJSX_JS(
     return asiHazardStarts.has(start)
   }
 
-  function resolveIdentifiersInText(
-    text: string,
+  /**
+   * The inlining edits for every prop-derived reference in `[baseOffset,
+   * endOffset)` — scope-aware (a same-named inner binding is never inlined),
+   * each in ORIGINAL source positions. `resolveIdentifiersInText` splices them
+   * into a sliced expression; `inlineUnsliced` pushes the ones outside nested
+   * JSX as replacements of a walked expression.
+   */
+  function propDerivedEdits(
     baseOffset: number,
+    endOffset: number,
     sourceNode?: N,
-    signalIdents: { start: number; end: number }[] = [],
-  ): string {
-    const endOffset = baseOffset + text.length
+  ): { start: number; end: number; text: string }[] {
     const idents: {
       start: number
       end: number
@@ -4338,6 +4495,24 @@ export function transformJSX_JS(
     // idiomatic code: `const a = props.x; items.map(a => <li>{a}</li>)` would
     // rewrite the arrow PARAMETER `a` into `(props.x)`, an invalid arrow head.
     const shadowed = new Set<string>()
+    /** Every name bound anywhere inside the span (params, declarators, catch,
+     *  function and class names) — the hygiene check below. */
+    const spanBound = new Set<string>()
+    function collectSpanBindings(node: N): void {
+      const t = node.type
+      const out: string[] = []
+      if (t === 'ArrowFunctionExpression' || t === 'FunctionExpression' || t === 'FunctionDeclaration') {
+        for (const p of node.params ?? []) patternBindingNames(p, out)
+        if (node.id?.type === 'Identifier') out.push(node.id.name)
+      } else if (t === 'ClassExpression' || t === 'ClassDeclaration') {
+        if (node.id?.type === 'Identifier') out.push(node.id.name)
+      } else if (t === 'VariableDeclarator') {
+        patternBindingNames(node.id, out)
+      } else if (t === 'CatchClause') {
+        patternBindingNames(node.param, out)
+      }
+      for (const n of out) spanBound.add(n)
+    }
 
     /** Collect identifier names bound by a pattern (params / declarators). */
     function patternBindingNames(p: N, out: string[]): void {
@@ -4360,6 +4535,9 @@ export function transformJSX_JS(
           break
         case 'RestElement':
           patternBindingNames(p.argument, out)
+          break
+        case 'TSParameterProperty':
+          patternBindingNames(p.parameter, out)
           break
       }
     }
@@ -4462,6 +4640,7 @@ export function transformJSX_JS(
       // module-level `const label` declared AFTER a component shadow that
       // component's own alias (#3815).
       const inSpan = nodeStart >= baseOffset && nodeEnd <= endOffset
+      if (inSpan) collectSpanBindings(node)
       const introduced = inSpan ? scopeBoundPropDerived(node).filter((n) => !shadowed.has(n)) : []
       for (const n of introduced) shadowed.add(n)
       forEachChildFast(node, (child) => findIdents(child, node))
@@ -4469,11 +4648,15 @@ export function transformJSX_JS(
     }
     findIdents(program, null)
 
-    if (idents.length === 0 && signalIdents.length === 0) return text
+    // Hygiene (see `aliasFreeNames`): an alias whose inlined text mentions a
+    // name bound anywhere inside this span is not inlined here. Coarser than
+    // per-scope on purpose — the native backend applies the identical rule.
+    const kept =
+      spanBound.size === 0
+        ? idents
+        : idents.filter((id) => !aliasCapturedBy(propDerivedVars.get(id.name)!, spanBound))
 
-    // Both rewrites use ORIGINAL AST positions. Applying signal edits after
-    // prop expansion loses the expansion and can slice past the expression.
-    const edits = idents.map((id) => {
+    return kept.map((id) => {
       const resolved = resolveVarToString(id.name, sourceNode)
       return {
         start: id.start,
@@ -4483,6 +4666,20 @@ export function transformJSX_JS(
           : `${needsLeadingSemicolon(id.start) ? ';' : ''}(${resolved})`,
       }
     })
+  }
+
+  function resolveIdentifiersInText(
+    text: string,
+    baseOffset: number,
+    sourceNode?: N,
+    signalIdents: { start: number; end: number }[] = [],
+  ): string {
+    const endOffset = baseOffset + text.length
+    const edits = propDerivedEdits(baseOffset, endOffset, sourceNode)
+    if (edits.length === 0 && signalIdents.length === 0) return text
+
+    // Both rewrites use ORIGINAL AST positions. Applying signal edits after
+    // prop expansion loses the expansion and can slice past the expression.
     for (const id of signalIdents) {
       edits.push({ start: id.start, end: id.end, text: `${code.slice(id.start, id.end)}()` })
     }
@@ -4569,7 +4766,7 @@ export function transformJSX_JS(
       }
     }
     // Signal variable reference — treated as dynamic (will be auto-called)
-    if (node.type === 'Identifier' && isActiveSignal(node.name)) {
+    if (isSignalRead(node)) {
       const parent = findParent(node)
       if (
         parent &&
@@ -4675,7 +4872,7 @@ export function transformJSX_JS(
         if (!isDynamic(node)) return true
         // A bare known signal is auto-called (one stable dep); a prop-derived
         // const is an opaque getter chain.
-        if (isActiveSignal(node.name) && !propDerivedVars.has(node.name)) return !cond
+        if (isSignalRead(node) && !propDerivedVars.has(node.name)) return !cond
         return false
       }
       case 'MemberExpression': {
@@ -4806,6 +5003,17 @@ export function transformJSX_JS(
         propDerivedVars.delete(name)
       }
     }
+    // Hygiene: an alias whose inlined text mentions a name this scope re-binds
+    // would be captured by that binding here — hide it for the scope too.
+    if (names.length > 0 && propDerivedVars.size > 0) {
+      for (const [name, prev] of [...propDerivedVars]) {
+        if (aliasCapturedBy(prev, names)) {
+          propDerivedLog.push({ name, prev })
+          propDerivedVars.delete(name)
+        }
+      }
+    }
+
     return true
   }
 
@@ -5608,7 +5816,7 @@ export function transformJSX_JS(
       // `_bindText` is text-FIRST, not text-only (it upgrades to a subtree
       // mount on the first VNode-shaped value), so it covers every value a
       // bare signal child can hold, exactly like the general path did.
-      if (allowBareSignal && inner.type === 'Identifier' && isActiveSignal(inner.name)) {
+      if (allowBareSignal && isSignalRead(inner)) {
         return { ref: inner.name, isMember: false, receiver: null }
       }
       if (inner.type !== 'CallExpression') return null
@@ -6980,7 +7188,7 @@ export function transformJSX_JS(
 
   /** Check if an expression references any tracked signal variable. */
   function referencesSignalVar(node: N): boolean {
-    if (node.type === 'Identifier' && isActiveSignal(node.name)) {
+    if (isSignalRead(node)) {
       const parent = findParent(node)
       if (
         parent &&
@@ -7237,12 +7445,7 @@ export function transformJSX_JS(
         node.left.type !== 'VariableDeclaration'
       )
         markAssignTarget(node.left)
-      if (
-        node.type === 'Identifier' &&
-        isActiveSignal(node.name) &&
-        !shadowed.has(node.name) &&
-        !assignTargets.has(node)
-      ) {
+      if (isSignalRead(node) && !shadowed.has(node.name) && !assignTargets.has(node)) {
         const parent = findParent(node)
         // Skip property name positions (obj.name)
         if (
@@ -7499,6 +7702,54 @@ function isFactoryConventionName(name: string): boolean {
   return /^(?:use|create)[A-Z]/.test(name)
 }
 
+/**
+ * `new` callees whose instances are used as VALUES (formatted, compared by
+ * value), so re-constructing one per read is not observable in practice and
+ * the prop-derived const stays inlined (and live). Every other `new` mints an
+ * identity — a container, controller, observer, socket — and keeps its const.
+ * A callee missing here costs reactivity (the const is captured once), never
+ * correctness. Mirrors `is_value_constructor` in `native/src/lib.rs`.
+ */
+function isValueConstructor(callee: N): boolean {
+  if (callee?.type === 'Identifier') return callee.name === 'Date' || callee.name === 'URL' || callee.name === 'RegExp'
+  return (
+    callee?.type === 'MemberExpression' &&
+    !callee.computed &&
+    callee.object?.type === 'Identifier' &&
+    callee.object.name === 'Intl'
+  )
+}
+
+/** Function nodes: their body runs only when called. */
+const FUNCTION_NODE_TYPES = new Set(['ArrowFunctionExpression', 'FunctionExpression', 'FunctionDeclaration'])
+
+/** Layers that are transparent to evaluation: parentheses and TS wrappers. */
+const TYPE_LAYER_NODE_TYPES = new Set([
+  'ParenthesizedExpression',
+  'TSAsExpression',
+  'TSSatisfiesExpression',
+  'TSNonNullExpression',
+  'TSTypeAssertion',
+])
+
+/** Node types whose evaluation is observable on its own (see `initMintsState`). */
+const EFFECTFUL_NODE_TYPES = new Set([
+  'ClassExpression',
+  'AssignmentExpression',
+  'UpdateExpression',
+  'AwaitExpression',
+  'YieldExpression',
+])
+
+/** Does evaluating THIS node (not its children) mint state or have an effect? */
+function mintsStateHere(node: N): boolean {
+  const t = node.type
+  if (t === 'NewExpression') return !isValueConstructor(node.callee)
+  if (t === 'UnaryExpression') return node.operator === 'delete'
+
+  return EFFECTFUL_NODE_TYPES.has(t) || isStatefulCall(node)
+}
+
 function isStatefulCall(node: N): boolean {
   if (node.type !== 'CallExpression') return false
   const callee = node.callee
@@ -7556,10 +7807,6 @@ function isChildrenExpression(node: N, expr: string): boolean {
   if (node.type === 'Identifier' && node.name === 'children') return true
   if (expr.endsWith('.children') || expr === 'children') return true
   return false
-}
-
-function isLowerCase(s: string): boolean {
-  return s.length > 0 && s[0] === s[0]?.toLowerCase()
 }
 
 function containsJSXInExpr(node: N): boolean {

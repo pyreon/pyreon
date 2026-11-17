@@ -1,6 +1,6 @@
 // JS string/array data-shaping methods → native idioms.
 //   arr.join(sep?)  → Swift `joined(separator:)` / Kotlin `joinToString(sep)`
-//   str.split(sep)  → Swift `components(separatedBy:)` (Foundation);
+//   str.split(sep)  → `pyreonSplit` on both targets (PyreonSlice);
 //                     Kotlin `split` already matches JS as-is.
 // JS's default join separator is "," (emitted explicitly — Kotlin's
 // joinToString default is ", ", which differs). Pre-fix these fell through
@@ -37,18 +37,18 @@ describe('JS string/array method → native idiom', () => {
     expect(out).toContain('tags.joinToString(",")')
   })
 
-  it('Swift: str.split(sep) → components(separatedBy:)', () => {
+  it('Swift: str.split(sep) → pyreonSplit (the web split, code units for an empty separator)', () => {
     const out = transform(SRC('<Text>{csv().split(",").join(" / ")}</Text>'), {
       target: 'swift',
     }).code
-    expect(out).toContain('csv.components(separatedBy: ",").joined(separator: " / ")')
+    expect(out).toContain('pyreonSplit(csv, ",").joined(separator: " / ")')
   })
 
-  it('Kotlin: str.split stays native split; join → joinToString', () => {
+  it('Kotlin: str.split → pyreonSplit (Kotlin\'s split("") pads both ends); join → joinToString', () => {
     const out = transform(SRC('<Text>{csv().split(",").join(" / ")}</Text>'), {
       target: 'kotlin',
     }).code
-    expect(out).toContain('csv.split(",").joinToString(" / ")')
+    expect(out).toContain('pyreonSplit(csv, ",").joinToString(" / ")')
   })
 
   it.skipIf(!isSwiftcAvailable())('emitted Swift compiles on real swiftc', () => {

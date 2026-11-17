@@ -173,11 +173,17 @@ describe('ordering gate — eager-argument positions BAIL to h()', () => {
     ).toBe(false)
   })
 
-  it('BAILS on a member/namespaced-tag PARENT', () => {
-    // `jsxTagName` reports '' there, so an uppercase test alone would misread
-    // `<Ctx.Provider>` as a DOM tag and wrongly allow the templatization.
+  it('a member-tag PARENT is a component (#4368): its sole child is _lc-deferred too', () => {
+    const code = emit(`${CTX}const App = () => <Ns.P><div class="k"><Leaf /></div></Ns.P>`)
+    expect(code).toContain('_lc(() => _tpl("<div class=\\"k\\" data-pyreon-hole></div>"')
+  })
+
+  it('BAILS on a multi-child member-tag PARENT and on a namespaced-tag PARENT', () => {
     expect(
-      templatizes(`${CTX}const App = () => <Ns.P><div class="k"><Leaf /></div></Ns.P>`, 'k'),
+      templatizes(`${CTX}const App = () => <Ns.P><div class="k"><Leaf /></div><i /></Ns.P>`, 'k'),
+    ).toBe(false)
+    expect(
+      templatizes(`${CTX}const App = () => <svg:g><div class="k"><Leaf /></div></svg:g>`, 'k'),
     ).toBe(false)
   })
 

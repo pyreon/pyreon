@@ -17,6 +17,27 @@
 
 import XCTest
 
+private extension XCUIElement {
+    /// `waitForExistence(timeout:)` with the same contract and none of its
+    /// flat cost: true as soon as the element exists, false at the deadline.
+    ///
+    /// XCTest evaluates that wait's predicate for the FIRST time one second
+    /// after the call, so an element that is already on screen still costs
+    /// 1.03 s. In one CI job (2026-11-17) 427 of 456 such waits were answered
+    /// by that first poll and took 487 s between them. This asks at once, then
+    /// ten times a second. Held for every suite by
+    /// `ios-device-test-harness.test.ts`.
+    func waitToExist(timeout: TimeInterval) -> Bool {
+        if exists { return true }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            if exists { return true }
+        }
+        return false
+    }
+}
+
 final class PyreonShowcaseUITests: XCTestCase {
     private let capture = ProcessInfo.processInfo.environment["PYREON_SHOWCASE_CAPTURE"] == "1"
 
@@ -35,7 +56,7 @@ final class PyreonShowcaseUITests: XCTestCase {
         app.launch()
 
         let root = app.otherElements["today-app"].firstMatch
-        XCTAssertTrue(root.waitForExistence(timeout: 30), "TodayApp did not render within 30s")
+        XCTAssertTrue(root.waitToExist(timeout: 30), "TodayApp did not render within 30s")
         let count = app.staticTexts["today-count"]
         XCTAssertEqual(count.label, "2 left")
         XCTAssertTrue(app.staticTexts["Water the basil"].exists)
@@ -57,7 +78,7 @@ final class PyreonShowcaseUITests: XCTestCase {
 
         app.buttons["today-add"].tap()
         let added = app.staticTexts["Pick up oat milk"]
-        XCTAssertTrue(added.waitForExistence(timeout: 5), "the new todo did not appear")
+        XCTAssertTrue(added.waitToExist(timeout: 5), "the new todo did not appear")
         XCTAssertEqual(count.label, "3 left")
         beat("added", hold: 1.6)
 
@@ -85,12 +106,12 @@ final class PyreonShowcaseUITests: XCTestCase {
     func test_removingEverythingShowsTheEmptyState() throws {
         let app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.otherElements["today-app"].firstMatch.waitForExistence(timeout: 30))
+        XCTAssertTrue(app.otherElements["today-app"].firstMatch.waitToExist(timeout: 30))
         for id in 1...3 {
             app.buttons["todo-\(id)-remove"].tap()
         }
         XCTAssertTrue(
-            app.staticTexts["All clear. Enjoy the afternoon."].waitForExistence(timeout: 5),
+            app.staticTexts["All clear. Enjoy the afternoon."].waitToExist(timeout: 5),
             "the empty state did not appear after removing every todo"
         )
         XCTAssertEqual(app.staticTexts["today-count"].label, "0 left")

@@ -274,6 +274,19 @@ describe('JS syntax and optional native parity — components', () => {
   test('spread on component', () => compare('<Comp {...getProps()} label="hi" />'))
   test('ternary in component prop', () => compare("<Comp x={a() ? 'yes' : 'no'} />"))
   test('template literal in component prop', () => compare('<Comp label={`${count()} items`} />'))
+  // #4368: one rule for every component form — a member tag is a component,
+  // and an identifier is a DOM element only when it starts with [a-z].
+  test('member-tag component props', () =>
+    compare('function A(props) { return <div><m.X a={props.b} /><UI.Btn a={props.b + 1} {...props} /><a.b.C>{props.x}</a.b.C></div> }'))
+  test('lowercase member tag is a component', () =>
+    compare('function A(props) { return <motion.div a={props.b} {...props} /> }'))
+  test('member-tag sole template child is _lc-deferred', () =>
+    compare('function A(props) { return <Ctx.Provider value={1}><div class={props.c}>x</div></Ctx.Provider> }'))
+  test('underscore / dollar identifiers are components', () =>
+    compare('function A(props) { return <section><_Foo a={props.b}>{props.x}</_Foo><$Bar {...props} /></section> }'))
+  test('member-tag component child under SSR template', () => {
+    compareSsrTemplate('function A(props) { return <section><m.X a={props.b} /><b>{props.c}</b></section> }')
+  })
 })
 
 describe('JS syntax and optional native parity — template emission', () => {
