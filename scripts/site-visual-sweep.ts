@@ -118,6 +118,13 @@ async function settle(page: Page): Promise<void> {
   await waitForEagerIslands(page)
   await page.addStyleTag({ content: FREEZE_CSS })
   await page.evaluate(() => {
+    // A browser may paint any srcset candidate (it prefers one it has cached),
+    // so the same page shows a sharper or softer image from run to run. Pin
+    // every responsive image to its largest candidate.
+    for (const el of Array.from(document.querySelectorAll<HTMLSourceElement | HTMLImageElement>('source[srcset], img[srcset]'))) {
+      const largest = el.srcset.split(',').map((c) => c.trim()).at(-1)
+      if (largest) el.srcset = largest
+    }
     for (const img of Array.from(document.images)) img.loading = 'eager'
     for (const v of Array.from(document.querySelectorAll('video'))) {
       v.pause()
