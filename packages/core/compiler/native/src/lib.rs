@@ -1374,6 +1374,20 @@ fn is_active_signal(name: &str, ctx: &Ctx) -> bool {
     ctx.signal_vars.contains(name) && !ctx.shadowed_signals.contains(name)
 }
 
+/// A bare identifier the Plain Mode pre-pass wrote for `signalOf(x)`
+/// (`SIGNAL_OF_MARK` directly before it): the signal ITSELF, never a read.
+/// Every bare-signal-as-read site goes through `is_signal_read`. Mirrors
+/// `isIdentityRef` in jsx.ts.
+fn is_identity_ref(start: u32, ctx: &Ctx) -> bool {
+    ctx.source[..start as usize].ends_with(plain::SIGNAL_OF_MARK)
+}
+
+/// A bare identifier that READS an active signal (not a `signalOf` identity).
+/// Mirrors `isSignalRead` in jsx.ts.
+fn is_signal_read(id: &IdentifierReference, ctx: &Ctx) -> bool {
+    is_active_signal(id.name.as_str(), ctx) && !is_identity_ref(id.span.start, ctx)
+}
+
 /// `sig()` — a zero-arg call of an active signal/computed — returns the callee
 /// name. Mirrors jsx.ts `bareSignalCallee`.
 fn bare_signal_callee(expr: &Expression, ctx: &Ctx) -> Option<String> {
@@ -2082,7 +2096,7 @@ fn is_dynamic_impl(expr: &Expression, ctx: &mut Ctx) -> bool {
             return true;
         }
         // Signal variable reference — treated as dynamic (will be auto-called)
-        if is_active_signal(id.name.as_str(), ctx) {
+        if is_signal_read(id, ctx) {
             return true;
         }
     }
@@ -2224,9 +2238,7 @@ fn has_fixed_deps(expr: &Expression, cond: bool, ctx: &mut Ctx) -> bool {
             if !is_dynamic(expr, ctx) {
                 return true;
             }
-            if is_active_signal(id.name.as_str(), ctx)
-                && !ctx.prop_derived_vars.contains_key(id.name.as_str())
-            {
+            if is_signal_read(id, ctx) && !ctx.prop_derived_vars.contains_key(id.name.as_str()) {
                 return !cond;
             }
             false
@@ -3598,7 +3610,7 @@ fn slice_expr(expr: &Expression, ctx: &mut Ctx) -> String {
 /// pre-gate; `collect_signal_idents` computes its own (wider) reachability.
 fn references_signal_var(expr: &Expression, ctx: &Ctx) -> bool {
     if let Expression::Identifier(id) = expr {
-        if is_active_signal(id.name.as_str(), ctx) {
+        if is_signal_read(id, ctx) {
             return true;
         }
     }
@@ -4062,8 +4074,7 @@ fn collect_signal_idents(
     }
 
     if let Expression::Identifier(id) = expr {
-        if is_active_signal(id.name.as_str(), ctx) && !shadows.iter().any(|n| n == id.name.as_str())
-        {
+        if is_signal_read(id, ctx) && !shadows.iter().any(|n| n == id.name.as_str()) {
             out.push((id.span.start, id.span.end));
         }
         return;
@@ -5633,7 +5644,7 @@ fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
     check_for_warnings(el, ctx);
 
     let tag = jsx_tag_name(el);
-    let is_component = !tag.is_empty() && !is_lower_case(tag);
+    let is_component = is_component_element(el);
 
     // Process attributes
     for attr in &el.opening_element.attributes {
@@ -5673,18 +5684,15 @@ fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
     ctx.parent_component_has_sole_child = is_component && meaningful_child_count(el) == 1;
     // Ordering for a template emitted as a DIRECT child of THIS element —
     // the Rust encoding of the JS `templateMountIsEagerlyOrdered`:
-    //   • member/namespaced tag (`<Ctx.Provider>`, `jsx_tag_name` == "") — those
-    //     parents ARE components and are NEVER `_lc`-wrapped (the compiler
-    //     classifies no member tag as a component anywhere), so always eager;
-    //   • component tag — eager UNLESS this child is the SOLE meaningful one,
-    //     which #2916 wraps in `_lc(() => …)` (forced after `provide()`);
+    //   • component (identifier or member tag, `is_component_element`) —
+    //     eager UNLESS this child is the SOLE meaningful one, which #2916 wraps
+    //     in `_lc(() => …)` (forced after `provide()`);
+    //   • namespaced tag (`<svg:a>`, `jsx_tag_name` == "") — eager;
     //   • DOM tag — never eager, the enclosing element is built inline.
-    ctx.parent_eager_mount = if tag.is_empty() {
-        true
-    } else if is_component {
+    ctx.parent_eager_mount = if is_component {
         !ctx.parent_component_has_sole_child
     } else {
-        false
+        tag.is_empty()
     };
     for child in &el.children {
         walk_jsx_child(child, ctx);
@@ -7627,8 +7635,7 @@ fn ssr_serialize_child(
             // construction. Recursed (top-level `_ssr`) mode ONLY: the
             // mapitem/foritem bodies are built as generated text, so a
             // preserved range has nowhere to live there. Mirrors the JS backend.
-            let child_tag = jsx_tag_name(el);
-            if mode == SsrMode::Recursed && !child_tag.is_empty() && !is_lower_case(child_tag) {
+            if mode == SsrMode::Recursed && is_component_element(el) {
                 if !ssr_component_child_eligible(el) {
                     return false;
                 }
@@ -8323,19 +8330,23 @@ fn is_tpl_property_only_attr(name: &str) -> bool {
     )
 }
 
-/// Mirrors the JS backend's `isComponentTag` EXACTLY — "first character is not
-/// equal to its own lowercase". Deliberately NOT `!is_lower_case(tag)`: that
-/// asks "is the first byte an ASCII lowercase letter", which classifies a
-/// `_`-prefixed tag (`<_Foo/>`) as a component while JS classifies it as a DOM
-/// element. Reusing it here would introduce a byte-divergence the equivalence
-/// oracle would then have to chase.
+/// The ONE tag rule (#4368), mirroring the JS backend's `isComponentTag`: an
+/// identifier tag names a component unless its first character is an ASCII
+/// lowercase letter (`is_lower_case`) — the downstream JSX transforms' rule.
 fn is_component_tag(tag: &str) -> bool {
-    match tag.chars().next() {
-        None => false,
-        Some(c) => {
-            let mut lower = c.to_lowercase();
-            !(lower.next() == Some(c) && lower.next().is_none())
-        }
+    !tag.is_empty() && !is_lower_case(tag)
+}
+
+/// Is this JSX element a COMPONENT? Mirrors the JS backend's
+/// `isComponentElement`: a member tag (`<m.X>`, `<Ctx.Provider>`,
+/// `<motion.div>`, `<this.X>`) always is; an identifier tag by
+/// `is_component_tag`; a namespaced tag (`<svg:a>`) is not.
+fn is_component_element(el: &JSXElement) -> bool {
+    match &el.opening_element.name {
+        JSXElementName::Identifier(id) => is_component_tag(id.name.as_str()),
+        JSXElementName::IdentifierReference(id) => is_component_tag(id.name.as_str()),
+        JSXElementName::MemberExpression(_) => true,
+        _ => false,
     }
 }
 
@@ -9408,7 +9419,7 @@ fn try_direct_signal_ref(
     // `{count()}` are the same read); see the JS twin.
     if allow_bare_signal {
         if let Expression::Identifier(id) = inner {
-            if is_active_signal(id.name.as_str(), ctx) {
+            if is_signal_read(id, ctx) {
                 return Some((id.name.to_string(), false, None));
             }
         }

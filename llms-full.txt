@@ -306,6 +306,11 @@ const src = emitValidator(info.node)
 const validate = new Function("return " + src)()
 validate("a@b.co").length // 0
 
+import { findSyntaxErrors } from "@pyreon/compiler/analyze"
+
+findSyntaxErrors("export const C = () => <div>", "C.tsx")[0]
+// { message: "JSX element 'div' has no corresponding closing tag.", line: 1, column: 24 }
+
 import { detectReactPatterns } from "@pyreon/compiler/analyze"
 
 const diags = detectReactPatterns("const [n,setN] = useState(0)", "x.tsx")
