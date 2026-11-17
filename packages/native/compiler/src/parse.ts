@@ -396,6 +396,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
           : hook === 'signal' || hook === 'computed'
             ? hookClaimsSource(hook, module)
             : module.startsWith('@pyreon/') || hookClaimsSource(hook, module),
+      unloadedPluginModule,
     ),
   )
   for (const node of ast.program.body as AnyNode[]) {

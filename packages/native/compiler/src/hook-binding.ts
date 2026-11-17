@@ -133,6 +133,13 @@ export type HookSourceClaim = (hook: string, source: string) => boolean
 const isFrameworkSource = (source: string, hook: string, claims?: HookSourceClaim): boolean =>
   claims?.(hook, source) ?? source.startsWith('@pyreon/')
 
+/**
+ * The `@pyreon/*` package a specifier belongs to when that package lowers
+ * through its own native plugin and the plugin is NOT loaded in this compile;
+ * `undefined` otherwise.
+ */
+export type UnloadedOwner = (source: string) => string | undefined
+
 /** The suffix a non-framework `useX` is renamed with so name-keyed recognizers stop seeing it. */
 export const NOT_FRAMEWORK_SUFFIX = '_'
 
@@ -146,12 +153,15 @@ export function canonicalizeHookBindings(
   program: AnyNode,
   hooks: ReadonlySet<string>,
   claims?: HookSourceClaim,
+  unloadedOwner?: UnloadedOwner,
 ): string[] {
   const imports = collectImports(program)
   const declared = collectDeclared(program)
   const warnings: string[] = []
   const rename = new Set<string>()
   const alias = new Map<string, string>()
+  // Package whose plugin is not loaded → the hook names imported from it under their own name.
+  const unloaded = new Map<string, string[]>()
 
   // A local name that is a framework hook NAME but is not bound to that hook.
   for (const name of hooks) {
@@ -160,6 +170,16 @@ export function canonicalizeHookBindings(
       const isFramework = isFrameworkSource(imp.source, name, claims) && imp.imported === name
       if (!isFramework) {
         rename.add(name)
+        // The documented import (`signal` from `@pyreon/reactivity`) of a hook its
+        // package's plugin owns: nothing claims it only because that plugin is
+        // not loaded. Name that cause and its fix, once per package.
+        const owner = imp.imported === name ? unloadedOwner?.(imp.source) : undefined
+        if (owner !== undefined) {
+          const list = unloaded.get(owner) ?? []
+          list.push(name)
+          unloaded.set(owner, list)
+          continue
+        }
         warnings.push(
           imp.source.startsWith('@pyreon/')
             ? `\`${name}\` is imported here as \`${imp.imported}\` from \`${imp.source}\`, not as the \`${name}\` hook, so it is NOT lowered as the framework hook of that name.`
@@ -169,6 +189,13 @@ export function canonicalizeHookBindings(
     } else if (declared.has(name)) {
       rename.add(name)
     }
+  }
+
+  for (const [owner, names] of unloaded) {
+    const list = names.map((n) => `\`${n}\``).join(', ')
+    warnings.push(
+      `${list} (from ${owner}) ${names.length === 1 ? 'has' : 'have'} NO native lowering in this compile: ${owner} lowers ${names.length === 1 ? 'it' : 'them'} through its own native compiler plugin, and that plugin is not loaded, so ${names.length === 1 ? 'it is' : 'they are'} NOT lowered and the native build fails. Declare ${owner} in the app's package.json dependencies (the native CLI loads plugins only from declared dependencies), or pass its plugin to createCompiler({ plugins }).`,
+    )
   }
 
   // An aliased framework hook: calls under the alias are the canonical hook.
