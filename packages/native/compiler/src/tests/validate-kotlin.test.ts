@@ -292,12 +292,12 @@ const TODOMVC_SOURCE_PATH = (() => {
   return resolve(
     here,
     '..', '..', '..', '..', '..',
-    'examples', 'native-todomvc-ios', 'src', 'TodoApp.tsx',
+    'examples', 'native-todomvc', 'src', 'TodoApp.tsx',
   )
 })()
 
 describe.skipIf(skipCondition)('K-FINAL — real TodoMVC emit typechecks via kotlinc + K4 stubs', () => {
-  it('transform()-emitted Kotlin for examples/native-todomvc-ios/src/TodoApp.tsx is typecheck-clean', () => {
+  it('transform()-emitted Kotlin for examples/native-todomvc/src/TodoApp.tsx is typecheck-clean', () => {
     const source = readFileSync(TODOMVC_SOURCE_PATH, 'utf8')
     const out = transform(source, { target: 'kotlin' })
 

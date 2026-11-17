@@ -1,5 +1,5 @@
 // TodoAppInstrumentedTest — the Phase-2.2 launch-and-render smoke for
-// Android. Sibling of `examples/native-todomvc-ios/iosUITests/
+// Android. Sibling of `examples/native-todomvc/ios/UITests/
 // PyreonTodoMVCUITests.swift`; same shape, different platform.
 //
 // Beyond `gradle assembleDebug` (which proves the emitted Kotlin

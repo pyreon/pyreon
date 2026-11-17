@@ -701,9 +701,9 @@ jobs:
         # affected), not just locally / on the device gate.
         run: |
           set -eo pipefail
-          cd examples/native-todomvc-ios
+          cd examples/native-todomvc/ios
           rm -f generated/*.swift
-          bash scripts/build.sh
+          bash ../scripts/build-ios.sh
           test -f generated/TodoApp.swift
           # Parse-validate the emit.
           swiftc -parse generated/TodoApp.swift

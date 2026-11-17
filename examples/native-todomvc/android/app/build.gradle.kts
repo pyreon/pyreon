@@ -3,7 +3,7 @@
 // Todo` can JSON-roundtrip via the Saver in `rememberSaveable`).
 //
 // Mirrors the iOS `project.yml` target block. The `preBuild` task
-// shells out to `../scripts/build.sh` so a `gradle build` re-runs the
+// shells out to `../../scripts/build-android.sh` so a `gradle build` re-runs the
 // Pyreon compile loop the same way Xcode's preBuildScript does.
 
 // java.util.Properties by explicit import — inside android {} the bare
@@ -121,7 +121,7 @@ android {
     // the failure that kept the native-device nightly red from its
     // first run (2026-05-29) until this fix. Mirrors the iOS
     // project.yml's local-SPM `packages:` references and the
-    // native-tasks-android router srcDir shape.
+    // native-tasks/android router srcDir shape.
     sourceSets {
         getByName("main") {
             kotlin {

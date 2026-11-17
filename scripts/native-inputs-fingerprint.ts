@@ -61,7 +61,7 @@ import { laneSurface } from './native-workflow-surface'
 
 export type Platform = 'ios' | 'android'
 export interface GatedApp {
-  /** Repo-relative host directory, e.g. `examples/native-tasks-ios` or `examples/native-showcase/ios`. */
+  /** Repo-relative host directory, e.g. `examples/native-showcase/ios`. */
   dir: string
   platform: Platform
   /** The key the device lanes select by (`tasks`, `router-demo`). */

@@ -2,15 +2,15 @@
 # build-android.sh — compile src/TasksApp.tsx (web entries skipped) for the android host in android/.
 # build.sh — drive the Pyreon → Kotlin compile loop for the Android
 # tasks showcase host. Mirror of `native-router-demo-android/scripts/build.sh`
-# (only the source path differs — points at `../native-tasks/src/`).
+# (only the source path differs — points at `examples/native-tasks/src/`).
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # Source SHARED with `examples/native-tasks/` (#1449's canonical
-# TasksApp source), `examples/native-tasks-web/` (#1456's web host),
-# and `examples/native-tasks-ios/` (#1457's iOS host).
+# TasksApp source), `examples/native-tasks/` (#1456's web host),
+# and `examples/native-tasks/ios/` (#1457's iOS host).
 SRC_DIR="${PROJECT_DIR}/src"
 OUT_DIR="${PROJECT_DIR}/android/app/src/main/kotlin/com/pyreon/generated"
 

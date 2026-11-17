@@ -122,13 +122,12 @@ export function compareSets(
  * `native-counter` directory that never existed and was never checked).
  */
 export const ANDROID_PAIRS: readonly { host: string; shared: string }[] = [
-  { host: 'native-tasks-android/app/build.gradle.kts', shared: 'native-tasks' },
+  { host: 'native-tasks/android/app/build.gradle.kts', shared: 'native-tasks' },
   { host: 'native-finance/android/app/build.gradle.kts', shared: 'native-finance' },
 ]
 export const IOS_PAIRS: readonly { host: string; shared: string }[] = [
-  { host: 'native-tasks-ios/project.yml', shared: 'native-tasks' },
+  { host: 'native-tasks/ios/project.yml', shared: 'native-tasks' },
   { host: 'native-finance/ios/project.yml', shared: 'native-finance' },
-  // Counter's shared source and package.json live in the iOS host itself.
   { host: 'native-counter/ios/project.yml', shared: 'native-counter' },
 ]
 

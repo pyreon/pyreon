@@ -11,7 +11,7 @@
  *
  * and nothing else: the test's name and its exception exist only in the HTML
  * report, which lives on the runner and in an artifact. Measured 2026-11-12
- * (runs 43195120647 and 43171644513): two red `native-tasks-android` steps,
+ * (runs 43195120647 and 43171644513): two red `native-tasks/android` steps,
  * neither naming a test; the causes (`hostedEditorsRoundTrip` timing out on a
  * typed edit, and a `CalledFromWrongThreadException` inside
  * `requestsCarryRuntimeValuesAndRejectNon2xx`) were readable only after

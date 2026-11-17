@@ -2,7 +2,7 @@
 //
 // `setContent { TasksApp() }` mounts the compiler-emitted Composable
 // from `generated/TasksApp.kt` — emitted by PMTC from the SHARED
-// `../native-tasks/src/TasksApp.tsx` source (introduced by #1449).
+// `examples/native-tasks/src/TasksApp.tsx` source (introduced by #1449).
 
 package com.pyreon
 

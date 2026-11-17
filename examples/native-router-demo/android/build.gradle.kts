@@ -1,5 +1,5 @@
 // Root Gradle build — only declares plugins for subprojects.
-// Mirror of `native-todomvc-android/build.gradle.kts` and
+// Mirror of `native-todomvc/android/build.gradle.kts` and
 // `native-counter/android/build.gradle.kts`.
 
 // AGP 9 runs Kotlin itself ("built-in Kotlin") on the KGP version it depends

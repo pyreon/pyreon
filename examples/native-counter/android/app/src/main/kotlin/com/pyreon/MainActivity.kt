@@ -4,7 +4,7 @@
 // from `generated/Counter.kt` — emitted by PMTC from the SHARED
 // `examples/native-counter/src/Counter.tsx` source.
 //
-// Mirror of `examples/native-todomvc-android/app/src/main/kotlin/
+// Mirror of `examples/native-todomvc/android/app/src/main/kotlin/
 // com/pyreon/MainActivity.kt` — same 5-line wrapper shape, different
 // compiler-emitted Composable.
 

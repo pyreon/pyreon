@@ -42,7 +42,7 @@ It does not transpile npm packages. Code that needs the DOM, a `<canvas>` or a J
 
 ## The input: one file, three targets
 
-The TodoMVC reference is a single file, `examples/native-todomvc-ios/src/TodoApp.tsx`. The web, iOS and Android builds all read it unchanged. Trimmed:
+The TodoMVC reference is a single file, `examples/native-todomvc/src/TodoApp.tsx`. The web, iOS and Android builds all read it unchanged. Trimmed:
 
 ```tsx
 import { state, derived, signalOf } from '@pyreon/core/plain'

@@ -7,8 +7,8 @@
 #   xcodegen generate   (run from this directory)
 #   open PyreonTasks.xcodeproj
 #
-# Bound shells out to `scripts/build.sh` which compiles the SHARED
-# `../native-tasks/src/TasksApp.tsx` source from #1449's scaffold.
+# Bound shells out to `scripts/build-ios.sh` which compiles the SHARED
+# `examples/native-tasks/src/TasksApp.tsx` source from #1449's scaffold.
 
 name: PyreonTasks
 

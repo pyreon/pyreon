@@ -8,7 +8,7 @@
 //   - `@Composable fun TodoRow(...)`
 // all in the same generated file under `com.pyreon.generated`.
 //
-// Mirrors `examples/native-todomvc-ios/ios/ContentView.swift`:
+// Mirrors `examples/native-todomvc/ios/Sources/ContentView.swift`:
 //   - iOS:     SwiftUI ContentView body returns TodoApp()
 //   - Android: setContent block calls TodoApp()
 //

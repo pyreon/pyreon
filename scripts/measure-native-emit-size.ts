@@ -71,7 +71,7 @@ const SOURCES: SourceInput[] = [
   },
   {
     name: 'native-todomvc (real-app)',
-    path: 'examples/native-todomvc-ios/src/TodoApp.tsx',
+    path: 'examples/native-todomvc/src/TodoApp.tsx',
   },
   // Per-fixture coverage is a follow-up — add as the canonical-vocab
   // fixtures (B5 / B5.2 / B5.3 / B5.4 / B5.5) merge to main. The script

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # build-android.sh — compile src/Counter.tsx (web entries skipped) for the android host in android/.
 # build.sh — drive the Pyreon → Kotlin compile loop for the Android
-# Counter reference. Mirror of `native-todomvc-android/scripts/build.sh`.
+# Counter reference. Mirror of `native-todomvc/scripts/build-android.sh`.
 #
 # Effect: turns the SHARED `examples/native-counter/src/*.tsx` source
 # into `app/src/main/kotlin/com/pyreon/generated/*.kt` via @pyreon/native-cli.

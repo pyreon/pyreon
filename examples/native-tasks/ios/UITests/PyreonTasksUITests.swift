@@ -1,11 +1,11 @@
 // PyreonTasksUITests — launch + auth-gate + store mutation +
 // typed-params smoke for the iOS tasks showcase. Mirror of:
 //   - native-router-demo-ios's PyreonRouterDemoUITests (#1452)
-//   - native-tasks-android's TasksAppInstrumentedTest
+//   - native-tasks/android's TasksAppInstrumentedTest
 //
 // Proves at real-Simulator scope, against the STORE-BACKED TasksApp
 // source (Gap 4 closure — see the header of
-// `../native-tasks/src/TasksApp.tsx`):
+// `examples/native-tasks/src/TasksApp.tsx`):
 //
 //   - App launches → login page renders
 //   - Typing a username + Continue flips the store's auth flag and
@@ -20,7 +20,7 @@
 //     on /login — the gate re-engages
 //
 // data-testid attrs on interactive elements in the SHARED
-// `../native-tasks/src/TasksApp.tsx` source compile to
+// `examples/native-tasks/src/TasksApp.tsx` source compile to
 // `.accessibilityIdentifier()` markers on the SwiftUI views; XCUITest
 // queries via app.otherElements / .buttons / .textFields with the same
 // identifier strings.
@@ -957,7 +957,7 @@ final class PyreonTasksUITests: XCTestCase {
         let brandLogo = app.images["brand-logo"].firstMatch
         XCTAssertTrue(
             brandLogo.waitForExistence(timeout: 15),
-            "Bundled brand logo missing — did scripts/build.sh materialize Assets.xcassets from ../native-tasks/assets?"
+            "Bundled brand logo missing — did scripts/build.sh materialize Assets.xcassets from examples/native-tasks/assets?"
         )
 
         // Font-pipeline arc (PR-1.4): the title uses the bundled Brand

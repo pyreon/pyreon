@@ -1,5 +1,5 @@
 // Gradle settings — single-module Android Compose app.
-// Mirror of `native-todomvc-android/settings.gradle.kts`.
+// Mirror of `native-todomvc/android/settings.gradle.kts`.
 
 pluginManagement {
     repositories {

@@ -17,7 +17,7 @@
  *   from the data.
  *
  * The Android half of the table runs on the emulator
- * (`examples/native-tasks-android` → `IntlDifferentialTest`), because Android's
+ * (`examples/native-tasks/android` → `IntlDifferentialTest`), because Android's
  * formatters are `android.icu` and exist only on a device.
  */
 
@@ -62,7 +62,7 @@ function caseArguments(c: IntlCase): Array<readonly [string, string | number | b
 
 const ANDROID_CASES = resolve(
   import.meta.dirname,
-  '../../../../../examples/native-tasks-android/app/src/androidTest/kotlin/com/pyreon/IntlDifferentialCases.kt',
+  '../../../../../examples/native-tasks/android/app/src/androidTest/kotlin/com/pyreon/IntlDifferentialCases.kt',
 )
 
 /**

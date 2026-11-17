@@ -25,12 +25,12 @@ bun run build:android    # src → android/app/src/main/kotlin/com/pyreon/genera
 
 > **PRIVATE / EXPERIMENTAL.** Reference compile target for the PMTC TodoMVC arc — the canonical "non-trivial but not contrived" Pyreon app. As of post-Phase-2 closure, **the emitted Swift typechecks-clean** (0 errors via `swiftc -typecheck`). 5 named gaps closed + 7 Phase-2 hardening PRs landed; G7 / G8 deferred to Phase 3.
 >
-> **Multiplatform note:** the canonical TodoMVC source lives here at [`src/TodoApp.tsx`](src/TodoApp.tsx). The Android sibling [`native-todomvc-android`](../native-todomvc-android/) **reads from this same file** — proving the PMTC contract that one Pyreon source compiles to both SwiftUI AND Compose. **Both emits are now typecheck-clean** against their respective compiler-stub harnesses (Swift: `swiftc -typecheck` via `validate-swift.test.ts`; Kotlin: `kotlinc + K4 stubs` via `validate-kotlin.test.ts` K-FINAL gate). Phase 2 closed on both platforms.
+> **Multiplatform note:** the canonical TodoMVC source lives here at [`src/TodoApp.tsx`](src/TodoApp.tsx). The Android sibling [`native-todomvc/android`](android/) **reads from this same file** — proving the PMTC contract that one Pyreon source compiles to both SwiftUI AND Compose. **Both emits are now typecheck-clean** against their respective compiler-stub harnesses (Swift: `swiftc -typecheck` via `validate-swift.test.ts`; Kotlin: `kotlinc + K4 stubs` via `validate-kotlin.test.ts` K-FINAL gate). Phase 2 closed on both platforms.
 
 ### Open in Xcode (one command)
 
 ```bash
-./scripts/xcode-setup.sh       # compiles src/*.tsx → generated/, then runs xcodegen
+bash ../scripts/xcode-setup.sh       # compiles src/*.tsx → generated/, then runs xcodegen
 open PyreonTodoMVC.xcodeproj   # ⌘+R to run on Simulator
 ```
 
@@ -42,7 +42,7 @@ Inside Xcode, the project's `preBuildScript` re-runs the compile loop on every b
 
 TodoMVC is the canonical "non-trivial but not contrived" app — every UI framework uses it as a baseline. For PMTC it's the structural test of whether the full compiler stack handles real-app shape, surfacing every spot where the chosen mapping breaks down.
 
-This example is the SOURCE (`src/TodoApp.tsx`) that `pyreon-native build` consumes. The emit lands in `generated/` (gitignored, produced on `./scripts/build.sh` OR automatically on every Xcode build via the `project.yml` preBuildScript).
+This example is the SOURCE (`src/TodoApp.tsx`) that `pyreon-native build` consumes. The emit lands in `generated/` (gitignored, produced on `bash ../scripts/build-ios.sh` OR automatically on every Xcode build via the `project.yml` preBuildScript).
 
 ### Current state
 
@@ -84,7 +84,7 @@ Plus three parser-side gaps surfaced by the actual compile:
 ### Run the compile baseline now
 
 ```bash
-./scripts/build.sh
+bash ../scripts/build-ios.sh
 cat generated/TodoApp.swift  # see the current partial emit
 ```
 
@@ -105,7 +105,7 @@ This example is marked `"private": true` and excluded from npm publishing. Inter
 ### Device-SDK archive lane (release packaging)
 
 ```bash
-bash scripts/archive.sh   # emit → xcodegen → xcodebuild archive (generic/platform=iOS)
+bash ../scripts/archive.sh   # emit → xcodegen → xcodebuild archive (generic/platform=iOS)
 ```
 
 Every other xcodebuild invocation in this repo is Simulator-SDK; this lane
@@ -120,7 +120,7 @@ target WITHOUT the app — `cannot find 'TodoApp' in scope`.)
 
 ## Android host (`android/`)
 
-> **PRIVATE / EXPERIMENTAL.** The Android-target sibling of [`native-todomvc-ios`](../native-todomvc-ios/). Compiles the **SAME** `TodoApp.tsx` source to Jetpack Compose / Kotlin — proving the PMTC multi-target contract at real-app shape.
+> **PRIVATE / EXPERIMENTAL.** The Android-target sibling of [`native-todomvc/ios`](ios/). Compiles the **SAME** `TodoApp.tsx` source to Jetpack Compose / Kotlin — proving the PMTC multi-target contract at real-app shape.
 >
 > **Status:** PMTC Phase 2 Kotlin arc CLOSED. The emit is now **typecheck-clean** against `kotlinc + K4 stubs` (0 errors via `validate-kotlin.test.ts`). K1+K2+K3+K4 all merged, K-FINAL gate locks the contract in CI. Parity with iOS Phase 2 closure reached. Layered limitations (real Compose runtime, Android SDK) noted below.
 
@@ -129,32 +129,32 @@ target WITHOUT the app — `cannot find 'TodoApp' in scope`.)
 Both example apps consume **the same source file**:
 
 ```
-examples/native-todomvc-ios/src/TodoApp.tsx     ← canonical source
+examples/native-todomvc/src/TodoApp.tsx     ← canonical source
             │
-            ├──→ examples/native-todomvc-ios/   ./scripts/build.sh  →  generated/TodoApp.swift
+            ├──→ examples/native-todomvc/ios/   bash ../scripts/build-ios.sh  →  generated/TodoApp.swift
             │                                                          (iOS / SwiftUI — typecheck-clean ✓)
             │
-            └──→ examples/native-todomvc-android/ ./scripts/build.sh →  app/.../generated/TodoApp.kt
+            └──→ examples/native-todomvc/android/ bash ../scripts/build-android.sh →  app/.../generated/TodoApp.kt
                                                                        (Android / Compose — emit exists, gaps below)
 ```
 
-If the source ever needed to fork per-platform, PMTC's design would have failed. The Android example deliberately reads from `../native-todomvc-ios/src/` rather than carrying its own copy — drift would invalidate the proof.
+If the source ever needed to fork per-platform, PMTC's design would have failed. The Android example deliberately reads from `examples/native-todomvc/src/` rather than carrying its own copy — drift would invalidate the proof.
 
 ### Open in Android Studio
 
 Requires Android SDK + Gradle 8.x + JDK 17. The local devloop:
 
 ```bash
-./scripts/build.sh       # compiles ../native-todomvc-ios/src/*.tsx → app/.../generated/
-gradle build             # runs preBuildScript that re-runs ./scripts/build.sh, then Compose build
-## or: open the project root in Android Studio (Iguana 2023.2+) and hit ▶
+bash ../scripts/build-android.sh       # compiles examples/native-todomvc/src/*.tsx → app/.../generated/
+gradle build             # runs preBuildScript that re-runs ../scripts/build-android.sh, then Compose build
+# or: open the project root in Android Studio (Iguana 2023.2+) and hit ▶
 ```
 
-The app module's `app/build.gradle.kts` wires `preBuild.dependsOn("pyreonCompile")` so source edits to `../native-todomvc-ios/src/TodoApp.tsx` are picked up on every Gradle build — mirroring iOS's xcodegen preBuildScript.
+The app module's `app/build.gradle.kts` wires `preBuild.dependsOn("pyreonCompile")` so source edits to `examples/native-todomvc/src/TodoApp.tsx` are picked up on every Gradle build — mirroring iOS's xcodegen preBuildScript.
 
 ### Current state (Phase 2 Kotlin arc CLOSED)
 
-The compiler-emit pipeline works end-to-end — `./scripts/build.sh` produces `app/src/main/kotlin/com/pyreon/generated/TodoApp.kt` from the shared source. **The emit typechecks-clean against `kotlinc + K4 stubs` (0 errors).** The `validate-kotlin.test.ts` "K-FINAL — real TodoMVC emit typechecks via kotlinc + K4 stubs" gate locks the contract in CI.
+The compiler-emit pipeline works end-to-end — `bash ../scripts/build-android.sh` produces `app/src/main/kotlin/com/pyreon/generated/TodoApp.kt` from the shared source. **The emit typechecks-clean against `kotlinc + K4 stubs` (0 errors).** The `validate-kotlin.test.ts` "K-FINAL — real TodoMVC emit typechecks via kotlinc + K4 stubs" gate locks the contract in CI.
 
 #### The Phase 2 Kotlin arc — all CLOSED
 
@@ -178,7 +178,7 @@ counter variable.
 
 Same pattern as iOS (where Xcode build requires Xcode + Simulator + signing). What this example proves WITHOUT Android SDK:
 
-- ✓ `./scripts/build.sh` produces structurally valid Kotlin (parses, syntax-correct)
+- ✓ `bash ../scripts/build-android.sh` produces structurally valid Kotlin (parses, syntax-correct)
 - ✓ `kotlinc + K4 stubs` accepts the full TodoMVC emit (0 errors via K-FINAL gate)
 - ✓ Emit shape matches the locked snapshot in `todomvc-baseline.test.ts`
 - ✓ The `--kotlin-package=com.pyreon.generated` flag emits the right package declaration so MainActivity's FQN import resolves
@@ -196,10 +196,10 @@ The honest framing: the **structural** multiplatform contract is proven AND CI-g
 ### Release lane (signed + R8-minified, device-proven)
 
 ```bash
-bash scripts/ensure-release-keystore.sh        # one-time: self-signed keystore (gitignored)
+bash ../scripts/ensure-release-keystore.sh        # one-time: self-signed keystore (gitignored)
 gradle assembleRelease                          # signed, minified release APK
 gradle -PpyreonReleaseTests connectedCheck      # the SAME instrumented suite vs the RELEASE build
-bash scripts/assert-release-lane.sh             # proves R8 ran + the release build was what got tested
+bash ../scripts/assert-release-lane.sh             # proves R8 ran + the release build was what got tested
 ```
 
 The keystore is self-signed and generated locally — Play App Signing re-signs
@@ -233,7 +233,7 @@ Three reasons matching the iOS rationale:
 
 1. **Per-platform host code differs.** iOS has `App.swift` + `ContentView.swift` + `Info.plist` + `project.yml`. Android has `MainActivity.kt` + `AndroidManifest.xml` + Gradle files. Co-locating in one dir would tangle the build configs.
 2. **The Phase 1 deliverable is a working TodoMVC on each platform.** Per `native-platforms-phase1-roadmap.md`, that's the end-of-Phase-1 milestone. Having both examples in `examples/` (one per platform) lets each be opened in its native IDE — Xcode for iOS, Android Studio for Android — without conflicting project files.
-3. **The shared source is the proof.** `examples/native-todomvc-android/scripts/build.sh` reading from `../native-todomvc-ios/src/` is the structural assertion: the multiplatform claim survives ONE source. Two dirs sharing one source > one dir with two emit targets.
+3. **The shared source is the proof.** `examples/native-todomvc/scripts/build-android.sh` reading from `examples/native-todomvc/src/` is the structural assertion: the multiplatform claim survives ONE source. Two dirs sharing one source > one dir with two emit targets.
 
 ### Privacy
 
@@ -243,8 +243,8 @@ This example is marked `"private": true` and excluded from npm publishing. Inter
 
 > **PRIVATE / EXPERIMENTAL.** PMTC TodoMVC reference rendered on **WEB** via the `@pyreon/primitives` runtime. Sibling of:
 >
-> - [`examples/native-todomvc-ios/`](../native-todomvc-ios/) — SwiftUI target via PMTC compiler emit
-> - [`examples/native-todomvc-android/`](../native-todomvc-android/) — Compose target via PMTC compiler emit
+> - [`examples/native-todomvc/ios/`](ios/) — SwiftUI target via PMTC compiler emit
+> - [`examples/native-todomvc/android/`](android/) — Compose target via PMTC compiler emit
 >
 > Phase D of the PMTC multiplatform story — proves the canonical primitive vocabulary renders end-to-end on web.
 
@@ -255,7 +255,7 @@ This example is marked `"private": true` and excluded from npm publishing. Inter
 ### Build / dev
 
 ```bash
-cd examples/native-todomvc-web
+cd examples/native-todomvc
 bun run dev      # vite dev server
 bun run build    # vite production build → dist/
 bun run preview  # serve dist/ via vite preview
@@ -266,19 +266,19 @@ bun run preview  # serve dist/ via vite preview
 | File | Purpose |
 |---|---|
 | `index.html` | Bootstrap shell — mounts `#app` + loads `entry-client.tsx`. |
-| `src/entry-client.tsx` | `@pyreon/runtime-dom` mount call — `import { TodoApp } from '../../native-todomvc-ios/src/TodoApp'`. |
+| `src/entry-client.tsx` | `@pyreon/runtime-dom` mount call — `import { TodoApp } from 'examples/native-todomvc/src/TodoApp'`. |
 
-The canonical source lives at [`../native-todomvc-ios/src/TodoApp.tsx`](../native-todomvc-ios/src/TodoApp.tsx) — **the same file** Android reads via `scripts/build.sh` and iOS reads via xcodegen. Three targets, one `.tsx`. Web has no local copy; `entry-client.tsx` resolves it by relative-path import.
+The canonical source lives at [`examples/native-todomvc/src/TodoApp.tsx`](examples/native-todomvc/src/TodoApp.tsx) — **the same file** Android reads via `scripts/build.sh` and iOS reads via xcodegen. Three targets, one `.tsx`. Web has no local copy; `entry-client.tsx` resolves it by relative-path import.
 
 ### Shared-source contract (Phase E3 — landed)
 
-`src/entry-client.tsx` imports `TodoApp` from `../../native-todomvc-ios/src/TodoApp` — the SAME `.tsx` file Android compiles. This is "the literal same file across all three targets" the PMTC arc claims:
+`src/entry-client.tsx` imports `TodoApp` from `examples/native-todomvc/src/TodoApp` — the SAME `.tsx` file Android compiles. This is "the literal same file across all three targets" the PMTC arc claims:
 
 - **Web** — Vite + `@pyreon/runtime-dom` resolves the import + the canonical primitives (`<Stack>`, `<Field>`, etc.) auto-import from `@pyreon/primitives` (web runtimes).
 - **iOS** — `pyreon-native build --target=ios` compiles the same `.tsx` to SwiftUI via PMTC's `canonical-primitives.ts` table (no `import` lines needed; the compiler resolves bare JSX tags).
 - **Android** — same `.tsx`, same compile pass, `--target=android` emits to Compose.
 
-Verified at `examples/native-todomvc-android/scripts/build.sh` (compiles `../../native-todomvc-ios/src/TodoApp.tsx`) + the verify-modes `native-todomvc-web × spa` cell (proves the web build emits expected HTML from the import).
+Verified at `examples/native-todomvc/scripts/build-android.sh` (compiles `examples/native-todomvc/src/TodoApp.tsx`) + the verify-modes `native-todomvc-web × spa` cell (proves the web build emits expected HTML from the import).
 
 ### Canonical `<Toggle>` — semantic split across platforms
 

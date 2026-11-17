@@ -1,12 +1,12 @@
 // TasksAppInstrumentedTest — launch + auth-gate + store mutation +
 // typed-params smoke for the Android tasks showcase. Mirror of:
-//   - iOS:     `native-tasks-ios/iosUITests/PyreonTasksUITests.swift`
+//   - iOS:     `native-tasks/ios/UITests/PyreonTasksUITests.swift`
 //   - Counter: `native-counter-android/.../CounterInstrumentedTest.kt` (#1454)
 //   - Router:  `native-router-demo-android/.../RouterDemoInstrumentedTest.kt` (#1455)
 //
 // Proves at real-Emulator scope, against the STORE-BACKED TasksApp
 // source (Gap 4 closure — see the header of
-// `../native-tasks/src/TasksApp.tsx`):
+// `examples/native-tasks/src/TasksApp.tsx`):
 //
 //   - App launches → login page renders
 //   - Typing a username + Continue flips the store's auth flag and
@@ -21,7 +21,7 @@
 //   - "Back to tasks" returns, "Logout" flips the flag back and lands
 //     on /login — the gate re-engages
 //
-// data-testid attrs in the SHARED `../native-tasks/src/TasksApp.tsx`
+// data-testid attrs in the SHARED `examples/native-tasks/src/TasksApp.tsx`
 // compile to `Modifier.testTag(...)` on the Compose node; this test
 // queries via `onNodeWithTag(...)`.
 //

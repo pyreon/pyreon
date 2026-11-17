@@ -19,5 +19,5 @@ export default definePlaywrightConfig({
       use: { viewport: { width: 1280, height: 720 } },
     },
   ],
-  webServer: [viteDevServer('@pyreon/example-native-todomvc-web', 5202)],
+  webServer: [viteDevServer('@pyreon/example-native-todomvc', 5202)],
 })

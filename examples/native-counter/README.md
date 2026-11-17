@@ -104,7 +104,7 @@ is the same CI-verified guarantee, just over more surface area now.
 ### Run the compile loop now
 
 ```bash
-## From this directory
+# From this directory
 bun run build:ios
 ```
 
@@ -186,7 +186,7 @@ examples/native-counter/android/app/src/main/kotlin/com/pyreon/generated/Counter
    MainActivity.setContent { Counter() }        ← 5-line host shell
 ```
 
-Mirror of [`native-todomvc-android`](../native-todomvc-android/) — same Gradle structure, same plugin versions, same dependency set MINUS:
+Mirror of [`native-todomvc/android`](../native-todomvc/android/) — same Gradle structure, same plugin versions, same dependency set MINUS:
 - `kotlinx-serialization-json` (Counter has no `@Serializable` types)
 - `compose.runtime:runtime-saveable` (no `rememberSaveable` — Counter state doesn't survive config changes by design)
 

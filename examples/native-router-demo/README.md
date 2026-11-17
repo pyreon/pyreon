@@ -45,7 +45,7 @@ ONE `.tsx` source compiles to a **navigation-functional** app on all three targe
 ```bash
 cd ../native-router-demo (web host)
 bun run dev
-## → http://localhost:5203
+# → http://localhost:5203
 ```
 
 #### iOS (Xcode + Simulator)
@@ -57,7 +57,7 @@ brew install xcodegen   # one-time
 cd examples/native-router-demo/ios
 ./scripts/xcode-setup.sh   # compile RouterApp.tsx → generated/*.swift + regenerate xcodeproj
 open ios/PyreonRouterDemo.xcodeproj
-## ⌘+R to run in the iOS Simulator
+# ⌘+R to run in the iOS Simulator
 ```
 
 Inside Xcode, the project's `preBuildScript` re-runs `build.sh` on every build — so edits to `src/RouterApp.tsx` are picked up automatically.
@@ -66,7 +66,7 @@ The host wraps `RouterApp()` (from `generated/RouterApp.swift`, produced by `pyr
 
 #### Android
 
-Not yet scaffolded. The shared `src/RouterApp.tsx` source compiles to typecheck-clean Kotlin/Compose today (verified by `@pyreon/native-compiler`'s `validate-kotlin` gate); only the host shell + Gradle wiring is missing. Same pattern as `examples/native-todomvc-android/` would apply.
+Not yet scaffolded. The shared `src/RouterApp.tsx` source compiles to typecheck-clean Kotlin/Compose today (verified by `@pyreon/native-compiler`'s `validate-kotlin` gate); only the host shell + Gradle wiring is missing. Same pattern as `examples/native-todomvc/android/` would apply.
 
 ## Android host (`android/`)
 
@@ -99,7 +99,7 @@ android.sourceSets.getByName("main").kotlin.srcDir(
 Mirror of the iOS side's SPM package declaration:
 
 ```yaml
-## native-router-demo/ios/project.yml
+# native-router-demo/ios/project.yml
 packages:
   PyreonRouter:
     path: ../../packages/native/router-swift

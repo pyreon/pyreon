@@ -23,7 +23,7 @@ options:
 # and `PyreonRouter`. Without these the Simulator build fails with
 # `error: no such module 'PyreonRuntime'` — the exact failure that
 # kept the native-device nightly red from its first run (2026-05-29)
-# until this fix. Same local-path SPM shape as native-tasks-ios.
+# until this fix. Same local-path SPM shape as native-tasks/ios.
 packages:
   PyreonRuntime:
     path: ../../../packages/native/runtime-swift
@@ -37,7 +37,7 @@ targets:
   PyreonTodoMVC:
     # Pre-build script — runs the Pyreon compile loop BEFORE Swift
     # compilation. Without this, you'd have to remember to run
-    # `./scripts/build.sh` manually before every Xcode build. The script
+    # `./scripts/build-ios.sh` manually before every Xcode build. The script
     # is idempotent — re-running it just overwrites `generated/`.
     preBuildScripts:
       - script: |

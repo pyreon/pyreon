@@ -10,11 +10,10 @@
 //
 // PMTC TodoMVC reference — the SINGLE source for web, iOS, and Android.
 //
-// Phase E3 acceptance criterion: a developer reads
-// `examples/native-todomvc-{web,ios,android}/src/TodoApp.tsx` and SEES
-// that it's the same file path. The web sibling's `entry-client.tsx`
-// imports from this iOS path; iOS reads it as-is; Android's build script
-// reads it. ONE file, THREE targets.
+// Phase E3 acceptance criterion: one file in `examples/native-todomvc/src/`.
+// The web host's `src/entry-client.tsx` imports it, and the iOS and Android
+// emit scripts (`scripts/build-ios.sh`, `scripts/build-android.sh`) compile
+// it. ONE file, THREE targets.
 //
 // Uses canonical @pyreon/primitives vocabulary (auto-imported on web
 // via @pyreon/vite-plugin's jsxAutoImport pass; on native the PMTC

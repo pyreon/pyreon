@@ -19,7 +19,7 @@ bun run build:ios        # src → ios/generated/*.swift
 bun run build:android    # src → android/app/src/main/kotlin/com/pyreon/generated/*.kt
 ```
 
-> **PRIVATE / EXPERIMENTAL.** Gap 5 scaffold from the 2026-06-05 native-readiness audit. Multi-feature real-app showcase exercising MULTIPLE Tier-1 features end-to-end — beyond the sample-code scope of `native-counter-ios` / `native-router-demo-ios` / `native-todomvc-ios`.
+> **PRIVATE / EXPERIMENTAL.** Gap 5 scaffold from the 2026-06-05 native-readiness audit. Multi-feature real-app showcase exercising MULTIPLE Tier-1 features end-to-end — beyond the sample-code scope of `native-counter-ios` / `native-router-demo-ios` / `native-todomvc/ios`.
 
 ## What this proves
 
@@ -34,9 +34,8 @@ A SINGLE `.tsx` source compiling cleanly to BOTH Swift (SwiftUI) AND Kotlin (Jet
 ## Sibling hosts (landed)
 
 The original ~3-week arc (PR-5.1 web app + PR-5.2 native ports + PR-5.3 CI
-wiring) has landed in full: [`native-tasks-web`](../native-tasks-web),
-[`native-tasks-ios`](../native-tasks-ios), and
-[`native-tasks-android`](../native-tasks-android) each host this directory's
+wiring) has landed in full: the web host (this directory's root),
+[`ios/`](ios/) and [`android/`](android/) each host this directory's
 `src/TasksApp.tsx`, and `.github/workflows/native-device.yml` runs the iOS
 XCUITest + Android Espresso suites in CI. See each sibling's own README for
 its current state.
@@ -98,9 +97,9 @@ into `native-device` CI) are both done — see "Sibling hosts" above. Remaining:
 ```text
 examples/native-tasks/src/TasksApp.tsx     ← canonical source
                           │
-                          ├─→ Web (native-tasks-web)          Vite + runtime-dom
+                          ├─→ Web (index.html at the root)    Vite + runtime-dom
                           ├─→ iOS (THIS dir)                  XcodeGen + SwiftUI
-                          └─→ Android (native-tasks-android)  Gradle + Compose
+                          └─→ Android (native-tasks/android)  Gradle + Compose
 ```
 
 ### What this delivers
@@ -111,7 +110,7 @@ examples/native-tasks/src/TasksApp.tsx     ← canonical source
 | `ios/App.swift` | `@main App` entrypoint → WindowGroup { ContentView() } |
 | `ios/ContentView.swift` | 1-line shell: `body: some View { TasksApp() }` |
 | `ios/Info.plist` | Standard SwiftUI iOS 17+ Info.plist |
-| `scripts/build.sh` | PMTC compile loop — emits `generated/TasksApp.swift` |
+| `scripts/build-ios.sh` | PMTC compile loop — emits `generated/TasksApp.swift` |
 | `iosUITests/PyreonTasksUITests.swift` | XCUITest auth-gate + navigation smoke (2 specs) |
 
 Mirror of `native-router-demo-ios` — same project structure, same SPM PyreonRouter dependency, same scheme wiring.
@@ -128,12 +127,12 @@ The 5-phase test proves the SAME `beforeEnter` source compiles to working auth-g
 ### Build + test
 
 ```bash
-cd examples/native-tasks-ios
+cd examples/native-tasks/ios
 bun install
 xcodegen generate            # → PyreonTasks.xcodeproj
 open PyreonTasks.xcodeproj   # Xcode for interactive dev
-## OR command-line:
-bash scripts/build.sh        # PMTC → generated/TasksApp.swift
+# OR command-line:
+bash ../scripts/build-ios.sh        # PMTC → generated/TasksApp.swift
 xcodebuild build -project PyreonTasks.xcodeproj -scheme PyreonTasks -sdk iphonesimulator
 xcodebuild test  -project PyreonTasks.xcodeproj -scheme PyreonTasks -sdk iphonesimulator \
   -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest'
@@ -147,16 +146,16 @@ start the server. CI starts it as a workflow step; locally:
 
 ```bash
 python3 -m http.server 8787 --bind 127.0.0.1 \
-  --directory ../native-tasks/fixtures &
+  --directory ../fixtures &
 ```
 
 ### Status
 
-`scripts/build.sh` points at `../native-tasks/src/TasksApp.tsx` (#1449) —
+`scripts/build-ios.sh` points at `examples/native-tasks/src/TasksApp.tsx` (#1449) —
 that directory has landed, so the source path resolves. CI wiring has landed
 too: `.github/workflows/native-device.yml` runs this directory's emit +
 xcodegen + `xcodebuild build` + `xcodebuild test` steps. The Android sibling,
-[`native-tasks-android`](../native-tasks-android), has also landed — Gap 5's
+[`native-tasks/android`](android), has also landed — Gap 5's
 full host-shells surface (web + iOS + Android) is closed.
 
 ### Audit status
@@ -172,8 +171,8 @@ Closes the iOS half of Gap 5's host-shells follow-up.
 ```text
 examples/native-tasks/src/TasksApp.tsx     ← canonical source
                           │
-                          ├─→ Web (native-tasks-web)  Vite + runtime-dom
-                          ├─→ iOS (native-tasks-ios)  XcodeGen + SwiftUI
+                          ├─→ Web (root index.html)  Vite + runtime-dom
+                          ├─→ iOS (native-tasks/ios)  XcodeGen + SwiftUI
                           └─→ Android (THIS dir)      Gradle + Compose
 ```
 
@@ -190,7 +189,7 @@ examples/native-tasks/src/TasksApp.tsx     ← canonical source
 | `app/src/main/AndroidManifest.xml` | Single-activity manifest |
 | `app/src/main/kotlin/com/pyreon/MainActivity.kt` | `setContent { TasksApp() }` |
 | `app/src/androidTest/kotlin/com/pyreon/TasksAppInstrumentedTest.kt` | Espresso auth-gate + navigation smoke (2 specs, 5-phase flow) |
-| `scripts/build.sh` | PMTC compile driver |
+| `scripts/build-android.sh` | PMTC compile driver |
 
 Mirror of `native-router-demo-android` (#1455) — same Gradle structure + same source-set wiring for `@pyreon/native-router-kotlin`.
 
@@ -211,16 +210,16 @@ Mirror of iOS `PyreonTasksUITests.swift` (#1457) — same shape, same flow, same
 ### Build + test
 
 ```bash
-cd examples/native-tasks-android
+cd examples/native-tasks/android
 bun install
-./scripts/build.sh           # PMTC emit: TasksApp.tsx → TasksApp.kt
+bash ../scripts/build-android.sh           # PMTC emit: TasksApp.tsx → TasksApp.kt
 ./gradlew assembleDebug      # builds the APK (needs Android SDK)
 ./gradlew connectedCheck     # runs the Espresso test on a connected device/emulator
 ```
 
 ### Status
 
-`scripts/build.sh` points at `../native-tasks/src/TasksApp.tsx`, which has
+`scripts/build-android.sh` points at `examples/native-tasks/src/TasksApp.tsx`, which has
 landed, and the Kotlin synth-data-class emit gap (`data class
 TasksListPageTask` for `tasks: { id, title, done }[]` prop shapes) has
 closed — kotlinc compiles the emit cleanly. CI wiring has landed too:
@@ -237,7 +236,7 @@ TodoMVC.
 
 ## Web host (root)
 
-> **PRIVATE / EXPERIMENTAL.** Web sibling of the canonical [`native-tasks`](../native-tasks/) Gap 5 scaffold. Renders the SAME `TasksApp.tsx` source via Pyreon's `runtime-dom` + the `@pyreon/primitives` web implementations.
+> **PRIVATE / EXPERIMENTAL.** Web sibling of the canonical [`native-tasks`]() Gap 5 scaffold. Renders the SAME `TasksApp.tsx` source via Pyreon's `runtime-dom` + the `@pyreon/primitives` web implementations.
 
 ### Architecture
 
@@ -245,8 +244,8 @@ TodoMVC.
 examples/native-tasks/src/TasksApp.tsx     ← canonical source (single file)
                           │
                           ├─→ Web (THIS dir)                  Vite + runtime-dom
-                          ├─→ iOS (native-tasks-ios)          XcodeGen + SwiftUI
-                          └─→ Android (native-tasks-android)  Gradle + Compose
+                          ├─→ iOS (native-tasks/ios)          XcodeGen + SwiftUI
+                          └─→ Android (native-tasks/android)  Gradle + Compose
 ```
 
 Mirror of `native-todomvc-web` (Pyreon's Phase E3 reference for the three-targets-one-source pattern).
@@ -263,21 +262,21 @@ All features verified Tier-1 on web by the showcase's CI gates (#1449's `validat
 ### Build + dev
 
 ```bash
-cd examples/native-tasks-web
+cd examples/native-tasks
 bun install      # workspace setup (one-time)
 bun run dev      # http://localhost:5173/
 bun run build    # production bundle in dist/
 bun run preview  # preview the production bundle
 ```
 
-The dev server reloads on source edits to `../native-tasks/src/TasksApp.tsx` via Vite's HMR. Same source, instant feedback.
+The dev server reloads on source edits to `examples/native-tasks/src/TasksApp.tsx` via Vite's HMR. Same source, instant feedback.
 
 ### Status
 
-`entry-client.tsx` imports from `../../native-tasks/src/TasksApp`, which has
+`entry-client.tsx` imports from `examples/native-tasks/src/TasksApp`, which has
 landed, and both sibling hosts have landed too:
-[`native-tasks-ios`](../native-tasks-ios) (XcodeGen + XCUITest, CI-wired) and
-[`native-tasks-android`](../native-tasks-android) (Gradle + Espresso,
+[`native-tasks/ios`](ios) (XcodeGen + XCUITest, CI-wired) and
+[`native-tasks/android`](android) (Gradle + Espresso,
 CI-wired).
 
 ### What's still NOT in this PR

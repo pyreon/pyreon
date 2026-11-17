@@ -7,7 +7,7 @@
 #     wires a `preBuild.dependsOn(":pyreonCompile")` task that calls
 #     this script)
 #
-# Effect: turns the SHARED `../native-todomvc-ios/src/*.tsx` source
+# Effect: turns the SHARED `examples/native-todomvc/src/*.tsx` source
 # into `app/src/main/kotlin/com/pyreon/generated/*.kt` using the
 # `@pyreon/native-cli` package from the monorepo workspace.
 #
@@ -21,7 +21,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-# Source SHARED with native-todomvc-ios — the single canonical TodoMVC
+# Source SHARED with native-todomvc/ios — the single canonical TodoMVC
 # Pyreon source. Both example apps compile this same .tsx.
 SRC_DIR="${PROJECT_DIR}/src"
 # Output lands inside the Gradle source tree so Compose picks it up
