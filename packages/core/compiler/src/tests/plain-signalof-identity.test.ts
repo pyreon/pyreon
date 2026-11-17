@@ -91,15 +91,29 @@ function compileAll(src: string, ssr: boolean, ssrTemplate: boolean): string {
 type N = { type: string; [k: string]: unknown }
 const NON_CHILD_KEYS = new Set(['type', 'start', 'end', 'loc', 'range'])
 
+type Counts = { identity: number; identityCalled: number; readsCalled: number; readsBare: string[] }
+
+/** Classify ONE `count` (identity) or `other` (value read) reference by its parent. */
+function classifyRef(n: N, parent: N, code: string, out: Counts): void {
+  if (parent.type === 'VariableDeclarator' && parent.id === n) return
+  if (parent.type === 'MemberExpression' && parent.property === n && !parent.computed) return
+  const called = parent.type === 'CallExpression' && parent.callee === n
+  if (n.name === 'count') {
+    out.identity++
+    if (called) out.identityCalled++
+  } else if (called) out.readsCalled++
+  else out.readsBare.push(code.slice((n.start as number) - 20, (n.end as number) + 10))
+}
+
 /**
  * Every `count` reference (the identity — a template's static attribute emit
  * may drop the comment, so the NAME is the identity, not the mark) must stay
  * uncalled; every `other` value reference must be called.
  */
-function classify(code: string) {
+function classify(code: string): Counts {
   const parsed = parseSync('out.tsx', code)
   expect(parsed.errors, code).toEqual([])
-  const out = { identity: 0, identityCalled: 0, readsCalled: 0, readsBare: [] as string[] }
+  const out: Counts = { identity: 0, identityCalled: 0, readsCalled: 0, readsBare: [] }
   const visit = (node: unknown, parent: N | null): void => {
     if (!node || typeof node !== 'object') return
     if (Array.isArray(node)) {
@@ -109,18 +123,7 @@ function classify(code: string) {
     }
     const n = node as N
     if (typeof n.type !== 'string') return
-    if (n.type === 'Identifier' && (n.name === 'count' || n.name === 'other') && parent) {
-      const called = parent.type === 'CallExpression' && parent.callee === n
-      const declared = parent.type === 'VariableDeclarator' && parent.id === n
-      const property = parent.type === 'MemberExpression' && parent.property === n && !parent.computed
-      if (!declared && !property) {
-        if (n.name === 'count') {
-          out.identity++
-          if (called) out.identityCalled++
-        } else if (called) out.readsCalled++
-        else out.readsBare.push(code.slice((n.start as number) - 20, (n.end as number) + 10))
-      }
-    }
+    if (n.type === 'Identifier' && (n.name === 'count' || n.name === 'other') && parent) classifyRef(n, parent, code, out)
     for (const key of Object.keys(n)) if (!NON_CHILD_KEYS.has(key)) visit(n[key], n)
   }
   visit(parsed.program, null)
