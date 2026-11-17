@@ -13,9 +13,11 @@ import {
   dependencyFailures,
   deprecatedFailures,
   findDeprecatedTags,
+  isTestPath,
   metaFailures,
   readmeFailures,
   readStabilityField,
+  readTextIfExists,
   renderStatusLine,
   runGate,
   type PublishedPackage,
@@ -207,6 +209,48 @@ describe('@deprecated tags', () => {
     for (const [key, reason] of Object.entries(DEPRECATED_ALLOWLIST)) {
       expect(reason.trim().length, key).toBeGreaterThan(20)
     }
+  })
+})
+
+// The test-path filter used to be ONE regex, `(^|/)(tests?|…)/|\.(test|spec|bench)\.tsx?$`,
+// whose `^`/`$` bind to only one alternative each (CodeQL js/regex/missing-regexp-anchor).
+// It is two regexes now; these pin the intended split. Bisect-verified: with
+// `TEST_SUFFIX` unanchored (`$` removed), the `.test.tsx.snap`-style spec fails.
+describe('isTestPath', () => {
+  it('matches test, fixture and bench directories at any depth', () => {
+    for (const p of ['tests/a.ts', 'src/tests/a.ts', 'src/__tests__/a.ts', 'src/__fixtures__/a.ts', 'src/fixtures/a.ts', 'bench/a.ts', 'src/test/a.ts']) {
+      expect(isTestPath(p), p).toBe(true)
+    }
+  })
+
+  it('matches test, spec and bench suffixes only at the end', () => {
+    for (const p of ['src/a.test.ts', 'src/a.spec.tsx', 'src/a.bench.mts', 'src/a.test.cts']) expect(isTestPath(p), p).toBe(true)
+    for (const p of ['src/a.test.ts.bak', 'src/a.test.tsx.snap', 'src/a.spec.tsx.orig']) expect(isTestPath(p), p).toBe(false)
+  })
+
+  it('does not match source whose name merely contains a test word', () => {
+    for (const p of ['src/testing.ts', 'src/latest/a.ts', 'src/contests.ts', 'src/a-tests.ts', 'src/benchmark.ts']) {
+      expect(isTestPath(p), p).toBe(false)
+    }
+  })
+})
+
+// Replaces `existsSync` then `readFileSync` (CodeQL js/file-system-race). Bisect-verified:
+// with the ENOENT check dropped (every error read as "missing"), the rethrow spec fails.
+describe('readTextIfExists', () => {
+  let dir: string | undefined
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true })
+    dir = undefined
+  })
+
+  it('returns the text, undefined for a missing file, and rethrows other errors', () => {
+    dir = mkdtempSync(join(tmpdir(), 'stability-read-'))
+    writeFileSync(join(dir, 'a.md'), 'hello')
+    expect(readTextIfExists(join(dir, 'a.md'))).toBe('hello')
+    expect(readTextIfExists(join(dir, 'missing.md'))).toBeUndefined()
+    // A directory is not ENOENT: the error must surface, not read as "missing".
+    expect(() => readTextIfExists(dir as string)).toThrow()
   })
 })
 

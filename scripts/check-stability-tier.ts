@@ -99,6 +99,14 @@ export const DEPRECATED_ALLOWLIST: Record<string, string> = {
     'Source says deprecated, the manifest documents standalone use. Whether it is removed or undeprecated is undecided (1.0 readiness M4).',
   '@pyreon/unistyle#Provider':
     'Low-level provider with no manifest API entry (only a gotcha note). Its future is undecided (1.0 readiness M4).',
+  '@pyreon/zero-content#generateSitemap':
+    'Removed outright by #4554, which lands before this gate; the entry goes when this branch is rebased onto it.',
+  '@pyreon/zero-content#generateRssFeed':
+    'Removed outright by #4554, which lands before this gate; the entry goes when this branch is rebased onto it.',
+  '@pyreon/zero-content#toRfc822':
+    'Removed outright by #4554, which lands before this gate; the entry goes when this branch is rebased onto it.',
+  '@pyreon/zero-content#generateLlmsTxt':
+    'Removed outright by #4554, which lands before this gate; the entry goes when this branch is rebased onto it.',
   '@pyreon/zero-content#shortId':
     '`@internal` helper exported from `./plugin` for tests; not part of the documented surface (1.0 readiness M5).',
 }
@@ -127,18 +135,33 @@ export function listAllPublished(repoRoot: string): PublishedPackage[] {
   const binDir = join(repoRoot, 'packages/core/compiler/npm')
   if (existsSync(binDir)) {
     for (const triple of readdirSync(binDir)) {
-      const file = join(binDir, triple, 'package.json')
-      if (!existsSync(file)) continue
-      const pkg = readJson(file)
+      const text = readTextIfExists(join(binDir, triple, 'package.json'))
+      if (text === undefined) continue
+      const pkg = JSON.parse(text) as PackageJson
       if (pkg.private === true) continue
       out.push({ name: pkg.name, dir: join(binDir, triple), pkg })
     }
   }
+
   return out.sort((a, b) => a.name.localeCompare(b.name))
 }
 
 function readJson(file: string): PackageJson {
   return JSON.parse(readFileSync(file, 'utf8')) as PackageJson
+}
+
+/**
+ * A file's text, or `undefined` when it does not exist. Reading and handling
+ * ENOENT, rather than `existsSync` then `readFileSync`, leaves no window for
+ * the file to change between the check and the read.
+ */
+export function readTextIfExists(file: string): string | undefined {
+  try {
+    return readFileSync(file, 'utf8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw err
+  }
 }
 
 /** Validate and return the `pyreon` stability field, or a failure message. */
@@ -163,6 +186,7 @@ export function readStabilityField(p: PublishedPackage): StabilityField | string
     }
     field.experimentalSubpaths = subs as string[]
   }
+
   return field
 }
 
@@ -183,6 +207,7 @@ export function renderStatusLine(field: StabilityField): string {
     subs.length === 0
       ? ''
       : ` Experimental subpaths, which may change in a minor release: ${subs.map((s) => `\`${s}\``).join(', ')}.`
+
   return `> **Status: Stable.** Covered by the [semver policy](${POLICY_URL}).${tail}`
 }
 
@@ -209,6 +234,7 @@ export function readmeFailures(name: string, readme: string, field: StabilityFie
       )
     }
   })
+
   return failures
 }
 
@@ -225,13 +251,22 @@ export function writeStatusLine(readme: string, field: StabilityField): string {
   const h1 = lines.findIndex((l) => l.startsWith('# '))
   const at = h1 === -1 ? 0 : h1 + 1
   lines.splice(at, 0, '', expected)
+
   return lines.join('\n')
 }
 
 // ─── dependency direction ───────────────────────────────────────────────────
 
 const SRC_EXT = /\.(ts|tsx|mts)$/
-const TEST_FILE = /(^|\/)(tests?|__tests__|__fixtures__|fixtures|bench)\/|\.(test|spec|bench)\.[cm]?tsx?$/
+/** A path inside a test, fixture or bench directory. */
+const TEST_DIR = /(?:^|\/)(?:tests?|__tests__|__fixtures__|fixtures|bench)\//
+/** A test, spec or bench file by its suffix. */
+const TEST_SUFFIX = /\.(?:test|spec|bench)\.[cm]?tsx?$/
+
+/** Test, fixture and bench files are not package source. */
+export function isTestPath(path: string): boolean {
+  return TEST_DIR.test(path) || TEST_SUFFIX.test(path)
+}
 
 /** Non-test source files under `dir` (recursive). */
 export function listSourceFiles(dir: string): string[] {
@@ -244,11 +279,12 @@ export function listSourceFiles(dir: string): string[] {
         if (entry.name === 'node_modules') continue
         walk(full)
       } else if (SRC_EXT.test(entry.name) && !entry.name.endsWith('.d.ts')) {
-        if (!TEST_FILE.test(full)) out.push(full)
+        if (!isTestPath(full)) out.push(full)
       }
     }
   }
   walk(dir)
+
   return out.sort()
 }
 
@@ -270,6 +306,7 @@ function experimentalSubpathMatcher(p: PublishedPackage, field: StabilityField):
       dirs.push(rel.replace(SRC_EXT, '') + '/')
     }
   }
+
   return (rel: string) => entries.has(rel) || dirs.some((d) => rel.startsWith(d))
 }
 
@@ -280,6 +317,7 @@ function requiredDependencies(p: PublishedPackage): Array<[string, string]> {
   for (const dep of Object.keys(p.pkg.peerDependencies ?? {})) {
     if (p.pkg.peerDependenciesMeta?.[dep]?.optional !== true) required.push([dep, 'peerDependencies'])
   }
+
   return required
 }
 
@@ -295,6 +333,7 @@ function dependencyViolation(p: PublishedPackage, field: StabilityField, dep: st
   if (importers.length === 0) {
     return `${head}No source file imports it: drop it, move it to devDependencies, or, if a tool needs it installed, add a reasoned DEPENDENCY_ALLOWLIST entry.`
   }
+
   return (
     `${head}Imported outside the package's experimental subpaths by: ${leaking.join(', ')}. ` +
     `Make it an optional peer, confine its use to an experimental subpath, or re-tier one of the two packages.`
@@ -328,6 +367,7 @@ export function dependencyFailures(
   for (const key of Object.keys(allowlist)) {
     if (!used.has(key)) failures.push(`DEPENDENCY_ALLOWLIST['${key}'] is no longer a violation. Remove the stale entry.`)
   }
+
   return failures
 }
 
@@ -354,6 +394,7 @@ export function metaFailures(metaSource: string, fields: Map<string, StabilityFi
       }
     }
   }
+
   return failures
 }
 
@@ -373,6 +414,7 @@ function declName(node: ts.Node): string | undefined {
   }
   const name = (node as { name?: ts.Node }).name
   if (name && (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isPrivateIdentifier(name))) return name.text
+
   return undefined
 }
 
@@ -401,6 +443,7 @@ export function findDeprecatedTags(source: string, file: string, pkg: string): D
     ts.forEachChild(node, visit)
   }
   visit(sf)
+
   return out
 }
 
@@ -420,6 +463,7 @@ export async function deprecatedManifestEntries(repoRoot: string): Promise<Map<s
     }
     out.set(manifest.name, entries)
   }
+
   return out
 }
 
@@ -452,6 +496,7 @@ export function deprecatedFailures(
       failures.push(`DEPRECATED_ALLOWLIST['${key}'] matches no \`@deprecated\` tag any more. Remove the stale entry.`)
     }
   }
+
   return failures
 }
 
@@ -476,6 +521,7 @@ export function badgeStatusFailures(docsDir: string, repoRoot: string): string[]
     }
   }
   if (existsSync(docsDir)) walk(docsDir)
+
   return failures
 }
 
@@ -488,6 +534,7 @@ export function readStabilityTable(repoRoot: string): Map<string, StabilityField
     const f = readStabilityField(p)
     if (typeof f !== 'string') out.set(p.name, f)
   }
+
   return out
 }
 
@@ -508,11 +555,11 @@ export async function runGate(repoRoot: string, write: boolean): Promise<string[
     const field = fields.get(p.name)
     const readmePath = join(p.dir, 'README.md')
     if (!field) continue
-    if (!existsSync(readmePath)) {
+    let readme = readTextIfExists(readmePath)
+    if (readme === undefined) {
       failures.push(`${p.name}: no README.md`)
       continue
     }
-    let readme = readFileSync(readmePath, 'utf8')
     if (write) {
       const next = writeStatusLine(readme, field)
       if (next !== readme) {

@@ -91,4 +91,4 @@ The `@pyreon/http` and `@pyreon/loom` READMEs no longer claim the packages are u
 
 **Breaking (`@pyreon/meta`):** the barrel no longer re-exports `@pyreon/document-primitives` (the `Doc*` components, `createDocumentExport`, `documentTheme`, `extractDocNode`, `DocumentPreview`) or `@pyreon/connector-document` (`extractDocumentTree`, `resolveStyles`), because both are Experimental and meta is Stable. Upgrade: install those packages and import from them directly.
 
-The deprecated `@pyreon/zero-content` SEO helpers (`generateSitemap`, `generateRssFeed`, `toRfc822`, `generateLlmsTxt`) are now marked deprecated in the manifest, with removal no earlier than 2.0.0. The ui-core, unistyle, rocketstyle, coolgrid and elements manifests no longer claim that the low-level `Provider` logs a dev warning; it has not warned for some time.
+The ui-core, unistyle, rocketstyle, coolgrid and elements manifests no longer claim that the low-level `Provider` logs a dev warning; it has not warned for some time.

@@ -10958,11 +10958,11 @@ export const blog = defineBlog({
 - Treating \`entry.data.date\` as a string — the schema outputs \`BlogPostData\` (dates as \`Date\`, \`tags\`/\`author\` as lists, \`draft\` boolean) and that parsed output is what ships`,
   },
 
-  'zero-content/generateSitemap / generateRssFeed / toRfc822 / generateLlmsTxt': {
-    signature: 'generateSitemap(args): string · generateRssFeed(args): string · toRfc822(date): string · generateLlmsTxt(args): string',
+  'zero-content/generateSitemap / generateRssFeed / generateLlmsTxt': {
+    signature: 'generateSitemap(args): string · generateRssFeed(args): string · generateLlmsTxt(args): string',
     example: `// Prefer, from @pyreon/zero/server (server-only, Vite plugins):
 import { seoPlugin, generateRssFeed, aiPlugin } from '@pyreon/zero/server'`,
-    notes: `[DEPRECATED] DEPRECATED — all four are thin build-script helpers kept for back-compat and superseded by richer \`@pyreon/zero\` equivalents that run as Vite plugins instead of a hand-written build script: \`generateSitemap\` → \`@pyreon/zero/server\`'s \`generateSitemap\` + \`seoPlugin\` (adds hreflang/i18n, trailing-slash policy, SSG path-manifest integration; server-only, Vite-plugin-only); \`generateRssFeed\`/\`toRfc822\` → the SAME function, re-exported from \`@pyreon/zero\`'s CLIENT-SAFE main entry (no \`/server\` needed — no \`zero-content\` wrapper needed either); \`generateLlmsTxt\` → \`@pyreon/zero/server\`'s \`aiPlugin\` (server-only). These \`zero-content\` versions will be removed in a future major version — do not build new tooling on them. Deprecated since v0.52.0, replaced by \`@pyreon/zero\`'s \`generateRssFeed\` / \`toRfc822\`, and \`@pyreon/zero/server\`'s \`seoPlugin\` + \`generateSitemap\` and \`aiPlugin\`, removal planned in v2.0.0.`,
+    notes: `DEPRECATED — all three are thin build-script helpers kept for back-compat and superseded by richer \`@pyreon/zero\` equivalents that run as Vite plugins instead of a hand-written build script: \`generateSitemap\` → \`@pyreon/zero/server\`'s \`generateSitemap\` + \`seoPlugin\` (adds hreflang/i18n, trailing-slash policy, SSG path-manifest integration; server-only, Vite-plugin-only); \`generateRssFeed\`/\`toRfc822\` → the SAME function, re-exported from \`@pyreon/zero\`'s CLIENT-SAFE main entry (no \`/server\` needed — no \`zero-content\` wrapper needed either); \`generateLlmsTxt\` → \`@pyreon/zero/server\`'s \`aiPlugin\` (server-only). These \`zero-content\` versions will be removed in a future major version — do not build new tooling on them.`,
     mistakes: `- Building new SEO tooling on these zero-content functions — they are deprecated aliases; use @pyreon/zero's seoPlugin/aiPlugin/generateRssFeed instead, which cover strictly more (hreflang, SSG integration, no hand-written build script)`,
   },
   // <gen-docs:api-reference:end @pyreon/zero-content>
