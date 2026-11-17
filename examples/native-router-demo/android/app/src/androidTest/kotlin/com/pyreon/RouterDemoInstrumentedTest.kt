@@ -1410,4 +1410,67 @@ class RouterDemoInstrumentedTest {
         composeRule.onNodeWithTag("nav-mail-row-invoice").performClick()
         composeRule.onNodeWithTag("nav-mail-subject").assertTextEquals("Subject: Invoice")
     }
+
+    // Adaptive row, the WIDE half of <Tabs> and <Split>. The test above proves
+    // the phone layout; this one resizes the SAME window past the 600dp
+    // breakpoint (`wm size`, as adaptivePropsFollowSizeClassFlip does), so
+    // LocalConfiguration recomposes and both hosts must switch layout:
+    //   <Tabs>  bottom bar (items side by side, below the content) →
+    //           navigation rail (items stacked, left of the content);
+    //   <Split> one pane → two panes side by side, the detail shown with no
+    //           selection, and a row tap updates the detail while the list
+    //           stays on screen.
+    // Measured by bounds, so a host that ignored the width (or rendered the
+    // rail on top of the content) fails on geometry, not on a missing tag.
+    // Restored in a finally so a failure cannot strand the emulator resized.
+    @Test
+    fun tabsBecomeARailAndSplitShowsTwoPanesInAWideWindow() {
+        composeRule.onNodeWithTag("home-to-navigation").performClick()
+        composeRule.onNodeWithTag("nav-feed-title").assertIsDisplayed()
+
+        // Compact: a bottom bar. Items share a row and sit below the content.
+        val feedC = composeRule.onNodeWithTag("nav-tab-feed").getUnclippedBoundsInRoot()
+        val meC = composeRule.onNodeWithTag("nav-tab-me").getUnclippedBoundsInRoot()
+        val titleC = composeRule.onNodeWithTag("nav-feed-title").getUnclippedBoundsInRoot()
+        check(feedC.top == meC.top && meC.left > feedC.right) {
+            "compact tabs are not a bottom bar: feed=$feedC me=$meC"
+        }
+        check(feedC.top > titleC.bottom) { "compact tab bar is not below the content: bar=$feedC title=$titleC" }
+        composeRule.onNodeWithTag("nav-tab-mail").performClick()
+        composeRule.onNodeWithTag("nav-mail-list").assertIsDisplayed()
+        composeRule.onNodeWithTag("nav-mail-subject").assertDoesNotExist()
+
+        val instr = InstrumentationRegistry.getInstrumentation()
+        try {
+            shell(instr, "wm size 1600x2560")
+            composeRule.waitUntil(timeoutMillis = 10_000) {
+                composeRule.onAllNodesWithTag("nav-mail-subject").fetchSemanticsNodes().isNotEmpty()
+            }
+
+            // Rail: items stacked in one column, left of the content.
+            val feed = composeRule.onNodeWithTag("nav-tab-feed").getUnclippedBoundsInRoot()
+            val mail = composeRule.onNodeWithTag("nav-tab-mail").getUnclippedBoundsInRoot()
+            val me = composeRule.onNodeWithTag("nav-tab-me").getUnclippedBoundsInRoot()
+            check(feed.left == mail.left && mail.left == me.left) {
+                "wide tabs are not one column: feed=$feed mail=$mail me=$me"
+            }
+            check(mail.top >= feed.bottom && me.top >= mail.bottom) {
+                "wide tab items are not stacked top to bottom: feed=$feed mail=$mail me=$me"
+            }
+
+            // Split: both panes at once, side by side, right of the rail.
+            val list = composeRule.onNodeWithTag("nav-mail-list").getUnclippedBoundsInRoot()
+            val detail = composeRule.onNodeWithTag("nav-mail-detail").getUnclippedBoundsInRoot()
+            check(list.left >= feed.right) { "the Split list overlaps the rail: list=$list rail item=$feed" }
+            check(detail.left >= list.right) { "the Split panes are not side by side: list=$list detail=$detail" }
+            composeRule.onNodeWithTag("nav-mail-subject").assertTextEquals("Subject: none")
+
+            composeRule.onNodeWithTag("nav-mail-row-invoice").performClick()
+            composeRule.onNodeWithTag("nav-mail-subject").assertTextEquals("Subject: Invoice")
+            // Still two panes: picking a row does not push over the list.
+            composeRule.onNodeWithTag("nav-mail-row-welcome").assertIsDisplayed()
+        } finally {
+            shell(instr, "wm size reset")
+        }
+    }
 }
