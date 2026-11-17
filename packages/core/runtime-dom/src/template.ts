@@ -245,34 +245,26 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
   if (typeof value === 'function' || _isMountableTextValue(value)) {
     mountChild(value as VNodeChild, parent, placeholder)
     placeholder.remove()
-  } else if (isMidSlotText(placeholder)) {
-    // A verifier-collapsed MID slot (see `MID_SLOT_TEXT`) holding the server's
-    // own text: write in place and keep the node — the same sole-text fast
-    // path `_setChild` takes, and by construction the value already matches.
-    // A `<For>` row's `Item {r.n}!` reaches here; without this the element
-    // adopts but its one dynamic text is swapped for a fresh node. "By
-    // construction" holds when server and client agree; when they do not, the
-    // write is a correction, which dev reports (#4419).
-    // Coerced as a child is (`mountChild`): nullish and `false` render nothing.
-    if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
-      const before = (placeholder as Text).data
-      ;(placeholder as Text).data = value == null || value === false ? '' : String(value)
-      reportTextWrite(placeholder, before, 'text')
-
-      return
-    }
-    ;(placeholder as Text).data = value == null || value === false ? '' : String(value)
   } else {
-    // Nullish renders as EMPTY, not as the literal text "null". `String(null)`
-    // is `"null"`, and this branch used to hand that straight to
-    // `createTextNode` — so `<div>{null}{rows}</div>` put the word "null" on the
-    // page, while `_setChild` (`node.textContent = value`, which the DOM coerces)
-    // and SSR (`renderNode(null)` -> `''`) both render nothing. A client/server
-    // text divergence in the same file as its correct sibling.
-    parent.replaceChild(
-      document.createTextNode(value == null || value === false ? '' : String(value)),
-      placeholder,
-    )
+    // Coerced as a child is (`mountChild`, and SSR's `renderNode`): nullish and
+    // `false` render NOTHING, never the literal text "null". `String(null)` is
+    // `"null"`, and `<div>{null}{rows}</div>` once put that word on the page.
+    const text = value == null || value === false ? '' : String(value)
+    if (!isMidSlotText(placeholder)) {
+      parent.replaceChild(document.createTextNode(text), placeholder)
+    } else if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
+      // A verifier-collapsed MID slot (see `MID_SLOT_TEXT`) holding the server's
+      // own text: write in place and keep the node, the same sole-text fast path
+      // `_setChild` takes. A `<For>` row's `Item {r.n}!` reaches here; without
+      // this the element adopts but its one dynamic text is swapped for a fresh
+      // node. When server and client agree the value already matches; when they
+      // do not, the write is a correction, which dev reports (#4419).
+      const before = (placeholder as Text).data
+      ;(placeholder as Text).data = text
+      reportTextWrite(placeholder, before, 'text')
+    } else {
+      ;(placeholder as Text).data = text
+    }
   }
 }
 
