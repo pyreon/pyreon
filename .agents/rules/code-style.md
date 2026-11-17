@@ -20,6 +20,8 @@
 
 Write `count()` in JSX as everywhere else, even where the compiler would auto-call a bare `{count}`. Auto-call covers only `const` signal/computed names it can see, TypeScript rejects the bare form in expressions and typed props, and without the compiler (tests, compat runtimes) the two forms behave differently, so one called form is the only rule that holds in every position. `pyreon/consistent-signal-read` (in `readable`, ratcheted in `readable-baseline.json`) enforces it; Plain Mode files are exempt, since there the bare name is the read.
 
+The same holds for a component prop that accepts a signal (`<Chart data>` is `T[] | (() => T[])`, `<DiffEditor original>` is `string | Signal<string>`): pass `rows()`. The compiler passes a signal read in a prop as a reactive prop, and in JSX it reads a bare `const` signal anyway, so no JSX prop receives a signal by identity. A bound input is not an exception either: `<Field value={draft()} onChangeText={(t) => draft.set(t)} />` lowers to SwiftUI's `$draft` on iOS, exactly as `value={draft}` does, and the handler is what writes back on the web. Pass a signal by identity only to a function that asks for one (`bindRichTextToSignal({ editor, signal: doc })`).
+
 ### Readability: the `readable` preset and who owns what
 
 `.pyreonlintrc.json` composes `"preset": ["strict", "readable"]`. The `readable` layer turns on the `style` rules (blank lines between multi-line declarations, before a `return` that ends real work, between a component's setup / behaviour / render sections; JSX depth 6; no ternary inside a branch; one signal-read form). They are `warn` and never become errors through `strict`. Guidance and examples: `docs/src/content/docs/lint-readable.md`.
