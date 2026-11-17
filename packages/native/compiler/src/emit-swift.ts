@@ -313,8 +313,10 @@ function enumTypeOfExpr(x: ExprIR): string | undefined {
       if (f !== undefined) return named(f.type)
     }
   }
+
   return undefined
 }
+
 /**
  * Component names emitted in this transform. Used by the generic
  * JSX emit to distinguish user-defined components (`<TodoRow>`,
@@ -415,6 +417,7 @@ let _declaredStructs: readonly StructIR[] = []
 function structShapeKey(fields: readonly { name: string; type: TypeIR }[]): string {
   return rawStructShapeKey(fields, (n) => _declaredStructs.find((s) => s.name === n)?.fields)
 }
+
 /**
  * Synthesized structs for ANONYMOUS all-scalar-literal object EXPRESSIONS
  * (`{ id: 1, name: 'a' }`) that match no declared struct. Without this they
@@ -457,6 +460,7 @@ let _componentParamsInfo: Map<
   string,
   { typeName: string; fields: { name: string; type: TypeIR }[] } | 'opaque'
 > = new Map()
+
 /** Per-component: signal/computed name → enum-type-name when typed as one. */
 let _signalEnumTypes: Map<string, string> = new Map()
 /** Set when emitting a signal initial value that's an enum-typed signal. */
@@ -495,6 +499,7 @@ function asFloatLiteral(v: ExprIR, t: TypeIR | undefined): ExprIR {
     v.float === true
   )
     return v
+
   return { ...v, float: true }
 }
 
@@ -503,6 +508,7 @@ function typeWantsFloat(t: TypeIR): boolean {
   if (t.kind === 'typeRef') return t.name === 'Double' || t.name === 'Float'
   if (t.kind === 'union')
     return t.branches.some((b) => b.kind !== 'null' && b.kind !== 'undefined' && typeWantsFloat(b))
+
   return false
 }
 
@@ -550,6 +556,7 @@ function expectedStructFor(fields: readonly { name: string }[]): string | null {
   const given = new Set(fields.map((f) => f.name))
   for (const g of given) if (!st.fields.some((f) => f.name === g)) return null
   for (const f of st.fields) if (!given.has(f.name) && !typeIsOptional(f.type)) return null
+
   return st.name
 }
 
@@ -580,6 +587,7 @@ function withExpectedType<T>(t: TypeIR | undefined, fn: () => T): T {
     _activeEnumType = prevEnum
   }
 }
+
 /**
  * Per-component: every signal name in scope. Used by G1 (TextField
  * two-way binding) to know which `value={x}` attr identifiers match
@@ -615,10 +623,12 @@ let _functionNames: Set<string> = new Set()
  * emit) — seeded into each component's `_functionNames` so a `dbl(21)` call
  * resolves as a free-function call regardless of which component emits it. */
 let _helperFnNames: Set<string> = new Set()
+
 /** The names a call at module scope resolves as a function call (not a signal read). */
 function moduleFunctionNamesSwift(): Set<string> {
   return new Set([..._helperFnNames, ..._moduleViewHelpersSwift.keys()])
 }
+
 /** File-scope helper name → return type, assigned onto each component's infer
  * ctx so a computed over a helper call infers its return type (not `Any`). */
 let _helperReturns: Map<string, TypeIR> = new Map()
@@ -693,6 +703,7 @@ let _usesSizeClass = false
 let _routerRoutes: Map<string, import('./types').RouteIR[]> = new Map()
 /** #4060: router-decl name → its `tabs` (per-tab back stacks), when any. */
 let _routerTabs: Map<string, RouterTabIR[]> = new Map()
+
 /**
  * #4060: set while emitting the content of a `<RouterProvider>` whose router
  * has `tabs`. `<Tabs router>` lowers to `PyreonRouterTabs` and records the tab
@@ -706,6 +717,7 @@ let _activeRouterTabsSwift: {
   tabs: RouterTabIR[]
   tab: RouterTabIR | null
 } | null = null
+
 /**
  * R1.1 — when emitting the content of a `<RouterProvider router={r}>` whose
  * router-decl carries routes, the inner `<RouterView />` becomes the
@@ -751,6 +763,7 @@ function collectLayoutComponentNames(components: ComponentIR[]): Set<string> {
       }
     }
   }
+
   return names
 }
 
@@ -837,6 +850,7 @@ function swiftIntoIntegerField(
   if (isWholeValued(value, (x) => numericFloatness(x) === 'int')) return `pyreonInt(${raw})`
   const w = fractionalIntoIntegerFieldWarning(structName, field, 'Swift')
   if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+
   return raw
 }
 
@@ -849,6 +863,7 @@ function swiftSpreadOverride(source: ExprIR, f: { name: string; value: ExprIR },
   const def =
     _declaredStructs.find((s) => s.name === base.name) ?? _synthExprStructs.find((s) => s.name === base.name)
   const ft = def?.fields.find((x) => x.name === f.name)?.type
+
   return swiftIntoIntegerField(base.name, f.name, ft, f.value, raw)
 }
 
@@ -861,6 +876,7 @@ function numericFloatness(e: ExprIR): 'double' | 'int' | 'other' {
   // engine's `step * i` tick loop).
   if (t.kind === 'typeRef' && (t.name === 'Double' || t.name === 'Float')) return 'double'
   if (t.kind !== 'number') return 'other'
+
   return t.float === true ? 'double' : 'int'
 }
 
@@ -902,6 +918,7 @@ function swiftPositionedSearch(
       method === 'indexOf'
         ? `__pyRecv[__pyFrom...].firstIndex(of: ${x}) ?? -1`
         : `__pyRecv[__pyFrom...].contains(${x})`
+
     return (
       `{ () -> ${method === 'indexOf' ? 'Int' : 'Bool'} in let __pyRecv = ${obj}; let __pyPos = ${pos}; ` +
       `let __pyFrom = __pyPos < 0 ? max(0, __pyRecv.count + __pyPos) : min(__pyPos, __pyRecv.count); return ${found} }()`
@@ -1049,6 +1066,7 @@ function emitSwiftMemberCallArgs(e: Extract<ExprIR, { kind: 'call' }>, indent: n
       }
     }
   }
+
   return e.args.map((a) => emitSwiftExpr(a, indent))
 }
 
@@ -1084,6 +1102,7 @@ function swiftTypedArgument(arg: ExprIR, expected: TypeIR | undefined, indent: n
     actual.element.float !== true
   )
     return `(${text}).map { Double($0) }`
+
   return text
 }
 
@@ -1387,6 +1406,7 @@ export function emitSwift(
   _needsSwiftKeepAliveWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
+
   return { code: parts.join('\n\n'), warnings }
 }
 
@@ -1429,6 +1449,7 @@ function swiftEffectDeps(c: ComponentIR, fn: string): string[] {
   } finally {
     _activeInferCtx.locals = saved
   }
+
   return out
 }
 
@@ -1467,6 +1488,7 @@ function swiftEquatable(t: TypeIR, structs: Set<string>, seen: Set<string>): boo
       seen.add(st.name)
       if (!st.fields.every((f) => swiftEquatable(f.type, structs, seen))) return false
       structs.add(st.name)
+
       return true
     }
     default:
@@ -1509,6 +1531,7 @@ function emitSwiftModuleState(state: DeclIR[]): string {
     }
   }
   lines.push('    private init() {}', '}')
+
   return lines.join('\n')
 }
 
@@ -1566,6 +1589,7 @@ let _propSeedInits: Map<string, string> = new Map()
  * never fire on an ordinary component whose prop happens to share a name
  * with one of its signals. */
 let _activeMemberReceiver: string | undefined
+
 /**
  * Emit a Swift `enum X: String { case a, b, c }`. The `: String` raw-
  * value backing lets Swift convert between the string literal source
@@ -1646,6 +1670,7 @@ function emitSwiftStruct(s: StructIR): string {
       ),
     )
   lines.push(`}`)
+
   return lines.join('\n')
 }
 
@@ -1673,6 +1698,7 @@ function emitSwiftModuleDecl(md: ModuleDeclIR): string {
     // Swift infers from `= initial`.
     return `private ${kw} ${swiftIdent(md.name)} = ${initial}`
   }
+
   return `private ${kw} ${swiftIdent(md.name)}: ${swiftType(md.type)} = ${initial}`
 }
 
@@ -1974,6 +2000,7 @@ function emitSwiftComponent(c: ComponentIR): string {
           decl: `@ViewBuilder ${swiftIdent(p.name)}: @escaping ${closure}`,
           omittable: generic,
         })
+
         return `  let ${swiftIdent(p.name)}: (${closure})?`
       }
       if (slot.optional) {
@@ -1984,6 +2011,7 @@ function emitSwiftComponent(c: ComponentIR): string {
         name: p.name,
         decl: `@ViewBuilder ${swiftIdent(p.name)}: @escaping ${closure}`,
       })
+
       return `  @ViewBuilder let ${swiftIdent(p.name)}: ${closure}`
     }
     const t = swiftType(p.type, synth, p.name)
@@ -1992,6 +2020,7 @@ function emitSwiftComponent(c: ComponentIR): string {
       return `  var ${swiftIdent(p.name)}: ${t} = nil`
     }
     initParams.push({ name: p.name, decl: `${swiftIdent(p.name)}: ${t}` })
+
     return `  let ${swiftIdent(p.name)}: ${t}`
   })
   // Pre-walk signal decl types through the synth ctx so INLINE anonymous
@@ -2393,6 +2422,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   const joined = _pluginScope.finalize(lines.join('\n'))
   _pluginScope = outerPluginScope
   _activeSynth = undefined
+
   return joined
 }
 
@@ -2440,6 +2470,7 @@ function collectMutatedComponentVars(decls: DeclIR[]): Set<string> {
       visit((d as { expr?: unknown }).expr)
     }
   }
+
   return mutated
 }
 
@@ -2502,6 +2533,7 @@ function substituteSiblingRead(expr: ExprIR, name: string, replacement: ExprIR):
       }
       const callee = substituteSiblingRead(expr.callee, name, replacement)
       if (callee === null) return null
+
       return { ...expr, callee, args }
     }
     case 'paren': {
@@ -2521,6 +2553,7 @@ function substituteSiblingRead(expr: ExprIR, name: string, replacement: ExprIR):
       const cond = substituteSiblingRead(expr.cond, name, replacement)
       const then = substituteSiblingRead(expr.then, name, replacement)
       const otherwise = substituteSiblingRead(expr.otherwise, name, replacement)
+
       return cond === null || then === null || otherwise === null
         ? null
         : { ...expr, cond, then, otherwise }
@@ -2541,6 +2574,7 @@ function substituteSiblingRead(expr: ExprIR, name: string, replacement: ExprIR):
         if (n === null) return null
         elements.push(n)
       }
+
       return { ...expr, elements }
     }
     case 'object': {
@@ -2550,6 +2584,7 @@ function substituteSiblingRead(expr: ExprIR, name: string, replacement: ExprIR):
         if (v === null) return null
         fields.push({ ...f, value: v })
       }
+
       return { ...expr, fields }
     }
     case 'arrow': {
@@ -2578,6 +2613,7 @@ function inlineValueConsts(expr: ExprIR): ExprIR {
     }
     if (JSON.stringify(cur) === before) break
   }
+
   return cur
 }
 
@@ -2646,6 +2682,7 @@ function inlineValueConstsInStmts(stmts: StatementIR[]): StatementIR[] {
         }
     }
   }
+
   return stmts.map(mapStmt)
 }
 
@@ -2678,6 +2715,7 @@ function resolveSwiftStructFields(
       _synthExprStructs.find((st) => st.name === elem.name)
     if (s) return s.fields
   }
+
   return []
 }
 
@@ -2722,6 +2760,7 @@ function emitSwiftDecl(
       d.type !== undefined && (d.expr.kind === 'object' || d.expr.kind === 'array')
         ? d.type
         : undefined
+
     return `let ${swiftIdent(d.name)} = ${withExpectedType(steer, () => emitSwiftExpr(d.expr, 2))}`
   }
   if (d.kind === 'signal') {
@@ -2783,6 +2822,7 @@ function emitSwiftDecl(
       _propSeedInits.set(d.name, initial)
       return `@State private var ${swiftIdent(d.name)}: ${anno}`
     }
+
     return `@State private var ${swiftIdent(d.name)}: ${anno} = ${initial}`
   }
   if (d.kind === 'function') {
@@ -2820,6 +2860,7 @@ function emitSwiftDecl(
     }
     lines.push('    return r')
     lines.push('  }()')
+
     return `@State private var ${swiftIdent(d.name)}: PyreonRouter = ${lines.join('\n  ')}`
   }
   // C4: router hook — `const navigate = useNavigate()` →
@@ -2924,6 +2965,7 @@ function emitSwiftDecl(
       inferred.kind === 'unknown' && last?.kind === 'return' && last.expr !== undefined
         ? annotateComputedLiteral(d.name, last.expr, inferCtx)
         : null
+
     return [`private var ${swiftIdent(d.name)}: ${annotated ?? swiftReturnType} {`, bodyLines, `  }`].join('\n')
   }
   // Legacy single-expression shape — same pre-computed lookup. Inline any
@@ -2937,6 +2979,7 @@ function emitSwiftDecl(
   const value = emitSwiftExpr(inlineValueConsts(d.expr!), 0)
   const annotated = inferred.kind === 'unknown' ? annotateComputedLiteral(d.name, d.expr!, inferCtx) : null
   if (annotated === null && inferred.kind !== 'unknown') inferCtx.computeds.set(d.name, inferred)
+
   return `private var ${swiftIdent(d.name)}: ${annotated ?? swiftReturnType} { ${value} }`
 }
 
@@ -2965,6 +3008,7 @@ function annotateComputedLiteral(
   }
   const ref: TypeIR = { kind: 'typeRef', name: structName, args: [] }
   inferCtx.computeds.set(name, isArray ? { kind: 'array', element: ref } : ref)
+
   return anno
 }
 
@@ -3024,6 +3068,7 @@ function swiftBindClause(n: Narrowing, binder: string, indent: number): string {
         : n.truth === 'boolean'
           ? `, ${b}`
           : ''
+
   return head + extra
 }
 
@@ -3077,6 +3122,7 @@ function emitSwiftNarrowedTernary(
     inner: emitSwiftExpr(rewritten, indent),
     innerOptional: typeIsOptional(inferType(rewritten, _exprInferCtx)),
   }))
+
   return `(${emitSwiftExpr(n.subject, indent)}${filter}.${innerOptional ? 'flatMap' : 'map'} { ${b} in ${inner} } ?? ${emitSwiftExpr(other, indent)})`
 }
 
@@ -3112,6 +3158,7 @@ function emitSwiftNarrowedView(
     () => emitSwiftChild({ kind: 'expr', expr: rewritten }, indent + 2),
   )}\n${base}}`
   if (other === undefined) return head
+
   return `${head} else {\n${pad}${emitSwiftChild({ kind: 'expr', expr: other }, indent + 2)}\n${base}}`
 }
 
@@ -3175,6 +3222,7 @@ function emitSwiftStmtLinesScoped(stmts: readonly StatementIR[], indent: number)
           emitSwiftStmtLinesScoped(g.rest, indent),
         ),
       )
+
       return out
     }
     out.push(`${pad}${emitSwiftStatement(s, indent)}`)
@@ -3187,6 +3235,7 @@ function emitSwiftStmtLinesScoped(stmts: readonly StatementIR[], indent: number)
       }
     }
   }
+
   return out
 }
 
@@ -3219,6 +3268,7 @@ function emitSwiftViewHelper(
   const body = withSwiftLocals(locals, () =>
     emitSwiftChild({ kind: 'expr', expr: unparenExpr(inlineValueConsts(h.body)) }, indent + 2),
   )
+
   return `${head}\n${' '.repeat(indent + 2)}${body}\n${' '.repeat(indent)}}`
 }
 
@@ -3266,6 +3316,7 @@ function emitSwiftViewBlock(b: ViewBlock, indent: number): string[] {
         }
       }
       const cond = swiftCondition(b.cond, (x) => emitSwiftExpr(x, indent))
+
       return [`${pad}if ${cond} {\n${inner(b.then)}${tail(b.otherwise)}`]
     }
   }
@@ -3276,6 +3327,7 @@ function swiftAccessorViewBlock(e: ExprIR): ViewBlock | null {
   const x = unparenExpr(e)
   if (x.kind !== 'arrow' || x.params.length > 0 || x.stmts === undefined || x.stmts.length === 0)
     return null
+
   return planViewBlock(x.stmts)
 }
 
@@ -3324,6 +3376,7 @@ function emitSwiftOptionalSlotInits(
     out.push('  }')
     out.push('}')
   }
+
   return out
 }
 
@@ -3339,6 +3392,7 @@ function swiftCallRendersView(e: ExprIR): boolean {
   if (x.kind !== 'call') return false
   const slot = activeSlotRef(x.callee)
   if (slot !== undefined && !slot.bare) return true
+
   return x.callee.kind === 'identifier' && _viewHelpersSwift.has(x.callee.name)
 }
 
@@ -3380,6 +3434,7 @@ function emitSwiftSlotArg(
       const w = blockBodiedRenderCallbackWarning(where)
       if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
       const arity = slot?.params.length ?? x.params.length
+
       return arity === 0
         ? '{ EmptyView() }'
         : `{ ${Array.from({ length: arity }, () => '_').join(', ')} in EmptyView() }`
@@ -3401,6 +3456,7 @@ function emitSwiftSlotArg(
     const body = withSwiftLocals(params, () =>
       emitSwiftChild({ kind: 'expr', expr: unparenExpr(x.body) }, indent + 2),
     )
+
     return `${head}\n${pad}${body}\n${base}}`
   }
   // Forwarding the enclosing component's own render prop: same closure type.
@@ -3415,6 +3471,7 @@ function emitSwiftSlotArg(
     const arity = Math.max(slot?.params.length ?? 0, h.params.length)
     const args = Array.from({ length: arity }, (_, i) => (i < h.params.length ? `a${i}` : '_'))
     const callArgs = args.filter((a) => a !== '_')
+
     return arity === 0
       ? `{ ${swiftIdent(h.name)}() }`
       : `{ ${args.join(', ')} in ${swiftIdent(h.name)}(${callArgs.join(', ')}) }`
@@ -3424,6 +3481,7 @@ function emitSwiftSlotArg(
   }
   const w = unlowerableRenderValueWarning(where)
   if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+
   return emitSwiftExpr(x, indent)
 }
 
@@ -3534,8 +3592,10 @@ function emitSwiftFunction(
         const body = bodyAwaitsFallible(d.body, isThrowingPluginExpr) || asyncMayThrow
           ? `do { ${concise} } ${SWIFT_UNHANDLED_ASYNC}`
           : concise
+
         return `${vis}func ${swiftIdent(d.name)}(${params}) { ${SWIFT_TASK} { ${body} } }`
       }
+
       return `${vis}func ${swiftIdent(d.name)}(${params})${retType} { ${concise} }`
     }
     // Inline component value-consts into the body — a `private func` handler,
@@ -3561,8 +3621,10 @@ function emitSwiftFunction(
       const task = bodyAwaitsFallible(d.body, isThrowingPluginExpr) || asyncMayThrow
         ? `    ${SWIFT_TASK} {\n      do {\n${indentLines(bodyLines, 2)}\n      } ${SWIFT_UNHANDLED_ASYNC}\n    }`
         : `    ${SWIFT_TASK} {\n${bodyLines}\n    }`
+
       return `${vis2}func ${swiftIdent(d.name)}(${params}) {\n${task}\n  }`
     }
+
     return `${vis2}func ${swiftIdent(d.name)}(${params})${retType} {\n${bodyLines}\n  }`
   } finally {
     _currentReturnType = prevReturnType
@@ -3607,6 +3669,7 @@ function swiftCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
         : t.truth === 'number'
           ? `(${x} ?? 0) == 0`
           : `${x} != true`
+
     return t.presentWhenTrue ? present : absent
   }
   const c = classifyOptionalCondition(e, _exprInferCtx)
@@ -3619,6 +3682,7 @@ function swiftCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
     const raw = `(${emit(subject)})`
     return negated ? `${raw}.isEmpty` : `!${raw}.isEmpty`
   }
+
   return emit(e)
 }
 
@@ -3712,6 +3776,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
         _pluginScope,
         () => swiftEmitContext(indent),
       )
+
       return `${emitSwiftExpr(s.target, indent)} ${s.op} ${spelled ?? value}`
     }
     case 'return': {
@@ -3747,8 +3812,10 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
         const out = emitSwiftExpr(s.expr, indent)
         if (out.startsWith(`${obj}.sorted(by: `))
           return `${obj}.sort(by: ${out.slice(obj.length + '.sorted(by: '.length)}`
+
         return out
       }
+
       return emitSwiftExpr(s.expr, indent)
     case 'if': {
       const pad = ' '.repeat(indent)
@@ -3788,6 +3855,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
             )
             const head = `if ${swiftBindClause(optN, binder, indent)} {\n${thenLines}\n${pad}}`
             if (!otherBody) return head
+
             return `${head} else {\n${emitSwiftStmtLines(otherBody, indent + 2).join('\n')}\n${pad}}`
           }
           warnUnnarrowable(optN, indent)
@@ -3798,6 +3866,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       const head = `if ${cond} {\n${thenLines}\n${pad}}`
       if (!s.elseBody) return head
       const elseLines = emitSwiftStmtLines(s.elseBody, indent + 2).join('\n')
+
       return `${head} else {\n${elseLines}\n${pad}}`
     }
     case 'while': {
@@ -3806,6 +3875,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       const lines = emitSwiftStmtLines(s.body, indent + 2).join('\n')
       // Loop label — Swift spells it `outer: while … { break outer }`.
       const lbl = s.label !== undefined ? `${swiftIdent(s.label)}: ` : ''
+
       return `${lbl}while ${cond} {\n${lines}\n${pad}}`
     }
     case 'for-of': {
@@ -3830,6 +3900,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
         else c.locals.delete(s.item)
       })
       const lbl = s.label !== undefined ? `${swiftIdent(s.label)}: ` : ''
+
       return `${lbl}for ${swiftIdent(s.item)} in ${iter} {\n${lines}\n${pad}}`
     }
     case 'break':
@@ -3887,12 +3958,14 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
             : s.inclusive === true
               ? `${from}...${to}`
               : `${from}..<${to}`
+
       return `for ${swiftIdent(s.item)} in ${head} {\n${lines}\n${pad}}`
     }
     case 'do-while': {
       const pad = ' '.repeat(indent)
       const cond = swiftCondition(s.cond, (x) => emitSwiftExpr(x, indent))
       const lines = emitSwiftStmtLines(s.body, indent + 2).join('\n')
+
       return `repeat {\n${lines}\n${pad}} while ${cond}`
     }
     case 'switch': {
@@ -3916,6 +3989,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
           if (discEnumName !== undefined) _activeEnumType = discEnumName
           const labels = c.tests.map((t) => emitSwiftExpr(t, indent)).join(', ')
           _activeEnumType = prevEnum
+
           return `${pad}  case ${labels}:\n${body}`
         })
         .join('\n')
@@ -3923,6 +3997,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // a `default`. Append one (no-op) when the source omitted it.
       const hasDefault = s.cases.some((c) => c.tests.length === 0)
       const defaultClause = hasDefault ? '' : `\n${pad}  default:\n${pad}    break`
+
       return `switch ${disc} {\n${caseLines}${defaultClause}\n${pad}}`
     }
     case 'throw': {
@@ -3933,6 +4008,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       if (s.rethrow === undefined) _needsSwiftThrown = true
       if (_swiftThrowCtx !== 'none') return `throw ${thrown}`
       _pushSwiftEmitWarning(uncaughtThrowWarning('A `throw`'))
+
       return `fatalError(String(describing: ${thrown}))`
     }
     case 'try':
@@ -3976,6 +4052,7 @@ function emitSwiftTry(s: Extract<StatementIR, { kind: 'try' }>, indent: number):
   const finallyLines = withSwiftThrowCtx('none', () =>
     emitSwiftStmtLines(s.finallyBody!, indent + 4).join('\n'),
   )
+
   return `do {\n${pad}  defer {\n${finallyLines}\n${pad}  }\n${core}\n${pad}}`
 }
 
@@ -4070,12 +4147,14 @@ function orderFieldsByStruct(
   if (struct === undefined) return fields
   const pos = new Map<string, number>()
   struct.fields.forEach((f, i) => pos.set(f.name, i))
+
   return [...fields].sort((a, b) => {
     const pa = pos.get(a.name)
     const pb = pos.get(b.name)
     if (pa === undefined && pb === undefined) return 0
     if (pa === undefined) return 1
     if (pb === undefined) return -1
+
     return pa - pb
   })
 }
@@ -4103,6 +4182,7 @@ function resolveSwiftObjectStructName(fields: { name: string; value: ExprIR }[])
     typeIsOptional,
   )
   if (subset !== null) return subset
+
   return synthLiteralStructName(fields, _synthExprStructs, _synthExprStructKeys, (ex) =>
     inferType(ex, _exprInferCtx),
   )
@@ -4136,8 +4216,10 @@ function synthSwiftSignalAnnotation(initial: ExprIR): string | null {
       if (name === null) name = n
       else if (name !== n) return null
     }
+
     return `[${name}]`
   }
+
   return null
 }
 
@@ -4249,6 +4331,7 @@ function uniqueSwiftStructName(synth: SwiftSynthCtx, base: string): string {
   if (!synth.structs.some((s) => s.name === base)) return base
   let i = 2
   while (synth.structs.some((s) => s.name === `${base}${i}`)) i++
+
   return `${base}${i}`
 }
 
@@ -4313,6 +4396,7 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
         if (!_emitWarnings.includes(message)) _emitWarnings.push(message)
       }
       const fields = t.fields.map((f) => `${swiftIdent(f.name)}: ${swiftType(f.type)}`).join(', ')
+
       return `(${fields})`
     }
     case 'null':
@@ -4431,8 +4515,10 @@ function emitSwiftIndexedClosure(
       const lines = emitSwiftStmtLines(inlinedStmts, indent + 2).join('\n')
       _exprInferCtx.locals = savedLocals
       _activeInferCtx.locals = savedLocalsAct5
+
       return `{ (${idx}, ${el}) in\n${lines}\n${' '.repeat(indent)}}`
     }
+
     return `{ (${idx}, ${el}) in ${emitSwiftExpr(cb.body, indent)} }`
   } finally {
     for (const [name, had, prev] of bind.reverse()) {
@@ -4498,6 +4584,7 @@ function emitSwiftMapFromPairs(
     const v = withExpectedType(mt.kind === 'map' ? mt.value : undefined, () =>
       emitSwiftExpr(pairs.value, indent),
     )
+
     return `PyreonMap(${src}.map { ${swiftIdent(p)} in (${k}, ${v}) })`
   } finally {
     _activeEnumType = prevEnum
@@ -4531,6 +4618,7 @@ function swiftTimerCall(e: Extract<ExprIR, { kind: 'call' }>, indent: number): s
         ? `{ ${swiftIdent(cb.name)}() }`
         : `{ ${emitSwiftExpr(cb, indent)}() }`
   const ms = e.args[1] === undefined ? '0' : emitSwiftExpr(e.args[1], indent)
+
   return `PyreonTimers.${name}(${ms}, ${closure})`
 }
 
@@ -4549,6 +4637,7 @@ function swiftParseFailureTest(arg: ExprIR, indent: number, test: 'isNaN' | 'isF
   const s = emitSwiftExpr(arg.args[0]!, indent)
   const radix = arg.args[1]
   const parsed = radix === undefined ? `pyreonParseInt(${s})` : `pyreonParseInt(${s}, ${emitSwiftExpr(radix, indent)})`
+
   return test === 'isNaN' ? `(${parsed} == nil)` : `(${parsed} != nil)`
 }
 
@@ -4578,9 +4667,11 @@ function swiftReactivityPassthrough(e: Extract<ExprIR, { kind: 'call' }>, indent
     _emitWarnings.push(
       `${e.callee.name}(() => { …; return value }): a block body that returns a value has no native lowering — write the value as an expression body (\`${e.callee.name}(() => value)\`), or run the statements and read the value after.`,
     )
+
     return undefined
   }
   const pad = ' '.repeat(indent)
+
   return `{ () in\n${emitSwiftStmtLines(fn.stmts, indent + 2).join('\n')}\n${pad}}()`
 }
 
@@ -4602,6 +4693,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (_activeEnumType !== undefined) {
           return `.${swiftEnumCase(e.value)}`
         }
+
         return swiftStr(e.value)
       }
       // Nullish literal (JS null, or `undefined` lowered by the
@@ -4619,11 +4711,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (typeof e.value === 'number' && Number.isInteger(e.value) && isDoubleLiteralValue(e.value)) {
         return wholeDoubleLiteral(e.value)
       }
+
       return String(e.value)
     case 'identifier': {
       const constant = lowerPluginIdentifier(e.name, 'swift', () => swiftEmitContext(0))
       if (constant !== undefined) return constant
       if (isModuleStateRead(e.name)) return `${moduleStateClassName()}.shared.${swiftIdent(e.name)}`
+
       return swiftIdent(e.name)
     }
     case 'await':
@@ -4641,6 +4735,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (throwsSync === undefined) return lowered
       if (_swiftThrowCtx !== 'none') return `(try ${lowered})`
       _pushSwiftEmitWarning(uncaughtThrowWarning(throwsSync))
+
       return `(try! ${lowered})`
     }
     case 'json-stringify':
@@ -4659,6 +4754,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       const decode = `PyreonJSON.parse(${swiftType(e.type)}.self, ${emitSwiftExpr(e.arg, indent)})`
       if (_swiftThrowCtx !== 'none') return `(try ${decode})`
       _pushSwiftEmitWarning(uncaughtThrowWarning('`JSON.parse(…)`, which throws on malformed input,'))
+
       return `(try! ${decode})`
     }
     case 'call': {
@@ -4688,6 +4784,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const call = emitSwiftExpr(e, indent)
           if (_swiftThrowCtx !== 'none') return `(try ${call})`
           _pushSwiftEmitWarning(uncaughtThrowWarning(`The call to \`${e.callee.name}()\`, which can throw,`))
+
           return `(try! ${call})`
         } finally {
           _swiftTryWrapping.delete(e)
@@ -4735,6 +4832,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             ? `(${emitSwiftExpr(arg, indent)}).map { pyreonChartDouble($0) }`
             : emitSwiftExpr(arg, indent),
         )
+
         return `${swiftIdent(e.callee.name)}(${args.join(', ')})`
       }
       // `Object.keys(<object-typed expr>)` → static `[String]` of the
@@ -4769,6 +4867,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         _emitWarnings.push(
           `Object.${e.callee.property}(...) has no native equivalent — only Object.keys() / Object.values() on a statically-known HOMOGENEOUS object shape are supported (they lower to a literal key / member-access array). Emitting an empty array; restructure to avoid runtime object reflection on native.`,
         )
+
         return e.callee.property === 'keys' ? '[String]()' : '[Any]()'
       }
       // `untrack(() => x)` / `batch(() => { … })` / `sig.peek()` — the reactivity helpers that only steer the web's
@@ -4879,6 +4978,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             : isMax
               ? 'Int.min'
               : 'Int.max'
+
           return `(${arrStr}.${isMax ? 'max' : 'min'}() ?? ${sentinel})`
         }
         const args = e.args.map((a) => emitSwiftExpr(a, indent))
@@ -5129,11 +5229,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const inner = unwrapOptionalType(t)
           if (inner.kind === 'number') return `((${arg} ?? 0) != 0)`
           if (inner.kind === 'string') return `!((${arg} ?? "").isEmpty)`
+
           return `(${arg} != nil)`
         }
         _emitWarnings.push(
           `Boolean(${arg}): the argument's type could not be inferred, so the JS-truthiness lowering (!= 0 / !isEmpty / != nil) cannot be chosen — emitting the raw call, which does not compile on Swift. Give the argument a resolvable type (signal<T>, a typed param, a declared struct field).`,
         )
+
         return `Boolean(${arg})`
       }
       // A member-scope receiver exposes signal reads as stored properties.
@@ -5187,6 +5289,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               ? `(pyreonParseInt(${arg}) ?? 0)`
               : `(pyreonParseInt(${arg}, ${emitSwiftExpr(radix, indent)}) ?? 0)`
           }
+
           return e.callee.name === 'parseFloat' ? `pyreonParseFloat(${arg})` : `pyreonToNumber(${arg})`
         }
         if (e.callee.name === 'parseInt') {
@@ -5198,8 +5301,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               radix.kind === 'literal' && typeof radix.value === 'number'
                 ? String(radix.value)
                 : emitSwiftExpr(radix, indent)
+
             return `(Int(${arg}, radix: ${r}) ?? 0)`
           }
+
           return `(Int(${arg}) ?? 0)`
         }
         // `Number(boolean)` — Swift has NO `Double(Bool)` initializer
@@ -5212,6 +5317,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         ) {
           return `(${arg} ? 1 : 0)`
         }
+
         return `(Double(${arg}) ?? 0)`
       }
       // `.update(fn)` lowering — `x.update((list) => EXPR)` lowers to
@@ -5298,6 +5404,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (prevEnumType !== undefined || _activeEnumType !== undefined) {
           _activeEnumType = prevEnumType
         }
+
         return `${target} = ${value}`
       }
       // Disambiguate signal/computed read vs function call for zero-
@@ -5330,6 +5437,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         }
         // A read of module state (module-state.ts) goes through the file's singleton.
         if (isModuleStateRead(e.callee.name)) return `${moduleStateClassName()}.shared.${swiftIdent(e.callee.name)}`
+
         return swiftIdent(e.callee.name)
       }
       // TS-method translation (Phase 2 follow-up). When the callee is a
@@ -5445,6 +5553,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
                 const r = isFloatTypeIR(inferType(e.args[0]!, _activeInferCtx))
                   ? `Int(${argExprs[0]!})`
                   : argExprs[0]!
+
                 return `String(${obj}, radix: ${r})`
               }
             }
@@ -5596,6 +5705,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               if (idxType.kind === 'string') {
                 return `pyreonIndexOf(${obj}, ${argExprs[0]!})`
               }
+
               return `(${obj}${objDot}firstIndex(of: ${argExprs[0]!}) ?? -1)`
             }
             if (e.args.length === 2) {
@@ -5670,6 +5780,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
                 // the trailing `.joined` would not type-check.
                 return `${obj}.map { String($0) }.joined(separator: ${sep})`
               }
+
               return `${obj}${objDot}joined(separator: ${sep})`
             }
             break
@@ -5741,6 +5852,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               const pad = e.args.length >= 2 ? argExprs[1]! : '" "'
               // The target length is in UTF-16 units, like `.length`.
               const fill = `String(repeating: ${pad}, count: max(0, (${len}) - ${obj}${objDot}utf16.count))`
+
               return prop === 'padStart' ? `(${fill} + ${obj})` : `(${obj} + ${fill})`
             }
             break
@@ -5774,6 +5886,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
                 const count = emitSwiftExpr(objExpr.args[0]!, indent)
                 return `Array(repeating: ${argExprs[0]!}, count: ${count})`
               }
+
               return `Array(repeating: ${argExprs[0]!}, count: ${obj}${objDot}count)`
             }
             break
@@ -5799,6 +5912,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               }
               const i = argExprs[0]!
               const resolved = `(${i} < 0 ? ${obj}${objDot}count + (${i}) : (${i}))`
+
               return `(${obj}${objDot}indices.contains(${resolved}) ? ${obj}[${resolved}] : nil)`
             }
             break
@@ -6010,6 +6124,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               const d = isFloatTypeIR(inferType(e.args[0]!, _activeInferCtx))
                 ? `Int(${argExprs[0]!})`
                 : argExprs[0]!
+
               return `pyreonToFixed(${obj}, ${d})`
             }
             break
@@ -6062,6 +6177,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               _emitWarnings.push(
                 '.toLocaleString() reached the emitter unlowered — the built-in `ecmascript-intl` plugin (which lowers it to PyreonNumberFormat) is not active in this compiler. Emitting a plain string conversion (no locale, no grouping).',
               )
+
               return `String(${obj})`
             }
             break
@@ -6093,6 +6209,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         }
         if (e.optional === true)
           return `${emitSwiftExpr(e.callee, indent)}?(${argExprs.join(', ')})`
+
         return `${emitSwiftExpr(e.callee, indent)}(${argExprs.join(', ')})`
       }
       const callee = emitSwiftExpr(e.callee, indent)
@@ -6103,6 +6220,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // (short-circuits to nil if the callee is nil). The optional-function
       // field type already parenthesizes `(() -> Void)?`, so `f?()` is valid.
       if (e.optional === true) return `${callee}?(${args})`
+
       return `${callee}(${args})`
     }
     case 'index': {
@@ -6131,6 +6249,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         _emitWarnings.push(
           `${objStr}?.[${idxStr}]: the safe-index lowering needs a re-readable, non-optional receiver and index (each is named twice) — emitting the UNGUARDED native index, which TRAPS out-of-bounds instead of returning nil. Bind the receiver/index to a const first, or guard the bounds explicitly.`,
         )
+
         return `${objStr}[${idxStr}]`
       }
       // A provably-Double index (Math.floor now returns Double) needs the
@@ -6139,6 +6258,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         const idxT = inferType(e.index, _activeInferCtx)
         const idxRaw = emitSwiftExpr(e.index, indent)
         const idxOut = isFloatTypeIR(idxT) ? `Int(${idxRaw})` : idxRaw
+
         return `${emitSwiftExpr(e.object, indent)}[${idxOut}]`
       }
     }
@@ -6264,6 +6384,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         // actually deliver. See `.agents/rules/anti-patterns.md`.
         return `${emitSwiftExpr(e.object, indent)}${dot}${suffix}`
       }
+
       return `${emitSwiftExpr(e.object, indent)}${dot}${swiftIdent(e.property)}`
     }
     case 'binary': {
@@ -6316,8 +6437,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           if (t.kind === 'number' && t.float === true) {
             return `pyreonNumberString(${emitted})`
           }
+
           return t.kind === 'number' || t.kind === 'boolean' ? `String(${emitted})` : emitted
         }
+
         return `${coerce(e.left, bl)} + ${coerce(e.right, br)}`
       }
       // Mixed Int×Double — Swift has no implicit Int→Double conversion, so
@@ -6342,6 +6465,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         const R = isCompoundExpr(e.right) ? `(${br})` : br
         return `${L} ${e.op} ${R}`
       }
+
       return `${bl} ${e.op} ${br}`
     }
     case 'template': {
@@ -6356,6 +6480,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         s += escapeSwiftStringSegment(e.quasis[i] ?? '')
         if (i < e.exprs.length) s += `\\(${swiftTemplatePart(e.exprs[i]!, indent)})`
       }
+
       return s + '"'
     }
     case 'comparison': {
@@ -6426,6 +6551,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           return `Double(${leftStr}) ${e.op} ${rightStr}`
         }
       }
+
       return `${leftStr} ${e.op} ${rightStr}`
     }
     case 'unary': {
@@ -6451,6 +6577,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (tT.kind === 'boolean') return isDoubleNeg ? tStr : `!${emitSwiftExpr(inner, indent)}`
         if (typeIsOptional(tT)) return isDoubleNeg ? `(${tStr} != nil)` : `(${tStr} == nil)`
       }
+
       return `${e.op}${emitSwiftExpr(e.argument, indent)}`
     }
     case 'logical':
@@ -6489,10 +6616,12 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const ty = k === 'string' ? 'String' : k === 'int' ? 'Int' : 'Double'
           const falsy =
             k === 'string' ? '__or.isEmpty' : k === 'int' ? '__or == 0' : '__or == 0 || __or.isNaN'
+
           return `{ () -> ${ty} in let __or = ${asDouble(e.left, lt)}; return ${falsy} ? ${asDouble(e.right, rt)} : __or }()`
         }
       }
       warnNonBooleanLogical(e.op, e.left, e.right, (x) => inferType(x, _activeInferCtx))
+
       return `${emitSwiftExpr(e.left, indent)} ${e.op} ${emitSwiftExpr(e.right, indent)}`
     case 'ternary': {
       // Swift ternary syntax is identical to JS — EXCEPT Swift requires the
@@ -6560,6 +6689,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (tf === 'double' && of === 'int') elseStr = `Double(${elseStr})`
         else if (tf === 'int' && of === 'double') thenStr = `Double(${thenStr})`
       }
+
       return `${condStr} ? ${thenStr} : ${elseStr}`
     }
     case 'update': {
@@ -6617,6 +6747,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             ) {
               return `(${e.params.map((n, i) => `${swiftIdent(n)}: ${swiftType(types[i]!)}`).join(', ')})`
             }
+
             return e.params.map(swiftIdent).join(', ')
           }
           if (e.stmts !== undefined && e.stmts.length > 0) {
@@ -6654,9 +6785,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               else _activeInferCtx.locals.delete(pn)
             }
             const params = e.params.length > 0 ? `${swiftClosureParams()} in` : ''
+
             return `{ ${params}\n${lines}\n${' '.repeat(indent)}}`
           }
           if (e.params.length === 0) return `{ ${emitSwiftExpr(e.body, indent)} }`
+
           return `{ ${swiftClosureParams()} in ${emitSwiftExpr(e.body, indent)} }`
         },
       )
@@ -6674,6 +6807,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               `new Map(${src}): only a copy of another Map / Record lowers natively (or a literal \`[[k, v], …]\` array, or \`xs.map((x) => [k, v])\`) — the argument here is not one. Construct the map empty and populate it with \`.set(k, v)\`.`,
             )
           }
+
           return `${src}`
         }
         if (e.pairsFrom !== undefined) return emitSwiftMapFromPairs(e, e.pairsFrom, indent)
@@ -6690,6 +6824,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             mt,
           )
         }
+
         return `PyreonMap<${swiftType(e.keyType!)}, ${swiftType(e.valueType!)}>()`
       }
       if (e.seed !== undefined) return `PyreonSet(${emitSwiftExpr(e.seed, indent)})`
@@ -6735,6 +6870,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       )
       if (spreadConcat !== null) return spreadConcat
       const elT = _expectedType?.kind === 'array' ? _expectedType.element : undefined
+
       return `[${e.elements.map((el) => withExpectedType(elT, () => emitSwiftExpr(el, indent))).join(', ')}]`
     }
     case 'spread':
@@ -6754,6 +6890,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       _emitWarnings.push(
         "Spread arguments (`f(...args)`) aren't supported in native (PMTC) — a Swift/Kotlin call takes a fixed argument list, not a variadic spread. Pass arguments explicitly, e.g. `f(a, b)`.",
       )
+
       return emitSwiftExpr(e.argument, indent)
     case 'object': {
       // A literal whose CALL parameter names a struct is emitted under that struct.
@@ -6830,6 +6967,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             const overrides = plan.fields
               .map((f) => `c.${swiftIdent(f.name)} = ${swiftSpreadOverride(plan.source, f, indent)}`)
               .join('; ')
+
             return `{ var c = ${target}; ${overrides}; return c }()`
           }
         }
@@ -6849,6 +6987,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         const overrides = e.fields
           .map((f) => `c.${swiftIdent(f.name)} = ${swiftSpreadOverride(spreadSource, f, indent)}`)
           .join('; ')
+
         return `{ var c = ${target}; ${overrides}; return c }()`
       }
       // Phase 2 follow-up to the struct-emit PR — object literal with
@@ -6898,9 +7037,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               const wantsFloat = ft !== undefined && typeWantsFloat(ft)
               const coerce = wantsFloat && numericFloatness(f.value) === 'int'
               if (coerce) return `${swiftIdent(f.name)}: Double(${raw})`
+
               return `${swiftIdent(f.name)}: ${swiftIntoIntegerField(structName, f.name, ft, f.value, raw)}`
             })
             .join(', ')
+
           return `${swiftIdent(structName)}(${args})`
         }
       }
@@ -6908,6 +7049,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       const fields = e.fields
         .map((f) => `${swiftIdent(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
         .join(', ')
+
       return `(${fields})`
     }
     case 'paren':
@@ -7154,6 +7296,7 @@ const swiftStructRegistry: StructRegistry = {
           .sort()
           .join(','),
       )
+
     return declared ?? synthTypedStructName([...fields], _synthExprStructs, _synthExprStructKeys)
   },
   forLiteralFields: (fields) => resolveSwiftObjectStructName([...fields]),
@@ -7259,6 +7402,7 @@ function emitSwiftJsxElement(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
       // and every system control below agree with it, as on the web.
       const pinned = literalColorMode(e)
       const env = pinned === undefined ? '' : `.environment(\\.colorScheme, .${pinned})`
+
       return `Group {\n${e.children.map((c) => inner + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}${env}`
     } finally {
       _colorScope = prevScope
@@ -7382,6 +7526,7 @@ function emitSwiftCheckbox(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
     return `Image(systemName: "square")`
   }
   const checkedExpr = emitSwiftExpr(checked.value, indent)
+
   return `Image(systemName: ${checkedExpr} ? "checkmark.square.fill" : "square")`
 }
 
@@ -7439,6 +7584,7 @@ function emitSwiftTextField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
       const pad = ' '.repeat(indent + 2)
       out += `\n${pad}.onSubmit { ${emitSwiftExpr(submit, indent + 2)} }`
     }
+
     return out
   }
   // Fall through to generic emit when the pattern doesn't match.
@@ -7484,6 +7630,7 @@ function extractEnterSubmitAction(attrs: AttrIR[]): ExprIR | undefined {
     return undefined
   }
   if (left.right.kind !== 'literal' || left.right.value !== 'Enter') return undefined
+
   return body.right
 }
 
@@ -7521,6 +7668,7 @@ function swiftInterpSegment(e: ExprIR, indent: number): string {
   }
   // A Double prints as JavaScript does (`7`, not `7.0`) — see swiftTemplatePart.
   if (t.kind === 'number' && t.float === true) return `\\(pyreonNumberString(${emitted}))`
+
   return `\\(${emitted})`
 }
 
@@ -7711,8 +7859,10 @@ function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
       ...e,
       attrs: e.attrs.map((a) => (a === styleAttr ? { ...a, value: rest } : a)),
     }
+
     return `${result}${emitSwiftLayoutModifiers(eForLayout)}`
   }
+
   return `${result}${emitSwiftLayoutModifiers(e)}`
 }
 
@@ -7732,8 +7882,10 @@ function buttonLabelIsTextOnly(children: readonly ChildIR[]): boolean {
     if (Array.isArray(n)) return n.some(hasJsx)
     const k = (n as { kind?: unknown }).kind
     if (k === 'jsx-element' || k === 'jsx-fragment') return true
+
     return Object.values(n).some(hasJsx)
   }
+
   return children.every(
     (c) =>
       c.kind === 'text' ||
@@ -7795,6 +7947,7 @@ function emitSwiftButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   result = `${result}${pressedStyle?.buttonStyle ?? swiftButtonVariantModifier(e)}`
   const layoutModifiers = emitSwiftLayoutModifiers(pressedStyle?.rest ?? e)
   result = layoutModifiers ? `${result}${layoutModifiers}` : result
+
   return disabledModifier ? `${result}\n${' '.repeat(indent)}  ${disabledModifier}` : result
 }
 
@@ -7811,6 +7964,7 @@ function swiftDrawsOwnSurface(e: Extract<ExprIR, { kind: 'jsx-element' }>): bool
     if (a.name === 'background') return true
     if (a.name === 'style' && styleDrawsSurface(a.value)) return true
   }
+
   return false
 }
 
@@ -7850,6 +8004,7 @@ function swiftButtonVariantModifier(e: Extract<ExprIR, { kind: 'jsx-element' }>)
     _emitWarnings.push(
       `<Button variant>: only a static literal lowers (primary | secondary | ghost | danger) — a dynamic value would need a conditional over two different opaque button styles, which swiftc rejects. The button falls back to the default style.`,
     )
+
     return defaultStyle
   }
   switch (v) {
@@ -7865,6 +8020,7 @@ function swiftButtonVariantModifier(e: Extract<ExprIR, { kind: 'jsx-element' }>)
       _emitWarnings.push(
         `<Button variant=${swiftStr(v)}>: not one of primary | secondary | ghost | danger — the button falls back to the default style.`,
       )
+
       return defaultStyle
   }
 }
@@ -7908,6 +8064,7 @@ function emitSwiftCallbackArg(handler: ExprIR, indent: number): string {
   const action = emitSwiftAction(handler, indent)
   if (handler.kind !== 'arrow' || handler.params.length === 0) return action
   const params = handler.params.map((p) => swiftIdent(p)).join(', ')
+
   return `{ ${params} in${action.slice(1)}`
 }
 
@@ -7951,8 +8108,10 @@ function emitSwiftActionBody(handler: ExprIR, indent: number): string {
         if (bodyAwaitsFallible(inlinedStmts, isThrowingPluginExpr) || asyncMayThrow) {
           return `{\n${pad}${SWIFT_TASK} {\n${pad}  do {\n${indentLines(lines, 4)}\n${pad}  } ${SWIFT_UNHANDLED_ASYNC}\n${pad}}\n${' '.repeat(indent)}}`
         }
+
         return `{\n${pad}${SWIFT_TASK} {\n${lines}\n${pad}}\n${' '.repeat(indent)}}`
       }
+
       return `{\n${lines}\n${' '.repeat(indent)}}`
     }
     // Round-1 audit fix: empty arrow body `() => {}` parses (see
@@ -7972,8 +8131,10 @@ function emitSwiftActionBody(handler: ExprIR, indent: number): string {
       if (bodyAwaitsFallible(handler.body, isThrowingPluginExpr) || asyncMayThrow) {
         return `{ ${SWIFT_TASK} { do { ${inner} } ${SWIFT_UNHANDLED_ASYNC} } }`
       }
+
       return `{ ${SWIFT_TASK} { ${inner} } }`
     }
+
     return `{ ${emitSwiftExpr(handler.body, indent)} }`
   }
   // Resolve the handler to a function-typed identifier if it is one,
@@ -7998,8 +8159,10 @@ function emitSwiftActionBody(handler: ExprIR, indent: number): string {
       _pushSwiftEmitWarning(uncaughtThrowWarning(`The handler \`${resolved}\`, which can throw,`))
       return `{ try! ${swiftIdent(resolved)}() }`
     }
+
     return `{ ${swiftIdent(resolved)}() }`
   }
+
   return `{ ${emitSwiftExpr(handler, indent)} }`
 }
 
@@ -8040,6 +8203,7 @@ function resolveFunctionHandler(handler: ExprIR): string | undefined {
   ) {
     return handler.property
   }
+
   return undefined
 }
 
@@ -8134,6 +8298,7 @@ function emitSwiftFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
       else _activeInferCtx.locals.delete(param)
     }
   }
+
   return `ForEach(${items}, id: \\.${idPath}) { ${swiftIdent(param)} in\n${pad}${bodyText}\n${' '.repeat(indent)}}`
 }
 
@@ -8157,6 +8322,7 @@ function forRowBodySwift(
     if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
     return 'EmptyView()'
   }
+
   return emitSwiftViewBlock(block, indent + 2)
     .join('\n')
     .trimStart()
@@ -8208,6 +8374,7 @@ function emitSwiftShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     const fbBody = fb.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
     return `if ${cond} {\n${body}\n${' '.repeat(indent)}} else {\n${fbBody}\n${' '.repeat(indent)}}`
   }
+
   return `if ${cond} {\n${body}\n${' '.repeat(indent)}}`
 }
 
@@ -8280,6 +8447,7 @@ function emitSwiftSuspense(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
         '<Suspense fallback={…}> on Swift target: only JSX-literal fallback is supported in v1 (e.g. `fallback={<Spinner/>}`). Falling back to walled emit.',
       )
     }
+
     return emitSwiftWalledTagAsChildren(e, indent, 'Suspense')
   }
   const fallbackChildren = fbPlan.children
@@ -8364,6 +8532,7 @@ function emitSwiftErrorBoundary(
         '<ErrorBoundary fallback={…}> on Swift target: only JSX-literal fallback is supported in v1 (e.g. `fallback={<ErrorView/>}`). Falling back to walled emit.',
       )
     }
+
     return emitSwiftWalledTagAsChildren(e, indent, 'ErrorBoundary')
   }
   const fallbackChildren = fbPlan.children
@@ -8381,6 +8550,7 @@ function emitSwiftErrorBoundary(
   const fallbackBody = fallbackChildren
     .map((c) => inner + '    ' + emitSwiftChild(c, indent + 6))
     .join('\n')
+
   return (
     `Group {\n` +
     `${inner}  if ${hasError} {\n` +
@@ -8428,6 +8598,7 @@ function emitSwiftKeepAlive(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const childrenBody = e.children
     .map((c) => inner + '  ' + emitSwiftChild(c, indent + 4))
     .join('\n')
+
   return `PyreonKeepAliveWrapper(when_: ${whenExpr}) {\n` + `${childrenBody}\n` + `${p}}`
 }
 
@@ -8553,6 +8724,7 @@ function emitSwiftWalledTagAsChildren(
         }. Use a per-target adapter (Layer 4: <NativeIOS>) for full semantic parity.`,
     )
   }
+
   return (
     `// [Pyreon] <${tag}> unsupported on iOS — rendering children only (${limitation}); fallback / cache behaviour inert.\n` +
     `${p}Group {\n${body}\n${p}}`
@@ -8573,6 +8745,7 @@ function swiftAnimationFor(durationMs: number | undefined, easing: string | unde
         : easing === 'ease-out'
           ? 'easeOut'
           : 'easeInOut'
+
   return `.${fn}(duration: ${secs})`
 }
 
@@ -8720,6 +8893,7 @@ function emitSwiftTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
       tTail
     )
   }
+
   return (
     `ZStack {\n` +
     `${p}  if ${cond} {\n` +
@@ -8785,6 +8959,7 @@ function findForEachDriverSwift(e: Extract<ExprIR, { kind: 'jsx-element' }>): st
       | undefined
     if (each) return emitSwiftSignalRead(each.value)
   }
+
   return undefined
 }
 
@@ -8834,6 +9009,7 @@ function readStaticAttr(
       }
     }
   }
+
   return undefined
 }
 
@@ -8861,6 +9037,7 @@ function readStringAttrExpr(
       return `"\\(${emitSwiftExpr(a.value, indent)})"`
     }
   }
+
   return undefined
 }
 
@@ -8889,6 +9066,7 @@ function swiftStylingValue(
       `<${e.tag} ${name}={…}>: styling tokens resolve at COMPILE time — a fully-dynamic ${name} has no native lowering (it was silently dropped before). Use a fixed token, or a ternary of two literal tokens (${name}={cond ? "sm" : "lg"}).`,
     )
   }
+
   return undefined
 }
 
@@ -8946,6 +9124,7 @@ function swiftTransformModifiers(e: Extract<ExprIR, { kind: 'jsx-element' }>): s
     if (v.kind === 'unary' && v.op === '-' && v.argument.kind === 'literal' && typeof v.argument.value === 'number') {
       return `-${v.argument.value}`
     }
+
     return `${conv}(${emitSwiftExpr(v, 0)})`
   }
   const out: string[] = []
@@ -8958,6 +9137,7 @@ function swiftTransformModifiers(e: Extract<ExprIR, { kind: 'jsx-element' }>): s
   if (tx !== undefined || ty !== undefined) {
     out.push(`.offset(${[tx === undefined ? '' : `x: ${tx}`, ty === undefined ? '' : `y: ${ty}`].filter(Boolean).join(', ')})`)
   }
+
   return out
 }
 
@@ -8983,6 +9163,7 @@ function swiftAccessibilityModifiers(e: Extract<ExprIR, { kind: 'jsx-element' }>
   if (readStaticAttr(e, 'accessibilityHidden') === true) {
     out.push('.accessibilityHidden(true)')
   }
+
   return out
 }
 
@@ -9142,6 +9323,7 @@ function emitSwiftLayoutModifiers(
   // A modifier a plugin derives from the element's `ref` (`@pyreon/dnd`'s `ref={s.containerRef}`), LAST so it wraps the
   // element's own padding / background — which is what an author writing the SwiftUI by hand would do.
   parts.push(...lowerPluginRefModifiers(e, 'swift', () => swiftEmitContext(0)))
+
   return parts.join('')
 }
 
@@ -9217,6 +9399,7 @@ function emitSwiftStack(
   const contentLines = _swiftLayout.children(isRow ? 'row' : 'column', () =>
     e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n'),
   )
+
   return `${viewName}${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}${modifiers}`
 }
 
@@ -9249,6 +9432,7 @@ function emitSwiftLayer(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     return `ZStack${initSignature} {}${modifiers}`
   }
   const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+
   return `ZStack${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}${modifiers}`
 }
 
@@ -9313,6 +9497,7 @@ function emitSwiftScrollBody(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   }
   const stack = horizontal ? 'HStack(alignment: .top)' : 'VStack(alignment: .leading)'
   const contentLines = e.children.map((c) => innerPad + emitSwiftChild(c, indent + 4)).join('\n')
+
   return `ScrollView${initSignature} {\n${pad}${stack} {\n${contentLines}\n${pad}}${pin}\n${' '.repeat(indent)}}${modifiers}`
 }
 
@@ -9371,6 +9556,7 @@ function emitSwiftHeading(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   if (color !== undefined) {
     result += `.foregroundColor(${color})`
   }
+
   return result + emitSwiftLayoutModifiers(e)
 }
 
@@ -9419,6 +9605,7 @@ function emitSwiftIcon(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   if (color !== undefined) {
     result += `.foregroundColor(${color})`
   }
+
   return result + emitSwiftLayoutModifiers(e)
 }
 
@@ -9513,6 +9700,7 @@ function swiftAsyncImageWithFit(urlExpr: string, fit: unknown, indent: number): 
   }
   const pad = ' '.repeat(indent + 2)
   const inner = ' '.repeat(indent + 4)
+
   return (
     `AsyncImage(url: URL(string: ${urlExpr})) { image in\n` +
     `${inner}image.resizable()${mode}\n` +
@@ -9550,6 +9738,7 @@ function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
     _emitWarnings.push(
       '<WebView>: needs an `html` or `src` attribute on native; emitting an empty PyreonWebView().',
     )
+
     return `PyreonWebView()${emitSwiftLayoutModifiers(e)}`
   }
   const domStorage = lowerWebViewDomStorage(e, readStaticAttr, 'swift')
@@ -9611,8 +9800,10 @@ function emitSwiftMessageHandler(handler: ExprIR): string {
         return '{ _ in }'
       }
       const param = handler.params.length > 0 ? swiftIdent(handler.params[0]!) : '_'
+
       return `{ ${param} in ${emitSwiftExpr(handler.body, 0)} }`
     }
+
     return `{ pyreonMsg in ${emitSwiftExpr(handler, 0)}(pyreonMsg) }`
   })
 }
@@ -9651,11 +9842,14 @@ function swiftWebViewDataArg(dataExpr: ExprIR): string {
             ? `String(PyreonJSON.encode(${emitSwiftExpr(segment.spread, 0)}).dropFirst().dropLast())`
             : render(segment.parts),
         )
+
         return `\\(({ () -> String in let fragments: [String] = [${segments.join(', ')}]; return "[" + fragments.filter { !$0.isEmpty }.joined(separator: ",") + "]" })())`
       })
       .join('')
+
     return `"${body}"`
   }
+
   return render(parts)
 }
 
@@ -9668,6 +9862,7 @@ function swiftWebViewContentArg(e: Extract<ExprIR, { kind: 'jsx-element' }>): st
   if (typeof src === 'string') return `src: ${swiftStr(src)}`
   const dynSrc = dynamicWebViewAttr(e, 'src')
   if (dynSrc !== undefined) return `src: ${emitSwiftExpr(dynSrc, 0)}`
+
   return undefined
 }
 
@@ -9687,6 +9882,7 @@ function dynamicWebViewAttr(
       return v
     }
   }
+
   return undefined
 }
 
@@ -9709,6 +9905,7 @@ function swiftImageDim(
   if (attr !== undefined && attr.kind === 'attr' && attr.value.kind !== 'literal') {
     return `CGFloat(${emitSwiftExpr(attr.value, 0)})`
   }
+
   return undefined
 }
 
@@ -9733,6 +9930,7 @@ function swiftFieldPlaceholder(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
     // closure `{ hint }` (a type error — the title parameter wants a String).
     return emitSwiftExpr(unwrapAccessorArrow(attr.value), 0)
   }
+
   return '""'
 }
 
@@ -9782,6 +9980,7 @@ function swiftFieldViewExpr(
     )
     if (w !== undefined) _emitWarnings.push(w)
   }
+
   return viewFor(typeof kind === 'string' ? kind : '')
 }
 
@@ -9849,6 +10048,7 @@ function emitSwiftImage(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   if (typeof alt === 'string') {
     result += `.accessibilityLabel(${swiftStr(alt)})`
   }
+
   return result + emitSwiftLayoutModifiers(e)
 }
 
@@ -10011,6 +10211,7 @@ function emitSwiftVideo(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   const height = swiftImageDim(e, 'height')
   if (height !== undefined) frameArgs.push(`height: ${height}`)
   if (frameArgs.length > 0) result += `.frame(${frameArgs.join(', ')})`
+
   return result + emitSwiftLayoutModifiers(e)
 }
 
@@ -10080,6 +10281,7 @@ function emitSwiftModal(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     `${inner}get: { ${openExpr} },\n` +
     `${inner}set: { if !$0 { ${closeBody} } }\n` +
     `${bindPad})`
+
   return `Color.clear.frame(width: 0, height: 0).sheet(isPresented: ${binding}) {${content}}${emitSwiftLayoutModifiers(e)}`
 }
 
@@ -10093,6 +10295,7 @@ function emitSwiftNavPane(children: readonly ChildIR[], indent: number): string 
   if (children.length === 1) return pad + emitSwiftChild(children[0]!, indent)
   if (children.length === 0) return `${pad}EmptyView()`
   const inner = children.map((c) => ' '.repeat(indent + 2) + emitSwiftChild(c, indent + 2)).join('\n')
+
   return `${pad}VStack(alignment: .leading, spacing: 0) {\n${inner}\n${pad}}`
 }
 
@@ -10130,6 +10333,7 @@ function emitSwiftTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     pushEmitWarning(
       '<Tabs>: needs `value` bound to a signal (`value={tab}`) or `value` + `onChange` — without one the selection cannot change on iOS, so it renders as an empty view.',
     )
+
     return `EmptyView()${emitSwiftLayoutModifiers(e)}`
   }
   if (tabs.length === 0) return `EmptyView()${emitSwiftLayoutModifiers(e)}`
@@ -10150,6 +10354,7 @@ function emitSwiftTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   const cases = tabs
     .map((t) => `${itemPad}case ${tabValue(t.value)}:\n${emitSwiftNavPane(t.children, indent + 4)}`)
     .join('\n')
+
   return (
     `PyreonTabs(selection: ${binding}, items: [\n${items}\n${p}]) { pyreonTab in\n` +
     `${itemPad}switch pyreonTab {\n${cases}\n${itemPad}default:\n${itemPad}  EmptyView()\n${itemPad}}\n` +
@@ -10178,6 +10383,7 @@ function emitSwiftRouterTabs(
     pushEmitWarning(
       '<Tabs router={…}>: the router must be the `createRouter({ routes, tabs })` router of the enclosing <RouterProvider>, named directly (and <Tabs> may not sit inside one of its own tabs) — otherwise there are no per-tab stacks to bind, so it renders as an empty view on iOS.',
     )
+
     return `EmptyView()${emitSwiftLayoutModifiers(e)}`
   }
   const { tabs, warnings } = planRouterTabs(e, ctx.tabs)
@@ -10202,6 +10408,7 @@ function emitSwiftRouterTabs(
       }
     })
     .join('\n')
+
   return (
     `PyreonRouterTabs(router: ${ctx.routerExpr}, items: [\n${items}\n${p}]) { pyreonTab in\n` +
     `${itemPad}switch pyreonTab {\n${cases}\n${itemPad}default:\n${itemPad}  EmptyView()\n${itemPad}}\n` +
@@ -10223,6 +10430,7 @@ function emitSwiftTabStack(
     pushEmitWarning(
       '<RouterView /> inside a tab-bar router (createRouter({ tabs })) must sit inside a <Tab> of its <Tabs router> — each tab owns one stack. This one renders nothing on iOS.',
     )
+
     return 'EmptyView()'
   }
   const pad = ' '.repeat(indent + 2)
@@ -10239,6 +10447,7 @@ function emitSwiftTabStack(
       rootView = `PyreonRouteLoader(path: ${swiftStr(target.path)}, load: { ${loadBody} }) { ${rootView} }`
     }
   }
+
   return `PyreonTabStack(router: ${ctx.routerExpr}, tab: ${swiftStr(tab.name)}) {\n${pad}${rootView}${SWIFT_SCREEN_FRAME}${emitSwiftNavigationDestination(ctx.routes, indent + 4)}\n${' '.repeat(indent)}}`
 }
 
@@ -10272,6 +10481,7 @@ function emitSwiftSplit(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   const p = ' '.repeat(indent)
   const side = emitSwiftNavPane(sidebar.kind === 'view' ? sidebar.children : [], indent + 2)
   const detail = emitSwiftNavPane(e.children, indent + 2)
+
   return (
     `PyreonSplit(showDetail: ${show}, onBack: ${back}) {\n${side}\n${p}} detail: {\n${detail}\n${p}}` +
     emitSwiftLayoutModifiers(e)
@@ -10304,6 +10514,7 @@ function emitSwiftGestureHandler(handler: ExprIR, name: GestureEventName, indent
   }
   const param = handler.params[0]
   if (param === undefined) return `{ _ in${emitSwiftAction(handler, indent).slice(1)}`
+
   return withSwiftLocals([[param, GESTURE_EVENTS[name].type]], () =>
     emitSwiftCallbackArg(handler, indent),
   )
@@ -10332,6 +10543,7 @@ function emitSwiftGesture(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   if (e.children.length === 0) return `${head} { EmptyView() }${tail}`
   const pad = ' '.repeat(indent + 2)
   const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+
   return `${head} {\n${contentLines}\n${' '.repeat(indent)}}${tail}`
 }
 
@@ -10364,6 +10576,7 @@ function swiftPressedStyle(
   )
   for (const w of warnings) _emitWarnings.push(w)
   if (needsSizeClass === true) _usesSizeClass = true
+
   return {
     buttonStyle: `.buttonStyle(PyreonPressStyle { label, ${PRESSED_STATE_IDENT} in label${modifiers.join('')} })`,
     rest: { ...e, attrs: e.attrs.filter((a) => a !== styleAttr) },
@@ -10394,6 +10607,7 @@ function swiftCanvasNumber(
   if (v.kind === 'unary' && v.op === '-' && v.argument.kind === 'literal' && typeof v.argument.value === 'number') {
     return `-${v.argument.value}`
   }
+
   return `Double(${emitSwiftExpr(v, 0)})`
 }
 
@@ -10405,6 +10619,7 @@ function swiftShapeColor(e: Extract<ExprIR, { kind: 'jsx-element' }>, prop: stri
     _emitWarnings.push(
       `<${e.tag} ${prop}="${String(v)}">: not a colour token or #hex literal — drawn with the \`text\` colour on native.`,
     )
+
     return resolveColor('text', 'swift')
   })
 }
@@ -10421,6 +10636,7 @@ function emitSwiftCanvas(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   if (e.children.length === 0) return `${head} { EmptyView() }${tail}`
   const pad = ' '.repeat(indent + 2)
   const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+
   return `${head} {\n${contentLines}\n${' '.repeat(indent)}}${tail}`
 }
 
@@ -10446,6 +10662,7 @@ function emitSwiftCanvasShape(e: Extract<ExprIR, { kind: 'jsx-element' }>): stri
     } else {
       value = swiftCanvasNumber(e, arg.prop, arg.default)
     }
+
     return arg.label === '' ? value : `${arg.label}: ${value}`
   })
   const fill = spec.strokeOnly ? undefined : swiftShapeColor(e, 'fill')
@@ -10453,6 +10670,7 @@ function emitSwiftCanvasShape(e: Extract<ExprIR, { kind: 'jsx-element' }>): stri
   if (spec.strokeOnly && stroke === undefined) stroke = resolveColor('text', 'swift')
   const fillArg = fill ?? (stroke === undefined ? resolveColor('text', 'swift') : 'nil')
   const width = stroke === undefined ? '0' : swiftCanvasNumber(e, 'strokeWidth', 1)
+
   return `PyreonShape(${spec.swift}(${args.join(', ')}), fill: ${fillArg}, stroke: ${stroke ?? 'nil'}, lineWidth: ${width})`
 }
 
@@ -10466,6 +10684,7 @@ function emitSwiftCanvasText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const text = emitSwiftText({ kind: 'jsx-element', tag: 'Text', attrs: [], children: e.children }, indent + 2)
   const color = swiftShapeColor(e, 'fill') ?? resolveColor('text', 'swift')
   const head = `PyreonCanvasText(x: ${swiftCanvasNumber(e, 'x', undefined)}, y: ${swiftCanvasNumber(e, 'y', undefined)}, size: ${swiftCanvasNumber(e, 'size', 14)}, color: ${color})`
+
   return `${head} {\n${' '.repeat(indent + 2)}${text}\n${' '.repeat(indent)}}`
 }
 
@@ -10554,6 +10773,7 @@ function emitSwiftPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   // got it right. Uses the existing helper, which already handles the literal,
   // the `disabled={false}` no-op, and a signal-bound expression.
   const disabledMod = swiftDisabledModifier(e)
+
   return `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}${buttonStyle}${disabledMod}${modifiers}${longGesture}${swipeGesture}`
 }
 
@@ -10656,6 +10876,7 @@ function emitSwiftField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     const disabledDate = swiftDisabledModifier(e)
     if (disabledDate) dateResult += `\n${' '.repeat(indent + 2)}${disabledDate}`
     dateResult += emitSwiftLayoutModifiers(e)
+
     return dateResult
   }
 
@@ -10718,6 +10939,7 @@ function emitSwiftField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     result += `\n${' '.repeat(indent + 2)}${disabledMod}`
   }
   result += emitSwiftLayoutModifiers(e)
+
   return result
 }
 
@@ -10742,6 +10964,7 @@ function emitSwiftSelect(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
     _emitWarnings.push(
       '<Select> needs both `value` and `onChange` to lower — without them there is no selection to show or write. Rendered as nothing on iOS.',
     )
+
     return 'EmptyView()'
   }
   const optionsAttr = attr('options')
@@ -10785,6 +11008,7 @@ function emitSwiftSelect(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
     const stat = readStaticAttr(e, 'placeholder')
     if (typeof stat === 'string') return `, placeholder: ${swiftStr(stat)}`
     const a = attr('placeholder')
+
     return a !== undefined ? `, placeholder: ${emitSwiftExpr(unwrapAccessorArrow(a.value), 0)}` : ''
   })()
   let result =
@@ -10795,6 +11019,7 @@ function emitSwiftSelect(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   const disabledMod = swiftDisabledModifier(e)
   if (disabledMod) result += `\n${pad}${disabledMod}`
   result += emitSwiftLayoutModifiers(e)
+
   return result
 }
 
@@ -10845,6 +11070,7 @@ function emitSwiftToggle(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
       result += `\n${' '.repeat(indent + 2)}${disabledMod}`
     }
     result += emitSwiftLayoutModifiers(e)
+
     return result
   }
 
@@ -10888,6 +11114,7 @@ function emitSwiftToggle(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
     result += `\n${pad}${disabledMod}`
   }
   result += emitSwiftLayoutModifiers(e)
+
   return result
 }
 
@@ -10950,6 +11177,7 @@ function emitSwiftLink(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     return `PyreonLink(${toExpr}) { }${tail}`
   }
   const contentLines = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
+
   return `PyreonLink(${toExpr}) {\n${contentLines}\n${' '.repeat(indent)}}${tail}`
 }
 
@@ -11110,6 +11338,7 @@ function emitSwiftRouterProvider(
     }
   }
   _activeHomeRouteSwift = prevHomeRoute
+
   return result
 }
 
@@ -11134,6 +11363,7 @@ function pickHomeRoute(routes: import('./types').RouteIR[]): import('./types').R
   // exclude it so it never becomes the NavigationStack initial body.
   const firstNonPattern = routes.find((r) => !r.path.includes(':') && !isWildcardRoute(r))
   if (firstNonPattern !== undefined) return firstNonPattern
+
   return undefined
 }
 
@@ -11148,6 +11378,7 @@ function swiftParamFieldExpr(f: { name: string; type: TypeIR }): string {
   const read = `params[${swiftStr(f.name)}] ?? ""`
   if (f.type.kind === 'number') return `Int(${read}) ?? 0`
   if (f.type.kind === 'boolean') return `(${read}) == "true"`
+
   return read
 }
 
@@ -11176,9 +11407,11 @@ function swiftRouteParamsInvocation(
       const args = info.fields
         .map((f) => `${swiftIdent(f.name)}: ${swiftParamFieldExpr(f)}`)
         .join(', ')
+
       return { call: `${expr}(params: ${info.typeName}(${args}))`, usesParams: true }
     }
   }
+
   return { call: `${expr}(params: params)`, usesParams: true }
 }
 
@@ -11363,6 +11596,7 @@ function emitSwiftNavigationDestination(
   } else {
     branches.push(`${pad}else {`, `${innerPad}${fallback}`, `${pad}}`)
   }
+
   return swiftNavigationDestinationBlock(branches, indent)
 }
 
@@ -11385,6 +11619,7 @@ function emitSwiftLayoutAwareInvocation(component: ExprIR, indent: number): stri
   if (component.kind === 'identifier' && _layoutComponentNames.has(component.name)) {
     return `${expr} { EmptyView() }`
   }
+
   return `${expr}()`
 }
 
@@ -11405,6 +11640,7 @@ function emitSwiftNestedNavigationDestination(
     for (let i = chain.length - 1; i >= 0; i--) {
       acc = `${emitSwiftExpr(chain[i]!, indent + 2)} { ${acc} }`
     }
+
     return acc
   }
   const denyFallback =
@@ -11459,6 +11695,7 @@ function emitSwiftNestedNavigationDestination(
   } else {
     branches.push(`${pad}else {`, `${innerPad}${fallback}`, `${pad}}`)
   }
+
   return swiftNavigationDestinationBlock(branches, indent)
 }
 
@@ -11518,6 +11755,7 @@ function emitSwiftRouterView(
   if (_activeHomeRouteSwift !== null) {
     return _activeHomeRouteSwift
   }
+
   return `RouterView()`
 }
 
@@ -11533,6 +11771,7 @@ function subtreeHasRouterViewSwift(node: unknown): boolean {
   if (Array.isArray(node)) return node.some(subtreeHasRouterViewSwift)
   const n = node as { kind?: unknown; tag?: unknown }
   if (n.kind === 'jsx-element' && n.tag === 'RouterView') return true
+
   return Object.values(node).some(subtreeHasRouterViewSwift)
 }
 
@@ -11562,6 +11801,7 @@ function expandSwiftSpread(
         part: `${swiftIdent(safeIdent(f.name))}: ${emitSwiftExpr(f.value, indent)}`,
       })
     }
+
     return out
   }
   if (spreadArg.kind === 'identifier' || spreadArg.kind === 'member') {
@@ -11574,12 +11814,14 @@ function expandSwiftSpread(
           part: `${swiftIdent(safeIdent(p.name))}: ${emitSwiftExpr({ kind: 'member', object: spreadArg, property: p.name }, indent)}`,
         })
       }
+
       return out
     }
   }
   _emitWarnings.push(
     `<${targetTag} {...}> spread could not be expanded — the target's props are unknown (or the source isn't an object literal / known binding). Pass props explicitly.`,
   )
+
   return out
 }
 
@@ -11759,6 +12001,7 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
     if (attrPairs) {
       return `${tag}(${attrPairs}) {\n${contentLines}\n${' '.repeat(at)}}`
     }
+
     return `${tag} {\n${contentLines}\n${' '.repeat(at)}}`
   }
   // Forwarding this component's own OPTIONAL render prop: the receiver's
@@ -11785,8 +12028,10 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
       rest,
       at + 2,
     )
+
     return `if let ${id} {\n${p}${present}\n${' '.repeat(at)}} else {\n${p}${absent}\n${' '.repeat(at)}}`
   }
+
   return `Group {\n${' '.repeat(indent + 2)}${split(argEntries, forwardedNames, indent + 2)}\n${' '.repeat(indent)}}`
 }
 
@@ -11825,6 +12070,7 @@ function swiftExprProducesView(e: ExprIR): boolean {
   // as view-producing (and lowered to `if cond { … }`) rather than
   // stringified into a Text interpolation.
   if (e.kind === 'paren') return swiftExprProducesView(e.inner)
+
   return false
 }
 
@@ -11851,6 +12097,7 @@ function emitSwiftViewTernary(
   const base = ' '.repeat(indent)
   const thenStr = emitSwiftChild({ kind: 'expr', expr: t.then }, indent + 2)
   const elseStr = emitSwiftChild({ kind: 'expr', expr: t.otherwise }, indent + 2)
+
   return `if ${cond} {\n${pad}${thenStr}\n${base}} else {\n${pad}${elseStr}\n${base}}`
 }
 
@@ -11885,6 +12132,7 @@ function emitSwiftReturnExpr(expr: ExprIR, indent: number): string {
   ) {
     return emitSwiftViewTernary(expr, indent)
   }
+
   return emitSwiftExpr(expr, indent)
 }
 
@@ -11901,6 +12149,7 @@ function emitSwiftSlotUse(e: ExprIR, indent: number): string | null {
   if (x.kind !== 'call') return null
   const slot = activeSlotRef(x.callee)
   if (slot === undefined || slot.bare) return null
+
   return emitSwiftSlotInvocation(slot, x.args, indent)
 }
 
@@ -11967,6 +12216,7 @@ function emitSwiftChild(c: ChildIR, indent: number): string {
     const cond = swiftCondition(c.expr.left, (x) => emitSwiftExpr(x, indent))
     const pad = ' '.repeat(indent + 2)
     const inner = emitSwiftChild({ kind: 'expr', expr: c.expr.right }, indent + 2)
+
     return `if ${cond} {\n${pad}${inner}\n${' '.repeat(indent)}}`
   }
   // `{cond ? <ViewA> : <ViewB>}` — a ternary between VIEW branches. SwiftUI's
@@ -11982,6 +12232,7 @@ function emitSwiftChild(c: ChildIR, indent: number): string {
   ) {
     return emitSwiftViewTernary(c.expr, indent)
   }
+
   return emitSwiftExpr(c.expr, indent)
 }
 
@@ -12072,6 +12323,7 @@ function escapeSwiftStringSegment(s: string): string {
  * `plugin-scope.ts`.
  */
 let _pluginScope: PluginScope = createPluginScope()
+
 function isLocalModuleReceiver(name: string): boolean {
   return (
     _activeInferCtx.locals.has(name) ||
@@ -12079,6 +12331,7 @@ function isLocalModuleReceiver(name: string): boolean {
     name === _activePropsParamName
   )
 }
+
 /** The current FILE's scope: `_pluginScope` while no component is being emitted, and what `fileState` reads from inside one. */
 let _moduleScope: PluginScope = _pluginScope
 
@@ -12101,8 +12354,10 @@ function swiftSpreadResolver(indent: number): SpreadResolver {
     // An un-annotated object const has no nominal type yet; its FIELD SET is
     // the identity that matters for "do these sources share a shape?".
     const f = resolveSpreadFields(e, t, _structDefs, _componentObjectConsts, _activeInferCtx)
+
     return f === null ? null : `{${[...f].sort().join(',')}}`
   }
+
   return {
     fieldsOf(e) {
       return resolveSpreadFields(

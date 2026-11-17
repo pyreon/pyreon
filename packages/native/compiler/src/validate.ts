@@ -79,6 +79,7 @@ function processFailure(err: unknown, fallback: string): ValidationResult {
   const stdout = typeof e.stdout === 'string' ? e.stdout : (e.stdout?.toString('utf8') ?? '')
   const output = [stderr, stdout].filter(Boolean).join('\n').trim()
   const error = output || e.message || fallback
+
   return isTransientProcessFailure(err)
     ? { ok: false, error, transient: true }
     : { ok: false, error }
@@ -91,6 +92,7 @@ function processFailure(err: unknown, fallback: string): ValidationResult {
  */
 let _swiftcAvailable: boolean | undefined
 let _swiftcVersion = ''
+
 export function isSwiftcAvailable(): boolean {
   if (_swiftcAvailable !== undefined) return _swiftcAvailable
   const cached = readToolProbe('swiftc')
@@ -115,6 +117,7 @@ export function isSwiftcAvailable(): boolean {
   }
   if (_swiftcAvailable === true)
     writeToolProbe('swiftc', { available: true, version: _swiftcVersion })
+
   return _swiftcAvailable === true
 }
 
@@ -145,6 +148,7 @@ export function validateSwift(source: string): ValidationResult {
   if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1' || !isSwiftcAvailable()) {
     return validateSwiftUncached(source)
   }
+
   return withVerdictCache('swift-parse' satisfies ValidateKind, swiftcVersion(), '', source, () =>
     validateSwiftUncached(source),
   )
@@ -161,6 +165,7 @@ function validateSwiftUncached(source: string): ValidationResult {
         error: 'swiftc not found on PATH (PYREON_REQUIRE_NATIVE_VALIDATE=1 requested).',
       }
     }
+
     return { ok: true, skipped: true, skipReason: 'swiftc not on PATH' }
   }
 
@@ -184,6 +189,7 @@ function validateSwiftUncached(source: string): ValidationResult {
       ['-module-cache-path', join(tempDir, 'module-cache'), '-parse', filename],
       { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS },
     )
+
     return { ok: true }
   } catch (err) {
     return processFailure(err, 'swiftc -parse failed with no output')
@@ -208,6 +214,7 @@ function validateSwiftUncached(source: string): ValidationResult {
  */
 let _swiftUIAvailable: boolean | undefined
 let _swiftUIProbeFailure: ValidationResult | undefined
+
 export function isSwiftUIAvailable(): boolean {
   if (_swiftUIAvailable !== undefined) return _swiftUIAvailable
   if (!isSwiftcAvailable()) return false
@@ -246,6 +253,7 @@ export function isSwiftUIAvailable(): boolean {
   }
   if (_swiftUIAvailable === true)
     writeToolProbe('swiftc', { available: true, version: '' }, 'swiftui')
+
   return _swiftUIAvailable === true
 }
 
@@ -271,6 +279,7 @@ export function _resetSwiftUICache(): void {
  */
 let _observationAvailable: boolean | undefined
 let _observationProbeFailure: ValidationResult | undefined
+
 export function isObservationAvailable(): boolean {
   if (_observationAvailable !== undefined) return _observationAvailable
   if (!isSwiftcAvailable()) return false
@@ -312,6 +321,7 @@ export function isObservationAvailable(): boolean {
   }
   if (_observationAvailable === true)
     writeToolProbe('swiftc', { available: true, version: '' }, 'observation')
+
   return _observationAvailable === true
 }
 
@@ -448,6 +458,7 @@ function swiftRuntimeHelpers(source: string): string {
     const text = readIfPresent(join(NATIVE_PACKAGES_DIR, 'runtime-swift/Sources/PyreonRuntime', file))
     if (text !== undefined) out += `${text.replace(/^import Foundation\n/m, '')}\n`
   }
+
   return out
 }
 
@@ -459,8 +470,10 @@ export function validateSwiftTypecheck(source: string): ValidationResult {
   ) {
     if (_swiftUIProbeFailure?.transient === true && process.env.PYREON_SKIP_NATIVE_VALIDATE !== '1')
       return _swiftUIProbeFailure
+
     return validateSwiftTypecheckUncached(source)
   }
+
   return withVerdictCache(
     'swift-typecheck' satisfies ValidateKind,
     swiftcVersion(),
@@ -482,6 +495,7 @@ function validateSwiftTypecheckUncached(source: string): ValidationResult {
         error: 'swiftc not found on PATH (PYREON_REQUIRE_NATIVE_VALIDATE=1 requested).',
       }
     }
+
     return { ok: true, skipped: true, skipReason: 'swiftc not on PATH' }
   }
   if (!isSwiftUIAvailable()) {
@@ -503,6 +517,7 @@ function validateSwiftTypecheckUncached(source: string): ValidationResult {
       ['-module-cache-path', join(tempDir, 'module-cache'), '-typecheck', filename],
       { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS },
     )
+
     return { ok: true }
   } catch (err) {
     return processFailure(err, 'swiftc -typecheck failed with no output')
@@ -526,6 +541,7 @@ function emitDeclaredTypeNames(source: string): Set<string> {
   const re =
     /(?:^|\n)[ \t]*(?:(?:public|private|internal|fileprivate|final|open)\s+)*(?:struct|enum|class|actor|protocol)\s+([A-Za-z_][A-Za-z0-9_]*)/g
   for (const m of source.matchAll(re)) names.add(m[1]!)
+
   return names
 }
 
@@ -565,6 +581,7 @@ function shadowStubDeclarations(stub: string, emit: string): string {
       result = result.slice(0, m.index) + result.slice(end)
     }
   }
+
   return result
 }
 
@@ -636,6 +653,7 @@ export function validateSwiftWithStubs(
         error: 'swiftc not found on PATH (PYREON_REQUIRE_NATIVE_VALIDATE=1 requested).',
       }
     }
+
     return { ok: true, skipped: true, skipReason: 'swiftc not on PATH' }
   }
 
@@ -674,6 +692,7 @@ export function validateSwiftWithStubs(
         ok: false,
         error: `[Pyreon] Observation is required for this source. Install a Swift 5.9+ toolchain with Observation and retry native validation. ${_observationProbeFailure?.error ?? ''}`,
       }
+
     return {
       ok: true,
       skipped: true,
@@ -698,6 +717,7 @@ export function validateSwiftWithStubs(
   // folded into the key for free, so editing any of that logic invalidates
   // cached verdicts without anyone remembering to bump a version.
   const inputText = _swiftInputPrelude(stripped, observation) + stripped
+
   return withVerdictCache(
     'swift-stubs' satisfies ValidateKind,
     swiftcVersion(),
@@ -729,6 +749,7 @@ function compileSwiftStubs(stub: string, inputText: string): ValidationResult {
         timeout: COMPILE_TIMEOUT_MS,
       },
     )
+
     return { ok: true }
   } catch (err) {
     return processFailure(err, 'swiftc -typecheck (stubs) failed with no output')
@@ -769,6 +790,7 @@ export function validateSwiftFilesWithStubs(
         error: 'swiftc not found on PATH (PYREON_REQUIRE_NATIVE_VALIDATE=1 requested).',
       }
     }
+
     return { ok: true, skipped: true, skipReason: 'swiftc not on PATH' }
   }
   const stripped = sources.map((src) => src.replace(SWIFT_STUBBED_IMPORTS, ''))
@@ -780,6 +802,7 @@ export function validateSwiftFilesWithStubs(
         ok: false,
         error: `[Pyreon] Observation is required for this source. Install a Swift 5.9+ toolchain with Observation and retry native validation. ${_observationProbeFailure?.error ?? ''}`,
       }
+
     return {
       ok: true,
       skipped: true,
@@ -792,8 +815,10 @@ export function validateSwiftFilesWithStubs(
   const inputs = stripped.map((s) => {
     const observation =
       /@Observable\b/.test(s) && !/^import Observation\s*$/m.test(s) ? 'import Observation\n' : ''
+
     return _swiftInputPrelude(s, observation) + s
   })
+
   return withVerdictCache(
     'swift-stubs-module' satisfies ValidateKind,
     swiftcVersion(),
@@ -824,6 +849,7 @@ function compileSwiftFiles(stub: string, inputs: readonly string[]): ValidationR
         timeout: COMPILE_TIMEOUT_MS,
       },
     )
+
     return { ok: true }
   } catch (err) {
     return processFailure(err, 'swiftc -typecheck (stubs, multi-file) failed with no output')
@@ -843,6 +869,7 @@ function compileSwiftFiles(stub: string, inputs: readonly string[]): ValidationR
  */
 let _kotlincAvailable: boolean | undefined
 let _kotlincVersion = ''
+
 export function isKotlincAvailable(): boolean {
   if (_kotlincAvailable !== undefined) return _kotlincAvailable
   const cached = readToolProbe('kotlinc')
@@ -879,6 +906,7 @@ export function isKotlincAvailable(): boolean {
   }
   if (_kotlincAvailable === true)
     writeToolProbe('kotlinc', { available: true, version: _kotlincVersion })
+
   return _kotlincAvailable === true
 }
 
@@ -921,6 +949,7 @@ export function validateKotlin(source: string, options?: ValidateOptions): Valid
   if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1' || !isKotlincAvailable()) {
     return validateKotlinUncached(source, options)
   }
+
   return withVerdictCache(
     'kotlin' satisfies ValidateKind,
     kotlincVersion(),
@@ -944,6 +973,7 @@ function validateKotlinUncached(
         error: 'kotlinc not found on PATH (PYREON_REQUIRE_NATIVE_VALIDATE=1 requested).',
       }
     }
+
     return { ok: true, skipped: true, skipReason: 'kotlinc not on PATH' }
   }
 
@@ -985,6 +1015,7 @@ function validateKotlinUncached(
       ['-nowarn', '-d', outDir, stubsPath, inputPath],
       { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS },
     )
+
     return { ok: true }
   } catch (err) {
     return processFailure(err, 'kotlinc failed with no output')
@@ -1019,9 +1050,11 @@ export function validateKotlinFiles(
         error: 'kotlinc not found on PATH (PYREON_REQUIRE_NATIVE_VALIDATE=1 requested).',
       }
     }
+
     return { ok: true, skipped: true, skipReason: 'kotlinc not on PATH' }
   }
   const stubs = KOTLIN_COMPOSE_STUBS + kotlinAugmentation(options, sources.join('\n'))
+
   return withVerdictCache(
     'kotlin-module' satisfies ValidateKind,
     kotlincVersion(),
@@ -1046,6 +1079,7 @@ function compileKotlinFiles(stubs: string, sources: readonly string[]): Validati
       encoding: 'utf8',
       timeout: COMPILE_TIMEOUT_MS,
     })
+
     return { ok: true }
   } catch (err) {
     return processFailure(err, 'kotlinc (multi-file) failed with no output')

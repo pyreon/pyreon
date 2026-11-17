@@ -294,8 +294,10 @@ function enumTypeOfExpr(x: ExprIR): string | undefined {
       if (f !== undefined) return named(f.type)
     }
   }
+
   return undefined
 }
+
 /**
  * Struct name → sorted-field-names key. Mirror of emit-swift.ts's
  * `_structFieldsToName`. See that file for the structural rationale.
@@ -315,6 +317,7 @@ let _declaredStructs: readonly StructIR[] = []
 function structShapeKey(fields: readonly { name: string; type: TypeIR }[]): string {
   return rawStructShapeKey(fields, (n) => _declaredStructs.find((s) => s.name === n)?.fields)
 }
+
 /**
  * Synthesized data classes for ANONYMOUS all-scalar-literal object
  * EXPRESSIONS (`{ id: 1, name: 'a' }`). Mirror of emit-swift's
@@ -358,6 +361,7 @@ function canAliasIntercept(tag: string, expectedPkg: string, expectedImport = ta
   const src = _aliasImports.get(tag)
   return src === undefined || (src.source === expectedPkg && src.imported === expectedImport)
 }
+
 /** Component name → declared props, for `<Comp {...src} />` spread expansion.
  * Mirror of emit-swift's `_componentPropsMap`. */
 let _componentPropsMapKotlin: Map<string, { name: string; type: TypeIR }[]> = new Map()
@@ -421,6 +425,7 @@ function kotlinStructCtorArgs(
           Number.isInteger(f.value.value) &&
           f.value.float !== true)
       if (wantsFloat && isInt) return `${kotlinMember(f.name)} = (${raw}).toDouble()`
+
       return `${kotlinMember(f.name)} = ${kotlinIntoIntegerField(structName, f.name, ft, f.value, raw)}`
     })
     .join(', ')
@@ -443,6 +448,7 @@ function kotlinIntoIntegerField(
   if (isWholeValued(value, isIntegerOperand)) return `(${raw}).toLong()`
   const w = fractionalIntoIntegerFieldWarning(structName, field, 'Kotlin')
   if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+
   return raw
 }
 
@@ -461,6 +467,7 @@ function kotlinSpreadOverride(source: ExprIR, f: { name: string; value: ExprIR }
     _synthExprStructs.find((s) => s.name === st.name) ??
     _synthStateClassesKotlin.get(st.name)
   const ft = def?.fields.find((x) => x.name === f.name)?.type
+
   return kotlinIntoIntegerField(st.name, f.name, ft, f.value, raw)
 }
 
@@ -478,6 +485,7 @@ function intLiteralValue(e: ExprIR): number | undefined {
     return v === undefined ? undefined : -v
   }
   if (e.kind === 'paren') return intLiteralValue(e.inner)
+
   return undefined
 }
 
@@ -517,6 +525,7 @@ function kotlinListIndex(obj: ExprIR, index: ExprIR, indent: number): string {
   }
   const idxT = inferType(index, _kotlinExprInferCtx)
   if (idxT.kind === 'string') return emitKotlinExpr(index, indent)
+
   return kotlinIntArg(index, indent)
 }
 
@@ -555,6 +564,7 @@ function asFloatLiteral(v: ExprIR, t: TypeIR | undefined): ExprIR {
     v.float === true
   )
     return v
+
   return { ...v, float: true }
 }
 
@@ -563,6 +573,7 @@ function typeWantsFloat(t: TypeIR): boolean {
   if (t.kind === 'typeRef') return t.name === 'Double' || t.name === 'Float'
   if (t.kind === 'union')
     return t.branches.some((b) => b.kind !== 'null' && b.kind !== 'undefined' && typeWantsFloat(b))
+
   return false
 }
 
@@ -589,6 +600,7 @@ function expectedStructForKotlin(fields: readonly { name: string }[]): string | 
   const given = new Set(fields.map((f) => f.name))
   for (const g of given) if (!st.fields.some((f) => f.name === g)) return null
   for (const f of st.fields) if (!given.has(f.name) && !typeIsOptional(f.type)) return null
+
   return st.name
 }
 
@@ -608,6 +620,7 @@ function withEnumReturnCtxKotlin<T>(fn: () => T): T {
     _activeEnumType = prev
   }
 }
+
 function withExpectedTypeKotlin<T>(t: TypeIR | undefined, fn: () => T): T {
   const prev = _expectedTypeKotlin
   _expectedTypeKotlin = t
@@ -630,6 +643,7 @@ function withExpectedTypeKotlin<T>(t: TypeIR | undefined, fn: () => T): T {
     _activeEnumType = prevEnum
   }
 }
+
 /** G1: every signal name in scope — see emit-swift.ts for the rationale. */
 let _signalNames: Set<string> = new Set()
 /** Plugin-owned module items available to facade consumers and inference. */
@@ -650,16 +664,19 @@ let _asyncDeclsKotlin: DeclIR[] = []
 function isContainerMutableStateField(obj: string, p: string): boolean {
   return _serviceBindingsKotlin.get(obj)?.kotlinState?.includes(p) === true
 }
+
 /** G2: every function decl name (Parser-A). Mirrors emit-swift's set. */
 let _functionNames: Set<string> = new Set()
 /** File-scope helper-function names (persists across the whole emit) — seeded
  * into each component's `_functionNames` so a `dbl(21)` call resolves as a
  * free-function call regardless of which component emits it. */
 let _helperFnNames: Set<string> = new Set()
+
 /** The names a call at module scope resolves as a function call (not a signal read). */
 function moduleFunctionNamesKotlin(): Set<string> {
   return new Set([..._helperFnNames, ..._moduleViewHelpersKotlin.keys()])
 }
+
 /** File-scope helper name → return type (parity with the Swift path; Kotlin's
  * `derivedStateOf` mostly self-infers, but a helper call in a typed position
  * still benefits). */
@@ -691,6 +708,7 @@ let _zeroArgHelperNames: Set<string> = new Set()
 let _routerRoutes: Map<string, import('./types').RouteIR[]> = new Map()
 /** #4060: router-decl name → its `tabs` (per-tab back stacks). Mirrors emit-swift. */
 let _routerTabs: Map<string, RouterTabIR[]> = new Map()
+
 /**
  * #4060: set while emitting the content of a `<RouterProvider>` whose router
  * has `tabs`; `tab` is the `<Tab>` being emitted, so its `<RouterView />`
@@ -741,6 +759,7 @@ function collectLayoutComponentNamesKotlin(components: ComponentIR[]): Set<strin
       }
     }
   }
+
   return names
 }
 
@@ -769,6 +788,7 @@ function withKotlinThrowCtx<T>(ctx: 'none' | 'throws' | 'do', fn: () => T): T {
     _kotlinThrowCtx = prev
   }
 }
+
 /**
  * Module-level `const X = <string|number|boolean literal>` bindings,
  * name → value (Kotlin mirror of emit-swift's `_constStringMap`). Lets
@@ -818,6 +838,7 @@ function kotlinTypedArgument(arg: ExprIR, expected: TypeIR | undefined, indent: 
     actual.element.float !== true
   )
     return `(${text}).map { it.toDouble() }`
+
   return text
 }
 
@@ -1097,6 +1118,7 @@ export function emitKotlin(
   _needsKotlinKeepAliveWrapper = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
+
   return { code: parts.join('\n\n'), warnings }
 }
 
@@ -1122,6 +1144,7 @@ let _componentParamsInfoKotlin: Map<
 let _serviceBindingsKotlin: Map<string, ServiceDescriptor> = new Map()
 /** Mirror of the Swift flag — set while emitting a model view/action body. */
 let _activeMemberReceiverKotlin: string | undefined
+
 /** Emit a Kotlin `enum class X { a, b, c }`. */
 function emitKotlinEnum(e: EnumIR): string {
   // Each entry is a valid Kotlin name: a kebab-case / keyword union member
@@ -1166,12 +1189,14 @@ function orderFieldsByStructK(
   if (struct === undefined) return fields
   const pos = new Map<string, number>()
   struct.fields.forEach((f, i) => pos.set(f.name, i))
+
   return [...fields].sort((a, b) => {
     const pa = pos.get(a.name)
     const pb = pos.get(b.name)
     if (pa === undefined && pb === undefined) return 0
     if (pa === undefined) return 1
     if (pb === undefined) return -1
+
     return pa - pb
   })
 }
@@ -1217,6 +1242,7 @@ function emitKotlinModuleDecl(md: ModuleDeclIR): string {
   if (md.type.kind === 'unknown') {
     return `private ${kw} ${kotlinIdent(md.name)} = ${initial}`
   }
+
   return `private ${kw} ${kotlinIdent(md.name)}: ${kotlinType(md.type)} = ${initial}`
 }
 
@@ -1485,6 +1511,7 @@ function emitKotlinComponent(c: ComponentIR): string {
         ? `${kotlinIdent(p.name)}: (${fnType})? = null`
         : `${kotlinIdent(p.name)}: ${fnType}`
     }
+
     return typeIsOptional(p.type)
       ? `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)} = null`
       : `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)}`
@@ -1642,6 +1669,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _routerTabs = new Map()
   const finished = _pluginScope.finalize(lines.join('\n'))
   _pluginScope = outerPluginScope
+
   return finished
 }
 
@@ -1689,6 +1717,7 @@ function resolveKotlinRowTypeName(elem: TypeIR): string {
   if (elem.kind === 'string') return 'String'
   if (elem.kind === 'number') return elem.float === true ? 'Double' : KOTLIN_INT
   if (elem.kind === 'boolean') return 'Boolean'
+
   return 'Any'
 }
 
@@ -1701,6 +1730,7 @@ function resolveKotlinStructFields(elem: TypeIR): { name: string; type: TypeIR }
       _synthExprStructs.find((st) => st.name === elem.name)
     if (s) return s.fields
   }
+
   return []
 }
 
@@ -1723,6 +1753,7 @@ function kotlinEffectDeps(c: ComponentIR, fn: string): string[] {
   } finally {
     _kotlinExprInferCtx.locals = saved
   }
+
   return out
 }
 
@@ -1757,6 +1788,7 @@ function emitKotlinModuleState(state: DeclIR[]): string {
     }
   }
   lines.push('}')
+
   return lines.join('\n')
 }
 
@@ -1769,6 +1801,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       d.type !== undefined && (d.expr.kind === 'object' || d.expr.kind === 'array')
         ? d.type
         : undefined
+
     return `val ${kotlinIdent(d.name)} = ${withExpectedTypeKotlin(steer, () => emitKotlinExpr(d.expr, 0))}`
   }
   if (d.kind === 'signal') {
@@ -1820,6 +1853,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       const nullableType = typeStr.endsWith('?') ? typeStr : `${typeStr}?`
       return `var ${kotlinIdent(d.name)} by ${wrapperFn} { mutableStateOf<${nullableType}>(null) }`
     }
+
     return `var ${kotlinIdent(d.name)} by ${wrapperFn} { mutableStateOf(${initial}) }`
   }
   if (d.kind === 'function') {
@@ -1857,6 +1891,7 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       inner.push(`    afterEachHooks.add(::${kotlinIdent(fn)})`)
     }
     inner.push('  }')
+
     return `val ${kotlinIdent(d.name)} = remember { ${inner.join('\n  ')} }`
   }
   // Phase B6: `const data = useLoaderData<User>()` → a `val` that calls
@@ -1937,10 +1972,12 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
     const savedLocals = seedHandlerLocals(d.body, _kotlinExprInferCtx)
     const bodyLines = emitKotlinStmtLines(d.body, 6, bodyCtx).join('\n')
     _kotlinExprInferCtx.locals = savedLocals
+
     return [`val ${kotlinIdent(d.name)} by remember { derivedStateOf {`, bodyLines, `    } }`].join(
       '\n',
     )
   }
+
   return `val ${kotlinIdent(d.name)} by remember { derivedStateOf { ${emitKotlinExpr(d.expr!, 0)} } }`
 }
 
@@ -2012,6 +2049,7 @@ function kotlinExprIsAssignment(expr: string): boolean {
       if (prev !== '=' && prev !== '<' && prev !== '>' && prev !== '!' && next !== '=') return true
     }
   }
+
   return false
 }
 
@@ -2070,6 +2108,7 @@ function kotlinBoundSubject(n: Narrowing, indent: number): string {
   if (n.truth === 'string') return `${subj}?.takeIf { it.isNotEmpty() }`
   if (n.truth === 'number') return `${subj}?.takeIf { it.toDouble() != 0.0 }`
   if (n.truth === 'boolean') return `${subj}?.takeIf { it }`
+
   return subj
 }
 
@@ -2095,6 +2134,7 @@ function planKotlinNarrowing(cond: ExprIR, readers: readonly ExprIR[]): KotlinNa
   const n = narrowingFor(cond, _kotlinExprInferCtx, _activePropsParamName)
   if (n === null || kotlinSmartCasts(n)) return null
   if (!readers.some((r) => readsSubject(r, n.subject))) return null
+
   return { n, binder: binderName(n.subject, readers) }
 }
 
@@ -2125,6 +2165,7 @@ function emitKotlinNarrowedTernary(
   const inner = withKotlinLocals([[plan.binder, plan.n.unwrapped]], () =>
     emitKotlinExpr(rewritten, indent),
   )
+
   return `when (val ${b} = ${kotlinBoundSubject(plan.n, indent)}) { null -> ${emitKotlinExpr(other, indent)} else -> ${inner} }`
 }
 
@@ -2144,6 +2185,7 @@ function emitKotlinNarrowedAnd(cond: ExprIR, view: ExprIR, indent: number): stri
   const inner = withKotlinLocals([[plan.binder, plan.n.unwrapped]], () =>
     emitKotlinChild({ kind: 'expr', expr: rewritten }, indent + 2),
   )
+
   return `${kotlinBoundSubject(plan.n, indent)}?.let { ${kotlinIdent(plan.binder)} ->\n${pad}${inner}\n${' '.repeat(indent)}}`
 }
 
@@ -2214,6 +2256,7 @@ function emitKotlinStmtLinesScoped(
           emitKotlinStmtLinesScoped(g.rest, indent, ctx),
         ),
       )
+
       return out
     }
     out.push(`${pad}${emitKotlinStatement(s, indent, ctx)}`)
@@ -2223,6 +2266,7 @@ function emitKotlinStmtLinesScoped(
       if (typeIsOptional(typed)) _kotlinExprInferCtx.locals.set(s.name, typed)
     }
   }
+
   return out
 }
 
@@ -2251,6 +2295,7 @@ function emitKotlinViewHelper(
   const body = withKotlinLocals(locals, () =>
     emitKotlinChild({ kind: 'expr', expr: unparenExpr(h.body) }, indent + 2),
   )
+
   return `${head}\n${' '.repeat(indent + 2)}${body}\n${' '.repeat(indent)}}`
 }
 
@@ -2284,6 +2329,7 @@ function emitKotlinViewBlock(b: ViewBlock, indent: number): string[] {
       const ctx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
       const line = `${pad}${emitKotlinStatement(b.stmt, indent, ctx)}`
       const t = b.stmt.declaredType ?? inferType(b.stmt.expr, _kotlinExprInferCtx)
+
       return [
         line,
         ...withKotlinLocals([[b.stmt.name, t.kind === 'unknown' ? undefined : t]], () =>
@@ -2317,11 +2363,13 @@ function emitKotlinViewBlock(b: ViewBlock, indent: number): string[] {
             const body = withKotlinLocals([[binder, plan.n.unwrapped]], () =>
               branches(`${kotlinIdent(binder)} != null`, rewritten, other),
             )
+
             return [bound, body]
           }
           warnUnnarrowableKotlin(plan.n, indent)
         }
       }
+
       return [
         branches(
           kotlinCondition(b.cond, (x) => emitKotlinExpr(x, indent)),
@@ -2338,6 +2386,7 @@ function kotlinAccessorViewBlock(e: ExprIR): ViewBlock | null {
   const x = unparenExpr(e)
   if (x.kind !== 'arrow' || x.params.length > 0 || x.stmts === undefined || x.stmts.length === 0)
     return null
+
   return planViewBlock(x.stmts)
 }
 
@@ -2351,6 +2400,7 @@ function kotlinCallRendersView(e: ExprIR): boolean {
   if (x.kind !== 'call') return false
   const slot = activeSlotRefKotlin(x.callee)
   if (slot !== undefined && !slot.bare) return true
+
   return x.callee.kind === 'identifier' && _viewHelpersKotlin.has(x.callee.name)
 }
 
@@ -2372,6 +2422,7 @@ function emitKotlinSlotUse(e: ExprIR, indent: number): string | null {
   const args = x.args
     .map((a, i) => withExpectedTypeKotlin(slot.params[i], () => emitKotlinExpr(a, indent)))
     .join(', ')
+
   return slot.optional
     ? `${kotlinIdent(slot.name)}?.invoke(${args})`
     : `${kotlinIdent(slot.name)}(${args})`
@@ -2407,6 +2458,7 @@ function emitKotlinSlotArg(
     const body = withKotlinLocals(params, () =>
       emitKotlinChild({ kind: 'expr', expr: unparenExpr(x.body) }, indent + 2),
     )
+
     return `${head}\n${pad}${body}\n${base}}`
   }
   const forwarded = activeSlotRefKotlin(x)
@@ -2422,6 +2474,7 @@ function emitKotlinSlotArg(
     const arity = Math.max(slot?.params.length ?? 0, h.params.length)
     const args = Array.from({ length: arity }, (_, i) => (i < h.params.length ? `a${i}` : '_'))
     const callArgs = args.filter((a) => a !== '_')
+
     return arity === 0
       ? `{ ${kotlinIdent(h.name)}() }`
       : `{ ${args.join(', ')} -> ${kotlinIdent(h.name)}(${callArgs.join(', ')}) }`
@@ -2431,6 +2484,7 @@ function emitKotlinSlotArg(
   }
   const w = unlowerableRenderValueWarning(where)
   if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
+
   return emitKotlinExpr(x, indent)
 }
 
@@ -2500,8 +2554,10 @@ function emitKotlinFunctionBody(d: Extract<DeclIR, { kind: 'function' }>, ctx: K
           bodyAwaitsFallible(d.body, isThrowingPluginExpr) || statementsThrowUncaught(d.body, _kotlinThrowingFns)
           ? `      try {\n${indentLines(inner, 4)}\n      } ${KOTLIN_UNHANDLED_ASYNC}`
           : inner
+
         return `${m[1]}\n    ${PYREON_ASYNC_SCOPE}.launch {\n${launched}\n    }\n  }`
       }
+
       return sync
     }
   }
@@ -2570,6 +2626,7 @@ function emitKotlinFunctionBody(d: Extract<DeclIR, { kind: 'function' }>, ctx: K
       return `fun ${kotlinIdent(d.name)}(${params})${retType} {\n    ${concise}\n  }`
     }
     kParamRestore()
+
     return `fun ${kotlinIdent(d.name)}(${params})${retType} = ${concise}`
   }
   // Multi-statement block body. Unlike the concise `= expr` form (which
@@ -2593,6 +2650,7 @@ function emitKotlinFunctionBody(d: Extract<DeclIR, { kind: 'function' }>, ctx: K
   const bodyLines = emitKotlinStmtLines(d.body, 4, ctx).join('\n')
   _kotlinExprInferCtx.locals = savedLocals
   kParamRestore()
+
   return `fun ${kotlinIdent(d.name)}(${params})${blockRetType} {\n${bodyLines}\n  }`
 }
 
@@ -2627,6 +2685,7 @@ function kotlinCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
       return t.presentWhenTrue
         ? `(${x}?.toDouble() ?: 0.0) != 0.0`
         : `(${x}?.toDouble() ?: 0.0) == 0.0`
+
     return t.presentWhenTrue ? `${x}?.${test} == true` : `${x}?.${test} != true`
   }
   const c = classifyOptionalCondition(e, _kotlinExprInferCtx)
@@ -2639,6 +2698,7 @@ function kotlinCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
     const raw = `(${emit(subject)})`
     return negated ? `${raw}.isEmpty()` : `${raw}.isNotEmpty()`
   }
+
   return emit(e)
 }
 
@@ -2736,6 +2796,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
           _pluginScope,
           () => kotlinEmitContext(indent),
         ) ?? value
+
       return `${emitKotlinExpr(s.target, indent)} ${s.op} ${coerced}`
     }
     case 'return': {
@@ -2773,8 +2834,10 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
         const out = emitKotlinExpr(s.expr, indent)
         if (out.startsWith(`${obj}.sortedWith(`))
           return `${obj}.sortWith(${out.slice(obj.length + '.sortedWith('.length)}`
+
         return out
       }
+
       return emitKotlinExpr(s.expr, indent)
     case 'if': {
       const pad = ' '.repeat(indent)
@@ -2804,6 +2867,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
               otherBody === undefined
                 ? ''
                 : emitKotlinStmtLines(otherBody, indent + 4, ctx).join('\n')
+
             return (
               `when (val ${kotlinIdent(plan.binder)} = ${kotlinBoundSubject(plan.n, indent)}) {\n` +
               `${pad}  null -> {${otherLines === '' ? '}' : `\n${otherLines}\n${pad}  }`}\n` +
@@ -2845,6 +2909,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       const head = `if (${cond}) {\n${thenLines}\n${pad}}`
       if (!s.elseBody) return head
       const elseLines = emitKotlinStmtLines(s.elseBody, indent + 2, ctx).join('\n')
+
       return `${head} else {\n${elseLines}\n${pad}}`
     }
     case 'while': {
@@ -2853,6 +2918,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       const lines = emitKotlinStmtLines(s.body, indent + 2, ctx).join('\n')
       // Loop label — Kotlin spells it `outer@ while … { break@outer }`.
       const lbl = s.label !== undefined ? `${kotlinIdent(s.label)}@ ` : ''
+
       return `${lbl}while (${cond}) {\n${lines}\n${pad}}`
     }
     case 'for-of': {
@@ -2869,6 +2935,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       if (hadItem) _kotlinExprInferCtx.locals.set(s.item, prevItem!)
       else _kotlinExprInferCtx.locals.delete(s.item)
       const lbl2 = s.label !== undefined ? `${kotlinIdent(s.label)}@ ` : ''
+
       return `${lbl2}for (${kotlinIdent(s.item)} in ${iter}) {\n${lines}\n${pad}}`
     }
     case 'break':
@@ -2936,12 +3003,14 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
             ? `${from}..${to}`
             : `${from} until ${to}`
       const stepPart = s.step !== undefined ? ` step ${emitKotlinExpr(s.step, indent)}` : ''
+
       return `for (${kotlinIdent(s.item)} in ${range}${stepPart}) {\n${lines}\n${pad}}`
     }
     case 'do-while': {
       const pad = ' '.repeat(indent)
       const cond = kotlinCondition(s.cond, (x) => emitKotlinExpr(x, indent))
       const lines = emitKotlinStmtLines(s.body, indent + 2, ctx).join('\n')
+
       return `do {\n${lines}\n${pad}} while (${cond})`
     }
     case 'switch': {
@@ -2964,6 +3033,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
           if (discEnumName !== undefined) _activeEnumType = discEnumName
           const labels = c.tests.map((t) => emitKotlinExpr(t, indent)).join(', ')
           _activeEnumType = prevEnum
+
           return `${pad}  ${labels} -> ${body}`
         })
         .join('\n')
@@ -2974,6 +3044,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       if (_kotlinThrowCtx === 'none') _pushKotlinEmitWarning(uncaughtThrowWarning('A `throw`'))
       if (s.rethrow !== undefined) return `throw ${kotlinIdent(s.rethrow)}`
       _needsKotlinThrown = true
+
       return `throw PyreonThrown(${emitKotlinExpr(s.message ?? { kind: 'literal', value: '' }, indent)}${s.raw === true ? ', raw = true' : ''})`
     }
     case 'try': {
@@ -2999,6 +3070,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
         )
         out += ` finally {\n${finallyLines}\n${pad}}`
       }
+
       return out
     }
   }
@@ -3093,6 +3165,7 @@ export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): str
 
         return 'Any'
       }
+
       return registerKotlinSynthClass(
         t,
         synthCtx,
@@ -3138,6 +3211,7 @@ export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): str
       // literals and `number` values PMTC emits as `Long` (`qty = 1L`, `row.qty + 1L`) failed to compile against it.
       if (t.name === 'Int' && t.args.length === 0 && !_declaredStructs.some((st) => st.name === 'Int')) return KOTLIN_INT
       if (t.args.length === 0) return t.name
+
       return `${t.name}<${t.args.map((a) => kotlinType(a, ctx, signalName)).join(', ')}>`
     }
     case 'function': {
@@ -3146,6 +3220,7 @@ export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): str
       const paramTypes = t.params.map((p) => kotlinType(p.type, ctx, signalName)).join(', ')
       const returnTypeName =
         t.returnType.kind === 'unknown' ? 'Unit' : kotlinType(t.returnType, ctx, signalName)
+
       return `(${paramTypes}) -> ${returnTypeName}`
     }
     default:
@@ -3175,6 +3250,7 @@ function kotlinUnionType(
     return only.kind === 'function' ? `(${inner})?` : `${inner}?`
   }
   if (nonNullBranches.length === 0) return 'Any?'
+
   return 'Any'
 }
 
@@ -3214,6 +3290,7 @@ function stateClassForLiteralKotlin(fields: readonly { name: string; value: Expr
     const fieldType = new Map(cls.fields.map((f) => [f.name, f.type]))
     if (fields.every((f) => valueFitsKotlinField(f.value, fieldType.get(f.name)!))) return cls.name
   }
+
   return undefined
 }
 
@@ -3227,6 +3304,7 @@ function valueFitsKotlinField(value: ExprIR, field: TypeIR): boolean {
   if (ft.kind === 'array') return vt.kind === 'array'
   // A nested object field is a typeRef to its own class; the nested literal resolves on its own.
   if (ft.kind === 'typeRef') return vt.kind === 'object' || vt.kind === 'typeRef'
+
   return true
 }
 
@@ -3261,6 +3339,7 @@ function registerKotlinSynthClass(
     name: f.name,
     type: resolveKotlinSynthFieldType(f.type, ctx, name, f.name),
   }))
+
   return name
 }
 
@@ -3293,6 +3372,7 @@ function resolveKotlinSynthFieldType(
       ctx,
       uniqueKotlinClassName(ctx, parentName + suffix),
     )
+
     return { kind: 'typeRef', name: nested, args: [] }
   }
   if (ft.kind === 'array' && ft.element.kind === 'object') {
@@ -3305,8 +3385,10 @@ function resolveKotlinSynthFieldType(
       ctx,
       uniqueKotlinClassName(ctx, parentName + singular),
     )
+
     return { kind: 'array', element: { kind: 'typeRef', name: nested, args: [] } }
   }
+
   return ft
 }
 
@@ -3315,6 +3397,7 @@ function uniqueKotlinClassName(ctx: KotlinCtx, base: string): string {
   if (!ctx.synthesizedDataClasses.some((s) => s.name === base)) return base
   let i = 2
   while (ctx.synthesizedDataClasses.some((s) => s.name === `${base}${i}`)) i++
+
   return `${base}${i}`
 }
 
@@ -3352,8 +3435,10 @@ function emitKotlinIndexedBody(
     const savedLocals = seedHandlerLocals(cb.stmts, _kotlinExprInferCtx)
     const lines = emitKotlinStmtLines(cb.stmts, indent + 2, stmtCtx).join('\n')
     _kotlinExprInferCtx.locals = savedLocals
+
     return `\n${bindIdx === '' ? '' : `${pad}${bindIdx}\n`}${lines}\n${' '.repeat(indent)}`
   }
+
   return ` ${bindIdx === '' ? '' : `${bindIdx}; `}${emitKotlinExpr(cb.body, indent)} `
 }
 
@@ -3399,6 +3484,7 @@ function intLiteralAsDouble(x: ExprIR, otherIsDouble: boolean): string | null {
   const lit = x.kind === 'unary' && x.op === '-' ? x.argument : x
   if (lit.kind !== 'literal' || typeof lit.value !== 'number' || lit.float === true) return null
   if (!Number.isInteger(lit.value)) return null
+
   return `${x === lit ? '' : '-'}${wholeDoubleLiteral(lit.value)}`
 }
 
@@ -3438,6 +3524,7 @@ function emitKotlinMapFromPairs(
     const v = withExpectedTypeKotlin(mt.kind === 'map' ? mt.value : undefined, () =>
       emitKotlinExpr(pairs.value, indent),
     )
+
     return `${src}.associate { ${kotlinIdent(p)} -> ${k} to ${v} }.toMutableMap()`
   } finally {
     _activeEnumType = prevEnum
@@ -3489,6 +3576,7 @@ function kotlinCallbackParamBindings(e: ExprIR): [string, TypeIR][] {
     // would type it, now that the element beside it is typed.
     const out: [string, TypeIR][] = [[cb.params[0]!, recvT.element]]
     if (cb.params.length >= 2) out.push([cb.params[1]!, { kind: 'number' }])
+
     return out
   }
   if (prop === 'reduce' && cb.params.length >= 2) {
@@ -3499,8 +3587,10 @@ function kotlinCallbackParamBindings(e: ExprIR): [string, TypeIR][] {
     const out: [string, TypeIR][] = []
     if (accT.kind !== 'unknown') out.push([cb.params[0]!, accT])
     if (recvT.element.kind !== 'unknown') out.push([cb.params[1]!, recvT.element])
+
     return out
   }
+
   return []
 }
 
@@ -3527,6 +3617,7 @@ function kotlinTimerCall(e: Extract<ExprIR, { kind: 'call' }>, indent: number): 
         ? `{ ${kotlinIdent(cb.name)}() }`
         : `{ ${emitKotlinExpr(cb, indent)}() }`
   const ms = e.args[1] === undefined ? '0L' : emitKotlinExpr(e.args[1], indent)
+
   return `PyreonTimers.${name}(${ms}) ${closure}`
 }
 
@@ -3540,6 +3631,7 @@ function kotlinParseFailureTest(arg: ExprIR, indent: number, test: 'isNaN' | 'is
   const s = emitKotlinExpr(arg.args[0]!, indent)
   const radix = arg.args[1]
   const parsed = radix === undefined ? `pyreonParseInt(${s})` : `pyreonParseInt(${s}, ${kotlinIntArg(radix, indent)})`
+
   return test === 'isNaN' ? `(${parsed} == null)` : `(${parsed} != null)`
 }
 
@@ -3566,9 +3658,11 @@ function kotlinReactivityPassthrough(e: Extract<ExprIR, { kind: 'call' }>, inden
     _emitWarnings.push(
       `${e.callee.name}(() => { …; return value }): a block body that returns a value has no native lowering — write the value as an expression body (\`${e.callee.name}(() => value)\`), or run the statements and read the value after.`,
     )
+
     return undefined
   }
   const pad = ' '.repeat(indent)
+
   return `run {\n${emitKotlinStmtLines(fn.stmts, indent + 2, { synthesizedDataClasses: [], componentName: '', lambdaLabel: 'run' }).join('\n')}\n${pad}}`
 }
 
@@ -3608,6 +3702,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (_activeEnumType !== undefined) {
           return `${_activeEnumType}.${kotlinEnumEntry(e.value)}`
         }
+
         return kotlinStr(e.value)
       }
       if (typeof e.value === 'boolean') return e.value ? 'true' : 'false'
@@ -3636,11 +3731,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (typeof e.value === 'number' && Number.isInteger(e.value)) {
         return `${e.value}L`
       }
+
       return String(e.value)
     case 'identifier': {
       const constant = lowerPluginIdentifier(e.name, 'kotlin', () => kotlinEmitContext(0))
       if (constant !== undefined) return constant
       if (isModuleStateReadKt(e.name)) return `${moduleStateClassName()}.${kotlinIdent(e.name)}`
+
       return kotlinIdent(e.name)
     }
     case 'await':
@@ -3668,6 +3765,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (e.type === undefined) return '""'
       if (_kotlinThrowCtx === 'none')
         _pushKotlinEmitWarning(uncaughtThrowWarning('`JSON.parse(…)`, which throws on malformed input,'))
+
       return `PyreonJson.parse<${kotlinType(e.type)}>(${emitKotlinExpr(e.arg, indent)})`
     case 'call': {
       if (_kotlinThrowCtx !== 'none' && !_kotlinRethrowingCalls.has(e)) {
@@ -3729,6 +3827,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             ? `(${emitKotlinExpr(arg, indent)}).map { it.toDouble() }`
             : emitKotlinExpr(arg, indent),
         )
+
         return `${kotlinIdent(e.callee.name)}(${args.join(', ')})`
       }
       // `Object.keys(<object-typed expr>)` → `listOf("a","b")` of the
@@ -3760,6 +3859,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         _emitWarnings.push(
           `Object.${e.callee.property}(...) has no native equivalent — only Object.keys() / Object.values() on a statically-known HOMOGENEOUS object shape are supported (it lowers to a literal key list). Emitting an empty list; restructure to avoid runtime object reflection on native.`,
         )
+
         return e.callee.property === 'keys' ? 'emptyList<String>()' : 'emptyList<Any>()'
       }
       // `untrack` / `batch` / `.peek()` — their plain evaluation (mirror of the Swift lowering).
@@ -3780,6 +3880,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const parts = e.args.map((a) => emitKotlinExpr(a, indent))
         if (parts.length === 0) return 'println()'
         if (parts.length === 1) return `println(${parts[0]!})`
+
         return `println(listOf<Any?>(${parts.join(', ')}).joinToString(" "))`
       }
       // `String(x)` — JS number/value → string coercion. Kotlin has NO
@@ -3797,6 +3898,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         ) {
           return `pyreonNumberString(${emitKotlinExpr(e.args[0]!, indent)})`
         }
+
         return `(${emitKotlinExpr(e.args[0]!, indent)}).toString()`
       }
       // Timers → the runtime's `PyreonTimers` (`PyreonTimers.kt`) — the mirror of the Swift lowering.
@@ -3868,6 +3970,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (t2.kind === 'typeRef' && (t2.name === 'Double' || t2.name === 'Float'))
               return 'double'
             if (t2.kind !== 'number') return 'other'
+
             return t2.float === true ? 'double' : 'int'
           }
           const f0 = fl(e.args[0]!)
@@ -3877,6 +3980,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             const a1 = emitKotlinExpr(e.args[1]!, indent)
             const w0 = f0 === 'int' ? `(${a0}).toDouble()` : a0
             const w1 = f1 === 'int' ? `(${a1}).toDouble()` : a1
+
             return `Math.${e.callee.property}(${w0}, ${w1})`
           }
         }
@@ -3900,6 +4004,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             : isMax
               ? 'Long.MIN_VALUE'
               : 'Long.MAX_VALUE'
+
           return `(${arrStr}.${isMax ? 'maxOrNull' : 'minOrNull'}() ?: ${sentinel})`
         }
         const fn = e.callee.property
@@ -4073,11 +4178,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           if (inner.kind === 'number')
             return `((${arg} ?: ${kotlinZero(inner)}) != ${kotlinZero(inner)})`
           if (inner.kind === 'string') return `(${arg} ?: "").isNotEmpty()`
+
           return `(${arg} != null)`
         }
         _emitWarnings.push(
           `Boolean(${arg}): the argument's type could not be inferred, so the JS-truthiness lowering (!= 0 / isNotEmpty / != null) cannot be chosen — emitting the raw call, which does not compile on Kotlin. Give the argument a resolvable type (signal<T>, a typed param, a declared struct field).`,
         )
+
         return `Boolean(${arg})`
       }
       // A member-scope receiver exposes signal reads as stored properties.
@@ -4130,6 +4237,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               ? `(pyreonParseInt(${arg}) ?: 0L)`
               : `(pyreonParseInt(${arg}, ${kotlinIntArg(radix, indent)}) ?: 0L)`
           }
+
           return e.callee.name === 'parseFloat' ? `pyreonParseFloat(${arg})` : `pyreonToNumber(${arg})`
         }
         if (e.callee.name === 'parseInt') {
@@ -4140,8 +4248,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             const r = kotlinIntArg(radix, indent)
             return `((${arg}).toLongOrNull(${r}) ?: 0L)`
           }
+
           return `((${arg}).toLongOrNull() ?: 0L)`
         }
+
         return `((${arg}).toDoubleOrNull() ?: 0.0)`
       }
       // Phase-5 native-container reactive FIELD read via the web signal-read
@@ -4213,6 +4323,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (prevEnumType !== undefined || _activeEnumType !== undefined) {
           _activeEnumType = prevEnumType
         }
+
         return `${target} = ${value}`
       }
       // Disambiguate signal/computed read vs function call for zero-
@@ -4238,6 +4349,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           return svc.kotlinState?.includes(svc.callRead) === true ? `${read}.value` : read
         }
         if (isModuleStateReadKt(e.callee.name)) return `${moduleStateClassName()}.${kotlinIdent(e.callee.name)}`
+
         return kotlinIdent(e.callee.name)
       }
       // TS-method translation (Phase 2 follow-up). When the callee is a
@@ -4414,6 +4526,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               const el = kotlinIdent(cb.params[0]!)
               const idx = kotlinIdent(cb.params[1]!)
               const fn = prop === 'map' ? 'mapIndexed' : 'forEachIndexed'
+
               return `${obj}${objDot}${fn}({ ${KOTLIN_INDEX_PARAM}, ${el} ->${emitKotlinIndexedBody(cb, indent, fn, idx)}})`
             }
             break
@@ -4453,6 +4566,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               if (objDot === '?.') {
                 return `${obj}?.let { java.text.Collator.getInstance().compare(it, ${argExprs[0]!}).toLong() }`
               }
+
               return kotlinLongOf(`java.text.Collator.getInstance().compare(${obj}, ${argExprs[0]!})`)
             }
             _emitWarnings.push(
@@ -4582,6 +4696,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                 const count = kotlinIntArg(objExpr.args[0]!, indent)
                 return `List(${count}) { ${argExprs[0]!} }`
               }
+
               return `List(${obj}${objDot}size) { ${argExprs[0]!} }`
             }
             break
@@ -4602,6 +4717,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                 break
               }
               const i = kotlinIntArg(e.args[0]!, indent)
+
               return `${obj}${objDot}getOrNull(if ((${i}) < 0) ${obj}${objDot}size + (${i}) else (${i}))`
             }
             break
@@ -4810,6 +4926,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                   : bodyT.kind === 'number'
                     ? `(${body}).compareTo(0L)`
                     : body
+
               return `${obj}${objDot}sortedWith(Comparator { ${ps} -> ${cmpBody} })`
             }
             // Swift twin's rationale — `sort()` with no comparator broke out
@@ -4842,6 +4959,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               _emitWarnings.push(
                 '.toLocaleString() reached the emitter unlowered — the built-in `ecmascript-intl` plugin (which lowers it to PyreonNumberFormat) is not active in this compiler. Emitting a plain string conversion (no locale, no grouping).',
               )
+
               return `(${obj}).toString()`
             }
             break
@@ -4869,6 +4987,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // `f?.invoke(args)` (a bare `f?()` is not Kotlin syntax — a nullable
       // function is invoked via `.invoke` under `?.`).
       if (e.optional === true) return `${callee}?.invoke(${args})`
+
       return `${callee}(${args})`
     }
     case 'index': {
@@ -4884,6 +5003,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           exprHasOptionalLink(e.object) || typeIsOptional(inferType(e.object, _kotlinExprInferCtx))
             ? '?.'
             : '.'
+
         return `${emitKotlinExpr(e.object, indent)}${dot}getOrNull(${kotlinListIndex(e.object, e.index, indent)})`
       }
       // A provably-Double index (Math.floor returns Double, JS-faithful)
@@ -4965,6 +5085,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         return `${emitKotlinExpr(e.object, indent)}${dot}length${dot === '?.' ? '?.' : '.'}toLong()`
       }
+
       return `${emitKotlinExpr(e.object, indent)}${dot}${kotlinIdent(e.property)}`
     }
     case 'binary': {
@@ -5005,8 +5126,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           if (t.kind === 'number' && t.float === true) {
             return `pyreonNumberString(${emitted})`
           }
+
           return t.kind === 'number' || t.kind === 'boolean' ? `(${emitted}).toString()` : emitted
         }
+
         return `${coerce(e.left, bl)} + ${coerce(e.right, br)}`
       }
       // Bitwise ops — Kotlin has NO bitwise symbols; they're INFIX
@@ -5030,8 +5153,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             : isCompoundExpr(e.right)
               ? `(${br})`
               : br
+
         return `${L} ${infix} ${R}`
       }
+
       return `${bl} ${e.op} ${br}`
     }
     case 'template': {
@@ -5046,6 +5171,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         s += escapeKotlinStringSegment(e.quasis[i] ?? '')
         if (i < e.exprs.length) s += `\${${kotlinTemplatePart(e.exprs[i]!, indent)}}`
       }
+
       return s + '"'
     }
     case 'comparison': {
@@ -5096,6 +5222,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (prevEnumType !== undefined || _activeEnumType !== undefined) {
         _activeEnumType = prevEnumType
       }
+
       return `${leftStr} ${e.op} ${rightStr}`
     }
     case 'unary': {
@@ -5119,6 +5246,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (tT.kind === 'boolean') return isDoubleNeg ? tStr : `!${emitKotlinExpr(inner, indent)}`
         if (typeIsOptional(tT)) return isDoubleNeg ? `(${tStr} != null)` : `(${tStr} == null)`
       }
+
       return `${e.op}${emitKotlinExpr(e.argument, indent)}`
     }
     case 'logical':
@@ -5158,10 +5286,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           }
           const falsy =
             k === 'string' ? '__or.isEmpty()' : k === 'int' ? '__or == 0L' : '__or == 0.0 || __or.isNaN()'
+
           return `(${asDouble(e.left, lt)}).let { __or -> if (${falsy}) ${asDouble(e.right, rt)} else __or }`
         }
       }
       warnNonBooleanLogical(e.op, e.left, e.right, (x) => inferType(x, _kotlinExprInferCtx))
+
       return `${emitKotlinExpr(e.left, indent)} ${e.op} ${emitKotlinExpr(e.right, indent)}`
     case 'ternary': {
       // Kotlin doesn't have a ternary operator; the idiomatic form is an
@@ -5221,6 +5351,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (tf === 'double' && of === 'int') elseStr = `(${elseStr}).toDouble()`
         else if (tf === 'int' && of === 'double') thenStr = `(${thenStr}).toDouble()`
       }
+
       return `if (${condStr}) ${thenStr} else ${elseStr}`
     }
     case 'update':
@@ -5258,6 +5389,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                 .map((n, i2) => `${kotlinIdent(n)}: ${kotlinType(types[i2]!, undefined, n)}`)
                 .join(', ')
             }
+
             return e.params.map((n) => kotlinIdent(n)).join(', ')
           }
           // A BLOCK body carries `stmts` — mirror of the Swift plain-path fix
@@ -5306,11 +5438,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                 const sig = e.params
                   .map((pn, pi) => `${kotlinIdent(pn)}: ${kotlinType(types![pi]!, undefined, pn)}`)
                   .join(', ')
+
                 return `fun(${sig}): ${kotlinType(e.returnAnnot)} {\n${lines}\n${' '.repeat(indent)}}`
               }
               _emitWarnings.push(
                 `a multi-statement callback with early returns is not lowered on Kotlin at this call site yet (labeled-return wiring) — the body was DROPPED; annotate every param AND the return type for the anonymous-function form, or restructure as an expression body.`,
               )
+
               return `{ ${ktLambdaParams()} -> Unit }`
             }
             const saved = seedHandlerLocals(e.stmts, _kotlinExprInferCtx)
@@ -5318,6 +5452,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             const lines = emitKotlinStmtLines(e.stmts, indent + 2, stmtCtx).join('\n')
             _kotlinExprInferCtx.locals = saved
             const params = e.params.length > 0 ? `${ktLambdaParams()} ->` : ''
+
             return `{ ${params}\n${lines}\n${' '.repeat(indent)}}`
           }
           if (e.params.length === 0) return `{ ${emitKotlinExpr(e.body, indent)} }`
@@ -5340,6 +5475,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               `new Map(${src}): only a copy of another Map / Record lowers natively (or a literal \`[[k, v], …]\` array, or \`xs.map((x) => [k, v])\`) — the argument here is not one. Construct the map empty and populate it with \`.set(k, v)\`.`,
             )
           }
+
           return `${src}.toMutableMap()`
         }
         if (e.pairsFrom !== undefined) return emitKotlinMapFromPairs(e, e.pairsFrom, indent)
@@ -5348,8 +5484,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           const body = e.entries
             .map(([k, v]) => `${emitKotlinExpr(k, indent)} to ${emitKotlinExpr(v, indent)}`)
             .join(', ')
+
           return `mutableMapOf(${body})`
         }
+
         return `mutableMapOf<${kotlinType(e.keyType!)}, ${kotlinType(e.valueType!)}>()`
       }
       if (e.seed !== undefined) return `(${emitKotlinExpr(e.seed, indent)}).toMutableSet()`
@@ -5396,6 +5534,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       )
       if (spreadConcat !== null) return spreadConcat
       const elT = _expectedTypeKotlin?.kind === 'array' ? _expectedTypeKotlin.element : undefined
+
       return `listOf(${e.elements.map((el) => withExpectedTypeKotlin(elT, () => emitKotlinExpr(el, indent))).join(', ')})`
     }
     case 'spread':
@@ -5414,6 +5553,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       _emitWarnings.push(
         "Spread arguments (`f(...args)`) aren't supported in native (PMTC) — a Swift/Kotlin call takes a fixed argument list, not a variadic spread. Pass arguments explicitly, e.g. `f(a, b)`.",
       )
+
       return emitKotlinExpr(e.argument, indent)
     case 'object': {
       const argExpected = _argExpectedTypesKotlin.get(e)
@@ -5430,6 +5570,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               `${kotlinStr(f.name)} to ${withExpectedTypeKotlin(vT, () => emitKotlinExpr(asFloatLiteral(f.value, vT), indent))}`,
           )
           .join(', ')
+
         return `mutableMapOf(${entries})`
       }
       // G4 — partial-update form. When the object has EXACTLY ONE
@@ -5466,6 +5607,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             const overrides = plan.fields
               .map((f) => `${kotlinMember(f.name)} = ${kotlinSpreadOverride(plan.source, f, indent)}`)
               .join(', ')
+
             return `${target}.copy(${overrides})`
           }
         }
@@ -5484,6 +5626,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const overrides = e.fields
           .map((f) => `${kotlinMember(f.name)} = ${kotlinSpreadOverride(spreadSource, f, indent)}`)
           .join(', ')
+
         return `${target}.copy(${overrides})`
       }
       // Phase 2 follow-up — when no spread + field-set matches a known
@@ -5542,6 +5685,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           const args = e.fields
             .map((f) => `${kotlinMember(f.name)} = ${emitKotlinExpr(f.value, indent)}`)
             .join(', ')
+
           return `${kotlinIdent(synthName)}(${args})`
         }
         // Last resort before the (INVALID-Kotlin) tuple: match an
@@ -5573,6 +5717,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           const args = e.fields
             .map((f) => `${kotlinMember(f.name)} = ${emitKotlinExpr(f.value, indent)}`)
             .join(', ')
+
           return `${kotlinIdent(byNames.name)}(${args})`
         }
       }
@@ -5580,6 +5725,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       const fields = e.fields
         .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
         .join(', ')
+
       return `(${fields})`
     }
     case 'paren':
@@ -5816,6 +5962,7 @@ const kotlinStructRegistry: StructRegistry = {
           .sort()
           .join(','),
       )
+
     return declared ?? synthTypedStructName([...fields], _synthExprStructs, _synthExprStructKeys)
   },
   forLiteralFields(fields) {
@@ -5956,6 +6103,7 @@ function emitKotlinJsxElement(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
       if (pinned === undefined) return box
       const night = pinned === 'dark' ? 'UI_MODE_NIGHT_YES' : 'UI_MODE_NIGHT_NO'
       const cfg = `Configuration(LocalConfiguration.current).apply { uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or Configuration.${night} }`
+
       return `CompositionLocalProvider(LocalConfiguration provides ${cfg}) {\n${inner}${box}\n${' '.repeat(indent)}}`
     } finally {
       _colorScope = prevScope
@@ -6075,8 +6223,10 @@ function emitKotlinTextField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     const keyboardArgs = submit
       ? `, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { ${emitKotlinExpr(submit, indent + 2)} })`
       : ''
+
     return `TextField(value = ${sig}, onValueChange = { ${sig} = it }${keyboardArgs}${placeholder})`
   }
+
   return emitKotlinGeneric(e, indent)
 }
 
@@ -6109,6 +6259,7 @@ function extractEnterSubmitAction(attrs: AttrIR[]): ExprIR | undefined {
     return undefined
   }
   if (left.right.kind !== 'literal' || left.right.value !== 'Enter') return undefined
+
   return body.right
 }
 
@@ -6234,6 +6385,7 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
       parts.push(kotlinInterpSegment(childExpr, indent))
     }
   }
+
   return `Text(text = "${parts.join('')}"${typoArgs}${colorArg}${sizeArg}${weightArg}${fontArg}${truncArgs}${modArg})`
 }
 
@@ -6258,6 +6410,7 @@ function kotlinInterpSegment(e: ExprIR, indent: number): string {
   }
   // A Double prints as JavaScript does (`7`, not `7.0`) — see kotlinTemplatePart.
   if (t.kind === 'number' && t.float === true) return `\${pyreonNumberString(${emitted})}`
+
   return `\${${emitted}}`
 }
 
@@ -6283,8 +6436,10 @@ function buttonLabelIsTextOnly(children: readonly ChildIR[]): boolean {
     if (Array.isArray(n)) return n.some(hasJsx)
     const k = (n as { kind?: unknown }).kind
     if (k === 'jsx-element' || k === 'jsx-fragment') return true
+
     return Object.values(n).some(hasJsx)
   }
+
   return children.every(
     (c) =>
       c.kind === 'text' ||
@@ -6344,6 +6499,7 @@ function emitKotlinButton(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   } else {
     body = `${variant.composable}(${buttonArgs}) {\n${e.children.map((c) => pad + emitKotlinChild(c, inner + 2)).join('\n')}\n${' '.repeat(inner)}}`
   }
+
   return pressed ? kotlinWrapPressState(body, indent) : body
 }
 
@@ -6366,6 +6522,7 @@ function kotlinButtonVariant(e: Extract<ExprIR, { kind: 'jsx-element' }>): {
     _emitWarnings.push(
       `<Button variant>: only a static literal lowers (primary | secondary | ghost | danger) — the variant selects a different composable, which a runtime value cannot. The button falls back to the default style.`,
     )
+
     return plain
   }
   switch (v) {
@@ -6385,6 +6542,7 @@ function kotlinButtonVariant(e: Extract<ExprIR, { kind: 'jsx-element' }>): {
       _emitWarnings.push(
         `<Button variant=${kotlinStr(v)}>: not one of primary | secondary | ghost | danger — the button falls back to the default style.`,
       )
+
       return plain
   }
 }
@@ -6423,6 +6581,7 @@ function kotlinEnabledArg(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   // — `!` applied to a String, which does not compile. Swift has no inversion
   // to get wrong (`.disabled(tab == "")`), so this broke on Android only.
   const read = emitKotlinSignalRead(unwrapAccessorArrow(attr.value))
+
   return /^[A-Za-z_][\w.]*(\(\))?$/.test(read) ? `enabled = !${read}` : `enabled = !(${read})`
 }
 
@@ -6477,8 +6636,10 @@ function emitKotlinActionBody(handler: ExprIR, indent: number): string {
         if (bodyAwaitsFallible(handler.stmts, isThrowingPluginExpr) || asyncMayThrow) {
           return `${head}\n${pad}${PYREON_ASYNC_SCOPE}.launch {\n${pad}  try {\n${indentLines(lines, 4)}\n${pad}  } ${KOTLIN_UNHANDLED_ASYNC}\n${pad}}\n${' '.repeat(indent)}}`
         }
+
         return `${head}\n${pad}${PYREON_ASYNC_SCOPE}.launch {\n${lines}\n${pad}}\n${' '.repeat(indent)}}`
       }
+
       return `${head}\n${lines}\n${' '.repeat(indent)}}`
     }
     // Preserve arrow parameter names in the Kotlin lambda.
@@ -6509,6 +6670,7 @@ function emitKotlinActionBody(handler: ExprIR, indent: number): string {
         _hasAsyncHandler = true
         return `{ ${PYREON_ASYNC_SCOPE}.launch { ${kotlinLaunchBody(handler.body, indent)} } }`
       }
+
       return `{ ${emitKotlinExpr(handler.body, indent)} }`
     }
     const paramList = handler.params.map(kotlinIdent).join(', ')
@@ -6516,6 +6678,7 @@ function emitKotlinActionBody(handler: ExprIR, indent: number): string {
       _hasAsyncHandler = true
       return `{ ${paramList} -> ${PYREON_ASYNC_SCOPE}.launch { ${kotlinLaunchBody(handler.body, indent)} } }`
     }
+
     return `{ ${paramList} -> ${emitKotlinExpr(handler.body, indent)} }`
   }
   // Resolve to a function-typed identifier (bare OR props-member),
@@ -6524,6 +6687,7 @@ function emitKotlinActionBody(handler: ExprIR, indent: number): string {
   if (handler.kind === 'identifier' && _functionNames.has(handler.name)) {
     if (_kotlinThrowingFns.has(handler.name))
       _pushKotlinEmitWarning(uncaughtThrowWarning(`The handler \`${handler.name}\`, which can throw,`))
+
     return `{ ${kotlinIdent(handler.name)}() }`
   }
   if (
@@ -6535,6 +6699,7 @@ function emitKotlinActionBody(handler: ExprIR, indent: number): string {
   ) {
     return `{ ${kotlinIdent(handler.property)}() }`
   }
+
   return `{ ${emitKotlinExpr(handler, indent)} }`
 }
 
@@ -6640,6 +6805,7 @@ function forRowBodyKotlin(
     if (!_emitWarnings.includes(w)) _emitWarnings.push(w)
     return ''
   }
+
   return emitKotlinViewBlock(block, indent + 4)
     .join('\n')
     .trimStart()
@@ -6755,6 +6921,7 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
       `${outerClose}}`
     )
   }
+
   return (
     `LazyColumn {\n` +
     `${' '.repeat(indent + 2)}items(${items}, key = { ${idPath} }) { ${kotlinIdent(param)} ->\n` +
@@ -6809,6 +6976,7 @@ function emitKotlinShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     const fbBody = fb.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
     return `if (${cond}) {\n${body}\n${' '.repeat(indent)}} else {\n${fbBody}\n${' '.repeat(indent)}}`
   }
+
   return `if (${cond}) {\n${body}\n${' '.repeat(indent)}}`
 }
 
@@ -6856,6 +7024,7 @@ function emitKotlinSuspense(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
         '<Suspense fallback={…}> on Kotlin target: only JSX-literal fallback is supported in v1 (e.g. `fallback={<Spinner/>}`). Falling back to walled emit.',
       )
     }
+
     return emitKotlinWalledTagAsChildren(e, indent, 'Suspense')
   }
   const fallbackChildren = fbPlan.children
@@ -6877,6 +7046,7 @@ function emitKotlinSuspense(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
     _asyncDeclsKotlin.length > 0
       ? _asyncDeclsKotlin.map((d) => asyncStateKotlin(d, indent).pending).join(' || ')
       : 'false'
+
   return (
     `if (${isLoading}) {\n` + `${fallbackBody}\n` + `${p}} else {\n` + `${childrenBody}\n` + `${p}}`
   )
@@ -6907,6 +7077,7 @@ function emitKotlinErrorBoundary(
         '<ErrorBoundary fallback={…}> on Kotlin target: only JSX-literal fallback is supported in v1 (e.g. `fallback={<ErrorView/>}`). Falling back to walled emit.',
       )
     }
+
     return emitKotlinWalledTagAsChildren(e, indent, 'ErrorBoundary')
   }
   const fallbackChildren = fbPlan.children
@@ -6922,6 +7093,7 @@ function emitKotlinErrorBoundary(
     _asyncDeclsKotlin.length > 0
       ? _asyncDeclsKotlin.map((d) => asyncStateKotlin(d, indent).error).join(' || ')
       : 'false'
+
   return (
     `if (${hasError}) {\n` + `${fallbackBody}\n` + `${p}} else {\n` + `${childrenBody}\n` + `${p}}`
   )
@@ -6947,6 +7119,7 @@ function emitKotlinKeepAlive(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const childrenBody = e.children
     .map((c) => inner + '  ' + emitKotlinChild(c, indent + 4))
     .join('\n')
+
   return `PyreonKeepAliveWrapper(when_ = ${whenExpr}) {\n` + `${childrenBody}\n` + `${p}}`
 }
 
@@ -7030,6 +7203,7 @@ function emitKotlinWalledTagAsChildren(
         }. Use a per-target adapter (Layer 4: <NativeAndroid>) for full semantic parity.`,
     )
   }
+
   return (
     `// [Pyreon] <${tag}> unsupported on Android — rendering children only (${limitation}); fallback / cache behaviour inert.\n` +
     `${p}Box {\n${body}\n${p}}`
@@ -7187,6 +7361,7 @@ function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
     }
     const dflt = `tween(durationMillis = 300, easing = ${kotlinEasingFor(undefined)})`
     const t = kotlinTransitionForName(transitionName, dflt)
+
     return (
       `AnimatedVisibility(visible = ${cond}, enter = ${t.enter}, exit = ${t.exit}${tModArg}) {\n` +
       `${body}\n${' '.repeat(indent)}}`
@@ -7201,6 +7376,7 @@ function emitKotlinTransition(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
     )
   }
   const spec = `tween(durationMillis = ${duration ?? 300}, easing = ${kotlinEasingFor(easing)})`
+
   return (
     `AnimatedVisibility(visible = ${cond}, enter = ${kotlinTransitionForName(transitionName, spec).enter}, exit = ${kotlinTransitionForName(transitionName, spec).exit}) {\n` +
     `${body}\n${' '.repeat(indent)}}`
@@ -7294,6 +7470,7 @@ function readStringAttrExprKotlin(
       return `"\${${emitKotlinExpr(a.value, indent)}}"`
     }
   }
+
   return undefined
 }
 
@@ -7321,6 +7498,7 @@ function kotlinStylingValue(
       `<${e.tag} ${name}={…}>: styling tokens resolve at COMPILE time — a fully-dynamic ${name} has no native lowering (it was silently dropped before). Use a fixed token, or a ternary of two literal tokens (${name}={cond ? "sm" : "lg"}).`,
     )
   }
+
   return undefined
 }
 
@@ -7359,6 +7537,7 @@ function readStaticAttrKotlin(
       }
     }
   }
+
   return undefined
 }
 
@@ -7419,6 +7598,7 @@ function kotlinTransformModifiers(e: Extract<ExprIR, { kind: 'jsx-element' }>): 
     if (v.kind === 'unary' && v.op === '-' && v.argument.kind === 'literal' && typeof v.argument.value === 'number') {
       return { lit: -v.argument.value }
     }
+
     return { expr: emitKotlinExpr(v, 0) }
   }
   const dp = (v: { lit?: number; expr?: string }): string =>
@@ -7435,6 +7615,7 @@ function kotlinTransformModifiers(e: Extract<ExprIR, { kind: 'jsx-element' }>): 
   if (scale !== undefined) out.push(`.scale(${float(scale)})`)
   const rotate = value('rotate')
   if (rotate !== undefined) out.push(`.rotate(${float(rotate)})`)
+
   return out
 }
 
@@ -7567,6 +7748,7 @@ function emitKotlinLayoutModifier(
   // element's own padding / background.
   parts.push(...lowerPluginRefModifiers(e, 'kotlin', () => kotlinEmitContext(0)))
   if (parts.length === 0) return ''
+
   return `Modifier${parts.join('')}`
 }
 
@@ -7645,6 +7827,7 @@ function emitKotlinStack(
   const contentLines = _kotlinLayout.children(isRow ? 'row' : 'column', () =>
     e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n'),
   )
+
   return `${composable}${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}`
 }
 
@@ -7696,6 +7879,7 @@ function kotlinTextArg(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
     const childExpr = resolveAccessorChild(c.expr)
     parts.push(`\${${emitKotlinExpr(childExpr, indent)}}`)
   }
+
   return `"${parts.join('')}"`
 }
 
@@ -7726,6 +7910,7 @@ function emitKotlinHeading(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   // Same data-testid threading as Text (device-found bug class).
   const mod = emitKotlinLayoutModifier(e)
   if (mod !== '') args.push(`modifier = ${mod}`)
+
   return `Text(${args.join(', ')})`
 }
 
@@ -7781,6 +7966,7 @@ function emitKotlinIcon(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   const modifier =
     layoutMod !== '' ? `${layoutMod}${sizeMod}` : sizeMod !== '' ? `Modifier${sizeMod}` : ''
   if (modifier !== '') args.push(`modifier = ${modifier}`)
+
   return `Icon(${args.join(', ')})`
 }
 
@@ -7833,6 +8019,7 @@ function withKotlinWebViewGrow(e: Extract<ExprIR, { kind: 'jsx-element' }>, chai
   if (grow.warning !== undefined) _emitWarnings.push(grow.warning)
   if (grow.axis === undefined) return chain
   const head = grow.weighted ? 'Modifier.weight(1f)' : 'Modifier.fillMaxSize()'
+
   return chain === '' ? head : `${head}${chain.replace(/^Modifier/, '')}`
 }
 
@@ -7859,6 +8046,7 @@ function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     _emitWarnings.push(
       '<WebView>: needs an `html` or `src` attribute on native; emitting an empty PyreonWebView().',
     )
+
     return `PyreonWebView(${kotlinWebViewModifierArg(e).replace(/^, /, '')})`
   }
   const domStorage = lowerWebViewDomStorage(e, readStaticAttrKotlin, 'kotlin')
@@ -7891,8 +8079,10 @@ function emitKotlinMessageHandler(handler: ExprIR): string {
         return '{ _ -> }'
       }
       const param = handler.params.length > 0 ? kotlinIdent(handler.params[0]!) : '_'
+
       return `{ ${param} -> ${emitKotlinExpr(handler.body, 0)} }`
     }
+
     return `{ pyreonMsg -> ${emitKotlinExpr(handler, 0)}(pyreonMsg) }`
   })
 }
@@ -7927,11 +8117,14 @@ function kotlinWebViewDataArg(dataExpr: ExprIR): string {
             ? `PyreonJson.encode(${emitKotlinExpr(segment.spread, 0)}).drop(1).dropLast(1)`
             : render(segment.parts),
         )
+
         return `\${"[" + listOf(${segments.join(', ')}).filter { it.isNotEmpty() }.joinToString(",") + "]"}`
       })
       .join('')
+
     return `"${body}"`
   }
+
   return render(parts)
 }
 
@@ -7946,6 +8139,7 @@ function kotlinWebViewContentArg(e: Extract<ExprIR, { kind: 'jsx-element' }>): s
   if (typeof src === 'string') return `src = ${kotlinStr(src)}`
   const dynSrc = dynamicWebViewAttrKotlin(e, 'src')
   if (dynSrc !== undefined) return `src = ${emitKotlinExpr(dynSrc, 0)}`
+
   return undefined
 }
 
@@ -7961,6 +8155,7 @@ function dynamicWebViewAttrKotlin(
       return v
     }
   }
+
   return undefined
 }
 
@@ -7983,6 +8178,7 @@ function kotlinImageDim(
     // TS integer is a Long (see KOTLIN_INT). Identity on a Double.
     return `(${emitKotlinExpr(attr.value, 0)}).toDouble().dp`
   }
+
   return undefined
 }
 
@@ -8059,6 +8255,7 @@ function emitKotlinAudio(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   // twin for why this was missing.
   const audioMod = emitKotlinLayoutModifier(e)
   if (audioMod !== '') args.push(`modifier = ${audioMod}`)
+
   return `PyreonAudioPlayer(${args.join(', ')})`
 }
 
@@ -8128,6 +8325,7 @@ function emitKotlinVideo(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
         ? `Modifier${modParts.join('')}`
         : ''
   if (modifier !== '') args.push(`modifier = ${modifier}`)
+
   return `PyreonVideoPlayer(${args.join(', ')})`
 }
 
@@ -8216,6 +8414,7 @@ function emitKotlinImage(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   const scale = typeof fit === 'string' ? KOTLIN_CONTENT_SCALE[fit] : KOTLIN_CONTENT_SCALE['cover']
   if (scale !== undefined) args.push(`contentScale = ${scale}`)
   if (modifier !== '') args.push(`modifier = ${modifier}`)
+
   return `AsyncImage(${args.join(', ')})`
 }
 
@@ -8261,6 +8460,7 @@ function emitKotlinLayer(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
     return `Box${initSignature} {}`
   }
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+
   return `Box${initSignature} {\n${contentLines}\n${' '.repeat(indent)}}`
 }
 
@@ -8328,6 +8528,7 @@ function containsLazyListDeep(children: readonly ChildIR[]): boolean {
       if (containsLazyListDeep(e.children)) return true
     }
   }
+
   return false
 }
 
@@ -8406,6 +8607,7 @@ function emitKotlinScrollBody(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
     )
   }
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+
   return `${composable}(modifier = ${modifier}) {\n${contentLines}\n${' '.repeat(indent)}}`
 }
 
@@ -8473,6 +8675,7 @@ function emitKotlinModal(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   const contentLines = e.children
     .map((c) => contentPad + emitKotlinChild(c, indent + 4 + extra))
     .join('\n')
+
   return (
     `if (${cond}) {\n` +
     `${dialogPad}Dialog(onDismissRequest = ${onDismiss}) {\n` +
@@ -8498,6 +8701,7 @@ function emitKotlinNavPane(children: readonly ChildIR[], indent: number): string
   if (children.length === 1) return pad + emitKotlinChild(children[0]!, indent)
   if (children.length === 0) return `${pad}// empty pane`
   const inner = children.map((c) => ' '.repeat(indent + 2) + emitKotlinChild(c, indent + 2)).join('\n')
+
   return `${pad}Column {\n${inner}\n${pad}}`
 }
 
@@ -8531,6 +8735,7 @@ function emitKotlinTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     pushKotlinNavWarning(
       '<Tabs>: needs `value` bound to a signal (`value={tab}`) or `value` + `onChange` — without one the selection cannot change on Android, so nothing is rendered.',
     )
+
     return '// <Tabs> without a selection binding renders nothing on Android'
   }
   const selected = isSignal
@@ -8553,6 +8758,7 @@ function emitKotlinTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
       ]
       if (t.icon !== undefined) args.push(`icon = Icons.Filled.${t.icon.material}`)
       if (t.testId !== undefined) args.push(`testTag = ${kotlinStr(t.testId)}`)
+
       return `${a2}PyreonTabItem(${args.join(', ')}),`
     })
     .join('\n')
@@ -8560,6 +8766,7 @@ function emitKotlinTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   const branches = tabs
     .map((t) => `${a2}${tabValue(t.value)} -> {\n${emitKotlinNavPane(t.children, indent + 6)}\n${a2}}`)
     .join('\n')
+
   return (
     `PyreonTabs(\n` +
     `${a1}selected = ${selected},\n` +
@@ -8593,6 +8800,7 @@ function emitKotlinRouterTabs(
     pushKotlinNavWarning(
       '<Tabs router={…}>: the router must be the `createRouter({ routes, tabs })` router of the enclosing <RouterProvider>, named directly (and <Tabs> may not sit inside one of its own tabs) — otherwise there are no per-tab stacks to bind, so nothing is rendered on Android.',
     )
+
     return '// <Tabs router> without a tab-bar router renders nothing on Android'
   }
   const { tabs, warnings } = planRouterTabs(e, ctx.tabs)
@@ -8610,6 +8818,7 @@ function emitKotlinRouterTabs(
       ]
       if (t.icon !== undefined) args.push(`icon = Icons.Filled.${t.icon.material}`)
       if (t.testId !== undefined) args.push(`testTag = ${kotlinStr(t.testId)}`)
+
       return `${a2}PyreonTabItem(${args.join(', ')}),`
     })
     .join('\n')
@@ -8624,6 +8833,7 @@ function emitKotlinRouterTabs(
       }
     })
     .join('\n')
+
   return (
     `PyreonTabs(\n` +
     `${a1}selected = ${r}.activeTab.value ?: ${kotlinStr(tabs[0]!.value)},\n` +
@@ -8649,11 +8859,13 @@ function emitKotlinTabStack(ctx: NonNullable<typeof _activeRouterTabsKotlin>, in
     pushKotlinNavWarning(
       '<RouterView /> inside a tab-bar router (createRouter({ tabs })) must sit inside a <Tab> of its <Tabs router> — each tab owns one stack. This one renders nothing on Android.',
     )
+
     return '// <RouterView> outside a <Tab> of a tab-bar router renders nothing on Android'
   }
   const rootRoute = tabRootRoute(ctx.routes, tab.root)
   if (rootRoute === undefined) pushKotlinNavWarning(missingTabRootWarning(tab))
   const dispatch = emitKotlinRouteDispatch(ctx.routes, indent + 2, `${ctx.routerExpr}.tabTop(${kotlinStr(tab.name)})`)
+
   return `PyreonTabStack(${ctx.routerExpr}, ${kotlinStr(tab.name)}) {\n${dispatch}\n${' '.repeat(indent)}}`
 }
 
@@ -8689,6 +8901,7 @@ function emitKotlinSplit(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   const modifier = emitKotlinLayoutModifier(e)
   const side = emitKotlinNavPane(sidebar.kind === 'view' ? sidebar.children : [], indent + 4)
   const detail = emitKotlinNavPane(e.children, indent + 2)
+
   return (
     `PyreonSplit(\n` +
     `${a1}showDetail = ${show},\n` +
@@ -8720,6 +8933,7 @@ function emitKotlinGestureHandler(handler: ExprIR, name: GestureEventName, inden
   }
   const param = handler.params[0]
   if (param === undefined) return emitKotlinAction(handler, indent)
+
   return withKotlinLocals([[param, GESTURE_EVENTS[name].type]], () => emitKotlinAction(handler, indent))
 }
 
@@ -8745,6 +8959,7 @@ function emitKotlinGesture(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   if (e.children.length === 0) return `${head} {}`
   const pad = ' '.repeat(indent + 2)
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+
   return `${head} {\n${contentLines}\n${' '.repeat(indent)}}`
 }
 
@@ -8763,6 +8978,7 @@ function kotlinUsesPressedStyle(e: Extract<ExprIR, { kind: 'jsx-element' }>): bo
   const styleAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'style',
   )
+
   return styleAttr !== undefined && styleUsesPressedState(styleAttr.value)
 }
 
@@ -8799,6 +9015,7 @@ function kotlinCanvasNumber(
   if (v.kind === 'unary' && v.op === '-' && v.argument.kind === 'literal' && typeof v.argument.value === 'number') {
     return `-${lit(v.argument.value)}`
   }
+
   return `(${emitKotlinExpr(v, 0)}).toDouble()`
 }
 
@@ -8810,6 +9027,7 @@ function kotlinShapeColor(e: Extract<ExprIR, { kind: 'jsx-element' }>, prop: str
     _emitWarnings.push(
       `<${e.tag} ${prop}="${String(v)}">: not a colour token or #hex literal — drawn with the \`text\` colour on native.`,
     )
+
     return resolveColor('text', 'kotlin')
   })
 }
@@ -8826,6 +9044,7 @@ function emitKotlinCanvas(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   if (e.children.length === 0) return `${head} {}`
   const pad = ' '.repeat(indent + 2)
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+
   return `${head} {\n${contentLines}\n${' '.repeat(indent)}}`
 }
 
@@ -8841,6 +9060,7 @@ function emitKotlinCanvasShape(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
       _emitWarnings.push(`<${e.tag}> is missing its required \`${arg.prop}\` prop — nothing is drawn on native.`)
       return '""'
     }
+
     return emitKotlinExpr(unwrapAccessorArrow(a.value), 0)
   })
   const fill = spec.strokeOnly ? undefined : kotlinShapeColor(e, 'fill')
@@ -8848,6 +9068,7 @@ function emitKotlinCanvasShape(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
   if (spec.strokeOnly && stroke === undefined) stroke = resolveColor('text', 'kotlin')
   const fillArg = fill ?? (stroke === undefined ? resolveColor('text', 'kotlin') : 'null')
   const width = stroke === undefined ? '0.0' : kotlinCanvasNumber(e, 'strokeWidth', 1)
+
   return `PyreonShape(${spec.kotlin}(${args.join(', ')}), fill = ${fillArg}, stroke = ${stroke ?? 'null'}, strokeWidth = ${width})`
 }
 
@@ -8856,6 +9077,7 @@ function emitKotlinCanvasText(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
   const text = emitKotlinText({ kind: 'jsx-element', tag: 'Text', attrs: [], children: e.children }, indent + 2)
   const color = kotlinShapeColor(e, 'fill') ?? resolveColor('text', 'kotlin')
   const head = `PyreonCanvasText(x = ${kotlinCanvasNumber(e, 'x', undefined)}, y = ${kotlinCanvasNumber(e, 'y', undefined)}, size = ${kotlinCanvasNumber(e, 'size', 14)}, color = ${color})`
+
   return `${head} {\n${' '.repeat(indent + 2)}${text}\n${' '.repeat(indent)}}`
 }
 
@@ -8939,6 +9161,7 @@ function emitKotlinPress(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
       .join('\n')
     body = `Box(modifier = ${modifier}) {\n${contentLines}\n${' '.repeat(indent + (pressed ? 2 : 0))}}`
   }
+
   return pressed ? kotlinWrapPressState(body, indent) : body
 }
 
@@ -8963,6 +9186,7 @@ function kotlinFieldPlaceholder(e: Extract<ExprIR, { kind: 'jsx-element' }>): st
     // String is expected).
     return emitKotlinExpr(unwrapAccessorArrow(attr.value), 0)
   }
+
   return undefined
 }
 
@@ -9004,6 +9228,7 @@ function kotlinFieldVisualTransformation(
     )
     if (w !== undefined) _emitWarnings.push(w)
   }
+
   return kind === 'password' ? 'visualTransformation = PasswordVisualTransformation()' : undefined
 }
 
@@ -9098,6 +9323,7 @@ function emitKotlinField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
     if (enabledDate) dateArgs.push(enabledDate)
     const modDate = emitKotlinLayoutModifier(e)
     if (modDate) dateArgs.push(`modifier = ${modDate}`)
+
     return `PyreonDateField(${dateArgs.join(', ')})`
   }
 
@@ -9168,6 +9394,7 @@ function emitKotlinField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   // instrumented run had reached the assertion yet).
   const fieldModifier = emitKotlinLayoutModifier(e)
   if (fieldModifier) args.push(`modifier = ${fieldModifier}`)
+
   return `TextField(${args.join(', ')})`
 }
 
@@ -9187,6 +9414,7 @@ function emitKotlinSelect(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
     _emitWarnings.push(
       '<Select> needs both `value` and `onChange` to lower — without them there is no selection to show or write. Rendered as nothing on Android.',
     )
+
     return 'Box {}'
   }
   const optionsAttr = attr('options')
@@ -9231,6 +9459,7 @@ function emitKotlinSelect(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   if (enabledArg) args.push(enabledArg)
   const modifier = emitKotlinLayoutModifier(e)
   if (modifier) args.push(`modifier = ${modifier}`)
+
   return `PyreonSelect(${args.join(', ')})`
 }
 
@@ -9306,6 +9535,7 @@ function emitKotlinToggle(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   if (toggleModifier !== '') {
     args.push(`modifier = ${toggleModifier}`)
   }
+
   return `Switch(${args.join(', ')})`
 }
 
@@ -9366,6 +9596,7 @@ function emitKotlinLink(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     return `PyreonLink(${toExpr}) { navigate ->\n${pad}Box(modifier = ${mod}) { }\n${' '.repeat(indent)}}`
   }
   const contentLines = e.children.map((c) => inner + emitKotlinChild(c, indent + 4)).join('\n')
+
   return `PyreonLink(${toExpr}) { navigate ->\n${pad}Box(modifier = ${mod}) {\n${contentLines}\n${pad}}\n${' '.repeat(indent)}}`
 }
 
@@ -9475,6 +9706,7 @@ function emitKotlinRouterProvider(
     return `RouterProvider(${routerExpr}) {\n${routesBlock}\n${' '.repeat(indent)}}`
   }
   const contentLines = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
+
   return `RouterProvider(${routerExpr}) {\n${contentLines}\n${' '.repeat(indent)}}`
 }
 
@@ -9491,6 +9723,7 @@ function subtreeHasRouterView(node: unknown): boolean {
   if (Array.isArray(node)) return node.some(subtreeHasRouterView)
   const n = node as { kind?: unknown; tag?: unknown }
   if (n.kind === 'jsx-element' && n.tag === 'RouterView') return true
+
   return Object.values(node).some(subtreeHasRouterView)
 }
 
@@ -9632,6 +9865,7 @@ function emitKotlinRouteDispatch(
       : `Text(text = "Pyreon Router: no route for \${currentPath}")`
   lines.push(`${innerPad}else -> ${fallback}`)
   lines.push(`${pad}}`)
+
   return lines.join('\n')
 }
 
@@ -9645,6 +9879,7 @@ function kotlinParamFieldExpr(f: { name: string; type: TypeIR }): string {
   const read = `params[${kotlinStr(f.name)}] ?: ""`
   if (f.type.kind === 'number') return `(${read}).toLongOrNull() ?: 0L`
   if (f.type.kind === 'boolean') return `(${read}) == "true"`
+
   return read
 }
 
@@ -9667,9 +9902,11 @@ function kotlinRouteParamsInvocation(
       const args = info.fields
         .map((f) => `${kotlinIdent(f.name)} = ${kotlinParamFieldExpr(f)}`)
         .join(', ')
+
       return { call: `${expr}(params = ${info.typeName}(${args}))`, usesParams: true }
     }
   }
+
   return { call: `${expr}(params = params)`, usesParams: true }
 }
 
@@ -9684,6 +9921,7 @@ function emitKotlinLayoutAwareInvocation(component: ExprIR, indent: number): str
   if (component.kind === 'identifier' && _layoutComponentNames.has(component.name)) {
     return `${expr} {}`
   }
+
   return `${expr}()`
 }
 
@@ -9715,6 +9953,7 @@ function emitKotlinNestedRouteDispatch(
     for (let i = chain.length - 1; i >= 0; i--) {
       acc = `${emitKotlinExpr(chain[i]!, indent + 4)} { ${acc} }`
     }
+
     return acc
   }
   const guardWrap = (guard: ExprIR | undefined, renderCall: string): string =>
@@ -9761,6 +10000,7 @@ function emitKotlinNestedRouteDispatch(
       : `Text(text = "Pyreon Router: no route for \${currentPath}")`
   lines.push(`${innerPad}else -> ${fallback}`)
   lines.push(`${pad}}`)
+
   return lines.join('\n')
 }
 
@@ -9780,6 +10020,7 @@ function emitKotlinRouterView(
   if (_activeRouterTabsKotlin !== null) return emitKotlinTabStack(_activeRouterTabsKotlin, _indent)
   // Inside a routes-bearing `<RouterProvider>`: this is the routed slot.
   if (_activeRouteDispatchKotlin !== null) return _activeRouteDispatchKotlin(_indent)
+
   return `RouterView()`
 }
 
@@ -9800,6 +10041,7 @@ function expandKotlinSpread(
       if (explicitNames.has(f.name)) continue
       out.push(`${kotlinIdent(safeIdent(f.name))} = ${emitKotlinExpr(f.value, indent)}`)
     }
+
     return out
   }
   if (spreadArg.kind === 'identifier' || spreadArg.kind === 'member') {
@@ -9811,12 +10053,14 @@ function expandKotlinSpread(
           `${kotlinIdent(safeIdent(p.name))} = ${emitKotlinExpr({ kind: 'member', object: spreadArg, property: p.name }, indent)}`,
         )
       }
+
       return out
     }
   }
   _emitWarnings.push(
     `<${targetTag} {...}> spread could not be expanded — the target's props are unknown (or the source isn't an object literal / known binding). Pass props explicitly.`,
   )
+
   return out
 }
 
@@ -9943,6 +10187,7 @@ function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   if (attrPairs) {
     return `${tag}(${attrPairs}) {\n${contentLines}\n${' '.repeat(indent)}}`
   }
+
   return `${tag} {\n${contentLines}\n${' '.repeat(indent)}}`
 }
 
@@ -9964,6 +10209,7 @@ function kotlinExprProducesView(e: ExprIR): boolean {
   // as view-producing (and lowered to `if (cond) { … }`) rather than
   // stringified into a Text interpolation.
   if (e.kind === 'paren') return kotlinExprProducesView(e.inner)
+
   return false
 }
 
@@ -9999,6 +10245,7 @@ function emitKotlinChild(c: ChildIR, indent: number): string {
     if (c.expr.kind === 'template') {
       return `Text(text = ${emitKotlinExpr(c.expr, indent)})`
     }
+
     return `Text(text = "${kotlinInterpSegment(c.expr, indent)}")`
   }
   // `{cond && <View/>}` — the dominant React/Solid conditional-render
@@ -10016,8 +10263,10 @@ function emitKotlinChild(c: ChildIR, indent: number): string {
     const cond = kotlinCondition(c.expr.left, (x) => emitKotlinExpr(x, indent))
     const pad = ' '.repeat(indent + 2)
     const inner = emitKotlinChild({ kind: 'expr', expr: c.expr.right }, indent + 2)
+
     return `if (${cond}) {\n${pad}${inner}\n${' '.repeat(indent)}}`
   }
+
   return emitKotlinExpr(c.expr, indent)
 }
 
@@ -10081,6 +10330,7 @@ function escapeKotlinStringSegment(s: string): string {
  * `plugin-scope.ts`.
  */
 let _pluginScope: PluginScope = createPluginScope()
+
 function isLocalModuleReceiver(name: string): boolean {
   return (
     _kotlinExprInferCtx.locals.has(name) ||
@@ -10088,6 +10338,7 @@ function isLocalModuleReceiver(name: string): boolean {
     name === _activePropsParamName
   )
 }
+
 /** The current FILE's scope: `_pluginScope` while no component is being emitted, and what `fileState` reads from inside one. */
 let _moduleScope: PluginScope = _pluginScope
 
@@ -10116,6 +10367,7 @@ function kotlinSpreadResolver(indent: number): SpreadResolver {
         _componentObjectConstsKotlin,
         _kotlinExprInferCtx,
       )
+
       return f === null ? null : `{${[...f].sort().join(',')}}`
     },
     label: (e) => emitKotlinExpr(e, indent),

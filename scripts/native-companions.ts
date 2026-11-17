@@ -75,6 +75,7 @@ export function resolveCompanion(ref: string, lang: NativeLang, ctx: CompanionCo
     }
     const file = ref.slice('@base/'.length)
     if (!file || file.includes('/')) return { ok: false, error: `${ref}: expected @base/<File>${ext}` }
+
     return { ok: true, path: join(ctx.root, ...BASE_DIRS[lang], file) }
   }
   const m = /^(@pyreon\/[^/]+)\/([^/]+)$/.exec(ref)
@@ -92,5 +93,6 @@ export function resolveCompanion(ref: string, lang: NativeLang, ctx: CompanionCo
   const pkg = ctx.packages.get(pkgName)
   const dir = lang === 'swift' ? pkg?.swiftDir : pkg?.kotlinDir
   if (!dir) return { ok: false, error: `${ref}: ${pkgName} ships no ${lang} sources` }
+
   return { ok: true, path: lang === 'swift' ? join(dir, file) : join(dir, 'com', 'pyreon', 'runtime', file) }
 }

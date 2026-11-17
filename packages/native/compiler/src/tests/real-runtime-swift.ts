@@ -73,6 +73,7 @@ export function runtimeSwiftSources(repo: string = REPO): string[] {
     }
   }
   for (const root of RUNTIME_ROOTS) walk(join(repo, root))
+
   return out.sort()
 }
 
@@ -102,6 +103,7 @@ const xcrun = (...args: string[]): string =>
   }).trim()
 
 let _toolchain: { sdkPath: string; identity: string } | undefined
+
 /** The SDK path and everything about the toolchain that can change a verdict. */
 function toolchain(): { sdkPath: string; identity: string } {
   if (_toolchain) return _toolchain
@@ -115,6 +117,7 @@ function toolchain(): { sdkPath: string; identity: string } {
     TARGET,
   ].join('\n')
   _toolchain = { sdkPath, identity }
+
   return _toolchain
 }
 
@@ -196,6 +199,7 @@ export function typecheckAgainstRealRuntime(
         ],
         { encoding: 'utf8', stdio: 'pipe' },
       )
+
       return { ok: true }
     } catch (err) {
       const e = err as { stderr?: string | Buffer; stdout?: string | Buffer; message?: string }
@@ -212,6 +216,7 @@ export function typecheckAgainstRealRuntime(
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
   return verdict.ok ? null : (verdict.error ?? 'swiftc -typecheck failed')
 }
 

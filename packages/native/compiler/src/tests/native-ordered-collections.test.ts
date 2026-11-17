@@ -111,6 +111,7 @@ function webSequence(): string {
   const r: Record<string, number> = { zeta: 1, alpha: 2 }
   r.mid = 3
   out.push(`json ${JSON.stringify(r)}`)
+
   return out.join('\n')
 }
 

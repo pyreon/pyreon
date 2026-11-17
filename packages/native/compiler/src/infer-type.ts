@@ -167,6 +167,7 @@ export function buildModuleConstTypes(
     const t = moduleConstType(md, ctx)
     if (t !== undefined) out.set(md.name, t)
   }
+
   return out
 }
 
@@ -184,6 +185,7 @@ export function moduleConstType(md: ModuleDeclIR, ctx: InferenceCtx): TypeIR | u
   // is emitted verbatim.
   if (md.initial.kind === 'ext-expr' && !pluginExprSeedsModuleConst(md.initial)) return undefined
   const t = inferType(md.initial, ctx)
+
   return isSeedableModuleType(t) ? t : undefined
 }
 
@@ -353,6 +355,7 @@ function widenFloatSignalDecls(
           if (had) ctx.locals.set(p, prev!)
           else ctx.locals.delete(p)
         }
+
         return
       }
       if (node.kind === 'call') {
@@ -398,6 +401,7 @@ function serviceTypingKey(d: DeclIR): string | undefined {
     const svc = findService(d.hook)
     return svc?.optionalFields === undefined && svc?.methodReturns === undefined && svc?.callReadType === undefined ? undefined : d.hook
   }
+
   return undefined
 }
 
@@ -429,6 +433,7 @@ function componentFnReturns(
       merged.set(d.name, d.returnType)
     }
   }
+
   return merged
 }
 
@@ -548,6 +553,7 @@ export function buildInferenceCtx(
       ctx.computeds.set(d.name, inferComputedReturnType(d, ctx))
     }
   }
+
   return ctx
 }
 
@@ -575,6 +581,7 @@ function inferComputedReturnType(
     const ret = findFirstReturnExpr(d.body, ctx)
     if (ret) return inferType(ret, ctx)
   }
+
   return { kind: 'unknown' }
 }
 
@@ -632,6 +639,7 @@ function findFirstReturnExpr(
       }
     }
   }
+
   return undefined
 }
 
@@ -670,6 +678,7 @@ export function inferReturnType(
   }
   for (const p of params) scratch.locals.set(p.name, p.type)
   const ret = findFirstReturnExpr(body, scratch)
+
   return ret ? inferType(ret, scratch) : { kind: 'unknown' }
 }
 
@@ -698,6 +707,7 @@ export function typeContainsFunction(t: TypeIR): boolean {
   if (t.kind === 'function') return true
   if (t.kind === 'union') return t.branches.some(typeContainsFunction)
   if (t.kind === 'array') return typeContainsFunction(t.element)
+
   return false
 }
 
@@ -786,6 +796,7 @@ export function logicalOrValueKind(left: TypeIR, right: TypeIR): 'int' | 'double
   if (l.kind === 'number' && r.kind === 'number') {
     return l.float === true || r.float === true ? 'double' : 'int'
   }
+
   return null
 }
 
@@ -817,6 +828,7 @@ export function classifyOptionalCondition(
     }
   }
   if (typeIsOptional(inferType(e, ctx))) return { form: 'present' }
+
   return null
 }
 
@@ -861,6 +873,7 @@ export function nilCoalesceTernary(
   // which is exactly the shape the engine writes.
   const it = inferType(x, ctx)
   if (it.kind !== 'unknown' && !typeIsOptional(it)) return null
+
   return { opt: x, fallback }
 }
 
@@ -881,6 +894,7 @@ export function sameOptionalBase(a: ExprIR, b: ExprIR): boolean {
       sameOptionalBase(a.object, b.object)
     )
   }
+
   return false
 }
 
@@ -916,6 +930,7 @@ export function optionalMemberTernary(
   ) {
     return { opt: cond, property: then.property }
   }
+
   return null
 }
 
@@ -1033,6 +1048,7 @@ export function seedHandlerLocals(
       ctx.locals.set(s.name, t.kind === 'unknown' && s.declaredType !== undefined ? s.declaredType : t)
     }
   }
+
   return saved
 }
 
@@ -1088,6 +1104,7 @@ export function buildArraySpreadConcat(
   flushLit()
   if (parts.length === 0) return litWrap('')
   if (parts.length === 1) return parts[0]!
+
   return `(${parts.join(' + ')})`
 }
 
@@ -1147,6 +1164,7 @@ export function classifyNegativeSlice(
       return { kind: 'suffixDropLast', m: emitArg(start.argument), n: endN }
     }
   }
+
   return null
 }
 
@@ -1199,6 +1217,7 @@ export function objectLengthRangeForm(
   }
   if (fn.kind !== 'arrow' || fn.params.length < 2 || fn.stmts !== undefined) return null
   if (exprReferencesIdent(fn.body, fn.params[0]!)) return null
+
   return { lenExpr: obj.fields[0]!.value, indexParam: fn.params[1]!, body: fn.body }
 }
 
@@ -1215,6 +1234,7 @@ export function arrayFromMapRewrite(expr: ExprIR): ExprIR | null {
   }
   const src = expr.args[0]!
   if (src.kind === 'object') return null // `{ length: n }` range form — caller warns
+
   return {
     kind: 'call',
     callee: { kind: 'member', object: src, property: 'map' },
@@ -1253,6 +1273,7 @@ export function inferArrayStaticCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | 
       const scratch: InferenceCtx = { ...ctx, locals: new Map(ctx.locals) }
       scratch.locals.set(range.indexParam, { kind: 'number' })
       const el = inferType(range.body, scratch)
+
       return { kind: 'array', element: el }
     }
     const mapForm = arrayFromMapRewrite(expr)
@@ -1262,6 +1283,7 @@ export function inferArrayStaticCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | 
       return src.kind === 'array' ? src : { kind: 'array', element: { kind: 'unknown' } }
     }
   }
+
   return null
 }
 
@@ -1310,6 +1332,7 @@ function inferMathCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | null {
   if (fn === 'abs') {
     const a =
       expr.args[0] !== undefined ? inferType(expr.args[0], ctx) : { kind: 'unknown' as const }
+
     return a.kind === 'number' && a.float === true
       ? { kind: 'number', float: true }
       : { kind: 'number' }
@@ -1319,8 +1342,10 @@ function inferMathCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | null {
       const t = inferType(a, ctx)
       return t.kind === 'number' && t.float === true
     })
+
     return anyFloat ? { kind: 'number', float: true } : { kind: 'number' }
   }
+
   return null
 }
 
@@ -1337,6 +1362,7 @@ export function inferMapFromPairsType(
   if (srcT.kind !== 'array' && srcT.kind !== 'set') return { kind: 'unknown' }
   const scratch: InferenceCtx = { ...ctx, locals: new Map(ctx.locals) }
   scratch.locals.set(pairs.param, srcT.element)
+
   return { kind: 'map', key: inferType(pairs.key, scratch), value: inferType(pairs.value, scratch) }
 }
 
@@ -1361,6 +1387,7 @@ export function mapFromPairsTypeProblem(t: TypeIR): string | null {
   if (!value(t.value)) {
     return 'the value is not a scalar, a named struct/enum, or an array of those — declare its shape as a top-level `type X = { … }`'
   }
+
   return null
 }
 
@@ -1377,6 +1404,7 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       ? resolved
       : { kind: 'union', branches: [...resolved.branches, { kind: 'undefined' }] }
   }
+
   return { kind: 'union', branches: [resolved, { kind: 'undefined' }] }
 }
 
@@ -1392,6 +1420,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         if (scope === undefined) return inferType(value, ctx)
         const structs = [...ctx.structs].map(([name, fields]) => ({ name, fields: [...fields].map(([fieldName, fieldType]) => ({ name: fieldName, type: fieldType })) }))
         const scoped = buildInferenceCtx([...scope.declarations], structs, [], undefined, ctx.helperReturns, ctx.moduleConsts, [...(ctx.moduleItems?.values() ?? [])], scope.receiver)
+
         return inferType(value, scoped)
       })
       if (type !== undefined) return type
@@ -1411,6 +1440,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
           const src = unwrapOptionalType(inferType(expr.copyOf, ctx))
           return src.kind === 'map' ? src : { kind: 'unknown' }
         }
+
         return { kind: 'unknown' }
       }
       if (expr.elementType !== undefined) return { kind: 'set', element: expr.elementType }
@@ -1457,6 +1487,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
           : { kind: 'number' }
       }
       if (typeof expr.value === 'boolean') return { kind: 'boolean' }
+
       return { kind: 'unknown' }
     }
     case 'identifier': {
@@ -1479,6 +1510,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       if (pr) return pr
       const mc = ctx.moduleConsts?.get(expr.name)
       if (mc) return mc
+
       return { kind: 'unknown' }
     }
     case 'call': {
@@ -1753,6 +1785,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
                 }
                 if (bodyType.kind !== 'unknown') return { kind: 'array', element: bodyType }
               }
+
               return { kind: 'array', element: { kind: 'unknown' } }
             }
             case 'flatMap': {
@@ -1777,6 +1810,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
                 }
                 if (bodyType.kind === 'array') return bodyType
               }
+
               return { kind: 'array', element: { kind: 'unknown' } }
             }
             case 'some':
@@ -1810,6 +1844,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
               if (expr.args.length === 0 && objType.element.kind === 'array') {
                 return objType.element
               }
+
               return { kind: 'unknown' }
             case 'reduce': {
               // `arr.reduce((acc, x) => body, seed)` → the accumulator type.
@@ -1842,6 +1877,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
                 }
                 if (bodyType.kind !== 'unknown') return bodyType
               }
+
               return seedType
             }
           }
@@ -1883,6 +1919,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
           }
         }
       }
+
       return { kind: 'unknown' }
     }
     case 'index': {
@@ -1894,8 +1931,10 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         if (expr.optional === true) {
           return { kind: 'union', branches: [idxObj.element, { kind: 'undefined' }] }
         }
+
         return idxObj.element
       }
+
       return { kind: 'unknown' }
     }
     case 'member': {
@@ -2068,6 +2107,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       if (objType.kind === 'string' && expr.property === 'length') {
         return { kind: 'number' }
       }
+
       return { kind: 'unknown' }
     }
     case 'template':
@@ -2123,6 +2163,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       if (right.kind === 'number') {
         return right.float === true ? { kind: 'number', float: true } : { kind: 'number' }
       }
+
       return { kind: 'unknown' }
     }
     case 'paren':
@@ -2170,6 +2211,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         if (k === 'int') return { kind: 'number' }
         if (k === 'double') return { kind: 'number', float: true }
       }
+
       return { kind: 'boolean' }
     case 'unary': {
       // `!x` → boolean; `-x` / `+x` → number, PRESERVING the argument's
@@ -2210,6 +2252,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         if (t.kind === 'number' && o.kind === 'number') {
           return { kind: 'number', float: t.float === true || o.float === true }
         }
+
         return t
       }
       // Empty-array-literal branch unification — `cond ? [x] : []` (the
@@ -2226,6 +2269,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         x.kind === 'array' && x.elements.length === 0 && x.elementType === undefined
       if (t.kind === 'array' && isEmptyArrayLit(expr.otherwise)) return t
       if (o.kind === 'array' && isEmptyArrayLit(expr.then)) return o
+
       return { kind: 'unknown' }
     }
     case 'update':
@@ -2278,6 +2322,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         if (elemType === undefined) elemType = t
         else if (JSON.stringify(elemType) !== JSON.stringify(t)) return { kind: 'unknown' }
       }
+
       return elemType !== undefined ? { kind: 'array', element: elemType } : { kind: 'unknown' }
     }
     case 'object': {
@@ -2295,6 +2340,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
             return { kind: 'typeRef', name, args: [] }
           }
         }
+
         return { kind: 'unknown' }
       }
       // `{ ...src, k: v }` has the type of `src` when every source is the same struct and every written field is
@@ -2310,6 +2356,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         const fields = ctx.structs.get(first.name)
         if (fields !== undefined && expr.fields.every((f) => fields.has(f.name))) return first
       }
+
       return { kind: 'unknown' }
     }
   }
@@ -2354,6 +2401,7 @@ export function rewriteObjectMapCall(expr: ExprIR, ctx: InferenceCtx): ExprIR | 
     return null
   const arg = expr.args[0]!
   if (unwrapOptionalType(inferType(arg, ctx)).kind !== 'map') return null
+
   return { kind: 'call', callee: { kind: 'member', object: arg, property: expr.callee.property }, args: [] }
 }
 
@@ -2406,6 +2454,7 @@ export function rewriteObjectKeys(expr: ExprIR, ctx: InferenceCtx): ExprIR | nul
   const argType = inferType(arg, ctx)
   const fields = objectFieldsOf(argType, ctx)
   if (fields === null) return null
+
   return {
     kind: 'array',
     elements: fields.map((f) => ({ kind: 'literal', value: f.name })),
@@ -2431,6 +2480,7 @@ function objectFieldsOf(
       return [...m.entries()].map(([name, type]) => ({ name, type }))
     }
   }
+
   return null
 }
 
@@ -2474,6 +2524,7 @@ export function rewriteObjectValues(expr: ExprIR, ctx: InferenceCtx): ExprIR | n
   const fields = objectFieldsOf(inferType(arg, ctx), ctx)
   if (fields === null || !homogeneous(fields.map((f) => f.type))) return null
   if (!isReReadableExpr(arg)) return null
+
   return {
     kind: 'array',
     elements: fields.map((f) => ({ kind: 'member', object: arg, property: f.name })),

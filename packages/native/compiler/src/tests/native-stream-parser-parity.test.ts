@@ -57,6 +57,7 @@ function writeSwiftContainer(dir: string): string[] {
 
   return [stream, json]
 }
+
 const KOTLIN_SRC = join(
   __dirname,
   '../../../../fundamentals/http/native/kotlin/com/pyreon/runtime/PyreonStream.kt',
@@ -82,11 +83,13 @@ function mulberry32(seed: number): () => number {
     let t = a
     t = Math.imul(t ^ (t >>> 15), t | 1)
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
 
 const enc = new TextEncoder()
+
 const concat = (parts: Uint8Array[]): Uint8Array => {
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
   let at = 0
@@ -94,6 +97,7 @@ const concat = (parts: Uint8Array[]): Uint8Array => {
     out.set(p, at)
     at += p.length
   }
+
   return out
 }
 
@@ -108,6 +112,7 @@ const INVALID: number[][] = [
   [0xf0, 0x9f, 0x98],
   [0xe0, 0x80, 0x41],
 ]
+
 const TEXT_ATOMS = ['a', 'Z', ' ', ':', 'é', '日本', '🙂', '\t', ' ', '﻿', '{"x":1}', '0', '\0']
 const EOLS = ['\n', '\r', '\r\n']
 
@@ -156,6 +161,7 @@ function sseCase(r: () => number): Uint8Array {
   if (r() < 0.25) {
     parts.push(enc.encode('data: unterminated'))
   }
+
   return concat(parts)
 }
 
@@ -174,6 +180,7 @@ function ndjsonCase(r: () => number): Uint8Array {
     else parts.push(enc.encode('nope'))
     if (i < lines - 1 || r() < 0.7) parts.push(enc.encode(EOLS[Math.floor(r() * EOLS.length)]!))
   }
+
   return concat(parts)
 }
 
@@ -189,6 +196,7 @@ function chunkings(bytes: Uint8Array, r: () => number): Uint8Array[][] {
     random.push(bytes.slice(at, at + size))
     at += size
   }
+
   return [whole, single, random]
 }
 
@@ -224,6 +232,7 @@ function buildCorpus(): Case[] {
     const bytes = ndjsonCase(r)
     for (const chunks of chunkings(bytes, r)) out.push({ format: 'ndjson', chunks })
   }
+
   return out
 }
 
@@ -259,6 +268,7 @@ function renderNdjsonLines(lines: [number, string][]): string[] {
       break
     }
   }
+
   return out
 }
 
@@ -275,6 +285,7 @@ async function webRender(c: Case): Promise<string[]> {
     if (!(e instanceof StreamParseError)) throw e
     out.push(`E ${e.line} ${hex(e.text)}`)
   }
+
   return out
 }
 
@@ -286,6 +297,7 @@ function nativeRender(c: Case, raw: string[]): string[] {
     const text = h === '-' ? '' : new TextDecoder().decode(Uint8Array.from(Buffer.from(h!, 'hex')))
     return [Number(n), text]
   })
+
   return renderNdjsonLines(lines)
 }
 
@@ -306,6 +318,7 @@ function splitCases(stdout: string): string[][] {
       cur = []
     } else if (line !== '') cur.push(line)
   }
+
   return out
 }
 
@@ -442,6 +455,7 @@ describe('native stream parsers — byte-for-byte parity with @pyreon/http/strea
         execFileSync('swiftc', ['-O', join(dir, 'main.swift'), '-o', join(dir, 'run')], {
           stdio: 'pipe',
         })
+
         return splitCases(execFileSync(join(dir, 'run'), { encoding: 'utf8', maxBuffer: 64 << 20 }))
       })
       expect(got.length).toBe(corpus.length)
@@ -471,6 +485,7 @@ describe('native stream parsers — byte-for-byte parity with @pyreon/http/strea
             stdio: 'pipe',
           },
         )
+
         return splitCases(
           execFileSync(jvmPath() as string, ['-jar', join(dir, 'out.jar')], {
             encoding: 'utf8',
@@ -512,6 +527,7 @@ function streamServer(script?: readonly (number | string)[]): {
         return
       }
       res.writeHead(200, { 'content-type': 'text/event-stream' }).end(step)
+
       return
     }
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
@@ -524,6 +540,7 @@ function streamServer(script?: readonly (number | string)[]): {
       res.end('id: 3\nevent: skip\ndata: {"n":3}\n\nid: 4\ndata: {"n":4}\n\n')
     }
   })
+
   return { server, seen }
 }
 
@@ -638,6 +655,7 @@ describe('native stream loop — reconnect + Last-Event-ID parity over a real se
       } catch {
         status = 'error'
       }
+
       return { events, status }
     })
     web = { ...out, seen }
@@ -671,6 +689,7 @@ describe('native stream loop — reconnect + Last-Event-ID parity over a real se
             join(dir, 'run'),
           ])
           const { stdout } = await run(join(dir, 'run'), [], { timeout: 30_000 })
+
           return parseLoopOutput(stdout)
         })
         const { onEvent, ...out } = result.out
@@ -703,6 +722,7 @@ describe('native stream loop — reconnect + Last-Event-ID parity over a real se
           const { stdout } = await run(jvmPath() as string, ['-jar', join(dir, 'out.jar')], {
             timeout: 30_000,
           })
+
           return parseLoopOutput(stdout)
         })
         const { onEvent, ...out } = result.out
@@ -755,6 +775,7 @@ describe('native stream loop — reconnect + Last-Event-ID parity over a real se
       )) {
         got.push(`${ev.type} ${ev.id} ${ev.data.n}`)
       }
+
       return { events: got, status }
     }, script)
     expect({ ...result.out, seen: result.seen }).toEqual({ events, seen, status: 'closed' })
@@ -784,6 +805,7 @@ describe('native stream loop — reconnect + Last-Event-ID parity over a real se
             const { stdout } = await run(jvmPath() as string, ['-jar', join(dir, 'out.jar'), url], {
               timeout: 30_000,
             })
+
             return parseLoopOutput(stdout)
           }, script)
           expect
