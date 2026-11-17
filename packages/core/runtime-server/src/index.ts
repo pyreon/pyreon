@@ -135,14 +135,12 @@ class RawHtml {
  */
 function decorateRootTag(html: string, extra: Record<string, unknown>): string {
   const close = html.indexOf('>')
-  if (html.charCodeAt(0) !== 60 || close < 0) return html
   const selfClosing = html.charCodeAt(close - 1) === 47
   let open = html.slice(0, selfClosing ? close - 1 : close).trimEnd()
-  const tag = /^<([^\s/>]+)/.exec(open)?.[1]
-  if (tag === undefined) return html
+  const tag = (/^<([^\s/>]+)/.exec(open) as RegExpExecArray)[1] as string
   for (const key in extra) {
-    if (key === 'ref' || key === 'key' || key === 'children' || isEventHandlerAttr(key)) continue
-    const attr = renderProp(tag, key, extra[key])
+    // `renderProp` renders nothing for `ref`, `key` and event handlers.
+    const attr = key === 'children' ? null : renderProp(tag, key, extra[key])
     if (attr === null) continue
     const eq = attr.indexOf('=')
     const name = eq < 0 ? attr : attr.slice(0, eq)
@@ -152,27 +150,22 @@ function decorateRootTag(html: string, extra: Record<string, unknown>): string {
       continue
     }
     let next = attr
-    if (eq >= 0 && at.value !== '' && (name === 'class' || name === 'style')) {
+    const own = at[2] ?? ''
+    if (own !== '' && (name === 'class' || name === 'style')) {
       const added = attr.slice(eq + 2, -1)
-      next =
-        name === 'class'
-          ? `class="${at.value} ${added}"`
-          : `style="${at.value.replace(/;\s*$/, '')}; ${added}"`
+      next = name === 'class' ? `class="${own} ${added}"` : `style="${own.replace(/;\s*$/, '')}; ${added}"`
     }
-    open = `${open.slice(0, at.start)} ${next}${open.slice(at.end)}`
+    open = `${open.slice(0, at.index)} ${next}${open.slice(at.index + at[0].length)}`
   }
 
   return `${open}${selfClosing ? ' />' : '>'}${html.slice(close + 1)}`
 }
 
-/** One attribute of a serialized opening tag: ` name` or ` name="value"`. */
-function findOpenTagAttr(
-  open: string,
-  name: string,
-): { start: number; end: number; value: string } | null {
+/** One attribute of a serialized opening tag (` name` or ` name="value"`), as its match. */
+function findOpenTagAttr(open: string, name: string): RegExpExecArray | null {
   const re = /\s([^\s="'>/]+)(?:="([^"]*)")?/g
   for (let m = re.exec(open); m !== null; m = re.exec(open)) {
-    if (m[1] === name) return { start: m.index, end: m.index + m[0].length, value: m[2] ?? '' }
+    if (m[1] === name) return m
   }
 
   return null
@@ -276,17 +269,11 @@ class StreamParts {
    * hole cannot sit inside a tag, so the join below always reaches the `>`.
    */
   withRootAttrs(extra: Record<string, unknown>): StreamParts {
-    let head = ''
-    let i = 0
-    while (i < this.parts.length && typeof this.parts[i] === 'string') {
-      head += this.parts[i] as string
-      i++
-      if (head.includes('>')) {
-        return new StreamParts([decorateRootTag(head, extra), ...this.parts.slice(i)])
-      }
-    }
+    let head = this.parts[0] as string
+    let i = 1
+    while (!head.includes('>')) head += this.parts[i++] as string
 
-    return this
+    return new StreamParts([decorateRootTag(head, extra), ...this.parts.slice(i)])
   }
 }
 

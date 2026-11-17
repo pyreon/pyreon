@@ -1445,11 +1445,12 @@ export function tplAdoptVerify(
   // the full skeleton verify, never the unverified replay.
   allowPlanReplay = false,
   // Declared by the component that decorates this item (`_declareRootDecoration`
-  // in template.ts): the root's `class` / `style` are not compared.
+  // in template.ts): the root's `class` / `style` are not compared. It never
+  // arrives together with `allowPlanReplay`: only `deferTpl`'s `__adoptAt` sets
+  // it, and that adoption is always a full verify. It must stay so, because a
+  // replay plan is shared per template and a declaration is per item.
   rootDecorated = false,
 ): boolean {
-  // A decorated root never replays a plan: the plan is shared per template.
-  if (rootDecorated) allowPlanReplay = false
   // The plan fast path is OPT-IN, and the opt-in means "successive targets are
   // structurally identical" — which only `<For>` rows can promise. The plan is
   // cached per TEMPLATE and `_tplCache` is keyed by HTML string and is

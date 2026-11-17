@@ -173,17 +173,11 @@ export const mergeStyles = (
 }
 
 /** `{ opacity: 0, '--i': 2 }` → `opacity: 0; --i: 2`, with the renderer's rules. */
-const styleText = (style: CSSProperties): string => {
-  let out = ''
-  for (const key in style) {
-    const value = (style as Record<string, unknown>)[key]
-    if (value == null || value === '') continue
-    const name = key.startsWith('--') ? key : toKebabCase(key)
-    out += `${out ? '; ' : ''}${name}: ${normalizeStyleValue(key, value)}`
-  }
-
-  return out
-}
+const styleText = (style: CSSProperties): string =>
+  Object.entries(style)
+    .filter(([, value]) => value != null && value !== '')
+    .map(([key, value]) => `${key.startsWith('--') ? key : toKebabCase(key)}: ${normalizeStyleValue(key, value)}`)
+    .join('; ')
 
 // ─── Ref & Motion Utilities ─────────────────────────────────
 
@@ -232,19 +226,17 @@ export const consumerRef = <T>(holder: Record<string, unknown>): RefCallback<T> 
   }
 }
 
-/** Clones a VNode with merged props. */
 /**
  * A compiled single element on the server: `@pyreon/runtime-server`'s `_ssr` /
  * `_ssrDeferred` result. Duck-typed on its `withRootAttrs` method so this
  * client-safe package never imports the server module.
  */
-const isServerElementHtml = (
-  value: unknown,
-): value is { withRootAttrs: (extra: Record<string, unknown>) => unknown } =>
-  value != null &&
-  typeof value === 'object' &&
-  typeof (value as { withRootAttrs?: unknown }).withRootAttrs === 'function'
+type ServerElementHtml = { withRootAttrs: (extra: Record<string, unknown>) => unknown }
 
+const isServerElementHtml = (value: unknown): value is ServerElementHtml =>
+  typeof (value as Partial<ServerElementHtml> | null)?.withRootAttrs === 'function'
+
+/** Clones a VNode with merged props. */
 export const cloneVNode = (vnode: VNode, extraProps: Record<string, unknown>): VNode => {
   // Compiled static markup (`<li>Install</li>` → a pre-built `_tpl` item) has
   // no props to merge into: spreading it lost the element. It is wrapped so the
