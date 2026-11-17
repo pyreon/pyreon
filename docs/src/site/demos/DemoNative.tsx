@@ -51,7 +51,7 @@ const OUT: Record<Source, readonly [tsx: string, web: string, ios: string, andro
     'Button(onClick = { save() }) {\n  Text("Save")\n}',
   ],
   For: [
-    '<For each={todos}\n  by={(t) => t.id}>\n  {(t) => <Text>{t.text}</Text>}\n</For>',
+    '<For each={todos()}\n  by={(t) => t.id}>\n  {(t) => <Text>{t.text}</Text>}\n</For>',
     '<!-- keyed list, -->\n<!-- one node per todo -->\n<span>Buy milk</span>\n<span>Ship v1</span>',
     'ForEach(todos,\n  id: \\.id) { t in\n  Text(t.text)\n}',
     'LazyColumn {\n  items(todos,\n    key = { it.id }) { t ->\n    Text(t.text)\n  }\n}',
