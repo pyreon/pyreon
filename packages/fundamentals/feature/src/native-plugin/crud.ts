@@ -341,6 +341,7 @@ export const recognizeCrudDecl: DeclCallRecognizer = (site, ctx) => {
   }
   const type: TypeIR = hook === 'useDelete' ? { kind: 'undefined' } : element
   facts.mutations.set(ctx.declName, { feature: binding, hook, type })
+
   return { type: CRUD_MUTATION_TYPE, payload: { type } as never }
 }
 
@@ -414,6 +415,7 @@ export const recognizeCrudMutate: MethodCallRecognizer = (site, ctx) => {
   }
   const id = ctx.expr(idNode)
   const optimistic = optimisticPatch(dataNode, facts.schemas.get(m.feature) ?? [], featureName, id, ctx, `\`${name}.${site.method}(…)\``)
+
   return mutateCallSpec(
     site,
     ctx,
@@ -452,6 +454,7 @@ function optimisticPatch(
     ctx.report(
       `${where}: ${why}, so the OPTIMISTIC write the web shows in \`useById(id)\` before the server answers is skipped natively — the request is sent, and every \`${featureName}\` query refreshes when it succeeds.`,
     )
+
     return undefined
   }
   const data = unwrapTypeLayers(dataNode)

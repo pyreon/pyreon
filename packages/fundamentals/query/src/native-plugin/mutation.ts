@@ -609,8 +609,10 @@ function optimisticOf(
     ctx.warnOnce(
       `\`${p.binding}.mutate(…)\`: \`data.${f.name}\` is not a ${f.type.kind === 'number' ? 'whole number' : f.type.kind} the record's \`${f.name}\` field can hold natively, so the OPTIMISTIC write the web shows before the server answers is skipped for this call — the request is sent, and the queries refresh when it succeeds.`,
     )
+
     return undefined
   }
+
   return { key, fields }
 }
 
@@ -631,6 +633,7 @@ function swiftOperation(e: ExtExprIR, ctx: EmitContext, optimistic: boolean): st
   if (!optimistic) {
     return `{ __request in try await PyreonQueryCache.shared.settleMutation(invalidating: ${root}) { ${swiftSend(p.type, ctx, '__request')} } }`
   }
+
   return `{ __input in try await PyreonQueryCache.shared.settleMutation(invalidating: ${root}, rollback: __input.1) { ${swiftSend(p.type, ctx, '__input.0')} } }`
 }
 
@@ -647,6 +650,7 @@ function kotlinOperation(e: ExtExprIR, ctx: EmitContext, optimistic: boolean): s
   if (p.invalidates === undefined) return `{ __r -> ${kotlinSend(p.type, ctx, '__r')} }`
   const root = ctx.stringLiteral(p.invalidates)
   if (!optimistic) return `{ __r -> PyreonQueryCache.settleMutation(${root}) { ${kotlinSend(p.type, ctx, '__r')} } }`
+
   return `{ __r -> PyreonQueryCache.settleMutation(${root}, __r.second) { ${kotlinSend(p.type, ctx, '__r.first')} } }`
 }
 
@@ -678,6 +682,7 @@ function swiftEmit(e: ExtExprIR, ctx: EmitContext, method: 'mutate' | 'mutateAsy
   // An optimistic call's input is the request AND the rollback of the write made right here, at the call site.
   const o = optimisticOf(e, ctx)
   const input = o === undefined ? request : `(${request}, ${swiftOptimistic(e, ctx, o)})`
+
   return `${ctx.ident(p.binding)}.${method}(${input}, ${swiftOperation(e, ctx, o !== undefined)}${tail})`
 }
 
