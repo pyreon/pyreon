@@ -278,6 +278,19 @@ Check a code snippet for anti-patterns. **Three AST-based detectors** run in par
 
 Each diagnostic carries: the rule **code**, the **message**, **line** + **column**, the **current** offending text, the **suggested** fix, and whether it's **auto-fixable**. When all three detectors return empty, the tool replies `✓ No issues found. The code follows Pyreon patterns correctly.`
 
+**Input it cannot read never gets that line.** The detectors parse with an error-recovering parser, so on broken input they find nothing; `validate` therefore syntax-checks the input first:
+
+| Input | Result |
+| --- | --- |
+| Code that parses | Validated; output as above |
+| Exactly one markdown code fence around the code (` ```tsx ` … ` ``` `, any or no language tag, or `~~~`) | The fence is stripped, the code inside is validated, and a note says so; line numbers count from the first line inside the fence |
+| Code with a syntax error (an unclosed `<div>`, stray tokens, prose) | `✗ Syntax error at line L, column C: <parser message>` and no verdict; findings from the part that parsed are listed under it |
+| Prose around a fenced block, or several blocks | `✗ The input is markdown, not source code …`; nothing is guessed |
+| Empty or whitespace-only input | `✗ Nothing to check: the input is empty.` |
+| A `filename` that is not `.ts` / `.tsx` / `.js` / `.jsx` (`App.vue`, `App.svelte`) | `✗ Unsupported file type …` |
+
+The parse mode follows `filename`: `.ts` parses as TypeScript (so `<T>x` casts are fine and JSX is an error), `.jsx` / `.js` as JavaScript with JSX, anything else as TSX. `explain_reactivity`, `migrate_react`, `migrate_pyreon` and the `componentSource` of `diagnose` and `explain_error` apply the same checks.
+
 **Example call:**
 
 ```json
@@ -299,7 +312,7 @@ Found 2 issues:
 
 :::warning{title="Common mistakes"}
 - **Zero diagnostics ≠ correct code.** `validate` is a *static* detector — it catches the documented anti-patterns from the catalog, not runtime semantics, cross-file consistency, type errors, or compiler output. Pair it with `tsc` + tests.
-- **Pass a complete file**, not a partial expression. The detectors expect every `import` and `function` to be present; a fragment yields no diagnostics, which reads as "clean".
+- **Pass a complete file**, not a partial expression. A fragment that does not parse is reported as a syntax error, not validated.
 - **Supply `filename`** for path-sensitive detectors (e.g. the SSR/server-only exemption logic). Without it, a diagnostic may misfire or fail to fire.
 - It's a **pre-commit / before-paste** tool — running it after the code is merged is fine, but the max value is catching the bug before it ships.
 :::
@@ -1301,7 +1314,7 @@ The audit scanners walk from `process.cwd()`. If the server's working directory 
 
 `validate` runs three AST-based detectors (`detectReactPatterns`, `detectPyreonPatterns`, `detectNativePatterns`). If all three return empty, the snippet is clean. If you expect a detection that doesn't fire:
 
-- Confirm the snippet is syntactically valid TypeScript / TSX. The detectors silently skip parse errors.
+- Input that does not parse no longer reaches this line: it is reported as `✗ Syntax error …`. If you see the clean line for code you know is wrong, check the `filename` (a `.ts` name parses as TypeScript, not TSX).
 - Check the detector's exact pattern shape (`get_anti_patterns` shows the rule body for every detector code). For example, `props-destructured-body` only fires inside a PascalCase JSX component body, not in a free function.
 - The native detector only fires when the snippet imports `@pyreon/primitives` — a pure-web snippet never produces native diagnostics.
 

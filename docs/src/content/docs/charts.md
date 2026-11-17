@@ -152,7 +152,7 @@ const rows = signal<Row[]>([
 
 export const Revenue = () => (
   <PlotChart
-    data={() => rows()}
+    data={rows()}
     x={(d: Row) => d.month}
     marks={[
       bars((d: Row) => d.revenue, { label: 'Revenue', color: '#6366f1' }),
@@ -166,15 +166,15 @@ export const Revenue = () => (
 )
 ```
 
-`data` accepts a plain array (static) or an accessor (reactive) — signal reads
-inside the accessor are tracked, so a `rows.set(...)` repaints the chart with
-no other wiring.
+`data` accepts a plain array (static), a signal read such as `rows()` or an
+accessor (`() => rows()`). The compiler passes a signal read in a prop as a
+reactive prop, so a `rows.set(...)` repaints the chart with no other wiring.
 
 <Example file="./examples/charts/plot-marks" title="Marks, reactivity and formatting" />
 
 That demo is the real engine, mounted live: marks compose in paint order (area
-under line under points), `data` is an accessor so **Regenerate** repaints
-without re-mounting anything, and one `format` feeds the axis, the tooltip and
+under line under points), `data={rows()}` is a reactive prop, so **Regenerate**
+repaints without re-mounting anything, and one `format` feeds the axis, the tooltip and
 the accessible description together.
 
 ## Marks
