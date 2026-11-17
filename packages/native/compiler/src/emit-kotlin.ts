@@ -18,6 +18,7 @@ import {
   ERROR_MESSAGE_FN,
   ERROR_STRING_FN,
   exprCallsThrowing,
+  isErrorObjectType,
   rethrowingCallbackArgs,
   KOTLIN_THROWN_PREAMBLE,
   statementsThrowUncaught,
@@ -5099,6 +5100,18 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // after the first optional one (`a?.b.c` → `a?.b?.c`; a plain `.c` on
       // a nullable is a type error) — `chainHasOptional` propagates it.
       const dot = e.optional === true || chainHasOptional(e.object) ? '?.' : '.'
+      // `<error>.message` on a value typed `Error`: a Kotlin `Throwable.message` is `String?`, which a `String` sink
+      // rejects, so the read goes through the emitted accessor (`e.message ?: e.toString()`) the catch-binding rewrite
+      // uses — the Swift twin. An optional error keeps its `?.` (`q.error()?.message` stays `String?`).
+      if (e.property === 'message') {
+        const t = inferType(e.object, _kotlinExprInferCtx)
+        if (isErrorObjectType(t)) {
+          _needsKotlinThrown = true
+          const obj = emitKotlinExpr(e.object, indent)
+          const optional = dot === '?.' || t.kind === 'union'
+          return optional ? `${obj}?.let { ${ERROR_MESSAGE_FN}(it) }` : `${ERROR_MESSAGE_FN}(${obj})`
+        }
+      }
       // `String.length` is Kotlin's 32-bit Int; a TS integer is Long (see
       // KOTLIN_INT). A List's `.length` is the TS-compat extension, already
       // Long. The optional form keeps the `?.` (`s?.length?.toLong()`).

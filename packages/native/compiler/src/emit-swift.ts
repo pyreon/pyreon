@@ -121,6 +121,7 @@ import {
   ERROR_MESSAGE_FN,
   ERROR_STRING_FN,
   exprCallsThrowing,
+  isErrorObjectType,
   rethrowingCallbackArgs,
   statementsThrowUncaught,
   SWIFT_THROWN_PREAMBLE,
@@ -6365,6 +6366,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // proof). Genuinely-optional MID-chain fields still get `?.` via the
       // recvProvablyNonNull arm (their declared union type is visible).
       const dot = e.optional === true && !recvProvablyNonNull ? '?.' : '.'
+      // `<error>.message` on a value typed `Error` (a query / mutation `error()`, an `onError` parameter): a Swift
+      // `Error` has no `message`, so the read goes through the emitted accessor the catch-binding rewrite uses — the
+      // `LocalizedError` description (`PyreonHttpMessageError` carries the server's message there), as the web reads
+      // `error.message`. An optional error maps, so `q.error()?.message` stays `String?`.
+      if (e.property === 'message' && isErrorObjectType(recvType)) {
+        _needsSwiftThrown = true
+        const obj = emitSwiftExpr(e.object, indent)
+        return recvProvablyNonNull ? `${ERROR_MESSAGE_FN}(${obj})` : `${obj}.map { ${ERROR_MESSAGE_FN}($0) }`
+      }
       if (e.property === 'length') {
         // `.utf16.count`, NOT `.count`, for a STRING receiver. Swift's
         // `String.count` counts GRAPHEME CLUSTERS; JS `.length` and Kotlin

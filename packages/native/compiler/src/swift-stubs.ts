@@ -1665,6 +1665,19 @@ public enum PyreonHttpMiddleware {
   case bearer(baseUrl: String, crossOrigin: Bool, token: () -> String?)
   case retry(PyreonRetryPolicy)
   case logger(production: Bool)
+  case reject((PyreonHttpResponse) -> Error)
+}
+// The error \`@pyreon/feature\`'s lowered CRUD hooks reject with (\`.reject { $0.messageError(…) }\`).
+public struct PyreonHttpMessageError: LocalizedError, CustomStringConvertible, Equatable {
+  public let message: String
+  public let status: Int
+  public let errors: String?
+  public init(message: String, status: Int, errors: String? = nil) { self.message = message; self.status = status; self.errors = errors }
+  public var errorDescription: String? { message }
+  public var description: String { message }
+}
+extension PyreonHttpResponse {
+  public func messageError(method: String, url: String) -> PyreonHttpMessageError { PyreonHttpMessageError(message: "", status: status) }
 }
 // PyreonURL — the runtime path-param encoder a templated endpoint URL calls.
 // Mirrors the REAL PyreonURL surface: three overloads (String / Int / Double),

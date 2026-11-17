@@ -1363,7 +1363,11 @@ sealed class PyreonHttpMiddleware {
   class Bearer(val baseUrl: String, val crossOrigin: Boolean = false, val token: () -> String?) : PyreonHttpMiddleware()
   class Retry(val policy: PyreonRetryPolicy = PyreonRetryPolicy()) : PyreonHttpMiddleware()
   class Logger(val production: Boolean = false) : PyreonHttpMiddleware()
+  class Reject(val error: (PyreonHttpResponse) -> Throwable) : PyreonHttpMiddleware()
 }
+// The error \`@pyreon/feature\`'s lowered CRUD hooks reject with (\`Reject { it.messageError(…) }\`).
+class PyreonHttpMessageError(message: String, val status: Int, val errors: String? = null) : Exception(message)
+fun PyreonHttpResponse.messageError(method: String, url: String): PyreonHttpMessageError = PyreonHttpMessageError(method + url, status)
 // PyreonURL — the runtime path-param encoder a templated endpoint URL calls.
 // Mirrors the REAL PyreonURL surface: four overloads (String / Int / Long /
 // Double), one per type a \`PathParams\` value can take once the compiler has
