@@ -29,17 +29,20 @@ import { describe, expect, it } from 'vitest'
 import { transformJSX_JS } from '../jsx'
 
 type NativeTransform = (
-  code: string,
-  filename: string,
-  ssr: boolean,
-  knownSignals: string[] | null,
-  reactivityLens?: boolean,
-  collapse?: unknown,
-  ssrTemplate?: boolean,
-  templatizeComponentChildren?: boolean,
+  ...args: [
+    code: string,
+    filename: string,
+    ssr: boolean,
+    knownSignals: string[] | null,
+    reactivityLens?: boolean,
+    collapse?: unknown,
+    ssrTemplate?: boolean,
+    templatizeComponentChildren?: boolean,
+  ]
 ) => { code: string }
 
 let nativeTransform: NativeTransform | null = null
+
 try {
   const requireAddon = createRequire(import.meta.url)
   const here = dirname(fileURLToPath(import.meta.url))
@@ -58,6 +61,7 @@ interface Mode {
   ssrTemplate: boolean
   tpl: boolean
 }
+
 const MODES: Mode[] = [
   { name: 'client', ssr: false, ssrTemplate: false, tpl: false },
   { name: 'client+templatize', ssr: false, ssrTemplate: false, tpl: true },
@@ -66,6 +70,7 @@ const MODES: Mode[] = [
 ]
 
 type Backend = { name: string; run: (src: string, m: Mode) => string }
+
 const BACKENDS: Backend[] = [
   {
     name: 'js',
@@ -77,6 +82,7 @@ const BACKENDS: Backend[] = [
       }).code,
   },
 ]
+
 if (nativeTransform) {
   const nt = nativeTransform
   BACKENDS.push({

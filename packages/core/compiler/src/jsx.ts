@@ -507,6 +507,7 @@ function isComponentElement(node: N): boolean {
   const name = node?.openingElement?.name
   if (!name) return false
   if (name.type === 'JSXMemberExpression') return true
+
   return name.type === 'JSXIdentifier' && isComponentTag(name.name as string)
 }
 
@@ -1921,6 +1922,7 @@ export function transformJSX_JS(
     // rule (`isComponentElement`) — is eager unless this is its `_lc`-deferred
     // sole child. A namespaced tag (`<svg:a>`, `jsxTagName` == '') stays eager.
     if (isComponentElement(parent)) return !isSoleComponentChild(node)
+
     return jsxTagName(parent) === ''
   }
 

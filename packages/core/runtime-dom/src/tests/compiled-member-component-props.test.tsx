@@ -42,9 +42,11 @@ function linkImports(code: string): { names: string[]; values: unknown[]; body: 
         names.push(name)
         values.push(mod[name])
       }
+
       return ''
     },
   )
+
   return { names, values, body }
 }
 
@@ -54,6 +56,7 @@ const BACKENDS = [
 ] as const
 
 const cleanups: Array<() => void> = []
+
 afterEach(() => {
   for (const c of cleanups.splice(0)) c()
   document.body.innerHTML = ''
@@ -78,6 +81,7 @@ function mountApp(
   const container = document.createElement('div')
   document.body.appendChild(container)
   cleanups.push(mountChild(h(App as never, props), container) ?? (() => {}))
+
   return container
 }
 
@@ -85,6 +89,7 @@ function mountApp(
 function Leaf(props: { a: unknown }) {
   return h('i', null, () => (typeof props.a === 'function' ? 'FUNCTION' : String(props.a)))
 }
+
 /** A component that spreads its rest props into a leaf. */
 function Pass(props: Record<string, unknown>) {
   return h('b', null, () => `${String(props.a)}|${String(props.c)}`)

@@ -206,11 +206,19 @@ describe('templatizeComponentChildren — ordering gate (the #2914 blocker)', ()
     expect(emit(src)).not.toContain('_tpl("<div class=\\"k\\"')
   })
 
-  it('BAILS on a member/namespaced tag parent (never _lc-wrapped)', () => {
-    // `jsxTagName` reports '' for `<Ctx.Provider>`, which the uppercase test
-    // would read as "not a component" — the gate must not be fooled.
-    const src = `const App = () => <Ns.Provider><div class="k"><Leaf /></div></Ns.Provider>`
-    expect(emit(src)).not.toContain('_tpl("<div class=\\"k\\"')
+  it("a member-tag provider is a component like any other (#4368): its SOLE child is _lc-deferred and sees the context", () => {
+    const src = `${CTX}\nconst Ns = { Provider }\nconst App = () => <Ns.Provider><div class="k"><Leaf /></div></Ns.Provider>`
+    expect(emit(src)).toContain('_lc(() => _tpl(')
+    expect(render(src, ON)).toContain('PROVIDED')
+    expect(render(src, ON)).toBe(render(src, {}))
+  })
+
+  it('BAILS on a multi-child member-tag parent and on a namespaced tag parent', () => {
+    const multi = `${CTX}\nconst Ns = { Provider }\nconst App = () => <Ns.Provider><div class="k"><Leaf /></div><i /></Ns.Provider>`
+    expect(render(multi, ON)).toContain('PROVIDED')
+    expect(emit(multi)).not.toContain('_tpl("<div class=\\"k\\"')
+    const ns = `const App = () => <svg:g><div class="k"><Leaf /></div></svg:g>`
+    expect(emit(ns)).not.toContain('_tpl("<div class=\\"k\\"')
   })
 
   it('BAILS inside an expression container and a fragment child position', () => {
