@@ -214,7 +214,7 @@ These types are **owned by `@pyreon/validation`** (the gate has zero Pyreon deps
 | `TypedSchemaAdapter<TValues>` | `{ _infer, validator, parse? }` — what `zodSchema`/`valibotSchema`/`arktypeSchema` return |
 | `ValidationIssue`             | `{ path: string; message: string }` — normalized issue (aliased `SchemaIssue`)           |
 | `ParseResult<T>`              | `{ ok: true; value: T } \| { ok: false; issues: ValidationIssue[] }` (aliased `SchemaParseResult`) |
-| `StandardSchemaLike<Output>`  | The `~standard` shape `standardSchemaToValidator` accepts                                 |
+| `StandardSchemaV1<In, Out>`   | The Standard Schema contract, re-exported from the types-only `@standard-schema/spec`; issue/result shapes are `StandardSchemaV1.Issue` / `StandardSchemaV1.Result<Out>` |
 | `InferSchema<S>`              | Infer field types from an adapter (`_infer`) or a raw schema (`~standard.types.output`)   |
 | `SchemaAdapter<TSchema>`      | Generic schema-adapter factory type                                                       |
 | `FieldAdapter<TSchema>`       | Generic field-adapter factory type                                                        |

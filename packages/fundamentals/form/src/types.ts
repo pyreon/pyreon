@@ -1,16 +1,16 @@
 import type { Computed, Signal } from '@pyreon/reactivity'
 import type {
   SchemaValidateFn,
-  StandardSchemaLike,
+  StandardSchemaV1,
   ValidateFn,
   ValidationError,
 } from '@pyreon/validation'
 
-// The validation contract (ValidationError / ValidateFn / SchemaValidateFn /
-// StandardSchemaLike) lives in @pyreon/validation — the universal, stack-wide
-// validation gate. @pyreon/form CONSUMES it. Re-exported here so the historical
-// `import { ValidationError } from '@pyreon/form'` public API keeps working.
-export type { SchemaValidateFn, StandardSchemaLike, ValidateFn, ValidationError }
+// The validation contract (ValidationError / ValidateFn / SchemaValidateFn) and
+// the Standard Schema type live in @pyreon/validation — the universal,
+// stack-wide validation gate. @pyreon/form CONSUMES them. Re-exported here so
+// `import { ValidationError } from '@pyreon/form'` works.
+export type { SchemaValidateFn, ValidateFn, ValidationError }
 
 /**
  * A reactive value that can be read by calling it.
@@ -352,7 +352,7 @@ export interface UseFormOptions<TValues extends Record<string, unknown>> {
   schema?:
     | SchemaValidateFn<TValues>
     | { readonly _infer: TValues; readonly validator: SchemaValidateFn<TValues> }
-    | StandardSchemaLike<TValues>
+    | StandardSchemaV1<unknown, TValues>
   /** When to validate: 'blur' (default), 'change', or 'submit'. */
   validateOn?: 'blur' | 'change' | 'submit'
   /** Debounce delay in ms for validators (useful for async validators). */

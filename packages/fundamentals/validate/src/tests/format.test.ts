@@ -13,7 +13,7 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { formatError, formatErrors, formatErrorsByPath } from '../format'
-import type { PyreonIssue, StandardSchemaIssue } from '../types'
+import type { PyreonIssue, StandardSchemaV1 } from '../types'
 
 describe('formatError — Pyreon-flavoured issues', () => {
   it('resolves issue.key through t when t returns a real translation', () => {
@@ -82,7 +82,7 @@ describe('formatError — Pyreon-flavoured issues', () => {
 describe('formatError — bare StdSchema issues (no Pyreon fields)', () => {
   it('returns message unchanged for a Zod issue with no key', () => {
     const schema = z.string().email()
-    const result = schema['~standard'].validate('not-an-email') as { issues: StandardSchemaIssue[] }
+    const result = schema['~standard'].validate('not-an-email') as { issues: StandardSchemaV1.Issue[] }
     expect(result.issues).toBeDefined()
     const formatted = formatError(result.issues[0]!)
     expect(formatted).toEqual(expect.any(String))
@@ -90,7 +90,7 @@ describe('formatError — bare StdSchema issues (no Pyreon fields)', () => {
   })
 
   it('ignores t when no key on issue (no overhead)', () => {
-    const issue: StandardSchemaIssue = { message: 'plain message' }
+    const issue: StandardSchemaV1.Issue = { message: 'plain message' }
     const t = (k: string) => `should-not-be-called-${k}`
     expect(formatError(issue, t)).toBe('plain message')
   })
@@ -127,7 +127,7 @@ describe('formatErrorsByPath — per-field map variant', () => {
   })
 
   it('handles `{ key }` path segments (StdSchema variant)', () => {
-    const issues: StandardSchemaIssue[] = [
+    const issues: StandardSchemaV1.Issue[] = [
       { message: 'A', path: [{ key: 'name' }, { key: 0 }, 'first'] },
     ]
     expect(formatErrorsByPath(issues)).toEqual({ 'name.0.first': 'A' })

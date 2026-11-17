@@ -3464,7 +3464,7 @@ onUnmount(stop)`,
   },
 
   'validate/formatError': {
-    signature: '(issue: StandardSchemaIssue | PyreonIssue, t?: TFn) => string',
+    signature: '(issue: StandardSchemaV1.Issue | PyreonIssue, t?: TFn) => string',
     example: `const message = formatError(issue, t)
 // → t('validate.string.too-short', { min: 2 }) when key + t resolve
 // → issue.fallback ('Must be at least 2 characters') when t echoes the key
@@ -3473,7 +3473,7 @@ onUnmount(stop)`,
   },
 
   'validate/formatErrors': {
-    signature: '(issues: ReadonlyArray<StandardSchemaIssue | PyreonIssue>, t?: TFn) => string[]',
+    signature: '(issues: ReadonlyArray<StandardSchemaV1.Issue | PyreonIssue>, t?: TFn) => string[]',
     example: `const { t } = useI18n()
 const messages = formatErrors(result.issues ?? [], t)`,
     notes: 'Resolve an array of issues to strings via the same per-issue logic as formatError. Returns strings in the original order so paths line up with the input array. See also: formatError, formatErrorsByPath.',
@@ -3485,7 +3485,7 @@ const messages = formatErrors(result.issues ?? [], t)`,
   },
 
   'validate/formatErrorsByPath': {
-    signature: '(issues: ReadonlyArray<StandardSchemaIssue | PyreonIssue>, t?: TFn, options?: { joinWith?: string }) => Record<string, string>',
+    signature: '(issues: ReadonlyArray<StandardSchemaV1.Issue | PyreonIssue>, t?: TFn, options?: { joinWith?: string }) => Record<string, string>',
     example: `const errorMap = formatErrorsByPath(result.issues ?? [], t)
 // → { email: 'Invalid email', password: 'Too short', ... }`,
     notes: `Build a per-field error map keyed by the issue's path joined with \`.\`. Compatible with \`@pyreon/form\`'s \`Errors\` shape (\`Partial<Record<fieldName, string>>\`). Path-less issues land under the empty-string key. First issue wins on collision unless \`joinWith\` is set (then messages concatenate). See also: formatErrors.`,
@@ -3750,7 +3750,7 @@ const form = useForm({
   },
 
   'validation/standardSchemaToValidator': {
-    signature: '<TValues>(schema: StandardSchemaLike) => SchemaValidateFn<TValues>',
+    signature: '<TValues>(schema: StandardSchemaV1) => SchemaValidateFn<TValues>',
     example: `import { z } from 'zod'
 import { standardSchemaToValidator } from '@pyreon/validation'
 
@@ -3760,18 +3760,18 @@ const errors = validate({ email: 'x', age: 5 })  // sync schema → plain record
 // => { email: 'Invalid email', age: 'Too small: ...' }`,
     notes: 'Convert a RAW Standard Schema (any library exposing `~standard` — Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, `@pyreon/validate` `s`) into a whole-object `SchemaValidateFn` — `(values) => per-key error record`. This is the bridge that lets a consumer accept a raw schema with no `zodSchema()` wrapper and no cast: `useForm({ schema: z.object(...) })`. Issue paths flatten to dot-strings (`address.city`); first message per path wins. SYNC FAST-PATH: a synchronously-validating schema (zod/valibot/arktype sync trees, `s`) returns the error record DIRECTLY — no Promise allocation, no microtask hop per call (the keystroke path in `@pyreon/form` `validateOn`); a genuinely async schema still returns a Promise the caller awaits. Wrapper tax bench-proven ≈0ns over the raw library call (`bun run bench:validation`). See also: isStandardSchema, zodSchema, InferSchema.',
     mistakes: `- Passing a Pyreon adapter (the result of zodSchema()) instead of the RAW schema — the adapter is already a validator; pass z.object(...) directly, or use adapter.validator
-- Expecting a synchronous return — the produced validator is always async (returns a Promise); always await it
+- Assuming the produced validator always returns a Promise — a synchronous schema returns the error record directly; \`await\` the result to handle both
 - Assuming a non-object schema works — the output is a per-key record keyed on the top-level fields, so the schema must describe an object shape`,
   },
 
   'validation/isStandardSchema': {
-    signature: '(value: unknown) => value is StandardSchemaLike<unknown>',
+    signature: '(value: unknown) => value is StandardSchemaV1',
     example: `import { isStandardSchema, standardSchemaToValidator } from '@pyreon/validation'
 
 if (isStandardSchema(schema)) {
   const validate = standardSchemaToValidator(schema)
 }`,
-    notes: 'Runtime type guard — detect a Standard Schema-compliant schema by its `~standard` property (an object carrying a `validate` function). Accepts a value whose `typeof` is `object` OR `function` — ArkType schemas are CALLABLE (`type("string")(input)` validates) yet still carry `~standard`, so a callable is a valid Standard Schema; a plain function WITHOUT `~standard` is still rejected. Used by the universal gate to decide whether a `schema` option is a raw Standard Schema (→ standardSchemaToValidator) vs a Pyreon TypedSchemaAdapter (→ isPyreonAdapter) vs a plain validator function. Zero library imports — pure duck-typing, so it never breaks on a validator-library major bump. See also: isPyreonAdapter, standardSchemaToValidator.',
+    notes: 'Runtime type guard — detect a Standard Schema-compliant schema by its `~standard` property (an object carrying a `validate` function). Accepts a value whose `typeof` is `object` OR `function` — ArkType schemas are CALLABLE (`type("string")(input)` validates) yet still carry `~standard`, so a callable is a valid Standard Schema; a plain function WITHOUT `~standard` is still rejected. Only `~standard.validate` is checked at runtime — `version` / `vendor` are not, so a hand-rolled schema that omits them is still validated. Used by the universal gate to decide whether a `schema` option is a raw Standard Schema (→ standardSchemaToValidator) vs a Pyreon TypedSchemaAdapter (→ isPyreonAdapter) vs a plain validator function. Zero library imports — pure duck-typing, so it never breaks on a validator-library major bump. See also: isPyreonAdapter, standardSchemaToValidator.',
     mistakes: `- Using it to detect a Pyreon adapter — those brand with \`_infer\`, not \`~standard\`; use isPyreonAdapter for that tier
 - Assuming it only matches objects — ArkType schemas are functions; the guard accepts a callable carrying \`~standard\` (a bare object-only guard silently rejected raw ArkType everywhere)`,
   },
@@ -3788,7 +3788,7 @@ if (isPyreonAdapter(schema)) {
   },
 
   'validation/wrapStandardSchema': {
-    signature: '<T>(schema: StandardSchemaShape<unknown>) => (value: unknown) => SchemaParseResult<T>',
+    signature: '<T>(schema: StandardSchemaV1) => (value: unknown) => SchemaParseResult<T>',
     example: `import { wrapStandardSchema } from '@pyreon/validation'
 
 const parse = wrapStandardSchema(schema)
@@ -3865,7 +3865,7 @@ import { z } from 'zod'
 
 const schema = z.object({ id: z.string(), n: z.number() })
 type Values = InferSchema<typeof schema> // { id: string; n: number }`,
-    notes: 'Extract the inferred output type from EITHER a Pyreon TypedSchemaAdapter (reads `_infer`, Tier A.1) OR a raw Standard Schema (reads `~standard.types.output`, Tier A.2). Falls back to `Record<string, unknown>` for unknown shapes (never collapses to `never`). Powers the strict typing in `@pyreon/store` + `@pyreon/state-tree` so a raw `z.object(...)` passed directly infers its exact field types. See also: TypedSchemaAdapter, StandardSchemaLike.',
+    notes: 'Extract the inferred output type from EITHER a Pyreon TypedSchemaAdapter (reads `_infer`, Tier A.1) OR a raw Standard Schema (reads `~standard.types.output`, Tier A.2). Falls back to `Record<string, unknown>` for unknown shapes (never collapses to `never`). Powers the strict typing in `@pyreon/store` + `@pyreon/state-tree` so a raw `z.object(...)` passed directly infers its exact field types. See also: TypedSchemaAdapter, StandardSchemaV1.',
     mistakes: '- Expecting inference when a raw schema omits its `~standard.types` phantom — the spec makes `types?` optional; real libraries emit it, but a hand-rolled ~standard without it falls back to Record<string, unknown>',
   },
 
@@ -3897,16 +3897,19 @@ const err: ValidationError = isValid ? undefined : 'Required'`,
     notes: `A single field's error value — the message string, or \`undefined\` for "no error". The atomic unit of every error record and validator return in the stack. OWNED by \`@pyreon/validation\`; re-exported by \`@pyreon/form\` so \`import { ValidationError } from '@pyreon/form'\` still works. See also: ValidateFn, SchemaValidateFn.`,
   },
 
-  'validation/StandardSchemaLike': {
-    signature: 'interface StandardSchemaLike<Output = unknown> { readonly "~standard": { readonly types?: { readonly output: Output }; readonly validate: (value: unknown) => StandardSchemaResult | Promise<StandardSchemaResult> } }',
-    example: `import type { StandardSchemaLike } from '@pyreon/validation'
+  'validation/StandardSchemaV1': {
+    signature: `interface StandardSchemaV1<Input = unknown, Output = Input> { readonly '~standard': StandardSchemaV1.Props<Input, Output> }`,
+    example: `import type { StandardSchemaV1 } from '@pyreon/validation'
 import { standardSchemaToValidator } from '@pyreon/validation'
 
-function adapt<T extends Record<string, unknown>>(s: StandardSchemaLike) {
+function adapt<T extends Record<string, unknown>>(s: StandardSchemaV1) {
   return standardSchemaToValidator<T>(s)
-}`,
-    notes: 'The Standard Schema (https://standardschema.dev) shape `@pyreon/validation` owns so any consumer can accept a raw schema with no adapter and no cast — the `~standard` property Zod ≥3.24 / Valibot ≥1 / ArkType ≥2 / Effect Schema / `@pyreon/validate` `s` all expose. `standardSchemaToValidator` takes this type; `useForm({ schema })` accepts it directly. See also: standardSchemaToValidator, isStandardSchema.',
-    mistakes: '- Confusing it with StandardSchemaShape — near-identical duck-types; standardSchemaToValidator takes StandardSchemaLike, wrapStandardSchema / isStandardSchema use StandardSchemaShape',
+}
+
+const issue: StandardSchemaV1.Issue = { message: 'Required', path: ['email'] }`,
+    notes: 'The Standard Schema (https://standardschema.dev) contract — the `~standard` property Zod ≥3.24 / Valibot ≥1 / ArkType ≥2 / Effect Schema / `@pyreon/validate` `s` all implement. Re-exported from the official types-only `@standard-schema/spec` package, which is the ONE definition every @pyreon package uses (no package re-declares it). The issue and result shapes are its namespace members: `StandardSchemaV1.Issue`, `StandardSchemaV1.Result<Output>`. `standardSchemaToValidator` / `wrapStandardSchema` take it, `isStandardSchema` narrows to it, and `useForm({ schema })` accepts it directly. See also: standardSchemaToValidator, isStandardSchema.',
+    mistakes: `- Reading \`result.value\` without narrowing — the spec failure result has no \`value\` key; discriminate on \`result.issues\` (a valibot failure carries BOTH \`value\` and \`issues\`)
+- Hand-writing a schema object without \`version: 1\` and \`vendor\` — the type requires both, even though \`isStandardSchema\` only checks \`validate\` at runtime`,
   },
 
   'validation/ValidationIssue': {
