@@ -141,6 +141,7 @@ export function validateScheme(scheme: string): string {
       `[create-multiplatform] "${s}" is not a valid app URL scheme — it belongs to the platform or to web links. Pick a scheme unique to your app (for example "myapp").`,
     )
   }
+
   return s
 }
 
@@ -258,6 +259,9 @@ ios/PyreonPackages/
 # drops into the same two files; keep them out of git either way).
 android/release.keystore
 android/keystore.properties
+# Crash symbols retained by every release build (R8 mapping.txt, iOS dSYMs) —
+# build output: archive them with each release you ship, do not commit them.
+symbols/
 `,
   )
   add(
@@ -287,6 +291,8 @@ android/keystore.properties
           'e2e:android': 'pyreon-native dev --target=android --once && maestro test .maestro',
           'release:keystore': 'bash scripts/ensure-release-keystore.sh',
           'release:android': 'bash scripts/ensure-release-keystore.sh && cd android && gradle assembleRelease',
+          // Device-SDK archive (unsigned) + its dSYM retained under symbols/ios/.
+          'release:ios': 'bash scripts/archive-ios.sh',
         },
         dependencies: {
           '@pyreon/core': PYREON_DEP_RANGE,
@@ -679,6 +685,53 @@ fi
 `,
   )
 
+  add(
+    'scripts/archive-ios.sh',
+    `#!/usr/bin/env bash
+# Device-SDK archive + crash-symbol retention. \`xcodebuild archive\` writes the
+# dSYM into the .xcarchive, which the next archive replaces — so the one file
+# that makes a release crash readable is gone by the following release. This
+# copies it to symbols/ios/<CFBundleShortVersionString>-<CFBundleVersion>/,
+# where \`pyreon-native symbolicate\` looks (it matches the dSYM UUID the
+# crash report carries). Archive symbols/ with every release you ship.
+#
+# Unsigned (CODE_SIGNING_ALLOWED=NO): signing needs your Apple Developer
+# account. Export a signed .ipa from the archive with
+# \`xcodebuild -exportArchive\` once you have one — the dSYM retained here is
+# the same, because export does not recompile.
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "\${SCRIPT_DIR}/.." && pwd)"
+cd "\${PROJECT_DIR}"
+bash scripts/build-ios.sh
+(cd ios && xcodegen generate)
+
+ARCHIVE="ios/build/${pascal}.xcarchive"
+rm -rf "\${ARCHIVE}"
+xcodebuild archive \\
+  -project ios/${pascal}.xcodeproj \\
+  -scheme ${pascal} \\
+  -destination 'generic/platform=iOS' \\
+  -archivePath "\${ARCHIVE}" \\
+  DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \\
+  CODE_SIGNING_ALLOWED=NO | tail -3
+
+APP="\${ARCHIVE}/Products/Applications/${pascal}.app"
+DSYM="\${ARCHIVE}/dSYMs/${pascal}.app.dSYM"
+test -d "\${DSYM}" || { echo "[pyreon] no dSYM in the archive"; exit 1; }
+VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "\${APP}/Info.plist")"
+BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "\${APP}/Info.plist")"
+DEST="symbols/ios/\${VERSION}-\${BUILD}"
+rm -rf "\${DEST}" && mkdir -p "\${DEST}"
+cp -R "\${DSYM}" "\${DEST}/"
+# The retained dSYM must be THIS binary's: same LC_UUID.
+BIN_UUID="$(dwarfdump --uuid "\${APP}/${pascal}" | awk '{print $2}')"
+DSYM_UUID="$(dwarfdump --uuid "\${DEST}/${pascal}.app.dSYM" | awk '{print $2}')"
+[ "\${BIN_UUID}" = "\${DSYM_UUID}" ] || { echo "[pyreon] dSYM UUID \${DSYM_UUID} != binary \${BIN_UUID}"; exit 1; }
+echo "[pyreon] archived; dSYM \${DSYM_UUID} retained in \${DEST}"
+`,
+  )
+
   // ── Android target (Gradle) ───────────────────────────────────────────────
   add(
     'android/settings.gradle.kts',
@@ -726,6 +779,7 @@ kotlin.code.style=official
     `// java.util.Properties by explicit import — inside android {} the bare
 // \`java\` resolves to Gradle's JavaPluginExtension accessor, shadowing the
 // package root (\`Unresolved reference 'util'\`).
+import com.android.build.api.artifact.SingleArtifact
 import java.util.Properties
 
 plugins {
@@ -858,6 +912,30 @@ dependencies {
     // androidx.media3.*. Same deal; R8 strips unused classes from release.
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
+}
+
+// ── Crash symbols: retain each release build's R8 mapping ──
+// R8 writes mapping.txt to build/outputs/mapping/release/, where the next
+// build overwrites it and \`gradle clean\` deletes it, so the stack of a build
+// that already shipped could never be retraced. After every release
+// assemble/bundle this copies it to
+// symbols/android/<versionName>-<versionCode>/mapping.txt (project root),
+// where \`pyreon-native symbolicate\` looks — it matches the R8 map id the
+// crashed frames carry, so the right file is found by content.
+// Archive symbols/ with every release you ship; it is gitignored.
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        val output = variant.outputs.single()
+        val target = output.versionName.zip(output.versionCode) { name, code ->
+            rootProject.layout.projectDirectory.dir("../symbols/android/" + name + "-" + code)
+        }
+        val retain = tasks.register<Copy>("pyreonRetainReleaseMapping") {
+            from(variant.artifacts.get(SingleArtifact.OBFUSCATION_MAPPING_FILE))
+            into(target)
+        }
+        tasks.matching { it.name == "assembleRelease" || it.name == "bundleRelease" }
+            .configureEach { finalizedBy(retain) }
+    }
 }
 
 // Re-run the .tsx → .kt compile on every build (mirrors iOS preBuildScript).
@@ -1191,6 +1269,27 @@ only (obfuscation + optimization stay on) — the test frameworks resolve the
 Kotlin stdlib, coroutines, tracing and compose test hooks from the app's
 classpath, which shrinking strips of everything app code doesn't reach.
 Applied only under the property; the shipping config is untouched.
+
+## Crash symbols (readable release stacks)
+
+A release build's crash stack is unreadable on purpose: R8 renames Android
+classes and methods, and an iOS release binary reports bare addresses. Both
+release lanes keep the file that reverses that, per build:
+
+- \`npm run release:android\` → \`symbols/android/<versionName>-<versionCode>/mapping.txt\`
+- \`npm run release:ios\` → \`symbols/ios/<version>-<build>/${pascal}.app.dSYM\` (macOS)
+
+\`symbols/\` is gitignored — archive it with every release you ship. A
+\`useCrashReporter()\` report carries the build identity (version, build number,
+the R8 mapping id / the dSYM UUID), so the right file is picked for you:
+
+\`\`\`bash
+npx pyreon-native symbolicate crash.json --symbols=symbols
+\`\`\`
+
+Android uses R8 \`retrace\` from the Android SDK command-line tools (any OS);
+iOS uses \`atos\` (macOS with Xcode). Symbols from a different build are refused,
+because they would print a plausible but wrong stack.
 
 ## Adding a platform capability the framework does not ship
 

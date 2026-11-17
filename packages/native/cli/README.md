@@ -14,18 +14,20 @@ pyreon-native assets    --target=<ios|android|web> --source=<dir> --out=<dir>
 pyreon-native stage-web --target=<ios|android> --source=<dir> --out=<dir>
 pyreon-native dev       --target=<ios|android> [--app=<dir>] [--device=<name|id>] [--once]
 pyreon-native wire      [--app=<dir>] [--android-out=<file>] [--ios-out=<dir>] [--json]
+pyreon-native symbolicate <report.json> [--symbols=<dir>] [--mapping=<file>] [--dsym=<path>] [--retrace=<path>]
 ```
 
 | Command | Does |
 |---|---|
-| `build` | Compiles a source tree to Swift and/or Kotlin, writing files. `--target=all` builds both, into `ios/` + `android/` subdirectories of `--out`. Each emitted file carries a source-map directive (Swift `#sourceLocation`, Kotlin `// pyreon-source:`) so debug tooling traces back to the original Pyreon source. |
+| `build` | Compiles a source tree to Swift and/or Kotlin, writing files. `--target=all` builds both, into `ios/` + `android/` subdirectories of `--out`. Each emitted file starts with a `// pyreon-source: <path>` comment naming the Pyreon source it came from. It is a comment, not a Swift `#sourceLocation`: the emit has no per-line map, so that directive would relabel every generated line as the same line number of the `.tsx`. |
 | `check` | The **authoring-loop** command — runs the compiler for both targets **in memory**: no build, no xcodegen, no gradle, no file writes. Reports transform errors and unsupported-TypeScript-subset warnings per file. `--typecheck` additionally runs `swiftc -typecheck`, catching what a syntactically-clean emit can still get wrong. `--lsp` runs the same checks as a stdio LSP server, so warnings arrive as editor diagnostics. |
 | `assets` | Materializes bundled images and fonts into each platform's expected layout (`res/drawable*` on Android, an asset catalog entry on iOS). |
 | `stage-web` | Stages a web bundle into the app so `<WebView src="…">` can load it from the app bundle — see [Multi-Platform (PMTC)](https://pyreon.dev/docs/multiplatform) for the WebView host. |
 | `dev` | The on-device edit loop: watches the source, compiles it in memory, then rebuilds, reinstalls and relaunches on the booted simulator or emulator, skipping the native build when the emit is unchanged. A rebuild loop, not hot reload. `--once` runs one cycle and exits. See [Native Dev Loop](https://pyreon.dev/docs/native-dev-loop). |
 | `wire` | Resolves an app's Pyreon native source roots (the base runtime/router + every co-located feature `native/swift`/`native/kotlin` directory) in a way that survives hoisting and non-flat installs, and writes the result where each platform's build reads it — see [Native Packages](https://pyreon.dev/docs/native-packages#why-four-of-them-ship-source) for the full mechanism. |
+| `symbolicate` | Turns a `useCrashReporter()` report from a **release** build back into a readable stack. Android runs R8 `retrace` (Android SDK command-line tools, any OS) with that build's `mapping.txt`; iOS runs `atos` (Xcode, macOS only) with that build's dSYM over the report's raw return addresses. The symbols are looked up under `--symbols` (default `./symbols`, where the scaffold's release lanes retain them: `android/<version>-<buildNumber>/mapping.txt`, `ios/<version>-<buildNumber>/<App>.app.dSYM`) by the report's R8 mapping id or dSYM UUID; `--mapping` / `--dsym` name a file directly, `--retrace` the launcher. Symbols from a different build are refused (exit `2`), because retrace and atos would print a plausible but wrong stack. The readable stack goes to stdout. |
 
-Exit codes: `0` success, `1` usage error, `2` the command failed — a compiler error on a source file for `build`/`check`, a failed copy for `assets`/`stage-web`, or, for `wire`, a package that declares native sources whose directory is missing.
+Exit codes: `0` success, `1` usage error, `2` the command failed — a compiler error on a source file for `build`/`check`, a failed copy for `assets`/`stage-web`, no matching symbols (or a missing tool) for `symbolicate`, or, for `wire`, a package that declares native sources whose directory is missing.
 
 ## Compiler plugins
 
