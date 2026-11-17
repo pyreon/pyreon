@@ -572,6 +572,31 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("Notes: ${before + 1}").performScrollTo().assertIsDisplayed()
     }
 
+    // useDatabase — the rest of the surface: get, find, update and delete.
+    //
+    // Run CRUD clears its collection, inserts c1 and c2 (both tag x), then
+    // re-inserts c1 with new fields (`update` is an upsert by id on every
+    // target), reads c1 back, finds by tag, deletes c2 twice and reads it
+    // again. The rendered line is each result in order, so one assertion pins
+    // all of them, and a wrong value names which:
+    //   n:2>2           the update replaced c1 instead of appending a record
+    //   get:updated     get returned the UPDATED fields, read by key
+    //   find:1/1        find matched by field value, after c1 moved to tag y
+    //   del:true/false  delete reports whether something was removed
+    //   c2:gone         get after delete returns nothing
+    //   left:1          count after the delete
+    @Test
+    fun databaseGetFindUpdateDeleteRunOnDevice() {
+        composeRule.onNodeWithText("Run CRUD").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        val node = composeRule.onNode(hasText("CRUD ", substring = true)).performScrollTo()
+        node.assertIsDisplayed()
+        val shown = node.fetchSemanticsNode().config[SemanticsProperties.Text].first().text
+        check(shown == "CRUD n:2>2 get:updated find:1/1 del:true/false c2:gone left:1") {
+            "database CRUD rendered \"$shown\""
+        }
+    }
+
     // useDatabase — the record is on the DEVICE'S DISK, not in a cache.
     //
     // The sibling test above proves the write path RUNS. This one proves it

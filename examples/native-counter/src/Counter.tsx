@@ -445,6 +445,29 @@ export function Counter() {
   onMount(() => {
     noteCount = db.count('notes')
   })
+  // The rest of the database surface — get, find, update and delete — run on
+  // the device, each result rendered so a test can read it. `update` is an
+  // insert over an existing id (the API is an upsert on every target), so the
+  // count must NOT grow and `get` must return the new fields. The collection is
+  // cleared first, so the line is the same on every run.
+  let crud = state('idle')
+  const runCrud = () => {
+    db.delete('crud', 'c1')
+    db.delete('crud', 'c2')
+    db.insert('crud', { id: 'c1', fields: { body: 'first', tag: 'x' } })
+    db.insert('crud', { id: 'c2', fields: { body: 'second', tag: 'x' } })
+    const inserted = db.count('crud')
+    db.insert('crud', { id: 'c1', fields: { body: 'updated', tag: 'y' } })
+    const afterUpdate = db.count('crud')
+    const got = db.get('crud', 'c1')
+    const body = got ? (got.fields['body'] ?? 'missing') : 'none'
+    const tagX = db.find('crud', 'tag', 'x').length
+    const tagY = db.find('crud', 'tag', 'y').length
+    const removed = db.delete('crud', 'c2')
+    const removedAgain = db.delete('crud', 'c2')
+    const gone = db.get('crud', 'c2') ? 'present' : 'gone'
+    crud = `n:${inserted}>${afterUpdate} get:${body} find:${tagX}/${tagY} del:${removed}/${removedAgain} c2:${gone} left:${db.count('crud')}`
+  }
 
   const power = createMachine({
     initial: 'off',
@@ -557,6 +580,8 @@ export function Counter() {
       >
         Save Note
       </Button>
+      <Button onPress={runCrud}>Run CRUD</Button>
+      <Text>CRUD {crud}</Text>
 
       {/* M4.5 async-lowering device proof — an ASYNC handler that awaits the
           biometric gate. PMTC wraps this `async () => { … await … }` in a Swift
