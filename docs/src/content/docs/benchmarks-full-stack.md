@@ -23,7 +23,7 @@ It is not:
 Every arm implements [`CONTRACT.md`](https://github.com/pyreon/pyreon/blob/main/examples/stacks-bench/CONTRACT.md):
 
 - `/items`: a server loader returns 100 seeded items. The page renders them as a list of links with prices, a counter button, and a form that posts a new item.
-- `/items/:id`: its own server loader. An unknown id answers HTTP 404 through the framework's not-found mechanism.
+- `/items/:id`: its own server loader. An unknown id answers HTTP 404 through the framework's not-found mechanism. The zero arm is the one exception today: it answers the 404 from a server middleware, because the release its lockfile pins predates the fix for a Pyreon defect that turned a loader's `notFound()` into a 500.
 - The form action validates one field on the server. It re-renders with an error message, or adds the item and redirects to the new item's page.
 - The counter is a real client component with state, written the way that framework's docs write a counter.
 
