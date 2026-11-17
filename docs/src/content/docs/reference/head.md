@@ -80,7 +80,7 @@ const page = `<!doctype html><html${attrs(htmlAttrs)}><head>${head}</head><body$
 | [`useHead`](#usehead-hook) | hook | Register head tags from any component in the tree. |
 | [`HeadProvider`](#headprovider-component) | component | Context provider that collects every `useHead()` call from descendants. |
 | [`renderWithHead`](#renderwithhead-function) | function | SSR companion to `HeadProvider`, exported from the `@pyreon/head/ssr` subpath (kept out of the client entry). |
-| [`createHeadContext`](#createheadcontext-function) | function | Manual factory for a `HeadContextValue` — only needed when wiring up a custom SSR pipeline that bypasses `renderWithHead |
+| [`createHeadContext`](#createheadcontext-function) | function | Manual factory for a `HeadContextValue` — only needed when wiring up a custom SSR pipeline that bypasses… |
 | [`ScriptTag`](#scripttag-type) | type | Standard `<script>` tag attributes passed to `useHead({ script: [...] })`. |
 
 ## API

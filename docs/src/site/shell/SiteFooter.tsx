@@ -1,6 +1,6 @@
 import { For } from '@pyreon/core'
-import { font, text, weight } from '../theme'
-import { el, focusRing, tone, txt, type LinkAttrs } from '../kit/bases'
+import { font, text, weight, touch } from '../theme'
+import { el, focusRing, tone, txt, type LinkAttrs, tapArea } from '../kit/bases'
 import { Glyph } from '../kit/cards'
 import { InstallCommand } from '../kit/controls'
 import { isFileHref, useLinkClick } from '../kit/link'
@@ -66,7 +66,8 @@ const ColumnTitle = txt
 const Links = el
   .config({ name: 'SiteFooterLinks' })
   .attrs({ tag: 'ul', block: true, gap: 10 })
-  .theme(() => ({ listStyle: 'none', margin: 0, padding: 0 }))
+  // On touch screens each link is already a 44px row: no extra gap between rows.
+  .theme(() => ({ listStyle: 'none', margin: 0, padding: 0, extendCss: `${touch.media} { gap: 0; }` }))
 
 const FooterLink = el
   .config({ name: 'SiteFooterLink' })
@@ -79,6 +80,7 @@ const FooterLink = el
     borderRadius: 4,
     hover: { color: tone(m, 'text') },
     focus: focusRing(m),
+    extendCss: tapArea,
   }))
 
 const Bottom = el

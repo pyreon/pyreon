@@ -390,7 +390,7 @@ exported from `@pyreon/lathe` for plugin authors.
 Four guarantees hold for every plugin:
 
 - **Errors name it.** A throw inside a hook surfaces as
-  `plugin \`path-table\` failed in \`emit\`: …`.
+  ``plugin `path-table` failed in `emit`: …``.
 - **The document is immutable.** A hook gets a frozen document; writing to it
   fails with a message saying to return a modified copy. A copy that leaves a
   model reference dangling is refused, naming the plugin.
@@ -437,7 +437,7 @@ the spec's id or the generated name, and `method` takes either case.
 
 Models only the dropped operations used are dropped with them, and so are the
 notes about both; `models: 'all'` keeps every model. A matcher that selects
-nothing is an error with a suggestion (`tag \`Customer\` -> \`Customers\`?`) —
+nothing is an error with a suggestion (``tag `Customer` -> `Customers`?``) —
 in `include` it would produce an empty client, in `exclude` it would generate
 the very operations it names.
 

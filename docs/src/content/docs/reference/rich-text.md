@@ -72,7 +72,7 @@ const binding = bindRichTextToSignal({ editor, signal: draft })
 | --- | --- | --- |
 | [`createRichTextEditor`](#createrichtexteditor-function) | function | Create a reactive WYSIWYG editor instance. |
 | [`RichText`](#richtext-component) | component | Mount component for a `createRichTextEditor` instance. |
-| [`bindRichTextToSignal`](#bindrichtexttosignal-function) | function | Two-way binding between an editor instance and an external Signal — the editor mirror of `@pyreon/code`'s `bindEditorToS |
+| [`bindRichTextToSignal`](#bindrichtexttosignal-function) | function | Two-way binding between an editor instance and an external Signal — the editor mirror of `@pyreon/code`'s… |
 
 ## API
 

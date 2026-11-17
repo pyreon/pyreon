@@ -2,16 +2,17 @@ import { expect, type Locator, type Page, test } from '@playwright/test'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { replacedIslandRoots, trackIslandRoots, waitForIslands } from './site-islands'
+import { SITE_WIDTHS } from './site-audit'
 
 /**
  * pyreon.dev product pages for the core/platform and data/state groups,
  * against the production SSG build: every page is prerendered with its
  * share tags, hydrates in place with no errors, has no horizontal scroll at
- * the five design widths, passes contrast in both themes, and its live demo
+ * the seven site widths, passes contrast in both themes, and its live demo
  * works by pointer and by keyboard.
  */
 const IDS = ['zero', 'content', 'native', 'primitives', 'design', 'kinetic', 'router', 'hooks', 'validation', 'auth', 'query', 'http', 'store', 'statetree', 'machine', 'sync', 'storage']
-const WIDTHS = [320, 390, 768, 1024, 1440]
+const WIDTHS = SITE_WIDTHS
 
 function collectErrors(page: Page): string[] {
   const errors: string[] = []

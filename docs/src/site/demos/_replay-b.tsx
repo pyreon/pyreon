@@ -3,7 +3,7 @@ import { useInterval } from '@pyreon/hooks'
 import { computed, effect, isClient, signal } from '@pyreon/reactivity'
 import { keyframes } from '@pyreon/styler'
 import { font, motion, radius, text } from '../theme'
-import { el, type ButtonAttrs, focusRing, tone, txt } from '../kit/bases'
+import { el, type ButtonAttrs, focusRing, tone, txt, tapArea } from '../kit/bases'
 
 /**
  * Terminal / transcript replay for the tool product pages (ai, atlas, lathe,
@@ -91,6 +91,7 @@ const BarButton = el
     transition: `color ${motion.hover}, border-color ${motion.hover}`,
     hover: { color: tone(m, 'text'), borderColor: tone(m, 'lineHover') },
     focus: focusRing(m),
+    extendCss: tapArea,
   }))
 
 const Log = el

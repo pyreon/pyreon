@@ -225,12 +225,15 @@ describe('known bug — Swift inline-object helper params', () => {
   // while every call site passes the synthesized `__ObjN(...)` struct. Kotlin
   // synthesized its own `PyreonHelpers<Param>` data class — a DIFFERENT type
   // from the literal's `__ObjN`, so it did not compile either.
-  it('Swift: an inline-object param is typed as the synthesized struct, not a tuple', () => {
+  // The parameter's shape is now a declared struct named after it (module-inline-object-types.ts), and the call
+  // site's literal constructs that same struct.
+  it('Swift: an inline-object param is typed as a named struct, not a tuple', () => {
     const r = swift(
       `${PRIM}function f(t: { c: string }) { return t.c }\nexport function App(){ return <Text>{f({ c: "x" })}</Text> }`,
     )
     expect(sigLine(r.code)).not.toContain('_ t: String')
-    expect(sigLine(r.code)).toContain('_ t: __Obj0')
+    expect(sigLine(r.code)).toContain('_ t: FTType')
+    expect(r.code).toContain('f(FTType(c: "x"))')
   })
 })
 
