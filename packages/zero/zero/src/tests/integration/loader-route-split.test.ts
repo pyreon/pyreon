@@ -4,7 +4,7 @@
  * static `import * as` of the route — which pulled the route module into
  * the entry chunk and printed INEFFECTIVE_DYNAMIC_IMPORT on every build.
  */
-import { readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, realpathSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import pyreon from '@pyreon/vite-plugin'
@@ -50,6 +50,23 @@ afterAll(async () => {
 })
 
 describe('loaderKey route code splitting (real build)', () => {
+  it('the client output carries no absolute path of the checkout it was built in', () => {
+    // The generated route module tagged every lazy route with
+    // `hmrId: "<absolute path of the route file>"` in every build. The id is
+    // read by the dev HMR coordinator and by the server's modulepreload
+    // lookup, never by a production client — where it was a plain string, so
+    // it shipped: the build machine's directory layout in public JS, and a
+    // bundle whose bytes depend on where the repository is checked out.
+    const roots = [...new Set([FIXTURE, realpathSync(FIXTURE)])]
+    const files = [
+      ...chunks,
+      { file: 'index.html', code: readFileSync(join(DIST, 'index.html'), 'utf-8') },
+    ]
+    // Vacuous-pass guard: the scan saw the route chunks, not an empty build.
+    expect(chunks.length).toBeGreaterThan(1)
+    expect(files.filter((f) => roots.some((root) => f.code.includes(root))).map((f) => f.file)).toEqual([])
+  })
+
   it('the route module lives in its own chunk, not the entry', () => {
     const html = readFileSync(join(DIST, 'index.html'), 'utf-8')
     const entryFile = /assets\/([^"]+\.js)/.exec(html)?.[1]

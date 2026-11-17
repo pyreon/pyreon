@@ -282,6 +282,12 @@ Mutating a property of SHALLOW plain state (`state.raw` / a non-literal initiali
 
 ---
 
+### A pre-pass lowering that the next pass re-interprets
+
+Plain Mode lowered `signalOf(count)` (the identity escape hatch) to the bare `count`, and the JSX pass auto-calls a bare known signal inside JSX — so `<Comp v={signalOf(count)} />`, `onClick={() => watch(signalOf(count))}` and every other JSX position passed the VALUE, on every element path, in both backends (they agreed, so equivalence gates were blind). **Rule: when a pre-pass emits a form whose meaning the next pass decides by shape, carry the intent across explicitly and honour it at every site that decides** — here `SIGNAL_OF_MARK` (`/*@pyreon:signal*/count`, written by `plain.ts` / `plain.rs`) and `isSignalRead` / `is_signal_read` at each bare-signal-as-read site of `jsx.ts` / `lib.rs`. A comment keeps PMTC, source maps and classic emit unchanged. Locks: `compiler/src/tests/plain-signalof-identity.test.ts`, `runtime-dom/src/tests/compiled-plain-signalof.test.tsx`.
+
+---
+
 ### A sync effect that writes with `setX((prev) => …)`
 
 The updater reads the library's own atom, so the effect subscribes to what it writes and re-runs forever. Track only your own inputs (`options()`) and wrap the library write in `untrack`.

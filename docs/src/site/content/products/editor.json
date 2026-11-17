@@ -257,7 +257,7 @@
   {
    "title": "Review a change before saving",
    "text": "An inline diff of two signals. With `readOnly={false}` each change gets accept and reject controls.",
-   "code": "import { signal } from '@pyreon/reactivity'\nimport { DiffEditor } from '@pyreon/code'\n\nconst saved = signal('export const limit = 10\\n')\nconst edited = signal('export const limit = 25\\nexport const retries = 3\\n')\n\nfunction Review() {\n  return <DiffEditor original={saved} modified={edited} language=\"typescript\" inline readOnly={false} style=\"height: 240px\" />\n}"
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { DiffEditor } from '@pyreon/code'\n\nconst saved = signal('export const limit = 10\\n')\nconst edited = signal('export const limit = 25\\nexport const retries = 3\\n')\n\nfunction Review() {\n  return <DiffEditor original={saved()} modified={edited()} language=\"typescript\" inline readOnly={false} style=\"height: 240px\" />\n}"
   },
   {
    "title": "The same editors in a native screen",
