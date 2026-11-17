@@ -75,11 +75,14 @@ export const recognizeWebSocket: CallRecognizer = (_call, ctx) => {
       autoConnect = value.value as boolean
     }
   }
+
   return { type: WEBSOCKET_TYPE, payload: { url, autoConnect } }
 }
+
 export const recognizeDatabase: CallRecognizer = () => ({ type: DATABASE_TYPE })
 export const recognizeSecureStorage: CallRecognizer = () => ({ type: SECURE_STORAGE_TYPE })
 export const recognizeMap: CallRecognizer = () => ({ type: MAP_TYPE })
+
 /** `useAuth<User>()`: generic over the app's user type. The no-generic form falls back to a placeholder type the emit handles. */
 export const recognizeAuth: CallRecognizer = (_call, ctx) => ({
   type: AUTH_TYPE,
@@ -157,6 +160,7 @@ function fieldOf(site: ReceiverSite, fields: ReadonlySet<string>): string | unde
   }
   const read = site.expr
   if (read.object.kind !== 'identifier') return undefined
+
   return fields.has(read.property) ? read.property : undefined
 }
 
@@ -193,6 +197,7 @@ function labelledCall(site: ReceiverSite, ctx: SwiftEmitContext, labels: Labels,
     const label = exactAfterCollection ? (i === 0 ? null : table[i - 1]) : table[i]
     return label === null || label === undefined ? src : `${label}: ${src}`
   })
+
   return `${ctx.ident(site.receiver.name)}.${method}(${labelled.join(', ')})`
 }
 
@@ -227,9 +232,11 @@ function insertRecord(site: ReceiverSite, ctx: SwiftEmitContext | KotlinEmitCont
         parts.push(swift ? `fields: ${ctx.expr(fieldsField.value)}` : ctx.expr(fieldsField.value))
       }
     }
+
     return `${ctx.ident(site.receiver.name)}.insert(${ctx.expr(args[0]!)}, PyreonRecord(${parts.join(', ')}))`
   }
   warnInsertShape(ctx, site.receiver.name, lit.fields)
+
   return undefined
 }
 
@@ -261,6 +268,7 @@ export const websocketReceiver: ReceiverLowering = {
       const field = fieldOf(site, WEBSOCKET_FIELDS)
       if (field !== undefined) return `${ctx.ident(site.receiver.name)}.${field}`
       if (zeroArgMethodOf(site) === 'connect') return `${ctx.ident(site.receiver.name)}.connect(to: URL(string: ${swiftStr(urlOf(site.receiver))})!)`
+
       return undefined
     },
   },
@@ -271,6 +279,7 @@ export const websocketReceiver: ReceiverLowering = {
       const field = fieldOf(site, WEBSOCKET_FIELDS)
       if (field !== undefined) return `${ctx.ident(site.receiver.name)}.${ctx.ident(field)}.value`
       if (zeroArgMethodOf(site) === 'connect') return `${ctx.ident(site.receiver.name)}.connect(${kotlinStr(urlOf(site.receiver))})`
+
       return undefined
     },
   },
@@ -294,6 +303,7 @@ const stateFieldsReceiver = (fields: ReadonlySet<string>, labels?: Labels): Rece
     },
   },
 })
+
 export const mapReceiver = stateFieldsReceiver(MAP_FIELDS, MAP_LABELS)
 export const authReceiver = stateFieldsReceiver(AUTH_FIELDS)
 

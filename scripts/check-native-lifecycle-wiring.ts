@@ -138,6 +138,7 @@ export function discoverLifecycleContainers(
     if (prev) prev.files.push(f.path)
     else found.set(container, { method, files: [f.path] })
   }
+
   return found
 }
 
@@ -299,6 +300,7 @@ function readNativeFiles(root: string): NativeFile[] {
       files.push({ path: join(d, name), text: readFileSync(join(abs, name), 'utf8') })
     }
   }
+
   return files
 }
 
@@ -326,12 +328,14 @@ function main(): number {
     console.log(
       `✓ Native lifecycle wiring OK — ${discovered.size} lifecycle container(s): ${auto} auto-started (wired both emits), ${manual} manual (documented).`,
     )
+
     return 0
   }
   console.error(`✗ Native lifecycle wiring — ${problems.length} problem(s):`)
   for (const p of problems) {
     console.error(`  [${p.kind}] ${p.container} ${p.detail}`)
   }
+
   return 1
 }
 

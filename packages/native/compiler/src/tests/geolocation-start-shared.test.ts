@@ -38,6 +38,7 @@ export function C(){
 const WITH_START = app(
   '<Text>{geo.latitude}</Text><Button onPress={() => geo.start()}>Locate</Button>',
 )
+
 const WITH_STOP = app('<Button onPress={() => geo.stop()}>Stop</Button>')
 const READS_ONLY = app('<Text>{geo.latitude}</Text><Text>{geo.longitude}</Text>')
 

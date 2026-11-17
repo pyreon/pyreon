@@ -68,6 +68,7 @@ function derivedLifecycleKinds(): { emitting: Set<string>; scanned: number } {
       emitting.add(kind)
     }
   }
+
   return { emitting, scanned }
 }
 
