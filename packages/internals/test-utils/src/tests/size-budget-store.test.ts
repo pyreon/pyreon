@@ -36,7 +36,7 @@ describe('size-budget-store', () => {
     dir = null
   })
 
-  it('two packages never share a file, across all three families', () => {
+  it('two owners never share a file, across all four families', () => {
     const d = tmp()
     const a = writeCeiling(d, 'bundle', '@pyreon/core', 8232)
     const b = writeCeiling(d, 'bundle', '@pyreon/router', 15616)
@@ -47,7 +47,12 @@ describe('size-budget-store', () => {
     // A package's bundle and its import scenarios are one owner, one file.
     expect(c).toBe(b)
     expect(r).toBe(join('apps', 'ssr-showcase.json'))
-    expect(new Set([a, b, r]).size).toBe(3)
+    // A built site's pages are a fourth family with its own owner file.
+    const site = writeCeiling(d, 'site', 'docs:/why/components-run-once', 93458)
+    expect(site).toBe(join('sites', 'docs.json'))
+    expect(new Set([a, b, r, site]).size).toBe(4)
+    expect(loadCeilings(d).site).toEqual({ 'docs:/why/components-run-once': 93458 })
+    expect(loadCeilings(d).routes).toEqual({ 'ssr-showcase:/about': 56950 })
   })
 
   it('writing one ceiling leaves every other file byte-identical', () => {
@@ -67,11 +72,17 @@ describe('size-budget-store', () => {
     writeCeiling(d, 'imports', '@pyreon/runtime-dom::mount', 9750)
     writeCeiling(d, 'routes', 'ssr-showcase:/', 56950)
     writeCeiling(d, 'routes', 'ssr-showcase:/island-demo', 59450)
+    writeCeiling(d, 'site', 'docs:/docs', 53248)
+    writeCeiling(d, 'site', 'docs:(shell)', 49664)
     expect(loadCeilings(d)).toEqual({
       bundle: { '@pyreon/runtime-dom': 23612 },
       imports: { '@pyreon/runtime-dom::mount': 9750, '@pyreon/runtime-dom::mount+hydrate': 18000 },
       routes: { 'ssr-showcase:/': 56950, 'ssr-showcase:/island-demo': 59450 },
+      site: { 'docs:(shell)': 49664, 'docs:/docs': 53248 },
     })
+    expect(readFileSync(join(d, 'sites', 'docs.json'), 'utf8')).toBe(
+      `${JSON.stringify({ site: 'docs', routes: { '(shell)': 49664, '/docs': 53248 } }, null, 2)}\n`,
+    )
     // Stable key order, so the same state is the same bytes whoever wrote it.
     expect(readFileSync(join(d, 'packages', 'runtime-dom.json'), 'utf8')).toBe(
       `${JSON.stringify({ package: '@pyreon/runtime-dom', bundle: 23612, imports: { mount: 9750, 'mount+hydrate': 18000 } }, null, 2)}\n`,
@@ -79,7 +90,7 @@ describe('size-budget-store', () => {
   })
 
   it('a directory that does not exist reads as no ceilings (a base before this layout)', () => {
-    expect(loadCeilings(join(tmp(), 'absent'))).toEqual({ bundle: {}, imports: {}, routes: {} })
+    expect(loadCeilings(join(tmp(), 'absent'))).toEqual({ bundle: {}, imports: {}, routes: {}, site: {} })
   })
 
   it('names files by package, keeping a foreign scope', () => {

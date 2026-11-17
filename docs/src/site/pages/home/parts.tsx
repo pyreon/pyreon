@@ -1,4 +1,4 @@
-import { el, focusRing, pair, tone, txt, type LinkAttrs, tapArea } from '../../kit/bases'
+import { el, focusRing, pair, tone, txt } from '../../kit/bases'
 import { breakpoints, font, gradient, media, radius, syntax, text, weight } from '../../theme'
 
 /**
@@ -75,7 +75,7 @@ export const PaneHead = el
     borderBottom: '1px solid',
     borderColor: tone(m, 'line'),
     fontFamily: font.mono,
-    fontSize: 11.5,
+    fontSize: text.caveat.size,
     color: tone(m, 'fog'),
     flexWrap: 'wrap',
   }))
@@ -89,7 +89,7 @@ export const TargetLabels = el
 export const TargetLabel = el
   .config({ name: 'HomeTargetLabel' })
   .attrs({ tag: 'li', block: true, gap: 4 })
-  .theme((_t, m) => ({ fontFamily: font.mono, fontSize: 12, color: tone(m, 'text') }))
+  .theme((_t, m) => ({ fontFamily: font.mono, fontSize: text.mono.size, color: tone(m, 'text') }))
 
 /**
  * The hero's three targets on a phone, as text. The trace illustration is
@@ -134,10 +134,6 @@ export const PhoneTargetsHead = el
   .attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 12 })
   .theme(() => ({ marginBottom: 6 }))
 
-export const Note = txt
-  .config({ name: 'HomeNote' })
-  .attrs({ tag: 'p' })
-  .theme((_t, m) => ({ margin: 0, marginTop: 14, fontFamily: font.sans, fontSize: text.caption.size, lineHeight: text.caption.lineHeight, color: tone(m, 'fog') }))
 
 /** `.bench` — the verdict list beside the counter. */
 export const BenchList = el
@@ -244,7 +240,7 @@ export const MapTable = el
     width: '100%',
     borderCollapse: 'collapse',
     fontFamily: font.mono,
-    fontSize: 12.5,
+    fontSize: text.caption.size,
     extendCss: `
       th { text-align: left; padding: 8px 10px 8px 0; font-weight: ${text.eyebrow.weight}; font-size: ${text.eyebrow.size}px; letter-spacing: ${text.eyebrow.tracking}; text-transform: uppercase; color: ${tone(m, 'fog')}; }
       td { padding: 11px 10px 11px 0; border-top: 1px solid ${tone(m, 'line')}; color: ${tone(m, 'mist')}; }
@@ -281,33 +277,12 @@ export const Finding = txt
     borderTop: '1px solid',
     borderColor: tone(m, 'line'),
     fontFamily: font.mono,
-    fontSize: 12,
+    fontSize: text.mono.size,
     lineHeight: 1.5,
     color: tone(m, 'mist'),
     overflowWrap: 'anywhere',
   }))
 
-/** Tags under an audience card: small mono pills that link to the product. */
-export const TagLink = el
-  .config({ name: 'HomeTagLink' })
-  .attrs<LinkAttrs>({ tag: 'a' })
-  .theme((_t, m) => ({
-    display: 'inline-block',
-    paddingTop: 5,
-    paddingBottom: 5,
-    paddingLeft: 11,
-    paddingRight: 11,
-    borderRadius: radius.pill,
-    border: '1px solid',
-    borderColor: tone(m, 'line2'),
-    fontFamily: font.mono,
-    fontSize: 11.5,
-    color: tone(m, 'mist'),
-    textDecoration: 'none',
-    extendCss: tapArea,
-    hover: { color: tone(m, 'text'), borderColor: tone(m, 'lineHover') },
-    focus: focusRing(m),
-  }))
 
 export const ProductCell = el
   .config({ name: 'HomeProductCell' })
@@ -330,7 +305,7 @@ export const CompatPkg = txt
   .attrs({ tag: 'span' })
   .theme((_t, m) => ({
     fontFamily: font.mono,
-    fontSize: { xs: text.eyebrowTight.size, sm: 12 },
+    fontSize: { xs: text.eyebrowTight.size, sm: text.mono.size },
     lineHeight: 1.5,
     color: tone(m, 'fog'),
     extendCss: '& > span { white-space: nowrap; }',
@@ -364,5 +339,5 @@ export const Bullets = el
   .attrs({ tag: 'ul', block: true, gap: 6 })
   .theme((_t, m) => ({ margin: 0, paddingLeft: 18, fontFamily: font.sans, fontSize: text.small.size, lineHeight: text.small.lineHeight, color: tone(m, 'mist') }))
 
-export const CardNum = txt.config({ name: 'HomeCardNum' }).attrs({ tag: 'span' }).theme((_t, m) => ({ fontFamily: font.mono, fontSize: 11.5, color: tone(m, 'accent') }))
+export const CardNum = txt.config({ name: 'HomeCardNum' }).attrs({ tag: 'span' }).theme((_t, m) => ({ fontFamily: font.mono, fontSize: text.caveat.size, color: tone(m, 'accent') }))
 

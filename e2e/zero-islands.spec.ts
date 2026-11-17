@@ -162,3 +162,50 @@ test.describe('auto-named island (no explicit name — plugin-derived)', () => {
     }).toPass({ timeout: 15_000 })
   })
 })
+
+test.describe('island lifecycle across client-side navigation (#4387)', () => {
+  type Life = { mounts: number; unmounts: number; ticks: number; live: number }
+  const life = (page: import('@playwright/test').Page) =>
+    page.evaluate(() => ({ ...(window as unknown as { __islandLife: Life }).__islandLife }))
+
+  test('navigating away disposes the island: onUnmount runs once and its timer stops', async ({ page }) => {
+    await page.goto('/island-demo')
+    await waitForHydration(page)
+    await expect.poll(async () => (await life(page)).mounts).toBe(1)
+
+    await page.getByTestId('nav-about').click()
+    await expect(page.getByTestId('about-page')).toBeVisible()
+    await expect.poll(async () => (await life(page)).unmounts).toBe(1)
+
+    const before = await life(page)
+    await page.waitForTimeout(200)
+    const after = await life(page)
+    expect(after.ticks).toBe(before.ticks)
+    expect(after.live).toBe(0)
+  })
+
+  test('50 round trips (history back/forward) keep exactly one live instance', async ({ page }) => {
+    await page.goto('/island-demo')
+    await waitForHydration(page)
+    await expect.poll(async () => (await life(page)).mounts).toBe(1)
+    await page.getByTestId('nav-about').click()
+    await expect(page.getByTestId('about-page')).toBeVisible()
+
+    const N = 50
+    let maxLive = 0
+    for (let i = 2; i <= N + 1; i++) {
+      await page.goBack()
+      await expect(page.getByTestId('lifecycle-probe')).toBeVisible()
+      await expect.poll(async () => (await life(page)).mounts).toBe(i)
+      maxLive = Math.max(maxLive, (await life(page)).live)
+      await page.goForward()
+      await expect(page.getByTestId('about-page')).toBeVisible()
+      await expect.poll(async () => (await life(page)).unmounts).toBe(i)
+    }
+    const end = await life(page)
+    expect(maxLive).toBe(1)
+    expect(end.live).toBe(0)
+    expect(end.mounts).toBe(N + 1)
+    expect(end.unmounts).toBe(N + 1)
+  })
+})

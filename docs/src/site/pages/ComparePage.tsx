@@ -3,14 +3,14 @@ import type { CompareMeta } from '../content/pages'
 import { fill } from '../content/fill'
 import { htmlOf } from '../content/pages'
 import type { ComparePage as Data } from '../content/types-site'
-import { el, tone, txt } from '../kit/bases'
+import { el, tone } from '../kit/bases'
 import { GlowCard } from '../kit/cards'
 import { CodeCard } from '../kit/code'
 import { CompareTable, VerdictLegend } from '../kit/compare'
 import { Pill } from '../kit/controls'
 import { inlineText } from '../kit/inline'
 import { Section, SectionHead } from '../kit/layout'
-import { AutoGrid, Stack, Wrap } from '../kit/primitives'
+import { AutoGrid, Box, Stack, Wrap } from '../kit/primitives'
 import { Reveal } from '../kit/motion'
 import { CaveatLine, EndCTA, HookHero, ProofBand, TextLink } from '../kit/proof'
 import { CompareStrip, Diagram, InlineText } from '../kit/story'
@@ -20,6 +20,8 @@ import { usePageHead } from '../head'
 import { emberWordOf } from './ember'
 import { RivalSwitcher } from './RivalSwitcher'
 import { WideDiagram } from './WideDiagram'
+import { Note } from '../kit/note'
+import { keepRanges } from '../kit/stat'
 
 /**
  * `/compare/<rival>` — one template for the six rival pages
@@ -36,10 +38,6 @@ export interface CompareView {
   svg: string | undefined
 }
 
-const Checked = txt
-  .config({ name: 'CompareChecked' })
-  .attrs({ tag: 'p' })
-  .theme((_t, m) => ({ margin: 0, marginTop: 14, fontFamily: font.mono, fontSize: text.caveat.size, lineHeight: 1.6, color: tone(m, 'fog') }))
 
 const PlainList = el
   .config({ name: 'ComparePickList' })
@@ -94,9 +92,11 @@ export function ComparePage(props: { view: CompareView }) {
             <SectionHead label={T.table.label} title={d.table.title} text={d.table.note} />
             <VerdictLegend rival={d.rival} />
             <CompareTable rival={d.rival} rows={d.table.rows} caption={d.rivalMeasured !== null ? fill(T.table.measured, { versions: d.rivalMeasured }) : undefined} />
-            <Checked>
-              {meta.caveat} <TextLink href={T.table.method.href}>{T.table.method.label}</TextLink>
-            </Checked>
+            <Box padTop={175}>
+              <Note>
+                {meta.caveat} <TextLink href={T.table.method.href}>{T.table.method.label}</TextLink>
+              </Note>
+            </Box>
           </Wrap>
         </Section>
       </Reveal>
@@ -125,7 +125,9 @@ export function ComparePage(props: { view: CompareView }) {
               <CodeCard label={`${d.code.rival.label} · ${d.code.rival.file}`} code={d.code.rival.code} html={htmlOf(d.code.rival)} rail="del" />
               <CodeCard label={`${d.code.pyreon.label} · ${d.code.pyreon.file}`} code={d.code.pyreon.code} html={htmlOf(d.code.pyreon)} state="hot" rail="ins" />
             </AutoGrid>
-            <Checked>{renderInline(d.code.checked)}</Checked>
+            <Box padTop={175}>
+              <Note>{keepRanges(d.code.checked)}</Note>
+            </Box>
           </Wrap>
         </Section>
       </Reveal>
