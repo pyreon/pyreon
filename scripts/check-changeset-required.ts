@@ -79,6 +79,7 @@
 
 import { gitChangedFilesZ } from './changed-files'
 import { expandChangesetPatterns } from './changeset-patterns'
+import { listExampleDirs } from './example-dirs'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { isTestPath } from './test-paths'
@@ -118,12 +119,11 @@ export function discoverPackages(root: string): PackageInfo[] {
     }
   }
 
-  const examplesRoot = join(root, 'examples')
-  if (existsSync(examplesRoot)) {
-    for (const ex of readdirSync(examplesRoot)) {
-      const exPath = join(examplesRoot, ex)
+  // examples/<example>, examples/<group>/<example> (scripts/example-dirs.ts)
+  {
+    for (const ex of listExampleDirs(root, { allowNone: true })) {
+      const exPath = join(root, 'examples', ex)
       const pkgJson = join(exPath, 'package.json')
-      if (!existsSync(pkgJson)) continue
       const info = readPackageInfo(pkgJson, exPath)
       if (info) out.push(info)
     }

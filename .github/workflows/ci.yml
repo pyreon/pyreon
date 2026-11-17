@@ -202,6 +202,9 @@ jobs:
             node_modules
             packages/*/*/node_modules
             examples/*/node_modules
+            examples/compat/*/node_modules
+            examples/fixtures/*/node_modules
+            examples/fixtures/cpa/*/node_modules
             docs/node_modules
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
       # PYREON_BOOTSTRAP_SKIP=1 keeps the postinstall lib/ build out of the
@@ -257,6 +260,9 @@ jobs:
             node_modules
             packages/*/*/node_modules
             examples/*/node_modules
+            examples/compat/*/node_modules
+            examples/fixtures/*/node_modules
+            examples/fixtures/cpa/*/node_modules
             docs/node_modules
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
       - name: Save bun install cache (main only)
@@ -888,6 +894,9 @@ jobs:
           path: |
             packages/*/*/.cache/tsbuildinfo
             examples/*/.cache/tsbuildinfo
+            examples/compat/*/.cache/tsbuildinfo
+            examples/fixtures/*/.cache/tsbuildinfo
+            examples/fixtures/cpa/*/.cache/tsbuildinfo
           key: tsbuildinfo-${{ runner.os }}-${{ github.run_id }}-${{ matrix.name }}
           restore-keys: tsbuildinfo-${{ runner.os }}-
       - name: Run typecheck (${{ matrix.name }})
@@ -910,10 +919,13 @@ jobs:
           #
           # The `examples` pseudo-category maps to the top-level examples/
           # dir; every other category maps to packages/<cat>/.
+          # Examples sit at examples/* and in the group folders
+          # (examples/compat/*, examples/fixtures/*, examples/fixtures/cpa/*;
+          # the list is EXAMPLE_WORKSPACE_GLOBS in scripts/example-dirs.ts).
           if [ "$category" = "examples" ]; then
-            CATEGORY_GLOB="./examples/*"
+            CATEGORY_FILTER="--filter=./examples/* --filter=./examples/compat/* --filter=./examples/fixtures/* --filter=./examples/fixtures/cpa/*"
           else
-            CATEGORY_GLOB="./packages/$category/*"
+            CATEGORY_FILTER="--filter=./packages/$category/*"
           fi
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             FILTER=$(bun run scripts/affected.ts \
@@ -926,13 +938,13 @@ jobs:
             # slice — otherwise every cell would run every package and
             # we'd lose the shard entirely.
             if [ "$FILTER" = "--filter=*" ]; then
-              FILTER="--filter=$CATEGORY_GLOB"
+              FILTER="$CATEGORY_FILTER"
             fi
           else
             # push:main + merge_group always run the full slice for
             # this category — the gate that protects main never
             # trusts the narrowing.
-            FILTER="--filter=$CATEGORY_GLOB"
+            FILTER="$CATEGORY_FILTER"
           fi
           if [ -z "$FILTER" ]; then
             echo "No affected packages in this category — skipping."
@@ -966,6 +978,9 @@ jobs:
           path: |
             packages/*/*/.cache/tsbuildinfo
             examples/*/.cache/tsbuildinfo
+            examples/compat/*/.cache/tsbuildinfo
+            examples/fixtures/*/.cache/tsbuildinfo
+            examples/fixtures/cpa/*/.cache/tsbuildinfo
           key: tsbuildinfo-${{ runner.os }}-${{ github.run_id }}-${{ matrix.name }}
 
 
@@ -1089,7 +1104,7 @@ jobs:
             # closure reached them.
             examples)
               AFFECTED_ARGS="--category=examples"
-              FULL_FILTER="--filter=./examples/*"
+              FULL_FILTER="--filter=./examples/* --filter=./examples/compat/* --filter=./examples/fixtures/* --filter=./examples/fixtures/cpa/*"
               ;;
             *)
               AFFECTED_ARGS="--category=$category"
@@ -1436,7 +1451,7 @@ jobs:
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: |
           set -f
-          bun run --filter='./examples/*' build
+          bun run '--filter=./examples/*' '--filter=./examples/compat/*' '--filter=./examples/fixtures/*' '--filter=./examples/fixtures/cpa/*' build
       # `vite build` every example × mode cell and assert the RENDERED content
       # (not just a green build) — the typed-but-unimplemented backstop.
       # A4: the cloudflare cell serves its output under workerd via

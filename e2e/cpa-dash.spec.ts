@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 /**
  * Real-Chromium runtime gate for the `dashboard` template scaffolded by
- * create-pyreon-app. Boots the pre-scaffolded `examples/cpa-pw-dash`
+ * create-pyreon-app. Boots the pre-scaffolded `examples/fixtures/cpa/dash`
  * fixture (no integrations — tests in-memory stub end-to-end so we
  * don't need a live Supabase backend) and exercises:
  *

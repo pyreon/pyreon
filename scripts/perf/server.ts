@@ -8,8 +8,7 @@
  * during review.)
  */
 import { execSync, spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { findExample } from '../example-dirs'
 
 export type ServerMode = 'dev' | 'preview'
 
@@ -21,7 +20,7 @@ export interface ServerHandle {
 export interface StartServerOptions {
   /** Repo root — all paths resolve from here. */
   repoRoot: string
-  /** Example name under `examples/` (e.g. `perf-dashboard`). */
+  /** Example directory name (`perf-dashboard`) or path under `examples/`; resolved by `findExample`. */
   app: string
   mode: ServerMode
   /** Time to wait for the ready line before rejecting. Default 30s. */
@@ -40,10 +39,9 @@ const READY_RE = /Local:\s+(https?:\/\/[^\s]+)\//i
 export async function startServer(options: StartServerOptions): Promise<ServerHandle> {
   const { repoRoot, app, mode } = options
   const timeoutMs = options.timeoutMs ?? 30_000
-  const cwd = resolve(repoRoot, 'examples', app)
-  if (!existsSync(resolve(cwd, 'package.json'))) {
-    throw new Error(`[perf:server] example not found: examples/${app}`)
-  }
+  // `app` is an example's directory name (`perf-dashboard`) or its path
+  // under examples/; findExample throws when it matches nothing.
+  const cwd = findExample(app, repoRoot).dir
 
   if (mode === 'preview') {
     // Preview mode: build once, then serve the built artefacts.
