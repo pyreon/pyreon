@@ -106,13 +106,15 @@ export function parseMatrixRows(md: string): ParseResult {
     const weight = Number(m[2])
     const fraction = Number(m[3])
     if (weight < 1) issues.push(`"${category}": weight must be a positive integer, got ${weight}`)
-    if (fraction < 0 || fraction > 1)
+    if (fraction < 0 || fraction > 1) {
       issues.push(`"${category}": fraction must be in [0, 1], got ${fraction}`)
+    }
     rows.push({ category, weight, fraction })
   }
 
-  if (rows.length === 0)
+  if (rows.length === 0) {
     issues.push('matrix table has ZERO data rows — empty scan is a failure, not a pass')
+  }
 
   const seen = new Set<string>()
   for (const r of rows) {
@@ -226,8 +228,9 @@ export function parseTierTable(md: string): TierParseResult {
     }
     rows.push({ area: m[1]!.trim(), tier: m[2]!.trim().replace(/^\*\*(.*)\*\*$/, '$1') })
   }
-  if (rows.length === 0)
+  if (rows.length === 0) {
     issues.push('maturity table has ZERO data rows — empty scan is a failure, not a pass')
+  }
   return { rows, issues }
 }
 
@@ -303,18 +306,19 @@ export function verifyTierSummaries(
     const got = new Set<string>()
     for (const name of listed) {
       const category = lookup.get(name)
-      if (!category)
+      if (!category) {
         issues.push(`${where}: "${label} areas" lists "${name}", which is not a matrix category`)
-      else got.add(category)
+      } else got.add(category)
     }
     for (const c of want) {
       if (!got.has(c)) issues.push(`${where}: "${label} areas" is missing "${shortName(c)}"`)
     }
     for (const c of got) {
-      if (!want.includes(c))
+      if (!want.includes(c)) {
         issues.push(
           `${where}: "${label} areas" lists "${shortName(c)}", which is ${tierFor(matrix.find((r) => r.category === c)!.fraction)}`,
         )
+      }
     }
   }
   return { issues, found }
@@ -343,8 +347,9 @@ function main(): void {
 
   const tierParse = parseTierTable(md)
   allIssues.push(...tierParse.issues)
-  if (rows.length > 0 && tierParse.rows.length > 0)
+  if (rows.length > 0 && tierParse.rows.length > 0) {
     allIssues.push(...verifyTiers(rows, tierParse.rows))
+  }
 
   if (rows.length > 0) {
     let matrixPageSummaries = 0

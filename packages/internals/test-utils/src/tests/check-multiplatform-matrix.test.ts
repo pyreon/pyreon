@@ -134,6 +134,7 @@ describe('check-multiplatform-matrix — tierFor', () => {
 
 const TIER_HEADING = '## Maturity by area'
 const TIER_HEADER = '| Area | Tier |\n| --- | --- |\n'
+
 const MATRIX = [
   { category: 'Core UI (primitives)', weight: 10, fraction: 1.0 },
   { category: 'Storage', weight: 7, fraction: 0.7 },
