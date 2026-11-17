@@ -44,12 +44,15 @@ function read<T>(source: ReactiveSource<T>): T {
 }
 
 /**
- * The synchronous-or-async parse result shape — exposes `value` on
- * success and `issues` on failure. Mirrors Standard Schema's `Result<T>`
- * exactly (so downstream code that already handles StdSchema results
- * just works).
+ * The parse result shape — `value` on success, `issues` on failure. It is
+ * Standard Schema's `Result<T>` with the failure branch's `value` spelled as
+ * `undefined`, so `result.value` reads as `T | undefined` without narrowing
+ * first (the spec's own failure result has no `value` key at all). Code that
+ * already handles a Standard Schema result accepts it unchanged.
  */
-export type ParseResult<T> = StandardSchemaV1.Result<T>
+export type ParseResult<T> =
+  | StandardSchemaV1.SuccessResult<T>
+  | (StandardSchemaV1.FailureResult & { readonly value?: undefined })
 
 /**
  * Reactively parse `source` through `schema`. Returns a `Computed<ParseResult>`

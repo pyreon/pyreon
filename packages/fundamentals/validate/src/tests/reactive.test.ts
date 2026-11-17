@@ -23,7 +23,7 @@ describe('parseReactive', () => {
     const $result = parseReactive(z.string().email(), $input)
     const r = $result()
     expect(r.issues).toBeDefined()
-    expect('value' in r ? r.value : undefined).toBeUndefined()
+    expect(r.value).toBeUndefined()
   })
 
   it('re-validates on signal change (the headline contract)', () => {
