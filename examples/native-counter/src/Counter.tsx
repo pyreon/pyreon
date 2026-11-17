@@ -67,10 +67,8 @@ const StatusBadge = rocketstyle()({ component: Text }).states(() => ({
 
 // Styling proof that a device harness can actually SEE.
 //
-// The badge above proves a reactive dimension re-renders, but deliberately
-// asserts only its label — neither XCUITest nor the Compose test tree can read
-// a rendered colour, and its comment says so rather than implying otherwise.
-// So the static side of the style pipeline (theme cascade → emitted modifier →
+// The badge above proves a reactive dimension re-renders (its colour is read
+// from screenshot pixels on iOS). The static side of the style pipeline (theme cascade → emitted modifier →
 // rendered appearance) had no device coverage at all.
 //
 // GEOMETRY is the part both harnesses can read: XCUITest exposes
@@ -95,10 +93,14 @@ const PressChip = rocketstyle()({ component: Press }).theme(() => ({
   active: { backgroundColor: '#dc2626' },
 }))
 
-const SizedRule = rocketstyle()({ component: Stack }).sizes(() => ({
-  narrow: { width: 120 },
-  wide: { width: 240 },
-}))
+// The solid fill is the iOS instrument: XCUITest's accessibility frame hugs the
+// glyph, so the iOS test measures the painted band in a screenshot instead.
+const SizedRule = rocketstyle()({ component: Stack })
+  .theme(() => ({ backgroundColor: '#7c3aed' }))
+  .sizes(() => ({
+    narrow: { width: 120 },
+    wide: { width: 240 },
+  }))
 
 // A named size is intentional here: PMTC currently lowers rocketstyle
 // dimensions to native frame constraints, while a base-only height would leave
@@ -476,9 +478,9 @@ export function Counter() {
       <Button data-testid="native-flow-clear-selection" onPress={() => nativeFlow.clearSelection()}>Clear native selection</Button>
       {/* ui-system device proof — a rocketstyle component with a REACTIVE
           dimension. The text flips with the same signal that drives the colour,
-          so the device test can assert the flip actually re-rendered (XCUITest
-          and Compose cannot read a colour, so the colour itself is proven by
-          COMPILING: a wrong Compose constructor arg fails `assembleDebug`). */}
+          so the device test can assert the flip actually re-rendered. The iOS
+          test also reads the painted colour from screenshot pixels
+          (`test_rocketstyleRenderedColourOnDevice`). */}
       <SizedRule size="narrow" data-testid="sized-narrow"><Text>n</Text></SizedRule>
       <SizedRule size="wide" data-testid="sized-wide"><Text>w</Text></SizedRule>
       <StatusBadge state={count > 2 ? 'warn' : 'ok'}>

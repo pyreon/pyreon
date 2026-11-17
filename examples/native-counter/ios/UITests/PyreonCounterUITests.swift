@@ -142,6 +142,26 @@ final class PyreonCounterUITests: XCTestCase {
         return el.exists && Double(el.label) == Double(expected)
     }
 
+    /// The extent, in points, of one colour along a single pixel row of a window screenshot.
+    private func bandWidthPoints(_ png: Data, rowAt y: CGFloat, windowWidth: CGFloat, _ r: Int, _ g: Int, _ b: Int) -> Double {
+        guard let image = UIImage(data: png)?.cgImage else { return 0 }
+        let w = image.width, h = image.height
+        var buf = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &buf, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return 0 }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        let scale = CGFloat(w) / windowWidth
+        let row = min(max(Int(y * scale), 0), h - 1)
+        var first = -1, last = -1
+        for x in 0..<w {
+            let i = (row * w + x) * 4
+            if abs(Int(buf[i]) - r) <= 6 && abs(Int(buf[i + 1]) - g) <= 6 && abs(Int(buf[i + 2]) - b) <= 6 {
+                if first < 0 { first = x }
+                last = x
+            }
+        }
+        return first < 0 ? 0 : Double(CGFloat(last - first + 1) / scale)
+    }
+
     private func colorPixels(_ png: Data, _ r: Int, _ g: Int, _ b: Int) -> Int {
         // Redrawn into a known RGBA8 buffer: a screenshot's own pixel format varies by device.
         guard let image = UIImage(data: png)?.cgImage else { return 0 }
@@ -1201,12 +1221,9 @@ final class PyreonCounterUITests: XCTestCase {
     // native conditional value.
     //
     // WHAT THIS ASSERTS, precisely: that the styled component COMPILES into the
-    // app and RE-RENDERS on a state flip. XCUITest cannot read a colour, so the
-    // colour is NOT asserted here, and the build does not prove it either — a
-    // MISSING colour still compiles. Colour PRESENCE is locked by the emit test
-    // (`native-text-reactive-color-parity`); this device test covers the half a
-    // unit test cannot: that the lowering survives into a real app and reacts.
-    // Claiming a colour assertion here would inflate what the tooling can see.
+    // app and RE-RENDERS on a state flip. The accessibility tree carries no
+    // colour; the painted colour is read from screenshot pixels by
+    // `test_rocketstyleRenderedColourOnDevice`.
     // NO iOS geometry assertion — and the reason is worth recording, because it
     // is the natural next thing to reach for.
     //
@@ -1230,13 +1247,77 @@ final class PyreonCounterUITests: XCTestCase {
     // credits it as Android-only. Same discipline as the badge test below
     // declining to claim a colour assertion: state what the tooling can see.
     //
-    // A real iOS proof needs a different instrument — a screenshot diff, or an
-    // XCUITest-visible side effect of the layout — and is a tracked follow-up
-    // rather than a band widened until it passes.
+    // The iOS proof therefore uses a different instrument: the painted band in a
+    // screenshot (`test_rocketstyleSizeDimensionMeasuredFromScreenshotBand`
+    // below), not a frame band widened until it passes.
+
+    // STY-2 — the STATIC cascade measured on iOS after all. The accessibility
+    // frame cannot carry it (above), so the instrument is the painted band:
+    // SizedRule now has a solid fill, and the test reads one pixel row through
+    // each rule in a full-window screenshot. The extent of the fill colour in
+    // that row, divided by the screenshot's scale, is the laid-out width in
+    // points: 120 and 240 from the `size` dimension. A dropped `.frame(width:)`
+    // leaves the fill hugging the glyph (about 10-13pt), and a dropped
+    // background leaves no band at all.
+    func test_rocketstyleSizeDimensionMeasuredFromScreenshotBand() throws {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Count: 0"].waitForExistence(timeout: 30), "App did not render")
+
+        for (id, expected) in [("sized-narrow", 120.0), ("sized-wide", 240.0)] {
+            let rule = app.otherElements[id].firstMatch
+            XCTAssertTrue(rule.waitForExistence(timeout: 10), "\(id) missing")
+            bringFullyOnScreen(rule, in: app)
+            let shot = app.windows.firstMatch.screenshot()
+            let window = app.windows.firstMatch.frame
+            let width = bandWidthPoints(shot.pngRepresentation, rowAt: rule.frame.midY - window.minY, windowWidth: window.width, 124, 58, 237)
+            XCTAssertEqual(
+                width, expected, accuracy: 2,
+                "\(id): the painted band is \(width)pt wide, expected \(expected)pt from the size cascade "
+                    + "(accessibility frame \(rule.frame))"
+            )
+        }
+    }
+
+    // STY-1 — rendered COLOUR on iOS, read from screenshot pixels with the
+    // same `colorPixels` helper the flow canvas tests use. The reactive badge
+    // must paint its `ok` green and no `warn` amber, then the reverse once the
+    // count crosses 2; the press chip must paint its resting blue fill. A
+    // dropped `.foregroundColor` paints the default label colour, which none
+    // of these match.
+    func test_rocketstyleRenderedColourOnDevice() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let ok = app.staticTexts["Badge: ok"]
+        XCTAssertTrue(ok.waitForExistence(timeout: 30), "badge did not render")
+        bringFullyOnScreen(ok, in: app)
+        let okShot = ok.screenshot().pngRepresentation
+        XCTAssertGreaterThan(colorPixels(okShot, 22, 101, 52), 20, "the ok badge did not paint #166534")
+        XCTAssertEqual(colorPixels(okShot, 180, 83, 9), 0, "the ok badge painted the warn colour")
+
+        let increment = app.buttons["Increment"]
+        bringFullyOnScreen(increment, in: app)
+        for _ in 0..<3 { increment.tap() }
+        let warn = app.staticTexts["Badge: warn"]
+        XCTAssertTrue(warn.waitForExistence(timeout: 10), "badge did not flip to warn")
+        bringFullyOnScreen(warn, in: app)
+        let warnShot = warn.screenshot().pngRepresentation
+        XCTAssertGreaterThan(colorPixels(warnShot, 180, 83, 9), 20, "the warn badge did not paint #b45309")
+        XCTAssertEqual(colorPixels(warnShot, 22, 101, 52), 0, "the warn badge still painted the ok colour")
+
+        let chip = app.buttons["press-chip"]
+        XCTAssertTrue(chip.waitForExistence(timeout: 10), "press chip missing")
+        bringFullyOnScreen(chip, in: app)
+        XCTAssertGreaterThan(
+            colorPixels(chip.screenshot().pngRepresentation, 29, 78, 216), 500,
+            "the press chip did not paint its resting #1d4ed8 fill"
+        )
+    }
 
     // rocketstyle's `active:` block on a Press base lowers to a custom
     // `PyreonPressStyle` ButtonStyle that reads `configuration.isPressed`.
-    // XCUITest cannot read a colour (the Android test reads the pressed pixels),
+    // XCUITest cannot hold a press while it screenshots (the Android test reads
+    // the pressed pixels; the resting colour is read below),
     // so this asserts the half that can break a real app: a custom ButtonStyle
     // REPLACES the button's own, and the tap must still reach the action.
     func test_rocketstylePressedStyleButtonStillFiresItsTap() throws {
