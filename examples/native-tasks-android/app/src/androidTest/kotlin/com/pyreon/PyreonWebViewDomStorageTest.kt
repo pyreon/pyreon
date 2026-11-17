@@ -16,7 +16,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.pyreon.runtime.PyreonWebView

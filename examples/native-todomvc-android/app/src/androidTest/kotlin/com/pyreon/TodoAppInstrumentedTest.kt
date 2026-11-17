@@ -31,7 +31,7 @@
 package com.pyreon
 
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -40,6 +40,7 @@ import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.util.UUID
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -52,6 +53,21 @@ class TodoAppInstrumentedTest {
     // composable in isolation.
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
+
+    /**
+     * Keep the soft keyboard out of this window for the whole test: the host
+     * pads for `safeDrawing`, which includes the keyboard, so its arrival —
+     * some time after `performTextInput` returned — resizes the page between a
+     * scroll and the click that follows, and the click lands on a clipped node.
+     * Typing does not need it. The full account, with the reproduction, is on
+     * `keepSoftKeyboardOut` in `TasksAppInstrumentedTest`.
+     */
+    @Before
+    fun keepSoftKeyboardOut() {
+        composeRule.runOnUiThread {
+            composeRule.activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+        }
+    }
 
     @Test
     fun appLaunchesAndRendersRootView() {

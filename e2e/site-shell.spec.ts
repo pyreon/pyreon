@@ -1,17 +1,39 @@
 import { expect, type Page, test } from '@playwright/test'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { waitForNav } from './site-islands'
+import { auditLayout, SITE_WIDTHS, TOUCH_WIDTHS, trackShiftsScript } from './site-audit'
+import { waitForIslands, waitForNav } from './site-islands'
 
 /**
  * pyreon.dev marketing shell, against the production SSG build (served like
  * pyreon.dev by e2e-configs/docs.config.ts): the nav and its two menus, the
- * mobile sheet, the theme toggle (persisted, no flash), page width at the
- * five design widths, hydration adopting the server DOM, and the contrast of
- * every text node on the kit gallery in both themes.
+ * mobile sheet, the theme toggle (persisted, no flash), page width and
+ * clipped text at the seven widths, tap targets on touch screens, anchors
+ * landing below the nav, layout shift, equal card rows, hydration adopting
+ * the server DOM, and the contrast of every text node on the kit gallery,
+ * the homepage and the docs in both themes.
  */
-const WIDTHS = [320, 390, 768, 1024, 1440]
-const ROUTES = ['/', '/products', '/products/form', '/products/reactivity', '/products/a11y', '/brand/kit', '/blog', '/showcase', '/open', '/404-check']
+const WIDTHS = SITE_WIDTHS
+/** One page of every type the site has. */
+const ROUTES = [
+  '/',
+  '/products',
+  '/products/form',
+  '/products/reactivity',
+  '/products/a11y',
+  '/why/one-codebase',
+  '/compare/react',
+  '/migrate/react',
+  '/benchmarks',
+  '/brand/kit',
+  '/blog',
+  '/blog/where-pyreon-is-not-the-fastest',
+  '/showcase',
+  '/open',
+  '/docs',
+  '/docs/router',
+  '/404-check',
+]
 
 /** Records element nodes removed from #app during load: hydration that adopts the server DOM removes none. */
 async function trackRemovals(page: Page): Promise<void> {
@@ -86,35 +108,262 @@ test.describe('hydration', () => {
   }
 })
 
-test.describe('no horizontal page scroll', () => {
+test.describe('no horizontal page scroll, no clipped text', () => {
   for (const width of WIDTHS) {
     test(`at ${width}px`, async ({ page }) => {
+      test.setTimeout(180_000)
       await page.setViewportSize({ width, height: 900 })
       for (const route of ROUTES) {
         await page.goto(route)
         await waitForNav(page)
-        const r = await page.evaluate(() => {
-          const cw = document.documentElement.clientWidth
-          const main = document.querySelector('#site-main') ?? document.body
-          // Content wider than the page, outside its own scroll container,
-          // ignoring decorative absolutely-positioned glows.
-          const offenders = [...main.querySelectorAll<HTMLElement>('*')].filter((e) => {
-            const box = e.getBoundingClientRect()
-            if (box.width === 0 || box.right <= cw + 1) return false
-            for (let n: HTMLElement | null = e; n && n !== main; n = n.parentElement) {
-              const cs = getComputedStyle(n)
-              if (cs.position === 'absolute' || cs.position === 'fixed') return false
-              if (n !== e && /auto|scroll|hidden|clip/.test(cs.overflowX) && n.getBoundingClientRect().right <= cw + 1) return false
-            }
-            return true
-          })
-          return { scroll: document.documentElement.scrollWidth - cw, offenders: offenders.slice(0, 3).map((e) => `${e.tagName}.${e.className}`) }
-        })
+        const r = await page.evaluate(auditLayout, false)
         expect(r.scroll, `${route} scrollWidth`).toBeLessThanOrEqual(0)
-        expect(r.offenders, `${route} content wider than the page`).toEqual([])
+        expect(r.wide, `${route} content wider than the page`).toEqual([])
+        expect(r.clipped, `${route} text cut off by its box`).toEqual([])
       }
     })
   }
+})
+
+test.describe('tap targets on touch screens', () => {
+  // theme.ts `touch`: below 992px every control is at least 44px tall; a
+  // link inside running text is exempt (WCAG 2.5.8).
+  for (const width of TOUCH_WIDTHS) {
+    test(`every control is at least 44px at ${width}px`, async ({ page }) => {
+      test.setTimeout(180_000)
+      await page.setViewportSize({ width, height: 900 })
+      for (const route of ROUTES) {
+        await page.goto(route)
+        await waitForNav(page)
+        await waitForIslands(page)
+        const r = await page.evaluate(auditLayout, true)
+        expect(r.tap, `${route} controls under 44px`).toEqual([])
+      }
+    })
+  }
+})
+
+test.describe('anchors land below the fixed nav', () => {
+  for (const [route, target] of [
+    ['/products/form#benchmarks', '#benchmarks'],
+    ['/products/form#demo', '#demo'],
+    ['/benchmarks#ssr', '#ssr'],
+    ['/blog/where-pyreon-is-not-the-fastest#1-deep-trees-cost-us-the-most', '#1-deep-trees-cost-us-the-most'],
+  ] as const) {
+    test(route, async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.goto(route)
+      await waitForNav(page)
+      // getElementById: a heading id may start with a digit, which is not a valid CSS selector.
+      await page.evaluate((id) => document.getElementById(id.slice(1))!.scrollIntoView(), target)
+      const [top, navBottom] = await page.evaluate((id) => [document.getElementById(id.slice(1))!.getBoundingClientRect().top, document.querySelector('.s-bar')!.getBoundingClientRect().bottom], target)
+      expect(top, `${target} lands under the nav`).toBeGreaterThanOrEqual(navBottom + 8)
+    })
+  }
+})
+
+test.describe('layout shift', () => {
+  for (const width of [390, 1440]) {
+    test(`every page type settles with CLS under 0.05 at ${width}px`, async ({ browser }) => {
+      test.setTimeout(180_000)
+      const ctx = await browser.newContext({ viewport: { width, height: 900 } })
+      await ctx.addInitScript(trackShiftsScript)
+      const page = await ctx.newPage()
+      const shifts: string[] = []
+      for (const route of ROUTES) {
+        await page.goto(route)
+        await waitForNav(page)
+        await waitForIslands(page)
+        await page.waitForTimeout(300)
+        const cls = await page.evaluate(() => (window as unknown as { __cls: number }).__cls)
+        if (cls >= 0.05) shifts.push(`${route}: ${cls.toFixed(3)}`)
+      }
+      expect(shifts).toEqual([])
+      await ctx.close()
+    })
+  }
+})
+
+test.describe('cards in a row share one height', () => {
+  // A kit grid's items stretch to the row (the Element base's flex-start
+  // alignment used to stop them), so a row of cards ends on one line.
+  for (const [route, grid] of [
+    ['/products/form', 'ol'],
+    ['/products', 'ul'],
+    ['/', 'ul'],
+  ] as const) {
+    for (const width of [768, 1440]) {
+      test(`${route} at ${width}px`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 900 })
+        await page.goto(route)
+        await waitForNav(page)
+        const ragged = await page.evaluate((tag) => {
+          const out: string[] = []
+          for (const g of document.querySelectorAll<HTMLElement>(`#site-main ${tag}`)) {
+            if (getComputedStyle(g).display !== 'grid') continue
+            const rows = new Map<number, number[]>()
+            for (const li of g.children) {
+              const card = li.firstElementChild ?? li
+              const b = card.getBoundingClientRect()
+              if (b.height < 60) continue
+              const top = Math.round(li.getBoundingClientRect().top)
+              rows.set(top, [...(rows.get(top) ?? []), Math.round(b.height)])
+            }
+            for (const [top, hs] of rows) if (hs.length > 1 && Math.max(...hs) - Math.min(...hs) > 1) out.push(`row at ${top}: ${hs.join('/')}`)
+          }
+          return out
+        }, grid)
+        expect(ragged).toEqual([])
+      })
+    }
+  }
+})
+
+test.describe('typography', () => {
+  test('a status dot stays on the line of its label (a link that wraps flows like text)', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 800 })
+    await page.goto('/')
+    await waitForNav(page)
+    const gaps = await page.evaluate(() =>
+      [...document.querySelectorAll('ul[aria-label=Status] li')].map((li) => {
+        const dotEl = li.querySelector('[aria-hidden=true]')!
+        const dot = dotEl.getBoundingClientRect()
+        // The label is everything after the dot (text or a link; hydration markers are comments).
+        const range = document.createRange()
+        range.setStartAfter(dotEl)
+        range.setEndAfter(li.lastChild!)
+        const first = [...range.getClientRects()].find((r) => r.width > 0)!
+        return Math.abs(dot.top + dot.height / 2 - (first.top + first.height / 2))
+      }),
+    )
+    for (const g of gaps) expect(g).toBeLessThan(8)
+  })
+
+  test('inline code in content renders as code, never as backticks', async ({ page }) => {
+    for (const route of ['/products/form', '/products/hotkeys', '/products/http', '/why/full-stack', '/releases', '/docs/core']) {
+      await page.goto(route)
+      await waitForNav(page)
+      const raw = await page.evaluate(() => {
+        const out: string[] = []
+        const walker = document.createTreeWalker(document.querySelector('#site-main')!, NodeFilter.SHOW_TEXT)
+        for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+          const host = t.parentElement
+          if (!host || !t.textContent?.includes('`') || host.closest('pre, code, script, style, svg, [data-raw-output]')) continue
+          // Terminal transcripts print the tool's own output verbatim.
+          if (host.closest('figure') && getComputedStyle(host).fontFamily.includes('Mono')) continue
+          out.push(t.textContent.trim().slice(0, 60))
+        }
+        return out
+      })
+      expect(raw, route).toEqual([])
+    }
+  })
+})
+
+test.describe('install commands', () => {
+  // The page's main call to action: never cut to "npm create @pyreon/zero…".
+  // It wraps inside its pill at a sensible break instead (CommandText).
+  for (const width of [320, 360, 390]) {
+    test(`every install command shows its whole text at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 })
+      for (const route of ['/', '/products', '/products/zero', '/docs/zero', '/blog']) {
+        await page.goto(route)
+        await waitForNav(page)
+        const cut = await page.evaluate(() =>
+          [...document.querySelectorAll<HTMLElement>('#site-main .s-cmd code, #site-footer .s-cmd code')]
+            .filter((c) => c.getBoundingClientRect().width > 0)
+            .filter((c) => {
+              const cs = getComputedStyle(c)
+              return c.scrollWidth > c.clientWidth + 1 || cs.textOverflow === 'ellipsis' || (cs.whiteSpace === 'nowrap' && /hidden|clip/.test(cs.overflowX))
+            })
+            .map((c) => c.textContent),
+        )
+        expect(cut, `${route}: commands cut at ${width}px`).toEqual([])
+      }
+    })
+  }
+
+  test('the copy button copies the whole command', async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: 320, height: 800 }, permissions: ['clipboard-read', 'clipboard-write'] })
+    const page = await ctx.newPage()
+    await page.goto('/')
+    await waitForNav(page)
+    const button = page.locator('#site-main .s-cmd button').first()
+    await button.locator('xpath=ancestor-or-self::*[@data-hydrated]').first().waitFor({ state: 'attached' })
+    await button.click()
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('npm create @pyreon/zero@latest')
+    await ctx.close()
+  })
+})
+
+test.describe('product cards', () => {
+  // Rows of equal-height cards: a card without a proof number must not sit
+  // half empty beside one with a number (CardFoot pins the bottom).
+  for (const route of ['/products', '/']) {
+    for (const width of [768, 1024, 1440, 1920]) {
+      test(`${route}: no card is more than about 40% empty at ${width}px`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 900 })
+        await page.goto(route)
+        await waitForNav(page)
+        const empty = await page.evaluate(() => {
+          const out: string[] = []
+          for (const li of document.querySelectorAll('#site-main ul > li')) {
+            const card = li.querySelector(':scope > a')
+            const inner = card?.firstElementChild
+            if (!card || !inner) continue
+            const box = inner.getBoundingClientRect()
+            if (box.height < 100) continue
+            const kids = [...inner.children].map((k) => k.getBoundingClientRect()).filter((b) => b.height > 0).sort((a, b) => a.top - b.top)
+            let gap = box.bottom - kids[kids.length - 1]!.bottom - Number.parseFloat(getComputedStyle(inner).paddingBottom)
+            for (let i = 1; i < kids.length; i++) gap = Math.max(gap, kids[i]!.top - kids[i - 1]!.bottom)
+            if (gap / box.height > 0.42) out.push(`${card.getAttribute('href')}: ${(gap / box.height).toFixed(2)}`)
+          }
+          return out
+        })
+        expect(empty).toEqual([])
+      })
+    }
+  }
+})
+
+test.describe('hero headings at 320px', () => {
+  // Display headings step down one size on the smallest phones (theme.ts
+  // display.*.phone), so a hero that ends in a long word keeps two words on
+  // its last line. Not listed: /products/flow ("Drag one node. / Nothing
+  // else / re-renders."), whose balanced three lines cannot put two words
+  // last at any hero size.
+  test('no hero heading ends on a single word', async ({ page }) => {
+    test.setTimeout(180_000)
+    await page.setViewportSize({ width: 320, height: 800 })
+    const orphans: string[] = []
+    for (const route of [
+      '/', '/products', '/products/form', '/products/reactivity', '/products/design', '/products/native', '/products/zero',
+      '/products/tooling', '/products/atlas', '/products/charts', '/products/query', '/products/router', '/products/ai',
+      '/products/content', '/why/one-codebase', '/why/components-run-once', '/why/full-stack', '/why/performance',
+      '/why/ai-ready', '/compare/react', '/compare/vue', '/migrate', '/migrate/react', '/benchmarks', '/blog',
+    ]) {
+      await page.goto(route)
+      await waitForNav(page)
+      const last = await page.evaluate(() => {
+        const h = document.querySelector('#site-main h1')!
+        const tops: number[] = []
+        const walker = document.createTreeWalker(h, NodeFilter.SHOW_TEXT)
+        for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+          for (const m of t.textContent!.matchAll(/\S+/g)) {
+            const r = document.createRange()
+            r.setStart(t, m.index!)
+            r.setEnd(t, m.index! + m[0].length)
+            const rect = r.getClientRects()[0]
+            if (rect) tops.push(Math.round(rect.top))
+          }
+        }
+        const lastTop = tops[tops.length - 1]!
+        return { lines: new Set(tops).size, onLast: tops.filter((t) => Math.abs(t - lastTop) < 4).length, text: h.textContent!.trim() }
+      })
+      if (last.lines > 1 && last.onLast === 1) orphans.push(`${route}: ${last.text}`)
+    }
+    expect(orphans).toEqual([])
+  })
 })
 
 test.describe('Products and Why menus (desktop)', () => {
@@ -221,7 +470,7 @@ test.describe('theme', () => {
 })
 
 test.describe('contrast on the kit gallery and the homepage', () => {
-  for (const [route, theme] of [['/brand/kit', 'dark'], ['/brand/kit', 'light'], ['/', 'dark'], ['/', 'light'], ['/404-check', 'dark'], ['/404-check', 'light']] as const) {
+  for (const [route, theme] of [['/brand/kit', 'dark'], ['/brand/kit', 'light'], ['/', 'dark'], ['/', 'light'], ['/404-check', 'dark'], ['/404-check', 'light'], ['/docs', 'dark'], ['/docs', 'light'], ['/docs/router', 'dark'], ['/docs/router', 'light']] as const) {
     test(`every text node on ${route} passes WCAG AA (${theme})`, async ({ browser }) => {
       const ctx = await browser.newContext({ colorScheme: theme, viewport: { width: 1440, height: 900 } })
       const page = await ctx.newPage()

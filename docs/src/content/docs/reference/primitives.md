@@ -93,7 +93,7 @@ export function App() {
 | [`Link`](#link-component) | component | Navigation link. |
 | [`Field`](#field-component) | component | Text input. |
 | [`Toggle`](#toggle-component) | component | Boolean switch/checkbox. |
-| [`Select`](#select-component) | component | Single choice from a list with the platform's own picker: web `<select>`, iOS a menu-style `Picker`, Android a Material  |
+| [`Select`](#select-component) | component | Single choice from a list with the platform's own picker: web `<select>`, iOS a menu-style `Picker`, Android a Material… |
 | [`Modal`](#modal-component) | component | Modal/sheet. |
 | [`Tabs`](#tabs-component) | component | Top-level tab navigation; children are literal `<Tab value label icon?>` entries whose children are the tab content. |
 | [`Split`](#split-component) | component | Adaptive list/detail layout: `sidebar` is the list, the children are the detail. |
@@ -101,9 +101,9 @@ export function App() {
 | [`TransitionGroup`](#transitiongroup-component) | component | A container that animates its own SIZE as rows enter and leave the keyed list inside it. |
 | [`WebView`](#webview-component) | component | Host a web page/component natively (WKWebView on iOS, Android WebView; `<iframe srcdoc>` on web). |
 | [`connectWebHost`](#connectwebhost-function) | function | The guest-side glue for the `<WebView>` bridge — the reusable OTHER half of the WebView-host pattern. |
-| [`webHostDocument`](#webhostdocument-function) | function | Build the self-contained HTML page a `<WebView html={…}>` hosts — the document shell for the guest side of the WebView-h |
-| [`Web / NativeIOS / NativeAndroid`](#web-nativeios-nativeandroid-component) | component | The Layer-4 per-platform escape hatch — one source carries a platform-specific subtree and exactly ONE branch renders pe |
-| [`defineNativeModule / useNativeModule`](#definenativemodule-usenativemodule-function) | function | The Layer-4 FFI escape hatch — how an APP adds a platform capability the framework does not ship (Bluetooth, ARKit, a pa |
+| [`webHostDocument`](#webhostdocument-function) | function | Build the self-contained HTML page a `<WebView html={…}>` hosts — the document shell for the guest side of the… |
+| [`Web / NativeIOS / NativeAndroid`](#web-nativeios-nativeandroid-component) | component | The Layer-4 per-platform escape hatch — one source carries a platform-specific subtree and exactly ONE branch renders… |
+| [`defineNativeModule / useNativeModule`](#definenativemodule-usenativemodule-function) | function | The Layer-4 FFI escape hatch — how an APP adds a platform capability the framework does not ship (Bluetooth, ARKit, a… |
 | [`init / resetPrimitivesConfig`](#init-resetprimitivesconfig-function) | function | One-time app-boot configuration for `@pyreon/primitives`. |
 
 ## API

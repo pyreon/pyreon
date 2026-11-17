@@ -228,12 +228,21 @@ export const font = {
 
 /** Fluid display sizes: clamp(min px, vw, max px). */
 export const display = {
-  hero: { min: 40, vw: 5.8, max: 80, lineHeight: 1, tracking: '-.048em', weight: 500 },
+  /**
+   * `phone`: below about 390px a display heading steps down (to `phone.min`
+   * at 320px), so a heading that ends in a long word ("re-renders.") still
+   * fits two or three balanced lines instead of stranding that word. From
+   * about 390px up the size is exactly the desktop clamp.
+   */
+  hero: { min: 40, vw: 5.8, max: 80, phone: { min: 34, vw: 10.25 }, lineHeight: 1, tracking: '-.048em', weight: 500 },
   /** The hook hero: bold, tighter, one ember word. [C3] */
   hook: { min: 44, vw: 7.2, max: 112, lineHeight: 0.94, tracking: '-.055em', weight: 700 },
-  section: { min: 32, vw: 4.2, max: 56, lineHeight: 0.98, tracking: '-.045em', weight: 500 },
-  landingSection: { min: 38, vw: 5, max: 70, lineHeight: 0.98, tracking: '-.045em', weight: 500 },
-  end: { min: 34, vw: 4.6, max: 60, lineHeight: 1.04, tracking: '-.045em', weight: 500 },
+  /** The hook headline below the md breakpoint: 34px at 320px, 46px from about 400px. */
+  hookPhone: { min: 34, vw: 11.6, max: 46 },
+  section: { min: 32, vw: 4.2, max: 56, phone: { min: 28, vw: 8.2 }, lineHeight: 0.98, tracking: '-.045em', weight: 500 },
+  /** `cqi`: in a half-width column (a container) the size follows the column, not the screen. */
+  landingSection: { min: 38, vw: 5, cqi: 10.5, max: 70, phone: { min: 32, vw: 9.75 }, lineHeight: 0.98, tracking: '-.045em', weight: 500 },
+  end: { min: 34, vw: 4.6, max: 60, phone: { min: 30, vw: 8.7 }, lineHeight: 1.04, tracking: '-.045em', weight: 500 },
   /** Big proof numerals (the cards' `.big`). [A4] */
   numeral: { min: 64, vw: 8, max: 132, lineHeight: 0.86, tracking: '-.06em', weight: 700 },
   /** Quote block text. [C4] */
@@ -241,8 +250,10 @@ export const display = {
   stat: { min: 30, vw: 4, max: 46, lineHeight: 1.05, tracking: '-.03em', weight: 500 },
 } as const
 
-export const clampSize = (d: { min: number; vw: number; max: number }): string =>
-  `clamp(${d.min}px, ${d.vw}vw, ${d.max}px)`
+export const clampSize = (d: { min: number; vw: number; max: number; cqi?: number; phone?: { min: number; vw: number } }): string => {
+  const desktop = d.cqi === undefined ? `clamp(${d.min}px, ${d.vw}vw, ${d.max}px)` : `clamp(${d.min}px, min(${d.vw}vw, ${d.cqi}cqi), ${d.max}px)`
+  return d.phone === undefined ? desktop : `clamp(${d.phone.min}px, ${d.phone.vw}vw, ${desktop})`
+}
 
 /** Fixed text sizes (px), line heights, tracking and weights. */
 export const text = {
@@ -296,6 +307,10 @@ export const layout = {
   /** Below this width the nav collapses into the menu button + sheet (_nav.json mobile.breakpoint). */
   navCollapse: 960,
   sheetPadTop: 88,
+  /** Where an anchor target lands: below the fixed nav (navTop + navHeight) with a gap. */
+  anchorOffset: 88,
+  /** The narrowest a prose table cell gets; below it the table scrolls in its own box. */
+  tableCellMin: '10ch',
 } as const
 
 /** Section rhythm (px). `tight` = sections after the first on product pages. [A10] */
@@ -313,10 +328,38 @@ export const section = {
 /** Breakpoints (min-width, px), as the unified theme sets them. */
 export const breakpoints = { xs: 0, sm: 576, md: 768, lg: 992, xl: 1200 } as const
 
+/**
+ * Touch screens: a phone or tablet width, or a coarse pointer at any width.
+ * Every control there is at least `tapTarget` px tall (WCAG 2.5.5).
+ */
+export const touch = {
+  media: `@media (max-width: ${breakpoints.lg - 0.02}px), (pointer: coarse)`,
+  tapTarget: 44,
+  /** Hit area added above and below a text link to reach `tapTarget` (an inline box is its font's content area, at least 1em tall). */
+  linkPad: 'calc((44px - 1em) / 2)',
+} as const
+
 /** `@media` for "nav collapsed" / "nav expanded" (960px is not a theme breakpoint). */
 export const navMedia = {
   collapsed: `@media (max-width: ${layout.navCollapse - 0.02}px)`,
   expanded: `@media (min-width: ${layout.navCollapse}px)`,
+} as const
+
+/**
+ * Inline SVG art (charts, diagrams) is drawn at a fixed width with text at
+ * 11-22px. It never renders below `minScale` of that width (capped at
+ * `maxMinWidth`, the rule the story pages' wide diagrams already used) on a
+ * phone (below the md breakpoint); narrower, it scrolls sideways in its own
+ * box instead of shrinking its labels to a few pixels. From md up a drawing
+ * fits its column, so a half-width desktop column never cuts one off.
+ */
+export const art = {
+  minScale: 0.8,
+  /** Charts that repeat figures printed beside them (aria-hidden): a lower floor, so they fit a desktop proof cell. */
+  decorativeMinScale: 0.66,
+  maxMinWidth: 640,
+  /** On a phone a card's chart reaches into the card's side padding (proof cells and compact cards pad 22px), so it fits without scrolling. */
+  phoneBleed: 22,
 } as const
 
 // ─── Motion ───────────────────────────────────────────────────────────────

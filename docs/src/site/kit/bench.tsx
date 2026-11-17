@@ -3,6 +3,7 @@ import type { Benchmarks, BenchmarkRow } from '../content/model'
 import { font, gradient, motion, radius, text, verdict } from '../theme'
 import { el, pair, tone, txt } from './bases'
 import { Pill } from './controls'
+import { renderInline } from './type'
 import { barWidths, formatMeasure, normalizeVerdict, RECORD_LINE, verdictLabel } from './verdict'
 
 const Chip = txt
@@ -177,7 +178,7 @@ export function BenchmarkTable(props: { data: Benchmarks }) {
   return (
     <Box>
       <Head>
-        <span>{props.data.rival}</span>
+        <span>{renderInline(props.data.rival)}</span>
         <Legend>
           <Swatch state="pyreon" />
           <span>Pyreon</span>
@@ -189,11 +190,11 @@ export function BenchmarkTable(props: { data: Benchmarks }) {
         <For each={props.data.rows} by={(r) => r.op}>
           {(r) => (
             <Row>
-              <Op>{r.op}</Op>
+              <Op>{renderInline(r.op)}</Op>
               {hasBars(r) ? <CompareBars pyreon={r.pyreon as number} rival={r.rival as number} unit={r.unit} /> : <span />}
               <VerdictCell>
                 <VerdictChip verdict={r.verdict} />
-                <RowLabel>{r.label}</RowLabel>
+                <RowLabel>{renderInline(r.label)}</RowLabel>
               </VerdictCell>
             </Row>
           )}

@@ -5,17 +5,17 @@ import { HOME, type HomeAi, type HomeHero, type HomeOnce, type HomeSectionData, 
 import type { ProductsIndexPage } from '../../content/types-site'
 import { SITE_NAME, SITE_ORIGIN, usePageHead } from '../../head'
 import { VerdictChip } from '../../kit/bench'
-import { GlowCard } from '../../kit/cards'
+import { CardFoot } from '../../kit/card-foot'
+import { GlowCard, Glyph } from '../../kit/cards'
 import { CodeBlock, CodeDiff } from '../../kit/code'
+import { TerminalCard } from '../../kit/terminal'
 import { InstallCommand, Pill } from '../../kit/controls'
-import { CopyButtonIsland } from '../../kit/islands'
 import { AutoGrid, Section, SectionHead, Wrap } from '../../kit/layout'
 import { AnimatedSvg, Loop } from '../../kit/media'
 import { Reveal } from '../../kit/motion'
 import { CaveatLine, EndCTA, HookHero, Numeral, ProofBand, TextLink } from '../../kit/proof'
 import { Heading, Lede, renderInline, StatusBadge, StatusDot, VisuallyHidden } from '../../kit/type'
 import { productName, resolveHref } from '../../nav'
-import heroTrace from '../../media/home/hero-trace.svg?raw'
 import proofBundle from '../../media/home/proof-bundle.svg?raw'
 import proofCharts from '../../media/home/proof-charts.svg?raw'
 import proofFlow from '../../media/home/proof-flow.svg?raw'
@@ -26,7 +26,6 @@ import proofRows from '../../media/home/proof-rows-10k.svg?raw'
 import proofSsr from '../../media/home/proof-ssr.svg?raw'
 import runsOnceTree from '../../media/home/runs-once-tree.svg?raw'
 import {
-  Arrow,
   BenchList,
   BenchRow,
   Bullets,
@@ -34,6 +33,7 @@ import {
   ChartSlot,
   CompareTable,
   CompatGrid,
+  CompatPkg,
   DefList,
   Finding,
   MapTable,
@@ -44,9 +44,12 @@ import {
   PaneHead,
   PhoneLoop,
   PhoneOnly,
+  PhoneTarget,
+  PhoneTargetName,
+  PhoneTargets,
+  PhoneTargetsHead,
   ProductCell,
   ProductsGrid,
-  Prompt,
   Row,
   Split,
   Stack,
@@ -59,8 +62,6 @@ import {
   TargetLabel,
   TargetLabels,
   TargetsGrid,
-  TermFoot,
-  Terminal,
   Ticks,
   WideOnly,
 } from './parts'
@@ -93,7 +94,7 @@ const STRIP_CHARTS: Readonly<Record<string, { svg: string; file: string }>> = {
 function ChartArt(props: { svg: string; file: string }) {
   return (
     <ChartSlot aria-hidden="true">
-      <AnimatedSvg file={props.file} markup={props.svg} />
+      <AnimatedSvg file={props.file} markup={props.svg} decorative />
     </ChartSlot>
   )
 }
@@ -131,7 +132,7 @@ function Hero(props: { s: HomeHero }) {
               {(t) => (
                 <TargetLabel>
                   <Mono state="upper">{t.label}</Mono>
-                  <span>{t.caption}</span>
+                  <span>{renderInline(t.caption)}</span>
                 </TargetLabel>
               )}
             </For>
@@ -143,11 +144,24 @@ function Hero(props: { s: HomeHero }) {
               </For>
             </ul>
           </VisuallyHidden>
-          <Note>{v.note}</Note>
+          <Note>{renderInline(v.note)}</Note>
         </div>
       </TargetsGrid>
       <PhoneOnly>
-        <AnimatedSvg file="home/hero-trace.svg" markup={heroTrace} />
+        <PhoneTargetsHead>
+          <Glyph id="pyreon" size={30} />
+          <Mono state="upper">{v.file.slice(v.file.lastIndexOf('/') + 1)}</Mono>
+        </PhoneTargetsHead>
+        <PhoneTargets aria-label="The three targets">
+          <For each={v.targets} by={(t) => t.label}>
+            {(t) => (
+              <PhoneTarget>
+                <PhoneTargetName>{t.label}</PhoneTargetName>
+                <span>{renderInline(t.caption)}</span>
+              </PhoneTarget>
+            )}
+          </For>
+        </PhoneTargets>
       </PhoneOnly>
     </HookHero>
   )
@@ -323,7 +337,7 @@ function Compare(props: { s: SectionOf<'compare'> }) {
             </For>
           </AutoGrid>
         </NarrowOnly>
-        <Note>{s.note}</Note>
+        <Note>{renderInline(s.note)}</Note>
         <Note>
           <Mono>source: {s.source}</Mono>
         </Note>
@@ -353,7 +367,7 @@ function Platforms(props: { s: SectionOf<'platforms'>; media: HomeHero['visual']
             <InstallCommand command={s.install} />
             <Row>
               <StatusDot state={s.status.dot} />
-              <TextLink href={resolveHref(s.status.href)}>{s.status.text}</TextLink>
+              <TextLink href={resolveHref(s.status.href)}>{renderInline(s.status.text)}</TextLink>
             </Row>
             {link(s.link)}
           </Stack>
@@ -443,7 +457,7 @@ function Audiences(props: { s: SectionOf<'audiences'> }) {
                 <GlowCard state={x.n === '01' ? 'hot' : 'default'}>
                   <CardNum>{x.n}</CardNum>
                   <Heading tag="h3" size="step" style="margin:0">
-                    {x.item.title}
+                    {renderInline(x.item.title)}
                   </Heading>
                   <Lede size="small">{renderInline(x.item.text)}</Lede>
                   <Row aria-label="Products">
@@ -480,18 +494,18 @@ function Products(props: { s: SectionOf<'products'> }) {
                     {f.p.name}
                     {f.p.status ? <StatusBadge>{f.p.status}</StatusBadge> : null}
                   </Heading>
-                  <Mono>{f.p.package}</Mono>
                   <Lede size="small">{renderInline(f.p.pitch)}</Lede>
-                  <Show when={() => !!f.p.proof}>
-                    <Lede size="small">
-                      <Numeral tag="span" size="strip" style="font-size:22px">
-                        {f.p.proof?.stat}
-                      </Numeral>{' '}
-                      {renderInline(f.p.proof?.label ?? '')}
-                    </Lede>
-                    <Mono>{f.p.proof?.condition}</Mono>
-                  </Show>
-                  <Arrow>→</Arrow>
+                  <CardFoot label={<Mono>{f.p.package}</Mono>}>
+                    <Show when={() => !!f.p.proof}>
+                      <Lede size="small">
+                        <Numeral tag="span" size="strip" style="font-size:22px">
+                          {f.p.proof?.stat}
+                        </Numeral>{' '}
+                        {renderInline(f.p.proof?.label ?? '')}
+                      </Lede>
+                      <Mono>{f.p.proof?.condition}</Mono>
+                    </Show>
+                  </CardFoot>
                 </GlowCard>
               </ProductCell>
             )}
@@ -522,7 +536,12 @@ function Migrate(props: { s: SectionOf<'migrate'> }) {
                     <Heading tag="h3" size="step" style="margin:0">
                       {l.name}
                     </Heading>
-                    <Mono>{l.package}</Mono>
+                    {/* "@pyreon/" then the whole name: one break opportunity, after the scope. */}
+                    <CompatPkg>
+                      {l.package.slice(0, l.package.indexOf('/') + 1)}
+                      <wbr />
+                      <span>{l.package.slice(l.package.indexOf('/') + 1)}</span>
+                    </CompatPkg>
                   </GlowCard>
                 </li>
               )}
@@ -552,7 +571,7 @@ function Status(props: { s: SectionOf<'status'> }) {
                     {c.label}
                   </StatusLabel>
                   <Heading tag="h3" size="step" style="margin:0">
-                    {c.title}
+                    {renderInline(c.title)}
                   </Heading>
                   <Bullets>
                     <For each={c.items} by={(i) => i}>
@@ -590,19 +609,7 @@ function Evidence(props: { s: SectionOf<'evidence'> }) {
             {link(s.link)}
           </Stack>
           <div>
-            <Terminal tag="section" tabIndex={0} aria-label={s.title}>
-              <For each={commandSteps(s.command).map((line, i) => ({ line, i }))} by={(l) => l.i}>
-                {(l) => (
-                  <div>
-                    <Prompt>$</Prompt>
-                    {l.line}
-                  </div>
-                )}
-              </For>
-            </Terminal>
-            <TermFoot>
-              <CopyButtonIsland text={s.command} />
-            </TermFoot>
+            <TerminalCard label="bash" lines={commandSteps(s.command)} copy={s.command} aria-label={s.title} />
           </div>
         </Split>
         <div style="margin-top:40px">
@@ -611,7 +618,7 @@ function Evidence(props: { s: SectionOf<'evidence'> }) {
               {(i) => (
                 <GlowCard>
                   <Heading tag="h3" size="step" style="margin:0">
-                    {i.title}
+                    {renderInline(i.title)}
                   </Heading>
                   <Lede size="small">{renderInline(i.text)}</Lede>
                 </GlowCard>

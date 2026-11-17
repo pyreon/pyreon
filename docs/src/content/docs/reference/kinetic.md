@@ -95,16 +95,16 @@ const Reveal = kinetic('section').preset(slideUp)
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`kinetic`](#kinetic-function) | function | Create a renderable, chainable animated component in transition mode. |
-| [`presets`](#presets-constant) | constant | The six built-in presets as one map — `fade`, `scaleIn`, `slideUp`, `slideDown`, `slideLeft`, `slideRight` — each also a |
-| [`useTransitionState`](#usetransitionstate-hook) | hook | Low-level enter/leave state machine that powers the transition renderer — exported for building custom animated primitiv |
-| [`useAnimationEnd`](#useanimationend-hook) | hook | Listens for `transitionend` / `animationend` on `ref.current` while `active()` is true and calls `onEnd` exactly once wh |
+| [`presets`](#presets-constant) | constant | The six built-in presets as one map — `fade`, `scaleIn`, `slideUp`, `slideDown`, `slideLeft`, `slideRight` — each also… |
+| [`useTransitionState`](#usetransitionstate-hook) | hook | Low-level enter/leave state machine that powers the transition renderer — exported for building custom animated… |
+| [`useAnimationEnd`](#useanimationend-hook) | hook | Listens for `transitionend` / `animationend` on `ref.current` while `active()` is true and calls `onEnd` exactly once… |
 | [`TransitionStage`](#transitionstage-type) | type | The four lifecycle stages `useTransitionState` moves through. |
-| [`TransitionStateResult`](#transitionstateresult-type) | type | What `useTransitionState` returns: the `stage` signal, a `ref` to attach to the transitioning element (it starts the `ap |
+| [`TransitionStateResult`](#transitionstateresult-type) | type | What `useTransitionState` returns: the `stage` signal, a `ref` to attach to the transitioning element (it starts the… |
 | [`KineticComponent`](#kineticcomponent-type) | type | The value `kinetic(tag)` returns — a renderable component intersected with the chain methods. |
-| [`Preset`](#preset-type) | type | A plain object holding the style-form fields (`enterStyle`/`enterToStyle`/`enterTransition` + leave siblings) and/or the |
+| [`Preset`](#preset-type) | type | A plain object holding the style-form fields (`enterStyle`/`enterToStyle`/`enterTransition` + leave siblings) and/or the… |
 | [`StyleTransitionProps`](#styletransitionprops-type) | type | Style-form transition definition (the zero-CSS path). |
 | [`ClassTransitionProps`](#classtransitionprops-type) | type | Class-form transition definition for utility-class CSS (Tailwind, CSS modules). |
-| [`TransitionCallbacks`](#transitioncallbacks-type) | type | Lifecycle callbacks — attach via `.on(callbacks)` on the chain or pass as props on the rendered component (props overrid |
+| [`TransitionCallbacks`](#transitioncallbacks-type) | type | Lifecycle callbacks — attach via `.on(callbacks)` on the chain or pass as props on the rendered component (props… |
 
 ## API
 

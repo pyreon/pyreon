@@ -1503,7 +1503,12 @@ function emitSwiftModuleState(state: DeclIR[]): string {
       lines.push(`    var ${swiftIdent(d.name)}: ${swiftType(t)} = ${init}`)
     } else if (d.kind === 'computed' && d.expr !== undefined) {
       const t = inferType(d.expr, _activeInferCtx)
-      lines.push(`    var ${swiftIdent(d.name)}: ${swiftType(t)} { ${emitSwiftExpr(d.expr, 0)} }`)
+      const value = emitSwiftExpr(d.expr, 0)
+      // An object-literal value (`computed(() => ({ v: base(), w: 2 }))`) has no named type to infer: annotate the
+      // struct its value emit used, as a component computed does. `Any` (or a tuple) failed the first field read.
+      const annotated =
+        t.kind === 'unknown' || isInlineObjectAnnotation(t) ? annotateComputedLiteral(d.name, d.expr, _activeInferCtx) : null
+      lines.push(`    var ${swiftIdent(d.name)}: ${annotated ?? swiftType(t)} { ${value} }`)
     }
   }
   lines.push('    private init() {}', '}')
@@ -1669,11 +1674,6 @@ function emitSwiftModuleDecl(md: ModuleDeclIR): string {
   if (md.type.kind === 'unknown') {
     // Omit explicit type annotation when source didn't carry one.
     // Swift infers from `= initial`.
-    return `private ${kw} ${swiftIdent(md.name)} = ${initial}`
-  }
-  // An inline object annotation over an object / array literal names no type the file declares, and there is no
-  // component to synthesize one in: the literal's own struct already IS the type, so let the target infer it.
-  if (isInlineObjectAnnotation(md.type) && (md.initial.kind === 'object' || md.initial.kind === 'array')) {
     return `private ${kw} ${swiftIdent(md.name)} = ${initial}`
   }
   return `private ${kw} ${swiftIdent(md.name)}: ${swiftType(md.type)} = ${initial}`
@@ -4305,6 +4305,13 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
           if (!_emitWarnings.includes(message)) _emitWarnings.push(message)
         }
         return 'Any'
+      }
+      // Several fields would spell a labelled tuple: the right members, but not `Codable` (decoding into it fails) and
+      // not the struct an object literal of the shape constructs. Every source-written module-scope shape is a declared
+      // struct by now (module-inline-object-types.ts), so this is a position nothing named — say so, never a silent tuple.
+      if (!_typeSynthesisSuppressed) {
+        const message = inlineObjectTypeWarning(t)
+        if (!_emitWarnings.includes(message)) _emitWarnings.push(message)
       }
       const fields = t.fields.map((f) => `${swiftIdent(f.name)}: ${swiftType(f.type)}`).join(', ')
       return `(${fields})`

@@ -51,6 +51,8 @@
   --ember-plasma-l: #E40C70;
   --ember-core-l:   #E84A0F;
   --ember-warm-l:   #E0A510;
+  /* Ember for TEXT on paper: #E84A0F is 3.88:1 on white, this is 6.1:1 (theme.ts color.accent, light). */
+  --ember-text-l:   #A8380A;
 
   /* Cool counter-accent — links / interactivity */
   --cyan:     #22D3EE;
@@ -160,6 +162,8 @@
   --hairline:     var(--paper-4);
 
   --ember:        var(--ember-core-l);
+  /* Examples colour active links and labels with --accent: keep it AA on paper. */
+  --accent:       var(--ember-text-l);
   --ember-grad:   linear-gradient(95deg, var(--ember-plasma-l) 0%, var(--ember-core-l) 55%, var(--ember-warm-l) 100%);
   --ember-bg:     rgba(232, 74, 15, .05);
   --ember-ring:   rgba(232, 74, 15, .35);
@@ -205,6 +209,7 @@
     --hairline:     var(--paper-4);
 
     --ember:        var(--ember-core-l);
+    --accent:       var(--ember-text-l);
     --ember-grad:   linear-gradient(95deg, var(--ember-plasma-l) 0%, var(--ember-core-l) 55%, var(--ember-warm-l) 100%);
     --ember-bg:     rgba(232, 74, 15, .05);
     --ember-ring:   rgba(232, 74, 15, .35);
