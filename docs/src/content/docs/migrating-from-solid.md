@@ -41,7 +41,7 @@ Reading is identical (`count()`). Writing moves from a separate `setCount` to `c
 | `createSelector` | `createSelector` | same O(1) selection primitive |
 | `batch(fn)` | `batch(fn)` | same |
 | `untrack(fn)` | `untrack(fn)` | same |
-| `<Show when={c()}>` | `<Show when={c}>` | Pyreon accepts an accessor **or** a value |
+| `<Show when={c()}>` | `<Show when={c()}>` | same; `when` also accepts an accessor |
 | `<Switch>` / `<Match>` | same names | same control flow (Solid's `<Index>` exists only in `@pyreon/solid-compat`) |
 
 ## The one JSX difference: keyed `<For>`
@@ -54,11 +54,11 @@ Solid's `<For>` keys by **reference identity** of each item. Pyreon's `<For>` ke
 ```
 
 ```tsx
-// Pyreon — note `by` and that `each` takes the signal, not a call
-<For each={rows} by={row => row.id}>{row => <tr>{row.label}</tr>}</For>
+// Pyreon — the same `each`, plus a `by` key
+<For each={rows()} by={row => row.id}>{row => <tr>{row.label}</tr>}</For>
 ```
 
-Two things: pass the **signal** to `each` (not `rows()`), and give it a stable `by` key. (Pyreon core has no `<Index>`; it exists only in `@pyreon/solid-compat`. In native Pyreon, key by a stable `by`.)
+One thing to add: a stable `by` key. `each={rows()}` stays as you wrote it, because the compiler passes a signal read in a prop as a reactive prop, so the list still follows `rows`. (Pyreon core has no `<Index>`; it exists only in `@pyreon/solid-compat`. In native Pyreon, key by a stable `by`.)
 
 ## Reactive item reads in `<For>`
 
@@ -66,7 +66,7 @@ A `<For>` callback's `row` is a runtime item, not reactive props. A bare propert
 
 ```tsx
 // row.label is a signal -> read it as row.label() to track per-row updates
-<For each={rows} by={r => r.id}>
+<For each={rows()} by={r => r.id}>
   {row => <tr><td>{row.id}</td><td>{row.label()}</td></tr>}
 </For>
 ```
@@ -102,8 +102,8 @@ function Counter() {
 - `const [c, setC] = createSignal()` → `const c = signal()`; write `c.set()` / `c.update()`
 - `createMemo` → `computed`, `createEffect` → `effect` (names only)
 - `onMount` / `onCleanup` / `batch` / `untrack` / `createStore` / `createSelector` — same
-- `<For each={rows()}>` → `<For each={rows} by={r => r.id}>` (pass the signal, add `by`)
-- `<Show when={c()}>` → `<Show when={c}>` (accessor or value both fine)
+- `<For each={rows()}>` → `<For each={rows()} by={r => r.id}>` (same `each`, add `by`)
+- `<Show when={c()}>` — same (`when` also accepts an accessor)
 - SolidStart → [`@pyreon/zero`](/docs/zero)
 
 The honest summary: if you're productive in Solid, you'll be productive in Pyreon within an afternoon — the reactivity model is the same, and the differences are a handful of API shapes you'll memorize in the first hour.

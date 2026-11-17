@@ -114,8 +114,14 @@ describe('jsx.ts — the eager-ordering gate (a bind that MOUNTS must not run be
     expect(bails('<><div><Node/></div></>')).not.toContain('_mountChild')
   })
 
-  it('a MEMBER-expression tag parent bails (`<Ctx.Provider>` is never `_lc`-wrapped)', () => {
-    expect(bails('<Ctx.Provider><div><Node/></div></Ctx.Provider>')).not.toContain('_mountChild')
+  it('a MEMBER-expression tag parent is a component like any other (#4368): its sole child is `_lc`-deferred', () => {
+    const out = t('<Ctx.Provider><div><Node/></div></Ctx.Provider>')
+    expect(out).toContain('_lc(() =>')
+    expect(out).toContain('_mountChild(<Node/>')
+  })
+
+  it('a MULTI-child MEMBER-expression tag parent bails, like `<Prov>`', () => {
+    expect(bails('<Ctx.Provider><div><Node/></div><p/></Ctx.Provider>')).not.toContain('_mountChild')
   })
 
   it('a NAMESPACED tag parent bails for the same reason', () => {
