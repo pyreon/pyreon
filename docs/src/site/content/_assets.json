@@ -9751,42 +9751,42 @@
       "file": "why/ai-ready.poster-dark-640.webp",
       "width": 640,
       "height": 327,
-      "bytes": 16068,
+      "bytes": 15918,
       "format": "webp"
      },
      {
       "file": "why/ai-ready.poster-dark-640.avif",
       "width": 640,
       "height": 327,
-      "bytes": 12625,
+      "bytes": 12494,
       "format": "avif"
      },
      {
       "file": "why/ai-ready.poster-dark-1280.webp",
       "width": 1280,
       "height": 653,
-      "bytes": 37344,
+      "bytes": 37646,
       "format": "webp"
      },
      {
       "file": "why/ai-ready.poster-dark-1280.avif",
       "width": 1280,
       "height": 653,
-      "bytes": 29335,
+      "bytes": 28832,
       "format": "avif"
      },
      {
       "file": "why/ai-ready.poster-dark.webp",
       "width": 1920,
       "height": 980,
-      "bytes": 57588,
+      "bytes": 57406,
       "format": "webp"
      },
      {
       "file": "why/ai-ready.poster-dark.avif",
       "width": 1920,
       "height": 980,
-      "bytes": 34047,
+      "bytes": 33812,
       "format": "avif"
      }
     ],
@@ -9795,42 +9795,42 @@
       "file": "why/ai-ready.poster-light-640.webp",
       "width": 640,
       "height": 327,
-      "bytes": 15904,
+      "bytes": 15740,
       "format": "webp"
      },
      {
       "file": "why/ai-ready.poster-light-640.avif",
       "width": 640,
       "height": 327,
-      "bytes": 11293,
+      "bytes": 11219,
       "format": "avif"
      },
      {
       "file": "why/ai-ready.poster-light-1280.webp",
       "width": 1280,
       "height": 653,
-      "bytes": 37396,
+      "bytes": 37664,
       "format": "webp"
      },
      {
       "file": "why/ai-ready.poster-light-1280.avif",
       "width": 1280,
       "height": 653,
-      "bytes": 28584,
+      "bytes": 28144,
       "format": "avif"
      },
      {
       "file": "why/ai-ready.poster-light.webp",
       "width": 1920,
       "height": 980,
-      "bytes": 58072,
+      "bytes": 57956,
       "format": "webp"
      },
      {
       "file": "why/ai-ready.poster-light.avif",
       "width": 1920,
       "height": 980,
-      "bytes": 33903,
+      "bytes": 33559,
       "format": "avif"
      }
     ]
