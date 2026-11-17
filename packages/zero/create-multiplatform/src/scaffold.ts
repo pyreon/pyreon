@@ -141,6 +141,7 @@ export function validateScheme(scheme: string): string {
       `[create-multiplatform] "${s}" is not a valid app URL scheme — it belongs to the platform or to web links. Pick a scheme unique to your app (for example "myapp").`,
     )
   }
+
   return s
 }
 

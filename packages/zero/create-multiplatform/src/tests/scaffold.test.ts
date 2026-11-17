@@ -319,6 +319,7 @@ describe('buildScaffold — native runtime delivery wiring (local-proof-found fi
           encoding: 'utf8',
         })
         expect(r.status, r.stderr).toBe(0)
+
         return {
           pass: readFileSync(join(root, 'pass.txt'), 'utf8'),
           argv: readFileSync(join(root, 'argv.txt'), 'utf8'),

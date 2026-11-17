@@ -76,6 +76,7 @@ export interface BuildResult {
  * runtime is itself a bug this surfaces).
  */
 const WEB_ONLY_IMPORT_RE = /\bfrom\s+['"]@pyreon\/(?:runtime-dom|runtime-server)['"]/
+
 export function isWebOnlyEntry(code: string): boolean {
   return WEB_ONLY_IMPORT_RE.test(code)
 }
@@ -537,6 +538,7 @@ export function conditionalKotlinImports(emitted: string): string {
       imports.push(`import androidx.compose.material.icons.filled.${g}`)
     }
   }
+
   return imports.length === 0 ? '' : imports.join('\n') + '\n'
 }
 
@@ -550,6 +552,7 @@ export function importHeader(target: TargetLanguage): string {
       '',
     ].join('\n')
   }
+
   return [
     'import androidx.compose.runtime.*',
     'import androidx.compose.foundation.layout.*',
@@ -585,6 +588,7 @@ export function findTsxFiles(sourceDir: string): string[] {
     }
   }
   walk(sourceDir)
+
   return found.sort()
 }
 
