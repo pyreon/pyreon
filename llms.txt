@@ -209,7 +209,7 @@ mount(<App />, document.getElementById("app")!)
 
 ### Providers
 - Use `<PyreonUI theme={theme} mode="light">` — this is the ONLY provider you need
-- Do NOT use `UnistyleProvider`, `ThemeProvider`, or `CoreProvider` directly — they are internal
+- Do NOT use `CoreProvider` (ui-core's low-level `Provider`) directly — it is internal
 
 ### Other
 - `(e.target as HTMLInputElement)` → use `TargetedEvent<HTMLInputElement>` for typed `currentTarget`

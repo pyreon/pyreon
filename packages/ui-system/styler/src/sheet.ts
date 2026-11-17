@@ -854,17 +854,6 @@ export class StyleSheet {
     return `${PREFIX}-${h}`
   }
 
-  /**
-   * Insert CSS rules for a component. Returns the class name (deterministic, hash-based).
-   * Deduplicates: same CSS text always produces the same class name and
-   * the rules are only injected once.
-   *
-   * @param cssText - CSS declarations to insert
-   * @param _unused - Reserved for backward compatibility (was `boost`)
-   * @param insertLayer - CSS @layer to wrap this rule in (e.g. 'rocketstyle').
-   *   Used by rocketstyle to ensure wrapper styles override inner component styles
-   *   via @layer order (base < rocketstyle) instead of specificity hacks.
-   */
   // Dedup set for the dev-mode resolved-CSS validator — one warning per
   // unique (finding, snippet) pair, so a hot re-render can't spam the console.
   private warnedInvalidCss = new Set<string>()
@@ -921,7 +910,17 @@ export class StyleSheet {
     )
   }
 
-  insert(cssText: string, _unused = false, insertLayer?: string, use = true): string {
+  /**
+   * Insert CSS rules for a component. Returns the class name (deterministic, hash-based).
+   * Deduplicates: same CSS text always produces the same class name and
+   * the rules are only injected once.
+   *
+   * @param cssText - CSS declarations to insert
+   * @param insertLayer - CSS @layer to wrap this rule in (e.g. 'rocketstyle').
+   *   Used by rocketstyle to ensure wrapper styles override inner component styles
+   *   via @layer order (base < rocketstyle) instead of specificity hacks.
+   */
+  insert(cssText: string, insertLayer?: string, use = true): string {
     if (process.env.NODE_ENV !== 'production') {
       _countSink.__pyreon_count__?.('styler.sheet.insert')
       this.validateDevCss(cssText)
