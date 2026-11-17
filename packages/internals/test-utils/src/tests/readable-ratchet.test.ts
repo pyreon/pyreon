@@ -4,11 +4,13 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { countPyreonFindings } from '../../../../../scripts/check-pyreon-lint-ratchet'
 import {
+  baselineTotal,
   buildReadableBaseline,
   checkReadable,
   compareReadable,
   countReadableFindings,
   readableCodes,
+  perFileBaselineProblems,
   serializeReadableBaseline,
   updateReadable,
 } from '../../../../../scripts/check-readable-ratchet'
@@ -101,7 +103,7 @@ describe('the baseline file', () => {
 
   it('serialises one line per file and drops zero counts', () => {
     const b = buildReadableBaseline({ 'b.ts': { r: 1 }, 'a.ts': { s: 0, r: 2 }, 'z.ts': { r: 0 } })
-    expect(b.total).toBe(3)
+    expect(baselineTotal(b.files)).toBe(3)
     expect(Object.keys(b.files)).toEqual(['a.ts', 'b.ts'])
     const text = serializeReadableBaseline(b)
     expect(text).toContain('    "a.ts": {"r":2}')
@@ -119,7 +121,7 @@ describe('the baseline file', () => {
     expect(readFileSync(path, 'utf8')).toBe(seeded)
 
     expect(updateReadable(grown, { path, allowRaise: true })).toBe(true)
-    expect(JSON.parse(readFileSync(path, 'utf8')).total).toBe(2)
+    expect(baselineTotal(JSON.parse(readFileSync(path, 'utf8')).files)).toBe(2)
   })
 
   it('--update tightens after a fix', () => {
@@ -158,22 +160,19 @@ describe('the per-rule pyreon-lint ratchet leaves readable findings to this one'
 })
 
 describe('the committed baseline', () => {
-  it('is well-formed: totals add up and every rule is a readable rule', () => {
+  it('is well-formed: canonical, no total, and every rule is a readable rule', () => {
     const path = join(import.meta.dirname, '../../../../../readable-baseline.json')
-    const b = JSON.parse(readFileSync(path, 'utf8')) as {
-      total: number
-      files: Record<string, Record<string, number>>
-    }
+    const text = readFileSync(path, 'utf8')
+    const b = JSON.parse(text) as { files: Record<string, Record<string, number>> }
+    expect(Object.keys(b)).toEqual(['description', 'files'])
+    expect(perFileBaselineProblems(text)).toEqual([])
     const codes = readableCodes()
-    let sum = 0
     for (const rules of Object.values(b.files)) {
       for (const [rule, n] of Object.entries(rules)) {
         expect(codes.has(`lint/${rule}`), rule).toBe(true)
         expect(n).toBeGreaterThan(0)
-        sum += n
       }
     }
-    expect(sum).toBe(b.total)
   })
 })
 
@@ -195,13 +194,9 @@ describe('the readable oxlint ratchet', () => {
 
   it('the committed baseline is well-formed and its config extends the shipped preset', () => {
     const root = join(import.meta.dirname, '../../../../..')
-    const b = JSON.parse(readFileSync(join(root, OXLINT_BASELINE_PATH), 'utf8')) as {
-      total: number
-      files: Record<string, Record<string, number>>
-    }
-    let sum = 0
-    for (const rules of Object.values(b.files)) for (const n of Object.values(rules)) sum += n
-    expect(sum).toBe(b.total)
+    const text = readFileSync(join(root, OXLINT_BASELINE_PATH), 'utf8')
+    expect(Object.keys(JSON.parse(text))).toEqual(['description', 'files'])
+    expect(perFileBaselineProblems(text)).toEqual([])
     const cfg = readFileSync(join(root, OXLINT_READABLE_CONFIG), 'utf8')
     expect(cfg).toContain('"extends": ["../packages/tools/lint/oxlint/readable.json"]')
     // Every hot-path exemption must be a file that exists, and the block must say why.

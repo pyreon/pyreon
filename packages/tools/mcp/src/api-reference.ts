@@ -1712,6 +1712,15 @@ validate("a@b.co").length // 0`,
     notes: '[EXPERIMENTAL] Emits a monomorphic, fully-inlined validator FUNCTION SOURCE for an emittable `analyzeValidate` IR node — straight-line `typeof` / regex / comparison checks specialized to the exact shape, with NO op-array traversal or per-check closure dispatch (the typia-class approach). Returns an arrow expression `(input) => Issue[]` (zero issues ⟺ valid). Throws on an `unsupported` node — guard with `isEmittable` first. Wiring this into @pyreon/vite-plugin (replacing runtime schema construction at a call site) is a follow-up; this is the pure, independently-testable foundation. See also: analyzeValidate.',
   },
 
+  'compiler/findSyntaxErrors': {
+    signature: 'findSyntaxErrors(code: string, filename?: string): SourceSyntaxError[]',
+    example: `import { findSyntaxErrors } from "@pyreon/compiler/analyze"
+
+findSyntaxErrors("export const C = () => <div>", "C.tsx")[0]
+// { message: "JSX element 'div' has no corresponding closing tag.", line: 1, column: 24 }`,
+    notes: 'Every syntax error the TypeScript parser reports for `code`, in source order, as `{ message, line (1-based), column (0-based) }`; empty means it parsed. The detectors, codemods and Reactivity Lens parse with an error-recovering parser and return nothing for code they cannot read, so call this first and never turn their empty result into a clean verdict for input with syntax errors (the MCP `validate` tool, `pyreon check` and `audit_islands` do). Parse mode follows the filename: `.ts`/`.mts`/`.cts` as TypeScript, `.jsx` as JSX, `.js`/`.mjs`/`.cjs` as JavaScript, anything else as TSX. Syntax only: no type checking. A markdown-fenced block parses (the backticks are template literals), so strip fences before calling it. See also: detectPyreonPatterns, detectReactPatterns.',
+  },
+
   'compiler/detectReactPatterns': {
     signature: 'detectReactPatterns(code: string, filename?: string): ReactDiagnostic[]',
     example: `import { detectReactPatterns } from "@pyreon/compiler/analyze"
@@ -7632,10 +7641,11 @@ function MyComp(props) {
   return <For each={items}>{...}</For>  // → for-missing-by
 }
 \` })`,
-    notes: 'Two AST-based detectors run in parallel: `detectReactPatterns` flags "coming from React" mistakes (`useState`, `useEffect`, `className`, `onChange` on inputs, React-package imports), and `detectPyreonPatterns` flags "using Pyreon wrong" mistakes (`<For>` missing `by`, props destructured at component signature, `typeof process` dev gates, raw `addEventListener`, `Date.now() + Math.random()` IDs). Diagnostics are merged + sorted by line / column for top-down reading. See also: get_anti_patterns, migrate_react.',
+    notes: 'Two AST-based detectors run in parallel: `detectReactPatterns` flags "coming from React" mistakes (`useState`, `useEffect`, `className`, `onChange` on inputs, React-package imports), and `detectPyreonPatterns` flags "using Pyreon wrong" mistakes (`<For>` missing `by`, props destructured at component signature, `typeof process` dev gates, raw `addEventListener`, `Date.now() + Math.random()` IDs). Diagnostics are merged + sorted by line / column for top-down reading. Input is syntax-checked first, and input that does not parse never gets the `✓ No issues found` line: a syntax error is the verdict (`✗ Syntax error at line L, column C: <parser message>`), with any detector findings from the part that parsed listed under it. Input wrapped in ONE markdown code fence (backticks or tildes, language tag optional) is unwrapped and validated, and the result says the fence was stripped; several fences or prose around the code are reported as markdown, not guessed at. Empty input and non-JS/TS filenames (`.vue`, `.svelte`) are reported as such. `explain_reactivity`, `migrate_react`, `migrate_pyreon` and the `componentSource` of `diagnose` / `explain_error` follow the same rules. See also: get_anti_patterns, migrate_react.',
     mistakes: `- Treating zero diagnostics as "the code is correct" — \`validate\` is a STATIC detector. It catches the documented anti-patterns from \`.agents/rules/anti-patterns.md\` but does NOT verify runtime semantics, cross-file consistency, type correctness, or compiler output. Pair with \`tsc\` + tests for full coverage.
 - Omitting the \`filename\` arg for path-sensitive detectors — some detectors (e.g. \`pyreon/no-window-in-ssr\` with its \`exemptPaths\` option) need the path to know whether the file is server-only-exempt. Without it the diagnostic may misfire or fail to fire.
-- Running \`validate\` on a snippet that is NOT a full file — detectors expect complete syntax (every \`import\`, every \`function\`). Passing a partial expression yields no diagnostics, which can be mistaken for "clean".
+- Passing a partial snippet that does not parse (an unclosed tag, a fragment cut mid-statement) — the tool reports the syntax error instead of validating. Pass a complete file or a complete statement list.
+- Pasting prose plus code, or several fenced blocks, into \`code\` — only a single surrounding fence is stripped. Pass the source of one file.
 - Calling \`validate\` after the code is already merged — it's a pre-commit / before-paste tool. After-the-fact use is fine but the maximum value is catching the bug BEFORE it ships.`,
   },
 
