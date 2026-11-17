@@ -399,6 +399,8 @@ const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: st
   { name: 'pyreonIndexOf', file: 'PyreonSlice.swift' },
   { name: 'pyreonStartsWith', file: 'PyreonSlice.swift' },
   { name: 'pyreonEndsWith', file: 'PyreonSlice.swift' },
+  { name: 'pyreonSplit', file: 'PyreonSlice.swift' },
+  { name: 'pyreonCodePoints', file: 'PyreonSlice.swift' },
   // `Intl.NumberFormat` / `Intl.DateTimeFormat` / `toLocale*String` construct these (intl-plugin.ts).
   { name: 'PyreonNumberFormat', file: 'PyreonIntl.swift' },
   { name: 'PyreonDateTimeFormat', file: 'PyreonIntl.swift' },

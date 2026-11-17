@@ -5011,6 +5011,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const mapForm = arrayFromMapRewrite(e)
           if (mapForm !== null) return emitSwiftExpr(mapForm, indent)
           if (e.args.length === 1 && e.args[0]!.kind !== 'object') {
+            // A string iterates by CODE POINT on the web; `Array(str)` gave Characters (grapheme clusters).
+            if (unwrapOptionalType(inferType(e.args[0]!, _activeInferCtx)).kind === 'string') {
+              return `pyreonCodePoints(${emitSwiftExpr(e.args[0]!, indent)})`
+            }
+
             return `Array(${emitSwiftExpr(e.args[0]!, indent)})`
           }
           // Any OTHER `Array.from({ length: n }, …)` shape — the 1-arg form (no
@@ -5673,6 +5678,16 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // (Foundation; multi-char separator, returns [String], faithful
             // to JS string-separator split). Kotlin's `split` matches JS
             // as-is, so it needs no mapping there.
+            // A STRING separator goes through `pyreonSplit`: `components(separatedBy: "")` returned the whole string
+            // as one element, where the web splits into UTF-16 code units.
+            if (
+              recvKind === 'string' &&
+              objDot === '.' &&
+              (e.args.length === 1 || e.args.length === 2) &&
+              inferType(e.args[0]!, _activeInferCtx).kind === 'string'
+            ) {
+              return `pyreonSplit(${obj}, ${argExprs.join(', ')})`
+            }
             if (e.args.length === 1)
               return `${obj}${objDot}components(separatedBy: ${argExprs[0]!})`
             if (e.args.length === 2) {
@@ -6707,9 +6722,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // pre-fix `a + [9].count` where `.count` bound to `[9]` → a type error).
       // Pre-fix only a single LEADING spread + literal tail emitted, multi-
       // spread emitted `a + [b]` (wrapping b), and nothing was parenthesised.
+      // `[...str]` iterates a string by CODE POINT (`pyreonCodePoints`), not by Swift Character.
+      const stringSpreads = new Set(
+        e.elements.flatMap((el) =>
+          el.kind === 'spread' && inferType(el.argument, _activeInferCtx).kind === 'string' ? [el.argument] : [],
+        ),
+      )
       const spreadConcat = buildArraySpreadConcat(
         e.elements,
-        (el) => emitSwiftExpr(el, indent),
+        (el) => (stringSpreads.has(el) ? `pyreonCodePoints(${emitSwiftExpr(el, indent)})` : emitSwiftExpr(el, indent)),
         (r) => `[${r}]`,
       )
       if (spreadConcat !== null) return spreadConcat

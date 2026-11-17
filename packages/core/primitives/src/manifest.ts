@@ -368,7 +368,7 @@ const base = signal(1.0)
       summary:
         'Top-level tab navigation; children are literal `<Tab value label icon?>` entries whose children are the tab content. Web: the WAI-ARIA tabs pattern (tablist / tab / tabpanel, roving tabindex, arrow keys + Home/End) as a bottom bar below 600px of viewport width and a side rail at 600px+. iOS: `TabView(selection:)` (iOS 18+ `.sidebarAdaptable`, a sidebar on iPad). Android: Material `BottomNavigation` below 600dp of window width, `NavigationRail` at 600dp+ (the `useSizeClass()` breakpoint). A visited tab stays MOUNTED while hidden on every target, so its local state, typed text and scroll position survive switching away and back. Router-agnostic: the selection is your signal; a string-literal-union signal lowers to the native enum. OR router-bound: `<Tabs router={router}>` with a `createRouter({ tabs })` router gives every tab its own back stack — the selection is `router.activeTab()`, a tap goes through `router.selectTab` (re-tapping the active tab pops it to its root), and a `<RouterView />` in each `<Tab>` shows THAT tab\'s stack. iOS: one `NavigationStack` per tab inside the `TabView` (a push stays inside its tab, the bar stays visible); Android: per-tab stacks, the system Back pops the active tab first.',
       example: `const tab = signal('feed')
-<Tabs value={tab} onChange={(v) => tab.set(v)}>
+<Tabs value={tab()} onChange={(v) => tab.set(v)}>
   <Tab value="feed" label="Feed" icon="home"><FeedScreen /></Tab>
   <Tab value="me" label="Me" icon="person"><ProfileScreen /></Tab>
 </Tabs>`,

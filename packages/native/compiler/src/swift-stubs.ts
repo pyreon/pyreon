@@ -1693,6 +1693,9 @@ public func pyreonRound(_ x: Double) -> Double { 0 }
 public func pyreonParseInt(_ text: String, _ radix: Int? = nil) -> Int? { nil }
 public func pyreonParseFloat(_ text: String) -> Double { 0 }
 public func pyreonToNumber(_ text: String) -> Double { 0 }
+// str.split(sep) / [...str] (PyreonSlice.swift). Mirror the real signatures.
+public func pyreonSplit(_ s: String, _ separator: String, _ limit: Int? = nil) -> [String] { [] }
+public func pyreonCodePoints(_ s: String) -> [String] { [] }
 // PyreonDate — JS Date as epoch milliseconds (PyreonDate.swift). Mirrors the real surface.
 public func pyreonDateFrom(_ text: String) -> Double { 0 }
 public func pyreonDateFrom(_ ms: Double) -> Double { 0 }

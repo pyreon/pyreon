@@ -3967,6 +3967,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           const mapForm = arrayFromMapRewrite(e)
           if (mapForm !== null) return emitKotlinExpr(mapForm, indent)
           if (e.args.length === 1 && e.args[0]!.kind !== 'object') {
+            // A string iterates by CODE POINT on the web; `.toList()` gave Chars (UTF-16 units).
+            if (unwrapOptionalType(inferType(e.args[0]!, _kotlinExprInferCtx)).kind === 'string') {
+              return `pyreonCodePoints(${emitKotlinExpr(e.args[0]!, indent)})`
+            }
+
             return `(${emitKotlinExpr(e.args[0]!, indent)}).toList()`
           }
           // Any OTHER `Array.from({ length: n }, …)` shape — the 1-arg form (no
@@ -4473,6 +4478,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           case 'startsWith':
           case 'endsWith':
           case 'split':
+            // A STRING separator goes through `pyreonSplit`: Kotlin's `split("")` adds an empty string at each end,
+            // where the web splits into UTF-16 code units (twin of the Swift arm).
+            if (
+              prop === 'split' &&
+              recvKind === 'string' &&
+              objDot === '.' &&
+              (e.args.length === 1 || e.args.length === 2) &&
+              inferType(e.args[0]!, _kotlinExprInferCtx).kind === 'string'
+            ) {
+              return `pyreonSplit(${obj}, ${argExprs.join(', ')})`
+            }
             if (e.args.length === 2) {
               const lowered = kotlinPositionedSearch(
                 prop,
@@ -5367,9 +5383,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // pre-fix `a + listOf(b).map { … }` which both wrapped b — a kotlinc
       // "cannot infer type R" — AND would only map the tail). Mirror of the
       // Swift array-spread fix.
+      // `[...str]` iterates a string by CODE POINT (`pyreonCodePoints`), not by UTF-16 Char.
+      const stringSpreads = new Set(
+        e.elements.flatMap((el) =>
+          el.kind === 'spread' && inferType(el.argument, _kotlinExprInferCtx).kind === 'string' ? [el.argument] : [],
+        ),
+      )
       const spreadConcat = buildArraySpreadConcat(
         e.elements,
-        (el) => emitKotlinExpr(el, indent),
+        (el) => (stringSpreads.has(el) ? `pyreonCodePoints(${emitKotlinExpr(el, indent)})` : emitKotlinExpr(el, indent)),
         (r) => `listOf(${r})`,
       )
       if (spreadConcat !== null) return spreadConcat

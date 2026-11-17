@@ -2267,8 +2267,10 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         let t: TypeIR
         if (el.kind === 'spread') {
           const src = inferType(el.argument, ctx)
-          if (src.kind !== 'array') return { kind: 'unknown' }
-          t = src.element
+          // `[...str]` is the string's code points, each a string.
+          if (src.kind === 'string') t = { kind: 'string' }
+          else if (src.kind !== 'array') return { kind: 'unknown' }
+          else t = src.element
         } else {
           t = inferType(el, ctx)
         }
