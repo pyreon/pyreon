@@ -42,7 +42,7 @@ describe('SwiftEmitContext members', () => {
       }),
       '<Toy value={n() + 1} />',
     )
-    expect(out.code).toMatch(/Marker\(n \+ 1, n \+ 1\)/)
+    expect(out.code).toMatch(/Marker\(pyreonAdd\(n, 1\), pyreonAdd\(n, 1\)\)/)
   })
 
   it('stringAttr returns a literal or an interpolation, undefined when absent', () => {

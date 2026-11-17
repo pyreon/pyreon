@@ -86,7 +86,7 @@ export function App(props: { uid: number }) {
     // queryKey rather than an emitted expression
     expect(out).toContain('.task(id: "v") {')
     expect(out).toContain('qv.setKey("v")')
-    expect(out).toMatch(/await qv\.run \{\s*return uid \* 2\s*\}/)
+    expect(out).toMatch(/await qv\.run \{\s*return pyreonMul\(uid, 2\)\s*\}/)
   })
 
   it('a query carrying a verb/headers/body routes through PyreonHttp with the status guard', () => {

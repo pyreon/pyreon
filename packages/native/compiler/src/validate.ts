@@ -395,6 +395,21 @@ const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: st
   { name: 'pyreonToNumber', file: 'PyreonNumber.swift' },
   // An optional template interpoland / concat operand / `String(x)` argument (optional-text.ts).
   { name: 'pyreonOptionalText', file: 'PyreonNumber.swift' },
+  // Integer and bitwise operators with the web's results (integer-arithmetic.ts).
+  { name: 'pyreonAdd', file: 'PyreonNumber.swift' },
+  { name: 'pyreonSub', file: 'PyreonNumber.swift' },
+  { name: 'pyreonMul', file: 'PyreonNumber.swift' },
+  { name: 'pyreonNeg', file: 'PyreonNumber.swift' },
+  { name: 'pyreonRem', file: 'PyreonNumber.swift' },
+  { name: 'pyreonBitAnd', file: 'PyreonNumber.swift' },
+  { name: 'pyreonBitOr', file: 'PyreonNumber.swift' },
+  { name: 'pyreonBitXor', file: 'PyreonNumber.swift' },
+  { name: 'pyreonBitNot', file: 'PyreonNumber.swift' },
+  { name: 'pyreonShl', file: 'PyreonNumber.swift' },
+  { name: 'pyreonShr', file: 'PyreonNumber.swift' },
+  { name: 'pyreonUshr', file: 'PyreonNumber.swift' },
+  { name: 'pyreonMax', file: 'PyreonNumber.swift' },
+  { name: 'pyreonMin', file: 'PyreonNumber.swift' },
   // A JS `Date` lowers to these (date-lowering.ts).
   { name: 'pyreonDateFrom', file: 'PyreonDate.swift' },
   { name: 'pyreonDateGet', file: 'PyreonDate.swift' },

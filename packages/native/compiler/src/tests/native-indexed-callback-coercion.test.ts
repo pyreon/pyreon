@@ -99,7 +99,7 @@ export function App(){
   })
   it('control: `(x, i) => x + i` (Int×Int) stays bare through the enumerated path', () => {
     const code = sw(A(`  const out = computed(() => nums().map((x: number, i: number) => x + i))`))
-    expect(code).toContain('{ (i, x) in x + i }')
+    expect(code).toContain('{ (i, x) in pyreonAdd(x, i) }')
     expect(code).not.toContain('Double(')
   })
   it('Kotlin: 2-param float body keeps the native bare emit (auto-promotes)', () => {

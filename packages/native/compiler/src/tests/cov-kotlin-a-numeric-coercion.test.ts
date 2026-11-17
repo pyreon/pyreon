@@ -58,10 +58,10 @@ describe('Kotlin expr: Math lowerings', () => {
   const b = computed(() => Math.min(...xs()))
   const c = computed(() => Math.max(...ds()))
   const d = computed(() => Math.min(...ds()))`).code
-    expect(out).toContain('(xs.maxOrNull() ?: Long.MIN_VALUE)')
-    expect(out).toContain('(xs.minOrNull() ?: Long.MAX_VALUE)')
-    expect(out).toContain('(ds.maxOrNull() ?: Double.NEGATIVE_INFINITY)')
-    expect(out).toContain('(ds.minOrNull() ?: Double.POSITIVE_INFINITY)')
+    expect(out).toContain('pyreonMax(xs)')
+    expect(out).toContain('pyreonMin(xs)')
+    expect(out).toContain('pyreonMax(ds)')
+    expect(out).toContain('pyreonMin(ds)')
   })
 
   it('Math.PI is emitted fully qualified (kotlin.math.PI) so no import is needed', () => {
@@ -190,12 +190,12 @@ describe('Kotlin expr: bitwise operators are INFIX functions, not symbols', () =
   const d = computed(() => n() << 1)
   const e = computed(() => n() >> 1)
   const f = computed(() => n() & (n() + 1))`).code
-    expect(out).toContain('n and 3')
-    expect(out).toContain('n or 3')
-    expect(out).toContain('n xor 3')
-    expect(out).toContain('n shl 1')
-    expect(out).toContain('n shr 1')
+    expect(out).toContain('pyreonBitAnd(n, 3L)')
+    expect(out).toContain('pyreonBitOr(n, 3L)')
+    expect(out).toContain('pyreonBitXor(n, 3L)')
+    expect(out).toContain('pyreonShl(n, 1L)')
+    expect(out).toContain('pyreonShr(n, 1L)')
     // infix binds looser than arithmetic — the compound side keeps its parens
-    expect(out).toContain('n and (n + 1L)')
+    expect(out).toMatch(/pyreonBitAnd\(n, \(?pyreonAdd\(n, 1L\)\)?\)/)
   })
 })

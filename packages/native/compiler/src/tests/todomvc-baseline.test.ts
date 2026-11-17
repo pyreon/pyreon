@@ -90,7 +90,7 @@ describe('TodoMVC compile baseline', () => {
             return
           }
           let maxId = todos.reduce(0, { m, t in (t.id > m ? t.id : m) })
-          todos = (todos + [Todo(id: maxId + 1, text: text, done: false)])
+          todos = (todos + [Todo(id: pyreonAdd(maxId, 1), text: text, done: false)])
           draft = ""
         }
         private func toggle(_ id: Int) {

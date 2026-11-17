@@ -35,7 +35,7 @@ describe('Swift function return-type inference', () => {
   const flag = (n: number) => n > 0`),
       { target: 'swift' },
     ).code
-    expect(out).toContain('func dbl(_ x: Int) -> Int { x * 2 }')
+    expect(out).toContain('func dbl(_ x: Int) -> Int { pyreonMul(x, 2) }')
     expect(out).toContain('func greet(_ name: String) -> String')
     expect(out).toContain('func flag(_ n: Int) -> Bool')
   })

@@ -65,7 +65,7 @@ export function App() {
 describe('body timers spelled through the global object start once, at mount', () => {
   it('Swift: state assigned in .onAppear; no timer started in body', () => {
     const { code, warnings } = emit(qualifiedBodyTimers, 'swift')
-    expect(code).toContain('id = PyreonTimers.setInterval(1000, { n = n + 1 })')
+    expect(code).toContain('id = PyreonTimers.setInterval(1000, { n = pyreonAdd(n, 1) })')
     expect(code).toContain('t = PyreonTimers.setTimeout(500, { n = 0 })')
     expect(code).toContain('PyreonTimers.clear(id)')
     expect(code).not.toContain('PyreonTimers.clear(PyreonTimers')

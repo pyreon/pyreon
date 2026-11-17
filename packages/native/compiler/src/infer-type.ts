@@ -1315,6 +1315,9 @@ function inferMathCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | null {
       : { kind: 'number' }
   }
   if (fn === 'min' || fn === 'max') {
+    // `Math.max()` and `Math.max(...xs)` are -Infinity when there is nothing to compare, so they are Doubles natively
+    // (`pyreonMax`); an Int could not hold the answer for an empty list.
+    if (expr.args.length === 0 || expr.args.some((a) => a.kind === 'spread')) return { kind: 'number', float: true }
     const anyFloat = expr.args.some((a) => {
       const t = inferType(a, ctx)
       return t.kind === 'number' && t.float === true
@@ -2102,6 +2105,11 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       if (expr.op === '**' && (left.kind === 'number' || right.kind === 'number')) {
         return { kind: 'number', float: true }
       }
+      // A bitwise operator's result is a 32-bit integer on the web, whatever its operands (`2.5 | 0` is 2), so it is
+      // an integer natively too (`integer-arithmetic.ts`).
+      if (expr.op === '&' || expr.op === '|' || expr.op === '^' || expr.op === '<<' || expr.op === '>>' || expr.op === '>>>') {
+        return { kind: 'number' }
+      }
       // Numeric arithmetic: both sides numeric ⇒ number. Float is
       // contagious — Int + Double is Double on both targets, so if EITHER
       // side is fractional the result is fractional. (Drives the
@@ -2176,6 +2184,8 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // float-ness (`-rate()` over a Double stays Double; was always Int →
       // a wrong Int annotation / coercion downstream).
       if (expr.op === '!') return { kind: 'boolean' }
+      // `~x` is a 32-bit integer on the web whatever `x` is (`integer-arithmetic.ts`).
+      if (expr.op === '~') return { kind: 'number' }
       // `x!` has x's type with null and undefined removed.
       if (expr.op === 'non-null') return unwrapOptionalType(inferType(expr.argument, ctx))
       // Alias-normalized for the same reason the binary and ternary cases are:
