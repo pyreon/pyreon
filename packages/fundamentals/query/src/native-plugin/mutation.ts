@@ -470,6 +470,29 @@ export interface MutateQueryEffects {
 }
 
 /**
+ * A call's expression args, in the order the emit reads them back (`partsOf`, `optimisticOf`, `middlewareOf`): url,
+ * body, upload, the header expressions, the optimistic key and values, and the middleware LAST.
+ */
+function requestArgs(
+  resolved: MutateRequest,
+  headerExprNames: readonly string[],
+  optimistic: MutateQueryEffects['optimistic'],
+): ExprIR[] {
+  const args: ExprIR[] = []
+  if (resolved.urlExpr !== undefined) args.push(resolved.urlExpr)
+  if (resolved.bodyExpr !== undefined) args.push(resolved.bodyExpr)
+  if (resolved.upload !== undefined) args.push(resolved.upload)
+  for (const h of headerExprNames) args.push((resolved.headerExprs as Record<string, ExprIR>)[h] as ExprIR)
+  if (optimistic !== undefined) {
+    args.push(optimistic.key)
+    for (const f of optimistic.fields) args.push(f.value)
+  }
+  if (resolved.middleware !== undefined) args.push(resolved.middleware)
+
+  return args
+}
+
+/**
  * `<binding>.mutate(vars, callbacks?)` / `.mutateAsync(…)` lowered to the `PyreonMutation` call that sends `request`.
  * The call-level callbacks are read from the site's second argument. Exported so a package whose hook IS a mutation
  * (`@pyreon/feature`'s `useCreate()`) drives the same container and the same emit with a request it builds itself.
@@ -487,19 +510,9 @@ export function mutateCallSpec(
   const where = `${name}.${site.method}`
   const parse = (fn: AnyNode) => callbackOf(ctx.functionDeclaration(`__${name}_cb`, fn))
   const call = readCallbacks(site.args[1] as AnyNode | undefined, where, (m) => ctx.report(`${where}: ${m}`), parse)
-  const args: ExprIR[] = []
-  if (resolved.urlExpr !== undefined) args.push(resolved.urlExpr)
-  if (resolved.bodyExpr !== undefined) args.push(resolved.bodyExpr)
-  if (resolved.upload !== undefined) args.push(resolved.upload)
   const headerExprNames = Object.keys(resolved.headerExprs ?? {})
-  for (const h of headerExprNames) args.push((resolved.headerExprs as Record<string, ExprIR>)[h] as ExprIR)
   const optimistic = effects?.optimistic
-  if (optimistic !== undefined) {
-    args.push(optimistic.key)
-    for (const f of optimistic.fields) args.push(f.value)
-  }
-  // The middleware stays the LAST arg (`middlewareOf`); the optimistic key and values sit just before it.
-  if (resolved.middleware !== undefined) args.push(resolved.middleware)
+  const args = requestArgs(resolved, headerExprNames, optimistic)
   const noContent = resolved.noContent === true && !isVoid(binding.type)
   const payload: MutateCallPayload = {
     binding: name,
