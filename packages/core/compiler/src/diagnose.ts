@@ -2539,13 +2539,16 @@ export const collections = {
     }),
   },
   {
-    // jsx.ts `signal-method-reference` warning: `onInput={sig.set}` hands the
-    // method to the runtime without its signal, so `this` is gone when it runs.
-    pattern: /"([^"\n]+)" is passed by reference, so it runs without its signal and throws/,
+    // @pyreon/reactivity `_detached`: a signal method called without its signal
+    // (`promise.then(sig.set)`, `ref={props.sig.set}`). The compiler binds every
+    // reference it can prove is a signal's (`sig.set.bind(sig)`, #4356), so
+    // this is a reference it could not see: through props, an object, or code
+    // outside JSX.
+    pattern: /signal\.(\w+)\(\) was called without its signal/,
     diagnose: (m) => ({
-      cause: `\`${m[1]}\` is a signal method (set, update, peek, subscribe) passed by reference. A signal is a function with methods on it that read \`this\`; once the method is detached and called by the runtime as a plain handler, \`this\` is undefined and it throws.`,
-      fix: 'Pass an arrow that calls the method on the signal: `onInput={(v) => sig.set(v)}`. For a handler that ignores the event, `onClick={() => sig.set(0)}`.',
-      fixCode: `${m[1]?.replace(/\.[a-z]+$/i, '') ?? 'sig'}.set(value)`,
+      cause: `\`${m[1]}\` ran detached from its signal. Signal methods live on a shared prototype and read \`this\`; a reference such as \`promise.then(sig.${m[1]})\` or \`ref={props.sig.${m[1]}}\` loses it. Inside JSX the compiler binds a reference to a signal it knows (\`ref={el.set}\` works), but not one reached through props, an object or code outside JSX.`,
+      fix: `Call the method on the signal: \`(v) => sig.${m[1]}(v)\`, or bind it: \`sig.${m[1]}.bind(sig)\`.`,
+      fixCode: `(v) => sig.${m[1]}(v)`,
     }),
   },
 ]

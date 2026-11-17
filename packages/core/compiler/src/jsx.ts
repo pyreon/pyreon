@@ -122,7 +122,6 @@ export interface CompilerWarning {
     | 'circular-prop-derived'
     | 'duplicate-jsx-attr'
     | 'plain-mode'
-    | 'signal-method-reference'
 }
 
 /**
@@ -3239,71 +3238,6 @@ export function transformJSX_JS(
     return true
   }
 
-  /**
-   * `ref={panel.set}` / `onClick={count.update}`: a signal METHOD passed as an
-   * attribute value by reference. Signal methods read `this` (they live on a
-   * shared prototype, not on each signal), so the detached reference throws
-   * when the runtime calls it. Warn with the arrow that works (#4356).
-   *
-   * Runs at the head of every JSX element the walk reaches, BEFORE template
-   * emission (which swallows the subtree), and covers the element's attributes
-   * plus its directly nested elements; `_methodRefScanned` keeps an element
-   * from being reported twice when the walk later reaches it. JSX inside an
-   * expression container is reached by the walk itself. Mirrors
-   * `check_signal_method_refs` in native/src/lib.rs.
-   */
-  const _methodRefScanned = new Set<number>()
-  function checkSignalMethodRefs(el: N): void {
-    if (_methodRefScanned.has(el.start as number)) return
-    const unwrap = (e: N): N => {
-      let cur = e
-      while (
-        cur &&
-        (cur.type === 'ParenthesizedExpression' ||
-          cur.type === 'TSAsExpression' ||
-          cur.type === 'TSSatisfiesExpression' ||
-          cur.type === 'TSNonNullExpression' ||
-          cur.type === 'TSTypeAssertion')
-      )
-        cur = cur.expression
-      return cur
-    }
-    const visit = (node: N): void => {
-      _methodRefScanned.add(node.start as number)
-      for (const attr of jsxAttrs(node)) {
-        if (attr.type !== 'JSXAttribute' || attr.value?.type !== 'JSXExpressionContainer') continue
-        const value = attr.value.expression
-        if (!value || value.type === 'JSXEmptyExpression') continue
-        const member = unwrap(value)
-        if (
-          member?.type !== 'MemberExpression' ||
-          member.computed ||
-          member.optional ||
-          member.property?.type !== 'Identifier' ||
-          !SIGNAL_METHOD_NAMES.has(member.property.name as string)
-        )
-          continue
-        const object = unwrap(member.object)
-        if (object?.type !== 'Identifier' || !isActiveSignal(object.name)) continue
-        const ref = `${object.name}.${member.property.name as string}`
-        const attrName = jsxAttrName(attr)
-        warn(
-          member,
-          `"${ref}" is passed by reference, so it runs without its signal and throws: signal methods read "this". Pass an arrow instead: ${attrName}={(v) => ${ref}(v)}.`,
-          'signal-method-reference',
-        )
-      }
-      const visitChildren = (children: N[] | undefined): void => {
-        for (const child of children ?? []) {
-          if (child.type === 'JSXElement') visit(child)
-          else if (child.type === 'JSXFragment') visitChildren(child.children)
-        }
-      }
-      visitChildren(node.children)
-    }
-    visit(el)
-  }
-
   function checkForWarnings(node: N): void {
     const tagName = jsxTagName(node)
     if (tagName !== 'For') return
@@ -3560,7 +3494,7 @@ export function transformJSX_JS(
     findJsx(expr)
     for (const id of idents) {
       if (jsxSpans.some((sp) => id.start >= sp.start && id.end <= sp.end)) continue
-      replacements.push({ start: id.end, end: id.end, text: '()' })
+      replacements.push({ start: id.end, end: id.end, text: signalEditSuffix(id.start, id.end) })
     }
   }
 
@@ -4483,7 +4417,7 @@ export function transformJSX_JS(
       }
     })
     for (const id of signalIdents) {
-      edits.push({ start: id.start, end: id.end, text: `${code.slice(id.start, id.end)}()` })
+      edits.push({ start: id.start, end: id.end, text: `${code.slice(id.start, id.end)}${signalEditSuffix(id.start, id.end)}` })
     }
     edits.sort((a, b) => a.start - b.start)
     const parts: string[] = []
@@ -4854,7 +4788,6 @@ export function transformJSX_JS(
 
     // ── JSX processing (was pass 3) ──
     if (node.type === 'JSXElement') {
-      checkSignalMethodRefs(node)
       if (tryRocketstyleCollapse(node)) {
         // Collapsed to _rsCollapse — children are baked into the SSR-
         // resolved template; do not recurse into the subtree.
@@ -7252,8 +7185,14 @@ export function transformJSX_JS(
         // Preserve called signal references through type and optional-chain
         // wrappers; computed keys and call arguments still read signal values.
         if (isSignalCallTarget(node)) return
-        // `sig.set` passed by reference — the signal's method, not a value read.
-        if (isSignalMethodRef(node)) return
+        // `sig.set` passed by reference — the signal's own method, not a value
+        // read. Recorded over the whole member so the edit BINDS it to its
+        // signal (`sig.set.bind(sig)`, see `signalEditSuffix`).
+        const methodRef = signalMethodRefMember(node)
+        if (methodRef) {
+          idents.push({ start: node.start as number, end: methodRef.end as number })
+          return
+        }
         // Skip declaration positions
         if (parent && parent.type === 'VariableDeclarator' && parent.id === node) return
         // Skip object property keys and shorthand properties ({ name } or { name: val })
@@ -7290,10 +7229,20 @@ export function transformJSX_JS(
    * of a field on the signal's value. Auto-calling it emitted `panel().set`,
    * which is `undefined` (or throws on `null`). Only the Signal / Computed API
    * names are exempt, so `user.name` still reads `user().name`. A CALLED
-   * member (`sig.anything(...)`) is handled by `isSignalCallTarget`. Optional
-   * chains are not exempt (`sig?.set` keeps the old reading in both backends).
+   * member (`sig.anything(...)`) is handled by `isSignalCallTarget`. An
+   * optional chain (`sig?.set`) is the same reference: a known signal is never
+   * nullish.
+   *
+   * The auto-call pass BINDS such a reference (#4356): signal methods live on
+   * a shared prototype and read `this`, so the bare member would throw when
+   * the runtime calls it detached (`ref`, `on*`, a component callback prop).
    */
   function isSignalMethodRef(node: N): boolean {
+    return signalMethodRefMember(node) !== null
+  }
+
+  /** The `sig.<method>` member `node` (a known signal) is the object of, or null. */
+  function signalMethodRefMember(node: N): N | null {
     let outer = node
     let parent = findParent(outer)
     while (
@@ -7307,15 +7256,28 @@ export function transformJSX_JS(
       outer = parent
       parent = findParent(outer)
     }
-    return (
-      !!parent &&
+    return !!parent &&
       parent.type === 'MemberExpression' &&
       parent.object === outer &&
       !parent.computed &&
-      !parent.optional &&
       parent.property?.type === 'Identifier' &&
       SIGNAL_METHOD_NAMES.has(parent.property.name as string)
-    )
+      ? parent
+      : null
+  }
+
+  /**
+   * The text an auto-call edit appends at the end of its range. A signal read
+   * (`count`) gets `()`. A signal-method reference is recorded over the whole
+   * member (`panel.set`, `panel?.set`, `(panel as P).set`), so its range is
+   * longer than the identifier it starts with, and it gets `.bind(panel)`.
+   * Mirrors `signal_edit_suffix` in native/src/lib.rs.
+   */
+  function signalEditSuffix(start: number, end: number): string {
+    // The identifier ends at the first character no identifier contains:
+    // `.` / `?.` / `)` / `!` / a comment or whitespace before `as`.
+    const name = /^[^.?)!/\s]*/u.exec(code.slice(start, end))?.[0] ?? ''
+    return start + name.length === end ? '()' : `.bind(${name})`
   }
 
   function isSignalCallTarget(node: N): boolean {
@@ -7356,7 +7318,7 @@ export function transformJSX_JS(
     let lastPos = start
     for (const id of idents) {
       parts.push(code.slice(lastPos, id.end))
-      parts.push('()') // auto-call
+      parts.push(signalEditSuffix(id.start, id.end)) // auto-call, or bind a method reference
       lastPos = id.end
     }
     parts.push(code.slice(lastPos, start + text.length))
