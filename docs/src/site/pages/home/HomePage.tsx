@@ -13,7 +13,7 @@ import { InstallCommand, Pill } from '../../kit/controls'
 import { AutoGrid, Section, SectionHead, Wrap } from '../../kit/layout'
 import { AnimatedSvg, Loop } from '../../kit/media'
 import { Reveal } from '../../kit/motion'
-import { CaveatLine, EndCTA, HookHero, Numeral, ProofBand, TextLink } from '../../kit/proof'
+import { CaveatLine, EndCTA, HookHero, Numeral, ProofBand, StatCard, type StatChartSource, TextLink } from '../../kit/proof'
 import { Heading, Lede, renderInline, StatusBadge, StatusDot, VisuallyHidden } from '../../kit/type'
 import { productName, resolveHref } from '../../nav'
 import proofBundle from '../../media/home/proof-bundle.svg?raw'
@@ -30,7 +30,6 @@ import {
   BenchRow,
   Bullets,
   CardNum,
-  ChartSlot,
   CompareTable,
   CompatGrid,
   CompatPkg,
@@ -55,7 +54,6 @@ import {
   Stack,
   StatusLabel,
   StripGrid,
-  StripLabel,
   Strong,
   TableBox,
   TagLink,
@@ -77,26 +75,17 @@ const productById = new Map(PRODUCTS.map((p) => [p.id, p]))
  * band items by their record source (the manifest's `source` starts with the
  * content's), strip cards by the page they link to.
  */
-const PROOF_CHARTS: readonly { source: string; svg: string; file: string }[] = [
+const PROOF_CHARTS: readonly (StatChartSource & { source: string })[] = [
   { source: 'record §7 bundle', svg: proofBundle, file: 'home/proof-bundle.svg' },
   { source: 'record §1', svg: proofRows, file: 'home/proof-rows-10k.svg' },
   { source: 'record §5 bench:ssr', svg: proofSsr, file: 'home/proof-ssr.svg' },
 ]
-const STRIP_CHARTS: Readonly<Record<string, { svg: string; file: string }>> = {
+const STRIP_CHARTS: Readonly<Record<string, StatChartSource>> = {
   '/products/charts#benchmarks': { svg: proofCharts, file: 'home/proof-charts.svg' },
   '/products/flow#benchmarks': { svg: proofFlow, file: 'home/proof-flow.svg' },
   '/products/form#benchmarks': { svg: proofForms, file: 'home/proof-forms.svg' },
   '/products/i18n#benchmarks': { svg: proofI18n, file: 'home/proof-i18n.svg' },
   '/benchmarks#ssr': { svg: proofRenderToString, file: 'home/proof-render-to-string.svg' },
-}
-
-/** A chart that repeats the figures printed next to it: decorative for assistive tech. */
-function ChartArt(props: { svg: string; file: string }) {
-  return (
-    <ChartSlot aria-hidden="true">
-      <AnimatedSvg file={props.file} markup={props.svg} decorative />
-    </ChartSlot>
-  )
 }
 
 const link = (l: { label: string; href: string }) => <TextLink href={resolveHref(l.href)}>{`${l.label} →`}</TextLink>
@@ -178,7 +167,7 @@ function ProofSection(props: { s: SectionOf<'proof-band'> }) {
           link={{ label: s.link.label, href: resolveHref(s.link.href) }}
           items={s.items.map((i) => {
             const chart = PROOF_CHARTS.find((c) => i.source.startsWith(c.source))
-            return { stat: i.stat, label: i.label, detail: i.detail, condition: i.condition, visual: chart ? <ChartArt svg={chart.svg} file={chart.file} /> : undefined }
+            return { stat: i.stat, label: i.label, detail: i.detail, condition: i.condition, chart }
           })}
         />
       </Wrap>
@@ -249,24 +238,11 @@ function Strip(props: { s: SectionOf<'strip'> }) {
         <SectionHead label={s.eyebrow} title={s.title} text={s.lede} level="landing" />
         <StripGrid>
           <For each={s.items} by={(i) => i.href}>
-            {(i) => {
-              const chart = STRIP_CHARTS[i.href]
-              return (
-                <li>
-                  <GlowCard href={resolveHref(i.href)} padding="compact">
-                    <span>
-                      <Numeral tag="span" size="strip">
-                        {i.stat}
-                      </Numeral>{' '}
-                      <StripLabel>{renderInline(i.label)}</StripLabel>
-                    </span>
-                    <Mono>{i.rival}</Mono>
-                    <Mono>{i.condition}</Mono>
-                    {chart ? <ChartArt svg={chart.svg} file={chart.file} /> : null}
-                  </GlowCard>
-                </li>
-              )
-            }}
+            {(i) => (
+              <li>
+                <StatCard href={resolveHref(i.href)} stat={i.stat} label={i.label} lines={[i.rival]} note={i.condition} chart={STRIP_CHARTS[i.href]} />
+              </li>
+            )}
           </For>
         </StripGrid>
         <div style="margin-top:18px">

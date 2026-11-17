@@ -1,3 +1,4 @@
+// pyreon-lint-disable-file pyreon/consistent-signal-read -- compat runtime, no Pyreon compiler: a bare signal child is a live accessor, a called one is read once
 import { useHead } from '@pyreon/head'
 import { computed, signal } from '@pyreon/reactivity'
 

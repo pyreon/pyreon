@@ -37,7 +37,14 @@ The hand-written stylesheets sit in a `docs` cascade layer below the UI
 system's layers (`vite-plugins/legacy-css-layer.ts`).
 
 - **Tokens:** `src/site/theme.ts` is the only place a colour, size or easing
-  lives. Kit components read it directly (`tone(m, 'text')` for mode pairs).
+  lives. Kit components read it directly (`tone(m, 'text')` for mode pairs);
+  the plain stylesheets read the same scales as `var(--s-…)`
+  (`src/site/theme-vars.ts`).
+- **Design system:** layers, naming, the "no outer margins" rule, how to add
+  a token or component, the design ratchets (`bun scripts/check-site-design.ts`
+  from the repo root) and the screenshot sweep
+  (`bun scripts/site-visual-sweep.ts`) are in
+  [`.agents/guides/ui-system/site-design-system.md`](../.agents/guides/ui-system/site-design-system.md).
 - **Kit gallery:** `/brand/kit` shows every component in both themes.
 - **Content:** `src/site/content/` is a copy of the content set
   (`pyreon-promo/09-site`). Re-sync with
@@ -164,7 +171,7 @@ Four addresses that posts link to, so they must never move.
   the examples from the repository. The copy is `_channels.json` (`showcase`);
   the screenshots are real captures from the asset set (slot `showcase-card`,
   synced by `scripts/sync-site-assets.ts`). The deploy also builds
-  `examples/collab-board` and `examples/react-compat` into `/showcase/<name>/`
+  `examples/collab-board` and `examples/compat/react` into `/showcase/<name>/`
   as live demos (see `.github/workflows/docs.yml`).
 - **`/discord`** and **`/newsletter`**: stable links driven by
   `src/site-links.ts`, copy from `_channels.json`. They are not routes:

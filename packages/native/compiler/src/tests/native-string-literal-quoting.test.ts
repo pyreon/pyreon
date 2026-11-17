@@ -117,8 +117,8 @@ describe('parseInt radix and JS-faithful Double → string', () => {
     expect(line('kotlin', 'val n')).toContain('(pyreonParseInt(hex, 16) ?: 0L)')
   })
   it('a Double concat operand goes through pyreonNumString (`250`, not `250.0`)', () => {
-    expect(line('swift', 'var pct')).toContain('"pct=" + pyreonNumString(')
-    expect(line('kotlin', 'val pct')).toContain('"pct=" + pyreonNumString(')
+    expect(line('swift', 'var pct')).toContain('"pct=" + pyreonNumberString(')
+    expect(line('kotlin', 'val pct')).toContain('"pct=" + pyreonNumberString(')
   })
 })
 

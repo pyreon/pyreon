@@ -5,7 +5,7 @@ description: An honest comparison for teams choosing how to build an app for web
 
 This page is deliberately honest, including about where Pyreon loses. It compares **approaches**, not marketing claims. Facts about other frameworks are taken from their own 2026 documentation and release notes and are summarized as of October 2026; they change quickly, so check the linked sources before you decide.
 
-**Read this first:** Pyreon's native targets (iOS and Android, via the [PMTC compiler](/docs/multiplatform)) are **experimental**. About 70% of the weighted capability matrix is proven to behave on a real simulator or emulator — the gated number lives at the bottom of the [Multi-Platform page](/docs/multiplatform). The web side (SSR, SSG, islands, SPA) is the mature part. If you must ship a store app next quarter with a large third-party SDK footprint, the table below will tell you to pick Expo or Flutter, and that is the right call.
+**Read this first:** Pyreon's native targets (iOS and Android, via the [PMTC compiler](/docs/multiplatform)) are **Experimental** overall, because the shipping path (store release, crash reporting, background/push) is not ready yet. Individual areas carry their own tier, derived from the gated device-proven matrix and listed in [Maturity by area](/docs/multiplatform#maturity-by-area). **Beta areas:** Core UI & layout, Lists & keyed rendering, Navigation & routing, State, Forms & validation, Networking, Platform APIs, Gestures. The headline device-proven number lives at the bottom of the [Multi-Platform page](/docs/multiplatform). The web side (SSR, SSG, islands, SPA) is the mature part. If you must ship a store app next quarter with a large third-party SDK footprint, the table below will tell you to pick Expo or Flutter, and that is the right call.
 
 ## The one-paragraph difference
 
@@ -25,7 +25,7 @@ Expo, React Native, Flutter, Kotlin Multiplatform and Capacitor all start from a
 | **Hot reload on device** | Web: yes. Native: rebuild per change, ~3 s warm ([measured](/docs/native-dev-loop)) | Fast Refresh | Stateful hot reload | Rebuild per change on iOS | Vite HMR |
 | **Third-party native SDKs** | Few first-party bindings; you write a `useNativeModule` bridge for the rest | Largest catalog (Expo SDK + community) | Large (pub.dev, FlutterFire) | Growing | Plugin ecosystem |
 | **Animation** | Platform animation via `<Transition>`; no Reanimated/Skia equivalent | Reanimated, Skia | Best-in-class | Compose animation | CSS |
-| **Maturity of native targets** | **Experimental** | Production | Production | iOS stable since Compose Multiplatform 1.8 | Production (WebView) |
+| **Maturity of native targets** | **Experimental** overall; several areas Beta ([tiers per area](/docs/multiplatform#maturity-by-area)) | Production | Production | iOS stable since Compose Multiplatform 1.8 | Production (WebView) |
 
 ## Where Pyreon is structurally different
 
@@ -57,7 +57,7 @@ Expo, React Native, Flutter, Kotlin Multiplatform and Capacitor all start from a
 - **Web is a first-class product** (SEO, SSR, link previews) *and* you want native iOS/Android apps from the same components.
 - You want **truly native UI** on both platforms without a JavaScript runtime, and your screens are mostly forms, lists, navigation and data — the declarative core the compiler handles best.
 - You like **TypeScript and fine-grained reactivity** and want to avoid re-render tuning.
-- You are comfortable adopting a framework whose native side is **experimental** and are willing to track the device-proven matrix as it moves.
+- You are comfortable adopting a framework whose native side is **Experimental** overall, and the areas your app depends on are Beta or Experimental in the [per-area tiers](/docs/multiplatform#maturity-by-area) — and you are willing to track the device-proven matrix as it moves.
 
 ## Sources
 

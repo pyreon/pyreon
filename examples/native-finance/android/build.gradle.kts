@@ -1,5 +1,5 @@
 // Root Gradle build — only declares plugins for subprojects.
-// Mirror of `native-todomvc-android/build.gradle.kts` (same plugin
+// Mirror of `native-todomvc/android/build.gradle.kts` (same plugin
 // versions; Android-counter just needs `com.android.application` +
 // `kotlin.plugin.compose` — no serialization
 // since Finance has no persisted state).

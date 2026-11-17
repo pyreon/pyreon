@@ -45,7 +45,7 @@ export default function TodoAdd() {
       </form>
 
       <ul class="example-col example-list">
-        <For each={todos} by={(t) => t.id}>
+        <For each={todos()} by={(t) => t.id}>
           {(todo) => <li class="example-card">{todo.text}</li>}
         </For>
       </ul>

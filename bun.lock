@@ -388,7 +388,87 @@
         "vite": "^8.3.8",
       },
     },
-    "examples/cpa-pw-app": {
+    "examples/compat/preact": {
+      "name": "@pyreon/example-preact-compat",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/preact-compat": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
+    "examples/compat/react": {
+      "name": "@pyreon/example-react-compat",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/react-compat": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
+    "examples/compat/solid": {
+      "name": "@pyreon/example-solid-compat",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/solid-compat": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
+    "examples/compat/svelte": {
+      "name": "@pyreon/example-svelte-compat",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/svelte-compat": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
+    "examples/compat/vue": {
+      "name": "@pyreon/example-vue-compat",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/vue-compat": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
+    "examples/fixtures/cpa/app": {
       "name": "@pyreon/example-cpa-pw-app",
       "version": "0.0.1",
       "dependencies": {
@@ -421,7 +501,7 @@
         "vite": "^8.0.16",
       },
     },
-    "examples/cpa-pw-blog": {
+    "examples/fixtures/cpa/blog": {
       "name": "@pyreon/example-cpa-pw-blog",
       "version": "0.0.1",
       "dependencies": {
@@ -449,7 +529,7 @@
         "vite": "^8.0.16",
       },
     },
-    "examples/cpa-pw-dash": {
+    "examples/fixtures/cpa/dash": {
       "name": "@pyreon/example-cpa-pw-dash",
       "version": "0.0.1",
       "dependencies": {
@@ -486,7 +566,7 @@
         "vite": "^8.0.16",
       },
     },
-    "examples/cssvars-bench": {
+    "examples/fixtures/cssvars": {
       "name": "@pyreon/example-cssvars-bench",
       "version": "0.50.3",
       "dependencies": {
@@ -508,7 +588,7 @@
         "vite": "^8.3.8",
       },
     },
-    "examples/edge-runtimes": {
+    "examples/fixtures/edge-runtimes": {
       "name": "@pyreon/example-edge-runtimes",
       "version": "0.50.2",
       "dependencies": {
@@ -518,6 +598,91 @@
         "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
         "@pyreon/zero": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "@types/bun": "^1.4.4",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
+    "examples/fixtures/perf-dashboard": {
+      "name": "@pyreon/example-perf-dashboard",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/form": "workspace:*",
+        "@pyreon/i18n": "workspace:*",
+        "@pyreon/perf-harness": "workspace:*",
+        "@pyreon/query": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/rx": "workspace:*",
+        "@pyreon/store": "workspace:*",
+        "@pyreon/styler": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
+    "examples/fixtures/playground": {
+      "name": "@pyreon/example-playground",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/head": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/router": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/zero": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "@types/bun": "^1.4.4",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
+    "examples/fixtures/ssr-showcase": {
+      "name": "@pyreon/example-ssr-showcase",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/a11y": "workspace:*",
+        "@pyreon/coolgrid": "workspace:*",
+        "@pyreon/core": "workspace:*",
+        "@pyreon/elements": "workspace:*",
+        "@pyreon/head": "workspace:*",
+        "@pyreon/hooks": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/rocketstyle": "workspace:*",
+        "@pyreon/router": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/styler": "workspace:*",
+        "@pyreon/ui-core": "workspace:*",
+        "@pyreon/unistyle": "workspace:*",
+        "@pyreon/zero": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "@types/bun": "^1.4.4",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
+    "examples/fixtures/sync-yjs": {
+      "name": "@pyreon/example-sync-yjs",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/sync": "workspace:*",
       },
       "devDependencies": {
         "@pyreon/tsconfig": "workspace:*",
@@ -830,9 +995,11 @@
         "@pyreon/charts": "workspace:*",
         "@pyreon/code": "workspace:*",
         "@pyreon/coolgrid": "workspace:*",
+        "@pyreon/core": "workspace:*",
         "@pyreon/dnd": "workspace:*",
         "@pyreon/elements": "workspace:*",
         "@pyreon/flow": "workspace:*",
+        "@pyreon/form": "workspace:*",
         "@pyreon/hooks": "workspace:*",
         "@pyreon/hotkeys": "workspace:*",
         "@pyreon/http": "workspace:*",
@@ -840,13 +1007,18 @@
         "@pyreon/kinetic": "workspace:*",
         "@pyreon/machine": "workspace:*",
         "@pyreon/permissions": "workspace:*",
+        "@pyreon/primitives": "workspace:*",
         "@pyreon/query": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
         "@pyreon/rich-text": "workspace:*",
         "@pyreon/rocketstyle": "workspace:*",
+        "@pyreon/router": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
         "@pyreon/rx": "workspace:*",
         "@pyreon/sized-map": "workspace:*",
         "@pyreon/state-tree": "workspace:*",
         "@pyreon/storage": "workspace:*",
+        "@pyreon/store": "workspace:*",
         "@pyreon/styler": "workspace:*",
         "@pyreon/sync": "workspace:*",
         "@pyreon/table": "workspace:*",
@@ -858,102 +1030,17 @@
         "zod": "^4.6.7",
       },
       "devDependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/flow": "workspace:*",
-        "@pyreon/form": "workspace:*",
-        "@pyreon/machine": "workspace:*",
         "@pyreon/native-cli": "workspace:*",
-        "@pyreon/primitives": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/router": "workspace:*",
-        "@pyreon/store": "workspace:*",
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "@types/bun": "^1.4.4",
         "esbuild": "^0.28.2",
-      },
-    },
-    "examples/native-tasks-android": {
-      "name": "@pyreon/example-native-tasks-android",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/native-cli": "workspace:*",
-      },
-    },
-    "examples/native-tasks-ios": {
-      "name": "@pyreon/example-native-tasks-ios",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/native-cli": "workspace:*",
-      },
-    },
-    "examples/native-tasks-web": {
-      "name": "@pyreon/example-native-tasks-web",
-      "version": "0.50.3",
-      "dependencies": {
-        "@pyreon/a11y": "workspace:*",
-        "@pyreon/attrs": "workspace:*",
-        "@pyreon/auth": "workspace:*",
-        "@pyreon/charts": "workspace:*",
-        "@pyreon/coolgrid": "workspace:*",
-        "@pyreon/core": "workspace:*",
-        "@pyreon/dnd": "workspace:*",
-        "@pyreon/elements": "workspace:*",
-        "@pyreon/flow": "workspace:*",
-        "@pyreon/form": "workspace:*",
-        "@pyreon/hooks": "workspace:*",
-        "@pyreon/hotkeys": "workspace:*",
-        "@pyreon/http": "workspace:*",
-        "@pyreon/i18n": "workspace:*",
-        "@pyreon/kinetic": "workspace:*",
-        "@pyreon/machine": "workspace:*",
-        "@pyreon/permissions": "workspace:*",
-        "@pyreon/primitives": "workspace:*",
-        "@pyreon/query": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/rocketstyle": "workspace:*",
-        "@pyreon/router": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/rx": "workspace:*",
-        "@pyreon/sized-map": "workspace:*",
-        "@pyreon/state-tree": "workspace:*",
-        "@pyreon/storage": "workspace:*",
-        "@pyreon/store": "workspace:*",
-        "@pyreon/styler": "workspace:*",
-        "@pyreon/sync": "workspace:*",
-        "@pyreon/table": "workspace:*",
-        "@pyreon/toast": "workspace:*",
-        "@pyreon/ui-core": "workspace:*",
-        "@pyreon/unistyle": "workspace:*",
-        "@pyreon/url-state": "workspace:*",
-        "@pyreon/validation": "workspace:*",
-        "zod": "^4.6.7",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "@types/bun": "^1.4.4",
         "typescript": "^6.0.3",
         "vite": "^8.3.8",
       },
     },
-    "examples/native-todomvc-android": {
-      "name": "@pyreon/example-native-todomvc-android",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/native-cli": "workspace:*",
-      },
-    },
-    "examples/native-todomvc-ios": {
-      "name": "@pyreon/example-native-todomvc-ios",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/native-cli": "workspace:*",
-        "@pyreon/primitives": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/storage": "workspace:*",
-      },
-    },
-    "examples/native-todomvc-web": {
-      "name": "@pyreon/example-native-todomvc-web",
+    "examples/native-todomvc": {
+      "name": "@pyreon/example-native-todomvc",
       "version": "0.50.3",
       "dependencies": {
         "@pyreon/core": "workspace:*",
@@ -963,82 +1050,10 @@
         "@pyreon/storage": "workspace:*",
       },
       "devDependencies": {
+        "@pyreon/native-cli": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "@types/bun": "^1.4.4",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
-    "examples/perf-dashboard": {
-      "name": "@pyreon/example-perf-dashboard",
-      "version": "0.50.0",
-      "dependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/form": "workspace:*",
-        "@pyreon/i18n": "workspace:*",
-        "@pyreon/perf-harness": "workspace:*",
-        "@pyreon/query": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/rx": "workspace:*",
-        "@pyreon/store": "workspace:*",
-        "@pyreon/styler": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
-    "examples/playground": {
-      "name": "@pyreon/example-playground",
-      "version": "0.50.0",
-      "dependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/head": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/router": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/zero": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "@types/bun": "^1.4.4",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
-    "examples/preact-compat": {
-      "name": "@pyreon/example-preact-compat",
-      "version": "0.50.0",
-      "dependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/preact-compat": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
-    "examples/react-compat": {
-      "name": "@pyreon/example-react-compat",
-      "version": "0.50.0",
-      "dependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/react-compat": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
         "typescript": "^6.0.3",
         "vite": "^8.3.8",
       },
@@ -1063,49 +1078,6 @@
         "vite": "^8.3.8",
       },
     },
-    "examples/solid-compat": {
-      "name": "@pyreon/example-solid-compat",
-      "version": "0.50.0",
-      "dependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/solid-compat": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
-    "examples/ssr-showcase": {
-      "name": "@pyreon/example-ssr-showcase",
-      "version": "0.50.0",
-      "dependencies": {
-        "@pyreon/a11y": "workspace:*",
-        "@pyreon/coolgrid": "workspace:*",
-        "@pyreon/core": "workspace:*",
-        "@pyreon/elements": "workspace:*",
-        "@pyreon/head": "workspace:*",
-        "@pyreon/hooks": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/rocketstyle": "workspace:*",
-        "@pyreon/router": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/styler": "workspace:*",
-        "@pyreon/ui-core": "workspace:*",
-        "@pyreon/unistyle": "workspace:*",
-        "@pyreon/zero": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "@types/bun": "^1.4.4",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
     "examples/stacks-bench": {
       "name": "@pyreon/example-stacks-bench",
       "version": "0.50.0",
@@ -1125,39 +1097,6 @@
         "@types/bun": "^1.4.4",
         "autocannon": "9.0.0",
         "playwright": "1.65.1",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
-    "examples/svelte-compat": {
-      "name": "@pyreon/example-svelte-compat",
-      "version": "0.50.0",
-      "dependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/svelte-compat": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
-      },
-    },
-    "examples/sync-yjs-demo": {
-      "name": "@pyreon/example-sync-yjs",
-      "version": "0.50.0",
-      "dependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/sync": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "@types/bun": "^1.4.4",
         "typescript": "^6.0.3",
         "vite": "^8.3.8",
       },
@@ -1200,22 +1139,6 @@
         "typescript": "^6.0.3",
         "vite": "^8.3.8",
         "vitest": "^5.1.0",
-      },
-    },
-    "examples/vue-compat": {
-      "name": "@pyreon/example-vue-compat",
-      "version": "0.50.0",
-      "dependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/vue-compat": "workspace:*",
-      },
-      "devDependencies": {
-        "@pyreon/tsconfig": "workspace:*",
-        "@pyreon/vite-plugin": "workspace:*",
-        "typescript": "^6.0.3",
-        "vite": "^8.3.8",
       },
     },
     "packages/core/compiler": {
@@ -4197,15 +4120,15 @@
 
     "@pyreon/example-collab-board": ["@pyreon/example-collab-board@workspace:examples/collab-board"],
 
-    "@pyreon/example-cpa-pw-app": ["@pyreon/example-cpa-pw-app@workspace:examples/cpa-pw-app"],
+    "@pyreon/example-cpa-pw-app": ["@pyreon/example-cpa-pw-app@workspace:examples/fixtures/cpa/app"],
 
-    "@pyreon/example-cpa-pw-blog": ["@pyreon/example-cpa-pw-blog@workspace:examples/cpa-pw-blog"],
+    "@pyreon/example-cpa-pw-blog": ["@pyreon/example-cpa-pw-blog@workspace:examples/fixtures/cpa/blog"],
 
-    "@pyreon/example-cpa-pw-dash": ["@pyreon/example-cpa-pw-dash@workspace:examples/cpa-pw-dash"],
+    "@pyreon/example-cpa-pw-dash": ["@pyreon/example-cpa-pw-dash@workspace:examples/fixtures/cpa/dash"],
 
-    "@pyreon/example-cssvars-bench": ["@pyreon/example-cssvars-bench@workspace:examples/cssvars-bench"],
+    "@pyreon/example-cssvars-bench": ["@pyreon/example-cssvars-bench@workspace:examples/fixtures/cssvars"],
 
-    "@pyreon/example-edge-runtimes": ["@pyreon/example-edge-runtimes@workspace:examples/edge-runtimes"],
+    "@pyreon/example-edge-runtimes": ["@pyreon/example-edge-runtimes@workspace:examples/fixtures/edge-runtimes"],
 
     "@pyreon/example-form-bench": ["@pyreon/example-form-bench@workspace:examples/form-bench"],
 
@@ -4229,41 +4152,31 @@
 
     "@pyreon/example-native-tasks": ["@pyreon/example-native-tasks@workspace:examples/native-tasks"],
 
-    "@pyreon/example-native-tasks-android": ["@pyreon/example-native-tasks-android@workspace:examples/native-tasks-android"],
+    "@pyreon/example-native-todomvc": ["@pyreon/example-native-todomvc@workspace:examples/native-todomvc"],
 
-    "@pyreon/example-native-tasks-ios": ["@pyreon/example-native-tasks-ios@workspace:examples/native-tasks-ios"],
+    "@pyreon/example-perf-dashboard": ["@pyreon/example-perf-dashboard@workspace:examples/fixtures/perf-dashboard"],
 
-    "@pyreon/example-native-tasks-web": ["@pyreon/example-native-tasks-web@workspace:examples/native-tasks-web"],
+    "@pyreon/example-playground": ["@pyreon/example-playground@workspace:examples/fixtures/playground"],
 
-    "@pyreon/example-native-todomvc-android": ["@pyreon/example-native-todomvc-android@workspace:examples/native-todomvc-android"],
+    "@pyreon/example-preact-compat": ["@pyreon/example-preact-compat@workspace:examples/compat/preact"],
 
-    "@pyreon/example-native-todomvc-ios": ["@pyreon/example-native-todomvc-ios@workspace:examples/native-todomvc-ios"],
-
-    "@pyreon/example-native-todomvc-web": ["@pyreon/example-native-todomvc-web@workspace:examples/native-todomvc-web"],
-
-    "@pyreon/example-perf-dashboard": ["@pyreon/example-perf-dashboard@workspace:examples/perf-dashboard"],
-
-    "@pyreon/example-playground": ["@pyreon/example-playground@workspace:examples/playground"],
-
-    "@pyreon/example-preact-compat": ["@pyreon/example-preact-compat@workspace:examples/preact-compat"],
-
-    "@pyreon/example-react-compat": ["@pyreon/example-react-compat@workspace:examples/react-compat"],
+    "@pyreon/example-react-compat": ["@pyreon/example-react-compat@workspace:examples/compat/react"],
 
     "@pyreon/example-real-bench": ["@pyreon/example-real-bench@workspace:examples/real-bench"],
 
-    "@pyreon/example-solid-compat": ["@pyreon/example-solid-compat@workspace:examples/solid-compat"],
+    "@pyreon/example-solid-compat": ["@pyreon/example-solid-compat@workspace:examples/compat/solid"],
 
-    "@pyreon/example-ssr-showcase": ["@pyreon/example-ssr-showcase@workspace:examples/ssr-showcase"],
+    "@pyreon/example-ssr-showcase": ["@pyreon/example-ssr-showcase@workspace:examples/fixtures/ssr-showcase"],
 
     "@pyreon/example-stacks-bench": ["@pyreon/example-stacks-bench@workspace:examples/stacks-bench"],
 
-    "@pyreon/example-svelte-compat": ["@pyreon/example-svelte-compat@workspace:examples/svelte-compat"],
+    "@pyreon/example-svelte-compat": ["@pyreon/example-svelte-compat@workspace:examples/compat/svelte"],
 
-    "@pyreon/example-sync-yjs": ["@pyreon/example-sync-yjs@workspace:examples/sync-yjs-demo"],
+    "@pyreon/example-sync-yjs": ["@pyreon/example-sync-yjs@workspace:examples/fixtures/sync-yjs"],
 
     "@pyreon/example-ui-showcase": ["@pyreon/example-ui-showcase@workspace:examples/ui-showcase"],
 
-    "@pyreon/example-vue-compat": ["@pyreon/example-vue-compat@workspace:examples/vue-compat"],
+    "@pyreon/example-vue-compat": ["@pyreon/example-vue-compat@workspace:examples/compat/vue"],
 
     "@pyreon/feature": ["@pyreon/feature@workspace:packages/fundamentals/feature"],
 

@@ -12,7 +12,8 @@ const ON: LintConfig = { rules: { 'pyreon/no-signal-in-props': 'warn' } }
 const R = 'pyreon/no-signal-in-props'
 
 function ids(source: string): string[] {
-  return lintFile('src/App.tsx', source, [noSignalInProps], ON).diagnostics.map((d) => d.ruleId)
+  // A test file: vitest's own JSX transform, so a prop really is read once.
+  return lintFile('src/App.test.tsx', source, [noSignalInProps], ON).diagnostics.map((d) => d.ruleId)
 }
 
 describe('no-signal-in-props — callee must resolve to a signal (LT-5)', () => {
@@ -34,6 +35,16 @@ describe('no-signal-in-props — callee must resolve to a signal (LT-5)', () => 
     expect(ids(`import { humanize } from './u'; const A = () => <Comp label={humanize(id)} />`)).not.toContain(
       R,
     )
+  })
+  it('does NOT fire in a file the Pyreon compiler lowers (it emits a reactive _rpd prop there)', () => {
+    const src = `const s = signal(0); const A = () => <Comp value={s()} />`
+    expect(lintFile('src/App.tsx', src, [noSignalInProps], ON).diagnostics).toEqual([])
+    expect(ids(`/** @jsxImportSource react */\n${src}`)).toContain(R)
+    expect(
+      lintFile('src/App.tsx', `/** @jsxImportSource preact */\n${src}`, [noSignalInProps], ON).diagnostics.map(
+        (d) => d.ruleId,
+      ),
+    ).toContain(R)
   })
   it('resolves a signal declared AFTER the JSX too (deferred report)', () => {
     expect(ids(`const A = () => <Comp value={s()} />; const s = signal(0)`)).toContain(R)

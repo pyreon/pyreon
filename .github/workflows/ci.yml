@@ -202,6 +202,9 @@ jobs:
             node_modules
             packages/*/*/node_modules
             examples/*/node_modules
+            examples/compat/*/node_modules
+            examples/fixtures/*/node_modules
+            examples/fixtures/cpa/*/node_modules
             docs/node_modules
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
       # PYREON_BOOTSTRAP_SKIP=1 keeps the postinstall lib/ build out of the
@@ -257,6 +260,9 @@ jobs:
             node_modules
             packages/*/*/node_modules
             examples/*/node_modules
+            examples/compat/*/node_modules
+            examples/fixtures/*/node_modules
+            examples/fixtures/cpa/*/node_modules
             docs/node_modules
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
       - name: Save bun install cache (main only)
@@ -888,6 +894,9 @@ jobs:
           path: |
             packages/*/*/.cache/tsbuildinfo
             examples/*/.cache/tsbuildinfo
+            examples/compat/*/.cache/tsbuildinfo
+            examples/fixtures/*/.cache/tsbuildinfo
+            examples/fixtures/cpa/*/.cache/tsbuildinfo
           key: tsbuildinfo-${{ runner.os }}-${{ github.run_id }}-${{ matrix.name }}
           restore-keys: tsbuildinfo-${{ runner.os }}-
       - name: Run typecheck (${{ matrix.name }})
@@ -910,10 +919,13 @@ jobs:
           #
           # The `examples` pseudo-category maps to the top-level examples/
           # dir; every other category maps to packages/<cat>/.
+          # Examples sit at examples/* and in the group folders
+          # (examples/compat/*, examples/fixtures/*, examples/fixtures/cpa/*;
+          # the list is EXAMPLE_WORKSPACE_GLOBS in scripts/example-dirs.ts).
           if [ "$category" = "examples" ]; then
-            CATEGORY_GLOB="./examples/*"
+            CATEGORY_FILTER="--filter=./examples/* --filter=./examples/compat/* --filter=./examples/fixtures/* --filter=./examples/fixtures/cpa/*"
           else
-            CATEGORY_GLOB="./packages/$category/*"
+            CATEGORY_FILTER="--filter=./packages/$category/*"
           fi
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             FILTER=$(bun run scripts/affected.ts \
@@ -926,13 +938,13 @@ jobs:
             # slice — otherwise every cell would run every package and
             # we'd lose the shard entirely.
             if [ "$FILTER" = "--filter=*" ]; then
-              FILTER="--filter=$CATEGORY_GLOB"
+              FILTER="$CATEGORY_FILTER"
             fi
           else
             # push:main + merge_group always run the full slice for
             # this category — the gate that protects main never
             # trusts the narrowing.
-            FILTER="--filter=$CATEGORY_GLOB"
+            FILTER="$CATEGORY_FILTER"
           fi
           if [ -z "$FILTER" ]; then
             echo "No affected packages in this category — skipping."
@@ -966,6 +978,9 @@ jobs:
           path: |
             packages/*/*/.cache/tsbuildinfo
             examples/*/.cache/tsbuildinfo
+            examples/compat/*/.cache/tsbuildinfo
+            examples/fixtures/*/.cache/tsbuildinfo
+            examples/fixtures/cpa/*/.cache/tsbuildinfo
           key: tsbuildinfo-${{ runner.os }}-${{ github.run_id }}-${{ matrix.name }}
 
 
@@ -1089,7 +1104,7 @@ jobs:
             # closure reached them.
             examples)
               AFFECTED_ARGS="--category=examples"
-              FULL_FILTER="--filter=./examples/*"
+              FULL_FILTER="--filter=./examples/* --filter=./examples/compat/* --filter=./examples/fixtures/* --filter=./examples/fixtures/cpa/*"
               ;;
             *)
               AFFECTED_ARGS="--category=$category"
@@ -1414,9 +1429,14 @@ jobs:
     runs-on: ubuntu-latest
     # Derived from the measured steps (2026-09-01): examples build 70s +
     # verify-modes 90s + budgets 55s + distribution 25s + bin-liveness 30s +
-    # coverage 40-110s + rust (cached target) ~100s + setup ≈ 7-9 min; 25 is
-    # ~3× and satisfies check-ci-job-timeouts' lib-restore floor.
-    timeout-minutes: 25
+    # coverage 40-110s + rust (cached target) ~100s + setup ≈ 7-9 min (3-8 min
+    # over eight green pull request runs on 2026-11-17). The coverage step
+    # measures up to 30 directly changed packages: 12.5 min for the 30
+    # slowest on the slowest `Coverage (Full)` run on record (see the step).
+    # 9 + 12.5 = 21.5 min worst case; 35 is 1.6× that and satisfies
+    # check-ci-job-timeouts' lib-restore floor. It was 25 while the step
+    # stopped at 15 packages.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1436,7 +1456,7 @@ jobs:
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: |
           set -f
-          bun run --filter='./examples/*' build
+          bun run '--filter=./examples/*' '--filter=./examples/compat/*' '--filter=./examples/fixtures/*' '--filter=./examples/fixtures/cpa/*' build
       # `vite build` every example × mode cell and assert the RENDERED content
       # (not just a green build) — the typed-but-unimplemented backstop.
       # A4: the cloudflare cell serves its output under workerd via
@@ -1618,20 +1638,40 @@ jobs:
           if [ -n "$DROPPED" ]; then
             echo "Toolchain-bound, measured on main instead: $(printf '%s' "$DROPPED" | paste -sd, -)"
           fi
-          NAMES=$(printf '%s' "$KEPT" | paste -sd, -)
-          COUNT=$(printf '%s\n' $KEPT | grep -c . || true)
+          # Count what the gate MEASURES. Example apps and the docs site are
+          # workspaces, so they are in the selection, but check-coverage.ts
+          # scans `packages/**` only. Counting them is what skipped this step
+          # for #4422 (29 workspaces, 25 measured) and #4481 (36, 25 measured),
+          # the two pull requests that took five packages under their floors:
+          # `Coverage (Full)` then failed on 14 consecutive default-branch
+          # pushes (2026-11-11 → 11-16) with every pull request green.
+          MEASURED=$(printf '%s\n' $KEPT | grep -v -e '^@pyreon/example-' -e '^@pyreon/docs$' || true)
+          NAMES=$(printf '%s' "$MEASURED" | paste -sd, -)
+          COUNT=$(printf '%s\n' $MEASURED | grep -c . || true)
           if [ "$COUNT" -eq 0 ]; then
             echo "Nothing left to measure at PR time."
             exit 0
           fi
-          # A release PR touches every package.json → ~130 explicit filters;
-          # the push:main full run is the backstop for that width.
-          if [ "$COUNT" -gt 15 ]; then
-            echo "$COUNT affected packages — too wide for a PR-time run;"
-            echo "full coverage runs on push:main + merge_group."
+          # The width cap is a TIME bound, derived from the slowest
+          # `Coverage (Full)` run on record (44031962333, 2026-11-17: 80
+          # packages, 3823 s of package time in a 4-way pool): the 30 slowest
+          # packages are 3012 s, 12.5 min in the pool; on an ordinary run
+          # 7.4-8.1 min. It was 15, by count alone (the 15 slowest are 9.6 min).
+          # Past it (a release PR bumps every package.json, about 77 measured)
+          # the step still does not run, and now says so where a reviewer
+          # sees it: those packages are first measured on the default branch.
+          if [ "$COUNT" -gt 30 ]; then
+            echo "::warning title=Coverage not measured on this pull request::$COUNT directly changed packages is past the 30-package bound of the PR-time coverage step. Their coverage is first measured by Coverage (Full) on the default branch. Measure locally: bun scripts/check-coverage.ts --only=<names>"
+            {
+              echo "### Coverage was NOT measured on this pull request"
+              echo ""
+              echo "$COUNT directly changed packages is past the 30-package bound. \`Coverage (Full)\` on the default branch is the first measurement:"
+              echo ""
+              printf '%s\n' $MEASURED | sed 's/^/- /'
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          echo "Affected ($COUNT): ${NAMES:-<none>}"
+          echo "Measuring ($COUNT): ${NAMES:-<none>}"
           bun scripts/check-coverage.ts --only="$NAMES"
 
   test-browser:

@@ -1,5 +1,5 @@
 // App module Gradle build — single-activity Compose app for the
-// Finance sample. Mirror of `native-todomvc-android/app/build.gradle.kts`
+// Finance sample. Mirror of `native-todomvc/android/app/build.gradle.kts`
 // MINUS kotlinx-serialization (Finance has no persisted state).
 //
 // The `preBuild` task shells out to `../../scripts/build-android.sh` so a
@@ -39,7 +39,7 @@ android {
     // Compile the @pyreon/native runtime + router Kotlin sources into
     // the app module — the PMTC emit header unconditionally imports
     // `com.pyreon.runtime.*` and `com.pyreon.router.*` (see
-    // native-device wiring fix). Same shape as native-todomvc-android.
+    // native-device wiring fix). Same shape as native-todomvc/android.
     sourceSets {
         getByName("main") {
             kotlin {
@@ -58,7 +58,7 @@ android {
 }
 
 dependencies {
-    // Compose BOM — same version as native-todomvc-android.
+    // Compose BOM — same version as native-todomvc/android.
     // COMPILE-SDK CEILING. AGP 9.4 supports compileSdk 37 at most, and an
     // androidx artifact declares its own `minCompileSdk` in AAR metadata — a
     // dependency above the ceiling fails `checkDebugAarMetadata`, not the
@@ -91,7 +91,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("androidx.compose.material:material")
 
-    // Instrumented-test deps. Same shape as native-todomvc-android.
+    // Instrumented-test deps. Same shape as native-todomvc/android.
     // The BOM pins versions PER CONFIGURATION — the implementation-
     // scoped platform() above does NOT reach androidTest's classpath,
     // so without this line ui-test-junit4 resolves VERSIONLESS

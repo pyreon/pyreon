@@ -12,7 +12,7 @@
 //    main thread (`CalledFromWrongThreadException … Calling:
 //    DefaultDispatcher-worker-2`, a corrupted slot table on dispose). The `v2`
 //    rule queues the resumption for the main thread, as `AndroidUiDispatcher.Main`
-//    does in an app. `ComposeRuleThreadingTest` (native-tasks-android) proves it
+//    does in an app. `ComposeRuleThreadingTest` (native-tasks/android) proves it
 //    on the emulator.
 // 2. A shell command is awaited. `executeShellCommand(cmd).close()` starts the
 //    command and returns: a `pm grant` that had not landed let the tap raise the
@@ -22,6 +22,11 @@
 //    page some hundred milliseconds after the typing returned: a button scrolled
 //    into view before that sat outside the scroller's viewport when the click
 //    reached it, and the click did nothing.
+// 4. A node inside a page's <Scroll> is scrolled to before it is asserted
+//    displayed (the tasks app's toolkit / stats / vocab pages). A Compose scroller
+//    composes every child however far off-screen, so a bare assertIsDisplayed()
+//    passes or fails with the emulator viewport and the previous scroll position
+//    (toolkit-card-text sat above toolkit-crdt-map).
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -86,6 +91,18 @@ describe('Android device-test harness', () => {
     ({ path, src }) => {
       const hook = /@Before\s+fun keepSoftKeyboardOut\(\)/.test(src) && src.includes('FLAG_ALT_FOCUSABLE_IM')
       expect(hook, `${path}: add the @Before keepSoftKeyboardOut() hook (see TasksAppInstrumentedTest)`).toBe(true)
+    },
+  )
+
+  it.each(deviceTests.filter((t) => /\/native-tasks/.test(t.path)))(
+    '$path scrolls to a scroll-page node before asserting it displayed',
+    ({ path, src }) => {
+      // onNodeWithTag("toolkit-x").assertIsDisplayed() with nothing between: no scroll in
+      // the chain. The -page containers are the scroller's own root and are excluded.
+      const bare = [
+        ...src.matchAll(/onNodeWithTag\("((?:toolkit|stats|vocab)-(?!page")[\w-]+)"\)\s*\.assertIsDisplayed\(\)/g),
+      ].map((m) => m[1])
+      expect(bare, `${path}: use assertTagDisplayedAfterScroll(tag, where) for ${bare.join(', ')}`).toEqual([])
     },
   )
 })

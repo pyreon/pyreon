@@ -37,6 +37,7 @@ Read the matching file **before** working in its area, and prefer it over memory
 | `.agents/guides/internals/` | `packages/core/{compiler,reactivity,runtime-dom,runtime-server}`, JSX lowering, batching, SSR, HMR, Plain Mode |
 | `.agents/guides/fundamentals/` | any `packages/fundamentals/*` package (router per-package files under `references/`) |
 | `.agents/guides/ui-system/` | `packages/ui-system/**`, `packages/ui/**` |
+| `.agents/guides/ui-system/site-design-system.md` | `docs/src/site/**`, `docs/src/docs-ui/**`, `docs/src/styles/**`, `docs/src/blog/**` (pyreon.dev's tokens, kit layers, design ratchets, visual sweep) |
 | `.agents/guides/multiplatform/` | `packages/native/**`, `@pyreon/primitives`, iOS/Android work |
 | `.agents/guides/zero/` | `packages/zero/**`, render modes, deploy adapters, dev TLS |
 | `.agents/guides/tools/` | atlas, lathe, loom, `@pyreon/testing`, the `pyreon` CLI and `doctor` |
@@ -66,7 +67,7 @@ Plus `docs/` (the docs site, built on `@pyreon/zero` — 226 doc pages covering 
 
 Notable package facts:
 
-- `@pyreon/lint` — Pyreon-specific linter — 140 rules, 26 categories, with config files, watch mode, an AST cache and an LSP server. Its `readable` preset layer (blank lines, component sections, JSX depth, ternaries) is on in this repo behind a per-file baseline (`readable-baseline.json`); see `.agents/rules/code-style.md`.
+- `@pyreon/lint` — Pyreon-specific linter — 141 rules, 26 categories, with config files, watch mode, an AST cache and an LSP server. Its `readable` preset layer (blank lines, component sections, JSX depth, ternaries) is on in this repo behind a per-file baseline (`readable-baseline.json`); see `.agents/rules/code-style.md`.
 - `@pyreon/compiler` — JSX transform with a Rust (napi-rs) backend and a JS fallback that must stay byte-identical (`native-equivalence.test.ts`, `fuzz-equivalence.test.ts`). Any emit change lands in both backends in one PR.
 - `@pyreon/test-utils` (private, framework-internal) is not `@pyreon/testing` (the public Testing-Library-style kit).
 

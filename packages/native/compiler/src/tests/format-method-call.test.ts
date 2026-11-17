@@ -22,14 +22,14 @@ export function C() {
 
 describe('toFixed / toUpperCase / toLowerCase method-call emit', () => {
   describe('Swift', () => {
-    it('toFixed(2) → String(format: "%.2f", n)', () => {
+    it('toFixed(2) → pyreonToFixed(n, 2)', () => {
       const out = transform(N('n().toFixed(2)'), { target: 'swift' }).code
-      expect(out).toContain('String(format: "%.2f", n)')
+      expect(out).toContain('pyreonToFixed(n, 2)')
       expect(out).not.toContain('.toFixed(')
     })
     it('toFixed() (no arg) → "%.0f"', () => {
       const out = transform(N('n().toFixed()'), { target: 'swift' }).code
-      expect(out).toContain('String(format: "%.0f", n)')
+      expect(out).toContain('pyreonToFixed(n, 0)')
     })
     it('toUpperCase() → .uppercased()', () => {
       const out = transform(N("s().toUpperCase()"), { target: 'swift' }).code
@@ -47,7 +47,7 @@ describe('toFixed / toUpperCase / toLowerCase method-call emit', () => {
       const out = transform(N('n().toFixed(2)'), { target: 'kotlin' }).code
       // The 1-arg `format` uses Locale.getDefault(): under Locale.GERMANY it
       // yields `1234,57` where JS `toFixed` and the Swift emit give `1234.57`.
-      expect(out).toContain('"%.2f".format(java.util.Locale.ROOT, n)')
+      expect(out).toContain('pyreonToFixed(n, 2L)')
       expect(out).not.toContain('.toFixed(')
     })
     it('toUpperCase() → .uppercase()', () => {

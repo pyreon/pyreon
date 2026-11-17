@@ -19,13 +19,13 @@ Teams choosing a framework for a production app need to know how it changes, not
 | Reactivity, core, runtime-dom, router, head, server, vite-plugin | Core web framework; the surface most apps use. Pre-1.0 versioning rules above apply. |
 | `@pyreon/zero` (SSR, SSG, ISR, SPA, islands) | Web meta-framework with build-time mode verification (`verify-modes`) and real-browser end-to-end suites in CI. |
 | Fundamentals (`store`, `form`, `query`, `table`, `i18n`, `validation`, …) | Libraries for the web; several also have native runtimes — see [PMTC Library Status & Authoring](/docs/multiplatform-libraries). |
-| **Native targets (iOS / Android via PMTC)** | **Experimental.** See below. |
+| **Native targets (iOS / Android via PMTC)** | **Experimental** overall; each area carries its own tier in [Maturity by area](/docs/multiplatform#maturity-by-area). See below. |
 
 ## What "device-proven" means
 
 The native targets are measured, not described. The [Multi-Platform page](/docs/multiplatform) carries a **weighted capability matrix**: each category is credited only for behavior that is *asserted* on a real iOS Simulator or Android emulator (a user-visible effect checked by an XCUITest or Compose test), not for code that merely compiles. The headline percentage is recomputed from the table by a CI gate, so it cannot drift from the evidence.
 
-Use the matrix as your decision tool: if the capabilities your app needs are credited at the device level, they are exercised in CI; if they are not, treat them as unproven. The matrix also shows the weakest rows (for example payments, crash reporting, store release and push), so you can see exactly where the risk is.
+Use the matrix as your decision tool: if the capabilities your app needs are credited at the device level, they are exercised in CI; if they are not, treat them as unproven. The matrix also shows the weakest rows (for example payments, crash reporting, store release and push), so you can see exactly where the risk is. The same rows set each area's tier — Beta at 0.8 or above, Experimental from 0.4, Not ready below — in [Maturity by area](/docs/multiplatform#maturity-by-area), and the CI gate checks the tiers against the fractions too.
 
 ## Compatibility promises you can rely on
 

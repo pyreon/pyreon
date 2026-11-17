@@ -1,6 +1,6 @@
 import { type Browser, expect, type Page, test } from '@playwright/test'
 
-// Real-app dogfood for the CSS-variables theming mode. `examples/cssvars-bench`
+// Real-app dogfood for the CSS-variables theming mode. `examples/fixtures/cssvars`
 // mounts a grid of REAL @pyreon/ui-components Buttons + genuinely mode-varying
 // `mode(a, b)` boxes under <PyreonUI mode={signal}> and exposes a visible
 // dark/light toggle. This gate proves the mode works END-TO-END in a real app

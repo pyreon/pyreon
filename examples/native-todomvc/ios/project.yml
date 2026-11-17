@@ -1,0 +1,178 @@
+# XcodeGen project spec — turns this directory into an iOS Xcode
+# project without committing the .xcodeproj's brittle binary format.
+#
+# Usage:
+#   xcodegen generate   (run from this directory)
+#   open PyreonTodoMVC.xcodeproj
+#
+# Or one-command:
+#   ./scripts/xcode-setup.sh && open PyreonTodoMVC.xcodeproj
+#
+# Mirror of `examples/native-counter-ios/project.yml` — same xcodegen
+# pattern + same Pyreon → Swift compile preBuildScript.
+
+name: PyreonTodoMVC
+
+options:
+  bundleIdPrefix: com.pyreon
+  deploymentTarget:
+    iOS: '17.0'
+
+# Local SPM package references — the PMTC emit imports BOTH
+# `PyreonRuntime` (useStorage → @PyreonAppStorage, Phase 2.5 #891)
+# and `PyreonRouter`. Without these the Simulator build fails with
+# `error: no such module 'PyreonRuntime'` — the exact failure that
+# kept the native-device nightly red from its first run (2026-05-29)
+# until this fix. Same local-path SPM shape as native-tasks/ios.
+packages:
+  PyreonRuntime:
+    path: ../../../packages/native/runtime-swift
+  PyreonRouter:
+    path: ../../../packages/native/router-swift
+
+# The single iOS app target. SwiftUI-only — no AppDelegate, no
+# storyboards. Hosts the compiler-emitted TodoApp + TodoRow + Filter
+# enum + Todo struct + nextId module decl.
+targets:
+  PyreonTodoMVC:
+    # Pre-build script — runs the Pyreon compile loop BEFORE Swift
+    # compilation. Without this, you'd have to remember to run
+    # `./scripts/build-ios.sh` manually before every Xcode build. The script
+    # is idempotent — re-running it just overwrites `generated/`.
+    preBuildScripts:
+      - script: |
+          # Run from the project directory regardless of how Xcode invokes us.
+          bash "${SRCROOT}/../scripts/build-ios.sh"
+        name: '[Pyreon] Compile .tsx → generated/TodoApp.swift'
+        runOnlyWhenInstalling: false
+        basedOnDependencyAnalysis: false
+    type: application
+    platform: iOS
+    deploymentTarget: '17.0'
+
+    sources:
+      - path: Sources
+        type: group
+      - path: generated
+      - path: ../../../packages/fundamentals/form/native/swift
+      - path: ../../../packages/fundamentals/store/native/swift
+      - path: ../../../packages/fundamentals/state-tree/native/swift
+      - path: ../../../packages/fundamentals/machine/native/swift
+      - path: ../../../packages/fundamentals/i18n/native/swift
+      - path: ../../../packages/fundamentals/permissions/native/swift
+      - path: ../../../packages/fundamentals/query/native/swift
+      - path: ../../../packages/fundamentals/storage/native/swift
+      - path: ../../../packages/fundamentals/hooks/native/swift
+        type: group
+        # `optional: true` — `generated/` may not exist before the first
+        # build (it's gitignored). xcodegen tolerates the missing dir;
+        # the preBuildScript creates it.
+        optional: true
+
+    # Link the local SPM packages the generated Swift imports.
+    dependencies:
+      - package: PyreonRuntime
+      - package: PyreonRouter
+
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDevelopmentRegion: en
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleInfoDictionaryVersion: '6.0'
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: 0.0.1
+        CFBundleVersion: '1'
+        LSRequiresIPhoneOS: true
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UILaunchScreen: {}
+        UIRequiredDeviceCapabilities:
+          - armv7
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pyreon.PyreonTodoMVC
+        # POLICY (enforced by scripts/check-ios-signing-policy.ts): every iOS
+        # example sets CODE_SIGN_ENTITLEMENTS, uniformly, whether or not its
+        # CURRENT tests touch the Keychain.
+        #
+        # An unsigned/entitlement-less simulator app is denied SecItemAdd by
+        # securityd, so a Keychain-touching test fails ONLY in CI. Router-demo
+        # hit that, was fixed alone, and left four examples one test away from
+        # the same CI-only failure — which is exactly how the finance app's
+        # session-rehydration test broke. xcodegen's `entitlements:` block
+        # alone does NOT embed under ad-hoc signing (verified: `codesign -d
+        # --entitlements :-` read an EMPTY dict); the explicit build setting is
+        # what does. The file itself is an empty dict — what matters is that a
+        # signature with an entitlements blob exists at all.
+        CODE_SIGN_ENTITLEMENTS: PyreonTodoMVC.entitlements
+        ENABLE_BITCODE: NO
+        SWIFT_VERSION: '5.0'
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_ALLOWED: YES
+        CODE_SIGNING_REQUIRED: YES
+
+      configs:
+        Debug:
+          SWIFT_OPTIMIZATION_LEVEL: -Onone
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: -O
+
+  # Phase-2.2 launch-and-render smoke. Asserts the app boots on the
+  # iOS Simulator and the root view (`accessibilityIdentifier=todo-app`,
+  # emitted from `data-testid` on the canonical TodoApp source) renders.
+  # See `iosUITests/PyreonTodoMVCUITests.swift`.
+  PyreonTodoMVCUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: '17.0'
+
+    sources:
+      - path: UITests
+        type: group
+
+    # Depends on the app target so `xcodebuild test` builds + installs
+    # PyreonTodoMVC first, then runs the UITest bundle against it.
+    dependencies:
+      - target: PyreonTodoMVC
+
+    settings:
+      base:
+        # Distinct bundle id (Apple's rule: every target needs its own).
+        PRODUCT_BUNDLE_IDENTIFIER: com.pyreon.PyreonTodoMVCUITests
+        # `TEST_TARGET_NAME` tells xcodebuild which app this UITest
+        # bundle exercises (mirror of Xcode's "Target Application"
+        # dropdown). Without it, `xcodebuild test` reports
+        # `Testing failed: PyreonTodoMVCUITests encountered an error
+        # (Failed to determine application path)`.
+        TEST_TARGET_NAME: PyreonTodoMVC
+        # Simulator runs need no provisioning profile — same setting
+        # the BUILD step in native-device.yml passes via the CLI.
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        SWIFT_VERSION: '5.0'
+
+# Explicit scheme so `xcodebuild -scheme PyreonTodoMVC test` (the
+# command run by the workflow's test step) reliably picks up the
+# UITest target. Without this, xcodegen auto-generates schemes per
+# target — `xcodebuild test -scheme PyreonTodoMVC` would build only
+# the app target and skip the UITest. The `gatherCoverageData: false`
+# keeps the gate fast (coverage hooks aren't useful for a smoke).
+schemes:
+  PyreonTodoMVC:
+    build:
+      targets:
+        PyreonTodoMVC: all
+        PyreonTodoMVCUITests: [test]
+    test:
+      gatherCoverageData: false
+      targets:
+        - PyreonTodoMVCUITests
+    run:
+      config: Debug

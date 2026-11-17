@@ -249,8 +249,8 @@ describe('2e. number methods: a radix on an integer and a dynamic digit count lo
     expect(rhs(kt.code, 'a')).toBe('n.toString(16)')
   })
   it('toFixed(dynamic)', () => {
-    expect(rhs(sw.code, 'c')).toBe('String(format: "%.\\(n)f", f)')
-    expect(rhs(kt.code, 'c')).toBe('"%.${n}f".format(java.util.Locale.ROOT, f)')
+    expect(rhs(sw.code, 'c')).toBe('pyreonToFixed(f, n)')
+    expect(rhs(kt.code, 'c')).toBe('pyreonToFixed(f, n)')
     expect(sw.warnings).toEqual([])
     expect(kt.warnings).toEqual([])
   })

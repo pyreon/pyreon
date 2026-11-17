@@ -45,7 +45,7 @@ describe('Double struct fields — initializer value-refinement', () => {
     const out = transform(SRC, { target: 'swift' }).code
     expect(out).toContain('var growth: Double')
     expect(out).toContain('var revenue: Int')
-    expect(out).toContain('String(format: "%.1f", m.growth)')
+    expect(out).toContain('pyreonToFixed(m.growth, 1)')
   })
 
   it('Kotlin: growth → Double field; revenue stays Int', () => {

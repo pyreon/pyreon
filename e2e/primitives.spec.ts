@@ -1,7 +1,7 @@
 /**
  * E2E tests for the framework primitives that didn't have e2e coverage
  * before Phase C1. Each test exercises a primitive in real Chromium against
- * the playground app's `/primitives` route (`examples/playground/src/pages/Primitives.tsx`).
+ * the playground app's `/primitives` route (`examples/fixtures/playground/src/pages/Primitives.tsx`).
  *
  * Adding a primitive: drop a `<Demo>` section into `Primitives.tsx` with
  * stable ids, then add a `test()` block here that drives it. Same pattern.
