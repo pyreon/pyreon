@@ -174,7 +174,7 @@ export function CodeBlock(props: CodeBlockProps): VNodeChild {
       </div>
       <div class="code-block__body">
         <div class={gutterClass} aria-hidden="true">
-          {gutterLines()}
+          {() => gutterLines()}
         </div>
         <div
           class="code-block__pre"
