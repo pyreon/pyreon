@@ -226,7 +226,7 @@ export function App() {
   return <Stack><Text>{String(out)}</Text></Stack>
 }`
     const typed = testNativePlugin(unitsPlugin(), source, { target }).code
-    expect(typed).toContain('pyreonNumString(out)')
+    expect(typed).toContain('pyreonNumberString(out)')
     const base = unitsPlugin()
     const untyped = testNativePlugin(
       unitsPlugin({
@@ -237,7 +237,7 @@ export function App() {
       source,
       { target },
     ).code
-    expect(untyped).not.toContain('pyreonNumString(out)')
+    expect(untyped).not.toContain('pyreonNumberString(out)')
   })
 
   it('typing.member: a member read on the node is typed by the owner (a Double property reads through the number formatter)', () => {
@@ -247,10 +247,10 @@ export function App() {
   return <Stack><Text>{String(Meters.convert(1).value)}</Text><Text>{String(Meters.convert(1).other)}</Text></Stack>
 }`
     const { code } = testNativePlugin(unitsPlugin(), source, { target })
-    expect(code).toContain('pyreonNumString(AcmeUnit_Meters.convert(1')
+    expect(code).toContain('pyreonNumberString(AcmeUnit_Meters.convert(1')
     // `.other` is `unknown`: the owner decided it, so it takes the plain spelling.
     expect(
-      code.split('\n').filter((l) => l.includes('pyreonNumString(AcmeUnit_Meters')),
+      code.split('\n').filter((l) => l.includes('pyreonNumberString(AcmeUnit_Meters')),
     ).toHaveLength(1)
   })
 

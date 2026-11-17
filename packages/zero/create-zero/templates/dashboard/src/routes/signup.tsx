@@ -48,7 +48,7 @@ export default function Signup() {
           <input
             id="email"
             type="email"
-            value={email}
+            value={email()}
             onInput={(e) => email.set((e.currentTarget as HTMLInputElement).value)}
             required
           />
@@ -59,7 +59,7 @@ export default function Signup() {
           <input
             id="password"
             type="password"
-            value={password}
+            value={password()}
             onInput={(e) => password.set((e.currentTarget as HTMLInputElement).value)}
             required
             minLength={8}
@@ -71,7 +71,7 @@ export default function Signup() {
         <button
           type="submit"
           class="btn btn-primary"
-          disabled={submitting}
+          disabled={submitting()}
           style="width: 100%; justify-content: center; margin-top: 1rem;"
         >
           {() => (submitting() ? 'Creating…' : 'Create account')}

@@ -23,7 +23,7 @@ export default definePlaywrightConfig({
     },
   ],
   webServer: [
-    viteDevServer('@pyreon/example-native-tasks-web', 5204),
+    viteDevServer('@pyreon/example-native-tasks', 5204),
     // The /streams screen's scripted SSE / NDJSON peer — the same server the
     // native device gates use, so all three targets read one script.
     { command: 'bun examples/native-tasks/scripts/stream-server.ts', cwd: '..', port: 8791 },

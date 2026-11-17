@@ -179,7 +179,6 @@ export default function DemoRx() {
         <CodeBlock
           label="The pipe call"
           // The compiler wraps this read in _rp(), so CodeBlock's {props.code} follows the signal.
-          // pyreon-lint-disable-next-line pyreon/no-signal-in-props
           code={code()}
         />
         <Meters

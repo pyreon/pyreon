@@ -269,14 +269,14 @@ describe('Swift member-call lowering — arity and receiver-type guards', () => 
 
   it('toFixed: a LITERAL digit count bakes the format; a DYNAMIC one interpolates it', () => {
     const lit = sw(`  const a = computed(() => n().toFixed(2))`)
-    expect(lit).toContain('String(format: "%.2f", n)')
+    expect(lit).toContain('pyreonToFixed(n, 2)')
 
     const zero = sw(`  const a = computed(() => n().toFixed())`)
-    expect(zero).toContain('String(format: "%.0f", n)')
+    expect(zero).toContain('pyreonToFixed(n, 0)')
 
     // A non-literal digit count is the `digits === null` arm.
     const dyn = sw(`  const a = computed(() => n().toFixed(n()))`)
-    expect(dyn).toContain('String(format: "%.\\(n)f", n)')
+    expect(dyn).toContain('pyreonToFixed(n, n)')
     expect(dyn).not.toContain('n.toFixed(n)')
   })
 

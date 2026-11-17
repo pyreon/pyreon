@@ -31,6 +31,13 @@ export interface Tone {
 
 const t = (dark: string, light: string): Tone => ({ dark, light })
 
+/**
+ * The ember fill: the one gradient every ember AREA (win badge, Pyreon bar,
+ * dark-mode display type) paints. Light-mode display TEXT uses AA-safe stops
+ * instead (`gradient.ember.light`). [A2]
+ */
+export const EMBER_FILL = 'linear-gradient(95deg, #FF1F8C 0%, #FF5E1A 55%, #FFC83D 100%)'
+
 // ─── Raw palette (reference only; components use the semantic tokens) ─────
 
 export const palette = {
@@ -131,7 +138,7 @@ export type ColorKey = keyof typeof color
 /** Benchmark verdicts: one vocabulary for tables, cards and videos. Text label always present. [A7] */
 export const verdict = {
   /** Win: ember gradient fill with ink text (≥5.48:1 on every stop). */
-  winFill: 'linear-gradient(95deg, #FF1F8C 0%, #FF5E1A 55%, #FFC83D 100%)',
+  winFill: EMBER_FILL,
   winText: '#0A0A0E',
   tie: t('#22D3EE', '#0A6E89'),
   split: t('#C9C4B8', '#45414F'),
@@ -179,14 +186,11 @@ export const paper = {
 export const gradient = {
   /** Display numerals and hook words; light mode uses the AA-safe stops. */
   ember: t(
-    'linear-gradient(95deg, #FF1F8C 0%, #FF5E1A 55%, #FFC83D 100%)',
+    EMBER_FILL,
     'linear-gradient(95deg, #D1106F 0%, #C2410C 55%, #9A6200 100%)',
   ),
   /** Benchmark "Pyreon" bar (an area fill, not text). */
-  bar: t(
-    'linear-gradient(95deg, #FF1F8C 0%, #FF5E1A 55%, #FFC83D 100%)',
-    'linear-gradient(95deg, #FF1F8C 0%, #FF5E1A 55%, #FFC83D 100%)',
-  ),
+  bar: t(EMBER_FILL, EMBER_FILL),
   /** Hero spotlight behind product pages. */
   heroGlow: t(
     'radial-gradient(closest-side, rgba(255,94,26,.13), transparent 70%)',
@@ -245,6 +249,16 @@ export const display = {
   end: { min: 34, vw: 4.6, max: 60, phone: { min: 30, vw: 8.7 }, lineHeight: 1.04, tracking: '-.045em', weight: 500 },
   /** Big proof numerals (the cards' `.big`). [A4] */
   numeral: { min: 64, vw: 8, max: 132, lineHeight: 0.86, tracking: '-.06em', weight: 700 },
+  /** The numeral below md (a phone or small tablet). */
+  numeralPhone: { min: 64, vw: 22, max: 96 },
+  /** A long numeral ("1.94–1.95×"): sized to its cell (a size container), so it stays on one line. */
+  numeralLong: { min: 32, vw: 5.4, cqi: 17, max: 90 },
+  /** A numeral in a stat card. */
+  numeralStrip: { min: 40, vw: 4, max: 58 },
+  /** A numeral inside a product card: one step under `numeralStrip`. */
+  numeralCard: { min: 34, vw: 3, max: 44 },
+  /** Room under a gradient numeral so `background-clip: text` does not cut its descenders. */
+  numeralDescender: '0.08em',
   /** Quote block text. [C4] */
   quote: { min: 34, vw: 4.6, max: 64, lineHeight: 1.02, tracking: '-.045em', weight: 700 },
   stat: { min: 30, vw: 4, max: 46, lineHeight: 1.05, tracking: '-.03em', weight: 500 },
@@ -320,6 +334,44 @@ export const layout = {
   tableCellMin: '10ch',
 } as const
 
+/**
+ * Card insets (px). A card sets ONE inset and every block inside it inherits
+ * it: no block sets its own horizontal inset or bleeds into the padding, so
+ * the headline, the caption, the chart and the footnote share one left edge.
+ * `card` is the padded glow card, `compact` a small card, `stat` a stat card
+ * (its proof chart needs the width on a phone), `cell` a proof band cell.
+ */
+export const inset = {
+  card: { xs: 24, sm: 32 },
+  compact: 22,
+  stat: { xs: 16, sm: 22 },
+  compactY: 20,
+  cell: { xs: 16, sm: 22, md: 44 },
+  cellY: { xs: 26, md: 30 },
+} as const
+
+/** The pill-shaped verdict badge (`.bx-chip`): one size everywhere. [A7] */
+export const badge = {
+  size: 10.5,
+  tracking: '.12em',
+  lineHeight: 1.4,
+  padY: 4,
+  padX: 9,
+  border: 1,
+} as const
+
+/** A stat block (numeral, label, detail lines, note, chart): `band` in a proof band cell, `card` in a stat card. */
+export const stat = {
+  band: { labelSize: 17, labelGap: 6, labelMaxWidth: 380 },
+  card: { labelSize: 15, labelGap: 10 },
+  labelLineHeight: 1.35,
+  detailSize: 12,
+  detailLineHeight: 1.55,
+  chartGap: 14,
+  /** The drawn width of the asset set's proof charts (viewBox 420). */
+  chartMaxWidth: 420,
+} as const
+
 /** Section rhythm (px). `tight` = sections after the first on product pages. [A10] */
 export const section = {
   padY: 112,
@@ -362,11 +414,13 @@ export const navMedia = {
  */
 export const art = {
   minScale: 0.8,
-  /** Charts that repeat figures printed beside them (aria-hidden): a lower floor, so they fit a desktop proof cell. */
-  decorativeMinScale: 0.66,
+  /**
+   * Charts that repeat figures printed beside them (aria-hidden): a lower
+   * floor, so they fit a desktop proof cell and, inside the card inset, a
+   * 320px phone (420 drawn → 252), never bleeding into the card's padding.
+   */
+  decorativeMinScale: 0.6,
   maxMinWidth: 640,
-  /** On a phone a card's chart reaches into the card's side padding (proof cells and compact cards pad 22px), so it fits without scrolling. */
-  phoneBleed: 22,
 } as const
 
 // ─── Motion ───────────────────────────────────────────────────────────────

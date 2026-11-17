@@ -37,7 +37,7 @@ export default function Invoices() {
         </thead>
         <tbody>
           <For
-            each={invoices}
+            each={invoices()}
             by={(inv) => inv.id}
           >
             {(inv) => (

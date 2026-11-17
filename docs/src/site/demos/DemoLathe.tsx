@@ -124,7 +124,6 @@ export default function DemoLathe() {
               <Toggle
                 type="button"
                 aria-pressed={() => (selected().includes(p) ? 'true' : 'false')}
-                // pyreon-lint-disable-next-line pyreon/no-signal-in-props
                 state={!selected().includes(p) && closure().includes(p) ? 'required' : 'off'}
                 onClick={() => toggle(p)}
               >

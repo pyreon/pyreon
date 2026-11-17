@@ -188,7 +188,7 @@ describe('every per-file helper stays out of the SHARED namespace', () => {
     const codes = emitAll(target)
     // Each helper must actually be exercised, or the compiles prove nothing.
     const all = codes.join('\n')
-    for (const marker of ['PyreonUrlStateInt(', 'PyreonUrlStateDouble(', 'PyreonUrlStateBool(', 'pyreonNumString(', 'LocalPyreonPermissions', '__Obj0_']) {
+    for (const marker of ['PyreonUrlStateInt(', 'PyreonUrlStateDouble(', 'PyreonUrlStateBool(', 'LocalPyreonPermissions', '__Obj0_']) {
       if (marker === 'LocalPyreonPermissions' && target === 'swift') continue
       expect(all, `${target} fixture never reaches ${marker}`).toContain(marker)
     }

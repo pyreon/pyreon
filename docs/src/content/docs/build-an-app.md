@@ -39,7 +39,7 @@ export default function TodoList() {
 
   return (
     <ul class="example-col example-list">
-      <For each={todos} by={(t) => t.id}>
+      <For each={todos()} by={(t) => t.id}>
         {(todo) => <li class="example-card">{todo.text}</li>}
       </For>
     </ul>
@@ -49,7 +49,7 @@ export default function TodoList() {
 
 <Example file="./examples/tutorial/todo-1-list" />
 
-Two things to notice. First, `each={todos}` takes the **signal itself**, not `todos()` — `<For>` subscribes to it and re-runs when the array changes. Second, `by` is required — the key it returns is what lets `<For>` reconcile rows (reuse, move, remove) instead of rebuilding them.
+Two things to notice. First, `each={todos()}` reads the signal inside a prop, so the compiler passes it as a reactive prop: `<For>` re-runs when the array changes. Second, `by` is required — the key it returns is what lets `<For>` reconcile rows (reuse, move, remove) instead of rebuilding them.
 
 ## Step 2 — Add items
 
@@ -153,7 +153,7 @@ const visible = computed(() => {
   )
 })
 
-// <For each={visible} by={(t) => t.id}> … </For>
+// <For each={visible()} by={(t) => t.id}> … </For>
 ```
 
 <Example file="./examples/tutorial/todo-5-filter" />
@@ -179,7 +179,7 @@ function clearCompleted() {
 }
 
 // …
-<Show when={hasCompleted}>
+<Show when={hasCompleted()}>
   <button onClick={clearCompleted}>Clear completed</button>
 </Show>
 ```
