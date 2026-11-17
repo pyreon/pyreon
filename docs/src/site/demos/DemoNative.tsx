@@ -33,13 +33,13 @@ const OUT: Record<Source, readonly [tsx: string, web: string, ios: string, andro
     'Column(\n  verticalArrangement =\n    Arrangement.spacedBy(12.dp)\n) {\n  Text("Hello")\n  Text("World")\n}',
   ],
   Field: [
-    "const name = signal('')\n\n<Field\n  value={name}\n  onChangeText={(t) => name.set(t)}\n/>",
+    "const name = signal('')\n\n<Field\n  value={name()}\n  onChangeText={(t) => name.set(t)}\n/>",
     '<input\n  value="…"\n  oninput="name.set(…)">',
     '@State var name = ""\n\nTextField("", text: $name)',
     'var name by remember {\n  mutableStateOf("")\n}\nTextField(\n  value = name,\n  onValueChange = { name = it }\n)',
   ],
   Toggle: [
-    'const on = signal(false)\n\n<Toggle\n  value={on}\n  onChange={(v) => on.set(v)}\n/>',
+    'const on = signal(false)\n\n<Toggle\n  value={on()}\n  onChange={(v) => on.set(v)}\n/>',
     '<input type="checkbox"\n  role="switch">',
     '@State var on = false\n\nToggle("", isOn: $on)',
     'var on by remember {\n  mutableStateOf(false)\n}\nSwitch(\n  checked = on,\n  onCheckedChange = { on = it }\n)',

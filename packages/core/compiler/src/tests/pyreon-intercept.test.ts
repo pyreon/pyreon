@@ -14,6 +14,18 @@ describe('detectPyreonPatterns', () => {
       expect(diags[0]!.message).toContain('throws when it mounts')
     })
 
+    it('suggests the flagged tag itself with `by` added, keeping the author’s `each` expression', () => {
+      const called = detectPyreonPatterns(`const UI = () => <For each={visible()}>{(u) => <li>{u.name}</li>}</For>`)
+      expect(called[0]!.current).toBe('<For each={visible()}>')
+      expect(called[0]!.suggested).toBe('<For each={visible()} by={(item) => item.id}>')
+
+      const bare = detectPyreonPatterns(`const UI = () => <For each={rows} fallback={<p />}>{(r) => <li />}</For>`)
+      expect(bare[0]!.suggested).toBe('<For each={rows} by={(item) => item.id} fallback={<p />}>')
+
+      const member = detectPyreonPatterns(`const L = (p) => <For each={p.items} />`)
+      expect(member[0]!.suggested).toBe('<For each={p.items} by={(item) => item.id} />')
+    })
+
     it('does NOT flag <For> that carries a `by`', () => {
       const code = `
         const UI = () => <For each={items()} by={(i) => i.id}>{(i) => <li>{i.name}</li>}</For>

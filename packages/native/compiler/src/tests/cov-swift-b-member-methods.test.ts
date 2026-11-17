@@ -153,10 +153,10 @@ describe('Swift member-call lowering — arity and receiver-type guards', () => 
 
   it('split: the 1-arg arm; 0-arg falls through', () => {
     expect(sw(`  const a = computed(() => s().split(','))`)).toContain(
-      's.components(separatedBy: ",")',
+      'pyreonSplit(s, ",")',
     )
     const bare = sw(`  const a = computed(() => s().split())`)
-    expect(bare).not.toContain('components(separatedBy:')
+    expect(bare).not.toContain('pyreonSplit(')
     expect(bare).toContain('s.split()')
   })
 

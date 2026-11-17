@@ -82,7 +82,7 @@ export default function PlotIntervals(props: { shared?: Signal<number> }) {
 
       <figure style={{ margin: 0 }}>
         <figcaption>A forecast interval — two bounds, no centre value.</figcaption>
-        <Chart<Day> data={() => days()} x="d" height={200} title="Forecast range">
+        <Chart<Day> data={days()} x="d" height={200} title="Forecast range">
           <Band low="lo" high="hi" label="Range" showValues />
           <Tooltip />
         </Chart>
@@ -90,7 +90,7 @@ export default function PlotIntervals(props: { shared?: Signal<number> }) {
 
       <figure style={{ margin: 0 }}>
         <figcaption>A rolling envelope: Bollinger bands are a filled band plus its middle line.</figcaption>
-        <Chart<Day> data={() => days()} x="d" height={200} title="Actual against its envelope">
+        <Chart<Day> data={days()} x="d" height={200} title="Actual against its envelope">
           <Bollinger<Day> y="actual" window={3} k={1.5} label="σ" />
         </Chart>
       </figure>
