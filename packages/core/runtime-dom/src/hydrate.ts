@@ -851,12 +851,12 @@ function adoptUnmarkedRange(
   parent.insertBefore(start, domNode ?? anchor)
   let after: ChildNode | null = domNode
   let hydrated = false
-  let keyed = false
+  let keyedFirst = false
   const cleanup = mountReactive(child, parent, domNode ?? anchor, (value, p, a) => {
     if (hydrated) return mountChild(value, p, a)
     hydrated = true
     // The first run's value IS the accessor's initial value (primed).
-    keyed = needsKeyedReconcile(value)
+    keyedFirst = needsKeyedReconcile(value)
     const [dispose, next] = hydrateChild(value, domNode, p, anchor, `${path} > reactive`)
     after = next
     // The boundary goes after everything the walk claimed (or recovered), and
@@ -886,7 +886,7 @@ function adoptUnmarkedRange(
       }
     }
   })
-  if (keyed) {
+  if (keyedFirst) {
     // Extent found by the walk above; hand the region to the keyed reconciler.
     // `cleanup` clears start → boundary and disposes the walk's bindings.
     const end = document.createComment('pyreon')
