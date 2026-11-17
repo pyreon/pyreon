@@ -1,104 +1,68 @@
-# cpa-pw-blog — canonical SSG reference
+# cpa-pw-blog
 
-A minimal blog built with [`@pyreon/zero`](https://github.com/pyreon/pyreon/tree/main/packages/zero) in `mode: 'ssg'`. The canonical reference example for static site generation — every SSG feature this app exercises is documented in [`docs/src/content/docs/ssg.md`](../../docs/src/content/docs/ssg.md).
+A [Pyreon Zero](https://pyreon.dev/docs/zero) blog — markdown posts, static site generation, tags, pagination, RSS and SEO (Open Graph, Twitter cards, JSON-LD) built in. It runs on [`@pyreon/zero-content/blog`](https://pyreon.dev/docs/blog), the same module as pyreon.dev/blog.
 
-## What it shows
-
-- **Static routes** — `/`, `/about`, `/blog` auto-detected from the file-system router
-- **Markdown blog on `@pyreon/zero-content/blog`** — posts in `src/content/blog/`, the blog defined once in [`src/blog.ts`](src/blog.ts) (`defineBlog`), five one-line routes (index, `/blog/page/:page`, `/blog/:slug`, `/blog/tags/:tag`, `/blog/tags/:tag/page/:page`); the same module as pyreon.dev/blog
-- **Dynamic routes with `getStaticPaths`** — `/blog/:slug` enumerates 3 posts, `/blog/tags/:tag` every tag ([`src/routes/blog/[slug].tsx`](src/routes/blog/[slug].tsx))
-- **Build-time ISR via `revalidate` export** — `/blog/<slug>` revalidates every hour; entries land in `dist/_pyreon-revalidate.json`
-- **`vercelRevalidateHandler` scaffold** — drop-in webhook at [`src/routes/api/_pyreon-revalidate.ts`](src/routes/api/_pyreon-revalidate.ts) that platform adapters call on CMS publish
-- **`_404.tsx` with layout chrome** — 404 pages wrap in the parent layout via PR L5's router-driven fallback
-- **`_layout.tsx`** — global navigation + theme provider, rendered once per page
-- **RSS** — `/blog/rss.xml`, emitted at build by the content plugin (published posts only, full bodies)
-- **API routes** — `/api/echo/[...path]` (streaming catch-all canary)
-- **Sitemap auto-emit** — `useSsgPaths: true` reads the resolved-paths manifest so dynamic blog URLs land in `dist/sitemap.xml`
-- **Per-post SEO** — title, canonical, Open Graph, `article:*`, Twitter card and JSON-LD `BlogPosting` per post
-- **`@pyreon/zero/font`** — Google Fonts self-hosted at build time (CDN in dev), with sized fallback for CLS protection
-
-## Build
+## Getting started
 
 ```bash
 bun install
-bun run build
+bun run dev          # → http://localhost:3000
 ```
 
-Output:
+## What's in this project
 
-```text
-dist/
-├── index.html                       # /
-├── about/index.html                 # /about
-├── blog/index.html                  # /blog
-├── blog/welcome/index.html          # /blog/welcome (from getStaticPaths)
-├── blog/why-signals/index.html      # /blog/why-signals
-├── blog/static-vs-ssr/index.html    # /blog/static-vs-ssr
-├── 404.html                         # from _404.tsx (with layout chrome)
-├── sitemap.xml                      # includes static + dynamic URLs
-├── robots.txt                       # from seoPlugin
-├── _redirects                       # Netlify / Cloudflare format
-├── _redirects.json                  # Vercel format
-├── _pyreon-revalidate.json          # { "/blog/welcome": 3600, ... }
-├── _pyreon-ssg-paths.json           # internal — consumed by seoPlugin
-└── assets/                          # hashed JS / CSS bundles
+- **`src/content/blog/`** — your posts, one markdown file each (the file name is the URL)
+- **`content.config.ts`** — declares the `blog` collection (`blogCollection()`: frontmatter schema + publish dates)
+- **`src/blog.ts`** — the blog: site URL, title, authors, page size, and what follows every post (`postEnd`: call to action, share links, RSS, newsletter) (`defineBlog`)
+- **`src/routes/blog/`** — five one-line routes: the index and its pages, a post, a tag page and its pages
+- **`src/routes/index.tsx`** — landing page with the latest posts
+- **`src/routes/about.tsx`** — about page
+- **`vite.config.ts`** — the content plugin also writes the RSS feed to `/blog/rss.xml`
+
+### Adding a post
+
+Create `src/content/blog/hello-pyreon.md`:
+
+```md
+---
+title: Hello, Pyreon
+description: A short summary for the listing, the meta description and the RSS feed.
+date: 2026-05-25
+tags: [announcement]
+# cover: /covers/hello.png   (a file in public/)
+# draft: true
+---
+
+Your post, in markdown.
 ```
 
-`_pyreon-revalidate.json` contains the per-route `revalidate` allowlist that the `vercelRevalidateHandler` (in `api/_pyreon-revalidate.ts`) validates incoming webhook requests against.
+It appears in the listing, on its tag pages and in the RSS feed, and gets its own prerendered page.
 
-## Deploy
+### Scheduling a post
 
-Drop `dist/` on any static host. Recommended:
+`date` is the publish date. A post dated in the future is left out of every build made before that day and appears with the first build on or after it — deploy on a schedule (a daily CI job) and posts go live on their date. Preview the future with `PYREON_CONTENT_NOW=2026-06-01 bun run build`. In `bun run dev`, drafts and scheduled posts open at their URL (marked as such) but stay out of the listings.
 
-- **Netlify** — auto-detects `dist/404.html` + `_redirects`, no extra config
-- **Cloudflare Pages** — same convention as Netlify
-- **GitHub Pages** — auto-serves `404.html` (no per-directory 404 support)
-- **Vercel** (static) — auto-detects everything; set `VERCEL_REVALIDATE_TOKEN` in project env to enable build-time ISR
+## Scripts
 
-See [`docs/src/content/docs/ssg.md`](../../docs/src/content/docs/ssg.md) for the full per-platform deploy reference + nginx / Caddy / S3+CloudFront snippets.
+| Command           | What it does                                                 |
+| ----------------- | ------------------------------------------------------------ |
+| `bun run dev`     | Dev server with HMR                                          |
+| `bun run build`   | Pre-render the index, every post and tag page → static HTML  |
+| `bun run preview` | Serve the production build locally                           |
+| `bun run doctor`  | Audit the project (lint + types + perf budgets)              |
+| `bun run lint`    | Run oxlint and `@pyreon/lint` with the `readable` preset     |
+| `bun run format`  | Format with oxfmt (`oxfmt.config.ts`)                        |
+| `bun run fix`     | Format, then apply every lint autofix (blank lines, imports) |
 
-## Files
+## Deploying
 
-```text
-src/
-├── content/blog/                    # posts (markdown)
-│   ├── welcome.md
-│   ├── why-signals.md
-│   └── static-vs-ssr.md
-├── blog.ts                          # defineBlog({ siteUrl, title, … })
-├── routes/
-│   ├── _layout.tsx                  # global nav + PyreonUI
-│   ├── _404.tsx                     # not-found page
-│   ├── index.tsx                    # home (/)
-│   ├── about.tsx                    # about (/about)
-│   ├── blog/
-│   │   ├── index.tsx                # blog listing (/blog)
-│   │   ├── page/[page].tsx          # listing pages (/blog/page/2, …)
-│   │   ├── tags/[tag]/index.tsx     # tag pages (/blog/tags/<tag>)
-│   │   ├── tags/[tag]/page/[page].tsx  # tag pages 2..n
-│   │   └── [slug].tsx               # post page (getStaticPaths + revalidate)
-│   └── api/
-│       ├── echo/[...path].ts        # /api/echo/* — streaming catch-all
-│       └── _pyreon-revalidate.ts    # /api/_pyreon-revalidate — ISR webhook
-├── global.css
-├── entry-client.ts
-└── entry-server.ts
-content.config.ts                    # blog: blogCollection()
-vite.config.ts                       # content() (posts + RSS), mode: 'ssg', seoPlugin, fontPlugin
-```
+Static site generation produces a fully self-contained `dist/` — deploy to any static host. The project was scaffolded with a deployment adapter (see `vercel.json` / `wrangler.toml` / etc.) for one-click deploys.
 
-## Audit + lint
+## Learn more
 
-The project ships with `@pyreon/lint`'s recommended preset (which includes the three SSG rules) plus `zero doctor` (this project's thin wrapper over `pyreon doctor`) for project-wide audits:
+- **Docs** — https://pyreon.dev/docs
+- **Zero meta-framework** — https://pyreon.dev/docs/zero
+- **SSG mode** — https://pyreon.dev/docs/ssg
+- **`<Image>` + `<Head>`** — https://pyreon.dev/docs/zero#meta
 
-```bash
-bun run doctor              # the full battery — islands-audit, ssg-audit, audit-tests, and 12 more
-bun run lint                # SSG rules + reactivity + JSX + accessibility
-bun run typecheck           # tsc --noEmit
-```
-
-`zero doctor` only forwards `--fix` / `--json` / `--ci` / `--full` — unlike the root monorepo's `pyreon doctor --only <gate>`, there's no per-gate flag here (`--check-ssg` is not a real option; it always runs everything). Among the gates it runs, `ssg-audit` catches:
-
-- Dynamic routes without `getStaticPaths`
-- `_404.tsx` outside a `_layout.tsx` directory
-- Non-literal `revalidate` exports (silently dropped from the manifest)
+Found a bug or have a question? https://github.com/pyreon/pyreon/issues

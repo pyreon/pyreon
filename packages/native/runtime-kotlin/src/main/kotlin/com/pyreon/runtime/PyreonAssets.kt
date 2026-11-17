@@ -65,7 +65,7 @@ public fun pyreonDrawable(name: String): Int {
  * `pyreonDrawable` keeps its `require`: a missing IMAGE has no meaningful
  * fallback (there is nothing to draw), so failing loudly is right there.
  *
- * REGRESSION LOCK: the gated `native-finance-android` app renders
+ * REGRESSION LOCK: the gated `native-finance/android` app renders
  * `<Text font="Brand">` with no bundled font, so its instrumented test
  * exercises this exact path on a real emulator — a regression back to throwing
  * crashes that test rather than slipping through. (This file has no

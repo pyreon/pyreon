@@ -17,7 +17,7 @@ import { expect, test } from '@playwright/test'
  *     back to its notFoundComponent or renders nothing matching;
  *     this spec catches if a real router push to /unknown breaks)
  *
- * All scenarios run against the SHARED `examples/native-router-demo-ios/
+ * All scenarios run against the SHARED `examples/native-router-demo/
  * src/RouterApp.tsx` source — the same file PMTC compiles to SwiftUI
  * + Compose. Web is just one of the three target render paths.
  */

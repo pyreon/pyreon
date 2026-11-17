@@ -664,12 +664,12 @@ jobs:
         # so it wants its own job rather than another step on that one.
         run: |
           set -eo pipefail
-          cd examples/native-counter-ios
+          cd examples/native-counter/ios
           # Reset any cached output so the build is exercising the
           # CLI's create-from-scratch path, not just touching an
           # existing file.
           rm -f generated/*.swift
-          bash scripts/build.sh
+          bash ../scripts/build-ios.sh
           # Assert the expected output file landed.
           test -f generated/Counter.swift
           # Parse-validate the emit.

@@ -7,8 +7,8 @@
 // targets and not the third, silently, with no warning: the documented
 // "OkHttp-for-WebSocket asymmetry".
 //
-// That mattered concretely: `native-counter-android` compiles the SAME
-// `Counter.tsx` as `native-counter-ios`, so geolocation could not be added to
+// That mattered concretely: `native-counter/android` compiles the SAME
+// `Counter.tsx` as `native-counter/ios`, so geolocation could not be added to
 // the shared counter example at all — which is why the maps/geolocation matrix
 // row could not be raised by a device test even though the runtimes existed.
 //

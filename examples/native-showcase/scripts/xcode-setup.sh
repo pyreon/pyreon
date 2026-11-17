@@ -19,7 +19,7 @@
 # next time you hit ⌘+B. The first-time setup is the only step that
 # needs this wrapper.
 #
-# Mirror of `examples/native-counter-ios/scripts/xcode-setup.sh` — same
+# Mirror of `examples/native-counter/scripts/xcode-setup.sh` — same
 # two-step pattern, different target name.
 
 set -euo pipefail

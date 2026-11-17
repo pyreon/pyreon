@@ -35,13 +35,22 @@ describe('listNativeHosts', () => {
     ])
   })
 
-  it('lists the real showcase pilot in the single layout, beside the split apps', () => {
+  it('lists the real apps: one directory each for showcase, finance, counter and router-demo, beside the split apps', () => {
     const hosts = listNativeHosts(REPO)
-    expect(hosts.filter((h) => h.app === 'showcase').map((h) => h.dir)).toEqual([
-      'examples/native-showcase/android',
-      'examples/native-showcase/ios',
+    const single = hosts.filter((h) => h.layout === 'single')
+    for (const app of ['showcase', 'finance', 'counter', 'router-demo']) {
+      expect(single.filter((h) => h.app === app).map((h) => h.dir)).toEqual([
+        `examples/native-${app}/android`,
+        `examples/native-${app}/ios`,
+      ])
+    }
+    // tasks and todomvc still use one package per platform.
+    expect(hosts.filter((h) => h.layout === 'split').map((h) => h.app).sort()).toEqual([
+      'tasks',
+      'tasks',
+      'todomvc',
+      'todomvc',
     ])
-    expect(hosts.filter((h) => h.layout === 'split').length).toBeGreaterThanOrEqual(10)
   })
 
   it('agrees with the restated listing the create-multiplatform tests use', () => {

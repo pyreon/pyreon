@@ -159,8 +159,9 @@ export function classifyNativeSurface(
  * `project.yml`. (`check-native-srcdirs-drift`, which reads them, is a Linux
  * gate.) The Android lane still selects the app: `selectApps` is unchanged.
  */
+// Both example layouts: `native-<app>-android/` and `native-<app>/android/`.
 const ANDROID_GRADLE_CONFIG =
-  /^examples\/native-[^/]+-android\/(?:(?:app\/)?build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties|gradlew(?:\.bat)?|gradle\/.+)$/
+  /^examples\/native-[^/]+(?:-android|\/android)\/(?:(?:app\/)?build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties|gradlew(?:\.bat)?|gradle\/.+)$/
 
 export function isAndroidGradleConfig(file: string): boolean {
   // `..` never appears in a git path; refuse it anyway so the `gradle/` arm
@@ -176,8 +177,9 @@ export function isAndroidGradleConfig(file: string): boolean {
  * them. A deleted file reads as null and so still starts the job, which keeps
  * "the last device test was removed" visible.
  */
+// Both example layouts: `native-<app>-ios/iosUITests` and `native-<app>/ios/UITests`.
 const DEVICE_TEST_SOURCE =
-  /^examples\/native-[^/]+-(?:ios\/iosUITests|android\/app\/src\/androidTest)\/(?!.*IntlDifferentialCases\.kt$)/
+  /^examples\/native-[^/]+(?:-ios\/iosUITests|\/ios\/UITests|[-/]android\/app\/src\/androidTest)\/(?!.*IntlDifferentialCases\.kt$)/
 
 export function isDeviceTestSource(file: string): boolean {
   return DEVICE_TEST_SOURCE.test(file) && !file.split('/').includes('..')
@@ -272,9 +274,9 @@ export function classifyMacosLane(
   read: (path: string) => string | null,
   self: SelfWorkflow,
   macosJobs: readonly string[],
-  pluginSurface?: ReadonlySet<string> | Error,
-  readBase?: (path: string) => string | null,
+  base: BaseInputs = {},
 ): Decision {
+  const { pluginSurface, readBase } = base
   if (files.length === 0) return { run: true, reasons: ['empty file list — running (fail-closed)'] }
   const reasons: string[] = []
   const selfTouched = files.includes(self.file)
@@ -294,6 +296,12 @@ export function classifyMacosLane(
   }
   if (rest.length > 0) reasons.push(...classifyNativeSurface(rest, read, undefined, pluginSurface, readBase).reasons)
   return { run: reasons.length > 0, reasons }
+}
+
+/** What a decision compares against: the plugin surface and the base revision's files. */
+export interface BaseInputs {
+  pluginSurface?: ReadonlySet<string> | Error | undefined
+  readBase?: ((path: string) => string | null) | undefined
 }
 
 export interface DeviceLaneJobs {
@@ -318,10 +326,9 @@ export function decideDevice(
   read: (path: string) => string | null,
   self: SelfWorkflow,
   jobs: DeviceLaneJobs,
-  pluginSurface: ReadonlySet<string> | Error | undefined,
-  readBase: ((path: string) => string | null) | undefined,
-  surfaces: () => AppSurface[],
+  inputs: BaseInputs & { surfaces: () => AppSurface[] },
 ): DeviceDecision {
+  const { pluginSurface, readBase, surfaces } = inputs
   const every = (reason: string): DeviceDecision => ({
     run: true,
     selection: { ios: 'all', android: 'all', reasons: [reason] },
@@ -442,8 +449,8 @@ export function deriveAppSurfaces(repoRoot: string): AppSurface[] {
           roots.add(asRoot(target))
           const parent = dirname(target)
           // Only a SHARED source home (examples/native-finance) is claimed whole;
-          // when the source lives in a sibling LANE app (native-counter-android
-          // reads native-counter-ios/src), claiming that app's whole dir would
+          // when the source lives in a sibling LANE app (native-counter/android
+          // reads native-counter/src), claiming that app's whole dir would
           // run this lane for an iOS-only UITest edit.
           if (parent !== dir && parent.startsWith('examples/native-') && !APP_DIR.test(parent))
             roots.add(asRoot(parent))
@@ -591,9 +598,7 @@ if (import.meta.main) {
         readAtHead,
         readSelfWorkflow(self!),
         deviceJobs,
-        pluginSurface,
-        readBase,
-        () => deriveAppSurfaces(process.cwd()),
+        { pluginSurface, readBase, surfaces: () => deriveAppSurfaces(process.cwd()) },
       )
     } catch (err) {
       const reason = 'device decision failed (' + String(err) + ') — every lane'
@@ -633,7 +638,7 @@ if (import.meta.main) {
       // failure to answer it runs the job.
       let mac: Decision
       try {
-        mac = classifyMacosLane(files, readAtHead, readSelfWorkflow(self), macosJobs, pluginSurface, readBase)
+        mac = classifyMacosLane(files, readAtHead, readSelfWorkflow(self), macosJobs, { pluginSurface, readBase })
       } catch (err) {
         mac = { run: true, reasons: ['macOS decision failed (' + String(err) + ') — running (fail-closed)'] }
       }
