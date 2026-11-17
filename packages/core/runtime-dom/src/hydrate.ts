@@ -64,6 +64,7 @@ import {
   mountChild,
 } from './mount'
 import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
+import { _setParkedTextHydrator } from './parked-text'
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
 import {
@@ -2362,6 +2363,11 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
     process.env.NODE_ENV !== 'production' ? outsideAdoptionBind(hydrateMountHole) : hydrateMountHole,
   )
   _setSlotHydrator(
+    process.env.NODE_ENV !== 'production' ? outsideAdoptionBind(hydrateMountSlot) : hydrateMountSlot,
+  )
+  // A compiled text slot whose server content is elements adopts it through
+  // the same slot hydration (#4385, `parked-text.ts`).
+  _setParkedTextHydrator(
     process.env.NODE_ENV !== 'production' ? outsideAdoptionBind(hydrateMountSlot) : hydrateMountSlot,
   )
   // Install the devtools hook on hydration too, not just `mount()` — otherwise
