@@ -35,6 +35,15 @@
  * Idempotent: if no `0.x.y → 1.0.0` bumps are present, the script is
  * a no-op and exits 0.
  *
+ * Two shapes are NOT capped:
+ * - The approved major (`APPROVED_MAJOR` in `scripts/major-release.ts`, the
+ *   deliberate 1.0 cut): a `0.x → 1.0.0[-rc.N]` move is left alone.
+ * - A move from a version that is not 0.x (`1.0.0-rc.3 → 1.0.0` when pre mode
+ *   exits) is not a cascade at all and is skipped silently.
+ * An UNAPPROVED `0.x → 1.0.0-<pre>` (a cascade inside pre mode) has no single
+ * correct capped prerelease to rewrite to, so it FAILS the version step
+ * instead of shipping a 1.0 release candidate nobody approved.
+ *
  * Companion to:
  * - `scripts/cap-changeset-bumps.ts` — pre-version, catches explicit
  *   major-in-frontmatter
@@ -48,6 +57,7 @@ import { spawnSync } from 'node:child_process'
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { capChangelogText, capDependencyBullets } from './cap-changelog'
+import { APPROVED_MAJOR, classifyOneZeroMove } from './major-release'
 
 const ROOT = join(import.meta.dirname, '..')
 const PKGS_ROOT = join(ROOT, 'packages')
@@ -166,6 +176,10 @@ interface CapCandidate {
 }
 const candidates: CapCandidate[] = []
 let groupTarget: string | null = null
+/** `0.x → 1.0.0[-pre]` moves the maintainer approved — reported, never rewritten. */
+const approvedMoves: string[] = []
+/** `0.x → 1.0.0-<pre>` with no approval — fails the run below. */
+const unapprovedPrereleases: string[] = []
 
 for (const pkgPath of pkgJsons) {
   const content = readFileSync(pkgPath, 'utf8')
@@ -175,11 +189,21 @@ for (const pkgPath of pkgJsons) {
   } catch {
     continue
   }
-  if (!pkg.name || !pkg.name.startsWith('@pyreon/') || pkg.version !== '1.0.0') {
+  if (!pkg.name || !pkg.name.startsWith('@pyreon/') || !pkg.version?.startsWith('1.0.0')) {
     continue
   }
   const relPath = pkgPath.slice(ROOT.length + 1)
   const oldVersion = getPreVersion(relPath)
+  const move = classifyOneZeroMove(pkg.version, oldVersion)
+  if (move === 'none') continue
+  if (move === 'approved') {
+    approvedMoves.push(`${pkg.name} ${oldVersion} → ${pkg.version}`)
+    continue
+  }
+  if (move === 'refuse') {
+    unapprovedPrereleases.push(`${pkg.name} ${oldVersion ?? '?'} → ${pkg.version}`)
+    continue
+  }
   if (!oldVersion) {
     // oxlint-disable-next-line no-console
     console.warn(
@@ -236,6 +260,25 @@ for (const cand of candidates) {
     cascadedTo: '1.0.0',
     rewrittenTo: targetVersion,
   })
+}
+
+if (unapprovedPrereleases.length > 0) {
+  // oxlint-disable no-console
+  console.error(
+    `[cap-version] FAILED — ${unapprovedPrereleases.length} package(s) moved from 0.x to a 1.0.0 prerelease, and no 1.0 release is approved (APPROVED_MAJOR = ${String(APPROVED_MAJOR)} in scripts/major-release.ts):`,
+  )
+  for (const line of unapprovedPrereleases.slice(0, 20)) console.error(`  ${line}`)
+  console.error(
+    '  Find the `major` changeset (or the peer cascade) that caused it and make it `minor`, or have the maintainer approve the 1.0 cut.',
+  )
+  // oxlint-enable no-console
+  process.exit(1)
+}
+if (approvedMoves.length > 0) {
+  // oxlint-disable-next-line no-console
+  console.log(
+    `[cap-version] ${approvedMoves.length} package(s) take the approved major ${APPROVED_MAJOR} (scripts/major-release.ts) — not capped, e.g. ${approvedMoves[0]}`,
+  )
 }
 
 if (downgrades.length === 0) {

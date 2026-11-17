@@ -31,6 +31,11 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
+      # Release candidates (`v1.0.0-rc.0`, …): heal-release-chain mints an
+      # umbrella tag only for stable versions and changesets pre-mode
+      # versions, never for `release/**` snapshots, so this matches exactly
+      # the rc cuts. The binaries go to the rc's dist-tag (publish step).
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
 
 # Read-only by default. `id-token: write` (the npm OIDC trusted-publishing
 # credential) is granted to the `publish` job ONLY — the seven build jobs run
@@ -333,12 +338,19 @@ jobs:
           # error still fails the job.
           NAME=$(node -p "require('./package.json').name")
           VERSION=$(node -p "require('./package.json').version")
+          # Same dist-tag rule as the JS packages (scripts/release-channel.ts):
+          # `latest` for a stable version, the `.changeset/pre.json` tag (`rc`)
+          # for a release candidate, and a hard failure for any other
+          # prerelease. npm 11 rejects a prerelease published without --tag;
+          # an older npm would have moved `latest` to the release candidate.
+          DIST_TAG=$(bun "$GITHUB_WORKSPACE/scripts/release-channel.ts" dist-tag "$VERSION")
+          echo "Publishing $NAME@$VERSION with dist-tag $DIST_TAG"
           if [ "$(bunx npm@11.16.0 view "$NAME@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
             echo "::notice::$NAME@$VERSION is already on npm — skipping publish"
             exit 0
           fi
           set +e
-          OUT=$(bunx npm@11.16.0 publish --provenance --access public 2>&1)
+          OUT=$(bunx npm@11.16.0 publish --provenance --access public --tag "$DIST_TAG" 2>&1)
           CODE=$?
           set -e
           echo "$OUT"

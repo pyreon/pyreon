@@ -15,12 +15,20 @@
  *
  * The downgrade is idempotent: if no `: major` lines exist, the script is
  * a no-op and exits 0.
+ *
+ * The ONE exception is a major the maintainer approved in
+ * `scripts/major-release.ts` (the 0.x → 1.0.0 cut): while the fixed group's
+ * current version may move to `APPROVED_MAJOR`, nothing is capped — otherwise
+ * this step would silently turn the deliberate 1.0.0 changeset into a minor
+ * at release time, after every PR-time gate had accepted it.
  */
 
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { APPROVED_MAJOR, majorReleaseAllowed, readFixedGroupVersion } from './major-release'
 
-const CHANGESET_DIR = join(import.meta.dirname, '..', '.changeset')
+const ROOT = join(import.meta.dirname, '..')
+const CHANGESET_DIR = join(ROOT, '.changeset')
 
 // Match `'@pyreon/X': major` (and the unquoted form) on a FRONTMATTER line.
 // Group 1 = the package + colon segment, kept verbatim; we just swap the
@@ -48,7 +56,19 @@ export function capChangesetText(text: string): string {
   return fence + capped + text.slice(fence.length + front.length)
 }
 
-const files = import.meta.main
+/** Cap unless the maintainer approved the major the group is about to take. */
+export function shouldCapMajors(currentVersion: string, approved: string | null = APPROVED_MAJOR): boolean {
+  return !majorReleaseAllowed(currentVersion, approved)
+}
+
+const capping = import.meta.main && shouldCapMajors(readFixedGroupVersion(ROOT))
+if (import.meta.main && !capping) {
+  // oxlint-disable-next-line no-console
+  console.log(
+    `[cap-bumps] major release ${APPROVED_MAJOR} is approved in scripts/major-release.ts (group at ${readFixedGroupVersion(ROOT)}) — leaving \`major\` changesets as written`,
+  )
+}
+const files = capping
   ? readdirSync(CHANGESET_DIR).filter((f) => f.endsWith('.md') && f !== 'README.md')
   : []
 
@@ -65,7 +85,7 @@ for (const f of files) {
   }
 }
 
-if (import.meta.main) {
+if (capping) {
   if (touched > 0) {
     // oxlint-disable-next-line no-console
     console.log(`[cap-bumps] capped ${touched} changeset(s) at minor (0.x policy)`)

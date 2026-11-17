@@ -4,8 +4,14 @@
  * and npm `latest` silently stayed at 0.30.0 for a week — shipping users a
  * version missing HIGH-severity fixes, with no alarm anywhere).
  *
- * Compares the repo's fixed-group version against npm `dist-tags.latest` for
- * a set of SENTINEL packages (cheap — N registry lookups, not 60).
+ * Compares the repo's fixed-group version against the npm dist-tag that
+ * version ships on, for a set of SENTINEL packages (cheap — N registry
+ * lookups, not 60). A stable version is compared with `latest`; a pre-mode
+ * version (`1.0.0-rc.2`) with the pre-mode tag from `.changeset/pre.json`
+ * (`rc`), because a release candidate never moves `latest`. Before the first
+ * candidate of a series is published the tag does not exist yet; the lookup
+ * then falls back to `latest`, which the repo version is ahead of — the
+ * correct "not published yet" verdict. See scripts/release-channel.ts.
  *
  * Exit codes:
  *   0 — npm latest matches the last RELEASED repo version (or repo is ahead
@@ -36,6 +42,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { parsePublishResult } from './heal-release-chain'
 import { REGISTRY_LOOKUP_CONCURRENCY, waitForRegistryVisibility } from './wait-for-registry'
+import { compareSemver, DIST_TAG_RE, distTagFor, readPreState } from './release-channel'
 
 export const SENTINELS = ['@pyreon/reactivity', '@pyreon/core', '@pyreon/zero'] as const
 
@@ -237,38 +244,61 @@ export function publicationVisibilityTargets(
   return [...new Set(result.published)].filter((pkg) => eligible.has(pkg) && !failed.has(pkg))
 }
 
-async function npmLatest(pkg: string, signal?: AbortSignal): Promise<string | null> {
+/**
+ * The version npm serves for `pkg` on the channel `tag`, or null when the
+ * package has never been published. A non-`latest` tag that does not exist
+ * yet (the first release candidate of a series is not out) falls back to
+ * `latest`: the repo version is then ahead of it, which is the truth.
+ */
+export async function npmChannelVersion(
+  pkg: string,
+  tag: string,
+  lookup: (pkg: string, tag: string, signal?: AbortSignal) => Promise<string | null> = npmDistTag,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const v = await lookup(pkg, tag, signal)
+  if (v !== null || tag === 'latest') return v
+  return lookup(pkg, 'latest', signal)
+}
+
+async function npmDistTag(pkg: string, tag: string, signal?: AbortSignal): Promise<string | null> {
   if (!NPM_NAME_RE.test(pkg)) {
     throw new Error(
       `invalid npm package name read from a workspace package.json: ${JSON.stringify(pkg)}`,
     )
   }
-  const res = await fetch(`https://registry.npmjs.org/${pkg}/latest`, {
+  if (!DIST_TAG_RE.test(tag)) throw new Error(`invalid dist-tag ${JSON.stringify(tag)}`)
+  const res = await fetch(`https://registry.npmjs.org/${pkg}/${tag}`, {
     headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
     signal: signal
       ? AbortSignal.any([signal, AbortSignal.timeout(10_000)])
       : AbortSignal.timeout(10_000),
   })
-  if (res.status === 404) return null // never published (first-publish pending)
+  if (res.status === 404) return null // never published, or this dist-tag does not exist
   if (!res.ok) throw new Error(`registry HTTP ${res.status} for ${pkg}`)
   const body = (await res.json()) as { version?: string }
   return body.version ?? null
 }
 
-export function cmpSemver(a: string, b: string): number {
-  const pa = a.split('-')[0]!.split('.').map(Number)
-  const pb = b.split('-')[0]!.split('.').map(Number)
-  for (let i = 0; i < 3; i++) {
-    const d = (pa[i] ?? 0) - (pb[i] ?? 0)
-    if (d !== 0) return d
-  }
-  return 0
-}
+/**
+ * Full semver precedence. It used to drop the prerelease suffix, which made
+ * `1.0.0-rc.1` (repo) EQUAL `1.0.0-rc.0` (npm): an rc that never reached npm
+ * passed as published, and `1.0.0-rc.0` compared equal to `1.0.0`.
+ */
+export const cmpSemver = compareSemver
 
 if (import.meta.main) {
   const json = process.argv.includes('--json')
   const includeNative = process.argv.includes('--native')
   const sentinels = resolveSentinels(includeNative)
+  // Outside the try: a prerelease version with no pre mode, or a malformed
+  // pre.json, is a broken release state — exit 1 loudly, not 2 ("registry
+  // unreachable, not failing").
+  const preState = readPreState(repoRoot)
+  const repoVersions = enumeratePublishableVersions()
+  const tagOf = new Map(repoVersions.map((r) => [r.pkg, distTagFor(r.repo, preState)]))
+  const tagFor = (pkg: string): string => tagOf.get(pkg) ?? distTagFor(repoVersion(pkg), preState)
+  const npmLatest = (pkg: string, signal?: AbortSignal) => npmChannelVersion(pkg, tagFor(pkg), npmDistTag, signal)
 
   try {
     if (process.argv.includes('--wait-for-publish')) {
@@ -277,7 +307,7 @@ if (import.meta.main) {
       const targets = publicationVisibilityTargets(
         existsSync(receiptPath) ? readFileSync(receiptPath, 'utf8') : null,
         version,
-        enumeratePublishableVersions(),
+        repoVersions,
       )
       // npm accepted native-cli@0.52.0 at 16:45:37, but its visibility
       // timestamp was 16:48:13. Verification at 16:45:48 falsely failed.
@@ -342,7 +372,7 @@ if (import.meta.main) {
     // case a resume is most needed for) used to print nothing and the resume
     // step read "registry lookup failed — not resuming".
     if (process.argv.includes('--lag-json')) {
-      const lagNow = classifyLag(sweep, enumeratePublishableVersions())
+      const lagNow = classifyLag(sweep, repoVersions)
       const repoNow = repoVersion('@pyreon/core')
       const current = lagNow.filter((l) => l.repo === repoNow)
       console.log(JSON.stringify({ version: current.length > 0 ? repoNow : '', packages: current.map((l) => l.pkg) }))
@@ -367,7 +397,7 @@ if (import.meta.main) {
         `[check-published-state] DEAD RELEASE DETECTED — the repo carries a versioned release that npm never received:`,
       )
       for (const r of dead) {
-        console.error(`  ${r.pkg}: repo=${r.repo} but npm latest=${r.npm}`)
+        console.error(`  ${r.pkg}: repo=${r.repo} but npm ${tagFor(r.pkg)}=${r.npm}`)
       }
       console.error(
         `  A "chore: version packages" commit merged but the publish step did not complete.\n` +
@@ -384,19 +414,19 @@ if (import.meta.main) {
       )
     }
     console.warn(
-      `[check-published-state] OK — npm latest matches the released repo version (${results[0]?.repo}) for ${results.length - unpublished.length}/${results.length} sentinels${includeNative ? ' (incl. native compiler binary)' : ''}.`,
+      `[check-published-state] OK — npm ${tagFor(SENTINELS[0])} matches the released repo version (${results[0]?.repo}) for ${results.length - unpublished.length}/${results.length} sentinels${includeNative ? ' (incl. native compiler binary)' : ''}.`,
     )
 
     const { absent } = classifyExistence(sweep)
     // ── Lag sweep (the partial-release class) — over EVERY package ─────
-    const lagging = classifyLag(sweep, enumeratePublishableVersions())
+    const lagging = classifyLag(sweep, repoVersions)
     if (json) console.warn(JSON.stringify({ lagging }, null, 2))
     // (`--lag-json` was already emitted above, before any verdict could exit.)
     if (lagging.length > 0) {
       console.error(
         `[check-published-state] PARTIAL RELEASE — ${lagging.length} package(s) exist on npm but lag the version the repo has cut:`,
       )
-      for (const r of lagging) console.error(`  ${r.pkg}: repo=${r.repo} but npm latest=${r.npm}`)
+      for (const r of lagging) console.error(`  ${r.pkg}: repo=${r.repo} but npm ${tagFor(r.pkg)}=${r.npm}`)
       const version = lagging[0]!.repo
       console.error(
         `  The publish step of release ${version} did not complete for these packages\n` +

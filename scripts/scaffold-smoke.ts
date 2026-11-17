@@ -32,6 +32,7 @@ import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { compareSemver, distTagFor, readPreState, type PreState } from './release-channel'
 
 interface Cell {
   /** Stable slug used as the example dir name. */
@@ -947,7 +948,9 @@ interface CellResult {
  */
 export interface ShouldSkipIsolatedCellDeps {
   readWorkspaceVersion?: () => string | null
-  fetchNpmVersion?: (pkg: string) => string | null
+  /** The version npm serves for `pkg` on `distTag`, or null (absent tag/package, or npm unreachable). */
+  fetchNpmVersion?: (pkg: string, distTag: string) => string | null
+  readPreState?: () => PreState | null
 }
 
 export function shouldSkipIsolatedCell(deps: ShouldSkipIsolatedCellDeps = {}): {
@@ -970,18 +973,34 @@ export function shouldSkipIsolatedCell(deps: ShouldSkipIsolatedCellDeps = {}): {
       reason: `running on changesets release PR branch "${headRef}" — bumped @pyreon/* versions are not yet on npm`,
     }
   }
-  // 2. Workspace ahead of npm — query `npm view @pyreon/create-zero version`
-  // and compare to the local workspace version. Same package the scaffolder
-  // reads its own version from, so it's the right canary.
+  // 2. Workspace ahead of npm — ask npm for @pyreon/create-zero on the
+  // dist-tag the WORKSPACE version ships on and compare. Same package the
+  // scaffolder reads its own version from, so it's the right canary.
+  //
+  // The channel matters during a release-candidate series: the workspace is
+  // `1.0.0-rc.N` and `latest` stays `0.x`, so comparing with `latest` would
+  // skip the isolated cells for the WHOLE series — exactly when installing
+  // `^1.0.0-rc.N` from npm is worth testing. Compare with the `rc` tag; fall
+  // back to `latest` only while that tag does not exist yet (rc.0 not out).
   const readVer = deps.readWorkspaceVersion ?? readWorkspaceCreateZeroVersion
-  const fetchVer = deps.fetchNpmVersion ?? fetchLatestNpmVersion
+  const fetchVer = deps.fetchNpmVersion ?? fetchNpmVersionOnTag
   const workspaceVersion = readVer()
   if (workspaceVersion) {
-    const npmVersion = fetchVer('@pyreon/create-zero')
+    let tag = 'latest'
+    try {
+      tag = distTagFor(workspaceVersion, (deps.readPreState ?? (() => readPreState(REPO_ROOT)))())
+    } catch {
+      // A prerelease no pre mode accounts for has no channel; `latest` is
+      // the conservative comparison (it skips, which is what such a
+      // workspace needs — its version is never on npm).
+    }
+    const onTag = fetchVer('@pyreon/create-zero', tag)
+    const npmVersion = onTag ?? (tag === 'latest' ? null : fetchVer('@pyreon/create-zero', 'latest'))
+    const shown = onTag !== null ? tag : 'latest'
     if (npmVersion && compareSemver(workspaceVersion, npmVersion) > 0) {
       return {
         skip: true,
-        reason: `workspace @pyreon/create-zero is ${workspaceVersion} but npm latest is ${npmVersion} — scaffolder would pin ^${workspaceVersion} which doesn't exist on npm yet`,
+        reason: `workspace @pyreon/create-zero is ${workspaceVersion} but npm ${shown} is ${npmVersion} — scaffolder would pin ^${workspaceVersion} which doesn't exist on npm yet`,
       }
     }
   }
@@ -998,13 +1017,13 @@ function readWorkspaceCreateZeroVersion(): string | null {
   }
 }
 
-function fetchLatestNpmVersion(pkg: string): string | null {
-  // `npm view <pkg> version` prints the latest published version to stdout.
-  // 404 (package missing) → empty stdout + nonzero exit → return null.
+function fetchNpmVersionOnTag(pkg: string, distTag: string): string | null {
+  // `npm view <pkg>@<tag> version` prints the version that tag points at.
+  // 404 (package or tag missing) → nonzero exit → return null.
   // Network failure → same. Defensive: if we can't reach npm, fall through
   // to the runtime install failure rather than spuriously skipping.
   try {
-    const result = spawnSync('npm', ['view', pkg, 'version'], {
+    const result = spawnSync('npm', ['view', `${pkg}@${distTag}`, 'version'], {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 10_000,
@@ -1015,28 +1034,6 @@ function fetchLatestNpmVersion(pkg: string): string | null {
   } catch {
     return null
   }
-}
-
-/**
- * Tiny semver comparator. Returns >0 if a > b, <0 if a < b, 0 if equal.
- * Only handles the `X.Y.Z[-pre]` shape Pyreon ships. Pre-release tags sort
- * before their release (`0.27.0-rc.1` < `0.27.0`).
- */
-function compareSemver(a: string, b: string): number {
-  const parse = (v: string): [number, number, number, string] => {
-    const [core, pre = ''] = v.split('-', 2)
-    const [maj = 0, min = 0, patch = 0] = (core ?? '').split('.').map((n) => Number(n) || 0)
-    return [maj, min, patch, pre]
-  }
-  const [aMaj, aMin, aPatch, aPre] = parse(a)
-  const [bMaj, bMin, bPatch, bPre] = parse(b)
-  if (aMaj !== bMaj) return aMaj - bMaj
-  if (aMin !== bMin) return aMin - bMin
-  if (aPatch !== bPatch) return aPatch - bPatch
-  // Same X.Y.Z: a release sorts after its pre-release.
-  if (aPre === '' && bPre !== '') return 1
-  if (aPre !== '' && bPre === '') return -1
-  return aPre.localeCompare(bPre)
 }
 
 async function runCell(cell: Cell, opts: { keep: boolean }): Promise<CellResult> {

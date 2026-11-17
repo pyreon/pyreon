@@ -1,60 +1,98 @@
 /**
- * CI guard: fail if any `.changeset/*.md` contains a `: major` severity.
+ * CI guard: fail if any `.changeset/*.md` declares a `major` bump that the
+ * maintainer has not approved.
  *
- * Pyreon is 0.x. Companion to `scripts/cap-changeset-bumps.ts` (which
- * downgrades major → minor at release time) — this script catches the
- * shape at PR time so contributors see a clear error instead of a silent
- * downgrade when they intended a real breaking change.
+ * A `major` changeset moves the whole fixed `@pyreon/*` group to the next
+ * major. That is allowed in exactly one shape: `scripts/major-release.ts`
+ * names that next major in `APPROVED_MAJOR` (the 0.x → 1.0.0 cut sets it to
+ * `'1.0.0'`). Every other `major` fails here, at PR time, with the fix.
  *
- * The right path for a breaking change in 0.x is:
- *   1. Mark the changeset `minor` (correct semver under 0.x)
- *   2. Write the prose to clearly call out the breaking change
- *   3. Don't bump to 1.0.0 — Pyreon is not 1.0-ready
+ * While Pyreon is 0.x, a breaking change is written as `minor` with the break
+ * described in the prose. Companion to `scripts/cap-changeset-bumps.ts`
+ * (release time) and `scripts/cap-version-bumps.ts` (after versioning), which
+ * read the same switch.
  *
- * When 1.0.0 IS intended (someday), remove BOTH this guard and
- * `cap-changeset-bumps.ts` AS A DELIBERATE GATE — a single PR removing
- * the cap is the explicit signal "we're going 1.0 now."
- *
- * Wired into `.github/workflows/ci.yml` as a fast standalone job.
+ * Wired into `.github/workflows/ci.yml` as a fast standalone job, and into
+ * `validate-fast`.
  */
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { APPROVED_MAJOR, majorReleaseAllowed, readFixedGroupVersion } from './major-release'
 
-const CHANGESET_DIR = join(import.meta.dirname, '..', '.changeset')
+const ROOT = join(import.meta.dirname, '..')
+const CHANGESET_DIR = join(ROOT, '.changeset')
 const MAJOR_LINE = /^(\s*['"]?[^:'"]+['"]?\s*:\s*)major\s*$/m
 
-if (!existsSync(CHANGESET_DIR)) {
-  // oxlint-disable-next-line no-console
-  console.log('[check-no-major] no .changeset/ dir — skip')
-  process.exit(0)
+/** `file: line` for every changeset whose FRONTMATTER declares `major`. */
+export function majorOffenders(files: ReadonlyArray<{ name: string; text: string }>): string[] {
+  const out: string[] = []
+  for (const { name, text } of files) {
+    const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1]
+    const match = front?.match(MAJOR_LINE)
+    if (match) out.push(`${name}: ${match[0].trim()}`)
+  }
+  return out
 }
 
-const offenders: string[] = []
-const files = readdirSync(CHANGESET_DIR).filter(
-  (f) => f.endsWith('.md') && f !== 'README.md',
-)
-
-for (const f of files) {
-  const body = readFileSync(join(CHANGESET_DIR, f), 'utf8')
-  const match = body.match(MAJOR_LINE)
-  if (match) offenders.push(`${f}: ${match[0].trim()}`)
+export interface NoMajorVerdict {
+  ok: boolean
+  offenders: string[]
+  /** Set when majors are present and approved. */
+  approvedTarget?: string
 }
 
-if (offenders.length === 0) {
-  // oxlint-disable-next-line no-console
-  console.log('[check-no-major] OK — no major bumps in changesets')
-  process.exit(0)
+export function checkNoMajor(
+  files: ReadonlyArray<{ name: string; text: string }>,
+  currentVersion: string,
+  approved: string | null = APPROVED_MAJOR,
+): NoMajorVerdict {
+  const offenders = majorOffenders(files)
+  if (offenders.length === 0) return { ok: true, offenders }
+  if (majorReleaseAllowed(currentVersion, approved)) return { ok: true, offenders, approvedTarget: approved! }
+  return { ok: false, offenders }
 }
 
-// oxlint-disable no-console
-console.error('[check-no-major] FAILED — Pyreon is 0.x; `major` bumps are not allowed')
-console.error('')
-console.error('Offending changesets:')
-for (const line of offenders) console.error(`  - ${line}`)
-console.error('')
-console.error('Fix: change the severity to `minor` in the changeset frontmatter.')
-console.error('     Use prose to call out the breaking change clearly.')
-console.error('     When Pyreon goes 1.0 someday, remove this guard in a deliberate PR.')
-// oxlint-enable no-console
-process.exit(1)
+if (import.meta.main) {
+  // oxlint-disable no-console
+  if (!existsSync(CHANGESET_DIR)) {
+    console.log('[check-no-major] no .changeset/ dir — skip')
+    process.exit(0)
+  }
+  const files = readdirSync(CHANGESET_DIR)
+    .filter((f) => f.endsWith('.md') && f !== 'README.md')
+    .map((name) => ({ name, text: readFileSync(join(CHANGESET_DIR, name), 'utf8') }))
+  const current = readFixedGroupVersion(ROOT)
+  const verdict = checkNoMajor(files, current)
+
+  if (verdict.ok && verdict.approvedTarget) {
+    console.log(
+      `[check-no-major] OK — ${verdict.offenders.length} major changeset(s) take the group from ${current} to the approved ${verdict.approvedTarget} (scripts/major-release.ts):`,
+    )
+    for (const line of verdict.offenders) console.log(`  - ${line}`)
+    process.exit(0)
+  }
+  if (verdict.ok) {
+    console.log('[check-no-major] OK — no major bumps in changesets')
+    process.exit(0)
+  }
+
+  console.error(
+    `[check-no-major] FAILED — a \`major\` changeset would move every @pyreon/* package from ${current} to the next major, and no such release is approved`,
+  )
+  console.error('')
+  console.error('Offending changesets:')
+  for (const line of verdict.offenders) console.error(`  - ${line}`)
+  console.error('')
+  if (current.startsWith('0.')) {
+    console.error('Fix: Pyreon is 0.x, so a breaking change is `minor`. Change the severity in the')
+    console.error('     frontmatter and describe the break in the prose.')
+  } else {
+    console.error('Fix: a major release of the fixed group is the maintainer\'s decision. Use `minor` or')
+    console.error('     `patch` unless the maintainer has approved the major.')
+  }
+  console.error('     The major release itself is cut by setting APPROVED_MAJOR in scripts/major-release.ts')
+  console.error('     (see "Major release" in .agents/guides/ci/README.md).')
+  // oxlint-enable no-console
+  process.exit(1)
+}
