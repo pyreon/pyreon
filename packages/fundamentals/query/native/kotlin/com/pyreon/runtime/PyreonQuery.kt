@@ -29,11 +29,19 @@
 // composable's rememberCoroutineScope), so refetch() can start a coroutine
 // that is cancelled when the composable leaves, without this file importing
 // kotlinx.coroutines — the tests drive it with the stdlib alone. Deferred
-// (disclosed): prefetch, cross-instance invalidation, retries, persistence.
+// (disclosed): prefetch, retries, persistence.
+//
+// The cache is also the query CLIENT (the web's queryClient): a query that
+// registered a request is LIVE, invalidateQueries(root) marks every entry
+// under root stale and refetches every live query under it, setQueryData is
+// the optimistic write, and settleMutation applies both on a mutation's
+// outcome. A query leaves the live registry when Compose forgets it (it is a
+// RememberObserver, and the emit remembers it directly), removed by identity.
 
 package com.pyreon.runtime
 
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.mutableStateOf
 
 /**
@@ -48,7 +56,13 @@ import androidx.compose.runtime.mutableStateOf
  * a refetch on its next stale check.
  */
 public object PyreonQueryCache {
-    private class Entry(val value: Any, val atMillis: Long)
+    /** [invalidated]: set by [invalidateQueries] — still served (no blank), but
+     *  stale whatever its age, so the next check refetches. */
+    private class Entry(val value: Any, val atMillis: Long, var invalidated: Boolean = false)
+
+    /** Live queries (they registered a request) → their current key. By
+     *  identity; a query removes itself when Compose forgets it. */
+    private val live = java.util.IdentityHashMap<PyreonQuery<*>, String>()
 
     private val lock = Any()
     private var limit = 100
@@ -72,11 +86,12 @@ public object PyreonQueryCache {
     /** Nanosecond-free clock via System.currentTimeMillis for testability. */
     internal fun now(): Long = System.currentTimeMillis()
 
+    /** The cached value and its age; an invalidated entry is infinitely old. */
     @Suppress("UNCHECKED_CAST")
     internal fun <T> lookup(key: String): Pair<T, Long>? = synchronized(lock) {
         val e = store[key] ?: return null
         val typed = e.value as? T ?: return null
-        typed to (now() - e.atMillis)
+        typed to (if (e.invalidated) Long.MAX_VALUE else now() - e.atMillis)
     }
 
     internal fun write(key: String, value: Any): Unit = synchronized(lock) {
@@ -98,6 +113,110 @@ public object PyreonQueryCache {
     /** Test seam — clear everything between cases. */
     public fun clearAll(): Unit = synchronized(lock) {
         store.clear()
+        live.clear()
+    }
+
+    // --- The query client: live queries, invalidation, optimistic writes ---
+
+    /** Number of live (registered) queries — for tests and diagnostics. */
+    public val liveCount: Int get() = synchronized(lock) { live.size }
+
+    internal fun register(query: PyreonQuery<*>, key: String): Unit = synchronized(lock) { live[query] = key }
+
+    /** A registered query changed its key; an unregistered one stays out. */
+    internal fun rekey(query: PyreonQuery<*>, key: String): Unit = synchronized(lock) {
+        if (live.containsKey(query)) live[query] = key
+    }
+
+    internal fun unregister(query: PyreonQuery<*>): Unit = synchronized(lock) { live.remove(query) }
+
+    private fun under(root: String, key: String): Boolean = key == root || key.startsWith("$root:")
+
+    /**
+     * `queryClient.invalidateQueries({ queryKey: [root] })`: every cached entry
+     * under [root] (the key `root`, or one starting with `root:`) is marked
+     * stale — still served, refetched on its next check — and every LIVE query
+     * under it refetches now, on its composable's scope. Call on the main thread.
+     */
+    public fun invalidateQueries(root: String) {
+        val queries = synchronized(lock) {
+            for ((key, entry) in store) if (under(root, key)) entry.invalidated = true
+            live.entries.filter { under(root, it.value) }.map { it.key }
+        }
+        for (query in queries) query.refetch()
+    }
+
+    /**
+     * `queryClient.setQueryData(key, updater)` for an optimistic write: the
+     * cached value under exactly [key] (or, when the cache evicted it, a live
+     * query's data) is passed to [update], and the result is written to the
+     * cache and shown by every live query on that key. A fetch those queries
+     * have in flight is dropped (`cancelQueries`). Returns the rollback, or null
+     * when there was no value of type [T] to update — the web writes the
+     * PARTIAL patch then, which no typed record can hold. Call on the main thread.
+     */
+    public inline fun <reified T> setQueryData(key: String, noinline update: (T) -> T): PyreonQueryRollback? =
+        setQueryDataOf(key, { it is T }, update)
+
+    @PublishedApi
+    @Suppress("UNCHECKED_CAST")
+    internal fun <T> setQueryDataOf(key: String, isT: (Any?) -> Boolean, update: (T) -> T): PyreonQueryRollback? {
+        val (previous, holders) = synchronized(lock) {
+            store[key] to live.entries.filter { it.value == key }.map { it.key as PyreonQuery<T> }
+        }
+        val cached = previous?.value?.takeIf(isT) as T?
+        val base: T = cached ?: holders.map { it.data.value }.firstOrNull { it != null && isT(it) } ?: return null
+        val next = update(base)
+        write(key, next as Any)
+        val restores = holders.filter { it.data.value == null || isT(it.data.value) }.map { query ->
+            val before = query.data.value
+            query.cancelFetch()
+            query.data.value = next
+            val undo: () -> Unit = { query.data.value = before }
+            undo
+        }
+        return PyreonQueryRollback {
+            synchronized(lock) {
+                if (previous != null) store[key] = previous else store.remove(key)
+            }
+            for (restore in restores) restore()
+        }
+    }
+
+    /**
+     * A mutation's request, settled the way the web's `onSuccess` / `onError`
+     * settle the queries: success invalidates every query under [invalidating];
+     * a failure rolls the optimistic write back and invalidates nothing. A
+     * CANCELLED request (its composable left mid-flight) rolls back AND
+     * invalidates — whether the server applied the write is unknown, so the
+     * queries ask it.
+     */
+    public suspend fun <T> settleMutation(
+        invalidating: String,
+        rollback: PyreonQueryRollback? = null,
+        operation: suspend () -> T,
+    ): T {
+        val value = try {
+            operation()
+        } catch (t: Throwable) {
+            rollback?.rollback()
+            if (t is kotlin.coroutines.cancellation.CancellationException) invalidateQueries(invalidating)
+            throw t
+        }
+        invalidateQueries(invalidating)
+        return value
+    }
+}
+
+/** Undo of one optimistic [PyreonQueryCache.setQueryData]: restores the cached
+ *  value and every live query's data as they were. Runs at most once. */
+public class PyreonQueryRollback internal constructor(restore: () -> Unit) {
+    private var restore: (() -> Unit)? = restore
+
+    public fun rollback() {
+        val run = restore
+        restore = null
+        run?.invoke()
     }
 }
 
@@ -106,7 +225,7 @@ public class PyreonQuery<T>(
     /** How long a cached value is served WITHOUT a refetch (millis; default 0
      *  = always revalidate, but serve the stale value instantly). */
     public val staleMillis: Long = 0,
-) {
+) : RememberObserver {
     /** The cache key. A RUNTIME-keyed query (built from a prop/signal) is
      *  constructed keyless and re-pointed via [setKey] from the compiler's
      *  `LaunchedEffect(key)` harness. */
@@ -155,6 +274,7 @@ public class PyreonQuery<T>(
         isPending.value = false
         queryKey = key
         data.value = PyreonQueryCache.lookup<T>(key)?.first
+        PyreonQueryCache.rekey(this, key)
     }
 
     /** No cached value, or the cached value is older than staleMillis. The
@@ -198,6 +318,8 @@ public class PyreonQuery<T>(
     public suspend fun run(launch: (suspend () -> Unit) -> Unit, fetcher: suspend () -> T) {
         this.fetcher = fetcher
         this.launcher = launch
+        // Holding a request makes it LIVE: an invalidation of its key refetches it.
+        PyreonQueryCache.register(this, queryKey)
         if (!isStale) return
         fetch(fetcher)
     }
@@ -213,6 +335,29 @@ public class PyreonQuery<T>(
         val launch = launcher ?: return
         launch { fetch(request) }
     }
+
+    /** `cancelQueries`: a fetch in flight settles nothing (its response would
+     *  overwrite an optimistic value), and the in-flight flags clear. */
+    internal fun cancelFetch() {
+        generation += 1
+        isFetching.value = false
+        isPending.value = false
+    }
+
+    /** Leave the live registry and drop the request (and the launcher, which
+     *  holds the composable's scope). Compose calls this when the composable
+     *  that remembered the query leaves; idempotent. */
+    public fun dispose() {
+        PyreonQueryCache.unregister(this)
+        fetcher = null
+        launcher = null
+    }
+
+    override fun onRemembered() {}
+
+    override fun onForgotten(): Unit = dispose()
+
+    override fun onAbandoned(): Unit = dispose()
 
     private suspend fun fetch(request: suspend () -> T) {
         generation += 1
