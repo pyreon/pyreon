@@ -20,6 +20,7 @@
  */
 import { execSync } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { baselineTotalError, parseBaseline } from './baseline-total'
 
 export const BASELINE_PATH = 'lint-baseline.json'
 
@@ -46,6 +47,7 @@ export function countWarnFindings(parsed: unknown): Record<string, number> {
     const code = String(d.code ?? 'unknown')
     counts[code] = (counts[code] ?? 0) + 1
   }
+
   return counts
 }
 
@@ -73,6 +75,7 @@ export function compareToBaseline(
   }
   regressions.sort((a, b) => b.current - b.baseline - (a.current - a.baseline))
   improvements.sort((a, b) => b.baseline - b.current - (a.baseline - a.current))
+
   return { regressions, improvements, newRules }
 }
 
@@ -103,6 +106,7 @@ function runOxlintJson(): unknown {
     out = String((e as { stdout?: string }).stdout ?? '')
   }
   if (!out.trim()) throw new Error('[lint-ratchet] oxlint produced no JSON output')
+
   return JSON.parse(out)
 }
 
@@ -120,6 +124,7 @@ function main(): void {
     console.log(
       `[lint-ratchet] baseline updated: ${total} warn finding(s) across ${Object.keys(current).length} rule(s)`,
     )
+
     return
   }
 
@@ -129,7 +134,12 @@ function main(): void {
     )
     process.exit(1)
   }
-  const baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) as LintBaseline
+  const baseline = parseBaseline<LintBaseline>(BASELINE_PATH, readFileSync(BASELINE_PATH, 'utf8'), 'bun scripts/check-lint-ratchet.ts --update')
+  const inconsistent = baselineTotalError(BASELINE_PATH, baseline.total, baseline.rules, 'bun scripts/check-lint-ratchet.ts --update')
+  if (inconsistent) {
+    console.error(inconsistent)
+    process.exit(1)
+  }
   const { regressions, improvements } = compareToBaseline(current, baseline.rules)
 
   if (jsonMode) {

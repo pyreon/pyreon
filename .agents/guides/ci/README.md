@@ -54,7 +54,7 @@ Read before adding or changing a workflow, job, required check, or cache key.
 
 - Lib-free vs lib-needing: typecheck, lint and vitest resolve `@pyreon/*` to `src` through the `bun` condition and do not need `lib/`. Exceptions are tests that assert on `lib/` bytes or boot a nested Vite SSR build. A new lib-needing gate goes in `Build`; a lib-free one in `Fast Gates`.
 - The local pre-push hook runs only the changed packages' tests, under a time cap (see `.agents/rules/workflow.md`, "Pre-push hook"), so these cells are the ONLY place the reverse-dependency closure is tested before merge. Anything the hook drops must stay covered here or in a required native job.
-- `scripts/affected.ts` computes the per-PR package filter. Root configuration, `.github/workflows/ci.yml` and shared-action changes escalate to `--filter=*`. Any OTHER workflow file is a leaf seed for `@pyreon/test-utils` (its tests lint the workflows), so editing `native-device.yml` no longer reruns every package; it still keeps `affected` non-empty, which the E2E aggregator's decide-says-run invariant depends on. E2E and scaffold selectors also cover shared actions.
+- `scripts/affected.ts` computes the per-PR package filter. Root configuration, `.github/workflows/ci.yml` and shared-action changes escalate to `--filter=*`. **A changed file never selects zero cells unless it is prose** (Markdown, `.agents/**`, `.changeset/**`, `llms*.txt`, `LICENSE`, `.gitignore`): a repository-level file that no workspace owns (a ratchet baseline at the root, a lint config, a hook, an editor's MCP config, `perf-results/**`) selects `@pyreon/test-utils` as a leaf when one of its tests names the file, or names a script that names it or its top-level directory (`scripts/repo-file-readers.ts`, the same scan the pre-push hook targets tests with); when nobody names it, it selects `--filter=*`. Before 2026-11-17 such a file selected nothing: #4520 changed `readable-oxlint-baseline.json`, every `test (…)` cell was skipped, `Test` passed, and the test that reads the file first ran on the default branch. Any OTHER workflow file is a leaf seed for `@pyreon/test-utils` (its tests lint the workflows), so editing `native-device.yml` no longer reruns every package; it still keeps `affected` non-empty, which the E2E aggregator's decide-says-run invariant depends on. E2E and scaffold selectors also cover shared actions.
 - `scripts/ci-batch.ts` uses separate `typecheck`, `test`, `e2e`, and `scaffold` profiles. A suite name is not a global cost: `core` E2E and core package tests are different workloads. The profile records measurement provenance. Unknown members still run with a default weight. Small selected workloads use fewer runners; caps remain 3 typecheck, 3 test, 4 E2E, and 3 scaffold batches. The seven build-only scaffold cells fit on one runner (~49s of measured work after removing repeated root bootstrap); the four `cpa-smoke-app-<x>-compat` cells also run the compat runtime suite (`e2e/cpa-app-compat.spec.ts`) in Chromium against the fresh scaffold's dev server, and the batch that carries one installs Chromium. The cap leaves room for growth.
 - `Test` validates `toJSON(needs)` after its dependencies finish. Install and Fast Gates must succeed; each selected matrix must succeed; only explicitly unselected matrices may skip. Missing, malformed, or contradictory selection outputs fail. Healthy runs make no jobs-API calls. Failed runs request job links once, with a ten-second total deadline; unavailable or stale API data cannot change the failed verdict.
 - `scripts/check-ci-fail-fast.ts` statically prevents an expensive job from
@@ -100,6 +100,65 @@ Read before adding or changing a workflow, job, required check, or cache key.
 - `leak-sweep.yml` (advisory) — least-squares heap slope over the perf-dashboard journeys, dev mode only (counters tree-shake in production). Locally: `bun run perf:leak-sweep`.
 - `docs-freshness-guard.yml` (push to main, not a PR check) — reruns `gen-docs` + `docs/scripts/gen-all.ts`. Drift from two concurrent merges reds the offending commit and opens or updates an `auto/docs-regen` fix PR (with a changeset when mcp `api-reference.ts` drifted; automerge when `RELEASE_PAT` is set).
 - `published-state.yml` — daily repo-vs-npm check.
+
+## What keeps the default branch green
+
+Protection is non-strict and there is no merge queue, so a pull request is tested against the base it was pushed on, not against the default branch it merges into. Each breakage of 2026-11-10 → 11-17 was green on its own pull request. Where the gate now sits:
+
+| Class | What happened | Caught on the pull request by | Still only caught after merge |
+| --- | --- | --- | --- |
+| a. Summed size growth | Several PRs each under budget; the sum crossed a ceiling | By design nothing: a PR is judged on its own bytes (`PYREON_SIZE_MODE=pr`, #4490) | The sum, on `main` (`size-ceiling-status.yml` issue). Does not block unrelated PRs |
+| b. Coverage under a floor | #4422 and #4481 lowered five packages; `Coverage (Full)` red on 14 consecutive pushes | `Coverage (changed packages)` in `Build` now counts measured packages (not examples or docs) and measures up to 30. Both PRs had 25 and were skipped by the old 15-workspace count | A PR with more than 30 directly changed packages (it prints a warning and a job summary naming them); `@pyreon/native-compiler` (measured by `Coverage (Native)` on `main`); a test that fails only under the four-package pool |
+| c. A ratchet baseline measured before other PRs landed (#4479) | The baseline and the code it measures arrived in different PRs | Nothing can: it is a property of two PRs together | Always. The next PR's `Fast Gates` goes red, and `[main] CI is red` opens |
+| d. A git-merged generated baseline (#4520) | `total` 3403 beside entries summing to 3405 | Each ratchet script checks its own baseline first (`scripts/baseline-total.ts`): `total` equals the sum, and the per-file baselines are byte-identical to the generator's output. They run in `Fast Gates`. And `affected.ts` now selects `@pyreon/test-utils` for the file | — |
+| e. A test merged while the contract test forbidding its shape was in another open PR | Two PRs, each green alone | Only if the second PR's CI runs after the first merged (its merge ref then contains both) | When the second PR was already green: it merges without re-running |
+| f. A test that times out only under `Coverage (Full)` load | charts M4 fuzz, 60 s | `Coverage (changed packages)` runs the same instrumented suite, but alone, so load-only timeouts pass there | The four-package pool on `main`. `check-coverage.ts` prints `slow under coverage:` for any test of 5 s or more |
+
+Classes c and e, and the residue of a and b, are closed only by testing the merge RESULT before it lands. Until then the backstop is `main-red-status.yml` ("Red default branch alarm"): one run, not days.
+
+### What runs on the default branch but not on a pull request
+
+| Job | On a pull request | What a PR can break that only `main` shows |
+| --- | --- | --- |
+| `typecheck (…)` / `test (…)` cells (`ci.yml`) | The reverse-dependency closure of the changed workspaces (`affected.ts`, diffed against the event's base SHA on the merge ref) | A test whose input is the whole repository but whose package is not in the closure: `@pyreon/loom` `strip-equivalence.test.ts` reads every source file, `@pyreon/mcp` scans the repo. A root data file is no longer in this row (see `affected.ts` above) |
+| `e2e (…)` | Suites `e2e-affected.ts` selects | A suite that exercises a package through a path the selector does not model |
+| `Build`: size steps | The PR's own growth | The sum of several PRs (class a) |
+| `Build`: `Coverage (changed packages)` | Directly changed packages, no dependents, at most 30, without `@pyreon/native-compiler`; skipped on a null diff | Class b residue. Dependents are excluded on purpose: a package's coverage depends on its own sources and tests |
+| `Release Build`: advisory audit | Advisories the PR introduces | An advisory published against a dependency already on `main` (strict there by design) |
+| `Coverage (Full)`, `Coverage (Native)` (`ci-main.yml`) | Only when the PR touches the coverage infrastructure (paths in the workflow) | Every package together in the four-way pool (class f); native-compiler coverage |
+| `Validate emitted Swift + Kotlin` (`native-validate.yml`) | When the native classifier or the dependency graph selects it | A change the selectors judge non-native. `main` always runs it; the nightly runs it uncached |
+| `Validate emitted Swift (real-SDK typecheck, macOS)` | The macOS-specific test files only | The rest of the suite on macOS: nightly and manual runs only |
+| `iOS — xcodebuild`, `Android — gradlew` (`native-device.yml`) | Apps whose inputs fingerprint moved | There is NO push run: after merge the next proof is the nightly. Two green PRs that break a device app together are found up to a day later |
+| `Docs Freshness Guard` | `Docs Sync` and `Docs Generated Fresh` check the PR's own generator output | Two PRs that both change generator inputs; it opens the `auto/docs-regen` PR |
+| `Deploy Docs` deploy step | Build only, for the listed paths | A deploy failure |
+| `Dependency Audit`, `Scorecard`, `Cancel CI on conflict`, `Release` | Do not run | Their own failures; `Release` is the publish chain |
+| Scheduled only: `Leak Sweep`, `Perf`, `Audit Leak Classes`, `Published State`, `Zero Freshness`, the uncached native nightly | Do not run | Whatever they measure. `check-leak-ratchet` covers the static half of the leak audit in `Fast Gates` |
+
+All of these are watched by the alarm (`main-red-status.yml`).
+
+### Testing the merge result: the two options, measured
+
+Measured 2026-11-10 → 11-17: 9 to 52 merges a day (41, 52, 13, 13, 9); a successful PR run of `ci.yml` is 6 to 18 jobs that execute, 16 to 93 runner-minutes, and 12 to 79 minutes of wall clock with the slowest job waiting 0 to 47 minutes for a runner (ten runs sampled on 2026-11-17, 24 runs queued at the time). Runners: 20 concurrent Linux jobs, about 3 macOS; the iOS job is 65 to 80 minutes.
+
+| | Strict protection (PR must be up to date) | Merge queue (with light PR CI) |
+| --- | --- | --- |
+| What it tests | Each PR against the exact base it merges into | Each group of up to 5 PRs against the base plus the group |
+| Cost per merge | Every merge makes every other open PR stale. Each needs an update push: a full PR run (about 30 jobs, 16 to 93 runner-minutes, plus the native lanes when selected) | One full `ci.yml` run per GROUP (65 to 85 runner-minutes over about 20 jobs), shared by up to 5 PRs; the macOS and device lanes are skipped in the queue |
+| Throughput | Serial: one merge per PR run. At the measured 12 to 79 minutes that is 18 to 120 merges a day with nothing else queued, and a native PR adds 65 to 80 minutes per merge (18 to 22 a day). The 41 and 52 merge days do not fit | 3 groups at once, 5 PRs each, 10 to 24 minutes on idle runners and 64 under load: several hundred merges a day in principle |
+| Known failure here | Not tried. With N green PRs waiting, N−1 of them re-run for each merge: about N²/2 runs to land N | Tried 2026-11-11 without light PR CI: about 120 queued runs, a group waited in the same line, no PR merged in 4 hours |
+| Does not cover | Nothing the PR run covers is lost | macOS typecheck, iOS and Android (skipped in a group); `Coverage (Full)` |
+
+Recommendation: do not turn on strict protection (the 41 and 52 merge days cannot be served serially, and it multiplies exactly the macOS load that is scarcest). Retry the merge queue only together with light PR CI, which exists for this and takes a PR from about 30 jobs to about 8, on a day with fewer than about 40 queued runs, with the canary under "Merge queue" below. Both are the maintainer's switches; nothing here changes them.
+
+```bash
+# Strict protection ON (both authorities must agree):
+gh api repos/pyreon/pyreon/rulesets/19416270 > rs.json
+jq '{name, target, enforcement, conditions, bypass_actors, rules: [.rules[] | if .type == "required_status_checks" then .parameters.strict_required_status_checks_policy = true else . end]}' rs.json > rs-strict.json
+gh api -X PUT repos/pyreon/pyreon/rulesets/19416270 --input rs-strict.json
+gh api -X PATCH repos/pyreon/pyreon/branches/main/protection/required_status_checks -F strict=true
+# Roll back: the same two calls with `= false` and `-F strict=false`.
+# Merge queue and light PR CI: "Enable", "Flip" and "Roll back" under "Merge queue" below.
+```
 
 ## Required checks
 
