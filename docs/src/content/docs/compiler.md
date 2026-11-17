@@ -164,7 +164,16 @@ Both DOM elements (lowercase tags like `div`, `span`) and component elements (up
 <Button onClick={() => doThing()} />     // unchanged — already a function (and `on*` is never wrapped, see below)
 ```
 
-This distinction is made by checking the first character of the tag name. Uppercase tags are treated as components; lowercase tags as DOM elements.
+One rule decides which kind a tag is, for every form of tag:
+
+| Tag | Kind |
+| --- | --- |
+| `<div>`, `<my-el>` — identifier starting with an ASCII lowercase letter | DOM element |
+| `<MyComp>`, `<_Comp>`, `<$Comp>` — any other identifier | component |
+| `<m.Chart>`, `<UI.Button>`, `<Ctx.Provider>`, `<motion.div>`, `<this.Item>` — member tag | component |
+| `<svg:a>` — namespaced tag | DOM element |
+
+It is the rule TypeScript, esbuild and oxc use to choose a string tag over a value. A member tag is a component even when it starts lowercase (`<motion.div>` names a value), so `<m.Chart data={props.data} />` compiles exactly like `const Chart = m.Chart; <Chart data={props.data} />`: `_pp`/`_rp`/`_rpd` props, `_wrapSpread` spreads, accessor children and `_lc` for a sole template child.
 
 Children in expression containers on components are still wrapped, since the runtime processes them as DOM content:
 
