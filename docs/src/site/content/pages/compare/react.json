@@ -143,7 +143,7 @@
     "pyreon": {
       "label": "Pyreon",
       "file": "Search.tsx",
-      "code": "import { For } from '@pyreon/core'\nimport { computed, signal } from '@pyreon/reactivity'\n\ntype Item = { id: number; name: string }\n\nexport function Search(props: { items: Item[] }) {\n  const query = signal('')\n  const visible = computed(() =>\n    props.items.filter((i) => i.name.toLowerCase().includes(query().toLowerCase())),\n  )\n\n  return (\n    <div>\n      <input value={query()} onInput={(e) => query.set(e.currentTarget.value)} />\n      <p>{visible().length} matches</p>\n      <ul>\n        <For each={visible} by={(i) => i.id}>\n          {(i) => <li>{i.name}</li>}\n        </For>\n      </ul>\n    </div>\n  )\n}"
+      "code": "import { For } from '@pyreon/core'\nimport { computed, signal } from '@pyreon/reactivity'\n\ntype Item = { id: number; name: string }\n\nexport function Search(props: { items: Item[] }) {\n  const query = signal('')\n  const visible = computed(() =>\n    props.items.filter((i) => i.name.toLowerCase().includes(query().toLowerCase())),\n  )\n\n  return (\n    <div>\n      <input value={query()} onInput={(e) => query.set(e.currentTarget.value)} />\n      <p>{visible().length} matches</p>\n      <ul>\n        <For each={visible()} by={(i) => i.id}>\n          {(i) => <li>{i.name}</li>}\n        </For>\n      </ul>\n    </div>\n  )\n}"
     },
     "checked": "React side: typechecked with `@types/react` 19.3 under `tsc --strict`. Pyreon side: typechecked against the repo's `tsconfig` (0 errors), compiled with the real JSX compiler (`transformJSX`) and mounted in happy-dom; typing into the input filters the list."
   },

@@ -73,7 +73,7 @@
 <rect class="ring f1" x="20" y="48" width="428" height="188" rx="17" opacity="0"/>
 <text class="m ln2" x="40" y="106">8</text><text class="m code" x="70" y="106" font-size="14">&lt;div&gt;</text>
 <text class="m ln2" x="40" y="134">9</text><text class="m code" x="70" y="134" font-size="13">&lt;button onClick={() =&gt; <tspan class="bad">count(count() + 1)</tspan>}&gt;</text>
-<text class="m ln2" x="40" y="162">10</text><text class="m code" x="70" y="162" font-size="13">&lt;<tspan class="ty">For</tspan> each={items} <tspan class="bad">key={(i) =&gt; i.id}</tspan>&gt;</text>
+<text class="m ln2" x="40" y="162">10</text><text class="m code" x="70" y="162" font-size="13">&lt;<tspan class="ty">For</tspan> each={items()} <tspan class="bad">key={(i) =&gt; i.id}</tspan>&gt;</text>
 <text class="m hint" x="40" y="212">renders once, then never updates</text>
 <rect class="bx" x="516" y="52" width="420" height="180" rx="14"/>
 <text class="m hint" x="532" y="78"><tspan style="fill:var(--px-accent-text)">2</tspan>  MCP validate</text>

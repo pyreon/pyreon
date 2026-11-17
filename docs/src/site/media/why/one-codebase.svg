@@ -57,7 +57,7 @@
 <rect class="bx" x="24" y="150" width="210" height="200" rx="14"/>
 <text class="m hint" x="40" y="176">src/App.tsx</text>
 <text class="m code" x="40" y="210" font-size="14">&lt;<tspan class="ty">Stack</tspan> gap=<tspan class="str">"md"</tspan>&gt;</text>
-<text class="m code" x="56" y="236" font-size="14">&lt;<tspan class="ty">Text</tspan>&gt;{count}…</text>
+<text class="m code" x="56" y="236" font-size="14">&lt;<tspan class="ty">Text</tspan>&gt;{count()}…</text>
 <text class="m code" x="56" y="262" font-size="14">&lt;<tspan class="ty">Button</tspan></text>
 <text class="m code" x="72" y="288" font-size="14">onPress={…}&gt;</text>
 <text class="m code" x="40" y="314" font-size="14">&lt;/<tspan class="ty">Stack</tspan>&gt;</text>
