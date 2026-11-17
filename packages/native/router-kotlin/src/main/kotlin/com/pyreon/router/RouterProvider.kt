@@ -48,18 +48,23 @@ public val LocalPyreonRouter: androidx.compose.runtime.ProvidableCompositionLoca
  * }
  * ```
  *
- * Phase C2 (this PR) DOES NOT wrap an AndroidX `NavHost` — the
- * router exposes its path state directly. Apps that want full
- * NavHost integration (back-handler, animations, type-safe routes)
- * wrap RouterProvider's content with their own NavHost reading
- * from `router.path.value`. Phase C3+ may add a Compose-Navigation
- * adapter when real apps need it.
+ * It does not wrap an AndroidX `NavHost` — the router exposes its
+ * path state directly — but it does own the system Back: Back pops
+ * the router's stack while there is one, and is left to the system
+ * at the root.
  */
 @Composable
 public fun RouterProvider(
     router: PyreonRouter,
     content: @Composable () -> Unit,
 ) {
+    // The system Back pops the router's stack, as the iOS navigation bar's back button does. Without it, Back on any
+    // pushed page left the app (the activity's default), so a user could never step back through a Pyreon app on
+    // Android. At the root it stays disabled and the system handles Back. A tab-bar router's stacks are popped by
+    // each tab's own handler (RouterTabContent), so this one stays out of it.
+    BackHandler(enabled = router.tabs.isEmpty() && router.path.value.isNotEmpty()) {
+        router.back()
+    }
     CompositionLocalProvider(LocalPyreonRouter provides router) {
         content()
     }

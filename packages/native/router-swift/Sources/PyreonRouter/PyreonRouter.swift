@@ -193,6 +193,27 @@ public final class PyreonRouter {
         name == activeTab ? path : (tabPaths[name] ?? [])
     }
 
+    /// The `NavigationStack(path:)` binding of a single-stack router.
+    /// SwiftUI writes through it on the back button and the swipe-back
+    /// gesture, so a pop re-resolves `params` and `query` exactly as
+    /// `back()` does. Bound to `path` directly, a system pop left both
+    /// describing the page that was popped: a `useUrlState` value read
+    /// the popped page's query (or none) instead of its own.
+    public var pathBinding: Binding<[String]> {
+        Binding(
+            get: { [weak self] in self?.path ?? [] },
+            set: { [weak self] next in
+                guard let self, next != self.path else { return }
+                if next.count < self.path.count, Array(self.path.prefix(next.count)) == next {
+                    // A pop: keep the popped entries for `forward()`, as `back()` does.
+                    self._forwardStack.append(contentsOf: self.path.suffix(from: next.count).reversed())
+                }
+                self.path = next
+                self.updateParamsFromPath(self.currentPath)
+            }
+        )
+    }
+
     /// The `NavigationStack(path:)` binding for one tab. SwiftUI writes through
     /// it on the back button and the swipe-back gesture; a write to the active
     /// tab re-resolves `params` like `back()` does.

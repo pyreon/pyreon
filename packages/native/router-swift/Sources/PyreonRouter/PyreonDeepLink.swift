@@ -130,7 +130,10 @@ public enum PyreonDeepLink {
 
     /// The route path a URL denotes.
     static func normalizedPath(from url: URL) -> String {
-        pathFor(scheme: url.scheme, host: url.host, path: url.path)
+        pathFor(
+            scheme: url.scheme, host: url.host, path: url.path,
+            query: URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedQuery
+        )
     }
 
     /// The rule, on plain strings so it is testable without constructing a `URL`.
@@ -143,9 +146,11 @@ public enum PyreonDeepLink {
     ///   position; that identifies the app, not the destination, so only the path
     ///   is used → `/users/42`.
     ///
-    /// Query and fragment are dropped (the router owns its own search params), and
-    /// a URL that yields nothing routes to `/` rather than being dropped.
-    static func pathFor(scheme: String?, host: String?, path: String?) -> String {
+    /// The query travels with the path, still percent-encoded: the router parses
+    /// `?…` into its search params, which is what `useUrlState` reads, so
+    /// `myapp://search?q=cat` opens the page with `q` set, as the web link does.
+    /// The fragment is dropped, and a URL that yields nothing routes to `/`.
+    static func pathFor(scheme: String?, host: String?, path: String?, query: String? = nil) -> String {
         let lowered = scheme?.lowercased()
         let isWeb = lowered == "http" || lowered == "https"
         let head = (!isWeb && !(host ?? "").isEmpty) ? "/\(host!)" : ""
@@ -157,6 +162,8 @@ public enum PyreonDeepLink {
             tail = raw.hasPrefix("/") ? raw : "/\(raw)"
         }
         let full = head + tail
-        return full.isEmpty ? "/" : full
+        let route = full.isEmpty ? "/" : full
+        guard let query, !query.isEmpty else { return route }
+        return "\(route)?\(query)"
     }
 }

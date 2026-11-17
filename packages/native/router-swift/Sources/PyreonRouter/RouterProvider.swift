@@ -60,9 +60,11 @@ public struct RouterProvider<Content: View>: View {
     }
 
     public var body: some View {
-        // NavigationStack(path:) binds the router's path stack directly.
-        // SwiftUI handles back-swipe gestures, animation, and stack-state
-        // preservation automatically — Pyreon doesn't reimplement any of it.
+        // NavigationStack(path:) binds the router's path stack through
+        // `pathBinding`, so a system pop (back button, swipe) re-resolves
+        // params and query like `back()`. SwiftUI handles the gestures,
+        // animation, and stack-state preservation — Pyreon doesn't
+        // reimplement any of it.
         //
         // The environment is applied to the NavigationStack ITSELF — not
         // to `content()`. Pushed `navigationDestination` views are
@@ -81,7 +83,7 @@ public struct RouterProvider<Content: View>: View {
         // would wrap the `TabView`, so a push from inside a tab would cover the
         // tab bar — and SwiftUI does not support a stack nested in a stack.
         if router.tabs.isEmpty {
-            NavigationStack(path: $router.path) {
+            NavigationStack(path: router.pathBinding) {
                 content()
             }
             .environment(\.pyreonRouter, router)

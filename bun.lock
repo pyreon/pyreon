@@ -953,6 +953,7 @@
         "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
         "@pyreon/styler": "workspace:*",
+        "@pyreon/url-state": "workspace:*",
         "@pyreon/validate": "workspace:*",
       },
       "devDependencies": {

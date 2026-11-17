@@ -1338,6 +1338,26 @@ final class PyreonDeepLinkPathTests: XCTestCase {
         XCTAssertEqual(PyreonDeepLink.pathFor(scheme: "https", host: "example.com", path: "/"), "/")
     }
 
+    // A system pop (back button, swipe) writes through the stack binding. Bound to `path`
+    // directly, it left `query` and `params` describing the page that was popped.
+    func testASystemPopThroughTheStackBindingReResolvesQueryAndParams() throws {
+        let router = PyreonRouter()
+        router.push("/search?q=cats")
+        router.push("/about")
+        XCTAssertEqual(router.query, [:])
+        router.pathBinding.wrappedValue = ["/search?q=cats"]
+        XCTAssertEqual(router.currentPath, "/search?q=cats")
+        XCTAssertEqual(router.query, ["q": "cats"])
+        XCTAssertTrue(router.canGoForward, "a pop keeps the popped entry for forward(), as back() does")
+    }
+
+    // The query used to be dropped, so a link could never set a useUrlState value.
+    func testTheQueryTravelsWithThePathStillEncoded() throws {
+        XCTAssertEqual(PyreonDeepLink.pathFor(scheme: "myapp", host: "search", path: "", query: "q=a%20b&page=2"), "/search?q=a%20b&page=2")
+        XCTAssertEqual(PyreonDeepLink.pathFor(scheme: "https", host: "example.com", path: "", query: "q=cat"), "/?q=cat")
+        XCTAssertEqual(PyreonDeepLink.pathFor(scheme: "myapp", host: "search", path: "", query: ""), "/search")
+    }
+
     func testAnUrlThatYieldsNothingRoutesHome() throws {
         XCTAssertEqual(PyreonDeepLink.pathFor(scheme: nil, host: nil, path: nil), "/")
         XCTAssertEqual(PyreonDeepLink.pathFor(scheme: "myapp", host: "", path: ""), "/")
@@ -1349,7 +1369,8 @@ final class PyreonDeepLinkPathTests: XCTestCase {
             ("myapp://about", "/about"),
             ("myapp://about/", "/about"),
             ("myapp:///item/42", "/item/42"),
-            ("myapp://item/42?ref=email#top", "/item/42"),
+            ("myapp://item/42?ref=email#top", "/item/42?ref=email"),
+            ("myapp://search?q=a%20b", "/search?q=a%20b"),
             ("https://example.com/users/42", "/users/42"),
             ("https://example.com", "/"),
             ("https://example.com/", "/"),

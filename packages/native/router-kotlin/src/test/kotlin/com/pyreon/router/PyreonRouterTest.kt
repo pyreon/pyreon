@@ -1054,6 +1054,13 @@ fun main() {
         expectEq(PyreonDeepLink.pathFor("https", "example.com", "/"), "/", "domain + slash is home")
     }
 
+    // The query used to be dropped, so a link could never set a useUrlState value.
+    runTest("deep link: the query travels with the path, still encoded") {
+        expectEq(PyreonDeepLink.pathFor("myapp", "search", "", "q=a%20b&page=2"), "/search?q=a%20b&page=2", "custom scheme")
+        expectEq(PyreonDeepLink.pathFor("https", "example.com", "", "q=cat"), "/?q=cat", "web link to home")
+        expectEq(PyreonDeepLink.pathFor("myapp", "search", "", ""), "/search", "empty query adds nothing")
+    }
+
     runTest("deep link: a URI that yields nothing routes home instead of being dropped") {
         expectEq(PyreonDeepLink.pathFor(null, null, null), "/", "all null")
         expectEq(PyreonDeepLink.pathFor("myapp", "", ""), "/", "empty host and path")

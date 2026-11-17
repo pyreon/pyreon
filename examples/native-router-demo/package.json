@@ -2,7 +2,7 @@
   "name": "@pyreon/example-native-router-demo",
   "version": "0.0.0",
   "private": true,
-  "description": "PRIVATE / EXPERIMENTAL — router, tabs, websocket and audio: one source (src/RouterApp.tsx) built for the web (index.html + vite), iOS (ios/) and Android (android/) from this one directory, the layout create-multiplatform scaffolds. Device-gated in native-device.yml; the web build is e2e-tested.",
+  "description": "PRIVATE / EXPERIMENTAL \u2014 router, tabs, websocket and audio: one source (src/RouterApp.tsx) built for the web (index.html + vite), iOS (ios/) and Android (android/) from this one directory, the layout create-multiplatform scaffolds. Device-gated in native-device.yml; the web build is e2e-tested.",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -29,6 +29,7 @@
     "@pyreon/router": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/styler": "workspace:*",
+    "@pyreon/url-state": "workspace:*",
     "@pyreon/validate": "workspace:*"
   },
   "devDependencies": {

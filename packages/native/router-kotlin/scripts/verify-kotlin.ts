@@ -170,6 +170,7 @@ class Uri {
   val scheme: String? = null
   val path: String? = null
   val host: String? = null
+  val encodedQuery: String? = null
 }
 `
 

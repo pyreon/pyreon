@@ -104,7 +104,7 @@ public object PyreonDeepLink {
     }
 
     /** The route path a URI denotes (see [pathFor]). */
-    internal fun normalizedPath(uri: Uri): String = pathFor(uri.scheme, uri.host, uri.path)
+    internal fun normalizedPath(uri: Uri): String = pathFor(uri.scheme, uri.host, uri.path, uri.encodedQuery)
 
     /**
      * The rule, on plain strings so it is testable without constructing a `Uri`.
@@ -118,7 +118,7 @@ public object PyreonDeepLink {
      * Query and fragment are dropped (the router owns its own search params), and a URI that yields
      * nothing routes to `/` rather than being dropped.
      */
-    internal fun pathFor(scheme: String?, host: String?, path: String?): String {
+    internal fun pathFor(scheme: String?, host: String?, path: String?, query: String? = null): String {
         val isWeb = scheme.equals("http", ignoreCase = true) || scheme.equals("https", ignoreCase = true)
         val head = if (!isWeb && !host.isNullOrEmpty()) "/$host" else ""
         val tail = when {
@@ -127,6 +127,9 @@ public object PyreonDeepLink {
             else -> "/$path"
         }
         val full = head + tail
-        return if (full.isEmpty()) "/" else full
+        val route = if (full.isEmpty()) "/" else full
+        // The query travels with the path, still percent-encoded: the router parses `?…` into its search params, which
+        // is what `useUrlState` reads, so `myapp://search?q=cat` opens the page with `q` set, as the web link does.
+        return if (query.isNullOrEmpty()) route else "$route?$query"
     }
 }
