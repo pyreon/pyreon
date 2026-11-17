@@ -30,9 +30,10 @@
  * unreadable manifest, an empty file list, a deleted package.json.
  */
 
-import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, join, normalize, relative } from 'node:path'
+import { listNativeHosts } from './native-example-hosts'
 import { deriveNativePluginSurface } from './native-plugin-surface'
 import { lockClosure, nativeWorkspaces, parseLockfile } from './native-inputs-fingerprint'
 import { laneChanged } from './native-workflow-surface'
@@ -390,7 +391,8 @@ export function decideDevice(
 // Fail-closed: a native-surface file claimed by NO app on either platform (the
 // compiler, the CLI, bun.lock, the workflow, a gate script, a manifest) runs
 // EVERY app on BOTH platforms. The single exception is a native example that
-// no lane builds (native-viz, a *-web sibling): no lane can observe it.
+// no lane builds (a *-web sibling, a single-layout app's web entry files):
+// no lane can observe it.
 
 export type Platform = 'ios' | 'android'
 export interface AppSurface {
@@ -411,12 +413,18 @@ function asRoot(p: string): string {
 /** Derive every device-lane app's surface from the files on disk. */
 export function deriveAppSurfaces(repoRoot: string): AppSurface[] {
   const out: AppSurface[] = []
-  for (const name of readdirSync(join(repoRoot, 'examples')).sort()) {
-    const dir = 'examples/' + name
-    const m = APP_DIR.exec(dir)
-    if (!m) continue
-    const platform = m[2] as Platform
+  for (const host of listNativeHosts(repoRoot)) {
+    const { dir, platform } = host
     const roots = new Set<string>([asRoot(dir)])
+    if (host.layout === 'single') {
+      // One package per app (`examples/native-<app>/{ios,android}`): this
+      // platform's host, the shared source, its own emit script and the
+      // package manifest. The other platform's host and the web entry files
+      // are not this lane's input.
+      roots.add(asRoot(host.appRoot + '/src'))
+      roots.add(host.buildScript)
+      roots.add(host.appRoot + '/package.json')
+    }
     const refsIn = (file: string, pattern: RegExp): void => {
       const abs = join(repoRoot, file)
       if (!existsSync(abs)) return
@@ -431,7 +439,7 @@ export function deriveAppSurfaces(repoRoot: string): AppSurface[] {
     // build script's PROJECT_DIR is the app dir, so resolve against it, and
     // claim the sibling example as a whole (its package.json, fixtures, …).
     const build = join(repoRoot, dir, 'scripts/build.sh')
-    if (existsSync(build)) {
+    if (host.layout === 'split' && existsSync(build)) {
       const src = /SRC_DIR=.*\$\{PROJECT_DIR\}\/([^"\s)]+)/.exec(readFileSync(build, 'utf8'))
       if (src) {
         const target = relative(repoRoot, join(repoRoot, dir, src[1]!))
@@ -453,7 +461,7 @@ export function deriveAppSurfaces(repoRoot: string): AppSurface[] {
       refsIn(dir + '/settings.gradle.kts', /"(\.\.\/[^"]+)"/g)
       refsIn(dir + '/app/build.gradle.kts', /"(\.\.\/[^"]+)"/g)
     }
-    out.push({ platform, app: m[1]!, roots: [...roots].sort() })
+    out.push({ platform, app: host.app, roots: [...roots].sort() })
   }
   return out
 }

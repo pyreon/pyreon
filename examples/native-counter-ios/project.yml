@@ -73,11 +73,11 @@ targets:
       - path: generated
       - path: ../../packages/fundamentals/form/native/swift
       - path: ../../packages/fundamentals/store/native/swift
-      - path: ../../packages/fundamentals/state-tree/native/swift
       - path: ../../packages/fundamentals/machine/native/swift
       - path: ../../packages/fundamentals/i18n/native/swift
-      - path: ../../packages/fundamentals/permissions/native/swift
       - path: ../../packages/fundamentals/query/native/swift
+      - path: ../../packages/fundamentals/http/native/swift
+      - path: ../../packages/core/sized-map/native/swift
       - path: ../../packages/fundamentals/storage/native/swift
       - path: ../../packages/fundamentals/hooks/native/swift
       - path: ../../packages/fundamentals/flow/native/swift

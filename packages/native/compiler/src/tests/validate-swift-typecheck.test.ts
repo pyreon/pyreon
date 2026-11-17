@@ -141,9 +141,11 @@ describe('Swift emit — swiftc -typecheck against stubs (Linux-viable type gate
     // Plus the two marker protocols PyreonStoreProtocol / PyreonModelProtocol
     // (`: AnyObject {}`, mirroring runtime-swift). Bisect-locked below.
     //
-    // COMPLETE (37 of 37, M-gate.1f) — the two LARGE @Observable showcase apps
-    // (showcase-finance · showcase-tasks) now type-check too, so the gate covers
-    // the WHOLE fixture corpus. Closing them needed the service-tier stub surface
+    // COMPLETE (M-gate.1f) — the two LARGE @Observable showcase apps (then
+    // fixture mirrors of native-finance / native-tasks; the real example sources
+    // now type-check in native-examples-compile.test.ts) type-checked too, so the
+    // gate covers the WHOLE fixture corpus. showcase-viz needs the flow plugin
+    // and is compiled in showcase-viz-native.test.ts. Closing them needed the service-tier stub surface
     // (PyreonAuth / PyreonDatabase / PyreonFetch / RouterProvider / matchPath /
     // LazyVStack / Color / Font.custom / .foregroundColor / .task /
     // navigationDestination), all mirrored from runtime-swift + router-swift.
@@ -178,9 +180,6 @@ describe('Swift emit — swiftc -typecheck against stubs (Linux-viable type gate
       'rx-full.tsx',
       'rx-lowering.tsx',
       'showcase-analytics.tsx',
-      'showcase-finance.tsx',
-      'showcase-tasks.tsx',
-      'showcase-viz.tsx',
       'synth-prop-types.tsx',
       'tier2-feature.tsx',
       'tier2-form.tsx',

@@ -738,16 +738,6 @@
         "vitest": "^5.1.0",
       },
     },
-    "examples/native-analytics": {
-      "name": "@pyreon/example-native-analytics",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/native-cli": "workspace:*",
-        "@pyreon/primitives": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-      },
-    },
     "examples/native-counter-android": {
       "name": "@pyreon/example-native-counter-android",
       "version": "0.50.0",
@@ -857,30 +847,6 @@
     "examples/native-showcase": {
       "name": "@pyreon/example-native-showcase",
       "version": "0.0.0",
-      "devDependencies": {
-        "@pyreon/core": "workspace:*",
-        "@pyreon/native-cli": "workspace:*",
-        "@pyreon/primitives": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-      },
-    },
-    "examples/native-showcase-android": {
-      "name": "@pyreon/example-native-showcase-android",
-      "version": "0.0.0",
-      "devDependencies": {
-        "@pyreon/native-cli": "workspace:*",
-      },
-    },
-    "examples/native-showcase-ios": {
-      "name": "@pyreon/example-native-showcase-ios",
-      "version": "0.0.0",
-      "devDependencies": {
-        "@pyreon/native-cli": "workspace:*",
-      },
-    },
-    "examples/native-showcase-web": {
-      "name": "@pyreon/example-native-showcase-web",
-      "version": "0.0.0",
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/primitives": "workspace:*",
@@ -889,6 +855,7 @@
         "@pyreon/runtime-server": "workspace:*",
       },
       "devDependencies": {
+        "@pyreon/native-cli": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "@types/bun": "^1.4.4",
@@ -1046,24 +1013,6 @@
         "@types/bun": "^1.4.4",
         "typescript": "^6.0.3",
         "vite": "^8.3.8",
-      },
-    },
-    "examples/native-viz": {
-      "name": "@pyreon/example-native-viz",
-      "version": "0.0.1",
-      "devDependencies": {
-        "@codemirror/state": "^6.7.6",
-        "@codemirror/view": "^6.43.15",
-        "@pyreon/code": "workspace:*",
-        "@pyreon/core": "workspace:*",
-        "@pyreon/flow": "workspace:*",
-        "@pyreon/native-cli": "workspace:*",
-        "@pyreon/primitives": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/rich-text": "workspace:*",
-        "@tiptap/core": "^3.34.0",
-        "@tiptap/starter-kit": "^3.34.0",
-        "codemirror": "^6.0.2",
       },
     },
     "examples/perf-dashboard": {
@@ -4315,8 +4264,6 @@
 
     "@pyreon/example-lathe-bookshelf": ["@pyreon/example-lathe-bookshelf@workspace:examples/lathe-bookshelf"],
 
-    "@pyreon/example-native-analytics": ["@pyreon/example-native-analytics@workspace:examples/native-analytics"],
-
     "@pyreon/example-native-counter-android": ["@pyreon/example-native-counter-android@workspace:examples/native-counter-android"],
 
     "@pyreon/example-native-counter-ios": ["@pyreon/example-native-counter-ios@workspace:examples/native-counter-ios"],
@@ -4335,12 +4282,6 @@
 
     "@pyreon/example-native-showcase": ["@pyreon/example-native-showcase@workspace:examples/native-showcase"],
 
-    "@pyreon/example-native-showcase-android": ["@pyreon/example-native-showcase-android@workspace:examples/native-showcase-android"],
-
-    "@pyreon/example-native-showcase-ios": ["@pyreon/example-native-showcase-ios@workspace:examples/native-showcase-ios"],
-
-    "@pyreon/example-native-showcase-web": ["@pyreon/example-native-showcase-web@workspace:examples/native-showcase-web"],
-
     "@pyreon/example-native-tasks": ["@pyreon/example-native-tasks@workspace:examples/native-tasks"],
 
     "@pyreon/example-native-tasks-android": ["@pyreon/example-native-tasks-android@workspace:examples/native-tasks-android"],
@@ -4354,8 +4295,6 @@
     "@pyreon/example-native-todomvc-ios": ["@pyreon/example-native-todomvc-ios@workspace:examples/native-todomvc-ios"],
 
     "@pyreon/example-native-todomvc-web": ["@pyreon/example-native-todomvc-web@workspace:examples/native-todomvc-web"],
-
-    "@pyreon/example-native-viz": ["@pyreon/example-native-viz@workspace:examples/native-viz"],
 
     "@pyreon/example-perf-dashboard": ["@pyreon/example-perf-dashboard@workspace:examples/perf-dashboard"],
 

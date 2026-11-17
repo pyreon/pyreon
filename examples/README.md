@@ -41,18 +41,16 @@ Each app is shaped like the source framework and runs on its Pyreon compat layer
 
 ## Multiplatform: one source, web + iOS + Android
 
-One `.tsx` source compiled by PMTC to SwiftUI and Jetpack Compose, plus a web host. `bun create multiplatform` scaffolds the same thing as one directory (`src/`, `ios/`, `android/`, web entry); these apps still split each target into its own host package.
+One `.tsx` source compiled by PMTC to SwiftUI and Jetpack Compose, plus a web host. `bun create multiplatform` scaffolds this as one directory (`src/`, `ios/`, `android/`, web entry); `native-showcase` already uses that layout, the other apps still split each target into its own host package. The analytics and viz apps that were compile-only now live as `packages/native/compiler/src/fixtures/showcase-{analytics,viz}.tsx`.
 
 | App | Source | Hosts | Role |
 | --- | --- | --- | --- |
 | Tasks | [native-tasks](./native-tasks/) | [web](./native-tasks-web/) · [iOS](./native-tasks-ios/) · [Android](./native-tasks-android/) | The multi-feature showcase: store, auth gate, editors, charts. Device-gated in CI |
-| Today | [native-showcase](./native-showcase/) | [web](./native-showcase-web/) · [iOS](./native-showcase-ios/) · [Android](./native-showcase-android/) | The pyreon.dev home-page demo |
+| Today | [native-showcase](./native-showcase/) (`src/`) | web (root) · iOS (`ios/`) · Android (`android/`), one package | The pyreon.dev home-page demo. CI builds both native hosts; its device tests are not run in CI yet |
 | TodoMVC | in the iOS host | [web](./native-todomvc-web/) · [iOS](./native-todomvc-ios/) · [Android](./native-todomvc-android/) | The oldest PMTC device gate |
 | Counter | in the iOS host | [iOS](./native-counter-ios/) · [Android](./native-counter-android/) | Device APIs: geolocation, haptics, share, picker. Device-gated |
 | Router demo | in the iOS host | [web](./native-router-demo-web/) · [iOS](./native-router-demo-ios/) · [Android](./native-router-demo-android/) | Router, tabs, websocket, audio. Device-gated |
 | Finance | [native-finance](./native-finance/) | [iOS](./native-finance-ios/) · [Android](./native-finance-android/) | Real-app device gate: auth, form, store, routing |
-| Analytics | [native-analytics](./native-analytics/) | none (compile-only) | Data table plus a WebView chart |
-| Viz | [native-viz](./native-viz/) | none (compile-only) | flow, CodeMirror and TipTap in WebViews |
 
 ## Test fixtures
 

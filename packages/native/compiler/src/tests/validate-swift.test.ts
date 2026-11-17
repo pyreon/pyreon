@@ -65,39 +65,14 @@ describe.skipIf(skipCondition)('Swift emit — swiftc -parse validates each fixt
     // lowering produces well-formed Swift.
     'rx-lowering.tsx',
     'rx-full.tsx',
-    // Gap 5 showcase (STORE-BACKED — see the fixture header): ONE
-    // defineStore singleton carries the auth flag + task list across
-    // screens; the per-route beforeEnter guard reads it in the
-    // dispatcher; typed route params (`/tasks/:id` → synthesized
-    // `TaskDetailPageParam` + dispatcher construction); .set() list
-    // mutation through the store; Text-wrapped value-expression
-    // children. Mirror of `examples/native-tasks/src/TasksApp.tsx` so
-    // the example's source is locked-in via the same swiftc-parse gate
-    // that protects the canonical primitives. NOTE: swiftc -parse
-    // alone did NOT catch the original scaffold's typecheck-level
-    // breakage — the device-CI xcodebuild gate is the real-runtime
-    // safety net.
-    'showcase-tasks.tsx',
-    // The webview-host archetype. Mirror of `examples/native-viz/src/VizApp.tsx`
-    // — an ECharts option object and a ProseMirror document, the two payload
-    // shapes that had no synthesizable struct and emitted a tuple. The example
-    // did not build on Android at all until `<WebView data>` lowered literals
-    // as JSON and a literal omitting an optional field stopped falling through
-    // to synthesis. The coverage gate previously certified this whole mechanism
-    // on a WARNING COUNT; this compiles it.
-    'showcase-viz.tsx',
-    // The multiplatform analytical-app proof. Mirror of
-    // `examples/native-analytics/src/AnalyticsApp.tsx`: a heavy data
-    // table (canonical primitives + keyed <For>), inline reduce column
-    // totals, String() numeric coercion, and a chart hosted in a native
-    // WebView via the escape-hatch primitives with a const-ref'd HTML
-    // payload. Locks the example's emit through the same swiftc gate.
+    // The multiplatform analytical-app proof (formerly examples/native-analytics, now
+    // only here): a heavy data table (keyed <For>), inline reduce column totals,
+    // String() numeric coercion, Plain Mode state, and a chart hosted in a native
+    // WebView with a const-ref'd HTML payload.
     'showcase-analytics.tsx',
-    // The finance-tracker archetype proof (Phase 5 / #1689): exercises the
-    // new useAuth<User> + useDatabase emit in a real app shape (auth-state
-    // container reads + transitions, reactive store ledger, computed
-    // balance, validated useForm, string-keyed db ops, routing + auth-gate).
-    'showcase-finance.tsx',
+    // examples/native-tasks/src/TasksApp.tsx and examples/native-finance/src/FinanceApp.tsx are not
+    // copied here: native-examples-compile.test.ts compiles the real sources on both targets
+    // (Swift typecheck against stubs, kotlinc). Their hand-kept mirrors had drifted.
     // Dynamic <WebView html={signal-derived}> — reactive-reload bridge slice;
     // locks the dynamic-html emit through the toolchain gate.
     'webview-dynamic.tsx',

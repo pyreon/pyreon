@@ -7924,7 +7924,7 @@ function emitKotlinMessageHandler(handler: ExprIR): string {
  * it and the emit fell back to a tuple. In Kotlin a tuple is named arguments
  * with no constructor, and `encode` is `inline fun <reified T>`, so the build
  * died on `cannot infer type for type parameter 'T'`. That is why
- * `examples/native-viz`, the charts webview example, did not build on Android.
+ * `examples/native-viz` (now the `showcase-viz.tsx` compiler fixture), the charts webview example, did not build on Android.
  *
  * So build the JSON at COMPILE time and interpolate the runtime parts. Anything
  * else (an identifier, a signal read, a call) keeps the plain `encode(expr)`
