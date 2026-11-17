@@ -36,8 +36,8 @@ describe('an integer literal in a Double position', () => {
 
   it('Swift: the same', () => {
     const code = transform(MAP, { target: 'swift' }).code
-    expect(code).toContain('"mon": 4.0')
-    expect(code).toContain('"wed": 2.5')
+    expect(code).toContain('("mon", 4.0)')
+    expect(code).toContain('("wed", 2.5)')
   })
 
   it('leaves a genuine INT position alone', () => {

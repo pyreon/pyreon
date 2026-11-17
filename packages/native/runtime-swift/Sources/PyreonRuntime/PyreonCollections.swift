@@ -105,11 +105,26 @@ extension PyreonMap: Encodable where Key: Encodable, Value: Encodable {
 }
 
 extension PyreonMap: Decodable where Key: Decodable, Value: Decodable {
+    /// The object's keys in DOCUMENT order, as the web's `JSON.parse` keeps them. `JSONDecoder`'s `allKeys` follows
+    /// its internal dictionary (a per-process hash), so the order comes from the text, which
+    /// `PyreonJSON.decoder(for:)` publishes under `userInfo` (by raw key, so this file does not need `PyreonJSON.swift`).
+    /// A decoder that does not publish it keeps `allKeys`' order.
+    fileprivate static func documentOrder(_ keys: [PyreonMapKey], _ decoder: Decoder) -> [PyreonMapKey] {
+        guard let info = CodingUserInfoKey(rawValue: "pyreon.jsonKeyOrder"),
+              let lookup = decoder.userInfo[info] as? ([CodingKey]) -> [String]?,
+              let order = lookup(decoder.codingPath)
+        else { return keys }
+        let present = Set(keys.map(\.stringValue))
+        return order.filter(present.contains).map(PyreonMapKey.init)
+    }
+
     public init(from decoder: Decoder) throws {
         self.init()
         if Key.self == String.self {
             let c = try decoder.container(keyedBy: PyreonMapKey.self)
-            for k in c.allKeys { self[k.stringValue as! Key] = try c.decode(Value.self, forKey: k) }
+            for k in Self.documentOrder(c.allKeys, decoder) {
+                self[k.stringValue as! Key] = try c.decode(Value.self, forKey: k)
+            }
         } else {
             var c = try decoder.unkeyedContainer()
             while !c.isAtEnd {
