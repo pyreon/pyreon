@@ -56,7 +56,7 @@ describe('a signal method passed by reference in JSX', () => {
       export function P() { const panel = signal(null); return <div ref={panel.set} onClick={panel.set}>x</div> }`
     for (const fn of [transformJSX, transformJSX_JS]) {
       const r = fn(src, 'p.tsx')
-      expect(r.code).toContain('const __r = panel.set;')
+      expect(r.code).toContain('_ref(__root, panel.set)')
       expect(r.code).toContain('__ev_click = panel.set;')
       expect(r.warnings.filter((w) => w.code === 'signal-method-reference')).toHaveLength(2)
     }

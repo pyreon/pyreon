@@ -58,7 +58,8 @@ export function createTemplate<T>(
 ): (item: T) => NativeItem {
   const tmpl = document.createElement('template')
   tmpl.innerHTML = html
-  const proto = tmpl.content.firstElementChild as HTMLElement
+  // Owned by the page document, so clones are too (see `_tpl`, #4390).
+  const proto = document.importNode(tmpl.content.firstElementChild as HTMLElement, true)
 
   return (item: T): NativeItem => {
     const el = proto.cloneNode(true) as HTMLElement
@@ -175,6 +176,7 @@ export function _setChild(node: Element, value: unknown): void {
         node.textContent = value as string
       }
       reportTextWrite(node, before, 'text')
+
       return
     }
     if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
@@ -244,6 +246,7 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
       const before = (placeholder as Text).data
       ;(placeholder as Text).data = value as string
       reportTextWrite(placeholder, before, 'text')
+
       return
     }
     ;(placeholder as Text).data = value as string
@@ -276,6 +279,7 @@ function _warnTextCoercion(v: unknown, node: Text): void {
         "If you cast an accessor with 'as never', remove the cast — the compiler treats " +
         'the cast expression as static. Accessor-typed JSX attributes accept the function form directly.',
     )
+
     return
   }
   if (_isMountableTextValue(v)) {
@@ -382,11 +386,13 @@ export function _bindProp(props: object, key: string, node: Text, parent: Node):
       if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
         reportFirstText(node, v, next, 'reactive')
       if (node.data !== next) node.data = next
+
       return _noopDispose
     }
   }
   const g = d !== undefined ? (d.get as ({ _v?: unknown; direct?: (fn: () => void) => () => void } & (() => unknown)) | undefined) : undefined
   if (g !== undefined && typeof g.direct === 'function') return _bindText(g, node)
+
   return bindPolymorphicText(() => (props as Record<string, unknown>)[key] as VNodeChild, node, parent)
 }
 
@@ -444,6 +450,7 @@ export function _bindText(
               unsub()
               core.dispose()
             }
+
             return
           }
           // No parent → nowhere to mount (detached manual binding). Fall
@@ -472,6 +479,7 @@ export function _bindText(
       if (process.env.NODE_ENV !== 'production')
         _rdLabelBinding(textUpdate, 'text', node, undefined, 1, true)
     }
+
     return () => disposer!()
   }
   // Fallback: bare callable. Use the compiler-provided receiver/caller when
@@ -514,6 +522,7 @@ export function _bindText(
     _rdLabelBinding(disposeEffect, 'text', node, undefined, 1)
   // Dead binding that stayed text: no re-run can happen and no subtree exists.
   if (disposeEffect === _noopDispose && core === null) return _noopDispose
+
   return () => {
     disposeEffect()
     if (core !== null) core.dispose()
@@ -564,6 +573,7 @@ export function _bindDirect(
     if (process.env.NODE_ENV !== 'production') _rdCloseBindingFrame()
     const dispose = source.direct(() => updater(source._v))
     if (process.env.NODE_ENV !== 'production') _rdLabelDirect(dispose, 1)
+
     return dispose
   }
   // Fallback: bare callable. Use the compiler-provided receiver/caller if there
@@ -575,7 +585,39 @@ export function _bindDirect(
   // at the compiled template rather than at this helper.
   if (process.env.NODE_ENV !== 'production')
     _rdLabelBinding(dispose, null, null, undefined, 1)
+
   return dispose
+}
+
+/**
+ * Compiler-emitted `ref` application for a template element: the h() path's
+ * semantics (`mountElement`). A function is called with the element, an object
+ * ref gets `.current`; the returned disposer hands back `null` on unmount
+ * (#4390: compiled refs were never cleared, so a callback ref never saw `null`
+ * and an object ref kept a detached element alive).
+ *
+ * TIMING CONTRACT, shared with the h() path: a ref fires ONCE, synchronously
+ * during mount, with an element owned by the page document (so
+ * `ownerDocument.defaultView` is the window). It is NOT guaranteed to be in
+ * the live document: an h() subtree is built detached and inserted whole, and
+ * a compiled template binds on its clone before insertion (its ROOT element
+ * has no parent yet). Layout reads, `getComputedStyle` and observers that need
+ * a connected element belong in `onMount`. On unmount the ref receives
+ * `null`.
+ */
+export function _ref(el: Element, ref: unknown): () => void {
+  if (typeof ref === 'function') {
+    ;(ref as (el: Element | null) => void)(el)
+    return () => (ref as (el: Element | null) => void)(null)
+  }
+  if (ref != null && typeof ref === 'object') {
+    ;(ref as { current: Element | null }).current = el
+    return () => {
+      ;(ref as { current: Element | null }).current = null
+    }
+  }
+
+  return _noopDispose
 }
 
 // ─── Compiler-facing template API ─────────────────────────────────────────────
@@ -671,6 +713,7 @@ function isSvgRooted(html: string): boolean {
   const m = /^\s*<([a-zA-Z][a-zA-Z0-9-]*)/.exec(html)
   if (m === null) return false
   const tag = m[1] as string
+
   return SVG_ROOT_TAGS.has(tag)
 }
 
@@ -720,7 +763,9 @@ export type TplAdoptVerifier = (
   target: Element,
   allowPlanReplay?: boolean,
 ) => boolean
+
 let _tplAdoptVerifier: TplAdoptVerifier | null = null
+
 export function _setTplAdoptVerifier(v: TplAdoptVerifier): void {
   _tplAdoptVerifier = v
 }
@@ -837,6 +882,7 @@ let _tplHoleCursors: Map<Element, ChildNode | null> | null = null
 
 /** Verifier → `_tpl` handoff for the match it just approved (one-shot). */
 let _tplPendingHoles: Map<Element, ChildNode | null> | null = null
+
 export function _setTplHoleCursors(m: Map<Element, ChildNode | null> | null): void {
   _tplPendingHoles = m
 }
@@ -851,7 +897,9 @@ export type TplHoleHydrator = (
   parent: Node,
   cursor: ChildNode | null,
 ) => [() => void, ChildNode | null]
+
 let _tplHoleHydrator: TplHoleHydrator | null = null
+
 export function _setTplHoleHydrator(h: TplHoleHydrator): void {
   _tplHoleHydrator = h
 }
@@ -950,7 +998,18 @@ export function _tpl(
     // `tpl.content.firstElementChild` there costs two DOM getter calls per
     // clone for a node that never changes once parsed (markers are stripped
     // above, before this point). A JS field read replaces both.
-    ;(tpl as CachedTemplate)._root = tpl.content.firstElementChild
+    //
+    // The clone source is a copy OWNED BY THE PAGE DOCUMENT (#4390). A clone of
+    // `tpl.content` belongs to the template's inert document (no
+    // `defaultView`) until it is inserted, and compiled refs and binds run on
+    // the clone before that: a ref read `el.ownerDocument.defaultView` as
+    // `null` (`@pyreon/virtual` never observed scroll), where an h()-built
+    // element is the page document's from `createElement`. Importing the root
+    // ONCE here makes every clone the page document's, with nothing added per
+    // clone and no adoption walk on insertion. `tpl.content` stays as parsed:
+    // the adoption verifier's signature walk reads it.
+    const parsed = tpl.content.firstElementChild
+    ;(tpl as CachedTemplate)._root = parsed === null ? null : (document.importNode(parsed, true) as Element)
     // FIFO eviction — drop the oldest entry once we hit the cap. Map iteration
     // order is insertion order, so `keys().next()` is the oldest.
     if (_tplCache.size >= TPL_CACHE_MAX) _tplCache.delete(_tplCache.keys().next().value as string)
@@ -985,6 +1044,7 @@ export function _tpl(
   if (_hydrationActive && _tplAdoptTarget?.tagName !== tpl.content.firstElementChild?.tagName) {
     return deferTpl(tpl, html, bind)
   }
+
   return buildTpl(tpl, html, bind)
 }
 
@@ -1059,6 +1119,7 @@ function remountableTpl(
       return (built() as Partial<DeferredNativeItem>).__adoptAt?.(domNode) ?? false
     },
   }
+
   return item as unknown as RemountableNativeItem
 }
 
@@ -1114,6 +1175,7 @@ function buildTpl(
         _tplAdoptConsumed = true
         if (process.env.NODE_ENV !== 'production')
           _countSink.__pyreon_count__?.('runtime.tpl.adopt')
+
         return { __isNative: true, el: target as HTMLElement, cleanup }
       }
     }
@@ -1138,6 +1200,7 @@ function buildTpl(
   // `bind` — the reading the `<For>` row loop makes. Skipped entirely when no
   // verifier is registered, so a CSR-only bundle's hot path is unchanged.
   if (_tplAdoptVerifier !== null) _tplAdoptConsumed = false
+
   return { __isNative: true, el, cleanup }
 }
 
@@ -1205,9 +1268,11 @@ function deferTpl(
         _tplAdoptConsumed = prevConsumed
         _tplPendingHoles = prevPending
       }
+
       return built.el === domNode
     },
   }
+
   return item as unknown as NativeItem
 }
 
@@ -1258,6 +1323,7 @@ export function _rsCollapse(
       return bind ? bind(el) : null
     })
   }
+
   return _tpl(html, (el) => {
     // Reactive class: `_bindDirect`'s plain-callable fallback wraps this in a
     // renderEffect, so a mode swap re-runs ONLY this className assignment.
@@ -1267,6 +1333,7 @@ export function _rsCollapse(
     if (process.env.NODE_ENV !== 'production') _rdLabelBinding(disposeClass, 'class', el, undefined, null)
     const disposeChildren = bind ? bind(el) : null
     if (!disposeChildren) return disposeClass
+
     return () => {
       disposeClass()
       disposeChildren()
@@ -1319,6 +1386,7 @@ export function _rsCollapseH(
       else (dRest ??= []).push(d)
     }
     const disposeChildren = bind ? bind(el) : null
+
     return () => {
       disposeClass()
       if (d0) d0()
@@ -1401,6 +1469,7 @@ export function _rsCollapseDyn(
     if (process.env.NODE_ENV !== 'production') _rdLabelBinding(disposeClass, 'class', el, undefined, null)
     const disposeChildren = bind ? bind(el) : null
     if (!disposeChildren) return disposeClass
+
     return () => {
       disposeClass()
       disposeChildren()
@@ -1487,6 +1556,7 @@ export function _rsCollapseDynH(
       if (d) handlerDisposers.push(d)
     }
     const disposeChildren = bind ? bind(el) : null
+
     return () => {
       disposeClass()
       for (const d of handlerDisposers) d()
@@ -1583,6 +1653,7 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
       const fresh = document.createTextNode('')
       parent.replaceChild(fresh, placeholder)
       if (process.env.NODE_ENV !== 'production') _markServerText(fresh, _rangeServerText)
+
       return fresh
     }
     // The shape SSR emits for a reactive text: exactly one text node between
@@ -1614,16 +1685,19 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
       n = next
     }
     if (process.env.NODE_ENV !== 'production') _markServerText(fresh, _rangeServerText)
+
     return fresh
   }
   const t = document.createTextNode('')
   parent.replaceChild(t, placeholder)
+
   return t
 }
 
 // Dev: the server text of the range `_textSlot` is resolving (set and read
 // within one synchronous call).
 let _rangeServerText = ''
+
 function _serverTextOfRange(open: Comment): string {
   const parked = (open as ParkedOpen)[PARKED_RANGE]
   return parked !== undefined ? (parked.textContent ?? '') : rangeText(open)
@@ -1664,24 +1738,30 @@ const isCloneSlotPlaceholder = (n: Node | null): boolean =>
  */
 const PARKED_RANGE: unique symbol = Symbol('pyreon.parkedRange')
 type ParkedOpen = Comment & { [PARKED_RANGE]?: DocumentFragment | undefined }
+
 export function _parkSlotRange(open: Comment, frag: DocumentFragment): void {
   ;(open as ParkedOpen)[PARKED_RANGE] = frag
 }
+
 /** Is a parked range hung off `open`? Non-consuming — see `_mountSlot`. */
 const hasParkedRange = (n: Node): boolean => (n as ParkedOpen)[PARKED_RANGE] !== undefined
+
 /** Take (and clear) the parked range hung off `open`, or `null`. */
 export function _takeParkedRange(open: Comment): DocumentFragment | null {
   const f = (open as ParkedOpen)[PARKED_RANGE]
   if (f === undefined) return null
   ;(open as ParkedOpen)[PARKED_RANGE] = undefined
+
   return f
 }
 
 const MID_SLOT_TEXT: unique symbol = Symbol('pyreon.midSlotText')
 type MidSlotText = Text & { [MID_SLOT_TEXT]?: true }
+
 export function _markMidSlotText(t: Text): void {
   ;(t as MidSlotText)[MID_SLOT_TEXT] = true
 }
+
 // Null-safe: `_mountSlot` hands a `null` placeholder for an EMPTY marker-less
 // sole slot (the slot rendered nothing on the server, so both the compiled ref
 // and the parent's firstChild are null — a designed case, see `_mountSlot`).
@@ -1704,7 +1784,9 @@ export type SlotHydrator = (
   parent: Node,
   open: Comment | null,
 ) => () => void
+
 let _slotHydrator: SlotHydrator | null = null
+
 export function _setSlotHydrator(h: SlotHydrator): void {
   _slotHydrator = h
 }
@@ -1777,5 +1859,6 @@ export function _mountSlot(
       ? mountChild(children, parent, placeholder)
       : mountChildAsUnit(children, parent, placeholder)
   parent.removeChild(placeholder)
+
   return cleanup
 }

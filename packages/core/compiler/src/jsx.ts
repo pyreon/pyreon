@@ -1453,6 +1453,7 @@ export function transformJSX_JS(
   let needsSetPropImportGlobal = false
   let needsSetPropStaticImportGlobal = false
   let needsSetHtmlImportGlobal = false
+  let needsRefImportGlobal = false
   // Compile-to-string SSR fast path (`options.ssrTemplate`): which
   // `@pyreon/runtime-server` helpers this module used.
   let needsSsrImport = false
@@ -4986,6 +4987,7 @@ export function transformJSX_JS(
     if (needsSetPropImportGlobal) runtimeDomImports.push('_setProp')
     if (needsSetPropStaticImportGlobal) runtimeDomImports.push('_setPropStatic')
     if (needsSetHtmlImportGlobal) runtimeDomImports.push('_setHtml')
+    if (needsRefImportGlobal) runtimeDomImports.push('_ref')
     const reactivitySpecs = [
       ...(needsBindImportGlobal ? ['_bind'] : []),
       ...(needsRenderEffectImportGlobal ? ['renderEffect'] : []),
@@ -5283,6 +5285,7 @@ export function transformJSX_JS(
     let needsSetProp = false
     let needsSetPropStatic = false
     let needsSetHtml = false
+    let needsRef = false
 
     function nextVar(): string {
       return `__e${varIdx++}`
@@ -5432,13 +5435,12 @@ export function transformJSX_JS(
       if (!attr.value || attr.value.type !== 'JSXExpressionContainer') return
       const expr = attr.value.expression
       if (!expr || expr.type === 'JSXEmptyExpression') return
-      if (expr.type === 'ArrowFunctionExpression' || expr.type === 'FunctionExpression') {
-        bindLines.push(`(${sliceExpr(expr)})(${varName})`)
-      } else {
-        bindLines.push(
-          `{ const __r = ${sliceExpr(expr)}; if (typeof __r === "function") __r(${varName}); else if (__r) __r.current = ${varName} }`,
-        )
-      }
+      // `_ref` applies the ref as the h() path does and returns the disposer
+      // that hands it `null` on unmount (#4390: a compiled ref was never
+      // cleared). One shape for every ref value: callback, object, signal setter.
+      needsRef = true
+      const d = nextDisp()
+      bindLines.push(`const ${d} = _ref(${varName}, ${sliceExpr(expr)})`)
     }
 
     function emitEventListener(attr: N, attrName: string, varName: string): void {
@@ -6891,6 +6893,7 @@ export function transformJSX_JS(
     if (needsSetProp) needsSetPropImportGlobal = true
     if (needsSetPropStatic) needsSetPropStaticImportGlobal = true
     if (needsSetHtml) needsSetHtmlImportGlobal = true
+    if (needsRef) needsRefImportGlobal = true
 
     const escaped = html.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 
