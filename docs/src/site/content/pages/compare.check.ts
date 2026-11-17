@@ -159,7 +159,7 @@ export const checked = {
         "pyreon": {
           "label": "Pyreon",
           "file": "Search.tsx",
-          "code": "import { For } from '@pyreon/core'\nimport { computed, signal } from '@pyreon/reactivity'\n\ntype Item = { id: number; name: string }\n\nexport function Search(props: { items: Item[] }) {\n  const query = signal('')\n  const visible = computed(() =>\n    props.items.filter((i) => i.name.toLowerCase().includes(query().toLowerCase())),\n  )\n\n  return (\n    <div>\n      <input value={query()} onInput={(e) => query.set(e.currentTarget.value)} />\n      <p>{visible().length} matches</p>\n      <ul>\n        <For each={visible} by={(i) => i.id}>\n          {(i) => <li>{i.name}</li>}\n        </For>\n      </ul>\n    </div>\n  )\n}"
+          "code": "import { For } from '@pyreon/core'\nimport { computed, signal } from '@pyreon/reactivity'\n\ntype Item = { id: number; name: string }\n\nexport function Search(props: { items: Item[] }) {\n  const query = signal('')\n  const visible = computed(() =>\n    props.items.filter((i) => i.name.toLowerCase().includes(query().toLowerCase())),\n  )\n\n  return (\n    <div>\n      <input value={query()} onInput={(e) => query.set(e.currentTarget.value)} />\n      <p>{visible().length} matches</p>\n      <ul>\n        <For each={visible()} by={(i) => i.id}>\n          {(i) => <li>{i.name}</li>}\n        </For>\n      </ul>\n    </div>\n  )\n}"
         },
         "checked": "React side: typechecked with `@types/react` 19.3 under `tsc --strict`. Pyreon side: typechecked against the repo's `tsconfig` (0 errors), compiled with the real JSX compiler (`transformJSX`) and mounted in happy-dom; typing into the input filters the list."
       },
@@ -557,7 +557,7 @@ export const checked = {
           },
           {
             "topic": "List keys",
-            "pyreon": "`<For each={rows} by={(r) => r.id}>`: an explicit key function.",
+            "pyreon": "`<For each={rows()} by={(r) => r.id}>`: an explicit key function.",
             "rival": "`<For>` keys by item identity; `<Index>` by position.",
             "verdict": "different",
             "source": "docs/src/content/docs/migrating-from-solid.md"
@@ -596,7 +596,7 @@ export const checked = {
         "pyreon": {
           "label": "Pyreon",
           "file": "Search.tsx",
-          "code": "import { For } from '@pyreon/core'\nimport { computed, signal } from '@pyreon/reactivity'\n\ntype Item = { id: number; name: string }\n\nexport function Search(props: { items: Item[] }) {\n  const query = signal('')\n  const visible = computed(() =>\n    props.items.filter((i) => i.name.toLowerCase().includes(query().toLowerCase())),\n  )\n\n  return (\n    <div>\n      <input value={query()} onInput={(e) => query.set(e.currentTarget.value)} />\n      <p>{visible().length} matches</p>\n      <ul>\n        <For each={visible} by={(i) => i.id}>\n          {(i) => <li>{i.name}</li>}\n        </For>\n      </ul>\n    </div>\n  )\n}"
+          "code": "import { For } from '@pyreon/core'\nimport { computed, signal } from '@pyreon/reactivity'\n\ntype Item = { id: number; name: string }\n\nexport function Search(props: { items: Item[] }) {\n  const query = signal('')\n  const visible = computed(() =>\n    props.items.filter((i) => i.name.toLowerCase().includes(query().toLowerCase())),\n  )\n\n  return (\n    <div>\n      <input value={query()} onInput={(e) => query.set(e.currentTarget.value)} />\n      <p>{visible().length} matches</p>\n      <ul>\n        <For each={visible()} by={(i) => i.id}>\n          {(i) => <li>{i.name}</li>}\n        </For>\n      </ul>\n    </div>\n  )\n}"
         },
         "checked": "Solid side: typechecked against solid-js 1.9.17 under `tsc --strict`. Pyreon side: typechecked against the repo's `tsconfig` (0 errors), compiled with the real JSX compiler (`transformJSX`) and mounted in happy-dom; typing into the input filters the list."
       },
@@ -778,7 +778,7 @@ export const checked = {
         "pyreon": {
           "label": "Pyreon",
           "file": "Search.tsx",
-          "code": "import { For } from '@pyreon/core'\nimport { computed, signal } from '@pyreon/reactivity'\n\ntype Item = { id: number; name: string }\n\nexport function Search(props: { items: Item[] }) {\n  const query = signal('')\n  const visible = computed(() =>\n    props.items.filter((i) => i.name.toLowerCase().includes(query().toLowerCase())),\n  )\n\n  return (\n    <div>\n      <input value={query()} onInput={(e) => query.set(e.currentTarget.value)} />\n      <p>{visible().length} matches</p>\n      <ul>\n        <For each={visible} by={(i) => i.id}>\n          {(i) => <li>{i.name}</li>}\n        </For>\n      </ul>\n    </div>\n  )\n}"
+          "code": "import { For } from '@pyreon/core'\nimport { computed, signal } from '@pyreon/reactivity'\n\ntype Item = { id: number; name: string }\n\nexport function Search(props: { items: Item[] }) {\n  const query = signal('')\n  const visible = computed(() =>\n    props.items.filter((i) => i.name.toLowerCase().includes(query().toLowerCase())),\n  )\n\n  return (\n    <div>\n      <input value={query()} onInput={(e) => query.set(e.currentTarget.value)} />\n      <p>{visible().length} matches</p>\n      <ul>\n        <For each={visible()} by={(i) => i.id}>\n          {(i) => <li>{i.name}</li>}\n        </For>\n      </ul>\n    </div>\n  )\n}"
         },
         "checked": "Vue side: parsed and compiled with `@vue/compiler-sfc` 3.5.44 (script and template, 0 errors). Pyreon side: typechecked against the repo's `tsconfig` (0 errors), compiled with the real JSX compiler (`transformJSX`) and mounted in happy-dom; typing into the input filters the list."
       },
@@ -981,7 +981,7 @@ export const checked = {
         "pyreon": {
           "label": "Pyreon",
           "file": "Search.tsx",
-          "code": "import { For } from '@pyreon/core'\nimport { computed, signal } from '@pyreon/reactivity'\n\ntype Item = { id: number; name: string }\n\nexport function Search(props: { items: Item[] }) {\n  const query = signal('')\n  const visible = computed(() =>\n    props.items.filter((i) => i.name.toLowerCase().includes(query().toLowerCase())),\n  )\n\n  return (\n    <div>\n      <input value={query()} onInput={(e) => query.set(e.currentTarget.value)} />\n      <p>{visible().length} matches</p>\n      <ul>\n        <For each={visible} by={(i) => i.id}>\n          {(i) => <li>{i.name}</li>}\n        </For>\n      </ul>\n    </div>\n  )\n}"
+          "code": "import { For } from '@pyreon/core'\nimport { computed, signal } from '@pyreon/reactivity'\n\ntype Item = { id: number; name: string }\n\nexport function Search(props: { items: Item[] }) {\n  const query = signal('')\n  const visible = computed(() =>\n    props.items.filter((i) => i.name.toLowerCase().includes(query().toLowerCase())),\n  )\n\n  return (\n    <div>\n      <input value={query()} onInput={(e) => query.set(e.currentTarget.value)} />\n      <p>{visible().length} matches</p>\n      <ul>\n        <For each={visible()} by={(i) => i.id}>\n          {(i) => <li>{i.name}</li>}\n        </For>\n      </ul>\n    </div>\n  )\n}"
         },
         "checked": "Svelte side: compiled with the Svelte 5.57.3 compiler, 0 warnings. Pyreon side: typechecked against the repo's `tsconfig` (0 errors), compiled with the real JSX compiler (`transformJSX`) and mounted in happy-dom; typing into the input filters the list."
       },
@@ -1183,7 +1183,7 @@ export const checked = {
         "pyreon": {
           "label": "Pyreon (web, iOS, Android)",
           "file": "Todos.tsx",
-          "code": "import { For } from '@pyreon/core'\nimport { Button, Field, Scroll, Stack, Text } from '@pyreon/primitives'\nimport { signal } from '@pyreon/reactivity'\n\ntype Todo = { id: number; text: string }\n\nexport function Todos() {\n  const draft = signal('')\n  const todos = signal<Todo[]>([])\n\n  const add = () => {\n    if (draft() === '') return\n    todos.set([...todos(), { id: todos().length + 1, text: draft() }])\n    draft.set('')\n  }\n\n  return (\n    <Stack gap=\"sm\" padding={4}>\n      <Field value={draft()} onChangeText={(t) => draft.set(t)} onSubmit={add} placeholder=\"New todo\" />\n      <Button onPress={add}>Add</Button>\n      <Scroll>\n        <For each={todos} by={(t) => t.id}>\n          {(t) => <Text>{t.text}</Text>}\n        </For>\n      </Scroll>\n    </Stack>\n  )\n}"
+          "code": "import { For } from '@pyreon/core'\nimport { Button, Field, Scroll, Stack, Text } from '@pyreon/primitives'\nimport { signal } from '@pyreon/reactivity'\n\ntype Todo = { id: number; text: string }\n\nexport function Todos() {\n  const draft = signal('')\n  const todos = signal<Todo[]>([])\n\n  const add = () => {\n    if (draft() === '') return\n    todos.set([...todos(), { id: todos().length + 1, text: draft() }])\n    draft.set('')\n  }\n\n  return (\n    <Stack gap=\"sm\" padding={4}>\n      <Field value={draft()} onChangeText={(t) => draft.set(t)} onSubmit={add} placeholder=\"New todo\" />\n      <Button onPress={add}>Add</Button>\n      <Scroll>\n        <For each={todos()} by={(t) => t.id}>\n          {(t) => <Text>{t.text}</Text>}\n        </For>\n      </Scroll>\n    </Stack>\n  )\n}"
         },
         "checked": "Pyreon side: typechecked against the repo; lowered by the native compiler with the first-party plugins to SwiftUI (`VStack`, `TextField`, `ScrollView { LazyVStack }`) and Compose (`Column`, `TextField`, `LazyColumn`) with zero warnings; the Swift output passed the repo's SwiftUI typecheck. React Native side: written against the React Native core components; not compiled here."
       },

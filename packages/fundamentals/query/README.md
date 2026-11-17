@@ -345,6 +345,8 @@ Full docs: [pyreon.dev/docs/query](https://pyreon.dev/docs/query) (or `docs/src/
 
 `useQuery` (a keyed cache with stale-while-revalidate over `PyreonQuery`), `useStream` (SSE / NDJSON over `PyreonStream`), `new QueryClient()` and the transparent `<QueryClientProvider>` lower to SwiftUI and Compose. The lowering ships in this package (`src/native-plugin/`, declared in `package.json` as `pyreon.native.plugin` and discovered by `pyreon native`), not in `@pyreon/native-compiler`; a request that names an `@pyreon/http` endpoint is resolved by that package's plugin. `--no-plugins` builds treat the package like any unclaimed library (a "no native lowering" warning).
 
+Natively the process-wide `PyreonQueryCache` is the query client: a query that registered its request is live until its view goes away, `invalidateQueries(root)` marks every key `root` or `root:…` stale and refetches the live ones, and `setQueryData` writes optimistically and returns the rollback. `@pyreon/feature`'s CRUD mutations settle through it, so a successful save refreshes the feature's lists and records as on the web.
+
 ## License
 
 MIT

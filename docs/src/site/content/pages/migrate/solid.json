@@ -49,7 +49,7 @@
         "file": "Counter.tsx",
         "code": "import { computed, signal } from '@pyreon/reactivity'\n\nexport function Counter(props: { step: number }) {\n  const count = signal(0)\n  const doubled = computed(() => count() * 2)\n  return (\n    <button class=\"counter\" onClick={() => count.update((c) => c + props.step)}>\n      {count()} / {doubled()}\n    </button>\n  )\n}"
       },
-      "note": "The read stays `count()`; the write moves from `setCount` to `count.set` / `count.update`. Lists change from `<For each={rows()}>` to `<For each={rows} by={(r) => r.id}>`."
+      "note": "The read stays `count()`; the write moves from `setCount` to `count.set` / `count.update`. Lists keep `<For each={rows()}>` and add a key: `<For each={rows()} by={(r) => r.id}>`."
     }
   ],
   "docs": [

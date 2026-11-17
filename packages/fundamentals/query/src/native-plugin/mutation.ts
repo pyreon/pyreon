@@ -46,7 +46,9 @@ import {
   type StatementIR,
   type TypeIR,
   kotlinHttpRequestArgs,
+  kotlinMember,
   swiftHttpRequestArgs,
+  swiftIdent,
 } from '@pyreon/native-compiler/plugin-api'
 import { MUTATION_TYPE } from './names'
 
@@ -367,6 +369,10 @@ interface MutateCallPayload {
   readonly hasUpload?: boolean
   readonly options: Callbacks
   readonly call: Callbacks
+  /** The query-key root a success invalidates (see {@link MutateQueryEffects}). */
+  readonly invalidates?: string
+  /** The optimistic patch's fields; its key and their values are the LAST args, in that order. */
+  readonly optimistic?: readonly { readonly name: string; readonly type: TypeIR }[]
 }
 
 /** `m.mutate(vars, callbacks?)` / `m.mutateAsync(vars, callbacks?)` on a recorded binding. */
@@ -429,6 +435,25 @@ export interface MutateBinding {
 }
 
 /**
+ * What a mutation does to the QUERIES when it settles — the native half of a web `onSuccess` that calls
+ * `queryClient.invalidateQueries({ queryKey: [invalidates] })` and an `onMutate` that calls `setQueryData`.
+ *
+ * - `invalidates`: on success, every cached query under this key root is marked stale and every live one refetches
+ *   (`PyreonQueryCache.settleMutation`). A failure invalidates nothing; a cancelled request invalidates, since whether
+ *   the server applied it is unknown.
+ * - `optimistic`: before the request, the record cached under `key` is patched field by field (`setQueryData`), and
+ *   restored if the request fails. Each field's `type` is the record's declared field type: a value whose inferred
+ *   type differs drops the optimistic write for that call, NAMED, and the request and invalidation still lower.
+ */
+export interface MutateQueryEffects {
+  readonly invalidates: string
+  readonly optimistic?: {
+    readonly key: ExprIR
+    readonly fields: readonly { readonly name: string; readonly type: TypeIR; readonly value: ExprIR }[]
+  }
+}
+
+/**
  * `<binding>.mutate(vars, callbacks?)` / `.mutateAsync(…)` lowered to the `PyreonMutation` call that sends `request`.
  * The call-level callbacks are read from the site's second argument. Exported so a package whose hook IS a mutation
  * (`@pyreon/feature`'s `useCreate()`) drives the same container and the same emit with a request it builds itself.
@@ -440,6 +465,7 @@ export function mutateCallSpec(
   ctx: ModuleParseContext,
   binding: MutateBinding,
   resolved: MutateRequest,
+  effects?: MutateQueryEffects,
 ): ExtExprSpec {
   const name = binding.name
   const where = `${name}.${site.method}`
@@ -451,6 +477,11 @@ export function mutateCallSpec(
   if (resolved.upload !== undefined) args.push(resolved.upload)
   const headerExprNames = Object.keys(resolved.headerExprs ?? {})
   for (const h of headerExprNames) args.push((resolved.headerExprs as Record<string, ExprIR>)[h] as ExprIR)
+  const optimistic = effects?.optimistic
+  if (optimistic !== undefined) {
+    args.push(optimistic.key)
+    for (const f of optimistic.fields) args.push(f.value)
+  }
   const payload: MutateCallPayload = {
     binding: name,
     type: binding.type,
@@ -464,6 +495,8 @@ export function mutateCallSpec(
     ...(resolved.upload !== undefined ? { hasUpload: true } : {}),
     options: binding.options,
     call,
+    ...(effects !== undefined ? { invalidates: effects.invalidates } : {}),
+    ...(optimistic !== undefined ? { optimistic: optimistic.fields.map((f) => ({ name: f.name, type: f.type })) } : {}),
   }
   // Only an AWAITED `mutateAsync` is the throwing, value-returning form; an un-awaited one is a fire-and-forget
   // `mutate` (the state carries the outcome either way).
@@ -551,17 +584,86 @@ function kotlinCallbacks(c: Callbacks, data: TypeIR, ctx: EmitContext): string |
 
 const WHERE = (e: ExtExprIR): string => `${payloadOf(e).binding}.mutate:`
 
-/** The Swift operation closure: send (rejecting a non-2xx) and decode into `T`. */
-function swiftOperation(type: TypeIR, ctx: EmitContext): string {
-  if (isVoid(type)) return `{ __request in _ = try await PyreonHttp.call(__request) }`
-  return `{ __request in try await PyreonHttp.call(__request).decode(${ctx.typeText(type)}.self) }`
+/** Whether a value of inferred type `actual` can be assigned to a record field declared `declared`. */
+function assignable(actual: TypeIR, declared: TypeIR): boolean {
+  if (declared.kind === 'number') return actual.kind === 'number' && Boolean(actual.float) === Boolean(declared.float)
+  return actual.kind === declared.kind && (declared.kind === 'string' || declared.kind === 'boolean')
 }
 
-/** The Kotlin operation lambda: the blocking send off the main thread, then the decode. */
-function kotlinOperation(type: TypeIR, ctx: EmitContext): string {
-  const send = `withContext(Dispatchers.IO) { PyreonHttp.call(__r, fallback = PyreonHttpOkHttp) }`
-  if (isVoid(type)) return `{ __r -> ${send}; Unit }`
-  return `{ __r -> PyreonFetchJson.decodeFromString<${ctx.typeText(type)}>(${send}.body) }`
+/**
+ * The optimistic patch a call site carries, once its values are known to fit the record: the key and each field's
+ * value, or `undefined` (with the reason NAMED) when there is none or one value's type is not the field's.
+ */
+function optimisticOf(
+  e: ExtExprIR,
+  ctx: EmitContext,
+): { key: ExprIR; fields: { name: string; value: ExprIR }[] } | undefined {
+  const p = payloadOf(e)
+  if (p.optimistic === undefined) return undefined
+  const at = e.args.length - p.optimistic.length - 1
+  const key = e.args[at] as ExprIR
+  const fields = p.optimistic.map((f, i) => ({ ...f, value: e.args[at + 1 + i] as ExprIR }))
+  for (const f of fields) {
+    const actual = ctx.inferType(f.value)
+    if (assignable(actual, f.type)) continue
+    ctx.warnOnce(
+      `\`${p.binding}.mutate(…)\`: \`data.${f.name}\` is not a ${f.type.kind === 'number' ? 'whole number' : f.type.kind} the record's \`${f.name}\` field can hold natively, so the OPTIMISTIC write the web shows before the server answers is skipped for this call — the request is sent, and the queries refresh when it succeeds.`,
+    )
+
+    return undefined
+  }
+
+  return { key, fields }
+}
+
+/** The Swift send + decode into `T` of the request `request` names. */
+function swiftSend(type: TypeIR, ctx: EmitContext, request: string): string {
+  if (isVoid(type)) return `_ = try await PyreonHttp.call(${request})`
+  return `try await PyreonHttp.call(${request}).decode(${ctx.typeText(type)}.self)`
+}
+
+/**
+ * The Swift operation closure: send (rejecting a non-2xx) and decode into `T` — through
+ * `PyreonQueryCache.settleMutation` when the call invalidates queries, which also rolls an optimistic write back.
+ */
+function swiftOperation(e: ExtExprIR, ctx: EmitContext, optimistic: boolean): string {
+  const p = payloadOf(e)
+  if (p.invalidates === undefined) return `{ __request in ${swiftSend(p.type, ctx, '__request')} }`
+  const root = ctx.stringLiteral(p.invalidates)
+  if (!optimistic) {
+    return `{ __request in try await PyreonQueryCache.shared.settleMutation(invalidating: ${root}) { ${swiftSend(p.type, ctx, '__request')} } }`
+  }
+
+  return `{ __input in try await PyreonQueryCache.shared.settleMutation(invalidating: ${root}, rollback: __input.1) { ${swiftSend(p.type, ctx, '__input.0')} } }`
+}
+
+/** The Kotlin blocking send off the main thread, then the decode, of the request `request` names. */
+function kotlinSend(type: TypeIR, ctx: EmitContext, request: string): string {
+  const send = `withContext(Dispatchers.IO) { PyreonHttp.call(${request}, fallback = PyreonHttpOkHttp) }`
+  if (isVoid(type)) return `${send}; Unit`
+  return `PyreonFetchJson.decodeFromString<${ctx.typeText(type)}>(${send}.body)`
+}
+
+/** The Kotlin operation lambda — through `PyreonQueryCache.settleMutation` when the call invalidates queries. */
+function kotlinOperation(e: ExtExprIR, ctx: EmitContext, optimistic: boolean): string {
+  const p = payloadOf(e)
+  if (p.invalidates === undefined) return `{ __r -> ${kotlinSend(p.type, ctx, '__r')} }`
+  const root = ctx.stringLiteral(p.invalidates)
+  if (!optimistic) return `{ __r -> PyreonQueryCache.settleMutation(${root}) { ${kotlinSend(p.type, ctx, '__r')} } }`
+
+  return `{ __r -> PyreonQueryCache.settleMutation(${root}, __r.second) { ${kotlinSend(p.type, ctx, '__r.first')} } }`
+}
+
+/** `PyreonQueryCache.shared.setQueryData(key, as: T.self, { … })` — evaluated at the call site, with the request. */
+function swiftOptimistic(e: ExtExprIR, ctx: EmitContext, o: { key: ExprIR; fields: { name: string; value: ExprIR }[] }): string {
+  const sets = o.fields.map((f) => `__new.${swiftIdent(f.name)} = ${ctx.expr(f.value, 0)}`).join('; ')
+  return `PyreonQueryCache.shared.setQueryData(${ctx.expr(o.key, 0)}, as: ${ctx.typeText(payloadOf(e).type)}.self, { __old in var __new = __old; ${sets}; return __new })`
+}
+
+/** `PyreonQueryCache.setQueryData<T>(key) { it.copy(…) }` — evaluated at the call site, with the request. */
+function kotlinOptimistic(e: ExtExprIR, ctx: EmitContext, o: { key: ExprIR; fields: { name: string; value: ExprIR }[] }): string {
+  const sets = o.fields.map((f) => `${kotlinMember(f.name)} = ${ctx.expr(f.value, 0)}`).join(', ')
+  return `PyreonQueryCache.setQueryData<${ctx.typeText(payloadOf(e).type)}>(${ctx.expr(o.key, 0)}) { __old -> __old.copy(${sets}) }`
 }
 
 function swiftEmit(e: ExtExprIR, ctx: EmitContext, method: 'mutate' | 'mutateAsync'): string {
@@ -577,8 +679,11 @@ function swiftEmit(e: ExtExprIR, ctx: EmitContext, method: 'mutate' | 'mutateAsy
   if (options !== undefined) extra.push(`options: ${options}`)
   if (call !== undefined) extra.push(`call: ${call}`)
   const tail = extra.length > 0 ? `, ${extra.join(', ')}` : ''
+  // An optimistic call's input is the request AND the rollback of the write made right here, at the call site.
+  const o = optimisticOf(e, ctx)
+  const input = o === undefined ? request : `(${request}, ${swiftOptimistic(e, ctx, o)})`
 
-  return `${ctx.ident(p.binding)}.${method}(${request}, ${swiftOperation(p.type, ctx)}${tail})`
+  return `${ctx.ident(p.binding)}.${method}(${input}, ${swiftOperation(e, ctx, o !== undefined)}${tail})`
 }
 
 function kotlinEmit(e: ExtExprIR, ctx: KotlinEmitContext, awaited: boolean): string {
@@ -595,12 +700,15 @@ function kotlinEmit(e: ExtExprIR, ctx: KotlinEmitContext, awaited: boolean): str
   if (call !== undefined) extra.push(`call = ${call}`)
   const tail = extra.length > 0 ? `, ${extra.join(', ')}` : ''
   const m = ctx.ident(p.binding)
-  const op = kotlinOperation(p.type, ctx)
+  const o = optimisticOf(e, ctx)
+  const op = kotlinOperation(e, ctx, o !== undefined)
+  // An optimistic call's input is the request AND the rollback of the write made right here, at the call site.
+  const input = o === undefined ? request : `Pair(${request}, ${kotlinOptimistic(e, ctx, o)})`
   // Awaited inside an async handler's coroutine: a plain suspend call that returns the data or throws.
-  if (awaited) return `${m}.runAsync(${request}, ${op}${tail})`
+  if (awaited) return `${m}.runAsync(${input}, ${op}${tail})`
   // Fire and forget from any callback: build the request and BEGIN on the calling thread (the web flips to pending
   // before its first await), then settle on the composable's scope — cancelled, with nothing written, if it leaves.
-  return `${request}.let { __request -> ${m}.begin().let { __mine -> ${ctx.coroutineScope()}.launch { ${m}.run(__mine, __request, ${op}${tail}) } } }`
+  return `${input}.let { __request -> ${m}.begin().let { __mine -> ${ctx.coroutineScope()}.launch { ${m}.run(__mine, __request, ${op}${tail}) } } }`
 }
 
 export const mutateExpr: ExprEmitter = {

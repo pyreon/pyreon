@@ -856,7 +856,14 @@ const useDashboard = defineStore('dashboard', () => {
 
 ## Multiplatform
 
-The runtime half — the generated hooks, the network fetcher, and form / validator integration — runs on the web. On iOS and Android (PMTC), the declaration half crosses: `defineFeature({ name, schema })` with a **literal field-type map** (`schema: { id: 'string', done: 'boolean' }`) emits a Codable struct plus a module-scope constant carrying `name` and `initialValues`, reachable under the source binding name (`Todo.name`). A runtime schema (Zod / Valibot / ArkType) is not introspected there and warns by name. Swift and Kotlin share one namespace for types and values, so a file cannot declare both `const Todo = defineFeature(...)` and a type named `Todo`.
+The runtime half — the generated hooks, the network fetcher, and form / validator integration — runs on the web. On iOS and Android (PMTC), the declaration half crosses: `defineFeature({ name, schema })` with a **literal field-type map** (`schema: { id: 'string', done: 'boolean' }`) emits a Codable struct plus a module-scope constant carrying `name` and `initialValues`, reachable under the source binding name (`Todo.name`). An object literal of scalar validators (`z.object({ id: z.string(), done: z.boolean() })`) lowers the same way; a schema held in a variable, `v.pipe(…)` and ArkType are not introspected and warn by name. Swift and Kotlin share one namespace for types and values, so a file cannot declare both `const Todo = defineFeature(...)` and a type named `Todo`.
+
+With an absolute literal `api` (`'https://api.example.com/todos'`), the CRUD hooks lower too: `useList()` and `useById(id)` become `@pyreon/query` native queries, and `useCreate()`, `useUpdate()` and `useDelete()` send the web's POST / PUT / DELETE requests. The mutations refresh the queries the way the web does, through the native query client (`PyreonQueryCache`):
+
+- A successful create, update or delete marks every `todo` query stale and refetches every mounted `useList()` / `useById()`. A failure refreshes nothing.
+- `useUpdate().mutate({ id, data })` writes `data` into the cached `useById(id)` record before the request is sent, and rolls it back if the request fails. Natively the record is a typed struct, so `data` must be an object literal of the schema's own fields (`data: { done: true }`); any other `data` skips only the optimistic write, with a warning naming why.
+
+A relative or computed `api`, a custom `fetcher`, `useSearch`, `useForm`, `useTable`, `useStore` and every `useList` option except a literal `staleTime` stay web and are warned by name.
 
 ## Why
 
