@@ -17,7 +17,7 @@
  * that doesn't export a `default` page component are API handlers —
  * they're runtime-only by definition (fs-router invokes them per
  * request, never prerenders them), so `getStaticPaths` doesn't apply.
- * Caught originally in M3.B against `examples/cpa-pw-blog`'s
+ * Caught originally in M3.B against `examples/fixtures/cpa/blog`'s
  * `api/echo/[...path].ts`. Both checks fire together as defense in
  * depth: the path check catches the convention, the export-shape
  * check catches anyone who puts an API route outside `api/`.

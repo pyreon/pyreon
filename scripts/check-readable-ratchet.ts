@@ -34,6 +34,7 @@
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { recordedTotalProblems } from './baseline-total'
 
 export const READABLE_BASELINE_PATH = 'readable-baseline.json'
 
@@ -159,6 +160,39 @@ export function readReadableBaseline(path: string = READABLE_BASELINE_PATH): Rea
   return JSON.parse(readFileSync(path, 'utf8')) as ReadableBaseline
 }
 
+/**
+ * Why a per-file baseline's text is not what `--update` writes. Empty when it is.
+ *
+ * Two checks. The recorded total equals the sum of the entries (git can merge
+ * entry lines from two branches and keep one branch's total). And the text is
+ * byte-identical to the generator's serialisation of its own content, which
+ * catches what `JSON.parse` hides: a file listed twice after a merge (the later
+ * line wins silently), entries out of order, a hand edit.
+ */
+export function perFileBaselineProblems(text: string): string[] {
+  let parsed: ReadableBaseline
+  try {
+    parsed = JSON.parse(text) as ReadableBaseline
+  } catch (error) {
+    return [`it is not valid JSON (${(error as Error).message})`]
+  }
+  const files = parsed?.files
+  if (files === null || typeof files !== 'object' || Array.isArray(files)) return ['it has no `files` object']
+  const flat: Record<string, unknown> = {}
+  for (const [file, rules] of Object.entries(files)) {
+    if (rules === null || typeof rules !== 'object' || Array.isArray(rules)) flat[file] = rules
+    else for (const [rule, n] of Object.entries(rules)) flat[`${file} ${rule}`] = n
+  }
+  const problems = recordedTotalProblems(parsed.total, flat)
+  if (problems.length > 0) return problems
+  const canonical = serializeReadableBaseline(buildReadableBaseline(files, parsed.description))
+  if (canonical !== text) {
+    problems.push('its text is not what the generator writes for these entries (a duplicated file line, entries out of order, or a hand edit)')
+  }
+
+  return problems
+}
+
 /** How a per-file ratchet names itself in its messages. */
 export interface PerFileRatchet {
   /** `Readable ratchet` / `Readable oxlint ratchet`. */
@@ -187,12 +221,23 @@ const sumCounts = (c: PerFileCounts): number =>
 
 /** Gate per-file counts against a committed baseline. Prints the result; `true` when nothing regressed. */
 export function checkPerFile(current: PerFileCounts, path: string, r: PerFileRatchet): boolean {
-  const baseline = readReadableBaseline(path)
-  if (!baseline) {
+  if (!existsSync(path)) {
     console.error(`✗ ${path} not found. Seed it with \`${r.updateCommand}\`.`)
 
     return false
   }
+  const problems = perFileBaselineProblems(readFileSync(path, 'utf8'))
+  if (problems.length > 0) {
+    console.error(`✗ ${path} is not a file its generator wrote:`)
+    for (const problem of problems.slice(0, 10)) console.error(`    ${problem}`)
+    if (problems.length > 10) console.error(`    …and ${problems.length - 10} more`)
+    console.error(
+      `It is generated. Never merge or edit it by hand: after merging the default branch, regenerate it with \`${r.updateCommand}\`.`,
+    )
+
+    return false
+  }
+  const baseline = readReadableBaseline(path) as ReadableBaseline
   const { regressions, improvements } = compareReadable(current, baseline.files)
   const total = sumCounts(current)
 

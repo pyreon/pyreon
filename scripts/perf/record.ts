@@ -24,8 +24,9 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Page } from 'playwright'
 import { type ServerHandle, startServer as startViteServer, type ServerMode } from './server'
-import type { PageLike } from '../../examples/perf-dashboard/src/journeys'
+import type { PageLike } from '../../examples/fixtures/perf-dashboard/src/journeys'
 import { toPageLike } from './page-like'
+import { findExample } from '../example-dirs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(HERE, '../..')
@@ -94,11 +95,11 @@ async function snapshotCounters(page: Page): Promise<Record<string, number>> {
 
 // Import an example's journey module. Paths are relative to repo root.
 async function loadJourneys(app: string): Promise<Record<string, (page: PageLike) => Promise<void>>> {
-  const mod = (await import(resolve(REPO_ROOT, 'examples', app, 'src', 'journeys.ts'))) as {
+  const mod = (await import(resolve(findExample(app, REPO_ROOT).dir, 'src', 'journeys.ts'))) as {
     journeys: Record<string, (page: PageLike) => Promise<void>>
   }
   if (!mod.journeys || typeof mod.journeys !== 'object') {
-    console.error(`[record] examples/${app}/src/journeys.ts must export a \`journeys\` object`)
+    console.error(`[record] examples/${findExample(app, REPO_ROOT).rel}/src/journeys.ts must export a \`journeys\` object`)
     process.exit(1)
   }
   return mod.journeys

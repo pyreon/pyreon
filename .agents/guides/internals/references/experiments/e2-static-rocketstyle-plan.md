@@ -9,7 +9,7 @@ Resolving rocketstyle dimension props at build time for literal-prop call sites 
 ## Why now (data from boot profile, not opinion)
 
 - E1 (DEFER): mountFor optimization didn't show — picked the wrong layer (cloneNode dominates, not LIS).
-- Boot profile of `examples/perf-dashboard`: 2,814 mountChild for ~50-100 visible elements ≈ **30-50× amplification**.
+- Boot profile of `examples/fixtures/perf-dashboard`: 2,814 mountChild for ~50-100 visible elements ≈ **30-50× amplification**.
 - `runtime.tpl=50/2814 = 1.7%` cloneNode fast-path coverage. Styler / elements / rocketstyle don't use `_tpl()`.
 - This experiment targets the layer where cost actually lives.
 
