@@ -194,7 +194,7 @@ Put the two outputs side by side and the rules fall out. None of this is string 
 | `<Show when>` | `if cond { ... }` | `if (cond) { ... }` |
 | `data-testid="x"` | `.accessibilityIdentifier("x")` | `Modifier.testTag("x")` |
 | `useStorage<Todo[]>` | `@PyreonAppStorage` (runtime) | `rememberPyreonStorage` (runtime) |
-| `useStorage<string>` | `@AppStorage` | `rememberSaveable { mutableStateOf(...) }` |
+| `useStorage<string>` | `@AppStorage` | `rememberPyreonStorage<String>(...)` (file-backed) |
 
 Four of these are worth a closer look.
 
