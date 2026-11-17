@@ -27,6 +27,7 @@
 
 import type { PyreonDiagnostic } from '@pyreon/compiler/analyze'
 import type { AntiPatternEntry } from './anti-patterns'
+import { describeUnreadable, prepareSnippet } from './snippet-input'
 
 /**
  * Structural mirror of `@pyreon/core`'s `ReactiveTraceEntry` (also
@@ -81,6 +82,12 @@ export interface EnrichedDiagnosis {
   patternDiagnosis: PatternDiagnosis | null
   /** `detectPyreonPatterns` hits on `componentSource`. Empty when no source given. */
   detectorHits: PyreonDiagnostic[]
+  /**
+   * Set when `componentSource` was supplied but could not be read (empty
+   * after fence stripping, markdown, or a syntax error): the reason, so the
+   * rendered text never says the component "triggered no static detectors".
+   */
+  sourceProblem?: string | null | undefined
   /** Anti-pattern catalog entries whose `detectorCodes` intersect the detector hits. */
   relatedAntiPatterns: AntiPatternEntry[]
   /** Formatted chronological reactive run-up, or `null` when no trace given. */
@@ -137,11 +144,15 @@ export function enrichDiagnosis(input: DiagnoseInput, deps: EnrichDeps): Enriche
 
   let detectorHits: PyreonDiagnostic[] = []
   let relatedAntiPatterns: AntiPatternEntry[] = []
+  let sourceProblem: string | null = null
   if (input.componentSource && input.componentSource.trim().length > 0) {
-    detectorHits = deps.detectPyreonPatterns(
-      input.componentSource,
-      input.filename ?? 'component.tsx',
-    )
+    const fname = input.filename ?? 'component.tsx'
+    const prepared = prepareSnippet(input.componentSource, fname)
+    if (prepared.kind !== 'ok') {
+      sourceProblem = describeUnreadable(prepared, fname, 'checked by the static detectors')
+    }
+    const source = prepared.kind === 'ok' || prepared.kind === 'syntax-error' ? prepared.code : ''
+    detectorHits = source === '' ? [] : deps.detectPyreonPatterns(source, fname)
     if (detectorHits.length > 0) {
       const hitCodes = new Set(detectorHits.map((d) => d.code as string))
       // `AntiPatternEntry.detectorCodes` lists the detector codes a
@@ -169,6 +180,7 @@ export function enrichDiagnosis(input: DiagnoseInput, deps: EnrichDeps): Enriche
   return {
     patternDiagnosis,
     detectorHits,
+    sourceProblem,
     relatedAntiPatterns,
     reactiveNarrative,
     contextLevel: hasStructuredContext ? 'enriched' : 'string-only',
@@ -209,6 +221,10 @@ export function formatEnrichedDiagnosis(input: DiagnoseInput, r: EnrichedDiagnos
     sections.push(`---\n\n### ${r.reactiveNarrative.split('\n')[0]}\n\n\`\`\`\n${r.reactiveNarrative.split('\n').slice(1).join('\n')}\n\`\`\``)
   }
 
+  if (r.sourceProblem) {
+    sections.push(`---\n\n### Component source not checked\n\n${r.sourceProblem}`)
+  }
+
   if (r.detectorHits.length > 0) {
     const hits = r.detectorHits
       .slice()
@@ -232,7 +248,7 @@ export function formatEnrichedDiagnosis(input: DiagnoseInput, r: EnrichedDiagnos
     )
   }
 
-  if (r.detectorHits.length === 0 && !r.reactiveNarrative) {
+  if (r.detectorHits.length === 0 && !r.reactiveNarrative && !r.sourceProblem) {
     sections.push(
       `---\n\n_Structured context was supplied but produced no additional findings: the component triggered no static detectors and the reactive trace was empty. The base diagnosis above is the best available._`,
     )

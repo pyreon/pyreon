@@ -182,10 +182,10 @@ The detector is narrow by design. It fires when the condition calls a signal, a 
 <ul>{items().map((i) => <li>{i.name}</li>)}</ul>
 
 // ✗ key is reserved by JSX and never reaches <For>
-<For each={items} key={(i) => i.id}>{(i) => <li>{i.name}</li>}</For>
+<For each={items()} key={(i) => i.id}>{(i) => <li>{i.name}</li>}</For>
 
 // ✓
-<For each={items} by={(i) => i.id}>{(i) => <li>{i.name}</li>}</For>
+<For each={items()} by={(i) => i.id}>{(i) => <li>{i.name}</li>}</For>
 ```
 
 A bare array of elements mounts fine, then ignores every later change to `items`. `<For>` keeps one DOM node per key and moves, inserts or removes only what changed. Its key prop is `by`, because JSX takes `key` for itself.

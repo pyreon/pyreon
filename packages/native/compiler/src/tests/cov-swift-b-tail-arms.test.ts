@@ -60,10 +60,11 @@ describe('<Button> / <Toggle> — handler and disabled arms', () => {
   })
 
   it('a Toggle with `disabled` appends the modifier; without it, nothing', () => {
-    const off = el(`<Toggle value={on()} onChange={(v) => on.set(v)} />`).code
+    // The handler does more than set `on`, so the Binding arm (not `$on`) runs.
+    const off = el(`<Toggle value={on()} onChange={(v) => on.set(!v)} />`).code
     expect(off).toContain('Toggle("", isOn: Binding(')
     expect(off).not.toContain('.disabled(')
-    const on_ = el(`<Toggle value={on()} onChange={(v) => on.set(v)} disabled={true} />`).code
+    const on_ = el(`<Toggle value={on()} onChange={(v) => on.set(!v)} disabled={true} />`).code
     expect(on_).toContain('.disabled(')
   })
 
