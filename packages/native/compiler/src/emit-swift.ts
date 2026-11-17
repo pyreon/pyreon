@@ -506,8 +506,9 @@ function asFloatLiteral(v: ExprIR, t: TypeIR | undefined): ExprIR {
 function typeWantsFloat(t: TypeIR): boolean {
   if (t.kind === 'number') return t.float === true
   if (t.kind === 'typeRef') return t.name === 'Double' || t.name === 'Float'
-  if (t.kind === 'union')
-    {return t.branches.some((b) => b.kind !== 'null' && b.kind !== 'undefined' && typeWantsFloat(b))}
+  if (t.kind === 'union') {
+    return t.branches.some((b) => b.kind !== 'null' && b.kind !== 'undefined' && typeWantsFloat(b))
+  }
 
   return false
 }
@@ -1336,16 +1337,19 @@ export function emitSwift(
   if (moduleState.length > 0) parts.push(emitSwiftModuleState(moduleState))
   for (const md of moduleDecls) parts.push(emitSwiftModuleDecl(md))
   // File-scope items declared before free helper functions.
-  for (const item of itemsInSlot(moduleItems, 'bindings'))
-    {parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))}
+  for (const item of itemsInSlot(moduleItems, 'bindings')) {
+    parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
+  }
   // Free helper functions are emitted between the two module-item groups.
   for (const h of helperFns) parts.push(emitSwiftFunction(h, 'internal'))
   // Plugin module items that emit right after the models (`ModuleItemEmitter.after: 'models'`).
-  for (const item of itemsInSlot(moduleItems, 'models'))
-    {parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))}
+  for (const item of itemsInSlot(moduleItems, 'models')) {
+    parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
+  }
   // Plugin module items that emit where the feature declarations used to (`ModuleItemEmitter.after: 'declarations'`).
-  for (const item of itemsInSlot(moduleItems, 'declarations'))
-    {parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))}
+  for (const item of itemsInSlot(moduleItems, 'declarations')) {
+    parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
+  }
   // Plugin module items (`CompilerPlugin.items`): schemas and the like. What every schema throws and
   // returns (`PyreonSchemaError`, `PyreonParseResult`) lives in the runtime (`PyreonSchema.swift`), NOT in the
   // emitted file — emitted per file they collided: two schema-bearing files in one Xcode target each
@@ -1359,8 +1363,9 @@ export function emitSwift(
   // reader in another must name the SAME key, which no per-file declaration
   // can guarantee.
   _moduleItems = moduleItems
-  for (const item of itemsInSlot(moduleItems, 'data'))
-    {parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))}
+  for (const item of itemsInSlot(moduleItems, 'data')) {
+    parts.push(...lowerPluginItem(item, 'swift', () => swiftEmitContext(0)))
+  }
   // Emit components — populates _needsSwift{Suspense,ErrorBoundary,KeepAlive}Wrapper
   // if any of those elements is encountered.
   const componentParts: string[] = []
@@ -1662,13 +1667,14 @@ function emitSwiftStruct(s: StructIR): string {
   // A field whose JS name is not a Swift identifier (`'my-key'`) was renamed
   // by `swiftIdent`; keep the JSON key by declaring CodingKeys for the whole
   // struct so Codable round-trips the ORIGINAL names.
-  if (codable !== '')
-    {lines.push(
+  if (codable !== '') {
+    lines.push(
       ...swiftCodingKeysLines(
         s.fields.map((f) => f.name),
         '  ',
       ),
-    )}
+    )
+  }
   lines.push(`}`)
 
   return lines.join('\n')
@@ -2284,8 +2290,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Rate limiters: attach the state-capturing action post-init, exactly as
   // the form's onSubmit below.
   for (const d of earlyLifecycleDecls(c.decls)) {
-    for (const line of swiftLifecycleLines(d, swiftEmitContext(2)))
-      {lines.push(line === '' ? '' : `      ${line}`)}
+    for (const line of swiftLifecycleLines(d, swiftEmitContext(2))) {
+      lines.push(line === '' ? '' : `      ${line}`)
+    }
   }
   // onMount bodies → .onAppear on the stable host (sync statements; the
   // async-on-mount hook stays .task/useFetch). Multiple onMount calls emit
@@ -2328,8 +2335,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // (`useFlow` disposes its listeners; a caller-owned `createFlow` does not).
   for (const d of c.decls) {
     if (!isHeadLifecycleDecl(d)) continue
-    for (const line of swiftLifecycleLines(d, swiftEmitContext(2)))
-      {lines.push(line === '' ? '' : `      ${line}`)}
+    for (const line of swiftLifecycleLines(d, swiftEmitContext(2))) {
+      lines.push(line === '' ? '' : `      ${line}`)
+    }
   }
   // useHotkey → a hidden shortcut Button in `.background`.
   //
@@ -2344,8 +2352,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // A plugin container that binds its source and sinks here (`midOrder`) — closures over the component's own state,
   // which a property initializer cannot capture.
   for (const d of midLifecycleDecls(c.decls)) {
-    for (const line of swiftLifecycleLines(d, swiftEmitContext(2)))
-      {lines.push(line === '' ? '' : `      ${line}`)}
+    for (const line of swiftLifecycleLines(d, swiftEmitContext(2))) {
+      lines.push(line === '' ? '' : `      ${line}`)
+    }
   }
   // Service lifecycle (services.ts `lifecycle`): START the live monitor. These
   // runtimes shipped a real monitor behind `start()` — NWPathMonitor, the
@@ -2373,14 +2382,16 @@ function emitSwiftComponent(c: ComponentIR): string {
   // A plugin's lifecycle that is emitted AFTER the compiler's own (`useQuery`, `useStream`), ordered by
   // `tailOrder` then declaration order — the fetch → query → stream grouping these harnesses always had.
   for (const d of tailLifecycleDecls(c.decls)) {
-    for (const line of swiftLifecycleLines(d, swiftEmitContext(2)))
-      {lines.push(line === '' ? '' : `      ${line}`)}
+    for (const line of swiftLifecycleLines(d, swiftEmitContext(2))) {
+      lines.push(line === '' ? '' : `      ${line}`)
+    }
   }
   lines.push(`  }`)
   lines.push(`}`)
   if (optionalSlotNames.length > 0 && optionalSlotFallback === null) {
-    if (isLayout)
-      {initParams.push({ name: 'content', decl: '@ViewBuilder content: @escaping () -> Content' })}
+    if (isLayout) {
+      initParams.push({ name: 'content', decl: '@ViewBuilder content: @escaping () -> Content' })
+    }
     lines.push(...emitSwiftOptionalSlotInits(c.name, initParams))
   }
   // Fill the reserved slot now that the body has been lowered — a responsive
@@ -3191,8 +3202,9 @@ function emitSwiftStmtLines(stmts: readonly StatementIR[], indent: number): stri
   const saved = ctxs.map((c) => c.locals)
   const exprCopy = new Map(saved[0])
   _exprInferCtx.locals = exprCopy
-  if (_activeInferCtx !== _exprInferCtx)
-    {_activeInferCtx.locals = saved[1] === saved[0] ? exprCopy : new Map(saved[1])}
+  if (_activeInferCtx !== _exprInferCtx) {
+    _activeInferCtx.locals = saved[1] === saved[0] ? exprCopy : new Map(saved[1])
+  }
   // The closure names a list declares are callable for the rest of that list only.
   const savedFunctions = _functionNames
   _functionNames = new Set(savedFunctions)
@@ -3325,8 +3337,9 @@ function emitSwiftViewBlock(b: ViewBlock, indent: number): string[] {
 /** A zero-parameter arrow with a plannable block body — a block-bodied reactive-accessor return. */
 function swiftAccessorViewBlock(e: ExprIR): ViewBlock | null {
   const x = unparenExpr(e)
-  if (x.kind !== 'arrow' || x.params.length > 0 || x.stmts === undefined || x.stmts.length === 0)
-    {return null}
+  if (x.kind !== 'arrow' || x.params.length > 0 || x.stmts === undefined || x.stmts.length === 0) {
+    return null
+  }
 
   return planViewBlock(x.stmts)
 }
@@ -3810,8 +3823,8 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       ) {
         const obj = emitSwiftExpr(s.expr.callee.object, indent)
         const out = emitSwiftExpr(s.expr, indent)
-        if (out.startsWith(`${obj}.sorted(by: `))
-          {return `${obj}.sort(by: ${out.slice(obj.length + '.sorted(by: '.length)}`}
+        if (out.startsWith(`${obj}.sorted(by: `)) {
+          return `${obj}.sort(by: ${out.slice(obj.length + '.sorted(by: '.length)}`}
 
         return out
       }
@@ -4014,7 +4027,8 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
     case 'try':
       return emitSwiftTry(s, indent)
   }
-}
+
+        }
 
 /**
  * `try { B } catch (e) { C } finally { F }` →
@@ -4666,8 +4680,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
   // `throws` helper or `do` body.
   // The exception is a callback of a rethrowing array method (`xs.map(s => { throw … })`): Swift's `map` is
   // `rethrows`, so the closure inherits the context and the CALL is marked `try` (see `case 'call'`).
-  if (e.kind === 'arrow' && _swiftThrowCtx !== 'none' && !_swiftRethrowingArrows.has(e))
-    {return withSwiftThrowCtx('none', () => emitSwiftExpr(e, indent))}
+  if (e.kind === 'arrow' && _swiftThrowCtx !== 'none' && !_swiftRethrowingArrows.has(e)) {
+    return withSwiftThrowCtx('none', () => emitSwiftExpr(e, indent))
+  }
   switch (e.kind) {
     case 'literal':
       if (typeof e.value === 'string') {
@@ -4796,8 +4811,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (paramTypes !== undefined) {
           e.args.forEach((arg, idx) => {
             const pt = paramTypes[idx]
-            if (pt !== undefined && pt.kind === 'typeRef' && arg.kind === 'object')
-              {_argExpectedTypes.set(arg, pt)}
+            if (pt !== undefined && pt.kind === 'typeRef' && arg.kind === 'object') {
+              _argExpectedTypes.set(arg, pt)
+            }
           })
         }
         // A plain `name(args)` call a plugin claims (a library helper function).
@@ -5493,20 +5509,24 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (prop === 'set' && e.args.length === 2) return `${obj}[${k(0)}] = ${v(1)}`
             if (prop === 'get' && e.args.length === 1) return `${obj}[${k(0)}]`
             if (prop === 'has' && e.args.length === 1) return `(${obj}[${k(0)}] != nil)`
-            if (prop === 'delete' && e.args.length === 1)
-              {return `${obj}${objDot}removeValue(forKey: ${k(0)})`}
+            if (prop === 'delete' && e.args.length === 1) {
+              return `${obj}${objDot}removeValue(forKey: ${k(0)})`
+            }
             if (prop === 'clear' && e.args.length === 0) return `${obj}${objDot}removeAll()`
             // The keys / values as an array, in insertion order (`PyreonMap` keeps it).
             if (prop === 'keys' && e.args.length === 0) return `${obj}${objDot}keys`
             if (prop === 'values' && e.args.length === 0) return `${obj}${objDot}values`
           }
           if (recvT.kind === 'set') {
-            if (prop === 'add' && e.args.length === 1)
-              {return `${obj}${objDot}insert(${argExprs[0]!})`}
-            if (prop === 'has' && e.args.length === 1)
-              {return `${obj}${objDot}contains(${argExprs[0]!})`}
-            if (prop === 'delete' && e.args.length === 1)
-              {return `${obj}${objDot}remove(${argExprs[0]!})`}
+            if (prop === 'add' && e.args.length === 1) {
+              return `${obj}${objDot}insert(${argExprs[0]!})`
+            }
+            if (prop === 'has' && e.args.length === 1) {
+              return `${obj}${objDot}contains(${argExprs[0]!})`
+            }
+            if (prop === 'delete' && e.args.length === 1) {
+              return `${obj}${objDot}remove(${argExprs[0]!})`
+            }
             if (prop === 'clear' && e.args.length === 0) return `${obj}${objDot}removeAll()`
           }
         }
@@ -5541,8 +5561,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           // `trimmingCharacters`. `Character.isWhitespace` covers the JS
           // WhiteSpace + LineTerminator set. (Kotlin's are native.)
           case 'trimStart':
-            if (e.args.length === 0 && objDot === '.')
-              {return `String(${obj}.drop(while: { $0.isWhitespace }))`}
+            if (e.args.length === 0 && objDot === '.') {
+              return `String(${obj}.drop(while: { $0.isWhitespace }))`
+            }
             break
           case 'trimEnd':
             if (e.args.length === 0 && objDot === '.') {
@@ -5722,8 +5743,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // (matching the JS number). `Array(s.utf16)` gives O(1)
             // integer indexing; out-of-range crashes (JS returns NaN) —
             // bounds are the caller's concern, same v1 rule as `charAt`.
-            if (e.args.length === 1)
-              {return `Double(Array(${obj}${objDot}utf16)[Int(${argExprs[0]!})])`}
+            if (e.args.length === 1) {
+              return `Double(Array(${obj}${objDot}utf16)[Int(${argExprs[0]!})])`
+            }
             break
           case 'startsWith':
             // JS String.startsWith → Swift `hasPrefix` (Kotlin's
@@ -5768,8 +5790,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // (Foundation; multi-char separator, returns [String], faithful
             // to JS string-separator split). Kotlin's `split` matches JS
             // as-is, so it needs no mapping there.
-            if (e.args.length === 1)
-              {return `${obj}${objDot}components(separatedBy: ${argExprs[0]!})`}
+            if (e.args.length === 1) {
+              return `${obj}${objDot}components(separatedBy: ${argExprs[0]!})`
+            }
             if (e.args.length === 2) {
               const lowered = swiftPositionedSearch('split', recvKind, e, argExprs)
               if (lowered !== null) return lowered
@@ -5968,8 +5991,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
                 let body: string | null = null
                 if (e.args.length === 0) body = `${wrap}(${recv})`
                 else if (e.args.length === 1) body = `${wrap}(${recv}.dropFirst(${argExprs[0]!}))`
-                else if (e.args.length === 2)
-                  {body = `${wrap}(${recv}.dropFirst(${argExprs[0]!}).prefix(max(0, (${argExprs[1]!}) - (${argExprs[0]!}))))`}
+                else if (e.args.length === 2) {
+                  body = `${wrap}(${recv}.dropFirst(${argExprs[0]!}).prefix(max(0, (${argExprs[1]!}) - (${argExprs[0]!}))))`
+                }
                 // NOT `objDot`: this is Swift's `Optional.map`, which unwraps the
                 // optional itself — a `?.map` would unwrap FIRST and then hit
                 // `Sequence.map`, so `$0` becomes a Character on a `String?`
@@ -5999,8 +6023,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
                 return `(${obj}${objDot}enumerated().first(where: ${emitSwiftIndexedClosure(cb, idx, el, indent, e.callee.object)})?.offset ?? -1)`
               }
             }
-            if (e.args.length === 1)
-              {return `(${obj}${objDot}firstIndex(where: ${argExprs[0]!}) ?? -1)`}
+            if (e.args.length === 1) {
+              return `(${obj}${objDot}firstIndex(where: ${argExprs[0]!}) ?? -1)`
+            }
             break
           case 'replaceAll':
             // JS `str.replaceAll(a, b)` → Swift `replacingOccurrences(of:with:)`
@@ -6176,8 +6201,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const w = uncoveredMethodShapeWarning(prop, e.args.length, recvKind, 'swift')
           if (w !== undefined && !_emitWarnings.includes(w)) _emitWarnings.push(w)
         }
-        if (e.optional === true)
-          {return `${emitSwiftExpr(e.callee, indent)}?(${argExprs.join(', ')})`}
+        if (e.optional === true) {
+          return `${emitSwiftExpr(e.callee, indent)}?(${argExprs.join(', ')})`
+        }
 
         return `${emitSwiftExpr(e.callee, indent)}(${argExprs.join(', ')})`
       }
@@ -6862,8 +6888,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
     case 'object': {
       // A literal whose CALL parameter names a struct is emitted under that struct.
       const argExpected = _argExpectedTypes.get(e)
-      if (_expectedType === undefined && argExpected !== undefined)
-        {return withExpectedType(argExpected, () => emitSwiftExpr(e, indent))}
+      if (_expectedType === undefined && argExpected !== undefined) {
+        return withExpectedType(argExpected, () => emitSwiftExpr(e, indent))
+      }
       // A MAP-typed expectation (`Record<string, number>`, `Map<K, V>`) wants a
       // DICTIONARY, not a struct. Without this the annotation and the value
       // disagreed — `let M: [String: Int] = __Obj0(a: 1)` — because the type
@@ -8225,8 +8252,9 @@ function emitSwiftFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
       _activeInferCtx.structs,
     )
     if (verdict.kind === 'self') idKey = 'self'
-    else if (verdict.kind === 'no-id')
-      {_emitWarnings.push(forMissingByWarning(verdict.what, 'swift'))}
+    else if (verdict.kind === 'no-id') {
+      _emitWarnings.push(forMissingByWarning(verdict.what, 'swift'))
+    }
   }
   const idPath = idKey
 
@@ -12112,8 +12140,9 @@ function emitSwiftReturnExpr(expr: ExprIR, indent: number): string {
 function emitSwiftSlotUse(e: ExprIR, indent: number): string | null {
   const x = e.kind === 'paren' ? e.inner : e
   const bare = activeSlotRef(x)
-  if (bare !== undefined)
-    {return bare.bare ? `${swiftIdent(bare.name)}${swiftSlotCallMark(bare)}()` : null}
+  if (bare !== undefined) {
+    return bare.bare ? `${swiftIdent(bare.name)}${swiftSlotCallMark(bare)}()` : null
+  }
   if (x.kind !== 'call') return null
   const slot = activeSlotRef(x.callee)
   if (slot === undefined || slot.bare) return null
