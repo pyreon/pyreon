@@ -1,6 +1,6 @@
-import { useHead } from "@pyreon/head"
+import { useHead } from '@pyreon/head'
 
-export const meta = { title: "Account settings" }
+export const meta = { title: 'Account settings' }
 
 export default function AccountSettings() {
   useHead({ title: meta.title })
@@ -14,14 +14,25 @@ export default function AccountSettings() {
       <form style="max-width: 480px; display: grid; gap: 1rem;">
         <div class="field">
           <label for="name">Name</label>
-          <input id="name" type="text" placeholder="Your name" />
+          <input
+            id="name"
+            type="text"
+            placeholder="Your name"
+          />
         </div>
         <div class="field">
           <label for="email">Email</label>
-          <input id="email" type="email" placeholder="you@example.com" />
+          <input
+            id="email"
+            type="email"
+            placeholder="you@example.com"
+          />
         </div>
         <div>
-          <button type="submit" class="btn btn-primary">
+          <button
+            type="submit"
+            class="btn btn-primary"
+          >
             Save changes
           </button>
         </div>

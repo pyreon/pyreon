@@ -69,6 +69,11 @@ export const CATEGORY_GROUP: Record<RuleCategory, RuleGroup> = {
   'web-perf': 'web-perf',
   portable: 'portable',
   js: 'js',
+  // How code reads. Its own group because "is this readable?" is a matter of
+  // taste a team adopts deliberately, never something a correctness gate
+  // should mix in. Every rule in it is opt-in; the `readable` presets turn
+  // the group on.
+  style: 'style',
 }
 
 /**

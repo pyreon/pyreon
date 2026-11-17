@@ -234,7 +234,7 @@ Export `doThing(cwd): StructuredResult` from the script (no `process.cwd()` insi
 
 ### `CODE_SIGNING_ALLOWED=NO` breaks Keychain on simulator apps
 
-An unsigned app carries no entitlements and securityd denies `SecItemAdd`, while local (ad-hoc signed) builds pass. Never pass the flag to `xcodebuild test` for an app using Keychain, app groups or any entitlement-gated service; ad-hoc signing is free. xcodegen's `entitlements:` key alone does not embed entitlements under ad-hoc signing; set `CODE_SIGN_ENTITLEMENTS`. To diagnose, render live state (`write-failed`/`read-failed`) into the failure message. Reference: `.github/workflows/native-device.yml`, `examples/native-router-demo-ios/project.yml`.
+An unsigned app carries no entitlements and securityd denies `SecItemAdd`, while local (ad-hoc signed) builds pass. Never pass the flag to `xcodebuild test` for an app using Keychain, app groups or any entitlement-gated service; ad-hoc signing is free. xcodegen's `entitlements:` key alone does not embed entitlements under ad-hoc signing; set `CODE_SIGN_ENTITLEMENTS`. To diagnose, render live state (`write-failed`/`read-failed`) into the failure message. Reference: `.github/workflows/native-device.yml`, `examples/native-router-demo/ios/project.yml`.
 
 ---
 

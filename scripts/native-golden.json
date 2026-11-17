@@ -261,34 +261,14 @@
       "bytes": 3133,
       "warnings": 0
     },
-    "fixture:showcase-finance.tsx|swift": {
-      "sha": "59739c2509e1be4c75f0ca18105b81028c82ee2668b8a61e670d123569e34740",
-      "bytes": 5513,
-      "warnings": 1
-    },
-    "fixture:showcase-finance.tsx|kotlin": {
-      "sha": "d5b60da7dec6795872f4601dafc87142d3930ee878e6461216f69ea9481867e0",
-      "bytes": 4682,
-      "warnings": 0
-    },
-    "fixture:showcase-tasks.tsx|swift": {
-      "sha": "4bc77ae33fba257841eae7b6963e0c6e171d20b2df54677ac6f2953e4075f98f",
-      "bytes": 12725,
-      "warnings": 1
-    },
-    "fixture:showcase-tasks.tsx|kotlin": {
-      "sha": "eb72f6e650327bf5de63eae0d5d81726025ba3409686510b760e5a8c07495d27",
-      "bytes": 11009,
-      "warnings": 0
-    },
     "fixture:showcase-viz.tsx|swift": {
-      "sha": "5817b9a6ef2726bd832e6ce9572af6937ab82956f792ef8a370f91f81d016348",
-      "bytes": 1340,
+      "sha": "7cab0ad483ea75982c360a8725037c2b52a6e65a9da6e687701a31910dfbf8a0",
+      "bytes": 25112,
       "warnings": 0
     },
     "fixture:showcase-viz.tsx|kotlin": {
-      "sha": "11caf3f3ce43a62fd174df289eb1310fd87d139e3db60d9ec96dae43f43d69d5",
-      "bytes": 1448,
+      "sha": "4b12fe7c0b82779e6397d0a1ea05889182b10a56c23bb1972ac3f8679998d9f9",
+      "bytes": 25275,
       "warnings": 0
     },
     "fixture:synth-prop-types.tsx|swift": {
@@ -7391,22 +7371,12 @@
       "bytes": 2485,
       "warnings": 0
     },
-    "example:native-analytics/AnalyticsApp.tsx|swift": {
-      "sha": "d9e93002139e8ba0ad60a64975f9411a1e54fc6d18788f8a4d78ba8a94dc6dbc",
-      "bytes": 2726,
-      "warnings": 0
-    },
-    "example:native-analytics/AnalyticsApp.tsx|kotlin": {
-      "sha": "d014a6b2e2af15eab5bc4a009e9586eafce4514f2e50aeed3d9e55037c099b9f",
-      "bytes": 3133,
-      "warnings": 0
-    },
-    "example:native-counter-ios/Counter.tsx|swift": {
+    "example:native-counter/Counter.tsx|swift": {
       "sha": "15cf7e20f25c5a62242bc20d8ced7da447daa3494b7a664d26f095e67cdcdc63",
       "bytes": 21958,
       "warnings": 0
     },
-    "example:native-counter-ios/Counter.tsx|kotlin": {
+    "example:native-counter/Counter.tsx|kotlin": {
       "sha": "9516d8cada0d52fb2e249b7229c4e1be05b7ff5f80ad325de519dfd04d0f0c53",
       "bytes": 20792,
       "warnings": 0
@@ -7421,12 +7391,12 @@
       "bytes": 7149,
       "warnings": 0
     },
-    "example:native-router-demo-ios/RouterApp.tsx|swift": {
+    "example:native-router-demo/RouterApp.tsx|swift": {
       "sha": "b7af385bcafb3904599e6193db340f9e2e8b265ed71f3903027c577fcd71e868",
       "bytes": 38161,
       "warnings": 1
     },
-    "example:native-router-demo-ios/RouterApp.tsx|kotlin": {
+    "example:native-router-demo/RouterApp.tsx|kotlin": {
       "sha": "7016161325c926ae18fb9a0b4ec558d030adb55d940035dbab4c1cfc50ac67a6",
       "bytes": 32282,
       "warnings": 1
@@ -7459,16 +7429,6 @@
     "example:native-todomvc-ios/TodoApp.tsx|kotlin": {
       "sha": "4839256ad678c192a21583288b9c5172ce2a1ee618aa6323f0c498ca58af4a00",
       "bytes": 3075,
-      "warnings": 0
-    },
-    "example:native-viz/VizApp.tsx|swift": {
-      "sha": "7cab0ad483ea75982c360a8725037c2b52a6e65a9da6e687701a31910dfbf8a0",
-      "bytes": 25112,
-      "warnings": 0
-    },
-    "example:native-viz/VizApp.tsx|kotlin": {
-      "sha": "4b12fe7c0b82779e6397d0a1ea05889182b10a56c23bb1972ac3f8679998d9f9",
-      "bytes": 25275,
       "warnings": 0
     },
     "registry:@pyreon/charts|swift": {

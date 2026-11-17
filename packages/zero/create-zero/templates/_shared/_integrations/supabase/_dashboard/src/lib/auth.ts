@@ -18,6 +18,7 @@ export async function signUp(
   const { data, error } = await supabase.auth.signUp({ email, password })
   if (error) return { error: error.message }
   if (!data.session) return { error: 'Email confirmation required — check your inbox.' }
+
   return { sessionId: data.session.access_token }
 }
 
@@ -34,6 +35,7 @@ export async function getSession(sessionId: string | undefined): Promise<Session
   if (!sessionId) return null
   const { data, error } = await supabase.auth.getUser(sessionId)
   if (error || !data.user) return null
+
   return { userId: data.user.id, email: data.user.email ?? '' }
 }
 

@@ -1,3 +1,4 @@
+/* oxlint-disable complexity -- auditLayout is serialized into the page by page.evaluate, so it cannot call module helpers; its three passes (wide, clipped, tap) are flat guard lists */
 /**
  * The same audit as site-pages.spec.ts, shared by site-project.spec.ts and
  * site-blog.spec.ts (it runs inside the page through `page.evaluate`, so it

@@ -29,8 +29,9 @@
  * ~6-minute round trip on the same PR. Both checks exist so a toolchain bump
  * costs one second instead of one job.
  */
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { listNativeHosts } from './native-example-hosts'
 
 /**
  * AGP major.minor -> the highest `compileSdk` it supports. AGP refuses a higher
@@ -144,10 +145,10 @@ function main(): number {
     return 1
   }
 
-  const examplesDir = join(root, 'examples')
-  const apps = readdirSync(examplesDir).filter(
-    (d) => d.startsWith('native-') && d.endsWith('-android'),
-  )
+  // Both example layouts (native-<app>-android/ and native-<app>/android/).
+  const apps = listNativeHosts(root)
+    .filter((h) => h.platform === 'android')
+    .map((h) => h.dir)
   if (apps.length === 0) {
     console.error('[check-agp-gradle-lockstep] ✗ scanned ZERO android examples — the glob is wrong')
     return 1
@@ -161,7 +162,7 @@ function main(): number {
     )
   }
   for (const app of apps) {
-    const f = join(examplesDir, app, 'build.gradle.kts')
+    const f = join(root, app, 'build.gradle.kts')
     let src: string
     try {
       src = readFileSync(f, 'utf8')
@@ -187,7 +188,7 @@ function main(): number {
   }
 
   for (const app of apps) {
-    const f = join(examplesDir, app, 'app', 'build.gradle.kts')
+    const f = join(root, app, 'app', 'build.gradle.kts')
     let src: string
     try {
       src = readFileSync(f, 'utf8')
@@ -196,7 +197,7 @@ function main(): number {
     }
     const rootSrc = (() => {
       try {
-        return readFileSync(join(examplesDir, app, 'build.gradle.kts'), 'utf8')
+        return readFileSync(join(root, app, 'build.gradle.kts'), 'utf8')
       } catch {
         return ''
       }

@@ -113,18 +113,51 @@ export function compareSets(
   return { example, file, missingFromGradle, extraInGradle }
 }
 
+/**
+ * The example pairs this gate compares, as paths under `examples/`: the
+ * platform host's hand-written source list and the directory whose
+ * `package.json` `wire` resolves. Each path must exist. A pair whose path is
+ * missing used to be skipped with `continue`, so renaming or moving an
+ * example turned its check off with no signal (the counter pair named a
+ * `native-counter` directory that never existed and was never checked).
+ */
+export const ANDROID_PAIRS: readonly { host: string; shared: string }[] = [
+  { host: 'native-tasks-android/app/build.gradle.kts', shared: 'native-tasks' },
+  { host: 'native-finance/android/app/build.gradle.kts', shared: 'native-finance' },
+]
+export const IOS_PAIRS: readonly { host: string; shared: string }[] = [
+  { host: 'native-tasks-ios/project.yml', shared: 'native-tasks' },
+  { host: 'native-finance/ios/project.yml', shared: 'native-finance' },
+  // Counter's shared source and package.json live in the iOS host itself.
+  { host: 'native-counter/ios/project.yml', shared: 'native-counter' },
+]
+
+/** Every pair path (relative to `examples/`) that does not exist. */
+export function missingPairPaths(
+  pairs: readonly { host: string; shared: string }[],
+  exists: (rel: string) => boolean,
+): string[] {
+  return pairs.flatMap((p) => [p.host, p.shared]).filter((rel) => !exists(rel))
+}
+
 async function main(): Promise<number> {
   const { wireApp } = await import('../packages/native/cli/src/wire')
   const findings: DriftFinding[] = []
   let checked = 0
 
-  for (const pair of [
-    { android: 'native-tasks-android', shared: 'native-tasks' },
-    { android: 'native-finance-android', shared: 'native-finance' },
-  ]) {
-    const gradlePath = join(REPO, 'examples', pair.android, 'app/build.gradle.kts')
+  const missing = missingPairPaths([...ANDROID_PAIRS, ...IOS_PAIRS], (rel) => existsSync(join(REPO, 'examples', rel)))
+  if (missing.length > 0) {
+    console.error(
+      `[check-native-srcdirs-drift] ✗ example paths this gate compares do not exist: ${missing.map((m) => `examples/${m}`).join(', ')}. ` +
+        'An example was renamed, moved or removed: update ANDROID_PAIRS / IOS_PAIRS in scripts/check-native-srcdirs-drift.ts in the same PR, so the check keeps running.',
+    )
+    return 1
+  }
+
+  for (const pair of ANDROID_PAIRS) {
+    const gradlePath = join(REPO, 'examples', pair.host)
     const sharedDir = join(REPO, 'examples', pair.shared)
-    if (!existsSync(gradlePath) || !existsSync(sharedDir)) continue
+    const example = pair.host.split('/')[0]!
     checked += 1
     const gradle = packagesInGradle(readFileSync(gradlePath, 'utf8'))
     const wired = packagesInWiring(wireApp(sharedDir).androidSrcDirs)
@@ -145,7 +178,7 @@ async function main(): Promise<number> {
       )
       return 1
     }
-    const finding = compareSets(pair.android, gradle, wired)
+    const finding = compareSets(example, gradle, wired)
     if (finding) findings.push(finding)
   }
 
@@ -154,14 +187,10 @@ async function main(): Promise<number> {
   // was no iOS consumption path to check at all, so the examples' hand-written
   // `sources:` lists were the only wiring and nothing compared them to the
   // resolver a real app uses.
-  for (const pair of [
-    { ios: 'native-tasks-ios', shared: 'native-tasks' },
-    { ios: 'native-finance-ios', shared: 'native-finance' },
-    { ios: 'native-counter-ios', shared: 'native-counter' },
-  ]) {
-    const ymlPath = join(REPO, 'examples', pair.ios, 'project.yml')
+  for (const pair of IOS_PAIRS) {
+    const ymlPath = join(REPO, 'examples', pair.host)
     const sharedDir = join(REPO, 'examples', pair.shared)
-    if (!existsSync(ymlPath) || !existsSync(sharedDir)) continue
+    const example = pair.host.split('/')[0]!
     checked += 1
     const spec = packagesInXcodeGen(readFileSync(ymlPath, 'utf8'))
     const wired = packagesInIosWiring(wireApp(sharedDir).iosTargetSources)
@@ -174,7 +203,7 @@ async function main(): Promise<number> {
       )
       return 1
     }
-    const finding = compareSets(pair.ios, spec, wired, 'project.yml')
+    const finding = compareSets(example, spec, wired, 'project.yml')
     if (finding) findings.push(finding)
   }
 

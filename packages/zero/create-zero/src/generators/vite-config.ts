@@ -10,13 +10,13 @@ import { ADAPTERS } from '../adapters'
 import type { ProjectConfig } from '../templates'
 
 const MODE_MAP: Record<ProjectConfig['renderMode'], string> = {
-  'ssr-stream': `mode: 'ssr', ssr: { mode: 'stream' }`,
+  'ssr-stream': `mode: 'ssr',\n      ssr: { mode: 'stream' }`,
   'ssr-string': `mode: 'ssr'`,
   ssg: `mode: 'ssg'`,
   spa: `mode: 'spa'`,
   // Every route gets the SWR cache with a 60s revalidation window by
   // default; per-route `export const revalidate = N` overrides it.
-  isr: `mode: 'isr', isr: { revalidate: 60 }`,
+  isr: `mode: 'isr',\n      isr: { revalidate: 60 }`,
 }
 
 export function generateViteConfig(config: ProjectConfig): string {
@@ -27,10 +27,13 @@ export function generateViteConfig(config: ProjectConfig): string {
 
   // Adapter wiring — `static` has no factory (dist/ IS the artefact).
   const adapter = ADAPTERS[config.adapter]
-  const adapterImport = adapter.viteFactory
-    ? `\nimport { ${adapter.viteFactory} } from '@pyreon/zero/server'`
-    : ''
-  const adapterArg = adapter.viteFactory ? `, adapter: ${adapter.viteFactory}()` : ''
+  // One import per module: a second `from '@pyreon/zero/server'` line trips
+  // `import/no-duplicates` in a project that lints with it.
+  const zeroImport = adapter.viteFactory ? `zero, { ${adapter.viteFactory} }` : 'zero'
+  // One option per line: the scaffolded `oxfmt.config.ts` formats an object
+  // that wraps one property per line, so anything else is rewritten by the
+  // project's first `bun run format`.
+  const adapterArg = adapter.viteFactory ? `\n      adapter: ${adapter.viteFactory}(),` : ''
 
   // Blog template — the content plugin compiles the markdown posts and
   // emits the RSS feed (published posts only, full bodies). It runs before
@@ -55,8 +58,18 @@ export function generateViteConfig(config: ProjectConfig): string {
     }),`
     : ''
 
-  return `import pyreon from '@pyreon/vite-plugin'
-import zero from '@pyreon/zero/server'${adapterImport}${contentImport}
+  // Under SSG the sitemap reads the prerendered-paths manifest, so the URLs
+  // `getStaticPaths` enumerates (every blog post) are listed; without it only
+  // file-system routes appear and every dynamic page is missing.
+  const sitemap =
+    config.renderMode === 'ssg'
+      ? `{ origin: 'https://example.com', useSsgPaths: true }`
+      : `{ origin: 'https://example.com' }`
+
+  // oxfmt sorts imports by specifier: `@pyreon/zero-content/plugin` comes
+  // before `@pyreon/zero/server` ('-' sorts before '/').
+  return `import pyreon from '@pyreon/vite-plugin'${contentImport}
+import ${zeroImport} from '@pyreon/zero/server'
 
 // One config surface: fonts, SEO, favicons, og-images, and AI discoverability
 // are all fields on zero() — no separate plugin imports needed.
@@ -64,7 +77,7 @@ export default {
   plugins: [${contentPlugin}
     pyreon(${pyreonOpts}),
     zero({
-      ${MODE_MAP[config.renderMode]}${adapterArg},${typedRoutesLine}
+      ${MODE_MAP[config.renderMode]},${adapterArg}${typedRoutesLine}
 
       // Google Fonts — self-hosted at build time (CDN in dev), preloaded,
       // with auto size-adjusted fallbacks that eliminate font-swap CLS
@@ -77,7 +90,7 @@ export default {
 
       // sitemap.xml + robots.txt at build time — set your real origin once.
       seo: {
-        sitemap: { origin: 'https://example.com' },
+        sitemap: ${sitemap},
         robots: {
           rules: [{ userAgent: '*', allow: ['/'] }],
           sitemap: 'https://example.com/sitemap.xml',

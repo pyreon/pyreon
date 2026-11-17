@@ -25,6 +25,7 @@ describe('gen-docs — lint snapshot', () => {
       'lint/lintAsync',
       'lint/lintFile',
       'lint/no-process-dev-gate',
+      'lint/readable',
       'lint/require-browser-smoke-test',
     ])
   })

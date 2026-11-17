@@ -42,11 +42,12 @@ function editJob(text: string, job: string, from: string, to: string): string {
   const end = next === -1 ? text.length : start + 1 + next
   const block = text.slice(start, end)
   expect(block.includes(from), `anchor in ${job}: ${from}`).toBe(true)
+
   return text.slice(0, start) + block.replace(from, to) + text.slice(end)
 }
 
 const mac = (files: string[], self: SelfWorkflow = same(VALIDATE, validateText), manifests: Record<string, string> = {}) =>
-  classifyMacosLane(files, (p) => manifests[p] ?? null, self, MAC_JOBS, new Set(), () => null)
+  classifyMacosLane(files, (p) => manifests[p] ?? null, self, MAC_JOBS, { pluginSurface: new Set(), readBase: () => null })
 
 describe('macOS typecheck — what must NOT start it', () => {
   it('a Gradle-only change to an Android example (the Dependabot gradle bump)', () => {
@@ -55,6 +56,15 @@ describe('macOS typecheck — what must NOT start it', () => {
       'examples/native-counter-android/app/build.gradle.kts',
       'examples/native-tasks-android/settings.gradle.kts',
       'examples/native-tasks-android/gradle.properties',
+    ]
+    expect(mac(files).run).toBe(false)
+  })
+  it('the same Gradle change in a one-folder app (native-<app>/android)', () => {
+    const files = [
+      'examples/native-counter/android/build.gradle.kts',
+      'examples/native-counter/android/app/build.gradle.kts',
+      'examples/native-counter/android/settings.gradle.kts',
+      'examples/native-counter/android/gradle.properties',
     ]
     expect(mac(files).run).toBe(false)
   })
@@ -122,9 +132,14 @@ describe('macOS typecheck — device tests and inert lockfile changes', () => {
   const KTTEST = 'examples/native-tasks-android/app/src/androidTest/kotlin/com/pyreon/TasksAppInstrumentedTest.kt'
   const INTL = 'examples/native-tasks-android/app/src/androidTest/kotlin/com/pyreon/IntlDifferentialCases.kt'
   const run = (files: string[], present: string[]) =>
-    classifyMacosLane(files, (p) => (present.includes(p) ? 'x' : null), same(VALIDATE, validateText), MAC_JOBS, new Set(), () => null)
+    classifyMacosLane(files, (p) => (present.includes(p) ? 'x' : null), same(VALIDATE, validateText), MAC_JOBS, { pluginSurface: new Set(), readBase: () => null })
   it('an XCUITest / instrumented-test edit that still exists starts no macOS job', () => {
     expect(run([UITEST, KTTEST], [UITEST, KTTEST]).run).toBe(false)
+  })
+  it('the same edit in a one-folder app (native-<app>/ios/UITests, native-<app>/android/…/androidTest)', () => {
+    const ui = 'examples/native-counter/ios/UITests/PyreonCounterUITests.swift'
+    const kt = 'examples/native-counter/android/app/src/androidTest/kotlin/com/pyreon/CounterInstrumentedTest.kt'
+    expect(run([ui, kt], [ui, kt]).run).toBe(false)
   })
   it('a deleted device-test file still starts it (the directory may be gone)', () => {
     expect(run([UITEST], []).run).toBe(true)
@@ -139,8 +154,19 @@ describe('macOS typecheck — device tests and inert lockfile changes', () => {
       'examples/native-counter-ios/ios/AppDelegate.swift',
       'examples/native-counter-android/app/src/main/kotlin/com/pyreon/MainActivity.kt',
       'examples/native-counter-ios/iosUITests/../src/Counter.tsx',
-    ])
+    ]) {
       expect(isDeviceTestSource(f), f).toBe(false)
+    }
+  })
+  it('only the device-test directories are exempt in a one-folder app', () => {
+    for (const f of [
+      'examples/native-counter/src/Counter.tsx',
+      'examples/native-counter/ios/Sources/App.swift',
+      'examples/native-counter/ios/UITests/../Sources/App.swift',
+      'examples/native-counter/android/app/src/main/kotlin/com/pyreon/MainActivity.kt',
+    ]) {
+      expect(isDeviceTestSource(f), f).toBe(false)
+    }
   })
 
   const lock = (csstype: string, bench = '1.0.0'): string => `{
@@ -170,7 +196,7 @@ describe('macOS typecheck — device tests and inert lockfile changes', () => {
     )
     expect(lockfileInertForNative(h!, b!)).toBe(true)
     expect(macosGraphFiles(['bun.lock', 'package.json', '.github/workflows/ci.yml', 'docs/x.md'], h!, b!)).toEqual(['docs/x.md'])
-    expect(classifyMacosLane(['bun.lock'], h!, same(VALIDATE, validateText), MAC_JOBS, new Set(), b!).run).toBe(false)
+    expect(classifyMacosLane(['bun.lock'], h!, same(VALIDATE, validateText), MAC_JOBS, { pluginSurface: new Set(), readBase: b! }).run).toBe(false)
   })
   it.each([
     ['a native workspace dependency moved', { 'bun.lock': lock('3.2.0'), 'package.json': manifest() }],
@@ -183,7 +209,7 @@ describe('macOS typecheck — device tests and inert lockfile changes', () => {
     const [h, b] = files(head, { 'bun.lock': lock('3.1.0'), 'package.json': manifest() })
     expect(lockfileInertForNative(h!, b!)).toBe(false)
     expect(macosGraphFiles(['bun.lock', 'package.json'], h!, b!)).toEqual(['bun.lock', 'package.json'])
-    expect(classifyMacosLane(['bun.lock'], h!, same(VALIDATE, validateText), MAC_JOBS, new Set(), b!).run).toBe(true)
+    expect(classifyMacosLane(['bun.lock'], h!, same(VALIDATE, validateText), MAC_JOBS, { pluginSurface: new Set(), readBase: b! }).run).toBe(true)
   })
   it('no readable base is never inert', () => {
     expect(lockfileInertForNative(() => 'x', undefined)).toBe(false)
@@ -208,7 +234,7 @@ describe('macOS typecheck — unknown or malformed input runs it (fail-closed)',
     expect(mac(['packages/fundamentals/toast/package.json'], same(VALIDATE, validateText), { 'packages/fundamentals/toast/package.json': '{not json' }).run).toBe(true)
   })
   it('a plugin surface that could not be derived', () => {
-    const d = classifyMacosLane(['packages/fundamentals/toast/src/index.ts'], noFs, same(VALIDATE, validateText), MAC_JOBS, new Error('boom'), () => null)
+    const d = classifyMacosLane(['packages/fundamentals/toast/src/index.ts'], noFs, same(VALIDATE, validateText), MAC_JOBS, { pluginSurface: new Error('boom'), readBase: () => null })
     expect(d.run).toBe(true)
   })
   it('the gradle exemption is exact: lookalike paths are not exempt', () => {
@@ -216,8 +242,18 @@ describe('macOS typecheck — unknown or malformed input runs it (fail-closed)',
       'examples/native-counter-android/app/src/main/kotlin/build.gradle.kts.kt',
       'examples/native-counter-ios/build.gradle.kts',
       'examples/native-counter-android/gradle/../scripts/build.sh',
-    ])
+    ]) {
       expect(isAndroidGradleConfig(f), f).toBe(false)
+    }
+  })
+  it('the gradle exemption is exact in a one-folder app too', () => {
+    for (const f of [
+      'examples/native-counter/ios/build.gradle.kts',
+      'examples/native-counter/android/gradle/../../scripts/build-android.sh',
+      'examples/native-counter/build.gradle.kts',
+    ]) {
+      expect(isAndroidGradleConfig(f), f).toBe(false)
+    }
   })
 })
 
@@ -226,8 +262,9 @@ const SURFACES: AppSurface[] = [
   { platform: 'android', app: 'counter', roots: ['examples/native-counter-android/', 'examples/native-counter/'] },
   { platform: 'android', app: 'tasks', roots: ['examples/native-tasks-android/'] },
 ]
+
 const device = (files: string[], self: SelfWorkflow = same(DEVICE, deviceText)) =>
-  decideDevice(files, noFs, self, DEVICE_JOBS, new Set(), () => null, () => SURFACES)
+  decideDevice(files, noFs, self, DEVICE_JOBS, { pluginSurface: new Set(), readBase: () => null, surfaces: () => SURFACES })
 
 describe('iOS lane (native-device.yml)', () => {
   it('a Gradle-only change selects Android and never iOS', () => {
