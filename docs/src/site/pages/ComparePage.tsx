@@ -9,7 +9,8 @@ import { CodeCard } from '../kit/code'
 import { CompareTable, VerdictLegend } from '../kit/compare'
 import { Pill } from '../kit/controls'
 import { inlineText } from '../kit/inline'
-import { AutoGrid, Section, SectionHead, Wrap } from '../kit/layout'
+import { Section, SectionHead } from '../kit/layout'
+import { AutoGrid, Stack, Wrap } from '../kit/primitives'
 import { Reveal } from '../kit/motion'
 import { CaveatLine, EndCTA, HookHero, ProofBand, TextLink } from '../kit/proof'
 import { CompareStrip, Diagram, InlineText } from '../kit/story'
@@ -49,8 +50,6 @@ const MigrateRow = el
   .config({ name: 'CompareMigrate' })
   .attrs({ block: true, gap: 14 })
   .theme(() => ({ maxWidth: 720 }))
-
-const Stack = el.config({ name: 'CompareStack' }).attrs({ block: true, contentAlignX: 'block', gap: 18 })
 
 export function ComparePage(props: { view: CompareView }) {
   const d = props.view.page
@@ -122,7 +121,7 @@ export function ComparePage(props: { view: CompareView }) {
         <Section size="tight" id="code">
           <Wrap>
             <SectionHead label={T.code.label} title={d.code.title} text={d.code.caption} />
-            <AutoGrid cols={2} gap={16}>
+            <AutoGrid cols={2} gap={200}>
               <CodeCard label={`${d.code.rival.label} · ${d.code.rival.file}`} code={d.code.rival.code} html={htmlOf(d.code.rival)} rail="del" />
               <CodeCard label={`${d.code.pyreon.label} · ${d.code.pyreon.file}`} code={d.code.pyreon.code} html={htmlOf(d.code.pyreon)} state="hot" rail="ins" />
             </AutoGrid>
@@ -170,7 +169,7 @@ export function ComparePage(props: { view: CompareView }) {
       {/* when to pick the other one: plain, lower on the page */}
       <Section size="tight" id="pick-the-other">
         <Wrap>
-          <Stack>
+          <Stack gap={225}>
             <Heading tag="h2" size="card">
               {renderInline(d.pickTheOther.title)}
             </Heading>
