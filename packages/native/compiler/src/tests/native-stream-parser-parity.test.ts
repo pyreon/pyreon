@@ -42,6 +42,21 @@ import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
  */
 
 const SWIFT_SRC = join(__dirname, '../../../../fundamentals/http/native/swift/PyreonStream.swift')
+/** The base runtime file the container decodes payloads with (`PyreonJSON.decode`). */
+const SWIFT_JSON_SRC = join(__dirname, '../../../runtime-swift/Sources/PyreonRuntime/PyreonJSON.swift')
+
+/**
+ * The shipped container plus the base `PyreonJSON.swift` it decodes with, written into `dir` as ONE module (in an app
+ * the base runtime is its own module, which the container imports; that import names nothing here).
+ */
+function writeSwiftContainer(dir: string): string[] {
+  const stream = join(dir, 'PyreonStream.swift')
+  writeFileSync(stream, readFileSync(SWIFT_SRC, 'utf8').replace(/^import PyreonRuntime$/m, ''))
+  const json = join(dir, 'PyreonJSON.swift')
+  writeFileSync(json, readFileSync(SWIFT_JSON_SRC, 'utf8'))
+
+  return [stream, json]
+}
 const KOTLIN_SRC = join(
   __dirname,
   '../../../../fundamentals/http/native/kotlin/com/pyreon/runtime/PyreonStream.kt',
@@ -646,11 +661,11 @@ describe('native stream loop — reconnect + Last-Event-ID parity over a real se
       const dir = mkdtempSync(join(tmpdir(), 'pyreon-stream-loop-swift-'))
       try {
         const result = await withServer(async (url) => {
-          writeFileSync(join(dir, 'PyreonStream.swift'), readFileSync(SWIFT_SRC, 'utf8'))
+          const container = writeSwiftContainer(dir)
           writeFileSync(join(dir, 'main.swift'), `import Foundation\n${SWIFT_LOOP_MAIN(url)}`)
           await run('swiftc', [
             '-parse-as-library',
-            join(dir, 'PyreonStream.swift'),
+            ...container,
             join(dir, 'main.swift'),
             '-o',
             join(dir, 'run'),
@@ -787,7 +802,7 @@ describe('native stream loop — reconnect + Last-Event-ID parity over a real se
     async () => {
       const dir = mkdtempSync(join(tmpdir(), 'pyreon-stream-controls-swift-'))
       try {
-        writeFileSync(join(dir, 'PyreonStream.swift'), readFileSync(SWIFT_SRC, 'utf8'))
+        const container = writeSwiftContainer(dir)
         const main = SWIFT_LOOP_MAIN('runtime-url', true, 1).replace(
           JSON.stringify('runtime-url'),
           'CommandLine.arguments[1]',
@@ -795,7 +810,7 @@ describe('native stream loop — reconnect + Last-Event-ID parity over a real se
         writeFileSync(join(dir, 'main.swift'), `import Foundation\n${main}`)
         await run('swiftc', [
           '-parse-as-library',
-          join(dir, 'PyreonStream.swift'),
+          ...container,
           join(dir, 'main.swift'),
           '-o',
           join(dir, 'run'),

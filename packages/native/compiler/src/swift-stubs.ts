@@ -1057,6 +1057,8 @@ public enum PyreonJSON {
   public static func encode<T>(_ value: T) -> String { "" }
   // JSON.stringify(x) lowers here. Encodable, as in the runtime.
   public static func stringify<T: Encodable>(_ value: T) -> String { "" }
+  // stringify's bytes, throwing when the value's encode does (PyreonStorage's writes).
+  public static func serialize<T: Encodable>(_ value: T) throws -> String { "" }
   // JSON.parse(s) lowers here — Decodable, and THROWS, as in the runtime.
   public static func parse<T: Decodable>(_ type: T.Type, _ text: String) throws -> T { fatalError() }
   // Every emitted decode of a fetch / query / stream body (keeps each object's key order).

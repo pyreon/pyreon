@@ -1418,6 +1418,10 @@ class PyreonNumberFormat(
 ) {
   fun format(value: Number): String = ""
 }
+// pyreonRecordKeys / pyreonRecordValues — \`Object.keys\` / \`Object.values\` of a string-keyed Record, in a JS
+// object's own-property order (runtime-kotlin's PyreonJson.kt).
+fun <V> pyreonRecordKeys(record: Map<String, V>): List<String> = record.keys.toList()
+fun <V> pyreonRecordValues(record: Map<String, V>): List<V> = record.values.toList()
 // pyreonSlice — JS \`slice\` for a bound whose sign is not known at compile time
 // (runtime-kotlin's PyreonSlice.kt).
 fun <T> pyreonSlice(a: List<T>, start: Long, end: Long? = null): List<T> = a

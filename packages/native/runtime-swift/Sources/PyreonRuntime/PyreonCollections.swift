@@ -11,7 +11,8 @@ import Foundation
 // only the ORDER changes. Kotlin needs no twin: `mutableMapOf` / `mutableSetOf` are `LinkedHashMap` / `LinkedHashSet`.
 //
 // The web's rules, kept: setting an existing key replaces its value and keeps its position; deleting and re-adding
-// moves it to the end; a duplicate key in a constructor keeps the first position with the last value.
+// moves it to the end; a duplicate key in a constructor keeps the first position with the last value. A `Record`
+// additionally lists its array-index keys first (see "own-property order" below).
 
 public struct PyreonMap<Key: Hashable, Value>: ExpressibleByDictionaryLiteral, Sequence {
     /// The keys, in insertion order.
@@ -63,6 +64,50 @@ public struct PyreonMap<Key: Hashable, Value>: ExpressibleByDictionaryLiteral, S
     }
 }
 
+// ─── A string-keyed Record's own-property order ──────────────────────────────
+//
+// A JavaScript object does not list its keys in plain insertion order: `Object.keys`, `Object.values` and
+// `JSON.stringify` put the ARRAY-INDEX keys ("0", "7", "42" — canonical integers up to 2³² − 2) first, in ascending
+// numeric order, and every other key after them in insertion order. `{ b: 1, '2': 2, '1': 3 }` lists `1,2,b`. A `Map`
+// keeps plain insertion order, so the rule is applied where a RECORD is observed — `Object.keys(r)` /
+// `Object.values(r)` lower to the functions below, and a string-keyed map encodes in this order — never to the map's
+// own storage, which a `Map` shares.
+
+/// The value of an array-index key ("0", or a digit 1–9 followed by digits, at most 2³² − 2), or `nil`.
+func pyreonArrayIndex(_ key: String) -> UInt64? {
+    let utf8 = key.utf8
+    guard let first = utf8.first, utf8.count <= 10, first >= 0x30, first <= 0x39 else { return nil }
+    if first == 0x30 { return utf8.count == 1 ? 0 : nil }
+    var n: UInt64 = 0
+    for b in utf8 {
+        guard b >= 0x30, b <= 0x39 else { return nil }
+        n = n * 10 + UInt64(b - 0x30)
+    }
+    return n <= 4_294_967_294 ? n : nil
+}
+
+/// `keys` (insertion order) in a JavaScript object's own-property order.
+func pyreonPropertyOrder(_ keys: [String]) -> [String] {
+    var indices: [(UInt64, String)] = []
+    var names: [String] = []
+    for k in keys {
+        if let i = pyreonArrayIndex(k) { indices.append((i, k)) } else { names.append(k) }
+    }
+    if indices.isEmpty { return keys }
+    return indices.sorted { $0.0 < $1.0 }.map(\.1) + names
+}
+
+extension PyreonMap where Key == String {
+    /// The keys in a JavaScript object's own-property order (array indices ascending, then insertion order).
+    public var propertyKeys: [String] { pyreonPropertyOrder(keys) }
+}
+
+/// `Object.keys(record)`.
+public func pyreonRecordKeys<V>(_ record: PyreonMap<String, V>) -> [String] { record.propertyKeys }
+
+/// `Object.values(record)`, in the order `Object.keys` lists the keys.
+public func pyreonRecordValues<V>(_ record: PyreonMap<String, V>) -> [V] { record.propertyKeys.map { record[$0]! } }
+
 extension PyreonMap: Equatable where Value: Equatable {
     /// Same entries in the same order — what an observer comparing two snapshots needs (`.onChange(of:)`).
     public static func == (a: PyreonMap, b: PyreonMap) -> Bool {
@@ -88,12 +133,13 @@ private struct PyreonMapKey: CodingKey {
 }
 
 extension PyreonMap: Encodable where Key: Encodable, Value: Encodable {
-    /// A string-keyed map is a JSON object in insertion order (the web's `JSON.stringify(record)`); any other key
-    /// type encodes the way Swift's own `Dictionary` does, as a flat `[k, v, k, v, …]` array.
+    /// A string-keyed map is a JSON object in the web's own-property order (`JSON.stringify(record)`: array-index
+    /// keys ascending, then insertion order); any other key type encodes the way Swift's own `Dictionary` does, as a
+    /// flat `[k, v, k, v, …]` array.
     public func encode(to encoder: Encoder) throws {
         if Key.self == String.self {
             var c = encoder.container(keyedBy: PyreonMapKey.self)
-            for k in keys { try c.encode(storage[k]!, forKey: PyreonMapKey(k as! String)) }
+            for k in pyreonPropertyOrder(keys as! [String]) { try c.encode(storage[k as! Key]!, forKey: PyreonMapKey(k)) }
         } else {
             var c = encoder.unkeyedContainer()
             for k in keys {

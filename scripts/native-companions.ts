@@ -17,8 +17,9 @@
 // `com.pyreon.runtime` package, so a base-runtime file is simply visible. On iOS the base
 // runtime is a separate Swift PACKAGE (module `PyreonRuntime`) while co-located package
 // sources compile into the app target: a co-located file can only see a base type through
-// `import PyreonRuntime`, which a standalone typecheck cannot model. Compiling the base file
-// alongside would make the gate pass code a real app build rejects (found by building one).
+// `import PyreonRuntime`. Compiling the base file alongside would make the gate pass code a
+// real app build rejects (found by building one); instead `check-native-cosource` builds the
+// module and compiles a file that imports it against it.
 // Co-located packages DO share the app module with each other, so `@pyreon/<pkg>` is sound.
 //
 // A `@pyreon/<pkg>` reference is only legal when <pkg> is a declared dependency:
@@ -69,7 +70,7 @@ export function resolveCompanion(ref: string, lang: NativeLang, ctx: CompanionCo
     if (lang === 'swift') {
       return {
         ok: false,
-        error: `${ref}: the base runtime is a separate Swift module (PyreonRuntime) in an iOS app, so a co-located file cannot use it without \`import PyreonRuntime\` — compiling it alongside would pass code a real build rejects. Keep the package self-contained instead.`,
+        error: `${ref}: the base runtime is a separate Swift module (PyreonRuntime) in an iOS app — compiling it alongside would pass code a real build rejects. Write \`import PyreonRuntime\` in the file instead; the co-source gate builds the module and compiles the file against it.`,
       }
     }
     const file = ref.slice('@base/'.length)

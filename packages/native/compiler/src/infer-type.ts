@@ -2355,6 +2355,24 @@ export function rewriteObjectMapCall(expr: ExprIR, ctx: InferenceCtx): ExprIR | 
   return { kind: 'call', callee: { kind: 'member', object: arg, property: expr.callee.property }, args: [] }
 }
 
+/**
+ * `Object.keys(record)` / `Object.values(record)` on a STRING-keyed map, which only a `Record` can be (`Object.keys` of
+ * a `Map` lists nothing on the web): the runtime function that lists them in a JavaScript object's own-property order
+ * — array-index keys ascending, then insertion order (`pyreonRecordKeys` / `pyreonRecordValues`, PyreonCollections.swift
+ * and PyreonJson.kt). The map itself keeps insertion order, because a `Map` lowers to the same type. `null` for
+ * anything else; the result's TYPE is still `rewriteObjectMapCall`'s (inference reads that).
+ */
+export function recordObservation(expr: ExprIR, ctx: InferenceCtx): { fn: string; arg: ExprIR } | null {
+  const rw = rewriteObjectMapCall(expr, ctx)
+  if (rw === null || rw.kind !== 'call' || rw.callee.kind !== 'member') return null
+  const arg = rw.callee.object
+  // An optional record keeps the member spelling (`r?.keys`), which carries the optionality.
+  const t = inferType(arg, ctx)
+  if (t.kind !== 'map' || t.key.kind !== 'string') return null
+
+  return { fn: rw.callee.property === 'keys' ? 'pyreonRecordKeys' : 'pyreonRecordValues', arg }
+}
+
 export function rewriteObjectKeys(expr: ExprIR, ctx: InferenceCtx): ExprIR | null {
   if (expr.kind !== 'call') return null
   const callee = expr.callee

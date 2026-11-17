@@ -25,9 +25,9 @@
 
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, relative, resolve } from 'node:path'
+import { basename, join, relative, resolve } from 'node:path'
 import { isTransientProcessFailure, withVerdictCache } from '../validate-cache'
 
 const REPO = resolve(import.meta.dirname, '../../../../..')
@@ -140,7 +140,8 @@ export function realRuntimeKeyParts(
   return {
     // The "stubs" slot holds what the emit is compiled AGAINST: here, the
     // runtime itself.
-    stubs: digest(sources.map((p) => ({ name: relative(repo, p), text: readFileSync(p, 'utf8') }))),
+    // The text COMPILED, which drops a co-located file's `import PyreonRuntime` (`oneModuleSource`).
+    stubs: digest(sources.map((p) => ({ name: relative(repo, p), text: oneModuleText(readFileSync(p, 'utf8')) }))),
     source: `${isolatedModuleCache ? 'isolated-module-cache' : 'shared-module-cache'}\0${digest(
       files.map((f) => ({ name: f.name, text: SWIFT_APP_IMPORTS + f.code })),
     )}`,
@@ -177,6 +178,7 @@ export function typecheckAgainstRealRuntime(
         writeFileSync(p, SWIFT_APP_IMPORTS + f.code, 'utf8')
         return p
       })
+      const runtime = sources.map((src, i) => oneModuleSource(src, join(dir, `runtime-${i}`)))
       execFileSync(
         'xcrun',
         [
@@ -190,7 +192,7 @@ export function typecheckAgainstRealRuntime(
           '-sdk',
           sdkPath,
           ...paths,
-          ...sources,
+          ...runtime,
         ],
         { encoding: 'utf8', stdio: 'pipe' },
       )
@@ -211,6 +213,27 @@ export function typecheckAgainstRealRuntime(
     }
   })
   return verdict.ok ? null : (verdict.error ?? 'swiftc -typecheck failed')
+}
+
+/**
+ * A co-located runtime file that `import PyreonRuntime` (the base runtime is its own module in an app) compiles here
+ * in the SAME module as the base sources, where that import names nothing: a copy without the line, written under
+ * `dir` with the original file name. Every other file is used in place. The cache key reads the original text.
+ */
+export function oneModuleSource(path: string, dir: string): string {
+  const text = readFileSync(path, 'utf8')
+  const compiled = oneModuleText(text)
+  if (compiled === text) return path
+  mkdirSync(dir, { recursive: true })
+  const copy = join(dir, basename(path))
+  writeFileSync(copy, compiled, 'utf8')
+
+  return copy
+}
+
+/** `text` as it compiles in one module with the base runtime: without `import PyreonRuntime`. */
+function oneModuleText(text: string): string {
+  return text.replace(/^import PyreonRuntime$/gm, '')
 }
 
 /** The compiler's `error:` lines, capped — what a failing assertion should print. */

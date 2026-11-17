@@ -134,6 +134,7 @@ import {
   normalizeNumericAlias,
   objectLengthRangeForm,
   optionalMemberTernary,
+  recordObservation,
   rewriteObjectMapCall,
   rewriteObjectKeys,
   rewriteObjectValues,
@@ -3734,6 +3735,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // struct field names (statically known). Recurse into the rewritten
       // array literal so the array emit produces the `List<String>`.
       {
+        const record = recordObservation(e, _kotlinExprInferCtx)
+        if (record !== null) return `${record.fn}(${emitKotlinExpr(record.arg, indent)})`
         const rw = rewriteObjectMapCall(e, _kotlinExprInferCtx) ?? rewriteObjectKeys(e, _kotlinExprInferCtx)
         if (rw !== null) return emitKotlinExpr(rw, indent)
       }

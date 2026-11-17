@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import { KOTLIN_COMPOSE_STUBS } from '../kotlin-stubs'
 import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable } from '../validate'
+import { oneModuleSource } from './real-runtime-swift'
 
 /**
  * `useStream` over `@pyreon/http/stream` — SSE and NDJSON — lowers to the
@@ -307,7 +308,8 @@ describe('useStream emit compiles against the REAL runtime source', () => {
       const sdk = execFileSync('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path'], { encoding: 'utf8' }).trim()
       execFileSync(
         'xcrun',
-        ['--sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, ...files, RUNTIME_SWIFT, core, json],
+        // One module, so the stream runtime's `import PyreonRuntime` (its own module in an app) is dropped.
+        ['--sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, ...files, oneModuleSource(RUNTIME_SWIFT, join(dir, 'runtime')), core, json],
         { stdio: 'pipe', encoding: 'utf8' },
       )
     } catch (err) {

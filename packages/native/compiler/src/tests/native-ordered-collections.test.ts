@@ -6,7 +6,8 @@
 // `mutableSetOf` are LinkedHashMap / LinkedHashSet). The Swift emit now spells these types with the runtime's ordered
 // twins (`PyreonMap` / `PyreonSet`, `PyreonCollections.swift`), which keep the Dictionary / Set spelling the emit
 // already used. Found on the way and lowered here too: `m.keys()` / `m.values()` and `Object.keys(r)` /
-// `Object.values(r)` on a map (emitted verbatim or as an empty array), and the `new Map(other)` copy.
+// `Object.values(r)` on a map (emitted verbatim or as an empty array), and the `new Map(other)` copy. (`Object.keys` /
+// `Object.values` of a Record now go through `pyreonRecordKeys` / `pyreonRecordValues`: native-property-order.test.ts.)
 
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
@@ -52,8 +53,9 @@ describe('Map / Set / Record emit', () => {
     expect(code).toContain('@State private var counts: PyreonMap<String, Int> = PyreonMap<String, Int>([("b", 1), ("a", 2)])')
     expect(code).toContain('PyreonMap(todos.map { t in (t.id, t) })')
     expect(code).toContain('m.keys.joined(separator: ",")')
-    expect(code).toContain('counts.values.reduce(')
-    expect(code).toContain('counts.keys.joined(separator: ",")')
+    // `Object.keys` / `Object.values` of a Record list it in own-property order (native-property-order.test.ts).
+    expect(code).toContain('pyreonRecordValues(counts).reduce(')
+    expect(code).toContain('pyreonRecordKeys(counts).joined(separator: ",")')
     expect(code).toMatch(/var next = m\n\s+next\["c"\] = 3\n\s+next\.removeValue\(forKey: "b"\)/)
     expect(code).not.toMatch(/\[String: Int\]|Dictionary\(|Set<String>\(/)
     expect(warnings).toEqual([])
@@ -62,8 +64,8 @@ describe('Map / Set / Record emit', () => {
   it('Kotlin: LinkedHashMap already keeps order; keys / values as lists, the copy keeps it', () => {
     const { code, warnings } = emit(app, 'kotlin')
     expect(code).toContain('m.keys.toList().joinToString(",")')
-    expect(code).toContain('counts.values.toList().fold(')
-    expect(code).toContain('counts.keys.toList().joinToString(",")')
+    expect(code).toContain('pyreonRecordValues(counts).fold(')
+    expect(code).toContain('pyreonRecordKeys(counts).joinToString(",")')
     expect(code).toContain('val next = m.toMutableMap()')
     expect(warnings).toEqual([])
   })

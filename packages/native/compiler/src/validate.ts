@@ -372,6 +372,9 @@ const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: st
   // `Map` / `Set` / `Record` lower to the ordered collections.
   { name: 'PyreonMap', file: 'PyreonCollections.swift' },
   { name: 'PyreonSet', file: 'PyreonCollections.swift' },
+  // `Object.keys(record)` / `Object.values(record)` (own-property order: array-index keys first).
+  { name: 'pyreonRecordKeys', file: 'PyreonCollections.swift' },
+  { name: 'pyreonRecordValues', file: 'PyreonCollections.swift' },
   { name: 'pyreonNumberString', file: 'PyreonNumber.swift' },
   // `n.toFixed(d)` lowers to it on both targets (the web's rounding of the exact value).
   { name: 'pyreonToFixed', file: 'PyreonNumber.swift' },

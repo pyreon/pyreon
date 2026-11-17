@@ -5770,11 +5770,23 @@ function markMethodMutatedLocals(stmts: StatementIR[]): void {
   }
 }
 
+/** The local an index write `x[k]…[j] = v` is rooted at, through any further index or member steps. */
+function indexRoot(target: ExprIR): string | undefined {
+  let t = target
+  while (t.kind === 'index' || t.kind === 'member') t = t.object
+  return t.kind === 'identifier' ? t.name : undefined
+}
+
 function markReassignedLocalsMutable(stmts: StatementIR[]): void {
   const reassigned = new Set<string>()
   const collect = (list: StatementIR[]): void => {
     for (const s of list) {
       if (s.kind === 'assign' && s.target.kind === 'identifier') reassigned.add(s.target.name)
+      // `r[k] = v` / `r[k].x = v` writes INTO the local: a Swift `PyreonMap` / Array is a value type, so a `let`
+      // binding rejects the subscript set ("cannot assign through subscript: 'r' is a 'let' constant").
+      else if (s.kind === 'assign' && s.target.kind === 'index' && indexRoot(s.target) !== undefined) {
+        reassigned.add(indexRoot(s.target)!)
+      }
       // A bare `i++` / `i--` STATEMENT mutates `i` — it must promote the
       // local to `var`, exactly like an `assign`. Without this the loop
       // counter stayed `let` and Swift/Kotlin rejected the in-loop mutation.
