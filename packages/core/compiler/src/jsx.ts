@@ -7638,8 +7638,9 @@ export function transformJSX_JS(
       !parent.computed &&
       parent.property?.type === 'Identifier' &&
       SIGNAL_METHOD_NAMES.has(parent.property.name as string)
-      ? parent
-      : null
+        ? parent
+        : null
+    )
   }
 
   /**
