@@ -74,7 +74,8 @@ describe('<Field> accessor-arrow value/placeholder + Kotlin onChange parity', ()
     expect(kotlin(jsx)).toContain('TextField(value = draft, onValueChange =')
     expect(kotlin(jsx)).not.toMatch(/\bField\(/)
     // Swift already accepted `change` — a control that this shape lowers there too
-    expect(swift(jsx)).toContain('Binding(')
+    // (a handler that only sets `draft` is the `$draft` binding there)
+    expect(swift(jsx)).toContain('text: $draft')
   })
 
   it('call forms are unchanged (no regression vs the locked tests)', () => {
