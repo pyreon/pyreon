@@ -312,6 +312,81 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 	// fall through (`next()`) or zero's SSR/404 catch-alls swallow it.
 	let proxyContexts: string[] = [];
 
+	// The virtual routes module. `ssr` is true for a server module graph (see the
+	// `serverLoaders` and `hmrIds` options below). A helper so `load` stays a
+	// plain dispatch on the virtual id.
+	async function loadRoutesModule(ssr: boolean): Promise<string> {
+		try {
+			// Detect each file's optional exports up front so the
+			// generator emits the optimal shape:
+			//   • lazy() for routes that only export `default` (best code splitting)
+			//   • Direct mod.loader/.guard/.meta access for routes with metadata
+			//   • No spurious IMPORT_IS_UNDEFINED warnings from Rolldown
+			const baseRoutes = await scanRouteFilesWithExports(routesDir, config.mode);
+			// Name the FILE for a route that cannot work (no default export,
+			// default-only layout, literal `loader`) instead of a page that
+			// spins on its loading state with a 200.
+			assertRouteFileShapes(baseRoutes);
+			// PR H — fan routes into per-locale variants when `i18n` is
+			// configured. No-op when unset; identity-returns the input
+			// otherwise so existing apps see byte-identical output.
+			const expandedRoutes = config.i18n
+				? expandRoutesForLocales(baseRoutes, config.i18n)
+				: baseRoutes;
+			// mode: 'auto' — inference-as-declaration (see zeroPlugin head).
+			const routes = config._autoMode ? applyModeInference(expandedRoutes, config.routeRules) : expandedRoutes;
+			// Build-time ISR safety: an isr-mode route whose source reads
+			// request cookie/authorization state is per-user — with the
+			// default cache key (or 'path-only') the runtime REFUSES to
+			// cache it (silent per-request refusal in prod logs). Name the
+			// file now, at build/dev time. A custom cacheKey FUNCTION is
+			// the user opting into per-user caching — suppresses the warn.
+			if (typeof config.isr?.cacheKey !== "function") {
+				warnIsrAuthRisk(detectIsrAuthRisk(routes, config.mode ?? "ssr", config.routeRules));
+			}
+			// SSG mode: lazy() route splitting by default (parity with
+			// SSR/SPA). Opt-out via `ssg.splitChunks: false` for tiny
+			// sites that prefer single-chunk + instant navigation.
+			//
+			// Pre-2026-Q3: SSG was hardcoded to `staticImports: true`
+			// (bundle everything). Trade-off was instant post-hydration
+			// nav, but the initial bundle grew linearly with route
+			// count — a 50-route docs site shipped all 50 route
+			// components on first paint. Lazy splitting (now the
+			// default for SSG) fixes that: only the landing route +
+			// deps load up front, the rest fetch on navigation. See
+			// `ssg.splitChunks` JSDoc in types.ts for the crossover-
+			// point rationale.
+			const ssgSplitDisabled =
+				config.mode === "ssg" && config.ssg?.splitChunks === false;
+			const routeModule = generateRouteModuleFromRoutes(routes, routesDir, {
+				staticImports: ssgSplitDisabled,
+				// Phase 5 — the SSR module graph gets the real serverLoader
+				// function imports; the client graph gets only the
+				// hasServerLoader marker (the .server.ts sibling is
+				// structurally unreachable from the client bundle).
+				serverLoaders: ssr,
+				// A lazy route's `hmrId` is the absolute path of its file.
+				// Dev needs it in the browser (HMR) and every server graph
+				// needs it (modulepreload lookup); a production client
+				// build would only ship it, so it is left out there.
+				hmrIds: !isBuild || ssr,
+			});
+			// Register the i18n config in BOTH graphs so `useLocale()` can
+			// derive the locale from the URL in production SSR, SSG and on
+			// the client — not only under the dev middleware's ALS store.
+			return config.i18n
+				? `${routeModule}\nimport { _registerI18nConfig as __zeroRegisterI18n } from "@pyreon/zero";\n__zeroRegisterI18n(${JSON.stringify(config.i18n)});\n`
+				: routeModule;
+		} catch (err) {
+			// A [Pyreon] diagnostic (invalid route file, loader + server
+			// loader conflict, …) names the fix — surface it instead of
+			// silently serving an app with no routes.
+			if (err instanceof Error && err.message.startsWith("[Pyreon]")) throw err;
+			return `export const routes = []`;
+		}
+	}
+
 	const mainPlugin: Plugin = {
 		name: "pyreon-zero",
 		enforce: "pre",
@@ -421,77 +496,7 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 
 		async load(id, loadOptions) {
 			if (id === DEV_OVERLAY_RESOLVED_ID) return devOverlayModuleSource();
-			if (id === RESOLVED_VIRTUAL_ROUTES_ID) {
-				try {
-					// Detect each file's optional exports up front so the
-					// generator emits the optimal shape:
-					//   • lazy() for routes that only export `default` (best code splitting)
-					//   • Direct mod.loader/.guard/.meta access for routes with metadata
-					//   • No spurious IMPORT_IS_UNDEFINED warnings from Rolldown
-					const baseRoutes = await scanRouteFilesWithExports(routesDir, config.mode);
-					// Name the FILE for a route that cannot work (no default export,
-					// default-only layout, literal `loader`) instead of a page that
-					// spins on its loading state with a 200.
-					assertRouteFileShapes(baseRoutes);
-					// PR H — fan routes into per-locale variants when `i18n` is
-					// configured. No-op when unset; identity-returns the input
-					// otherwise so existing apps see byte-identical output.
-					const expandedRoutes = config.i18n
-						? expandRoutesForLocales(baseRoutes, config.i18n)
-						: baseRoutes;
-					// mode: 'auto' — inference-as-declaration (see zeroPlugin head).
-					const routes = config._autoMode ? applyModeInference(expandedRoutes, config.routeRules) : expandedRoutes;
-					// Build-time ISR safety: an isr-mode route whose source reads
-					// request cookie/authorization state is per-user — with the
-					// default cache key (or 'path-only') the runtime REFUSES to
-					// cache it (silent per-request refusal in prod logs). Name the
-					// file now, at build/dev time. A custom cacheKey FUNCTION is
-					// the user opting into per-user caching — suppresses the warn.
-					if (typeof config.isr?.cacheKey !== "function") {
-						warnIsrAuthRisk(detectIsrAuthRisk(routes, config.mode ?? "ssr", config.routeRules));
-					}
-					// SSG mode: lazy() route splitting by default (parity with
-					// SSR/SPA). Opt-out via `ssg.splitChunks: false` for tiny
-					// sites that prefer single-chunk + instant navigation.
-					//
-					// Pre-2026-Q3: SSG was hardcoded to `staticImports: true`
-					// (bundle everything). Trade-off was instant post-hydration
-					// nav, but the initial bundle grew linearly with route
-					// count — a 50-route docs site shipped all 50 route
-					// components on first paint. Lazy splitting (now the
-					// default for SSG) fixes that: only the landing route +
-					// deps load up front, the rest fetch on navigation. See
-					// `ssg.splitChunks` JSDoc in types.ts for the crossover-
-					// point rationale.
-					const ssgSplitDisabled =
-						config.mode === "ssg" && config.ssg?.splitChunks === false;
-					const routeModule = generateRouteModuleFromRoutes(routes, routesDir, {
-						staticImports: ssgSplitDisabled,
-						// Phase 5 — the SSR module graph gets the real serverLoader
-						// function imports; the client graph gets only the
-						// hasServerLoader marker (the .server.ts sibling is
-						// structurally unreachable from the client bundle).
-						serverLoaders: loadOptions?.ssr === true,
-						// A lazy route's `hmrId` is the absolute path of its file.
-						// Dev needs it in the browser (HMR) and every server graph
-						// needs it (modulepreload lookup); a production client
-						// build would only ship it, so it is left out there.
-						hmrIds: !isBuild || loadOptions?.ssr === true,
-					});
-					// Register the i18n config in BOTH graphs so `useLocale()` can
-					// derive the locale from the URL in production SSR, SSG and on
-					// the client — not only under the dev middleware's ALS store.
-					return config.i18n
-						? `${routeModule}\nimport { _registerI18nConfig as __zeroRegisterI18n } from "@pyreon/zero";\n__zeroRegisterI18n(${JSON.stringify(config.i18n)});\n`
-						: routeModule;
-				} catch (err) {
-					// A [Pyreon] diagnostic (invalid route file, loader + server
-					// loader conflict, …) names the fix — surface it instead of
-					// silently serving an app with no routes.
-					if (err instanceof Error && err.message.startsWith("[Pyreon]")) throw err;
-					return `export const routes = []`;
-				}
-			}
+			if (id === RESOLVED_VIRTUAL_ROUTES_ID) return loadRoutesModule(loadOptions?.ssr === true);
 
 			if (id === RESOLVED_VIRTUAL_MIDDLEWARE_ID) {
 				// Plus the build-time action manifest (action-manifest.ts): this
