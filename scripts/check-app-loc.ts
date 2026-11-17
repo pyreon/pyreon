@@ -32,11 +32,13 @@
  *   bun scripts/check-app-loc.ts --update   # re-record (review the diff!)
  *   bun scripts/check-app-loc.ts --json
  */
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { baselineTotalError, parseBaseline } from './baseline-total'
 
 const REPO_ROOT = resolve(import.meta.dirname, '..')
-const BASELINE = join(REPO_ROOT, 'scripts', 'app-loc-baseline.json')
+const BASELINE_NAME = 'scripts/app-loc-baseline.json'
+const BASELINE = join(REPO_ROOT, BASELINE_NAME)
 
 /**
  * Reference apps — the closest examples to real application shape. Showcases
@@ -64,6 +66,7 @@ interface AppCount {
   code: number
   files: number
 }
+
 type Baseline = { total: number; apps: Record<string, AppCount> }
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -79,6 +82,7 @@ function walk(dir: string, out: string[] = []): string[] {
     if (statSync(full).isDirectory()) walk(full, out)
     else if (SOURCE_EXT.test(full)) out.push(full)
   }
+
   return out
 }
 
@@ -108,6 +112,7 @@ export function countCodeLines(source: string): number {
     }
     code++
   }
+
   return code
 }
 
@@ -122,6 +127,7 @@ function measure(): Baseline {
     apps[app] = { code, files: files.length }
     total += code
   }
+
   return { total, apps }
 }
 
@@ -139,15 +145,31 @@ function main(argv: string[]): number {
     writeFileSync(BASELINE, `${JSON.stringify(current, null, 2)}\n`)
     console.log(`[check-app-loc] baseline written: ${current.total} code lines`)
     console.log('Review the diff — this file only moves DOWN except when the app list changes.')
+
     return 0
   }
 
+  // A missing or unreadable baseline fails: it is committed, so either state
+  // means the gate would compare against nothing (a file with merge-conflict
+  // markers used to read as "no baseline yet" and pass).
+  const updateCommand = 'bun scripts/check-app-loc.ts --update'
+  if (!existsSync(BASELINE)) {
+    console.error(`[check-app-loc] ✗ ${BASELINE_NAME} not found. Record it with \`${updateCommand}\`.`)
+    return 1
+  }
   let baseline: Baseline
   try {
-    baseline = JSON.parse(readFileSync(BASELINE, 'utf8')) as Baseline
-  } catch {
-    console.log('[check-app-loc] no baseline yet — run with --update to record one.')
-    return 0
+    baseline = parseBaseline<Baseline>(BASELINE_NAME, readFileSync(BASELINE, 'utf8'), updateCommand)
+  } catch (error) {
+    console.error((error as Error).message)
+    return 1
+  }
+  const perApp: Record<string, unknown> = {}
+  for (const [app, count] of Object.entries(baseline.apps ?? {})) perApp[app] = count?.code
+  const inconsistent = baselineTotalError(BASELINE_NAME, baseline.total, perApp, updateCommand)
+  if (inconsistent) {
+    console.error(inconsistent)
+    return 1
   }
 
   const grown: string[] = []
@@ -164,12 +186,14 @@ function main(argv: string[]): number {
     console.error('An app needing more code is the regression this gate exists to catch.')
     console.error('If the growth is a genuine new FEATURE in the example rather than')
     console.error('boilerplate, re-record with `--update` and say so in the PR.')
+
     return 1
   }
 
   const delta = baseline.total - current.total
   const suffix = delta > 0 ? ` (−${delta} since the baseline — run --update to lock it in)` : ''
   console.log(`[check-app-loc] ✓ ${current.total} code lines across ${APPS.length} apps${suffix}`)
+
   return 0
 }
 

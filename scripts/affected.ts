@@ -195,6 +195,29 @@ export function docInputConsumer(path: string): string | undefined {
   return DOC_INPUT_CONSUMERS.find((c) => c.match(path))?.pkg
 }
 
+/**
+ * Prose and release notes outside a workspace: nothing executes them, and the
+ * gates that read them (`check-doc-claims`, docs sync, the changeset gates) run
+ * in `Fast Gates` on every pull request. A doc INPUT a package parses is the
+ * exception and is handled by `DOC_INPUT_CONSUMERS`.
+ */
+const PROSE_PATTERNS: RegExp[] = [/\.mdx?$/i, /^\.agents\//, /^\.changeset\//, /^llms(-full)?\.txt$/, /^LICENSE/, /^\.gitignore$/]
+
+export function isProsePath(path: string): boolean {
+  return PROSE_PATTERNS.some((re) => re.test(path))
+}
+
+/**
+ * The workspaces whose tests read a repository-level file (one no workspace
+ * owns and no rule above maps): a root baseline, a lint config, a hook, an
+ * editor's MCP config. An EMPTY list means nobody is known to read it.
+ *
+ * Injected so `computeAffectedFlags` stays pure. The real one
+ * (`scripts/repo-file-readers.ts`) scans the `@pyreon/test-utils` tests and the
+ * scripts they exercise for the file's name.
+ */
+export type RepoFileReaders = (path: string) => string[]
+
 // ── Workspace discovery ────────────────────────────────────────────────────
 
 export interface Workspace {
@@ -224,6 +247,7 @@ function collectPyreonDeps(pkg: ReturnType<typeof readPkg>): string[] {
       if (name.startsWith('@pyreon/')) out.push(name)
     }
   }
+
   return out
 }
 
@@ -306,6 +330,7 @@ export function findOwningWorkspace(
     if (ws) return ws
     dir = dirname(dir)
   }
+
   return undefined
 }
 
@@ -338,6 +363,7 @@ export function transitiveDependents(seeds: Set<string>, workspaces: Workspace[]
       }
     }
   }
+
   return closure
 }
 
@@ -398,6 +424,7 @@ export function filterByCategory(
     if (exclude.some((e) => matches(ws.dir, e))) continue
     out.add(name)
   }
+
   return out
 }
 
@@ -444,6 +471,16 @@ export function computeAffectedFlags(opts: {
    * `scriptNames` list (hand-built fixture) counts as not declaring it.
    */
   requireScript?: string | undefined
+  /**
+   * Who reads a repository-level file (see `RepoFileReaders`). A changed file
+   * that no workspace owns, no rule maps and no test is known to read selects
+   * the FULL suite: selecting nothing is how `readable-oxlint-baseline.json`
+   * reached the default branch on 2026-11-17 with the one test that reads it
+   * never run (#4520 changed only that file and three test files; every
+   * `test (…)` cell was skipped and `Test` passed). Absent → nobody is known,
+   * so such a file escalates.
+   */
+  repoFileReaders?: RepoFileReaders | undefined
 }): string {
   const { changed, workspaces, category } = opts
   const exclude = opts.exclude ?? []
@@ -486,16 +523,24 @@ export function computeAffectedFlags(opts: {
   // ONLY test-utils' script tests, never any consumer. Adding it as a leaf is
   // what actually keeps a script change off the full 60-package run.
   const leafSeeds = new Set<string>()
+  // Repository-level files nobody is known to read (see `repoFileReaders`).
+  const unmapped: string[] = []
   const hasScriptTestPkg = workspaces.some((w) => w.name === SCRIPT_TEST_PACKAGE)
   for (const path of changed) {
     const ws = findOwningWorkspace(path, workspaces, root)
     if (ws) seeds.add(ws.name)
-    else if (hasScriptTestPkg && (isScriptFile(path) || isE2eFile(path) || isWorkflowFile(path))) {
+    else if (isScriptFile(path) || isE2eFile(path) || isWorkflowFile(path)) {
       // `e2e/**` rides the same leaf seed as `scripts/**`: the point is not
       // that test-utils' tests cover the specs (they do not) — it is that
       // `affected` must be NON-EMPTY so Bootstrap runs and the e2e matrix is
       // reachable. A leaf keeps it off the full 60-package run.
-      leafSeeds.add(SCRIPT_TEST_PACKAGE)
+      if (hasScriptTestPkg) leafSeeds.add(SCRIPT_TEST_PACKAGE)
+    } else if (!isRootFile(path) && !isProsePath(path) && docInputConsumer(path) === undefined) {
+      // A repository-level file: run the tests that read it, and when nobody
+      // is known to, run everything. Never zero cells.
+      const readers = (opts.repoFileReaders?.(path) ?? []).filter((name) => workspaces.some((w) => w.name === name))
+      if (readers.length === 0) unmapped.push(path)
+      for (const reader of readers) leafSeeds.add(reader)
     }
     // A doc-INPUT file (`.agents/rules/anti-patterns.md`, `docs/patterns/**`)
     // must run the package that PARSES it. ADDITIVE, NOT a fallback: an
@@ -506,6 +551,10 @@ export function computeAffectedFlags(opts: {
     const consumer = docInputConsumer(path)
     if (consumer && workspaces.some((w) => w.name === consumer)) leafSeeds.add(consumer)
   }
+
+  // Fail closed, like a root file. Not under `directOnly` for the reason root
+  // files are skipped there: coverage is a property of a package's own sources.
+  if (unmapped.length > 0 && !opts.directOnly) return '--filter=*'
 
   if (seeds.size === 0 && leafSeeds.size === 0) return ''
 
@@ -625,6 +674,7 @@ export function parseFileList(text: string): string[] | null {
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean)
+
   return files.length === 0 ? null : files
 }
 
@@ -636,7 +686,7 @@ function readFilesFromStdin(): string[] | null {
   }
 }
 
-function main(): void {
+async function main(): Promise<void> {
   let base = 'origin/main'
   let category: string | undefined
   const exclude: string[] = []
@@ -686,13 +736,15 @@ function main(): void {
     return
   }
 
+  const workspaces = discoverWorkspaces()
+  const { createRepoFileReaders } = await import('./repo-file-readers')
+  const repoFileReaders = createRepoFileReaders(ROOT, workspaces)
+
   if (hasAffected) {
-    const workspaces = discoverWorkspaces()
-    process.stdout.write(computeAffectedFlags({ changed, workspaces }) !== '' ? 'true' : 'false')
+    process.stdout.write(computeAffectedFlags({ changed, workspaces, repoFileReaders }) !== '' ? 'true' : 'false')
     return
   }
 
-  const workspaces = discoverWorkspaces()
   const flags = computeAffectedFlags({
     changed,
     workspaces,
@@ -700,10 +752,11 @@ function main(): void {
     exclude,
     directOnly,
     requireScript,
+    repoFileReaders,
   })
   process.stdout.write(flags)
 }
 
 // Gated so `scripts/pre-push-plan.ts` (and the unit tests) can import the
 // classifiers without this module printing a filter as a side effect.
-if (import.meta.main) main()
+if (import.meta.main) await main()
