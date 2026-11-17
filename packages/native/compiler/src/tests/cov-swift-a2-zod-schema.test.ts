@@ -126,7 +126,7 @@ export const Sch = zodSchema(z.object({
 }))`,
     )
     expect(out).toContain('var a: String = ""')
-    expect(out).toContain('var b: Int = 0')
+    expect(out).toContain('var b: Double = 0')
     expect(out).toContain('var c: Bool = false')
     expect(out).toContain('var d: [String] = []')
     expect(out).toContain('var e: [Int] = []')

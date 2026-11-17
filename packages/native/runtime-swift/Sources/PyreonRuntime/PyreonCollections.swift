@@ -88,12 +88,16 @@ private struct PyreonMapKey: CodingKey {
 }
 
 extension PyreonMap: Encodable where Key: Encodable, Value: Encodable {
-    /// A string-keyed map is a JSON object in insertion order (the web's `JSON.stringify(record)`); any other key
+    /// A string-keyed map is a JSON object in insertion order (the web's `JSON.stringify(record)`). So is an
+    /// integer-keyed one (`Record<number, T>`): the web writes its keys as the numbers' text (`{"1":…}`). Any other key
     /// type encodes the way Swift's own `Dictionary` does, as a flat `[k, v, k, v, …]` array.
     public func encode(to encoder: Encoder) throws {
         if Key.self == String.self {
             var c = encoder.container(keyedBy: PyreonMapKey.self)
             for k in keys { try c.encode(storage[k]!, forKey: PyreonMapKey(k as! String)) }
+        } else if Key.self == Int.self {
+            var c = encoder.container(keyedBy: PyreonMapKey.self)
+            for k in keys { try c.encode(storage[k]!, forKey: PyreonMapKey(String(k as! Int))) }
         } else {
             var c = encoder.unkeyedContainer()
             for k in keys {
@@ -110,6 +114,20 @@ extension PyreonMap: Decodable where Key: Decodable, Value: Decodable {
         if Key.self == String.self {
             let c = try decoder.container(keyedBy: PyreonMapKey.self)
             for k in c.allKeys { self[k.stringValue as! Key] = try c.decode(Value.self, forKey: k) }
+        } else if Key.self == Int.self, let c = try? decoder.container(keyedBy: PyreonMapKey.self) {
+            // `Record<number, T>` arrives as a JSON OBJECT whose keys are the numbers' text, as the web writes it.
+            // `Dictionary<Int, T>` (and this type, before) only read a `[k, v, …]` array, so the decode threw. The
+            // web enumerates an object's integer keys in ASCENDING order whatever order they were written in, so they
+            // are inserted sorted (`allKeys` is hash-ordered besides).
+            var pairs: [(Int, PyreonMapKey)] = []
+            for k in c.allKeys {
+                guard let n = Int(k.stringValue) else {
+                    throw DecodingError.dataCorruptedError(
+                        forKey: k, in: c, debugDescription: "\"\(k.stringValue)\" is not an integer key")
+                }
+                pairs.append((n, k))
+            }
+            for (n, k) in pairs.sorted(by: { $0.0 < $1.0 }) { self[n as! Key] = try c.decode(Value.self, forKey: k) }
         } else {
             var c = try decoder.unkeyedContainer()
             while !c.isAtEnd {

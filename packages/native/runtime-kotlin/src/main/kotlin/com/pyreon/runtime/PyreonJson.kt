@@ -51,10 +51,60 @@ object PyreonJson {
      */
     inline fun <reified T> parse(text: String): T =
         try {
-            parseJson.decodeFromString(serializer<T>(), text)
+            parseJson.decodeFromString(serializer<T>(), integralNumbers(text))
         } catch (e: SerializationException) {
             throw PyreonJsonParseError(parseErrorMessage(e))
         }
+
+    /**
+     * A fetch / query / stream body decoded into `T` — what every emitted Kotlin decode site calls. Unknown keys are
+     * ignored (as [parse], and as Swift's `JSONDecoder`); a malformed body throws kotlinx's own exception.
+     */
+    inline fun <reified T> decode(text: String): T = parseJson.decodeFromString(serializer<T>(), integralNumbers(text))
+
+    /**
+     * Every number token that is a WHOLE value written with a fraction or an exponent (`3.0`, `1e3`, `-0.0`) rewritten
+     * as an integer (`3`, `1000`, `-0`). JSON has one number type and the web reads `3.0` and `3` as the same value, so a
+     * TS `number` field PMTC types as an integer must accept both — Swift's `JSONDecoder` does, kotlinx rejected `3.0`
+     * for a `Long` and the whole decode failed. A `Double` field reads the integer text to the same value. Strings,
+     * fractional values and magnitudes past 2^63 are left alone.
+     */
+    @PublishedApi
+    internal fun integralNumbers(text: String): String {
+        var out: StringBuilder? = null
+        var i = 0
+        val n = text.length
+        var copied = 0
+        while (i < n) {
+            val c = text[i]
+            if (c == '"') {
+                i++
+                while (i < n && text[i] != '"') i += if (text[i] == '\\') 2 else 1
+                i++
+                continue
+            }
+            if (c == '-' || (c in '0'..'9')) {
+                val start = i
+                i++
+                while (i < n && (text[i] in '0'..'9' || text[i] == '.' || text[i] == 'e' || text[i] == 'E' || text[i] == '+' || text[i] == '-')) i++
+                val token = text.substring(start, i)
+                if (token.any { it == '.' || it == 'e' || it == 'E' }) {
+                    val v = token.toDoubleOrNull()
+                    if (v != null && !v.isInfinite() && v == Math.floor(v) && Math.abs(v) < 9.2e18) {
+                        val sb = out ?: StringBuilder(n).also { out = it }
+                        sb.append(text, copied, start)
+                        sb.append(if (v == 0.0 && token.startsWith('-')) "-0" else v.toLong().toString())
+                        copied = i
+                    }
+                }
+                continue
+            }
+            i++
+        }
+        val sb = out ?: return text
+        sb.append(text, copied, n)
+        return sb.toString()
+    }
 
     /** kotlinx's message is multi-line, with tuning hints after the first line; keep the diagnosis. */
     @PublishedApi

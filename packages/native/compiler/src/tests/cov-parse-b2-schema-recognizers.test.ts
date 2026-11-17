@@ -35,7 +35,7 @@ describe('parse.ts — arktypeSchema recognizer', () => {
     )
     expect(r.code).toContain('struct PyreonZodSchema_userSchema: Codable {')
     expect(r.code).toContain('var name: String = ""')
-    expect(r.code).toContain('var age: Int = 0')
+    expect(r.code).toContain('var age: Double = 0')
     expect(r.code).toContain('var active: Bool = false')
     expect(r.warnings).toEqual([])
   })
@@ -250,13 +250,13 @@ describe('parse.ts — namespaced walker: field shapes', () => {
     const r = swift(
       Z + `const a = zodSchema(z.object({ n: z.number().optional(), b: z.boolean().optional() }))`,
     )
-    expect(r.code).toContain('var n: Int? = nil')
+    expect(r.code).toContain('var n: Double? = nil')
     expect(r.code).toContain('var b: Bool? = nil')
   })
 
   it('infers z.literal() field type from the literal — number and boolean', () => {
     const n = swift(Z + `const a = zodSchema(z.object({ k: z.literal(1), m: z.string() }))`)
-    expect(n.code).toContain('var k: Int = 0')
+    expect(n.code).toContain('var k: Double = 0')
     const b = swift(Z + `const a = zodSchema(z.object({ k: z.literal(true), m: z.string() }))`)
     expect(b.code).toContain('var k: Bool = false')
   })

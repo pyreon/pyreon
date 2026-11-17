@@ -233,7 +233,7 @@ export function infiniteLifecycleKotlin(decl: ExtDecl, ctx: EmitContext): readon
     `    ${name}Scope.launch {`,
     '      try {',
     `        val body = withContext(Dispatchers.IO) { java.net.URL(${url}).readText() }`,
-    `        ${name}.resolve(PyreonFetchJson.decodeFromString<${page}>(body), ${ctx.ident(p.pageParamName)})`,
+    `        ${name}.resolve(PyreonJson.decode<${page}>(body), ${ctx.ident(p.pageParamName)})`,
     `      } catch (e: Throwable) { ${name}.reject(e) }`,
     '    }',
     '  }',

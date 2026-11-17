@@ -180,7 +180,7 @@ describe('useStream lowers to the native stream runtime', () => {
     expect(code).toContain(
       'DisposableEffect("${"https://api.example.com/logs/${PyreonURL.encodePathParam(room)}/tail"}#${s.restartTick.value}")',
     )
-    expect(code).toContain('PyreonSseEvent(m.type, PyreonFetchJson.decodeFromString<LogLine>(m.data), m.id)')
+    expect(code).toContain('PyreonSseEvent(m.type, PyreonJson.decode<LogLine>(m.data), m.id)')
     expect(code).toContain('onDispose { s.stop() }')
     expect(code).toContain('s.status.value')
   })
@@ -202,7 +202,7 @@ describe('useStream lowers to the native stream runtime', () => {
       'await s.runNdjson(PyreonStreamRequest(method: "GET", url: "https://api.example.com/export?since=5"), decode: PyreonStreamDecode.ndjson(LogLine.self))',
     )
     expect(kotlin(NDJSON).code).toContain(
-      's.startNdjson(PyreonStreamRequest(method = "GET", url = "https://api.example.com/export?since=5")) { line -> PyreonFetchJson.decodeFromString<LogLine>(line) }',
+      's.startNdjson(PyreonStreamRequest(method = "GET", url = "https://api.example.com/export?since=5")) { line -> PyreonJson.decode<LogLine>(line) }',
     )
   })
 

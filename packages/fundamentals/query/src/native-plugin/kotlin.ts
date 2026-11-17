@@ -71,10 +71,10 @@ export function queryLifecycleKotlin(decl: ExtDecl, ctx: KotlinEmitContext): rea
       )
       // The client's `use: [...]`, when present, is applied around the request with the web's onion semantics.
       for (const line of kotlinSendLines(args, d.middleware !== undefined ? ctx.expr(d.middleware, 0) : undefined)) lines.push(`    ${line}`)
-      lines.push(`    PyreonFetchJson.decodeFromString<${ctx.typeText(d.type)}>(__response.body)`)
+      lines.push(`    PyreonJson.decode<${ctx.typeText(d.type)}>(__response.body)`)
     } else {
       lines.push(`    val body = withContext(Dispatchers.IO) { java.net.URL(${kotlinUrl}).readText() }`)
-      lines.push(`    PyreonFetchJson.decodeFromString<${ctx.typeText(d.type)}>(body)`)
+      lines.push(`    PyreonJson.decode<${ctx.typeText(d.type)}>(body)`)
     }
   }
   lines.push(`  }`)
@@ -123,13 +123,13 @@ export function streamLifecycleKotlin(decl: ExtDecl, ctx: EmitContext): readonly
         ? 'reconnect = null'
         : `reconnect = PyreonStreamReconnect(attempts = ${d.reconnect.attempts}L, delay = ${d.reconnect.delay}L, maxDelay = ${d.reconnect.maxDelay}L, onEnd = ${d.reconnect.onEnd})`,
     )
-    const payload = d.sseText ? 'm.data' : `PyreonFetchJson.decodeFromString<${data}>(m.data)`
+    const payload = d.sseText ? 'm.data' : `PyreonJson.decode<${data}>(m.data)`
     out.push(
       `${pad}${name}.startSse(${request}, PyreonSseOptions(${opts.join(', ')})${d.accept !== undefined ? `, accept = ${ctx.stringLiteral(d.accept)}` : ''}${onEvent}) { m -> PyreonSseEvent(m.type, ${payload}, m.id) }`,
     )
   } else {
     const accept = d.accept !== undefined ? `, accept = ${ctx.stringLiteral(d.accept)}` : ''
-    out.push(`${pad}${name}.startNdjson(${request}${accept}${onEvent}) { line -> PyreonFetchJson.decodeFromString<${data}>(line) }`)
+    out.push(`${pad}${name}.startNdjson(${request}${accept}${onEvent}) { line -> PyreonJson.decode<${data}>(line) }`)
   }
   if (enabled !== undefined) {
     // The web's disabled branch: stop, read `idle`, keep what was received.
