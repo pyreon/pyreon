@@ -30,7 +30,7 @@ const PRODUCTS: readonly Product[] = [
  * The demo's params carry a `shop-` prefix so they can never collide with
  * anything else the site puts in the query.
  */
-const SOURCE = `const q = useUrlState('shop-q', '', { debounce: 300 })
+const SOURCE = `const q = useUrlState('shop-q', '', { debounceMs: 300 })
 const sort = useUrlState('shop-sort', 'name')
 const inStock = useUrlState('shop-stock', false)
 const page = useUrlState('shop-page', 1)`
@@ -150,7 +150,7 @@ const Empty = txt
 export default function DemoUrlstate() {
   const scope = effectScope()
   const { q, sort, inStock, page } = scope.runInScope(() => ({
-    q: useUrlState('shop-q', '', { debounce: 300 }),
+    q: useUrlState('shop-q', '', { debounceMs: 300 }),
     sort: useUrlState<Sort>('shop-sort', 'name', {
       deserialize: (raw: string): Sort => SORTS.find((s) => s === raw) ?? 'name',
     }),

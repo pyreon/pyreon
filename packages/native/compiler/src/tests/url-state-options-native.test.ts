@@ -24,10 +24,10 @@ const warnings = (call: string, target: 'swift' | 'kotlin') =>
 describe('useUrlState options on native', () => {
   for (const target of ['swift', 'kotlin'] as const) {
     it(`${target}: the issue's options are reported by name, and the binding still lowers`, () => {
-      const call = `useUrlState('q', 'all', { debounce: 300, clearOnDefault: false, deserialize: (r: string) => r.toUpperCase() })`
+      const call = `useUrlState('q', 'all', { debounceMs: 300, clearOnDefault: false, deserialize: (r: string) => r.toUpperCase() })`
       const out = transform(src(call), { target })
       const w = out.warnings.filter((x) => String(x).includes('useUrlState')).join('\n')
-      expect(w).toContain('`debounce`')
+      expect(w).toContain('`debounceMs`')
       expect(w).toContain('`deserialize`')
       expect(w).not.toContain('clearOnDefault')
       expect(out.code).toContain('"q"')
@@ -44,7 +44,7 @@ describe('useUrlState options on native', () => {
 
     it(`${target}: options that match native behaviour are not reported`, () => {
       expect(
-        warnings(`useUrlState('q', 'a', { replace: true, debounce: 0, arrayFormat: 'comma', clearOnDefault: true })`, target),
+        warnings(`useUrlState('q', 'a', { replace: true, debounceMs: 0, arrayFormat: 'comma', clearOnDefault: true })`, target),
       ).toEqual([])
       expect(warnings(`useUrlState('q', 'a')`, target)).toEqual([])
     })

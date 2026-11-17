@@ -76,7 +76,7 @@ function createUrlSignal<T>(
   options?: UrlStateOptions<T>,
 ): UrlStateSignal<T> {
   const replace = options?.replace !== false
-  const debounceMs = options?.debounce ?? 0
+  const debounceMs = options?.debounceMs ?? 0
   const arrayFormat = options?.arrayFormat ?? 'comma'
   const clearOnDefault = options?.clearOnDefault !== false
   const isArray = Array.isArray(defaultValue)
@@ -214,7 +214,7 @@ function createUrlSignal<T>(
 
   const scheduleWrite = (value: T) => {
     // Inside a batch, writes land synchronously so they coalesce into the
-    // single history op — debounce is bypassed. Same for debounce <= 0.
+    // single history op — debounce is bypassed. Same for debounceMs <= 0.
     if (isBatching() || debounceMs <= 0) {
       writeUrl(value)
       return
