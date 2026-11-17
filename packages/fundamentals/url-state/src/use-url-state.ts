@@ -75,6 +75,17 @@ function createUrlSignal<T>(
   defaultValue: T,
   options?: UrlStateOptions<T>,
 ): UrlStateSignal<T> {
+  // `debounce` was renamed `debounceMs`. TypeScript rejects the old key in a
+  // literal, but a JavaScript caller (or a non-literal options object) still
+  // passing it would get undebounced URL writes with nothing saying why.
+  /* v8 ignore next — the production arm of a dev gate. */
+  if (process.env.NODE_ENV !== 'production') {
+    if (options != null && 'debounce' in options) {
+      console.warn(
+        `[Pyreon] url-state: useUrlState("${key}") was passed \`debounce\`, which is not an option any more and is ignored — URL writes are NOT debounced. Rename it to \`debounceMs\` (same value, in milliseconds).`,
+      )
+    }
+  }
   const replace = options?.replace !== false
   const debounceMs = options?.debounceMs ?? 0
   const arrayFormat = options?.arrayFormat ?? 'comma'

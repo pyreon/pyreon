@@ -8,7 +8,8 @@
  * not, and the binding still lowers.
  *
  * Bisect-verified: without `reportIgnoredOptions` the "reported" specs see an
- * empty warning list.
+ * empty warning list; without its `debounce` arm, the old key is silently
+ * skipped and the `debounce` spec sees no warning.
  */
 import { describe, expect, it } from 'vitest'
 import { transform } from './first-party-plugins'
@@ -47,6 +48,12 @@ describe('useUrlState options on native', () => {
         warnings(`useUrlState('q', 'a', { replace: true, debounceMs: 0, arrayFormat: 'comma', clearOnDefault: true })`, target),
       ).toEqual([])
       expect(warnings(`useUrlState('q', 'a')`, target)).toEqual([])
+    })
+
+    it(`${target}: the removed \`debounce\` key is reported by name, pointing at \`debounceMs\``, () => {
+      const w = warnings(`useUrlState('q', 'a', { debounce: 300 })`, target).join('\n')
+      expect(w).toContain('`debounce` is not an option any more')
+      expect(w).toContain('Rename it to `debounceMs`')
     })
 
     it(`${target}: options that are not an inline object are reported`, () => {

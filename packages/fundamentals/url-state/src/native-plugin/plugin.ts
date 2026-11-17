@@ -219,6 +219,13 @@ function reportIgnoredOptions(ctx: Parameters<CallRecognizer>[1], name: string, 
     const optName =
       prop.key?.type === 'Identifier' ? (prop.key.name as string) : prop.key?.type === 'Literal' ? String(prop.key.value) : undefined
     if (optName === undefined) continue
+    if (optName === 'debounce') {
+      // Renamed, not a native gap: the old key is ignored on EVERY target, the web included.
+      ctx.report(
+        `${where}: \`debounce\` is not an option any more (renamed \`debounceMs\`) and is ignored on every target, the web included. Rename it to \`debounceMs\`.`,
+      )
+      continue
+    }
     const rule = NATIVE_OPTION[optName]
     if (rule === undefined) continue
     const value = prop.value?.type === 'Literal' ? prop.value.value : undefined
