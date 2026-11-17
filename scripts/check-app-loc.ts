@@ -44,7 +44,7 @@ const BASELINE = join(REPO_ROOT, 'scripts', 'app-loc-baseline.json')
  * they exercise packages on purpose, so their line counts measure API surface
  * coverage rather than how much code an app needs.
  */
-const APPS = ['hn-clone', 'kanban', 'chat', 'collab-board'] as const
+const APPS = ['hn-clone', 'kanban', 'collab-board'] as const
 
 const SOURCE_EXT = /\.(ts|tsx)$/
 /**

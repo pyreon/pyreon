@@ -2,7 +2,7 @@
 
 Every directory here is a private workspace package (`@pyreon/example-*`). Not all of them are written to be read: about half are test fixtures, benchmark harnesses or native device-gate hosts that CI depends on. This index says which is which.
 
-New to Pyreon? Scaffold an app with `bun create zero`, then read [app-showcase](./app-showcase/), then the reference app that matches your render mode: [hn-clone](./hn-clone/) (SSG), [kanban](./kanban/) or [chat](./chat/) (SPA), [islands-showcase](./islands-showcase/) (islands).
+New to Pyreon? Scaffold an app with `bun create zero`, then read [app-showcase](./app-showcase/), then the reference app that matches your render mode: [hn-clone](./hn-clone/) (SSG), [kanban](./kanban/) (SPA), [islands-showcase](./islands-showcase/) (islands).
 
 Run any app from the repo root after `bun install`:
 
@@ -17,10 +17,9 @@ Examples are never published and never versioned: `.changeset/config.json` ignor
 
 | Example | What it shows |
 | --- | --- |
-| [app-showcase](./app-showcase/) | One Zero app with every package in real feature slices (blog, shop, kanban, chat, flow, …) |
+| [app-showcase](./app-showcase/) | One Zero app with every package in real feature slices (blog, shop, kanban, chat, flow, …); `/chat/live` is the chat against a real server (SSE stream, optimistic send) |
 | [hn-clone](./hn-clone/) | SSG reference app: a read-heavy Hacker News reader |
 | [kanban](./kanban/) | SPA reference app: write-heavy CRUD with state-tree, dnd and i18n |
-| [chat](./chat/) | SPA reference app: channels, a live SSE stream, a virtualized list, optimistic send |
 | [collab-board](./collab-board/) | Real-time collaboration with `@pyreon/sync` |
 | [islands-showcase](./islands-showcase/) | `@pyreon/server` islands, one per hydration strategy |
 | [ui-showcase](./ui-showcase/) | Every `@pyreon/ui-components` component |
