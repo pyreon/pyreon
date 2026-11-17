@@ -1221,6 +1221,14 @@ extension EnvironmentValues {
 }
 public func useNavigate(router: PyreonRouter?) -> (String) -> Void { { _ in } }
 public func useParams(router: PyreonRouter?) -> [String: String] { [:] }
+// useRouter() — mirrors Hooks.swift's PyreonRouterHandle (push / replace / back / forward).
+public struct PyreonRouterHandle {
+  public func push(_ path: String) {}
+  public func replace(_ path: String) {}
+  public func back() {}
+  public func forward() {}
+}
+public func useRouter(router: PyreonRouter?) -> PyreonRouterHandle { PyreonRouterHandle() }
 // THIRD subset-stub instance. router-swift's Hooks.swift declares three public
 // hooks; the stub had two, so \`const d = useLoaderData<U>()\` — a shipped
 // Phase-B6 feature — failed the required gate with "cannot find 'useLoaderData'

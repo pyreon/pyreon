@@ -1213,6 +1213,17 @@ fun useNavigate(): (String) -> Unit = { _ -> }
 @Composable
 fun useParams(): Map<String, String> = emptyMap()
 
+// useRouter() — mirrors router-kotlin's PyreonRouterHandle (push / replace / back / forward).
+class PyreonRouterHandle(private val router: PyreonRouter?) {
+  fun push(path: String) {}
+  fun replace(path: String) {}
+  fun back() {}
+  fun forward() {}
+}
+
+@Composable
+fun useRouter(): PyreonRouterHandle = PyreonRouterHandle(null)
+
 // useUrlState lowers to a PyreonUrlState over the active router, so the
 // emit needs a router accessor here too. Same defensive-default shape as
 // the two above.

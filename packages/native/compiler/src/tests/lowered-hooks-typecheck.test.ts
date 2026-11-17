@@ -85,6 +85,7 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ['useLinking', '@pyreon/hooks', 'const l = useLinking()'],
   ['useMap', '@pyreon/hooks', 'const m = useMap()'],
   ['useNavigate', '@pyreon/router', 'const nav = useNavigate()'],
+  ['useRouter', '@pyreon/router', "const router = useRouter(); const go = () => { router.replace('/x'); router.push('/y'); router.back() }"],
   [
     'useSecureStorage',
     '@pyreon/hooks',

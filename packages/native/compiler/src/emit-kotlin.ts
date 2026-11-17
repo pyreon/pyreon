@@ -1849,11 +1849,14 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       return `val ${kotlinIdent(d.name)} = remember { ${ctor} }`
     }
     const inner: string[] = [`${ctor}.apply {`]
+    // The routers call a guard with the target path; a parameterless one is adapted, not passed bare.
+    const guardRef = (fn: string): string =>
+      (d.zeroArgGuards ?? []).includes(fn) ? `{ _ -> ${kotlinIdent(fn)}() }` : `::${kotlinIdent(fn)}`
     for (const fn of d.beforeEach ?? []) {
-      inner.push(`    beforeEachGuards.add(::${kotlinIdent(fn)})`)
+      inner.push(`    beforeEachGuards.add(${guardRef(fn)})`)
     }
     for (const fn of d.afterEach ?? []) {
-      inner.push(`    afterEachHooks.add(::${kotlinIdent(fn)})`)
+      inner.push(`    afterEachHooks.add(${guardRef(fn)})`)
     }
     inner.push('  }')
     return `val ${kotlinIdent(d.name)} = remember { ${inner.join('\n  ')} }`
@@ -9696,6 +9699,11 @@ function emitKotlinNestedRouteDispatch(
     guard === undefined
       ? renderCall
       : `if (${emitKotlinExpr(guard, indent + 4)}) ${renderCall} else ${denyFallback}`
+  // The leaf route's loader wraps the LEAF, inside its layouts — the same host the flat dispatch emits (`loaderWrap`).
+  const withLoader = (entry: FlatRouteEntry, leafCall: string): string =>
+    entry.loader === undefined
+      ? leafCall
+      : `PyreonRouteLoader(path = currentPath, load = { ${emitKotlinExpr(entry.loader, indent + 4)} }) { ${leafCall} }`
   const lines: string[] = []
   lines.push(`${pad}val currentPath = ${pathExpr}`)
   lines.push(`${pad}when {`)
@@ -9713,17 +9721,17 @@ function emitKotlinNestedRouteDispatch(
       lines.push(
         `${innerPad}PyreonRouter.matchPath(currentPath, ${kotlinStr(entry.path)}) != null -> {`,
       )
-      if (inv.usesParams) {
+      if (inv.usesParams || entry.loaderUsesParams === true) {
         lines.push(
           `${innerPad}  val params = PyreonRouter.matchPath(currentPath, ${kotlinStr(entry.path)}) ?: emptyMap()`,
         )
       }
-      lines.push(`${innerPad}  ${guardWrap(entry.guard, wrap(entry.layoutChain, inv.call))}`)
+      lines.push(`${innerPad}  ${guardWrap(entry.guard, wrap(entry.layoutChain, withLoader(entry, inv.call)))}`)
       lines.push(`${innerPad}}`)
     } else {
       const render = wrap(
         entry.layoutChain,
-        emitKotlinLayoutAwareInvocation(entry.component, indent + 4),
+        withLoader(entry, emitKotlinLayoutAwareInvocation(entry.component, indent + 4)),
       )
       lines.push(
         `${innerPad}PyreonRouter.matchPath(currentPath, ${kotlinStr(entry.path)}) != null -> ${guardWrap(entry.guard, render)}`,

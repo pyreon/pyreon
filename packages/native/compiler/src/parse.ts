@@ -5014,7 +5014,7 @@ function bindingNames(pattern: AnyNode | undefined, out: Set<string>): void {
  * never kept half-lowered. Named and inline guards go through the same pass, because they are the same thing.
  */
 function lowerRouterGuards(
-  components: readonly { decls: DeclIR[] }[],
+  components: readonly { name: string; decls: DeclIR[] }[],
   helperFns: Extract<DeclIR, { kind: 'function' }>[],
   warnings: string[],
   inferCtx: ReturnType<typeof buildInferenceCtx>,
@@ -5027,6 +5027,15 @@ function lowerRouterGuards(
         if (names === undefined) continue
         const kept = names.filter((name) => {
           const fn = helperFns.find((h) => h.name === name)
+          // A parameterless function that RETURNS a value (`function allowAll() { return true }`) is indistinguishable
+          // from a component here, so it was emitted as a View and handed to the router, which did not compile. Name it.
+          if (fn === undefined && components.some((c) => c.name === name)) {
+            warnings.push(
+              `[pyreon-native] router \`${key}\`: guard \`${name}\` takes no parameter and returns a value, so PMTC reads it as a component. Give it the target parameter (\`function ${name}(to) { … }\`). It is dropped, so the navigation is NOT gated on iOS/Android.`,
+            )
+
+            return false
+          }
           if (fn === undefined || lowerGuardFn(fn, key, warnings, inferCtx)) return true
           // A dropped INLINE guard leaves nothing behind: its synthesized helper existed only to be this guard, and
           // emitted half-lowered it would not compile. A named function is the author's own and stays.
@@ -5035,6 +5044,12 @@ function lowerRouterGuards(
         })
         if (kept.length > 0) decl[key] = kept
         else delete decl[key]
+        for (const name of kept) {
+          const fn = helperFns.find((h) => h.name === name)
+          if (fn !== undefined && fn.params.length === 0 && !(decl.zeroArgGuards ?? []).includes(name)) {
+            decl.zeroArgGuards = [...(decl.zeroArgGuards ?? []), name]
+          }
+        }
       }
     }
   }
