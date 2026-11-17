@@ -193,6 +193,19 @@ export interface HtmlPassthroughProps extends AccessibilityProps, TransformProps
   class?: string
   /** Inline style override — merged AFTER the primitive's computed style
    * so consumer overrides win. Tokens-first APIs (padding, gap, etc.) are
-   * the preferred path; `style` is the escape hatch for one-off CSS. */
-  style?: string | Record<string, string>
+   * the preferred path; `style` is the escape hatch for one-off CSS.
+   *
+   * A value may be a TWO-element mobile-first responsive array,
+   * `[compact, regular]` (`padding: [8, 24]`): every target resolves it per
+   * size class at the 600 px/pt/dp window width `useSizeClass` uses — web
+   * through a `(min-width: 600px)` media query, iOS `horizontalSizeClass`,
+   * Android `screenWidthDp`. Native has two size classes, not N breakpoints,
+   * so a longer array is dropped with a warning on every target. */
+  style?: string | StyleObject
 }
+
+/** A value in a primitive's `style` object: a CSS value, or a `[compact, regular]` responsive pair. */
+export type StyleValue = string | number | readonly [string | number, string | number]
+
+/** A primitive's `style` object. */
+export type StyleObject = Record<string, StyleValue>

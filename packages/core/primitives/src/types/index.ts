@@ -15,6 +15,8 @@ export type {
   Justify,
   Radius,
   Space,
+  StyleObject,
+  StyleValue,
   TransformProps,
   ValueOrSignal,
 } from './shared'
