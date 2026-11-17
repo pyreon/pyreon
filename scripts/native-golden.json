@@ -7411,14 +7411,24 @@
       "bytes": 4805,
       "warnings": 0
     },
+    "example:native-tasks/SyncScreen.tsx|swift": {
+      "sha": "b3329f561bf846c2dd3a94b07b6d293b63ce0b65e5674a8796088c68c6650933",
+      "bytes": 1452,
+      "warnings": 0
+    },
+    "example:native-tasks/SyncScreen.tsx|kotlin": {
+      "sha": "113b63fcdd18409299b01beabefc379fef2b92f14a87e7819e13e42b6cb3d750",
+      "bytes": 1168,
+      "warnings": 0
+    },
     "example:native-tasks/TasksApp.tsx|swift": {
-      "sha": "08d13ea62d07ca617f3c49b982225bd805683270b390913b4d8e040d0d079c3c",
-      "bytes": 181770,
+      "sha": "d9c02686aeec37244f47217a8bc9f6fb9a91f6eb1943f107a5bd1c7dcbbb662d",
+      "bytes": 182174,
       "warnings": 2
     },
     "example:native-tasks/TasksApp.tsx|kotlin": {
-      "sha": "2d504b8f34bf4fd30a1b9e14d492fd843190c1d8b4e55a0dd4d4d7aab87df3c4",
-      "bytes": 183506,
+      "sha": "f97a7c48793bab4700bcb26dea92169f4aa582d66642ad900fe7f6f3cc509a1a",
+      "bytes": 183807,
       "warnings": 1
     },
     "example:native-todomvc/TodoApp.tsx|swift": {

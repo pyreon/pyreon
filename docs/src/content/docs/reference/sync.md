@@ -11,7 +11,7 @@ A local-first / collaborative sync layer for Pyreon. A synced value is a normal 
 
 **Tier:** Web-only — the browser package; the native story is stated below
 
-the Yjs engine + IndexedDB/WebSocket transports stay web; the engine-neutral PyreonCrdt core + `syncedSignal` lower to a native runtime, cross-device transport tracked
+the Yjs engine + IndexedDB/WebSocket transports stay web; the engine-neutral PyreonCrdt core, `syncedSignal` and `connectPyreonSync(doc, webSocketChannel(url))` lower to a native runtime (the LWW transport over the native WebSocket channel, device-proven against a relay)
 
 **What crosses natively:** PyreonSyncedSignal — `syncedSignal({ doc, key, initial })` over a shared PyreonCrdtDoc (scalar String/Double/Bool, local-first create-if-missing, remote-op reactivity)
 

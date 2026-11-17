@@ -857,7 +857,9 @@ jobs:
       # stream-server.ts). Its /sse drops the socket mid-event so the app
       # must reconnect with Last-Event-ID. 8791: 8787 is the fixture server,
       # 8790 the router-demo ws echo. Same file-redirect + readiness-poll
-      # discipline as the fixture server above.
+      # discipline as the fixture server above. The same process also starts
+      # the connectPyreonSync relay (scripts/sync-relay.ts) on 8792, before
+      # 8791 listens, so the readiness poll covers it.
       - name: Start stream server (port 8791)
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' tasks ')
         run: |
@@ -1489,6 +1491,8 @@ jobs:
             nohup bun "$GITHUB_WORKSPACE/examples/native-tasks/scripts/stream-server.ts" > /tmp/stream-server.log 2>&1 &
             i=0; while ! curl -fsS http://127.0.0.1:8791/health >/dev/null 2>&1; do i=$((i+1)); [ "$i" -ge 30 ] && { echo "stream server FAILED to start within 30s"; cat /tmp/stream-server.log 2>/dev/null || true; exit 1; }; sleep 1; done; echo "stream server OK (ready after ${i}s)"
             adb reverse tcp:8791 tcp:8791
+            # The connectPyreonSync relay (scripts/sync-relay.ts), started by stream-server.ts on 8792 (OFF-1).
+            adb reverse tcp:8792 tcp:8792
             # /webhost geolocation proof: give the emulator a fix (the test also accepts an answered-but-unavailable position).
             adb emu geo fix -122.0090 37.3349 || true
             gradle connectedCheck --stacktrace

@@ -84,6 +84,26 @@ public final class PyreonSyncedSignal<T: PyreonScalarConvertible> {
   // \`s.dispose()\` was rejected by the type gate.
   public func dispose() {}
 }
+// connectPyreonSync(doc, webSocketChannel(url)) — mirrors PyreonSyncTransport.swift /
+// PyreonSyncWebSocketChannel.swift (the failable String init is the one the emit uses).
+public protocol PyreonSyncChannel: AnyObject {
+  func send(_ data: String)
+  func onMessage(_ cb: @escaping (String) -> Void)
+  func onOpen(_ cb: @escaping () -> Void)
+  func close()
+}
+public final class PyreonSyncTransport {
+  public init(doc: PyreonCrdtDoc, channel: PyreonSyncChannel) {}
+  public func dispose() {}
+}
+public final class PyreonSyncWebSocketChannel: PyreonSyncChannel {
+  public init(url: URL) {}
+  public convenience init?(url string: String) { return nil }
+  public func send(_ data: String) {}
+  public func onMessage(_ cb: @escaping (String) -> Void) {}
+  public func onOpen(_ cb: @escaping () -> Void) {}
+  public func close() {}
+}
 `
 
 export const SYNC_KOTLIN_STUBS = `// @pyreon/sync — CRDT doc + synced-signal facade. Mirrors the real
@@ -144,10 +164,27 @@ class PyreonSyncedSignal<T>(
   // Mirror of the runtime's dispose(); its absence rejected correct code.
   fun dispose() {}
 }
+// connectPyreonSync(doc, webSocketChannel(url)) — mirrors PyreonSyncTransport.kt /
+// PyreonSyncWebSocketChannelAndroid.kt.
+interface PyreonSyncChannel {
+  fun send(data: String)
+  fun onMessage(cb: (String) -> Unit)
+  fun onOpen(cb: () -> Unit)
+  fun close()
+}
+class PyreonSyncTransport(doc: PyreonCrdtDoc, channel: PyreonSyncChannel) {
+  fun dispose() {}
+}
+class PyreonSyncWebSocketChannel(url: String) : PyreonSyncChannel {
+  override fun send(data: String) {}
+  override fun onMessage(cb: (String) -> Unit) {}
+  override fun onOpen(cb: () -> Unit) {}
+  override fun close() {}
+}
 `
 
 /** The CRDT / synced-signal compile-gate stubs, appended only to an emit that names a type they declare. */
 export const syncStubs: StubAugmentation = {
-  swift: (source) => (/\bPyreon(?:CrdtDoc|SyncedSignal|Scalar)\b/.test(source) ? SYNC_SWIFT_STUBS : ''),
-  kotlin: (source) => (/\bPyreon(?:CrdtDoc|SyncedSignal|Scalar)\b/.test(source) ? SYNC_KOTLIN_STUBS : ''),
+  swift: (source) => (/\bPyreon(?:CrdtDoc|SyncedSignal|Scalar|SyncTransport)\b/.test(source) ? SYNC_SWIFT_STUBS : ''),
+  kotlin: (source) => (/\bPyreon(?:CrdtDoc|SyncedSignal|Scalar|SyncTransport)\b/.test(source) ? SYNC_KOTLIN_STUBS : ''),
 }

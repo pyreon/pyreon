@@ -18,6 +18,8 @@ import {
   type CallRecognizer,
   type CompilerPlugin,
   type DeclEmitter,
+  type ExprIR,
+  type ExtPayload,
   type EmitContext,
   type ExtDecl,
   type ModuleScanner,
@@ -32,6 +34,7 @@ type AnyNode = any
 
 const DOC_TYPE = 'crdt-doc'
 const SIGNAL_TYPE = 'synced-signal'
+const LINK_TYPE = 'sync-link'
 export const SYNC_PLUGIN_NAME = '@pyreon/sync'
 
 type Scalar = 'string' | 'double' | 'bool'
@@ -48,7 +51,13 @@ interface SignalPayload {
   readonly map?: string
 }
 
+interface LinkPayload {
+  readonly docBinding: string
+  readonly url: ExprIR
+}
+
 const docOf = (decl: ExtDecl): DocPayload => decl.payload as unknown as DocPayload
+const linkOf = (decl: ExtDecl): LinkPayload => decl.payload as unknown as LinkPayload
 const signalOf = (decl: ExtDecl): SignalPayload => decl.payload as unknown as SignalPayload
 
 /**
@@ -129,6 +138,95 @@ const recognizeSyncedSignal: CallRecognizer = (_call, ctx) => {
     type: SIGNAL_TYPE,
     payload: { docBinding, key, scalarType, initialValue, ...(map !== undefined ? { map } : {}) },
   }
+}
+
+/**
+ * `const link = connectPyreonSync(doc, webSocketChannel(url))` — the doc's LWW ops over a WebSocket relay. Natively
+ * the transport is `PyreonSyncTransport` over `PyreonSyncWebSocketChannel`, opened when the component appears and
+ * disposed when it leaves (the web's `link.disconnect()` on unmount, without the author writing it). `link.disconnect()`
+ * from a handler disposes it early. Only the inline `webSocketChannel(...)` channel lowers: a custom `SyncChannel`
+ * object has no native shape.
+ */
+const recognizeLink: CallRecognizer = (_call, ctx) => {
+  const name = ctx.declName
+  const docArg = unwrapTypeLayers(ctx.args[0] as AnyNode | undefined)
+  const channelArg = unwrapTypeLayers(ctx.args[1] as AnyNode | undefined)
+  const channelCallee = channelArg?.type === 'CallExpression' ? (channelArg.callee as AnyNode) : undefined
+  if (
+    docArg?.type !== 'Identifier' ||
+    channelCallee?.type !== 'Identifier' ||
+    channelCallee.name !== 'webSocketChannel' ||
+    (channelArg.arguments as AnyNode[]).length !== 1
+  ) {
+    ctx.report(
+      `connectPyreonSync \`${name}\`: native lowers \`connectPyreonSync(doc, webSocketChannel(url))\` — a \`new PyreonCrdtDoc(...)\` binding and an inline WebSocket channel with one URL argument. A custom SyncChannel has no native shape.`,
+    )
+
+    return null
+  }
+
+  return {
+    type: LINK_TYPE,
+    payload: {
+      docBinding: docArg.name as string,
+      url: ctx.expr((channelArg.arguments as AnyNode[])[0]),
+    } as unknown as ExtPayload,
+  }
+}
+
+const linkDecl: DeclEmitter = {
+  swift: (decl, ctx) => `@State private var ${ctx.ident(decl.name)}: PyreonSyncTransport? = nil`,
+  kotlin: (decl, ctx) =>
+    `var ${ctx.ident(decl.name)} by remember { mutableStateOf<PyreonSyncTransport?>(null) }`,
+  lifecycle: {
+    // A `.onAppear` on a transparent conditional would restart with every branch flip (see `DeclLifecycle.stableHost`).
+    stableHost: true,
+    swift(decl, ctx) {
+      const { docBinding, url } = linkOf(decl)
+      const name = ctx.ident(decl.name)
+
+      return [
+        `.onAppear {`,
+        `  if ${name} == nil, let channel = PyreonSyncWebSocketChannel(url: ${ctx.expr(url, 2)}) {`,
+        `    ${name} = PyreonSyncTransport(doc: ${ctx.ident(docBinding)}, channel: channel)`,
+        `  }`,
+        `}`,
+        `.onDisappear {`,
+        `  ${name}?.dispose()`,
+        `  ${name} = nil`,
+        `}`,
+      ]
+    },
+    kotlin(decl, ctx) {
+      const { docBinding, url } = linkOf(decl)
+      const name = ctx.ident(decl.name)
+
+      return [
+        `DisposableEffect(Unit) {`,
+        `  val transport = PyreonSyncTransport(${ctx.ident(docBinding)}, PyreonSyncWebSocketChannel(${ctx.expr(url, 2)}))`,
+        `  ${name} = transport`,
+        `  onDispose {`,
+        `    transport.dispose()`,
+        `    ${name} = null`,
+        `  }`,
+        `}`,
+      ]
+    },
+  },
+}
+
+/** `link.disconnect()` — disposes the transport early (idempotent on both runtimes). */
+function linkDisconnect(site: ReceiverSite, ctx: { ident(name: string): string }): string | undefined {
+  if (site.kind !== 'call') return undefined
+  const { callee, args } = site.expr
+  if (args.length !== 0 || callee.kind !== 'member' || callee.property !== 'disconnect') return undefined
+
+  return `${ctx.ident(site.receiver.name)}?.dispose()`
+}
+
+const linkReceiver: ReceiverLowering = {
+  swift: { expr: linkDisconnect },
+  kotlin: { expr: linkDisconnect },
 }
 
 /** The CRDT surface totality warning: a web `CrdtDoc` / `CrdtMap` member with no native counterpart would be reproduced verbatim. */
@@ -218,10 +316,10 @@ export const syncPlugin: CompilerPlugin = {
   apiVersion: 2,
   modules: ['@pyreon/sync'],
   scanModule: scanSync,
-  calls: { PyreonCrdtDoc: recognizeDoc, syncedSignal: recognizeSyncedSignal },
-  // `syncedSignal` lowers to a `remember {}` / an `@State`, which has no meaning at file scope.
-  componentOnlyCalls: ['syncedSignal'],
-  decls: { [DOC_TYPE]: docDecl, [SIGNAL_TYPE]: signalDecl },
-  receivers: { [SIGNAL_TYPE]: signalReceiver },
+  calls: { PyreonCrdtDoc: recognizeDoc, syncedSignal: recognizeSyncedSignal, connectPyreonSync: recognizeLink },
+  // `syncedSignal` / `connectPyreonSync` lower to a `remember {}` / an `@State`, which has no meaning at file scope.
+  componentOnlyCalls: ['syncedSignal', 'connectPyreonSync'],
+  decls: { [DOC_TYPE]: docDecl, [SIGNAL_TYPE]: signalDecl, [LINK_TYPE]: linkDecl },
+  receivers: { [SIGNAL_TYPE]: signalReceiver, [LINK_TYPE]: linkReceiver },
   stubs: syncStubs,
 }

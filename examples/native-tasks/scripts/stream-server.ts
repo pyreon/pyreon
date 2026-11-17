@@ -40,6 +40,8 @@
 // the direct way to do it.
 import { createServer } from 'node:http'
 import { handleWebViewScope } from './webview-scope-pages'
+// The connectPyreonSync relay (OFF-1) runs beside the streams, on its own port.
+import './sync-relay'
 
 const port = Number(process.env.PYREON_STREAM_PORT ?? 8791)
 

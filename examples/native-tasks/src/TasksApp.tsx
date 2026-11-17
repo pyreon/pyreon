@@ -142,6 +142,7 @@ import type { EdgeComponentProps, NodeComponentProps } from '@pyreon/flow'
 import { FlowWebView, type FlowWebViewGraph } from '@pyreon/flow/webview'
 import { CodeWebView } from '@pyreon/code/webview'
 import { RichTextWebView } from '@pyreon/rich-text/webview'
+import { SyncScreen } from './SyncScreen'
 
 type Task = { id: number; title: string; done: boolean }
 type Quote = { id: number; text: string; author: string }
@@ -406,6 +407,9 @@ function TasksPage() {
             </Button>
             <Button onPress={() => navigate('/streams')} data-testid="tasks-streams">
               Streams
+            </Button>
+            <Button onPress={() => navigate('/sync')} data-testid="tasks-sync">
+              Sync
             </Button>
             <Button onPress={() => navigate('/requests')} data-testid="tasks-requests">
               Requests
@@ -2362,6 +2366,11 @@ export function TasksApp() {
       {
         path: '/streams',
         component: StreamsScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/sync',
+        component: SyncScreen,
         beforeEnter: () => useApp().store.isAuthed(),
       },
       {
