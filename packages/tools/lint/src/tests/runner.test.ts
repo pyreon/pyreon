@@ -3929,11 +3929,14 @@ describe('config diagnostics — the paths that are not the happy one', () => {
     )
   })
 
-  it('returns no diagnostics — rather than throwing — on unparseable source', () => {
-    // One syntactically broken file must not take down a whole-repo run.
-    // The parse error is the type-checker's to report, not the linter's.
+  it('reports one parse-error diagnostic — rather than throwing or passing — on unparseable source', () => {
+    // One syntactically broken file must not take down a whole-repo run, and
+    // must not come back clean either: oxc returns a partial program, so the
+    // rules would find little in it and the run would say "no problems".
     const out = lintFile('src/Broken.tsx', 'const = = = <<<', allRules, defaultConfig())
-    expect(out.diagnostics).toEqual([])
+    expect(out.diagnostics.map((d) => [d.ruleId, d.severity])).toEqual([
+      ['pyreon-lint/parse-error', 'error'],
+    ])
     expect(out.filePath).toBe('src/Broken.tsx')
   })
 })

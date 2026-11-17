@@ -45,6 +45,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import ts from 'typescript'
+import { findSyntaxErrors, syntaxErrorsIn } from './syntax-check'
 import { assertClassicTs } from './ts'
 
 export type IslandFindingCode =
@@ -88,6 +89,12 @@ export interface IslandAuditResult {
     islandsDeclared: number
     registryEntries: number
     findingsByCode: Record<IslandFindingCode, number>
+    /**
+     * Files that do not parse (project-relative). Their islands, registry
+     * entries and imports may be missing from the audit, so a clean result
+     * is not claimed while this is non-empty.
+     */
+    unparseableFiles: string[]
   }
 }
 
@@ -175,6 +182,8 @@ interface FileExtraction {
   registryEntries: RegistryEntry[]
   /** Set of resolved (best-effort) absolute paths this file imports */
   imports: Set<string>
+  /** False when the file does not parse: the extraction may be partial. */
+  parses: boolean
 }
 
 function lineColAt(sf: ts.SourceFile, pos: number): { line: number; column: number } {
@@ -345,11 +354,14 @@ function extractFromFile(absPath: string, root: string): FileExtraction {
   try {
     code = readFileSync(absPath, 'utf8')
   } catch {
-    return { islands: [], registryEntries: [], imports: new Set() }
+    return { islands: [], registryEntries: [], imports: new Set(), parses: true }
   }
   assertClassicTs()
   const sf = ts.createSourceFile(absPath, code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX)
   return {
+    // Parsed as TSX for extraction; a `.ts` file with a `<T>x` cast is only
+    // TSX-invalid, so re-check failures in the file's own parse mode.
+    parses: syntaxErrorsIn(sf).length === 0 || findSyntaxErrors(code, absPath).length === 0,
     islands: extractIslandDecls(sf, absPath, root),
     registryEntries: extractRegistryEntries(sf, absPath, root),
     imports: extractImports(sf, absPath),
@@ -535,6 +547,7 @@ export function auditIslands(rootDir: string): IslandAuditResult {
       'nested-island': 0,
       'dead-island': 0,
     } as Record<IslandFindingCode, number>,
+    unparseableFiles: [] as string[],
   }
 
   if (!root) return { root: null, findings, summary }
@@ -569,6 +582,7 @@ export function auditIslands(rootDir: string): IslandAuditResult {
 
   for (const file of files) {
     const ex = extractFromFile(file, root)
+    if (!ex.parses) summary.unparseableFiles.push(relative(root, file))
     if (ex.islands.length > 0) {
       declsByFile.set(file, ex.islands)
       allDecls.push(...ex.islands)
@@ -628,6 +642,16 @@ const CODE_HEADERS: Record<IslandFindingCode, string> = {
   'dead-island': 'Declared but unused island — no other file imports its module',
 }
 
+/** The lines naming files the audit could not parse, ending with a blank line. */
+function formatUnparseable(unparseable: readonly string[]): string[] {
+  const one = unparseable.length === 1
+  return [
+    `✗ ${unparseable.length} file${one ? '' : 's'} could not be parsed, so ${one ? 'its' : 'their'} islands, registry entries and imports may be missing from this audit. Fix the syntax and run it again:`,
+    ...unparseable.map((f) => `  - ${f}`),
+    '',
+  ]
+}
+
 export function formatIslandAudit(
   result: IslandAuditResult,
   options: IslandAuditFormatOptions = {},
@@ -649,6 +673,15 @@ export function formatIslandAudit(
       `entr${result.summary.registryEntries === 1 ? 'y' : 'ies'}`,
   )
   parts.push('')
+
+  const unparseable = result.summary.unparseableFiles
+  if (unparseable.length > 0) parts.push(...formatUnparseable(unparseable))
+
+  if (result.findings.length === 0 && unparseable.length > 0) {
+    parts.push('No island findings in the files that parsed.')
+
+    return parts.join('\n')
+  }
 
   if (result.findings.length === 0) {
     parts.push('✓ No island findings. Project-wide cross-file checks are clean:')

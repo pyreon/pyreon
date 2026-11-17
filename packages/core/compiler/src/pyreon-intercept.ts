@@ -297,13 +297,17 @@ function detectForKeying(ctx: DetectContext, node: ts.JsxOpeningLikeElement): vo
   const eachAttr = findJsxAttribute(node, 'each')
   const byAttr = findJsxAttribute(node, 'by')
   if (eachAttr && !byAttr && !keyAttr) {
+    // The fix is the author's own tag with `by` added after `each`, so it keeps
+    // their expression (`each={visible()}`) instead of a generic `each={items}`.
+    const current = getNodeText(ctx, node)
+    const afterEach = eachAttr.getEnd() - node.getStart(ctx.sf)
     pushDiag(
       ctx,
       node,
       'for-missing-by',
       '<For each={...}> requires a `by` prop: it keys the rows, and a <For> without one throws when it mounts.',
-      getNodeText(ctx, node),
-      '<For each={items} by={(item) => item.id}>',
+      current,
+      `${current.slice(0, afterEach)} by={(item) => item.id}${current.slice(afterEach)}`,
       false,
     )
   }

@@ -127,7 +127,17 @@ OpenAPI 3.x in; `@pyreon/validate` schemas, `@pyreon/http` endpoints, `@pyreon/q
 
 ## `pyreon` CLI
 
-- `pyreon check [paths]` — file-scoped compiler-detector scan (`detectPyreonPatterns` + `detectReactPatterns`) with inline fixes. No paths → git-changed `.ts/.tsx`. `--fix` applies `migratePyreonCode` + `migrateReactCode`; `--json`. Non-zero on findings. Terminal twin of MCP `validate`.
+- `pyreon check [paths]` — file-scoped compiler-detector scan (`detectPyreonPatterns` + `detectReactPatterns`) with inline fixes. No paths → git-changed `.ts/.tsx`. `--fix` applies `migratePyreonCode` + `migrateReactCode`; `--json`. Non-zero on findings. Terminal twin of MCP `validate`. A file that does not parse is a `syntax-error` finding and `--fix` skips it.
+
+### Unparseable input never gets a clean verdict
+
+The detectors, codemods and Reactivity Lens parse with `ts.createSourceFile`, which recovers from syntax errors, and oxc (the lint engine) does too: on broken input they return nothing, and "nothing" used to become a clean verdict. Every surface that turns "no findings" into a pass checks first:
+
+- `findSyntaxErrors(code, filename)` in `@pyreon/compiler/analyze` is the one "did this parse?" answer, using the detectors' parser in the filename's mode (`.ts` → TS, `.jsx`/`.js` → JSX-enabled JS, else TSX). `pyreon check` and `auditIslands` use it.
+- MCP source-taking tools (`validate`, `explain_reactivity`, `migrate_react`, `migrate_pyreon`, `componentSource` of `diagnose` / `explain_error`) go through `prepareSnippet` in `packages/tools/mcp/src/snippet-input.ts`: empty input, non-JS/TS filenames and markdown are reported; ONE surrounding fence is stripped (a fenced block otherwise PARSES, as a chain of tagged template literals, so the detectors see a string); a syntax error is the verdict, with partial-tree findings listed under it. The `✓ No issues found…` and `Found N issues:` texts for valid input are quoted verbatim in docs and promo material: do not change them.
+- `@pyreon/lint` reports a parse error as one fatal `pyreon-lint/parse-error` diagnostic and runs no rules on that file.
+
+A new tool or command that reports "clean" for source text must do the same.
 - `pyreon add <pkg…>` — installs `@pyreon/*` packages with the lockfile's package manager and prints a setup recipe from `add-recipes.ts` (manifests are not shipped, so recipes cannot come from them). Bare names normalize (`query` → `@pyreon/query`). `--dry-run`, `--json`.
 - `pyreon new [name] [--native]` — delegates to `npx @pyreon/create-zero@latest` (or `@pyreon/create-multiplatform@latest` with `--native`); other args pass through; `--dry-run` prints the command.
 - `pyreon mcp [args]` — delegates to `npx @pyreon/mcp` without `@latest`, so a project-local `@pyreon/mcp` (matching the installed Pyreon version) wins. Inherits stdio. `--dry-run` passes through.

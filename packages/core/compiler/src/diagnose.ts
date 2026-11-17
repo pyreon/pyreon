@@ -2535,7 +2535,7 @@ export const collections = {
       cause:
         '<For> keys its rows with the `by` function, and one was not given (or it is not a function). `key` does not stand in for it: JSX keeps `key` for the element itself, so <For> never sees it.',
       fix: 'Add `by`, a function returning a stable, unique key per item: `by={(item) => item.id}`. For a list of unique strings or numbers use `by={(item) => item}`.',
-      fixCode: '<For each={items} by={(item) => item.id}>{(item) => <li>{item.name}</li>}</For>',
+      fixCode: '<For each={items()} by={(item) => item.id}>{(item) => <li>{item.name}</li>}</For>',
     }),
   },
   {

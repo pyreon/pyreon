@@ -231,6 +231,31 @@ export function lintFile(
         sourceType: 'module',
         lang: getLang(ext),
       })
+      // oxc recovers from syntax errors and hands back a partial program, so
+      // running the rules on it would report a broken file as clean. A parse
+      // error is fatal for the file (the ESLint convention): one error
+      // diagnostic, no rules, no fixes, and nothing cached.
+      const parseError = result.errors.find((e) => e.severity === 'Error')
+      if (parseError) {
+        const start = parseError.labels[0]?.start ?? 0
+        const end = parseError.labels[0]?.end ?? start
+        const more = result.errors.length - 1
+
+        return {
+          filePath,
+          diagnostics: [
+            {
+              ruleId: 'pyreon-lint/parse-error',
+              severity: 'error',
+              message:
+                `Parsing error: ${parseError.message}${more > 0 ? ` (${more} more in this file)` : ''}. ` +
+                'The file does not parse, so no lint rules ran on it. Fix the syntax and lint again.',
+              span: { start, end },
+              loc: lineIndex.locate(start),
+            },
+          ],
+        }
+      }
       program = result.program
       comments = result.comments as readonly SourceComment[]
     } catch {

@@ -6,6 +6,8 @@ workerd: OIDC / OAuth2 sign-in, ID-token verification, signed cookie sessions, T
 Tested against [`oidc-provider`](https://github.com/panva/node-oidc-provider), a certified OpenID Provider, run
 in-process: discovery, PKCE + nonce, code exchange, ID-token verification, refresh and RP-initiated logout.
 
+> **Not published to npm.** This package is marked `private` in its `package.json` and is not part of the 1.0 release. It lives in the repository and is tested in CI; to try it, build Pyreon from source. Publishing it later is a maintainer decision (remove `"private": true`, bootstrap the first publish by hand, add a Trusted Publisher).
+
 **Guide, with live demos you can break on purpose:** [pyreon.dev/docs/auth](https://pyreon.dev/docs/auth).
 
 ## Sign-in

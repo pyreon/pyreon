@@ -109,6 +109,7 @@ import {
   suggestPatterns,
 } from './patterns'
 import { enrichDiagnosis, formatEnrichedDiagnosis } from './diagnose-enrich'
+import { describeUnreadable, fenceNote, prepareSnippet } from './snippet-input'
 import { generateContext, type ProjectContext } from './project-scanner'
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -197,20 +198,35 @@ server.tool(
     // props, typeof-process dev gates) — relevant once the imports are
     // Pyreon. A single snippet may trigger both sets, so we merge.
     const fname = filename ?? 'snippet.tsx'
-    const reactDiags = detectReactPatterns(code, fname)
-    const pyreonDiags = detectPyreonPatterns(code, fname)
+    // Input the parser cannot read never gets a verdict: empty input, a
+    // non-JS/TS file, markdown, or a syntax error. A single surrounding
+    // markdown fence is stripped (see `snippet-input.ts`).
+    const prepared = prepareSnippet(code, fname)
+    if (prepared.kind === 'empty' || prepared.kind === 'unsupported' || prepared.kind === 'markdown') {
+      return textResult(describeUnreadable(prepared, fname, 'validated'))
+    }
+    const source = prepared.code
+    const note = fenceNote(prepared.fence)
+    const reactDiags = detectReactPatterns(source, fname)
+    const pyreonDiags = detectPyreonPatterns(source, fname)
     // Native (multiplatform) hazards — only fire for snippets that import
     // `@pyreon/primitives` (the multiplatform signal), so a pure-web snippet
     // never false-positives. Catches code that compiles for web but silently
     // breaks the PMTC native build (web-only imports, dropped interface/enum/
     // class). The AI's per-keystroke one-shot feedback loop, complementing
     // `pyreon doctor --only native-audit`.
-    const { diags: nativeDiags, skipped: nativeSkipped } = await detectNative(code, fname)
+    const { diags: nativeDiags, skipped: nativeSkipped } = await detectNative(source, fname)
     const nativeNote = nativeSkipped ? `\n\n${NATIVE_CHECKS_SKIPPED_NOTE}` : ''
+    // A syntax error is the verdict. Detectors that still found something in
+    // the part that parsed are listed under it, never as a pass.
+    const syntaxVerdict =
+      prepared.kind === 'syntax-error' ? describeUnreadable(prepared, fname, 'fully validated') : null
 
     if (reactDiags.length === 0 && pyreonDiags.length === 0 && nativeDiags.length === 0) {
       return textResult(
-        `✓ No issues found. The code follows Pyreon patterns correctly.${nativeNote}`,
+        syntaxVerdict !== null
+          ? `${syntaxVerdict}${note}`
+          : `✓ No issues found. The code follows Pyreon patterns correctly.${nativeNote}${note}`,
       )
     }
 
@@ -235,8 +251,12 @@ server.tool(
       )
       .join('\n\n')
 
+    const found = `${merged.length} issue${merged.length === 1 ? '' : 's'}`
+
     return textResult(
-      `Found ${merged.length} issue${merged.length === 1 ? '' : 's'}:\n\n${issueText}${nativeNote}`,
+      syntaxVerdict !== null
+        ? `${syntaxVerdict}\n\nIn the part that did parse, the detectors found ${found}:\n\n${issueText}${nativeNote}${note}`
+        : `Found ${found}:\n\n${issueText}${nativeNote}${note}`,
     )
   },
 )
@@ -259,7 +279,13 @@ server.tool(
     // it commits means it sees the compiler's verdict — it cannot ship a
     // stale-closure / destructured-props / static-when-meant-reactive bug
     // without the map showing it. `validate` reports bugs; this reports the map.
-    return textResult(explainReactivity(code, filename ?? 'snippet.tsx').text)
+    const fname = filename ?? 'snippet.tsx'
+    // No map for input the parser cannot read: a recovering parse of broken
+    // code would show a map of whatever survived, which reads as the answer.
+    const prepared = prepareSnippet(code, fname)
+    if (prepared.kind !== 'ok') return textResult(describeUnreadable(prepared, fname, 'analysed'))
+
+    return textResult(`${explainReactivity(prepared.code, fname).text}${fenceNote(prepared.fence)}`)
   },
 )
 
@@ -275,7 +301,12 @@ server.tool(
   },
   async ({ code, filename }) => {
     const fname = filename ?? 'component.tsx'
-    const result = migrateReactCode(code, fname)
+    // A codemod over a recovering parse of broken code rewrites a mangled tree:
+    // refuse instead (a single surrounding fence is stripped first).
+    const prepared = prepareSnippet(code, fname)
+    if (prepared.kind !== 'ok') return textResult(describeUnreadable(prepared, fname, 'migrated'))
+    const note = fenceNote(prepared.fence)
+    const result = migrateReactCode(prepared.code, fname)
 
     const changeList = result.changes.map((c) => `- Line ${c.line}: ${c.description}`).join('\n')
 
@@ -300,7 +331,7 @@ server.tool(
         : ''
 
     return textResult(
-      `## Migrated Code\n\n\`\`\`tsx\n${result.code}\n\`\`\`\n\n**Changes applied (${result.changes.length}):**\n${changeList || 'No changes needed.'}${manualText}`,
+      `## Migrated Code\n\n\`\`\`tsx\n${result.code}\n\`\`\`\n\n**Changes applied (${result.changes.length}):**\n${changeList || 'No changes needed.'}${manualText}${note}`,
     )
   },
 )
@@ -322,7 +353,10 @@ server.tool(
     // returns every OTHER detected footgun (props-destructured, on-click-
     // undefined, …) as a manual-fix list. Span-based + idempotent, so an agent
     // can apply the result verbatim.
-    const result = migratePyreonCode(code, filename ?? 'component.tsx')
+    const fname = filename ?? 'component.tsx'
+    const prepared = prepareSnippet(code, fname)
+    if (prepared.kind !== 'ok') return textResult(describeUnreadable(prepared, fname, 'migrated'))
+    const result = migratePyreonCode(prepared.code, fname)
 
     const changeList = result.changes
       .map((c) => `- Line ${c.line}: ${c.description} (${c.code})`)
@@ -338,7 +372,7 @@ server.tool(
     return textResult(
       `## Migrated Code\n\n\`\`\`tsx\n${result.code}\n\`\`\`\n\n**Auto-fixes applied (${result.changes.length}):**\n${
         changeList || 'No mechanical fixes needed.'
-      }${manualText}`,
+      }${manualText}${fenceNote(prepared.fence)}`,
     )
   },
 )

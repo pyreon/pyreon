@@ -180,6 +180,18 @@ validate("a@b.co").length // 0`,
       seeAlso: ['analyzeValidate'],
     },
     {
+      name: 'findSyntaxErrors',
+      kind: 'function',
+      signature: 'findSyntaxErrors(code: string, filename?: string): SourceSyntaxError[]',
+      summary:
+        'Every syntax error the TypeScript parser reports for `code`, in source order, as `{ message, line (1-based), column (0-based) }`; empty means it parsed. The detectors, codemods and Reactivity Lens parse with an error-recovering parser and return nothing for code they cannot read, so call this first and never turn their empty result into a clean verdict for input with syntax errors (the MCP `validate` tool, `pyreon check` and `audit_islands` do). Parse mode follows the filename: `.ts`/`.mts`/`.cts` as TypeScript, `.jsx` as JSX, `.js`/`.mjs`/`.cjs` as JavaScript, anything else as TSX. Syntax only: no type checking. A markdown-fenced block parses (the backticks are template literals), so strip fences before calling it.',
+      example: `import { findSyntaxErrors } from "@pyreon/compiler/analyze"
+
+findSyntaxErrors("export const C = () => <div>", "C.tsx")[0]
+// { message: "JSX element 'div' has no corresponding closing tag.", line: 1, column: 24 }`,
+      seeAlso: ['detectPyreonPatterns', 'detectReactPatterns'],
+    },
+    {
       name: 'detectReactPatterns',
       kind: 'function',
       signature:

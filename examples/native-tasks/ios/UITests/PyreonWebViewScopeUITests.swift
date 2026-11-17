@@ -17,6 +17,27 @@
 
 import XCTest
 
+private extension XCUIElement {
+    /// `waitForExistence(timeout:)` with the same contract and none of its
+    /// flat cost: true as soon as the element exists, false at the deadline.
+    ///
+    /// XCTest evaluates that wait's predicate for the FIRST time one second
+    /// after the call, so an element that is already on screen still costs
+    /// 1.03 s. In one CI job (2026-11-17) 427 of 456 such waits were answered
+    /// by that first poll and took 487 s between them. This asks at once, then
+    /// ten times a second. Held for every suite by
+    /// `ios-device-test-harness.test.ts`.
+    func waitToExist(timeout: TimeInterval) -> Bool {
+        if exists { return true }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            if exists { return true }
+        }
+        return false
+    }
+}
+
 final class PyreonWebViewScopeUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -26,7 +47,7 @@ final class PyreonWebViewScopeUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-PyreonWebViewScope", scenario]
         app.launch()
-        XCTAssertTrue(app.staticTexts["scope-title"].firstMatch.waitForExistence(timeout: 30), "probe did not render")
+        XCTAssertTrue(app.staticTexts["scope-title"].firstMatch.waitToExist(timeout: 30), "probe did not render")
         return app
     }
 
@@ -83,13 +104,13 @@ final class PyreonWebViewScopeUITests: XCTestCase {
         XCTAssertEqual(label.label, "main:data=host-data|nav:still-here origin=http://127.0.0.1:8791 hits=0")
 
         let link = app.webViews.links["Leave this origin"].firstMatch
-        XCTAssertTrue(link.waitForExistence(timeout: 15), "link missing: \(app.debugDescription.prefix(1500))")
+        XCTAssertTrue(link.waitToExist(timeout: 15), "link missing: \(app.debugDescription.prefix(1500))")
         link.tap()
         let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
         XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 20), "a tapped off-origin link was not handed to Safari")
         safari.terminate()
         app.activate()
-        XCTAssertTrue(link.waitForExistence(timeout: 15), "the hosted page was replaced by the off-origin link")
+        XCTAssertTrue(link.waitToExist(timeout: 15), "the hosted page was replaced by the off-origin link")
         XCTAssertEqual(label.label, "main:data=host-data|nav:still-here origin=http://127.0.0.1:8791 hits=0")
     }
 
