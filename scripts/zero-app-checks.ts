@@ -18,8 +18,7 @@
  *      Judged by `check-route-budgets` against `scripts/size-budgets/apps/`.
  */
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative, resolve } from 'node:path'
-import { gzipSync } from 'node:zlib'
+import { join, relative, resolve } from 'node:path'
 
 import {
   type BaseFamily,
@@ -32,7 +31,10 @@ import {
   type SizeMode,
 } from './size-budget-policy'
 import { readTextIfExists } from './fs-read'
+import { closureGzip, staticImports } from './js-closure'
 import { loadCeilings } from './size-budget-store'
+
+export { staticImports }
 
 /** Every file under `dir` (recursive). */
 function walk(dir: string): string[] {
@@ -89,16 +91,6 @@ export function assertClientClean(clientDir: string, opts: ClientLeakOptions): v
   }
 }
 
-/** Relative static-import specifiers of a (minified) ES module. */
-export function staticImports(code: string): string[] {
-  const out: string[] = []
-  // `import x from "./a.js"`, `import{a}from"./a.js"`, `import"./a.js"`,
-  // `export{a}from"./a.js"`, `export*from"./a.js"` — never `import(`.
-  const re = /\b(?:import|export)\b(?!\s*\()[^'"`;]*?["'`](\.{1,2}\/[^"'`]+?\.m?js)["'`]/g
-  for (const m of code.matchAll(re)) out.push(m[1] as string)
-  return out
-}
-
 /** Absolute paths of the JS a page references in its HTML (entry + preloads). */
 export function htmlEntryScripts(html: string, clientDir: string, base = '/'): string[] {
   const refs: string[] = []
@@ -136,23 +128,11 @@ export function firstLoadJsGzip(
   clientDir: string,
   checkoutRoot?: string,
 ): { bytes: number; files: number } {
-  const seen = new Set<string>()
-  const queue = htmlEntryScripts(readFileSync(htmlPath, 'utf-8'), clientDir)
-  if (queue.length === 0) {
+  const entries = htmlEntryScripts(readFileSync(htmlPath, 'utf-8'), clientDir)
+  if (entries.length === 0) {
     throw new Error(`[zero-app-checks] ${htmlPath} references no module script — nothing to measure`)
   }
-  let bytes = 0
-  while (queue.length > 0) {
-    const f = queue.pop() as string
-    if (seen.has(f)) continue
-    seen.add(f)
-    const raw = readTextIfExists(f)
-    if (raw === undefined) throw new Error(`[zero-app-checks] ${htmlPath} references missing ${f}`)
-    const code = checkoutRoot ? raw.replaceAll(checkoutRoot, '') : raw
-    bytes += gzipSync(code, { level: 9 }).length
-    for (const spec of staticImports(raw)) queue.push(resolve(dirname(f), spec))
-  }
-  return { bytes, files: seen.size }
+  return closureGzip(entries, checkoutRoot, (f) => `[zero-app-checks] ${htmlPath} references missing ${f}`)
 }
 
 /** `<example>:<route>` → the route's prerendered HTML, for `ssg.format: 'directory'`. */
