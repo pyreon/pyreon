@@ -205,7 +205,7 @@ Each of these produced a wrong published figure at some point.
 
 ## Honest limits
 
-- **Author-judge.** Pyreon's authors wrote and judge every bench. The only independent venue is krausest/js-framework-benchmark; a keyed implementation is staged at `contrib/krausest/pyreon-keyed/` (submission steps in its `README-SUBMISSION.md`). Submitting is a human decision.
+- **Author-judge.** Pyreon's authors wrote and judge every bench. The only independent venue is krausest/js-framework-benchmark; a keyed implementation is staged at `contrib/krausest/pyreon-keyed/`. It passes upstream's own build, smoke, keyed and CSP checks (`references/krausest-submission.md`), but it has not been submitted and has no official number. Submitting is the maintainer's decision.
 - **Synthetic.** No real-app head-to-head against real competing frameworks exists; the `cpa-pw-app-*` ports run on Pyreon compat shims. "Fastest" claims stop at what these suites measure.
 - **CPU-objective, not async latency.** React's default scheduling path would read higher than its `flushSync` arm.
 - **happy-dom rows** (query, virtual, table, toast, dnd, charts wrapper) time a JavaScript DOM implementation; relative work is meaningful, absolute times are not.
@@ -216,4 +216,5 @@ Each of these produced a wrong published figure at some point.
 | Topic | File |
 | --- | --- |
 | Core micro-benchmarks: router, reactivity, head, store, state-tree, machine, i18n, permissions, form, query, http, SSR harness, `NODE_ENV` cost, declined micro-optimizations | `.agents/guides/benchmarks/references/core-micro-benchmarks.md` |
+| The official js-framework-benchmark entry: upstream's rules and flags, what `check-krausest-entry` enforces, re-running upstream's checks, submission steps | `.agents/guides/benchmarks/references/krausest-submission.md` |
 | Row list: swap diagnosis (layout-bound, identical DOM ops, the Vapor lead is per-page-load variance) and the create-1k residual after direct insertion | `.agents/guides/benchmarks/references/row-list-swap-and-create-residual.md` |

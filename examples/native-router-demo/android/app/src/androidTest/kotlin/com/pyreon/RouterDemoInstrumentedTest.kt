@@ -1,7 +1,7 @@
 // RouterDemoInstrumentedTest — launch + multi-route navigation smoke
 // for the Android router demo. Mirror of:
 //   - iOS:     `native-router-demo/ios/UITests/PyreonRouterDemoUITests.swift` (#1452)
-//   - TodoMVC: `native-todomvc-android/.../TodoAppInstrumentedTest.kt`
+//   - TodoMVC: `native-todomvc/android/.../TodoAppInstrumentedTest.kt`
 //
 // Closes the Android router-demo half of Gap 5 (Espresso parity
 // beyond TodoMVC + Counter) from the 2026-06-05 audit. Counter

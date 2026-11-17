@@ -64,7 +64,7 @@ android {
 }
 
 dependencies {
-    // Compose BOM — same version as native-todomvc-android and
+    // Compose BOM — same version as native-todomvc/android and
     // native-counter/android for consistency across the Android
     // example fleet.
     // COMPILE-SDK CEILING. AGP 9.4 supports compileSdk 37 at most, and an

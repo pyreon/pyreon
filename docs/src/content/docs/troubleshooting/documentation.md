@@ -25,7 +25,7 @@ Examples must compile and run — no pseudocode in docs
 
 ### Gating a value while adjacent prose restates it unchecked
 
-The prose is what people follow, so it rots while the gate stays green (the krausest submission README pinned a version twelve minors stale and told readers to run `npm ci` where no lockfile existed). Either gate every surface that restates the value or replace the restatement with a pointer. Match only the exact form that contradicts (`@pkg@^x.y.z`) so historical narrative stays writable. Test: `packages/internals/test-utils/src/tests/krausest-pin-fresh.test.ts`.
+The prose is what people follow, so it rots while the gate stays green (the krausest submission README pinned a version twelve minors stale and told readers to run `npm ci` where no lockfile existed). Either gate every surface that restates the value or replace the restatement with a pointer. Match only the exact form that contradicts (`@pkg@^x.y.z`) so historical narrative stays writable. Gate: `scripts/check-krausest-entry.ts` (`checkReadme`), tested in `packages/internals/test-utils/src/tests/check-krausest-entry.test.ts`.
 
 ---
 

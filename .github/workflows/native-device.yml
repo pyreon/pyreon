@@ -7,7 +7,7 @@ name: Native Device Build
 # dependencies — on actual Xcode (iOS Simulator SDK) and Gradle/Android
 # toolchains, AND (Phase 2.2) boots an iOS Simulator + runs an XCUITest
 # that asserts the root view renders by querying the `accessibilityIdentifier`
-# emitted from the canonical `data-testid` (see `examples/native-todomvc-ios/
+# emitted from the canonical `data-testid` (see `examples/native-todomvc/ios/
 # iosUITests/PyreonTodoMVCUITests.swift`). The Android-side Compose
 # instrumented test is the next follow-up — pairs with the BUILD step
 # below; needs an emulator-runner action.
@@ -552,7 +552,7 @@ jobs:
           {
             echo '<?xml version="1.0" encoding="UTF-8"?>'
             echo '<Workspace version = "1.0">'
-            for p in native-todomvc-ios/PyreonTodoMVC native-counter/ios/PyreonCounter native-finance/ios/PyreonFinance native-router-demo/ios/PyreonRouterDemo native-tasks-ios/PyreonTasks native-showcase/ios/PyreonShowcase; do
+            for p in native-todomvc/ios/PyreonTodoMVC native-counter/ios/PyreonCounter native-finance/ios/PyreonFinance native-router-demo/ios/PyreonRouterDemo native-tasks/ios/PyreonTasks native-showcase/ios/PyreonShowcase; do
               echo "   <FileRef location = \"absolute:$GITHUB_WORKSPACE/examples/$p.xcodeproj\"></FileRef>"
             done
             echo '</Workspace>'
@@ -568,12 +568,12 @@ jobs:
         # xcodegen/xcodebuild (the project.yml preBuildScript re-runs it,
         # but populating it here gives a clearer failure if PMTC itself
         # breaks vs the Xcode build).
-        working-directory: examples/native-todomvc-ios
-        run: bash scripts/build.sh
+        working-directory: examples/native-todomvc/ios
+        run: bash ../scripts/build-ios.sh
 
       - name: Generate Xcode project
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' todomvc ')
-        working-directory: examples/native-todomvc-ios
+        working-directory: examples/native-todomvc/ios
         run: xcodegen generate
 
       - name: Build app for the iOS Simulator
@@ -589,7 +589,7 @@ jobs:
         # was used by nothing — every later step runs on the arm64 device, and
         # every later step reuses these arm64 package objects (one workspace,
         # one DerivedData; see "Create the shared Xcode workspace").
-        working-directory: examples/native-todomvc-ios
+        working-directory: examples/native-todomvc/ios
         timeout-minutes: 15
         run: |
           set -o pipefail
@@ -656,10 +656,10 @@ jobs:
         # On the tasks suite a pass is 23-30 minutes, so one flaky test there
         # could not fit the job timeout at all, and a retry that passed was
         # invisible.
-        working-directory: examples/native-todomvc-ios
+        working-directory: examples/native-todomvc/ios
         run: |
           set -o pipefail
-          bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD")" -- \
+          bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/native-todomvc" -- \
             xcodebuild test \
             -parallel-testing-enabled NO \
             -workspace "$PYREON_IOS_WS" \
@@ -865,21 +865,21 @@ jobs:
           disown
           i=0; while ! curl -fsS http://127.0.0.1:8791/health >/dev/null 2>&1; do i=$((i+1)); [ "$i" -ge 30 ] && { echo "stream server FAILED to start within 30s"; cat /tmp/stream-server.log 2>/dev/null || true; exit 1; }; sleep 1; done; echo "stream server OK (ready after ${i}s)"
 
-      - name: Emit + xcodegen + UITest — native-tasks-ios
+      - name: Emit + xcodegen + UITest — native-tasks/ios
         id: uitest-tasks
         timeout-minutes: 50
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' tasks ')
-        working-directory: examples/native-tasks-ios
+        working-directory: examples/native-tasks/ios
         run: |
           set -o pipefail
-          bash scripts/build.sh
+          bash ../scripts/build-ios.sh
           xcodegen generate
           # /webhost geolocation proof: a fixed simulator location, and the app's
           # location permission pre-granted (the UITest still answers SpringBoard's
           # prompt if the grant did not take, e.g. before first install).
           xcrun simctl location "${PYREON_SIM_UDID}" set 37.3349,-122.0090 || true
           xcrun simctl privacy "${PYREON_SIM_UDID}" grant location com.pyreon.PyreonTasks || true
-          bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/$(basename "$PWD")" -- \
+          bun "$GITHUB_WORKSPACE/scripts/native-ios-uitest.ts" --results "$GITHUB_WORKSPACE/.ci-ios-results/native-tasks" -- \
             xcodebuild test \
             -parallel-testing-enabled NO \
             -workspace "$PYREON_IOS_WS" \
@@ -920,11 +920,11 @@ jobs:
       # under check-ios-signing-policy (which forbids it only on
       # `xcodebuild test`). The script asserts the archive CONTAINS an
       # arm64 executable — an empty archive dir is not a pass.
-      - name: Device-SDK archive lane — native-todomvc-ios
+      - name: Device-SDK archive lane — native-todomvc/ios
         if: env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' todomvc ')
         timeout-minutes: 12
-        working-directory: examples/native-todomvc-ios
-        run: bash scripts/archive.sh
+        working-directory: examples/native-todomvc/ios
+        run: bash ../scripts/archive.sh
 
   android-build:
     # Same gate as ios-build — see the comment there.
@@ -1101,15 +1101,15 @@ jobs:
 
       - name: Emit Kotlin (PMTC .tsx → generated/*.kt)
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' todomvc ')
-        working-directory: examples/native-todomvc-android
-        run: bash scripts/build.sh
+        working-directory: examples/native-todomvc/android
+        run: bash ../scripts/build-android.sh
 
       # Every `assembleDebug` below goes through scripts/native-gradle.sh: it
       # retries a failed dependency DOWNLOAD (and only that), with a warning
       # naming the attempt. See the script for the measured reason.
       - name: Build debug APK
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' todomvc ')
-        working-directory: examples/native-todomvc-android
+        working-directory: examples/native-todomvc/android
         run: bash "$GITHUB_WORKSPACE/scripts/native-gradle.sh" assembleDebug --stacktrace
 
       # Today (examples/native-showcase/android). BUILD ONLY: assembleDebug
@@ -1186,7 +1186,7 @@ jobs:
           # contain a Gradle build". First surfaced on the first
           # run that ever REACHED this step (the build steps before
           # it use step-level working-directory and were fine).
-          working-directory: examples/native-todomvc-android
+          working-directory: examples/native-todomvc/android
           # Two lanes on ONE emulator boot (a second boot would be a
           # separate 3-5 min runner cost): the debug suite, then the
           # RELEASE lane — self-signed keystore (credential-free; Play
@@ -1214,7 +1214,7 @@ jobs:
             # which depends on a dialog being drawn.
             adb shell settings put global hide_error_dialogs 1 || true
             gradle connectedCheck --stacktrace
-            bash scripts/ensure-release-keystore.sh
+            bash ../scripts/ensure-release-keystore.sh
             # Debug→release signature transition: installing the
             # release-signed APK over the debug-signed one fails with
             # INSTALL_FAILED_UPDATE_INCOMPATIBLE (observed in the local
@@ -1222,7 +1222,7 @@ jobs:
             adb uninstall com.pyreon.PyreonTodoMVC >/dev/null 2>&1 || true
             gradle -PpyreonReleaseTests connectedCheck --stacktrace
             gradle assembleRelease --stacktrace
-            bash scripts/release-smoke.sh
+            bash ../scripts/release-smoke.sh
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
       - name: Assert the release lane tested a minified RELEASE build
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' todomvc ')
@@ -1231,8 +1231,8 @@ jobs:
         # testBuildType toggle removed → `-PpyreonReleaseTests` is an
         # unused property (NOT an error) and the lane silently re-runs
         # the debug tests. Same script a local run uses.
-        working-directory: examples/native-todomvc-android
-        run: bash scripts/assert-release-lane.sh
+        working-directory: examples/native-todomvc/android
+        run: bash ../scripts/assert-release-lane.sh
 
       # ── The REAL-APP gate, Android half ──
       # The iOS job builds + tests native-finance/ios; this is its counterpart,
@@ -1281,7 +1281,7 @@ jobs:
 
       # ── Gap 5 Android Espresso parity beyond TodoMVC ──
       # Adds the Counter Android example to the Espresso CI gate.
-      # Same shape as native-todomvc-android above — Emit Kotlin →
+      # Same shape as native-todomvc/android above — Emit Kotlin →
       # assembleDebug → connectedCheck.
 
       - name: Emit Kotlin (PMTC .tsx → generated/*.kt) — native-counter/android
@@ -1405,17 +1405,17 @@ jobs:
       # live in one defineStore singleton, so the test exercises the
       # store-read guard + store mutation + typed-params detail.
 
-      - name: Emit Kotlin (PMTC .tsx → generated/*.kt) — native-tasks-android
+      - name: Emit Kotlin (PMTC .tsx → generated/*.kt) — native-tasks/android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' tasks ')
-        working-directory: examples/native-tasks-android
-        run: bash scripts/build.sh
+        working-directory: examples/native-tasks/android
+        run: bash ../scripts/build-android.sh
 
-      - name: Build debug APK — native-tasks-android
+      - name: Build debug APK — native-tasks/android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' tasks ')
-        working-directory: examples/native-tasks-android
+        working-directory: examples/native-tasks/android
         run: bash "$GITHUB_WORKSPACE/scripts/native-gradle.sh" assembleDebug --stacktrace
 
-      - name: Run Espresso test on Android Emulator — native-tasks-android
+      - name: Run Espresso test on Android Emulator — native-tasks/android
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' tasks ')
         # A hang after the tests (see the kill line in `script`) fails in
         # minutes instead of consuming the 60-minute job budget.
@@ -1437,7 +1437,7 @@ jobs:
           # contain a Gradle build". First surfaced on the first
           # run that ever REACHED this step (the build steps before
           # it use step-level working-directory and were fine).
-          working-directory: examples/native-tasks-android
+          working-directory: examples/native-tasks/android
           # fetch-arc device proof: serve the quotes fixture on the
           # HOST, then `adb reverse` forwards the EMULATOR's
           # 127.0.0.1:8787 to the host server — the same loopback URL

@@ -20,7 +20,7 @@
         {
           "label": "src/App.tsx",
           "lang": "tsx",
-          "code": "// src/App.tsx, as scaffolded by @pyreon/create-multiplatform\nimport { signal } from '@pyreon/reactivity'\nimport { Stack, Text, Button } from '@pyreon/primitives'\n\nexport function App() {\n  const count = signal(0)\n  return (\n    <Stack gap=\"md\" align=\"center\">\n      <Text data-testid=\"count\">{count}</Text>\n      <Button data-testid=\"increment\" onPress={() => count.set(count() + 1)}>Increment</Button>\n    </Stack>\n  )\n}"
+          "code": "// src/App.tsx, as scaffolded by @pyreon/create-multiplatform\nimport { signal } from '@pyreon/reactivity'\nimport { Stack, Text, Button } from '@pyreon/primitives'\n\nexport function App() {\n  const count = signal(0)\n  return (\n    <Stack gap=\"md\" align=\"center\">\n      <Text data-testid=\"count\">{count()}</Text>\n      <Button data-testid=\"increment\" onPress={() => count.set(count() + 1)}>Increment</Button>\n    </Stack>\n  )\n}"
         },
         {
           "label": "iOS · SwiftUI",
