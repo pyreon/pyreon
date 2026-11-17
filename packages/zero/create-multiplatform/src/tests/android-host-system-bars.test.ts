@@ -32,6 +32,7 @@ function activities(dir: string): string[] {
     if (statSync(p).isDirectory()) out.push(...activities(p))
     else if (name.endsWith('Activity.kt') && p.includes('/src/main/')) out.push(p)
   }
+
   return out
 }
 
@@ -53,6 +54,7 @@ const exampleHosts = androidHostDirs
 const SELF_PAINTED_HOSTS = new Set(['examples/native-showcase/android/app/src/main/kotlin/com/pyreon/MainActivity.kt'])
 
 const scaffold = buildScaffold({ name: 'demo-app' })
+
 const scaffoldHost = {
   path: 'create-multiplatform scaffold MainActivity.kt',
   src: scaffold.find((f) => f.path.endsWith('/MainActivity.kt'))?.content ?? '',
@@ -77,7 +79,7 @@ describe('Android hosts: system bars', () => {
   it('finds the example hosts (a broken walk would pass vacuously)', () => {
     const paths = exampleHosts.map((h) => h.path)
     expect(paths).toContain('examples/native-tasks-android/app/src/main/kotlin/com/pyreon/MainActivity.kt')
-    expect(paths).toContain('examples/native-router-demo-android/app/src/main/kotlin/com/pyreon/TabsDemoActivity.kt')
+    expect(paths).toContain('examples/native-router-demo/android/app/src/main/kotlin/com/pyreon/TabsDemoActivity.kt')
     expect(paths.length).toBeGreaterThanOrEqual(6)
   })
 

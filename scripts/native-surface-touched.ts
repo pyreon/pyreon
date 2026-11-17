@@ -159,8 +159,9 @@ export function classifyNativeSurface(
  * `project.yml`. (`check-native-srcdirs-drift`, which reads them, is a Linux
  * gate.) The Android lane still selects the app: `selectApps` is unchanged.
  */
+// Both example layouts: `native-<app>-android/` and `native-<app>/android/`.
 const ANDROID_GRADLE_CONFIG =
-  /^examples\/native-[^/]+-android\/(?:(?:app\/)?build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties|gradlew(?:\.bat)?|gradle\/.+)$/
+  /^examples\/native-[^/]+(?:-android|\/android)\/(?:(?:app\/)?build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties|gradlew(?:\.bat)?|gradle\/.+)$/
 
 export function isAndroidGradleConfig(file: string): boolean {
   // `..` never appears in a git path; refuse it anyway so the `gradle/` arm
@@ -176,8 +177,9 @@ export function isAndroidGradleConfig(file: string): boolean {
  * them. A deleted file reads as null and so still starts the job, which keeps
  * "the last device test was removed" visible.
  */
+// Both example layouts: `native-<app>-ios/iosUITests` and `native-<app>/ios/UITests`.
 const DEVICE_TEST_SOURCE =
-  /^examples\/native-[^/]+-(?:ios\/iosUITests|android\/app\/src\/androidTest)\/(?!.*IntlDifferentialCases\.kt$)/
+  /^examples\/native-[^/]+(?:-ios\/iosUITests|\/ios\/UITests|[-/]android\/app\/src\/androidTest)\/(?!.*IntlDifferentialCases\.kt$)/
 
 export function isDeviceTestSource(file: string): boolean {
   return DEVICE_TEST_SOURCE.test(file) && !file.split('/').includes('..')
@@ -447,8 +449,8 @@ export function deriveAppSurfaces(repoRoot: string): AppSurface[] {
           roots.add(asRoot(target))
           const parent = dirname(target)
           // Only a SHARED source home (examples/native-finance) is claimed whole;
-          // when the source lives in a sibling LANE app (native-counter-android
-          // reads native-counter-ios/src), claiming that app's whole dir would
+          // when the source lives in a sibling LANE app (native-counter/android
+          // reads native-counter/src), claiming that app's whole dir would
           // run this lane for an iOS-only UITest edit.
           if (parent !== dir && parent.startsWith('examples/native-') && !APP_DIR.test(parent))
             roots.add(asRoot(parent))

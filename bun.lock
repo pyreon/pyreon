@@ -903,16 +903,9 @@
         "vitest": "^5.1.0",
       },
     },
-    "examples/native-counter-android": {
-      "name": "@pyreon/example-native-counter-android",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/native-cli": "workspace:*",
-      },
-    },
-    "examples/native-counter-ios": {
-      "name": "@pyreon/example-native-counter-ios",
-      "version": "0.50.0",
+    "examples/native-counter": {
+      "name": "@pyreon/example-native-counter",
+      "version": "0.0.0",
       "devDependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/flow": "workspace:*",
@@ -945,48 +938,9 @@
         "@pyreon/store": "workspace:*",
       },
     },
-    "examples/native-finance-android": {
-      "name": "@pyreon/example-native-finance-android",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/native-cli": "workspace:*",
-      },
-    },
-    "examples/native-finance-ios": {
-      "name": "@pyreon/example-native-finance-ios",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/native-cli": "workspace:*",
-      },
-    },
-    "examples/native-router-demo-android": {
-      "name": "@pyreon/example-native-router-demo-android",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/native-cli": "workspace:*",
-      },
-    },
-    "examples/native-router-demo-ios": {
-      "name": "@pyreon/example-native-router-demo-ios",
-      "version": "0.50.0",
-      "devDependencies": {
-        "@pyreon/attrs": "workspace:*",
-        "@pyreon/coolgrid": "workspace:*",
-        "@pyreon/core": "workspace:*",
-        "@pyreon/elements": "workspace:*",
-        "@pyreon/form": "workspace:*",
-        "@pyreon/hooks": "workspace:*",
-        "@pyreon/native-cli": "workspace:*",
-        "@pyreon/primitives": "workspace:*",
-        "@pyreon/reactivity": "workspace:*",
-        "@pyreon/router": "workspace:*",
-        "@pyreon/styler": "workspace:*",
-        "@pyreon/validate": "workspace:*",
-      },
-    },
-    "examples/native-router-demo-web": {
-      "name": "@pyreon/example-native-router-demo-web",
-      "version": "0.50.3",
+    "examples/native-router-demo": {
+      "name": "@pyreon/example-native-router-demo",
+      "version": "0.0.0",
       "dependencies": {
         "@pyreon/attrs": "workspace:*",
         "@pyreon/coolgrid": "workspace:*",
@@ -1002,6 +956,7 @@
         "@pyreon/validate": "workspace:*",
       },
       "devDependencies": {
+        "@pyreon/native-cli": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
         "@types/bun": "^1.4.4",
@@ -4264,21 +4219,11 @@
 
     "@pyreon/example-lathe-bookshelf": ["@pyreon/example-lathe-bookshelf@workspace:examples/lathe-bookshelf"],
 
-    "@pyreon/example-native-counter-android": ["@pyreon/example-native-counter-android@workspace:examples/native-counter-android"],
-
-    "@pyreon/example-native-counter-ios": ["@pyreon/example-native-counter-ios@workspace:examples/native-counter-ios"],
+    "@pyreon/example-native-counter": ["@pyreon/example-native-counter@workspace:examples/native-counter"],
 
     "@pyreon/example-native-finance": ["@pyreon/example-native-finance@workspace:examples/native-finance"],
 
-    "@pyreon/example-native-finance-android": ["@pyreon/example-native-finance-android@workspace:examples/native-finance-android"],
-
-    "@pyreon/example-native-finance-ios": ["@pyreon/example-native-finance-ios@workspace:examples/native-finance-ios"],
-
-    "@pyreon/example-native-router-demo-android": ["@pyreon/example-native-router-demo-android@workspace:examples/native-router-demo-android"],
-
-    "@pyreon/example-native-router-demo-ios": ["@pyreon/example-native-router-demo-ios@workspace:examples/native-router-demo-ios"],
-
-    "@pyreon/example-native-router-demo-web": ["@pyreon/example-native-router-demo-web@workspace:examples/native-router-demo-web"],
+    "@pyreon/example-native-router-demo": ["@pyreon/example-native-router-demo@workspace:examples/native-router-demo"],
 
     "@pyreon/example-native-showcase": ["@pyreon/example-native-showcase@workspace:examples/native-showcase"],
 

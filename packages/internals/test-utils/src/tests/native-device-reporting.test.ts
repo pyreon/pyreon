@@ -301,6 +301,22 @@ describe('android-connected-failures', () => {
   })
 })
 
+describe('collectFailures — the one-directory layout', () => {
+  it('also reads examples/native-<app>/android report trees (a host that carries settings.gradle.kts)', () => {
+    const root = mkdtempSync(join(tmpdir(), 'pyreon-connected-single-'))
+    mkdirSync(join(root, 'examples/native-counter/android'), { recursive: true })
+    writeFileSync(join(root, 'examples/native-counter/android/settings.gradle.kts'), '')
+    const dir = join(root, 'examples/native-counter/android/app/build/reports/androidTests/connected/debug')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'com.pyreon.CounterInstrumentedTest.html'), CLASS_REPORT)
+    const all = collectFailures(root)
+    expect(all.length).toBeGreaterThan(0)
+    expect(all[0]!.report).toBe(
+      'examples/native-counter/android/app/build/reports/androidTests/connected/debug/com.pyreon.CounterInstrumentedTest.html',
+    )
+  })
+})
+
 describe('native-gradle.sh', () => {
   const SCRIPT = resolve(import.meta.dirname, '../../../../../scripts/native-gradle.sh')
 

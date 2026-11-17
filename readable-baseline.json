@@ -1,6 +1,6 @@
 {
   "description": "Readable ratchet — `readable` style findings per (file, rule) may only DECREASE, and a file not listed here must have none. Checked by `bun scripts/check-pyreon-lint-ratchet.ts` (validate-fast + CI). Fix new findings with `bunx pyreon-lint --fix <file>` (the spacing rules are autofixable), then tighten with `bun scripts/check-readable-ratchet.ts --update`. Never raise a count to absorb a finding.",
-  "total": 11561,
+  "total": 11559,
   "files": {
     "packages/core/compiler/src/charts-migration.ts": {"pyreon/padding-before-return":2},
     "packages/core/compiler/src/content-audit.ts": {"pyreon/padding-before-return":13},
@@ -2683,7 +2683,6 @@
     "packages/zero/create-multiplatform/src/index.ts": {"pyreon/padding-before-return":5},
     "packages/zero/create-multiplatform/src/scaffold.ts": {"pyreon/padding-before-return":1},
     "packages/zero/create-multiplatform/src/tests/android-config-changes.test.ts": {"pyreon/padding-before-return":1,"pyreon/padding-between-declarations":1},
-    "packages/zero/create-multiplatform/src/tests/android-host-system-bars.test.ts": {"pyreon/padding-before-return":1,"pyreon/padding-between-declarations":1},
     "packages/zero/create-multiplatform/src/tests/lint-config.test.ts": {"pyreon/padding-before-return":2,"pyreon/padding-between-declarations":1},
     "packages/zero/create-multiplatform/src/tests/output.test.ts": {"pyreon/padding-between-declarations":1},
     "packages/zero/create-multiplatform/src/tests/scaffold-deps-installable.test.ts": {"pyreon/padding-before-return":2},

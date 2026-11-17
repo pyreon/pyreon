@@ -24,6 +24,7 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { listNativeHosts } from './native-example-hosts'
 
 export interface ConnectedFailure {
   className: string
@@ -72,14 +73,15 @@ function htmlFiles(dir: string): string[] {
   return out
 }
 
-/** Every failure under `examples/native-*-android/app/build/reports/androidTests`. */
+/**
+ * Every failure under each Android host's `app/build/reports/androidTests`,
+ * in both example layouts (`native-<app>-android/` and `native-<app>/android/`).
+ */
 export function collectFailures(root: string): Array<ConnectedFailure & { report: string }> {
-  const examples = join(root, 'examples')
-  if (!existsSync(examples)) return []
+  if (!existsSync(join(root, 'examples'))) return []
   const out: Array<ConnectedFailure & { report: string }> = []
-  for (const app of readdirSync(examples).sort()) {
-    if (!/^native-.*-android$/.test(app)) continue
-    for (const file of htmlFiles(join(examples, app, 'app/build/reports/androidTests')).sort()) {
+  for (const host of listNativeHosts(root).filter((h) => h.platform === 'android')) {
+    for (const file of htmlFiles(join(root, host.dir, 'app/build/reports/androidTests')).sort()) {
       for (const f of parseClassReport(readFileSync(file, 'utf8'))) {
         out.push({ ...f, report: relative(root, file) })
       }

@@ -143,7 +143,7 @@
     "examples/hn-clone/src/routes/todos.tsx": {"eslint(complexity)":1,"eslint(curly)":2,"eslint(max-lines-per-function)":1},
     "examples/hn-clone/src/routes/user/[id].tsx": {"eslint(curly)":1},
     "examples/kanban/src/components/BoardColumn.tsx": {"eslint(max-lines-per-function)":1},
-    "examples/native-counter-ios/src/Counter.tsx": {"eslint(max-lines-per-function)":1},
+    "examples/native-counter/src/Counter.tsx": {"eslint(max-lines-per-function)":1},
     "examples/native-tasks/src/TasksApp.tsx": {"eslint(max-lines)":1,"eslint(max-lines-per-function)":5},
     "examples/stacks-bench/bench-stacks.ts": {"eslint(curly)":4,"eslint(max-lines-per-function)":2},
     "examples/ui-showcase/src/routes/animations/basic.tsx": {"import(newline-after-import)":1},
