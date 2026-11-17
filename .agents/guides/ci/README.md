@@ -305,7 +305,11 @@ First-run checklist, on the first PR after the variable is set:
 
 The maintainer runs this. Agents prepare the PRs, never merge them, and never publish by hand. Each numbered step is one PR off `origin/main`.
 
-Before starting: let the pending `chore: version packages` PR publish, so the series starts from a stable `latest`. Bootstrap or mark `private` any package that has never been published (`@pyreon/auth` today): OIDC cannot create a package, so it would be missing from every rc.
+Before starting, decide three things:
+
+- **Publish the pending Version PR first.** Let it publish, so the series starts from a stable `latest`. Entering pre mode with hundreds of pending changesets puts all of them into `1.0.0-rc.0`.
+- **Never-published packages.** Bootstrap or mark `private` any package that has never been published (`@pyreon/auth` today). OIDC cannot create a package, so it would be missing from every rc.
+- **Patching 0.x during the series.** While `main` is in pre mode, the `stable` job versions only release candidates, so there is no path for a 0.x patch release. Either accept that for the length of the series, or add a maintenance-branch release job before entering. Do not name a freeze or maintenance branch `release/…`, because every push to `release/**` publishes a snapshot under `next`.
 
 1. **Enter.** In one PR:
    - set `APPROVED_MAJOR` in `scripts/major-release.ts` to `'1.0.0'`;
@@ -321,6 +325,13 @@ Before starting: let the pending `chore: version packages` PR publish, so the se
 3. **Iterate.** Merge fixes with ordinary changesets. Each Version PR consumes them, as outside pre mode, and cuts the next candidate (`1.0.0-rc.1`, …) on `rc`. A `release/**` snapshot is not available in pre mode (`changeset version --snapshot` refuses), so the rc is the canary.
 4. **Exit.** In one PR, run `bun changeset pre exit` (it sets `"mode": "exit"` in `.changeset/pre.json`), commit it, and set `APPROVED_MAJOR` back to `null`. The switch was needed only until the rc.0 Version PR merged. `changeset version` accepts exit mode with no pending changeset. On merge, the Version PR shows `1.0.0` and deletes `pre.json`.
 5. **Publish 1.0.0.** Merge that Version PR. Everything publishes to `latest`, and `v1.0.0` gets a normal GitHub Release. The `rc` dist-tag keeps pointing at the last candidate, which is harmless.
+
+**A bad candidate.** Users on `latest` are untouched. Fix forward with the next rc. To take the bad one out of reach, the maintainer runs these with their own npm login:
+
+- `npm deprecate @pyreon/<pkg>@<bad> "<reason>"`
+- `npm dist-tag add @pyreon/<pkg>@<previous rc> rc` for each package
+
+Never unpublish.
 
 What the rehearsal does not prove: OIDC publishing under `--tag rc`, the native workflow on a `v*-rc.N` tag, and `gh release create --prerelease` all run only in a real release. Watch the first rc run.
 

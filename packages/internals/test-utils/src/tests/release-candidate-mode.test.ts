@@ -170,6 +170,10 @@ describe('check-published-state — compares against the version’s own dist-ta
     expect(await npmChannelVersion('@pyreon/zero', 'rc', lookup)).toBe('0.54.0')
     expect(await npmChannelVersion('@pyreon/new', 'rc', lookup)).toBeNull()
     expect(await npmChannelVersion('@pyreon/core', 'latest', lookup)).toBe('0.54.0')
+    const answered: string[] = []
+    await npmChannelVersion('@pyreon/zero', 'rc', lookup, undefined, (t) => answered.push(t))
+    await npmChannelVersion('@pyreon/core', 'rc', lookup, undefined, (t) => answered.push(t))
+    expect(answered).toEqual(['latest', 'rc'])
     expect(asked).toEqual([
       '@pyreon/core@rc',
       '@pyreon/zero@rc',
@@ -177,6 +181,9 @@ describe('check-published-state — compares against the version’s own dist-ta
       '@pyreon/new@rc',
       '@pyreon/new@latest',
       '@pyreon/core@latest',
+      '@pyreon/zero@rc',
+      '@pyreon/zero@latest',
+      '@pyreon/core@rc',
     ])
   })
 })

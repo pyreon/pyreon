@@ -255,9 +255,15 @@ export async function npmChannelVersion(
   tag: string,
   lookup: (pkg: string, tag: string, signal?: AbortSignal) => Promise<string | null> = npmDistTag,
   signal?: AbortSignal,
+  /** Told which dist-tag the returned version came from (for messages). */
+  onAnswer?: (tag: string) => void,
 ): Promise<string | null> {
   const v = await lookup(pkg, tag, signal)
-  if (v !== null || tag === 'latest') return v
+  if (v !== null || tag === 'latest') {
+    onAnswer?.(tag)
+    return v
+  }
+  onAnswer?.('latest')
   return lookup(pkg, 'latest', signal)
 }
 
@@ -298,7 +304,15 @@ if (import.meta.main) {
   const repoVersions = enumeratePublishableVersions()
   const tagOf = new Map(repoVersions.map((r) => [r.pkg, distTagFor(r.repo, preState)]))
   const tagFor = (pkg: string): string => tagOf.get(pkg) ?? distTagFor(repoVersion(pkg), preState)
-  const npmLatest = (pkg: string, signal?: AbortSignal) => npmChannelVersion(pkg, tagFor(pkg), npmDistTag, signal)
+  // Which dist-tag actually answered: `latest` while the rc tag does not exist yet.
+  const answeredBy = new Map<string, string>()
+  const npmLatest = (pkg: string, signal?: AbortSignal) =>
+    npmChannelVersion(pkg, tagFor(pkg), npmDistTag, signal, (tag) => answeredBy.set(pkg, tag))
+  const shownTag = (pkg: string): string => {
+    const asked = tagFor(pkg)
+    const got = answeredBy.get(pkg) ?? asked
+    return got === asked ? asked : `${got} (no ${asked} tag yet)`
+  }
 
   try {
     if (process.argv.includes('--wait-for-publish')) {
@@ -397,7 +411,7 @@ if (import.meta.main) {
         `[check-published-state] DEAD RELEASE DETECTED — the repo carries a versioned release that npm never received:`,
       )
       for (const r of dead) {
-        console.error(`  ${r.pkg}: repo=${r.repo} but npm ${tagFor(r.pkg)}=${r.npm}`)
+        console.error(`  ${r.pkg}: repo=${r.repo} but npm ${shownTag(r.pkg)}=${r.npm}`)
       }
       console.error(
         `  A "chore: version packages" commit merged but the publish step did not complete.\n` +
@@ -426,7 +440,7 @@ if (import.meta.main) {
       console.error(
         `[check-published-state] PARTIAL RELEASE — ${lagging.length} package(s) exist on npm but lag the version the repo has cut:`,
       )
-      for (const r of lagging) console.error(`  ${r.pkg}: repo=${r.repo} but npm ${tagFor(r.pkg)}=${r.npm}`)
+      for (const r of lagging) console.error(`  ${r.pkg}: repo=${r.repo} but npm ${shownTag(r.pkg)}=${r.npm}`)
       const version = lagging[0]!.repo
       console.error(
         `  The publish step of release ${version} did not complete for these packages\n` +
