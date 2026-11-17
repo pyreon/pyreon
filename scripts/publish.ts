@@ -1,6 +1,8 @@
 /**
  * Publish all @pyreon/* packages via `npm publish --provenance`.
- * Resolves workspace:^ → ^X.Y.Z before publish, restores after.
+ * Resolves `workspace:` ranges before publish, restores after: an edge
+ * between two fixed-group members is published EXACT (`X.Y.Z`), everything
+ * else keeps its range (scripts/publish-ranges.ts).
  * Skips already-published versions.
  *
  * Usage: bun run scripts/publish.ts [--dry-run] [--tag <tag>] [--otp=<code>] [--only=<pkg>]
@@ -25,6 +27,7 @@ import { runPool } from './run-pool'
 import { classifyPublishFailure } from './publish-classify'
 import { isReleaseRepository, RELEASE_REPOSITORY_URL } from './release-repository'
 import { readPreState, resolvePublishTag, type PreState } from './release-channel'
+import { publishedRange, type DepField } from './publish-ranges'
 import {
   packageBuildsToLib,
   stripBunCondition,
@@ -135,10 +138,21 @@ try {
 // below resolves the whole set first and aborts as a batch before any
 // `npm publish`, so a pre-detectable manifest problem can never leave a
 // partial release.
+// The lockstep set: members of the changesets `fixed` group. An edge between
+// two of them is published exact — see scripts/publish-ranges.ts.
+const fixedGroup = new Set<string>(
+  (
+    JSON.parse(await readFile(join(import.meta.dirname, '..', '.changeset', 'config.json'), 'utf-8')) as {
+      fixed?: string[][]
+    }
+  ).fixed?.[0] ?? [],
+)
+
 function resolveWorkspaceDeps(
   deps: Record<string, string> | undefined,
   pkgName: string,
   errors: string[],
+  field: DepField,
 ): Record<string, string> | undefined {
   if (!deps) return deps
   const resolved = { ...deps }
@@ -152,8 +166,10 @@ function resolveWorkspaceDeps(
         )
         continue
       }
-      const prefix = range.replace('workspace:', '')
-      resolved[name] = prefix === '*' ? version : `${prefix}${version}`
+      resolved[name] = publishedRange(range, version, {
+        field,
+        lockstep: fixedGroup.has(pkgName) && fixedGroup.has(name),
+      })
     }
   }
   return resolved
@@ -383,13 +399,13 @@ for (const dir of packageDirs) {
     // `packageBuildsToLib`.
     ...(pkg.exports ? { exports: stripBunCondition(pkg.exports) } : {}),
     ...(pkg.files && packageBuildsToLib(pkg) ? { files: stripSrcFromFiles(pkg.files) } : {}),
-    dependencies: resolveWorkspaceDeps(pkg.dependencies, pkg.name, resolveErrors),
-    peerDependencies: resolveWorkspaceDeps(pkg.peerDependencies, pkg.name, resolveErrors),
-    devDependencies: resolveWorkspaceDeps(pkg.devDependencies, pkg.name, resolveErrors),
+    dependencies: resolveWorkspaceDeps(pkg.dependencies, pkg.name, resolveErrors, 'dependencies'),
+    peerDependencies: resolveWorkspaceDeps(pkg.peerDependencies, pkg.name, resolveErrors, 'peerDependencies'),
+    devDependencies: resolveWorkspaceDeps(pkg.devDependencies, pkg.name, resolveErrors, 'devDependencies'),
     // `optionalDependencies` is the field that broke the 0.18.0 compiler
     // release (shipped as literal `"workspace:^"` → `npm i` hard-fails
     // with `EUNSUPPORTEDPROTOCOL`). Must be resolved too.
-    optionalDependencies: resolveWorkspaceDeps(pkg.optionalDependencies, pkg.name, resolveErrors),
+    optionalDependencies: resolveWorkspaceDeps(pkg.optionalDependencies, pkg.name, resolveErrors, 'optionalDependencies'),
   }
 
   // Defense-in-depth: a `workspace:` range surviving into ANY dep field

@@ -612,7 +612,8 @@ function runScaffolder(cell: Cell, cwd: string): void {
  * of failure instead (same design as publish.ts's 404-bootstrap classifier).
  *
  * The signature is bun's resolution error for a version that is not on the
- * registry YET: `No version matching "^X.Y.Z" found for specifier
+ * registry YET: `No version matching "^X.Y.Z" found for specifier (or the
+ * exact `"X.Y.Z"` an internal lockstep edge is published with)
  * "@pyreon/<pkg>" (but package exists)` — "but package exists" discriminates
  * the in-flight/lag state from a typo'd package name, and the @pyreon scope +
  * the workspace version pin discriminate it from a scaffold declaring a
@@ -630,7 +631,7 @@ export function isReleaseInFlightInstallFailure(
   // input rather than reason about its source.
   const escaped = workspaceVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const re = new RegExp(
-    `No version matching "\\^${escaped}" found for specifier "@pyreon/[^"]+" \\(but package exists\\)`,
+    `No version matching "\\^?${escaped}" found for specifier "@pyreon/[^"]+" \\(but package exists\\)`,
   )
   return re.test(output)
 }
