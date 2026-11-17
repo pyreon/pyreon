@@ -18,9 +18,11 @@ import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
  *   )
  *   val userSchema = PyreonZodSchema_userSchema()
  */
-function kotlinFieldType(t: ZodFieldType): string {
+/** Twin of `swiftFieldType`: a scalar `number()` is a `Double` unless `.int()`. */
+function kotlinFieldType(t: ZodFieldType, integer = true): string {
   if (typeof t === 'string') {
-    return t === 'string' ? 'String' : t === 'number' ? KOTLIN_INT : 'Boolean'
+    if (t === 'number') return integer ? KOTLIN_INT : 'Double'
+    return t === 'string' ? 'String' : 'Boolean'
   }
   if (t.kind === 'object') {
     // Gap 4 v3.2 — nested object reference. Emit the synthesized data class name.
@@ -34,17 +36,19 @@ function kotlinFieldType(t: ZodFieldType): string {
   } else {
     elem = `PyreonZodSchema_${t.element.schemaName}`
   }
+
   return `List<${elem}>`
 }
 
-function kotlinFieldInitial(t: ZodFieldType): string {
+function kotlinFieldInitial(t: ZodFieldType, integer = true): string {
   if (typeof t === 'string') {
-    return t === 'string' ? '""' : t === 'boolean' ? 'false' : '0'
+    return t === 'string' ? '""' : t === 'boolean' ? 'false' : integer ? '0' : '0.0'
   }
   if (t.kind === 'object') {
     // Initialize nested object with its own default constructor
     return `PyreonZodSchema_${t.schemaName}()`
   }
+
   return 'emptyList()'
 }
 
@@ -272,6 +276,7 @@ function emitKotlinDiscriminatedUnion(zs: ZodSchemaDefnIR): string {
   lines.push(`        }`)
   lines.push(`    }`)
   lines.push(`}`)
+
   return lines.join('\n') + '\n'
 }
 
@@ -281,11 +286,11 @@ export function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
   const lines: string[] = []
   lines.push(`data class PyreonZodSchema_${zs.bindingName}(`)
   for (const f of zs.fields) {
-    const t = kotlinFieldType(f.type)
+    const t = kotlinFieldType(f.type, f.integer === true)
     if (f.optional) {
       lines.push(`    var ${kotlinMember(f.name)}: ${t}? = null,`)
     } else {
-      const initial = kotlinFieldInitial(f.type)
+      const initial = kotlinFieldInitial(f.type, f.integer === true)
       lines.push(`    var ${kotlinMember(f.name)}: ${t} = ${initial},`)
     }
   }
@@ -299,7 +304,9 @@ export function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
     `        fun parse(input: Map<String, Any?>): PyreonZodSchema_${zs.bindingName} {`,
   )
   for (const f of zs.fields) {
-    const t = kotlinFieldType(f.type)
+    const t = kotlinFieldType(f.type, f.integer === true)
+    // A JSON-shaped input map holds a whole number as a Long, so a Double field reads any Number.
+    const read = (e: string): string => (t === 'Double' ? `(${e} as? Number)?.toDouble()` : `(${e} as? ${t})`)
     // Gap 4 v3.2 — nested object field: route via the nested schema's
     // own parse() method.
     if (typeof f.type !== 'string' && f.type.kind === 'object') {
@@ -360,7 +367,7 @@ export function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
     if (f.optional) {
       // Optional field: missing → null, present-but-wrong-type → throw
       lines.push(
-        `            val ${localBase(f.name)}Val: ${t}? = if (input.containsKey(${kotlinStr(f.name)})) (input[${kotlinStr(f.name)}] as? ${t}) ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(t)}) else null`,
+        `            val ${localBase(f.name)}Val: ${t}? = if (input.containsKey(${kotlinStr(f.name)})) ${read(`input[${kotlinStr(f.name)}]`)} ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(t)}) else null`,
       )
       // Gap 4 v3 — constraints on optional fields apply ONLY when present;
       // the null branch above leaves the field null untouched.
@@ -386,7 +393,7 @@ export function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
       continue
     }
     lines.push(
-      `            val ${localBase(f.name)}Val = (input[${kotlinStr(f.name)}] as? ${t})`,
+      `            val ${localBase(f.name)}Val = ${read(`input[${kotlinStr(f.name)}]`)}`,
     )
     lines.push(
       `                ?: throw PyreonSchemaError.MissingOrWrongType(${kotlinStr(f.name)}, ${kotlinStr(t)})`,
@@ -482,6 +489,7 @@ export function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {
     lines.push(``)
     lines.push(`val ${zs.bindingName} = PyreonZodSchema_${zs.bindingName}()`)
   }
+
   return lines.join('\n')
 }
 

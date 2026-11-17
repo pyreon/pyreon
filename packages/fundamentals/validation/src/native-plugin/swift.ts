@@ -21,9 +21,15 @@ const EMAIL_PATTERN = String.raw`^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$`
  *   }
  *   let userSchema = PyreonZodSchema_userSchema()
  */
-function swiftFieldType(t: ZodFieldType): string {
+/**
+ * A scalar `number()` field is a `Double`, as on the web, where `s.number()` accepts `1.5`; only `.int()` promises a
+ * whole value and lowers to `Int`. (Every `number()` was `Int`, so a fractional value failed the native parse and the
+ * decode of a struct carrying it.) Array elements keep `Int` — see `elementInteger` in `ir.ts`.
+ */
+function swiftFieldType(t: ZodFieldType, integer = true): string {
   if (typeof t === 'string') {
-    return t === 'string' ? 'String' : t === 'number' ? 'Int' : 'Bool'
+    if (t === 'number') return integer ? 'Int' : 'Double'
+    return t === 'string' ? 'String' : 'Bool'
   }
   if (t.kind === 'object') {
     // Gap 4 v3.2 — nested object reference. Emit the synthesized struct name.
@@ -36,7 +42,16 @@ function swiftFieldType(t: ZodFieldType): string {
   } else {
     elem = `PyreonZodSchema_${t.element.schemaName}`
   }
+
   return `[${elem}]`
+}
+
+/**
+ * The cast that reads one input value as the field type. A `Double` field reads a whole number too: a JSON-shaped
+ * input map holds `3` as an `Int`, and `as? Double` rejects a Swift `Int`.
+ */
+function swiftRead(expr: string, t: string): string {
+  return t === 'Double' ? `((${expr} as? Double) ?? (${expr} as? Int).map(Double.init))` : `${expr} as? ${t}`
 }
 
 function swiftFieldInitial(t: ZodFieldType): string {
@@ -47,6 +62,7 @@ function swiftFieldInitial(t: ZodFieldType): string {
     // Initialize nested object with its own default constructor
     return `PyreonZodSchema_${t.schemaName}()`
   }
+
   return '[]'
 }
 
@@ -249,6 +265,7 @@ function emitSwiftDiscriminatedUnion(zs: ZodSchemaDefnIR): string {
   lines.push(`        catch { return .failure(.missingOrWrongType(field: "?", expected: "?")) }`)
   lines.push(`    }`)
   lines.push(`}`)
+
   return lines.join('\n') + '\n'
 }
 
@@ -270,7 +287,7 @@ export function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
   const lines: string[] = []
   lines.push(`struct PyreonZodSchema_${zs.bindingName}: Codable {`)
   for (const f of zs.fields) {
-    const t = swiftFieldType(f.type)
+    const t = swiftFieldType(f.type, f.integer === true)
     if (f.optional) {
       lines.push(`    var ${swiftIdent(f.name)}: ${t}? = nil`)
     } else {
@@ -286,7 +303,7 @@ export function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
   lines.push(`    static func parse(_ input: [String: Any]) throws -> Self {`)
   lines.push(`        var result = Self()`)
   for (const f of zs.fields) {
-    const t = swiftFieldType(f.type)
+    const t = swiftFieldType(f.type, f.integer === true)
     // Gap 4 v3.2 — nested object field: route via the nested schema's
     // own parse() method.
     if (typeof f.type !== 'string' && f.type.kind === 'object') {
@@ -357,7 +374,7 @@ export function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
     if (f.optional) {
       // Optional field — missing → leave nil, present-but-wrong-type → throw
       lines.push(`        if let raw = input[${swiftStr(f.name)}] {`)
-      lines.push(`            guard let ${localBase(f.name)}Val = raw as? ${t} else {`)
+      lines.push(`            guard let ${localBase(f.name)}Val = ${swiftRead('raw', t)} else {`)
       lines.push(
         `                throw PyreonSchemaError.missingOrWrongType(field: ${swiftStr(f.name)}, expected: ${swiftStr(t)})`,
       )
@@ -379,7 +396,7 @@ export function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
       continue
     }
     lines.push(
-      `        guard let ${localBase(f.name)}Val = input[${swiftStr(f.name)}] as? ${t} else {`,
+      `        guard let ${localBase(f.name)}Val = ${swiftRead(`input[${swiftStr(f.name)}]`, t)} else {`,
     )
     lines.push(
       `            throw PyreonSchemaError.missingOrWrongType(field: ${swiftStr(f.name)}, expected: ${swiftStr(t)})`,
@@ -464,6 +481,7 @@ export function emitSwiftZodSchema(zs: ZodSchemaDefnIR): string {
     lines.push(``)
     lines.push(`let ${zs.bindingName} = PyreonZodSchema_${zs.bindingName}()`)
   }
+
   return lines.join('\n')
 }
 

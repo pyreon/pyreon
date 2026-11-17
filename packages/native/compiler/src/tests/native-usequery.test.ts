@@ -76,7 +76,7 @@ describe('useQuery() emit', () => {
       'LaunchedEffect(Unit) {\n    q.run(launch = { __refetch -> pyreonAsyncScope.launch { __refetch() } }) {',
     )
     expect(r.code).toContain('java.net.URL("https://api.example.com/todos/1").readText()')
-    expect(r.code).toContain('PyreonFetchJson.decodeFromString<Todo>(body)')
+    expect(r.code).toContain('PyreonJson.decode<Todo>(body)')
     // Reactive member reads append .value (Compose MutableState) — all four.
     expect(r.code).toContain('${pyreonOptionalText(q.isPending.value, "")}')
     expect(r.code).toContain('${pyreonOptionalText(q.isFetching.value, "")}')

@@ -13,9 +13,11 @@ import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 const AK = `import { arktypeSchema } from '@pyreon/validation'
 declare const type: any
 `
+
 const Z = `import { zodSchema } from '@pyreon/validation'
 import { z } from 'zod'
 `
+
 const VB = `import { valibotSchema } from '@pyreon/validation'
 import * as v from 'valibot'
 declare const safeParse: <T>(s: unknown, i: unknown) => T
@@ -23,6 +25,7 @@ declare const safeParse: <T>(s: unknown, i: unknown) => T
 
 const swift = (src: string) => transform(src, { target: 'swift' })
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })
+
 /** Every `PyreonZodSchema_*` struct/data class/enum name the emit produced. */
 const schemaNames = (code: string): string[] =>
   [...code.matchAll(/(?:struct|data class|enum) (PyreonZodSchema_\w*)/g)].map((m) => m[1]!)
@@ -35,7 +38,7 @@ describe('parse.ts — arktypeSchema recognizer', () => {
     )
     expect(r.code).toContain('struct PyreonZodSchema_userSchema: Codable {')
     expect(r.code).toContain('var name: String = ""')
-    expect(r.code).toContain('var age: Int = 0')
+    expect(r.code).toContain('var age: Double = 0')
     expect(r.code).toContain('var active: Bool = false')
     expect(r.warnings).toEqual([])
   })
@@ -250,13 +253,13 @@ describe('parse.ts — namespaced walker: field shapes', () => {
     const r = swift(
       Z + `const a = zodSchema(z.object({ n: z.number().optional(), b: z.boolean().optional() }))`,
     )
-    expect(r.code).toContain('var n: Int? = nil')
+    expect(r.code).toContain('var n: Double? = nil')
     expect(r.code).toContain('var b: Bool? = nil')
   })
 
   it('infers z.literal() field type from the literal — number and boolean', () => {
     const n = swift(Z + `const a = zodSchema(z.object({ k: z.literal(1), m: z.string() }))`)
-    expect(n.code).toContain('var k: Int = 0')
+    expect(n.code).toContain('var k: Double = 0')
     const b = swift(Z + `const a = zodSchema(z.object({ k: z.literal(true), m: z.string() }))`)
     expect(b.code).toContain('var k: Bool = false')
   })

@@ -641,7 +641,7 @@ function swiftOperation(e: ExtExprIR, ctx: EmitContext, optimistic: boolean): st
 function kotlinSend(type: TypeIR, ctx: EmitContext, request: string): string {
   const send = `withContext(Dispatchers.IO) { PyreonHttp.call(${request}, fallback = PyreonHttpOkHttp) }`
   if (isVoid(type)) return `${send}; Unit`
-  return `PyreonFetchJson.decodeFromString<${ctx.typeText(type)}>(${send}.body)`
+  return `PyreonJson.decode<${ctx.typeText(type)}>(${send}.body)`
 }
 
 /** The Kotlin operation lambda — through `PyreonQueryCache.settleMutation` when the call invalidates queries. */

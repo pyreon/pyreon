@@ -1738,7 +1738,7 @@ describe('Phase 4.1 — useFetch emit (PyreonFetch container + async harness)', 
     // against any real API. The invariant this line guards is unchanged (the
     // harness's request decodes the response); only the reader it decodes
     // with is now the parity-configured one.
-    expect(out).toContain('PyreonFetchJson.decodeFromString<User>(body)')
+    expect(out).toContain('PyreonJson.decode<User>(body)')
     // Kotlin field access reads through Compose MutableState `.value`.
     expect(out).toContain('user.data.value')
   })

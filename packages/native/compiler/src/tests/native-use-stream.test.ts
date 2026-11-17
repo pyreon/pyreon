@@ -180,7 +180,7 @@ describe('useStream lowers to the native stream runtime', () => {
     expect(code).toContain(
       'DisposableEffect("${"https://api.example.com/logs/${PyreonURL.encodePathParam(room)}/tail"}#${s.restartTick.value}")',
     )
-    expect(code).toContain('PyreonSseEvent(m.type, PyreonFetchJson.decodeFromString<LogLine>(m.data), m.id)')
+    expect(code).toContain('PyreonSseEvent(m.type, PyreonJson.decode<LogLine>(m.data), m.id)')
     expect(code).toContain('onDispose { s.stop() }')
     expect(code).toContain('s.status.value')
   })
@@ -202,7 +202,7 @@ describe('useStream lowers to the native stream runtime', () => {
       'await s.runNdjson(PyreonStreamRequest(method: "GET", url: "https://api.example.com/export?since=5"), decode: PyreonStreamDecode.ndjson(LogLine.self))',
     )
     expect(kotlin(NDJSON).code).toContain(
-      's.startNdjson(PyreonStreamRequest(method = "GET", url = "https://api.example.com/export?since=5")) { line -> PyreonFetchJson.decodeFromString<LogLine>(line) }',
+      's.startNdjson(PyreonStreamRequest(method = "GET", url = "https://api.example.com/export?since=5")) { line -> PyreonJson.decode<LogLine>(line) }',
     )
   })
 
@@ -298,6 +298,7 @@ describe('useStream emit compiles against the REAL runtime source', () => {
         const code = swift(src).code.replace(/\bFeed\b/g, `Feed${i}`).replace(/\bLogLine\b/g, `LogLine${i}`)
         const p = join(dir, `App${i}.swift`)
         writeFileSync(p, `import SwiftUI\nimport Foundation\n${code}`)
+
         return p
       })
       // PyreonURL lives in the core runtime; the stream emit's runtime :param uses it.
@@ -347,6 +348,7 @@ describe('useStream emit compiles against the REAL runtime source', () => {
         const code = kotlin(src).code.replace(/\bFeed\b/g, `Feed${i}`).replace(/\bLogLine\b/g, `LogLine${i}`)
         const p = join(dir, `App${i}.kt`)
         writeFileSync(p, code)
+
         return p
       })
       execFileSync('kotlinc', ['-nowarn', '-d', join(dir, 'out'), join(dir, 'Stubs.kt'), join(dir, 'PyreonStream.kt'), join(dir, 'PyreonStreamAndroid.kt'), join(dir, 'AndroidOs.kt'), ...inputs], {

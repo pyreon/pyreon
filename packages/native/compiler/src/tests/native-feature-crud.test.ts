@@ -135,7 +135,7 @@ describe('@pyreon/feature CRUD hooks — native lowering', () => {
       expect(code).toContain('val list = remember { PyreonQuery<List<PyreonFeatureSchema_Todo>>(queryKey = "todo:list", staleMillis = 5000L) }')
       expect(code).toContain(`PyreonHttpRequest(method = PyreonHttpMethod.GET, url = "${API}")`)
       expect(code).toContain('list.run(launch = { __refetch -> pyreonAsyncScope.launch { __refetch() } }) {')
-      expect(code).toContain('PyreonFetchJson.decodeFromString<List<PyreonFeatureSchema_Todo>>(__response.body)')
+      expect(code).toContain('PyreonJson.decode<List<PyreonFeatureSchema_Todo>>(__response.body)')
       expect(code).toContain('LaunchedEffect("todo:${id}") {')
       expect(code).toContain(`PyreonHttpRequest(method = PyreonHttpMethod.GET, url = "${API}/\${PyreonURL.encodePathParam(id)}")`)
       expect(code).toContain('list.data.value?.length')
@@ -154,13 +154,13 @@ describe('@pyreon/feature CRUD hooks — native lowering', () => {
 
     it('the mutations settle through PyreonQueryCache: success invalidates `todo`, useUpdate writes optimistically', () => {
       expect(code).toContain(
-        '{ __r -> PyreonQueryCache.settleMutation("todo") { PyreonFetchJson.decodeFromString<PyreonFeatureSchema_Todo>(withContext(Dispatchers.IO) { PyreonHttp.call(__r, fallback = PyreonHttpOkHttp) }.body) } }',
+        '{ __r -> PyreonQueryCache.settleMutation("todo") { PyreonJson.decode<PyreonFeatureSchema_Todo>(withContext(Dispatchers.IO) { PyreonHttp.call(__r, fallback = PyreonHttpOkHttp) }.body) } }',
       )
       expect(code).toContain('{ __r -> PyreonQueryCache.settleMutation("todo") { withContext(Dispatchers.IO) { PyreonHttp.call(__r, fallback = PyreonHttpOkHttp) }; Unit } }')
       expect(code).toContain('PyreonQueryCache.setQueryData<PyreonFeatureSchema_Todo>("todo:${id}") { __old -> __old.copy(done = true) }')
       expect(code).toContain('one.setKey("todo:${id}")')
       expect(code).toContain(
-        '{ __r -> PyreonQueryCache.settleMutation("todo", __r.second) { PyreonFetchJson.decodeFromString<PyreonFeatureSchema_Todo>(withContext(Dispatchers.IO) { PyreonHttp.call(__r.first, fallback = PyreonHttpOkHttp) }.body) } }',
+        '{ __r -> PyreonQueryCache.settleMutation("todo", __r.second) { PyreonJson.decode<PyreonFeatureSchema_Todo>(withContext(Dispatchers.IO) { PyreonHttp.call(__r.first, fallback = PyreonHttpOkHttp) }.body) } }',
       )
       expect(code.match(/settleMutation\("todo"/g)).toHaveLength(4)
     })

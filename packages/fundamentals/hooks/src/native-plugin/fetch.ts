@@ -292,10 +292,10 @@ function kotlinHarness(d: ExtDecl, ctx: KotlinEmitContext): readonly string[] {
     )
     // A non-2xx REJECTS rather than decoding (see `kotlinSendLines`).
     for (const line of kotlinSendLines(args, p.middleware !== undefined ? ctx.expr(p.middleware, 0) : undefined)) lines.push(`    ${line}`)
-    lines.push(`    PyreonFetchJson.decodeFromString<${ctx.typeText(p.type)}>(__response.body)`)
+    lines.push(`    PyreonJson.decode<${ctx.typeText(p.type)}>(__response.body)`)
   } else {
     lines.push(`    val body = withContext(Dispatchers.IO) { java.net.URL(${kotlinStr(p.url)}).readText() }`)
-    lines.push(`    PyreonFetchJson.decodeFromString<${ctx.typeText(p.type)}>(body)`)
+    lines.push(`    PyreonJson.decode<${ctx.typeText(p.type)}>(body)`)
   }
   // A failure is the runtime's to record (`error`), so the lambda just throws.
   lines.push(`  }`, `}`)

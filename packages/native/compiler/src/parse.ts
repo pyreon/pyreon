@@ -6816,14 +6816,20 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
           )
         }
       }
+      // A member's NAME: an identifier, or a quoted key (`'content-type': string`) — the JSON spelling of an HTTP
+      // header or a kebab-case field. The quoted form was dropped from the struct with no warning, so a decoded
+      // response simply lost the field; the emitters already map a non-identifier name (Swift CodingKeys, Kotlin
+      // backticks), as they do for an object literal's quoted key.
+      const memberName = (m: AnyNode): string | undefined => {
+        if (m.key?.type === 'Identifier' && m.computed !== true) return m.key.name as string
+        if ((m.key?.type === 'Literal' || m.key?.type === 'StringLiteral') && typeof m.key.value === 'string') {
+          return m.key.value as string
+        }
+
+        return undefined
+      }
       const fields = members
-        .filter(
-          (m) =>
-            m.type === 'TSPropertySignature' &&
-            m.key?.name &&
-            !(m.computed === true && m.key?.type === 'Identifier') &&
-            m.typeAnnotation,
-        )
+        .filter((m) => m.type === 'TSPropertySignature' && memberName(m) !== undefined && m.typeAnnotation)
         .map((m) => {
           const fieldType = parseTypeAnnotation(m.typeAnnotation.typeAnnotation, ctx)
           // `label?: string` — TS marks the member `optional`. Represent it
@@ -6843,7 +6849,7 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
               ? ({ kind: 'union', branches: [fieldType, { kind: 'undefined' }] } as TypeIR)
               : fieldType
 
-          return { name: m.key.name as string, type }
+          return { name: memberName(m)!, type }
         })
 
       return { kind: 'object', fields }
