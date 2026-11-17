@@ -815,7 +815,7 @@ function hydrateReactiveChild(
   // content without an accessor here (#4448 — `props.children` on one side,
   // `<Provider>{props.children}</Provider>` on the other). See
   // `adoptUnmarkedRange`.
-  return adoptUnmarkedRange(child, initial, domNode, parent, anchor, path)
+  return adoptUnmarkedRange(child, domNode, parent, anchor, path)
 }
 
 /**
@@ -842,7 +842,6 @@ function hydrateReactiveChild(
  */
 function adoptUnmarkedRange(
   child: () => VNodeChild,
-  initial: VNodeChild,
   domNode: ChildNode | null,
   parent: Node,
   anchor: Node | null,
@@ -852,9 +851,12 @@ function adoptUnmarkedRange(
   parent.insertBefore(start, domNode ?? anchor)
   let after: ChildNode | null = domNode
   let hydrated = false
+  let keyed = false
   const cleanup = mountReactive(child, parent, domNode ?? anchor, (value, p, a) => {
     if (hydrated) return mountChild(value, p, a)
     hydrated = true
+    // The first run's value IS the accessor's initial value (primed).
+    keyed = needsKeyedReconcile(value)
     const [dispose, next] = hydrateChild(value, domNode, p, anchor, `${path} > reactive`)
     after = next
     // The boundary goes after everything the walk claimed (or recovered), and
@@ -884,7 +886,7 @@ function adoptUnmarkedRange(
       }
     }
   })
-  if (needsKeyedReconcile(initial)) {
+  if (keyed) {
     // Extent found by the walk above; hand the region to the keyed reconciler.
     // `cleanup` clears start → boundary and disposes the walk's bindings.
     const end = document.createComment('pyreon')
