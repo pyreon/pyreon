@@ -117,6 +117,8 @@ interface CallPayload {
   readonly hasBodyExpr: boolean
   /** A streamed body (multipart / file) occupies the slot after the body. */
   readonly hasUpload?: boolean
+  /** The request deadline in milliseconds. */
+  readonly timeoutMs?: number
 }
 
 /** Recognize an endpoint call in an expression position the scan classified. */
@@ -158,6 +160,7 @@ export const recognizeEndpointCall: CallExprRecognizer = (site, ctx) => {
     hasUrlExpr: resolved.urlExpr !== undefined,
     hasBodyExpr: resolved.bodyExpr !== undefined,
     ...(resolved.upload !== undefined ? { hasUpload: true } : {}),
+    ...(resolved.timeoutMs !== undefined ? { timeoutMs: resolved.timeoutMs } : {}),
   }
   return { type: HTTP_CALL_TYPE, payload: payload as never, args }
 }
@@ -179,6 +182,7 @@ function partsOf(e: ExtExprIR, url: (literal: string | undefined, expr: ExprIR |
     body: p.body,
     bodyExpr,
     upload,
+    timeoutMs: p.timeoutMs,
   }
 }
 

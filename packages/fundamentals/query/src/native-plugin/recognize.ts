@@ -248,6 +248,7 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
       middleware?: ExprIR
       bodyExpr?: ExprIR
       upload?: ExprIR
+      timeoutMs?: number
     } = {}
     if (resolved.upload !== undefined) eqReq.upload = resolved.upload
     if (resolved.method && resolved.method !== 'GET') eqReq.method = resolved.method
@@ -255,6 +256,7 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
     if (resolved.headerExprs) eqReq.headerExprs = resolved.headerExprs
     if (resolved.body !== undefined) eqReq.body = resolved.body
     if (resolved.middleware !== undefined) eqReq.middleware = resolved.middleware
+    if (resolved.timeoutMs !== undefined) eqReq.timeoutMs = resolved.timeoutMs
     if (resolved.bodyExpr !== undefined) eqReq.bodyExpr = resolved.bodyExpr
     if (resolved.urlExpr !== undefined) {
       eqReq.urlExpr = resolved.urlExpr

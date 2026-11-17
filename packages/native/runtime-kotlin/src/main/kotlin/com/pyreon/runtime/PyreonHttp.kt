@@ -53,6 +53,13 @@ public data class PyreonHttpRequest(
      * precedence over [body].
      */
     val upload: PyreonHttpUpload? = null,
+    /**
+     * The whole-request deadline in MILLISECONDS — `@pyreon/http`'s `timeout`.
+     * `null` leaves the executor's default. A request that runs past it fails
+     * (an `InterruptedIOException`), so the caller lands in its error state, as
+     * the web's `TimeoutError` does.
+     */
+    val timeoutMs: Long? = null,
 ) {
     public companion object {
         /** A GET request. */

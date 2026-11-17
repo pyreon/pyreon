@@ -367,6 +367,8 @@ interface MutateCallPayload {
   readonly hasBodyExpr: boolean
   /** A streamed body (multipart / file) occupies the slot after the body. */
   readonly hasUpload?: boolean
+  /** The request deadline in milliseconds. */
+  readonly timeoutMs?: number
   readonly options: Callbacks
   readonly call: Callbacks
   /** The query-key root a success invalidates (see {@link MutateQueryEffects}). */
@@ -425,6 +427,7 @@ export interface MutateRequest {
   readonly body?: string | undefined
   readonly bodyExpr?: ExprIR | undefined
   readonly upload?: ExprIR | undefined
+  readonly timeoutMs?: number | undefined
 }
 
 /** The container a call site settles: its binding, the decoded type, and the callbacks its declaration carried. */
@@ -493,6 +496,7 @@ export function mutateCallSpec(
     hasUrlExpr: resolved.urlExpr !== undefined,
     hasBodyExpr: resolved.bodyExpr !== undefined,
     ...(resolved.upload !== undefined ? { hasUpload: true } : {}),
+    ...(resolved.timeoutMs !== undefined ? { timeoutMs: resolved.timeoutMs } : {}),
     options: binding.options,
     call,
     ...(effects !== undefined ? { invalidates: effects.invalidates } : {}),
@@ -527,6 +531,7 @@ function partsOf(e: ExtExprIR, url: (literal: string | undefined, expr: ExprIR |
     body: p.body,
     bodyExpr,
     upload,
+    timeoutMs: p.timeoutMs,
   }
 }
 

@@ -61,7 +61,7 @@ export const httpPlugin: CompilerPlugin = {
       // import, reactive params on `useFetch`) still fails native.
       supported: ['createHttp'],
       advice:
-        'a same-file `const api = createHttp({ baseUrl })` + `const e = api.endpoint(\'GET /users/:id\')` DOES lower — `useFetch<T>(e({ params: { id: \'1\' } }))` resolves to a native fetch of the templated URL via PyreonFetch, and `useQuery<T>(() => e.query({ params: { id: \'1\' } }))` lowers to PyreonQuery. What stays web: reactive params on useFetch and a computed baseUrl. Middleware lowers only from INSIDE a literal `createHttp({ use: [bearer(…), retry(…), logger()] })` array — used anywhere else it stays web',
+        'a same-file `const api = createHttp({ baseUrl })` + `const e = api.endpoint(\'GET /users/:id\')` DOES lower — `useFetch<T>(e({ params: { id: \'1\' } }))` resolves to a native fetch of the templated URL via PyreonFetch, and `useQuery<T>(() => e.query({ params: { id: \'1\' } }))` lowers to PyreonQuery. What stays web: reactive params on useFetch and a computed baseUrl. Middleware lowers only from INSIDE a literal `createHttp({ use: [bearer(…), retry(…), logger()] })` array — used anywhere else it stays web. A literal `timeout` (on the call, the endpoint declaration or the client, else the 30 s web default) lowers to the native request deadline',
     },
   },
 }

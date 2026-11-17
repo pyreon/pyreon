@@ -52,19 +52,26 @@ public struct PyreonHttpRequest: Sendable {
     /// rather than held in memory (a picked video must not be read whole).
     /// Takes precedence over `body`.
     public var upload: PyreonHttpUpload?
+    /// The whole-request deadline in MILLISECONDS — `@pyreon/http`'s `timeout`.
+    /// `nil` leaves the platform default. A request that runs past it fails
+    /// (`URLError.timedOut`), so the caller lands in its error state, as the
+    /// web's `TimeoutError` does.
+    public var timeoutMs: Double?
 
     public init(
         method: PyreonHttpMethod = .get,
         url: String,
         headers: [String: String] = [:],
         body: Data? = nil,
-        upload: PyreonHttpUpload? = nil
+        upload: PyreonHttpUpload? = nil,
+        timeoutMs: Double? = nil
     ) {
         self.method = method
         self.url = url
         self.headers = headers
         self.body = body
         self.upload = upload
+        self.timeoutMs = timeoutMs
     }
 
     /// A GET request.
@@ -149,6 +156,7 @@ public enum PyreonHttp {
             urlRequest.setValue(value, forHTTPHeaderField: key)
         }
         urlRequest.httpBody = request.body
+        if let ms = request.timeoutMs, ms > 0 { urlRequest.timeoutInterval = ms / 1000 }
         return urlRequest
     }
 

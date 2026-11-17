@@ -91,6 +91,14 @@ final class PyreonRuntimeTests: XCTestCase {
     }
 
     /// `buildURLRequest` wires method + headers + body onto a `URLRequest`.
+    // `@pyreon/http`'s `timeout` lowers to `timeoutMs`; with none the platform default stays.
+    func testTimeoutMsBecomesTheURLRequestDeadline() throws {
+        let timed = try XCTUnwrap(PyreonHttp.buildURLRequest(PyreonHttpRequest(url: "https://e.x/a", timeoutMs: 500)))
+        XCTAssertEqual(timed.timeoutInterval, 0.5, accuracy: 0.0001)
+        let plain = try XCTUnwrap(PyreonHttp.buildURLRequest(PyreonHttpRequest(url: "https://e.x/a")))
+        XCTAssertEqual(plain.timeoutInterval, URLRequest(url: URL(string: "https://e.x/a")!).timeoutInterval)
+    }
+
     func testPyreonHttpBuildURLRequest() throws {
         let body = Data("payload".utf8)
         let req = PyreonHttpRequest(

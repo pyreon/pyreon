@@ -84,6 +84,8 @@ export interface HttpRequestParts {
   readonly bodyExpr?: ExprIR | undefined
   /** A streamed body (`ResolvedRequest.upload`): a multipart form, or a raw body whose type decides at emit. */
   readonly upload?: ExprIR | undefined
+  /** The request deadline in milliseconds (`ResolvedRequest.timeoutMs`); absent = the platform default. */
+  readonly timeoutMs?: number | undefined
 }
 
 /** What the request writers read of an emit context. */
@@ -223,6 +225,7 @@ export function swiftHttpRequestArgs(p: HttpRequestParts, ctx: RequestEmitCtx, w
   else if (p.bodyExpr !== undefined) parts.push(`body: Data((${ctx.expr(p.bodyExpr, 0)}).utf8)`)
   if (upload.multipart !== undefined) parts.push(`upload: .multipart(PyreonMultipartBody(${upload.multipart.join(', ')}))`)
   else if (upload.file !== undefined) parts.push(`upload: .file(${ctx.expr(upload.file, 0)})`)
+  if (p.timeoutMs !== undefined) parts.push(`timeoutMs: ${p.timeoutMs}`)
   return parts.join(', ')
 }
 
@@ -240,6 +243,7 @@ export function kotlinHttpRequestArgs(p: HttpRequestParts, ctx: RequestEmitCtx, 
   else if (p.bodyExpr !== undefined) parts.push(`body = ${ctx.expr(p.bodyExpr, 0)}`)
   if (upload.multipart !== undefined) parts.push(`upload = PyreonHttpUpload.Multipart(PyreonMultipartBody(${upload.multipart.join(', ')}))`)
   else if (upload.file !== undefined) parts.push(`upload = PyreonHttpUpload.File(${ctx.expr(upload.file, 0)})`)
+  if (p.timeoutMs !== undefined) parts.push(`timeoutMs = ${Math.round(p.timeoutMs)}L`)
   return parts.join(', ')
 }
 

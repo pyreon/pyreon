@@ -52,6 +52,8 @@ interface FetchPayload {
   readonly body?: string
   /** The endpoint client's lowered `use: [...]` middleware (an `@pyreon/http` expression), applied around the request. */
   readonly middleware?: ExprIR
+  /** The endpoint's request deadline in milliseconds (call → declaration → client → the web default). */
+  readonly timeoutMs?: number
   /**
    * A body only known at runtime — `JSON.stringify(draft)`, a string a signal holds — evaluated when the harness builds
    * the request: on mount, the moment the web's `useFetch` reads `init.body`. Mutually exclusive with `body`.
@@ -96,6 +98,7 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
         urlExpr?: ExprIR | undefined
         upload?: ExprIR | undefined
         middleware?: ExprIR | undefined
+        timeoutMs?: number | undefined
       }
     | undefined
   if (urlArg?.type === 'CallExpression' && urlArg.callee?.type === 'Identifier' && ctx.requests.has(urlArg.callee.name as string)) {
@@ -140,6 +143,7 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
     urlExpr?: ExprIR
     upload?: ExprIR
     middleware?: ExprIR
+    timeoutMs?: number
   } = {}
   if (resolvedEndpoint?.urlExpr !== undefined) req.urlExpr = resolvedEndpoint.urlExpr
   if (resolvedEndpoint?.upload !== undefined) req.upload = resolvedEndpoint.upload
@@ -149,6 +153,7 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
   if (resolvedEndpoint?.headerExprs) req.headerExprs = { ...resolvedEndpoint.headerExprs }
   if (resolvedEndpoint?.body !== undefined) req.body = resolvedEndpoint.body
   if (resolvedEndpoint?.middleware !== undefined) req.middleware = resolvedEndpoint.middleware
+  if (resolvedEndpoint?.timeoutMs !== undefined) req.timeoutMs = resolvedEndpoint.timeoutMs
   if (resolvedEndpoint?.bodyExpr !== undefined) req.bodyExpr = resolvedEndpoint.bodyExpr
   if (initArg) {
     if (initArg.type !== 'ObjectExpression') {
@@ -239,7 +244,8 @@ const hasRequestInit = (p: FetchPayload): boolean =>
       p.bodyExpr !== undefined ||
       p.urlExpr !== undefined ||
       p.upload !== undefined ||
-      p.middleware !== undefined,
+      p.middleware !== undefined ||
+      p.timeoutMs !== undefined,
   )
 
 /** `.task { … }` on the stable-identity host: begin → request → resolve | reject. Lines are relative to the modifier's own indentation. */
@@ -254,7 +260,7 @@ function swiftHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
     const where = `Declaration ${d.name}: useFetch`
     // Header and body expressions are evaluated as the request is built, inside the harness.
     const args = swiftHttpRequestArgs(
-      { method: p.method, url: p.urlExpr !== undefined ? ctx.expr(p.urlExpr, 0) : swiftStr(p.url), headers: p.headers, headerExprs: p.headerExprs, body: p.body, bodyExpr: p.bodyExpr, upload: p.upload },
+      { method: p.method, url: p.urlExpr !== undefined ? ctx.expr(p.urlExpr, 0) : swiftStr(p.url), headers: p.headers, headerExprs: p.headerExprs, body: p.body, bodyExpr: p.bodyExpr, upload: p.upload, timeoutMs: p.timeoutMs },
       ctx,
       where,
     )
@@ -279,7 +285,7 @@ function kotlinHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
     // Mirrors the Swift branch one-for-one; `readText()` below cannot express a verb, headers or a body.
     const where = `Declaration ${d.name}: useFetch`
     const args = kotlinHttpRequestArgs(
-      { method: p.method, url: p.urlExpr !== undefined ? ctx.expr(p.urlExpr, 0) : kotlinStr(p.url), headers: p.headers, headerExprs: p.headerExprs, body: p.body, bodyExpr: p.bodyExpr, upload: p.upload },
+      { method: p.method, url: p.urlExpr !== undefined ? ctx.expr(p.urlExpr, 0) : kotlinStr(p.url), headers: p.headers, headerExprs: p.headerExprs, body: p.body, bodyExpr: p.bodyExpr, upload: p.upload, timeoutMs: p.timeoutMs },
       ctx,
       where,
     )

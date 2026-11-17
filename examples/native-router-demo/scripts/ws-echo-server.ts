@@ -153,6 +153,12 @@ Bun.serve({
     }
     // A deliberate non-2xx, so the emitted `isOK`/`isOk` guard has something
     // to reject on. Without it a status check is untestable.
+    // NET-4: a response that arrives only after 5 s, so a request with a shorter deadline must fail first.
+    if (new URL(req.url).pathname === '/slow') {
+      return new Promise<Response>((resolve) =>
+        setTimeout(() => resolve(new Response('{"id":"late"}', { headers: { 'content-type': 'application/json' } })), 5_000),
+      )
+    }
     if (new URL(req.url).pathname === '/boom') {
       return new Response('{"error":"nope"}', {
         status: 500,

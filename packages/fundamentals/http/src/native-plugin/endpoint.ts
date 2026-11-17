@@ -56,6 +56,8 @@ export interface EndpointDef {
   declUnlowerable: string[]
   /** `'stream'` is what a streamed endpoint is declared with; honoured by `useStream`, WARNED on `useFetch` / `useQuery`. */
   responseType?: string
+  /** The declaration's `timeout` (see {@link TimeoutSetting}); absent when it declares none. */
+  timeout?: TimeoutSetting
   /** The `response` schema when it names a same-module schema binding — evidence for the decode type's number fields. */
   responseSchema?: { binding: string; array: boolean }
 }
@@ -67,13 +69,32 @@ export interface HttpFacts {
   readonly endpoints: Map<string, EndpointDef>
   /** Client binding → its scanned `use: [...]` middleware (absent = none). */
   readonly middleware: Map<string, ClientMiddleware>
+  /** Client binding → its `createHttp({ timeout })` (absent = none declared). */
+  readonly timeouts: Map<string, TimeoutSetting>
+}
+
+/**
+ * A `timeout` as written: milliseconds, `false` (no deadline), or `'nonliteral'` (a value the compiler cannot read,
+ * named at the call and skipped, so the next level — declaration, client, the web's default — decides).
+ */
+export type TimeoutSetting = number | false | 'nonliteral'
+
+/** The web client's default deadline (`DEFAULT_TIMEOUT` in `client.ts`), applied when no level sets one. */
+const WEB_DEFAULT_TIMEOUT_MS = 30_000
+
+function readTimeout(node: AnyNode | undefined): TimeoutSetting {
+  const v = literalScalar(node)
+  if (v === false) return false
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) return v
+
+  return 'nonliteral'
 }
 
 const FACTS_KEY = '@pyreon/http:facts'
 
 /** The facts this file's scan recorded. Other plugins read them through the request source, never this. */
 export function httpFacts(source: { fileState<T>(key: string, init: () => T): T }): HttpFacts {
-  return source.fileState<HttpFacts>(FACTS_KEY, () => ({ clients: new Map(), endpoints: new Map(), middleware: new Map() }))
+  return source.fileState<HttpFacts>(FACTS_KEY, () => ({ clients: new Map(), endpoints: new Map(), middleware: new Map(), timeouts: new Map() }))
 }
 
 /**
@@ -394,7 +415,7 @@ function readMultipart(
  * Endpoint CALL-SITE options that lower to native. Every other key on the call
  * object is reported — see {@link ENDPOINT_UNLOWERABLE_ARGS}.
  */
-const ENDPOINT_LOWERED_ARGS: ReadonlySet<string> = new Set(['params', 'query', 'json', 'headers', 'form', 'multipart', 'body'])
+const ENDPOINT_LOWERED_ARGS: ReadonlySet<string> = new Set(['params', 'query', 'json', 'headers', 'form', 'multipart', 'body', 'timeout'])
 
 /**
  * Endpoint call-site options with NO native lowering, and why.
@@ -408,7 +429,6 @@ const ENDPOINT_LOWERED_ARGS: ReadonlySet<string> = new Set(['params', 'query', '
  */
 const ENDPOINT_UNLOWERABLE_ARGS: ReadonlyMap<string, string> = new Map([
   ['signal', 'an AbortSignal has no analogue in the emitted fetch harness, which runs to completion'],
-  ['timeout', 'PyreonHttpRequest carries no timeout field'],
   ['meta', 'per-call metadata is read only by custom middleware functions, which do not lower — the built-in bearer/retry/logger read none'],
   ['cookies', 'the platform HTTP stacks own the Cookie header; a per-call cookie record is not sent'],
 ])
@@ -420,9 +440,7 @@ const ENDPOINT_UNLOWERABLE_ARGS: ReadonlyMap<string, string> = new Map([
  * struct the generic argument names (Swift `Decodable`, kotlinx), so a response
  * schema IS honoured structurally — a mismatched payload rejects on both sides.
  */
-const ENDPOINT_UNLOWERABLE_OPTIONS: ReadonlyMap<string, string> = new Map([
-  ['timeout', 'PyreonHttpRequest carries no timeout field'],
-])
+const ENDPOINT_UNLOWERABLE_OPTIONS: ReadonlyMap<string, string> = new Map()
 
 
 /**
@@ -456,6 +474,8 @@ function collectHttpClients(body: AnyNode[], scan: ModuleScan, facts: HttpFacts)
         scan.lowered('*', sch.name)
       }
       facts.clients.set(name, baseUrl)
+      const timeout = readObjectProp(cfg, 'timeout') as AnyNode | undefined
+      if (timeout !== undefined) facts.timeouts.set(name, readTimeout(timeout))
       // Read once here: the array is file-scope metadata, like the client. Its bearer tokens are lowered per call site.
       const mw = scanClientMiddleware(cfg, scan)
       if (mw.entries.length > 0 || mw.unlowerable.length > 0) facts.middleware.set(name, mw)
@@ -507,6 +527,7 @@ function collectEndpointDefs(body: AnyNode[], facts: HttpFacts): void {
       const declUnlowerable: string[] = []
       let responseType: string | undefined
       let responseSchema: { binding: string; array: boolean } | undefined
+      let endpointTimeout: TimeoutSetting | undefined
       const optsArg = init.arguments?.[1] as AnyNode | undefined
       const declHeaders = readLiteralHeaders(readObjectProp(optsArg, 'headers'), (what) =>
         declUnlowerable.push(what),
@@ -533,6 +554,10 @@ function collectEndpointDefs(body: AnyNode[], facts: HttpFacts): void {
           else declUnlowerable.push(key)
           continue
         }
+        if (key === 'timeout') {
+          endpointTimeout = readTimeout(prop.value as AnyNode | undefined)
+          continue
+        }
         if (key === 'throwHttpErrors') {
           // The native harness ALWAYS rejects a non-2xx, so `true` matches it
           // exactly and only an opt-OUT is unhonourable.
@@ -551,6 +576,7 @@ function collectEndpointDefs(body: AnyNode[], facts: HttpFacts): void {
         declUnlowerable,
         ...(responseType !== undefined ? { responseType } : {}),
         ...(responseSchema !== undefined ? { responseSchema } : {}),
+        ...(endpointTimeout !== undefined ? { timeout: endpointTimeout } : {}),
       })
     }
   }
@@ -946,6 +972,7 @@ function resolveEndpointParts(
     bodyExpr?: ExprIR
     upload?: ExprIR
     middleware?: ExprIR
+    timeoutMs?: number
   } = {}
   if (upload !== undefined) extras.upload = upload
   if (sawRuntimeParam || sawRuntimeQuery) extras.urlExpr = { kind: 'template', quasis, exprs }
@@ -955,6 +982,26 @@ function resolveEndpointParts(
   if (Object.keys(headerExprs).length > 0) extras.headerExprs = headerExprs
   if (body !== undefined) extras.body = body
   if (bodyExpr !== undefined) extras.bodyExpr = bodyExpr
+  // The deadline, decided the way the web decides it: the call's `timeout`, else the declaration's, else the client's,
+  // else the web client's default. `false` at the deciding level means no deadline. A non-literal value is named and
+  // skipped, so the next level decides.
+  const callTimeout = readObjectProp(arg, 'timeout') as AnyNode | undefined
+  const levels: [string, TimeoutSetting | undefined][] = [
+    ['the call', callTimeout !== undefined ? readTimeout(callTimeout) : undefined],
+    [`endpoint ${endpointName}`, def.timeout],
+    [`client ${def.clientName}`, facts.timeouts.get(def.clientName)],
+  ]
+  let timeoutMs: number | undefined = WEB_DEFAULT_TIMEOUT_MS
+  for (const [where, setting] of levels) {
+    if (setting === undefined) continue
+    if (setting === 'nonliteral') {
+      warn(`${where}'s \`timeout\` is not a literal number of milliseconds (or \`false\`), so iOS and Android cannot read it; the next level decides the deadline.`)
+      continue
+    }
+    timeoutMs = setting === false ? undefined : setting
+    break
+  }
+  if (timeoutMs !== undefined) extras.timeoutMs = timeoutMs
   return { url, method: def.method, ...extras, ...(def.responseSchema !== undefined ? { response: def.responseSchema } : {}) }
 }
 

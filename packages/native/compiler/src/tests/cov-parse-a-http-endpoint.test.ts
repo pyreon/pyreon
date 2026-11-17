@@ -83,9 +83,26 @@ describe('endpoint DECLARATION recognition', () => {
       .some((m) => m.includes("declaration's `retry`"))).toBe(true)
   })
 
-  it('`timeout` is named with its own reason', () => {
-    expect(warns(`const ep = api.endpoint('GET /users', { timeout: 100 })`, 'ep()')
-      .some((m) => m.includes('PyreonHttpRequest carries no timeout field'))).toBe(true)
+  // `timeout` used to be named and IGNORED, so every native request waited for the platform's default deadline.
+  // It is decided the way the web decides it: the call, else the declaration, else the client, else the web default.
+  it('`timeout` lowers: call → declaration → client → the web default, `false` meaning none', () => {
+    const swiftDeadline = (decl: string, call: string, client?: string): string | undefined =>
+      /timeoutMs: (\d+)/.exec(run(decl, call, client).code)?.[1]
+    expect(swiftDeadline(`const ep = api.endpoint('GET /users')`, 'ep()')).toBe('30000')
+    expect(swiftDeadline(`const ep = api.endpoint('GET /users')`, 'ep()', `createHttp({ baseUrl: '/api', timeout: 900 })`)).toBe('900')
+    expect(swiftDeadline(`const ep = api.endpoint('GET /users', { timeout: 100 })`, 'ep()', `createHttp({ baseUrl: '/api', timeout: 900 })`)).toBe('100')
+    expect(swiftDeadline(`const ep = api.endpoint('GET /users', { timeout: 100 })`, 'ep({ timeout: 7 })')).toBe('7')
+    expect(swiftDeadline(`const ep = api.endpoint('GET /users', { timeout: 100 })`, 'ep({ timeout: false })')).toBeUndefined()
+    expect(warns(`const ep = api.endpoint('GET /users', { timeout: 100 })`, 'ep()').filter((m) => m.includes('timeout'))).toEqual([])
+    expect(run(`const ep = api.endpoint('GET /users', { timeout: 100 })`, 'ep()').code).not.toContain('timeoutMs: 30000')
+    const kotlin = transform(app(`const ep = api.endpoint('GET /users', { timeout: 250 })`, 'ep()'), { target: 'kotlin' }).code
+    expect(kotlin).toContain('timeoutMs = 250L')
+  })
+
+  it('a non-literal `timeout` is named, and the next level decides', () => {
+    const r = run(`const ms = Number('5')\nconst ep = api.endpoint('GET /users', { timeout: ms })`, 'ep()', `createHttp({ baseUrl: '/api', timeout: 900 })`)
+    expect(r.warnings.some((m) => m.includes('`timeout` is not a literal'))).toBe(true)
+    expect(r.code).toContain('timeoutMs: 900')
   })
 
   it('`throwHttpErrors: true` matches the native harness exactly, so it is silent; `false` is named', () => {

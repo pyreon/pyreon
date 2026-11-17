@@ -26,6 +26,8 @@ export interface QueryPayload {
   body?: string
   /** The endpoint client's lowered `use: [...]` middleware (an `@pyreon/http` expression), applied around the request. */
   middleware?: ExprIR
+  /** The endpoint's request deadline in milliseconds (call → declaration → client → the web default). */
+  timeoutMs?: number
   /** A body only known at runtime (a `json` value, `JSON.stringify(x)`), an expression of type `string` built per run. */
   bodyExpr?: ExprIR
   /** A streamed body (`multipart` / a raw `body`) from an endpoint `.query()`, built per run. */

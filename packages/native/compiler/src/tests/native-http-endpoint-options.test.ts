@@ -11,7 +11,7 @@
 // `json` and `headers` LOWER — the `kind: 'fetch'` / `kind: 'query'` IR already
 // carries `headers` and `body`, and both emitters already route a request that
 // has either through `PyreonHttp.send`, so this needs no emit, IR or stub
-// change. `signal` / `timeout` / `meta` cannot lower and are named instead.
+// change. `signal` / `meta` cannot lower and are named instead; `timeout` lowers to the request deadline.
 //
 // The last spec is the one that closes the CLASS rather than the instances: it
 // walks the real `EndpointArgs` type and asserts every field is accounted for,
@@ -145,7 +145,6 @@ export function S() {
 describe('endpoint DSL — options with no native lowering are NAMED', () => {
   it.each([
     ['signal', `{ signal: undefined }`],
-    ['timeout', `{ timeout: 5000 }`],
     ['meta', `{ meta: { trace: 'x' } }`],
   ])('warns for `%s` rather than dropping it', (key, body) => {
     const r = swift(app(body))
@@ -156,8 +155,8 @@ describe('endpoint DSL — options with no native lowering are NAMED', () => {
   })
 
   it('warns for a declaration option it cannot honour', () => {
-    const r = swift(app(`{}`, `api.endpoint('POST /users', { timeout: 1000 })`))
-    expect(r.warnings.some((w) => w.includes("declaration's `timeout`"))).toBe(true)
+    const r = swift(app(`{}`, `api.endpoint('POST /users', { retry: 2 })`))
+    expect(r.warnings.some((w) => w.includes("declaration's `retry`"))).toBe(true)
   })
 
   it('warns for `throwHttpErrors: false` but NOT for `true`', () => {

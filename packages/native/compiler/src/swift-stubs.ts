@@ -1602,7 +1602,8 @@ public struct PyreonHttpRequest: Sendable {
     url: String,
     headers: [String: String] = [:],
     body: Data? = nil,
-    upload: PyreonHttpUpload? = nil
+    upload: PyreonHttpUpload? = nil,
+    timeoutMs: Double? = nil
   ) {}
 }
 public enum PyreonHttpUpload: Sendable {

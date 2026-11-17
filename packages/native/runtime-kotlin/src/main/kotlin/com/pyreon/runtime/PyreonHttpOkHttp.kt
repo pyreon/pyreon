@@ -117,7 +117,14 @@ public object PyreonHttpOkHttp : PyreonHttpExecutor {
         }
         builder.method(request.method.verb, body)
 
-        sharedHttpClient.newCall(builder.build()).execute().use { response ->
+        val timeout = request.timeoutMs
+        val client = if (timeout != null && timeout > 0) {
+            // newBuilder() shares the pool and dispatcher; only this call gets the deadline.
+            sharedHttpClient.newBuilder().callTimeout(timeout, java.util.concurrent.TimeUnit.MILLISECONDS).build()
+        } else {
+            sharedHttpClient
+        }
+        client.newCall(builder.build()).execute().use { response ->
             val headers = LinkedHashMap<String, String>()
             for ((name, value) in response.headers) headers[name] = value
             return PyreonHttpResponse(

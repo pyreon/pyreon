@@ -111,6 +111,11 @@ export interface ResolvedRequest {
    * middleware resolved for any other caller is reported and stays web, so no consumer can drop it in silence.
    */
   readonly middleware?: ExprIR | undefined
+  /**
+   * The request deadline in milliseconds, decided as the web decides it (call → declaration → client → the client's
+   * default). Absent means no deadline (`timeout: false`, or a source that has none).
+   */
+  readonly timeoutMs?: number | undefined
 }
 
 /** What the CALLER can honour. */

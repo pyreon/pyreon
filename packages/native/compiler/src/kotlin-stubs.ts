@@ -1293,6 +1293,7 @@ data class PyreonHttpRequest(
   val headers: Map<String, String> = emptyMap(),
   val body: String? = null,
   val upload: PyreonHttpUpload? = null,
+  val timeoutMs: Long? = null,
 )
 sealed class PyreonHttpUpload {
   class File(val file: PyreonUploadFile) : PyreonHttpUpload()

@@ -70,8 +70,10 @@ describe('endpoint DSL — Swift lowering', () => {
     expect(r.code).toContain('PyreonHttp.send(')
   })
 
-  it('resolves BYTE-IDENTICALLY to a literal `/api/users/1` GET useFetch', () => {
-    expect(fetchLines(r.code, SWIFT_FETCH_RE)).toBe(
+  // The endpoint request also carries the web client's 30 s deadline, which a bare `useFetch(url)` (plain `fetch`) has not.
+  it('resolves to the literal `/api/users/1` GET useFetch, plus the client deadline', () => {
+    expect(r.code).toContain('timeoutMs: 30000')
+    expect(fetchLines(r.code.replace(', timeoutMs: 30000', ''), SWIFT_FETCH_RE)).toBe(
       fetchLines(swift(LITERAL_GET).code, SWIFT_FETCH_RE),
     )
   })
@@ -98,8 +100,9 @@ describe('endpoint DSL — Kotlin lowering', () => {
     expect(r.code).toContain('PyreonHttpMethod.GET')
   })
 
-  it('resolves BYTE-IDENTICALLY to a literal `/api/users/1` GET useFetch', () => {
-    expect(fetchLines(r.code, KOTLIN_FETCH_RE)).toBe(
+  it('resolves to the literal `/api/users/1` GET useFetch, plus the client deadline', () => {
+    expect(r.code).toContain('timeoutMs = 30000L')
+    expect(fetchLines(r.code.replace(', timeoutMs = 30000L', ''), KOTLIN_FETCH_RE)).toBe(
       fetchLines(kotlin(LITERAL_GET).code, KOTLIN_FETCH_RE),
     )
   })

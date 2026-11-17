@@ -159,7 +159,7 @@ export function C() {
   it('the multipart body is built where mutate is called', () => {
     const { swift, kotlin } = both(SRC)
     expect(swift.warnings).toEqual([])
-    expect(swift.code).toContain('save.mutate(PyreonHttpRequest(method: .post, url: "https://x.test/api/avatar", upload: .multipart(PyreonMultipartBody("avatar", uri, "note", "n")))')
+    expect(swift.code).toContain('save.mutate(PyreonHttpRequest(method: .post, url: "https://x.test/api/avatar", upload: .multipart(PyreonMultipartBody("avatar", uri, "note", "n")), timeoutMs: 30000)')
     expect(kotlin.code).toContain('upload = PyreonHttpUpload.Multipart(PyreonMultipartBody("avatar", uri, "note", "n"))')
   })
 

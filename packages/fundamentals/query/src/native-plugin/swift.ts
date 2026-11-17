@@ -60,11 +60,11 @@ export function queryLifecycleSwift(decl: ExtDecl, ctx: EmitContext): readonly s
     lines.push(`    return ${ctx.expr(d.valueExpr, 0)}`)
   } else {
     const swiftUrl = d.urlExpr !== undefined ? ctx.expr(d.urlExpr, 0) : ctx.stringLiteral(d.url as string)
-    if (d.method || d.headers || d.headerExprs || d.body !== undefined || d.bodyExpr !== undefined || d.upload !== undefined || d.middleware !== undefined) {
+    if (d.method || d.headers || d.headerExprs || d.body !== undefined || d.bodyExpr !== undefined || d.upload !== undefined || d.middleware !== undefined || d.timeoutMs !== undefined) {
       // A request with a VERB, headers, or a body routes through PyreonHttp — exactly like useFetch's
       // method/headers path.
       const args = swiftHttpRequestArgs(
-        { method: d.method, url: swiftUrl, headers: d.headers, headerExprs: d.headerExprs, body: d.body, bodyExpr: d.bodyExpr, upload: d.upload },
+        { method: d.method, url: swiftUrl, headers: d.headers, headerExprs: d.headerExprs, body: d.body, bodyExpr: d.bodyExpr, upload: d.upload, timeoutMs: d.timeoutMs },
         ctx,
         `Declaration ${decl.name}: useQuery queryFn fetch`,
       )
