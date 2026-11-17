@@ -41,6 +41,7 @@ describe('vercelRevalidateHandler (M3.1)', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     if (originalToken === undefined) delete process.env.VERCEL_REVALIDATE_TOKEN
     else process.env.VERCEL_REVALIDATE_TOKEN = originalToken
   })
@@ -158,6 +159,7 @@ describe('vercelRevalidateHandler (M3.1)', () => {
   it('rejects a `?secret=` query parameter, even a correct one, and names the header', async () => {
     const dir = makeManifestDir({ revalidate: { '/about': 60 } })
     const onRevalidate = vi.fn()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
       const handler = vercelRevalidateHandler({
         manifestPath: join(dir, '_pyreon-revalidate.json'),
@@ -172,6 +174,58 @@ describe('vercelRevalidateHandler (M3.1)', () => {
       expect(await res.text()).toContain('Authorization: Bearer')
       expect(onRevalidate).not.toHaveBeenCalled()
     } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  // A webhook sender usually discards the 400's body, so without a server-side
+  // line the content just stops revalidating with nothing in the logs.
+  // Bisect-verified: without the `console.error` in the handler, the first
+  // spec sees no error call.
+  it('logs a `?secret=` request once per handler, server-side, without the secret', async () => {
+    const dir = makeManifestDir({ revalidate: { '/about': 60 } })
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
+      const viaQuery = () =>
+        handler(
+          new Request(`http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`, {
+            method: 'POST',
+          }),
+        )
+      expect((await viaQuery()).status).toBe(400)
+      expect((await viaQuery()).status).toBe(400)
+      expect(error).toHaveBeenCalledTimes(1)
+      const line = String(error.mock.calls[0]?.[0])
+      expect(line).toMatch(/^\[Pyreon\] vercelRevalidateHandler:/)
+      expect(line).toContain('NOT being revalidated')
+      expect(line).toContain('Authorization: Bearer <secret>')
+      expect(line).toContain('rotate VERCEL_REVALIDATE_TOKEN')
+      expect(line).not.toContain(VALID_SECRET)
+    } finally {
+      error.mockRestore()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not log a header-only request, and says the header was used when both are sent', async () => {
+    const dir = makeManifestDir({ revalidate: { '/about': 60 } })
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
+      expect((await handler(revalidateRequest('/about', VALID_SECRET))).status).toBe(200)
+      expect(error).not.toHaveBeenCalled()
+      const both = new Request(`http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${VALID_SECRET}` },
+      })
+      expect((await handler(both)).status).toBe(200)
+      expect(error).toHaveBeenCalledTimes(1)
+      const line = String(error.mock.calls[0]?.[0])
+      expect(line).toContain('alongside the header, which was used')
+      expect(line).not.toContain(VALID_SECRET)
+    } finally {
+      error.mockRestore()
       rmSync(dir, { recursive: true, force: true })
     }
   })

@@ -530,12 +530,25 @@ export const POST = vercelRevalidateHandler({
 The handler:
 
 - accepts only `POST` with a `?path=` query param and the secret in `Authorization: Bearer <secret>`,
-- rejects a `?secret=` query param with 400, even a correct one (a URL secret ends up in access and proxy logs),
+- rejects a `?secret=` query param with 400, even a correct one (a URL secret ends up in access and proxy logs), and reports it once per handler with a server-side `console.error('[Pyreon] …')` that never includes the secret, because most webhook senders discard the response body,
 - validates the secret against `VERCEL_REVALIDATE_TOKEN` (override via `secretEnvVar`) — missing env → 500, mismatch → 403,
 - refuses any path **not** in the revalidate manifest (404) — closes the "secret leaks once → attacker revalidates anything" footgun,
 - supports a custom `onRevalidate(path)` impl for self-hosted SSR runtimes / edge purge APIs (throw to signal failure → 500).
 
 The manifest is read once per process and cached (including a cached failure, so a broken deploy gets fast 500s until restart).
+
+**A webhook sender that cannot set headers.** Many CMS webhooks can send a POST body but not an `Authorization` header. Put the secret in the body and move it into the header in a two-line wrapper:
+
+```ts title="src/routes/api/_pyreon-revalidate.ts"
+import { vercelRevalidateHandler } from '@pyreon/zero/server'
+
+const revalidate = vercelRevalidateHandler()
+// The sender POSTs `{ "secret": "<VERCEL_REVALIDATE_TOKEN>" }` to `?path=/posts/1`.
+export const POST = async (req: Request) =>
+  revalidate(new Request(req.url, { method: 'POST', headers: { authorization: `Bearer ${(await req.json()).secret}` } }))
+```
+
+A sender that can only put the secret in the URL leaks it to logs whatever the handler does, so keep it in the body or a header.
 
 ## Deployment (per platform)
 
