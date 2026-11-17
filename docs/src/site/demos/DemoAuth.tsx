@@ -7,7 +7,8 @@ import { el, tone, txt } from '../kit/bases'
 import { DemoSurface, GlowCard } from '../kit/cards'
 import { DemoGrid, PaperButton } from '../kit/demo'
 import { PaperActions, PaperSegmented, PaperTag, PaperText, SimulatedNote } from '../kit/demo-parts'
-import { Eyebrow, StatusBadge } from '../kit/type'
+import { Eyebrow } from '../kit/type'
+import { Badge } from '../kit/badge'
 
 /**
  * Auth demo (`auth.json` → demo). `@pyreon/auth` is on main, unpublished and not
@@ -219,7 +220,7 @@ export default function DemoAuth() {
           </For>
         </StepList>
         <div>
-          <StatusBadge>next release</StatusBadge>
+          <Badge tone="experimental" size="sm" placement="after">next release</Badge>
         </div>
         <SimulatedNote>@pyreon/auth is on main, is not on npm and is not part of the 1.0 release. This runs it against an OpenID provider inside this page; only the network and the login page are simulated.</SimulatedNote>
       </GlowCard>

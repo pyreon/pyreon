@@ -278,4 +278,15 @@ describe('validateEnv — Standard Schema (duck-typed, no hard dep)', () => {
     }
     expect(() => validateEnv({ X: asyncSchema }, { X: 'v' })).toThrow(/async validation is not supported/)
   })
+
+  // ArkType's `type(...)` is a CALLABLE carrying `~standard`. An object-only
+  // guard fell through to "Invalid schema value" for it.
+  it('accepts a callable Standard Schema (the ArkType shape)', () => {
+    const callable = Object.assign(
+      (v: unknown) => v,
+      stdSchema((v) => ({ value: Number(v) })),
+    )
+    const result = validateEnv({ PORT: callable }, { PORT: '3000' })
+    expect(result.PORT).toBe(3000)
+  })
 })

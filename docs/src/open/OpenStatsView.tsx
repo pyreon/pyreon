@@ -13,6 +13,7 @@ import { Eyebrow, Heading, Lede, renderInline } from '../site/kit/type'
 import { font, text, weight } from '../site/theme'
 import { downloadTiles, tileView, type TileView } from './model'
 import { formatTimestamp, type OpenStats } from './stats'
+import { Note } from '../site/kit/note'
 
 /**
  * `/open` — the project in live numbers, fetched once per build
@@ -29,10 +30,6 @@ const TrendChartIsland = island(() => import('./TrendChart'), { name: 'OpenTrend
 
 const Hero = el.config({ name: 'OpenHero' }).attrs({ block: true, contentAlignX: 'block', gap: 22 }).theme(() => ({ maxWidth: 860 }))
 
-const Updated = txt
-  .config({ name: 'OpenUpdated' })
-  .attrs({ tag: 'p' })
-  .theme((_t, m) => ({ margin: 0, fontFamily: font.mono, fontSize: text.mono.size, color: tone(m, 'fog') }))
 
 const Value = txt
   .config({ name: 'OpenValue' })
@@ -52,10 +49,6 @@ const Value = txt
     missing: { fontSize: text.ui.size, lineHeight: 1.5, letterSpacing: 0, fontFamily: font.mono, color: tone(m, 'fog') },
   }))
 
-const Hint = txt
-  .config({ name: 'OpenHint' })
-  .attrs({ tag: 'p' })
-  .theme((_t, m) => ({ margin: 0, fontFamily: font.mono, fontSize: text.mono.size, lineHeight: 1.5, color: tone(m, 'fog') }))
 
 const Figure = el
   .config({ name: 'OpenChart' })
@@ -92,7 +85,7 @@ function Tile(props: { tile: TileView }) {
         </Value>
       )}
       <Show when={() => t.hint !== undefined}>
-        <Hint>{t.hint ?? ''}</Hint>
+        <Note size="mono">{t.hint ?? ''}</Note>
       </Show>
     </>
   )
@@ -152,10 +145,10 @@ export function OpenStatsView(props: { stats: OpenStats }) {
                 )}
               </For>
             </Cluster>
-            <Updated>
+            <Note size="mono" leading="flat">
               {`${c.updated} `}
               <time datetime={stats.generatedAt}>{formatTimestamp(stats.generatedAt)}</time>
-            </Updated>
+            </Note>
           </Hero>
         </Wrap>
       </Section>

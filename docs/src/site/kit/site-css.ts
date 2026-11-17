@@ -42,6 +42,7 @@ pyreon-island{display:contents}
 body{margin:0}
 :where(h1,h2,h3,h4,summary,figcaption){text-wrap-style:balance}
 :where(p,li,dd,blockquote){text-wrap-style:pretty}
+:where([data-caveat]){text-wrap-style:balance}
 :where(#site-main [id]):not(:where(.dx *)){scroll-margin-top:${layout.anchorOffset}px}
 .${C.srOnly}{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
 

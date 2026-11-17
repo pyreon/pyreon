@@ -5,7 +5,7 @@ export default defineManifest({
   title: 'HTTP Client',
   tagline: 'Transport layer under @pyreon/query — onion middleware, typed errors, optional schema validation',
   description:
-    'The request/response layer beneath @pyreon/query. It owns how a request is made — URL building, headers, body encoding, cancellation, typed errors and optional response validation — and deliberately owns no cache, no dedup-by-key and no reactive container, because those already have owners. Mirrors the split the native runtime already made, where PyreonFetch is the reactive result container and PyreonHttp is the request/response layer beneath it. The core has zero dependencies; retry, schema validation, TanStack adapters, mocking and SSR each live behind their own entry so an unused one costs nothing.',
+    'The request/response layer beneath @pyreon/query. It owns how a request is made — URL building, headers, body encoding, cancellation, typed errors and optional response validation — and deliberately owns no cache, no dedup-by-key and no reactive container, because those already have owners. Mirrors the split the native runtime already made, where PyreonFetch is the reactive result container and PyreonHttp is the request/response layer beneath it. The core has zero runtime dependencies (only the types-only `@standard-schema/spec`); retry, schema validation, TanStack adapters, mocking and SSR each live behind their own entry so an unused one costs nothing.',
   category: 'universal',
   multiplatform: {
     tier: 'web-only',

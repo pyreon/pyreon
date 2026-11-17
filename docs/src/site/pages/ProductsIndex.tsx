@@ -2,16 +2,17 @@ import { For, Show } from '@pyreon/core'
 import { useHead } from '@pyreon/head'
 import productsJson from '../content/_products.json'
 import type { ProductsIndexPage } from '../content/types-site'
-import { el, tone, txt } from '../kit/bases'
+import { el, tone } from '../kit/bases'
 import { CardFoot } from '../kit/card-foot'
-import { GlowCard, Glyph } from '../kit/cards'
+import { GlowCard, Glyph, PackageName } from '../kit/cards'
 import { InstallCommand } from '../kit/controls'
 import { inlineText } from '../kit/inline'
 import { Section } from '../kit/layout'
-import { AutoGrid, Wrap } from '../kit/primitives'
-import { Numeral, TextLink } from '../kit/proof'
-import { Eyebrow, Heading, Lede, renderInline, StatusBadge } from '../kit/type'
-import { font, text } from '../theme'
+import { AutoGrid, Box, Wrap } from '../kit/primitives'
+import { StatBody, TextLink } from '../kit/proof'
+import { Eyebrow, Heading, Lede, renderInline } from '../kit/type'
+import { Badge } from '../kit/badge'
+import { Note } from '../kit/note'
 
 /** `/products` — every product, grouped (`content/_products.json`). */
 const DATA = productsJson as unknown as ProductsIndexPage
@@ -31,29 +32,11 @@ const Tile = el
     color: tone(m, 'text'),
   }))
 
-const Pkg = txt
-  .config({ name: 'ProductCardPackage' })
-  .attrs({ tag: 'span' })
-  .theme((_t, m) => ({ display: 'block', fontFamily: font.mono, fontSize: 11.5, color: tone(m, 'accentText'), overflowWrap: 'anywhere' }))
-
-const ProofLine = txt
-  .config({ name: 'ProductCardProof' })
-  .attrs({ tag: 'p' })
-  .theme((_t, m) => ({ margin: 0, fontFamily: font.sans, fontSize: 13.5, lineHeight: 1.5, color: tone(m, 'mist') }))
-
-const Caveat = txt
-  .config({ name: 'ProductCardCaveat' })
-  .attrs({ tag: 'p' })
-  .theme((_t, m) => ({ margin: 0, fontFamily: font.mono, fontSize: text.caveat.size, lineHeight: 1.5, color: tone(m, 'fog') }))
 
 const Group = el.config({ name: 'ProductGroup' }).attrs({ tag: 'section', block: true, gap: 22 }).theme(() => ({ marginBottom: 72 }))
 
 const EndBox = el.config({ name: 'ProductsEnd' }).attrs({ block: true, contentAlignX: 'center', gap: 16 }).theme(() => ({ textAlign: 'center' }))
 
-const Footnote = txt
-  .config({ name: 'ProductsFootnote' })
-  .attrs({ tag: 'p' })
-  .theme((_t, m) => ({ margin: 0, marginTop: 8, fontFamily: font.mono, fontSize: text.caveat.size, color: tone(m, 'fog') }))
 
 export function ProductsIndex() {
   const byId = new Map(DATA.products.map((p) => [p.id, p]))
@@ -95,19 +78,15 @@ export function ProductsIndex() {
                             <div>
                               <Heading tag="h3" size="step" style="margin:0">
                                 {p.name}
-                                {p.status ? <StatusBadge>{p.status}</StatusBadge> : null}
+                                {p.status ? <Badge tone="experimental" size="sm" placement="after">{p.status}</Badge> : null}
                               </Heading>
                             </div>
                           </CardTop>
                           <Lede size="small">{renderInline(p.pitch)}</Lede>
-                          <CardFoot label={<Pkg>{p.package}</Pkg>}>
+                          <CardFoot label={<PackageName block>{p.package}</PackageName>}>
                             <Show when={() => !!p.proof}>
                               <div>
-                                <Numeral tag="span" size="card">
-                                  {p.proof?.stat}
-                                </Numeral>
-                                <ProofLine>{renderInline(p.proof?.label ?? '')}</ProofLine>
-                                <Caveat>{p.proof?.condition}</Caveat>
+                                <StatBody size="product" numeral="card" stat={p.proof?.stat ?? ''} label={p.proof?.label ?? ''} note={p.proof?.condition} />
                               </div>
                             </Show>
                           </CardFoot>
@@ -122,9 +101,11 @@ export function ProductsIndex() {
           <Lede size="card">
             {renderInline(DATA.underneath.text)} <TextLink href={DATA.underneath.link.href}>{DATA.underneath.link.label}</TextLink>
           </Lede>
-          <Footnote>
-            {DATA.proofFooter} <TextLink href={DATA.proofFooterLink.href}>{DATA.proofFooterLink.label}</TextLink>
-          </Footnote>
+          <Box padTop={100}>
+            <Note>
+              {DATA.proofFooter} <TextLink href={DATA.proofFooterLink.href}>{DATA.proofFooterLink.label}</TextLink>
+            </Note>
+          </Box>
         </Wrap>
       </Section>
       <Section size="end">

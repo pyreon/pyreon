@@ -4,17 +4,19 @@ import type { ProjectPage as Data } from '../content/types-site'
 import type { ReleaseData } from '../releases/parse'
 import { el, focusRing, tone, txt, type LinkAttrs, tapArea } from '../kit/bases'
 import { GlowCard } from '../kit/cards'
-import { Chip, InstallCommand, Pill } from '../kit/controls'
+import { InstallCommand, Pill } from '../kit/controls'
 import { inlineText } from '../kit/inline'
 import { Section, SectionHead } from '../kit/layout'
 import { AutoGrid, Cluster, Stack, Text, Wrap } from '../kit/primitives'
 import { CaveatLine } from '../kit/proof'
-import { Eyebrow, Heading, Lede, renderInline, StatusBadge } from '../kit/type'
+import { Eyebrow, Heading, Lede, renderInline } from '../kit/type'
 import { font, radius, text, weight } from '../theme'
 import { mediaUrl } from '../kit/assets'
 import { Picture } from '../kit/media'
 import { usePageHead } from '../head'
 import { SiteSections, type SectionFigure } from './SiteSections'
+import { Badge } from '../kit/badge'
+import { Tag } from '../kit/tag'
 
 /**
  * `/status`, `/releases`, `/community`, `/brand` — the "plain" template
@@ -90,7 +92,7 @@ function Releases(props: { data: ReleaseData }) {
         <GlowCard state="hot">
           <Eyebrow state="accent">
             unreleased · on main
-            <StatusBadge>next release</StatusBadge>
+            <Badge tone="experimental" size="sm" placement="after">next release</Badge>
           </Eyebrow>
           <Heading tag="h3" size="card">
             {`${d.unreleased?.count ?? 0} changesets waiting for the next release`}
@@ -100,7 +102,7 @@ function Releases(props: { data: ReleaseData }) {
             <For each={d.unreleased?.packages ?? []} by={(p) => p.name}>
               {(p) => (
                 <li>
-                  <Chip>{`${p.name} · ${p.count}`}</Chip>
+                  <Tag>{`${p.name} · ${p.count}`}</Tag>
                 </li>
               )}
             </For>
