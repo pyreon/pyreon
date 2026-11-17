@@ -8,6 +8,7 @@
 // Type inference is deliberately naive — numeric assumption for
 // computed properties. Phase 1 grows a real inference pass.
 
+import { bitwiseHelper, integerOpHelper, isNumericConstant } from './integer-arithmetic'
 import { isDoubleLiteralValue, wholeDoubleLiteral } from './number-literal'
 import { isModuleState, moduleStateClassName, moduleStateDecls, shadowingNames } from './module-state'
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
@@ -82,7 +83,6 @@ import type { RouterTabIR } from './navigation-lowering'
 import { intrinsicElementWarning, isIntrinsicElementTag } from './intrinsic-element-warning'
 import {
   buildComponentConstMap,
-  isCompoundExpr,
   isReReadableExpr,
   substituteIdentifier,
   buildJsonLiteralParts,
@@ -3711,7 +3711,16 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
         _pluginScope,
         () => swiftEmitContext(indent),
       )
-      return `${emitSwiftExpr(s.target, indent)} ${s.op} ${spelled ?? value}`
+      const target = emitSwiftExpr(s.target, indent)
+      // `x += y` over two integers through the overflow-safe helper, as the binary operator is.
+      if (spelled === undefined && s.op.length === 2 && numericFloatness(s.target) === 'int') {
+        const op = s.op[0]!
+        if (numericFloatness(s.value) === 'int') {
+          const helper = integerOpHelper(op, s.target, s.value)
+          if (helper !== undefined) return `${target} = ${helper}(${target}, ${value})`
+        }
+      }
+      return `${target} ${s.op} ${spelled ?? value}`
     }
     case 'return': {
       const ex = s.expr
@@ -3731,7 +3740,12 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       // as a statement (`{ let v = i; i += 1; return v }()` → "cannot call
       // value of non-function type"). Swift removed `++`/`--` in Swift 3.
       if (s.expr.kind === 'update') {
-        return `${emitSwiftExpr(s.expr.argument, indent)} ${s.expr.op === '++' ? '+=' : '-='} 1`
+        const target = emitSwiftExpr(s.expr.argument, indent)
+        if (numericFloatness(s.expr.argument) === 'int') {
+          return `${target} = ${s.expr.op === '++' ? 'pyreonAdd' : 'pyreonSub'}(${target}, 1)`
+        }
+
+        return `${target} ${s.expr.op === '++' ? '+=' : '-='} 1`
       }
       // A bare `arr.sort(cmp)` STATEMENT sorts in place. The value-position
       // lowering is the non-mutating `sorted(by:)`, whose result a statement
@@ -4849,20 +4863,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           e.args.length === 1 &&
           e.args[0]!.kind === 'spread'
         ) {
+          // The web's answer for an EMPTY list is -Infinity / Infinity, which no Int holds, so the result is a
+          // Double (`pyreonMax` / `pyreonMin`, which also make a NaN element NaN, as the web does).
           const spreadArg = (e.args[0]! as { kind: 'spread'; argument: ExprIR }).argument
-          const arrT = inferType(spreadArg, _activeInferCtx)
-          const isFloat =
-            arrT.kind === 'array' && arrT.element.kind === 'number' && arrT.element.float === true
-          const arrStr = emitSwiftExpr(spreadArg, indent)
-          const isMax = e.callee.property === 'max'
-          const sentinel = isFloat
-            ? isMax
-              ? '-Double.infinity'
-              : 'Double.infinity'
-            : isMax
-              ? 'Int.min'
-              : 'Int.max'
-          return `(${arrStr}.${isMax ? 'max' : 'min'}() ?? ${sentinel})`
+          return `${e.callee.property === 'max' ? 'pyreonMax' : 'pyreonMin'}(${emitSwiftExpr(spreadArg, indent)})`
         }
         const args = e.args.map((a) => emitSwiftExpr(a, indent))
         switch (e.callee.property) {
@@ -6299,16 +6303,20 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (lf === 'double' && rf === 'int') return `${bl} ${e.op} Double(${br})`
         if (lf === 'int' && rf === 'double') return `Double(${bl}) ${e.op} ${br}`
       }
-      // Bitwise ops (`& | ^ << >>`) — Swift uses the SAME symbols, but its
-      // operator precedence differs from JS (e.g. Swift `&` binds tighter
-      // than `+`, the reverse of JS), so a compound operand must be
-      // parenthesized to preserve the JS-parsed grouping
-      // (`a & b + c` is `a & (b + c)` in JS). Over-parenthesizing a
-      // compound operand is always sound.
-      if (e.op === '&' || e.op === '|' || e.op === '^' || e.op === '<<' || e.op === '>>') {
-        const L = isCompoundExpr(e.left) ? `(${bl})` : bl
-        const R = isCompoundExpr(e.right) ? `(${br})` : br
-        return `${L} ${e.op} ${R}`
+      // The web's integer and bitwise results (`integer-arithmetic.ts`): an Int `+ - * %` through the runtime's
+      // overflow-safe helpers (Swift's operators trap), every bitwise operator through the 32-bit ones.
+      {
+        const bit = bitwiseHelper(e.op)
+        if (bit !== undefined) return `${bit}(${bl}, ${br})`
+        const lf = numericFloatness(e.left)
+        const rf = numericFloatness(e.right)
+        if (lf === 'int' && rf === 'int') {
+          const helper = integerOpHelper(e.op, e.left, e.right)
+          if (helper !== undefined) return `${helper}(${bl}, ${br})`
+        } else if (e.op === '%' && (lf === 'double' || rf === 'double')) {
+          // Swift has no `%` on Double; the web's remainder is `truncatingRemainder` (NaN for a zero divisor).
+          return `pyreonRem(${lf === 'int' ? `Double(${bl})` : bl}, ${rf === 'int' ? `Double(${br})` : br})`
+        }
       }
       return `${bl} ${e.op} ${br}`
     }
@@ -6419,6 +6427,12 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         if (tT.kind === 'boolean') return isDoubleNeg ? tStr : `!${emitSwiftExpr(inner, indent)}`
         if (typeIsOptional(tT)) return isDoubleNeg ? `(${tStr} != nil)` : `(${tStr} == nil)`
       }
+      // `~x` is 32-bit on the web; `-x` of an integer never traps (`integer-arithmetic.ts`).
+      if (e.op === '~') return `pyreonBitNot(${emitSwiftExpr(e.argument, indent)})`
+      if (e.op === '-' && !isNumericConstant(e.argument) && numericFloatness(e.argument) === 'int') {
+        return `pyreonNeg(${emitSwiftExpr(e.argument, indent)})`
+      }
+
       return `${e.op}${emitSwiftExpr(e.argument, indent)}`
     }
     case 'logical':
@@ -6557,6 +6571,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // usually the case in struct-init args). Swift's closure-return
       // inference covers it without annotation.
       const arg = emitSwiftExpr(e.argument, indent)
+      if (numericFloatness(e.argument) === 'int') {
+        return `{ let __v = ${arg}; ${arg} = ${e.op === '++' ? 'pyreonAdd' : 'pyreonSub'}(${arg}, 1); return __v }()`
+      }
       const step = e.op === '++' ? '+= 1' : '-= 1'
       return `{ let __v = ${arg}; ${arg} ${step}; return __v }()`
     }

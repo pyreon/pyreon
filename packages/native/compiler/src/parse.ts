@@ -7045,13 +7045,10 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // (Parser-A slice). Pyreon source uses `===` / `!==` which evaluate
       // the same as `==` / `!=` for the value types signals carry; the
       // emitter coalesces to the native target's `==` / `!=`.
-      // Arithmetic + bitwise — both lower to a `binary` IR node. Bitwise
-      // ops are well-defined on both targets (Swift: same symbols; Kotlin:
-      // `and`/`or`/`xor`/`shl`/`shr` infix functions, mapped at emit). NOTE
-      // `>>>` (JS unsigned-right-shift, uint32 semantics) is deliberately
-      // NOT included — it has no faithful signed-Int lowering and keeps the
-      // warn-fallback below.
-      const arith = ['+', '-', '*', '/', '%', '&', '|', '^', '<<', '>>', '**'] as const
+      // Arithmetic + bitwise — both lower to a `binary` IR node. The bitwise
+      // operators (`>>>` included) lower to the runtimes' 32-bit helpers
+      // (`integer-arithmetic.ts`), which give the web's ToInt32 results.
+      const arith = ['+', '-', '*', '/', '%', '&', '|', '^', '<<', '>>', '>>>', '**'] as const
       const compMap: Record<string, '==' | '!=' | '<' | '>' | '<=' | '>='> = {
         '===': '==',
         '!==': '!=',
@@ -7134,19 +7131,19 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // these as prefix unary verbatim. Other unary operators (`typeof`,
       // `void`, `delete`) don't have idiomatic native equivalents —
       // warn + degrade. `++` / `--` are UpdateExpression, not Unary.
-      const known: ('!' | '-' | '+')[] = ['!', '-', '+']
+      const known: ('!' | '-' | '+' | '~')[] = ['!', '-', '+', '~']
       const op = node.operator as string
       if (!(known as readonly string[]).includes(op)) {
         return unsupportedExpr(
           ctx,
           node,
           `Unary operator \`${op}\``,
-          'only `!`, `-`, `+` are supported on native.',
+          'only `!`, `-`, `+` and `~` are supported on native.',
         )
       }
       return {
         kind: 'unary',
-        op: op as '!' | '-' | '+',
+        op: op as '!' | '-' | '+' | '~',
         argument: parseExpr(node.argument, ctx),
       }
     }

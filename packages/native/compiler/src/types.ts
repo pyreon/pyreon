@@ -708,7 +708,7 @@ export type ExprIR =
       // Arithmetic + bitwise + exponent. Bitwise ops (`& | ^ << >>`) emit
       // verbatim on Swift / as infix functions on Kotlin. Exponent (`**`) has
       // no operator on either target → `pow(...)` (Double-domain) on both.
-      op: '+' | '-' | '*' | '/' | '%' | '&' | '|' | '^' | '<<' | '>>' | '**'
+      op: '+' | '-' | '*' | '/' | '%' | '&' | '|' | '^' | '<<' | '>>' | '>>>' | '**'
       left: ExprIR
       right: ExprIR
     }
@@ -748,7 +748,7 @@ export type ExprIR =
    * optional must be unwrapped before a member is read, so the emitters force-unwrap (`x!` / `x!!`) when — and only
    * when — the argument's inferred type is optional; otherwise they emit the argument unchanged.
    */
-  | { kind: 'unary'; op: '!' | '-' | '+' | 'non-null'; argument: ExprIR }
+  | { kind: 'unary'; op: '!' | '-' | '+' | '~' | 'non-null'; argument: ExprIR }
   /**
    * Logical operators (Parser-C). TodoMVC uses `e.key === 'Enter' && addTodo()`
    * in the keyboard handler. Swift and Kotlin both have `&&` / `||` with

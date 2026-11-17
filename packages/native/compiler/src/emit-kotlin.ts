@@ -4,6 +4,7 @@
 // `var x by remember { mutableStateOf(initial) }`, computeds to
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
+import { bitwiseHelper, integerOpHelper, isNumericConstant, numericKind } from './integer-arithmetic'
 import { isDoubleLiteralValue, wholeDoubleLiteral } from './number-literal'
 import { isModuleState, moduleStateClassName, moduleStateDecls, shadowingNames } from './module-state'
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
@@ -94,7 +95,6 @@ import { intrinsicElementWarning, isIntrinsicElementTag } from './intrinsic-elem
 import {
   buildComponentConstMap,
   chainHasOptional,
-  isCompoundExpr,
   substituteIdentifier,
   buildJsonLiteralParts,
   type JsonLiteralPart,
@@ -2735,7 +2735,13 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
           _pluginScope,
           () => kotlinEmitContext(indent),
         ) ?? value
-      return `${emitKotlinExpr(s.target, indent)} ${s.op} ${coerced}`
+      const target = emitKotlinExpr(s.target, indent)
+      // `x += y` over two integers through the overflow-safe helper, as the binary operator is (Kotlin's wraps).
+      if (coerced === value && s.op.length === 2 && kotlinNumericKind(s.target) === 'int' && kotlinNumericKind(s.value) === 'int') {
+        const helper = integerOpHelper(s.op[0]!, s.target, s.value)
+        if (helper !== undefined) return `${target} = ${helper}(${target}, ${value})`
+      }
+      return `${target} ${s.op} ${coerced}`
     }
     case 'return': {
       // K2: emit `return@<label> expr` inside labeled lambda contexts
@@ -2758,7 +2764,12 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       // `i -= 1` (uniform with Swift). The general `update` expr emit returns
       // the OLD value (value-position form) and mis-compiles as a statement.
       if (s.expr.kind === 'update') {
-        return `${emitKotlinExpr(s.expr.argument, indent)} ${s.expr.op === '++' ? '+=' : '-='} 1`
+        const target = emitKotlinExpr(s.expr.argument, indent)
+        if (kotlinNumericKind(s.expr.argument) === 'int') {
+          return `${target} = ${s.expr.op === '++' ? 'pyreonAdd' : 'pyreonSub'}(${target}, 1L)`
+        }
+
+        return `${target} ${s.expr.op === '++' ? '+=' : '-='} 1`
       }
       // A bare `arr.sort(cmp)` STATEMENT sorts in place: the mutating
       // `sortWith`, not the value-position `sortedWith` whose result a
@@ -3884,20 +3895,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           e.args.length === 1 &&
           e.args[0]!.kind === 'spread'
         ) {
+          // -Infinity / Infinity for an EMPTY list, as on the web — a Double (`Long.MIN_VALUE` was the old answer).
           const spreadArg = (e.args[0]! as { kind: 'spread'; argument: ExprIR }).argument
-          const arrT = inferType(spreadArg, _kotlinExprInferCtx)
-          const isFloat =
-            arrT.kind === 'array' && arrT.element.kind === 'number' && arrT.element.float === true
-          const arrStr = emitKotlinExpr(spreadArg, indent)
-          const isMax = e.callee.property === 'max'
-          const sentinel = isFloat
-            ? isMax
-              ? 'Double.NEGATIVE_INFINITY'
-              : 'Double.POSITIVE_INFINITY'
-            : isMax
-              ? 'Long.MIN_VALUE'
-              : 'Long.MAX_VALUE'
-          return `(${arrStr}.${isMax ? 'maxOrNull' : 'minOrNull'}() ?: ${sentinel})`
+          return `${e.callee.property === 'max' ? 'pyreonMax' : 'pyreonMin'}(${emitKotlinExpr(spreadArg, indent)})`
         }
         const fn = e.callee.property
         // java.lang.Math Double-domain fns — keep `Math.<fn>`, coerce args.
@@ -4990,28 +4990,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         }
         return `${coerce(e.left, bl)} + ${coerce(e.right, br)}`
       }
-      // Bitwise ops — Kotlin has NO bitwise symbols; they're INFIX
-      // FUNCTIONS on Int (`a and b`, `a shl 1`, …). Infix functions bind
-      // looser than arithmetic, so a compound operand is parenthesized to
-      // preserve the JS-parsed grouping (`a & b + c` is `a & (b + c)`).
-      const kotlinBitwise: Record<string, string> = {
-        '&': 'and',
-        '|': 'or',
-        '^': 'xor',
-        '<<': 'shl',
-        '>>': 'shr',
-      }
-      const infix = kotlinBitwise[e.op]
-      if (infix !== undefined) {
-        const L = isCompoundExpr(e.left) ? `(${bl})` : bl
-        // A shift COUNT is `Int` even on a Long receiver (`Long.shl(Int)`).
-        const R =
-          infix === 'shl' || infix === 'shr'
-            ? kotlinIntArg(e.right, indent)
-            : isCompoundExpr(e.right)
-              ? `(${br})`
-              : br
-        return `${L} ${infix} ${R}`
+      // The web's integer and bitwise results (`integer-arithmetic.ts`): a Long `+ - * %` through the runtime's
+      // overflow-safe helpers (Kotlin's operators wrap, and `%` by zero throws), every bitwise operator through the
+      // 32-bit ones (Kotlin's `shl` / `and` … are 64-bit on a Long).
+      {
+        const bit = bitwiseHelper(e.op)
+        if (bit !== undefined) return `${bit}(${bl}, ${br})`
+        if (kotlinNumericKind(e.left) === 'int' && kotlinNumericKind(e.right) === 'int') {
+          const helper = integerOpHelper(e.op, e.left, e.right)
+          if (helper !== undefined) return `${helper}(${bl}, ${br})`
+        }
       }
       return `${bl} ${e.op} ${br}`
     }
@@ -5100,6 +5088,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (tT.kind === 'boolean') return isDoubleNeg ? tStr : `!${emitKotlinExpr(inner, indent)}`
         if (typeIsOptional(tT)) return isDoubleNeg ? `(${tStr} != null)` : `(${tStr} == null)`
       }
+      // `~x` is 32-bit on the web; `-x` of a Long never wraps (`integer-arithmetic.ts`).
+      if (e.op === '~') return `pyreonBitNot(${emitKotlinExpr(e.argument, indent)})`
+      if (e.op === '-' && !isNumericConstant(e.argument) && kotlinNumericKind(e.argument) === 'int') {
+        return `pyreonNeg(${emitKotlinExpr(e.argument, indent)})`
+      }
+
       return `${e.op}${emitKotlinExpr(e.argument, indent)}`
     }
     case 'logical':
@@ -5218,6 +5212,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       //      call (should be id=1).
       //   2. Drops the side-effect entirely — `nextId` never
       //      incremented. Every new Todo got id=2 forever.
+      if (kotlinNumericKind(e.argument) === 'int') {
+        // A Long `++` wraps at `Long.MAX_VALUE`; the web's never does (`integer-arithmetic.ts`).
+        const arg = emitKotlinExpr(e.argument, indent)
+        return `${arg}.also { ${arg} = ${e.op === '++' ? 'pyreonAdd' : 'pyreonSub'}(${arg}, 1L) }`
+      }
       return `${emitKotlinExpr(e.argument, indent)}${e.op}`
     case 'arrow': {
       return _pluginScope.withBindings(
@@ -10095,4 +10094,9 @@ function kotlinSpreadResolver(indent: number): SpreadResolver {
     },
     label: (e) => emitKotlinExpr(e, indent),
   }
+}
+
+/** `int` / `double` / `other` for an operand, through the Kotlin inference context (`integer-arithmetic.ts`). */
+function kotlinNumericKind(e: ExprIR): 'int' | 'double' | 'other' {
+  return numericKind(inferType(e, _kotlinExprInferCtx))
 }

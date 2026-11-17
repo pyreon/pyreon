@@ -222,7 +222,7 @@ describe('useStream lowers to the native stream runtime', () => {
   })
 
   it('`onEvent` runs after each event, with the event typed as the stream item', () => {
-    expect(swift(GATED).code).toContain('onEvent: { ev in seen = seen + ev.data.message.utf16.count }, decode:')
+    expect(swift(GATED).code).toContain('onEvent: { ev in seen = pyreonAdd(seen, ev.data.message.utf16.count) }, decode:')
     expect(kotlin(GATED).code).toContain('onEvent = { ev -> seen = seen + ev.data.message.length }) { m ->')
     expect(swift(NDJSON_ON_EVENT).code).toContain('onEvent: { row in last = row.level }, decode: PyreonStreamDecode.ndjson(LogLine.self)')
     expect(kotlin(NDJSON_ON_EVENT).code).toContain('onEvent = { row -> last = row.level }) { line ->')
@@ -307,7 +307,7 @@ describe('useStream emit compiles against the REAL runtime source', () => {
       const sdk = execFileSync('xcrun', ['--sdk', 'iphonesimulator', '--show-sdk-path'], { encoding: 'utf8' }).trim()
       execFileSync(
         'xcrun',
-        ['--sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, ...files, RUNTIME_SWIFT, core, json],
+        ['--sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, ...files, RUNTIME_SWIFT, core, json, join(__dirname, '../../../runtime-swift/Sources/PyreonRuntime/PyreonNumber.swift')],
         { stdio: 'pipe', encoding: 'utf8' },
       )
     } catch (err) {

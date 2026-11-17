@@ -1688,6 +1688,31 @@ public func pyreonRound(_ x: Double) -> Double { 0 }
 public func pyreonParseInt(_ text: String, _ radix: Int? = nil) -> Int? { nil }
 public func pyreonParseFloat(_ text: String) -> Double { 0 }
 public func pyreonToNumber(_ text: String) -> Double { 0 }
+// Integer and bitwise operators with the web's results (PyreonNumber.swift). Mirror the real signatures.
+public func pyreonAdd(_ a: Int, _ b: Int) -> Int { a }
+public func pyreonSub(_ a: Int, _ b: Int) -> Int { a }
+public func pyreonMul(_ a: Int, _ b: Int) -> Int { a }
+public func pyreonNeg(_ a: Int) -> Int { a }
+public func pyreonRem(_ a: Int, _ b: Int) -> Int { a }
+public func pyreonRem(_ a: Double, _ b: Double) -> Double { a }
+public func pyreonAdd(_ a: Double, _ b: Double) -> Double { a }
+public func pyreonSub(_ a: Double, _ b: Double) -> Double { a }
+public func pyreonMul(_ a: Double, _ b: Double) -> Double { a }
+public func pyreonNeg(_ a: Double) -> Double { a }
+public protocol PyreonBitwiseOperand { var pyreonInt32: Int32 { get } }
+extension Int: PyreonBitwiseOperand { public var pyreonInt32: Int32 { 0 } }
+extension Double: PyreonBitwiseOperand { public var pyreonInt32: Int32 { 0 } }
+public func pyreonBitAnd<A: PyreonBitwiseOperand, B: PyreonBitwiseOperand>(_ a: A, _ b: B) -> Int { 0 }
+public func pyreonBitOr<A: PyreonBitwiseOperand, B: PyreonBitwiseOperand>(_ a: A, _ b: B) -> Int { 0 }
+public func pyreonBitXor<A: PyreonBitwiseOperand, B: PyreonBitwiseOperand>(_ a: A, _ b: B) -> Int { 0 }
+public func pyreonBitNot<A: PyreonBitwiseOperand>(_ a: A) -> Int { 0 }
+public func pyreonShl<A: PyreonBitwiseOperand, B: PyreonBitwiseOperand>(_ a: A, _ b: B) -> Int { 0 }
+public func pyreonShr<A: PyreonBitwiseOperand, B: PyreonBitwiseOperand>(_ a: A, _ b: B) -> Int { 0 }
+public func pyreonUshr<A: PyreonBitwiseOperand, B: PyreonBitwiseOperand>(_ a: A, _ b: B) -> Int { 0 }
+public func pyreonMax(_ xs: [Double]) -> Double { 0 }
+public func pyreonMin(_ xs: [Double]) -> Double { 0 }
+public func pyreonMax(_ xs: [Int]) -> Double { 0 }
+public func pyreonMin(_ xs: [Int]) -> Double { 0 }
 // PyreonDate — JS Date as epoch milliseconds (PyreonDate.swift). Mirrors the real surface.
 public func pyreonDateFrom(_ text: String) -> Double { 0 }
 public func pyreonDateFrom(_ ms: Double) -> Double { 0 }

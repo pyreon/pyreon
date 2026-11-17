@@ -70,16 +70,16 @@ const code = (target: 'swift' | 'kotlin') => emit(target).code
 describe('a chained model lowers instead of emitting itself verbatim', () => {
   it('Swift: views are computed properties, actions are methods', () => {
     const out = code('swift')
-    expect(out).toContain('var doubled: Int { total * 2 }')
-    expect(out).toContain('func add(_ n: Int) { total = total + n }')
+    expect(out).toContain('var doubled: Int { pyreonMul(total, 2) }')
+    expect(out).toContain('func add(_ n: Int) { total = pyreonAdd(total, n) }')
     expect(out).toContain('func reset() { total = 0 }')
   })
 
   it('Kotlin: views are reactive getters, actions are funs', () => {
     const out = code('kotlin')
-    expect(out).toContain('val doubled get() = total * 2')
+    expect(out).toContain('val doubled get() = pyreonMul(total, 2L)')
     expect(out).toContain('fun add(n: Long)')
-    expect(out).toContain('total = total + n')
+    expect(out).toContain('total = pyreonAdd(total, n)')
   })
 
   // The shape that shipped. `model(` surviving into the emit is the whole

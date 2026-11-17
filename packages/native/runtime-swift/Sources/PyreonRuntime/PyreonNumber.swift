@@ -246,3 +246,145 @@ public func pyreonToNumber(_ text: String) -> Double {
     }
     return pyreonDecimalPrefix(s, whole: true) ?? .nan
 }
+
+// MARK: - Integer arithmetic with JavaScript's results
+//
+// The model. A JavaScript number is a double. PMTC stores a value it can prove integral as a 64-bit `Int` (Kotlin
+// `Long`) — an exact representation of every integer the web can hold exactly (|x| <= 2^53), and of every integral
+// double up to 2^63. The operators below keep that representation honest:
+//
+// - `+ - *` and negation give the web's result: exact while it stays within ±2^53, and beyond that the double the web
+//   computes (JavaScript rounds `2^53 + 1` to `2^53`). Swift's own operators TRAPPED on 64-bit overflow and Kotlin's
+//   WRAPPED (`2^62 * 4` was 0). A result past ±2^63, which no `Int` can hold, saturates to `Int.max` / `Int.min` —
+//   the value the integer store gives ±Infinity everywhere else (`pyreonInt`) — and is logged once in a debug build.
+// - `%` is the web's remainder (the sign of the dividend). A zero divisor is NaN on the web; an `Int` cannot hold NaN,
+//   so the result is 0, the value NaN takes at every integer store (`pyreonInt(.nan)`), logged once in a debug build.
+//   `Int.min % -1` (a Swift trap) is 0. A `Double` `%` is the web's `NaN`.
+// - The bitwise operators work on 32 bits, as the web's do: each operand is converted with ECMAScript's `ToInt32`
+//   (modulo 2^32; NaN and ±Infinity are 0), `>>>` with `ToUint32`, and a shift count is taken modulo 32. `3 << 31` is
+//   -2147483648 and `1 << 32` is 1, where 64-bit shifts gave 6442450944 and 4294967296.
+//
+// Kotlin's `PyreonNumber.kt` holds the same functions; `native-integer-semantics.test.ts` runs both against V8.
+
+private let pyreonSafeInteger: UInt = 1 << 53
+
+private var pyreonIntegerNoticeShown = false
+
+/// The integer a double result stores as: `pyreonInt`, with a one-time debug notice when the web's value is not one.
+private func pyreonIntegerResult(_ d: Double, _ op: String) -> Int {
+    #if DEBUG
+    if (!d.isFinite || abs(d) >= 9_223_372_036_854_775_808.0) && !pyreonIntegerNoticeShown {
+        pyreonIntegerNoticeShown = true
+        print("[Pyreon] integer \(op) gave \(pyreonNumberString(d)) on the web, which a 64-bit integer cannot hold; stored as \(pyreonInt(d)). Use a fractional number (`1.0`) where values can grow past 2^63.")
+    }
+    #endif
+    return pyreonInt(d)
+}
+
+public func pyreonAdd(_ a: Int, _ b: Int) -> Int {
+    let (r, o) = a.addingReportingOverflow(b)
+    if !o && r.magnitude <= pyreonSafeInteger { return r }
+    return pyreonIntegerResult(Double(a) + Double(b), "+")
+}
+
+public func pyreonSub(_ a: Int, _ b: Int) -> Int {
+    let (r, o) = a.subtractingReportingOverflow(b)
+    if !o && r.magnitude <= pyreonSafeInteger { return r }
+    return pyreonIntegerResult(Double(a) - Double(b), "-")
+}
+
+public func pyreonMul(_ a: Int, _ b: Int) -> Int {
+    let (r, o) = a.multipliedReportingOverflow(by: b)
+    if !o && r.magnitude <= pyreonSafeInteger { return r }
+    return pyreonIntegerResult(Double(a) * Double(b), "*")
+}
+
+// The emit picks these by the INFERRED type; where inference says integer but the Swift value is a Double (a value
+// typed through a generic or a platform API), the Double overloads keep the plain operator, so the call still compiles
+// and computes what the operator would have.
+@inline(__always) public func pyreonAdd(_ a: Double, _ b: Double) -> Double { a + b }
+@inline(__always) public func pyreonSub(_ a: Double, _ b: Double) -> Double { a - b }
+@inline(__always) public func pyreonMul(_ a: Double, _ b: Double) -> Double { a * b }
+@inline(__always) public func pyreonNeg(_ a: Double) -> Double { -a }
+
+public func pyreonNeg(_ a: Int) -> Int {
+    a == Int.min ? Int.max : -a
+}
+
+public func pyreonRem(_ a: Int, _ b: Int) -> Int {
+    if b == 0 { return pyreonIntegerResult(.nan, "%") }
+    if b == -1 { return 0 }
+    return a % b
+}
+
+/// The web's `%` on doubles: the remainder truncated toward zero, NaN for a zero divisor or an infinite dividend.
+public func pyreonRem(_ a: Double, _ b: Double) -> Double { a.truncatingRemainder(dividingBy: b) }
+
+/// A number operand of a bitwise operator: an `Int` or a `Double`.
+public protocol PyreonBitwiseOperand {
+    /// ECMAScript `ToInt32`.
+    var pyreonInt32: Int32 { get }
+}
+
+extension Int: PyreonBitwiseOperand {
+    public var pyreonInt32: Int32 { Int32(truncatingIfNeeded: self) }
+}
+
+extension Double: PyreonBitwiseOperand {
+    public var pyreonInt32: Int32 {
+        guard isFinite else { return 0 }
+        let m = rounded(.towardZero).truncatingRemainder(dividingBy: 4_294_967_296)
+        return Int32(truncatingIfNeeded: Int64(m))
+    }
+}
+
+public func pyreonBitAnd<A: PyreonBitwiseOperand, B: PyreonBitwiseOperand>(_ a: A, _ b: B) -> Int {
+    Int(a.pyreonInt32 & b.pyreonInt32)
+}
+
+public func pyreonBitOr<A: PyreonBitwiseOperand, B: PyreonBitwiseOperand>(_ a: A, _ b: B) -> Int {
+    Int(a.pyreonInt32 | b.pyreonInt32)
+}
+
+public func pyreonBitXor<A: PyreonBitwiseOperand, B: PyreonBitwiseOperand>(_ a: A, _ b: B) -> Int {
+    Int(a.pyreonInt32 ^ b.pyreonInt32)
+}
+
+public func pyreonBitNot<A: PyreonBitwiseOperand>(_ a: A) -> Int {
+    Int(~a.pyreonInt32)
+}
+
+public func pyreonShl<A: PyreonBitwiseOperand, B: PyreonBitwiseOperand>(_ a: A, _ b: B) -> Int {
+    Int(a.pyreonInt32 &<< (b.pyreonInt32 & 31))
+}
+
+public func pyreonShr<A: PyreonBitwiseOperand, B: PyreonBitwiseOperand>(_ a: A, _ b: B) -> Int {
+    Int(a.pyreonInt32 &>> (b.pyreonInt32 & 31))
+}
+
+public func pyreonUshr<A: PyreonBitwiseOperand, B: PyreonBitwiseOperand>(_ a: A, _ b: B) -> Int {
+    Int(UInt32(bitPattern: a.pyreonInt32) &>> UInt32(b.pyreonInt32 & 31))
+}
+
+/// `Math.max(...xs)` / `Math.min(...xs)`: the web's answer for an EMPTY list is -Infinity / Infinity, and any NaN
+/// element makes the result NaN.
+public func pyreonMax(_ xs: [Double]) -> Double {
+    var r = -Double.infinity
+    for x in xs {
+        if x.isNaN { return .nan }
+        if x > r || (x == 0 && r == 0 && r.sign == .minus) { r = x }
+    }
+    return r
+}
+
+public func pyreonMin(_ xs: [Double]) -> Double {
+    var r = Double.infinity
+    for x in xs {
+        if x.isNaN { return .nan }
+        if x < r || (x == 0 && r == 0 && x.sign == .minus) { r = x }
+    }
+    return r
+}
+
+public func pyreonMax(_ xs: [Int]) -> Double { xs.max().map(Double.init) ?? -.infinity }
+public func pyreonMin(_ xs: [Int]) -> Double { xs.min().map(Double.init) ?? .infinity }

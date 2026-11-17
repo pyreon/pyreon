@@ -41,14 +41,14 @@ describe('a spread whose source is not a bare identifier', () => {
     const r = transform(APP, { target })
     expect(r.warnings).toEqual([])
     if (target === 'swift') {
-      expect(r.code).toContain('u = { var c = u; c.age = u.age + 1; return c }()')
+      expect(r.code).toContain('u = { var c = u; c.age = pyreonAdd(u.age, 1); return c }()')
       expect(r.code).toContain('u = { var c = defaults(); c.age = 5; return c }()')
       expect(r.code).toMatch(/\{ var c = user; c\.name = user\.name \+ "!"; return c \}\(\)/)
       expect(r.code).not.toMatch(/= \(age: /)
       // The spread result has its source's type, so a computed returning it is typed — not `Any`.
       expect(r.code).toContain('private var renamed: U {')
     } else {
-      expect(r.code).toContain('u = u.copy(age = u.age + 1L)')
+      expect(r.code).toContain('u = u.copy(age = pyreonAdd(u.age, 1L))')
       expect(r.code).toContain('u = defaults().copy(age = 5L)')
       expect(r.code).toMatch(/user\.copy\(name = user\.name \+ "!"\)/)
       expect(r.code).not.toMatch(/= \(age = /)
