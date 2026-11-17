@@ -5,7 +5,8 @@ import type {
   ValidateFn,
   ValidationIssue,
 } from './types'
-import type { InferSchema, StandardSchemaTyped } from './schema'
+import type { StandardTypedV1 } from '@standard-schema/spec'
+import type { InferSchema } from './schema'
 import { emptyErrors, flattenIssuePath, formLevelError, issuesToRecord } from './utils'
 
 /**
@@ -72,7 +73,7 @@ type InternalParseFn = (
  * form.register('email')    // ✅ OK
  * form.register('invalid')  // ❌ Type error!
  */
-export function valibotSchema<S extends StandardSchemaTyped>(
+export function valibotSchema<S extends StandardTypedV1<unknown, Record<string, unknown>>>(
   schema: S,
   safeParseFn: GenericSafeParseFn,
 ): TypedSchemaAdapter<InferSchema<S>>

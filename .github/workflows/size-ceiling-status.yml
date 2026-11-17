@@ -2,10 +2,12 @@ name: Size Ceiling Status
 
 # A pull request is judged on the bytes it adds, so several merges can together
 # take an entry over its ceiling with every pull request green. Main's push run
-# is where that shows: the `Build` job's size steps run against the ceilings
-# and go red. Nobody watches main's Actions tab, so this workflow keeps ONE
-# sticky issue in step with those steps: a red size step creates the issue or
-# comments on it, and the next run where all three pass closes it.
+# is where that shows: the size steps run against the ceilings and go red
+# (three in the `Build` job, and `Check Site Route Budgets` in the e2e cell
+# that runs the docs suite). Nobody watches main's Actions tab, so this
+# workflow keeps ONE sticky issue in step with those steps: a red size step
+# creates the issue or comments on it, and the next run where all four pass
+# closes it.
 #
 # A `workflow_run` trigger, not a job in ci.yml: it runs in the default-branch
 # context with `issues: write`, which the Build job (it runs pull request code)
@@ -58,6 +60,15 @@ jobs:
               name,
               conclusion: (build.steps ?? []).find((s) => s.name === name)?.conclusion ?? 'missing',
             }))
+            // The site step runs in the one e2e cell that ran the docs suite;
+            // every other cell skips it. No cell with a verdict reads as
+            // `missing`, which is no verdict: it cannot close an open issue.
+            const siteName = 'Check Site Route Budgets'
+            const site = jobs
+              .filter((j) => j.name.startsWith('e2e ('))
+              .flatMap((j) => j.steps ?? [])
+              .find((s) => s.name === siteName && (s.conclusion === 'success' || s.conclusion === 'failure'))
+            steps.push({ name: siteName, conclusion: site?.conclusion ?? 'missing' })
             const red = steps.filter((s) => s.conclusion === 'failure')
             // `skipped`/`missing` is no verdict (an earlier step failed first):
             // it must not close an open issue.
@@ -72,7 +83,7 @@ jobs:
             const sticky = issues.find((i) => i.title === title)
             if (red.length > 0) {
               const line = [
-                `Size steps failed on \`${run.head_sha.slice(0, 9)}\`: ${build.html_url}`,
+                `Size steps failed on \`${run.head_sha.slice(0, 9)}\`: ${run.html_url}`,
                 ...steps.map((s) => `- ${s.name}: **${s.conclusion}**`),
               ].join('\n')
               if (sticky) {
@@ -86,16 +97,17 @@ jobs:
                     'An entry on `main` is over its ceiling in `scripts/size-budgets/`. No single pull request',
                     'crossed it: each is judged on the bytes it adds, and their sum went over.',
                     '',
-                    'Until this is fixed, `Build` is red on every push to `main`, and a pull request that adds',
+                    'Until this is fixed, that size step is red on every push to `main`, and a pull request that adds',
                     'bytes to the same entry fails. Pull requests that do not touch it are not affected.',
                     '',
                     'To fix: open the failed step in the linked run for the entry and its size. Shrink it, or',
                     'accept the size in ONE pull request with `--update=<id>` on the matching gate',
-                    '(`bun run check-bundle-budgets`, `check-import-budgets` or `check-route-budgets`) and say',
+                    '(`bun run check-bundle-budgets`, `check-import-budgets`, `check-route-budgets` or',
+                    '`check-site-budgets`) and say',
                     'what the bytes bought. See "Size gates" in `.agents/guides/ci/README.md`.',
                     '',
                     'This issue is managed by `size-ceiling-status.yml`: one comment per red run, and it closes',
-                    'itself on the next run where all three size steps pass.',
+                    'itself on the next run where all four size steps pass.',
                     '',
                     line,
                   ].join('\n'),
@@ -106,7 +118,7 @@ jobs:
                 owner,
                 repo,
                 issue_number: sticky.number,
-                body: `All three size steps pass on \`${run.head_sha.slice(0, 9)}\`: ${build.html_url} — closing.`,
+                body: `All four size steps pass on \`${run.head_sha.slice(0, 9)}\`: ${run.html_url} — closing.`,
               })
               await github.rest.issues.update({ owner, repo, issue_number: sticky.number, state: 'closed' })
             }

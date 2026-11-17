@@ -31,7 +31,7 @@ import * as v from 'valibot'
 import { afterEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { extractParseFn, wrapStandardSchema } from '../schema'
-import type { StandardSchemaLike } from '../types'
+import type { StandardSchemaV1 } from '../types'
 
 // Raw schemas — passed DIRECTLY (Tier A.2), no Pyreon adapter.
 const valibotUser = v.object({ name: v.string(), age: v.number() })
@@ -40,7 +40,7 @@ const arkUser = type({ name: 'string', age: 'number' })
 
 describe('wrapStandardSchema — issues-first discriminant (raw valibot)', () => {
   const parse = wrapStandardSchema<{ name: string; age: number }>(
-    valibotUser as unknown as StandardSchemaLike,
+    valibotUser as unknown as StandardSchemaV1,
   )
 
   it("valibot's FAILURE result carries BOTH `value` and `issues` (the trap shape)", () => {
@@ -115,7 +115,7 @@ describe('wrapStandardSchema — async valibot schema still surfaces the Promise
       name: v.pipeAsync(v.string(), v.checkAsync(async () => true)),
     })
     const parse = wrapStandardSchema<{ name: string }>(
-      asyncSchema as unknown as StandardSchemaLike,
+      asyncSchema as unknown as StandardSchemaV1,
     )
     // The wrapper must NOT swallow the Promise into an ok/issues verdict —
     // store/state-tree probe for it and throw "async unsupported".

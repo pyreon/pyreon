@@ -394,6 +394,52 @@ test.describe('/brand/kit', () => {
   }
 })
 
+/**
+ * The linked card (`GlowCard href`) and the link tag (`Tag href`), in a real
+ * browser: each is ONE tab stop, shows the ember focus ring when reached by
+ * the keyboard, and a linked card holds nothing interactive of its own.
+ */
+test.describe('linked cards and link tags in a real browser', () => {
+  /** Reach `target` with the Tab key (from a probe button placed just before it), so `:focus-visible` applies. */
+  const tabTo = async (page: Page, target: Locator) => {
+    await target.evaluate((el) => {
+      const probe = document.createElement('button')
+      probe.id = 'e2e-tab-probe'
+      probe.textContent = 'probe'
+      el.before(probe)
+    })
+    await page.locator('#e2e-tab-probe').focus()
+    await page.keyboard.press('Tab')
+  }
+  const ring = (target: Locator) => target.evaluate((el) => ({ focused: document.activeElement === el, style: getComputedStyle(el).outlineStyle, width: getComputedStyle(el).outlineWidth }))
+
+  for (const path of ['/', '/products', '/migrate/react', '/brand/kit']) {
+    test(`${path}: every linked card is one tab stop with a visible focus ring`, async ({ page }) => {
+      await page.goto(path)
+      const cards = page.locator('a[data-card]')
+      expect(await cards.count(), 'linked cards on the page').toBeGreaterThan(0)
+      // Nothing interactive inside a linked card (nested links are invalid and give two tab stops).
+      const nested = await cards.evaluateAll((as) => as.filter((a) => a.querySelector('a, button, input, select, textarea, summary, [tabindex]')).map((a) => a.getAttribute('href')))
+      expect(nested).toEqual([])
+      const first = cards.first()
+      await first.scrollIntoViewIfNeeded()
+      await tabTo(page, first)
+      expect(await ring(first)).toEqual({ focused: true, style: 'solid', width: '2px' })
+      // The next Tab leaves the card: it was one stop.
+      await page.keyboard.press('Tab')
+      expect(await first.evaluate((el) => el.contains(document.activeElement))).toBe(false)
+    })
+  }
+
+  test('a link tag (the benchmarks jump list) shows the focus ring', async ({ page }) => {
+    await page.goto('/benchmarks')
+    const tag = page.locator('nav a[href^="#"]').first()
+    await tag.scrollIntoViewIfNeeded()
+    await tabTo(page, tag)
+    expect(await ring(tag)).toEqual({ focused: true, style: 'solid', width: '2px' })
+  })
+})
+
 test.describe('/brand/kit layout primitives in a real browser', () => {
   // Visible switches at the split width (700px) to the pixel: hidden on one side, shown on the other.
   for (const [width, wide] of [[699, false], [700, true], [375, false], [1280, true]] as const) {

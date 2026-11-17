@@ -1,7 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { gzipSync } from 'node:zlib'
 import { waitForDocs } from './docs-islands'
 import { SITE_WIDTHS } from './site-audit'
 
@@ -300,8 +299,8 @@ test.describe('selling slots on every overview page', () => {
   })
 })
 
-/** Same-origin JavaScript and CSS a page requests while it loads and settles (gzip -9 of the built files). */
-async function weigh(page: Page, path: string): Promise<{ js: number; css: number; files: string[] }> {
+/** Same-origin files a page requests while it loads and settles. */
+async function requested(page: Page, path: string): Promise<string[]> {
   const urls = new Set<string>()
   page.on('request', (r) => {
     const u = new URL(r.url())
@@ -310,62 +309,48 @@ async function weigh(page: Page, path: string): Promise<{ js: number; css: numbe
   await page.goto(path)
   await page.waitForLoadState('networkidle')
   await page.waitForTimeout(500)
-  let js = 0
-  let css = 0
-  for (const u of urls) {
-    const file = resolve(DIST, `.${u}`)
-    if (!existsSync(file) || statSync(file).isDirectory()) continue
-    const size = gzipSync(readFileSync(file), { level: 9 }).length / 1024
-    if (u.endsWith('.js')) js += size
-    else if (u.endsWith('.css')) css += size
-  }
-  return { js, css, files: [...urls] }
+  return [...urls]
 }
 
 /**
- * JavaScript a docs page loads before any live example or demo: the client
- * entry, island hydration, the site nav, the docs search box and the page's
- * enhance island. Measured 2026-11-11 on feat/site-int-c (docs pages static
- * with islands): 49.7–50.4 KB on the docs home, a guide and reference pages
- * (the router-app docs measured 141–182 KB). The budget is that plus ~2 KB.
- * A page with live examples adds the example island and each example file
- * (/docs/guides/forms: +6 KB before its examples load); a product overview
- * adds its demo.
+ * What a docs page loads before any live example or demo: the client entry,
+ * island hydration, the site nav, the docs search box and the page's enhance
+ * island. Never the router app, never a marketing stylesheet.
+ *
+ * The bytes are not asserted here: `check-site-budgets` judges them against
+ * `scripts/size-budgets/sites/docs.json` (the four pages below are in it).
  */
-const DOCS_JS_BUDGET_KB = 52
-
 test.describe('docs page weight', () => {
-  test(`a docs page loads at most ${DOCS_JS_BUDGET_KB} KB of JavaScript, no router app, and only docs CSS`, async ({ page }) => {
+  test('a docs page loads no router app, and only docs CSS', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     for (const path of [PAGES.home, '/docs/guides/testing', PAGES.reference, '/docs/reference/core']) {
-      const w = await weigh(page, path)
-      console.log(`${path}: JS ${w.js.toFixed(1)} KB, CSS ${w.css.toFixed(1)} KB gzip, ${w.files.length} requests`)
-      expect(w.js, path).toBeLessThanOrEqual(DOCS_JS_BUDGET_KB)
+      const files = await requested(page, path)
+      expect(files.some((f) => f.endsWith('.js')), `${path} loads JavaScript`).toBe(true)
       // No route module, router or app client: the page never hydrates as a whole.
-      expect(w.files.filter((f) => /\/assets\/(app-client|link|_\.\.\.slug_|layout)-/.test(f)), path).toEqual([])
+      expect(files.filter((f) => /\/assets\/(app-client|link|_\.\.\.slug_|layout)-/.test(f)), path).toEqual([])
       // Docs CSS, never the marketing-only sheets.
-      expect(w.files.some((f) => /\/assets\/docs-v3-.*\.css$/.test(f)), path).toBe(true)
-      expect(w.files.filter((f) => /\/assets\/(site-pages|blog)-.*\.css$/.test(f)), path).toEqual([])
+      expect(files.some((f) => /\/assets\/docs-v3-.*\.css$/.test(f)), path).toBe(true)
+      expect(files.filter((f) => /\/assets\/(site-pages|blog)-.*\.css$/.test(f)), path).toEqual([])
     }
   })
 
   test('a marketing page loads no docs CSS', async ({ page }) => {
     for (const path of ['/', '/products/form']) {
-      const w = await weigh(page, path)
-      expect(w.files.filter((f) => /\/assets\/docs-v3-.*\.css$/.test(f)), path).toEqual([])
+      const files = await requested(page, path)
+      expect(files.filter((f) => /\/assets\/docs-v3-.*\.css$/.test(f)), path).toEqual([])
     }
   })
 
   test('an overview page loads its own demo and no other', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
-    const w = await weigh(page, PAGES.overview)
+    const files = await requested(page, PAGES.overview)
     // Scroll the demo into view so its island hydrates.
     await page.locator('#try-it').scrollIntoViewIfNeeded()
     await page.locator('#dx-demo-form-preview input[type="email"]').waitFor()
-    const demos = w.files.filter((f) => /\/assets\/Demo[A-Z]\w*-/.test(f)).map((f) => /Demo[A-Z]\w*/.exec(f)![0])
+    const demos = files.filter((f) => /\/assets\/Demo[A-Z]\w*-/.test(f)).map((f) => /Demo[A-Z]\w*/.exec(f)![0])
     expect([...new Set(demos)].filter((d) => d !== 'DemoForm')).toEqual([])
-    const guide = await weigh(page, PAGES.guide)
-    expect(guide.files.filter((f) => /\/assets\/Demo[A-Z]\w*-/.test(f))).toEqual([])
+    const guide = await requested(page, PAGES.guide)
+    expect(guide.filter((f) => /\/assets\/Demo[A-Z]\w*-/.test(f))).toEqual([])
   })
 })
 
