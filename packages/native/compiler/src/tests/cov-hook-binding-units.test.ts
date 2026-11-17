@@ -9,9 +9,13 @@ import { canonicalizeHookBindings } from '../hook-binding'
 
 const HOOKS = new Set(['useOnline', 'useQuery'])
 
-function run(src: string, claims?: (hook: string, source: string) => boolean) {
+function run(
+  src: string,
+  claims?: (hook: string, source: string) => boolean,
+  unloadedOwner?: (source: string) => string | undefined,
+) {
   const program = parseSync('a.tsx', src, { sourceType: 'module', lang: 'tsx' }).program as unknown as Record<string, unknown>
-  const warnings = canonicalizeHookBindings(program, HOOKS, claims)
+  const warnings = canonicalizeHookBindings(program, HOOKS, claims, unloadedOwner)
   const names: string[] = []
   const visit = (n: unknown): void => {
     if (Array.isArray(n)) return n.forEach(visit)
@@ -25,6 +29,23 @@ function run(src: string, claims?: (hook: string, source: string) => boolean) {
 }
 
 describe('canonicalizeHookBindings', () => {
+  it('a hook imported under its own name from a package whose plugin is not loaded names that package, once', () => {
+    const r = run(
+      `import { useOnline, useQuery } from '@pyreon/query'\nexport const a = [useOnline(), useQuery()]`,
+      () => false,
+      (source) => (source === '@pyreon/query' ? '@pyreon/query' : undefined),
+    )
+    expect(r.warnings).toHaveLength(1)
+    expect(r.warnings[0]).toContain('`useOnline`, `useQuery` (from @pyreon/query) have NO native lowering in this compile')
+    expect(r.warnings[0]).toContain("Declare @pyreon/query in the app's package.json dependencies")
+    expect(r.names).toContain('useOnline_')
+  })
+
+  it('an aliased import from a package whose plugin is not loaded keeps the alias warning', () => {
+    const r = run(`import { useQuery as useOnline } from '@pyreon/query'\nexport const a = useOnline()`, undefined, () => '@pyreon/query')
+    expect(r.warnings[0]).toContain('not as the `useOnline` hook')
+  })
+
   it('a framework hook imported under a DIFFERENT name from a @pyreon package is renamed and named', () => {
     const r = run(`import { useQuery as useOnline } from '@pyreon/query'\nexport const a = useOnline()`)
     expect(r.warnings[0]).toContain('`useOnline` is imported here as `useQuery` from `@pyreon/query`, not as the `useOnline` hook')

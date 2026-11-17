@@ -56,7 +56,8 @@ describe('<Field kind="date" | "time" | "datetime"> — the emit', () => {
     const { swift, kotlin } = both(
       `<Field kind="date" value={day()} onChangeText={(v) => day.set(v)} min={earliest()} max="2026-12-31" placeholder="Day" disabled data-testid="d" />`,
     )
-    expect(swift.code).toMatch(/PyreonDateField\(value: Binding\([\s\S]*\), kind: \.date, min: earliest, max: "2026-12-31", placeholder: "Day"\)/)
+    // `value={day()}` with a handler that only sets `day` is the `$day` binding.
+    expect(swift.code).toContain('PyreonDateField(value: $day, kind: .date, min: earliest, max: "2026-12-31", placeholder: "Day")')
     expect(swift.code).toContain('.disabled(true)')
     expect(swift.code).toContain('.accessibilityIdentifier("d")')
     expect(kotlin.code).toContain(

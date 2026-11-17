@@ -380,6 +380,33 @@ export default function Post() {
 
 The inverse pattern — a cacheable page with per-request **server**-rendered holes — is **server islands** (`serverIsland()`). That's a different feature; see [Zero → Server Islands](/docs/zero#server-islands).
 
+## Island lifecycle
+
+An island lives as long as its DOM is part of the page, and ends the same way whatever removed it.
+
+| How the island leaves | What ends it |
+| --- | --- |
+| Client-side navigation in a zero / `@pyreon/router` app (push, replace, back/forward, same or cross layout), the router's HMR route swap | The `island()` marker unmounts with the route content |
+| `<Show>` / `<For>` / `<Switch>` removing it, a parent re-render replacing its host, a Suspense fallback swapped for content | The marker unmounts with its parent |
+| A static page (`hydrateIslands` / `hydrateIslandsAuto`) whose host removes or replaces island DOM itself (an `innerHTML` swap, its own page transition), or an HMR re-run of the entry | Call the cleanup `hydrateIslands()` returned. Removal the framework did not perform is not observed |
+| A full page load / tab close | The page is gone; nothing to do. A page restored from the back/forward cache comes back with its islands still live |
+
+Ending an island means, depending on how far it got:
+
+- **hydrated** — it is unmounted: `onUnmount` runs once, effects and `onMount` cleanups run, timers and listeners registered there stop, its DOM is removed;
+- **trigger still pending** (`visible`, `idle`, `media(...)`, `interaction`, and any `prefetch`) — the observer / idle callback / listener is cancelled and the chunk is never requested;
+- **chunk still loading** — it never mounts when the chunk lands.
+
+Navigating back to the page mounts one fresh instance; an island is never hydrated twice, even if `hydrateIslands()` runs again without its cleanup.
+
+```ts title="entry-client.ts (static islands page)"
+import { hydrateIslandsAuto } from '@pyreon/server/client'
+import * as registry from 'virtual:pyreon/islands-registry'
+
+const cleanup = hydrateIslandsAuto(registry)
+if (import.meta.hot) import.meta.hot.dispose(cleanup)
+```
+
 ## Foot-guns — caught by audits
 
 Pyreon ships static + runtime gates that catch the recurring island foot-guns at build time, not at runtime against a confused user.

@@ -22,7 +22,7 @@ As of 10 November 2026:
 | published packages | 77 |
 | test files (`*.test.ts[x]`) | 3,736 |
 | of which run in real Chromium (`*.browser.test.ts[x]`) | 272 |
-| `@pyreon/core` versions on npm | 112, from 0.1.0 (15 March) to 0.53.0 (13 October) |
+| `@pyreon/core` releases on npm, 15 March to 13 October | 112 |
 | docs pages | 200+ |
 
 Commits per month on `main`:
@@ -33,7 +33,7 @@ Commits per month on `main`:
 
 ## March and April: the core takes shape
 
-The first releases, 0.1.0 and 0.1.1 on 15 March, already had the shape Pyreon still has: `signal`, `computed`, `effect` and `batch` in `@pyreon/reactivity`; `h()`, `<For>`, `<Show>`, `Suspense` and context in `@pyreon/core`; `mount` and `hydrateRoot` in `@pyreon/runtime-dom`; `renderToString` and `renderToStream` on the server; a router and head management. Zero, the meta-framework, moved into the monorepo on 26 March (#92).
+The first two releases, on 15 March, already had the shape Pyreon still has: `signal`, `computed`, `effect` and `batch` in `@pyreon/reactivity`; `h()`, `<For>`, `<Show>`, `Suspense` and context in `@pyreon/core`; `mount` and `hydrateRoot` in `@pyreon/runtime-dom`; `renderToString` and `renderToStream` on the server; a router and head management. Zero, the meta-framework, moved into the monorepo on 26 March (#92).
 
 On 21 April the JSX compiler got a Rust backend through napi-rs (#274). It came with a rule that has held all year: the Rust and JavaScript backends emit byte-identical output, enforced by equivalence and fuzz tests, and any change to the emitted code lands in both in the same PR.
 
