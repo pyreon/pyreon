@@ -475,8 +475,8 @@
      "text": "Scans changed files, prints each finding with its fix, `--fix` applies the auto-fixable ones, exits non-zero in CI."
     },
     {
-     "name": "133 lint rules",
-     "text": "In 25 categories, from destructured props and context to browser globals in server code."
+     "name": "140 lint rules",
+     "text": "In 26 categories, from destructured props and context to browser globals in server code."
     }
    ],
    "example": {
@@ -812,7 +812,7 @@
    "path": "facts.md 'Native mappings'; docs primitives.md"
   },
   {
-   "claim": "MCP 24 tools, 133 lint rules, pyreon check, Reactivity Lens",
+   "claim": "MCP 24 tools, 140 lint rules, pyreon check, Reactivity Lens",
    "path": "facts.md AI lines"
   },
   {

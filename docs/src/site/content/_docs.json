@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 222,
+  "pageCount": 223,
   "pages": [
    {
     "path": "a11y.md",
@@ -296,6 +296,11 @@
     "path": "lathe.md",
     "title": "Lathe",
     "href": "/docs/lathe"
+   },
+   {
+    "path": "lint-readable.md",
+    "title": "Readable preset",
+    "href": "/docs/lint-readable"
    },
    {
     "path": "lint.md",
@@ -1979,6 +1984,10 @@
       {
        "title": "Lint",
        "href": "/docs/lint"
+      },
+      {
+       "title": "Readable preset",
+       "href": "/docs/lint-readable"
       },
       {
        "title": "Reactivity Lens",

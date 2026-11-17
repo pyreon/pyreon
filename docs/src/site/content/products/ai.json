@@ -17,7 +17,7 @@
    },
    {
     "key": "checks",
-    "value": "41 detector codes<small>19 React habits · 20 Pyreon mistakes · 2 native hazards</small>"
+    "value": "42 detector codes<small>19 React habits · 21 Pyreon mistakes · 2 native hazards</small>"
    },
    {
     "key": "in the editor",
@@ -251,9 +251,9 @@
    "source": "tools/list over stdio from packages/tools/mcp/lib/index.js, 11 Nov 2026 (scratch mcp-client.mjs)"
   },
   {
-   "stat": "41",
+   "stat": "42",
    "label": "detector codes behind `validate`: React habits, Pyreon misuse and native-build hazards, each with a fix.",
-   "source": "Codes that a detector emits: ReactDiagnosticCode in packages/core/compiler/src/react-intercept.ts:23 (24 declared, 19 emitted; use-layout-effect, dangerously-set-inner-html, key-on-for-child, create-context-import, use-context-import are declared only), PyreonDiagnosticCode (20, all emitted) in pyreon-intercept.ts:113, NativeFindingCode (2) in packages/native/compiler/src/native-audit.ts:39 via packages/tools/mcp/src/native-detect.ts"
+   "source": "Codes that a detector emits: ReactDiagnosticCode in packages/core/compiler/src/react-intercept.ts:32 (19, all emitted; #4476 removed the five declared-only codes), PyreonDiagnosticCode (21, all emitted; for-stale-item-field added in #4477) in pyreon-intercept.ts:122, NativeFindingCode (2) in packages/native/compiler/src/native-audit.ts:41 via packages/tools/mcp/src/native-detect.ts"
   },
   {
    "stat": "522",
@@ -310,8 +310,8 @@
    "path": "raw tools/list (scratch rawlist.mjs, sizes.mjs); packages/tools/mcp/src/index.ts:151 (server.tool without description); src/tests/token-budget.test.ts"
   },
   {
-   "claim": "41 detector codes = 19 emitted React codes (of 24 declared) + 20 Pyreon + 2 native",
-   "path": "packages/core/compiler/src/react-intercept.ts:23–47; pyreon-intercept.ts:113–133; packages/native/compiler/src/native-audit.ts:39"
+   "claim": "42 detector codes = 19 React codes (all emitted) + 21 Pyreon + 2 native",
+   "path": "packages/core/compiler/src/react-intercept.ts:32–50; pyreon-intercept.ts:122–143; packages/native/compiler/src/native-audit.ts:41"
   },
   {
    "claim": "Native checks need optional peer @pyreon/native-compiler; validate says when skipped",

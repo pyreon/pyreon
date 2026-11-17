@@ -2,7 +2,7 @@
   "name": "pyreon-lint",
   "displayName": "Pyreon Lint",
   "version": "0.13.1",
-  "description": "Pyreon-specific lint rules for VS Code — signals, JSX, SSR, performance, reactivity",
+  "description": "Pyreon-specific lint rules for VS Code \u2014 signals, JSX, SSR, performance, reactivity",
   "categories": [
     "Linters"
   ],
@@ -51,6 +51,9 @@
     "onLanguage:typescriptreact"
   ],
   "engines": {
-    "vscode": "^1.75.0"
+    "vscode": "^1.91.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^11.0.0"
   }
 }
