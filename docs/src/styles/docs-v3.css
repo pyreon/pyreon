@@ -3,8 +3,11 @@
 
    Colours, fonts and radii are ONLY `var(--dx-…)`: `src/docs-ui/tokens.ts`
    builds them from `site/theme.ts` and the docs layout puts them in the head.
+   Scale tokens (space, radius, type sizes, leading, tracking, durations,
+   easings, z layers) are `var(--s-…)`, generated from the same file by
+   `site/theme-vars.ts` and present on every page; new rules use them.
    Layout numbers follow visual-alignment.md §D; the breakpoints below are
-   `docsLayout` in tokens.ts (railBreak 1180, drawerBreak 960, narrow 640),
+   `docsLayout` in site/theme.ts (railBreak 1180, drawerBreak 960, narrow 640),
    and `docs-v3-css.test.ts` fails if they drift apart.
 
    In the `docs` cascade layer (declared first in index.html): the UI kit's
@@ -902,7 +905,7 @@
   position: absolute;
   left: -9999px;
   top: 76px;
-  z-index: 60;
+  z-index: var(--s-z-docsSkip);
   padding: 8px 14px;
   border-radius: 8px;
   background: var(--dx-solid-bg);
@@ -1064,7 +1067,7 @@
 .dx-ask { position: relative; }
 .dx-ask__menu {
   position: absolute;
-  z-index: 30;
+  z-index: var(--s-z-docsMenu);
   top: calc(100% + 6px);
   left: 0;
   display: grid;

@@ -2,7 +2,7 @@
  * End-to-end tests for `@pyreon/preact-compat` running in real Chromium.
  *
  * Compat-layer counterpart to the `@pyreon/react-compat` e2e suite.
- * Same intent: prove the example app at `examples/preact-compat` boots,
+ * Same intent: prove the example app at `examples/compat/preact` boots,
  * renders, and exercises Preact's API (h / Fragment / hooks) end-to-end
  * through Pyreon's reactive engine.
  *

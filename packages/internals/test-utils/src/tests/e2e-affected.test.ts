@@ -31,7 +31,7 @@ import {
 
 describe('selectSuites', () => {
   it('all=true → every suite (push:main / merge_group never narrows)', () => {
-    expect(selectSuites(['examples/playground/x.ts'], { all: true })).toEqual(
+    expect(selectSuites(['examples/fixtures/playground/x.ts'], { all: true })).toEqual(
       SUITES,
     )
     // all wins even over an otherwise-empty / null change set
@@ -53,7 +53,7 @@ describe('selectSuites', () => {
   })
 
   it('a cssvars-bench / spec change selects the cssvars suite', () => {
-    expect(selectSuites(['examples/cssvars-bench/src/main.tsx']).map((x) => x.name)).toContain(
+    expect(selectSuites(['examples/fixtures/cssvars/src/main.tsx']).map((x) => x.name)).toContain(
       'cssvars',
     )
     expect(selectSuites(['e2e/cssvars-showcase.spec.ts']).map((x) => x.name)).toContain('cssvars')
@@ -81,15 +81,15 @@ describe('selectSuites', () => {
       expect(forcesFullRun(broad)).toBe(true)
       // even mixed with an otherwise-narrow change, the broad file wins
       expect(
-        selectSuites([broad, 'examples/playground/only.ts']),
+        selectSuites([broad, 'examples/fixtures/playground/only.ts']),
       ).toEqual(SUITES)
     }
   })
 
   it('forcesFullRun is NOT triggered by ordinary example / leaf-package files', () => {
     for (const narrow of [
-      'examples/playground/src/App.tsx',
-      'examples/ssr-showcase/src/routes/index.tsx',
+      'examples/fixtures/playground/src/App.tsx',
+      'examples/fixtures/ssr-showcase/src/routes/index.tsx',
       'packages/fundamentals/flow/src/flow.ts',
       'e2e/zero-hmr.spec.ts',
       'README.md',
@@ -109,7 +109,7 @@ describe('selectSuites', () => {
     expect(forcesFullRun('scripts/check-bundle-budgets.ts')).toBe(true)
     expect(forcesFullRun('scripts/serve-ssg.ts')).toBe(true)
     expect(selectSuites(['scripts/size-budgets/packages/core.json', 'scripts/size-budgets/apps/ssr-showcase.json'])).toEqual([])
-    const withCode = selectSuites(['scripts/size-budgets/packages/core.json', 'examples/ssr-showcase/src/routes/index.tsx'])
+    const withCode = selectSuites(['scripts/size-budgets/packages/core.json', 'examples/fixtures/ssr-showcase/src/routes/index.tsx'])
     expect(withCode.length).toBeGreaterThan(0)
     expect(withCode.length).toBeLessThan(SUITES.length)
   })
@@ -127,7 +127,7 @@ describe('selectSuites', () => {
 
   it('ssr-showcase example change → the ssr/i18n/hmr family (its real blast radius)', () => {
     const names = selectSuites([
-      'examples/ssr-showcase/src/routes/about.tsx',
+      'examples/fixtures/ssr-showcase/src/routes/about.tsx',
     ]).map((s) => s.name)
     // core (playground+ssr-showcase+fundamentals), ssg-subpath, ssg-i18n,
     // ssg-i18n-prefix, zero-hmr all boot ssr-showcase.
@@ -159,6 +159,11 @@ describe('selectSuites', () => {
     // nothing ever ran them. Lock the registration, not just the script.
     expect(selectSuites(['docs/src/components/Header.tsx']).map((s) => s.name)).toContain('docs')
     expect(selectSuites(['docs/src/routes/_layout.tsx']).map((s) => s.name)).toContain('docs')
+    // The marketing site, the docs shell, their stylesheets and the site specs
+    // are site code too: their budgets and contrast checks live in this suite.
+    for (const f of ['docs/src/site/kit/cards.tsx', 'docs/src/docs-ui/toc.tsx', 'docs/src/styles/docs-v3.css', 'docs/src/blog/views/prose.ts', 'e2e/site-home.spec.ts', 'e2e-configs/docs.config.ts']) {
+      expect(selectSuites([f]).map((s) => s.name), f).toContain('docs')
+    }
   })
 
   it('a compiler change selects the docs suite', () => {

@@ -6,7 +6,7 @@ The Pyreon Multi-Target Compiler (`packages/native/compiler`) emits SwiftUI and 
 
 - The emit vocabulary is complete: every canonical primitive maps to both targets.
 - That does not mean every package works on native, that every capability is device-proven, or that the output is production-ready.
-- The one authoritative score is the capability matrix in `docs/src/content/docs/multiplatform.md`. `scripts/check-multiplatform-matrix.ts` recomputes the headline from the table. Never quote a number from memory; edit the table and paste the headline the gate prints.
+- The one authoritative score is the capability matrix in `docs/src/content/docs/multiplatform.md`. `scripts/check-multiplatform-matrix.ts` recomputes the headline from the table and checks the "Maturity by area" tiers (Beta ≥ 0.8, Experimental ≥ 0.4, else Not ready) plus every `**Beta areas:**` / `**Not-ready areas:**` summary line in the docs against the fractions. Never quote a number from memory; edit the table and paste the headline the gate prints.
 
 ## Reality checks
 

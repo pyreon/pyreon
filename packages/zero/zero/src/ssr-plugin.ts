@@ -37,7 +37,7 @@
  * plugin (`ssg-plugin.ts`); SPA needs no SSR bundle.
  *
  * **Synthetic-vs-user-entry contract.** The synthetic entry mirrors
- * `examples/ssr-showcase/src/entry-server.ts`:
+ * `examples/fixtures/ssr-showcase/src/entry-server.ts`:
  *
  *     import { routes } from "virtual:zero/routes"
  *     import { routeMiddleware } from "virtual:zero/route-middleware"
