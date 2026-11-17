@@ -478,6 +478,39 @@ function jsxTagName(node: N): string {
 }
 
 /**
+ * The ONE tag rule, shared by every "is this a component?" decision (#4368).
+ * An identifier tag names a DOM element when its first character is an ASCII
+ * lowercase letter (`div`, `my-el`) — the rule the downstream JSX transforms
+ * (TypeScript, esbuild, oxc, Babel) use to choose a string tag over a value —
+ * and a component otherwise (`Comp`, `_Comp`, `$Comp`). Mirrors
+ * `is_lower_case` / `is_component_tag` in `native/src/lib.rs`.
+ */
+function isLowerCase(s: string): boolean {
+  const c = s.charCodeAt(0)
+  return c >= 97 && c <= 122
+}
+
+/** Identifier tag that names a component (see `isLowerCase`). */
+function isComponentTag(tag: string): boolean {
+  return tag.length > 0 && !isLowerCase(tag)
+}
+
+/**
+ * Is this JSX element a COMPONENT? A member tag (`<m.X>`, `<UI.Button>`,
+ * `<Ctx.Provider>`, `<motion.div>`, `<this.X>`) always is — it names a value,
+ * as in every JSX dialect — and an identifier tag is by `isComponentTag`. A
+ * namespaced tag (`<svg:a>`) is not. Every component form compiles the same:
+ * `_rp` / `_pp` / `_rpd` props, `_wrapSpread` spreads, accessor children,
+ * `_lc` for a sole template child. Mirrors `is_component_element` (lib.rs).
+ */
+function isComponentElement(node: N): boolean {
+  const name = node?.openingElement?.name
+  if (!name) return false
+  if (name.type === 'JSXMemberExpression') return true
+  return name.type === 'JSXIdentifier' && isComponentTag(name.name as string)
+}
+
+/**
  * The QUALIFIED name of a JSX attribute — the ONE reader for the whole emitter.
  *
  * `xlink:href` parses as a `JSXNamespacedName`, not a `JSXIdentifier`, and every
@@ -604,8 +637,7 @@ export function scanCollapsibleSites(
       const tag = jsxTagName(node)
       const imp = tag ? imports.get(tag) : undefined
       if (
-        tag &&
-        tag.charAt(0) !== tag.charAt(0).toLowerCase() &&
+        isComponentTag(tag) &&
         imp &&
         collapsibleSources.has(imp.source)
       ) {
@@ -744,7 +776,7 @@ export function detectStaticElementChild(node: N): StaticChildNode | null {
   if (node?.type !== 'JSXElement') return null
   const tag = jsxTagName(node)
   // Component (uppercase first char) → has its own reactivity → bail.
-  if (!tag || tag.charAt(0) !== tag.charAt(0).toLowerCase()) return null
+  if (!tag || !isLowerCase(tag)) return null
 
   const props: Record<string, string> = {}
   for (const attr of jsxAttrs(node)) {
@@ -1510,7 +1542,7 @@ export function transformJSX_JS(
     const cfg = options.collapseRocketstyle
     if (!cfg) return false
     const tag = jsxTagName(node)
-    if (!tag || tag.charAt(0) === tag.charAt(0).toLowerCase()) return false
+    if (!isComponentTag(tag)) return false
     if (!cfg.candidates.has(tag)) return false
     // Shared bail catalogue — IDENTICAL to scanCollapsibleSites (the
     // plugin scans with the same predicate, so its resolved `sites`
@@ -1841,7 +1873,7 @@ export function transformJSX_JS(
   function isSoleComponentChild(node: N): boolean {
     const parent = findParent(node)
     if (!parent || parent.type !== 'JSXElement') return false
-    if (!isComponentTag(jsxTagName(parent))) return false
+    if (!isComponentElement(parent)) return false
     const kids = jsxChildren(parent).filter(
       (c: N) => !(c.type === 'JSXText' && !cleanJsxText(c.value ?? c.raw ?? '')),
     )
@@ -1885,14 +1917,11 @@ export function transformJSX_JS(
     if (parent.type === 'JSXFragment') return true
     if (parent.type === 'JSXExpressionContainer') return true
     if (parent.type !== 'JSXElement') return false
-    const tag = jsxTagName(parent)
-    // `jsxTagName` reports '' for a member/namespaced tag (`<Ctx.Provider>`),
-    // which `isComponentTag` would then read as "not a component". Those parents
-    // ARE components and are NEVER `_lc`-wrapped (the compiler classifies no
-    // member tag as a component anywhere), so they are always eager.
-    if (tag === '') return true
-    if (!isComponentTag(tag)) return false
-    return !isSoleComponentChild(node)
+    // A component parent — identifier or member tag (`<Ctx.Provider>`), one
+    // rule (`isComponentElement`) — is eager unless this is its `_lc`-deferred
+    // sole child. A namespaced tag (`<svg:a>`, `jsxTagName` == '') stays eager.
+    if (isComponentElement(parent)) return !isSoleComponentChild(node)
+    return jsxTagName(parent) === ''
   }
 
   /** Does this element tree absorb any COMPONENT child into its template? */
@@ -2936,8 +2965,7 @@ export function transformJSX_JS(
       // so the bytes (including a sync child's absence of markers and an async
       // child's `<!--$pas-->`/`<!--$pae-->` sentinels) are identical by
       // construction rather than by re-derivation.
-      const childTag = jsxTagName(child)
-      if (mode === 'recursed' && childTag && !isLowerCase(childTag)) {
+      if (mode === 'recursed' && isComponentElement(child)) {
         if (!ssrComponentChildEligible(child)) return false
         ssrEmitSourceHole(buf, child)
         needsSsrNodeImport = true
@@ -3340,9 +3368,7 @@ export function transformJSX_JS(
    * wrap there.
    */
   function handleJsxSpreadAttribute(attr: N, parentElement: N): void {
-    const tagName = jsxTagName(parentElement)
-    const isComponent = tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
-    if (!isComponent) return
+    if (!isComponentElement(parentElement)) return
     const arg = attr.argument
     if (!arg) return
     // Skip already-wrapped sources (idempotent compilation guard).
@@ -3397,8 +3423,7 @@ export function transformJSX_JS(
       return
     }
 
-    const tagName = jsxTagName(parentElement)
-    const isComponent = tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
+    const isComponent = isComponentElement(parentElement)
 
     if (isComponent) {
       const isSingleJsx = expr.type === 'JSXElement' || expr.type === 'JSXFragment'
@@ -3475,7 +3500,7 @@ export function transformJSX_JS(
       // reactive end-to-end.
       if (
         parentJsx &&
-        isComponentTag(jsxTagName(parentJsx)) &&
+        isComponentElement(parentJsx) &&
         isStableReference(expr) &&
         !referencesSignalVar(expr)
       ) {
@@ -3564,11 +3589,6 @@ export function transformJSX_JS(
     }
   }
 
-  /** Component tag — uppercase first letter. Lowercase = DOM element. */
-  function isComponentTag(tag: string): boolean {
-    return tag.length > 0 && tag.charAt(0) !== tag.charAt(0).toLowerCase()
-  }
-
   /**
    * A JSX child this template may ABSORB as a mounted component
    * (`templatizeComponentChildren`) rather than bail on.
@@ -3586,7 +3606,7 @@ export function transformJSX_JS(
     // element — `jsxTagName` reports '' for it, so the uppercase test alone
     // would misread it as "not a component".
     if (name.type !== 'JSXIdentifier') return true
-    return isComponentTag(name.name)
+    return isComponentTag(name.name as string)
   }
 
   /**
@@ -7553,10 +7573,6 @@ function isChildrenExpression(node: N, expr: string): boolean {
   if (node.type === 'Identifier' && node.name === 'children') return true
   if (expr.endsWith('.children') || expr === 'children') return true
   return false
-}
-
-function isLowerCase(s: string): boolean {
-  return s.length > 0 && s[0] === s[0]?.toLowerCase()
 }
 
 function containsJSXInExpr(node: N): boolean {

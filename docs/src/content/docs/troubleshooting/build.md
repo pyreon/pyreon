@@ -117,7 +117,7 @@ When keys come from data, `key in obj`, `obj[key]` and `obj[key] = v` consult `O
 
 Pyreon passes component children eagerly (`h(Comp, props, ...children)`). In `<PyreonUI theme={t}>{_tpl(…)}</PyreonUI>` the bind would mount the subtree before `PyreonUI` calls `provide(theme)`, and rocketstyle descendants crash with `Cannot read properties of undefined (reading 'base')`. Solid is safe with the same template+insert only because its compiler thunks component children (`get children() { … }`). Pyreon's rules today:
   - A component's sole child is deferred with `_lc`, which covers the provider case.
-  - `templatizeComponentChildren` (default on in `@pyreon/vite-plugin`) absorbs component children only in the trailing `[element*][component+]` shape. Multi-child component parents, member/namespaced tag parents, fragments and expression containers bail to `h()`.
+  - `templatizeComponentChildren` (default on in `@pyreon/vite-plugin`) absorbs component children only in the trailing `[element*][component+]` shape. Multi-child component parents (identifier or member tag), namespaced tag parents, fragments and expression containers bail to `h()`.
   - A helper call in component-child position (`<Comp>{helper()}</Comp>`) is still an eager argument; its body being in return position does not make it safe.
   - This class needs a provider above a templatized element, which synthetic fixtures rarely have. Run the real-app `ui-showcase-regression` e2e for any template-emission change.
 
@@ -203,6 +203,12 @@ TypeScript 7 removed the classic Compiler API; `typescript: ">=5.0.0"` resolved 
   - A dependency the shipped `lib/` always imports is a `dependency`, not a `peer`.
   - Guard at the use site, not at import time: `packages/core/compiler/src/ts.ts:assertClassicTs` runs before each `ts.createSourceFile` and throws a `[Pyreon]` message naming the pin. `diagnose.ts` has an `ERROR_PATTERNS` entry for `reading 'ESNext'`.
   - `bun install --frozen-lockfile` accepts the stale range metadata in `bun.lock`; do not stage lockfile churn for a range cap.
+
+---
+
+### Deciding "is this a component?" from a tag-name STRING (#4368).
+
+`jsxTagName` returns `''` for a member tag, so every site that tested the first character of that string read `<m.X>`, `<UI.Button>`, `<Ctx.Provider>` and `<motion.div>` as DOM elements: their props compiled to unbranded `() => props.b` (the component received a function; pyreon.dev's lazily imported `<m.ScalingChart>` threw on `props.scaling.sizes`), spreads lost `_wrapSpread`, and a sole template child was never `_lc`-deferred. Both backends agreed, so the equivalence oracles could not see it. Separately the identifier rule differed: JS read `<_Foo>` as a DOM element (and templated it as `<_foo>`), native as a component. **Rule: one element-level predicate decides** — `isComponentElement` (jsx.ts) / `is_component_element` (lib.rs): a member tag is always a component, a namespaced tag never, an identifier is a DOM element only when its first character is ASCII `a`–`z` (the rule TypeScript, esbuild, oxc and Babel use to pick a string tag), so `_Foo` / `$Foo` are components. Never re-derive it from `jsxTagName(…)`. Locks: `compiler/src/tests/component-tag-forms.test.ts` (metamorphic: a member tag emits exactly what the identifier-bound component does, every shape × mode × backend), the member-tag arm of `fuzz-equivalence.test.ts` (same oracle over the grammar), `runtime-dom/src/tests/compiled-member-component-props.test.tsx` (mounted, both backends). Residual: a capitalised hyphenated tag (`<My-El>`) is still a component here while TypeScript treats it as intrinsic.
 
 ---
 
