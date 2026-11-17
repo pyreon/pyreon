@@ -206,6 +206,12 @@ export type DeclIR =
       beforeEach?: string[]
       afterEach?: string[]
       /**
+       * The guards above that take NO parameter (`afterEach: [countVisit]` with `function countVisit()`). The native
+       * routers call every guard with the target path, so the emit adapts these with a closure that drops it — a bare
+       * reference has the wrong function type on both targets.
+       */
+      zeroArgGuards?: string[]
+      /**
        * `createRouter({ tabs: [{ name, root }] })` — per-tab back stacks
        * (#4060). Literal names and roots only; the router runtime is
        * constructed with them (`PyreonRouter(tabs:)`), and a

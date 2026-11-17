@@ -2743,6 +2743,11 @@ function asyncStateSwift(d: DeclIR, indent: number): { pending: string; error: s
   return pluginAsyncState(d, 'swift', swiftEmitContext(indent))!
 }
 
+/** The routers call a guard with the target path; a parameterless one is adapted, not passed bare. */
+function swiftGuardRef(zeroArg: readonly string[] | undefined, fn: string): string {
+  return (zeroArg ?? []).includes(fn) ? `{ _ in ${swiftIdent(fn)}() }` : swiftIdent(fn)
+}
+
 function emitSwiftDecl(
   d: DeclIR,
   inferCtx: ReturnType<typeof buildInferenceCtx>,
@@ -2864,10 +2869,10 @@ function emitSwiftDecl(
     }
     const lines: string[] = ['{', `    let r = ${ctor}`]
     for (const fn of d.beforeEach ?? []) {
-      lines.push(`    r.beforeEachGuards.append(${swiftIdent(fn)})`)
+      lines.push(`    r.beforeEachGuards.append(${swiftGuardRef(d.zeroArgGuards, fn)})`)
     }
     for (const fn of d.afterEach ?? []) {
-      lines.push(`    r.afterEachHooks.append(${swiftIdent(fn)})`)
+      lines.push(`    r.afterEachHooks.append(${swiftGuardRef(d.zeroArgGuards, fn)})`)
     }
     lines.push('    return r')
     lines.push('  }()')
@@ -11698,6 +11703,13 @@ function emitSwiftLayoutAwareInvocation(component: ExprIR, indent: number): stri
   return `${expr}()`
 }
 
+/** The leaf route's loader wraps the LEAF, inside its layouts — the same host the flat dispatch emits (`wrapLoader`). */
+function swiftNestedLoaderWrap(entry: FlatRouteEntry, indent: number, leafCall: string): string {
+  return entry.loader === undefined
+    ? leafCall
+    : `PyreonRouteLoader(path: path, load: { ${emitSwiftExpr(entry.loader, indent + 2)} }) { ${leafCall} }`
+}
+
 function emitSwiftNestedNavigationDestination(
   routes: import('./types').RouteIR[],
   indent: number,
@@ -11739,8 +11751,8 @@ function emitSwiftNestedNavigationDestination(
             usesParams: false,
           }
         : swiftRouteParamsInvocation(entry.component, indent + 2)
-      const render = wrap(entry.layoutChain, inv.call)
-      const condition = inv.usesParams
+      const render = wrap(entry.layoutChain, swiftNestedLoaderWrap(entry, indent, inv.call))
+      const condition = inv.usesParams || entry.loaderUsesParams === true
         ? `${keyword} let params = PyreonRouter.matchPath(path, ${swiftStr(entry.path)}) {`
         : `${keyword} PyreonRouter.matchPath(path, ${swiftStr(entry.path)}) != nil {`
       branches.push(
@@ -11751,7 +11763,7 @@ function emitSwiftNestedNavigationDestination(
     } else {
       const render = wrap(
         entry.layoutChain,
-        emitSwiftLayoutAwareInvocation(entry.component, indent + 2),
+        swiftNestedLoaderWrap(entry, indent, emitSwiftLayoutAwareInvocation(entry.component, indent + 2)),
       )
       branches.push(
         `${pad}${keyword} PyreonRouter.matchPath(path, ${swiftStr(entry.path)}) != nil {`,
