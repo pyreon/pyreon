@@ -17,7 +17,8 @@ import { BeforeAfter, ComingFrom } from '../kit/code'
 import { InstallCommand, Pill } from '../kit/controls'
 import { ctaStackOnPhone } from '../kit/cta'
 import { useLinkClick } from '../kit/link'
-import { AutoGrid, Section, SectionHead, Wrap } from '../kit/layout'
+import { Section, SectionHead } from '../kit/layout'
+import { AutoGrid, Cluster, Stack, Wrap } from '../kit/primitives'
 import { Reveal } from '../kit/motion'
 import { EmberText, ProofBand } from '../kit/proof'
 import { Eyebrow, Heading, Lede, renderInline } from '../kit/type'
@@ -62,14 +63,7 @@ const Ctas = el
   .attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 12 })
   .theme(() => ({ flexWrap: 'wrap', extendCss: ctaStackOnPhone }))
 
-const CenteredCtas = el
-  .config({ name: 'ProductEndCtas' })
-  .attrs({ block: true, contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'center', gap: 12 })
-  .theme(() => ({ flexWrap: 'wrap' }))
-
 const EndInner = el.config({ name: 'ProductEnd' }).attrs({ block: true, contentAlignX: 'center', gap: 0 }).theme(() => ({ textAlign: 'center' }))
-
-const Stack = el.config({ name: 'Stack' }).attrs({ block: true, gap: 24 })
 
 const Switcher = el
   .config({ name: 'ProductSwitcher' })
@@ -124,13 +118,13 @@ function Extra(props: { section: ExtraSection; svgs?: Record<string, { alt: stri
           {isExtraMore(s) ? (
             <ExtraMoreBody section={s} />
           ) : s.kind === 'packages' ? (
-            <AutoGrid min={s.cols ? undefined : 250} cols={s.cols} gap={12}>
+            <AutoGrid min={s.cols ? undefined : 250} cols={s.cols} gap={150}>
               <For each={s.items} by={(i) => i.pkg}>
                 {(i) => <ExtraPackageCard item={i} />}
               </For>
             </AutoGrid>
           ) : s.kind === 'steps' ? (
-            <Stack>
+            <Stack gap={300} alignX="left">
               <StepCards items={s.items} />
               {diagram ? <InlineSvg svg={diagram.svg} /> : null}
             </Stack>
@@ -233,10 +227,10 @@ export function ProductPage(props: { data: ProductData }) {
           <Section size="tight">
             <Wrap>
               <SectionHead label="coming from" title={comingFromTitle((d.comingFrom ?? []).map((c) => c.lib))} />
-              <Stack>
+              <Stack gap={300} alignX="left">
                 <For each={d.comingFrom ?? []} by={(c) => c.title}>
                   {(c) => (
-                    <Stack>
+                    <Stack gap={300} alignX="left">
                       <Heading tag="h3" size="card">
                         {renderInline(c.title)}
                       </Heading>
@@ -286,7 +280,7 @@ export function ProductPage(props: { data: ProductData }) {
           <Section size="tight">
             <Wrap>
               <SectionHead label="recipes" title="Things to build with it." />
-              <Stack>
+              <Stack gap={300} alignX="left">
                 <For each={d.recipes ?? []} by={(r) => r.title}>
                   {(r) => (
                     <RecipeCard title={r.title} text={r.text} code={r.code} codeHtml={r.codeHtml} status={r.status} />
@@ -317,7 +311,7 @@ export function ProductPage(props: { data: ProductData }) {
         <Section size="tight">
           <Wrap>
             <SectionHead label="good to know" title="Good to know before you start." />
-            <AutoGrid min={300} gap={12}>
+            <AutoGrid min={300} gap={150}>
               <For each={d.limits} by={(l) => l.title}>
                 {(l) => <LimitNote title={l.title} text={l.text} />}
               </For>
@@ -368,12 +362,12 @@ export function ProductPage(props: { data: ProductData }) {
             <Heading tag="h2" size="end">
               {renderInline(d.end.title)}
             </Heading>
-            <CenteredCtas>
+            <Cluster gap={150} alignX="center" alignY="center">
               {unreleased ? <NextReleaseNote text={d.hero.install} /> : <InstallCommand command={d.hero.install} variant="hot" />}
               <Pill variant="solid" size="lg" href={docsHref}>
                 {d.end.cta}
               </Pill>
-            </CenteredCtas>
+            </Cluster>
           </EndInner>
         </Wrap>
       </Section>

@@ -3,10 +3,11 @@ import { For, Show } from '@pyreon/core'
 import { htmlOf, type WhyMeta } from '../content/pages'
 import whyMeta from '../content/pages/why/_meta.json'
 import type { SiteSection } from '../content/types-site'
-import { el, tone, txt } from '../kit/bases'
+import { tone, txt } from '../kit/bases'
 import { Faq } from '../kit/blocks'
 import { CodeCard } from '../kit/code'
-import { AutoGrid, Section, SectionHead, Wrap } from '../kit/layout'
+import { Section, SectionHead } from '../kit/layout'
+import { AutoGrid, Stack, Wrap } from '../kit/primitives'
 import { Reveal } from '../kit/motion'
 import { CaveatLine, ProofBand, QuoteBlock } from '../kit/proof'
 import { CompareStrip, ItemCards, LinkCards, Prose, StepList, StorySplit } from '../kit/story'
@@ -42,8 +43,6 @@ const Caption = txt
   .attrs({ tag: 'p' })
   .theme((_t, m) => ({ margin: 0, marginTop: 14, maxWidth: 760, fontFamily: font.mono, fontSize: text.caveat.size, lineHeight: 1.6, color: tone(m, 'fog') }))
 
-const Stack = el.config({ name: 'SiteSectionStack' }).attrs({ block: true, contentAlignX: 'block', gap: 16 })
-
 const L = (whyMeta as unknown as WhyMeta).template.sections
 
 function Body(props: { s: SiteSection }): VNodeChild {
@@ -62,7 +61,7 @@ function Body(props: { s: SiteSection }): VNodeChild {
       return (
         <>
           <SectionHead label={L.diff} title={s.title} />
-          <AutoGrid cols={2} gap={16}>
+          <AutoGrid cols={2} gap={200}>
             <CodeCard label={s.before.label} code={s.before.code} html={htmlOf(s.before)} rail="del" />
             <CodeCard label={s.after.label} code={s.after.code} html={htmlOf(s.after)} state="hot" rail="ins" />
           </AutoGrid>
@@ -73,7 +72,7 @@ function Body(props: { s: SiteSection }): VNodeChild {
       return (
         <>
           <SectionHead label={L.code} title={s.title} text={s.text} />
-          <AutoGrid cols={Math.min(2, s.blocks.length)} gap={16}>
+          <AutoGrid cols={Math.min(2, s.blocks.length)} gap={200}>
             <For each={s.blocks} by={(b) => b.label}>
               {(b) => <CodeCard label={b.label} code={b.code} html={htmlOf(b)} />}
             </For>
@@ -166,7 +165,7 @@ export function SiteSections(props: { sections: readonly SiteSection[]; figures?
             <Reveal>
               <Section size="tight">
                 <Wrap>
-                  <Stack>
+                  <Stack gap={200}>
                     {beside ? <StorySplit diagram={beside.node}>{<Body s={x.s} />}</StorySplit> : <Body s={x.s} />}
                   </Stack>
                 </Wrap>

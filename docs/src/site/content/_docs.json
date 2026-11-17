@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 223,
+  "pageCount": 224,
   "pages": [
    {
     "path": "a11y.md",
@@ -36,6 +36,11 @@
     "path": "auth.md",
     "title": "Auth",
     "href": "/docs/auth"
+   },
+   {
+    "path": "benchmarks-full-stack.md",
+    "title": "Full-stack benchmark method",
+    "href": "/docs/benchmarks-full-stack"
    },
    {
     "path": "benchmarks.md",
@@ -1568,6 +1573,10 @@
     {
      "title": "Benchmarks",
      "href": "/docs/benchmarks"
+    },
+    {
+     "title": "Full-stack benchmark method",
+     "href": "/docs/benchmarks-full-stack"
     }
    ]
   },

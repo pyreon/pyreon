@@ -269,7 +269,7 @@ function swiftHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
     lines.push(`    return try __response.decode(${ctx.typeText(p.type)}.self)`)
   } else {
     lines.push(`    let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${swiftStr(p.url)})!)`)
-    lines.push(`    return try JSONDecoder().decode(${ctx.typeText(p.type)}.self, from: bytes)`)
+    lines.push(`    return try PyreonJSON.decode(${ctx.typeText(p.type)}.self, from: bytes)`)
   }
   // A failure is the runtime's to record (`error`), so the closure just throws.
   lines.push(`  }`, `}`)

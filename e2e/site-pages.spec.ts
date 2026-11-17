@@ -394,6 +394,55 @@ test.describe('/brand/kit', () => {
   }
 })
 
+test.describe('/brand/kit layout primitives in a real browser', () => {
+  // Visible switches at the split width (700px) to the pixel: hidden on one side, shown on the other.
+  for (const [width, wide] of [[699, false], [700, true], [375, false], [1280, true]] as const) {
+    test(`Visible at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto('/brand/kit')
+      const from = page.locator('#kit-visible-from-split')
+      const below = page.locator('#kit-visible-below-split')
+      await expect(from).toHaveCount(1)
+      await expect(below).toHaveCount(1)
+      if (wide) {
+        await expect(from).toBeVisible()
+        await expect(below).toBeHidden()
+      } else {
+        await expect(from).toBeHidden()
+        await expect(below).toBeVisible()
+      }
+    })
+  }
+
+  /** Column widths a grid lays out (auto-fit tracks that collapsed to 0 are dropped). */
+  const columns = (grid: Locator) =>
+    grid.evaluate((el) =>
+      getComputedStyle(el)
+        .gridTemplateColumns.split(' ')
+        .map((v) => Number.parseFloat(v))
+        .filter((v) => v > 0),
+    )
+
+  for (const width of [375, 1280]) {
+    test(`AutoGrid and Grid columns at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto('/brand/kit')
+      const min = await columns(page.locator('#kit-autogrid-min'))
+      const cols = await columns(page.locator('#kit-autogrid-cols'))
+      const responsive = await columns(page.locator('#kit-grid-responsive'))
+      if (width < 768) {
+        expect([min.length, cols.length, responsive.length]).toEqual([1, 1, 1])
+      } else {
+        // `min={200}`: as many columns as fit, none narrower than 200px.
+        expect(min.length).toBeGreaterThanOrEqual(4)
+        for (const w of min) expect(w).toBeGreaterThanOrEqual(200)
+        // `cols={3}` from lg; `columns={{ xs: 1, md: 3 }}` from md.
+        expect([cols.length, responsive.length]).toEqual([3, 3])
+      }
+    })
+  }
+})
+
 test.describe('the charts package loads only where a live chart is drawn', () => {
   for (const route of ['/compare/react', '/why/performance', '/migrate', '/releases']) {
     test(route, async ({ page }) => {

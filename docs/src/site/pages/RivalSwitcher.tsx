@@ -1,6 +1,6 @@
 import { For } from '@pyreon/core'
 import { el, focusRing, tone, type LinkAttrs, tapArea } from '../kit/bases'
-import { Wrap } from '../kit/layout'
+import { Wrap } from '../kit/primitives'
 import { useLinkClick } from '../kit/link'
 import { Eyebrow } from '../kit/type'
 import { font, radius } from '../theme'

@@ -1716,7 +1716,7 @@ describe('Phase 4.1 — useFetch emit (PyreonFetch container + async harness)', 
     expect(out).toContain('await user.run {')
     expect(out).not.toContain('user.begin()')
     expect(out).toContain('URLSession.shared.data(from: URL(string: "/api/user")!)')
-    expect(out).toContain('return try JSONDecoder().decode(User.self, from: bytes)')
+    expect(out).toContain('return try PyreonJSON.decode(User.self, from: bytes)')
     // Swift field access is a plain @Observable property read.
     expect(out).toContain('user.data')
     expect(out).not.toContain('user.data.value')

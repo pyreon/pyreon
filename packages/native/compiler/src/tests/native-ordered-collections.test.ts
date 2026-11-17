@@ -13,6 +13,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { canRunKotlin, canRunSwift, caseNames, mismatches, runKotlin, runSwift, runWeb } from './differential-harness'
 import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
 
@@ -46,9 +47,9 @@ export function App() {
 describe('Map / Set / Record emit', () => {
   it('Swift: the ordered twins, keys / values as arrays, a map copy by value', () => {
     const { code, warnings } = emit(app, 'swift')
-    expect(code).toContain('@State private var m: PyreonMap<String, Int> = ["b": 1, "a": 2]')
+    expect(code).toContain('@State private var m: PyreonMap<String, Int> = PyreonMap<String, Int>([("b", 1), ("a", 2)])')
     expect(code).toContain('@State private var tags: PyreonSet<String> = PyreonSet(["x"])')
-    expect(code).toContain('@State private var counts: PyreonMap<String, Int> = ["b": 1, "a": 2]')
+    expect(code).toContain('@State private var counts: PyreonMap<String, Int> = PyreonMap<String, Int>([("b", 1), ("a", 2)])')
     expect(code).toContain('PyreonMap(todos.map { t in (t.id, t) })')
     expect(code).toContain('m.keys.joined(separator: ",")')
     expect(code).toContain('counts.values.reduce(')
@@ -148,4 +149,52 @@ describe('PyreonMap / PyreonSet keep the web order rules', () => {
     execFileSync('swiftc', [join(dir, 'main.swift'), '-o', join(dir, 'run')], { stdio: 'pipe' })
     expect(execFileSync(join(dir, 'run'), { encoding: 'utf8' }).trim().split('\n')).toEqual(webSequence().split('\n'))
   }, 180_000)
+})
+
+// ── End to end: the compiled code iterates in the web's order ──────────────────────────────────────────────────
+//
+// What escaped the emit-level checks above: a seeded `new Map([[k, v], …])` and a `Record` literal were emitted as a
+// bare Swift dictionary literal (`[k: v, …]`), which is a `PyreonMap` only where something pins the type. An
+// unannotated local (`const r: Record<string, number> = {…}` lowers to `let r = […]`) made it a `Dictionary`, so
+// `Object.keys(r)` came out in hash order — a different order on every launch. And `JSON.parse` into a `Record`
+// took `JSONDecoder`'s `allKeys`, whose order is also a hash. Five keys make a hash order matching the source order
+// a 1-in-120 accident, and the Swift side runs each case in a fresh process (a fresh hash seed).
+
+const ORDER_CORPUS = `
+export function c_map_keys(): string { const m = new Map<string, number>([['zeta', 1], ['alpha', 2], ['mid', 3], ['b', 4], ['q', 5]]); return [...m.keys()].join(',') }
+export function c_map_untyped(): string { const m = new Map([['zeta', 'z'], ['alpha', 'a'], ['mid', 'm'], ['b', 'b'], ['q', 'q']]); return [...m.values()].join(',') }
+export function c_map_duplicate(): string { const m = new Map<string, number>([['zeta', 1], ['alpha', 2], ['zeta', 3]]); return [...m.keys()].join(',') + ' ' + [...m.values()].join(',') }
+export function c_map_set(): string { const m = new Map<string, number>(); m.set('zeta', 1); m.set('alpha', 2); m.set('mid', 3); m.set('k', 4); m.set('b', 5); return [...m.keys()].join(',') }
+export function c_record_keys(): string { const r: Record<string, number> = { zeta: 1, alpha: 2, mid: 3, k: 4, b: 5 }; return Object.keys(r).join(',') }
+export function c_record_values(): string { const r: Record<string, number> = { zeta: 1, alpha: 2, mid: 3, k: 4, b: 5 }; return Object.values(r).join(',') }
+function rec(): Record<string, string> { return { zeta: 'z', alpha: 'a', mid: 'm', k: 'k', b: 'b' } }
+export function c_record_returned(): string { return Object.keys(rec()).join(',') }
+export function c_record_stringify(): string { const r: Record<string, number> = { zeta: 1, alpha: 2, mid: 3, k: 4, b: 5 }; return JSON.stringify(r) }
+export function c_set(): string { const s = new Set<string>(['zeta', 'alpha', 'mid', 'k', 'b']); return [...s].join(',') }
+function decode(): Record<string, number> { return JSON.parse('{"zeta":1,"alpha":2,"mid":3,"k":4,"b":5,"q":6}') as Record<string, number> }
+export function c_json_decode(): string { try { return Object.keys(decode()).join(',') } catch { return 'err' } }
+type Row = { name: string; tags: Record<string, number> }
+function decodeRows(): Row[] { return JSON.parse('[{"name":"x","tags":{"y":1,"c":2,"x":3,"d":4,"e":5}},{"name":"y","tags":{"zz":1,"aa":2,"mm":3,"bb":4,"k\\u0041":5}}]') as Row[] }
+export function c_json_nested(): string { try { return JSON.stringify(decodeRows()) } catch { return 'err' } }
+`
+
+describe('Map / Record order, end to end on both targets', () => {
+  it('the corpus is what it claims (five or more keys, never in sorted order)', () => {
+    for (const r of runWeb(ORDER_CORPUS)) expect(r).not.toBe('err')
+    expect(runWeb(ORDER_CORPUS)[0]).toBe('zeta,alpha,mid,b,q')
+  })
+
+  it('no Map / Record literal reaches Swift as a bare dictionary literal', () => {
+    const code = transform(`${ORDER_CORPUS}\nexport function H() { return null }`, { target: 'swift' }).code ?? ''
+    expect(code).not.toMatch(/= \["/)
+    expect(code).toContain('PyreonMap<String, Int>([("zeta", 1), ("alpha", 2)')
+  })
+
+  it.runIf(canRunSwift())('Swift iterates in the web order', () => {
+    expect(mismatches(caseNames(ORDER_CORPUS), runWeb(ORDER_CORPUS), runSwift(ORDER_CORPUS))).toEqual([])
+  }, 600_000)
+
+  it.runIf(canRunKotlin())('Kotlin iterates in the web order', () => {
+    expect(mismatches(caseNames(ORDER_CORPUS), runWeb(ORDER_CORPUS), runKotlin(ORDER_CORPUS))).toEqual([])
+  }, 600_000)
 })

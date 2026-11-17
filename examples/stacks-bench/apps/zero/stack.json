@@ -9,14 +9,13 @@
     "packages/zero/create-zero/templates/app (the scaffold)"
   ],
   "packages": ["@pyreon/zero", "@pyreon/core", "@pyreon/router", "@pyreon/runtime-dom", "@pyreon/server", "vite"],
-  "install": ["true"],
-  "build": ["../../node_modules/.bin/vite", "build"],
+  "build": ["npm", "run", "build"],
   "start": ["node", "dist/index.js"],
   "dataFile": "src/server/data.ts",
   "hydration": "full",
   "streaming": "buffered (zero default ssr.mode 'string')",
   "notes": [
-    "Resolves @pyreon/* from the workspace's built lib/ (the harness package examples/stacks-bench declares them as workspace:* deps; this arm has no lockfile of its own).",
+    "Two sources for @pyreon/*, chosen by `bun setup.ts --zero=npm|workspace` and recorded in each run's run.json: npm (default) installs the published packages from this arm's package-lock.json; workspace installs nothing here and resolves the monorepo's built lib/ (the harness package examples/stacks-bench declares them as workspace:* deps).",
     "Node adapter runner: node:http createServer → static-file lookup (readFile per request for assets) → Request construction → createServer() pipeline (app middleware, route middleware, actions, /_pyreon/data) → renderPage; the Response body is piped with a reader loop.",
     "No compression at all (the node runner has no compression middleware).",
     "Listens on all interfaces (the node runner reads PORT, not HOST)."
