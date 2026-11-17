@@ -144,6 +144,11 @@ describe('site design — structure', () => {
     expect(galleryMissing([primitive, internal, gallery, primitivesGallery]).map((f) => f.detail)).toEqual(['Cluster'])
   })
 
+  it('counts the family specimens file as gallery', () => {
+    const familiesGallery = file('site/pages/KitGalleryFamilies.tsx', '<Badge tone="win">win</Badge>')
+    expect(galleryMissing([kit, gallery, familiesGallery]).map((f) => f.detail)).toEqual([])
+  })
+
   it('flags an interactive definition without a focus style', () => {
     const f = file('site/kit/x.tsx', "export const Go = el\n  .config({ name: 'Go' })\n  .attrs({ tag: 'button' })\n  .theme(() => ({ color: 'red' }))\nexport const Ok = el\n  .config({ name: 'Ok' })\n  .attrs({ tag: 'a' })\n  .theme((_t, m) => ({ focus: focusRing(m) }))")
     expect(focusMissing([f]).map((x) => x.detail)).toEqual(['Go'])
