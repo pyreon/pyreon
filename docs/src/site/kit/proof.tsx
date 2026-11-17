@@ -6,7 +6,7 @@ import { el, focusRing, pair, tone, txt, type LinkAttrs } from './bases'
 import { InstallCommand, Pill } from './controls'
 import { ctaStackOnPhone, PillGroup } from './cta'
 import { useLinkClick } from './link'
-import { Wrap } from './layout'
+import { Wrap } from './primitives/wrap'
 import { keepRanges, numeralSize, StatBody, type StatChartSource } from './stat'
 import { Eyebrow, renderInline, StatusDot } from './type'
 

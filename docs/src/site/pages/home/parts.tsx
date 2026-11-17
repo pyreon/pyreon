@@ -1,5 +1,5 @@
 import { el, focusRing, pair, tone, txt, type LinkAttrs, tapArea } from '../../kit/bases'
-import { breakpoints, font, gradient, radius, syntax, text, weight } from '../../theme'
+import { breakpoints, font, gradient, media, radius, syntax, text, weight } from '../../theme'
 
 /**
  * Styled pieces of the homepage that no other page uses (server-rendered
@@ -26,13 +26,6 @@ export const Split = el
     extendCss: '& > * { container-type: inline-size; }',
   }))
 
-export const Stack = el
-  .config({ name: 'HomeStack' })
-  .attrs({ block: true, contentAlignX: 'block', contentAlignY: 'top' })
-  // Content height: a card inside must not stretch to the other column.
-  .theme(() => ({ alignSelf: 'start', minWidth: 0 }))
-  .sizes(() => ({ sm: { gap: 12 }, md: { gap: 22 }, lg: { gap: 32 } }))
-
 /** The hero visual: the source file beside the three-platform loop (≥ 700px only). */
 export const TargetsGrid = el
   .config({ name: 'HomeTargets' })
@@ -41,7 +34,7 @@ export const TargetsGrid = el
     display: 'none',
     marginTop: 64,
     extendCss: `
-      @media (min-width: 700px) { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+      ${media.up.split} { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
       @media (min-width: ${breakpoints.lg}px) { grid-template-columns: minmax(0, 300px) minmax(0, 1fr); align-items: start; }
     `,
   }))
@@ -50,13 +43,13 @@ export const TargetsGrid = el
 export const PhoneOnly = el
   .config({ name: 'HomePhoneOnly' })
   .attrs({ block: true })
-  .theme(() => ({ marginTop: 40, extendCss: '@media (min-width: 700px) { display: none; }' }))
+  .theme(() => ({ marginTop: 40, extendCss: `${media.up.split} { display: none; }` }))
 
 /** The platforms section carries the loop on phones (the hero hides it). */
 export const PhoneLoop = el
   .config({ name: 'HomePhoneLoop' })
   .attrs({ block: true })
-  .theme(() => ({ marginTop: 32, extendCss: '@media (min-width: 700px) { display: none; }' }))
+  .theme(() => ({ marginTop: 32, extendCss: `${media.up.split} { display: none; }` }))
 
 /** Code pane: file label row + highlighted code (no card padding). */
 export const Pane = el
@@ -140,12 +133,6 @@ export const PhoneTargetsHead = el
   .config({ name: 'HomePhoneTargetsHead' })
   .attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 12 })
   .theme(() => ({ marginBottom: 6 }))
-
-export const Mono = txt
-  .config({ name: 'HomeMono' })
-  .attrs({ tag: 'span' })
-  .theme((_t, m) => ({ fontFamily: font.mono, fontSize: 12, lineHeight: 1.5, color: tone(m, 'fog') }))
-  .states((_t, m) => ({ default: {}, upper: { fontSize: text.eyebrow.size, letterSpacing: text.eyebrow.tracking, textTransform: 'uppercase', color: tone(m, 'fog') } }))
 
 export const Note = txt
   .config({ name: 'HomeNote' })
@@ -234,10 +221,6 @@ export const CompareTable = el
     extendCss: tableCss(m),
   }))
 
-/** Below 700px the comparison is a list of cards, one per column (no sideways scroll to read a row). */
-export const WideOnly = el.config({ name: 'HomeWideOnly' }).attrs({ block: true }).theme(() => ({ extendCss: '@media (max-width: 699.98px) { display: none; }' }))
-export const NarrowOnly = el.config({ name: 'HomeNarrowOnly' }).attrs({ block: true }).theme(() => ({ extendCss: '@media (min-width: 700px) { display: none; }' }))
-
 export const DefList = el
   .config({ name: 'HomeDefList' })
   .attrs({ tag: 'dl', block: true })
@@ -324,21 +307,6 @@ export const TagLink = el
     extendCss: tapArea,
     hover: { color: tone(m, 'text'), borderColor: tone(m, 'lineHover') },
     focus: focusRing(m),
-  }))
-
-export const Row = el.config({ name: 'HomeRow' }).attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 8 }).theme(() => ({ flexWrap: 'wrap' }))
-
-/** Featured products: 6 columns, each card spans 6 (full), 3 (half) or 2 (third) from 960px. */
-export const ProductsGrid = el
-  .config({ name: 'HomeProducts' })
-  .attrs({ tag: 'ul', block: true })
-  .theme(() => ({
-    display: 'grid',
-    gap: 12,
-    listStyle: 'none',
-    margin: 0,
-    padding: 0,
-    gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'repeat(6, minmax(0, 1fr))' },
   }))
 
 export const ProductCell = el
