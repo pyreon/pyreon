@@ -44,6 +44,7 @@ function compilerExportSubpath(name: string): 'analyze' | 'audits' | 'validate' 
     return 'validate'
   if (/^(?:audit|formatTestAudit|formatIslandAudit|formatSsgAudit|generateContext)/.test(name))
     return 'audits'
+
   return 'analyze'
 }
 
@@ -2561,5 +2562,6 @@ export function diagnoseError(error: string): ErrorDiagnosis | null {
       return diagnose(match)
     }
   }
+
   return null
 }

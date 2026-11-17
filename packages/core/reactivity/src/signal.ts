@@ -375,6 +375,7 @@ export function _suspendSoleSubscriber<T>(sig: Signal<T>): SoleSubscriberToken |
   const set = s._s
   if (set === null || typeof set === 'function' || set.size !== 1) return null
   s._s = null
+
   return set
 }
 
@@ -446,6 +447,7 @@ function _directFn(this: SignalFn<unknown>, updater: () => void): () => void {
   }
   const set = this._d
   set.add(updater)
+
   return () => {
     set.delete(updater)
   }
@@ -509,6 +511,7 @@ const SignalProto = {
   direct: _directFn,
   debug: _debug,
 }
+
 Object.setPrototypeOf(SignalProto, Function.prototype)
 
 /**
