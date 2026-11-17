@@ -21,6 +21,8 @@
  */
 
 import { isServer } from '@pyreon/reactivity'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
+import { isStandardSchema } from './standard-schema'
 
 /**
  * Prefix marking an env var as PUBLIC (safe to inline into the client bundle).
@@ -212,28 +214,7 @@ function toValidator(value: unknown): EnvValidator<unknown> {
 // https://standardschema.dev — a tiny shared contract exposed via a `~standard`
 // property that zod, valibot, arktype, AND @pyreon/validate's `s` all implement.
 // Duck-typing it means users bring their OWN schema and @pyreon/zero depends on
-// no validation library.
-
-interface StandardSchemaLike<Output = unknown> {
-  readonly '~standard': {
-    readonly types?: { readonly output: Output }
-    readonly validate: (
-      value: unknown,
-    ) =>
-      | { readonly value: unknown }
-      | { readonly issues: ReadonlyArray<{ readonly message: string }> }
-      | Promise<unknown>
-  }
-}
-
-function isStandardSchema(value: unknown): value is StandardSchemaLike {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    '~standard' in value &&
-    typeof (value as StandardSchemaLike)['~standard']?.validate === 'function'
-  )
-}
+// no validation library (the type is the types-only `@standard-schema/spec`).
 
 /**
  * Wrap any Standard Schema as an env validator. The raw env STRING is handed to
@@ -242,7 +223,7 @@ function isStandardSchema(value: unknown): value is StandardSchemaLike {
  * optional / default are delegated to the schema itself (e.g. zod `.optional()`
  * / `.default(...)`). Async schemas are rejected — env resolves synchronously.
  */
-function standardSchemaValidator(stdSchema: StandardSchemaLike): EnvValidator<unknown> {
+function standardSchemaValidator(stdSchema: StandardSchemaV1): EnvValidator<unknown> {
   return {
     __type: 'env-validator',
     required: true,
@@ -270,12 +251,12 @@ export type SchemaEntry =
   | string | number | boolean
   | StringConstructor | NumberConstructor | BooleanConstructor
   | EnvValidator<any>
-  | StandardSchemaLike<any>
+  | StandardSchemaV1
 
 /** Infer the output type from a schema entry. */
 type InferEntry<T> =
   T extends EnvValidator<infer V> ? V :
-  T extends StandardSchemaLike<infer O> ? O :
+  T extends StandardSchemaV1<unknown, infer O> ? O :
   T extends StringConstructor ? string :
   T extends NumberConstructor ? number :
   T extends BooleanConstructor ? boolean :

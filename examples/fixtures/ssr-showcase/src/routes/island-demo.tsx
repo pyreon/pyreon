@@ -19,12 +19,20 @@ const AutoIsland = island(() => import('../components/AutoNamedProbe'), {
   hydrate: 'visible',
 })
 
+// Lifecycle probe (#4387): a `load` island whose interval and `onUnmount`
+// let the e2e see whether navigating away ends the instance.
+const LifecycleIsland = island(() => import('../components/LifecycleProbe'), {
+  name: 'LifecycleProbe',
+  hydrate: 'load',
+})
+
 export default function IslandDemoPage() {
   return h('div', { 'data-testid': 'island-demo-page' },
     h('h1', null, 'Islands in Zero'),
     h('p', null, 'The button below is a hydrate:"visible" island declared via @pyreon/zero.'),
     h(IslandProbe, null),
     h(AutoIsland, null),
+    h(LifecycleIsland, null),
   )
 }
 

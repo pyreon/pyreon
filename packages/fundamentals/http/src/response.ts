@@ -25,7 +25,6 @@ import type {
   HttpResponse,
   ParseFn,
   SchemaResolver,
-  StandardSchemaShape,
   ValidateMode,
   Validator,
   ValidatorOutput,
@@ -460,5 +459,3 @@ export function createResponsePromise(
 ): HttpResponsePromise {
   return new ResponsePromise(exec, ctx, link)
 }
-
-export type { StandardSchemaShape }

@@ -5,7 +5,9 @@ import { GlowCard } from './cards'
 import { Cluster } from './primitives/cluster'
 import { Stack } from './primitives/stack'
 import { AutoGrid } from './primitives/auto-grid'
-import { Eyebrow, Heading, Lede, renderInline, StatusBadge } from './type'
+import { Eyebrow, Heading, Lede, renderInline } from './type'
+import { Badge } from './badge'
+import { Tag } from './tag'
 
 // ─── FactList ─────────────────────────────────────────────────────────────
 
@@ -81,7 +83,7 @@ export function NumberedCards(props: { items: readonly { title: string; text: st
                 </Eyebrow>
                 <Heading tag="h3" size="card">
                   {renderInline(it.title)}
-                  {it.status ? <StatusBadge>{it.status}</StatusBadge> : null}
+                  {it.status ? <Badge tone="experimental" size="sm" placement="after">{it.status}</Badge> : null}
                 </Heading>
                 <Lede size="card">{renderInline(it.text)}</Lede>
               </CardBody>
@@ -168,7 +170,7 @@ export function FeatureList(props: { items: readonly { name: string; text: strin
             <FeaturePlus>+</FeaturePlus>
             <span>
               <FeatureName>{renderInline(f.name)}</FeatureName>
-              {f.status ? <StatusBadge>{f.status}</StatusBadge> : null}
+              {f.status ? <Badge tone="experimental" size="sm" placement="after">{f.status}</Badge> : null}
               {f.text ? ' ' : ''}
               {renderInline(f.text)}
             </span>
@@ -181,25 +183,6 @@ export function FeatureList(props: { items: readonly { name: string; text: strin
 
 // ─── ApiGroups ────────────────────────────────────────────────────────────
 
-const ApiChip = txt
-  .config({ name: 'ApiChip' })
-  .attrs({ tag: 'li' })
-  .theme((_t, m) => ({
-    fontFamily: font.mono,
-    fontSize: text.mono.size,
-    lineHeight: 1.4,
-    paddingTop: 7,
-    paddingBottom: 7,
-    paddingLeft: 12,
-    paddingRight: 12,
-    borderRadius: radius.pill,
-    border: '1px solid',
-    borderColor: tone(m, 'line'),
-    color: tone(m, 'mist'),
-    backgroundColor: tone(m, 'sheen'),
-    overflowWrap: 'anywhere',
-  }))
-
 /** `.p-api` — exports grouped by role, as mono chips. */
 export function ApiGroups(props: { groups: readonly { name: string; items: readonly string[] }[] }) {
   return (
@@ -210,7 +193,7 @@ export function ApiGroups(props: { groups: readonly { name: string; items: reado
             <Eyebrow>{`${g.name} · ${g.items.length}`}</Eyebrow>
             <Cluster tag="ul" gap={75} aria-label={g.name}>
               <For each={g.items} by={(x) => x}>
-                {(x) => <ApiChip>{x}</ApiChip>}
+                {(x) => <Tag tag="li">{x}</Tag>}
               </For>
             </Cluster>
           </Stack>
