@@ -1,51 +1,25 @@
-# Submitting Pyreon to krausest/js-framework-benchmark
+# Pyreon entry for krausest/js-framework-benchmark
 
-This directory is a ready-to-submit `frameworks/keyed/pyreon` implementation
-for the independent [js-framework-benchmark](https://github.com/krausest/js-framework-benchmark).
-Submitting it upstream is the one step that resolves the documented
-author-judge limit on Pyreon's own benchmark claims (see
-`.agents/guides/benchmarks/README.md` "Honest limits").
+This directory is the `frameworks/keyed/pyreon` implementation staged for the independent [js-framework-benchmark](https://github.com/krausest/js-framework-benchmark). It has not been submitted, and no official number exists.
 
-It uses ONLY published npm packages — no workspace references — so it builds
-standalone inside the upstream repo. `package.json` is the single source of
-truth for the pinned version; `krausest-pin-fresh.test.ts` gates it against the
-current workspace release, and gates this file against contradicting it.
+It builds from published npm packages only: exact versions in `package.json`, and a `package-lock.json` written by npm. `package.json` is the one place the pinned version is written; `bun scripts/sync-krausest-pin.ts` moves it and regenerates the lockfile, and `bun scripts/check-krausest-entry.ts` (part of `validate-fast`) fails when the entry drifts from upstream's rules.
 
-**Re-verify the pin before submitting.** npm's caret locks the MINOR for `0.x`,
-so a stale `^0.38.0` does not drift forward on its own — it silently submits an
-OLD Pyreon and gets it published as our independent number. This was staged at
-`^0.38.0` and sat unrefreshed through ten releases, which would have had
-krausest measure a Pyreon predating (among others) the `remove` fast path
-(#2288) and the anchor-registry retained fix (#2003) — i.e. worse than shipped
-code, permanently, under our own name.
+Upstream's rules, the commands that run upstream's own keyed, CSP and smoke checks against this entry, and the submission steps are in [`.agents/guides/benchmarks/references/krausest-submission.md`](../../../.agents/guides/benchmarks/references/krausest-submission.md).
 
-## Steps (manual — an external PR must be a human decision)
+**Opening the upstream pull request is the maintainer's decision.** This file is not copied upstream.
 
-1. Fork <https://github.com/krausest/js-framework-benchmark> and clone it.
-2. Copy this directory (everything except this README) to
-   `frameworks/keyed/pyreon/` in the fork.
-3. From the fork root, follow their contribution docs (README + wiki):
-   `npm ci` at the root (the upstream repo commits a lockfile), then in
-   `frameworks/keyed/pyreon/`: `npm install && npm run build-prod`.
-   `npm install`, NOT `npm ci` — no `package-lock.json` is committed here, and
-   `npm ci` refuses to run without one (`EUSAGE`). Generate the lock in the
-   fork, which is also where it belongs: it should resolve against the upstream
-   repo's tree, not ours.
-4. Smoke it: serve the repo root (`npm start`) and open
-   `http://localhost:8080/frameworks/keyed/pyreon/` — every button must
-   work, selection must highlight via the `danger` row class, remove via
-   the glyphicon link.
-5. Run their check tools (from `webdriver-ts`):
-   `npm run isKeyed -- --headless true keyed/pyreon` must report KEYED.
-   Then a bench sanity run: `npm run bench -- --headless true keyed/pyreon`.
-6. Open the upstream PR (their template asks for the framework home URL
-   and a maintainer contact).
+## Build it here
 
-## Implementation notes (for the upstream review)
+```sh
+npm ci --ignore-scripts
+npm run build-prod
+bun ../smoke.mjs        # from this directory: drives the built page in Chromium
+```
 
-- Idiomatic Pyreon: `signal()` state, `<For by={id}>` keyed reconciliation,
-  `createSelector` for O(1) selection, per-row `signal` labels so "update
-  every 10th" patches only the touched text nodes.
-- `swapRows` follows the spec (indices 1 and 998).
-- The compiled output comes from `@pyreon/vite-plugin` — the same compiler
-  every Pyreon app uses; there is no bench-only fast path.
+## Implementation notes
+
+- State is `signal()`; the list is `<For each={rows} by={(row) => row.id}>`.
+- Selection is one `selected` signal read through `createSelector`, so a click updates two rows.
+- Each row's label is its own signal, so "update every 10th row" patches only the changed text nodes.
+- Handlers are written per row with `onClick`; the code calls no DOM API other than `document.getElementById('main')` for the mount target.
+- The build is `@pyreon/vite-plugin`, the compiler every Pyreon app uses. Nothing in the entry exists only for the benchmark, and it declares no upstream issue flag because none applies.
