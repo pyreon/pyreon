@@ -328,7 +328,10 @@ export function createImage(
       />
     )
 
-    const placeholderEl = props.placeholder
+    // A function so the placeholder follows `props.placeholder`: a const
+    // holding JSX is referenced, never inlined, so a plain const would pick
+    // its branch once at setup.
+    const placeholderEl = () => props.placeholder
       ? (
           <img
             src={props.placeholder}
@@ -360,7 +363,7 @@ export function createImage(
         containerRef={img.containerRef}
         class={props.class}
         containerStyle={img.containerStyle}
-        placeholder={placeholderEl}
+        placeholder={placeholderEl()}
         image={imageEl}
       />
     )

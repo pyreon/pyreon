@@ -10685,21 +10685,6 @@ fn arrow_contains_jsx(arrow: &ArrowFunctionExpression) -> bool {
 
 // ─── Prop-derived variable collection ────────────────────────────────────────
 
-/// Does this initializer carry JSX? See the SSR bail in `collect_prop_derived`.
-///
-/// Reuses the two predicates the element-const collection already relies on
-/// rather than hand-rolling a second full expression walk: a directly-JSX
-/// initializer (optionally parenthesized), and the array-of-JSX / map-of-JSX
-/// collection shape. Those are the forms a JSX-bearing initializer actually
-/// takes, and both are already exercised by the element-var tests.
-fn contains_jsx(expr: &Expression) -> bool {
-    let mut e = expr;
-    while let Expression::ParenthesizedExpression(p) = e {
-        e = &p.expression;
-    }
-    matches!(e, Expression::JSXElement(_) | Expression::JSXFragment(_)) || is_jsx_collection_init(e)
-}
-
 /// Would evaluating this initializer TWICE be observable — does it mint state
 /// anywhere, not only at its root? Mirrors `initMintsState` in jsx.ts (see its
 /// doc comment for the rule): a stateful call (`is_stateful_call_expr`), a
@@ -10880,17 +10865,14 @@ fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
                     }
                     continue;
                 }
-                // Under SSR, a JSX-bearing initializer is never inlinable.
-                // Inlining splices the ORIGINAL source for the initializer, so
-                // JSX inside is re-emitted PRE-transform (never lowered) and
-                // the raw text drifts against offsets the emit has shifted —
-                // two sibling `.map()` callbacks swapped hole expressions and
-                // rendering died with `ReferenceError: p1 is not defined`.
-                // The DOM path still inlines it, and must: there the inlining
-                // is what keeps a prop-derived value reactive at the use site.
-                // SSR renders once, so referencing the const by name is both
-                // correct and sufficient. Mirrors the JS backend 1:1.
-                if ctx.ssr && contains_jsx(init) {
+                // A JSX-bearing initializer — JSX ANYWHERE in it, a function
+                // body included — is never inlinable, on any path (#4300). The
+                // inlined text is the ORIGINAL source, so its JSX would be
+                // re-emitted un-lowered (a plain `h()` reading props once, a
+                // fresh element per read; under SSR it drifted against shifted
+                // offsets). The const's own JSX compiles with live bindings.
+                // A full walk, mirroring the JS backend's `containsJsx`.
+                if contains_jsx_in_expr(init) {
                     continue;
                 }
                 // A factory call or `new` ANYWHERE in the initializer (not only

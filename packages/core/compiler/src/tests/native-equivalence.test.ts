@@ -414,6 +414,15 @@ describe('JS syntax and optional native parity — props detection', () => {
 })
 
 describe('JS syntax and optional native parity — transitive derivation', () => {
+  // #4300: a JSX-bearing prop-derived const is referenced, never inlined.
+  test('element const nested in another const, passed as a component prop (issue shape)', () =>
+    compare(
+      'export function W(props) { const img = useImage(props); const imgEl = <img src={img.src} alt={props.alt} />; const imageEl = img.hasFormats ? <picture>{imgEl}</picture> : imgEl; return <C image={imageEl} /> }',
+    ))
+  test('JSX ternary / logical / function const under SSR', () =>
+    compareSsr(
+      'function W(props) { const a = props.f ? <b>t</b> : <i>u</i>; const b = props.f && <b>{props.x}</b>; const c = () => <b>{props.x}</b>; return <div>{a}{b}{c()}<C p={a} /></div> }',
+    ))
   test('simple chain', () =>
     compare('function Comp(props) { const a = props.x; const b = a + 1; return <div>{b}</div> }'))
   test('non-prop const', () =>
