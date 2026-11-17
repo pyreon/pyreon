@@ -81,7 +81,7 @@ function mountApp(App: (p: unknown) => unknown, props: Record<string, unknown>):
 }
 
 /** Renders whatever element it is handed. */
-function Frame(props: { image: unknown }) {
+function Frame(props: { image: core.VNode | null }) {
   return core.h('figure', null, () => props.image)
 }
 
