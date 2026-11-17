@@ -10,11 +10,13 @@
  *            with the number of differing pixels; `--diff <dir>` also writes a
  *            diff image (changed pixels in magenta over a faded copy).
  *
- * Determinism: reduced motion (the scroll reveals stay in their final state),
- * every animation and transition off, videos paused at their first frame, the
- * caret hidden, lazy images loaded eagerly and decoded, fonts loaded, one
- * device pixel per CSS pixel, a fixed content date for the build
- * (`PYREON_CONTENT_NOW`). Compare two captures made on the SAME machine (font
+ * Determinism: software raster with a fixed colour profile, reduced motion
+ * (the scroll reveals stay in their final state), every animation and
+ * transition off, videos paused at their first frame, the caret hidden, lazy
+ * images loaded eagerly and decoded, fonts loaded, load/idle islands (and
+ * those in the first viewport) hydrated, one device pixel per CSS pixel, each
+ * shot repeated until two in a row match, and a fixed content date for the
+ * build (`PYREON_CONTENT_NOW`). Compare two captures made on the SAME machine (font
  * rasterisation differs between macOS and Linux): build the base, capture,
  * build the change, capture, compare. Two captures of one build compare clean
  * (that is the noise check; run it once when the page list changes).
@@ -75,6 +77,14 @@ export function shotName(path: string, width: number, theme: string): string {
   const slug = path === '/' ? 'home' : path.replace(/^\//, '').replace(/\.html$/, '').replace(/\//g, '__')
   return `${slug}@${width}-${theme}.png`
 }
+
+/**
+ * Chromium flags for repeatable pixels: software raster without partial
+ * re-raster, a fixed colour profile, no LCD text. Without them the glass nav's
+ * anti-aliased edges over its translucent background differ by one colour
+ * level between two paints of the same page.
+ */
+export const DETERMINISTIC_ARGS = ['--disable-gpu', '--disable-partial-raster', '--force-color-profile=srgb', '--disable-skia-runtime-opts', '--disable-lcd-text'] as const
 
 /** Injected before every shot: no motion, no caret, no scrollbar. */
 const FREEZE_CSS = `*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}
@@ -215,7 +225,7 @@ async function capture(o: CaptureOptions): Promise<void> {
   }
   mkdirSync(o.out, { recursive: true })
   const server = spawn('bun', [join(REPO, 'scripts/serve-ssg.ts'), o.dist, String(o.port)], { stdio: 'ignore' })
-  const browser = await chromium.launch()
+  const browser = await chromium.launch({ args: [...DETERMINISTIC_ARGS] })
   try {
     await waitForServer(`http://127.0.0.1:${o.port}/`, server)
     let shots = 0
