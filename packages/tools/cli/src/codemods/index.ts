@@ -1,17 +1,19 @@
 /**
- * The codemod registry `pyreon upgrade` runs. A breaking (0.x minor)
+ * The codemod registry `pyreon upgrade` runs. Codemods may migrate any
+ * `@pyreon/*` package (Pyreon versions in lockstep). A breaking (0.x minor)
  * changeset for `@pyreon/zero` must name one of these ids — or explain why
  * no codemod is possible — which `scripts/check-breaking-changeset-codemod.ts`
  * enforces.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { runtimeDomRenderToMount } from './runtime-dom-render-to-mount'
 import type { Codemod } from './types'
 import { zeroRemoveViteOption } from './zero-remove-vite-option'
 
 export type { Codemod } from './types'
 
-export const CODEMODS: readonly Codemod[] = [zeroRemoveViteOption]
+export const CODEMODS: readonly Codemod[] = [zeroRemoveViteOption, runtimeDomRenderToMount]
 
 function versionKey(v: string): number[] {
   return (/^(\d+)\.(\d+)\.(\d+)/.exec(v) ?? [0, 0, 0, 0]).slice(1).map(Number)
