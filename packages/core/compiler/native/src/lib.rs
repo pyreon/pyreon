@@ -695,6 +695,9 @@ struct Ctx<'a> {
     /// arrow or function expression) is being walked; taken by that function.
     fold_decl_name: Option<String>,
     prop_derived_vars: FxHashMap<String, Span>,
+    /// Inliner hygiene: every identifier name an alias's inlined text mentions,
+    /// keyed by its initializer's start. Mirrors jsx.ts `aliasFreeNames`.
+    alias_free_names: FxHashMap<u32, FxHashSet<String>>,
     /// Undo log for lexical scoping of `prop_derived_vars` (issue #3815).
     prop_derived_log: Vec<ScopeLog>,
     /// Prop-derived consts whose initializer is a function expression — see the
@@ -918,6 +921,7 @@ impl<'a> Ctx<'a> {
             fold_props: FxHashSet::default(),
             fold_decl_name: None,
             prop_derived_vars: FxHashMap::default(),
+            alias_free_names: FxHashMap::default(),
             prop_derived_log: Vec::new(),
             prop_derived_fn_inits: FxHashSet::default(),
             resolved_cache: FxHashMap::default(),
@@ -1327,6 +1331,20 @@ fn is_pure_coercion_call(call: &CallExpression) -> bool {
         }
     }
     true
+}
+
+/// `new` callees whose instances are used as VALUES (`Date`, `URL`, `RegExp`,
+/// `Intl.*`): re-constructing one per read is not observable in practice, so a
+/// prop-derived const built from one stays inlined and live. Mirrors
+/// `isValueConstructor` in jsx.ts.
+fn is_value_constructor(callee: &Expression) -> bool {
+    match callee {
+        Expression::Identifier(id) => matches!(id.name.as_str(), "Date" | "URL" | "RegExp"),
+        Expression::StaticMemberExpression(m) => {
+            matches!(&m.object, Expression::Identifier(o) if o.name.as_str() == "Intl")
+        }
+        _ => false,
+    }
 }
 
 fn is_stateful_call_expr(expr: &Expression) -> bool {
@@ -2766,11 +2784,11 @@ fn find_init_prop_derived_idents(
     program: &Program,
     target: Span,
     prop_derived_vars: &FxHashMap<String, Span>,
-) -> Option<Vec<(u32, u32, String, bool)>> {
+) -> Option<(Vec<(u32, u32, String, bool)>, FxHashSet<String>)> {
     struct InitFinder<'b> {
         target: Span,
         vars: &'b FxHashMap<String, Span>,
-        out: Option<Vec<(u32, u32, String, bool)>>,
+        out: Option<(Vec<(u32, u32, String, bool)>, FxHashSet<String>)>,
     }
     impl<'a, 'b> Visit<'a> for InitFinder<'b> {
         fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
@@ -2778,7 +2796,7 @@ fn find_init_prop_derived_idents(
                 if init.span() == self.target {
                     let mut idents = Vec::new();
                     collect_prop_derived_idents(init, self.vars, &mut idents);
-                    self.out = Some(idents);
+                    self.out = Some((idents, span_bound_names(init)));
                     return;
                 }
             }
@@ -2902,9 +2920,17 @@ fn resolve_var_to_string(var_name: &str, ctx: &mut Ctx) -> String {
     // Copy the shared program reference before mutable operations
     let program = ctx.program;
     let found = find_init_prop_derived_idents(program, span, &ctx.prop_derived_vars);
-    let resolved = if let Some(mut idents) = found {
+    let resolved = if let Some((mut idents, bound)) = found {
         // AST-based resolution: `idents` are the prop-derived references
         // inside the initializer (collected by the span-matching visitor).
+        // Hygiene (jsx.ts `propDerivedEdits`): not inlined where a name the
+        // alias's text mentions is bound inside this initializer.
+        if !bound.is_empty() {
+            idents.retain(|(_, _, name, _)| {
+                let sp = ctx.prop_derived_vars.get(name.as_str()).map(|sp| sp.start).unwrap_or(u32::MAX);
+                !alias_captured_by(ctx, sp, bound.iter().map(|n| n.as_str()))
+            });
+        }
         if idents.is_empty() {
             ctx.source[span.start as usize..span.end as usize].to_string()
         } else {
@@ -2948,12 +2974,23 @@ fn resolve_var_to_string(var_name: &str, ctx: &mut Ctx) -> String {
 }
 
 /// Compose prop-derived substitutions and signal calls against original AST spans.
-fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> String {
-    let span = expr.span();
-
+/// The inlining edits for every prop-derived reference in `expr`, in ORIGINAL
+/// source positions. Mirrors the JS backend's `propDerivedEdits`.
+fn prop_derived_edits(expr: &Expression, ctx: &mut Ctx) -> Vec<(u32, u32, String)> {
     // Collect identifier references to prop-derived vars in this expression subtree
     let mut idents: Vec<(u32, u32, String, bool)> = Vec::new(); // (start, end, var_name)
     collect_prop_derived_idents(expr, &ctx.prop_derived_vars, &mut idents);
+    // Hygiene (jsx.ts `propDerivedEdits`): an alias whose inlined text mentions
+    // a name bound anywhere inside this span is not inlined here.
+    if !idents.is_empty() {
+        let bound = span_bound_names(expr);
+        if !bound.is_empty() {
+            idents.retain(|(_, _, name, _)| {
+                let sp = ctx.prop_derived_vars.get(name.as_str()).map(|sp| sp.start).unwrap_or(u32::MAX);
+                !alias_captured_by(ctx, sp, bound.iter().map(|n| n.as_str()))
+            });
+        }
+    }
 
 
     // Sort by position, deduplicate overlapping
@@ -2978,6 +3015,12 @@ fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> String {
         };
         edits.push((start, end, text));
     }
+    edits
+}
+
+fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> String {
+    let span = expr.span();
+    let mut edits = prop_derived_edits(expr, ctx);
     if !ctx.signal_vars.is_empty() && ctx.signal_vars.len() > ctx.shadowed_signals.len() {
         let mut signals = Vec::new();
         collect_signal_idents(expr, ctx, &mut signals, span.start, span.end, &mut Vec::new());
@@ -4722,6 +4765,99 @@ fn pd_hide(ctx: &mut Ctx, names: &[String]) {
             ctx.prop_derived_log.push(ScopeLog::Alias(name.clone(), Some(prev)));
         }
     }
+    // Hygiene: an alias whose inlined text mentions a name this scope re-binds
+    // would be captured by that binding here — hide it for the scope too.
+    // Mirrors jsx.ts `enterPropDerivedScope`.
+    if !names.is_empty() && !ctx.prop_derived_vars.is_empty() {
+        let captured: Vec<(String, Span)> = ctx
+            .prop_derived_vars
+            .iter()
+            .filter(|(_, sp)| alias_captured_by(ctx, sp.start, names.iter().map(|n| n.as_str())))
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+        for (name, prev) in captured {
+            ctx.prop_derived_vars.remove(name.as_str());
+            ctx.prop_derived_log.push(ScopeLog::Alias(name, Some(prev)));
+        }
+    }
+}
+
+/// Does a binding of any of `names` capture a name the alias whose initializer
+/// starts at `init_start` mentions in its inlined text? Mirrors jsx.ts
+/// `aliasCapturedBy`.
+fn alias_captured_by<'n>(ctx: &Ctx, init_start: u32, mut names: impl Iterator<Item = &'n str>) -> bool {
+    match ctx.alias_free_names.get(&init_start) {
+        Some(free) => names.any(|n| free.contains(n)),
+        None => false,
+    }
+}
+
+/// Every identifier name an alias's INLINED text mentions: the initializer's
+/// identifiers (all but a non-computed member property, JSX names and types —
+/// the JS walk's `Identifier` nodes) plus, transitively, those of the aliases it
+/// references. Mirrors jsx.ts `collectAliasFreeNames`.
+fn collect_alias_free_names(init: &Expression, ctx: &Ctx) -> FxHashSet<String> {
+    struct FreeNames<'c, 'p> {
+        ctx: &'c Ctx<'p>,
+        out: FxHashSet<String>,
+    }
+    impl<'c, 'p> FreeNames<'c, 'p> {
+        fn add(&mut self, name: &str) {
+            self.out.insert(name.to_string());
+            if let Some(sp) = self.ctx.prop_derived_vars.get(name) {
+                if let Some(t) = self.ctx.alias_free_names.get(&sp.start) {
+                    self.out.extend(t.iter().cloned());
+                }
+            }
+        }
+    }
+    impl<'a, 'c, 'p> Visit<'a> for FreeNames<'c, 'p> {
+        fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
+            self.add(it.name.as_str());
+        }
+        fn visit_binding_identifier(&mut self, it: &BindingIdentifier<'a>) {
+            self.add(it.name.as_str());
+        }
+        fn visit_identifier_name(&mut self, it: &IdentifierName<'a>) {
+            self.add(it.name.as_str());
+        }
+        fn visit_label_identifier(&mut self, it: &LabelIdentifier<'a>) {
+            self.add(it.name.as_str());
+        }
+        fn visit_static_member_expression(&mut self, it: &StaticMemberExpression<'a>) {
+            self.visit_expression(&it.object);
+        }
+        fn visit_jsx_element_name(&mut self, _: &JSXElementName<'a>) {}
+        fn visit_jsx_member_expression(&mut self, _: &JSXMemberExpression<'a>) {}
+        fn visit_ts_type(&mut self, _: &TSType<'a>) {}
+        fn visit_ts_type_parameter_declaration(&mut self, _: &TSTypeParameterDeclaration<'a>) {}
+    }
+    let mut f = FreeNames { ctx, out: FxHashSet::default() };
+    f.visit_expression(init);
+    f.out
+}
+
+/// Every name bound anywhere inside `expr` (params, declarators, catch,
+/// function and class names) — the inliner's hygiene check. Mirrors the
+/// `spanBound` set of jsx.ts `propDerivedEdits`.
+fn span_bound_names(expr: &Expression) -> FxHashSet<String> {
+    struct Bound {
+        out: FxHashSet<String>,
+    }
+    impl<'a> Visit<'a> for Bound {
+        fn visit_binding_identifier(&mut self, it: &BindingIdentifier<'a>) {
+            self.out.insert(it.name.to_string());
+        }
+        // Type-level bindings are not in the JS walk.
+        fn visit_ts_type(&mut self, _: &TSType<'a>) {}
+        fn visit_ts_type_parameter_declaration(&mut self, _: &TSTypeParameterDeclaration<'a>) {}
+        fn visit_ts_type_alias_declaration(&mut self, _: &TSTypeAliasDeclaration<'a>) {}
+        fn visit_ts_interface_declaration(&mut self, _: &TSInterfaceDeclaration<'a>) {}
+        fn visit_ts_enum_declaration(&mut self, _: &TSEnumDeclaration<'a>) {}
+    }
+    let mut b = Bound { out: FxHashSet::default() };
+    b.visit_expression(expr);
+    b.out
 }
 
 /// Undo-log entry for the lexical scoping of the prop-derived registry AND
@@ -5618,10 +5754,10 @@ fn handle_jsx_attribute(
             None => return,
         },
     };
-    // `ref` / `on*`: auto-called like the template path's `emit_ref` /
-    // `emit_event_listener` (see `auto_call_unwrapped_attr_value`).
+    // `ref` / `on*`: sliced like the template path's `emit_ref` /
+    // `emit_event_listener` (see `slice_unwrapped_attr_value`).
     if name == "ref" || is_event_handler(name) {
-        auto_call_unwrapped_attr_value(expr, ctx);
+        slice_unwrapped_attr_value(expr, ctx);
         return;
     }
 
@@ -5678,7 +5814,7 @@ fn handle_jsx_attribute(
                 "live prop — signal reads here are tracked into the component".to_string(),
             );
         } else {
-            auto_call_unwrapped_attr_value(expr, ctx);
+            slice_unwrapped_attr_value(expr, ctx);
         }
     } else {
         // DOM prop: hoist, wrap with () =>, or slice an unwrapped value.
@@ -5687,60 +5823,56 @@ fn handle_jsx_attribute(
         } else if should_wrap(expr, ctx) {
             wrap_expr(expr, ctx);
         } else {
-            auto_call_unwrapped_attr_value(expr, ctx);
+            slice_unwrapped_attr_value(expr, ctx);
         }
     }
 }
 
-/// Auto-call the bare signals of an h()-path attribute value the walk does NOT
-/// wrap or hoist — an `on*` handler, a `ref`, a function-valued prop
-/// (`render={() => …}`), or a static value holding one — with the same
-/// `auto_call_signals` pass the template path runs over the identical attribute
-/// (`emit_event_listener` / `emit_ref` slice the whole value). Before this the
-/// h() path left the value verbatim, so `onClick={() => count.set(count + 1)}`
-/// auto-called `count` on `<button>x</button>` and set the signal to its own
-/// source text plus "1" on `<Button/>`, a childless `<div/>`, a
-/// spread-carrying element and every SSR render. Nested JSX in the value stays
-/// as written (not walked), exactly as inside a template-path handler.
-/// Auto-call only (prop-derived inlining is not extended here — see the JS
-/// twin). Pushes nothing when nothing needs calling. Mirrors
-/// `autoCallUnwrappedAttrValue` in jsx.ts.
-fn auto_call_unwrapped_attr_value(expr: &Expression, ctx: &mut Ctx) {
-    if ctx.signal_vars.is_empty() || ctx.signal_vars.len() <= ctx.shadowed_signals.len() {
-        return;
-    }
+/// Slice an h()-path attribute value the walk does NOT wrap or hoist — an
+/// `on*` handler, a `ref`, a function-valued prop (`render={() => …}`), or a
+/// static value holding one — through `slice_expr`, exactly as the template
+/// path slices the identical attribute (`emit_event_listener` / `emit_ref`):
+/// bare signals are auto-called and prop-derived consts inlined, so a handler
+/// reads the live prop on every element path, not the setup value on the h()
+/// path only. Nested JSX in the value stays as written (not walked), exactly
+/// as inside a template-path handler. Pushes nothing when the slice is the
+/// source text. Mirrors `sliceUnwrappedAttrValue` in jsx.ts.
+fn slice_unwrapped_attr_value(expr: &Expression, ctx: &mut Ctx) {
     let sp = expr.span();
-    let raw = &ctx.source[sp.start as usize..sp.end as usize];
-    let called = auto_call_signals(raw, expr, ctx);
-    if called != raw {
-        ctx.add_replacement(sp.start, sp.end, called);
+    let sliced = slice_expr(expr, ctx);
+    if sliced != ctx.source[sp.start as usize..sp.end as usize] {
+        ctx.add_replacement(sp.start, sp.end, sliced);
     }
 }
 
-/// Auto-call the bare signals of a JSX expression the emit does NOT slice (a
-/// function child — `<Comp>{() => count + 1}</Comp>`, `<For>{(r) => …}</For>` —
-/// or any other unwrapped value) before the walk descends into it. A sliced
-/// expression gets `auto_call_signals` over its whole span, nested functions
-/// included; an unsliced one is WALKED (so its nested JSX still compiles), and
-/// the walk never rewrites an identifier — so a bare signal inside a function
-/// child was auto-called on a template element and left as the function on
-/// every other path. Same collector as `slice_expr` (same scope, identity and
-/// write-target rules); identifiers inside nested JSX are left to that JSX's
-/// own emit, which the walk reaches next. Each edit is a zero-width `()`
-/// insertion, disjoint from the walk's own edits (those cover JSX only).
-/// Mirrors `autoCallUnsliced` in jsx.ts.
-fn auto_call_unsliced(expr: &Expression, ctx: &mut Ctx) {
-    if ctx.signal_vars.is_empty() || ctx.signal_vars.len() <= ctx.shadowed_signals.len() {
+/// The identifier edits `slice_expr` would make, applied to a WALKED
+/// expression (a function child — `<Comp>{() => count + label}</Comp>`,
+/// `<For>{(r) => …}</For>` — or any other unwrapped value) before the walk
+/// descends into it: bare signals get a zero-width `()`, and — under the same
+/// gate `slice_expr` uses — prop-derived consts are inlined, so a component's
+/// function child reads the live prop exactly as a template element's does.
+/// Edits inside nested JSX are left to that JSX's own emit, which the walk
+/// reaches next; the rest cover identifiers only, disjoint from the walk's own
+/// edits (those cover JSX only). Mirrors `sliceUnsliced` in jsx.ts.
+fn slice_unsliced(expr: &Expression, ctx: &mut Ctx) {
+    if matches!(expr, Expression::JSXElement(_) | Expression::JSXFragment(_)) {
         return;
     }
-    if matches!(expr, Expression::JSXElement(_) | Expression::JSXFragment(_)) {
+    let call_signals =
+        !ctx.signal_vars.is_empty() && ctx.signal_vars.len() > ctx.shadowed_signals.len();
+    let inline = !ctx.prop_derived_vars.is_empty()
+        && (accesses_props(expr, ctx) || fn_body_accesses_props(expr, ctx));
+    if !call_signals && !inline {
         return;
     }
     let sp = expr.span();
     let mut idents: Vec<(u32, u32)> = Vec::new();
-    let mut shadows: Vec<String> = Vec::new();
-    collect_signal_idents(expr, ctx, &mut idents, sp.start, sp.end, &mut shadows);
-    if idents.is_empty() {
+    if call_signals {
+        let mut shadows: Vec<String> = Vec::new();
+        collect_signal_idents(expr, ctx, &mut idents, sp.start, sp.end, &mut shadows);
+    }
+    let pd_edits = if inline { prop_derived_edits(expr, ctx) } else { Vec::new() };
+    if idents.is_empty() && pd_edits.is_empty() {
         return;
     }
     struct JsxSpans {
@@ -5756,11 +5888,18 @@ fn auto_call_unsliced(expr: &Expression, ctx: &mut Ctx) {
     }
     let mut finder = JsxSpans { spans: Vec::new() };
     finder.visit_expression(expr);
+    let in_jsx = |start: u32, end: u32| finder.spans.iter().any(|&(s, e)| start >= s && end <= e);
     for (start, end) in idents {
-        if finder.spans.iter().any(|&(s, e)| start >= s && end <= e) {
+        if in_jsx(start, end) {
             continue;
         }
         ctx.add_replacement(end, end, "()".to_string());
+    }
+    for (start, end, text) in pd_edits {
+        if in_jsx(start, end) {
+            continue;
+        }
+        ctx.add_replacement(start, end, text);
     }
 }
 
@@ -5905,7 +6044,7 @@ fn handle_jsx_expression_child(container: &JSXExpressionContainer, ctx: &mut Ctx
     );
     let old_cb = ctx.in_jsx_child_callback;
     ctx.in_jsx_child_callback = is_render_cb;
-    auto_call_unsliced(expr, ctx);
+    slice_unsliced(expr, ctx);
     walk_expression(expr, ctx);
     ctx.in_jsx_child_callback = old_cb;
     ctx.parent_is_jsx = old;
@@ -7793,7 +7932,7 @@ fn walk_preserved_child_expr(expr: &Expression, ctx: &mut Ctx) {
     );
     let old_cb = ctx.in_jsx_child_callback;
     ctx.in_jsx_child_callback = is_render_cb;
-    auto_call_unsliced(expr, ctx);
+    slice_unsliced(expr, ctx);
     walk_expression(expr, ctx);
     ctx.in_jsx_child_callback = old_cb;
     ctx.parent_is_jsx = old;
@@ -10561,6 +10700,108 @@ fn contains_jsx(expr: &Expression) -> bool {
     matches!(e, Expression::JSXElement(_) | Expression::JSXFragment(_)) || is_jsx_collection_init(e)
 }
 
+/// Would evaluating this initializer TWICE be observable — does it mint state
+/// anywhere, not only at its root? Mirrors `initMintsState` in jsx.ts (see its
+/// doc comment for the rule): a stateful call (`is_stateful_call_expr`), a
+/// `new` other than a value constructor, a class expression, a write (`=`,
+/// `++`, `delete`) or an `await` / `yield`, at any depth,
+/// including the body of a function the evaluation can invoke (a call / `new`
+/// callee or argument) — a function that is only created runs nothing.
+/// A generic `Visit` walk, so it reaches every node kind the JS child walk does.
+fn init_mints_state(init: &Expression) -> bool {
+    struct StateFinder {
+        found: bool,
+        // Can evaluating the initializer run the function about to be visited?
+        // Only as a call / `new` callee or argument (through parentheses and
+        // type layers) — the JS twin's `invocable` flag.
+        invocable: bool,
+    }
+    impl<'a> Visit<'a> for StateFinder {
+        fn visit_expression(&mut self, it: &Expression<'a>) {
+            if self.found {
+                return;
+            }
+            match it {
+                // Decided in `visit_function` / `visit_arrow_function_expression`,
+                // which also see class and object methods and declarations.
+                Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => {
+                    oxc_ast_visit::walk::walk_expression(self, it);
+                }
+                Expression::ParenthesizedExpression(_)
+                | Expression::TSAsExpression(_)
+                | Expression::TSSatisfiesExpression(_)
+                | Expression::TSNonNullExpression(_)
+                | Expression::TSTypeAssertion(_) => {
+                    oxc_ast_visit::walk::walk_expression(self, it);
+                }
+                _ => {
+                    let effectful = match it {
+                        Expression::NewExpression(n) => !is_value_constructor(&n.callee),
+                        Expression::ClassExpression(_)
+                        | Expression::AssignmentExpression(_)
+                        | Expression::UpdateExpression(_)
+                        | Expression::AwaitExpression(_)
+                        | Expression::YieldExpression(_) => true,
+                        Expression::UnaryExpression(u) => u.operator == UnaryOperator::Delete,
+                        _ => false,
+                    };
+                    if effectful {
+                        self.found = true;
+                        return;
+                    }
+                    self.invocable = false;
+                    oxc_ast_visit::walk::walk_expression(self, it);
+                }
+            }
+            self.invocable = false;
+        }
+        fn visit_function(&mut self, it: &Function<'a>, flags: oxc_syntax::scope::ScopeFlags) {
+            if self.found || !self.invocable {
+                return;
+            }
+            self.invocable = false;
+            oxc_ast_visit::walk::walk_function(self, it, flags);
+        }
+        fn visit_arrow_function_expression(&mut self, it: &ArrowFunctionExpression<'a>) {
+            if self.found || !self.invocable {
+                return;
+            }
+            self.invocable = false;
+            oxc_ast_visit::walk::walk_arrow_function_expression(self, it);
+        }
+        // Calls are visited here, not in `visit_expression`, so a call inside an
+        // optional chain (`a?.useX()`, a ChainElement) is classified too.
+        fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
+            if self.found {
+                return;
+            }
+            let stateful = match &it.callee {
+                Expression::Identifier(id) => is_stateful_call(id.name.as_str()),
+                Expression::StaticMemberExpression(m) => {
+                    is_factory_convention_name(m.property.name.as_str())
+                }
+                _ => false,
+            };
+            if stateful {
+                self.found = true;
+                return;
+            }
+            self.invocable = true;
+            self.visit_expression(&it.callee);
+            for arg in &it.arguments {
+                // A spread's operand is not itself an argument (JS twin: the
+                // SpreadElement node is not a pass-through layer).
+                self.invocable = !matches!(arg, Argument::SpreadElement(_));
+                self.visit_argument(arg);
+            }
+            self.invocable = false;
+        }
+    }
+    let mut finder = StateFinder { found: false, invocable: false };
+    finder.visit_expression(init);
+    finder.found
+}
+
 fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
     // Handle splitProps regardless of kind
     for declarator in &decl.declarations {
@@ -10652,9 +10893,17 @@ fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
                 if ctx.ssr && contains_jsx(init) {
                     continue;
                 }
+                // A factory call or `new` ANYWHERE in the initializer (not only
+                // at its root, checked above): inlining would mint fresh state
+                // per use site. Mirrors the JS backend's `initMintsState`.
+                if init_mints_state(init) {
+                    continue;
+                }
                 if reads_from_props(init, &ctx.props_names)
                     || references_prop_derived(init, &ctx.prop_derived_vars)
                 {
+                    let free = collect_alias_free_names(init, ctx);
+                    ctx.alias_free_names.insert(init.span().start, free);
                     let prev = ctx
                         .prop_derived_vars
                         .insert(id.name.to_string(), init.span());
@@ -10761,177 +11010,110 @@ fn stmt_any_expr<F: Fn(&Expression) -> bool>(stmt: &Statement, check: &F) -> boo
     }
 }
 
+/// Does the initializer read `<propsName>.x` anywhere (any depth, nested
+/// function bodies included, membership-only — no shadow filtering)? Mirrors
+/// the JS backend's `readsFromProps`, which walks every child node. A generic
+/// `Visit` walk, not an arm-by-arm match: the enumerated version missed `new`,
+/// `await`, tagged templates, sequences and spread arguments, so native left a
+/// const the JS backend inlined as a bare captured name.
 fn reads_from_props(expr: &Expression, props_names: &FxHashSet<String>) -> bool {
-    match expr {
-        Expression::StaticMemberExpression(member) => {
-            if let Expression::Identifier(obj) = &member.object {
-                if props_names.contains(obj.name.as_str()) {
-                    return true;
-                }
-            }
-            reads_from_props(&member.object, props_names)
-        }
-        Expression::ComputedMemberExpression(member) => {
-            if let Expression::Identifier(obj) = &member.object {
-                if props_names.contains(obj.name.as_str()) {
-                    return true;
-                }
-            }
-            reads_from_props(&member.object, props_names)
-                || reads_from_props(&member.expression, props_names)
-        }
-        Expression::BinaryExpression(b) => {
-            reads_from_props(&b.left, props_names) || reads_from_props(&b.right, props_names)
-        }
-        Expression::LogicalExpression(l) => {
-            reads_from_props(&l.left, props_names) || reads_from_props(&l.right, props_names)
-        }
-        Expression::ConditionalExpression(c) => {
-            reads_from_props(&c.test, props_names)
-                || reads_from_props(&c.consequent, props_names)
-                || reads_from_props(&c.alternate, props_names)
-        }
-        Expression::UnaryExpression(u) => reads_from_props(&u.argument, props_names),
-        Expression::ParenthesizedExpression(p) => reads_from_props(&p.expression, props_names),
-        Expression::TemplateLiteral(t) => {
-            t.expressions.iter().any(|e| reads_from_props(e, props_names))
-        }
-        Expression::CallExpression(call) => {
-            reads_from_props(&call.callee, props_names)
-                || call.arguments.iter().any(|a| {
-                    a.as_expression()
-                        .map_or(false, |e| reads_from_props(e, props_names))
-                })
-        }
-        Expression::ArrayExpression(arr) => arr.elements.iter().any(|el| {
-            el.as_expression()
-                .map_or(false, |e| reads_from_props(e, props_names))
-        }),
-        Expression::ObjectExpression(obj) => obj.properties.iter().any(|p| match p {
-            ObjectPropertyKind::ObjectProperty(prop) => reads_from_props(&prop.value, props_names),
-            ObjectPropertyKind::SpreadProperty(s) => reads_from_props(&s.argument, props_names),
-        }),
-        // TypeScript expression wrappers
-        Expression::TSAsExpression(e) => reads_from_props(&e.expression, props_names),
-        Expression::TSSatisfiesExpression(e) => reads_from_props(&e.expression, props_names),
-        Expression::TSNonNullExpression(e) => reads_from_props(&e.expression, props_names),
-        Expression::TSTypeAssertion(e) => reads_from_props(&e.expression, props_names),
-        // Optional chaining
-        Expression::ChainExpression(c) => match &c.expression {
-            ChainElement::CallExpression(call) => {
-                reads_from_props(&call.callee, props_names)
-                    || call.arguments.iter().any(|a| {
-                        a.as_expression()
-                            .map_or(false, |e| reads_from_props(e, props_names))
-                    })
-            }
-            ChainElement::StaticMemberExpression(m) => {
-                if let Expression::Identifier(obj) = &m.object {
-                    if props_names.contains(obj.name.as_str()) {
-                        return true;
-                    }
-                }
-                reads_from_props(&m.object, props_names)
-            }
-            ChainElement::ComputedMemberExpression(m) => {
-                if let Expression::Identifier(obj) = &m.object {
-                    if props_names.contains(obj.name.as_str()) {
-                        return true;
-                    }
-                }
-                reads_from_props(&m.object, props_names)
-                    || reads_from_props(&m.expression, props_names)
-            }
-            ChainElement::PrivateFieldExpression(p) => reads_from_props(&p.object, props_names),
-            ChainElement::TSNonNullExpression(e) => reads_from_props(&e.expression, props_names),
-        },
-        // A function-valued const whose body reads props directly
-        // (`const f = () => props.x`) registers the const as prop-derived, so its
-        // use site inlines f's value (matching JS `readsFromProps`'s body descent).
-        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => {
-            fn_body_any_expr(expr, &|e| reads_from_props(e, props_names))
-        }
-        _ => false,
+    struct PropsReadFinder<'n> {
+        names: &'n FxHashSet<String>,
+        found: bool,
     }
+    impl<'n> PropsReadFinder<'n> {
+        fn is_props(&self, obj: &Expression) -> bool {
+            matches!(obj, Expression::Identifier(id) if self.names.contains(id.name.as_str()))
+        }
+    }
+    impl<'a, 'n> Visit<'a> for PropsReadFinder<'n> {
+        fn visit_static_member_expression(&mut self, it: &StaticMemberExpression<'a>) {
+            if self.is_props(&it.object) {
+                self.found = true;
+            }
+            if !self.found {
+                oxc_ast_visit::walk::walk_static_member_expression(self, it);
+            }
+        }
+        fn visit_computed_member_expression(&mut self, it: &ComputedMemberExpression<'a>) {
+            if self.is_props(&it.object) {
+                self.found = true;
+            }
+            if !self.found {
+                oxc_ast_visit::walk::walk_computed_member_expression(self, it);
+            }
+        }
+        fn visit_private_field_expression(&mut self, it: &PrivateFieldExpression<'a>) {
+            if self.is_props(&it.object) {
+                self.found = true;
+            }
+            if !self.found {
+                oxc_ast_visit::walk::walk_private_field_expression(self, it);
+            }
+        }
+        // Type-only subtrees are not children in the JS walk (TYPE_ONLY_CHILD_KEYS).
+        fn visit_ts_type(&mut self, _: &TSType<'a>) {}
+    }
+    if props_names.is_empty() {
+        return false;
+    }
+    let mut finder = PropsReadFinder { names: props_names, found: false };
+    finder.visit_expression(expr);
+    finder.found
 }
 
+/// Does the initializer mention a prop-derived name anywhere? Mirrors the JS
+/// backend's `referencesPropDerived`: membership-only (NO shadow filtering — a
+/// function-valued const whose body rebinds the name still registers; the
+/// precise lexical substitution happens at the use site), every identifier
+/// except a non-computed member property, at any depth. A generic `Visit`
+/// walk for the same reason as `reads_from_props`.
 fn references_prop_derived(expr: &Expression, prop_derived: &FxHashMap<String, Span>) -> bool {
+    struct RefFinder<'n> {
+        vars: &'n FxHashMap<String, Span>,
+        found: bool,
+    }
+    impl<'n> RefFinder<'n> {
+        fn hit(&mut self, name: &str) {
+            if self.vars.contains_key(name) {
+                self.found = true;
+            }
+        }
+    }
+    impl<'a, 'n> Visit<'a> for RefFinder<'n> {
+        fn visit_identifier_reference(&mut self, it: &IdentifierReference<'a>) {
+            self.hit(it.name.as_str());
+        }
+        fn visit_binding_identifier(&mut self, it: &BindingIdentifier<'a>) {
+            self.hit(it.name.as_str());
+        }
+        fn visit_identifier_name(&mut self, it: &IdentifierName<'a>) {
+            self.hit(it.name.as_str());
+        }
+        fn visit_label_identifier(&mut self, it: &LabelIdentifier<'a>) {
+            self.hit(it.name.as_str());
+        }
+        fn visit_static_member_expression(&mut self, it: &StaticMemberExpression<'a>) {
+            // The property name is not a reference.
+            self.visit_expression(&it.object);
+        }
+        fn visit_expression(&mut self, it: &Expression<'a>) {
+            if !self.found {
+                oxc_ast_visit::walk::walk_expression(self, it);
+            }
+        }
+        // JSX names are `JSXIdentifier`s in the JS AST, never `Identifier`s.
+        fn visit_jsx_element_name(&mut self, _: &JSXElementName<'a>) {}
+        fn visit_jsx_member_expression(&mut self, _: &JSXMemberExpression<'a>) {}
+        // Type-only subtrees are not children in the JS walk (TYPE_ONLY_CHILD_KEYS).
+        fn visit_ts_type(&mut self, _: &TSType<'a>) {}
+    }
     if prop_derived.is_empty() {
         return false;
     }
-    match expr {
-        Expression::Identifier(id) => prop_derived.contains_key(id.name.as_str()),
-        Expression::StaticMemberExpression(m) => {
-            // Skip property-name position
-            references_prop_derived(&m.object, prop_derived)
-        }
-        Expression::ComputedMemberExpression(m) => {
-            references_prop_derived(&m.object, prop_derived)
-                || references_prop_derived(&m.expression, prop_derived)
-        }
-        Expression::BinaryExpression(b) => {
-            references_prop_derived(&b.left, prop_derived)
-                || references_prop_derived(&b.right, prop_derived)
-        }
-        Expression::LogicalExpression(l) => {
-            references_prop_derived(&l.left, prop_derived)
-                || references_prop_derived(&l.right, prop_derived)
-        }
-        Expression::ConditionalExpression(c) => {
-            references_prop_derived(&c.test, prop_derived)
-                || references_prop_derived(&c.consequent, prop_derived)
-                || references_prop_derived(&c.alternate, prop_derived)
-        }
-        Expression::UnaryExpression(u) => references_prop_derived(&u.argument, prop_derived),
-        Expression::ParenthesizedExpression(p) => {
-            references_prop_derived(&p.expression, prop_derived)
-        }
-        Expression::TemplateLiteral(t) => {
-            t.expressions
-                .iter()
-                .any(|e| references_prop_derived(e, prop_derived))
-        }
-        Expression::CallExpression(call) => {
-            references_prop_derived(&call.callee, prop_derived)
-                || call.arguments.iter().any(|a| {
-                    a.as_expression()
-                        .map_or(false, |e| references_prop_derived(e, prop_derived))
-                })
-        }
-        // TypeScript expression wrappers
-        Expression::TSAsExpression(e) => references_prop_derived(&e.expression, prop_derived),
-        Expression::TSSatisfiesExpression(e) => references_prop_derived(&e.expression, prop_derived),
-        Expression::TSNonNullExpression(e) => references_prop_derived(&e.expression, prop_derived),
-        Expression::TSTypeAssertion(e) => references_prop_derived(&e.expression, prop_derived),
-        // Optional chaining
-        Expression::ChainExpression(c) => match &c.expression {
-            ChainElement::CallExpression(call) => {
-                references_prop_derived(&call.callee, prop_derived)
-                    || call.arguments.iter().any(|a| {
-                        a.as_expression()
-                            .map_or(false, |e| references_prop_derived(e, prop_derived))
-                    })
-            }
-            ChainElement::StaticMemberExpression(m) => references_prop_derived(&m.object, prop_derived),
-            ChainElement::ComputedMemberExpression(m) => {
-                references_prop_derived(&m.object, prop_derived)
-                    || references_prop_derived(&m.expression, prop_derived)
-            }
-            ChainElement::PrivateFieldExpression(p) => references_prop_derived(&p.object, prop_derived),
-            ChainElement::TSNonNullExpression(e) => references_prop_derived(&e.expression, prop_derived),
-        },
-        // Function-valued consts whose body references a prop-derived var register
-        // the const as prop-derived (matching JS `referencesPropDerived`, which
-        // descends into function bodies via `forEachChildFast` — membership-only,
-        // NO shadow filtering: a body that locally shadows the name still registers,
-        // exactly as JS, and the precise shadow-aware substitution happens later in
-        // the inliner). This lets a named handler / locally-called function
-        // (`const f = () => send(a)`) inline `a` to the live prop at its use site.
-        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => {
-            fn_body_any_expr(expr, &|e| references_prop_derived(e, prop_derived))
-        }
-        _ => false,
-    }
+    let mut finder = RefFinder { vars: prop_derived, found: false };
+    finder.visit_expression(expr);
+    finder.found
 }
 
 #[cfg(test)]
@@ -11255,8 +11437,8 @@ fn try_partial_collapse(el: &JSXElement, tag: &str, parent_is_jsx: bool, ctx: &m
 }
 
 /// Re-emit a collapse site's peeled attribute expression as the component's
-/// normal (h()-path) mount would: an `on*` handler gets the signal auto-call
-/// (`auto_call_unwrapped_attr_value`), a dynamic prop's ternary test the full
+/// normal (h()-path) mount would: an `on*` handler the `slice_expr` of
+/// `slice_unwrapped_attr_value`, a dynamic prop's ternary test the full
 /// `slice_expr` its `_rp(() => …)` wrap would get. A verbatim source slice left
 /// `count + 1` in a handler and `() => (active) ? 0 : 1` in the dispatcher
 /// (always the truthy variant). Mirrors `collapseAttrExprText` in jsx.ts.
@@ -11267,12 +11449,7 @@ fn collapse_attr_expr_text(el: &JSXElement, start: u32, end: u32, ctx: &mut Ctx)
         let Some(e) = jsx_expr_as_expression(&c.expression) else { continue };
         let sp = e.span();
         if sp.start == start && sp.end == end {
-            let raw = &ctx.source[start as usize..end as usize];
-            return if ctx.signal_vars.len() > ctx.shadowed_signals.len() {
-                auto_call_signals(raw, e, ctx)
-            } else {
-                raw.to_string()
-            };
+            return slice_expr(e, ctx);
         }
         if let Expression::ConditionalExpression(ce) = e {
             let tsp = ce.test.span();
