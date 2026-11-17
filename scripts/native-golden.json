@@ -22,33 +22,33 @@
       "warnings": 0
     },
     "fixture:03-computed.tsx|swift": {
-      "sha": "707a46dcbc9c8443f6796b8c68b2aaada5b181d68435e41d8e25397d5bd1815b",
-      "bytes": 162,
+      "sha": "2a8f275c2c4366846b8d421c8ae0186bb1001f79a7f090e7280b4651d8da69be",
+      "bytes": 172,
       "warnings": 0
     },
     "fixture:03-computed.tsx|kotlin": {
-      "sha": "2e524d7168c89826e758803189ac6c302239303da5088b80da758ccd9c600a59",
-      "bytes": 255,
+      "sha": "1b6782b536c274d0c85f7c0fdd436de6b2361667f08a308d295d697d0c2e5f4a",
+      "bytes": 265,
       "warnings": 0
     },
     "fixture:04-event.tsx|swift": {
-      "sha": "29b9afdddc2c1819c4f75d21efa812f7d45d5f6f874e60c3efbec3f5cfdc6abb",
-      "bytes": 168,
-      "warnings": 0
-    },
-    "fixture:04-event.tsx|kotlin": {
-      "sha": "a65c57189da65e89143d250b3805d590c4ab627eb3d02f4e7b80a2561f092fd6",
-      "bytes": 240,
-      "warnings": 0
-    },
-    "fixture:05-multi-signal.tsx|swift": {
-      "sha": "362c4ceadf06e0edd7ff29b2e3edc809a9cffd76fa00d00e880217addb132dd8",
+      "sha": "9f26028cdc71c4259fb9769f66f12c3351626229fb70e7bf6d04ad42ab2aa51e",
       "bytes": 178,
       "warnings": 0
     },
+    "fixture:04-event.tsx|kotlin": {
+      "sha": "df248ebbb79d1ae5d0e850cdb1788f8966f6ba93e755166a0a2675a563eae1b9",
+      "bytes": 250,
+      "warnings": 0
+    },
+    "fixture:05-multi-signal.tsx|swift": {
+      "sha": "d99bb8a1151528b0d6f3ccb7b5ce6d7a4d9c673a4ecbcdb2002468141478cc14",
+      "bytes": 188,
+      "warnings": 0
+    },
     "fixture:05-multi-signal.tsx|kotlin": {
-      "sha": "340ecd7dada15a5ff1f9e8833d8da48b1cbdec3b97f7226272ef910e31f37669",
-      "bytes": 281,
+      "sha": "315d0c466de393cace9b99dce10f9f996c1510fa185b1c29b1ef9ea7a350fe96",
+      "bytes": 291,
       "warnings": 0
     },
     "fixture:06-for.tsx|swift": {
@@ -132,13 +132,13 @@
       "warnings": 0
     },
     "fixture:14-canonical-content.tsx|swift": {
-      "sha": "b0be7eaf811ee539d2231ae3813fceff5152f937fc0a9cbd3e79c915c9c55a79",
-      "bytes": 592,
+      "sha": "21b41a2de000700568d26a2755bd55322046716edca41988a569f7d1514063fe",
+      "bytes": 602,
       "warnings": 0
     },
     "fixture:14-canonical-content.tsx|kotlin": {
-      "sha": "414e7339501ffa9238fc53d3aaee2a49229dc0f1cbe079658853cd80964d2787",
-      "bytes": 674,
+      "sha": "02680019521f3093a6db71f8391e645161c90215df9b8ec7e1aa33297bdacfc9",
+      "bytes": 684,
       "warnings": 0
     },
     "fixture:15-canonical-link.tsx|swift": {
@@ -192,13 +192,13 @@
       "warnings": 0
     },
     "fixture:render-props-lathe-books.tsx|swift": {
-      "sha": "c86e16f55da50dd0ec2faaaf7ea4673c3dc27df83c0bee98204985bd9d1370bc",
-      "bytes": 6642,
+      "sha": "4e814522edb9a790a2a59ebeda61bdf58eeb65fa49d72ebcf1bbb9e6b6b35ad6",
+      "bytes": 6846,
       "warnings": 0
     },
     "fixture:render-props-lathe-books.tsx|kotlin": {
-      "sha": "6fec1738ab9588cc828ecacce348797b55a2c0443e8f98fefd4ffba0bc62b0a7",
-      "bytes": 6556,
+      "sha": "8e976813b9a27e528285ea5a6cebc9f2c5c281d58b1d77951c530960475fabaf",
+      "bytes": 6806,
       "warnings": 0
     },
     "fixture:render-props-lathe-consumer.tsx|swift": {
@@ -252,13 +252,13 @@
       "warnings": 0
     },
     "fixture:showcase-analytics.tsx|swift": {
-      "sha": "96bccd0abfcdc36597c923c4242d332f352cc709ecf11dba6c22af2e13dbbc9f",
-      "bytes": 2772,
+      "sha": "9f4a9cbe46a1db8e30b044745ac46f34bfe4d52655d5ec2fdd15387ff7dfe989",
+      "bytes": 2792,
       "warnings": 0
     },
     "fixture:showcase-analytics.tsx|kotlin": {
-      "sha": "a8f43e81731e1736d0fb6191503581a8f1da45fb182c747bd7b19ec06ced50f6",
-      "bytes": 3143,
+      "sha": "9e3453b3071976231783cb416a924b75aa8127e84099c9cd4a54285e711c7bbe",
+      "bytes": 3163,
       "warnings": 0
     },
     "fixture:showcase-viz.tsx|swift": {
@@ -282,8 +282,8 @@
       "warnings": 0
     },
     "fixture:tier2-feature.tsx|swift": {
-      "sha": "df1582680e4ba22c50fbfeec73e936f2e73d13390a6953eb698b9ba8d6eefca5",
-      "bytes": 300,
+      "sha": "c7cf734810ff0f850577450aec3eeb540d998491c20eee7a65baf1f7edce1579",
+      "bytes": 819,
       "warnings": 0
     },
     "fixture:tier2-feature.tsx|kotlin": {
@@ -352,13 +352,13 @@
       "warnings": 0
     },
     "fixture:tier2-store.tsx|swift": {
-      "sha": "297917246dc1bd31501fa5305cf580ffbb98e036592d541d66876bf987c1e415",
-      "bytes": 2015,
+      "sha": "b1426681abc65dd6cd5909918b1d2941ae1ae616b1d5b479173266e689a091c2",
+      "bytes": 2035,
       "warnings": 0
     },
     "fixture:tier2-store.tsx|kotlin": {
-      "sha": "bf0116ac6b74822b4d4ad1f7954be9f368a0182ca34d46bbb0aa2ff86dd4acc8",
-      "bytes": 1778,
+      "sha": "6aa9a1887a4d3340d3a7db069a348e9e77d6336b4757dd6fa22f68a03ed390c1",
+      "bytes": 1798,
       "warnings": 0
     },
     "fixture:tier2-validate.tsx|swift": {
@@ -372,23 +372,23 @@
       "warnings": 1
     },
     "fixture:tier2-validation.tsx|swift": {
-      "sha": "226f34ecca0e7c7ef8cb276009cf0d7b63c819d1f7ad0f0b920f0e554b504994",
-      "bytes": 3186,
+      "sha": "4fcffbcd4c5493b47dd9bc46c0b7eb931f9d277ca25a026863fd12a56daa9710",
+      "bytes": 3242,
       "warnings": 0
     },
     "fixture:tier2-validation.tsx|kotlin": {
-      "sha": "0b3120aa438a1630f032ea938e413653d4466195a33a31d8549b620e83c611c4",
-      "bytes": 2831,
+      "sha": "c5031b0d3d44329cebb62fee10577bad3e44ae259facd98aeb0f2449a4843d79",
+      "bytes": 2851,
       "warnings": 0
     },
     "fixture:value-type-namespaces.tsx|swift": {
-      "sha": "7ea0f88121de40af5c9dfe8272e90845725016c5816347e82b9a4893f7446095",
-      "bytes": 6962,
+      "sha": "5cb717952c9390e8c6a5136c895db63f5f3bdd3eb585127c18931a6d65287e10",
+      "bytes": 7166,
       "warnings": 0
     },
     "fixture:value-type-namespaces.tsx|kotlin": {
-      "sha": "c4e04a2cc2e38952c407d2a697df6d4ca824af73fb7d69f2cdd6351ebe360946",
-      "bytes": 6828,
+      "sha": "2fc25b13863de92ab037a42fb132f10f654bd5754513b54022d2ca3d85b2b946",
+      "bytes": 7078,
       "warnings": 0
     },
     "fixture:webview-data-bridge.tsx|swift": {
@@ -2152,8 +2152,8 @@
       "warnings": 1
     },
     "golden-fixture:feature-01.tsx|swift": {
-      "sha": "4abcde731a35e3350e10ffaf2fb160ee086a8399b98ca90f1a77833a2b3f1fae",
-      "bytes": 736,
+      "sha": "af071515701e135ed7f4d33b235a0c26044b89dc5870406b79196144ecabef3c",
+      "bytes": 1512,
       "warnings": 0
     },
     "golden-fixture:feature-01.tsx|kotlin": {
@@ -2162,18 +2162,18 @@
       "warnings": 0
     },
     "golden-fixture:feature-02.tsx|swift": {
-      "sha": "c4ee1ca00d1ca95fab8968a389602a4fb3f412df2548eed6b823854b83fdc369",
-      "bytes": 1931,
+      "sha": "be239dc3159cde18a1006b7df6d6c70bc9c9e2bdb10b6e81453db18708d62b99",
+      "bytes": 2581,
       "warnings": 0
     },
     "golden-fixture:feature-02.tsx|kotlin": {
-      "sha": "d6f16c850d1ad2f1adf746f0020635c9fb8f85a6ad9c23949b24cd446f539c31",
-      "bytes": 2051,
+      "sha": "01af4b25575ce53b0ff95adb38c4a2c48bc34d2111a1a7a11c58ad6e6c86d8b9",
+      "bytes": 2071,
       "warnings": 0
     },
     "golden-fixture:feature-03.tsx|swift": {
-      "sha": "ab94141e242f09bb17b5e3d4b1b1d773cf17daf136d7914240f7d71c8f3f350f",
-      "bytes": 1416,
+      "sha": "5ec8c2a129074255ce191a4f740f1342a724088393a091c8b2d6d6dcc1486554",
+      "bytes": 2007,
       "warnings": 9
     },
     "golden-fixture:feature-03.tsx|kotlin": {
@@ -2192,8 +2192,8 @@
       "warnings": 2
     },
     "golden-fixture:feature-05.tsx|swift": {
-      "sha": "683ae6ee9f23f608935f3442b592fcd55aebb7a1bf750f643bc8647a9f3c3836",
-      "bytes": 904,
+      "sha": "e294a10ba258c0a9a29cd15f102b2b8f6693e4dd08c6fd5659afd9d59233491d",
+      "bytes": 1585,
       "warnings": 1
     },
     "golden-fixture:feature-05.tsx|kotlin": {
@@ -2202,8 +2202,8 @@
       "warnings": 1
     },
     "golden-fixture:feature-06.tsx|swift": {
-      "sha": "d298585bc352aa0e4e56d446fa90502bd39fb2620ee77e6ce06d4758ba071844",
-      "bytes": 848,
+      "sha": "1a756a376cd09185f86fc6f9753ce9eccfccdbeaa34ea58c5432d1e3aeff6c52",
+      "bytes": 1457,
       "warnings": 0
     },
     "golden-fixture:feature-06.tsx|kotlin": {
@@ -2212,8 +2212,8 @@
       "warnings": 0
     },
     "golden-fixture:feature-07.tsx|swift": {
-      "sha": "52d03bd47ce653b942da90028b046fb4973f0060a091c17575d8309bb657e654",
-      "bytes": 1768,
+      "sha": "ec86784a23b135c7ad48a894748cdf547f3fb8ff5d8d24a705e53164a6143a7d",
+      "bytes": 2019,
       "warnings": 0
     },
     "golden-fixture:feature-07.tsx|kotlin": {
@@ -2222,8 +2222,8 @@
       "warnings": 0
     },
     "golden-fixture:feature-08.tsx|swift": {
-      "sha": "e8bef2be772fa72e23ebfb5c4bc5183fd4808124c9b0466dbe50618224edcf7c",
-      "bytes": 541,
+      "sha": "56ad0dbcff2d0c5de20eacd4eb3872fc86f8fe2b914323d49adc8bab683e8cae",
+      "bytes": 1109,
       "warnings": 0
     },
     "golden-fixture:feature-08.tsx|kotlin": {
@@ -2232,13 +2232,13 @@
       "warnings": 0
     },
     "golden-fixture:feature-09.tsx|swift": {
-      "sha": "bac929bafd0742876edcb0200c5b9254589703811b4ad43e316674a4d73961a5",
-      "bytes": 3315,
+      "sha": "bcc46c76708862c26e661dfd8a835024a3bbc57882f1eadd845e7225995560eb",
+      "bytes": 4821,
       "warnings": 0
     },
     "golden-fixture:feature-09.tsx|kotlin": {
-      "sha": "731baaa1f6d79a592a6b65c1d993f1fbb5ac220559970c19b91200c59609e5d5",
-      "bytes": 3935,
+      "sha": "1d86ed729cc2cb3e5b8baafafbbdf7fc928ce292f979c23ce4d6d6247487c28a",
+      "bytes": 4948,
       "warnings": 0
     },
     "golden-fixture:flow-01.tsx|swift": {
@@ -2682,24 +2682,24 @@
       "warnings": 0
     },
     "golden-fixture:flow-45.tsx|swift": {
-      "sha": "ded921504479bba73608395fc394a36d1351d15c24dd3da36f5798d1fa0e4500",
-      "bytes": 20367,
+      "sha": "524205e2fde5d0afee99c5f59556cad61b348b62b19f6c7422794d8fc62d6c82",
+      "bytes": 20441,
       "warnings": 0
     },
     "golden-fixture:flow-45.tsx|kotlin": {
-      "sha": "93cf383e7ebb400c79dfcb551495c8e20e07bcf185c5c01e4f1127f5637c2eb2",
-      "bytes": 19622,
+      "sha": "46db515f3bbb9ef967f2ac87484fe7a5fcc0177710595dabe5059b39ec6b1491",
+      "bytes": 19704,
       "warnings": 0
     },
     "golden-fixture:flow-46.tsx|swift": {
-      "sha": "d305c32220e66a506f3788c3dc89082f50a5139edc3d8cb608e50d70b13e928d",
-      "bytes": 161170,
-      "warnings": 2
+      "sha": "0f471cd4fc1ed04889e0b6e811fc522553b22be9c26f95374cb0f3a16cc36851",
+      "bytes": 161164,
+      "warnings": 3
     },
     "golden-fixture:flow-46.tsx|kotlin": {
-      "sha": "7813a9bb52d8e1c0846b89efcd18106cf810ea2cb83edf30c60002dcfa5f062f",
-      "bytes": 162696,
-      "warnings": 1
+      "sha": "fa3f83fb738a32cfc5c32d859949160e9170710e26618d6ea7edc7a18affbd18",
+      "bytes": 162908,
+      "warnings": 2
     },
     "golden-fixture:flow-47.tsx|swift": {
       "sha": "2a5820129abc061d532babecb2244c938d1202ada7637aba7130c9746b234ac9",
@@ -2722,12 +2722,12 @@
       "warnings": 3
     },
     "golden-fixture:flow-49.tsx|swift": {
-      "sha": "dfcd6982d168555f27ffab262cfe166875fabf40443bad789d3f4bab539ed55f",
+      "sha": "df129f927e5a2b1d3e352614aa8c37168a08adbff66fc99bb3e0df7bfde32080",
       "bytes": 659,
       "warnings": 1
     },
     "golden-fixture:flow-49.tsx|kotlin": {
-      "sha": "9bee3d7d970015fc7b2375f1f686051f0491bdda44cbec65b6da3d235a6af157",
+      "sha": "cd4cd6421732d6262098a9e855edacfa058e483491ea9e96cc2734063a9df86b",
       "bytes": 750,
       "warnings": 1
     },
@@ -2972,14 +2972,14 @@
       "warnings": 0
     },
     "golden-fixture:form-plugin-declines.tsx|swift": {
-      "sha": "e1072913faedae768ca708cbf2c5ded684886c50885a237fca049818f66d7042",
+      "sha": "184925651b470b6de9d8743577a96f66d62d43a0ea86ffa8f2636a7215f94c29",
       "bytes": 289,
-      "warnings": 8
+      "warnings": 9
     },
     "golden-fixture:form-plugin-declines.tsx|kotlin": {
-      "sha": "dc91848c3849b7729453b2f0cf88ffd84ed583ef6b17e8e595a5b90943df72f2",
+      "sha": "7557b8af01d2a9ed1e81617d87a00943d6b4eaa51f570cfffe802f84882f21b9",
       "bytes": 312,
-      "warnings": 8
+      "warnings": 9
     },
     "golden-fixture:form-plugin-destructure.tsx|swift": {
       "sha": "6036e6dff1a5450336a014df29cb39b1e0c21abea28caf76266c8a2381092d36",
@@ -3002,14 +3002,14 @@
       "warnings": 0
     },
     "golden-fixture:form-plugin-partial-config.tsx|swift": {
-      "sha": "e3ef0e7847a07ff30d4238da95f2da63666d06fb4ca9773281b819d380f495fb",
+      "sha": "eed4d80f0385637b894b13dac1a6d2c9277939839ce94f83a4acdbd2a4750df7",
       "bytes": 738,
-      "warnings": 0
+      "warnings": 1
     },
     "golden-fixture:form-plugin-partial-config.tsx|kotlin": {
-      "sha": "db0b1c7d7ee78bd6bc739e276e205311233523196b3806d8e7ddafc63d8bf2b0",
+      "sha": "d95e13c2ff076ff98958b8dfe6224eb9a81d9dab51834d8a18e254404ac15b85",
       "bytes": 724,
-      "warnings": 0
+      "warnings": 1
     },
     "golden-fixture:form-plugin-schema-submit.tsx|swift": {
       "sha": "ff986df7e5adb48bad470ac32e6cdfd214b7c2f407acb8829382bef6c6de4124",
@@ -3022,23 +3022,23 @@
       "warnings": 1
     },
     "golden-fixture:hooks-containers-01.tsx|swift": {
-      "sha": "2e4b865dbe7ea5ae5a31240f93d5d4f904fa5eb8be34db7f15b1b62c68b1abcf",
-      "bytes": 692,
+      "sha": "ed5bec1bae44e16788ed6ecf3b9a69d0544bebad68a02a628d38770684bd1445",
+      "bytes": 740,
       "warnings": 0
     },
     "golden-fixture:hooks-containers-01.tsx|kotlin": {
-      "sha": "49c9835c7934e0a7557573dfcc89d7a111b3bd4ada0e8811e57c3045bff58cca",
-      "bytes": 696,
+      "sha": "fb3a206d69de33e4f55a91718ca2aacc44c8cb91d022e0feffb894a1ae807c02",
+      "bytes": 766,
       "warnings": 0
     },
     "golden-fixture:hooks-containers-02.tsx|swift": {
-      "sha": "9027ece58622c5f69a45042acb0b63040ba429ae721c3ec228009236daf832b9",
-      "bytes": 742,
+      "sha": "3babdf5b83a503a89dd5e6abb9ddce732b34209ec1ca79e9455a37cdd542db45",
+      "bytes": 972,
       "warnings": 2
     },
     "golden-fixture:hooks-containers-02.tsx|kotlin": {
-      "sha": "d5a1d6ad7862c5b20e591842e48c2c514ea904f2b1d3157adfa134642ec9acbc",
-      "bytes": 739,
+      "sha": "2047fbae597bf841a60e57d76dd2d33e587da7ad30a0a98d9066521f4df183a5",
+      "bytes": 1016,
       "warnings": 2
     },
     "golden-fixture:hooks-containers-03.tsx|swift": {
@@ -3102,63 +3102,63 @@
       "warnings": 0
     },
     "golden-fixture:hooks-fetch-01.tsx|swift": {
-      "sha": "c5ac2824578f84d487c81a31aeb952a8a8e74ea3fd6609cc77e6f70cc30badb8",
-      "bytes": 1780,
+      "sha": "11efc197d666021bf37ac5dc6e1cd69d96e26b4a4bcce66ca61b0bbc9f1ac097",
+      "bytes": 1643,
       "warnings": 0
     },
     "golden-fixture:hooks-fetch-01.tsx|kotlin": {
-      "sha": "ae582a030753fcc9ee266e67b42d004c32b305f077c511820cf3c9a7861f78b7",
-      "bytes": 1730,
+      "sha": "8965ff68e44d0e3584f726e4a13cbcf838f5a442a884a24287658735505c6448",
+      "bytes": 1736,
       "warnings": 0
     },
     "golden-fixture:hooks-fetch-02.tsx|swift": {
-      "sha": "fbee8835dea996fdb6fdcd24d2d78b16345ea5cd20acdc6b3fa6190537f1262a",
-      "bytes": 4967,
+      "sha": "df4b0cff566fb0eed4ee7f94fd7a4ef7c7679480406d232453eb07af359e8571",
+      "bytes": 4455,
       "warnings": 8
     },
     "golden-fixture:hooks-fetch-02.tsx|kotlin": {
-      "sha": "2fc288238723540b5da87c9f5d810cf88e4da4079be8cd3599dfe17d2775a4d6",
-      "bytes": 5293,
+      "sha": "198c351cf5a920b562021d2f9ad645b437b50bf01e922de6346100beb2cf449f",
+      "bytes": 5141,
       "warnings": 8
     },
     "golden-fixture:hooks-fetch-03.tsx|swift": {
-      "sha": "2d8fbb84591294ea9d62cb9fd68307e9295998db29e5439da12fce666e789b27",
-      "bytes": 1954,
+      "sha": "6b5ca20f07e80206aaacb11666eb9c3743496a826e8adb8410296760825f0e0a",
+      "bytes": 1740,
       "warnings": 3
     },
     "golden-fixture:hooks-fetch-03.tsx|kotlin": {
-      "sha": "55083ac76a4b14dfa84557403a6ae9253739a26213fd9717fbd982221d406e1e",
-      "bytes": 2037,
+      "sha": "dd887fe9d51f9e03a71f0b3bb69adf0a7775d5d820ea4d27d1db66369d1071cb",
+      "bytes": 1997,
       "warnings": 3
     },
     "golden-fixture:hooks-fetch-04.tsx|swift": {
-      "sha": "ae7773f504a6d9a310a60f9595b96ae8d7d8c2b09eead84d549d870b0db3d175",
-      "bytes": 1969,
+      "sha": "43c08014ed4ad6a7bf5e3ffc8608ba52749ed12bd6de516a4f6bde727f92b669",
+      "bytes": 1901,
       "warnings": 0
     },
     "golden-fixture:hooks-fetch-04.tsx|kotlin": {
-      "sha": "3999a6a781958c7f42b515fb04b8608db553b91b04b30e34e23f51a8f9ab8577",
-      "bytes": 1835,
+      "sha": "3667a1cec0799fb411bd837c4faceebad6ec84f9f8774c421b11c718d491d786",
+      "bytes": 1814,
       "warnings": 0
     },
     "golden-fixture:hooks-fetch-05.tsx|swift": {
-      "sha": "f07c3f988bb9e7b0098b73d5b7ae6efa67a0bdcb29f321dc46fc1fc871e29589",
-      "bytes": 3648,
+      "sha": "e2898ee577dacde1748c19b6ade8ba4e31122470d2bb0ef0c00ef212ba5abc8e",
+      "bytes": 3685,
       "warnings": 1
     },
     "golden-fixture:hooks-fetch-05.tsx|kotlin": {
-      "sha": "c5344f825ff8463a84f3d9248e64c9834e0dab8048fb21dfdc6e6e6923b3bf5e",
-      "bytes": 3838,
+      "sha": "0c48edfdad29a1014040ebb83a4b7c0ada4ca63b21fb34a0f2a0bbc93f9b5d15",
+      "bytes": 4006,
       "warnings": 1
     },
     "golden-fixture:http-01.tsx|swift": {
-      "sha": "6e61ee69022514f3c614727ecef4d2362b05de01f3457cf9ee6246e69f6ad128",
-      "bytes": 12764,
+      "sha": "9e225181ea8cba4b483ce8d79f40473c85e7c5385fc1c52bb0abadeb37724a45",
+      "bytes": 12653,
       "warnings": 1
     },
     "golden-fixture:http-01.tsx|kotlin": {
-      "sha": "f4c11bb33747331ace79a442dd9acc8fe046d1d313f8305ae032e2f2b3c13a18",
-      "bytes": 11075,
+      "sha": "6fa1d9a9a1f02a6f96f50a0079b7d8044a2b80fd1374499ac7fdbf6954c92d71",
+      "bytes": 11231,
       "warnings": 0
     },
     "golden-fixture:http-02.tsx|swift": {
@@ -3172,13 +3172,13 @@
       "warnings": 0
     },
     "golden-fixture:http-03.tsx|swift": {
-      "sha": "f571bf36f828d37bc8dd56b08a655c803199f8a45c72aa5747a32f9203fab8f3",
-      "bytes": 445,
+      "sha": "6883279bcf6b303885025e85da4afea6189abfefe8410af33c528e4c47d212da",
+      "bytes": 406,
       "warnings": 1
     },
     "golden-fixture:http-03.tsx|kotlin": {
-      "sha": "9e2733947cdc1ddd0ac12b0f2c5be60a4a1ab9cc25601d6c1c816d61f597b6c9",
-      "bytes": 495,
+      "sha": "5e1223b3e85c155ace12891505c79ad7c2374649f21e8761feecb8259635af20",
+      "bytes": 537,
       "warnings": 1
     },
     "golden-fixture:http-04.tsx|swift": {
@@ -3202,33 +3202,33 @@
       "warnings": 0
     },
     "golden-fixture:http-06.tsx|swift": {
-      "sha": "2ec51656c80b9484c88724cf42845ffb697a98c6f0204aa260a23c2eee17f0c3",
-      "bytes": 802,
+      "sha": "67355f9f9ddb25b971bdcedab1dc61f020d13f0de218a9e57583ee7290ee7c94",
+      "bytes": 763,
       "warnings": 1
     },
     "golden-fixture:http-06.tsx|kotlin": {
-      "sha": "28c4f7d7844ba9cdd08b03b7f43ca2e1b7fd5b1e1229e8e9b526a0bb14ab38d6",
-      "bytes": 881,
+      "sha": "7823964644defc496cd455042d0e9a501156fc82d9f1208ccd1dfc99700127e1",
+      "bytes": 923,
       "warnings": 1
     },
     "golden-fixture:http-07.tsx|swift": {
-      "sha": "c0fe3a2ad0d078e941a6cc5e27f5042c0eb10b542af5b3fe2d9da7c92cd870f2",
-      "bytes": 731,
+      "sha": "e54fe8fe2a112d3512892a17fbbab5a539707ce3f4db2b01957d0713edf8dedd",
+      "bytes": 692,
       "warnings": 0
     },
     "golden-fixture:http-07.tsx|kotlin": {
-      "sha": "52d96abe898e50f25354e4db003deae609f93ff6c280fbfc328a8fe8c6cbd006",
-      "bytes": 798,
+      "sha": "61ea79e4ec11c999181cf7155a8c32472ca664974d3d570c15f6853e99376e56",
+      "bytes": 840,
       "warnings": 0
     },
     "golden-fixture:http-08.tsx|swift": {
-      "sha": "ec285c16c0805e200cff13fc24bfed2ace792c64544d890afec7825b683f69b9",
-      "bytes": 570,
+      "sha": "c8571b37d6835cb71a062456fe0f5dc76d8b2d4044801c009caccd3fd48596a4",
+      "bytes": 531,
       "warnings": 0
     },
     "golden-fixture:http-08.tsx|kotlin": {
-      "sha": "3bf7a21a606e8df7b0507158abdbc689be88e7733bf66c600ab56ef896cc3802",
-      "bytes": 600,
+      "sha": "d024805de4aea031bca204d9675848e3519b6fb472e62b1e75fc0aa0da3ed82e",
+      "bytes": 642,
       "warnings": 0
     },
     "golden-fixture:http-09.tsx|swift": {
@@ -3262,13 +3262,13 @@
       "warnings": 0
     },
     "golden-fixture:http-12.tsx|swift": {
-      "sha": "2d54588af2ac10fe8117252fe57679c785ae92e73da80a8020df1f48d4fa3e53",
-      "bytes": 727,
+      "sha": "e86430b2070f200a93aacabbec2aabf0e6756589e1a4e8caffb77ee567a72f07",
+      "bytes": 688,
       "warnings": 1
     },
     "golden-fixture:http-12.tsx|kotlin": {
-      "sha": "595bd71c3f5581b835185c13b93d2c6c214e88b2c62c361b7cfd752183f58af9",
-      "bytes": 801,
+      "sha": "3bfb89bf5694567411773242035a609fe2a3d7361a91b92e04bb596c383587e8",
+      "bytes": 843,
       "warnings": 1
     },
     "golden-fixture:http-13.tsx|swift": {
@@ -3292,13 +3292,13 @@
       "warnings": 0
     },
     "golden-fixture:http-15.tsx|swift": {
-      "sha": "ca90d62a2614b4dca80fa3f047896682a00cdc7cf21d6d8837f33410dac249bb",
-      "bytes": 463,
+      "sha": "9d67cda225acd8a689edc13058c5d5921d7c196b6dd0cb186bb705199874fa8f",
+      "bytes": 408,
       "warnings": 0
     },
     "golden-fixture:http-15.tsx|kotlin": {
-      "sha": "0117192994557f41c25100cab0ccb8c8958460540f02a651f65ce539dba94357",
-      "bytes": 519,
+      "sha": "503e06fe0b03b03ce70829ac9154a46450429b70135c9783b063dc64963137b9",
+      "bytes": 545,
       "warnings": 0
     },
     "golden-fixture:http-16.tsx|swift": {
@@ -3332,43 +3332,43 @@
       "warnings": 1
     },
     "golden-fixture:http-19.tsx|swift": {
-      "sha": "d17e0a009d3a02c41d37bb39a3646cc9fb907d064672355062ca1169c8888513",
-      "bytes": 631,
+      "sha": "376af3fdb383fba77e02ddf7e858d049c4612cb8271599fa0a1d58cff25c342a",
+      "bytes": 592,
       "warnings": 1
     },
     "golden-fixture:http-19.tsx|kotlin": {
-      "sha": "a33c6c4512c185f239bbf1641125be2146bfed7cf52f1871c28cc052dc8c5e72",
-      "bytes": 698,
+      "sha": "9d7a33301a49d94cdba197ece25bb6cf1282207f1b22eb87ba6523da5e9e35bf",
+      "bytes": 740,
       "warnings": 1
     },
     "golden-fixture:http-20.tsx|swift": {
-      "sha": "e8141b7d5517fb969d04789d5cedd8e021cc62a46c6c65a7f1a17ae8e82b225e",
-      "bytes": 631,
+      "sha": "e771d73f4ece4d410a0553aabd2592932fa2e8d58673875dc3241edcd5846ce3",
+      "bytes": 592,
       "warnings": 1
     },
     "golden-fixture:http-20.tsx|kotlin": {
-      "sha": "efc112e83d94051377d911aa2d8895907d3b03e25a01965e07809003f107ca29",
-      "bytes": 698,
+      "sha": "ba43ba52aa40d13d77f79e3452291cb9c87b1277fc99ca3b3d309939366c7aeb",
+      "bytes": 740,
       "warnings": 1
     },
     "golden-fixture:http-21.tsx|swift": {
-      "sha": "382e7ad2ac0e2b61fd4055917edd3debeddc2b41a8d880b78b990b4e946f354b",
-      "bytes": 728,
+      "sha": "34c8968b3e9154cd87cd34719037805f610aeec4068e011d76060a11de157318",
+      "bytes": 689,
       "warnings": 1
     },
     "golden-fixture:http-21.tsx|kotlin": {
-      "sha": "bd3d2fc17d030dd15b37921805127852bda51afc1daabd3b33ec8f734687847e",
-      "bytes": 802,
+      "sha": "e40160db2503a325ef79d5e9cb6cc93db2b1e12054c84d8c97a33280ba1bdf3b",
+      "bytes": 844,
       "warnings": 1
     },
     "golden-fixture:http-22.tsx|swift": {
-      "sha": "94d28984afec689a9476be79d638f3ab3339a39bd55a8a1924d2090e34273f15",
-      "bytes": 631,
+      "sha": "e4abe2ce1043501aa0b0f0722de73d10999fef66a48c2a688c53ce8f9ed490e3",
+      "bytes": 592,
       "warnings": 1
     },
     "golden-fixture:http-22.tsx|kotlin": {
-      "sha": "a76b4f5ae762a8512df2cab52e7499f71c55cc6dc06648e1f90d4bc5b253a2d8",
-      "bytes": 698,
+      "sha": "6d1166021990bce0ca5d1cdc7467259950f3d6c4d2a48887152f6f13a23675b2",
+      "bytes": 740,
       "warnings": 1
     },
     "golden-fixture:http-23.tsx|swift": {
@@ -3382,23 +3382,23 @@
       "warnings": 1
     },
     "golden-fixture:http-24.tsx|swift": {
-      "sha": "ddc0b59108e98042a40ec2a64696ae966d183371d84fe5d64435bccde97118d6",
-      "bytes": 671,
+      "sha": "7889c8f89a67987ac5f8d6e8cb0811984e888c4eee2cb40c893113c06e934767",
+      "bytes": 632,
       "warnings": 0
     },
     "golden-fixture:http-24.tsx|kotlin": {
-      "sha": "5d2b7778a82215806a122cb07b24ca37413da7c18a6118be49b829e4dd24096b",
-      "bytes": 738,
+      "sha": "8667692e5f4fa1599f8f927f5b5ca004323455e741a1e6e78fd2e74b6a5456d9",
+      "bytes": 780,
       "warnings": 0
     },
     "golden-fixture:http-25.tsx|swift": {
-      "sha": "8e7d9b1e7840ca8c68dcb5ffa4c6369a4d44b4229cc49dd5bf8df55030f0bb66",
-      "bytes": 631,
+      "sha": "03bcba7ef38efea2d7997fbf563c73f7fa79aafb30923a67cfbbeb2e1898fe95",
+      "bytes": 592,
       "warnings": 1
     },
     "golden-fixture:http-25.tsx|kotlin": {
-      "sha": "899181ac2dfb93c68fa586dee56d48ca666ecf88d77be3839e236230de5406d0",
-      "bytes": 698,
+      "sha": "c08b51a12e3455c53d52f1efdbd202a89e81b953aa5a6ff783856239a5b9db52",
+      "bytes": 740,
       "warnings": 1
     },
     "golden-fixture:http-26.tsx|swift": {
@@ -3422,53 +3422,53 @@
       "warnings": 1
     },
     "golden-fixture:http-28.tsx|swift": {
-      "sha": "00ab086b381e8abe43a3e9feb3914b32854e52578e1e195d4368d5ba9c3e9d26",
-      "bytes": 731,
+      "sha": "eed51844037a9ae09e2c8b6222de9b01d74c5e19608cddffbacb8bf5fc4023c1",
+      "bytes": 692,
       "warnings": 0
     },
     "golden-fixture:http-28.tsx|kotlin": {
-      "sha": "cc7fce3020b7b1adff3926f4ff0e8d7462938f11e9f13ec6660ede201bf7cef6",
-      "bytes": 800,
+      "sha": "4cd20fe1f6c2dd7d9948161a5f1972e466e7d58217fd786a5d4fe33a268e799a",
+      "bytes": 842,
       "warnings": 0
     },
     "golden-fixture:http-29.tsx|swift": {
-      "sha": "823d4e3c435277e761cae8a3b99207170c73e15e5137d644ef7d55e1a5230705",
-      "bytes": 673,
+      "sha": "e728a7761756ffa8a7345b9a040fa14ae1c60ae1b6e15ddec2a5ba131086953f",
+      "bytes": 634,
       "warnings": 0
     },
     "golden-fixture:http-29.tsx|kotlin": {
-      "sha": "75bf92caf691fe38d99fe498b8842acb6e57001221d87b97ef62919ae1c97cb0",
-      "bytes": 750,
+      "sha": "c8a339f0b39657bff4511dd1da9db23b08c6c0338c7e7051eabf2b80ee7157e8",
+      "bytes": 792,
       "warnings": 0
     },
     "golden-fixture:http-30.tsx|swift": {
-      "sha": "7cd273c22ac40c2fa1213c6895e0946ade15f87eba42d75e4467d50009b9ee45",
-      "bytes": 655,
+      "sha": "b9019f4153e87f1a19eff6ba6078db60a4bc460ac567e8683cc18fc06c830b0b",
+      "bytes": 616,
       "warnings": 0
     },
     "golden-fixture:http-30.tsx|kotlin": {
-      "sha": "c62b69b703f55856c125aaaf4b332ce853101f8bddfa6779269157acec7ba923",
-      "bytes": 730,
+      "sha": "c8f586052b9bb12746bc59ca518c87484e424b7697d002be02ca382960caae6f",
+      "bytes": 772,
       "warnings": 0
     },
     "golden-fixture:http-31.tsx|swift": {
-      "sha": "47838ab786d598de774fbf36f882b25ef46723df66a801bdabf3dcca903eac25",
-      "bytes": 632,
+      "sha": "f5822b28724744ede55fc61ff2aaf3130396d53c5da0d42ca3d9256cf8fed9de",
+      "bytes": 593,
       "warnings": 1
     },
     "golden-fixture:http-31.tsx|kotlin": {
-      "sha": "c4e4d2ab9c3fae24fe3170203bc1880e0bd0c2d1847b8afc402442099c8eea77",
-      "bytes": 699,
+      "sha": "95ed480493bd165a82976aae7507dfb74f77cae7884bc5b36d3c57d46f512a61",
+      "bytes": 741,
       "warnings": 1
     },
     "golden-fixture:http-32.tsx|swift": {
-      "sha": "1407b9f9151a50b7d95b0196868f5759d4f77b3c75cdf635660d493104b5a68a",
-      "bytes": 632,
+      "sha": "c126bf1d0f407b25b4d2cd5a83cfefba6d66457a98c7a77b59d31f28d3317c91",
+      "bytes": 593,
       "warnings": 1
     },
     "golden-fixture:http-32.tsx|kotlin": {
-      "sha": "f33ad1c2a677345b06b092e0597d8f322a487e10c2cbc62a536be0cc70fa4eff",
-      "bytes": 699,
+      "sha": "4384c85bf9ff1924859c7011479ece34920f40f6371d53ffae725c147aefe385",
+      "bytes": 741,
       "warnings": 1
     },
     "golden-fixture:http-33.tsx|swift": {
@@ -3482,43 +3482,43 @@
       "warnings": 1
     },
     "golden-fixture:http-34.tsx|swift": {
-      "sha": "8eda06d61b22c6f283a56b350846579bf66ab49964694bd7d9ec25087accf89e",
-      "bytes": 631,
+      "sha": "dde53aaa7d3e1efe86afbcccfa89a466009f3d62b2edcd06b571bd1b87b4e451",
+      "bytes": 592,
       "warnings": 1
     },
     "golden-fixture:http-34.tsx|kotlin": {
-      "sha": "781bf67c2e7273d36e4878dc87a1ac63bd12c6242f89fda145934613d5371bde",
-      "bytes": 698,
+      "sha": "1e40c6ff6aeb33a55666e49fdc2da3e3e1eb3c32544c1682707a1fc52e5dea79",
+      "bytes": 740,
       "warnings": 1
     },
     "golden-fixture:http-35.tsx|swift": {
-      "sha": "1f31d07cc1328d52ff2a721158e52ce354a269692a6612a20b5eb4d0a6459fe9",
-      "bytes": 631,
+      "sha": "4311e21bd51819aa19f5fe286a5e984d25786293dcaf466575e00483f20b229a",
+      "bytes": 592,
       "warnings": 1
     },
     "golden-fixture:http-35.tsx|kotlin": {
-      "sha": "7d60843b0d6c4d962d9e2c0ee8a83afdaa42462b8aa8c6ac509032cecdfc6adc",
-      "bytes": 698,
+      "sha": "5a31c64948bf0b8a7076378e21793638e510bc87dd5aaa16966e55fe21ba667a",
+      "bytes": 740,
       "warnings": 1
     },
     "golden-fixture:http-36.tsx|swift": {
-      "sha": "c301e81d12b52e6fb4c68c591ba45a8d6e2d97bec4da9a7ec202af8563742082",
-      "bytes": 631,
+      "sha": "79a147c46f174c8c4f798426d415333ac56e25218d4ac9ab8069aa456b11bbff",
+      "bytes": 592,
       "warnings": 1
     },
     "golden-fixture:http-36.tsx|kotlin": {
-      "sha": "c2aae3f0398af2ad2b998bd8510a33707eca63655ae45c33e23f432bb362dc4b",
-      "bytes": 698,
+      "sha": "59bbbbf7452728badc1a7ef72ae728ade4fa7c3414dd45ec888cfeb0399ec22b",
+      "bytes": 740,
       "warnings": 1
     },
     "golden-fixture:http-37.tsx|swift": {
-      "sha": "893ee7fe3532c5298e20e781a572f1c22ed8e14faf2e62c202706c04c38daacb",
-      "bytes": 664,
+      "sha": "5ef0cb37f8585925a0ab7933daa1f0eeb148d4e6d874b65915f2e6f24b415fee",
+      "bytes": 625,
       "warnings": 0
     },
     "golden-fixture:http-37.tsx|kotlin": {
-      "sha": "49c959a3d5902032326c734d2bb53f7406645836eaa9b75ed40dbb5171397db8",
-      "bytes": 741,
+      "sha": "00c9f6dfa39b9ad9cdd0eaf8e6b33072cd11f6042922ab22c2727155265a1127",
+      "bytes": 783,
       "warnings": 0
     },
     "golden-fixture:http-38.tsx|swift": {
@@ -3622,23 +3622,23 @@
       "warnings": 1
     },
     "golden-fixture:http-48.tsx|swift": {
-      "sha": "7bae88db9cebd60a534d3290d5e1cf5424f1fd5d0df9e8369efc578b03ef3a09",
-      "bytes": 470,
+      "sha": "2f597a926ff72e970ef97da2c25745e59451b2e42f5006d005955e261b2eb7c9",
+      "bytes": 431,
       "warnings": 1
     },
     "golden-fixture:http-48.tsx|kotlin": {
-      "sha": "8b52dde8b5e61a1443c8fe6e5c6cff13202ce7de471b303b02e9fe27f7fdf590",
-      "bytes": 490,
+      "sha": "159e10e65a9269eb55f3de831ac612123f8464e7455b5ba964fe5211e0f86a01",
+      "bytes": 532,
       "warnings": 1
     },
     "golden-fixture:http-49.tsx|swift": {
-      "sha": "5da5c0a1c720070cc34388cf0b4f435a4cf8bfe94455040356fbe468259df35a",
-      "bytes": 632,
+      "sha": "47905d922eede8275f61aed3345ebfb1b434bf2572dd2e865a52ed8c33b2751c",
+      "bytes": 593,
       "warnings": 1
     },
     "golden-fixture:http-49.tsx|kotlin": {
-      "sha": "201b7c1eccb0e4d45e8c6642a164db97b87c272424385139ca4fe7108c5d76f0",
-      "bytes": 699,
+      "sha": "3e3ee261c11a914a7130780264c12ad288192a4cdf590e1b33fc4a2239db4e9a",
+      "bytes": 741,
       "warnings": 1
     },
     "golden-fixture:http-50.tsx|swift": {
@@ -3652,13 +3652,13 @@
       "warnings": 1
     },
     "golden-fixture:http-middleware-01.tsx|swift": {
-      "sha": "6a7c731793adaabc795f777b9ff15affd2262297ba2695e6e6f8be6a544d9aaf",
-      "bytes": 2145,
+      "sha": "0a1b2040c24582ac9366d28b57a53ba2546de3dae5308f60db188337c47d13d3",
+      "bytes": 2098,
       "warnings": 0
     },
     "golden-fixture:http-middleware-01.tsx|kotlin": {
-      "sha": "e4d33881523a7ca86f7ec7a2c278e159a63e920d9907d6f5278ff5e3382dfc9c",
-      "bytes": 2328,
+      "sha": "63a56d96bf11da2d9ebfa7aeec9cd8c9bbef76e3532bada32c420b1019a8b600",
+      "bytes": 2297,
       "warnings": 0
     },
     "golden-fixture:http-middleware-02.tsx|swift": {
@@ -3872,14 +3872,14 @@
       "warnings": 0
     },
     "golden-fixture:machine-01.tsx|swift": {
-      "sha": "356a5d4c787e64a0bff570c05dcce68f2e4270a56a2364fa46871f863fba84e0",
+      "sha": "ace0050032e4137709a9cf91ccc0f33118868417eb6804760b97816a3d6bdf0d",
       "bytes": 248,
-      "warnings": 1
+      "warnings": 8
     },
     "golden-fixture:machine-01.tsx|kotlin": {
-      "sha": "197ec917b5826d90bbab17ba841b03662a609697540151b9c04fcef3ea46f5f7",
+      "sha": "e471e43cc146316caf8124449b03f9ed7c69fbc7682c53391ee7a20babcd724e",
       "bytes": 345,
-      "warnings": 1
+      "warnings": 8
     },
     "golden-fixture:machine-02.tsx|swift": {
       "sha": "d07069278ed476c41edd8a029756c6b5e559c255f1095120032026ab09bcb768",
@@ -4182,33 +4182,33 @@
       "warnings": 0
     },
     "golden-fixture:query-01.tsx|swift": {
-      "sha": "cac0c2dbc3b30111edf7382f6a8548bfba2352001c477667eae180df5ad430a1",
-      "bytes": 5543,
+      "sha": "f202c190ff9ba532bbc1b8a1ff032b461efb29fb2bcf42bf5e76c264add69922",
+      "bytes": 5809,
       "warnings": 0
     },
     "golden-fixture:query-01.tsx|kotlin": {
-      "sha": "d1cae4d9bfbdac8e22e1335fdaa8e7593838209dfeed7c4715734cec132df256",
-      "bytes": 5636,
+      "sha": "0f340a09252f81628c904b27b4cbe9df9dcd34c4de7e0fde71c4eda1c4dac24b",
+      "bytes": 5821,
       "warnings": 0
     },
     "golden-fixture:query-02.tsx|swift": {
-      "sha": "c86e16f55da50dd0ec2faaaf7ea4673c3dc27df83c0bee98204985bd9d1370bc",
-      "bytes": 6642,
+      "sha": "4e814522edb9a790a2a59ebeda61bdf58eeb65fa49d72ebcf1bbb9e6b6b35ad6",
+      "bytes": 6846,
       "warnings": 0
     },
     "golden-fixture:query-02.tsx|kotlin": {
-      "sha": "6fec1738ab9588cc828ecacce348797b55a2c0443e8f98fefd4ffba0bc62b0a7",
-      "bytes": 6556,
+      "sha": "8e976813b9a27e528285ea5a6cebc9f2c5c281d58b1d77951c530960475fabaf",
+      "bytes": 6806,
       "warnings": 0
     },
     "golden-fixture:query-03.tsx|swift": {
-      "sha": "0eb9a43c3a477333b7e53fd217aa7236f676892a83a69ae2c04ccec80842eaf6",
-      "bytes": 1193,
+      "sha": "c76241c71b68ce62ddc4f7cdedf51efbda70e091cf2857df5d0a5ded4258769c",
+      "bytes": 1150,
       "warnings": 0
     },
     "golden-fixture:query-03.tsx|kotlin": {
-      "sha": "a504b421c236ca6ab42c974bdb0d4ec89994a7b050b84ce71e77935ba7775411",
-      "bytes": 1352,
+      "sha": "4cc319d9bdb7d6afcc6283d39d0a5f7c131013dc78b7680588a9903ea2c9726f",
+      "bytes": 1375,
       "warnings": 0
     },
     "golden-fixture:query-04.tsx|swift": {
@@ -4217,8 +4217,8 @@
       "warnings": 0
     },
     "golden-fixture:query-04.tsx|kotlin": {
-      "sha": "98600ff366f520259e8ed269d33c67b8e813b2499299a704c3496731a62f31bb",
-      "bytes": 787,
+      "sha": "5093210fb69982536b9c5e282abcb9e4435220d80164c9fad0d8e35da8b34eba",
+      "bytes": 772,
       "warnings": 0
     },
     "golden-fixture:query-05.tsx|swift": {
@@ -4227,8 +4227,8 @@
       "warnings": 0
     },
     "golden-fixture:query-05.tsx|kotlin": {
-      "sha": "8eee00b4e14ef4740a83b7501f67bebe5853f562f47047327774c2145f670c76",
-      "bytes": 1195,
+      "sha": "897f4f7f4c69b4ee9d69c8df1411f0523b454c9e677674fde173dea4bf0cd82b",
+      "bytes": 1180,
       "warnings": 0
     },
     "golden-fixture:query-06.tsx|swift": {
@@ -4237,8 +4237,8 @@
       "warnings": 0
     },
     "golden-fixture:query-06.tsx|kotlin": {
-      "sha": "440b878c27f32c04c1b0971abaca1882cf6cc0789a2f91be5d9b41547c2b5d73",
-      "bytes": 3569,
+      "sha": "9ba97ec1dd76057206f4a0ff39b320ceaf4c854485e31dc6ed4f4a8d1cd646a9",
+      "bytes": 3554,
       "warnings": 0
     },
     "golden-fixture:query-07.tsx|swift": {
@@ -4247,18 +4247,18 @@
       "warnings": 1
     },
     "golden-fixture:query-07.tsx|kotlin": {
-      "sha": "f240fb9ecb4869fd9d8ec25ef906e540f2b0fb701ab100141c49d4f66d2f9e4c",
-      "bytes": 613,
+      "sha": "d8c396fd6d0f230c61331aa606bd5973f70437134305e6687ab20a510d288114",
+      "bytes": 598,
       "warnings": 1
     },
     "golden-fixture:query-08.tsx|swift": {
-      "sha": "8b47382bda62ee8693c08da8842c2979b7a286094acee16a86d5f2bf3c1741f0",
-      "bytes": 448,
+      "sha": "2f5a9fd1cca1eacad1e0a3f410e18fea74778f98d141a01f00f51c9b0587174e",
+      "bytes": 409,
       "warnings": 1
     },
     "golden-fixture:query-08.tsx|kotlin": {
-      "sha": "869e93dffed6d94d2b9d9f85a09d62c25321d7cfa4dc9746681be2d97f479526",
-      "bytes": 511,
+      "sha": "fa04d1ac131d0aa2ac88816483dbb98542025ba6db43c9a153f15781ed22c8cd",
+      "bytes": 553,
       "warnings": 1
     },
     "golden-fixture:query-09.tsx|swift": {
@@ -4267,8 +4267,8 @@
       "warnings": 3
     },
     "golden-fixture:query-09.tsx|kotlin": {
-      "sha": "01bf1a7c4524a4e601607ad96257dd71b0107e01d2d2d93918522327931fab2a",
-      "bytes": 885,
+      "sha": "1de81d7b0dee7f63caff041d7326f3a71326205a58df8ac6b5314733373814aa",
+      "bytes": 870,
       "warnings": 3
     },
     "golden-fixture:query-10.tsx|swift": {
@@ -4277,8 +4277,8 @@
       "warnings": 3
     },
     "golden-fixture:query-10.tsx|kotlin": {
-      "sha": "019b75087f3b97215623649993f56307b416121c02e1337b0dc2b1f99f814246",
-      "bytes": 862,
+      "sha": "5505eba6a3b03ecada9ad939dd96ea19d1edf7d3dc74b0571e2813b02a8dc683",
+      "bytes": 847,
       "warnings": 3
     },
     "golden-fixture:query-11.tsx|swift": {
@@ -4297,18 +4297,18 @@
       "warnings": 0
     },
     "golden-fixture:query-12.tsx|kotlin": {
-      "sha": "dfd8ccda383a59685ac59043476a622062ce5936791cb29a2cc478af50693c1c",
-      "bytes": 646,
+      "sha": "519add77a6e176bacdd6af72b3265ce05f4456612dbc9b1988304735cbe81a72",
+      "bytes": 631,
       "warnings": 0
     },
     "golden-fixture:query-13.tsx|swift": {
-      "sha": "8d3a32bd8999fff0f00991b40a0f56eb31fafe2e60c1fdafc435d1b508d4de3f",
-      "bytes": 1255,
+      "sha": "327899a1068b3128b50f0155ee2358a558a7a28755f674c6153b680ef7461547",
+      "bytes": 1265,
       "warnings": 0
     },
     "golden-fixture:query-13.tsx|kotlin": {
-      "sha": "9fb1b77beacc48ee30ed1d01ab2ad33fa67d41e878046e4d351fec7510c7d1e5",
-      "bytes": 1359,
+      "sha": "7a93f5567939536c488e65c34f5ccf04243323d970a014bbcec25490f82c35ee",
+      "bytes": 1344,
       "warnings": 0
     },
     "golden-fixture:query-14.tsx|swift": {
@@ -4327,8 +4327,8 @@
       "warnings": 2
     },
     "golden-fixture:query-15.tsx|kotlin": {
-      "sha": "612e0c0972061ac3b2ba35ac085067209328947de7a84d755b8c29288d5771d5",
-      "bytes": 899,
+      "sha": "7fe12eade305666d8d3c6cfdd6509153ba10b995542d76546d01fdec337616ce",
+      "bytes": 884,
       "warnings": 2
     },
     "golden-fixture:query-16.tsx|swift": {
@@ -4357,18 +4357,18 @@
       "warnings": 0
     },
     "golden-fixture:query-18.tsx|kotlin": {
-      "sha": "73a475830e0d6d1be5f61902588e114429d25fb5b53e508fee388c4708ad9d2e",
-      "bytes": 1024,
+      "sha": "9cde7920f42d28a97eb750fbbafa4660666b34aa6d9fdac8b673b6b607507b38",
+      "bytes": 1009,
       "warnings": 0
     },
     "golden-fixture:query-19.tsx|swift": {
-      "sha": "fc650d74316ac9ab5b527d04798bf12e62756935d36552f732df593cf63a9c2a",
-      "bytes": 615,
+      "sha": "ac18e0acaeb74ba194bd70b9a6834d336dac1bf6d2e59082373f1aa0c827863d",
+      "bytes": 576,
       "warnings": 0
     },
     "golden-fixture:query-19.tsx|kotlin": {
-      "sha": "a56c189a59ea7faefdd9efb4341f09dcdad25cfa8ea244b6a9c0ae8fd88e6985",
-      "bytes": 739,
+      "sha": "3d3536eb829d24c625cd446bde336046712f6d17592d72d8068f26931d5fa514",
+      "bytes": 781,
       "warnings": 0
     },
     "golden-fixture:query-20.tsx|swift": {
@@ -4387,8 +4387,8 @@
       "warnings": 0
     },
     "golden-fixture:query-21.tsx|kotlin": {
-      "sha": "562ae82e90930ffd1742d0165195a27130dcde8c829a235d1e0590905e054cb5",
-      "bytes": 830,
+      "sha": "c08dc312b0cb1e9777e93eb9339bf0b4dfb74995eb182594e3474e3e7833bc90",
+      "bytes": 815,
       "warnings": 0
     },
     "golden-fixture:query-22.tsx|swift": {
@@ -4407,8 +4407,8 @@
       "warnings": 0
     },
     "golden-fixture:query-23.tsx|kotlin": {
-      "sha": "3562f98ed47e6526e6ffec6f3778170ded691adcd52c7e5484c3293a1a71d292",
-      "bytes": 1124,
+      "sha": "c4f9ce80d215a0744183b6125bc55f563a42f705f475b23ae74e46e6a9f09317",
+      "bytes": 1109,
       "warnings": 0
     },
     "golden-fixture:query-24.tsx|swift": {
@@ -4417,8 +4417,8 @@
       "warnings": 0
     },
     "golden-fixture:query-24.tsx|kotlin": {
-      "sha": "f4e6afac9f9a8bf9773e30b6881037f508cff764b763ad05339c327fd0607b24",
-      "bytes": 676,
+      "sha": "5804f2c54720e9f4b55e26bc8bcd0b9859cbc457e213f8910835cb4070d191d2",
+      "bytes": 661,
       "warnings": 0
     },
     "golden-fixture:query-25.tsx|swift": {
@@ -4437,8 +4437,8 @@
       "warnings": 0
     },
     "golden-fixture:query-26.tsx|kotlin": {
-      "sha": "97252766f8ee186c2d58cfae203210248b2897530a2d3adf852c6733e537600d",
-      "bytes": 278,
+      "sha": "6057f4917fbc993e8510b292353992fbb62afa82ba24baf1e0ca48d4f8e9af58",
+      "bytes": 277,
       "warnings": 0
     },
     "golden-fixture:query-27.tsx|swift": {
@@ -4447,8 +4447,8 @@
       "warnings": 0
     },
     "golden-fixture:query-27.tsx|kotlin": {
-      "sha": "a09d8be3e801bfc719c24eef8b9b950002dd15523a6ef08cdc8c4559e6d0d503",
-      "bytes": 277,
+      "sha": "42b8a6d9fbc40193ca09fb17d3c904005a5cb9d60cf058f2a9255a7cbfe09c48",
+      "bytes": 274,
       "warnings": 0
     },
     "golden-fixture:query-28.tsx|swift": {
@@ -4622,13 +4622,13 @@
       "warnings": 0
     },
     "golden-fixture:query-45.tsx|swift": {
-      "sha": "0cfa8638879b17cf5188f771974fc6b9cfc08752121531ae6d6b2de0c10f3ef6",
-      "bytes": 7218,
+      "sha": "67368243fd2d5b77e37fa020dd1e7cf1ea8b9bf5ac5db43bbe68f0ca80bacbbd",
+      "bytes": 7469,
       "warnings": 0
     },
     "golden-fixture:query-45.tsx|kotlin": {
-      "sha": "9e04fc18105cf8ab21fa099e3e9f4186af1060714e47855c15f275c35394ddd9",
-      "bytes": 7037,
+      "sha": "a746dd27b0f13608fd84c2e79686bfb43d485ee2cca1e2b038cc656e481111a6",
+      "bytes": 7307,
       "warnings": 0
     },
     "golden-fixture:query-46.tsx|swift": {
@@ -4657,8 +4657,8 @@
       "warnings": 1
     },
     "golden-fixture:query-48.tsx|kotlin": {
-      "sha": "5a2179be7d52ad44b88d8dc37d6b9ab9bf0e242674ad39872266a8a586e71510",
-      "bytes": 602,
+      "sha": "90921258f15472ece6d582a576e51d5098b187079d98cba4841ee16fba950e65",
+      "bytes": 587,
       "warnings": 1
     },
     "golden-fixture:query-49.tsx|swift": {
@@ -4707,8 +4707,8 @@
       "warnings": 1
     },
     "golden-fixture:query-53.tsx|kotlin": {
-      "sha": "dbcf9464dcf0db881dc612084f02872468c77fa1470862aa296838ac0a313285",
-      "bytes": 831,
+      "sha": "3bbb2552afa68af8e6328312488d9dad0cfe103fb0876872ba3ce3796f873e16",
+      "bytes": 816,
       "warnings": 1
     },
     "golden-fixture:query-54.tsx|swift": {
@@ -4762,63 +4762,63 @@
       "warnings": 2
     },
     "golden-fixture:query-59.tsx|swift": {
-      "sha": "83d22a82057077da21324529f94e1d864386769858d3d6672f02c5bfc3d9152b",
-      "bytes": 450,
+      "sha": "10f0d0d8bf40e3e9f54e3d4835067c77298ad6f6e5b0cb350c16bcf98188e023",
+      "bytes": 411,
       "warnings": 1
     },
     "golden-fixture:query-59.tsx|kotlin": {
-      "sha": "1f61b1b9cec891d6d49aafdf2e81c5376232f60da8798ccfe3220232e34c12a5",
-      "bytes": 513,
+      "sha": "40ac349baf7919591118b81ac86f6d14aa5f3140d63a58b951c0201a50e7acd9",
+      "bytes": 555,
       "warnings": 1
     },
     "golden-fixture:query-60.tsx|swift": {
-      "sha": "af7b10c6ebc09a225c03b75c766cf7936083e4c089cbf4e3795fc6d1735ee211",
-      "bytes": 450,
+      "sha": "e7aa426422e7f24ee764e28cbd4a5136d7f9493f6df3b0e6c1253ca01ac72508",
+      "bytes": 411,
       "warnings": 1
     },
     "golden-fixture:query-60.tsx|kotlin": {
-      "sha": "ab5cdf1259873f4751ddfbab1d93d8e7dbb1813ec01f374df29988c3425ff84e",
-      "bytes": 513,
+      "sha": "c2aaea6a2172251efbc4da36f7fcc7029c3053cf72f5939c829a7b42e3736a29",
+      "bytes": 555,
       "warnings": 1
     },
     "golden-fixture:query-61.tsx|swift": {
-      "sha": "3d4e775ff2e5ae4c691671a0c7b276eb9bc4322b494c7df0e87b98e29b15ea57",
-      "bytes": 752,
+      "sha": "3dffa99656ec71a4a08f9fac3ac5b265738db277e74d53f665c6c587528cfce3",
+      "bytes": 713,
       "warnings": 0
     },
     "golden-fixture:query-61.tsx|kotlin": {
-      "sha": "eeb65a2e7e2c8b8d1341a3a08de426bedc4223b4458b4b6f87036ddc966b0f36",
-      "bytes": 869,
+      "sha": "3090b64d1aad2c855cffe3658bc4435ba5b77a63cca516f00fda2ae9c0f44ed2",
+      "bytes": 911,
       "warnings": 0
     },
     "golden-fixture:query-62.tsx|swift": {
-      "sha": "f02d8cd215caf6b92690052312c9e86701ba5374867a079cee1e971b8603e1e6",
-      "bytes": 450,
+      "sha": "488453b28b3633c53671a42bd113c025b11b1f1b7f849ba0cbe5f9873b425144",
+      "bytes": 411,
       "warnings": 1
     },
     "golden-fixture:query-62.tsx|kotlin": {
-      "sha": "aa429870c94f792d92b485569c25fa4c52bb4105a970f450da28ae50a91ddf05",
-      "bytes": 513,
+      "sha": "b1a4b44e233b047423599dda56eab595c3ae1c083f7002a0df52ddafe757836d",
+      "bytes": 555,
       "warnings": 1
     },
     "golden-fixture:query-63.tsx|swift": {
-      "sha": "0f86ffd9e52008b92b1ea1d1902949121844fef860202cb671497c4e60702f09",
-      "bytes": 450,
+      "sha": "022f5a987a111e2b9cf9de199a511f39ffe0e996501d9906d759f06efdf25377",
+      "bytes": 411,
       "warnings": 1
     },
     "golden-fixture:query-63.tsx|kotlin": {
-      "sha": "0721ce64b6e5ecc49e768173bfa5c786d6cdca56ba770958e9d37fb9857b0488",
-      "bytes": 513,
+      "sha": "c321994e8fb18bcf953f2e55d307d387e9c32231895686b3090bf2e63649f6c7",
+      "bytes": 555,
       "warnings": 1
     },
     "golden-fixture:query-64.tsx|swift": {
-      "sha": "e3e4a6783977682772344716bde4908d48afd381e683b447ced3450efa4c9e23",
-      "bytes": 587,
+      "sha": "055d0f8763a4eadaf8bd5071bdecccf82d40ecc2ac3901c1a2c613df2d989454",
+      "bytes": 548,
       "warnings": 1
     },
     "golden-fixture:query-64.tsx|kotlin": {
-      "sha": "d48738902a26179e76c87f43364766a413f5a1fade1707d891b27b7ef9f77024",
-      "bytes": 701,
+      "sha": "4eb288ad6ecbbba2a1328d2b04b07b593ec48177203628bd5e0725e73dcfdea5",
+      "bytes": 743,
       "warnings": 1
     },
     "golden-fixture:query-65.tsx|swift": {
@@ -4847,8 +4847,8 @@
       "warnings": 1
     },
     "golden-fixture:query-67.tsx|kotlin": {
-      "sha": "2f70c04be68a1f31ffb033d8233dc61a9cef3108c0698ee891a98625d51a606c",
-      "bytes": 602,
+      "sha": "00cf3c1929ad5a05295c051aa73dac097e4d02cb8c1b2b50734082a96d901992",
+      "bytes": 587,
       "warnings": 1
     },
     "golden-fixture:query-68.tsx|swift": {
@@ -4932,14 +4932,14 @@
       "warnings": 1
     },
     "golden-fixture:query-76.tsx|swift": {
-      "sha": "7bfe5a2424c8f6989946fe2a61712f9dc3c5daa54288aed0f719f978c62d864b",
-      "bytes": 171,
-      "warnings": 1
+      "sha": "34712152138eecf37185c53815d46302b468fa8df6e5a423d80c74355c911ab8",
+      "bytes": 181,
+      "warnings": 0
     },
     "golden-fixture:query-76.tsx|kotlin": {
-      "sha": "473b45baf93a3cac221132ec41fc1af8e96a55210ce18ffd4f059c943ed045f5",
-      "bytes": 269,
-      "warnings": 1
+      "sha": "c13be35d99ad83c1ecac76c034adbf2b6275bb426ca0d65dec759ed39d01b846",
+      "bytes": 283,
+      "warnings": 0
     },
     "golden-fixture:query-77.tsx|swift": {
       "sha": "89fb9da88c8110c2617adba83d74de6248cd448d73b1d912172d71d88830b476",
@@ -4972,23 +4972,23 @@
       "warnings": 1
     },
     "golden-fixture:query-80.tsx|swift": {
-      "sha": "814589318111459ee5d905904a2c3701d62773f5dee46809e94647ba11fec880",
-      "bytes": 5549,
+      "sha": "0d8dc4a4b070ff1c988c4f52e1a3379245bf05a671bdd834ee1cd444a8098890",
+      "bytes": 5815,
       "warnings": 0
     },
     "golden-fixture:query-80.tsx|kotlin": {
-      "sha": "d7807b005a4b3aa787173c23a29e2898815eadbb295af8fc2b4ed2dd6011083e",
-      "bytes": 5654,
+      "sha": "d1cca1db60a3f32f9c4d3292696b6e073a51e89f6a34c00c28f2ba8fd256f701",
+      "bytes": 5839,
       "warnings": 0
     },
     "golden-fixture:query-81.tsx|swift": {
-      "sha": "bbe25ab7e18a771d78c7f481eb672c285e93108a9a2f2900531a0b548ba41355",
-      "bytes": 5531,
+      "sha": "04054f265366b502f564ac96639548e5e3a3bb800a214bc878f0de917061a559",
+      "bytes": 5797,
       "warnings": 2
     },
     "golden-fixture:query-81.tsx|kotlin": {
-      "sha": "ee7c798dd91f786b71d7c945221b4b67cc85e0cdc29feafa54cb95d5b6352b76",
-      "bytes": 5628,
+      "sha": "23a5e822bc389ea6c0e1b643bc5ad86d7d6f1403b8c00ba0e21a50be13368304",
+      "bytes": 5813,
       "warnings": 2
     },
     "golden-fixture:query-82.tsx|swift": {
@@ -4997,8 +4997,8 @@
       "warnings": 0
     },
     "golden-fixture:query-82.tsx|kotlin": {
-      "sha": "466117cbf70d8e7025093a88aaeecfe98b9c5be8756b9d00576537fab2fed1c3",
-      "bytes": 818,
+      "sha": "92650ead1bc9cd9e158fc7cab20d297fa09c22b4f4105e39c4d40939c34cf59b",
+      "bytes": 803,
       "warnings": 0
     },
     "golden-fixture:rate-callback-returns.tsx|swift": {
@@ -5392,13 +5392,13 @@
       "warnings": 1
     },
     "golden-fixture:rx-39.tsx|swift": {
-      "sha": "56d815c932e8f05f0672680f2c74140be31518ce4242dd95c8688e1dd78b307b",
-      "bytes": 476,
+      "sha": "e6b58c2c4816a0e93e0c6b5574a0af311aea5c612d30468dae861b2c942e9e7a",
+      "bytes": 506,
       "warnings": 0
     },
     "golden-fixture:rx-39.tsx|kotlin": {
-      "sha": "f276fcd0167e85be821ec1ff5ba6005c8fa13145925cbc43c9e51bd817923562",
-      "bytes": 542,
+      "sha": "b8757cd13ad7f5e9a3401cac53448c2724ce1b6636113e9cc2b5e3b6a0b496dd",
+      "bytes": 572,
       "warnings": 0
     },
     "golden-fixture:rx-40.tsx|swift": {
@@ -5472,23 +5472,23 @@
       "warnings": 1
     },
     "golden-fixture:rx-47.tsx|swift": {
-      "sha": "cffebfbc4f262fb0f1d7b0b98ea1189470a001cfc7e431653d8a0da20c7ee69c",
-      "bytes": 454,
+      "sha": "5605933eb959c36f95e2f10b670caab34b0c12d167016376dbae5cdecfecc655",
+      "bytes": 474,
       "warnings": 5
     },
     "golden-fixture:rx-47.tsx|kotlin": {
-      "sha": "c95513aa0feadce96b8ca7e72aaa6b179746a014a16da492858538e9252afdb0",
-      "bytes": 583,
+      "sha": "b6c8770c89e2d19e045d0d271112bb09d22b6f0fd284a70636a08b56a9027918",
+      "bytes": 603,
       "warnings": 5
     },
     "golden-fixture:rx-48.tsx|swift": {
-      "sha": "db8a1c29f6ea125f39d1c1c5e06acba1897825908328d19283898db39fe97900",
-      "bytes": 2028,
+      "sha": "8e9d3eae3fd44b5ea574970bcbd946cece629a0b9301f378ee59149100d82d80",
+      "bytes": 2108,
       "warnings": 0
     },
     "golden-fixture:rx-48.tsx|kotlin": {
-      "sha": "6a3804a5ff9a6a899a15fb9d10a0e5746867ab7b6d2f3e8e23b67e1c1d4088d7",
-      "bytes": 2306,
+      "sha": "483ceaa6adc391f75ce9b60888b12812dc3fcfd5a2cab675fba3a0110e326a81",
+      "bytes": 2386,
       "warnings": 0
     },
     "golden-fixture:sized-map-01.tsx|swift": {
@@ -5652,23 +5652,23 @@
       "warnings": 0
     },
     "golden-fixture:sized-map-17.tsx|swift": {
-      "sha": "44049365154e5ef9a6c6cfeb4258f170b138f40bcec2dbb1e96bd7c5ab2d6ce9",
-      "bytes": 1006,
+      "sha": "1196cec44b4ea3b4d60ff0168c10f2b172b9e91d4df947ec0a78d71b1c1c432b",
+      "bytes": 1016,
       "warnings": 0
     },
     "golden-fixture:sized-map-17.tsx|kotlin": {
-      "sha": "d361787a21480e2869ddeeff18ac287ba672eae3e00a264513d2fecf33b1be06",
-      "bytes": 1079,
+      "sha": "bc86ac0d5f2a30a185fae6143624fac60eb5ade623ece758f8a18c173c5ad657",
+      "bytes": 1089,
       "warnings": 0
     },
     "golden-fixture:storage-01.tsx|swift": {
-      "sha": "07e91c77736f6caa3bf402a1f523b19de91ab29c35e5105556b5f0552f7a0747",
-      "bytes": 2146,
+      "sha": "00e2aec93c07f47c278209fabacf61b8cc9b2fe115965b0828b6f84468e61685",
+      "bytes": 2156,
       "warnings": 0
     },
     "golden-fixture:storage-01.tsx|kotlin": {
-      "sha": "fd989581b0e5d837d1d9493feb689dc60d6f4ce40adbe813230e3d4b275cbfda",
-      "bytes": 2166,
+      "sha": "15a6baf1e40954dc28180dcfdd58558fbacd68db705379071a62c5fe582a83d1",
+      "bytes": 2206,
       "warnings": 0
     },
     "golden-fixture:storage-02.tsx|swift": {
@@ -5677,8 +5677,8 @@
       "warnings": 2
     },
     "golden-fixture:storage-02.tsx|kotlin": {
-      "sha": "e025675a577f97f8bc268c0c3adef012d774eddf76f373216ba22619747d4d39",
-      "bytes": 856,
+      "sha": "2059414520e66385d018ff62fbce549ab4bde608213296fe512d6c7e3fa2a6e8",
+      "bytes": 863,
       "warnings": 1
     },
     "golden-fixture:storage-03.tsx|swift": {
@@ -5697,8 +5697,8 @@
       "warnings": 0
     },
     "golden-fixture:storage-04.tsx|kotlin": {
-      "sha": "4eff54e0a825704cee613e84913cadbad703a489151dbb724debcfee778760f5",
-      "bytes": 278,
+      "sha": "0edb1e32437e14c91da9a68257384e0010a799e86211c48166ccba0c1d64a130",
+      "bytes": 277,
       "warnings": 0
     },
     "golden-fixture:storage-05.tsx|swift": {
@@ -6562,13 +6562,13 @@
       "warnings": 0
     },
     "golden-fixture:validate-02.tsx|swift": {
-      "sha": "629a7c8a54ff15204c3bef249f6cfde958cc9c46e8ead4a3b7a471c29c968f5a",
-      "bytes": 103241,
+      "sha": "4a4d1658b89a6bc9b2422179395ee830669b15d86aa2077ee9b38cc539a55631",
+      "bytes": 109070,
       "warnings": 0
     },
     "golden-fixture:validate-02.tsx|kotlin": {
-      "sha": "4345d894c6046c46cdc6a429fc499127b09a3ecc88e09d08549ff05c26eaa2ec",
-      "bytes": 110435,
+      "sha": "bd2ece19dbe2befdc1ff18f096341db91d67fa5df7a0f71057417d44e94721a0",
+      "bytes": 112415,
       "warnings": 0
     },
     "golden-fixture:validate-03.tsx|swift": {
@@ -6592,23 +6592,23 @@
       "warnings": 0
     },
     "golden-fixture:validate-05.tsx|swift": {
-      "sha": "3f362273eed8921a6b9e73c4eeff3ec1a39e764207ab3b4e1b4767d968c18620",
-      "bytes": 4757,
+      "sha": "ed39833bfafb599ca02f37a64fe80d44b77cb368538815ef76a7fbf13dd3648e",
+      "bytes": 4813,
       "warnings": 0
     },
     "golden-fixture:validate-05.tsx|kotlin": {
-      "sha": "a72c25b1dd5d0b4384ccc09ba9e1e96556ab02921a39bedf6d6674947b12f34d",
-      "bytes": 4775,
+      "sha": "cc615ac0da1b4063ca18f98b5882cfd4b49d8ad5028f2bb3a82205731b956563",
+      "bytes": 4795,
       "warnings": 0
     },
     "golden-fixture:validate-06.tsx|swift": {
-      "sha": "a4a758c442ff16db372404fbba8f04abb4a084e1af34bcc0a0298b41fb9bdde6",
-      "bytes": 4533,
+      "sha": "dde928f7d0db0c19c65d4b8e001582573cce4b8b14049ef51dae197bfad13734",
+      "bytes": 4587,
       "warnings": 0
     },
     "golden-fixture:validate-06.tsx|kotlin": {
-      "sha": "11c46eff2b84b5b1f766704ec9cd09b8e3dd6f6a21aaa5e45d9ccd8e98dad2ad",
-      "bytes": 4748,
+      "sha": "41e7ac32ffb83728fbd4d9793cf2682644ba11ac46bdcc53973bb41ab619b207",
+      "bytes": 4768,
       "warnings": 0
     },
     "golden-fixture:validate-07.tsx|swift": {
@@ -6622,33 +6622,33 @@
       "warnings": 0
     },
     "golden-fixture:validate-08.tsx|swift": {
-      "sha": "fa567909a9cbef16fb585adf773c7a64e4e889dba354ba4a98ce196e5914430c",
-      "bytes": 3662,
+      "sha": "63b8e454244f9a0ecaa8374d6e0ea60c9c34bb9a5ea92bc549cdc41f7076e23a",
+      "bytes": 3716,
       "warnings": 0
     },
     "golden-fixture:validate-08.tsx|kotlin": {
-      "sha": "04ded6fa227ebc2be975df43d929eec5e80884686f184e657e31282581090223",
-      "bytes": 3859,
+      "sha": "2697d0a3f695bf2ef6506b5800ae0041fd29f18f07aff6bad039ef84b78a8809",
+      "bytes": 3879,
       "warnings": 0
     },
     "golden-fixture:validate-09.tsx|swift": {
-      "sha": "9141023affd1d5699d0ca28f44ac4473150f7b5ee6873265c39ab478537c7996",
-      "bytes": 3753,
+      "sha": "2e6064a2581ce791e668ea2a8f31930312e492c76a4df0def9260ee71e24d334",
+      "bytes": 3807,
       "warnings": 0
     },
     "golden-fixture:validate-09.tsx|kotlin": {
-      "sha": "d282e6214c2187afa600030b2a59224e5bdf1fa8a682186e6ec47ac9ff3ef230",
-      "bytes": 3988,
+      "sha": "a4c897c60228c40c14445ceca0488ad96bea468f47ceab09ae3f0a2448b7784c",
+      "bytes": 4008,
       "warnings": 0
     },
     "golden-fixture:validate-10.tsx|swift": {
-      "sha": "f39b2538989b8c2c94df5e31532729c750d2d8002e57342550a17755b39f30f0",
-      "bytes": 3377,
+      "sha": "6bb3d58884b6869411dee8a55ceac81fda5b6636ff35ce324710dd7955c361d1",
+      "bytes": 3489,
       "warnings": 0
     },
     "golden-fixture:validate-10.tsx|kotlin": {
-      "sha": "263ed2bf84853bd66a48b670f985b97e7f8ed97288414d97e0ccb43050de5f72",
-      "bytes": 3666,
+      "sha": "6f9b429e38c8b74972165595b2beef9ec9a50136381837326d52d9deb54e95fc",
+      "bytes": 3706,
       "warnings": 0
     },
     "golden-fixture:validate-11.tsx|swift": {
@@ -6712,23 +6712,23 @@
       "warnings": 0
     },
     "golden-fixture:validate-17.tsx|swift": {
-      "sha": "2517772d0f2a65aafce389be6f03631fe6ae3cdb94babea6cc19555ff3fbdd5e",
-      "bytes": 3292,
+      "sha": "efb00d029a7e3296c18dbc496243c5a00343d311379434527931e31a43c44bf9",
+      "bytes": 3348,
       "warnings": 0
     },
     "golden-fixture:validate-17.tsx|kotlin": {
-      "sha": "ea87bd2056d4ec8dc3a3d777924d978e1f92fe7af5d94095e52d8dbc9a64df2e",
-      "bytes": 3253,
+      "sha": "6bd58570ab3767aca2c496086d47c7ffd12f660d46dd5524fc503548b94f27f8",
+      "bytes": 3273,
       "warnings": 0
     },
     "golden-fixture:validate-18.tsx|swift": {
-      "sha": "0e9eac9cb8829e5289934212c4d4665b4f963d3630fe3e31420d5ca0115fc18f",
-      "bytes": 2173,
+      "sha": "e5aced58ad53dc73b4a5780b1d1433a7fa8c999e748c02e9664ef2ce43a3dd3f",
+      "bytes": 2229,
       "warnings": 0
     },
     "golden-fixture:validate-18.tsx|kotlin": {
-      "sha": "b5c8641146924b27486bd9bf3934d9fbfbc9783cd1c45867c19d4effc3f5fd60",
-      "bytes": 2170,
+      "sha": "ecffdadb7b12c46f1618ce953c370422781cc64b1861056149dacf65ceef71fd",
+      "bytes": 2190,
       "warnings": 0
     },
     "golden-fixture:validate-19.tsx|swift": {
@@ -6772,13 +6772,13 @@
       "warnings": 0
     },
     "golden-fixture:validate-23.tsx|swift": {
-      "sha": "d8b1d01f56540f2d467b15a70c8ffc1a8bdb80a350191a3e7e37b14fb29cda0f",
-      "bytes": 2253,
+      "sha": "9ce0cfca0b6325d8fbfa2e4483488cdd35a1c883e9f415a798965593dce273af",
+      "bytes": 2311,
       "warnings": 0
     },
     "golden-fixture:validate-23.tsx|kotlin": {
-      "sha": "5b842df56b629d6bca7b64d1c9e7f53052e97c03e8409020261337dbc06c618f",
-      "bytes": 2460,
+      "sha": "f8b0be2ede1d063a62fa459b767e0118a8dd3121fab419268960d53ae87ade69",
+      "bytes": 2480,
       "warnings": 0
     },
     "golden-fixture:validate-24.tsx|swift": {
@@ -6802,13 +6802,13 @@
       "warnings": 1
     },
     "golden-fixture:validate-26.tsx|swift": {
-      "sha": "1a7d6aa21c05790ea54d3c20fad0b4fb4276269767c90d23a7d645acef6b2fec",
-      "bytes": 1030,
+      "sha": "ec045872c36c937681e6a34e6d182cf4ab0806da172fac10ab242d9dc59932e0",
+      "bytes": 1084,
       "warnings": 1
     },
     "golden-fixture:validate-26.tsx|kotlin": {
-      "sha": "6f66fb50b1fea438ad297bc97d4a1222ca6389924a6040a01430a16eb79e2379",
-      "bytes": 1187,
+      "sha": "12ea9e4a6dac7875162f834f3bacf3f8df6b43b06da3f944ecf3a65c4e812135",
+      "bytes": 1207,
       "warnings": 1
     },
     "golden-fixture:validate-27.tsx|swift": {
@@ -6862,13 +6862,13 @@
       "warnings": 0
     },
     "golden-fixture:validate-32.tsx|swift": {
-      "sha": "faac131c94c5085dd7cb2146816bd0867c86c9304c6a97dc8de150bb3d253443",
-      "bytes": 725,
+      "sha": "677763ab2d4b9c087dfa2f360a1b376830be290ece32047059ee575a3120999c",
+      "bytes": 781,
       "warnings": 1
     },
     "golden-fixture:validate-32.tsx|kotlin": {
-      "sha": "50e57c4584d5d366bb2ae8991c141d3666df46f9681b27e998977f6c10ecc319",
-      "bytes": 822,
+      "sha": "71f71a75870ce04891f7a52333b32c08a2424d5a03018f2b84688eb0205772e2",
+      "bytes": 842,
       "warnings": 1
     },
     "golden-fixture:validate-33.tsx|swift": {
@@ -6902,13 +6902,13 @@
       "warnings": 3
     },
     "golden-fixture:validate-36.tsx|swift": {
-      "sha": "dbe1ea27c731650a65c39073bfdf8646c3b35a5d7ff83d7c2a3aa7ce28850b63",
-      "bytes": 928,
+      "sha": "a5a83720597b002fc4a0bfc13195c551c0453c5414d5402f1b115a988d19dc63",
+      "bytes": 975,
       "warnings": 0
     },
     "golden-fixture:validate-36.tsx|kotlin": {
-      "sha": "a6b463a9f58fd7fd627c67b237ca230a73228480ed6d428c7bd9d2235f083770",
-      "bytes": 878,
+      "sha": "d0ba1015a27ccbc196c66f745984020d7efa4f48029f4ad56fe6d7a5baaba8a9",
+      "bytes": 898,
       "warnings": 0
     },
     "golden-fixture:validate-37.tsx|swift": {
@@ -7072,13 +7072,13 @@
       "warnings": 3
     },
     "golden-fixture:validate-53.tsx|swift": {
-      "sha": "82808300588d935a94288ac0b96a6e6fb95f767f22c9d20d31500acc1b21b2ca",
-      "bytes": 1877,
+      "sha": "ccd8c06bae3ffb42be8f771d9d815ed472ca40eac920f91c3bdce7f0bad81659",
+      "bytes": 1933,
       "warnings": 0
     },
     "golden-fixture:validate-53.tsx|kotlin": {
-      "sha": "9bd6a5c39580256ca46531de2de46df7c943aaaa45812ea2f3ada5091b30d198",
-      "bytes": 1928,
+      "sha": "9e64a31d0392111985bd97a450e15ff3e1883eb600c7288edf037e71de376801",
+      "bytes": 1948,
       "warnings": 0
     },
     "golden-fixture:validate-54.tsx|swift": {
@@ -7152,13 +7152,13 @@
       "warnings": 1
     },
     "golden-fixture:validate-61.tsx|swift": {
-      "sha": "be27365089a9c8d5c67fc715ea61622c0e082d4e8aed38694da6fa1594844be9",
-      "bytes": 5305,
+      "sha": "d1ed1d425b08ad245b45eb7575d65213aa6bc0e6e40bbb57a43d05be28713caa",
+      "bytes": 5415,
       "warnings": 2
     },
     "golden-fixture:validate-61.tsx|kotlin": {
-      "sha": "77d47343fb5f44abf9c89090e3d9c0ac5fab70019cfcbd5babf4707c25dd8cb1",
-      "bytes": 5639,
+      "sha": "d4b315f9b73fdc006a3ec4023dc02ce4c59be58d3f5abfe74c8f32496ff9505d",
+      "bytes": 5679,
       "warnings": 2
     },
     "golden-fixture:validate-62.tsx|swift": {
@@ -7182,33 +7182,33 @@
       "warnings": 6
     },
     "golden-fixture:validate-64.tsx|swift": {
-      "sha": "556ae1e3bbf64740a07a468e99abbd462b7f57b9b1efa02ee29ae0e73fb6b9e7",
-      "bytes": 3755,
+      "sha": "c9fc913771f16cf93e6e19e2eda526bf3761577bd49cd5457537e10f2db8db3f",
+      "bytes": 3809,
       "warnings": 6
     },
     "golden-fixture:validate-64.tsx|kotlin": {
-      "sha": "7236297d92dabf02f6652024c21e5875457e1c0088029dc001a591d0b373f404",
-      "bytes": 3986,
+      "sha": "581da08b5aa1644b8ea75651d5f258dab07c6bf9765f217402ea202875fedd79",
+      "bytes": 4006,
       "warnings": 6
     },
     "golden-fixture:validate-65.tsx|swift": {
-      "sha": "cad400415b0ae8f63f2749332e2b6aced82062e719714118c8c7a4890b2c4384",
-      "bytes": 1955,
+      "sha": "975bfc7e969c989fd3a2047628e506753adae5f3f6307b1986f83d08bfe0699e",
+      "bytes": 2009,
       "warnings": 1
     },
     "golden-fixture:validate-65.tsx|kotlin": {
-      "sha": "cc08e5b7641450c3b6481de4bd87533f42aad0e68b6775f6666877e464d17cbc",
-      "bytes": 2005,
+      "sha": "d72408c9b7299dbb74c6b87fb17cc53cff0833af54246e6d1a406e4937e0c9f8",
+      "bytes": 2025,
       "warnings": 1
     },
     "golden-fixture:validate-66.tsx|swift": {
-      "sha": "62241ec9855d3022fda57e1a24f777be9d34cd8a057c37bdaecc35837419b86d",
-      "bytes": 7547,
+      "sha": "9c11194974f5a1f4ef56981fd48c08a4a11d72e759a34de6280002a84549d57e",
+      "bytes": 8058,
       "warnings": 0
     },
     "golden-fixture:validate-66.tsx|kotlin": {
-      "sha": "90d377c2c843b00c0df6c39061c531eedb3215e6c79e49b670206f06bf333469",
-      "bytes": 7975,
+      "sha": "5b331d532f6bd7b7cc728c9343825cc97b719007caad76b6805fbbe3d389b227",
+      "bytes": 8325,
       "warnings": 0
     },
     "golden-fixture:validate-67.tsx|swift": {
@@ -7222,13 +7222,13 @@
       "warnings": 1
     },
     "golden-fixture:validate-68.tsx|swift": {
-      "sha": "91bbb569b9bde687850ef75e123ef3d2059eeb159bf15680df0f12de486f5cc2",
-      "bytes": 4560,
+      "sha": "9bc9519230f0c26e903bf27d79042ef926dc99d8af4a56ac8590dcd55f37ec51",
+      "bytes": 4614,
       "warnings": 0
     },
     "golden-fixture:validate-68.tsx|kotlin": {
-      "sha": "2fa46eb194b7edc0a72724c255ebb762ee5f8e2e1e5cdd686feb34fe363999d6",
-      "bytes": 4888,
+      "sha": "d4d73116a3195a9fd4890ee68a85e49b792331b8edc9aff4b006009ad04c5478",
+      "bytes": 4908,
       "warnings": 0
     },
     "golden-fixture:validate-69.tsx|swift": {
@@ -7272,13 +7272,13 @@
       "warnings": 3
     },
     "golden-fixture:validate-73.tsx|swift": {
-      "sha": "157d62c327585eaecbe26308c85a5ab8ede9bc5f89b67954de2d45fa2d9e1795",
-      "bytes": 5696,
+      "sha": "67781325cdaf38ae8a42dec98a32191baf93038d1a20ac643efce585ea769290",
+      "bytes": 5750,
       "warnings": 1
     },
     "golden-fixture:validate-73.tsx|kotlin": {
-      "sha": "1659cbd6adc8b5b36e1ed96b26f3f17dee5833dfa333bf2f885d0e5a078e31d8",
-      "bytes": 5223,
+      "sha": "8c7410d5108439bc6744f003741cd8b54a241716a4b522558d22fc9c96034e68",
+      "bytes": 5243,
       "warnings": 1
     },
     "golden-fixture:validate-74.tsx|swift": {
@@ -7292,13 +7292,13 @@
       "warnings": 7
     },
     "golden-fixture:validate-75.tsx|swift": {
-      "sha": "36a9f024687cc09f023ee92424acd85bc56478d48600b5ab0a5cff8cd5089f9d",
-      "bytes": 3942,
+      "sha": "821e7230901a6cd0291ef44d2adf6a353572e9c1faf74b487f7dba09cc584047",
+      "bytes": 4117,
       "warnings": 0
     },
     "golden-fixture:validate-75.tsx|kotlin": {
-      "sha": "145e227ee76535450b872db03a4202feb09139d6aff4889dc39f9ffef6e0a636",
-      "bytes": 4261,
+      "sha": "ed150fafac0a59d2d4df903efe3a2f3ebb0eb3a61ac68767203e0f94705a4301",
+      "bytes": 4291,
       "warnings": 0
     },
     "golden-fixture:validate-76.tsx|swift": {
@@ -7322,18 +7322,18 @@
       "warnings": 2
     },
     "golden-fixture:validate-78.tsx|swift": {
-      "sha": "34a27e3c64caac0b45a5819b962c0467555b6f1d22df5018d806ce1936a2c76a",
-      "bytes": 2130,
+      "sha": "edf88751aa8279b32ecd51d03f26562bb7b213daefc250891cd9ea58112a5fa4",
+      "bytes": 2302,
       "warnings": 0
     },
     "golden-fixture:validate-78.tsx|kotlin": {
-      "sha": "972ef1c8ad97213cb6be0872b9dce242f1fcc4f3ebe6c014da7fb897a14a2850",
-      "bytes": 2265,
+      "sha": "547513e9f20f0d28efb1c33dad49b4c7b479a22804bb39b031a4651a46d03b19",
+      "bytes": 2410,
       "warnings": 0
     },
     "golden-fixture:validate-79.tsx|swift": {
-      "sha": "07933bf8370e8cf67316519e6cd04d97e4c72fae5778e0d266dca806af57d67d",
-      "bytes": 1636,
+      "sha": "258f678640a37d4b0f585284a52460aab5b74fa5f9e07d978e6a7ebb356a4582",
+      "bytes": 1887,
       "warnings": 0
     },
     "golden-fixture:validate-79.tsx|kotlin": {
@@ -7372,63 +7372,73 @@
       "warnings": 0
     },
     "example:native-counter/Counter.tsx|swift": {
-      "sha": "22be5a56104613b5ce7a9d19c259fb37a1a2fa5810edfa1fb6bf8a8e9e5edf9a",
-      "bytes": 22195,
+      "sha": "dafc7932b8f546347b2035e6ab359075bf9b2e930f124a95c93e599d35d77738",
+      "bytes": 23606,
       "warnings": 0
     },
     "example:native-counter/Counter.tsx|kotlin": {
-      "sha": "a6e9e1f01fbb3feb7181c5b61787c7341a6277782513c3aa4c180ecac7c2ed48",
-      "bytes": 21146,
+      "sha": "e434c824c46ae9a5b9918a0a670b088e7d98880a5248061bf8d36e5275638d5f",
+      "bytes": 22394,
       "warnings": 0
     },
     "example:native-finance/FinanceApp.tsx|swift": {
-      "sha": "2ddf0b6a71455b44780e0f935eac0206a8a428c1943aabbb4e93b11e9379de51",
-      "bytes": 8109,
+      "sha": "ff6c78377ebcc0f7064e6ecf14f0fd45f4cd220df7e1fe5e8626385f10735cdb",
+      "bytes": 8139,
       "warnings": 1
     },
     "example:native-finance/FinanceApp.tsx|kotlin": {
-      "sha": "a41fa5cb024ae3b02c49447686277dccadf58367154d26c634d1ff28a2ea3421",
-      "bytes": 7269,
+      "sha": "4c74ba50d01ed859a0a252d11bfcf821091ec17e67583974864f2fe9bc53f13a",
+      "bytes": 7321,
+      "warnings": 0
+    },
+    "example:native-router-demo/ReorderPage.tsx|swift": {
+      "sha": "b0c4f6f544b871ddd0666479ebe4017184f9c16c51c2c70e5b5eea39021f3489",
+      "bytes": 2406,
+      "warnings": 0
+    },
+    "example:native-router-demo/ReorderPage.tsx|kotlin": {
+      "sha": "14b60bde0ca85ce39a4e3866b8efa58be47cf2a659e92722d8f73df248b8fe0d",
+      "bytes": 2289,
       "warnings": 0
     },
     "example:native-router-demo/RouterApp.tsx|swift": {
-      "sha": "79ad574c72ab1dcb77abf27fe7e86a6ab34ec009e35fca84a8ab6ec6b278e330",
-      "bytes": 38124,
+      "sha": "be6b211c141490a82c549318a4ee3bf551cc2a4963a89643af1ecf2dbeede44d",
+      "bytes": 43679,
       "warnings": 1
     },
     "example:native-router-demo/RouterApp.tsx|kotlin": {
-      "sha": "e3d5cd9278024ef0f0eaa13334da3b7eb9a94609ba09c325229b687cbf9c9acb",
-      "bytes": 32338,
+      "sha": "903a6af52d4bc4aad6f409d7c97a9797571699dcd02a563ebcc03df4ad00f085",
+      "bytes": 36972,
       "warnings": 1
     },
     "example:native-showcase/TodayApp.tsx|swift": {
-      "sha": "dba80c87399147be8ab617bc6f2a362ac5f63a589361011801ff015c1cf3a9ad",
-      "bytes": 5616,
+      "sha": "558ae0b06368938259056ae8d4495bfd010f3eedfca9fb827723398760250f48",
+      "bytes": 5626,
       "warnings": 0
     },
     "example:native-showcase/TodayApp.tsx|kotlin": {
-      "sha": "d2acb51121ea96b1df160533ebf02696e02f61adbd2bcf968a4d7cfffd415add",
-      "bytes": 4805,
+      "sha": "6ed6392523c5ce5df853f269218fe21eaa3f3748aa3e4cce4561738f629c123c",
+      "bytes": 4815,
       "warnings": 0
     },
     "example:native-tasks/TasksApp.tsx|swift": {
-      "sha": "0bcebdda3d0efeb80e316fa43d73a7b6152b3c3290bbae84e38c8245df8e1657",
-      "bytes": 182106,
-      "warnings": 2
+      "sha": "417ad70f35f0fb9881a9bcf89586f25441b3038021bec7181ffbe5256993c9bc",
+      "bytes": 182140,
+      "warnings": 3
     },
     "example:native-tasks/TasksApp.tsx|kotlin": {
-      "sha": "e1cc834b50d97bb3b303632d15edcda022e6e1c89cf854db93047651a5cb7599",
-      "bytes": 183860,
-      "warnings": 1
+      "sha": "6f334f695bdc1a6a91780923e3a0fe6699777a3544c4d9aba412ef2e7ba339b9",
+      "bytes": 184037,
+      "warnings": 2
     },
     "example:native-todomvc/TodoApp.tsx|swift": {
-      "sha": "4702c7a02bbb1e169184f39f189c2b309664cdb1d4823e66106b0c19d2659fe3",
-      "bytes": 2819,
+      "sha": "984e973cdef6c1239d52ea486df58da58dec43524fd4d9a010c08080b55edcb6",
+      "bytes": 2829,
       "warnings": 0
     },
     "example:native-todomvc/TodoApp.tsx|kotlin": {
-      "sha": "4839256ad678c192a21583288b9c5172ce2a1ee618aa6323f0c498ca58af4a00",
-      "bytes": 3075,
+      "sha": "6eb6bc75eba6ecc5f027c0c3fdd9bf73da05e722fbb2218823e8d2798afed668",
+      "bytes": 3085,
       "warnings": 0
     },
     "registry:@pyreon/charts|swift": {
@@ -7442,13 +7452,13 @@
       "warnings": 0
     },
     "registry:@pyreon/reactivity|swift": {
-      "sha": "07f8d44c70f6aed9d3347f3846830a4a3c8981fe36ea088eac7faca99305c838",
-      "bytes": 305,
+      "sha": "1dbba745c8efa808bc3f25d30927df1e243d2c8e4a4291daea27737394182f68",
+      "bytes": 325,
       "warnings": 0
     },
     "registry:@pyreon/reactivity|kotlin": {
-      "sha": "207d5fccdf7adcf91eb6c770862f9336a2e0d88427f9c5bc4304c8d35236e3a6",
-      "bytes": 365,
+      "sha": "59696dbd29c9cb627972122bfc207e816deefe5d5e886a868dcfa3aa06a888cb",
+      "bytes": 385,
       "warnings": 0
     },
     "registry:@pyreon/rx|swift": {
@@ -7552,23 +7562,23 @@
       "warnings": 0
     },
     "registry:@pyreon/validate|swift": {
-      "sha": "cfc7e4dceddd40df28e78cabd49bd99fec46b2b11c0c6c3352761b9e381545a0",
-      "bytes": 1467,
+      "sha": "9f5e74dd4578f65e2957c304db315179fbfce6f27735c5e4aca30f34721fc414",
+      "bytes": 1523,
       "warnings": 0
     },
     "registry:@pyreon/validate|kotlin": {
-      "sha": "5cdb6ad8533c5a60fd12aef4e93298ff3343843cf478cec7a0c5cd94a004cb96",
-      "bytes": 1576,
+      "sha": "6cad48e71724c1a5a9bec85b3a30fa1afe4823e282fd441eb38236271e443eff",
+      "bytes": 1596,
       "warnings": 0
     },
     "registry:@pyreon/store|swift": {
-      "sha": "74323a7dc4742800bff688e11687e38b3cd2c64c3b931f4345e01372b127dbbe",
-      "bytes": 471,
+      "sha": "48374ef0fbf7098458e7d8c4fa0b78c98234965d07c250127a1fe32e6eb7a395",
+      "bytes": 481,
       "warnings": 0
     },
     "registry:@pyreon/store|kotlin": {
-      "sha": "169d7996ec710ea46237ce7d32821db599ae6faad4d1358f6650eeedf9d7fcde",
-      "bytes": 370,
+      "sha": "8a89c4765bce3ba41c3d904bad10f95174283b56b075adb6569823d2052f418f",
+      "bytes": 380,
       "warnings": 0
     },
     "registry:@pyreon/state-tree|swift": {
@@ -7607,8 +7617,8 @@
       "warnings": 0
     },
     "registry:@pyreon/query|kotlin": {
-      "sha": "4b8df93b9e5fcbff0693aaed49410f9067a0bd4ea4701b42638ca8fdf2c9cd9a",
-      "bytes": 1448,
+      "sha": "fd8093b0ca7764e9e253db8dc55e8ac9e4e8918418d972306a2fe2aa8785fdb3",
+      "bytes": 1418,
       "warnings": 0
     },
     "registry:@pyreon/form|swift": {
@@ -7627,8 +7637,8 @@
       "warnings": 0
     },
     "registry:@pyreon/storage|kotlin": {
-      "sha": "5118d25ad23411d56d3a70535bc5f91e9663079633d2650a5b762493ed740b7a",
-      "bytes": 217,
+      "sha": "cfaa9e27da0fcbf600085fd4f0208d05f834955124ca765adb7f2001efcc975e",
+      "bytes": 220,
       "warnings": 0
     },
     "registry:@pyreon/sync|swift": {
@@ -7642,13 +7652,13 @@
       "warnings": 0
     },
     "registry:@pyreon/hooks|swift": {
-      "sha": "f1baaf5054514cf95e0b744d25644131b695f6961e10d39ef937ed4f75fdbd40",
-      "bytes": 535,
+      "sha": "d16819694e547503a4896297b666d14a8685164bd131aa64c192147e89577b1e",
+      "bytes": 492,
       "warnings": 0
     },
     "registry:@pyreon/hooks|kotlin": {
-      "sha": "ffe6779d2ecf94003d93e5be942b69f53622a98d861ea5283eb8c09b109438b0",
-      "bytes": 552,
+      "sha": "eeae58fa303e16e01eedccea6585a137359212920f746dddeba754a797a94a93",
+      "bytes": 590,
       "warnings": 0
     },
     "registry:@pyreon/auth|swift": {
@@ -7722,23 +7732,23 @@
       "warnings": 0
     },
     "registry:@pyreon/http|swift": {
-      "sha": "d78764f8e720c44de62f0730580ca91b49fa3f7c0a67f31ac482ce156ea943cb",
-      "bytes": 3323,
+      "sha": "d3da53ccab7a9a2cc2bd53a5a409186aab980e94fb3099192335ac0dc3b70264",
+      "bytes": 3280,
       "warnings": 0
     },
     "registry:@pyreon/http|kotlin": {
-      "sha": "b53535157d66a0c548d7ef6c69fde00ef005ffbf5ffa45cfbd6e7ceaed0324ff",
-      "bytes": 4180,
+      "sha": "27fb10599ef03178258ddd1f3dc976b10f652a2c187b4b4cbf8c336d430b9a2e",
+      "bytes": 4138,
       "warnings": 0
     },
     "registry:@pyreon/validation|swift": {
-      "sha": "ae7c81677ba4d978f4e1429f88865d60ab8dee8f3f51465a06c98e3c25d00950",
-      "bytes": 3937,
+      "sha": "fa2269952008f252f1bdcbcab402636eb24b274bf80099c99e97785eeb7531d8",
+      "bytes": 3993,
       "warnings": 0
     },
     "registry:@pyreon/validation|kotlin": {
-      "sha": "1af4ae92152b053bb6aa9f050da00828601e7f701d7cc5f86ed1dbdc42e133a2",
-      "bytes": 3929,
+      "sha": "dcf81a6b6d196096a4e4417799fdf22762a8cff9b6a0b320ad29f2ca403af62b",
+      "bytes": 3949,
       "warnings": 0
     },
     "registry:@pyreon/url-state|swift": {
@@ -7752,23 +7762,23 @@
       "warnings": 0
     },
     "registry:@pyreon/feature|swift": {
-      "sha": "787e75779100f35dee8f31657bfb95da3d3a24e54d9330ff00f5a5bb2b7fd6b7",
-      "bytes": 3319,
+      "sha": "6584fe158ac9bf87f1b06eb87302c75d11cc79e21b1a77374e1c9d6c4b1cf23d",
+      "bytes": 3877,
       "warnings": 0
     },
     "registry:@pyreon/feature|kotlin": {
-      "sha": "bbcfcd8f5f0097642f618a8f41fbfc0235adee2391ae40341fff819ae9a192a8",
-      "bytes": 3503,
+      "sha": "e6b19d375469eaa138e0327ddc907e13ab8b6cb0b7fbac10b7998ae898ed924b",
+      "bytes": 3620,
       "warnings": 0
     },
     "registry:@pyreon/hotkeys|swift": {
-      "sha": "0175b5a4e746630a6a8acfa27ffc0e85face1881184b7a82189f6b609b5d0759",
-      "bytes": 375,
+      "sha": "498464f192b8d5e08dc093de31bf949d43a650da73d0a919df217b11d33bfdc7",
+      "bytes": 385,
       "warnings": 0
     },
     "registry:@pyreon/hotkeys|kotlin": {
-      "sha": "da59441c3733726b30d6a31fcd58c21f938298c761925bcfd89d28d3019bfb59",
-      "bytes": 676,
+      "sha": "2a2943de3636ab99630121c360fec2d68963fba092594d77aa8f4dcfcece8e86",
+      "bytes": 686,
       "warnings": 0
     },
     "registry:@pyreon/code|swift": {
