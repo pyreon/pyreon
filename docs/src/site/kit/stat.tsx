@@ -28,23 +28,23 @@ export const Numeral = txt
   .theme((_t, m) => ({
     display: 'block',
     fontFamily: font.sans,
-    fontSize: { xs: 'clamp(64px, 22vw, 96px)', md: clampSize(display.numeral) },
+    fontSize: { xs: clampSize(display.numeralPhone), md: clampSize(display.numeral) },
     lineHeight: display.numeral.lineHeight,
     letterSpacing: display.numeral.tracking,
     fontWeight: display.numeral.weight,
     backgroundImage: pair(m, gradient.ember),
     backgroundClip: 'text',
     color: 'transparent',
-    paddingBottom: '0.08em',
+    paddingBottom: display.numeralDescender,
     whiteSpace: 'nowrap',
     extendCss: '-webkit-background-clip: text; font-variant-numeric: tabular-nums;',
   }))
   .sizes(() => ({
     default: {},
-    long: { fontSize: 'clamp(32px, min(5.4vw, 17cqi), 90px)' },
-    strip: { fontSize: 'clamp(40px, 4vw, 58px)' },
+    long: { fontSize: clampSize(display.numeralLong) },
+    strip: { fontSize: clampSize(display.numeralStrip) },
     /** A proof number inside a product card: one step under `strip`, so a card with a number and one without share a row without a half-empty card. */
-    card: { fontSize: 'clamp(34px, 3vw, 44px)' },
+    card: { fontSize: clampSize(display.numeralCard) },
   }))
 
 const Label = txt

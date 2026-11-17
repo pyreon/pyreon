@@ -249,6 +249,16 @@ export const display = {
   end: { min: 34, vw: 4.6, max: 60, phone: { min: 30, vw: 8.7 }, lineHeight: 1.04, tracking: '-.045em', weight: 500 },
   /** Big proof numerals (the cards' `.big`). [A4] */
   numeral: { min: 64, vw: 8, max: 132, lineHeight: 0.86, tracking: '-.06em', weight: 700 },
+  /** The numeral below md (a phone or small tablet). */
+  numeralPhone: { min: 64, vw: 22, max: 96 },
+  /** A long numeral ("1.94–1.95×"): sized to its cell (a size container), so it stays on one line. */
+  numeralLong: { min: 32, vw: 5.4, cqi: 17, max: 90 },
+  /** A numeral in a stat card. */
+  numeralStrip: { min: 40, vw: 4, max: 58 },
+  /** A numeral inside a product card: one step under `numeralStrip`. */
+  numeralCard: { min: 34, vw: 3, max: 44 },
+  /** Room under a gradient numeral so `background-clip: text` does not cut its descenders. */
+  numeralDescender: '0.08em',
   /** Quote block text. [C4] */
   quote: { min: 34, vw: 4.6, max: 64, lineHeight: 1.02, tracking: '-.045em', weight: 700 },
   stat: { min: 30, vw: 4, max: 46, lineHeight: 1.05, tracking: '-.03em', weight: 500 },
