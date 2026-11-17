@@ -4075,10 +4075,16 @@ export function transformJSX_JS(
    * (`p1`) that does not exist in that scope, so the page failed to render
    * with `ReferenceError: p1 is not defined`.
    *
-   * Only applied under `ssr`. On the DOM path the same inlining is
-   * load-bearing — it is what keeps a prop-derived value reactive at the use
-   * site — but SSR renders once, so referencing the const by name there is
-   * both correct and sufficient.
+   * Applied on EVERY path (#4300). On the DOM path the inlined copy is not
+   * lowered either: `const el = <img alt={props.alt}/>` used as `{el}` became
+   * `_mountSlot((<img alt={props.alt}/>), …)`, a plain `h()` that reads
+   * `props.alt` once, while the const's own JSX compiles to the reactive
+   * `alt={() => props.alt}`. And each read re-creates the element (and any
+   * component in it, with its state). So the const keeps its one element,
+   * whose own bindings are live. JSX anywhere counts, a function body
+   * included: `const row = () => <b>{props.x}</b>` keeps `row`, whose JSX
+   * compiles with its own accessor. Native mirrors this with
+   * `contains_jsx_in_expr` (a full walk, like this one).
    */
   function containsJsx(node: N): boolean {
     if (node.type === 'JSXElement' || node.type === 'JSXFragment') return true
@@ -4224,13 +4230,10 @@ export function transformJSX_JS(
           }
           continue
         }
-        // Under SSR, a JSX-bearing initializer is never inlinable — see
-        // containsJsx. The DOM path still inlines it, and must: there the
-        // inlining is what keeps a prop-derived value REACTIVE at the use
-        // site (locked by the Round-15 characterization). SSR renders once,
-        // so referencing the const by name is both correct and sufficient —
-        // there is no reactivity to preserve and nothing to gain.
-        if (ssr && containsJsx(decl.init)) continue
+        // A JSX-bearing initializer is never inlinable, on any path — see
+        // containsJsx. Its own JSX compiles with live bindings; an inlined
+        // copy would be raw, un-lowered JSX re-created per read (#4300).
+        if (containsJsx(decl.init)) continue
         // A factory call or `new` ANYWHERE in the initializer (not only at
         // its root, checked above): inlining would mint fresh state per use
         // site. The const keeps the value it captured at setup.
@@ -7628,7 +7631,8 @@ export function transformJSX_JS(
       parent = findParent(outer)
     }
 
-    return !!parent &&
+    return (
+      !!parent &&
       parent.type === 'MemberExpression' &&
       parent.object === outer &&
       !parent.computed &&

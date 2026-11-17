@@ -43,6 +43,11 @@ system's layers (`vite-plugins/legacy-css-layer.ts`).
 - **Layout primitives:** `src/site/kit/primitives/` (`Stack`, `Cluster`,
   `Box`, `Grid`, `AutoGrid`, `Wrap`, `Text`, `Visible`, `Icon`): compose them
   instead of defining a styled stack, row, grid or mono caption in a page.
+- **Component families:** a status label is a `Badge`, a mono name chip a
+  `Tag` (`src/site/kit/badge.tsx`); a caveat, footnote or caption a `Note`
+  (`kit/note.tsx`); a proving number a `StatBody` in one of its sizes
+  (`kit/stat.tsx`), on a `GlowCard` (`kit/cards.tsx`). Reach for these before
+  defining a pill, a note or a stat in a page.
 - **Design system:** layers, naming, the "no outer margins" rule, how to add
   a token or component, the design ratchets (`bun scripts/check-site-design.ts`
   from the repo root) and the screenshot sweep

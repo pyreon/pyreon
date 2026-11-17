@@ -1,5 +1,5 @@
 import type { CollectionDefinition } from '../types'
-import type { StandardSchemaIssue } from '../schema-validate'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 // ─── Blog frontmatter — a Standard Schema validator with no dependency ─────
 //
@@ -72,12 +72,12 @@ function isNonEmptyString(value: unknown): value is string {
  *
  * @internal exported for testing; use `blogSchema`
  */
-export function validateBlogFrontmatter(input: unknown): StandardSchemaIssue[] {
+export function validateBlogFrontmatter(input: unknown): StandardSchemaV1.Issue[] {
   if (input === null || typeof input !== 'object' || Array.isArray(input)) {
     return [{ message: 'frontmatter must be a YAML mapping (`key: value` lines)' }]
   }
   const data = input as Record<string, unknown>
-  const issues: StandardSchemaIssue[] = []
+  const issues: StandardSchemaV1.Issue[] = []
   const issue = (field: string, message: string): void => {
     issues.push({ message, path: [field] })
   }
@@ -173,16 +173,13 @@ export function normalizeBlogFrontmatter(input: BlogFrontmatter): BlogPostData {
   return out
 }
 
-/** The blog frontmatter schema (Standard Schema v1). */
-export interface BlogSchema {
-  readonly '~standard': {
-    readonly version: 1
-    readonly vendor: 'pyreon-blog'
-    readonly validate: (
-      input: unknown,
-    ) =>
-      | { value: BlogPostData; issues?: undefined }
-      | { issues: ReadonlyArray<StandardSchemaIssue> }
+/**
+ * The blog frontmatter schema: a `StandardSchemaV1` whose `validate` is
+ * SYNCHRONOUS (it never returns a Promise).
+ */
+export interface BlogSchema extends StandardSchemaV1<unknown, BlogPostData> {
+  readonly '~standard': StandardSchemaV1.Props<unknown, BlogPostData> & {
+    readonly validate: (value: unknown) => StandardSchemaV1.Result<BlogPostData>
   }
 }
 

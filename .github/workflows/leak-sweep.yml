@@ -7,7 +7,11 @@ name: Leak Sweep
 # least-squares line over the heap-size series. A non-trivial positive slope
 # means a journey is retaining heap across nominally-equal cycles — the bug
 # class that ships as "looks fine on first load, gets slow after a few
-# minutes." Mirrors the perf workflow's shape (#641):
+# minutes." A journey over the threshold then runs confirmation cycles and is
+# flagged only if the heap keeps growing through them: one allocation step
+# (a hash table doubling once) is not a leak, and it kept this workflow red
+# for six nights in 2026-11 (scripts/perf/leak-verdict.ts has the rule).
+# Mirrors the perf workflow's shape (#641):
 #
 #   - workflow_dispatch: manual run, any branch. Useful for reproducing a
 #     PR author's local leak claim in a clean VM, OR for re-running the

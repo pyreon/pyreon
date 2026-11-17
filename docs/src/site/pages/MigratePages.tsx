@@ -3,22 +3,24 @@ import type { MigrateMeta } from '../content/pages'
 import { fill } from '../content/fill'
 import { htmlOf } from '../content/pages'
 import type { MigrateGuide, MigrateLanding, MigrateLayer } from '../content/types-site'
-import { el, tone, txt } from '../kit/bases'
+import { el, tone } from '../kit/bases'
 import { GlowCard } from '../kit/cards'
 import { CodeCard } from '../kit/code'
 import { InstallCommand, Pill } from '../kit/controls'
 import { inlineText } from '../kit/inline'
 import { Section, SectionHead } from '../kit/layout'
-import { AutoGrid, Stack, Text, Wrap } from '../kit/primitives'
+import { AutoGrid, Box, Stack, Text, Wrap } from '../kit/primitives'
 import { Reveal } from '../kit/motion'
 import { EndCTA, HookHero } from '../kit/proof'
 import { Diagram, InlineText, LinkCards, StepList } from '../kit/story'
 import { Eyebrow, Heading, Lede, renderInline, StatusDot } from '../kit/type'
-import { font, text, weight } from '../theme'
+import { font, text } from '../theme'
 import { usePageHead } from '../head'
 import { emberWordOf } from './ember'
 import { RivalSwitcher } from './RivalSwitcher'
 import { WideDiagram } from './WideDiagram'
+import { Note } from '../kit/note'
+import { keepRanges } from '../kit/stat'
 
 /**
  * `/migrate` and `/migrate/<framework>` (`content/pages/migrate/*`): the
@@ -28,10 +30,6 @@ import { WideDiagram } from './WideDiagram'
  * with the link to the Migrate product page.
  */
 
-const Term = txt
-  .config({ name: 'MigrateTerm' })
-  .attrs({ tag: 'b' })
-  .theme((_t, m) => ({ display: 'block', marginTop: 8, fontFamily: font.mono, fontSize: 10.5, letterSpacing: '.12em', textTransform: 'uppercase', fontWeight: weight.medium, color: tone(m, 'fog') }))
 
 const Bullets = el
   .config({ name: 'MigrateBullets' })
@@ -43,10 +41,6 @@ const Bullet = el
   .attrs({ tag: 'li', block: true })
   .theme(() => ({ display: 'grid', gridTemplateColumns: '18px minmax(0, 1fr)', alignItems: 'baseline' }))
 
-const Note = txt
-  .config({ name: 'MigrateNote' })
-  .attrs({ tag: 'p' })
-  .theme((_t, m) => ({ margin: 0, marginTop: 10, fontFamily: font.mono, fontSize: text.caveat.size, lineHeight: 1.6, color: tone(m, 'fog') }))
 
 function Checklist(props: { items: readonly string[]; tone: 'ok' | 'warn' }) {
   return (
@@ -117,9 +111,17 @@ export function MigrateLandingPage(props: { view: MigrateLandingView }) {
                     </Heading>
                     <Text variant="mono" tone="accentText" block>{t.package}</Text>
                     <Lede size="small">{renderInline(t.what)}</Lede>
-                    <Term>{L.tools.how}</Term>
+                    <Box padTop={100}>
+                      <Text variant="badge" tone="fog" medium block tag="b">
+                        {L.tools.how}
+                      </Text>
+                    </Box>
                     <Lede size="small">{renderInline(t.how)}</Lede>
-                    <Term>{L.tools.limits}</Term>
+                    <Box padTop={100}>
+                      <Text variant="badge" tone="fog" medium block tag="b">
+                        {L.tools.limits}
+                      </Text>
+                    </Box>
                     <Lede size="small">{renderInline(t.limits)}</Lede>
                   </GlowCard>
                 )}
@@ -177,6 +179,41 @@ export interface MigrateLayerView {
   productHref: string
 }
 
+/** The layer page's install and config section: each config file with its note. */
+function SetupSection(props: { layer: MigrateLayerView['layer']; labels: MigrateLayerView['meta']['template']['layer'] }) {
+  const d = props.layer
+  const L = props.labels
+
+  return (
+    <Reveal>
+      <Section size="tight" id="setup">
+        <Wrap>
+          <SectionHead label={L.setup.label} title={L.setup.title} />
+          <Stack gap={200}>
+            <InstallCommand command={d.install} />
+            <AutoGrid cols={Math.min(2, d.config.length)} gap={200}>
+              <For each={d.config} by={(c) => c.file}>
+                {(c) => (
+                  <div>
+                    <CodeCard label={c.file} code={c.code} html={htmlOf(c)} />
+                    <Box padTop={125}>
+                      <Note>{keepRanges(c.note)}</Note>
+                    </Box>
+                  </div>
+                )}
+              </For>
+            </AutoGrid>
+            <Show when={() => d.scaffold !== null}>
+              <Eyebrow>{L.setup.scaffold}</Eyebrow>
+              <InstallCommand command={d.scaffold ?? ''} />
+            </Show>
+          </Stack>
+        </Wrap>
+      </Section>
+    </Reveal>
+  )
+}
+
 export function MigrateLayerPage(props: { view: MigrateLayerView }) {
   const d = props.view.layer
   const T = props.view.meta.template
@@ -224,30 +261,7 @@ export function MigrateLayerPage(props: { view: MigrateLayerView }) {
         </Section>
       </Reveal>
 
-      <Reveal>
-        <Section size="tight" id="setup">
-          <Wrap>
-            <SectionHead label={L.setup.label} title={L.setup.title} />
-            <Stack gap={200}>
-              <InstallCommand command={d.install} />
-              <AutoGrid cols={Math.min(2, d.config.length)} gap={200}>
-                <For each={d.config} by={(c) => c.file}>
-                  {(c) => (
-                    <div>
-                      <CodeCard label={c.file} code={c.code} html={htmlOf(c)} />
-                      <Note>{renderInline(c.note)}</Note>
-                    </div>
-                  )}
-                </For>
-              </AutoGrid>
-              <Show when={() => d.scaffold !== null}>
-                <Eyebrow>{L.setup.scaffold}</Eyebrow>
-                <InstallCommand command={d.scaffold ?? ''} />
-              </Show>
-            </Stack>
-          </Wrap>
-        </Section>
-      </Reveal>
+      <SetupSection layer={d} labels={L} />
 
       <For each={d.ports} by={(p) => p.title}>
         {(p) => (
@@ -259,7 +273,9 @@ export function MigrateLayerPage(props: { view: MigrateLayerView }) {
                   <CodeCard label={`${p.before.label} · ${p.before.file}`} code={p.before.code} html={htmlOf(p.before)} rail="del" />
                   <CodeCard label={`${p.after.label} · ${p.after.file}`} code={p.after.code} html={htmlOf(p.after)} state="hot" rail="ins" />
                 </AutoGrid>
-                <Note>{renderInline(p.note)}</Note>
+                <Box padTop={125}>
+                  <Note>{keepRanges(p.note)}</Note>
+                </Box>
               </Wrap>
             </Section>
           </Reveal>

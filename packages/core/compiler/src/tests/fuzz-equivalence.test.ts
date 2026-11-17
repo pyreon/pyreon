@@ -240,6 +240,15 @@ const PQ_INITS = [
   // Hygiene: the inlined text mentions `tag`, which some use sites re-bind.
   'props.x + tag',
   '(y) => props.f(y, tag)',
+  // JSX-bearing initializers (#4300): never inlined on any path. Native once
+  // kept only a directly-JSX one under SSR and inlined the rest.
+  '<i class={props.x}>j</i>',
+  'props.x ? <b>t</b> : <i>u</i>',
+  'props.x && <b>{props.y}</b>',
+  'props.items.map((x) => <li>{x}</li>)',
+  '() => <b>{props.x}</b>',
+  '[<b>{props.x}</b>, props.y]',
+  '<><b title={props.x}>f</b></>',
 ]
 
 /** Use sites of `pq` on every element path. */

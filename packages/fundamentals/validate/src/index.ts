@@ -86,8 +86,6 @@ export {
   type Input,
   type Output,
   type PyreonIssue,
-  type StandardSchemaIssue,
-  type StandardSchemaResult,
   type StandardSchemaV1,
   type TFn,
   type WithFieldMeta,

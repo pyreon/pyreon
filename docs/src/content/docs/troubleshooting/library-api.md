@@ -65,6 +65,12 @@ Detect Standard Schemas by `~standard.validate`, and gate the duck-type on `type
 
 ---
 
+### Re-declaring the Standard Schema type
+
+The `~standard` contract's one type is `StandardSchemaV1` from the types-only `@standard-schema/spec` (zero runtime code). Import it from there — or from `@pyreon/validation`, which re-exports it, when the package already depends on validation — and spell the issue and result shapes as `StandardSchemaV1.Issue` / `StandardSchemaV1.Result<T>`. Do not write a local `interface { '~standard': … }`: five drifting copies (with two different `StandardSchemaShape`s) existed before 1.0. A package that cannot depend on validation (`@pyreon/zero`, `@pyreon/zero-content`) keeps a local runtime guard typed `value is StandardSchemaV1` that accepts callables (zero: `src/standard-schema.ts`).
+
+---
+
 ### Discriminating a Standard Schema result on `'value' in r`
 
 Valibot's failure result carries both `value` (the raw input) and `issues`, so a `'value' in r` check turns a raw valibot schema into a validation no-op that writes invalid data into store state. Failure iff `issues` is a non-empty array. `wrapStandardSchema` mirrors `standardSchemaToValidator` in the same file. Consumer tests of raw Standard Schemas run the full raw-library matrix (zod, valibot, arktype) because each library's result shape differs. Reference: `packages/fundamentals/validation/src/schema.ts:wrapStandardSchema`; lock `src/tests/standard-schema-result-discriminant.test.ts`.

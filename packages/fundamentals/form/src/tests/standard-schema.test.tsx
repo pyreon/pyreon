@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { StandardSchemaLike } from '../types'
+import type { StandardSchemaV1 } from '@pyreon/validation'
 import { useForm } from '../use-form'
 
 // P5 — `useForm({ schema })` accepts a RAW Standard Schema (zod/valibot/arktype/
@@ -9,11 +9,13 @@ import { useForm } from '../use-form'
 // validation — this file covers the end-to-end useForm integration.)
 
 /** Minimal sync Standard Schema over `{ email: string }` that requires email. */
-const emailSchema: StandardSchemaLike<{ email: string }> = {
+const emailSchema: StandardSchemaV1<unknown, { email: string }> = {
   '~standard': {
+    version: 1,
+    vendor: 'test',
     validate: (v: unknown) => {
       const email = (v as { email?: string }).email
-      return email ? { value: v } : { issues: [{ message: 'Email required', path: ['email'] }] }
+      return email ? { value: v as { email: string } } : { issues: [{ message: 'Email required', path: ['email'] }] }
     },
   },
 }
