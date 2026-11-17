@@ -18,7 +18,8 @@ export function exampleHostDirs(repoRoot: string, platform: 'ios' | 'android'): 
     if (!statSync(join(examples, name)).isDirectory()) continue
     if (new RegExp(`^native-.+-${platform}$`).test(name)) out.push(`examples/${name}`)
     else if (name.startsWith('native-') && existsSync(join(examples, name, platform, project)))
-      out.push(`examples/${name}/${platform}`)
+      {out.push(`examples/${name}/${platform}`)}
   }
+
   return out.sort()
 }

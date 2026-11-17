@@ -32,12 +32,14 @@ function activities(dir: string): string[] {
     if (statSync(p).isDirectory()) out.push(...activities(p))
     else if (name.endsWith('Activity.kt') && p.includes('/src/main/')) out.push(p)
   }
+
   return out
 }
 
 /** Hosts = activities that mount a Compose tree (`setContent {`). */
 // Both example layouts: native-<app>-android/ and native-<app>/android/.
 const androidHostDirs = exampleHostDirs(repo, 'android')
+
 const exampleHosts = androidHostDirs
   .flatMap((d) => activities(join(repo, d)))
   .map((path) => ({ path: path.slice(repo.length), src: readFileSync(path, 'utf8') }))
@@ -52,6 +54,7 @@ const exampleHosts = androidHostDirs
 const SELF_PAINTED_HOSTS = new Set(['examples/native-showcase/android/app/src/main/kotlin/com/pyreon/MainActivity.kt'])
 
 const scaffold = buildScaffold({ name: 'demo-app' })
+
 const scaffoldHost = {
   path: 'create-multiplatform scaffold MainActivity.kt',
   src: scaffold.find((f) => f.path.endsWith('/MainActivity.kt'))?.content ?? '',
