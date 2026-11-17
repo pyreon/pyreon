@@ -343,7 +343,6 @@ import { Provider } from "@pyreon/elements"
 **Common mistakes**
 
 - Nesting it inside `<PyreonUI>` expecting it to extend the outer theme — it provides only its own `theme`, fresh; nest `<PyreonUI>` instead (it inherits)
-- Being surprised by the dev warning `[Pyreon] CoreProvider is internal` — this Provider delegates to ui-core's internal provider, which logs it in development; use `<PyreonUI>`
 
 **See also:** `Element` · `@pyreon/ui-core`
 

@@ -1,5 +1,7 @@
 # @pyreon/elements
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Five foundational layout primitives — Element, Text, List, Overlay, Portal — plus an Iterator helper.
 
 `@pyreon/elements` is the layer between `@pyreon/styler`/`@pyreon/unistyle` and the high-level UI components. Every layout prop is responsive (single value, mobile-first array, or breakpoint object). `Element` is a three-section flex container (`beforeContent` / `content` / `afterContent`) with an internal fast path that collapses one wrapper layer when only `content` is present — measured 31-45% faster across mount benchmarks. `Overlay` ships a full `useOverlay` hook handling open/close, viewport flipping, ESC, click-outside, scroll tracking, hover delay, and modal overflow-locking — no positioning logic to reinvent. `Iterator` and `List` cover data-driven children with positional metadata; `Portal` renders into an isolated wrapper inside a configurable DOM location.

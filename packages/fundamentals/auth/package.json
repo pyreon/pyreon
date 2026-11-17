@@ -70,6 +70,7 @@
     "access": "public"
   },
   "pyreon": {
+    "stability": "experimental",
     "native": {
       "swift": "native/swift",
       "kotlin": "native/kotlin",

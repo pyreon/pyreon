@@ -591,11 +591,17 @@ export const blog = defineBlog({
       seeAlso: ['defineCollection', 'getCollection'],
     },
     {
-      name: 'generateSitemap / generateRssFeed / generateLlmsTxt',
+      name: 'generateSitemap / generateRssFeed / toRfc822 / generateLlmsTxt',
       kind: 'function',
-      signature: 'generateSitemap(args): string · generateRssFeed(args): string · generateLlmsTxt(args): string',
+      signature: 'generateSitemap(args): string · generateRssFeed(args): string · toRfc822(date): string · generateLlmsTxt(args): string',
+      stability: 'deprecated',
+      deprecated: {
+        since: '0.52.0',
+        replacement: "`@pyreon/zero`'s `generateRssFeed` / `toRfc822`, and `@pyreon/zero/server`'s `seoPlugin` + `generateSitemap` and `aiPlugin`",
+        removeIn: '2.0.0',
+      },
       summary:
-        "DEPRECATED — all three are thin build-script helpers kept for back-compat and superseded by richer `@pyreon/zero` equivalents that run as Vite plugins instead of a hand-written build script: `generateSitemap` → `@pyreon/zero/server`'s `generateSitemap` + `seoPlugin` (adds hreflang/i18n, trailing-slash policy, SSG path-manifest integration; server-only, Vite-plugin-only); `generateRssFeed`/`toRfc822` → the SAME function, re-exported from `@pyreon/zero`'s CLIENT-SAFE main entry (no `/server` needed — no `zero-content` wrapper needed either); `generateLlmsTxt` → `@pyreon/zero/server`'s `aiPlugin` (server-only). These `zero-content` versions will be removed in a future major version — do not build new tooling on them.",
+        "DEPRECATED — all four are thin build-script helpers kept for back-compat and superseded by richer `@pyreon/zero` equivalents that run as Vite plugins instead of a hand-written build script: `generateSitemap` → `@pyreon/zero/server`'s `generateSitemap` + `seoPlugin` (adds hreflang/i18n, trailing-slash policy, SSG path-manifest integration; server-only, Vite-plugin-only); `generateRssFeed`/`toRfc822` → the SAME function, re-exported from `@pyreon/zero`'s CLIENT-SAFE main entry (no `/server` needed — no `zero-content` wrapper needed either); `generateLlmsTxt` → `@pyreon/zero/server`'s `aiPlugin` (server-only). These `zero-content` versions will be removed in a future major version — do not build new tooling on them.",
       example: `// Prefer, from @pyreon/zero/server (server-only, Vite plugins):
 import { seoPlugin, generateRssFeed, aiPlugin } from '@pyreon/zero/server'`,
       mistakes: [

@@ -24,6 +24,7 @@
   },
   "sideEffects": false,
   "pyreon": {
+    "stability": "experimental",
     "native": {
       "kotlin": {
         "dir": "src/main/kotlin",

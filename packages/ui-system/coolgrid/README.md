@@ -1,5 +1,7 @@
 # @pyreon/coolgrid
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Context-cascading responsive grid — Container, Row, Col with custom columns and breakpoints.
 
 `@pyreon/coolgrid` is a Bootstrap-style flexbox grid where every numeric prop is responsive (single value, mobile-first array, or breakpoint-keyed object). Configuration (`columns`, `gap`, `gutter`, `padding`, `contentAlignX`) cascades through Pyreon's context system — set it on `Container` and every nested `Row` / `Col` inherits, with explicit per-element overrides. Breakpoint names and column counts are not hardcoded: ship with the default Bootstrap-4 theme or define your own (`{ phone: 0, tablet: 600, desktop: 1024 }` × `columns: 24`). Built on `@pyreon/unistyle` + `@pyreon/styler`.

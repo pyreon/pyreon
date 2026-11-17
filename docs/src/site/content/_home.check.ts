@@ -21,7 +21,7 @@ export const checked = {
    "kind": "hero",
    "id": "hero",
    "variant": "hook",
-   "eyebrow": "Open source · MIT · pre-1.0",
+   "eyebrow": "Open source · MIT · web stable, native experimental",
    "title": "Your component runs once. Ever.",
    "emberWord": "Ever.",
    "lede": "Pyreon updates the one DOM node that changed, so there is nothing to memoise and nothing re-renders. Full stack on the web today, and the same `.tsx` compiles to SwiftUI and Jetpack Compose (experimental).",
@@ -384,7 +384,7 @@ export const checked = {
     {
      "topic": "Maturity",
      "cells": [
-      "Web: pre-1.0. iOS and Android: experimental",
+      "Web: stable. iOS and Android: experimental",
       "Production",
       "Production",
       "Production",
@@ -631,7 +631,7 @@ export const checked = {
    "id": "status",
    "eyebrow": "Status",
    "title": "What's ready, and what isn't (yet).",
-   "lede": "Pre-1.0 means versions can still break, and we say so in a changeset when they do. The web is what apps run on today. iOS and Android are experimental and move every release.",
+   "lede": "Stable packages follow semver from 1.0; Experimental ones can still break in a minor release, and the changelog says so when they do. The web is what apps run on today. iOS and Android are experimental and move every release.",
    "columns": [
     {
      "dot": "ok",

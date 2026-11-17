@@ -8737,8 +8737,7 @@ const users = [{ id: 1, name: "Ada" }, { id: 2, name: "Linus" }]
   <App />
 </Provider>`,
     notes: `Re-export of \`@pyreon/unistyle\`'s low-level theme provider (marked \`@internal\` / \`@deprecated\` in source). It ENRICHES \`theme\` (pre-sorted breakpoints + media-query helpers) and provides it to both the styler \`ThemeContext\` and the ui-core context. \`theme\` is required. \`<PyreonUI theme={…}>\` from \`@pyreon/ui-core\` supersedes it — PyreonUI provides the same contexts itself (plus reactive mode), so an app that renders PyreonUI never needs this. See also: Element, @pyreon/ui-core.`,
-    mistakes: `- Nesting it inside \`<PyreonUI>\` expecting it to extend the outer theme — it provides only its own \`theme\`, fresh; nest \`<PyreonUI>\` instead (it inherits)
-- Being surprised by the dev warning \`[Pyreon] CoreProvider is internal\` — this Provider delegates to ui-core's internal provider, which logs it in development; use \`<PyreonUI>\``,
+    mistakes: '- Nesting it inside `<PyreonUI>` expecting it to extend the outer theme — it provides only its own `theme`, fresh; nest `<PyreonUI>` instead (it inherits)',
   },
   // <gen-docs:api-reference:end @pyreon/elements>
 
@@ -10959,11 +10958,11 @@ export const blog = defineBlog({
 - Treating \`entry.data.date\` as a string — the schema outputs \`BlogPostData\` (dates as \`Date\`, \`tags\`/\`author\` as lists, \`draft\` boolean) and that parsed output is what ships`,
   },
 
-  'zero-content/generateSitemap / generateRssFeed / generateLlmsTxt': {
-    signature: 'generateSitemap(args): string · generateRssFeed(args): string · generateLlmsTxt(args): string',
+  'zero-content/generateSitemap / generateRssFeed / toRfc822 / generateLlmsTxt': {
+    signature: 'generateSitemap(args): string · generateRssFeed(args): string · toRfc822(date): string · generateLlmsTxt(args): string',
     example: `// Prefer, from @pyreon/zero/server (server-only, Vite plugins):
 import { seoPlugin, generateRssFeed, aiPlugin } from '@pyreon/zero/server'`,
-    notes: `DEPRECATED — all three are thin build-script helpers kept for back-compat and superseded by richer \`@pyreon/zero\` equivalents that run as Vite plugins instead of a hand-written build script: \`generateSitemap\` → \`@pyreon/zero/server\`'s \`generateSitemap\` + \`seoPlugin\` (adds hreflang/i18n, trailing-slash policy, SSG path-manifest integration; server-only, Vite-plugin-only); \`generateRssFeed\`/\`toRfc822\` → the SAME function, re-exported from \`@pyreon/zero\`'s CLIENT-SAFE main entry (no \`/server\` needed — no \`zero-content\` wrapper needed either); \`generateLlmsTxt\` → \`@pyreon/zero/server\`'s \`aiPlugin\` (server-only). These \`zero-content\` versions will be removed in a future major version — do not build new tooling on them.`,
+    notes: `[DEPRECATED] DEPRECATED — all four are thin build-script helpers kept for back-compat and superseded by richer \`@pyreon/zero\` equivalents that run as Vite plugins instead of a hand-written build script: \`generateSitemap\` → \`@pyreon/zero/server\`'s \`generateSitemap\` + \`seoPlugin\` (adds hreflang/i18n, trailing-slash policy, SSG path-manifest integration; server-only, Vite-plugin-only); \`generateRssFeed\`/\`toRfc822\` → the SAME function, re-exported from \`@pyreon/zero\`'s CLIENT-SAFE main entry (no \`/server\` needed — no \`zero-content\` wrapper needed either); \`generateLlmsTxt\` → \`@pyreon/zero/server\`'s \`aiPlugin\` (server-only). These \`zero-content\` versions will be removed in a future major version — do not build new tooling on them. Deprecated since v0.52.0, replaced by \`@pyreon/zero\`'s \`generateRssFeed\` / \`toRfc822\`, and \`@pyreon/zero/server\`'s \`seoPlugin\` + \`generateSitemap\` and \`aiPlugin\`, removal planned in v2.0.0.`,
     mistakes: `- Building new SEO tooling on these zero-content functions — they are deprecated aliases; use @pyreon/zero's seoPlugin/aiPlugin/generateRssFeed instead, which cover strictly more (hreflang, SSG integration, no hand-written build script)`,
   },
   // <gen-docs:api-reference:end @pyreon/zero-content>
@@ -11756,7 +11755,6 @@ import { PyreonUI } from '@pyreon/ui-core'
 - Expecting a nested \`<Provider inversed>\` to follow the parent when the parent's mode changes — the parent context is read ONCE at setup, so the inverted mode is frozen at mount; \`<PyreonUI inversed>\` stays reactive
 - Setting only \`mode\` with no theme in scope — the default delegate provides nothing when the resolved theme is empty, so \`<Provider mode="dark">\` outside any themed ancestor leaves descendants on \`"light"\`; pass a \`theme\` or use \`<PyreonUI>\`
 - Expecting \`styled()\` / \`useTheme()\` from \`@pyreon/styler\` to see the theme passed here — this Provider writes only the ui-core context that rocketstyle reads; \`<PyreonUI>\` writes both
-- Being surprised by the dev warning \`[Pyreon] CoreProvider is internal\` — mounting this Provider delegates to ui-core's internal provider, which logs it in development; switch to \`<PyreonUI>\`
 - Mounting a fresh \`Provider\`/\`PyreonUI\` per view — the \`_rsMemo\` cache keys on theme identity, so per-view providers defeat cross-instance memoization; share ONE app-level provider
 - Expecting \`inversed\` to FORCE dark — it inverts whatever mode the parent resolves (light↔dark), and tracks that parent as it changes
 - Confusing this theme/mode provider with \`.config({ provider: true })\` — the latter is the component-to-component PSEUDO-STATE channel, unrelated to theming`,
@@ -11887,8 +11885,7 @@ import { PyreonUI } from '@pyreon/ui-core'
     notes: `Re-export of \`@pyreon/unistyle\`'s low-level theme provider — enriches the theme (pre-computed sorted breakpoints + media-query helpers) and provides it to BOTH the ui-core context and the styler \`ThemeContext\`. Marked \`@deprecated\` in source: prefer \`<PyreonUI theme={theme} mode="light">\` from \`@pyreon/ui-core\`, which handles all three context layers (styler, core, mode) in one component. The remaining legitimate use is scoping DIFFERENT breakpoints / grid defaults to a subtree. See also: theme, @pyreon/ui-core.`,
     mistakes: `- Wrapping a fresh \`<Provider>\` inside an app that already renders \`<PyreonUI>\` at the root — PyreonUI sets up the unistyle context already; only add a nested Provider to scope DIFFERENT breakpoints to a subtree
 - Expecting a nested \`<Provider>\` to inherit the outer Provider's overrides — context is per-Provider; the inner one starts fresh from its own \`theme\`
-- Reaching for \`Provider\` in new code — it is deprecated in favor of \`PyreonUI\` from \`@pyreon/ui-core\`
-- Being surprised by the dev warning \`[Pyreon] CoreProvider is internal\` — this Provider delegates to ui-core's internal provider, which logs it in development; \`<PyreonUI>\` does not`,
+- Reaching for \`Provider\` in new code — it is deprecated in favor of \`PyreonUI\` from \`@pyreon/ui-core\``,
   },
 
   'coolgrid/theme': {

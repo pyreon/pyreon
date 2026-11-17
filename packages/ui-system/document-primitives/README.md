@@ -1,5 +1,7 @@
 # @pyreon/document-primitives
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 18 rocketstyle document components that render in the browser AND export to 14+ formats.
 
 `@pyreon/document-primitives` ships a complete set of styled, themeable document primitives — `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak` — built on `@pyreon/rocketstyle` + `@pyreon/elements`. Each primitive carries a `_documentType` marker via `.statics()` so `@pyreon/connector-document` can walk the same JSX tree and produce a serializable `DocNode` for `@pyreon/document`'s renderers (PDF, DOCX, XLSX, PPTX, HTML email, Markdown, plain text, …). **Write one template, render it in the browser AS PREVIEW, then export the same tree to any format.**

@@ -1,5 +1,7 @@
 # @pyreon/zero
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction).
+
 Zero-config full-stack meta-framework — file-system routing, SSR/SSG/ISR/SPA, deploy adapters.
 
 `@pyreon/zero` wraps `@pyreon/server` + `@pyreon/router` + `@pyreon/head` + `@pyreon/vite-plugin` into a single Vite plugin and a conventions-based project layout: `src/routes/` is the route tree (`[param]`, `[...catchAll]`, `_layout`, `_404`, `_loading`, `_error`, `(groups)`), per-file `export const { loader, meta, middleware, getStaticPaths, revalidate, renderMode }` opts into capabilities, and `mode: 'ssr' | 'ssg' | 'isr' | 'spa'` picks the rendering strategy. Production builds run through one of six deploy adapters (Vercel / Cloudflare Pages / Netlify / Node / Bun / static). The main entry is **client-safe**; server-only APIs live at `@pyreon/zero/server`.

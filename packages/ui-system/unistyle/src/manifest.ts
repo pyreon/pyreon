@@ -340,7 +340,7 @@ const Box = cpseStyled('div')
     {
       label: 'Deprecated internal Provider / context',
       note:
-        'The package exports a low-level `Provider` (default export) + `context` (re-exported from `@pyreon/ui-core`) that `<PyreonUI>` no longer calls directly — it is `@deprecated`-tagged and dev-warns on mount. There is no reason to import it: use `<PyreonUI theme={theme}>` instead.',
+        'The package exports a low-level `Provider` (default export) + `context` (re-exported from `@pyreon/ui-core`) that `<PyreonUI>` no longer calls directly. It is `@deprecated`-tagged in source but does not warn at runtime. Use `<PyreonUI theme={theme}>` instead.',
     },
     {
       label: 'Responsive-pipeline internals (normalizeTheme / sortBreakpoints / transformTheme)',

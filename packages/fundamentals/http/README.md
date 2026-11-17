@@ -1,7 +1,6 @@
 # @pyreon/http
 
-> **Private / pre-release.** Not published yet. The API may change without a
-> changeset while it stabilises.
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
 
 The transport layer under `@pyreon/query`.
 

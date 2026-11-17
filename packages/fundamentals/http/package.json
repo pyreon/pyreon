@@ -126,6 +126,8 @@
     "access": "public"
   },
   "pyreon": {
+    "stability": "stable",
+    "experimentalSubpaths": ["./native-plugin"],
     "native": {
       "swift": "native/swift",
       "kotlin": "native/kotlin",

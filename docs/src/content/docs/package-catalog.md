@@ -54,7 +54,7 @@ Explore the [live examples](/docs/examples) and the [UI component workbench](/at
 | [@pyreon/table](/docs/table) | Pyreon adapter for TanStack Table |
 | [@pyreon/toast](/docs/toast) | Imperative toast notifications for Pyreon — no provider needed |
 | [@pyreon/url-state](/docs/url-state) | Reactive URL search-param state for Pyreon — signal-backed, type-coerced, SSR-safe |
-| [@pyreon/validate](/docs/validate) | Pyreon DX layer over Standard Schema — withField metadata, reactive parse, i18n-aware error formatting. Works with Zod, Valibot, ArkType, or any Standard Schema-compliant validator. |
+| [@pyreon/validate](/docs/validate) | Pyreon's own validator (the `s` schema runtime, with mini, JIT and JSON Schema subpaths) plus a Standard Schema DX layer — withField metadata, reactive parse, i18n-aware error formatting. The DX layer also works with Zod, Valibot, ArkType, or any Standard Schema-compliant validator. |
 | [@pyreon/validation](/docs/validation) | Schema validation adapters for Pyreon forms (Zod, Valibot, ArkType) |
 | [@pyreon/virtual](/docs/virtual) | Pyreon adapter for TanStack Virtual |
 

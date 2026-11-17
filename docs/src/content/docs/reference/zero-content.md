@@ -109,7 +109,7 @@ const docs = await getCollection('docs')
 | [`Playground`](#playground-component) | component | DEPRECATED in favor of `<Example>` — flagged by the `pyreon/no-playground-in-docs` lint rule. |
 | [`Search / useSearch`](#search-usesearch-hook) | hook | `useSearch` is the headless search state — build a custom search UI on top of it. |
 | [`blogCollection / defineBlog (@pyreon/zero-content/blog)`](#blogcollection-defineblog-pyreonzero-contentblog-function) | function | A production blog on a content collection. |
-| [`generateSitemap / generateRssFeed / generateLlmsTxt`](#generatesitemap-generaterssfeed-generatellmstxt-function) | function | DEPRECATED — all three are thin build-script helpers kept for back-compat and superseded by richer `@pyreon/zero`… |
+| [`generateSitemap / generateRssFeed / toRfc822 / generateLlmsTxt`](#generatesitemap-generaterssfeed-torfc822-generatellmstxt-function-deprecated) | function | DEPRECATED — all four are thin build-script helpers kept for back-compat and superseded by richer `@pyreon/zero`… |
 
 ## API
 
@@ -874,13 +874,15 @@ export const blog = defineBlog({
 
 ---
 
-### `generateSitemap / generateRssFeed / generateLlmsTxt` `function`
+### `generateSitemap / generateRssFeed / toRfc822 / generateLlmsTxt` `function` — **⚠ deprecated**
+
+> **Deprecated** — use ``@pyreon/zero`'s `generateRssFeed` / `toRfc822`, and `@pyreon/zero/server`'s `seoPlugin` + `generateSitemap` and `aiPlugin`` instead.
 
 ```ts
-generateSitemap(args): string · generateRssFeed(args): string · generateLlmsTxt(args): string
+generateSitemap(args): string · generateRssFeed(args): string · toRfc822(date): string · generateLlmsTxt(args): string
 ```
 
-DEPRECATED — all three are thin build-script helpers kept for back-compat and superseded by richer `@pyreon/zero` equivalents that run as Vite plugins instead of a hand-written build script: `generateSitemap` → `@pyreon/zero/server`'s `generateSitemap` + `seoPlugin` (adds hreflang/i18n, trailing-slash policy, SSG path-manifest integration; server-only, Vite-plugin-only); `generateRssFeed`/`toRfc822` → the SAME function, re-exported from `@pyreon/zero`'s CLIENT-SAFE main entry (no `/server` needed — no `zero-content` wrapper needed either); `generateLlmsTxt` → `@pyreon/zero/server`'s `aiPlugin` (server-only). These `zero-content` versions will be removed in a future major version — do not build new tooling on them.
+DEPRECATED — all four are thin build-script helpers kept for back-compat and superseded by richer `@pyreon/zero` equivalents that run as Vite plugins instead of a hand-written build script: `generateSitemap` → `@pyreon/zero/server`'s `generateSitemap` + `seoPlugin` (adds hreflang/i18n, trailing-slash policy, SSG path-manifest integration; server-only, Vite-plugin-only); `generateRssFeed`/`toRfc822` → the SAME function, re-exported from `@pyreon/zero`'s CLIENT-SAFE main entry (no `/server` needed — no `zero-content` wrapper needed either); `generateLlmsTxt` → `@pyreon/zero/server`'s `aiPlugin` (server-only). These `zero-content` versions will be removed in a future major version — do not build new tooling on them.
 
 **Example**
 

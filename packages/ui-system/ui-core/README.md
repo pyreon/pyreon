@@ -1,5 +1,7 @@
 # @pyreon/ui-core
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Foundation layer for Pyreon's UI system — `PyreonUI` provider, config singleton, utilities.
 
 `@pyreon/ui-core` is the cross-cutting layer that ties Pyreon's UI packages (`styler`, `unistyle`, `elements`, `rocketstyle`, `coolgrid`, …) together. It ships the unified `<PyreonUI>` provider (theme + light/dark/system mode in one component), the `config` styling-engine singleton (a thin facade over `@pyreon/styler`), helper utilities (`omit` / `pick` / `merge` / `compose` / `throttle` / `set` / `get` / `isEmpty` / `isEqual` / `hoistNonReactStatics`), and the canonical HTML tag arrays + types. No external utility deps — every helper is built-in with prototype-pollution protection where it matters.

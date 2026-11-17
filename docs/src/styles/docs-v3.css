@@ -1479,8 +1479,7 @@
 .dx a.package-badge:hover { border-color: var(--dx-line-hover); }
 .dx .package-badge-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dx-fog); }
 .dx .package-badge--experimental .package-badge-dot { background: var(--dx-warn); }
-.dx .package-badge--pre-1-0 .package-badge-dot { background: var(--dx-ok); }
-.dx .package-badge--deprecated .package-badge-dot { background: var(--dx-err); }
+.dx .package-badge--stable .package-badge-dot { background: var(--dx-ok); }
 .dx .package-badge-name { font-family: var(--dx-mono); font-size: 12.5px; color: var(--dx-accent-text); }
 .dx .package-badge-status { font-family: var(--dx-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--dx-fog); }
 .dx .since-badge {

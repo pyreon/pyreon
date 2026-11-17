@@ -1,5 +1,7 @@
 # @pyreon/storage
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Reactive client-side storage — `localStorage`, `sessionStorage`, cookies, IndexedDB, custom backends.
 
 `@pyreon/storage` exposes five reactive primitives backed by `@pyreon/reactivity` signals: `useStorage` (localStorage, cross-tab synced), `useSessionStorage` (tab-scoped), `useCookie` (SSR-readable, configurable expiry), `useIndexedDB` (large data, debounced writes), and `useMemoryStorage` (SSR/testing). All return `StorageSignal<T>` — extends `Signal<T>` with `.remove()`. Same key returns the same instance — two `useStorage('theme', 'light')` calls in different components share the SAME signal, so writes propagate instantly without registry wiring. A `createStorage(backend)` factory lets you bring your own backend (encrypted, remote, IPC, …).

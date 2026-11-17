@@ -1,8 +1,10 @@
 # @pyreon/primitives
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 > Canonical multi-platform UI primitives — semantic vocabulary that compiles to DOM (web), SwiftUI (iOS), and Compose (Android). The Pyreon Multi-Target story.
 
-**Status:** experimental, and further along than this line used to say. All **25** primitives now have real web implementations, and PMTC emits them for iOS + Android: the **22** canonical UI primitives (including `<Tabs>` with its `<Tab>` entries and `<Split>`, plus the five `<Canvas>` shape children), the two animation wrappers (`<Transition>` / `<TransitionGroup>`) and `<WebView>`. Per-capability native maturity (what is device-proven vs merely emitted) lives in the multiplatform tier table, not here — it moves per release and a copy in this file would go stale, which is exactly what happened to the sentence this replaced.
+All **25** primitives now have real web implementations, and PMTC emits them for iOS + Android: the **22** canonical UI primitives (including `<Tabs>` with its `<Tab>` entries and `<Split>`, plus the five `<Canvas>` shape children), the two animation wrappers (`<Transition>` / `<TransitionGroup>`) and `<WebView>`. Per-capability native maturity (what is device-proven vs merely emitted) lives in the multiplatform tier table, not here — it moves per release and a copy in this file would go stale.
 
 ## What this is
 

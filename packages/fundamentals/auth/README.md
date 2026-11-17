@@ -1,5 +1,7 @@
 # @pyreon/auth
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 Authentication primitives for Pyreon on Web Crypto + `fetch`, so the same code runs in the browser, Node, Bun and
 workerd: OIDC / OAuth2 sign-in, ID-token verification, signed cookie sessions, TOTP and passkeys.
 

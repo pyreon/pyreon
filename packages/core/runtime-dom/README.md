@@ -1,5 +1,7 @@
 # @pyreon/runtime-dom
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction).
+
 Surgical signal-to-DOM renderer — no virtual DOM, no diff.
 
 Mounts VNode trees and compiler-emitted `_tpl()` cloneNode templates directly into the DOM; per-node `_bind()` calls produce surgical signal-to-DOM updates without VDOM diffing. Reactive text uses `TextNode.data` (not `.textContent`) for minimal mutation; SVG / MathML namespaces are auto-detected (67 tags); custom elements receive props as properties. Ships CSS-transition support (`<Transition>` / `<TransitionGroup>`) and component caching (`<KeepAlive>`) — each also available as a subpath export so apps that don't use animations or caching can tree-shake them out.

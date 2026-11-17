@@ -142,5 +142,8 @@
     "vite": {
       "optional": true
     }
+  },
+  "pyreon": {
+    "stability": "experimental"
   }
 }

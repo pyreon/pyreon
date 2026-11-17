@@ -1,6 +1,8 @@
 # @pyreon/native-cli
 
-> **EXPERIMENTAL.** The `pyreon-native` binary — build orchestration for the Pyreon Multi-Target Compiler (PMTC). Wraps [`@pyreon/native-compiler`](../compiler/README.md) to walk a source directory, drive the compiler for one or both native targets, and wire the result into an Xcode/Gradle project. Published to npm — see [Native Packages](https://pyreon.dev/docs/native-packages) for where this fits among the other five packages behind PMTC.
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
+The `pyreon-native` binary — build orchestration for the Pyreon Multi-Target Compiler (PMTC). Wraps [`@pyreon/native-compiler`](../compiler/README.md) to walk a source directory, drive the compiler for one or both native targets, and wire the result into an Xcode/Gradle project. Published to npm — see [Native Packages](https://pyreon.dev/docs/native-packages) for where this fits among the other five packages behind PMTC.
 
 You don't usually invoke this directly either — `@pyreon/create-multiplatform` scaffolds pre-build scripts that call it for you through the app's installed `@pyreon/native-cli` (`npx pyreon-native wire --ios-out=…` / `--android-out=…` on every build, `npx pyreon-native build --target=…` where the scaffold needs a one-shot emit). It's documented here, and in full on [Native Packages](https://pyreon.dev/docs/native-packages), for when you're debugging the pipeline or scripting it yourself.
 

@@ -1,5 +1,7 @@
 # @pyreon/url-state
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Signal-backed URL search-param state — type-coerced, SSR-safe, debounce-aware.
 
 Each URL search parameter becomes a Pyreon signal that reads from `window.location.search` and writes back via `history.replaceState` (or `pushState` if you opt in). Type inferred from the default value: `useUrlState('page', 1)` is `Signal<number>`; `useUrlState('q', '')` is `Signal<string>`; `useUrlState('tags', [] as string[])` is `Signal<string[]>`. Two API shapes — single-param (`useUrlState(key, default, opts?)`) and schema (`useUrlState({ page: 1, sort: 'name' })`). Optional `@pyreon/router` integration so URL writes go through your router's `replace()` instead of raw history.

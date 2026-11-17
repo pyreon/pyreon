@@ -1,5 +1,7 @@
 # @pyreon/machine
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Reactive state machines as constrained signals — type-safe states and events.
 
 A machine is a Pyreon signal that can only hold a fixed set of values and only transition between them via declared events. Reads (`machine()`) and predicates (`matches(...)` / `can(...)` / `nextEvents()`) are reactive in effects, computeds, and JSX. Everything else — data carried alongside state, side-effect orchestration, async — uses ordinary Pyreon primitives (`signal` / `computed` / `effect`); the machine owns transitions, signals own data. State and event names flow from the config object so `machine.send('TYPO')` is a TypeScript error.

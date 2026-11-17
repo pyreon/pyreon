@@ -306,7 +306,6 @@ import { PyreonUI } from '@pyreon/ui-core'
         'Wrapping a fresh `<Provider>` inside an app that already renders `<PyreonUI>` at the root — PyreonUI sets up the unistyle context already; only add a nested Provider to scope DIFFERENT breakpoints to a subtree',
         "Expecting a nested `<Provider>` to inherit the outer Provider's overrides — context is per-Provider; the inner one starts fresh from its own `theme`",
         'Reaching for `Provider` in new code — it is deprecated in favor of `PyreonUI` from `@pyreon/ui-core`',
-        'Being surprised by the dev warning `[Pyreon] CoreProvider is internal` — this Provider delegates to ui-core\'s internal provider, which logs it in development; `<PyreonUI>` does not',
       ],
       seeAlso: ['theme', '@pyreon/ui-core'],
     },

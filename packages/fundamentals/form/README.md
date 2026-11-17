@@ -1,5 +1,7 @@
 # @pyreon/form
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Signal-based form management — fields, validation, arrays, and context.
 
 Every field on a Pyreon form is its own `Signal<T>` (one each for `value`, `error`, `touched`, `dirty`), so templates only re-run for the slice they read. Two complementary APIs: the classic `useForm({ initialValues, validators, onSubmit })`, and the composable `field('name', default, validator) → useForm({ fields }) + useField('name')` that infers `FormState` from a field array and skips prop drilling via `<Form of={form}>` / `FormProvider`. Pairs with `@pyreon/validation` for Zod/Valibot/ArkType schema integration.

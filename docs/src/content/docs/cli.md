@@ -626,7 +626,7 @@ Codemods only make changes that keep behaviour the same, and skip `node_modules`
 | --- | --- | --- |
 | `zero-remove-vite-option` | 0.52.0 | Removes the `vite` option from `zero({...})` in `vite.config.*`. `zero()` never read it; the old value is kept as a comment so you can move it into `defineConfig`. |
 
-Every `@pyreon/zero` changeset that bumps a minor version (a breaking change while Pyreon is 0.x) states how to upgrade in an `Upgrade:` line: `none`, the codemod id, or the manual step. That line appears in the changelog.
+Every `@pyreon/zero` changeset that bumps a minor version states how to upgrade in an `Upgrade:` line: `none`, the codemod id, or the manual step. That line appears in the changelog. Before 1.0 a breaking change ships as a minor bump; for the rules from 1.0, see [Stability, Versioning & Direction](/docs/stability-and-direction).
 
 ## `pyreon lint`
 
