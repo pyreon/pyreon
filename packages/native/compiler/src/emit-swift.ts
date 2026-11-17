@@ -9,6 +9,7 @@
 // computed properties. Phase 1 grows a real inference pass.
 
 import { bitwiseHelper, integerOpHelper, isNumericConstant } from './integer-arithmetic'
+import { dateFieldWarning, swiftDateWrapper } from './date-json'
 import { isDoubleLiteralValue, wholeDoubleLiteral } from './number-literal'
 import { hasOptionalChain, interpolandAbsentSpelling, isUntypedTextChild, optionalTextCall } from './optional-text'
 import { isModuleState, moduleStateClassName, moduleStateDecls, shadowingNames } from './module-state'
@@ -1658,7 +1659,11 @@ function emitSwiftStruct(s: StructIR): string {
     // (`{ qty: 3 }` → `P(qty: 3)`) compiles. Codable synthesis also
     // decodes a missing JSON key to nil for defaulted optionals.
     const suffix = typeIsOptional(f.type) ? ' = nil' : ''
-    lines.push(`  var ${swiftIdent(f.name)}: ${swiftType(f.type)}${suffix}`)
+    // A `Date` field reads and writes the web's ISO string (date-json.ts); its value is still the `Double`.
+    const dateWarning = codable === '' ? undefined : dateFieldWarning(s.name, f.name, f.type)
+    if (dateWarning !== undefined && !_emitWarnings.includes(dateWarning)) _emitWarnings.push(dateWarning)
+    const wrapper = codable === '' ? '' : swiftDateWrapper(f.type)
+    lines.push(`  ${wrapper}var ${swiftIdent(f.name)}: ${swiftType(f.type)}${suffix}`)
   }
   // A field whose JS name is not a Swift identifier (`'my-key'`) was renamed
   // by `swiftIdent`; keep the JSON key by declaring CodingKeys for the whole

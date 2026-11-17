@@ -5,6 +5,7 @@
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
 import { bitwiseHelper, integerOpHelper, isNumericConstant, numericKind } from './integer-arithmetic'
+import { dateFieldWarning, kotlinDateSerializer } from './date-json'
 import { isDoubleLiteralValue, wholeDoubleLiteral } from './number-literal'
 import { hasOptionalChain, interpolandAbsentSpelling, isUntypedTextChild, optionalTextCall } from './optional-text'
 import { isModuleState, moduleStateClassName, moduleStateDecls, shadowingNames } from './module-state'
@@ -1212,10 +1213,11 @@ function emitKotlinStruct(s: StructIR): string {
   // (`P(qty = 3)`) — and kotlinx.serialization decodes a missing JSON key
   // to the default for defaulted properties. Mirrors emit-swift's
   // `var label: String? = nil`.
+  const serializable = !s.fields.some((f) => typeContainsFunction(f.type))
   const params = s.fields
     .map((f) => {
       const suffix = typeIsOptional(f.type) ? ' = null' : ''
-      return `var ${kotlinMember(f.name)}: ${kotlinType(f.type, undefined, f.name)}${suffix}`
+      return `${kotlinDateField(s.name, f, serializable)}var ${kotlinMember(f.name)}: ${kotlinType(f.type, undefined, f.name)}${suffix}`
     })
     .join(', ')
   // A FUNCTION-typed property can't be @Serializable — the kotlinx
@@ -1224,8 +1226,21 @@ function emitKotlinStruct(s: StructIR): string {
   // validate stubs MASK it (no plugin runs there), so this was a
   // device-gate-only failure. Emit the plain data class instead.
   // Function-free structs keep @Serializable byte-identically.
-  const ser = s.fields.some((f) => typeContainsFunction(f.type)) ? '' : '@Serializable\n'
+  const ser = serializable ? '@Serializable\n' : ''
+
   return `${ser}data class ${kotlinIdent(s.name)}(${params})`
+}
+
+/**
+ * The kotlinx serializer annotation of a `Date` property, which reads and writes the web's ISO string (date-json.ts;
+ * its value is still the `Double`), or `''`. A date with no codec is warned about.
+ */
+function kotlinDateField(struct: string, f: { name: string; type: TypeIR }, serializable: boolean): string {
+  if (!serializable) return ''
+  const warning = dateFieldWarning(struct, f.name, f.type)
+  if (warning !== undefined && !_emitWarnings.includes(warning)) _emitWarnings.push(warning)
+
+  return kotlinDateSerializer(f.type)
 }
 
 /**
@@ -1682,6 +1697,7 @@ function emitKotlinDataClass(synth: {
   name: string
   fields: { name: string; type: TypeIR }[]
 }): string {
+  const serializable = !synth.fields.some((f) => typeContainsFunction(f.type))
   const params = synth.fields
     // `kotlinMember`, not the bare name: a quoted object key (`'my-key'`,
     // `'class'`) reaches this synth path unescaped, and the named data
@@ -1689,7 +1705,7 @@ function emitKotlinDataClass(synth: {
     // declarations of one shape.
     .map(
       (f) =>
-        `val ${kotlinMember(f.name)}: ${kotlinType(f.type)}${typeIsOptional(f.type) ? ' = null' : ''}`,
+        `${kotlinDateField(synth.name, f, serializable)}val ${kotlinMember(f.name)}: ${kotlinType(f.type)}${typeIsOptional(f.type) ? ' = null' : ''}`,
     )
     .join(', ')
   // `@Serializable` for consistency with emitKotlinStruct (named `type X
@@ -1699,7 +1715,8 @@ function emitKotlinDataClass(synth: {
   // kotlinc validate stubs but FAILS a real Compose build ("Serializer
   // for class 'AppData' not found" — the serialization plugin only
   // generates serializers for annotated classes).
-  const ser = synth.fields.some((f) => typeContainsFunction(f.type)) ? '' : '@Serializable\n'
+  const ser = serializable ? '@Serializable\n' : ''
+
   return `${ser}data class ${synth.name}(${params})`
 }
 

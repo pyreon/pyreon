@@ -550,7 +550,10 @@ export type TypeIR =
   // literal like `12.5`) → emits as Swift/Kotlin `Double`. Absent/false
   // → `Int` (PMTC's ergonomic default for counts/ids/indices). Additive:
   // every existing `kind: 'number'` check still matches.
-  | { kind: 'number'; float?: boolean }
+  // `date: true` marks a `Date` — natively its epoch milliseconds, a `Double`, in every piece of logic
+  // (date-lowering.ts); the mark only decides how a struct FIELD crosses JSON (as the web's ISO string,
+  // date-json.ts). It is lost the moment a value is computed from it, as on the web (`d.getTime()` is a number).
+  | { kind: 'number'; float?: boolean; date?: boolean }
   | { kind: 'string' }
   | { kind: 'boolean' }
   | { kind: 'array'; element: TypeIR }

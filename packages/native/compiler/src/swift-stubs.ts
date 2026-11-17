@@ -1736,6 +1736,19 @@ public func pyreonDateTimezoneOffset(_ ms: Int) -> Double { 0 }
 public func pyreonDateISO(_ ms: Double) -> String { "" }
 public func pyreonDateISO(_ ms: Int) -> String { "" }
 public func pyreonDateMake(_ utc: Bool, _ parts: Double...) -> Double { 0 }
+// A \`Date\` struct field's ISO-string codec (PyreonDate.swift, date-json.ts).
+@propertyWrapper public struct PyreonISODate: Codable, Hashable, Sendable {
+  public var wrappedValue: Double
+  public init(wrappedValue: Double) { self.wrappedValue = wrappedValue }
+}
+@propertyWrapper public struct PyreonOptionalISODate: Codable, Hashable, Sendable {
+  public var wrappedValue: Double?
+  public init(wrappedValue: Double?) { self.wrappedValue = wrappedValue }
+}
+@propertyWrapper public struct PyreonISODates: Codable, Hashable, Sendable {
+  public var wrappedValue: [Double]
+  public init(wrappedValue: [Double]) { self.wrappedValue = wrappedValue }
+}
 // PyreonTimers — JS setTimeout / setInterval / clear* (PyreonTimers.swift). Mirrors the real surface.
 public enum PyreonTimers {
   @discardableResult public static func setTimeout(_ ms: Double, _ fn: @escaping () -> Void) -> Int { 0 }
