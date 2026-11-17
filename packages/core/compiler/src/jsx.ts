@@ -3625,6 +3625,7 @@ export function transformJSX_JS(
     // element — `jsxTagName` reports '' for it, so the uppercase test alone
     // would misread it as "not a component".
     if (name.type !== 'JSXIdentifier') return true
+
     return isComponentTag(name.name as string)
   }
 
