@@ -60,10 +60,38 @@ export const recognizeForm: CallRecognizer = (_call, ctx) => {
       } else if (key === 'onSubmit' && prop.value?.type === 'ArrowFunctionExpression') {
         const fn = ctx.functionDeclaration('__onSubmit', prop.value)
         decl.onSubmit = { param: fn.params[0]?.name ?? 'values', body: fn.body }
+      } else {
+        reportUnloweredFormOption(name, key, prop, ctx)
       }
     }
   }
   return { type: FORM_TYPE, payload: decl as unknown as ExtPayload }
+}
+
+/**
+ * A `useForm` option the native form does not lower is NAMED. `onSubmit: save` (a function reference) used to be
+ * dropped with no word, so `form.handleSubmit()` called nothing on native while the web ran `save`.
+ */
+function reportUnloweredFormOption(name: string, key: string | undefined, prop: AnyNode, ctx: ParseContext): void {
+  if (key === 'onSubmit') {
+    ctx.report(
+      `useForm \`${name}\`: onSubmit must be an inline arrow (\`onSubmit: (values) => save(values)\`) to lower to native — a ${prop.value?.type ?? 'missing value'} is IGNORED, so handleSubmit() would submit nothing on iOS and Android.`,
+    )
+  } else if (key !== 'initialValues' && key !== 'schema' && key !== 'validators') {
+    ctx.report(
+      `useForm \`${name}\`: option \`${key ?? ctx.dynamicKeyText(prop)}\` has no native lowering and is IGNORED on iOS and Android (only initialValues, schema, validators and onSubmit lower).`,
+    )
+  }
+}
+
+/**
+ * The native form holds string fields only; a number / boolean / computed initial value used to vanish, so the field
+ * was absent from `values` on native while the web had it.
+ */
+function reportDroppedInitialValue(where: string, key: string | undefined, p: AnyNode, ctx: ParseContext): void {
+  ctx.report(
+    `${where}: field \`${key ?? ctx.dynamicKeyText(p)}\` is not a string literal (${p.value?.type ?? 'nothing'}) — the native form holds string fields only, so this field is DROPPED on iOS and Android. Store it as a string (\`'18'\`) or keep it outside the form.`,
+  )
 }
 
 function initialValues(
@@ -92,6 +120,8 @@ function initialValues(
       typeof v.value === 'string'
     ) {
       out.push({ key, value: v.value })
+    } else {
+      reportDroppedInitialValue(report.where, key, p, ctx)
     }
   }
   return out

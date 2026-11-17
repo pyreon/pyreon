@@ -296,9 +296,16 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
   let valueExpr: ExprIR | undefined
   let queryFnSeen = false
   let staleMillis = 0
+  let enabled: ExprIR | undefined
   const req: FetchInitFields = {}
   for (const prop of (optsObj.properties as AnyNode[] | undefined) ?? []) {
-    if (prop.type !== 'Property') continue
+    if (prop.type !== 'Property') {
+      // A spread could carry `enabled`, `refetchInterval`, … — none of which the native query would honour.
+      ctx.report(
+        `Declaration ${name}: useQuery options spread (\`...x\`) cannot be read at compile time and is IGNORED on native — pass the options literally.`,
+      )
+      continue
+    }
     if (hasDynamicKey(prop)) {
       warnDynamicKey(prop, `Declaration ${name}: useQuery options`, ctx)
       continue
@@ -352,6 +359,31 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
           `Declaration ${name}: useQuery staleTime must be a number literal (ms) to lower to native; got ${v.type}. Defaulting to 0 (always revalidate, serving the stale value instantly).`,
         )
       }
+    } else if (key === 'enabled') {
+      // `enabled: false | expr | () => expr` — the web skips the fetch while it is false and fetches once it turns
+      // true (`enabled: session() !== null`, the documented authenticated-request pattern). It used to be dropped
+      // with no word, so native fetched on mount with no session.
+      const node = unwrapTypeLayers(prop.value as AnyNode | undefined)
+      const v = literalScalar(node)
+      if (v === true) continue
+      if (v === false) {
+        enabled = { kind: 'literal', value: false }
+        continue
+      }
+      const expr = arrowExprBody(node) ?? (isFunctionNode(node) ? undefined : node)
+      if (expr === undefined) {
+        ctx.report(
+          `Declaration ${name}: useQuery \`enabled\` must be a boolean, an expression, or an accessor returning one (\`() => ready()\`) to lower to native — IGNORED, so the query fetches regardless on iOS and Android.`,
+        )
+        continue
+      }
+      enabled = ctx.expr(expr)
+    } else {
+      // Every other option (`refetchInterval`, `refetchOnWindowFocus`, `retry`, `select`, `placeholderData`,
+      // …) used to be dropped with no word: `enabled: false` still fetched on mount and `refetchInterval` never polled.
+      ctx.report(
+        `Declaration ${name}: useQuery option \`${key}\` has no native lowering and is IGNORED on iOS and Android — the native query fetches when it appears and when its key or \`enabled\` changes, and re-fetches only on \`refetch()\`. Only \`queryKey\`, \`queryFn\`, \`staleTime\` and \`enabled\` lower.`,
+      )
     }
   }
   if (queryKey === undefined) {
@@ -383,6 +415,7 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
     ...(urlExpr !== undefined ? { urlExpr } : {}),
     ...(valueExpr !== undefined ? { valueExpr } : {}),
     ...(queryKeyExpr !== undefined ? { queryKeyExpr } : {}),
+    ...(enabled !== undefined ? { enabled } : {}),
     ...req,
   })
 }

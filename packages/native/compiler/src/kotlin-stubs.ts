@@ -109,6 +109,8 @@ fun <T> remember(calculation: () -> T): T = calculation()
 @Composable
 @Suppress("UNUSED_PARAMETER")
 fun LaunchedEffect(key1: Any?, block: suspend () -> Unit) {}
+// The two-key overload (Compose has it): a useQuery harness keyed on its cache key AND enabled.
+fun LaunchedEffect(key1: Any?, key2: Any?, block: suspend () -> Unit) {}
 
 class DisposableEffectResult
 class DisposableEffectScope {

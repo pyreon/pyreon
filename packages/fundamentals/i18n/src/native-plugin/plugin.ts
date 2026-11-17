@@ -78,6 +78,11 @@ const recognizeI18n: CallRecognizer = (_call, ctx) => {
       fallbackLocale = ctx.staticString(valueNode) ?? undefined
     } else if (keyName === 'messages') {
       messagesNode = valueNode
+    } else {
+      // `loader`, `onMissingKey`, `pluralRules`, … used to vanish with no word.
+      ctx.report(
+        `createI18n declaration \`${name}\`: option \`${keyName}\` has no native lowering and is IGNORED on iOS and Android — only locale, fallbackLocale and literal messages lower (a namespace loader never runs natively).`,
+      )
     }
   }
 
@@ -94,8 +99,9 @@ const recognizeI18n: CallRecognizer = (_call, ctx) => {
     return undefined
   }
 
-  // `messages: { en: { hello: 'Hi' } }` into the nested record. Nested objects and interpolation tokens are
-  // v1-out-of-scope: dropped at the per-key level (the locale entry stays).
+  // `messages: { en: { hello: 'Hi', nav: { home: 'Home' } } }` into one flat record per locale. A NESTED group is
+  // flattened to dotted keys (`nav.home`), the path the web's `t('nav.home')` resolves; it used to be dropped with no
+  // word, so `t('nav.home')` printed the key on native. A value that is not a string literal is named and skipped.
   const messages: Record<string, Record<string, string>> = {}
   for (const localeProp of (messagesNode.properties as AnyNode[] | undefined) ?? []) {
     if (localeProp?.type !== 'Property' && localeProp?.type !== 'ObjectProperty') continue
@@ -108,16 +114,33 @@ const recognizeI18n: CallRecognizer = (_call, ctx) => {
     const dict = unwrapTypeLayers(localeProp.value as AnyNode | undefined)
     messages[locName] = {}
     if (dict?.type !== 'ObjectExpression') continue
-    for (const entry of (dict.properties as AnyNode[] | undefined) ?? []) {
-      if (entry?.type !== 'Property' && entry?.type !== 'ObjectProperty') continue
-      if (ctx.hasDynamicKey(entry)) {
-        ctx.warnDynamicKey(entry, `createI18n declaration \`${name}\`: messages \`${locName}\``)
-        continue
+    const flatten = (group: AnyNode, prefix: string): void => {
+      for (const entry of (group.properties as AnyNode[] | undefined) ?? []) {
+        if (entry?.type !== 'Property' && entry?.type !== 'ObjectProperty') {
+          ctx.report(
+            `createI18n declaration \`${name}\`: messages \`${locName}\`${prefix === '' ? '' : ` \`${prefix.slice(0, -1)}\``} contains a spread, which cannot be read at compile time — those keys are MISSING on iOS and Android.`,
+          )
+          continue
+        }
+        if (ctx.hasDynamicKey(entry)) {
+          ctx.warnDynamicKey(entry, `createI18n declaration \`${name}\`: messages \`${locName}\``)
+          continue
+        }
+        const key = staticPropKey(entry)
+        if (!key) continue
+        const value = unwrapTypeLayers(entry.value as AnyNode | undefined)
+        if (value?.type === 'Literal' && typeof value.value === 'string') {
+          messages[locName]![prefix + key] = value.value
+        } else if (value?.type === 'ObjectExpression') {
+          flatten(value, `${prefix}${key}.`)
+        } else {
+          ctx.report(
+            `createI18n declaration \`${name}\`: message \`${locName}.${prefix}${key}\` is not a string literal (${value?.type ?? 'nothing'}) — it is MISSING on iOS and Android, where t('${prefix}${key}') prints the key.`,
+          )
+        }
       }
-      const key = staticPropKey(entry)
-      const value = unwrapTypeLayers(entry.value as AnyNode | undefined)
-      if (key && value?.type === 'Literal' && typeof value.value === 'string') messages[locName]![key] = value.value
     }
+    flatten(dict, '')
   }
 
   return { type: I18N_TYPE, payload: fallbackLocale === undefined ? { locale, messages } : { locale, messages, fallbackLocale } }

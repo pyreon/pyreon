@@ -547,6 +547,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     // at file scope on the target.
     const mds = tryModuleDeclsFromTopLevel(node, ctx)
     if (mds) moduleDecls.push(...mds)
+    warnDroppedTopLevelStatement(node, ctx)
   }
 
   // Every inline object type OUTSIDE every component (a module binding's annotation, a module signal's type
@@ -815,6 +816,37 @@ function warnUnsupportedTopLevelDecl(node: AnyNode, ctx: ParseCtx): void {
       `Top-level \`class ${name}\` is NOT compiled to native (it emits nothing → native code referencing it won't compile). PMTC compiles components, signals, and the canonical primitives — move the logic into functions + signals (or a \`defineStore\` / \`model()\` for stateful logic).`,
     )
   }
+}
+
+/** Top-level STATEMENTS (not declarations) — no extractor consumes them, and no plugin claimed this one. */
+const DROPPED_TOP_LEVEL_STATEMENTS = new Set([
+  'ExpressionStatement',
+  'IfStatement',
+  'ForStatement',
+  'ForInStatement',
+  'ForOfStatement',
+  'WhileStatement',
+  'DoWhileStatement',
+  'BlockStatement',
+  'TryStatement',
+  'SwitchStatement',
+  'LabeledStatement',
+  'ThrowStatement',
+])
+
+/**
+ * A module-scope statement that runs on the web at import and emits NOTHING natively: `count.set(5)` after
+ * `const count = signal(0)` (the web renders 5, native 0), `if (dev) theme.set('dark')`, `router.beforeEach(guard)`.
+ * It used to vanish with no word; the component-body twin has always warned. Reached only after every plugin claim
+ * and skip, so a statement a plugin lowers is never named. A directive (`'use client'`) is not a statement here.
+ */
+function warnDroppedTopLevelStatement(node: AnyNode, ctx: ParseCtx): void {
+  if (!DROPPED_TOP_LEVEL_STATEMENTS.has(node.type as string)) return
+  // A directive, or any bare string literal (`'use client'` below the imports): no effect to lose.
+  if (node.type === 'ExpressionStatement' && (typeof node.directive === 'string' || (node.expression?.type === 'Literal' && typeof node.expression.value === 'string'))) return
+  ctx.warnings.push(
+    `[${locOf(node, ctx)}] A module-scope ${node.type === 'ExpressionStatement' ? 'statement' : `\`${String(node.type).replace(/Statement$/, '').toLowerCase()}\` statement`} is NOT compiled to native — it runs once at import on the web and is DROPPED on iOS and Android (a \`count.set(5)\` here leaves native at the seed, a registration call never happens). Move it into a component (\`onMount\`) or fold it into the declaration's initial value.`,
+  )
 }
 
 /**

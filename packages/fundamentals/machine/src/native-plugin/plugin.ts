@@ -49,7 +49,12 @@ const recognizeMachine: CallRecognizer = (_call, ctx) => {
   let initial: string | undefined
   let statesNode: AnyNode | undefined
   for (const prop of (configArg.properties as AnyNode[] | undefined) ?? []) {
-    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') continue
+    if (prop?.type !== 'Property' && prop?.type !== 'ObjectProperty') {
+      ctx.report(
+        `createMachine declaration \`${name}\`: the config contains a spread, which cannot be read at compile time — what it carries is IGNORED on iOS and Android. Write it out literally.`,
+      )
+      continue
+    }
     if (ctx.hasDynamicKey(prop)) {
       ctx.warnDynamicKey(prop, `createMachine declaration \`${name}\`: config`)
       continue
@@ -80,7 +85,12 @@ const recognizeMachine: CallRecognizer = (_call, ctx) => {
   // { stateName: { on: { EVENT: nextState } } }. An empty state (`done: {}`) is a valid terminal state.
   const transitions: Record<string, Record<string, string>> = {}
   for (const stateProp of (statesNode.properties as AnyNode[] | undefined) ?? []) {
-    if (stateProp?.type !== 'Property' && stateProp?.type !== 'ObjectProperty') continue
+    if (stateProp?.type !== 'Property' && stateProp?.type !== 'ObjectProperty') {
+      ctx.report(
+        `createMachine declaration \`${name}\`: \`states\` contains a spread, which cannot be read at compile time — what it carries is IGNORED on iOS and Android. Write it out literally.`,
+      )
+      continue
+    }
     if (ctx.hasDynamicKey(stateProp)) {
       ctx.warnDynamicKey(stateProp, `createMachine declaration \`${name}\`: states`)
       continue
@@ -89,32 +99,107 @@ const recognizeMachine: CallRecognizer = (_call, ctx) => {
     if (!stateName) continue
     const stateConfig = unwrapTypeLayers(stateProp.value as AnyNode | undefined)
     transitions[stateName] = {}
-    if (stateConfig?.type !== 'ObjectExpression') continue
-    for (const innerProp of (stateConfig.properties as AnyNode[] | undefined) ?? []) {
-      if (innerProp?.type !== 'Property' && innerProp?.type !== 'ObjectProperty') continue
-      if (ctx.hasDynamicKey(innerProp)) {
-        ctx.warnDynamicKey(innerProp, `createMachine declaration \`${name}\`: state \`${stateName}\``)
-        continue
-      }
-      if (staticPropKey(innerProp) !== 'on') continue
-      const eventsMap = unwrapTypeLayers(innerProp.value as AnyNode | undefined)
-      if (eventsMap?.type !== 'ObjectExpression') continue
-      for (const eventProp of (eventsMap.properties as AnyNode[] | undefined) ?? []) {
-        if (eventProp?.type !== 'Property' && eventProp?.type !== 'ObjectProperty') continue
-        if (ctx.hasDynamicKey(eventProp)) {
-          ctx.warnDynamicKey(eventProp, `createMachine declaration \`${name}\`: state \`${stateName}\` \`on\``)
-          continue
-        }
-        const eventName = staticPropKey(eventProp)
-        const next = unwrapTypeLayers(eventProp.value as AnyNode | undefined)
-        if (eventName && next?.type === 'Literal' && typeof next.value === 'string') {
-          transitions[stateName]![eventName] = next.value
-        }
-      }
+    if (stateConfig?.type !== 'ObjectExpression') {
+      ctx.report(
+        `createMachine declaration \`${name}\`: state \`${stateName}\` is not an object literal — it lowers as a state with NO transitions on iOS and Android.`,
+      )
+      continue
     }
+    transitions[stateName] = readStateTransitions(name, stateName, stateConfig, ctx)
   }
 
   return { type: MACHINE_TYPE, payload: { initial, transitions } }
+}
+
+/** One state's `on` map as event → next state; every entry that cannot lower is reported, never skipped in silence. */
+function readStateTransitions(
+  name: string,
+  stateName: string,
+  stateConfig: AnyNode,
+  ctx: Parameters<CallRecognizer>[1],
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const innerProp of (stateConfig.properties as AnyNode[] | undefined) ?? []) {
+    if (innerProp?.type !== 'Property' && innerProp?.type !== 'ObjectProperty') {
+      ctx.report(
+        `createMachine declaration \`${name}\`: state \`${stateName}\` contains a spread, which cannot be read at compile time — what it carries is IGNORED on iOS and Android. Write it out literally.`,
+      )
+      continue
+    }
+    if (ctx.hasDynamicKey(innerProp)) {
+      ctx.warnDynamicKey(innerProp, `createMachine declaration \`${name}\`: state \`${stateName}\``)
+      continue
+    }
+    const innerKey = staticPropKey(innerProp)
+    if (innerKey !== 'on') {
+      // `always`, `entry`, `exit`, `meta`, … used to vanish with no word: an `always` transition never fired.
+      ctx.report(
+        `createMachine declaration \`${name}\`: state \`${stateName}\` key \`${innerKey ?? '…'}\` has no native lowering and is IGNORED on iOS and Android — only \`on: { EVENT: 'next' }\` transitions lower.`,
+      )
+      continue
+    }
+    const eventsMap = unwrapTypeLayers(innerProp.value as AnyNode | undefined)
+    if (eventsMap?.type !== 'ObjectExpression') {
+      ctx.report(
+        `createMachine declaration \`${name}\`: state \`${stateName}\` \`on\` must be an object literal to lower to native — its transitions are IGNORED, so send() does nothing in this state on iOS and Android.`,
+      )
+      continue
+    }
+    readEventTransitions(name, stateName, eventsMap, out, ctx)
+  }
+
+  return out
+}
+
+/** The entries of one `on: { … }` map into `out` (event → next state). */
+function readEventTransitions(
+  name: string,
+  stateName: string,
+  eventsMap: AnyNode,
+  out: Record<string, string>,
+  ctx: Parameters<CallRecognizer>[1],
+): void {
+  for (const eventProp of (eventsMap.properties as AnyNode[] | undefined) ?? []) {
+    if (eventProp?.type !== 'Property' && eventProp?.type !== 'ObjectProperty') {
+      ctx.report(
+        `createMachine declaration \`${name}\`: state \`${stateName}\` \`on\` contains a spread, which cannot be read at compile time — its transitions are IGNORED on iOS and Android.`,
+      )
+      continue
+    }
+    if (ctx.hasDynamicKey(eventProp)) {
+      ctx.warnDynamicKey(eventProp, `createMachine declaration \`${name}\`: state \`${stateName}\` \`on\``)
+      continue
+    }
+    const eventName = staticPropKey(eventProp)
+    const next = unwrapTypeLayers(eventProp.value as AnyNode | undefined)
+    if (!eventName) continue
+    if (next?.type === 'Literal' && typeof next.value === 'string') {
+      out[eventName] = next.value
+      continue
+    }
+    // `{ target: 'open' }` is the same transition written as an object. Anything more (a `guard`, `actions`, an
+    // array of candidates) has no native lowering; it used to be dropped with no word, so send() did nothing.
+    const target = objectTargetOnly(next)
+    if (target !== undefined) {
+      out[eventName] = target
+      continue
+    }
+    ctx.report(
+      `createMachine declaration \`${name}\`: transition \`${stateName}\` --${eventName}--> must be a state name or \`{ target: 'state' }\` to lower to native — a guarded / multi-target / action-carrying transition is IGNORED, so send('${eventName}') does nothing in \`${stateName}\` on iOS and Android.`,
+    )
+  }
+}
+
+/** The target of an object-form transition whose ONLY key is `target` (a string literal), else undefined. */
+function objectTargetOnly(node: AnyNode | undefined): string | undefined {
+  if (node?.type !== 'ObjectExpression') return undefined
+  const props = (node.properties as AnyNode[] | undefined) ?? []
+  if (props.length !== 1) return undefined
+  const only = props[0]
+  if ((only?.type !== 'Property' && only?.type !== 'ObjectProperty') || staticPropKey(only) !== 'target') return undefined
+  const v = unwrapTypeLayers(only.value as AnyNode | undefined)
+
+  return v?.type === 'Literal' && typeof v.value === 'string' ? v.value : undefined
 }
 
 const machineDecl: DeclEmitter = {

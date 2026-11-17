@@ -252,11 +252,18 @@ describe('parse.ts — tryDeclFromCreateMachine', () => {
   }`),
     )
     const w = warn(r)
-    // The one computed key (`[dyn]`) is named; nothing else warns.
+    // Every entry that does not lower is NAMED (each used to be skipped in silence, so send() did nothing): the
+    // config / states / state spreads, the computed key, the non-string target, `entry`, a non-object `on` and a
+    // non-object state.
     expect(r.warnings).toEqual([
-      expect.stringContaining(
-        'createMachine declaration `m`: state `idle` `on`: the computed key `[dyn]`',
-      ),
+      expect.stringContaining('createMachine declaration `m`: the config contains a spread'),
+      expect.stringContaining('state `idle` `on`: the computed key `[dyn]`'),
+      expect.stringContaining('transition `idle` --BAD-->'),
+      expect.stringContaining('state `idle` key `entry` has no native lowering'),
+      expect.stringContaining('state `idle` contains a spread'),
+      expect.stringContaining('state `run` `on` must be an object literal'),
+      expect.stringContaining('state `odd` is not an object literal'),
+      expect.stringContaining('`states` contains a spread'),
     ])
     expect(w).toContain('createMachine declaration')
     expect(r.code).toContain('"idle"')
