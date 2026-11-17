@@ -35,7 +35,7 @@ export default function TodoCounts() {
         <strong>{String(total())}</strong> remaining
       </div>
       <ul class="example-col example-list">
-        <For each={todos} by={(t) => t.id}>
+        <For each={todos()} by={(t) => t.id}>
           {(todo) => (
             <li class="example-row example-card">
               <input

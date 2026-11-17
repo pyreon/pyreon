@@ -108,7 +108,7 @@ export default function TodoApp() {
       </div>
 
       <ul class="example-col example-list">
-        <For each={visible} by={(t) => t.id}>
+        <For each={visible()} by={(t) => t.id}>
           {(todo) => (
             <li class="example-row example-card">
               <input
@@ -142,7 +142,7 @@ export default function TodoApp() {
         <span class="example-muted">
           {String(remaining())} left
         </span>
-        <Show when={hasCompleted}>
+        <Show when={hasCompleted()}>
           <button type="button" class="example-btn" onClick={clearCompleted}>
             Clear completed
           </button>

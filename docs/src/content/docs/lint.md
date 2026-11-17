@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/lint'
-description: Pyreon-specific linter — 140 rules across 26 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage), and a readable style preset. CLI, programmatic API, watch mode, AST cache, and an LSP server.
+description: Pyreon-specific linter — 141 rules across 26 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage), and a readable style preset. CLI, programmatic API, watch mode, AST cache, and an LSP server.
 ---
 
 `@pyreon/lint` is a framework-specific linter that catches Pyreon anti-patterns at the AST level — bare signal reads in JSX, props destructuring that breaks reactivity, browser globals in SSR code, bundler-coupled dev gates, and dozens more. It is powered by [`oxc-parser`](https://oxc.rs) for fast ESTree/TS-ESTree parsing, ships a CLI (`pyreon-lint`), a programmatic API (`lint` / `lintFile`), watch mode, an AST cache, and an LSP server for editor integration.
@@ -296,7 +296,7 @@ Omit the ids (`// pyreon-lint-disable-file -- vendored copy of upstream`) to tur
 | `app`            | `recommended` minus library-only rules    | Pyreon **applications**                    |
 | `lib`            | `strict` with all architecture rules forced to `error` | Pyreon **packages / libraries**   |
 | `best-practices` | `recommended` **plus every opt-in rule enabled** (except `style`) | Projects that want the full a11y/CLS + library-usage best-practice surface |
-| `readable` (layer) | The readability rules at `warn`, p99 thresholds | Any project — blank lines, component sections, JSX depth, ternaries |
+| `readable` (layer) | The readability rules at `warn`, p99 thresholds | Any project — blank lines, component sections, JSX depth, ternaries, signal-read form |
 | `readable-strict` (layer) | `readable` plus block padding, p95 thresholds | New code |
 
 ### `recommended`
@@ -433,7 +433,7 @@ Every rule belongs to one of eleven **groups** — the axis the 26 categories do
 | `a11y` | 15 | Accessibility — standard markup plus Pyreon's own surfaces (toast, dialog, overlay, primitives). |
 | `pkg` | 27 | Per-library. Each self-activates on a declared dependency, so you only see rules for libraries you use. |
 | `js` | 3 | Language-level shapes oxlint cannot express on its own. |
-| `style` | 6 | How code reads — blank lines, component sections, JSX depth, ternary shape. Off in every base preset; the [`readable` layers](/docs/lint-readable) turn it on. |
+| `style` | 7 | How code reads — blank lines, component sections, JSX depth, ternary shape, signal-read form. Off in every base preset; the [`readable` layers](/docs/lint-readable) turn it on. |
 | `internal` | 6 | Encodes the Pyreon repository itself. **Never on in a shipped preset.** |
 
 Categories live underneath, so a query rule is `group: 'pkg'`, `category: 'query'`. Set a whole group in one line — applied after the preset and **before** per-rule entries, so an explicit rule always wins:
@@ -505,7 +505,7 @@ pyreon-lint --why-off pyreon/rx-prefer-pipe
 
 The dependency gate is checked relative to a file, so pass a path (`pyreon-lint --why-off <id> src/`) when you want that reason evaluated. An unknown id exits non-zero and suggests the near miss. Programmatic equivalent: `explainRuleState(id, { config, filePath })`.
 
-There are **140 rules across 26 categories**. Six of them are **monorepo-scoped** (`meta.scope: 'monorepo'`) — `no-circular-import`, `no-cross-layer-import`, `no-error-without-prefix`, `no-query-selector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`. They encode the Pyreon repository's own conventions (its layer order, its private internal packages, its `[Pyreon]` error prefix) rather than anything about Pyreon-the-framework, so **every preset a consumer selects forces them off**, `best-practices` included. The Pyreon repo re-enables them by id in its own `.pyreonlintrc.json`, which keeps that dependency visible in config instead of hidden inside a shared preset. `query`, `rx`, `i18n`, `storage`, `http`, and `portable` are wholesale opt-in best-practice categories — off in the standard presets. `frontend` is mixed (6 of 12 on by default); the rest of the opt-in surface is individual rules scattered across otherwise-mandatory categories, marked `ᵒ` below. Run `pyreon-lint --list` for the authoritative list with live severities.
+There are **141 rules across 26 categories**. Six of them are **monorepo-scoped** (`meta.scope: 'monorepo'`) — `no-circular-import`, `no-cross-layer-import`, `no-error-without-prefix`, `no-query-selector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`. They encode the Pyreon repository's own conventions (its layer order, its private internal packages, its `[Pyreon]` error prefix) rather than anything about Pyreon-the-framework, so **every preset a consumer selects forces them off**, `best-practices` included. The Pyreon repo re-enables them by id in its own `.pyreonlintrc.json`, which keeps that dependency visible in config instead of hidden inside a shared preset. `query`, `rx`, `i18n`, `storage`, `http`, and `portable` are wholesale opt-in best-practice categories — off in the standard presets. `frontend` is mixed (6 of 12 on by default); the rest of the opt-in surface is individual rules scattered across otherwise-mandatory categories, marked `ᵒ` below. Run `pyreon-lint --list` for the authoritative list with live severities.
 
 ### Categories at a glance
 
@@ -536,7 +536,7 @@ There are **140 rules across 26 categories**. Six of them are **monorepo-scoped*
 | `web-perf`        | 7     | 1 of 7  | Client-role runtime perf — reflow, LCP hints, third-party scripts, passive listeners, rAF leaks |
 | `portable`        | 6     | ✅ all  | Must survive iOS + Android — PMTC subset, canonical primitives, `nativeCompat()` |
 | `js`              | 3     | 1 of 3  | Language shapes oxlint cannot express — swallowed errors, ESM `require()`, dropped error cause |
-| `style`           | 6     | ✅ all  | How code reads — blank lines, component sections, JSX depth, ternary shape ([readable preset](/docs/lint-readable)) |
+| `style`           | 7     | ✅ all  | How code reads — blank lines, component sections, JSX depth, ternary shape, signal-read form ([readable preset](/docs/lint-readable)) |
 
 Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — enable via `best-practices` or per-rule config; library-scoped ones additionally auto-gate on `package.json` deps.
 
@@ -546,7 +546,7 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 | -------------------------------------- | -------- | ------- | ---------------------------------------------------------------------------------- |
 | `pyreon/no-bare-signal-in-jsx` ᵒ       | info     |         | `{count()}` won't be reactive — wrap in `() => count()`                            |
 | `pyreon/no-signal-in-loop`            | error    |         | `signal()` inside loops creates signals on every iteration                         |
-| `pyreon/no-signal-in-props`           | warn     |         | `<C x={sig()} />` captures the value once unless the compiler wraps it             |
+| `pyreon/no-signal-in-props`           | warn     |         | `<C x={sig()} />` in a file the Pyreon compiler does not lower (tests, compat) reads the value once |
 | `pyreon/no-async-effect`              | error    |         | `async` in `effect`/`renderEffect`/`computed` — reads after `await` aren't tracked |
 | `pyreon/no-context-destructure`       | warn     |         | Destructuring `useContext()` breaks reactivity when the provider uses getters      |
 | `pyreon/no-signal-call-write`         | error    | yes     | `sig(value)` does NOT write — use `sig.set(value)` / `sig.update(fn)`              |
@@ -825,7 +825,7 @@ Language-level shapes oxlint cannot express — each needs project context (a pa
 | `pyreon/no-require-in-esm`                  | error    | `require()` in a `"type": "module"` package throws at runtime — and Bun defines `require` in ESM, so a bun-run test suite cannot catch it |
 | `pyreon/require-error-cause`                | warn     | Re-throwing inside `catch` without `{ cause }` discards the original error — the surviving stack points at where you noticed, not where it broke |
 
-### Style (6) ᵒ
+### Style (7) ᵒ
 
 How code reads. Every rule is opt-in (`info` by default) and turned on by the `readable` / `readable-strict` layers. Full guidance with examples: [Readable preset](/docs/lint-readable).
 
@@ -837,6 +837,7 @@ How code reads. Every rule is opt-in (`info` by default) and turned on by the `r
 | `pyreon/padding-around-multiline-blocks`     | ✅  | A blank line around a multi-line `if` / `for` / `try` / `switch` inside a function (`readable-strict`) |
 | `pyreon/max-jsx-depth`                       |     | A component's JSX nests at most `max` deep (6; 5 in strict) — names the subtree to extract |
 | `pyreon/no-nested-ternary-branch`            |     | No ternary inside another's test or consequent; flat chains up to `maxOutcomes` (4; 3 in strict) |
+| `pyreon/consistent-signal-read`              | ✅  | One signal-read form in JSX: `count()` (default), or `{count}` with `form: "bare"` where the bare form type-checks; fixed only where the compiler emits the same code |
 
 ## Notable Rules
 
@@ -922,7 +923,7 @@ Pure effects (`effect(() => sum.set(a() + b()))`, `effect(() => console.log(coun
 
 ### `pyreon/no-signal-call-write` & `pyreon/no-signal-in-props`
 
-`no-signal-call-write` flags `sig(value)` where `sig` was declared `const sig = signal(...)` / `computed(...)` — the callable form is read-only; the argument is ignored. Use `sig.set(value)` or `sig.update(fn)`. `no-signal-in-props` flags `<Comp x={sig()} />` shapes where the signal value is captured once unless the compiler wraps it — prefer the `props.x` access pattern (or pass the accessor) so the prop stays reactive.
+`no-signal-call-write` flags `sig(value)` where `sig` was declared `const sig = signal(...)` / `computed(...)` — the callable form is read-only; the argument is ignored. Use `sig.set(value)` or `sig.update(fn)`. `no-signal-in-props` flags `<Comp x={sig()} />` only in files the Pyreon compiler does not lower (test files under vitest's JSX transform, compat projects, a foreign `@jsxImportSource`), where the prop is read once at mount; pass an accessor there. In a compiled file `x={sig()}` becomes a reactive prop (`_rpd(sig)`) and is the taught form, so the rule stays silent.
 
 ### `pyreon/no-context-destructure`
 

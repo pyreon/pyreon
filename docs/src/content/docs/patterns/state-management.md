@@ -15,7 +15,7 @@ import { signal } from '@pyreon/reactivity'
 
 function Counter() {
   const count = signal(0)
-  return <button onClick={() => count.update((n) => n + 1)}>{count}</button>
+  return <button onClick={() => count.update((n) => n + 1)}>{count()}</button>
 }
 ```
 

@@ -72,6 +72,8 @@ This makes Pyreon the first signal framework where JSX looks like plain JavaScri
 - **Cross-module** — the Vite plugin pre-scans all files for `export const x = signal(...)` exports and resolves imports
 - **Safe** — already-called signals (`count()`) are NOT double-called; `import type` is excluded
 
+Auto-call is a safety net, not the taught form. It reaches only `const x = signal()` / `computed()` names (and imports the Vite plugin registers), never an object field, store or hook result, `<For>` row item, parameter or destructured name; TypeScript still types the bare name as the signal; and inside a function nested in JSX it applies only on template elements. Write `count()`: it compiles to the same binding (to the faster `_rpd` direct tier on a component prop), and `pyreon/consistent-signal-read` in the `readable` preset enforces it. [Plain Mode](/docs/plain-mode) is the paren-free dialect.
+
 ### How It Works
 
 Dynamic expressions in JSX are wrapped in arrow functions so the Pyreon runtime can re-evaluate them when their dependencies change:

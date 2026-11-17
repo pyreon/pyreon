@@ -43,7 +43,7 @@ export default function RunOnceCounter() {
               label = el
             }}
           >
-            {count}
+            {count()}
           </span>
         </button>
         <span class="dx-counter__hint">Click it. Watch the numbers on the right.</span>
@@ -56,7 +56,7 @@ export default function RunOnceCounter() {
         <div>
           <dt>DOM writes</dt>
           <dd class="dx-counter__live" aria-live="polite">
-            {writes}
+            {writes()}
           </dd>
         </div>
       </dl>
