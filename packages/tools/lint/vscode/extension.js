@@ -59,32 +59,28 @@ function deactivate() {
 }
 
 /**
- * Find the pyreon-lint CLI entry point.
- * Tries local node_modules first, then global.
+ * Find the pyreon-lint BIN — `bin/pyreon-lint.js`, the wrapper that calls
+ * `runCli`. Pointing at `lib/cli.js` started nothing: the library build drops
+ * `cli.ts`'s self-run guard, so loading it directly defines `runCli` and exits
+ * (see the comment in `bin/pyreon-lint.js`). Tries the workspace's own install
+ * first, then whatever `@pyreon/lint` resolves to from here.
  */
 function findServer() {
   const vscode = require('vscode')
+  const fs = require('node:fs')
   const folders = vscode.workspace.workspaceFolders
   if (folders && folders.length > 0) {
-    const local = path.join(
-      folders[0].uri.fsPath,
-      'node_modules',
-      '@pyreon',
-      'lint',
-      'lib',
-      'cli.js',
-    )
+    const local = path.join(folders[0].uri.fsPath, 'node_modules', '@pyreon', 'lint', 'bin', 'pyreon-lint.js')
     try {
-      require('node:fs').accessSync(local)
+      fs.accessSync(local)
       return local
     } catch {
-      // not found locally
+      // not installed in this workspace
     }
   }
 
-  // Fallback: try to resolve globally
   try {
-    return require.resolve('@pyreon/lint/cli')
+    return path.join(path.dirname(require.resolve('@pyreon/lint/package.json')), 'bin', 'pyreon-lint.js')
   } catch {
     return undefined
   }

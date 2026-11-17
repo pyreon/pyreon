@@ -24,13 +24,13 @@ bun run dev          # → apps/web on http://localhost:3000
 
 ## Workspace scripts
 
-| Command | What it does |
-|---|---|
-| `bun run dev` | Start the web app's dev server |
-| `bun run build` | Build the web app for production |
-| `bun run preview` | Preview the production build |
-| `bun run typecheck` | Typecheck every workspace |
-| `bun run --filter='@{{name}}/ui' build` | Build a specific package |
+| Command                                 | What it does                     |
+| --------------------------------------- | -------------------------------- |
+| `bun run dev`                           | Start the web app's dev server   |
+| `bun run build`                         | Build the web app for production |
+| `bun run preview`                       | Preview the production build     |
+| `bun run typecheck`                     | Typecheck every workspace        |
+| `bun run --filter='@{{name}}/ui' build` | Build a specific package         |
 
 ## Adding code
 

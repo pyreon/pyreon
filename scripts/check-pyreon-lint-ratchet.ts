@@ -31,6 +31,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { type LintBaseline, compareToBaseline } from './check-lint-ratchet'
+import { checkReadable, readableCodes } from './check-readable-ratchet'
 
 export const BASELINE_PATH = 'pyreon-lint-baseline.json'
 
@@ -44,14 +45,22 @@ interface DoctorFinding {
  * `doctor --only lint --json` report. Error-severity findings are gated at 0
  * by the Pyreon Lint Gate itself (`--ci`), so the ratchet covers only the
  * advisory (`warning` + `info`) backlog — the half nothing else locks.
+ *
+ * The `readable` style findings are excluded: they are ratcheted PER FILE by
+ * `check-readable-ratchet.ts` (a per-rule total of thousands of findings would
+ * let a new one hide behind an unrelated fix).
  */
-export function countPyreonFindings(parsed: unknown): Record<string, number> {
+export function countPyreonFindings(
+  parsed: unknown,
+  exclude: Set<string> = readableCodes(),
+): Record<string, number> {
   const findings: DoctorFinding[] =
     (parsed as { findings?: DoctorFinding[] } | null)?.findings ?? []
   const counts: Record<string, number> = {}
   for (const f of findings) {
     if (String(f.severity ?? '').toLowerCase() === 'error') continue
     const code = String(f.code ?? 'unknown')
+    if (exclude.has(code)) continue
     counts[code] = (counts[code] ?? 0) + 1
   }
   return counts
@@ -70,7 +79,7 @@ export function buildBaseline(current: Record<string, number>): LintBaseline {
   return { description: DESCRIPTION, total, rules: sorted }
 }
 
-function runPyreonLintJson(): unknown {
+export function runPyreonLintJson(): unknown {
   // Redirect the doctor's (~400KB) JSON to a temp FILE rather than capturing
   // its stdout pipe. The doctor is a Bun process that prints the report and
   // `process.exit`s — under a captured pipe in CI, Bun can exit before the
@@ -104,7 +113,8 @@ function main(): void {
   const jsonMode = args.includes('--json')
   const updateMode = args.includes('--update')
 
-  const current = countPyreonFindings(runPyreonLintJson())
+  const parsed = runPyreonLintJson()
+  const current = countPyreonFindings(parsed)
   const total = Object.values(current).reduce((a, b) => a + b, 0)
 
   if (updateMode) {
@@ -124,6 +134,8 @@ function main(): void {
   }
   const baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) as LintBaseline
   const { regressions, improvements } = compareToBaseline(current, baseline.rules)
+  // The readable per-file ratchet reads the SAME report — one lint run gates both.
+  const readableOk = jsonMode ? true : checkReadable(parsed)
 
   if (jsonMode) {
     console.log(
@@ -156,6 +168,7 @@ function main(): void {
   } else {
     console.log(`✓ Pyreon-lint ratchet — ${total} advisory finding(s), no rule above baseline.`)
   }
+  if (!readableOk) process.exit(1)
 }
 
 if (import.meta.main) main()

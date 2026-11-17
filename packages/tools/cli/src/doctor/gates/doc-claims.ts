@@ -20,22 +20,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import type { Finding, GateResult } from '../types'
-
-interface ClaimSpec {
-  /** Doc file relative to repo root */
-  file: string
-  /** Capture group 1 must contain the number */
-  pattern: RegExp
-  /** Optional pattern variant for "X+" hedged claims (also wrong) */
-  rejectHedged?: RegExp
-  /**
-   * Assert EVERY occurrence of the pattern in the file agrees (not just
-   * the first). Required for files that repeat the same count string —
-   * e.g. `lint/src/manifest.ts` carries the rule count 5× (3 prose + 2
-   * `--list` help comments); bumping 4 of 5 would otherwise pass silent.
-   */
-  all?: boolean
-}
+import { type ClaimSpec, SITE_LINT_CATEGORY_CLAIMS, SITE_LINT_RULE_CLAIMS } from './doc-claims-site'
 
 interface ClaimCheck {
   /** Human-readable name shown in findings */
@@ -494,6 +479,8 @@ const checks: ClaimCheck[] = [
         file: 'packages/zero/create-zero/src/prompts.ts',
         pattern: /Include @pyreon\/lint\? \((\d+) Pyreon-specific rules\)/,
       },
+      // pyreon.dev, synced from the 09-site staging set: see doc-claims-site.ts.
+      ...SITE_LINT_RULE_CLAIMS,
     ],
   },
   {
@@ -526,6 +513,7 @@ const checks: ClaimCheck[] = [
         file: 'packages/tools/lint/vscode/README.md',
         pattern: /^\d+ rules across (\d+) categories/m,
       },
+      ...SITE_LINT_CATEGORY_CLAIMS,
     ],
   },
   {

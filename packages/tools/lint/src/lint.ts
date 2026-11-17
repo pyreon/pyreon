@@ -10,6 +10,7 @@ import { applyFixes, lintFile } from './runner'
 import type {
   ConfigDiagnostic,
   LintConfig,
+  LintConfigFile,
   LintFileResult,
   LintOptions,
   LintResult,
@@ -98,16 +99,22 @@ function collectFiles(
   return files
 }
 
-function buildConfig(options: LintOptions): {
-  config: LintConfig
-  include: string[] | undefined
-  exclude: string[] | undefined
-  isIgnored: (filePath: string) => boolean
-} {
-  const cwd = resolve('.')
-  const fileConfig = options.config ? loadConfigFromPath(options.config) : loadConfig(cwd)
-
-  const presetName = options.preset ?? fileConfig?.preset ?? 'recommended'
+/**
+ * Merge a config FILE onto its preset(s): preset → `groups` → `settings` →
+ * per-rule entries → CLI overrides. The one place this order lives, so the CLI,
+ * `--why-off`, the LSP and the parallel driver cannot disagree about which rules
+ * are on.
+ *
+ * @example
+ * ```ts
+ * const config = resolveLintConfig(loadConfig(process.cwd()))
+ * ```
+ */
+export function resolveLintConfig(
+  fileConfig: LintConfigFile | null | undefined,
+  overrides: Pick<LintOptions, 'preset' | 'ruleOverrides' | 'ruleOptionsOverrides'> = {},
+): LintConfig {
+  const presetName = overrides.preset ?? fileConfig?.preset ?? 'recommended'
   const config = getPreset(presetName)
 
   // Group-level severity, applied BEFORE per-rule entries so an explicit rule
@@ -135,8 +142,8 @@ function buildConfig(options: LintOptions): {
   }
 
   // CLI rule severity overrides (highest priority for severity).
-  if (options.ruleOverrides) {
-    for (const [id, severity] of Object.entries(options.ruleOverrides)) {
+  if (overrides.ruleOverrides) {
+    for (const [id, severity] of Object.entries(overrides.ruleOverrides)) {
       config.rules[id] = severity
     }
   }
@@ -145,8 +152,8 @@ function buildConfig(options: LintOptions): {
   // on top of any options already configured for the rule. If the rule
   // is currently bare-severity, we promote it to tuple form using its
   // existing severity (or `recommended` default if not present).
-  if (options.ruleOptionsOverrides) {
-    for (const [id, optionOverrides] of Object.entries(options.ruleOptionsOverrides)) {
+  if (overrides.ruleOptionsOverrides) {
+    for (const [id, optionOverrides] of Object.entries(overrides.ruleOptionsOverrides)) {
       const existing = config.rules[id]
       const [currentSeverity, currentOptions]: [Severity, RuleOptions] = Array.isArray(existing)
         ? [existing[0] as Severity, (existing[1] ?? {}) as RuleOptions]
@@ -159,8 +166,19 @@ function buildConfig(options: LintOptions): {
     }
   }
 
+  return config
+}
+
+function buildConfig(options: LintOptions): {
+  config: LintConfig
+  include: string[] | undefined
+  exclude: string[] | undefined
+  isIgnored: (filePath: string) => boolean
+} {
+  const cwd = resolve('.')
+  const fileConfig = options.config ? loadConfigFromPath(options.config) : loadConfig(cwd)
   return {
-    config,
+    config: resolveLintConfig(fileConfig, options),
     include: fileConfig?.include,
     exclude: fileConfig?.exclude,
     isIgnored: createIgnoreFilter(cwd, options.ignore),
