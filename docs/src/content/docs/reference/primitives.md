@@ -605,7 +605,7 @@ Top-level tab navigation; children are literal `<Tab value label icon?>` entries
 
 ```tsx
 const tab = signal('feed')
-<Tabs value={tab} onChange={(v) => tab.set(v)}>
+<Tabs value={tab()} onChange={(v) => tab.set(v)}>
   <Tab value="feed" label="Feed" icon="home"><FeedScreen /></Tab>
   <Tab value="me" label="Me" icon="person"><ProfileScreen /></Tab>
 </Tabs>

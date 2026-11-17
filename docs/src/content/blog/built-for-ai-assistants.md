@@ -53,7 +53,7 @@ export function App() {
   return (
     <div>
       <button onClick={() => count(count() + 1)}>{count()}</button>
-      <For each={items} key={(i) => i.id}>{(i) => <li>{i.t}</li>}</For>
+      <For each={items()} key={(i) => i.id}>{(i) => <li>{i.t}</li>}</For>
     </div>
   )
 }

@@ -33,6 +33,27 @@
 
 import XCTest
 
+private extension XCUIElement {
+    /// `waitForExistence(timeout:)` with the same contract and none of its
+    /// flat cost: true as soon as the element exists, false at the deadline.
+    ///
+    /// XCTest evaluates that wait's predicate for the FIRST time one second
+    /// after the call, so an element that is already on screen still costs
+    /// 1.03 s. In one CI job (2026-11-17) 427 of 456 such waits were answered
+    /// by that first poll and took 487 s between them. This asks at once, then
+    /// ten times a second. Held for every suite by
+    /// `ios-device-test-harness.test.ts`.
+    func waitToExist(timeout: TimeInterval) -> Bool {
+        if exists { return true }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            if exists { return true }
+        }
+        return false
+    }
+}
+
 final class PyreonCounterUITests: XCTestCase {
     override func setUpWithError() throws {
         // Stop the test run on first failure — the launch-and-render
@@ -159,30 +180,30 @@ final class PyreonCounterUITests: XCTestCase {
         // The native host intentionally exposes each node as one accessible
         // canvas element, so query all element types instead of relying on the
         // custom node's internal Text retaining the staticText role.
-        XCTAssertTrue(app.descendants(matching: .any)["Native Flow Start"].waitForExistence(timeout: 30))
-        XCTAssertTrue(app.descendants(matching: .any)["Native Flow End"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Native flow tools"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["Native Flow Start"].waitToExist(timeout: 30))
+        XCTAssertTrue(app.descendants(matching: .any)["Native Flow End"].waitToExist(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Native flow tools"].firstMatch.waitToExist(timeout: 10))
         XCTAssertTrue(app.descendants(matching: .any)["source handle out"].firstMatch.exists)
         XCTAssertTrue(app.descendants(matching: .any)["target handle in"].firstMatch.exists)
 
         // F3 renderer parity — the chrome the flow audit listed as unproven on
         // device. Every check reads something the RENDERER did, not the engine.
         let canvas = app.descendants(matching: .any)["Native Flow device proof"].firstMatch
-        XCTAssertTrue(canvas.waitForExistence(timeout: 5))
+        XCTAssertTrue(canvas.waitToExist(timeout: 5))
         // <Panel position="bottom-right"> lands in the canvas's bottom-right quadrant.
         let panel = app.staticTexts["native-flow-panel"].firstMatch
-        XCTAssertTrue(panel.waitForExistence(timeout: 5), "the <Panel> content did not render over the native canvas")
+        XCTAssertTrue(panel.waitToExist(timeout: 5), "the <Panel> content did not render over the native canvas")
         XCTAssertGreaterThan(panel.frame.midX, canvas.frame.midX, "bottom-right panel sits left of the canvas centre (\(panel.frame) in \(canvas.frame))")
         XCTAssertGreaterThan(panel.frame.midY, canvas.frame.midY, "bottom-right panel sits above the canvas centre (\(panel.frame) in \(canvas.frame))")
         // The seed edge's closed arrowhead is pure #ff0000, which nothing else on this screen paints.
         XCTAssertGreaterThan(colorPixels(canvas.screenshot().pngRepresentation, 255, 0, 0), 0, "the edge's red markerEnd arrowhead did not paint on the native canvas")
         // colorMode is reactive: the web's dark canvas colour (#0b1220) paints only while dark.
         let colorMode = app.staticTexts["native-flow-color-mode"].firstMatch
-        XCTAssertTrue(colorMode.waitForExistence(timeout: 5))
+        XCTAssertTrue(colorMode.waitToExist(timeout: 5))
         XCTAssertEqual(colorMode.label, "light")
         XCTAssertEqual(colorPixels(canvas.screenshot().pngRepresentation, 11, 18, 32), 0, "the dark canvas colour painted while colorMode is light")
         let toggleDark = app.buttons["native-flow-toggle-dark"].firstMatch
-        XCTAssertTrue(toggleDark.waitForExistence(timeout: 5))
+        XCTAssertTrue(toggleDark.waitToExist(timeout: 5))
         toggleDark.tap()
         XCTAssertTrue(waitForLabel(colorMode, "dark", timeout: 5))
         bringFullyOnScreen(canvas, in: app)
@@ -200,7 +221,7 @@ final class PyreonCounterUITests: XCTestCase {
         defer { device.appearance = originalAppearance }
         device.appearance = .light
         let toggleSystem = app.buttons["native-flow-toggle-system"].firstMatch
-        XCTAssertTrue(toggleSystem.waitForExistence(timeout: 5))
+        XCTAssertTrue(toggleSystem.waitToExist(timeout: 5))
         toggleSystem.tap()
         XCTAssertTrue(waitForLabel(colorMode, "system", timeout: 5))
         bringFullyOnScreen(canvas, in: app)
@@ -213,12 +234,12 @@ final class PyreonCounterUITests: XCTestCase {
         // appears, the device cannot show this app a dark appearance at all, so
         // the dark half has nothing to observe and is not asserted there. On a
         // propagating simulator (iPhone 17 Pro, verified) it runs in full.
-        if app.staticTexts["Theme: dark"].waitForExistence(timeout: 15) {
+        if app.staticTexts["Theme: dark"].waitToExist(timeout: 15) {
             bringFullyOnScreen(canvas, in: app)
             RunLoop.current.run(until: Date().addingTimeInterval(0.4))
             XCTAssertGreaterThan(colorPixels(canvas.screenshot().pngRepresentation, 11, 18, 32), 1000, "colorMode=\"system\" did not follow the device into dark")
             device.appearance = .light
-            XCTAssertTrue(app.staticTexts["Theme: light"].waitForExistence(timeout: 15))
+            XCTAssertTrue(app.staticTexts["Theme: light"].waitToExist(timeout: 15))
             bringFullyOnScreen(canvas, in: app)
             RunLoop.current.run(until: Date().addingTimeInterval(0.4))
             XCTAssertEqual(colorPixels(canvas.screenshot().pngRepresentation, 11, 18, 32), 0, "colorMode=\"system\" stayed dark after the device went light")
@@ -235,14 +256,14 @@ final class PyreonCounterUITests: XCTestCase {
         bringFullyOnScreen(canvas, in: app)
 
         let selectedNodeCount = app.staticTexts["native-flow-selected-node-count"].firstMatch
-        XCTAssertTrue(selectedNodeCount.waitForExistence(timeout: 10))
+        XCTAssertTrue(selectedNodeCount.waitToExist(timeout: 10))
         XCTAssertEqual(selectedNodeCount.label, "0")
         let keyboardNode = app.descendants(matching: .any)["Native Flow Start"].firstMatch
         keyboardNode.tap()
         let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedNodeCount)
         XCTAssertEqual(XCTWaiter().wait(for: [selected], timeout: 5), .completed, "tapping a rendered native node did not select it")
         let startPosition = app.staticTexts["native-flow-start-position"].firstMatch
-        XCTAssertTrue(startPosition.waitForExistence(timeout: 5))
+        XCTAssertTrue(startPosition.waitToExist(timeout: 5))
         let positionBeforeKey = startPosition.label
         keyboardNode.typeKey(.rightArrow, modifierFlags: [])
         let keyboardMoved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", positionBeforeKey), object: startPosition)
@@ -272,9 +293,9 @@ final class PyreonCounterUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedNodeCount)], timeout: 5), .completed)
 
         let selectedEdgeCount = app.staticTexts["native-flow-selected-edge-count"].firstMatch
-        XCTAssertTrue(selectedEdgeCount.waitForExistence(timeout: 5))
+        XCTAssertTrue(selectedEdgeCount.waitToExist(timeout: 5))
         let clearSelection = app.buttons["native-flow-clear-selection"].firstMatch
-        XCTAssertTrue(clearSelection.waitForExistence(timeout: 5))
+        XCTAssertTrue(clearSelection.waitToExist(timeout: 5))
         app.descendants(matching: .any)["Native flow edge"].firstMatch.tap()
         let edgeSelectedByTap = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "1"), object: selectedEdgeCount)
         XCTAssertEqual(XCTWaiter().wait(for: [edgeSelectedByTap], timeout: 5), .completed, "tapping a native Flow edge label did not select it")
@@ -298,7 +319,7 @@ final class PyreonCounterUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "0"), object: selectedEdgeCount)], timeout: 5), .completed)
 
         let edgeCount = app.staticTexts["native-flow-edge-count"].firstMatch
-        XCTAssertTrue(edgeCount.waitForExistence(timeout: 10))
+        XCTAssertTrue(edgeCount.waitToExist(timeout: 10))
         XCTAssertEqual(edgeCount.label, "1")
         // Connect end -> start before exposing the selected seed edge's
         // endpoint controls for the independent reconnect gesture below.
@@ -329,7 +350,7 @@ final class PyreonCounterUITests: XCTestCase {
         let customLine = app.descendants(matching: .any)["native-flow-custom-line"].firstMatch
         XCTAssertFalse(customLine.exists, "the custom connection line rendered before any drag")
         let customLineMounts = app.staticTexts["native-flow-custom-line-mounts"].firstMatch
-        XCTAssertTrue(customLineMounts.waitForExistence(timeout: 5))
+        XCTAssertTrue(customLineMounts.waitToExist(timeout: 5))
         XCTAssertEqual(customLineMounts.label, "0")
         let startSource = try XCTUnwrap(
             app.descendants(matching: .any).matching(identifier: "source handle out").allElementsBoundByIndex.min {
@@ -371,10 +392,10 @@ final class PyreonCounterUITests: XCTestCase {
         XCTAssertTrue(waitForLabel(customLineMounts, "2", timeout: 5), "the custom connection line did not mount again for the real connect (label: \(customLineMounts.label))")
 
         let size = app.staticTexts["native-flow-start-size"].firstMatch
-        XCTAssertTrue(size.waitForExistence(timeout: 10))
+        XCTAssertTrue(size.waitToExist(timeout: 10))
         XCTAssertEqual(size.label, "150,60")
         let resize = app.descendants(matching: .any)["Resize se for node native-start"].firstMatch
-        XCTAssertTrue(resize.waitForExistence(timeout: 5))
+        XCTAssertTrue(resize.waitToExist(timeout: 5))
         XCTAssertGreaterThanOrEqual(resize.frame.width, 43.5, "resizer touch target is below the native minimum")
         let resizeGrab = resize.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         resizeGrab.press(
@@ -387,14 +408,14 @@ final class PyreonCounterUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter().wait(for: [resized], timeout: 5), .completed, "dragging the southeast resizer did not change the native node dimensions")
 
         let edgeTarget = app.staticTexts["native-flow-edge-target"].firstMatch
-        XCTAssertTrue(edgeTarget.waitForExistence(timeout: 10))
+        XCTAssertTrue(edgeTarget.waitToExist(timeout: 10))
         XCTAssertEqual(edgeTarget.label, "native-end")
         let prepareReconnect = app.buttons["native-flow-prepare-reconnect"].firstMatch
-        XCTAssertTrue(prepareReconnect.waitForExistence(timeout: 10))
+        XCTAssertTrue(prepareReconnect.waitToExist(timeout: 10))
         prepareReconnect.tap()
-        XCTAssertTrue(app.descendants(matching: .any)["Native Flow Third"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["Native Flow Third"].waitToExist(timeout: 10))
         let reconnect = app.descendants(matching: .any)["Reconnect target of edge native-edge"].firstMatch
-        XCTAssertTrue(reconnect.waitForExistence(timeout: 10))
+        XCTAssertTrue(reconnect.waitToExist(timeout: 10))
         XCTAssertGreaterThanOrEqual(reconnect.frame.width, 43.5, "reconnect touch target is below the native minimum")
         let thirdNode = app.descendants(matching: .any)["Native Flow Third"].firstMatch
         let thirdTarget = try XCTUnwrap(
@@ -415,7 +436,7 @@ final class PyreonCounterUITests: XCTestCase {
 
         let viewportX = app.staticTexts["native-flow-viewport-x"].firstMatch
         XCTAssertTrue(canvas.exists)
-        XCTAssertTrue(viewportX.waitForExistence(timeout: 5))
+        XCTAssertTrue(viewportX.waitToExist(timeout: 5))
         let xBeforePan = viewportX.label
         let panStart = canvas.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05))
         panStart.press(forDuration: 0.2, thenDragTo: panStart.withOffset(CGVector(dx: 45, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.2)
@@ -423,7 +444,7 @@ final class PyreonCounterUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter().wait(for: [panned], timeout: 5), .completed, "dragging empty canvas space did not pan the native viewport")
 
         let zoom = app.staticTexts["native-flow-zoom-percent"].firstMatch
-        XCTAssertTrue(zoom.waitForExistence(timeout: 5))
+        XCTAssertTrue(zoom.waitToExist(timeout: 5))
         let zoomBeforePinch = zoom.label
         canvas.pinch(withScale: 1.5, velocity: 1)
         let pinched = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label != %@", zoomBeforePinch), object: zoom)
@@ -434,7 +455,7 @@ final class PyreonCounterUITests: XCTestCase {
         // same call is mid-flight 0.4s later and settles by 3s — so "instant"
         // cannot be mistaken for "animation unsupported".
         let animateZoom = app.buttons["native-flow-animate-zoom"].firstMatch
-        XCTAssertTrue(animateZoom.waitForExistence(timeout: 5))
+        XCTAssertTrue(animateZoom.waitToExist(timeout: 5))
         animateZoom.tap()
         XCTAssertTrue(waitForNumber(zoom, 50, timeout: 1), "reducedMotion: true did not make the 3s zoom animation land instantly (label: \(zoom.label))")
         app.buttons["native-flow-allow-motion"].firstMatch.tap()
@@ -519,7 +540,7 @@ final class PyreonCounterUITests: XCTestCase {
 
         let label = app.staticTexts["geo-lat"]
         XCTAssertTrue(
-            label.waitForExistence(timeout: 10),
+            label.waitToExist(timeout: 10),
             "geo-lat text never appeared — the geolocation container did not render"
         )
         // Before any fix the optional is empty, NOT "Optional(nil)" / "nil".
@@ -559,7 +580,7 @@ final class PyreonCounterUITests: XCTestCase {
         // in the accessibility tree as a static text node.
         let initialText = app.staticTexts["Count: 0"]
         XCTAssertTrue(
-            initialText.waitForExistence(timeout: 30),
+            initialText.waitToExist(timeout: 30),
             "Initial \"Count: 0\" text did not appear within 30s"
         )
 
@@ -577,7 +598,7 @@ final class PyreonCounterUITests: XCTestCase {
 
         let updatedText = app.staticTexts["Count: 1"]
         XCTAssertTrue(
-            updatedText.waitForExistence(timeout: 15),
+            updatedText.waitToExist(timeout: 15),
             "Count text did not update to \"Count: 1\" within 5s after tap"
         )
     }
@@ -596,27 +617,27 @@ final class PyreonCounterUITests: XCTestCase {
 
         let incrementButton = app.buttons["Increment"]
         XCTAssertTrue(
-            incrementButton.waitForExistence(timeout: 30),
+            incrementButton.waitToExist(timeout: 30),
             "Increment button did not appear"
         )
         // Drive the count up so a reset is observable (0 -> 2).
         incrementButton.tap()
         incrementButton.tap()
         XCTAssertTrue(
-            app.staticTexts["Count: 2"].waitForExistence(timeout: 5),
+            app.staticTexts["Count: 2"].waitToExist(timeout: 5),
             "Count did not reach 2 after two taps"
         )
 
         // The `<Press>` emits a Button carrying the reset-zone identifier.
         let resetZone = app.buttons["reset-zone"]
         XCTAssertTrue(
-            resetZone.waitForExistence(timeout: 5),
+            resetZone.waitToExist(timeout: 5),
             "reset-zone (<Press>) did not appear"
         )
         // A 1s hold = a long press → `.onLongPressGesture` fires count = 0.
         resetZone.press(forDuration: 1.0)
         XCTAssertTrue(
-            app.staticTexts["Count: 0"].waitForExistence(timeout: 5),
+            app.staticTexts["Count: 0"].waitToExist(timeout: 5),
             "Long-press did not reset the counter — onLongPress gesture not firing"
         )
     }
@@ -636,7 +657,7 @@ final class PyreonCounterUITests: XCTestCase {
 
         let shareButton = app.buttons["Share"]
         XCTAssertTrue(
-            shareButton.waitForExistence(timeout: 30),
+            shareButton.waitToExist(timeout: 30),
             "Share button (useShare) did not appear"
         )
         shareButton.tap()
@@ -646,8 +667,8 @@ final class PyreonCounterUITests: XCTestCase {
         let activityView = app.otherElements["ActivityListView"]
         let copyButton = app.buttons["Copy"]
         let appeared =
-            activityView.waitForExistence(timeout: 5)
-            || copyButton.waitForExistence(timeout: 5)
+            activityView.waitToExist(timeout: 5)
+            || copyButton.waitToExist(timeout: 5)
         XCTAssertTrue(
             appeared,
             "Tapping Share did not present the system share sheet — "
@@ -684,7 +705,7 @@ final class PyreonCounterUITests: XCTestCase {
 
         let openButton = app.buttons["Open"]
         XCTAssertTrue(
-            openButton.waitForExistence(timeout: 30),
+            openButton.waitToExist(timeout: 30),
             "Open button (useLinking) did not appear"
         )
         // The page is one outer vertical Scroll, and the rows above Open grow with
@@ -736,13 +757,13 @@ final class PyreonCounterUITests: XCTestCase {
 
         let notifyButton = app.buttons["Notify"]
         XCTAssertTrue(
-            notifyButton.waitForExistence(timeout: 30),
+            notifyButton.waitToExist(timeout: 30),
             "Notify button (useNotifications) did not appear"
         )
         notifyButton.tap()
 
         XCTAssertTrue(
-            app.staticTexts["Count: 0"].waitForExistence(timeout: 5),
+            app.staticTexts["Count: 0"].waitToExist(timeout: 5),
             "App did not remain alive after the Notify tap — "
                 + "PyreonNotifications.notify crashed"
         )
@@ -753,7 +774,7 @@ final class PyreonCounterUITests: XCTestCase {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         for label in ["Allow", "Don't Allow", "Don’t Allow", "OK"] {
             let button = springboard.buttons[label]
-            if button.waitForExistence(timeout: 2) {
+            if button.waitToExist(timeout: 2) {
                 button.tap()
                 break
             }
@@ -780,7 +801,7 @@ final class PyreonCounterUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.staticTexts["Size: compact"].waitForExistence(timeout: 30),
+            app.staticTexts["Size: compact"].waitToExist(timeout: 30),
             "Expected \"Size: compact\" on an iPhone Simulator — useSizeClass "
                 + "did not read the horizontal size class (or emitted a "
                 + "non-environment constant)"
@@ -803,36 +824,36 @@ final class PyreonCounterUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.staticTexts["Info: ios-touch"].waitForExistence(timeout: 30),
+            app.staticTexts["Info: ios-touch"].waitToExist(timeout: 30),
             "useDeviceInfo did not read the live platform / touch capability"
         )
 
         let wake = app.buttons["probe-wake"]
-        XCTAssertTrue(wake.waitForExistence(timeout: 30))
+        XCTAssertTrue(wake.waitToExist(timeout: 30))
         bringFullyOnScreen(wake, in: app)
         wake.tap()
         XCTAssertTrue(
-            app.staticTexts["Awake: on"].waitForExistence(timeout: 15),
+            app.staticTexts["Awake: on"].waitToExist(timeout: 15),
             "useWakeLock did not hold the idle timer"
         )
 
         let speak = app.buttons["probe-speak"]
         bringFullyOnScreen(speak, in: app)
         speak.tap()
-        XCTAssertTrue(app.staticTexts["Speech: supported"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Speech: supported"].waitToExist(timeout: 15))
 
         let motion = app.buttons["probe-motion"]
         bringFullyOnScreen(motion, in: app)
         motion.tap()
         // No motion hardware in the Simulator: start() reports false and the
         // row stays inactive (a crash or a fabricated sample would not).
-        XCTAssertTrue(app.staticTexts["Motion: off-idle"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Motion: off-idle"].waitToExist(timeout: 15))
 
         let scan = app.buttons["probe-scan"]
         bringFullyOnScreen(scan, in: app)
         scan.tap()
         XCTAssertTrue(
-            app.staticTexts["Bluetooth: unavailable-idle"].waitForExistence(timeout: 20),
+            app.staticTexts["Bluetooth: unavailable-idle"].waitToExist(timeout: 20),
             "useBluetooth did not report the Simulator's missing radio"
         )
     }
@@ -896,7 +917,7 @@ final class PyreonCounterUITests: XCTestCase {
         func currentNoteCount(timeout: TimeInterval = 30) -> Int? {
             let predicate = NSPredicate(format: "label BEGINSWITH %@", "Notes: ")
             let element = app.staticTexts.containing(predicate).firstMatch
-            guard element.waitForExistence(timeout: timeout) else { return nil }
+            guard element.waitToExist(timeout: timeout) else { return nil }
             return Int(element.label.replacingOccurrences(of: "Notes: ", with: ""))
         }
 
@@ -912,7 +933,7 @@ final class PyreonCounterUITests: XCTestCase {
 
         let expected = app.staticTexts["Notes: \(before + 1)"]
         XCTAssertTrue(
-            expected.waitForExistence(timeout: 15),
+            expected.waitToExist(timeout: 15),
             "Count did not advance to \(before + 1) after tapping Save Note — db.insert did not land"
         )
 
@@ -937,13 +958,13 @@ final class PyreonCounterUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.staticTexts["Count: 0"].waitForExistence(timeout: 30),
+            app.staticTexts["Count: 0"].waitToExist(timeout: 30),
             "App did not render"
         )
 
         // (1) accessibilityLabel reached the tree — queryable by the LABEL.
         XCTAssertTrue(
-            app.staticTexts["A11y status ready"].waitForExistence(timeout: 5),
+            app.staticTexts["A11y status ready"].waitToExist(timeout: 5),
             "accessibilityLabel did not reach the iOS accessibility tree — "
                 + "the labelled element is not queryable by \"A11y status ready\""
         )
@@ -972,7 +993,7 @@ final class PyreonCounterUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.staticTexts["Layout: narrow"].waitForExistence(timeout: 30),
+            app.staticTexts["Layout: narrow"].waitToExist(timeout: 30),
             "Adaptive Stack↔Inline did not render the compact branch on an "
                 + "iPhone — the size-class view-ternary did not lower/select "
                 + "correctly"
@@ -1006,13 +1027,13 @@ final class PyreonCounterUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.staticTexts["Count: 0"].waitForExistence(timeout: 30),
+            app.staticTexts["Count: 0"].waitToExist(timeout: 30),
             "App did not render"
         )
 
         // (1) The configured-locale ('de') translation resolved in the tree.
         XCTAssertTrue(
-            app.staticTexts["Greeting: Hallo!"].waitForExistence(timeout: 5),
+            app.staticTexts["Greeting: Hallo!"].waitToExist(timeout: 5),
             "createI18n did not resolve to the configured-locale value — "
                 + "expected \"Greeting: Hallo!\" (de), PyreonI18n.t did not "
                 + "look up messages[\"de\"][\"hello\"] at runtime"
@@ -1070,7 +1091,7 @@ final class PyreonCounterUITests: XCTestCase {
 
         XCUIDevice.shared.appearance = .light
         XCTAssertTrue(
-            app.staticTexts["Theme: light"].waitForExistence(timeout: 30),
+            app.staticTexts["Theme: light"].waitToExist(timeout: 30),
             "Expected \"Theme: light\" under the light appearance — "
                 + "useColorScheme did not read @Environment(\\.colorScheme)"
         )
@@ -1113,7 +1134,7 @@ final class PyreonCounterUITests: XCTestCase {
         // takes `head -1` of whatever the image lists — is the fix that would
         // restore the differentiator there, and is a separate change to the
         // workflow's device resolution.
-        let flipped = app.staticTexts["Theme: dark"].waitForExistence(timeout: 15)
+        let flipped = app.staticTexts["Theme: dark"].waitToExist(timeout: 15)
         try XCTSkipUnless(
             flipped,
             "This simulator did not propagate the appearance change to the app "
@@ -1159,7 +1180,7 @@ final class PyreonCounterUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.staticTexts["Device: iOS"].waitForExistence(timeout: 30),
+            app.staticTexts["Device: iOS"].waitToExist(timeout: 30),
             "Expected \"Device: iOS\" from the APP-provided DeviceInfo class — "
                 + "useNativeModule did not lower to `DeviceInfo()`, or the "
                 + "instance method call did not pass through to the app's Swift"
@@ -1224,7 +1245,7 @@ final class PyreonCounterUITests: XCTestCase {
 
         let chip = app.buttons["press-chip"]
         XCTAssertTrue(
-            chip.waitForExistence(timeout: 30),
+            chip.waitToExist(timeout: 30),
             "The press-styled rocketstyle chip is not a button in the tree — the PyreonPressStyle lowering "
                 + "did not reach the view, or the identifier landed on the label instead of the button"
         )
@@ -1250,7 +1271,7 @@ final class PyreonCounterUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.staticTexts["Badge: ok"].waitForExistence(timeout: 30),
+            app.staticTexts["Badge: ok"].waitToExist(timeout: 30),
             "The rocketstyle-styled badge did not render — the ui-system lowering "
                 + "did not reach the view tree"
         )
@@ -1260,7 +1281,7 @@ final class PyreonCounterUITests: XCTestCase {
         for _ in 0..<3 { increment.tap() }
 
         XCTAssertTrue(
-            app.staticTexts["Badge: warn"].waitForExistence(timeout: 10),
+            app.staticTexts["Badge: warn"].waitToExist(timeout: 10),
             "The badge did not flip to the `warn` dimension — a reactive rocketstyle "
                 + "dimension did not re-render on-device"
         )
@@ -1295,7 +1316,7 @@ final class PyreonCounterUITests: XCTestCase {
 
         // (1) Initial state.
         XCTAssertTrue(
-            app.staticTexts["Power: off"].waitForExistence(timeout: 30),
+            app.staticTexts["Power: off"].waitToExist(timeout: 30),
             "createMachine did not render its initial state — expected "
                 + "\"Power: off\" (PyreonMachine initial not seeded, or the "
                 + "declaration was dropped)"
@@ -1307,7 +1328,7 @@ final class PyreonCounterUITests: XCTestCase {
         toggle.tap()
 
         XCTAssertTrue(
-            app.staticTexts["Power: on"].waitForExistence(timeout: 5),
+            app.staticTexts["Power: on"].waitToExist(timeout: 5),
             "The off --TOGGLE--> on transition did not re-render — PyreonMachine "
                 + ".send did not apply the transition or did not trigger a "
                 + "SwiftUI re-render (@Observable)"
@@ -1344,7 +1365,7 @@ final class PyreonCounterUITests: XCTestCase {
         let box = app.staticTexts["Animated Box"]
         // (1) Visible on launch.
         XCTAssertTrue(
-            box.waitForExistence(timeout: 30),
+            box.waitToExist(timeout: 30),
             "Animated Box not visible on launch — the <Transition> show-gate "
                 + "did not render its child (show defaults to visible)"
         )
@@ -1363,7 +1384,7 @@ final class PyreonCounterUITests: XCTestCase {
         // (3) Show → it animates back in.
         toggle.tap()
         XCTAssertTrue(
-            box.waitForExistence(timeout: 5),
+            box.waitToExist(timeout: 5),
             "Animated Box did not reappear after a second Toggle Box — the "
                 + "show-gate did not re-mount the child on show=true"
         )
@@ -1415,7 +1436,7 @@ final class PyreonCounterUITests: XCTestCase {
 
         // (1) Initial state — the async handler has not run yet.
         XCTAssertTrue(
-            app.staticTexts["File: idle"].waitForExistence(timeout: 30),
+            app.staticTexts["File: idle"].waitToExist(timeout: 30),
             "Expected the initial \"File: idle\" — the fileStatus signal was "
                 + "not seeded (or the File text was dropped from the emit)"
         )
@@ -1431,9 +1452,9 @@ final class PyreonCounterUITests: XCTestCase {
         let browseTab = app.buttons["Browse"]
         let recentsNavBar = app.navigationBars["Recents"]
         let presented =
-            cancelButton.waitForExistence(timeout: 10)
-            || browseTab.waitForExistence(timeout: 5)
-            || recentsNavBar.waitForExistence(timeout: 5)
+            cancelButton.waitToExist(timeout: 10)
+            || browseTab.waitToExist(timeout: 5)
+            || recentsNavBar.waitToExist(timeout: 5)
         XCTAssertTrue(
             presented,
             "Tapping Pick File did not present the system document picker — "
@@ -1449,7 +1470,7 @@ final class PyreonCounterUITests: XCTestCase {
         dismissSystemPicker(cancelButton, in: app)
 
         XCTAssertTrue(
-            app.staticTexts["File: cancelled"].waitForExistence(timeout: 10),
+            app.staticTexts["File: cancelled"].waitToExist(timeout: 10),
             "\"File: cancelled\" never appeared after dismissing the picker — "
                 + "the UIDocumentPicker delegate did not resume the continuation "
                 + "with nil, so the awaited pick() hung and the post-await "
@@ -1470,7 +1491,7 @@ final class PyreonCounterUITests: XCTestCase {
 
         // (1) Initial state — the async handler has not run yet.
         XCTAssertTrue(
-            app.staticTexts["Photo: idle"].waitForExistence(timeout: 30),
+            app.staticTexts["Photo: idle"].waitToExist(timeout: 30),
             "Expected the initial \"Photo: idle\" — the photoStatus signal was "
                 + "not seeded (or the Photo text was dropped from the emit)"
         )
@@ -1485,8 +1506,8 @@ final class PyreonCounterUITests: XCTestCase {
         let cancelButton = app.buttons["Cancel"]
         let photosNavBar = app.navigationBars["Photos"]
         let presented =
-            cancelButton.waitForExistence(timeout: 10)
-            || photosNavBar.waitForExistence(timeout: 5)
+            cancelButton.waitToExist(timeout: 10)
+            || photosNavBar.waitToExist(timeout: 5)
         XCTAssertTrue(
             presented,
             "Tapping Pick Photo did not present the system photo picker — "
@@ -1502,7 +1523,7 @@ final class PyreonCounterUITests: XCTestCase {
         dismissSystemPicker(cancelButton, in: app)
 
         XCTAssertTrue(
-            app.staticTexts["Photo: cancelled"].waitForExistence(timeout: 10),
+            app.staticTexts["Photo: cancelled"].waitToExist(timeout: 10),
             "\"Photo: cancelled\" never appeared after dismissing the picker — "
                 + "the PHPicker delegate did not resume the continuation with "
                 + "nil, so the awaited pick() hung and the post-await "
@@ -1523,7 +1544,7 @@ final class PyreonCounterUITests: XCTestCase {
 
         // (1) Initial state — the async handler has not run yet.
         XCTAssertTrue(
-            app.staticTexts["Lock: idle"].waitForExistence(timeout: 30),
+            app.staticTexts["Lock: idle"].waitToExist(timeout: 30),
             "Expected the initial \"Lock: idle\" — the lockStatus signal was not "
                 + "seeded (or the Lock text was dropped from the emit)"
         )
@@ -1546,7 +1567,7 @@ final class PyreonCounterUITests: XCTestCase {
         var denied = false
         for _ in 0..<3 where !denied {
             unlock.tap()
-            denied = app.staticTexts["Lock: denied"].waitForExistence(timeout: 7)
+            denied = app.staticTexts["Lock: denied"].waitToExist(timeout: 7)
         }
         // Snapshot only on failure: it walks every text on a long page.
         let lockTexts = denied ? [] : app.staticTexts.allElementsBoundByIndex
@@ -1590,19 +1611,19 @@ final class PyreonCounterUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.staticTexts["Hallo Vit!"].waitForExistence(timeout: 30),
+            app.staticTexts["Hallo Vit!"].waitToExist(timeout: 30),
             "interpolated greeting missing — {{name}} substitution or locale "
                 + "selection failed (raw template or english would render instead)"
         )
         XCTAssertTrue(app.staticTexts["0 Stücke"].exists, "initial plural (_other for 0) missing")
         app.buttons["Increment"].tap()
         XCTAssertTrue(
-            app.staticTexts["1 Stück"].waitForExistence(timeout: 5),
+            app.staticTexts["1 Stück"].waitToExist(timeout: 5),
             "_one form did not select at count == 1"
         )
         app.buttons["Increment"].tap()
         XCTAssertTrue(
-            app.staticTexts["2 Stücke"].waitForExistence(timeout: 5),
+            app.staticTexts["2 Stücke"].waitToExist(timeout: 5),
             "_other form did not re-select at count == 2"
         )
     }
@@ -1619,7 +1640,7 @@ final class PyreonCounterUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.staticTexts["Greeting: Hallo!"].waitForExistence(timeout: 30),
+            app.staticTexts["Greeting: Hallo!"].waitToExist(timeout: 30),
             "App did not render the configured German greeting"
         )
         XCTAssertEqual(app.staticTexts["i18n-locale"].label, "de", "initial locale is not the configured 'de'")
@@ -1627,7 +1648,7 @@ final class PyreonCounterUITests: XCTestCase {
         app.buttons["i18n-switch-en"].tap()
 
         XCTAssertTrue(
-            app.staticTexts["Greeting: Hello!"].waitForExistence(timeout: 5),
+            app.staticTexts["Greeting: Hello!"].waitToExist(timeout: 5),
             "t('hello') did not re-translate after i18n.locale.set('en')"
         )
         XCTAssertTrue(app.staticTexts["Hi Vit!"].exists, "interpolated t() did not re-translate")
@@ -1640,7 +1661,7 @@ final class PyreonCounterUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.staticTexts["core-toggle-state"].waitForExistence(timeout: 30),
+            app.staticTexts["core-toggle-state"].waitToExist(timeout: 30),
             "core-toggle-state text missing — the <Toggle> subtree did not render"
         )
         XCTAssertEqual(
@@ -1653,7 +1674,7 @@ final class PyreonCounterUITests: XCTestCase {
         // SWITCH, not a button — querying `app.buttons` would miss it.
         let toggle = app.switches["core-toggle"]
         XCTAssertTrue(
-            toggle.waitForExistence(timeout: 5),
+            toggle.waitToExist(timeout: 5),
             "core-toggle switch missing — data-testid did not reach "
                 + "accessibilityIdentifier on the emitted Toggle"
         )
@@ -1671,7 +1692,7 @@ final class PyreonCounterUITests: XCTestCase {
         }
 
         XCTAssertTrue(
-            app.staticTexts["switch on"].waitForExistence(timeout: 5),
+            app.staticTexts["switch on"].waitToExist(timeout: 5),
             "Toggle tap did not flip the observable text — the onChange "
                 + "Binding setter never wrote the signal, or the re-render "
                 + "did not fire"
@@ -1687,7 +1708,7 @@ final class PyreonCounterUITests: XCTestCase {
         app.launch()
 
         let open = app.buttons["core-modal-open"]
-        XCTAssertTrue(open.waitForExistence(timeout: 30), "core-modal-open button missing")
+        XCTAssertTrue(open.waitToExist(timeout: 30), "core-modal-open button missing")
 
         // Body must NOT exist before presenting — otherwise a passing
         // assertion after the tap would prove nothing about presentation.
@@ -1699,7 +1720,7 @@ final class PyreonCounterUITests: XCTestCase {
 
         open.tap()
         XCTAssertTrue(
-            app.staticTexts["core-modal-body"].waitForExistence(timeout: 5),
+            app.staticTexts["core-modal-body"].waitToExist(timeout: 5),
             "Sheet body never appeared — `.sheet(isPresented:)` did not present "
                 + "from the signal write"
         )
@@ -1722,7 +1743,7 @@ final class PyreonCounterUITests: XCTestCase {
         // container tags. Without it this query times out against a perfectly
         // rendering app.
         XCTAssertTrue(
-            app.scrollViews["core-scroll"].waitForExistence(timeout: 30),
+            app.scrollViews["core-scroll"].waitToExist(timeout: 30),
             "core-scroll ScrollView not queryable — the container a11y "
                 + "semantic was not emitted, so the identifier is invisible "
                 + "to XCUITest"
@@ -1751,7 +1772,7 @@ final class PyreonCounterUITests: XCTestCase {
         app.launch()
 
         let block = app.staticTexts["rp-block"]
-        XCTAssertTrue(block.waitForExistence(timeout: 30), "The block-bodied render callback rendered nothing")
+        XCTAssertTrue(block.waitToExist(timeout: 30), "The block-bodied render callback rendered nothing")
         XCTAssertEqual(block.label, "rp small 0")
         XCTAssertEqual(app.staticTexts["rp-plain"].label, "rp plain 0")
         XCTAssertEqual(
@@ -1763,7 +1784,7 @@ final class PyreonCounterUITests: XCTestCase {
         for _ in 0..<3 { increment.tap() }
 
         XCTAssertTrue(
-            app.staticTexts["rp big 6"].waitForExistence(timeout: 10),
+            app.staticTexts["rp big 6"].waitToExist(timeout: 10),
             "The render prop did not re-run with the parent's state, or the block's early-return branch did not flip"
         )
         XCTAssertEqual(app.staticTexts["rp-plain"].label, "rp plain 3")
@@ -1777,11 +1798,11 @@ final class PyreonCounterUITests: XCTestCase {
         app.launch()
 
         let arm = app.buttons["timer-arm"]
-        XCTAssertTrue(arm.waitForExistence(timeout: 30))
+        XCTAssertTrue(arm.waitToExist(timeout: 30))
         bringFullyOnScreen(arm, in: app)
         arm.tap()
         XCTAssertTrue(
-            app.staticTexts["Timer: fired"].waitForExistence(timeout: 10),
+            app.staticTexts["Timer: fired"].waitToExist(timeout: 10),
             "The setTimeout callback did not run (or its write did not re-render)"
         )
     }
@@ -1795,7 +1816,7 @@ final class PyreonCounterUITests: XCTestCase {
         app.launch()
 
         let echo = app.staticTexts["effect-echo"]
-        XCTAssertTrue(echo.waitForExistence(timeout: 30), "The effect() row did not render")
+        XCTAssertTrue(echo.waitToExist(timeout: 30), "The effect() row did not render")
         XCTAssertEqual(echo.label, "echo 0 / cleanups 0")
 
         let increment = app.buttons["Increment"]

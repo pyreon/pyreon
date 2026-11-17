@@ -60,6 +60,7 @@ on:
       - Release Native Binaries
       - Scorecard
       - Size Ceiling Status
+      - Stacks Bench Smoke
       - Zero Freshness
     types: [completed]
     branches: [main]

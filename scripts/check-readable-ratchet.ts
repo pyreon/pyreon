@@ -11,7 +11,10 @@
  *
  *   - a file may never gain a finding it does not already have;
  *   - a file that is not in the baseline (every NEW file) must be clean;
- *   - fixing findings always passes — tighten with `--update` afterwards.
+ *   - fixing findings always passes; an ordinary PR does not touch the baseline,
+ *     and a baseline looser than the tree is harmless. `--update` only tightens
+ *     (whoever removes findings may run it in the same PR: one line per file,
+ *     no shared total line, so it conflicts with nothing unrelated).
  *
  * Why per FILE and not per rule like `pyreon-lint-baseline.json`: with
  * thousands of findings, a per-rule total lets a PR add a violation in one file
@@ -34,7 +37,6 @@
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { recordedTotalProblems } from './baseline-total'
 
 export const READABLE_BASELINE_PATH = 'readable-baseline.json'
 
@@ -106,24 +108,32 @@ export function compareReadable(
   return { regressions, improvements }
 }
 
+/**
+ * The committed file. No recorded `total`, no file count, no timestamp: any
+ * line that every change rewrites is a line every open pull request conflicts
+ * on. The only lines are the static description and one line per file.
+ */
 export interface ReadableBaseline {
   description: string
-  total: number
   files: PerFileCounts
 }
+
+/** The sum of every count, derived when printing instead of recorded. */
+export const baselineTotal = (files: PerFileCounts): number =>
+  Object.values(files).reduce((sum, rules) => sum + Object.values(rules).reduce((a, b) => a + b, 0), 0)
 
 const DESCRIPTION =
   'Readable ratchet — `readable` style findings per (file, rule) may only DECREASE, and a file not listed ' +
   'here must have none. Checked by `bun scripts/check-pyreon-lint-ratchet.ts` (validate-fast + CI). ' +
-  'Fix new findings with `bunx pyreon-lint --fix <file>` (the spacing rules are autofixable), then ' +
-  'tighten with `bun scripts/check-readable-ratchet.ts --update`. Never raise a count to absorb a finding.'
+  'Fix new findings with `bunx pyreon-lint --fix <file>` (the spacing rules are autofixable). An ordinary PR ' +
+  'does not edit this file; `bun scripts/check-readable-ratchet.ts --update` only tightens. Raising needs ' +
+  '`--allow-raise` and is for a file that predates the ratchet. The file is generated: never edit or merge it by hand.'
 
 export function buildReadableBaseline(
   current: PerFileCounts,
   description: string = DESCRIPTION,
 ): ReadableBaseline {
   const files: PerFileCounts = {}
-  let total = 0
   for (const file of Object.keys(current).sort()) {
     const rules = current[file] ?? {}
     const sorted: Record<string, number> = {}
@@ -131,12 +141,11 @@ export function buildReadableBaseline(
       const n = rules[rule] ?? 0
       if (n <= 0) continue
       sorted[rule] = n
-      total += n
     }
     if (Object.keys(sorted).length > 0) files[file] = sorted
   }
 
-  return { description, total, files }
+  return { description, files }
 }
 
 /**
@@ -150,7 +159,7 @@ export function serializeReadableBaseline(b: ReadableBaseline): string {
   )
 
   return (
-    `{\n  "description": ${JSON.stringify(b.description)},\n  "total": ${b.total},\n  "files": {\n` +
+    `{\n  "description": ${JSON.stringify(b.description)},\n  "files": {\n` +
     `${lines.join(',\n')}\n  }\n}\n`
   )
 }
@@ -163,13 +172,15 @@ export function readReadableBaseline(path: string = READABLE_BASELINE_PATH): Rea
 /**
  * Why a per-file baseline's text is not what `--update` writes. Empty when it is.
  *
- * Two checks. The recorded total equals the sum of the entries (git can merge
- * entry lines from two branches and keep one branch's total). And the text is
- * byte-identical to the generator's serialisation of its own content, which
- * catches what `JSON.parse` hides: a file listed twice after a merge (the later
- * line wins silently), entries out of order, a hand edit.
+ * The text must be byte-identical to the generator's serialisation of its own
+ * parsed content: `generator(parse(file)) === file`. That one rule catches
+ * everything `JSON.parse` hides: a file listed twice after a merge (the later
+ * line wins silently), entries out of order, a hand edit or reformat, and a
+ * reintroduced `total` (or any other key) that the generator does not write.
+ * Counts must be positive integers. `description`, when given, is the static
+ * text the ratchet owns.
  */
-export function perFileBaselineProblems(text: string): string[] {
+export function perFileBaselineProblems(text: string, description?: string): string[] {
   let parsed: ReadableBaseline
   try {
     parsed = JSON.parse(text) as ReadableBaseline
@@ -178,16 +189,24 @@ export function perFileBaselineProblems(text: string): string[] {
   }
   const files = parsed?.files
   if (files === null || typeof files !== 'object' || Array.isArray(files)) return ['it has no `files` object']
-  const flat: Record<string, unknown> = {}
+  const problems: string[] = []
   for (const [file, rules] of Object.entries(files)) {
-    if (rules === null || typeof rules !== 'object' || Array.isArray(rules)) flat[file] = rules
-    else for (const [rule, n] of Object.entries(rules)) flat[`${file} ${rule}`] = n
+    if (rules === null || typeof rules !== 'object' || Array.isArray(rules)) {
+      problems.push(`entry ${JSON.stringify(file)} is not an object of counts`)
+      continue
+    }
+    for (const [rule, n] of Object.entries(rules)) {
+      if (typeof n !== 'number' || !Number.isInteger(n) || n <= 0) {
+        problems.push(`entry ${JSON.stringify(`${file} ${rule}`)} is ${JSON.stringify(n)}, not a positive count`)
+      }
+    }
   }
-  const problems = recordedTotalProblems(parsed.total, flat)
   if (problems.length > 0) return problems
-  const canonical = serializeReadableBaseline(buildReadableBaseline(files, parsed.description))
+  const canonical = serializeReadableBaseline(buildReadableBaseline(files, description ?? parsed.description))
   if (canonical !== text) {
-    problems.push('its text is not what the generator writes for these entries (a duplicated file line, entries out of order, or a hand edit)')
+    problems.push(
+      'its text is not what the generator writes for these entries (a duplicated file line, entries out of order, a recorded `total`, an edited description, or a hand edit)',
+    )
   }
 
   return problems
@@ -216,9 +235,6 @@ const PYREON_RATCHET: PerFileRatchet = {
   ],
 }
 
-const sumCounts = (c: PerFileCounts): number =>
-  Object.values(c).reduce((sum, rules) => sum + Object.values(rules).reduce((a, b) => a + b, 0), 0)
-
 /** Gate per-file counts against a committed baseline. Prints the result; `true` when nothing regressed. */
 export function checkPerFile(current: PerFileCounts, path: string, r: PerFileRatchet): boolean {
   if (!existsSync(path)) {
@@ -226,7 +242,7 @@ export function checkPerFile(current: PerFileCounts, path: string, r: PerFileRat
 
     return false
   }
-  const problems = perFileBaselineProblems(readFileSync(path, 'utf8'))
+  const problems = perFileBaselineProblems(readFileSync(path, 'utf8'), r.description)
   if (problems.length > 0) {
     console.error(`✗ ${path} is not a file its generator wrote:`)
     for (const problem of problems.slice(0, 10)) console.error(`    ${problem}`)
@@ -239,7 +255,7 @@ export function checkPerFile(current: PerFileCounts, path: string, r: PerFileRat
   }
   const baseline = readReadableBaseline(path) as ReadableBaseline
   const { regressions, improvements } = compareReadable(current, baseline.files)
-  const total = sumCounts(current)
+  const total = baselineTotal(current)
 
   if (regressions.length > 0) {
     console.error(`✗ ${r.label} — these files gained findings:`)
@@ -250,15 +266,16 @@ export function checkPerFile(current: PerFileCounts, path: string, r: PerFileRat
     console.error('')
     for (const line of r.fixHint) console.error(line)
     console.error('The baseline only moves DOWN; do not raise it to absorb new findings.')
+    console.error('An ordinary PR does not edit the baseline file; fix the findings in your code instead.')
 
     return false
   }
   if (improvements.length > 0) {
     const dropped = improvements.reduce((a, x) => a + (x.baseline - x.current), 0)
     console.log(
-      `✓ ${r.label} — ${total} finding(s) (baseline ${baseline.total}); ${dropped} fewer in ${improvements.length} (file, rule) pair(s).`,
+      `✓ ${r.label} — ${total} finding(s) (baseline ${baselineTotal(baseline.files)}); ${dropped} fewer in ${improvements.length} (file, rule) pair(s).`,
     )
-    console.log(`  Tighten the baseline: \`${r.updateCommand}\``)
+    console.log(`  Optional: tighten the baseline with \`${r.updateCommand}\` (a PR need not; a looser baseline is harmless).`)
   } else {
     console.log(`✓ ${r.label} — ${total} finding(s), no file above its baseline.`)
   }
@@ -296,7 +313,7 @@ export function updatePerFile(
   const baseline = buildReadableBaseline(current, r.description)
   writeFileSync(path, serializeReadableBaseline(baseline))
   console.log(
-    `[${r.label}] baseline written: ${baseline.total} finding(s) in ${Object.keys(baseline.files).length} file(s)`,
+    `[${r.label}] baseline written: ${baselineTotal(baseline.files)} finding(s) in ${Object.keys(baseline.files).length} file(s)`,
   )
 
   return true
