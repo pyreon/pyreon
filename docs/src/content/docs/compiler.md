@@ -71,8 +71,9 @@ This makes Pyreon the first signal framework where JSX looks like plain JavaScri
 - **Scope-aware** — inner variables that shadow a signal name are NOT auto-called
 - **Cross-module** — the Vite plugin pre-scans all files for `export const x = signal(...)` exports and resolves imports
 - **Safe** — already-called signals (`count()`) are NOT double-called; `import type` is excluded
+- **Function-deep** — inside a function nested in JSX (`onClick={() => count.set(count + 1)}`, `ref`, render props, `{() => count + 1}` children) a bare signal is read the same way on every element: a DOM element with or without children, a component, a spread-carrying element, and the SSR output. `count.set(…)`, the shorthand `{ count }`, assignment targets and shadowing parameters keep their meaning. To pass the signal itself (`subscribe(count)`), build that function outside the JSX: `const bind = () => subscribe(count)` then `onClick={bind}`
 
-Auto-call is a safety net, not the taught form. It reaches only `const x = signal()` / `computed()` names (and imports the Vite plugin registers), never an object field, store or hook result, `<For>` row item, parameter or destructured name; TypeScript still types the bare name as the signal; and inside a function nested in JSX it applies only on template elements. Write `count()`: it compiles to the same binding (to the faster `_rpd` direct tier on a component prop), and `pyreon/consistent-signal-read` in the `readable` preset enforces it. [Plain Mode](/docs/plain-mode) is the paren-free dialect.
+Auto-call is a safety net, not the taught form. It reaches only `const x = signal()` / `computed()` names (and imports the Vite plugin registers), never an object field, store or hook result, `<For>` row item, parameter or destructured name; and TypeScript still types the bare name as the signal. Write `count()`: it compiles to the same binding (to the faster `_rpd` direct tier on a component prop), and `pyreon/consistent-signal-read` in the `readable` preset enforces it. [Plain Mode](/docs/plain-mode) is the paren-free dialect.
 
 ### How It Works
 
