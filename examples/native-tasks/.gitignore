@@ -1,2 +1,9 @@
-generated/
 node_modules/
+dist/
+# Web asset pipeline output — `bun run assets` rematerializes public/ from
+# assets/ (images, fonts and the assets/webhost/ pages) on every dev/build.
+public/assets/
+public/fonts/
+public/*.html
+public/*.js
+public/*.css

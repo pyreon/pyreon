@@ -383,6 +383,8 @@ const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: st
   { name: 'PyreonMap', file: 'PyreonCollections.swift' },
   { name: 'PyreonSet', file: 'PyreonCollections.swift' },
   { name: 'pyreonNumberString', file: 'PyreonNumber.swift' },
+  // `n.toFixed(d)` lowers to it on both targets (the web's rounding of the exact value).
+  { name: 'pyreonToFixed', file: 'PyreonNumber.swift' },
   // A whole-valued Double stored into an integer struct field (integer-field-coercion.ts).
   { name: 'pyreonInt', file: 'PyreonNumber.swift' },
   // `Math.round` lowers to it on both targets (JavaScript's rule, NaN / ±Infinity propagate).

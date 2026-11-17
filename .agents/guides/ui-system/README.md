@@ -1,5 +1,7 @@
 # Pyreon UI System
 
+The design system of pyreon.dev itself (`docs/src/`: tokens, kit layers, conventions, the design ratchets and the visual sweep) is in [`site-design-system.md`](site-design-system.md).
+
 ## Packages
 
 | Package | Description |

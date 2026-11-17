@@ -104,9 +104,9 @@ describe('Swift emit — swiftc -typecheck against stubs (Linux-viable type gate
       expect(res.ok, res.error ?? '').toBe(true)
     })
 
-    it('native-todomvc-ios TodoApp.tsx emit typechecks clean', () => {
+    it('native-todomvc TodoApp.tsx emit typechecks clean', () => {
       const res = validateSwiftWithStubs(
-        emitExample('examples/native-todomvc-ios/src/TodoApp.tsx'),
+        emitExample('examples/native-todomvc/src/TodoApp.tsx'),
       )
       expect(res.ok, res.error ?? '').toBe(true)
     })

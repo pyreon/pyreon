@@ -1,27 +1,105 @@
 import Foundation
 
-/// JavaScript's `String(number)` for a `Double`, which a template literal
-/// performs on every interpolated number.
+/// JavaScript's `String(number)` for a `Double` — ECMAScript `Number::toString`, which a template literal, a
+/// `String(x)` call and a `"text" + x` concatenation all perform.
 ///
-/// Swift's own interpolation prints a whole-valued `Double` with a trailing
-/// `.0` (`"\(7.0)"` is `"7.0"`), where the web prints `7`. The compiler routes
-/// every Double-typed template interpoland through this, so a label, an axis
-/// tick or a counter reads the same on every target.
-///
-/// Whole values below 1e21 (where JavaScript switches to exponent notation)
-/// print as integers, and the non-finite values use JavaScript's spelling.
-/// A fractional value keeps Swift's shortest round-trip description, which
-/// agrees with JavaScript's except in exponent notation (`1e-07` vs `1e-7`),
-/// a known divergence.
+/// Swift's own interpolation prints a whole-valued `Double` with a trailing `.0` (`"\(7.0)"` is `"7.0"`) and uses
+/// its own exponent form (`1e-07`, `1e+15`), where the web prints `7`, `1e-7` and `1000000000000000`. This is the
+/// whole algorithm, not an approximation of it: the SHORTEST digits that round-trip (Swift's `description` already
+/// produces them) laid out by the ECMAScript rules — positional for a decimal exponent in (-7, 21], `1.5e-7` /
+/// `1e+21` beyond — with `NaN` / `Infinity` / `-Infinity` spelled as JavaScript spells them and `-0` printed `0`.
+/// `PyreonJSON.jsNumber` is the same algorithm for `JSON.stringify` (kept in its own file so each links alone);
+/// `native-number-format-parity.test.ts` holds both to the web over one corpus.
 public func pyreonNumberString(_ v: Double) -> String {
     if v.isNaN { return "NaN" }
     if v.isInfinite { return v < 0 ? "-Infinity" : "Infinity" }
-    if v == v.rounded(.towardZero), abs(v) < 1e21 {
-        if abs(v) < 9.0e15 { return String(Int64(v)) }
-        return String(format: "%.0f", v)
+    if v == 0 { return "0" }
+    // Every counter, index and id: a whole value below 2^53 is its integer digits.
+    if v == v.rounded(.towardZero), abs(v) < 9.0e15 { return String(Int64(v)) }
+    let negative = v < 0
+    let text = (negative ? -v : v).description
+    var mantissa = Substring(text)
+    var exponent = 0
+    if let e = text.firstIndex(where: { $0 == "e" || $0 == "E" }) {
+        mantissa = text[..<e]
+        exponent = Int(text[text.index(after: e)...]) ?? 0
     }
-    return "\(v)"
+    var digits: [Character] = []
+    var point = -1
+    for ch in mantissa {
+        if ch == "." { point = digits.count } else { digits.append(ch) }
+    }
+    if point < 0 { point = digits.count }
+    // n: where the decimal point sits relative to the first digit.
+    var n = point + exponent
+    while digits.count > 1 && digits.first == "0" {
+        digits.removeFirst()
+        n -= 1
+    }
+    while digits.count > 1 && digits.last == "0" { digits.removeLast() }
+    return (negative ? "-" : "") + pyreonNumberLayout(String(digits), n)
 }
+
+/// ECMAScript `Number::toString` layout for the digits `s` (k of them) with the decimal point at `n`.
+func pyreonNumberLayout(_ s: String, _ n: Int) -> String {
+    let k = s.count
+    if k <= n && n <= 21 { return s + String(repeating: "0", count: n - k) }
+    if 0 < n && n <= 21 {
+        let i = s.index(s.startIndex, offsetBy: n)
+        return String(s[..<i]) + "." + String(s[i...])
+    }
+    if -6 < n && n <= 0 { return "0." + String(repeating: "0", count: -n) + s }
+    let e = n - 1
+    let sign = e < 0 ? "-" : "+"
+    let head = String(s.first!)
+    let tail = k == 1 ? "" : "." + String(s.dropFirst())
+    return head + tail + "e" + sign + String(abs(e))
+}
+
+/// JavaScript's `Number.prototype.toFixed(digits)`.
+///
+/// `String(format: "%.2f", x)` is not it: C's `printf` breaks an EXACT tie toward the even digit, where
+/// `toFixed` picks the larger magnitude — `(2.5).toFixed(0)` is `"3"`, `(0.125).toFixed(2)` is `"0.13"`, and
+/// `printf` gives `"2"` / `"0.12"`. The rounding here works on the double's exact decimal expansion (a double has
+/// at most `52 - exponent` fractional digits, so a `printf` at that precision is exact), rounding half up as the
+/// specification does, so `(1.005).toFixed(2)` stays `"1.00"` (1.005 is 1.00499999… in binary) on every target.
+/// A negative value keeps its sign even when it rounds to zero (`(-0.0001).toFixed(2)` is `"-0.00"`), a value
+/// at or past 1e21 prints as `String(x)`, and `digits` is clamped to toFixed's 0…100.
+public func pyreonToFixed(_ x: Double, _ digits: Int) -> String {
+    if !x.isFinite || abs(x) >= 1e21 { return pyreonNumberString(x) }
+    let f = max(0, min(100, digits))
+    let negative = x < 0
+    let a = negative ? -x : x
+    var intPart: [UInt8]
+    var frac: [UInt8]
+    if a == 0 {
+        intPart = [0]
+        frac = []
+    } else {
+        let exact = max(f + 1, min(1074, 52 - Int(a.exponent)))
+        let text = String(format: "%.\(exact)f", a)
+        let parts = text.split(separator: ".", omittingEmptySubsequences: false)
+        intPart = parts[0].utf8.map { $0 - 48 }
+        frac = parts.count > 1 ? parts[1].utf8.map { $0 - 48 } : []
+    }
+    while frac.count < f + 1 { frac.append(0) }
+    var kept = intPart + frac[0..<f]
+    if frac[f] >= 5 {
+        var i = kept.count - 1
+        while i >= 0 {
+            if kept[i] == 9 { kept[i] = 0; i -= 1 } else { kept[i] += 1; break }
+        }
+        if i < 0 { kept.insert(1, at: 0) }
+    }
+    let whole = kept.count - f
+    let digitsText = String(decoding: kept.map { $0 + 48 }, as: UTF8.self)
+    let head = String(digitsText.prefix(whole))
+    let body = f == 0 ? head : head + "." + String(digitsText.suffix(f))
+    return (negative ? "-" : "") + body
+}
+
+/// `toFixed` on an integer value: the same digits with `digits` zeros after the point.
+public func pyreonToFixed(_ x: Int, _ digits: Int) -> String { pyreonToFixed(Double(x), digits) }
 
 /// The integer overload: `String(Int)` already matches JavaScript.
 public func pyreonNumberString(_ v: Int) -> String { String(v) }

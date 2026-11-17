@@ -12,7 +12,7 @@
 //    main thread (`CalledFromWrongThreadException … Calling:
 //    DefaultDispatcher-worker-2`, a corrupted slot table on dispose). The `v2`
 //    rule queues the resumption for the main thread, as `AndroidUiDispatcher.Main`
-//    does in an app. `ComposeRuleThreadingTest` (native-tasks-android) proves it
+//    does in an app. `ComposeRuleThreadingTest` (native-tasks/android) proves it
 //    on the emulator.
 // 2. A shell command is awaited. `executeShellCommand(cmd).close()` starts the
 //    command and returns: a `pm grant` that had not landed let the tap raise the

@@ -1310,7 +1310,6 @@ export function emitSwift(
   )
   // Gap 3 PR-3.4 — reset KeepAlive-wrapper flag per transform.
   _needsSwiftKeepAliveWrapper = false
-  _needsSwiftNumString = false
   const parts: string[] = []
   for (const e of enums) parts.push(emitSwiftEnum(e))
   for (const s of structs) if (!s.external) parts.push(emitSwiftStruct(s))
@@ -1358,7 +1357,6 @@ export function emitSwift(
   // Gap 3 PR-3.2/3.3/3.4 — prepend wrapper helper structs if needed.
   if (_needsSwiftKeepAliveWrapper) parts.push(SWIFT_KEEP_ALIVE_WRAPPER)
   // consulted AFTER helper + component emission — the flag is set during it
-  if (_needsSwiftNumString) parts.push(SWIFT_NUM_STRING)
   if (_needsSwiftThrown) parts.push(SWIFT_THROWN_PREAMBLE)
   for (const cp of componentParts) parts.push(cp)
   _enumNames = new Set()
@@ -1387,7 +1385,6 @@ export function emitSwift(
   _structDefs = []
   _serviceBindings = new Map()
   _needsSwiftKeepAliveWrapper = false
-  _needsSwiftNumString = false
   const warnings = [..._emitWarnings]
   _emitWarnings = []
   return { code: parts.join('\n\n'), warnings }
@@ -3683,7 +3680,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
         Number.isInteger(s.expr.value)
       ) {
         const kw = s.mutable ? 'var' : 'let'
-        return `${kw} ${swiftIdent(s.name)} = ${s.expr.value}.0`
+        return `${kw} ${swiftIdent(s.name)} = ${wholeDoubleLiteral(s.expr.value)}`
       }
       const emptyLiteral =
         (s.expr.kind === 'array' && s.expr.elements.length === 0) ||
@@ -4606,7 +4603,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // Double accumulation. A genuinely-fractional value already renders
       // with its decimal (`12.5`), so only integer values need the `.0`.
       if (typeof e.value === 'number' && e.float === true && Number.isInteger(e.value)) {
-        return `${e.value}.0`
+        return wholeDoubleLiteral(e.value)
       }
       // A whole literal past the 32-bit range is a Double everywhere it is typed (`number-literal.ts`): spell it as one.
       if (typeof e.value === 'number' && Number.isInteger(e.value) && isDoubleLiteralValue(e.value)) {
@@ -4827,8 +4824,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.args.length === 1 &&
         isFloatTypeIR(inferType(e.args[0]!, _activeInferCtx))
       ) {
-        _needsSwiftNumString = true
-        return `pyreonNumString(${emitSwiftExpr(e.args[0]!, indent)})`
+        return `pyreonNumberString(${emitSwiftExpr(e.args[0]!, indent)})`
       }
       if (
         e.callee.kind === 'member' &&
@@ -5984,28 +5980,16 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             }
             break
           case 'toFixed': {
-            // JS `n.toFixed(d)` → Swift `String(format: "%.<d>f", n)`
-            // (the analytical currency/percent format). Requires
-            // `import Foundation` (added to the CLI Swift import header).
-            // v1: literal digit count (or the 0-arg default of 0) — a
-            // dynamic count falls through to the generic emit.
-            const digits =
-              e.args.length === 0
-                ? '0'
-                : e.args[0]!.kind === 'literal' && typeof e.args[0]!.value === 'number'
-                  ? String(e.args[0]!.value)
-                  : null
-            if (digits !== null) {
-              return `String(format: "%.${digits}f", ${obj})`
-            }
-            // A DYNAMIC digit count interpolates into the format string — the
-            // same `%.<d>f`, built at runtime (it used to fall through to a
-            // verbatim `n.toFixed(d)`, which does not exist on a Swift number).
+            // JS `n.toFixed(d)` → the runtime's `pyreonToFixed` (PyreonNumber.swift), never
+            // `String(format: "%.<d>f", n)`: printf breaks an EXACT tie toward the even digit where toFixed rounds
+            // half up, so `(2.5).toFixed(0)` printed "2" and `(0.125).toFixed(2)` "0.12" with no warning (the web
+            // prints "3" / "0.13"). An Int receiver and an Int count both have an overload.
+            if (e.args.length === 0) return `pyreonToFixed(${obj}, 0)`
             if (e.args.length === 1) {
               const d = isFloatTypeIR(inferType(e.args[0]!, _activeInferCtx))
                 ? `Int(${argExprs[0]!})`
                 : argExprs[0]!
-              return `String(format: "%.\\(${d})f", ${obj})`
+              return `pyreonToFixed(${obj}, ${d})`
             }
             break
           }
@@ -6312,8 +6296,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           // Double coercion makes almost every computed number a Double — so
           // `'pct=' + a / b * 100` rendered `pct=250.0`, on both targets.
           if (t.kind === 'number' && t.float === true) {
-            _needsSwiftNumString = true
-            return `pyreonNumString(${emitted})`
+            return `pyreonNumberString(${emitted})`
           }
           return t.kind === 'number' || t.kind === 'boolean' ? `String(${emitted})` : emitted
         }
@@ -8450,22 +8433,6 @@ private struct PyreonKeepAliveWrapper<Content: View>: View {
 
 let _needsSwiftKeepAliveWrapper = false
 
-// `String(x)` over a Double: JS prints an integral number WITHOUT a
-// trailing .0 (`String(3.0)` → "3"), Swift's own String(3.0) → "3.0" —
-// a user-visible parity break in every numeric label once the Math.floor
-// family became Double-returning. Emitted once, only when used (the
-// PyreonUrlStateDouble.set formatter, extracted).
-//
-// `private`, not the bare default (module-visible `internal`): the checked-in
-// chart engine (packages/native/runtime-swift/…/PyreonChartEngine.swift) also
-// needs this exact idiom and emits its OWN copy the same way — in a real app
-// both land in one module, and an `internal`/bare top-level `func` collides
-// ("invalid redeclaration") the moment BOTH files are compiled together,
-// which is exactly what happens whenever a chart-using app has any other
-// component doing `String(someDouble)`. `private` at file scope is legal to
-// repeat identically across sibling files in Swift, so each file's own copy
-// stays self-contained without ever colliding with the engine's.
-let _needsSwiftNumString = false
 /** The file's helpers whose Swift signature is `throws`. */
 let _swiftThrowingFns: ReadonlySet<string> = new Set()
 /** Callbacks of a rethrowing array method that keep the enclosing throw context (`case 'call'`). */
@@ -8489,14 +8456,6 @@ function withSwiftThrowCtx<T>(ctx: 'none' | 'throws' | 'do', fn: () => T): T {
     _swiftThrowCtx = prev
   }
 }
-// The non-finite values use JavaScript's spelling (`NaN`, `Infinity`); Swift's `String(Double)` prints `nan` / `inf`.
-// They are reachable from ordinary code: a failed `parseFloat` / `Number(text)` is NaN (Kotlin's mirror already
-// prints `NaN` / `Infinity`, through `Double.toString`).
-const SWIFT_NUM_STRING = `private func pyreonNumString(_ v: Double) -> String {
-    if v.isNaN { return "NaN" }
-    if v.isInfinite { return v < 0 ? "-Infinity" : "Infinity" }
-    return v.rounded() == v && v.magnitude < 1e15 ? String(Int(v)) : String(v)
-}`
 
 /**
  * Escape-hatch primitive emit (`<NativeIOS>` / `<NativeAndroid>` / `<Web>`).

@@ -6,6 +6,8 @@ description: 'Scaffold a multiplatform Pyreon app — one src/App.tsx that runs 
 Scaffold a multiplatform Pyreon app — **one `src/App.tsx` source** that runs on **web**, **iOS** (SwiftUI), and **Android** (Jetpack Compose) via PMTC (the Pyreon Multi-Target Compiler).
 
 :::warning{title="Experimental"}
+The native targets are Experimental overall: the store-release and crash-reporting path is not ready yet, while several areas are already Beta. Check the [per-area tiers](/docs/multiplatform#maturity-by-area) against what your app needs.
+
 The generator and the generated project structure are verified end-to-end (file tree + the shared `App.tsx` compiling through PMTC to both native targets). Device builds (Simulator / Emulator) require the platform toolchains (Xcode / Android SDK) installed locally — gated by the `native-device` CI workflow.
 :::
 
@@ -135,7 +137,7 @@ export function App() {
   const count = signal(0)
   return (
     <Stack gap="md" align="center">
-      <Text data-testid="count">{count}</Text>
+      <Text data-testid="count">{count()}</Text>
       <Button data-testid="increment" onPress={() => count.set(count() + 1)}>Increment</Button>
     </Stack>
   )

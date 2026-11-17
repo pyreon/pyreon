@@ -1,0 +1,293 @@
+name: Default Branch Status
+
+# A red run on the default branch has no audience. Required checks gate pull
+# requests; nothing gates the push that follows a merge, the schedules or the
+# release chain, and nobody watches the Actions tab. `Coverage (Full)` was red
+# on 14 consecutive pushes (2026-11-11 → 11-16) before anyone noticed, and the
+# nightly `Leak Sweep` reported a leak five nights running with no reader.
+#
+# This workflow keeps ONE sticky issue per workflow, "[main] <workflow> is
+# red", in step with that workflow's runs on the default branch:
+#
+#   - the newest run with a verdict is red  → open the issue, or add one
+#     comment per red commit it does not name yet;
+#   - the newest run with a verdict is green → comment and close it.
+#
+# The issue names the first red commit and the last green commit (computed from
+# the workflow's run history, so the range that broke it is one compare link),
+# and the failed jobs and steps of the newest red run.
+#
+# What is NOT a failure: a run that was cancelled because a newer push
+# superseded it, a skipped run, a run still in progress. They carry no verdict
+# and neither open nor close anything. A job cancelled by its own
+# `timeout-minutes` IS a failure (the run reads `cancelled`, and GitHub
+# annotates the job "has exceeded the maximum execution time"): a nightly that
+# timed out every night once read as green that way.
+#
+# The watch list below must name every workflow that can run on the default
+# branch. `workflow_run` takes no wildcard, so `scripts/check-main-red-watchlist.ts`
+# (validate-fast) fails when a workflow file is neither listed here nor exempt
+# in that script for a reason it can verify. Adding a workflow means adding its
+# `name:` here.
+#
+# A `workflow_run` trigger, not a job in each workflow: it runs in the
+# default-branch context with `issues: write`, which jobs that run pull request
+# code must not hold. `branches: [main]` keeps pull request runs from starting
+# it at all. Limits: a `workflow_run` workflow runs only from the default
+# branch, so an edit to this file cannot be exercised on its own pull request;
+# the decision logic is executed against recorded shapes by
+# packages/internals/test-utils/src/tests/main-red-status.test.ts.
+on:
+  workflow_run:
+    workflows:
+      - Audit Leak Classes
+      - Cancel CI on conflict
+      - CI
+      - CI (main)
+      - CodeQL
+      - Dependency Audit
+      - Deploy Docs
+      - Docs Freshness Guard
+      - Lathe Action Self-Test
+      - Leak Sweep
+      - Native Compiler Validation
+      - Native Device Build
+      - Native Device Green-Streak Tracker
+      - Native Device Nightly Status
+      - Perf
+      - Published State
+      - Release
+      - Release Native Binaries
+      - Scorecard
+      - Size Ceiling Status
+      - Zero Freshness
+    types: [completed]
+    branches: [main]
+
+# Nothing at the workflow level (Scorecard TokenPermissionsID): the one job
+# below gets exactly what it uses.
+permissions: {}
+
+# One evaluation at a time per watched workflow, so two runs that finish
+# together cannot both create the issue. Each evaluation recomputes the state
+# from the run history, so a pending evaluation replaced by a newer one loses
+# nothing.
+concurrency:
+  group: main-red-status-${{ github.event.workflow_run.workflow_id }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    name: Default branch run → sticky issue
+    if: github.event.workflow_run.head_branch == github.event.repository.default_branch && github.event.workflow_run.event != 'pull_request' && github.event.workflow_run.event != 'pull_request_target' && github.event.workflow_run.conclusion != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read # the workflow's run history, and each run's jobs and steps
+      checks: read # the "exceeded the maximum execution time" annotation of a cancelled job
+      issues: write # create / comment on / close the sticky issue
+    steps:
+      # No swallow-all catch: the notification IS the deliverable. If the
+      # issue cannot be written, a red default branch would vanish silently,
+      # so this step fails loudly after its retries.
+      - name: Create / update / close the sticky issue
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          retries: 3
+          script: |
+            const run = context.payload.workflow_run
+            const { owner, repo } = context.repo
+            const branch = context.payload.repository.default_branch
+            const title = `[main] ${run.name} is red`
+            const short = (sha) => sha.slice(0, 9)
+            const marker = (sha) => `<!-- main-red:${sha} -->`
+            const RED = new Set(['failure', 'timed_out', 'startup_failure'])
+            const PR_EVENTS = new Set(['pull_request', 'pull_request_target', 'merge_group'])
+            const DEADLINE = 'exceeded the maximum execution time'
+            const HISTORY = 100
+            const MAX_COMMENTS = 5
+
+            const jobsCache = new Map()
+            async function jobsOf(r) {
+              if (!jobsCache.has(r.id)) {
+                jobsCache.set(
+                  r.id,
+                  await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                    owner,
+                    repo,
+                    run_id: r.id,
+                    filter: 'latest',
+                    per_page: 100,
+                  }),
+                )
+              }
+              return jobsCache.get(r.id)
+            }
+
+            // A job that hit its own `timeout-minutes` reports `cancelled` and
+            // carries the deadline annotation. A job cancelled from outside
+            // (a newer push, a person) carries no such annotation.
+            const deadlineCache = new Map()
+            async function hitDeadline(job) {
+              if (job.conclusion !== 'cancelled' || (job.steps ?? []).length === 0) return false
+              if (!deadlineCache.has(job.id)) {
+                const annotations = await github.paginate(github.rest.checks.listAnnotations, {
+                  owner,
+                  repo,
+                  check_run_id: job.id,
+                  per_page: 100,
+                })
+                deadlineCache.set(job.id, annotations.some((a) => (a.message ?? '').includes(DEADLINE)))
+              }
+              return deadlineCache.get(job.id)
+            }
+
+            // 'green' | 'red' | 'none'. `none` is every state that says nothing
+            // about the commit: in progress, skipped, superseded, cancelled by hand.
+            async function verdictOf(r) {
+              if (r.status !== 'completed') return 'none'
+              if (r.conclusion === 'success') return 'green'
+              if (RED.has(r.conclusion)) return 'red'
+              if (r.conclusion !== 'cancelled') return 'none'
+              for (const job of await jobsOf(r)) {
+                if (await hitDeadline(job)) return 'red'
+              }
+              return 'none'
+            }
+
+            // The workflow's runs on the default branch, newest first. The
+            // event's own run is authoritative for itself: the listing can lag.
+            const { data: listed } = await github.rest.actions.listWorkflowRuns({
+              owner,
+              repo,
+              workflow_id: run.workflow_id,
+              branch,
+              per_page: HISTORY,
+            })
+            const runs = listed.workflow_runs.filter((r) => r.id !== run.id && !PR_EVENTS.has(r.event))
+            runs.push(run)
+            runs.sort((a, b) => b.run_number - a.run_number || b.id - a.id)
+
+            // Walk back from the newest run. The first verdict is the state;
+            // a red state extends over every red run back to the last green.
+            let state = 'none'
+            let lastGreen = null
+            const reds = []
+            for (const r of runs) {
+              const verdict = await verdictOf(r)
+              if (verdict === 'none') continue
+              if (state === 'none') state = verdict
+              if (verdict === 'green') {
+                lastGreen = r
+                break
+              }
+              reds.push(r)
+            }
+            if (state === 'none') {
+              core.info(`No run of "${run.name}" on ${branch} has a verdict (this one: ${run.conclusion}) — nothing to do.`)
+              return
+            }
+
+            const openIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'open',
+              creator: 'github-actions[bot]',
+              per_page: 100,
+            })
+            const sticky = openIssues.find((i) => i.title === title && !i.pull_request)
+
+            if (state === 'green') {
+              if (!sticky) {
+                core.info(`"${run.name}" is green on ${branch} (${short(lastGreen.head_sha)}) and no issue is open.`)
+                return
+              }
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: sticky.number,
+                body: `Green again on \`${short(lastGreen.head_sha)}\`: ${lastGreen.html_url} — closing.`,
+              })
+              await github.rest.issues.update({ owner, repo, issue_number: sticky.number, state: 'closed' })
+              return
+            }
+
+            // Red. One line per failed job, with the step that failed in it.
+            async function failureLines(r) {
+              const lines = []
+              for (const job of await jobsOf(r)) {
+                const steps = job.steps ?? []
+                let what = null
+                if (job.conclusion === 'failure' || job.conclusion === 'timed_out') what = job.conclusion
+                else if (await hitDeadline(job)) what = 'cancelled at its `timeout-minutes`'
+                else if (job.conclusion === 'cancelled' && steps.length === 0 && RED.has(r.conclusion)) {
+                  what = 'cancelled before any step ran (no runner was assigned)'
+                }
+                if (!what) continue
+                const failedSteps = steps
+                  .filter((s) => s.conclusion === 'failure' || (s.conclusion === 'cancelled' && what.startsWith('cancelled at')))
+                  .map((s) => `\`${s.name}\``)
+                const where = failedSteps.length > 0 ? `, step ${failedSteps.join(', ')}` : ''
+                lines.push(`  - job **${job.name}**: ${what}${where} — ${job.html_url}`)
+              }
+              if (lines.length === 0) lines.push(`  - no job reported a failure (run conclusion \`${r.conclusion}\`): open the run`)
+              return lines
+            }
+            // Inside a code span a commit subject cannot mention anyone.
+            const subject = (r) => {
+              const first = (r.head_commit?.message ?? '').split('\n')[0].replaceAll('`', "'").slice(0, 100)
+              return first ? ` \`${first}\`` : ''
+            }
+            async function redNote(r) {
+              return [`Red on \`${short(r.head_sha)}\`${subject(r)}: ${r.html_url}`, ...(await failureLines(r)), marker(r.head_sha)].join('\n')
+            }
+
+            // Oldest first, one entry per commit (a schedule and a push can
+            // both run on the same commit).
+            const redCommits = []
+            for (const r of [...reds].reverse()) {
+              if (!redCommits.some((c) => c.head_sha === r.head_sha)) redCommits.push(r)
+            }
+            const firstRed = redCommits[0]
+
+            if (!sticky) {
+              const range = lastGreen
+                ? [
+                    `- Last green commit: \`${short(lastGreen.head_sha)}\`${subject(lastGreen)} — ${lastGreen.html_url}`,
+                    `- What landed in between: https://github.com/${owner}/${repo}/compare/${lastGreen.head_sha}...${firstRed.head_sha}`,
+                  ]
+                : [`- Last green commit: none among the last ${HISTORY} runs of this workflow on \`${branch}\``]
+              const newest = redCommits.at(-1)
+              const body = [
+                `\`${run.name}\` is failing on \`${branch}\`. Every pull request opened or updated from now on inherits whatever broke it.`,
+                '',
+                `- First red commit: \`${short(firstRed.head_sha)}\`${subject(firstRed)} — ${firstRed.html_url}`,
+                ...range,
+                '',
+                await redNote(newest),
+                ...redCommits.slice(0, -1).map((r) => marker(r.head_sha)),
+                '',
+                'What to do: read the failed step, fix it in ONE pull request, and do not re-run past a real failure.',
+                'A run cancelled because a newer push superseded it is not counted; a job cancelled by its own timeout is.',
+                'See "Red default branch alarm" in `.agents/guides/ci/README.md`.',
+                '',
+                'This issue is managed by `main-red-status.yml`: one comment per further red commit, and it closes',
+                'itself on the next green run of this workflow on the default branch.',
+              ].join('\n')
+              await github.rest.issues.create({ owner, repo, title, body })
+              return
+            }
+
+            // The issue exists: name every red commit it does not name yet.
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: sticky.number,
+              per_page: 100,
+            })
+            const noted = [sticky.body ?? '', ...comments.map((c) => c.body ?? '')].join('\n')
+            const unnoted = redCommits.filter((r) => !noted.includes(marker(r.head_sha)))
+            for (const r of unnoted.slice(-MAX_COMMENTS)) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: sticky.number, body: await redNote(r) })
+            }
+            if (unnoted.length === 0) core.info(`Issue #${sticky.number} already names every red commit.`)

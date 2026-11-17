@@ -8738,7 +8738,7 @@ fun layoutSingleAxis(axis: SingleAxisSpec, points: List<SingleAxisPoint>, box: P
     } else {
       var index = 0L
       for (v in niceTicks(lo, hi, 6L)) {
-        ticks.add(SingleAxisTick(x = px(v), label = pyreonNumString(v), index = index))
+        ticks.add(SingleAxisTick(x = px(v), label = pyreonNumberString(v), index = index))
         index += 1
       }
     }
@@ -11357,6 +11357,3 @@ fun binValues(values: List<Double>, count: Double): List<Bin> {
   }
 
 fun binLabel(b: Bin): String = "${plain(b.x0)}–${plain(b.x1)}"
-
-private fun pyreonNumString(v: Double): String =
-    if (v == Math.rint(v) && Math.abs(v) < 1e15) v.toLong().toString() else v.toString()

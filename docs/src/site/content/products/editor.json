@@ -344,7 +344,7 @@
   },
   {
    "claim": "hosted editors round trip device-tested",
-   "path": "examples/native-tasks-ios/iosUITests/PyreonTasksUITests.swift test_hostedEditorsRoundTrip; examples/native-tasks-android/.../TasksAppInstrumentedTest.kt hostedEditorsRoundTrip"
+   "path": "examples/native-tasks/ios/UITests/PyreonTasksUITests.swift test_hostedEditorsRoundTrip; examples/native-tasks/android/.../TasksAppInstrumentedTest.kt hostedEditorsRoundTrip"
   },
   {
    "claim": "rich-text onChange on native receives a JSON string; StarterKit only on native",

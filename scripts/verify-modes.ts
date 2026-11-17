@@ -1185,7 +1185,7 @@ const MATRIX: Cell[] = [
   // and the build fails or the produced HTML loses the testid + the
   // primitive-rendered text content.
   {
-    example: 'native-todomvc-web',
+    example: 'native-todomvc',
     mode: 'spa',
     useExampleConfig: true,
     smoke: (dist) => {
@@ -1280,11 +1280,11 @@ const MATRIX: Cell[] = [
   // (#1457) + Android (#1458) ALSO builds and bundles on web.
   //
   // Bisect-verifiable: break the TasksApp source path in the entry
-  // (`../../native-tasks/src/TasksApp`) OR remove a primitive's web
+  // (`examples/native-tasks/src/TasksApp`) OR remove a primitive's web
   // impl AND the build fails OR the bundled JS loses the testids /
   // user-visible strings the smoke asserts.
   {
-    example: 'native-tasks-web',
+    example: 'native-tasks',
     mode: 'spa',
     useExampleConfig: true,
     smoke: (dist) => {

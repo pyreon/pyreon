@@ -1364,6 +1364,8 @@ object PyreonURL {
 // pyreonNumberString — JS \`String(number)\`, which every Double-typed
 // template interpoland lowers through. Mirrors the real signature.
 fun pyreonNumberString(value: Number): String = ""
+// pyreonToFixed — JS \`n.toFixed(d)\` (PyreonNumber.kt). Mirrors the real signature.
+fun pyreonToFixed(value: Number, digits: Number): String = ""
 // pyreonRound — JS \`Math.round\` (PyreonNumber.kt). Mirrors the real signature.
 fun pyreonRound(x: Double): Double = 0.0
 // pyreonParseInt / pyreonParseFloat / pyreonToNumber — the ECMAScript text→number algorithms

@@ -1,20 +1,20 @@
 package com.pyreon.runtime
 
 /**
- * JavaScript's `String(number)`, which a template literal performs on every
- * interpolated number.
+ * JavaScript's `String(number)` — ECMAScript `Number::toString`, which a template literal, a `String(x)` call and a
+ * `"text" + x` concatenation all perform.
  *
- * Kotlin prints a whole-valued `Double` with a trailing `.0` (`"${7.0}"` is
- * `"7.0"`), where the web prints `7`. The compiler routes every Double-typed
- * template interpoland through this, so a label, an axis tick or a counter
- * reads the same on every target.
+ * Kotlin prints a whole-valued `Double` with a trailing `.0` (`"${7.0}"` is `"7.0"`) and uses its own exponent form
+ * (`1.0E-7`, `1.0E15`), where the web prints `7`, `1e-7` and `1000000000000000`. This is the whole algorithm: the
+ * SHORTEST digits that round-trip, laid out by the ECMAScript rules — positional for a decimal exponent in
+ * (-7, 21], `1.5e-7` / `1e+21` beyond — with `NaN` / `Infinity` / `-Infinity` spelled as JavaScript spells them and
+ * `-0` printed `0`. Integer types (`Int`, `Long` — `Math.round` returns a `Long`) already print as JavaScript does.
+ * `PyreonJson.jsNumber` is the same algorithm for `JSON.stringify` (kept in its own file so each compiles alone);
+ * `native-number-format-parity.test.ts` holds both to the web over one corpus.
  *
- * Whole values below 1e21 (where JavaScript switches to exponent notation)
- * print as integers, and the non-finite values use JavaScript's spelling. A
- * fractional value keeps Kotlin's shortest round-trip form, which agrees with
- * JavaScript's except in exponent notation (`1.0E-7` vs `1e-7`), a known
- * divergence. Integer types (`Int`, `Long` — `Math.round` returns a `Long`)
- * already print as JavaScript does.
+ * The digits are searched with BigDecimal rather than read off `Double.toString`: the JVM's `toString` was not
+ * guaranteed shortest before JDK 19, and Android's libcore is its own implementation, so its digits cannot be
+ * trusted to agree with V8's on every value. A whole value below 2^53 (every counter, index and id) skips the search.
  */
 fun pyreonNumberString(value: Number): String {
     if (value !is Double && value !is Float) return value.toString()
@@ -22,10 +22,58 @@ fun pyreonNumberString(value: Number): String {
     if (v.isNaN()) return "NaN"
     if (v == Double.POSITIVE_INFINITY) return "Infinity"
     if (v == Double.NEGATIVE_INFINITY) return "-Infinity"
-    if (v == Math.floor(v) && Math.abs(v) < 1e21) {
-        return if (Math.abs(v) < 9.0e15) v.toLong().toString() else java.math.BigDecimal(v).toBigInteger().toString()
+    if (v == 0.0) return "0"
+    if (v == Math.floor(v) && Math.abs(v) < 9.0e15) return v.toLong().toString()
+    val abs = Math.abs(v)
+    val exact = java.math.BigDecimal(abs)
+    var best: java.math.BigDecimal = exact
+    search@ for (p in 1..17) {
+        var chosen: java.math.BigDecimal? = null
+        for (mode in arrayOf(java.math.RoundingMode.HALF_EVEN, java.math.RoundingMode.FLOOR, java.math.RoundingMode.CEILING)) {
+            val c = exact.round(java.math.MathContext(p, mode))
+            if (c.toDouble() != abs) continue
+            val cur = chosen
+            if (cur == null || c.subtract(exact).abs() < cur.subtract(exact).abs()) chosen = c
+        }
+        if (chosen != null) {
+            best = chosen
+            break@search
+        }
     }
-    return v.toString()
+    val unscaled = best.unscaledValue().toString()
+    val point = unscaled.length - best.scale()
+    val digits = unscaled.trimEnd('0').ifEmpty { "0" }
+    return (if (v < 0) "-" else "") + pyreonNumberLayout(digits, point)
+}
+
+/** ECMAScript `Number::toString` layout for the digits `s` (k of them) with the decimal point at `n`. */
+internal fun pyreonNumberLayout(s: String, n: Int): String {
+    val k = s.length
+    if (k <= n && n <= 21) return s + "0".repeat(n - k)
+    if (0 < n && n <= 21) return s.substring(0, n) + "." + s.substring(n)
+    if (-6 < n && n <= 0) return "0." + "0".repeat(-n) + s
+    val e = n - 1
+    val tail = if (k == 1) "" else "." + s.substring(1)
+    return s.substring(0, 1) + tail + "e" + (if (e < 0) "-" else "+") + Math.abs(e)
+}
+
+/**
+ * JavaScript's `Number.prototype.toFixed(digits)`.
+ *
+ * `"%.2f".format(x)` is not it: `java.util.Formatter` rounds the SHORTEST decimal form half-up, so
+ * `(1.005).toFixed(2)` became `"1.01"` where the web says `"1.00"` (1.005 is 1.00499999… in binary), and
+ * `(1.45).toFixed(1)` became `"1.5"` where the web says `"1.4"`. This rounds the double's EXACT value
+ * (`BigDecimal(Double)` is exact) half up, as the specification does, so a tie such as `(2.5).toFixed(0)` is `"3"`
+ * and everything else lands on the web's digits. A negative value keeps its sign even when it rounds to zero
+ * (`(-0.0001).toFixed(2)` is `"-0.00"`), a value at or past 1e21 prints as `String(x)`, and `digits` is clamped to
+ * toFixed's 0…100. Locale-invariant by construction (no `Locale.getDefault()` decimal comma).
+ */
+fun pyreonToFixed(value: Number, digits: Number): String {
+    val x = value.toDouble()
+    if (!x.isFinite() || Math.abs(x) >= 1e21) return pyreonNumberString(x)
+    val f = digits.toInt().coerceIn(0, 100)
+    val body = java.math.BigDecimal(Math.abs(x)).setScale(f, java.math.RoundingMode.HALF_UP).toPlainString()
+    return (if (x < 0) "-" else "") + body
 }
 
 // ── Parsing text into numbers (ECMAScript `parseInt` / `parseFloat` / `Number`) ─────────────────────────────────

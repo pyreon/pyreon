@@ -1,0 +1,174 @@
+# XcodeGen project spec — turns this directory into an iOS Xcode
+# project. Mirror of `examples/native-router-demo-ios/project.yml`
+# (same xcodegen pattern + same SPM PyreonRouter dep + same
+# preBuildScript shape).
+#
+# Usage:
+#   xcodegen generate   (run from this directory)
+#   open PyreonTasks.xcodeproj
+#
+# Bound shells out to `scripts/build-ios.sh` which compiles the SHARED
+# `examples/native-tasks/src/TasksApp.tsx` source from #1449's scaffold.
+
+name: PyreonTasks
+
+options:
+  bundleIdPrefix: com.pyreon
+  deploymentTarget:
+    iOS: '17.0'
+
+# Single iOS app target hosting the compiler-emitted TasksApp.
+targets:
+  PyreonTasks:
+    # Pre-build script — runs the Pyreon compile loop BEFORE Swift
+    # compilation. Same shape as native-router-demo-ios.
+    preBuildScripts:
+      - script: |
+          bash "${SRCROOT}/../scripts/build-ios.sh"
+        name: '[Pyreon] Compile .tsx → generated/TasksApp.swift'
+        runOnlyWhenInstalling: false
+        basedOnDependencyAnalysis: false
+    type: application
+    platform: iOS
+    deploymentTarget: '17.0'
+
+    sources:
+      - path: Sources
+        type: group
+      - path: generated
+      - path: ../../../packages/fundamentals/form/native/swift
+      - path: ../../../packages/fundamentals/store/native/swift
+      - path: ../../../packages/fundamentals/state-tree/native/swift
+      - path: ../../../packages/fundamentals/machine/native/swift
+      - path: ../../../packages/fundamentals/i18n/native/swift
+      - path: ../../../packages/fundamentals/permissions/native/swift
+      - path: ../../../packages/fundamentals/query/native/swift
+      - path: ../../../packages/fundamentals/http/native/swift
+      - path: ../../../packages/fundamentals/storage/native/swift
+      - path: ../../../packages/fundamentals/auth/native/swift
+      - path: ../../../packages/fundamentals/hooks/native/swift
+      # Added with the ToolkitScreen — the Swift mirror of the Gradle srcDir
+      # additions. Both are needed: the stub gate models these types, the real
+      # build needs their co-source compiled in.
+      - path: ../../../packages/core/sized-map/native/swift
+      - path: ../../../packages/fundamentals/sync/native/swift
+      - path: ../../../packages/fundamentals/toast/native/swift
+      - path: ../../../packages/fundamentals/a11y/native/swift
+      # Flow-native device proof (FlowScreen): PyreonFlowState + the edge canvas.
+      - path: ../../../packages/fundamentals/flow/native/swift
+      - path: ../../../packages/fundamentals/dnd/native/swift
+      - path: ../../../packages/fundamentals/table/native/swift
+        type: group
+        optional: true
+
+    # @pyreon/native-router-swift package — required because
+    # TasksApp.tsx uses createRouter + RouterProvider + RouterView
+    # + useNavigate + per-route beforeEnter. Same SPM ref as
+    # native-router-demo-ios.
+    dependencies:
+      - package: PyreonRuntime
+      - package: PyreonRouter
+
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDevelopmentRegion: en
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleInfoDictionaryVersion: '6.0'
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: 0.0.1
+        CFBundleVersion: '1'
+        LSRequiresIPhoneOS: true
+        # Allow plain-HTTP loopback fetches (the lifecycle demo's
+        # useFetch targets the local fixture server on 127.0.0.1). ATS
+        # otherwise blocks cleartext HTTP, making the fetch fail
+        # nondeterministically. NSAllowsLocalNetworking is the
+        # Apple-sanctioned dev exemption for loopback / .local hosts.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        # The /webhost page hosts a page that calls navigator.geolocation;
+        # WKWebView only asks (per site) once the app may ask (#3982).
+        NSLocationWhenInUseUsageDescription: The hosted web page in this demo reads your location.
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UILaunchScreen: {}
+        UIRequiredDeviceCapabilities:
+          - armv7
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pyreon.PyreonTasks
+        # POLICY (enforced by scripts/check-ios-signing-policy.ts): every iOS
+        # example sets CODE_SIGN_ENTITLEMENTS, uniformly, whether or not its
+        # CURRENT tests touch the Keychain.
+        #
+        # An unsigned/entitlement-less simulator app is denied SecItemAdd by
+        # securityd, so a Keychain-touching test fails ONLY in CI. Router-demo
+        # hit that, was fixed alone, and left four examples one test away from
+        # the same CI-only failure — which is exactly how the finance app's
+        # session-rehydration test broke. xcodegen's `entitlements:` block
+        # alone does NOT embed under ad-hoc signing (verified: `codesign -d
+        # --entitlements :-` read an EMPTY dict); the explicit build setting is
+        # what does. The file itself is an empty dict — what matters is that a
+        # signature with an entitlements blob exists at all.
+        CODE_SIGN_ENTITLEMENTS: PyreonTasks.entitlements
+        ENABLE_BITCODE: NO
+        SWIFT_VERSION: '5.0'
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_ALLOWED: YES
+        CODE_SIGNING_REQUIRED: YES
+
+      configs:
+        Debug:
+          SWIFT_OPTIMIZATION_LEVEL: -Onone
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: -O
+
+  # XCUITest launch + multi-screen-navigation + auth-gate smoke.
+  # Mirror of native-router-demo-ios' PyreonRouterDemoUITests target.
+  PyreonTasksUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: '17.0'
+
+    sources:
+      - path: UITests
+        type: group
+
+    dependencies:
+      - target: PyreonTasks
+
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pyreon.PyreonTasksUITests
+        TEST_TARGET_NAME: PyreonTasks
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        SWIFT_VERSION: '5.0'
+
+# Explicit scheme — same wiring pattern as router-demo + counter.
+schemes:
+  PyreonTasks:
+    build:
+      targets:
+        PyreonTasks: all
+        PyreonTasksUITests: [test]
+    test:
+      gatherCoverageData: false
+      targets:
+        - PyreonTasksUITests
+    run:
+      config: Debug
+
+# Local SPM package reference — @pyreon/native-router-swift lives
+# in the monorepo at packages/native/router-swift.
+packages:
+  PyreonRuntime:
+    path: ../../../packages/native/runtime-swift
+  PyreonRouter:
+    path: ../../../packages/native/router-swift
