@@ -25,7 +25,7 @@ Pages (`site/pages/**`, `blog/**`, `showcase/**`, `open/**`) compose layers 1–
 
 ## Primitives
 
-Import them from the folder's index (`kit/primitives`); every one is on `/brand/kit` (`site/pages/KitGalleryPrimitives.tsx`). A page or kit component reaches for a primitive before it defines a styled `el` of its own: a stack, a row, a grid, a mono caption or a show/hide block is never a new definition.
+Import them from the folder's index (`kit/primitives`; an island imports the one file it needs, see below); every one is on `/brand/kit` (`site/pages/KitGalleryPrimitives.tsx`). A page or kit component reaches for a primitive before it defines a styled `el` of its own: a stack, a row, a grid, a mono caption or a show/hide block is never a new definition.
 
 | Use | When | Props |
 | --- | --- | --- |
@@ -44,7 +44,7 @@ Import them from the folder's index (`kit/primitives`); every one is on `/brand/
 - **Responsive values** use the theme breakpoints (`xs`…`xl`); a width that is not one (the home page's 700px `split`) is a named token in `theme.ts` with a query in `media.up` / `media.down`, never inside `breakpoints` (that object feeds the UI system and its generated CSS).
 - **Display type is not `Text`.** Headings are `Heading`, copy paragraphs `Lede`, the section label `Eyebrow` (`kit/type.tsx`); `Text` is for the small text pages used to style themselves.
 - **Static layout.** Layout props are read once when the primitive renders; a layout that changes at runtime switches between two primitives (or uses `Visible`).
-- **Islands.** The primitives use the styling runtime (except `Icon`, which is plain markup). An island outside `site/demos/` must not import them; inside a product demo they cost nothing extra when the demo already uses the kit.
+- **Islands.** The primitives use the styling runtime (except `Icon`, which is plain markup), so only an island already rooted in `KitScope` (product demos, the benchmark islands) uses them, and it imports the primitive's own file (`kit/primitives/box`), not the index: the index pulls every primitive (and coolgrid) into the island, about 1.4 KB gzip measured on a benchmark island. Kit files do the same. Static pages import the index.
 
 ## Conventions
 
@@ -78,7 +78,7 @@ Add it to `theme.ts` next to its family, with a doc comment saying what it is fo
 | `kit/styled-outside`, `kit/extend-css` | a `.config({ name })`, `rocketstyle(` / `styled(` definition or `extendCss` outside `site/kit/` and `site/demos/` |
 | `kit/duplicate-name` | a styled-component name defined more than once (the kit's definition counts as the first) |
 | `kit/imports-app` | the kit importing pages, shell, demos, blog, docs or routes |
-| `kit/internal-import` | a file outside the kit (and demos) importing `kit/bases` or `kit/site-css`, or a kit subfolder's file other than its index |
+| `kit/internal-import` | a file outside the kit (and demos) importing `kit/bases` or `kit/site-css`, or a kit subfolder's file other than its index (`kit/primitives/*` files are public one by one) |
 | `kit/island-styling-runtime` | an island declared outside `site/demos/` whose static import graph reaches a styling-runtime package |
 | `kit/gallery-missing` | an exported component of a top-level `kit/*.tsx` file or of `kit/primitives/` that no gallery file names |
 | `a11y/focus-missing` | a styled definition with `tag: 'a' / 'button' / 'summary'` and no focus style (tags passed at the use site are not seen) |

@@ -110,9 +110,17 @@ export function resolveImport(from: string, spec: string, known: ReadonlySet<str
 
 const stripExt = (p: string): string => p.replace(/\.(tsx?|css)$/, '')
 
+/**
+ * Kit subfolders whose every file is a public, self-contained module: a page
+ * may import one file directly (an island does, so it bundles only the
+ * primitive it uses instead of the whole folder's index).
+ */
+export const KIT_PUBLIC_SUBFOLDERS = ['primitives/']
+
 function kitDeepImport(target: string): boolean {
   if (KIT_INTERNALS.includes(stripExt(target))) return true
   const rest = target.slice(KIT.length)
+  if (KIT_PUBLIC_SUBFOLDERS.some((d) => rest.startsWith(d))) return false
   return rest.includes('/') && !/\/index\.tsx?$/.test(rest)
 }
 
@@ -176,8 +184,8 @@ export function islandStylingRuntime(files: readonly SourceFile[]): Finding[] {
   return out
 }
 
-/** Kit subfolders whose files are public components (through the folder's index), held to the gallery like top-level kit files. */
-export const GALLERY_SUBFOLDERS = ['primitives/']
+/** Kit subfolders whose files are public components, held to the gallery like top-level kit files. */
+export const GALLERY_SUBFOLDERS = KIT_PUBLIC_SUBFOLDERS
 
 /** Exported components of the kit's top-level `.tsx` files (and of `GALLERY_SUBFOLDERS`) that no gallery file names. */
 export function galleryMissing(files: readonly SourceFile[]): Finding[] {

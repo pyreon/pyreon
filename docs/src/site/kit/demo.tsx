@@ -5,7 +5,8 @@ import { keyframes } from '@pyreon/styler'
 import { font, motion, paper, radius, text, weight } from '../theme'
 import { el, type ButtonAttrs, focusRing, tone, txt } from './bases'
 import { GlowCard } from './cards'
-import { AutoGrid, Stack } from './primitives'
+import { Stack } from './primitives/box'
+import { AutoGrid } from './primitives/grid'
 import { KitScope } from './scope'
 
 /**

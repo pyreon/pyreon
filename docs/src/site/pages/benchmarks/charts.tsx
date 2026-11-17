@@ -13,7 +13,7 @@ import { VerdictChip } from '../../kit/bench'
 import { KitScope } from '../../kit/scope'
 import { ToggleChips } from '../../kit/toggles'
 import { formatAxisMs, formatUs, scalingRows, sortedRowBoard } from './model'
-import { Stack } from '../../kit/primitives'
+import { Stack } from '../../kit/primitives/box'
 
 /**
  * The live `@pyreon/charts` views of the row board and the scaling data,

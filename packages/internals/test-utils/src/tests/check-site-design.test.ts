@@ -108,6 +108,15 @@ describe('site design — structure', () => {
     expect(kitBoundary(files).map((f) => `${f.rule} ${f.detail}`)).toEqual(['kit/imports-app ../pages/Home', 'kit/internal-import ../kit/bases'])
   })
 
+  it('a page may import one primitive file directly (an island bundles only that one), never another subfolder file', () => {
+    const files = [
+      file('site/pages/Island.tsx', "import { Stack } from '../kit/primitives/box'\nimport { Part } from '../kit/other/part'"),
+      file('site/kit/primitives/box.tsx', 'export function Stack() {}'),
+      file('site/kit/other/part.tsx', 'export function Part() {}'),
+    ]
+    expect(kitBoundary(files).map((f) => `${f.rule} ${f.detail}`)).toEqual(['kit/internal-import ../kit/other/part'])
+  })
+
   it('reads value imports only', () => {
     expect(importsOf("import type { A } from './a'\nimport { b } from './b'\nexport { c } from './c'\nconst d = import('./d')").map((i) => i.spec)).toEqual(['./b', './c', './d'])
   })

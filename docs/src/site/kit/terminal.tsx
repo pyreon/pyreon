@@ -4,7 +4,7 @@ import { GlowCard } from './cards'
 import { CodeBody, CodeHead } from './code'
 import { CopyButtonIsland } from './islands'
 import { Eyebrow, renderInline } from './type'
-import { Stack } from './primitives'
+import { Stack } from './primitives/box'
 
 /* Static pages only: kept out of code.tsx, which the demo islands bundle. */
 

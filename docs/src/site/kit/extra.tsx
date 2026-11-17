@@ -5,7 +5,7 @@ import { el, tone, txt } from './bases'
 import { GlowCard } from './cards'
 import { ApiGroups } from './blocks'
 import { CodeCard } from './code'
-import { AutoGrid } from './primitives'
+import { AutoGrid } from './primitives/grid'
 import { Eyebrow, Heading, Lede, renderInline } from './type'
 
 /**

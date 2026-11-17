@@ -5,7 +5,7 @@ import { KitScope } from '../../kit/scope'
 import { DataTable } from '../../kit/table'
 import { ToggleChips } from '../../kit/toggles'
 import { VerdictNote } from './parts'
-import { Stack } from '../../kit/primitives'
+import { Stack } from '../../kit/primitives/box'
 
 /**
  * The reactivity section's engine switcher and its table: a zero island
