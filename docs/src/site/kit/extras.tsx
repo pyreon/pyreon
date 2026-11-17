@@ -77,7 +77,7 @@ export function ExtraCallout(props: { section: Callout }) {
         <div>
           <Eyebrow state="accent">{s.label}</Eyebrow>
           <Heading tag="h2" size="card">
-            {s.title}
+            {renderInline(s.title)}
           </Heading>
           <CalloutText>{renderInline(s.text)}</CalloutText>
         </div>

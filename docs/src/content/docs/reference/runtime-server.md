@@ -31,7 +31,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`renderToString`](#rendertostring-function) | function | Render a VNode tree to a single HTML string. |
-| [`renderToStream`](#rendertostream-function) | function | Render to a Web-standard `ReadableStream<string>` with true progressive flushing — synchronous subtrees enqueue immediat |
+| [`renderToStream`](#rendertostream-function) | function | Render to a Web-standard `ReadableStream<string>` with true progressive flushing — synchronous subtrees enqueue… |
 | [`runWithRequestContext`](#runwithrequestcontext-function) | function | Run an async function inside a fresh, isolated ALS context stack (and its own store registry). |
 | [`configureStoreIsolation`](#configurestoreisolation-function) | function | OVERRIDE per-request `@pyreon/store` isolation with a provider of your own. |
 | [`decodeKeyFromMarker`](#decodekeyfrommarker-function) | function | Inverse of the internal For-list key encoder. |

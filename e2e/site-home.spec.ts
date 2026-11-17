@@ -257,12 +257,17 @@ test.describe('homepage', () => {
     await ctx.close()
   })
 
-  test('on a phone the hero shows the trace and the platforms section carries the loop', async ({ browser }) => {
+  test('on a phone the hero lists the three targets as text and the platforms section carries the loop', async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } })
     const page = await ctx.newPage()
     await page.goto('/')
     await expect(page.locator('#hero video')).toBeHidden()
-    await expect(page.locator('#hero svg[role=img]').first()).toBeVisible()
+    // The trace illustration's labels were 4-8px tall at this width: the hero
+    // carries the same three targets as text, at a readable size.
+    const targets = page.locator('#hero ul[aria-label="The three targets"]').filter({ visible: true }).locator('li')
+    await expect(targets).toHaveCount(3)
+    await expect(targets.first()).toBeVisible()
+    for (const size of await targets.evaluateAll((lis) => lis.map((li) => Number.parseFloat(getComputedStyle(li).fontSize)))) expect(size).toBeGreaterThanOrEqual(12)
     await expect(page.locator('#platforms figure')).toBeAttached()
     await ctx.close()
   })

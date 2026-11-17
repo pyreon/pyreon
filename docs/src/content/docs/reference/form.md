@@ -146,18 +146,18 @@ if (!(await form.validate())) form.focusFirstError()
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`useForm`](#useform-hook) | hook | Create a signal-based form. |
-| [`useField`](#usefield-hook) | hook | Extract a single field's state and helpers from a form instance — avoids passing the entire `FormState` to leaf componen |
+| [`useField`](#usefield-hook) | hook | Extract a single field's state and helpers from a form instance — avoids passing the entire `FormState` to leaf… |
 | [`useFieldArray`](#usefieldarray-hook) | hook | Manage a dynamic array of form fields with stable keys. |
 | [`useWatch`](#usewatch-hook) | hook | Typed overloads for reactively watching form field values. |
 | [`useFormState`](#useformstate-hook) | hook | Computed summary of form-level state (`isValid`, `isDirty`, `isSubmitting`, `isValidating`, `submitCount`, `errors`). |
 | [`FormProvider`](#formprovider-component) | component | Provide a form via context so nested components can read it with `useFormContext<TValues>()` without prop-drilling. |
 | [`useFormContext`](#useformcontext-hook) | hook | Read the nearest `FormProvider` form from context. |
-| [`Form`](#form-component) | component | A thin `<form>` wrapper that combines `FormProvider` (so descendants can call `useField`/`useFormContext` without prop-d |
-| [`Submit`](#submit-component) | component | A `<button type="submit">` that auto-disables while `form.isSubmitting()` is true OR the form is `disabled` — the button |
-| [`FormValues`](#formvalues-type) | type | Derive the `TValues` shape from a form — accepts BOTH the `useForm` RETURN (`FormState<V>`) and the `useForm` OPTIONS (` |
+| [`Form`](#form-component) | component | A thin `<form>` wrapper that combines `FormProvider` (so descendants can call `useField`/`useFormContext` without… |
+| [`Submit`](#submit-component) | component | A `<button type="submit">` that auto-disables while `form.isSubmitting()` is true OR the form is `disabled` — the… |
+| [`FormValues`](#formvalues-type) | type | Derive the `TValues` shape from a form — accepts BOTH the `useForm` RETURN (`FormState<V>`) and the `useForm` OPTIONS… |
 | [`FieldNames`](#fieldnames-type) | type | The field-name union of a form. |
 | [`FieldValue`](#fieldvalue-type) | type | The value type of ONE field of a form, by field name — `FieldValue<typeof form, "age">` is `number`. |
-| [`NestValues`](#nestvalues-type) | type | Type-level companion of the runtime `nestValues()`: convert a FLAT dot-path value shape (`{ 'address.city': string }`) t |
+| [`NestValues`](#nestvalues-type) | type | Type-level companion of the runtime `nestValues()`: convert a FLAT dot-path value shape (`{ 'address.city': string }`)… |
 
 ## API
 

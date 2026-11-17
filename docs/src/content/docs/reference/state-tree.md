@@ -93,26 +93,26 @@ shared.add('Persisted item')
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`model`](#model-function) | function | Define a reactive model via a chainable builder. |
-| [`SchemaModelHelpers`](#schemamodelhelpers-type) | type | The five schema-validated mutation helpers exposed on every schema-mode model instance AND on `self` inside schema-mode  |
+| [`SchemaModelHelpers`](#schemamodelhelpers-type) | type | The five schema-validated mutation helpers exposed on every schema-mode model instance AND on `self` inside schema-mode… |
 | [`DeepPartial`](#deeppartial-type) | type | Recursive partial — every property optional at every depth. |
 | [`ModelDefinition`](#modeldefinition-type) | type | The chainable builder returned by `model()`. |
 | [`getSnapshot`](#getsnapshot-function) | function | Recursively serialize a model instance into a plain JSON-safe snapshot. |
-| [`applySnapshot`](#applysnapshot-function) | function | Apply a (possibly PARTIAL) snapshot to a model instance — updates only the keys PRESENT in the snapshot, leaving absent  |
+| [`applySnapshot`](#applysnapshot-function) | function | Apply a (possibly PARTIAL) snapshot to a model instance — updates only the keys PRESENT in the snapshot, leaving absent… |
 | [`onPatch`](#onpatch-function) | function | Subscribe to JSON patches emitted by state mutations on a model instance. |
 | [`applyPatch`](#applypatch-function) | function | Apply one or more JSON patches to a model instance. |
 | [`addMiddleware`](#addmiddleware-function) | function | Add an action interception middleware to a model instance. |
-| [`destroy`](#destroy-function) | function | Tear down a model instance: run its `beforeDestroy` handlers (from `.lifecycle()`), recursively destroy field-nested chi |
+| [`destroy`](#destroy-function) | function | Tear down a model instance: run its `beforeDestroy` handlers (from `.lifecycle()`), recursively destroy field-nested… |
 | [`isAlive`](#isalive-function) | function | Returns `true` while the instance is live, `false` after `destroy(instance)` (and `false` for a non-model-instance). |
-| [`clone`](#clone-function) | function | Structurally clone a model instance: snapshot its current state, then create a fresh, fully-independent instance from th |
-| [`getType`](#gettype-function) | function | Returns the `ModelDefinition` that produced `instance` (the back-reference stored at `.create()` time), or `undefined` f |
-| [`volatile`](#volatile-function) | function | Add VOLATILE state — signal-backed transient fields that are reactive (read `self.x()`, write `self.x.set(v)`) but EXCLU |
+| [`clone`](#clone-function) | function | Structurally clone a model instance: snapshot its current state, then create a fresh, fully-independent instance from… |
+| [`getType`](#gettype-function) | function | Returns the `ModelDefinition` that produced `instance` (the back-reference stored at `.create()` time), or `undefined`… |
+| [`volatile`](#volatile-function) | function | Add VOLATILE state — signal-backed transient fields that are reactive (read `self.x()`, write `self.x.set(v)`) but… |
 | [`onSnapshot`](#onsnapshot-function) | function | Subscribe to snapshot changes. |
 | [`onAction`](#onaction-function) | function | Observe every action call on an instance (logging, analytics, devtools). |
 | [`getParent`](#getparent-function) | function | Tree-traversal helpers. |
 | [`arrayOf`](#arrayof-function) | function | Declare a plain-mode state field as an ARRAY (`arrayOf`) or string-keyed MAP (`mapOf`) of `Model` instances. |
 | [`identifier`](#identifier-function) | function | Declare a state field as a model's IDENTIFIER — the field a `reference()` resolves against. |
 | [`reference`](#reference-function) | function | Declare a state field as a normalized REFERENCE to another model by its identifier. |
-| [`resolveIdentifier`](#resolveidentifier-function) | function | Find the model instance of `Type` whose identifier equals `id`, searching `root`'s subtree (depth-first, cycle-safe; rea |
+| [`resolveIdentifier`](#resolveidentifier-function) | function | Find the model instance of `Type` whose identifier equals `id`, searching `root`'s subtree (depth-first, cycle-safe;… |
 | [`resetHook`](#resethook-function) | function | Destroy `.asHook(id)` singletons. |
 
 ## API
