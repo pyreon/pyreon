@@ -6,8 +6,8 @@
 // in isolation, and the generated shared `App.tsx` can be fed straight
 // through PMTC's `transform()` to prove it compiles to SwiftUI + Compose.
 //
-// Templates mirror the proven `examples/native-todomvc-{web,ios,android}`
-// shells (same XcodeGen / Gradle / Vite shapes), parameterized by name. The
+// Templates mirror the proven `examples/native-todomvc` hosts (web root,
+// ios/, android/) (same XcodeGen / Gradle / Vite shapes), parameterized by name. The
 // per-platform PROJECT configs (project.yml, Gradle, Info.plist, Vite) are
 // copied from those maintained shells; what this package verifies itself is
 // the GENERATOR output structure + that the shared source is real

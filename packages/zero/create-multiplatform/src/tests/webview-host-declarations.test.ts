@@ -61,12 +61,12 @@ describe('<WebView> host declarations', () => {
   it('the device-proven example declares what its hosted page uses', () => {
     // examples/native-tasks hosts a page that reads the location and takes a
     // file input; its device tests are the proof, so it must declare both.
-    const m = live(read('examples/native-tasks-android/app/src/main/AndroidManifest.xml'))
+    const m = live(read('examples/native-tasks/android/app/src/main/AndroidManifest.xml'))
     expect(m).toContain('android:authorities="${applicationId}.pyreon.fileprovider"')
     expect(m).toContain('android.permission.ACCESS_FINE_LOCATION')
-    expect(read('examples/native-tasks-android/app/src/main/res/xml/pyreon_webview_files.xml')).toContain(
+    expect(read('examples/native-tasks/android/app/src/main/res/xml/pyreon_webview_files.xml')).toContain(
       'path="pyreon-webview/"',
     )
-    expect(live(read('examples/native-tasks-ios/ios/Info.plist'))).toContain('NSLocationWhenInUseUsageDescription')
+    expect(live(read('examples/native-tasks/ios/Info.plist'))).toContain('NSLocationWhenInUseUsageDescription')
   })
 })

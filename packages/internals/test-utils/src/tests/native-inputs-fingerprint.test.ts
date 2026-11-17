@@ -260,10 +260,12 @@ describe('the real repository — input-list guards', () => {
     const workflow = readFileSync(join(REPO, '.github/workflows/native-device.yml'), 'utf8')
     const used = new Set(
       [
-        ...workflow.matchAll(/working-directory:\s*(examples\/native-[\w-]+-(?:ios|android))\b/g),
+        // Both layouts: examples/native-<app>-ios and examples/native-<app>/ios.
+        ...workflow.matchAll(/working-directory:\s*(examples\/native-[\w-]+?[-/](?:ios|android))\b/g),
       ].map((m) => m[1]!),
     )
-    expect(used.size).toBeGreaterThan(0)
+    // Every app the device lanes build: six apps, two hosts each.
+    expect(used.size).toBeGreaterThanOrEqual(10)
     const gated = new Set(gatedApps(REPO).map((a) => a.dir))
     for (const dir of used) expect(gated, dir).toContain(dir)
   })

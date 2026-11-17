@@ -41,13 +41,13 @@ Each app is shaped like the source framework and runs on its Pyreon compat layer
 
 ## Multiplatform: one source, web + iOS + Android
 
-One `.tsx` source compiled by PMTC to SwiftUI and Jetpack Compose, plus a web host. `bun create multiplatform` scaffolds this as one directory (`src/`, `ios/`, `android/`, web entry). Today, Counter, Router demo and Finance use that layout; Tasks and TodoMVC still split each target into its own host package. The analytics and viz apps that were compile-only now live as `packages/native/compiler/src/fixtures/showcase-{analytics,viz}.tsx`.
+One `.tsx` source compiled by PMTC to SwiftUI and Jetpack Compose, plus a web host. `bun create multiplatform` scaffolds this as one directory (`src/`, `ios/`, `android/`, web entry). Every app here uses that layout. The analytics and viz apps that were compile-only now live as `packages/native/compiler/src/fixtures/showcase-{analytics,viz}.tsx`.
 
 | App | Source | Hosts | Role |
 | --- | --- | --- | --- |
-| Tasks | [native-tasks](./native-tasks/) | [web](./native-tasks-web/) · [iOS](./native-tasks-ios/) · [Android](./native-tasks-android/) | The multi-feature showcase: store, auth gate, editors, charts. Device-gated in CI |
+| Tasks | [native-tasks](./native-tasks/) (`src/`) | web (root) · iOS (`ios/`) · Android (`android/`), one package | The multi-feature showcase: store, auth gate, editors, charts. Device-gated; the web build is e2e-tested |
 | Today | [native-showcase](./native-showcase/) (`src/`) | web (root) · iOS (`ios/`) · Android (`android/`), one package | The pyreon.dev home-page demo. CI builds both native hosts; its device tests are not run in CI yet |
-| TodoMVC | in the iOS host | [web](./native-todomvc-web/) · [iOS](./native-todomvc-ios/) · [Android](./native-todomvc-android/) | The oldest PMTC device gate |
+| TodoMVC | [native-todomvc](./native-todomvc/) (`src/`) | web (root) · iOS (`ios/`) · Android (`android/`), one package | The oldest PMTC device gate, with the Android R8 release lane and the iOS device-SDK archive lane |
 | Counter | [native-counter](./native-counter/) (`src/`) | iOS (`ios/`) · Android (`android/`), one package | Device APIs: geolocation, haptics, share, picker. Device-gated |
 | Router demo | [native-router-demo](./native-router-demo/) (`src/`) | web (root) · iOS (`ios/`) · Android (`android/`), one package | Router, tabs, websocket, audio. Device-gated; the web build is e2e-tested |
 | Finance | [native-finance](./native-finance/) (`src/`) | iOS (`ios/`) · Android (`android/`), one package | Real-app device gate: auth, form, store, routing |
