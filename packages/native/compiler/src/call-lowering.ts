@@ -20,7 +20,7 @@
  * on a third-party `type`, it dispatches by `(plugin, type)`.
  */
 
-import type { EmitContext } from './emit-context'
+import type { EmitContext, KotlinEmitContext } from './emit-context'
 import type { ExtExprSpec } from './module-items'
 import type { RequestOptions, ResolvedRequest } from './module-scan'
 import type { ExprIR, ExtDecl, ExtPayload, StatementIR, TypeIR } from './types'
@@ -243,7 +243,7 @@ export interface DeclLifecycle {
   /** Swift modifier lines (`.onDisappear { x.dispose() }`) appended after the component's view body. */
   swift?(decl: ExtDecl, ctx: EmitContext): readonly string[]
   /** Compose effect lines (`DisposableEffect(x) { … }`) appended to the component body, after mount effects. */
-  kotlin?(decl: ExtDecl, ctx: EmitContext): readonly string[]
+  kotlin?(decl: ExtDecl, ctx: KotlinEmitContext): readonly string[]
 }
 
 /**

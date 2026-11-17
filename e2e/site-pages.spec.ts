@@ -2,6 +2,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { waitForNav } from './site-islands'
+import { SITE_WIDTHS } from './site-audit'
 
 /**
  * pyreon.dev story, compare, migrate, benchmarks and project pages, against
@@ -14,7 +15,7 @@ import { waitForNav } from './site-islands'
  * where a live chart is drawn; and every text node passes WCAG AA in both
  * themes.
  */
-const WIDTHS = [320, 390, 768, 1024, 1440]
+const WIDTHS = SITE_WIDTHS
 /** One route per page type (plus the second project page, which has extra data). */
 const PAGE_TYPES = ['/benchmarks', '/compare/react', '/why/components-run-once', '/migrate', '/migrate/react', '/status', '/releases', '/community', '/brand']
 const FAMILY = /^\/(why|compare|migrate|benchmarks|status|releases|community|brand)(\/|$)/

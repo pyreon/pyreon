@@ -21,15 +21,19 @@
 // background refresh of already-shown data must NOT blank the UI
 // (isPending stays false; only isFetching flips).
 //
-// ## Scope — state + cache, NOT the async orchestrator
+// ## The query OWNS its request
 //
-// Like `PyreonFetch`, the actual network call is INJECTED (or driven by
-// the compiler-emitted `.task { }` harness through begin/resolve/reject).
-// This keeps the port dependency-light and synchronously unit-testable —
-// inject a stub fetcher, assert the cache + state transitions — and keeps
-// the Kotlin twin one-for-one. Deferred to follow-ups (disclosed, not
-// implied away): mutations, infinite queries, prefetch, query
-// invalidation across instances, retries/backoff, and persistence.
+// The compiler-emitted `.task { }` harness hands the request it built to
+// `run(_:)`, which keeps it and fetches when the cache is stale. Keeping it
+// is what makes `refetch()` work: it re-runs that same request, ignoring
+// staleness, from a button tap or pull-to-refresh long after the harness
+// returned. Every fetch takes a generation number, so a slow response that
+// a newer fetch (or a key change) superseded never overwrites the newer
+// state. The network call itself stays INJECTED — the runtime never builds
+// a request — so the tests drive it with stub fetchers, and the Kotlin twin
+// stays one-for-one. Deferred to follow-ups (disclosed, not implied away):
+// prefetch, query invalidation across instances, retries/backoff, and
+// persistence.
 //
 // ## The cache is process-global and keyed by `queryKey`
 //
@@ -136,7 +140,11 @@ public final class PyreonQuery<T> {
 
     @ObservationIgnored public private(set) var queryKey: String
     @ObservationIgnored public let staleSeconds: TimeInterval
-    @ObservationIgnored private var lastFetcher: (() throws -> T)?
+    /// The request the harness registered through `run(_:)`; `refetch()` re-runs it.
+    @ObservationIgnored private var fetcher: (() async throws -> T)?
+    /// Bumped by every fetch and every key change: a response settles state only
+    /// while its own generation is still the latest (no stale-promise overwrite).
+    @ObservationIgnored private var generation = 0
     @ObservationIgnored private let cache: PyreonQueryCache
 
     /// `staleSeconds` — how long a cached value is served WITHOUT a refetch
@@ -164,6 +172,11 @@ public final class PyreonQuery<T> {
     /// component's other properties.
     public func setKey(_ key: String) {
         guard key != queryKey else { return }
+        // A fetch still in flight belongs to the OLD key: drop its result
+        // (it must not be cached under the new key) and its in-flight flags.
+        generation += 1
+        isFetching = false
+        isPending = false
         queryKey = key
         data = cache.lookup(key, as: T.self)?.value
     }
@@ -204,23 +217,48 @@ public final class PyreonQuery<T> {
         isFetching = false
     }
 
-    /// Run a SYNCHRONOUS fetcher through begin → (resolve | reject). Skips
-    /// the fetch when the cache is fresh (serving the hydrated value).
-    /// Retains the fetcher so `refetch()` re-runs it.
-    public func load(_ fetcher: @escaping () throws -> T) {
-        lastFetcher = fetcher
-        guard isStale else { return } // fresh cache hit — data already set
-        reload()
+    /// Register the request and fetch it when the cache is stale (a fresh
+    /// hit keeps the hydrated value and skips the network). The emitted
+    /// `.task` harness calls this with the request it builds; the query keeps
+    /// it so `refetch()` can re-run it later.
+    @MainActor
+    public func run(_ fetcher: @escaping () async throws -> T) async {
+        self.fetcher = fetcher
+        guard isStale else { return }
+        await fetch(fetcher)
     }
 
-    /// Force a fetch, ignoring staleness (the user pulled to refresh).
-    public func refetch() {
-        reload()
+    /// Force a fetch of the registered request, ignoring staleness (the user
+    /// pulled to refresh). `isFetching` is true until it settles; on success
+    /// `data` is replaced, on failure `error` is set and `data` kept. A no-op
+    /// before the harness registered a request. Returns the running task so a
+    /// caller can await it; the emitted code ignores it.
+    @discardableResult
+    public func refetch() -> _Concurrency.Task<Void, Never>? {
+        guard let fetcher else { return nil }
+        return _Concurrency.Task { @MainActor [weak self] in
+            await self?.fetch(fetcher)
+        }
     }
 
-    private func reload() {
-        guard let fetcher = lastFetcher else { return }
+    @MainActor
+    private func fetch(_ fetcher: () async throws -> T) async {
+        generation += 1
+        let mine = generation
         begin()
-        do { resolve(try fetcher()) } catch let caught { reject(caught) }
+        do {
+            let value = try await fetcher()
+            guard mine == generation else { return } // superseded: a newer fetch owns the state
+            resolve(value)
+        } catch let failure {
+            guard mine == generation else { return }
+            if _Concurrency.Task.isCancelled {
+                // The view went away (or its key changed): not a failure to show.
+                isFetching = false
+                isPending = false
+            } else {
+                reject(failure)
+            }
+        }
     }
 }

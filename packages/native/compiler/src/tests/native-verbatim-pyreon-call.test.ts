@@ -190,3 +190,39 @@ describe('names are matched literally', () => {
     expect(verbatimPyreonCallWarnings(imports, 'ab()', 'let r = ab()', [])).toEqual([])
   })
 })
+
+// A JS template literal lowers to a Swift `"\(…)"` / Kotlin `"${…}"` interpolation, and the interpolated expression is
+// CODE. The check stripped every string literal whole, interpolations included, so an unlowered export used inside a
+// template literal (`@pyreon/core`'s documented `escapeJsonForScript` example) compiled to a call to a missing function
+// with no warning. Found by `scripts/native-example-sweep.ts` (SILENT-FAIL on both targets).
+describe('a call inside a template-literal interpolation', () => {
+  const src = app(
+    `import { escapeJsonForScript } from '@pyreon/core'`,
+    '  const tag = `<script type="application/ld+json">${escapeJsonForScript(JSON.stringify({ a: 1 }))}</script>`',
+  )
+  for (const target of ['swift', 'kotlin'] as const) {
+    it(`${target}: warns, naming the function and its package`, () => {
+      const r = transform(src, { target })
+      expect(r.code).toMatch(/escapeJsonForScript\(/)
+      const w = r.warnings.find((x) => x.startsWith('escapeJsonForScript()'))
+      expect(w, r.warnings.join('\n')).toBeDefined()
+      expect(w).toMatch(/\(from @pyreon\/core\) has NO native lowering/)
+    })
+  }
+  it('reads Swift `\\(…)` and Kotlin `${…}` interpolations, nested strings included, as code', () => {
+    const imports = new Map([['getSnapshot', { source: '@pyreon/state-tree', imported: 'getSnapshot' }]])
+    const s = 'const t = `${getSnapshot(x)}`'
+    expect(verbatimPyreonCallWarnings(imports, s, 'let t = "a \\(getSnapshot(x)) b"', [])).toHaveLength(1)
+    expect(verbatimPyreonCallWarnings(imports, s, 'val t = "a ${getSnapshot(x)} b"', [])).toHaveLength(1)
+    expect(verbatimPyreonCallWarnings(imports, s, 'let t = """\n\\(f("q)", getSnapshot(x)))\n"""', [])).toHaveLength(1)
+    expect(verbatimPyreonCallWarnings(imports, s, 'val t = "${f("}", g { getSnapshot(x) })}"', [])).toHaveLength(1)
+    // Text around and after an interpolation is still text, and an escaped `\\(` / `\${` is not an interpolation.
+    expect(verbatimPyreonCallWarnings(imports, s, 'let t = "\\(a) getSnapshot(1)"', [])).toEqual([])
+    expect(verbatimPyreonCallWarnings(imports, s, 'val t = "\\${getSnapshot(1)}"', [])).toEqual([])
+    expect(verbatimPyreonCallWarnings(imports, s, 'let t = "\\\\(getSnapshot(1))"', [])).toEqual([])
+  })
+  it('a JavaScript-only global inside an interpolation is named too (same strip)', () => {
+    const r = transform(app('', '  const q = `?q=${encodeURIComponent("a b")}`'), { target: 'swift' })
+    expect(r.warnings.join('\n')).toMatch(/encodeURIComponent is a JavaScript\/browser global/)
+  })
+})

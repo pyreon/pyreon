@@ -1,7 +1,7 @@
 import { For, Show } from '@pyreon/core'
 import { fill } from '../../content/fill'
 import type { BenchJumpId, BenchmarksPage as Data } from '../../content/types-site'
-import { el, focusRing, tone, txt, type LinkAttrs } from '../../kit/bases'
+import { el, focusRing, tone, txt, type LinkAttrs, tapArea } from '../../kit/bases'
 import { LimitNote, NumberedCards } from '../../kit/blocks'
 import { GlowCard } from '../../kit/cards'
 import { CodeCard } from '../../kit/code'
@@ -92,6 +92,7 @@ const JumpLink = el
     textDecoration: 'none',
     hover: { color: tone(m, 'text'), borderColor: tone(m, 'lineHover') },
     focus: focusRing(m),
+    extendCss: tapArea,
   }))
 
 const HeroStats = el
@@ -227,9 +228,9 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
         <Wrap>
           <Eyebrow>{fill(T.hero.eyebrow, { date: recordDate, count: d.competitors.length })}</Eyebrow>
           <Heading tag="h1" size="hero">
-            {T.hero.title}
+            {renderInline(T.hero.title)}
           </Heading>
-          <Lede size="hero">{T.hero.lede}</Lede>
+          <Lede size="hero">{renderInline(T.hero.lede)}</Lede>
           <HeroStats aria-label={T.hero.statsLabel}>
             <For each={d.heroStats} by={(s) => s.stat + s.label}>
               {(s) => (
@@ -527,7 +528,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
                   <li>
                     <GlowCard padding="compact">
                       <Heading tag="h3" size="step">
-                        {b.title}
+                        {renderInline(b.title)}
                       </Heading>
                       <Lede size="small">{renderInline(b.text)}</Lede>
                       <Mono>

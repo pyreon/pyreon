@@ -170,6 +170,11 @@ describe('withVerdictCache', () => {
     expect(isTransientProcessFailure({ status: 1, signal: null, stderr: "Input.swift:3:5: error: cannot find 'x' in scope" })).toBe(false)
   })
 
+  it('classifies an input file modified DURING the compile as transient: the output describes no single source version', () => {
+    const raced = { status: 1, signal: null, stderr: "error: input file '/w/native/swift/PyreonQuery.swift' was modified during the build" }
+    expect(isTransientProcessFailure(raced)).toBe(true)
+  })
+
   it('evicts a stored swiftc driver kill notice', () => {
     const key = cacheKey('swift-stubs', 'v', 's', 'src')
     writeFileSync(

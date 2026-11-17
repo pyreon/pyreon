@@ -103,12 +103,12 @@ const Status = () => (
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`createMachine`](#createmachine-function) | function | Create a reactive state machine. |
-| [`Eventless (always) transitions`](#eventless-always-transitions-function) | function | A state may declare `always` transitions that fire SYNCHRONOUSLY the moment the state is entered (and for the initial st |
+| [`Eventless (always) transitions`](#eventless-always-transitions-function) | function | A state may declare `always` transitions that fire SYNCHRONOUSLY the moment the state is entered (and for the initial… |
 | [`Machine.onExit / onEnter / onTransition / onDone`](#machineonexit-onenter-ontransition-ondone-function) | function | Lifecycle listeners. |
 | [`Final states (final / isFinal / onDone)`](#final-states-final-isfinal-ondone-function) | function | Mark a terminal state with `final: true`. |
 | [`Machine.matches / nextEvents / reset / dispose`](#machinematches-nextevents-reset-dispose-function) | function | The instance query + control surface (all reactive where noted). |
-| [`StateOf`](#stateof-type) | type | The STATE union of a machine — accepts BOTH the machine INSTANCE (`createMachine(...)` return) and a raw config object ( |
-| [`EventOf`](#eventof-type) | type | The EVENT union of a machine — instance or raw config (delegates to `InferEvents`, which unions every state's `on` keys; |
+| [`StateOf`](#stateof-type) | type | The STATE union of a machine — accepts BOTH the machine INSTANCE (`createMachine(...)` return) and a raw config object… |
+| [`EventOf`](#eventof-type) | type | The EVENT union of a machine — instance or raw config (delegates to `InferEvents`, which unions every state's `on` keys;… |
 
 ## API
 

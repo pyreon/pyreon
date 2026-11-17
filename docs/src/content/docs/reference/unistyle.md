@@ -72,18 +72,18 @@ const width = `calc(${vars.spacing.small} * ${vars.ratio.medium})` // proportion
 | --- | --- | --- |
 | [`enrichTheme`](#enrichtheme-function) | function | Merge a partial theme with the full default theme (breakpoints, spacing, unit utilities, fallback colors). |
 | [`breakpoints`](#breakpoints-constant) | constant | The default breakpoint configuration — a constant `{ rootSize, breakpoints }` object, NOT a function. |
-| [`createMediaQueries`](#createmediaqueries-function) | function | Build a record of media-query tagged-templates keyed by breakpoint name from a `{ breakpoints, rootSize, css }` options  |
+| [`createMediaQueries`](#createmediaqueries-function) | function | Build a record of media-query tagged-templates keyed by breakpoint name from a `{ breakpoints, rootSize, css }` options… |
 | [`makeItResponsive`](#makeitresponsive-function) | function | Build a styled-component interpolation from a `styles` callback. |
-| [`styles`](#styles-function) | function | Generate the CSS for a flat theme object — box-model, typography, spacing, border, and layout declarations resolved from |
-| [`alignContent`](#aligncontent-function) | function | Resolve `direction` / `alignX` / `alignY` shorthand to the matching flex CSS (`flex-direction`, `align-items`, `justify- |
+| [`styles`](#styles-function) | function | Generate the CSS for a flat theme object — box-model, typography, spacing, border, and layout declarations resolved from… |
+| [`alignContent`](#aligncontent-function) | function | Resolve `direction` / `alignX` / `alignY` shorthand to the matching flex CSS (`flex-direction`, `align-items`,… |
 | [`extendCss`](#extendcss-function) | function | Flatten a CSS definition to a string. |
 | [`stripUnit`](#stripunit-function) | function | Strip the unit suffix from a CSS value and return the numeric part (`"16px"` → `16`, `"1.5rem"` → `1.5`). |
 | [`value`](#value-function) | function | Convert ONE numeric/string CSS value to its final unit string. |
 | [`themeToCssVars`](#themetocssvars-function) | function | Autogenerate CSS custom properties from a plain theme JSON. |
-| [`resolveCssVarReferences`](#resolvecssvarreferences-function) | function | Resolve `var(--…)` references in a string back to their raw emitted values using a `themeToCssVars` registry — for consu |
-| [`values`](#values-function) | function | Companion to `value()` for a mobile-first FALLBACK CHAIN: picks the first non-nullish entry in `inputs` (left to right)  |
+| [`resolveCssVarReferences`](#resolvecssvarreferences-function) | function | Resolve `var(--…)` references in a string back to their raw emitted values using a `themeToCssVars` registry — for… |
+| [`values`](#values-function) | function | Companion to `value()` for a mobile-first FALLBACK CHAIN: picks the first non-nullish entry in `inputs` (left to right)… |
 | [`cpseRewrite / cpseVarName / extractStyleVar`](#cpserewrite-cpsevarname-extractstylevar-function) | function | The Custom-Property Style Extraction (CPSE) primitives — the machinery behind `styleExtraction: true` / `cpseStyled`. |
-| [`cpseStyled`](#cpsestyled-function) | function | The complete, opt-in CPSE-backed styled primitive — pass a `styles` prop (static object, or `() => object` for signal-dr |
+| [`cpseStyled`](#cpsestyled-function) | function | The complete, opt-in CPSE-backed styled primitive — pass a `styles` prop (static object, or `() => object` for… |
 
 ## API
 

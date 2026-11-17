@@ -4,6 +4,7 @@ import type { ShowcaseExample } from '../site/content/types-site'
 import { el, tone, txt } from '../site/kit/bases'
 import { GlowCard } from '../site/kit/cards'
 import { Chip, InstallCommand, Pill } from '../site/kit/controls'
+import { ctaStackOnPhone } from '../site/kit/cta'
 import { AutoGrid, Section, SectionHead, Wrap } from '../site/kit/layout'
 import { Picture } from '../site/kit/media'
 import { Reveal } from '../site/kit/motion'
@@ -27,6 +28,8 @@ export function sourceUrl(dir: string): string {
 
 const Hero = el.config({ name: 'ShowcaseHero' }).attrs({ block: true, contentAlignX: 'block', gap: 22 }).theme(() => ({ maxWidth: 860 }))
 const Row = el.config({ name: 'ShowcaseRow' }).attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 10 }).theme(() => ({ flexWrap: 'wrap' }))
+/** The hero's calls to action: full width on a phone, like every hero (kit/controls.tsx `ctaStackOnPhone`). */
+const HeroActions = Row.config({ name: 'ShowcaseHeroActions' }).theme(() => ({ flexWrap: 'wrap', extendCss: ctaStackOnPhone }))
 const End = el
   .config({ name: 'ShowcaseEnd' })
   .attrs({ block: true, contentAlignX: 'center', gap: 18 })
@@ -153,7 +156,7 @@ export function ShowcasePage() {
               {c.hero.title}
             </Heading>
             <Lede size="hero">{renderInline(c.hero.lede)}</Lede>
-            <Row>
+            <HeroActions>
               <For each={c.hero.actions.map((a, i) => ({ a, i }))} by={(x) => x.i}>
                 {(x) => (
                   <Pill href={x.a.href ?? '/'} variant={x.i === 0 ? 'solid' : 'ghost'}>
@@ -161,7 +164,7 @@ export function ShowcasePage() {
                   </Pill>
                 )}
               </For>
-            </Row>
+            </HeroActions>
           </Hero>
         </Wrap>
       </Section>
