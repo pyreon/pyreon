@@ -1,10 +1,10 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 // The examples use `@pyreon/charts` hosts, whose emit and type-gate stubs live in that package's
 // plugin — so compile and validate through the plugin-loaded helpers, not the bare compiler.
-import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
+import { transform, validateKotlinFiles, validateSwiftWithStubs } from './charts-plugin'
 
 /**
  * Every shipped `examples/native-*` app must COMPILE on both targets.
@@ -79,6 +79,24 @@ const usesNativeModule = (path: string): boolean =>
 const APPS = ALL.filter(([, p]) => !usesNativeModule(p))
 const ESCAPE_HATCH = ALL.filter(([, p]) => usesNativeModule(p))
 
+/**
+ * The app's source and every sibling `.tsx` it imports (relatively, transitively) — what `pyreon-native build
+ * --source=src` compiles into ONE module. A page split into its own file (`import { ReorderPage } from
+ * './ReorderPage'`) is a type the main file names; compiled alone, the main file cannot resolve it.
+ */
+function appSources(path: string): string[] {
+  const out: string[] = []
+
+  const visit = (p: string): void => {
+    if (out.includes(p) || !existsSync(p)) return
+    out.push(p)
+    for (const m of readFileSync(p, 'utf8').matchAll(/from '(\.\/[A-Za-z0-9_]+)'/g)) visit(join(dirname(p), `${m[1]}.tsx`))
+  }
+  visit(path)
+
+  return out
+}
+
 describe('every native example compiles on both targets', () => {
   it('found example apps to check', () => {
     // An empty scan is a SKIP masquerading as a pass.
@@ -108,14 +126,19 @@ describe('every native example compiles on both targets', () => {
     it.each(APPS)('%s', (_name, path) => {
       // The real path, as `pyreon-native build` passes it: a hook or a type imported from a sibling module only
       // resolves from a file that exists on disk.
-      const r = validateSwiftWithStubs(transform(readFileSync(path, 'utf8'), { target: 'swift', filename: path }).code)
+      const code = appSources(path)
+        .map((p) => transform(readFileSync(p, 'utf8'), { target: 'swift', filename: p }).code)
+        .join('\n')
+      const r = validateSwiftWithStubs(code)
       expect(r.ok, r.ok ? '' : String(r.error).split('\n').slice(0, 6).join('\n')).toBe(true)
     })
   })
 
   describe.runIf(isKotlincAvailable())('kotlinc against stubs', () => {
     it.each(APPS)('%s', (_name, path) => {
-      const r = validateKotlin(transform(readFileSync(path, 'utf8'), { target: 'kotlin', filename: path }).code)
+      const r = validateKotlinFiles(
+        appSources(path).map((p) => transform(readFileSync(p, 'utf8'), { target: 'kotlin', filename: p }).code),
+      )
       expect(r.ok, r.ok ? '' : String(r.error).split('\n').slice(0, 6).join('\n')).toBe(true)
     })
   })

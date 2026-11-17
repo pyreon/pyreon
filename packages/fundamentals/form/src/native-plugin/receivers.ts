@@ -60,8 +60,52 @@ const arrayRead = (site: ReceiverSite, ctx: EmitContext): string | undefined => 
     return `${name}.move(${e.args.map((arg, i) => `${i === 0 ? 'from' : 'to'}: ${ctx.expr(arg)}`).join(', ')})`
   return undefined
 }
-const rowRead = (site: ReceiverSite, ctx: EmitContext): string | undefined => {
+
+/**
+ * `item.value.set(text)` / `item.value.update(fn)` — a row's own input writing its value. The native row is a value
+ * type (a Swift struct, a Kotlin data class with a `val`), so the generic signal-write lowering (`item.value = text`)
+ * compiled on neither target; the write goes through the array, by the row's KEY (`setValue(key:)`), never by an
+ * index an earlier removal may have shifted.
+ */
+const rowWrite = (site: ReceiverSite, ctx: EmitContext): string | undefined => {
   const e = site.expr
+  if (
+    e.kind !== 'call' ||
+    e.args.length !== 1 ||
+    e.callee.kind !== 'member' ||
+    (e.callee.property !== 'set' && e.callee.property !== 'update') ||
+    e.callee.object.kind !== 'member' ||
+    e.callee.object.property !== 'value' ||
+    e.callee.object.object.kind !== 'identifier'
+  ) {
+    return undefined
+  }
+
+  const array = (site.receiver.payload as { array?: string }).array
+  if (array === undefined) return undefined
+
+  const row = ctx.ident(site.receiver.name)
+  const arg = ctx.expr(e.args[0]!)
+  // `update(fn)` applies `fn` to the current value: Kotlin `let` infers the lambda's parameter from the receiver, and
+  // Swift infers an immediately applied closure's from its argument.
+  const value =
+    e.callee.property === 'set'
+      ? arg
+      : ctx.target === 'swift'
+        ? `(${arg})(${row}.value)`
+        : `${row}.value.let(${arg})`
+
+  return ctx.target === 'swift'
+    ? `${ctx.ident(array)}.setValue(key: ${row}.key, ${value})`
+    : `${ctx.ident(array)}.setValue(${row}.key, ${value})`
+}
+
+const rowRead = (site: ReceiverSite, ctx: EmitContext): string | undefined => {
+  const write = rowWrite(site, ctx)
+  if (write !== undefined) return write
+
+  const e = site.expr
+
   return e.kind === 'call' &&
     e.args.length === 0 &&
     e.callee.kind === 'member' &&

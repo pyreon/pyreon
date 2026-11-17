@@ -98,6 +98,15 @@ public final class PyreonFieldArray {
         items[index].value = value
     }
 
+    /// Set the value of the row with `key`, KEEPING the key — what a row's own
+    /// input writes (`item.value.set(text)` on the web), so the row it edits is
+    /// found by identity, not by a position an earlier removal may have moved.
+    /// An unknown key (the row was removed) is a no-op.
+    public func setValue(key: Int, _ value: String) {
+        guard let index = items.firstIndex(where: { $0.key == key }) else { return }
+        items[index].value = value
+    }
+
     /// Move a row from one index to another. Invalid indices are a no-op.
     public func move(from: Int, to: Int) {
         guard items.indices.contains(from), items.indices.contains(to) else { return }

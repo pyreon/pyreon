@@ -186,10 +186,10 @@ export const fieldArrayDecl: DeclEmitter = {
         : `listOf(${d.initial.map((v) => ctx.stringLiteral(v)).join(', ')})`
     return `val ${ctx.ident(decl.name)} = remember { PyreonFieldArray(${initial}) }`
   },
-  iteration(source) {
+  iteration(source, decl) {
     const e = source.kind === 'call' && source.args.length === 0 ? source.callee : source
     return e.kind === 'member' && e.object.kind === 'identifier' && e.property === 'items'
-      ? { type: ROW_TYPE }
+      ? { type: ROW_TYPE, payload: { array: decl.name } }
       : undefined
   },
 }

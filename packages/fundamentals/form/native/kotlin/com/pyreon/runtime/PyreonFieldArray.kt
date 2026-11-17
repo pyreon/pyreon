@@ -82,6 +82,16 @@ public class PyreonFieldArray(initial: List<String> = emptyList()) {
         items[index.toInt()] = items[index.toInt()].copy(value = value)
     }
 
+    /** Set the value of the row with [key], KEEPING the key — what a row's own
+     * input writes (`item.value.set(text)` on the web), so the row it edits is
+     * found by identity, not by a position an earlier removal may have moved.
+     * An unknown key (the row was removed) is a no-op. */
+    public fun setValue(key: Long, value: String) {
+        val index = items.indexOfFirst { it.key == key }
+        if (index < 0) return
+        items[index] = items[index].copy(value = value)
+    }
+
     /** Move a row from one index to another. Invalid indices are a no-op. */
     public fun move(from: Long, to: Long) {
         if (from !in items.indices.toLongRange() || to !in items.indices.toLongRange()) return

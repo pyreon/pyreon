@@ -42,6 +42,14 @@ struct PyreonFormTests {
         eq(arr.values(), ["edited"])
         eq(arr.items[0].key, 0, "update keeps the row's key")
 
+        arr = PyreonFieldArray(["a", "b", "c"])
+        arr.remove(0)
+        arr.setValue(key: 2, "edited")
+        eq(arr.values(), ["b", "edited"], "setValue edits the row with that key, not the index")
+        eq(arr.items.map(\.key), [1, 2], "setValue keeps every key")
+        arr.setValue(key: 0, "gone")
+        eq(arr.values(), ["b", "edited"], "an unknown (removed) key is a no-op")
+
         arr = PyreonFieldArray(["b"])
         arr.prepend("a")
         eq(arr.values(), ["a", "b"])

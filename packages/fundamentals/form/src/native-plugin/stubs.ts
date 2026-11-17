@@ -56,6 +56,7 @@ public final class PyreonFieldArray {
   public func insert(_ index: Int, _ value: String) {}
   public func remove(_ index: Int) {}
   public func update(_ index: Int, _ value: String) {}
+  public func setValue(key: Int, _ value: String) {}
   public func move(from: Int, to: Int) {}
   public func swap(_ indexA: Int, _ indexB: Int) {}
   public func replace(_ values: [String]) {}
@@ -126,6 +127,7 @@ class PyreonFieldArray(initial: List<String> = emptyList()) {
   fun insert(index: Long, value: String) {}
   fun remove(index: Long) {}
   fun update(index: Long, value: String) {}
+  fun setValue(key: Long, value: String) {}
   fun move(from: Long, to: Long) {}
   fun swap(indexA: Long, indexB: Long) {}
   fun replace(values: List<String>) {}

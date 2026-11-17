@@ -36,6 +36,17 @@ fun testFieldArrayUpdateKeepsKey() {
     check(arr.items[0].key == 0L) { "update keeps the row's key" }
 }
 
+fun testFieldArraySetValueByKeyAfterRemoval() {
+    val arr = PyreonFieldArray(listOf("a", "b", "c"))
+    arr.remove(0)
+    // Row "c" now sits at index 1 but keeps key 2: a row's own input writes by key.
+    arr.setValue(2L, "edited")
+    check(arr.values() == listOf("b", "edited")) { "setValue edits the row with that key, not the index" }
+    check(arr.items.map { it.key } == listOf(1L, 2L)) { "setValue keeps every key" }
+    arr.setValue(0L, "gone")
+    check(arr.values() == listOf("b", "edited")) { "an unknown (removed) key is a no-op" }
+}
+
 fun testFieldArrayPrependInsertClamped() {
     val arr = PyreonFieldArray(listOf("b"))
     arr.prepend("a")
@@ -73,6 +84,7 @@ fun main() {
     testFieldArrayInitialAndAppendKeys()
     testFieldArrayRemoveKeepsSurvivorKeys()
     testFieldArrayUpdateKeepsKey()
+    testFieldArraySetValueByKeyAfterRemoval()
     testFieldArrayPrependInsertClamped()
     testFieldArrayMoveSwapReplace()
     testFieldArrayOutOfBoundsAreNoOps()
