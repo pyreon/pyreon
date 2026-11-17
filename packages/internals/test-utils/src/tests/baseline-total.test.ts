@@ -126,7 +126,7 @@ describe('a per-file baseline must be the text its generator writes', () => {
     it('PR one tightens a.ts, PR two removes e.ts: git merges them and the result is what the generator writes', () => {
       const base = gen(files)
       const one = gen({ ...files, 'a.ts': { r: 4 } })
-      const { e: _e, ...withoutE } = files
+      const { 'e.ts': _e, ...withoutE } = files
       const two = gen(withoutE)
       const merged = merge(base, one, two, 'new')
       expect(merged.status).toBe(0)
