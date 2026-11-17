@@ -40,6 +40,19 @@ await page.click('#run')
 assert((await rows()) === 1000, 'create 1000')
 const firstLabel = await page.locator('tbody tr:first-child td.col-md-4 a').textContent()
 
+// The id cell holds exactly the decimal id as ONE text node: upstream's driver
+// reads rows by this text, and the reference markup has nothing else in the cell.
+const idCell = (n) =>
+  page.locator(`tbody tr:nth-child(${n}) td:first-child`).evaluate((td) => ({
+    text: td.textContent,
+    nodes: [...td.childNodes].map((c) => c.nodeType),
+  }))
+const firstId = await idCell(1)
+const lastId = await idCell(1000)
+assert(/^[1-9]\d*$/.test(firstId.text), `row 1 id cell is a plain integer, got ${JSON.stringify(firstId.text)}`)
+assert(lastId.text === String(Number(firstId.text) + 999), `row 1000 id is row 1 id + 999, got ${lastId.text}`)
+assert(firstId.nodes.length === 1 && firstId.nodes[0] === 3, `id cell is one text node, got ${firstId.nodes}`)
+
 await page.click('#update')
 const updated = await page.locator('tbody tr:first-child td.col-md-4 a').textContent()
 assert(updated === firstLabel + ' !!!', 'update every 10th appends !!!')
@@ -66,6 +79,6 @@ await page.click('#clear')
 assert((await rows()) === 0, 'clear')
 
 assert(errors.length === 0, 'no page errors: ' + errors.join('; '))
-console.log('SMOKE OK — all 8 ops verified, no console errors')
+console.log('SMOKE OK — all 8 ops and the id cell verified, no console errors')
 await browser.close()
 server.close()
