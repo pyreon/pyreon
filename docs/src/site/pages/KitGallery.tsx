@@ -6,6 +6,7 @@ import { HOME, type HomeHero } from '../content/home'
 import { shareImage } from '../kit/assets'
 import { AnimatedSvg, Loop, Picture, Poster } from '../kit/media'
 import notFoundArt from '../media/illustrations/404.svg?raw'
+import proofChartsArt from '../media/home/proof-charts.svg?raw'
 import { PyreonUI } from '@pyreon/ui-core'
 import type { ProductData } from '../content/model'
 import form from '../content/products/form.json'
@@ -18,7 +19,8 @@ import { BeforeAfter, CodeCard, CodeDiff } from '../kit/code'
 import { Chip, InstallCommand, Pill } from '../kit/controls'
 import { AutoGrid, Rule, Section, SectionHead, Wrap } from '../kit/layout'
 import { Reveal } from '../kit/motion'
-import { CaveatLine, EndCTA, HookHero, ProofBand, QuoteBlock } from '../kit/proof'
+import { Badge } from '../kit/badge'
+import { CaveatLine, EndCTA, HookHero, ProofBand, QuoteBlock, StatCard } from '../kit/proof'
 import { Code, Eyebrow, Heading, Lede, renderInline, StatusBadge, StatusDot } from '../kit/type'
 import { color, font, type ColorKey } from '../theme'
 
@@ -27,6 +29,8 @@ const KitLiveIsland = island(() => import('./KitGalleryLive'), { name: 'KitGalle
 // The forced-theme panels' button Pills (a button outside an island does nothing on a static page).
 const KitScopePillsIsland = island(() => import('./KitScopePills'), { name: 'KitScopePills', hydrate: 'visible' })
 const HERO_MEDIA = (HOME.sections.find((s) => s.kind === 'hero') as HomeHero).visual.media
+// The homepage's first proof card (the charts number), so the specimen prints a locked figure.
+const STRIP_ITEM = HOME.sections.flatMap((s) => (s.kind === 'strip' ? s.items : []))[0]
 
 const FORM = form as unknown as ProductData
 const REACTIVITY = reactivity as unknown as ProductData
@@ -256,6 +260,25 @@ export function KitGallery() {
                 { value: '24', label: 'MCP tools' },
               ]}
             />
+          </Specimen>
+
+          <Specimen name="StatCard: with its chart (the note shows once, in the chart's footnote) · without a chart">
+            {STRIP_ITEM ? (
+              <AutoGrid min={280} gap={12}>
+                <StatCard stat={STRIP_ITEM.stat} label={STRIP_ITEM.label} lines={[STRIP_ITEM.rival]} note={STRIP_ITEM.condition} chart={{ svg: proofChartsArt, file: 'home/proof-charts.svg' }} />
+                <StatCard stat={STRIP_ITEM.stat} label={STRIP_ITEM.label} lines={[STRIP_ITEM.rival]} note={STRIP_ITEM.condition} />
+              </AutoGrid>
+            ) : null}
+          </Specimen>
+
+          <Specimen name="Badge: win · tie · split · loss · info">
+            <Row>
+              <Badge tone="win">win</Badge>
+              <Badge tone="tie">tie</Badge>
+              <Badge tone="split">split</Badge>
+              <Badge tone="loss">loss</Badge>
+              <Badge tone="info">measured</Badge>
+            </Row>
           </Specimen>
 
           <Specimen name="VerdictChip · CompareBars · BenchmarkTable · CaveatLine">
