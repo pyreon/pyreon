@@ -178,6 +178,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     else if (key === 'dsym') out.dsym = value
     else if (key === 'retrace') out.retrace = value
   }
+
   return out
 }
 
@@ -315,6 +316,7 @@ export function resolveAppDir(parsed: Pick<ParsedArgs, 'app' | 'source' | 'file'
     const owning = nearestPackageDir(anchor)
     if (owning !== null) return owning
   }
+
   return resolve(process.cwd())
 }
 
@@ -358,6 +360,7 @@ export async function mainWithPlugins(argv: string[]): Promise<number> {
     }
     const discovered = discovering ? await discoverPlugins(appDir, resolve(parsed.source!)) : []
     if (plugins.length === 0 && discovered.length === 0) return main(argv)
+
     return main(
       argv,
       createCompiler({ plugins, discovered: discovered.map((d) => d.plugin) }),
@@ -391,6 +394,7 @@ async function runPluginWebHosts(parsed: ParsedArgs, appDir: string): Promise<nu
         performance.now() - started,
       ),
     ])
+
     return 0
   } catch (error) {
     emit(failure(o, 'web-host build', error instanceof Error ? error.message : String(error), performance.now() - started))
@@ -468,6 +472,7 @@ async function runExplain(parsed: ParsedArgs, appDir: string) {
       plugins.push((await import(pathToFileURL(resolve(path)).href)).default)
     }
     const compiler = createCompiler({ plugins, discovered: discovered.map((d) => d.plugin) })
+
     return explainReport(readFileSync(file, 'utf8'), file, compiler)
   } catch (error) {
     return {
@@ -540,6 +545,7 @@ export function main(argv: string[], compiler?: Pick<NativeCompiler, 'transform'
       emit(buildTargetLines(o, result, true))
     }
     emit(buildAllVerdict(o, results, performance.now() - started))
+
     return results.some((r) => r.error !== undefined) ? 2 : 0
   }
 
@@ -563,6 +569,7 @@ export function main(argv: string[], compiler?: Pick<NativeCompiler, 'transform'
   emit(buildHeader(o, { platforms: platformOf(parsed.target), source: parsed.source, out: parsed.out }))
   const result = executeBuild(parsed, parsed.target, parsed.out)
   emit(buildTargetLines(o, result, false))
+
   return result.error === undefined ? 0 : 2
 }
 
@@ -591,6 +598,7 @@ function executeBuild(parsed: ParsedArgs, target: TargetLanguage, outDir: string
       ...(parsed.kotlinPackage ? { kotlinPackage: parsed.kotlinPackage } : {}),
       ...(fonts ? { fonts } : {}),
     })
+
     return {
       target,
       outDir,
@@ -617,7 +625,9 @@ function executeBuild(parsed: ParsedArgs, target: TargetLanguage, outDir: string
 interface BunImportMeta {
   readonly main?: boolean
 }
+
 const meta = import.meta as ImportMeta & BunImportMeta
+
 if (meta.main === true) {
   const argv = process.argv.slice(2)
   // `mainWithPlugins`, not `main`: package plugins (a library's own lowering, e.g. `@pyreon/charts`)
@@ -662,6 +672,7 @@ function runAssets(parsed: ParsedArgs): number {
         performance.now() - started,
       ),
     ])
+
     return 0
   } catch (err) {
     emit(failure(o, 'assets', err instanceof Error ? err.message : String(err), performance.now() - started))
@@ -710,6 +721,7 @@ function runStageWeb(parsed: ParsedArgs): number {
         result.skippedDirs.length > 0 ? [plural(result.skippedDirs.length, 'warning')] : [],
       ),
     ])
+
     return 0
   } catch (err) {
     emit(failure(o, 'stage-web', err instanceof Error ? err.message : String(err), performance.now() - started))
@@ -774,6 +786,7 @@ function runWire(parsed: ParsedArgs): number {
       }),
     )
   }
+
   return wiring.brokenDeclarations.length > 0 ? 2 : 0
 }
 
@@ -795,6 +808,7 @@ function reportCheck(
         skippedWebEntries: result.skippedWebEntries,
       }),
     )
+
     return
   }
   emit(
@@ -848,6 +862,7 @@ function runCheck(parsed: ParsedArgs): number {
     const started = performance.now()
     const result = check(checkOpts)
     reportCheck(result, targets, parsed, performance.now() - started)
+
     return result.errorCount > 0 ? 2 : 0
   } catch (err) {
     emit(failure(outFor(), 'check', err instanceof Error ? err.message : String(err)))
@@ -881,10 +896,12 @@ function runSymbolicate(parsed: ParsedArgs): number {
     console.error(
       finding(t, { severity: 'error', source: 'pyreon-native symbolicate', message: result.error, fix: result.fix }, { indent: 0, width: t.width }).join('\n'),
     )
+
     return 2
   }
   // The stack is the product: stdout, pipeable. Provenance goes to stderr.
   console.log(result.stack)
   console.error(`symbolicated with ${displayPath(result.symbolsFile, process.cwd())} (${result.tool === 'atos' ? 'atos' : 'R8 retrace'})`)
+
   return 0
 }

@@ -28,9 +28,11 @@ const ANDROID_MAPPING = join(FIXTURES, 'android-mapping.txt')
 const MAP_ID = '4fb6658390e9a53fc7014a8e321faf461bc1c2f76c73b2c781725a8a491038fb'
 
 let dir: string
+
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'pyreon-symbolicate-'))
 })
+
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
   vi.restoreAllMocks()
@@ -41,6 +43,7 @@ function retain(key: string, mapping: string): string {
   const target = join(dir, 'symbols/android', key)
   mkdirSync(target, { recursive: true })
   writeFileSync(join(target, 'mapping.txt'), mapping)
+
   return join(target, 'mapping.txt')
 }
 
@@ -57,8 +60,10 @@ function fakeExec(answer: Partial<Record<string, { status: number; stdout?: stri
     calls.push({ command, args })
     const key = Object.keys(answer).find((k) => command.endsWith(k))
     const a = key ? answer[key]! : { status: 0, stdout: 'RETRACED\n' }
+
     return { status: a.status, stdout: a.stdout ?? '', stderr: a.stderr ?? '' }
   }
+
   return { exec, calls }
 }
 
@@ -220,6 +225,7 @@ describe('symbolicate — ios', () => {
       const path = args[1]!
       const uuid = Object.entries(uuidFor).find(([k]) => path.endsWith(k))?.[1]
       if (!uuid) return { status: 1, stdout: '', stderr: 'not a dSYM' }
+
       return { status: 0, stdout: `UUID: ${uuid} (arm64) ${path}/Contents/Resources/DWARF/Shop\n`, stderr: '' }
     }
     // atos: resolve the in-image call site, echo the system one.
@@ -302,6 +308,7 @@ describe('pyreon-native symbolicate (CLI)', () => {
     vi.spyOn(console, 'error').mockImplementation((m: unknown) => void err.push(String(m)))
     const code = main(argv)
     vi.restoreAllMocks()
+
     return { code, out: out.join('\n'), err: err.join('\n') }
   }
 

@@ -93,6 +93,7 @@ export function parseReport(text: string): NativeCrashReport | string {
   if (value === null || typeof value !== 'object' || typeof (value as { platform?: unknown }).platform !== 'string') {
     return 'the report has no "platform" field — pass the JSON a useCrashReporter() report holds (lastCrash / the transport payload)'
   }
+
   return value as NativeCrashReport
 }
 
@@ -103,6 +104,7 @@ export function mappingIdOf(mappingText: string): string {
     if (m) return m[1]!.toLowerCase()
     if (line !== '' && !line.startsWith('#')) break
   }
+
   return ''
 }
 
@@ -153,10 +155,61 @@ export function findRetrace(
   for (const dir of pathDirs) {
     if (dir && existsSync(join(dir, exe))) return join(dir, exe)
   }
+
   return undefined
 }
 
-function symbolicateAndroid(report: NativeCrashReport, opts: Required<Pick<SymbolicateOptions, 'exec' | 'hostPlatform' | 'env'>> & SymbolicateOptions): SymbolicateResult {
+type ResolvedOptions = Required<Pick<SymbolicateOptions, 'exec' | 'hostPlatform' | 'env'>> & SymbolicateOptions
+type Found<T> = { found: T } | { failure: SymbolicateResult }
+
+const firstLine = (text: string, status: number | null): string =>
+  text.split('\n').find((l) => l.trim() !== '') ?? `exit ${status}`
+
+/** The mapping.txt for this report: `--mapping`, else the retained one whose id (then version) matches. */
+function locateMapping(opts: ResolvedOptions, wantId: string, versionKey: string): Found<string> {
+  if (opts.mapping) {
+    const mapping = resolve(opts.mapping)
+    if (existsSync(mapping)) return { found: mapping }
+    return { failure: fail(`--mapping ${opts.mapping} does not exist`, 'pass the mapping.txt the release build retained') }
+  }
+  const root = resolve(opts.symbols ?? 'symbols', 'android')
+  const candidates = subdirs(root)
+    .map((dir) => join(dir, 'mapping.txt'))
+    .filter((file) => existsSync(file))
+  const byId = wantId ? candidates.find((file) => sameMapId(mappingIdOf(readHead(file)), wantId)) : undefined
+  if (byId) return { found: byId }
+  const byVersion = versionKey ? join(root, versionKey, 'mapping.txt') : ''
+  if (byVersion && existsSync(byVersion)) return { found: byVersion }
+
+  const what = [wantId && `pg_map_id ${wantId.slice(0, 12)}`, versionKey && `version ${versionKey}`].filter(Boolean).join(', ')
+  const debugHint = wantId ? '' : '. This report names no R8 mapping: if it came from an unminified (debug) build its stack is already readable'
+
+  return {
+    failure: fail(
+      `no retained R8 mapping matches this report${what ? ` (${what})` : ''} under ${root}`,
+      `release builds retain it at symbols/android/<version>-<buildNumber>/mapping.txt — pass --symbols=<dir> or --mapping=<mapping.txt>${debugHint}`,
+    ),
+  }
+}
+
+function runRetrace(opts: ResolvedOptions, retrace: string, mapping: string, stack: string): SymbolicateResult {
+  const dir = mkdtempSync(join(tmpdir(), 'pyreon-retrace-'))
+  try {
+    const stackFile = join(dir, 'stack.txt')
+    writeFileSync(stackFile, stack.endsWith('\n') ? stack : `${stack}\n`)
+    const r = opts.exec(retrace, [mapping, stackFile])
+    if (r.status === null) {
+      return fail(`could not run ${retrace}: ${r.stderr}`, 'pass --retrace=<path> to the R8 retrace launcher (Android SDK cmdline-tools/latest/bin/retrace)')
+    }
+    if (r.status !== 0) return fail(`retrace failed: ${firstLine(r.stderr, r.status)}`, `check that ${mapping} is an R8 mapping file`)
+
+    return { ok: true, stack: r.stdout.replace(/\n+$/, ''), symbolsFile: mapping, tool: retrace }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+function symbolicateAndroid(report: NativeCrashReport, opts: ResolvedOptions): SymbolicateResult {
   const stack = report.stack ?? ''
   if (stack.trim() === '') return fail('the report has an empty stack', 'nothing to symbolicate')
   const build = report.build ?? {}
@@ -166,28 +219,9 @@ function symbolicateAndroid(report: NativeCrashReport, opts: Required<Pick<Symbo
   const wantId = (build.mappingId || fromStack).toLowerCase()
   const versionKey = build.version && build.buildNumber ? `${build.version}-${build.buildNumber}` : ''
 
-  let mapping: string | undefined
-  if (opts.mapping) {
-    mapping = resolve(opts.mapping)
-    if (!existsSync(mapping)) return fail(`--mapping ${opts.mapping} does not exist`, 'pass the mapping.txt the release build retained')
-  } else {
-    const root = resolve(opts.symbols ?? 'symbols', 'android')
-    const candidates = subdirs(root)
-      .map((dir) => join(dir, 'mapping.txt'))
-      .filter((file) => existsSync(file))
-    if (wantId) mapping = candidates.find((file) => sameMapId(mappingIdOf(readHead(file)), wantId))
-    if (!mapping && versionKey) {
-      const byVersion = join(root, versionKey, 'mapping.txt')
-      if (existsSync(byVersion)) mapping = byVersion
-    }
-    if (!mapping) {
-      const what = [wantId && `pg_map_id ${wantId.slice(0, 12)}`, versionKey && `version ${versionKey}`].filter(Boolean).join(', ')
-      return fail(
-        `no retained R8 mapping matches this report${what ? ` (${what})` : ''} under ${root}`,
-        `release builds retain it at symbols/android/<version>-<buildNumber>/mapping.txt — pass --symbols=<dir> or --mapping=<mapping.txt>${wantId ? '' : '. This report names no R8 mapping: if it came from an unminified (debug) build its stack is already readable'}`,
-      )
-    }
-  }
+  const located = locateMapping(opts, wantId, versionKey)
+  if ('failure' in located) return located.failure
+  const mapping = located.found
 
   const haveId = mappingIdOf(readHead(mapping))
   if (wantId && haveId && !sameMapId(haveId, wantId)) {
@@ -204,22 +238,8 @@ function symbolicateAndroid(report: NativeCrashReport, opts: Required<Pick<Symbo
       "install the Android SDK command-line tools (sdkmanager 'cmdline-tools;latest'), set ANDROID_HOME, or pass --retrace=<path>",
     )
   }
-  const dir = mkdtempSync(join(tmpdir(), 'pyreon-retrace-'))
-  try {
-    const stackFile = join(dir, 'stack.txt')
-    writeFileSync(stackFile, stack.endsWith('\n') ? stack : `${stack}\n`)
-    const r = opts.exec(retrace, [mapping, stackFile])
-    if (r.status === null) {
-      return fail(`could not run ${retrace}: ${r.stderr}`, 'pass --retrace=<path> to the R8 retrace launcher (Android SDK cmdline-tools/latest/bin/retrace)')
-    }
-    if (r.status !== 0) {
-      const first = r.stderr.split('\n').find((l) => l.trim() !== '') ?? `exit ${r.status}`
-      return fail(`retrace failed: ${first}`, `check that ${mapping} is an R8 mapping file`)
-    }
-    return { ok: true, stack: r.stdout.replace(/\n+$/, ''), symbolsFile: mapping, tool: retrace }
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
+
+  return runRetrace(opts, retrace, mapping, stack)
 }
 
 function callSiteOf(address: string): string {
@@ -237,6 +257,7 @@ function findDsyms(root: string): string[] {
     }
   }
   if (existsSync(root)) visit(root, 1)
+
   return out
 }
 
@@ -249,10 +270,19 @@ function dsymUuids(exec: Exec, dsym: string): Array<{ uuid: string; arch: string
     const m = /^UUID:\s+([0-9A-Fa-f-]{36})\s+\(([^)]+)\)\s+(.+)$/.exec(line.trim())
     if (m) out.push({ uuid: m[1]!.toUpperCase(), arch: m[2]!, file: m[3]!.trim() })
   }
+
   return out
 }
 
-function symbolicateIos(report: NativeCrashReport, opts: Required<Pick<SymbolicateOptions, 'exec' | 'hostPlatform' | 'env'>> & SymbolicateOptions): SymbolicateResult {
+interface DsymMatch {
+  path: string
+  uuid: string
+  arch: string
+  file: string
+}
+
+/** Why an iOS report cannot be symbolicated before any symbols are read, or `undefined`. */
+function iosReportProblem(report: NativeCrashReport, hostPlatform: NodeJS.Platform): SymbolicateResult | undefined {
   const image = report.image ?? {}
   const addresses = report.addresses ?? []
   if (!image.uuid || !image.loadAddress || addresses.length === 0) {
@@ -261,69 +291,82 @@ function symbolicateIos(report: NativeCrashReport, opts: Required<Pick<Symbolica
       'it predates build identity in useCrashReporter — capture a new report with this release',
     )
   }
-  const HEX = /^0x[0-9a-fA-F]+$/
-  const bad = [image.loadAddress, ...addresses].find((a) => !HEX.test(a))
+  const bad = [image.loadAddress, ...addresses].find((a) => !HEX_ADDRESS.test(a))
   if (bad !== undefined) {
     return fail(`the report holds a malformed address ${JSON.stringify(bad)}`, 'addresses must be 0x-prefixed hex, as useCrashReporter() writes them')
   }
-  if (opts.hostPlatform !== 'darwin') {
+  if (hostPlatform !== 'darwin') {
     return fail('iOS symbolication needs atos and dwarfdump, which ship only with Xcode on macOS', 'run this command on a Mac with Xcode installed')
   }
-  const want = image.uuid.toUpperCase()
 
-  let match: { uuid: string; arch: string; file: string } | undefined
-  let dsymPath: string | undefined
+  return undefined
+}
+
+const HEX_ADDRESS = /^0x[0-9a-fA-F]+$/
+
+/** The dSYM for this UUID: `--dsym` (verified), else the retained one that matches. */
+function locateDsym(report: NativeCrashReport, opts: ResolvedOptions, want: string): Found<DsymMatch> {
   if (opts.dsym) {
-    dsymPath = resolve(opts.dsym)
-    if (!existsSync(dsymPath)) return fail(`--dsym ${opts.dsym} does not exist`, 'pass the .dSYM the archive build retained')
-    const uuids = dsymUuids(opts.exec, dsymPath)
-    match = uuids.find((u) => u.uuid === want)
-    if (!match) {
-      return fail(
-        `${dsymPath} is from a different build (UUID ${uuids.map((u) => u.uuid).join(', ') || 'unreadable'}; the report's image is ${want})`,
+    const path = resolve(opts.dsym)
+    if (!existsSync(path)) return { failure: fail(`--dsym ${opts.dsym} does not exist`, 'pass the .dSYM the archive build retained') }
+    const uuids = dsymUuids(opts.exec, path)
+    const match = uuids.find((u) => u.uuid === want)
+    if (match) return { found: { path, ...match } }
+
+    return {
+      failure: fail(
+        `${path} is from a different build (UUID ${uuids.map((u) => u.uuid).join(', ') || 'unreadable'}; the report's image is ${want})`,
         'atos with another build\'s dSYM prints plausible but WRONG symbols — use the dSYM retained for the build that crashed',
-      )
-    }
-  } else {
-    const root = resolve(opts.symbols ?? 'symbols', 'ios')
-    for (const dsym of findDsyms(root)) {
-      match = dsymUuids(opts.exec, dsym).find((u) => u.uuid === want)
-      if (match) {
-        dsymPath = dsym
-        break
-      }
-    }
-    if (!match || !dsymPath) {
-      const b = report.build ?? {}
-      return fail(
-        `no retained dSYM has UUID ${want}${b.version ? ` (version ${b.version}-${b.buildNumber ?? ''})` : ''} under ${root}`,
-        'archive builds retain it at symbols/ios/<version>-<buildNumber>/<App>.app.dSYM — pass --symbols=<dir> or --dsym=<path>',
-      )
+      ),
     }
   }
+  const root = resolve(opts.symbols ?? 'symbols', 'ios')
+  for (const path of findDsyms(root)) {
+    const match = dsymUuids(opts.exec, path).find((u) => u.uuid === want)
+    if (match) return { found: { path, ...match } }
+  }
+  const b = report.build ?? {}
+  const version = b.version ? ` (version ${b.version}-${b.buildNumber ?? ''})` : ''
 
-  const arch = image.arch || match.arch
+  return {
+    failure: fail(
+      `no retained dSYM has UUID ${want}${version} under ${root}`,
+      'archive builds retain it at symbols/ios/<version>-<buildNumber>/<App>.app.dSYM — pass --symbols=<dir> or --dsym=<path>',
+    ),
+  }
+}
+
+function symbolicateIos(report: NativeCrashReport, opts: ResolvedOptions): SymbolicateResult {
+  const problem = iosReportProblem(report, opts.hostPlatform)
+  if (problem) return problem
+  const image = report.image as Required<NonNullable<NativeCrashReport['image']>>
+  const addresses = report.addresses as string[]
+
+  const located = locateDsym(report, opts, image.uuid.toUpperCase())
+  if ('failure' in located) return located.failure
+  const dsym = located.found
+
+  const arch = image.arch || dsym.arch
   // Each captured address is a RETURN address: the instruction after the
   // call. Its line can belong to the next statement (or to compiler-generated
   // code), so look up `address - 1`, inside the call itself — what Apple's
   // own symbolication does for every frame but a crashing PC.
-  const callSites = addresses.map(callSiteOf)
-  const r = opts.exec('atos', ['-arch', arch, '-o', match.file, '-l', image.loadAddress, ...callSites])
-  if (r.status !== 0) {
-    const first = r.stderr.split('\n').find((l) => l.trim() !== '') ?? `exit ${r.status}`
-    return fail(`atos failed: ${first}`, `check that ${dsymPath} matches arch ${arch}`)
-  }
+  const r = opts.exec('atos', ['-arch', arch, '-o', dsym.file, '-l', image.loadAddress, ...addresses.map(callSiteOf)])
+  if (r.status !== 0) return fail(`atos failed: ${firstLine(r.stderr, r.status)}`, `check that ${dsym.path} matches arch ${arch}`)
+
   const resolved = r.stdout.replace(/\n+$/, '').split('\n')
-  const imageName = image.name ?? basename(match.file)
+  const imageName = image.name ?? basename(dsym.file)
   // atos echoes an address it cannot place in this image back as hex — a
   // system-framework frame. Say so instead of printing a bare number.
   const lines = addresses.map((address, i) => {
     const text = resolved[i] ?? address
-    const label = /^0x[0-9a-fA-F]+$/.test(text.trim()) ? `${address} (outside ${imageName})` : text
+    const label = HEX_ADDRESS.test(text.trim()) ? `${address} (outside ${imageName})` : text
+
     return `${String(i).padEnd(3)} ${label}`
   })
   const header = report.message ? `${report.message}\n` : ''
-  return { ok: true, stack: header + lines.join('\n'), symbolsFile: dsymPath, tool: 'atos' }
+
+  return { ok: true, stack: header + lines.join('\n'), symbolsFile: dsym.path, tool: 'atos' }
 }
 
 /** Symbolicate one report. Pure apart from the injected `exec` and the symbol files it reads. */
