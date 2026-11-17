@@ -70,7 +70,7 @@ describe('check-krausest-entry', () => {
     it('requires each metadata field upstream reads', () => {
       for (const field of ['frameworkVersionFromPackage', 'frameworkHomeURL', 'repoURL', 'language'] as const) {
         const missing = pkgWith((p) => delete p['js-framework-benchmark']![field])
-        expect(checkPackageJson(missing).join('\n'), field).toContain(field)
+        expect(checkPackageJson(missing).join('\n')).toContain(`"js-framework-benchmark".${field}`)
       }
       expect(checkPackageJson(pkgWith((p) => delete p['js-framework-benchmark'])).join('\n')).toContain('no "js-framework-benchmark" block')
       expect(checkPackageJson(pkgWith((p) => delete p.scripts!['build-prod'])).join('\n')).toContain('"build-prod"')

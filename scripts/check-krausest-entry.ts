@@ -138,6 +138,28 @@ const sameDeps = (a: Deps | undefined, b: Deps | undefined): boolean => {
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
+/** Every locked package comes from the public registry, and no transitive `@pyreon/*` package is off the pin. */
+function checkLockedPackages(pkg: EntryPackageJson, packages: Record<string, LockPackage>, fix: string): string[] {
+  const problems: string[] = []
+  const pin = pinnedPyreonVersion(pkg)
+  const direct = allDeps(pkg)
+  const mixed: string[] = []
+  for (const [path, entry] of Object.entries(packages)) {
+    if (entry.resolved !== undefined && !entry.resolved.startsWith(NPM_REGISTRY)) {
+      problems.push(`package-lock.json resolves ${path} from ${entry.resolved}; upstream allows only ${NPM_REGISTRY}. ${fix}`)
+    }
+    const name = path.slice(path.lastIndexOf('node_modules/') + 'node_modules/'.length)
+    // Direct dependencies are reported by the caller; this is the transitive half (the compiler and its binaries).
+    if (pin !== undefined && name.startsWith('@pyreon/') && !(name in direct) && entry.version !== pin) {
+      mixed.push(`${name}@${entry.version ?? '(missing)'}`)
+    }
+  }
+  if (mixed.length > 0) {
+    problems.push(`package-lock.json has ${mixed.join(', ')} next to the ${pin} pin, so the entry would mix Pyreon releases. ${fix}`)
+  }
+  return problems
+}
+
 /** The lockfile is npm's, matches `package.json`, and resolves from the public registry only. */
 export function checkLockfile(pkg: EntryPackageJson, lock: EntryLockfile | undefined): string[] {
   const fix = 'Run `bun scripts/sync-krausest-pin.ts` to regenerate it with npm.'
@@ -153,22 +175,7 @@ export function checkLockfile(pkg: EntryPackageJson, lock: EntryLockfile | undef
     const locked = packages[`node_modules/${name}`]?.version
     if (locked !== version) problems.push(`package-lock.json has ${name}@${locked ?? '(missing)'}, package.json pins ${version}. ${fix}`)
   }
-  const pin = pinnedPyreonVersion(pkg)
-  const direct = allDeps(pkg)
-  const mixed: string[] = []
-  for (const [path, entry] of Object.entries(packages)) {
-    if (entry.resolved !== undefined && !entry.resolved.startsWith(NPM_REGISTRY)) {
-      problems.push(`package-lock.json resolves ${path} from ${entry.resolved}; upstream allows only ${NPM_REGISTRY}. ${fix}`)
-    }
-    const name = path.slice(path.lastIndexOf('node_modules/') + 'node_modules/'.length)
-    // Direct dependencies are reported above; this is the transitive half (the compiler and its binaries).
-    if (pin !== undefined && name.startsWith('@pyreon/') && !(name in direct) && entry.version !== pin) {
-      mixed.push(`${name}@${entry.version ?? '(missing)'}`)
-    }
-  }
-  if (mixed.length > 0) {
-    problems.push(`package-lock.json has ${mixed.join(', ')} next to the ${pin} pin, so the entry would mix Pyreon releases. ${fix}`)
-  }
+  problems.push(...checkLockedPackages(pkg, packages, fix))
   return problems
 }
 
@@ -302,13 +309,7 @@ export function checkIssueFlags(pkg: EntryPackageJson, source: string): string[]
   return problems
 }
 
-export interface RowIdioms {
-  each?: string
-  by?: string
-  rowClass?: string
-  idCell?: string
-  label?: string
-}
+export type RowIdioms = Record<'each' | 'by' | 'rowClass' | 'idCell' | 'label', string | undefined>
 
 const squash = (text: string | undefined): string | undefined => text?.replace(/\s+/g, ' ').trim()
 

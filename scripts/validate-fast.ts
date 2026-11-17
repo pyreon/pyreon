@@ -51,7 +51,7 @@
  *                            manifest edits leave the docs-site reference,
  *                            troubleshooting and examples pages stale)
  *
- * 64 gates, ~4-15s warm on an unloaded machine. The point is: catch ALL the
+ * 66 gates, ~4-15s warm on an unloaded machine. The point is: catch ALL the
  * cheap-to-detect failures locally with ONE command before pushing.
  *
  * That number is worth keeping honest, because it is what decides whether
