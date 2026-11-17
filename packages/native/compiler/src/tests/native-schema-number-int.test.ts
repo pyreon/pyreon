@@ -38,12 +38,14 @@ const CASES: { name: string; web: Record<string, unknown>; swift: string; kotlin
 const expected = (): string[] =>
   CASES.map((c) => {
     const r = web.parse(c.web)
+
     return r.ok ? `ok ${String(r.value.n)}` : 'bad'
   })
 
 const between = (code: string, start: string, end: string): string => {
   const a = code.indexOf(start)
   const b = code.indexOf(end, a)
+
   return a >= 0 && b > a ? code.slice(a, b) : ''
 }
 
@@ -100,6 +102,7 @@ describe('the emitted parse RUNS like the web library', () => {
           join(REPO, 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonSchema.swift'), join(dir, 'main.swift')],
         { stdio: 'pipe' },
       )
+
       return execFileSync(join(dir, 'run'), { encoding: 'utf8' }).trim().split('\n')
     })
     expect(got.map((v, i) => `${CASES[i]!.name}: ${v}`)).toEqual(expected().map((v, i) => `${CASES[i]!.name}: ${v}`))
@@ -124,6 +127,7 @@ describe('the emitted parse RUNS like the web library', () => {
           join(REPO, 'packages/native/runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonSchema.kt'), '-d', join(dir, 'out')],
         { stdio: 'pipe' },
       )
+
       return execFileSync(jvmPath() as string, ['-cp', `${join(dir, 'out')}:${kx!.classpath}:${kx!.stdlib}`, 'MainKt'], {
         encoding: 'utf8',
       }).trim().split('\n')

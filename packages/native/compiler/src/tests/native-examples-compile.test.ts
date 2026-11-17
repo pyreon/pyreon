@@ -66,6 +66,7 @@ function nativeExampleApps(): Array<[string, string]> {
       }
     }
   }
+
   return [...byPath].map(([path, label]) => [label, path])
 }
 
@@ -100,6 +101,7 @@ function moduleClosure(path: string): string[] {
       if (existsSync(sibling)) stack.push(sibling)
     }
   }
+
   return [...seen]
 }
 
