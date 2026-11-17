@@ -64,7 +64,6 @@ import {
   mountChild,
 } from './mount'
 import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
-import { _setParkedTextHydrator } from './parked-text'
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
 import {
@@ -2273,11 +2272,8 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
   _setSlotHydrator(
     process.env.NODE_ENV !== 'production' ? outsideAdoptionBind(hydrateMountSlot) : hydrateMountSlot,
   )
-  // A compiled text slot whose server content is elements adopts it through
-  // the same slot hydration (#4385, `parked-text.ts`).
-  _setParkedTextHydrator(
-    process.env.NODE_ENV !== 'production' ? outsideAdoptionBind(hydrateMountSlot) : hydrateMountSlot,
-  )
+  // (A compiled text slot whose server content is elements adopts it through
+  // this same hydrator: #4385, `parked-text.ts`.)
   // Install the devtools hook on hydration too, not just `mount()` — otherwise
   // the reactive dev overlay (Ctrl+Shift+R) + `__PYREON_DEVTOOLS__` silently
   // don't exist in SSR/hydrated apps, which is most real Pyreon apps. Idempotent
