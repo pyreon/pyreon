@@ -18,6 +18,8 @@
 
 import type { ComponentFn, LazyComponent, LifecycleHooks, RefProp, VNode, VNodeChild } from '@pyreon/core'
 import {
+  _childText,
+  _isVNodeLike,
   _setSuspenseHydrating,
   dispatchToErrorBoundary,
   ForSymbol,
@@ -347,8 +349,8 @@ function hydrateSoleAccessorChild(
     first.nextSibling === null
   ) {
     const bound = first as Text
-    if (bound.data !== String(initial)) {
-      warnHydrationMismatch('text', String(initial), bound.data, `${path} > reactive`)
+    if (bound.data !== _childText(initial)) {
+      warnHydrationMismatch('text', _childText(initial), bound.data, `${path} > reactive`)
     }
     // The BARE binder is correct here, and this is the one hydrate site where
     // it is. `bindOwnedText` exists because a node adopted into a live parent
@@ -387,7 +389,7 @@ function hydrateSoleAccessorChild(
   // that renders text is a divergence the mount below corrects: report it, as
   // the adopting branch above does (#4419).
   if ((typeof initial === 'string' && initial !== '') || typeof initial === 'number') {
-    warnHydrationMismatch('text', String(initial), '', `${path} > reactive`)
+    warnHydrationMismatch('text', _childText(initial), '', `${path} > reactive`)
   }
   return mountReactive(child, el, null, mountChild)
 }
@@ -701,7 +703,7 @@ function hydrateReactiveChild(
       const after = end.nextSibling
       // Single-text-node range + text-ish initial → ADOPT the node and bind
       // directly (the dominant reactive-text case, no remount). Deliberately NOT
-      // gated on `data === String(initial)`: a genuine server/client divergence
+      // gated on `data === _childText(initial)`: a genuine server/client divergence
       // still adopts the SAME text node and the renderEffect writes the client
       // value on its first run, so recovery is in-place rather than a
       // double-mount. Only the value is corrected; the mismatch is reported.
@@ -713,8 +715,8 @@ function hydrateReactiveChild(
         only.nextSibling === end
       ) {
         const bound = only as Text
-        if (bound.data !== String(initial)) {
-          warnHydrationMismatch('text', String(initial), bound.data, `${path} > reactive`)
+        if (bound.data !== _childText(initial)) {
+          warnHydrationMismatch('text', _childText(initial), bound.data, `${path} > reactive`)
         }
         // Polymorphic binding: the accessor may later yield a VNode
         // (`() => loading() ? 'Loading…' : <Table/>`) — the shared helper
@@ -759,7 +761,7 @@ function hydrateReactiveChild(
       // the SSR range, markers included. Reached with an EMPTY range: a client
       // value that renders text is then a divergence (#4419).
       if ((typeof initial === 'string' && initial !== '') || typeof initial === 'number') {
-        warnHydrationMismatch('text', String(initial), '', `${path} > reactive`)
+        warnHydrationMismatch('text', _childText(initial), '', `${path} > reactive`)
       }
       const marker = insertMarker(parent, domNode, 'pyreon')
       const cleanup = mountReactive(child, parent, marker, mountChild)
@@ -776,7 +778,7 @@ function hydrateReactiveChild(
   }
 
   // Legacy SSR output (no range markers — older @pyreon/runtime-server).
-  if (initial == null || initial === false) {
+  if (initial == null || typeof initial === 'boolean') {
     const marker = insertMarker(parent, domNode, 'pyreon')
     const cleanup = mountReactive(child, parent, marker, mountChild)
     return [cleanup, domNode]
@@ -813,7 +815,7 @@ function hydrateReactiveText(
   // The caller's sampled value; `child` is its primed accessor (`primeAccessor`).
   initial: string | number | boolean | null | undefined,
 ): [Cleanup, ChildNode | null] {
-  const expected = initial == null ? '' : String(initial)
+  const expected = _childText(initial)
 
   // Empty initial value: SSR emitted NOTHING, so there is no text node to adopt.
   // Bind a fresh text node inserted at the CURSOR (client parity), consuming
@@ -1351,14 +1353,18 @@ function hydrateChild(
     ]
   }
 
-  if (child == null || child === false) return [noop, domNode]
+  if (child == null || typeof child === 'boolean') return [noop, domNode]
 
   if (typeof child === 'function') {
     return hydrateReactiveChild(child as () => VNodeChild, domNode, parent, anchor, path)
   }
 
-  if (typeof child === 'string' || typeof child === 'number') {
-    const expected = String(child)
+  // TEXT by the shared child-text rule: any primitive (`true` and a bigint
+  // included; this branch used to admit only strings and numbers, so a `true`
+  // fell through to the VNode walk, claimed nothing, and its server text was
+  // swept) and any object that is not a VNode/NativeItem (a `Date`).
+  if (typeof child !== 'object' || !_isVNodeLike(child)) {
+    const expected = typeof child === 'string' ? child : _childText(child)
     // Empty static text: SSR emitted NOTHING for it, so there is no node to
     // adopt. Insert the empty text node the client renderer would have
     // created (DOM parity) at the CURSOR — consuming nothing keeps every

@@ -362,11 +362,14 @@ interface VNode {
 
 Children can be:
 
-- **Strings and numbers** -- rendered as text nodes
+- **Strings, numbers and bigints** -- rendered as text nodes
 - **Booleans, null, undefined** -- rendered as nothing (useful for conditional `&#123;flag && <Element />&#125;`)
 - **VNodes** -- nested elements or components
-- **Arrays** -- automatically flattened
+- **Arrays** -- automatically flattened; an array of text renders its items concatenated (`['a', 'b']` → `ab`)
 - **Accessor functions** `() => VNodeChild` -- evaluated reactively by the renderer
+- **Any other object** (a `Date`, an object with `toString`) -- rendered as its `String()` text
+
+The same rule applies on every path -- `h()`, compiled JSX, server rendering and hydration -- so a value renders the same characters on the server and in the browser.
 
 ### EMPTY_PROPS Sentinel
 

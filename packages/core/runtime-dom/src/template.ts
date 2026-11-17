@@ -1,4 +1,5 @@
 import type { NativeItem, VNodeChild } from '@pyreon/core'
+import { _childText, _isStructuralChild } from '@pyreon/core'
 import {
   _noopDispose,
   _rdCloseBindingFrame,
@@ -90,33 +91,15 @@ export function createTemplate<T>(
 // `_bindDirect` reaches `.data` only through the signal-method-call promotion
 // (a pure-method safelist over primitives), so a raw VNode never lands there.
 
-/** Structural VNode check — VNode has no symbol brand (see core/types.ts),
- *  so `{ type, props, children }` is the discriminator; `__isNative` covers
- *  NativeItems from `_tpl()`/`createTemplate()`. */
-function _looksLikeVNode(v: unknown): boolean {
-  return (
-    v !== null &&
-    typeof v === 'object' &&
-    (((v as { __isNative?: boolean }).__isNative === true) ||
-      ('type' in v && 'props' in v && 'children' in v))
-  )
-}
-
-/** The ONE mountable-in-a-text-position discriminator, shared by the static
- *  setters (`_setChild`/`_setChildAt`), the reactive `_bindText` VNode
- *  upgrade, and the dev coercion warning: a VNode/NativeItem, or an array
- *  containing at least one. Plain objects and plain-primitive arrays keep
- *  the historical String() coercion (consistent across all four sites). */
+/** A VNode/NativeItem, or an array holding one (at any depth) or a function —
+ *  the OBJECT values a text position mounts instead of stringifying. The rule
+ *  is `@pyreon/core`'s `_isStructuralChild`, shared with SSR and hydration
+ *  (see `child-text.ts` there); a top-level function is checked by each caller
+ *  separately. Everything else is text, coerced by `_childText`: an array of
+ *  primitives concatenates (`['a', 'b']` → `ab`, as SSR and `h()` render it),
+ *  never `String(array)`'s `a,b`. */
 function _isMountableTextValue(v: unknown): boolean {
-  return _looksLikeVNode(v) || (Array.isArray(v) && v.some(_isMountablePart))
-}
-
-// A part of an array child that must be MOUNTED rather than stringified: a
-// VNode, a nested array (`_fuse("a", items, "b")` returns its parts with
-// `items` still an array) or a function (a reactive part — mountChild binds
-// it, as the h() path does). Arrays of primitives keep the text path.
-function _isMountablePart(x: unknown): boolean {
-  return _looksLikeVNode(x) || Array.isArray(x) || typeof x === 'function'
+  return typeof v === 'object' && v !== null && _isStructuralChild(v)
 }
 
 /**
@@ -165,22 +148,28 @@ export function _setChild(node: Element, value: unknown): void {
     // On a fresh clone the compiled cell is empty, so the adoption probe is
     // skipped (`textContent =` would replace any children regardless).
     const fc = _freshBind ? null : node.firstChild
+    // The shared child-text rule (`_childText`), never the DOM's own coercion:
+    // `textContent = ['a', 'b']` renders `a,b` where SSR renders `ab`, and the
+    // DOM's handling of a number is not even uniform across implementations
+    // (happy-dom writes `''` for `0`). A string, the dominant value, skips the
+    // call.
+    const text = typeof value === 'string' ? value : _childText(value)
     // Dev, adopting: the same write, reported if it changed the server's text
     // (#4419). A separate block so production keeps exactly the write below.
     if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
       const before = node.textContent ?? ''
       if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
-        ;(fc as Text).data = value as string
+        ;(fc as Text).data = text
       } else {
-        node.textContent = value as string
+        node.textContent = text
       }
       reportTextWrite(node, before, 'text')
       return
     }
     if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
-      ;(fc as Text).data = value as string
+      ;(fc as Text).data = text
     } else {
-      node.textContent = value as string
+      node.textContent = text
     }
   }
 }
@@ -240,22 +229,21 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
     // adopts but its one dynamic text is swapped for a fresh node. "By
     // construction" holds when server and client agree; when they do not, the
     // write is a correction, which dev reports (#4419).
+    const text = typeof value === 'string' ? value : _childText(value)
     if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
       const before = (placeholder as Text).data
-      ;(placeholder as Text).data = value as string
+      ;(placeholder as Text).data = text
       reportTextWrite(placeholder, before, 'text')
       return
     }
-    ;(placeholder as Text).data = value as string
+    ;(placeholder as Text).data = text
   } else {
-    // Nullish renders as EMPTY, not as the literal text "null". `String(null)`
-    // is `"null"`, and this branch used to hand that straight to
-    // `createTextNode` — so `<div>{null}{rows}</div>` put the word "null" on the
-    // page, while `_setChild` (`node.textContent = value`, which the DOM coerces)
-    // and SSR (`renderNode(null)` -> `''`) both render nothing. A client/server
-    // text divergence in the same file as its correct sibling.
+    // The shared child-text rule (`_childText`): nullish and `false` render
+    // EMPTY, an array of primitives concatenates. `createTextNode` coerces with
+    // `String()`, which put the word "null" (and "false", and `a,b` for an
+    // array) on the page where SSR renders nothing / `ab`.
     parent.replaceChild(
-      document.createTextNode(value == null ? '' : (value as string)),
+      document.createTextNode(typeof value === 'string' ? value : _childText(value)),
       placeholder,
     )
   }
@@ -378,7 +366,7 @@ export function _bindProp(props: object, key: string, node: Text, parent: Node):
     // functions (a VNode, an accessor) keep the general path below.
     const v = d.value as unknown
     if (v === null || (typeof v !== 'object' && typeof v !== 'function')) {
-      const next = v == null || v === false ? '' : String(v as string | number | boolean)
+      const next = v == null || typeof v === 'boolean' ? '' : String(v as string | number)
       if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
         reportFirstText(node, v, next, 'reactive')
       if (node.data !== next) node.data = next
@@ -418,7 +406,12 @@ export function _bindText(
     let written: string | null | undefined = null
     const textUpdate = () => {
       const v = source._v
-      const next = v == null || v === false ? '' : String(v as string | number)
+      const next =
+      v == null || typeof v === 'boolean'
+        ? ''
+        : typeof v === 'object'
+          ? _childText(v)
+          : String(v as string | number)
       if (written === null) {
         written = _freshBind ? undefined : node.data
         // Dev: the first write into ADOPTED server text (#4419).
@@ -489,7 +482,12 @@ export function _bindText(
       core.apply(v as VNodeChild)
       return
     }
-    const next = v == null || v === false ? '' : String(v as string | number)
+    const next =
+      v == null || typeof v === 'boolean'
+        ? ''
+        : typeof v === 'object'
+          ? _childText(v)
+          : String(v as string | number)
     if (written === null) {
       written = _freshBind ? undefined : node.data
       // Dev: the first write into ADOPTED server text (#4419).

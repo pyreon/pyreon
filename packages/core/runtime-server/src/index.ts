@@ -32,6 +32,8 @@ import type {
   VNodeChild,
 } from '@pyreon/core'
 import {
+  _childText,
+  _isVNodeLike,
   cx,
   ForSymbol,
   Fragment,
@@ -1015,17 +1017,29 @@ async function streamNode(
     await streamPart(r, enqueue)
     return
   }
-  if (node == null || node === false) return
+  if (node == null || typeof node === 'boolean') return
   if (typeof node === 'string') {
     enqueue(escapeHtml(node))
     return
   }
-  if (typeof node === 'number' || typeof node === 'boolean') {
+  if (typeof node === 'number') {
     enqueue(String(node))
     return
   }
   if (Array.isArray(node)) {
     for (const child of node) await streamNode(child, enqueue)
+    return
+  }
+  // A Promise root (an eligible `_ssr` subtree whose hole was async) — await
+  // and stream its value, as `renderNode` does.
+  if (typeof (node as { then?: unknown }).then === 'function') {
+    await streamNode(await (node as unknown as Promise<VNodeChild>), enqueue)
+    return
+  }
+  // Any other non-VNode value is TEXT by the shared child-text rule — see the
+  // same branch in `renderNode`.
+  if (typeof node !== 'object' || !_isVNodeLike(node)) {
+    enqueue(escapeHtml(_childText(node)))
     return
   }
 
@@ -1358,14 +1372,21 @@ function renderNode(node: VNodeChild | (() => VNodeChild)): MaybeAsync {
     return (node as unknown as Promise<VNodeChild>).then(renderNode)
   }
 
-  if (node == null || node === false) return ''
+  // Booleans render nothing — the shared child-text rule (`_childText`).
+  if (node == null || typeof node === 'boolean') return ''
 
   if (typeof node === 'string') return escapeHtml(node)
-  if (typeof node === 'number' || typeof node === 'boolean') return String(node)
+  if (typeof node === 'number') return String(node)
 
   if (Array.isArray(node)) {
     return renderChildList(node, 0, '')
   }
+
+  // Any other non-VNode value is TEXT by the shared child-text rule
+  // (`_childText` in @pyreon/core): a bigint, or an object such as a `Date`
+  // renders its `String()`, as the client does. These used to fall through to
+  // `renderElement` and throw a TypeError from inside it.
+  if (typeof node !== 'object' || !_isVNodeLike(node)) return escapeHtml(_childText(node))
 
   const vnode = node as VNode
 
@@ -1732,8 +1753,7 @@ function renderElement(vnode: VNode): MaybeAsync {
 export function _esc(v: unknown, ns?: string): MaybeAsync {
   if (typeof v === 'string') return escapeHtml(v)
   if (typeof v === 'number') return String(v)
-  if (v == null || v === false) return ''
-  if (v === true) return 'true'
+  if (v == null || typeof v === 'boolean') return ''
   if (ns !== undefined) return inNs(nsAfterPath(ns), () => renderNode(v as VNodeChild))
   return renderNode(v as VNodeChild)
 }
@@ -1755,8 +1775,7 @@ export function _esc(v: unknown, ns?: string): MaybeAsync {
 export function _escSole(v: unknown, ns?: string): MaybeAsync {
   if (typeof v === 'string') return escapeHtml(v)
   if (typeof v === 'number') return String(v)
-  if (v == null || v === false) return ''
-  if (v === true) return 'true'
+  if (v == null || typeof v === 'boolean') return ''
   if (ns !== undefined) return inNs(nsAfterPath(ns), () => _escSole(v))
   // The one divergence from `_esc`: unwrap the accessor WITHOUT markers.
   if (typeof v === 'function') return renderNode((v as () => VNodeChild)())
