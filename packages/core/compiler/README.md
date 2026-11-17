@@ -158,7 +158,7 @@ const ssgResult = auditSsg(projectRoot)
 const testResult = auditTestEnvironment(projectRoot, { minRisk: 'high' })
 ```
 
-Three syntactic project-wide audits consumed by `pyreon doctor --check-islands` / `--check-ssg` / `--audit-tests`. Pure-AST, no type-check pass — designed for CI speed.
+Three syntactic project-wide audits consumed by `pyreon doctor --only islands-audit` / `--only ssg-audit` / `--only audit-tests`. Pure-AST, no type-check pass — designed for CI speed.
 
 ## Compiler-emitted runtime helpers
 

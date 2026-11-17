@@ -740,7 +740,7 @@ onMount(() => width.set(window.innerWidth))`,
     // an explicit entry on the ratchet list, NOT a widened heuristic. Guessing a
     // general rule for "this literal is not a VNode" hides genuine findings —
     // which is the failure this audit exists to prevent, committed by the audit.
-    pattern: /mock[- ]?vnode|audit_test_environment|--audit-tests/i,
+    pattern: /mock[- ]?vnode|audit_test_environment|audit-tests/i,
     diagnose: () => ({
       cause:
         "The test-environment audit flags `{ type, props, children }` object literals in test files as hand-rolled mock VNodes. That shape is the real anti-pattern in Pyreon tests — a mock vnode bypasses the pipeline, which is how PR #197's metadata drop stayed invisible for a package's whole lifetime. It is NOT exclusive to Pyreon, though: a package with its own tree format (`@pyreon/document`'s `DocNode`) carries the same shape while its tests call the real constructors, and the audit cannot tell the two apart from the literal alone.",
@@ -2426,7 +2426,7 @@ zero({ mode: 'ssg', ssg: { workers: 1 } })`,
       const name = m.slice(1).find((g) => g !== undefined) ?? ''
       return {
         cause: `\`${name}\` is no longer exported by \`@pyreon/compiler\`. The multiplatform project audit moved out of the WEB compiler into the native compiler package, under its \`/audit\` subpath — it is the native story, so it lives beside the native compiler and the web-only package map it reads.`,
-        fix: `Import \`${name}\` from the \`/audit\` subpath of the native compiler package (installing that package if the project does not have it). \`pyreon doctor --check-native\` and the MCP \`validate\` tool load it lazily and skip with an install hint when it is absent.`,
+        fix: `Import \`${name}\` from the \`/audit\` subpath of the native compiler package (installing that package if the project does not have it). \`pyreon doctor --only native-audit\` and the MCP \`validate\` tool load it lazily and skip with an install hint when it is absent.`,
       }
     },
   },

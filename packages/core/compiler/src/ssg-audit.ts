@@ -32,7 +32,7 @@
  *     (one fixture per finding type, bisect-verified by reverting the
  *     detector's match condition)
  *   - Doctor wiring at `packages/tools/cli/src/doctor.ts:checkSsg`,
- *     CLI flag `pyreon doctor --check-ssg [--json]`
+ *     CLI flag `pyreon doctor --only ssg-audit [--json]`
  *
  * Same syntactic-only style as `island-audit.ts` — no type-check pass,
  * no module resolution. False negatives acceptable; false positives
@@ -584,7 +584,7 @@ export function formatSsgAudit(
     lines.push(`    ${f.message}`)
   }
   lines.push('')
-  lines.push('Run `pyreon doctor --check-ssg --json` for machine-readable output.')
+  lines.push('Run `pyreon doctor --only ssg-audit --json` for machine-readable output.')
   lines.push('')
   return lines.join('\n')
 }

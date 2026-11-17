@@ -119,13 +119,13 @@ Ship a scaffold instead. `vercelRevalidateHandler` (`packages/zero/zero/src/verc
 
 ### Dynamic routes silently skipped under `mode: 'ssg'` without `getStaticPaths`
 
-Without an enumerator, `[id].tsx` produces no `dist/` file and production 404s. Caught by `pyreon/missing-get-static-paths` (warn, scoped to `src/routes/`) and `pyreon doctor --check-ssg`. The audit exempts a route declaring any non-`'ssg'` `export const renderMode` (`renderModeOverride` in `packages/core/compiler/src/ssg-audit.ts`); inside `mode: 'ssg'` only `'spa'` is valid, since `'ssr'`/`'isr'` are a build error (`assertModesSupported`). For a dynamic `'spa'` route the SSG build emits `dist/404.html` as the CSR shell (unless `_404.tsx` already wrote one; gated by `ssg.emit404`), so direct links work on static hosts. Locks: `tests/ssg-audit.test.ts`, `ssg-plugin.test.ts`.
+Without an enumerator, `[id].tsx` produces no `dist/` file and production 404s. Caught by `pyreon/missing-get-static-paths` (warn, scoped to `src/routes/`) and `pyreon doctor --only ssg-audit`. The audit exempts a route declaring any non-`'ssg'` `export const renderMode` (`renderModeOverride` in `packages/core/compiler/src/ssg-audit.ts`); inside `mode: 'ssg'` only `'spa'` is valid, since `'ssr'`/`'isr'` are a build error (`assertModesSupported`). For a dynamic `'spa'` route the SSG build emits `dist/404.html` as the CSR shell (unless `_404.tsx` already wrote one; gated by `ssg.emit404`), so direct links work on static hosts. Locks: `tests/ssg-audit.test.ts`, `ssg-plugin.test.ts`.
 
 ---
 
 ### `export const revalidate = TTL` (non-literal) dropped from the ISR manifest
 
-`extractLiteralExport` captures only a numeric literal or `false`; identifiers, arithmetic and calls are dropped and adapter `revalidate()` returns `regenerated: false`. Inline the literal (`export const revalidate = 60`). Caught by `pyreon/revalidate-not-pure-literal` (error) and `pyreon doctor --check-ssg`.
+`extractLiteralExport` captures only a numeric literal or `false`; identifiers, arithmetic and calls are dropped and adapter `revalidate()` returns `regenerated: false`. Inline the literal (`export const revalidate = 60`). Caught by `pyreon/revalidate-not-pure-literal` (error) and `pyreon doctor --only ssg-audit`.
 
 ---
 

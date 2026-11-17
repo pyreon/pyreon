@@ -447,7 +447,7 @@ if (hasPyreonPatterns(src)) report(detectPyreonPatterns(src, file))
 auditTestEnvironment(startDir: string): TestAuditResult
 ```
 
-Scans every `*.test.ts(x)` under `startDir` for the mock-vnode anti-pattern (constructing `{ type, props, children }` literals or a `vnode()` helper instead of going through real `h()`), the bug class behind PR #197’s silent metadata drop. Classifies each file HIGH / MEDIUM / LOW. Powers the MCP `audit_test_environment` tool and `pyreon doctor --audit-tests`.
+Scans every `*.test.ts(x)` under `startDir` for the mock-vnode anti-pattern (constructing `{ type, props, children }` literals or a `vnode()` helper instead of going through real `h()`), the bug class behind PR #197’s silent metadata drop. Classifies each file HIGH / MEDIUM / LOW. Powers the MCP `audit_test_environment` tool and `pyreon doctor --only audit-tests`.
 
 **Example**
 
@@ -488,7 +488,7 @@ console.log(formatTestAudit(auditTestEnvironment("."), { minRisk: "medium" }))
 auditIslands(rootDir: string): IslandAuditResult
 ```
 
-Project-wide syntactic island audit — five cross-file detectors (`duplicate-name`, `never-with-registry-entry`, `registry-mismatch`, `nested-island`, `dead-island`). Uses the nearest package.json or packages/ workspace marker, so a consumer app inside a monorepo stays isolated; an explicit workspace audit retains packages/ + examples/ coverage. Includes author src/lib modules and omits package build output. No type-check pass / module resolution. Powers `pyreon doctor --check-islands` + MCP `audit_islands`.
+Project-wide syntactic island audit — five cross-file detectors (`duplicate-name`, `never-with-registry-entry`, `registry-mismatch`, `nested-island`, `dead-island`). Uses the nearest package.json or packages/ workspace marker, so a consumer app inside a monorepo stays isolated; an explicit workspace audit retains packages/ + examples/ coverage. Includes author src/lib modules and omits package build output. No type-check pass / module resolution. Powers `pyreon doctor --only islands-audit` + MCP `audit_islands`.
 
 **Example**
 
@@ -529,7 +529,7 @@ console.log(formatIslandAudit(auditIslands(".")))
 auditSsg(rootDir: string): SsgAuditResult
 ```
 
-Project-wide syntactic SSG audit — three detectors: `404-outside-layout-dir` (`_404.tsx` not co-located with `_layout.tsx` → no layout chrome), `dynamic-route-missing-get-static-paths` (`[id].tsx` without `getStaticPaths` → silently skipped by SSG auto-detect), `non-literal-revalidate-export` (`export const revalidate = TTL` → dropped from the build-time ISR manifest). API routes (`src/routes/api/` or no `export default`) are skipped. Powers `pyreon doctor --check-ssg`.
+Project-wide syntactic SSG audit — three detectors: `404-outside-layout-dir` (`_404.tsx` not co-located with `_layout.tsx` → no layout chrome), `dynamic-route-missing-get-static-paths` (`[id].tsx` without `getStaticPaths` → silently skipped by SSG auto-detect), `non-literal-revalidate-export` (`export const revalidate = TTL` → dropped from the build-time ISR manifest). API routes (`src/routes/api/` or no `export default`) are skipped. Powers `pyreon doctor --only ssg-audit`.
 
 **Example**
 

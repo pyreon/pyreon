@@ -91,7 +91,7 @@ Read before touching `packages/zero/**`, a build adapter, SSG/SSR/ISR output, or
 
 ## Gates
 
-- `pyreon doctor --check-ssg` and the lint `ssg` category: `revalidate-not-pure-literal`, `missing-get-static-paths` (skips API routes and files without a default export), `invalid-loader-export`.
+- `pyreon doctor --only ssg-audit` and the lint `ssg` category: `revalidate-not-pure-literal`, `missing-get-static-paths` (skips API routes and files without a default export), `invalid-loader-export`.
 - `bun run verify-modes` checks built artifacts.
 - Documented-feature coverage: every heading of `docs/src/content/docs/zero.md` maps to an e2e spec or a verify-modes cell in `scripts/zero-feature-coverage.ts` (with an evidence string that must still be in that spec / cell), or sits in `scripts/zero-feature-uncovered.json` with a reason. That allowlist is a ratchet against `origin/main`: add a real-build test, never an entry. Gate: `check-zero-feature-coverage` (validate-fast). A NEW doc heading fails until it is classified.
 - Adapter output on real runtimes (verify-modes adapter cells, `scripts/zero-adapter-runtimes.ts`): cloudflare output is served under workerd (`wrangler pages dev` + the scaffold's `wrangler.toml`; CI sets `PYREON_REQUIRE_WORKERD=1`, locally a missing wrangler is a loud skip, `PYREON_WRANGLER=<bin>` to run it); vercel/netlify configs are validated against Build Output API v3 / `netlify.toml`; every function unit is also invoked from a copy outside the repo. Runtime EOL dates live in `scripts/runtime-eol.json`.

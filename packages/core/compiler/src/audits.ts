@@ -19,7 +19,7 @@ export type {
   IslandLocation,
 } from './island-audit'
 export { auditIslands, formatIslandAudit } from './island-audit'
-// M3.4 — `pyreon doctor --check-ssg` audit.
+// M3.4 — `pyreon doctor --only ssg-audit` audit.
 export type {
   SsgAuditFormatOptions,
   SsgAuditResult,
@@ -28,7 +28,7 @@ export type {
   SsgLocation,
 } from './ssg-audit'
 export { auditSsg, formatSsgAudit } from './ssg-audit'
-// PR 9 follow-up — `pyreon doctor --check-content` audit.
+// PR 9 follow-up — `pyreon doctor --only content-audit` audit.
 export type {
   AuditContentOptions,
   CollectionDecl,

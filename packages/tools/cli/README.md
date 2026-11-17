@@ -134,9 +134,9 @@ The file-scanning gates (`react-patterns`, `pyreon-patterns`, `lint`, `audit-tes
 
 The `best-practices` category (opt-in best-practice `@pyreon/lint` rules) is **advisory** — scored + displayed in its own bar but never enters the overall mean, and its errors never fail `--ci`.
 
-### Legacy flags
+### Selecting gates
 
-`--audit-tests`, `--check-islands`, `--check-ssg`, `--check-content`, `--check-native` are accepted as backward-compat shortcuts — they map to `--only <gate>` internally, and compose when several are passed together. An explicit `--only` always wins.
+`--only <gate>[,<gate>]` runs just those gates; `--skip` leaves gates out. An unknown argument is a usage error (exit 1) rather than being ignored, because an ignored selector would widen the run to every gate. The pre-1.0 `--audit-tests` / `--check-*` shortcuts are removed: use `--only audit-tests`, `--only islands-audit`, `--only ssg-audit`, `--only content-audit` or `--only native-audit`.
 
 ### Output formats
 

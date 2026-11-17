@@ -494,26 +494,17 @@ pyreon doctor --only islands-audit --ci
 `--full` adds `audit-types` and `bundle-budgets`, which are the slowest gates (~15-30s for bundle-budgets across 50+ packages). Run them on a schedule or on `main` pushes rather than on every PR, and keep the fast set on the PR path.
 :::
 
-### Legacy flags
-
-The pre-v2 single-purpose flags still work — they map to `--only <gate>` shortcuts so existing CI scripts keep functioning unchanged:
-
-| Legacy flag | Equivalent |
-| --- | --- |
-| `--audit-tests` | `--only audit-tests` |
-| `--check-islands` | `--only islands-audit` |
-| `--check-ssg` | `--only ssg-audit` |
-| `--check-content` | `--only content-audit` |
-| `--check-native` | `--only native-audit` |
+### Selecting gates
 
 ```bash
-pyreon doctor --check-islands                          # == --only islands-audit
-pyreon doctor --audit-tests --audit-min-risk high      # filtered test-env audit
-pyreon doctor --check-ssg --json                       # SSG audit, machine-readable
-pyreon doctor --check-native                           # multiplatform PMTC hazards
+pyreon doctor --only islands-audit                         # one gate
+pyreon doctor --only audit-tests --audit-min-risk high     # filtered test-env audit
+pyreon doctor --only ssg-audit --json                      # SSG audit, machine-readable
+pyreon doctor --only native-audit                          # multiplatform PMTC hazards
+pyreon doctor --only islands-audit,ssg-audit               # several gates
 ```
 
-When you pass multiple legacy flags together, they compose into a single `--only` set (e.g. `--check-islands --check-ssg` runs both). An explicit `--only` always wins over the legacy flags.
+An unknown argument is a usage error (exit 1): an ignored selector would silently widen the run to every gate. The pre-1.0 single-purpose flags (`--audit-tests`, `--check-islands`, `--check-ssg`, `--check-content`, `--check-native`) are removed; use `--only <gate>`.
 
 ### Gate deep-dives
 
@@ -716,11 +707,6 @@ console.log(context.components.length, 'components')
 | `--ci` | boolean | off | Exit non-zero on non-advisory error findings. |
 | `--audit-min-risk <r>` | `high\|medium\|low` | `medium` | Minimum risk for the `audit-tests` gate. |
 | `--roots <globs>` | comma list | workspace-discovered | Override scan-root discovery for the file-scanning gates (relative to cwd). |
-| `--audit-tests` | boolean | off | Legacy → `--only audit-tests`. |
-| `--check-islands` | boolean | off | Legacy → `--only islands-audit`. |
-| `--check-ssg` | boolean | off | Legacy → `--only ssg-audit`. |
-| `--check-content` | boolean | off | Legacy → `--only content-audit`. |
-| `--check-native` | boolean | off | Legacy → `--only native-audit`. |
 
 ### Gates at a glance
 

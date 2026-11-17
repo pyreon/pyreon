@@ -38,3 +38,35 @@ describe('doctor help in the published CLI', () => {
     30_000,
   )
 })
+
+describe('doctor rejects an unknown argument in the published CLI', () => {
+  // An ignored selector widens the run to every gate, so a CI script pinned to
+  // a removed flag (`--check-ssg`, now `--only ssg-audit`) would silently start
+  // failing on gates it never opted into. It must fail loudly instead.
+  it.each(['--check-ssg', '--audit-tests', '--onyl'])(
+    '%s exits 1 with a usage error naming --only, before running any gate',
+    (flag) => {
+      const result = spawnSync(process.execPath, [BIN, 'doctor', flag], {
+        cwd,
+        encoding: 'utf8',
+        timeout: 20_000,
+        killSignal: 'SIGKILL',
+      })
+      expect(result.status).toBe(1)
+      expect(result.stderr).toContain(`unknown argument '${flag}'`)
+      expect(result.stderr).toContain('--only')
+      expect(result.stdout).not.toContain('doctor gates:')
+    },
+    30_000,
+  )
+
+  it('still accepts every documented flag, including value flags', () => {
+    const result = spawnSync(
+      process.execPath,
+      [BIN, 'doctor', '--json', '--ci', '--only', 'ssg-audit', '--audit-min-risk', 'high', '--format', 'json'],
+      { cwd, encoding: 'utf8', timeout: 20_000, killSignal: 'SIGKILL' },
+    )
+    expect(result.stderr).not.toContain('unknown argument')
+    expect(result.status).toBe(0)
+  }, 30_000)
+})

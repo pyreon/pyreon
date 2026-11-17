@@ -1424,7 +1424,7 @@ describe('detectPyreonPatterns', () => {
       `
       // The detector intentionally only recognizes string-literal hydrate
       // values — variable indirection takes us past the static-detection
-      // surface into pyreon doctor --check-islands territory.
+      // surface into pyreon doctor --only islands-audit territory.
       const diags = detectPyreonPatterns(code)
       expect(diags.filter((d) => d.code === 'island-never-with-registry-entry')).toEqual([])
     })

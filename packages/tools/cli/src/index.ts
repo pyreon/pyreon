@@ -97,13 +97,6 @@ function printUsage(): void {
     Fast: ${FAST_GATES.join(', ')}
     Slow: ${SLOW_GATES.join(', ')} (require --full)
 
-  Legacy doctor flags (still work — map to --only shortcuts):
-    --audit-tests                    Equivalent to --only audit-tests
-    --check-islands                  Equivalent to --only islands-audit
-    --check-ssg                      Equivalent to --only ssg-audit
-    --check-content                  Equivalent to --only content-audit
-    --check-native                   Equivalent to --only native-audit (multiplatform PMTC hazards)
-
   Options:
     --help                           Show this help message
     --version                        Show version
@@ -153,6 +146,30 @@ const parseMinRisk = async (raw: string | undefined): Promise<DoctorOptions['aud
   if (!raw) return undefined
   if (raw === 'high' || raw === 'medium' || raw === 'low') return raw
   return usageError(`--audit-min-risk must be high|medium|low, got '${raw}'`, 'pass --audit-min-risk high, medium or low')
+}
+
+/** `pyreon doctor` flags; the value-taking ones consume the next argument. */
+const DOCTOR_BOOLEAN_FLAGS = new Set(['--fix', '--json', '--gha', '--ci', '--full'])
+const DOCTOR_VALUE_FLAGS = new Set(['--format', '--only', '--skip', '--roots', '--audit-min-risk'])
+
+/**
+ * Fail on an unknown `pyreon doctor` argument. Ignoring it is worse than it
+ * looks: a typo'd or removed selector (`--check-ssg`) would silently widen the
+ * run to EVERY gate, so a CI script fails on gates it never opted into.
+ */
+const rejectUnknownDoctorFlags = async (): Promise<void> => {
+  for (let i = 1; i < args.length; i++) {
+    const a = args[i] as string
+    if (DOCTOR_VALUE_FLAGS.has(a)) {
+      i++
+      continue
+    }
+    if (DOCTOR_BOOLEAN_FLAGS.has(a)) continue
+    await usageError(
+      `pyreon doctor: unknown argument '${a}'.`,
+      'run `pyreon doctor --help` for the flags; select gates with --only <gate>[,<gate>] (e.g. --only islands-audit)',
+    )
+  }
 }
 
 async function main(): Promise<void> {
@@ -297,6 +314,7 @@ async function main(): Promise<void> {
       printUsage()
       return
     }
+    await rejectUnknownDoctorFlags()
     const { doctor } = await import('./doctor')
     const format = args.includes('--gha')
       ? ('gha' as const)
@@ -315,12 +333,7 @@ async function main(): Promise<void> {
         ?.split(',')
         .map((s) => s.trim())
         .filter(Boolean),
-      auditTests: args.includes('--audit-tests'),
       auditMinRisk: await parseMinRisk(getFlagValue('--audit-min-risk')),
-      checkIslands: args.includes('--check-islands'),
-      checkSsg: args.includes('--check-ssg'),
-      checkContent: args.includes('--check-content'),
-      checkNative: args.includes('--check-native'),
     }
     const exitCode = await interruptible('pyreon doctor', () => doctor(options))
     if (options.ci && exitCode > 0) {

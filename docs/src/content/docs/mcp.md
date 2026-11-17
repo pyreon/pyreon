@@ -936,7 +936,7 @@ Project-wide cross-file islands audit. It walks `packages/` + `examples/` and ru
 - **`nested-island`** — an `island()` whose loader-target file also contains an `island()` call; the outer's `hydrateRoot` replaces the inner before its loader runs.
 - **`dead-island`** — an `island()` whose file is never imported statically or dynamically (unreachable code).
 
-Each finding ships with file path + line/column + an actionable fix suggestion. This is the same scanner as the `pyreon doctor --check-islands` CLI flag — two surfaces, one detector set.
+Each finding ships with file path + line/column + an actionable fix suggestion. This is the same scanner as the `pyreon doctor --only islands-audit` CLI flag — two surfaces, one detector set.
 
 **Parameters:**
 

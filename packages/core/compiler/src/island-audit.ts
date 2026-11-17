@@ -1,6 +1,6 @@
 /**
  * Project-wide islands audit for the `audit_islands` MCP tool +
- * `pyreon doctor --check-islands` CLI flag (PR C of the islands DX
+ * `pyreon doctor --only islands-audit` CLI flag (PR C of the islands DX
  * roadmap).
  *
  * Companion gates that pre-date this module:
@@ -636,7 +636,7 @@ export function formatIslandAudit(
 
   if (!result.root) {
     return (
-      'No project root found. Run `pyreon doctor --check-islands` from a directory ' +
+      'No project root found. Run `pyreon doctor --only islands-audit` from a directory ' +
       'with a package.json, or pass an explicit workspace root containing packages/.'
     )
   }

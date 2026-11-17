@@ -27,7 +27,7 @@
  *     (one fixture per finding type, bisect-verified by reverting the
  *     detector's match condition)
  *   - Doctor wiring at `packages/tools/cli/src/doctor/gates/content-audit.ts`,
- *     CLI flag `pyreon doctor --check-content [--json]`
+ *     CLI flag `pyreon doctor --only content-audit [--json]`
  *
  * Same syntactic-only style as `island-audit.ts` / `ssg-audit.ts` —
  * no type-check pass, no module resolution. False negatives
