@@ -91,9 +91,9 @@ const { containerRef, itemRef, isActive, isOverKey, overEdge } = useSortable({
 | --- | --- | --- |
 | [`useDraggable`](#usedraggable-hook) | hook | Make an element draggable with signal-driven state. |
 | [`useDroppable`](#usedroppable-hook) | hook | Make an element a drop target with signal-driven hover state. |
-| [`useSortable`](#usesortable-hook) | hook | Full reorderable list — pointer dragging, auto-scroll near container edges, closest-edge detection, Alt+Arrow keyboard r |
+| [`useSortable`](#usesortable-hook) | hook | Full reorderable list — pointer dragging, auto-scroll near container edges, closest-edge detection, Alt+Arrow keyboard… |
 | [`useFileDrop`](#usefiledrop-hook) | hook | Native-file drop zone over pdnd's external/file adapter — accepts files dragged in from the OS, not in-page draggables. |
-| [`useDragMonitor`](#usedragmonitor-hook) | hook | Observe every element drag on the page without owning a draggable or drop target — for global overlays, analytics, or co |
+| [`useDragMonitor`](#usedragmonitor-hook) | hook | Observe every element drag on the page without owning a draggable or drop target — for global overlays, analytics, or… |
 
 ## API
 

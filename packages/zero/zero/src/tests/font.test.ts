@@ -414,6 +414,19 @@ describe('pickPreloadHrefs', () => {
     expect(pickPreloadHrefs(latinOnly, 'latin', 1)).toEqual(['/assets/fonts/lat.woff2'])
   })
 
+  it('preloads one file per family, even when a variable font repeats its file for every weight', () => {
+    const css = `/* latin */
+@font-face { font-family: 'JetBrains Mono'; font-weight: 400; src: url(/assets/fonts/mono.woff2) format('woff2'); }
+/* latin */
+@font-face { font-family: 'JetBrains Mono'; font-weight: 500; src: url(/assets/fonts/mono.woff2) format('woff2'); }
+/* latin */
+@font-face { font-family: 'Space Grotesk'; font-weight: 400; src: url(/assets/fonts/sans.woff2) format('woff2'); }
+/* latin */
+@font-face { font-family: 'Space Grotesk'; font-weight: 700; src: url(/assets/fonts/sans.woff2) format('woff2'); }
+`
+    expect(pickPreloadHrefs(css, 'latin', 2)).toEqual(['/assets/fonts/mono.woff2', '/assets/fonts/sans.woff2'])
+  })
+
   it('returns [] when there are no local font urls', () => {
     expect(pickPreloadHrefs("/* latin */\n@font-face { font-family: X; }", 'latin', 2)).toEqual([])
   })

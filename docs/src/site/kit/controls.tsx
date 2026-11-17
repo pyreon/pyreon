@@ -1,7 +1,7 @@
 import type { VNodeChild } from '@pyreon/core'
 import { For } from '@pyreon/core'
-import { font, motion, radius, text, weight } from '../theme'
-import { el, focusRing, tone, txt, type LinkAttrs, type ButtonAttrs } from './bases'
+import { font, motion, radius, text, touch, weight } from '../theme'
+import { el, focusRing, tone, txt, type LinkAttrs, type ButtonAttrs, tapArea } from './bases'
 import { CommandLine } from './command'
 import { CopyButtonIsland } from './islands'
 import { isFileHref, useLinkClick } from './link'
@@ -25,6 +25,7 @@ const PillBase = el
     color: tone(m, 'text'),
     backgroundColor: 'transparent',
     transition: `border-color ${motion.hover}, background-color ${motion.hover}, transform ${motion.hover}`,
+    extendCss: `${touch.media} { min-height: ${touch.tapTarget}px; }`,
     hover: { borderColor: tone(m, 'lineHover') },
     focus: focusRing(m),
   }))
@@ -120,7 +121,9 @@ export const Chip = txt
 
 const SegBox = el
   .config({ name: 'Segmented' })
-  .attrs({ tag: 'fieldset', contentDirection: 'inline', gap: 2 })
+  // A labelled group, not a <fieldset>: a fieldset lays its children out in an
+  // inner box that cannot wrap, so the last option was cut off at 320px.
+  .attrs({ tag: 'div', role: 'group', contentDirection: 'inline', gap: 2 })
   .theme((_t, m) => ({
     margin: 0,
     minWidth: 0,
@@ -149,6 +152,7 @@ const SegButton = el
     hover: { color: tone(m, 'text') },
     focus: focusRing(m),
     pressed: { backgroundColor: tone(m, 'line'), color: tone(m, 'text') },
+    extendCss: tapArea,
   }))
 
 /**
