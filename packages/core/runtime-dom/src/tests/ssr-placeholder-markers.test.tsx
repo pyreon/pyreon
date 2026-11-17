@@ -363,7 +363,7 @@ function tokens(el: Element, server: boolean): string[] {
 const ORACLE_SIGNAL = signal('S')
 
 describe('pairing oracle: client placeholders and server ranges line up', () => {
-  const SEEDS = Math.max(1, Number(process.env.PYREON_FUZZ_SEEDS) || 120)
+  const SEEDS = Math.max(1, Number((process.env as Record<string, string | undefined>).PYREON_FUZZ_SEEDS) || 120)
   for (const [backendName, backend] of BACKENDS) {
     for (const tcc of [true, false]) {
       for (const side of ['h', 'ssr'] as const) {
