@@ -54,7 +54,7 @@ count.update((n) => n + 1) // now 6
 
 <Example file="./examples/reactivity/signals-read-write-react" title="Signals — read, write, react" />
 
-**One way to read: `count()`, everywhere.** Inside JSX the compiler also accepts a bare `{count}` and calls it for you, but only for a `const` signal or computed it can see, and TypeScript rejects the bare form in expressions (`count > 0`) and in typed component props, so the called form is the one that works in every position and survives copy-paste out of JSX. The `readable` lint preset enforces it (`pyreon/consistent-signal-read`). For code without parentheses, use [Plain Mode](/docs/plain-mode), where `count` is the value by design.
+**One way to read: `count()`, everywhere.** Inside JSX the compiler also accepts a bare `{count}` and calls it for you, but only for a `const` signal or computed it can see, and TypeScript rejects the bare form in expressions (`count > 0`) and in typed component props, so the called form is the one that works in every position and survives copy-paste out of JSX. That includes props that accept a signal, such as `<Chart data={rows()}>` and `<DiffEditor original={saved()}>`: the compiler passes the read as a reactive prop. It includes bound inputs too: `<Field value={draft()} onChangeText={(t) => draft.set(t)} />` lowers to SwiftUI's `$draft` binding, as the bare form does. The `readable` lint preset enforces it (`pyreon/consistent-signal-read`). For code without parentheses, use [Plain Mode](/docs/plain-mode), where `count` is the value by design.
 
 ### Signal Interface
 

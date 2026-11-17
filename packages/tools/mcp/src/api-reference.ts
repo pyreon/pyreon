@@ -1480,7 +1480,7 @@ const base = signal(1.0)
   'primitives/Tabs': {
     signature: '(props: { value: string | (() => string); onChange: (next: string) => void; children: <Tab> elements } | { router: TabsRouter; children: <Tab> elements }) => VNode',
     example: `const tab = signal('feed')
-<Tabs value={tab} onChange={(v) => tab.set(v)}>
+<Tabs value={tab()} onChange={(v) => tab.set(v)}>
   <Tab value="feed" label="Feed" icon="home"><FeedScreen /></Tab>
   <Tab value="me" label="Me" icon="person"><ProfileScreen /></Tab>
 </Tabs>`,

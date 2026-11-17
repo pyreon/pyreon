@@ -73,7 +73,7 @@ npm run build:ios       # src/App.tsx → ios/generated/App.swift
 npm run build:android   # src/App.tsx → android/.../generated/App.kt
 ```
 
-One trap: the unscoped `npx @pyreon/create-multiplatform` does not work, because `npx` resolves package names and the package is `@pyreon/create-multiplatform`. Already using the Pyreon CLI? `pyreon new --native` runs the same scaffolder.
+One trap: the unscoped `npx create-multiplatform` does not work, because `npx` resolves package names and the package is `@pyreon/create-multiplatform`. Already using the Pyreon CLI? `pyreon new --native` runs the same scaffolder.
 
 The parts of the generated tree you will touch:
 

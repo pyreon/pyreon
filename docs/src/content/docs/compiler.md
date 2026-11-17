@@ -892,11 +892,41 @@ function Profile(props) {
 | `const a = props.x; const b = a + 1` | Yes | Transitive resolution |
 | `let x = props.y` | No | `let` is mutable — unsafe to inline |
 | `var x = props.y` | No | `var` is mutable — unsafe to inline |
+| `const m = createModel(props.y)`, `const s = useThing(props.y)` | No | A stateful call: re-running it per use would create a new instance each time |
+| `const count = props.shared ?? signal(0)` | No | The same, ANYWHERE in the initializer (see below) |
+| `const d = new Date(props.ts)`, `new Intl.NumberFormat(props.locale)` | Yes | Value constructors (`Date`, `URL`, `RegExp`, `Intl.*`) |
+| `const c = props.cache ?? new Map()` | No | Any other `new` creates a new object per evaluation |
+| `const label = cx(props.a)` | Yes | An unrecognised call is assumed to compute a value |
 | `console.log(x)` where `x` is prop-derived | No | Non-JSX usage stays static (captured value) |
+
+### Initializers that create state are never inlined
+
+Inlining re-evaluates the initializer at every use. That is only the same as reading the `const` when evaluating it twice is not observable. So a `const` whose initializer contains, anywhere — either side of `??`/`||`/`&&`, a ternary branch, a call argument, an object, array or template literal, or a callback the expression calls (`Array.from({ length: props.n }, () => signal(0))`) — any of the following keeps the value it captured at setup:
+
+- a stateful call: `signal`, `computed`, `effect`, `batch`, `defineStore`, or any `useX(…)` / `createX(…)` (also as a member, `api.useX(…)`)
+- a `new` other than `Date`, `URL`, `RegExp` or `Intl.*`, or a class expression
+- a write (`=`, `+=`, `++`, `delete`), an `await` or a `yield`
+
+The common case is a component that can share state with its parent or own it:
+
+```tsx
+function Counter(props: { shared?: Signal<number> }) {
+  const count = props.shared ?? signal(0) // evaluated once: ONE signal
+  return <button onClick={() => count.update((n) => n + 1)}>{count()}</button>
+}
+```
+
+`props.shared` is read once, at setup. That is what this pattern wants (the parent decides at mount); if the parent may later pass a different signal, read `props.shared` where you use it instead.
+
+### Every use site, the same rule
+
+An inlinable `const` is inlined wherever JSX uses it: text, attributes, component props and children, and inside handlers, `ref` callbacks, render props and function children on any element (template element, component, childless or spread-carrying element), so a handler reads the current prop, not the value at setup.
+
+A use where inlining would change what a name means keeps the `const`: if the initializer mentions a name that a binding between the declaration and the use re-binds (`const lbl = props.label + tag` used inside `items.map((tag) => …)`), the inlined text would read that binding, so the `const`'s captured value is used there instead.
 
 ### Non-JSX Usage
 
-The inlining only applies to JSX text and attribute positions. Using a prop-derived variable in regular JavaScript code (e.g., `console.log(x)`, passing to a function) still uses the captured value. This is correct — those contexts are not reactive scopes:
+The inlining only applies to JSX. Using a prop-derived variable in regular JavaScript code (e.g., `console.log(x)`, passing to a function) still uses the captured value. This is correct — those contexts are not reactive scopes:
 
 ```tsx
 function MyComponent(props) {

@@ -846,7 +846,7 @@ export function WifiSetting() {
 ```
 
 - **Web**: `<input type="checkbox" role="switch">`.
-- **iOS**: `Toggle("", isOn: Binding(…))`. **Android**: `Switch(checked = …, onCheckedChange = …)`.
+- **iOS**: `Toggle("", isOn: $on)`. **Android**: `Switch(checked = on, onCheckedChange = …)`.
 
 ### Select
 
@@ -967,7 +967,7 @@ import { signal } from '@pyreon/reactivity'
 export function AppShell() {
   const tab = signal('feed')
   return (
-    <Tabs value={tab} onChange={(v) => tab.set(v)}>
+    <Tabs value={tab()} onChange={(v) => tab.set(v)}>
       <Tab value="feed" label="Feed" icon="home">
         <Stack padding={4}><Text>Your feed</Text></Stack>
       </Tab>
