@@ -1,6 +1,7 @@
 import type { VNodeChild } from '@pyreon/core'
+import { h } from '@pyreon/core'
 import { PyreonUI } from '@pyreon/ui-core'
-import { font, gradient, inset, motion, paper, radius, text, touch } from '../theme'
+import { font, gradient, inset, paper, radius, text, touch } from '../theme'
 import { el, focusRing, tone, txt, type LinkAttrs } from './bases'
 import { Glyph } from './glyph'
 import { useLinkClick } from './link'
@@ -19,7 +20,6 @@ const CardFrame = el
     boxShadow: tone(m, 'cardShadow'),
     textDecoration: 'none',
     color: 'inherit',
-    transition: `transform ${motion.hover}`,
     focus: focusRing(m),
   }))
   .variants((_t, m) => ({
@@ -58,7 +58,9 @@ const CardInner = el
  * state: default | hot (ember glow). padding: card (`inset.card`) | compact
  * (`inset.compact`) | stat (`inset.stat`) | flush (0): every child shares
  * that one inset, none bleeds into it.
- * With `href` the whole card is one link.
+ * With `href` the whole card is one link: one tab stop with the focus ring,
+ * nothing interactive inside it (a tag or a link inside a card makes the
+ * card static). Its hover lifts the edge colour only, no motion.
  */
 export function GlowCard(props: {
   state?: 'default' | 'hot' | undefined
@@ -74,9 +76,16 @@ export function GlowCard(props: {
       {props.children}
     </CardInner>
   )
-  if (href === undefined) return <CardFrame variant="static">{inner}</CardFrame>
+  // `data-card`: the e2e finds every card (and every linked card: `a[data-card]`) by it.
+  if (href === undefined) {
+    return (
+      <CardFrame variant="static" data-card="">
+        {inner}
+      </CardFrame>
+    )
+  }
   return (
-    <CardFrame tag="a" href={href} variant="link" aria-label={props['aria-label']} onClick={click(href)}>
+    <CardFrame tag="a" href={href} variant="link" aria-label={props['aria-label']} onClick={click(href)} data-card="">
       {inner}
     </CardFrame>
   )
@@ -136,11 +145,16 @@ export function ProductTag(props: { glyph?: string | undefined; id?: string | un
   )
 }
 
-/** A package or identifier name in a card (mono, accent): one style for every card that prints one. */
-export const PackageName = txt
+const PackageNameBase = txt
   .config({ name: 'PackageName' })
   .attrs({ tag: 'span' })
-  .theme((_t, m) => ({ fontFamily: font.mono, fontSize: 11.5, color: tone(m, 'accentText'), overflowWrap: 'anywhere' }))
+  .theme((_t, m) => ({ fontFamily: font.mono, fontSize: text.caveat.size, color: tone(m, 'accentText'), overflowWrap: 'anywhere' }))
+  .multiple(() => ({ block: { display: 'block' } }))
+
+/** A package or identifier name in a card (mono, accent): one style for every card that prints one. `block`: on its own line. */
+export function PackageName(props: { block?: boolean | undefined; children?: VNodeChild }) {
+  return h(PackageNameBase, { multiple: props.block ? ['block'] : [] }, props.children)
+}
 
 /**
  * `.p-inside` — package (ember mono) · its role (eyebrow) · one line. The

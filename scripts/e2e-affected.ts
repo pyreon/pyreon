@@ -286,6 +286,11 @@ const SUITES: Suite[] = [
       'e2e/docs-islands.ts',
       'e2e/site-',
       'e2e-configs/docs.config.ts',
+      // The ceilings of the pages this suite's cell measures (the
+      // `Check Site Route Budgets` step runs where this suite ran). A budget
+      // file never forces every suite, so without this a pull request that
+      // only changes a ceiling would not be judged against it.
+      'scripts/size-budgets/sites/',
     ],
   },
   {

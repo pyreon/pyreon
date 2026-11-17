@@ -966,7 +966,7 @@ form, a schema loaded from a database.
 | `toFormValidator` | `(schema, t?) => (values) => Record<string, string>` | Adapt an `s` schema into a `@pyreon/form` `schema` validator. |
 | `installFormatValidator` | `(name, fn) => void` | Swap a superior validator for a named format (the client/server seam). |
 
-Types: `FieldMeta`, `Input<S>`, `Output<S>`, `ParseResult`, `ReactiveSource`, `PyreonIssue`, `StandardSchemaIssue`, `StandardSchemaResult`, `StandardSchemaV1`, `TFn`, `WithFieldMeta`.
+Types: `FieldMeta`, `Input<S>`, `Output<S>`, `ParseResult`, `ReactiveSource`, `PyreonIssue`, `StandardSchemaV1` (re-exported from `@pyreon/validation`; the issue and result shapes are `StandardSchemaV1.Issue` / `StandardSchemaV1.Result<T>`), `TFn`, `WithFieldMeta`.
 
 ### `s` validator runtime
 

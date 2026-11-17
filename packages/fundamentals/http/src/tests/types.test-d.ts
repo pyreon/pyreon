@@ -14,6 +14,7 @@
 
 import { type } from 'arktype'
 import * as v from 'valibot'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { describe, expectTypeOf, it } from 'vitest'
 import { z } from 'zod'
 import { createHttp, type HttpClient } from '../client'
@@ -22,7 +23,6 @@ import { standardSchema } from '../schema'
 import type {
   HttpMiddleware,
   ParseFn,
-  StandardSchemaShape,
   ValidatorOutput,
 } from '../types'
 
@@ -73,7 +73,7 @@ describe('.json() inference', () => {
 describe('ValidatorOutput', () => {
   it('prefers the schema brand over the callable shape', () => {
     // A value that is BOTH callable and branded must resolve as a schema.
-    type Both = ParseFn<'wrong'> & StandardSchemaShape<'right'>
+    type Both = ParseFn<'wrong'> & StandardSchemaV1<unknown, 'right'>
     expectTypeOf<ValidatorOutput<Both>>().toEqualTypeOf<'right'>()
   })
 

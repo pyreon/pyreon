@@ -206,7 +206,7 @@ export {
   type SuperRefineCtx,
   TransformSchema,
 } from './core/schema'
-export { type PyreonIssue, type StandardSchemaIssue, ValidationError } from './core/issue'
+export { type PyreonIssue, ValidationError } from './core/issue'
 export { type PendingCheck } from './core/ops'
 // Global runtime config — `configure({ jit: false })` for CSP without 'unsafe-eval'.
 export { configure, type ValidateConfig } from './core/config'
