@@ -8,7 +8,7 @@
     "preview": "astro preview"
   },
   "dependencies": {
-    "@astrojs/node": "11.1.11",
+    "@astrojs/node": "11.1.13",
     "@astrojs/preact": "6.1.2",
     "astro": "7.4.8",
     "preact": "11.2.0"

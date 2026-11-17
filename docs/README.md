@@ -19,7 +19,7 @@ production) landed in the cutover PR.
 | `src/mdx/`                  | Convention-scanned components (PascalCase, used inline in `.md`) |
 | `src/components/`           | Docs layout pieces (header, sidebar, toc) and the pre-redesign landing |
 | `src/routes/`               | fs-router pages: `_layout.tsx` (root: head defaults + `<PyreonUI>`), `docs/` (docs shell), `(site)/` (marketing shell: home, products, brand, blog, showcase, open) |
-| `src/site/`                 | The redesigned marketing site: `theme.ts` (every token), `kit/` (rocketstyle components), `shell/` (nav, mega menu, mobile sheet, footer), `pages/`, `demos/` (live product demos as islands), `content/` (the content set, synced) |
+| `src/site/`                 | The redesigned marketing site: `theme.ts` (every token), `kit/` (rocketstyle components; `kit/primitives/` the layout and text primitives), `shell/` (nav, mega menu, mobile sheet, footer), `pages/`, `demos/` (live product demos as islands), `content/` (the content set, synced) |
 | `src/styles/`               | docs.css + syntax themes                               |
 | `src/examples/`             | Real `.tsx` example components mounted via `<Example>` |
 | `content.config.ts`         | `defineCollection({ schema })` declarations            |
@@ -40,6 +40,9 @@ system's layers (`vite-plugins/legacy-css-layer.ts`).
   lives. Kit components read it directly (`tone(m, 'text')` for mode pairs);
   the plain stylesheets read the same scales as `var(--s-…)`
   (`src/site/theme-vars.ts`).
+- **Layout primitives:** `src/site/kit/primitives/` (`Stack`, `Cluster`,
+  `Box`, `Grid`, `AutoGrid`, `Wrap`, `Text`, `Visible`, `Icon`): compose them
+  instead of defining a styled stack, row, grid or mono caption in a page.
 - **Design system:** layers, naming, the "no outer margins" rule, how to add
   a token or component, the design ratchets (`bun scripts/check-site-design.ts`
   from the repo root) and the screenshot sweep

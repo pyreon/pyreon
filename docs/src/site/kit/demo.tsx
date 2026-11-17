@@ -5,7 +5,8 @@ import { keyframes } from '@pyreon/styler'
 import { font, motion, paper, radius, text, weight } from '../theme'
 import { el, type ButtonAttrs, focusRing, tone, txt } from './bases'
 import { GlowCard } from './cards'
-import { AutoGrid } from './layout'
+import { Stack } from './primitives/stack'
+import { AutoGrid } from './primitives/auto-grid'
 import { KitScope } from './scope'
 
 /**
@@ -23,7 +24,7 @@ import { KitScope } from './scope'
 export function DemoGrid(props: { children?: VNodeChild }) {
   return (
     <KitScope>
-      <AutoGrid cols={2} gap={16}>
+      <AutoGrid cols={2} gap={200}>
         {props.children}
       </AutoGrid>
     </KitScope>
@@ -74,11 +75,6 @@ const MeterValue = txt
     extendCss: 'font-variant-numeric: tabular-nums;',
   }))
 
-const MeterList = el
-  .config({ name: 'Meters' })
-  .attrs({ tag: 'ul', block: true, gap: 8 })
-  .theme(() => ({ listStyle: 'none', margin: 0, padding: 0 }))
-
 export interface MeterItem {
   label: VNodeChild
   value: () => number | string
@@ -104,12 +100,12 @@ function Meter(props: MeterItem) {
 /** `.meter` — labelled live counters; a row pulses when its value changes. */
 export function Meters(props: { items: readonly MeterItem[]; label: string }) {
   return (
-    <MeterList aria-label={props.label}>
+    <Stack tag="ul" gap={100} alignX="left" aria-label={props.label}>
       {/* Keyed by position: a label may be JSX, whose String() is "[object Object]" for every row. */}
       <For each={props.items.map((item, i) => ({ item, i }))} by={(x) => x.i}>
         {(x) => <Meter label={x.item.label} value={x.item.value} />}
       </For>
-    </MeterList>
+    </Stack>
   )
 }
 

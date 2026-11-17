@@ -5,12 +5,13 @@ import { el, tone, txt } from '../site/kit/bases'
 import { GlowCard } from '../site/kit/cards'
 import { Chip, InstallCommand, Pill } from '../site/kit/controls'
 import { ctaStackOnPhone } from '../site/kit/cta'
-import { AutoGrid, Section, SectionHead, Wrap } from '../site/kit/layout'
+import { Section, SectionHead } from '../site/kit/layout'
+import { AutoGrid, Cluster, Stack, Wrap } from '../site/kit/primitives'
 import { Picture } from '../site/kit/media'
 import { Reveal } from '../site/kit/motion'
 import { Eyebrow, Heading, Lede, renderInline } from '../site/kit/type'
 import { usePageHead } from '../site/head'
-import { breakpoints, font, radius, text } from '../site/theme'
+import { breakpoints, font, radius, space, text } from '../site/theme'
 
 /**
  * `/showcase` — apps from the repository, every screenshot a real capture
@@ -27,14 +28,15 @@ export function sourceUrl(dir: string): string {
 }
 
 const Hero = el.config({ name: 'ShowcaseHero' }).attrs({ block: true, contentAlignX: 'block', gap: 22 }).theme(() => ({ maxWidth: 860 }))
-const Row = el.config({ name: 'ShowcaseRow' }).attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 10 }).theme(() => ({ flexWrap: 'wrap' }))
 /** The hero's calls to action: full width on a phone, like every hero (kit/controls.tsx `ctaStackOnPhone`). */
-const HeroActions = Row.config({ name: 'ShowcaseHeroActions' }).theme(() => ({ flexWrap: 'wrap', extendCss: ctaStackOnPhone }))
+const HeroActions = el
+  .config({ name: 'ShowcaseHeroActions' })
+  .attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: space[125] })
+  .theme(() => ({ flexWrap: 'wrap', extendCss: ctaStackOnPhone }))
 const End = el
   .config({ name: 'ShowcaseEnd' })
   .attrs({ block: true, contentAlignX: 'center', gap: 18 })
   .theme(() => ({ textAlign: 'center', extendCss: '& > p { max-width: 640px; }' }))
-const Stack = el.config({ name: 'ShowcaseStack' }).attrs({ block: true, contentAlignX: 'block', gap: 16 })
 
 const Shots = el
   .config({ name: 'ShowcaseShots' })
@@ -83,14 +85,9 @@ const Note = txt
   .attrs({ tag: 'p' })
   .theme((_t, m) => ({ margin: 0, fontFamily: font.mono, fontSize: text.mono.size, lineHeight: 1.6, color: tone(m, 'fog') }))
 
-const ChipList = el
-  .config({ name: 'ShowcaseChips' })
-  .attrs({ tag: 'ul', block: true, contentDirection: 'inline', gap: 6 })
-  .theme(() => ({ flexWrap: 'wrap', listStyle: 'none', margin: 0, padding: 0 }))
-
 function Packages(props: { names: readonly string[] }) {
   return (
-    <ChipList aria-label={SHOWCASE_COPY.labels.packages}>
+    <Cluster tag="ul" gap={75} aria-label={SHOWCASE_COPY.labels.packages}>
       <For each={props.names} by={(n) => n}>
         {(n) => (
           <li>
@@ -98,7 +95,7 @@ function Packages(props: { names: readonly string[] }) {
           </li>
         )}
       </For>
-    </ChipList>
+    </Cluster>
   )
 }
 
@@ -113,7 +110,7 @@ function RunAndLinks(props: { example: ShowcaseExample }) {
         {fill(labels.open, { url: ex.open })}
         {ex.note ? <>{' · '}{renderInline(ex.note)}</> : null}
       </Note>
-      <Row>
+      <Cluster gap={125} alignY="center">
         {ex.liveDemo ? (
           <Pill href={ex.liveDemo} variant="solid">
             {labels.liveDemo}
@@ -123,7 +120,7 @@ function RunAndLinks(props: { example: ShowcaseExample }) {
         <For each={ex.alsoSource ?? []} by={(s) => s.dir}>
           {(s) => <Pill href={sourceUrl(s.dir)}>{s.label}</Pill>}
         </For>
-      </Row>
+      </Cluster>
     </>
   )
 }
@@ -185,7 +182,7 @@ export function ShowcasePage() {
         <Section>
           <Wrap>
             <SectionHead label={f.label} title={f.title} text={f.text} id={f.example.dir} />
-            <Stack>
+            <Stack gap={200}>
               <Shots>
                 <For each={f.captures} by={(s) => s.file}>
                   {(s) => (
@@ -208,7 +205,7 @@ export function ShowcasePage() {
       <Section size="tight">
         <Wrap>
           <SectionHead label={c.more.label} title={c.more.title} text={c.more.text} />
-          <AutoGrid min={420} gap={14}>
+          <AutoGrid min={420} gap={175}>
             <For each={c.more.items} by={(ex) => ex.dir}>
               {(ex) => <ExampleCard example={ex} />}
             </For>

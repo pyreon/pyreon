@@ -8,7 +8,8 @@ import { GlowCard } from '../kit/cards'
 import { CodeCard } from '../kit/code'
 import { InstallCommand, Pill } from '../kit/controls'
 import { inlineText } from '../kit/inline'
-import { AutoGrid, Section, SectionHead, Wrap } from '../kit/layout'
+import { Section, SectionHead } from '../kit/layout'
+import { AutoGrid, Stack, Text, Wrap } from '../kit/primitives'
 import { Reveal } from '../kit/motion'
 import { EndCTA, HookHero } from '../kit/proof'
 import { Diagram, InlineText, LinkCards, StepList } from '../kit/story'
@@ -26,13 +27,6 @@ import { WideDiagram } from './WideDiagram'
  * public-API parity", never "drop-in") and, as prominently, what it does not,
  * with the link to the Migrate product page.
  */
-
-const Stack = el.config({ name: 'MigrateStack' }).attrs({ block: true, contentAlignX: 'block', gap: 16 })
-
-const Mono = txt
-  .config({ name: 'MigrateMono' })
-  .attrs({ tag: 'span' })
-  .theme((_t, m) => ({ display: 'block', fontFamily: font.mono, fontSize: text.mono.size, color: tone(m, 'accentText') }))
 
 const Term = txt
   .config({ name: 'MigrateTerm' })
@@ -99,7 +93,7 @@ export function MigrateLandingPage(props: { view: MigrateLandingView }) {
       <Section size="tight" id="steps">
         <Wrap>
           <SectionHead label={L.steps.label} title={L.steps.title} />
-          <Stack>
+          <Stack gap={200}>
             {props.view.svg ? (
               <WideDiagram>
                 <Diagram svg={props.view.svg} caption={L.steps.caption} scrollLabel={L.steps.scroll} />
@@ -114,14 +108,14 @@ export function MigrateLandingPage(props: { view: MigrateLandingView }) {
         <Section size="tight" id="tools">
           <Wrap>
             <SectionHead label={L.tools.label} title={d.tools.title} />
-            <AutoGrid min={320} gap={12}>
+            <AutoGrid min={320} gap={150}>
               <For each={d.tools.items} by={(t) => t.name}>
                 {(t) => (
                   <GlowCard padding="compact">
                     <Heading tag="h3" size="step">
                       {renderInline(t.name)}
                     </Heading>
-                    <Mono>{t.package}</Mono>
+                    <Text variant="mono" tone="accentText" block>{t.package}</Text>
                     <Lede size="small">{renderInline(t.what)}</Lede>
                     <Term>{L.tools.how}</Term>
                     <Lede size="small">{renderInline(t.how)}</Lede>
@@ -139,7 +133,7 @@ export function MigrateLandingPage(props: { view: MigrateLandingView }) {
         <Section size="tight" id="layers">
           <Wrap>
             <SectionHead label={L.layers.label} title={d.layersTitle} />
-            <AutoGrid min={220} gap={12}>
+            <AutoGrid min={220} gap={150}>
               <For each={props.view.meta.order} by={(l) => l.id}>
                 {(l) => (
                   <GlowCard href={`/migrate/${l.id}`} padding="compact">
@@ -147,7 +141,7 @@ export function MigrateLandingPage(props: { view: MigrateLandingView }) {
                     <Heading tag="h3" size="step">
                       {fill(L.layers.name, { name: l.name })}
                     </Heading>
-                    <Mono>{l.package}</Mono>
+                    <Text variant="mono" tone="accentText" block>{l.package}</Text>
                   </GlowCard>
                 )}
               </For>
@@ -216,7 +210,7 @@ export function MigrateLayerPage(props: { view: MigrateLayerView }) {
         <Section size="tight" id="coverage">
           <Wrap>
             <SectionHead label={L.coverage.label} title={fill(L.coverage.title, { package: d.package })} />
-            <AutoGrid cols={2} gap={16}>
+            <AutoGrid cols={2} gap={200}>
               <GlowCard>
                 <Eyebrow state="accent">{L.coverage.covers}</Eyebrow>
                 <Checklist items={d.covers} tone="ok" />
@@ -234,9 +228,9 @@ export function MigrateLayerPage(props: { view: MigrateLayerView }) {
         <Section size="tight" id="setup">
           <Wrap>
             <SectionHead label={L.setup.label} title={L.setup.title} />
-            <Stack>
+            <Stack gap={200}>
               <InstallCommand command={d.install} />
-              <AutoGrid cols={Math.min(2, d.config.length)} gap={16}>
+              <AutoGrid cols={Math.min(2, d.config.length)} gap={200}>
                 <For each={d.config} by={(c) => c.file}>
                   {(c) => (
                     <div>
@@ -261,7 +255,7 @@ export function MigrateLayerPage(props: { view: MigrateLayerView }) {
             <Section size="tight">
               <Wrap>
                 <SectionHead label={L.ports.label} title={p.title} />
-                <AutoGrid cols={2} gap={16}>
+                <AutoGrid cols={2} gap={200}>
                   <CodeCard label={`${p.before.label} · ${p.before.file}`} code={p.before.code} html={htmlOf(p.before)} rail="del" />
                   <CodeCard label={`${p.after.label} · ${p.after.file}`} code={p.after.code} html={htmlOf(p.after)} state="hot" rail="ins" />
                 </AutoGrid>
@@ -275,7 +269,7 @@ export function MigrateLayerPage(props: { view: MigrateLayerView }) {
       <Section size="tight" id="docs">
         <Wrap>
           <SectionHead label={L.docs.label} title={L.docs.title} />
-          <Stack>
+          <Stack gap={200}>
             <LinkCards items={d.docs.map((l) => ({ label: l.label, href: l.href, text: l.href }))} />
             <div>
               <Pill href={props.view.productHref} variant="solid">

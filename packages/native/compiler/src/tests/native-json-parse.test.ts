@@ -82,7 +82,11 @@ describe('JSON.parse — where the decode type comes from', () => {
 
   it('the handled shape lowers with no JSON warning on either target', () => {
     for (const target of ['swift', 'kotlin'] as const) {
-      expect(warnings(typed, target)).not.toMatch(/JSON\.parse|TERMINATES/)
+      // `as number[]` decodes INTEGERS natively, and a fractional element would fail the decode: that one is named
+      // (native-decode-integer-coverage.test.ts). Nothing else about the parse warns.
+      const all = emit(typed, target).warnings
+      expect(all.filter((w) => w.includes('targets `number[]`, an INTEGER'))).toHaveLength(1)
+      expect(all.filter((w) => !w.includes('an INTEGER')).join('\n')).not.toMatch(/JSON\.parse|TERMINATES/)
     }
   })
 })
