@@ -27,6 +27,7 @@ function uiTestsUnder(dir: string): string[] {
     if (statSync(p).isDirectory()) out.push(...uiTestsUnder(p))
     else if (name.endsWith('UITests.swift')) out.push(p)
   }
+
   return out
 }
 
