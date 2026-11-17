@@ -93,10 +93,6 @@ pub struct TransformResult {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-fn is_skip_prop(name: &str) -> bool {
-    matches!(name, "key" | "ref")
-}
-
 fn is_event_handler(name: &str) -> bool {
     name.len() > 2
         && name.starts_with("on")
@@ -5604,7 +5600,7 @@ fn handle_jsx_attribute(
 ) {
     let name_owned = jsx_attr_name(&attr.name);
     let name: &str = &name_owned;
-    if is_skip_prop(name) || is_event_handler(name) {
+    if name == "key" {
         return;
     }
     let value = match &attr.value {
@@ -5622,6 +5618,12 @@ fn handle_jsx_attribute(
             None => return,
         },
     };
+    // `ref` / `on*`: auto-called like the template path's `emit_ref` /
+    // `emit_event_listener` (see `auto_call_unwrapped_attr_value`).
+    if name == "ref" || is_event_handler(name) {
+        auto_call_unwrapped_attr_value(expr, ctx);
+        return;
+    }
 
     if is_component {
         // For component props: single JSX children are just recursed into
@@ -5675,10 +5677,90 @@ fn handle_jsx_attribute(
                 "reactive-prop",
                 "live prop — signal reads here are tracked into the component".to_string(),
             );
+        } else {
+            auto_call_unwrapped_attr_value(expr, ctx);
         }
     } else {
-        // DOM prop: hoist or wrap with () =>
-        hoist_or_wrap(expr, ctx);
+        // DOM prop: hoist, wrap with () =>, or slice an unwrapped value.
+        if let Some(hoist_name) = maybe_hoist_expr(expr, ctx) {
+            ctx.add_replacement(expr.span().start, expr.span().end, hoist_name);
+        } else if should_wrap(expr, ctx) {
+            wrap_expr(expr, ctx);
+        } else {
+            auto_call_unwrapped_attr_value(expr, ctx);
+        }
+    }
+}
+
+/// Auto-call the bare signals of an h()-path attribute value the walk does NOT
+/// wrap or hoist — an `on*` handler, a `ref`, a function-valued prop
+/// (`render={() => …}`), or a static value holding one — with the same
+/// `auto_call_signals` pass the template path runs over the identical attribute
+/// (`emit_event_listener` / `emit_ref` slice the whole value). Before this the
+/// h() path left the value verbatim, so `onClick={() => count.set(count + 1)}`
+/// auto-called `count` on `<button>x</button>` and set the signal to its own
+/// source text plus "1" on `<Button/>`, a childless `<div/>`, a
+/// spread-carrying element and every SSR render. Nested JSX in the value stays
+/// as written (not walked), exactly as inside a template-path handler.
+/// Auto-call only (prop-derived inlining is not extended here — see the JS
+/// twin). Pushes nothing when nothing needs calling. Mirrors
+/// `autoCallUnwrappedAttrValue` in jsx.ts.
+fn auto_call_unwrapped_attr_value(expr: &Expression, ctx: &mut Ctx) {
+    if ctx.signal_vars.is_empty() || ctx.signal_vars.len() <= ctx.shadowed_signals.len() {
+        return;
+    }
+    let sp = expr.span();
+    let raw = &ctx.source[sp.start as usize..sp.end as usize];
+    let called = auto_call_signals(raw, expr, ctx);
+    if called != raw {
+        ctx.add_replacement(sp.start, sp.end, called);
+    }
+}
+
+/// Auto-call the bare signals of a JSX expression the emit does NOT slice (a
+/// function child — `<Comp>{() => count + 1}</Comp>`, `<For>{(r) => …}</For>` —
+/// or any other unwrapped value) before the walk descends into it. A sliced
+/// expression gets `auto_call_signals` over its whole span, nested functions
+/// included; an unsliced one is WALKED (so its nested JSX still compiles), and
+/// the walk never rewrites an identifier — so a bare signal inside a function
+/// child was auto-called on a template element and left as the function on
+/// every other path. Same collector as `slice_expr` (same scope, identity and
+/// write-target rules); identifiers inside nested JSX are left to that JSX's
+/// own emit, which the walk reaches next. Each edit is a zero-width `()`
+/// insertion, disjoint from the walk's own edits (those cover JSX only).
+/// Mirrors `autoCallUnsliced` in jsx.ts.
+fn auto_call_unsliced(expr: &Expression, ctx: &mut Ctx) {
+    if ctx.signal_vars.is_empty() || ctx.signal_vars.len() <= ctx.shadowed_signals.len() {
+        return;
+    }
+    if matches!(expr, Expression::JSXElement(_) | Expression::JSXFragment(_)) {
+        return;
+    }
+    let sp = expr.span();
+    let mut idents: Vec<(u32, u32)> = Vec::new();
+    let mut shadows: Vec<String> = Vec::new();
+    collect_signal_idents(expr, ctx, &mut idents, sp.start, sp.end, &mut shadows);
+    if idents.is_empty() {
+        return;
+    }
+    struct JsxSpans {
+        spans: Vec<(u32, u32)>,
+    }
+    impl<'a> Visit<'a> for JsxSpans {
+        fn visit_jsx_element(&mut self, it: &JSXElement<'a>) {
+            self.spans.push((it.span.start, it.span.end));
+        }
+        fn visit_jsx_fragment(&mut self, it: &JSXFragment<'a>) {
+            self.spans.push((it.span.start, it.span.end));
+        }
+    }
+    let mut finder = JsxSpans { spans: Vec::new() };
+    finder.visit_expression(expr);
+    for (start, end) in idents {
+        if finder.spans.iter().any(|&(s, e)| start >= s && end <= e) {
+            continue;
+        }
+        ctx.add_replacement(end, end, "()".to_string());
     }
 }
 
@@ -5823,6 +5905,7 @@ fn handle_jsx_expression_child(container: &JSXExpressionContainer, ctx: &mut Ctx
     );
     let old_cb = ctx.in_jsx_child_callback;
     ctx.in_jsx_child_callback = is_render_cb;
+    auto_call_unsliced(expr, ctx);
     walk_expression(expr, ctx);
     ctx.in_jsx_child_callback = old_cb;
     ctx.parent_is_jsx = old;
@@ -5963,14 +6046,6 @@ fn wrap_expr(expr: &Expression, ctx: &mut Ctx) {
         "reactive",
         "live — re-evaluates whenever its signals change".to_string(),
     );
-}
-
-fn hoist_or_wrap(expr: &Expression, ctx: &mut Ctx) {
-    if let Some(hoist_name) = maybe_hoist_expr(expr, ctx) {
-        ctx.add_replacement(expr.span().start, expr.span().end, hoist_name);
-    } else if should_wrap(expr, ctx) {
-        wrap_expr(expr, ctx);
-    }
 }
 
 // ─── Compile-to-string SSR fast path (`options.ssrTemplate`) ─────────────────
@@ -7718,6 +7793,7 @@ fn walk_preserved_child_expr(expr: &Expression, ctx: &mut Ctx) {
     );
     let old_cb = ctx.in_jsx_child_callback;
     ctx.in_jsx_child_callback = is_render_cb;
+    auto_call_unsliced(expr, ctx);
     walk_expression(expr, ctx);
     ctx.in_jsx_child_callback = old_cb;
     ctx.parent_is_jsx = old;
@@ -11124,30 +11200,32 @@ fn detect_partial_collapsible_shape(
 /// needs_collapse + needs_collapse_h (matching JS — a partial-only module then
 /// imports both helpers; the unused `_rsCollapse` tree-shakes out).
 fn try_partial_collapse(el: &JSXElement, tag: &str, parent_is_jsx: bool, ctx: &mut Ctx) -> bool {
-    let src = ctx.source; // &'a str is Copy — snapshot to avoid a borrow split.
+    let (props, children_text, handlers) = match detect_partial_collapsible_shape(el) {
+        Some(s) => s,
+        None => return false,
+    };
+    let key = rocketstyle_collapse_key(tag, &props, &children_text);
+    if !ctx.collapse.as_ref().unwrap().sites.contains_key(&key) {
+        return false; // not resolved → keep normal rocketstyle mount
+    }
+    // Auto-called after the site check, like the JS
+    // `collapseAttrExprText`; `slice_expr` needs `&mut ctx`, so before the
+    // `cfg` borrow below.
+    let handler_obj = format!(
+        "{{ {} }}",
+        handlers
+            .iter()
+            .map(|h| format!(
+                "{}: ({})",
+                json_string(&h.name),
+                collapse_attr_expr_text(el, h.expr_start, h.expr_end, ctx)
+            ))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
     let (text, rule_key, rules) = {
         let cfg = ctx.collapse.as_ref().unwrap();
-        let (props, children_text, handlers) = match detect_partial_collapsible_shape(el) {
-            Some(s) => s,
-            None => return false,
-        };
-        let key = rocketstyle_collapse_key(tag, &props, &children_text);
-        let site = match cfg.sites.get(&key) {
-            Some(s) => s,
-            None => return false, // not resolved → keep normal rocketstyle mount
-        };
-        let handler_obj = format!(
-            "{{ {} }}",
-            handlers
-                .iter()
-                .map(|h| format!(
-                    "{}: ({})",
-                    json_string(&h.name),
-                    &src[h.expr_start as usize..h.expr_end as usize]
-                ))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
+        let site = cfg.sites.get(&key).unwrap();
         let call = format!(
             "__rsCollapseH({}, {}, {}, () => __pyrMode() === \"dark\", {})",
             json_string(&site.template_html),
@@ -11174,6 +11252,36 @@ fn try_partial_collapse(el: &JSXElement, tag: &str, parent_is_jsx: bool, ctx: &m
         ctx.collapse_rules.push((rule_key, rules));
     }
     true
+}
+
+/// Re-emit a collapse site's peeled attribute expression as the component's
+/// normal (h()-path) mount would: an `on*` handler gets the signal auto-call
+/// (`auto_call_unwrapped_attr_value`), a dynamic prop's ternary test the full
+/// `slice_expr` its `_rp(() => …)` wrap would get. A verbatim source slice left
+/// `count + 1` in a handler and `() => (active) ? 0 : 1` in the dispatcher
+/// (always the truthy variant). Mirrors `collapseAttrExprText` in jsx.ts.
+fn collapse_attr_expr_text(el: &JSXElement, start: u32, end: u32, ctx: &mut Ctx) -> String {
+    for attr in &el.opening_element.attributes {
+        let JSXAttributeItem::Attribute(a) = attr else { continue };
+        let Some(JSXAttributeValue::ExpressionContainer(c)) = &a.value else { continue };
+        let Some(e) = jsx_expr_as_expression(&c.expression) else { continue };
+        let sp = e.span();
+        if sp.start == start && sp.end == end {
+            let raw = &ctx.source[start as usize..end as usize];
+            return if ctx.signal_vars.len() > ctx.shadowed_signals.len() {
+                auto_call_signals(raw, e, ctx)
+            } else {
+                raw.to_string()
+            };
+        }
+        if let Expression::ConditionalExpression(ce) = e {
+            let tsp = ce.test.span();
+            if tsp.start == start && tsp.end == end {
+                return slice_expr(&ce.test, ctx);
+            }
+        }
+    }
+    ctx.source[start as usize..end as usize].to_string()
 }
 
 /// A dynamic dimension prop — a ConditionalExpression (ternary) whose both
@@ -11295,35 +11403,52 @@ fn detect_dynamic_collapsible_shape(
 /// `__rsCollapseDynH(…, handlerObj)`. Unions BOTH values' rule bundles (dedup by
 /// ruleKey). Sets ONLY needs_collapse_dyn / needs_collapse_dyn_h (matching JS).
 fn try_dynamic_collapse(el: &JSXElement, tag: &str, parent_is_jsx: bool, ctx: &mut Ctx) -> bool {
-    let src = ctx.source; // &'a str is Copy — snapshot to avoid a borrow split.
-    let has_handlers;
-    let (text, rule_bundles) = {
+    let (props, children_text, handlers, dyn_prop) = match detect_dynamic_collapsible_shape(el) {
+        Some(s) => s,
+        None => return false,
+    };
+    let has_handlers = !handlers.is_empty();
+    // Expand into truthy + falsy props → keys → sites (BTreeMap re-sorts so
+    // the inserted dynamic key matches the JS `{...props, [name]: v}` order).
+    let mut truthy_props = props.clone();
+    truthy_props.insert(dyn_prop.name.clone(), dyn_prop.value_truthy.clone());
+    let mut falsy_props = props;
+    falsy_props.insert(dyn_prop.name.clone(), dyn_prop.value_falsy.clone());
+    let truthy_key = rocketstyle_collapse_key(tag, &truthy_props, &children_text);
+    let falsy_key = rocketstyle_collapse_key(tag, &falsy_props, &children_text);
+    {
         let cfg = ctx.collapse.as_ref().unwrap();
-        let (props, children_text, handlers, dyn_prop) = match detect_dynamic_collapsible_shape(el)
-        {
-            Some(s) => s,
-            None => return false,
-        };
-        has_handlers = !handlers.is_empty();
-        // Expand into truthy + falsy props → keys → sites (BTreeMap re-sorts so
-        // the inserted dynamic key matches the JS `{...props, [name]: v}` order).
-        let mut truthy_props = props.clone();
-        truthy_props.insert(dyn_prop.name.clone(), dyn_prop.value_truthy.clone());
-        let mut falsy_props = props;
-        falsy_props.insert(dyn_prop.name.clone(), dyn_prop.value_falsy.clone());
-        let truthy_key = rocketstyle_collapse_key(tag, &truthy_props, &children_text);
-        let falsy_key = rocketstyle_collapse_key(tag, &falsy_props, &children_text);
-        let truthy = match cfg.sites.get(&truthy_key) {
-            Some(s) => s,
-            None => return false, // half-resolved → keep normal mount
-        };
-        let falsy = match cfg.sites.get(&falsy_key) {
-            Some(s) => s,
-            None => return false,
+        let (truthy, falsy) = match (cfg.sites.get(&truthy_key), cfg.sites.get(&falsy_key)) {
+            (Some(t), Some(f)) => (t, f),
+            _ => return false, // half-resolved → keep normal mount
         };
         if truthy.template_html != falsy.template_html {
             return false; // divergent markup → bail (one _tpl reused for both)
         }
+    }
+    // Sliced after the site checks (mirrors the JS order), before the `cfg`
+    // borrow below — `slice_expr` needs `&mut ctx`.
+    let cond_src = collapse_attr_expr_text(el, dyn_prop.cond_start, dyn_prop.cond_end, ctx);
+    let handler_obj = if has_handlers {
+        format!(
+            "{{ {} }}",
+            handlers
+                .iter()
+                .map(|h| format!(
+                    "{}: ({})",
+                    json_string(&h.name),
+                    collapse_attr_expr_text(el, h.expr_start, h.expr_end, ctx)
+                ))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    } else {
+        String::new()
+    };
+    let (text, rule_bundles) = {
+        let cfg = ctx.collapse.as_ref().unwrap();
+        let truthy = cfg.sites.get(&truthy_key).unwrap();
+        let falsy = cfg.sites.get(&falsy_key).unwrap();
         let classes = format!(
             "[{}]",
             [
@@ -11334,20 +11459,7 @@ fn try_dynamic_collapse(el: &JSXElement, tag: &str, parent_is_jsx: bool, ctx: &m
             ]
             .join(",")
         );
-        let cond_src = &src[dyn_prop.cond_start as usize..dyn_prop.cond_end as usize];
         let call = if has_handlers {
-            let handler_obj = format!(
-                "{{ {} }}",
-                handlers
-                    .iter()
-                    .map(|h| format!(
-                        "{}: ({})",
-                        json_string(&h.name),
-                        &src[h.expr_start as usize..h.expr_end as usize]
-                    ))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
             format!(
                 "__rsCollapseDynH({}, {}, () => ({}) ? 0 : 1, () => __pyrMode() === \"dark\", {})",
                 json_string(&truthy.template_html),

@@ -44,7 +44,7 @@
         {
           "label": "The draft",
           "lang": "tsx",
-          "code": "import { signal } from '@pyreon/reactivity'\nimport { For } from '@pyreon/core'\n\nexport function App() {\n  const count = signal(0)\n  const items = signal([{ id: 1, t: 'a' }])\n  return (\n    <div>\n      <button onClick={() => count(count() + 1)}>{count()}</button>\n      <For each={items} key={(i) => i.id}>{(i) => <li>{i.t}</li>}</For>\n    </div>\n  )\n}"
+          "code": "import { signal } from '@pyreon/reactivity'\nimport { For } from '@pyreon/core'\n\nexport function App() {\n  const count = signal(0)\n  const items = signal([{ id: 1, t: 'a' }])\n  return (\n    <div>\n      <button onClick={() => count(count() + 1)}>{count()}</button>\n      <For each={items()} key={(i) => i.id}>{(i) => <li>{i.t}</li>}</For>\n    </div>\n  )\n}"
         },
         {
           "label": "validate (real output, trimmed)",
