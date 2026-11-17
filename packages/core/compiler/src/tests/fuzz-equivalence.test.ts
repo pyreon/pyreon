@@ -44,6 +44,7 @@ type NativeTransform = (
 ) => { code: string; mapMappings?: string | null }
 
 let nativeTransform: NativeTransform | null = null
+
 try {
   // A napi `.node` addon cannot be loaded through `await import()`, so this
   // is the legitimate `createRequire` case: the CJS-only globals are not
@@ -69,6 +70,7 @@ function mulberry32(seed: number) {
     a = (a + 0x6d2b79f5) | 0
     let t = Math.imul(a ^ (a >>> 15), 1 | a)
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
@@ -271,6 +273,7 @@ function genExpr(c: Ctx): string {
   if (r < 0.78) return `${genExpr(c)} + ${genExpr(c)}`
   if (r < 0.86) return '`v${' + genExpr(c) + '}`'
   if (r < 0.93) return `(${genExpr(c)})`
+
   return `-${Math.floor(c.rnd() * 50)}`
 }
 
@@ -326,6 +329,7 @@ function genAttrs(c: Ctx): string {
   if (c.signals.length && c.rnd4() < 0.3) {
     parts.push(`${pick(c.rnd4, [...EVENTS, 'ref', 'render', 'data-fn'])}={${genNestedFn(c)}}`)
   }
+
   return parts.length ? ' ' + parts.join(' ') : ''
 }
 
@@ -350,6 +354,7 @@ function genChild(c: Ctx): string {
       const call = `${h}(${genExpr(c)})`
       return c.rnd() < 0.5 ? `{${call}}` : `{() => ${call}}`
     }
+
     return `{${genExpr(c)}}`
   }
   if (r < 0.4 && c.signals.length) {
@@ -361,6 +366,7 @@ function genChild(c: Ctx): string {
       c.rnd() < 0.3 && c.signals.length ? pick(c.rnd, c.signals) : c.rnd() < 0.5 ? 'it' : '{ id }'
     const body =
       param === '{ id }' ? '<li>{id}</li>' : `<li>{${param === 'it' ? 'it' : param + '()'}}</li>`
+
     return `{[1,2,3].map((${param}) => ${body})}`
   }
   if (r < 0.55) return `{<><span>a</span><span>b</span></>}`
@@ -370,6 +376,7 @@ function genChild(c: Ctx): string {
   // lookup all have to agree about fragment transparency.
   if (r < 0.58) return `<>${genComponentChild(c)}${c.rnd() < 0.5 ? genChild(c) : ''}</>`
   if (r < 0.62) return `<><>${genComponentChild(c)}</></>`
+
   return genElement({ ...c, depth: c.depth + 1 })
 }
 
@@ -416,12 +423,14 @@ function genElement(c: Ctx): string {
     for (let i = 0; i < k; i++) kids.push(genComponentChild({ ...c, depth: c.depth + 1 }))
     // Interleave static content half the time so `useMixed` fires.
     if (c.rnd() < 0.5) kids.splice(Math.floor(c.rnd() * (kids.length + 1)), 0, genChild(c))
+
     return `<${tag0}${genAttrs(c)}>${kids.join('')}</${tag0}>`
   }
   const tag = pick(c.rnd, TAGS)
   const nChildren = 1 + Math.floor(c.rnd() * 3)
   const children: string[] = []
   for (let i = 0; i < nChildren; i++) children.push(genChild(c))
+
   return `<${tag}${genAttrs(c)}>${children.join('')}</${tag}>`
 }
 
@@ -523,6 +532,7 @@ function genComponent(seed: number): string {
   // default-form seeds stay the original function declaration.
   lines.push(...wrapAppLines(appLines, Math.floor(rnd3() * 5), props))
   if (!before) lines.push(...sibling)
+
   return lines.join('\n')
 }
 

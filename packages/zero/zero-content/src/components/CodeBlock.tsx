@@ -66,6 +66,7 @@ export function CodeBlock(props: CodeBlockProps): VNodeChild {
   // + clear is idempotent: re-clicking copy clears the prior timer
   // before scheduling a new one.
   let _resetTimer: ReturnType<typeof setTimeout> | null = null
+
   onUnmount(() => {
     if (_resetTimer !== null) clearTimeout(_resetTimer)
   })

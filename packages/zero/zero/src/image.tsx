@@ -476,6 +476,7 @@ export function Image(props: ImageDescriptorProps | ImageUrlProps): any {
       width?: number
       height?: number
     }
+
     return (
       <img
         src={desc ? desc.src : (src as string)}
@@ -507,6 +508,7 @@ export function Image(props: ImageDescriptorProps | ImageUrlProps): any {
       formats: desc.formats,
     }
     const merged = mergeProps(descDefaults, rest as Partial<ImageProps>) as ImageProps
+
     return <ImageInner {...merged} />
   }
 
@@ -561,5 +563,6 @@ export function OptimizedImage(props: OptimizedImageProps): any {
   // splitProps (not destructuring) so the display props keep their reactive
   // getters; `source` is a static build-time descriptor with no reactivity.
   const [local, rest] = splitProps(props, ['source'])
+
   return <Image {...local.source} {...rest} />
 }
