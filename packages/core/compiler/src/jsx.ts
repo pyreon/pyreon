@@ -29,7 +29,7 @@
  */
 
 import MagicString, { SourceMap } from 'magic-string'
-import { detectPlain, transformPlain, type PlainTransformResult } from './plain'
+import { detectPlain, SIGNAL_OF_MARK, transformPlain, type PlainTransformResult } from './plain'
 import { parseSync } from 'oxc-parser'
 import { REACT_EVENT_REMAP } from './event-names'
 import { loadNativeBinding } from './load-native'
@@ -3948,6 +3948,25 @@ export function transformJSX_JS(
     return signalVars.has(name) && !shadowedSignals.has(name)
   }
 
+  /**
+   * A bare identifier the Plain Mode pre-pass wrote for `signalOf(x)`
+   * (`/*@pyreon:signal*\/x`, see `SIGNAL_OF_MARK`): the signal ITSELF, never a
+   * read. Every place that treats a bare known signal as a read — the
+   * auto-call collector, the dynamic / fixed-deps classifiers, the bare
+   * `_bindText` / `_bindDirect` fast path, the component-child carve-out —
+   * goes through `isSignalRead`, so identity survives on every element path.
+   * Mirrored by `is_identity_ref` in the Rust backend.
+   */
+  function isIdentityRef(node: N): boolean {
+    const start = node.start as number
+    return start >= SIGNAL_OF_MARK.length && code.startsWith(SIGNAL_OF_MARK, start - SIGNAL_OF_MARK.length)
+  }
+
+  /** A bare identifier that READS an active signal (not a `signalOf` identity). */
+  function isSignalRead(node: N): boolean {
+    return node.type === 'Identifier' && isActiveSignal(node.name) && !isIdentityRef(node)
+  }
+
   /** `sig()` — a zero-arg call of an active signal/computed — returns the callee name, else null. */
   function bareSignalCallee(node: N): string | null {
     if (node.type !== 'CallExpression' || (node.arguments?.length ?? 0) !== 0) return null
@@ -4724,7 +4743,7 @@ export function transformJSX_JS(
       }
     }
     // Signal variable reference — treated as dynamic (will be auto-called)
-    if (node.type === 'Identifier' && isActiveSignal(node.name)) {
+    if (isSignalRead(node)) {
       const parent = findParent(node)
       if (
         parent &&
@@ -4830,7 +4849,7 @@ export function transformJSX_JS(
         if (!isDynamic(node)) return true
         // A bare known signal is auto-called (one stable dep); a prop-derived
         // const is an opaque getter chain.
-        if (isActiveSignal(node.name) && !propDerivedVars.has(node.name)) return !cond
+        if (isSignalRead(node) && !propDerivedVars.has(node.name)) return !cond
         return false
       }
       case 'MemberExpression': {
@@ -5773,7 +5792,7 @@ export function transformJSX_JS(
       // `_bindText` is text-FIRST, not text-only (it upgrades to a subtree
       // mount on the first VNode-shaped value), so it covers every value a
       // bare signal child can hold, exactly like the general path did.
-      if (allowBareSignal && inner.type === 'Identifier' && isActiveSignal(inner.name)) {
+      if (allowBareSignal && isSignalRead(inner)) {
         return { ref: inner.name, isMember: false, receiver: null }
       }
       if (inner.type !== 'CallExpression') return null
@@ -7144,7 +7163,7 @@ export function transformJSX_JS(
 
   /** Check if an expression references any tracked signal variable. */
   function referencesSignalVar(node: N): boolean {
-    if (node.type === 'Identifier' && isActiveSignal(node.name)) {
+    if (isSignalRead(node)) {
       const parent = findParent(node)
       if (
         parent &&
@@ -7401,12 +7420,7 @@ export function transformJSX_JS(
         node.left.type !== 'VariableDeclaration'
       )
         markAssignTarget(node.left)
-      if (
-        node.type === 'Identifier' &&
-        isActiveSignal(node.name) &&
-        !shadowed.has(node.name) &&
-        !assignTargets.has(node)
-      ) {
+      if (isSignalRead(node) && !shadowed.has(node.name) && !assignTargets.has(node)) {
         const parent = findParent(node)
         // Skip property name positions (obj.name)
         if (

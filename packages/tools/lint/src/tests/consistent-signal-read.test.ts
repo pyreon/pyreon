@@ -141,17 +141,19 @@ describe('pyreon/consistent-signal-read — form: called (default)', () => {
     ).toEqual([{ fixable: false, text: 'pick' }])
   })
 
-  it('reports a bare signal inside a function in JSX without a fix', () => {
-    expect(
-      flagged(
-        `const n = signal(0)\nexport const A = () => <Button onClick={() => n.set(n + 1)}>+</Button>`,
-      ),
-    ).toEqual([{ fixable: false, text: 'n' }])
-    expect(
-      flagged(
-        `const n = signal(0)\nexport const A = () => <button onClick={() => console.log(n)}>x</button>`,
-      ),
-    ).toEqual([{ fixable: false, text: 'n' }])
+  // The compiler reads a bare signal inside a function nested in JSX on every
+  // element path, so the fix is safe there too — compiled before and after.
+  it.each([
+    ['handler on a component', `<Button onClick={() => n.set(n + 1)}>+</Button>`, 'n.set(n() + 1)'],
+    ['handler on a template element', `<button onClick={() => console.log(n)}>x</button>`, 'console.log(n())'],
+    ['handler on a childless element', `<div onClick={() => n.set(n + 1)} />`, 'n.set(n() + 1)'],
+    ['handler on a spread-carrying element', `<b {...rest} onClick={() => use(n)}>x</b>`, 'use(n())'],
+    ['ref callback', `<i ref={(el) => { el.title = String(n) }} />`, 'String(n())'],
+    ['render prop', `<List render={() => n + 1} />`, 'n() + 1'],
+    ['function child of a component', `<Box>{() => n + 1}</Box>`, 'n() + 1'],
+    ['two levels deep', `<Button onClick={() => [1].forEach(() => use(n))} />`, 'use(n())'],
+  ])('a bare signal inside a function in JSX — %s: fixed, same compiled output', (_, jsx, expected) => {
+    expect(fixSame(`const n = signal(0)\nconst rest = {}\nexport const A = () => ${jsx}`)).toContain(expected)
   })
 
   it.each([
