@@ -43,6 +43,7 @@ const recognizeMachine: CallRecognizer = (_call, ctx) => {
     ctx.report(
       `createMachine declaration \`${name}\`: config argument is not an object literal — emit needs the literal { initial, states } shape to bake the transition table. Falling back to silent-drop.`,
     )
+
     return undefined
   }
 
@@ -73,12 +74,14 @@ const recognizeMachine: CallRecognizer = (_call, ctx) => {
     ctx.report(
       `createMachine declaration \`${name}\`: \`initial\` field is missing or not a string literal — required to seed PyreonMachine. Falling back to silent-drop.`,
     )
+
     return undefined
   }
   if (!statesNode || statesNode.type !== 'ObjectExpression') {
     ctx.report(
       `createMachine declaration \`${name}\`: \`states\` field is missing or not an object literal — required to bake the transition table. Falling back to silent-drop.`,
     )
+
     return undefined
   }
 
@@ -218,6 +221,7 @@ const machineDecl: DeclEmitter = {
         return `${lit(state)}: ${eventEntries === '' ? '[:]' : `[${eventEntries}]`}`
       })
       .join(', ')
+
     return `@State private var ${ctx.ident(decl.name)} = PyreonMachine(initial: ${lit(initial)}, transitions: ${entries === '' ? '[:]' : `[${entries}]`})`
   },
   kotlin(decl, ctx) {
@@ -228,9 +232,11 @@ const machineDecl: DeclEmitter = {
         const ev = Object.entries(events)
           .map(([event, next]) => `${lit(event)} to ${lit(next)}`)
           .join(', ')
+
         return `${lit(state)} to ${ev === '' ? 'mapOf()' : `mapOf(${ev})`}`
       })
       .join(', ')
+
     return `val ${ctx.ident(decl.name)} = remember { PyreonMachine(initial = ${lit(initial)}, transitions = ${entries === '' ? 'mapOf()' : `mapOf(${entries})`}) }`
   },
 }
@@ -244,6 +250,7 @@ function currentStateRead(site: ReceiverSite, ctx: { ident(name: string): string
   if (site.kind !== 'call') return undefined
   const { callee, args } = site.expr
   if (args.length !== 0 || callee.kind !== 'identifier' || callee.name !== site.receiver.name) return undefined
+
   return `${ctx.ident(callee.name)}()`
 }
 

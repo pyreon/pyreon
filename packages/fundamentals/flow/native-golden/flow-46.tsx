@@ -1,7 +1,7 @@
 // Golden-only: a shape harvested from the native-compiler test suite that the rest of the corpus does not reach in the flow lowering
 // (@pyreon/flow native-plugin). Its expected output was recorded from the PRE-MOVE compiler, so a change here is a change of emitted Swift/Kotlin.
 // @ts-nocheck — PMTC handles typing; tsc multi-child JSX limitations
-// noisy (same `@ts-nocheck` rationale as native-todomvc-ios/src/TodoApp.tsx).
+// noisy (same `@ts-nocheck` rationale as native-todomvc/src/TodoApp.tsx).
 //
 // PMTC Tasks Showcase — SINGLE source for web, iOS, Android.
 //

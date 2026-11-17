@@ -55,7 +55,7 @@ describe('useQuery() emit', () => {
     expect(r.code).toContain(
       'URLSession.shared.data(from: URL(string: "https://api.example.com/todos/1")!)',
     )
-    expect(r.code).toContain('return try JSONDecoder().decode(Todo.self, from: bytes)')
+    expect(r.code).toContain('return try PyreonJSON.decode(Todo.self, from: bytes)')
     // Stable-identity host so .task fires once (not restarted per branch flip).
     expect(r.code).toContain('ZStack {')
     // Reactive reads are bare @Observable properties on Swift (all four fields).

@@ -1,5 +1,5 @@
 // CounterInstrumentedTest — launch + signal-write smoke for the
-// Android Counter sample. Sibling of `examples/native-todomvc-android/
+// Android Counter sample. Sibling of `examples/native-todomvc/android/
 // app/src/androidTest/kotlin/com/pyreon/TodoAppInstrumentedTest.kt`
 // and `examples/native-counter/ios/UITests/PyreonCounterUITests.swift`.
 //

@@ -52,7 +52,7 @@ export const checked = {
           },
           "after": {
             "label": "Pyreon",
-            "code": "import { signal, computed } from '@pyreon/reactivity'\nimport { For, Show } from '@pyreon/core'\n\nfunction Controls(props: { onAdd: () => void }) {\n  return <button onClick={props.onAdd}>+1</button>\n}\n\nexport function Counter() {\n  const count = signal(0)\n  const log = signal<{ id: number; at: number }[]>([])\n  const doubled = computed(() => count() * 2)\n  const add = () => {\n    count.update((c) => c + 1)\n    log.update((l) => [...l, { id: l.length, at: Date.now() }])\n  }\n\n  return (\n    <div>\n      <Controls onAdd={add} />\n      <p>{count()} × 2 = {doubled()}</p>\n      <Show when={() => count() > 9}>\n        <p>Double digits.</p>\n      </Show>\n      <ul>\n        <For each={log} by={(e) => e.id}>\n          {(e) => <li>{new Date(e.at).toLocaleTimeString()}</li>}\n        </For>\n      </ul>\n    </div>\n  )\n}"
+            "code": "import { signal, computed } from '@pyreon/reactivity'\nimport { For, Show } from '@pyreon/core'\n\nfunction Controls(props: { onAdd: () => void }) {\n  return <button onClick={props.onAdd}>+1</button>\n}\n\nexport function Counter() {\n  const count = signal(0)\n  const log = signal<{ id: number; at: number }[]>([])\n  const doubled = computed(() => count() * 2)\n  const add = () => {\n    count.update((c) => c + 1)\n    log.update((l) => [...l, { id: l.length, at: Date.now() }])\n  }\n\n  return (\n    <div>\n      <Controls onAdd={add} />\n      <p>{count()} × 2 = {doubled()}</p>\n      <Show when={() => count() > 9}>\n        <p>Double digits.</p>\n      </Show>\n      <ul>\n        <For each={log()} by={(e) => e.id}>\n          {(e) => <li>{new Date(e.at).toLocaleTimeString()}</li>}\n        </For>\n      </ul>\n    </div>\n  )\n}"
           },
           "caption": "Same counter, same derived value, same list. On the left, `memo`, `useMemo` and `useCallback` exist only to tell React what not to redo. On the right, `add` is a plain function created once, `computed` tracks its own dependencies, and `<For>` keys rows with `by`. No dependency array anywhere, because a signal records who read it."
         },
@@ -115,7 +115,7 @@ export const checked = {
             {
               "label": "keyed list",
               "before": "`items.map((i) => <li key={i.id}>…)`",
-              "after": "`<For each={items} by={(i) => i.id}>`"
+              "after": "`<For each={items()} by={(i) => i.id}>`"
             },
             {
               "label": "conditional",
@@ -190,7 +190,7 @@ export const checked = {
             },
             {
               "title": "An early return runs once",
-              "text": "`if (loading()) return <Skeleton />` pins the component to whichever branch was true at mount. Use `<Show when={loading} fallback={…}>`, or return an accessor."
+              "text": "`if (loading()) return <Skeleton />` pins the component to whichever branch was true at mount. Use `<Show when={loading()} fallback={…}>`, or return an accessor."
             },
             {
               "title": "Write with `.set()`, not a call",
@@ -222,7 +222,7 @@ export const checked = {
             },
             {
               "q": "What about a list?",
-              "a": "`<For each={items} by={(i) => i.id}>`. The key prop is `by`, because JSX reserves `key`. Each row's bindings are separate, so toggling one todo touches one attribute on one `<li>`, and reordering moves existing nodes by key."
+              "a": "`<For each={items()} by={(i) => i.id}>`. The key prop is `by`, because JSX reserves `key`. Each row's bindings are separate, so toggling one todo touches one attribute on one `<li>`, and reordering moves existing nodes by key."
             },
             {
               "q": "How do I know a value is live?",
@@ -342,7 +342,7 @@ export const checked = {
             {
               "label": "src/App.tsx",
               "lang": "tsx",
-              "code": "// src/App.tsx, as scaffolded by @pyreon/create-multiplatform\nimport { signal } from '@pyreon/reactivity'\nimport { Stack, Text, Button } from '@pyreon/primitives'\n\nexport function App() {\n  const count = signal(0)\n  return (\n    <Stack gap=\"md\" align=\"center\">\n      <Text data-testid=\"count\">{count}</Text>\n      <Button data-testid=\"increment\" onPress={() => count.set(count() + 1)}>Increment</Button>\n    </Stack>\n  )\n}"
+              "code": "// src/App.tsx, as scaffolded by @pyreon/create-multiplatform\nimport { signal } from '@pyreon/reactivity'\nimport { Stack, Text, Button } from '@pyreon/primitives'\n\nexport function App() {\n  const count = signal(0)\n  return (\n    <Stack gap=\"md\" align=\"center\">\n      <Text data-testid=\"count\">{count()}</Text>\n      <Button data-testid=\"increment\" onPress={() => count.set(count() + 1)}>Increment</Button>\n    </Stack>\n  )\n}"
             },
             {
               "label": "iOS · SwiftUI",
@@ -685,7 +685,7 @@ export const checked = {
             {
               "label": "The draft",
               "lang": "tsx",
-              "code": "import { signal } from '@pyreon/reactivity'\nimport { For } from '@pyreon/core'\n\nexport function App() {\n  const count = signal(0)\n  const items = signal([{ id: 1, t: 'a' }])\n  return (\n    <div>\n      <button onClick={() => count(count() + 1)}>{count()}</button>\n      <For each={items} key={(i) => i.id}>{(i) => <li>{i.t}</li>}</For>\n    </div>\n  )\n}"
+              "code": "import { signal } from '@pyreon/reactivity'\nimport { For } from '@pyreon/core'\n\nexport function App() {\n  const count = signal(0)\n  const items = signal([{ id: 1, t: 'a' }])\n  return (\n    <div>\n      <button onClick={() => count(count() + 1)}>{count()}</button>\n      <For each={items()} key={(i) => i.id}>{(i) => <li>{i.t}</li>}</For>\n    </div>\n  )\n}"
             },
             {
               "label": "validate (real output, trimmed)",

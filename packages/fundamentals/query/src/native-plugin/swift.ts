@@ -22,6 +22,7 @@ export function queryDeclSwift(d: ExtDecl, ctx: EmitContext): string {
     p.queryKeyExpr !== undefined || p.urlExpr !== undefined || p.valueExpr !== undefined
       ? '""'
       : ctx.stringLiteral(p.queryKey)
+
   return `@State private var ${ctx.ident(d.name)} = PyreonQuery<${ctx.typeText(p.type)}>(queryKey: ${key}, staleSeconds: ${staleSeconds})`
 }
 
@@ -72,12 +73,13 @@ export function queryLifecycleSwift(decl: ExtDecl, ctx: EmitContext): readonly s
       lines.push(`    return try __response.decode(${ctx.typeText(d.type)}.self)`)
     } else {
       lines.push(`    let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${swiftUrl})!)`)
-      lines.push(`    return try JSONDecoder().decode(${ctx.typeText(d.type)}.self, from: bytes)`)
+      lines.push(`    return try PyreonJSON.decode(${ctx.typeText(d.type)}.self, from: bytes)`)
     }
   }
   lines.push(`  }`)
   if (enabled !== undefined) gateOnEnabled(lines, runStart, `  if ${enabled} {`)
   lines.push(`}`)
+
   return lines
 }
 
@@ -146,6 +148,7 @@ export function streamLifecycleSwift(decl: ExtDecl, ctx: EmitContext): readonly 
     out.push(`  }`)
   }
   out.push(`}`)
+
   return out
 }
 

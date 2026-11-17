@@ -33,8 +33,10 @@ const Q_IMPORTS = `import { signal } from '@pyreon/reactivity'
 import { useQuery } from '@pyreon/query'
 type Resp = { ok: boolean }
 `
+
 const qApp = (b: string) =>
   `${Q_IMPORTS}export function App(){\n  const n = signal(1)\n${b}\n  return <Text>x</Text>\n}`
+
 const q = (opts: string) => swift(qApp(`  const q = useQuery<Resp>(${opts})`))
 const OK_FN = `queryFn: () => fetch('https://x')`
 
@@ -353,6 +355,7 @@ describe('parse.ts — tryDeclFromSyncedSignal', () => {
 // The `createFlow` declaration is the flow plugin's `ext` declaration now; the payload carries what the
 // closed `flow-state` kind did, so the tests keep reading it through the same shape.
 type FlowDecl = FlowStateDecl
+
 const asFlowDecl = (d: DeclIR | undefined): FlowDecl | undefined =>
   d?.kind === 'ext' && d.type === 'flow-state'
     ? { ...(d.payload as unknown as FlowStatePayload), name: d.name }
@@ -377,15 +380,19 @@ const parseFlow = (cfg: string, factory = 'createFlow', pre = '', generic = '') 
   const decl = asFlowDecl(
     r.components[0]?.decls.find((d) => d.kind === 'ext' && d.type === 'flow-state'),
   )
+
   return { decl, warnings: r.warnings.join('\n') }
 }
 
 const N1 = `{ id: 'a', position: { x: 0, y: 0 }, data: { label: 'A' } }`
 const N2 = `{ id: 'b', position: { x: 1, y: 2 }, data: { label: 'B' } }`
+
 const withNode = (extra: string) =>
   `{ nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: { label: 'A' }, ${extra} }], edges: [] }`
+
 const withEdge = (extra: string) =>
   `{ nodes: [${N1}, ${N2}], edges: [{ source: 'a', target: 'b', ${extra} }] }`
+
 const withCfg = (extra: string) => `{ nodes: [${N1}], edges: [], ${extra} }`
 
 describe('parse.ts — createFlow node readers', () => {
@@ -996,11 +1003,13 @@ describe('parse.ts — Kotlin parity spot-checks for the lowered recognizers', (
 const declsOf = (src: string) =>
   parsePyreon(src, undefined, { registries: firstPartyCompiler.registries }).components[0]?.decls ??
   []
+
 // A plugin's declaration is the open `ext` kind; its payload carries what the closed kind did.
 const extDecl = (decls: readonly DeclIR[], type: string) =>
   decls.find((d) => d.kind === 'ext' && d.type === type) as
     | Extract<DeclIR, { kind: 'ext' }>
     | undefined
+
 const payloadOf = (d: Extract<DeclIR, { kind: 'ext' }> | undefined) =>
   (d?.payload ?? {}) as Record<string, unknown>
 

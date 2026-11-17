@@ -78,7 +78,7 @@ function expectHostContract({ path, src: raw }: { path: string; src: string }): 
 describe('Android hosts: system bars', () => {
   it('finds the example hosts (a broken walk would pass vacuously)', () => {
     const paths = exampleHosts.map((h) => h.path)
-    expect(paths).toContain('examples/native-tasks-android/app/src/main/kotlin/com/pyreon/MainActivity.kt')
+    expect(paths).toContain('examples/native-tasks/android/app/src/main/kotlin/com/pyreon/MainActivity.kt')
     expect(paths).toContain('examples/native-router-demo/android/app/src/main/kotlin/com/pyreon/TabsDemoActivity.kt')
     expect(paths.length).toBeGreaterThanOrEqual(6)
   })

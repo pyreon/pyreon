@@ -59,7 +59,7 @@ public enum PyreonJSON {
      */
     public static func parse<T: Decodable>(_ type: T.Type, _ text: String) throws -> T {
         do {
-            return try JSONDecoder().decode(T.self, from: Data(text.utf8))
+            return try decode(T.self, from: Data(text.utf8))
         } catch let DecodingError.dataCorrupted(context) {
             throw PyreonJSONParseError(message: pyreonJSONDetail(context, fallback: "Unexpected token in JSON"))
         } catch let DecodingError.keyNotFound(key, context) {
@@ -69,6 +69,28 @@ public enum PyreonJSON {
         } catch let DecodingError.valueNotFound(_, context) {
             throw PyreonJSONParseError(message: pyreonJSONDetail(context, fallback: "Unexpected null in JSON"))
         }
+    }
+
+    /**
+     * Decode JSON the way every emitted decode site does (`JSON.parse`, a fetch / query / stream body): a
+     * `JSONDecoder` that also knows each object's KEY ORDER in the text.
+     *
+     * The web's `JSON.parse` keeps an object's keys in document order, so a `Record` read from a response iterates
+     * (`Object.keys`, `<For>`, `JSON.stringify`) in the order the server wrote. `JSONDecoder` does not: a keyed
+     * container's `allKeys` follows its internal dictionary, whose order is a per-process hash. The ordered
+     * `PyreonMap` therefore asks the decoder, through `userInfo`, for the keys of the object at its coding path —
+     * read from the text on the first such request, never for a payload without a map.
+     */
+    public static func decoder(for data: Data) -> JSONDecoder {
+        let d = JSONDecoder()
+        let order = PyreonJSONKeyOrder(data)
+        let lookup: ([CodingKey]) -> [String]? = { order.keys(at: $0) }
+        d.userInfo[pyreonJSONKeyOrderInfo] = lookup
+        return d
+    }
+
+    public static func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+        try decoder(for: data).decode(T.self, from: data)
     }
 
     // ─── ECMAScript leaf formatting ─────────────────────────────────────────
@@ -346,4 +368,126 @@ private func pyreonJSONPath(_ path: [CodingKey]) -> String {
 
 private func pyreonJSONDetail(_ context: DecodingError.Context, fallback: String) -> String {
     context.codingPath.isEmpty ? fallback : "\(fallback) at \"\(pyreonJSONPath(context.codingPath))\""
+}
+
+/// The `userInfo` key under which ``PyreonJSON/decoder(for:)`` publishes `([CodingKey]) -> [String]?`: the keys of
+/// the JSON object at a coding path, in document order. Spelled by raw value in `PyreonCollections.swift` too, so
+/// neither file needs the other to compile.
+let pyreonJSONKeyOrderInfo = CodingUserInfoKey(rawValue: "pyreon.jsonKeyOrder")!
+
+/// Every object's keys in document order, indexed by coding path; built on the first lookup.
+final class PyreonJSONKeyOrder {
+    private let bytes: [UInt8]
+    private var index: [String: [String]]?
+    private var i = 0
+
+    init(_ data: Data) { bytes = [UInt8](data) }
+
+    func keys(at path: [CodingKey]) -> [String]? {
+        if index == nil {
+            index = [:]
+            i = 0
+            scanValue(path: "")
+        }
+        return index?[PyreonJSONKeyOrder.pathKey(path)]
+    }
+
+    /// A coding path as the scanner spells it: `[3]` for an array element, `.name` (escaped) for an object member.
+    static func pathKey(_ path: [CodingKey]) -> String {
+        var s = ""
+        for k in path { s += component(k.intValue, k.stringValue) }
+        return s
+    }
+
+    private static func component(_ index: Int?, _ key: String) -> String {
+        if let index { return "[\(index)]" }
+        return "." + key.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: ".", with: "\\.").replacingOccurrences(of: "[", with: "\\[")
+    }
+
+    private func skipSpace() {
+        while i < bytes.count, bytes[i] == 0x20 || bytes[i] == 0x0A || bytes[i] == 0x0D || bytes[i] == 0x09 { i += 1 }
+    }
+
+    /// Malformed input stops the scan; `JSONDecoder` reports the syntax error itself.
+    private func scanValue(path: String) {
+        skipSpace()
+        guard i < bytes.count else { return }
+        switch bytes[i] {
+        case 0x7B: // {
+            i += 1
+            var keys: [String] = []
+            skipSpace()
+            if i < bytes.count, bytes[i] == 0x7D { i += 1; index?[path] = keys; return }
+            while i < bytes.count {
+                skipSpace()
+                guard i < bytes.count, bytes[i] == 0x22, let key = scanString() else { return }
+                // A repeated key keeps its FIRST position (the value is the decoder's: the last one).
+                if !keys.contains(key) { keys.append(key) }
+                skipSpace()
+                guard i < bytes.count, bytes[i] == 0x3A else { return }
+                i += 1
+                scanValue(path: path + PyreonJSONKeyOrder.component(nil, key))
+                skipSpace()
+                guard i < bytes.count else { return }
+                if bytes[i] == 0x2C { i += 1; continue }
+                if bytes[i] == 0x7D { i += 1; break }
+                return
+            }
+            index?[path] = keys
+        case 0x5B: // [
+            i += 1
+            var n = 0
+            skipSpace()
+            if i < bytes.count, bytes[i] == 0x5D { i += 1; return }
+            while i < bytes.count {
+                scanValue(path: path + PyreonJSONKeyOrder.component(n, ""))
+                n += 1
+                skipSpace()
+                guard i < bytes.count else { return }
+                if bytes[i] == 0x2C { i += 1; continue }
+                if bytes[i] == 0x5D { i += 1; return }
+                return
+            }
+        case 0x22:
+            _ = scanString()
+        default:
+            while i < bytes.count, ![0x2C, 0x7D, 0x5D, 0x20, 0x0A, 0x0D, 0x09].contains(bytes[i]) { i += 1 }
+        }
+    }
+
+    /// A JSON string at `i` (on its opening quote), unescaped; `nil` when it is unterminated.
+    private func scanString() -> String? {
+        i += 1
+        var out: [UInt16] = []
+        var raw: [UInt8] = []
+        func flush() {
+            if !raw.isEmpty { out.append(contentsOf: String(decoding: raw, as: UTF8.self).utf16); raw.removeAll() }
+        }
+        while i < bytes.count {
+            let b = bytes[i]
+            if b == 0x22 { i += 1; flush(); return String(decoding: out, as: UTF16.self) }
+            if b == 0x5C {
+                flush()
+                guard i + 1 < bytes.count else { return nil }
+                let e = bytes[i + 1]
+                i += 2
+                switch e {
+                case 0x62: out.append(0x08)
+                case 0x66: out.append(0x0C)
+                case 0x6E: out.append(0x0A)
+                case 0x72: out.append(0x0D)
+                case 0x74: out.append(0x09)
+                case 0x75:
+                    guard i + 4 <= bytes.count, let u = UInt16(String(decoding: bytes[i..<i + 4], as: UTF8.self), radix: 16) else { return nil }
+                    out.append(u)
+                    i += 4
+                default: out.append(UInt16(e))
+                }
+                continue
+            }
+            raw.append(b)
+            i += 1
+        }
+        return nil
+    }
 }

@@ -57,6 +57,7 @@ const recognizeI18n: CallRecognizer = (_call, ctx) => {
     ctx.report(
       `createI18n declaration \`${name}\`: config argument is not an object literal — emit needs the literal { locale, messages, fallbackLocale? } shape. Falling back to silent-drop.`,
     )
+
     return undefined
   }
 
@@ -90,12 +91,14 @@ const recognizeI18n: CallRecognizer = (_call, ctx) => {
     ctx.report(
       `createI18n declaration \`${name}\`: \`locale\` field is missing or not a string literal — required to seed PyreonI18n. Falling back to silent-drop.`,
     )
+
     return undefined
   }
   if (!messagesNode || messagesNode.type !== 'ObjectExpression') {
     ctx.report(
       `createI18n declaration \`${name}\`: \`messages\` field is missing or not an object literal — required to bake the translation table. Falling back to silent-drop.`,
     )
+
     return undefined
   }
 
@@ -158,10 +161,12 @@ const i18nDecl: DeclEmitter = {
         const inner = Object.entries(kv)
           .map(([k, v]) => `${lit(k)}: ${lit(v)}`)
           .join(', ')
+
         return `${lit(loc)}: ${inner === '' ? '[:]' : `[${inner}]`}`
       })
       .join(', ')
     const fallback = fallbackLocale !== undefined ? `, fallbackLocale: ${lit(fallbackLocale)}` : ''
+
     return `@State private var ${ctx.ident(decl.name)} = PyreonI18n(locale: ${lit(locale)}, messages: ${entries === '' ? '[:]' : `[${entries}]`}${fallback})`
   },
   kotlin(decl, ctx) {
@@ -172,10 +177,12 @@ const i18nDecl: DeclEmitter = {
         const inner = Object.entries(kv)
           .map(([k, v]) => `${lit(k)} to ${lit(v)}`)
           .join(', ')
+
         return `${lit(loc)} to ${inner === '' ? 'mapOf()' : `mapOf(${inner})`}`
       })
       .join(', ')
     const fallback = fallbackLocale !== undefined ? `, fallbackLocale = ${lit(fallbackLocale)}` : ''
+
     return `val ${ctx.ident(decl.name)} = remember { PyreonI18n(initialLocale = ${lit(locale)}, messages = ${entries === '' ? 'mapOf()' : `mapOf(${entries})`}${fallback}) }`
   },
 }
@@ -209,6 +216,7 @@ function interpolatedT(
   }
   const keyArg = ctx.expr(args[0]!)
   const entries = (args[1]! as ObjectExpr).fields.map((f) => entry(ctx.stringLiteral(f.name), ctx.expr(f.value))).join(', ')
+
   return `${ctx.ident(callee.object.name)}.t(${keyArg}, ${wrap(entries)})`
 }
 
@@ -229,6 +237,7 @@ function localeRead(site: ReceiverSite, ctx: { ident(name: string): string }): s
   ) {
     return undefined
   }
+
   return `${ctx.ident(callee.object.name)}.locale`
 }
 

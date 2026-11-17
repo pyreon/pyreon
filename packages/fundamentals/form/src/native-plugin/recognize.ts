@@ -65,6 +65,7 @@ export const recognizeForm: CallRecognizer = (_call, ctx) => {
       }
     }
   }
+
   return { type: FORM_TYPE, payload: decl as unknown as ExtPayload }
 }
 
@@ -124,6 +125,7 @@ function initialValues(
       reportDroppedInitialValue(report.where, key, p, ctx)
     }
   }
+
   return out
 }
 
@@ -136,6 +138,7 @@ export const recognizeFieldArray: CallRecognizer = (_call, ctx) => {
       ctx.report(
         `Declaration ${name}: useFieldArray initial must be an array literal of strings (or omitted); got ${arg.type}.`,
       )
+
       return null
     }
     for (const el of (arg.elements as AnyNode[] | undefined) ?? []) {
@@ -148,9 +151,11 @@ export const recognizeFieldArray: CallRecognizer = (_call, ctx) => {
         ctx.report(
           `Declaration ${name}: useFieldArray initial elements must be string literals; got ${el?.type ?? 'nothing'}.`,
         )
+
         return null
       }
     }
   }
+
   return { type: ARRAY_TYPE, payload: { initial } }
 }
