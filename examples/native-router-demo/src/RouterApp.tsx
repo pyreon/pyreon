@@ -26,6 +26,7 @@ import { state as plainState } from '@pyreon/core/plain'
 import { signal } from '@pyreon/reactivity'
 import { createRouter, useLoaderData, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
 import { type EchoReply, usePostEcho } from './hooks'
+import { HttpMiddlewarePage } from './HttpMiddlewarePage'
 import { defineTheme, styled } from '@pyreon/styler'
 import { s } from '@pyreon/validate'
 
@@ -1006,6 +1007,7 @@ export function RouterApp() {
       { path: '/errors', component: ErrorsPage },
       { path: '/media', component: MediaPage },
       { path: '/http', component: HttpPage },
+      { path: '/http-mw', component: HttpMiddlewarePage },
       { path: '/loaded', component: LoadedPage, loader: (): Loaded => ({ title: 'Loaded title', views: 42 }) },
       { path: GUARDED_PATH, component: GuardedPage },
     ],

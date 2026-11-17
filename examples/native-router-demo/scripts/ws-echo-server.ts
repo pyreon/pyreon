@@ -80,6 +80,8 @@ function rangeResponse(req: Request, bytes: Uint8Array, contentType: string): Re
   })
 }
 
+let flakyHits = 0
+
 Bun.serve({
   port,
   fetch(req, server) {
@@ -153,6 +155,21 @@ Bun.serve({
     }
     // A deliberate non-2xx, so the emitted `isOK`/`isOk` guard has something
     // to reject on. Without it a status check is untestable.
+    // NET-3: a flaky endpoint. The first request after a reset answers 503, every later one 200, and the body reports
+    // how many requests reached the server and the Authorization header the last one carried — so a client that
+    // retries shows `attempts: 2`, one that does not shows the 503, and the bearer token is read off the wire.
+    if (new URL(req.url).pathname === '/flaky-reset') {
+      flakyHits = 0
+      return new Response('reset')
+    }
+    if (new URL(req.url).pathname === '/flaky') {
+      flakyHits += 1
+      if (flakyHits === 1) return new Response('{"error":"warming up"}', { status: 503, headers: { 'content-type': 'application/json' } })
+      return new Response(
+        JSON.stringify({ attempts: flakyHits, authorization: req.headers.get('authorization') ?? '' }),
+        { headers: { 'content-type': 'application/json' } },
+      )
+    }
     if (new URL(req.url).pathname === '/boom') {
       return new Response('{"error":"nope"}', {
         status: 500,
