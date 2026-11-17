@@ -1,4 +1,4 @@
-import { color, diff, font, gradient, palette, radius, syntax, verdict, type Tone } from '../site/theme'
+import { color, diff, docsLayout, font, gradient, palette, radius, syntax, verdict, type Tone } from '../site/theme'
 
 /**
  * The docs reading shell's tokens.
@@ -16,28 +16,8 @@ import { color, diff, font, gradient, palette, radius, syntax, verdict, type Ton
  * real elements cost no runtime; the selling slots inside a page use the kit.
  */
 
-/** Docs layout (visual-alignment.md §D). The stylesheet's media queries use these numbers; `tokens.test.ts` keeps them in step. */
-export const docsLayout = {
-  sidebar: 264,
-  /** Sidebar column width between the drawer and the rail breakpoints. */
-  sidebarNarrow: 240,
-  content: 780,
-  rail: 232,
-  gap: 48,
-  max: 1440,
-  /** Top padding under the floating nav. */
-  top: 96,
-  /** Below this the right rail hides and its TOC moves under the title. */
-  railBreak: 1180,
-  /** Below this the sidebar becomes the "Browse docs" drawer. */
-  drawerBreak: 960,
-  /** At or below this the content padding is 16px and code drops to 12px. */
-  narrow: 640,
-  /** Anchor offset under the fixed nav. */
-  scrollMargin: 90,
-  /** Code blocks and the docs cards (§D "Code blocks"). */
-  codeRadius: 18,
-} as const
+/** Docs layout numbers live with every other token in `site/theme.ts`; re-exported for the docs code that reads them here. */
+export { docsLayout }
 
 /** The code well: ink in dark, the paper well in light (§D "Code blocks"). */
 const codeBg: Tone = { dark: palette.ink[1], light: palette.paper[1] }

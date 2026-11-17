@@ -270,6 +270,9 @@ export const text = {
   small: { size: 14.5, lineHeight: 1.6 },
   faq: { size: 17, lineHeight: 1.45 },
   ui: { size: 13.5 },
+  /** The two most common UI text sizes outside the roles above (13px and 14px literals). */
+  uiSmall: { size: 13 },
+  uiLarge: { size: 14 },
   caption: { size: 12.5, lineHeight: 1.5 },
   code: { size: 12.8, lineHeight: 1.8 },
   mono: { size: 12 },
@@ -299,6 +302,10 @@ export const radius = {
   note: 12,
   control: 10,
   small: 6,
+  /** Small steps: chips, bars, tags, inner wells (the 2 / 4 / 8 px literals). */
+  tight: 8,
+  mini: 4,
+  micro: 2,
   pill: 9999,
 } as const
 
@@ -428,7 +435,150 @@ export const motion = {
 
 // ─── Z layers ─────────────────────────────────────────────────────────────
 
-export const z = { sheet: 90, nav: 95, panel: 96, skip: 100 } as const
+export const z = {
+  /** Decoration behind its box's content (texture, flare). */
+  below: -1,
+  /** Above its siblings (a copy button over the code). */
+  raised: 1,
+  /** The docs page-actions menu. */
+  docsMenu: 30,
+  /** The docs skip link. */
+  docsSkip: 60,
+  sheet: 90,
+  nav: 95,
+  panel: 96,
+  skip: 100,
+} as const
+
+// ─── Scales ───────────────────────────────────────────────────────────────
+//
+// The steps every new rule picks from. Chosen from the values the site
+// already writes (measured 17 Nov 2026 over docs/src: 1,713 spacing literals,
+// 81 distinct), so an existing literal maps onto a step at the SAME value:
+// replacing it never moves a pixel. Odd values (3, 5, 7, 9, 11, 13 px) are
+// deliberately not steps; snapping them is a visual change of its own.
+// `site/theme-vars.ts` turns these into `--s-*` custom properties for the
+// plain stylesheets (islands' `site-css.ts`, the docs' `docs-v3.css`).
+
+/**
+ * Spacing (px). Keys count eighths of the 8px base, ×100 (`100` = 8px,
+ * `150` = 12px, `25` = 2px), so a key says where a value sits on the 8px grid
+ * and a new in-between step has an obvious name. Padding, margin, gap, inset.
+ */
+export const space = {
+  25: 2,
+  50: 4,
+  75: 6,
+  100: 8,
+  125: 10,
+  150: 12,
+  175: 14,
+  200: 16,
+  225: 18,
+  250: 20,
+  275: 22,
+  300: 24,
+  325: 26,
+  350: 28,
+  375: 30,
+  400: 32,
+  450: 36,
+  500: 40,
+  550: 44,
+  600: 48,
+  700: 56,
+  800: 64,
+  900: 72,
+  1000: 80,
+  1100: 88,
+  1200: 96,
+  1400: 112,
+  1500: 120,
+  1750: 140,
+  2000: 160,
+} as const
+
+export type SpaceKey = keyof typeof space
+
+/** Unitless line heights the `text` roles and `display` sizes use. */
+export const leading = {
+  flat: 1,
+  tight: 1.15,
+  snug: 1.3,
+  comfy: 1.45,
+  normal: 1.5,
+  relaxed: 1.6,
+  loose: 1.65,
+  code: 1.8,
+} as const
+
+/** Letter spacing. Negative for display type, wide for caps labels. */
+export const tracking = {
+  tightest: '-.06em',
+  display: '-.045em',
+  tight: '-.03em',
+  snug: '-.01em',
+  normal: '0',
+  wide: '.01em',
+  caps: '.08em',
+  label: '.12em',
+  eyebrow: '.16em',
+} as const
+
+/** Shadows. Mode-aware, so they live as colour pairs; these are the names to reach for. */
+export const shadow = {
+  /** A card's lift (none in dark mode). */
+  card: color.cardShadow,
+  /** A floating panel (mega menu, popovers). */
+  panel: color.shadow,
+  /** The hot install command's ember glow. */
+  hot: color.hotGlow,
+} as const
+
+/** Motion durations (ms) and easings; `motion` above composes them per use. */
+export const duration = { panel: 180, hover: 200, pulse: 200, sweep: 600, bars: 600, reveal: 700 } as const
+export const easing = { standard: 'ease', out: 'cubic-bezier(.2,.7,.2,1)', pulse: 'cubic-bezier(.2,.7,.3,1)' } as const
+
+/** Every motion rule sits behind this (or under `no-preference`): the reduced-motion contract. */
+export const reducedMotion = '@media (prefers-reduced-motion: reduce)'
+
+/**
+ * Media queries on the theme breakpoints: `up.md` from 768px, `down.md`
+ * below it (max-width 767.98px, so the two never overlap). A width that is
+ * not a breakpoint (the docs rail, the nav collapse) has its own named token.
+ */
+type BreakpointKey = Exclude<keyof typeof breakpoints, 'xs'>
+const bpKeys = ['sm', 'md', 'lg', 'xl'] as const satisfies readonly BreakpointKey[]
+export const media = {
+  up: Object.fromEntries(bpKeys.map((k) => [k, `@media (min-width: ${breakpoints[k]}px)`])) as Record<BreakpointKey, string>,
+  down: Object.fromEntries(bpKeys.map((k) => [k, `@media (max-width: ${breakpoints[k] - 0.02}px)`])) as Record<BreakpointKey, string>,
+} as const
+
+/**
+ * Docs layout (visual-alignment.md §D). `docs-v3.css` media queries use these
+ * numbers; `docs-ui/tests/tokens.test.ts` keeps them in step.
+ */
+export const docsLayout = {
+  sidebar: 264,
+  /** Sidebar column width between the drawer and the rail breakpoints. */
+  sidebarNarrow: 240,
+  content: 780,
+  rail: 232,
+  gap: 48,
+  max: 1440,
+  /** Top padding under the floating nav. */
+  top: 96,
+  /** Below this the right rail hides and its TOC moves under the title. */
+  railBreak: 1180,
+  /** Below this the sidebar becomes the "Browse docs" drawer. */
+  drawerBreak: 960,
+  /** At or below this the content padding is 16px and code drops to 12px. */
+  narrow: 640,
+  /** Anchor offset under the fixed nav. */
+  scrollMargin: 90,
+  /** Code blocks and the docs cards (§D "Code blocks"). */
+  codeRadius: 18,
+} as const
 
 // ─── The object <PyreonUI theme> receives ─────────────────────────────────
 
