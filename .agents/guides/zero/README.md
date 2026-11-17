@@ -140,7 +140,7 @@ Read before touching `packages/zero/**`, a build adapter, SSG/SSR/ISR output, or
 - Route scans are memoized per routes dir (`invalidateRouteScanCache`): dropped at every outer `buildStart` and every dev watcher event under the routes dir. Paths are posix-normalized at the scan boundary (Windows).
 - i18n: the routes module calls `_registerI18nConfig`, so `useLocale()` derives the locale from the router path everywhere. Locale matching is case-insensitive and returns the configured spelling (`en-US`).
 - `zero({...})` is validated (`config-validation.ts`, key table `satisfies`-total over `ZeroConfig`); a missing `pyreon()` plugin is one error when the routes tree has JSX.
-- SSG redirect targets must be relative or `http(s):` (`assertSafeRedirectTarget`). The Vercel revalidate secret travels in `Authorization: Bearer`; `?secret=` still works with a one-time deprecation warning.
+- SSG redirect targets must be relative or `http(s):` (`assertSafeRedirectTarget`). The Vercel revalidate secret travels only in `Authorization: Bearer`; `vercelRevalidateHandler` rejects `?secret=` with 400 (URL secrets leak into logs).
 
 ## Dev error overlay
 

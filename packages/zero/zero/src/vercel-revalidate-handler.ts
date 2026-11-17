@@ -9,9 +9,9 @@
  *     // Next-style apps deployed to Vercel)
  *     export { vercelRevalidateHandler as default } from '@pyreon/zero/server'
  *
- * The handler validates the `Authorization: Bearer` secret (a legacy
- * `?secret=` query param is still accepted, with a deprecation warning) against
- * `VERCEL_REVALIDATE_TOKEN`, validates the path is in the build-time
+ * The handler validates the `Authorization: Bearer` secret (the only place it
+ * is read: a `?secret=` query param is rejected, because a URL secret lands in
+ * access and proxy logs) against `VERCEL_REVALIDATE_TOKEN`, validates the path is in the build-time
  * revalidate manifest, and calls Vercel's `res.revalidate(path)` API.
  *
  * Returns a standard `(req: Request) => Response` Web API handler — works
@@ -120,31 +120,28 @@ export function vercelRevalidateHandler(
   // request gets 500 until restart". A `{ manifest: ... }` shape is the
   // happy path.
   let cache: { manifest: RevalidateManifest } | { error: unknown } | null = null
-  let warnedQuerySecret = false
 
   return async function handler(req: Request): Promise<Response> {
-    // Validate request shape: only POST, with `?path=` + the secret.
+    // Validate request shape: only POST, with `?path=` + the bearer secret.
     if (req.method !== 'POST') {
       return new Response(`Method ${req.method} not allowed`, { status: 405 })
     }
 
     const url = new URL(req.url)
     const path = url.searchParams.get('path')
-    // The secret is read from `Authorization: Bearer <secret>`. A `?secret=`
-    // query param is still accepted for existing CMS webhooks, with a one-time
-    // deprecation warning — a URL secret ends up in access/proxy logs.
-    const bearer = /^Bearer\s+(.+)$/i.exec(req.headers.get('authorization') ?? '')?.[1]?.trim()
-    const querySecret = url.searchParams.get('secret')
-    const secret = bearer || querySecret
-    if (!bearer && querySecret && !warnedQuerySecret) {
-      warnedQuerySecret = true
-      console.warn(
-        '[Pyreon] vercelRevalidateHandler: the revalidation secret was sent as a `?secret=` query parameter, which leaks into access and proxy logs. Send it as `Authorization: Bearer <secret>` instead — query-param support will be removed in a future minor.',
+    // The secret is read ONLY from `Authorization: Bearer <secret>`. A
+    // `?secret=` query param is refused even when correct: a URL secret ends
+    // up in access and proxy logs, so accepting it would keep that leak open.
+    const secret = /^Bearer\s+(.+)$/i.exec(req.headers.get('authorization') ?? '')?.[1]?.trim()
+    if (!secret && url.searchParams.has('secret')) {
+      return new Response(
+        'Bad Request: the secret must be sent as `Authorization: Bearer <secret>`; the `?secret=` query parameter is not accepted (it leaks into logs)',
+        { status: 400 },
       )
     }
 
     if (!path || !secret) {
-      return new Response('Bad Request: missing path or secret', { status: 400 })
+      return new Response('Bad Request: missing path or `Authorization: Bearer` secret', { status: 400 })
     }
 
     // Validate the secret against the env var, in constant time.
