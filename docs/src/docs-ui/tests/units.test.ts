@@ -75,5 +75,7 @@ describe('PackageBadge tier labels (generated from package.json pyreon.stability
 
   it('says "unpublished" for a name with no published package', () => {
     expect(packageStatusLabel('@pyreon/devtools')).toBe('unpublished')
+    // A private workspace package with a docs page: no tier until it is published.
+    expect(packageStatusLabel('@pyreon/auth')).toBe('unpublished')
   })
 })

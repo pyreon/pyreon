@@ -14,7 +14,9 @@ import {
   deprecatedFailures,
   findDeprecatedTags,
   isTestPath,
+  listPrivatePackages,
   metaFailures,
+  privatePackageFailures,
   readmeFailures,
   readStabilityField,
   readTextIfExists,
@@ -251,6 +253,40 @@ describe('readTextIfExists', () => {
     expect(readTextIfExists(join(dir, 'missing.md'))).toBeUndefined()
     // A directory is not ENOENT: the error must surface, not read as "missing".
     expect(() => readTextIfExists(dir as string)).toThrow()
+  })
+})
+
+// Rule 7. An unpublished package (`@pyreon/auth` while it is `private`) is outside rules 1-2,
+// so a tier left on it would drift unchecked. Bisect-verified: with the field and status line
+// restored on auth, the real-repo spec fails with both messages.
+describe('private packages', () => {
+  const field = renderStatusLine({ stability: 'experimental' })
+
+  it('fails a tier field and a README status line on a private package', () => {
+    const failures = privatePackageFailures(
+      '@pyreon/p',
+      { name: '@pyreon/p', private: true, pyreon: { stability: 'experimental' } },
+      `# @pyreon/p\n\n${field}\n`,
+    )
+    expect(failures).toHaveLength(2)
+    expect(failures[0]).toMatch(/private package declares `pyreon.stability`/)
+    expect(failures[1]).toMatch(/README line 3 carries a tier status line/)
+    expect(
+      privatePackageFailures('@pyreon/p', { name: '@pyreon/p', private: true, pyreon: { experimentalSubpaths: ['./x'] } }, undefined),
+    ).toHaveLength(1)
+  })
+
+  it('passes a private package with no tier, and keeps other pyreon fields', () => {
+    expect(
+      privatePackageFailures('@pyreon/p', { name: '@pyreon/p', private: true, pyreon: {} }, '# @pyreon/p\n\n> **Not published to npm.**\n'),
+    ).toEqual([])
+  })
+
+  it('lists the private packages and none of the published ones', () => {
+    const names = listPrivatePackages(REPO).map((p) => p.name)
+    expect(names).toContain('@pyreon/auth')
+    expect(names).toContain('@pyreon/test-utils')
+    expect(names).not.toContain('@pyreon/core')
   })
 })
 

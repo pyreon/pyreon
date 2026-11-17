@@ -8,7 +8,6 @@ export const PACKAGE_STABILITY: Readonly<Record<string, PackageStability>> = {
   '@pyreon/a11y': 'stable',
   '@pyreon/atlas': 'experimental',
   '@pyreon/attrs': 'stable',
-  '@pyreon/auth': 'experimental',
   '@pyreon/charts': 'stable',
   '@pyreon/cli': 'stable',
   '@pyreon/code': 'stable',

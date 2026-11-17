@@ -26,6 +26,7 @@ Every published package declares its tier in its own `package.json`:
 - **Stable** packages carry the semver promise above.
 - **Experimental** packages may break in a **minor** release. So may the **experimental subpaths** of a Stable package (`experimentalSubpaths`, for example every `./native-plugin` entry, `@pyreon/core/plain` and `@pyreon/charts/engine`). The changelog says when they break.
 - An individual API inside a Stable entry point can also be marked experimental. Its reference page and the MCP reference label it experimental, and the same minor-release rule applies to it.
+- An unpublished package (`"private": true` in its `package.json`, currently `@pyreon/auth`) has no tier and makes no promise. Its badge reads "unpublished". It gets a tier when it is first published.
 
 The tier is the single source of truth for the package README's status line and the badge at the top of each package page. The `check-stability-tier` gate, which runs on every pull request, also holds these rules:
 
@@ -34,9 +35,9 @@ The tier is the single source of truth for the package README's status line and 
 
 {/* gen:package-tiers:start */}
 
-Of the 77 published packages (not counting the per-platform `@pyreon/compiler-*` binaries, which follow `@pyreon/compiler`), 56 are Stable and 21 are Experimental. This list is generated from each package's `package.json`.
+Of the 76 published packages (not counting the per-platform `@pyreon/compiler-*` binaries, which follow `@pyreon/compiler`), 56 are Stable and 20 are Experimental. This list is generated from each package's `package.json`.
 
-**Experimental packages (21):** `@pyreon/atlas`, `@pyreon/auth`, `@pyreon/connector-document`, `@pyreon/create-multiplatform`, `@pyreon/document-primitives`, `@pyreon/loom`, `@pyreon/mcp`, `@pyreon/native-cli`, `@pyreon/native-compiler`, `@pyreon/native-router-kotlin`, `@pyreon/native-router-swift`, `@pyreon/native-runtime-kotlin`, `@pyreon/native-runtime-swift`, `@pyreon/preact-compat`, `@pyreon/primitives`, `@pyreon/react-compat`, `@pyreon/solid-compat`, `@pyreon/storybook`, `@pyreon/svelte-compat`, `@pyreon/sync`, `@pyreon/vue-compat`.
+**Experimental packages (20):** `@pyreon/atlas`, `@pyreon/connector-document`, `@pyreon/create-multiplatform`, `@pyreon/document-primitives`, `@pyreon/loom`, `@pyreon/mcp`, `@pyreon/native-cli`, `@pyreon/native-compiler`, `@pyreon/native-router-kotlin`, `@pyreon/native-router-swift`, `@pyreon/native-runtime-kotlin`, `@pyreon/native-runtime-swift`, `@pyreon/preact-compat`, `@pyreon/primitives`, `@pyreon/react-compat`, `@pyreon/solid-compat`, `@pyreon/storybook`, `@pyreon/svelte-compat`, `@pyreon/sync`, `@pyreon/vue-compat`.
 
 **Stable packages with experimental subpaths:**
 
@@ -74,7 +75,7 @@ Two kinds of `_`-prefixed export are treated differently:
 | --- | --- |
 | Reactivity, core, runtime-dom, router, head, server, vite-plugin | Stable. The core web framework; the surface most apps use. |
 | `@pyreon/zero` (SSR, SSG, ISR, SPA, islands) | Stable. Web meta-framework with build-time mode verification (`verify-modes`) and real-browser end-to-end suites in CI. `mode: 'auto'` is an experimental option. |
-| Fundamentals (`store`, `form`, `query`, `table`, `i18n`, `validation`, …) | Stable libraries for the web, apart from `@pyreon/sync` and `@pyreon/auth`. Several also have native runtimes; see [PMTC Library Status & Authoring](/docs/multiplatform-libraries). |
+| Fundamentals (`store`, `form`, `query`, `table`, `i18n`, `validation`, …) | Stable libraries for the web, apart from `@pyreon/sync` (Experimental) and `@pyreon/auth` (not published yet, so it has no tier). Several also have native runtimes; see [PMTC Library Status & Authoring](/docs/multiplatform-libraries). |
 | Compat layers (`react-compat`, `preact-compat`, `vue-compat`, `solid-compat`, `svelte-compat`) | Experimental. They track upstream APIs that keep moving. |
 | **Native targets (iOS / Android via PMTC)** | **Experimental** overall; each area carries its own tier in [Maturity by area](/docs/multiplatform#maturity-by-area). See below. |
 

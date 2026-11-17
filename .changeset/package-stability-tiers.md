@@ -2,7 +2,6 @@
 "@pyreon/a11y": patch
 "@pyreon/atlas": patch
 "@pyreon/attrs": patch
-"@pyreon/auth": patch
 "@pyreon/charts": patch
 "@pyreon/cli": patch
 "@pyreon/code": patch

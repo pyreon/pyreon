@@ -30,7 +30,13 @@
  *      marked `stability: 'deprecated'` with `deprecated.removeIn`, and is not
  *      in `DEPRECATED_ALLOWLIST` with a reason (stale allowlist entries fail);
  *   6. a docs page passes a hand-written `status=` to `<PackageBadge>` (the
- *      badge reads the tier generated from this field).
+ *      badge reads the tier generated from this field);
+ *   7. a PRIVATE package (`"private": true`, e.g. `@pyreon/auth` until it is
+ *      published) declares a tier or carries a README status line. An
+ *      unpublished package makes no semver promise, the generated table and
+ *      badge leave it out ("unpublished"), and rules 1-2 never check it, so a
+ *      tier left on it would drift unchecked. Publishing it (dropping
+ *      `private`) makes rule 1 ask for the field and `--write` add the line.
  *
  * Usage:
  *   bun scripts/check-stability-tier.ts          # verify (CI mode)
@@ -60,7 +66,7 @@ export interface PublishedPackage {
   pkg: PackageJson
 }
 
-interface PackageJson {
+export interface PackageJson {
   name: string
   private?: boolean
   exports?: Record<string, unknown>
@@ -525,6 +531,46 @@ export function badgeStatusFailures(docsDir: string, repoRoot: string): string[]
   return failures
 }
 
+// ─── private packages ───────────────────────────────────────────────────────
+
+/** Every private package directly under `packages/<category>/`. */
+export function listPrivatePackages(repoRoot: string): PublishedPackage[] {
+  const out: PublishedPackage[] = []
+  const packagesDir = join(repoRoot, 'packages')
+  for (const category of readdirSync(packagesDir, { withFileTypes: true })) {
+    if (!category.isDirectory()) continue
+    for (const entry of readdirSync(join(packagesDir, category.name), { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const dir = join(packagesDir, category.name, entry.name)
+      const text = readTextIfExists(join(dir, 'package.json'))
+      if (text === undefined) continue
+      const pkg = JSON.parse(text) as PackageJson
+      if (pkg.private === true && typeof pkg.name === 'string') out.push({ name: pkg.name, dir, pkg })
+    }
+  }
+
+  return out.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/** A private package must carry no tier: it makes no semver promise and nothing checks the field. */
+export function privatePackageFailures(name: string, pkg: PackageJson, readme: string | undefined): string[] {
+  const failures: string[] = []
+  if (pkg.pyreon?.stability !== undefined || pkg.pyreon?.experimentalSubpaths !== undefined) {
+    failures.push(
+      `${name}: private package declares \`pyreon.stability\` / \`experimentalSubpaths\`. An unpublished package has no tier; remove the field and add it when \`"private": true\` goes.`,
+    )
+  }
+  const head = (readme ?? '').split('\n').slice(0, README_HEAD_LINES)
+  const idx = head.findIndex((l) => STATUS_LINE_RE.test(l))
+  if (idx !== -1) {
+    failures.push(
+      `${name}: private package's README line ${idx + 1} carries a tier status line. An unpublished package has no tier; remove the line (\`--write\` adds it once the package is published).`,
+    )
+  }
+
+  return failures
+}
+
 // ─── main ───────────────────────────────────────────────────────────────────
 
 /** Map of every published package's tier (invalid fields are skipped and reported by the gate). */
@@ -592,6 +638,11 @@ export async function runGate(repoRoot: string, write: boolean): Promise<string[
 
   // 6. docs badge
   failures.push(...badgeStatusFailures(join(repoRoot, 'docs/src/content'), repoRoot))
+
+  // 7. private packages carry no tier
+  for (const p of listPrivatePackages(repoRoot)) {
+    failures.push(...privatePackageFailures(p.name, p.pkg, readTextIfExists(join(p.dir, 'README.md'))))
+  }
 
   return failures
 }
