@@ -796,6 +796,11 @@ public final class PyreonMapState {
   public func removeMarker(id: String) {}
   public func selectMarker(_ id: String?) {}
 }
+// <MapView map={map}> (@pyreon/hooks) — the SwiftUI Map bound to a PyreonMapState.
+public struct PyreonMapView: View {
+  public init(state: PyreonMapState) {}
+  public var body: some View { EmptyView() }
+}
 public struct PyreonProduct: Sendable, Equatable {
   public let id: String
   public let displayName: String

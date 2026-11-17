@@ -14,7 +14,7 @@ export default defineManifest({
   name: '@pyreon/hooks',
   title: 'Signal-Based Hooks',
   tagline:
-    '65 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useInertOthers/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useBluetooth/useSafeArea/useScreenOrientation/useDeviceMotion/useSpeech/useDeviceInfo/useCamera/useAudioRecorder/useWakeLock/useClipboard/useHaptics/useShare/useLinking/useNotifications/useBiometrics/useImagePicker/useFilePicker/useDialog/useKeyboard/useOnline/useAppState/useCrashReporter/useDocumentVisibility/useIdle), data (useFetch/useAuth/useDatabase/useGeolocation/useMap/useWebSocket/useSecureStorage/usePush/usePayments), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
+    '65 signal-based hooks (plus the `MapView` renderer for `useMap`): state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useInertOthers/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useBluetooth/useSafeArea/useScreenOrientation/useDeviceMotion/useSpeech/useDeviceInfo/useCamera/useAudioRecorder/useWakeLock/useClipboard/useHaptics/useShare/useLinking/useNotifications/useBiometrics/useImagePicker/useFilePicker/useDialog/useKeyboard/useOnline/useAppState/useCrashReporter/useDocumentVisibility/useIdle), data (useFetch/useAuth/useDatabase/useGeolocation/useMap/useWebSocket/useSecureStorage/usePush/usePayments), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
   description:
     'Signal-based hooks for Pyreon — 65 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
   category: 'universal',
@@ -1072,7 +1072,26 @@ map.addMarker({ id: 'a', latitude: 51.5, longitude: -0.12, title: 'Here' })
         'Calling `moveTo(lat, lng, 0)` to reset zoom — `0` is a valid zoom value, not "unset"; omit the third argument entirely to keep the current zoom',
         'Expecting an `error` field — none exists on any target; the container never performs I/O',
       ],
-      seeAlso: ['useGeolocation'],
+      seeAlso: ['useGeolocation', 'MapView'],
+    },
+    {
+      name: 'MapView',
+      kind: 'component',
+      signature: '(props: { map: UseMapResult; height?: number }) => VNode',
+      summary:
+        'The renderer for a `useMap()` state: the camera and the markers, with the selection bound both ways. iOS lowers it to `PyreonMapView`, a SwiftUI `Map` (MapKit, iOS 17, no API key) whose pins are the markers — tapping one selects it in the state, and `map.selectMarker(id)` selects it on the map. The web renders an OpenStreetMap embed (no key, no mapping library) centred on the camera and pinned at the selected marker (or the first; the embed shows one pin), plus the markers as buttons that select. Android has no renderer yet: the compiler names it and lowers it to an empty box of the same height. `height` (default 240) must be a static number on native.',
+      example: `const map = useMap()
+onMount(() => {
+  map.setCamera({ latitude: 50.0875, longitude: 14.4213, zoom: 13 })
+  map.addMarker({ id: 'castle', latitude: 50.0911, longitude: 14.4016, title: 'Prague Castle' })
+})
+<MapView map={map} height={320} />
+<Text>Selected: {map.selectedMarkerId ?? 'none'}</Text>`,
+      mistakes: [
+        'Expecting a map on Android — there is no renderer there yet; the compiler warns and lowers it to an empty box',
+        'Passing a non-literal `height` — native reads it at compile time and falls back to 240',
+      ],
+      seeAlso: ['useMap'],
     },
     {
       name: 'useWebSocket',

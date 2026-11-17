@@ -5312,10 +5312,24 @@ const status = signal<'idle' | 'unlocked' | 'denied'>('idle')
 map.setCamera({ latitude: 51.5, longitude: -0.12, zoom: 12 })
 map.addMarker({ id: 'a', latitude: 51.5, longitude: -0.12, title: 'Here' })
 <Show when={() => map.selectedMarker}>{(m) => <span>{m.title}</span>}</Show>`,
-    notes: 'Map STATE — camera, markers, selection — shared across web / iOS / Android, mirroring the native `PyreonMapState` container field-for-field. Deliberately NOT a renderer: the actual drawing is MapKit / the Android Maps SDK natively, and on web this hook imposes no mapping-library choice — feed `map.camera`/`map.markers` to Leaflet, MapLibre, Google Maps, or a plain `<svg>`. Semantics worth knowing: `addMarker` UPSERTS by id and preserves the existing list position; `removeMarker` clears the selection if the removed marker was selected; `moveTo` keeps the CURRENT zoom when `zoom` is omitted; `selectedMarker` is DERIVED from `selectedMarkerId`, never stored separately. There is no `error` field by design — the container performs no I/O and cannot fail. See also: useGeolocation.',
+    notes: 'Map STATE — camera, markers, selection — shared across web / iOS / Android, mirroring the native `PyreonMapState` container field-for-field. Deliberately NOT a renderer: the actual drawing is MapKit / the Android Maps SDK natively, and on web this hook imposes no mapping-library choice — feed `map.camera`/`map.markers` to Leaflet, MapLibre, Google Maps, or a plain `<svg>`. Semantics worth knowing: `addMarker` UPSERTS by id and preserves the existing list position; `removeMarker` clears the selection if the removed marker was selected; `moveTo` keeps the CURRENT zoom when `zoom` is omitted; `selectedMarker` is DERIVED from `selectedMarkerId`, never stored separately. There is no `error` field by design — the container performs no I/O and cannot fail. See also: useGeolocation, MapView.',
     mistakes: `- Expecting this hook to render a map — it is pure state; wire \`map.camera\`/\`map.markers\` into your mapping library of choice (or MapKit/Android Maps natively)
 - Calling \`moveTo(lat, lng, 0)\` to reset zoom — \`0\` is a valid zoom value, not "unset"; omit the third argument entirely to keep the current zoom
 - Expecting an \`error\` field — none exists on any target; the container never performs I/O`,
+  },
+
+  'hooks/MapView': {
+    signature: '(props: { map: UseMapResult; height?: number }) => VNode',
+    example: `const map = useMap()
+onMount(() => {
+  map.setCamera({ latitude: 50.0875, longitude: 14.4213, zoom: 13 })
+  map.addMarker({ id: 'castle', latitude: 50.0911, longitude: 14.4016, title: 'Prague Castle' })
+})
+<MapView map={map} height={320} />
+<Text>Selected: {map.selectedMarkerId ?? 'none'}</Text>`,
+    notes: 'The renderer for a `useMap()` state: the camera and the markers, with the selection bound both ways. iOS lowers it to `PyreonMapView`, a SwiftUI `Map` (MapKit, iOS 17, no API key) whose pins are the markers — tapping one selects it in the state, and `map.selectMarker(id)` selects it on the map. The web renders an OpenStreetMap embed (no key, no mapping library) centred on the camera and pinned at the selected marker (or the first; the embed shows one pin), plus the markers as buttons that select. Android has no renderer yet: the compiler names it and lowers it to an empty box of the same height. `height` (default 240) must be a static number on native. See also: useMap.',
+    mistakes: `- Expecting a map on Android — there is no renderer there yet; the compiler warns and lowers it to an empty box
+- Passing a non-literal \`height\` — native reads it at compile time and falls back to 240`,
   },
 
   'hooks/useWebSocket': {

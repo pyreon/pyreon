@@ -276,7 +276,74 @@ const stateFieldsReceiver = (fields: ReadonlySet<string>, labels?: Labels): Rece
     },
   },
 })
-export const mapReceiver = stateFieldsReceiver(MAP_FIELDS, MAP_LABELS)
+/**
+ * `map.setCamera({ … })`, `map.addMarker({ … })`, `map.setMarkers([{ … }])` and `map.moveTo(lat, lng, zoom)`. The object
+ * literals used to go down the generic path, which synthesizes an anonymous struct — never the runtime's nominal
+ * `PyreonMapCamera` / `PyreonMapMarker`, so the call compiled on neither target, with no warning. They are built here,
+ * field by field; every coordinate and zoom is a `Double` on both runtimes, so a whole-number literal (`zoom: 13`) is
+ * spelled as one (Kotlin rejects a `Long` there). A field the runtime type does not have is named, and the call declines.
+ */
+const MAP_SHAPES: Readonly<Record<string, { type: string; fields: Readonly<Record<string, 'double' | 'string' | 'optional-string'>> }>> = {
+  camera: { type: 'PyreonMapCamera', fields: { latitude: 'double', longitude: 'double', zoom: 'double' } },
+  marker: { type: 'PyreonMapMarker', fields: { id: 'string', latitude: 'double', longitude: 'double', title: 'optional-string' } },
+}
+
+const DOUBLE: TypeIR = { kind: 'number', float: true }
+
+/** A coordinate or zoom as a `Double` on both targets: a whole-number literal gets its `.0` (Kotlin rejects a `Long`). */
+const asDouble = (e: ExprIR, ctx: SwiftEmitContext | KotlinEmitContext): string =>
+  e.kind === 'literal' && typeof e.value === 'number' && Number.isInteger(e.value) ? `${e.value}.0` : ctx.exprAs(DOUBLE, e)
+
+function mapValue(shape: 'camera' | 'marker', lit: ExprIR, ctx: SwiftEmitContext | KotlinEmitContext, swift: boolean): string | undefined {
+  if (lit.kind !== 'object') return undefined
+  const { type, fields } = MAP_SHAPES[shape]!
+  const unknown = lit.fields.filter((f) => !(f.name in fields))
+  if (unknown.length > 0) {
+    ctx.warn(`${type} has no field ${unknown.map((f) => `\`${f.name}\``).join(', ')}; the map call is left as written and will not compile.`)
+
+    return undefined
+  }
+  const args = Object.entries(fields).flatMap(([name, kind]) => {
+    const f = lit.fields.find((x) => x.name === name)
+    if (f === undefined) return kind === 'optional-string' ? [] : [`${name}${swift ? ':' : ' ='} ${kind === 'double' ? '0.0' : '""'}`]
+    const value = kind === 'double' ? asDouble(f.value, ctx) : ctx.expr(f.value)
+
+    return [`${name}${swift ? ':' : ' ='} ${value}`]
+  })
+
+  return `${type}(${args.join(', ')})`
+}
+
+function mapCall(site: ReceiverSite, ctx: SwiftEmitContext | KotlinEmitContext, swift: boolean): string | undefined {
+  if (site.kind !== 'call') return undefined
+  const method = methodOf(site)
+  const args = site.expr.args
+  const name = ctx.ident(site.receiver.name)
+  if ((method === 'setCamera' || method === 'addMarker') && args.length === 1) {
+    const value = mapValue(method === 'setCamera' ? 'camera' : 'marker', args[0]!, ctx, swift)
+
+    return value === undefined ? undefined : `${name}.${method}(${value})`
+  }
+  if (method === 'setMarkers' && args.length === 1 && args[0]!.kind === 'array') {
+    const items = (args[0] as Extract<ExprIR, { kind: 'array' }>).elements.map((el) => mapValue('marker', el, ctx, swift))
+    if (items.some((i) => i === undefined)) return undefined
+
+    return swift ? `${name}.setMarkers([${items.join(', ')}])` : `${name}.setMarkers(listOf(${items.join(', ')}))`
+  }
+  if (method === 'moveTo' && !swift && args.length >= 2 && args.length <= 3) {
+    return `${name}.moveTo(${args.map((a) => asDouble(a, ctx)).join(', ')})`
+  }
+
+  return undefined
+}
+
+const mapFields = stateFieldsReceiver(MAP_FIELDS, MAP_LABELS)
+
+export const mapReceiver: ReceiverLowering = {
+  swift: { expr: (site, ctx) => mapCall(site, ctx, true) ?? mapFields.swift?.expr?.(site, ctx) },
+  kotlin: { expr: (site, ctx) => mapCall(site, ctx, false) ?? mapFields.kotlin?.expr?.(site, ctx) },
+}
+
 export const authReceiver = stateFieldsReceiver(AUTH_FIELDS)
 
 // ---------------------------------------------------------------------------------------------------------------------

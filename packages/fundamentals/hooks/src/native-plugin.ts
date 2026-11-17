@@ -56,6 +56,7 @@ import {
  */
 import type { CompilerPlugin } from '@pyreon/native-compiler/plugin-api'
 import { containerPlugin } from './native-plugin/containers'
+import { mapViewLowering } from './native-plugin/map-view'
 import { fetchDecl, fetchReceiver, FETCH_TYPE, recognizeFetch } from './native-plugin/fetch'
 import { recognizeFileFromUri, scanFileFromUri, UPLOAD_FILE_TYPE, uploadFileExpr } from './native-plugin/upload-file'
 
@@ -72,6 +73,8 @@ const nativePlugin = {
   apiVersion: 2,
   stubs: statefulStubs,
   modules: ['@pyreon/hooks'],
+  // `<MapView map={map}>` — the renderer for a `useMap()` state (see `map-view.ts`).
+  elements: [mapViewLowering],
   // Code-shaped lowerings, beside the data-only service table below: `useFetch<T>(url, init?)` and its container.
   calls: {
     useFetch: recognizeFetch,

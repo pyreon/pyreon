@@ -46,6 +46,7 @@ export { useGeolocation } from './useGeolocation'
 // State only: camera + markers + selection, exactly as the native container
 // holds them. Rendering stays the app's choice on every target.
 export { useMap } from './useMap'
+export { MapView, type MapViewProps } from './MapView'
 export type {
   PyreonMapCamera,
   PyreonMapMarker,
