@@ -3,7 +3,7 @@ import { h } from '@pyreon/core'
 import { readLive, resolveLive } from '../live-prop'
 import type { CSSProperties, TransitionCallbacks } from '../types'
 import { childProps, flattenChildren } from '../child-shape'
-import { cloneVNode } from '../utils'
+import { cloneVNode, mergeStyles } from '../utils'
 import TransitionItem from './TransitionItem'
 import type { KineticConfig } from './types'
 
@@ -95,8 +95,7 @@ const StaggerRenderer = ({
         }
       >
         {cloneVNode(child as VNode, {
-          style: {
-            ...(childProps(child).style as CSSProperties | undefined),
+          style: mergeStyles(childProps(child).style as CSSProperties | string | undefined, {
             '--stagger-index': index,
             '--stagger-interval': `${effectiveInterval}ms`,
             // Stable delay sources — survive the `transition` shorthand reset
@@ -106,7 +105,7 @@ const StaggerRenderer = ({
             '--kinetic-delay': `${enterDelay}ms`,
             '--kinetic-leave-delay': `${leaveDelay}ms`,
             transitionDelay: `${enterDelay}ms`,
-          } as CSSProperties,
+          } as CSSProperties),
         })}
       </TransitionItem>
     )

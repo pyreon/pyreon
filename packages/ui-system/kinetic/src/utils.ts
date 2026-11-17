@@ -1,4 +1,5 @@
 import type { Ref, VNode } from '@pyreon/core'
+import { normalizeStyleValue, toKebabCase } from '@pyreon/core'
 import { runUntracked } from '@pyreon/reactivity'
 import { SizedMap } from '@pyreon/sized-map'
 import type { CSSProperties } from './types'
@@ -14,12 +15,14 @@ import { isNativeItem, isVNodeLike, wrapNativeItem } from './child-shape'
 // SizedMap in FIFO mode (default) — get() does NOT touch ordering;
 // eviction happens inside set() on overflow.
 const splitCache = new SizedMap<string, string[]>({ maxEntries: 128 })
+
 const splitClasses = (classes: string): string[] => {
   let cached = splitCache.get(classes)
   if (!cached) {
     cached = classes.split(/\s+/).filter(Boolean)
     splitCache.set(classes, cached)
   }
+
   return cached
 }
 
@@ -89,6 +92,7 @@ export const nextFrame = (callback: () => void): (() => void) => {
   }
   const batch = _framePending
   batch.add(callback)
+
   return () => {
     batch.delete(callback)
   }
@@ -154,13 +158,31 @@ export const mergeClassNames = (
 
 /** Merges two CSSProperties objects, with `b` taking precedence. */
 export const mergeStyles = (
-  a: CSSProperties | undefined,
+  a: CSSProperties | string | undefined,
   b: CSSProperties | undefined,
-): CSSProperties | undefined => {
+): CSSProperties | string | undefined => {
   if (!a && !b) return undefined
   if (!a) return b
   if (!b) return a
+  // A child's own style may be a CSS STRING (`<li style="color: red">`).
+  // Spreading it made an object of its characters and lost it; keep it as text
+  // and append the added declarations, which win as later declarations do.
+  if (typeof a === 'string') return `${a.replace(/;\s*$/, '')}; ${styleText(b)}`
+
   return { ...a, ...b }
+}
+
+/** `{ opacity: 0, '--i': 2 }` → `opacity: 0; --i: 2`, with the renderer's rules. */
+const styleText = (style: CSSProperties): string => {
+  let out = ''
+  for (const key in style) {
+    const value = (style as Record<string, unknown>)[key]
+    if (value == null || value === '') continue
+    const name = key.startsWith('--') ? key : toKebabCase(key)
+    out += `${out ? '; ' : ''}${name}: ${normalizeStyleValue(key, value)}`
+  }
+
+  return out
 }
 
 // ─── Ref & Motion Utilities ─────────────────────────────────
@@ -211,13 +233,29 @@ export const consumerRef = <T>(holder: Record<string, unknown>): RefCallback<T> 
 }
 
 /** Clones a VNode with merged props. */
+/**
+ * A compiled single element on the server: `@pyreon/runtime-server`'s `_ssr` /
+ * `_ssrDeferred` result. Duck-typed on its `withRootAttrs` method so this
+ * client-safe package never imports the server module.
+ */
+const isServerElementHtml = (
+  value: unknown,
+): value is { withRootAttrs: (extra: Record<string, unknown>) => unknown } =>
+  value != null &&
+  typeof value === 'object' &&
+  typeof (value as { withRootAttrs?: unknown }).withRootAttrs === 'function'
+
 export const cloneVNode = (vnode: VNode, extraProps: Record<string, unknown>): VNode => {
   // Compiled static markup (`<li>Install</li>` → a pre-built `_tpl` item) has
   // no props to merge into: spreading it lost the element. It is wrapped so the
-  // extras reach its element at mount. A non-VNode with no element (raw server
-  // HTML) cannot be decorated, but is returned so it still renders.
+  // extras reach its element at mount. On the server the same markup is raw
+  // HTML (`_ssr`); its root tag takes the extras (`withRootAttrs`, #4382), so an
+  // initially-hidden item is prerendered hidden. Anything else that is not a
+  // VNode is returned so it still renders.
   if (isNativeItem(vnode)) return wrapNativeItem(vnode, extraProps)
+  if (isServerElementHtml(vnode)) return vnode.withRootAttrs(extraProps) as unknown as VNode
   if (!isVNodeLike(vnode)) return vnode
+
   return { ...vnode, props: { ...vnode.props, ...extraProps } }
 }
 

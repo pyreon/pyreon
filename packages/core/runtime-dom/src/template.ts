@@ -175,6 +175,7 @@ export function _setChild(node: Element, value: unknown): void {
         node.textContent = value as string
       }
       reportTextWrite(node, before, 'text')
+
       return
     }
     if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
@@ -244,6 +245,7 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
       const before = (placeholder as Text).data
       ;(placeholder as Text).data = value as string
       reportTextWrite(placeholder, before, 'text')
+
       return
     }
     ;(placeholder as Text).data = value as string
@@ -276,6 +278,7 @@ function _warnTextCoercion(v: unknown, node: Text): void {
         "If you cast an accessor with 'as never', remove the cast — the compiler treats " +
         'the cast expression as static. Accessor-typed JSX attributes accept the function form directly.',
     )
+
     return
   }
   if (_isMountableTextValue(v)) {
@@ -382,11 +385,13 @@ export function _bindProp(props: object, key: string, node: Text, parent: Node):
       if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
         reportFirstText(node, v, next, 'reactive')
       if (node.data !== next) node.data = next
+
       return _noopDispose
     }
   }
   const g = d !== undefined ? (d.get as ({ _v?: unknown; direct?: (fn: () => void) => () => void } & (() => unknown)) | undefined) : undefined
   if (g !== undefined && typeof g.direct === 'function') return _bindText(g, node)
+
   return bindPolymorphicText(() => (props as Record<string, unknown>)[key] as VNodeChild, node, parent)
 }
 
@@ -444,6 +449,7 @@ export function _bindText(
               unsub()
               core.dispose()
             }
+
             return
           }
           // No parent → nowhere to mount (detached manual binding). Fall
@@ -472,6 +478,7 @@ export function _bindText(
       if (process.env.NODE_ENV !== 'production')
         _rdLabelBinding(textUpdate, 'text', node, undefined, 1, true)
     }
+
     return () => disposer!()
   }
   // Fallback: bare callable. Use the compiler-provided receiver/caller when
@@ -514,6 +521,7 @@ export function _bindText(
     _rdLabelBinding(disposeEffect, 'text', node, undefined, 1)
   // Dead binding that stayed text: no re-run can happen and no subtree exists.
   if (disposeEffect === _noopDispose && core === null) return _noopDispose
+
   return () => {
     disposeEffect()
     if (core !== null) core.dispose()
@@ -564,6 +572,7 @@ export function _bindDirect(
     if (process.env.NODE_ENV !== 'production') _rdCloseBindingFrame()
     const dispose = source.direct(() => updater(source._v))
     if (process.env.NODE_ENV !== 'production') _rdLabelDirect(dispose, 1)
+
     return dispose
   }
   // Fallback: bare callable. Use the compiler-provided receiver/caller if there
@@ -575,6 +584,7 @@ export function _bindDirect(
   // at the compiled template rather than at this helper.
   if (process.env.NODE_ENV !== 'production')
     _rdLabelBinding(dispose, null, null, undefined, 1)
+
   return dispose
 }
 
@@ -671,6 +681,7 @@ function isSvgRooted(html: string): boolean {
   const m = /^\s*<([a-zA-Z][a-zA-Z0-9-]*)/.exec(html)
   if (m === null) return false
   const tag = m[1] as string
+
   return SVG_ROOT_TAGS.has(tag)
 }
 
@@ -719,11 +730,39 @@ export type TplAdoptVerifier = (
   html: string,
   target: Element,
   allowPlanReplay?: boolean,
+  rootDecorated?: boolean,
 ) => boolean
+
 let _tplAdoptVerifier: TplAdoptVerifier | null = null
+
 export function _setTplAdoptVerifier(v: TplAdoptVerifier): void {
   _tplAdoptVerifier = v
 }
+
+/**
+ * DECLARED ROOT DECORATION (#4382). A component that adds `class` / `style` to
+ * a compiled child element (kinetic's per-item hidden state) does it on the
+ * client at mount, and on the server to the root tag of the child's raw HTML
+ * (`withRootAttrs`). The server element's root then carries attributes the
+ * template's static skeleton does not, and the static-skeleton gate refused
+ * it: the item was re-created at hydration instead of adopted.
+ *
+ * The decorating component declares the decoration on the item it receives,
+ * and for that item ONLY the gate leaves the ROOT's `class` and `style` out of
+ * the comparison: the declaring component owns them and re-applies them at
+ * mount. Every other attribute and every descendant is still compared. Carried
+ * on the item (leak class C: never a registry), read once by its adoption.
+ */
+const ROOT_DECORATED: unique symbol = Symbol('pyreon.rootDecorated')
+type DecoratedItem = NativeItem & { [ROOT_DECORATED]?: true }
+
+export function _declareRootDecoration(item: NativeItem): void {
+  ;(item as DecoratedItem)[ROOT_DECORATED] = true
+}
+
+// The adoption frame's flag (see `_tplAdoptTarget`): set by `__adoptAt`,
+// consumed one-shot by the `buildTpl` it arms.
+let _tplRootDecorated = false
 
 // ─── Hydration-active window ─────────────────────────────────────────────────
 // True for the duration of `hydrateRoot`'s SYNCHRONOUS walk (save/restored
@@ -837,6 +876,7 @@ let _tplHoleCursors: Map<Element, ChildNode | null> | null = null
 
 /** Verifier → `_tpl` handoff for the match it just approved (one-shot). */
 let _tplPendingHoles: Map<Element, ChildNode | null> | null = null
+
 export function _setTplHoleCursors(m: Map<Element, ChildNode | null> | null): void {
   _tplPendingHoles = m
 }
@@ -851,7 +891,9 @@ export type TplHoleHydrator = (
   parent: Node,
   cursor: ChildNode | null,
 ) => [() => void, ChildNode | null]
+
 let _tplHoleHydrator: TplHoleHydrator | null = null
+
 export function _setTplHoleHydrator(h: TplHoleHydrator): void {
   _tplHoleHydrator = h
 }
@@ -985,6 +1027,7 @@ export function _tpl(
   if (_hydrationActive && _tplAdoptTarget?.tagName !== tpl.content.firstElementChild?.tagName) {
     return deferTpl(tpl, html, bind)
   }
+
   return buildTpl(tpl, html, bind)
 }
 
@@ -1056,9 +1099,13 @@ function remountableTpl(
       return (built() as Partial<DeferredNativeItem>).__deferred
     },
     __adoptAt(domNode: Element): boolean {
-      return (built() as Partial<DeferredNativeItem>).__adoptAt?.(domNode) ?? false
+      const inner = built()
+      // A declaration made on this (outer) item belongs to the build it adopts.
+      if ((item as unknown as DecoratedItem)[ROOT_DECORATED] === true) _declareRootDecoration(inner)
+      return (inner as Partial<DeferredNativeItem>).__adoptAt?.(domNode) ?? false
     },
   }
+
   return item as unknown as RemountableNativeItem
 }
 
@@ -1080,10 +1127,12 @@ function buildTpl(
   if (_tplAdoptTarget !== null) {
     const target = _tplAdoptTarget
     const allowPlan = _tplAdoptAllowPlan
+    const rootDecorated = _tplRootDecorated
     _tplAdoptTarget = null // one-shot, cleared on ANY outcome
     _tplAdoptAllowPlan = false
+    _tplRootDecorated = false
     _tplPendingHoles = null
-    if (_tplAdoptVerifier !== null && _tplAdoptVerifier(tpl, html, target, allowPlan)) {
+    if (_tplAdoptVerifier !== null && _tplAdoptVerifier(tpl, html, target, allowPlan, rootDecorated)) {
       const holes = _tplPendingHoles
       _tplPendingHoles = null
       // Belt-and-braces: a verified hole is only safe if something will
@@ -1114,6 +1163,7 @@ function buildTpl(
         _tplAdoptConsumed = true
         if (process.env.NODE_ENV !== 'production')
           _countSink.__pyreon_count__?.('runtime.tpl.adopt')
+
         return { __isNative: true, el: target as HTMLElement, cleanup }
       }
     }
@@ -1138,6 +1188,7 @@ function buildTpl(
   // `bind` — the reading the `<For>` row loop makes. Skipped entirely when no
   // verifier is registered, so a CSR-only bundle's hot path is unchanged.
   if (_tplAdoptVerifier !== null) _tplAdoptConsumed = false
+
   return { __isNative: true, el, cleanup }
 }
 
@@ -1194,9 +1245,11 @@ function deferTpl(
       const prevAllow = _tplAdoptAllowPlan
       const prevConsumed = _tplAdoptConsumed
       const prevPending = _tplPendingHoles
+      const prevDecorated = _tplRootDecorated
       _tplAdoptTarget = domNode
       _tplAdoptAllowPlan = false
       _tplPendingHoles = null
+      _tplRootDecorated = (item as unknown as DecoratedItem)[ROOT_DECORATED] === true
       try {
         built = buildTpl(tpl, html, bind)
       } finally {
@@ -1204,10 +1257,13 @@ function deferTpl(
         _tplAdoptAllowPlan = prevAllow
         _tplAdoptConsumed = prevConsumed
         _tplPendingHoles = prevPending
+        _tplRootDecorated = prevDecorated
       }
+
       return built.el === domNode
     },
   }
+
   return item as unknown as NativeItem
 }
 
@@ -1258,6 +1314,7 @@ export function _rsCollapse(
       return bind ? bind(el) : null
     })
   }
+
   return _tpl(html, (el) => {
     // Reactive class: `_bindDirect`'s plain-callable fallback wraps this in a
     // renderEffect, so a mode swap re-runs ONLY this className assignment.
@@ -1267,6 +1324,7 @@ export function _rsCollapse(
     if (process.env.NODE_ENV !== 'production') _rdLabelBinding(disposeClass, 'class', el, undefined, null)
     const disposeChildren = bind ? bind(el) : null
     if (!disposeChildren) return disposeClass
+
     return () => {
       disposeClass()
       disposeChildren()
@@ -1319,6 +1377,7 @@ export function _rsCollapseH(
       else (dRest ??= []).push(d)
     }
     const disposeChildren = bind ? bind(el) : null
+
     return () => {
       disposeClass()
       if (d0) d0()
@@ -1401,6 +1460,7 @@ export function _rsCollapseDyn(
     if (process.env.NODE_ENV !== 'production') _rdLabelBinding(disposeClass, 'class', el, undefined, null)
     const disposeChildren = bind ? bind(el) : null
     if (!disposeChildren) return disposeClass
+
     return () => {
       disposeClass()
       disposeChildren()
@@ -1487,6 +1547,7 @@ export function _rsCollapseDynH(
       if (d) handlerDisposers.push(d)
     }
     const disposeChildren = bind ? bind(el) : null
+
     return () => {
       disposeClass()
       for (const d of handlerDisposers) d()
@@ -1583,6 +1644,7 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
       const fresh = document.createTextNode('')
       parent.replaceChild(fresh, placeholder)
       if (process.env.NODE_ENV !== 'production') _markServerText(fresh, _rangeServerText)
+
       return fresh
     }
     // The shape SSR emits for a reactive text: exactly one text node between
@@ -1614,16 +1676,19 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
       n = next
     }
     if (process.env.NODE_ENV !== 'production') _markServerText(fresh, _rangeServerText)
+
     return fresh
   }
   const t = document.createTextNode('')
   parent.replaceChild(t, placeholder)
+
   return t
 }
 
 // Dev: the server text of the range `_textSlot` is resolving (set and read
 // within one synchronous call).
 let _rangeServerText = ''
+
 function _serverTextOfRange(open: Comment): string {
   const parked = (open as ParkedOpen)[PARKED_RANGE]
   return parked !== undefined ? (parked.textContent ?? '') : rangeText(open)
@@ -1664,24 +1729,30 @@ const isCloneSlotPlaceholder = (n: Node | null): boolean =>
  */
 const PARKED_RANGE: unique symbol = Symbol('pyreon.parkedRange')
 type ParkedOpen = Comment & { [PARKED_RANGE]?: DocumentFragment | undefined }
+
 export function _parkSlotRange(open: Comment, frag: DocumentFragment): void {
   ;(open as ParkedOpen)[PARKED_RANGE] = frag
 }
+
 /** Is a parked range hung off `open`? Non-consuming — see `_mountSlot`. */
 const hasParkedRange = (n: Node): boolean => (n as ParkedOpen)[PARKED_RANGE] !== undefined
+
 /** Take (and clear) the parked range hung off `open`, or `null`. */
 export function _takeParkedRange(open: Comment): DocumentFragment | null {
   const f = (open as ParkedOpen)[PARKED_RANGE]
   if (f === undefined) return null
   ;(open as ParkedOpen)[PARKED_RANGE] = undefined
+
   return f
 }
 
 const MID_SLOT_TEXT: unique symbol = Symbol('pyreon.midSlotText')
 type MidSlotText = Text & { [MID_SLOT_TEXT]?: true }
+
 export function _markMidSlotText(t: Text): void {
   ;(t as MidSlotText)[MID_SLOT_TEXT] = true
 }
+
 // Null-safe: `_mountSlot` hands a `null` placeholder for an EMPTY marker-less
 // sole slot (the slot rendered nothing on the server, so both the compiled ref
 // and the parent's firstChild are null — a designed case, see `_mountSlot`).
@@ -1704,7 +1775,9 @@ export type SlotHydrator = (
   parent: Node,
   open: Comment | null,
 ) => () => void
+
 let _slotHydrator: SlotHydrator | null = null
+
 export function _setSlotHydrator(h: SlotHydrator): void {
   _slotHydrator = h
 }
@@ -1777,5 +1850,6 @@ export function _mountSlot(
       ? mountChild(children, parent, placeholder)
       : mountChildAsUnit(children, parent, placeholder)
   parent.removeChild(placeholder)
+
   return cleanup
 }

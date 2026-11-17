@@ -155,6 +155,7 @@ function collectPropOps(props: Record<string, unknown>): PropOp[] | null {
       ops.push({ key, kind: OP_GENERIC, bind: null })
     }
   }
+
   return ops
 }
 
@@ -168,6 +169,7 @@ function hasPropsWork(vnode: VNode): boolean {
   for (const key in props) {
     if (key !== 'key' && key !== 'children') return true
   }
+
   return false
 }
 
@@ -202,6 +204,7 @@ export function buildRowPlan(root: VNodeChild): RowPlan | null {
   }
   if (!walkPlan(root, EMPTY_PATH, plan)) return null
   plan.sigKeyStart.push(plan.sigKeys.length) // sentinel
+
   return plan
 }
 
@@ -268,8 +271,10 @@ function walkPlan(vnode: VNode, domPath: number[], plan: RowPlan): boolean {
       domIdx++
       continue
     }
+
     return false // components / fragments / For / arrays / NativeItem → interpretive
   }
+
   return true
 }
 
@@ -278,6 +283,7 @@ function resolveDom(root: ChildNode, path: number[]): ChildNode | null {
   for (let i = 0; i < path.length && node; i++) {
     node = node.childNodes[path[i] as number] ?? null
   }
+
   return node
 }
 
@@ -334,6 +340,7 @@ function verifyRowShape(
       return false
     }
   }
+
   return true
 }
 
@@ -382,6 +389,7 @@ function applyOpList(
   if (!rest) return first
   const f = first as Cleanup
   const r = rest
+
   return () => {
     f()
     for (const c of r) c()
@@ -396,6 +404,7 @@ function wireRef(ref: RefProp, el: Element, c: Cleanup | null): Cleanup | null {
   if (typeof ref === 'function') ref(el)
   else ref.current = el
   const prev = c
+
   return () => {
     if (typeof ref === 'function') ref(null)
     else ref.current = null
@@ -630,6 +639,7 @@ interface TplSig {
   /** Number of declared innerHTML elements — 0 short-circuits the branch. */
   htmlCount: number
 }
+
 const _tplSignature = new WeakMap<HTMLTemplateElement, TplSig | null>()
 
 function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
@@ -785,6 +795,7 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     midSlotCount,
   }
   _tplSignature.set(tpl, sig)
+
   return sig
 }
 
@@ -871,6 +882,7 @@ interface TripletSpot {
   /** Child index of the `$` open comment within that parent. */
   childIndex: number
 }
+
 interface AdoptPlan {
   sig: TplSig
   tripletSpots: TripletSpot[]
@@ -880,6 +892,7 @@ interface AdoptPlan {
   /** domPaths of elements whose EXTRA bare texts get removed (template 0, >1 texts). */
   removalSpots: number[][]
 }
+
 const _tplAdoptPlan = new WeakMap<HTMLTemplateElement, AdoptPlan | null>()
 
 function elByPath(root: Element, path: number[], upto: number): Element | null {
@@ -889,6 +902,7 @@ function elByPath(root: Element, path: number[], upto: number): Element | null {
     for (let k = 0; k < (path[i] as number) && c; k++) c = c.nextElementSibling
     el = c
   }
+
   return el
 }
 
@@ -906,6 +920,7 @@ function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch): AdoptPla
       path.unshift(idx)
       cur = parent
     }
+
     return path
   }
   if (match.triplets) {
@@ -921,6 +936,7 @@ function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch): AdoptPla
   }
   const soleTextSpots: number[][] = []
   if (match.soles) for (const el of match.soles) soleTextSpots.push(pathOf(el))
+
   return { sig, tripletSpots, soleTextSpots, removalSpots }
 }
 
@@ -985,6 +1001,7 @@ function replayAdoptPlan(root: Element, plan: AdoptPlan): boolean {
       n = nx
     }
   }
+
   return true
 }
 
@@ -1005,10 +1022,15 @@ function matchingCloseIsLastChild(open: Comment, el: Element): boolean {
       depth--
     }
   }
+
   return false
 }
 
-function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | null {
+function matchDomAgainstTemplate(
+  root: Element,
+  expected: TplSig,
+  rootDecorated = false,
+): AdoptMatch | null {
   let removals: Text[] | null = null
   let triplets: { open: Comment; text: Text | null; close: Comment }[] | null = null
   let midSlots: { open: Comment; text: Text | null; close: Comment }[] | null = null
@@ -1038,6 +1060,8 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
     const wantAttrs = expected.attrs[at] as [string, string][]
     for (let i = 0; i < wantAttrs.length; i++) {
       const pair = wantAttrs[i] as [string, string]
+      // A DECLARED root decoration owns the root's class and style.
+      if (at === 0 && rootDecorated && (pair[0] === 'class' || pair[0] === 'style')) continue
       if (el.getAttribute(pair[0]) !== pair[1]) return false
     }
     // DECLARED innerHTML ELEMENT. The template leaves it empty and the bind's
@@ -1094,6 +1118,7 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
           n = n.nextSibling
         }
         ;(holes ??= new Map()).set(el, n)
+
         return true
       }
     }
@@ -1317,10 +1342,12 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
         if (!walk(c)) return false
       }
     }
+
     return true
   }
   if (!walk(root)) return null
   if (idx !== total) return null
+
   return { removals, triplets, midSlots, parks, soles, emptySlots, holes, htmlEls }
 }
 
@@ -1360,6 +1387,7 @@ function findMatchingClose(open: Comment): Comment | null {
       depth--
     }
   }
+
   return null
 }
 
@@ -1416,7 +1444,12 @@ export function tplAdoptVerify(
   // Defaults to the SAFE path on purpose: a caller that forgets the flag gets
   // the full skeleton verify, never the unverified replay.
   allowPlanReplay = false,
+  // Declared by the component that decorates this item (`_declareRootDecoration`
+  // in template.ts): the root's `class` / `style` are not compared.
+  rootDecorated = false,
 ): boolean {
+  // A decorated root never replays a plan: the plan is shared per template.
+  if (rootDecorated) allowPlanReplay = false
   // The plan fast path is OPT-IN, and the opt-in means "successive targets are
   // structurally identical" — which only `<For>` rows can promise. The plan is
   // cached per TEMPLATE and `_tplCache` is keyed by HTML string and is
@@ -1460,13 +1493,14 @@ export function tplAdoptVerify(
     if (plan && target.tagName === (plan.sig.tags[0] as string) && replayAdoptPlan(target, plan)) {
       if (process.env.NODE_ENV !== 'production')
         _planCountSink.__pyreon_count__?.('runtime.tpl.adoptPlanReplay')
+
       return true
     }
   }
   const troot = tpl.content.firstElementChild
   if (!troot || target.tagName !== troot.tagName) return false
   const sig = templateSignature(tpl)
-  const match = sig !== null ? matchDomAgainstTemplate(target, sig) : null
+  const match = sig !== null ? matchDomAgainstTemplate(target, sig, rootDecorated) : null
   if (match === null) return false
   if (allowPlanReplay && plan === undefined) {
     // TWO restrictions compose here. #2925 gates replay behind
@@ -1500,5 +1534,6 @@ export function tplAdoptVerify(
   // Hand the verified holes to `_tpl` (one-shot; it clears the slot before
   // every verify, so a bail can never leave a stale map behind).
   if (match.holes !== null) _setTplHoleCursors(match.holes)
+
   return true
 }

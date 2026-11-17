@@ -1497,6 +1497,12 @@ describe('SSR compile-to-string fast path (ssrTemplate) syntax and optional nati
       `const Page = (p) => <main><Widget><span class="x">{p.t}</span></Widget></main>`,
     ],
     ['component child carrying key still bails', `const N = <div><Widget key="k" /></div>`],
+    // A KEYED ROOT is not templated (#4382): it is the value a parent component
+    // receives, and `_ssr` carries no key. Literal component children are the
+    // shape that reaches it; a keyed nested element still bakes, key dropped.
+    ['keyed literal children of a component stay h()', `const N = <K><li key="a">a</li><li>b</li></K>`],
+    ['keyed root element stays h()', `const N = <div key="k"><span>x</span></div>`],
+    ['keyed nested element still bakes', `const N = <ul><li key="a">a</li></ul>`],
     // The two backends reached statics quoting through two separately-written
     // functions until they were unified — exactly how an emit divergence starts.
     [
