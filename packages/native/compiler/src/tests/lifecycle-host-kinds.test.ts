@@ -148,12 +148,23 @@ export function App() {
       { target: 'swift' },
     ).code
 
-  it.each(SERVICES.filter((s) => s.lifecycle !== undefined).map((s) => s.hook))(
+  it.each(SERVICES.filter((s) => s.lifecycle !== undefined && s.lifecycle !== 'stop').map((s) => s.hook))(
     '%s wraps the body in a ZStack and starts the monitor',
     (hook) => {
       const out = host(hook)
       expect(out).toContain('ZStack {')
       expect(out).toContain('.onAppear { x.start() }')
+    },
+  )
+
+  // `'stop'`: the app starts the container itself (permission-gated); the screen only ends it.
+  it.each(SERVICES.filter((s) => s.lifecycle === 'stop').map((s) => s.hook))(
+    '%s wraps the body in a ZStack and only stops the monitor',
+    (hook) => {
+      const out = host(hook)
+      expect(out).toContain('ZStack {')
+      expect(out).toContain('.onDisappear { x.stop() }')
+      expect(out).not.toContain('.onAppear { x.start() }')
     },
   )
 

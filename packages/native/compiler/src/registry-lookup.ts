@@ -148,7 +148,7 @@ export function serviceFor(hook: string): ServiceDescriptor {
 }
 
 /** The lifecycle a `service` declaration needs started, if any. */
-export function serviceLifecycle(d: DeclIR): 'start' | 'start-stop' | undefined {
+export function serviceLifecycle(d: DeclIR): 'start' | 'start-stop' | 'stop' | undefined {
   return d.kind === 'service' ? serviceFor(d.hook).lifecycle : undefined
 }
 

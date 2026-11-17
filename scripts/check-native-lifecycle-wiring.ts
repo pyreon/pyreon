@@ -161,7 +161,7 @@ export interface LifecycleService {
   hook: string
   swift: string
   kotlin: readonly string[]
-  lifecycle?: 'start' | 'start-stop' | undefined
+  lifecycle?: 'start' | 'start-stop' | 'stop' | undefined
 }
 
 /**
@@ -270,7 +270,8 @@ export function verifyLifecycleWiring(
   // (4) The reverse direction: a descriptor that declares a `lifecycle` but is
   // absent from the registry is a container nobody classified.
   for (const svc of services) {
-    if (svc.lifecycle === undefined) continue
+    // `'stop'` only ends a container the app starts itself (a MANUAL one): there is no auto-start to classify.
+    if (svc.lifecycle === undefined || svc.lifecycle === 'stop') continue
     if (!registry.some((e) => e.hook === svc.hook)) {
       problems.push({
         kind: 'lifecycle-unregistered',

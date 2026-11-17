@@ -2682,8 +2682,8 @@
       "warnings": 0
     },
     "golden-fixture:flow-45.tsx|swift": {
-      "sha": "a3e56ee2008f2470e77ef9397b11e704f86cc7ca2926ecbaf2fba9bc12bcb218",
-      "bytes": 20154,
+      "sha": "7c395c67eb0a666a25ae908343266f5d256370e14907bd639bf5383ebdb9ebdc",
+      "bytes": 20188,
       "warnings": 0
     },
     "golden-fixture:flow-45.tsx|kotlin": {
@@ -3022,23 +3022,23 @@
       "warnings": 1
     },
     "golden-fixture:hooks-containers-01.tsx|swift": {
-      "sha": "456c0ac1e636e1b6d57307cfa718d3b131edee91e33684b7be10f50dfaa1a5b7",
-      "bytes": 692,
+      "sha": "9ac976bab83cee539f5d5f11161b40d2a28f8795183be9bbee4d9e722cb817cb",
+      "bytes": 740,
       "warnings": 0
     },
     "golden-fixture:hooks-containers-01.tsx|kotlin": {
-      "sha": "3927f93ca885ff934c1ec3ee3e79d6748790a8815ba63f090503dea86d23b6ed",
-      "bytes": 678,
+      "sha": "215d1fa8b22b76a679599e9c25f4528281f6affacdcc2976f1a06dcf0c804474",
+      "bytes": 748,
       "warnings": 0
     },
     "golden-fixture:hooks-containers-02.tsx|swift": {
-      "sha": "78d26dc112b2e8ae767b4f5f29b46ae9106e458a796f48dbef0f99435134acbf",
-      "bytes": 722,
+      "sha": "051a6cfee7c8a9a9a3c1ef4a3145fb1b2f6ea48862dd1813fc4873c0c51fd29b",
+      "bytes": 952,
       "warnings": 2
     },
     "golden-fixture:hooks-containers-02.tsx|kotlin": {
-      "sha": "f281d0c8c66b3fec69bb853da4090b58c5d11a93979151aa94dff6d5e04634bb",
-      "bytes": 724,
+      "sha": "db8397921e6464f95c40b26fc48ce3db8cba441ac45dd1bc253abdbfea8080c5",
+      "bytes": 1001,
       "warnings": 2
     },
     "golden-fixture:hooks-containers-03.tsx|swift": {
@@ -7372,8 +7372,8 @@
       "warnings": 0
     },
     "example:native-counter/Counter.tsx|swift": {
-      "sha": "15cf7e20f25c5a62242bc20d8ced7da447daa3494b7a664d26f095e67cdcdc63",
-      "bytes": 21958,
+      "sha": "b76c83ab908b1717f0a10c2029c94d99a3925d9672914131b3ebda18467eacad",
+      "bytes": 21992,
       "warnings": 0
     },
     "example:native-counter/Counter.tsx|kotlin": {
@@ -7392,13 +7392,13 @@
       "warnings": 0
     },
     "example:native-router-demo/RouterApp.tsx|swift": {
-      "sha": "9781fee8335a8e214be7c08e58b13702dbc5d29ad05a5e26d8de1601a0bf0657",
-      "bytes": 37932,
+      "sha": "cad929c4287f06105faa7745efb9e5e078b93cea4227a177cf5af74dae8c7c78",
+      "bytes": 37982,
       "warnings": 1
     },
     "example:native-router-demo/RouterApp.tsx|kotlin": {
-      "sha": "db1cf98900b2567b869dcf98eb2a42cdf48ce36a1719b396a548351258a86884",
-      "bytes": 32146,
+      "sha": "dc3311faab0723b6f1cc5926008032ee149b63393ce9636760d90d2e5efa7cba",
+      "bytes": 32218,
       "warnings": 1
     },
     "example:native-showcase/TodayApp.tsx|swift": {

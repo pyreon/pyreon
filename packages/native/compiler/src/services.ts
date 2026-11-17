@@ -101,11 +101,14 @@ export interface ServiceDescriptor {
   /**
    * A reactive monitor that must be started or the hook ships frozen at its
    * initial value. `'start-stop'` → Swift `.onAppear { x.start() }` +
-   * `.onDisappear { x.stop() }`; `'start'` → `.onAppear` only. Kotlin has no
-   * emit-side wiring: its descriptor line is the self-installing
-   * `rememberPyreon<Container>()` factory.
+   * `.onDisappear { x.stop() }`; `'start'` → `.onAppear` only; `'stop'` →
+   * `.onDisappear { x.stop() }` only (a container the app starts itself, such
+   * as the permission-gated geolocation watch, still ends with the screen, as
+   * the web hook's cleanup ends it). Kotlin has no emit-side wiring: its
+   * descriptor line is the self-installing `rememberPyreon<Container>()`
+   * factory, which owns the same teardown.
    */
-  readonly lifecycle?: 'start' | 'start-stop'
+  readonly lifecycle?: 'start' | 'start-stop' | 'stop'
   /** `const { x } = useHook()` destructure aliases onto the container. */
   readonly destructure?: true
   /**

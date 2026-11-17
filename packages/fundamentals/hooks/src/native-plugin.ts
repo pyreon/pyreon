@@ -419,13 +419,15 @@ const nativePlugin = {
       lifecycle: 'start',
       destructure: true,
     },
-    // Location. Permission-gated, so `start()` stays an explicit user action (not
-    // a `lifecycle`); Android's factory installs the platform LocationManager
-    // source (an app-chosen registry source wins).
+    // Location. Permission-gated, so `start()` stays an explicit user action; but a
+    // watch the app started ends with the screen, as the web hook's cleanup ends it
+    // (`lifecycle: 'stop'` on iOS; Android's factory disposes it). Android's factory
+    // installs the platform LocationManager source (an app-chosen registry source wins).
     useGeolocation: {
       legacyKind: 'geolocation',
       swift: 'PyreonGeolocation()',
       kotlin: ['val {id} = rememberPyreonGeolocation()'],
+      lifecycle: 'stop',
       kotlinState: ['latitude', 'longitude', 'accuracy', 'isAuthorized', 'error'],
       destructure: true,
       optionalFields: { latitude: num, longitude: num, accuracy: num, error: ERROR_OBJECT },
