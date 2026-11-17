@@ -717,6 +717,57 @@ describe('seeded JavaScript fallback — client + SSR', () => {
     },
   )
 
+  // Backend agreement cannot see a bug both backends share: a member tag
+  // (`<Ns.CompN>`) once compiled as a DOM element in BOTH, so its props were
+  // unbranded arrows (#4368). The metamorphic oracle: renaming every member tag
+  // to an identifier (`NsCompN`) must not change the emit beyond the tag text.
+  // Run for each backend that is present, every mode.
+  test(
+    `${SEEDS} seeds: a member tag compiles like the same component bound to an identifier`,
+    { timeout: SWEEP_TIMEOUT_MS },
+    () => {
+      const backends: Array<[string, (src: string, m: (typeof MODES)[number]) => string]> = [
+        [
+          'JS',
+          (src, m) =>
+            transformJSX_JS(src, 'fuzz.tsx', {
+              ssr: m.ssr,
+              ssrTemplate: m.ssrTemplate,
+              templatizeComponentChildren: m.templatizeComponentChildren === true,
+            }).code,
+        ],
+      ]
+      if (nativeTransform) {
+        const nt = nativeTransform
+        backends.push([
+          'native',
+          (src, m) =>
+            nt(src, 'fuzz.tsx', m.ssr, null, false, undefined, m.ssrTemplate === true, m.templatizeComponentChildren === true)
+              .code,
+        ])
+      }
+      let exercised = 0
+      const failures: string[] = []
+      for (let seed = 1; seed <= SEEDS; seed++) {
+        const src = genComponent(seed)
+        if (!src.includes('<Ns.Comp')) continue
+        exercised++
+        const renamed = src.replace(/(<\/?)Ns\.Comp/g, '$1NsComp')
+        for (const m of MODES) {
+          for (const [name, run] of backends) {
+            const viaMember = run(src, m)
+            const viaIdent = run(renamed, m).replace(/(<\/?)NsComp/g, '$1Ns.Comp')
+            if (viaMember !== viaIdent && failures.length < 5) {
+              failures.push(`seed=${seed} mode=${m.label} backend=${name}\n${src}\n── member ──\n${viaMember}\n── identifier ──\n${viaIdent}`)
+            }
+          }
+        }
+      }
+      expect(exercised, 'the grammar stopped generating member tags').toBeGreaterThan(SEEDS * 0.05)
+      expect(failures, failures.join('\n\n')).toEqual([])
+    },
+  )
+
   // A differential mode that never changes the output is a mode that proves
   // nothing — it would pass byte-identically against a backend where the option
   // was never implemented at all. This pins that the `client-tpl-components`
