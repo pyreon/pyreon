@@ -132,13 +132,17 @@ Example output:
 ```
 pyreon check · 3 files · git-changed files
 
-  ✗ signal-write-as-call · `count(value)` does NOT write the signal — use `count.set(value)` …
+  ✗ signal-write-as-call · `count(value)` does NOT write the signal — `signal()` is the read-only
+     callable surface and ignores its arguments. Use `count.set(value)` to assign or
+     `count.update((prev) => …)` to derive from the previous value. Pyreon's runtime warns about
+     this pattern in dev, but the warning fires AFTER the silent no-op.
      ↳ src/Counter.tsx:4:2
      fix: count.set(5) (auto-fixable: run with --fix)
 
-  ✗ for-missing-by · <For each={...}> requires a `by` prop so the keyed reconciler can preserve …
+  ✗ for-missing-by · <For each={...}> requires a `by` prop: it keys the rows, and a <For> without
+     one throws when it mounts.
      ↳ src/Counter.tsx:5:9
-     fix: <For each={items} by={(item) => item.id}>
+     fix: <For each={items()} by={(item) => item.id}>
 
 ✗ 2 findings in 1 file · 1 auto-fixable with --fix · 3 files checked · 41 ms
 ```

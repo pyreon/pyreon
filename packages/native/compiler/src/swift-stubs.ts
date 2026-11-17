@@ -1694,6 +1694,9 @@ public func pyreonToNumber(_ text: String) -> Double { 0 }
 // pyreonOptionalText — an optional value as the web's text (PyreonNumber.swift). Mirrors the real overloads.
 public func pyreonOptionalText<T>(_ v: T?, _ absent: String) -> String { "" }
 public func pyreonOptionalText(_ v: Double?, _ absent: String) -> String { "" }
+// str.split(sep) / [...str] (PyreonSlice.swift). Mirror the real signatures.
+public func pyreonSplit(_ s: String, _ separator: String, _ limit: Int? = nil) -> [String] { [] }
+public func pyreonCodePoints(_ s: String) -> [String] { [] }
 // PyreonDate — JS Date as epoch milliseconds (PyreonDate.swift). Mirrors the real surface.
 public func pyreonDateFrom(_ text: String) -> Double { 0 }
 public func pyreonDateFrom(_ ms: Double) -> Double { 0 }

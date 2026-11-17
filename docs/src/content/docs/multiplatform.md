@@ -76,11 +76,11 @@ export function TodoApp() {
   return (
     <Stack gap="md">
       <Field
-        value={draft}
+        value={draft()}
         onChangeText={(text) => draft.set(text)}
         placeholder="What needs to be done?"
       />
-      <For each={todos} by={(t) => t.id}>
+      <For each={todos()} by={(t) => t.id}>
         {(t) => (
           <Inline gap="sm">
             <Text>{t.text}</Text>
