@@ -22,30 +22,20 @@ export interface SignalBindings {
   otherBound: Set<string>
 }
 
-/** The child pattern(s) a binding pattern binds through. */
-function subPatterns(pattern: any): any[] {
-  switch (pattern.type) {
-    case 'ObjectPattern':
-      return (pattern.properties ?? []).map((p: any) =>
-        p.type === 'RestElement' ? p.argument : p.value,
-      )
-    case 'ArrayPattern':
-      return pattern.elements ?? []
-    case 'RestElement':
-      return [pattern.argument]
-    case 'AssignmentPattern':
-      return [pattern.left]
-    case 'TSParameterProperty':
-      return [pattern.parameter]
-  }
-
-  return []
+/** The child pattern(s) a binding pattern binds through, by pattern type. */
+const SUB_PATTERNS: Record<string, (pattern: any) => any[]> = {
+  ObjectPattern: (p) =>
+    (p.properties ?? []).map((q: any) => (q.type === 'RestElement' ? q.argument : q.value)),
+  ArrayPattern: (p) => p.elements ?? [],
+  RestElement: (p) => [p.argument],
+  AssignmentPattern: (p) => [p.left],
+  TSParameterProperty: (p) => [p.parameter],
 }
 
 function addPatternNames(pattern: any, out: Set<string>): void {
   if (!pattern) return
   if (pattern.type === 'Identifier') out.add(pattern.name)
-  else for (const sub of subPatterns(pattern)) addPatternNames(sub, out)
+  else for (const sub of SUB_PATTERNS[pattern.type]?.(pattern) ?? []) addPatternNames(sub, out)
 }
 
 function isSignalFactoryCall(init: any): boolean {

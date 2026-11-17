@@ -192,6 +192,54 @@ describe('pyreon/consistent-signal-read — form: called (default)', () => {
     expect(flagged(body)).toEqual([])
   })
 
+  it('sees only value reads: declarations, keys, labels, types and exports are not reads', () => {
+    const body = [
+      'const n = signal(0)',
+      'type T = typeof n',
+      'export { n }',
+      'class Box {',
+      '  n = 1',
+      '}',
+      'const o = { n: 1 }',
+      'const read = () => n',
+      'n: for (const x of [1]) {',
+      '  break n',
+      '}',
+      'export const A = () => <div xlink:href={n}>{[n, , o.n]}</div>',
+    ].join('\n')
+    expect(flagged(body).map((f) => f.text)).toEqual(['n', 'n'])
+  })
+
+  it('leaves writes and typeof alone inside JSX', () => {
+    expect(
+      flagged(
+        `const n = signal(0)\nexport const A = () => <i onClick={() => (n = 1 as never)}>{typeof n}</i>`,
+      ),
+    ).toEqual([])
+  })
+
+  it('treats every other binding form as ambiguous (scope-blind collection)', () => {
+    const shapes = [
+      `const { n } = { n: 1 }`,
+      `const { ...n } = {}`,
+      `const [, n] = [0, 1]`,
+      `const [n = 1] = []`,
+      `const [...n] = []`,
+      `class n {}`,
+      `try {} catch (n) {}`,
+      `import n from './n'`,
+      `import * as n from './n'`,
+      `function f(n: number) { return n }`,
+      `class C { constructor(private n: number) {} }`,
+    ]
+    for (const shape of shapes) {
+      expect(
+        flagged(`const n = signal(0)\n${shape}\nexport const A = () => <div>{n}</div>`),
+        shape,
+      ).toEqual([])
+    }
+  })
+
   it('skips test files and Plain Mode files', () => {
     const body = `const n = signal(0)\nexport const A = () => <div>{n}</div>`
     expect(flagged(body, undefined, '/p/src/a.test.tsx')).toEqual([])

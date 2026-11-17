@@ -58,17 +58,14 @@ const TRANSPARENT = new Set([
   'ChainExpression',
 ])
 
-function attrName(attr: Node): string | null {
-  const n = attr?.name
-  if (!n) return null
-  if (n.type === 'JSXIdentifier') return n.name
-  if (n.type === 'JSXNamespacedName') return `${n.namespace?.name}:${n.name?.name}`
+/** `onClick`, or `xlink:href` for a namespaced attribute. */
+function attrName(attr: Node): string {
+  const n = attr.name
 
-  return null
+  return n.type === 'JSXIdentifier' ? n.name : `${n.namespace.name}:${n.name.name}`
 }
 
-const isHandlerOrRef = (name: string | null): boolean =>
-  name !== null && (name === 'ref' || /^on[A-Z]/.test(name))
+const isHandlerOrRef = (name: string): boolean => name === 'ref' || /^on[A-Z]/.test(name)
 
 function isIntrinsicElement(opening: Node): boolean {
   const n = opening?.name
@@ -84,12 +81,11 @@ function isControlFlow(opening: Node): boolean {
 
 /** Walk with the ancestor stack. */
 function walk(node: Node, stack: Node[], visit: (n: Node, stack: Node[]) => void): void {
-  if (!node || typeof node.type !== 'string') return
+  // Array holes (`[a, , b]`) and absent optional children are null.
+  if (node === null) return
   visit(node, stack)
-  const keys = visitorKeys[node.type]
-  if (!keys) return
   stack.push(node)
-  for (const key of keys) {
+  for (const key of visitorKeys[node.type] ?? []) {
     const child = node[key]
     if (Array.isArray(child)) {
       for (const item of child) walk(item, stack, visit)
@@ -157,15 +153,14 @@ function isNeitherForm(user: Node, outer: Node): boolean {
  */
 function jsxZone(stack: Node[], from: number): Zone | null {
   let nested = false
-  for (let i = from; i >= 0; i--) {
+  // stack[0] is the Program, so the walk up always ends in a return.
+  for (let i = from; ; i--) {
     const n = stack[i]
     if (n.type === 'JSXExpressionContainer') return { container: n, owner: stack[i - 1], nested }
     if (FUNCTION_TYPES.has(n.type)) nested = true
     // A class body inside JSX is code, not a template position.
     if (n.type === 'ClassBody' || n.type === 'Program') return null
   }
-
-  return null
 }
 
 function readSite(node: Node, stack: Node[]): Site | null {
@@ -206,7 +201,7 @@ function checkCalled(site: Site, report: Report): void {
 
     return
   }
-  const onAttr = zone.owner?.type === 'JSXAttribute'
+  const onAttr = zone.owner.type === 'JSXAttribute'
   if (onAttr && isHandlerOrRef(attrName(zone.owner))) return
   // The whole value of a component prop: on native targets PMTC reads
   // `<Field value={draft}>` as a two-way binding (`$draft`), and the called
@@ -237,11 +232,10 @@ function checkCalled(site: Site, report: Report): void {
 function checkBare(site: Site, report: Report): void {
   const { user, zone } = site
   if (!site.isCall || zone.nested || zone.container.expression !== user) return
+  // The container's owner is an attribute, or an element / fragment (a child).
   const owner = zone.owner
-  if (owner?.type === 'JSXAttribute') {
+  if (owner.type === 'JSXAttribute') {
     if (isHandlerOrRef(attrName(owner)) || !isIntrinsicElement(openingOf(site))) return
-  } else if (owner?.type !== 'JSXElement' && owner?.type !== 'JSXFragment') {
-    return
   }
   report({
     message: `Read the signal as \`{${site.node.name}}\`. The compiler auto-calls a bare signal here and emits the same binding.`,
@@ -307,13 +301,6 @@ function isValueReference(node: Node, parent: Node): boolean {
   }
   if (parent.type.startsWith('TS') && !TRANSPARENT.has(parent.type)) return false
   if (parent.type.startsWith('Import') || parent.type.startsWith('Export')) return false
-  if (
-    parent.type.startsWith('JSX') &&
-    parent.type !== 'JSXExpressionContainer' &&
-    parent.type !== 'JSXSpreadAttribute'
-  ) {
-    return false
-  }
   if (FUNCTION_TYPES.has(parent.type)) return parent.body === node
 
   return true
