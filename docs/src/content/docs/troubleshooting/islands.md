@@ -37,6 +37,12 @@ Context is owner-based, and a late `hydrateRoot` has no parent owner, so `useCon
 
 ---
 
+### [FIXED, 2026-11] Observing an element that has no box (#4435).
+
+The `visible` trigger observed the island element, then (one fix later) its element children when the island was `display: contents`. An IntersectionObserver never reports a box-less target, so an island whose content started under a further `contents` wrapper (a nested `<PyreonUI mode>` renders one) never hydrated and its chunk was never requested. **Rule: observe the first elements under the island that are not `display: contents`, at ANY depth (`client.ts:visibilityTargets`, shared with `prefetch: 'visible'`); an element hidden right now (`display: none`, closed `<details>`) is still a target and fires when shown; with no element at all (a `contents` island holding only text or nothing) observe the nearest boxed ancestor and warn once per page in dev (`[Pyreon] island "X" uses hydrate: 'visible' but nothing in it can be observed`, catalogued in `diagnose`).** Any API that needs geometry of a node the author does not control (IntersectionObserver, ResizeObserver, `getBoundingClientRect`) must say what it does when that node has no box. `interaction` is unaffected (events follow the DOM, capture phase); `idle`/`media` are layout-free. No static audit: whether a wrapper is box-less is CSS, often from a dependency. Locks: `server/src/tests/island-visible-targets.browser.test.tsx` (the class table in real Chromium) and `island-visible-targets.test.ts` — bisect-verified.
+
+---
+
 ### Registering a `hydrate: 'never'` island in `hydrateIslands({ ... })`
 
 The loader never runs, but the import still pulls the component into the client bundle. Drop the entry.

@@ -595,3 +595,19 @@ describe('diagnoseError — signal method passed by reference', () => {
     expect(result?.fixCode).toBe('count.set(value)')
   })
 })
+
+describe('diagnoseError — visible island with nothing to observe (#4435)', () => {
+  const message =
+    "[Pyreon] island \"Tagline\" uses hydrate: 'visible' but nothing in it can be observed: the island is `display: contents` and holds no element (only text, or nothing). It will hydrate when its nearest boxed ancestor scrolls into view. Wrap the content in an element, or use hydrate: 'idle' or 'load'. (Reported once per page.)"
+
+  it('names the island, the fallback and the fix', () => {
+    const result = diagnoseError(message)
+    expect(result?.cause).toContain('island "Tagline"')
+    expect(result?.cause).toContain('nearest ancestor that has a box')
+    expect(result?.fix).toContain('real element root')
+  })
+
+  it('does not fire on unrelated visible-strategy text', () => {
+    expect(diagnoseError("island uses hydrate: 'visible' and loads late")?.cause ?? '').not.toContain('box-less')
+  })
+})

@@ -63,6 +63,11 @@ function _count(name: string): void {
   sink.__pyreon_count__?.(name)
 }
 
+// Dev: the box-less `visible` island warning is reported once per page (see
+// `visibilityTargets`). Declared up here, before any function that reads it can
+// run (the TDZ note above).
+let _warnedBoxless = false
+
 // ─── Full app hydration ──────────────────────────────────────────────────────
 
 export interface StartClientOptions {
@@ -128,6 +133,7 @@ export function startClient(options: StartClientOptions): () => void {
   if (el.childNodes.length > 0) {
     return hydrateRoot(el, app)
   }
+
   return mount(app, el as HTMLElement)
 }
 
@@ -309,6 +315,7 @@ export function schedulePrefetch(
     { rootMargin: '200px' },
   )
   for (const target of visibilityTargets(el)) observer.observe(target)
+
   return () => {
     cancelled = true
     observer.disconnect()
@@ -378,8 +385,10 @@ export function hydrateIslandsAuto(registry?: AutoIslandRegistry): () => void {
           `\`import * as registry from 'virtual:pyreon/islands-registry'; hydrateIslandsAuto(registry)\`.`,
       )
     }
+
     return () => {}
   }
+
   return hydrateIslands(registry.__pyreonIslandRegistry)
 }
 
@@ -456,6 +465,7 @@ export function scheduleHydration(
           }
         }
         mql.addEventListener('change', onChange)
+
         return () => {
           cancelled = true
           mql.removeEventListener('change', onChange)
@@ -467,9 +477,11 @@ export function scheduleHydration(
         const events = eventsStr
           ? eventsStr.split(',').map((s) => s.trim()).filter(Boolean)
           : DEFAULT_INTERACTION_EVENTS
+
         return scheduleInteractionHydration(el, hydrate, events)
       }
       hydrate()
+
       return null
   }
 }
@@ -601,6 +613,7 @@ function scheduleInteractionHydration(
   for (const ev of events) {
     el.addEventListener(ev, dispatch, INTERACTION_LISTENER_OPTS)
   }
+
   return () => {
     if (hydrated) return
     el.removeAttribute('data-island-state')
@@ -647,6 +660,7 @@ function captureReplayPath(el: Element, target: Element): ReplayPath | null {
     steps.unshift({ tag: node.tagName, index })
     node = parent
   }
+
   return { kind: 'path', steps }
 }
 
@@ -660,6 +674,7 @@ function resolveReplayPath(el: Element, path: ReplayPath): HTMLElement | null {
     if (!child || child.tagName !== tag) return null
     node = child
   }
+
   return node as HTMLElement | null
 }
 
@@ -686,6 +701,7 @@ async function hydrateIsland(
       console.error(`Invalid island props JSON for "${name}"`, parseErr)
       el.setAttribute('data-island-error', 'invalid-props')
       if (process.env.NODE_ENV !== 'production') _count('island.error')
+
       return
     }
 
@@ -713,16 +729,42 @@ async function hydrateIsland(
 }
 
 /**
- * What to observe for an island's `visible` trigger. An island element styled
- * `display: contents` (a common choice: the wrapper then adds no box to the
- * layout) generates no box, and an IntersectionObserver never reports a
- * box-less target as intersecting, so the island never hydrated. Its element
- * children carry the boxes; any of them entering the viewport counts.
+ * What to observe for an island's `visible` trigger (and `prefetch: 'visible'`).
+ *
+ * An IntersectionObserver never reports a box-less target as intersecting, and
+ * a `display: contents` element generates no box. Islands are often styled that
+ * way (the wrapper then adds nothing to flex / grid layouts), and their content
+ * often starts under more box-less wrappers (a nested `PyreonUI` scope renders
+ * one), so: observe the first elements under the island that are not
+ * `display: contents`, at any depth; any of them entering the viewport counts.
+ * One hidden right now (`display: none`, inside a closed `<details>`) is
+ * observed as it is: it intersects once it gets a box, which is when it can be
+ * seen. With no such element at all (a `contents` island holding only text, or
+ * nothing), observe the nearest ancestor that has a box, so the island still
+ * hydrates when its place on the page does.
  */
 function visibilityTargets(el: HTMLElement): Element[] {
-  if (typeof getComputedStyle === 'undefined' || getComputedStyle(el).display !== 'contents') return [el]
-  const children = [...el.children]
-  return children.length > 0 ? children : [el]
+  if (typeof getComputedStyle === 'undefined') return [el]
+  const out: Element[] = []
+  const walk = (e: Element): void => {
+    if (getComputedStyle(e).display !== 'contents') out.push(e)
+    else for (const c of e.children) walk(c)
+  }
+  walk(el)
+  if (out.length > 0) return out
+  let box: Element | null = el.parentElement
+  while (box !== null && getComputedStyle(box).display === 'contents') box = box.parentElement
+  if (process.env.NODE_ENV !== 'production' && !_warnedBoxless) {
+    _warnedBoxless = true
+    console.warn(
+      `[Pyreon] island "${el.getAttribute('data-component')}" uses hydrate: 'visible' but nothing in it can be ` +
+        'observed: the island is `display: contents` and holds no element (only text, or nothing). It will ' +
+        'hydrate when its nearest boxed ancestor scrolls into view. Wrap the content in an element, or use ' +
+        "hydrate: 'idle' or 'load'. (Reported once per page.)",
+    )
+  }
+
+  return [box ?? el]
 }
 
 function observeVisibility(el: HTMLElement, callback: () => void): (() => void) | null {
@@ -747,6 +789,7 @@ function observeVisibility(el: HTMLElement, callback: () => void): (() => void) 
   )
 
   for (const target of visibilityTargets(el)) observer.observe(target)
+
   return () => observer.disconnect()
 }
 

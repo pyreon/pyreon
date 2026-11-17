@@ -44,6 +44,7 @@ function compilerExportSubpath(name: string): 'analyze' | 'audits' | 'validate' 
     return 'validate'
   if (/^(?:audit|formatTestAudit|formatIslandAudit|formatSsgAudit|generateContext)/.test(name))
     return 'audits'
+
   return 'analyze'
 }
 
@@ -1918,6 +1919,19 @@ const Two = island(() => import('./Two'), { name: 'Two', hydrate: 'load' })`,
     }),
   },
   {
+    // Dev warning from `@pyreon/server/client` `visibilityTargets` (#4435).
+    pattern: /island "([^"]*)" uses hydrate: 'visible' but nothing in it can be observed/,
+    diagnose: (m) => ({
+      cause: `The \`visible\` trigger observes the first elements under island "${m[1]}" that generate a box, walking through \`display: contents\` wrappers at any depth; an IntersectionObserver never reports a box-less target. This island is \`display: contents\` and holds no element at all (only text, or nothing), so there is nothing of its own to observe. It falls back to its nearest ancestor that has a box, so it hydrates when that ancestor scrolls into view, which may be much earlier than the island itself.`,
+      fix: 'Give the island content a real element root (wrap the text in a <span>/<div>), or drop `display: contents` from the island, or pick a strategy that does not depend on layout (`hydrate: "idle"` or `"load"`). A `display: contents` island whose content IS an element (including under further contents wrappers such as a nested PyreonUI scope) needs no change.',
+      fixCode: `export default function Tagline() {
+  return <span>{() => text()}</span>   // an element the trigger can observe
+}`,
+      related:
+        'An element that is hidden right now (display: none at this width, inside a closed <details>) is still observed and hydrates once it is shown; that case does not warn.',
+    }),
+  },
+  {
     // `renderToString` is a MAYBE-SYNC renderer: it concatenates with zero
     // promise hops for a fully-sync tree, but a single `async function`
     // component promotes its whole subtree to a Promise. Calling a string
@@ -2558,5 +2572,6 @@ export function diagnoseError(error: string): ErrorDiagnosis | null {
       return diagnose(match)
     }
   }
+
   return null
 }
