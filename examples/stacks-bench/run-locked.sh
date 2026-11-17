@@ -7,9 +7,11 @@ cd "$(dirname "$0")"
 IDS=("$@")
 if [ ${#IDS[@]} -eq 0 ]; then IDS=(zero astro next nuxt qwik react-router solidstart sveltekit tanstack-start); fi
 T0=$(date +%s)
+# One run directory for every arm (results/<runId>/).
+RUN="${STACKS_RUN_ID:-$(date -u +%Y-%m-%dT%H-%M-%SZ)}"
 for id in "${IDS[@]}"; do
   S=$(date +%s)
-  "$LOCK" bun bench-stacks.ts "$id"
+  STACKS_RUN_ID="$RUN" "$LOCK" bun bench-stacks.ts "$id"
   echo "### $id: $(( $(date +%s) - S )) s including lock wait"
 done
 echo "### total wall $(( $(date +%s) - T0 )) s"
