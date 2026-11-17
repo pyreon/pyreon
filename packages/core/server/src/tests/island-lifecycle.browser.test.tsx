@@ -26,6 +26,7 @@ import { For, h, lazy, onMount, onUnmount, Show, Suspense } from '@pyreon/core'
 import { effect, signal } from '@pyreon/reactivity'
 import { createRouter, RouterProvider, RouterView, setActiveRouter } from '@pyreon/router'
 import { mount } from '@pyreon/runtime-dom'
+import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import { hydrateIslands } from '../client'
 import type { HydrationStrategy, PrefetchStrategy } from '../island'
@@ -46,6 +47,7 @@ const waitFor = async (cond: () => boolean, timeoutMs = 5000): Promise<void> => 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 /** An outside signal the probe's effect reads — a leaked effect re-runs on it. */
+// pyreon-lint-disable-next-line pyreon/prefer-request-context -- a test fixture, not server state; no requests run here
 const outside = signal(0)
 
 interface Stats {
@@ -85,6 +87,7 @@ const Probe: ComponentFn = () => {
     const id = setInterval(() => stats.ticks++, 5)
     const onPing = () => stats.windowHits++
     window.addEventListener('probe-ping', onPing)
+
     return () => {
       stats.mountCleanups++
       clearInterval(id)
@@ -95,10 +98,12 @@ const Probe: ComponentFn = () => {
     stats.unmounts++
     stats.live--
   })
+
   return h('button', { type: 'button', 'data-testid': 'probe' }, 'probe')
 }
 
 let loaderGate: Promise<void> | null = null
+
 const probeLoader = async () => {
   stats.loads++
   if (loaderGate) await loaderGate
@@ -106,6 +111,7 @@ const probeLoader = async () => {
 }
 
 let islandSeq = 0
+
 const makeIsland = (hydrate: HydrationStrategy = 'load', prefetch: PrefetchStrategy = 'none') =>
   island(probeLoader, { name: `Probe${++islandSeq}`, hydrate, prefetch })
 
@@ -138,6 +144,7 @@ const trackIdle = () => {
   window.cancelIdleCallback = (id) => {
     queued.delete(id)
   }
+
   return {
     pending: () => queued.size,
     run: () => {
@@ -155,16 +162,19 @@ const trackIdle = () => {
 
 const hosts: HTMLElement[] = []
 const unmounts: (() => void)[] = []
+
 /** `mount` into a fresh host; the instance is unmounted after the test. */
 const mountHere = (vnode: Parameters<typeof mount>[0], el = host()) => {
   const u = mount(vnode, el)
   unmounts.push(u)
   return u
 }
+
 const host = () => {
   const el = document.createElement('div')
   document.body.appendChild(el)
   hosts.push(el)
+
   return el
 }
 
@@ -254,6 +264,7 @@ describe('island lifecycle — every removal path disposes the island (#4387)', 
         { path: '/', component: PageB },
         { path: '/a', component: PageA },
         { path: '/b', component: PageB },
+        { path: '*', component: PageB },
       ],
     })
     const unmount = mount(h(RouterProvider, { router }, h(RouterView, null)), host())
@@ -290,6 +301,7 @@ describe('island lifecycle — every removal path disposes the island (#4387)', 
         { path: '/', component: Leaf },
         { path: '/x', component: LayoutA, children: [{ path: 'one', component: Leaf }, { path: 'two', component: Leaf }] },
         { path: '/y', component: LayoutB, children: [{ path: 'one', component: Leaf }] },
+        { path: '*', component: Leaf },
       ],
     })
     const unmount = mount(h(RouterProvider, { router }, h(RouterView, null)), host())
@@ -324,6 +336,7 @@ describe('island lifecycle — every removal path disposes the island (#4387)', 
         { path: '/', component: PageB },
         { path: '/a', component: PageA },
         { path: '/b', component: PageB },
+        { path: '*', component: PageB },
       ],
     })
     const unmount = mount(h(RouterProvider, { router }, h(RouterView, null)), host())
@@ -395,6 +408,7 @@ describe('island lifecycle — a trigger that has not fired is cancelled on remo
         super(cb, opts)
         live.add(this)
       }
+
       override disconnect(): void {
         live.delete(this)
         super.disconnect()
@@ -450,7 +464,7 @@ describe('island lifecycle — a trigger that has not fired is cancelled on remo
     const el = host()
     mountHere(h(Show, { when: () => on() }, h(Isle, null)), el)
     await waitFor(() => el.querySelector('pyreon-island')?.getAttribute('data-island-state') === 'awaiting-interaction')
-    const marker = el.querySelector('pyreon-island') as HTMLElement
+    const marker = query(el, 'pyreon-island')
     on.set(false)
     await flush()
     marker.dispatchEvent(new Event('focus'))
@@ -487,6 +501,7 @@ describe('island lifecycle — static pages (hydrateIslands, no router)', () => 
     el.setAttribute('data-hydrate', hydrate)
     el.innerHTML = '<button type="button" data-testid="probe">probe</button>'
     document.body.appendChild(el)
+
     return el
   }
 

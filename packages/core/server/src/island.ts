@@ -211,11 +211,13 @@ export function island<P extends Props = Props>(
             stopHydration()
           }
         })
+
         return () => {
           gone = true
           stop?.()
         }
       })
+
       return h('pyreon-island', {
         ...attrs,
         ref: (e: Element | null) => {
@@ -231,6 +233,7 @@ export function island<P extends Props = Props>(
     // NOW, before the loader awaits, so it follows document order rather than the order the chunks resolve in.
     const idPrefix = _nextIslandIdPrefix()
     attrs['data-id-prefix'] = idPrefix
+
     return loader().then((mod) => {
       const Comp = typeof mod === 'function' ? mod : mod.default
       return h('pyreon-island', attrs, h(_IslandIds, { prefix: idPrefix }, h(Comp, props)))
@@ -325,6 +328,7 @@ function serializeIslandProps(
           `Falling back to empty props. ${(err as Error).message}`,
       )
     }
+
     return '{}'
   }
 }

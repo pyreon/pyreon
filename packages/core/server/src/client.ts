@@ -128,6 +128,7 @@ export function startClient(options: StartClientOptions): () => void {
   if (el.childNodes.length > 0) {
     return hydrateRoot(el, app)
   }
+
   return mount(app, el as HTMLElement)
 }
 
@@ -318,6 +319,7 @@ export function schedulePrefetch(
     { rootMargin: '200px' },
   )
   for (const target of visibilityTargets(el)) observer.observe(target)
+
   return () => {
     cancelled = true
     observer.disconnect()
@@ -387,8 +389,10 @@ export function hydrateIslandsAuto(registry?: AutoIslandRegistry): () => void {
           `\`import * as registry from 'virtual:pyreon/islands-registry'; hydrateIslandsAuto(registry)\`.`,
       )
     }
+
     return () => {}
   }
+
   return hydrateIslands(registry.__pyreonIslandRegistry)
 }
 
@@ -432,6 +436,7 @@ export function scheduleHydration(
     })
   }
   const cancel = startTrigger(el, strategy, hydrate)
+
   return () => {
     if (disposed) return
     disposed = true
@@ -450,6 +455,8 @@ function startTrigger(
   strategy: HydrationStrategy,
   hydrate: () => Promise<void>,
 ): (() => void) | null {
+  /* v8 ignore next */
+  if (isServer) return null
   switch (strategy) {
     case 'load':
       hydrate()
@@ -493,6 +500,7 @@ function startTrigger(
           }
         }
         mql.addEventListener('change', onChange)
+
         return () => mql.removeEventListener('change', onChange)
       }
       // interaction(<events>) — comma-separated event names
@@ -501,9 +509,11 @@ function startTrigger(
         const events = eventsStr
           ? eventsStr.split(',').map((s) => s.trim()).filter(Boolean)
           : DEFAULT_INTERACTION_EVENTS
+
         return scheduleInteractionHydration(el, hydrate, events)
       }
       hydrate()
+
       return null
   }
 }
@@ -635,6 +645,7 @@ function scheduleInteractionHydration(
   for (const ev of events) {
     el.addEventListener(ev, dispatch, INTERACTION_LISTENER_OPTS)
   }
+
   return () => {
     if (hydrated) return
     el.removeAttribute('data-island-state')
@@ -681,6 +692,7 @@ function captureReplayPath(el: Element, target: Element): ReplayPath | null {
     steps.unshift({ tag: node.tagName, index })
     node = parent
   }
+
   return { kind: 'path', steps }
 }
 
@@ -694,6 +706,7 @@ function resolveReplayPath(el: Element, path: ReplayPath): HTMLElement | null {
     if (!child || child.tagName !== tag) return null
     node = child
   }
+
   return node as HTMLElement | null
 }
 
@@ -721,6 +734,7 @@ async function hydrateIsland(
       console.error(`Invalid island props JSON for "${name}"`, parseErr)
       el.setAttribute('data-island-error', 'invalid-props')
       if (process.env.NODE_ENV !== 'production') _count('island.error')
+
       return null
     }
 
@@ -748,11 +762,13 @@ async function hydrateIsland(
     // devtools can wait for it (a static page never sets data-pyreon-hydrated).
     el.setAttribute('data-island-hydrated', '')
     if (process.env.NODE_ENV !== 'production') _count('island.hydrated')
+
     return unmount
   } catch (err) {
     console.error(`Failed to hydrate island "${name}"`, err)
     el.setAttribute('data-island-error', 'hydration-failed')
     if (process.env.NODE_ENV !== 'production') _count('island.error')
+
     return null
   }
 }
@@ -792,6 +808,7 @@ function observeVisibility(el: HTMLElement, callback: () => void): (() => void) 
   )
 
   for (const target of visibilityTargets(el)) observer.observe(target)
+
   return () => observer.disconnect()
 }
 

@@ -18,11 +18,13 @@ import { hydrateIslands, scheduleHydration } from '../client'
 import { island } from '../island'
 
 const tick = () => new Promise<void>((r) => setTimeout(r, 0))
+
 const until = async (cond: () => boolean) => {
   for (let i = 0; i < 100 && !cond(); i++) await new Promise((r) => setTimeout(r, 5))
   expect(cond()).toBe(true)
 }
 
+// pyreon-lint-disable-next-line pyreon/prefer-request-context -- a test fixture, not server state; no requests run here
 const outside = signal(0)
 const s = { loads: 0, mounts: 0, unmounts: 0, effectRuns: 0 }
 
@@ -37,8 +39,10 @@ function Probe() {
   onUnmount(() => {
     s.unmounts++
   })
+
   return h('b', { 'data-testid': 'probe' }, 'probe')
 }
+
 const loader = async () => {
   s.loads++
   return { default: Probe }
@@ -56,6 +60,7 @@ const marker = (html = '') => {
   el.setAttribute('data-hydrate', 'load')
   el.innerHTML = html
   document.body.appendChild(el)
+
   return el
 }
 
