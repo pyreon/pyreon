@@ -10,15 +10,7 @@
     "esModuleInterop": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": [
-      "bun",
-      "vite/client"
-    ]
+    "types": ["bun", "vite/client"]
   },
-  "include": [
-    "src",
-    "env.d.ts",
-    "vite.config.ts",
-    "content.config.ts"
-  ]
+  "include": ["src", "env.d.ts", "vite.config.ts", "content.config.ts"]
 }

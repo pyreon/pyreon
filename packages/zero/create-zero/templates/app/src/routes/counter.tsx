@@ -1,8 +1,8 @@
-import { useHead } from "@pyreon/head"
-import { derived, state } from "@pyreon/core/plain"
+import { derived, state } from '@pyreon/core/plain'
+import { useHead } from '@pyreon/head'
 
 export const meta = {
-  title: "Counter — Pyreon Zero",
+  title: 'Counter — Pyreon Zero',
   description: "See Pyreon's signal-based reactivity in action.",
 }
 
@@ -17,7 +17,10 @@ export default function Counter() {
 
   return (
     <>
-      <div class="page-header" style="text-align: center;">
+      <div
+        class="page-header"
+        style="text-align: center;"
+      >
         <span class="badge">Interactive Demo</span>
         <h1 style="margin-top: var(--space-md);">Signal Reactivity</h1>
         <p>
@@ -33,17 +36,27 @@ export default function Counter() {
           <button
             type="button"
             class="btn btn-secondary"
-            onClick={() => { count-- }}
+            onClick={() => {
+              count--
+            }}
           >
             -
           </button>
-          <button type="button" class="btn btn-primary" onClick={() => { count = 0 }}>
+          <button
+            type="button"
+            class="btn btn-primary"
+            onClick={() => {
+              count = 0
+            }}
+          >
             Reset
           </button>
           <button
             type="button"
             class="btn btn-secondary"
-            onClick={() => { count++ }}
+            onClick={() => {
+              count++
+            }}
           >
             +
           </button>
@@ -57,15 +70,19 @@ export default function Counter() {
             doubled → <strong>{doubled}</strong>
           </div>
           <div>
-            isEven → <strong>{isEven ? "true" : "false"}</strong>
+            isEven → <strong>{isEven ? 'true' : 'false'}</strong>
           </div>
         </div>
       </div>
 
-      <div class="code-block" style="max-width: 520px; margin: var(--space-2xl) auto 0;">
+      <div
+        class="code-block"
+        style="max-width: 520px; margin: var(--space-2xl) auto 0;"
+      >
         <div class="code-block-header">
           <span>counter.tsx — plain JavaScript, fully reactive</span>
         </div>
+        {/* prettier-ignore */}
         <pre>
           <code>
             <span class="kw">let</span> <span class="fn">count</span> = <span class="fn">state</span>(<span class="str">0</span>){"\n"}

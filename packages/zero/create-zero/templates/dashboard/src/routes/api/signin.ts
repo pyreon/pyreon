@@ -1,7 +1,8 @@
-import type { ApiContext } from "@pyreon/zero/api-routes"
-import { signIn } from "../../lib/auth"
-import { sessionCookie } from "../../lib/session-cookie"
-import { readCredentials } from "../../lib/credentials"
+import type { ApiContext } from '@pyreon/zero/api-routes'
+
+import { signIn } from '../../lib/auth'
+import { readCredentials } from '../../lib/credentials'
+import { sessionCookie } from '../../lib/session-cookie'
 
 /**
  * POST /api/signin — `{ email, password }` → `Set-Cookie` (HttpOnly) on
@@ -13,10 +14,10 @@ export async function POST(ctx: ApiContext) {
   if (creds instanceof Response) return creds
 
   const result = await signIn(creds.email, creds.password)
-  if ("error" in result) return Response.json({ error: result.error }, { status: 401 })
+  if ('error' in result) return Response.json({ error: result.error }, { status: 401 })
 
   return Response.json(
     { ok: true },
-    { headers: { "set-cookie": sessionCookie(result.sessionId, ctx.request) } },
+    { headers: { 'set-cookie': sessionCookie(result.sessionId, ctx.request) } },
   )
 }

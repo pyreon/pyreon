@@ -763,7 +763,7 @@ export const checked = {
    },
    {
     "claim": "Docs site has 200+ pages",
-    "path": "AGENTS.md (223 pages; 221 files counted) via 00-brief/facts.md"
+    "path": "AGENTS.md (226 pages; 223 files counted) via 00-brief/facts.md"
    }
   ]
  }

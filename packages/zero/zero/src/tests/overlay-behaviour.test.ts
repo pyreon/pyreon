@@ -75,6 +75,7 @@ describe('overlayBehaviour — page mode', () => {
       }),
       { mode: 'page' },
     )
+
     return overlayBehaviour(document)
   }
 
@@ -172,6 +173,7 @@ describe('overlayBehaviour — buttons', () => {
       report({ location: { file: '/a.ts', display: 'a.ts', line: 3, column: 2 } }),
       { mode: 'page' },
     )
+
     return overlayBehaviour(document)
   }
   const status = () => query<HTMLElement>(document, '[data-pz-status]').textContent

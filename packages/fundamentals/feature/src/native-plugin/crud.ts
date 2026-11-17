@@ -1,3 +1,4 @@
+/* oxlint-disable complexity, max-lines-per-function -- the lowering is one switch over the five hook kinds with their request shapes; each branch is flat and splitting it only moves the table elsewhere */
 // How `@pyreon/feature`'s generated CRUD hooks cross to native: the five hooks whose web body is ONE request
 // against the feature's `api` lower onto `@pyreon/query`'s own native containers, with the request the web sends.
 //
@@ -165,6 +166,7 @@ function readCrudConfig(binding: string, config: AnyNode): CrudFeature {
       `\`${binding}\`'s \`api\` (\`${literal}\`) holds a \`:param\` path token, which the web's request builder tries to fill and throws for. Write the URL without one.`,
     )
   }
+
   return { featureName, api: literal, refusal: undefined }
 }
 
@@ -189,6 +191,7 @@ function crudCallee(callee: AnyNode, facts: CrudFacts): { feature: string; hook:
   const c = unwrapTypeLayers(callee)
   if (c?.type !== 'MemberExpression' || c.computed || c.object?.type !== 'Identifier' || c.property?.type !== 'Identifier') return undefined
   const feature = c.object.name as string
+
   return facts.features.has(feature) ? { feature, hook: c.property.name as string } : undefined
 }
 
@@ -251,6 +254,7 @@ export const recognizeCrudDecl: DeclCallRecognizer = (site, ctx) => {
     ctx.warn(
       `${subject} does not lower to native: ${info.refusal ?? `\`${binding}\`'s \`name\` is not a string literal, so its query key cannot be built.`}`,
     )
+
     return null
   }
   const api = info.api
@@ -283,6 +287,7 @@ export const recognizeCrudDecl: DeclCallRecognizer = (site, ctx) => {
               ? `${subject}'s options hold a spread or a computed key, which cannot be read at compile time. This hook stays web.`
               : `${subject}'s option \`${key}\` has no native lowering — ${LIST_OPTION_REASONS.get(key) ?? 'it is not part of the lowered list surface'}. Only \`staleTime\` lowers; this hook stays web.`,
         )
+
         return null
       }
     }
@@ -295,6 +300,7 @@ export const recognizeCrudDecl: DeclCallRecognizer = (site, ctx) => {
       method: 'GET',
       middleware: errorsMiddleware('GET', literalUrl(api)),
     }
+
     return { type: CRUD_QUERY_TYPE, payload: payload as never }
   }
 
@@ -328,6 +334,7 @@ export const recognizeCrudDecl: DeclCallRecognizer = (site, ctx) => {
       method: 'GET',
       middleware: errorsMiddleware('GET', displayIdUrl(api, id)),
     }
+
     return { type: CRUD_QUERY_TYPE, payload: payload as never }
   }
 
@@ -342,6 +349,7 @@ export const recognizeCrudDecl: DeclCallRecognizer = (site, ctx) => {
     ctx.report(
       `${subject} is destructured, and a destructured \`mutate(vars)\` is a bare call the native lowering cannot route to its request. Bind the mutation to a name: \`const ${hook === 'useCreate' ? 'create' : hook === 'useUpdate' ? 'update' : 'remove'} = ${binding}.${hook}()\`, then call \`.mutate(vars)\` on it. This hook stays web.`,
     )
+
     return null
   }
   const type: TypeIR = hook === 'useDelete' ? { kind: 'undefined' } : element
@@ -349,6 +357,7 @@ export const recognizeCrudDecl: DeclCallRecognizer = (site, ctx) => {
   ctx.warn(
     `${subject}: on the web a successful ${hook === 'useCreate' ? 'create' : hook === 'useUpdate' ? 'update' : 'delete'} invalidates every \`${info.featureName}\` query, so a mounted \`${binding}.useList()\` / \`${binding}.useById()\` refetches${hook === 'useUpdate' ? ', and `useById(id)` shows the change optimistically before the server answers' : ''}. Native queries share no query client, so neither happens on iOS and Android: the request is sent and the mutation's own state settles, but every mounted query keeps the data it had until it remounts.`,
   )
+
   return { type: CRUD_MUTATION_TYPE, payload: { type } as never }
 }
 
@@ -454,11 +463,13 @@ export function crudCallElsewhere(
     return ctx.unsupported(site.node, subject, `a CRUD hook lowers only as a component declaration — bind it: \`const ${hook === 'useList' ? 'list' : hook === 'useById' ? 'item' : 'mutation'} = ${receiver.name}.${hook}(…)\``)
   }
   const why = UNLOWERED_HOOKS.get(hook)
+
   return why === undefined ? undefined : ctx.unsupported(site.node, subject, `${why}. ${LOWERED_HOOKS}`)
 }
 
 /** `list.data()` → `[T]?`, `list.isPending()` → `Bool`, …: what a CRUD query's reads are, for the compiler's inference. */
 const ERROR_TYPE: TypeIR = { kind: 'typeRef', name: 'Error', args: [] }
+
 function queryFieldType(decl: ExtDecl, property: string): TypeIR | undefined {
   const type = (decl.payload as unknown as QueryPayload).type
   switch (property) {

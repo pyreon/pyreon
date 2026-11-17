@@ -1,0 +1,89 @@
+{
+  "$schema": "../../../../node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "typescript",
+    "unicorn",
+    "oxc",
+    "import",
+    "vitest"
+  ],
+  "rules": {
+    "complexity": [
+      "warn",
+      {
+        "max": 15
+      }
+    ],
+    "max-lines-per-function": [
+      "warn",
+      {
+        "max": 60,
+        "skipBlankLines": true,
+        "skipComments": true,
+        "IIFEs": true
+      }
+    ],
+    "max-depth": [
+      "warn",
+      {
+        "max": 4
+      }
+    ],
+    "max-params": [
+      "warn",
+      {
+        "max": 4
+      }
+    ],
+    "max-lines": [
+      "warn",
+      {
+        "max": 500,
+        "skipBlankLines": true,
+        "skipComments": true
+      }
+    ],
+    "max-nested-callbacks": [
+      "warn",
+      {
+        "max": 5
+      }
+    ],
+    "import/first": "warn",
+    "import/newline-after-import": "warn",
+    "curly": [
+      "warn",
+      "multi-line"
+    ],
+    "no-else-return": [
+      "warn",
+      {
+        "allowElseIf": true
+      }
+    ],
+    "no-lonely-if": "warn",
+    "no-useless-return": "warn",
+    "vitest/max-nested-describe": [
+      "warn",
+      {
+        "max": 3
+      }
+    ],
+    "vitest/padding-around-test-blocks": "warn"
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/*.test.*",
+        "**/*.spec.*",
+        "**/tests/**",
+        "**/__tests__/**"
+      ],
+      "rules": {
+        "max-lines-per-function": "off",
+        "max-lines": "off",
+        "max-nested-callbacks": "off"
+      }
+    }
+  ]
+}

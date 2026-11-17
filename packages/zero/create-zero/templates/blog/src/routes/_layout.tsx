@@ -1,26 +1,44 @@
-import { RouterView } from "@pyreon/router"
-import { Link } from "@pyreon/zero/link"
-import { ThemeToggle } from "@pyreon/zero/theme"
+import { RouterView } from '@pyreon/router'
+import { Link } from '@pyreon/zero/link'
+import { ThemeToggle } from '@pyreon/zero/theme'
 
 export function layout() {
   return (
     <>
       <header class="site-header">
         <div class="site-header-inner">
-          <Link href="/" class="site-logo">
+          <Link
+            href="/"
+            class="site-logo"
+          >
             Blog
           </Link>
           <nav class="site-nav">
-            <Link href="/" prefetch="hover" exactActiveClass="nav-active">
+            <Link
+              href="/"
+              prefetch="hover"
+              exactActiveClass="nav-active"
+            >
               Home
             </Link>
-            <Link href="/blog" prefetch="hover" activeClass="nav-active">
+            <Link
+              href="/blog"
+              prefetch="hover"
+              activeClass="nav-active"
+            >
               All posts
             </Link>
-            <Link href="/about" prefetch="hover" exactActiveClass="nav-active">
+            <Link
+              href="/about"
+              prefetch="hover"
+              exactActiveClass="nav-active"
+            >
               About
             </Link>
-            <a href="/blog/rss.xml" title="RSS feed">
+            <a
+              href="/blog/rss.xml"
+              title="RSS feed"
+            >
               RSS
             </a>
             <ThemeToggle />
