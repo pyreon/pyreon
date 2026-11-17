@@ -176,6 +176,8 @@ dependencies {
     // import kotlinx.coroutines.* directly — pin it explicitly so the
     // compile classpath doesn't depend on transitive luck.
     implementation("androidx.core:core-ktx:1.19.1")
+    // useBiometrics: BiometricManager + BiometricPrompt (PyreonBiometricsAndroid.kt).
+    implementation("androidx.biometric:biometric:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     // material (M2) — the PMTC emit's Compose dispatcher uses
     // androidx.compose.material.* widgets (Text/Button/TextField/

@@ -54,7 +54,8 @@ const EXPECTED: readonly Expected[] = [
   {
     hook: 'useBiometrics',
     swift: 'PyreonBiometrics()',
-    kotlin: 'val x = remember { PyreonBiometrics() }',
+    kotlin:
+      'val xCtx = LocalContext.current\n  val x = remember { PyreonBiometrics(xCtx) }',
   },
   {
     hook: 'useImagePicker',

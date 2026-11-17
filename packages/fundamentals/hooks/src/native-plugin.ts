@@ -178,11 +178,15 @@ const nativePlugin = {
       ],
     },
     // M3.5 — biometric gate. `authenticate(reason)` is async/suspend, awaited in
-    // an `async` handler. The v1 Kotlin runtime needs no Context.
+    // an `async` handler. Android needs a Context: BiometricManager reads the
+    // enrolment, and BiometricPrompt is shown from the host FragmentActivity.
     useBiometrics: {
       legacyKind: 'biometrics',
       swift: 'PyreonBiometrics()',
-      kotlin: ['val {id} = remember { PyreonBiometrics() }'],
+      kotlin: [
+        'val {id}Ctx = LocalContext.current',
+        'val {id} = remember { PyreonBiometrics({id}Ctx) }',
+      ],
     },
     // M3.4 — photo picker. `pick()` is async. Android delivers the asset through
     // an ActivityResult callback whose launcher MUST be registered at composition

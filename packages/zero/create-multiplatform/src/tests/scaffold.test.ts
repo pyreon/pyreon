@@ -344,13 +344,17 @@ describe('buildScaffold — native runtime delivery wiring (local-proof-found fi
     expect(a.argv).toContain('-storepass:env PYREON_KEYSTORE_PASS')
   })
 
-  it('MainActivity extends ComponentActivity (Compose setContent receiver)', () => {
+  it('MainActivity extends FragmentActivity (a ComponentActivity, and a BiometricPrompt host)', () => {
     // bug #4: setContent {} is an extension on ComponentActivity, not the
-    // plain android.app.Activity the scaffold previously used.
+    // plain android.app.Activity the scaffold previously used. FragmentActivity
+    // IS a ComponentActivity, and useBiometrics' BiometricPrompt needs a
+    // fragment host: on a plain ComponentActivity authenticate() resolves false.
     const act = get('android/app/src/main/kotlin/com/example/myapp/MainActivity.kt')
-    expect(act).toContain('import androidx.activity.ComponentActivity')
-    expect(act).toContain('class MainActivity : ComponentActivity()')
+    expect(act).toContain('import androidx.fragment.app.FragmentActivity')
+    expect(act).toContain('class MainActivity : FragmentActivity()')
     expect(act).not.toContain('import android.app.Activity')
+    // The runtime's BiometricPrompt gate compiles into every app that wires @pyreon/hooks.
+    expect(get('android/app/build.gradle.kts')).toContain('implementation("androidx.biometric:biometric:1.1.0")')
   })
 
   it('build-android.sh stamps the FQN package the MainActivity import needs', () => {

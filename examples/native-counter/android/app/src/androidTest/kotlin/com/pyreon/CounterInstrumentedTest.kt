@@ -1068,10 +1068,12 @@ class CounterInstrumentedTest {
     // rememberCoroutineScope()`. A Kotlin suspend call carries no `await`
     // keyword — the coroutine provides the context.
     //
-    // DETERMINISTIC: the v1 `PyreonBiometrics.authenticate` scaffold resolves
-    // `false` (real BiometricPrompt + FragmentActivity is a tracked follow-up),
-    // so the observable outcome is "Lock: denied", produced from INSIDE the
-    // launched coroutine after the suspend call returned:
+    // DETERMINISTIC: the emulator has no enrolled biometric, so the real
+    // BiometricManager check reports it unavailable and `authenticate` resolves
+    // `false` without showing a prompt. The observable outcome is "Lock: denied",
+    // produced from INSIDE the launched coroutine after the suspend call
+    // returned. (The enrolled paths, accept and reject, are
+    // BiometricPromptInstrumentedTest, driven by scripts/biometric-device-test.sh.)
     //   (1) launch shows the initial "Lock: idle";
     //   (2) a click on Unlock runs the coroutine and flips the text to
     //       "Lock: denied".

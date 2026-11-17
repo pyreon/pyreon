@@ -1397,6 +1397,8 @@ jobs:
           # PRs, with every test already passed. Only reached on success.
           script: |
             gradle connectedCheck --stacktrace
+            # useBiometrics through a real BiometricPrompt: enrols a fingerprint, unlocks with it, rejects another, un-enrols.
+            bash ../scripts/biometric-device-test.sh
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
 
       # Router demo — wires the existing #1455 example into device CI.
