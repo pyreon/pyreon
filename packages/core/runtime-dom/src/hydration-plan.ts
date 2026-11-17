@@ -725,8 +725,7 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     counts.push(texts)
     slotList.push(slotAtEnd)
     soleSlotList.push(soleSlot)
-    const only = el.firstChild
-    soleTextList.push(only !== null && only === el.lastChild && only.nodeType === 3 && (only as Text).data === ' ')
+    soleTextList.push(isSoleSpacePlaceholder(el))
     midSlotList.push(mids)
     if (mids !== null) midSlotCount++
     const ownAttrs: [string, string][] = []
@@ -1023,6 +1022,21 @@ function replayAdoptPlan(root: Element, plan: AdoptPlan): boolean {
   return true
 }
 
+/** The element's ONLY child is the compiler's dynamic-text placeholder `' '`. */
+function isSoleSpacePlaceholder(el: Element): boolean {
+  const only = el.firstChild
+
+  return only !== null && only === el.lastChild && only.nodeType === 3 && (only as Text).data === ' '
+}
+
+/** Server content holding an element, NOT wrapped in one marked range. */
+function holdsUnmarkedElements(el: Element): boolean {
+  if (el.firstElementChild === null) return false
+  const f = el.firstChild
+
+  return !(f !== null && f.nodeType === 8 && (f as Comment).data === '$' && matchingCloseIsLastChild(f as Comment, el))
+}
+
 /**
  * Depth-aware scan from a `<!--$-->` open marker to its matching `<!--/$-->`,
  * answering only "is that close this element's LAST child?" — the structural
@@ -1164,14 +1178,10 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
     // marker-less (a sole accessor child). The element's whole child list is
     // the slot's content, exactly as for a sole `<!>` slot above; the binding
     // adopts it through the slot hydrator. A marked range falls through.
-    if (expected.soleTexts[at] === true && el.firstElementChild !== null) {
-      const f = el.firstChild
-      const marked =
-        f !== null && f.nodeType === 8 && (f as Comment).data === '$' && matchingCloseIsLastChild(f as Comment, el)
-      if (!marked) {
-        ;(soleTextParks ??= []).push(el)
-        return true
-      }
+    if (expected.soleTexts[at] === true && holdsUnmarkedElements(el)) {
+      ;(soleTextParks ??= []).push(el)
+
+      return true
     }
     let texts = 0
     let bare: Text[] | null = null

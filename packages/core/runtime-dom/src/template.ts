@@ -1630,12 +1630,7 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
     // the slot hydrator (which puts the range back); a binding that cannot is
     // swept after the bind, clearing the range as this branch used to.
     if (hasParkedRange(placeholder)) {
-      const fresh = document.createTextNode('')
-      parent.insertBefore(fresh, placeholder)
-      _parkText(fresh, placeholder as Comment)
-      if (process.env.NODE_ENV !== 'production') _markServerText(fresh, _rangeServerText)
-
-      return fresh
+      return parkSlotText(parent, placeholder as Comment)
     }
     // The shape SSR emits for a reactive text: exactly one text node between
     // the markers. Adopt it and drop both markers, leaving the DOM identical
@@ -1653,12 +1648,7 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
     // a VNode). #4385: park it on the placeholder for the binding to adopt
     // through the slot hydrator, rather than clearing and re-mounting it.
     if (first !== null && !(first.nodeType === 8 && (first as Comment).data === '/$')) {
-      const fresh = document.createTextNode('')
-      parent.insertBefore(fresh, placeholder)
-      _parkText(fresh, placeholder as Comment)
-      if (process.env.NODE_ENV !== 'production') _markServerText(fresh, _rangeServerText)
-
-      return fresh
+      return parkSlotText(parent, placeholder as Comment)
     }
     // EMPTY range (the accessor rendered ''): clear it and put a fresh node
     // where it was. Depth-counted so a nested range cannot end the walk early.
@@ -1682,6 +1672,16 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
   parent.replaceChild(t, placeholder)
 
   return t
+}
+
+/** A placeholder text before `open`, parked against its range (#4385). */
+function parkSlotText(parent: Node, open: Comment): Text {
+  const fresh = document.createTextNode('')
+  parent.insertBefore(fresh, open)
+  _parkText(fresh, open)
+  if (process.env.NODE_ENV !== 'production') _markServerText(fresh, _rangeServerText)
+
+  return fresh
 }
 
 /**
