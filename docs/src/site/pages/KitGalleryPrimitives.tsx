@@ -29,8 +29,9 @@ const VARIANTS: readonly TextVariant[] = ['mono', 'label', 'caption', 'small', '
 const TONES: readonly TextTone[] = ['fog', 'mist', 'text', 'strong', 'accent', 'accentText']
 const LEADINGS: readonly TextLeading[] = ['flat', 'normal', 'detail', 'relaxed', 'loose']
 
-export function PrimitiveSpecimens(props: { Specimen: SpecimenFrame }) {
+function LayoutSpecimens(props: { Specimen: SpecimenFrame }) {
   const Specimen = props.Specimen
+
   return (
     <>
       <Specimen name="Stack: gap 100 · 250 · 400; alignX block (default) · left · center">
@@ -44,7 +45,6 @@ export function PrimitiveSpecimens(props: { Specimen: SpecimenFrame }) {
           </Stack>
         </Grid>
       </Specimen>
-
       <Specimen name="Cluster: gap 75 · 150 · 275; alignX left · center · spaceBetween; nowrap; tag ul">
         <Stack gap={300}>
           <Cluster gap={75}>{chips(6)}</Cluster>
@@ -68,7 +68,6 @@ export function PrimitiveSpecimens(props: { Specimen: SpecimenFrame }) {
           </Cluster>
         </Stack>
       </Specimen>
-
       <Specimen name="Box: pad 200 · padX 500 padY 150 · pad { xs: 150, md: 400 }">
         <Grid columns={{ xs: 1, md: 3 }} gap={300}>
           <GlowCard padding="flush">
@@ -84,7 +83,15 @@ export function PrimitiveSpecimens(props: { Specimen: SpecimenFrame }) {
           </GlowCard>
         </Grid>
       </Specimen>
+    </>
+  )
+}
 
+function GridSpecimens(props: { Specimen: SpecimenFrame }) {
+  const Specimen = props.Specimen
+
+  return (
+    <>
       <Specimen name="Grid: columns { xs: 1, md: 3 } · { xs: 2, lg: 6 }, gap 150">
         <Stack gap={300}>
           <Grid id="kit-grid-responsive" columns={{ xs: 1, md: 3 }} gap={150}>
@@ -101,7 +108,6 @@ export function PrimitiveSpecimens(props: { Specimen: SpecimenFrame }) {
           </Grid>
         </Stack>
       </Specimen>
-
       <Specimen name="AutoGrid: min 200 · cols 3 (colsBelow 1) · cols 4 colsBelow 2">
         <Stack gap={300}>
           <AutoGrid id="kit-autogrid-min" min={200} gap={150}>
@@ -115,7 +121,6 @@ export function PrimitiveSpecimens(props: { Specimen: SpecimenFrame }) {
           </AutoGrid>
         </Stack>
       </Specimen>
-
       <Specimen name="Wrap: the page column (this gallery sits in one); nested, it adds its gutters">
         <GlowCard padding="flush">
           <Wrap>
@@ -125,44 +130,58 @@ export function PrimitiveSpecimens(props: { Specimen: SpecimenFrame }) {
           </Wrap>
         </GlowCard>
       </Specimen>
+    </>
+  )
+}
 
-      <Specimen name="Text: variant mono · label · caption · small · body; tone; leading; block; anywhere">
-        <Stack gap={250}>
-          <Cluster gap={300} alignY="bottom">
-            <For each={[...VARIANTS]} by={(v) => v}>
-              {(v) => (
-                <Text variant={v} tone="text">
-                  {v}
-                </Text>
-              )}
-            </For>
-          </Cluster>
-          <Cluster gap={300}>
-            <For each={[...TONES]} by={(t) => t}>
-              {(t) => (
-                <Text variant="mono" tone={t}>
-                  {t}
-                </Text>
-              )}
-            </For>
-          </Cluster>
-          <Grid columns={{ xs: 1, md: 5 }} gap={300}>
-            <For each={[...LEADINGS]} by={(l) => l}>
-              {(l) => (
-                <Text variant="caption" tone="mist" leading={l} block>
-                  {`leading ${l}: two lines of caption text to show the line height.`}
-                </Text>
-              )}
-            </For>
-          </Grid>
-          <Box pad={150}>
-            <Text variant="mono" tone="accentText" block anywhere>
-              @pyreon/a-very-long-package-name-that-breaks-anywhere-instead-of-overflowing
+function TextSpecimens(props: { Specimen: SpecimenFrame }) {
+  const Specimen = props.Specimen
+
+  return (
+  <Specimen name="Text: variant mono · label · caption · small · body; tone; leading; block; anywhere">
+    <Stack gap={250}>
+      <Cluster gap={300} alignY="bottom">
+        <For each={[...VARIANTS]} by={(v) => v}>
+          {(v) => (
+            <Text variant={v} tone="text">
+              {v}
             </Text>
-          </Box>
-        </Stack>
-      </Specimen>
+          )}
+        </For>
+      </Cluster>
+      <Cluster gap={300}>
+        <For each={[...TONES]} by={(t) => t}>
+          {(t) => (
+            <Text variant="mono" tone={t}>
+              {t}
+            </Text>
+          )}
+        </For>
+      </Cluster>
+      <Grid columns={{ xs: 1, md: 5 }} gap={300}>
+        <For each={[...LEADINGS]} by={(l) => l}>
+          {(l) => (
+            <Text variant="caption" tone="mist" leading={l} block>
+              {`leading ${l}: two lines of caption text to show the line height.`}
+            </Text>
+          )}
+        </For>
+      </Grid>
+      <Box pad={150}>
+        <Text variant="mono" tone="accentText" block anywhere>
+          @pyreon/a-very-long-package-name-that-breaks-anywhere-instead-of-overflowing
+        </Text>
+      </Box>
+    </Stack>
+  </Specimen>
+  )
+}
 
+function VisibleIconSpecimens(props: { Specimen: SpecimenFrame }) {
+  const Specimen = props.Specimen
+
+  return (
+    <>
       <Specimen name="Visible: from split · below split · from md · below md (resize to see them swap)">
         <Cluster gap={150}>
           <Visible from="split">
@@ -183,7 +202,6 @@ export function PrimitiveSpecimens(props: { Specimen: SpecimenFrame }) {
           </Visible>
         </Cluster>
       </Specimen>
-
       <Specimen name="Icon: decorative (aria-hidden; 16 · 24) · named (aria-label)">
         <Cluster gap={300} alignY="center">
           <Text variant="mono" tone="accent">
@@ -203,6 +221,17 @@ export function PrimitiveSpecimens(props: { Specimen: SpecimenFrame }) {
           </Text>
         </Cluster>
       </Specimen>
+    </>
+  )
+}
+
+export function PrimitiveSpecimens(props: { Specimen: SpecimenFrame }) {
+  return (
+    <>
+      <LayoutSpecimens Specimen={props.Specimen} />
+      <GridSpecimens Specimen={props.Specimen} />
+      <TextSpecimens Specimen={props.Specimen} />
+      <VisibleIconSpecimens Specimen={props.Specimen} />
     </>
   )
 }
