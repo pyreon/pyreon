@@ -2,7 +2,7 @@
 
 Plain Mode (the `'use plain'` dialect) has its own file: [plain-mode.md](./plain-mode.md).
 
-Concluded architecture experiments (E1 speculative `mountFor`: DEFER; E2 static rocketstyle collapse: GRADUATE; E5 actor model: GRADUATE) keep their decision records in [references/experiments/](./references/experiments/). Code comments cite them; the experiment code itself is in git history.
+Concluded architecture experiments (E1 speculative `mountFor`: DEFER; E2 static rocketstyle collapse: GRADUATE; E5 actor model: GRADUATE) keep their decision records in [references/experiments/](./references/experiments/). Code comments cite them; the experiment code itself is in git history. The chat user-shape audit (W24–W25, from the folded `examples/chat`) is in [references/audits/](./references/audits/).
 
 ## Compiler
 

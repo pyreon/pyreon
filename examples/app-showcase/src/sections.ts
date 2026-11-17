@@ -61,8 +61,8 @@ export const sections: Section[] = [
   {
     path: '/chat',
     label: 'Chat',
-    tagline: 'Mock real-time messaging with virtualized history and connection state machine',
-    features: ['store', 'virtual', 'machine', 'toast', 'styler'],
+    tagline: 'Real-time messaging: virtualized history, a connection state machine, and a live view over SSE',
+    features: ['store', 'virtual', 'machine', 'toast', 'styler', 'query', 'url-state'],
     available: true,
     group: 'apps',
   },
