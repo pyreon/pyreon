@@ -3,8 +3,11 @@
 // Not a missing feature — the opposite, which is why it survived. BOTH emitters
 // already render an optional interpolation web-equivalently:
 //
-//   Swift    \((x).map { "\($0)" } ?? "")
-//   Kotlin   ${x ?: ""}
+//   Swift    \(pyreonOptionalText(x, ""))
+//   Kotlin   ${pyreonOptionalText(x, "")}
+//
+// (pyreonOptionalText is the runtime helper both targets now emit for any
+// optional-or-unknown text child; it prints the web's text, "" when absent.)
 //
 // but the guard is `typeIsOptional(inferType(...))`, and inference had no field
 // model for the service containers. So every optional service field fell
@@ -60,16 +63,15 @@ describe('optional service fields render web-equivalently', () => {
         .find((l) => l.includes('Text('))
       expect(line, 'no Text line emitted').toBeTruthy()
       // The unwrap is the whole point; a raw `\(x)` is the bug.
-      expect(line).toContain('.map {')
-      expect(line).toContain('?? ""')
+      expect(line).toContain(`pyreonOptionalText(${expr}, "")`)
     })
 
-    it(`${label}: Kotlin substitutes "" for null`, () => {
+    it(`${label}: Kotlin wraps in pyreonOptionalText(x, "") — never a literal "null"`, () => {
       const line = transform(src, { target: 'kotlin' })
         .code.split('\n')
         .find((l) => l.includes('Text('))
       expect(line, 'no Text line emitted').toBeTruthy()
-      expect(line).toContain('?: ""')
+      expect(line).toContain(`pyreonOptionalText(${expr}.value, "")`)
     })
 
     it.skipIf(!isSwiftcAvailable())(`${label}: still type-checks on Swift`, () => {
@@ -148,13 +150,13 @@ describe('auth.error — the field the original pass missed', () => {
 
   it('Swift renders it web-equivalently instead of Optional(…)', () => {
     const out = transform(src, { target: 'swift' }).code ?? ''
-    expect(out).toContain('(a.error).map { "\\($0)" } ?? ""')
+    expect(out).toContain('pyreonOptionalText(a.error, "")')
     // The raw form is what produced `Optional("boom")`.
     expect(out).not.toContain('"\\(a.error)"')
   })
 
   it('Kotlin renders it web-equivalently too', () => {
-    expect(transform(src, { target: 'kotlin' }).code ?? '').toContain('?: ""')
+    expect(transform(src, { target: 'kotlin' }).code ?? '').toContain('pyreonOptionalText(a.error.value, "")')
   })
 })
 
@@ -171,7 +173,7 @@ describe('map has NO error field — the phantom entry', () => {
     // The REAL optional field still renders correctly — removing the phantom
     // `error` must not disturb the entry that is genuinely there.
     expect(transform(src, { target: 'swift' }).code ?? '').toContain(
-      '(m.selectedMarkerId).map { "\\($0)" } ?? ""',
+      'pyreonOptionalText(m.selectedMarkerId, "")',
     )
   })
 })

@@ -271,8 +271,12 @@ export function cacheKey(
 ): string {
   return createHash('sha256')
     // v2 invalidates entries written before interrupted compiler processes
-    // were distinguished from deterministic compiler verdicts.
-    .update('v2')
+    // were distinguished from deterministic compiler verdicts. v3 (Swift
+    // kinds only) invalidates Swift verdicts written before a successful
+    // compile could still be rejected for a silent-miscompile warning
+    // (`SILENT_MISCOMPILE_WARNINGS` in validate.ts) — an old `ok` would
+    // otherwise keep passing the output that warning now fails.
+    .update(kind.startsWith('swift') ? 'v3' : 'v2')
     .update('\0')
     .update(kind)
     .update('\0')

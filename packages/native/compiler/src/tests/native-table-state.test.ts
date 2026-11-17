@@ -53,7 +53,7 @@ describe('createTableState — Swift lowering', () => {
     expect(r.code).toContain('t.rows()')
     expect(r.code).toContain('t.filteredCount()')
     expect(r.code).toContain('t.toggleSort("name")')
-    expect(r.code).toContain('"\\(t.page)"') // page is a property, not page()
+    expect(r.code).toContain('"\\(pyreonOptionalText(t.page, ""))"') // page is a property, not page()
   })
 
   it('does NOT warn as web-only (createTableState lowers)', () => {
@@ -79,7 +79,7 @@ describe('createTableState — Kotlin lowering', () => {
   it('use-sites: rows()/toggleSort() methods; page property read', () => {
     expect(r.code).toContain('t.rows()')
     expect(r.code).toContain('t.toggleSort("name")')
-    expect(r.code).toContain('${t.page}')
+    expect(r.code).toContain('${pyreonOptionalText(t.page, "")}')
   })
 
   it('the emit type-checks against the Kotlin stubs', () => {

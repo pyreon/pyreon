@@ -401,10 +401,14 @@ describe('validate — failure-diagnostic assembly', () => {
   })
 
   it('falls back to the thrown message when there is no captured output at all', () => {
-    for (const [name, run] of SWIFT_VALIDATORS) {
+    // The two TYPECHECK validators run swiftc through `spawnSync` (they read the warnings of a successful compile),
+    // which reports a failure as a result, not a thrown message — so a message-only failure reaches them as a spawn
+    // failure with no output, and they fall back to their own literal.
+    const expected = ['Command failed: swiftc', 'swiftc -typecheck failed with no output', 'swiftc -typecheck (stubs) failed with no output']
+    SWIFT_VALIDATORS.forEach(([name, run], i) => {
       failCompile('swiftc', { message: 'Command failed: swiftc' })
-      expect(run('let x = 1\n').error, name).toBe('Command failed: swiftc')
-    }
+      expect(run('let x = 1\n').error, name).toBe(expected[i])
+    })
     failCompile('kotlinc', { message: 'Command failed: kotlinc' })
     expect(validateKotlin('fun main() {}\n').error).toBe('Command failed: kotlinc')
   })

@@ -65,8 +65,8 @@ describe('useUrlState lowering', () => {
   // and must read on both native targets too. Emitting a bare `q` would
   // interpolate the container instead of the value — wrong, and silent.
   it('preserves the CALL, so `q()` reads the value on both targets', () => {
-    expect(transform(SRC, { target: 'swift' }).code).toContain('\\(q())')
-    expect(transform(SRC, { target: 'kotlin' }).code).toContain('${q()}')
+    expect(transform(SRC, { target: 'swift' }).code).toContain('\\(pyreonOptionalText(q(), ""))')
+    expect(transform(SRC, { target: 'kotlin' }).code).toContain('${pyreonOptionalText(q(), "")}')
   })
 
   it('no longer warns, now that the binding lowers', () => {

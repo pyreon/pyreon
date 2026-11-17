@@ -9,6 +9,7 @@
 // computed properties. Phase 1 grows a real inference pass.
 
 import { isDoubleLiteralValue, wholeDoubleLiteral } from './number-literal'
+import { hasOptionalChain, interpolandAbsentSpelling, isUntypedTextChild, optionalTextCall } from './optional-text'
 import { isModuleState, moduleStateClassName, moduleStateDecls, shadowingNames } from './module-state'
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
 import { CANVAS_SHAPES, isCanvasShape, shapeColorLiteral } from './canvas-shapes'
@@ -2660,7 +2661,11 @@ function inlineValueConstsInStmts(stmts: StatementIR[]): StatementIR[] {
  */
 function swiftTemplatePart(expr: ExprIR, indent: number): string {
   const emitted = emitSwiftExpr(expr, indent)
+  // An optional interpoland prints `Optional(3)` / `nil` under Swift interpolation (optional-text.ts).
+  const spelling = interpolandAbsentSpelling(expr, (x) => inferType(x, _activeInferCtx))
+  if (spelling !== null) return optionalTextCall(emitted, spelling)
   const t = inferType(expr, _activeInferCtx)
+
   return t.kind === 'number' && t.float === true ? `pyreonNumberString(${emitted})` : emitted
 }
 
@@ -4810,6 +4815,12 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // `String(x)` over a FLOAT-typed arg → the JS-faithful formatter
       // (integral Doubles print without .0, like the web). Non-float args
       // keep the verbatim `String(...)` — valid Swift, byte-identical.
+      // `String(x)` over an OPTIONAL: the web's text (`undefined` / the value), never a compile error or a debug
+      // description (optional-text.ts).
+      if (e.callee.kind === 'identifier' && e.callee.name === 'String' && e.args.length === 1) {
+        const spelling = interpolandAbsentSpelling(e.args[0]!, (x) => inferType(x, _activeInferCtx))
+        if (spelling !== null) return optionalTextCall(emitSwiftExpr(e.args[0]!, indent), spelling)
+      }
       if (
         e.callee.kind === 'identifier' &&
         e.callee.name === 'String' &&
@@ -6292,6 +6303,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           inferType(e.right, _activeInferCtx).kind === 'string')
       ) {
         const coerce = (sub: ExprIR, emitted: string): string => {
+          // An OPTIONAL operand: `"n=" + u.nick` did not compile on Swift, and prints `n=null` on Kotlin.
+          const spelling = interpolandAbsentSpelling(sub, (x) => inferType(x, _activeInferCtx))
+          if (spelling !== null) return optionalTextCall(emitted, spelling)
           const t = inferType(sub, _activeInferCtx)
           // A DOUBLE operand takes the JS-faithful formatter: `String(250.0)`
           // is `"250.0"` in Swift but `"250"` in JS, and the int-division →
@@ -7489,9 +7503,11 @@ function swiftInterpSegment(e: ExprIR, indent: number): string {
   const expr = resolveAccessorChild(e)
   const emitted = emitSwiftExpr(expr, indent)
   const t = inferType(expr, _activeInferCtx)
-  if (typeIsOptional(t)) {
-    return `\\((${emitted}).map { "\\($0)" } ?? "")`
-  }
+  // An absent JSX text child renders nothing on the web. An OPTIONAL — an optional chain, or a read the inference
+  // cannot type (a plugin's `q.data`, which is optional until the query resolves) — goes through
+  // `pyreonOptionalText`, which also prints a present Double as the web does; the old `.map { "\\($0)" }` printed
+  // `7.0`, and a bare `"\\(q.data)"` printed `Optional(…)` / `nil` (optional-text.ts).
+  if (typeIsOptional(t) || isUntypedTextChild(t) || hasOptionalChain(expr)) return `\\(${optionalTextCall(emitted, '')})`
   // A Double prints as JavaScript does (`7`, not `7.0`) — see swiftTemplatePart.
   if (t.kind === 'number' && t.float === true) return `\\(pyreonNumberString(${emitted}))`
   return `\\(${emitted})`

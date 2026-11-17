@@ -5,6 +5,7 @@
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
 import { isDoubleLiteralValue, wholeDoubleLiteral } from './number-literal'
+import { hasOptionalChain, interpolandAbsentSpelling, isUntypedTextChild, optionalTextCall } from './optional-text'
 import { isModuleState, moduleStateClassName, moduleStateDecls, shadowingNames } from './module-state'
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
 import { effectReadCandidates, effectTriggerPaths, isComponentStateName } from './effect-deps'
@@ -259,7 +260,11 @@ let _enumNames: Set<string> = new Set()
  */
 function kotlinTemplatePart(expr: ExprIR, indent: number): string {
   const emitted = emitKotlinExpr(expr, indent)
+  // An optional interpoland prints `null` under Kotlin interpolation where the web prints `undefined`.
+  const spelling = interpolandAbsentSpelling(expr, (x) => inferType(x, _kotlinExprInferCtx))
+  if (spelling !== null) return optionalTextCall(emitted, spelling)
   const t = inferType(expr, _kotlinExprInferCtx)
+
   return t.kind === 'number' && t.float === true ? `pyreonNumberString(${emitted})` : emitted
 }
 
@@ -3800,6 +3805,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         // A FLOAT-typed arg routes through the JS-faithful formatter —
         // Kotlin's `3.0.toString()` is "3.0", the web prints "3".
         const sArgT = inferType(e.args[0]!, _kotlinExprInferCtx)
+        // An OPTIONAL arg prints the web's `undefined`, not Kotlin's `null` (optional-text.ts).
+        const sSpelling = interpolandAbsentSpelling(e.args[0]!, (x) => inferType(x, _kotlinExprInferCtx))
+        if (sSpelling !== null) return optionalTextCall(emitKotlinExpr(e.args[0]!, indent), sSpelling)
         if (
           (sArgT.kind === 'number' && sArgT.float === true) ||
           (sArgT.kind === 'typeRef' && (sArgT.name === 'Double' || sArgT.name === 'Float'))
@@ -5021,6 +5029,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           inferType(e.right, _kotlinExprInferCtx).kind === 'string')
       ) {
         const coerce = (sub: ExprIR, emitted: string): string => {
+          // An OPTIONAL operand: `"n=" + u.nick` printed `n=null` where the web prints `n=undefined`.
+          const spelling = interpolandAbsentSpelling(sub, (x) => inferType(x, _kotlinExprInferCtx))
+          if (spelling !== null) return optionalTextCall(emitted, spelling)
           const t = inferType(sub, _kotlinExprInferCtx)
           // A DOUBLE operand takes the JS-faithful formatter (`250.0` →
           // `"250"`, as JS prints it) — see the Swift twin.
@@ -6270,9 +6281,10 @@ function kotlinInterpSegment(e: ExprIR, indent: number): string {
   const expr = resolveAccessorChild(e)
   const emitted = emitKotlinExpr(expr, indent)
   const t = inferType(expr, _kotlinExprInferCtx)
-  if (typeIsOptional(t)) {
-    return `\${${emitted} ?: ""}`
-  }
+  // An absent JSX text child renders nothing on the web; a present Double prints `7`, not `7.0` (the old `?: ""`
+  // printed `7.0`). An optional — an optional chain, or a read the inference cannot type (a plugin's `q.data`) —
+  // goes through `pyreonOptionalText`; a bare `${q.data}` printed `null` (optional-text.ts).
+  if (typeIsOptional(t) || isUntypedTextChild(t) || hasOptionalChain(expr)) return `\${${optionalTextCall(emitted, '')}}`
   // A Double prints as JavaScript does (`7`, not `7.0`) — see kotlinTemplatePart.
   if (t.kind === 'number' && t.float === true) return `\${pyreonNumberString(${emitted})}`
   return `\${${emitted}}`

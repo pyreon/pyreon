@@ -511,7 +511,7 @@ export function App() {
       expect(serviceFor(hook).optionalFields?.[member], `${hook}.${member}`).toBeDefined()
     }
     // The nullable typing is what makes the emit nil-aware: an optional number
-    // interpolates through `.map { … } ?? ""` and a condition on an error
+    // interpolates through `pyreonOptionalText(x, "")` and a condition on an error
     // object lowers to a nil test (a bare truthiness check would not compile).
     const child = (hook: string, expr: string): string =>
       transform(
@@ -522,8 +522,8 @@ export function App() {
 }`,
         { target: 'swift' },
       ).code
-    expect(child('useGeolocation', 'x.latitude')).toContain('(x.latitude).map {')
-    expect(child('usePayments', 'x.purchasing')).toContain('(x.purchasing).map {')
+    expect(child('useGeolocation', 'x.latitude')).toContain('pyreonOptionalText(x.latitude, "")')
+    expect(child('usePayments', 'x.purchasing')).toContain('pyreonOptionalText(x.purchasing, "")')
     const push = transform(
       `import { usePush } from '@pyreon/hooks'
 export function App() {

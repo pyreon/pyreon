@@ -67,8 +67,9 @@ export function App() {
   it('a state READ drops its parens; a VIEW and an ACTION keep theirs', () => {
     const out = kt(MODEL).code
     // the state field is a signal on the web and a property natively
-    expect(out).toContain('${PyreonModel_cart.total}')
-    expect(out).toContain('${PyreonModel_cart.doubled}')
+    // an optional-typed text child is wrapped in pyreonOptionalText; the read stays paren-less
+    expect(out).toContain('${pyreonOptionalText(PyreonModel_cart.total, "")}')
+    expect(out).toContain('${pyreonOptionalText(PyreonModel_cart.doubled, "")}')
     // the action is a real method — parens preserved, args forwarded
     expect(out).toContain('PyreonModel_cart.add(3L)')
   })

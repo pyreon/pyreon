@@ -59,10 +59,11 @@ describe('useQuery() emit', () => {
     // Stable-identity host so .task fires once (not restarted per branch flip).
     expect(r.code).toContain('ZStack {')
     // Reactive reads are bare @Observable properties on Swift (all four fields).
-    expect(r.code).toContain('\\(q.isPending)')
-    expect(r.code).toContain('\\(q.isFetching)')
-    expect(r.code).toContain('\\(q.data)')
-    expect(r.code).toContain('\\(q.error)')
+    // (optional-typed fields go through pyreonOptionalText(x, "") — no Optional(...) print)
+    expect(r.code).toContain('\\(pyreonOptionalText(q.isPending, ""))')
+    expect(r.code).toContain('\\(pyreonOptionalText(q.isFetching, ""))')
+    expect(r.code).toContain('\\(pyreonOptionalText(q.data, ""))')
+    expect(r.code).toContain('\\(pyreonOptionalText(q.error, ""))')
   })
 
   it('Kotlin: remembered PyreonQuery, a LaunchedEffect that registers the request, .value reads', () => {
@@ -77,10 +78,10 @@ describe('useQuery() emit', () => {
     expect(r.code).toContain('java.net.URL("https://api.example.com/todos/1").readText()')
     expect(r.code).toContain('PyreonFetchJson.decodeFromString<Todo>(body)')
     // Reactive member reads append .value (Compose MutableState) — all four.
-    expect(r.code).toContain('${q.isPending.value}')
-    expect(r.code).toContain('${q.isFetching.value}')
-    expect(r.code).toContain('${q.data.value}')
-    expect(r.code).toContain('${q.error.value}')
+    expect(r.code).toContain('${pyreonOptionalText(q.isPending.value, "")}')
+    expect(r.code).toContain('${pyreonOptionalText(q.isFetching.value, "")}')
+    expect(r.code).toContain('${pyreonOptionalText(q.data.value, "")}')
+    expect(r.code).toContain('${pyreonOptionalText(q.error.value, "")}')
   })
 
   it('warns + does not lower when queryKey is NOT an array', () => {

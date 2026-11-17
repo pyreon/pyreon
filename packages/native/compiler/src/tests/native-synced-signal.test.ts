@@ -62,7 +62,7 @@ describe('syncedSignal — Swift lowering', () => {
   })
 
   it('reads title() (callAsFunction) and writes count.set(...) — NOT bare/= ', () => {
-    expect(r.code).toContain('"\\(title())"')
+    expect(r.code).toContain('"\\(pyreonOptionalText(title(), ""))"')
     expect(r.code).toContain('count.set(count() + 1)')
     expect(r.code).not.toContain('count = count + 1') // the wrong signal-write rewrite
   })
@@ -90,7 +90,7 @@ describe('syncedSignal — Kotlin lowering', () => {
   })
 
   it('reads title() (invoke) and writes count.set(...)', () => {
-    expect(r.code).toContain('"${title()}"')
+    expect(r.code).toContain('"${pyreonOptionalText(title(), "")}"')
     expect(r.code).toContain('count.set(count() + 1L)')
   })
 
