@@ -200,7 +200,7 @@ export function App() {
       gap="md"
       align="center"
     >
-      <Text data-testid="count">{count}</Text>
+      <Text data-testid="count">{count()}</Text>
       <Button
         data-testid="increment"
         onPress={() => count.set(count() + 1)}

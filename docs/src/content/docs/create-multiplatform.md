@@ -137,7 +137,7 @@ export function App() {
   const count = signal(0)
   return (
     <Stack gap="md" align="center">
-      <Text data-testid="count">{count}</Text>
+      <Text data-testid="count">{count()}</Text>
       <Button data-testid="increment" onPress={() => count.set(count() + 1)}>Increment</Button>
     </Stack>
   )

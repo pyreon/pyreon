@@ -79,7 +79,8 @@ const FIXTURES: Record<string, Fixture> = {
     good: `${SIG}const s = signal(0)\nfor (const x of [1, 2]) { s.set(x) }`,
   },
   'pyreon/no-signal-in-props': {
-    file: 'src/a.tsx',
+    // Only where the Pyreon compiler does not lower the file (here: a test).
+    file: 'src/a.test.tsx',
     bad: `${SIG}const sig = signal(0)\nexport const A = () => <Comp value={sig()} />`,
     good: `${SIG}const sig = signal(0)\nexport const A = () => <Comp value={() => sig()} />`,
   },
@@ -800,6 +801,11 @@ const FIXTURES: Record<string, Fixture> = {
     file: 'src/a.ts',
     bad: `export const f = (a: boolean, b: boolean) => (a ? (b ? 1 : 2) : 3)\n`,
     good: `export const f = (a: boolean, b: boolean) => (!a ? 3 : b ? 1 : 2)\n`,
+  },
+  'pyreon/consistent-signal-read': {
+    file: 'src/a.tsx',
+    bad: `${SIG}const n = signal(0)\nexport const C = () => <span>{n}</span>\n`,
+    good: `${SIG}const n = signal(0)\nexport const C = () => <span>{n()}</span>\n`,
   },
 }
 

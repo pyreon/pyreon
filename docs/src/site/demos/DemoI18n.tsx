@@ -229,7 +229,6 @@ export default function DemoI18n() {
               <For each={() => keys()} by={(k) => k}>
                 {(k) => (
                   // The compiler wraps these reads in _rp(), so the row re-styles when the pick moves.
-                  // pyreon-lint-disable-next-line pyreon/no-signal-in-props
                   <KeyRow state={pickedKey() === k ? 'picked' : 'idle'} aria-current={() => (pickedKey() === k ? 'true' : undefined)}>
                     <span>
                       <Code>{k}</Code>
