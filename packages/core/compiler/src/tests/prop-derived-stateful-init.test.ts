@@ -122,6 +122,7 @@ function refsToD(out: string): number {
     for (const [k, v] of Object.entries(o)) if (k !== 'type') walk(v, k)
   }
   walk(program, '')
+
   return n
 }
 

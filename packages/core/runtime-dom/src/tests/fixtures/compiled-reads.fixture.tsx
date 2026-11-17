@@ -1,7 +1,8 @@
 // @ts-nocheck — bare signal reads (`count + 1`) are compiler sugar TypeScript types as the signal.
 // pyreon-lint-disable-file pyreon/consistent-signal-read -- this fixture exercises the bare-read auto-call on purpose
+/* oxlint-disable jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions, jsx-a11y/no-noninteractive-element-interactions -- the click targets are the element paths under test (childless, spread-carrying), driven by .click() */
 /**
- * Compiled by the REAL Pyreon transform (see `vitest.compiled-fixtures.ts`) for
+ * Compiled by the REAL Pyreon transform (see `../compiled-fixtures-plugin.ts`) for
  * `compiled-reads.browser.test.tsx`.
  */
 import { signal, type Signal } from '@pyreon/reactivity'

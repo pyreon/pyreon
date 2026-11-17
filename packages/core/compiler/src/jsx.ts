@@ -3702,6 +3702,7 @@ export function transformJSX_JS(
       forEachChildFast(n, visit)
     }
     visit(init)
+
     return out
   }
   /** Does a binding of any of `names` capture a name `alias`'s inlined text mentions? */
@@ -3709,6 +3710,7 @@ export function transformJSX_JS(
     const free = aliasFreeNames.get(span.start)
     if (!free) return false
     for (const n of names) if (free.has(n)) return true
+
     return false
   }
   // Lexical scoping of the registry above (issue #3815). The map is keyed by
@@ -4067,33 +4069,19 @@ export function transformJSX_JS(
     // object-literal method, a `??` fallback — is only CREATED by evaluation.
     const visit = (node: N, invocable: boolean): boolean => {
       const t = node.type
-      if (t === 'ArrowFunctionExpression' || t === 'FunctionExpression' || t === 'FunctionDeclaration') {
+      if (FUNCTION_NODE_TYPES.has(t)) {
         if (!invocable) return false
-      } else if (
-        (t === 'NewExpression' && !isValueConstructor(node.callee)) ||
-        t === 'ClassExpression' ||
-        t === 'AssignmentExpression' ||
-        t === 'UpdateExpression' ||
-        t === 'AwaitExpression' ||
-        t === 'YieldExpression' ||
-        (t === 'UnaryExpression' && node.operator === 'delete') ||
-        isStatefulCall(node)
-      ) {
+      } else if (mintsStateHere(node)) {
         return true
       }
-      const passThrough =
-        t === 'ParenthesizedExpression' ||
-        t === 'TSAsExpression' ||
-        t === 'TSSatisfiesExpression' ||
-        t === 'TSNonNullExpression' ||
-        t === 'TSTypeAssertion'
-      const kidsInvocable = passThrough ? invocable : t === 'CallExpression'
-      const kids = childrenMap.get(node)
-      if (kids) for (let i = 0; i < kids.length; i++) {
-        if (visit(kids[i]!, kidsInvocable)) return true
+      const kidsInvocable = TYPE_LAYER_NODE_TYPES.has(t) ? invocable : t === 'CallExpression'
+      for (const kid of childrenMap.get(node) ?? []) {
+        if (visit(kid, kidsInvocable)) return true
       }
+
       return false
     }
+
     return visit(init, false)
   }
 
@@ -4625,6 +4613,7 @@ export function transformJSX_JS(
       spanBound.size === 0
         ? idents
         : idents.filter((id) => !aliasCapturedBy(propDerivedVars.get(id.name)!, spanBound))
+
     return kept.map((id) => {
       const resolved = resolveVarToString(id.name, sourceNode)
       return {
@@ -4982,6 +4971,7 @@ export function transformJSX_JS(
         }
       }
     }
+
     return true
   }
 
@@ -7689,6 +7679,36 @@ function isValueConstructor(callee: N): boolean {
     callee.object?.type === 'Identifier' &&
     callee.object.name === 'Intl'
   )
+}
+
+/** Function nodes: their body runs only when called. */
+const FUNCTION_NODE_TYPES = new Set(['ArrowFunctionExpression', 'FunctionExpression', 'FunctionDeclaration'])
+
+/** Layers that are transparent to evaluation: parentheses and TS wrappers. */
+const TYPE_LAYER_NODE_TYPES = new Set([
+  'ParenthesizedExpression',
+  'TSAsExpression',
+  'TSSatisfiesExpression',
+  'TSNonNullExpression',
+  'TSTypeAssertion',
+])
+
+/** Node types whose evaluation is observable on its own (see `initMintsState`). */
+const EFFECTFUL_NODE_TYPES = new Set([
+  'ClassExpression',
+  'AssignmentExpression',
+  'UpdateExpression',
+  'AwaitExpression',
+  'YieldExpression',
+])
+
+/** Does evaluating THIS node (not its children) mint state or have an effect? */
+function mintsStateHere(node: N): boolean {
+  const t = node.type
+  if (t === 'NewExpression') return !isValueConstructor(node.callee)
+  if (t === 'UnaryExpression') return node.operator === 'delete'
+
+  return EFFECTFUL_NODE_TYPES.has(t) || isStatefulCall(node)
 }
 
 function isStatefulCall(node: N): boolean {

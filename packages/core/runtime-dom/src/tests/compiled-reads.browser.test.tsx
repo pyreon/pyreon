@@ -40,6 +40,7 @@ function render(vnode: ReturnType<typeof h>): HTMLElement {
     unmount()
     container.remove()
   })
+
   return container
 }
 

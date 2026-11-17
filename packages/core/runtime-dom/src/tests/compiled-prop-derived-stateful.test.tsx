@@ -40,6 +40,7 @@ try {
 
 const IDENT = /^[A-Za-z_$][\w$]*$/
 const RUNTIME: Record<string, unknown> = {}
+
 for (const ns of [reactivity, core, template, dom] as Record<string, unknown>[]) {
   for (const [k, v] of Object.entries(ns)) if (IDENT.test(k)) RUNTIME[k] = v
 }

@@ -1,6 +1,6 @@
 import { playwright } from '@vitest/browser-playwright'
 import { defineBrowserConfig } from '@pyreon/vitest-config'
-import { compiledFixtures } from './vitest.compiled-fixtures'
+import { compiledFixtures } from './src/tests/compiled-fixtures-plugin'
 
 // The same browser suite, run in WebKit and Firefox in addition to Chromium.
 // `defineBrowserConfig`'s `instances` array is MERGED (concatenated), so this
