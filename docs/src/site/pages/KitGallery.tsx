@@ -17,7 +17,9 @@ import { ApiGroups, Faq, FactList, FeatureList, LimitNote, NumberedCards, StatRo
 import { EmberGradientDefs, GlowCard, Glyph, PackageCard, PackageName, ProductTag } from '../kit/cards'
 import { BeforeAfter, CodeCard, CodeDiff } from '../kit/code'
 import { Chip, InstallCommand, Pill } from '../kit/controls'
-import { AutoGrid, Rule, Section, SectionHead, Wrap } from '../kit/layout'
+import { Rule, Section, SectionHead } from '../kit/layout'
+import { AutoGrid, Wrap } from '../kit/primitives'
+import { PrimitiveSpecimens } from './KitGalleryPrimitives'
 import { Reveal } from '../kit/motion'
 import { Badge } from '../kit/badge'
 import { CaveatLine, EndCTA, HookHero, Numeral, ProofBand, QuoteBlock, StatBody, StatCard } from '../kit/proof'
@@ -115,7 +117,7 @@ export function KitGallery() {
           />
 
           <Specimen name="theme.ts → color (this theme)">
-            <AutoGrid min={140} gap={10}>
+            <AutoGrid min={140} gap={125}>
               <For each={SWATCHES} by={(k) => k}>
                 {(k) => (
                   <Swatch>
@@ -127,6 +129,8 @@ export function KitGallery() {
               </For>
             </AutoGrid>
           </Specimen>
+
+          <PrimitiveSpecimens Specimen={Specimen} />
 
           <Specimen name="Eyebrow · Heading · Lede · Code · StatusDot · StatusBadge">
             <Eyebrow>eyebrow default</Eyebrow>
@@ -264,7 +268,7 @@ export function KitGallery() {
 
           <Specimen name="StatCard: with its chart (the note shows once, in the chart's footnote) · without a chart">
             {STRIP_ITEM ? (
-              <AutoGrid min={280} gap={12}>
+              <AutoGrid min={280} gap={150}>
                 <StatCard stat={STRIP_ITEM.stat} label={STRIP_ITEM.label} lines={[STRIP_ITEM.rival]} note={STRIP_ITEM.condition} chart={{ svg: proofChartsArt, file: 'home/proof-charts.svg' }} />
                 <StatCard stat={STRIP_ITEM.stat} label={STRIP_ITEM.label} lines={[STRIP_ITEM.rival]} note={STRIP_ITEM.condition} />
               </AutoGrid>
@@ -318,7 +322,7 @@ export function KitGallery() {
           <Specimen name="FeatureList · ApiGroups · LimitNote · Faq">
             <FeatureList items={FORM.features.items.slice(0, 4)} />
             <ApiGroups groups={FORM.api.groups.slice(0, 2)} />
-            <AutoGrid min={300} gap={12}>
+            <AutoGrid min={300} gap={150}>
               <For each={FORM.limits.slice(0, 2)} by={(l) => l.title}>
                 {(l) => <LimitNote title={l.title} text={l.text} />}
               </For>
@@ -331,12 +335,12 @@ export function KitGallery() {
           </Specimen>
 
           <Specimen name="Picture · Poster · Loop · AnimatedSvg · shareImage (the asset set, kit/media.tsx)">
-            <AutoGrid cols={2} gap={16}>
+            <AutoGrid cols={2} gap={200}>
               <Picture file="showcase/app-dashboard.png" sizes="(min-width: 960px) 600px, 100vw" />
               <Poster file="home/runs-once-tree.svg" sizes="(min-width: 960px) 600px, 100vw" />
             </AutoGrid>
             <Loop media={HERO_MEDIA} />
-            <AutoGrid cols={2} gap={16}>
+            <AutoGrid cols={2} gap={200}>
               <AnimatedSvg file="illustrations/404.svg" markup={notFoundArt} />
               <Lede size="small" style="overflow-wrap:anywhere;min-width:0">{renderInline(`\`shareImage('/')\` → \`${shareImage('/').url}\` (${shareImage('/').width}×${shareImage('/').height})`)}</Lede>
             </AutoGrid>
@@ -356,7 +360,7 @@ export function KitGallery() {
           </Specimen>
 
           <Specimen name="Both themes, forced">
-            <AutoGrid cols={2} gap={16}>
+            <AutoGrid cols={2} gap={200}>
               <Scope mode="dark" />
               <Scope mode="light" />
             </AutoGrid>

@@ -4,12 +4,13 @@ import planned from 'virtual:pyreon-blog-planned'
 import { BLOG_COPY, fill } from '../../site/content/channels'
 import { el, tone } from '../../site/kit/bases'
 import { GlowCard } from '../../site/kit/cards'
-import { Section, Wrap } from '../../site/kit/layout'
+import { Section } from '../../site/kit/layout'
+import { Stack, Wrap } from '../../site/kit/primitives'
 import { Eyebrow, Heading, Lede, renderInline } from '../../site/kit/type'
 import { breakpoints, radius } from '../../site/theme'
 import { coverVariants } from '../cover'
 import { upNext } from '../planned'
-import { Actions, CardMeta, ListHead, Pager, PlannedGrid, PostGrid, ReadMore, Stack, SubscribeBand, TagChips } from './parts'
+import { Actions, CardMeta, ListHead, Pager, PlannedGrid, PostGrid, ReadMore, SubscribeBand, TagChips } from './parts'
 
 /**
  * `/blog`, `/blog/page/<n>`, `/blog/tags/<tag>` and its pages, rendered by
@@ -133,7 +134,7 @@ export function BlogList(view: BlogListView) {
       </Section>
       <Section size="tight">
         <Wrap>
-          <Stack>
+          <Stack gap={250}>
             {view.total === 0 && next.length === 0 ? <Empty /> : null}
             {featured ? <Featured post={featured} label={copy.latest} readPost={copy.readPost} /> : null}
             {rest.length > 0 ? (
@@ -145,7 +146,7 @@ export function BlogList(view: BlogListView) {
             <Pager copy={copy} page={view.page} pageCount={view.pageCount} href={view.href} />
             {next.length > 0 ? (
               <section aria-labelledby="up-next" data-up-next="">
-                <Stack>
+                <Stack gap={250}>
                   <ListHead id="up-next" title={copy.upNext.title} text={copy.upNext.text} />
                   <PlannedGrid posts={next} planned={copy.upNext.planned} />
                 </Stack>
