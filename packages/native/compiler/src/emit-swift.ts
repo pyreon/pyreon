@@ -4456,6 +4456,20 @@ function emitSwiftIndexedClosure(
 }
 
 /**
+ * A `Map` / `Record` LITERAL, typed by itself: `PyreonMap<K, V>([(k, v), …])`, never the bare dictionary literal
+ * `[k: v, …]`. A bare literal is a `PyreonMap` only where something pins the type (an annotation, a typed
+ * parameter); anywhere else — an unannotated local, `[…].keys` — Swift makes it a `Dictionary`, whose iteration
+ * order follows a per-process-seeded hash, so `Object.keys(record)` / `[...map.keys()]` came out in a different
+ * order on every launch, and a repeated key trapped. The pair list keeps the web's rule for a repeated key (first
+ * position, last value). Without a known map type the generic arguments are left to Swift's inference.
+ */
+function swiftMapLiteral(pairs: (readonly [string, string])[], mt: Extract<TypeIR, { kind: 'map' }> | undefined): string {
+  const ctor = mt === undefined ? 'PyreonMap' : swiftType(mt)
+  if (pairs.length === 0) return `${ctor}()`
+  return `${ctor}([${pairs.map(([k, v]) => `(${k}, ${v})`).join(', ')}])`
+}
+
+/**
  * `new Map(src.map((x) => [k, v]))` → `PyreonMap(src.map { x in (k, v) })`. A repeated key keeps its
  * first position and takes the last value, as JS `Map` does (`Dictionary(uniqueKeysWithValues:)` trapped). `x` is bound to the source's element type while the two
  * halves emit, so a type-gated lowering inside them sees a typed receiver.
@@ -6662,12 +6676,18 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           return `${src}`
         }
         if (e.pairsFrom !== undefined) return emitSwiftMapFromPairs(e, e.pairsFrom, indent)
-        // Seeded `new Map([[k,v],…])` → a dict literal `[k: v, …]`.
+        // Seeded `new Map([[k,v],…])` → `PyreonMap([(k, v), …])`. Never a bare dictionary literal: where nothing
+        // pins its type (an unannotated local, a chained read) Swift makes it a `Dictionary`, whose order is a
+        // per-process hash (see `swiftMapLiteral`).
         if (e.entries && e.entries.length > 0) {
-          const body = e.entries
-            .map(([k, v]) => `${emitSwiftExpr(k, indent)}: ${emitSwiftExpr(v, indent)}`)
-            .join(', ')
-          return `[${body}]`
+          const mt = _expectedType?.kind === 'map' ? _expectedType : undefined
+          return swiftMapLiteral(
+            e.entries.map(([k, v]) => [
+              withExpectedType(mt?.key, () => emitSwiftExpr(k, indent)),
+              withExpectedType(mt?.value, () => emitSwiftExpr(mt ? asFloatLiteral(v, mt.value) : v, indent)),
+            ]),
+            mt,
+          )
         }
         return `PyreonMap<${swiftType(e.keyType!)}, ${swiftType(e.valueType!)}>()`
       }
@@ -6740,15 +6760,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // struct-synthesized. A spread has no dictionary form here, so it keeps
       // the struct path.
       if (_expectedType?.kind === 'map' && (!e.spreads || e.spreads.length === 0)) {
-        const vT = _expectedType.value
-        if (e.fields.length === 0) return '[:]'
-        const entries = e.fields
-          .map(
-            (f) =>
-              `${swiftStr(f.name)}: ${withExpectedType(vT, () => emitSwiftExpr(asFloatLiteral(f.value, vT), indent))}`,
-          )
-          .join(', ')
-        return `[${entries}]`
+        const mt = _expectedType
+        const vT = mt.value
+        return swiftMapLiteral(
+          e.fields.map((f) => [
+            swiftStr(f.name),
+            withExpectedType(vT, () => emitSwiftExpr(asFloatLiteral(f.value, vT), indent)),
+          ]),
+          mt,
+        )
       }
       // G4 — partial-update form. When the object has EXACTLY ONE
       // spread and that spread argument is a bare identifier (typical

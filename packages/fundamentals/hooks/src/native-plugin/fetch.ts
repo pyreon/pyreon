@@ -264,7 +264,7 @@ function swiftHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
     lines.push(`    ${name}.resolve(try __response.decode(${ctx.typeText(p.type)}.self))`)
   } else {
     lines.push(`    let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${swiftStr(p.url)})!)`)
-    lines.push(`    ${name}.resolve(try JSONDecoder().decode(${ctx.typeText(p.type)}.self, from: bytes))`)
+    lines.push(`    ${name}.resolve(try PyreonJSON.decode(${ctx.typeText(p.type)}.self, from: bytes))`)
   }
   lines.push(`  } catch { ${name}.reject(error) }`, `}`)
   return lines
