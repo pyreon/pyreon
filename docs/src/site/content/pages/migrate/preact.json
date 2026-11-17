@@ -80,7 +80,7 @@
     },
     {
       "claim": "Covered by unit, browser and Playwright e2e tests",
-      "path": "packages/tools/preact-compat/src/tests/; e2e/preact-compat.spec.ts; e2e/cpa-app-preact-compat.spec.ts"
+      "path": "packages/tools/preact-compat/src/tests/; e2e/preact-compat.spec.ts; e2e/cpa-app-compat.spec.ts (scaffold-smoke cpa-smoke-app-preact-compat)"
     }
   ]
 }
