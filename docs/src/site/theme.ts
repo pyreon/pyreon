@@ -327,6 +327,13 @@ export const layout = {
   navMaxWidth: 1080,
   /** Below this width the nav collapses into the menu button + sheet (_nav.json mobile.breakpoint). */
   navCollapse: 960,
+  /**
+   * The home page's split width (700px): from here the hero shows the
+   * source-to-targets visual and the comparison is a table; below it, the
+   * phone layouts. Not a theme breakpoint (those feed the UI system's
+   * generated CSS): read it through `media.up.split` / `media.down.split`.
+   */
+  split: 700,
   sheetPadTop: 88,
   /** Where an anchor target lands: below the fixed nav (navTop + navHeight) with a gap. */
   anchorOffset: 88,
@@ -517,6 +524,8 @@ export const leading = {
   snug: 1.3,
   comfy: 1.45,
   normal: 1.5,
+  /** Mono detail lines under a number or a benchmark row. */
+  detail: 1.55,
   relaxed: 1.6,
   loose: 1.65,
   code: 1.8,
@@ -555,13 +564,17 @@ export const reducedMotion = '@media (prefers-reduced-motion: reduce)'
 /**
  * Media queries on the theme breakpoints: `up.md` from 768px, `down.md`
  * below it (max-width 767.98px, so the two never overlap). A width that is
- * not a breakpoint (the docs rail, the nav collapse) has its own named token.
+ * not a breakpoint (the docs rail, the nav collapse) has its own named token;
+ * `split` (`layout.split`, the home page's 700px) is one of the widths here.
  */
 type BreakpointKey = Exclude<keyof typeof breakpoints, 'xs'>
-const bpKeys = ['sm', 'md', 'lg', 'xl'] as const satisfies readonly BreakpointKey[]
+/** A width `media` has a query for: the theme breakpoints plus `split`. */
+export type MediaWidth = BreakpointKey | 'split'
+const widths: Record<MediaWidth, number> = { sm: breakpoints.sm, md: breakpoints.md, lg: breakpoints.lg, xl: breakpoints.xl, split: layout.split }
+const mediaKeys = Object.keys(widths) as MediaWidth[]
 export const media = {
-  up: Object.fromEntries(bpKeys.map((k) => [k, `@media (min-width: ${breakpoints[k]}px)`])) as Record<BreakpointKey, string>,
-  down: Object.fromEntries(bpKeys.map((k) => [k, `@media (max-width: ${breakpoints[k] - 0.02}px)`])) as Record<BreakpointKey, string>,
+  up: Object.fromEntries(mediaKeys.map((k) => [k, `@media (min-width: ${widths[k]}px)`])) as Record<MediaWidth, string>,
+  down: Object.fromEntries(mediaKeys.map((k) => [k, `@media (max-width: ${widths[k] - 0.02}px)`])) as Record<MediaWidth, string>,
 } as const
 
 /**

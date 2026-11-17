@@ -405,6 +405,8 @@ const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: st
   { name: 'PyreonTimers.clear', file: 'PyreonTimers.swift' },
   // `JSON.parse(s)` lowers to `PyreonJSON.parse(T.self, s)`.
   { name: 'PyreonJSON.parse', file: 'PyreonJSON.swift' },
+  // A fetch / query / stream body decodes through `PyreonJSON.decode(T.self, from:)` (document key order).
+  { name: 'PyreonJSON.decode', file: 'PyreonJSON.swift' },
   // An emitted schema struct throws / returns these, and its callers convert typed input with `pyreonSchemaInput`.
   { name: 'PyreonSchemaError.missingOrWrongType', file: 'PyreonSchema.swift' },
   { name: 'PyreonSchemaError.constraintViolation', file: 'PyreonSchema.swift' },

@@ -6,7 +6,7 @@ import type { BlogChannel, Cta } from '../../site/content/types-site'
 import { el, focusRing, tone, txt, type LinkAttrs, tapArea } from '../../site/kit/bases'
 import { GlowCard } from '../../site/kit/cards'
 import { Pill } from '../../site/kit/controls'
-import { AutoGrid } from '../../site/kit/layout'
+import { AutoGrid, Cluster } from '../../site/kit/primitives'
 import { Lede, renderInline } from '../../site/kit/type'
 import { font, motion, radius, text, weight } from '../../site/theme'
 import type { PlannedPost } from '../planned'
@@ -98,11 +98,6 @@ export function CardMeta(props: { post: BlogPost; label?: string | undefined }) 
   )
 }
 
-const TagRow = el
-  .config({ name: 'BlogTagRow' })
-  .attrs({ tag: 'ul', block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 6 })
-  .theme(() => ({ flexWrap: 'wrap', listStyle: 'none', margin: 0, padding: 0 }))
-
 const TagLink = el
   .config({ name: 'BlogTag' })
   .attrs<LinkAttrs>({ tag: 'a', contentDirection: 'inline', contentAlignY: 'center', gap: 6 })
@@ -147,7 +142,7 @@ export function TagChips(props: {
   const tags = current && !props.tags.some((t) => t.slug === current.slug) ? [...props.tags, current] : props.tags
   return (
     <nav aria-label={props.label}>
-      <TagRow>
+      <Cluster tag="ul" gap={75} alignY="center">
         {all ? (
           <li>
             <TagLink href={all.href} aria-current={current === undefined ? 'page' : undefined}>
@@ -165,7 +160,7 @@ export function TagChips(props: {
             </li>
           )}
         </For>
-      </TagRow>
+      </Cluster>
     </nav>
   )
 }
@@ -207,7 +202,7 @@ export function PostCard(props: { post: BlogPost; level?: 'h2' | 'h3' | undefine
 /** The posts of a listing page as a card grid (three columns on a wide screen). */
 export function PostGrid(props: { posts: readonly BlogPost[]; level?: 'h2' | 'h3' | undefined }) {
   return (
-    <AutoGrid min={300} gap={14} tag="ol">
+    <AutoGrid min={300} gap={175} tag="ol">
       <For each={props.posts} by={(p) => p.slug}>
         {(p) => (
           <li>
@@ -248,7 +243,7 @@ export function PlannedCard(props: { post: PlannedPost; planned: string }) {
 /** The scheduled posts, soonest first. */
 export function PlannedGrid(props: { posts: readonly PlannedPost[]; planned: string }) {
   return (
-    <AutoGrid min={300} gap={14} tag="ul">
+    <AutoGrid min={300} gap={175} tag="ul">
       <For each={props.posts} by={(p) => `${p.date}:${p.title}`}>
         {(p) => (
           <li>
@@ -322,15 +317,10 @@ export function Pager(props: { copy: BlogChannel; page: number; pageCount: numbe
   )
 }
 
-const ActionRow = el
-  .config({ name: 'BlogActions' })
-  .attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 10 })
-  .theme(() => ({ flexWrap: 'wrap' }))
-
 /** A row of pill links from content `Cta`s; the first is solid when `solidFirst`. */
 export function Actions(props: { items: readonly Cta[]; solidFirst?: boolean | undefined }) {
   return (
-    <ActionRow>
+    <Cluster gap={125} alignY="center">
       <For each={props.items.map((c, i) => ({ c, i }))} by={(x) => x.i}>
         {(x) => (
           <Pill href={x.c.href ?? '/'} variant={props.solidFirst && x.i === 0 ? 'solid' : 'ghost'}>
@@ -338,7 +328,7 @@ export function Actions(props: { items: readonly Cta[]; solidFirst?: boolean | u
           </Pill>
         )}
       </For>
-    </ActionRow>
+    </Cluster>
   )
 }
 
@@ -410,7 +400,4 @@ export function EndCard(props: { title: string; text: string; link: { label: str
     </Strip>
   )
 }
-
-/** Vertical stack with the kit's gap. */
-export const Stack = el.config({ name: 'BlogStack' }).attrs({ block: true, contentAlignX: 'block', gap: 20 })
 

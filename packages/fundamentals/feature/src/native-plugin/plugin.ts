@@ -54,6 +54,7 @@ import {
   recognizeCrudDecl,
   recognizeCrudMutate,
   scanCrud,
+  type SchemaField,
 } from './crud'
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
@@ -63,6 +64,7 @@ export const FEATURE_PLUGIN_NAME = '@pyreon/feature'
 const ITEM_TYPE = 'feature'
 
 type FieldType = 'string' | 'number' | 'boolean'
+
 interface FeaturePayload {
   bindingName: string
   featureName: string
@@ -93,6 +95,7 @@ function scalarValidator(node: AnyNode | undefined): { type: FieldType; chain: s
     chain.push(method)
     cur = object
   }
+
   return null
 }
 
@@ -101,6 +104,7 @@ function validatorObject(node: AnyNode | undefined): AnyNode | undefined {
   if (node?.type !== 'CallExpression' || node.callee?.type !== 'MemberExpression' || node.callee.computed) return undefined
   if (node.callee.property?.name !== 'object' || unwrapTypeLayers(node.callee.object)?.type !== 'Identifier') return undefined
   const arg = unwrapTypeLayers(((node.arguments as AnyNode[] | undefined) ?? [])[0])
+
   return arg?.type === 'ObjectExpression' ? arg : undefined
 }
 
@@ -137,6 +141,7 @@ function featureValidatorSchema(init: AnyNode | undefined): AnyNode | undefined 
     const value = unwrapTypeLayers(prop.value as AnyNode | undefined)
     return validatorObject(value) !== undefined ? value : undefined
   }
+
   return undefined
 }
 
@@ -166,6 +171,60 @@ function scanFeatures(scan: ModuleScan): void {
       }
     }
   }
+}
+
+/**
+ * The fields the record struct of each file-scope feature declares, recorded BEFORE any component is parsed (a component
+ * can sit above the declaration) for the CRUD lowering's optimistic `useUpdate` write, which patches the struct field by
+ * field. The same rule {@link recognizeFeature} applies — a scalar validator, or a `'string' | 'number' | 'boolean'`
+ * literal — minus its diagnostics, which the declaration reports once.
+ */
+function scanSchemaFields(scan: ModuleScan): void {
+  const schemas = crudFacts(scan).schemas
+  for (const node of scan.body as readonly AnyNode[]) {
+    for (const d of topLevelDeclarators(node) as readonly AnyNode[]) {
+      const schemaNode = defineFeatureSchemaNode(d)
+      const validators = validatorObject(schemaNode)
+      const fieldMap = validators ?? schemaNode
+      if (fieldMap?.type !== 'ObjectExpression') continue
+      schemas.set(d.id.name as string, schemaFieldsOf(fieldMap, validators !== undefined))
+    }
+  }
+}
+
+/** The `schema:` value of a `const x = defineFeature({ … })` declarator, or `undefined` for any other declarator. */
+function defineFeatureSchemaNode(d: AnyNode): AnyNode | undefined {
+  const init = unwrapTypeLayers(d.init as AnyNode | undefined)
+  if (d.id?.type !== 'Identifier' || init?.type !== 'CallExpression' || init.callee?.type !== 'Identifier') return undefined
+  if (init.callee.name !== 'defineFeature') return undefined
+  const config = unwrapTypeLayers(((init.arguments as AnyNode[] | undefined) ?? [])[0])
+  if (config?.type !== 'ObjectExpression') return undefined
+  const schemaProp = ((config.properties as AnyNode[] | undefined) ?? []).find(
+    (p) => (p?.type === 'Property' || p?.type === 'ObjectProperty') && !hasDynamicKey(p) && staticPropKey(p) === 'schema',
+  )
+
+  return unwrapTypeLayers(schemaProp?.value as AnyNode | undefined)
+}
+
+/** The scalar type one schema entry declares: a scalar validator, or a `'string' | 'number' | 'boolean'` literal. */
+function schemaFieldType(value: AnyNode | undefined, fromValidators: boolean): FieldType | undefined {
+  if (fromValidators) return scalarValidator(value)?.type
+  if (value?.type === 'Literal' && typeof value.value === 'string' && SCALARS.has(value.value)) return value.value as FieldType
+
+  return undefined
+}
+
+function schemaFieldsOf(fieldMap: AnyNode, fromValidators: boolean): SchemaField[] {
+  const fields: SchemaField[] = []
+  for (const entry of (fieldMap.properties as AnyNode[] | undefined) ?? []) {
+    if ((entry?.type !== 'Property' && entry?.type !== 'ObjectProperty') || hasDynamicKey(entry)) continue
+    const name = staticPropKey(entry)
+    if (!name) continue
+    const type = schemaFieldType(unwrapTypeLayers(entry.value as AnyNode | undefined), fromValidators)
+    if (type !== undefined) fields.push({ name, type })
+  }
+
+  return fields
 }
 
 /**
@@ -216,6 +275,7 @@ function recognizeSchemaMethod(
     if (method === 'parse' || method === 'safeParse') {
       return { type: 'result', payload: { schemaName: schemaStructName(binding) }, args: [arg()] }
     }
+
     return ctx.unsupported(node, subject, 'only `.parse(x)` / `.safeParse(x)` on a feature schema lower to native. Keep this call in a web-only helper.')
   }
   if (library === 'zod') {
@@ -223,6 +283,7 @@ function recognizeSchemaMethod(
       facts.safeParseBindings.add(binding)
       return { type: 'safeParse', payload: { schemaName: schemaStructName(binding) }, args: [arg()] }
     }
+
     return ctx.unsupported(
       node,
       subject,
@@ -231,6 +292,7 @@ function recognizeSchemaMethod(
         : 'only `.safeParse(x)` on a zod feature schema lowers to native. Keep this call in a web-only helper.',
     )
   }
+
   return ctx.unsupported(
     node,
     subject,
@@ -295,6 +357,7 @@ const recognizeFeature: TopLevelRecognizer = (node, ctx): ExtItemSpec | undefine
     ctx.report(
       `defineFeature declaration \`${bindingName}\`: \`name\` field is missing or not a string literal — v1 emit requires the literal shape. Falling back to tier2 silent-drop.`,
     )
+
     return undefined
   }
   // `z.object({ … })` reads through to its field map; the validators are read per field below.
@@ -304,6 +367,7 @@ const recognizeFeature: TopLevelRecognizer = (node, ctx): ExtItemSpec | undefine
     ctx.report(
       `defineFeature declaration \`${bindingName}\`: \`schema\` is not a literal object — only the literal field-type map (\`{ id: 'string', ... }\`) or an object literal of scalar validators (\`z.object({ id: z.string() })\`) lower. A schema held in a variable, \`v.pipe(…)\` and ArkType fall through to tier2 silent-drop.`,
     )
+
     return undefined
   }
 
@@ -391,6 +455,7 @@ const recognizeFeature: TopLevelRecognizer = (node, ctx): ExtItemSpec | undefine
     ctx.report(`defineFeature declaration \`${bindingName}\`: no recognized schema fields. Falling back to tier2 silent-drop.`)
     return undefined
   }
+
   return { type: ITEM_TYPE, name: bindingName, payload: { bindingName, featureName, fields } }
 }
 
@@ -433,6 +498,7 @@ const featureItem: ModuleItemEmitter = {
     // disambiguation renames.
     lines.push(``)
     lines.push(`let ${f.bindingName} = PyreonFeature_${f.bindingName}.self`)
+
     return [lines.join('\n')]
   },
   kotlin(item) {
@@ -454,6 +520,7 @@ const featureItem: ModuleItemEmitter = {
     lines.push(`}`)
     lines.push(``)
     lines.push(`val ${f.bindingName} = PyreonFeature_${f.bindingName}`)
+
     return [lines.join('\n')]
   },
 }
@@ -468,6 +535,7 @@ export const featurePlugin: CompilerPlugin = Object.freeze({
   scanModule: (scan: ModuleScan) => {
     scanFeatures(scan)
     scanCrud(scan)
+    scanSchemaFields(scan)
   },
   declCalls: recognizeCrudDecl,
   decls: crudDecls,

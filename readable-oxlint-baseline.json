@@ -1,6 +1,6 @@
 {
   "description": "Readable oxlint ratchet — findings of `@pyreon/lint/oxlint/readable.json` (via scripts/oxlint-readable.jsonc) per (file, rule) may only DECREASE, and a file not listed here must have none. Checked by `bun scripts/check-readable-oxlint-ratchet.ts` (validate-fast + CI). Split the function, or fix with `bunx oxlint -c scripts/oxlint-readable.jsonc --fix <file>` for curly / newline-after-import / else-return; then tighten with `--update`. Never raise a count to absorb a finding.",
-  "total": 3384,
+  "total": 3383,
   "files": {
     "contrib/moltar/pyreon/bench-vs-typia.mjs": {"eslint(complexity)":1,"eslint(no-else-return)":4},
     "docs/scripts/gen-examples-gallery.ts": {"eslint(curly)":2},
@@ -25,7 +25,6 @@
     "docs/src/site/demos/DemoRouter.tsx": {"eslint(curly)":3,"eslint(max-lines-per-function)":1},
     "docs/src/site/demos/DemoTable.tsx": {"eslint(max-lines-per-function)":1},
     "docs/src/site/demos/DemoUrlstate.tsx": {"eslint(max-lines-per-function)":1},
-    "docs/src/site/kit/site-css.ts": {"import(first)":1},
     "docs/src/site/pages/BrandSections.tsx": {"eslint(max-lines-per-function)":1},
     "docs/src/site/pages/ComparePage.tsx": {"eslint(max-lines-per-function)":1},
     "docs/src/site/pages/KitGallery.tsx": {"eslint(max-lines-per-function)":1},

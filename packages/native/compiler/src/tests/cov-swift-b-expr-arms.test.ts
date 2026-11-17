@@ -148,12 +148,12 @@ export function App(props: { onDone: () => void }) {
 describe('object literals under a MAP expectation', () => {
   it('an EMPTY literal under a Record<> annotation is the empty dictionary', () => {
     const out = sw(`  const m: Record<string, number> = {}`)
-    expect(out).toContain('[:]')
+    expect(out).toContain('PyreonMap<String, Int>()')
   })
 
   it('a POPULATED literal under a Record<> annotation is a dictionary, not a struct', () => {
     const out = sw(`  const m: Record<string, number> = { a: 1, b: 2 }`)
-    expect(out).toContain('["a": 1, "b": 2]')
+    expect(out).toContain('PyreonMap<String, Int>([("a", 1), ("b", 2)])')
   })
 })
 
