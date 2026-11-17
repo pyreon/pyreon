@@ -1012,7 +1012,7 @@ If any answer is "the GC will handle it" or "the user will dispose it manually",
 - **`export const loader = <non-callable>`**: `loader = { data: 1 }` or `loader = await fetch(...)` crashes SSR with `loader is not a function` from deep inside `prefetchLoaderData`. `pyreon/invalid-loader-export` (error) rejects object/array/string/number literals and accepts functions, identifiers, calls, member expressions and TS casts.
 - **Lint rules scoped by filename alone**: filename conventions collide. `pyreon/missing-get-static-paths` and `detectDynamicRouteMissingGetStaticPaths` skip files under `src/routes/api/` and files with no `export default` (API routes are never prerendered). Scope convention detectors by path and a structural signal, and run new rules against a real example app, not only synthetic fixtures.
 
-- **Per-call-site handling of a config enum**: open-coding one branch at each site silently ignores the others, and `audit-types` cannot see it because the type is referenced. `imagePlugin` routes every path (CDN, dev, build) through `generatePlaceholder(input, strategy, size)`; `normalizePlaceholder` maps the deprecated `'dominant-color'` to `'color'` at the config boundary. Reference: `packages/zero/zero/src/image-plugin.ts`.
+- **Per-call-site handling of a config enum**: open-coding one branch at each site silently ignores the others, and `audit-types` cannot see it because the type is referenced. `imagePlugin` routes every path (CDN, dev, build) through `generatePlaceholder(input, strategy, size)`; `resolvePlaceholder` rejects an unknown strategy at the config boundary instead of letting it fall through to blur. Reference: `packages/zero/zero/src/image-plugin.ts`.
 
 ## Best-Practice Mistakes (opt-in `@pyreon/lint` rules)
 

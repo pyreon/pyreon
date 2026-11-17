@@ -10570,8 +10570,7 @@ const xml = generateRssFeed({
 })`,
     notes: `Generate an RSS 2.0 feed string for blog / changelog / podcast content — CLIENT-SAFE, re-exported from the main \`@pyreon/zero\` entry (no \`/server\` subpath needed, unlike \`seoPlugin\`/\`aiPlugin\`/\`generateSitemap\`). Items are emitted in the supplied order — sort newest-first yourself before passing them in. Typically called from a build script or an API route handler that returns the string with \`Content-Type: application/rss+xml\`. An item's \`content\` (HTML) is emitted as CDATA-wrapped \`<content:encoded>\` — the full body readers and importers like dev.to take instead of \`description\`; \`feedUrl\` emits \`<atom:link rel="self">\`. Both namespaces are declared only when used. See also: seoPlugin.`,
     mistakes: `- Passing \`items\` in an arbitrary order and expecting the feed to sort itself — items are emitted in the SUPPLIED order; sort newest-first before passing them in
-- Putting site-relative links or images in \`content\` — a feed reader resolves them against nothing; make every URL absolute
-- Reaching for \`@pyreon/zero-content\`'s own \`generateRssFeed\` — that one is DEPRECATED and forwards here anyway; import directly from \`@pyreon/zero\``,
+- Putting site-relative links or images in \`content\` — a feed reader resolves them against nothing; make every URL absolute`,
   },
   // <gen-docs:api-reference:end @pyreon/zero>
 
@@ -10957,14 +10956,6 @@ export const blog = defineBlog({
 - A frontmatter \`slug\` that differs from the file name — the URL comes from the file; \`postPaths\` fails the build naming both
 - Importing \`@pyreon/zero-content/blog.css\` AFTER the site stylesheet — it has one-class specificity, so it must come first for the site's class rules to win
 - Treating \`entry.data.date\` as a string — the schema outputs \`BlogPostData\` (dates as \`Date\`, \`tags\`/\`author\` as lists, \`draft\` boolean) and that parsed output is what ships`,
-  },
-
-  'zero-content/generateSitemap / generateRssFeed / generateLlmsTxt': {
-    signature: 'generateSitemap(args): string · generateRssFeed(args): string · generateLlmsTxt(args): string',
-    example: `// Prefer, from @pyreon/zero/server (server-only, Vite plugins):
-import { seoPlugin, generateRssFeed, aiPlugin } from '@pyreon/zero/server'`,
-    notes: `DEPRECATED — all three are thin build-script helpers kept for back-compat and superseded by richer \`@pyreon/zero\` equivalents that run as Vite plugins instead of a hand-written build script: \`generateSitemap\` → \`@pyreon/zero/server\`'s \`generateSitemap\` + \`seoPlugin\` (adds hreflang/i18n, trailing-slash policy, SSG path-manifest integration; server-only, Vite-plugin-only); \`generateRssFeed\`/\`toRfc822\` → the SAME function, re-exported from \`@pyreon/zero\`'s CLIENT-SAFE main entry (no \`/server\` needed — no \`zero-content\` wrapper needed either); \`generateLlmsTxt\` → \`@pyreon/zero/server\`'s \`aiPlugin\` (server-only). These \`zero-content\` versions will be removed in a future major version — do not build new tooling on them.`,
-    mistakes: `- Building new SEO tooling on these zero-content functions — they are deprecated aliases; use @pyreon/zero's seoPlugin/aiPlugin/generateRssFeed instead, which cover strictly more (hreflang, SSG integration, no hand-written build script)`,
   },
   // <gen-docs:api-reference:end @pyreon/zero-content>
   // <gen-docs:api-reference:start @pyreon/sync>
