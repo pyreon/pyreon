@@ -1,7 +1,6 @@
 # native-showcase: Today, one source file on three targets
 
-> **Experimental.** The native targets (PMTC → SwiftUI and Jetpack Compose) are experimental: demo-quality, not
-> production-ready. See `docs/src/content/docs/multiplatform.md`.
+> **Experimental.** The native targets (PMTC → SwiftUI and Jetpack Compose) are Experimental overall: the store-release and crash-reporting path is not ready yet. Each area has its own tier (Beta / Experimental / Not ready) in the "Maturity by area" table of `docs/src/content/docs/multiplatform.md`.
 
 **Today** is a small todo app: a heading with a count, a field with an Add button, a list with a switch and a Remove
 action per todo, and an empty state. It is written once, in [`src/TodayApp.tsx`](src/TodayApp.tsx), with signals and the

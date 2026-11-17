@@ -6,12 +6,53 @@ title: Multi-Platform Pyreon
 
 <LiveDemo id="native" />
 
-> **Status:** PMTC (Pyreon Multi-Target Compiler) is **experimental — demo-quality, not production-ready.** The single number for "how much is device-proven" is the gated weighted matrix at the bottom of this page (`check-multiplatform-matrix` fails CI when its headline disagrees with its table) — do not quote a score from memory or from an older revision of this page. The 22-primitive canonical vocabulary spans all three targets — every primitive has a real web DOM runtime AND emits SwiftUI + Jetpack Compose. **Be precise about what "validated" means**, because the layers differ sharply in strength:
+> **Status:** PMTC (Pyreon Multi-Target Compiler) is **Experimental overall**, and the reason is specific: the *shipping path* is not ready — store release, crash reporting and background/push are rated Not ready, so you cannot yet take one source to both stores and read symbolicated crash stacks from it. Individual areas are further along than the overall label; each has its own tier, derived from the matrix in [Maturity by area](#maturity-by-area). **Beta areas:** Core UI & layout, Lists & keyed rendering, Navigation & routing, State, Forms & validation, Networking, Platform APIs, Gestures. **Not-ready areas:** Offline / sync, Payments, Background / push, Release & distribution, Crash reporting & observability. The single number for "how much is device-proven" is the gated weighted matrix at the bottom of this page (`check-multiplatform-matrix` fails CI when its headline disagrees with its table) — do not quote a score from memory or from an older revision of this page. The 22-primitive canonical vocabulary spans all three targets — every primitive has a real web DOM runtime AND emits SwiftUI + Jetpack Compose. **Be precise about what "validated" means**, because the layers differ sharply in strength:
 > - **(1) Per-PR gate — SYNTAX + STUB TYPE-CHECK.** `swiftc -parse` (syntax, accepts unresolved types) runs on every emit; `kotlinc` type-resolves against Compose **stubs**; and `swiftc -typecheck` type-resolves against SwiftUI+PyreonRuntime **stubs** (`swift-stubs.ts`, the Swift sibling of `kotlin-stubs.ts`) — the stubs' generic constraints mirror the real SDK EXACTLY (`animation<V: Equatable>`, so a `[Todo]` value is correctly REJECTED) so this catches the type-corruption class that pure `-parse` waves through. **Scope:** the stub `-typecheck` now covers the 2 example apps + **all 37** compiler fixtures — canonical primitives, common modifiers, i18n/machine/permissions/link/webview, the rx fixtures, the router-hook surface (`PyreonRouter`/`useNavigate`/`useParams`/`matchPath`/`RouterProvider`), the `PyreonForm` binding surface, and every `@Observable` fixture including the two LARGE showcase apps (`showcase-finance`/`showcase-tasks`, closed by M-gate.1f with `PyreonAuth`/`PyreonDatabase`/`PyreonFetch` + `LazyVStack`/`Color`/`Font.custom`/`.foregroundColor`/`.task`/`navigationDestination` stubs, all mirrored from runtime-swift). It also compiles an example's **app-provided** `useNativeModule` classes alongside the emit — the framework cannot stub a class the app owns, and a synthesized stand-in would mask a mismatched method name. The gate keeps earning its keep by SURFACING real emitter bugs that were then FIXED so the emitted native code actually compiles: rx `.first`/`.last`/`.min`/`.average` now infer Optional/Double bindings; a null-returning component emits `EmptyView()` not `body { nil }`; a top-level object-shape `interface` is SYNTHESIZED into a struct/data-class; and — found while closing the showcase apps — `useDatabase`'s `get`/`delete`/`find` emitted Swift WITHOUT the argument labels the runtime declares (`delete(_ collection:id:)`), so those calls had never compiled. Argument labels are a TYPE-level concern, which is exactly why only a `-typecheck` gate could see it — see the silent-failure cliff below.
 > - **(2) Real-toolchain BUILD of the gated example apps** — `xcodebuild` (full Swift compile) + `gradle assembleDebug` — via the `native-device` workflow (auto-runs on native-path PRs; **REQUIRED** — both build jobs are branch-protection required checks, promoted after the 14-green-nightly streak gate passed). This is the only place type-checking against the REAL SDK (not stubs) happens, and only for those apps.
 > - **(3) Launch + interaction UI smokes** — XCUITest (iOS Simulator) + Compose-instrumented-test (Android Emulator). Strong for the **Tasks/Counter/Router** examples (login validation, store mutation, typed-params nav, content-asserted fetch, Suspense/ErrorBoundary all assert real behaviour); **launch-only for TodoMVC**; **build-only for the Today showcase** (`examples/native-showcase`: both hosts build in CI, its device tests do not run there yet).
 >
 > Layers 2–3 run **automatically on every PR that touches the native pipeline** (`packages/native/**` / `examples/native-*/**`, via the workflow's fail-closed `changes` job — the repo is public, so the macOS runner is free; the `native-device` label remains the manual opt-in for path-external changes) plus the nightly schedule. **Their conclusion is REQUIRED**: `iOS — xcodebuild (Simulator SDK)`, `Android — gradlew assembleDebug`, `Validate emitted Swift + Kotlin`, and `Validate emitted Swift (real-SDK typecheck, macOS)` are all in branch protection's required checks (promoted after the encoded `check-native-device-streak.ts` gate — 14 consecutive green nightlies — passed; the workflow shape is required-check-safe by construction: job-level skips, no trigger-level path filter, so a non-native PR satisfies the checks via skip). So a PR that touches the native pipeline cannot merge unless its emit **builds and runs its UI assertions on a real iOS Simulator and Android Emulator**. What stays weaker: only the gated example apps get that treatment — a capability no gated app exercises still ships on stub-typecheck strength alone.
+
+## Maturity by area
+
+Each area's tier is **derived from its row in the [production capability matrix](#production-capability-matrix-weighted-rung-labeled)** — the matrix stays the source of truth, and `scripts/check-multiplatform-matrix.ts` fails validate-fast and CI when a tier below (or a "Beta / Not-ready areas" summary on any docs page) disagrees with it. The rule, applied to the R4+ fraction:
+
+- **Beta** — fraction ≥ 0.8: the area's behavior is asserted on a device on both platforms; the remaining gaps are named in its matrix row.
+- **Experimental** — 0.4 ≤ fraction < 0.8: a real part is device-proven, a real part is not. Read the row before relying on it.
+- **Not ready** — fraction < 0.4: mostly unproven on a device, or missing.
+
+| Area | Tier |
+| --- | --- |
+| Core UI & layout (16 non-media primitives) | Beta |
+| Lists & keyed rendering | Beta |
+| Navigation & routing | Beta |
+| State (signals/computed/stores) | Beta |
+| Forms & validation | Beta |
+| Networking (fetch/ws/http) | Beta |
+| Storage (kv/secure/db) | Experimental |
+| Auth | Experimental |
+| Platform APIs (haptics/share/link/notifs/camera/biometrics/files/deep links/lifecycle) | Beta |
+| Animations & transitions | Experimental |
+| Gestures | Beta |
+| Adaptive / tablet layout | Experimental |
+| Media (image display/picker/AV) | Experimental |
+| Accessibility | Experimental |
+| i18n | Experimental |
+| Styling & design system | Experimental |
+| Offline / sync | Not ready |
+| Maps / geolocation | Experimental |
+| Payments | Not ready |
+| Background / push | Not ready |
+| Release & distribution (archive/signing/store) | Not ready |
+| Crash reporting & observability | Not ready |
+| Charts (plot engine) | Experimental |
+
+**Why the overall label is still Experimental.** A Beta area means that part of an app behaves on a device. It does not mean an app built from it can ship: the release path (Release & distribution, Crash reporting & observability, Background / push) is Not ready. The overall label drops from Experimental only when all four of these hold:
+
+1. **One real app has shipped to both stores** (App Store and Play) from one source.
+2. **Crash stacks are readable** — a production crash on either platform symbolicates back to a usable stack.
+3. **The matrix headline reaches roughly 85%** device-proven.
+4. **A sustained period passes with no silent miscompile found** — every out-of-subset input produces a named warning, not wrong native code.
 
 ## The pitch
 

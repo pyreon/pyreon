@@ -5,7 +5,7 @@ description: A concept map for React Native and Expo developers — View/Text/Pr
 
 If you build apps with React Native or Expo, most of your instincts transfer — TypeScript, JSX, a component per screen, a router, hooks for device APIs. Three things change: **components run once** (state is signals, not re-rendering), **the native output is generated SwiftUI / Jetpack Compose** (no JavaScript engine on the device), and **the native side compiles a narrow, declarative subset** of TypeScript.
 
-Native targets are [experimental](/docs/multiplatform); read [Pyreon vs Expo, React Native, Flutter](/docs/compare-app-frameworks) first if you are still deciding. For the web half of the same concepts see [Coming from React](/docs/migrating-from-react).
+Native targets are [Experimental overall](/docs/multiplatform#maturity-by-area) — several areas are already Beta, while the store-release and crash-reporting path is not ready; read [Pyreon vs Expo, React Native, Flutter](/docs/compare-app-frameworks) first if you are still deciding. For the web half of the same concepts see [Coming from React](/docs/migrating-from-react).
 
 ## Components and state
 
