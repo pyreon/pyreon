@@ -70,6 +70,7 @@ describe('loadNativeBinding — in-tree binary depth', () => {
     symlinkSync(real, join(root, 'native', 'pyreon-compiler.node'))
     mkdirSync(join(root, 'src'))
     mkdirSync(join(root, 'lib', '_chunks'), { recursive: true })
+
     return root
   }
 
@@ -110,6 +111,7 @@ describe('loadNativeBinding — the per-platform binary must match the compiler 
       JSON.stringify({ name: platformPkg, ...(binaryVersion === null ? {} : { version: binaryVersion }), main: 'index.js' }),
     )
     writeFileSync(join(dir, 'index.js'), 'module.exports = { transformJsx() { return "fake-native" } }\n')
+
     return pathToFileURL(join(root, 'lib', '_chunks', 'jsx-abc.js')).href
   }
 

@@ -85,6 +85,7 @@ interface NodeProcess {
     getReport(): unknown
   }
 }
+
 const nodeProcess = process as unknown as NodeProcess
 
 /**
@@ -118,6 +119,7 @@ export function getPlatformPackageName(
     win32: ['x64'],
   }
   if (!supported[platform]?.includes(arch)) return null
+
   return `@pyreon/compiler-${platform}-${arch}${suffix}`
 }
 
@@ -144,6 +146,7 @@ function detectLibc(platform: string): string | null {
   } catch {
     // Best-effort detection — fall through to glibc default.
   }
+
   return 'gnu'
 }
 
@@ -178,6 +181,7 @@ function ownCompilerVersion(here: string): string | null {
       // Not at this depth.
     }
   }
+
   return null
 }
 
@@ -240,9 +244,11 @@ export function loadNativeBinding(metaUrl: string): NativeBinding | null {
             mismatchWarned = true
             console.warn(mismatch)
           }
+
           return null
         }
       }
+
       return nativeRequire(pkgName) as NativeBinding
     } catch {
       // Per-platform package not installed (typical pre-Phase-5b
