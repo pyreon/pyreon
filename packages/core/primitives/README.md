@@ -15,7 +15,7 @@ function TodoApp() {
   return (
     <Stack gap="md" padding="md">
       <Text size="lg" weight="bold">Todos</Text>
-      <Field value={draft} onChangeText={(t) => draft.set(t)} placeholder="Add..." />
+      <Field value={draft()} onChangeText={(t) => draft.set(t)} placeholder="Add..." />
       <Inline gap="sm" align="center">
         <Text>Total: {todos().length}</Text>
         <Button onPress={addTodo}>Add</Button>

@@ -10787,6 +10787,108 @@ fn init_mints_state(init: &Expression) -> bool {
     finder.found
 }
 
+/// Would evaluating this initializer TWICE be observable — does it mint state
+/// anywhere, not only at its root? Mirrors `initMintsState` in jsx.ts (see its
+/// doc comment for the rule): a stateful call (`is_stateful_call_expr`), a
+/// `new` other than a value constructor, a class expression, a write (`=`,
+/// `++`, `delete`) or an `await` / `yield`, at any depth,
+/// including the body of a function the evaluation can invoke (a call / `new`
+/// callee or argument) — a function that is only created runs nothing.
+/// A generic `Visit` walk, so it reaches every node kind the JS child walk does.
+fn init_mints_state(init: &Expression) -> bool {
+    struct StateFinder {
+        found: bool,
+        // Can evaluating the initializer run the function about to be visited?
+        // Only as a call / `new` callee or argument (through parentheses and
+        // type layers) — the JS twin's `invocable` flag.
+        invocable: bool,
+    }
+    impl<'a> Visit<'a> for StateFinder {
+        fn visit_expression(&mut self, it: &Expression<'a>) {
+            if self.found {
+                return;
+            }
+            match it {
+                // Decided in `visit_function` / `visit_arrow_function_expression`,
+                // which also see class and object methods and declarations.
+                Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => {
+                    oxc_ast_visit::walk::walk_expression(self, it);
+                }
+                Expression::ParenthesizedExpression(_)
+                | Expression::TSAsExpression(_)
+                | Expression::TSSatisfiesExpression(_)
+                | Expression::TSNonNullExpression(_)
+                | Expression::TSTypeAssertion(_) => {
+                    oxc_ast_visit::walk::walk_expression(self, it);
+                }
+                _ => {
+                    let effectful = match it {
+                        Expression::NewExpression(n) => !is_value_constructor(&n.callee),
+                        Expression::ClassExpression(_)
+                        | Expression::AssignmentExpression(_)
+                        | Expression::UpdateExpression(_)
+                        | Expression::AwaitExpression(_)
+                        | Expression::YieldExpression(_) => true,
+                        Expression::UnaryExpression(u) => u.operator == UnaryOperator::Delete,
+                        _ => false,
+                    };
+                    if effectful {
+                        self.found = true;
+                        return;
+                    }
+                    self.invocable = false;
+                    oxc_ast_visit::walk::walk_expression(self, it);
+                }
+            }
+            self.invocable = false;
+        }
+        fn visit_function(&mut self, it: &Function<'a>, flags: oxc_syntax::scope::ScopeFlags) {
+            if self.found || !self.invocable {
+                return;
+            }
+            self.invocable = false;
+            oxc_ast_visit::walk::walk_function(self, it, flags);
+        }
+        fn visit_arrow_function_expression(&mut self, it: &ArrowFunctionExpression<'a>) {
+            if self.found || !self.invocable {
+                return;
+            }
+            self.invocable = false;
+            oxc_ast_visit::walk::walk_arrow_function_expression(self, it);
+        }
+        // Calls are visited here, not in `visit_expression`, so a call inside an
+        // optional chain (`a?.useX()`, a ChainElement) is classified too.
+        fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
+            if self.found {
+                return;
+            }
+            let stateful = match &it.callee {
+                Expression::Identifier(id) => is_stateful_call(id.name.as_str()),
+                Expression::StaticMemberExpression(m) => {
+                    is_factory_convention_name(m.property.name.as_str())
+                }
+                _ => false,
+            };
+            if stateful {
+                self.found = true;
+                return;
+            }
+            self.invocable = true;
+            self.visit_expression(&it.callee);
+            for arg in &it.arguments {
+                // A spread's operand is not itself an argument (JS twin: the
+                // SpreadElement node is not a pass-through layer).
+                self.invocable = !matches!(arg, Argument::SpreadElement(_));
+                self.visit_argument(arg);
+            }
+            self.invocable = false;
+        }
+    }
+    let mut finder = StateFinder { found: false, invocable: false };
+    finder.visit_expression(init);
+    finder.found
+}
+
 fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
     // Handle splitProps regardless of kind
     for declarator in &decl.declarations {
@@ -10873,6 +10975,12 @@ fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
                 // offsets). The const's own JSX compiles with live bindings.
                 // A full walk, mirroring the JS backend's `containsJsx`.
                 if contains_jsx_in_expr(init) {
+                    continue;
+                }
+                // A factory call or `new` ANYWHERE in the initializer (not only
+                // at its root, checked above): inlining would mint fresh state
+                // per use site. Mirrors the JS backend's `initMintsState`.
+                if init_mints_state(init) {
                     continue;
                 }
                 // A factory call or `new` ANYWHERE in the initializer (not only
