@@ -93,6 +93,7 @@ export function isTransientProcessFailure(err: unknown): boolean {
   const text = [(err as { message?: unknown }).message, (err as { stderr?: unknown }).stderr]
     .map((part) => (typeof part === 'string' ? part : part !== null && part !== undefined ? String(part) : ''))
     .join('\n')
+
   return KILL_NOTICE.test(text)
 }
 
@@ -168,6 +169,7 @@ function cacheDisabled(): boolean {
  * to correct-but-slow, never to wrong.
  */
 let _dir: string | null | undefined
+
 export function cacheDir(): string | null {
   if (_dir !== undefined) return _dir
   _dir = null
@@ -214,6 +216,7 @@ export function cacheDir(): string | null {
       // Try the next candidate.
     }
   }
+
   return _dir
 }
 
@@ -325,6 +328,7 @@ function readDisk(key: string): CachedVerdict | undefined {
       // Best-effort.
     }
   }
+
   return undefined
 }
 
@@ -371,6 +375,7 @@ export function readToolProbe(
   } catch {
     // Absent, unreadable, or corrupt: treat as a miss.
   }
+
   return null
 }
 
@@ -444,6 +449,7 @@ function whichSync(bin: string): string | null {
       // Not here.
     }
   }
+
   return null
 }
 
@@ -486,5 +492,6 @@ export function withVerdictCache(
     result.error === undefined ? { v: 2, ok: result.ok } : { v: 2, ok: result.ok, error: result.error }
   memo.set(key, verdict)
   writeDisk(key, verdict)
+
   return result
 }

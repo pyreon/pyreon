@@ -43,6 +43,7 @@ function swiftFlowInitLabels(source: string): string[] {
     if (depth === 0 && ch === ',') { labels.push(segment); segment = ''; continue }
     segment += ch
   }
+
   return labels.map((seg) => seg.trim().split(':')[0]!.trim()).filter((label) => label.length > 0)
 }
 

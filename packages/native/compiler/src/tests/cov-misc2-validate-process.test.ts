@@ -23,6 +23,7 @@ interface FakeError {
   signal?: string
   code?: string
 }
+
 type Behaviour = { out?: string; err?: FakeError }
 
 /** Routed per (binary, args) so the version probes can succeed while a compile fails. */
@@ -42,6 +43,7 @@ const spawnSyncMock = vi.fn((file: string, args: readonly string[] = []) => {
   if (!b.err) return { status: 0, signal: null, stdout: b.out ?? '', stderr: '' }
   const e = b.err
   const spawnFailed = e.status === undefined && e.signal === undefined
+
   return {
     status: spawnFailed ? null : (e.status ?? null),
     signal: e.signal ?? null,
@@ -75,6 +77,7 @@ const {
 
 const PRIVATE_CACHE = mkdtempSync(join(tmpdir(), 'cov-misc2-validate-'))
 const saved: Record<string, string | undefined> = {}
+
 const ENV_KEYS = [
   'PYREON_VALIDATE_NO_CACHE',
   'PYREON_VALIDATE_CACHE_DIR',
@@ -121,6 +124,7 @@ beforeEach(() => {
   spawnSyncMock.mockClear()
   route = () => ({})
 })
+
 afterEach(() => {
   delete process.env.PYREON_SKIP_NATIVE_VALIDATE
   delete process.env.PYREON_REQUIRE_NATIVE_VALIDATE
@@ -133,6 +137,7 @@ afterEach(() => {
  *  (both are a two-argument `swiftc -typecheck`). */
 const isProbe = (a: readonly string[], kind: 'swiftui' | 'observation'): boolean =>
   a.some((x) => x.includes(`pyreon-${kind}-probe-`))
+
 const isProbeCompile = (a: readonly string[]): boolean =>
   isProbe(a, 'swiftui') || isProbe(a, 'observation')
 
@@ -283,6 +288,7 @@ describe('validate — the absent-tool policy', () => {
       if (isProbe(a, 'observation')) {
         return { err: { status: 1, stderr: 'no such module Observation' } }
       }
+
       return {}
     }
     expect(validateSwiftWithStubs('@Observable final class S { var x = 0 }\n')).toEqual({
@@ -309,6 +315,7 @@ describe('interrupted native capability probes', () => {
               message: 'probe interrupted',
             },
           }
+
         return {}
       }
       const validate =
@@ -349,6 +356,7 @@ describe('interrupted native capability probes', () => {
         return ++attempts === 1
           ? { err: { status: null, signal: 'SIGTERM', code: 'ETIMEDOUT' } }
           : { out: 'toolchain version' }
+
       return {}
     }
     const available = binary === 'swiftc' ? isSwiftcAvailable : isKotlincAvailable
