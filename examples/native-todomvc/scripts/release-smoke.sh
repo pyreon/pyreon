@@ -50,15 +50,19 @@ cd "$(dirname "$0")/../android"
 
 PKG=com.pyreon.PyreonTodoMVC
 APK=app/build/outputs/apk/release/app-release.apk
-if [ ! -f "$APK" ]; then
-  echo "[release-smoke] FAIL: $APK missing — run 'gradle assembleRelease' (WITHOUT -PpyreonReleaseTests) first"
-  exit 1
-fi
+# PYREON_SMOKE_INSTALLED=1: the caller already installed the app (aab-smoke.sh
+# installs it from the App Bundle), so only the launch-and-render check runs.
+if [ "${PYREON_SMOKE_INSTALLED:-0}" != 1 ]; then
+  if [ ! -f "$APK" ]; then
+    echo "[release-smoke] FAIL: $APK missing — run 'gradle assembleRelease' (WITHOUT -PpyreonReleaseTests) first"
+    exit 1
+  fi
 
-# A debug-signed leftover blocks a release-signed install
-# (INSTALL_FAILED_UPDATE_INCOMPATIBLE) — clear it first.
-adb uninstall "$PKG" >/dev/null 2>&1 || true
-adb install "$APK" >/dev/null
+  # A debug-signed leftover blocks a release-signed install
+  # (INSTALL_FAILED_UPDATE_INCOMPATIBLE) — clear it first.
+  adb uninstall "$PKG" >/dev/null 2>&1 || true
+  adb install "$APK" >/dev/null
+fi
 adb logcat -c || true
 adb shell am force-stop "$PKG" || true
 adb shell am start -W -n "$PKG/com.pyreon.MainActivity" >/dev/null
