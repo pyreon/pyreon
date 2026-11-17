@@ -1,0 +1,97 @@
+name: Stacks Bench Smoke
+
+# Keeps the full-stack benchmark's arms (examples/stacks-bench) BUILDABLE AND
+# CORRECT. It measures nothing: no throughput, no latency, no load generator.
+#
+# The benchmark's method is public and meant to be re-run by people outside
+# this repository, so an arm that stops installing or stops rendering its page
+# is a broken promise that no other job would notice: the arms sit outside the
+# bun workspace (each has its own package.json and package-lock.json), so
+# neither `bun install`, the typecheck matrix nor the test matrix touches them.
+#
+# What it does, on Linux:
+#
+#   1. `bun setup.ts`: `npm ci` from each arm's committed lockfile and a
+#      production build of all nine arms. The zero arm installs the PUBLISHED
+#      `@pyreon/*` packages its lockfile pins (the source a stranger gets).
+#   2. `bun gate.ts`: the correctness gate (lib/gate.ts) against each arm's own
+#      production server: `/items` holds the 100 seeded items, links, the
+#      counter and the form; `/items/7` is the right item; an unknown id is a
+#      404; in Chromium the counter increments and the form validates, adds an
+#      item and redirects. It prints no timing.
+#   3. The zero arm again from the WORKSPACE (`--zero=workspace`), so a change
+#      to `@pyreon/zero` on `main` that breaks the arm is found by the weekly
+#      run and not by whoever measures next.
+#
+# Advisory, not a required check. Path scoping is therefore a TRIGGER-level
+# `paths:` filter (a required check would deadlock on it; see
+# lathe-action-selftest.yml and .agents/guides/ci/README.md). Markdown-only
+# changes do not start it. The weekly run exists because the arms can also rot
+# with no commit here: a registry tarball that stops installing, a runner
+# image change, or a workspace change outside the path filter (step 3).
+# A red weekly run opens the "[main] Stacks Bench Smoke is red" sticky issue
+# through main-red-status.yml, which watches this workflow by name.
+
+on:
+  pull_request:
+    paths:
+      - 'examples/stacks-bench/**'
+      - '!examples/stacks-bench/**/*.md'
+      - 'examples/benchmark/cluster-bootstrap.ts'
+      - 'examples/benchmark/machine-load.ts'
+      - '.github/workflows/stacks-bench-smoke.yml'
+      - '.bun-version'
+  schedule:
+    # Mondays 07:07 UTC, after the other weekly jobs (04:27 / 05:41 / 06:13 / 06:41).
+    - cron: '7 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stacks-bench-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Stacks Bench Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      ASTRO_TELEMETRY_DISABLED: '1'
+      NUXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      # Every arm is served by Node and installed by its npm. 24 is the lowest
+      # major every arm's `engines` accepts (lib/run.ts MIN_NODE).
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      # The harness's own dependencies (autocannon is unused here; Playwright
+      # drives the gate). No lib/ build yet: steps 1 and 2 do not read it.
+      - name: Install the harness
+        env:
+          PYREON_BOOTSTRAP_SKIP: '1'
+        run: bun install --frozen-lockfile
+      - name: Install Playwright Chromium
+        run: bash scripts/install-playwright.sh chromium
+      - name: Build every arm from its lockfile (zero from npm)
+        working-directory: examples/stacks-bench
+        run: bun setup.ts
+      - name: Correctness gate, every arm
+        working-directory: examples/stacks-bench
+        run: bun gate.ts
+      # Step 3. The workspace source resolves the monorepo's built lib/.
+      - name: Build the workspace packages
+        run: bun scripts/bootstrap.ts
+      - name: Build the zero arm from the workspace
+        working-directory: examples/stacks-bench
+        run: bun setup.ts zero --zero=workspace
+      - name: Correctness gate, zero from the workspace
+        working-directory: examples/stacks-bench
+        run: bun gate.ts zero

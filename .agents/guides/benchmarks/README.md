@@ -79,6 +79,15 @@ Keep this list honest and current; it mirrors `BENCHMARKS.md` §13:
 - Retained heap is read post-GC with `--enable-precise-memory-info`. `STABLE_DELTA` (16 KB) in `bench-fair.ts` is a GC-convergence threshold, not the metric's resolution.
 - Standard run: `cd examples/benchmark && bun bench-fair.ts --repeat 5 --wait-quiet 6`. Also `bench-scenarios.ts`, `bench-hydration.ts`, `bench-apppage.ts`, `bench-ssr.ts`, `bench-crossover.ts`.
 
+### Full-stack suite (`examples/stacks-bench`)
+
+- **No result is published**, and none may be written into `BENCHMARKS.md`, the docs or the site until a run meets `examples/stacks-bench/results/README.md` and the maintainer decides to publish. The method is public: `docs/src/content/docs/benchmarks-full-stack.md` and the suite's `README.md`. Keep both free of result numbers.
+- Nine arms in `apps/<id>/`, each with exact versions and its own `package-lock.json`, installed with `npm ci` by `bun setup.ts`. They are outside the bun workspace.
+- The zero arm has two sources: npm (default; the published packages its lockfile pins, the only source a published result may use) and `--zero=workspace` (the monorepo's built `lib/`, for development). `run.json` records which. The npm pin moves by hand after a release.
+- A run writes `results/<runId>/run.json` (`RunManifest`, `lib/run.ts`) and one `<arm>.json` (`ArmResult`, `lib/result.ts`). `--report` checks the single-run conditions (`runConditions`) and prints `NOT PUBLISHABLE` with the reason. A published run is committed unchanged under `results/published/<runId>/`.
+- `bun gate.ts` is the correctness gate alone and prints no timing; `Stacks Bench Smoke` (`.github/workflows/stacks-bench-smoke.yml`) runs setup and the gate on Linux so the arms stay buildable. It must never time anything.
+- A change to an arm follows its framework's docs, keeps `CONTRACT.md` and passes the gate; no arm-specific tuning, zero included.
+
 ### Fairness rules for competitor arms
 
 - Every arm builds row data with the same helper, outside the timed window.
