@@ -32,6 +32,7 @@ import { _rdLabelBinding, renderEffect } from '@pyreon/reactivity'
 import { bindPolymorphicText } from './mount'
 import { _markAdoptedHtmlEl, applyClassProp, applyProp, applyProps, applyStyleProp, makeEventBinder } from './props'
 import { _isTplHoleEl, _isTplHtmlEl, _markMidSlotText, _parkSlotRange, _setTplHoleCursors } from './template'
+import { _parkText } from './parked-text'
 
 type Cleanup = () => void
 
@@ -155,6 +156,7 @@ function collectPropOps(props: Record<string, unknown>): PropOp[] | null {
       ops.push({ key, kind: OP_GENERIC, bind: null })
     }
   }
+
   return ops
 }
 
@@ -168,6 +170,7 @@ function hasPropsWork(vnode: VNode): boolean {
   for (const key in props) {
     if (key !== 'key' && key !== 'children') return true
   }
+
   return false
 }
 
@@ -202,6 +205,7 @@ export function buildRowPlan(root: VNodeChild): RowPlan | null {
   }
   if (!walkPlan(root, EMPTY_PATH, plan)) return null
   plan.sigKeyStart.push(plan.sigKeys.length) // sentinel
+
   return plan
 }
 
@@ -268,8 +272,10 @@ function walkPlan(vnode: VNode, domPath: number[], plan: RowPlan): boolean {
       domIdx++
       continue
     }
+
     return false // components / fragments / For / arrays / NativeItem → interpretive
   }
+
   return true
 }
 
@@ -278,6 +284,7 @@ function resolveDom(root: ChildNode, path: number[]): ChildNode | null {
   for (let i = 0; i < path.length && node; i++) {
     node = node.childNodes[path[i] as number] ?? null
   }
+
   return node
 }
 
@@ -334,6 +341,7 @@ function verifyRowShape(
       return false
     }
   }
+
   return true
 }
 
@@ -382,6 +390,7 @@ function applyOpList(
   if (!rest) return first
   const f = first as Cleanup
   const r = rest
+
   return () => {
     f()
     for (const c of r) c()
@@ -396,6 +405,7 @@ function wireRef(ref: RefProp, el: Element, c: Cleanup | null): Cleanup | null {
   if (typeof ref === 'function') ref(el)
   else ref.current = el
   const prev = c
+
   return () => {
     if (typeof ref === 'function') ref(null)
     else ref.current = null
@@ -543,6 +553,12 @@ interface TplSig {
    */
   soleSlots: boolean[]
   /**
+   * Per element (tree order): its ONLY child is the compiler's dynamic-text
+   * placeholder (`' '`), i.e. a sole polymorphic text binding. Its server
+   * content may be elements (#4385); see the verify walk.
+   */
+  soleTexts: boolean[]
+  /**
    * Per element (tree order), the template's STATIC attributes — the ones
    * baked into the template HTML. Dynamic props are bound by the compiled
    * `bind` and are absent here, so this is a SUBSET check against the SSR
@@ -630,6 +646,7 @@ interface TplSig {
   /** Number of declared innerHTML elements — 0 short-circuits the branch. */
   htmlCount: number
 }
+
 const _tplSignature = new WeakMap<HTMLTemplateElement, TplSig | null>()
 
 function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
@@ -650,6 +667,7 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
   let htmlCount = 0
   const slotList: boolean[] = []
   const soleSlotList: boolean[] = []
+  const soleTextList: boolean[] = []
   const midSlotList: (number[] | null)[] = []
   let midSlotCount = 0
   // MOUNT-SLOT ALIGNMENT GATE. A `<!>` placeholder is one node in the clone but
@@ -707,6 +725,8 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     counts.push(texts)
     slotList.push(slotAtEnd)
     soleSlotList.push(soleSlot)
+    const only = el.firstChild
+    soleTextList.push(only !== null && only === el.lastChild && only.nodeType === 3 && (only as Text).data === ' ')
     midSlotList.push(mids)
     if (mids !== null) midSlotCount++
     const ownAttrs: [string, string][] = []
@@ -777,6 +797,7 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     texts: textList,
     slots: slotList,
     soleSlots: soleSlotList,
+    soleTexts: soleTextList,
     holes: holeCount > 0 ? Int32Array.from(holeFlags) : null,
     holeCount,
     htmlEls: htmlCount > 0 ? htmlFlags : null,
@@ -785,6 +806,7 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     midSlotCount,
   }
   _tplSignature.set(tpl, sig)
+
   return sig
 }
 
@@ -830,6 +852,13 @@ interface AdoptMatch {
    */
   soles: Element[] | null
   /**
+   * Elements whose sole dynamic-text slot holds server ELEMENT content
+   * (#4385). The caller inserts a parked placeholder text as each one's first
+   * child, so the compiled `firstChild` ref resolves to it and the binding
+   * adopts the content through the slot hydrator (`parked-text.ts`).
+   */
+  soleTextParks: Element[] | null
+  /**
    * Elements whose ELIDED sole-child slot rendered EMPTY, so SSR emitted no
    * node at all where the template baked its ' ' placeholder. The compiled
    * bind's `.firstChild` ref needs a text node to exist, so one is inserted —
@@ -871,6 +900,7 @@ interface TripletSpot {
   /** Child index of the `$` open comment within that parent. */
   childIndex: number
 }
+
 interface AdoptPlan {
   sig: TplSig
   tripletSpots: TripletSpot[]
@@ -880,6 +910,7 @@ interface AdoptPlan {
   /** domPaths of elements whose EXTRA bare texts get removed (template 0, >1 texts). */
   removalSpots: number[][]
 }
+
 const _tplAdoptPlan = new WeakMap<HTMLTemplateElement, AdoptPlan | null>()
 
 function elByPath(root: Element, path: number[], upto: number): Element | null {
@@ -889,6 +920,7 @@ function elByPath(root: Element, path: number[], upto: number): Element | null {
     for (let k = 0; k < (path[i] as number) && c; k++) c = c.nextElementSibling
     el = c
   }
+
   return el
 }
 
@@ -906,6 +938,7 @@ function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch): AdoptPla
       path.unshift(idx)
       cur = parent
     }
+
     return path
   }
   if (match.triplets) {
@@ -921,6 +954,7 @@ function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch): AdoptPla
   }
   const soleTextSpots: number[][] = []
   if (match.soles) for (const el of match.soles) soleTextSpots.push(pathOf(el))
+
   return { sig, tripletSpots, soleTextSpots, removalSpots }
 }
 
@@ -985,6 +1019,7 @@ function replayAdoptPlan(root: Element, plan: AdoptPlan): boolean {
       n = nx
     }
   }
+
   return true
 }
 
@@ -1005,6 +1040,7 @@ function matchingCloseIsLastChild(open: Comment, el: Element): boolean {
       depth--
     }
   }
+
   return false
 }
 
@@ -1015,6 +1051,7 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
   let parks: { open: Comment; close: Comment }[] | null = null
   const midFlags = expected.midSlots
   let soles: Element[] | null = null
+  let soleTextParks: Element[] | null = null
   let emptySlots: Element[] | null = null
   let holes: Map<Element, ChildNode | null> | null = null
   let htmlEls: Element[] | null = null
@@ -1094,6 +1131,7 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
           n = n.nextSibling
         }
         ;(holes ??= new Map()).set(el, n)
+
         return true
       }
     }
@@ -1119,6 +1157,21 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
         (f as Comment).data === '$' &&
         matchingCloseIsLastChild(f as Comment, el)
       if (!marked) return true
+    }
+    // SOLE DYNAMIC TEXT HOLDING ELEMENTS (#4385). A polymorphic text binding
+    // (`{parts(row)}` rendering `['a ', <Code/>, ' b']`) is a single `' '`
+    // placeholder in the template, and SSR renders the value's elements
+    // marker-less (a sole accessor child). The element's whole child list is
+    // the slot's content, exactly as for a sole `<!>` slot above; the binding
+    // adopts it through the slot hydrator. A marked range falls through.
+    if (expected.soleTexts[at] === true && el.firstElementChild !== null) {
+      const f = el.firstChild
+      const marked =
+        f !== null && f.nodeType === 8 && (f as Comment).data === '$' && matchingCloseIsLastChild(f as Comment, el)
+      if (!marked) {
+        ;(soleTextParks ??= []).push(el)
+        return true
+      }
     }
     let texts = 0
     let bare: Text[] | null = null
@@ -1317,11 +1370,13 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
         if (!walk(c)) return false
       }
     }
+
     return true
   }
   if (!walk(root)) return null
   if (idx !== total) return null
-  return { removals, triplets, midSlots, parks, soles, emptySlots, holes, htmlEls }
+
+  return { removals, triplets, midSlots, parks, soles, soleTextParks, emptySlots, holes, htmlEls }
 }
 
 /** All checks passed — strip markers, ensuring one text node per slot. */
@@ -1360,6 +1415,7 @@ function findMatchingClose(open: Comment): Comment | null {
       depth--
     }
   }
+
   return null
 }
 
@@ -1460,6 +1516,7 @@ export function tplAdoptVerify(
     if (plan && target.tagName === (plan.sig.tags[0] as string) && replayAdoptPlan(target, plan)) {
       if (process.env.NODE_ENV !== 'production')
         _planCountSink.__pyreon_count__?.('runtime.tpl.adoptPlanReplay')
+
       return true
     }
   }
@@ -1468,7 +1525,10 @@ export function tplAdoptVerify(
   const sig = templateSignature(tpl)
   const match = sig !== null ? matchDomAgainstTemplate(target, sig) : null
   if (match === null) return false
-  if (allowPlanReplay && plan === undefined) {
+  // A row matched through the sole-text relaxation records no plan: the plan's
+  // spot checks are a text-node invariant this row does not satisfy; a later
+  // plain row records it, and replay sends rows like this one to the full verify.
+  if (allowPlanReplay && plan === undefined && match.soleTextParks === null) {
     // TWO restrictions compose here. #2925 gates replay behind
     // `allowPlanReplay`; separately, a slot-bearing template is a CONTAINER —
     // one per hydration, not one per row — so the replay plan buys nothing,
@@ -1490,6 +1550,13 @@ export function tplAdoptVerify(
   if (match.triplets) normalizeDollarTriplets(match.triplets)
   if (match.midSlots) collapseMidSlots(match.midSlots)
   if (match.parks) parkMidRanges(match.parks)
+  if (match.soleTextParks) {
+    for (const el of match.soleTextParks) {
+      const placeholder = document.createTextNode('')
+      el.insertBefore(placeholder, el.firstChild)
+      _parkText(placeholder, null)
+    }
+  }
   // Declared innerHTML elements: mark each so the bind's first `_setHtml`
   // write — which runs synchronously inside the adoption's `bind(target)` —
   // trusts the server children instead of re-parsing `__html`. Marked only
@@ -1500,5 +1567,6 @@ export function tplAdoptVerify(
   // Hand the verified holes to `_tpl` (one-shot; it clears the slot before
   // every verify, so a bail can never leave a stale map behind).
   if (match.holes !== null) _setTplHoleCursors(match.holes)
+
   return true
 }
