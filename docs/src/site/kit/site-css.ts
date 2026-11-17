@@ -1,8 +1,8 @@
 import { breakpoints, color, font, gradient, layout, motion, navMedia, radius, text, touch, weight, z, type ColorKey } from '../theme'
+import { SCALE_VARS_CSS } from '../theme-vars'
+import { C } from './classes'
 
 const pulse = motion.pulse
-import { C } from './classes'
-import { SCALE_VARS_CSS } from '../theme-vars'
 
 /**
  * The plain stylesheet for the site's ISLANDS (the nav, copy buttons, the
