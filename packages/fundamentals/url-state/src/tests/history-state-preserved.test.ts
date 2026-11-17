@@ -25,6 +25,7 @@ beforeEach(() => {
   history.replaceState(null, '', '/products')
   setUrlRouter(null)
 })
+
 afterEach(() => {
   setUrlRouter(null)
   dispose?.()
