@@ -1,6 +1,7 @@
-import { globSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, globSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { listExampleDirs } from '../../../../../scripts/example-dirs'
 
 /**
  * The repo root has NO vitest config of its own — only a router
@@ -52,7 +53,10 @@ describe('root vitest router', () => {
 
     const actual: string[] = []
     walkConfigs(join(ROOT, 'packages'), 2, actual)
-    walkConfigs(join(ROOT, 'examples'), 1, actual)
+    for (const ex of listExampleDirs(ROOT)) {
+      const cfg = join(ROOT, 'examples', ex, 'vitest.config.ts')
+      if (existsSync(cfg)) actual.push(cfg)
+    }
     expect(actual.length, 'the walk found no per-package configs — the scan is broken').toBeGreaterThan(50)
 
     const missing = actual.filter((c) => !covered.has(c)).map((c) => c.slice(ROOT.length + 1))

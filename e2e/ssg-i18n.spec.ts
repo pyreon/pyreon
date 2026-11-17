@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 /**
  * SSG i18n route duplication runtime gate (PR H follow-up).
  *
- * Targets `examples/ssr-showcase` BUILT under `vite.config.i18n.ts`
+ * Targets `examples/fixtures/ssr-showcase` BUILT under `vite.config.i18n.ts`
  * (with `zero({ i18n: { locales: ['en','de','cs'], defaultLocale: 'en' } })`)
  * and SERVED via `vite preview` at `http://localhost:5199` — config in
  * `e2e-configs/ssg-i18n.config.ts`.

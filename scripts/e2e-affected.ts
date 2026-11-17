@@ -45,6 +45,7 @@
  */
 
 import { gitChangedFilesZ } from './changed-files'
+import { listExampleDirs } from './example-dirs'
 
 // ── Suite catalogue ────────────────────────────────────────────────────────
 // `name` is the matrix label + check name; `script` is the package.json
@@ -82,8 +83,8 @@ const SUITES: Suite[] = [
       ...ROUTER_CORE,
       'packages/fundamentals/',
       'packages/core/head/',
-      'examples/playground/',
-      'examples/ssr-showcase/',
+      'examples/fixtures/playground/',
+      'examples/fixtures/ssr-showcase/',
       'examples/fundamentals-playground/',
       'e2e/',
     ],
@@ -108,7 +109,7 @@ const SUITES: Suite[] = [
       'packages/ui-system/rocketstyle/',
       'packages/ui-system/unistyle/',
       'packages/ui/',
-      'examples/cssvars-bench/',
+      'examples/fixtures/cssvars/',
       'e2e/cssvars-showcase.spec.ts',
     ],
   },
@@ -137,11 +138,11 @@ const SUITES: Suite[] = [
       'packages/tools/vue-compat/',
       'packages/tools/solid-compat/',
       'packages/tools/svelte-compat/',
-      'examples/react-compat/',
-      'examples/preact-compat/',
-      'examples/vue-compat/',
-      'examples/solid-compat/',
-      'examples/svelte-compat/',
+      'examples/compat/react/',
+      'examples/compat/preact/',
+      'examples/compat/vue/',
+      'examples/compat/solid/',
+      'examples/compat/svelte/',
     ],
   },
   {
@@ -179,7 +180,7 @@ const SUITES: Suite[] = [
     triggers: [
       ...RENDER_CORE,
       'packages/fundamentals/sync/',
-      'examples/sync-yjs-demo/',
+      'examples/fixtures/sync-yjs/',
       'e2e/sync-yjs-demo',
     ],
   },
@@ -189,7 +190,7 @@ const SUITES: Suite[] = [
     triggers: [
       ...RENDER_CORE,
       'packages/fundamentals/sync/',
-      'examples/sync-yjs-demo/',
+      'examples/fixtures/sync-yjs/',
       'e2e/sync-ws-relay',
     ],
   },
@@ -276,7 +277,7 @@ const SUITES: Suite[] = [
       ...RENDER_CORE,
       'packages/core/server/',
       'packages/zero/zero/',
-      'examples/ssr-showcase/',
+      'examples/fixtures/ssr-showcase/',
       'e2e/zero-islands.spec.ts',
     ],
   },
@@ -305,17 +306,17 @@ const SUITES: Suite[] = [
   {
     name: 'ssg-subpath',
     script: 'test:e2e:ssg-subpath',
-    triggers: [...ROUTER_CORE, 'examples/ssr-showcase/', 'e2e/ssg-subpath'],
+    triggers: [...ROUTER_CORE, 'examples/fixtures/ssr-showcase/', 'e2e/ssg-subpath'],
   },
   {
     name: 'ssg-i18n',
     script: 'test:e2e:ssg-i18n',
-    triggers: [...ROUTER_CORE, 'examples/ssr-showcase/', 'e2e/ssg-i18n'],
+    triggers: [...ROUTER_CORE, 'examples/fixtures/ssr-showcase/', 'e2e/ssg-i18n'],
   },
   {
     name: 'ssg-i18n-prefix',
     script: 'test:e2e:ssg-i18n-prefix',
-    triggers: [...ROUTER_CORE, 'examples/ssr-showcase/', 'e2e/ssg-i18n-prefix'],
+    triggers: [...ROUTER_CORE, 'examples/fixtures/ssr-showcase/', 'e2e/ssg-i18n-prefix'],
   },
   {
     // SSR node-deploy artifact (Bug A/C). The deploy adapters live in
@@ -323,7 +324,7 @@ const SUITES: Suite[] = [
     // + spec are listed explicitly too.
     name: 'ssr-node',
     script: 'test:e2e:ssr-node',
-    triggers: [...ROUTER_CORE, 'examples/ssr-showcase/', 'e2e/ssr-node.spec.ts'],
+    triggers: [...ROUTER_CORE, 'examples/fixtures/ssr-showcase/', 'e2e/ssr-node.spec.ts'],
   },
   {
     // ISR node-deploy artifact — shares the SSR staging/template path, wraps
@@ -331,7 +332,7 @@ const SUITES: Suite[] = [
     // serves + hydrates + cache-consistent" proof.
     name: 'isr-node',
     script: 'test:e2e:isr-node',
-    triggers: [...ROUTER_CORE, 'examples/ssr-showcase/', 'e2e/isr-node.spec.ts'],
+    triggers: [...ROUTER_CORE, 'examples/fixtures/ssr-showcase/', 'e2e/isr-node.spec.ts'],
   },
   {
     // Edge deploy artifacts (Deno, Netlify Edge on Deno, Vercel Edge Runtime,
@@ -343,7 +344,7 @@ const SUITES: Suite[] = [
     script: 'test:e2e:edge-runtimes',
     triggers: [
       ...ROUTER_CORE,
-      'examples/edge-runtimes/',
+      'examples/fixtures/edge-runtimes/',
       'scripts/edge-runtimes/',
       'e2e/edge-runtimes.spec.ts',
     ],
@@ -354,7 +355,7 @@ const SUITES: Suite[] = [
     triggers: [
       ...ROUTER_CORE,
       'packages/tools/vite-plugin/',
-      'examples/ssr-showcase/',
+      'examples/fixtures/ssr-showcase/',
       'e2e/zero-hmr.spec.ts',
     ],
   },
@@ -364,7 +365,7 @@ const SUITES: Suite[] = [
     triggers: [
       ...RENDER_CORE,
       'packages/fundamentals/form/',
-      'examples/perf-dashboard/',
+      'examples/fixtures/perf-dashboard/',
       'e2e/perf-dashboard',
     ],
   },
@@ -374,7 +375,7 @@ const SUITES: Suite[] = [
     triggers: [
       ...ROUTER_CORE,
       'packages/zero/create-zero/',
-      'examples/cpa-pw-',
+      'examples/fixtures/cpa/',
       'e2e/cpa',
     ],
   },
@@ -655,7 +656,7 @@ export function e2eReachableScripts(repoRoot: string): ReadonlySet<string> {
   walk('e2e', roots)
   walk('.github/actions', roots)
   for (const f of fs.readdirSync(repoRoot)) if (/^playwright[^/]*\.config\.ts$/.test(f)) roots.push(f)
-  const appDirs = ['docs', ...fs.readdirSync(path.join(repoRoot, 'examples')).map((d) => `examples/${d}`)]
+  const appDirs = ['docs', ...listExampleDirs(repoRoot, { allowNone: true }).map((d) => `examples/${d}`)]
   for (const d of appDirs) {
     if (!isDir(d)) continue
     for (const f of fs.readdirSync(path.join(repoRoot, d)))
