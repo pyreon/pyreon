@@ -91,7 +91,7 @@
     },
     {
       "claim": "Covered by unit, browser and Playwright e2e tests",
-      "path": "packages/tools/react-compat/src/tests/; packages/tools/react-compat/src/*.browser.test.tsx; e2e/react-compat.spec.ts; e2e/cpa-app-react-compat.spec.ts"
+      "path": "packages/tools/react-compat/src/tests/; packages/tools/react-compat/src/*.browser.test.tsx; e2e/react-compat.spec.ts; e2e/cpa-app-compat.spec.ts (scaffold-smoke cpa-smoke-app-react-compat)"
     },
     {
       "claim": "Pyreon Counter compiles, typechecks and updates on click",

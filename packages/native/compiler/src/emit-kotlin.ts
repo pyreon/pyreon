@@ -3101,6 +3101,7 @@ export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): str
           const message = inlineObjectTypeWarningKotlin(t)
           if (!_emitWarnings.includes(message)) _emitWarnings.push(message)
         }
+
         return 'Any'
       }
       return registerKotlinSynthClass(
@@ -5698,6 +5699,33 @@ function kotlinMemberScope<T>(scope: MemberEmitScope, run: () => T): T {
   }
 }
 
+type KotlinPluginHooks = Parameters<typeof createKotlinEmitContext>[0]
+
+/** A plugin's statement block, emitted with its extra locals and callback control in scope. */
+const emitKotlinPluginStatements: KotlinPluginHooks['statements'] = (stmts, at, locals, options) => {
+  const saved = _kotlinExprInferCtx.locals
+  if (locals !== undefined) {
+    _kotlinExprInferCtx.locals = new Map([...saved, ...locals])
+    seedHandlerLocals([...stmts], _kotlinExprInferCtx)
+  }
+  const control = options?.kotlin
+  const callbackCtx: KotlinCtx =
+    control === undefined
+      ? _activeKotlinCtx!
+      : {
+          ..._activeKotlinCtx!,
+          ...(control.returnLabel === undefined ? {} : { lambdaLabel: control.returnLabel }),
+          ...(control.discardReturnValue === undefined
+            ? {}
+            : { discardReturnValue: control.discardReturnValue }),
+        }
+  try {
+    return emitKotlinStmtLines(stmts, at, callbackCtx).map((l) => l.slice(at))
+  } finally {
+    _kotlinExprInferCtx.locals = saved
+  }
+}
+
 function kotlinEmitContext(indent: number): KotlinEmitContext {
   return createKotlinEmitContext(
     {
@@ -5765,29 +5793,7 @@ function kotlinEmitContext(indent: number): KotlinEmitContext {
       memberScope: kotlinMemberScope,
       observableIdent: kotlinIdent,
       functionDeclaration: (decl) => emitKotlinFunction(decl, _activeKotlinCtx!),
-      statements: (stmts, at, locals, options) => {
-        const saved = _kotlinExprInferCtx.locals
-        if (locals !== undefined) {
-          _kotlinExprInferCtx.locals = new Map([...saved, ...locals])
-          seedHandlerLocals([...stmts], _kotlinExprInferCtx)
-        }
-        const control = options?.kotlin
-        const callbackCtx: KotlinCtx =
-          control === undefined
-            ? _activeKotlinCtx!
-            : {
-                ..._activeKotlinCtx!,
-                ...(control.returnLabel === undefined ? {} : { lambdaLabel: control.returnLabel }),
-                ...(control.discardReturnValue === undefined
-                  ? {}
-                  : { discardReturnValue: control.discardReturnValue }),
-              }
-        try {
-          return emitKotlinStmtLines(stmts, at, callbackCtx).map((l) => l.slice(at))
-        } finally {
-          _kotlinExprInferCtx.locals = saved
-        }
-      },
+      statements: emitKotlinPluginStatements,
       intArg: kotlinIntArg,
       coroutineScope: () => {
         _hasAsyncHandler = true

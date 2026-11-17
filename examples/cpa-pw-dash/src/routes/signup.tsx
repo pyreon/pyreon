@@ -1,43 +1,46 @@
-import { state } from '@pyreon/core/plain'
-import { useHead } from "@pyreon/head"
-import { Link } from "@pyreon/zero/link"
-import { useRouter } from "@pyreon/router"
-import { signUp } from "../lib/auth"
+import { useHead } from '@pyreon/head'
+import { signal } from '@pyreon/reactivity'
+import { useRouter } from '@pyreon/router'
+import { Link } from '@pyreon/zero/link'
 
-export const meta = { title: "Create an account" }
+import { postCredentials } from '../lib/post-credentials'
+
+export const meta = { title: 'Create an account' }
 
 export default function Signup() {
   useHead({ title: meta.title })
 
-  let email = state("")
-  let password = state("")
-  let error = state<string | null>(null)
-  let submitting = state(false)
+  const email = signal('')
+  const password = signal('')
+  const error = signal<string | null>(null)
+  const submitting = signal(false)
 
   const router = useRouter()
 
   async function handleSubmit(e: Event) {
     e.preventDefault()
-    error = null
-    submitting = true
+    error.set(null)
+    submitting.set(true)
 
-    const result = signUp(email, password)
-    submitting = false
+    // Same server-side flow as login.tsx: the endpoint creates the account and
+    // sets the HttpOnly session cookie.
+    const message = await postCredentials('/api/signup', email(), password())
+    submitting.set(false)
 
-    if ("error" in result) {
-      error = result.error
+    if (message) {
+      error.set(message)
       return
     }
 
-    if (typeof document !== "undefined") {
-      document.cookie = `sid=${result.sessionId}; path=/; max-age=${7 * 24 * 60 * 60}`
-    }
-    await router.push("/app/dashboard")
+    await router.push('/app/dashboard')
   }
 
   return (
     <div class="auth-shell">
-      <form class="auth-card" onSubmit={handleSubmit}>
+      <form
+        class="auth-card"
+        onSubmit={handleSubmit}
+      >
         <h1>Create an account</h1>
 
         <div class="field">
@@ -46,7 +49,7 @@ export default function Signup() {
             id="email"
             type="email"
             value={email}
-            onInput={(e) => { email = (e.currentTarget as HTMLInputElement).value }}
+            onInput={(e) => email.set((e.currentTarget as HTMLInputElement).value)}
             required
           />
         </div>
@@ -57,16 +60,21 @@ export default function Signup() {
             id="password"
             type="password"
             value={password}
-            onInput={(e) => { password = (e.currentTarget as HTMLInputElement).value }}
+            onInput={(e) => password.set((e.currentTarget as HTMLInputElement).value)}
             required
             minLength={8}
           />
         </div>
 
-        {() => (error ? <div class="error">{error}</div> : null)}
+        {() => (error() ? <div class="error">{error()}</div> : null)}
 
-        <button type="submit" class="btn btn-primary" disabled={submitting} style="width: 100%; justify-content: center; margin-top: 1rem;">
-          {() => (submitting ? "Creating…" : "Create account")}
+        <button
+          type="submit"
+          class="btn btn-primary"
+          disabled={submitting}
+          style="width: 100%; justify-content: center; margin-top: 1rem;"
+        >
+          {() => (submitting() ? 'Creating…' : 'Create account')}
         </button>
 
         <p style="margin-top: 1rem; font-size: 0.875rem; color: var(--c-text-muted); text-align: center;">

@@ -135,11 +135,13 @@ export function laneChanged(
     if (base === null) return { changed: true, reason: 'no base file (fail-closed)', named: [] }
     const h = laneSurface(head, jobIds)
     const b = laneSurface(base, jobIds)
-    if (!h || !b)
+    if (!h || !b) {
       return { changed: true, reason: `job ${jobIds.join('+')} not found (fail-closed)`, named: [] }
+    }
     const named = [...new Set([...h.named, ...b.named])].sort()
-    if (h.text !== b.text)
+    if (h.text !== b.text) {
       return { changed: true, reason: `job ${jobIds.join('+')} definition changed`, named }
+    }
     return { changed: false, reason: `job ${jobIds.join('+')} definition unchanged`, named }
   } catch (err) {
     return { changed: true, reason: 'surface comparison failed (fail-closed): ' + String(err), named: [] }

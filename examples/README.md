@@ -64,8 +64,7 @@ Apps that exist for a test suite. They are not written to be read; change them t
 | [cssvars-bench](./cssvars-bench/) | The CSS-variables theming e2e suite and `scripts/bench-cssvars.ts` |
 | [perf-dashboard](./perf-dashboard/) | `@pyreon/perf-harness` journeys (`perf.yml`) and the leak sweep (`leak-sweep.yml`) |
 | [sync-yjs-demo](./sync-yjs-demo/) | The `@pyreon/sync` CRDT e2e suites (surgical update, merge, state-vector catch-up) |
-| [cpa-pw-app](./cpa-pw-app/) · [cpa-pw-blog](./cpa-pw-blog/) · [cpa-pw-dash](./cpa-pw-dash/) | Committed `create-zero` output for `bun run test:e2e:cpa`; regenerate with `bun scripts/scaffold-cpa-fixtures.ts` |
-| [cpa-pw-app-react](./cpa-pw-app-react/) · [cpa-pw-app-vue](./cpa-pw-app-vue/) · [cpa-pw-app-solid](./cpa-pw-app-solid/) · [cpa-pw-app-preact](./cpa-pw-app-preact/) | `cpa-pw-app` scaffolded with `--compat <framework>`, for the same suite |
+| [cpa-pw-app](./cpa-pw-app/) · [cpa-pw-blog](./cpa-pw-blog/) · [cpa-pw-dash](./cpa-pw-dash/) | `create-zero` output for `bun run test:e2e:cpa`, exactly what the scaffolder emits plus declared fixture-only files. Regenerate with `bun scripts/scaffold-cpa-fixtures.ts`; `--check` (validate-fast) fails on drift. The `--compat` variants are scaffolded fresh by `scripts/scaffold-smoke.ts` instead of committed |
 
 ## Benchmarks
 

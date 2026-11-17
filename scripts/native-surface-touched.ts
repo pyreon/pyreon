@@ -272,9 +272,9 @@ export function classifyMacosLane(
   read: (path: string) => string | null,
   self: SelfWorkflow,
   macosJobs: readonly string[],
-  pluginSurface?: ReadonlySet<string> | Error,
-  readBase?: (path: string) => string | null,
+  base: BaseInputs = {},
 ): Decision {
+  const { pluginSurface, readBase } = base
   if (files.length === 0) return { run: true, reasons: ['empty file list — running (fail-closed)'] }
   const reasons: string[] = []
   const selfTouched = files.includes(self.file)
@@ -294,6 +294,12 @@ export function classifyMacosLane(
   }
   if (rest.length > 0) reasons.push(...classifyNativeSurface(rest, read, undefined, pluginSurface, readBase).reasons)
   return { run: reasons.length > 0, reasons }
+}
+
+/** What a decision compares against: the plugin surface and the base revision's files. */
+export interface BaseInputs {
+  pluginSurface?: ReadonlySet<string> | Error | undefined
+  readBase?: ((path: string) => string | null) | undefined
 }
 
 export interface DeviceLaneJobs {
@@ -318,10 +324,9 @@ export function decideDevice(
   read: (path: string) => string | null,
   self: SelfWorkflow,
   jobs: DeviceLaneJobs,
-  pluginSurface: ReadonlySet<string> | Error | undefined,
-  readBase: ((path: string) => string | null) | undefined,
-  surfaces: () => AppSurface[],
+  inputs: BaseInputs & { surfaces: () => AppSurface[] },
 ): DeviceDecision {
+  const { pluginSurface, readBase, surfaces } = inputs
   const every = (reason: string): DeviceDecision => ({
     run: true,
     selection: { ios: 'all', android: 'all', reasons: [reason] },
@@ -591,9 +596,7 @@ if (import.meta.main) {
         readAtHead,
         readSelfWorkflow(self!),
         deviceJobs,
-        pluginSurface,
-        readBase,
-        () => deriveAppSurfaces(process.cwd()),
+        { pluginSurface, readBase, surfaces: () => deriveAppSurfaces(process.cwd()) },
       )
     } catch (err) {
       const reason = 'device decision failed (' + String(err) + ') — every lane'
@@ -633,7 +636,7 @@ if (import.meta.main) {
       // failure to answer it runs the job.
       let mac: Decision
       try {
-        mac = classifyMacosLane(files, readAtHead, readSelfWorkflow(self), macosJobs, pluginSurface, readBase)
+        mac = classifyMacosLane(files, readAtHead, readSelfWorkflow(self), macosJobs, { pluginSurface, readBase })
       } catch (err) {
         mac = { run: true, reasons: ['macOS decision failed (' + String(err) + ') — running (fail-closed)'] }
       }
