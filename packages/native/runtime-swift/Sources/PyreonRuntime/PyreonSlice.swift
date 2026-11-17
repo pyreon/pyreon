@@ -88,3 +88,32 @@ public func pyreonEndsWith(_ s: String, _ search: String, _ endPosition: Int) ->
     let end = max(0, min(endPosition, h.count))
     return end - n.count >= 0 && h[(end - n.count)..<end].elementsEqual(n)
 }
+
+/**
+ * JavaScript's `str.split(separator, limit?)` for a string separator.
+ *
+ * An EMPTY separator splits into UTF-16 code units, as the web does: `"a🙂".split("")` is three elements. Foundation's
+ * `components(separatedBy: "")` returned the whole string as ONE element, and Kotlin's `split("")` adds an empty
+ * string at each end. A Swift `String` cannot hold half of a surrogate pair, so each half of an astral character comes
+ * back as U+FFFD: the COUNT and every BMP unit are the web's, the halves are not (join them back and the character is
+ * lost). An empty receiver split by `""` is `[]`; by anything else it is `[""]`. A negative limit means no limit.
+ */
+public func pyreonSplit(_ s: String, _ separator: String, _ limit: Int? = nil) -> [String] {
+    let parts: [String]
+    if separator.isEmpty {
+        parts = s.utf16.map { String(decoding: [$0], as: UTF16.self) }
+    } else {
+        parts = s.components(separatedBy: separator)
+    }
+    guard let limit, limit >= 0 else { return parts }
+    return Array(parts.prefix(limit))
+}
+
+/**
+ * `[...str]` / `Array.from(str)`: the string's CODE POINTS, as the web's string iterator yields them (`[..."a🙂"]` is two
+ * elements). A Swift `Character` is a grapheme cluster, so iterating the String directly merged a flag or an accented
+ * letter written with a combining mark into one element.
+ */
+public func pyreonCodePoints(_ s: String) -> [String] {
+    s.unicodeScalars.map { String($0) }
+}

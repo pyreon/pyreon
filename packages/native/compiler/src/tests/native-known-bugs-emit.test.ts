@@ -132,8 +132,9 @@ describe('2a. positioned searches lower faithfully instead of re-emitting the we
     expect(rhs(kt.code, 'e2')).toContain('drop(maxOf(0, 6)).startsWith("world")')
   })
   it('split limit TRUNCATES (Kotlin `limit` would keep the remainder in the last part)', () => {
-    expect(rhs(kt.code, 'g')).toContain('__pyParts.take(__pyLimit)')
-    expect(rhs(sw.code, 'g')).toContain('Array(__pyParts.prefix(__pyLimit))')
+    // `pyreonSplit` truncates to the limit on both targets (PyreonSlice.swift / .kt).
+    expect(rhs(kt.code, 'g')).toBe('pyreonSplit(s, " ", 1L)')
+    expect(rhs(sw.code, 'g')).toBe('pyreonSplit(s, " ", 1)')
   })
   it('no warnings — every shape lowered', () => {
     expect(sw.warnings).toEqual([])

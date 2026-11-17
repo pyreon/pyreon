@@ -37,3 +37,27 @@ public fun pyreonSubstring(s: String, start: Long, end: Long? = null): String {
     val b = clamp(end ?: s.length.toLong())
     return if (a <= b) s.substring(a, b) else s.substring(b, a)
 }
+
+/**
+ * JavaScript's `str.split(separator, limit?)` for a string separator. An EMPTY separator splits into UTF-16 code units
+ * (`"a🙂".split("")` is three elements); Kotlin's own `split("")` adds an empty string at each end. An empty receiver
+ * split by `""` is `[]`. A negative limit means no limit. (Twin of `PyreonSlice.swift`.)
+ */
+public fun pyreonSplit(s: String, separator: String, limit: Long? = null): List<String> {
+    val parts = if (separator.isEmpty()) s.map { it.toString() } else s.split(separator)
+    if (limit == null || limit < 0) return parts
+    return parts.take(minOf(limit, Int.MAX_VALUE.toLong()).toInt())
+}
+
+/** `[...str]` / `Array.from(str)`: the string's CODE POINTS, as the web's string iterator yields them. */
+public fun pyreonCodePoints(s: String): List<String> {
+    val out = ArrayList<String>(s.length)
+    var i = 0
+    while (i < s.length) {
+        val cp = s.codePointAt(i)
+        val n = Character.charCount(cp)
+        out.add(s.substring(i, i + n))
+        i += n
+    }
+    return out
+}
