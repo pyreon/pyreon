@@ -5,7 +5,7 @@ import { el, tone, txt } from './bases'
 import { GlowCard } from './cards'
 import { ApiGroups } from './blocks'
 import { CodeCard } from './code'
-import { AutoGrid } from './layout'
+import { AutoGrid } from './primitives'
 import { Eyebrow, Heading, Lede, renderInline } from './type'
 
 /**
@@ -116,7 +116,7 @@ export function ExtraMoreBody(props: { section: ExtraSectionMore }) {
       return <CodeCard label={s.command} caption="real output" code={s.output} />
     case 'tools':
       return (
-        <AutoGrid min={250} gap={12}>
+        <AutoGrid min={250} gap={150}>
           <For each={s.items} by={(i) => i.name}>
             {(i) => (
               <GlowCard padding="compact" state={i.hot ? 'hot' : 'default'}>
@@ -143,7 +143,7 @@ export function ExtraMoreBody(props: { section: ExtraSectionMore }) {
         <Rows>
           <For each={s.rows.map((r, i) => ({ ...r, i }))} by={(r) => r.i}>
             {(r) => (
-              <AutoGrid cols={r.cols} gap={12}>
+              <AutoGrid cols={r.cols} gap={150}>
                 <For each={r.items} by={(i) => i.pkg}>
                   {(i) => <InlinePackageCard pkg={i.pkg} role={i.role} text={i.text} hot={i.hot} />}
                 </For>

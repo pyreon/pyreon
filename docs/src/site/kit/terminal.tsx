@@ -1,9 +1,10 @@
 import { For } from '@pyreon/core'
 import { color } from '../theme'
 import { GlowCard } from './cards'
-import { CodeBody, CodeHead, HeadText } from './code'
+import { CodeBody, CodeHead } from './code'
 import { CopyButtonIsland } from './islands'
 import { Eyebrow, renderInline } from './type'
+import { Stack } from './primitives'
 
 /* Static pages only: kept out of code.tsx, which the demo islands bundle. */
 
@@ -19,9 +20,9 @@ export function TerminalCard(props: { label: string; lines: readonly string[]; c
   return (
     <GlowCard padding="flush">
       <CodeHead>
-        <HeadText>
+        <Stack gap={75} alignX="left" shrink>
           <Eyebrow>{renderInline(props.label)}</Eyebrow>
-        </HeadText>
+        </Stack>
         <CopyButtonIsland text={props.copy} />
       </CodeHead>
       <CodeBody tag="pre" tabIndex={0} aria-label={props['aria-label'] ?? props.label}>

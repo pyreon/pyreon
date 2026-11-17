@@ -4,7 +4,7 @@ import { breakpoints, font, radius, text, touch, weight } from '../theme'
 import { el, focusRing, tone, txt, type LinkAttrs } from './bases'
 import { CodeBlock } from './code'
 import { GlowCard } from './cards'
-import { AutoGrid } from './layout'
+import { AutoGrid, Stack } from './primitives'
 import { artBox } from './media'
 import { useLinkClick } from './link'
 import { Eyebrow, Heading, Lede, renderInline, StatusBadge } from './type'
@@ -171,8 +171,6 @@ const StepNum = txt
     justifyContent: 'center',
   }))
 
-const StepBody = el.config({ name: 'StepListBody' }).attrs({ block: true, contentAlignX: 'block', gap: 8 }).theme(() => ({ minWidth: 0 }))
-
 const StepCode = el
   .config({ name: 'StepListCode' })
   .attrs({ block: true })
@@ -195,7 +193,7 @@ export function StepList(props: { items: readonly StepItem[] }) {
         {(x) => (
           <Step>
             <StepNum>{String(x.i + 1)}</StepNum>
-            <StepBody>
+            <Stack gap={100} shrink>
               <Heading tag="h3" size="step">
                 {renderInline(x.s.title)}
               </Heading>
@@ -206,7 +204,7 @@ export function StepList(props: { items: readonly StepItem[] }) {
                   <CodeBlock code={x.s.code} html={x.s.codeHtml} label={x.s.file ?? `Step ${x.i + 1} code`} />
                 </StepCode>
               ) : null}
-            </StepBody>
+            </Stack>
           </Step>
         )}
       </For>
@@ -312,7 +310,7 @@ const SrOnly = txt
 /** "Go deeper": cards that are one link each, the label with an arrow. */
 export function LinkCards(props: { items: readonly { label: string; href: string; text: string }[]; min?: number | undefined }) {
   return (
-    <AutoGrid min={props.min ?? 240} gap={12}>
+    <AutoGrid min={props.min ?? 240} gap={150}>
       <For each={props.items} by={(i) => i.href + i.label}>
         {(i) => (
           <GlowCard href={i.href} padding="compact">
@@ -339,7 +337,7 @@ export function ItemCards(props: {
   items: readonly { title: string; text: string; code?: string | undefined; codeHtml?: string | undefined; status?: string | undefined }[]
 }) {
   return (
-    <AutoGrid min={300} gap={12}>
+    <AutoGrid min={300} gap={150}>
       <For each={props.items} by={(i) => i.title}>
         {(i) => (
           <GlowCard padding="compact">

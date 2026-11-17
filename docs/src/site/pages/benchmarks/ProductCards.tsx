@@ -2,14 +2,12 @@ import { For } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { fill } from '../../content/fill'
 import type { BenchmarksTemplate } from '../../content/types-site'
-import { el, tone, txt } from '../../kit/bases'
 import { GlowCard } from '../../kit/cards'
 import { inlineText } from '../../kit/inline'
-import { AutoGrid } from '../../kit/layout'
+import { AutoGrid, Stack, Text } from '../../kit/primitives'
 import { KitScope } from '../../kit/scope'
 import { ToggleChips } from '../../kit/toggles'
 import { Eyebrow, Heading, renderInline } from '../../kit/type'
-import { font, text } from '../../theme'
 import { matchesFilter, tally, type ProductBenchSummary, type ProductFilter } from './model'
 
 /**
@@ -24,20 +22,6 @@ export type ProductCardsProps = {
   copy: BenchmarksTemplate['products']
 }
 
-const Stack = el.config({ name: 'BenchProductsStack' }).attrs({ block: true, contentAlignX: 'block', gap: 20 }).theme(() => ({ minWidth: 0 }))
-
-const Card = el.config({ name: 'BenchProductCard' }).attrs({ block: true, gap: 8 }).theme(() => ({ minWidth: 0 }))
-
-const Mono = txt
-  .config({ name: 'BenchProductMono' })
-  .attrs({ tag: 'span' })
-  .theme((_t, m) => ({ display: 'block', fontFamily: font.mono, fontSize: text.mono.size, lineHeight: 1.55, color: tone(m, 'fog') }))
-
-const Tally = txt
-  .config({ name: 'BenchTally' })
-  .attrs({ tag: 'span' })
-  .theme((_t, m) => ({ display: 'block', fontFamily: font.mono, fontSize: text.mono.size, color: tone(m, 'accentText') }))
-
 const FILTERS: readonly ProductFilter[] = ['all', 'win', 'loss', 'info']
 
 export default function ProductCards(props: ProductCardsProps) {
@@ -47,7 +31,7 @@ export default function ProductCards(props: ProductCardsProps) {
   const total = props.products.length
   return (
     <KitScope>
-      <Stack>
+      <Stack gap={250} shrink>
         <ToggleChips<ProductFilter>
           kind="filter"
           label={c.control}
@@ -56,9 +40,9 @@ export default function ProductCards(props: ProductCardsProps) {
           onChange={(v) => filter.set(v)}
         />
         <p aria-live="polite">
-          <Mono>{() => fill(c.shown, { shown: visible().length, total })}</Mono>
+          <Text variant="mono" tone="fog" leading="detail" block>{() => fill(c.shown, { shown: visible().length, total })}</Text>
         </p>
-        <AutoGrid min={260} gap={12} tag="ul">
+        <AutoGrid min={260} gap={150} tag="ul">
           <For each={() => visible()} by={(p) => p.id}>
             {(p) => (
               <li data-product={p.id}>
@@ -67,14 +51,14 @@ export default function ProductCards(props: ProductCardsProps) {
                   padding="compact"
                   aria-label={fill(c.card, { name: p.name, headline: inlineText(p.headline), tally: tally(p.counts, c.tally) })}
                 >
-                  <Card>
+                  <Stack gap={100} alignX="left" shrink>
                     <Eyebrow state="accent">{p.name}</Eyebrow>
                     <Heading tag="h3" size="step">
                       {renderInline(p.headline)}
                     </Heading>
-                    <Mono>{renderInline(p.rival)}</Mono>
-                    <Tally>{tally(p.counts, c.tally)}</Tally>
-                  </Card>
+                    <Text variant="mono" tone="fog" leading="detail" block>{renderInline(p.rival)}</Text>
+                    <Text variant="mono" tone="accentText" block>{tally(p.counts, c.tally)}</Text>
+                  </Stack>
                 </GlowCard>
               </li>
             )}

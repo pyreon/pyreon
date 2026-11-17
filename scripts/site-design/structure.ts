@@ -40,7 +40,12 @@ export const KIT_INTERNALS = [`${KIT}bases`, `${KIT}site-css`]
 const APP_DIRS = ['site/pages/', 'site/shell/', 'site/demos/', 'blog/', 'showcase/', 'open/', 'routes/', 'docs-ui/', 'components/', 'mdx/'].map((d) => `${SRC}/${d}`)
 /** Packages that make up the UI system's styling runtime (~25 KB gzip in an island). */
 export const STYLING_RUNTIME = ['@pyreon/rocketstyle', '@pyreon/styler', '@pyreon/unistyle', '@pyreon/elements', '@pyreon/ui-core', '@pyreon/coolgrid', '@pyreon/kinetic', '@pyreon/attrs']
-export const GALLERY_FILES = [`${SRC}/site/pages/KitGallery.tsx`, `${SRC}/site/pages/KitGalleryLive.tsx`, `${SRC}/site/pages/KitScopePills.tsx`]
+export const GALLERY_FILES = [
+  `${SRC}/site/pages/KitGallery.tsx`,
+  `${SRC}/site/pages/KitGalleryLive.tsx`,
+  `${SRC}/site/pages/KitScopePills.tsx`,
+  `${SRC}/site/pages/KitGalleryPrimitives.tsx`,
+]
 
 const inKit = (p: string): boolean => p.startsWith(KIT)
 const inDemos = (p: string): boolean => p.startsWith(DEMOS)
@@ -171,12 +176,16 @@ export function islandStylingRuntime(files: readonly SourceFile[]): Finding[] {
   return out
 }
 
-/** Exported components of the kit's top-level `.tsx` files that no gallery file names. */
+/** Kit subfolders whose files are public components (through the folder's index), held to the gallery like top-level kit files. */
+export const GALLERY_SUBFOLDERS = ['primitives/']
+
+/** Exported components of the kit's top-level `.tsx` files (and of `GALLERY_SUBFOLDERS`) that no gallery file names. */
 export function galleryMissing(files: readonly SourceFile[]): Finding[] {
   const gallery = files.filter((f) => GALLERY_FILES.includes(f.path)).map((f) => f.text).join('\n')
   const out: Finding[] = []
   for (const f of files) {
-    if (!inKit(f.path) || !f.path.endsWith('.tsx') || f.path.slice(KIT.length).includes('/')) continue
+    const rest = f.path.slice(KIT.length)
+    if (!inKit(f.path) || !f.path.endsWith('.tsx') || (rest.includes('/') && !GALLERY_SUBFOLDERS.some((d) => rest.startsWith(d)))) continue
     for (const m of f.text.matchAll(/^export\s+(?:async\s+)?(?:function|const)\s+([A-Z][A-Za-z0-9]*)/gm)) {
       const name = m[1] as string
       if (!/[a-z]/.test(name) || new RegExp(`\\b${name}\\b`).test(gallery)) continue

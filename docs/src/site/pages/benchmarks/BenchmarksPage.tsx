@@ -6,7 +6,8 @@ import { LimitNote, NumberedCards } from '../../kit/blocks'
 import { GlowCard } from '../../kit/cards'
 import { CodeCard } from '../../kit/code'
 import { Chip, Pill } from '../../kit/controls'
-import { AutoGrid, Section, SectionHead, Wrap } from '../../kit/layout'
+import { Section, SectionHead } from '../../kit/layout'
+import { AutoGrid, Cluster, Stack, Text, Wrap } from '../../kit/primitives'
 import { Reveal } from '../../kit/motion'
 import { CaveatLine, Numeral } from '../../kit/proof'
 import { Diagram, InlineTextLink } from '../../kit/story'
@@ -125,8 +126,6 @@ const StatCondition = txt
   .attrs({ tag: 'span' })
   .theme((_t, m) => ({ display: 'block', fontFamily: font.mono, fontSize: text.caveat.size, lineHeight: 1.55, color: tone(m, 'fog') }))
 
-const Stack = el.config({ name: 'BenchStack' }).attrs({ block: true, contentAlignX: 'block', gap: 20 }).theme(() => ({ minWidth: 0 }))
-
 const ChartBox = el
   .config({ name: 'BenchChartBox' })
   .attrs({ block: true, contentAlignX: 'block', gap: 16 })
@@ -142,11 +141,6 @@ const ChartBox = el
     extendCss: `& [data-svg] { border: 0 !important; background: transparent !important; overflow-x: auto !important; }
       & [data-svg] svg { min-width: 560px; }`,
   }))
-
-const Mono = txt
-  .config({ name: 'BenchMono' })
-  .attrs({ tag: 'span' })
-  .theme((_t, m) => ({ display: 'block', fontFamily: font.mono, fontSize: text.mono.size, lineHeight: 1.55, color: tone(m, 'fog') }))
 
 const WithdrawnRow = el
   .config({ name: 'BenchWithdrawn' })
@@ -182,11 +176,6 @@ const WithdrawnTag = txt
     textTransform: 'uppercase',
     color: tone(m, 'err'),
   }))
-
-const ChipList = el
-  .config({ name: 'BenchVersions' })
-  .attrs({ tag: 'ul', block: true, contentDirection: 'inline', gap: 6 })
-  .theme(() => ({ flexWrap: 'wrap', listStyle: 'none', margin: 0, padding: 0 }))
 
 const RuleLine = el
   .config({ name: 'BenchHeroRule' })
@@ -406,7 +395,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
         <Section size="tight" id="apps">
           <Wrap>
             <SectionHead label={T.apps.label} title={T.apps.title} text={T.apps.text} />
-            <Stack>
+            <Stack gap={250} shrink>
               <ChartWithFallback svg={svgs[BENCH_SVGS.forms]} id="forms-chart" label={T.apps.forms.chart}>
                 <TableDisclosure summary={T.apps.forms.table}>
                   <DataTable
@@ -465,7 +454,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
         <Section size="tight" id="reactivity">
           <Wrap>
             <SectionHead label={T.reactivity.label} title={T.reactivity.title} text={T.reactivity.text} />
-            <Stack>
+            <Stack gap={250} shrink>
               <BenchReactivity reactivity={d.reactivity} copy={T.reactivity} />
               {runNote(T.reactivity.run)}
             </Stack>
@@ -486,7 +475,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
         <Section size="tight" id="losses">
           <Wrap>
             <SectionHead label={T.losses.label} title={d.lossesSection.title} text={d.lossesSection.intro} />
-            <AutoGrid min={300} gap={12}>
+            <AutoGrid min={300} gap={150}>
               <For each={d.losses} by={(l) => l[0]}>
                 {(l) => <LimitNote title={l[0]} text={l[1]} />}
               </For>
@@ -522,7 +511,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
         <Section size="tight" id="harness">
           <Wrap>
             <SectionHead label={fill(T.harness.label, { count: d.harnessBugs.count })} title={d.harnessBugs.title} text={d.harnessBugs.intro} />
-            <AutoGrid min={300} gap={12} tag="ol">
+            <AutoGrid min={300} gap={150} tag="ol">
               <For each={d.harnessBugs.items} by={(b) => b.title}>
                 {(b) => (
                   <li>
@@ -531,7 +520,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
                         {renderInline(b.title)}
                       </Heading>
                       <Lede size="small">{renderInline(b.text)}</Lede>
-                      <Mono>
+                      <Text variant="mono" tone="fog" leading="detail" block>
                         <For each={prNumbers(b.pr)} by={(n) => n}>
                           {(n) => (
                             <>
@@ -539,7 +528,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
                             </>
                           )}
                         </For>
-                      </Mono>
+                      </Text>
                     </GlowCard>
                   </li>
                 )}
@@ -553,13 +542,13 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
       <Section size="tight" id="reproduce">
         <Wrap>
           <SectionHead label={T.reproduce.label} title={d.reproduce.title} text={d.reproduce.intro} />
-          <Stack>
-            <AutoGrid cols={2} gap={16}>
+          <Stack gap={250} shrink>
+            <AutoGrid cols={2} gap={200}>
               <CodeCard label={T.reproduce.command} code={d.reproduce.command} state="hot" />
               <CodeCard label={T.reproduce.allSuites} caption={d.reproduce.note} code={d.reproduce.allSuites} />
             </AutoGrid>
             <Eyebrow>{fill(T.reproduce.competitors, { count: d.competitors.length })}</Eyebrow>
-            <ChipList>
+            <Cluster tag="ul" gap={75}>
               <For each={d.competitors} by={(c) => c}>
                 {(c) => (
                   <li>
@@ -567,7 +556,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
                   </li>
                 )}
               </For>
-            </ChipList>
+            </Cluster>
             <CaveatLine text={d.caveat} link={T.reproduce.more} />
             <div>
               <Pill href={T.reproduce.guide.href} variant="solid" size="lg">

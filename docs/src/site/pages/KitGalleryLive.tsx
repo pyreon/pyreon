@@ -2,7 +2,7 @@ import { signal } from '@pyreon/reactivity'
 import { DemoSurface, GlowCard } from '../kit/cards'
 import { Pill, Segmented } from '../kit/controls'
 import { Meters, PaperButton, PaperHint } from '../kit/demo'
-import { AutoGrid } from '../kit/layout'
+import { AutoGrid } from '../kit/primitives'
 import { KitScope } from '../kit/scope'
 import { el } from '../kit/bases'
 
@@ -24,7 +24,7 @@ export default function KitGalleryLive() {
         <Pill onClick={() => count.set(count.peek() + 1)}>{() => `Button · ${count()}`}</Pill>
         <Segmented label="Target" options={['web', 'ios', 'android'] as const} value={() => seg()} onChange={(v) => seg.set(v)} />
       </Row>
-      <AutoGrid cols={2} gap={16}>
+      <AutoGrid cols={2} gap={200}>
         <DemoSurface aria-label="Paper surface sample">
           <PaperButton type="button" variant="primary" onClick={() => count.set(count.peek() + 1)}>
             Increment

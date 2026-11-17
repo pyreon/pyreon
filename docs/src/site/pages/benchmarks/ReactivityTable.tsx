@@ -1,11 +1,11 @@
 import { signal } from '@pyreon/reactivity'
 import { fill } from '../../content/fill'
 import type { BenchmarksPage, BenchmarksTemplate } from '../../content/types-site'
-import { el } from '../../kit/bases'
 import { KitScope } from '../../kit/scope'
 import { DataTable } from '../../kit/table'
 import { ToggleChips } from '../../kit/toggles'
 import { VerdictNote } from './parts'
+import { Stack } from '../../kit/primitives'
 
 /**
  * The reactivity section's engine switcher and its table: a zero island
@@ -18,15 +18,13 @@ export type ReactivityTableProps = {
   copy: BenchmarksTemplate['reactivity']
 }
 
-const Stack = el.config({ name: 'BenchReactivityStack' }).attrs({ block: true, contentAlignX: 'block', gap: 20 }).theme(() => ({ minWidth: 0 }))
-
 export default function ReactivityTable(props: ReactivityTableProps) {
   const engines = Object.keys(props.reactivity)
   const engine = signal(engines[0] ?? '')
   const c = props.copy
   return (
     <KitScope>
-      <Stack>
+      <Stack gap={250} shrink>
         <ToggleChips label={c.control} options={engines.map((e) => ({ value: e, label: e }))} value={() => engine()} onChange={(v) => engine.set(v)} />
         <div aria-live="polite" data-bench-engine={() => engine()}>
           {() => {

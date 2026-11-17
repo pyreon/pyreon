@@ -6,7 +6,8 @@ import { el, focusRing, tone, txt, type LinkAttrs, tapArea } from '../kit/bases'
 import { GlowCard } from '../kit/cards'
 import { Chip, InstallCommand, Pill } from '../kit/controls'
 import { inlineText } from '../kit/inline'
-import { AutoGrid, Section, SectionHead, Wrap } from '../kit/layout'
+import { Section, SectionHead } from '../kit/layout'
+import { AutoGrid, Cluster, Stack, Text, Wrap } from '../kit/primitives'
 import { CaveatLine } from '../kit/proof'
 import { Eyebrow, Heading, Lede, renderInline, StatusBadge } from '../kit/type'
 import { font, radius, text, weight } from '../theme'
@@ -39,11 +40,6 @@ export const BRAND_PACK = 'brand/logo-pack.zip'
 
 const Hero = el.config({ name: 'ProjectHero' }).attrs({ block: true, contentAlignX: 'block' }).theme(() => ({ maxWidth: 860 }))
 
-const Mono = txt
-  .config({ name: 'ProjectMono' })
-  .attrs({ tag: 'span' })
-  .theme((_t, m) => ({ fontFamily: font.mono, fontSize: text.mono.size, lineHeight: 1.6, color: tone(m, 'fog') }))
-
 const EntryList = el
   .config({ name: 'ReleaseEntries' })
   .attrs({ tag: 'ul', block: true, gap: 10 })
@@ -66,11 +62,6 @@ const Version = txt
   .attrs({ tag: 'h3' })
   .theme((_t, m) => ({ margin: 0, fontFamily: font.mono, fontSize: 22, fontWeight: weight.medium, color: tone(m, 'strong') }))
 
-const Chips = el
-  .config({ name: 'ReleaseChips' })
-  .attrs({ tag: 'ul', block: true, contentDirection: 'inline', gap: 6 })
-  .theme(() => ({ flexWrap: 'wrap', listStyle: 'none', margin: 0, padding: 0 }))
-
 const Figure = el
   .config({ name: 'BrandFigure' })
   .attrs({ block: true })
@@ -82,14 +73,10 @@ const Figure = el
     extendCss: '& img { display: block; width: 100%; height: auto; }',
   }))
 
-const Stack = el.config({ name: 'ProjectStack' }).attrs({ block: true, contentAlignX: 'block', gap: 20 })
-
 const EndRow = el
   .config({ name: 'ProjectEndRow' })
   .attrs({ block: true, contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'center', gap: 12 })
   .theme(() => ({ flexWrap: 'wrap', textAlign: 'center' }))
-
-const DownloadRow = el.config({ name: 'BrandDownloads' }).attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 12 }).theme(() => ({ flexWrap: 'wrap' }))
 
 function Releases(props: { data: ReleaseData }) {
   const d = props.data
@@ -97,7 +84,7 @@ function Releases(props: { data: ReleaseData }) {
     return <CaveatLine text={`The release history is unavailable in this build (${d.reason}). It comes back with the next deploy.`} link={{ label: 'Releases on GitHub →', href: 'https://github.com/pyreon/pyreon/releases' }} />
   }
   return (
-    <Stack>
+    <Stack gap={250}>
       <SectionHead label="from the repository" title="What shipped, read from the changelogs." text="Built from every published package's CHANGELOG.md and the changesets on main when this page was built. Each change is listed once, with its pull request." />
       <Show when={() => d.unreleased !== null}>
         <GlowCard state="hot">
@@ -109,7 +96,7 @@ function Releases(props: { data: ReleaseData }) {
             {`${d.unreleased?.count ?? 0} changesets waiting for the next release`}
           </Heading>
           <Lede size="small">{`${d.unreleased?.minor ?? 0} with a minor bump, ${d.unreleased?.patch ?? 0} patch only. Most touched:`}</Lede>
-          <Chips>
+          <Cluster tag="ul" gap={75}>
             <For each={d.unreleased?.packages ?? []} by={(p) => p.name}>
               {(p) => (
                 <li>
@@ -117,15 +104,15 @@ function Releases(props: { data: ReleaseData }) {
                 </li>
               )}
             </For>
-          </Chips>
+          </Cluster>
         </GlowCard>
       </Show>
-      <AutoGrid min={420} gap={12}>
+      <AutoGrid min={420} gap={150}>
         <For each={d.releases} by={(r) => r.version}>
           {(r) => (
             <GlowCard>
               <Version>{r.version}</Version>
-              <Mono>{`${r.date ? `${r.date} · ` : ''}${r.minor} minor · ${r.patch} patch changes`}</Mono>
+              <Text variant="mono" tone="fog" leading="relaxed">{`${r.date ? `${r.date} · ` : ''}${r.minor} minor · ${r.patch} patch changes`}</Text>
               <EntryList>
                 <For each={r.entries} by={(e) => `${e.pr ?? ''}${e.summary}`}>
                   {(e) => (
@@ -139,7 +126,7 @@ function Releases(props: { data: ReleaseData }) {
                 </For>
               </EntryList>
               <Show when={() => r.minor + r.patch > r.entries.length}>
-                <Mono>{`and ${r.minor + r.patch - r.entries.length} more in the changelogs`}</Mono>
+                <Text variant="mono" tone="fog" leading="relaxed">{`and ${r.minor + r.patch - r.entries.length} more in the changelogs`}</Text>
               </Show>
             </GlowCard>
           )}
@@ -151,17 +138,17 @@ function Releases(props: { data: ReleaseData }) {
 
 function BrandExtras() {
   return (
-    <Stack>
+    <Stack gap={250}>
       <SectionHead label="downloads" title="The files." />
-      <DownloadRow>
+      <Cluster gap={150} alignY="center">
         <Pill href={`/${BRAND_PACK}`} variant="solid">
           Download the logo pack (.zip)
         </Pill>
         <Pill href={mediaUrl(BRAND_IMAGES.swatches[0])}>Swatches, dark (.png)</Pill>
         <Pill href={mediaUrl(BRAND_IMAGES.swatches[1])}>Swatches, light (.png)</Pill>
         <Pill href="/brand/kit">The component kit →</Pill>
-      </DownloadRow>
-      <Mono>SVG and PNG marks and lockups, dark, light and transparent.</Mono>
+      </Cluster>
+      <Text variant="mono" tone="fog" leading="relaxed">SVG and PNG marks and lockups, dark, light and transparent.</Text>
       <Figure>
         <Picture file={BRAND_IMAGES.clearSpace} sizes="(min-width: 1240px) 1160px, 100vw" />
       </Figure>

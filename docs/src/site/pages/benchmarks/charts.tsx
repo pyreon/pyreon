@@ -13,6 +13,7 @@ import { VerdictChip } from '../../kit/bench'
 import { KitScope } from '../../kit/scope'
 import { ToggleChips } from '../../kit/toggles'
 import { formatAxisMs, formatUs, scalingRows, sortedRowBoard } from './model'
+import { Stack } from '../../kit/primitives'
 
 /**
  * The live `@pyreon/charts` views of the row board and the scaling data,
@@ -61,8 +62,6 @@ function Themed(props: { theme: { dark: Partial<ChartTheme>; light: Partial<Char
   )
 }
 
-const Stack = el.config({ name: 'BenchChartStack' }).attrs({ block: true, contentAlignX: 'block', gap: 16 }).theme(() => ({ minWidth: 0 }))
-
 const Note = el
   .config({ name: 'BenchChartNote' })
   .attrs({ tag: 'p', block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 10 })
@@ -96,7 +95,7 @@ export function RowBoardChart(props: {
   const verdict = () => props.rowVerdicts[op()] ?? (['info', ''] as [Verdict, string])
   return (
     <Themed theme={ROWS_THEME}>
-      <Stack>
+      <Stack gap={200} shrink>
         <ToggleChips label={c.control} options={ops.map((o) => ({ value: o, label: o }))} value={() => op()} onChange={(v) => op.set(v)} />
         <Chart<RowDatum>
           data={() => rows()}
@@ -133,7 +132,7 @@ export function ScalingChart(props: { scaling: BenchmarksPage['scaling']; copy: 
   const rows = computed(() => scalingRows(props.scaling.sizes, props.scaling[op()]))
   return (
     <Themed theme={SCALING_THEME}>
-      <Stack>
+      <Stack gap={200} shrink>
         <ToggleChips label={c.control} options={ops.map((o) => ({ value: o, label: o }))} value={() => op()} onChange={(v) => op.set(v)} />
         <Chart<Record<string, string | number>>
           data={() => rows()}

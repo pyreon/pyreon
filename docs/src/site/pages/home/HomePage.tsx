@@ -10,7 +10,8 @@ import { GlowCard, Glyph } from '../../kit/cards'
 import { CodeBlock, CodeDiff } from '../../kit/code'
 import { TerminalCard } from '../../kit/terminal'
 import { InstallCommand, Pill } from '../../kit/controls'
-import { AutoGrid, Section, SectionHead, Wrap } from '../../kit/layout'
+import { Section, SectionHead } from '../../kit/layout'
+import { AutoGrid, Box, Cluster, Grid, Stack, Text, Visible, Wrap } from '../../kit/primitives'
 import { AnimatedSvg, Loop } from '../../kit/media'
 import { Reveal } from '../../kit/motion'
 import { CaveatLine, EndCTA, HookHero, Numeral, ProofBand, TextLink } from '../../kit/proof'
@@ -37,8 +38,6 @@ import {
   DefList,
   Finding,
   MapTable,
-  Mono,
-  NarrowOnly,
   Note,
   Pane,
   PaneHead,
@@ -49,10 +48,7 @@ import {
   PhoneTargets,
   PhoneTargetsHead,
   ProductCell,
-  ProductsGrid,
-  Row,
   Split,
-  Stack,
   StatusLabel,
   StripGrid,
   StripLabel,
@@ -63,7 +59,6 @@ import {
   TargetLabels,
   TargetsGrid,
   Ticks,
-  WideOnly,
 } from './parts'
 
 /** The live counter (an island on the real @pyreon/core); loads when it nears the viewport. */
@@ -131,7 +126,7 @@ function Hero(props: { s: HomeHero }) {
             <For each={v.targets} by={(t) => t.label}>
               {(t) => (
                 <TargetLabel>
-                  <Mono state="upper">{t.label}</Mono>
+                  <Text variant="label" tone="fog" leading="normal">{t.label}</Text>
                   <span>{renderInline(t.caption)}</span>
                 </TargetLabel>
               )}
@@ -150,7 +145,7 @@ function Hero(props: { s: HomeHero }) {
       <PhoneOnly>
         <PhoneTargetsHead>
           <Glyph id="pyreon" size={30} />
-          <Mono state="upper">{v.file.slice(v.file.lastIndexOf('/') + 1)}</Mono>
+          <Text variant="label" tone="fog" leading="normal">{v.file.slice(v.file.lastIndexOf('/') + 1)}</Text>
         </PhoneTargetsHead>
         <PhoneTargets aria-label="The three targets">
           <For each={v.targets} by={(t) => t.label}>
@@ -192,7 +187,7 @@ function Once(props: { s: HomeOnce }) {
     <Section id={s.id}>
       <Wrap>
         <Split>
-          <Stack size="md">
+          <Stack gap={275} alignY="top" selfStart shrink>
             <SectionHead label={s.eyebrow} title={s.title} text={s.lede} level="landing" />
             <BenchList aria-label="Row board results">
               <For each={s.bench} by={(b) => b.op + b.rival}>
@@ -210,7 +205,7 @@ function Once(props: { s: HomeOnce }) {
             </BenchList>
             <CaveatLine text={s.caveat} link={{ label: s.link.label, href: resolveHref(s.link.href) }} />
           </Stack>
-          <Stack size="md">
+          <Stack gap={275} alignY="top" selfStart shrink>
             <GlowCard padding="flush">
               <CodeBlock code={s.counter.code} html={s.counter.codeHtml} label="Counter" />
               <CounterIsland metrics={s.counter.metrics} />
@@ -230,7 +225,7 @@ function DiffSection(props: { s: SectionOf<'diff'> }) {
     <Section id={s.id}>
       <Wrap>
         <Split>
-          <Stack size="md">
+          <Stack gap={275} alignY="top" selfStart shrink>
             <SectionHead label={s.eyebrow} title={s.title} text={s.lede} level="landing" />
             {link(s.link)}
           </Stack>
@@ -260,8 +255,8 @@ function Strip(props: { s: SectionOf<'strip'> }) {
                       </Numeral>{' '}
                       <StripLabel>{renderInline(i.label)}</StripLabel>
                     </span>
-                    <Mono>{i.rival}</Mono>
-                    <Mono>{i.condition}</Mono>
+                    <Text variant="mono" tone="fog" leading="normal">{i.rival}</Text>
+                    <Text variant="mono" tone="fog" leading="normal">{i.condition}</Text>
                     {chart ? <ChartArt svg={chart.svg} file={chart.file} /> : null}
                   </GlowCard>
                 </li>
@@ -284,7 +279,7 @@ function Compare(props: { s: SectionOf<'compare'> }) {
     <Section id={s.id}>
       <Wrap>
         <SectionHead label={s.eyebrow} title={s.title} text={s.lede} level="landing" />
-        <WideOnly>
+        <Visible from="split">
           <TableBox tag="section" tabIndex={0} aria-label={s.title}>
             <CompareTable>
               <thead>
@@ -313,9 +308,9 @@ function Compare(props: { s: SectionOf<'compare'> }) {
               </tbody>
             </CompareTable>
           </TableBox>
-        </WideOnly>
-        <NarrowOnly>
-          <AutoGrid min={260} gap={12}>
+        </Visible>
+        <Visible below="split">
+          <AutoGrid min={260} gap={150}>
             <For each={s.columns.map((c, i) => ({ c, i }))} by={(c) => c.c}>
               {(col) => (
                 <GlowCard padding="compact" state={col.i === 0 ? 'hot' : 'default'}>
@@ -336,16 +331,18 @@ function Compare(props: { s: SectionOf<'compare'> }) {
               )}
             </For>
           </AutoGrid>
-        </NarrowOnly>
+        </Visible>
         <Note>{renderInline(s.note)}</Note>
         <Note>
-          <Mono>source: {s.source}</Mono>
+          <Text variant="mono" tone="fog" leading="normal">source: {s.source}</Text>
         </Note>
-        <Row style="margin-top:18px;gap:22px">
-          <For each={s.links} by={(l) => l.href}>
-            {(l) => link(l)}
-          </For>
-        </Row>
+        <Box padTop={225}>
+          <Cluster gap={275} alignY="center">
+            <For each={s.links} by={(l) => l.href}>
+              {(l) => link(l)}
+            </For>
+          </Cluster>
+        </Box>
       </Wrap>
     </Section>
   )
@@ -357,7 +354,7 @@ function Platforms(props: { s: SectionOf<'platforms'>; media: HomeHero['visual']
     <Section id={s.id}>
       <Wrap>
         <Split>
-          <Stack size="md">
+          <Stack gap={275} alignY="top" selfStart shrink>
             <SectionHead label={s.eyebrow} title={s.title} text={s.lede} level="landing" />
             <Ticks>
               <For each={s.points} by={(p) => p}>
@@ -365,13 +362,13 @@ function Platforms(props: { s: SectionOf<'platforms'>; media: HomeHero['visual']
               </For>
             </Ticks>
             <InstallCommand command={s.install} />
-            <Row>
+            <Cluster gap={100} alignY="center">
               <StatusDot state={s.status.dot} />
               <TextLink href={resolveHref(s.status.href)}>{renderInline(s.status.text)}</TextLink>
-            </Row>
+            </Cluster>
             {link(s.link)}
           </Stack>
-          <Stack size="md">
+          <Stack gap={275} alignY="top" selfStart shrink>
             <GlowCard>
               <MapTable aria-label={s.eyebrow}>
                 <thead>
@@ -415,9 +412,9 @@ function Ai(props: { s: HomeAi }) {
     <Section id={s.id}>
       <Wrap>
         <Split>
-          <Stack size="md">
+          <Stack gap={275} alignY="top" selfStart shrink>
             <SectionHead label={s.eyebrow} title={s.title} text={s.lede} level="landing" />
-            <AutoGrid min={220} gap={22}>
+            <AutoGrid min={220} gap={275}>
               <For each={s.items} by={(i) => i.name}>
                 {(i) => (
                   <div>
@@ -430,7 +427,7 @@ function Ai(props: { s: HomeAi }) {
               </For>
             </AutoGrid>
           </Stack>
-          <Stack size="md">
+          <Stack gap={275} alignY="top" selfStart shrink>
             <Pane>
               <CodeBlock code={s.example.code} html={s.example.codeHtml} label={s.eyebrow} />
               <Finding>{s.example.finding}</Finding>
@@ -450,7 +447,7 @@ function Audiences(props: { s: SectionOf<'audiences'> }) {
     <Section id={s.id}>
       <Wrap>
         <SectionHead label={s.eyebrow} title={s.title} text={s.lede} level="landing" />
-        <AutoGrid cols={2} gap={12} tag="ul">
+        <AutoGrid cols={2} gap={150} tag="ul">
           <For each={s.items.map((item, i) => ({ item, n: String(i + 1).padStart(2, '0') }))} by={(x) => x.item.title}>
             {(x) => (
               <li>
@@ -460,11 +457,11 @@ function Audiences(props: { s: SectionOf<'audiences'> }) {
                     {renderInline(x.item.title)}
                   </Heading>
                   <Lede size="small">{renderInline(x.item.text)}</Lede>
-                  <Row aria-label="Products">
+                  <Cluster gap={100} alignY="center" aria-label="Products">
                     <For each={x.item.tags} by={(t) => t}>
                       {(t) => <TagLink href={`/products/${t}`}>{productName(t)}</TagLink>}
                     </For>
-                  </Row>
+                  </Cluster>
                 </GlowCard>
               </li>
             )}
@@ -485,7 +482,7 @@ function Products(props: { s: SectionOf<'products'> }) {
     <Section id={s.id}>
       <Wrap>
         <SectionHead label={s.eyebrow} title={s.title} text={s.lede} level="landing" />
-        <ProductsGrid>
+        <Grid tag="ul" columns={{ xs: 1, lg: 6 }} gap={150}>
           <For each={featured} by={(f) => f.id}>
             {(f) => (
               <ProductCell size={f.width}>
@@ -495,7 +492,7 @@ function Products(props: { s: SectionOf<'products'> }) {
                     {f.p.status ? <StatusBadge>{f.p.status}</StatusBadge> : null}
                   </Heading>
                   <Lede size="small">{renderInline(f.p.pitch)}</Lede>
-                  <CardFoot label={<Mono>{f.p.package}</Mono>}>
+                  <CardFoot label={<Text variant="mono" tone="fog" leading="normal">{f.p.package}</Text>}>
                     <Show when={() => !!f.p.proof}>
                       <Lede size="small">
                         <Numeral tag="span" size="strip" style="font-size:22px">
@@ -503,14 +500,14 @@ function Products(props: { s: SectionOf<'products'> }) {
                         </Numeral>{' '}
                         {renderInline(f.p.proof?.label ?? '')}
                       </Lede>
-                      <Mono>{f.p.proof?.condition}</Mono>
+                      <Text variant="mono" tone="fog" leading="normal">{f.p.proof?.condition}</Text>
                     </Show>
                   </CardFoot>
                 </GlowCard>
               </ProductCell>
             )}
           </For>
-        </ProductsGrid>
+        </Grid>
         <div style="margin-top:26px">
           <Pill href={resolveHref(s.link.href)} variant="solid" size="lg">
             {s.link.label}
@@ -527,7 +524,7 @@ function Migrate(props: { s: SectionOf<'migrate'> }) {
     <Section id={s.id}>
       <Wrap>
         <SectionHead label={s.eyebrow} title={s.title} text={s.lede} level="landing" />
-        <Stack size="md">
+        <Stack gap={275} alignY="top" selfStart shrink>
           <CompatGrid>
             <For each={s.layers} by={(l) => l.href}>
               {(l) => (
@@ -561,8 +558,8 @@ function Status(props: { s: SectionOf<'status'> }) {
     <Section id={s.id}>
       <Wrap>
         <SectionHead label={s.eyebrow} title={s.title} text={s.lede} level="landing" />
-        <Stack size="md">
-          <AutoGrid cols={3} gap={12}>
+        <Stack gap={275} alignY="top" selfStart shrink>
+          <AutoGrid cols={3} gap={150}>
             <For each={s.columns} by={(c) => c.label}>
               {(c) => (
                 <GlowCard>
@@ -604,7 +601,7 @@ function Evidence(props: { s: SectionOf<'evidence'> }) {
     <Section id={s.id}>
       <Wrap>
         <Split>
-          <Stack size="md">
+          <Stack gap={275} alignY="top" selfStart shrink>
             <SectionHead label={s.eyebrow} title={s.title} text={s.lede} level="landing" />
             {link(s.link)}
           </Stack>
@@ -613,7 +610,7 @@ function Evidence(props: { s: SectionOf<'evidence'> }) {
           </div>
         </Split>
         <div style="margin-top:40px">
-          <AutoGrid min={220} gap={12}>
+          <AutoGrid min={220} gap={150}>
             <For each={s.items} by={(i) => i.title}>
               {(i) => (
                 <GlowCard>
