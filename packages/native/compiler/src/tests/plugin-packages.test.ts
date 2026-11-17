@@ -80,11 +80,37 @@ export function A() { const t = useToggle(); return null }`
   })
 
   it('leaves the core-lowered surface and the webview bridge alone', () => {
-    const source = `import { signal } from '@pyreon/reactivity'
+    const source = `import { effect } from '@pyreon/reactivity'
 import { Stack } from '@pyreon/primitives'
 import { ChartWebView } from '@pyreon/charts/webview'
-export function A() { const n = signal(1); return <Stack /> }`
+export function A() { effect(() => {}); return <Stack /> }`
     const warnings = warningsOf(bareTransform(source, { target: 'swift', filename: 'A.tsx' }))
     expect(warnings.some((w) => w.includes('NO native lowering in this compile'))).toBe(false)
   })
+
+  // `signal` / `computed` from `@pyreon/reactivity` are the documented imports,
+  // and that package's plugin owns them. Without the plugin they used to get
+  // two self-contradictory warnings ("imported here as `signal` …, not as the
+  // `signal` hook"), which read as if the import were wrong.
+  const REACTIVE = `import { signal, computed } from '@pyreon/reactivity'
+import { Text } from '@pyreon/primitives'
+const total = signal(0)
+const label = computed(() => \`\${total()} items\`)
+export function A() { const n = signal(1); return <Text>{label()} {n()}</Text> }`
+
+  for (const target of ['swift', 'kotlin'] as const) {
+    it(`${target}: a reactivity import without its plugin names the missing plugin once`, () => {
+      const warnings = warningsOf(bareTransform(REACTIVE, { target, filename: 'A.tsx' }))
+      expect(warnings.some((w) => w.includes('not as the `signal` hook'))).toBe(false)
+      expect(warnings.some((w) => w.includes('not as the `computed` hook'))).toBe(false)
+      const hit = warnings.filter((w) => w.includes('(from @pyreon/reactivity)'))
+      expect(hit).toEqual([
+        "`signal`, `computed` (from @pyreon/reactivity) have NO native lowering in this compile: @pyreon/reactivity lowers them through its own native compiler plugin, and that plugin is not loaded, so they are NOT lowered and the native build fails. Declare @pyreon/reactivity in the app's package.json dependencies (the native CLI loads plugins only from declared dependencies), or pass its plugin to createCompiler({ plugins }).",
+      ])
+    })
+
+    it(`${target}: the same reactivity imports with the plugin loaded compile without a warning`, () => {
+      expect(warningsOf(transform(REACTIVE, { target, filename: 'A.tsx' }))).toEqual([])
+    })
+  }
 })
