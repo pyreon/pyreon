@@ -449,16 +449,41 @@ export function fixEdits(fix: RuleFix): Fix[] {
  *    gone.
  */
 export function applyFixes(sourceText: string, diagnostics: Diagnostic[]): string {
-  const applied = selectFixEdits(diagnostics)
-  if (applied.length === 0) return sourceText
+  return applyEdits(sourceText, selectFixes(diagnostics).edits)
+}
+
+function applyEdits(sourceText: string, edits: readonly Fix[]): string {
+  if (edits.length === 0) return sourceText
   // Apply end-to-start so earlier offsets stay valid.
-  const ordered = [...applied].sort((a, b) => b.span.start - a.span.start)
+  const ordered = [...edits].sort((a, b) => b.span.start - a.span.start)
   let result = sourceText
   for (const edit of ordered) {
     result = result.slice(0, edit.span.start) + edit.replacement + result.slice(edit.span.end)
   }
 
   return result
+}
+
+/**
+ * Apply a file's fixes to `source` and split its diagnostics by outcome:
+ * those whose fix was written move to `fileResult.fixed`; everything else —
+ * including a fixable diagnostic DEFERRED because it overlapped an earlier fix —
+ * stays in `fileResult.diagnostics`, so it is still reported and a second
+ * `--fix` pass can apply it.
+ *
+ * Returns the fixed source when it differs from `source` (the caller writes
+ * it), or `undefined` when there was nothing to apply.
+ */
+export function applyFileFixes(fileResult: LintFileResult, source: string): string | undefined {
+  const { edits, applied } = selectFixes(fileResult.diagnostics)
+  if (applied.size === 0) return undefined
+  const fixed = applyEdits(source, edits)
+  fileResult.fixed = fileResult.diagnostics.filter((d) => applied.has(d))
+  fileResult.diagnostics = fileResult.diagnostics.filter((d) => !applied.has(d))
+  if (fixed === source) return undefined
+  fileResult.fixedSource = fixed
+
+  return fixed
 }
 
 /**
@@ -474,7 +499,15 @@ export function applyFixes(sourceText: string, diagnostics: Diagnostic[]): strin
  * instead of replacing the whole document.
  */
 export function selectFixEdits(diagnostics: readonly Diagnostic[]): Fix[] {
-  type Candidate = { edits: Fix[]; start: number; end: number }
+  return selectFixes(diagnostics).edits
+}
+
+/** `selectFixEdits` plus WHICH diagnostics those edits came from. */
+function selectFixes(diagnostics: readonly Diagnostic[]): {
+  edits: Fix[]
+  applied: Set<Diagnostic>
+} {
+  type Candidate = { diagnostic: Diagnostic; edits: Fix[]; start: number; end: number }
 
   const candidates: Candidate[] = []
   for (const d of diagnostics) {
@@ -482,31 +515,38 @@ export function selectFixEdits(diagnostics: readonly Diagnostic[]): Fix[] {
     const edits = fixEdits(d.fix)
     if (edits.length === 0) continue
     candidates.push({
+      diagnostic: d,
       edits,
       start: Math.min(...edits.map((e) => e.span.start)),
       end: Math.max(...edits.map((e) => e.span.end)),
     })
   }
-  if (candidates.length === 0) return []
+  if (candidates.length === 0) return { edits: [], applied: new Set() }
 
   // Source order, so "first one wins" is deterministic rather than
   // dependent on rule registration order.
   candidates.sort((a, b) => a.start - b.start || a.end - b.end)
 
-  const applied: Fix[] = []
+  const edits: Fix[] = []
+  const applied = new Set<Diagnostic>()
   const seen = new Set<string>()
   let claimedUpTo = -1
   for (const c of candidates) {
     const keys = c.edits.map((e) => `${e.span.start}:${e.span.end}:${e.replacement}`)
-    // Every edit already made by an earlier fix → the same intent; skip it.
-    if (keys.every((k) => seen.has(k))) continue
+    // Every edit already made by an earlier fix → the same intent, already
+    // written: the diagnostic counts as fixed, but its edits are not repeated.
+    if (keys.every((k) => seen.has(k))) {
+      applied.add(c.diagnostic)
+      continue
+    }
     if (c.start < claimedUpTo) continue // overlaps something already applied
-    applied.push(...c.edits)
+    edits.push(...c.edits)
+    applied.add(c.diagnostic)
     for (const k of keys) seen.add(k)
     claimedUpTo = Math.max(claimedUpTo, c.end)
   }
 
-  return applied
+  return { edits, applied }
 }
 
 // ── Suppression directives ──────────────────────────────────────────────────

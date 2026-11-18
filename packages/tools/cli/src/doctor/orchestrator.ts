@@ -16,11 +16,12 @@
  * throws is recorded as a single `<gate>/gate-failed` ERROR finding
  * instead of rejecting `Promise.all` and taking down the whole report.
  *
- * **Why parallel**: the gates are fully independent — no shared
- * state, no file-write contention (only `--fix` writes, and lint /
- * react-patterns target disjoint file patterns). Running them via
- * `Promise.all` cuts wall-clock from ~5s sequential to ~1-2s for the
- * fast set on a warm cache.
+ * **Why parallel**: without `--fix` the gates are fully independent — no
+ * shared state, no writes. Running them via `Promise.all` cuts wall-clock
+ * from ~5s sequential to ~1-2s for the fast set on a warm cache. Under
+ * `--fix`, the two gates that write (react-patterns, then lint — they scan
+ * the SAME files) run first and in sequence, so every other gate reads the
+ * fixed source and the report never lists a finding the run already fixed.
  *
  * **Skip filtering**: `--only` and `--skip` operate on gate names.
  * Skipped gates appear in the report with `meta.skipped: true` so
@@ -79,6 +80,9 @@ export interface OrchestratorOptions {
    */
   roots?: string[] | undefined
 }
+
+/** Gates that edit source files under `--fix`, in the order they run. */
+const FIX_WRITER_GATES: readonly GateName[] = ['react-patterns', 'lint']
 
 const skippedGate = (
   gate: GateName,
@@ -142,7 +146,7 @@ export const runDoctor = async (
   // look at", surfaced on the report for the renderer + --json.
   const workspace = resolveWorkspaceRoots(opts.cwd, { roots: opts.roots })
 
-  const promises = all.map(async (gate): Promise<GateResult> => {
+  const runOne = async (gate: GateName): Promise<GateResult> => {
     if (!selected.has(gate)) {
       // Distinguish "user explicitly skipped" from "needs --full".
       const reason = SLOW_GATES.includes(gate) && !opts.full
@@ -174,9 +178,23 @@ export const runDoctor = async (
         meta: { elapsedMs: 0 },
       }
     }
-  })
+  }
 
-  const gates = await Promise.all(promises)
+  // Under `--fix`, the gates that WRITE run first and one at a time, and only
+  // then do the read-only gates scan. Run in parallel, a reader scanned the
+  // pre-fix source and reported findings the same run had already fixed
+  // (#4396) — and the two writers scan the SAME files, so they must not
+  // interleave either.
+  const writers = opts.fix ? FIX_WRITER_GATES : []
+  const byGate = new Map<GateName, GateResult>()
+  for (const gate of writers) byGate.set(gate, await runOne(gate))
+  const readers = all.filter((gate) => !byGate.has(gate))
+  const readResults = await Promise.all(readers.map(runOne))
+  readers.forEach((gate, i) => {
+    const result = readResults[i]
+    if (result) byGate.set(gate, result)
+  })
+  const gates = all.flatMap((gate) => byGate.get(gate) ?? [])
   const report = buildReport(gates)
   // Overwrite the sum-of-elapsedMs proxy with the real wall-clock.
   return {

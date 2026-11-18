@@ -193,7 +193,7 @@ function resolveDefault(defNode: AnyNode | undefined): ResolvedDefault | null {
 const NATIVE_OPTION: Record<string, { readonly matches?: (v: unknown) => boolean; readonly why: string }> = {
   serialize: { why: 'the native binding encodes with the codec inferred from the default' },
   deserialize: { why: 'the native binding decodes with the codec inferred from the default, so a URL value can read differently than on the web' },
-  debounce: { matches: (v) => v === 0, why: 'native writes reach the URL immediately' },
+  debounceMs: { matches: (v) => v === 0, why: 'native writes reach the URL immediately' },
   replace: { matches: (v) => v === true, why: 'native writes always replace the current entry (no history push)' },
   arrayFormat: { matches: (v) => v === 'comma', why: "native lists use the comma format (`?tags=a,b`)" },
   onChange: { why: 'native bindings have no external-change callback; read the binding in an effect instead' },
@@ -206,7 +206,7 @@ function reportIgnoredOptions(ctx: Parameters<CallRecognizer>[1], name: string, 
   const obj = ctx.resolveStatic(node) as AnyNode | undefined
   if (obj?.type !== 'ObjectExpression') {
     ctx.report(
-      `${where}: the options are not an inline object, so they cannot be checked at build time and are NOT applied natively (serialize / deserialize / debounce / replace: false / arrayFormat: 'repeat' / onChange). Write them inline, or keep the call behind a \`<Web>\` escape hatch.`,
+      `${where}: the options are not an inline object, so they cannot be checked at build time and are NOT applied natively (serialize / deserialize / debounceMs / replace: false / arrayFormat: 'repeat' / onChange). Write them inline, or keep the call behind a \`<Web>\` escape hatch.`,
     )
     return
   }
@@ -219,6 +219,13 @@ function reportIgnoredOptions(ctx: Parameters<CallRecognizer>[1], name: string, 
     const optName =
       prop.key?.type === 'Identifier' ? (prop.key.name as string) : prop.key?.type === 'Literal' ? String(prop.key.value) : undefined
     if (optName === undefined) continue
+    if (optName === 'debounce') {
+      // Renamed, not a native gap: the old key is ignored on EVERY target, the web included.
+      ctx.report(
+        `${where}: \`debounce\` is not an option any more (renamed \`debounceMs\`) and is ignored on every target, the web included. Rename it to \`debounceMs\`.`,
+      )
+      continue
+    }
     const rule = NATIVE_OPTION[optName]
     if (rule === undefined) continue
     const value = prop.value?.type === 'Literal' ? prop.value.value : undefined

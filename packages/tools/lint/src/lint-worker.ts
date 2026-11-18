@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { parentPort, workerData } from 'node:worker_threads'
 import { allRules } from './rules/index'
-import { applyFixes, lintFile } from './runner'
+import { applyFileFixes, lintFile } from './runner'
 import type { ConfigDiagnostic, LintConfig, LintFileResult } from './types'
 
 /**
@@ -48,13 +48,8 @@ export function lintSlice(input: LintWorkerInput): LintWorkerOutput {
     const fileResult = lintFile(filePath, source, allRules, config, undefined, configDiagnostics)
 
     if (fix) {
-      const fixable = fileResult.diagnostics.filter((d) => d.fix)
-      if (fixable.length > 0) {
-        const fixed = applyFixes(source, fileResult.diagnostics)
-        writeFileSync(filePath, fixed, 'utf-8')
-        fileResult.fixedSource = fixed
-        fileResult.diagnostics = fileResult.diagnostics.filter((d) => !d.fix)
-      }
+      const fixed = applyFileFixes(fileResult, source)
+      if (fixed !== undefined) writeFileSync(filePath, fixed, 'utf-8')
     }
     if (quiet) {
       fileResult.diagnostics = fileResult.diagnostics.filter((d) => d.severity === 'error')

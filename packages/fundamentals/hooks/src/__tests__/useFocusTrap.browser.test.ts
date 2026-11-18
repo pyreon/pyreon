@@ -11,7 +11,7 @@
  *
  * Bisect lines (each capability) are documented per `describe`.
  */
-import { h } from '@pyreon/core'
+import { h, Show, type VNodeChild } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -44,6 +44,7 @@ function makeContainer(html: string): HTMLElement {
   el.innerHTML = html
   document.body.appendChild(el)
   strayNodes.push(el)
+
   return el
 }
 
@@ -53,6 +54,7 @@ function focusOutside(): HTMLButtonElement {
   document.body.appendChild(btn)
   strayNodes.push(btn)
   btn.focus()
+
   return btn
 }
 
@@ -339,5 +341,102 @@ describe('useFocusTrap (real Chromium) — focusin containment', () => {
     await flush()
 
     expect(document.activeElement).toBe(c.querySelector('#c2'))
+  })
+})
+
+describe('useFocusTrap (real Chromium) — content revealed by the activating update (#4355)', () => {
+  // The trap and the content it focuses react to the SAME signal write, made
+  // from a real click (event handlers run inside `batch()`). Whether the
+  // content's binding runs before or after the trap's watcher depends only on
+  // which subscribed first: content mounted AFTER the trap (a lazily shown
+  // panel, a later row) runs second, so a synchronous initial focus hit a
+  // still-`hidden` target, `focus()` was a no-op, and focus stayed on the
+  // trigger. Initial focus must wait until the write has reached the DOM.
+  //
+  // Bisect: apply initial focus synchronously inside the `active` watcher →
+  // the late-mounted spec keeps focus on the trigger and the close-in-the-same
+  // -tick spec drops focus to <body>.
+  function mountRevealing(content: (open: () => boolean) => VNodeChild): {
+    open: ReturnType<typeof signal<boolean>>
+    trigger: () => HTMLButtonElement
+    root: () => HTMLElement
+  } {
+    const open = signal(false)
+    let rootEl: HTMLElement | null = null
+    let triggerEl: HTMLButtonElement | null = null
+    const { unmount } = mountInBrowser(
+      h(() => {
+        useFocusTrap(() => rootEl, {
+          active: () => open(),
+          initialFocus: () => rootEl?.querySelector<HTMLElement>('a') ?? null,
+        })
+
+        return h(
+          'div',
+          {},
+          h(
+            'button',
+            {
+              ref: (el: HTMLButtonElement | null) => {
+                triggerEl = el
+              },
+              onClick: () => open.set(true),
+            },
+            'Menu',
+          ),
+          h(
+            'header',
+            {
+              ref: (el: HTMLElement | null) => {
+                rootEl = el
+              },
+            },
+            content(() => open()),
+          ),
+        )
+      }, {}),
+    )
+    disposers.push(unmount)
+
+    return { open, trigger: () => triggerEl!, root: () => rootEl! }
+  }
+
+  const sheet = (isOpen: () => boolean) =>
+    h('nav', { hidden: () => !isOpen() }, h('a', { href: '#home' }, 'Home'))
+
+  it('focuses a target whose `hidden` binding mounted after the trap', async () => {
+    const ready = signal(false)
+    const { trigger, root } = mountRevealing((isOpen) =>
+      h(Show, { when: () => ready() }, sheet(isOpen)),
+    )
+    await flush()
+    ready.set(true) // the sheet's binding subscribes now, after the trap's watcher
+    await flush()
+
+    trigger().focus()
+    trigger().click()
+    await flush()
+    expect(document.activeElement).toBe(root().querySelector('a'))
+  })
+
+  it('focuses a target that a <Show> renders on the same click', async () => {
+    const { trigger, root } = mountRevealing((isOpen) =>
+      h(Show, { when: () => isOpen() }, h('nav', {}, h('a', { href: '#home' }, 'Home'))),
+    )
+    await flush()
+    trigger().focus()
+    trigger().click()
+    await flush()
+    expect(document.activeElement).toBe(root().querySelector('a'))
+  })
+
+  it('leaves focus alone when the trap deactivates in the same tick', async () => {
+    const { open, trigger } = mountRevealing(sheet)
+    await flush()
+    trigger().focus()
+    open.set(true)
+    open.set(false)
+    await flush()
+    expect(document.activeElement).toBe(trigger())
   })
 })

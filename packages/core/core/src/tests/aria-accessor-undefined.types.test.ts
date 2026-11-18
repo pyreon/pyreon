@@ -44,4 +44,25 @@ describe('ARIA accessors accept undefined-returning functions', () => {
     expectTypeOf<() => 'page' | undefined>().toMatchTypeOf<Attr<'aria-current'>>()
     expectTypeOf<() => 'grammar' | undefined>().toMatchTypeOf<Attr<'aria-invalid'>>()
   })
+
+  // #4392: `aria-sort={() => dir()}` was a type error, like most `aria-*`
+  // attributes outside the eight above. Every one is a value or an accessor.
+  it('every aria-* attribute accepts an accessor (the class, not the eight)', () => {
+    // The declared attributes only: the catch-all `aria-${string}` index
+    // signature is typed `unknown` and is not one of them.
+    type Declared = keyof {
+      [K in keyof PyreonHTMLAttributes as `aria-${string}` extends K ? never : K]: unknown
+    }
+    type AriaKey = Extract<Declared, `aria-${string}`>
+    type RejectsAccessor = {
+      [K in AriaKey]: Extract<NonNullable<PyreonHTMLAttributes[K]>, (...args: never[]) => unknown> extends never ? K : never
+    }[AriaKey]
+    expectTypeOf<RejectsAccessor>().toEqualTypeOf<never>()
+  })
+
+  it('the reported attribute and a numeric one', () => {
+    expectTypeOf<() => 'ascending' | undefined>().toMatchTypeOf<Attr<'aria-sort'>>()
+    expectTypeOf<() => number | undefined>().toMatchTypeOf<Attr<'aria-valuenow'>>()
+    expectTypeOf<'ascending'>().toMatchTypeOf<Attr<'aria-sort'>>()
+  })
 })

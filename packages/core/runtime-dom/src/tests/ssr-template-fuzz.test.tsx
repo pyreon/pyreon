@@ -27,9 +27,11 @@ function mulberry32(seed: number) {
     a = (a + 0x6d2b79f5) | 0
     let t = Math.imul(a ^ (a >>> 15), 1 | a)
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
+
 const pick = <T,>(r: () => number, xs: T[]): T => xs[Math.floor(r() * xs.length)]!
 
 // Runtime context shared by BOTH representations. The signal reads / bare refs
@@ -60,6 +62,7 @@ const DYN_ATTR_NAMES = ['class', 'id', 'title', 'data-x', 'tabIndex', 'className
 const FALSE_ATTR_NAMES = ['hidden', 'aria-hidden', 'title']
 
 type AttrSpec = { name: string; value: string; dyn: boolean; ref?: string; lit?: 'false' }
+
 type Node =
   | { k: 'text'; s: string }
   | { k: 'bare'; ref: string }
@@ -67,6 +70,7 @@ type Node =
   | { k: 'map'; ref: string; item: ElNode }
   | { k: 'cond'; sigCond: boolean; cref: string; shape: 'and' | 'ternEl' | 'ternNull'; a: ElNode; b: ElNode | null }
   | ElNode
+
 interface ElNode {
   k: 'el'
   tag: string
@@ -96,6 +100,7 @@ function genEl(r: () => number, depth: number, mode: 'recursed' | 'mapitem'): El
   const children: Node[] = []
   const nKids = depth >= 3 ? Math.floor(r() * 2) : 1 + Math.floor(r() * 2)
   for (let i = 0; i < nKids; i++) children.push(genChild(r, depth, mode))
+
   return { k: 'el', tag, attrs, children }
 }
 
@@ -119,6 +124,7 @@ function genChild(r: () => number, depth: number, mode: 'recursed' | 'mapitem'):
     const cref = sigCond ? pick(r, ['s0', 's2']) : pick(r, ['f0', 'f3'])
     const shapeRoll = r()
     const shape = shapeRoll < 0.4 ? 'and' : shapeRoll < 0.7 ? 'ternEl' : 'ternNull'
+
     return {
       k: 'cond',
       sigCond,
@@ -128,6 +134,7 @@ function genChild(r: () => number, depth: number, mode: 'recursed' | 'mapitem'):
       b: shape === 'ternEl' ? genEl(r, depth + 1, 'recursed') : null,
     }
   }
+
   return genEl(r, depth + 1, mode)
 }
 
@@ -137,11 +144,13 @@ function attrSrc(a: AttrSpec): string {
   if (a.lit === 'false') return `${a.name}={false}`
   return a.dyn ? `${a.name}={data.${a.ref}}` : `${a.name}="${a.value}"`
 }
+
 function elSrc(el: ElNode): string {
   const attrs = el.attrs.map((a) => ` ${attrSrc(a)}`).join('')
   const kids = el.children.map(childSrc).join('')
   return `<${el.tag}${attrs}>${kids}</${el.tag}>`
 }
+
 function childSrc(n: Node): string {
   switch (n.k) {
     case 'text':
@@ -158,6 +167,7 @@ function childSrc(n: Node): string {
       const cond = n.sigCond ? `${n.cref}()` : `data.${n.cref}`
       if (n.shape === 'and') return `{${cond} && ${elSrc(n.a)}}`
       const els = n.shape === 'ternNull' ? 'null' : elSrc(n.b!)
+
       return `{${cond} ? ${elSrc(n.a)} : ${els}}`
     }
     case 'el':
@@ -166,7 +176,19 @@ function childSrc(n: Node): string {
 }
 
 // ── spec → h() oracle (applies the h()-path wrap rules) ──────────────────────
-function elOracle(el: ElNode, ctx: FuzzCtx, mode: 'recursed' | 'mapitem', it?: Record<string, string>): VNode {
+// `inTpl`: the CLIENT lowers this element into a `_tpl` (a recursed element
+// reached from the root through element children: every generated element
+// qualifies). Inside one, every non-sole, non-literal child is a `<!>`
+// placeholder, and a FIXED one is bracketed in one range on the server
+// (#4385 D). A conditional's branch elements and `.map` items are sliced into
+// the client bind as raw source, so they never are.
+function elOracle(
+  el: ElNode,
+  ctx: FuzzCtx,
+  mode: 'recursed' | 'mapitem',
+  it?: Record<string, string>,
+  inTpl = false,
+): VNode {
   const props: Record<string, unknown> = {}
   // A dynamic attr is a dep member access (`data.fN`) — NOT wrapped (deps
   // aren't signals), so the h() oracle passes the bare value; renderProp does
@@ -208,9 +230,35 @@ function elOracle(el: ElNode, ctx: FuzzCtx, mode: 'recursed' | 'mapitem', it?: R
       return h(el.tag, Object.keys(props).length ? props : null, fused as never)
     }
   }
-  const kids = el.children.map((n) => childOracle(n, ctx, mode, it))
+  const tpl = inTpl && mode === 'recursed'
+  const pos = { inTpl: tpl, placeholder: tpl && !staticallyFused(el.children) && el.children.length !== 1 }
+  const kids = el.children.map((n) => childOracle(n, ctx, mode, it, pos))
+
   return h(el.tag, Object.keys(props).length ? props : null, ...kids)
 }
+
+// The client's STATIC text fusion (`fuseTextChildren(el, true)`): only text and
+// value children, two or more parts after folding adjacent literal text (an
+// empty literal folds away). Such an element has no placeholder.
+function staticallyFused(children: Node[]): boolean {
+  if (children.length < 2 || !children.every((n) => n.k === 'text' || n.k === 'bare' || n.k === 'sig')) {
+    return false
+  }
+  let parts = 0
+  let lastLit = false
+  for (const n of children) {
+    if (n.k !== 'text') {
+      lastLit = false
+      parts++
+    } else if (n.s !== '' && !lastLit) {
+      parts++
+      lastLit = true
+    }
+  }
+
+  return parts >= 2
+}
+
 // Mirror the compiler's `isDynamic` for the fuzz spec: a child is dynamic iff
 // it contains a non-pure CALL (a signal read `sN()` or a `.map`). A `data.fN`
 // member on a non-props identifier is NOT dynamic (same as `isDynamic`'s
@@ -236,7 +284,8 @@ function childOracle(
   n: Node,
   ctx: FuzzCtx,
   mode: 'recursed' | 'mapitem',
-  it?: Record<string, string>,
+  it: Record<string, string> | undefined,
+  { inTpl, placeholder }: { inTpl: boolean; placeholder: boolean },
 ): VNodeChild {
   switch (n.k) {
     case 'text':
@@ -246,6 +295,12 @@ function childOracle(
       // the item element's own children use the `it` param, not data — but our
       // generator only puts `bare`(data) refs, `text`, and nested els in items,
       // so `it` is unused for values. (The map RECEIVER uses `it`.)
+      // A placeholder child is bracketed: `_slot(data.fN)` is an accessor.
+      if (placeholder) {
+        const v = ctx.data[n.ref]
+        return () => v
+      }
+
       return ctx.data[n.ref]
     case 'sig': {
       const s = ctx.sigs[n.ref]!
@@ -276,15 +331,16 @@ function childOracle(
         const a = elOracle(n.a, ctx, 'recursed', it)
         if (n.shape === 'and') return cval && a
         const b = n.shape === 'ternNull' ? null : elOracle(n.b!, ctx, 'recursed', it)
+
         return cval ? a : b
       }
       // Wrap in an accessor iff the h() path would (`shouldWrap` = `isDynamic`).
       // renderNode then adds `<!--$-->…<!--/$-->` when non-sole / elides when
       // sole, mirroring the fast path's `should_wrap` bake vs `_escSole`.
-      return nodeIsDynamic(n) ? () => branch() : branch()
+      return nodeIsDynamic(n) || placeholder ? () => branch() : branch()
     }
     case 'el':
-      return elOracle(n, ctx, mode, it)
+      return elOracle(n, ctx, mode, it, inTpl)
   }
 }
 
@@ -326,6 +382,7 @@ function evalFast(src: string, ctx: FuzzCtx): VNode {
     'a1',
     `${body}\nreturn Node`,
   )
+
   return fn(_ssr, _ssrChildren, _ssrItem, _esc, _escSole, _fuse, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, ctx.data, ctx.sigs.s0, ctx.sigs.s1, ctx.sigs.s2, ctx.arrs.a0, ctx.arrs.a1)
 }
 
@@ -345,7 +402,7 @@ describe('SSR fast path — render-fuzz byte-identity', () => {
       let slow: string
       try {
         fast = await renderToString(evalFast(src, fastCtx))
-        slow = await renderToString(elOracle(spec, slowCtx, 'recursed'))
+        slow = await renderToString(elOracle(spec, slowCtx, 'recursed', undefined, true))
       } catch (err) {
         failures.push(`seed=${seed} threw: ${(err as Error).message}\n  src=${src}`)
         continue

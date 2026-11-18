@@ -107,8 +107,8 @@
       "warnings": 0
     },
     "fixture:11-canonical-layout.tsx|kotlin": {
-      "sha": "744fcb342031575d58fe64e4dd0e8b55ecb51b755a8a5e570cda95f3c2675efd",
-      "bytes": 388,
+      "sha": "f9fcd200de1beab131bf14a4e6b248dcef488a0900da039b11d57e23774c2334",
+      "bytes": 418,
       "warnings": 0
     },
     "fixture:12-canonical-input.tsx|swift": {
@@ -257,8 +257,8 @@
       "warnings": 0
     },
     "fixture:showcase-analytics.tsx|kotlin": {
-      "sha": "14b4dd49ae7698d365b4fa86de0ff2799bb2dd3f4bceba675eeadb86d8610e34",
-      "bytes": 3095,
+      "sha": "943c227684c155480ff38e6882e27909408fd3c221f76eaab9b78f7172b0e47f",
+      "bytes": 3125,
       "warnings": 0
     },
     "fixture:showcase-viz.tsx|swift": {
@@ -267,8 +267,8 @@
       "warnings": 0
     },
     "fixture:showcase-viz.tsx|kotlin": {
-      "sha": "4b12fe7c0b82779e6397d0a1ea05889182b10a56c23bb1972ac3f8679998d9f9",
-      "bytes": 25275,
+      "sha": "4a8ad853e46e1072700b2fab6b9ca080f77600bfe597129943cf690ac86a80b4",
+      "bytes": 25305,
       "warnings": 0
     },
     "fixture:synth-prop-types.tsx|swift": {
@@ -7397,8 +7397,8 @@
       "warnings": 1
     },
     "example:native-router-demo/RouterApp.tsx|kotlin": {
-      "sha": "db1cf98900b2567b869dcf98eb2a42cdf48ce36a1719b396a548351258a86884",
-      "bytes": 32146,
+      "sha": "390b3eddfa7dd98a59d1414bee2e509afd86d928693801f07d1bee85944d01a8",
+      "bytes": 32176,
       "warnings": 1
     },
     "example:native-showcase/TodayApp.tsx|swift": {
