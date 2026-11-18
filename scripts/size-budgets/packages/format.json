@@ -1,0 +1,12 @@
+{
+  "package": "@pyreon/format",
+  "bundle": 9048,
+  "imports": {
+    "core-all": 8420,
+    "core-formatBytes": 1502,
+    "core-formatDate": 2400,
+    "core-formatNumber": 1181,
+    "formatNumber": 1438,
+    "formatNumber-and-setLocale": 1580
+  }
+}
