@@ -87,6 +87,10 @@ describe('expandEvents', () => {
     expect(stats.candidates).toBeLessThan(40)
   })
 
+  it('an empty window holds nothing, even inside a long event', () => {
+    expect(expandEvents([{ id: 'z', start: '2026-11-18T09:00', end: '2026-11-18T10:00' }], range('2026-11-18T09:30', '2026-11-18T09:30'))).toEqual([])
+  })
+
   it('refuses a rule that does not start at the event, mixed shapes, reversed events and ranges', () => {
     expect(() => expandEvents([{ id: 'x', start: '2026-11-16T09:00', end: '2026-11-16T10:00', rule: { every: 'day', start: '2026-11-17T09:00' } }], range('2026-11-18T00:00', '2026-11-19T00:00'))).toThrow(/rule.start .* differs from the event's start/)
     expect(() => expandEvents([{ start: '2026-11-16', end: '2026-11-16T10:00' } as never], range('2026-11-18T00:00', '2026-11-19T00:00'))).toThrow(/mixes a date and a date-time/)

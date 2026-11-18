@@ -62,7 +62,7 @@ function* expand(fn: string, plan: Plan, lo: number, hi: number, limit: number):
  * @example [...occurrences({ every: 'week', start: '2026-11-17' }, { limit: 3 })] // => ['2026-11-17', '2026-11-24', '2026-12-01']
  * @example [...occurrences({ every: 'month', start: '2026-01-31' }, { limit: 3 })] // => ['2026-01-31', '2026-03-31', '2026-05-31']
  */
-export const occurrences = guard('occurrences', function occurrences(rule: Recurrence, range?: OccurrenceRange): Generator<PlainValue, void, undefined> {
+export const occurrences = /* @__PURE__ */ guard('occurrences', function occurrences(rule: Recurrence, range?: OccurrenceRange): Generator<PlainValue, void, undefined> {
   const plan = compile('occurrences', rule)
   const b = boundsOf('occurrences', range)
 
@@ -75,7 +75,7 @@ export const occurrences = guard('occurrences', function occurrences(rule: Recur
  * @example occurrencesBetween({ every: 'day', start: '2026-11-01' }, '2026-11-03', '2026-11-05') // => ['2026-11-03', '2026-11-04', '2026-11-05']
  * @example occurrencesBetween({ every: 'day', start: '2026-11-01T09:00' }, '2026-11-03', '2026-11-04') // => ['2026-11-03T09:00', '2026-11-04T09:00']
  */
-export const occurrencesBetween = guard('occurrencesBetween', function occurrencesBetween(rule: Recurrence, from: PlainValue, to: PlainValue): PlainValue[] {
+export const occurrencesBetween = /* @__PURE__ */ guard('occurrencesBetween', function occurrencesBetween(rule: Recurrence, from: PlainValue, to: PlainValue): PlainValue[] {
   const plan = compile('occurrencesBetween', rule)
   const lo = lowerOf('occurrencesBetween', 'from', from)
   const hi = upperOf('occurrencesBetween', 'to', to)
@@ -91,7 +91,7 @@ export const occurrencesBetween = guard('occurrencesBetween', function occurrenc
  * @example nextOccurrence({ every: 'month', start: '2026-01-31' }, '2026-02-01') // => '2026-03-31'
  * @example nextOccurrence({ every: 'day', start: '2026-01-01', count: 3 }, '2026-01-03') // => null
  */
-export const nextOccurrence = guard('nextOccurrence', function nextOccurrence(rule: Recurrence, after: PlainValue): PlainValue | null {
+export const nextOccurrence = /* @__PURE__ */ guard('nextOccurrence', function nextOccurrence(rule: Recurrence, after: PlainValue): PlainValue | null {
   const plan = compile('nextOccurrence', rule)
   const r = readWall('nextOccurrence', 'after', after)
   const w = firstFrom(plan, r.dateOnly ? r.wall + DAY : r.wall + 1)
@@ -104,7 +104,7 @@ export const nextOccurrence = guard('nextOccurrence', function nextOccurrence(ru
  *
  * @example previousOccurrence({ every: 'week', start: '2026-11-02' }, '2026-11-18') // => '2026-11-16'
  */
-export const previousOccurrence = guard('previousOccurrence', function previousOccurrence(rule: Recurrence, before: PlainValue): PlainValue | null {
+export const previousOccurrence = /* @__PURE__ */ guard('previousOccurrence', function previousOccurrence(rule: Recurrence, before: PlainValue): PlainValue | null {
   const plan = compile('previousOccurrence', rule)
   const r = readWall('previousOccurrence', 'before', before)
   const w = lastUpTo(plan, r.wall - 1)
@@ -118,7 +118,7 @@ export const previousOccurrence = guard('previousOccurrence', function previousO
  * @example occursOn({ every: 'week', start: '2026-11-17' }, '2026-11-24') // => true
  * @example occursOn({ every: 'week', start: '2026-11-17' }, '2026-11-25') // => false
  */
-export const occursOn = guard('occursOn', function occursOn(rule: Recurrence, date: PlainDate): boolean {
+export const occursOn = /* @__PURE__ */ guard('occursOn', function occursOn(rule: Recurrence, date: PlainDate): boolean {
   const plan = compile('occursOn', rule)
   const day = readDay('occursOn', 'date', date) * DAY
 
@@ -153,7 +153,7 @@ function wallBound(fn: string, what: string, v: PlainValue | Instant | undefined
  *
  * @example [...toInstants({ every: 'day', start: '2026-03-28T02:30', timeZone: 'Europe/Prague' }, { limit: 3 })].map((t) => new Date(t).toISOString()) // => ['2026-03-28T01:30:00.000Z', '2026-03-29T01:30:00.000Z', '2026-03-30T00:30:00.000Z']
  */
-export const toInstants = guard('toInstants', function toInstants(rule: Recurrence, range?: InstantRange, options?: InstantOptions): Generator<Instant, void, undefined> {
+export const toInstants = /* @__PURE__ */ guard('toInstants', function toInstants(rule: Recurrence, range?: InstantRange, options?: InstantOptions): Generator<Instant, void, undefined> {
   const plan = compile('toInstants', rule)
   const zone = rule.timeZone
 

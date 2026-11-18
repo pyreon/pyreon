@@ -2444,6 +2444,351 @@ useHead({
   // @pyreon/server
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/schedule>
+
+  'schedule/occurrences': {
+    signature: '(rule: Recurrence, range?: { from?, to?, limit? }) => Generator<PlainDate | PlainDateTime>',
+    example: `[...occurrences({ every: 'week', start: '2026-11-17' }, { limit: 3 })]   // => ['2026-11-17', '2026-11-24', '2026-12-01']
+[...occurrences({ every: 'month', start: '2026-01-31' }, { limit: 3 })]   // => ['2026-01-31', '2026-03-31', '2026-05-31']`,
+    notes: `[EXPERIMENTAL] The occurrences of a rule, lazily and in order. A rule with neither \`until\` nor \`count\` is endless: bound it with \`to\` or \`limit\` (a date bound means the whole day). The rule is checked when you call it. \`start\` is not an occurrence unless the rule produces it; \`count\` counts the rule's own occurrences (an \`except\` date still uses one up); a month day a month lacks is skipped, never clamped. See also: occurrencesBetween, nextOccurrence, toInstants. Added in v0.53.0.`,
+    mistakes: `- Stepping day by day with \`add\` to find occurrences: it is slow, clamps the 31st, and misses RFC rules. Use \`occurrencesBetween\` or \`nextOccurrence\`
+- Storing every occurrence of a recurring event as a row: store the rule and expand a window with \`expandEvents\`
+- Anchoring a recurring local time in UTC: it drifts by an hour twice a year. Keep the wall time and the \`timeZone\`, convert with \`toInstants\``,
+  },
+
+  'schedule/occurrencesBetween': {
+    signature: '(rule: Recurrence, from, to) => (PlainDate | PlainDateTime)[]',
+    example: `occurrencesBetween({ every: 'day', start: '2026-11-01' }, '2026-11-03', '2026-11-05')   // => ['2026-11-03', '2026-11-04', '2026-11-05']`,
+    notes: '[EXPERIMENTAL] Every occurrence from `from` to `to`, both included; a date bound means the whole day. Added in v0.53.0.',
+  },
+
+  'schedule/nextOccurrence': {
+    signature: '(rule: Recurrence, after) => PlainDate | PlainDateTime | null',
+    example: `nextOccurrence({ every: 'month', start: '2026-01-31' }, '2026-02-01')   // => '2026-03-31'
+nextOccurrence({ every: 'day', start: '2026-01-01', count: 3 }, '2026-01-03')   // => null`,
+    notes: '[EXPERIMENTAL] The first occurrence strictly after `after`, or `null`. Jumps to the period of `after`; only a rule with `count` is counted from its start. Added in v0.53.0.',
+  },
+
+  'schedule/previousOccurrence': {
+    signature: '(rule: Recurrence, before) => PlainDate | PlainDateTime | null',
+    example: `previousOccurrence({ every: 'week', start: '2026-11-02' }, '2026-11-18')   // => '2026-11-16'`,
+    notes: '[EXPERIMENTAL] The last occurrence strictly before `before`, or `null`. Added in v0.53.0.',
+  },
+
+  'schedule/occursOn': {
+    signature: '(rule: Recurrence, date: PlainDate) => boolean',
+    example: `occursOn({ every: 'week', start: '2026-11-17' }, '2026-11-24')   // => true
+occursOn({ every: 'week', start: '2026-11-17' }, '2026-11-25')   // => false`,
+    notes: '[EXPERIMENTAL] Whether the rule has an occurrence on a date. Added in v0.53.0.',
+  },
+
+  'schedule/toInstants': {
+    signature: '(rule: Recurrence, range?, options?: { disambiguation? }) => Generator<Instant>',
+    example: `[...toInstants({ every: 'day', start: '2026-03-28T02:30', timeZone: 'Europe/Prague' }, { limit: 3 })].map((t) => new Date(t).toISOString())   // => ['2026-03-28T01:30:00.000Z', '2026-03-29T01:30:00.000Z', '2026-03-30T00:30:00.000Z']`,
+    notes: `[EXPERIMENTAL] The occurrences as instants through the rule's \`timeZone\` (required). A wall time that does not exist on a spring-forward day follows \`disambiguation\` (default \`compatible\`: moved forward, so 02:30 becomes 03:30); one that occurs twice on a fall-back day takes the first. Hourly and minutely rules run on the wall clock; a repeated instant is emitted once. Range bounds are wall values or instants. Added in v0.53.0.`,
+  },
+
+  'schedule/parseRRule': {
+    signature: '(text: string, options?: { start?, timeZone? }) => Recurrence',
+    example: `parseRRule('FREQ=WEEKLY;INTERVAL=2;BYDAY=TU', { start: '2026-11-17' })   // => { every: 'week', start: '2026-11-17', interval: 2, on: { weekdays: [2] } }
+parseRRule('DTSTART:20261118T090000\\nRRULE:FREQ=DAILY;COUNT=3').start   // => '2026-11-18T09:00'`,
+    notes: `[EXPERIMENTAL] Read RFC 5545 text: a bare rule, \`RRULE:...\`, or a block with \`DTSTART\` (with \`TZID\` or \`VALUE=DATE\`), \`RRULE\`, \`EXDATE\` and \`RDATE\`. \`options\` fill in what the text leaves out. A UTC \`UNTIL\` or \`EXDATE\` is read in the rule's zone. Not supported: SECONDLY, BYSECOND, BYEASTER, several RRULEs. Malformed text throws a \`[Pyreon]\` RangeError with the position. See also: tryParseRRule, toRRule. Added in v0.53.0.`,
+  },
+
+  'schedule/tryParseRRule': {
+    signature: '(text: string, options?) => Recurrence | null',
+    example: `tryParseRRule('FREQ=SOMETIMES', { start: '2026-11-18' })   // => null`,
+    notes: '[EXPERIMENTAL] `parseRRule` that returns `null` instead of throwing: for user input and imports. Added in v0.53.0.',
+  },
+
+  'schedule/toRRule': {
+    signature: '(rule: Recurrence) => string',
+    example: `toRRule({ every: 'week', interval: 2, on: { weekdays: [2] }, start: '2026-11-17' })   // => 'DTSTART;VALUE=DATE:20261117\\nRRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TU'`,
+    notes: '[EXPERIMENTAL] Write a rule as RFC 5545 text: a `DTSTART` line, an `RRULE` line, and `EXDATE` / `RDATE` lines when needed. `parseRRule(toRRule(rule))` is the same rule. An `until` in a zone is written in UTC. Added in v0.53.0.',
+  },
+
+  'schedule/describeRule': {
+    signature: '(rule: Recurrence, options?: { locale?, messages? }) => string',
+    example: `describeRule({ every: 'week', interval: 2, on: { weekdays: [2] }, start: '2026-11-17' })   // => 'Every 2 weeks on Tuesday'
+describeRule({ every: 'month', on: { weekdays: [{ weekday: 5, nth: -1 }] }, start: '2026-11-27T09:00' })   // => 'Every month on the last Friday at 09:00'`,
+    notes: '[EXPERIMENTAL] A rule in words, in English by default; weekday and month names follow `locale` through `Intl`, and `messages` replaces any of about 30 phrases so an app can translate through its own i18n. Rules with no natural sentence (week numbers, year days, set positions) return the `custom` phrase, "Custom schedule". `except` and `also` are not described. Added in v0.53.0.',
+  },
+
+  'schedule/isBusinessDay': {
+    signature: '(date, calendar: BusinessCalendar) => boolean',
+    example: `isBusinessDay('2026-11-18', {})   // => true
+isBusinessDay('2026-12-25', { holidays: ['2026-12-25'] })   // => false`,
+    notes: `[EXPERIMENTAL] Not on the calendar's \`weekend\` (default Saturday and Sunday) and not a holiday. Added in v0.53.0.`,
+  },
+
+  'schedule/addBusinessDays': {
+    signature: '(date: PlainDate, n: number, calendar) => PlainDate',
+    example: `addBusinessDays('2026-11-20', 1, {})   // => '2026-11-23'
+addBusinessDays('2026-12-24', 2, { holidays: ['2026-12-25'] })   // => '2026-12-29'`,
+    notes: '[EXPERIMENTAL] Move by `n` business days (negative goes back). `n` of 0 returns the date unchanged. Added in v0.53.0.',
+  },
+
+  'schedule/businessDaysBetween': {
+    signature: '(a: PlainDate, b: PlainDate, calendar) => number',
+    example: `businessDaysBetween('2026-11-16', '2026-11-23', {})   // => 5`,
+    notes: '[EXPERIMENTAL] The business days from `a` (included) to `b` (excluded); negative when `b` is earlier. Added in v0.53.0.',
+  },
+
+  'schedule/nextBusinessDay': {
+    signature: '(date: PlainDate, calendar) => PlainDate',
+    example: `nextBusinessDay('2026-11-20', {})   // => '2026-11-23'`,
+    notes: '[EXPERIMENTAL] The first business day after a date. Added in v0.53.0.',
+  },
+
+  'schedule/previousBusinessDay': {
+    signature: '(date: PlainDate, calendar) => PlainDate',
+    example: `previousBusinessDay('2026-11-23', {})   // => '2026-11-20'`,
+    notes: '[EXPERIMENTAL] The last business day before a date. Added in v0.53.0.',
+  },
+
+  'schedule/addBusinessTime': {
+    signature: '(start: PlainDateTime, duration: Duration, calendar) => PlainDateTime',
+    example: `addBusinessTime('2026-11-20T15:00', { hours: 8 }, { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => '2026-11-23T15:00'`,
+    notes: '[EXPERIMENTAL] Add working time: "8 working hours from Friday 15:00" is Monday 15:00. Time outside opening hours does not count; a result that fills a window stays at its closing time. Negative durations go back. Needs `hours`; an overnight window (`22:00` to `06:00`) belongs to the day it starts on. Only hours, minutes and seconds: use `addBusinessDays` for days. Added in v0.53.0.',
+    mistakes: '- Adding `{ hours: 8 }` with `add` for an SLA: it counts nights and weekends. Use `addBusinessTime`',
+  },
+
+  'schedule/businessTimeBetween': {
+    signature: '(a, b, calendar) => Duration',
+    example: `businessTimeBetween('2026-11-20T15:00', '2026-11-23T11:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => { hours: 4, minutes: 0 }`,
+    notes: '[EXPERIMENTAL] The working time between two moments as `{ hours, minutes }` (plus seconds when needed); negative when `b` is earlier. Added in v0.53.0.',
+  },
+
+  'schedule/isOpen': {
+    signature: '(at: PlainDateTime, calendar) => boolean',
+    example: `isOpen('2026-11-20T10:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => true
+isOpen('2026-11-20T17:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => false`,
+    notes: '[EXPERIMENTAL] Is the calendar open at a moment? A window is half-open: open at its `from`, closed at its `to`. Added in v0.53.0.',
+  },
+
+  'schedule/nextOpening': {
+    signature: '(at: PlainDateTime, calendar) => PlainDateTime | null',
+    example: `nextOpening('2026-11-20T18:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => '2026-11-23T09:00'`,
+    notes: '[EXPERIMENTAL] The next time the calendar opens, strictly after `at`; `null` when it never opens within ten years. Added in v0.53.0.',
+  },
+
+  'schedule/nextClosing': {
+    signature: '(at: PlainDateTime, calendar) => PlainDateTime | null',
+    example: `nextClosing('2026-11-20T10:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => '2026-11-20T17:00'`,
+    notes: '[EXPERIMENTAL] The next time the calendar closes, strictly after `at`. Added in v0.53.0.',
+  },
+
+  'schedule/overlaps': {
+    signature: '(a: Interval, b: Interval) => boolean',
+    example: `overlaps({ start: '2026-11-18T09:00', end: '2026-11-18T10:00' }, { start: '2026-11-18T09:30', end: '2026-11-18T11:00' })   // => true
+overlaps({ start: '2026-11-18T09:00', end: '2026-11-18T10:00' }, { start: '2026-11-18T10:00', end: '2026-11-18T11:00' })   // => false`,
+    notes: '[EXPERIMENTAL] Whether two half-open intervals share time: `[9:00, 10:00)` and `[10:00, 11:00)` do not. Added in v0.53.0.',
+  },
+
+  'schedule/intersection': {
+    signature: '(a: Interval, b: Interval) => Interval | null',
+    example: `intersection({ start: '2026-11-18T09:00', end: '2026-11-18T10:00' }, { start: '2026-11-18T09:30', end: '2026-11-18T11:00' })   // => { start: '2026-11-18T09:30', end: '2026-11-18T10:00' }`,
+    notes: '[EXPERIMENTAL] The shared part of two intervals, or `null`. Added in v0.53.0.',
+  },
+
+  'schedule/mergeIntervals': {
+    signature: '(list: Interval[]) => Interval[]',
+    example: `mergeIntervals([{ start: '2026-11-18T10:00', end: '2026-11-18T11:00' }, { start: '2026-11-18T09:00', end: '2026-11-18T10:00' }])   // => [{ start: '2026-11-18T09:00', end: '2026-11-18T11:00' }]`,
+    notes: '[EXPERIMENTAL] Sort and merge: overlapping and touching intervals become one, empty ones are dropped, the input is not changed. Added in v0.53.0.',
+  },
+
+  'schedule/subtractIntervals': {
+    signature: '(from: Interval[], busy: Interval[]) => Interval[]',
+    example: `subtractIntervals([{ start: '2026-11-18T09:00', end: '2026-11-18T17:00' }], [{ start: '2026-11-18T12:00', end: '2026-11-18T13:00' }])   // => [{ start: '2026-11-18T09:00', end: '2026-11-18T12:00' }, { start: '2026-11-18T13:00', end: '2026-11-18T17:00' }]`,
+    notes: '[EXPERIMENTAL] What is left of `from` once `busy` is taken out: sorted, not overlapping, no empty pieces. `busy` may be unsorted and overlapping. Added in v0.53.0.',
+  },
+
+  'schedule/freeSlots': {
+    signature: '(options: { within, busy, duration, step?, calendar?, buffer?, limit? }) => Interval[]',
+    example: `freeSlots({ within: { start: '2026-11-18T09:00', end: '2026-11-18T12:00' }, busy: [{ start: '2026-11-18T10:00', end: '2026-11-18T10:30' }], duration: { minutes: 60 } }).map((s) => s.start)   // => ['2026-11-18T09:00', '2026-11-18T11:00']`,
+    notes: `[EXPERIMENTAL] Slots of \`duration\` that fit inside \`within\` (and the calendar's opening hours), not touching \`busy\`, with \`buffer.before\` / \`buffer.after\` of free time around them. Starts sit on a grid of \`step\` (default \`duration\`) from the start of each stretch of working time, so slots stay at :00 and :30 whatever the meetings do. Zero or negative durations throw; more than \`limit\` (default 100000) slots throws. Works on date-times or instants. Added in v0.53.0.`,
+  },
+
+  'schedule/expandEvents': {
+    signature: '(events: CalendarEvent[], range: Interval) => EventInstance[]',
+    example: `expandEvents([{ id: 'standup', start: '2026-11-16T09:00', end: '2026-11-16T09:15', rule: { every: 'day', start: '2026-11-16T09:00' } }], { start: '2026-11-18T00:00', end: '2026-11-20T00:00' }).map((i) => i.start)   // => ['2026-11-18T09:00', '2026-11-19T09:00']`,
+    notes: '[EXPERIMENTAL] What a calendar view needs: the instances of single and recurring events that overlap `range`, sorted, each with a stable `key` (`"<id>:<occurrence>"`) and `occurrence` (the original start as a number; it does not depend on the window or on moves). `overrides` cancel or move single instances. The cost depends on the window, not on how long ago an event started. Added in v0.53.0.',
+  },
+
+  'schedule/useOccursToday': {
+    signature: '(rule: Recurrence) => () => boolean',
+    example: `typeof useOccursToday   // => 'function'`,
+    notes: `[EXPERIMENTAL] Reactive: does the rule occur today, in the rule's \`timeZone\` or the active zone? Flips at local midnight. Call it in a component's setup. From the root entry only. Added in v0.53.0.`,
+  },
+
+  'schedule/useNextOccurrence': {
+    signature: '(rule: Recurrence) => () => PlainDate | PlainDateTime | null',
+    example: `typeof useNextOccurrence   // => 'function'`,
+    notes: `[EXPERIMENTAL] Reactive: the next occurrence from today on (today included), moving on at local midnight in the rule's zone or the active zone. Day-accurate. From the root entry only. Added in v0.53.0.`,
+  },
+
+  'schedule/Recurrence': {
+    signature: 'interface Recurrence { every: "day" | "week" | "month" | "year" | "hour" | "minute"; interval?; on?: { weekdays?, monthDays?, months?, yearDays?, weeks?, hours?, minutes?, position? }; start; until?; count?; weekStart?; except?; also?; timeZone? }',
+    example: `const rule: Recurrence = { every: 'week', on: { weekdays: [1, 3] }, start: '2026-11-16' }`,
+    notes: '[EXPERIMENTAL] A repeating rule as plain data. Field names follow RFC 5545 (FREQ, INTERVAL, BYDAY, BYMONTHDAY, BYMONTH, BYYEARDAY, BYWEEKNO, BYHOUR, BYMINUTE, BYSETPOS, DTSTART, UNTIL, COUNT, WKST, EXDATE, RDATE); values follow @pyreon/time. Added in v0.53.0.',
+  },
+
+  'schedule/Interval': {
+    signature: 'interface Interval<T = PlainDateTime> { start: T; end: T }',
+    example: `const slot: Interval = { start: '2026-11-18T09:00', end: '2026-11-18T09:30' }`,
+    notes: '[EXPERIMENTAL] A half-open interval `[start, end)` of date-times, dates or instants. Added in v0.53.0.',
+  },
+
+  'schedule/BusinessCalendar': {
+    signature: 'interface BusinessCalendar { weekend?: Weekday[]; hours?: WorkingHours; holidays?: PlainDate[] | ((date) => boolean); timeZone? }',
+    example: `const cal: BusinessCalendar = { holidays: ['2026-12-25'] }`,
+    notes: '[EXPERIMENTAL] Business days and opening hours. No holiday data is shipped: pass a list or a predicate. Added in v0.53.0.',
+  },
+
+  'schedule/WorkingHours': {
+    signature: 'type WorkingHours = { [weekday in 1..7]?: { from: PlainTime; to: PlainTime }[] }',
+    example: `const hours: WorkingHours = { 1: [{ from: '09:00', to: '17:00' }] }`,
+    notes: '[EXPERIMENTAL] Opening windows by ISO weekday; absent or empty is closed. A window whose `to` is not after its `from` runs overnight. Added in v0.53.0.',
+  },
+
+  'schedule/CalendarEvent': {
+    signature: 'interface CalendarEvent { id?; start; end; rule?: Recurrence; overrides? }',
+    example: `const e: CalendarEvent = { id: 'a', start: '2026-11-18T09:00', end: '2026-11-18T10:00' }`,
+    notes: `[EXPERIMENTAL] An event for \`expandEvents\`: one-off, or repeating when it has a \`rule\` that starts at the event's start. Added in v0.53.0.`,
+  },
+
+  'schedule/EventInstance': {
+    signature: 'interface EventInstance { id?; key: string; occurrence: number; start; end }',
+    example: `const key: EventInstance['key'] = 'a:1'`,
+    notes: '[EXPERIMENTAL] One instance of an event inside the window. Added in v0.53.0.',
+  },
+
+  'schedule/fp.occurrencesBetween': {
+    signature: '(from, to) => (rule: Recurrence) => PlainValue[]',
+    example: `import { occurrencesBetween } from '@pyreon/schedule/fp'
+occurrencesBetween('2026-11-02', '2026-11-16')({ every: 'week', start: '2026-11-02' })   // => ['2026-11-02', '2026-11-09', '2026-11-16']`,
+    notes: '[EXPERIMENTAL] Value-last `occurrencesBetween`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.nextOccurrence': {
+    signature: '(after) => (rule: Recurrence) => PlainValue | null',
+    example: `import { nextOccurrence } from '@pyreon/schedule/fp'
+nextOccurrence('2026-11-18')({ every: 'week', start: '2026-11-02' })   // => '2026-11-23'`,
+    notes: '[EXPERIMENTAL] Value-last `nextOccurrence`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.previousOccurrence': {
+    signature: '(before) => (rule: Recurrence) => PlainValue | null',
+    example: `import { previousOccurrence } from '@pyreon/schedule/fp'
+previousOccurrence('2026-11-18')({ every: 'week', start: '2026-11-02' })   // => '2026-11-16'`,
+    notes: '[EXPERIMENTAL] Value-last `previousOccurrence`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.occursOn': {
+    signature: '(date) => (rule: Recurrence) => boolean',
+    example: `import { occursOn } from '@pyreon/schedule/fp'
+occursOn('2026-11-09')({ every: 'week', start: '2026-11-02' })   // => true`,
+    notes: '[EXPERIMENTAL] Value-last `occursOn`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.describeRule': {
+    signature: '(options?) => (rule: Recurrence) => string',
+    example: `import { describeRule } from '@pyreon/schedule/fp'
+describeRule()({ every: 'day', start: '2026-11-18' })   // => 'Every day'`,
+    notes: '[EXPERIMENTAL] Value-last `describeRule`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.isBusinessDay': {
+    signature: '(calendar) => (date) => boolean',
+    example: `import { isBusinessDay } from '@pyreon/schedule/fp'
+isBusinessDay({})('2026-11-21')   // => false`,
+    notes: '[EXPERIMENTAL] Value-last `isBusinessDay`: `isBusinessDay(cal)` is a predicate for `filter`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.addBusinessDays': {
+    signature: '(n, calendar) => (date: PlainDate) => PlainDate',
+    example: `import { addBusinessDays } from '@pyreon/schedule/fp'
+addBusinessDays(2, {})('2026-11-20')   // => '2026-11-24'`,
+    notes: '[EXPERIMENTAL] Value-last `addBusinessDays`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.businessDaysBetween': {
+    signature: '(b, calendar) => (a: PlainDate) => number',
+    example: `import { businessDaysBetween } from '@pyreon/schedule/fp'
+businessDaysBetween('2026-11-23', {})('2026-11-16')   // => 5`,
+    notes: '[EXPERIMENTAL] Value-last `businessDaysBetween` (the first date goes last). Added in v0.53.0.',
+  },
+
+  'schedule/fp.nextBusinessDay': {
+    signature: '(calendar) => (date: PlainDate) => PlainDate',
+    example: `import { nextBusinessDay } from '@pyreon/schedule/fp'
+nextBusinessDay({})('2026-11-20')   // => '2026-11-23'`,
+    notes: '[EXPERIMENTAL] Value-last `nextBusinessDay`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.previousBusinessDay': {
+    signature: '(calendar) => (date: PlainDate) => PlainDate',
+    example: `import { previousBusinessDay } from '@pyreon/schedule/fp'
+previousBusinessDay({})('2026-11-23')   // => '2026-11-20'`,
+    notes: '[EXPERIMENTAL] Value-last `previousBusinessDay`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.addBusinessTime': {
+    signature: '(duration, calendar) => (start: PlainDateTime) => PlainDateTime',
+    example: `import { addBusinessTime } from '@pyreon/schedule/fp'
+addBusinessTime({ hours: 1 }, { hours: { 3: [{ from: '09:00', to: '17:00' }] } })('2026-11-18T09:00')   // => '2026-11-18T10:00'`,
+    notes: '[EXPERIMENTAL] Value-last `addBusinessTime`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.isOpen': {
+    signature: '(calendar) => (at: PlainDateTime) => boolean',
+    example: `import { isOpen } from '@pyreon/schedule/fp'
+isOpen({ hours: { 3: [{ from: '09:00', to: '17:00' }] } })('2026-11-18T10:00')   // => true`,
+    notes: '[EXPERIMENTAL] Value-last `isOpen`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.nextOpening': {
+    signature: '(calendar) => (at: PlainDateTime) => PlainDateTime | null',
+    example: `import { nextOpening } from '@pyreon/schedule/fp'
+nextOpening({ hours: { 4: [{ from: '09:00', to: '17:00' }] } })('2026-11-18T10:00')   // => '2026-11-19T09:00'`,
+    notes: '[EXPERIMENTAL] Value-last `nextOpening`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.nextClosing': {
+    signature: '(calendar) => (at: PlainDateTime) => PlainDateTime | null',
+    example: `import { nextClosing } from '@pyreon/schedule/fp'
+nextClosing({ hours: { 3: [{ from: '09:00', to: '17:00' }] } })('2026-11-18T10:00')   // => '2026-11-18T17:00'`,
+    notes: '[EXPERIMENTAL] Value-last `nextClosing`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.overlaps': {
+    signature: '(b: Interval) => (a: Interval) => boolean',
+    example: `import { overlaps } from '@pyreon/schedule/fp'
+overlaps({ start: '2026-11-18T09:30', end: '2026-11-18T11:00' })({ start: '2026-11-18T09:00', end: '2026-11-18T10:00' })   // => true`,
+    notes: '[EXPERIMENTAL] Value-last `overlaps`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.intersection': {
+    signature: '(b: Interval) => (a: Interval) => Interval | null',
+    example: `import { intersection } from '@pyreon/schedule/fp'
+intersection({ start: '2026-11-18T09:30', end: '2026-11-18T11:00' })({ start: '2026-11-18T09:00', end: '2026-11-18T10:00' })   // => { start: '2026-11-18T09:30', end: '2026-11-18T10:00' }`,
+    notes: '[EXPERIMENTAL] Value-last `intersection`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.subtractIntervals': {
+    signature: '(busy: Interval[]) => (from: Interval[]) => Interval[]',
+    example: `import { subtractIntervals } from '@pyreon/schedule/fp'
+subtractIntervals([{ start: '2026-11-18T12:00', end: '2026-11-18T13:00' }])([{ start: '2026-11-18T09:00', end: '2026-11-18T14:00' }])   // => [{ start: '2026-11-18T09:00', end: '2026-11-18T12:00' }, { start: '2026-11-18T13:00', end: '2026-11-18T14:00' }]`,
+    notes: '[EXPERIMENTAL] Value-last `subtractIntervals`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.expandEvents': {
+    signature: '(range: Interval) => (events) => EventInstance[]',
+    example: `import { expandEvents } from '@pyreon/schedule/fp'
+expandEvents({ start: '2026-11-18T00:00', end: '2026-11-19T00:00' })([{ id: 'a', start: '2026-11-18T09:00', end: '2026-11-18T10:00' }]).map((i) => i.start)   // => ['2026-11-18T09:00']`,
+    notes: '[EXPERIMENTAL] Value-last `expandEvents`. Added in v0.53.0.',
+  },
+  // <gen-docs:api-reference:end @pyreon/schedule>
   // <gen-docs:api-reference:start @pyreon/server>
 
   'server/createHandler': {

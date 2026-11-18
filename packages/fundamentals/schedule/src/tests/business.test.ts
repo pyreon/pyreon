@@ -32,6 +32,11 @@ describe('business days', () => {
     expect(() => isBusinessDay('2026-11-18', cal)).toThrow(/\[Pyreon\] isBusinessDay: the holidays predicate threw for 2026-11-18: API down\. A holidays predicate must return a boolean/)
   })
 
+  it('a holidays predicate that does not return a boolean is an error, not a silent "no holiday"', () => {
+    expect(() => isBusinessDay('2026-11-18', { holidays: (() => 'yes') as never })).toThrow(/returned "yes" for 2026-11-18\. A holidays predicate must return true or false/)
+    expect(() => isBusinessDay('2026-11-18', { holidays: (() => undefined) as never })).toThrow(/returned undefined/)
+  })
+
   it('addBusinessDays steps over weekends and holidays, in both directions, and zero is the date itself', () => {
     expect(addBusinessDays('2026-11-20', 1, {})).toBe('2026-11-23')
     expect(addBusinessDays('2026-11-21', 1, {})).toBe('2026-11-23')

@@ -7,11 +7,13 @@ import type { Recurrence, WeekdaySpec } from '../types'
 
 const MS = 86_400_000
 const dayOf = (y: number, m: number, d: number): number => Date.UTC(y, m - 1, d) / MS
+
 const ymd = (day: number): { y: number; m: number; d: number } => {
   const t = new Date(day * MS)
 
   return { y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate() }
 }
+
 const isoWeekday = (day: number): number => ((new Date(day * MS).getUTCDay() + 6) % 7) + 1
 const daysInMonth = (y: number, m: number): number => new Date(Date.UTC(y, m, 0)).getUTCDate()
 const daysInYear = (y: number): number => dayOf(y + 1, 1, 1) - dayOf(y, 1, 1)
@@ -64,122 +66,144 @@ function weeksIn(y: number, wkst: number): number {
 
 const weekNumber = (day: number, wkst: number): number => (weekStart(day, wkst) - weekOneStart(weekYear(day, wkst), wkst)) / 7 + 1
 
-export interface BruteOptions {
-  endWall: string
+interface Spec {
+  every: Recurrence['every']
+  wkst: number
+  months: readonly number[] | undefined
+  monthDays: readonly number[] | undefined
+  yearDays: readonly number[] | undefined
+  weeks: readonly number[] | undefined
+  weekdays: readonly WeekdaySpec[] | undefined
+  nthInYear: boolean
+}
+
+/** The BY parts with the RFC defaults filled in from DTSTART when no part names the day. */
+function specOf(rule: Recurrence, start: Wall): Spec {
+  const on = rule.on ?? {}
+  const sy = ymd(start.day)
+  const spec: Spec = { every: rule.every, wkst: rule.weekStart ?? 1, months: on.months, monthDays: on.monthDays, yearDays: on.yearDays, weeks: on.weeks, weekdays: on.weekdays, nthInYear: false }
+
+  if (spec.weeks === undefined && spec.yearDays === undefined && spec.monthDays === undefined && spec.weekdays === undefined) {
+    if (rule.every === 'year') {
+      spec.months ??= [sy.m]
+      spec.monthDays = [sy.d]
+    } else if (rule.every === 'month') spec.monthDays = [sy.d]
+    else if (rule.every === 'week') spec.weekdays = [isoWeekday(start.day) as 1]
+  }
+  spec.nthInYear = rule.every === 'year' && spec.months === undefined
+
+  return spec
+}
+
+const matchesList = (list: readonly number[], positive: number, size: number): boolean => list.some((v) => (v > 0 ? v === positive : size + v + 1 === positive))
+
+/** Is `day` the n-th (or n-th last) such weekday of its month, or of its year? */
+function nthMatches(spec: Spec, day: number, entry: { weekday: number; nth: number }): boolean {
+  const { y, m } = ymd(day)
+  const lo = spec.nthInYear ? dayOf(y, 1, 1) : dayOf(y, m, 1)
+  const hi = spec.nthInYear ? dayOf(y, 12, 31) : dayOf(y, m, daysInMonth(y, m))
+  let before = 0
+  let after = 0
+
+  for (let x = lo; x < day; x++) if (isoWeekday(x) === entry.weekday) before++
+  for (let x = day + 1; x <= hi; x++) if (isoWeekday(x) === entry.weekday) after++
+
+  return entry.nth > 0 ? before + 1 === entry.nth : after + 1 === -entry.nth
+}
+
+function weekdayOk(spec: Spec, day: number): boolean {
+  if (spec.weekdays === undefined) return true
+  const wd = isoWeekday(day)
+
+  return spec.weekdays.some((e) => (typeof e === 'number' ? e === wd : e.weekday === wd && nthMatches(spec, day, e)))
+}
+
+/** Does the day satisfy every BY part of the rule? */
+function dayOk(spec: Spec, day: number): boolean {
+  const { y, m, d } = ymd(day)
+
+  if (spec.months !== undefined && !spec.months.includes(m)) return false
+  if (spec.monthDays !== undefined && !matchesList(spec.monthDays, d, daysInMonth(y, m))) return false
+  if (spec.yearDays !== undefined && !matchesList(spec.yearDays, day - dayOf(y, 1, 1) + 1, daysInYear(y))) return false
+  if (spec.weeks !== undefined && !matchesList(spec.weeks, weekNumber(day, spec.wkst), weeksIn(weekYear(day, spec.wkst), spec.wkst))) return false
+
+  return weekdayOk(spec, day)
+}
+
+/** The period a day belongs to; the rule is active in periods whose distance from DTSTART's period is a multiple of INTERVAL. */
+function periodOf(spec: Spec, startDay: number, day: number): number {
+  const { y, m } = ymd(day)
+
+  if (spec.every === 'year') return spec.weeks === undefined ? y : weekYear(day, spec.wkst)
+  if (spec.every === 'month') return y * 12 + m - 1
+  if (spec.every === 'week') return Math.floor((weekStart(day, spec.wkst) - weekStart(startDay, spec.wkst)) / 7)
+
+  return day - startDay
+}
+
+function timesOf(rule: Recurrence, start: Wall & { dateOnly: boolean }): number[] {
+  if (start.dateOnly) return [0]
+  const hours = [...(rule.on?.hours ?? [Math.floor(start.tod / 3_600_000)])].sort((a, b) => a - b)
+  const minutes = [...(rule.on?.minutes ?? [Math.floor((start.tod % 3_600_000) / 60_000)])].sort((a, b) => a - b)
+
+  return hours.flatMap((h) => minutes.map((mi) => h * 3_600_000 + mi * 60_000 + (start.tod % 60_000)))
+}
+
+function untilOf(rule: Recurrence, dateOnly: boolean): number {
+  if (rule.until === undefined) return Infinity
+  const u = parse(rule.until)
+
+  return u.dateOnly && !dateOnly ? u.day * MS + MS - 1 : u.day * MS + u.tod
+}
+
+function pickPositions(walls: Wall[], position: readonly number[] | undefined): Wall[] {
+  if (position === undefined) return walls
+  const picked = new Set<number>()
+
+  for (const pos of position) {
+    const i = pos > 0 ? pos - 1 : walls.length + pos
+
+    if (i >= 0 && i < walls.length) picked.add(i)
+  }
+
+  return [...picked].sort((a, b) => a - b).map((i) => walls[i]!)
 }
 
 export function brute(rule: Recurrence, endWall: string): string[] {
   const start = parse(rule.start)
-  const wkst = rule.weekStart ?? 1
-  const interval = rule.interval ?? 1
-  const on = rule.on ?? {}
-  const dateOnly = start.dateOnly
   const end = parse(endWall)
-  const sy = ymd(start.day)
-  let months = on.months
-  let monthDays = on.monthDays
-  let weekdays = on.weekdays
-
-  if (on.weeks === undefined && on.yearDays === undefined && monthDays === undefined && weekdays === undefined) {
-    if (rule.every === 'year') {
-      months ??= [sy.m]
-      monthDays = [sy.d]
-    } else if (rule.every === 'month') monthDays = [sy.d]
-    else if (rule.every === 'week') weekdays = [isoWeekday(start.day)]
-  }
-  const plain = (weekdays ?? []).filter((w): w is 1 => typeof w === 'number')
-  const nth = (weekdays ?? []).filter((w): w is Extract<WeekdaySpec, object> => typeof w !== 'number')
-  const nthInYear = rule.every === 'year' && months === undefined
-
-  const dayOk = (day: number): boolean => {
-    const { y, m, d } = ymd(day)
-
-    if (months !== undefined && !months.includes(m)) return false
-    if (monthDays !== undefined && !monthDays.some((v) => (v > 0 ? v === d : daysInMonth(y, m) + v + 1 === d))) return false
-    if (on.yearDays !== undefined) {
-      const doy = day - dayOf(y, 1, 1) + 1
-
-      if (!on.yearDays.some((v) => (v > 0 ? v === doy : daysInYear(y) + v + 1 === doy))) return false
-    }
-    if (on.weeks !== undefined) {
-      const wy = weekYear(day, wkst)
-      const n = weekNumber(day, wkst)
-
-      if (!on.weeks.some((v) => (v > 0 ? v === n : weeksIn(wy, wkst) + v + 1 === n))) return false
-    }
-    if (weekdays === undefined) return true
-    const wd = isoWeekday(day)
-
-    if (plain.includes(wd as 1)) return true
-
-    return nth.some((e) => {
-      if (e.weekday !== wd) return false
-      const lo = nthInYear ? dayOf(y, 1, 1) : dayOf(y, m, 1)
-      const hi = nthInYear ? dayOf(y, 12, 31) : dayOf(y, m, daysInMonth(y, m))
-      let before = 0
-      let after = 0
-
-      for (let x = lo; x < day; x++) if (isoWeekday(x) === wd) before++
-      for (let x = day + 1; x <= hi; x++) if (isoWeekday(x) === wd) after++
-
-      return e.nth > 0 ? before + 1 === e.nth : after + 1 === -e.nth
-    })
-  }
-  const hours = [...(on.hours ?? [Math.floor(start.tod / 3_600_000)])].sort((a, b) => a - b)
-  const minutes = [...(on.minutes ?? [Math.floor((start.tod % 3_600_000) / 60_000)])].sort((a, b) => a - b)
-  const tods = dateOnly ? [0] : hours.flatMap((h) => minutes.map((mi) => h * 3_600_000 + mi * 60_000 + (start.tod % 60_000)))
-  const periodOf = (day: number): number => {
-    const { y, m } = ymd(day)
-
-    if (rule.every === 'year') return on.weeks === undefined ? y : weekYear(day, wkst)
-    if (rule.every === 'month') return y * 12 + m - 1
-    if (rule.every === 'week') return Math.floor((weekStart(day, wkst) - weekStart(start.day, wkst)) / 7)
-
-    return day - start.day
-  }
-  const startPeriod = rule.every === 'year' || rule.every === 'month' ? periodOf(start.day) : 0
-  const until = rule.until === undefined ? Infinity : ((): number => {
-    const u = parse(rule.until)
-
-    return u.dateOnly && !dateOnly ? u.day * MS + MS - 1 : u.day * MS + u.tod
-  })()
+  const spec = specOf(rule, start)
+  const interval = rule.interval ?? 1
+  const tods = timesOf(rule, start)
+  const startPeriod = periodOf(spec, start.day, start.day)
+  const until = untilOf(rule, start.dateOnly)
   const periods = new Map<number, number[]>()
 
   for (let day = start.day - 400; day <= end.day + 400; day++) {
-    const p = periodOf(day)
+    const p = periodOf(spec, start.day, day)
 
-    if (p < startPeriod || (p - startPeriod) % interval !== 0 || !dayOk(day)) continue
+    if (p < startPeriod || (p - startPeriod) % interval !== 0 || !dayOk(spec, day)) continue
     if (!periods.has(p)) periods.set(p, [])
     periods.get(p)!.push(day)
   }
+  const except = new Set((rule.except ?? []).map((e) => { const w = parse(e); return start.dateOnly ? w.day * MS : w.day * MS + w.tod }))
   const out: string[] = []
-  const except = new Set((rule.except ?? []).map((e) => { const w = parse(e); return dateOnly ? w.day * MS : w.day * MS + w.tod }))
   let emitted = 0
 
   for (const p of [...periods.keys()].sort((a, b) => a - b)) {
-    let walls = periods.get(p)!.flatMap((day) => tods.map((tod) => ({ day, tod })))
+    const walls = pickPositions(periods.get(p)!.flatMap((day) => tods.map((tod) => ({ day, tod }))), rule.on?.position)
 
-    if (on.position !== undefined) {
-      const picked = new Set<number>()
-
-      for (const pos of on.position) {
-        const i = pos > 0 ? pos - 1 : walls.length + pos
-
-        if (i >= 0 && i < walls.length) picked.add(i)
-      }
-      walls = [...picked].sort((a, b) => a - b).map((i) => walls[i]!)
-    }
     for (const w of walls) {
       const t = w.day * MS + w.tod
 
       if (t < start.day * MS + start.tod) continue
-      if (t > until || emitted >= (rule.count ?? Infinity)) return finish(out, rule, dateOnly, end, except)
+      if (t > until || emitted >= (rule.count ?? Infinity)) return finish(out, rule, start.dateOnly, end, except)
       emitted++
-      if (!except.has(t)) out.push(show(w, dateOnly))
+      if (!except.has(t)) out.push(show(w, start.dateOnly))
     }
   }
 
-  return finish(out, rule, dateOnly, end, except)
+  return finish(out, rule, start.dateOnly, end, except)
 }
 
 function finish(out: string[], rule: Recurrence, dateOnly: boolean, end: Wall, except: Set<number>): string[] {

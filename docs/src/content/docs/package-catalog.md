@@ -4,7 +4,7 @@ description: Public Pyreon framework packages, with links to their guides or sou
 generated_by: docs/scripts/gen-package-catalog.ts
 ---
 
-80 public framework packages across 6 categories, discovered from `packages/<category>/<package>`. This inventory describes the current source tree; see each package on npm for the published version.
+81 public framework packages across 6 categories, discovered from `packages/<category>/<package>`. This inventory describes the current source tree; see each package on npm for the published version.
 
 The platform-specific compiler binaries under `packages/core/compiler/npm/` are optional dependencies of [@pyreon/compiler](/docs/compiler) and are not included in this framework package count.
 
@@ -25,7 +25,7 @@ Explore the [live examples](/docs/examples) and the [UI component workbench](/at
 | [@pyreon/server](/docs/server) | SSR handler, SSG prerender, and island architecture for Pyreon |
 | [@pyreon/sized-map](/docs/sized-map) | Bounded `Map<K, V>` primitive — FIFO (default) or LRU-on-read mode. Used internally across Pyreon packages for sized cache eviction; safe to use directly. |
 
-## fundamentals (31)
+## fundamentals (32)
 
 | Package | Description |
 | --- | --- |
@@ -49,6 +49,7 @@ Explore the [live examples](/docs/examples) and the [UI component workbench](/at
 | [@pyreon/query](/docs/query) | Pyreon adapter for TanStack Query |
 | [@pyreon/rich-text](/docs/rich-text) | Reactive WYSIWYG rich-text editor for Pyreon — signal-backed layer over TipTap (ProseMirror); collaboration composes with @pyreon/sync |
 | [@pyreon/rx](/docs/rx) | Signal-aware reactive transforms — filter, map, sort, group, pipe for Pyreon signals |
+| [@pyreon/schedule](/docs/schedule) | Recurrence, business time and availability as plain data for Pyreon: RFC 5545 rules, DST-correct wall-clock expansion, working hours, free slots |
 | [@pyreon/state-tree](/docs/state-tree) | Structured reactive state tree — composable models with snapshots, patches, and middleware |
 | [@pyreon/storage](/docs/storage) | Reactive client-side storage for Pyreon — localStorage, sessionStorage, cookies, IndexedDB |
 | [@pyreon/store](/docs/store) | Global state management for Pyreon — Pinia-inspired composition stores |

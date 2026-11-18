@@ -145,7 +145,7 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/storage` | useStorage family over @PyreonAppStorage (Swift) / rememberPyreonStorage (Kotlin); persistence device-proven |
 | `@pyreon/store` | defineStore lowers to @Observable singleton (Swift) / mutableStateOf object (Kotlin); cross-screen state device-proven |
 
-### `web-only` — architecturally coupled to the web platform (39)
+### `web-only` — architecturally coupled to the web platform (40)
 
 | Package | Why |
 | --- | --- |
@@ -175,6 +175,7 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/rich-text` | wraps TipTap/ProseMirror (DOM editor, so the editor itself stays web); the `@pyreon/rich-text/webview` bridge crosses — see nativeFrontend |
 | `@pyreon/runtime-dom` | the DOM renderer — on native, PMTC emits SwiftUI/Compose instead of running a renderer; `<Transition>` / `<TransitionGroup>` DO cross, but import them from `@pyreon/primitives` (this package is web-only, so importing them from here warns) |
 | `@pyreon/runtime-server` | server-side HTML rendering (SSR/streaming) — a web-platform concern with no native analogue |
+| `@pyreon/schedule` | not lowered by PMTC yet: pure computation on strings and numbers over @pyreon/time, which is web-only itself; it can become `shared` together with @pyreon/time once Swift and Kotlin ports exist; until then the compiler warns on import rather than miscompiling |
 | `@pyreon/server` | SSR handler + islands for web deployments; native apps have no server-rendered HTML |
 | `@pyreon/sync` | the Yjs engine + IndexedDB/WebSocket transports stay web; the engine-neutral PyreonCrdt core + `syncedSignal` lower to a native runtime, cross-device transport tracked |
 | `@pyreon/table` | the TanStack-backed `useTable` (row model / faceting / virtual sizing) stays web; the dependency-free `createTableState` engine lowers to the native PyreonTableState port, rendered with `<For>` + primitives |

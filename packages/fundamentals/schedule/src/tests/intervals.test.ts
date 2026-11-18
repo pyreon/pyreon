@@ -60,10 +60,10 @@ describe('intervals', () => {
     for (let i = 0; i < 300; i++) {
       const from = Array.from({ length: int(r, 1, 4) }, rand)
       const busy = Array.from({ length: int(r, 0, 6) }, rand)
-      const free = subtractIntervals(from as Interval<number>[], busy as Interval<number>[])
+      const free = subtractIntervals(from as unknown as Interval<number>[], busy as unknown as Interval<number>[])
 
       for (const f of free) {
-        for (const b of busy) expect(overlaps(f as Interval<number>, b as Interval<number>)).toBe(false)
+        for (const b of busy) expect(overlaps(f as unknown as Interval<number>, b as unknown as Interval<number>)).toBe(false)
         expect(f.start < f.end).toBe(true)
       }
       for (let m = 0; m < 1700; m += 7) {
@@ -74,7 +74,7 @@ describe('intervals', () => {
 
         expect(inFree).toBe(inFrom && !inBusy)
       }
-      expect(mergeIntervals(mergeIntervals(from as Interval<number>[]))).toEqual(mergeIntervals(from as Interval<number>[]))
+      expect(mergeIntervals(mergeIntervals(from as unknown as Interval<number>[]))).toEqual(mergeIntervals(from as unknown as Interval<number>[]))
     }
   })
 })

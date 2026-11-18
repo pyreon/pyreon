@@ -4,7 +4,7 @@
  * the period of the lower bound by arithmetic, and a rule that finds nothing for a long stretch ends.
  */
 import { DAY, HOUR, MAX_DAY, MINUTE, civilFromDays, dayOf, daysFromCivil, daysIn, monthOf, weekOneStart, weekdayOf, weeksInYear, yearOf } from './civil'
-import { DAILY, HOURLY, MINUTELY, MONTH, WEEK, YEAR, type Plan } from './plan'
+import { HOURLY, MONTH, WEEK, YEAR, type Plan } from './plan'
 
 /** How many consecutive periods without a single candidate end a rule (a daily rule on a 30th of February, say). */
 const MAX_EMPTY = 5000

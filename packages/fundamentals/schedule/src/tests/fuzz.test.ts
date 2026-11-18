@@ -13,6 +13,7 @@ const throwing = {
     throw new Error('getter boom')
   },
 }
+
 const hostile = new Proxy({}, { get: () => { throw new Error('proxy boom') }, has: () => { throw new Error('proxy boom') }, ownKeys: () => { throw new Error('proxy boom') } })
 const circular: Record<string, unknown> = { every: 'day' }
 
@@ -29,9 +30,9 @@ const POOL: unknown[] = [
 ]
 
 const day = { every: 'day', start: '2026-11-18T09:00', timeZone: 'Europe/Prague' } as const
-const office = { hours: { 3: [{ from: '09:00', to: '17:00' }] } }
-const interval = { start: '2026-11-18T09:00', end: '2026-11-18T10:00' }
-const event = { id: 'a', start: '2026-11-18T09:00', end: '2026-11-18T10:00' }
+const office = { hours: { 3: [{ from: '09:00', to: '17:00' }] } } as never
+const interval = { start: '2026-11-18T09:00', end: '2026-11-18T10:00' } as never
+const event = { id: 'a', start: '2026-11-18T09:00', end: '2026-11-18T10:00' } as never
 const slotOptions = { within: interval, busy: [], duration: { minutes: 30 } }
 
 /** name, function, valid arguments, whether the result is a generator to drain. */

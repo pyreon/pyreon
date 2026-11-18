@@ -49,11 +49,16 @@
     "lint": "oxlint ."
   },
   "devDependencies": {
+    "@pyreon/ambient": "workspace:*",
     "@pyreon/core": "workspace:*",
+    "@pyreon/format": "workspace:*",
+    "@pyreon/i18n": "workspace:*",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
+    "happy-dom": "^21.0.4",
     "rrule": "2.8.1"
   },
   "publishConfig": {

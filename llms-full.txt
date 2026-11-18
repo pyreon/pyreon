@@ -573,6 +573,38 @@ const page = `<!doctype html><html${attrs(htmlAttrs)}><head>${head}</head><body$
 >
 > **Inline script escaping**: Script / style / noscript bodies are not HTML-escaped, but the SSR serializer neutralises them so they cannot break out of the wrapping tag: a JSON data block (`application/ld+json`, `speculationrules`, `importmap`, any `+json` / `/json` type) has every `<` written as `\u003C`, which still `JSON.parse`s; script code, CSS and noscript get `</script>` / `</style>` / `</noscript>` and `<!--` rewritten. Inline JSON-LD via `jsonLd: {...}` auto-wraps in `<script type="application/ld+json">` and stringifies the value.
 
+## @pyreon/schedule — Schedule
+
+A layer above `@pyreon/time`. A `Recurrence` is a plain object that follows RFC 5545 (iCalendar RRULE) with `@pyreon/time` values: `{ every: "week", interval: 2, on: { weekdays: [2] }, start: "2026-11-17" }`. `occurrences` is a lazy generator that jumps by period instead of stepping, so `nextOccurrence` on a ten-year-old rule costs the same as on a new one. Occurrences are wall-clock times: a daily 09:00 stays 09:00 across a clock change and only its instant moves (`toInstants`). The 31st skips months that lack one (RFC 5545), unlike `add`, which clamps. `parseRRule` / `toRRule` read and write RFC text, `describeRule` turns a rule into words. Business time: `isBusinessDay`, `addBusinessDays`, `addBusinessTime("8 working hours from Friday 15:00")`, holidays as a list or a predicate (no holiday data is shipped), split and overnight shifts. Availability: `overlaps`, `mergeIntervals`, `subtractIntervals`, `freeSlots` for booking pages, and `expandEvents` for calendar views. Verified against RFC 5545 section 3.8.5.3, the `rrule` library and a brute-force oracle. `@pyreon/schedule/core` needs only `@pyreon/time`; `@pyreon/schedule/fp` is the value-last form.
+
+```typescript
+import { occurrencesBetween, nextOccurrence, addBusinessTime } from '@pyreon/schedule'
+
+const standup = { every: 'week', interval: 2, on: { weekdays: [2] }, start: '2026-11-17T09:30' } as const
+
+occurrencesBetween(standup, '2026-11-17', '2026-12-31')   // => ['2026-11-17T09:30', '2026-12-01T09:30', '2026-12-15T09:30', '2026-12-29T09:30']
+nextOccurrence(standup, '2026-11-18')                    // => '2026-12-01T09:30'
+addBusinessTime('2026-11-20T15:00', { hours: 8 }, { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => '2026-11-23T15:00'
+```
+
+> **The 31st is skipped, not clamped**: A monthly rule on the 31st has no occurrence in April, June, September and November (RFC 5545 section 3.3.10). `add("2026-01-31", { months: 1 })` clamps to the 28th. They differ on purpose: a calendar rule says "the 31st", an add says "about a month later". For "the last day of every month" use `monthDays: [-1]`.
+>
+> **Wall-clock occurrences**: A rule's occurrences are wall-clock times. A daily 09:00 in Europe/Prague is 09:00 in summer and winter; its instant moves by an hour at the clock change. Anchoring a recurring local time in UTC drifts by an hour twice a year. `toInstants` resolves a wall time that does not exist (02:30 on a spring-forward day) by `disambiguation`, default `compatible`: moved forward to 03:30.
+>
+> **count, except and start**: `count` counts the rule's own occurrences, so an `except` date still uses one up (RFC 5545: EXDATE removes from the generated set). `start` is an occurrence only if the rule produces it: a weekly Tuesday rule that starts on a Monday begins on the next Tuesday.
+>
+> **Bounds and endless rules**: A rule with neither `until` nor `count` is endless; `occurrences` is lazy. Collecting without `to` or `limit` stops after one million occurrences with an error. A date bound means the whole day: `from` is its start, `to` its end, `after` skips it, `before` stops short of it.
+>
+> **Rules that never occur**: Rules that cannot occur (a 30th of February) throw when built. A rule that finds nothing for about five thousand periods in a row ends, so `nextOccurrence` returns `null` instead of looping.
+>
+> **Holidays**: No holiday data is shipped. Pass `holidays` as a list of dates or a predicate (a static list per country and year, a public-holiday API result). A predicate must return a boolean for every date; one that throws raises a `[Pyreon]` error naming the date.
+>
+> **Business time is counted on the wall clock**: Opening hours are wall-clock windows; a day with a clock change is not special-cased. A window ending at or before its start runs overnight into the next day and belongs to the day it starts on, whatever the next day is.
+>
+> **Free slot grid**: `freeSlots` starts slots on a grid of `step` from the start of each stretch of working time, not from the end of each meeting, so a booking page keeps offering :00 and :30. A zero-length busy interval is ignored.
+>
+> **Differences from rrule**: Verified against the `rrule` library; where they differ ours follows the RFC: chronological order for unsorted BYHOUR, union of plain and n-th BYDAY, whole-week BYSETPOS, week-year BYWEEKNO, an interval grid that never drifts, a date UNTIL meaning the whole day.
+
 ## @pyreon/server — SSR / SSG / Islands
 
 `@pyreon/server` is the production HTTP entry point and SSG generator. `createHandler()` produces a `(req: Request) => Promise<Response>` that handles SSR for every request, with a precompiled template (one parse at handler-creation, not per request) and middleware-chain support that short-circuits on the first `Response`. `prerender()` turns the same handler into a static-site generator. `island()` wraps a lazy-loaded component in a `<pyreon-island>` boundary with a hydration strategy (`load` / `idle` / `visible` / `interaction` / `media` / `never`) — the rest of the page stays HTML-only. `serverIsland()` is the INVERSE: a cacheable page with per-request SERVER-rendered holes — the marker self-activates on the client and fetches its fragment from the auto-mounted name-allowlisted endpoint.

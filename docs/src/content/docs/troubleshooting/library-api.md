@@ -257,3 +257,15 @@ It rounds the binary float, so `(1.005).toFixed(2)` is `"1.00"` and `(2.675).toF
 Three parts of `100 / 3` rounded to 33.33 lose a cent, and per-line VAT summed differs from VAT on the total (three 9.99 lines at 21% give 6.30 against 6.29). Share a total with `allocate` or `split` (the parts sum exactly), and decide whether rounding happens per line or once.
 
 ---
+
+### Stepping day by day with `add` to find occurrences, storing every occurrence as a row, anchoring a recurring local time in UTC (`@pyreon/schedule`).
+
+Stepping is slow, clamps the 31st where RFC 5545 skips the month, and misses nth-weekday and set-position rules; expanded rows turn "edit the series" into rewriting thousands of rows; a UTC-anchored 09:00 is 10:00 local after the clocks change. Store the rule (`{ every, on, start, timeZone }`), expand the window with `occurrencesBetween` / `nextOccurrence` / `expandEvents`, keep the wall time and the zone, and convert with `toInstants`. `count` counts the rule's own occurrences, so an excepted date still uses one up. Reference: `packages/fundamentals/schedule`, pattern `patterns/schedule`.
+
+---
+
+### Counting an SLA in hours with `add` (`@pyreon/schedule`).
+
+`add('2026-11-20T15:00', { hours: 8 })` counts nights and weekends. Use `addBusinessTime(start, { hours: 8 }, calendar)` with opening hours, weekends and `holidays` (a list or a predicate; no holiday data is shipped).
+
+---

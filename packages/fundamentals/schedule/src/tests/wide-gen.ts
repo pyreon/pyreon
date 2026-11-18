@@ -10,12 +10,49 @@ const subset = (r: Rand, lo: number, hi: number, max: number): number[] => {
 
   return [...set]
 }
+
 const pad = (n: number): string => String(n).padStart(2, '0')
 
 export interface WideCase {
   seed: number
   rule: Recurrence
   windowEnd: string
+}
+
+interface Ctx {
+  r: Rand
+  every: string
+  timed: boolean
+  on: Record<string, unknown>
+}
+
+const PARTS: Record<string, (c: Ctx) => void> = {
+  months: (c) => {
+    c.on.months = subset(c.r, 1, 12, 4)
+  },
+  monthDays: (c) => {
+    c.on.monthDays = subset(c.r, 1, 31, 3).map((v) => (c.r() < 0.25 ? v - 32 : v))
+  },
+  weekdays: (c) => {
+    const nthOk = c.every === 'month' || c.every === 'year'
+
+    c.on.weekdays = subset(c.r, 1, 7, 3).map((w): WeekdaySpec => (nthOk && c.r() < 0.5 ? { weekday: w as 1, nth: pick(c.r, [1, 2, 3, 4, 5, -1, -2, -3, -4]) } : (w as 1)))
+  },
+  yearDays: (c) => {
+    c.on.yearDays = subset(c.r, 1, 366, 3).map((v) => (c.r() < 0.25 ? v - 367 : v))
+  },
+  weeks: (c) => {
+    if (c.every === 'year') c.on.weeks = subset(c.r, 1, 53, 3).map((v) => (c.r() < 0.2 ? v - 54 : v))
+  },
+  hours: (c) => {
+    if (c.timed) c.on.hours = subset(c.r, 0, 23, 3)
+  },
+  minutes: (c) => {
+    if (c.timed) c.on.minutes = subset(c.r, 0, 59, 3)
+  },
+  position: (c) => {
+    c.on.position = subset(c.r, 1, 4, 3).map((v) => (c.r() < 0.4 ? -v : v))
+  },
 }
 
 export function makeWideCase(seed: number): WideCase {
@@ -26,37 +63,26 @@ export function makeWideCase(seed: number): WideCase {
   const d = Math.min(int(r, 1, 31), new Date(Date.UTC(y, m, 0)).getUTCDate())
   const timed = r() < 0.6
   const start = `${y}-${pad(m)}-${pad(d)}${timed ? `T${pad(int(r, 0, 23))}:${pad(pick(r, [0, 15, 30, 45]))}` : ''}`
-  const on: Record<string, unknown> = {}
-  const parts = r() < 0.2 ? 0 : int(r, 1, 3)
+  const ctx: Ctx = { r, every, timed, on: {} }
 
-  for (let i = 0; i < parts; i++) {
-    const kind = pick(r, ['months', 'monthDays', 'weekdays', 'yearDays', 'weeks', 'hours', 'minutes', 'position'])
+  for (let i = r() < 0.2 ? 0 : int(r, 1, 3); i > 0; i--) {
+    const kind = pick(r, Object.keys(PARTS))
 
-    if (kind in on) continue
-    if (kind === 'months') on.months = subset(r, 1, 12, 4)
-    else if (kind === 'monthDays') on.monthDays = subset(r, 1, 31, 3).map((v) => (r() < 0.25 ? v - 32 : v))
-    else if (kind === 'weekdays') {
-      const nthOk = every === 'month' || every === 'year'
-
-      on.weekdays = subset(r, 1, 7, 3).map((w): WeekdaySpec => (nthOk && r() < 0.5 ? { weekday: w as 1, nth: pick(r, [1, 2, 3, 4, 5, -1, -2, -3, -4]) } : (w as 1)))
-    } else if (kind === 'yearDays') on.yearDays = subset(r, 1, 366, 3).map((v) => (r() < 0.25 ? v - 367 : v))
-    else if (kind === 'weeks' && every === 'year') on.weeks = subset(r, 1, 53, 3).map((v) => (r() < 0.2 ? v - 54 : v))
-    else if (kind === 'hours' && timed) on.hours = subset(r, 0, 23, 3)
-    else if (kind === 'minutes' && timed) on.minutes = subset(r, 0, 59, 3)
-    else if (kind === 'position') on.position = subset(r, 1, 4, 3).map((v) => (r() < 0.4 ? -v : v))
+    if (!(kind in ctx.on)) PARTS[kind]!(ctx)
   }
   const end = new Date(Date.UTC(y + 6, m - 1, 1))
   const extra = (): string => `${y + int(r, 1, 5)}-${pad(int(r, 1, 12))}-${pad(int(r, 1, 28))}${timed ? `T${pad(int(r, 0, 23))}:00` : ''}`
-  const rule: Recurrence = {
+  const optional = <K extends string, V>(p: number, key: K, make: () => V): { [Q in K]?: V } => (r() < p ? ({ [key]: make() } as { [Q in K]?: V }) : {})
+  const rule = {
     every,
-    start: start as Recurrence['start'],
-    ...(r() < 0.5 ? {} : { interval: int(r, 2, 4) }),
-    ...(r() < 0.5 ? {} : { weekStart: int(r, 1, 7) as 1 }),
-    ...(Object.keys(on).length > 0 ? { on } : {}),
-    ...(r() < 0.35 ? { count: int(r, 2, 25) } : {}),
-    ...(r() < 0.25 ? { except: [extra(), extra()] as Recurrence['except'] } : {}),
-    ...(r() < 0.2 ? { also: [extra()] as Recurrence['also'] } : {}),
-  }
+    start,
+    ...optional(0.5, 'interval', () => int(r, 2, 4)),
+    ...optional(0.5, 'weekStart', () => int(r, 1, 7)),
+    ...(Object.keys(ctx.on).length > 0 ? { on: ctx.on } : {}),
+    ...optional(0.35, 'count', () => int(r, 2, 25)),
+    ...optional(0.25, 'except', () => [extra(), extra()]),
+    ...optional(0.2, 'also', () => [extra()]),
+  } as unknown as Recurrence
 
   return { seed, rule, windowEnd: `${end.toISOString().slice(0, 10)}${timed ? 'T00:00' : ''}` }
 }

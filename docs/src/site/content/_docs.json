@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 235,
+  "pageCount": 238,
   "pages": [
    {
     "path": "a11y.md",
@@ -438,6 +438,11 @@
     "href": "/docs/patterns/money"
    },
    {
+    "path": "patterns/schedule.md",
+    "title": "Schedule",
+    "href": "/docs/patterns/schedule"
+   },
+   {
     "path": "patterns/dev-warnings.md",
     "title": "Dev-mode warnings",
     "href": "/docs/patterns/dev-warnings"
@@ -848,6 +853,11 @@
     "href": "/docs/reference/money"
    },
    {
+    "path": "reference/schedule.md",
+    "title": "Schedule",
+    "href": "/docs/reference/schedule"
+   },
+   {
     "path": "reference/toast.md",
     "title": "Toast Notifications — API Reference",
     "href": "/docs/reference/toast"
@@ -1001,6 +1011,11 @@
     "path": "money.md",
     "title": "Money",
     "href": "/docs/money"
+   },
+   {
+    "path": "schedule.md",
+    "title": "Schedule",
+    "href": "/docs/schedule"
    },
    {
     "path": "toast.md",
@@ -1241,6 +1256,7 @@
       "patterns/data-fetching",
       "patterns/dates-and-times",
       "patterns/money",
+      "patterns/schedule",
       "patterns/styler-theming",
       "patterns/ssr-safe-hooks",
       "patterns/islands",
@@ -1366,6 +1382,7 @@
       "format",
       "time",
       "money",
+      "schedule",
       "toast",
       "rx",
       "url-state",
@@ -1472,6 +1489,7 @@
       "reference/format",
       "reference/time",
       "reference/money",
+      "reference/schedule",
       "reference/http",
       "reference/i18n",
       "reference/kinetic-presets",
@@ -2048,6 +2066,10 @@
      "href": "/docs/money"
     },
     {
+     "title": "Schedule",
+     "href": "/docs/schedule"
+    },
+    {
      "title": "Drag and Drop",
      "href": "/docs/dnd",
      "productId": "dnd"
@@ -2226,6 +2248,10 @@
     {
      "title": "Money",
      "href": "/docs/patterns/money"
+    },
+    {
+     "title": "Schedule",
+     "href": "/docs/patterns/schedule"
     },
     {
      "title": "Forms and validation",
@@ -2499,6 +2525,10 @@
       {
        "title": "Money",
        "href": "/docs/reference/money"
+      },
+      {
+       "title": "Schedule",
+       "href": "/docs/reference/schedule"
       },
       {
        "title": "HTTP Client",

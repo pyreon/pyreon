@@ -297,6 +297,11 @@ describe('the limit, the safety cap and endless rules', () => {
     expect(() => [...occurrences({ every: 'minute', start: '2026-11-18T00:00' })]).toThrow(/Pass \{ to \} or \{ limit \}/)
   })
 
+  it('an hour or minute out of range names the range it expects', () => {
+    expect(() => occurrences({ every: 'day', start: '2026-11-18T09:00', on: { hours: [24] } })).toThrow(/on.hours entries must be whole numbers from 0 to 23, got 24/)
+    expect(() => occurrences({ every: 'day', start: '2026-11-18T09:00', on: { minutes: [60] } })).toThrow(/from 0 to 59/)
+  })
+
   it('the rule is validated when occurrences is called, not at the first next()', () => {
     expect(() => occurrences({ every: 'week', interval: 0, start: '2026-11-18' })).toThrow(/interval must be a whole number/)
   })

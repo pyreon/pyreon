@@ -5,7 +5,7 @@ import type { Interval } from './types'
 
 type Point = string | number
 
-interface Item<T extends Point> {
+export interface Item<T extends Point> {
   s: number
   e: number
   start: T
@@ -90,7 +90,7 @@ const plain = <T extends Point>(x: Item<T>): Interval<T> => ({ start: x.start, e
  * @example overlaps({ start: '2026-11-18T09:00', end: '2026-11-18T10:00' }, { start: '2026-11-18T09:30', end: '2026-11-18T11:00' }) // => true
  * @example overlaps({ start: '2026-11-18T09:00', end: '2026-11-18T10:00' }, { start: '2026-11-18T10:00', end: '2026-11-18T11:00' }) // => false
  */
-export const overlaps = guard('overlaps', function overlaps<T extends Point>(a: Interval<T>, b: Interval<T>): boolean {
+export const overlaps = /* @__PURE__ */ guard('overlaps', function overlaps<T extends Point>(a: Interval<T>, b: Interval<T>): boolean {
   const x = item('overlaps', 'a', a)
   const y = item('overlaps', 'b', b)
 
@@ -102,7 +102,7 @@ export const overlaps = guard('overlaps', function overlaps<T extends Point>(a: 
  *
  * @example intersection({ start: '2026-11-18T09:00', end: '2026-11-18T10:00' }, { start: '2026-11-18T09:30', end: '2026-11-18T11:00' }) // => { start: '2026-11-18T09:30', end: '2026-11-18T10:00' }
  */
-export const intersection = guard('intersection', function intersection<T extends Point>(a: Interval<T>, b: Interval<T>): Interval<T> | null {
+export const intersection = /* @__PURE__ */ guard('intersection', function intersection<T extends Point>(a: Interval<T>, b: Interval<T>): Interval<T> | null {
   const x = item('intersection', 'a', a)
   const y = item('intersection', 'b', b)
   const start = x.s >= y.s ? x : y
@@ -116,7 +116,7 @@ export const intersection = guard('intersection', function intersection<T extend
  *
  * @example mergeIntervals([{ start: '2026-11-18T10:00', end: '2026-11-18T11:00' }, { start: '2026-11-18T09:00', end: '2026-11-18T10:00' }]) // => [{ start: '2026-11-18T09:00', end: '2026-11-18T11:00' }]
  */
-export const mergeIntervals = guard('mergeIntervals', function mergeIntervals<T extends Point>(list: readonly Interval<T>[]): Interval<T>[] {
+export const mergeIntervals = /* @__PURE__ */ guard('mergeIntervals', function mergeIntervals<T extends Point>(list: readonly Interval<T>[]): Interval<T>[] {
   return mergeItems(itemsOf('mergeIntervals', 'list', list)).map(plain)
 })
 
@@ -125,7 +125,7 @@ export const mergeIntervals = guard('mergeIntervals', function mergeIntervals<T 
  *
  * @example subtractIntervals([{ start: '2026-11-18T09:00', end: '2026-11-18T17:00' }], [{ start: '2026-11-18T12:00', end: '2026-11-18T13:00' }]) // => [{ start: '2026-11-18T09:00', end: '2026-11-18T12:00' }, { start: '2026-11-18T13:00', end: '2026-11-18T17:00' }]
  */
-export const subtractIntervals = guard('subtractIntervals', function subtractIntervals<T extends Point>(from: readonly Interval<T>[], busy: readonly Interval<T>[]): Interval<T>[] {
+export const subtractIntervals = /* @__PURE__ */ guard('subtractIntervals', function subtractIntervals<T extends Point>(from: readonly Interval<T>[], busy: readonly Interval<T>[]): Interval<T>[] {
   const a = mergeItems(itemsOf('subtractIntervals', 'from', from))
   const b = mergeItems(itemsOf('subtractIntervals', 'busy', busy))
 

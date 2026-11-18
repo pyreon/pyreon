@@ -262,6 +262,55 @@ export const SCENARIOS: Scenario[] = [
     imports: ['money', 'fromMinor', 'toMinor', 'isMoney', 'zero', 'add', 'subtract', 'negate', 'abs', 'sum', 'multiply', 'divide', 'allocate', 'split', 'percentage', 'ratio', 'compare', 'equals', 'min', 'max', 'isZero', 'isPositive', 'isNegative', 'round', 'convert', 'defineCurrency', 'currencyDigits', 'isCurrency'],
   },
   {
+    // Recurrence only: expansion and the next occurrence. Business time, intervals, RRULE text and descriptions are separate imports and
+    // must not come along (the exports are tree-shakeable: the `guard` wrapper is marked pure).
+    id: '@pyreon/schedule::recurrence',
+    pkg: '@pyreon/schedule',
+    dir: 'fundamentals/schedule',
+    entry: 'core.js',
+    imports: ['occurrencesBetween', 'nextOccurrence'],
+  },
+  {
+    // Business days only: weekends and holidays, no recurrence and no interval code.
+    id: '@pyreon/schedule::business-days',
+    pkg: '@pyreon/schedule',
+    dir: 'fundamentals/schedule',
+    entry: 'core.js',
+    imports: ['isBusinessDay', 'addBusinessDays'],
+  },
+  {
+    // Intervals only: overlap, merge, subtract; nothing of the calendar or the rule code.
+    id: '@pyreon/schedule::intervals',
+    pkg: '@pyreon/schedule',
+    dir: 'fundamentals/schedule',
+    entry: 'core.js',
+    imports: ['overlaps', 'mergeIntervals', 'subtractIntervals'],
+  },
+  {
+    // Free slots: intervals plus the opening-hours code, but no recurrence.
+    id: '@pyreon/schedule::free-slots',
+    pkg: '@pyreon/schedule',
+    dir: 'fundamentals/schedule',
+    entry: 'core.js',
+    imports: ['freeSlots'],
+  },
+  {
+    // RFC 5545 text: the reader and the writer.
+    id: '@pyreon/schedule::rrule-text',
+    pkg: '@pyreon/schedule',
+    dir: 'fundamentals/schedule',
+    entry: 'core.js',
+    imports: ['parseRRule', 'toRRule'],
+  },
+  {
+    // The whole value layer: every function of the core entry.
+    id: '@pyreon/schedule::everything',
+    pkg: '@pyreon/schedule',
+    dir: 'fundamentals/schedule',
+    entry: 'core.js',
+    imports: ['occurrences', 'occurrencesBetween', 'nextOccurrence', 'previousOccurrence', 'occursOn', 'toInstants', 'parseRRule', 'tryParseRRule', 'toRRule', 'describeRule', 'isBusinessDay', 'addBusinessDays', 'businessDaysBetween', 'nextBusinessDay', 'previousBusinessDay', 'addBusinessTime', 'businessTimeBetween', 'isOpen', 'nextOpening', 'nextClosing', 'overlaps', 'intersection', 'mergeIntervals', 'subtractIntervals', 'freeSlots', 'expandEvents'],
+  },
+  {
     // The ambient clock hook alone: the shared ticker machinery, without the locale and zone context.
     id: '@pyreon/ambient::useNow',
     pkg: '@pyreon/ambient',

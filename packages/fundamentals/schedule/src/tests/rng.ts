@@ -18,4 +18,3 @@ export const int = (r: Rand, lo: number, hi: number): number => lo + Math.floor(
 
 export const pick = <T>(r: Rand, items: readonly T[]): T => items[Math.floor(r() * items.length)]!
 
-const pad = (n: number, w: number): string => String(n).padStart(w, '0')

@@ -24,11 +24,16 @@ function holidayTest(fn: string, holidays: BusinessCalendar['holidays']): (day: 
     return (day) => {
       const date = writeDate(day)
 
+      let answer: unknown
+
       try {
-        return holidays(date) === true
+        answer = holidays(date)
       } catch (error) {
         return badRange(fn, `the holidays predicate threw for ${date}: ${error instanceof Error ? error.message : String(error)}. A holidays predicate must return a boolean for every date.`)
       }
+      if (typeof answer !== 'boolean') return badRange(fn, `the holidays predicate returned ${show(answer)} for ${date}. A holidays predicate must return true or false for every date.`)
+
+      return answer
     }
   }
   if (!Array.isArray(holidays)) return badValue(fn, 'holidays to be an array of PlainDate or a predicate (date) => boolean', holidays)
@@ -106,7 +111,7 @@ const isOpenDay = (cal: Cal, day: number): boolean => !cal.weekend[weekdayOf(day
  * @example isBusinessDay('2026-11-21', {}) // => false
  * @example isBusinessDay('2026-12-25', { holidays: ['2026-12-25'] }) // => false
  */
-export const isBusinessDay = guard('isBusinessDay', function isBusinessDay(date: PlainDate | PlainDateTime, calendar: BusinessCalendar): boolean {
+export const isBusinessDay = /* @__PURE__ */ guard('isBusinessDay', function isBusinessDay(date: PlainDate | PlainDateTime, calendar: BusinessCalendar): boolean {
   const cal = calendarOf('isBusinessDay', calendar, false)
 
   return isOpenDay(cal, Math.floor(readWall('isBusinessDay', 'date', date).wall / DAY))
@@ -137,7 +142,7 @@ function stepDays(cal: Cal, from: number, direction: 1 | -1, count: number): num
  * @example addBusinessDays('2026-11-23', -1, {}) // => '2026-11-20'
  * @example addBusinessDays('2026-12-24', 2, { holidays: ['2026-12-25'] }) // => '2026-12-29'
  */
-export const addBusinessDays = guard('addBusinessDays', function addBusinessDays(date: PlainDate, n: number, calendar: BusinessCalendar): PlainDate {
+export const addBusinessDays = /* @__PURE__ */ guard('addBusinessDays', function addBusinessDays(date: PlainDate, n: number, calendar: BusinessCalendar): PlainDate {
   const cal = calendarOf('addBusinessDays', calendar, false)
   const day = readDay('addBusinessDays', 'date', date)
 
@@ -152,7 +157,7 @@ export const addBusinessDays = guard('addBusinessDays', function addBusinessDays
  * @example businessDaysBetween('2026-11-16', '2026-11-23', {}) // => 5
  * @example businessDaysBetween('2026-11-23', '2026-11-16', {}) // => -5
  */
-export const businessDaysBetween = guard('businessDaysBetween', function businessDaysBetween(a: PlainDate, b: PlainDate, calendar: BusinessCalendar): number {
+export const businessDaysBetween = /* @__PURE__ */ guard('businessDaysBetween', function businessDaysBetween(a: PlainDate, b: PlainDate, calendar: BusinessCalendar): number {
   const cal = calendarOf('businessDaysBetween', calendar, false)
   const from = readDay('businessDaysBetween', 'a', a)
   const to = readDay('businessDaysBetween', 'b', b)
@@ -170,7 +175,7 @@ export const businessDaysBetween = guard('businessDaysBetween', function busines
  *
  * @example nextBusinessDay('2026-11-20', {}) // => '2026-11-23'
  */
-export const nextBusinessDay = guard('nextBusinessDay', function nextBusinessDay(date: PlainDate, calendar: BusinessCalendar): PlainDate {
+export const nextBusinessDay = /* @__PURE__ */ guard('nextBusinessDay', function nextBusinessDay(date: PlainDate, calendar: BusinessCalendar): PlainDate {
   return writeDate(stepDays(calendarOf('nextBusinessDay', calendar, false), readDay('nextBusinessDay', 'date', date), 1, 1))
 })
 
@@ -179,7 +184,7 @@ export const nextBusinessDay = guard('nextBusinessDay', function nextBusinessDay
  *
  * @example previousBusinessDay('2026-11-23', {}) // => '2026-11-20'
  */
-export const previousBusinessDay = guard('previousBusinessDay', function previousBusinessDay(date: PlainDate, calendar: BusinessCalendar): PlainDate {
+export const previousBusinessDay = /* @__PURE__ */ guard('previousBusinessDay', function previousBusinessDay(date: PlainDate, calendar: BusinessCalendar): PlainDate {
   return writeDate(stepDays(calendarOf('previousBusinessDay', calendar, false), readDay('previousBusinessDay', 'date', date), -1, 1))
 })
 
@@ -217,7 +222,7 @@ function openIntervals(cal: Cal, lo: number, hi: number): [number, number][] {
  *
  * @example addBusinessTime('2026-11-20T15:00', { hours: 8 }, { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } }) // => '2026-11-23T15:00'
  */
-export const addBusinessTime = guard('addBusinessTime', function addBusinessTime(start: PlainDateTime, duration: Duration, calendar: BusinessCalendar): PlainDateTime {
+export const addBusinessTime = /* @__PURE__ */ guard('addBusinessTime', function addBusinessTime(start: PlainDateTime, duration: Duration, calendar: BusinessCalendar): PlainDateTime {
   const cal = calendarOf('addBusinessTime', calendar, true)
   const t0 = readWall('addBusinessTime', 'start', start).wall
   const total = timeMs('addBusinessTime', 'duration', duration, 'any')
@@ -257,7 +262,7 @@ export const addBusinessTime = guard('addBusinessTime', function addBusinessTime
  *
  * @example businessTimeBetween('2026-11-20T15:00', '2026-11-23T11:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } }) // => { hours: 4, minutes: 0 }
  */
-export const businessTimeBetween = guard('businessTimeBetween', function businessTimeBetween(a: PlainDateTime, b: PlainDateTime, calendar: BusinessCalendar): Duration {
+export const businessTimeBetween = /* @__PURE__ */ guard('businessTimeBetween', function businessTimeBetween(a: PlainDateTime, b: PlainDateTime, calendar: BusinessCalendar): Duration {
   const cal = calendarOf('businessTimeBetween', calendar, true)
   const from = readWall('businessTimeBetween', 'a', a).wall
   const to = readWall('businessTimeBetween', 'b', b).wall
@@ -286,7 +291,7 @@ function normalizeZero(d: { hours: number; minutes: number; seconds?: number; mi
  * @example isOpen('2026-11-18T10:00', { hours: { 3: [{ from: '09:00', to: '17:00' }] } }) // => true
  * @example isOpen('2026-11-18T17:00', { hours: { 3: [{ from: '09:00', to: '17:00' }] } }) // => false
  */
-export const isOpen = guard('isOpen', function isOpen(at: PlainDateTime, calendar: BusinessCalendar): boolean {
+export const isOpen = /* @__PURE__ */ guard('isOpen', function isOpen(at: PlainDateTime, calendar: BusinessCalendar): boolean {
   const cal = calendarOf('isOpen', calendar, true)
   const t = readWall('isOpen', 'at', at).wall
 
@@ -318,7 +323,7 @@ function search(fn: string, at: PlainDateTime, calendar: BusinessCalendar, pick:
  *
  * @example nextOpening('2026-11-20T18:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } }) // => '2026-11-23T09:00'
  */
-export const nextOpening = guard('nextOpening', function nextOpening(at: PlainDateTime, calendar: BusinessCalendar): PlainDateTime | null {
+export const nextOpening = /* @__PURE__ */ guard('nextOpening', function nextOpening(at: PlainDateTime, calendar: BusinessCalendar): PlainDateTime | null {
   return search('nextOpening', at, calendar, (iv, t) => (iv[0] > t ? iv[0] : null))
 })
 
@@ -327,7 +332,7 @@ export const nextOpening = guard('nextOpening', function nextOpening(at: PlainDa
  *
  * @example nextClosing('2026-11-20T10:00', { hours: { 5: [{ from: '09:00', to: '17:00' }] } }) // => '2026-11-20T17:00'
  */
-export const nextClosing = guard('nextClosing', function nextClosing(at: PlainDateTime, calendar: BusinessCalendar): PlainDateTime | null {
+export const nextClosing = /* @__PURE__ */ guard('nextClosing', function nextClosing(at: PlainDateTime, calendar: BusinessCalendar): PlainDateTime | null {
   return search('nextClosing', at, calendar, (iv, t) => (iv[1] > t ? iv[1] : null))
 })
 

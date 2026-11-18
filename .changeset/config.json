@@ -70,6 +70,7 @@
       "@pyreon/runtime-dom",
       "@pyreon/runtime-server",
       "@pyreon/rx",
+      "@pyreon/schedule",
       "@pyreon/server",
       "@pyreon/sized-map",
       "@pyreon/solid-compat",

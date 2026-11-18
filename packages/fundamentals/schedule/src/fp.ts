@@ -111,25 +111,34 @@ export const nextClosing = (calendar: BusinessCalendar) => (at: PlainDateTime): 
  *
  * @example overlaps({ start: '2026-11-18T09:30', end: '2026-11-18T11:00' })({ start: '2026-11-18T09:00', end: '2026-11-18T10:00' }) // => true
  */
-export const overlaps = <T extends PlainDateTime | number>(b: Interval<T>) => (a: Interval<T>): boolean => coreOverlaps(a, b)
+export const overlaps: {
+  (b: Interval<number>): (a: Interval<number>) => boolean
+  (b: Interval): (a: Interval) => boolean
+} = ((b: Interval<number>) => (a: Interval<number>): boolean => coreOverlaps(a, b)) as never
 
 /**
  * `intersection` with the first interval last.
  *
  * @example intersection({ start: '2026-11-18T09:30', end: '2026-11-18T11:00' })({ start: '2026-11-18T09:00', end: '2026-11-18T10:00' }) // => { start: '2026-11-18T09:30', end: '2026-11-18T10:00' }
  */
-export const intersection = <T extends PlainDateTime | number>(b: Interval<T>) => (a: Interval<T>): Interval<T> | null => coreIntersection(a, b)
+export const intersection: {
+  (b: Interval<number>): (a: Interval<number>) => Interval<number> | null
+  (b: Interval): (a: Interval) => Interval | null
+} = ((b: Interval<number>) => (a: Interval<number>): Interval<number> | null => coreIntersection(a, b)) as never
 
 /**
  * `subtractIntervals` with the intervals to take from last.
  *
  * @example subtractIntervals([{ start: '2026-11-18T12:00', end: '2026-11-18T13:00' }])([{ start: '2026-11-18T09:00', end: '2026-11-18T14:00' }]) // => [{ start: '2026-11-18T09:00', end: '2026-11-18T12:00' }, { start: '2026-11-18T13:00', end: '2026-11-18T14:00' }]
  */
-export const subtractIntervals = <T extends PlainDateTime | number>(busy: readonly Interval<T>[]) => (from: readonly Interval<T>[]): Interval<T>[] => coreSubtractIntervals(from, busy)
+export const subtractIntervals: {
+  (busy: readonly Interval<number>[]): (from: readonly Interval<number>[]) => Interval<number>[]
+  (busy: readonly Interval[]): (from: readonly Interval[]) => Interval[]
+} = ((busy: readonly Interval<number>[]) => (from: readonly Interval<number>[]): Interval<number>[] => coreSubtractIntervals(from, busy)) as never
 
 /**
  * `expandEvents` with the events last.
  *
  * @example expandEvents({ start: '2026-11-18T00:00', end: '2026-11-19T00:00' })([{ id: 'a', start: '2026-11-18T09:00', end: '2026-11-18T10:00' }]).map((i) => i.start) // => ['2026-11-18T09:00']
  */
-export const expandEvents = <T extends PlainValue>(range: Interval<T>) => (events: readonly CalendarEvent<T>[]): EventInstance<T>[] => coreExpandEvents(events, range)
+export const expandEvents = (range: Interval<PlainValue>) => <T extends PlainValue>(events: readonly CalendarEvent<T>[]): EventInstance<T>[] => coreExpandEvents(events, range as Interval<T>)

@@ -102,7 +102,53 @@ function parseParts(text: string, body: string, offset: number): Part[] {
   return parts
 }
 
-function ruleFrom(text: string, parts: Part[], start: PlainValue, zone: TimeZone | undefined): Recurrence {
+type MutableRule = { -readonly [K in keyof Recurrence]: Recurrence[K] }
+type MutableOn = { -readonly [K in keyof RecurrenceParts]: RecurrenceParts[K] }
+
+/** The rule parts that are not BY lists, each with the offset of its value inside `NAME=value`. */
+const RULE_PARTS: Record<string, (rule: MutableRule, text: string, p: Part, zone: TimeZone | undefined) => void> = {
+  INTERVAL: (rule, text, p) => {
+    rule.interval = digits(text, p.at + 9, p.value, 'INTERVAL')
+  },
+  COUNT: (rule, text, p) => {
+    rule.count = digits(text, p.at + 6, p.value, 'COUNT')
+  },
+  UNTIL: (rule, text, p, zone) => {
+    rule.until = dateValue(text, p.at + 6, p.value, zone).value
+  },
+  WKST: (rule, text, p) => {
+    rule.weekStart = (DAYS.indexOf(p.value.toUpperCase()) + 1 || fail(text, p.at + 5, `WKST must be MO..SU, got ${show(p.value)}`)) as Weekday
+  },
+}
+
+const BY_PARTS: Record<string, (on: MutableOn, text: string, p: Part) => void> = {
+  BYDAY: (on, text, p) => {
+    on.weekdays = byDay(text, p)
+  },
+  BYMONTHDAY: (on, text, p) => {
+    on.monthDays = intList(text, p, 1, 31, true)
+  },
+  BYMONTH: (on, text, p) => {
+    on.months = intList(text, p, 1, 12, false)
+  },
+  BYYEARDAY: (on, text, p) => {
+    on.yearDays = intList(text, p, 1, 366, true)
+  },
+  BYWEEKNO: (on, text, p) => {
+    on.weeks = intList(text, p, 1, 53, true)
+  },
+  BYHOUR: (on, text, p) => {
+    on.hours = intList(text, p, 0, 23, false)
+  },
+  BYMINUTE: (on, text, p) => {
+    on.minutes = intList(text, p, 0, 59, false)
+  },
+  BYSETPOS: (on, text, p) => {
+    on.position = intList(text, p, 1, 366, true)
+  },
+}
+
+function freqOf(text: string, parts: Part[]): Recurrence['every'] {
   const freqPart = parts.find((p) => p.name === 'FREQ')
 
   if (freqPart === undefined) return fail(text, 0, 'FREQ is missing')
@@ -111,27 +157,22 @@ function ruleFrom(text: string, parts: Part[], start: PlainValue, zone: TimeZone
   if (every === undefined) {
     return fail(text, freqPart.at + 5, `FREQ must be YEARLY, MONTHLY, WEEKLY, DAILY, HOURLY or MINUTELY, got ${show(freqPart.value)}${/^SECONDLY$/i.test(freqPart.value) ? ' (SECONDLY is not supported)' : ''}`)
   }
-  const rule: { -readonly [K in keyof Recurrence]: Recurrence[K] } = { every, start }
-  const on: { -readonly [K in keyof RecurrenceParts]: RecurrenceParts[K] } = {}
+
+  return every
+}
+
+function ruleFrom(text: string, parts: Part[], start: PlainValue, zone: TimeZone | undefined): Recurrence {
+  const rule: MutableRule = { every: freqOf(text, parts), start }
+  const on: MutableOn = {}
 
   for (const p of parts) {
-    const n = p.name
+    const setRule = RULE_PARTS[p.name]
+    const setBy = BY_PARTS[p.name]
 
-    if (n === 'FREQ') continue
-    else if (n === 'INTERVAL') rule.interval = digits(text, p.at + 9, p.value, 'INTERVAL')
-    else if (n === 'COUNT') rule.count = digits(text, p.at + 6, p.value, 'COUNT')
-    else if (n === 'UNTIL') rule.until = dateValue(text, p.at + 6, p.value, zone).value
-    else if (n === 'WKST') rule.weekStart = (DAYS.indexOf(p.value.toUpperCase()) + 1 || fail(text, p.at + 5, `WKST must be MO..SU, got ${show(p.value)}`)) as Weekday
-    else if (n === 'BYDAY') on.weekdays = byDay(text, p)
-    else if (n === 'BYMONTHDAY') on.monthDays = intList(text, p, 1, 31, true)
-    else if (n === 'BYMONTH') on.months = intList(text, p, 1, 12, false)
-    else if (n === 'BYYEARDAY') on.yearDays = intList(text, p, 1, 366, true)
-    else if (n === 'BYWEEKNO') on.weeks = intList(text, p, 1, 53, true)
-    else if (n === 'BYHOUR') on.hours = intList(text, p, 0, 23, false)
-    else if (n === 'BYMINUTE') on.minutes = intList(text, p, 0, 59, false)
-    else if (n === 'BYSETPOS') on.position = intList(text, p, 1, 366, true)
-    else if (n === 'BYSECOND' || n === 'BYEASTER') return fail(text, p.at, `${n} is not supported`)
-    else return fail(text, p.at, `unknown rule part ${show(n)}`)
+    if (p.name === 'FREQ') continue
+    if (setRule !== undefined) setRule(rule, text, p, zone)
+    else if (setBy !== undefined) setBy(on, text, p)
+    else return fail(text, p.at, p.name === 'BYSECOND' || p.name === 'BYEASTER' ? `${p.name} is not supported` : `unknown rule part ${show(p.name)}`)
   }
   if (Object.keys(on).length > 0) rule.on = on
   if (zone !== undefined) rule.timeZone = zone
@@ -206,7 +247,7 @@ function dateList(text: string, line: Line, zone: TimeZone | undefined): PlainVa
  * @example parseRRule('FREQ=WEEKLY;INTERVAL=2;BYDAY=TU', { start: '2026-11-17' }) // => { every: 'week', start: '2026-11-17', interval: 2, on: { weekdays: [2] } }
  * @example parseRRule('DTSTART:20261118T090000\nRRULE:FREQ=DAILY;COUNT=3').start // => '2026-11-18T09:00'
  */
-export const parseRRule = guard('parseRRule', function parseRRule(text: string, options?: { start?: PlainValue; timeZone?: TimeZone }): Recurrence {
+export const parseRRule = /* @__PURE__ */ guard('parseRRule', function parseRRule(text: string, options?: { start?: PlainValue; timeZone?: TimeZone }): Recurrence {
   if (typeof text !== 'string') return badValue('parseRRule', 'RRULE text', text, `Pass a string like "${EXAMPLE}".`)
   const lines = linesOf(text)
   const rules = lines.filter((l) => l.name === 'RRULE')
@@ -242,7 +283,7 @@ export const parseRRule = guard('parseRRule', function parseRRule(text: string, 
  *
  * @example tryParseRRule('FREQ=SOMETIMES', { start: '2026-11-18' }) // => null
  */
-export const tryParseRRule = guard('tryParseRRule', function tryParseRRule(text: string, options?: { start?: PlainValue; timeZone?: TimeZone }): Recurrence | null {
+export const tryParseRRule = /* @__PURE__ */ guard('tryParseRRule', function tryParseRRule(text: string, options?: { start?: PlainValue; timeZone?: TimeZone }): Recurrence | null {
   try {
     return parseRRule(text, options)
   } catch (error) {
@@ -294,28 +335,45 @@ function dateLine(name: string, values: readonly PlainValue[], zone: TimeZone | 
  *
  * @example toRRule({ every: 'week', interval: 2, on: { weekdays: [2] }, start: '2026-11-17' }) // => 'DTSTART;VALUE=DATE:20261117\nRRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TU'
  */
-export const toRRule = guard('toRRule', function toRRule(rule: Recurrence): string {
+export const toRRule = /* @__PURE__ */ guard('toRRule', function toRRule(rule: Recurrence): string {
   compile('toRRule', rule)
+  const lines = [dtstartLine(rule), `RRULE:${ruleParts(rule).join(';')}`]
   const zone = rule.timeZone
-  const dateOnlyStart = readWall('toRRule', 'start', rule.start).dateOnly
-  const lines: string[] = []
 
-  if (dateOnlyStart) lines.push(`DTSTART;VALUE=DATE:${ical(rule.start, zone, false)}`)
-  else if (zone === undefined) lines.push(`DTSTART:${ical(rule.start, zone, false)}`)
-  else lines.push(zone === 'UTC' ? `DTSTART:${ical(rule.start, zone, true)}` : `DTSTART;TZID=${zone}:${ical(rule.start, zone, false)}`)
-  const on = rule.on
-  const parts = [`FREQ=${FREQ_NAMES[rule.every]}`]
-
-  if (rule.interval !== undefined && rule.interval !== 1) parts.push(`INTERVAL=${rule.interval}`)
-  if (rule.count !== undefined) parts.push(`COUNT=${rule.count}`)
-  if (rule.until !== undefined) parts.push(`UNTIL=${ical(rule.until, zone, zone !== undefined && !readWall('toRRule', 'until', rule.until).dateOnly && !dateOnlyStart)}`)
-  if (rule.weekStart !== undefined && rule.weekStart !== 1) parts.push(`WKST=${DAYS[rule.weekStart - 1]}`)
-  parts.push(...rulePart('BYMONTH', on?.months), ...rulePart('BYWEEKNO', on?.weeks), ...rulePart('BYYEARDAY', on?.yearDays), ...rulePart('BYMONTHDAY', on?.monthDays))
-  if (on?.weekdays !== undefined) parts.push(`BYDAY=${on.weekdays.map(weekdayText).join(',')}`)
-  parts.push(...rulePart('BYHOUR', on?.hours), ...rulePart('BYMINUTE', on?.minutes), ...rulePart('BYSETPOS', on?.position))
-  lines.push(`RRULE:${parts.join(';')}`)
   if (rule.except !== undefined) lines.push(...dateLine('EXDATE', rule.except, zone))
   if (rule.also !== undefined) lines.push(...dateLine('RDATE', rule.also, zone))
 
   return lines.join('\n')
 })
+
+function dtstartLine(rule: Recurrence): string {
+  const zone = rule.timeZone
+
+  if (readWall('toRRule', 'start', rule.start).dateOnly) return `DTSTART;VALUE=DATE:${ical(rule.start, zone, false)}`
+  if (zone === undefined) return `DTSTART:${ical(rule.start, zone, false)}`
+
+  return zone === 'UTC' ? `DTSTART:${ical(rule.start, zone, true)}` : `DTSTART;TZID=${zone}:${ical(rule.start, zone, false)}`
+}
+
+/** An UNTIL is written in UTC with a `Z` when the rule has a zone and both ends are date-times; a date stays a date. */
+function untilPart(rule: Recurrence): string[] {
+  if (rule.until === undefined) return []
+  const bothTimed = !readWall('toRRule', 'until', rule.until).dateOnly && !readWall('toRRule', 'start', rule.start).dateOnly
+
+  return [`UNTIL=${ical(rule.until, rule.timeZone, rule.timeZone !== undefined && bothTimed)}`]
+}
+
+function ruleParts(rule: Recurrence): string[] {
+  const on = rule.on
+  const parts = [`FREQ=${FREQ_NAMES[rule.every]}`]
+
+  if (rule.interval !== undefined && rule.interval !== 1) parts.push(`INTERVAL=${rule.interval}`)
+  if (rule.count !== undefined) parts.push(`COUNT=${rule.count}`)
+  parts.push(...untilPart(rule))
+  if (rule.weekStart !== undefined && rule.weekStart !== 1) parts.push(`WKST=${DAYS[rule.weekStart - 1]}`)
+  parts.push(...rulePart('BYMONTH', on?.months), ...rulePart('BYWEEKNO', on?.weeks), ...rulePart('BYYEARDAY', on?.yearDays), ...rulePart('BYMONTHDAY', on?.monthDays))
+  if (on?.weekdays !== undefined) parts.push(`BYDAY=${on.weekdays.map(weekdayText).join(',')}`)
+  parts.push(...rulePart('BYHOUR', on?.hours), ...rulePart('BYMINUTE', on?.minutes), ...rulePart('BYSETPOS', on?.position))
+
+  return parts
+}

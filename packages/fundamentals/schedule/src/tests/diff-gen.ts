@@ -40,10 +40,80 @@ export interface Case {
   count?: number
 }
 
+interface Ctx {
+  r: Rand
+  name: string
+  sub: boolean
+  timed: boolean
+  on: Record<string, unknown>
+  opts: Partial<Options>
+}
+
+type PartMaker = (c: Ctx) => void
+
+const SORT = (list: number[]): number[] => [...list].sort((a, b) => a - b)
+
+/** One BY part, in our shape and in rrule's. A part that makes no sense for the frequency is left out. */
+const PARTS: Record<string, PartMaker> = {
+  months: (c) => {
+    c.on.months = subset(c.r, 1, 12, 3)
+    c.opts.bymonth = c.on.months as number[]
+  },
+  monthDays: (c) => {
+    if (c.sub) return
+    c.on.monthDays = subset(c.r, 1, 28, 3).map((v) => (c.r() < 0.2 ? v - 29 : v))
+    c.opts.bymonthday = c.on.monthDays as number[]
+  },
+  weekdays: (c) => {
+    if (c.sub) return
+    const nthOk = c.name === 'month' || c.name === 'year'
+    const list: WeekdaySpec[] = subset(c.r, 1, 7, 3).map((w) => (nthOk && c.r() < 0.4 ? { weekday: w as 1, nth: pick(c.r, [1, 2, 3, -1, -2]) } : (w as 1)))
+
+    c.on.weekdays = list
+    c.opts.byweekday = list.map((w) => (typeof w === 'number' ? RDAYS[w - 1]! : RDAYS[w.weekday - 1]!.nth(w.nth)))
+  },
+  yearDays: (c) => {
+    if (c.sub) return
+    c.on.yearDays = subset(c.r, 1, 360, 3).map((v) => (c.r() < 0.2 ? v - 361 : v))
+    c.opts.byyearday = c.on.yearDays as number[]
+  },
+  weeks: (c) => {
+    if (c.name !== 'year') return
+    c.on.weeks = subset(c.r, 1, 52, 2)
+    c.opts.byweekno = c.on.weeks as number[]
+  },
+  hours: (c) => {
+    if (!c.timed) return
+    c.on.hours = subset(c.r, 0, 23, 3)
+    c.opts.byhour = SORT(c.on.hours as number[])
+  },
+  minutes: (c) => {
+    if (!c.timed) return
+    c.on.minutes = subset(c.r, 0, 59, 3)
+    c.opts.byminute = SORT(c.on.minutes as number[])
+  },
+  position: (c) => {
+    if (c.sub) return
+    // Positions beyond the period's size are where `rrule` clamps and duplicates; those cases have their own divergence test.
+    c.on.position = pick(c.r, [[1], [2], [-1]])
+    c.opts.bysetpos = c.on.position as number[]
+  },
+}
+
+function windowEnd(name: string, y: number, mo: number, d: number): string {
+  const end = new Date(Date.UTC(y, mo - 1, d, 0, 0))
+
+  if (name === 'minute') end.setUTCDate(end.getUTCDate() + 3)
+  else if (name === 'hour') end.setUTCDate(end.getUTCDate() + 30)
+  else end.setUTCFullYear(end.getUTCFullYear() + 8)
+
+  return end.toISOString().slice(0, 16)
+}
+
 /** One random rule that always has occurrences, in both our shape and `rrule`'s. */
 export function makeCase(seed: number): Case {
   const r = rng(seed)
-  const [name, freq] = pick(r, FREQS.slice(0, 6).filter((_, i) => i < 4 || r() < 0.25))
+  const [name, freq] = pick(r, FREQS.filter((_, i) => i < 4 || r() < 0.25))
   const y = int(r, 1996, 2030)
   const mo = int(r, 1, 12)
   const d = int(r, 1, 28)
@@ -54,60 +124,37 @@ export function makeCase(seed: number): Case {
   const start = `${y}-${pad(mo)}-${pad(d)}${timed ? `T${pad(h)}:${pad(mi)}` : ''}`
   const interval = r() < 0.6 ? 1 : int(r, 2, sub ? 7 : 4)
   const wkst = int(r, 1, 7)
-  const on: Record<string, unknown> = {}
   const opts: Partial<Options> = { freq, interval, wkst: RDAYS[wkst - 1] as RWeekday, dtstart: new Date(Date.UTC(y, mo - 1, d, timed ? h : 0, timed ? mi : 0)) }
-  const parts = r() < 0.3 ? 0 : int(r, 1, 3)
+  const ctx: Ctx = { r, name, sub, timed, on: {}, opts }
   const used = new Set<string>()
 
-  for (let i = 0; i < parts; i++) {
-    const kind = pick(r, ['months', 'monthDays', 'weekdays', 'yearDays', 'weeks', 'hours', 'minutes', 'position'])
+  for (let i = r() < 0.3 ? 0 : int(r, 1, 3); i > 0; i--) {
+    const kind = pick(r, Object.keys(PARTS))
 
     if (used.has(kind)) continue
     used.add(kind)
-    if (kind === 'months') {
-      on.months = subset(r, 1, 12, 3)
-      opts.bymonth = on.months as number[]
-    } else if (kind === 'monthDays' && !sub) {
-      on.monthDays = subset(r, 1, 28, 3).map((v) => (r() < 0.2 ? v - 29 : v))
-      opts.bymonthday = on.monthDays as number[]
-    } else if (kind === 'weekdays' && !sub) {
-      const nthOk = name === 'month' || name === 'year'
-      const list: WeekdaySpec[] = subset(r, 1, 7, 3).map((w) => (nthOk && r() < 0.4 ? { weekday: w as 1, nth: pick(r, [1, 2, 3, -1, -2]) } : (w as 1)))
-
-      on.weekdays = list
-      opts.byweekday = list.map((w) => (typeof w === 'number' ? RDAYS[w - 1]! : RDAYS[w.weekday - 1]!.nth(w.nth)))
-    } else if (kind === 'yearDays' && !sub) {
-      on.yearDays = subset(r, 1, 360, 3).map((v) => (r() < 0.2 ? v - 361 : v))
-      opts.byyearday = on.yearDays as number[]
-    } else if (kind === 'weeks' && name === 'year') {
-      on.weeks = subset(r, 1, 52, 2)
-      opts.byweekno = on.weeks as number[]
-    } else if (kind === 'hours' && timed) {
-      on.hours = subset(r, 0, 23, 3)
-      opts.byhour = [...(on.hours as number[])].sort((a, b) => a - b)
-    } else if (kind === 'minutes' && timed) {
-      on.minutes = subset(r, 0, 59, 3)
-      opts.byminute = [...(on.minutes as number[])].sort((a, b) => a - b)
-    } else if (kind === 'position' && name !== 'minute' && name !== 'hour') {
-      // Positions beyond the period's size are where `rrule` clamps and duplicates; those cases have their own divergence test.
-      on.position = pick(r, [[1], [2], [-1]])
-      opts.bysetpos = on.position as number[]
-    }
+    PARTS[kind]!(ctx)
   }
-  const limit = int(r, 5, 40)
-  const end = new Date(Date.UTC(y, mo - 1, d, 0, 0))
   const count = r() < 0.3 ? int(r, 3, 15) : undefined
+  const wd = (ctx.on.weekdays as WeekdaySpec[] | undefined) ?? []
+  const rule: Recurrence = {
+    every: name,
+    start: start as Recurrence['start'],
+    ...(interval === 1 ? {} : { interval }),
+    ...(wkst === 1 ? {} : { weekStart: wkst as 1 }),
+    ...(Object.keys(ctx.on).length > 0 ? { on: ctx.on } : {}),
+    ...(count === undefined ? {} : { count }),
+  }
 
-  if (name === 'minute') end.setUTCDate(end.getUTCDate() + 3)
-  else if (name === 'hour') end.setUTCDate(end.getUTCDate() + 30)
-  else end.setUTCFullYear(end.getUTCFullYear() + 8)
-  const windowEnd = end.toISOString().slice(0, 16)
-  const rule: Recurrence = { every: name, start: start as Recurrence['start'], ...(interval === 1 ? {} : { interval }), ...(wkst === 1 ? {} : { weekStart: wkst as 1 }), ...(Object.keys(on).length > 0 ? { on } : {}), ...(count === undefined ? {} : { count }) }
-
-  const wd = (on.weekdays as WeekdaySpec[] | undefined) ?? []
-  const mixedDays = wd.some((w) => typeof w === 'number') && wd.some((w) => typeof w !== 'number')
-
-  return { seed, rule, options: opts, limit, windowEnd, mixedDays, ...(count === undefined ? {} : { count }) }
+  return {
+    seed,
+    rule,
+    options: opts,
+    limit: int(r, 5, 40),
+    windowEnd: windowEnd(name, y, mo, d),
+    mixedDays: wd.some((w) => typeof w === 'number') && wd.some((w) => typeof w !== 'number'),
+    ...(count === undefined ? {} : { count }),
+  }
 }
 
 export const toDate = (wall: string): Date => {

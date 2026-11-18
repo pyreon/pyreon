@@ -65,13 +65,15 @@ const write = (dateOnly: boolean, wall: number): PlainValue => (dateOnly ? write
  *
  * @example expandEvents([{ id: 'standup', start: '2026-11-16T09:00', end: '2026-11-16T09:15', rule: { every: 'day', start: '2026-11-16T09:00' } }], { start: '2026-11-18T00:00', end: '2026-11-20T00:00' }).map((i) => i.start) // => ['2026-11-18T09:00', '2026-11-19T09:00']
  */
-export const expandEvents = guard('expandEvents', function expandEvents<T extends PlainValue>(events: readonly CalendarEvent<T>[], range: Interval<T>): EventInstance<T>[] {
+export const expandEvents = /* @__PURE__ */ guard('expandEvents', function expandEvents<T extends PlainValue>(events: readonly CalendarEvent<T>[], range: Interval<T>): EventInstance<T>[] {
   if (!Array.isArray(events)) return badValue('expandEvents', 'an array of events', events)
   const from = readWall('expandEvents', 'range.start', range?.start)
   const to = readWall('expandEvents', 'range.end', range?.end)
 
   if (to.wall < from.wall) return badRange('expandEvents', `the range ends before it starts (${show(range.start)} to ${show(range.end)}).`)
   const out: (EventInstance<T> & { wall: number })[] = []
+
+  if (to.wall === from.wall) return []
 
   events.forEach((ev, index) => {
     const w = eventWalls('expandEvents', ev as CalendarEvent, `events[${index}]`)

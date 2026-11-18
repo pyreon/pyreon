@@ -22,6 +22,19 @@ const run = (c: ReturnType<typeof makeCase>): { ours: string[]; theirs: string[]
   return { ours, theirs: [...new Set(theirs)].sort() }
 }
 
+/** Why a random case is not compared with rrule (each reason is a documented divergence), or undefined when it is. */
+function skipReason(c: ReturnType<typeof makeCase>, found: number): string | undefined {
+  const weekStart = (c.rule.weekStart ?? 1) % 7
+
+  if (c.mixedDays) return 'D2 mixed plain and n-th BYDAY'
+  if (found === 0) return 'empty window (rrule would scan to year 9999: D8)'
+  if (c.rule.every === 'week' && c.rule.on?.position !== undefined && toDate(c.rule.start).getUTCDay() !== weekStart) return 'D4 position in the first, partial week'
+  if (c.rule.every === 'year' && c.rule.on?.weeks !== undefined) return 'D5 week-year days outside the calendar year'
+  if (c.rule.every === 'minute' && c.rule.on?.hours !== undefined) return 'D6 minutely grid after an hour filter'
+
+  return undefined
+}
+
 describe('differential: ours against rrule', () => {
   it('agrees on thousands of seeded random rules and windows, except the documented divergences', () => {
     const skipped: Record<string, number> = {}
@@ -31,13 +44,7 @@ describe('differential: ours against rrule', () => {
     for (let seed = 1; seed <= 2500; seed++) {
       const c = makeCase(seed)
       const ours = occurrencesBetween(c.rule, c.rule.start, c.windowEnd as never) as string[]
-      const why =
-        c.mixedDays ? 'D2 mixed plain and n-th BYDAY' :
-        ours.length === 0 ? 'empty window (rrule would scan to year 9999: D8)' :
-        c.rule.every === 'week' && c.rule.on?.position !== undefined && new Date(toDate(c.rule.start)).getUTCDay() !== (((c.rule.weekStart ?? 1) % 7)) ? 'D4 position in the first, partial week' :
-        c.rule.every === 'year' && c.rule.on?.weeks !== undefined ? 'D5 week-year days outside the calendar year' :
-        c.rule.every === 'minute' && c.rule.on?.hours !== undefined ? 'D6 minutely grid after an hour filter' :
-        undefined
+      const why = skipReason(c, ours.length)
 
       if (why !== undefined) {
         skipped[why] = (skipped[why] ?? 0) + 1

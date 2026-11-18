@@ -81,6 +81,12 @@ function names(locale: string | undefined, kind: 'weekday' | 'month', values: nu
   return values.map((v) => f.format(kind === 'weekday' ? Date.UTC(2024, 0, v) : Date.UTC(2000, v - 1, 1)))
 }
 
+function monthDayText(d: number, m: RuleMessages): string {
+  if (d > 0) return String(d)
+
+  return d === -1 ? m.last : `${m.last} ${-d}`
+}
+
 function daySentence(plan: Plan, locale: string | undefined, m: RuleMessages): string[] {
   const parts: string[] = []
   const ordinal = [m.first, m.second, m.third, m.fourth, m.fifth]
@@ -92,7 +98,7 @@ function daySentence(plan: Plan, locale: string | undefined, m: RuleMessages): s
 
     parts.push(fill(m.onWeekdays, { list: join(each, m) }))
   }
-  if (plan.monthDays !== null) parts.push(fill(m.onMonthDays, { list: join(plan.monthDays.map((d) => (d < 0 ? (d === -1 ? m.last : `${m.last} ${-d}`) : String(d))), m) }))
+  if (plan.monthDays !== null) parts.push(fill(m.onMonthDays, { list: join(plan.monthDays.map((d) => monthDayText(d, m)), m) }))
 
   return parts
 }
@@ -107,7 +113,7 @@ function daySentence(plan: Plan, locale: string | undefined, m: RuleMessages): s
  * @example describeRule({ every: 'week', interval: 2, on: { weekdays: [2] }, start: '2026-11-17' }) // => 'Every 2 weeks on Tuesday'
  * @example describeRule({ every: 'month', on: { weekdays: [{ weekday: 5, nth: -1 }] }, start: '2026-11-27T09:00' }) // => 'Every month on the last Friday at 09:00'
  */
-export const describeRule = guard('describeRule', function describeRule(rule: Recurrence, options?: { locale?: string; messages?: Partial<RuleMessages> }): string {
+export const describeRule = /* @__PURE__ */ guard('describeRule', function describeRule(rule: Recurrence, options?: { locale?: string; messages?: Partial<RuleMessages> }): string {
   const plan = compile('describeRule', rule)
   const m: RuleMessages = { ...ENGLISH, ...options?.messages }
 
