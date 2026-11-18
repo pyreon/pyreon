@@ -60,7 +60,7 @@ Keep this list honest and current; it mirrors `BENCHMARKS.md` §13:
 - Pyreon loses the 1k mount (2.28×). The whole loss is the default offscreen accessible data table; the chart alone mounts 3.1× faster than ECharts, which ships no table (`aria` off by default). Say "with the accessible table Pyreon renders by default" whenever quoting it. `accessibleTable={false}` removes it at an accessibility cost.
 - The table is built in 50-row `<tbody>` blocks (the chunking is what saves time). `content-visibility:auto` on the table's wrapper would skip ~5 ms of layout but drops every row from the accessibility tree — rejected; `packages/fundamentals/charts/src/engine/a11y-table-chunks.browser.test.tsx` fails on that change. The table is deliberately not deferred to idle time; that would move work out of the timed region, not off the main thread.
 - Category labels are sampled like ECharts' `calculateCategoryInterval` rather than measured per label (`large-series.test.ts`).
-- Size (`bench:charts-bundle`, gzip, beyond the Pyreon runtime): line 40.9 KB vs ECharts tree-shaken 155.9 KB / whole 361.1 KB; pie 18.1 vs 117.3 KB. `PlotChart` does not tree-shake per cartesian mark.
+- Size (`bench:charts-bundle`, gzip, beyond the Pyreon runtime): line 39.2 KB vs ECharts tree-shaken 155.9 KB / whole 361.0 KB; pie 19.8 vs 117.2 KB (2026-11-19, 12.1 KB runtime baseline). `PlotChart` does not tree-shake per cartesian mark.
 
 ## Measurement protocol
 

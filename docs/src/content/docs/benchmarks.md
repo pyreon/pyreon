@@ -242,8 +242,9 @@ input and with columnar input (the shape uPlot takes):
 that label is wrong, because it compares against the leading *columns* arm
 rather than Chart.js (see [Harness caveats](#harness-caveats)). Pyreon renders
 an offscreen accessible data table by default; none of the others do. Bundle
-cost beyond the runtime (overnight run): a line chart is 38.0KB gzipped vs
-ECharts tree-shaken 155.9KB (4.10×); a pie is 19.1 vs 117.2KB.
+cost beyond the runtime (`bench:charts-bundle`, re-measured 2026-11-19): a line
+chart is 39.2KB gzipped vs ECharts tree-shaken 155.9KB (3.98×); a pie is 19.8
+vs 117.2KB.
 
 Reproduce: `bun bench-scenarios.ts --scenario charts` / `--scenario charts-libs`,
 `bun bench-charts-bundle.ts`.

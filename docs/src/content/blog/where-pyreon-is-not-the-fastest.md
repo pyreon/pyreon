@@ -30,7 +30,7 @@ That is the top of the scoreboard. This post puts the whole thing on the table: 
 | compiled SSR, 10 / 100 / 1,000 rows | fastest at all three (1.21× / 1.35× / 1.14× vs next), one run | the field |
 | `renderToString`, 4 scenarios | 1.64–4.68×, byte-identical output, one run | Solid |
 | 12-field form, 4 timed ops | fastest on all four, one run | six form libraries |
-| charts, 4 ops | 2.5–8.7× faster; line chart 38.0 KB vs 155.9 KB, one run | ECharts 6 |
+| charts, 4 ops | 2.5–8.7× faster; line chart 39.2 KB vs 155.9 KB, one size build | ECharts 6 |
 | node graph / virtual list | all 6 ops / all 4 ops, one run | React Flow 12 / react-virtual |
 | reactivity core (V8) | effect 2.04–2.13×, batch 1.94–1.95×, diamond 1.30× | Preact Signals |
 
