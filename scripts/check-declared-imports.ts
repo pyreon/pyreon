@@ -18,6 +18,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { builtinModules } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { parseSync } from 'oxc-parser'
 
 export interface PackageJson {
@@ -189,7 +190,7 @@ function packageDirs(root: string): string[] {
 }
 
 if (import.meta.main) {
-  const root = resolve(import.meta.dir, '..')
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
   const all: Offender[] = []
   let skipped = 0
   let checked = 0
