@@ -1893,6 +1893,15 @@
         "@pyreon/native-compiler",
       ],
     },
+    "packages/fundamentals/money": {
+      "name": "@pyreon/money",
+      "version": "0.53.0",
+      "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vitest-config": "workspace:*",
+      },
+    },
     "packages/fundamentals/permissions": {
       "name": "@pyreon/permissions",
       "version": "0.53.0",
@@ -4312,6 +4321,8 @@
     "@pyreon/mcp": ["@pyreon/mcp@workspace:packages/tools/mcp"],
 
     "@pyreon/meta": ["@pyreon/meta@workspace:packages/zero/meta"],
+
+    "@pyreon/money": ["@pyreon/money@workspace:packages/fundamentals/money"],
 
     "@pyreon/native-cli": ["@pyreon/native-cli@workspace:packages/native/cli"],
 
