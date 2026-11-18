@@ -391,6 +391,14 @@ export const SCENARIOS: Scenario[] = [
     imports: ['parseDate'],
   },
   {
+    id: '@pyreon/format::core-formatRelativeTo',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'core.js',
+    // The calendar-aware relative words, with the zone arithmetic of the date-only rule.
+    imports: ['formatRelativeTo'],
+  },
+  {
     id: '@pyreon/format::core-formatDate',
     pkg: '@pyreon/format',
     dir: 'fundamentals/format',
@@ -411,6 +419,14 @@ export const SCENARIOS: Scenario[] = [
       'percentFormatter', 'compactFormatter', 'unitFormatter', 'bytesFormatter', 'durationFormatter', 'listFormatter',
       'dateFormatter', 'timeFormatter', 'dateTimeFormatter', 'relativeFormatter',
     ],
+  },
+  {
+    id: '@pyreon/format::useRelativeTime',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'index.js',
+    // The self-updating relative label: the hook, the calendar words and the date-only rule; the ambient clock (@pyreon/ambient) is external, as every workspace dependency is in this method.
+    imports: ['useRelativeTime'],
   },
   {
     id: '@pyreon/format::formatNumber',

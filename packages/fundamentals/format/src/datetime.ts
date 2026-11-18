@@ -448,8 +448,10 @@ export function relativeToIn(
 
 // ─── self-updating relative time ──────────────────────────────────────────────────────────────────────────────────────
 
-/** A distance in `relativeTime`'s `threshold.after`, resolved to milliseconds. */
-const SPAN_MS: Record<string, number> = { seconds: 1000, minutes: MIN, hours: HOUR, days: DAY, weeks: 7 * DAY }
+/** Milliseconds in one unit of a `threshold.after` span, or `undefined` for an unknown unit (a function, not a table: nothing is built at import). */
+function spanMs(unit: string): number | undefined {
+  return unit === 'seconds' ? 1000 : unit === 'minutes' ? MIN : unit === 'hours' ? HOUR : unit === 'days' ? DAY : unit === 'weeks' ? 7 * DAY : undefined
+}
 
 /** What `threshold` resolves to: past this distance (either direction) the value is shown as an absolute date. */
 export interface ResolvedThreshold {
@@ -468,7 +470,7 @@ export function thresholdOf(fn: string, options: { threshold?: unknown } | null 
     else if (typeof given.after === 'object' && given.after !== null) {
       ms = 0
       for (const [unit, amount] of Object.entries(given.after)) {
-        const per = SPAN_MS[unit]
+        const per = spanMs(unit)
         if (per === undefined || typeof amount !== 'number') {
           ms = Number.NaN
           break
