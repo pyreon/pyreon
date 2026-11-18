@@ -82,20 +82,26 @@ export interface HandlerOptions {
   /**
    * Collect CSS styles after rendering. Called after renderToString/renderWithHead.
    * Return a `<style>` tag string to inject into `<head>`.
-   * Used by @pyreon/styler's sheet.getStyleTag() to prevent FOUC in SSG.
+   *
+   * Usually OMIT it: with `@pyreon/styler` loaded, the render pipeline falls
+   * back to the collector styler registers (`__PYREON_STYLER_COLLECT__`), and
+   * each request already gets its own styler scope (`runWithRequestContext`),
+   * so its `<style>` carries exactly the rules its render used plus the
+   * module-level keyframes and global styles. Pass one only to use a different
+   * CSS-in-JS engine or to post-process the tag.
    *
    * Receives the per-request CSP nonce (or `undefined` at SSG/no-CSP) — forward
    * it to `sheet.getStyleTag(nonce)` so a strict `style-src 'nonce-…'` policy
    * admits the emitted `<style>`.
    *
+   * Never call `sheet.reset()` here: it also drops the keyframes and static
+   * global styles that are inserted once at module evaluation, so every later
+   * response ships without them.
+   *
    * @example
    * import { sheet } from '@pyreon/styler'
    * createHandler({
-   *   collectStyles: (nonce) => {
-   *     const tag = sheet.getStyleTag(nonce)
-   *     sheet.reset()
-   *     return tag
-   *   },
+   *   collectStyles: (nonce) => sheet.getStyleTag(nonce),
    * })
    */
   collectStyles?: (nonce?: string) => string

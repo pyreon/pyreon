@@ -284,6 +284,12 @@ The initially-hidden render bakes the hidden state (class/style) onto the elemen
 
 ---
 
+### Resetting a process-wide CSS-in-JS sheet at a request boundary
+
+`@pyreon/server`'s `collectStyles` example, the styler README/docs and `reset()`'s own JSDoc all recommended `sheet.getStyleTag(); sheet.reset()` per request. `reset()` also drops the definition-owned rules nothing re-inserts (module-level `keyframes`, static `createGlobalStyle`), so every response after the first shipped without them. Request isolation is already automatic: `runWithRequestContext` opens a per-request styler scope. Rule: at a request boundary, read (`getStyleTag(nonce)`, or omit `collectStyles` for the default collector); `reset()` is for tests and teardown. Reference: `packages/core/server/src/handler.ts` (`collectStyles` docs), `packages/ui-system/styler/src/sheet.ts:reset`; demonstrated by `styler/src/__tests__/ssr-reset-at-request-boundary.test.ts`.
+
+---
+
 ### Non-reflecting property on the client vs attribute on the server (reset default)
 
 Setting `input.value`/`textarea.value` as a property never creates the content attribute that `form.reset()` restores, so reset cleared a client-mounted field and restored a hydrated one. `applyValueProp` (compiler: `_setValue`) sets the property and establishes `defaultValue` on the first application only — re-establishing it on every keystroke of a controlled input turns reset into a no-op. The first-write marker is a `Symbol`-keyed own property, not a module-level Map. `select` and media `muted` are deliberately left diverging (React, Preact and Solid do the same). Code: `packages/core/runtime-dom/src/props.ts:applyValueProp`, both compiler backends' `attrSetter`/`attr_setter`. Tests: `input-default-value.browser.test.tsx`, `compiler-integration.test.tsx`, the parity fuzz's `input.value`/`textarea.value` entries.
