@@ -7,6 +7,7 @@
  */
 import { hash } from './hash'
 import { clearNormCache } from './resolve'
+import { replaceLiveRules } from './replace-live-rules'
 
 /**
  * A single `@layer <name>? { <inner> }` BLOCK spanning the whole (trimmed)
@@ -294,6 +295,17 @@ interface StylerSSRState {
   rootVars: string
   /** The `rootVars` text the last `flushSSRPending()` emitted (streaming). */
   rootVarsFlushed: string
+}
+
+/** Empty a request's SSR state in place (request boundary / buffer reset). */
+const resetSSRState = (st: StylerSSRState): void => {
+  st.buffer = []
+  st.flushedIdx = 0
+  st.ambientIdx = 0
+  st.layerDeclEmitted = false
+  st.seen.clear()
+  st.rootVars = ''
+  st.rootVarsFlushed = ''
 }
 
 const freshSSRState = (): StylerSSRState => ({
@@ -1263,33 +1275,9 @@ export class StyleSheet {
 
   /** Client: replace the live root-variables rules with `rootVarsCss`. */
   private applyRootVariables(): void {
-    const sheet = this.sheet
-    if (!sheet) return
-    // Insert where the previous block sat (keeps its cascade position);
-    // the first block appends.
-    let at = sheet.cssRules.length
-    for (const rule of this.rootVarsRules) {
-      // -1 when something else already removed the rule from the live sheet.
-      const idx = Array.prototype.indexOf.call(sheet.cssRules, rule) as number
-      if (idx >= 0) {
-        sheet.deleteRule(idx)
-        at = Math.min(at, idx)
-      }
-    }
-    this.rootVarsRules = []
-    if (!this.rootVarsCss) return
-    for (const rule of splitTopLevelRules(this.rootVarsCss)) {
-      try {
-        sheet.insertRule(rule, at)
-        this.rootVarsRules.push(sheet.cssRules[at] as CSSRule)
-        at++
-      } catch (_e) {
-        if (process.env.NODE_ENV !== 'production') {
-          // oxlint-disable-next-line no-console
-          console.warn('[styler] setRootVariables: failed to insert rule:', rule, _e)
-        }
-      }
-    }
+    if (!this.sheet) return
+    const rules = this.rootVarsCss ? splitTopLevelRules(this.rootVarsCss) : []
+    this.rootVarsRules = replaceLiveRules(this.sheet, this.rootVarsRules, rules)
   }
 
   /**
@@ -1334,13 +1322,7 @@ export class StyleSheet {
    * dropped wholesale).
    */
   resetSSRBuffer(): void {
-    this._ssr.buffer = []
-    this._ssr.flushedIdx = 0
-    this._ssr.ambientIdx = 0
-    this._ssr.layerDeclEmitted = false
-    this._ssr.seen.clear()
-    this._ssr.rootVars = ''
-    this._ssr.rootVarsFlushed = ''
+    resetSSRState(this._ssr)
   }
 
   /**
@@ -1440,13 +1422,7 @@ export class StyleSheet {
   reset(): void {
     if (this.cache.size > 0) this.removals++
     this.held.clear()
-    this._ssr.buffer = []
-    this._ssr.flushedIdx = 0
-    this._ssr.ambientIdx = 0
-    this._ssr.layerDeclEmitted = false
-    this._ssr.seen.clear()
-    this._ssr.rootVars = ''
-    this._ssr.rootVarsFlushed = ''
+    resetSSRState(this._ssr)
     this.ssrRules.clear()
     this.cache.clear()
     this.insertCache.clear()
@@ -1491,13 +1467,7 @@ export class StyleSheet {
     this.icKeysByClass.clear()
     this.domRules.clear()
     clearNormCache()
-    this._ssr.buffer = []
-    this._ssr.flushedIdx = 0
-    this._ssr.ambientIdx = 0
-    this._ssr.layerDeclEmitted = false
-    this._ssr.seen.clear()
-    this._ssr.rootVars = ''
-    this._ssr.rootVarsFlushed = ''
+    resetSSRState(this._ssr)
     if (this.sheet) {
       while (this.sheet.cssRules.length > 0) {
         this.sheet.deleteRule(0)

@@ -35,7 +35,7 @@ const rootRuleCount = (): number => {
   for (const s of Array.from(document.styleSheets)) {
     for (const r of Array.from(s.cssRules)) {
       if (r instanceof CSSStyleRule && r.selectorText === ':root' && r.cssText.includes('--px-'))
-        n++
+        {n++}
     }
   }
 
