@@ -37,12 +37,17 @@ interface NumberSymbols {
   percent: string
   /** Size of the groups after the first 3 digits: 2 in Indian grouping, else 3. */
   secondary: number
+  /** A lone `.` is also a decimal separator: the locale's decimal is `,` and its group separator is not `.` (cs, fr, ru, pl). */
+  altDot: boolean
 }
 
 interface DateSymbols {
-  order: Field[]
-  /** The literal characters the locale's own short date uses. */
-  dateChars: string
+  /** Field orders of the numeric, long-month and short-month forms (first is the numeric one), without repeats. */
+  orders: Field[][]
+  /** Words that appear as literals in the locale's own forms (`г`, `de`, `年`): ignored while parsing. */
+  literalWords: ReadonlySet<string>
+  /** Month name -> month index (0-11), built on first use. */
+  months: Map<string, number> | undefined
   /** Added to a local era year to get the Gregorian one (Buddhist -543, Minguo +1911). */
   yearOffset: number
   supportedCalendar: boolean
@@ -79,28 +84,78 @@ function probeNumbers(loc: string | undefined): NumberSymbols {
     minus,
     percent: strip(percent?.value ?? '%'),
     secondary: groups.length > 2 && groups[1]?.value.length === 2 ? 2 : 3,
+    altDot: strip(decimal) === ',' && !groupChars(group).includes('.'),
   }
 }
 
 const YEAR_OFFSETS: Record<string, number | undefined> = { buddhist: -543, roc: 1911 }
 
+/** Separators between words of a date: spaces, `/`, `,`, the Arabic comma, dashes. A `.` stays inside a word (`พ.ย.`, `lis.`). */
+const WORD_SEPARATORS = /[\s/,\u060c\-\u2013]+/u
+
+/** Lower-case word with the dots around it removed (`Lis.` -> `lis`). */
+function normalizeWord(word: string): string {
+  return strip(word).replace(/^\.+|\.+$/gu, '').toLowerCase()
+}
+
+function wordsOf(text: string): string[] {
+  return text.split(WORD_SEPARATORS).map(normalizeWord).filter((w) => w !== '')
+}
+
 function probeDates(loc: string | undefined): DateSymbols {
-  const dtf = new Intl.DateTimeFormat(loc, { year: 'numeric', month: 'numeric', day: 'numeric', timeZone: 'UTC' })
-  const order: Field[] = []
-  let dateChars = ''
-  for (const p of dtf.formatToParts(Date.UTC(2026, 10, 18))) {
-    const type: string = p.type
-    if (type === 'day' || type === 'month' || type === 'year') order.push(type)
-    else if (type === 'literal') dateChars += strip(p.value)
+  const orders: Field[][] = []
+  const literalWords = new Set<string>()
+  let calendar = 'gregory'
+  for (const month of ['numeric', 'long', 'short'] as const) {
+    const dtf = new Intl.DateTimeFormat(loc, { year: 'numeric', month, day: 'numeric', timeZone: 'UTC' })
+    if (month === 'numeric') calendar = dtf.resolvedOptions().calendar
+    const order: Field[] = []
+    for (const p of dtf.formatToParts(Date.UTC(2026, 10, 18))) {
+      const type: string = p.type
+      if (type === 'day' || type === 'month' || type === 'year') order.push(type)
+      else if (type === 'relatedYear' || type === 'yearName') order.length = 0
+      else if (type === 'literal') for (const w of wordsOf(p.value)) literalWords.add(w)
+      // A month part such as `11월` carries its own suffix word.
+      if (type === 'month' && /\p{Nd}/u.test(p.value)) for (const w of wordsOf(p.value.replace(/\p{Nd}+/gu, ' '))) literalWords.add(w)
+    }
+    if (order.length === 3 && !orders.some((o) => o.join() === order.join())) orders.push(order)
   }
-  const calendar = dtf.resolvedOptions().calendar
 
   return {
-    order: order.length === 3 ? order : ['year', 'month', 'day'],
-    dateChars,
+    orders: orders.length > 0 ? orders : [['year', 'month', 'day']],
+    literalWords,
+    months: undefined,
     yearOffset: YEAR_OFFSETS[calendar] ?? 0,
     supportedCalendar: ['gregory', 'buddhist', 'roc', 'iso8601'].includes(calendar),
   }
+}
+
+/** Month names (long and short, standalone and with a day, so genitive forms are included) the locale writes; ambiguous ones are dropped. */
+function monthNames(s: Symbols, locale: string): Map<string, number> {
+  if (s.months !== undefined) return s.months
+  // A locale Intl rejects falls back to the runtime default, like the symbol probes do.
+  let loc: string | undefined = locale === '' ? undefined : locale
+  try {
+    Intl.DateTimeFormat.supportedLocalesOf(loc === undefined ? [] : [loc])
+  } catch {
+    loc = undefined
+  }
+  const names = new Map<string, number>()
+  const ambiguous = new Set<string>()
+  for (const form of [{ month: 'long' }, { day: 'numeric', month: 'long' }, { month: 'short' }, { day: 'numeric', month: 'short' }] as const) {
+    const dtf = new Intl.DateTimeFormat(loc, { ...form, timeZone: 'UTC' })
+    for (let m = 0; m < 12; m++) {
+      const value = dtf.formatToParts(Date.UTC(2026, m, 15)).find((p) => p.type === 'month')?.value
+      const word = value === undefined ? '' : normalizeWord(value)
+      if (word === '' || /\p{Nd}/u.test(word)) continue
+      if (names.has(word) && names.get(word) !== m) ambiguous.add(word)
+      else names.set(word, m)
+    }
+  }
+  for (const word of ambiguous) names.delete(word)
+  s.months = names
+
+  return names
 }
 
 function probe(locale: string): Symbols {
@@ -128,6 +183,7 @@ function symbols(locale: string): Symbols {
 /** Test hooks. */
 export function _clearParseCache(): void {
   cache = undefined
+  currencyCache.clear()
 }
 
 export function _parseCacheSize(): number {
@@ -180,7 +236,7 @@ function step(st: Scan, ch: string, s: NumberSymbols, groupSet: string): boolean
     return true
   }
   const leading = !st.sawDecimal && st.run === '' && st.intRuns.length === 0
-  if (ch === s.decimal && !st.sawDecimal) {
+  if ((ch === s.decimal || (ch === '.' && s.altDot)) && !st.sawDecimal) {
     st.sawDecimal = true
     return true
   }
@@ -249,25 +305,28 @@ export function parseNumberIn(locale: string, text: unknown): number | null {
 
 // ─── parseDate ───────────────────────────────────────────────────────────────
 
-const DATE_ASCII = '. /-  '
-
-/** The digit runs of a numeric date, or `null` when anything else appears. */
-function dateRuns(input: string, s: Symbols): string[] | null {
+/** A date split into its digit runs and its words (everything between digits that is not a separator or a dot). */
+function scanDate(input: string, s: Symbols): { runs: string[]; words: string[] } {
   const runs: string[] = []
-  let current = ''
+  const words: string[] = []
+  let digits = ''
+  let other = ''
   for (const ch of input) {
     const d = digitValue(ch, s)
     if (d >= 0) {
-      current += d
-      continue
+      for (const w of wordsOf(other)) words.push(w)
+      other = ''
+      digits += d
+    } else {
+      if (digits !== '') runs.push(digits)
+      digits = ''
+      other += ch
     }
-    if (!(DATE_ASCII.includes(ch) || s.dateChars.includes(ch))) return null
-    if (current !== '') runs.push(current)
-    current = ''
   }
-  if (current !== '') runs.push(current)
+  if (digits !== '') runs.push(digits)
+  for (const w of wordsOf(other)) words.push(w)
 
-  return runs.length === 3 ? runs : null
+  return { runs, words }
 }
 
 function pad(n: number, width: number): string {
@@ -296,22 +355,154 @@ function gregorianYear(digits: string, s: DateSymbols): number | null {
   return (len === 2 ? century + n : n) + s.yearOffset
 }
 
-export function parseDateIn(locale: string, text: unknown): PlainDateString | null {
-  if (typeof text !== 'string') return null
-  const s = symbols(locale)
-  const input = strip(text).trim()
-  const runs = input === '' ? null : dateRuns(input, s)
-  if (runs === null) return null
-  const [a, b, c] = runs as [string, string, string]
-  if (a.length === 4 && b.length <= 2 && c.length <= 2 && s.order[0] !== 'year' && input.charCodeAt(4) === 45) {
-    // ISO `2026-11-18` typed into a day-first or month-first locale.
-    return finish(Number(a), Number(b), Number(c))
-  }
-  if (!s.supportedCalendar) return null
+/** Day, month and year from three digit runs in the given field order. */
+function fromRuns(runs: string[], order: Field[], s: DateSymbols): PlainDateString | null {
   const byField: Record<Field, string> = { year: '', month: '', day: '' }
-  for (let k = 0; k < 3; k++) byField[s.order[k] as Field] = runs[k] as string
+  for (let k = 0; k < 3; k++) byField[order[k] as Field] = runs[k] as string
   if (byField.month.length > 2 || byField.day.length > 2) return null
   const year = gregorianYear(byField.year, s)
 
   return year === null ? null : finish(year, Number(byField.month), Number(byField.day))
+}
+
+/** `18 Nov 2026`, `Nov 18, 2026`, `18. listopadu 2026`: one month name and two digit runs. */
+function fromNamed(runs: string[], month: number, s: DateSymbols): PlainDateString | null {
+  const [a, b] = runs as [string, string]
+  let yearDigits: string
+  let dayDigits: string
+  if (a.length === 4 && b.length <= 2) [yearDigits, dayDigits] = [a, b]
+  else if (b.length === 4 && a.length <= 2) [yearDigits, dayDigits] = [b, a]
+  else {
+    const order = s.orders[1] ?? s.orders[0] ?? []
+    if (order.indexOf('day') < order.indexOf('year')) [dayDigits, yearDigits] = [a, b]
+    else [yearDigits, dayDigits] = [a, b]
+  }
+  if (dayDigits.length > 2) return null
+  const year = gregorianYear(yearDigits, s)
+
+  return year === null ? null : finish(year, month + 1, Number(dayDigits))
+}
+
+/** A month name, also when the locale glues a literal word to it (Hebrew `ב` + `נוב׳` is written `בנוב׳`). */
+function monthIndex(s: Symbols, locale: string, word: string): number | undefined {
+  const names = monthNames(s, locale)
+  const direct = names.get(word)
+  if (direct !== undefined) return direct
+  for (const literal of s.literalWords) {
+    if (literal.length > 3) continue
+    if (word.startsWith(literal)) {
+      const rest = names.get(word.slice(literal.length))
+      if (rest !== undefined) return rest
+    }
+    if (word.endsWith(literal)) {
+      const rest = names.get(word.slice(0, word.length - literal.length))
+      if (rest !== undefined) return rest
+    }
+  }
+
+  return undefined
+}
+
+/** The month a date's words name (`-1` for none) and whether one of them is a literal of the locale's own forms; `null` for an unknown word. */
+function readWords(words: string[], s: Symbols, locale: string): { month: number; literal: boolean } | null {
+  let month = -1
+  let literal = false
+  for (const word of words) {
+    if (s.literalWords.has(word)) {
+      literal = true
+      continue
+    }
+    const index = monthIndex(s, locale, word)
+    if (index === undefined || month !== -1) return null
+    month = index
+  }
+
+  return { month, literal }
+}
+
+/** Three digit runs: ISO typed into any locale, else the locale's field order (or the long form's, when literals are present). */
+function fromThreeRuns(runs: string[], input: string, literal: boolean, s: Symbols): PlainDateString | null {
+  const [a, b, c] = runs as [string, string, string]
+  if (a.length === 4 && b.length <= 2 && c.length <= 2 && s.orders[0]?.[0] !== 'year' && input.charCodeAt(4) === 45) {
+    // ISO `2026-11-18` typed into a day-first or month-first locale.
+    return finish(Number(a), Number(b), Number(c))
+  }
+  if (!s.supportedCalendar) return null
+  // Forms with words of their own (`2026年11月18日`) may follow the long form's order, not the numeric one.
+  for (const order of literal ? s.orders : s.orders.slice(0, 1)) {
+    const date = fromRuns(runs, order, s)
+    if (date !== null) return date
+  }
+
+  return null
+}
+
+export function parseDateIn(locale: string, text: unknown): PlainDateString | null {
+  if (typeof text !== 'string') return null
+  const s = symbols(locale)
+  const input = strip(text).trim()
+  if (input === '') return null
+  const { runs, words } = scanDate(input, s)
+  const read = readWords(words, s, locale)
+  if (read === null) return null
+  if (read.month !== -1) return runs.length === 2 && s.supportedCalendar ? fromNamed(runs, read.month, s) : null
+
+  return runs.length === 3 ? fromThreeRuns(runs, input, read.literal, s) : null
+}
+
+// ─── parseCurrency ───────────────────────────────────────────────────────────
+
+const currencyCache = new Map<string, string[]>()
+
+/** Every way the locale writes `currency` (symbol, narrow symbol, code, name), longest first. */
+function currencyTokens(locale: string, currency: string): string[] {
+  const key = `${locale}\u0000${currency}`
+  let tokens = currencyCache.get(key)
+  if (tokens === undefined) {
+    const found = new Set<string>([currency.toUpperCase()])
+    const collect = (loc: string | undefined) => {
+      for (const currencyDisplay of ['symbol', 'narrowSymbol', 'code', 'name'] as const) {
+        const nf = new Intl.NumberFormat(loc, { style: 'currency', currency, currencyDisplay })
+        for (const v of [1, 2, 5, -1.5, 0.5]) {
+          for (const p of nf.formatToParts(v)) if (p.type === 'currency') found.add(strip(p.value).trim())
+        }
+      }
+    }
+    try {
+      collect(locale === '' ? undefined : locale)
+    } catch {
+      // An invalid locale reads with the runtime default; an invalid code leaves only the code itself to strip.
+      try {
+        collect(undefined)
+      } catch {
+        // nothing more to find
+      }
+    }
+    tokens = [...found].filter((t) => t !== '').sort((x, y) => y.length - x.length)
+    if (currencyCache.size >= SYMBOL_CAP) currencyCache.delete(currencyCache.keys().next().value as string)
+    currencyCache.set(key, tokens)
+  }
+
+  return tokens
+}
+
+/** A money amount typed or printed for `currency`: its symbol, code or name (before or after the number) and accounting parentheses are removed, then the number is read. */
+export function parseCurrencyIn(locale: string, text: unknown, currency: unknown): number | null {
+  if (typeof text !== 'string' || typeof currency !== 'string' || currency === '') return null
+  let input = strip(text).trim()
+  let negative = false
+  if (input.startsWith('(') && input.endsWith(')')) {
+    negative = true
+    input = input.slice(1, -1).trim()
+  }
+  const lower = input.toLowerCase()
+  for (const token of currencyTokens(locale, currency)) {
+    const at = lower.indexOf(token.toLowerCase())
+    if (at === -1) continue
+    input = `${input.slice(0, at)} ${input.slice(at + token.length)}`.trim()
+    break
+  }
+  const n = parseNumberIn(locale, input)
+
+  return n === null ? null : negative ? -Math.abs(n) : n
 }

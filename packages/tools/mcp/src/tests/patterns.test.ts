@@ -32,6 +32,7 @@ describe('loadPatternRegistry — real repo docs/patterns', () => {
       'dynamic-fields',
       'event-listeners',
       'form-fields',
+      'formatting',
       'imperative-toasts',
       'islands',
       'keyed-lists',

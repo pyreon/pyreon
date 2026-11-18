@@ -55,14 +55,6 @@
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^"
   },
-  "peerDependenciesMeta": {
-    "@pyreon/core": {
-      "optional": true
-    },
-    "@pyreon/reactivity": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@formatjs/intl": "6.1.5",
     "@pyreon/core": "workspace:*",

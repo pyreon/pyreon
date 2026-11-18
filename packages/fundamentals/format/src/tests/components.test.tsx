@@ -1,7 +1,8 @@
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
-import { DateTime, Num, machineValue } from '../components'
+import { DateTime, Num } from '../components'
+import { machineValue } from '../component-helpers'
 import { _resetLocaleState } from '../locale'
 import { provideLocale, setLocale } from '../index'
 

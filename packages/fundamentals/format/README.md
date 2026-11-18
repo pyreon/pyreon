@@ -32,7 +32,7 @@ The same function works in JSX and effects (it reads the active locale and time 
 | --- | --- | --- |
 | `@pyreon/format/core` | nothing | Every formatter and parser as a pure function. Locale and time zone come from the options; default is the runtime's. |
 | `@pyreon/format` | `@pyreon/core`, `@pyreon/reactivity` | The same names, defaulting to the active locale and zone. Plus the locale API. |
-| `@pyreon/format/components` | `@pyreon/core` | `<Num>` and `<DateTime>`. |
+| `@pyreon/format/components` | `@pyreon/core`, `@pyreon/reactivity` | `<Num>` and `<DateTime>`. |
 
 ## Formatters
 
@@ -43,9 +43,9 @@ The same function works in JSX and effects (it reads the active locale and time 
 | `formatPercent(0.42)` | `42%` |
 | `formatCompact(1_240_000)` | `1.2M` |
 | `formatUnit(72, 'kilometer-per-hour')` | `72 km/h` |
-| `formatBytes(1536)` / `{ binary: true }` | `1.5 kB` / `1.5 KiB` |
+| `formatBytes(1536)` / `{ binary: true }` | `1.5 kB` / `1.5 KiB` (and `0 B`, `999 B` below a kilobyte) |
 | `formatDuration({ hours: 2, minutes: 5 })` | `2 hr, 5 min` |
-| `formatDuration(3_905_000, { style: 'digital' })` | `1:05:05` |
+| `formatDuration(3_905_000, { style: 'digital' })` | `1:05:05` (`1:05` below an hour) |
 | `formatList(['a', 'b', 'c'])` | `a, b, and c` |
 | `formatDate` / `formatTime` / `formatDateTime` | `Nov 18, 2026` |
 | `formatRelative(-3, 'day')` | `3 days ago` |
@@ -54,6 +54,10 @@ The same function works in JSX and effects (it reads the active locale and time 
 | `formatNumberRange(3, 5)` | `3–5` |
 
 Options are the platform's `Intl` option names plus `locale`, `timeZone` (dates) and `fallback`. A string in place of options is a preset or style shorthand (`'long'`, `'compact'`, `'or'`). Nullish input returns `fallback` (default `''`); invalid input returns it too, with a dev-only warning; a bad option or unknown unit throws a `[Pyreon]` error that says how to fix it.
+
+## Spaces in output
+
+`Intl` writes non-breaking and thin spaces (U+00A0, U+2009, U+202F) where a plain space would sit: `formatDateRange` puts U+2009 around the en dash, `formatTime` writes U+202F before `PM`, Czech and French group digits with U+00A0 and U+202F. The examples show them as plain spaces so they stay readable. Compare with `===` only against `Intl`'s own output from the same process, never against a typed literal.
 
 ## Dates: calendar values never shift
 
@@ -78,10 +82,15 @@ Resolution order: explicit `options.locale`, then `provideLocale`, then `setLoca
 ## Parsing
 
 ```ts
-parseNumber('1 234,5', { locale: 'cs' })        // 1234.5
-parseDate('18. 11. 2026', { locale: 'cs' })     // "2026-11-18"
-parseDate('31. 2. 2026', { locale: 'cs' })      // null
+parseNumber('1 234,5', { locale: 'cs' })                 // 1234.5
+parseNumber('1234.5', { locale: 'cs' })                  // 1234.5  (a numpad dot, where the dot is not the group separator)
+parseCurrency('€9.99', 'EUR', { locale: 'en-US' })       // 9.99
+parseDate('18. 11. 2026', { locale: 'cs' })              // "2026-11-18"
+parseDate('18. listopadu 2026', { locale: 'cs' })        // "2026-11-18"
+parseDate('31. 2. 2026', { locale: 'cs' })               // null
 ```
+
+`parseDate` reads numeric dates, ISO, and the locale's own medium and long forms (month names from `Intl`, case-insensitive, genitive forms included). Not parsed: compact notation (`1.2M`), scientific notation (`1e3`), natural language (`next Friday`), weekday names, times.
 
 ## Composing formatters
 
@@ -131,19 +140,25 @@ There is deliberately no "per month" currency helper: the platform has no locale
 
 `createFormatter({ locale, timeZone })` is a bound, non-reactive set of the one-off functions for servers, scripts and tests.
 
+## Recipes and migration
+
+The docs page has recipes (a price with the percent off, file sizes in a table, "updated 3 minutes ago" with an exact-time tooltip, a locale-aware number input, a date range label, durations for media) and a "coming from" table for `Intl`/`toLocaleString`, numeral, pretty-bytes, pretty-ms, humanize-duration, date-fns, Day.js and Moment. Every snippet is run by the package tests.
+
 ## Components
 
 ```tsx
 import { Num, DateTime } from '@pyreon/format/components'
 
-<Num value={total()} kind="currency" currency="EUR" />
-<Num value={total()} format={price} />                      // a built formatter
-<Num value={9.99} format={price} parts={{ currency: (text) => <sup>{text}</sup> }} />
-<DateTime value="2026-11-18" kind="date" format="long" />   // <time datetime="2026-11-18">November 18, 2026</time>
-<DateTime value="2026-11-18" format={dateFormatter('long')} parts={{ month: (t) => <b>{t}</b> }} />
+<>
+  <Num value={total()} kind="currency" currency="EUR" />
+  <Num value={total()} format={price} />                      // a built formatter
+  <Num value={9.99} format={price} parts={{ currency: (text) => <sup>{text}</sup> }} />
+  <DateTime value="2026-11-18" kind="date" format="long" />   // <time datetime="2026-11-18">November 18, 2026</time>
+  <DateTime value="2026-11-18" format={dateFormatter('long')} parts={{ month: (t) => <b>{t}</b> }} />
+</>
 ```
 
-`parts` keys are the `Intl` part types; unwrapped parts are joined into one text node so server and client markup agree.
+`parts` keys are the `Intl` part types; unwrapped parts are joined into one text node so server and client markup agree. `<DateTime>` sets `title` to the exact date and time unless you pass one; `<Num tabular>` renders a span with `tabular-nums`; `class`, `id` and other props are forwarded.
 
 ## Performance
 

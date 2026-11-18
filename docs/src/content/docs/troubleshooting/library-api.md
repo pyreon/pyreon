@@ -11,6 +11,12 @@ Vue-compat `watch` treated any non-ref source as a getter, so `watch(reactive(ob
 
 ---
 
+### Formatting with `toLocaleString()` / `new Intl.*Format()` in a component body or JSX, or building money by concatenation
+
+A component runs once, so `value.toLocaleString('en-US', …)` captures the locale once and a later locale change never reaches the text; a formatter constructed in the body is rebuilt on every render (the dominant cost of a list row); `toLocaleString()` with no locale formats with the server's locale on the server and the user's in the browser, so hydration mismatches; and `'€' + n.toFixed(2)` hard-codes a symbol position, separators and minor-unit digits that differ per locale and currency. **Fix**: `@pyreon/format` (`formatCurrency`, `formatNumber`, `formatBytes`, `formatDate`, `formatRelativeTo`, or a reusable `currencyFormatter('EUR')`), which reads the active locale and time zone reactively, caches the `Intl` object, and is request-scoped on the server via `provideLocale`. Also: `new Date('2026-11-18')` for a calendar date is midnight UTC (the 17th west of Greenwich) — pass the string to `formatDate`. No static detector: `pyreon/no-locale-dependent-format` already flags the argument-less calls; telling "inside a component body" from a module-level helper needs scope analysis that a pattern matcher cannot do without false positives on correct code. Pattern: `get_pattern formatting`. Reference: `packages/fundamentals/format`.
+
+---
+
 ### Importing `@pyreon/charts` through a pre-0.52 entry point
 
 The main entry is now the engine (`<Chart>` with mark children, formerly `<Plot>` at `/plot`), and the ECharts wrapper is `<EChart>` at `/echarts`, with `/manual` and `/vite` under it. `<Chart options={…}>` from the root is the old wrapper and no longer type-checks.
