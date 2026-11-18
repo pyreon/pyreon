@@ -7,7 +7,7 @@ import {
   type TreeNode,
   type TreeState,
 } from '@pyreon/ui-primitives'
-import { disabledState, el } from '../../factory'
+import { disabledState, el, tintText, tones } from '../../factory'
 
 /**
  * Tree — batteries-included WAI-ARIA tree (Element-first composition, the
@@ -32,9 +32,9 @@ const TreeRoot = el
     contentAlignY: 'top',
     block: true,
   })
-  .theme((t) => ({
+  .theme((t, m) => ({
     fontSize: t.fontSize.small,
-    color: t.color.system.base[700],
+    color: tones(t, m).text,
   }))
 
 /**
@@ -45,13 +45,23 @@ const TreeRoot = el
  * render it) — the `display` CSS here is the one legitimate remaining site
  * (see the element-first ratchet allowlist).
  */
-const StyledTreeBase = el.config({ name: 'Tree', component: TreeBase }).theme((t) => ({
+const StyledTreeBase = el.config({ name: 'Tree', component: TreeBase }).theme((t, m) => ({
   display: 'flex',
   flexDirection: 'column',
   width: '100%',
   fontSize: t.fontSize.small,
-  color: t.color.system.base[700],
+  color: tones(t, m).text,
 }))
+
+/**
+ * A colour a `.theme()` set, as `.styles()` receives it: resolved for the mode
+ * (the declared type of a `mode(light, dark)` value is its callback, so it is
+ * read as `unknown`).
+ */
+const themeColor = (theme: Record<string, unknown>, key: string): string => {
+  const value = theme[key]
+  return typeof value === 'string' ? value : ''
+}
 
 /**
  * One tree row. Selection styling is STATIC CSS keyed on the base's
@@ -72,11 +82,11 @@ export const TreeItem = el
     alignY: 'center',
     block: true,
   })
-  .theme((t) => ({
+  .theme((t, m) => ({
     cursor: 'pointer',
     borderRadius: t.borderRadius.small,
     fontSize: t.fontSize.small,
-    color: t.color.system.base[700],
+    color: tones(t, m).text,
     transition: t.transition.fast,
     paddingTop: t.spacing.xxSmall,
     paddingBottom: t.spacing.xxSmall,
@@ -90,19 +100,28 @@ export const TreeItem = el
       outline: 'none',
     },
     disabled: { ...disabledState(), pointerEvents: 'none' },
-    extendCss: `
-      &[aria-selected='true'] {
-        background-color: ${t.color.system.primary[50]};
-        color: ${t.color.system.primary.text};
-      }
-    `,
+    // The selected look, drawn by the `.styles()` below. Keys rather than an
+    // `extendCss` string, because a `mode(light, dark)` value cannot be
+    // interpolated into a string (the selected text was light-only).
+    selectedBackground: t.color.system.primary[50],
+    selectedColor: tintText(t, m, 'primary'),
   }))
-  .states((t) => ({
+  .states((t, m) => ({
     selected: {
       backgroundColor: t.color.system.primary[50],
-      color: t.color.system.primary.text,
+      color: tintText(t, m, 'primary'),
     },
   }))
+  .styles(
+    (css) => css`
+      ${({ $rocketstyle: s }: { $rocketstyle: Record<string, unknown> }) => css`
+        &[aria-selected='true'] {
+          background-color: ${themeColor(s, 'selectedBackground')};
+          color: ${themeColor(s, 'selectedColor')};
+        }
+      `}
+    `,
+  )
 
 /**
  * The expand/collapse glyph. The caret flips via a reactive TEXT child (the
