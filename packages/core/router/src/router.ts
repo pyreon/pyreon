@@ -75,7 +75,8 @@ function tabScopeOf(router: Router): string | null {
   return scope.tab
 }
 
-// Module-level fallback — safe for CSR (single-threaded), not for concurrent SSR.
+// Module-level fallback — a CLIENT-only convenience (one process, one user). It is
+// never written on a server and never read there (see `resolveRouter`).
 // RouterProvider also sets this so legacy useRouter() calls outside the tree work.
 let _activeRouter: RouterInstance | null = null
 
@@ -87,23 +88,37 @@ let _activeRouter: RouterInstance | null = null
 // the history stack.
 let _navOwner: object | null = null
 
+/**
+ * The router a hook resolves: the nearest `<RouterProvider>`, else — ON THE
+ * CLIENT ONLY — the module fallback. On a server one process serves every
+ * request, so the module slot holds whichever request set it last: a render
+ * with no provider above it (a server-island fragment) read another user's
+ * path and query through it. There the hooks resolve through context alone
+ * and throw the usual "no router" error otherwise.
+ */
+function resolveRouter(): RouterInstance | null {
+  return useContext(RouterContext) ?? (isClient ? _activeRouter : null)
+}
+
 export function getActiveRouter(): RouterInstance | null {
-  return useContext(RouterContext) ?? _activeRouter
+  return resolveRouter()
 }
 
 export function setActiveRouter(router: RouterInstance | null): void {
   if (router) router._viewDepth = 0
-  _activeRouter = router
+  // A server never reads the slot, so it never holds a request's router either.
+  _activeRouter = isClient ? router : null
 }
 
 // ─── Hooks ────────────────────────────────────────────────────────────────────
 
 export function useRouter(): Router {
-  const router = useContext(RouterContext) ?? _activeRouter
+  const router = resolveRouter()
   if (!router)
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
+
   return router
 }
 
@@ -111,7 +126,7 @@ export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
   import('./types').ExtractParams<TPath> & Record<string, string>,
   Record<string, string>
 > {
-  const router = useContext(RouterContext) ?? _activeRouter
+  const router = resolveRouter()
   if (!router)
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
@@ -123,6 +138,7 @@ export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
     const inst = router as RouterInstance
     return (() => inst._tabRoute(tab)) as never
   }
+
   return router.currentRoute as never
 }
 
@@ -138,11 +154,12 @@ export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
  * navigate('/dashboard')
  */
 export function useNavigate(): (path: string) => void {
-  const router = useContext(RouterContext) ?? _activeRouter
+  const router = resolveRouter()
   if (!router)
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
+
   return (path: string) => router.push(path)
 }
 
@@ -160,13 +177,14 @@ export function useNavigate(): (path: string) => void {
  * console.log(params.id)
  */
 export function useParams<T extends Record<string, string> = Record<string, string>>(): T {
-  const router = useContext(RouterContext) ?? _activeRouter
+  const router = resolveRouter()
   if (!router)
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
   const tab = tabScopeOf(router)
   if (tab !== null) return (router as RouterInstance)._tabRoute(tab).params as T
+
   return router.currentRoute().params as T
 }
 
@@ -181,7 +199,7 @@ export function useParams<T extends Record<string, string> = Record<string, stri
  * })
  */
 export function onBeforeRouteLeave(guard: NavigationGuard): () => void {
-  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  const router = resolveRouter()
   if (!router)
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
@@ -196,6 +214,7 @@ export function onBeforeRouteLeave(guard: NavigationGuard): () => void {
   }
   const remove = router.beforeEach(wrappedGuard)
   onUnmount(() => remove())
+
   return remove
 }
 
@@ -210,7 +229,7 @@ export function onBeforeRouteLeave(guard: NavigationGuard): () => void {
  * })
  */
 export function onBeforeRouteUpdate(guard: NavigationGuard): () => void {
-  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  const router = resolveRouter()
   if (!router)
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
@@ -224,6 +243,7 @@ export function onBeforeRouteUpdate(guard: NavigationGuard): () => void {
   }
   const remove = router.beforeEach(wrappedGuard)
   onUnmount(() => remove())
+
   return remove
 }
 
@@ -261,6 +281,7 @@ type UnloadBlocker = {
   router: RouterInstance
   beforeUnload: BlockerOptions['beforeUnload']
 }
+
 const _unloadBlockers = new Set<UnloadBlocker>()
 
 function blocksUnload(entry: UnloadBlocker): boolean {
@@ -276,6 +297,7 @@ function blocksUnload(entry: UnloadBlocker): boolean {
       ;(verdict as Promise<unknown>).then(undefined, () => undefined)
       return true
     }
+
     return verdict === true
   } catch {
     // A throwing blocker keeps the old, safe behaviour: ask the user.
@@ -317,7 +339,7 @@ function removeRouterUnloadBlockers(router: RouterInstance): void {
 }
 
 export function useBlocker(fn: BlockerFn, options?: BlockerOptions): Blocker {
-  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  const router = resolveRouter()
   if (!router)
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
@@ -366,11 +388,12 @@ export function useBlocker(fn: BlockerFn, options?: BlockerOptions): Blocker {
  * ```
  */
 export function useIsActive(path: string, exact = false): () => boolean {
-  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  const router = resolveRouter()
   if (!router)
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
+
   return () => {
     const current = router.currentRoute().path
     if (exact) {
@@ -391,6 +414,7 @@ function matchSegments(current: string, pattern: string, exact: boolean): boolea
     return ps.every((seg, i) => seg.startsWith(':') || seg === cs[i])
   }
   if (ps.length > cs.length) return false
+
   return ps.every((seg, i) => seg.startsWith(':') || seg === cs[i])
 }
 
@@ -447,6 +471,7 @@ export function useSearchParams<T extends Record<string, string>>(
     const merged = { ...get(), ...updates }
     return router.replace(currentUrlWithQuery(router, merged as Record<string, string>))
   }
+
   return [get, set]
 }
 
@@ -493,6 +518,7 @@ export function useTypedSearchParams<T extends SearchParamSchema>(
       } else if (type === 'boolean') result[key] = raw === 'true' || raw === '1'
       else result[key] = raw ?? ''
     }
+
     return result as InferSearchParams<T>
   }
   const set = (updates: Partial<InferSearchParams<T>>): Promise<NavigationResult> => {
@@ -507,8 +533,10 @@ export function useTypedSearchParams<T extends SearchParamSchema>(
       if (v === undefined) delete merged[k]
       else merged[k] = String(v)
     }
+
     return router.replace(currentUrlWithQuery(router, merged))
   }
+
   return [get, set]
 }
 
@@ -544,6 +572,7 @@ export function useValidatedSearch<
     const next = router.currentRoute().search as T
     if (prev && shallowEqual(prev, next)) return prev
     prev = next
+
     return next
   }
 }
@@ -556,15 +585,17 @@ function shallowEqual<T extends Record<string, unknown>>(a: T, b: T): boolean {
   for (const key of keysA) {
     if (a[key] !== b[key]) return false
   }
+
   return true
 }
 
 function _getRouter(): RouterInstance {
-  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  const router = resolveRouter()
   if (!router)
     throw new Error(
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
+
   return router
 }
 
@@ -690,6 +721,7 @@ export function createRouter<TNames extends string = string>(
       return stripBase(window.location.pathname, base) + window.location.search
     }
     const hash = window.location.hash
+
     return hash.startsWith('#') ? hash.slice(1) || '/' : '/'
   }
 
@@ -699,6 +731,7 @@ export function createRouter<TNames extends string = string>(
       return stripBase(window.location.pathname, base) + window.location.search
     }
     const hash = window.location.hash
+
     return hash.startsWith('#') ? hash.slice(1) || '/' : '/'
   }
 
@@ -767,6 +800,7 @@ export function createRouter<TNames extends string = string>(
           lastTop = path
           lastRoute = resolveRoute(path, routes)
         }
+
         return lastRoute
       }),
     )
@@ -789,6 +823,7 @@ export function createRouter<TNames extends string = string>(
         bestLen = rs.length
       }
     }
+
     return best
   }
 
@@ -805,6 +840,7 @@ export function createRouter<TNames extends string = string>(
     if (!Array.isArray(stack) || stack.length === 0 || !stack.every((e) => typeof e === 'string')) {
       return null
     }
+
     return { tab: st.__pyreonTab, stack: stack as string[] }
   }
 
@@ -818,6 +854,7 @@ export function createRouter<TNames extends string = string>(
     const stamped = isClient ? parseTabStamp(window.history.state) : null
     if (stamped !== null && stamped.stack[stamped.stack.length - 1] === path) return stamped
     const t = tabForPath(path) ?? tabs[0]!
+
     return { tab: t.name, stack: isTabRoot(t, path) ? [path] : [t.root, path] }
   }
 
@@ -835,6 +872,7 @@ export function createRouter<TNames extends string = string>(
     if (isTabRoot(target, path)) return { tab: target.name, stack: [path] }
     if (target.name !== active.name) return { tab: target.name, stack: [...stack, path] }
     if (replace && stack.length > 1) return { tab: target.name, stack: [...stack.slice(0, -1), path] }
+
     return { tab: target.name, stack: [...stack, path] }
   }
 
@@ -1031,6 +1069,7 @@ export function createRouter<TNames extends string = string>(
     if (gen !== _navGen) return { action: 'cancel' }
     if (result === false) return { action: 'cancel' }
     if (typeof result === 'string') return { action: 'redirect', target: result }
+
     return { action: 'continue' }
   }
 
@@ -1050,6 +1089,7 @@ export function createRouter<TNames extends string = string>(
         if (outcome.action !== 'continue') return outcome
       }
     }
+
     return { action: 'continue' }
   }
 
@@ -1063,6 +1103,7 @@ export function createRouter<TNames extends string = string>(
       const outcome = await evaluateGuard(guard, to, from, gen)
       if (outcome.action !== 'continue') return outcome
     }
+
     return { action: 'continue' }
   }
 
@@ -1095,6 +1136,7 @@ export function createRouter<TNames extends string = string>(
       if (cancel === false) return { action: 'cancel' }
     }
     router._loaderData.set(record, undefined)
+
     return { action: 'continue' }
   }
 
@@ -1185,6 +1227,7 @@ export function createRouter<TNames extends string = string>(
       if (cached && isCacheFresh(cached, record)) {
         if (process.env.NODE_ENV !== 'production')
           _countSink.__pyreon_count__?.('router.loaderCache.hit')
+
         return Promise.resolve(cached.data)
       }
     }
@@ -1212,6 +1255,7 @@ export function createRouter<TNames extends string = string>(
         if (router._loaderInflight.get(key)?.promise === promise) {
           router._loaderInflight.delete(key)
         }
+
         return data
       })
       .catch((err) => {
@@ -1222,6 +1266,7 @@ export function createRouter<TNames extends string = string>(
       })
 
     router._loaderInflight.set(key, { promise, signal: loaderCtx.signal })
+
     return promise
   }
 
@@ -1243,6 +1288,7 @@ export function createRouter<TNames extends string = string>(
       // are irrelevant once we know the navigation isn't committing here.
       if (outcome.action !== 'continue') return outcome
     }
+
     return { action: 'continue' }
   }
 
@@ -1326,6 +1372,7 @@ export function createRouter<TNames extends string = string>(
       if (outcome.action !== 'continue') return outcome
     }
     if (swr.length > 0) revalidateSwrLoaders(swr, to, ac)
+
     return { action: 'continue' }
   }
 
@@ -1385,6 +1432,7 @@ export function createRouter<TNames extends string = string>(
           router._loaderData.set(r, data[String(i)])
         }
       }
+
       return { action: 'continue' }
     } catch (err) {
       if (ac.signal.aborted) return { action: 'cancel' }
@@ -1592,6 +1640,7 @@ export function createRouter<TNames extends string = string>(
       const blocked = await blocker(to, from)
       if (gen !== _navGen || blocked) return 'cancel'
     }
+
     return 'continue'
   }
 
@@ -1618,6 +1667,7 @@ export function createRouter<TNames extends string = string>(
 
     // Store middleware data on the resolved route for component access
     to._middlewareData = ctx.data
+
     return { action: 'continue' }
   }
 
@@ -1645,6 +1695,7 @@ export function createRouter<TNames extends string = string>(
       if (isClient) window.location.assign(c.url)
       return 'committed'
     }
+
     return navigate(c.url, replace, depth)
   }
 
@@ -1665,6 +1716,7 @@ export function createRouter<TNames extends string = string>(
             'This likely indicates a redirect loop in your route configuration.',
         )
       }
+
       return 'cancelled'
     }
 
@@ -1696,6 +1748,7 @@ export function createRouter<TNames extends string = string>(
       if (mwResult.action === 'redirect') {
         return applyRedirect(mwResult.target, replace, redirectDepth + 1)
       }
+
       return gen === _navGen ? 'cancelled' : 'superseded'
     }
 
@@ -1705,6 +1758,7 @@ export function createRouter<TNames extends string = string>(
       if (guardOutcome.action === 'redirect') {
         return applyRedirect(guardOutcome.target, replace, redirectDepth + 1)
       }
+
       return gen === _navGen ? 'cancelled' : 'superseded'
     }
 
@@ -1718,11 +1772,13 @@ export function createRouter<TNames extends string = string>(
       if (loaderOutcome.action === 'redirect') {
         return applyRedirect(loaderOutcome.target, replace, redirectDepth + 1)
       }
+
       return gen === _navGen ? 'cancelled' : 'superseded'
     }
 
     await commitNavigation(path, replace, to, from, fromBrowser, tabPlan)
     loadingSignal.update((n) => n - 1)
+
     return 'committed'
   }
 
@@ -1774,6 +1830,7 @@ export function createRouter<TNames extends string = string>(
         err,
       )
     }
+
     return isClient ? { kind: 'cancel' } : null
   }
 
@@ -1814,6 +1871,7 @@ export function createRouter<TNames extends string = string>(
       if (typeof result === 'string') return { kind: 'redirect', target: result }
     }
     router._committedMiddlewareData = to._middlewareData ?? {}
+
     return { kind: 'continue' }
   }
 
@@ -1858,6 +1916,7 @@ export function createRouter<TNames extends string = string>(
       // the HTTP redirect.
       return outcome
     })
+
     return _initialNav
   }
 
@@ -1921,6 +1980,7 @@ export function createRouter<TNames extends string = string>(
         location.query ?? {},
         nameIndex,
       )
+
       return navigate(path, false)
     },
 
@@ -1939,6 +1999,7 @@ export function createRouter<TNames extends string = string>(
         location.query ?? {},
         nameIndex,
       )
+
       return navigate(path, true)
     },
 
@@ -2115,6 +2176,7 @@ export function createRouter<TNames extends string = string>(
         throw err
       }
       if (notFoundThrown) return { kind: 'notFound' as const }
+
       return { kind: 'data' as const, data }
     },
 
@@ -2164,6 +2226,7 @@ export function createRouter<TNames extends string = string>(
             }.`,
           )
         }
+
         return 'cancelled'
       }
       const stack = tabStacks.get(name)!.peek()
@@ -2269,6 +2332,7 @@ export function createRouter<TNames extends string = string>(
             // depth whose component actually changed re-renders — every
             // other depth (layout, siblings) stays mounted, signals intact.
             if (changed) hmrTick.update((n) => n + 1)
+
             return changed
           },
         }
@@ -2337,6 +2401,7 @@ function _hmrIdMatches(recordId: string, incomingId: string): boolean {
   const a = recordId.split('?')[0] ?? recordId
   const b = incomingId.split('?')[0] ?? incomingId
   if (a === b) return true
+
   return a.length >= b.length ? a.endsWith(b) : b.endsWith(a)
 }
 
@@ -2351,6 +2416,7 @@ async function runGuard(
     if (process.env.NODE_ENV !== 'production') {
       console.warn(`[Pyreon Router] Navigation guard threw an error — navigation cancelled:`, err)
     }
+
     return false
   }
 }
@@ -2370,6 +2436,7 @@ function resolveNamedPath(
           `Available names: ${[...index.keys()].join(', ') || '(none)'}. Falling back to "/".`,
       )
     }
+
     return '/'
   }
   let path = buildPath(record.path, params)
@@ -2377,6 +2444,7 @@ function resolveNamedPath(
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join('&')
   if (qs) path += `?${qs}`
+
   return path
 }
 
@@ -2386,6 +2454,7 @@ function normalizeBase(raw: string): string {
   let b = raw
   if (!b.startsWith('/')) b = `/${b}`
   if (b.endsWith('/')) b = b.slice(0, -1)
+
   return b
 }
 
@@ -2394,6 +2463,7 @@ function stripBase(path: string, base: string): string {
   if (!base) return path
   if (path === base || path === `${base}/`) return '/'
   if (path.startsWith(`${base}/`)) return path.slice(base.length)
+
   return path
 }
 
@@ -2432,6 +2502,7 @@ function resolveRelativePath(to: string, from: string): string {
       fromSegments.push(seg)
     }
   }
+
   return `/${fromSegments.join('/')}`
 }
 

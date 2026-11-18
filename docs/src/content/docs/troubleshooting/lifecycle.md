@@ -279,6 +279,12 @@ The file pickers (`useCamera`, `useFilePicker`, `useImagePicker`) append a hidde
 
 ---
 
+### [FIXED, 2026-11] A client convenience fallback written and read on the server.
+
+`<RouterProvider>` also stored its router in a module-level fallback (`setActiveRouter`), and every router hook read `useContext(RouterContext) ?? _activeRouter`. On a server that slot held the LAST page request's router, so a server-island fragment (rendered with no provider) resolved `useRoute()` / `useParams()` / `useSearchParams()` to another user's path and query: a cross-request data exposure. **Rule: a module-level "current X" fallback is client-only; on the server, resolve through request-scoped context or fail.** All router reads go through one resolver (`resolveRouter` in `router/src/router.ts`), which ignores the slot when `isClient` is false, and `setActiveRouter` stores nothing on a server. Locked by `server/src/tests/server-island-router-bleed.test.ts` (node environment; bisect-verified).
+
+---
+
 ### A module-scoped store reached on the server
 
 A module-level `Map` is correctly app-wide in a browser, where one process serves one user, but on a server it is shared by every request. `useDatabase` and `useSecureStorage` returned one request's records and secrets to another under SSR. Their server arms are now inert (consistent within a render, nothing carried across requests). Before reusing a module-scoped cache on the server, ask what one process means there. A `/* v8 ignore */` claiming a branch is untestable, while sibling files test the same shape, signals an unexamined branch. Reference: `packages/fundamentals/hooks/src/{useDatabase,useSecureStorage}.ts`; `hooks/src/tests/server-store-isolation.ssr.test.ts`.

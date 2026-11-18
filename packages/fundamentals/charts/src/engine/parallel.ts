@@ -19,7 +19,7 @@ export interface ParallelAxis {
   name: string
   /** 'value' (default) maps numbers linearly; 'category' maps an index into `categories`. */
   type?: 'value' | 'category' | undefined
-  categories?: string[] | undefined
+  categories?: readonly string[] | undefined
   /** Fixed extent for a value axis; default the data's min/max. An inverted extent (max < min) is ignored. */
   domain?: Domain | undefined
   /** Flip so the largest value sits at the bottom. */
@@ -103,7 +103,7 @@ function parallelHighlighted(highlight: Double[], index: Double): boolean {
 }
 
 /** Lay out the axes into `box` and place every row. */
-export function layoutParallel(axes: ParallelAxis[], rows: Double[][], box: Rect, options?: ParallelOptions): ParallelLayout {
+export function layoutParallel(axes: readonly ParallelAxis[], rows: Double[][], box: Rect, options?: ParallelOptions): ParallelLayout {
   const fontSize = options?.fontSize ?? 11.0
   const top = box.y + fontSize * 1.8
   const bottom = box.y + box.h - fontSize * 1.4
