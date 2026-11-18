@@ -622,6 +622,20 @@ describe('Phase B — <Toggle> emit (canonical binary toggle; Compose Switch vs 
     expect(out).toContain('Toggle("", isOn: $done)')
   })
 
+  // #4344 — `<Toggle>` has no label, and a SwiftUI `Toggle("")` still lays out
+  // label + spacer + switch, so it filled its HStack on iOS while the web
+  // checkbox and the Compose Switch hug the control. Both Swift shapes (the
+  // `$signal` projection and the custom Binding) must hide the empty label.
+  it('Swift: a label-less <Toggle> hides its empty label in both binding shapes (#4344)', () => {
+    const projected = tx(`<Toggle value={done} onChange={(b) => done.set(b)} />`, 'swift')
+    expect(projected).toMatch(/Toggle\("", isOn: \$done\)\n\s*\.labelsHidden\(\)/)
+    const custom = txWithTodoProps(
+      `<Toggle value={props.todo.done} onChange={props.onToggle} />`,
+      'swift',
+    )
+    expect(custom).toMatch(/Toggle\("", isOn: Binding\([\s\S]*?\n\s*\)\)\n\s*\.labelsHidden\(\)/)
+  })
+
   it('Swift: <Toggle disabled> → .disabled(true) modifier', () => {
     const out = tx(`<Toggle value={done} onChange={(b) => done.set(b)} disabled />`, 'swift')
     expect(out).toContain('Toggle("", isOn: $done)')
