@@ -470,6 +470,17 @@ link.disconnect()               // detach the live relay; a later reconnect re-m
 
 Returns `{ disconnect() }`.
 
+`connectYDocs` is **pairwise, not a relay**. It forwards edits made on `a` or `b` themselves, and never re-forwards an update a doc received over a link (that is how it avoids echo loops). So a chain built from two calls does not pass live edits end to end:
+
+```ts
+connectYDocs(device1, relay)
+connectYDocs(relay, device2)
+// an edit on device1 reaches relay, and stops there: device2 only gets it
+// when the relay ↔ device2 link connects again (its initial state merge)
+```
+
+For more than two documents, either link every pair directly (`connectYDocs(a, b)`, `connectYDocs(b, c)`, `connectYDocs(a, c)`: each doc's local edits go straight to every other doc), or use a transport whose hub relays: `connectViaWebSocket` against [`createSyncServer`](#relay-server), or `connectViaBroadcastChannel` for same-origin tabs.
+
 ## Relay server
 
 `createSyncServer` is a Node/Bun WebSocket relay (`@pyreon/sync/server` — server-only; it imports `ws` + `node:http`). It keeps **one authoritative `Y.Doc` per room** so a late-joiner catches up, applies each inbound update, and broadcasts to the room's *other* clients. Rooms are garbage-collected when their last client leaves.
@@ -666,7 +677,7 @@ The root entry also ships a pure-TypeScript engine with no `yjs`: a last-writer-
 | `persistViaIndexedDB(doc, dbName)` | function | Offline durability (browser-only). Returns `YjsPersistence`. |
 | `connectViaBroadcastChannel(doc, name)` | function | Same-origin cross-tab transport; `{ disconnect() }`. |
 | `connectViaWebSocket(doc, url, options?)` | function | Cross-device transport (auto-reconnect); `{ disconnect(); connected; synced(); whenSynced() }`. |
-| `connectYDocs(a, b)` | function | In-memory peer link (real-Yjs; models reconnect convergence); `{ disconnect() }`. |
+| `connectYDocs(a, b)` | function | Pairwise in-memory peer link (real-Yjs; models reconnect convergence; does not re-forward received updates, so link every pair directly); `{ disconnect() }`. |
 | `WebSocketTransport` / `WebSocketTransportOptions` | type | Transport handle + options. |
 | `YjsPersistence` | type | `{ whenSynced; destroy() }`. |
 
