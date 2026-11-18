@@ -1699,6 +1699,29 @@
         "@pyreon/native-compiler",
       ],
     },
+    "packages/fundamentals/format": {
+      "name": "@pyreon/format",
+      "version": "0.53.0",
+      "devDependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/manifest": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/runtime-server": "workspace:*",
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vitest-config": "workspace:*",
+        "@vitest/browser-playwright": "^5.1.0",
+        "happy-dom": "^21.0.4",
+      },
+      "peerDependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+      },
+      "optionalPeers": [
+        "@pyreon/core",
+        "@pyreon/reactivity",
+      ],
+    },
     "packages/fundamentals/hooks": {
       "name": "@pyreon/hooks",
       "version": "0.53.0",
@@ -4195,6 +4218,8 @@
     "@pyreon/flow": ["@pyreon/flow@workspace:packages/fundamentals/flow"],
 
     "@pyreon/form": ["@pyreon/form@workspace:packages/fundamentals/form"],
+
+    "@pyreon/format": ["@pyreon/format@workspace:packages/fundamentals/format"],
 
     "@pyreon/head": ["@pyreon/head@workspace:packages/core/head"],
 

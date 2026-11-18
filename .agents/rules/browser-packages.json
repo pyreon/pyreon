@@ -41,6 +41,7 @@
     "@pyreon/zero",
     "@pyreon/lathe",
     "@pyreon/storage",
+    "@pyreon/format",
     "@pyreon/auth",
     "@pyreon/devtools"
   ]
