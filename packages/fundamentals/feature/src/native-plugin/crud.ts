@@ -21,6 +21,15 @@
 // `content-type: application/json`, and a non-2xx answer rejects. The containers, harnesses and call-site emit are
 // `@pyreon/query`'s (`queryContainerDecl`, `mutationDecl`, `mutateCallSpec`): this file builds requests, nothing else.
 //
+// Three behaviours are the web helper's own, and every request here carries them:
+//
+//   - the ERROR: a non-2xx rejects with `<METHOD> <url> failed: <status>`, or the body's `message` when it has one, plus
+//     `status` (and `errors`) — natively `PyreonHttpMessageError`, through a `.reject { $0.messageError(…) }` middleware
+//     wrapped around the send, so `error.message` reads the same string on every target;
+//   - NO CONTENT: a 204 on create / update resolves with no data (`success`, `data` absent), as the web's `undefined`;
+//   - a MISSING FIELD in a record decodes to the field's `initialValues` default — the schema struct's own decoding
+//     (`plugin.ts`), which every hook here reads through.
+//
 // What does not lower is NAMED, never emitted verbatim: an `api` that is not an absolute literal URL (native has no
 // origin to resolve `/api/todos` against), a custom `fetcher`, every other generated hook (`useSearch`, `useForm`,
 // `useTable`, `useStore`, …) and every `useList` option but a literal `staleTime`.
@@ -221,6 +230,32 @@ const idUrl = (api: string, id: ExprIR): ExprIR => ({ kind: 'template', quasis: 
 
 const JSON_HEADERS = { 'content-type': 'application/json' } as const
 
+/** The ext-expr type of the error middleware every CRUD request is sent through (registered in the plugin's `exprs`). */
+export const CRUD_ERRORS_EXPR = 'feature-errors'
+
+/**
+ * `[.reject { $0.messageError(method: "GET", url: …) }]`: the middleware that makes a non-2xx reject with the web helper's
+ * error. `displayUrl` is the URL the web's message spells — `<api>` or `<api>/<id>` with the id NOT path-encoded.
+ */
+function errorsMiddleware(method: string, displayUrl: ExprIR): ExprIR {
+  return { kind: 'ext-expr', plugin: '@pyreon/feature', type: CRUD_ERRORS_EXPR, payload: { method } as never, args: [displayUrl] }
+}
+
+const literalUrl = (api: string): ExprIR => ({ kind: 'literal', value: api })
+/** `<api>/<id>` as the web's error message spells it: `${url}/${id}`, the id raw. */
+const displayIdUrl = (api: string, id: ExprIR): ExprIR => ({ kind: 'template', quasis: [`${api}/`, ''], exprs: [id] })
+
+export const crudErrorsExpr: ExprEmitter = {
+  swift: (e, ctx) => {
+    const method = (e.payload as unknown as { method: string }).method
+    return `[.reject { $0.messageError(method: ${ctx.stringLiteral(method)}, url: ${ctx.expr(e.args[0] as ExprIR, 0)}) }] as [PyreonHttpMiddleware]`
+  },
+  kotlin: (e, ctx) => {
+    const method = (e.payload as unknown as { method: string }).method
+    return `listOf<PyreonHttpMiddleware>(PyreonHttpMiddleware.Reject { it.messageError(${ctx.stringLiteral(method)}, ${ctx.expr(e.args[0] as ExprIR, 0)}) })`
+  },
+}
+
 /**
  * `const x = Todo.<hook>(…)`: the five CRUD hooks lower; every other generated hook, and every shape of the five that
  * does not, is claimed (`null`) with a warning naming why — never emitted as a verbatim call neither target has.
@@ -285,8 +320,9 @@ export const recognizeCrudDecl: DeclCallRecognizer = (site, ctx) => {
       url: api,
       queryKey: `${info.featureName}:list`,
       staleMillis,
-      // An explicit verb routes the request through `PyreonHttp`, which rejects a non-2xx answer as the web's does.
+      // An explicit verb routes the request through `PyreonHttp`; the middleware rejects a non-2xx with the web's error.
       method: 'GET',
+      middleware: errorsMiddleware('GET', literalUrl(api)),
     }
 
     return { type: CRUD_QUERY_TYPE, payload: payload as never }
@@ -320,6 +356,7 @@ export const recognizeCrudDecl: DeclCallRecognizer = (site, ctx) => {
       queryKeyExpr: { kind: 'template', quasis: [`${info.featureName}:`, ''], exprs: [id] },
       staleMillis: 0,
       method: 'GET',
+      middleware: errorsMiddleware('GET', displayIdUrl(api, id)),
     }
 
     return { type: CRUD_QUERY_TYPE, payload: payload as never }
@@ -381,10 +418,20 @@ export const recognizeCrudMutate: MethodCallRecognizer = (site, ctx) => {
       url: api,
       headers: JSON_HEADERS,
       bodyExpr: { kind: 'json-stringify', arg: ctx.expr(vars) },
+      middleware: errorsMiddleware('POST', literalUrl(api)),
+      noContent: true,
     }, invalidate)
   }
   if (m.hook === 'useDelete') {
-    return mutateCallSpec(site, ctx, binding, { method: 'DELETE', url: api, urlExpr: idUrl(api, ctx.expr(vars)) }, invalidate)
+    const id = ctx.expr(vars)
+
+    return mutateCallSpec(
+      site,
+      ctx,
+      binding,
+      { method: 'DELETE', url: api, urlExpr: idUrl(api, id), middleware: errorsMiddleware('DELETE', displayIdUrl(api, id)) },
+      invalidate,
+    )
   }
   // useUpdate: `{ id, data }` — read statically, because the id goes in the URL and the data in the body.
   if (vars.type !== 'ObjectExpression') {
@@ -426,6 +473,8 @@ export const recognizeCrudMutate: MethodCallRecognizer = (site, ctx) => {
       urlExpr: idUrl(api, id),
       headers: JSON_HEADERS,
       bodyExpr: { kind: 'json-stringify', arg: ctx.expr(dataNode) },
+      middleware: errorsMiddleware('PUT', displayIdUrl(api, id)),
+      noContent: true,
     },
     { ...invalidate, ...(optimistic !== undefined ? { optimistic } : {}) },
   )
@@ -559,6 +608,7 @@ export const crudReceivers: Readonly<Record<string, ReceiverLowering>> = Object.
 export const crudExprs: Readonly<Record<string, ExprEmitter>> = Object.freeze({
   [MUTATE_TYPE]: mutateExpr,
   [MUTATE_ASYNC_TYPE]: mutateAsyncExpr,
+  [CRUD_ERRORS_EXPR]: crudErrorsExpr,
 })
 
 /** Every feature a lowered hook used must have lowered its declaration too, or the emit names a struct nobody declared. */

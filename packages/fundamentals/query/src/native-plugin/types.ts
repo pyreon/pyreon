@@ -16,6 +16,11 @@ export interface QueryPayload {
   queryKeyExpr?: ExprIR
   /** `staleTime` in milliseconds (Swift converts to seconds). */
   staleMillis: number
+  /**
+   * `enabled` when it is not the literal `true`: the harness runs the request only while it holds, and re-evaluates
+   * it when it changes (the web reads it tracked). Absent = always enabled.
+   */
+  enabled?: ExprIR
   method?: string
   headers?: Record<string, string>
   /**

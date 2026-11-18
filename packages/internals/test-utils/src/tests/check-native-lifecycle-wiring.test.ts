@@ -179,7 +179,8 @@ describe('the real registry is internally consistent', () => {
 
 describe('the real descriptors agree with the real registry', () => {
   it('every descriptor lifecycle has an AUTO registry entry for that hook, and vice versa', () => {
-    const fromDescriptors = SERVICES.filter((s) => s.lifecycle !== undefined).map((s) => s.hook).sort()
+    // `'stop'` only ends a container the app starts itself (a MANUAL one), so it has no AUTO entry.
+    const fromDescriptors = SERVICES.filter((s) => s.lifecycle !== undefined && s.lifecycle !== 'stop').map((s) => s.hook).sort()
     const fromRegistry = LIFECYCLE_REGISTRY.filter((e) => e.hook !== undefined).map((e) => e.hook!).sort()
     expect(fromRegistry).toEqual(fromDescriptors)
   })

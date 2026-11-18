@@ -37,7 +37,7 @@ describe('Swift', () => {
     expect(out.warnings).toEqual([])
     expect(out.code).not.toMatch(/private var \w+: Any\b/)
     expect(out.code).toMatch(/private var stats: (__Obj\d+\w*) \{ \(\1\(sum:/)
-    expect(out.code).toContain('private var total: Int { stats.sum + stats.doubled }')
+    expect(out.code).toContain('private var total: Int { pyreonAdd(stats.sum, stats.doubled) }')
     expect(out.code).toMatch(/private var rows: \[(__Obj\d+\w*)\] \{ \[\1\(id: 1/)
     expect(out.code).toMatch(/private var pick: __Obj\d+\w* \{\n/)
   })

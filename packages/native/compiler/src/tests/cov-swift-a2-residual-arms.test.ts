@@ -58,7 +58,7 @@ export function App() {
   const run = () => { obj().a++; n.set(1) }
   return (<Stack><Press onPress={run}><Text>{() => String(n())}</Text></Press></Stack>)
 }`)
-    expect(out).toContain('obj.a += 1')
+    expect(out).toContain('obj.a = pyreonAdd(obj.a, 1)')
   })
 })
 
@@ -73,9 +73,9 @@ export function App() {
   const mapShadow = () => [1, 2].map((n, i) => n + i)
   return (<Stack><Press onPress={() => n.set(1)}><Text>{() => \`\${run(1)}\${idxShadow().length}\${mapShadow().length}\`}</Text></Press></Stack>)
 }`)
-    expect(out).toContain('private func run(_ n: Int) -> Int { n + 1 }')
-    expect(out).toContain('(0..<2).map({ n in n * 2 })')
-    expect(out).toContain('[1, 2].enumerated().map({ (i, n) in n + i })')
+    expect(out).toContain('private func run(_ n: Int) -> Int { pyreonAdd(n, 1) }')
+    expect(out).toContain('(0..<2).map({ n in pyreonMul(n, 2) })')
+    expect(out).toContain('[1, 2].enumerated().map({ (i, n) in pyreonAdd(n, i) })')
     // the outer signal is untouched by any of the three
     expect(out).toContain('@State private var n: Int = 0')
   })
@@ -220,7 +220,7 @@ export function App() {
   const b = computed(() => dbl(21))
   return (<Stack><Text>{() => String(b())}</Text></Stack>)
 }`)
-    expect(out).toContain('func dbl(_ x: Int) -> Int { x * 2 }')
+    expect(out).toContain('func dbl(_ x: Int) -> Int { pyreonMul(x, 2) }')
     expect(out).toContain('private var b: Int { dbl(21) }')
   })
 })

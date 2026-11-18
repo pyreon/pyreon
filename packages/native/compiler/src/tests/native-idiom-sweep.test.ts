@@ -122,11 +122,11 @@ export function App(){
   })
   it('Math.max/min spread lowers to the collection max()/min() with the sentinel', () => {
     const mx = transform(A(`  const out = computed(() => Math.max(...nums()))`), { target: 'swift' })
-    expect(mx.code).toContain('(nums.max() ?? Int.min)')
+    expect(mx.code).toContain('pyreonMax(nums)')
     const mn = transform(A(`  const out = computed(() => Math.min(...nums()))`), { target: 'swift' })
-    expect(mn.code).toContain('(nums.min() ?? Int.max)')
+    expect(mn.code).toContain('pyreonMin(nums)')
     const kt = transform(A(`  const out = computed(() => Math.max(...nums()))`), { target: 'kotlin' })
-    expect(kt.code).toContain('(nums.maxOrNull() ?: Long.MIN_VALUE)')
+    expect(kt.code).toContain('pyreonMax(nums)')
     // control: fixed-arity Math.max unchanged
     const ctrl = transform(A(`  const out = computed(() => Math.max(nums()[0], 5))`), {
       target: 'swift',

@@ -697,12 +697,12 @@ type GetStaticPaths<TParams = Record<string, string>> = () =>
 | `detectLocale`  | `boolean`                           | `true`                   | Request-time only (`i18nRouting()`)    |
 | `cookieName`    | `string`                            | `'locale'`               | Request-time only (`i18nRouting()`)    |
 
-## Diagnostics — `pyreon doctor --check-ssg`
+## Diagnostics — `pyreon doctor --only ssg-audit`
 
-`pyreon doctor --check-ssg` runs the `ssg-audit` gate (equivalent to `pyreon doctor --only ssg-audit`) — a programmatic doctor gate that checks the SSG configuration and route tree for common mistakes before you build (e.g. a dynamic route missing `getStaticPaths`).
+`pyreon doctor --only ssg-audit` runs the `ssg-audit` gate (equivalent to `pyreon doctor --only ssg-audit`) — a programmatic doctor gate that checks the SSG configuration and route tree for common mistakes before you build (e.g. a dynamic route missing `getStaticPaths`).
 
 ```bash
-pyreon doctor --check-ssg
+pyreon doctor --only ssg-audit
 # or, with the unified gate API:
 pyreon doctor --only ssg-audit
 ```

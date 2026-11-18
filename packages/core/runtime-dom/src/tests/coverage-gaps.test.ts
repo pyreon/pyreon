@@ -1090,12 +1090,15 @@ describe('mount.ts — nested element branches', () => {
 
   test('mountChild with boolean sample (true) uses text fast path', () => {
     const el = container()
-    const flag = signal(true)
+    const flag = signal<boolean | string>(true)
     mount(
       h('div', null, () => flag()),
       el,
     )
-    expect(el.querySelector('div')?.textContent).toBe('true')
+    // Booleans render nothing (shared child-text rule, #4386).
+    expect(el.querySelector('div')?.textContent).toBe('')
+    flag.set('on')
+    expect(el.querySelector('div')?.textContent).toBe('on')
     flag.set(false)
     expect(el.querySelector('div')?.textContent).toBe('')
   })
