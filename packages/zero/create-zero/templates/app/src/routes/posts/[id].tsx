@@ -59,7 +59,7 @@ const POSTS: Record<string, Post> = {
 
 /**
  * Enumerate the dynamic `:id` values for SSG prerendering. Required when
- * the app is built with `mode: 'ssg'` (otherwise `pyreon doctor --check-ssg`
+ * the app is built with `mode: 'ssg'` (otherwise `pyreon doctor --only ssg-audit`
  * warns and the SSG plugin silently skips this route). Harmless under
  * `mode: 'ssr' | 'isr'` — the loader below still drives the per-request
  * render in those modes.

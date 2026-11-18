@@ -1715,7 +1715,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // ── Islands doctor-lite (dev-only, advisory) ─────────────────────
       // The islands audit (duplicate-name / nested-island / dead-island /
       // registry drift) historically ran only via `pyreon doctor
-      // --check-islands` — CI-or-manual, so a broken island shipped a full
+      // --only islands-audit` — CI-or-manual, so a broken island shipped a full
       // dev session before anyone saw the finding. Run it once on server
       // boot, deferred off the startup path, and print findings as plain
       // warnings. Advisory: any failure is swallowed (the audit must never
@@ -1732,7 +1732,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
               if (result.findings.length > 0) {
                 // oxlint-disable-next-line no-console
                 console.warn(
-                  `\n[Pyreon islands] ${result.findings.length} finding(s) — \`pyreon doctor --check-islands\` for details:\n` +
+                  `\n[Pyreon islands] ${result.findings.length} finding(s) — \`pyreon doctor --only islands-audit\` for details:\n` +
                     formatIslandAudit(result),
                 )
               }
@@ -3289,7 +3289,7 @@ function resolveRelative(fromFile: string, relPath: string): string {
  * import chunk.
  *
  * Duplicate `name` across declarations: the LAST one wins. Documented as
- * an anti-pattern (caught by the planned `pyreon doctor --check-islands`).
+ * an anti-pattern (caught by the planned `pyreon doctor --only islands-audit`).
  */
 function renderIslandsRegistry(registry: Map<string, IslandDecl[]>, enabled: boolean): string {
   if (!enabled) {
