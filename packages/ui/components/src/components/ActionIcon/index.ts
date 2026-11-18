@@ -1,4 +1,4 @@
-import { disabledState, el, focusRing, focusRingTone, solidFill, tintText } from '../../factory'
+import { disabledState, el, focusRing, focusRingTone, neutralToneKeys, solidFill, toneKeys, toneVariant } from '../../factory'
 
 const ActionIcon = el
   .config({ name: 'ActionIcon' })
@@ -6,7 +6,9 @@ const ActionIcon = el
     contentDirection: 'inline',
     contentAlignX: 'center',
     contentAlignY: 'center', alignX: 'center', alignY: 'center' })
-  .theme((t) => ({
+  .theme((t, m) => ({
+    // The tone a variant draws in when no state is set.
+    ...toneKeys(t, m, 'primary'),
     cursor: 'pointer',
     borderWidth: t.borderWidth.base,
     borderStyle: t.borderStyle.base,
@@ -22,9 +24,10 @@ const ActionIcon = el
     },
     disabled: { ...disabledState(), pointerEvents: 'none' },
   }))
-  .states((t) => ({
-    primary: solidFill(t, 'primary'),
+  .states((t, m) => ({
+    primary: { ...solidFill(t, 'primary'), ...toneKeys(t, m, 'primary') },
     secondary: {
+      ...neutralToneKeys(t, m),
       backgroundColor: t.color.system.base[100],
       color: t.color.system.base[700],
       hover: {
@@ -33,6 +36,7 @@ const ActionIcon = el
     },
     danger: {
       ...solidFill(t, 'error'),
+      ...toneKeys(t, m, 'error'),
       focus: focusRingTone(t, 'error'),
     },
   }))
@@ -43,23 +47,24 @@ const ActionIcon = el
     large: { width: '42px', height: '42px', fontSize: t.fontSize.medium },
     xLarge: { width: '48px', height: '48px', fontSize: t.fontSize.large },
   }))
-  .variants((t, m) => ({
+  // `outline` / `subtle` are drawn in the active state's tone (`toneKeys`).
+  .variants((t) => ({
     filled: {},
-    outline: {
+    outline: toneVariant((tone) => ({
       backgroundColor: t.color.system.transparent,
-      borderColor: t.color.system.primary.base,
-      color: tintText(t, m, 'primary'),
+      borderColor: tone.toneFill,
+      color: tone.toneText,
       hover: {
-        backgroundColor: t.color.system.primary[50],
+        backgroundColor: tone.toneTint50,
       },
-    },
-    subtle: {
-      backgroundColor: t.color.system.primary[50],
-      color: tintText(t, m, 'primary'),
+    })),
+    subtle: toneVariant((tone) => ({
+      backgroundColor: tone.toneTint50,
+      color: tone.toneText,
       hover: {
-        backgroundColor: t.color.system.primary[100],
+        backgroundColor: tone.toneTint100,
       },
-    },
+    })),
     transparent: {
       backgroundColor: t.color.system.transparent,
       color: t.color.system.base[500],

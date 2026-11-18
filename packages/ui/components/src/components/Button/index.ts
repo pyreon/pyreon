@@ -1,9 +1,11 @@
-import { disabledState, el, focusRing, solidFill, tintText } from '../../factory'
+import { disabledState, el, focusRing, neutralToneKeys, solidFill, toneKeys, toneVariant } from '../../factory'
 
 const Button = el
   .config({ name: 'Button' })
   .attrs({ tag: 'button', type: 'button', direction: 'inline', contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'center', alignX: 'center', alignY: 'center', gap: 8 })
-  .theme((t) => ({
+  .theme((t, m) => ({
+    // The tone a variant draws in when no state is set.
+    ...toneKeys(t, m, 'primary'),
     fontSize: t.fontSize.base,
     fontWeight: t.fontWeight.medium,
     lineHeight: t.lineHeight.base,
@@ -21,17 +23,18 @@ const Button = el
       transform: 'scale(0.98)',
     },
   }))
-  .states((t) => ({
-    primary: solidFill(t, 'primary'),
+  .states((t, m) => ({
+    primary: { ...solidFill(t, 'primary'), ...toneKeys(t, m, 'primary') },
     secondary: {
+      ...neutralToneKeys(t, m),
       backgroundColor: t.color.system.base[100],
       color: t.color.system.dark[800],
       hover: {
         backgroundColor: t.color.system.base[200],
       },
     },
-    danger: solidFill(t, 'error'),
-    success: solidFill(t, 'success'),
+    danger: { ...solidFill(t, 'error'), ...toneKeys(t, m, 'error') },
+    success: { ...solidFill(t, 'success'), ...toneKeys(t, m, 'success') },
   }))
   .sizes((t) => ({
     small: {
@@ -56,33 +59,35 @@ const Button = el
       paddingRight: t.spacing.xLarge,
     },
   }))
-  .variants((t, m) => ({
+  // Each variant is drawn in the active state's tone (`toneKeys`), so
+  // `state="danger" variant="outline"` is a red outline, not a blue one.
+  .variants((t) => ({
     solid: {},
-    outline: {
+    outline: toneVariant((tone) => ({
       backgroundColor: t.color.system.transparent,
-      borderColor: t.color.system.primary.base,
-      color: tintText(t, m, 'primary'),
+      borderColor: tone.toneFill,
+      color: tone.toneText,
       hover: {
-        backgroundColor: t.color.system.primary[50],
+        backgroundColor: tone.toneTint50,
       },
-    },
-    subtle: {
-      backgroundColor: t.color.system.primary[100],
-      color: tintText(t, m, 'primary'),
+    })),
+    subtle: toneVariant((tone) => ({
+      backgroundColor: tone.toneTint100,
+      color: tone.toneText,
       hover: {
-        backgroundColor: t.color.system.primary[200],
+        backgroundColor: tone.toneTint200,
       },
-    },
-    ghost: {
+    })),
+    ghost: toneVariant((tone) => ({
       backgroundColor: t.color.system.transparent,
-      color: tintText(t, m, 'primary'),
+      color: tone.toneText,
       hover: {
         backgroundColor: t.color.system.base[50],
       },
-    },
-    link: {
+    })),
+    link: toneVariant((tone) => ({
       backgroundColor: t.color.system.transparent,
-      color: tintText(t, m, 'primary'),
+      color: tone.toneText,
       paddingTop: 0,
       paddingBottom: 0,
       paddingLeft: 0,
@@ -93,7 +98,7 @@ const Button = el
       hover: {
         backgroundColor: t.color.system.transparent,
       },
-    },
+    })),
   }))
 
 export default Button
