@@ -148,6 +148,12 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
 
 ---
 
+### [FIXED, 2026-11] A polymorphic text slot whose server content is elements was rebuilt, not adopted
+
+(#4385): `{parts(row)}` lowers to a text binding over one `' '` placeholder, but renders `['a ', <Code/>, ' b']` as elements. The verifier refused the element (sole slot) and `_textSlot` cleared the range (trailing/mid), so every such cell was re-created at hydration, identical and unreported (pyreon.dev's comparison table, every row). Park a placeholder where the content is and let the binding adopt it through the slot hydrator; sweep placeholders a raw `.data` binding cannot adopt, or the server's nodes stay beside the written text. Code: `runtime-dom/src/parked-text.ts`, `hydration-plan.ts` (`soleTexts`), `template.ts` (`_textSlot`, `buildTpl`). Tests: `compiled-text-slot-adopts-elements.test.tsx` + `.browser`.
+
+---
+
 ### [FIXED, 2026-11] Cloning a `<template>`'s content and handing the clone to user code before insertion
 
 (#4390): a clone of `template.content` belongs to the template's INERT document (`ownerDocument.defaultView === null`) until it is inserted, and compiled refs run on the clone. `@pyreon/virtual`'s TanStack core read the window from the scroll element's document at ref time, found `null` and never observed scroll. happy-dom gives template content the page document, so only a browser shows it. Import the clone SOURCE into the page document once at parse (`document.importNode`), never per clone. Same PR: a compiled ref never received `null` on unmount (the bind returned no disposer for it); refs now lower to `_ref`, which returns one.
