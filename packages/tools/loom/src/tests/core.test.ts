@@ -26,6 +26,7 @@ beforeAll(() => {
   root = makeFixtureWorkspace()
   report = buildReport(root)
 })
+
 afterAll(() => rmSync(root, { recursive: true, force: true }))
 
 describe('workspace scan', () => {
@@ -82,6 +83,48 @@ describe('graph analysis', () => {
       }
     }
     expect(analyzeGraph(model).cycles).toHaveLength(0)
+  })
+
+  it('a cycle does not inflate depth: its members share one level (#4391)', () => {
+    // app → forms → validation → i18n → forms (the cycle), i18n → ui → core.
+    // The longest acyclic chain from app is app, {forms, validation, i18n},
+    // ui, core: core sits at depth 3. Relaxing THROUGH the cycle walked it
+    // until the V-1 cap and pushed core to 13 on the issue's 14-package repo.
+    const pkg = (name: string, deps: string[]) => ({
+      name,
+      version: '1.0.0',
+      dir: name,
+      private: false,
+      deps: deps.map((d) => ({ name: d, range: 'workspace:*', field: 'dependencies' as const })),
+    })
+    const model = scanWorkspace(root)
+    model.packages = [
+      pkg('app', ['forms']),
+      pkg('forms', ['validation']),
+      pkg('validation', ['i18n']),
+      pkg('i18n', ['forms', 'ui']),
+      pkg('ui', ['core']),
+      pkg('core', []),
+      ...Array.from({ length: 8 }, (_, i) => pkg(`leaf${i}`, ['core'])),
+    ]
+    const { depths, cycles } = analyzeGraph(model)
+    expect(cycles).toHaveLength(1)
+    expect(depths.app).toBe(0)
+    expect([depths.forms, depths.validation, depths.i18n]).toEqual([1, 1, 1])
+    expect(depths.ui).toBe(2)
+    // A leaf that depends on core directly is an entry; core is still below ui.
+    expect(depths.core).toBe(3)
+    expect(depths.leaf0).toBe(0)
+  })
+
+  it('a fully cyclic workspace sits at depth 0', () => {
+    const model = scanWorkspace(root)
+    const dep = (name: string) => ({ name, range: 'workspace:*', field: 'dependencies' as const })
+    model.packages = [
+      { name: 'a', version: '1.0.0', dir: 'a', private: false, deps: [dep('b')] },
+      { name: 'b', version: '1.0.0', dir: 'b', private: false, deps: [dep('a')] },
+    ]
+    expect(analyzeGraph(model).depths).toEqual({ a: 0, b: 0 })
   })
 })
 

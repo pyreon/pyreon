@@ -82,6 +82,15 @@ Because it is a real CRDT, `connectYDocs` also converges **offline** edits on
 reconnect (it exchanges state vectors first) — two docs that diverged while
 disconnected merge with no lost op.
 
+`connectYDocs` is **pairwise**: it forwards edits made on either of its two docs
+and never re-forwards an update a doc received over a link. A chain
+`connectYDocs(device1, relay)` + `connectYDocs(relay, device2)` therefore does
+NOT carry live edits from `device1` to `device2`; they stop at `relay` (and only
+reach `device2` when that second link connects again and merges state). For
+more than two documents, link every pair directly, or use a transport whose hub
+relays: `connectViaWebSocket` against `createSyncServer`, or
+`connectViaBroadcastChannel` for same-origin tabs.
+
 For same-origin **tabs / windows**, `connectViaBroadcastChannel(doc, room)` syncs
 over `BroadcastChannel` (zero network, the canonical local-first multi-tab
 transport) with a minimal state-vector handshake so a late-joining tab converges,

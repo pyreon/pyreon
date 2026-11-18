@@ -43,6 +43,7 @@ function swiftFlowInitLabels(source: string): string[] {
     if (depth === 0 && ch === ',') { labels.push(segment); segment = ''; continue }
     segment += ch
   }
+
   return labels.map((seg) => seg.trim().split(':')[0]!.trim()).filter((label) => label.length > 0)
 }
 
@@ -260,7 +261,7 @@ describe('createFlow — Swift lowering', { timeout: 30_000 }, () => {
 
   it('nodes()/edges()/viewport()/zoom() drop parens (property reads)', () => {
     expect(r.code).toContain('flow.nodes.count')
-    expect(r.code).toContain('"\\(flow.zoom)"')
+    expect(r.code).toContain('"\\(pyreonOptionalText(flow.zoom, ""))"')
   })
 
   it('addNode()/selectNode() stay methods — and addNode\'s object-literal argument resolves to a REAL PyreonFlowNode, not a synthesized lookalike struct', () => {
@@ -347,7 +348,7 @@ describe('createFlow — Kotlin lowering', { timeout: 30_000 }, () => {
     // Kotlin-emitted array read uses applies here too (it is `flow.nodes`
     // that drops the parens; `.length` is unrelated to this rewrite).
     expect(r.code).toContain('flow.nodes.length')
-    expect(r.code).toContain('${flow.zoom}')
+    expect(r.code).toContain('${pyreonOptionalText(flow.zoom, "")}')
     expect(r.code).toMatch(/flow\.addNode\(PyreonFlowNode\(id = "3", position = PyreonXYPosition\(100\.0, 200\.0\), data = __Obj\d+\(label = "New"\)\)\)/)
     expect(r.code).toContain('flow.selectNode("1")')
   })

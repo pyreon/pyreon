@@ -55,7 +55,7 @@ describe('Tier-2 — @pyreon/store Strategy-B emit v1 (Gap 4 PR-4)', () => {
     const result = transform(src, { target: 'swift' })
     // The Button onPress body is the write site.
     expect(result.code).toMatch(
-      /PyreonStore_counter\.shared\.count = PyreonStore_counter\.shared\.count \+ 1/,
+      /PyreonStore_counter\.shared\.count = pyreonAdd\(PyreonStore_counter\.shared\.count, 1\)/,
     )
   })
 
@@ -80,7 +80,7 @@ describe('Tier-2 — @pyreon/store Strategy-B emit v1 (Gap 4 PR-4)', () => {
     const src = readFileSync(FIXTURE, 'utf8')
     const result = transform(src, { target: 'kotlin' })
     expect(result.code).toMatch(
-      /PyreonStore_counter\.count = PyreonStore_counter\.count \+ 1/,
+      /PyreonStore_counter\.count = pyreonAdd\(PyreonStore_counter\.count, 1L\)/,
     )
   })
 

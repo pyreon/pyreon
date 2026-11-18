@@ -2,6 +2,7 @@ import { onUnmount } from '@pyreon/core'
 import { state, effect } from '@pyreon/core/plain'
 import { useRoute } from '@pyreon/router'
 import { toast } from '@pyreon/toast'
+import { fetchBoards } from '../api/boards'
 import { Backlog } from '../components/Backlog'
 import { CardPanel } from '../components/CardPanel'
 import { Column } from '../components/Column'
@@ -44,7 +45,9 @@ export function BoardRoute() {
     currentId = id
     current?.dispose()
     openCardId = null
-    current = createBoardDoc(id, RELAY)
+    // The list's name for this board seeds its synced title ('' for an ad-hoc room).
+    const name = fetchBoards().then((all) => all.find((b) => b.id === id)?.title ?? '')
+    current = createBoardDoc(id, RELAY, name)
     board = current
   })
   onUnmount(() => current?.dispose())

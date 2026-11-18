@@ -36,10 +36,8 @@ function readRaw(): string {
 }
 
 export default function DemoStorage() {
-  // `.remove()` resets a signal and releases it (#4381), so a consumer that keeps
-  // using the key takes a fresh one afterwards: keep the current signal in a slot.
-  const theme = signal(useStorage<Theme>(THEME_KEY, 'light'))
-  const note = signal(useStorage(NOTE_KEY, ''))
+  const theme = useStorage<Theme>(THEME_KEY, 'light')
+  const note = useStorage(NOTE_KEY, '')
   const mounted = signal(false)
   const raw = signal('(empty, defaults in use)')
   const external = signal('Open this page in a second tab to see cross-tab sync.')
@@ -56,21 +54,18 @@ export default function DemoStorage() {
     }
   })
 
-  const currentTheme = (): Theme => (mounted() ? theme()() : 'light')
+  const currentTheme = (): Theme => (mounted() ? theme() : 'light')
   const setTheme = (v: Theme) => {
-    theme.peek().set(v)
+    theme.set(v)
     refresh()
   }
   const removeTheme = () => {
-    theme.peek().remove()
-    theme.set(useStorage<Theme>(THEME_KEY, 'light'))
+    theme.remove()
     refresh()
   }
   const removeBoth = () => {
     removeStorage(THEME_KEY)
     removeStorage(NOTE_KEY)
-    theme.set(useStorage<Theme>(THEME_KEY, 'light'))
-    note.set(useStorage(NOTE_KEY, ''))
     refresh()
   }
 
@@ -84,9 +79,9 @@ export default function DemoStorage() {
             id="storage-note"
             placeholder="Type something, then reload"
             autoComplete="off"
-            value={() => (mounted() ? note()() : '')}
+            value={() => (mounted() ? note() : '')}
             onInput={(e: Event) => {
-              note.peek().set((e.target as HTMLInputElement).value)
+              note.set((e.target as HTMLInputElement).value)
               refresh()
             }}
           />

@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest'
 import { transform } from './first-party-plugins'
 
 const SCHEMA = `import { s } from '@pyreon/validate'
-const userSchema = s.object({ name: s.string().min(2), age: s.number(), active: s.boolean() })
+const userSchema = s.object({ name: s.string().min(2), age: s.number().int(), score: s.number(), active: s.boolean() })
 export function App() { return null }`
 
 describe('@pyreon/validate `s` DSL lowering', () => {
@@ -26,7 +26,9 @@ describe('@pyreon/validate `s` DSL lowering', () => {
     const { code } = transform(SCHEMA, { target: 'swift' })
     expect(code).toContain('struct PyreonZodSchema_userSchema: Codable')
     expect(code).toContain('var name: String')
+    // `.int()` is the only spelling that promises a whole value; a bare `number()` accepts `1.5`, as on the web.
     expect(code).toContain('var age: Int')
+    expect(code).toContain('var score: Double')
     expect(code).toContain('var active: Bool')
     // The constraint must survive the modifier chain, not just the base type.
     expect(code).toContain('min length 2')
@@ -38,6 +40,7 @@ describe('@pyreon/validate `s` DSL lowering', () => {
     expect(code).toContain('data class PyreonZodSchema_userSchema')
     expect(code).toContain('var name: String')
     expect(code).toContain('var age: Long')
+    expect(code).toContain('var score: Double')
     expect(code).toContain('var active: Boolean')
     expect(code).toContain('min length 2')
     expect(code).toContain('fun parse(')
@@ -81,7 +84,7 @@ export function App() { const ok = s.string().parse('x'); return null }`
   it('produces the same field set on both targets (1:1)', () => {
     const swift = transform(SCHEMA, { target: 'swift' }).code
     const kotlin = transform(SCHEMA, { target: 'kotlin' }).code
-    for (const field of ['name', 'age', 'active']) {
+    for (const field of ['name', 'age', 'score', 'active']) {
       expect(swift).toContain(`var ${field}:`)
       expect(kotlin).toContain(`var ${field}:`)
     }

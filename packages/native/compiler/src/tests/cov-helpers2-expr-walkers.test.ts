@@ -47,7 +47,7 @@ describe('substituteIdentifier — one arm per ExprIR kind (value-const inlining
     const out = sw(constApp(`  const a = computed(() => K + n())
   const b = computed(() => K > n())
   const c = computed(() => K > 0 && n() > K)`, '<Text>{a()}{b()}{c()}</Text>'))
-    expect(out).toContain('var a: Int { (2) + n }')
+    expect(out).toContain('var a: Int { pyreonAdd((2), n) }')
     expect(out).toContain('var b: Bool { (2) > n }')
     // BOTH sides of the `&&` were walked — the right operand's `K` inlined too.
     expect(out).toContain('(2) > 0 && n > (2)')
@@ -67,7 +67,7 @@ describe('substituteIdentifier — one arm per ExprIR kind (value-const inlining
     const out = sw(constApp(`  const a = computed(() => xs()[K])
   const b = computed(() => s().length + K)`, '<Text>{a()}{b()}</Text>'))
     expect(out).toContain('xs[(2)]')
-    expect(out).toContain('s.utf16.count + (2)')
+    expect(out).toContain('pyreonAdd(s.utf16.count, (2))')
   })
 
   it('call walks the callee AND every argument', () => {
@@ -103,7 +103,7 @@ describe('substituteIdentifier — one arm per ExprIR kind (value-const inlining
 
   it('arrow walks the body (a non-shadowing param)', () => {
     const out = sw(constApp(`  const a = computed(() => xs().map((v) => v * K))`, '<Text>{a().length}</Text>'))
-    expect(out).toContain('v * (2)')
+    expect(out).toContain('pyreonMul(v, (2))')
   })
 
   it('new-collection walks the seed', () => {
@@ -113,7 +113,7 @@ describe('substituteIdentifier — one arm per ExprIR kind (value-const inlining
 
   it('literal / identifier arms: an unrelated identifier is returned unchanged', () => {
     const out = sw(constApp(`  const a = computed(() => n() + 1)`, '<Text>{a()}</Text>'))
-    expect(out).toContain('n + 1')
+    expect(out).toContain('pyreonAdd(n, 1)')
   })
 
   it('KOTLIN keeps the const and does NOT inline — a deliberate per-target split', () => {
@@ -124,7 +124,7 @@ describe('substituteIdentifier — one arm per ExprIR kind (value-const inlining
     const out = kt(constApp(`  const a = computed(() => K + n())
   const b = computed(() => \`k=\${K}\`)`, '<Text>{a()}{b()}</Text>'))
     expect(out).toContain('val K = 2')
-    expect(out).toContain('K + n')
+    expect(out).toContain('pyreonAdd(K, n)')
     expect(out).not.toContain('(2) + n')
   })
 

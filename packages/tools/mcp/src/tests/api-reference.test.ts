@@ -414,7 +414,6 @@ describe('api-reference', () => {
   describe('@pyreon/runtime-dom — manifest-driven region', () => {
     const EXPECTED_RUNTIME_DOM_KEYS = [
       'runtime-dom/mount',
-      'runtime-dom/render',
       'runtime-dom/hydrateRoot',
       'runtime-dom/Transition',
       'runtime-dom/TransitionGroup',

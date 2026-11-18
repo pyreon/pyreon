@@ -47,7 +47,7 @@ describe('assignment statements', () => {
     for (const tgt of ['swift', 'kotlin'] as const) {
       const out = transform(app(body), { target: tgt }).code
       expect(out).toContain('var t = 0') // reassigned → mutable
-      expect(out).toContain('t = t + x') // the assignment lowered
+      expect(out).toContain('t = pyreonAdd(t, x)') // the assignment lowered
       expect(out).not.toContain('AssignmentExpression')
     }
   })
@@ -64,8 +64,8 @@ describe('assignment statements', () => {
   }`
     for (const tgt of ['swift', 'kotlin'] as const) {
       const out = transform(app(body), { target: tgt }).code
-      expect(out).toContain('s += 10')
-      expect(out).toContain('s *= 3')
+      expect(out).toMatch(/s = pyreonAdd\(s, 10L?\)/)
+      expect(out).toMatch(/s = pyreonMul\(s, 3L?\)/)
       expect(out).toContain('s %= 5')
     }
   })

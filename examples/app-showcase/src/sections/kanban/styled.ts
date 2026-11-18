@@ -1,6 +1,6 @@
 import { styled } from '@pyreon/styler'
 import { Card, Paragraph, Title } from '@pyreon/ui-components'
-import { t } from '../../styles'
+import { PHONE_MAX, t } from '../../styles'
 import type { Card as KanbanCard } from './data/types'
 
 /**
@@ -18,6 +18,10 @@ import type { Card as KanbanCard } from './data/types'
 export const KanbanPage = styled('div')`
   padding: 24px 32px 48px;
   max-width: 1200px;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    padding: 24px 16px 48px;
+  }
 `
 
 export const Header = styled('header')`
@@ -26,6 +30,10 @@ export const Header = styled('header')`
   justify-content: space-between;
   margin-bottom: 24px;
   gap: 16px;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    flex-wrap: wrap;
+  }
 `
 
 export const HeaderText = styled('div')`
@@ -47,6 +55,10 @@ export const Toolbar = styled('div')`
   display: flex;
   align-items: center;
   gap: 8px;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    flex-wrap: wrap;
+  }
 `
 
 export const ToolbarGroup = styled('div')`
@@ -101,6 +113,10 @@ export const BoardGrid = styled('div')`
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
   align-items: start;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
 `
 
 export const ColumnRoot = styled('div')<{ $dropTarget?: boolean }>`

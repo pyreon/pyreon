@@ -19,15 +19,21 @@ export const DashboardPage = styled('div')`
 
 export const Header = styled('header')`
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 24px;
   gap: 16px;
 `
 
+/* `min-width: 0` lets the text shrink and wrap. A flex item's default
+   minimum is its longest word, which pushed the role toggle past a phone's
+   edge wherever the font runs wider (seen on Linux CI, not on a Mac). */
 export const HeaderText = styled('div')`
   display: flex;
   flex-direction: column;
+  flex: 1 1 12rem;
+  min-width: 0;
 `
 
 export const DashboardTitle = Title.attrs({ tag: 'h1' }).theme(() => ({
@@ -42,6 +48,7 @@ export const DashboardLead = Paragraph.theme((theme) => ({
 // ─── Permission toggle ────────────────────────────────────────────────
 export const RoleToggle = styled('div')`
   display: flex;
+  flex-shrink: 0;
   gap: 4px;
   padding: 4px;
   background: ${(p) => t(p).color.system.base[100]};

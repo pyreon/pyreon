@@ -1776,7 +1776,7 @@ const diags = detectPyreonPatterns(
   "A.tsx",
 )
 console.log(diags[0]?.code) // "props-destructured-body"`,
-    notes: 'AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 23 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `props-early-return-conditional`, `props-object-copy`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`, `accessor-uncalled-in-template`, `accessor-uncalled-in-condition`, `charts-legacy-import`, `plain-mode`, `for-stale-item-field`). The detector arm behind the MCP `validate` tool and `pyreon doctor --check-pyreon-patterns`. Diagnostics report `fixable: true` ONLY for the 3 codes `migratePyreonCode` can auto-fix mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild` — kept in sync via `AUTO_FIXABLE_PYREON_CODES`); every other code is `fixable: false`. See also: hasPyreonPatterns, detectReactPatterns, analyzeReactivity.',
+    notes: 'AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 23 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `props-early-return-conditional`, `props-object-copy`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`, `accessor-uncalled-in-template`, `accessor-uncalled-in-condition`, `charts-legacy-import`, `plain-mode`, `for-stale-item-field`). The detector arm behind the MCP `validate` tool and `pyreon doctor` `pyreon-patterns` gate. Diagnostics report `fixable: true` ONLY for the 3 codes `migratePyreonCode` can auto-fix mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild` — kept in sync via `AUTO_FIXABLE_PYREON_CODES`); every other code is `fixable: false`. See also: hasPyreonPatterns, detectReactPatterns, analyzeReactivity.',
     mistakes: `- Reading \`fixable\` as sometimes-true — it is an enforced \`false\` invariant for every Pyreon code; wiring auto-fix UX off it applies nothing
 - Expecting it to flag \`const { x } = props.nested\` or an \`onMount\`-scoped destructure — \`props-destructured-body\` is deliberately scoped to the canonical \`= props\` body-scope shape for zero false positives`,
   },
@@ -1795,7 +1795,7 @@ if (hasPyreonPatterns(src)) report(detectPyreonPatterns(src, file))`,
 
 const r = auditTestEnvironment(process.cwd())
 console.log(formatTestAudit(r, { minRisk: "high" }))`,
-    notes: 'Scans every `*.test.ts(x)` under `startDir` for the mock-vnode anti-pattern (constructing `{ type, props, children }` literals or a `vnode()` helper instead of going through real `h()`), the bug class behind PR #197’s silent metadata drop. Classifies each file HIGH / MEDIUM / LOW. Powers the MCP `audit_test_environment` tool and `pyreon doctor --audit-tests`. See also: formatTestAudit, auditIslands, auditSsg.',
+    notes: 'Scans every `*.test.ts(x)` under `startDir` for the mock-vnode anti-pattern (constructing `{ type, props, children }` literals or a `vnode()` helper instead of going through real `h()`), the bug class behind PR #197’s silent metadata drop. Classifies each file HIGH / MEDIUM / LOW. Powers the MCP `audit_test_environment` tool and `pyreon doctor --only audit-tests`. See also: formatTestAudit, auditIslands, auditSsg.',
   },
 
   'compiler/formatTestAudit': {
@@ -1812,7 +1812,7 @@ console.log(formatTestAudit(auditTestEnvironment("."), { minRisk: "medium" }))`,
 
 const r = auditIslands(process.cwd())
 for (const f of r.findings) console.log(f.code, f.location.relPath)`,
-    notes: 'Project-wide syntactic island audit — five cross-file detectors (`duplicate-name`, `never-with-registry-entry`, `registry-mismatch`, `nested-island`, `dead-island`). Uses the nearest package.json or packages/ workspace marker, so a consumer app inside a monorepo stays isolated; an explicit workspace audit retains packages/ + examples/ coverage. Includes author src/lib modules and omits package build output. No type-check pass / module resolution. Powers `pyreon doctor --check-islands` + MCP `audit_islands`. See also: formatIslandAudit, auditTestEnvironment, auditSsg.',
+    notes: 'Project-wide syntactic island audit — five cross-file detectors (`duplicate-name`, `never-with-registry-entry`, `registry-mismatch`, `nested-island`, `dead-island`). Uses the nearest package.json or packages/ workspace marker, so a consumer app inside a monorepo stays isolated; an explicit workspace audit retains packages/ + examples/ coverage. Includes author src/lib modules and omits package build output. No type-check pass / module resolution. Powers `pyreon doctor --only islands-audit` + MCP `audit_islands`. See also: formatIslandAudit, auditTestEnvironment, auditSsg.',
   },
 
   'compiler/formatIslandAudit': {
@@ -1829,7 +1829,7 @@ console.log(formatIslandAudit(auditIslands(".")))`,
 
 const r = auditSsg(process.cwd())
 for (const f of r.findings) console.log(f.code, f.location.relPath)`,
-    notes: 'Project-wide syntactic SSG audit — three detectors: `404-outside-layout-dir` (`_404.tsx` not co-located with `_layout.tsx` → no layout chrome), `dynamic-route-missing-get-static-paths` (`[id].tsx` without `getStaticPaths` → silently skipped by SSG auto-detect), `non-literal-revalidate-export` (`export const revalidate = TTL` → dropped from the build-time ISR manifest). API routes (`src/routes/api/` or no `export default`) are skipped. Powers `pyreon doctor --check-ssg`. See also: formatSsgAudit, auditIslands.',
+    notes: 'Project-wide syntactic SSG audit — three detectors: `404-outside-layout-dir` (`_404.tsx` not co-located with `_layout.tsx` → no layout chrome), `dynamic-route-missing-get-static-paths` (`[id].tsx` without `getStaticPaths` → silently skipped by SSG auto-detect), `non-literal-revalidate-export` (`export const revalidate = TTL` → dropped from the build-time ISR manifest). API routes (`src/routes/api/` or no `export default`) are skipped. Powers `pyreon doctor --only ssg-audit`. See also: formatSsgAudit, auditIslands.',
   },
 
   'compiler/formatSsgAudit': {
@@ -1999,7 +1999,7 @@ router.replace("/login")
 router.back()
 router.forward()
 router.go(-2)`,
-    notes: `Access the router instance for programmatic navigation. Returns the \`Router\` object with \`push()\`, \`replace()\`, \`back()\`, \`forward()\`, \`go()\`. \`await router.push()\` resolves after the View Transition \`updateCallbackDone\` (DOM commit is complete, new route state is live), NOT after the animation finishes — and resolves WITH a \`NavigationResult\`: \`'committed'\` (route changed), \`'cancelled'\` (a blocker/guard/middleware refused), or \`'superseded'\` (a newer navigation won). Browser Back/Forward routes through the same pipeline (guards, blockers, loaders, afterEach, scroll, \`meta.title\`). See also: useRoute, RouterLink, createRouter.`,
+    notes: `Access the router instance for programmatic navigation. Returns the \`Router\` object with \`push()\`, \`replace()\`, \`back()\`, \`forward()\`, \`go()\`. \`await router.push()\` resolves after the View Transition \`updateCallbackDone\` (DOM commit is complete, new route state is live), NOT after the animation finishes — and resolves WITH a \`NavigationResult\`: \`'committed'\` (route changed), \`'cancelled'\` (a blocker/guard/middleware refused), or \`'superseded'\` (a newer navigation won). Browser Back/Forward routes through the same pipeline (guards, blockers, loaders, afterEach, scroll, \`meta.title\`). On iOS and Android \`useRouter()\` lowers to a handle with \`push(path)\`, \`replace(path)\`, \`back()\` and \`forward()\` (string paths, no awaited result); the other members have no native counterpart and fail the native build. See also: useRoute, RouterLink, createRouter.`,
     mistakes: `- \`router.push("/path")\` at the top level of a component body — this is synchronous imperative navigation during render, causing an infinite loop. Wrap in \`onMount\`, event handler, or \`effect\`
 - \`await router.push("/path")\` expecting animation completion — \`push\` resolves after DOM commit (\`updateCallbackDone\`), not after View Transition animation finishes. Use the returned transition object's \`.finished\` if you need to wait for animation
 - Calling \`useRouter()\` outside a \`<RouterProvider>\` — throws because no router context exists`,
@@ -2618,19 +2618,11 @@ const dispose = mount(<App />, document.getElementById("app")!)
 
 // To unmount:
 dispose()`,
-    notes: 'Mount a VNode tree into a container element. Clears the container first, sets up event delegation, then mounts the given child. Returns an `unmount` function that removes everything and disposes all effects. In dev mode, throws if `container` is null/undefined with an actionable error message. See also: hydrateRoot, render.',
+    notes: 'Mount a VNode tree into a container element. Clears the container first, sets up event delegation, then mounts the given child. Returns an `unmount` function that removes everything and disposes all effects. In dev mode, throws if `container` is null/undefined with an actionable error message. See also: hydrateRoot.',
     mistakes: `- \`createRoot(container).render(<App />)\` — Pyreon uses a single function call: \`mount(<App />, container)\`
 - \`mount(<App />, document.getElementById("app"))\` without \`!\` — getElementById returns \`Element | null\`. The runtime throws in dev if null, but TypeScript needs the assertion
 - \`mount(<App />, document.body)\` — mounting directly to body is discouraged; use a dedicated container element
 - Forgetting to call the returned unmount function — leaks event listeners and effects. Store and call it on cleanup`,
-  },
-
-  'runtime-dom/render': {
-    signature: 'render(root: VNodeChild, container: Element): () => void',
-    example: `import { render } from "@pyreon/runtime-dom"
-render(<App />, document.getElementById("app")!)`,
-    notes: 'Alias for `mount`. Provided for API familiarity — both names point to the same function. See also: mount.',
-    mistakes: `- \`render\` is an EXACT alias for \`mount\` (same function reference) — its foot-guns are \`mount\`'s (null container throws; props are reactive-vs-static per the compiler; call the returned function to unmount + dispose effects). Do NOT expect any \`render\`-specific behavior`,
   },
 
   'runtime-dom/hydrateRoot': {
@@ -5295,7 +5287,8 @@ const status = signal<'idle' | 'unlocked' | 'denied'>('idle')
     notes: 'A biometric authentication gate — Face ID / Touch ID (iOS `LAContext`), BiometricPrompt (Android), feature-detected on the web. The FIRST @pyreon/hooks service with an ASYNC RESULT: `authenticate(reason)` returns a `Promise<boolean>` you `await`. Under PMTC this lowers to the native biometric APIs, and the async-await lowering wraps the awaiting handler in a Swift `Task { … }` / Kotlin `pyreonAsyncScope.launch { … }`. WEB v1: a real assertion is a WebAuthn ceremony (needs a server-issued challenge + a registered credential), so the web `authenticate` resolves `false` and `isAvailable` feature-detects `window.PublicKeyCredential` — native is the primary target. See also: useNotifications, useShare.',
     mistakes: `- Calling \`bio.authenticate(...)\` WITHOUT \`await\` inside a plain (non-async) handler — it returns a \`Promise<boolean>\`, not a boolean, so the gate never applies. Mark the handler \`async\` and \`await\` the result (PMTC wraps that async handler in a native \`Task\`/coroutine scope).
 - Expecting the WEB \`authenticate\` to actually authenticate — v1 resolves \`false\` (a real WebAuthn assertion needs a server challenge + a registered credential, out of scope for a client-only hook). For web biometric auth drive the WebAuthn API with your backend; the native paths (Face ID / Touch ID / BiometricPrompt) are the real gate.
-- Treating a \`false\` result as an error — \`authenticate\` never rejects; failure, cancellation, and an unavailable / unenrolled device all resolve \`false\`. Branch on the boolean, do not wrap it in \`try/catch\`.`,
+- Treating a \`false\` result as an error — \`authenticate\` never rejects; failure, cancellation, and an unavailable / unenrolled device all resolve \`false\`. Branch on the boolean, do not wrap it in \`try/catch\`.
+- An Android host that is a plain \`ComponentActivity\`, or a build without \`androidx.biometric:biometric\` — BiometricPrompt needs a \`FragmentActivity\` (the scaffold's \`MainActivity\` is one) and the library on the classpath. Without the activity, \`authenticate\` resolves \`false\` and logs why; without the library the app does not compile.`,
   },
 
   'hooks/useGeolocation': {
@@ -5392,7 +5385,9 @@ const open = db.find('notes', 'done', 'false')`,
     notes: 'A tiny, SYNCHRONOUS document store, shared across web / iOS / Android, mirroring the native `PyreonDatabase` container (file-backed on both native targets — records survive relaunch). The API is synchronous because the native one is (`get` returns `PyreonRecord?`, not a promise) — that rules out IndexedDB for the web half, so `localStorage` backs it: synchronous, persistent across reloads, ~5 MB per origin. This is for small app-state record sets, NOT a real database: `find` is a linear scan (as it is natively), and every `PyreonRecord.fields` value is a STRING on every target (`[String: String]` natively) — serialize numbers/dates yourself. See also: useSecureStorage, useStorage (in @pyreon/storage).',
     mistakes: `- Storing a number or boolean directly in \`fields\` — every value is a STRING on every target (native \`[String: String]\`); serialize (\`String(n)\`) on write, parse on read
 - Expecting \`get\`/\`find\` to be async — the whole point is a SYNCHRONOUS API matching the native container; no \`await\`, no promise
-- Using this for a real dataset — it is \`localStorage\`-backed (~5 MB/origin) with a linear-scan \`find\`, meant for small app-state record sets, not a production database`,
+- Using this for a real dataset — it is \`localStorage\`-backed (~5 MB/origin) with a linear-scan \`find\`, meant for small app-state record sets, not a production database
+- Reading a field with a dot (\`rec.fields.title\`) in code that also compiles to native — \`fields\` is a dictionary there (\`[String: String]\` / \`Map<String, String>\`), so the dot read does not compile on iOS or Android. Read it by key with a fallback: \`rec.fields['title'] ?? ''\`
+- Expecting \`delete\` to return true for an id that is not there — it returns whether a record was removed, on every target; there is no separate \`update\`, because \`insert\` with an existing id replaces that record`,
   },
 
   'hooks/useCrashReporter': {
@@ -5404,10 +5399,11 @@ onMount(() => crash.start())
 </Show>
 // Elsewhere, in a top-level catch:
 crash.recordError(String(err))`,
-    notes: `The web half of the cross-platform crash-reporter container (\`PyreonCrashReporter\` natively). Captures via \`window.onerror\` + \`unhandledrejection\`, persists to \`localStorage\` (the durable, cross-reload analogue of the native file/Keychain backing), and rehydrates the previous session's report on \`start()\`. \`start()\` installs the global-error hooks and is auto-called by the native emit on mount; on web call it once yourself (typically in \`onMount\`) — or skip it entirely if you only use \`recordError\` for manual capture. \`breadcrumb(message)\` maintains a ring buffer capped at 32 entries, attached to the next report. The vendor transport (actually uploading a report) is app-wired via \`setCrashTransport\`, mirroring the native transport registry — the hook itself only captures + persists, never fakes an upload. SSR-safe: every read returns the empty state and \`start()\` no-ops without \`window\`. See also: useOnline.`,
+    notes: `The web half of the cross-platform crash-reporter container (\`PyreonCrashReporter\` natively). Captures via \`window.onerror\` + \`unhandledrejection\`, persists to \`localStorage\` (the durable, cross-reload analogue of the native file/Keychain backing), and rehydrates the previous session's report on \`start()\`. \`start()\` installs the global-error hooks and is auto-called by the native emit on mount; on web call it once yourself (typically in \`onMount\`) — or skip it entirely if you only use \`recordError\` for manual capture. \`breadcrumb(message)\` maintains a ring buffer capped at 32 entries, attached to the next report. The vendor transport (actually uploading a report) is app-wired via \`setCrashTransport\`, mirroring the native transport registry — the hook itself only captures + persists, never fakes an upload. SSR-safe: every read returns the empty state and \`start()\` no-ops without \`window\`. \`lastCrash\` is a JSON-encoded \`CrashReport\` with the same shape on every platform (\`platform\`, \`message\`, \`stack\`, \`breadcrumbs\`, \`timestamp\`); native reports add the build identity a release stack needs to be read: \`build\` (\`appId\`, \`version\`, \`buildNumber\`, and on Android \`mappingId\` — the R8 map id the minified frames name), and on iOS \`image\` (the executable's LC_UUID, load address, arch) plus the raw return \`addresses\`. \`pyreon-native symbolicate <report.json> --symbols=symbols\` uses those to pick the release build's retained R8 \`mapping.txt\` / dSYM and run \`retrace\` / \`atos\`. See also: useOnline, setCrashTransport.`,
     mistakes: `- Forgetting to call \`start()\` on web — unlike native (auto-called by the emit), the web half needs an explicit \`start()\` call (typically in \`onMount\`) to install the global-error hooks and rehydrate
 - Expecting \`recordError\`/\`breadcrumb\` to upload anywhere — capture + persist is all this hook does; wire \`setCrashTransport\` separately to actually send reports
-- Calling \`clear()\` before the user has seen \`hadCrash\` — it wipes both the in-memory state AND the persisted entry, so the banner cannot be shown again after a reload`,
+- Calling \`clear()\` before the user has seen \`hadCrash\` — it wipes both the in-memory state AND the persisted entry, so the banner cannot be shown again after a reload
+- Reading a native release stack as-is — R8 / an iOS release binary make it unreadable by design; keep the release build's \`symbols/\` directory and run \`pyreon-native symbolicate\` on the report (a mapping/dSYM from another build is refused, not used)`,
   },
 
   'hooks/useAppState': {
@@ -5781,12 +5777,13 @@ guard('/account') // true | { redirect: '/login?returnTo=%2Faccount' }`,
     example: `const theme = useStorage('theme', 'light')
 theme()           // 'light'
 theme.set('dark') // persists + cross-tab sync
-theme.remove()    // delete from storage, reset to default`,
-    notes: 'Create a reactive signal backed by localStorage. Reads the stored value on creation (falling back to `defaultValue` if absent or on SSR), writes on every `.set()`, and syncs across browser tabs via `storage` events. Returns `StorageSignal<T>` which extends `Signal<T>` with `.remove()` to delete the key and reset to default. Serialization defaults to JSON; provide custom `serializer`/`deserializer` in options for non-JSON types. See also: useSessionStorage, useCookie, useIndexedDB, createStorage.',
+theme.remove()    // delete from storage, reset to default; theme stays bound
+theme.set('dark') // persists again`,
+    notes: 'Create a reactive signal backed by localStorage. Reads the stored value on creation (falling back to `defaultValue` if absent or on SSR), writes on every `.set()`, and syncs across browser tabs via `storage` events. Returns `StorageSignal<T>` which extends `Signal<T>` with `.remove()` to delete the key and reset to default; the binding stays live after `.remove()` (later writes persist, other tabs still update it) and is released when the calling component (owner scope) is disposed and no other consumer holds the key. Serialization defaults to JSON; provide custom `serializer`/`deserializer` in options for non-JSON types. See also: useSessionStorage, useCookie, useIndexedDB, createStorage.',
     mistakes: `- Expecting cross-tab sync with \`useSessionStorage\` — only \`useStorage\` (localStorage) fires storage events across tabs
 - Storing non-serializable values (functions, class instances) without custom \`serializer\`/\`deserializer\` — JSON.stringify drops them silently
 - Reading \`.remove()\` return value — it returns void, not the removed value
-- Treating \`.remove()\` as a per-consumer teardown that leaves other consumers alone — it always clears the STORED VALUE (that is what you asked for) and resets the shared signal. What is refcounted is the registry entry, so \`removeStorage\`/\`clearStorage\` keep seeing a key while any consumer still holds it.
+- Treating \`.remove()\` as a teardown — it deletes the STORED VALUE and resets the shared signal, and the binding stays alive: a later \`.set()\` persists again and cross-tab updates keep arriving. There is no need to call \`useStorage\` again after \`.remove()\`. The binding is released by its lifecycle: each call holds a refcount that the calling component's (owner scope's) disposal releases, and the entry plus the cross-tab listener go away with the last holder. A call made outside any component holds the key for the page.
 - Evolving the stored shape without \`version\` + \`migrate\` — a user with the OLD shape on disk loads it as-is (or \`onError\`/default if it no longer parses). Bump \`version\` and provide \`migrate\` to transform the old shape; a pre-versioning value is migrated as version \`0\`.
 - Assuming a \`.set()\` that exceeds quota throws — the in-memory signal always updates; the \`setItem\` failure is routed to \`onError\` (a notification) instead of throwing. Provide \`onError\` to surface quota problems to the user.`,
   },
@@ -7901,7 +7898,7 @@ get_changelog({ package: '@pyreon/router', since: '0.12.0' })`,
 
 audit_islands({ json: true })
 // → machine-readable { root, findings: [...], summary: {...} }`,
-    notes: `Project-wide cross-file islands audit (PR C of the islands DX roadmap). Walks \`packages/\` + \`examples/\` and runs five detectors that auto-registry can\\'t reach (manual \`hydrateIslands({...})\` for non-Vite consumers / library authors) AND PR G\\'s per-file \`island-never-with-registry-entry\` detector misses (it only catches the same-file shape): \`duplicate-name\`, \`never-with-registry-entry\`, \`registry-mismatch\`, \`nested-island\`, \`dead-island\`. Each finding ships with file path + line/column + actionable fix suggestion. Companion to the \`pyreon doctor --check-islands\` CLI flag (same scanner, same five detectors). Run before merging an island PR; CI gate by piping \`--json\` and grepping \`findings.length > 0\`. See also: audit_test_environment, get_anti_patterns.`,
+    notes: `Project-wide cross-file islands audit (PR C of the islands DX roadmap). Walks \`packages/\` + \`examples/\` and runs five detectors that auto-registry can\\'t reach (manual \`hydrateIslands({...})\` for non-Vite consumers / library authors) AND PR G\\'s per-file \`island-never-with-registry-entry\` detector misses (it only catches the same-file shape): \`duplicate-name\`, \`never-with-registry-entry\`, \`registry-mismatch\`, \`nested-island\`, \`dead-island\`. Each finding ships with file path + line/column + actionable fix suggestion. Companion to the \`pyreon doctor --only islands-audit\` CLI flag (same scanner, same five detectors). Run before merging an island PR; CI gate by piping \`--json\` and grepping \`findings.length > 0\`. See also: audit_test_environment, get_anti_patterns.`,
     mistakes: `- Running outside a project that uses islands — the audit walks \`packages/\` + \`examples/\` from \`process.cwd()\`. A project with zero \`island()\` declarations returns an empty findings array (not an error).
 - Treating \`registry-mismatch\` as a hard error in auto-registry apps — it only fires for MANUAL \`hydrateIslands({ ... })\` calls. Apps using \`hydrateIslandsAuto()\` (Vite plugin default) won't see this finding even if they'd be vulnerable to the same drift in a manual setup.
 - Expecting \`dead-island\` to catch every never-used island — the detector tracks static imports of the loader path. Dynamic-import chains routed through a registry indirection may not be statically traceable; verify by source-grepping the loader path before deleting.
@@ -9147,23 +9144,11 @@ const tree = extractDocNode(() => (
 ))
 await download(tree, 'report.pdf')
 await download(tree, 'report.docx')`,
-    notes: `18 primitives: \`DocDocument\`, \`DocPage\`, \`DocSection\`, \`DocRow\`, \`DocColumn\`, \`DocHeading\`, \`DocText\`, \`DocLink\`, \`DocImage\`, \`DocTable\`, \`DocList\`, \`DocListItem\`, \`DocCode\`, \`DocDivider\`, \`DocSpacer\`, \`DocButton\`, \`DocQuote\`, \`DocPageBreak\`. Same component tree renders in browser AND exports — primitives carry \`_documentType\` statics that \`extractDocumentTree\` (from \`@pyreon/connector-document\`) walks to produce a \`DocNode\` for \`@pyreon/document\`\\'s \`render()\` to consume. \`DocDocument\`\\'s \`title\` / \`author\` / \`subject\` accept either a string OR a \`() => string\` accessor; function values are stored in \`_documentProps\` and resolved at extraction time so reactive metadata works without \`const initial = get()\` workarounds. PR #197 also fixed a latent bug in \`extractDocumentTree\`: it now CALLS rocketstyle component functions to read post-attrs \`_documentProps\`, where before it only looked at the JSX vnode\\'s props directly — every primitive\\'s metadata was silently dropped during export until that fix landed. See also: createDocumentExport.`,
+    notes: `18 primitives: \`DocDocument\`, \`DocPage\`, \`DocSection\`, \`DocRow\`, \`DocColumn\`, \`DocHeading\`, \`DocText\`, \`DocLink\`, \`DocImage\`, \`DocTable\`, \`DocList\`, \`DocListItem\`, \`DocCode\`, \`DocDivider\`, \`DocSpacer\`, \`DocButton\`, \`DocQuote\`, \`DocPageBreak\`. Same component tree renders in browser AND exports — primitives carry \`_documentType\` statics that \`extractDocumentTree\` (from \`@pyreon/connector-document\`) walks to produce a \`DocNode\` for \`@pyreon/document\`\\'s \`render()\` to consume. \`DocDocument\`\\'s \`title\` / \`author\` / \`subject\` accept either a string OR a \`() => string\` accessor; function values are stored in \`_documentProps\` and resolved at extraction time so reactive metadata works without \`const initial = get()\` workarounds. PR #197 also fixed a latent bug in \`extractDocumentTree\`: it now CALLS rocketstyle component functions to read post-attrs \`_documentProps\`, where before it only looked at the JSX vnode\\'s props directly — every primitive\\'s metadata was silently dropped during export until that fix landed. See also: DocumentPreview.`,
     mistakes: `- Calling \`props.title()\` at the top of a template body to "fix" reactivity — components run ONCE at mount, so this captures the initial value forever. Pass the accessor through to DocDocument as-is: \`<DocDocument title={() => get().name}>\`
 - DocRow direction: layout props (direction, gap) go in \`.attrs()\` not \`.theme()\`. Element accepts \`'inline'\` | \`'rows'\` | \`'reverseInline'\` | \`'reverseRows'\` — \`'row'\` is NOT valid
 - For text children reactivity, pass a signal accessor and read inside body: \`<DocText>{store.field()}</DocText>\`
-- Don't declare runtime-filled fields (\`tag\`, \`_documentProps\`) in the rocketstyle \`.attrs<P>()\` generic — they leak as required JSX props
-- Using \`createDocumentExport(...).getDocNode()\` in new code — prefer \`extractDocNode(fn)\` which is one call instead of two. \`createDocumentExport\` is kept for backward compat`,
-  },
-
-  'document-primitives/createDocumentExport': {
-    signature: 'createDocumentExport(templateFn: () => VNode): { getDocNode(): DocNode }',
-    example: `// Two-step form (kept for backward compat). New code should
-// prefer the one-step extractDocNode helper.
-import { createDocumentExport } from '@pyreon/document-primitives'
-
-const helper = createDocumentExport(() => <Resume name="Aisha" />)
-const tree = helper.getDocNode()`,
-    notes: 'Wrapper around `extractDocNode`. The wrapper-object form is kept for callers that want to pass the helper around (e.g. to wrapper components that take a `DocumentExport` instance). New code should use `extractDocNode(templateFn)` which is one call instead of two. See also: extractDocNode.',
+- Don't declare runtime-filled fields (\`tag\`, \`_documentProps\`) in the rocketstyle \`.attrs<P>()\` generic — they leak as required JSX props`,
   },
 
   'document-primitives/DocDocument': {
@@ -9387,8 +9372,8 @@ const tree = helper.getDocNode()`,
     <DocText>Preview me at real A4 dimensions.</DocText>
   </DocPage>
 </DocumentPreview>`,
-    notes: `A paper-sized PREVIEW wrapper for a document-primitive tree — it renders the Doc* subtree as centered white pages (gray backdrop + drop-shadow) at real paper dimensions so you can preview a document in the browser before exporting. \`size\` picks the page format (\`'A4'\` default, plus A3/A5/letter/legal); \`showPageBreaks\` toggles page-break visualization. It carries the \`_documentType: 'document'\` static, so it ALSO serves as the extraction root — \`extractDocumentTree\` treats it like a \`DocDocument\`, so you typically do not nest a separate \`<DocDocument>\` inside it. See also: DocDocument, createDocumentExport.`,
-    mistakes: `- Treating it as export-only chrome — it is a BROWSER preview wrapper (paper backdrop + page sizing); the actual export runs through \`createDocumentExport\` / \`extractDocumentTree\`.
+    notes: `A paper-sized PREVIEW wrapper for a document-primitive tree — it renders the Doc* subtree as centered white pages (gray backdrop + drop-shadow) at real paper dimensions so you can preview a document in the browser before exporting. \`size\` picks the page format (\`'A4'\` default, plus A3/A5/letter/legal); \`showPageBreaks\` toggles page-break visualization. It carries the \`_documentType: 'document'\` static, so it ALSO serves as the extraction root — \`extractDocumentTree\` treats it like a \`DocDocument\`, so you typically do not nest a separate \`<DocDocument>\` inside it. See also: DocDocument, extractDocNode.`,
+    mistakes: `- Treating it as export-only chrome — it is a BROWSER preview wrapper (paper backdrop + page sizing); the actual export runs through \`extractDocNode\` / \`extractDocumentTree\`.
 - Nesting a \`<DocDocument>\` inside it — \`DocumentPreview\` already carries \`_documentType: 'document'\` and is the extraction root, so wrapping it in another document root double-nests the document node.
 - Passing a size it does not define — only 'A4' / 'A3' / 'A5' / 'letter' / 'legal' map to paper dimensions; an unknown size falls back to the base with no page sizing.`,
   },
@@ -10604,7 +10589,7 @@ export default defineConfig({
 - Setting \`type: "pages"\` for a collection that should not be routed (e.g. blog posts queried via \`getCollection\` for an index page). Use \`type: "data"\`.
 - Expecting a scheduled (\`publishDate\` in the future) entry on a static site to appear AT its date — it appears with the first build on or after that date; schedule or trigger a deploy
 - Leaving \`unpublished\` at the default \`'runtime'\` on an SSG site — the draft/scheduled entry is still bundled (its text ships in a public JS chunk) and \`getEntry\` resolves it; use \`'omit'\`
-- Schema mismatches that surface only at build time. Use \`pyreon doctor --check-content\` (PR 9) at edit time, or watch the dev server output during \`bun run dev\`.`,
+- Schema mismatches that surface only at build time. Use \`pyreon doctor --only content-audit\` (PR 9) at edit time, or watch the dev server output during \`bun run dev\`.`,
   },
 
   'zero-content/defineComponents': {
@@ -11033,7 +11018,8 @@ sa.set(5) // sb() becomes 5`,
     signature: '(a: FakeCrdtDoc, b: FakeCrdtDoc) => { disconnect(): void }',
     example: `const link = connectFakeDocs(a, b)
 link.disconnect() // simulate offline`,
-    notes: 'Link two in-memory FakeCrdtDocs so a write to one propagates to the other — the test analog of a transport. Returns a `disconnect()` to simulate going offline. See also: FakeCrdtAdapter.',
+    notes: 'Link two in-memory FakeCrdtDocs so a write to one propagates to the other — the test analog of a transport. Returns a `disconnect()` to simulate going offline. See also: FakeCrdtAdapter, connectYDocs.',
+    mistakes: '- Chaining links (`connectFakeDocs(a, b)` + `connectFakeDocs(b, c)`) to model three peers — the link is pairwise and never re-forwards a commit it received, so `a`’s writes stop at `b`. Link every pair directly',
   },
 
   'sync/pyreonAdapter': {
@@ -11180,6 +11166,23 @@ p.others()  // PeerState<{ name: string }>[] — other people here`,
   {p => <Avatar name={p.state.name} />}
 </For>`,
     notes: `One peer's presence entry: its awareness \`clientId\` (use it as the \`<For>\` key), its published \`state\`, and \`isLocal\` (whether it is you). \`others()\` returns only \`isLocal: false\` entries; \`states()\` returns all. See also: syncedAwareness, SyncedAwareness.`,
+  },
+
+  'sync/connectYDocs': {
+    signature: '(a: YjsCrdtDoc, b: YjsCrdtDoc) => { disconnect(): void }',
+    example: `import { createYjsDoc, connectYDocs } from "@pyreon/sync/yjs"
+
+const a = createYjsDoc()
+const b = createYjsDoc()
+const link = connectYDocs(a, b) // state merge both ways + live link
+link.disconnect() // offline; connecting again re-merges
+
+// Three docs: link every pair, never a chain.
+const c = createYjsDoc()
+connectYDocs(a, c)
+connectYDocs(b, c)`,
+    notes: 'Link two Yjs docs in memory — the real-Yjs analog of `connectFakeDocs`, for tests and single-page demos. On connect it exchanges full state both ways, so docs that diverged while disconnected converge with no lost edit; afterwards it forwards each LOCAL update live. It is PAIRWISE: an update a doc received over a link (any `REMOTE_ORIGIN` update) is never forwarded again, so a chain `device1 ↔ relay ↔ device2` built from two calls does not carry live edits from `device1` to `device2` (they converge only when the second link connects again). For more than two docs, link every pair directly (a full mesh), or use a relaying transport: `connectViaWebSocket` against `createSyncServer`, or `connectViaBroadcastChannel` for same-origin tabs. See also: connectFakeDocs, connectViaWebSocket, connectViaBroadcastChannel, createYjsDoc.',
+    mistakes: '- Building a relay out of two calls (`connectYDocs(device1, relay)` + `connectYDocs(relay, device2)`) — the middle doc does not re-forward what it received, so live edits stop at `relay`. Link `device1` and `device2` directly, or use `connectViaWebSocket` + `createSyncServer`, whose server relays',
   },
 
   'sync/connectViaBroadcastChannel': {

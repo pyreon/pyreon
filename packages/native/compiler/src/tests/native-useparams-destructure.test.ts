@@ -29,13 +29,13 @@ describe('Phase 3 — useParams() destructuring emit', () => {
     // @Environment(\.pyreonRouter) injected since the destructure reads it.
     expect(out).toContain('@Environment(\\.pyreonRouter)')
     // `id` is now declared — the JSX read resolves.
-    expect(out).toContain('Text(verbatim: "\\(id)")')
+    expect(out).toContain('Text(verbatim: "\\(pyreonOptionalText(id, ""))")')
   })
 
   it('Kotlin: each field is a val reading the params map', () => {
     const out = transform(SRC, { target: 'kotlin' }).code
     expect(out).toContain('val id = useParams()["id"] ?: ""')
-    expect(out).toContain('Text(text = "${id}")')
+    expect(out).toContain('Text(text = "${pyreonOptionalText(id, "")}")')
   })
 
   it('aliasing { id: userId } binds the local to the param key', () => {

@@ -234,7 +234,7 @@ interface DetectContext {
    * sits in `src/entry-client.ts`. The static detector covers the common
    * "all in one file" case (which catches the bug while users are first
    * learning the API); the cross-file case is the territory of `pyreon
-   * doctor --check-islands`.
+   * doctor --only islands-audit`.
    */
   neverIslandNames: Set<string>
 }
@@ -1594,7 +1594,7 @@ function detectAsUnknownAsVNodeChild(ctx: DetectContext, node: ts.AsExpression):
  *
  * The same rules apply on the registry side (`detectIslandNeverWithRegistry`):
  * unrecognized keys won't match. Both halves are syntactic — a semantic
- * cross-package audit lives in `pyreon doctor --check-islands`.
+ * cross-package audit lives in `pyreon doctor --only islands-audit`.
  */
 function collectNeverIslandNames(sf: ts.SourceFile): Set<string> {
   const names = new Set<string>()

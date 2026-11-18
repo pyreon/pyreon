@@ -197,6 +197,10 @@ export const fakeAdapter: CrdtAdapter = new FakeCrdtAdapter()
  * the guard matters more (re-broadcasting a received binary update is real wire
  * traffic), so it is kept and exercised here.
  *
+ * Pairwise only, like `connectYDocs`: a commit this doc RECEIVED is never
+ * forwarded over another link, so a chain `a ↔ b ↔ c` does not carry `a`'s
+ * writes to `c`. Link every pair directly to model more than two peers.
+ *
  * Returns `{ disconnect, forwards }`. `disconnect` stops relaying (the offline
  * case); `forwards()` is the count of transactions actually relayed. This fake
  * does not buffer-and-replay on reconnect — that is a real-CRDT property, tested

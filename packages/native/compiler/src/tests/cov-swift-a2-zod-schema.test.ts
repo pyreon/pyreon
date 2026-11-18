@@ -22,6 +22,7 @@ const swift = (src: string) => transform(src, { target: 'swift' }).code
 const V = `import { s } from '@pyreon/validate'
 import { Stack, Text } from '@pyreon/primitives'
 `
+
 const APP = `
 export function App() {
   const r = Sch.safeParse({ flag: true })
@@ -126,7 +127,7 @@ export const Sch = zodSchema(z.object({
 }))`,
     )
     expect(out).toContain('var a: String = ""')
-    expect(out).toContain('var b: Int = 0')
+    expect(out).toContain('var b: Double = 0')
     expect(out).toContain('var c: Bool = false')
     expect(out).toContain('var d: [String] = []')
     expect(out).toContain('var e: [Int] = []')
