@@ -6,7 +6,7 @@
 import type { Props, VNodeChild } from '@pyreon/core'
 import { h, mergeProps, splitProps } from '@pyreon/core'
 import { formatBytes, formatCompact, formatCurrency, formatDate, formatDateTime, formatNumber, formatPercent, formatTime, formatUnit } from './index'
-import { lastWasPlain, lastWasTimeOnly, toMillis } from './input'
+import { exactTitle, machineValue, partsToChildren } from './component-helpers'
 import type {
   BytesOptions,
   CompactOptions,
@@ -33,34 +33,6 @@ export type DateFormatter = Formatter<DateInput, 'date' | 'time' | 'dateTime'> |
 
 /** Wrap a part of the formatted date: `{ month: (text) => <b>{text}</b> }`. Keys are the `Intl` part types. */
 export type DateParts = { [T in Intl.DateTimeFormatPartTypes]?: (text: string) => VNodeChild }
-
-/**
- * The formatted parts as children: parts without a wrapper are joined into ONE
- * string (adjacent text nodes would merge in server HTML and break hydration),
- * wrapped parts become the wrapper's output.
- */
-export function partsToChildren(
-  parts: readonly { type: string; value: string }[],
-  wrap: { readonly [type: string]: ((text: string) => VNodeChild) | undefined },
-): VNodeChild[] {
-  const out: VNodeChild[] = []
-  let text = ''
-  for (const part of parts) {
-    const wrapper = Object.hasOwn(wrap, part.type) ? wrap[part.type] : undefined
-    if (wrapper === undefined) {
-      text += part.value
-      continue
-    }
-    if (text !== '') {
-      out.push(text)
-      text = ''
-    }
-    out.push(wrapper(part.value))
-  }
-  if (text !== '') out.push(text)
-
-  return out
-}
 
 export interface NumProps extends Props {
   /** A built formatter (`currencyFormatter('EUR')`, `bytesFormatter()`, ...). Replaces `kind`, `currency`, `unit`, `options`, `locale` and `fallback`: configure those on the formatter. */
@@ -168,38 +140,6 @@ export interface DateTimeProps extends Props {
 function styleFields(kind: DateTimeProps['kind'], format: DateStylePreset | undefined): DateTimeOptions | undefined {
   if (format === undefined) return undefined
   return kind === 'date' ? { dateStyle: format } : kind === 'time' ? { timeStyle: format } : { dateStyle: format, timeStyle: format }
-}
-
-/**
- * The unambiguous reading of a value for a `title`: the full date, and for an instant the time with its zone name
- * (a calendar value has no zone, so none is shown). `undefined` for a missing or invalid value.
- */
-export function exactTitle(
-  value: DateInput,
-  format: DateTimeProps['format'],
-  locale: string | undefined,
-  timeZone: string | undefined,
-): string | undefined {
-  const ms = toMillis(value)
-  if (ms !== ms) return undefined
-  const plain = lastWasPlain()
-  const timeOnly = lastWasTimeOnly()
-  // A built formatter carries its own locale and zone.
-  const own = typeof format === 'function' ? format.options : undefined
-  const o = { locale: locale ?? own?.locale, timeZone: timeZone ?? own?.timeZone }
-  if (timeOnly) return formatTime(value, { ...o, timeStyle: 'medium' })
-  if (plain) {
-    return typeof value === 'string' && value.length === 10 ? formatDate(value, { ...o, dateStyle: 'full' }) : formatDateTime(value, { ...o, dateStyle: 'full', timeStyle: 'medium' })
-  }
-
-  return formatDateTime(value, { ...o, dateStyle: 'full', timeStyle: 'long' })
-}
-
-/** The machine-readable `datetime` attribute value, or `undefined` for a missing or invalid value. */
-export function machineValue(value: DateInput): string | undefined {
-  const ms = toMillis(value)
-  if (ms !== ms) return undefined
-  return lastWasPlain() && typeof value === 'string' ? value : new Date(ms).toISOString()
 }
 
 /**
