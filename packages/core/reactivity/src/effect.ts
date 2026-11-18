@@ -7,7 +7,7 @@ import {
   _rdRegisterBinding,
   _rdTagHandle,
 } from './reactive-devtools'
-import { getCurrentScope } from './scope'
+import { _currentScope } from './scope'
 import {
   exactDeps,
   getInnerEffectCollector,
@@ -235,7 +235,7 @@ export function effect(
 
   // Capture the scope at creation time — remains correct during future re-runs
   // even after setCurrentScope(null) has been called post-setup.
-  const scope = getCurrentScope()
+  const scope = _currentScope()
   // Capture the context owner + hook at SETUP; re-runs restore it before
   // invoking fn (see the module header).
   const cap = _c.s
@@ -413,7 +413,7 @@ function registerEffectHere(e: Effect): void {
     }
   } else {
     // Otherwise auto-register with the active EffectScope (if any)
-    getCurrentScope()?.add(e)
+    _currentScope()?.add(e)
   }
 }
 
@@ -735,7 +735,7 @@ function renderEffectImpl(fn: () => void, owned: boolean): () => void {
     if (_of.d > 0) _of.l.push(dispose)
   } else {
     // Auto-register with scope so render effects are disposed during teardown
-    getCurrentScope()?.add(dispose)
+    _currentScope()?.add(dispose)
   }
 
   return dispose

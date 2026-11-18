@@ -362,3 +362,15 @@ A render binding built inside a compiled template is owned by the cleanup it is 
 `return () => { __d0(); __d1() }` lives in the bind arrow's context, whose parent is the component function's context, so the template kept the component's `props` and every captured local alive while mounted. Combine disposers through a module-level helper (`_dispose2/3/4/N`) so the closure's context holds only the disposers. The same applies to any long-lived closure a compiled bind returns. Lock: `template-cleanup-context.test.tsx` (real V8 GC; dev builds keep the bind function reachable through devtools creation-site records by design, so the test mounts under `NODE_ENV=production`).
 
 ---
+
+### A `provide()` after the component's children chained past it
+
+A component becomes its children's context owner only on its first `provide()`. A child mounted earlier in the body, or any `provide()` in `onMount` or an effect, leaves those children resolving through the parent's owner, so they never see the value; a `provide()` in an effect re-run writes onto whatever owner the effect restored (the parent's). Dev warns on the late claim. A layer whose component BODY runs later inside a render effect (svelte-compat's wrapper) must claim ownership in its setup (`_claimContextOwner()`), or `setContext` leaks to siblings. Lock: `lazy-context-owner.test.tsx`, svelte-compat's "sibling never sees it" spec.
+
+---
+
+### Reading the current scope through the public getter in framework code
+
+`getCurrentScope()` PINS the scope (a component scope empty at the end of its mount is otherwise dropped, and a holder could register into it later). Framework code that only registers synchronously reads `_currentScope()`; anything that keeps the scope to register later (solid-compat `getOwner`, a hook that `scope.add`s on a later tick) must use the public getter. Dev must not pin where production does not: the reactive devtools owner reader uses `_currentScope`. Lock: `lazy-context-owner.test.tsx` ("a scope handed out through getCurrentScope() is kept").
+
+---

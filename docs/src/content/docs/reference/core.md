@@ -403,7 +403,7 @@ function App() {
 **Common mistakes**
 
 - `provide(ctx, "static")` for a value that changes — use `createReactiveContext` + `provide(ctx, () => signal())`
-- Calling `provide` inside `onMount` or `effect` — it must run during synchronous component setup
+- Calling `provide` inside `onMount` or `effect`, or after the component already mounted a child — a component becomes its children's context owner on its FIRST `provide()`, so children mounted before it resolve through the parent and never see the value (dev warns). Call it before building or returning children
 - Providing the same context twice in one component — the second `provide` shadows the first for that subtree
 
 **See also:** `createContext` · `createReactiveContext` · `useContext`

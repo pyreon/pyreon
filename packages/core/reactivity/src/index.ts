@@ -104,6 +104,14 @@ export {
 } from './linked'
 export { createResource, type Resource } from './resource'
 export {
+  _claimContextOwner,
+  _currentScope,
+  _devMarkOwnerAlias,
+  _devResolveOwnerAlias,
+  _getLateOwner,
+  _getPendingOwner,
+  _setLateOwner,
+  _setPendingOwner,
   EffectScope,
   effectScope,
   getContextOwner,

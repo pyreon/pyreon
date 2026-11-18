@@ -3,9 +3,10 @@
  *
  * Values flow down the component tree without prop-drilling.
  *
- * **Client: owner-based.** Each mounted component's `EffectScope` doubles as a
- * context OWNER, linked to its parent owner by the renderer (so the owner chain
- * mirrors the component tree). `provide()` writes onto the current owner;
+ * **Client: owner-based.** A mounted component's `EffectScope` becomes a
+ * context OWNER on its first `provide()` (lazily — a component that provides
+ * nothing never is one), linked to the nearest providing ancestor, so the owner
+ * chain mirrors the tree of PROVIDERS. `provide()` writes onto the current owner;
  * `useContext()` walks the owner chain. Context dies with the scope on unmount —
  * there is no global stack to grow, no frame to orphan, and deferred boundaries
  * (`<Show>`, `<For>`) just capture the owner reference and restore it when they
@@ -21,7 +22,14 @@
  * `useContext()` falls back to the stack whenever no owner is active.
  */
 
-import { type EffectScope, getContextOwner, runWithContextOwner, setSnapshotCapture } from '@pyreon/reactivity'
+import {
+  _claimContextOwner,
+  _devResolveOwnerAlias,
+  type EffectScope,
+  getContextOwner,
+  runWithContextOwner,
+  setSnapshotCapture,
+} from '@pyreon/reactivity'
 
 export interface Context<T> {
   readonly id: symbol
@@ -163,6 +171,7 @@ export function useContext<T>(context: Context<T>): T {
       return frame.get(context.id) as T
     }
   }
+
   return context.defaultValue
 }
 
@@ -181,14 +190,36 @@ export function useContext<T>(context: Context<T>): T {
  * 2. **No JSX shim is intentional** — the explicit `provide()` call makes the
  *    setup-time semantics visible.
  *
+ * Call it BEFORE the component builds or returns its children. A component
+ * becomes its children's context owner on its first `provide()`; a child
+ * mounted before that (a child component built earlier in the body, or
+ * anything when `provide()` runs in `onMount`) already chained to the parent's
+ * owner and will not see the value. Dev mode warns on such a late call.
+ *
  * @example
  * const ThemeProvider = ({ children }: { children: VNodeChild }) => {
  *   provide(ThemeContext, { color: "blue" })
  *   return children
  * }
  */
+/** Dev: warn about a `provide()` that ran after the component's children chained past it. */
+function warnLateProvide(api: string): void {
+  // oxlint-disable-next-line no-console
+  console.warn(
+    `[Pyreon] ${api}() ran after this component had already mounted children (late in the setup body, ` +
+      'after a child component, or in onMount). Those children resolve context through the ' +
+      "parent's owner and will not see this value. Call it before the component builds or returns its children.",
+  )
+}
+
 export function provide<T>(context: Context<T>, value: T): void {
-  const owner = getContextOwner()
+  // Become the context owner on first provide (see the lazy-owner note in
+  // @pyreon/reactivity's scope.ts).
+  const claim = _claimContextOwner()
+  if (process.env.NODE_ENV !== 'production' && claim === 2) warnLateProvide('provide')
+  // Dev: skip a devtools owner alias, so the write lands where production's does.
+  const owner =
+    process.env.NODE_ENV !== 'production' ? _devResolveOwnerAlias(getContextOwner()) : getContextOwner()
   if (owner !== null) {
     // Client: store on the component's owner scope. No cleanup needed — the
     // context dies when the scope is disposed at unmount.
@@ -205,7 +236,10 @@ export function provide<T>(context: Context<T>, value: T): void {
  * Used by the renderer when it encounters a `<Provider>` component.
  */
 export function withContext<T>(context: Context<T>, value: T, fn: () => void): void {
-  const owner = getContextOwner()
+  const claim = _claimContextOwner()
+  if (process.env.NODE_ENV !== 'production' && claim === 2) warnLateProvide('withContext')
+  const owner =
+    process.env.NODE_ENV !== 'production' ? _devResolveOwnerAlias(getContextOwner()) : getContextOwner()
   if (owner !== null) {
     owner.provideContext(context.id, value)
     fn()

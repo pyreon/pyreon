@@ -7,7 +7,7 @@ import {
   _rdNodeId,
   _rdOpenBindingFrame,
   getContextOwner,
-  getCurrentScope,
+  _currentScope,
   _renderBind,
 } from '@pyreon/reactivity'
 import { _tagTextBinding } from './binding-registry'
@@ -152,7 +152,7 @@ function _isMountablePart(x: unknown): boolean {
  * a mount made inside a template bind hands its cleanup to the scope.
  */
 function ownByScope(cleanup: () => void): void {
-  if (cleanup !== noop && cleanup !== _noopDispose) getCurrentScope()?.add(cleanup)
+  if (cleanup !== noop && cleanup !== _noopDispose) _currentScope()?.add(cleanup)
 }
 
 export function _setChild(node: Element, value: unknown): void {

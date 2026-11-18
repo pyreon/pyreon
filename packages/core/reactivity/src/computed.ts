@@ -13,7 +13,7 @@ import {
 } from './batch'
 import { _errorHandler } from './effect'
 import { _captureCallerLocation, _rdDirect, _rdRecordFire, _rdRegister } from './reactive-devtools'
-import { getCurrentScope } from './scope'
+import { _currentScope } from './scope'
 import {
   removeSubscriber,
   exactDeps,
@@ -604,6 +604,6 @@ function createComputed<T>(
       injectedLoc ?? _captureCallerLocation(2),
     )
 
-  getCurrentScope()?.add({ dispose: read.dispose })
+  _currentScope()?.add({ dispose: read.dispose })
   return read as unknown as Computed<T>
 }
