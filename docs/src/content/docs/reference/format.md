@@ -13,7 +13,7 @@ Experimental. Plain functions over `Intl` for the things every app formats: numb
 
 **Tier:** Web-only — the browser package; the native story is stated below
 
-formats through the platform's Intl; the PMTC native lowering of these calls is planned (the native compiler already lowers a core set of Intl number/date formatting) but not shipped, so native apps import it behind a &lt;Web&gt; branch or format on the web side today
+formats through the platform's Intl; the PMTC native lowering of these calls is planned (the native compiler already lowers a core set of Intl number/date formatting) but not shipped, so native apps render it behind the Web escape hatch or format on the web side today
 
 See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multiplatform libraries](/docs/multiplatform-libraries) for every package's tier.
 
