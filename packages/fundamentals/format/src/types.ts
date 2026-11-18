@@ -200,7 +200,7 @@ export interface ParseOptions {
   locale?: string | undefined
 }
 
-// ─── Bound formatter ─────────────────────────────────────────────────────────
+// ─── createFormatter ─────────────────────────────────────────────────────────
 
 /** Base of {@link createFormatter}. */
 export interface FormatterBase {
@@ -208,8 +208,8 @@ export interface FormatterBase {
   timeZone?: string | undefined
 }
 
-/** The non-reactive formatter set returned by {@link createFormatter}. */
-export interface Formatter {
+/** The non-reactive set of one-off functions returned by {@link createFormatter}. */
+export interface BoundFormatters {
   number(value: NumberInput, options?: NumberOptions | NumberPreset): string
   currency(value: NumberInput, currency: string, options?: CurrencyOptions | CurrencyPreset): string
   percent(value: NumberInput, options?: PercentOptions): string
@@ -231,51 +231,94 @@ export interface Formatter {
   parseDate(text: string | null | undefined): PlainDateString | null
 }
 
+// ─── Formatters as values ────────────────────────────────────────────────────
+
+/** `Intl.ListFormat` parts. */
+export interface ListPart {
+  type: 'element' | 'literal'
+  value: string
+}
+
+/** Options of {@link relativeFormatter}: the elapsed time is measured against `base`. */
+export interface RelativeFormatterOptions extends Intl.RelativeTimeFormatOptions, BaseOptions {
+  /**
+   * What the target is relative to: a date-like value, or an accessor for one
+   * (`() => now()` makes the formatter track a clock signal). Required.
+   */
+  base: DateInput | (() => DateInput)
+}
+
+/**
+ * Per formatter kind: the input it takes, the spec (options) it is built from,
+ * the part type of `parts()` (`never` when the platform has no parts for it)
+ * and whether it has `range()`.
+ */
+export interface KindInfo {
+  number: { in: NumberInput; spec: NumberOptions; part: Intl.NumberFormatPart; range: true }
+  currency: { in: NumberInput; spec: CurrencyOptions & { currency: string }; part: Intl.NumberFormatPart; range: true }
+  percent: { in: NumberInput; spec: PercentOptions; part: Intl.NumberFormatPart; range: true }
+  compact: { in: NumberInput; spec: CompactOptions; part: Intl.NumberFormatPart; range: true }
+  unit: { in: NumberInput; spec: UnitOptions & { unit: Unit }; part: Intl.NumberFormatPart; range: true }
+  bytes: { in: NumberInput; spec: BytesOptions; part: Intl.NumberFormatPart; range: false }
+  duration: { in: DurationInput; spec: DurationOptions; part: never; range: false }
+  list: { in: ListInput; spec: ListOptions; part: ListPart; range: false }
+  date: { in: DateInput; spec: DateTimeOptions; part: Intl.DateTimeFormatPart; range: true }
+  time: { in: DateInput; spec: DateTimeOptions; part: Intl.DateTimeFormatPart; range: true }
+  dateTime: { in: DateInput; spec: DateTimeOptions; part: Intl.DateTimeFormatPart; range: true }
+  relative: { in: DateInput; spec: RelativeFormatterOptions; part: never; range: false }
+}
+
+/** The formatter kinds: one per factory. */
+export type FormatterKind = keyof KindInfo
+
+/** The `Formatter` surface every kind has. */
+export interface FormatterMembers<In, K extends FormatterKind> {
+  (value: In): string
+  /** Derive a formatter with options merged over this one's. The original is untouched; `undefined` unsets an option. */
+  with(overrides: Partial<KindInfo[K]['spec']>): Formatter<In, K>
+  /** Adapt the input: `price.from((cents: number) => cents / 100)`. */
+  from<Src>(map: (source: Src) => In): Formatter<Src, K>
+  /** What nullish or invalid input renders as. */
+  fallback(text: string): Formatter<In, K>
+  /** The resolved spec, for debugging and for components. */
+  readonly options: Readonly<KindInfo[K]['spec']>
+}
+
+/**
+ * A reusable formatter: a plain `(value) => string` that follows the active
+ * locale (and zone) like the free functions, so it drops into any formatting
+ * callback (`Array#map`, a chart axis, a table column). `parts` exists where
+ * the platform has parts, `range` where `Intl` has `formatRange`.
+ */
+export type Formatter<In, K extends FormatterKind = FormatterKind> = FormatterMembers<In, K> &
+  ([KindInfo[K]['part']] extends [never] ? unknown : { parts(value: In): readonly KindInfo[K]['part'][] }) &
+  (KindInfo[K]['range'] extends true ? { range(start: In, end: In): string } : unknown)
+
+/** The input type a formatter of kind `K` takes. */
+export type FormatterInput<K extends FormatterKind> = KindInfo[K]['in']
+
 // ─── defineFormats ───────────────────────────────────────────────────────────
 
 /** A named, reusable format: the `kind` picks the formatter, the rest are that formatter's options. */
-export type FormatSpec =
-  | ({ kind: 'number' } & NumberOptions)
-  | ({ kind: 'currency'; currency: string } & CurrencyOptions)
-  | ({ kind: 'percent' } & PercentOptions)
-  | ({ kind: 'compact' } & CompactOptions)
-  | ({ kind: 'unit'; unit: Unit } & UnitOptions)
-  | ({ kind: 'bytes' } & BytesOptions)
-  | ({ kind: 'duration' } & DurationOptions)
-  | ({ kind: 'list' } & ListOptions)
-  | ({ kind: 'date' } & DateTimeOptions)
-  | ({ kind: 'time' } & DateTimeOptions)
-  | ({ kind: 'dateTime' } & DateTimeOptions)
-  | ({ kind: 'relative'; unit: RelativeUnit } & RelativeOptions)
+export type FormatSpec = { [K in FormatterKind]: { kind: K } & KindInfo[K]['spec'] }[FormatterKind]
 
-/** The value a format of each `kind` takes. */
-export interface FormatValueByKind {
-  number: NumberInput
-  currency: NumberInput
-  percent: NumberInput
-  compact: NumberInput
-  unit: NumberInput
-  bytes: NumberInput
-  duration: DurationInput
-  list: ListInput
-  date: DateInput
-  time: DateInput
-  dateTime: DateInput
-  relative: number
-}
+type AnySpecOptions = { [K in FormatterKind]: Partial<KindInfo[K]['spec']> }[FormatterKind]
 
-/** Per-call overrides of a format: any option of its `kind` (including `currency` / `unit`). */
-export type FormatOverrides<K extends FormatSpec['kind']> = Partial<
-  Omit<Extract<FormatSpec, { kind: K }>, 'kind'>
->
+/** A format that extends another one of the same set by name: its kind is inherited and its options merge over the base's. */
+export type ExtendedSpec<Name extends string> = { extends: Name } & AnySpecOptions
 
-/** A named format: `(value, overrides?) => string`. */
-export type NamedFormat<K extends FormatSpec['kind']> = (
-  value: FormatValueByKind[K],
-  overrides?: FormatOverrides<K>,
-) => string
+/** The kind a spec resolves to, following `extends` (a cycle or an unknown name resolves to `never`). */
+export type SpecKind<T, K extends keyof T, Depth extends unknown[] = []> = Depth['length'] extends 8
+  ? never
+  : T[K] extends { kind: infer Kd extends FormatterKind }
+    ? Kd
+    : T[K] extends { extends: infer N }
+      ? N extends keyof T
+        ? SpecKind<T, N, [...Depth, 0]>
+        : never
+      : never
 
-/** What {@link defineFormats} returns: one function per declared key. */
-export type DefinedFormats<T extends Record<string, FormatSpec>> = {
-  readonly [K in keyof T]: NamedFormat<T[K]['kind']>
+/** What {@link defineFormats} returns: one real `Formatter` per declared key. */
+export type DefinedFormats<T> = {
+  readonly [K in keyof T]: Formatter<KindInfo[SpecKind<T, K>]['in'], SpecKind<T, K>>
 }

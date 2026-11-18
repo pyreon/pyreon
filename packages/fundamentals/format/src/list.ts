@@ -1,4 +1,5 @@
 /** `formatList`: `Intl.ListFormat` with a cached formatter. */
+import type { KindDef } from './formatter'
 import { clearTable, construct, createTable, resolve } from './cache'
 import { badLocale, fallbackOf, preset } from './number'
 import { programmerError } from './warn'
@@ -43,12 +44,57 @@ function toItems(items: NonNullable<ListInput>): string[] {
   return out
 }
 
-export function listIn(locale: string, items: ListInput, options: ListOptions | ListPreset | undefined): string {
-  if (items == null) return fallbackOf(options)
+/** The strings to join, or `undefined` when there is nothing to list. */
+function listItems(items: ListInput): string[] | undefined {
+  if (items == null) return undefined
   const list = toItems(items)
-  if (list.length === 0) return fallbackOf(options)
+
+  return list.length === 0 ? undefined : list
+}
+
+export function listIn(locale: string, items: ListInput, options: ListOptions | ListPreset | undefined): string {
+  const list = listItems(items)
+  if (list === undefined) return fallbackOf(options)
 
   return resolve(listTable, locale, '', options).format(list)
+}
+
+/** Spec of `listFormatter`: an options object, or a preset name. */
+export function listSpec(options: ListOptions | ListPreset | undefined): ListOptions {
+  if (typeof options === 'string') return { ...preset(LIST_PRESETS, options, 'listFormatter') }
+
+  return options ?? {}
+}
+
+export const listKind: KindDef<'list'> = {
+  create(spec, locale) {
+    const fb = spec.fallback ?? ''
+    let at = ''
+    let intl: Intl.ListFormat | undefined
+    const get = (l: string): Intl.ListFormat => {
+      if (intl === undefined || l !== at) {
+        intl = resolve(listTable, l, '', spec)
+        at = l
+      }
+
+      return intl
+    }
+
+    return {
+      call: (items) => {
+        const l = locale()
+        const list = listItems(items)
+
+        return list === undefined ? fb : get(l).format(list)
+      },
+      parts: (items) => {
+        const l = locale()
+        const list = listItems(items)
+
+        return list === undefined ? [] : get(l).formatToParts(list)
+      },
+    }
+  },
 }
 
 /** Test hook. */

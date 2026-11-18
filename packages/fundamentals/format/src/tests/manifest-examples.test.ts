@@ -26,7 +26,7 @@ function evaluate(example: string): Array<{ expr: string; shown: string; actual:
       body.push(line)
       continue
     }
-    const expr = line.slice(0, at)
+    const expr = line.slice(0, at).replace(/^;/, '')
     const shown = line.slice(at + ' // → '.length)
     body.push(`__check(${JSON.stringify(expr)}, ${JSON.stringify(shown)}, () => (${expr}))`)
   }
@@ -58,7 +58,7 @@ describe('manifest examples are true', () => {
   it('every export of the reactive entry and the components entry has a manifest entry', () => {
     const documented = new Set(manifest.api.map((a) => a.name))
     for (const name of [...Object.keys(format), ...Object.keys(components)]) {
-      if (name === 'machineValue') continue // internal helper, exported for the browser test
+      if (name === 'machineValue' || name === 'partsToChildren') continue // internal helpers, exported for tests
       expect(documented, name).toContain(name)
     }
   })

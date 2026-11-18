@@ -8,7 +8,7 @@ import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { hydrateRoot, mount, onHydrationMismatch } from '@pyreon/runtime-dom'
 import { DateTime, Num } from './components'
-import { formatBytes, formatDate, formatNumber, provideLocale, setLocale } from './index'
+import { currencyFormatter, dateFormatter, formatBytes, formatDate, formatNumber, provideLocale, setLocale } from './index'
 
 const tree = () =>
   h(
@@ -71,6 +71,36 @@ describe('formatting in a real browser', () => {
     expect(root.textContent).toContain('7')
     unmount()
     root.remove()
+  })
+
+  it('formatter + parts markup hydrates with no mismatch (wrapped parts, adjacent text coalesced)', async () => {
+    const price = currencyFormatter('EUR', { locale: 'de' })
+    const day = dateFormatter({ locale: 'en-US', dateStyle: 'long' })
+    const sup = (t: string) => h('sup', null, t)
+    const b = (t: string) => h('b', null, t)
+    const tree = () =>
+      h('main', null, h(Num, { value: 1234.5, format: price, parts: { currency: sup } }), h(DateTime, { value: '2026-11-18', format: day, parts: { month: b } }))
+    const scratch = document.createElement('div')
+    document.body.appendChild(scratch)
+    const unmount = mount(tree() as never, scratch)
+    const html = scratch.innerHTML
+    unmount()
+    scratch.remove()
+    expect(html).toContain('<sup>')
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    el.innerHTML = html
+    const sups = [...el.querySelectorAll('sup, b')]
+    const mismatches: string[] = []
+    const off = onHydrationMismatch((info) => mismatches.push(JSON.stringify(info)))
+    const cleanup = hydrateRoot(el, tree() as never)
+    off()
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
+    expect(mismatches, 'hydration mismatches').toEqual([])
+    expect([...el.querySelectorAll('sup, b')], 'wrapped nodes were replaced').toEqual(sups)
+    expect(el.textContent).toBe(`${new Intl.NumberFormat('de', { style: 'currency', currency: 'EUR' }).format(1234.5)}${new Intl.DateTimeFormat('en-US', { dateStyle: 'long', timeZone: 'UTC' }).format(Date.UTC(2026, 10, 18))}`)
+    cleanup()
+    el.remove()
   })
 
   it('provideLocale scopes a subtree in the browser', () => {

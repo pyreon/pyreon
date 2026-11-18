@@ -83,21 +83,53 @@ parseDate('18. 11. 2026', { locale: 'cs' })     // "2026-11-18"
 parseDate('31. 2. 2026', { locale: 'cs' })      // null
 ```
 
-## Named formats and bound formatters
+## Composing formatters
+
+A formatter is a value: a plain `(value) => string` that follows the active locale and time zone like the free functions, so it drops into any formatting callback (`Array#map`, a chart axis, a table column, an `@pyreon/rx` pipe) with no adapter. One factory per kind, each exported on its own (no namespace object, so each tree-shakes): `numberFormatter`, `currencyFormatter`, `percentFormatter`, `compactFormatter`, `unitFormatter`, `bytesFormatter`, `durationFormatter`, `listFormatter`, `dateFormatter`, `timeFormatter`, `dateTimeFormatter`, `relativeFormatter`.
 
 ```ts
-import { defineFormats, createFormatter } from '@pyreon/format'
+import { currencyFormatter, bytesFormatter, percentFormatter, listFormatter } from '@pyreon/format'
+
+const price = currencyFormatter('EUR', { locale: 'en-US' })
+price(9.99)                                         // "€9.99"
+price.range(10, 20)                                 // "€10.00 – €20.00"
+price.parts(9.99).map((p) => p.type)                // ["currency", "integer", "decimal", "fraction"]
+
+const rounded = price.with({ maximumFractionDigits: 0 })   // derive; price is untouched
+rounded(9.99)                                       // "€10"
+
+const fromCents = price.from((cents: number) => cents / 100)   // adapt the input
+fromCents(999)                                      // "€9.99"
+;[999, 1250].map(fromCents)                         // ["€9.99", "€12.50"], works as a callback
+
+const size = bytesFormatter({ locale: 'en-US' })
+const pct = percentFormatter({ locale: 'en-US' })
+const usage = (used: number, total: number) => `${size(used)} of ${size(total)} (${pct(used / total)})`
+usage(1536, 4096)                                   // "1.5 kB of 4.1 kB (38%)"
+
+listFormatter({ locale: 'en-US' })([1250, 2500].map(fromCents))   // "€12.50 and €25.00"
+```
+
+Every formatter has `with(overrides)`, `from(map)`, `fallback(text)` and `options`; `parts(value)` where `Intl` has parts (numbers, dates, lists, bytes) and `range(a, b)` where it has `formatRange` (numbers and dates). `range` and `parts` are absent from the type where they do not exist. Derived formatters share the underlying cache entries, so creating them in a loop adds nothing. A formatter looks its `Intl` object up once per locale: a call is a locale read, a string compare and one `format()`.
+
+`defineFormats` names a set; each key is a real formatter, and a spec may extend another by name (a typo is a type error, a cycle a `[Pyreon]` error):
+
+```ts
+import { defineFormats } from '@pyreon/format'
 
 const f = defineFormats({
   price: { kind: 'currency', currency: 'EUR' },
+  priceShort: { extends: 'price', notation: 'compact' },
   size: { kind: 'bytes' },
 })
-f.price(9.99)                    // keys, value types and overrides are inferred
-f.price(9.99, { currency: 'USD' })
-
-const server = createFormatter({ locale: 'cs', timeZone: 'Europe/Prague' }) // non-reactive
-server.number(1234.5)
+f.price(9.99)
+f.priceShort(1_234_567)                // "€1.2M" under en-US
+f.price.with({ currency: 'USD' })(9.99)
 ```
+
+There is deliberately no "per month" currency helper: the platform has no locale data for a currency "per" pattern (only unit formatting has one), and a hand-made pattern is wrong in many languages. Format the value and put it in a translated message (`"{price} per month"`).
+
+`createFormatter({ locale, timeZone })` is a bound, non-reactive set of the one-off functions for servers, scripts and tests.
 
 ## Components
 
@@ -105,8 +137,13 @@ server.number(1234.5)
 import { Num, DateTime } from '@pyreon/format/components'
 
 <Num value={total()} kind="currency" currency="EUR" />
+<Num value={total()} format={price} />                      // a built formatter
+<Num value={9.99} format={price} parts={{ currency: (text) => <sup>{text}</sup> }} />
 <DateTime value="2026-11-18" kind="date" format="long" />   // <time datetime="2026-11-18">November 18, 2026</time>
+<DateTime value="2026-11-18" format={dateFormatter('long')} parts={{ month: (t) => <b>{t}</b> }} />
 ```
+
+`parts` keys are the `Intl` part types; unwrapped parts are joined into one text node so server and client markup agree.
 
 ## Performance
 

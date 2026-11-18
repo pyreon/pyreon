@@ -2,8 +2,24 @@
  * Type-level tests: they are checked by `tsc` (`bun run typecheck`); the
  * `@ts-expect-error` lines FAIL the typecheck if the thing stops being an error.
  */
-import { defineFormats, formatBytes, formatDate, formatList, formatNumber, formatUnit, parseDate } from '../core'
-import type { PlainDateString, SimpleUnit, Unit } from '../types'
+import {
+  bytesFormatter,
+  currencyFormatter,
+  dateFormatter,
+  defineFormats,
+  durationFormatter,
+  formatBytes,
+  formatDate,
+  formatList,
+  formatNumber,
+  formatUnit,
+  listFormatter,
+  numberFormatter,
+  parseDate,
+  relativeFormatter,
+  unitFormatter,
+} from '../core'
+import type { ListPart, PlainDateString, SimpleUnit, Unit } from '../types'
 
 /** `true` only when A and B are the same type. */
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false
@@ -87,33 +103,102 @@ describe('parseDate returns a template-literal string', () => {
 describe('defineFormats', () => {
   const f = defineFormats({
     price: { kind: 'currency', currency: 'EUR', locale: 'en-US' },
+    priceShort: { extends: 'price', notation: 'compact' },
     size: { kind: 'bytes', locale: 'en-US' },
     day: { kind: 'date', dateStyle: 'short', locale: 'en-US', timeZone: 'UTC' },
-    ago: { kind: 'relative', unit: 'day', locale: 'en-US' },
+    since: { kind: 'relative', base: '2026-11-18', locale: 'en-US' },
+    tags: { kind: 'list', locale: 'en-US' },
   })
 
-  it('keys are inferred', () => {
+  it('keys are inferred and each is a real Formatter', () => {
     expect(f.price(9.99)).toContain('9.99')
+    expect(f.priceShort(1234567)).toBe('€1.2M')
     expect(f.size(1536)).toBe('1.5 kB')
     expect(f.day('2026-11-18')).toBe('11/18/26')
-    expect(f.ago(-3)).toBe('3 days ago')
-    assertType<Equal<keyof typeof f, 'price' | 'size' | 'day' | 'ago'>>()
+    expect(f.since('2026-11-17')).toBe('yesterday')
+    expect(f.price.with({ maximumFractionDigits: 0 })(9.99)).toBe('€10')
+    expect(f.price.from((c: number) => c / 100)(999)).toBe('€9.99')
+    assertType<Equal<keyof typeof f, 'price' | 'priceShort' | 'size' | 'day' | 'since' | 'tags'>>()
   })
 
-  it('an unknown key, a wrong value type, a wrong override and a wrong kind are type errors', () => {
+  it('an extended spec has its base kind: input type, range and parts follow it', () => {
+    f.priceShort.range(1, 2)
+    f.priceShort.parts(1)
+    f.day.range('2026-11-12', '2026-11-15')
+    // @ts-expect-error a list formatter has no range
+    expect(f.tags.range).toBeUndefined()
+    // @ts-expect-error a relative formatter has no range
+    expect(f.since.range).toBeUndefined()
+    // @ts-expect-error a relative formatter has no parts
+    expect(f.since.parts).toBeUndefined()
+  })
+
+  it('an unknown key, a wrong value type, a wrong override, an unknown extends and a wrong kind are type errors', () => {
     // @ts-expect-error no such format
     expect(() => f.nope(1)).toThrow()
     // @ts-expect-error a currency takes a number, not a Date
     expect(typeof f.price(new Date())).toBe('string')
     // @ts-expect-error a bytes format has no `currency` override
-    expect(f.size(1, { currency: 'EUR' })).toBe('1 byte')
-    // @ts-expect-error a relative format takes a number
-    expect(typeof f.ago('yesterday')).toBe('string')
+    expect(f.size.with({ currency: 'EUR' })(1)).toBe('1 byte')
+    // @ts-expect-error a date formatter takes a date-like, not an array
+    expect(typeof f.day(['x'])).toBe('string')
     // @ts-expect-error unknown kind
-    defineFormats({ bad: { kind: 'bogus' } })
+    expect(() => defineFormats({ bad: { kind: 'bogus' } })).toThrow()
     // @ts-expect-error a currency spec needs its currency
-    defineFormats({ bad: { kind: 'currency' } })
+    expect(typeof defineFormats({ bad: { kind: 'currency' } })).toBe('object')
     // @ts-expect-error a unit spec needs a real unit
-    defineFormats({ bad: { kind: 'unit', unit: 'furlong' } })
+    expect(typeof defineFormats({ bad: { kind: 'unit', unit: 'furlong' } })).toBe('object')
+    // @ts-expect-error extends names a format that is not in the set
+    expect(() => defineFormats({ a: { kind: 'number' }, b: { extends: 'nope' } })).toThrow()
+  })
+})
+
+describe('Formatter<In, K>', () => {
+  it('range exists on number-like and date-like kinds, and is absent from the type elsewhere', () => {
+    const n = numberFormatter()
+    const d = dateFormatter()
+    n.range(1, 2)
+    d.range('2026-11-12', '2026-11-15')
+    // @ts-expect-error a list formatter has no range
+    expect(listFormatter().range).toBeUndefined()
+    // @ts-expect-error a duration formatter has no range
+    expect(durationFormatter().range).toBeUndefined()
+    // @ts-expect-error a bytes formatter has no range
+    expect(bytesFormatter().range).toBeUndefined()
+    // @ts-expect-error a duration formatter has no parts
+    expect(durationFormatter().parts).toBeUndefined()
+  })
+
+  it('parts are typed per kind', () => {
+    assertType<Equal<ReturnType<ReturnType<typeof numberFormatter>['parts']>, readonly Intl.NumberFormatPart[]>>()
+    assertType<Equal<ReturnType<ReturnType<typeof dateFormatter>['parts']>, readonly Intl.DateTimeFormatPart[]>>()
+    assertType<Equal<ReturnType<ReturnType<typeof listFormatter>['parts']>, readonly ListPart[]>>()
+  })
+
+  it('from changes the input type, and with takes that kind\'s options', () => {
+    const price = currencyFormatter('EUR')
+    const fromCents = price.from((cents: number) => cents / 100)
+    fromCents(999)
+    // @ts-expect-error the adapted formatter takes the adapter's input type
+    expect(typeof fromCents('9.99')).toBe('string')
+    const fromRow = fromCents.from((row: { total: number }) => row.total)
+    fromRow({ total: 1 })
+    // @ts-expect-error a number is no longer the input
+    expect(typeof fromRow(1)).toBe('string')
+    price.with({ maximumFractionDigits: 0, currency: 'USD' })
+    // @ts-expect-error an option of the wrong type
+    expect(() => price.with({ maximumFractionDigits: 'many' })(1)).toThrow()
+    assertType<Equal<Parameters<typeof fromCents>[0], number>>()
+    assertType<Equal<Parameters<typeof fromRow>[0], { total: number }>>()
+  })
+
+  it('the factories type their arguments', () => {
+    // @ts-expect-error a unit formatter needs a sanctioned unit
+    expect(() => unitFormatter('furlong')(1)).toThrow()
+    // @ts-expect-error a relative formatter needs a base
+    expect(typeof relativeFormatter({ locale: 'en' })).toBe('function')
+    dateFormatter('long')
+    // @ts-expect-error not a date style
+    expect(() => dateFormatter('tiny')).toThrow()
   })
 })

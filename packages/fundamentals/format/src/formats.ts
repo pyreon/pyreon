@@ -20,61 +20,67 @@ import { parseDateIn, parseNumberIn } from './parse'
 import { localeOf, zoneOf } from './pick'
 import { programmerError } from './warn'
 import type {
+  BoundFormatters,
   DefinedFormats,
+  ExtendedSpec,
   FormatSpec,
   Formatter,
   FormatterBase,
-  FormatValueByKind,
+  FormatterKind,
+  KindInfo,
 } from './types'
 
-/** The subset of formatters `defineFormats` dispatches to. */
-export type FormatImpl = Pick<
-  Formatter,
-  'number' | 'currency' | 'percent' | 'compact' | 'unit' | 'bytes' | 'duration' | 'list' | 'date' | 'time' | 'dateTime' | 'relative'
->
+/** One factory per kind: `defineFormats` builds each declared format through these. */
+export type FormatterFactories = { [K in FormatterKind]: (spec: KindInfo[K]['spec']) => Formatter<KindInfo[K]['in'], K> }
 
-/**
- * Build the named functions of a spec table over a formatter implementation.
- * A call without overrides passes the spec object itself, so the identity tier
- * of the cache serves it; overrides merge into a fresh object (structural tier).
- *
- * The result type is a mapped type the implementation cannot prove key by key,
- * so there is one boundary cast at the end; each branch's value cast is
- * guaranteed by the public `NamedFormat` signature.
- */
-export function defineFormatsWith<const T extends Record<string, FormatSpec>>(
-  impl: FormatImpl,
-  specs: T,
-): DefinedFormats<T> {
-  const out: Record<string, (value: never, overrides?: object) => string> = {}
-  for (const key of Object.keys(specs)) {
-    const spec = specs[key] as FormatSpec
-    out[key] = (value, overrides) => {
-      const merged = overrides === undefined ? spec : { ...spec, ...overrides }
-      return run(impl, merged as FormatSpec, value)
-    }
-  }
-
-  return out as unknown as DefinedFormats<T>
+interface Resolved {
+  kind: string
+  options: Record<string, unknown>
 }
 
-function run(impl: FormatImpl, spec: FormatSpec, value: FormatValueByKind[keyof FormatValueByKind]): string {
-  switch (spec.kind) {
-    case 'number': return impl.number(value as FormatValueByKind['number'], spec)
-    case 'currency': return impl.currency(value as FormatValueByKind['currency'], spec.currency, spec)
-    case 'percent': return impl.percent(value as FormatValueByKind['percent'], spec)
-    case 'compact': return impl.compact(value as FormatValueByKind['compact'], spec)
-    case 'unit': return impl.unit(value as FormatValueByKind['unit'], spec.unit, spec)
-    case 'bytes': return impl.bytes(value as FormatValueByKind['bytes'], spec)
-    case 'duration': return impl.duration(value as FormatValueByKind['duration'], spec)
-    case 'list': return impl.list(value as FormatValueByKind['list'], spec)
-    case 'date': return impl.date(value as FormatValueByKind['date'], spec)
-    case 'time': return impl.time(value as FormatValueByKind['time'], spec)
-    case 'dateTime': return impl.dateTime(value as FormatValueByKind['dateTime'], spec)
-    case 'relative': return impl.relative(value as FormatValueByKind['relative'], spec.unit, spec)
-    default:
-      throw programmerError('defineFormats', `unknown kind ${JSON.stringify((spec as { kind?: unknown }).kind)}. Use number, currency, percent, compact, unit, bytes, duration, list, date, time, dateTime or relative.`)
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
+
+/** A spec's kind and options with `extends` followed (unknown names and cycles are programmer errors). */
+function resolveSpec(specs: Record<string, unknown>, name: string, chain: string[]): Resolved {
+  const raw = specs[name]
+  if (!isRecord(raw)) throw programmerError('defineFormats', `the format ${JSON.stringify(name)} must be an object such as { kind: 'currency', currency: 'EUR' }.`)
+  const { extends: parent, kind, ...options } = raw
+  if (parent === undefined) {
+    return { kind: String(kind), options }
   }
+  if (typeof parent !== 'string' || !Object.hasOwn(specs, parent)) {
+    throw programmerError('defineFormats', `the format ${JSON.stringify(name)} extends ${JSON.stringify(parent)}, which is not defined in the same set. Defined: ${Object.keys(specs).join(', ')}.`)
+  }
+  if (chain.includes(parent) || parent === name) {
+    throw programmerError('defineFormats', `the formats ${[...chain, name, parent].map((n) => JSON.stringify(n)).join(' extends ')} form a cycle. Break it so every chain ends at a spec with a kind.`)
+  }
+  const base = resolveSpec(specs, parent, [...chain, name])
+
+  return { kind: base.kind, options: { ...base.options, ...options } }
+}
+
+/**
+ * Build the named formatters of a spec table. Each key is a real `Formatter`
+ * (`f.price(9.99)`, `f.price.with(...)`, `f.price.from(...)`); a spec may
+ * `extends` another by name. The factories are the same ones exported as
+ * `currencyFormatter`, ..., so there is one implementation.
+ */
+export function defineFormatsWith<const T extends Record<string, FormatSpec | ExtendedSpec<Extract<keyof T, string>>>>(
+  factories: FormatterFactories,
+  specs: T,
+): DefinedFormats<T> {
+  const out: Record<string, unknown> = {}
+  for (const name of Object.keys(specs)) {
+    const { kind, options } = resolveSpec(specs, name, [])
+    if (!Object.hasOwn(factories, kind)) {
+      throw programmerError('defineFormats', `the format ${JSON.stringify(name)} has unknown kind ${JSON.stringify(kind)}. Use ${Object.keys(factories).join(', ')}.`)
+    }
+    const build = factories[kind as FormatterKind] as (spec: object) => unknown
+    out[name] = build(options)
+  }
+
+  // One entry per key, each built by the factory of its kind: the mapped type is not provable key by key.
+  return out as unknown as DefinedFormats<T>
 }
 
 function checkZone(zone: string | undefined): string {
@@ -89,7 +95,7 @@ function checkZone(zone: string | undefined): string {
 }
 
 /** A bound, non-reactive formatter set: the base locale and time zone are fixed, per-call options still override them. */
-export function createFormatterWith(base: FormatterBase): Formatter {
+export function createFormatterWith(base: FormatterBase): BoundFormatters {
   const locale = base.locale ?? ''
   const zone = checkZone(base.timeZone)
   const L = (o: Parameters<typeof localeOf>[0]): string => localeOf(o) || locale
