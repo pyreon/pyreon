@@ -19,7 +19,11 @@ import * as path from 'node:path'
 
 import { lint, allRules, targetsScan } from '@pyreon/lint'
 
-import type { Severity as LintSeverity } from '@pyreon/lint'
+import type {
+  Diagnostic as LintDiagnostic,
+  LintFileResult,
+  Severity as LintSeverity,
+} from '@pyreon/lint'
 
 import type {
   Finding,
@@ -207,29 +211,13 @@ export const runLintGate = async (
       ruleOverrides: off,
     })
     scanned += extra.files.length
-    for (const fr of extra.files) if (fr.diagnostics.length > 0) fileResults.push(fr)
+    for (const fr of extra.files) {
+      if (fr.diagnostics.length > 0 || (fr.fixed?.length ?? 0) > 0) fileResults.push(fr)
+    }
   }
 
   for (const fileResult of fileResults) {
-    for (const diag of fileResult.diagnostics) {
-      const severity = _mapLintSeverity(diag.severity)
-      if (severity === null) continue
-      const category = RULE_CATEGORY.get(diag.ruleId) ?? 'correctness'
-      findings.push({
-        category,
-        severity,
-        code: `lint/${diag.ruleId}`,
-        gate: 'lint',
-        message: diag.message,
-        location: {
-          path: fileResult.filePath,
-          relPath: path.relative(ws.repoRoot, fileResult.filePath),
-          line: diag.loc.line,
-          column: diag.loc.column,
-        },
-        fixable: diag.fix !== undefined,
-      })
-    }
+    findings.push(...fileFindings(fileResult, ws.repoRoot))
   }
 
   // Surface config-level diagnostics as architecture errors — they
@@ -255,4 +243,45 @@ export const runLintGate = async (
       elapsedMs: Date.now() - start,
     },
   }
+}
+
+/**
+ * One linted file's findings: an `info` per fix `--fix` wrote, then whatever
+ * is still wrong. Each applied fix is listed, the same way react-patterns
+ * lists its migrations — a fix run that changes code without saying so is a
+ * silent edit, even when the rule is right (#4396).
+ */
+function fileFindings(fileResult: LintFileResult, repoRoot: string): Finding[] {
+  const out: Finding[] = []
+  const at = (diag: LintDiagnostic) => ({
+    path: fileResult.filePath,
+    relPath: path.relative(repoRoot, fileResult.filePath),
+    line: diag.loc.line,
+    column: diag.loc.column,
+  })
+  for (const diag of fileResult.fixed ?? []) {
+    out.push({
+      category: RULE_CATEGORY.get(diag.ruleId) ?? 'correctness',
+      severity: 'info',
+      code: `lint/auto-fixed-${diag.ruleId}`,
+      gate: 'lint',
+      message: `Auto-fixed ${diag.ruleId}: ${diag.message}`,
+      location: at(diag),
+    })
+  }
+  for (const diag of fileResult.diagnostics) {
+    const severity = _mapLintSeverity(diag.severity)
+    if (severity === null) continue
+    out.push({
+      category: RULE_CATEGORY.get(diag.ruleId) ?? 'correctness',
+      severity,
+      code: `lint/${diag.ruleId}`,
+      gate: 'lint',
+      message: diag.message,
+      location: at(diag),
+      fixable: diag.fix !== undefined,
+    })
+  }
+
+  return out
 }
