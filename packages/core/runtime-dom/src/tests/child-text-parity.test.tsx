@@ -31,7 +31,7 @@
  * sinks, so it cannot reproduce any of this.
  */
 import { transformJSX } from '@pyreon/compiler'
-import { _childText, _fuse, For, Fragment, h } from '@pyreon/core'
+import { _childText, _fuse, _slot, For, Fragment, h } from '@pyreon/core'
 import { _bind, renderEffect, signal } from '@pyreon/reactivity'
 import { renderToStream, renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
@@ -62,6 +62,7 @@ const DEPS = {
   _textSlot,
   bindPolymorphicText,
   _fuse,
+  _slot,
   h,
   Fragment,
   For,
