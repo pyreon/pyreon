@@ -903,15 +903,33 @@ export function createISRHandler(
       })
       inflight.set(key, promise)
       let shared: MissSnapshot | null = null
+      // Followers wait at most `revalidateTimeoutMs`, like a background
+      // revalidation. Past it the key is released: waiting followers get
+      // `null` and render for themselves, and new requests stop joining a
+      // render that may never settle (they used to wait on it forever). The
+      // leader's own request keeps awaiting its render, as uncached SSR
+      // would; it is not aborted, because the gate carries the request's
+      // middleware state by Request IDENTITY, so it cannot be re-created
+      // with an AbortSignal.
+      const release = (): void => {
+        if (inflight.get(key) === promise) inflight.delete(key)
+      }
+      const timer = setTimeout(() => {
+        release()
+        settle(null)
+      }, REVALIDATE_TIMEOUT_MS)
       try {
         const res = await renderMiss(req, url, key, (snap) => {
           shared = snap
         })
         return res
       } finally {
-        // Cleared on BOTH settle paths (leak class F): a thrown render must
-        // not strand followers or pin the key.
-        inflight.delete(key)
+        // Cleared on BOTH settle paths (leak classes F and I): a thrown
+        // render must not strand followers or pin the key, and the timer
+        // never outlives the render. `release` checks identity, so a render
+        // settling after its timeout never evicts a NEWER leader.
+        clearTimeout(timer)
+        release()
         settle(shared)
       }
     }
