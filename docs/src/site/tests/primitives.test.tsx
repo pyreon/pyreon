@@ -17,8 +17,8 @@ import { breakpoints, font, layout, siteTheme, text } from '../theme'
  * write (copied verbatim) and the primitive that replaced it, once through
  * the compiled JSX path (this file goes through the real `pyreon()` plugin)
  * and once through `h()`, and compares the element and its EFFECTIVE CSS:
- * per media query, every property's winning value (the `rocketstyle` layer
- * after the `elements` layer), so a value that moved from the theme to an
+ * per media query, every property's winning value (`elements`, then
+ * `rocketstyle`, then `instance`), so a value that moved from the theme to an
  * Element prop still counts as the same.
  */
 
@@ -29,7 +29,7 @@ interface Rendered {
   css: Record<string, string>
 }
 
-const LAYER_ORDER = ['elements', 'rocketstyle']
+const LAYER_ORDER = ['elements', 'rocketstyle', 'instance']
 const RULE = /^@layer (\w+)\{(?:(@media[^{]+)\{)?\.([\w-]+)\{([\s\S]*)\}\}?\}$/
 
 function effectiveCss(classes: readonly string[]): Record<string, string> {
@@ -290,21 +290,25 @@ describe('Grid, AutoGrid and Wrap', () => {
     }
   })
 
-  it('AutoGrid: the same CSS as the layout.tsx AutoGrid it moved from (min, cols, list)', async () => {
-    const GridBox = el.config({ name: 'AutoGrid' }).attrs({ block: true }).theme(() => ({ display: 'grid' }))
-    const legacy = (css: string, tag: 'div' | 'ul' = 'div') => h(GridBox, { tag, css }, h('li', null, 'x'))
-    const wantMin = await render(legacy('gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));'))
-    expect(await render(<AutoGrid min={260} gap={150}><li>x</li></AutoGrid>)).toEqual(wantMin)
-    expect(await render(h(AutoGrid, { min: 260, gap: 150 }, h('li', null, 'x')))).toEqual(wantMin)
-    // A list: the reset moved from the css string into a theme flag; the effective values are equal.
-    const wantList = await render(legacy('gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(250px,100%),1fr));list-style:none;margin:0;padding:0;', 'ul'))
+  it('AutoGrid: the layout.tsx AutoGrid values, through the typed styles override (min, cols, list)', async () => {
+    // The columns and the gap are a typed `styles` override now, so they take
+    // the theme's unit rule (px → rem against rootSize 16) and its media
+    // queries (em), as a `.theme()` value does; the values are equal at the
+    // default root font size.
+    const wantMin = { '|gap': '0.75rem', '|grid-template-columns': 'repeat(auto-fit,minmax(min(260px,100%),1fr))' }
+    for (const node of [<AutoGrid min={260} gap={150}><li>x</li></AutoGrid>, h(AutoGrid, { min: 260, gap: 150 }, h('li', null, 'x'))]) {
+      const got = await render(node)
+      for (const [key, value] of Object.entries(wantMin)) expect(got.css[key], key).toBe(value)
+    }
+    // A list: the reset is a theme flag.
     const gotList = await render(<AutoGrid tag="ul"><li>x</li></AutoGrid>)
-    expect(gotList.open).toBe(wantList.open)
-    for (const key of ['|gap', '|grid-template-columns', '|list-style', '|margin', '|padding', '|display']) expect(gotList.css[key], key).toBe(wantList.css[key])
-    // `cols`: the switch at lg is the theme's media query.
+    expect(gotList.css['|gap']).toBe('0.875rem')
+    expect(gotList.css['|grid-template-columns']).toBe('repeat(auto-fit,minmax(min(250px,100%),1fr))')
+    for (const key of ['|list-style', '|margin', '|padding']) expect(gotList.css[key], key).toBeDefined()
+    // `cols`: one column below lg, the count from the theme's lg breakpoint (992px = 62em).
     const gotCols = await render(<AutoGrid cols={3}><i>x</i></AutoGrid>)
-    expect(Object.values(gotCols.css).join(' ')).toContain('repeat(1,minmax(0,1fr))')
-    expect(sheet.getStyleRules().join('\n')).toMatch(new RegExp(`@media \\(min-width: ?${breakpoints.lg}px\\)\\{\\.[\\w-]+\\{grid-template-columns:repeat\\(3,minmax\\(0,1fr\\)\\);`))
+    expect(gotCols.css['|grid-template-columns']).toBe('repeat(1,minmax(0,1fr))')
+    expect(gotCols.css[`@media only screen and (min-width: ${breakpoints.lg / 16}em)|grid-template-columns`]).toBe('repeat(3,minmax(0,1fr))')
   })
 
   it('Wrap: the coolgrid column with the layout gutters, as before', async () => {
@@ -333,10 +337,10 @@ describe('Grid, AutoGrid and Wrap', () => {
 describe('Box and Icon', () => {
   it('Box: padding from the space scale; the specific side wins within a breakpoint', async () => {
     const r = await render(<Box pad={200} padTop={225} padX={{ xs: 150, md: 500 }}>x</Box>)
-    expect(r.css['|padding-top']).toBe('18px')
-    expect(r.css['|padding-bottom']).toBe('16px')
-    expect(r.css['|padding-left']).toBe('12px')
-    expect(Object.entries(r.css).some(([k, v]) => k.startsWith('@media') && k.endsWith('|padding-left') && v === '40px')).toBe(true)
+    // A typed `styles` override: unistyle folds the sides into the `padding`
+    // shorthand (top, x, bottom) and renders px as rem (rootSize 16).
+    expect(r.css['|padding']).toBe('1.125rem 0.75rem 1rem')
+    expect(Object.entries(r.css).some(([k, v]) => k.startsWith('@media') && k.endsWith('|padding') && v === '1.125rem 2.5rem 1rem')).toBe(true)
     expect(r.css['|align-items']).toBe('stretch')
     expect(r.css['|margin']).toBeUndefined()
   })

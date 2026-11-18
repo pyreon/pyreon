@@ -437,8 +437,8 @@ resolveModeVar('#ff0000', 'dark')              // '#ff0000' — passthrough`,
   gotchas: [
     'useBooleans defaults to FALSE — dimension props take strings (state="primary"), not boolean shorthands. Historically the TYPE default said true while the runtime was false, so boolean props typechecked but were silently dropped; the runtime default (false) is now authoritative in both.',
     {
-      label: 'Cascade order: theme < instance css',
-      note: 'The theme renders into `@layer rocketstyle`, declared between `@layer elements` (an Element base layout) and `@layer instance` (a per-instance `css` prop): `@layer elements, rocketstyle, instance;`. A `css` passed on one instance therefore beats the component theme for the same property; a theme property no longer has to be left out of `.theme()` for an instance to override it.',
+      label: 'Per-instance override: styles (theme < instance)',
+      note: 'To override the theme on ONE instance of an Element-based component, pass `styles` (handled by the Element underneath): the same object shape as `.theme()` — `<Card styles={{ paddingTop: { xs: 8, md: 16 }, hover: { color: "red" } }} />` — or a `(theme, mode) => object` callback. The theme renders into `@layer rocketstyle`, declared between `@layer elements` (an Element base layout) and `@layer instance` (the override): `@layer elements, rocketstyle, instance;`, so the override beats the theme for the same property. Rocketstyle has no override prop of its own and `theme` is a dimension name, so the prop is `styles`. The `css` escape hatch (a tagged `css` template result, no raw string) lands in the same layer.',
     },
     {
       label: 'Layout vs CSS split',

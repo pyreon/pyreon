@@ -41,6 +41,7 @@ const OWN_KEYS: Array<keyof Props | 'ref'> = [
   'tag',
   'block',
   'extendCss',
+  'instanceStyles',
   'direction',
   'alignX',
   'alignY',
@@ -69,6 +70,7 @@ const LAYOUT_KEYS = [
   'equalCols',
   'gap',
   'extendCss',
+  'instanceStyles',
 ] as const
 
 const Component = (props: Partial<Props> & { ref?: unknown }) => {
@@ -118,6 +120,7 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
           equalCols: own.equalCols,
           gap: own.gap,
           extraStyles: own.extendCss,
+          instanceStyles: own.instanceStyles,
         })
       : internElementBundle({
           block: own.block,
@@ -127,6 +130,7 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
           equalCols: own.equalCols,
           gap: own.gap,
           extraStyles: own.extendCss,
+          instanceStyles: own.instanceStyles,
         })
     if (isVoidTag) {
       return h(
@@ -166,11 +170,13 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
         parentFix: true as const,
         block: own.block,
         extraStyles: own.extendCss,
+        instanceStyles: own.instanceStyles,
       })
     : internElementBundle({
         parentFix: true as const,
         block: own.block,
         extraStyles: own.extendCss,
+        instanceStyles: own.instanceStyles,
       })
   const childBundle = layoutReactive
     ? () => ({

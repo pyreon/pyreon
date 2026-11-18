@@ -9,8 +9,9 @@ import { h, mergeProps, splitProps } from '@pyreon/core'
 import type { PyreonHTMLAttributes, VNodeChild } from '@pyreon/core'
 import type { HTMLTextTags } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
-import type { ExtendCss, PyreonComponent } from '../types'
+import type { ExtendCss, PyreonComponent, StylesProp } from '../types'
 import { internTextBundle } from '../helpers/internTextBundle'
+import { useInstanceStyles } from '../helpers/useInstanceStyles'
 import { hasGetterProps } from '../utils'
 import Styled from './styled'
 
@@ -47,13 +48,20 @@ export type Props = Partial<{
    * signal changes (class swap on the same DOM element, no remount).
    */
   css: ExtendCss
+  /**
+   * Typed per-instance style override: the same keys and value shapes as a
+   * component's `.theme()`, or a `(theme, mode) => object` callback. Renders
+   * into `@layer instance`, so it beats the component's theme. See Element's
+   * `styles`.
+   */
+  styles: StylesProp
 }> &
   PyreonHTMLAttributes
 
 const Component: PyreonComponent<Props> & {
   isText?: true
 } = (props) => {
-  const [own, rest] = splitProps(props, ['paragraph', 'label', 'children', 'tag', 'css', 'ref'])
+  const [own, rest] = splitProps(props, ['paragraph', 'label', 'children', 'tag', 'css', 'styles', 'ref'])
 
   // `paragraph` shorthand maps to <p>; otherwise pass through `tag`. Ternary
   // form replaces the prior `let finalTag` + if/else block — V8 prefers the
@@ -71,9 +79,11 @@ const Component: PyreonComponent<Props> & {
   // + elClassCache behavior.
   // Static css: an INTERNED bundle (`internTextBundle`), so the styler's
   // `$text` class cache hits on every later mount with the same css.
-  const $text = hasGetterProps(own, ['css'])
-    ? () => ({ extraStyles: own.css })
-    : internTextBundle(own.css)
+  const readStyles = useInstanceStyles(own)
+  const $text =
+    hasGetterProps(own, ['css', 'styles']) || typeof own.styles === 'function'
+      ? () => ({ extraStyles: own.css, instanceStyles: readStyles() })
+      : internTextBundle(own.css, readStyles())
 
   // Use `h(Styled, mergeProps(rest, {..., children}))` instead of JSX
   // spread `<Styled ... {...rest}>` so compiler-emitted reactive props

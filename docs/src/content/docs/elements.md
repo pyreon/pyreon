@@ -179,16 +179,17 @@ Three separate axes, three separate prop groups — `content*` (simple elements)
 | `block`         | `boolean`                                    | `false`                         | When `true`, uses `display: flex` instead of `display: inline-flex`. Makes the element take full width of its parent.                                                       |
 | `equalCols`     | `boolean`                                    | `false`                         | When `true`, all three slots get `flex: 1; min-width: 0`, dividing the space equally instead of the default behavior where before/after shrink-wrap and the center expands. |
 | `equalBeforeAfter` | `boolean`                                 | `false`                         | When `true`, the `beforeContent` and `afterContent` slots are kept the same width via a `ResizeObserver` — handles async slot content (font swaps, lazy text, viewport resize) without snapping out of alignment. Falls back to a one-shot mount-time measurement when `ResizeObserver` is undefined (SSR or older runtimes).                                                                                                                          |
-| `css`           | `string \| css callback \| responsive`       | --                              | Per-instance CSS for this element. It renders into `@layer instance`, above the base layout (`@layer elements`) and above a rocketstyle component's `.theme()` (`@layer rocketstyle`), so a value passed here wins for the same property. `contentCss` / `beforeContentCss` / `afterContentCss` do the same for the slots. |
+| `styles`        | style object \| `(theme, mode) => object`    | --                              | Typed per-instance override of this element: the same keys and value shapes as a component's `.theme()` (unistyle property names; a single value, a mobile-first array or a breakpoint object; numbers become rem; `hover` / `focus` / `active` / `disabled` groups). It renders into `@layer instance`, above the base layout (`@layer elements`) and above a rocketstyle component's `.theme()` (`@layer rocketstyle`), so a value passed here wins for the same property. A misspelt key is a type error; there are no selectors and no CSS text. |
+| `css`           | `css` template result \| `(css) => …` \| responsive | --                    | Escape hatch for CSS `styles` cannot express (a selector, an at-rule). A raw string is not accepted. Renders into `@layer instance` too, before `styles`. `contentCss` / `beforeContentCss` / `afterContentCss` do the same for the slots. The `pyreon/prefer-styles-prop` lint rule flags it on a component. |
 | `class`         | `string`                                     | --                              | CSS class name applied to the outer element.                                                                                                                                |
 | `style`         | `string \| Record<string, string \| number>` | --                              | Inline styles merged with computed flex styles. Can be a CSS string or an object. Object styles are merged with the computed styles; string styles are appended.            |
 | `dangerouslySetInnerHTML` | `{ __html: string }`               | --                              | Inject raw HTML (React-compatible shape). Mutually exclusive with `children` — both runtime-dom and runtime-server treat both as inner-content sources. Forwarded through `Wrapper` correctly (was silently dropped pre-#486).                                                                                                                                                                                                                              |
 
 For the align props, `'block'` means stretch. Every direction and align prop, plus `gap` and `block`, also accepts the responsive forms: a mobile-first array (`['rows', 'inline']`) or an object keyed by breakpoint (`{ xs: 'rows', md: 'inline' }`). See [Unistyle](/docs/unistyle).
 
-#### Cascade order: base layout < theme < instance `css`
+#### Per-instance override: `styles`
 
-Elements' base layout, a rocketstyle component's `.theme()` and a per-instance `css` prop each render into their own cascade layer, declared once as `@layer elements, rocketstyle, instance;`. A later layer wins for the same property whatever the selector or source order, so the value passed on one instance overrides the component's theme:
+Elements' base layout, a rocketstyle component's `.theme()` and a per-instance override each render into their own cascade layer, declared once as `@layer elements, rocketstyle, instance;`. A later layer wins for the same property whatever the selector or source order, so the value passed on one instance overrides the component's theme. The override is the typed `styles` prop, written exactly as a `.theme()` value:
 
 ```tsx
 const Grid = el
@@ -196,11 +197,16 @@ const Grid = el
   .attrs({ block: true })
   .theme(() => ({ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }))
 
-// One column by default, three from 768px on this instance.
-<Grid css="@media (min-width: 768px) { grid-template-columns: repeat(3, minmax(0, 1fr)); }" />
+// One column by default, three from the md breakpoint on this instance.
+<Grid styles={{ gridTemplateColumns: { md: 'repeat(3, minmax(0, 1fr))' } }} />
+
+// Pseudo-state groups, units and mode pairs work as in a theme.
+<Card styles={(t, mode) => ({ paddingTop: [8, null, 16], hover: { color: mode('#111', '#eee') } })} />
 ```
 
-The same holds for pseudo-classes (`css="&:hover { color: red; }"` beats a theme `hover`) and for `Text`'s `css`. CSS that is not in a layer (your own stylesheet) still beats all three.
+Equal override content shares one class (the object is interned by content), and a signal-driven `styles` swaps the class on the same element without a remount. `Text` takes `styles` too. CSS that is not in a layer (your own stylesheet) still beats all three layers.
+
+When you need CSS the object cannot express, `css` is the escape hatch, written as a tagged template (``css={css`…`}`` or ``css={(css) => css`…`}``); it lands in the same `instance` layer. A raw CSS string is no longer accepted.
 
 Element also passes through any valid HTML attributes: `id`, `role`, `tabindex`, `title`, `href`, `src`, `alt`, `type`, `name`, `value`, `disabled`, `hidden`, `draggable`, `ref`, `key`, and any `on*` event handlers, `data-*` attributes, or `aria-*` attributes.
 

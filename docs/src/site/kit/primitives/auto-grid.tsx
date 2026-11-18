@@ -1,5 +1,5 @@
 import { h } from '@pyreon/core'
-import { media, space, type SpaceKey } from '../../theme'
+import { space, type SpaceKey } from '../../theme'
 import { el } from '../bases'
 import { gridAttrs, type GridBaseProps, gridFlags, gridFlagsOf, gridTheme } from './grid-shared'
 
@@ -22,10 +22,11 @@ export interface AutoGridProps extends GridBaseProps {
  * equal columns from `lg`, `colsBelow` (default 1) below it.
  */
 export function AutoGrid(props: AutoGridProps) {
-  const gap = space[props.gap ?? 175]
-  const columns = props.cols
-    ? `grid-template-columns:repeat(${props.colsBelow ?? 1},minmax(0,1fr));${media.up.lg}{grid-template-columns:repeat(${props.cols},minmax(0,1fr));}`
-    : `grid-template-columns:repeat(auto-fit,minmax(min(${props.min ?? 250}px,100%),1fr));`
+  const gridTemplateColumns = props.cols
+    ? { xs: `repeat(${props.colsBelow ?? 1},minmax(0,1fr))`, lg: `repeat(${props.cols},minmax(0,1fr))` }
+    : `repeat(auto-fit,minmax(min(${props.min ?? 250}px,100%),1fr))`
+  // A number is px and renders as rem against the theme's rootSize, as in a `.theme()`.
+  const styles = { gap: space[props.gap ?? 175], gridTemplateColumns }
 
-  return h(AutoGridBase, { ...gridAttrs(props), multiple: gridFlagsOf(props), css: `gap:${gap}px;${columns}` }, props.children)
+  return h(AutoGridBase, { ...gridAttrs(props), multiple: gridFlagsOf(props), styles }, props.children)
 }

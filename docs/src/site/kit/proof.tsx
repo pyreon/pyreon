@@ -123,8 +123,8 @@ const BandTitle = txt
 const Cells = el
   .config({ name: 'ProofBandCells' })
   .attrs({ tag: 'ul', block: true })
-  // One column by default; the per-instance `css` sets the wide-screen column
-  // count (the cell count), and an instance `css` beats the theme.
+  // One column by default; the per-instance `styles` sets the wide-screen
+  // column count (the cell count), and an instance override beats the theme.
   .theme(() => ({
     listStyle: 'none',
     margin: 0,
@@ -195,13 +195,13 @@ export function ProofBand(props: {
   // down, so the labels under the numbers start on one line.
   const size = items.some((i) => numeralSize(i.stat) === 'long') ? 'long' : 'default'
   // One column until 992px: a long numeral ("1.94–1.95×") does not fit a third of a tablet.
-  const cols = `@media (min-width: ${breakpoints.lg}px) { grid-template-columns: repeat(${items.length}, minmax(0, 1fr)); }`
+  const cols = { gridTemplateColumns: { lg: `repeat(${items.length}, minmax(0, 1fr))` } }
   return (
     <Band id={props.id} aria-label={props.title ? undefined : 'In numbers'}>
       <Show when={() => !!props.title}>
         <BandTitle>{renderInline(props.title ?? '')}</BandTitle>
       </Show>
-      <Cells css={cols}>
+      <Cells styles={cols}>
         <For each={items} by={(i) => i.stat + i.label}>
           {(i) => (
             <Cell>

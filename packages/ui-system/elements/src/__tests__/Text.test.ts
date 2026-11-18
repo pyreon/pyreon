@@ -152,6 +152,7 @@ describe('Text', () => {
   describe('css prop', () => {
     it('passes css value through $text.extraStyles', () => {
       const customCss = 'color: red;'
+      // @ts-expect-error a raw CSS string is no longer typed (use `styles` or css``); untyped callers still render
       const result = asVNode(Text({ css: customCss, children: 'styled' }))
       expect(result.props.$text).toEqual({ extraStyles: customCss })
     })
@@ -162,6 +163,7 @@ describe('Text', () => {
     })
 
     it('does not forward css as a direct prop', () => {
+      // @ts-expect-error a raw CSS string is no longer typed (use `styles` or css``); untyped callers still render
       const result = asVNode(Text({ css: 'color: blue;', children: 'text' }))
       expect(result.props.css).toBeUndefined()
     })
@@ -234,6 +236,7 @@ describe('Text', () => {
           label: 'lbl',
           children: 'text',
           tag: 'h1',
+          // @ts-expect-error a raw CSS string is no longer typed (use `styles` or css``); untyped callers still render
           css: 'font-size: 2rem;',
         }),
       )
@@ -249,6 +252,7 @@ describe('Text', () => {
       const result = asVNode(
         Text({
           paragraph: true,
+          // @ts-expect-error a raw CSS string is no longer typed (use `styles` or css``); untyped callers still render
           css: 'margin: 0;',
           class: 'intro',
           'data-testid': 'intro-text',

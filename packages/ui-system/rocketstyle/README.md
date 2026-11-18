@@ -303,6 +303,7 @@ For a 150-component page with 8 dimensions each: ~1,350 Set allocations, ~300 ar
 - **`useBooleans: false` is the default** (since April 2026 alignment fix). String props are the idiomatic surface.
 - **Cache keys are downstream of normalization.** Under `useBooleans: true`, the memo correctly keys by the resolved dimension (not the raw boolean prop) — otherwise every boolean variant would collide on the first cached entry.
 - **Dimension props don't accept function accessors directly.** `state={() => signal()}` is wrong — write `state={signal()}` and let the compiler emit reactive `_rp()` wrapping. Caught by the Reactivity Lens.
+- **Overriding the theme on one instance**: pass `styles` (handled by the `@pyreon/elements` Element underneath) — the same object shape `.theme()` returns, e.g. `<Card styles={{ paddingTop: { xs: 8, md: 16 } }} />`. It renders into `@layer instance`, declared after `@layer rocketstyle`, so it beats the theme. `theme` is a dimension name, so the override prop is `styles`.
 - **`provider: true` + `consumer:` on the same component** is a legal but rare shape. Most apps separate the two for clarity.
 
 ## Documentation

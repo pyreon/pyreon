@@ -8,6 +8,7 @@
 import { config } from '@pyreon/ui-core'
 import { alignContent, makeItResponsive, value } from '@pyreon/unistyle'
 import { instanceCss } from '../instanceCss'
+import { instanceStylesInterpolation, withoutInstanceStyles } from '../instanceStyles'
 import type { ResponsiveStylesCallback } from '../../types'
 import type { StyledProps, ThemeProps } from './types'
 
@@ -66,10 +67,15 @@ export default styled(component, { layer: 'elements' })`
 
   ${(({ $childFix }: StyledProps) => $childFix && childFixCSS) as any};
 
-  ${makeItResponsive({
-    key: '$element',
-    styles,
-    css,
-    normalize: true,
-  })};
+  ${withoutInstanceStyles(
+    '$element',
+    makeItResponsive({
+      key: '$element',
+      styles,
+      css,
+      normalize: true,
+    }),
+  )};
+
+  ${instanceStylesInterpolation(css, '$element')};
 `

@@ -67,7 +67,7 @@ Plus `docs/` (the docs site, built on `@pyreon/zero` — 227 doc pages covering 
 
 Notable package facts:
 
-- `@pyreon/lint` — Pyreon-specific linter — 141 rules, 26 categories, with config files, watch mode, an AST cache and an LSP server. Its `readable` preset layer (blank lines, component sections, JSX depth, ternaries) is on in this repo behind a per-file baseline (`readable-baseline.json`); see `.agents/rules/code-style.md`.
+- `@pyreon/lint` — Pyreon-specific linter — 142 rules, 26 categories, with config files, watch mode, an AST cache and an LSP server. Its `readable` preset layer (blank lines, component sections, JSX depth, ternaries) is on in this repo behind a per-file baseline (`readable-baseline.json`); see `.agents/rules/code-style.md`.
 - `@pyreon/compiler` — JSX transform with a Rust (napi-rs) backend and a JS fallback that must stay byte-identical (`native-equivalence.test.ts`, `fuzz-equivalence.test.ts`). Any emit change lands in both backends in one PR.
 - `@pyreon/test-utils` (private, framework-internal) is not `@pyreon/testing` (the public Testing-Library-style kit).
 

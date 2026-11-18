@@ -29,6 +29,7 @@ describe('Wrapper component', () => {
           alignX: 'center',
           alignY: 'top',
           equalCols: false,
+          // @ts-expect-error a raw CSS string is no longer typed (use `styles` or css``); untyped callers still render
           extendCss: 'color: red;',
         }),
       )
@@ -83,6 +84,7 @@ describe('Wrapper component', () => {
         Wrapper({
           tag: 'button',
           block: true,
+          // @ts-expect-error a raw CSS string is no longer typed (use `styles` or css``); untyped callers still render
           extendCss: 'border: none;',
           direction: 'inline',
           alignX: 'center',

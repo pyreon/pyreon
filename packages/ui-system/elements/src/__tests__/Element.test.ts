@@ -598,6 +598,7 @@ describe('Element', () => {
   describe('extendCss prop', () => {
     it('passes css prop as extendCss to Wrapper', () => {
       const customCss = 'color: red;'
+      // @ts-expect-error a raw CSS string is no longer typed (use `styles` or css``); untyped callers still render
       const result = asVNode(Element({ css: customCss, children: 'test' }))
       expect(getLayoutProps(result).extendCss).toBe(customCss)
     })

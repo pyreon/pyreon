@@ -131,6 +131,7 @@ import { noInlineStyleObject } from './styling/no-inline-style-object'
 import { noSignalReadInAttrsCallback } from './styling/no-signal-read-in-attrs-callback'
 import { noThemeOutsideProvider } from './styling/no-theme-outside-provider'
 import { preferCx } from './styling/prefer-cx'
+import { preferStylesProp } from './styling/prefer-styles-prop'
 import { noLocaleDependentFormat } from './isomorphic/no-locale-dependent-format'
 import { noTimezoneDependentDate } from './isomorphic/no-timezone-dependent-date'
 import { noUnstableRenderId } from './isomorphic/no-unstable-render-id'
@@ -262,12 +263,13 @@ export const allRules: Rule[] = [
   noSubmitWithoutValidation,
   preferFieldArray,
   noSignalInFormInitialValues,
-  // Styling (5)
+  // Styling (6)
   noInlineStyleObject,
   noDynamicStyled,
   preferCx,
   noThemeOutsideProvider,
   noSignalReadInAttrsCallback,
+  preferStylesProp,
   // Hooks (3)
   noRawAddEventListener,
   noRawSetInterval,
@@ -415,6 +417,7 @@ export {
   preferCx,
   preferFieldArray,
   preferRequestContext,
+  preferStylesProp,
   preferShowOverDisplay,
   preferUseIsActive,
   promiseRaceNeedsCleartimeout,

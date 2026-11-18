@@ -1,4 +1,5 @@
 import { SizedMap } from '@pyreon/sized-map'
+import { internedStylesKey } from './instanceStyles'
 
 /**
  * Module-scope intern cache for `$element` bundles passed to Wrapper's styled
@@ -20,13 +21,19 @@ const _bundleCache = new SizedMap<string, Record<string, unknown>>({
   lru: true,
 })
 
+// A typed `styles` override interned by `internStyles` is plain data with a
+// canonical key, so it can join the bundle key; any other object bails.
+const keyReplacer = (k: string, v: unknown): unknown =>
+  k === 'instanceStyles' && v != null ? { $styles: internedStylesKey(v) } : v
+
 export const internElementBundle = <T extends Record<string, unknown>>(bundle: T): T => {
   for (const k in bundle) {
     const v = bundle[k]
     if (typeof v === 'function') return bundle
-    if (v != null && typeof v === 'object') return bundle
+    if (v != null && typeof v === 'object' && (k !== 'instanceStyles' || internedStylesKey(v) === undefined))
+      return bundle
   }
-  const key = JSON.stringify(bundle)
+  const key = JSON.stringify(bundle, keyReplacer)
   const existing = _bundleCache.get(key)
   if (existing) return existing as T
   _bundleCache.set(key, bundle)

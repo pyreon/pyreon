@@ -9,6 +9,20 @@ import { extendCss } from '@pyreon/unistyle'
  */
 export const INSTANCE_LAYER = 'instance'
 
+let warnedRawCss = false
+
+/** Dev only, once per page: a raw CSS string reached `css` (the type no longer allows it). */
+const warnRawCss = (text: string): void => {
+  if (warnedRawCss) return
+  warnedRawCss = true
+  // oxlint-disable-next-line no-console
+  console.warn(
+    `[Pyreon] A raw CSS string was passed to the \`css\` prop ("${text.slice(0, 60)}"). ` +
+      'Use the typed `styles` prop (`styles={{ gridTemplateColumns: { md: "repeat(3, 1fr)" } }}`), ' +
+      'or write the escape hatch as a tagged template: css={css`…`} or css={(css) => css`…`}.',
+  )
+}
+
 /**
  * Render an instance `css` prop (`extraStyles`) inside `@layer instance { … }`.
  * The styler hoists that block out of the primitive's `@layer elements` rule
@@ -23,6 +37,7 @@ export const instanceCss = <R>(
   cssFn: (strings: TemplateStringsArray, ...values: unknown[]) => R,
   styles: unknown,
 ): R | '' => {
+  if (process.env.NODE_ENV !== 'production' && typeof styles === 'string') warnRawCss(styles)
   const value = extendCss(styles as Parameters<typeof extendCss>[0])
   return value ? cssFn`@layer ${INSTANCE_LAYER}{${value}}` : ''
 }

@@ -1,4 +1,5 @@
 import { h } from '@pyreon/core'
+import type { StyleProps } from '@pyreon/elements'
 import { space, type SpaceKey } from '../../theme'
 import { el } from '../bases'
 import { flagsOf, layoutFlags, type LayoutProps, passThrough } from './shared'
@@ -21,17 +22,23 @@ export interface BoxProps extends LayoutProps {
   padBottom?: Padding | undefined
 }
 
-const SIDES = [
-  ['pad', ['top', 'right', 'bottom', 'left']],
-  ['padY', ['top', 'bottom']],
-  ['padX', ['left', 'right']],
-  ['padTop', ['top']],
-  ['padBottom', ['bottom']],
-] as const
+type Side = 'paddingTop' | 'paddingRight' | 'paddingBottom' | 'paddingLeft'
 
-/** Per-breakpoint padding declarations; within a breakpoint the more specific prop comes last and wins. */
-export function paddingCss(p: BoxProps): Partial<Record<Breakpoint, string>> | undefined {
-  const out: Partial<Record<Breakpoint, string>> = {}
+const SIDES = [
+  ['pad', ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft']],
+  ['padY', ['paddingTop', 'paddingBottom']],
+  ['padX', ['paddingLeft', 'paddingRight']],
+  ['padTop', ['paddingTop']],
+  ['padBottom', ['paddingBottom']],
+] as const satisfies readonly (readonly [keyof BoxProps, readonly Side[]])[]
+
+/**
+ * Per-side, per-breakpoint padding as a typed `styles` override; within a
+ * breakpoint the more specific prop comes later and wins. Values are px
+ * numbers, rendered as rem against the theme's rootSize as in a `.theme()`.
+ */
+export function paddingStyles(p: BoxProps): StyleProps | undefined {
+  const out: Partial<Record<Side, Partial<Record<Breakpoint, number>>>> = {}
   for (const [prop, sides] of SIDES) {
     const value = p[prop]
     if (value === undefined) continue
@@ -39,7 +46,7 @@ export function paddingCss(p: BoxProps): Partial<Record<Breakpoint, string>> | u
     for (const bp of Object.keys(perBp) as Breakpoint[]) {
       const step = perBp[bp]
       if (step === undefined) continue
-      out[bp] = (out[bp] ?? '') + sides.map((s) => `padding-${s}:${space[step]}px;`).join('')
+      for (const side of sides) out[side] = { ...out[side], [bp]: space[step] }
     }
   }
 
@@ -51,5 +58,5 @@ export function paddingCss(p: BoxProps): Partial<Record<Breakpoint, string>> | u
  * stretch to its width and stack without a gap (use `Stack` for a gap).
  */
 export function Box(props: BoxProps) {
-  return h(BoxBase, { ...passThrough(props), contentAlignX: 'block', multiple: flagsOf(props), css: paddingCss(props) }, props.children)
+  return h(BoxBase, { ...passThrough(props), contentAlignX: 'block', multiple: flagsOf(props), styles: paddingStyles(props) }, props.children)
 }

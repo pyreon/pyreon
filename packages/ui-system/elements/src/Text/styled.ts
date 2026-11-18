@@ -7,6 +7,7 @@
 import { config } from '@pyreon/ui-core'
 import { makeItResponsive } from '@pyreon/unistyle'
 import { instanceCss } from '../helpers/instanceCss'
+import { instanceStylesInterpolation, withoutInstanceStyles } from '../helpers/instanceStyles'
 import type { Css, ResponsiveStylesCallback } from '../types'
 
 const { styled, css, textComponent } = config
@@ -27,10 +28,15 @@ export default styled(textComponent, { layer: 'elements' })`
     line-height: 1;
   `};
 
-  ${makeItResponsive({
-    key: '$text',
-    styles,
-    css,
-    normalize: false,
-  })};
+  ${withoutInstanceStyles(
+    '$text',
+    makeItResponsive({
+      key: '$text',
+      styles,
+      css,
+      normalize: false,
+    }),
+  )};
+
+  ${instanceStylesInterpolation(css, '$text')};
 `

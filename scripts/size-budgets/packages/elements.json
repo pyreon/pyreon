@@ -1,8 +1,8 @@
 {
   "package": "@pyreon/elements",
-  "bundle": 8448,
+  "bundle": 9853,
   "imports": {
-    "element": 4600,
-    "portal": 2850
+    "element": 5627,
+    "portal": 3390
   }
 }

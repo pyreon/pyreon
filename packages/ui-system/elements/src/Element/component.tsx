@@ -13,6 +13,7 @@ import { resolveSlot } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
 import { Content, Wrapper } from '../helpers'
 import { internElementBundle } from '../helpers/internElementBundle'
+import { useInstanceStyles } from '../helpers/useInstanceStyles'
 import WrapperStyled from '../helpers/Wrapper/styled'
 import { isWebFixNeeded } from '../helpers/Wrapper/utils'
 import { definePropsFromAccessors, hasGetterProps, IS_DEVELOPMENT } from '../utils'
@@ -63,6 +64,7 @@ const LAYOUT_KEYS = [
   'alignX',
   'alignY',
   'css',
+  'styles',
   'contentCss',
   'beforeContentCss',
   'afterContentCss',
@@ -94,6 +96,7 @@ const ELEMENT_OWN_KEYS = [
   'alignX',
   'alignY',
   'css',
+  'styles',
   'contentCss',
   'beforeContentCss',
   'afterContentCss',
@@ -133,7 +136,11 @@ const Component: PyreonElement = (props) => {
   // NO getters (the dominant static case): the exact pre-existing fast
   // paths — interned bundles, one-shot render, zero perf change.
   const slotsReactive = hasGetterProps(own, SLOT_KEYS)
-  const layoutReactive = slotsReactive || hasGetterProps(own, LAYOUT_KEYS)
+  // The typed `styles` override: a callback reads the theme and colour mode,
+  // so it takes the reactive path like a signal-driven prop.
+  const readStyles = useInstanceStyles(own)
+  const layoutReactive =
+    slotsReactive || hasGetterProps(own, LAYOUT_KEYS) || typeof own.styles === 'function'
 
   // Wrapper-level direction/alignX/alignY derivation — LIVE reads (each call
   // re-fires the prop getters), exact same conditional semantics as the old
@@ -253,6 +260,7 @@ const Component: PyreonElement = (props) => {
         ? definePropsFromAccessors(
             {
               extendCss: () => own.css,
+              instanceStyles: readStyles,
               block: () => own.block,
               direction: () => computeWrapperLayout(isSimpleElement).direction,
               alignX: () => computeWrapperLayout(isSimpleElement).alignX,
@@ -271,6 +279,7 @@ const Component: PyreonElement = (props) => {
         : {
             ref: mergedRef,
             extendCss: own.css,
+            instanceStyles: readStyles(),
             tag: own.tag,
             block: own.block,
             direction: wrapperLayout.direction,
@@ -341,6 +350,7 @@ const Component: PyreonElement = (props) => {
           equalCols: own.equalCols,
           gap: own.gap,
           extraStyles: own.css,
+          instanceStyles: readStyles(),
         }
       }
       return h(

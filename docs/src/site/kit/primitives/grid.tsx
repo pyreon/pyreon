@@ -20,15 +20,20 @@ export interface GridProps extends GridBaseProps {
 export function Grid(props: GridProps) {
   const cols = props.columns
   const perBp: Partial<Record<Breakpoint, number>> = typeof cols === 'number' ? { xs: cols } : cols
-  const css: Partial<Record<Breakpoint, string>> = {}
+  const gridTemplateColumns: Partial<Record<Breakpoint, string>> = {}
   for (const bp of Object.keys(perBp) as Breakpoint[]) {
     const n = perBp[bp]
-    if (n !== undefined) css[bp] = `grid-template-columns:${equalColumns(n)};`
+    if (n !== undefined) gridTemplateColumns[bp] = equalColumns(n)
   }
 
   return h(
     GridBase,
-    { ...gridAttrs(props), gap: props.gap === undefined ? undefined : spacePx(props.gap), multiple: gridFlagsOf(props), css },
+    {
+      ...gridAttrs(props),
+      gap: props.gap === undefined ? undefined : spacePx(props.gap),
+      multiple: gridFlagsOf(props),
+      styles: { gridTemplateColumns },
+    },
     props.children,
   )
 }

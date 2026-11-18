@@ -7498,7 +7498,7 @@ lint({
     "pyreon/no-window-in-ssr": { exemptPaths: ["src/foundation/"] },
   },
 })`,
-    notes: '141 rules across 26 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`, `best-practices`, composable with the `readable` / `readable-strict` layers (`preset: ["recommended", "readable"]`). Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. `exemptPaths` is honoured CENTRALLY for every rule (the runner skips an exempt file before the rule runs), so it means the same thing everywhere rather than only in rules that opted in. Wrong-typed options surface on `result.configDiagnostics`, as does a `rules`/`groups`/`settings` key that names nothing — a mistyped rule id used to be silently ignored, which is indistinguishable from working. Uses `oxc-parser` with AST caching. See also: lintFile, lintAsync, getPreset, AstCache.',
+    notes: '142 rules across 26 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`, `best-practices`, composable with the `readable` / `readable-strict` layers (`preset: ["recommended", "readable"]`). Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. `exemptPaths` is honoured CENTRALLY for every rule (the runner skips an exempt file before the rule runs), so it means the same thing everywhere rather than only in rules that opted in. Wrong-typed options surface on `result.configDiagnostics`, as does a `rules`/`groups`/`settings` key that names nothing — a mistyped rule id used to be silently ignored, which is indistinguishable from working. Uses `oxc-parser` with AST caching. See also: lintFile, lintAsync, getPreset, AstCache.',
   },
 
   'lint/lintAsync': {
@@ -7532,7 +7532,7 @@ const result = lintFile("app.tsx", source, allRules, config, cache, configSink)`
 pyreon-lint --fix                       # auto-fix
 pyreon-lint --watch src/                # watch mode
 pyreon-lint --init                      # scaffold .pyreonlintrc.json for this project
-pyreon-lint --list                      # list all 141 rules
+pyreon-lint --list                      # list all 142 rules
 pyreon-lint --why-off no-window-in-ssr  # why a rule will (or will not) run here
 pyreon-lint --format json               # machine-readable
 pyreon-lint --format gha                # GitHub Actions annotations
@@ -8611,7 +8611,9 @@ init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the ho
 - Passing children to a void \`tag\` (\`hr\` / \`img\` / \`br\` / \`input\`) — Element correctly drops them; do not rely on a children slot for void tags
 - Relying on \`equalBeforeAfter\` measuring async slot content where \`ResizeObserver\` is undefined (older runtimes / SSR) — it falls back to the one-shot mount measurement there
 - Reaching for a theme-level flex \`gap\` because the \`gap\` prop "does nothing" — historical: before 0.51 \`gap\` was wired only into the before/after slot margins; it now renders CSS gap on simple elements and the button flex-fix layer too
-- Passing a design-token NAME as \`gap\` (\`gap="md"\`) — \`gap\` is a length: a number (converted to rem) or a CSS length string (\`"1rem"\`); a bare token name is emitted verbatim as invalid CSS`,
+- Passing a design-token NAME as \`gap\` (\`gap="md"\`) — \`gap\` is a length: a number (converted to rem) or a CSS length string (\`"1rem"\`); a bare token name is emitted verbatim as invalid CSS
+- Overriding one instance's styling with a CSS string (\`css="grid-template-columns: …"\`) — \`css\` no longer accepts a raw string. Use the typed \`styles\` prop, the same object shape as \`.theme()\`: \`styles={{ gridTemplateColumns: { md: "repeat(3, 1fr)" }, hover: { color: "red" } }}\`. Keep \`css\` (a tagged \`css\` template result, or a \`(css) => …\` callback) for what \`styles\` cannot express: a selector or an at-rule
+- Writing CSS-spec names in \`styles\` (\`borderTopWidth\`) — the keys are unistyle's (\`borderWidthTop\`), as in \`.theme()\`; a misspelt key is a type error`,
   },
 
   'elements/Text': {
@@ -8622,7 +8624,7 @@ init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the ho
     notes: 'Inline typography primitive — the text counterpart to `Element`. Carries typography props and renders an inline element; use it for runs of text that need the design-system typography contract rather than a raw `<span>`. Like `Element`, visual styling belongs in the styler/rocketstyle layer; `Text` owns the inline-flow structure. See also: Element.',
     mistakes: `- Expecting a signal-driven \`tag={sig()}\` / \`paragraph={sig()}\` to swap the rendered element — \`tag\` and \`paragraph\` are STATIC (mount-time) by design; the styled layer applies \`as\` once per mount and a reactive tag swap is architecturally unsupported. To change the tag, REMOUNT (e.g. wrap in \`<Show>\`).
 - Passing BOTH \`children\` and \`label\` expecting them to concatenate — Text resolves \`children ?? label\`, so \`children\` WINS and \`label\` is ignored. \`label\` is the inline-syntax alternative to \`children\`, not an extra slot.
-- Driving structure through a signal but styling through a static value — it is the inverse: \`css\` IS reactive (a signal-driven \`css\` re-resolves with a class swap, no remount), while \`tag\` is NOT. Put dynamic STYLING in \`css\`; put dynamic STRUCTURE behind a remount.`,
+- Driving structure through a signal but styling through a static value — it is the inverse: \`styles\` and \`css\` ARE reactive (a signal-driven value re-resolves with a class swap, no remount), while \`tag\` is NOT. Put dynamic STYLING in \`styles\`; put dynamic STRUCTURE behind a remount.`,
   },
 
   'elements/List': {

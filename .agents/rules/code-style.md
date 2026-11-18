@@ -4,7 +4,7 @@
 
 - **oxlint** for general JS/TS linting (400+ rules, Rust-powered)
 - **oxfmt** for formatting (Rust-powered, Prettier-compatible)
-- **@pyreon/lint** for Pyreon-specific rules (141 rules, 26 categories — the gated count also appears in AGENTS.md's package list; keep the two in sync)
+- **@pyreon/lint** for Pyreon-specific rules (142 rules, 26 categories — the gated count also appears in AGENTS.md's package list; keep the two in sync)
 - Config files: `.oxlintrc.json` (linting), `.oxfmtrc.json` (formatting), `.pyreonlintrc.json` (Pyreon-specific rules)
 - Commands: `bun run lint` (`oxlint .`), `bun run format` (`oxfmt --write .`), `bun run format:check` (`oxfmt --check .`)
 - Inline suppression: `// oxlint-disable-next-line rule-name` (not `biome-ignore`)
@@ -107,8 +107,9 @@ Before gating a rule or forcing a fix, read its findings. Several rules that loo
   - `gap` is a prop (number → rem), wired on the simple path and the flex-fix layer.
   - Use `block: true` for full-width elements and app roots. Element defaults to `inline-flex` and shrink-wraps.
   - Theme layout is correct only for `flexWrap` (no Element prop), CSS grid components, and text truncation (`display: 'block'` — a flex container never ellipsizes).
-  - Never put layout in an attrs `css` string: a per-instance `css` prop replaces it wholesale.
-  - Cascade order (styler `LAYER_ORDER`, declared once): `@layer elements` (Element base layout) < `@layer rocketstyle` (`.theme()` and dimensions) < `@layer instance` (a per-instance `css` / `contentCss` / `beforeContentCss` / `afterContentCss` on Element, `css` on Text). So an instance `css` beats the component's theme for the same property, pseudo-classes included; unlayered CSS beats every layer. The instance layer is a `@layer instance { … }` block the styler hoists out of the Element's class (same class name, no extra cache entry).
+  - Never put layout in an attrs `css`: a per-instance `css` prop replaces it wholesale.
+  - **Per-instance overrides use `styles`, not `css`.** `styles` takes the `.theme()` object shape (unistyle keys, responsive values, `hover`/`focus`/`active`/`disabled` groups) or a `(theme, mode) => object` callback, and is type-checked. `css` is the escape hatch for a selector or an at-rule only, written as a tagged template (``css={css`…`}``); a raw CSS string is not accepted. `pyreon/prefer-styles-prop` (warn) flags `css` on a component; a deliberate use takes `// pyreon-lint-ignore pyreon/prefer-styles-prop` with the reason.
+  - Cascade order (styler `LAYER_ORDER`, declared once): `@layer elements` (Element base layout) < `@layer rocketstyle` (`.theme()` and dimensions) < `@layer instance` (`styles` and `css` on Element and Text; `contentCss` / `beforeContentCss` / `afterContentCss` on Element's slots). So an instance override beats the component's theme for the same property, pseudo-states included; unlayered CSS beats every layer. The instance layer is a `@layer instance { … }` block the styler hoists out of the Element's class (same class name, no extra cache entry).
 - **Pseudo-state styles:** use `hover`, `focus`, `active`, `disabled` objects inside `.theme()` callbacks. The `el`/`txt` bases generate the selectors via `makeItResponsive`.
 - **Hover CSS is unconditional:** `:hover` styles apply to every component that defines them. Only `cursor: pointer` is gated on interactivity (onClick/href).
 - **CSS property naming:** unistyle order (`borderWidthTop`, `borderColorLeft`), not CSS-spec order (`borderTopWidth`).

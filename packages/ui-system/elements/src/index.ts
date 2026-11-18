@@ -36,12 +36,21 @@ export type {
   AlignY,
   Content,
   ContentBoolean,
+  Css,
+  CssCallback,
   Direction,
   ExtendCss,
   InnerRef,
   PyreonStatic,
   Responsive,
   ResponsiveBoolType,
+  StyleOverride,
+  StyleProps,
+  StylesCallback,
+  StylesMode,
+  StylesProp,
+  StylesThemeDefault,
+  StyleValue,
 } from './types'
 export type { UtilProps } from './Util'
 export { Util } from './Util'

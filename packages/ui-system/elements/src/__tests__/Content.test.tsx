@@ -60,6 +60,7 @@ describe('Content component', () => {
         alignY: 'top',
         equalCols: true,
         gap: 8,
+        // @ts-expect-error a raw CSS string is no longer typed (use `styles` or css``); untyped callers still render
         extendCss: 'color: red;',
       }),
     )
@@ -103,6 +104,7 @@ describe('Content component', () => {
   })
 
   it('maps extendCss to extraStyles in $element', () => {
+    // @ts-expect-error a raw CSS string is no longer typed (use `styles` or css``); untyped callers still render
     const result = asVNode(Content({ extendCss: 'font-size: 14px;' }))
     expect((result.props.$element as any).extraStyles).toBe('font-size: 14px;')
   })

@@ -411,6 +411,11 @@ const FIXTURES: Record<string, Fixture> = {
     bad: `import { useTheme } from '@pyreon/ui-core'\nexport function C() { const t = useTheme(); return <div /> }`,
     good: `import { useTheme, PyreonUI } from '@pyreon/ui-core'\nexport function C() { const t = useTheme(); return <div /> }`,
   },
+  'pyreon/prefer-styles-prop': {
+    file: 'src/a.tsx',
+    bad: `import { css } from '@pyreon/styler'\nexport const A = () => <Card css={css\`color: red;\`} />`,
+    good: `export const A = () => <Card styles={{ color: 'red' }} />`,
+  },
   'pyreon/no-signal-read-in-attrs-callback': {
     file: 'src/a.ts',
     bad: `${SIG}import { rocketstyle } from '@pyreon/rocketstyle'\nconst on = signal(false)\nexport const B = rocketstyle()().attrs(() => ({ 'aria-pressed': on() }))`,

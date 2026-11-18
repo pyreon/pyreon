@@ -19,6 +19,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 - Element — responsive flexbox block: direction / alignX / alignY / gap / block, beforeContent / afterContent slots, equalBeforeAfter (ResizeObserver-tracked)
 - Text — inline typography primitive
+- styles — a typed per-instance style override on Element and Text: the `.theme()` object shape (unistyle keys, responsive values, pseudo-state groups), rendered into `@layer instance` so it beats the component theme
 - List — flowing-children container; data via the four-overload Iterator API
 - Overlay + useOverlay — positioned layer (dropdown/modal/tooltip) with viewport flip, ESC, click-outside, scroll tracking, hover delay, and focus management (restore-to-opener on close; for type:"modal" a focus-in on open + Tab/Shift+Tab focus trap — the WAI-ARIA dialog pattern, out of the box)
 - Portal — renders children into a per-instance wrapper inside a DOMLocation (default document.body)
@@ -80,6 +81,8 @@ import { Element } from "@pyreon/elements"
 - Relying on `equalBeforeAfter` measuring async slot content where `ResizeObserver` is undefined (older runtimes / SSR) — it falls back to the one-shot mount measurement there
 - Reaching for a theme-level flex `gap` because the `gap` prop "does nothing" — historical: before 0.51 `gap` was wired only into the before/after slot margins; it now renders CSS gap on simple elements and the button flex-fix layer too
 - Passing a design-token NAME as `gap` (`gap="md"`) — `gap` is a length: a number (converted to rem) or a CSS length string (`"1rem"`); a bare token name is emitted verbatim as invalid CSS
+- Overriding one instance's styling with a CSS string (`css="grid-template-columns: …"`) — `css` no longer accepts a raw string. Use the typed `styles` prop, the same object shape as `.theme()`: `styles={{ gridTemplateColumns: { md: "repeat(3, 1fr)" }, hover: { color: "red" } }}`. Keep `css` (a tagged `css` template result, or a `(css) => …` callback) for what `styles` cannot express: a selector or an at-rule
+- Writing CSS-spec names in `styles` (`borderTopWidth`) — the keys are unistyle's (`borderWidthTop`), as in `.theme()`; a misspelt key is a type error
 
 **See also:** `Text` · `List` · `Portal`
 
@@ -105,7 +108,7 @@ import { Text } from "@pyreon/elements"
 
 - Expecting a signal-driven `tag={sig()}` / `paragraph={sig()}` to swap the rendered element — `tag` and `paragraph` are STATIC (mount-time) by design; the styled layer applies `as` once per mount and a reactive tag swap is architecturally unsupported. To change the tag, REMOUNT (e.g. wrap in `<Show>`).
 - Passing BOTH `children` and `label` expecting them to concatenate — Text resolves `children ?? label`, so `children` WINS and `label` is ignored. `label` is the inline-syntax alternative to `children`, not an extra slot.
-- Driving structure through a signal but styling through a static value — it is the inverse: `css` IS reactive (a signal-driven `css` re-resolves with a class swap, no remount), while `tag` is NOT. Put dynamic STYLING in `css`; put dynamic STRUCTURE behind a remount.
+- Driving structure through a signal but styling through a static value — it is the inverse: `styles` and `css` ARE reactive (a signal-driven value re-resolves with a class swap, no remount), while `tag` is NOT. Put dynamic STYLING in `styles`; put dynamic STRUCTURE behind a remount.
 
 **See also:** `Element`
 
@@ -322,7 +325,7 @@ import { Util } from "@pyreon/elements"
 
 ## Package-level notes
 
-> **Instance css beats the theme:** A per-instance `css` prop (Element `css` / `contentCss` / `beforeContentCss` / `afterContentCss`, Text `css`) renders into `@layer instance`, declared after `@layer elements` (base layout) and `@layer rocketstyle` (`.theme()`): `@layer elements, rocketstyle, instance;`. So `<Grid css="@media (min-width: 768px) { grid-template-columns: repeat(3, 1fr); }" />` overrides the component theme's `gridTemplateColumns`, pseudo-classes included. Unlayered CSS still beats every layer.
+> **Typed per-instance override: styles:** Element and Text take `styles`: the same keys and value shapes as a component's `.theme()` (unistyle property names; a single value, a mobile-first array or a breakpoint object; numbers become rem; `hover` / `focus` / `active` / `disabled` groups map to `:hover` / `:focus-visible` / `:active` / `:disabled, [aria-disabled=true]`), or a `(theme, mode) => object` callback. It renders into `@layer instance`, declared after `@layer elements` (base layout) and `@layer rocketstyle` (`.theme()`): `@layer elements, rocketstyle, instance;`. So `<Grid styles={{ gridTemplateColumns: { md: "repeat(3, 1fr)" } }} />` overrides the component theme's `gridTemplateColumns`. No selectors and no CSS text: it styles only the element it is on. Equal content shares one class (interned, 256-entry LRU). The `css` escape hatch (a tagged `css` template result or a `(css) => …` callback; no raw string) lands in the same layer, before `styles`. Unlayered CSS beats every layer.
 
 > **Layout in attrs, not theme:** Element/Text/List layout props (`direction`, `alignX`, `alignY`, `gap`, `block`, `tag`) are primitive ATTRS — they target the inner flex wrapper. Colors / spacing / borders / shadows belong in the styler or rocketstyle `.theme()` layer. `direction` accepts `inline` / `rows` / `reverseInline` / `reverseRows` — `row` is invalid.
 
