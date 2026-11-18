@@ -88,7 +88,7 @@ data class DialSpec(var start: Double, var sweep: Double, var clockwise: Boolean
 
 data class Layered(var z: Double, var seq: Double, var cmd: PyreonDrawCmd)
 
-data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var areaOpacity: Double? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var seriesSelected: Boolean? = null, var inBrush: List<Long>? = null, var brushOpacity: Double? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null)
+data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var areaOpacity: Double? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var seriesSelected: Boolean? = null, var inBrush: List<Long>? = null, var brushOpacity: Double? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null, var itemColors: List<String>? = null, var shades: List<Double>? = null)
 
 data class Annotation(var y: Double? = null, var x: Double? = null, var yFrom: Double? = null, var yTo: Double? = null, var xFrom: Double? = null, var xTo: Double? = null, var x1: Double? = null, var y1: Double? = null, var x2: Double? = null, var y2: Double? = null, var label: String? = null, var color: String? = null)
 
@@ -98,7 +98,7 @@ data class ChartTheme(var palette: List<String>, var background: String, var sur
 
 data class Emphasis(var highlight: Long, var selected: List<Long>)
 
-data class ChartSpec(var width: Double, var height: Double, var m4Density: Double? = null, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var endLabels: Boolean? = null, var xTicks: Double? = null, var yTicks: Double? = null, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var rowKeys: List<String>? = null)
+data class ChartSpec(var width: Double, var height: Double, var m4Density: Double? = null, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var endLabels: Boolean? = null, var xTicks: Double? = null, var yTicks: Double? = null, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var barWidth: Double? = null, var barGap: Double? = null, var barCategoryGap: Double? = null, var rowKeys: List<String>? = null)
 
 data class ExtentSpan(var seen: Boolean, var lo: Double, var hi: Double)
 
@@ -334,11 +334,11 @@ data class LegendPlacement(var cmds: List<PyreonDrawCmd>, var top: Double, var b
 
 data class Size(var w: Double, var h: Double)
 
-data class TooltipRow(var label: String, var value: Double, var color: String, var value2: Double? = null, var size: Double? = null)
+data class TooltipRow(var label: String, var value: Double, var color: String, var value2: Double? = null, var size: Double? = null, var shade: Double? = null)
 
 data class TooltipContent(var title: String, var rows: List<TooltipRow>)
 
-data class TooltipSeries(var label: String, var values: List<Double>, var color: String, var values2: List<Double>? = null, var rValues: List<Double>? = null)
+data class TooltipSeries(var label: String, var values: List<Double>, var color: String, var values2: List<Double>? = null, var rValues: List<Double>? = null, var shades: List<Double>? = null)
 
 data class ToolboxOptions(var fontSize: Double, var color: String, var active: String? = null, var actives: List<String>? = null, var gap: Double? = null)
 
@@ -374,7 +374,7 @@ data class ChartActionInput(var type: String, var index: Long, var series: Long,
 
 data class ChartActionState(var zoom: ZoomWindow, var hover: Long, var selected: List<Long>, var hidden: List<Long>, var seriesCount: Long, var brushType: String, var areas: List<BrushArea>)
 
-data class A11ySeries(var label: String, var values: List<Double>, var kind: String, var values2: List<Double>? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var rValues: List<Double>? = null)
+data class A11ySeries(var label: String, var values: List<Double>, var kind: String, var values2: List<Double>? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var rValues: List<Double>? = null, var shades: List<Double>? = null)
 
 data class A11yInput(var title: String? = null, var categories: List<String>, var series: List<A11ySeries>, var format: ((Double) -> String)? = null)
 
@@ -1144,6 +1144,11 @@ fun stepPrecision(step: Double): Double {
 fun roundTo(v: Double, digits: Double): Double {
     val k = Math.pow((10.0).toDouble(), (digits).toDouble())
     return (Math.floor(v * k + 0.5)).toDouble() / (k).toDouble()
+  }
+
+fun clampBarWidth(natural: Double, barWidth: Double? = null): Double {
+    val w = (barWidth ?: 0.0)
+    return if (w > 0.0 && w < natural) w else natural
   }
 
 fun scaleLog(d: Domain, r0: Double, r1: Double, v: Double): Double {
@@ -2377,7 +2382,7 @@ fun bandTicks(categories: List<String>, plot: PyreonChartRect): List<Tick> {
     return out
   }
 
-fun layoutBars(values: List<Double>, plot: PyreonChartRect, yDomain: Domain, gapRatio: Double): List<PyreonChartRect> {
+fun layoutBars(values: List<Double>, plot: PyreonChartRect, yDomain: Domain, gapRatio: Double, barWidth: Double? = null): List<PyreonChartRect> {
     val n = values.length
     val out: MutableList<PyreonChartRect> = mutableListOf()
     if (n == 0L) {
@@ -2385,7 +2390,7 @@ fun layoutBars(values: List<Double>, plot: PyreonChartRect, yDomain: Domain, gap
     }
     val ratio = if (gapRatio < 0.0) 0.0 else if (gapRatio > 0.9) 0.9 else gapRatio
     val band = (plot.w).toDouble() / (n).toDouble()
-    val bw = band * (1.0 - ratio)
+    val bw = clampBarWidth(band * (1.0 - ratio), barWidth)
     val zero = if (yDomain.min < 0.0 && yDomain.max > 0.0) 0.0 else yDomain.min
     val zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
     for (i in 0L until n) {
@@ -2450,7 +2455,7 @@ fun layoutSeriesPointsAt(values: List<Double>, xs: List<Double>, plot: PyreonCha
     return out
   }
 
-fun layoutBarsH(values: List<Double>, plot: PyreonChartRect, vDomain: Domain, gapRatio: Double): List<PyreonChartRect> {
+fun layoutBarsH(values: List<Double>, plot: PyreonChartRect, vDomain: Domain, gapRatio: Double, barWidth: Double? = null): List<PyreonChartRect> {
     val n = values.length
     val out: MutableList<PyreonChartRect> = mutableListOf()
     if (n == 0L) {
@@ -2458,7 +2463,7 @@ fun layoutBarsH(values: List<Double>, plot: PyreonChartRect, vDomain: Domain, ga
     }
     val ratio = if (gapRatio < 0.0) 0.0 else if (gapRatio > 0.9) 0.9 else gapRatio
     val band = (plot.h).toDouble() / (n).toDouble()
-    val bh = band * (1.0 - ratio)
+    val bh = clampBarWidth(band * (1.0 - ratio), barWidth)
     val zero = if (vDomain.min < 0.0 && vDomain.max > 0.0) 0.0 else vDomain.min
     val zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
     for (i in 0L until n) {
@@ -2569,7 +2574,7 @@ fun stackLevelsExtent(levels: StackLevels): Domain {
     return Domain(min = lo, max = hi)
   }
 
-fun layoutStackLevels(levels: StackLevels, values: List<List<Double>>, plot: PyreonChartRect, yDomain: Domain, gapRatio: Double): List<StackSegment> {
+fun layoutStackLevels(levels: StackLevels, values: List<List<Double>>, plot: PyreonChartRect, yDomain: Domain, gapRatio: Double, barWidth: Double? = null): List<StackSegment> {
     val out: MutableList<StackSegment> = mutableListOf()
     var n = 0L
     for (row in levels.tops) {
@@ -2582,7 +2587,7 @@ fun layoutStackLevels(levels: StackLevels, values: List<List<Double>>, plot: Pyr
     }
     val ratio = if (gapRatio < 0.0) 0.0 else if (gapRatio > 0.9) 0.9 else gapRatio
     val band = (plot.w).toDouble() / (countOf(n)).toDouble()
-    val bw = band * (1.0 - ratio)
+    val bw = clampBarWidth(band * (1.0 - ratio), barWidth)
     var fi = 0.0
     for (i in 0L until n) {
       for (s in 0L until levels.tops.length) {
@@ -2602,7 +2607,7 @@ fun layoutStackLevels(levels: StackLevels, values: List<List<Double>>, plot: Pyr
     return out
   }
 
-fun layoutStackLevelsH(levels: StackLevels, values: List<List<Double>>, plot: PyreonChartRect, vDomain: Domain, gapRatio: Double): List<StackSegment> {
+fun layoutStackLevelsH(levels: StackLevels, values: List<List<Double>>, plot: PyreonChartRect, vDomain: Domain, gapRatio: Double, barWidth: Double? = null): List<StackSegment> {
     val out: MutableList<StackSegment> = mutableListOf()
     var n = 0L
     for (row in levels.tops) {
@@ -2615,7 +2620,7 @@ fun layoutStackLevelsH(levels: StackLevels, values: List<List<Double>>, plot: Py
     }
     val ratio = if (gapRatio < 0.0) 0.0 else if (gapRatio > 0.9) 0.9 else gapRatio
     val band = (plot.h).toDouble() / (countOf(n)).toDouble()
-    val bh = band * (1.0 - ratio)
+    val bh = clampBarWidth(band * (1.0 - ratio), barWidth)
     var fi = 0.0
     for (i in 0L until n) {
       for (s in 0L until levels.tops.length) {
@@ -2643,11 +2648,11 @@ fun countOf(n: Long): Double {
     return f
   }
 
-fun layoutStackedBars(seriesValues: List<List<Double>>, plot: PyreonChartRect, yDomain: Domain, gapRatio: Double): List<StackSegment> = layoutStackLevels(stackLevels(seriesValues), seriesValues, plot, yDomain, gapRatio)
+fun layoutStackedBars(seriesValues: List<List<Double>>, plot: PyreonChartRect, yDomain: Domain, gapRatio: Double, barWidth: Double? = null): List<StackSegment> = layoutStackLevels(stackLevels(seriesValues), seriesValues, plot, yDomain, gapRatio, barWidth)
 
-fun layoutStackedBarsH(seriesValues: List<List<Double>>, plot: PyreonChartRect, vDomain: Domain, gapRatio: Double): List<StackSegment> = layoutStackLevelsH(stackLevels(seriesValues), seriesValues, plot, vDomain, gapRatio)
+fun layoutStackedBarsH(seriesValues: List<List<Double>>, plot: PyreonChartRect, vDomain: Domain, gapRatio: Double, barWidth: Double? = null): List<StackSegment> = layoutStackLevelsH(stackLevels(seriesValues), seriesValues, plot, vDomain, gapRatio, barWidth)
 
-fun layoutGroupedBarsH(seriesValues: List<List<Double>>, plot: PyreonChartRect, vDomain: Domain, gapRatio: Double): List<StackSegment> {
+fun layoutGroupedBarsH(seriesValues: List<List<Double>>, plot: PyreonChartRect, vDomain: Domain, gapRatio: Double, barWidth: Double? = null, barGap: Double? = null): List<StackSegment> {
     val out: MutableList<StackSegment> = mutableListOf()
     val k = seriesValues.length
     if (k == 0L) {
@@ -2664,8 +2669,13 @@ fun layoutGroupedBarsH(seriesValues: List<List<Double>>, plot: PyreonChartRect, 
     }
     val ratio = if (gapRatio < 0.0) 0.0 else if (gapRatio > 0.9) 0.9 else gapRatio
     val band = (plot.h).toDouble() / (n).toDouble()
-    val groupH = band * (1.0 - ratio)
-    val barH = (groupH).toDouble() / (k).toDouble()
+    val groupH0 = band * (1.0 - ratio)
+    val gap = if (((barGap ?: 0.0)) > 0.0) (barGap ?: 0.0) else 0.0
+    val kF = countOf(k)
+    val barH = clampBarWidth(if (gap > 0.0) (groupH0).toDouble() / ((kF + (kF - 1.0) * gap)).toDouble() else (groupH0).toDouble() / (k).toDouble(), barWidth)
+    val custom = gap > 0.0 || ((barWidth ?: 0.0)) > 0.0
+    val groupH = if (custom) barH * kF + barH * gap * (kF - 1.0) else groupH0
+    val pitchH = barH * (1.0 + gap)
     val zero = if (vDomain.min < 0.0 && vDomain.max > 0.0) 0.0 else vDomain.min
     val zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
     for (i in 0L until n) {
@@ -2674,7 +2684,7 @@ fun layoutGroupedBarsH(seriesValues: List<List<Double>>, plot: PyreonChartRect, 
         val raw = (seriesValues[(s).toInt()][(i).toInt()] ?: 0.0)
         val v = if (raw == raw) raw else zero
         val vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
-        out.add(StackSegment(rect = PyreonChartRect(x = if (vx < zeroX) vx else zeroX, y = gy + barH * s, w = Math.abs(vx - zeroX), h = barH), seriesIndex = s, datumIndex = i, value = v))
+        out.add(StackSegment(rect = PyreonChartRect(x = if (vx < zeroX) vx else zeroX, y = gy + pitchH * s, w = Math.abs(vx - zeroX), h = barH), seriesIndex = s, datumIndex = i, value = v))
       }
     }
     return out
@@ -2693,7 +2703,7 @@ fun stackHasNegatives(seriesValues: List<List<Double>>): Boolean {
 
 fun stackedExtent(seriesValues: List<List<Double>>): Domain = stackLevelsExtent(stackLevels(seriesValues))
 
-fun layoutGroupedBars(seriesValues: List<List<Double>>, plot: PyreonChartRect, yDomain: Domain, gapRatio: Double): List<StackSegment> {
+fun layoutGroupedBars(seriesValues: List<List<Double>>, plot: PyreonChartRect, yDomain: Domain, gapRatio: Double, barWidth: Double? = null, barGap: Double? = null): List<StackSegment> {
     val out: MutableList<StackSegment> = mutableListOf()
     val k = seriesValues.length
     if (k == 0L) {
@@ -2710,8 +2720,13 @@ fun layoutGroupedBars(seriesValues: List<List<Double>>, plot: PyreonChartRect, y
     }
     val ratio = if (gapRatio < 0.0) 0.0 else if (gapRatio > 0.9) 0.9 else gapRatio
     val band = (plot.w).toDouble() / (n).toDouble()
-    val groupW = band * (1.0 - ratio)
-    val barW = (groupW).toDouble() / (k).toDouble()
+    val groupW0 = band * (1.0 - ratio)
+    val gap = if (((barGap ?: 0.0)) > 0.0) (barGap ?: 0.0) else 0.0
+    val kF = countOf(k)
+    val barW = clampBarWidth(if (gap > 0.0) (groupW0).toDouble() / ((kF + (kF - 1.0) * gap)).toDouble() else (groupW0).toDouble() / (k).toDouble(), barWidth)
+    val custom = gap > 0.0 || ((barWidth ?: 0.0)) > 0.0
+    val groupW = if (custom) barW * kF + barW * gap * (kF - 1.0) else groupW0
+    val pitchW = barW * (1.0 + gap)
     val zero = if (yDomain.min < 0.0 && yDomain.max > 0.0) 0.0 else yDomain.min
     val zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
     for (i in 0L until n) {
@@ -2720,7 +2735,7 @@ fun layoutGroupedBars(seriesValues: List<List<Double>>, plot: PyreonChartRect, y
         val raw = (seriesValues[(s).toInt()][(i).toInt()] ?: 0.0)
         val v = if (isFiniteNumber(raw)) raw else zero
         val vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
-        out.add(StackSegment(rect = PyreonChartRect(x = gx + barW * s, y = if (vy < zeroY) vy else zeroY, w = barW, h = Math.abs(zeroY - vy)), seriesIndex = s, datumIndex = i, value = v))
+        out.add(StackSegment(rect = PyreonChartRect(x = gx + pitchW * s, y = if (vy < zeroY) vy else zeroY, w = barW, h = Math.abs(zeroY - vy)), seriesIndex = s, datumIndex = i, value = v))
       }
     }
     return out
@@ -2766,7 +2781,7 @@ fun normalizeStack(seriesValues: List<List<Double>>): List<List<Double>> {
     return out
   }
 
-fun layoutWaterfall(values: List<Double>, plot: PyreonChartRect, yDomain: Domain, gapRatio: Double): List<WaterfallStep> {
+fun layoutWaterfall(values: List<Double>, plot: PyreonChartRect, yDomain: Domain, gapRatio: Double, barWidth: Double? = null): List<WaterfallStep> {
     val out: MutableList<WaterfallStep> = mutableListOf()
     val n = values.length
     if (n == 0L) {
@@ -2774,7 +2789,7 @@ fun layoutWaterfall(values: List<Double>, plot: PyreonChartRect, yDomain: Domain
     }
     val ratio = if (gapRatio < 0.0) 0.0 else if (gapRatio > 0.9) 0.9 else gapRatio
     val band = (plot.w).toDouble() / (n).toDouble()
-    val bw = band * (1.0 - ratio)
+    val bw = clampBarWidth(band * (1.0 - ratio), barWidth)
     var acc = 0.0
     for (i in 0L until n) {
       val v = values[(i).toInt()]
@@ -3240,7 +3255,9 @@ fun seriesEmphasisLevel(spec: ChartSpec, s: Series, index: Long): Long {
     return emphasisLevel(spec, index)
   }
 
-fun stateFill(s: Series, index: Long, fill: String): String {
+fun stateFill(s: Series, index: Long, own: String): String {
+    val item = (s.itemColors ?: listOf())
+    val fill = if (index < item.length && item[(index).toInt()] != "") item[(index).toInt()] else own
     val brushed = (s.inBrush ?: listOf())
     val brushAlpha = (s.brushOpacity ?: -1.0)
     if (brushAlpha >= 0.0) {
@@ -3554,7 +3571,7 @@ fun categorySpanPixels(spec: ChartSpec, xDomain: Domain, plot: PyreonChartRect, 
 
 fun categoryPoints(values: List<Double>, plot: PyreonChartRect, dom: Domain): List<PyreonChartPt> = layoutSeriesPoints(values, plot, dom)
 
-fun barsLaid(spec: ChartSpec, k: Long, plot: PyreonChartRect, dom: Domain): List<PyreonChartRect> = layoutBars(spec.series[(k).toInt()].values, plot, dom, 0.25)
+fun barsLaid(spec: ChartSpec, k: Long, plot: PyreonChartRect, dom: Domain): List<PyreonChartRect> = layoutBars(spec.series[(k).toInt()].values, plot, dom, (spec.barCategoryGap ?: 0.25), spec.barWidth)
 
 fun indicesOf(spec: ChartSpec, kind: String): List<Long> {
     val out: MutableList<Long> = mutableListOf()
@@ -3577,15 +3594,15 @@ fun levelsOf(series: List<Series>): StackLevels {
 fun setLaid(spec: ChartSpec, kind: String, plot: PyreonChartRect, dom: Domain): List<StackSegment> {
     val idx = indicesOf(spec, kind)
     val values = idx.map({ k -> spec.series[(k).toInt()].values })
-    return if (kind == "stacked") layoutStackLevels(levelsOf(idx.map({ k -> spec.series[(k).toInt()] })), values, plot, dom, 0.25) else layoutGroupedBars(values, plot, dom, 0.25)
+    return if (kind == "stacked") layoutStackLevels(levelsOf(idx.map({ k -> spec.series[(k).toInt()] })), values, plot, dom, (spec.barCategoryGap ?: 0.25), spec.barWidth) else layoutGroupedBars(values, plot, dom, (spec.barCategoryGap ?: 0.25), spec.barWidth, spec.barGap)
   }
 
-fun barsLaidH(spec: ChartSpec, k: Long, plot: PyreonChartRect, dom: Domain): List<PyreonChartRect> = layoutBarsH(spec.series[(k).toInt()].values, plot, dom, 0.25)
+fun barsLaidH(spec: ChartSpec, k: Long, plot: PyreonChartRect, dom: Domain): List<PyreonChartRect> = layoutBarsH(spec.series[(k).toInt()].values, plot, dom, (spec.barCategoryGap ?: 0.25), spec.barWidth)
 
 fun setLaidH(spec: ChartSpec, kind: String, plot: PyreonChartRect, dom: Domain): List<StackSegment> {
     val idx = indicesOf(spec, kind)
     val values = idx.map({ k -> spec.series[(k).toInt()].values })
-    return if (kind == "stacked") layoutStackLevelsH(levelsOf(idx.map({ k -> spec.series[(k).toInt()] })), values, plot, dom, 0.25) else layoutGroupedBarsH(values, plot, dom, 0.25)
+    return if (kind == "stacked") layoutStackLevelsH(levelsOf(idx.map({ k -> spec.series[(k).toInt()] })), values, plot, dom, (spec.barCategoryGap ?: 0.25), spec.barWidth) else layoutGroupedBarsH(values, plot, dom, (spec.barCategoryGap ?: 0.25), spec.barWidth, spec.barGap)
   }
 
 fun growEdgeRect(r: PyreonChartRect, dom: Domain, plot: PyreonChartRect, horizontal: Boolean): PyreonChartRect {
@@ -3928,7 +3945,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         }
       } else {
         if (s.kind == "waterfall") {
-          val steps = layoutWaterfall(s.values, plot, sDomain, 0.25)
+          val steps = layoutWaterfall(s.values, plot, sDomain, (spec.barCategoryGap ?: 0.25), spec.barWidth)
           for (si in 0L until steps.length) {
             val st = steps[(si).toInt()]
             val fill = stateFill(s, st.datumIndex, if (st.value < 0.0) (s.negativeColor ?: withAlpha(s.color, 0.55)) else s.color)
@@ -4334,7 +4351,7 @@ fun barsForIn(raw: ChartSpec, index: Long, plot: PyreonChartRect): List<PyreonCh
       for (i in 0L until s.values.length) {
         rects.add(PyreonChartRect(x = 0.0, y = 0.0, w = -1.0, h = -1.0))
       }
-      for (st in layoutWaterfall(s.values, plot, dom, 0.25)) {
+      for (st in layoutWaterfall(s.values, plot, dom, (raw.barCategoryGap ?: 0.25), raw.barWidth)) {
         rects[(st.datumIndex).toInt()] = st.rect
       }
       return rects
@@ -9381,6 +9398,13 @@ fun tooltipAt(index: Long, categories: List<String>, series: List<TooltipSeries>
           row = TooltipRow(label = row.label, value = row.value, color = row.color, value2 = row.value2, size = r)
         }
       }
+      val sh = (s.shades ?: listOf())
+      if (index < sh.length) {
+        val c = sh[(index).toInt()]
+        if (isFiniteNumber(c)) {
+          row = TooltipRow(label = row.label, value = row.value, color = row.color, value2 = row.value2, size = row.size, shade = c)
+        }
+      }
       rows.add(row)
     }
     return TooltipContent(title = (categories[(index).toInt()] ?: "${pyreonAdd(index, 1L)}"), rows = rows)
@@ -9392,13 +9416,15 @@ fun tooltipLines(c: TooltipContent, format: ((Double) -> String)? = null): List<
     for (r in c.rows) {
       val lo = (r.value2 ?: ((0.0).toDouble() / (0.0).toDouble()))
       val sz = (r.size ?: ((0.0).toDouble() / (0.0).toDouble()))
+      val sh = (r.shade ?: ((0.0).toDouble() / (0.0).toDouble()))
+      val shadeTail = if (sh == sh) " (shade ${fmt(sh)})" else ""
       if (lo == lo) {
-        out.add("${r.label}: ${fmt(lo)} to ${fmt(r.value)}")
+        out.add("${r.label}: ${fmt(lo)} to ${fmt(r.value)}${shadeTail}")
       } else {
         if (sz == sz) {
-          out.add("${r.label}: ${fmt(r.value)} (size ${fmt(sz)})")
+          out.add("${r.label}: ${fmt(r.value)} (size ${fmt(sz)})${shadeTail}")
         } else {
-          out.add("${r.label}: ${fmt(r.value)}")
+          out.add("${r.label}: ${fmt(r.value)}${shadeTail}")
         }
       }
     }
@@ -10886,6 +10912,7 @@ fun chartTable(input: A11yInput, limit: Long = -1L): A11yTable {
     for (s in input.series) {
       val other = (s.values2 ?: listOf())
       val rs = (s.rValues ?: listOf())
+      val shs = (s.shades ?: listOf())
       if (other.length > 0L) {
         headers.add("${s.label} (upper)")
         headers.add("${s.label} (lower)")
@@ -10894,6 +10921,9 @@ fun chartTable(input: A11yInput, limit: Long = -1L): A11yTable {
       }
       if (rs.length > 0L) {
         headers.add("${s.label} (size)")
+      }
+      if (shs.length > 0L) {
+        headers.add("${s.label} (shade)")
       }
     }
     val n = chartRowCount(input)
@@ -10921,14 +10951,19 @@ fun chartTableRow(input: A11yInput, i: Long): List<String> {
     for (s in input.series) {
       val other = (s.values2 ?: listOf())
       val rs = (s.rValues ?: listOf())
+      val shs = (s.shades ?: listOf())
       val two = other.length > 0L
       val sized = rs.length > 0L
+      val shaded = shs.length > 0L
       if (i >= s.values.length) {
         row.add("")
         if (two) {
           row.add("")
         }
         if (sized) {
+          row.add("")
+        }
+        if (shaded) {
           row.add("")
         }
         continue
@@ -10949,6 +10984,14 @@ fun chartTableRow(input: A11yInput, i: Long): List<String> {
         } else {
           val r = rs[(i).toInt()]
           row.add(if (isFiniteNumber(r)) fmt(r) else "")
+        }
+      }
+      if (shaded) {
+        if (i >= shs.length) {
+          row.add("")
+        } else {
+          val c = shs[(i).toInt()]
+          row.add(if (isFiniteNumber(c)) fmt(c) else "")
         }
       }
     }

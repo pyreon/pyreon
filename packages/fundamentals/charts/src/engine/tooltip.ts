@@ -35,6 +35,8 @@ export interface TooltipRow {
    * comparing areas by eye, which is the thing tooltips exist to avoid.
    */
   size?: Double | undefined
+  /** The value a `shadeBy` colour was mapped from, where the series has one: the colour alone says nothing a reader can quote. */
+  shade?: Double | undefined
 }
 
 export interface TooltipContent {
@@ -51,6 +53,8 @@ export interface TooltipSeries {
   values2?: Double[] | undefined
   /** The bubble channel's RAW values, where the series has them. */
   rValues?: Double[] | undefined
+  /** The values a `shadeBy` colour was mapped from, where the series has them. */
+  shades?: Double[] | undefined
 }
 
 /** Everything plotted at one datum index, for a shared-axis tooltip. */
@@ -78,6 +82,11 @@ export function tooltipAt(index: number, categories: string[], series: TooltipSe
       const r = rs[index]!
       if (isFiniteNumber(r)) row = { label: row.label, value: row.value, color: row.color, value2: row.value2, size: r }
     }
+    const sh: Double[] = s.shades ?? []
+    if (index < sh.length) {
+      const c = sh[index]!
+      if (isFiniteNumber(c)) row = { label: row.label, value: row.value, color: row.color, value2: row.value2, size: row.size, shade: c }
+    }
     rows.push(row)
   }
   return { title: categories[index] ?? `${index + 1}`, rows }
@@ -94,9 +103,11 @@ export function tooltipLines(c: TooltipContent, format?: Formatter): string[] {
     // Low to high reads as a range; the channel order is the band's own
     // (`values` is the HIGH edge), so it is stated low-first here.
     const sz: Double = r.size ?? (0.0 / 0.0)
-    if (lo === lo) out.push(`${r.label}: ${fmt(lo)} to ${fmt(r.value)}`)
-    else if (sz === sz) out.push(`${r.label}: ${fmt(r.value)} (size ${fmt(sz)})`)
-    else out.push(`${r.label}: ${fmt(r.value)}`)
+    const sh: Double = r.shade ?? (0.0 / 0.0)
+    const shadeTail = sh === sh ? ` (shade ${fmt(sh)})` : ''
+    if (lo === lo) out.push(`${r.label}: ${fmt(lo)} to ${fmt(r.value)}${shadeTail}`)
+    else if (sz === sz) out.push(`${r.label}: ${fmt(r.value)} (size ${fmt(sz)})${shadeTail}`)
+    else out.push(`${r.label}: ${fmt(r.value)}${shadeTail}`)
   }
   return out
 }

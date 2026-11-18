@@ -4,7 +4,7 @@
 // a category axis and wrong for a scatter plot — there, x is a measured value
 // like y, and pretending otherwise silently redraws the data.
 
-import { isFiniteNumber, scaleLinear } from './scale'
+import { clampBarWidth, isFiniteNumber, scaleLinear } from './scale'
 import type { Domain, Double, Pt, Rect } from './types'
 
 /** One band's worth of stacked segments, bottom to top. */
@@ -92,14 +92,14 @@ export function stackLevelsExtent(levels: StackLevels): Domain {
 }
 
 /** Segments for stack levels, upright: band `i`, series `s`, from its base to its top. */
-export function layoutStackLevels(levels: StackLevels, values: Double[][], plot: Rect, yDomain: Domain, gapRatio: Double): StackSegment[] {
+export function layoutStackLevels(levels: StackLevels, values: Double[][], plot: Rect, yDomain: Domain, gapRatio: Double, barWidth?: Double): StackSegment[] {
   const out: StackSegment[] = []
   let n = 0
   for (const row of levels.tops) if (row.length > n) n = row.length
   if (n === 0) return out
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.w / countOf(n)
-  const bw = band * (1.0 - ratio)
+  const bw = clampBarWidth(band * (1.0 - ratio), barWidth)
   let fi = 0.0
   for (let i = 0; i < n; i++) {
     for (let s = 0; s < levels.tops.length; s++) {
@@ -123,14 +123,14 @@ export function layoutStackLevels(levels: StackLevels, values: Double[][], plot:
 }
 
 /** `layoutStackLevels` on the flipped frame: bands run DOWN the y axis and each stack grows along x. */
-export function layoutStackLevelsH(levels: StackLevels, values: Double[][], plot: Rect, vDomain: Domain, gapRatio: Double): StackSegment[] {
+export function layoutStackLevelsH(levels: StackLevels, values: Double[][], plot: Rect, vDomain: Domain, gapRatio: Double, barWidth?: Double): StackSegment[] {
   const out: StackSegment[] = []
   let n = 0
   for (const row of levels.tops) if (row.length > n) n = row.length
   if (n === 0) return out
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.h / countOf(n)
-  const bh = band * (1.0 - ratio)
+  const bh = clampBarWidth(band * (1.0 - ratio), barWidth)
   let fi = 0.0
   for (let i = 0; i < n; i++) {
     for (let s = 0; s < levels.tops.length; s++) {
@@ -172,8 +172,9 @@ export function layoutStackedBars(
   plot: Rect,
   yDomain: Domain,
   gapRatio: Double,
+  barWidth?: Double,
 ): StackSegment[] {
-  return layoutStackLevels(stackLevels(seriesValues), seriesValues, plot, yDomain, gapRatio)
+  return layoutStackLevels(stackLevels(seriesValues), seriesValues, plot, yDomain, gapRatio, barWidth)
 }
 
 /** `layoutStackedBars` on the flipped frame: bands run DOWN the y axis and the stack grows along x. */
@@ -182,8 +183,9 @@ export function layoutStackedBarsH(
   plot: Rect,
   vDomain: Domain,
   gapRatio: Double,
+  barWidth?: Double,
 ): StackSegment[] {
-  return layoutStackLevelsH(stackLevels(seriesValues), seriesValues, plot, vDomain, gapRatio)
+  return layoutStackLevelsH(stackLevels(seriesValues), seriesValues, plot, vDomain, gapRatio, barWidth)
 }
 
 /** `layoutGroupedBars` on the flipped frame: one bar per series, stacked DOWN each band. */
@@ -192,6 +194,8 @@ export function layoutGroupedBarsH(
   plot: Rect,
   vDomain: Domain,
   gapRatio: Double,
+  barWidth?: Double,
+  barGap?: Double,
 ): StackSegment[] {
   const out: StackSegment[] = []
   const k = seriesValues.length
@@ -202,8 +206,14 @@ export function layoutGroupedBarsH(
 
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.h / n
-  const groupH = band * (1.0 - ratio)
-  const barH = groupH / k
+  const groupH0 = band * (1.0 - ratio)
+  const gap = (barGap ?? 0.0) > 0.0 ? barGap ?? 0.0 : 0.0
+  const kF = countOf(k)
+  // Defaults take the original arithmetic, so a chart that sets neither option lays out as before.
+  const barH = clampBarWidth(gap > 0.0 ? groupH0 / (kF + (kF - 1.0) * gap) : groupH0 / k, barWidth)
+  const custom = gap > 0.0 || (barWidth ?? 0.0) > 0.0
+  const groupH = custom ? barH * kF + barH * gap * (kF - 1.0) : groupH0
+  const pitchH = barH * (1.0 + gap)
   const zero = vDomain.min < 0.0 && vDomain.max > 0.0 ? 0.0 : vDomain.min
   const zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
 
@@ -217,7 +227,7 @@ export function layoutGroupedBarsH(
       out.push({
         rect: {
           x: vx < zeroX ? vx : zeroX,
-          y: gy + barH * s,
+          y: gy + pitchH * s,
           w: Math.abs(vx - zeroX),
           h: barH,
         },
@@ -247,6 +257,8 @@ export function layoutGroupedBars(
   plot: Rect,
   yDomain: Domain,
   gapRatio: Double,
+  barWidth?: Double,
+  barGap?: Double,
 ): StackSegment[] {
   const out: StackSegment[] = []
   const k = seriesValues.length
@@ -257,8 +269,13 @@ export function layoutGroupedBars(
 
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.w / n
-  const groupW = band * (1.0 - ratio)
-  const barW = groupW / k
+  const groupW0 = band * (1.0 - ratio)
+  const gap = (barGap ?? 0.0) > 0.0 ? barGap ?? 0.0 : 0.0
+  const kF = countOf(k)
+  const barW = clampBarWidth(gap > 0.0 ? groupW0 / (kF + (kF - 1.0) * gap) : groupW0 / k, barWidth)
+  const custom = gap > 0.0 || (barWidth ?? 0.0) > 0.0
+  const groupW = custom ? barW * kF + barW * gap * (kF - 1.0) : groupW0
+  const pitchW = barW * (1.0 + gap)
   const zero = yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min
   const zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
 
@@ -271,7 +288,7 @@ export function layoutGroupedBars(
       const vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
       out.push({
         rect: {
-          x: gx + barW * s,
+          x: gx + pitchW * s,
           y: vy < zeroY ? vy : zeroY,
           w: barW,
           h: Math.abs(zeroY - vy),
@@ -366,13 +383,14 @@ export function layoutWaterfall(
   plot: Rect,
   yDomain: Domain,
   gapRatio: Double,
+  barWidth?: Double,
 ): WaterfallStep[] {
   const out: WaterfallStep[] = []
   const n = values.length
   if (n === 0) return out
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.w / n
-  const bw = band * (1.0 - ratio)
+  const bw = clampBarWidth(band * (1.0 - ratio), barWidth)
   let acc = 0.0
   for (let i = 0; i < n; i++) {
     const v = values[i]!

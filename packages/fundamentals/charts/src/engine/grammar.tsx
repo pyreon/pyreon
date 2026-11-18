@@ -52,6 +52,7 @@ import type { Formatter } from './format'
 import { area, band, bars, bubble, groupedBars, histogram, line, points, resolveMarks, stackedArea, stackedBars, waterfall } from './marks'
 import type { Accessor, ErrorOptions, Mark, MarkOptions } from './marks'
 import { bollinger, ema, sma, trend } from './indicators'
+import type { ItemFill } from './item-colors'
 import { defaultTheme, logBounds, resolveYDomain } from './render'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker } from './render'
 import type { LegendPosition } from './canvas-host'
@@ -72,7 +73,7 @@ export function channel<T, V>(c: Channel<T, V>): (d: T, index: number) => V {
 // Marks — branded components. Never mounted: `<Chart>` reads their vnode props.
 // ---------------------------------------------------------------------------
 
-export interface MarkProps<T> extends Omit<MarkOptions, 'color'> {
+export interface MarkProps<T> extends Omit<MarkOptions, 'color' | 'fill'> {
   /** The value channel. */
   y: Channel<T>
   /** Fixed colour; the theme palette otherwise. */
@@ -80,6 +81,14 @@ export interface MarkProps<T> extends Omit<MarkOptions, 'color'> {
   /** Error-bar bounds — both needed; a whisker from low to high through each datum. */
   errorLow?: Channel<T>
   errorHigh?: Channel<T>
+  /**
+   * Colour each datum on its own — `fill={fillBy('tone')}` (a colour on the row)
+   * or `fill={shadeBy('margin')}` (a value through a ramp). Not `color`: that
+   * stays the series colour, and `<Chart color="field">` the long-format split.
+   * Bars and dots; web only (a device draws the series colour, and the compiler
+   * says so).
+   */
+  fill?: ItemFill<T>
 }
 export interface BarProps<T> extends MarkProps<T> {
   /** Stack this bar on the other stacked bars (one segment per mark, or per `color` value in long form). */
@@ -500,6 +509,12 @@ export interface ChartProps<T> {
   /** One formatter for the y axis, tooltip and description (an `<Axis y format>` overrides it). */
   format?: Formatter
   horizontal?: boolean
+  /** Bar thickness in px across the band — a ceiling, never wider than the band's slot. See `PlotChartProps.barWidth`. */
+  barWidth?: number
+  /** The space between the bars of a group, as a fraction of a bar's thickness (0 default). Grouped bars. */
+  barGap?: number
+  /** The space between categories, as a fraction of the band (default 0.25). */
+  barCategoryGap?: number
   animate?: boolean
   /** Tween data changes (default on); `updateDuration` in ms. */
   updateAnimation?: boolean
@@ -937,7 +952,7 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
       : reactiveProp(() => (props as unknown as Record<string, unknown>)[key] ?? (resolved().props as Record<string, unknown>)[key])
   }
   // Every other `<PlotChart>` prop, the events/actions model included — the grammar reaches the whole host.
-  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'density', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'seriesLabels', 'onSaveImage', 'locale'] as const) {
+  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'density', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'seriesLabels', 'onSaveImage', 'locale', 'barWidth', 'barGap', 'barCategoryGap'] as const) {
     plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key])
   }
   plotProps.onSelect = reactiveProp(() => props.onSelect)

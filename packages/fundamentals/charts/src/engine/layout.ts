@@ -1,6 +1,6 @@
 // Plot-area layout and per-mark geometry.
 
-import { isFiniteNumber, makeTicks, scaleLinear } from './scale'
+import { clampBarWidth, isFiniteNumber, makeTicks, scaleLinear } from './scale'
 import { logViewTicks, timeTicks } from './scale-extra'
 import type { Formatter } from './format'
 import type { Domain, MeasureText, Pt, Rect, Tick, Double } from './types'
@@ -461,13 +461,14 @@ export function layoutBars(
   plot: Rect,
   yDomain: Domain,
   gapRatio: Double,
+  barWidth?: Double,
 ): Rect[] {
   const n = values.length
   const out: Rect[] = []
   if (n === 0) return out
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.w / n
-  const bw = band * (1.0 - ratio)
+  const bw = clampBarWidth(band * (1.0 - ratio), barWidth)
   // Bars are measured from the axis zero line when the domain straddles zero,
   // so a negative value draws downward from it rather than up from the floor.
   const zero = yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min
@@ -591,13 +592,14 @@ export function layoutBarsH(
   plot: Rect,
   vDomain: Domain,
   gapRatio: Double,
+  barWidth?: Double,
 ): Rect[] {
   const n = values.length
   const out: Rect[] = []
   if (n === 0) return out
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.h / n
-  const bh = band * (1.0 - ratio)
+  const bh = clampBarWidth(band * (1.0 - ratio), barWidth)
   const zero = vDomain.min < 0.0 && vDomain.max > 0.0 ? 0.0 : vDomain.min
   const zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
   for (let i = 0; i < n; i++) {

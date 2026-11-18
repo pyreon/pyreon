@@ -171,3 +171,15 @@ export function roundTo(v: Double, digits: Double): Double {
   const k = Math.pow(10.0, digits)
   return Math.floor(v * k + 0.5) / k
 }
+
+/**
+ * A bar's thickness once the user's `barWidth` (px) is applied: the width asked
+ * for, never wider than the slot the band leaves, and the slot itself when no
+ * width was asked for (so a chart that does not set it lays out exactly as it
+ * always did). Thickness runs across the band: x on a vertical chart, y on a
+ * horizontal one.
+ */
+export function clampBarWidth(natural: Double, barWidth?: Double): Double {
+  const w = barWidth ?? 0.0
+  return w > 0.0 && w < natural ? w : natural
+}

@@ -408,6 +408,16 @@ export interface PlotChartProps<T> {
    */
   xLabels?: AxisLabelMode
   /**
+   * Bar thickness in px, across the band (a ceiling: a bar is never wider than
+   * the slot the band leaves). Plain, stacked, grouped and waterfall bars, in
+   * both orientations. Unset keeps the band-proportional width.
+   */
+  barWidth?: number
+  /** The space between the bars of a group, as a fraction of one bar's thickness (0 default). Grouped bars. */
+  barGap?: number
+  /** The space between categories, as a fraction of the band (default 0.25, clamped to 0..0.9). */
+  barCategoryGap?: number
+  /**
    * A BCP 47 tag that formats the numbers (axis, tooltip, table, value
    * labels) and, with `xTime` / `yTime`, the dates through `Intl` — `de-DE`
    * reads `1.234,5` and `12. Mär.`. An explicit `format` / `xFormat` wins;
@@ -988,6 +998,9 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     yTitle: props.yTitle,
     y2Title: props.y2Title,
     xLabels: props.xLabels,
+    barWidth: props.barWidth,
+    barGap: props.barGap,
+    barCategoryGap: props.barCategoryGap,
     ...(props.xValue !== undefined
       ? { xValues: rows.map((d, i) => props.xValue!(d, gi(i))) }
       : {}),
@@ -1987,6 +2000,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         ...(s.errLow !== undefined ? { errLow: s.errLow } : {}),
         ...(s.errHigh !== undefined ? { errHigh: s.errHigh } : {}),
         ...(s.rValues !== undefined ? { rValues: s.rValues } : {}),
+        ...(s.shades !== undefined ? { shades: s.shades } : {}),
       })),
     }
     a11yMemo = { rows, marks: props.marks, labels: props.seriesLabels, format: fmtNow, title: props.title, input }

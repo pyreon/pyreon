@@ -45,6 +45,12 @@ export interface A11ySeries {
    * second cell, like the value it sits beside.
    */
   rValues?: Double[] | undefined
+  /**
+   * The values a `shadeBy` colour was mapped from. A colour is the one channel
+   * a reader who cannot see it can never recover, so it reads as a cell beside
+   * the value it colours.
+   */
+  shades?: Double[] | undefined
 }
 
 export interface A11yInput {
@@ -236,6 +242,7 @@ export function chartTable(input: A11yInput, limit: number = -1): A11yTable {
   for (const s of input.series) {
     const other: Double[] = s.values2 ?? []
     const rs: Double[] = s.rValues ?? []
+    const shs: Double[] = s.shades ?? []
     // Independent columns, not a chain: a series carrying BOTH a second
     // bound and a size channel must contribute both, and an `else if` here
     // silently dropped the size for any series that also had bounds.
@@ -246,6 +253,7 @@ export function chartTable(input: A11yInput, limit: number = -1): A11yTable {
       headers.push(s.label)
     }
     if (rs.length > 0) headers.push(`${s.label} (size)`)
+    if (shs.length > 0) headers.push(`${s.label} (shade)`)
   }
 
   const n = chartRowCount(input)
@@ -279,12 +287,15 @@ export function chartTableRow(input: A11yInput, i: number): string[] {
   for (const s of input.series) {
     const other: Double[] = s.values2 ?? []
     const rs: Double[] = s.rValues ?? []
+    const shs: Double[] = s.shades ?? []
     const two = other.length > 0
     const sized = rs.length > 0
+    const shaded = shs.length > 0
     if (i >= s.values.length) {
       row.push('')
       if (two) row.push('')
       if (sized) row.push('')
+      if (shaded) row.push('')
       continue
     }
     const v = s.values[i]!
@@ -303,6 +314,13 @@ export function chartTableRow(input: A11yInput, i: number): string[] {
       else {
         const r = rs[i]!
         row.push(isFiniteNumber(r) ? fmt(r) : '')
+      }
+    }
+    if (shaded) {
+      if (i >= shs.length) row.push('')
+      else {
+        const c = shs[i]!
+        row.push(isFiniteNumber(c) ? fmt(c) : '')
       }
     }
   }

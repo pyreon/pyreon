@@ -37,6 +37,9 @@ const ROLE: Readonly<Record<keyof Series, Role>> = {
   errLow: 'data',
   errHigh: 'data',
   rValues: 'data',
+  shades: 'data',
+  // Painted by `stateFill`; the numbers behind a shade are `shades`.
+  itemColors: 'presentation',
 
   radii: 'presentation',
   // How values stack changes where a segment is drawn, not what the datum is: the table reads the values.
@@ -70,6 +73,7 @@ function loaded(): Series {
     errLow: [2, 5],
     errHigh: [4, 7],
     rValues: [11, 22],
+    shades: [33, 44],
     color: '#111',
     width: 2,
     radius: 3,
@@ -84,6 +88,7 @@ const PRINTED: Readonly<Record<string, string[]>> = {
   errLow: ['2', '5'],
   errHigh: ['4', '7'],
   rValues: ['11', '22'],
+  shades: ['33', '44'],
 }
 
 describe('every data channel reaches the reader', () => {

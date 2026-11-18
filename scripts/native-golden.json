@@ -551,6 +551,16 @@
       "bytes": 607,
       "warnings": 4
     },
+    "golden-fixture:chart-bar-geometry.tsx|swift": {
+      "sha": "f746cf69630e43b481a8f0c014302be9c8ed25ae130563bd8c4aafebaf7dd1df",
+      "bytes": 5764,
+      "warnings": 0
+    },
+    "golden-fixture:chart-bar-geometry.tsx|kotlin": {
+      "sha": "a745e66a5737ece945bbd540fd68e21a9c0a6f200d015f7d6e5d7298c987f746",
+      "bytes": 6453,
+      "warnings": 0
+    },
     "golden-fixture:chart-formatter-params.tsx|swift": {
       "sha": "641e9508787e874e379638ec0cd10d09600982b00b5f35c37eb5de4b0fd80b16",
       "bytes": 5665,
@@ -569,6 +579,16 @@
     "golden-fixture:chart-handle.tsx|kotlin": {
       "sha": "920b3a69d66b5fa73c80fd7d39462a5a25c93981f474d0e528048f158579b0c3",
       "bytes": 12326,
+      "warnings": 2
+    },
+    "golden-fixture:chart-item-fill.tsx|swift": {
+      "sha": "d7873be66d53b646ad04df6e10f929d4591a6674ca6963efc454c6533302795c",
+      "bytes": 2813,
+      "warnings": 2
+    },
+    "golden-fixture:chart-item-fill.tsx|kotlin": {
+      "sha": "d44ee3e15557bfe48b7c301e446f42911b19a73ea2e060fbcbfff1c93ca36e5b",
+      "bytes": 3168,
       "warnings": 2
     },
     "golden-fixture:chart-kotlin-01.tsx|swift": {

@@ -309,6 +309,7 @@ export function swiftMarkOptionArgs(opts: ExprIR | undefined, tag: string, serie
     for (const f of opts.fields) fields.set(f.name, f.value)
   }
   if (fields.has('curve')) host.warn(`<${tag}> mark ${seriesIndex + 1}: a \`curve\` callback is not lowered on native; the series draws straight.`)
+  if (fields.has('fill')) host.warn(`<${tag}> mark ${seriesIndex + 1}: \`fill\` (per-datum colour: fillBy / shadeBy) is not lowered on native — it maps a closure over each row; every bar and dot draws in the series colour.`)
   const args: string[] = []
   const pattern = fields.get('pattern')
   const pushPattern = (): boolean => {

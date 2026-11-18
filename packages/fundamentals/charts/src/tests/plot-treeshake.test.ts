@@ -100,4 +100,24 @@ describe.skipIf(!hasBuiltLib(MAIN, "the main entry's feature tree-shaking"))('<C
   it('and the marker is real — adding <Bollinger> brings it in', async () => {
     expect(hasIndicator(await bundle(['Chart', 'Line', 'Bollinger'], MAIN)), 'the indicator marker is not load-bearing').toBe(true)
   })
+
+  // Per-datum colour is two imported bindings; each descriptor names itself
+  // (`kind: 'shade-by'` / `'fill-by'`), and that literal lives only in
+  // `item-colors.ts`, so it shows whether the ramp arithmetic was bundled.
+  const hasLiteral = (code: string, lit: string): boolean => code.includes(`"${lit}"`) || code.includes(`'${lit}'`)
+
+  it('<Chart> + <Bar> + <Line> bundles no per-datum colour code', async () => {
+    const code = await bundle(['Chart', 'Bar', 'Line'], MAIN)
+    expect(hasLiteral(code, 'shade-by'), 'shadeBy reached a chart that never colours a datum').toBe(false)
+    expect(hasLiteral(code, 'fill-by'), 'fillBy reached a chart that never colours a datum').toBe(false)
+  })
+
+  it('and the markers are real — importing shadeBy / fillBy brings them in, each without the other', async () => {
+    const shade = await bundle(['Chart', 'Bar', 'shadeBy'], MAIN)
+    expect(hasLiteral(shade, 'shade-by'), 'the shadeBy marker is not load-bearing').toBe(true)
+    expect(hasLiteral(shade, 'fill-by'), 'fillBy came along with shadeBy').toBe(false)
+    const fill = await bundle(['Chart', 'Bar', 'fillBy'], MAIN)
+    expect(hasLiteral(fill, 'fill-by'), 'the fillBy marker is not load-bearing').toBe(true)
+    expect(hasLiteral(fill, 'shade-by'), 'shadeBy came along with fillBy').toBe(false)
+  })
 })

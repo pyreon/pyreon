@@ -11,6 +11,7 @@
 // Recharts all converge on marks-over-data rather than one nested config object.
 
 import type { Series } from './render'
+import type { ItemFill } from './item-colors'
 import { DEFAULT_PALETTE, labelSlots, paletteAt } from './palette'
 import { bubbleRadii } from './bubble'
 import type { SeriesGradient } from './gradient'
@@ -134,6 +135,15 @@ export interface MarkOptions {
   areaOpacity?: Double
   /** The fill a `waterfall` step takes when its value is negative; a translucent `color` otherwise. */
   negativeColor?: string
+  /**
+   * Colour each datum on its own: `fill={fillBy('tone')}` reads a colour off the
+   * row, `fill={shadeBy('margin')}` maps a value through a ramp. Both are
+   * imported bindings (from `./item-colors`), so a chart that never colours a
+   * datum does not bundle them. Not `color` — that is the series colour, and
+   * `<Chart color="field">` is the long-format split. Web only; native draws the
+   * series colour and the compiler names the prop.
+   */
+  fill?: ItemFill<never>
 }
 
 /**
@@ -444,6 +454,14 @@ function fillAccessor<T>(data: readonly T[], acc: (d: T, index: number) => unkno
   }
 }
 
+/** The series fields a mark's `fill` descriptor sets — nothing at all when the mark has none, so an unpainted chart builds the same series as before. */
+function itemPaint<T>(data: readonly T[], m: Mark<T>): { itemColors?: string[]; shades?: Double[] } {
+  const f = m.options.fill as ItemFill<T> | undefined
+  if (f === undefined) return {}
+  const p = f.resolve(data)
+  return { itemColors: p.colors, ...(p.shades !== undefined ? { shades: p.shades } : {}) }
+}
+
 export function resolveMarks<T>(data: readonly T[], marks: readonly Mark<T>[], palette: readonly string[] = DEFAULT_PALETTE): Series[] {
   // Colour follows the LABEL (`labelSlots`): marks sharing a label share a colour.
   const slots = labelSlots(marks.map((m, k) => markLabel(m, k)))
@@ -545,6 +563,7 @@ export function resolveMarks<T>(data: readonly T[], marks: readonly Mark<T>[], p
       dash: m.options.dash,
       areaOpacity: m.options.areaOpacity,
       negativeColor: m.options.negativeColor,
+      ...itemPaint(data, m),
       errLow,
       errHigh,
     }

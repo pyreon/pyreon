@@ -1987,6 +1987,9 @@ export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'yTitle', kind: 'string' },
   { name: 'y2Title', kind: 'string' },
   { name: 'xLabels', kind: 'string' },
+  { name: 'barWidth', kind: 'number' },
+  { name: 'barGap', kind: 'number' },
+  { name: 'barCategoryGap', kind: 'number' },
 ]
 
 /**

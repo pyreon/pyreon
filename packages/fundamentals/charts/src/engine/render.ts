@@ -102,6 +102,18 @@ export interface Series {
    * region" the same request.
    */
   values2?: Double[] | undefined
+  /**
+   * One colour per datum (`fill={fillBy(…)}` / `fill={shadeBy(…)}`); '' leaves
+   * a datum in `color`. Painted by `stateFill`, the one place a bar or dot's
+   * fill is decided, so every bar kind and the brush fade honour it.
+   */
+  itemColors?: string[] | undefined
+  /**
+   * The VALUES a `shadeBy` colour was mapped from, index-aligned with `values`.
+   * Data, not presentation: a colour is not a number a reader can recover, so
+   * the tooltip and the accessible table print these.
+   */
+  shades?: Double[] | undefined
 }
 
 /**
@@ -337,6 +349,18 @@ export interface ChartSpec {
   /** How the x tick labels react to running out of room — see `LayoutConfig.xLabels`. */
   xLabels?: 'auto' | 'rotate' | 'thin' | 'all' | undefined
   /**
+   * Bar thickness in px — the width of one bar across its band (x on a vertical
+   * chart, y on a horizontal one). It is a ceiling, not a stretch: a bar is
+   * never wider than the slot the band leaves, and a chart that sets nothing
+   * keeps the band-proportional width. Plain, stacked, grouped and waterfall
+   * bars; a pie, a heatmap and every other family ignore it.
+   */
+  barWidth?: Double | undefined
+  /** The space between the bars of one group, as a fraction of a bar's thickness (0 = abutting, the default). Grouped bars only. */
+  barGap?: Double | undefined
+  /** The space between categories, as a fraction of the band (0.25 by default, clamped to 0..0.9). */
+  barCategoryGap?: Double | undefined
+  /**
    * One key per row (`<Chart by>`), aligned with the series values. When set,
    * every plain / stacked / grouped bar command carries its row's `key` and
    * `enter` rect, and a line whose points are its rows one-to-one carries
@@ -425,7 +449,9 @@ export function seriesEmphasisLevel(spec: ChartSpec, s: Series, index: number): 
 }
 
 /** The fill a datum paints with: faded when a brush leaves the datum out, else `fill`. */
-export function stateFill(s: Series, index: number, fill: string): string {
+export function stateFill(s: Series, index: number, own: string): string {
+  const item = s.itemColors ?? []
+  const fill = index < item.length && item[index]! !== '' ? item[index]! : own
   const brushed = s.inBrush ?? []
   const brushAlpha = s.brushOpacity ?? -1.0
   if (brushAlpha >= 0.0) {
@@ -841,7 +867,7 @@ export function categoryPoints(values: Double[], plot: Rect, dom: Domain): Pt[] 
 
 /** `layoutBars` for series `k`. */
 export function barsLaid(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
-  return layoutBars(spec.series[k]!.values, plot, dom, 0.25)
+  return layoutBars(spec.series[k]!.values, plot, dom, spec.barCategoryGap ?? 0.25, spec.barWidth)
 }
 
 /** The global series indices of a kind, in order. */
@@ -862,19 +888,19 @@ function levelsOf(series: Series[]): StackLevels {
 export function setLaid(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
   const idx = indicesOf(spec, kind)
   const values = idx.map((k) => spec.series[k]!.values)
-  return kind === 'stacked' ? layoutStackLevels(levelsOf(idx.map((k) => spec.series[k]!)), values, plot, dom, 0.25) : layoutGroupedBars(values, plot, dom, 0.25)
+  return kind === 'stacked' ? layoutStackLevels(levelsOf(idx.map((k) => spec.series[k]!)), values, plot, dom, spec.barCategoryGap ?? 0.25, spec.barWidth) : layoutGroupedBars(values, plot, dom, spec.barCategoryGap ?? 0.25, spec.barWidth, spec.barGap)
 }
 
 /** `layoutBarsH` for series `k`. */
 export function barsLaidH(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
-  return layoutBarsH(spec.series[k]!.values, plot, dom, 0.25)
+  return layoutBarsH(spec.series[k]!.values, plot, dom, spec.barCategoryGap ?? 0.25, spec.barWidth)
 }
 
 /** `layoutStackLevelsH` / `layoutGroupedBarsH` for a kind. */
 export function setLaidH(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
   const idx = indicesOf(spec, kind)
   const values = idx.map((k) => spec.series[k]!.values)
-  return kind === 'stacked' ? layoutStackLevelsH(levelsOf(idx.map((k) => spec.series[k]!)), values, plot, dom, 0.25) : layoutGroupedBarsH(values, plot, dom, 0.25)
+  return kind === 'stacked' ? layoutStackLevelsH(levelsOf(idx.map((k) => spec.series[k]!)), values, plot, dom, spec.barCategoryGap ?? 0.25, spec.barWidth) : layoutGroupedBarsH(values, plot, dom, spec.barCategoryGap ?? 0.25, spec.barWidth, spec.barGap)
 }
 
 /**
@@ -1364,7 +1390,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     } else if (s.kind === 'waterfall') {
       // Floating bars from running total to running total, joined by a thin
       // dashed connector so the eye carries the level across each gap.
-      const steps = layoutWaterfall(s.values, plot, sDomain, 0.25)
+      const steps = layoutWaterfall(s.values, plot, sDomain, spec.barCategoryGap ?? 0.25, spec.barWidth)
       for (let si = 0; si < steps.length; si++) {
         const st = steps[si]!
         const fill = stateFill(s, st.datumIndex, st.value < 0.0 ? s.negativeColor ?? withAlpha(s.color, 0.55) : s.color)
@@ -1841,7 +1867,7 @@ export function barsForIn(raw: ChartSpec, index: number, plot: Rect): Rect[] {
     // can land in, so the datum index a hit reports stays the row's.
     const rects: Rect[] = []
     for (let i = 0; i < s.values.length; i++) rects.push({ x: 0.0, y: 0.0, w: -1.0, h: -1.0 })
-    for (const st of layoutWaterfall(s.values, plot, dom, 0.25)) rects[st.datumIndex] = st.rect
+    for (const st of layoutWaterfall(s.values, plot, dom, raw.barCategoryGap ?? 0.25, raw.barWidth)) rects[st.datumIndex] = st.rect
     return rects
   }
   return spec.horizontal === true ? barsLaidH(spec, index, plot, dom) : barsLaid(spec, index, plot, dom)
