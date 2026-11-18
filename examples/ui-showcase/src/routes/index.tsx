@@ -1,24 +1,27 @@
 import { RouterLink } from '@pyreon/router'
 import { Card, Paragraph, Title } from '@pyreon/ui-components'
+import { LIBRARY_COUNTS, categoryCount, componentDemoCount } from '../home-stats'
 
+// Every number here is counted or test-locked (see home-stats.ts). The old
+// "0 Build Step (dev)" card is gone: JSX goes through the Pyreon compiler in
+// dev as well, so there was no true number to put there.
 const stats = [
-  { value: '75', label: 'UI Components' },
-  { value: '122', label: 'Animation Presets' },
-  { value: '25+', label: 'Hooks' },
-  { value: '38', label: 'Component Demos' },
-  { value: '11', label: 'Categories' },
-  { value: '0', label: 'Build Step (dev)' },
+  { value: String(LIBRARY_COUNTS.components), label: 'UI Components' },
+  { value: String(LIBRARY_COUNTS.presets), label: 'Animation Presets' },
+  { value: String(LIBRARY_COUNTS.hooks), label: 'Hooks' },
+  { value: String(componentDemoCount), label: 'Component Demos' },
+  { value: String(categoryCount), label: 'Categories' },
 ]
 
 const featured = [
   {
     title: 'UI Components',
-    desc: '75 production-ready components: Button, Input, Card, Modal, Combobox, Calendar, Table, and more.',
+    desc: `${LIBRARY_COUNTS.components} production-ready components: Button, Input, Card, Modal, Combobox, Calendar, Table, and more.`,
     path: '/button',
   },
   {
     title: 'Animations',
-    desc: '122 ready-made presets, factories, composition utilities, group/stagger/collapse modes.',
+    desc: `${LIBRARY_COUNTS.presets} ready-made presets, factories, composition utilities, group/stagger/collapse modes.`,
     path: '/animations/gallery',
   },
   {
