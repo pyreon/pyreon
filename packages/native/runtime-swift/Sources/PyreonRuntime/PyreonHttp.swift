@@ -31,6 +31,11 @@
 // It is equally usable by hand-written SwiftUI code.
 
 import Foundation
+// On Linux, URLSession / URLRequest / HTTPURLResponse live in a separate
+// module. Apple platforms have no such module, so the import is conditional.
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// HTTP method. Raw value is the wire verb.
 public enum PyreonHttpMethod: String, Sendable {
@@ -134,6 +139,285 @@ public enum PyreonHttpError: Error, Equatable {
     /// A `fileFromUri` URI that names no readable file (or a scheme the
     /// native runtime cannot read).
     case unreadableFile(String)
+}
+
+/// The message a lowered `error.message` reads (`pyreonErrorMessage` prefers a
+/// `LocalizedError`'s description): the Kotlin `PyreonHttpError` messages, so
+/// one shared source shows the same text on both targets instead of Swift's
+/// `badStatus(404)` debug spelling.
+extension PyreonHttpError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case let .invalidURL(url): return "invalid url: \(url)"
+        case let .badStatus(status): return "HTTP \(status)"
+        case let .unreadableFile(uri): return "cannot read file: \(uri)"
+        }
+    }
+}
+
+/// A non-2xx answer whose MESSAGE the server's JSON body supplies — the error
+/// `@pyreon/feature`'s REST helper throws on the web, and what its lowered CRUD
+/// hooks (`useList`, `useById`, `useCreate`, `useUpdate`, `useDelete`) reject with.
+///
+/// The web contract (`define-feature.ts`'s `createFetcher`):
+///
+/// - `message` is the body's `message` when the body is a JSON object whose
+///   `message` is a non-empty string, else `"<METHOD> <url> failed: <status>"`;
+/// - `status` is the HTTP status;
+/// - `errors` is present only when the body carries a truthy `errors` — here as
+///   that value's JSON TEXT, exactly as the server wrote it.
+///
+/// It is a `LocalizedError` whose description IS the message, so the lowered
+/// `error.message` (`pyreonErrorMessage`) reads the same string the web shows.
+/// Mirrors the Kotlin `PyreonHttpMessageError` one-for-one; both read the body
+/// with the same scanner (`PyreonHttpErrorBody`), so they agree byte for byte.
+public struct PyreonHttpMessageError: LocalizedError, CustomStringConvertible, Equatable {
+    public let message: String
+    public let status: Int
+    /// The JSON text of the body's `errors`, when it is truthy.
+    public let errors: String?
+
+    public init(message: String, status: Int, errors: String? = nil) {
+        self.message = message
+        self.status = status
+        self.errors = errors
+    }
+
+    public var errorDescription: String? { message }
+    /// `String(error)` on the web: `Error: <message>`.
+    public var description: String { "Error: \(message)" }
+}
+
+extension PyreonHttpResponse {
+    /// The error `@pyreon/feature` throws for this (non-2xx) answer to `method url`.
+    /// `url` is the URL as the web's message spells it (the id NOT path-encoded).
+    public func messageError(method: String, url: String) -> PyreonHttpMessageError {
+        let body = PyreonHttpErrorBody.read(body)
+        return PyreonHttpMessageError(
+            message: body?.message ?? "\(method) \(url) failed: \(status)",
+            status: status,
+            errors: body?.errors
+        )
+    }
+}
+
+/// The two fields `@pyreon/feature` reads from an error body, by a small
+/// VALIDATING JSON scanner: input `JSON.parse` would reject yields nothing (the
+/// web's `res.json()` throws and the default message stands). A duplicate key
+/// keeps its LAST value, as `JSON.parse` does. Mirrors the Kotlin scanner.
+enum PyreonHttpErrorBody {
+    struct Fields {
+        var message: String?
+        var errors: String?
+    }
+
+    static func read(_ data: Data) -> Fields? {
+        var s = Scanner(Array(data))
+        // `res.json()` decodes UTF-8 and drops a leading byte-order mark.
+        if s.bytes.starts(with: [0xEF, 0xBB, 0xBF]) { s.i = 3 }
+        s.ws()
+        guard s.peek == UInt8(ascii: "{") else {
+            // Valid JSON that is not an object has no `message` / `errors`.
+            return s.value() && s.end() ? Fields() : nil
+        }
+        s.i += 1
+        var fields = Fields()
+        s.ws()
+        if s.peek == UInt8(ascii: "}") {
+            s.i += 1
+            return s.end() ? fields : nil
+        }
+        while true {
+            s.ws()
+            guard let key = s.string() else { return nil }
+            s.ws()
+            guard s.peek == UInt8(ascii: ":") else { return nil }
+            s.i += 1
+            s.ws()
+            let start = s.i
+            if key == "message" {
+                if s.peek == UInt8(ascii: "\"") {
+                    guard let text = s.string() else { return nil }
+                    // `if (body?.message)`: an empty string is falsy.
+                    fields.message = text.isEmpty ? nil : text
+                } else {
+                    guard s.value() else { return nil }
+                    // A non-string message is not read (documented narrowing).
+                    fields.message = nil
+                }
+            } else {
+                guard s.value() else { return nil }
+            }
+            if key == "errors" {
+                let raw = Array(s.bytes[start..<s.i])
+                fields.errors = Scanner.truthy(raw) ? String(decoding: raw, as: UTF8.self) : nil
+            }
+            s.ws()
+            if s.peek == UInt8(ascii: ",") { s.i += 1; continue }
+            if s.peek == UInt8(ascii: "}") { s.i += 1; break }
+            return nil
+        }
+        return s.end() ? fields : nil
+    }
+
+    struct Scanner {
+        let bytes: [UInt8]
+        var i = 0
+        init(_ bytes: [UInt8]) { self.bytes = bytes }
+
+        var peek: UInt8? { i < bytes.count ? bytes[i] : nil }
+
+        mutating func ws() {
+            while let c = peek, c == 0x20 || c == 0x09 || c == 0x0A || c == 0x0D { i += 1 }
+        }
+
+        mutating func end() -> Bool {
+            ws()
+            return i == bytes.count
+        }
+
+        /// JS truthiness of one raw JSON value: `false`, `null`, `0`, `""` are falsy.
+        static func truthy(_ raw: [UInt8]) -> Bool {
+            let text = String(decoding: raw, as: UTF8.self)
+            if text == "false" || text == "null" || text == "\"\"" { return false }
+            if let first = raw.first, first == UInt8(ascii: "-") || (first >= 0x30 && first <= 0x39) {
+                return (Double(text) ?? 1) != 0
+            }
+            return true
+        }
+
+        mutating func value() -> Bool {
+            ws()
+            guard let c = peek else { return false }
+            switch c {
+            case UInt8(ascii: "{"):
+                i += 1
+                ws()
+                if peek == UInt8(ascii: "}") { i += 1; return true }
+                while true {
+                    ws()
+                    guard string() != nil else { return false }
+                    ws()
+                    guard peek == UInt8(ascii: ":") else { return false }
+                    i += 1
+                    guard value() else { return false }
+                    ws()
+                    if peek == UInt8(ascii: ",") { i += 1; continue }
+                    if peek == UInt8(ascii: "}") { i += 1; return true }
+                    return false
+                }
+            case UInt8(ascii: "["):
+                i += 1
+                ws()
+                if peek == UInt8(ascii: "]") { i += 1; return true }
+                while true {
+                    guard value() else { return false }
+                    ws()
+                    if peek == UInt8(ascii: ",") { i += 1; continue }
+                    if peek == UInt8(ascii: "]") { i += 1; return true }
+                    return false
+                }
+            case UInt8(ascii: "\""):
+                return string() != nil
+            case UInt8(ascii: "t"): return literal("true")
+            case UInt8(ascii: "f"): return literal("false")
+            case UInt8(ascii: "n"): return literal("null")
+            default: return number()
+            }
+        }
+
+        mutating func literal(_ word: String) -> Bool {
+            let w = Array(word.utf8)
+            guard i + w.count <= bytes.count, Array(bytes[i..<(i + w.count)]) == w else { return false }
+            i += w.count
+            return true
+        }
+
+        mutating func digits() -> Int {
+            let start = i
+            while let c = peek, c >= 0x30 && c <= 0x39 { i += 1 }
+            return i - start
+        }
+
+        /// `-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?`
+        mutating func number() -> Bool {
+            if peek == UInt8(ascii: "-") { i += 1 }
+            if peek == UInt8(ascii: "0") {
+                i += 1
+            } else if let c = peek, c >= 0x31 && c <= 0x39 {
+                _ = digits()
+            } else {
+                return false
+            }
+            if peek == UInt8(ascii: ".") {
+                i += 1
+                guard digits() > 0 else { return false }
+            }
+            if peek == UInt8(ascii: "e") || peek == UInt8(ascii: "E") {
+                i += 1
+                if peek == UInt8(ascii: "+") || peek == UInt8(ascii: "-") { i += 1 }
+                guard digits() > 0 else { return false }
+            }
+            return true
+        }
+
+        /// A JSON string at `i` (which must be its opening quote), decoded; nil when malformed.
+        mutating func string() -> String? {
+            guard peek == UInt8(ascii: "\"") else { return nil }
+            i += 1
+            var units: [UInt16] = []
+            var run: [UInt8] = []
+            func flush() {
+                if !run.isEmpty {
+                    units.append(contentsOf: String(decoding: run, as: UTF8.self).utf16)
+                    run.removeAll()
+                }
+            }
+            while let c = peek {
+                i += 1
+                if c == UInt8(ascii: "\"") {
+                    flush()
+                    return String(decoding: units, as: UTF16.self)
+                }
+                if c < 0x20 { return nil }
+                if c != UInt8(ascii: "\\") {
+                    run.append(c)
+                    continue
+                }
+                flush()
+                guard let e = peek else { return nil }
+                i += 1
+                switch e {
+                case UInt8(ascii: "\""): units.append(0x22)
+                case UInt8(ascii: "\\"): units.append(0x5C)
+                case UInt8(ascii: "/"): units.append(0x2F)
+                case UInt8(ascii: "b"): units.append(0x08)
+                case UInt8(ascii: "f"): units.append(0x0C)
+                case UInt8(ascii: "n"): units.append(0x0A)
+                case UInt8(ascii: "r"): units.append(0x0D)
+                case UInt8(ascii: "t"): units.append(0x09)
+                case UInt8(ascii: "u"):
+                    var unit: UInt16 = 0
+                    for _ in 0..<4 {
+                        guard let h = peek else { return nil }
+                        let v: UInt8
+                        switch h {
+                        case 0x30...0x39: v = h - 0x30
+                        case 0x41...0x46: v = h - 0x41 + 10
+                        case 0x61...0x66: v = h - 0x61 + 10
+                        default: return nil
+                        }
+                        unit = unit << 4 | UInt16(v)
+                        i += 1
+                    }
+                    units.append(unit)
+                default:
+                    return nil
+                }
+            }
+            return nil
+        }
+    }
 }
 
 /// The HTTP layer `PyreonFetch`'s injected fetcher uses for richer requests.
@@ -332,6 +616,12 @@ public enum PyreonHttpMiddleware {
     case retry(PyreonRetryPolicy)
     /// `logger({ production })`. Debug builds only, unless `production`.
     case logger(production: Bool)
+    /// A non-2xx answer from the layers inside is THROWN as the error `error`
+    /// builds from it. No `use: [...]` entry lowers to this: it is how a
+    /// caller that owns its error contract — `@pyreon/feature`'s REST helper,
+    /// a client created with `throwHttpErrors: false` that rejects with its own
+    /// error — runs through the same pipeline as every other request.
+    case reject((PyreonHttpResponse) -> Error)
 }
 
 /// Everything the pipeline needs from the outside world, injectable for tests.
@@ -422,6 +712,10 @@ public enum PyreonHttpPipeline {
             return try await next()
         case let .retry(policy):
             return try await retry(policy, box, env, next)
+        case let .reject(error):
+            let response = try await next()
+            if !response.isOK { throw error(response) }
+            return response
         case let .logger(production):
             if !production && !env.isDebug { return try await next() }
             let started = env.now()

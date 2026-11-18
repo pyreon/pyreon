@@ -109,6 +109,8 @@ fun <T> remember(calculation: () -> T): T = calculation()
 @Composable
 @Suppress("UNUSED_PARAMETER")
 fun LaunchedEffect(key1: Any?, block: suspend () -> Unit) {}
+// The two-key overload (Compose has it): a useQuery harness keyed on its cache key AND enabled.
+fun LaunchedEffect(key1: Any?, key2: Any?, block: suspend () -> Unit) {}
 
 class DisposableEffectResult
 class DisposableEffectScope {
@@ -432,9 +434,18 @@ fun Switch(
 // functions are reachable to kotlinc. No real (de)serialization;
 // stub callers receive a default-constructed value on decode.
 
+// The real annotation's \`with\` parameter: a \`Date\` property names its ISO-string serializer
+// (\`@Serializable(with = PyreonDateSerializer::class)\`, date-json.ts).
 @Target(AnnotationTarget.CLASS, AnnotationTarget.PROPERTY, AnnotationTarget.TYPE)
 @Retention(AnnotationRetention.RUNTIME)
-annotation class Serializable
+annotation class Serializable(val with: kotlin.reflect.KClass<out KSerializer<*>> = KSerializer::class)
+
+// kotlinx's serializer interface, as far as an annotation names it.
+interface KSerializer<T>
+
+// runtime-kotlin's PyreonDateJson.kt: a \`Date\` property crosses JSON as the web's ISO string.
+object PyreonDateSerializer : KSerializer<Double>
+object PyreonDateListSerializer : KSerializer<List<Double>>
 
 object Json {
   inline fun <reified T> encodeToString(value: T): String = value.toString()
@@ -1120,6 +1131,9 @@ object PyreonJson {
     // JSON.parse(s) lowers here (throws PyreonJsonParseError on bad input).
     @Suppress("UNUSED_PARAMETER", "UNCHECKED_CAST")
     inline fun <reified T> parse(text: String): T = (null as Any?) as T
+    // Every emitted fetch / query / stream body decode lowers here.
+    @Suppress("UNUSED_PARAMETER", "UNCHECKED_CAST")
+    inline fun <reified T> decode(text: String): T = (null as Any?) as T
 }
 
 // PyreonSchema — copied VERBATIM from runtime-kotlin's PyreonSchema.kt
@@ -1213,6 +1227,17 @@ fun useNavigate(): (String) -> Unit = { _ -> }
 @Composable
 fun useParams(): Map<String, String> = emptyMap()
 
+// useRouter() — mirrors router-kotlin's PyreonRouterHandle (push / replace / back / forward).
+class PyreonRouterHandle(private val router: PyreonRouter?) {
+  fun push(path: String) {}
+  fun replace(path: String) {}
+  fun back() {}
+  fun forward() {}
+}
+
+@Composable
+fun useRouter(): PyreonRouterHandle = PyreonRouterHandle(null)
+
 // useUrlState lowers to a PyreonUrlState over the active router, so the
 // emit needs a router accessor here too. Same defensive-default shape as
 // the two above.
@@ -1275,6 +1300,8 @@ class PyreonFetch<T> {
   fun begin() {}
   fun resolve(value: T) {}
   fun reject(e: Throwable) {}
+  fun load(fetcher: () -> T) {}
+  suspend fun run(launch: (suspend () -> Unit) -> Unit, fetcher: suspend () -> T) {}
   fun refetch() {}
 }
 
@@ -1347,7 +1374,11 @@ sealed class PyreonHttpMiddleware {
   class Bearer(val baseUrl: String, val crossOrigin: Boolean = false, val token: () -> String?) : PyreonHttpMiddleware()
   class Retry(val policy: PyreonRetryPolicy = PyreonRetryPolicy()) : PyreonHttpMiddleware()
   class Logger(val production: Boolean = false) : PyreonHttpMiddleware()
+  class Reject(val error: (PyreonHttpResponse) -> Throwable) : PyreonHttpMiddleware()
 }
+// The error \`@pyreon/feature\`'s lowered CRUD hooks reject with (\`Reject { it.messageError(…) }\`).
+class PyreonHttpMessageError(message: String, val status: Int, val errors: String? = null) : Exception(message)
+fun PyreonHttpResponse.messageError(method: String, url: String): PyreonHttpMessageError = PyreonHttpMessageError(method + url, status)
 // PyreonURL — the runtime path-param encoder a templated endpoint URL calls.
 // Mirrors the REAL PyreonURL surface: four overloads (String / Int / Long /
 // Double), one per type a \`PathParams\` value can take once the compiler has
@@ -1373,6 +1404,55 @@ fun pyreonRound(x: Double): Double = 0.0
 fun pyreonParseInt(text: String, radix: Int? = null): Long? = null
 fun pyreonParseFloat(text: String): Double = 0.0
 fun pyreonToNumber(text: String): Double = 0.0
+// pyreonOptionalText — an optional value as the web's text (PyreonNumber.kt). Mirrors the real signature.
+fun pyreonOptionalText(value: Any?, absent: String): String = ""
+// Integer and bitwise operators with the web's results (PyreonNumber.kt). Mirror the real signatures.
+fun pyreonAdd(a: Long, b: Long): Long = a
+fun pyreonSub(a: Long, b: Long): Long = a
+fun pyreonMul(a: Long, b: Long): Long = a
+fun pyreonNeg(a: Long): Long = a
+fun pyreonRem(a: Long, b: Long): Long = a
+fun pyreonRem(a: Double, b: Double): Double = a
+fun pyreonAdd(a: Int, b: Int): Int = a.toInt()
+fun pyreonAdd(a: Int, b: Long): Long = a.toLong()
+fun pyreonAdd(a: Long, b: Int): Long = a.toLong()
+fun pyreonAdd(a: Double, b: Double): Double = a.toDouble()
+fun pyreonAdd(a: Double, b: Long): Double = a.toDouble()
+fun pyreonAdd(a: Long, b: Double): Double = a.toDouble()
+fun pyreonAdd(a: Double, b: Int): Double = a.toDouble()
+fun pyreonAdd(a: Int, b: Double): Double = a.toDouble()
+fun pyreonSub(a: Int, b: Int): Int = a.toInt()
+fun pyreonSub(a: Int, b: Long): Long = a.toLong()
+fun pyreonSub(a: Long, b: Int): Long = a.toLong()
+fun pyreonSub(a: Double, b: Double): Double = a.toDouble()
+fun pyreonSub(a: Double, b: Long): Double = a.toDouble()
+fun pyreonSub(a: Long, b: Double): Double = a.toDouble()
+fun pyreonSub(a: Double, b: Int): Double = a.toDouble()
+fun pyreonSub(a: Int, b: Double): Double = a.toDouble()
+fun pyreonMul(a: Int, b: Int): Int = a.toInt()
+fun pyreonMul(a: Int, b: Long): Long = a.toLong()
+fun pyreonMul(a: Long, b: Int): Long = a.toLong()
+fun pyreonMul(a: Double, b: Double): Double = a.toDouble()
+fun pyreonMul(a: Double, b: Long): Double = a.toDouble()
+fun pyreonMul(a: Long, b: Double): Double = a.toDouble()
+fun pyreonMul(a: Double, b: Int): Double = a.toDouble()
+fun pyreonMul(a: Int, b: Double): Double = a.toDouble()
+fun pyreonNeg(a: Int): Int = a
+fun pyreonNeg(a: Double): Double = a
+fun pyreonRem(a: Int, b: Int): Int = a
+fun pyreonRem(a: Int, b: Long): Long = b
+fun pyreonRem(a: Long, b: Int): Long = a
+fun pyreonRem(a: Double, b: Long): Double = a
+fun pyreonRem(a: Long, b: Double): Double = b
+fun pyreonBitAnd(a: Number, b: Number): Long = 0L
+fun pyreonBitOr(a: Number, b: Number): Long = 0L
+fun pyreonBitXor(a: Number, b: Number): Long = 0L
+fun pyreonBitNot(a: Number): Long = 0L
+fun pyreonShl(a: Number, b: Number): Long = 0L
+fun pyreonShr(a: Number, b: Number): Long = 0L
+fun pyreonUshr(a: Number, b: Number): Long = 0L
+fun pyreonMax(xs: Iterable<Number>): Double = 0.0
+fun pyreonMin(xs: Iterable<Number>): Double = 0.0
 // PyreonDate — JS Date as epoch milliseconds (PyreonDate.kt). Mirrors the real surface.
 fun pyreonDateFrom(text: String): Double = 0.0
 fun pyreonDateFrom(ms: Number): Double = 0.0
@@ -1418,6 +1498,10 @@ class PyreonNumberFormat(
 ) {
   fun format(value: Number): String = ""
 }
+// pyreonRecordKeys / pyreonRecordValues — \`Object.keys\` / \`Object.values\` of a string-keyed Record, in a JS
+// object's own-property order (runtime-kotlin's PyreonJson.kt).
+fun <V> pyreonRecordKeys(record: Map<String, V>): List<String> = record.keys.toList()
+fun <V> pyreonRecordValues(record: Map<String, V>): List<V> = record.values.toList()
 // pyreonSlice — JS \`slice\` for a bound whose sign is not known at compile time
 // (runtime-kotlin's PyreonSlice.kt).
 fun <T> pyreonSlice(a: List<T>, start: Long, end: Long? = null): List<T> = a
@@ -1533,10 +1617,15 @@ class PyreonClipboard(context: Context, scope: CoroutineScope) {
 }
 
 // M3.5: authenticate is a suspend fun — awaited inside pyreonAsyncScope.launch { }.
-class PyreonBiometrics {
+interface PyreonBiometricGate {
+  fun isAvailable(): Boolean
+  suspend fun prompt(reason: String): Boolean
+}
+class PyreonBiometrics(gate: PyreonBiometricGate? = null) {
   suspend fun authenticate(reason: String): Boolean = false
   fun isAvailable(): Boolean = false
 }
+fun PyreonBiometrics(context: Context): PyreonBiometrics = PyreonBiometrics()
 
 // M3.4 / M3.8: the picker containers + the androidx.activity ActivityResult
 // surface the emit wires into them. STUB FIDELITY (a superset stub MASKS the bug

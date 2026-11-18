@@ -126,7 +126,7 @@ describe('parse.ts — returnContainsJsx / helper-vs-component classification', 
 
   it('emits a camelCase non-JSX function as a native helper func', () => {
     const r = swift(`export function dbl(x: number): number { return x*2 }` + APP)
-    expect(r.code).toContain('func dbl(_ x: Int) -> Int { x * 2 }')
+    expect(r.code).toContain('func dbl(_ x: Int) -> Int { pyreonMul(x, 2) }')
   })
 
   it('warns + skips a GENERIC camelCase helper rather than mis-emitting `<T>`', () => {

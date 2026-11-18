@@ -45,7 +45,7 @@ describe('mixed Int×Double + unary-minus float', () => {
   const e = rate() * rate()`),
       { target: 'swift' },
     ).code
-    expect(out).toContain('let c = count + 2') // Int + Int
+    expect(out).toContain('let c = pyreonAdd(count, 2)') // Int + Int
     expect(out).toContain('let e = rate * rate') // Double * Double
     expect(out).not.toContain('Double(count) + 2')
   })

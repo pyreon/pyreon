@@ -19,12 +19,14 @@ export function runSwiftSmoke(
   sources: readonly string[],
   tests: readonly string[],
   run: RunCommand = runCommand,
+  /** Extra `swiftc` flags — the search and link flags of a module the sources import (`PyreonRuntime`). */
+  moduleArgs: readonly string[] = [],
 ): CommandResult & { phase: 'compile' | 'run' } {
   const dir = mkdtempSync(join(tmpdir(), 'pyreon-cosource-'))
   const bin = join(dir, 'smoke')
   try {
     // The test supplies @main; source files are ordinary library types.
-    const compile = run('swiftc', ['-parse-as-library', ...sources, ...tests, '-o', bin])
+    const compile = run('swiftc', ['-parse-as-library', ...moduleArgs, ...sources, ...tests, '-o', bin])
     if (compile.status !== 0) return { ...compile, phase: 'compile' }
     return { ...run(bin, []), phase: 'run' }
   } finally {

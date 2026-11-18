@@ -34,7 +34,8 @@ export function App() {
 describe('Date emit', () => {
   it('Swift: a Date is a Double; the constructors and methods call the PyreonDate runtime', () => {
     const { code, warnings } = emit(app, 'swift')
-    expect(code).toContain('var at: Double')
+    // The field keeps its ISO-string JSON codec (native-date-json.test.ts); its value is the Double.
+    expect(code).toContain('@PyreonISODate var at: Double')
     expect(code).toContain('func dayKey(_ d: Double) -> String { pyreonSlice(pyreonDateISO(d), 0, 10) }')
     expect(code).toContain('@State private var now: Double = (Date().timeIntervalSince1970 * 1000)')
     expect(code).toContain('pyreonDateFrom("2026-03-10T09:30:00Z")')
@@ -47,7 +48,7 @@ describe('Date emit', () => {
 
   it('Kotlin: the same calls', () => {
     const { code, warnings } = emit(app, 'kotlin')
-    expect(code).toContain('data class Ev(var title: String, var at: Double)')
+    expect(code).toContain('data class Ev(var title: String, @Serializable(with = PyreonDateSerializer::class) var at: Double)')
     expect(code).toContain('pyreonDateMake(false, 2026L, 0L, 31L)')
     expect(code).toContain('pyreonDateGet(now, 1L, false)')
     expect(warnings).toEqual([])

@@ -24,19 +24,19 @@ function C() {
 describe('multi-statement event handlers emit every statement', () => {
   it('Swift: all three statements survive (not just the first)', () => {
     const out = transform(SRC, { target: 'swift' }).code
-    expect(out).toContain('n = n + 1')
-    expect(out).toContain('m = m + 1')
-    expect(out).toContain('k = k + 1')
+    expect(out).toContain('n = pyreonAdd(n, 1)')
+    expect(out).toContain('m = pyreonAdd(m, 1)')
+    expect(out).toContain('k = pyreonAdd(k, 1)')
     // single-statement compact form unchanged
-    expect(out).toContain('Button("single") { n = n + 1 }')
+    expect(out).toContain('Button("single") { n = pyreonAdd(n, 1) }')
   })
 
   it('Kotlin: all three statements survive (not just the first)', () => {
     const out = transform(SRC, { target: 'kotlin' }).code
-    expect(out).toContain('n = n + 1')
-    expect(out).toContain('m = m + 1')
-    expect(out).toContain('k = k + 1')
-    expect(out).toContain('Button(onClick = { n = n + 1L })')
+    expect(out).toContain('n = pyreonAdd(n, 1L)')
+    expect(out).toContain('m = pyreonAdd(m, 1L)')
+    expect(out).toContain('k = pyreonAdd(k, 1L)')
+    expect(out).toContain('Button(onClick = { n = pyreonAdd(n, 1L) })')
   })
 
   it('a handler with an `if` statement after an expression emits both (parseStatementBlock path)', () => {
@@ -48,11 +48,11 @@ function C() {
   return (<Stack><Button onPress={() => { n.set(n() + 1); if (n() > 2) { m.set(0) } }}>x</Button></Stack>)
 }`
     const sw = transform(src, { target: 'swift' }).code
-    expect(sw).toContain('n = n + 1')
+    expect(sw).toContain('n = pyreonAdd(n, 1)')
     expect(sw).toContain('if n > 2 {')
     expect(sw).toContain('m = 0')
     const kt = transform(src, { target: 'kotlin' }).code
-    expect(kt).toContain('n = n + 1')
+    expect(kt).toContain('n = pyreonAdd(n, 1L)')
     expect(kt).toContain('if (n > 2L) {')
     expect(kt).toContain('m = 0')
   })

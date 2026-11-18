@@ -198,13 +198,13 @@ describe('block-bodied reactive-accessor return', () => {
   it('Swift: the block is the body, wrapped in one Group', () => {
     const { code, warnings } = swift(src)
     expect(warnings).toEqual([])
-    expect(code).toContain('  var body: some View {\n    Group {\n      let t = s + 1\n      if t > 3 {\n        Text("big")\n      } else {')
+    expect(code).toContain('  var body: some View {\n    Group {\n      let t = pyreonAdd(s, 1)\n      if t > 3 {\n        Text("big")\n      } else {')
   })
 
   it('Kotlin: the block is the composable body', () => {
     const { code, warnings } = kotlin(src)
     expect(warnings).toEqual([])
-    expect(code).toContain('  val t = s + 1L\n  if (t > 3L) {\n    Text(text = "big")\n  } else {')
+    expect(code).toContain('  val t = pyreonAdd(s, 1L)\n  if (t > 3L) {\n    Text(text = "big")\n  } else {')
   })
 
   it('a render prop invoked from a block accessor makes the prop a slot', () => {
@@ -216,7 +216,7 @@ export function App() { return <Live>{(n) => <Text>{n}</Text>}</Live> }`
     const sw = swift(src2)
     expect(sw.warnings).toEqual([])
     expect(sw.code).toContain('@ViewBuilder let children: (Int) -> ChildrenContent')
-    expect(sw.code).toContain('      let doubled = n * 2\n      children(doubled)')
+    expect(sw.code).toContain('      let doubled = pyreonMul(n, 2)\n      children(doubled)')
   })
 })
 
@@ -283,7 +283,7 @@ describe('the emit compiles', () => {
       try {
         execFileSync(
           'xcrun',
-          ['--sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, file],
+          ['--sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, file, join(__dirname, '../../../runtime-swift/Sources/PyreonRuntime/PyreonNumber.swift')],
           { encoding: 'utf8', stdio: 'pipe' },
         )
       } catch (err) {
