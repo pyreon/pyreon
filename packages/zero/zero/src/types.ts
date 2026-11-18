@@ -87,6 +87,10 @@ export interface ISRConfig {
    * key short-circuits the de-dupe guard and the entry can never
    * recover from stale. Default: `30000` (matches the Suspense
    * streaming timeout).
+   *
+   * Also bounds how long concurrent cold misses for one key wait for the
+   * render they coalesced behind: past it, the waiting requests render for
+   * themselves and later requests stop joining that render.
    */
   revalidateTimeoutMs?: number
   /**
