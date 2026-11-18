@@ -25,9 +25,12 @@ afterEach(() => {
 
 describe('the locale and the time zone are one value', () => {
   it('the exports of @pyreon/format ARE the functions of @pyreon/ambient', () => {
-    for (const name of ['locale', 'setLocale', 'provideLocale', 'timeZone', 'setTimeZone', 'provideTimeZone'] as const) {
-      expect(format[name], name).toBe(ambient[name])
-    }
+    expect(format.locale).toBe(ambient.locale)
+    expect(format.setLocale).toBe(ambient.setLocale)
+    expect(format.provideLocale).toBe(ambient.provideLocale)
+    expect(format.timeZone).toBe(ambient.timeZone)
+    expect(format.setTimeZone).toBe(ambient.setTimeZone)
+    expect(format.provideTimeZone).toBe(ambient.provideTimeZone)
   })
 
   it('setLocale from @pyreon/ambient changes what formatNumber prints, and the other way round', () => {

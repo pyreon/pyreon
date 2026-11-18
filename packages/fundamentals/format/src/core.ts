@@ -77,7 +77,6 @@ import type {
   PercentOptions,
   PlainDateString,
   CoreRelativeFormatterOptions,
-  RelativeFormatterOptions,
   RelativeOptions,
   RelativePreset,
   RelativeUnit,
