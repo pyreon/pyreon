@@ -56,7 +56,7 @@ function mounted(node: ReturnType<typeof h>) {
 }
 
 describe('canvasHost', () => {
-  it('renders canvas + hidden table by default, no table with accessibleTable=false, and a tooltip node only when asked', () => {
+  it('renders canvas + hidden table by default, no table with accessibleTable=false, and a tooltip node only when asked', async () => {
     const a = mounted(host({ title: 'T' }).node)
     expect(a.root.querySelector('canvas')).not.toBeNull()
     expect(a.root.querySelector('table caption')!.textContent).toBe('T')
@@ -68,7 +68,9 @@ describe('canvasHost', () => {
     const b = mounted(host({ accessibleTable: false, keyboard: false }).node)
     expect(b.root.querySelector('table')).toBeNull()
     expect(b.root.querySelector('[role="status"]')).toBeNull()
-    // …which the first canvas paint (here, at mount) has already removed.
+    // …which the first canvas paint (here, at mount) removes, in a microtask
+    // after the mount pass (removing it inside its own ref breaks hydration).
+    await Promise.resolve()
     expect([...b.root.firstElementChild!.children].map((e) => e.tagName)).toEqual(['CANVAS'])
     b.dispose()
     const c = mounted(host({ tooltip: true, accessibleTable: false }).node)
