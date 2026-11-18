@@ -22,6 +22,7 @@ import { styled } from '../styled'
 
 const fade = keyframes`from { opacity: 0; } to { opacity: 1; }`
 const Base = createGlobalStyle`html { scroll-behavior: smooth; }`
+
 const Box = styled('div')`
   color: teal;
   animation: ${String(fade)} 1s;
