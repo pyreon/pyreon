@@ -450,7 +450,20 @@ export function relativeToIn(
 
 /** Milliseconds in one unit of a `threshold.after` span, or `undefined` for an unknown unit (a function, not a table: nothing is built at import). */
 function spanMs(unit: string): number | undefined {
-  return unit === 'seconds' ? 1000 : unit === 'minutes' ? MIN : unit === 'hours' ? HOUR : unit === 'days' ? DAY : unit === 'weeks' ? 7 * DAY : undefined
+  switch (unit) {
+    case 'seconds':
+      return 1000
+    case 'minutes':
+      return MIN
+    case 'hours':
+      return HOUR
+    case 'days':
+      return DAY
+    case 'weeks':
+      return 7 * DAY
+    default:
+      return undefined
+  }
 }
 
 /** What `threshold` resolves to: past this distance (either direction) the value is shown as an absolute date. */
