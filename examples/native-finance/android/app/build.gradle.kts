@@ -88,6 +88,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
     implementation("androidx.core:core-ktx:1.19.1")
+    // useBiometrics: BiometricManager + BiometricPrompt (PyreonBiometricsAndroid.kt).
+    implementation("androidx.biometric:biometric:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("androidx.compose.material:material")
 

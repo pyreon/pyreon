@@ -1,4 +1,4 @@
-import { el, focusRing, list } from '../../factory'
+import { el, focusRing, list, tones } from '../../factory'
 
 /**
  * Breadcrumb trail. A11y: rendered as a `<nav aria-label="Breadcrumb">`
@@ -38,16 +38,16 @@ export const BreadcrumbItem = el
     contentDirection: 'inline',
     contentAlignX: 'left',
     contentAlignY: 'center', alignY: 'center' })
-  .theme((t) => ({
-    color: t.color.system.base[500],
+  .theme((t, m) => ({
+    color: tones(t, m).textMuted,
     transition: t.transition.fast,
     textDecoration: 'none',
     hover: {
-      color: t.color.system.base[700],
+      color: tones(t, m).text,
     },
     focus: { ...focusRing(t), borderRadius: t.borderRadius.small },
     active: {
-      color: t.color.system.dark[800],
+      color: tones(t, m).text,
       fontWeight: t.fontWeight.medium,
     },
   }))

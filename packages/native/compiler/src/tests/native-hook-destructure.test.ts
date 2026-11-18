@@ -42,7 +42,7 @@ describe('PR1 — hook-result destructure lowering', () => {
     // single-binding `q.data()` → `q.data`).
     expect(out).toContain('__pyHook0.data')
     // the fetch arc still wires the mount-time .task off the synthetic name
-    expect(out).toContain('__pyHook0.begin()')
+    expect(out).toContain('await __pyHook0.run {')
   })
 
   it('Kotlin: useFetch destructure emits remember container + .value field reads', () => {
@@ -56,7 +56,7 @@ describe('PR1 — hook-result destructure lowering', () => {
     expect(out).toContain('__pyHook0.isPending.value')
     expect(out).toContain('__pyHook0.error.value')
     expect(out).toContain('__pyHook0.data.value')
-    expect(out).toContain('__pyHook0.begin()')
+    expect(out).toContain('__pyHook0.run(')
   })
 
   it('destructure emit is byte-identical to single-binding (modulo binding name)', () => {

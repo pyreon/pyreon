@@ -42,22 +42,22 @@ describe('bare-signal value with a change handler that does more than set it', (
     expect(sw).not.toContain('text: $draft')
     expect(sw).toContain('get: { draft }')
     expect(sw).toContain('draft = t.uppercased()')
-    expect(sw).toContain('edits = edits + 1')
-    expect(kotlin(FIELD)).toContain('edits = edits + 1L')
+    expect(sw).toContain('edits = pyreonAdd(edits, 1)')
+    expect(kotlin(FIELD)).toContain('edits = pyreonAdd(edits, 1L)')
   })
 
   it('<Toggle>: iOS runs the handler through a Binding', () => {
     const sw = swift(TOGGLE)
     expect(sw).not.toContain('isOn: $on')
     expect(sw).toContain('get: { on }')
-    expect(sw).toContain('edits = edits + 1')
+    expect(sw).toContain('edits = pyreonAdd(edits, 1)')
   })
 
   it('<Tabs>: iOS runs the handler through a Binding', () => {
     const sw = swift(TABS)
     expect(sw).not.toContain('selection: $tab')
     expect(sw).toContain('Binding(get: { tab }')
-    expect(sw).toContain('edits = edits + 1')
+    expect(sw).toContain('edits = pyreonAdd(edits, 1)')
   })
 
   it('a handler that only sets the same signal keeps the `$signal` projection', () => {

@@ -63,12 +63,12 @@ const elemUsed = A(`  const out = computed(() => String(Array.from({ length: 3 }
 describe('P1 — Array.from numeric-range form (`{ length: n }, (_, i) => …`)', () => {
   it('Swift: `Array.from({length:n},(_,i)=>b)` → `(0..<n).map { i in b }`', () => {
     expect(sw(intRange)).toContain('(0..<3).map(')
-    expect(sw(intRange)).toContain('i * 2')
+    expect(sw(intRange)).toContain('pyreonMul(i, 2)')
     expect(sw(intRange)).not.toContain('Array.from')
   })
   it('Kotlin: `Array.from({length:n},(_,i)=>b)` → `(0 until n).map { i -> b }`', () => {
     expect(kt(intRange)).toContain('(0 until 3L).map(')
-    expect(kt(intRange)).toContain('i * 2')
+    expect(kt(intRange)).toContain('pyreonMul(i, 2L)')
     expect(kt(intRange)).not.toContain('Array.from')
   })
 

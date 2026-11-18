@@ -25,7 +25,7 @@ describe('Gap 4 follow-up — @pyreon/validation v1 emit (Zod)', () => {
     const r = transform(SRC, { target: 'swift' })
     expect(r.code).toContain('struct PyreonZodSchema_userSchema: Codable {')
     expect(r.code).toContain('var name: String = ""')
-    expect(r.code).toContain('var age: Int = 0')
+    expect(r.code).toContain('var age: Double = 0')
     expect(r.code).toContain('var active: Bool = false')
     expect(r.code).toContain('let userSchema = PyreonZodSchema_userSchema()')
   })
@@ -34,7 +34,7 @@ describe('Gap 4 follow-up — @pyreon/validation v1 emit (Zod)', () => {
     const r = transform(SRC, { target: 'kotlin' })
     expect(r.code).toContain('data class PyreonZodSchema_userSchema(')
     expect(r.code).toContain('var name: String = "",')
-    expect(r.code).toContain('var age: Long = 0,')
+    expect(r.code).toContain('var age: Double = 0.0,')
     expect(r.code).toContain('var active: Boolean = false,')
     expect(r.code).toContain('val userSchema = PyreonZodSchema_userSchema()')
   })
@@ -53,7 +53,7 @@ export const userSchema = zodSchema(z.object({
     const r = transform(src, { target: 'swift' })
     // Modifiers are stripped; the base z.X() shape determines the field type.
     expect(r.code).toContain('var email: String = ""')
-    expect(r.code).toContain('var age: Int = 0')
+    expect(r.code).toContain('var age: Double = 0')
     expect(r.code).toContain('var active: Bool = false')
   })
 

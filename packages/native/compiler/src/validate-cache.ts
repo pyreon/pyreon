@@ -93,6 +93,7 @@ export function isTransientProcessFailure(err: unknown): boolean {
   const text = [(err as { message?: unknown }).message, (err as { stderr?: unknown }).stderr]
     .map((part) => (typeof part === 'string' ? part : part !== null && part !== undefined ? String(part) : ''))
     .join('\n')
+
   return KILL_NOTICE.test(text)
 }
 
@@ -168,6 +169,7 @@ function cacheDisabled(): boolean {
  * to correct-but-slow, never to wrong.
  */
 let _dir: string | null | undefined
+
 export function cacheDir(): string | null {
   if (_dir !== undefined) return _dir
   _dir = null
@@ -214,6 +216,7 @@ export function cacheDir(): string | null {
       // Try the next candidate.
     }
   }
+
   return _dir
 }
 
@@ -271,8 +274,12 @@ export function cacheKey(
 ): string {
   return createHash('sha256')
     // v2 invalidates entries written before interrupted compiler processes
-    // were distinguished from deterministic compiler verdicts.
-    .update('v2')
+    // were distinguished from deterministic compiler verdicts. v3 (Swift
+    // kinds only) invalidates Swift verdicts written before a successful
+    // compile could still be rejected for a silent-miscompile warning
+    // (`SILENT_MISCOMPILE_WARNINGS` in validate.ts) — an old `ok` would
+    // otherwise keep passing the output that warning now fails.
+    .update(kind.startsWith('swift') ? 'v3' : 'v2')
     .update('\0')
     .update(kind)
     .update('\0')
@@ -321,6 +328,7 @@ function readDisk(key: string): CachedVerdict | undefined {
       // Best-effort.
     }
   }
+
   return undefined
 }
 
@@ -367,6 +375,7 @@ export function readToolProbe(
   } catch {
     // Absent, unreadable, or corrupt: treat as a miss.
   }
+
   return null
 }
 
@@ -440,6 +449,7 @@ function whichSync(bin: string): string | null {
       // Not here.
     }
   }
+
   return null
 }
 
@@ -482,5 +492,6 @@ export function withVerdictCache(
     result.error === undefined ? { v: 2, ok: result.ok } : { v: 2, ok: result.ok, error: result.error }
   memo.set(key, verdict)
   writeDisk(key, verdict)
+
   return result
 }

@@ -37,7 +37,7 @@ const app = (valueExpr: string, errorExpr: string) =>
   `import { useForm } from '@pyreon/form'
 import { Stack, Field, Text } from '@pyreon/primitives'
 export function C(){
-  const form = useForm({ fields: { email: '', name: '' } })
+  const form = useForm({ initialValues: { email: '', name: '' } })
   return (
     <Stack>
       <Field value={${valueExpr}} onChangeText={(v: string) => form.setFieldValue('email', v)} />

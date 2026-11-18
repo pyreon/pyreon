@@ -414,7 +414,7 @@ describe('known bug — block-body <For> render callback', () => {
       `import { Text, Stack, For } from '@pyreon/primitives'\nconst xs = [1]\nexport function App(){ return <Stack><For each={xs} by={(x) => x}>{(x) => { const z = x + 1; return <Text>{z}</Text> }}</For></Stack> }`,
     )
     expect(r.code).not.toMatch(/\{ x in\n\s*""\n/)
-    expect(r.code).toContain('let z = x + 1')
+    expect(r.code).toContain('let z = pyreonAdd(x, 1)')
   })
 })
 
@@ -585,7 +585,7 @@ describe('parse.ts — refineReduceSeedFloats: sources it cannot resolve', () =>
       `${PRIM}import { signal } from '@pyreon/reactivity'\nexport function App(){ const a = signal<Foo[]>([]); const n = signal<number[]>([1]); return <>hello<Text>{String(a().reduce((acc, x) => acc + x.p, 0))}{n().reduce((acc, x) => acc + x, 0)}{String(mystery.reduce((acc, x) => acc + x, 0))}</Text></> }`,
     )
     expect(r.code).toContain('a.fold(0L, { acc, x -> acc + x.p })')
-    expect(r.code).toContain('n.fold(0L, { acc, x -> acc + x })')
+    expect(r.code).toContain('n.fold(0L, { acc, x -> pyreonAdd(acc, x) })')
     expect(r.code).toContain('mystery.fold(0L, { acc, x -> acc + x })')
     expect(r.code).not.toContain('fold(0.0')
   })
@@ -690,7 +690,8 @@ describe('parse.ts — SizedMap / signal initial edges', () => {
       `${PRIM}import { signal } from '@pyreon/reactivity'\nexport function App(){ const a = signal(~1); const b = signal(typeof 1); return <Text>{a()}</Text> }`,
     )
     const w = r.warnings.join('\n')
-    expect(w).toContain('Unary operator `~` is not supported')
+    // `~` lowers now (32-bit, `pyreonBitNot`); only `typeof` is refused.
+    expect(w).not.toContain('Unary operator `~` is not supported')
     expect(w).toContain('Unary operator `typeof` is not supported')
   })
 })

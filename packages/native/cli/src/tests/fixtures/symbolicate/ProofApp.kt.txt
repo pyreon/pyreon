@@ -1,0 +1,36 @@
+// Source of the android-report.json / android-mapping.txt fixtures. Kept as
+// .txt so no Kotlin tool compiles it. To regenerate: kotlinc this file with
+// the hooks PyreonCrashReporter.kt and runtime-kotlin PyreonStorageBackends.kt +
+// PyreonJson.kt (plus a two-name androidx.compose.runtime stub: MutableState,
+// mutableStateOf) against kotlinx-serialization-json; minify with R8
+// (r8.jar --classfile --release, -keep ProofAppKt.main); run it with a crash
+// directory. The persisted report is android-report.json and the R8 mapping is
+// android-mapping.txt. The retrace assertions name this file's line numbers,
+// counted from the package line below as line 1.
+package com.example.shop
+
+import com.pyreon.runtime.FileStorageBackend
+import com.pyreon.runtime.PyreonCrashBuildInfo
+import com.pyreon.runtime.PyreonCrashReporter
+import java.io.File
+
+class CheckoutService {
+    fun applyDiscount(code: String): Int {
+        val table = mapOf("WELCOME" to 5)
+        return table[code] ?: rejectCode(code)
+    }
+
+    private fun rejectCode(code: String): Int {
+        throw IllegalStateException("discount code rejected: $code")
+    }
+}
+
+fun main(args: Array<String>) {
+    val reporter = PyreonCrashReporter(
+        FileStorageBackend(File(args[0])),
+        PyreonCrashBuildInfo(appId = "com.example.shop", version = "1.4.0", buildNumber = "42"),
+    )
+    reporter.start()
+    reporter.breadcrumb("opened checkout")
+    CheckoutService().applyDiscount("SAVE10")
+}
