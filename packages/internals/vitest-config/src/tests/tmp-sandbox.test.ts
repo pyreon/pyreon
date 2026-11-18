@@ -211,4 +211,84 @@ describe('tmp sandbox', () => {
     expect(await exited).toBe('SIGTERM')
     expect(readdirSync(parent)).toEqual([])
   })
+
+  // The child-process test above proves the real signal path; these run the
+  // same handler in this process, where each branch can be observed.
+  describe('the signal handler, in process', () => {
+    /** Run `fn` with SIGHUP's existing listeners removed, then put them back. */
+    function withoutOtherSighupListeners(fn: () => void): void {
+      const others = process.listeners('SIGHUP')
+      for (const l of others) process.off('SIGHUP', l)
+      try {
+        fn()
+      } finally {
+        for (const l of others) process.on('SIGHUP', l)
+      }
+    }
+
+    it('removes the sandbox and its own listeners, and re-raises when nobody else handles the signal', () => {
+      const parent = mkdtempSync(join(tmpdir(), 'handler-'))
+      const env = { TMPDIR: process.env.TMPDIR, TEMP: process.env.TEMP, TMP: process.env.TMP }
+      const kill = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      try {
+        withoutOtherSighupListeners(() => {
+          const before = process.listenerCount('SIGTERM')
+          createSandbox(parent)
+          expect(readdirSync(parent)).toHaveLength(1)
+          expect(process.listenerCount('SIGTERM')).toBe(before + 1)
+
+          process.emit('SIGHUP', 'SIGHUP')
+
+          expect(readdirSync(parent)).toEqual([])
+          expect(process.listenerCount('SIGTERM')).toBe(before)
+          expect(kill).toHaveBeenCalledWith(process.pid, 'SIGHUP')
+        })
+      } finally {
+        kill.mockRestore()
+        Object.assign(process.env, env)
+      }
+    })
+
+    it('leaves the next step to another listener when one is registered', () => {
+      const parent = mkdtempSync(join(tmpdir(), 'handler-'))
+      const env = { TMPDIR: process.env.TMPDIR, TEMP: process.env.TEMP, TMP: process.env.TMP }
+      const kill = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      const other = vi.fn()
+      process.on('SIGHUP', other)
+      try {
+        createSandbox(parent)
+        process.emit('SIGHUP', 'SIGHUP')
+        expect(readdirSync(parent)).toEqual([])
+        expect(other).toHaveBeenCalledTimes(1)
+        expect(kill).not.toHaveBeenCalled()
+      } finally {
+        process.off('SIGHUP', other)
+        kill.mockRestore()
+        Object.assign(process.env, env)
+      }
+    })
+
+    it('keeps the directory on a signal too when PYREON_TEST_KEEP_TMP=1', () => {
+      const parent = mkdtempSync(join(tmpdir(), 'handler-'))
+      const env = { TMPDIR: process.env.TMPDIR, TEMP: process.env.TEMP, TMP: process.env.TMP }
+      const kill = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      const other = vi.fn()
+      process.on('SIGHUP', other)
+      process.env.PYREON_TEST_KEEP_TMP = '1'
+      try {
+        createSandbox(parent)
+        process.emit('SIGHUP', 'SIGHUP')
+        expect(readdirSync(parent)).toHaveLength(1)
+      } finally {
+        delete process.env.PYREON_TEST_KEEP_TMP
+        process.off('SIGHUP', other)
+        kill.mockRestore()
+        Object.assign(process.env, env)
+      }
+    })
+  })
+
+  it('a sweep of a parent that does not exist removes nothing and does not throw', () => {
+    expect(sweepStaleSandboxes(join(tmpdir(), 'no-such-parent-for-the-sweep'))).toEqual([])
+  })
 })
