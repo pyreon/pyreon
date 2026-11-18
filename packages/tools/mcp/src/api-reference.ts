@@ -39,7 +39,7 @@ items.trigger()           // force subscribers to re-run`,
 - \`{count}\` in JSX — renders the signal function itself, not its value. Use \`{count()}\` or \`{() => count()}\`
 - \`.peek()\` inside \`effect()\` / \`computed()\` — bypasses tracking, creates stale reads. Only use \`.peek()\` for loop-prevention guards
 - Mutating a held object in place then \`set(sameReference)\` — a no-op (Object.is gate), subscribers never re-run. Prefer an immutable \`set(newObject)\`; if you deliberately own a mutable value, mutate then \`.trigger()\`
-- Passing a method detached from its signal — \`ref={el.set}\`, \`onInput={value.set}\`, \`promise.then(count.set)\`. The methods live on a shared prototype and read \`this\`, so the detached call throws (dev: \`[Pyreon] signal.set() was called without its signal\`; the compiler warns \`signal-method-reference\` on the JSX shape). Pass an arrow: \`ref={(node) => el.set(node)}\``,
+- Passing a method detached from its signal OUTSIDE what the compiler can see — \`promise.then(count.set)\`, \`ref={props.sig.set}\`. The methods live on a shared prototype and read \`this\`, so the detached call throws (dev: \`[Pyreon] signal.set() was called without its signal\`). Inside JSX a method of a known signal is bound for you (\`ref={el.set}\` compiles to \`el.set.bind(el)\`). Elsewhere pass an arrow: \`(v) => count.set(v)\``,
   },
 
   'reactivity/isServer': {
@@ -2508,6 +2508,7 @@ const CommandPalette = island(
 - Setting \`prefetch: "idle"\` on a \`hydrate: "load"\` island — load runs the loader synchronously, prefetch is redundant (silently suppressed; no \`data-prefetch\` attribute is emitted)
 - Setting any \`prefetch\` on a \`hydrate: "never"\` island — defeats the whole zero-JS point of \`never\` (silently suppressed)
 - Registering a \`hydrate: "never"\` island in \`hydrateIslands({ ... })\` — defeats the strategy by pulling the component module into the client bundle. The whole point of \`never\` is zero client JS. The runtime short-circuits never-strategy before the registry lookup so missing entries are silent (no \`data-island-error="no-loader"\`); the auto-registry omits never-strategy islands by design.
+- A \`hydrate: "visible"\` island styled \`display: contents\` that holds only text — nothing in it has a box to observe, so it falls back to its nearest boxed ancestor and dev warns once. Wrap the text in an element. (Content under any number of \`display: contents\` wrappers, e.g. a nested \`<PyreonUI mode>\`, is fine: the trigger walks through them.)
 - Using \`"interaction"\` for visible-on-load components — defeats the strategy. Use \`"load"\` for above-the-fold interactive content; reserve \`"interaction"\` for modals / dropdowns / command palettes that are interactive but only shown on user demand
 - Relying on focus/pointerenter to trigger the SAME action as click for \`"interaction"\` — only clicks are replayed post-hydration. Non-click events trigger hydration but no replay (focus can\\'t be reliably re-dispatched once the user has tabbed past; pointerenter is passive)`,
   },
@@ -7928,7 +7929,7 @@ const theme = enrichTheme({ colors: { primary: "#3b82f6" } })
 // mode="system" auto-detects OS dark mode via prefers-color-scheme
 // inversed flips the resolved mode (light↔dark)`,
     notes: `Unified provider replacing the previous theme / mode / config split (3 nested providers became 1). Accepts an enriched \`theme\` object (merge with defaults via \`enrichTheme()\`), a \`mode\` of \`'light' | 'dark' | 'system'\`, and an optional \`inversed\` flip. When \`mode='system'\`, the provider subscribes to \`matchMedia('(prefers-color-scheme: dark)')\` and re-resolves the mode reactively. Calls \`init()\` internally so consumers don\\'t need to wire it up themselves. Whole-theme swaps (user-preference themes) propagate through the styler resolver and re-resolve CSS without remounting the VNode. Under \`init({ cssVariables: true })\` the provider additionally autogenerates CSS custom properties from the theme (unistyle\\'s \`themeToCssVars\`), injects the \`:root\` block once, provides a var-leaf theme tree, and renders a layout-neutral \`display: contents\` wrapper carrying the mode attribute — a dark/light flip becomes ONE attribute write (zero re-resolution, zero className churn), nested \`inversed\` providers scope via the CSS cascade, and SSR ships the right mode server-rendered. See also: useMode, enrichTheme, init.`,
-    mistakes: `- Using \`ThemeProvider\` + \`ModeProvider\` + \`ConfigProvider\` separately — \`PyreonUI\` is the single replacement covering all three
+    mistakes: `- Hand-wiring the theme, mode and config contexts separately — \`PyreonUI\` is the single provider covering all three
 - Flipping \`init({ cssVariables })\` after the first render — the switch is a boot-time contract; theme-resolution caches across the ui-system assume it does not change mid-session
 - Expecting \`mode(a, b)\` pairs with NUMBER values to unit-convert under \`cssVariables\` — pairs are emitted verbatim into CSS custom properties; pass unit-complete strings
 - Forgetting \`enrichTheme()\` — raw theme objects miss default breakpoints / spacing / unit utilities
@@ -8421,17 +8422,16 @@ const GlobalReset = createGlobalStyle\`
   },
 
   'styler/useCSS': {
-    signature: 'useCSS(template: CSSResult, props?: Record<string, any>, boost?: boolean): string',
+    signature: 'useCSS(template: CSSResult, props?: Record<string, any>): string',
     example: `import { css, useCSS } from "@pyreon/styler"
 
 const box = css\`color: \${(p) => p.danger ? "red" : "inherit"};\`
 function Box(props) {
   return <div class={useCSS(box, props)}>{props.children}</div>
 }`,
-    notes: 'Resolves a `CSSResult` (from the `css` tagged template) to an injected class-name string inside a component. Function interpolations receive `props` merged with a snapshot of the current theme. It resolves ONCE, when called — the returned string is a plain value, not a reactive binding, so later prop or theme changes do not re-resolve it. The third `boost` parameter is accepted for compatibility but currently has no effect. The returned class is deduped/hashed by the singleton `sheet`. See also: css, styled.',
+    notes: 'Resolves a `CSSResult` (from the `css` tagged template) to an injected class-name string inside a component. Function interpolations receive `props` merged with a snapshot of the current theme. It resolves ONCE, when called — the returned string is a plain value, not a reactive binding, so later prop or theme changes do not re-resolve it. The returned class is deduped/hashed by the singleton `sheet`. See also: css, styled.',
     mistakes: `- Forgetting to pass \`props\` when the template has function interpolations — they then resolve against the theme alone and the prop-driven values are lost
 - Expecting \`useCSS(box, props)\` to update when \`props.danger\` flips — it resolves once at setup; for signal-driven styles use a \`styled()\` component (its resolver tracks props and theme)
-- Passing \`boost: true\` expecting a faster path — the parameter is ignored by the current sheet
 - Calling \`useCSS\` outside a component setup — it depends on the active sheet/theme context like any hook`,
   },
 
@@ -8443,7 +8443,7 @@ function Badge() {
   const t = useTheme()
   return <span style={{ color: t.colors.primary }}>{/* … */}</span>
 }`,
-    notes: 'Returns the current theme as a SNAPSHOT at call time. `ThemeContext` is a REACTIVE context — `useTheme()` reads it once, so the returned object is static unless the read happens inside a reactive scope. For values that must track whole-theme swaps inside an `effect` / `computed`, use `useThemeAccessor()` instead. See also: useThemeAccessor, ThemeProvider, styled.',
+    notes: 'Returns the current theme as a SNAPSHOT at call time. `ThemeContext` is a REACTIVE context — `useTheme()` reads it once, so the returned object is static unless the read happens inside a reactive scope. For values that must track whole-theme swaps inside an `effect` / `computed`, use `useThemeAccessor()` instead. See also: useThemeAccessor, ThemeContext, styled.',
     mistakes: `- Destructuring \`const { colors } = useTheme()\` and expecting it to update on a user-preference theme swap — the snapshot is captured once. Use \`useThemeAccessor()\` and read inside the reactive scope, or rely on rocketstyle-backed components (their reactive resolver tracks the theme — a plain \`styled()\` with no reactive axis resolves once at mount)
 - Calling \`useTheme()\` at module scope — it must run during component setup where the context is available`,
   },
@@ -8455,32 +8455,22 @@ import { effect } from "@pyreon/reactivity"
 
 const theme = useThemeAccessor()
 effect(() => applyChartPalette(theme().colors)) // re-runs on theme swap`,
-    notes: 'Returns the raw `() => T` theme accessor (not a snapshot). Call it inside an `effect` / `computed` / JSX thunk so the read TRACKS the reactive theme context — whole-theme swaps (user-preference themes) then re-run the consumer without a remount. This is the escape hatch `styled()` itself uses internally. See also: useTheme, ThemeProvider.',
+    notes: 'Returns the raw `() => T` theme accessor (not a snapshot). Call it inside an `effect` / `computed` / JSX thunk so the read TRACKS the reactive theme context — whole-theme swaps (user-preference themes) then re-run the consumer without a remount. This is the escape hatch `styled()` itself uses internally. See also: useTheme, ThemeContext.',
     mistakes: `- Calling the accessor once at setup and caching the result — that defeats the point; call it INSIDE the reactive scope every time so the dependency is tracked
 - Reaching for this when a \`styled\` template would do — the template resolver already tracks the theme; use the accessor only for imperative/non-CSS theme reads`,
-  },
-
-  'styler/ThemeProvider': {
-    signature: 'ThemeProvider(props: { theme: Theme; children?: VNodeChild }): VNode | null',
-    example: `import { ThemeProvider } from "@pyreon/styler"
-
-// Standalone styler use, outside any <PyreonUI>:
-<ThemeProvider theme={{ colors: { primary: "#06f" } }}>
-  <App />
-</ThemeProvider>`,
-    notes: 'Provides a theme to the reactive `ThemeContext`. The provided accessor reads `props.theme` LAZILY, so a signal-driven `theme={current()}` stays live: consumers that read the theme inside a tracking scope — `useThemeAccessor()` in an `effect` / `computed` / JSX thunk, and rocketstyle-backed components (whose reactive `$rocketstyle` axis tracks the theme) — follow a later `theme` change without a remount. A plain `styled()` component with no reactive axis resolves its class ONCE at mount (the static fast path), so it does not re-resolve on a swap. A nested provider REPLACES the theme for its subtree — there is no merge and no `(parent) => theme` function form. Marked `nativeCompat` so it works inside `@pyreon/{react,preact,vue,solid}-compat` apps. See also: useTheme, useThemeAccessor, ThemeContext.',
-    mistakes: `- Expecting a nested provider to MERGE with its parent — it replaces the theme for its subtree. To extend, read the parent with \`useTheme()\` and spread it yourself: \`theme={{ ...parent, colors: { ...parent.colors, accent: "#0a0" } }}\` (there is no function \`theme\` form)
-- Expecting a plain \`styled()\` component (no rocketstyle, no reactive axis) to re-resolve when the \`theme\` prop changes — it resolves once at mount; read the theme through \`useThemeAccessor()\` inside a reactive scope, or use \`<PyreonUI>\` + rocketstyle components for live whole-theme swaps
-- Expecting most apps to mount this directly — \`<PyreonUI>\` wraps it; use \`ThemeProvider\` standalone only outside the \`@pyreon/ui-core\` provider`,
   },
 
   'styler/ThemeContext': {
     signature: 'ThemeContext: ReactiveContext<Theme>',
     example: `import { ThemeContext } from "@pyreon/styler"
-import { useContext } from "@pyreon/core"
+import { provide, useContext } from "@pyreon/core"
 
-const themeAccessor = useContext(ThemeContext) // () => Theme`,
-    notes: 'The reactive context backing the theme. Created via `createReactiveContext<Theme>` — `useContext(ThemeContext)` returns a `() => Theme` accessor (which is what `useTheme()` / `useThemeAccessor()` wrap). Exposed for advanced consumers building their own theme-aware primitives; prefer the hooks for app code. See also: useTheme, useThemeAccessor, ThemeProvider.',
+const themeAccessor = useContext(ThemeContext) // () => Theme
+
+// Low-level provide, without <PyreonUI> (read the theme lazily so a
+// signal-driven theme stays live):
+provide(ThemeContext, () => currentTheme())`,
+    notes: 'The reactive context backing the theme. Created via `createReactiveContext<Theme>` — `useContext(ThemeContext)` returns a `() => Theme` accessor (which is what `useTheme()` / `useThemeAccessor()` wrap). Exposed for advanced consumers building their own theme-aware primitives; prefer the hooks for app code. Styler ships no provider component: apps provide the theme with `<PyreonUI theme={…}>` from `@pyreon/ui-core`; low-level code (an isolated test, an embed without the UI system) can call `provide(ThemeContext, () => theme)` during component setup. A nested provide REPLACES the theme for its subtree — there is no merge. See also: useTheme, useThemeAccessor, @pyreon/ui-core.',
     mistakes: '- Treating `useContext(ThemeContext)` as the theme object — it is the ACCESSOR `() => Theme` (reactive context). Call it to read',
   },
 
@@ -8740,18 +8730,6 @@ const users = [{ id: 1, name: "Ada" }, { id: 2, name: "Linus" }]
     notes: 'Injects a `className` and/or inline `style` into its CHILD, adding NO DOM node of its own — it CLONES the child (via core `render`) with the merged props. Use it to stamp a class or inline style onto a child you do not otherwise control (a component that forwards to a single DOM node) without introducing an extra wrapper element. Reactive: a getter-shaped `className={cls()}` re-reads per change. It is NOT an Element-family layout node — it has no `tag` / `direction` / `alignX` / `alignY` / `gap`. See also: Element.',
     mistakes: `- Expecting Util to render its own wrapper element (a \`<div>\`) — it adds NO DOM node; it CLONES its child and merges \`className\`/\`style\` onto it. There is no \`tag\`.
 - Passing layout props (\`direction\` / \`alignX\` / \`gap\`) — Util only accepts \`children\` / \`className\` / \`style\`; layout props are ignored. Use \`Element\` for layout.`,
-  },
-
-  'elements/Provider': {
-    signature: 'Provider(props: { theme: PyreonTheme; children?: VNode | null }): VNode | null',
-    example: `import { Provider } from "@pyreon/elements"
-
-// Only outside <PyreonUI> — e.g. an isolated test or embed:
-<Provider theme={{ rootSize: 16, breakpoints: { xs: 0, md: 768 } }}>
-  <App />
-</Provider>`,
-    notes: `Re-export of \`@pyreon/unistyle\`'s low-level theme provider (marked \`@internal\` / \`@deprecated\` in source). It ENRICHES \`theme\` (pre-sorted breakpoints + media-query helpers) and provides it to both the styler \`ThemeContext\` and the ui-core context. \`theme\` is required. \`<PyreonUI theme={…}>\` from \`@pyreon/ui-core\` supersedes it — PyreonUI provides the same contexts itself (plus reactive mode), so an app that renders PyreonUI never needs this. See also: Element, @pyreon/ui-core.`,
-    mistakes: '- Nesting it inside `<PyreonUI>` expecting it to extend the outer theme — it provides only its own `theme`, fresh; nest `<PyreonUI>` instead (it inherits)',
   },
   // <gen-docs:api-reference:end @pyreon/elements>
 
@@ -9673,7 +9651,7 @@ createISRHandler(handler, {
   'zero/vercelAdapter': {
     signature: 'function vercelAdapter(): Adapter',
     example: `plugins: [pyreon(), zero({ mode: 'ssg', adapter: vercelAdapter() })]`,
-    notes: 'Vercel deployment adapter. SSG branch emits `.vercel/output/config.json` v3 STATIC variant (no functions, asset cache headers). Does NOT copy files into `.vercel/output/static/` — Vercel CLI auto-detects dist. ISR `revalidate(path)` POSTs to `<VERCEL_DEPLOYMENT_URL>/api/_pyreon-revalidate?path=…&secret=<token>`; user-side webhook validates secret + calls `res.revalidate()`. See also: Adapter, zero.',
+    notes: 'Vercel deployment adapter. SSG branch emits `.vercel/output/config.json` v3 STATIC variant (no functions, asset cache headers). Does NOT copy files into `.vercel/output/static/` — Vercel CLI auto-detects dist. ISR `revalidate(path)` POSTs to `<VERCEL_DEPLOYMENT_URL>/api/_pyreon-revalidate?path=…` with `Authorization: Bearer <token>`; user-side webhook validates secret + calls `res.revalidate()`. See also: Adapter, zero.',
   },
 
   'zero/cloudflareAdapter': {
@@ -10583,8 +10561,7 @@ const xml = generateRssFeed({
 })`,
     notes: `Generate an RSS 2.0 feed string for blog / changelog / podcast content — CLIENT-SAFE, re-exported from the main \`@pyreon/zero\` entry (no \`/server\` subpath needed, unlike \`seoPlugin\`/\`aiPlugin\`/\`generateSitemap\`). Items are emitted in the supplied order — sort newest-first yourself before passing them in. Typically called from a build script or an API route handler that returns the string with \`Content-Type: application/rss+xml\`. An item's \`content\` (HTML) is emitted as CDATA-wrapped \`<content:encoded>\` — the full body readers and importers like dev.to take instead of \`description\`; \`feedUrl\` emits \`<atom:link rel="self">\`. Both namespaces are declared only when used. See also: seoPlugin.`,
     mistakes: `- Passing \`items\` in an arbitrary order and expecting the feed to sort itself — items are emitted in the SUPPLIED order; sort newest-first before passing them in
-- Putting site-relative links or images in \`content\` — a feed reader resolves them against nothing; make every URL absolute
-- Reaching for \`@pyreon/zero-content\`'s own \`generateRssFeed\` — that one is DEPRECATED and forwards here anyway; import directly from \`@pyreon/zero\``,
+- Putting site-relative links or images in \`content\` — a feed reader resolves them against nothing; make every URL absolute`,
   },
   // <gen-docs:api-reference:end @pyreon/zero>
 
@@ -10970,14 +10947,6 @@ export const blog = defineBlog({
 - A frontmatter \`slug\` that differs from the file name — the URL comes from the file; \`postPaths\` fails the build naming both
 - Importing \`@pyreon/zero-content/blog.css\` AFTER the site stylesheet — it has one-class specificity, so it must come first for the site's class rules to win
 - Treating \`entry.data.date\` as a string — the schema outputs \`BlogPostData\` (dates as \`Date\`, \`tags\`/\`author\` as lists, \`draft\` boolean) and that parsed output is what ships`,
-  },
-
-  'zero-content/generateSitemap / generateRssFeed / generateLlmsTxt': {
-    signature: 'generateSitemap(args): string · generateRssFeed(args): string · generateLlmsTxt(args): string',
-    example: `// Prefer, from @pyreon/zero/server (server-only, Vite plugins):
-import { seoPlugin, generateRssFeed, aiPlugin } from '@pyreon/zero/server'`,
-    notes: `DEPRECATED — all three are thin build-script helpers kept for back-compat and superseded by richer \`@pyreon/zero\` equivalents that run as Vite plugins instead of a hand-written build script: \`generateSitemap\` → \`@pyreon/zero/server\`'s \`generateSitemap\` + \`seoPlugin\` (adds hreflang/i18n, trailing-slash policy, SSG path-manifest integration; server-only, Vite-plugin-only); \`generateRssFeed\`/\`toRfc822\` → the SAME function, re-exported from \`@pyreon/zero\`'s CLIENT-SAFE main entry (no \`/server\` needed — no \`zero-content\` wrapper needed either); \`generateLlmsTxt\` → \`@pyreon/zero/server\`'s \`aiPlugin\` (server-only). These \`zero-content\` versions will be removed in a future major version — do not build new tooling on them.`,
-    mistakes: `- Building new SEO tooling on these zero-content functions — they are deprecated aliases; use @pyreon/zero's seoPlugin/aiPlugin/generateRssFeed instead, which cover strictly more (hreflang, SSG integration, no hand-written build script)`,
   },
   // <gen-docs:api-reference:end @pyreon/zero-content>
   // <gen-docs:api-reference:start @pyreon/sync>
@@ -11838,7 +11807,7 @@ resolveModeVar('#ff0000', 'dark')              // '#ff0000' — passthrough`,
 
 // Swap the underlying element:
 <Container component="main">…</Container>`,
-    notes: 'Outermost grid boundary. Renders a centered flex column (`width: 100%`, auto horizontal margins) with a responsive `max-width` resolved from the `width` prop → `theme.grid.container` → `theme.coolgrid.container` → the coolgrid default widths (only when the theme has no breakpoints of its own), and provides the grid config (`columns`, `size`, `gap`, `padding`, `gutter`, `colCss`/`colComponent`, `rowCss`/`rowComponent`, `contentAlignX`) to descendant Row / Col via context. `ValueType` = `number | number[] | { [breakpoint]: number }` (responsive); `width` also accepts a function that receives the theme-resolved container-width record and returns the final `ContainerWidth`. `columns` defaults to the theme value, else 12. A theme with no `breakpoints` renders against the coolgrid default xs–xl breakpoints, so `<PyreonUI theme={appTheme}>` works without any grid keys. See also: Row, Col, Provider, theme.',
+    notes: 'Outermost grid boundary. Renders a centered flex column (`width: 100%`, auto horizontal margins) with a responsive `max-width` resolved from the `width` prop → `theme.grid.container` → `theme.coolgrid.container` → the coolgrid default widths (only when the theme has no breakpoints of its own), and provides the grid config (`columns`, `size`, `gap`, `padding`, `gutter`, `colCss`/`colComponent`, `rowCss`/`rowComponent`, `contentAlignX`) to descendant Row / Col via context. `ValueType` = `number | number[] | { [breakpoint]: number }` (responsive); `width` also accepts a function that receives the theme-resolved container-width record and returns the final `ContainerWidth`. `columns` defaults to the theme value, else 12. A theme with no `breakpoints` renders against the coolgrid default xs–xl breakpoints, so `<PyreonUI theme={appTheme}>` works without any grid keys. See also: Row, Col, theme.',
     mistakes: `- Setting a non-default \`columns\` on a Row instead of the Container — it works for that Row only, but the visual cascade gets hard to reason about; keep \`columns\` at Container level
 - Expecting \`gutter\` to be horizontal container padding — \`gutter\` feeds the Row's VERTICAL margins (\`spacingY = gutter − gap/2\`); the Container itself only sets a responsive max-width + auto horizontal centering
 - Expecting a custom breakpoint scale to pick up the default container widths — they are keyed xs–xl, so a theme with its own \`breakpoints\` but no \`grid.container\` gets no max-width; add \`grid.container\` keyed by your breakpoint names
@@ -11882,41 +11851,22 @@ resolveModeVar('#ff0000', 'dark')              // '#ff0000' — passthrough`,
 - Setting \`size\` greater than the resolved \`columns\` — the width math produces >100% and the column overflows its row`,
   },
 
-  'coolgrid/Provider': {
-    signature: '(props: { theme: PyreonTheme; children?: VNode | null }) => VNode | null',
-    example: `import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
-
-// Standalone (no PyreonUI at the root):
-<Provider theme={theme}>
-  <Container>…</Container>
-</Provider>
-
-// Preferred in real apps — PyreonUI provides the same context:
-import { PyreonUI } from '@pyreon/ui-core'
-<PyreonUI theme={appTheme} mode="light">
-  <Container>…</Container>
-</PyreonUI>`,
-    notes: `Re-export of \`@pyreon/unistyle\`'s low-level theme provider — enriches the theme (pre-computed sorted breakpoints + media-query helpers) and provides it to BOTH the ui-core context and the styler \`ThemeContext\`. Marked \`@deprecated\` in source: prefer \`<PyreonUI theme={theme} mode="light">\` from \`@pyreon/ui-core\`, which handles all three context layers (styler, core, mode) in one component. The remaining legitimate use is scoping DIFFERENT breakpoints / grid defaults to a subtree. See also: theme, @pyreon/ui-core.`,
-    mistakes: `- Wrapping a fresh \`<Provider>\` inside an app that already renders \`<PyreonUI>\` at the root — PyreonUI sets up the unistyle context already; only add a nested Provider to scope DIFFERENT breakpoints to a subtree
-- Expecting a nested \`<Provider>\` to inherit the outer Provider's overrides — context is per-Provider; the inner one starts fresh from its own \`theme\`
-- Reaching for \`Provider\` in new code — it is deprecated in favor of \`PyreonUI\` from \`@pyreon/ui-core\``,
-  },
-
   'coolgrid/theme': {
     signature: `{ rootSize: 16; breakpoints: { xs: 0; sm: 576; md: 768; lg: 992; xl: 1200 }; grid: { columns: 12; container: { xs: '100%'; sm: 540; md: 720; lg: 960; xl: 1140 } } }`,
-    example: `import { Provider, theme } from '@pyreon/coolgrid'
+    example: `import { PyreonUI } from '@pyreon/ui-core'
+import { theme } from '@pyreon/coolgrid'
 
-<Provider theme={theme}>…</Provider>
+<PyreonUI theme={theme}>…</PyreonUI>
 
 // Custom theme — same shape, your own breakpoint names:
-<Provider
+<PyreonUI
   theme={{
     rootSize: 16,
     breakpoints: { phone: 0, tablet: 600, desktop: 1024 },
     grid: { columns: 24, container: { phone: '100%', tablet: 540, desktop: 960 } },
   }}
->…</Provider>`,
-    notes: 'Default Bootstrap-4-style grid theme: 5 breakpoints (xs–xl), a 12-column grid, and responsive container max-widths. Pass it to `Provider` / `PyreonUI`, or ship your own theme with the same shape (`rootSize`, `breakpoints`, `grid.columns`, `grid.container`) for custom breakpoint names and column counts. See also: Provider, Container.',
+>…</PyreonUI>`,
+    notes: 'Default Bootstrap-4-style grid theme: 5 breakpoints (xs–xl), a 12-column grid, and responsive container max-widths. Pass it to `<PyreonUI theme={…}>` (from `@pyreon/ui-core`), or ship your own theme with the same shape (`rootSize`, `breakpoints`, `grid.columns`, `grid.container`) for custom breakpoint names and column counts. See also: Container, @pyreon/ui-core.',
     mistakes: `- Custom themes missing \`grid.container\` — the Container has no max-width source and renders full-width at every breakpoint
 - Keying \`grid.container\` by breakpoint names that don't match \`breakpoints\` — the responsive engine resolves widths per breakpoint name, so the keys must agree`,
   },

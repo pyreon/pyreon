@@ -14,25 +14,7 @@ import { joinUrl } from './sitemap'
 //
 //     - [Page title](https://example.com/page): One-line description.
 //
-// Authors call this from a build script:
-//
-//     import { generateLlmsTxt, getCollection } from '@pyreon/zero-content'
-//     const docs = await getCollection('docs')
-//     const txt = generateLlmsTxt({
-//       title: 'Pyreon',
-//       baseUrl: 'https://pyreon.dev',
-//       description: 'Signal-based UI framework',
-//       sections: [
-//         {
-//           name: 'Documentation',
-//           pages: docs.map((d) => ({
-//             title: d.data.title as string,
-//             path: `/docs/${d.slug}`,
-//             description: d.data.description as string | undefined,
-//           })),
-//         },
-//       ],
-//     })
+// Internal: the content plugin's `seo.llms` option calls it at build close.
 
 export interface LlmsTxtPage {
   /** Page title. */
@@ -60,13 +42,7 @@ export interface GenerateLlmsTxtArgs {
   sections: LlmsTxtSection[]
 }
 
-/**
- * @deprecated Use `aiPlugin` from `@pyreon/zero` instead. Zero's
- *   `aiPlugin` auto-generates `llms.txt` + `llms-full.txt` from
- *   route + manifest data and serves them via the dev server / SSG
- *   build. This zero-content builder will be removed in a future
- *   major version.
- */
+/** Build an llms.txt string. Internal to the content plugin's `seo.llms` output. */
 export function generateLlmsTxt(args: GenerateLlmsTxtArgs): string {
   const lines: string[] = []
   lines.push(`# ${args.title}`)

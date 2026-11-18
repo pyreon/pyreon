@@ -9,7 +9,7 @@ export const noThemeOutsideProvider: Rule = {
     id: 'pyreon/no-theme-outside-provider',
     category: 'styling',
     description:
-      'Warn when useTheme() is used without a PyreonUI or ThemeProvider import in the same file. Opt-in — a consumer component legitimately reads theme from an ancestor <ThemeProvider> in another file (the whole point of context), so the same-file requirement is a false positive that a single-file AST walk cannot avoid.',
+      'Warn when useTheme() is used without a PyreonUI import in the same file. Opt-in — a consumer component legitimately reads theme from an ancestor <PyreonUI> in another file (the whole point of context), so the same-file requirement is a false positive that a single-file AST walk cannot avoid.',
     // Opt-in: the provider is almost always in an ancestor at the app/table
     // root, in a DIFFERENT file — which is exactly how context is meant to be
     // used. A single-file walker cannot prove a provider is absent app-wide, so
@@ -55,9 +55,7 @@ export const noThemeOutsideProvider: Rule = {
       ImportDeclaration(node: any) {
         const info = extractImportInfo(node)
         if (!info) return
-        if (
-          info.specifiers.some((s) => s.imported === 'PyreonUI' || s.imported === 'ThemeProvider')
-        ) {
+        if (info.specifiers.some((s) => s.imported === 'PyreonUI')) {
           hasProviderImport = true
         }
       },
@@ -74,7 +72,7 @@ export const noThemeOutsideProvider: Rule = {
           if (call.insideHook) continue
           context.report({
             message:
-              '`useTheme()` without a `PyreonUI` or `ThemeProvider` import — the theme context may not be available.',
+              '`useTheme()` without a `PyreonUI` import — the theme context may not be available. Wrap the app in `<PyreonUI theme={theme}>` from `@pyreon/ui-core`.',
             span: call.span,
           })
         }

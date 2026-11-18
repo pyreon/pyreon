@@ -15,7 +15,8 @@ bun add @pyreon/styler @pyreon/core @pyreon/reactivity
 ## Quick start
 
 ```tsx
-import { styled, css, keyframes, createGlobalStyle, ThemeProvider } from '@pyreon/styler'
+import { styled, css, keyframes, createGlobalStyle } from '@pyreon/styler'
+import { PyreonUI } from '@pyreon/ui-core'
 
 const Button = styled('button')`
   display: inline-flex;
@@ -34,11 +35,13 @@ const GlobalStyle = createGlobalStyle`
   body { margin: 0; font-family: ${({ theme }) => theme.font}; }
 `
 
-<ThemeProvider theme={{ colors: { primary: '#0d6efd' }, font: 'Inter, sans-serif' }}>
+<PyreonUI theme={{ colors: { primary: '#0d6efd' }, font: 'Inter, sans-serif' }}>
   <GlobalStyle />
   <Button>Click me</Button>
-</ThemeProvider>
+</PyreonUI>
 ```
+
+Styler ships no provider component: `<PyreonUI>` from `@pyreon/ui-core` provides the theme. Without the UI system (an isolated test, an embed), call `provide(ThemeContext, () => theme)` from `@pyreon/core` during component setup.
 
 ## API
 
@@ -143,16 +146,17 @@ const GlobalStyle = createGlobalStyle`
 `
 ```
 
-### `ThemeProvider` / `useTheme` / `useThemeAccessor`
+### `ThemeContext` / `useTheme` / `useThemeAccessor`
 
 `ThemeContext` is a Pyreon **reactive** context — whole-theme swaps (e.g. user preference dark→light) re-resolve every styled-component's CSS and swap classes in place, no VNode remount.
 
 ```tsx
-import { ThemeProvider, useTheme, useThemeAccessor } from '@pyreon/styler'
+import { useTheme, useThemeAccessor } from '@pyreon/styler'
+import { PyreonUI } from '@pyreon/ui-core'
 
-;<ThemeProvider theme={{ colors: { primary: '#0d6efd' } }}>
+;<PyreonUI theme={{ colors: { primary: '#0d6efd' } }}>
   <App />
-</ThemeProvider>
+</PyreonUI>
 
 // Inside a component:
 const theme = useTheme() // snapshot at call time
@@ -224,7 +228,7 @@ dropped with a dev warning; rules fall back to plain source order. On
 `@layer`-supporting engines everything (including ordering statements and
 `@import` statements) inserts natively.
 
-### `useCSS(cssResult)`
+### `useCSS(cssResult, props?)`
 
 Read-only hook for retrieving the resolved class name of a `CSSResult` — useful for hand-managed JSX paths that need the class without `styled()`.
 
@@ -260,7 +264,7 @@ Templates with function interpolations resolve on every render. A class-cache ke
 
 ### Reactive theme swaps
 
-`ThemeProvider` wires the theme through `createReactiveContext` — `styled()` reads via the accessor inside a `renderEffect`, so flipping the provider's theme re-resolves CSS and patches `className` on the same node. No remount.
+`ThemeContext` is a `createReactiveContext`, and `<PyreonUI>` provides it as an accessor — `styled()` reads via the accessor inside a `renderEffect`, so flipping the provided theme re-resolves CSS and patches `className` on the same node. No remount.
 
 ### CSS nesting passes through
 
@@ -328,9 +332,9 @@ browser-uniform and engine-dominated).
 
 ## Gotchas
 
-- **Theme swaps re-resolve CSS but do NOT remount.** A whole-theme swap (`<ThemeProvider theme={B}>` → `<ThemeProvider theme={C}>`) updates the className in place. Identity preservation: pass a STABLE theme object via signal/computed if you want maximum cache reuse.
+- **Theme swaps re-resolve CSS but do NOT remount.** A whole-theme swap (`<PyreonUI theme={B}>` → `<PyreonUI theme={C}>`) updates the className in place. Identity preservation: pass a STABLE theme object via signal/computed if you want maximum cache reuse.
 - **`useTheme()` returns a snapshot.** Inside effects/computeds, use `useThemeAccessor()` to subscribe to live updates.
-- **`ThemeProvider` requires `nativeCompat` if used in a compat-layer app** — it's already marked. User code in compat-mode apps inheriting from `ThemeProvider` should preserve that contract.
+- **A component that calls `provide(ThemeContext, …)` in a compat-layer app needs `nativeCompat`.** Mark it with `nativeCompat(Component)` so the compat runtime does not wrap it and swallow the `provide()`. `<PyreonUI>` is already marked.
 - **`@layer` is opt-in**, not the default. The singleton `sheet` does not wrap in `@layer`.
 - **Failed `insertRule` in production used to be silently swallowed.** Current code uses bare `process.env.NODE_ENV !== 'production'` — bundler-agnostic; do not regress to `import.meta.env.DEV` or `typeof process` guards.
 

@@ -463,7 +463,7 @@ mounted is what the project ships. Two consequences worth knowing:
   ```ts
   // atlas.config.ts — `wrapper` receives the scenario as `children`
   export function wrapper(props: AtlasWrapperProps) {
-    return h(ThemeProvider, { theme, mode: props.mode }, props.children)
+    return h(PyreonUI, { theme, mode: props.mode }, props.children)
   }
   ```
 

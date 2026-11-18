@@ -15,19 +15,20 @@ bun add @pyreon/coolgrid @pyreon/core @pyreon/reactivity @pyreon/ui-core @pyreon
 ## Quick start
 
 ```tsx
-import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
+import { PyreonUI } from '@pyreon/ui-core'
+import { Container, Row, Col, theme } from '@pyreon/coolgrid'
 
-<Provider theme={theme}>
+<PyreonUI theme={theme}>
   <Container>
     <Row>
       <Col size={{ xs: 12, md: 8 }}>Main content</Col>
       <Col size={{ xs: 12, md: 4 }}>Sidebar</Col>
     </Row>
   </Container>
-</Provider>
+</PyreonUI>
 ```
 
-Provider wraps `@pyreon/unistyle`'s provider — it scopes breakpoints, root-size, and grid defaults to the subtree. One provider per app at the root.
+`<PyreonUI>` (from `@pyreon/ui-core`) provides breakpoints, root-size, and grid defaults to the subtree. One at the app root; nest another `<PyreonUI theme={…}>` to scope different breakpoints to a subtree.
 
 ## Components
 
@@ -109,7 +110,7 @@ size={{ xs: 12, md: 6, lg: 4 }}
 ## Custom breakpoints / columns
 
 ```tsx
-<Provider
+<PyreonUI
   theme={{
     rootSize: 16,
     breakpoints: { phone: 0, tablet: 600, desktop: 1024, wide: 1440 },
@@ -125,7 +126,7 @@ size={{ xs: 12, md: 6, lg: 4 }}
       <Col size={8}>One third of 24</Col>
     </Row>
   </Container>
-</Provider>
+</PyreonUI>
 ```
 
 ## Default theme
@@ -169,11 +170,11 @@ Swap any layer's root element via `component`:
 
 ## Gotchas
 
-- **`Provider` is the unistyle provider** under the hood. If you already render `<PyreonUI>` (from `@pyreon/ui-core`) at your app root, it sets up unistyle context — you only need a fresh `<Provider>` if you want different breakpoints in a subtree. When the theme has no grid keys, coolgrid falls back to its defaults (12 columns, xs–xl breakpoints, and the default container widths when the theme has no breakpoints of its own).
+- **coolgrid has no provider of its own** — it reads the theme `<PyreonUI>` (from `@pyreon/ui-core`) provides. When the theme has no grid keys, coolgrid falls back to its defaults (12 columns, xs–xl breakpoints, and the default container widths when the theme has no breakpoints of its own).
 - **`size: 0` is meaningful** — it hides the column at that breakpoint by moving it off-screen (`position: fixed; left: -9999px` — not `display: none`), not "zero-width but still in flow".
 - **`gutter` is negative-margin on the Row** + matching padding on each Col. Setting `gutter` and `padding` independently is fine but be aware of the visual offset.
 - **`columns` MUST be set on a Container** if you want a non-default count. Setting it on a Row works for that Row only, but the visual cascade is harder to reason about — keep it at Container level.
-- **Context is per-Provider.** If you nest two `<Provider>` blocks, the inner one starts fresh from its own theme — not from the outer Provider's overrides.
+- **A nested `<PyreonUI theme={…}>` starts fresh.** The inner one uses its own theme — it does not merge the outer theme's overrides.
 
 ## Documentation
 

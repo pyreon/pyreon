@@ -14,28 +14,21 @@ bun add @pyreon/unistyle @pyreon/core @pyreon/reactivity @pyreon/ui-core
 
 ## Quick start
 
-```tsx
-import { Provider, breakpoints } from '@pyreon/unistyle'
-
-<Provider theme={breakpoints}>
-  <App />
-</Provider>
-```
-
-Or with a custom theme:
+Unistyle has no provider of its own. Render `<PyreonUI>` from `@pyreon/ui-core` once near the app root; it enriches the theme through unistyle and provides it to every styled component:
 
 ```tsx
-<Provider
+import '@pyreon/unistyle' // registers the theme engine PyreonUI uses
+import { PyreonUI } from '@pyreon/ui-core'
+
+<PyreonUI
   theme={{
     rootSize: 16,
     breakpoints: { xs: 0, sm: 576, md: 768, lg: 992, xl: 1200, xxl: 1440 },
   }}
 >
   <App />
-</Provider>
+</PyreonUI>
 ```
-
-`Provider` is also re-exported from `@pyreon/coolgrid` and `@pyreon/elements` — set it once near the app root (typically `<PyreonUI>` wraps it automatically).
 
 ## `makeItResponsive` — the core engine
 
@@ -204,7 +197,7 @@ Values are converted to `em` units in media queries for correct cross-browser be
 | `normalizeTheme` | Fills gaps so every breakpoint has a complete set |
 | `sortBreakpoints` | Sorts breakpoint definitions by value (ascending) |
 | `extendCss` | Helper for processing `ExtendCss` props (string, fn, callback) |
-| `Provider` / `context` | Theme context provider + consumer |
+| `context` | Re-export of `@pyreon/ui-core`'s theme context |
 | `enrichTheme` | Merge user theme with default breakpoints/spacing |
 
 ## Types
@@ -216,7 +209,7 @@ import type {
   AlignContent, AlignContentAlignXKeys, AlignContentAlignYKeys, AlignContentDirectionKeys,
   BrowserColors, Color, PropertyValue, UnitValue, Value, Values,
   MakeItResponsive, MakeItResponsiveStyles, TransformTheme, NormalizeTheme, SortBreakpoints, CreateMediaQueries,
-  StripUnit, Defaults, TProvider,
+  StripUnit, Defaults,
 } from '@pyreon/unistyle'
 ```
 

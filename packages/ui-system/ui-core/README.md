@@ -176,7 +176,7 @@ import type {
 
 ## Gotchas
 
-- **`<PyreonUI>` is the canonical app-root provider.** Internal sub-providers (`CoreProvider` / `UnistyleProvider` / `ThemeProvider` / `Provider` from rocketstyle / `OverlayContextProvider`) are marked `nativeCompat` even though they're internal — never mount a sub-provider manually if `<PyreonUI>` is already in the tree.
+- **`<PyreonUI>` is the canonical app-root provider.** Internal sub-providers (`CoreProvider` / `Provider` from rocketstyle / `OverlayContextProvider`) are marked `nativeCompat` even though they're internal — never mount a sub-provider manually if `<PyreonUI>` is already in the tree.
 - **`set` / `merge` silently drop prototype-pollution keys.** If a user-supplied key matches `__proto__` / `constructor` / `prototype` it is ignored. Don't rely on these utilities for arbitrary JSON merging that might intentionally need those keys.
 - **`omit` with a Set is faster than with an array** only at scale. For one-off calls the array form is fine.
 - **`useMode()` is reactive — call inside a tracking scope** (JSX expression, effect, computed). Reading at component setup top-level captures the initial value.

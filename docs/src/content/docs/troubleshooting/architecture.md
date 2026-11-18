@@ -50,6 +50,12 @@ A popstate/hashchange handler that only sets `currentPath` skips loaders (loader
   - Browser traversals run the ScrollManager only when `scrollBehavior` is configured; otherwise native scroll restoration applies.
   - A browser-initiated commit never writes the URL; the browser owns it.
   - The echo guard compares against `_pendingBrowserTarget ?? currentPath.peek()`, not the last committed path, so a second Back arriving mid-flight is not dropped as an echo.
+
+---
+
+### `history.replaceState(null, …)` from code that does not own the entry
+
+A replace rewrites the URL of the CURRENT entry, and its state belongs to whoever created it — `@pyreon/router` stamps `{ __pyreonIdx }` on every entry it owns (the stamp its cancelled-traversal restore needs), other libraries keep their own. Passing `null` erases it. url-state's raw-history branch did this on every replace write in any router app that never called `setUrlRouter` (a Zero island has no router to hand over), and zero-content's `<Toc>` did it on every smooth-scroll click (#4388). A URL-only replace passes `history.state`; only a `pushState` starts a new entry with fresh state. Reference: `commit()` in `packages/fundamentals/url-state/src/url.ts`; tests `url-state/src/tests/history-state-preserved.test.ts`, `zero-content/src/tests/_pr-i-widgets.test.tsx`.
   - `push()`/`replace()` resolve with `NavigationResult` (`'committed' | 'cancelled' | 'superseded'`).
 
   Any handler mirroring external state (history, storage events, reconnects) into app state must run the app's full transition pipeline. Tests: `packages/core/router/src/tests/popstate-pipeline.test.ts` (incl. "rapid double-Back").
@@ -125,6 +131,12 @@ The reactive-props inliner kept `const label = props.label` in a module-wide map
 ### Circular prop-derived const chains
 
 `const a = b + props.x; const b = a + 1` makes the compiler emit a `circular-prop-derived` warning and leave the cyclic identifier as a static reference, so that part is not reactive. Make every const read `props.*` or a non-cyclic predecessor.
+
+---
+
+### Inlining a prop-derived `const` that holds JSX (#4300).
+
+Inlining splices the initializer's ORIGINAL source into each use site, so JSX inside it is never lowered: `const imgEl = <img alt={props.alt} />` used as `{imgEl}` became `_mountSlot((<img alt={props.alt} />), …)`, a plain `h()` reading `props.alt` once, while the const's own emit is the live `alt={() => props.alt}`; inside an accessor (a component prop) the copy was re-created per read, so a component in it lost its state on every prop change. The "inlining keeps it reactive" premise (the Round-15 characterization) was false: the element's own bindings carry the reactivity. The backends also disagreed: JS skipped JSX initializers only under SSR, with a deep walk; native with a shallow one (`<b/>`, `[<b/>]`, `.map`), so `props.f ? <b/> : <i/>` / `props.f && <b/>` / `() => <b/>` diverged under SSR, and the client emit of the issue shape diverged until the native gates became full walks. No corpus case or fuzz initializer held JSX. **Rule: an initializer with JSX anywhere (function bodies included) is never inlined, on any path** (`containsJsx` in jsx.ts, `contains_jsx_in_expr` in lib.rs, both full walks). A branch chosen by a prop is then picked at setup; write the choice at the use site (`{() => (props.f ? <b/> : <i/>)}`, `<Show>`) or make the const a function. Locks: `compiler/src/tests/prop-derived-jsx-init.test.ts` (11 initializer forms × 11 use sites × client/SSR/ssrTemplate × backend; oracle: the initializer's marker appears exactly once in the output), the JSX entries of `PQ_INITS` in `fuzz-equivalence.test.ts`, `runtime-dom/src/tests/compiled-jsx-const-not-inlined.test.tsx` (mounted: the attribute follows the prop on the same element, a component keeps its state).
 
 ---
 

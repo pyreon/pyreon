@@ -1,0 +1,10 @@
+[
+  {
+    "pkg": "picomatch",
+    "ghsa": "GHSA-fc5q-39xc-vjpf",
+    "vulnerableVersions": "<=4.0.7",
+    "accepted": "2026-11-18",
+    "expires": "2026-12-18",
+    "reason": "No fixed release exists: 4.0.7 is the newest picomatch. It reaches the lockfile only through build and test tooling (vite, vitest, tinyglobby, unplugin, changesets), where every glob comes from this repository's own configuration, and no published @pyreon package lists it as a dependency. The ReDoS needs an attacker-chosen glob pattern."
+  }
+]

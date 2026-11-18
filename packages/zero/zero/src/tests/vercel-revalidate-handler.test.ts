@@ -1,12 +1,13 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, vi, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { vercelRevalidateHandler } from '../vercel-revalidate-handler'
 
 // M3.1 — Drop-in Vercel revalidate webhook handler.
 //
-// The handler validates request shape (POST + path + secret query), reads the
+// The handler validates request shape (POST + `?path=` + `Authorization: Bearer`
+// secret), reads the
 // build-time `_pyreon-revalidate.json` manifest, validates the path is in
 // scope (closes "secret-leaks-once → revalidate-anything" footgun), and
 // dispatches to a user-supplied `onRevalidate` callback or falls back to a
@@ -16,6 +17,14 @@ import { vercelRevalidateHandler } from '../vercel-revalidate-handler'
 // secret check, (c) method check → the corresponding spec fails.
 
 const VALID_SECRET = 'super-secret-token-123'
+
+/** A revalidate request carrying the secret the only supported way: `Authorization: Bearer`. */
+function revalidateRequest(path: string, secret: string | null, method = 'POST'): Request {
+  return new Request(`http://localhost/api/_pyreon-revalidate?path=${path}`, {
+    method,
+    headers: secret === null ? {} : { authorization: `Bearer ${secret}` },
+  })
+}
 
 function makeManifestDir(manifest: object): string {
   const dir = mkdtempSync(join(tmpdir(), 'pyreon-vercel-rev-'))
@@ -32,6 +41,7 @@ describe('vercelRevalidateHandler (M3.1)', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     if (originalToken === undefined) delete process.env.VERCEL_REVALIDATE_TOKEN
     else process.env.VERCEL_REVALIDATE_TOKEN = originalToken
   })
@@ -41,7 +51,7 @@ describe('vercelRevalidateHandler (M3.1)', () => {
     try {
       const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
       const res = await handler(
-        new Request('http://localhost/api/_pyreon-revalidate?path=/about&secret=' + VALID_SECRET),
+        revalidateRequest('/about', VALID_SECRET, 'GET'),
       )
       expect(res.status).toBe(405)
     } finally {
@@ -68,10 +78,7 @@ describe('vercelRevalidateHandler (M3.1)', () => {
     try {
       const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
       const res = await handler(
-        new Request(
-          'http://localhost/api/_pyreon-revalidate?path=/about&secret=anything',
-          { method: 'POST' },
-        ),
+        revalidateRequest('/about', 'anything'),
       )
       expect(res.status).toBe(500)
       expect(await res.text()).toContain('VERCEL_REVALIDATE_TOKEN')
@@ -85,10 +92,7 @@ describe('vercelRevalidateHandler (M3.1)', () => {
     try {
       const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
       const res = await handler(
-        new Request(
-          'http://localhost/api/_pyreon-revalidate?path=/about&secret=wrong',
-          { method: 'POST' },
-        ),
+        revalidateRequest('/about', 'wrong'),
       )
       expect(res.status).toBe(403)
     } finally {
@@ -101,10 +105,7 @@ describe('vercelRevalidateHandler (M3.1)', () => {
     try {
       const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
       const res = await handler(
-        new Request(
-          `http://localhost/api/_pyreon-revalidate?path=/admin/secrets&secret=${VALID_SECRET}`,
-          { method: 'POST' },
-        ),
+        revalidateRequest('/admin/secrets', VALID_SECRET),
       )
       expect(res.status).toBe(404)
       expect(await res.text()).toContain('not in revalidate manifest')
@@ -118,10 +119,7 @@ describe('vercelRevalidateHandler (M3.1)', () => {
     try {
       const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
       const res = await handler(
-        new Request(
-          `http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`,
-          { method: 'POST' },
-        ),
+        revalidateRequest('/about', VALID_SECRET),
       )
       expect(res.status).toBe(200)
       const body = (await res.json()) as { revalidated: boolean; path: string }
@@ -154,21 +152,90 @@ describe('vercelRevalidateHandler (M3.1)', () => {
     }
   })
 
-  it('a legacy `?secret=` still works but warns once (deprecated)', async () => {
+  // Regression: the secret used to be accepted as a `?secret=` query parameter
+  // (with a deprecation warning). A URL secret lands in access and proxy logs,
+  // so the handler must refuse it even when it is CORRECT, and must not fall
+  // back to it when the header is missing.
+  it('rejects a `?secret=` query parameter, even a correct one, and names the header', async () => {
     const dir = makeManifestDir({ revalidate: { '/about': 60 } })
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const onRevalidate = vi.fn()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
-      const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
-      const req = () =>
+      const handler = vercelRevalidateHandler({
+        manifestPath: join(dir, '_pyreon-revalidate.json'),
+        onRevalidate,
+      })
+      const res = await handler(
         new Request(`http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`, {
           method: 'POST',
-        })
-      expect((await handler(req())).status).toBe(200)
-      expect((await handler(req())).status).toBe(200)
-      const deprecations = warn.mock.calls.filter((c) => String(c[0]).includes('Authorization: Bearer'))
-      expect(deprecations).toHaveLength(1)
+        }),
+      )
+      expect(res.status).toBe(400)
+      expect(await res.text()).toContain('Authorization: Bearer')
+      expect(onRevalidate).not.toHaveBeenCalled()
     } finally {
-      warn.mockRestore()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  // A webhook sender usually discards the 400's body, so without a server-side
+  // line the content just stops revalidating with nothing in the logs.
+  // Bisect-verified: without the `console.error` in the handler, the first
+  // spec sees no error call.
+  it('logs a `?secret=` request once per handler, server-side, without the secret', async () => {
+    const dir = makeManifestDir({ revalidate: { '/about': 60 } })
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
+      const viaQuery = () =>
+        handler(
+          new Request(`http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`, {
+            method: 'POST',
+          }),
+        )
+      expect((await viaQuery()).status).toBe(400)
+      expect((await viaQuery()).status).toBe(400)
+      expect(error).toHaveBeenCalledTimes(1)
+      const line = String(error.mock.calls[0]?.[0])
+      expect(line).toMatch(/^\[Pyreon\] vercelRevalidateHandler:/)
+      expect(line).toContain('NOT being revalidated')
+      expect(line).toContain('Authorization: Bearer <secret>')
+      expect(line).toContain('rotate VERCEL_REVALIDATE_TOKEN')
+      expect(line).not.toContain(VALID_SECRET)
+    } finally {
+      error.mockRestore()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not log a header-only request, and says the header was used when both are sent', async () => {
+    const dir = makeManifestDir({ revalidate: { '/about': 60 } })
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
+      expect((await handler(revalidateRequest('/about', VALID_SECRET))).status).toBe(200)
+      expect(error).not.toHaveBeenCalled()
+      const both = new Request(`http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${VALID_SECRET}` },
+      })
+      expect((await handler(both)).status).toBe(200)
+      expect(error).toHaveBeenCalledTimes(1)
+      const line = String(error.mock.calls[0]?.[0])
+      expect(line).toContain('alongside the header, which was used')
+      expect(line).not.toContain(VALID_SECRET)
+    } finally {
+      error.mockRestore()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('treats a blank bearer token as a missing secret (400)', async () => {
+    const dir = makeManifestDir({ revalidate: { '/about': 60 } })
+    try {
+      const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
+      expect((await handler(revalidateRequest('/about', ' '))).status).toBe(400)
+    } finally {
       rmSync(dir, { recursive: true, force: true })
     }
   })
@@ -184,10 +251,7 @@ describe('vercelRevalidateHandler (M3.1)', () => {
         },
       })
       const res = await handler(
-        new Request(
-          `http://localhost/api/_pyreon-revalidate?path=/posts/42&secret=${VALID_SECRET}`,
-          { method: 'POST' },
-        ),
+        revalidateRequest('/posts/42', VALID_SECRET),
       )
       expect(res.status).toBe(200)
       expect(calls).toEqual(['/posts/42'])
@@ -206,10 +270,7 @@ describe('vercelRevalidateHandler (M3.1)', () => {
         },
       })
       const res = await handler(
-        new Request(
-          `http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`,
-          { method: 'POST' },
-        ),
+        revalidateRequest('/about', VALID_SECRET),
       )
       expect(res.status).toBe(500)
       expect(await res.text()).toContain('upstream cache invalidation failed')
@@ -223,10 +284,7 @@ describe('vercelRevalidateHandler (M3.1)', () => {
     try {
       const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
       const res = await handler(
-        new Request(
-          `http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`,
-          { method: 'POST' },
-        ),
+        revalidateRequest('/about', VALID_SECRET),
       )
       expect(res.status).toBe(500)
       expect(await res.text()).toContain('unreadable or malformed')
@@ -241,10 +299,7 @@ describe('vercelRevalidateHandler (M3.1)', () => {
     try {
       const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
       const res = await handler(
-        new Request(
-          `http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`,
-          { method: 'POST' },
-        ),
+        revalidateRequest('/about', VALID_SECRET),
       )
       expect(res.status).toBe(500)
     } finally {
@@ -257,10 +312,7 @@ describe('vercelRevalidateHandler (M3.1)', () => {
     try {
       const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
       const res = await handler(
-        new Request(
-          `http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`,
-          { method: 'POST' },
-        ),
+        revalidateRequest('/about', VALID_SECRET),
       )
       expect(res.status).toBe(500)
     } finally {
@@ -278,10 +330,7 @@ describe('vercelRevalidateHandler (M3.1)', () => {
         secretEnvVar: 'MY_CUSTOM_SECRET',
       })
       const res = await handler(
-        new Request(
-          `http://localhost/api/_pyreon-revalidate?path=/about&secret=custom-secret-456`,
-          { method: 'POST' },
-        ),
+        revalidateRequest('/about', 'custom-secret-456'),
       )
       expect(res.status).toBe(200)
     } finally {
@@ -303,10 +352,7 @@ describe('vercelRevalidateHandler (M3.1)', () => {
         manifestPath: join(dir, 'my-custom-manifest.json'),
       })
       const res = await handler(
-        new Request(
-          `http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`,
-          { method: 'POST' },
-        ),
+        revalidateRequest('/about', VALID_SECRET),
       )
       expect(res.status).toBe(200)
     } finally {
@@ -364,7 +410,6 @@ describe('secret validation', () => {
     ['same length, differs only at the last byte', VALID_SECRET.slice(0, -1) + 'X'],
     ['a correct prefix, truncated', VALID_SECRET.slice(0, 3)],
     ['a correct value with a suffix', VALID_SECRET + 'X'],
-    ['empty-ish', ' '],
   ]
 
   for (const [name, wrong] of cases) {
@@ -373,10 +418,7 @@ describe('secret validation', () => {
       try {
         const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
         const res = await handler(
-          new Request(
-            `http://localhost/api/_pyreon-revalidate?path=/about&secret=${encodeURIComponent(wrong)}`,
-            { method: 'POST' },
-          ),
+          revalidateRequest('/about', wrong),
         )
         expect(res.status).toBe(403)
       } finally {
@@ -392,10 +434,7 @@ describe('secret validation', () => {
     try {
       const handler = vercelRevalidateHandler({ manifestPath: join(dir, '_pyreon-revalidate.json') })
       const res = await handler(
-        new Request(
-          `http://localhost/api/_pyreon-revalidate?path=/about&secret=${VALID_SECRET}`,
-          { method: 'POST' },
-        ),
+        revalidateRequest('/about', VALID_SECRET),
       )
       expect(res.status).not.toBe(403)
     } finally {

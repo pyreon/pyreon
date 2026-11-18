@@ -27,7 +27,6 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - stripUnit / value / values — unit-utility helpers
 - themeToCssVars(theme) — autogenerate CSS custom properties from a theme JSON; units baked at emission (px→rem via rootSize)
 - resolveCssVarReferences(value, registry) — inline var() references back to raw values for non-CSS consumers (document export, devtools)
-- Provider / context — React-style provider for the theme (used internally by PyreonUI)
 
 ## Complete example
 
@@ -484,6 +483,6 @@ const Box = cpseStyled('div')
 
 > **CSS property naming:** Unistyle uses property-first naming (`borderWidthTop`, `borderColorLeft`) rather than CSS-spec order (`borderTopWidth`, `borderLeftColor`). Stick to the unistyle convention when authoring components — the responsive transformer expects it.
 
-> **Deprecated internal Provider / context:** The package exports a low-level `Provider` (default export) + `context` (re-exported from `@pyreon/ui-core`) that `<PyreonUI>` no longer calls directly. It is `@deprecated`-tagged in source but does not warn at runtime. Use `<PyreonUI theme={theme}>` instead.
+> **No provider here — use PyreonUI:** Unistyle has no provider component. `<PyreonUI theme={theme}>` from `@pyreon/ui-core` enriches the theme through unistyle (registered at module load) and provides it to styler, ui-core and the mode context. The `context` export is a re-export of `@pyreon/ui-core`'s internal context.
 
 > **Responsive-pipeline internals (normalizeTheme / sortBreakpoints / transformTheme):** These three are re-exported for advanced consumers but are the internal steps `makeItResponsive()` already runs for you: `sortBreakpoints` orders breakpoint keys by their min-width, `normalizeTheme` expands a mobile-first array/breakpoint-object value into a per-breakpoint map (carrying forward the "null slot inherits the previous breakpoint" rule), `transformTheme` maps a normalized per-breakpoint theme through a `styles`-shaped callback. Reach for `makeItResponsive()` first; use these directly only when building a custom responsive pipeline outside the styled-component path.

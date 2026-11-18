@@ -1,7 +1,7 @@
-import { popContext } from '@pyreon/core'
+import { popContext, provide } from '@pyreon/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { signal } from '@pyreon/reactivity'
-import { ThemeContext, ThemeProvider, useTheme, useThemeAccessor } from '../ThemeProvider'
+import { ThemeContext, useTheme, useThemeAccessor } from '../theme-context'
 
 describe('ThemeContext', () => {
   it('is a Context object with an id', () => {
@@ -14,7 +14,7 @@ describe('ThemeContext', () => {
   })
 })
 
-describe('ThemeProvider', () => {
+describe('provide(ThemeContext, accessor)', () => {
   afterEach(() => {
     try {
       popContext()
@@ -23,40 +23,15 @@ describe('ThemeProvider', () => {
     }
   })
 
-  it('returns children when provided', () => {
-    const children = 'Hello world'
-    const result = ThemeProvider({ theme: {}, children })
-    expect(result).toBe('Hello world')
-  })
-
-  it('returns null when no children are provided', () => {
-    const result = ThemeProvider({ theme: {} })
-    expect(result).toBeNull()
-  })
-
-  it('returns null when children is undefined', () => {
-    const result = ThemeProvider({ theme: {}, children: undefined })
-    expect(result).toBeNull()
-  })
-
-  it('provides theme via context (useTheme returns it)', () => {
+  it('useTheme returns the provided theme', () => {
     const theme = { colors: { primary: 'red' }, spacing: 8 }
-    ThemeProvider({ theme, children: 'child' })
-    const result = useTheme()
-    expect(result).toEqual(theme)
+    provide(ThemeContext, () => theme)
+    expect(useTheme()).toEqual(theme)
   })
 
-  it('reads a getter-backed theme prop LAZILY (follows later changes)', () => {
-    // The mount pipeline hands a component `theme={sig()}` as a GETTER. The
-    // provided accessor must re-read it, not capture the setup-time value.
+  it('useThemeAccessor follows a reactive accessor (later changes)', () => {
     const theme = signal<Record<string, unknown>>({ color: 'red' })
-    const props = {
-      get theme() {
-        return theme()
-      },
-      children: 'child',
-    }
-    ThemeProvider(props)
+    provide(ThemeContext, () => theme())
     const accessor = useThemeAccessor<{ color: string }>()
     expect(accessor().color).toBe('red')
     theme.set({ color: 'blue' })
