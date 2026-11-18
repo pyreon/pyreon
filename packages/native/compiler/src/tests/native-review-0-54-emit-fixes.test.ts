@@ -79,7 +79,7 @@ describe('a zero-argument helper called from another helper keeps its call', () 
       const out = emit(helpers, target).code
       expect(out).toMatch(/String\(k\(\)\)|\(k\(\)\)\.toString\(\)/)
       expect(out).toMatch(/\\\(k\(\)\)|\$\{k\(\)\}/)
-      expect(out).toMatch(/k\(\) \+ 1/)
+      expect(out).toMatch(/pyreonAdd\(k\(\), 1L?\)/)
     }
   })
   it.runIf(isSwiftcAvailable())('Swift typechecks', () => {

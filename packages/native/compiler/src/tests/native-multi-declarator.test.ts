@@ -32,12 +32,12 @@ describe('multi-declarator variable statements', () => {
     const sw = transform(app(body), { target: 'swift' }).code
     expect(sw).toContain('let a = 1')
     expect(sw).toContain('let b = 2')
-    expect(sw).toContain('let c = a + b')
+    expect(sw).toContain('let c = pyreonAdd(a, b)')
     expect(sw).not.toContain('multi-declarator')
     const kt = transform(app(body), { target: 'kotlin' }).code
     expect(kt).toContain('val a = 1')
     expect(kt).toContain('val b = 2')
-    expect(kt).toContain('val c = a + b')
+    expect(kt).toContain('val c = pyreonAdd(a, b)')
   })
 
   it('no warning is emitted for a multi-declarator (was: dropped + warned)', () => {

@@ -1,7 +1,7 @@
 import type { DocumentMarker } from '@pyreon/connector-document'
 import { h } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
-import { createDocumentExport, extractDocNode } from '../useDocumentExport'
+import { extractDocNode } from '../useDocumentExport'
 
 // Helper: build a real VNode via @pyreon/core's h(). The third arg
 // is an array (kept for parity with the prior mock helper) and
@@ -25,9 +25,9 @@ const DocDocument = docComponent('document')
 const DocHeading = docComponent('heading')
 const DocText = docComponent('text')
 
-describe('createDocumentExport', () => {
+describe('extractDocNode — tree extraction', () => {
   it('extracts a document tree from template function', () => {
-    const doc = createDocumentExport(() =>
+    const doc = () => extractDocNode(() =>
       node(DocDocument, { _documentProps: { title: 'Test' } }, [
         node(
           DocHeading,
@@ -47,7 +47,7 @@ describe('createDocumentExport', () => {
       ]),
     )
 
-    const tree = doc.getDocNode()
+    const tree = doc()
 
     expect(tree.type).toBe('document')
     expect(tree.props.title).toBe('Test')
@@ -66,42 +66,37 @@ describe('createDocumentExport', () => {
   })
 
   it('can be called multiple times', () => {
-    const doc = createDocumentExport(() =>
+    const doc = () => extractDocNode(() =>
       node(DocText, { $rocketstyle: { fontSize: 14 } }, ['Static']),
     )
 
-    const tree1 = doc.getDocNode()
-    const tree2 = doc.getDocNode()
+    const tree1 = doc()
+    const tree2 = doc()
 
     expect(tree1.type).toBe('text')
     expect(tree2.type).toBe('text')
   })
 
   it('respects includeStyles option', () => {
-    const doc = createDocumentExport(
+    const doc = () => extractDocNode(
       () => node(DocHeading, { $rocketstyle: { fontSize: 24 } }, ['Hello']),
       { includeStyles: false },
     )
 
-    const tree = doc.getDocNode()
+    const tree = doc()
     expect(tree.styles).toBeUndefined()
   })
 
   it('handles empty template', () => {
-    const doc = createDocumentExport(() => null)
+    const doc = () => extractDocNode(() => null)
 
-    const tree = doc.getDocNode()
+    const tree = doc()
     expect(tree.type).toBe('document')
     expect(tree.children).toEqual([])
   })
 })
 
-describe('extractDocNode (one-step alias)', () => {
-  // The one-step form. Equivalent to
-  // `createDocumentExport(templateFn).getDocNode()` but without
-  // the wrapper-object indirection. This is the form most
-  // consumers should use.
-
+describe('extractDocNode', () => {
   it('extracts a tree from a template function in one call', () => {
     const tree = extractDocNode(() =>
       node(DocDocument, { _documentProps: { title: 'Test' } }, [
@@ -123,19 +118,6 @@ describe('extractDocNode (one-step alias)', () => {
       { includeStyles: false },
     )
     expect(tree.styles).toBeUndefined()
-  })
-
-  it('returns the same tree shape as createDocumentExport().getDocNode()', () => {
-    // Equivalence guarantee — the two-step form delegates to the
-    // one-step form internally, so they MUST produce identical
-    // output for identical input.
-    const template = () =>
-      node(DocText, { $rocketstyle: { fontSize: 14 } }, ['Hello'])
-
-    const oneStep = extractDocNode(template)
-    const twoStep = createDocumentExport(template).getDocNode()
-
-    expect(oneStep).toEqual(twoStep)
   })
 
   it('is idempotent — calling extractDocNode twice on the same template produces equivalent results', () => {

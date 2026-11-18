@@ -152,7 +152,9 @@ describe('attribute baking follows the runtime normalization', () => {
   it('drops `key` and `ref` — neither is a DOM attribute', () => {
     // `key` is reconciliation metadata and `ref` is a callback. Emitting
     // either would put `key="1"` and a stringified function in the HTML.
-    const out = ssr('const a = <p key="1" ref={r}>hi</p>')
+    // On a NESTED element: a keyed ROOT is not templated at all (#4382).
+    const out = ssr('const a = <div><p key="1" ref={r}>hi</p></div>')
+    expect(out).toContain('_ssr(')
     expect(out).not.toContain('key="1"')
     expect(out).not.toContain('ref=')
   })

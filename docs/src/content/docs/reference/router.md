@@ -280,7 +280,7 @@ Declarative navigation link that renders an `<a>` element. Applies `activeClass`
 useRouter(): Router
 ```
 
-Access the router instance for programmatic navigation. Returns the `Router` object with `push()`, `replace()`, `back()`, `forward()`, `go()`. `await router.push()` resolves after the View Transition `updateCallbackDone` (DOM commit is complete, new route state is live), NOT after the animation finishes — and resolves WITH a `NavigationResult`: `'committed'` (route changed), `'cancelled'` (a blocker/guard/middleware refused), or `'superseded'` (a newer navigation won). Browser Back/Forward routes through the same pipeline (guards, blockers, loaders, afterEach, scroll, `meta.title`).
+Access the router instance for programmatic navigation. Returns the `Router` object with `push()`, `replace()`, `back()`, `forward()`, `go()`. `await router.push()` resolves after the View Transition `updateCallbackDone` (DOM commit is complete, new route state is live), NOT after the animation finishes — and resolves WITH a `NavigationResult`: `'committed'` (route changed), `'cancelled'` (a blocker/guard/middleware refused), or `'superseded'` (a newer navigation won). Browser Back/Forward routes through the same pipeline (guards, blockers, loaders, afterEach, scroll, `meta.title`). On iOS and Android `useRouter()` lowers to a handle with `push(path)`, `replace(path)`, `back()` and `forward()` (string paths, no awaited result); the other members have no native counterpart and fail the native build.
 
 **Example**
 

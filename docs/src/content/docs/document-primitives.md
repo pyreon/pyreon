@@ -225,7 +225,7 @@ All five `.levels()`/`.variants()`/`.weights()` dimensions above are declared wi
 
 ### `extractDocNode` (recommended)
 
-The one-step helper. Pass a template function that returns a primitive tree; get a `DocNode` you can hand to `@pyreon/document`'s `render()` or `download()`:
+Pass a template function that returns a primitive tree; get a `DocNode` you can hand to `@pyreon/document`'s `render()` or `download()`:
 
 ```tsx
 import { extractDocNode } from '@pyreon/document-primitives'
@@ -245,21 +245,6 @@ await download(tree, 'report.pdf')
 await download(tree, 'report.docx')
 const html = await render(tree, 'html')
 ```
-
-### `createDocumentExport` (two-step, backward compat)
-
-`createDocumentExport(fn)` returns a `{ getDocNode() }` helper object — the wrapper-object form, kept for callers that want to pass a `DocumentExport` instance around. New code should prefer `extractDocNode`, which is the same operation in one call:
-
-```tsx
-import { createDocumentExport } from '@pyreon/document-primitives'
-
-const helper = createDocumentExport(() => <Resume name="Aisha" />)
-const tree = helper.getDocNode()
-```
-
-:::tip
-`extractDocNode(fn)` is exactly `createDocumentExport(fn).getDocNode()` without the indirection. Reach for `createDocumentExport` only when something downstream actually consumes the `DocumentExport` object itself.
-:::
 
 ### Resolving CSS-variable themes at export time
 
@@ -476,14 +461,13 @@ This is purely background context for how the bridge resolves metadata — there
 
 | Function | Signature | Description |
 | --- | --- | --- |
-| `extractDocNode` | `extractDocNode(templateFn: () => VNode, options?: DocumentExportOptions): DocNode` | **One-step** extraction (recommended). Walks the template's tree into a format-neutral `DocNode`. |
-| `createDocumentExport` | `createDocumentExport(templateFn: () => VNode, options?): { getDocNode(): DocNode }` | **Two-step** wrapper kept for backward compat; delegates to `extractDocNode`. |
+| `extractDocNode` | `extractDocNode(templateFn: () => VNode, options?: DocumentExportOptions): DocNode` | Walks the template's tree into a format-neutral `DocNode`. |
 | `extractDocumentTree` | `extractDocumentTree(vnode, options?): DocNode` | Re-exported from `@pyreon/connector-document` — the bridge that walks a primitive tree. |
 | `resolveStyles` | `resolveStyles(...)` | Re-exported from `@pyreon/connector-document` — resolves a primitive's rocketstyle styles. |
 
 ### `DocumentExportOptions`
 
-Passed as the optional 2nd argument to `extractDocNode` / `createDocumentExport`:
+Passed as the optional 2nd argument to `extractDocNode`:
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -501,7 +485,7 @@ The 18 export primitives are listed in the [Primitive Reference](#primitive-refe
 
 ### Re-exported types
 
-From `@pyreon/connector-document`: `DocNode`, `DocChild`, `ExtractOptions`, `NodeType`, `ResolvedStyles`. From this package: `DocumentExport`, `DocumentExportOptions`, `DocumentTheme` (+ the `documentTheme` token object).
+From `@pyreon/connector-document`: `DocNode`, `DocChild`, `ExtractOptions`, `NodeType`, `ResolvedStyles`. From this package: `DocumentExportOptions`, `DocumentTheme` (+ the `documentTheme` token object).
 
 ## Related
 

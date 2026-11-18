@@ -372,7 +372,7 @@ describe('reserved identifiers — spelling', () => {
     const src = `import { defineStore } from '@pyreon/store'\nconst useS = defineStore('s', () => {\n  const where = signal(1)\n  const total = computed(() => where() + 1)\n  const bump = () => where.set(where() + 1)\n  return { where, total, bump }\n})\nexport function App() {\n  return <Stack><Text>{useS().store.where()}</Text><Button onPress={() => useS().store.where.set(2)}>go</Button></Stack>\n}\n`
     const swift = transform(src, { target: 'swift', filename: 'S.tsx' }).code
     expect(swift).toContain('var where_: Int = 1')
-    expect(swift).toContain('where_ + 1')
+    expect(swift).toContain('pyreonAdd(where_, 1)')
     expect(swift).toContain('PyreonStore_s.shared.where_')
     expect(swift).not.toContain('`where`')
     const kotlin = transform(src, { target: 'kotlin', filename: 'S.tsx' }).code

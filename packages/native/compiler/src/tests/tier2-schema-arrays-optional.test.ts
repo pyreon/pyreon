@@ -232,7 +232,7 @@ export const userSchema = zodSchema(z.object({
     const swift = transform(src, { target: 'swift' })
     expect(swift.code).toContain('var id: String')
     expect(swift.code).toContain('var name: String')
-    expect(swift.code).toContain('var age: Int? = nil')
+    expect(swift.code).toContain('var age: Double? = nil')
     expect(swift.code).toContain('var tags: [String]')
     expect(swift.code).toContain('var notes: [String]? = nil')
     // The .min(2) on name still emits its constraint
@@ -241,7 +241,7 @@ export const userSchema = zodSchema(z.object({
     const kotlin = transform(src, { target: 'kotlin' })
     expect(kotlin.code).toContain('var id: String')
     expect(kotlin.code).toContain('var name: String')
-    expect(kotlin.code).toContain('var age: Long? = null')
+    expect(kotlin.code).toContain('var age: Double? = null')
     expect(kotlin.code).toContain('var tags: List<String>')
     expect(kotlin.code).toContain('var notes: List<String>? = null')
     expect(kotlin.code).toContain('nameVal.length < 2')

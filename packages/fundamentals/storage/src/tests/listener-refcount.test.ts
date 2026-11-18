@@ -1,14 +1,16 @@
+import { effectScope } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { _resetRegistry, _resetStorageListener, useStorage } from '../index'
 
 /**
  * Regression for the cross-tab `storage` listener leak. Before the refcount,
  * the listener was attached on the first `useStorage` call and NEVER
- * removed — even after every signal was disposed via `.remove()`. The
- * listener stayed bound to `window` for the lifetime of the page.
+ * removed. The listener stayed bound to `window` for the lifetime of the page.
  *
- * With the refcount, `.remove()` decrements and the listener detaches at 0.
- * A later `useStorage` reattaches cleanly.
+ * With the refcount, each `useStorage` call retains, and its OWNER SCOPE's
+ * disposal releases (the component unmounting); the listener detaches at 0. A
+ * later `useStorage` reattaches cleanly. `.remove()` releases nothing: removing
+ * the value keeps the binding alive (#4381).
  */
 describe('useStorage — cross-tab listener refcount (regression)', () => {
   let addSpy: ReturnType<typeof vi.spyOn>
@@ -39,22 +41,34 @@ describe('useStorage — cross-tab listener refcount (regression)', () => {
     expect(countCalls(addSpy, 'storage')).toBe(1)
   })
 
-  it('detaches the storage listener when every signal is disposed', () => {
-    const a = useStorage('a', 0)
-    const b = useStorage('b', 0)
+  it('detaches the storage listener when every consumer scope is disposed', () => {
+    const sa = effectScope()
+    const sb = effectScope()
+    sa.runInScope(() => useStorage('a', 0))
+    sb.runInScope(() => useStorage('b', 0))
     expect(countCalls(addSpy, 'storage')).toBe(1)
     expect(countCalls(removeSpy, 'storage')).toBe(0)
 
-    a.remove()
+    sa.stop()
     expect(countCalls(removeSpy, 'storage')).toBe(0) // still one retained
 
-    b.remove()
+    sb.stop()
     expect(countCalls(removeSpy, 'storage')).toBe(1) // now detached
   })
 
-  it('reattaches cleanly when a new signal is created after full disposal', () => {
-    const a = useStorage('a', 0)
+  it('.remove() does not detach the listener (the binding stays live)', () => {
+    const scope = effectScope()
+    const a = scope.runInScope(() => useStorage('a', 0))
     a.remove()
+    expect(countCalls(removeSpy, 'storage')).toBe(0)
+    scope.stop()
+    expect(countCalls(removeSpy, 'storage')).toBe(1)
+  })
+
+  it('reattaches cleanly when a new signal is created after full disposal', () => {
+    const scope = effectScope()
+    scope.runInScope(() => useStorage('a', 0))
+    scope.stop()
     expect(countCalls(addSpy, 'storage')).toBe(1)
     expect(countCalls(removeSpy, 'storage')).toBe(1)
 

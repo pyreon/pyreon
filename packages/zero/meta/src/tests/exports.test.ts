@@ -175,7 +175,6 @@ describe('@pyreon/meta exports', () => {
     'DocTable',
     'DocText',
     'DocumentPreview',
-    'createDocumentExport',
     'documentTheme',
     'extractDocNode',
     // Connector document

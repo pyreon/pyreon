@@ -6,11 +6,8 @@
  * gate in parallel, the aggregator builds a `DoctorReport` with a
  * 0-100 score, the renderer formats it for text / JSON / GHA.
  *
- * The legacy single-purpose flags (`--audit-tests`, `--check-islands`,
- * `--check-ssg`) are interpreted as `--only <gate>` shortcuts so any
- * existing CI script that relied on the old shape keeps working.
- * Without those flags, doctor runs the full fast-gate set + computes
- * a score — the new default behaviour.
+ * `--only <gates>` narrows the run (e.g. `--only islands-audit`).
+ * Without it, doctor runs the full fast-gate set + computes a score.
  *
  * Output modes:
  *   - text (default): big-score banner + per-category bars + top-N findings
@@ -57,24 +54,8 @@ export interface DoctorOptions {
    * discovery — the escape hatch for non-standard layouts.
    */
   roots?: string[] | undefined
-
-  // ── Legacy flags (mapped to --only shortcuts for back-compat) ────
-  /**
-   * @deprecated Prefer `--only audit-tests`. Both forms behave
-   * identically: include the test-environment audit gate in the
-   * report. Kept so existing CI scripts continue to work.
-   */
-  auditTests?: boolean | undefined
   /** Minimum risk for the test-environment audit. Default 'medium'. */
   auditMinRisk?: 'high' | 'medium' | 'low' | undefined
-  /** @deprecated Prefer `--only islands-audit`. */
-  checkIslands?: boolean | undefined
-  /** @deprecated Prefer `--only ssg-audit`. */
-  checkSsg?: boolean | undefined
-  /** @deprecated Prefer `--only content-audit`. */
-  checkContent?: boolean | undefined
-  /** @deprecated Prefer `--only native-audit`. */
-  checkNative?: boolean | undefined
 }
 
 const resolveFormat = (options: DoctorOptions): DoctorFormat => {
@@ -83,17 +64,8 @@ const resolveFormat = (options: DoctorOptions): DoctorFormat => {
   return 'text'
 }
 
-const resolveOnly = (options: DoctorOptions): GateName[] | undefined => {
-  if (options.only && options.only.length > 0) return options.only
-  // Legacy single-purpose flags → `--only` shortcuts.
-  const legacyOnly: GateName[] = []
-  if (options.auditTests) legacyOnly.push('audit-tests')
-  if (options.checkIslands) legacyOnly.push('islands-audit')
-  if (options.checkSsg) legacyOnly.push('ssg-audit')
-  if (options.checkContent) legacyOnly.push('content-audit')
-  if (options.checkNative) legacyOnly.push('native-audit')
-  return legacyOnly.length > 0 ? legacyOnly : undefined
-}
+const resolveOnly = (options: DoctorOptions): GateName[] | undefined =>
+  options.only && options.only.length > 0 ? options.only : undefined
 
 export const doctor = async (options: DoctorOptions): Promise<number> => {
   const orchestratorOpts: OrchestratorOptions = {

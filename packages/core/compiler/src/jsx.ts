@@ -3320,6 +3320,13 @@ export function transformJSX_JS(
   }
 
   function trySsrTemplateEmit(node: N): boolean {
+    // A KEYED root stays a JSX element, as the client compile keeps it on the
+    // h() path (`hasBailAttr` bails on `key`). The root is the value a parent
+    // component receives as a child, and `_ssr` returns raw HTML with no key:
+    // a component reading child keys (kinetic's group) saw keyed children on the
+    // client and unkeyed ones on the server (#4382). Nested elements are not
+    // affected: no component receives them, and the server never reads their keys.
+    if (!ssrComponentChildEligible(node)) return false
     // Self-closing roots are eligible. `ssrSerializeElement` already emits both
     // forms correctly (void → `<img …  />`, non-void → `<div …></div>`), so the
     // only thing that kept `<Icon> = () => <img …/>`, `<Divider> = () => <hr/>`

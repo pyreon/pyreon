@@ -66,11 +66,11 @@ describe('an inline-object flow generic names the data literals struct', () => {
 
 describe('an integer coordinate expression reaches the Double position', () => {
   it('Swift wraps it in Double(_:)', () => {
-    expect(out('swift').code).toContain('PyreonXYPosition(x: Double(col * 200), y: Double(row * 100))')
+    expect(out('swift').code).toContain('PyreonXYPosition(x: Double(pyreonMul(col, 200)), y: Double(pyreonMul(row, 100)))')
   })
 
   it('Kotlin converts it with toDouble()', () => {
-    expect(out('kotlin').code).toContain('PyreonXYPosition((col * 200L).toDouble(), (row * 100L).toDouble())')
+    expect(out('kotlin').code).toContain('PyreonXYPosition((pyreonMul(col, 200L)).toDouble(), (pyreonMul(row, 100L)).toDouble())')
   })
 })
 

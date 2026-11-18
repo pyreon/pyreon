@@ -1,10 +1,11 @@
-import { el } from '../../factory'
+import { el, tones } from '../../factory'
 
 const Popover = el
   .config({ name: 'Popover' })
   .attrs({ tag: 'div' })
-  .theme((t) => ({
-    backgroundColor: t.color.system.light.base,
+  .theme((t, m) => ({
+    backgroundColor: tones(t, m).surface,
+    color: tones(t, m).text,
     borderRadius: t.borderRadius.medium,
     boxShadow: t.shadows.medium,
     borderWidth: t.borderWidth.base,

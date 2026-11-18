@@ -1,13 +1,14 @@
 // The native flow palettes are hand-written copies of the web's theme: the
 // light values are the `var(--pyreon-flow-*, fallback)` defaults inline in the
-// components, and the dark values are the `[data-color-mode="dark"]` block in
-// styles.ts. Nothing tied the three together, so a web colour change left iOS
+// components, and the dark values are the `[data-color-mode="dark"]` block of
+// `flowStyles`. Nothing tied the three together, so a web colour change left iOS
 // and Android painting the old one. This reads all three from source and
 // requires them to agree field by field, in both modes.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { flowStyles } from '../styles'
 
 const root = join(import.meta.dirname, '..', '..')
 
@@ -62,11 +63,13 @@ function webLightFallbacks(): Map<string, Set<string>> {
 
 /** The dark block the web applies under `colorMode="dark"`. */
 function webDark(): { vars: Map<string, string>; canvas: string | null } {
-  const css = readFileSync(join(root, 'src/styles.ts'), 'utf8')
+  // The stylesheet as shipped. Each dark default is the fallback of the
+  // element's private resolution: `--_pyreon-flow-X: var(--pyreon-flow-X, <dark>)`.
+  const css = flowStyles
   const start = css.indexOf('.pyreon-flow[data-color-mode="dark"] {')
   const block = css.slice(start, css.indexOf('}', start))
   const vars = new Map<string, string>()
-  for (const m of block.matchAll(/--pyreon-flow-([a-z-]+):\s*([^;]+);/g)) vars.set(m[1]!, normalize(m[2]!))
+  for (const m of block.matchAll(/--_pyreon-flow-([a-z-]+):\s*var\(--pyreon-flow-\1,\s*([^;]+)\);/g)) vars.set(m[1]!, normalize(m[2]!))
   const canvas = /\n\s*background:\s*([^;]+);/.exec(block)?.[1]
   return { vars, canvas: canvas ? normalize(canvas) : null }
 }

@@ -42,6 +42,17 @@ describe('flattenChildren', () => {
   })
 })
 
+describe('wrapNativeItem declares a root decoration only for class/style (#4382)', () => {
+  it('wraps for a ref alone, a class alone and a style alone', () => {
+    for (const extra of [{ ref: () => {} }, { class: 'a' }, { style: { opacity: 0 } }]) {
+      const root = document.createElement('div')
+      const dispose = mount(h('ul', null, cloneVNode(tpl('<li>x</li>') as never, extra)), root)
+      expect(root.querySelector('li')).not.toBeNull()
+      dispose()
+    }
+  })
+})
+
 describe('cloneVNode over compiled static markup', () => {
   it('sets ref, class and style (custom properties included) on the element at mount', () => {
     let seen: HTMLElement | null = null
@@ -99,6 +110,13 @@ describe('cloneVNode over compiled static markup', () => {
     expect(p.style.opacity).toBe('0.5')
     expect(elements.at(-1)).toBe(p)
     expect(elements).toContain(null)
+    dispose()
+  })
+
+  it('skips the empty tokens of a class with outer whitespace', () => {
+    const root = document.createElement('div')
+    const dispose = mount(cloneVNode(tpl('<b>x</b>') as never, { class: ' hidden  extra ' }), root)
+    expect(query<HTMLElement>(root, 'b').className).toBe('hidden extra')
     dispose()
   })
 

@@ -34,19 +34,10 @@ function buildResolveVar(options: DocumentExportOptions): VarResolver | undefine
   }
 }
 
-export interface DocumentExport {
-  /** Extract the DocNode tree from the template. */
-  getDocNode: () => DocNode
-}
 
 /**
- * One-step helper: extract a DocNode tree from a template function.
- *
- * Equivalent to `createDocumentExport(templateFn).getDocNode()` but
- * without the wrapper-object indirection. Use this when you just
- * need the tree to feed into `@pyreon/document`'s `render()` or
- * `download()` — which is the only thing the wrapper object was
- * ever used for in practice.
+ * Extract a DocNode tree from a template function, to feed into
+ * `@pyreon/document`'s `render()` or `download()`.
  *
  * ```ts
  * import { extractDocNode } from '@pyreon/document-primitives'
@@ -64,12 +55,6 @@ export interface DocumentExport {
  * const tree = extractDocNode(() => <ResumeTemplate resume={store.resume} />)
  * await download(tree, 'resume.pdf')
  * ```
- *
- * The two-step `createDocumentExport` form is still exported for
- * backward compatibility and for callers that want to pass the
- * helper object around (e.g. to wrapper components that take a
- * `DocumentExport` instance). New code should prefer this one-step
- * form unless you specifically need the helper object.
  */
 export function extractDocNode(
   templateFn: () => unknown,
@@ -77,35 +62,4 @@ export function extractDocNode(
 ): DocNode {
   const resolveVar = buildResolveVar(options)
   return extractDocumentTree(templateFn(), resolveVar ? { ...options, resolveVar } : options)
-}
-
-/**
- * Create a document export helper from a template function.
- *
- * The template function should return a VNode tree built with
- * document primitives (DocHeading, DocText, DocTable, etc.).
- *
- * ```ts
- * const doc = createDocumentExport(() =>
- *   DocDocument({ title: 'Report', children: [
- *     DocHeading({ h1: true, children: 'Sales Report' }),
- *     DocText({ children: 'Q4 summary.' }),
- *   ]})
- * )
- *
- * const tree = doc.getDocNode()
- * // Pass to @pyreon/document's render() for any format
- * ```
- *
- * **Most consumers should use `extractDocNode(templateFn)` instead**
- * — it's the same operation in one call without the wrapper
- * object. `createDocumentExport` is kept for callers that want to
- * pass the helper object around.
- */
-export function createDocumentExport(
-  templateFn: () => unknown,
-  options: DocumentExportOptions = {},
-): DocumentExport {
-  const getDocNode = (): DocNode => extractDocNode(templateFn, options)
-  return { getDocNode }
 }

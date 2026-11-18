@@ -1,6 +1,6 @@
 import { styled } from '@pyreon/styler'
 import { Card, Paragraph, Title } from '@pyreon/ui-components'
-import { t } from '../../styles'
+import { PHONE_MAX, t } from '../../styles'
 
 /**
  * Styled components for the Shop section.
@@ -14,6 +14,10 @@ import { t } from '../../styles'
 export const ShopPage = styled('div')`
   padding: 24px 32px 48px;
   max-width: 1200px;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    padding: 24px 16px 48px;
+  }
 `
 
 export const ShopHeader = styled('header')`
@@ -22,6 +26,10 @@ export const ShopHeader = styled('header')`
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 24px;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    flex-wrap: wrap;
+  }
 `
 
 export const HeaderText = styled('div')`
@@ -44,6 +52,10 @@ export const Toolbar = styled('div')`
   display: flex;
   align-items: center;
   gap: 8px;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    flex-wrap: wrap;
+  }
 `
 
 export const SwitcherGroup = styled('div')`

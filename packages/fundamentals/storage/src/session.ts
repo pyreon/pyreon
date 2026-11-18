@@ -1,6 +1,6 @@
 import { signal } from '@pyreon/reactivity'
 import { createStorageSignal } from './local'
-import { getEntry, retainEntry, warnIfOptionsDiffer } from './registry'
+import { getEntry, releaseWithOwner, retainEntry, warnIfOptionsDiffer } from './registry'
 import type { StorageOptions, StorageSignal } from './types'
 import { deserialize, getWebStorage } from './utils'
 
@@ -23,21 +23,15 @@ export function useSessionStorage<T>(
   defaultValue: T,
   options?: StorageOptions<T>,
 ): StorageSignal<T> {
-  // Same-key consumers each retain the per-key registry refcount, so the entry
-  // is destroyed on the LAST `.remove()` and not the first. `useStorage` was
-  // fixed this way in #725/#729 and the registry's own docstring states the
-  // contract ("per-consumer `.remove()` goes through `releaseEntry`") — this
-  // backend kept the pre-fix shape, so one consumer's `.remove()` orphaned
-  // every sibling: `clearStorage`/`removeStorage` stopped seeing their signal,
-  // and the next call for the same key minted a SECOND, independent one.
-  //
-  // Session is the sharpest case: it shares `createStorageSignal` with
-  // localStorage, so it always RELEASED a refcount it never took — the count
-  // went 1 → 0 on whichever consumer removed first.
+  // Every call holds one refcount on the shared per-key entry, released when
+  // the calling owner scope is disposed (`releaseWithOwner`), never by
+  // `.remove()`: removing the value keeps the binding alive (#4381).
   const existing = getEntry<T>('session', key)
   if (existing) {
     warnIfOptionsDiffer('session', key, existing, defaultValue, options)
     retainEntry('session', key)
+    releaseWithOwner('session', key)
+
     return existing.signal
   }
 
@@ -54,5 +48,8 @@ export function useSessionStorage<T>(
   }
 
   const sig = signal<T>(initialValue)
-  return createStorageSignal(sig, key, defaultValue, 'session', options)
+  const storageSig = createStorageSignal(sig, key, defaultValue, 'session', options)
+  releaseWithOwner('session', key)
+
+  return storageSig
 }

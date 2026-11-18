@@ -1,6 +1,6 @@
 /**
  * native-audit — project-level scan for multiplatform (PMTC) build hazards.
- * Consumed by `pyreon doctor --check-native` (the `native-audit` gate) and
+ * Consumed by the `pyreon doctor` `native-audit` gate (`--only native-audit`) and
  * exported for the MCP surface. Mirrors `auditSsg` / `auditIslands`: pure
  * syntactic TS-compiler-API scan, no type-check pass.
  *
@@ -304,7 +304,7 @@ export interface NativePatternDiagnostic {
 /**
  * Snippet-level multiplatform-hazard detector for the MCP `validate` tool —
  * the per-keystroke feedback loop complementing the project-level
- * `auditNative` / `pyreon doctor --check-native`. Same two detectors, same
+ * `auditNative` / `pyreon doctor --only native-audit`. Same two detectors, same
  * scoping: only fires when the snippet imports `@pyreon/primitives` (i.e. it's
  * a multiplatform component PMTC compiles to native), so a pure-web snippet
  * never false-positives. Returns the `detectPyreonPatterns`-compatible

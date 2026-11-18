@@ -3,7 +3,7 @@ import {
   getEntriesByBackend,
   getEntry,
   type RegistryEntry,
-  releaseEntry,
+  releaseWithOwner,
   retainEntry,
   setEntry,
   warnIfOptionsDiffer,
@@ -13,11 +13,11 @@ import { deserialize, getWebStorage, isBrowser, serialize } from './utils'
 
 // ─── Cross-tab sync ──────────────────────────────────────────────────────────
 
-// Refcount the active localStorage signals so we can detach the `storage`
-// event listener when nothing subscribes anymore. Before the refcount, the
-// listener was attached on first `useStorage` and NEVER removed, leaking a
-// window-level handler across the lifetime of the page even after all
-// signals disposed via `.remove()`.
+// Refcount the live `useStorage` consumers so we can detach the `storage`
+// event listener when nothing subscribes anymore. Each `useStorage` call
+// retains; its owner scope's disposal releases (`releaseWithOwner`). Before the
+// refcount, the listener was attached on first `useStorage` and NEVER removed,
+// leaking a window-level handler for the lifetime of the page.
 let activeCount = 0
 let storageHandler: ((e: StorageEvent) => void) | null = null
 
@@ -87,7 +87,8 @@ export function _resetStorageListener(): void {
 
 /**
  * Release one refcount on the cross-tab listener. Detaches the window-level
- * handler when the count drops to zero. Called from `.remove()`.
+ * handler when the count drops to zero. Runs when a `useStorage` consumer's
+ * owner scope is disposed (never from `.remove()`, which keeps the binding).
  */
 export function releaseStorageListener(): void {
   /* v8 ignore next 2 — SSR + already-released defensive guards */
@@ -158,25 +159,28 @@ export function _resetUnloadFlush(): void {
  * const theme = useStorage('theme', 'light')
  * theme()            // 'light' (or stored value)
  * theme.set('dark')  // updates signal + localStorage
- * theme.remove()     // clears storage, resets to default
+ * theme.remove()     // clears storage, resets to default; theme stays bound
  * ```
+ *
+ * The binding lives as long as the calling owner scope (the component): when
+ * the last consumer of `key` is disposed, the registry entry and its share of
+ * the cross-tab listener are released. Called outside any scope, it lives for
+ * the page.
  */
 export function useStorage<T>(
   key: string,
   defaultValue: T,
   options?: StorageOptions<T>,
 ): StorageSignal<T> {
-  // Same-key consumers must each retain the per-key registry refcount AND
-  // the cross-tab listener. Pre-fix: only the FIRST call retained, but
-  // every `.remove()` released — driving refcounts below the actual
-  // consumer count. The post-fix invariant is that the entry destruction
-  // (and cross-tab listener detach) happens only on the LAST consumer's
-  // `.remove()`, not the first.
+  // Every call holds one refcount on the per-key registry entry AND on the
+  // cross-tab listener, and releases both when its owner scope is disposed.
+  // `.remove()` releases neither: it deletes the value, the binding stays (#4381).
   const existing = getEntry<T>('local', key)
   if (existing) {
     warnIfOptionsDiffer('local', key, existing, defaultValue, options)
     retainEntry('local', key)
     retainStorageListener()
+    releaseWithOwner('local', key, releaseStorageListener)
     return existing.signal
   }
 
@@ -197,6 +201,7 @@ export function useStorage<T>(
   // Create the storage signal by extending the base signal
   const storageSig = createStorageSignal(sig, key, defaultValue, 'local', options)
   retainStorageListener()
+  releaseWithOwner('local', key, releaseStorageListener)
 
   return storageSig
 }
@@ -287,30 +292,18 @@ export function createStorageSignal<T>(
     },
   }) as unknown as StorageSignal<T>
 
-  // Add remove method.
-  //
-  // `.remove()` clears the underlying storage entry, resets the shared
-  // signal to its default, and releases ONE refcount on BOTH the per-key
-  // registry entry AND the cross-tab listener. The registry entry is
-  // destroyed only when its refcount drops to 0 (true last-consumer
-  // release) — preserving cross-tab routing for surviving N-1 consumers.
-  //
-  // Pre-fix `.remove()` unconditionally deleted the registry entry,
-  // orphaning every sibling consumer from cross-tab updates the moment
-  // any one of them called `.remove()`. Post-fix: surviving consumers
-  // keep receiving cross-tab events; the entry destruction (and
-  // listener detach via `releaseStorageListener`) is gated on the LAST
-  // consumer's release.
+  // `.remove()` deletes the stored value and resets the shared signal to its
+  // default. It does NOT end the binding (#4381): the registry entry and the
+  // cross-tab listener stay, so a later `.set()` persists again and another
+  // tab's write still arrives. Releasing them here used to leave every consumer
+  // that kept using the key holding a dead signal. The binding is released on
+  // its lifecycle path instead: the owner scope's disposal (`releaseWithOwner`).
   storageSig.remove = () => {
     cancelPending()
     sig.set(defaultValue)
     /* v8 ignore next — defensive null storage guard */
     if (storage) {
       storage.removeItem(key)
-    }
-    releaseEntry(backend, key)
-    if (backend === 'local') {
-      releaseStorageListener()
     }
   }
 

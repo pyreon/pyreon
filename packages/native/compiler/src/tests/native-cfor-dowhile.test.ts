@@ -117,13 +117,13 @@ export function App() {
 describe('do…while lowers directly', () => {
   it('Swift: repeat { } while', () => {
     const out = transform(DOWHILE, { target: 'swift' })
-    expect(out.code).toMatch(/repeat \{\n\s+k = k \+ 1\n\s+\} while k < 3/)
+    expect(out.code).toMatch(/repeat \{\n\s+k = pyreonAdd\(k, 1\)\n\s+\} while k < 3/)
     expect(out.warnings ?? []).toEqual([])
   })
 
   it('Kotlin: do { } while ( )', () => {
     const out = transform(DOWHILE, { target: 'kotlin' })
-    expect(out.code).toMatch(/do \{\n\s+k = k \+ 1L?\n\s+\} while \(k < 3L?\)/)
+    expect(out.code).toMatch(/do \{\n\s+k = pyreonAdd\(k, 1L?\)\n\s+\} while \(k < 3L?\)/)
     expect(out.warnings ?? []).toEqual([])
   })
 })

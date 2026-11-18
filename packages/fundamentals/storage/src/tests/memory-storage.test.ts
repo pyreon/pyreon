@@ -43,14 +43,14 @@ describe('useMemoryStorage', () => {
     expect(sig()).toBe('default')
   })
 
-  it('after remove, a new call creates a fresh signal', () => {
+  it('after remove, a new call shares the still-live signal (#4381)', () => {
     const a = useMemoryStorage('fresh', 'first')
     a.set('modified')
     a.remove()
 
-    const b = useMemoryStorage('fresh', 'second')
-    expect(b()).toBe('second')
-    expect(a).not.toBe(b)
+    const b = useMemoryStorage('fresh', 'first')
+    expect(b()).toBe('first')
+    expect(b).toBe(a)
   })
 
   it('.update() works', () => {

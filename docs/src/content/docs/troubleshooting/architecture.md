@@ -337,9 +337,28 @@ Use `useControllableState` from `@pyreon/hooks` instead of hand-written `isContr
 
 ### Static early-return with a signal condition
 
-`if (loading()) return <Skeleton/>` in a component body pins the component to that branch forever; neither the compiler nor TS2774 flags it. Use `<Show when={() => loading()} fallback={<Skeleton/>}>` or `return (() => loading() ? <Skeleton/> : <Content/>)`. The detector fires only when the condition calls a tracked `signal`/`computed` binding or a `useX` hook-result const; helper, prop and env conditions are legitimate setup guards. The `return null` shape belongs to `static-return-null-conditional`, so the two never double-fire.
+`if (loading()) return <Skeleton/>` in a component body pins the component to that branch forever; neither the compiler nor TS2774 flags it. Use `<Show when={() => loading()} fallback={<Skeleton/>}>` or `return (() => loading() ? <Skeleton/> : <Content/>)`. The detector fires only when the condition calls a tracked `signal`/`computed` binding or a `useX` hook-result const; helper and env conditions are legitimate setup guards, and prop conditions have their own code (next bullet). The `return null` shape belongs to `static-return-null-conditional`, so the two never double-fire.
 
 **Detected by:** `static-early-return-conditional` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.
+
+---
+
+### Static early-return on a prop
+
+`if (props.loading) return <Skeleton/>` (or `return null`) at the top of a component body reads the prop once, at mount. When the parent passes a reactive value (`loading={isLoading()}`) the prop is a getter this `if` never re-reads, so the component is pinned to the first branch. Use `<Show when={() => props.loading} fallback={…}>` or `return () => (props.loading ? <A/> : <B/>)`.
+  - A separate code from the signal one because a single-file detector cannot see whether the parent passes a reactive value: a structural prop that never changes for the instance (a tree `depth`, a fixed variant) is a correct read. Silence that line with `// pyreon-lint-ignore props-early-return-conditional`.
+  - Not flagged: reads inside a handler, effect or returned accessor; a condition that also calls a tracked signal (the signal code owns it); a destructured parameter (`props-destructured` owns it); Plain Mode files.
+
+**Detected by:** `props-early-return-conditional` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.
+
+---
+
+### Copying props into a plain object
+
+`Object.assign({}, props, { extra: 1 })` or `{ ...props, extra: 1 }` in a component's setup scope reads every getter once and stores the values, so the copy never updates. Use `mergeProps(props, { extra: 1 })` (defaults: `mergeProps({ size: 'md' }, props)`) or `splitProps(props, ['a'])`; both copy the getters.
+  - Not flagged: JSX spreads (`<div {...props}>`, `<Child {...props}>` — attributes, not object literals), anything inside JSX, copies inside a nested function (they re-read per call), `Object.assign(props, …)` (props as the target).
+
+**Detected by:** `props-object-copy` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.
 
 ---
 

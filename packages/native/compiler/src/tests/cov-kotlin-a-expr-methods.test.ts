@@ -79,7 +79,7 @@ describe('Kotlin expr: array/String method lowerings', () => {
 
   it('reduce: the 2-arg JS form becomes fold(initial, reducer) — Kotlin reduce takes no initial', () => {
     const out = kt(`  const a = computed(() => xs().reduce((acc, v) => acc + v, 0))`).code
-    expect(out).toContain('xs.fold(0L, { acc, v -> acc + v })')
+    expect(out).toContain('xs.fold(0L, { acc, v -> pyreonAdd(acc, v) })')
   })
 
   it('push: 1 arg is `add`, 2+ args are `addAll(listOf(...))`', () => {

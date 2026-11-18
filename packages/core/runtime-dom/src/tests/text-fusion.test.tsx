@@ -135,14 +135,14 @@ describe('text fusion — one text node, no markers, adopted in place', () => {
     })
   }
 
-  it('coercion matches a lone `{x}`: null/undefined/false vanish, true and numbers stringify', () => {
+  it('coercion matches a lone `{x}`: null/undefined/booleans vanish, numbers stringify', () => {
     const a = signal<unknown>(null); const b = signal<unknown>(0)
     const { host, dispose } = clientMount(`const App = () => <p>{S[0]()}{S[1]()}</p>`, [a, b])
     expect(host.innerHTML).toBe('<p>0</p>')
     a.set(undefined); b.set(false)
     expect(host.innerHTML).toBe('<p></p>')
     a.set(true); b.set(1.5)
-    expect(host.innerHTML).toBe('<p>true1.5</p>')
+    expect(host.innerHTML).toBe('<p>1.5</p>')
     expect(host.querySelector('p')!.childNodes.length).toBe(1)
     dispose()
   })

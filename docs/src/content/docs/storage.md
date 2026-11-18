@@ -131,7 +131,7 @@ effect(() => {
 
 #### Same key → same signal
 
-`useStorage('theme', …)` called from two different components returns the **same** signal instance — there is one signal per `(backend, key)` pair, refcounted so it survives until the last consumer removes it:
+`useStorage('theme', …)` called from two different components returns the **same** signal instance — there is one signal per `(backend, key)` pair, refcounted so it survives until the last consumer is disposed:
 
 ```tsx
 // Header.tsx
@@ -141,7 +141,9 @@ const theme = useStorage('theme', 'light')
 const theme = useStorage('theme', 'light')
 ```
 
-This means a `.remove()` in one component does **not** orphan the others from cross-tab updates: the registry entry (and the window `storage` listener) is only torn down on the *last* consumer's `.remove()`. Until then, surviving consumers keep receiving cross-tab events.
+Each call holds one refcount, released when the calling component (its owner scope) is disposed. The registry entry, and the window `storage` listener, are torn down only when the *last* consumer is disposed; a call made outside any component holds the key for the page.
+
+`.remove()` is not a teardown. It deletes the stored value and resets the signal to its default, and the binding stays alive: a later `.set()` persists again and other tabs' writes keep arriving, in this component and in every other consumer of the key. There is no need to call `useStorage` again after `.remove()`. The same holds for every backend (`useSessionStorage`, `useCookie`, `useIndexedDB`, `useMemoryStorage`, `createStorage`).
 
 #### Write coalescing — `writeDebounceMs`
 
@@ -502,7 +504,7 @@ Reactive bindings through storage signals ride the compiler's `_bindText` fast p
 
 ## Cross-tab sync
 
-Only `useStorage` (localStorage) syncs across tabs. The package attaches a single window `storage` listener (refcounted, detached when the last localStorage signal is removed); when another tab writes a managed key, the listener deserializes the new value and `.set`s the local signal — propagating into every effect, computed, and bound DOM node in this tab automatically.
+Only `useStorage` (localStorage) syncs across tabs. The package attaches a single window `storage` listener (refcounted, detached when the last `useStorage` consumer is disposed); when another tab writes a managed key, the listener deserializes the new value and `.set`s the local signal — propagating into every effect, computed, and bound DOM node in this tab automatically.
 
 ```tsx
 const cart = useStorage('cart', [] as Item[])
@@ -593,7 +595,7 @@ On iOS and Android (PMTC), the `useStorage` family lowers to the native storage 
 | `signal.peek()`   | `T`          | Read **without** subscribing.                                |
 | `signal.subscribe(fn)` | `() => void` | Subscribe to changes; returns an unsubscribe.          |
 | `signal.direct(fn)` | `() => void` | Low-level direct subscription channel.                     |
-| `signal.remove()` | `void`       | Delete from storage and reset the signal to its default.     |
+| `signal.remove()` | `void`       | Delete from storage and reset the signal to its default. The binding stays live. |
 
 ### Types
 

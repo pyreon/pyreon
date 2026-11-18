@@ -102,6 +102,8 @@ dependencies {
     // the stub-masked-symbol class).
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("androidx.core:core-ktx:1.19.1")
+    // useBiometrics: BiometricManager + BiometricPrompt (PyreonBiometricsAndroid.kt).
+    implementation("androidx.biometric:biometric:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("androidx.compose.material:material")
     // <Icon> and <Tab icon> emit Icons.Filled.* at compile time — the small core

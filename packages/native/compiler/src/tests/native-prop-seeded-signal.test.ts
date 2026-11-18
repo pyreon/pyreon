@@ -55,7 +55,7 @@ describe('Swift: a signal seeded from a prop', () => {
 
   it('seeds a sibling chained from it in the same init', () => {
     expect(out.code).toContain('@State private var doubled: Int\n')
-    expect(out.code).toContain('_doubled = State(initialValue: (start) * 2)')
+    expect(out.code).toContain('_doubled = State(initialValue: pyreonMul((start), 2))')
   })
 
   it('leaves a literal-seeded signal as a plain stored initializer', () => {

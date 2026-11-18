@@ -67,7 +67,7 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ['useReducedMotion', '@pyreon/hooks', 'const m = useReducedMotion()'],
   ['useFetch', '@pyreon/hooks', 'const f = useFetch<Resp>("https://x.dev/a")'],
   ['useFilePicker', '@pyreon/hooks', 'const p = useFilePicker()'],
-  ['useForm', '@pyreon/form', 'const fm = useForm({ fields: {} })'],
+  ['useForm', '@pyreon/form', 'const fm = useForm({ initialValues: {} })'],
   ['useFlow', '@pyreon/flow', 'const flow = useFlow<Resp>({ nodes: [], edges: [] })'],
   [
     'useFieldArray',
@@ -85,6 +85,7 @@ const USAGES: ReadonlyArray<readonly [string, string, string]> = [
   ['useLinking', '@pyreon/hooks', 'const l = useLinking()'],
   ['useMap', '@pyreon/hooks', 'const m = useMap()'],
   ['useNavigate', '@pyreon/router', 'const nav = useNavigate()'],
+  ['useRouter', '@pyreon/router', "const router = useRouter(); const go = () => { router.replace('/x'); router.push('/y'); router.back() }"],
   [
     'useSecureStorage',
     '@pyreon/hooks',

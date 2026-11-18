@@ -53,7 +53,7 @@ The `visible` trigger observed the island element, then (one fix later) its elem
 
 The loader never runs, but the import still pulls the component into the client bundle. Drop the entry.
   - `hydrateIslandsAuto(registry)` (from `pyreon({ islands: true })`, the default) already omits never-islands; the detector targets manual registries.
-  - Detected when the `island()` and `hydrateIslands` call share a file (`compiler/src/pyreon-intercept.ts:detectIslandNeverWithRegistry`); cross-file cases belong to `pyreon doctor --check-islands`.
+  - Detected when the `island()` and `hydrateIslands` call share a file (`compiler/src/pyreon-intercept.ts:detectIslandNeverWithRegistry`); cross-file cases belong to `pyreon doctor --only islands-audit`.
 
 **Detected by:** `island-never-with-registry-entry` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.
 
@@ -81,24 +81,24 @@ Island props are JSON-serialized into `data-props`; children, functions, symbols
 
 ### Duplicate `name` across `island()` declarations
 
-The registry is keyed by `name`, so only the first loader fires and the second island silently never hydrates. Use distinct names. `pyreon doctor --check-islands` reports `duplicate-name`.
+The registry is keyed by `name`, so only the first loader fires and the second island silently never hydrates. Use distinct names. `pyreon doctor --only islands-audit` reports `duplicate-name`.
 
 ---
 
 ### Nested islands
 
-An island whose loader target also declares an `island()` is unsupported (the outer `hydrateRoot` replaces the inner subtree first). Flatten them. `pyreon doctor --check-islands` reports `nested-island` (`compiler/src/island-audit.ts:detectNestedIsland`).
+An island whose loader target also declares an `island()` is unsupported (the outer `hydrateRoot` replaces the inner subtree first). Flatten them. `pyreon doctor --only islands-audit` reports `nested-island` (`compiler/src/island-audit.ts:detectNestedIsland`).
 
 ---
 
 ### Dead islands
 
-An `island()` in a file nothing imports never renders. Route it or delete it. Auto-registry `() => import('PATH')` counts as an import. `pyreon doctor --check-islands` reports `dead-island`.
+An `island()` in a file nothing imports never renders. Route it or delete it. Auto-registry `() => import('PATH')` counts as an import. `pyreon doctor --only islands-audit` reports `dead-island`.
 
 ---
 
 ### Cross-file registry drift
 
-A manual `hydrateIslands({ X })` key with no matching `island()` `name` (keys are case-sensitive). Use `hydrateIslandsAuto()` with `pyreon({ islands: true })` to avoid manual sync. `pyreon doctor --check-islands` reports `registry-mismatch`.
+A manual `hydrateIslands({ X })` key with no matching `island()` `name` (keys are case-sensitive). Use `hydrateIslandsAuto()` with `pyreon({ islands: true })` to avoid manual sync. `pyreon doctor --only islands-audit` reports `registry-mismatch`.
 
 ---

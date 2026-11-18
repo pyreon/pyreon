@@ -689,6 +689,8 @@ extension View {
   public func cornerRadius(_ radius: Double, antialiased: Bool = true) -> some View { self }
   public func sheet<C: View>(isPresented: Binding<Bool>, @ViewBuilder content: () -> C) -> some View { self }
   public func disabled(_ disabled: Bool) -> some View { self }
+  // labelsHidden — chained on every <Toggle> emit (its label is always "").
+  public func labelsHidden() -> some View { self }
   // navigationDestination(for:destination:) — the multi-screen router emit's
   // push target. \`D: Hashable\` mirrors SwiftUI's real constraint (route values
   // must be Hashable to key the navigation path); a loose \`D\` would let an
@@ -1057,6 +1059,8 @@ public enum PyreonJSON {
   public static func encode<T>(_ value: T) -> String { "" }
   // JSON.stringify(x) lowers here. Encodable, as in the runtime.
   public static func stringify<T: Encodable>(_ value: T) -> String { "" }
+  // stringify's bytes, throwing when the value's encode does (PyreonStorage's writes).
+  public static func serialize<T: Encodable>(_ value: T) throws -> String { "" }
   // JSON.parse(s) lowers here — Decodable, and THROWS, as in the runtime.
   public static func parse<T: Decodable>(_ type: T.Type, _ text: String) throws -> T { fatalError() }
   // Every emitted decode of a fetch / query / stream body (keeps each object's key order).
@@ -1221,6 +1225,14 @@ extension EnvironmentValues {
 }
 public func useNavigate(router: PyreonRouter?) -> (String) -> Void { { _ in } }
 public func useParams(router: PyreonRouter?) -> [String: String] { [:] }
+// useRouter() — mirrors Hooks.swift's PyreonRouterHandle (push / replace / back / forward).
+public struct PyreonRouterHandle {
+  public func push(_ path: String) {}
+  public func replace(_ path: String) {}
+  public func back() {}
+  public func forward() {}
+}
+public func useRouter(router: PyreonRouter?) -> PyreonRouterHandle { PyreonRouterHandle() }
 // THIRD subset-stub instance. router-swift's Hooks.swift declares three public
 // hooks; the stub had two, so \`const d = useLoaderData<U>()\` — a shipped
 // Phase-B6 feature — failed the required gate with "cannot find 'useLoaderData'
@@ -1582,7 +1594,8 @@ public final class PyreonFetch<T> {
   public func resolve(_ value: T) {}
   public func reject(_ failure: Error) {}
   public func load(_ fetcher: @escaping () throws -> T) {}
-  public func refetch() {}
+  @MainActor public func run(_ fetcher: @escaping () async throws -> T) async {}
+  @discardableResult public func refetch() -> _Concurrency.Task<Void, Never>? { nil }
 }
 // PyreonHttp — what a \`useFetch(url, { method, headers, body })\` decl emits.
 // Mirrors the REAL PyreonHttp.swift surface exactly (a superset stub masks):
@@ -1662,6 +1675,19 @@ public enum PyreonHttpMiddleware {
   case bearer(baseUrl: String, crossOrigin: Bool, token: () -> String?)
   case retry(PyreonRetryPolicy)
   case logger(production: Bool)
+  case reject((PyreonHttpResponse) -> Error)
+}
+// The error \`@pyreon/feature\`'s lowered CRUD hooks reject with (\`.reject { $0.messageError(…) }\`).
+public struct PyreonHttpMessageError: LocalizedError, CustomStringConvertible, Equatable {
+  public let message: String
+  public let status: Int
+  public let errors: String?
+  public init(message: String, status: Int, errors: String? = nil) { self.message = message; self.status = status; self.errors = errors }
+  public var errorDescription: String? { message }
+  public var description: String { message }
+}
+extension PyreonHttpResponse {
+  public func messageError(method: String, url: String) -> PyreonHttpMessageError { PyreonHttpMessageError(message: "", status: status) }
 }
 // PyreonURL — the runtime path-param encoder a templated endpoint URL calls.
 // Mirrors the REAL PyreonURL surface: three overloads (String / Int / Double),
@@ -1691,9 +1717,37 @@ public func pyreonRound(_ x: Double) -> Double { 0 }
 public func pyreonParseInt(_ text: String, _ radix: Int? = nil) -> Int? { nil }
 public func pyreonParseFloat(_ text: String) -> Double { 0 }
 public func pyreonToNumber(_ text: String) -> Double { 0 }
+// pyreonOptionalText — an optional value as the web's text (PyreonNumber.swift). Mirrors the real overloads.
+public func pyreonOptionalText<T>(_ v: T?, _ absent: String) -> String { "" }
+public func pyreonOptionalText(_ v: Double?, _ absent: String) -> String { "" }
 // str.split(sep) / [...str] (PyreonSlice.swift). Mirror the real signatures.
 public func pyreonSplit(_ s: String, _ separator: String, _ limit: Int? = nil) -> [String] { [] }
 public func pyreonCodePoints(_ s: String) -> [String] { [] }
+// Integer and bitwise operators with the web's results (PyreonNumber.swift). Mirror the real signatures.
+public func pyreonAdd(_ a: Int, _ b: Int) -> Int { a }
+public func pyreonSub(_ a: Int, _ b: Int) -> Int { a }
+public func pyreonMul(_ a: Int, _ b: Int) -> Int { a }
+public func pyreonNeg(_ a: Int) -> Int { a }
+public func pyreonRem(_ a: Int, _ b: Int) -> Int { a }
+public func pyreonRem(_ a: Double, _ b: Double) -> Double { a }
+public func pyreonAdd(_ a: Double, _ b: Double) -> Double { a }
+public func pyreonSub(_ a: Double, _ b: Double) -> Double { a }
+public func pyreonMul(_ a: Double, _ b: Double) -> Double { a }
+public func pyreonNeg(_ a: Double) -> Double { a }
+public protocol PyreonBitwiseOperand { var pyreonInt32: Int32 { get } }
+extension Int: PyreonBitwiseOperand { public var pyreonInt32: Int32 { 0 } }
+extension Double: PyreonBitwiseOperand { public var pyreonInt32: Int32 { 0 } }
+public func pyreonBitAnd<A: PyreonBitwiseOperand, B: PyreonBitwiseOperand>(_ a: A, _ b: B) -> Int { 0 }
+public func pyreonBitOr<A: PyreonBitwiseOperand, B: PyreonBitwiseOperand>(_ a: A, _ b: B) -> Int { 0 }
+public func pyreonBitXor<A: PyreonBitwiseOperand, B: PyreonBitwiseOperand>(_ a: A, _ b: B) -> Int { 0 }
+public func pyreonBitNot<A: PyreonBitwiseOperand>(_ a: A) -> Int { 0 }
+public func pyreonShl<A: PyreonBitwiseOperand, B: PyreonBitwiseOperand>(_ a: A, _ b: B) -> Int { 0 }
+public func pyreonShr<A: PyreonBitwiseOperand, B: PyreonBitwiseOperand>(_ a: A, _ b: B) -> Int { 0 }
+public func pyreonUshr<A: PyreonBitwiseOperand, B: PyreonBitwiseOperand>(_ a: A, _ b: B) -> Int { 0 }
+public func pyreonMax(_ xs: [Double]) -> Double { 0 }
+public func pyreonMin(_ xs: [Double]) -> Double { 0 }
+public func pyreonMax(_ xs: [Int]) -> Double { 0 }
+public func pyreonMin(_ xs: [Int]) -> Double { 0 }
 // PyreonDate — JS Date as epoch milliseconds (PyreonDate.swift). Mirrors the real surface.
 public func pyreonDateFrom(_ text: String) -> Double { 0 }
 public func pyreonDateFrom(_ ms: Double) -> Double { 0 }
@@ -1705,6 +1759,19 @@ public func pyreonDateTimezoneOffset(_ ms: Int) -> Double { 0 }
 public func pyreonDateISO(_ ms: Double) -> String { "" }
 public func pyreonDateISO(_ ms: Int) -> String { "" }
 public func pyreonDateMake(_ utc: Bool, _ parts: Double...) -> Double { 0 }
+// A \`Date\` struct field's ISO-string codec (PyreonDate.swift, date-json.ts).
+@propertyWrapper public struct PyreonISODate: Codable, Hashable, Sendable {
+  public var wrappedValue: Double
+  public init(wrappedValue: Double) { self.wrappedValue = wrappedValue }
+}
+@propertyWrapper public struct PyreonOptionalISODate: Codable, Hashable, Sendable {
+  public var wrappedValue: Double?
+  public init(wrappedValue: Double?) { self.wrappedValue = wrappedValue }
+}
+@propertyWrapper public struct PyreonISODates: Codable, Hashable, Sendable {
+  public var wrappedValue: [Double]
+  public init(wrappedValue: [Double]) { self.wrappedValue = wrappedValue }
+}
 // PyreonTimers — JS setTimeout / setInterval / clear* (PyreonTimers.swift). Mirrors the real surface.
 public enum PyreonTimers {
   @discardableResult public static func setTimeout(_ ms: Double, _ fn: @escaping () -> Void) -> Int { 0 }

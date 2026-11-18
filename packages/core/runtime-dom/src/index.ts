@@ -70,6 +70,7 @@ export {
   _bindText,
   _bindProp,
   _ref,
+  _declareRootDecoration,
   _mountChild,
   _mountSlot,
   _textSlot,
@@ -139,6 +140,3 @@ export function mount(root: VNodeChild, container: Element): () => void {
     unmount()
   }
 }
-
-/** Alias for `mount` */
-export const render = mount

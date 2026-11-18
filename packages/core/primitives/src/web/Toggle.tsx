@@ -10,7 +10,7 @@ import { collectPassthroughAttrs, mergePassthroughStyle } from './passthrough'
  *
  * Compiles to:
  * - Web (this impl): `<input type="checkbox" role="switch">` (checked + onChange)
- * - iOS (via PMTC): `Toggle("", isOn: $signal)` — two-way binding via $
+ * - iOS (via PMTC): `Toggle("", isOn: $signal).labelsHidden()` — two-way binding via $
  * - Android (via PMTC): `Switch(checked = signal, onCheckedChange = ...)`
  *
  * Web renders a native checkbox with `role="switch"`: it keeps the

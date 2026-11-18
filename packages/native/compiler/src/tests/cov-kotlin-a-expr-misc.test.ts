@@ -31,8 +31,8 @@ export function App() {
 
   it('`.update(fn)` substitutes the param into an assignment — for a signal and a store field alike', () => {
     const out = kt(SRC(`q.update((p) => p + 1); s.store.n.update((p) => p + 2)`)).code
-    expect(out).toContain('q = q + 1')
-    expect(out).toContain('PyreonStore_app.n = PyreonStore_app.n + 2')
+    expect(out).toContain('q = pyreonAdd(q, 1L)')
+    expect(out).toContain('PyreonStore_app.n = pyreonAdd(PyreonStore_app.n, 2L)')
     expect(out).not.toContain('.update(')
   })
 
@@ -67,8 +67,9 @@ export function App() {
   it('a state READ drops its parens; a VIEW and an ACTION keep theirs', () => {
     const out = kt(MODEL).code
     // the state field is a signal on the web and a property natively
-    expect(out).toContain('${PyreonModel_cart.total}')
-    expect(out).toContain('${PyreonModel_cart.doubled}')
+    // an optional-typed text child is wrapped in pyreonOptionalText; the read stays paren-less
+    expect(out).toContain('${pyreonOptionalText(PyreonModel_cart.total, "")}')
+    expect(out).toContain('${pyreonOptionalText(PyreonModel_cart.doubled, "")}')
     // the action is a real method — parens preserved, args forwarded
     expect(out).toContain('PyreonModel_cart.add(3L)')
   })
@@ -144,7 +145,7 @@ export function App() {
   const a = computed(() => Array.from({ length: 3 }, (i, j) => j * 2))
   return (<Stack><Text>{i() + String(a().length)}</Text></Stack>)
 }`).code
-    expect(out).toContain('(0 until 3L).map({ j -> j * 2L })')
+    expect(out).toContain('(0 until 3L).map({ j -> pyreonMul(j, 2L) })')
     // the outer `i` is untouched by the loop-param registration
     expect(out).toContain('"${i + (a.length).toString()}"')
   })
