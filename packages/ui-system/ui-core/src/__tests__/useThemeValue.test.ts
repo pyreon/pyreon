@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { useThemeValue } from '../useThemeValue'
 
-// Without a ThemeProvider, useTheme returns the default (empty object {}).
+// Without a provided ThemeContext, useTheme returns the default (empty object {}).
 // So get(theme, path) returns undefined for any path.
 
 describe('useThemeValue', () => {

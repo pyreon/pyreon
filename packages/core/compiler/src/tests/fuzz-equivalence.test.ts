@@ -44,6 +44,7 @@ type NativeTransform = (
 ) => { code: string; mapMappings?: string | null }
 
 let nativeTransform: NativeTransform | null = null
+
 try {
   // A napi `.node` addon cannot be loaded through `await import()`, so this
   // is the legitimate `createRequire` case: the CJS-only globals are not
@@ -69,6 +70,7 @@ function mulberry32(seed: number) {
     a = (a + 0x6d2b79f5) | 0
     let t = Math.imul(a ^ (a >>> 15), 1 | a)
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
@@ -116,6 +118,29 @@ interface Ctx {
    */
   rnd5: () => number
   pq: boolean
+  /**
+   * A SIXTH independent stream for signal-method REFERENCES (#4356): `sig.set`
+   * / `sig?.update` / `(sig.trigger as any)` handed to a `ref`, handler or
+   * component prop, or to a callee inside a nested function. Each must be
+   * bound to its signal (`sig.set.bind(sig)`); both backends once left it
+   * detached. Its own stream keeps every earlier draw sequence unchanged.
+   */
+  rnd6: () => number
+}
+
+/** A signal method passed by reference — bound by the auto-call pass. */
+function genMethodRef(c: Ctx): string {
+  const s = pick(c.rnd6, c.signals)
+  const m = pick(c.rnd6, ['set', 'update', 'trigger', 'peek', 'subscribe'])
+  return pick(c.rnd6, [
+    `${s}.${m}`,
+    `${s}?.${m}`,
+    `(${s}.${m} as never)`,
+    `(${s}).${m}`,
+    `${s}!.${m}`,
+    `() => [1].forEach(${s}.${m})`,
+    `() => use(${s}.${m}, ${s})`,
+  ])
 }
 
 /** Functions holding a bare signal — value reads, identity uses, shadowing. */
@@ -215,6 +240,15 @@ const PQ_INITS = [
   // Hygiene: the inlined text mentions `tag`, which some use sites re-bind.
   'props.x + tag',
   '(y) => props.f(y, tag)',
+  // JSX-bearing initializers (#4300): never inlined on any path. Native once
+  // kept only a directly-JSX one under SSR and inlined the rest.
+  '<i class={props.x}>j</i>',
+  'props.x ? <b>t</b> : <i>u</i>',
+  'props.x && <b>{props.y}</b>',
+  'props.items.map((x) => <li>{x}</li>)',
+  '() => <b>{props.x}</b>',
+  '[<b>{props.x}</b>, props.y]',
+  '<><b title={props.x}>f</b></>',
 ]
 
 /** Use sites of `pq` on every element path. */
@@ -262,6 +296,7 @@ function genExpr(c: Ctx): string {
   if (r < 0.78) return `${genExpr(c)} + ${genExpr(c)}`
   if (r < 0.86) return '`v${' + genExpr(c) + '}`'
   if (r < 0.93) return `(${genExpr(c)})`
+
   return `-${Math.floor(c.rnd() * 50)}`
 }
 
@@ -314,9 +349,13 @@ function genAttrs(c: Ctx): string {
     else if (r < 0.9) parts.push(`title={(${genExpr(c)}) as string}`)
     else parts.push(`title="${'t' + Math.floor(c.rnd() * 10)}"`)
   }
+  if (c.signals.length && c.rnd6() < 0.2) {
+    parts.push(`${pick(c.rnd6, ['ref', 'onClick', 'onInput', 'onPick'])}={${genMethodRef(c)}}`)
+  }
   if (c.signals.length && c.rnd4() < 0.3) {
     parts.push(`${pick(c.rnd4, [...EVENTS, 'ref', 'render', 'data-fn'])}={${genNestedFn(c)}}`)
   }
+
   return parts.length ? ' ' + parts.join(' ') : ''
 }
 
@@ -341,6 +380,7 @@ function genChild(c: Ctx): string {
       const call = `${h}(${genExpr(c)})`
       return c.rnd() < 0.5 ? `{${call}}` : `{() => ${call}}`
     }
+
     return `{${genExpr(c)}}`
   }
   if (r < 0.4 && c.signals.length) {
@@ -352,6 +392,7 @@ function genChild(c: Ctx): string {
       c.rnd() < 0.3 && c.signals.length ? pick(c.rnd, c.signals) : c.rnd() < 0.5 ? 'it' : '{ id }'
     const body =
       param === '{ id }' ? '<li>{id}</li>' : `<li>{${param === 'it' ? 'it' : param + '()'}}</li>`
+
     return `{[1,2,3].map((${param}) => ${body})}`
   }
   if (r < 0.55) return `{<><span>a</span><span>b</span></>}`
@@ -361,6 +402,7 @@ function genChild(c: Ctx): string {
   // lookup all have to agree about fragment transparency.
   if (r < 0.58) return `<>${genComponentChild(c)}${c.rnd() < 0.5 ? genChild(c) : ''}</>`
   if (r < 0.62) return `<><>${genComponentChild(c)}</></>`
+
   return genElement({ ...c, depth: c.depth + 1 })
 }
 
@@ -407,12 +449,14 @@ function genElement(c: Ctx): string {
     for (let i = 0; i < k; i++) kids.push(genComponentChild({ ...c, depth: c.depth + 1 }))
     // Interleave static content half the time so `useMixed` fires.
     if (c.rnd() < 0.5) kids.splice(Math.floor(c.rnd() * (kids.length + 1)), 0, genChild(c))
+
     return `<${tag0}${genAttrs(c)}>${kids.join('')}</${tag0}>`
   }
   const tag = pick(c.rnd, TAGS)
   const nChildren = 1 + Math.floor(c.rnd() * 3)
   const children: string[] = []
   for (let i = 0; i < nChildren; i++) children.push(genChild(c))
+
   return `<${tag}${genAttrs(c)}>${children.join('')}</${tag}>`
 }
 
@@ -463,7 +507,8 @@ function genComponent(seed: number): string {
   const rnd4 = mulberry32((seed ^ 0x2545f491) >>> 0)
   const rnd5 = mulberry32((seed ^ 0x6c8e9cf5) >>> 0)
   const pq = props && rnd5() < 0.5
-  const c: Ctx = { rnd, signals, props, depth: 0, idc: { n: 0 }, helpers, pd, rnd2, rnd3, rnd4, rnd5, pq }
+  const rnd6 = mulberry32((seed ^ 0x5f3759df) >>> 0)
+  const c: Ctx = { rnd, signals, props, depth: 0, idc: { n: 0 }, helpers, pd, rnd2, rnd3, rnd4, rnd5, pq, rnd6 }
   const lines: string[] = [`import { signal, computed } from "@pyreon/reactivity"`]
   lines.push(...helperLines)
   const body: string[] = []
@@ -514,6 +559,7 @@ function genComponent(seed: number): string {
   // default-form seeds stay the original function declaration.
   lines.push(...wrapAppLines(appLines, Math.floor(rnd3() * 5), props))
   if (!before) lines.push(...sibling)
+
   return lines.join('\n')
 }
 

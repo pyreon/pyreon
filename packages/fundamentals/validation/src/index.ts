@@ -12,16 +12,12 @@ export type {
   PyreonAdapterShape,
   SchemaIssue,
   SchemaParseResult,
-  StandardSchemaShape,
 } from './schema'
 export type {
   FieldAdapter,
   ParseResult,
   SchemaAdapter,
   SchemaValidateFn,
-  StandardSchemaIssue,
-  StandardSchemaLike,
-  StandardSchemaResult,
   StandardSchemaV1,
   TypedSchemaAdapter,
   ValidateFn,

@@ -71,7 +71,7 @@ await createCustomer({ form: { metadata: { plan: 'pro' } }, headers: { 'idempote
 
 ## Everything is optional
 
-The core has **zero dependencies**. Each capability is a separate entry, so an unused one costs nothing.
+The core has **zero runtime dependencies** (its one dependency, `@standard-schema/spec`, is types-only). Each capability is a separate entry, so an unused one costs nothing.
 
 | Layer | Entry |
 | --- | --- |

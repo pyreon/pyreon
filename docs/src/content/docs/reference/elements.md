@@ -23,7 +23,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - Overlay + useOverlay — positioned layer (dropdown/modal/tooltip) with viewport flip, ESC, click-outside, scroll tracking, hover delay, and focus management (restore-to-opener on close; for type:"modal" a focus-in on open + Tab/Shift+Tab focus trap — the WAI-ARIA dialog pattern, out of the box)
 - Portal — renders children into a per-instance wrapper inside a DOMLocation (default document.body)
 - Iterator — Simple / Object / Children / Loose overloads keep primitive-vs-object iteration modes type-safe
-- Util — stamps className / style onto its child without adding a DOM node; Provider (deprecated) re-exported from @pyreon/unistyle
+- Util — stamps className / style onto its child without adding a DOM node
 - Simple-path fast path: non-compound Elements skip a component invocation + splitProps + mountChild
 
 ## Exports
@@ -39,7 +39,6 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`Portal`](#portal-component) | component | Renders children OUTSIDE the parent DOM hierarchy — into a PER-INSTANCE wrapper element (default `<div>`, configurable… |
 | [`Iterator`](#iterator-component) | component | The data-iteration helper backing `List`, exported as `Iterator` from the package root. |
 | [`Util`](#util-component) | component | Injects a `className` and/or inline `style` into its CHILD, adding NO DOM node of its own — it CLONES the child (via… |
-| [`Provider`](#provider-component) | component | Re-export of `@pyreon/unistyle`'s low-level theme provider (marked `@internal` / `@deprecated` in source). |
 
 ## API
 
@@ -318,34 +317,6 @@ import { Util } from "@pyreon/elements"
 - Passing layout props (`direction` / `alignX` / `gap`) — Util only accepts `children` / `className` / `style`; layout props are ignored. Use `Element` for layout.
 
 **See also:** `Element`
-
----
-
-### `Provider` `component`
-
-```ts
-Provider(props: { theme: PyreonTheme; children?: VNode | null }): VNode | null
-```
-
-Re-export of `@pyreon/unistyle`'s low-level theme provider (marked `@internal` / `@deprecated` in source). It ENRICHES `theme` (pre-sorted breakpoints + media-query helpers) and provides it to both the styler `ThemeContext` and the ui-core context. `theme` is required. `<PyreonUI theme={…}>` from `@pyreon/ui-core` supersedes it — PyreonUI provides the same contexts itself (plus reactive mode), so an app that renders PyreonUI never needs this.
-
-**Example**
-
-```tsx
-import { Provider } from "@pyreon/elements"
-
-// Only outside <PyreonUI> — e.g. an isolated test or embed:
-<Provider theme={{ rootSize: 16, breakpoints: { xs: 0, md: 768 } }}>
-  <App />
-</Provider>
-```
-
-**Common mistakes**
-
-- Nesting it inside `<PyreonUI>` expecting it to extend the outer theme — it provides only its own `theme`, fresh; nest `<PyreonUI>` instead (it inherits)
-- Being surprised by the dev warning `[Pyreon] CoreProvider is internal` — this Provider delegates to ui-core's internal provider, which logs it in development; use `<PyreonUI>`
-
-**See also:** `Element` · `@pyreon/ui-core`
 
 ---
 

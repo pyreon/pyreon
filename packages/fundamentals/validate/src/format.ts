@@ -10,7 +10,7 @@
  */
 
 import type { Schema } from './core/schema'
-import type { PyreonIssue, StandardSchemaIssue, TFn } from './types'
+import type { PyreonIssue, StandardSchemaV1, TFn } from './types'
 
 /**
  * Resolve an issue to a human-readable string. Resolution order:
@@ -25,7 +25,7 @@ import type { PyreonIssue, StandardSchemaIssue, TFn } from './types'
  * `message` immediately — no overhead for non-Pyreon validators.
  */
 export function formatError(
-  issue: StandardSchemaIssue | PyreonIssue,
+  issue: StandardSchemaV1.Issue | PyreonIssue,
   t?: TFn,
 ): string {
   const pyreonIssue = issue as PyreonIssue
@@ -57,7 +57,7 @@ export function formatError(
  * ```
  */
 export function formatErrors(
-  issues: ReadonlyArray<StandardSchemaIssue | PyreonIssue>,
+  issues: ReadonlyArray<StandardSchemaV1.Issue | PyreonIssue>,
   t?: TFn,
 ): string[] {
   return issues.map((issue) => formatError(issue, t))
@@ -74,7 +74,7 @@ export function formatErrors(
  * messages joined" by passing `joinWith`).
  */
 export function formatErrorsByPath(
-  issues: ReadonlyArray<StandardSchemaIssue | PyreonIssue>,
+  issues: ReadonlyArray<StandardSchemaV1.Issue | PyreonIssue>,
   t?: TFn,
   options: { joinWith?: string } = {},
 ): Record<string, string> {
@@ -121,7 +121,7 @@ export function toFormValidator<TValues>(
   schema: Schema<TValues>,
   t?: TFn,
 ): (values: TValues) => Record<string, string> | Promise<Record<string, string>> {
-  const toErrors = (r: { readonly issues?: ReadonlyArray<StandardSchemaIssue> | undefined }): Record<string, string> =>
+  const toErrors = (r: { readonly issues?: ReadonlyArray<StandardSchemaV1.Issue> | undefined }): Record<string, string> =>
     r.issues ? formatErrorsByPath(r.issues, t) : {}
   return (values: TValues) => {
     const r = schema['~standard'].validate(values)

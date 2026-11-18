@@ -2,6 +2,9 @@
  * Compiler hardening — Round 15 (element-const that references a prop-derived
  * var) — consolidated, deterministic JS-backend characterization.
  *
+ * #4300 reversed the first assertion: a JSX-bearing initializer is never
+ * inlined on any path (see `containsJsx`).
+ *
  * Original finding: `const cls = props.x + '-b'; const el = <i class={cls}/>;`
  * used as a bare `{el}` child sat at the intersection of R2 (prop-derived
  * inlining) and R9 (element-const → `_mountSlot`). The JS backend substitutes
@@ -29,11 +32,14 @@ const SIMPLE = `function C(){ const h=<h1>T</h1>; return <div>{h}<p>x</p></div> 
 const REUSED = `function C(){ const ic=<svg/>; return <div>{ic}<span>{ic}</span></div> }`
 
 describe('Round 15 — element-const × prop-derived (JS backend characterization)', () => {
-  it('JS inlines a prop-derived-referencing element-const into _mountSlot with a reactive class', () => {
+  it('an element-const is mounted by name; its OWN class binding carries the reactivity (#4300)', () => {
+    // The inlined copy `_mountSlot((<i class={(p.x+'-b')}/>), …)` was raw,
+    // un-lowered JSX: a plain h() reading the class once. The const's own JSX
+    // compiles to a live accessor, so the const is referenced instead.
     const out = emit(PD_ELEM)
-    expect(out).toContain("_mountSlot((<i class={(p.x+'-b')}/>)")
-    // the prop-derived class is the reactive form, not the frozen const ref
-    expect(out).not.toMatch(/_mountSlot\(\s*el\b/)
+    expect(out).toMatch(/_mountSlot\(\s*el\b/)
+    expect(out).toContain("const el=<i class={() => (p.x+'-b')}/>")
+    expect(out).not.toContain("<i class={(p.x+'-b')}/>)")
   })
 
   it('a simple element-const child routes through _mountSlot (R9 baseline)', () => {

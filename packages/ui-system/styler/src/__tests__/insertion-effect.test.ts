@@ -99,7 +99,7 @@ describe('style injection (className generation)', () => {
   describe('theme-dependent components', () => {
     it('produces different className for different resolved CSS', () => {
       // In Pyreon, theme is accessed via useTheme() inside the component.
-      // Without ThemeProvider context, theme is {} (default).
+      // Without a provided ThemeContext, theme is {} (default).
       // We test via direct prop-based dynamic interpolation instead.
       const Comp = styled('div')`
         background: ${(p: any) => p.$bg};

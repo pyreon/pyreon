@@ -62,9 +62,8 @@ describe('index exports', () => {
     expect(typeof unistyle.values).toBe('function')
   })
 
-  it('exports Provider', () => {
-    expect(unistyle.Provider).toBeDefined()
-    expect(typeof unistyle.Provider).toBe('function')
+  it('does not export the removed Provider (use PyreonUI from @pyreon/ui-core)', () => {
+    expect('Provider' in unistyle).toBe(false)
   })
 
   it('exports context', () => {

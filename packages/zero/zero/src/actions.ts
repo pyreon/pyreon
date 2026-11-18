@@ -1,6 +1,8 @@
 import { getRedirectInfo, safeRedirectLocation } from '@pyreon/router'
 import type { MiddlewareContext } from '@pyreon/server'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { _resetSubmissions } from './form'
+import { isStandardSchema } from './standard-schema'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -206,31 +208,11 @@ export function _resetActions(): void {
 
 /**
  * The Standard Schema contract (https://standardschema.dev) that zod,
- * valibot, arktype and `@pyreon/validate` implement — declared here so zero
- * depends on no validation library.
+ * valibot, arktype and `@pyreon/validate` implement — the official,
+ * types-only `@standard-schema/spec` type, re-exported so zero depends on no
+ * validation library.
  */
-export interface StandardSchemaV1<Input = unknown, Output = Input> {
-  readonly '~standard': {
-    readonly version: 1
-    readonly vendor: string
-    readonly validate: (
-      value: unknown,
-    ) => StandardSchemaV1.Result<Output> | Promise<StandardSchemaV1.Result<Output>>
-    readonly types?: { readonly input: Input; readonly output: Output } | undefined
-  }
-}
-
-export declare namespace StandardSchemaV1 {
-  type Result<Output> =
-    | { readonly value: Output; readonly issues?: undefined }
-    | { readonly issues: ReadonlyArray<Issue> }
-  interface Issue {
-    readonly message: string
-    readonly path?: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }> | undefined
-  }
-  type InferInput<S extends StandardSchemaV1> = NonNullable<S['~standard']['types']>['input']
-  type InferOutput<S extends StandardSchemaV1> = NonNullable<S['~standard']['types']>['output']
-}
+export type { StandardSchemaV1 }
 
 /** The `fail(422, …)` data an action returns when its input schema rejects the input. */
 export interface ActionInputError {
@@ -240,16 +222,6 @@ export interface ActionInputError {
   issues: Array<{ message: string; path: string }>
   /** Messages per field path — `fields.email`, `fields['items.0.qty']`. */
   fields: Record<string, string[]>
-}
-
-function isStandardSchema(value: unknown): value is StandardSchemaV1 {
-  // arktype schemas are FUNCTIONS carrying `~standard`, so a function is not
-  // proof of a handler — check the marker first.
-  return (
-    (typeof value === 'object' || typeof value === 'function') &&
-    value !== null &&
-    typeof (value as Partial<StandardSchemaV1>)['~standard']?.validate === 'function'
-  )
 }
 
 function resolveHandler<T>(

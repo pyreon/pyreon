@@ -33,14 +33,19 @@
  */
 
 import { isPyreonAdapter, isStandardSchema } from '@pyreon/validation'
-import type { ParseFn, SchemaResolver, StandardSchemaShape } from './types'
+import type { ParseFn, SchemaResolver } from './types'
 
-interface StandardIssue {
+/**
+ * The issue fields the formatter reads. Loose on purpose: it covers both a
+ * Standard Schema issue (`StandardSchemaV1.Issue`) and a `@pyreon/validation`
+ * adapter's `SchemaIssue` (whose `path` is a dot-string array).
+ */
+interface FormattableIssue {
   readonly message?: string | undefined
   readonly path?: readonly unknown[] | undefined
 }
 
-function issuePath(issue: StandardIssue): string {
+function issuePath(issue: FormattableIssue): string {
   if (!issue.path || issue.path.length === 0) return '(root)'
   return issue.path
     .map((seg) =>
@@ -52,7 +57,7 @@ function issuePath(issue: StandardIssue): string {
 }
 
 /** Render up to 5 issues into one message, matching validation's style. */
-function formatIssues(issues: readonly StandardIssue[]): string {
+function formatIssues(issues: readonly FormattableIssue[]): string {
   const shown = issues
     .slice(0, 5)
     .map((i) => `${issuePath(i)}: ${i.message ?? 'invalid'}`)
@@ -110,7 +115,7 @@ export const standardSchema: SchemaResolver = (schema): ParseFn<unknown> | null 
     return (raw: unknown): unknown => {
       const result = owner.parse!(raw) as
         | { ok: true; value: unknown }
-        | { ok: false; issues: readonly StandardIssue[] }
+        | { ok: false; issues: readonly FormattableIssue[] }
       if (!result.ok) throw new Error(formatIssues(result.issues))
       return result.value
     }
@@ -118,11 +123,11 @@ export const standardSchema: SchemaResolver = (schema): ParseFn<unknown> | null 
 
   // Tier A.2 — a raw Standard Schema instance.
   if (!isStandardSchema(schema)) return null
-  const validate = (schema as StandardSchemaShape)['~standard'].validate
+  const validate = schema['~standard'].validate
 
   return (raw: unknown): unknown => {
     const result = validate(raw) as
-      | { issues?: readonly StandardIssue[]; value?: unknown }
+      | { issues?: readonly FormattableIssue[]; value?: unknown }
       | Promise<unknown>
 
     if (result instanceof Promise) {

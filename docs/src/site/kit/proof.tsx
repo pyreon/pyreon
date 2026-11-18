@@ -9,6 +9,7 @@ import { useLinkClick } from './link'
 import { Wrap } from './primitives/wrap'
 import { keepRanges, numeralSize, StatBody, type StatChartSource } from './stat'
 import { Eyebrow, renderInline, StatusDot } from './type'
+import { Note } from './note'
 
 export { chartCarriesNote, chartFootnote, Numeral, numeralSize, StatBody, StatCard, type StatChartSource } from './stat'
 
@@ -46,19 +47,6 @@ const CaveatBox = el
   .attrs({ block: true, contentDirection: 'inline', contentAlignX: 'spaceBetween', contentAlignY: 'center', gap: 14 })
   .theme(() => ({ flexWrap: 'wrap' }))
 
-/** The caveat under any benchmark number: mono, fog, middot-separated. [A10] */
-export const Caveat = txt
-  .config({ name: 'Caveat' })
-  .attrs({ tag: 'p' })
-  .theme((_t, m) => ({
-    margin: 0,
-    fontFamily: font.mono,
-    fontSize: text.caveat.size,
-    letterSpacing: text.caveat.tracking,
-    lineHeight: 1.6,
-    color: tone(m, 'fog'),
-  }))
-
 const ProseLink = el
   .config({ name: 'ProseLink' })
   .attrs<LinkAttrs>({ tag: 'a' })
@@ -93,7 +81,7 @@ export function TextLink(props: { href: string; children?: VNodeChild }) {
 export function CaveatLine(props: { text: string; link?: { label: string; href: string } | undefined }) {
   return (
     <CaveatBox>
-      <Caveat>{keepRanges(props.text)}</Caveat>
+      <Note>{keepRanges(props.text)}</Note>
       {props.link ? <TextLink href={props.link.href}>{props.link.label}</TextLink> : null}
     </CaveatBox>
   )

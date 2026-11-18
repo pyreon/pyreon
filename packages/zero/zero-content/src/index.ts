@@ -179,26 +179,11 @@ export { isPublished } from './publish'
 
 // ─── SEO + build outputs (PR-L audit M19) ─────────────────────────────────
 //
-// Pure builders for sitemap.xml / RSS 2.0 / llms.txt. Callable from
-// any build script — no Vite plugin coupling. The plugin's
-// `seo: { ... }` option auto-emits these into `dist/` at build close
-// when configured.
-export {
-  generateSitemap,
-  joinUrl,
-} from './seo/sitemap'
-export type {
-  GenerateSitemapArgs,
-  SitemapPage,
-} from './seo/sitemap'
-export { generateRssFeed, toRfc822 } from './seo/rss'
-export type { GenerateRssFeedArgs, RssItem } from './seo/rss'
-export { generateLlmsTxt } from './seo/llms-txt'
-export type {
-  GenerateLlmsTxtArgs,
-  LlmsTxtPage,
-  LlmsTxtSection,
-} from './seo/llms-txt'
+// The plugin's `seo: { sitemap, rss, llms }` option emits sitemap.xml,
+// RSS 2.0 and llms.txt into `dist/` at build close. For hand-written build
+// scripts use `@pyreon/zero`'s `generateRssFeed` and `@pyreon/zero/server`'s
+// `seoPlugin` / `aiPlugin`.
+export { joinUrl } from './seo/sitemap'
 
 // ─── Types ────────────────────────────────────────────────────────────────
 

@@ -4,7 +4,7 @@
  * (no `breakpoints`, no `grid.*` / `coolgrid.*`), a responsive
  * `<Col size={[12, 6, 4]}>` was moved off-screen (`position: fixed;
  * left: -9999px`) and a scalar `size={6}` was ignored (equal-width
- * `flex-basis: 0`). The docs say PyreonUI replaces coolgrid's `Provider`, so
+ * `flex-basis: 0`). PyreonUI is the only theme provider for coolgrid, so
  * coolgrid must fall back to its own defaults (12 columns, xs–xl
  * breakpoints, Bootstrap-4 container widths) whenever the theme lacks them.
  *

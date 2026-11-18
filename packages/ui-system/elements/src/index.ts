@@ -7,8 +7,6 @@ import { registerSingleton } from '@pyreon/reactivity'
 // aid, not a load-bearing identity check.
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
-import { Provider } from '@pyreon/unistyle'
-
 export type { ElementProps, PyreonElement } from './Element'
 export { Element } from './Element'
 export type {
@@ -47,5 +45,3 @@ export type {
 } from './types'
 export type { UtilProps } from './Util'
 export { Util } from './Util'
-
-export { Provider }
