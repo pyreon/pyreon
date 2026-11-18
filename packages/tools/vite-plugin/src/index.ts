@@ -494,6 +494,45 @@ const COMPAT_FRAMEWORK_SPECIFIERS: Record<CompatFramework, readonly RegExp[]> = 
   svelte: [/^svelte(?:\/|$)/],
 }
 
+/**
+ * What to use instead, for unaliased framework specifiers whose Pyreon
+ * replacement is NOT in the compat package. A server renderer is the case:
+ * the framework's own (`react-dom/server`, `vue/server-renderer`,
+ * `svelte/server`) cannot render Pyreon vnodes, and the replacement lives in
+ * `@pyreon/runtime-server`. Specifiers not listed get the generic advice.
+ */
+const SERVER_RENDER_HINT =
+  'Server-render with `renderToString` (or `renderToStream`) from "@pyreon/runtime-server" ' +
+  'instead. Pyreon\'s `renderToString` is async: await the Promise it returns.'
+
+const COMPAT_SPECIFIER_HINTS: Record<CompatFramework, ReadonlyArray<readonly [RegExp, string]>> = {
+  // `react-dom/server` and its `.browser` / `.node` / `.edge` builds, plus
+  // `react-dom/static` (the prerender APIs).
+  react: [[/^react-dom\/(?:server|static)(?:\.[a-z]+)?$/, SERVER_RENDER_HINT]],
+  preact: [],
+  vue: [[/^(?:vue|@vue)\/server-renderer$/, SERVER_RENDER_HINT]],
+  solid: [],
+  svelte: [[/^svelte\/server$/, SERVER_RENDER_HINT]],
+}
+
+/**
+ * The warning for an unaliased framework import: what happens, and what to
+ * use instead — a specific replacement when one is known, otherwise the
+ * compat package.
+ *
+ * @internal — exported for tests.
+ */
+export function _unaliasedImportWarning(compat: CompatFramework, id: string): string {
+  const hint = COMPAT_SPECIFIER_HINTS[compat].find(([re]) => re.test(id))?.[1]
+  return (
+    `[Pyreon] compat "${compat}": "${id}" is not provided by @pyreon/${compat}-compat, so it ` +
+    `resolves to the real package (if installed), whose runtime does not work with Pyreon's. ` +
+    (hint ??
+      `Import the equivalent from "@pyreon/${compat}-compat" instead, or check the compat docs ` +
+        `for what is supported.`)
+  )
+}
+
 /** @internal — exported for tests. */
 export function _compatAliasTable(compat: CompatFramework): Readonly<Record<string, string>> {
   return COMPAT_ALIASES[compat]
@@ -1191,12 +1230,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       if (!target) {
         if (compat && _isUnaliasedFrameworkImport(compat, id) && !warnedUnaliased.has(id)) {
           warnedUnaliased.add(id)
-          this.warn(
-            `[Pyreon] compat "${compat}": "${id}" is not provided by @pyreon/${compat}-compat, so it ` +
-              `resolves to the real package (if installed), whose runtime does not work with Pyreon's. ` +
-              `Import the equivalent from "@pyreon/${compat}-compat" instead, or check the compat docs ` +
-              `for what is supported.`,
-          )
+          this.warn(_unaliasedImportWarning(compat, id))
         }
         return
       }
