@@ -373,7 +373,13 @@ function relativeToValue(rtf: Intl.RelativeTimeFormat, target: DateInput, base: 
   const b = t === t ? dateMs('formatRelativeTo', base, false) : NaN
   const plainB = lastWasPlain()
   if (t !== t || b !== b) return fallback
-  return relativeFrom(rtf, t, plainT, b, plainB, zone)
+  return relativeFrom(rtf, { ms: t, plain: plainT }, { ms: b, plain: plainB }, zone)
+}
+
+/** An instant in milliseconds, or the UTC midnight of a calendar value (`plain`). */
+interface Moment {
+  ms: number
+  plain: boolean
 }
 
 /**
@@ -382,10 +388,10 @@ function relativeToValue(rtf: Intl.RelativeTimeFormat, target: DateInput, base: 
  * of the date line is not an hour or a day off (target `2026-11-18` at 10:00 in Tokyo is "10 hours ago", not the "1 hour ago"
  * that reading it as UTC midnight gave). Two calendar values compare as calendar days.
  */
-function relativeFrom(rtf: Intl.RelativeTimeFormat, t0: number, plainT0: boolean, b0: number, plainB0: boolean, zone: string): string {
-  const both = plainT0 && plainB0
-  const t = plainT0 && !both ? zoneMidnight(t0, zone) : t0
-  const b = plainB0 && !both ? zoneMidnight(b0, zone) : b0
+function relativeFrom(rtf: Intl.RelativeTimeFormat, target: Moment, base: Moment, zone: string): string {
+  const both = target.plain && base.plain
+  const t = target.plain && !both ? zoneMidnight(target.ms, zone) : target.ms
+  const b = base.plain && !both ? zoneMidnight(base.ms, zone) : base.ms
   const plainT = both
   const plainB = both
   const diff = t - b
@@ -490,9 +496,9 @@ export function relativeTimeIn(
   zone: string,
   target: DateInput,
   base: number,
-  options: RelativeOptions | undefined,
-  threshold: ResolvedThreshold | undefined,
+  options: (RelativeOptions & { threshold?: unknown }) | undefined,
 ): string {
+  const threshold = thresholdOf('useRelativeTime', options)
   if (threshold !== undefined) {
     const t = dateMs('useRelativeTime', target, false)
     if (t !== t) return fallbackOf(options)

@@ -551,7 +551,7 @@ export function useRelativeTime(
   return () => {
     const o = optionsNow()
 
-    return relativeTimeIn(localeOf(o) || locale(), zoneNow(), targetNow(), tick(), o, thresholdOf('useRelativeTime', o))
+    return relativeTimeIn(localeOf(o) || locale(), zoneNow(), targetNow(), tick(), o)
   }
 }
 
