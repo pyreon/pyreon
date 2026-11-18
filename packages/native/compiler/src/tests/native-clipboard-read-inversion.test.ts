@@ -38,7 +38,7 @@ describe('the web-correct accessor spelling reaches the native field', () => {
   it('Swift drops the read parens', () => {
     const out = transform(APP, { target: 'swift' }).code
     expect(out).toContain('c.copied ?')
-    expect(out).toContain('c.text)')
+    expect(out).toContain('pyreonOptionalText(c.text, "")')
     // The shape that failed to compile.
     expect(out).not.toContain('c.copied()')
   })

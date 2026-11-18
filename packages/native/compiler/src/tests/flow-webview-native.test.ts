@@ -85,7 +85,7 @@ describe('@pyreon/flow/webview native lowering', () => {
       const sep = target === 'swift' ? ': ' : ' = '
       expect(result.code).not.toContain(`onEvent${sep}{ _ ${target === 'swift' ? 'in' : '->'} }`)
       expect(result.code).toContain('last = event.type')
-      expect(result.code).toContain('count = count + 1')
+      expect(result.code).toContain(target === 'swift' ? 'count = pyreonAdd(count, 1)' : 'count = pyreonAdd(count, 1L)')
       expect(result.code).toContain(target === 'swift' ? '.accessibilityIdentifier("gal-flow-webview")' : 'modifier = Modifier.testTag("gal-flow-webview")')
       expect(result.code).not.toContain(target === 'swift' ? '.background(' : '.background(')
       if (target === 'swift' && isSwiftcAvailable()) expect(validateSwiftWithStubs(result.code)).toMatchObject({ ok: true })

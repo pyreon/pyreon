@@ -76,8 +76,10 @@ public protocol PyreonDatabaseBackend {
     func get(_ collection: String, id: String) -> PyreonRecord?
     /// All records in `collection` (insertion order).
     func all(_ collection: String) -> [PyreonRecord]
-    /// Delete a record by id. Returns true on success OR if already absent
-    /// (idempotent).
+    /// Delete a record by id. Returns whether a record was removed, matching
+    /// the web's `delete`; an absent id is a no-op that returns false. Until
+    /// 2026-11 this returned true for an absent id, so `if db.delete(…)` took a
+    /// different branch on native than on the web.
     func delete(_ collection: String, id: String) -> Bool
     /// All records in `collection` whose `field` equals `value`.
     func find(_ collection: String, field: String, equals value: String) -> [PyreonRecord]
@@ -112,9 +114,9 @@ public final class InMemoryDatabaseBackend: PyreonDatabaseBackend {
 
     @discardableResult
     public func delete(_ collection: String, id: String) -> Bool {
-        store[collection]?[id] = nil
+        let removed = store[collection]?.removeValue(forKey: id) != nil
         order[collection]?.removeAll { $0 == id }
-        return true // idempotent
+        return removed
     }
 
     public func find(_ collection: String, field: String, equals value: String) -> [PyreonRecord] {
@@ -269,10 +271,10 @@ public final class FileDatabaseBackend: PyreonDatabaseBackend {
     @discardableResult
     public func delete(_ collection: String, id: String) -> Bool {
         load(collection)
-        store[collection]?[id] = nil
+        let removed = store[collection]?.removeValue(forKey: id) != nil
         order[collection]?.removeAll { $0 == id }
-        flush(collection)
-        return true // idempotent
+        if removed { flush(collection) }
+        return removed
     }
 
     public func find(_ collection: String, field: String, equals value: String) -> [PyreonRecord] {

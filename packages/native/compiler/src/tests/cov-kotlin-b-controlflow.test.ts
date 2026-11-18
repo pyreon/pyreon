@@ -61,8 +61,9 @@ export function TagsDemo() {
 }`)
     expect(r.code).toContain('items(tags.items, key = { it.key }) { item ->')
     // `value` is a PROPERTY on PyreonFieldArray's item — keeping the parens
-    // would be "cannot call value of non-function type".
-    expect(r.code).toContain('Text(text = "${item.value}")')
+    // would be "cannot call value of non-function type". The text child is
+    // optional-wrapped (pyreonOptionalText), but the member read stays paren-less.
+    expect(r.code).toContain('Text(text = "${pyreonOptionalText(item.value, "")}")')
   })
 })
 

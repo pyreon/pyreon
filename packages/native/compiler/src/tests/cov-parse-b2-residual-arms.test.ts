@@ -59,8 +59,8 @@ describe('parse.ts — inferTypeFromInitial residual arms', () => {
   })
 
   it('refuses an unsupported unary operator entirely', () => {
-    const r = swift(body('  const p = signal(~3)'))
-    expect(r.warnings.join('\n')).toContain('Unary operator `~` is not supported in native')
+    const r = swift(body('  const p = signal(typeof 3)'))
+    expect(r.warnings.join('\n')).toContain('Unary operator `typeof` is not supported in native')
   })
 
   it('types an array-of-arrays whose leaf resolves, and degrades one that does not', () => {

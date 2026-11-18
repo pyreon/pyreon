@@ -24,6 +24,15 @@
 // Android-side file) self-installs a file-backed default: a default that
 // requires a step nobody takes is not a default.
 //
+// **Build identity** (what symbolication needs): every report carries
+// `platform`, `build.appId` / `build.version` / `build.buildNumber` (the
+// Android factory fills them from PackageInfo) and `build.mappingId` — the R8
+// `pg_map_id` the minified stack names in its own frames (`r8-map-id-<id>` is
+// the SourceFile R8 writes into every class it rewrites). That id selects the
+// one `mapping.txt` that can retrace this stack; `pyreon-native symbolicate`
+// refuses any other, because R8 retrace run against the wrong build's mapping
+// prints a plausible, WRONG stack.
+//
 // HONEST SCOPE (v1): `Thread.setDefaultUncaughtExceptionHandler` captures
 // JVM uncaught throwables; NATIVE (NDK) crashes are not captured — the same
 // disclosed boundary as the Swift half's signal crashes.
@@ -39,8 +48,20 @@ public object PyreonCrashTransportRegistry {
     public var send: ((String) -> Unit)? = null
 }
 
+/**
+ * Which build produced a report — the key `pyreon-native symbolicate` uses to
+ * pick the retained R8 mapping (`symbols/android/<version>-<buildNumber>/`).
+ * `rememberPyreonCrashReporter()` fills it from the installed PackageInfo.
+ */
+public data class PyreonCrashBuildInfo(
+    val appId: String = "",
+    val version: String = "",
+    val buildNumber: String = "",
+)
+
 public class PyreonCrashReporter(
     private val backend: PyreonStorageBackend = InMemoryBackend(),
+    private val build: PyreonCrashBuildInfo = PyreonCrashBuildInfo(),
 ) {
     /** Previous launch's crash report (JSON string); "" when none. */
     public val lastCrash: MutableState<String> = mutableStateOf("")
@@ -98,11 +119,32 @@ public class PyreonCrashReporter(
     // internals — pure vs the injected backend (unit-tested)
 
     internal fun persist(message: String, stack: String) {
-        // PyreonJson.encode gives correct JSON string escaping - a hand-built
-        // JSON string would re-create the delimiter-escaping class for stack
-        // traces containing quotes/newlines.
-        val crumbs = breadcrumbs.joinToString("\n")
-        backend.write(KEY, PyreonJson.encode(listOf(message, stack, crumbs)))
+        backend.write(KEY, report(message, stack))
+    }
+
+    /**
+     * The report JSON — the same object shape the Swift and web reporters
+     * write, so one `symbolicate` reads all three. Every string goes through
+     * `PyreonJson.jsString` (JSON.stringify's escaping): stack traces carry
+     * quotes, tabs and newlines, and a hand-escaped report is the
+     * delimiter-escaping bug class.
+     */
+    internal fun report(message: String, stack: String): String {
+        val q = PyreonJson::jsString
+        val crumbs = breadcrumbs.joinToString(",") { q(it) }
+        val mappingId = R8_MAP_ID.find(stack)?.groupValues?.get(1) ?: ""
+        return "{" +
+            "\"platform\":\"android\"," +
+            "\"message\":${q(message)}," +
+            "\"stack\":${q(stack)}," +
+            "\"breadcrumbs\":[$crumbs]," +
+            "\"timestamp\":${q(java.time.Instant.now().toString())}," +
+            "\"build\":{" +
+            "\"appId\":${q(build.appId)}," +
+            "\"version\":${q(build.version)}," +
+            "\"buildNumber\":${q(build.buildNumber)}," +
+            "\"mappingId\":${q(mappingId)}" +
+            "}}"
     }
 
     private fun rehydrate() {
@@ -117,5 +159,8 @@ public class PyreonCrashReporter(
 
     private companion object {
         const val KEY: String = "pyreon.crash.last"
+
+        /** R8 writes `r8-map-id-<pg_map_id>` as the SourceFile of every class it rewrites. */
+        val R8_MAP_ID: Regex = Regex("r8-map-id-([0-9a-fA-F]+)")
     }
 }

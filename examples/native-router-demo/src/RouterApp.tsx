@@ -16,16 +16,18 @@
 // targets — provable by `ls` + `diff`.
 
 import { For, onMount } from '@pyreon/core'
-import { useAppState, useDatabase, useFetch, useOnline, usePush, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
+import { useAppState, useDatabase, useFetch, useOnline, usePush, useReducedMotion, useSecureStorage, useSizeClass, useWebSocket } from '@pyreon/hooks'
 import { useFieldArray } from '@pyreon/form'
-import { Audio, Button, Canvas, CanvasCircle, CanvasLine, CanvasPath, CanvasRect, CanvasText, Field, Gesture, Heading, Image, Inline, Layer, Link, Press, Spacer, Split, Stack, Tab, Tabs, Text, Video } from '@pyreon/primitives'
+import { useStorage } from '@pyreon/storage'
+import { Audio, Button, Canvas, CanvasCircle, CanvasLine, CanvasPath, CanvasRect, CanvasText, Field, Gesture, Heading, Image, Inline, Layer, Link, Press, Spacer, Split, Stack, Tab, Tabs, Text, Transition, Video } from '@pyreon/primitives'
 import { attrs } from '@pyreon/attrs'
 import { Element } from '@pyreon/elements'
 import { Col, Container, Row } from '@pyreon/coolgrid'
 import { state as plainState } from '@pyreon/core/plain'
 import { signal } from '@pyreon/reactivity'
-import { createRouter, useLoaderData, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
+import { createRouter, useLoaderData, useNavigate, useRouter, RouterProvider, RouterView } from '@pyreon/router'
 import { type EchoReply, usePostEcho } from './hooks'
+import { ReorderPage } from './ReorderPage'
 import { defineTheme, styled } from '@pyreon/styler'
 import { s } from '@pyreon/validate'
 
@@ -186,6 +188,43 @@ function AnimPage() {
   )
 }
 
+// Animations row — the SLIDE and SCALE presets, and useReducedMotion. Their own
+// page, one transition per toggle, for the reason AnimPage gives: several
+// transitions driven by one signal broke the iOS re-show. Each preset runs for
+// 2000ms (linear), so the Android test can stop the compose clock halfway and
+// measure the element mid-animation: a slide is displaced from where it rests,
+// a scale is smaller than its resting size. The reduced-motion line reads the
+// OS setting live (Android `animator_duration_scale`, iOS Reduce Motion).
+function PresetsPage() {
+  const navigate = useNavigate()
+  const reduced = useReducedMotion()
+  let slideOn = plainState<boolean>(true)
+  let scaleOn = plainState<boolean>(true)
+  return (
+    <Stack gap={3} padding={4} data-testid="presets-page">
+      <Text>Presets</Text>
+      <Text data-testid="reduced-motion">Reduced motion: {reduced()}</Text>
+      <Button onPress={() => { slideOn = !slideOn }} data-testid="slide-toggle">
+        Toggle Slide
+      </Button>
+      <Stack data-testid="slide-track">
+        <Transition show={() => slideOn} name="slide-left" duration={2000} easing="linear">
+          <Text data-testid="slide-box">Slide Box</Text>
+        </Transition>
+      </Stack>
+      <Button onPress={() => { scaleOn = !scaleOn }} data-testid="scale-toggle">
+        Toggle Scale
+      </Button>
+      <Stack data-testid="scale-track">
+        <Transition show={() => scaleOn} name="scale-in" duration={2000} easing="linear">
+          <Text data-testid="scale-box">Scale Box</Text>
+        </Transition>
+      </Stack>
+      <Button onPress={() => navigate('/')}>Back to Home</Button>
+    </Stack>
+  )
+}
+
 function OfflinePage() {
   const navigate = useNavigate()
   // Offline/sync row — the OFFLINE-FIRST half, which is the part a real app
@@ -206,6 +245,10 @@ function OfflinePage() {
   // on NEITHER target until `database.get` joined SERVICE_METHOD_RETURNS.
   const net = useOnline()
   const db = useDatabase()
+  // The key-value third of the storage row: a persisted SIGNAL. After a
+  // process death its rendered value can only have come off the platform's
+  // kv store (Android `FileStorageBackend`, iOS `UserDefaults`).
+  const kv = useStorage('router-demo:kv', 'unset')
   let noteCount = plainState<number>(0)
   let state = plainState<string>('empty')
   onMount(() => {
@@ -221,6 +264,7 @@ function OfflinePage() {
       <Text data-testid="net-status">Online: {net.isOnline}</Text>
       <Text data-testid="note-count">Notes: {noteCount}</Text>
       <Text data-testid="note-state">State: {state}</Text>
+      <Text data-testid="kv-value">KV: {kv()}</Text>
       <Button
         onPress={() => {
           db.insert('notes', { id: 'n1', fields: { body: 'written-offline' } })
@@ -230,6 +274,9 @@ function OfflinePage() {
         data-testid="write-note"
       >
         Write Note
+      </Button>
+      <Button onPress={() => kv.set('kv-saved')} data-testid="kv-save">
+        Save KV
       </Button>
       <Button
         onPress={() => {
@@ -602,6 +649,7 @@ function HomePage() {
       </Inline>
       <Inline gap={2}>
         <Button onPress={() => navigate('/offline')}>View offline</Button>
+        <Button onPress={() => navigate('/presets')}>View presets</Button>
       </Inline>
       <Inline gap={2}>
         <Button onPress={() => navigate('/push')}>View push</Button>
@@ -982,6 +1030,65 @@ function LoadedPage() {
   )
 }
 
+// Navigation row (NAV-1) — the router features no page used before: a NESTED layout route (the mail shell wraps
+// its children through its own <RouterView />), a static REDIRECT whose target is nested, the wildcard 404,
+// `replace` through useRouter(), and a global afterEach hook. Reached by deep link, so they spend no fold budget.
+//
+// The afterEach hook takes no parameter, and the count is module state, so the shell can render it. A parameterless
+// hook did not compile natively: the routers call each hook with the target path, and the bare function reference had
+// the wrong type on both targets.
+const navCount = signal(0)
+
+function countNavigation() {
+  navCount.set(navCount() + 1)
+}
+
+function MailShell() {
+  const navigate = useNavigate()
+  return (
+    <Stack gap={2} padding={4} data-testid="mail-shell">
+      <Text>Mail</Text>
+      <Text data-testid="mail-nav-count">Navigations: {navCount()}</Text>
+      <Inline gap={2}>
+        <Button onPress={() => navigate('/mail/inbox')}>Open inbox</Button>
+        <Button onPress={() => navigate('/mail/sent')}>Open sent</Button>
+      </Inline>
+      <RouterView />
+    </Stack>
+  )
+}
+
+function MailInbox() {
+  const router = useRouter()
+  return (
+    <Stack gap={2} data-testid="mail-inbox">
+      <Text>Inbox messages</Text>
+      <Button onPress={() => router.replace('/mail/sent')}>Replace with sent</Button>
+      <Button onPress={() => router.back()}>Go back</Button>
+    </Stack>
+  )
+}
+
+function MailSent() {
+  const router = useRouter()
+  return (
+    <Stack gap={2} data-testid="mail-sent">
+      <Text>Sent messages</Text>
+      <Button onPress={() => router.back()}>Go back</Button>
+    </Stack>
+  )
+}
+
+function NotFoundPage() {
+  const navigate = useNavigate()
+  return (
+    <Stack gap={2} padding={4} data-testid="not-found-page">
+      <Text>No page at this address</Text>
+      <Button onPress={() => navigate('/')}>Back to Home</Button>
+    </Stack>
+  )
+}
+
 export function RouterApp() {
   // `mode: 'history'` is web-only (HTML5 pushState + path-based URLs).
   // PMTC's parser only reads `routes` from createRouter's options
@@ -996,7 +1103,9 @@ export function RouterApp() {
       { path: '/users/:id', component: UserPage },
       { path: '/styles', component: StylesPage },
       { path: '/motion', component: MotionPage },
+      { path: '/presets', component: PresetsPage },
       { path: '/biglist', component: BigListPage },
+      { path: '/reorder', component: ReorderPage },
       { path: '/a11y', component: A11yPage },
       { path: '/anim', component: AnimPage },
       { path: '/navigation', component: NavigationPage },
@@ -1008,8 +1117,19 @@ export function RouterApp() {
       { path: '/http', component: HttpPage },
       { path: '/loaded', component: LoadedPage, loader: (): Loaded => ({ title: 'Loaded title', views: 42 }) },
       { path: GUARDED_PATH, component: GuardedPage },
+      { path: '/old-inbox', redirect: '/mail/inbox' },
+      {
+        path: '/mail',
+        component: MailShell,
+        children: [
+          { path: 'inbox', component: MailInbox },
+          { path: 'sent', component: MailSent },
+        ],
+      },
+      { path: '*', component: NotFoundPage },
     ],
     beforeEach: [(to) => to.path !== GUARDED_PATH],
+    afterEach: [countNavigation],
   })
 
   return (

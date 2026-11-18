@@ -28,6 +28,7 @@
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/router": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/storage": "workspace:*",
     "@pyreon/styler": "workspace:*",
     "@pyreon/validate": "workspace:*"
   },

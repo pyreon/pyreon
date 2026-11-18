@@ -38,6 +38,7 @@ export function C(){
 const WITH_START = app(
   '<Text>{geo.latitude}</Text><Button onPress={() => geo.start()}>Locate</Button>',
 )
+
 const WITH_STOP = app('<Button onPress={() => geo.stop()}>Stop</Button>')
 const READS_ONLY = app('<Text>{geo.latitude}</Text><Text>{geo.longitude}</Text>')
 
@@ -80,5 +81,29 @@ describe('geo.start() is shared code', () => {
     const kotlin = transform(WITH_START, { target: 'kotlin' }).code
     expect(swift).toContain('geo.start()')
     expect(kotlin).toContain('geo.start()')
+  })
+})
+
+// The web hook ends the watch when the component unmounts (`onHookCleanup(stop)`). Natively nothing did: a watch the
+// user started kept the GPS on after they navigated away, on both targets, with no warning. iOS now stops it in
+// `.onDisappear` (the descriptor's `lifecycle: 'stop'`, which never auto-STARTS — the watch stays permission-gated);
+// Android's `rememberPyreonGeolocation()` factory disposes it.
+describe('a started watch stops when the component unmounts', () => {
+  it('Swift: `.onDisappear { geo.stop() }`, and no auto-start', () => {
+    const out = transform(WITH_START, { target: 'swift' })
+    expect(out.code).toContain('.onDisappear { geo.stop() }')
+    expect(out.code).not.toContain('geo.start() }\n')
+    expect(out.code).not.toMatch(/\.onAppear \{ geo\.start\(\) \}/)
+  })
+
+  it('Android: the factory owns the teardown', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const kt = readFileSync(
+      join(__dirname, '../../../../fundamentals/hooks/native/kotlin/com/pyreon/runtime/PyreonGeolocationAndroid.kt'),
+      'utf8',
+    )
+    expect(kt).toMatch(/DisposableEffect\(geo\) \{ onDispose \{ geo\.stop\(\) \} \}/)
+    expect(transform(WITH_START, { target: 'kotlin' }).code).toContain('rememberPyreonGeolocation()')
   })
 })

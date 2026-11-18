@@ -7,6 +7,7 @@
 // This file locks the behaviours that need no oracle.
 
 import Foundation
+import PyreonRuntime
 
 @main
 struct PyreonStreamTests {
@@ -27,6 +28,18 @@ struct PyreonStreamTests {
     }
 
     static func main() {
+        // A decoded payload keeps the web's `JSON.parse` key order (not the decoder's hash order) and the LAST
+        // value of a repeated key. Five keys: a hash order matching the text is a 1-in-120 accident per run.
+        let ndjsonRecord = try! PyreonStreamDecode.ndjson(PyreonMap<String, Int>.self)(
+            "{\"zeta\":1,\"alpha\":2,\"mid\":3,\"k\":4,\"b\":5,\"zeta\":6}"
+        )
+        check(ndjsonRecord.keys == ["zeta", "alpha", "mid", "k", "b"], "ndjson record key order: \(ndjsonRecord.keys)")
+        check(ndjsonRecord["zeta"] == 6, "ndjson repeated key keeps the last value")
+        let sseRecord = try! PyreonStreamDecode.sseJSON(PyreonMap<String, Int>.self)(
+            PyreonSseMessage(type: "message", data: "{\"q\":1,\"w\":2,\"e\":3,\"r\":4,\"t\":5}", id: "", retry: nil)
+        )
+        check(sseRecord.data.keys == ["q", "w", "e", "r", "t"], "sse record key order: \(sseRecord.data.keys)")
+
         // Multi-line data joins with \n; the event is named.
         let a = sse(["event: tick\ndata: a\ndata: b\n\n"])
         check(a == [PyreonSseMessage(type: "tick", data: "a\nb", id: "", retry: nil)], "multi-line data")
