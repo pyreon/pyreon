@@ -5,6 +5,7 @@ import * as core from '../core'
 import * as index from '../index'
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+
 const PKG = JSON.parse(readFileSync(join(SRC, '..', 'package.json'), 'utf8')) as {
   sideEffects: boolean
   exports: Record<string, { bun: string }>

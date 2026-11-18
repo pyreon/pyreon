@@ -27,6 +27,7 @@ export function daysFromCivil(year: number, month: number, day: number): number 
   const yoe = y - era * 400
   const doy = Math.floor((153 * (month + (month > 2 ? -3 : 9)) + 2) / 5) + day - 1
   const doe = yoe * 365 + Math.floor(yoe / 4) - Math.floor(yoe / 100) + doy
+
   return era * 146097 + doe - 719468
 }
 
@@ -48,6 +49,7 @@ function digits(s: string, i: number, n: number): number {
     if (c < 0 || c > 9) return -1
     v = v * 10 + c
   }
+
   return v
 }
 
@@ -61,78 +63,106 @@ const CH_SPACE = 32
 const CH_Z = 90
 const CH_z = 122
 
+/** Index just past the part the last clock / offset helper consumed. */
+let cursor = 0
+
+/** `YYYY-MM-DD` at the start of `s` to epoch milliseconds, `NaN` when it is not a real calendar date. */
+function isoDay(s: string): number {
+  if (s.length < 10 || s.charCodeAt(4) !== CH_DASH || s.charCodeAt(7) !== CH_DASH) return NaN
+  const year = digits(s, 0, 4)
+  const month = digits(s, 5, 2)
+  const day = digits(s, 8, 2)
+  if (year < 0 || month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) return NaN
+
+  return daysFromCivil(year, month, day) * 86400000
+}
+
+/** Fraction digits after the dot at `i`, as milliseconds (extra digits are dropped). Sets the cursor; `NaN` when there are none. */
+function isoFraction(s: string, i: number): number {
+  let ms = 0
+  let scale = 100
+  let at = i + 1
+  while (at < s.length) {
+    const d = s.charCodeAt(at) - 48
+    if (d < 0 || d > 9) break
+    ms += d * scale
+    scale = Math.floor(scale / 10)
+    at++
+  }
+  cursor = at
+
+  return at === i + 1 ? NaN : ms
+}
+
+/** `HH:MM[:SS[.fff]]` at index 11 to milliseconds since midnight, `NaN` when invalid. Sets the cursor. */
+function isoClock(s: string): number {
+  if (s.length < 16 || s.charCodeAt(13) !== CH_COLON) return NaN
+  const hour = digits(s, 11, 2)
+  const minute = digits(s, 14, 2)
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return NaN
+  let ms = hour * 3600000 + minute * 60000
+  cursor = 16
+  if (cursor >= s.length || s.charCodeAt(cursor) !== CH_COLON) return ms
+  const second = digits(s, cursor + 1, 2)
+  if (second < 0 || second > 59) return NaN
+  ms += second * 1000
+  cursor += 3
+  if (cursor < s.length && s.charCodeAt(cursor) === CH_DOT) {
+    const fraction = isoFraction(s, cursor)
+    if (fraction !== fraction) return NaN
+    ms += fraction
+  }
+
+  return ms
+}
+
+/** `Z`, `±HH:MM`, `±HHMM` or `±HH` at the cursor to the offset in milliseconds, `NaN` when invalid. */
+function isoOffset(s: string): number {
+  const z = s.charCodeAt(cursor)
+  if (z === CH_Z || z === CH_z) {
+    cursor++
+    return 0
+  }
+  if (z !== CH_PLUS && z !== CH_DASH) return NaN
+  const hours = digits(s, cursor + 1, 2)
+  if (hours < 0 || hours > 23) return NaN
+  cursor += 3
+  let minutes = 0
+  if (cursor < s.length) {
+    if (s.charCodeAt(cursor) === CH_COLON) cursor++
+    minutes = digits(s, cursor, 2)
+    if (minutes < 0 || minutes > 59) return NaN
+    cursor += 2
+  }
+
+  return (hours * 60 + minutes) * 60000 * (z === CH_DASH ? -1 : 1)
+}
+
 /**
  * Parse an ISO 8601 string to epoch milliseconds, `NaN` when it is not one.
  * Accepts `YYYY-MM-DD`, then optionally `T`/space and `HH:MM[:SS[.fff…]]`,
  * then optionally `Z`, `±HH:MM`, `±HHMM` or `±HH`. Sets the calendar flag.
  */
 function parseIso(s: string): number {
-  const n = s.length
-  if (n < 10 || s.charCodeAt(4) !== CH_DASH || s.charCodeAt(7) !== CH_DASH) return NaN
-  const year = digits(s, 0, 4)
-  const month = digits(s, 5, 2)
-  const day = digits(s, 8, 2)
-  if (year < 0 || month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) return NaN
-  let ms = daysFromCivil(year, month, day) * 86400000
-  if (n === 10) {
+  const day = isoDay(s)
+  if (day !== day) return NaN
+  if (s.length === 10) {
     lastPlain = true
-    return ms
+    return day
   }
   const sep = s.charCodeAt(10)
   if (sep !== CH_T && sep !== CH_t && sep !== CH_SPACE) return NaN
-  if (n < 16 || s.charCodeAt(13) !== CH_COLON) return NaN
-  const hour = digits(s, 11, 2)
-  const minute = digits(s, 14, 2)
-  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return NaN
-  ms += hour * 3600000 + minute * 60000
-  let i = 16
-  if (i < n && s.charCodeAt(i) === CH_COLON) {
-    const second = digits(s, i + 1, 2)
-    if (second < 0 || second > 59) return NaN
-    ms += second * 1000
-    i += 3
-    if (i < n && s.charCodeAt(i) === CH_DOT) {
-      i++
-      let scale = 100
-      let any = false
-      while (i < n) {
-        const d = s.charCodeAt(i) - 48
-        if (d < 0 || d > 9) break
-        ms += d * scale
-        scale = scale / 10
-        any = true
-        i++
-      }
-      if (!any) return NaN
-      ms = Math.floor(ms)
-    }
-  }
-  if (i === n) {
+  const clock = isoClock(s)
+  if (clock !== clock) return NaN
+  if (cursor === s.length) {
     lastPlain = true
-    return ms
+    return day + clock
   }
-  const z = s.charCodeAt(i)
-  let offset = 0
-  if (z === CH_Z || z === CH_z) {
-    i++
-  } else if (z === CH_PLUS || z === CH_DASH) {
-    const oh = digits(s, i + 1, 2)
-    if (oh < 0 || oh > 23) return NaN
-    let om = 0
-    i += 3
-    if (i < n) {
-      if (s.charCodeAt(i) === CH_COLON) i++
-      om = digits(s, i, 2)
-      if (om < 0 || om > 59) return NaN
-      i += 2
-    }
-    offset = (oh * 60 + om) * 60000 * (z === CH_DASH ? -1 : 1)
-  } else {
-    return NaN
-  }
-  if (i !== n) return NaN
+  const offset = isoOffset(s)
+  if (offset !== offset || cursor !== s.length) return NaN
   lastPlain = false
-  return Math.abs(ms - offset) <= MAX_TIME ? ms - offset : NaN
+
+  return day + clock - offset
 }
 
 /**
@@ -148,5 +178,6 @@ export function toMillis(value: unknown): number {
     return t === t && Math.abs(t) <= MAX_TIME ? t : NaN
   }
   if (value instanceof Date) return value.getTime()
+
   return NaN
 }

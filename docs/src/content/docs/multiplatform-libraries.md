@@ -145,7 +145,7 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/storage` | useStorage family over @PyreonAppStorage (Swift) / rememberPyreonStorage (Kotlin); persistence device-proven |
 | `@pyreon/store` | defineStore lowers to @Observable singleton (Swift) / mutableStateOf object (Kotlin); cross-screen state device-proven |
 
-### `web-only` — architecturally coupled to the web platform (35)
+### `web-only` — architecturally coupled to the web platform (36)
 
 | Package | Why |
 | --- | --- |
@@ -159,6 +159,7 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/document` | wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering. Build the file on a server and fetch it (useFetch / @pyreon/http lower), or hand the result to the platform share sheet (useShare lowers). |
 | `@pyreon/document-primitives` | document-authoring primitives feeding the pdfmake/docx renderers |
 | `@pyreon/feature` | CRUD composite over query/form/store/validation/table. Only part of it crosses: the declaration, its schema validator and the five request-shaped hooks (useList / useById / useCreate / useUpdate / useDelete) lower (see nativeFrontend); useSearch, useForm, useTable, useStore, queryKey and a custom fetcher stay web, because their form / table / store / query-client dependencies have no native counterpart. The mutations refresh the queries natively as on the web |
+| `@pyreon/format` | formats through the platform's Intl; the PMTC native lowering of these calls is planned (the native compiler already lowers a core set of Intl number/date formatting) but not shipped, so native apps import it behind a <Web> branch or format on the web side today |
 | `@pyreon/head` | document `<head>` management — a native app has no document, so there is nothing to describe: `useHead(...)` compiles to nothing and `<HeadProvider>` is transparent (so shared source builds); the head context and SSR helpers have no native equivalent |
 | `@pyreon/hotkeys` | keyboard-shortcut layer over DOM KeyboardEvent. The REGISTRY half (registerHotkey / scopes / conflict reporting) is web; the `useHotkey` authoring hook lowers — see nativeFrontend |
 | `@pyreon/http` | universal web/node HTTP client (WHATWG fetch); the imperative client (api.get/post, custom middleware functions) stays web — native networking is the PyreonFetch/PyreonHttp runtime layer, which applies the lowerable middleware, plus the co-located PyreonStream runtime for SSE / NDJSON |

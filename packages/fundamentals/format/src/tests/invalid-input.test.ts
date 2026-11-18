@@ -11,6 +11,7 @@ beforeEach(() => {
   _resetWarnings()
   warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
+
 afterEach(() => {
   warn.mockRestore()
   process.env.NODE_ENV = nodeEnv
@@ -25,6 +26,7 @@ const CALLS: Array<[string, (v: unknown, fb: string) => string]> = [
   ['formatUnit', (v, fallback) => core.formatUnit(v as number, 'meter', { ...en, fallback })],
   ['formatBytes', (v, fallback) => core.formatBytes(v as number, { ...en, fallback })],
 ]
+
 const DATE_CALLS: Array<[string, (v: unknown, fb: string) => string]> = [
   ['formatDate', (v, fallback) => core.formatDate(v as string, { ...en, fallback })],
   ['formatTime', (v, fallback) => core.formatTime(v as string, { ...en, fallback })],
@@ -134,7 +136,7 @@ describe('programmer errors throw [Pyreon] errors that say how to fix', () => {
     expect(() => core.formatUnit(1, '' as never, en)).toThrow(/the unit must be a string/)
   })
   it('bad option values', () => {
-    expect(() => core.formatNumber(1, { ...en, maximumFractionDigits: 200 })).toThrow(/\[Pyreon\] formatNumber\(\): .*Check the options/)
+    expect(() => core.formatNumber(1, { ...en, maximumFractionDigits: 200 })).toThrow(/\[Pyreon\] formatNumber\(\): .*Check the option values/)
     expect(() => core.formatDate(0, { ...en, timeZone: 'Mars/Olympus' })).toThrow(/\[Pyreon\] formatDate\(\): .*timeZone must be an IANA name/)
     expect(() => core.formatDate(0, { ...en, dateStyle: 'short', month: 'long' })).toThrow(/cannot be combined with field options/)
     expect(() => core.formatList(['a'], { ...en, type: 'nope' as never })).toThrow(/\[Pyreon\] formatList\(\)/)

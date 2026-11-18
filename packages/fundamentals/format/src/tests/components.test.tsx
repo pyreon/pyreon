@@ -11,6 +11,7 @@ function render(vnode: unknown) {
   const root = document.createElement('div')
   document.body.appendChild(root)
   const unmount = mount(vnode as never, root)
+
   return { root, done: () => { unmount(); root.remove() } }
 }
 

@@ -22,6 +22,7 @@ function track<T>(read: () => T) {
   const dispose = runEffect(() => {
     seen.push(read())
   })
+
   return { seen, dispose }
 }
 

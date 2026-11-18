@@ -30,6 +30,7 @@ export function fallbackOf(options: unknown): string {
     const f = (options as { fallback?: string | undefined }).fallback
     if (f !== undefined) return f
   }
+
   return ''
 }
 
@@ -38,18 +39,21 @@ function newNumberFormat(locale: string | undefined, options: object): Intl.Numb
 }
 
 export function badLocale(fn: string): (locale: string) => void {
-  return (locale) =>
-    warnOnce(
-      `${fn}:locale:${locale}`,
-      `[Pyreon] ${fn}(): the locale ${JSON.stringify(locale)} is not a valid BCP 47 tag; using the runtime default. Use a tag such as "en-US" (underscores are not valid).`,
-    )
+  return (locale) => {
+    if (process.env.NODE_ENV !== 'production') {
+      warnOnce(
+        `${fn}:locale:${locale}`,
+        `[Pyreon] ${fn}(): the locale ${JSON.stringify(locale)} is not a valid BCP 47 tag; using the runtime default. Use a tag such as "en-US" (underscores are not valid).`,
+      )
+    }
+  }
 }
 
 function badOptions(fn: string): (error: unknown) => Error {
   return (error) =>
     programmerError(
       fn,
-      `${error instanceof Error ? error.message : String(error)}. Check the options against Intl.NumberFormat (valid currency codes, units from Intl.supportedValuesOf('unit'), digit ranges).`,
+      `${error instanceof Error ? error.message : String(error)}. Check the option values: Intl.supportedValuesOf('unit') lists the units.`,
     )
 }
 
@@ -97,13 +101,16 @@ const NUMBER_PRESETS: Record<NumberPreset, Opts> = {
   percent: { style: 'percent' },
 }
 
-const numberTable = createTable<Intl.NumberFormat>((locale, _variant, options) =>
+const numberTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, _variant, options) =>
   make('formatNumber', locale, optionsOf<Opts>(options, NUMBER_PRESETS, 'formatNumber') ?? {}),
 )
 
 /** Invalid: not a number, not a bigint, not NaN. Nullish is "missing", not invalid. */
 function badNumber(fn: string, value: unknown, options: unknown): string {
-  if (value != null) warnInvalid(fn, value, 'a number or bigint (NaN is not a number)')
+  if (value != null) {
+    if (process.env.NODE_ENV !== 'production') warnInvalid(fn, value, 'a number or bigint (NaN is not a number)')
+  }
+
   return fallbackOf(options)
 }
 
@@ -125,10 +132,11 @@ export function numberToPartsIn(
     badNumber('formatNumberToParts', value, options)
     return []
   }
+
   return resolve(numberTable, locale, '', options).formatToParts(value)
 }
 
-const rangeTable = createTable<Intl.NumberFormat>((locale, _variant, options) =>
+const rangeTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, _variant, options) =>
   make('formatNumberRange', locale, optionsOf<Opts>(options, NUMBER_PRESETS, 'formatNumberRange') ?? {}),
 )
 
@@ -139,10 +147,14 @@ export function numberRangeIn(
   options: NumberRangeOptions | NumberPreset | undefined,
 ): string {
   if (!isUsable(start) || !isUsable(end)) {
-    if (start != null && !isUsable(start)) warnInvalid('formatNumberRange', start, 'a number or bigint')
-    if (end != null && !isUsable(end)) warnInvalid('formatNumberRange', end, 'a number or bigint')
+    if (process.env.NODE_ENV !== 'production') {
+      if (start != null && !isUsable(start)) warnInvalid('formatNumberRange', start, 'a number or bigint')
+      if (end != null && !isUsable(end)) warnInvalid('formatNumberRange', end, 'a number or bigint')
+    }
+
     return fallbackOf(options)
   }
+
   return resolve(rangeTable, locale, '', options).formatRange(start, end)
 }
 
@@ -156,7 +168,7 @@ const CURRENCY_PRESETS: Record<CurrencyPreset, Opts> = {
   accounting: { currencySign: 'accounting' },
 }
 
-const currencyTable = createTable<Intl.NumberFormat>((locale, currency, options) =>
+const currencyTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, currency, options) =>
   make('formatCurrency', locale, {
     ...optionsOf<Opts>(options, CURRENCY_PRESETS, 'formatCurrency'),
     style: 'currency',
@@ -171,6 +183,7 @@ function isCurrencyCode(c: unknown): c is string {
     const k = c.charCodeAt(i) | 32
     if (k < 97 || k > 122) return false
   }
+
   return true
 }
 
@@ -182,15 +195,16 @@ export function currencyIn(
 ): string {
   if (!isUsable(value)) return badNumber('formatCurrency', value, options)
   if (!isCurrencyCode(currency)) {
-    warnInvalid('formatCurrency', currency, 'a three-letter ISO 4217 currency code such as "EUR"')
+    if (process.env.NODE_ENV !== 'production') warnInvalid('formatCurrency', currency, 'a three-letter ISO 4217 currency code such as "EUR"')
     return fallbackOf(options)
   }
+
   return resolve(currencyTable, locale, currency, options).format(value)
 }
 
 // ─── formatPercent ───────────────────────────────────────────────────────────
 
-const percentTable = createTable<Intl.NumberFormat>((locale, _variant, options) =>
+const percentTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, _variant, options) =>
   make('formatPercent', locale, {
     ...optionsOf<PercentOptions>(options, NO_PRESETS, 'formatPercent'),
     style: 'percent',
@@ -209,7 +223,7 @@ const COMPACT_PRESETS: Record<CompactPreset, Opts> = {
   long: { compactDisplay: 'long' },
 }
 
-const compactTable = createTable<Intl.NumberFormat>((locale, _variant, options) =>
+const compactTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, _variant, options) =>
   make('formatCompact', locale, {
     ...optionsOf<Opts>(options, COMPACT_PRESETS, 'formatCompact'),
     notation: 'compact',
@@ -233,7 +247,7 @@ const UNIT_PRESETS: Record<UnitPreset, Opts> = {
   long: { unitDisplay: 'long' },
 }
 
-const unitTable = createTable<Intl.NumberFormat>((locale, unit, options) =>
+const unitTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, unit, options) =>
   make('formatUnit', locale, {
     unitDisplay: 'short',
     ...optionsOf<Opts>(options, UNIT_PRESETS, 'formatUnit'),
@@ -252,6 +266,7 @@ export function unitIn(
   if (typeof unit !== 'string' || !unit) {
     throw programmerError('formatUnit', `the unit must be a string such as "kilometer" or "kilometer-per-hour", got ${String(unit)}. See Intl.supportedValuesOf('unit').`)
   }
+
   return resolve(unitTable, locale, unit, options).format(value)
 }
 
@@ -273,13 +288,14 @@ interface BytesPack {
   readonly formats: (Intl.NumberFormat | undefined)[]
 }
 
-const bytesTable = createTable<BytesPack>((locale, _variant, options) => {
+const bytesTable = /* @__PURE__ */ createTable<BytesPack>((locale, _variant, options) => {
   const o = optionsOf<BytesOptions>(options, NO_PRESETS, 'formatBytes') ?? {}
   const digits = o.maximumFractionDigits ?? Math.max(1, o.minimumFractionDigits ?? 0)
   const base: Opts = { ...o, maximumFractionDigits: digits, unitDisplay: o.unitDisplay ?? 'short' }
   // Validate the options now (and fall a bad locale back) with the cheapest unit.
   const first = make('formatBytes', locale, { ...base, style: 'unit', unit: 'byte' })
   const formats: (Intl.NumberFormat | undefined)[] = [first, undefined, undefined, undefined, undefined, undefined]
+
   return { locale, options: base, binary: o.binary === true, digits, formats }
 })
 
@@ -295,7 +311,7 @@ export function bytesIn(locale: string, bytes: NumberInput, options: BytesOption
   if (bytes == null) return fallbackOf(options)
   const value = typeof bytes === 'bigint' ? Number(bytes) : bytes
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    warnInvalid('formatBytes', bytes, 'a finite number of bytes')
+    if (process.env.NODE_ENV !== 'production') warnInvalid('formatBytes', bytes, 'a finite number of bytes')
     return fallbackOf(options)
   }
   const pack = resolve(bytesTable, locale, '', options)
@@ -323,6 +339,7 @@ export function bytesIn(locale: string, bytes: NumberInput, options: BytesOption
   const parts = format.formatToParts(shown)
   let out = ''
   for (const part of parts) out += part.type === 'unit' ? (BYTE_SYMBOLS_BINARY[index] as string) : part.value
+
   return out
 }
 
@@ -330,7 +347,9 @@ export function bytesIn(locale: string, bytes: NumberInput, options: BytesOption
 export function _numberTables() {
   return { number: numberTable, currency: currencyTable, unit: unitTable, bytes: bytesTable, percent: percentTable, compact: compactTable, range: rangeTable }
 }
+
 export function _clearNumberTables(): void {
   for (const t of Object.values(_numberTables())) clearTable(t as never)
 }
+
 export { tableStats }

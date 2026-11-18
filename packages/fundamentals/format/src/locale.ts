@@ -33,18 +33,29 @@ let zoneProvided = false
 let runtimeLocale: string | undefined
 let runtimeZone: string | undefined
 
+/**
+ * What the runtime itself would use: `undefined` as the locale is the explicit
+ * way to ask for the default (the server's on the server, the browser's in the
+ * browser). That difference is the documented hydration caveat, which is why an
+ * app should pass or provide a locale on both sides.
+ */
+function runtimeResolved(): Intl.ResolvedDateTimeFormatOptions {
+  return new Intl.DateTimeFormat(undefined, {}).resolvedOptions()
+}
+
 function runtimeDefaultLocale(): string {
   if (runtimeLocale === undefined) {
     runtimeLocale =
       !isServer && typeof navigator !== 'undefined' && typeof navigator.language === 'string' && navigator.language !== ''
         ? navigator.language
-        : new Intl.DateTimeFormat().resolvedOptions().locale
+        : runtimeResolved().locale
   }
+
   return runtimeLocale
 }
 
 function runtimeDefaultZone(): string {
-  return (runtimeZone ??= new Intl.DateTimeFormat().resolvedOptions().timeZone)
+  return (runtimeZone ??= runtimeResolved().timeZone)
 }
 
 /** Test hook: forget the memoized runtime defaults and the provide flags. */
@@ -76,6 +87,7 @@ export function activeZone(): string {
     const provided = useContext(ZoneContext)()
     if (provided !== undefined) return provided
   }
+
   return appZone() ?? ''
 }
 
@@ -107,7 +119,7 @@ function checkedZone(zone: string, fn: string): string {
 /** Set the app-level default locale (client). On the server this is a no-op with a dev warning: use `provideLocale`. */
 export function setLocale(tag: string): void {
   if (isServer) {
-    warnOnce('setLocale:server', '[Pyreon] setLocale() does nothing on the server (one process serves many requests). Call provideLocale() in the root component instead.')
+    if (process.env.NODE_ENV !== 'production') warnOnce('setLocale:server', '[Pyreon] setLocale() does nothing on the server (one process serves many requests). Call provideLocale() in the root component instead.')
     return
   }
   appLocale.set(canonicalLocale(tag, 'setLocale'))
@@ -116,7 +128,7 @@ export function setLocale(tag: string): void {
 /** Set the app-level default time zone (client). On the server this is a no-op with a dev warning: use `provideTimeZone`. */
 export function setTimeZone(zone: string): void {
   if (isServer) {
-    warnOnce('setTimeZone:server', '[Pyreon] setTimeZone() does nothing on the server (one process serves many requests). Call provideTimeZone() in the root component instead.')
+    if (process.env.NODE_ENV !== 'production') warnOnce('setTimeZone:server', '[Pyreon] setTimeZone() does nothing on the server (one process serves many requests). Call provideTimeZone() in the root component instead.')
     return
   }
   appZone.set(checkedZone(zone, 'setTimeZone'))
@@ -127,8 +139,13 @@ function constant(value: string): () => string {
 }
 
 function warnOutsideComponent(fn: string): void {
-  if (process.env.NODE_ENV !== 'production' && !isServer && getContextOwner() === null) {
-    warnOnce(`${fn}:outside`, `[Pyreon] ${fn}() was called outside a component, so it applies to the whole page for good. Call it in a component's setup to scope a subtree, or use ${fn === 'provideLocale' ? 'setLocale' : 'setTimeZone'}() for the app default.`)
+  if (process.env.NODE_ENV !== 'production') {
+    if (isServer || getContextOwner() !== null) return
+    const alternative = fn === 'provideLocale' ? 'setLocale' : 'setTimeZone'
+    warnOnce(
+      `${fn}:outside`,
+      `[Pyreon] ${fn}() was called outside a component, so it applies to the whole page for good. Call it in a component's setup to scope a subtree, or use ${alternative}() for the app default.`,
+    )
   }
 }
 

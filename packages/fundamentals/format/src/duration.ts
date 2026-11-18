@@ -15,6 +15,7 @@ const STYLES = ['long', 'short', 'narrow', 'digital'] as const
 interface DurationFormatLike {
   format(duration: Duration): string
 }
+
 type DurationFormatCtor = new (locale: string | undefined, options?: object) => DurationFormatLike
 
 const UNITS = ['years', 'months', 'weeks', 'days', 'hours', 'minutes', 'seconds', 'milliseconds'] as const
@@ -45,7 +46,7 @@ function badOptions(error: unknown): Error {
   )
 }
 
-const durationTable = createTable<DurationPack>((locale, _variant, options) => {
+const durationTable = /* @__PURE__ */ createTable<DurationPack>((locale, _variant, options) => {
   const o: DurationOptions =
     options === undefined ? {} : typeof options === 'string' ? { style: options as DurationStyle } : options
   const style = o.style ?? 'short'
@@ -66,6 +67,7 @@ const durationTable = createTable<DurationPack>((locale, _variant, options) => {
           badOptions,
           badLocale('formatDuration'),
         )
+
   return {
     locale,
     style,
@@ -111,6 +113,7 @@ function fieldsOf(value: Duration | number, out: number[]): -1 | 1 | undefined {
     ms -= out[5] * MS.minute
     out[6] = Math.floor(ms / MS.second)
     out[7] = ms - out[6] * MS.second
+
     return sign
   }
   if (typeof value !== 'object' || value === null) return undefined
@@ -127,6 +130,7 @@ function fieldsOf(value: Duration | number, out: number[]): -1 | 1 | undefined {
     }
     out[i] = Math.abs(v)
   }
+
   return sign
 }
 
@@ -143,6 +147,7 @@ function formatDigital(pack: DurationPack, f: number[], sign: -1 | 1): string | 
       seconds: f[6]! * sc,
       milliseconds: ms * sc,
     }
+
     return pack.native.format(d)
   }
   const digits = (pack.digits ??= numberFormat(pack.locale, { minimumIntegerDigits: 2, useGrouping: false }))
@@ -154,6 +159,7 @@ function formatDigital(pack: DurationPack, f: number[], sign: -1 | 1): string | 
     else frac = frac.slice(0, pack.fractionalDigits).padEnd(pack.fractionalDigits, '0')
     if (frac !== '') out += `.${frac}`
   }
+
   return out
 }
 
@@ -171,16 +177,17 @@ export function durationIn(locale: string, value: DurationInput, options: Durati
   const f: number[] = [0, 0, 0, 0, 0, 0, 0, 0]
   const sign = fieldsOf(value, f)
   if (sign === undefined) {
-    warnInvalid('formatDuration', value, 'a Duration object (finite numbers sharing one sign) or a finite number of milliseconds')
+    if (process.env.NODE_ENV !== 'production') warnInvalid('formatDuration', value, 'a Duration object (finite numbers sharing one sign) or a finite number of milliseconds')
     return fallbackOf(options)
   }
   const pack = resolve(durationTable, locale, '', options)
   if (pack.style === 'digital') {
     const text = formatDigital(pack, f, sign)
     if (text === undefined) {
-      warnInvalid('formatDuration', value, "a duration without years or months for style 'digital' (they have no fixed length)")
+      if (process.env.NODE_ENV !== 'production') warnInvalid('formatDuration', value, "a duration without years or months for style 'digital' (they have no fixed length)")
       return fallbackOf(options)
     }
+
     return text
   }
   // Keep the `largest` most significant non-zero units (truncating the rest).
@@ -212,5 +219,6 @@ export function durationIn(locale: string, value: DurationInput, options: Durati
     badOptions,
     badLocale('formatDuration'),
   )
+
   return pack.list.format(parts)
 }

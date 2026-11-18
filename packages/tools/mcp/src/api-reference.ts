@@ -7049,6 +7049,330 @@ const extensions = [darkTheme /* , ...other CM extensions */]`,
   // <gen-docs:api-reference:end @pyreon/code>
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/format
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/format>
+
+  'format/formatNumber': {
+    signature: '(value: NumberInput, options?: NumberOptions | NumberPreset) => string',
+    example: `formatNumber(1234567.891, { locale: 'en-US' }) // → "1,234,567.891"
+formatNumber(1234567.891, { locale: 'de' }) // → "1.234.567,891"
+formatNumber(0.5, { locale: 'en-US', style: 'percent' }) // → "50%"
+formatNumber(1234.5678, { locale: 'en-US', maximumFractionDigits: 1 }) // → "1,234.6"
+formatNumber(null, { fallback: '-' }) // → "-"`,
+    notes: `Format a number with \`Intl.NumberFormat\`. Options are the platform's \`Intl.NumberFormat\` options plus \`locale\` and \`fallback\`; a string is a preset (\`integer\`, \`plain\`, \`compact\`, \`percent\`). Nullish or \`NaN\` input returns the \`fallback\` (default \`''\`). The formatter is cached per (locale, options), so calling it in a list or a binding costs one \`format()\`. See also: formatCurrency, formatPercent, formatCompact, defineFormats.`,
+    mistakes: `- Building the formatter yourself per call (\`new Intl.NumberFormat(...)\` in a render function): that is the cost this package caches
+- Mutating an options object after passing it: option objects are cached by identity, so treat a hoisted options object as immutable
+- Expecting a preset string to carry a locale: a string has no \`locale\`; use the active locale or \`createFormatter\``,
+  },
+
+  'format/formatCurrency': {
+    signature: '(value: NumberInput, currency: string, options?: CurrencyOptions | CurrencyPreset) => string',
+    example: `formatCurrency(9.99, 'EUR', { locale: 'en-US' }) // → "€9.99"
+formatCurrency(1234.5, 'EUR', { locale: 'de' }) // → "1.234,50 €"
+formatCurrency(1234.5, 'CZK', { locale: 'cs' }) // → "1 234,50 Kč"
+formatCurrency(-5, 'USD', { locale: 'en-US', currencySign: 'accounting' }) // → "($5.00)"
+formatCurrency(5, 'USD', { locale: 'en-US', currencyDisplay: 'name' }) // → "5.00 US dollars"`,
+    notes: 'Format money. `currency` is an ISO 4217 code; a malformed code returns the `fallback` with a dev warning. Presets: `symbol`, `narrowSymbol`, `code`, `name`, `accounting`. See also: formatNumber, defineFormats.',
+    mistakes: `- Formatting an amount in minor units (cents) without dividing: \`formatCurrency(999, 'EUR')\` is 999 euros
+- Passing the symbol (\`'€'\`) instead of the code (\`'EUR'\`)`,
+  },
+
+  'format/formatPercent': {
+    signature: '(value: NumberInput, options?: PercentOptions) => string',
+    example: `formatPercent(0.42, { locale: 'en-US' }) // → "42%"
+formatPercent(0.4234, { locale: 'en-US', maximumFractionDigits: 1 }) // → "42.3%"
+formatPercent(0.42, { locale: 'de' }) // → "42 %"`,
+    notes: 'Format a ratio as a percentage: `0.42` is `42%`. Multiply nothing yourself. See also: formatNumber.',
+    mistakes: '- Passing 42 for 42%: the value is a ratio (0.42)',
+  },
+
+  'format/formatCompact': {
+    signature: '(value: NumberInput, options?: CompactOptions | CompactPreset) => string',
+    example: `formatCompact(1240000, { locale: 'en-US' }) // → "1.2M"
+formatCompact(1240000, { locale: 'en-US', compactDisplay: 'long' }) // → "1.2 million"
+formatCompact(999, { locale: 'en-US' }) // → "999"
+formatCompact(1240000, { locale: 'de' }) // → "1,2 Mio."`,
+    notes: 'Compact notation: `1_240_000` is `1.2M`. Presets `short` (default) and `long`. See also: formatNumber.',
+  },
+
+  'format/formatUnit': {
+    signature: '(value: NumberInput, unit: Unit, options?: UnitOptions | UnitPreset) => string',
+    example: `formatUnit(72, 'kilometer-per-hour', { locale: 'en-US' }) // → "72 km/h"
+formatUnit(1.5, 'liter', { locale: 'en-US', unitDisplay: 'long' }) // → "1.5 liters"
+formatUnit(21, 'celsius', { locale: 'de' }) // → "21 °C"`,
+    notes: 'Format a measurement with a sanctioned `Intl` unit (`Unit` is a union of them, plus `<unit>-per-<unit>` compounds). `unitDisplay` is `short` by default. An unknown unit is a programmer error and throws a `[Pyreon]` error. See also: formatBytes, Unit.',
+    mistakes: `- A unit that is not in \`Intl.supportedValuesOf('unit')\` (\`kilometre\`, \`km\`): it is a type error and throws at runtime`,
+  },
+
+  'format/formatBytes': {
+    signature: '(bytes: NumberInput, options?: BytesOptions) => string',
+    example: `formatBytes(1536, { locale: 'en-US' }) // → "1.5 kB"
+formatBytes(1536, { locale: 'en-US', binary: true }) // → "1.5 KiB"
+formatBytes(999999, { locale: 'en-US' }) // → "1 MB"
+formatBytes(5_000_000_000, { locale: 'de' }) // → "5 GB"
+formatBytes(1536, { locale: 'en-US', unitDisplay: 'long' }) // → "1.5 kilobytes"`,
+    notes: 'Format a byte count, choosing the unit. Decimal by default (1000 steps, SI units: `1536` is `1.5 kB`); `binary: true` uses 1024 steps and IEC symbols (`1.5 KiB`). Rounding never produces `1000 kB` or `1024 KiB`: the value carries into the next unit. One fraction digit by default (`maximumFractionDigits`). See also: formatUnit.',
+    mistakes: `- Expecting \`KB\`: the SI symbol is \`kB\`; use \`binary: true\` for \`KiB\`
+- Passing kilobytes: the input is bytes`,
+  },
+
+  'format/formatDuration': {
+    signature: '(value: Duration | number | null | undefined, options?: DurationOptions | DurationStyle) => string',
+    example: `formatDuration({ hours: 2, minutes: 5 }, { locale: 'en-US' }) // → "2 hr, 5 min"
+formatDuration(3_905_000, { locale: 'en-US', style: 'digital' }) // → "1:05:05"
+formatDuration(90_061_000, { locale: 'en-US', style: 'long' }) // → "1 day, 1 hour, 1 minute, 1 second"
+formatDuration(90_061_000, { locale: 'en-US', largest: 2 }) // → "1 day, 1 hr"
+formatDuration(0, { locale: 'en-US' }) // → "0 sec"`,
+    notes: 'Format a duration given as `{ hours, minutes, ... }` or as milliseconds. Styles `long`, `short` (default), `narrow` and `digital` (`1:05:05`). `largest: n` shows only the `n` most significant non-zero units (truncated, not rounded). Uses `Intl.DurationFormat` when the runtime has it and an equivalent fallback built from `Intl.NumberFormat` and `Intl.ListFormat` otherwise. See also: formatRelativeTo.',
+    mistakes: `- Expecting carries for a Duration object: \`{ minutes: 90 }\` prints \`90 min\`; only a millisecond number is broken down
+- Passing seconds: a number is milliseconds`,
+  },
+
+  'format/formatList': {
+    signature: '(items: Iterable<string> | null | undefined, options?: ListOptions | ListPreset) => string',
+    example: `formatList(['red', 'green', 'blue'], { locale: 'en-US' }) // → "red, green, and blue"
+formatList(['red', 'green', 'blue'], { locale: 'en-US', type: 'disjunction' }) // → "red, green, or blue"
+formatList(['red', 'green', 'blue'], { locale: 'de' }) // → "red, green und blue"
+formatList([], { fallback: 'none' }) // → "none"`,
+    notes: 'Join items the way the locale does: `and` (default), `or`, `unit`. Any iterable; non-strings go through `String`, nullish entries are skipped, an empty list returns the `fallback`. See also: formatNumber.',
+  },
+
+  'format/formatDate': {
+    signature: '(value: DateInput, options?: DateTimeOptions | DateStylePreset) => string',
+    example: `formatDate('2026-11-18', { locale: 'en-US' }) // → "Nov 18, 2026"
+formatDate('2026-11-18', { locale: 'en-US', timeZone: 'Pacific/Kiritimati' }) // → "Nov 18, 2026"
+formatDate('2026-11-18', { locale: 'cs', dateStyle: 'full' }) // → "středa 18. listopadu 2026"
+formatDate('2026-11-18T23:30:00Z', { locale: 'en-US', timeZone: 'Asia/Tokyo' }) // → "Nov 19, 2026"
+formatDate('2026-11-18', { locale: 'en-US', month: 'long', year: 'numeric' }) // → "November 2026"
+formatDate(null, { fallback: 'unknown' }) // → "unknown"`,
+    notes: `Format the date part. Default \`dateStyle: 'medium'\`; presets \`short\`, \`medium\`, \`long\`, \`full\`; or any \`Intl.DateTimeFormat\` options. A date-only string (\`2026-11-18\`) is a calendar date and shows that day in EVERY time zone; a \`Z\`/offset string, a number and a \`Date\` are instants shown in the active \`timeZone\`. See also: formatTime, formatDateTime, DateInput.`,
+    mistakes: `- Passing \`new Date('2026-11-18')\` for a calendar date: that is midnight UTC, an instant, and shows the 17th west of UTC. Pass the string
+- Passing an unparseable string: it returns the fallback (with a dev warning), it never throws`,
+  },
+
+  'format/formatTime': {
+    signature: '(value: DateInput, options?: DateTimeOptions | DateStylePreset) => string',
+    example: `formatTime('2026-11-18T14:30', { locale: 'de' }) // → "14:30"
+formatTime('2026-11-18T14:30:00Z', { locale: 'en-GB', timeZone: 'Asia/Tokyo' }) // → "23:30"
+formatTime('2026-11-18T14:30', { locale: 'de', hour12: true }) // → "02:30 PM"`,
+    notes: `Format the time part. Default \`timeStyle: 'short'\`. A date-time without an offset (\`2026-11-18T14:30\`) is a wall-clock time and never shifts. See also: formatDate, formatDateTime.`,
+  },
+
+  'format/formatDateTime': {
+    signature: '(value: DateInput, options?: DateTimeOptions | DateStylePreset) => string',
+    example: `formatDateTime('2026-11-18T14:30', { locale: 'de' }) // → "18.11.2026, 14:30"
+formatDateTime('2026-11-18T14:30:00Z', { locale: 'ja', timeZone: 'Asia/Tokyo' }) // → "2026/11/18 23:30"
+formatDateTime(Date.UTC(2026, 10, 18, 14, 30), { locale: 'de', timeZone: 'UTC', dateStyle: 'short', timeStyle: 'short' }) // → "18.11.26, 14:30"`,
+    notes: `Format date and time together. Default \`dateStyle: 'medium'\` with \`timeStyle: 'short'\`. See also: formatDate, formatTime.`,
+  },
+
+  'format/formatRelative': {
+    signature: '(value: number, unit: RelativeUnit, options?: RelativeOptions | RelativePreset) => string',
+    example: `formatRelative(-3, 'day', { locale: 'en-US' }) // → "3 days ago"
+formatRelative(-1, 'day', { locale: 'en-US', numeric: 'auto' }) // → "yesterday"
+formatRelative(2, 'hour', { locale: 'de' }) // → "in 2 Stunden"
+formatRelative(5, 'minute', { locale: 'en-US', style: 'narrow' }) // → "in 5m"`,
+    notes: `Format a relative amount in a given unit: \`(-3, 'day')\` is \`3 days ago\`. \`numeric: 'auto'\` gives words (\`yesterday\`). See also: formatRelativeTo.`,
+    mistakes: '- An unknown unit (`fortnight`) is a programmer error and throws',
+  },
+
+  'format/formatRelativeTo': {
+    signature: '(target: DateInput, base: DateInput, options?: RelativeOptions | RelativePreset) => string',
+    example: `formatRelativeTo(Date.UTC(2026, 10, 18, 12, 5), Date.UTC(2026, 10, 18, 12, 0), { locale: 'en-US' }) // → "in 5 minutes"
+formatRelativeTo('2026-11-17', '2026-11-18', { locale: 'en-US' }) // → "yesterday"
+formatRelativeTo('2026-12-25', '2026-11-18', { locale: 'en-US' }) // → "next month"
+formatRelativeTo('2026-11-18', '2026-11-18', { locale: 'de' }) // → "jetzt"`,
+    notes: `Describe \`target\` relative to an explicit \`base\`, picking the unit (seconds, minutes, hours, days, weeks, months, years) and truncating toward zero, so 59 minutes 40 seconds is \`59 minutes\`. \`numeric: 'auto'\` by default. The base is explicit so the function stays pure; pass the current time yourself. See also: formatRelative.`,
+    mistakes: '- Expecting it to read the clock: it does not. Pass `Date.now()` (or a clock signal) as `base`',
+  },
+
+  'format/formatDateRange': {
+    signature: '(start: DateInput, end: DateInput, options?: DateRangeOptions | DateStylePreset) => string',
+    example: `formatDateRange('2026-11-12', '2026-11-15', { locale: 'en-US' }) // → "Nov 12 – 15, 2026"
+formatDateRange('2026-11-28', '2026-12-02', { locale: 'en-US' }) // → "Nov 28 – Dec 2, 2026"
+formatDateRange('2026-11-12', '2026-11-15', { locale: 'de' }) // → "12.–15.11.2026"`,
+    notes: 'Format a range with the shared parts collapsed. Two calendar strings are a range of calendar days in every zone. See also: formatDate.',
+  },
+
+  'format/formatNumberRange': {
+    signature: '(start: NumberInput, end: NumberInput, options?: NumberRangeOptions | NumberPreset) => string',
+    example: `formatNumberRange(3, 5, { locale: 'en-US' }) // → "3–5"
+formatNumberRange(1000, 25000, { locale: 'en-US', style: 'currency', currency: 'EUR' }) // → "€1,000.00 – €25,000.00"`,
+    notes: 'Format a numeric range with the shared parts collapsed. See also: formatNumber.',
+  },
+
+  'format/formatNumberToParts': {
+    signature: '(value: NumberInput, options?: NumberOptions | NumberPreset) => Intl.NumberFormatPart[]',
+    example: `formatNumberToParts(1234.5, { locale: 'en-US' }).map((p) => p.type) // → ["integer","group","integer","decimal","fraction"]`,
+    notes: 'The parts of a formatted number (for custom markup). Nullish or invalid input returns `[]`. See also: formatNumber.',
+  },
+
+  'format/formatDateToParts': {
+    signature: '(value: DateInput, options?: DateTimeOptions | DateStylePreset) => Intl.DateTimeFormatPart[]',
+    example: `formatDateToParts('2026-11-18', { locale: 'en-US', year: 'numeric', month: 'long', day: 'numeric' }).map((p) => p.value).join('|') // → "November| |18|, |2026"`,
+    notes: 'The parts of a formatted date and time (default: date and time, medium and short). Nullish or invalid input returns `[]`. See also: formatDate.',
+  },
+
+  'format/parseNumber': {
+    signature: '(text: string, options?: { locale?: string }) => number | null',
+    example: `parseNumber('1 234,5', { locale: 'cs' }) // → 1234.5
+parseNumber('1.234,5', { locale: 'de' }) // → 1234.5
+parseNumber('12,34,567.5', { locale: 'hi' }) // → 1234567.5
+parseNumber('42 %', { locale: 'de' }) // → 0.42
+parseNumber('twelve', { locale: 'en-US' }) // → null
+parseNumber(formatNumber(-9876.54, { locale: 'fr' }), { locale: 'fr' }) // → -9876.54`,
+    notes: `Parse what a user typed or a formatter printed. Accepts the locale's digits, decimal, group, minus and percent signs, plain / no-break / narrow no-break / thin spaces for space-grouped locales, and \`'\` for apostrophe-grouped ones. Returns \`null\` for anything else, including a group separator used as a decimal (\`1.5\` in German). Scientific notation is not parsed. See also: formatNumber, parseDate.`,
+    mistakes: '- Guessing the locale: parse with the locale the user typed in, `1.234` is 1234 in German and 1.234 in English',
+  },
+
+  'format/parseDate': {
+    signature: '(text: string, options?: { locale?: string }) => PlainDateString | null',
+    example: `parseDate('18. 11. 2026', { locale: 'cs' }) // → "2026-11-18"
+parseDate('11/18/26', { locale: 'en-US' }) // → "2026-11-18"
+parseDate('18/11/2026', { locale: 'en-GB' }) // → "2026-11-18"
+parseDate('31. 2. 2026', { locale: 'cs' }) // → null
+parseDate('1/2/69', { locale: 'en-US' }) // → "1969-01-02"
+parseDate('2026-11-18', { locale: 'de' }) // → "2026-11-18"`,
+    notes: `Parse a NUMERIC date in the locale's day / month / year order (any separators the locale uses, plus \`. / - space\`) or ISO \`YYYY-MM-DD\` in any locale, to \`YYYY-MM-DD\`. Impossible dates return \`null\`. A two-digit year follows the POSIX rule: 00-68 is 2000-2068, 69-99 is 1969-1999. Buddhist and Minguo years are converted; month names and other non-Gregorian calendars return \`null\`. See also: formatDate, parseNumber.`,
+    mistakes: '- Expecting month names ("18 November 2026") to parse: only numeric dates do',
+  },
+
+  'format/createFormatter': {
+    signature: '(base?: { locale?: string; timeZone?: string }) => Formatter',
+    example: `const f = createFormatter({ locale: 'cs', timeZone: 'Europe/Prague' })
+f.number(1234567.5) // → "1 234 567,5"
+f.currency(99, 'CZK') // → "99,00 Kč"
+f.date('2026-11-18', 'long') // → "18. listopadu 2026"
+f.parseNumber('1 234,5') // → 1234.5`,
+    notes: 'A bound, NON-reactive set of formatters (`number`, `currency`, `percent`, `compact`, `unit`, `bytes`, `duration`, `list`, `date`, `time`, `dateTime`, `relative`, `relativeTo`, `dateRange`, `numberRange`, `numberToParts`, `dateToParts`, `parseNumber`, `parseDate`) for servers, scripts and tests. It never reads the active locale or zone. Per-call options still override the base. See also: defineFormats.',
+    mistakes: '- Using it in a component and expecting the app locale to apply: it is fixed on purpose; use the top-level functions',
+  },
+
+  'format/defineFormats': {
+    signature: '<const T extends Record<string, FormatSpec>>(specs: T) => DefinedFormats<T>',
+    example: `const f = defineFormats({ price: { kind: 'currency', currency: 'EUR', locale: 'en-US' }, size: { kind: 'bytes', locale: 'en-US' }, day: { kind: 'date', dateStyle: 'long', locale: 'en-US' } })
+f.price(9.99) // → "€9.99"
+f.price(9.99, { currency: 'USD' }) // → "$9.99"
+f.size(1536) // → "1.5 kB"
+f.day('2026-11-18') // → "November 18, 2026"`,
+    notes: `Name a set of formats once and call them anywhere: each key becomes \`(value, overrides?) => string\`. \`kind\` selects the formatter (\`number\`, \`currency\`, \`percent\`, \`compact\`, \`unit\`, \`bytes\`, \`duration\`, \`list\`, \`date\`, \`time\`, \`dateTime\`, \`relative\`); the rest are that formatter's options. Keys, value types and overrides are inferred, and a wrong \`kind\` or \`unit\` is a type error. A call without overrides reuses the spec object, so it is served by the identity tier of the cache. The reactive entry follows the active locale; the \`/core\` one uses the options or the runtime default. See also: createFormatter.`,
+    mistakes: '- Defining the specs inside a component: define them once at module level (the hoisted spec object is what the cache keys on)',
+  },
+
+  'format/locale': {
+    signature: '() => string',
+    example: `setLocale('cs')
+locale() // → "cs"
+formatNumber(1234.5) // → "1 234,5"`,
+    notes: 'The active locale (a reactive read). Resolution order: an explicit `options.locale`, the nearest `provideLocale`, the app default set by `setLocale`, then `navigator.language` on the client or the runtime default on the server. See also: setLocale, provideLocale.',
+    mistakes: `- Reading it in an event handler and expecting a \`provideLocale\` from the component tree: context is only visible inside the component's setup and its effects`,
+  },
+
+  'format/setLocale': {
+    signature: '(tag: string) => void',
+    example: `setLocale('de')
+formatNumber(1234.5) // → "1.234,5"
+setLocale('en-US')
+formatNumber(1234.5) // → "1,234.5"`,
+    notes: 'Set the app-level default locale (client). Every formatter read in an effect, computed or JSX accessor updates. The tag is validated (a malformed tag throws a `[Pyreon]` error) and canonicalized (`EN-us` becomes `en-US`). On the server it does nothing and warns in dev: one process serves many requests, use `provideLocale`. See also: locale, provideLocale.',
+    mistakes: '- Calling it on the server to set a per-request locale: it is a no-op there; use `provideLocale` in the root component',
+  },
+
+  'format/provideLocale': {
+    signature: '(tag: string | (() => string)) => void',
+    example: `// in a component's setup:
+// provideLocale('de')
+// provideLocale(() => userSettings.locale())`,
+    notes: `Scope a subtree to a locale. Call it in a component's setup with a tag or an accessor (\`() => i18n.locale()\`), which is tracked. On the client it is owner-based context; on the server it is request-scoped, so concurrent requests never see each other's locale. This is the seam \`@pyreon/i18n\` will call. See also: setLocale, locale.`,
+    mistakes: `- Calling it outside a component: it applies to the whole page for good (dev warning); use \`setLocale\`
+- Passing an unvalidated tag from request data: a malformed static tag throws; an accessor value that is malformed degrades to the runtime default with a dev warning`,
+  },
+
+  'format/timeZone': {
+    signature: '() => string',
+    example: `setTimeZone('Asia/Tokyo')
+timeZone() // → "Asia/Tokyo"
+setTimeZone('UTC')
+timeZone() // → "UTC"`,
+    notes: `The active IANA time zone (a reactive read): the provided zone, else the app default, else the runtime's zone. See also: setTimeZone, provideTimeZone.`,
+  },
+
+  'format/setTimeZone': {
+    signature: '(zone: string) => void',
+    example: `setTimeZone('Asia/Tokyo')
+formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'short', timeStyle: 'short' }) // → "11/19/26, 8:30 AM"
+setTimeZone('UTC')
+formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'short', timeStyle: 'short' }) // → "11/18/26, 11:30 PM"`,
+    notes: 'Set the app-level default time zone (client). Date formatters of instants update; calendar strings never depend on the zone. A name that is not an IANA zone throws a `[Pyreon]` error. A no-op with a dev warning on the server: use `provideTimeZone`. See also: timeZone, provideTimeZone.',
+  },
+
+  'format/provideTimeZone': {
+    signature: '(zone: string | (() => string)) => void',
+    example: `// in a component's setup:
+// provideTimeZone('Europe/Prague')`,
+    notes: 'Scope a subtree to a time zone, like `provideLocale`: a name or a tracked accessor; request-scoped on the server. See also: setTimeZone, provideLocale.',
+  },
+
+  'format/Num': {
+    signature: '(props: NumProps) => VNodeChild',
+    example: `// <Num value={total()} kind="currency" currency="EUR" />
+// <Num value={bytes()} kind="bytes" />`,
+    notes: 'A formatted number as reactive text (no wrapper element). `kind` is `number` (default), `currency`, `percent`, `compact`, `unit` or `bytes`; `currency` / `unit` are the extra props those need; `options` are the Intl options; `locale` and `fallback` as everywhere. Import from `@pyreon/format/components`. See also: DateTime, formatNumber.',
+    mistakes: '- Passing the signal itself (`value={n}`): pass the read, `value={n()}`',
+  },
+
+  'format/DateTime': {
+    signature: '(props: DateTimeProps) => VNode',
+    example: `// <DateTime value="2026-11-18" kind="date" format="long" />
+// <DateTime value={post.publishedAt} class="meta" />`,
+    notes: 'A `<time datetime="…">` element with the formatted value as text. `datetime` is machine-readable whatever the display locale: the calendar string as given, or the UTC ISO instant. `kind` is `date`, `time` or `dateTime` (default); `format` is a `dateStyle`/`timeStyle` shorthand; `options`, `locale`, `timeZone`, `fallback`; other props go to the `<time>` element. Invalid values render the fallback and no `datetime`. See also: Num, formatDate.',
+    mistakes: '- Expecting the server and the browser to agree without a locale: they agree when the same locale and zone are provided on both sides (and ICU versions match)',
+  },
+
+  'format/NumberInput': {
+    signature: 'type NumberInput = number | bigint | null | undefined',
+    example: '// formatNumber(null) // → ""',
+    notes: 'A number-like input. Nullish formats as the `fallback`. See also: DateInput.',
+  },
+
+  'format/DateInput': {
+    signature: 'type DateInput = Date | number | string | null | undefined',
+    example: `// formatDate('2026-11-18')           // the 18th everywhere
+// formatDate('2026-11-18T14:30')     // 14:30 everywhere
+// formatDate('2026-11-18T14:30Z')    // an instant, shown in the active zone`,
+    notes: 'A date-like input. `Date` and `number` (epoch milliseconds) are instants. An ISO string with `Z` or an offset is an instant. An ISO date (`2026-11-18`) or date-time without offset (`2026-11-18T14:30`) is a calendar value and never shifts with the time zone. See also: formatDate.',
+  },
+
+  'format/PlainDateString': {
+    signature: 'type PlainDateString = `${number}-${number}-${number}`',
+    example: `// const d: PlainDateString = '2026-11-18'`,
+    notes: 'The `YYYY-MM-DD` string `parseDate` returns. Structurally the `PlainDate` of `@pyreon/time`, so a literal compiles without a cast. See also: parseDate.',
+  },
+
+  'format/Unit': {
+    signature: 'type Unit = SimpleUnit | `${SimpleUnit}-per-${SimpleUnit}`',
+    example: `// formatUnit(5, 'kilometer')
+// formatUnit(5, 'kilometer-per-hour')`,
+    notes: `\`SimpleUnit\` is the union of the units ECMA-262 sanctions (\`Intl.supportedValuesOf('unit')\`; a test keeps it equal to the runtime list). Compound units use \`-per-\`. See also: formatUnit.`,
+  },
+
+  'format/Duration': {
+    signature: 'interface Duration { years?; months?; weeks?; days?; hours?; minutes?; seconds?; milliseconds? }',
+    example: '// formatDuration({ hours: 2, minutes: 5 })',
+    notes: 'A duration as plain data. Fields share one sign. See also: formatDuration.',
+  },
+
+  'format/FormatSpec': {
+    signature: `type FormatSpec = { kind: 'number' | 'currency' | … } & that formatter's options`,
+    example: `// { kind: 'currency', currency: 'EUR' }
+// { kind: 'date', dateStyle: 'long' }`,
+    notes: 'The shape `defineFormats` takes: a `kind` and the options of that formatter (`currency` is required for `currency`, `unit` for `unit` and `relative`). See also: defineFormats.',
+  },
+  // <gen-docs:api-reference:end @pyreon/format>
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/hotkeys
   // ═══════════════════════════════════════════════════════════════════════════
 

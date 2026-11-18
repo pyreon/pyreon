@@ -14,6 +14,7 @@ function render(vnode: VNodeChild) {
   const root = document.createElement('div')
   document.body.appendChild(root)
   const unmount = mount(vnode as never, root)
+
   return {
     root,
     done() {
@@ -66,6 +67,7 @@ describe('provideLocale', () => {
       effect(() => {
         seen.push(formatNumber(1234.5))
       })
+
       return h('i', null)
     }
     const Provider = () => {
@@ -86,6 +88,7 @@ describe('provideLocale', () => {
         runs++
         formatNumber(1234.5, { locale: 'fr' })
       })
+
       return h('i', null)
     }
     const Provider = () => {

@@ -54,6 +54,7 @@ export function defineFormatsWith<const T extends Record<string, FormatSpec>>(
       return run(impl, merged as FormatSpec, value)
     }
   }
+
   return out as unknown as DefinedFormats<T>
 }
 
@@ -83,6 +84,7 @@ function checkZone(zone: string | undefined): string {
   } catch {
     throw programmerError('createFormatter', `timeZone ${JSON.stringify(zone)} is not an IANA time zone name such as "Europe/Prague" or "UTC".`)
   }
+
   return zone
 }
 
@@ -92,6 +94,7 @@ export function createFormatterWith(base: FormatterBase): Formatter {
   const zone = checkZone(base.timeZone)
   const L = (o: Parameters<typeof localeOf>[0]): string => localeOf(o) || locale
   const Z = (o: Parameters<typeof zoneOf>[0]): string => zoneOf(o) || zone
+
   return {
     number: (v, o) => numberIn(L(o), v, o),
     currency: (v, c, o) => currencyIn(L(o), v, c, o),

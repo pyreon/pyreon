@@ -34,6 +34,7 @@ function evaluate(example: string): Array<{ expr: string; shown: string; actual:
   fn(...Object.values(SCOPE), (expr: string, shown: string, get: () => unknown) => {
     checks.push({ expr, shown, actual: show(get()) })
   })
+
   return checks
 }
 

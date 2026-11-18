@@ -46,6 +46,7 @@ function defaultsFor(kind: Defaults, o: DtOpts): DtOpts {
   const zoned = o.timeZoneName !== undefined
   const date: DtOpts = zoned ? { year: 'numeric', month: 'short', day: 'numeric' } : { dateStyle: 'medium' }
   const time: DtOpts = zoned ? { hour: 'numeric', minute: '2-digit' } : { timeStyle: 'short' }
+
   return kind === 'date' ? date : kind === 'time' ? time : { ...date, ...time }
 }
 
@@ -83,19 +84,21 @@ function makeDt(fn: string, kind: Defaults, locale: string, zone: string, option
     delete o.timeZoneName
     if (o.timeStyle === 'long' || o.timeStyle === 'full') o.timeStyle = 'medium'
   } else if (zone !== '') o.timeZone = zone
+
   return construct((l, x) => new Intl.DateTimeFormat(l, x), locale, o, badOptions(fn), badLocale(fn))
 }
 
-const dateTable = createTable<Intl.DateTimeFormat>((l, z, o) => makeDt('formatDate', 'date', l, z, o))
-const timeTable = createTable<Intl.DateTimeFormat>((l, z, o) => makeDt('formatTime', 'time', l, z, o))
-const dateTimeTable = createTable<Intl.DateTimeFormat>((l, z, o) => makeDt('formatDateTime', 'dateTime', l, z, o))
-const rangeTable = createTable<Intl.DateTimeFormat>((l, z, o) => makeDt('formatDateRange', 'date', l, z, o))
-const partsTable = createTable<Intl.DateTimeFormat>((l, z, o) => makeDt('formatDateToParts', 'dateTime', l, z, o))
+const dateTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>((l, z, o) => makeDt('formatDate', 'date', l, z, o))
+const timeTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>((l, z, o) => makeDt('formatTime', 'time', l, z, o))
+const dateTimeTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>((l, z, o) => makeDt('formatDateTime', 'dateTime', l, z, o))
+const rangeTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>((l, z, o) => makeDt('formatDateRange', 'date', l, z, o))
+const partsTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>((l, z, o) => makeDt('formatDateToParts', 'dateTime', l, z, o))
 
 function missingOrInvalid(fn: string, value: DateInput, options: unknown): string {
   if (value != null) {
-    warnInvalid(fn, value, 'a Date, epoch milliseconds, or an ISO 8601 string such as "2026-11-18" or "2026-11-18T14:30:00Z"')
+    if (process.env.NODE_ENV !== 'production') warnInvalid(fn, value, 'a Date, epoch milliseconds, or an ISO 8601 string such as "2026-11-18" or "2026-11-18T14:30:00Z"')
   }
+
   return fallbackOf(options)
 }
 
@@ -129,6 +132,7 @@ export function dateToPartsIn(locale: string, zone: string, value: DateInput, op
     missingOrInvalid('formatDateToParts', value, options)
     return []
   }
+
   return resolve(partsTable, locale, zoneOf(zone), options).formatToParts(ms)
 }
 
@@ -146,6 +150,7 @@ export function dateRangeIn(
   if (a !== a || b !== b) {
     if (a !== a) missingOrInvalid('formatDateRange', start, options)
     else missingOrInvalid('formatDateRange', end, options)
+
     return fallbackOf(options)
   }
   // Both calendar values: format as calendar days. Otherwise everything is an instant in `zone`.
@@ -176,8 +181,8 @@ function makeRelative(fn: string, defaults: Intl.RelativeTimeFormatOptions, loca
   )
 }
 
-const relativeTable = createTable<Intl.RelativeTimeFormat>((l, _v, o) => makeRelative('formatRelative', {}, l, o))
-const relativeToTable = createTable<Intl.RelativeTimeFormat>((l, _v, o) => makeRelative('formatRelativeTo', { numeric: 'auto' }, l, o))
+const relativeTable = /* @__PURE__ */ createTable<Intl.RelativeTimeFormat>((l, _v, o) => makeRelative('formatRelative', {}, l, o))
+const relativeToTable = /* @__PURE__ */ createTable<Intl.RelativeTimeFormat>((l, _v, o) => makeRelative('formatRelativeTo', { numeric: 'auto' }, l, o))
 
 function formatRelativeValue(f: Intl.RelativeTimeFormat, fn: string, value: number, unit: RelativeUnit): string {
   try {
@@ -197,17 +202,22 @@ export function relativeIn(
   options: RelativeOptions | RelativePreset | undefined,
 ): string {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    if (value != null) warnInvalid('formatRelative', value, 'a finite number')
+    if (value != null) {
+      if (process.env.NODE_ENV !== 'production') warnInvalid('formatRelative', value, 'a finite number')
+    }
+
     return fallbackOf(options)
   }
+
   return formatRelativeValue(resolve(relativeTable, locale, '', options), 'formatRelative', value, unit)
 }
 
 const MIN = 60000
 const HOUR = 3600000
 const DAY = 86400000
-const MONTH = 30.4375 * DAY
-const YEAR = 365.25 * DAY
+/** 30.4375 and 365.25 days, as literals so the constants fold away when the module is tree-shaken. */
+const MONTH = 2629800000
+const YEAR = 31557600000
 
 /**
  * Pick the unit for an elapsed time and truncate toward zero: under a minute
@@ -226,6 +236,7 @@ export function relativeToIn(
   if (t !== t || b !== b) {
     if (t !== t) missingOrInvalid('formatRelativeTo', target, options)
     else missingOrInvalid('formatRelativeTo', base, options)
+
     return fallbackOf(options)
   }
   const diff = t - b
@@ -240,6 +251,7 @@ export function relativeToIn(
   else if (abs < YEAR) { unit = 'month'; size = MONTH }
   else { unit = 'year'; size = YEAR }
   const n = Math.trunc(diff / size)
+
   return formatRelativeValue(resolve(relativeToTable, locale, '', options), 'formatRelativeTo', n === 0 ? 0 : n, unit)
 }
 
@@ -249,6 +261,7 @@ export const PLAIN_VARIANT = PLAIN
 export function _dateTables() {
   return { date: dateTable, time: timeTable, dateTime: dateTimeTable, range: rangeTable, parts: partsTable, relative: relativeTable, relativeTo: relativeToTable }
 }
+
 export function _clearDateTables(): void {
   for (const t of Object.values(_dateTables())) clearTable(t as never)
 }

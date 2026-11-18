@@ -30,6 +30,7 @@ describe('request isolation (server)', () => {
         await tick(delay)
         const mid = formatNumber(1234567.5)
         await tick(delay)
+
         return [before, mid, formatNumber(1234567.5)]
       })
     const [a, b, c] = await Promise.all([request('de', 5), request('cs', 1), request('ja', 3)])

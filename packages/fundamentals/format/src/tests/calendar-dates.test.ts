@@ -5,9 +5,11 @@ import { clearAllTables } from './helpers'
 
 const ZONES = ['UTC', 'America/Los_Angeles', 'Pacific/Kiritimati', 'Pacific/Pago_Pago', 'Asia/Kolkata', 'Pacific/Chatham', 'Europe/Prague']
 const en = 'en-US'
+
 /** The raw Intl rendering of a wall-clock / instant, in `timeZone`. */
 const raw = (ms: number, options: Intl.DateTimeFormatOptions, timeZone = 'UTC') =>
   new Intl.DateTimeFormat(en, { ...options, timeZone }).format(ms)
+
 const T = Date.UTC
 const DT = { dateStyle: 'medium', timeStyle: 'short' } as const
 

@@ -65,6 +65,7 @@ function slotFor<F>(table: Table<F>, locale: string, variant: string): Slot<F> {
     slot = { def: undefined, named: undefined, weak: undefined, keyed: undefined }
     variants.set(variant, slot)
   }
+
   return slot
 }
 
@@ -85,6 +86,7 @@ export function structuralKey(options: object): string {
     if (v === undefined) continue
     key += k + SEP_KEY + String(v) + SEP_ENTRY
   }
+
   return key
 }
 
@@ -106,6 +108,7 @@ export function resolve<F>(
     const made = table.build(locale, variant, options)
     if (named.size >= OPTIONS_CAP) evictOldest(named)
     named.set(options, made)
+
     return made
   }
   const weak = slot.weak ?? (slot.weak = new WeakMap())
@@ -125,6 +128,7 @@ export function resolve<F>(
     keyed.set(key, made)
   }
   weak.set(options, made)
+
   return made
 }
 
@@ -145,6 +149,7 @@ export function tableStats(table: Table<unknown>): {
       keyed += s.keyed?.size ?? 0
     }
   }
+
   return { locales: table.byLocale.size, variants, named, keyed }
 }
 
@@ -177,6 +182,7 @@ export function construct<T>(
         throw onBadOptions(error)
       }
       onBadLocale(locale)
+
       return fallback
     }
     throw onBadOptions(error)

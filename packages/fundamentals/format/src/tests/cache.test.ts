@@ -22,6 +22,7 @@ function constructions(name: Ctor, run: () => void): number {
   } finally {
     Reflect.set(Intl, name, Original)
   }
+
   return count
 }
 

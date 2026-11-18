@@ -16,29 +16,39 @@
  * day / month / year order, any separator characters the locale's own short
  * date uses (plus `. / - space`), or ISO `YYYY-MM-DD` in any locale. A
  * two-digit year follows the POSIX `%y` rule: 00-68 is 2000-2068, 69-99 is
- * 1969-1999 (in Buddhist and Minguo calendars a two-digit year continues the current century of the era). Buddhist and Minguo calendars are converted; other non-Gregorian
- * default calendars (Persian, Islamic, ...) return null. Month names are not parsed.
+ * 1969-1999 (in Buddhist and Minguo calendars a two-digit year continues the
+ * current century of the era). Buddhist and Minguo calendars are converted;
+ * other non-Gregorian default calendars (Persian, Islamic, ...) return null.
+ * Month names are not parsed.
  */
 import { daysInMonth } from './input'
-import type { ParseOptions, PlainDateString } from './types'
+import type { PlainDateString } from './types'
 
 const SYMBOL_CAP = 64
 
-interface Symbols {
-  /** Locale digits 0-9 (may be empty for latn). */
+type Field = 'day' | 'month' | 'year'
+
+interface NumberSymbols {
+  /** Locale digits 0-9 (empty for latn). */
   digits: string[]
   decimal: string
   group: string
   minus: string
   percent: string
-  /** Group sizes: primary (always 3 here) and the secondary size (2 in Indian grouping). */
+  /** Size of the groups after the first 3 digits: 2 in Indian grouping, else 3. */
   secondary: number
-  /** Date field order, e.g. ['day','month','year'], and the separator characters its short date uses. */
-  order: ('day' | 'month' | 'year')[]
+}
+
+interface DateSymbols {
+  order: Field[]
+  /** The literal characters the locale's own short date uses. */
   dateChars: string
+  /** Added to a local era year to get the Gregorian one (Buddhist -543, Minguo +1911). */
   yearOffset: number
   supportedCalendar: boolean
 }
+
+type Symbols = NumberSymbols & DateSymbols
 
 let cache: Map<string, Symbols> | undefined
 
@@ -46,10 +56,8 @@ function strip(s: string): string {
   return s.replace(/[‎‏؜]/g, '')
 }
 
-function probe(locale: string): Symbols {
-  const loc = locale === '' ? undefined : locale
-  const nf = new Intl.NumberFormat(loc, { useGrouping: true, maximumFractionDigits: 1 })
-  const parts = nf.formatToParts(-1234567.5)
+function probeNumbers(loc: string | undefined): NumberSymbols {
+  const parts = new Intl.NumberFormat(loc, { maximumFractionDigits: 1 }).formatToParts(-1234567.5)
   let decimal = '.'
   let group = ','
   let minus = '-'
@@ -58,35 +66,46 @@ function probe(locale: string): Symbols {
     else if (p.type === 'group') group = p.value
     else if (p.type === 'minusSign') minus = strip(p.value)
   }
-  const digitsFmt = new Intl.NumberFormat(loc, { useGrouping: false }).format(9876543210)
-  const digits = Array.from(digitsFmt).reverse()
-  const percentPart = new Intl.NumberFormat(loc, { style: 'percent' }).formatToParts(0.5).find((p) => p.type === 'percentSign')
-  // Secondary group size: "12,34,567" groups the second group in 2s.
-  const indian = new Intl.NumberFormat(loc).formatToParts(12345678)
-  const groups = indian.filter((p) => p.type === 'integer')
-  const secondary = groups.length > 2 && (groups[1]?.value.length ?? 3) === 2 ? 2 : 3
-  const dtf = new Intl.DateTimeFormat(loc, { year: 'numeric', month: 'numeric', day: 'numeric', timeZone: 'UTC' })
-  const order: Symbols['order'] = []
-  let dateChars = ''
-  for (const p of dtf.formatToParts(Date.UTC(2026, 10, 18))) {
-    const type: string = p.type
-    if (type === 'day' || type === 'month' || type === 'year') order.push(type)
-    else if (type === 'literal') dateChars += strip(p.value)
-    else if (type === 'relatedYear' || type === 'yearName') order.length = 0
-  }
-  const calendar = dtf.resolvedOptions().calendar
+  const digits = Array.from(new Intl.NumberFormat(loc, { useGrouping: false }).format(9876543210)).reverse()
+  const percent = new Intl.NumberFormat(loc, { style: 'percent' })
+    .formatToParts(0.5)
+    .find((p) => p.type === 'percentSign')
+  const groups = new Intl.NumberFormat(loc).formatToParts(12345678).filter((p) => p.type === 'integer')
+
   return {
     digits: digits.length === 10 ? digits : [],
     decimal: strip(decimal),
     group,
     minus,
-    percent: strip(percentPart?.value ?? '%'),
-    secondary,
+    percent: strip(percent?.value ?? '%'),
+    secondary: groups.length > 2 && groups[1]?.value.length === 2 ? 2 : 3,
+  }
+}
+
+const YEAR_OFFSETS: Record<string, number | undefined> = { buddhist: -543, roc: 1911 }
+
+function probeDates(loc: string | undefined): DateSymbols {
+  const dtf = new Intl.DateTimeFormat(loc, { year: 'numeric', month: 'numeric', day: 'numeric', timeZone: 'UTC' })
+  const order: Field[] = []
+  let dateChars = ''
+  for (const p of dtf.formatToParts(Date.UTC(2026, 10, 18))) {
+    const type: string = p.type
+    if (type === 'day' || type === 'month' || type === 'year') order.push(type)
+    else if (type === 'literal') dateChars += strip(p.value)
+  }
+  const calendar = dtf.resolvedOptions().calendar
+
+  return {
     order: order.length === 3 ? order : ['year', 'month', 'day'],
     dateChars,
-    yearOffset: calendar === 'buddhist' ? -543 : calendar === 'roc' ? 1911 : 0,
-    supportedCalendar: calendar === 'gregory' || calendar === 'buddhist' || calendar === 'roc' || calendar === 'iso8601',
+    yearOffset: YEAR_OFFSETS[calendar] ?? 0,
+    supportedCalendar: ['gregory', 'buddhist', 'roc', 'iso8601'].includes(calendar),
   }
+}
+
+function probe(locale: string): Symbols {
+  const loc = locale === '' ? undefined : locale
+  return { ...probeNumbers(loc), ...probeDates(loc) }
 }
 
 function symbols(locale: string): Symbols {
@@ -102,30 +121,29 @@ function symbols(locale: string): Symbols {
     }
     cache.set(locale, s)
   }
+
   return s
 }
 
-/** Test hook. */
-export function _clearParseCache(): { size: number } {
-  const size = cache?.size ?? 0
+/** Test hooks. */
+export function _clearParseCache(): void {
   cache = undefined
-  return { size }
 }
 
 export function _parseCacheSize(): number {
   return cache?.size ?? 0
 }
 
-/** One character to its ASCII digit value (0-9) or -1. */
-function digitValue(ch: string, s: Symbols): number {
+/** One character to its digit value (0-9) or -1. */
+function digitValue(ch: string, s: NumberSymbols): number {
   const c = ch.charCodeAt(0)
   if (c >= 48 && c <= 57) return c - 48
   if (c >= 0x660 && c <= 0x669) return c - 0x660
   if (c >= 0x6f0 && c <= 0x6f9) return c - 0x6f0
   if (c >= 0x966 && c <= 0x96f) return c - 0x966
   if (c >= 0xff10 && c <= 0xff19) return c - 0xff10
-  if (s.digits.length === 10) return s.digits.indexOf(ch)
-  return -1
+
+  return s.digits.length === 10 ? s.digits.indexOf(ch) : -1
 }
 
 const SPACES = '     '
@@ -137,73 +155,104 @@ function groupChars(group: string): string {
   return group
 }
 
+// ─── parseNumber ─────────────────────────────────────────────────────────────
+
+interface Scan {
+  negative: boolean
+  signed: boolean
+  sawDecimal: boolean
+  frac: string
+  intRuns: string[]
+  run: string
+}
+
+function isMinus(ch: string, s: NumberSymbols): boolean {
+  return ch === '-' || ch === '−' || ch === s.minus || ch === '+'
+}
+
+/** Feed one character to the scan; `false` when it does not belong in a number. */
+function step(st: Scan, ch: string, s: NumberSymbols, groupSet: string): boolean {
+  const d = digitValue(ch, s)
+  if (d >= 0) {
+    if (st.sawDecimal) st.frac += d
+    else st.run += d
+
+    return true
+  }
+  const leading = !st.sawDecimal && st.run === '' && st.intRuns.length === 0
+  if (ch === s.decimal && !st.sawDecimal) {
+    st.sawDecimal = true
+    return true
+  }
+  if (leading && !st.signed && isMinus(ch, s)) {
+    st.signed = true
+    st.negative = ch !== '+'
+    return true
+  }
+  // A space between the sign and the digits ("- 5").
+  if (leading && SPACES.includes(ch)) return true
+  if (!st.sawDecimal && st.run !== '' && groupSet.includes(ch)) {
+    st.intRuns.push(st.run)
+    st.run = ''
+    return true
+  }
+
+  return false
+}
+
+/** Digit groups must be well formed: 1-3 digits, then 3 (or the locale's secondary size) each, the last exactly 3. */
+function groupsAreValid(runs: string[], s: NumberSymbols): boolean {
+  if (runs.length < 2) return true
+  if ((runs[0] as string).length > 3) return false
+  for (let k = 1; k < runs.length; k++) {
+    const len = (runs[k] as string).length
+    const ok = k === runs.length - 1 ? len === 3 : len === 3 || len === s.secondary
+    if (!ok) return false
+  }
+
+  return true
+}
+
+/** The index where the number ends once a trailing percent sign (and the space before it) is removed. */
+function numberEnd(input: string, chars: string[], s: NumberSymbols): { end: number; percent: boolean } {
+  const last = chars[chars.length - 1]
+  const isPercent = last === '%' || input.endsWith(s.percent)
+  if (!isPercent) return { end: chars.length, percent: false }
+  let end = chars.length - (last === '%' ? 1 : Array.from(s.percent).length)
+  while (end > 0 && SPACES.includes(chars[end - 1] as string)) end--
+
+  return { end, percent: true }
+}
+
 export function parseNumberIn(locale: string, text: unknown): number | null {
   if (typeof text !== 'string') return null
   const s = symbols(locale)
   const input = strip(text).trim()
   if (input === '') return null
-  const groupSet = groupChars(s.group)
   const chars = Array.from(input)
-  let end = chars.length
-  let percent = false
-  // A trailing percent sign (`%` or the locale's), possibly after a space.
-  if (input.endsWith(s.percent) || chars[end - 1] === '%') {
-    percent = true
-    end -= chars[end - 1] === '%' ? 1 : Array.from(s.percent).length
-    while (end > 0 && SPACES.includes(chars[end - 1] as string)) end--
-  }
-  let negative = false
-  let signed = false
-  let sawDecimal = false
-  let frac = ''
-  const intRuns: string[] = []
-  let run = ''
+  const { end, percent } = numberEnd(input, chars, s)
+  const groupSet = groupChars(s.group)
+  const st: Scan = { negative: false, signed: false, sawDecimal: false, frac: '', intRuns: [], run: '' }
   for (let i = 0; i < end; i++) {
-    const ch = chars[i] as string
-    const d = digitValue(ch, s)
-    if (d >= 0) {
-      if (sawDecimal) frac += d
-      else run += d
-    } else if (ch === s.decimal && !sawDecimal) {
-      sawDecimal = true
-    } else if (!sawDecimal && run === '' && intRuns.length === 0 && !signed && (ch === '-' || ch === '\u2212' || ch === s.minus || ch === '+')) {
-      signed = true
-      negative = ch !== '+'
-    } else if (!sawDecimal && run === '' && intRuns.length === 0 && SPACES.includes(ch)) {
-      // Space between the sign and the digits ("- 5"): allowed.
-    } else if (!sawDecimal && run !== '' && groupSet.includes(ch)) {
-      intRuns.push(run)
-      run = ''
-    } else {
-      return null
-    }
+    if (!step(st, chars[i] as string, s, groupSet)) return null
   }
-  if (run !== '') intRuns.push(run)
-  else if (intRuns.length > 0) return null // a trailing group separator
-  if (intRuns.length === 0 && frac === '') return null
-  if (sawDecimal && frac === '' && intRuns.length === 0) return null
-  if (intRuns.length > 1) {
-    const first = intRuns[0] as string
-    if (first.length > 3) return null
-    for (let k = 1; k < intRuns.length; k++) {
-      const len = (intRuns[k] as string).length
-      const last = k === intRuns.length - 1
-      if (last ? len !== 3 : len !== 3 && len !== s.secondary) return null
-    }
-  }
-  const n = Number(`${intRuns.join('') || '0'}${frac === '' ? '' : `.${frac}`}`)
+  if (st.run !== '') st.intRuns.push(st.run)
+  else if (st.intRuns.length > 0) return null // a trailing group separator
+  if (st.intRuns.length === 0 && st.frac === '') return null
+  if (!groupsAreValid(st.intRuns, s)) return null
+  const n = Number(`${st.intRuns.join('') || '0'}${st.frac === '' ? '' : `.${st.frac}`}`)
   if (!Number.isFinite(n)) return null
-  const v = negative ? -n : n
+  const v = st.negative ? -n : n
+
   return percent ? v / 100 : v
 }
 
-const CH_ASCII_ALLOWED = '. /-  '
+// ─── parseDate ───────────────────────────────────────────────────────────────
 
-export function parseDateIn(locale: string, text: unknown): PlainDateString | null {
-  if (typeof text !== 'string') return null
-  const s = symbols(locale)
-  const input = strip(text).trim()
-  if (input === '') return null
+const DATE_ASCII = '. /-  '
+
+/** The digit runs of a numeric date, or `null` when anything else appears. */
+function dateRuns(input: string, s: Symbols): string[] | null {
   const runs: string[] = []
   let current = ''
   for (const ch of input) {
@@ -212,37 +261,13 @@ export function parseDateIn(locale: string, text: unknown): PlainDateString | nu
       current += d
       continue
     }
-    if (!(CH_ASCII_ALLOWED.includes(ch) || s.dateChars.includes(ch))) return null
-    if (current !== '') {
-      runs.push(current)
-      current = ''
-    }
+    if (!(DATE_ASCII.includes(ch) || s.dateChars.includes(ch))) return null
+    if (current !== '') runs.push(current)
+    current = ''
   }
   if (current !== '') runs.push(current)
-  if (runs.length !== 3) return null
-  const [a, b, c] = runs as [string, string, string]
-  if (a.length === 4 && b.length <= 2 && c.length <= 2 && s.order[0] !== 'year' && input.charCodeAt(4) === 45) {
-    // ISO `2026-11-18` typed into a day-first or month-first locale.
-    return finish(Number(a), Number(b), Number(c))
-  }
-  const byField = { year: '', month: '', day: '' }
-  for (let k = 0; k < 3; k++) byField[s.order[k] as 'year' | 'month' | 'day'] = runs[k] as string
-  if (byField.month.length > 2 || byField.day.length > 2) return null
-  if (!s.supportedCalendar) return null
-  const len = byField.year.length
-  const n = Number(byField.year)
-  let year: number
-  if (s.yearOffset === 0) {
-    if (len !== 2 && len !== 4) return null
-    year = len === 2 ? n + (n <= 68 ? 2000 : 1900) : n
-  } else {
-    // Buddhist (BE = CE + 543) and Minguo (ROC = CE - 1911) years: a two-digit year
-    // continues the era's current century (BE 25yy, ROC 1yy).
-    if (len < 2 || len > 4) return null
-    const local = len === 2 ? (s.yearOffset < 0 ? 2500 + n : 100 + n) : n
-    year = local + s.yearOffset
-  }
-  return finish(year, Number(byField.month), Number(byField.day))
+
+  return runs.length === 3 ? runs : null
 }
 
 function pad(n: number, width: number): string {
@@ -254,4 +279,39 @@ function finish(year: number, month: number, day: number): PlainDateString | nul
   return `${pad(year, 4)}-${pad(month, 2)}-${pad(day, 2)}` as PlainDateString
 }
 
-export type { ParseOptions }
+/** The Gregorian year for the year digits of a locale's date, or `null` when the shape is wrong. */
+function gregorianYear(digits: string, s: DateSymbols): number | null {
+  const len = digits.length
+  const n = Number(digits)
+  if (s.yearOffset === 0) {
+    if (len !== 2 && len !== 4) return null
+    if (len === 4) return n
+    return n + (n <= 68 ? 2000 : 1900)
+  }
+  // Buddhist (BE = CE + 543) and Minguo (ROC = CE - 1911) years: a two-digit year
+  // continues the era's current century (BE 25yy, ROC 1yy).
+  if (len < 2 || len > 4) return null
+  const century = s.yearOffset < 0 ? 2500 : 100
+
+  return (len === 2 ? century + n : n) + s.yearOffset
+}
+
+export function parseDateIn(locale: string, text: unknown): PlainDateString | null {
+  if (typeof text !== 'string') return null
+  const s = symbols(locale)
+  const input = strip(text).trim()
+  const runs = input === '' ? null : dateRuns(input, s)
+  if (runs === null) return null
+  const [a, b, c] = runs as [string, string, string]
+  if (a.length === 4 && b.length <= 2 && c.length <= 2 && s.order[0] !== 'year' && input.charCodeAt(4) === 45) {
+    // ISO `2026-11-18` typed into a day-first or month-first locale.
+    return finish(Number(a), Number(b), Number(c))
+  }
+  if (!s.supportedCalendar) return null
+  const byField: Record<Field, string> = { year: '', month: '', day: '' }
+  for (let k = 0; k < 3; k++) byField[s.order[k] as Field] = runs[k] as string
+  if (byField.month.length > 2 || byField.day.length > 2) return null
+  const year = gregorianYear(byField.year, s)
+
+  return year === null ? null : finish(year, Number(byField.month), Number(byField.day))
+}
