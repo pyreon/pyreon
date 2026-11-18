@@ -373,6 +373,7 @@ function relativeToValue(rtf: Intl.RelativeTimeFormat, target: DateInput, base: 
   const b = t === t ? dateMs('formatRelativeTo', base, false) : NaN
   const plainB = lastWasPlain()
   if (t !== t || b !== b) return fallback
+
   return relativeFrom(rtf, { ms: t, plain: plainT }, { ms: b, plain: plainB }, zone)
 }
 
