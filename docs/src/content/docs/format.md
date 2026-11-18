@@ -40,7 +40,7 @@ yarn add @pyreon/format
 
 :::
 
-`@pyreon/core` and `@pyreon/reactivity` are peer dependencies of the reactive entry and the components. The `/core` entry needs neither.
+`@pyreon/core` and `@pyreon/reactivity` are REQUIRED peer dependencies of the reactive entry and the components (they import them when they load; every Pyreon app has both): `npm install @pyreon/format @pyreon/core @pyreon/reactivity`. The `/core` entry imports no `@pyreon/*` package, so a project that uses only `@pyreon/format/core` needs neither.
 
 ## Quick start
 
@@ -66,7 +66,7 @@ setLocale('de') // every binding above re-renders in German
 | --- | --- | --- |
 | `@pyreon/format/core` | nothing | Every formatter and parser as a pure function. Locale and time zone come from the options; the default is the runtime's. No `@pyreon/*` import. |
 | `@pyreon/format` | `@pyreon/core`, `@pyreon/reactivity` | The same names, defaulting to the active locale and zone. Adds the locale API. |
-| `@pyreon/format/components` | `@pyreon/core` | `<Num>` and `<DateTime>`. |
+| `@pyreon/format/components` | `@pyreon/core`, `@pyreon/reactivity` | `<Num>` and `<DateTime>`. |
 
 Every function is individually tree-shakeable (`sideEffects: false`, nothing runs on import).
 
@@ -448,11 +448,13 @@ f.date('2026-11-18', 'long')   // "18. listopadu 2026"
 ```tsx
 import { Num, DateTime } from '@pyreon/format/components'
 
-<Num value={total()} kind="currency" currency="EUR" />
-<Num value={total()} format={price} />
-<Num value={9.99} format={price} parts={{ currency: (text) => <sup>{text}</sup> }} />
-<DateTime value="2026-11-18" kind="date" format="long" />
-<DateTime value="2026-11-18" format={dateFormatter('long')} parts={{ month: (t) => <b>{t}</b> }} />
+<>
+  <Num value={total()} kind="currency" currency="EUR" />
+  <Num value={total()} format={price} />
+  <Num value={9.99} format={price} parts={{ currency: (text) => <sup>{text}</sup> }} />
+  <DateTime value="2026-11-18" kind="date" format="long" />
+  <DateTime value="2026-11-18" format={dateFormatter('long')} parts={{ month: (t) => <b>{t}</b> }} />
+</>
 ```
 
 `<Num>` renders reactive text with no wrapper element. `kind` is `number` (default), `currency`, `percent`, `compact`, `unit` or `bytes`. Pass a built formatter as `format` and it replaces `kind`, `options`, `locale` and `fallback`: configure those on the formatter. `parts` wraps parts of the output (the keys are the `Intl` part types, typed per component): a part without a wrapper stays plain text, and the plain parts between wrapped ones are joined into one text node, so the server HTML and the client agree and hydration adopts it.
@@ -582,6 +584,19 @@ The call here that does the same job as the one you know. The result column is w
 | Moment: `moment('18.11.2026', 'DD.MM.YYYY')` | `parseDate('18.11.2026', { locale: 'cs' })` | `"2026-11-18"` |
 
 Differences worth knowing: `toLocaleString` and `new Intl.*Format` take the locale once, where these follow the active locale and re-render on `setLocale`; moment, Day.js and date-fns format a `Date` in the local zone, where a date-only string here is a calendar date that never shifts; `numeral` and `pretty-bytes` print English patterns, where these use the locale's own number and unit patterns; the English long date-time pattern in CLDR reads "November 18, 2026 at 2:30 PM", where Day.js and moment templates print no "at".
+
+## Spaces in output
+
+`Intl` writes non-breaking and thin spaces where a plain space would sit: `formatDateRange` puts U+2009 around the en dash (`Nov 12 – 15, 2026`), `formatTime('14:30')` writes U+202F before `PM`, and Czech or French group digits with U+00A0 or U+202F. The examples on this page show them as plain spaces so they stay readable; the real strings contain the others.
+
+Compare with `===` only against the platform's own output from the same process, never against a typed literal:
+
+```ts
+const text = formatDateRange('2026-11-12', '2026-11-15', { locale: 'en-US' })
+text === new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeZone: 'UTC' }).formatRange(new Date('2026-11-12'), new Date('2026-11-15')) // → true
+```
+
+To see them in a failing test message, map them to a visible mark: `text.replace(/[\u00a0\u2009\u202f]/g, '·')`. Do not normalise them away in the code that renders text: they keep a number and its unit, or a time and its `PM`, on one line.
 
 ## Never throws on data
 
