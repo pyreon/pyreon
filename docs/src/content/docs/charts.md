@@ -296,10 +296,10 @@ export const Colours = () => (
 ```
 
 - `fillBy(field | (d, i) => colour)`: a datum whose colour is missing keeps the series colour.
-- `shadeBy(field | (d, i) => number, { ramp?, domain? })`: the ramp defaults to the heatmap's cool-to-warm stops and the domain to the finite extent of the values (pin it to compare charts). A missing value is a gap and keeps the series colour.
-- **The value is data.** A colour is the one thing a reader who cannot see it can never recover, so a `shadeBy` value is printed beside the bar's own: the tooltip reads `Revenue: 420 (shade 12)` and the accessible table gets a `Revenue (shade)` column.
+- `shadeBy(field | (d, i) => number, { ramp?, domain? })`: the ramp defaults to the theme's value ramp (the one the heatmap uses, with its own light and dark stops) and the domain to the finite extent of the values. A missing value is a gap and keeps the series colour. On a zoomed or decimated chart the extent is that of the rows in view, so **pin `domain`** when colours must stay put as the window moves.
+- **The value is data, and the ramp is a legend.** A colour is the one thing a reader who cannot see it can never recover, so a `shadeBy` chart draws a compact ramp strip above the plot (the low and high values at its ends; it is part of the server-rendered SVG and mirrors under `rtl`), the tooltip gets a `Revenue (shade)` row and the accessible table a `Revenue (shade)` column.
 - Works on `<Bar>` (plain, stacked, grouped, waterfall) and `<Dot>`. Both bindings are imported, so a chart that never colours a datum does not bundle them.
-- Web only for now. On iOS and Android the compiler warns that `fill` is not lowered and the bars draw in the series colour: it maps a closure over each row, which has no native form yet. There is no colour legend strip for `shadeBy` yet (use the tooltip and the table, or draw your own from the same ramp).
+- **iOS and Android.** `fillBy('field')` and `shadeBy('field', { ramp, domain })` with a **literal field name** and literal options lower: the engine's `shadeColors` colours the bars, the same function the web uses. Three things stay web-only and the compiler names each: an accessor function (`(d) => …`, a closure over a row), the ramp legend with the `(shade)` table and tooltip rows, and the theme-following default ramp (natively a shade with no `ramp` uses the light theme ramp; pass one to match across modes).
 
 ### Gaps in a line
 

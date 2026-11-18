@@ -59,6 +59,7 @@ export const ENGINE_FILES = [
   'magic-type',
   'candlestick',
   'heat',
+  'shade',
   'visual-strip',
   'funnel',
   'treemap',

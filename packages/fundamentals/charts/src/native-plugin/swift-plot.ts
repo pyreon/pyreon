@@ -2,7 +2,7 @@ import { plotMarkColorSlots, chartTooltipFields, chartThemePalette, PLOT_MARK_KI
 import { swiftIdent, swiftStr, type ExprIR } from '@pyreon/native-compiler/plugin-api'
 import { CHART_HANDLE_TYPE, CHARTS_PLUGIN_NAME, chartHandleSeriesKey } from './names'
 import { host } from './swift-facade'
-import { SWIFT_CHART_TARGET, chartAttrExpr, chartEventHandler, swiftAccessorExpr, swiftBrushHandler, swiftBubbleRange, swiftChartAnimating, swiftChartCanvas, swiftChartChrome, swiftChartDouble, swiftChartFormatter, swiftChartSelectBody, swiftChartThemeFields, swiftChartThemeFrom, swiftFrameHost, swiftLegendInteraction, swiftMarkErrorArgs, swiftMarkOptionArgs, swiftPlotRowMap, swiftZoomPresets } from './swift-support'
+import { SWIFT_CHART_TARGET, chartAttrExpr, chartEventHandler, swiftAccessorExpr, swiftBrushHandler, swiftBubbleRange, swiftChartAnimating, swiftChartCanvas, swiftChartChrome, swiftChartDouble, swiftChartFormatter, swiftChartSelectBody, swiftChartThemeFields, swiftChartThemeFrom, swiftFrameHost, swiftLegendInteraction, swiftMarkErrorArgs, swiftMarkFillArgs, swiftMarkOptionArgs, swiftPlotRowMap, swiftZoomPresets } from './swift-support'
 
 /**
  * The `values` expression for a derived (indicator) mark: the mapped rows
@@ -279,6 +279,9 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     // the LAST Series fields on both targets, so they append.
     const errArgs = swiftMarkErrorArgs(optsArg, tag, k, rows, windowed, indent, lets, decimated)
     if (errArgs === 'unsupported') return 'EmptyView()'
+    // Per-datum colour: the LAST Series fields (after the error bounds and any second channel).
+    const fillArgs = isBand ? [] : swiftMarkFillArgs(optsArg, tag, k, rows, windowed, indent, lets, decimated)
+    if (fillArgs === 'unsupported') return 'EmptyView()'
     let a11yErrArgs: string[] = []
     if (fullA11y && errArgs.length > 0) {
       const fullErr = swiftMarkErrorArgs(optsArg, tag, k, data, false, indent, lets, false, 'pyreonA11y')
@@ -310,7 +313,7 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
       lets.push(`let pyreonRadii${k}: [Double] = bubbleRadii(pyreonRRaw${k}, ${range[0]}, ${range[1]})`)
       const at = opts.findIndex((o) => o.startsWith('showValues:')) + 1
       const withRadii = [...opts.slice(0, at), `rValues: pyreonRRaw${k}`, `radii: pyreonRadii${k}`, ...opts.slice(at)]
-      series.push(`Series(kind: "points", values: pyreonValues${k}, ${[...withRadii, ...errArgs].join(', ')})`)
+      series.push(`Series(kind: "points", values: pyreonValues${k}, ${[...withRadii, ...errArgs, ...fillArgs].join(', ')})`)
       if (fullA11y) {
         lets.push(`let pyreonA11yRRaw${k}: [Double] = ${swiftPlotRowMap(data, `pyreonChartDouble(${rBody})`, 'Double', false)}`)
         const a11yAt = opts.findIndex((o) => o.startsWith('showValues:')) + 1
@@ -335,7 +338,7 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
         fullA11ySeries.push(`Series(kind: "band", values: pyreonA11yValues${k}, ${[...opts, ...a11yErrArgs, `values2: pyreonA11yLow${k}`].join(', ')})`)
       }
     } else {
-      series.push(`Series(kind: ${swiftStr(kind)}, values: pyreonValues${k}, ${[...opts, ...errArgs].join(', ')})`)
+      series.push(`Series(kind: ${swiftStr(kind)}, values: pyreonValues${k}, ${[...opts, ...errArgs, ...fillArgs].join(', ')})`)
       if (fullA11y) fullA11ySeries.push(`Series(kind: ${swiftStr(kind)}, values: pyreonA11yValues${k}, ${[...opts, ...a11yErrArgs].join(', ')})`)
     }
   }

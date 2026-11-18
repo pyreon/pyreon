@@ -133,10 +133,12 @@ default). `fill` colours each datum on its own and is deliberately not `color`
 (the series colour) or `<Chart color="field">` (the long-format split): it takes
 the descriptor `fillBy(field)` (a colour on the row) or `shadeBy(field, { ramp })`
 (a value through a ramp) returns, both imported bindings that tree-shake away
-when unused. The value behind a shade is printed in the tooltip and the accessible
-table. `connectNulls` draws one stroke through the finite points of a line or area
+when unused. A ramp legend sits above a shaded plot, and the value behind each colour is a
+`(shade)` row in the tooltip and a column in the accessible table. `connectNulls` draws one stroke through the finite points of a line or area
 instead of breaking at each gap. The bar props and `connectNulls` lower to iOS and
-Android; `fill` is web-only and named by a compile-time warning.
+Android, as does `fill` with a literal field name (`fillBy('tone')`,
+`shadeBy('margin', { ramp })`); an accessor function stays web-only and is named
+by a compile-time warning.
 
 ### Entrance animation
 

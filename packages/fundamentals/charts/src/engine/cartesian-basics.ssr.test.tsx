@@ -41,4 +41,10 @@ describe('server-rendered cartesian basics', () => {
     expect(html).toContain('<th scope="col">Revenue (shade)</th>')
     expect(html).toContain('<tr><th scope="row">Jan</th><td>1,200</td><td>5</td></tr>')
   })
+
+  it('the ramp legend is in the first frame: its end labels are drawn above the plot', async () => {
+    const svg = frame(await renderToString(h(Chart<Row>, { data: DATA, x: 'm', width: 300, height: 200, animate: false }, h(Bar<Row>, { y: 'v', fill: shadeBy<Row>('w') }))))
+    expect(svg).toContain('>5<')
+    expect(svg).toContain('>9<')
+  })
 })

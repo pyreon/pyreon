@@ -592,14 +592,14 @@
       "warnings": 2
     },
     "golden-fixture:chart-item-fill.tsx|swift": {
-      "sha": "d7873be66d53b646ad04df6e10f929d4591a6674ca6963efc454c6533302795c",
-      "bytes": 2813,
-      "warnings": 2
+      "sha": "d763c0a07c6f55de3419b69764289301dc88b346f0be7e9e7c35704fb07b5d8c",
+      "bytes": 3473,
+      "warnings": 3
     },
     "golden-fixture:chart-item-fill.tsx|kotlin": {
-      "sha": "d44ee3e15557bfe48b7c301e446f42911b19a73ea2e060fbcbfff1c93ca36e5b",
-      "bytes": 3168,
-      "warnings": 2
+      "sha": "8fb8f6ac266755265e4914242705a0092f87cb64fe970ffbba7adf123cd2ba6a",
+      "bytes": 3817,
+      "warnings": 3
     },
     "golden-fixture:chart-kotlin-01.tsx|swift": {
       "sha": "0b04005fa223985f8f0c523a7631d211fbe4cb4a20db98472acbb1b4c6f2ffb4",

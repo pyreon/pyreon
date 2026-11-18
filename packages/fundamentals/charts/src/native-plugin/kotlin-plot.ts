@@ -2,7 +2,7 @@ import { plotMarkColorSlots, chartTooltipFields, chartThemePalette, PLOT_MARK_KI
 import { kotlinIdent, kotlinStr, type ExprIR } from '@pyreon/native-compiler/plugin-api'
 import { CHART_HANDLE_TYPE, CHARTS_PLUGIN_NAME } from './names'
 import { host } from './kotlin-facade'
-import { KOTLIN_CHART_TARGET, kotlinChartAnimating, chartAttrExprKotlin, kotlinChartDouble, chartEventHandler, kotlinChartSelectBody, kotlinAccessorExpr, kotlinMarkOptionArgs, kotlinChartChrome, kotlinChartThemeFields, kotlinChartThemeFrom, kotlinMarkErrorArgs, kotlinChartFormatter, kotlinBubbleRange, kotlinPlotRowMap, kotlinFrameHostWithDensity, kotlinZoomPresets, kotlinLegendInteraction, kotlinBrushHandler } from './kotlin-support'
+import { KOTLIN_CHART_TARGET, kotlinChartAnimating, chartAttrExprKotlin, kotlinChartDouble, chartEventHandler, kotlinChartSelectBody, kotlinAccessorExpr, kotlinMarkOptionArgs, kotlinChartChrome, kotlinChartThemeFields, kotlinChartThemeFrom, kotlinMarkErrorArgs, kotlinMarkFillArgs, kotlinChartFormatter, kotlinBubbleRange, kotlinPlotRowMap, kotlinFrameHostWithDensity, kotlinZoomPresets, kotlinLegendInteraction, kotlinBrushHandler } from './kotlin-support'
 
 /** The `values` expression for a derived (indicator) mark — mirror of `swiftIndicatorValues`. */
 function kotlinIndicatorValues(
@@ -271,6 +271,8 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     // The bounds ride the same row map the values do (mirror of the Swift emitter).
     const errArgs = kotlinMarkErrorArgs(optsArg, tag, k, rows, windowed, indent, lets, decimated)
     if (errArgs === 'unsupported') return 'Box {}'
+    const fillArgs = isBand ? [] : kotlinMarkFillArgs(optsArg, tag, k, rows, windowed, indent, lets, decimated)
+    if (fillArgs === 'unsupported') return 'Box {}'
     let a11yErrArgs: string[] = []
     if (fullA11y && errArgs.length > 0) {
       const fullErr = kotlinMarkErrorArgs(optsArg, tag, k, data, false, indent, lets, false, 'pyreonA11y')
@@ -299,7 +301,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
       lets.push(`val pyreonRadii${k}: List<Double> = bubbleRadii(pyreonRRaw${k}, ${range[0]}, ${range[1]})`)
       const at = opts.findIndex((o) => o.startsWith('showValues =')) + 1
       const withRadii = [...opts.slice(0, at), `rValues = pyreonRRaw${k}`, `radii = pyreonRadii${k}`, ...opts.slice(at)]
-      series.push(`Series(kind = "points", values = pyreonValues${k}, ${[...withRadii, ...errArgs].join(', ')})`)
+      series.push(`Series(kind = "points", values = pyreonValues${k}, ${[...withRadii, ...errArgs, ...fillArgs].join(', ')})`)
       if (fullA11y) {
         lets.push(`val pyreonA11yRRaw${k}: List<Double> = ${kotlinPlotRowMap(data, `(${rBody}).toDouble()`, false)}`)
         const a11yAt = opts.findIndex((o) => o.startsWith('showValues =')) + 1
@@ -321,7 +323,7 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
         fullA11ySeries.push(`Series(kind = "band", values = pyreonA11yValues${k}, ${[...opts, ...a11yErrArgs, `values2 = pyreonA11yLow${k}`].join(', ')})`)
       }
     } else {
-      series.push(`Series(kind = ${kotlinStr(kind)}, values = pyreonValues${k}, ${[...opts, ...errArgs].join(', ')})`)
+      series.push(`Series(kind = ${kotlinStr(kind)}, values = pyreonValues${k}, ${[...opts, ...errArgs, ...fillArgs].join(', ')})`)
       if (fullA11y) fullA11ySeries.push(`Series(kind = ${kotlinStr(kind)}, values = pyreonA11yValues${k}, ${[...opts, ...a11yErrArgs].join(', ')})`)
     }
   }

@@ -6584,8 +6584,8 @@ const regions: Region[] = [{ name: 'North', revenue: 420, margin: 12 }, { name: 
 - Using \`barGap\` on plain or stacked bars — it spaces the bars WITHIN a group, so it only has an effect on \`<Bar group>\`; the space between categories is \`barCategoryGap\`
 - Writing \`color="region"\` to colour each bar by a field — that is the long-format SPLIT (one series per distinct value); per-datum colour is \`fill={fillBy("colour")}\` (a colour on the row) or \`fill={shadeBy("margin")}\` (a value through a ramp)
 - Passing a colour string to \`fill\` — it takes the descriptor \`fillBy\` / \`shadeBy\` returns, not a colour; one colour for the whole series is \`color="#hex"\`
-- Expecting \`fill\` to colour bars on iOS and Android — it maps a closure over each row, which has no native form yet, so the compiler warns by name and the bars draw in the series colour
-- Reading a \`shadeBy\` colour as the only carrier of the value — the number behind it is printed beside the bar's own in the tooltip (\`Revenue: 420 (shade 12)\`) and as a \`Revenue (shade)\` column in the accessible table; there is no colour legend strip yet`,
+- Passing an accessor function to \`fillBy\` / \`shadeBy\` in a native app — only a LITERAL field name and literal options lower to iOS and Android (the engine colours from data); a function is a closure over a row, so the compiler warns by name and the bars draw in the series colour
+- Treating a \`shadeBy\` colour as the only carrier of the value — a ramp legend sits above the plot, the number behind each colour is a \`Revenue (shade)\` row in the tooltip and a column in the accessible table (web; natively the colours lower and the legend and those rows are named as web-only)`,
   },
 
   'charts/shadeBy': {
@@ -6599,10 +6599,10 @@ const regions: Region[] = [{ name: 'North', revenue: 420, margin: 12, status: '#
   <Bar<Region> y="revenue" fill={shadeBy<Region>('margin', { ramp: ['#fde68a', '#b45309'] })} />
   <Bar<Region> y="revenue" fill={fillBy<Region>('status')} />
 </Chart>`,
-    notes: `Per-datum colour for \`<Bar>\` and \`<Dot>\`, as an imported binding for the \`fill\` prop. \`shadeBy(channel, { ramp, domain })\` maps each datum's VALUE through a colour ramp (\`#rrggbb\` stops, low to high; default the heatmap's cool-to-warm; domain defaults to the finite extent of the values, pin it to compare charts). \`fillBy(channel)\` instead reads a CSS colour off the row (a field holding \`'#16a34a'\`, or an accessor). A datum with no colour or no finite value keeps the series colour. The values behind a shade are data: they reach the tooltip (\`Revenue: 420 (shade 12)\`) and the accessible table (a \`(shade)\` column). Both bindings are imported, so a chart that never colours a datum does not bundle them. Web only; the native compiler names \`fill\` and draws the series colour. See also: Bar, Cell.`,
+    notes: `Per-datum colour for \`<Bar>\` and \`<Dot>\`, as an imported binding for the \`fill\` prop. \`shadeBy(channel, { ramp, domain })\` maps each datum's VALUE through a colour ramp (\`#rrggbb\` stops, low to high; default the heatmap's cool-to-warm; domain defaults to the finite extent of the values, pin it to compare charts). \`fillBy(channel)\` instead reads a CSS colour off the row (a field holding \`'#16a34a'\`, or an accessor). A datum with no colour or no finite value keeps the series colour. The values behind a shade are data: a ramp legend sits above the plot (also in server SVG, mirrored under \`rtl\`), and a \`<label> (shade)\` row reaches the tooltip and the accessible table. The default ramp follows the theme (light and dark). Both bindings are imported, so a chart that never colours a datum does not bundle them. A literal field name and literal options lower to iOS and Android; an accessor function stays web-only and the compiler names it. See also: Bar, Cell.`,
     mistakes: `- Passing the result as \`color\` — \`color\` is the series colour (a string); the per-datum descriptor goes on \`fill\`
 - Giving \`shadeBy\` a ramp of named colours or \`rgb()\` strings — the ramp is \`#rrggbb\` stops, the hex restriction being what lets the ramp math be the engine's own
-- Expecting the colours to follow the dark theme — the default ramp is fixed; pass a ramp per mode (or \`ramp\` from your own theme tokens)`,
+- Expecting a native shade with no \`ramp\` to follow the dark theme — the web default is the theme ramp, but natively it resolves at compile time to the light ramp (and says so); pass a \`ramp\``,
   },
 
   'charts/Line': {

@@ -32,17 +32,20 @@ export function App() {
 }
 `
 
-const FILL = `import { Bar, Chart, shadeBy } from '@pyreon/charts'
-interface Row { m: string; a: number; t: number }
-const ROWS: Row[] = [{ m: 'Jan', a: 3, t: 5 }, { m: 'Feb', a: 4, t: 1 }]
+const FILL = `import { Bar, Chart, fillBy, shadeBy } from '@pyreon/charts'
+interface Row { m: string; a: number; t: number; tone: string }
+const ROWS: Row[] = [{ m: 'Jan', a: 3, t: 5, tone: '#ff0000' }, { m: 'Feb', a: 4, t: 1, tone: '#00ff00' }]
 export function App() {
   return (
     <Chart<Row> data={ROWS} x="m" height={200}>
-      <Bar<Row> y="a" fill={shadeBy<Row>('t')} />
+      <Bar<Row> y="a" label="A" fill={fillBy<Row>('tone')} />
+      <Bar<Row> y="t" label="T" fill={shadeBy<Row>('t', { ramp: ['#fde68a', '#b45309'], domain: { min: 0, max: 10 } })} />
     </Chart>
   )
 }
 `
+
+const ACCESSOR = FILL.replace("fillBy<Row>('tone')", "fillBy<Row>((d) => d.tone)")
 
 describe.each(['swift', 'kotlin'] as const)('bar thickness on %s', (target) => {
   it('barWidth / barGap / barCategoryGap land on the ChartSpec as literals, in the struct\'s field order', () => {
@@ -69,13 +72,37 @@ describe.each(['swift', 'kotlin'] as const)('bar thickness on %s', (target) => {
   })
 })
 
-describe.each(['swift', 'kotlin'] as const)('per-datum fill on %s is declined by name', (target) => {
-  it('warns once per mark and the bars draw in the series colour', () => {
+describe.each(['swift', 'kotlin'] as const)('per-datum fill on %s', (target) => {
+  const eq = target === 'swift' ? ': ' : ' = '
+  it('fillBy and shadeBy over literal fields lower to itemColors / shades, coloured by the engine', () => {
     const r = transform(FILL, { target })
-    const named = r.warnings.filter((w) => w.includes('`fill` (per-datum colour'))
+    expect(r.code).toContain(`itemColors${eq}pyreonFill0`)
+    expect(r.code).toContain(`itemColors${eq}pyreonFill1`)
+    expect(r.code).toContain(`shades${eq}pyreonShade1`)
+    expect(r.code).toContain('shadeColors(pyreonShade1')
+    expect(r.code).toContain('#fde68a')
+    // The pinned domain is literal; fillBy reads the row's colour field.
+    expect(r.code).toMatch(/shadeColors\(pyreonShade1, .*, 0\.0, 10\.0\)/)
+    expect(r.code).toContain('.tone')
+  })
+  it('names what a shade leaves on the web: the legend and the (shade) rows', () => {
+    const named = transform(FILL, { target }).warnings.filter((w) => w.includes('ramp legend'))
     expect(named).toHaveLength(1)
-    expect(named[0]).toContain('series colour')
+  })
+  it('a shade with no ramp names the theme-ramp difference', () => {
+    const r = transform(FILL.replace("{ ramp: ['#fde68a', '#b45309'], domain: { min: 0, max: 10 } }", '{}'), { target })
+    expect(r.warnings.some((w) => w.includes('LIGHT theme ramp'))).toBe(true)
+    expect(r.code).toContain('shadeExtent(pyreonShade1)')
+  })
+  it('an accessor function is declined by name and draws the series colour', () => {
+    const r = transform(ACCESSOR, { target })
+    expect(r.warnings.some((w) => w.includes('`fill` needs `fillBy(\'field\')`'))).toBe(true)
+    expect(r.code).not.toContain('pyreonFill0')
+  })
+  it('a chart with no fill emits none of it (byte-stable)', () => {
+    const r = transform(GROUPED, { target })
     expect(r.code).not.toContain('itemColors')
+    expect(r.code).not.toContain('shadeColors')
   })
 })
 
@@ -108,6 +135,14 @@ describe.each(['swift', 'kotlin'] as const)('connectNulls on %s', (target) => {
 })
 
 describe('the emit compiles', () => {
+  it.skipIf(!isSwiftUIAvailable())('swiftc accepts the per-datum fill emit', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(FILL, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc accepts the per-datum fill emit', () => {
+    const r = validateKotlin(transform(FILL, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
   it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts the grouped / horizontal emit', () => {
     const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(GROUPED, { target: 'swift' }).code)
     expect(r.ok, r.error ?? '').toBe(true)

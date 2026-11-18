@@ -1963,6 +1963,69 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
 ]
 
 /**
+ * A mark's per-datum `fill` as data: `fillBy('field')` (a colour on the row) or
+ * `shadeBy('field', { ramp: ['#…', …], domain: { min, max } })` (a value mapped
+ * through a ramp). The field name and the options are literals, so the whole
+ * thing is data the engine's `shadeColors` can colour from; an accessor
+ * function is a closure over a row and has no native form, so it is declined by
+ * name (the bars draw in the series colour). A shade also names what stays
+ * web-only: its ramp legend and its `(shade)` table and tooltip rows.
+ */
+export interface PlotFillSpec {
+  shade: boolean
+  field: string
+  ramp: readonly string[]
+  domain: { min: number; max: number } | undefined
+}
+
+export function plotFillSpec(opts: ExprIR | undefined, tag: string, k: number, warn: (m: string) => void): PlotFillSpec | undefined {
+  if (opts === undefined || opts.kind !== 'object') return undefined
+  const v = opts.fields.find((f) => f.name === 'fill')?.value
+  if (v === undefined) return undefined
+  const at = `<${tag}> mark ${k + 1}`
+  const name = v.kind === 'call' && v.callee.kind === 'identifier' ? v.callee.name : ''
+  const field = v.kind === 'call' ? v.args[0] : undefined
+  if ((name !== 'fillBy' && name !== 'shadeBy') || field === undefined || field.kind !== 'literal' || typeof field.value !== 'string') {
+    warn(`${at}: \`fill\` needs \`fillBy('field')\` or \`shadeBy('field', { ramp, domain })\` with a literal field name on native; an accessor function is a closure over a row and is not lowered, so every bar and dot draws in the series colour.`)
+
+    return undefined
+  }
+  if (name === 'fillBy') return { shade: false, field: field.value, ramp: [], domain: undefined }
+  const o = v.kind === 'call' ? v.args[1] : undefined
+  const opts2 = o !== undefined && o.kind === 'object' ? o : undefined
+  const parsed = plotShadeOptions(opts2, at, warn)
+  if (opts2 === undefined || !opts2.fields.some((f) => f.name === 'ramp')) warn(`${at}: \`shadeBy\` with no \`ramp\` uses the LIGHT theme ramp on native (the web follows the colour mode); pass a ramp to match.`)
+  warn(`${at}: \`shadeBy\` colours the bars on native; its ramp legend and its (shade) table and tooltip rows are web-only.`)
+
+  return { shade: true, field: field.value, ramp: parsed.ramp, domain: parsed.domain }
+}
+
+/** The literal `ramp` and `domain` of a `shadeBy` options object; anything else is named and left at its default. */
+function plotShadeOptions(o: Extract<ExprIR, { kind: 'object' }> | undefined, at: string, warn: (m: string) => void): { ramp: readonly string[]; domain: PlotFillSpec['domain'] } {
+  let ramp: readonly string[] = CHART_THEME_DEFAULT.ramp
+  let domain: PlotFillSpec['domain']
+  const r = o?.fields.find((f) => f.name === 'ramp')?.value
+  if (r !== undefined) {
+    if (r.kind === 'array' && r.elements.length > 0 && r.elements.every((e) => e.kind === 'literal' && typeof e.value === 'string')) ramp = r.elements.map((e) => (e as { value: string }).value)
+    else warn(`${at}: \`shadeBy\` ramp must be an array of string literals on native; the light theme ramp applies.`)
+  }
+  const d = o?.fields.find((f) => f.name === 'domain')?.value
+  if (d !== undefined) {
+    const lo = d.kind === 'object' ? d.fields.find((f) => f.name === 'min')?.value : undefined
+    const hi = d.kind === 'object' ? d.fields.find((f) => f.name === 'max')?.value : undefined
+    if (lo?.kind === 'literal' && typeof lo.value === 'number' && hi?.kind === 'literal' && typeof hi.value === 'number') domain = { min: lo.value, max: hi.value }
+    else warn(`${at}: \`shadeBy\` domain must be a literal { min, max } on native; the extent of the values applies.`)
+  }
+
+  return { ramp, domain }
+}
+
+/** The arrow `(d) => d.<field>` as IR, for the emitters' accessor lowering. */
+export function plotFillAccessor(field: string): ExprIR {
+  return { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: field } }
+}
+
+/**
  * Mark options that are ACCESSORS rather than literals: `errorLow` /
  * `errorHigh`, a per-datum bound each. They lower like the bubble mark's
  * radius channel — mapped over the same rows the values came from, into

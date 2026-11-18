@@ -13,9 +13,10 @@
 // ramp legend. The shared host calls them through the descriptor, so a chart
 // that never imports `shadeBy` carries none of this code.
 
-import { HEAT_RAMP, rampColor } from './heat'
+import { HEAT_RAMP } from './heat'
 import { warnOnce } from './dev-warn'
 import { shiftCmds } from './canvas-host'
+import { shadeColors, shadeExtent } from './shade'
 import { plain } from './format'
 import { renderVisualStrip, visualStripSize } from './visual-strip'
 import type { VisualStrip } from './visual-strip'
@@ -100,19 +101,12 @@ export function fillBy<T>(channel: ItemChannel<T, string | undefined>): ItemFill
   }
 }
 
-/** The extent of the finite values, or the pinned domain. */
-function shadeDomain(series: readonly Series[], pinned: Domain | undefined): Domain {
-  if (pinned !== undefined) return pinned
-  let lo = Number.POSITIVE_INFINITY
-  let hi = Number.NEGATIVE_INFINITY
-  for (const s of series) {
-    for (const v of s.shades ?? []) {
-      if (v < lo) lo = v
-      if (v > hi) hi = v
-    }
-  }
+/** The extent of the finite values across every shaded series, or the pinned domain. */
+function legendDomain(series: readonly Series[], pinned: Domain | undefined): Domain {
+  const all: Double[] = []
+  for (const s of series) for (const v of s.shades ?? []) all.push(v)
 
-  return { min: lo, max: hi }
+  return pinned ?? shadeExtent(all)
 }
 
 /**
@@ -131,20 +125,14 @@ export function shadeBy<T>(channel: ItemChannel<T, number | undefined>, options:
     kind: 'shade-by',
     resolve: (data, ramp) => {
       const shades: Double[] = []
-      let lo = Number.POSITIVE_INFINITY
-      let hi = Number.NEGATIVE_INFINITY
       for (let i = 0; i < data.length; i++) {
         const raw = read(channel, data[i]!, i)
         if (raw !== undefined && typeof raw !== 'number') warnOnce('shade:nonnumber', 'shadeBy: the channel returned a non-number; that datum keeps the series colour.')
-        const v = typeof raw === 'number' && Number.isFinite(raw) ? raw : Number.NaN
-        shades.push(v)
-        if (v < lo) lo = v
-        if (v > hi) hi = v
+        shades.push(typeof raw === 'number' && Number.isFinite(raw) ? raw : Number.NaN)
       }
-      const domain = options.domain ?? { min: lo, max: hi }
+      const domain = options.domain ?? shadeExtent(shades)
       stops = options.ramp !== undefined && options.ramp.length > 0 ? options.ramp : ramp ?? HEAT_RAMP
-      const span = domain.max - domain.min
-      const itemColors = shades.map((v) => (Number.isNaN(v) ? '' : rampColor(stops, span > 0 ? (v - domain.min) / span : 0.5)))
+      const itemColors = shadeColors(shades, [...stops], domain.min, domain.max)
 
       return { itemColors, shades }
     },
@@ -158,8 +146,8 @@ export function shadeBy<T>(channel: ItemChannel<T, number | undefined>, options:
       return out
     },
     legend: (series, at, theme) => {
-      const dom = shadeDomain(series, options.domain)
-      if (!(dom.max >= dom.min)) return { cmds: [], height: 0, shift: (c) => c }
+      if (!series.some((x) => x.shades !== undefined)) return { cmds: [], height: 0, shift: (c) => c }
+      const dom = legendDomain(series, options.domain)
       const fmt = plain
       const strip: VisualStrip = {
         piecewise: false,

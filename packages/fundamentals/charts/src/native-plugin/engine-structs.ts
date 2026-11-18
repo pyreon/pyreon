@@ -2162,36 +2162,6 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
-    "name": "GroupSlot",
-    "fields": [
-      {
-        "name": "bar",
-        "type": {
-          "kind": "typeRef",
-          "name": "Double",
-          "args": []
-        }
-      },
-      {
-        "name": "group",
-        "type": {
-          "kind": "typeRef",
-          "name": "Double",
-          "args": []
-        }
-      },
-      {
-        "name": "pitch",
-        "type": {
-          "kind": "typeRef",
-          "name": "Double",
-          "args": []
-        }
-      }
-    ],
-    "external": true
-  },
-  {
     "name": "WaterfallStep",
     "fields": [
       {
@@ -11634,22 +11604,6 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             }
           ]
         }
-      },
-      {
-        "name": "shade",
-        "type": {
-          "kind": "union",
-          "branches": [
-            {
-              "kind": "typeRef",
-              "name": "Double",
-              "args": []
-            },
-            {
-              "kind": "undefined"
-            }
-          ]
-        }
       }
     ],
     "external": true
@@ -11724,25 +11678,6 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       },
       {
         "name": "rValues",
-        "type": {
-          "kind": "union",
-          "branches": [
-            {
-              "kind": "array",
-              "element": {
-                "kind": "typeRef",
-                "name": "Double",
-                "args": []
-              }
-            },
-            {
-              "kind": "undefined"
-            }
-          ]
-        }
-      },
-      {
-        "name": "shades",
         "type": {
           "kind": "union",
           "branches": [
@@ -12510,25 +12445,6 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             }
           ]
         }
-      },
-      {
-        "name": "shades",
-        "type": {
-          "kind": "union",
-          "branches": [
-            {
-              "kind": "array",
-              "element": {
-                "kind": "typeRef",
-                "name": "Double",
-                "args": []
-              }
-            },
-            {
-              "kind": "undefined"
-            }
-          ]
-        }
       }
     ],
     "external": true
@@ -12755,7 +12671,6 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "GraphLink",
   "GraphNode",
   "GraphOptions",
-  "GroupSlot",
   "Gutters",
   "HeatCell",
   "HeatGrid",
