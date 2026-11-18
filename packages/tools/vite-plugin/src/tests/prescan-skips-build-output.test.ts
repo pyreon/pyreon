@@ -19,6 +19,7 @@ import pyreon from '../index'
 interface IslandDecl {
   name: string
 }
+
 type Caches = { islandRegistry: Map<string, IslandDecl[]> }
 
 let root: string
@@ -74,6 +75,7 @@ beforeEach(() => {
   )
   write('src/main.ts', `export { Source } from './islands'\n`)
 })
+
 afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })

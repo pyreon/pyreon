@@ -45,6 +45,7 @@ export function configuredOutputDirs(config: OutputConfig): string[] {
   for (const env of Object.values(config.environments ?? {})) add(env.build?.outDir)
   add(config.publicDir)
   add(config.cacheDir)
+
   return [...dirs]
 }
 
@@ -90,6 +91,7 @@ export function outputDirsToSkip(root: string, dirs: readonly string[]): Set<str
     const outside = rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)
     if (rel !== '' && !outside) skip.add(rel)
   }
+
   return skip
 }
 
