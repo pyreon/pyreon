@@ -700,12 +700,19 @@ export const noWindowInSsr: Rule = {
       LabeledStatement: skipLabel,
       BreakStatement: skipLabel,
       ContinueStatement: skipLabel,
-      // `export { doc as document }` — the EXPORTED name is a module-interface
-      // name. The LOCAL side is a real reference and stays checked.
+      // `export { location }`, `export { doc as document }`, `export { location }
+      // from './x'` — an export specifier never reads a global. The EXPORTED
+      // name is a module-interface name, and the LOCAL side names a module
+      // binding: a declaration or import of this module, or (with `from`) a
+      // binding of the source module. ESM rejects exporting an undeclared name,
+      // so neither side can resolve to `window.location`.
       ExportSpecifier(node: any) {
-        if (node.exported?.type === 'Identifier' && node.exported !== node.local) {
-          skipPropertyNodes.add(node.exported)
-        }
+        if (node.exported?.type === 'Identifier') skipPropertyNodes.add(node.exported)
+        if (node.local?.type === 'Identifier') skipPropertyNodes.add(node.local)
+      },
+      // `export * as window from './x'` — the namespace name is an export name.
+      ExportAllDeclaration(node: any) {
+        if (node.exported?.type === 'Identifier') skipPropertyNodes.add(node.exported)
       },
       ImportDeclaration(node: any) {
         // Recognise Pyreon's canonical env flags as SSR guards — but ONLY when

@@ -42,6 +42,14 @@ describe('no-window-in-ssr — names that spell a browser global are not referen
     ['enum member', `export enum Target { document, window }`],
     ['labelled statement', `export function f() { document: for (;;) { break document } }`],
     ['export alias', `const doc = 1\nexport { doc as document }`],
+    // A specifier always names a MODULE binding (ESM rejects exporting an
+    // undeclared name), so neither side can ever be the browser global.
+    ['re-export specifier', `export { location } from './layout'`],
+    ['re-export with a renamed local', `export { location as loc } from './layout'`],
+    ['re-export renamed to a global name', `export { loc as location } from './layout'`],
+    ['namespace re-export', `export * as window from './layout'`],
+    ['type-only re-export', `export type { navigator } from './layout'`],
+    ['export of a local binding', `const location = (p: string) => p\nexport { location }`],
     ['JSX attribute name', `export const C = () => <Frame document="x" />`],
   ]
   for (const [name, code] of quiet) {
