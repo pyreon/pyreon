@@ -1,0 +1,64 @@
+{
+  "name": "@pyreon/time",
+  "version": "0.53.0",
+  "description": "Dates and times as plain strings and numbers for Pyreon \u2014 ISO values, DST-correct zone math, calendar grids, no classes",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/time#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pyreon/pyreon.git",
+    "directory": "packages/fundamentals/time"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    },
+    "./core": {
+      "bun": "./src/core.ts",
+      "import": "./lib/core.js",
+      "types": "./lib/types/core.d.ts"
+    }
+  },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run && bun run test:oracle",
+    "test:oracle": "PYREON_REQUIRE_TEMPORAL=1 bun --bun x vitest run src/tests/oracle",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint .",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
+    "bench:rivals": "NODE_ENV=production bun bench/time-rivals.ts",
+    "bench:bundle": "bun bench/time-bundle.ts"
+  },
+  "devDependencies": {
+    "@date-fns/tz": "1.5.0",
+    "@pyreon/manifest": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vitest-config": "workspace:*",
+    "@types/luxon": "3.7.6",
+    "@vitest/browser-playwright": "^5.1.0",
+    "date-fns": "4.4.0",
+    "dayjs": "1.11.23",
+    "luxon": "3.7.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
