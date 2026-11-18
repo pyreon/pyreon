@@ -153,7 +153,10 @@ sa.set(5) // sb() becomes 5`,
         'Link two in-memory FakeCrdtDocs so a write to one propagates to the other — the test analog of a transport. Returns a `disconnect()` to simulate going offline.',
       example: `const link = connectFakeDocs(a, b)
 link.disconnect() // simulate offline`,
-      seeAlso: ['FakeCrdtAdapter'],
+      mistakes: [
+        'Chaining links (`connectFakeDocs(a, b)` + `connectFakeDocs(b, c)`) to model three peers — the link is pairwise and never re-forwards a commit it received, so `a`’s writes stop at `b`. Link every pair directly',
+      ],
+      seeAlso: ['FakeCrdtAdapter', 'connectYDocs'],
     },
     {
       name: 'pyreonAdapter',
@@ -361,6 +364,28 @@ p.others()  // PeerState<{ name: string }>[] — other people here`,
   {p => <Avatar name={p.state.name} />}
 </For>`,
       seeAlso: ['syncedAwareness', 'SyncedAwareness'],
+    },
+    {
+      name: 'connectYDocs',
+      kind: 'function',
+      signature: '(a: YjsCrdtDoc, b: YjsCrdtDoc) => { disconnect(): void }',
+      summary:
+        'Link two Yjs docs in memory — the real-Yjs analog of `connectFakeDocs`, for tests and single-page demos. On connect it exchanges full state both ways, so docs that diverged while disconnected converge with no lost edit; afterwards it forwards each LOCAL update live. It is PAIRWISE: an update a doc received over a link (any `REMOTE_ORIGIN` update) is never forwarded again, so a chain `device1 ↔ relay ↔ device2` built from two calls does not carry live edits from `device1` to `device2` (they converge only when the second link connects again). For more than two docs, link every pair directly (a full mesh), or use a relaying transport: `connectViaWebSocket` against `createSyncServer`, or `connectViaBroadcastChannel` for same-origin tabs.',
+      example: `import { createYjsDoc, connectYDocs } from "@pyreon/sync/yjs"
+
+const a = createYjsDoc()
+const b = createYjsDoc()
+const link = connectYDocs(a, b) // state merge both ways + live link
+link.disconnect() // offline; connecting again re-merges
+
+// Three docs: link every pair, never a chain.
+const c = createYjsDoc()
+connectYDocs(a, c)
+connectYDocs(b, c)`,
+      mistakes: [
+        'Building a relay out of two calls (`connectYDocs(device1, relay)` + `connectYDocs(relay, device2)`) — the middle doc does not re-forward what it received, so live edits stop at `relay`. Link `device1` and `device2` directly, or use `connectViaWebSocket` + `createSyncServer`, whose server relays',
+      ],
+      seeAlso: ['connectFakeDocs', 'connectViaWebSocket', 'connectViaBroadcastChannel', 'createYjsDoc'],
     },
     {
       name: 'connectViaBroadcastChannel',
