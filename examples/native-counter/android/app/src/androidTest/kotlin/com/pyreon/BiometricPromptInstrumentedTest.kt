@@ -44,11 +44,21 @@ class BiometricPromptInstrumentedTest {
         }
     }
 
-    private fun unlock() {
+    private fun tapUnlock() {
         composeRule.onNodeWithText("Lock: idle").performScrollTo()
         composeRule.onNodeWithText("Unlock").performScrollTo().performClick()
-        // "checking" holds while the prompt is up: the call reached the gate
-        // and is waiting on the user rather than resolving at once.
+    }
+
+    /**
+     * Tap Unlock and require the call to WAIT on the prompt: "checking" must
+     * appear and still be showing a moment later. Only for a phase where
+     * nothing can settle the prompt in that window. The host touches the
+     * sensor every two seconds from its own clock, so in the accept phase an
+     * enrolled touch can land inside any fixed window and unlock at once, which
+     * this would then report as "resolved without waiting".
+     */
+    private fun unlockAndHold() {
+        tapUnlock()
         waitForText("Lock: checking", 5_000)
         Thread.sleep(1_500)
         check(composeRule.onAllNodesWithText("Lock: checking").fetchSemanticsNodes().isNotEmpty()) {
@@ -59,15 +69,19 @@ class BiometricPromptInstrumentedTest {
     @Test
     fun enrolledFingerprintUnlocks() {
         assumeTrue("run by scripts/biometric-device-test.sh only", phase() == "accept")
-        unlock()
-        // The host touches finger 1 (enrolled) every couple of seconds.
+        tapUnlock()
+        // The host touches finger 1 (enrolled) every couple of seconds, on its
+        // own clock. "unlocked" is reachable only through a real prompt that
+        // accepted a real fingerprint: a call that resolves without one ends in
+        // "denied" (the reject phase proves the waiting itself, where no touch
+        // can settle the prompt).
         waitForText("Lock: unlocked", 30_000)
     }
 
     @Test
     fun unenrolledFingerprintThenCancelDenies() {
         assumeTrue("run by scripts/biometric-device-test.sh only", phase() == "reject")
-        unlock()
+        unlockAndHold()
         // The host touches finger 2 (not enrolled) during this window; a failed
         // attempt must NOT settle the call.
         Thread.sleep(6_000)
