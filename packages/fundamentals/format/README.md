@@ -33,6 +33,8 @@ The same function works in JSX and effects (it reads the active locale and time 
 | `@pyreon/format/core` | nothing | Every formatter and parser as a pure function. Locale and time zone come from the options; default is the runtime's. |
 | `@pyreon/format` | `@pyreon/core`, `@pyreon/reactivity`, `@pyreon/ambient` | The same names, defaulting to the active locale and zone. Plus the locale API (re-exported from `@pyreon/ambient`) and `useRelativeTime`. |
 | `@pyreon/format/components` | `@pyreon/core`, `@pyreon/reactivity`, `@pyreon/ambient` | `<Num>`, `<DateTime>` and `<RelativeTime>`. |
+| `@pyreon/format/units` | `@pyreon/ambient` | Unit conversion with the active locale. |
+| `@pyreon/format/units/core` | nothing | The same, pure. |
 
 ## Formatters
 
@@ -54,6 +56,21 @@ The same function works in JSX and effects (it reads the active locale and time 
 | `formatNumberRange(3, 5)` | `3–5` |
 
 Options are the platform's `Intl` option names plus `locale`, `timeZone` (dates) and `fallback`. A string in place of options is a preset or style shorthand (`'long'`, `'compact'`, `'or'`). Nullish input returns `fallback` (default `''`); invalid input returns it too, with a dev-only warning; a bad option or unknown unit throws a `[Pyreon]` error that says how to fix it.
+
+## Converting units
+
+`@pyreon/format/units` converts between the units `Intl` can format and formats the result; the table is in its own entry, so the main entries cost nothing.
+
+```ts
+import { convert, formatUnit, measurementSystem } from '@pyreon/format/units'
+
+convert(5, 'mile', 'kilometer')                                          // 8.04672
+formatUnit(5, 'mile', { convertTo: 'kilometer', locale: 'en-US' })       // "8.05 km"
+formatUnit(100, 'kilometer', { system: 'auto', locale: 'en-US' })        // "62.1 mi"
+measurementSystem('en-GB')                                               // "uk"
+```
+
+Exact definitions, one combined factor. `gallon` and `fluid-ounce` are the US units; a kilobyte is 1000 bytes. See the docs page for the caveats.
 
 ## Spaces in output
 

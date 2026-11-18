@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as components from '../components'
+import * as unitsModule from '../units'
 import * as format from '../index'
 import { _resetLocaleState } from '../locale'
 
@@ -40,7 +41,9 @@ describe('docs/format.md examples', () => {
       body.push(`__check(() => (${expr}))`)
     }
     const results: unknown[] = []
-    new Function(...Object.keys(format), '__check', body.join('\n'))(...Object.values(format), (get: () => unknown) => results.push(get()))
+    // A block that imports from @pyreon/format/units runs against that entry (its formatUnit is the converting one).
+    const scope: Record<string, unknown> = lines.some((l) => l.includes("from '@pyreon/format/units")) ? { ...format, ...unitsModule } : { ...format }
+    new Function(...Object.keys(scope), '__check', body.join('\n'))(...Object.values(scope), (get: () => unknown) => results.push(get()))
     expected.forEach((shown, i) => expect(norm(results[i]), shown).toEqual(norm(JSON.parse(shown))))
   })
 
@@ -63,7 +66,7 @@ describe('docs/format.md examples', () => {
  */
 describe('every code block imports what it uses', () => {
   const FILES = ['docs/src/content/docs/format.md', 'docs/src/content/docs/patterns/formatting.md', 'packages/fundamentals/format/README.md']
-  const names = [...Object.keys(format), ...Object.keys(components)]
+  const names = [...Object.keys(format), ...Object.keys(components), ...Object.keys(unitsModule)]
 
   it.each(FILES)('%s', (file) => {
     const text = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../../../../', file), 'utf8')

@@ -32,6 +32,16 @@
       "bun": "./src/components.ts",
       "import": "./lib/components.js",
       "types": "./lib/types/components.d.ts"
+    },
+    "./units": {
+      "bun": "./src/units.ts",
+      "import": "./lib/units.js",
+      "types": "./lib/types/units.d.ts"
+    },
+    "./units/core": {
+      "bun": "./src/units/core.ts",
+      "import": "./lib/units/core.js",
+      "types": "./lib/types/units/core.d.ts"
     }
   },
   "files": [

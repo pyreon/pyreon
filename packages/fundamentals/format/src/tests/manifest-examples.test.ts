@@ -9,6 +9,8 @@
 import * as format from '../index'
 import * as components from '../components'
 import * as core from '../core'
+import * as convertModule from '../convert'
+import * as unitsModule from '../units'
 import { h } from '@pyreon/core'
 import manifest from '../manifest'
 import { _resetLocaleState } from '../locale'
@@ -17,6 +19,8 @@ const normalise = (s: string): string => s.replace(/[   ]/g, ' ')
 const show = (v: unknown): string => (typeof v === 'string' ? JSON.stringify(normalise(v)) : v === undefined ? 'undefined' : JSON.stringify(v))
 
 const SCOPE = { ...format, ...components, h }
+// An example that starts with `// import { ... } from '@pyreon/format/units'` runs against the conversion entry.
+const UNITS_SCOPE = { ...SCOPE, ...convertModule, ...unitsModule }
 
 function evaluate(example: string): Array<{ expr: string; shown: string; actual: string }> {
   const checks: Array<{ expr: string; shown: string; actual: string }> = []
@@ -31,8 +35,9 @@ function evaluate(example: string): Array<{ expr: string; shown: string; actual:
     const shown = line.slice(at + ' // → '.length)
     body.push(`__check(${JSON.stringify(expr)}, ${JSON.stringify(shown)}, () => (${expr}))`)
   }
-  const fn = new Function(...Object.keys(SCOPE), '__check', body.join('\n'))
-  fn(...Object.values(SCOPE), (expr: string, shown: string, get: () => unknown) => {
+  const scope = example.includes("from '@pyreon/format/units'") ? UNITS_SCOPE : SCOPE
+  const fn = new Function(...Object.keys(scope), '__check', body.join('\n'))
+  fn(...Object.values(scope), (expr: string, shown: string, get: () => unknown) => {
     checks.push({ expr, shown, actual: show(get()) })
   })
 
@@ -58,7 +63,7 @@ describe('manifest examples are true', () => {
 
   it('the runtime exports of the entries are exactly the names the manifest documents (types excluded)', () => {
     const documented = new Set<string>(manifest.api.filter((a) => a.kind !== 'type').map((a) => a.name))
-    const exported = new Set<string>([...Object.keys(core), ...Object.keys(format), ...Object.keys(components)])
+    const exported = new Set<string>([...Object.keys(core), ...Object.keys(format), ...Object.keys(components), ...Object.keys(unitsModule)])
 
     expect([...exported].filter((n) => !documented.has(n)).sort(), 'exported but not documented').toEqual([])
     expect([...documented].filter((n) => !exported.has(n)).sort(), 'documented but not exported by any entry').toEqual([])

@@ -481,6 +481,22 @@ export const SCENARIOS: Scenario[] = [
     imports: ['formatRelativeTo'],
   },
   {
+    id: '@pyreon/format::units-convert',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'units/core.js',
+    // The conversion alone: the exact-rational table and `convert`, nothing of the formatters.
+    imports: ['convert'],
+  },
+  {
+    id: '@pyreon/format::units-formatUnit',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'units/core.js',
+    // A converting unit formatter: the conversion, the measurement-system table and the unit formatter it wraps.
+    imports: ['formatUnit', 'measurementSystem', 'preferredUnit'],
+  },
+  {
     id: '@pyreon/format::core-formatDate',
     pkg: '@pyreon/format',
     dir: 'fundamentals/format',

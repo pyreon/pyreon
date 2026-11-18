@@ -2,6 +2,7 @@
 // package (see manifest-examples.test.ts, which re-evaluates them). Edit freely; keep the
 // examples true: that test fails when an output drifts.
 import { defineManifest } from '@pyreon/manifest'
+import { unitsApi, unitsTypeApi } from './manifest-units'
 
 export default defineManifest({
   name: '@pyreon/format',
@@ -52,7 +53,8 @@ parseDate('18. 11. 2026', { locale: 'cs' }) // → "2026-11-18"`,
     'Calendar dates never shift: a date-only or offset-less string formats as that day / wall-clock time in every time zone',
     'Bounded three-tier Intl cache: no options, preset string, options object (identity, then structural key) — every table bounded, no JSON.stringify on the hot path',
     'Never throws on data: nullish returns the fallback, invalid returns it with a dev-only warning; programmer errors (unknown unit, bad option) throw [Pyreon] errors that say how to fix',
-    'Three tree-shakeable entries: /core (no @pyreon import), the reactive entry, /components (<Num>, <DateTime>)',
+    'Unit conversion in its own entry, @pyreon/format/units (and /units/core, pure): convert, canConvert, unitDimension, measurementSystem, preferredUnit and a formatUnit that converts; exact definitions, one combined factor, nothing of it in the main entries',
+    'Three tree-shakeable main entries: /core (no @pyreon import), the reactive entry, /components (<Num>, <DateTime>, <RelativeTime>)',
     'defineFormats names a format set with inferred keys and typed overrides; createFormatter gives a bound non-reactive set for servers and tests',
   ],
   api: [
@@ -119,14 +121,14 @@ formatCompact(1240000, { locale: 'de' }) // → "1,2 Mio."`,
       name: "formatUnit",
       kind: "function",
       signature: "(value: NumberInput, unit: Unit, options?: UnitOptions | UnitPreset) => string",
-      summary: "Format a measurement with a sanctioned `Intl` unit (`Unit` is a union of them, plus `<unit>-per-<unit>` compounds). `unitDisplay` is `short` by default. An unknown unit is a programmer error and throws a `[Pyreon]` error.",
+      summary: "Format a measurement with a sanctioned `Intl` unit (`Unit` is a union of them, plus `<unit>-per-<unit>` compounds). `unitDisplay` is `short` by default. An unknown unit is a programmer error and throws a `[Pyreon]` error. `@pyreon/format/units` (and `/units/core`) export a `formatUnit` with a conversion in front: `{ convertTo: 'kilometer' }` converts, `{ system: 'auto' | 'metric' | 'us' | 'uk' }` shows the unit of the locale's system (`'auto'` follows the active locale), `convertTo` wins; the main entries never include the conversion table.",
       example: `formatUnit(72, 'kilometer-per-hour', { locale: 'en-US' }) // → "72 km/h"
 formatUnit(1.5, 'liter', { locale: 'en-US', unitDisplay: 'long' }) // → "1.5 liters"
 formatUnit(21, 'celsius', { locale: 'de' }) // → "21 °C"`,
       mistakes: [
         "A unit that is not in `Intl.supportedValuesOf('unit')` (`kilometre`, `km`): it is a type error and throws at runtime",
       ],
-      seeAlso: ["formatBytes", "Unit"],
+      seeAlso: ["formatBytes", "Unit", "convert"],
     },
     {
       name: "formatBytes",
@@ -415,12 +417,13 @@ short.with({ compactDisplay: 'long' })(1240000) // → "1.2 million"`,
       name: "unitFormatter",
       kind: "function",
       signature: "(unit: Unit, options?: UnitOptions | UnitPreset) => Formatter<NumberInput, 'unit'>",
-      summary: "A reusable unit formatter. An unknown unit is a type error and throws a `[Pyreon]` error.",
+      summary: "A reusable unit formatter. An unknown unit is a type error and throws a `[Pyreon]` error. `@pyreon/format/units` exports one that takes `{ convertTo, system }` as well (the converted value is formatted in the target unit, `system: 'auto'` follows the active locale, and `parts`, `range`, `with` and `from` work).",
       example: `const speed = unitFormatter('kilometer-per-hour', { locale: 'en-US' })
 speed(72) // → "72 km/h"
 speed.with({ unitDisplay: 'long' })(72) // → "72 kilometers per hour"`,
       seeAlso: ["formatUnit"],
     },
+    ...unitsApi,
     {
       name: "bytesFormatter",
       kind: "function",
@@ -642,6 +645,7 @@ formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'sh
       ],
       seeAlso: ["useRelativeTime", "DateTime"],
     },
+    ...unitsTypeApi,
     {
       name: "NumberInput",
       kind: "type",
@@ -743,6 +747,10 @@ formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'sh
     {
       label: 'Spaces in output are non-breaking and thin spaces',
       note: 'Intl writes U+00A0, U+2009 and U+202F where a plain space would sit: `formatDateRange` puts U+2009 around the en dash, `formatTime` writes U+202F before PM, Czech and French group digits with U+00A0 and U+202F. The examples in this documentation show them as plain spaces so they stay readable. Compare with `===` only against the platform\'s own output from the same process (`new Intl.DateTimeFormat(locale, options).formatRange(a, b)`), never against a typed literal; to see them in a failing test message, `text.replace(/[\\u00a0\\u2009\\u202f]/g, \'·\')`.',
+    },
+    {
+      label: 'Converting units: US versus imperial, and what is not a ratio',
+      note: '`gallon` and `fluid-ounce` are the US liquid units (ECMA-402 and CLDR), also for `system: "uk"`: the imperial ones are not sanctioned by ECMA-402, so they are not convertible here. `kilobyte` is 1000 bytes (CLDR); the 1024 story is `formatBytes({ binary: true })`. Temperature is affine (celsius and fahrenheit; kelvin is not an Intl unit), a fuel economy and its inverse (`mile-per-gallon`, `liter-per-kilometer`) are reciprocals, and `month` and `year` have no fixed length and are not convertible. `uk` is metric except that distances and speeds are miles; `preferredUnit` is a small table, not CLDR use-case preferences.',
     },
     {
       label: 'Engines differ in CLDR data',

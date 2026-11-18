@@ -16,6 +16,8 @@
     "currencyFormatter": 1950,
     "formatNumber": 1400,
     "formatNumber-and-setLocale": 1405,
+    "units-convert": 2014,
+    "units-formatUnit": 3614,
     "useRelativeTime": 4944
   }
 }

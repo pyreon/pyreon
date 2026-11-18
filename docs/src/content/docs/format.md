@@ -60,13 +60,15 @@ function Order(props: { total: number; size: number; placed: string }) {
 setLocale('de') // every binding above re-renders in German
 ```
 
-## Three entries
+## Entries
 
 | Entry | Depends on | What |
 | --- | --- | --- |
 | `@pyreon/format/core` | nothing | Every formatter and parser as a pure function. Locale and time zone come from the options; the default is the runtime's. No `@pyreon/*` import. |
 | `@pyreon/format` | `@pyreon/core`, `@pyreon/reactivity`, `@pyreon/ambient` | The same names, defaulting to the active locale and zone. Adds the locale API (re-exported from `@pyreon/ambient`) and `useRelativeTime`. |
 | `@pyreon/format/components` | `@pyreon/core`, `@pyreon/reactivity`, `@pyreon/ambient` | `<Num>`, `<DateTime>` and `<RelativeTime>`. |
+| `@pyreon/format/units` | `@pyreon/ambient` | Unit conversion with the active locale: `convert`, `canConvert`, `unitDimension`, `measurementSystem`, `preferredUnit`, and a `formatUnit` / `unitFormatter` that convert first. |
+| `@pyreon/format/units/core` | nothing | The same names, pure: the locale is an option. |
 
 Every function is individually tree-shakeable (`sideEffects: false`, nothing runs on import).
 
@@ -125,6 +127,84 @@ formatNumber(-0, { locale: 'en-US' })                                           
 formatCurrency(-0.001, 'USD', { locale: 'en-US' })                                               // → "$0.00"
 formatNumber(-0.001, { locale: 'en-US', maximumFractionDigits: 2, signDisplay: 'auto' })         // → "-0"
 ```
+
+## Converting units
+
+`formatUnit` formats the unit you give it. Converting first is a separate entry, so an app that never converts pays nothing (the table is not in `@pyreon/format`, `/core` or `/components`):
+
+```ts
+import { convert, canConvert, unitDimension, measurementSystem, preferredUnit, formatUnit, unitFormatter } from '@pyreon/format/units'
+```
+
+`@pyreon/format/units` follows the active locale; `@pyreon/format/units/core` is the same names with no `@pyreon/*` import (the locale is an option).
+
+```ts
+import { convert, canConvert, unitDimension } from '@pyreon/format/units'
+
+convert(5, 'mile', 'kilometer') // → 8.04672
+convert(100, 'celsius', 'fahrenheit') // → 212
+convert(1, 'gallon', 'liter') // → 3.785411784
+convert(36, 'kilometer-per-hour', 'meter-per-second') // → 10
+canConvert('mile', 'kilogram') // → false
+unitDimension('kilometer-per-hour') // → "speed"
+```
+
+Every factor is an exact definition (inch = 25.4 mm, pound = 0.45359237 kg, US gallon = 231 cubic inches, international acre = 4046.8564224 m2; sources in `convert.ts`, NIST SP 811 and CLDR), held as a rational and applied once. Nothing chains through an intermediate unit, so the result is as accurate as one multiply and one divide allow. A dimension mismatch throws a `[Pyreon]` error naming both (`cannot convert length (mile) to mass (kilogram)`), and `canConvert` checks first.
+
+### Formatting a converted value
+
+```ts
+import { formatUnit, unitFormatter } from '@pyreon/format/units'
+
+formatUnit(5, 'mile', { convertTo: 'kilometer', locale: 'en-US', maximumFractionDigits: 2 }) // → "8.05 km"
+formatUnit(100, 'kilometer', { system: 'auto', locale: 'en-US', maximumFractionDigits: 1 }) // → "62.1 mi"
+formatUnit(100, 'mile', { system: 'auto', locale: 'de', maximumFractionDigits: 1 }) // → "160,9 km"
+formatUnit(30, 'celsius', { system: 'us', locale: 'cs' }) // → "86 °F"
+```
+
+`convertTo` names the unit; `system` shows the unit a person in that system reads: `'auto'` is the locale's own (in the reactive entry it follows `setLocale` and `provideLocale`, so a binding updates when the language changes), or fix `'metric'`, `'us'` or `'uk'`. `convertTo` wins when both are given. `unitFormatter` is the composable form with the same options and `with`, `from`, `parts` and `range`:
+
+```ts
+import { unitFormatter } from '@pyreon/format/units'
+
+const distance = unitFormatter('kilometer', { system: 'auto', locale: 'en-US', maximumFractionDigits: 1 })
+distance(100) // → "62.1 mi"
+distance.with({ unitDisplay: 'long' })(100) // → "62.1 miles"
+```
+
+### Which system a locale uses
+
+```ts
+import { measurementSystem, preferredUnit } from '@pyreon/format/units'
+
+measurementSystem('en-US') // → "us"
+measurementSystem('en-GB') // → "uk"
+measurementSystem('cs') // → "metric"
+preferredUnit('kilometer', 'en-US') // → "mile"
+preferredUnit('fahrenheit', 'de') // → "celsius"
+```
+
+The region comes from the locale (`en` is `en-US` by its likely region) and the table is CLDR's `measurementData`: `us` for the United States, Liberia and Myanmar, `uk` for Great Britain, `metric` for everywhere else. `uk` is metric except that distances and speeds are miles. `preferredUnit` is a deliberately small table that maps a unit to the same scale in the other system; it does not know use cases (a height in feet and inches, a road in miles, fabric in metres).
+
+### Caveats
+
+- **US versus imperial.** `gallon` and `fluid-ounce` are the US liquid units (ECMA-402 and CLDR), also for `system: 'uk'`. The imperial gallon and fluid ounce are not sanctioned by `Intl`, so they cannot be formatted or converted here.
+- **Digital units are decimal.** A `kilobyte` is 1000 bytes, as in CLDR and `Intl`. The 1024 story is `formatBytes({ binary: true })` with `KiB`.
+- **Temperature is affine.** celsius and fahrenheit convert with an offset, not a factor; kelvin is not an `Intl` unit.
+- **Fuel economy is an inversion.** `mile-per-gallon` and `liter-per-kilometer` are reciprocals, so `convert` inverts the value (35 mpg is 6.72 L per 100 km): `convert(35, 'mile-per-gallon', 'liter-per-kilometer') * 100` is `6.720416666666666`. A pace (`minute-per-kilometer`) and a speed (`kilometer-per-hour`) are the same kind of pair. A zero in an inversion is `Infinity`.
+- **`month` and `year` are not convertible.** They have no fixed length; use `@pyreon/time` for calendar arithmetic.
+- **Floating point.** A result is as exact as `double` allows from one exact factor; a round trip returns the input within a few units in the last place, not always bit for bit.
+
+### Coming from convert-units or js-quantities
+
+| Instead of | Use |
+| --- | --- |
+| `convert(5).from('mi').to('km')` (convert-units) | `convert(5, 'mile', 'kilometer')` |
+| `Qty('5 mi').to('km').scalar` (js-quantities) | `convert(5, 'mile', 'kilometer')` |
+| `convert().possibilities('mi')` | `Intl.supportedValuesOf('unit')` filtered with `canConvert('mile', u)` |
+| a unit-system toggle in your own code | `formatUnit(v, u, { system: 'auto' })` follows the locale |
+
+Unit names are the `Intl` identifiers (`kilometer`, `mile-per-hour`), not abbreviations. Only the units `Intl` can format convert: there are no custom units, no quantities with arithmetic, and no parsing of `"5 mi"` strings.
 
 ## Durations
 

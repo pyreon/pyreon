@@ -158,6 +158,19 @@ export interface UnitOptions extends Omit<Intl.NumberFormatOptions, 'style' | 'u
 /** Style shorthands of {@link formatUnit}: a `unitDisplay`. */
 export type UnitPreset = 'short' | 'narrow' | 'long'
 
+/** A system of measurement: `us` (US customary), `uk` (metric with road miles) or `metric`. */
+export type MeasurementSystem = 'metric' | 'us' | 'uk'
+
+/**
+ * Options of `formatUnit` and `unitFormatter` from `@pyreon/format/units`: everything in {@link UnitOptions}, plus a conversion
+ * before formatting. `convertTo` names the unit; `system` picks the locale's own (`'auto'`, which follows the active locale in the
+ * reactive entry) or a fixed system. `convertTo` wins when both are given.
+ */
+export interface ConvertedUnitOptions extends UnitOptions {
+  convertTo?: Unit | undefined
+  system?: 'auto' | MeasurementSystem | undefined
+}
+
 /** Options of {@link formatBytes}. */
 export interface BytesOptions
   extends Omit<Intl.NumberFormatOptions, 'style' | 'unit' | 'notation' | 'currency'>,

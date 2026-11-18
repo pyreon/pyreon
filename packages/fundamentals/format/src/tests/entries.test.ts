@@ -28,8 +28,8 @@ async function bundle(entry: string, mode: 'dev' | 'prod', external: string[] = 
 }
 
 describe('entries', () => {
-  it('declares the three entries and no side effects', () => {
-    expect(Object.keys(PKG.exports)).toEqual(['.', './core', './components'])
+  it('declares the entries and no side effects', () => {
+    expect(Object.keys(PKG.exports)).toEqual(['.', './core', './components', './units', './units/core'])
     expect(PKG.sideEffects).toBe(false)
   })
 
@@ -117,6 +117,45 @@ describe('the dev-only gate', () => {
       for (const t of timers) expect(t).not.toHaveBeenCalled()
     } finally {
       names.forEach((n, i) => Reflect.set(Intl, n, originals[i]))
+    }
+  })
+})
+
+describe('the conversion table is paid for only by apps that convert', () => {
+  // `mile-scandinavian` is spelled out only in the conversion table and the unit maps (the type union is erased).
+  const MARK = 'mile-scandinavian'
+
+  it('/core, the reactive entry and the components contain none of it', async () => {
+    for (const entry of ['core.ts', 'index.ts', 'components.ts']) {
+      const r = await bundle(entry, 'prod')
+
+      expect(r.outputFiles[0]?.text, entry).not.toContain(MARK)
+    }
+  })
+
+  it('formatUnit and unitFormatter from /core alone do not reach it', async () => {
+    const fs = await import('node:fs')
+    const os = await import('node:os')
+    const dir = fs.mkdtempSync(join(os.tmpdir(), 'treeshake-'))
+    const file = join(dir, 'entry.ts')
+
+    fs.writeFileSync(file, `export { formatNumber, formatUnit, unitFormatter } from '${join(SRC, 'core.ts')}'\n`)
+    const esbuild = await import('esbuild')
+    const r = await esbuild.build({ entryPoints: [file], bundle: true, format: 'esm', write: false, minify: true, treeShaking: true, external: ['@pyreon/*'], define: { 'process.env.NODE_ENV': '"production"' } })
+
+    expect(r.outputFiles[0]?.text).not.toContain(MARK)
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('/units and /units/core do contain it, and /units/core imports nothing from @pyreon/* or node:*', async () => {
+    const withUnits = await bundle('units.ts', 'prod')
+
+    expect(withUnits.outputFiles[0]?.text).toContain(MARK)
+    const pure = await bundle('units/core.ts', 'dev', [])
+
+    expect(pure.outputFiles[0]?.text).toContain(MARK)
+    for (const file of Object.values(pure.metafile.inputs)) {
+      for (const imp of file.imports) expect(imp.path).not.toMatch(/^(node:|@pyreon\/)/)
     }
   })
 })

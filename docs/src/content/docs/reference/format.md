@@ -27,7 +27,8 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - Calendar dates never shift: a date-only or offset-less string formats as that day / wall-clock time in every time zone
 - Bounded three-tier Intl cache: no options, preset string, options object (identity, then structural key) — every table bounded, no JSON.stringify on the hot path
 - Never throws on data: nullish returns the fallback, invalid returns it with a dev-only warning; programmer errors (unknown unit, bad option) throw [Pyreon] errors that say how to fix
-- Three tree-shakeable entries: /core (no @pyreon import), the reactive entry, /components (&lt;Num&gt;, &lt;DateTime&gt;)
+- Unit conversion in its own entry, @pyreon/format/units (and /units/core, pure): convert, canConvert, unitDimension, measurementSystem, preferredUnit and a formatUnit that converts; exact definitions, one combined factor, nothing of it in the main entries
+- Three tree-shakeable main entries: /core (no @pyreon import), the reactive entry, /components (&lt;Num&gt;, &lt;DateTime&gt;, &lt;RelativeTime&gt;)
 - defineFormats names a format set with inferred keys and typed overrides; createFormatter gives a bound non-reactive set for servers and tests
 
 ## Complete example
@@ -93,6 +94,11 @@ parseDate('18. 11. 2026', { locale: 'cs' }) // → "2026-11-18"
 | [`percentFormatter`](#percentformatter-function) | function | A reusable percent formatter: `percentFormatter()(0.42)` is `42%`. |
 | [`compactFormatter`](#compactformatter-function) | function | A reusable compact-notation formatter: `1_240_000` is `1.2M`. |
 | [`unitFormatter`](#unitformatter-function) | function | A reusable unit formatter. |
+| [`convert`](#convert-function) | function | Convert a number between two units `Intl` can format, from `@pyreon/format/units` (or `/units/core`: pure, no… |
+| [`canConvert`](#canconvert-function) | function | Whether `convert(x, from, to)` is defined: both are convertible units of the same (or the inverse) dimension. |
+| [`unitDimension`](#unitdimension-function) | function | What a unit measures: `length`, `mass`, `volume`, `temperature`, `area`, `duration`, `digital`, `angle`, `proportion`,… |
+| [`measurementSystem`](#measurementsystem-function) | function | The measurement system of a locale's region, from CLDR's supplemental `measurementData`: `us` for US, Liberia and… |
+| [`preferredUnit`](#preferredunit-function) | function | The unit a person in the locale's region reads for `unit`: `kilometer` is `mile` and `celsius` is `fahrenheit` in… |
 | [`bytesFormatter`](#bytesformatter-function) | function | A reusable byte-size formatter (decimal, or `binary: true`). |
 | [`durationFormatter`](#durationformatter-function) | function | A reusable duration formatter. |
 | [`listFormatter`](#listformatter-function) | function | A reusable list formatter. |
@@ -111,6 +117,9 @@ parseDate('18. 11. 2026', { locale: 'cs' }) // → "2026-11-18"
 | [`Num`](#num-component) | component | A formatted number as reactive text. |
 | [`DateTime`](#datetime-component) | component | A `<time datetime="…">` element with the formatted value as text. |
 | [`RelativeTime`](#relativetime-component) | component | A `<time>` that says how long ago (or how far ahead) a value is and keeps itself current. |
+| [`ConvertedUnitOptions`](#convertedunitoptions-type) | type | Options of `formatUnit` and `unitFormatter` from `@pyreon/format/units`: everything in `UnitOptions`, plus a conversion… |
+| [`MeasurementSystem`](#measurementsystem-type) | type | A system of measurement: `us` (US customary), `uk` (metric with road miles) or `metric`. |
+| [`UnitDimension`](#unitdimension-type) | type | What `unitDimension` returns: a simple dimension, a named compound (`speed`, `pace`, `fuel-economy`, ...) or… |
 | [`NumberInput`](#numberinput-type) | type | A number-like input. |
 | [`DateInput`](#dateinput-type) | type | A date-like input. |
 | [`PlainDateString`](#plaindatestring-type) | type | The `YYYY-MM-DD` string `parseDate` returns. |
@@ -230,7 +239,7 @@ formatCompact(1240000, { locale: 'de' }) // → "1,2 Mio."
 (value: NumberInput, unit: Unit, options?: UnitOptions | UnitPreset) => string
 ```
 
-Format a measurement with a sanctioned `Intl` unit (`Unit` is a union of them, plus `<unit>-per-<unit>` compounds). `unitDisplay` is `short` by default. An unknown unit is a programmer error and throws a `[Pyreon]` error.
+Format a measurement with a sanctioned `Intl` unit (`Unit` is a union of them, plus `<unit>-per-<unit>` compounds). `unitDisplay` is `short` by default. An unknown unit is a programmer error and throws a `[Pyreon]` error. `@pyreon/format/units` (and `/units/core`) export a `formatUnit` with a conversion in front: `{ convertTo: 'kilometer' }` converts, `{ system: 'auto' | 'metric' | 'us' | 'uk' }` shows the unit of the locale's system (`'auto'` follows the active locale), `convertTo` wins; the main entries never include the conversion table.
 
 **Example**
 
@@ -244,7 +253,7 @@ formatUnit(21, 'celsius', { locale: 'de' }) // → "21 °C"
 
 - A unit that is not in `Intl.supportedValuesOf('unit')` (`kilometre`, `km`): it is a type error and throws at runtime
 
-**See also:** `formatBytes` · `Unit`
+**See also:** `formatBytes` · `Unit` · `convert`
 
 ---
 
@@ -749,7 +758,7 @@ short.with({ compactDisplay: 'long' })(1240000) // → "1.2 million"
 (unit: Unit, options?: UnitOptions | UnitPreset) => Formatter<NumberInput, 'unit'>
 ```
 
-A reusable unit formatter. An unknown unit is a type error and throws a `[Pyreon]` error.
+A reusable unit formatter. An unknown unit is a type error and throws a `[Pyreon]` error. `@pyreon/format/units` exports one that takes `{ convertTo, system }` as well (the converted value is formatted in the target unit, `system: 'auto'` follows the active locale, and `parts`, `range`, `with` and `from` work).
 
 **Example**
 
@@ -760,6 +769,119 @@ speed.with({ unitDisplay: 'long' })(72) // → "72 kilometers per hour"
 ```
 
 **See also:** `formatUnit`
+
+---
+
+### `convert` `function`
+
+```ts
+(value: number, from: Unit, to: Unit) => number
+```
+
+Convert a number between two units `Intl` can format, from `@pyreon/format/units` (or `/units/core`: pure, no `@pyreon/*` import). Every factor is an EXACT definition (inch = 25.4 mm, pound = 0.45359237 kg, US gallon = 231 cubic inches, international acre = 4046.8564224 m2, kilobyte = 1000 bytes as in CLDR; sources cited in `convert.ts`) held as a rational and applied ONCE (one combined factor, never chained through an intermediate unit), so the result is as accurate as a multiply and a divide allow: `convert(5, 'mile', 'kilometer')` is exactly the double nearest 8.04672. Compound units (`-per-`) convert when their parts do. A compound and its inverse (`liter-per-kilometer` and `mile-per-gallon`, a pace and a speed) are reciprocals, not ratios, so the value is inverted (a zero is `Infinity`). Temperature is affine (celsius and fahrenheit only; kelvin is not an Intl unit). `gallon` and `fluid-ounce` are the US units (the imperial ones are not sanctioned by ECMA-402). `month` and `year` have no fixed length and throw. A dimension mismatch throws a `[Pyreon]` error naming both dimensions.
+
+**Example**
+
+```tsx
+// import { convert } from '@pyreon/format/units'
+convert(5, 'mile', 'kilometer') // → 8.04672
+convert(100, 'celsius', 'fahrenheit') // → 212
+convert(1, 'gallon', 'liter') // → 3.785411784
+convert(36, 'kilometer-per-hour', 'meter-per-second') // → 10
+convert(35, 'mile-per-gallon', 'liter-per-kilometer') * 100 // → 6.720416666666666
+```
+
+**Common mistakes**
+
+- Treating `gallon` or `fluid-ounce` as imperial for `uk`: they are the US units (CLDR and ECMA-402); the imperial units are not convertible here
+- Chaining conversions through an intermediate unit: `convert` applies one exact factor, so convert directly
+- Converting `month` or `year`: they have no fixed length; use `@pyreon/time` for calendar arithmetic
+
+**See also:** `canConvert` · `unitDimension` · `formatUnit`
+
+---
+
+### `canConvert` `function`
+
+```ts
+(from: Unit, to: Unit) => boolean
+```
+
+Whether `convert(x, from, to)` is defined: both are convertible units of the same (or the inverse) dimension. Never throws; an unknown unit, `month` and `year` are `false`.
+
+**Example**
+
+```tsx
+// import { canConvert } from '@pyreon/format/units'
+canConvert('mile', 'kilometer') // → true
+canConvert('mile', 'kilogram') // → false
+canConvert('month', 'day') // → false
+```
+
+**See also:** `convert` · `unitDimension`
+
+---
+
+### `unitDimension` `function`
+
+```ts
+(unit: Unit) => UnitDimension
+```
+
+What a unit measures: `length`, `mass`, `volume`, `temperature`, `area`, `duration`, `digital`, `angle`, `proportion`, or for a compound `speed`, `pace`, `fuel-economy`, `fuel-consumption`, `density`, `flow-rate`, `mass-flow`, `data-rate`, else `<a>-per-<b>`. An unknown unit throws.
+
+**Example**
+
+```tsx
+// import { unitDimension } from '@pyreon/format/units'
+unitDimension('mile') // → "length"
+unitDimension('kilometer-per-hour') // → "speed"
+unitDimension('mile-per-gallon') // → "fuel-economy"
+```
+
+**See also:** `convert` · `canConvert`
+
+---
+
+### `measurementSystem` `function`
+
+```ts
+(locale?: string) => 'metric' | 'us' | 'uk'
+```
+
+The measurement system of a locale's region, from CLDR's supplemental `measurementData`: `us` for US, Liberia and Myanmar, `uk` for Great Britain (metric, with miles and miles per hour on the road), `metric` everywhere else. A locale with no region is resolved by its likely region (`en` is `en-US`). An invalid tag is `metric`. In `@pyreon/format/units` the locale defaults to the ACTIVE locale (a reactive read); in `/units/core` to the runtime's.
+
+**Example**
+
+```tsx
+// import { measurementSystem } from '@pyreon/format/units'
+measurementSystem('en-US') // → "us"
+measurementSystem('en-GB') // → "uk"
+measurementSystem('cs') // → "metric"
+```
+
+**See also:** `preferredUnit`
+
+---
+
+### `preferredUnit` `function`
+
+```ts
+(unit: Unit, locale?: string) => Unit
+```
+
+The unit a person in the locale's region reads for `unit`: `kilometer` is `mile` and `celsius` is `fahrenheit` in `en-US`; `mile` is `kilometer` and `fahrenheit` is `celsius` in `cs`; in `en-GB` distances and speeds stay miles and the rest is metric. A unit with no counterpart (`second`, `byte`) comes back unchanged. The table is deliberately small and simplified from CLDR's unit preferences: it maps a unit to the same scale in the other system, not to a use case (a height in feet and inches, a road in miles).
+
+**Example**
+
+```tsx
+// import { preferredUnit } from '@pyreon/format/units'
+preferredUnit('kilometer', 'en-US') // → "mile"
+preferredUnit('celsius', 'en-US') // → "fahrenheit"
+preferredUnit('mile', 'cs') // → "kilometer"
+```
+
+**See also:** `measurementSystem` · `formatUnit`
 
 ---
 
@@ -1173,6 +1295,60 @@ A `<time>` that says how long ago (or how far ahead) a value is and keeps itself
 
 ---
 
+### `ConvertedUnitOptions` `type`
+
+```ts
+interface ConvertedUnitOptions extends UnitOptions { convertTo?: Unit; system?: 'auto' | 'metric' | 'us' | 'uk' }
+```
+
+Options of `formatUnit` and `unitFormatter` from `@pyreon/format/units`: everything in `UnitOptions`, plus a conversion before formatting. `convertTo` names the unit; `system` picks the locale's own (`'auto'`, which follows the active locale in the reactive entry) or a fixed system. `convertTo` wins when both are given.
+
+**Example**
+
+```tsx
+// formatUnit(100, 'kilometer', { system: 'auto', locale: 'en-US' })
+```
+
+**See also:** `formatUnit` · `convert`
+
+---
+
+### `MeasurementSystem` `type`
+
+```ts
+type MeasurementSystem = 'metric' | 'us' | 'uk'
+```
+
+A system of measurement: `us` (US customary), `uk` (metric with road miles) or `metric`.
+
+**Example**
+
+```tsx
+// const s: MeasurementSystem = measurementSystem('en-US')
+```
+
+**See also:** `measurementSystem`
+
+---
+
+### `UnitDimension` `type`
+
+```ts
+type UnitDimension = 'length' | 'mass' | 'volume' | 'area' | 'duration' | 'digital' | 'temperature' | 'angle' | 'proportion' | 'speed' | ... | `${string}-per-${string}`
+```
+
+What `unitDimension` returns: a simple dimension, a named compound (`speed`, `pace`, `fuel-economy`, ...) or `<a>-per-<b>`.
+
+**Example**
+
+```tsx
+// const d: UnitDimension = unitDimension('mile')
+```
+
+**See also:** `unitDimension`
+
+---
+
 ### `NumberInput` `type`
 
 ```ts
@@ -1338,6 +1514,8 @@ The shape `defineFormats` takes: a `kind` and the options of that formatter (`cu
 > **A date-only target is that day in the display zone:** In relative time a date-only value (`2026-11-18`) is a DAY, not a moment: it is compared as a calendar day in the display zone and never as hours, so "yesterday", "today", "tomorrow" and "in 3 days" are literally true for a person in that zone at any hour (`2026-11-18` at 10:00 on the 18th is "today", not "10 hours ago"). `@pyreon/time`'s `relativeDistance` gives the same words (a shared table of cases is tested in both packages). A date-time without a zone is a moment: under 24 hours it is elapsed time. Two date-only values compare as calendar days.
 
 > **Spaces in output are non-breaking and thin spaces:** Intl writes U+00A0, U+2009 and U+202F where a plain space would sit: `formatDateRange` puts U+2009 around the en dash, `formatTime` writes U+202F before PM, Czech and French group digits with U+00A0 and U+202F. The examples in this documentation show them as plain spaces so they stay readable. Compare with `===` only against the platform's own output from the same process (`new Intl.DateTimeFormat(locale, options).formatRange(a, b)`), never against a typed literal; to see them in a failing test message, `text.replace(/[\u00a0\u2009\u202f]/g, '·')`.
+
+> **Converting units: US versus imperial, and what is not a ratio:** `gallon` and `fluid-ounce` are the US liquid units (ECMA-402 and CLDR), also for `system: "uk"`: the imperial ones are not sanctioned by ECMA-402, so they are not convertible here. `kilobyte` is 1000 bytes (CLDR); the 1024 story is `formatBytes({ binary: true })`. Temperature is affine (celsius and fahrenheit; kelvin is not an Intl unit), a fuel economy and its inverse (`mile-per-gallon`, `liter-per-kilometer`) are reciprocals, and `month` and `year` have no fixed length and are not convertible. `uk` is metric except that distances and speeds are miles; `preferredUnit` is a small table, not CLDR use-case preferences.
 
 > **Engines differ in CLDR data:** Intl output is CLDR data and V8, JavaScriptCore and ICU versions differ (for example a narrow no-break space before PM). For SSR, pass the same locale and time zone on both sides; the hydration test in this package runs real Chromium against Node-rendered markup shape, not byte equality across ICU versions.
 

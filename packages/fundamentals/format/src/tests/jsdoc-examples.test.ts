@@ -5,7 +5,10 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import * as convertModule from '../convert'
 import * as format from '../index'
+import * as unitsModule from '../units'
+import * as unitsCoreModule from '../units/core'
 import { _resetLocaleState } from '../locale'
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -26,11 +29,11 @@ function examplesOf(file: string): Array<{ name: string; lines: string[] }> {
 
 afterEach(() => _resetLocaleState())
 
-describe.each(['core.ts', 'index.ts'])('JSDoc examples in %s', (file) => {
+describe.each([['core.ts', 25], ['index.ts', 25], ['convert.ts', 3], ['units/core.ts', 1], ['units.ts', 3]] as const)('JSDoc examples in %s', (file, atLeast) => {
   const found = examplesOf(file)
 
   it('has examples', () => {
-    expect(found.length).toBeGreaterThan(25)
+    expect(found.length).toBeGreaterThan(atLeast - 1)
   })
 
   it.each(found.map((f) => [f.name, f.lines] as const))('%s', (_name, lines) => {
@@ -48,7 +51,9 @@ describe.each(['core.ts', 'index.ts'])('JSDoc examples in %s', (file) => {
       body.push(`__check(${JSON.stringify(expr)}, () => (${expr}))`)
     }
     const results: unknown[] = []
-    new Function(...Object.keys(format), '__check', body.join('\n'))(...Object.values(format), (_e: string, get: () => unknown) => results.push(get()))
+    // The unit files document their own names (formatUnit there is the converting one), so each is evaluated in its own scope.
+    const scope: Record<string, unknown> = file === 'units.ts' ? { ...format, ...unitsModule } : file === 'units/core.ts' ? { ...format, ...unitsCoreModule } : file === 'convert.ts' ? { ...format, ...convertModule } : { ...format }
+    new Function(...Object.keys(scope), '__check', body.join('\n'))(...Object.values(scope), (_e: string, get: () => unknown) => results.push(get()))
     checks.forEach(([expr, shown], i) => {
       expect(norm(results[i]), expr).toEqual(norm(JSON.parse(shown)))
     })

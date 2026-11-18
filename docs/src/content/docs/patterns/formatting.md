@@ -46,6 +46,10 @@ Parse what the user types with `parseNumber`, `parseCurrency` and `parseDate`, i
 - **A `setInterval` (or `useTimeAgo`) per row to keep "3 minutes ago" fresh.** Each instance owns a timer that fires on its own phase, and 200 rows are 200 timers. `useRelativeTime(target)` (or `<RelativeTime value={…} />`) shares two timers across every label on the page, updates at the moment the text changes, switches to an absolute date with `threshold: { after: { days: 7 } }`, and prints the request's clock on the server without starting a timer.
 - **A "per month" currency pattern assembled by hand** (`price + '/mo'`). There is no locale data for that pattern outside unit formatting. Format the value and put it in a translated message (`"{price} per month"`).
 
+## Converting units
+
+Showing a distance, weight or temperature in the reader's units is `formatUnit(value, unit, { system: 'auto' })` from `@pyreon/format/units`, which follows the active locale; `convert(5, 'mile', 'kilometer')` is the plain number. Do not hand-multiply by a factor (`km * 0.621371`): the factors are exact definitions, `gallon` is the US gallon, a kilobyte is 1000 bytes, and temperature needs an offset. The main entries do not include the table, so an app that never converts pays nothing.
+
 ## Related
 
 - Reference API: `formatNumber`, `formatCurrency`, `formatDate`, `defineFormats` - see `get_api({ package: "format", symbol: "..." })`
