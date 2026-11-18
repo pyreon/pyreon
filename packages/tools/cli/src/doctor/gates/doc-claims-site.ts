@@ -68,3 +68,58 @@ export const SITE_LINT_CATEGORY_CLAIMS: ClaimSpec[] = [
   { file: `${SITE}/pages/why/ai-ready.json`, pattern: /"claim": "\d+ lint rules, (\d+) categories/ },
   { file: `${BLOG}/a-framework-your-ai-assistant-cant-misuse.md`, pattern: /broader rule set: \d+ rules in (\d+) categories/ },
 ]
+
+/**
+ * Product count on the marketing site. The list of record is
+ * `products/_index.json` (`order`): one id per product page. Every sentence
+ * that says how many products there are comes from the staging content set
+ * (`09-site/content`), so a new product page changes the number in many files at
+ * once: the homepage section, the products index title, the nav's two "All N
+ * products" links, the docs home, the sitemap purposes, and the share image's
+ * alt text (the share image prints the same sentence, so re-render it when this
+ * moves: `render-og.mjs og/products.png`). Forty was stated in six files when
+ * the forty-first page was added; none of them was a claim surface.
+ */
+export const SITE_PRODUCT_COUNT_CLAIMS: ClaimSpec[] = [
+  { file: `${SITE}/_home.json`, pattern: /"title": "(\d+) products\. One version\."/ },
+  { file: `${SITE}/_home.json`, pattern: /"label": "See all (\d+) products"/ },
+  { file: `${SITE}/_products.json`, pattern: /"title": "(\d+) products\. One reactive core\."/ },
+  { file: `${SITE}/_docs-home.json`, pattern: /with (\d+) products in the box/ },
+  { file: `${SITE}/_docs-home.json`, pattern: /"label": "All (\d+) products"/ },
+  { file: `${SITE}/_nav.json`, pattern: /"label": "All (\d+) products"/, all: true },
+  { file: `${SITE}/_sitemap.json`, pattern: /Show the whole box: (\d+) products/ },
+  { file: `${SITE}/pages/_sitemap.json`, pattern: /Show the whole box: (\d+) products/ },
+  { file: `${SITE}/_assets.json`, pattern: /"alt": "(\d+) products\. One reactive core\./ },
+  { file: `${SITE}/_assets.json`, pattern: /The glyphs of all (\d+) Pyreon products/ },
+]
+
+/**
+ * The anti-pattern total on the AI product page. The catalog is
+ * `.agents/rules/anti-patterns.md`: one `- **Name**` bullet at column 0 per
+ * entry, which is what the MCP `get_anti_patterns` index counts ("N total").
+ * The page said 522 for a week while the catalog passed 560, because the
+ * number was typed into the staging content set from a run of the tool.
+ */
+export const SITE_ANTI_PATTERN_CLAIMS: ClaimSpec[] = [
+  { file: `${SITE}/products/ai.json`, pattern: /catalog \((\d+) entries on main\)/ },
+  { file: `${SITE}/products/ai.json`, pattern: /"stat": "(\d+)",\s*"label": "known mistakes in the anti-pattern catalog/ },
+  { file: `${SITE}/products/ai.json`, pattern: /header \\"(\d+) total, page/ },
+  { file: `${SITE}/products/ai.json`, pattern: /"claim": "Anti-pattern catalog (\d+) entries/ },
+]
+
+/**
+ * The package count the marketing site states. Maintainer decision, 2026-11-18:
+ * the site and the marketing say 80, deliberately ahead of npm ("count with
+ * all packages already": 76 published, plus auth, format, time and ambient).
+ * So this is NOT checked against the published count: it is checked against
+ * the one constant, `${SITE}/_counts.json` (`packages`), which the staging
+ * content set owns, so every statement of the number comes from one place and
+ * changing the decision is one edit plus the files below.
+ */
+export const SITE_PACKAGE_COUNT_FILE = `${SITE}/_counts.json`
+export const SITE_PACKAGE_COUNT_CLAIMS: ClaimSpec[] = [
+  { file: `${SITE}/_home.json`, pattern: /"text": "(\d+) packages, one version"/ },
+  { file: `${SITE}/pages/compare/react.json`, pattern: /(\d+) first-party packages/ },
+  { file: `${SITE}/pages/compare/react.json`, pattern: /AGENTS\.md \((\d+) packages\)/ },
+  { file: `${SITE}/_products.json`, pattern: /rest of the (\d+) published packages/ },
+]

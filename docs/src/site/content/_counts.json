@@ -1,0 +1,4 @@
+{
+ "packages": 80,
+ "decision": "The package count the site and the marketing state. Maintainer decision, 2026-11-18: 80, counted ahead of npm (76 published, plus auth, format, time and ambient). It is not the repository's published count on purpose, so it is locked to this one constant, not to the repo. Every statement of it in the content set must equal it (doc-claims gate, site-package-count)."
+}

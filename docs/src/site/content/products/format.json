@@ -25,25 +25,25 @@
    },
    {
     "key": "size",
-    "value": "1.1 kB gzip for a number formatter<small>From `/core`, minified; @formatjs/intl is 13.1 kB for the same job. Date formatting is 2.2 kB.</small>"
+    "value": "1.2 kB gzip for a number formatter<small>From `/core`, minified; @formatjs/intl is 13.1 kB for the same job. Date formatting is 2.7 kB.</small>"
    }
   ]
  },
  "proof": [
   {
-   "stat": "1.1 kB",
+   "stat": "1.2 kB",
    "label": "gzip for one number formatter from `/core`; @formatjs/intl needs 13.1 kB for the same job",
-   "source": "packages/fundamentals/format/bench/format-size.ts, \"format a number\": @pyreon/format/core 1,096 B (PR #4681 states 1,086 B), @formatjs/intl 13,107 B · Bun.build, minify, browser target, gzip, deterministic"
+   "source": "packages/fundamentals/format/bench/format-size.ts, \"format a number\", re-run 2026-11-18 on the merged tree: @pyreon/format/core 1,198 B, @formatjs/intl 13,107 B · Bun.build, minify, browser target, NODE_ENV=production, gzip, deterministic"
   },
   {
-   "stat": "4.9 kB",
+   "stat": "7.1 kB",
    "label": "gzip for number, currency, bytes, duration, date, relative time and list together; @formatjs/intl with pretty-bytes and pretty-ms is 15.3 kB",
-   "source": "bench/format-size.ts, \"the whole set\": @pyreon/format/core 4,899 B (PR #4681: 4,859 B), @formatjs/intl + pretty-bytes + pretty-ms 15,338 B · same build conditions"
+   "source": "bench/format-size.ts, \"the whole set\": @pyreon/format/core 7,054 B, @formatjs/intl + pretty-bytes + pretty-ms 15,338 B · same build conditions"
   },
   {
    "stat": "0",
-   "label": "runtime dependencies; `/core` imports no other package, and `@pyreon/core` and `@pyreon/reactivity` are optional peers of the reactive entry",
-   "source": "packages/fundamentals/format/package.json (no dependencies; peerDependenciesMeta optional); src/tests/entries.test.ts (no @pyreon import in /core)"
+   "label": "runtime dependencies in `/core`: it imports no other package, and `@pyreon/ambient`, `@pyreon/core` and `@pyreon/reactivity` serve only the reactive entry",
+   "source": "packages/fundamentals/format/package.json; src/tests/entries.test.ts (no @pyreon import in /core)"
   }
  ],
  "why": {
@@ -63,7 +63,7 @@
    },
    {
     "title": "Parsing is the other half",
-    "text": "`parseNumber('1 234,5', { locale: 'cs' })` is 1234.5 and `parseDate('18. 11. 2026', { locale: 'cs' })` is `'2026-11-18'`. What the visitor typed in their own format becomes a number or a date, and anything else is `null`."
+    "text": "`parseNumber('1 234,5', { locale: 'cs' })` is 1234.5, `parseCurrency('€9.99', 'EUR')` is 9.99 and `parseDate('18. listopadu 2026', { locale: 'cs' })` is `'2026-11-18'`. What the visitor typed in their own format, month names included, becomes a number or a date, and anything else is `null`."
    }
   ]
  },
@@ -93,20 +93,20 @@
    "title": "Sizes and durations in the reader's language.",
    "before": "import prettyBytes from 'pretty-bytes'\nimport prettyMs from 'pretty-ms'\n\nprettyBytes(1536)                              // \"1.54 kB\"\nprettyBytes(1536, { locale: 'de' })            // \"1,54 kB\"\nprettyMs(3_905_000)                            // \"1h 5m 5s\"\nprettyMs(3_905_000, { colonNotation: true })   // \"1:05:05\"",
    "after": "import { formatBytes, formatDuration } from '@pyreon/format'\n\nformatBytes(1536)                                // \"1.5 kB\"\nformatBytes(1536, { locale: 'de' })              // \"1,5 kB\"\nformatDuration(3_905_000)                        // \"1 hr, 5 min, 5 sec\"\nformatDuration(3_905_000, { style: 'digital' })  // \"1:05:05\"",
-   "note": "pretty-bytes keeps three significant digits (`1.54 kB`); `formatBytes` shows one fraction digit (`1.5 kB`), and `maximumFractionDigits` changes it. pretty-ms prints English unit letters; `formatDuration` follows the locale's unit names. Both libraries are smaller for one job: pretty-ms is 1.2 kB gzip and `formatDuration` is 2.0 kB."
+   "note": "pretty-bytes keeps three significant digits (`1.54 kB`); `formatBytes` shows one fraction digit (`1.5 kB`), and `maximumFractionDigits` changes it. pretty-ms prints English unit letters; `formatDuration` follows the locale's unit names. Both libraries are smaller for one job: pretty-ms is 1.2 kB gzip and `formatDuration` is 2.8 kB; pretty-bytes is 1.4 kB and `formatBytes` is 2.1 kB."
   },
   {
    "lib": "@formatjs/intl",
    "title": "One active locale instead of an instance per locale.",
    "before": "import { createIntl } from '@formatjs/intl'\n\nconst intl = createIntl({ locale: 'de' })\nintl.formatNumber(1234.5, { style: 'currency', currency: 'EUR' })   // \"1.234,50 €\"\nintl.formatRelativeTime(-3, 'day')                                  // \"vor 3 Tagen\"",
    "after": "import { formatCurrency, formatRelative, setLocale } from '@pyreon/format'\n\nsetLocale('de')\nformatCurrency(1234.5, 'EUR')   // \"1.234,50 €\"\nformatRelative(-3, 'day')       // \"vor 3 Tagen\"",
-   "note": "`@formatjs/intl` also formats ICU messages (plurals, selects); this package does not. Messages stay in `@pyreon/i18n`. For numbers, dates and relative time the output is the same strings, at 1.1 kB for a number against 13.1 kB gzip."
+   "note": "`@formatjs/intl` also formats ICU messages (plurals, selects); this package does not. Messages stay in `@pyreon/i18n`. For numbers, dates and relative time the output is the same strings, at 1.2 kB for a number against 13.1 kB gzip."
   }
  ],
  "extraSectionsHtml": null,
  "demo": {
   "title": "Switch the language. Switch the zone. Everything moves.",
-  "text": "One locale and one time zone drive every value below, through the real `@pyreon/format`. Type a number the way you would in that language and `parseNumber` reads it back. The calendar date stays on the 18th when the zone changes; the instant does not.",
+  "text": "One locale and one time zone drive every value below, through the real `@pyreon/format`. A price from cents is a formatter built with `.from()`, and the label that says how long ago something was posted ticks by itself. Type a number the way you would in that language and `parseNumber` reads it back. The calendar date stays on the 18th when the zone changes; the instant does not.",
   "component": "DemoFormat",
   "reference": "built against the real package in the site repository; no canvas prototype",
   "referenceHtml": "",
@@ -141,16 +141,24 @@
     "text": "`formatDate`, `formatTime`, `formatDateTime` with `short` to `full` presets, or any `Intl.DateTimeFormat` options."
    },
    {
+    "name": "Parsing, with month names",
+    "text": "`parseNumber`, `parseCurrency` and `parseDate` read what a visitor typed in their locale; `parseDate` reads `18. listopadu 2026` as well as `18. 11. 2026`."
+   },
+   {
     "name": "Relative time and ranges",
     "text": "`formatRelativeTo(target, base)` picks the unit (`yesterday`, `in 5 minutes`); `formatDateRange` and `formatNumberRange` collapse the shared parts."
    },
    {
-    "name": "Named formats",
-    "text": "`defineFormats({ price: { kind: 'currency', currency: 'EUR' } })` names a set once. Keys, value types and overrides are inferred; a wrong `kind` or `unit` is a type error."
+    "name": "Formatters are values",
+    "text": "`currencyFormatter('EUR')` returns a plain `(value) => string` that follows the locale. It drops into `map`, a chart axis or a table column, and `.with()`, `.from()`, `.range()` and `.fallback()` derive new ones."
    },
    {
-    "name": "`<Num>` and `<DateTime>`",
-    "text": "`<Num>` renders reactive text with no wrapper element. `<DateTime>` renders a real `<time datetime>` whose machine-readable value does not depend on the display locale."
+    "name": "Named formats that extend",
+    "text": "`defineFormats({ price: { kind: 'currency', currency: 'EUR' }, priceShort: { extends: 'price', notation: 'compact' } })`: each key is a real formatter, a typo in `extends` is a type error."
+   },
+   {
+    "name": "`<Num>`, `<DateTime>`, `<RelativeTime>`",
+    "text": "`<Num>` renders reactive text with no wrapper; `<DateTime>` a real `<time datetime>` with a `title`; `<RelativeTime>` a label that updates itself (`3 minutes ago`) and can switch to a date after a threshold."
    },
    {
     "name": "Bounded caches, safe on data",
@@ -173,10 +181,20 @@
    "title": "Read what the visitor typed",
    "text": "Parse with the locale the visitor types in. `1.234` is 1234 in German and 1.234 in English, so the locale is part of the question.",
    "code": "import { formatCurrency, parseNumber } from '@pyreon/format'\nimport { computed, signal } from '@pyreon/reactivity'\n\nconst typed = signal('1 234,5')\nconst amount = computed(() => parseNumber(typed(), { locale: 'cs' }))\n\n// <input value={typed()} onInput={(e) => typed.set(e.currentTarget.value)} />\n// <p>{() => (amount() === null ? 'Not a number' : formatCurrency(amount(), 'CZK', { locale: 'cs' }))}</p>\n\namount()                                  // 1234.5  →  \"1 234,50 Kč\"\nparseNumber('1.234', { locale: 'de' })    // 1234\nparseNumber('1.234', { locale: 'en-US' }) // 1.234\nparseNumber('twelve', { locale: 'en-US' }) // null"
+  },
+  {
+   "title": "A formatter is a value",
+   "text": "Build it once, derive variants, and hand it to anything that takes a callback. `.from()` adapts the input, so prices stored in cents need no division at the call site.",
+   "code": "import { bytesFormatter, currencyFormatter, listFormatter, percentFormatter } from '@pyreon/format'\n\nconst price = currencyFormatter('EUR', { locale: 'en-US' })\nprice(9.99)                                        // \"€9.99\"\nprice.range(10, 20)                                // \"€10.00 – €20.00\"\nprice.with({ maximumFractionDigits: 0 })(9.99)     // \"€10\"  (price itself is untouched)\n\nconst fromCents = price.from((cents: number) => cents / 100)\nfromCents(999)                                     // \"€9.99\"\n;[999, 1250].map(fromCents)                        // [\"€9.99\", \"€12.50\"]\nlistFormatter({ locale: 'en-US' })([1250, 2500].map(fromCents))   // \"€12.50 and €25.00\"\n\nconst size = bytesFormatter({ locale: 'en-US' })\nconst pct = percentFormatter({ locale: 'en-US' })\n`${size(1536)} of ${size(4096)} (${pct(1536 / 4096)})`   // \"1.5 kB of 4.1 kB (38%)\""
+  },
+  {
+   "title": "Presets that extend presets",
+   "text": "A named format can start from another by name. A typo is a type error and a cycle throws a `[Pyreon]` error.",
+   "code": "import { defineFormats } from '@pyreon/format'\n\nconst f = defineFormats({\n  price: { kind: 'currency', currency: 'EUR', locale: 'en-US' },\n  priceShort: { extends: 'price', notation: 'compact' },\n})\n\nf.price(9.99)                          // \"€9.99\"\nf.priceShort(1_234_567)                // \"€1.2M\"\nf.price.with({ currency: 'USD' })(9.99) // \"$9.99\""
   }
  ],
  "api": {
-  "title": "Plain functions, three entries.",
+  "title": "Plain functions and values, three entries.",
   "groups": [
    {
     "name": "format",
@@ -209,7 +227,25 @@
     "name": "parse",
     "items": [
      "parseNumber",
+     "parseCurrency",
      "parseDate"
+    ]
+   },
+   {
+    "name": "formatters as values",
+    "items": [
+     "numberFormatter",
+     "currencyFormatter",
+     "percentFormatter",
+     "compactFormatter",
+     "unitFormatter",
+     "bytesFormatter",
+     "durationFormatter",
+     "listFormatter",
+     "dateFormatter",
+     "timeFormatter",
+     "dateTimeFormatter",
+     "relativeFormatter"
     ]
    },
    {
@@ -231,10 +267,12 @@
     ]
    },
    {
-    "name": "components",
+    "name": "components and hooks",
     "items": [
      "Num",
-     "DateTime"
+     "DateTime",
+     "RelativeTime",
+     "useRelativeTime"
     ]
    },
    {
@@ -262,7 +300,11 @@
   },
   {
    "title": "Parsing covers numbers and numeric dates",
-   "text": "`parseDate` reads numeric dates in the locale's order and ISO `YYYY-MM-DD`. Month names (`18 November 2026`), other calendars and scientific notation return `null`."
+   "text": "`parseDate` reads numeric dates in the locale's order, ISO `YYYY-MM-DD` and the locale's own medium and long forms with month names. Compact notation (`1.2M`), scientific notation, natural language (`next Friday`), weekday names and times return `null`."
+  },
+  {
+   "title": "A relative label needs one line for server rendering",
+   "text": "`<RelativeTime>` prints the request's clock on the server and starts no timer there. Render `clockScript()` from `@pyreon/ambient` in the page so the first client render reads the same instant, and the label hydrates without a mismatch."
   },
   {
    "title": "Engines differ in CLDR data",
@@ -279,6 +321,10 @@
    "a": "`provideLocale` takes an accessor, so `provideLocale(() => i18n.locale())` makes every formatter follow an i18n instance's language today, and a test covers that seam. Having i18n's own `n()` and `d()` delegate to this package is planned, not shipped."
   },
   {
+   "q": "Where does the locale live?",
+   "a": "In `@pyreon/ambient`, which holds the locale, the time zone and the clock and is re-exported here. `@pyreon/time` reads the same values, so one `setLocale` or `setTimeZone` changes everything that is formatted or counted. The Ambient docs page, linked below, covers pinning the clock for tests and the server hand-over."
+  },
+  {
    "q": "Does it run on iOS and Android?",
    "a": "Not yet. The package is web-only. The native compiler already lowers a core set of `Intl` number and date formatting on its own; moving these functions onto it is planned, and we are not promising a date."
   },
@@ -288,7 +334,7 @@
   },
   {
    "q": "Why not call Intl directly?",
-   "a": "Call it directly when you format one value once. This package adds the cache, the active locale as a signal, presets, bytes and durations done right, calendar dates that do not shift, and parsing. A hand-written cache helper over `Intl` is much smaller (169 B gzip for one number, against 1.1 kB here) because it has no validation, presets, locale resolution, warnings or parsing."
+   "a": "Call it directly when you format one value once. This package adds the cache, the active locale as a signal, presets, bytes and durations done right, calendar dates that do not shift, and parsing. A hand-written cache helper over `Intl` is much smaller (169 B gzip for one number, against 1.2 kB here) because it has no validation, presets, locale resolution, warnings or parsing."
   },
   {
    "q": "Does a date really never shift with the time zone?",
@@ -312,6 +358,13 @@
    "package": "@pyreon/i18n"
   },
   {
+   "href": "/products/time",
+   "category": "fundamentals",
+   "name": "Time",
+   "text": "Dates as strings, zone math and clocks. Its values are the ones format prints.",
+   "package": "@pyreon/time"
+  },
+  {
    "href": "/products/table",
    "category": "fundamentals",
    "name": "Table",
@@ -319,11 +372,11 @@
    "package": "@pyreon/table"
   },
   {
-   "href": "/products/zero",
-   "category": "framework",
-   "name": "Zero",
-   "text": "Request-scoped locale and time zone on the server, so concurrent requests never share one.",
-   "package": "@pyreon/zero"
+   "href": "/docs/ambient",
+   "category": "plumbing",
+   "name": "Ambient",
+   "text": "The locale, time zone and clock that format and time share. It has no product page; its docs page covers it.",
+   "package": "@pyreon/ambient"
   }
  ],
  "end": {
@@ -343,10 +396,10 @@
   },
   {
    "claim": "every code sample output",
-   "path": "evaluated against the real package under happy-dom (vitest, TZ=America/New_York) on 2026-11-18; pretty-bytes 7.2.0, pretty-ms 10.0.0, @formatjs/intl 6.1.5 as pinned in the package"
+   "path": "evaluated against the real package under happy-dom (vitest, TZ=America/New_York) on 2026-11-18, round 2 on the merged tree of #4681, #4686, #4689 and #4690; pretty-bytes 7.2.0, pretty-ms 10.0.0, @formatjs/intl 6.1.5 as pinned in the package"
   },
   {
-   "claim": "size: 1.1 kB number, 2.2 kB date, 4.9 kB whole set, 13.1 kB and 15.3 kB rivals, 169 B raw helper, pretty-ms 1.2 kB, formatDuration 2.0 kB",
+   "claim": "size: 1.2 kB number, 2.7 kB date, 7.1 kB whole set, 13.1 kB and 15.3 kB rivals, 169 B raw helper, pretty-ms 1.2 kB, pretty-bytes 1.4 kB, formatDuration 2.8 kB, formatBytes 2.1 kB",
    "path": "packages/fundamentals/format/bench/format-size.ts (Bun.build minify, browser, gzip); PR #4681 body; re-run 2026-11-18"
   },
   {

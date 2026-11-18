@@ -286,6 +286,12 @@
             "name": "Format",
             "href": "/products/format",
             "sub": "Numbers, dates, sizes"
+          },
+          {
+            "id": "time",
+            "name": "Time",
+            "href": "/products/time",
+            "sub": "Dates as strings"
           }
         ]
       },
@@ -400,7 +406,7 @@
     ],
     "footer": [
       {
-        "label": "All 41 products",
+        "label": "All 42 products",
         "href": "/products"
       },
       {
@@ -487,7 +493,7 @@
         },
         {
           "title": "Products",
-          "items": "megaMenu.columns[*].items (all 41, grouped by column)"
+          "items": "megaMenu.columns[*].items (all 42, grouped by column)"
         }
       ],
       "install": "npm create @pyreon/zero@latest",
@@ -594,7 +600,7 @@
             "href": "/products/charts"
           },
           {
-            "label": "All 41 products",
+            "label": "All 42 products",
             "href": "/products"
           }
         ]

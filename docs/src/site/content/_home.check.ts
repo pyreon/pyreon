@@ -43,7 +43,7 @@ export const checked = {
     },
     {
      "dot": "ok",
-     "text": "77 packages, one version"
+     "text": "80 packages, one version"
     },
     {
      "dot": "warn",
@@ -541,7 +541,7 @@ export const checked = {
    "kind": "products",
    "id": "products",
    "eyebrow": "Products",
-   "title": "41 products. One version.",
+   "title": "42 products. One version.",
    "lede": "One reactive core, one release train, one set of docs. Here are the ones people start with.",
    "featured": [
     {
@@ -583,7 +583,7 @@ export const checked = {
    ],
    "pitchesFrom": "content/_products.json#products[].pitch",
    "link": {
-    "label": "See all 41 products",
+    "label": "See all 42 products",
     "href": "/products"
    }
   },

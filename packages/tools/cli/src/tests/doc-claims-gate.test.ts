@@ -505,6 +505,57 @@ describe('the marketing site carries the lint counts', () => {
   })
 })
 
+describe('the marketing site carries the product count, the anti-pattern total and the package count', () => {
+  // pyreon.dev said "40 products" in six files after the forty-first page was added, "522" anti-patterns
+  // against a catalog past 560, and its package count was typed into five files by hand.
+  const SITE = 'docs/src/site/content'
+  const index = (n: number): string => `{ "order": [${Array.from({ length: n }, (_, i) => `"p${i}"`).join(', ')}] }\n`
+  const catalog = (n: number): string => `# Anti-patterns\n\n## Reactivity\n\n${Array.from({ length: n }, (_, i) => `- **Mistake ${i}** is wrong.\n`).join('')}`
+  const files = (over: Record<string, string> = {}): Record<string, string> => ({
+    [`${SITE}/products/_index.json`]: index(3),
+    [`${SITE}/_home.json`]: '{ "title": "3 products. One version.", "label": "See all 3 products", "text": "80 packages, one version" }\n',
+    [`${SITE}/_nav.json`]: '{ "a": { "label": "All 3 products" }, "b": { "label": "All 3 products" } }\n',
+    '.agents/rules/anti-patterns.md': catalog(5),
+    [`${SITE}/products/ai.json`]: '{ "text": "catalog (5 entries on main)" }\n',
+    [`${SITE}/_counts.json`]: '{ "packages": 80 }\n',
+    ...over,
+  })
+  const drift = (r: GateResult, id: string, file: string): string[] =>
+    forCheck(r, id)
+      .filter((f) => f.code.endsWith('-drift') && f.location?.relPath === file)
+      .map((f) => f.message)
+
+  it('stays quiet when every statement matches its source', async () => {
+    build(files())
+    const r = await run()
+    for (const id of ['site-product-count', 'site-anti-pattern-count', 'site-package-count']) {
+      expect(forCheck(r, id).filter((f) => f.code.endsWith('-drift'))).toEqual([])
+    }
+  })
+
+  it('reports a product count that was not bumped in every file, and names the one occurrence', async () => {
+    build(files({ [`${SITE}/_home.json`]: '{ "title": "2 products. One version.", "label": "See all 3 products", "text": "80 packages, one version" }\n', [`${SITE}/_nav.json`]: '{ "a": { "label": "All 3 products" }, "b": { "label": "All 2 products" } }\n' }))
+    const r = await run()
+    expect(drift(r, 'site-product-count', `${SITE}/_home.json`)).toEqual([`site product count: ${SITE}/_home.json claims 2, actual 3.`])
+    expect(drift(r, 'site-product-count', `${SITE}/_nav.json`)).toEqual([`site product count: ${SITE}/_nav.json claims 2 (one of 2 occurrences), actual 3.`])
+  })
+
+  it('reports an anti-pattern total that no longer matches the catalog', async () => {
+    build(files({ '.agents/rules/anti-patterns.md': catalog(7) }))
+    const r = await run()
+    expect(drift(r, 'site-anti-pattern-count', `${SITE}/products/ai.json`)).toEqual([`site anti-pattern total: ${SITE}/products/ai.json claims 5, actual 7.`])
+  })
+
+  it('checks the package count against the constant, not against the repository', async () => {
+    // The site says 80 on purpose, ahead of npm: two published packages here, and 80 is still right.
+    build(files({ 'packages/a/package.json': '{ "name": "@pyreon/a" }\n', 'packages/b/package.json': '{ "name": "@pyreon/b" }\n' }))
+    expect(drift(await run(), 'site-package-count', `${SITE}/_home.json`)).toEqual([])
+    // Changing the decision without changing the files is the drift.
+    build(files({ [`${SITE}/_counts.json`]: '{ "packages": 81 }\n' }))
+    expect(drift(await run(), 'site-package-count', `${SITE}/_home.json`)).toEqual([`site package count (the content set constant): ${SITE}/_home.json claims 80, actual 81.`])
+  })
+})
+
 describe('a JSON claim is read as the reader sees it', () => {
   // `package.json` may store any character as a `\uXXXX` escape, and
   // `changeset version` re-serialises the file on every release — so a

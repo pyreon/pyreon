@@ -62,6 +62,6 @@
 <rect class="bx" x="392" y="92" width="232" height="262" rx="16"/>
 <text class="m lab" x="416" y="118">no locale argument</text>
 <text class="m txt" x="416" y="160" style="font-size:13px">formatCurrency(n, 'EUR')</text><text class="m txt" x="416" y="196" style="font-size:13px">formatBytes(bytes)</text><text class="m txt" x="416" y="232" style="font-size:13px">formatDate(day, 'long')</text><text class="m txt" x="416" y="268" style="font-size:13px">formatRelativeTo(day, now)</text>
-<g class="k1"><text class="m hotT m" x="416" y="334" style="font-size:14px">setLocale('en-US')</text></g><g class="k3"><text class="m hotT m" x="416" y="334" style="font-size:14px">setLocale('de')</text></g><g class="k5"><text class="m hotT m" x="416" y="334" style="font-size:14px">setLocale('cs')</text></g>
+<g class="k1"><text class="m hotT m" x="416" y="322" style="font-size:14px">setLocale('en-US')</text></g><g class="k3"><text class="m hotT m" x="416" y="322" style="font-size:14px">setLocale('de')</text></g><g class="k5"><text class="m hotT m" x="416" y="322" style="font-size:14px">setLocale('cs')</text></g>
 <text class="m hint" x="24" y="390">plain functions over Intl · the active locale is a signal</text>
 </svg>

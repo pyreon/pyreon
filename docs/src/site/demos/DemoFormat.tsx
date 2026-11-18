@@ -1,5 +1,6 @@
-import { For } from '@pyreon/core'
+import { For, onMount } from '@pyreon/core'
 import {
+  currencyFormatter,
   formatBytes,
   formatCompact,
   formatCurrency,
@@ -16,6 +17,7 @@ import {
   provideLocale,
   provideTimeZone,
 } from '@pyreon/format'
+import { RelativeTime } from '@pyreon/format/components'
 import { computed, signal } from '@pyreon/reactivity'
 import { DemoSurface } from '../kit/cards'
 import { CodeBlock } from '../kit/code'
@@ -48,6 +50,9 @@ const STANDUP = '2026-11-18T23:30:00Z'
 const NOW = Date.UTC(2026, 10, 18, 12, 0)
 const SOON = Date.UTC(2026, 10, 18, 12, 5)
 
+/** A formatter is a value: `.from()` adapts the input, so the price can stay in cents. */
+const fromCents = currencyFormatter('EUR').from((cents: number) => cents / 100)
+
 const SOURCE = `provideLocale(() => lang())
 provideTimeZone(() => zone())
 
@@ -55,6 +60,10 @@ provideTimeZone(() => zone())
 formatCurrency(1234.5, 'EUR')
 formatDate('2026-11-18', 'long')
 formatDateTime('2026-11-18T23:30:00Z')
+
+const fromCents = currencyFormatter('EUR').from((c: number) => c / 100)
+fromCents(123456)
+<RelativeTime value={postedAt()} />
 parseNumber(typed(), { locale: lang() })`
 
 type RowProps = {
@@ -78,12 +87,27 @@ function Row(props: RowProps) {
   )
 }
 
+type PostedProps = { label: string; at: () => number; ready: () => boolean; rtl: () => 'rtl' | 'ltr'; lang: () => string; ran: () => void }
+
+/** The label that updates itself. It starts after mount: the server has no clock to agree with. */
+function Posted(props: PostedProps) {
+  props.ran()
+  return (
+    <PaperRow tag="li">
+      <PaperText>{props.label}</PaperText>
+      <bdi lang={props.lang()} dir={props.rtl()}>
+        {() => (props.ready() ? <RelativeTime value={props.at()} /> : '–')}
+      </bdi>
+    </PaperRow>
+  )
+}
+
 /**
  * Format demo (`format.json` → demo): the real `@pyreon/format` reactive entry.
  * One `provideLocale(() => lang())` and one `provideTimeZone(() => zone())` in
  * the root drive every value: a switch changes two signals and each value
  * rewrites its own text node. The meter counts how many row components ran;
- * it stays at 12 however often the language changes.
+ * it stays at 14 however often the language changes.
  *
  * SSR: `provideLocale` is request-scoped on the server, and the first render
  * is en-US in UTC on both sides, so hydration adopts the server HTML. Every
@@ -93,16 +117,25 @@ export default function DemoFormat() {
   const lang = signal<Language>('en-US')
   const zone = signal<Zone>('UTC')
   const typed = signal('1,234.5')
+  const ready = signal(false)
+  const postedAt = signal(0)
   let ran = 0
 
   provideLocale(() => lang())
   provideTimeZone(() => zone())
+
+  // Posted 57 seconds before the page woke up: the label flips to "1 minute ago" three seconds later, by itself.
+  onMount(() => {
+    postedAt.set(Date.now() - 57_000)
+    ready.set(true)
+  })
 
   const rtl = () => (lang() === 'ar' ? 'rtl' : 'ltr')
   const parsed = computed(() => parseNumber(typed(), { locale: lang() }))
 
   const rows: { label: string; value: () => string }[] = [
     { label: 'Price', value: () => formatCurrency(1234.5, 'EUR') },
+    { label: 'Price from cents', value: () => fromCents(123456) },
     { label: 'Audience', value: () => formatCompact(1_240_000) },
     { label: 'Conversion', value: () => formatPercent(0.427, { maximumFractionDigits: 1 }) },
     { label: 'File size', value: () => formatBytes(7_340_032) },
@@ -138,6 +171,7 @@ export default function DemoFormat() {
             <For each={rows} by={(r) => r.label}>
               {(r) => <Row label={r.label} value={r.value} rtl={rtl} lang={() => lang()} ran={() => (ran += 1)} />}
             </For>
+            <Posted label="Posted" at={() => postedAt()} ready={() => ready()} rtl={rtl} lang={() => lang()} ran={() => (ran += 1)} />
           </PaperList>
           <div>
             <PaperLabel for="format-typed">Type a number</PaperLabel>
@@ -162,7 +196,7 @@ export default function DemoFormat() {
           </div>
         </Stack>
       </DemoSurface>
-      <DemoPanel note="Two signals and two provide calls drive all twelve values. Switch the language and each value rewrites its own text node; the row components do not run again.">
+      <DemoPanel note="Two signals and two provide calls drive every value. Switch the language and each value rewrites its own text node; the row components do not run again.">
         <Stack gap={200}>
           <CodeBlock code={SOURCE} label="The wiring" />
           <Meters

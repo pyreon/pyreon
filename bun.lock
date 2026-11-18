@@ -77,6 +77,7 @@
       "version": "0.50.0",
       "dependencies": {
         "@pyreon/a11y": "workspace:*",
+        "@pyreon/ambient": "workspace:*",
         "@pyreon/attrs": "workspace:*",
         "@pyreon/auth": "workspace:*",
         "@pyreon/charts": "workspace:*",
@@ -115,6 +116,7 @@
         "@pyreon/styler": "workspace:*",
         "@pyreon/sync": "workspace:*",
         "@pyreon/table": "workspace:*",
+        "@pyreon/time": "workspace:*",
         "@pyreon/toast": "workspace:*",
         "@pyreon/ui-core": "workspace:*",
         "@pyreon/unistyle": "workspace:*",

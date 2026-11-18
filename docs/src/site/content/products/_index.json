@@ -21,6 +21,7 @@
   "feature",
   "i18n",
   "format",
+  "time",
   "permissions",
   "urlstate",
   "hooks",
@@ -168,6 +169,12 @@
    "name": "Format",
    "package": "@pyreon/format",
    "category": "fundamentals · formatting"
+  },
+  {
+   "id": "time",
+   "name": "Time",
+   "package": "@pyreon/time",
+   "category": "fundamentals · dates"
   },
   {
    "id": "permissions",
