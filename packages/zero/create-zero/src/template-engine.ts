@@ -107,6 +107,16 @@ export async function copyOverlay(
   return true
 }
 
+/**
+ * npm never packs a file named `.gitignore` (it reads it as ignore rules for
+ * the package instead), so a template's `.gitignore` never reached a project
+ * scaffolded from the published package. Templates store it as `gitignore`
+ * and the copy restores the dot.
+ */
+function outputName(name: string): string {
+  return name === 'gitignore' ? '.gitignore' : name
+}
+
 async function walkAndCopy(
   srcDir: string,
   dstDir: string,
@@ -117,7 +127,7 @@ async function walkAndCopy(
   const entries = await readdir(srcDir, { withFileTypes: true })
   for (const entry of entries) {
     const srcPath = join(srcDir, entry.name)
-    const dstPath = join(dstDir, entry.name)
+    const dstPath = join(dstDir, outputName(entry.name))
     if (entry.isDirectory()) {
       // Convention: at the TOP LEVEL of a base copy, skip `_<name>/` dirs
       // — they're namespace-prefixed sub-overlays copied via explicit
