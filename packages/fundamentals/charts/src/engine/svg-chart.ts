@@ -18,8 +18,8 @@ import type { Domain, Double, MeasureText } from './types'
 
 /** Options for {@link chartToSvg}. */
 export interface ChartToSvgOptions<T> {
-  data: T[]
-  marks: Mark<T>[]
+  data: readonly T[]
+  marks: readonly Mark<T>[]
   /** Category label per datum. Omit for a purely numeric x axis. */
   x?: (d: T, index: number) => string
   /**
@@ -46,9 +46,9 @@ export interface ChartToSvgOptions<T> {
    */
   format?: Formatter
   /** Reference rules and bands — see `Annotation`. */
-  annotations?: Annotation[]
+  annotations?: readonly Annotation[]
   /** Datum-anchored point markers — see `PointMarker`. */
-  markers?: PointMarker[]
+  markers?: readonly PointMarker[]
   /** Flip the frame — categories on Y, bars growing rightward. Bar marks only. */
   horizontal?: boolean
   /**

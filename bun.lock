@@ -3164,6 +3164,7 @@
         "@pyreon/perf-harness": "workspace:*",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/runtime-server": "workspace:*",
+        "@pyreon/styler": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/typescript": "workspace:^",

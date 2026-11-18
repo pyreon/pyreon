@@ -33,6 +33,7 @@ import {
   batch,
   effectScope,
   getContextOwner,
+  getCurrentScope,
   renderEffect,
   runUntracked,
   runWithContextOwner,
@@ -622,6 +623,12 @@ function mountComponent(
   // long as the component, and its lazy design needs no hot-path branch
   // (registration is rare, unlike scope/owner reads).
   const prevOwner = getContextOwner()
+  // RESTORED on every exit, never reset to null: a component can mount while
+  // another scope is current (inside a parent's onMount via a signal write
+  // that flips a <Show>, inside a <For> row's collector, inside a parent's
+  // compiled template), and nulling it there left everything that scope's
+  // owner created afterwards with no owner — never disposed.
+  const prevScope = getCurrentScope()
   const scope = effectScope()
   scope._parent = prevOwner
   setCurrentScope(scope)
@@ -659,7 +666,7 @@ function mountComponent(
     hooks = _takeHooks()
   } catch (err) {
     if (process.env.NODE_ENV !== 'production') _mountingStack!.pop()
-    setCurrentScope(null)
+    setCurrentScope(prevScope)
     setContextOwner(prevOwner)
     scope.stop()
     reportError({
@@ -699,7 +706,7 @@ function mountComponent(
 
     return noop
   } finally {
-    setCurrentScope(null)
+    setCurrentScope(prevScope)
   }
 
   if (process.env.NODE_ENV !== 'production' && output != null && typeof output === 'object') {

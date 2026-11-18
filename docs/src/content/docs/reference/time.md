@@ -297,7 +297,7 @@ endOf('2026-11-18T14:30', 'day')              // => '2026-11-18T23:59:59.999'
 <T extends PlainDate | PlainDateTime | PlainYearMonth | PlainTime | Instant>(a: T, b: T) => -1 | 0 | 1
 ```
 
-Order two values of the same shape. Same-length strings compare as plain strings (every field is fixed-width and zero-padded), so the common case is one string comparison; that fast path does not validate. Values written at different precision (`14:30` and `14:30`) are parsed. Usable as an `Array#sort` comparator.
+Order two values of the same shape. Same-length strings compare as plain strings (every field is fixed-width and zero-padded), so the common case is one string comparison; that fast path does not validate. Values written at different precision (`14:30` and `14:30:00`, which compare equal) are parsed. Usable as an `Array#sort` comparator.
 
 **Example**
 

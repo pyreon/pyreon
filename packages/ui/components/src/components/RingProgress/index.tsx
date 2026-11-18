@@ -1,6 +1,7 @@
 /** @jsxImportSource @pyreon/core */
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { h, splitProps } from '@pyreon/core'
+import { el, tones } from '../../factory'
 
 export interface RingProgressProps {
   /** Progress 0-100. Number or accessor — an accessor makes the ring LIVE. */
@@ -9,9 +10,9 @@ export interface RingProgressProps {
   size?: number
   /** Stroke thickness in px (default 6). */
   thickness?: number
-  /** Ring color (default the theme-ish primary; any CSS color). */
+  /** Arc color (default the theme's primary; any CSS color). */
   color?: string
-  /** Track color. */
+  /** Track color (default a neutral that follows `<PyreonUI mode>`). */
   trackColor?: string
   /** Accessible name (default 'Progress'). */
   'aria-label'?: string
@@ -19,6 +20,42 @@ export interface RingProgressProps {
   children?: VNodeChild
   [key: string]: unknown
 }
+
+type StyleCss = (strings: TemplateStringsArray, ...values: unknown[]) => unknown
+type RingTheme = { ringArcColor?: string; ringTrackColor?: string }
+
+/**
+ * The themed root. The ring's colours come from the theme and the mode like
+ * every other component's: the arc is the theme's primary, the track a muted
+ * neutral (`tones().surfaceMuted`, the "track" tone), the centre label the
+ * mode's text colour. SVG paints with `stroke`, which the theme pipeline does
+ * not map, so the two colours travel as theme keys and reach the circles
+ * through `.styles()` (the `choiceBoxStyles` pattern). Being CSS rather than
+ * `stroke` attributes, they are `var()` references under
+ * `init({ cssVariables: true })` and follow a mode flip without a re-render.
+ * A consumer's `color` / `trackColor` is an inline style on the circle, so it
+ * still wins over the stylesheet.
+ */
+const RingRoot = el
+  .config({ name: 'RingProgress' })
+  .attrs({ tag: 'div' })
+  .theme((t, m) => ({
+    color: tones(t, m).text,
+    ringArcColor: t.color.system.primary.base,
+    ringTrackColor: tones(t, m).surfaceMuted,
+  }))
+  .styles(
+    ((css: StyleCss) => css`
+      ${({ $rocketstyle }: { $rocketstyle: RingTheme }) => css`
+        & [data-ring-track] {
+          stroke: ${$rocketstyle.ringTrackColor};
+        }
+        & [data-ring-arc] {
+          stroke: ${$rocketstyle.ringArcColor};
+        }
+      `};
+    `) as never,
+  )
 
 /**
  * Circular progress ring (the linear Progress' sibling — the audit's missing
@@ -58,7 +95,7 @@ export const RingProgress: ComponentFn<RingProgressProps> = (props) => {
   const offset = () => circumference * (1 - read() / 100)
 
   return h(
-    'div',
+    RingRoot as never,
     {
       ...(rest as Record<string, unknown>),
       role: 'progressbar',
@@ -76,7 +113,8 @@ export const RingProgress: ComponentFn<RingProgressProps> = (props) => {
         cy: size / 2,
         r: radius,
         fill: 'none',
-        stroke: own.trackColor ?? '#e9ecef',
+        'data-ring-track': '',
+        ...(own.trackColor ? { style: `stroke:${own.trackColor}` } : {}),
         'stroke-width': thickness,
       }),
       h('circle', {
@@ -84,7 +122,8 @@ export const RingProgress: ComponentFn<RingProgressProps> = (props) => {
         cy: size / 2,
         r: radius,
         fill: 'none',
-        stroke: own.color ?? '#228be6',
+        'data-ring-arc': '',
+        ...(own.color ? { style: `stroke:${own.color}` } : {}),
         'stroke-width': thickness,
         'stroke-linecap': 'round',
         'stroke-dasharray': circumference,

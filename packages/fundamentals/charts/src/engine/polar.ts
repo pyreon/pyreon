@@ -19,7 +19,7 @@ export interface PolarSeries {
   name: string
   /** `scatter` draws the datum points alone — no polyline between them. */
   kind: 'bar' | 'line' | 'scatter'
-  values: Double[]
+  values: readonly Double[]
   color?: string | undefined
   /** Point radius for line dots and scatter symbols; default 2.5 / 4. */
   radius?: Double | undefined
@@ -28,7 +28,7 @@ export interface PolarSeries {
 }
 
 export interface PolarAxes {
-  categories: string[]
+  categories: readonly string[]
   /** Which axis the categories sit on; default 'angle'. */
   categoryOn?: 'angle' | 'radius' | undefined
   /** Fixed value extent; default 0..max. (A struct, not a tuple — tuples have no native form.) */
@@ -148,7 +148,7 @@ function polarColumnKey(s: PolarSeries, i: number): string {
 }
 
 /** Lay out the series into `box`. */
-export function layoutPolar(axes: PolarAxes, series: PolarSeries[], box: Rect, options?: PolarOptions): PolarLayout {
+export function layoutPolar(axes: PolarAxes, series: readonly PolarSeries[], box: Rect, options?: PolarOptions): PolarLayout {
   const palette = options?.palette ?? DEFAULT_PALETTE
   const categoryOn = axes.categoryOn ?? 'angle'
   const n = axes.categories.length
