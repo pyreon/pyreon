@@ -30,7 +30,7 @@ describe('synthesized data classes — @Serializable consistency', () => {
     // `Json.decodeFromString<…>` is a SUBSTRING of it, so the old assertion
     // kept passing after the decode moved to the parity-configured reader —
     // green, but no longer asserting which reader is used.
-    expect(out).toContain('PyreonFetchJson.decodeFromString<List<AppData>>(body)')
+    expect(out).toContain('PyreonJson.decode<List<AppData>>(body)')
   })
 
   it('named type structs keep their annotation (no regression)', () => {

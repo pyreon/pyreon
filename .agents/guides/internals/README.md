@@ -41,6 +41,8 @@ A `{value}` child is polymorphic: a `VNode`/`VNode[]` mounts, a primitive sets t
 
 `_bindText` upgrades permanently to a subtree mount the first time its value is a VNode, NativeItem or VNode array; before that it writes `.data` only.
 
+**The child-text rule** (`@pyreon/core` `child-text.ts`) is shared by every renderer: `h()` mount, the compiled setters and bindings, `_fuse`, `renderToString`/`renderToStream`/`_esc`, and hydration. A value is structural (mounted) when it is a VNode/NativeItem, a function, or an array holding one at any depth (`_isStructuralChild`); everything else is text (`_childText`): `null`/`undefined`/booleans render nothing, strings/numbers/bigints their `String()`, an array its items concatenated (`['a','b']` → `ab`, one text node on the compiled path), any other object its `String()`. Sinks never let the DOM coerce (`textContent = 0` differs between happy-dom and Chromium). Locked by `child-text-parity.test.tsx` and its `.browser` twin.
+
 ### Signals and props
 
 Expression slices use lexical signal scopes: parameters and named function/class bindings shadow only their scope, block/catch/loop bindings are restored on exit, and `var` remains function scoped. Native and JavaScript collectors visit class fields, methods and static blocks, while excluding declaration names and noncomputed property keys. Computed object keys participate in prop-derived inlining just like values.

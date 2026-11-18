@@ -52,7 +52,7 @@ describe('Pyreon → Swift emit', () => {
     expect(emit('03-computed.tsx')).toMatchInlineSnapshot(`
       "struct Doubled: View {
         @State private var count: Int = 0
-        private var doubled: Int { count * 2 }
+        private var doubled: Int { pyreonMul(count, 2) }
         var body: some View {
           Text(verbatim: "\\(doubled)")
         }
@@ -65,7 +65,7 @@ describe('Pyreon → Swift emit', () => {
       "struct Increment: View {
         @State private var count: Int = 0
         var body: some View {
-          Button("Increment") { count = count + 1 }.buttonStyle(.borderedProminent)
+          Button("Increment") { count = pyreonAdd(count, 1) }.buttonStyle(.borderedProminent)
         }
       }"
     `)
@@ -76,7 +76,7 @@ describe('Pyreon → Swift emit', () => {
       "struct Sum: View {
         @State private var a: Int = 1
         @State private var b: Int = 2
-        private var total: Int { a + b }
+        private var total: Int { pyreonAdd(a, b) }
         var body: some View {
           Text(verbatim: "\\(total)")
         }

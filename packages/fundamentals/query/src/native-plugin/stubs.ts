@@ -56,6 +56,9 @@ export const MUTATION_SWIFT_STUBS = `// PyreonMutation — the container a \`use
 public struct PyreonMutationCallbacks<T> {
   public init(onSuccess: ((T) -> Void)? = nil, onError: ((Error) -> Void)? = nil, onSettled: ((T?, Error?) -> Void)? = nil) {}
 }
+public struct PyreonMutationCallbacksOrEmpty<T> {
+  public init(onSuccess: ((T?) -> Void)? = nil, onError: ((Error) -> Void)? = nil, onSettled: ((T?, Error?) -> Void)? = nil) {}
+}
 public final class PyreonMutation<T> {
   public private(set) var data: T?
   public private(set) var error: Error?
@@ -69,6 +72,9 @@ public final class PyreonMutation<T> {
   public func mutate<R>(_ input: R, _ operation: @escaping (R) async throws -> T, options: PyreonMutationCallbacks<T> = PyreonMutationCallbacks(), call: PyreonMutationCallbacks<T> = PyreonMutationCallbacks()) {}
   @discardableResult
   public func mutateAsync<R>(_ input: R, _ operation: @escaping (R) async throws -> T, options: PyreonMutationCallbacks<T> = PyreonMutationCallbacks(), call: PyreonMutationCallbacks<T> = PyreonMutationCallbacks()) async throws -> T { fatalError() }
+  public func mutate<R>(_ input: R, orEmpty operation: @escaping (R) async throws -> T?, options: PyreonMutationCallbacksOrEmpty<T> = PyreonMutationCallbacksOrEmpty(), call: PyreonMutationCallbacksOrEmpty<T> = PyreonMutationCallbacksOrEmpty()) {}
+  @discardableResult
+  public func mutateAsync<R>(_ input: R, orEmpty operation: @escaping (R) async throws -> T?, options: PyreonMutationCallbacksOrEmpty<T> = PyreonMutationCallbacksOrEmpty(), call: PyreonMutationCallbacksOrEmpty<T> = PyreonMutationCallbacksOrEmpty()) async throws -> T? { nil }
 }
 `
 
@@ -172,6 +178,7 @@ export const MUTATION_KOTLIN_STUBS = `// PyreonMutation — mirror of @pyreon/qu
 // MutableState result fields (read \`.value\`), \`begin\` on the calling thread,
 // and the suspend \`run\` / \`runAsync\` the call site launches.
 class PyreonMutationCallbacks<T>(val onSuccess: ((T) -> Unit)? = null, val onError: ((Throwable) -> Unit)? = null, val onSettled: ((T?, Throwable?) -> Unit)? = null)
+typealias PyreonMutationCallbacksOrEmpty<T> = PyreonMutationCallbacks<T?>
 class PyreonMutation<T> {
   val data: MutableState<T?> = mutableStateOf(null)
   val error: MutableState<Throwable?> = mutableStateOf(null)
@@ -184,6 +191,8 @@ class PyreonMutation<T> {
   fun begin(): Int = 0
   suspend fun <R> run(mine: Int, input: R, operation: suspend (R) -> T, options: PyreonMutationCallbacks<T> = PyreonMutationCallbacks(), call: PyreonMutationCallbacks<T> = PyreonMutationCallbacks()) {}
   suspend fun <R> runAsync(input: R, operation: suspend (R) -> T, options: PyreonMutationCallbacks<T> = PyreonMutationCallbacks(), call: PyreonMutationCallbacks<T> = PyreonMutationCallbacks()): T = operation(input)
+  suspend fun <R> runOrEmpty(mine: Int, input: R, operation: suspend (R) -> T?, options: PyreonMutationCallbacksOrEmpty<T> = PyreonMutationCallbacks(), call: PyreonMutationCallbacksOrEmpty<T> = PyreonMutationCallbacks()) {}
+  suspend fun <R> runAsyncOrEmpty(input: R, operation: suspend (R) -> T?, options: PyreonMutationCallbacksOrEmpty<T> = PyreonMutationCallbacks(), call: PyreonMutationCallbacksOrEmpty<T> = PyreonMutationCallbacks()): T? = operation(input)
 }
 
 `
