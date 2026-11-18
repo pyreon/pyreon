@@ -40,6 +40,7 @@ export const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/connector-document', "bridges ui-components to @pyreon/document extraction — both ends are web/document engines"],
   ['@pyreon/document', "wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering. Build the file on a server and fetch it (useFetch / @pyreon/http lower), or hand the result to the platform share sheet (useShare lowers)."],
   ['@pyreon/document-primitives', "document-authoring primitives feeding the pdfmake/docx renderers"],
+  ['@pyreon/format', "formats through the platform's Intl; the PMTC native lowering of these calls is planned (the native compiler already lowers a core set of Intl number/date formatting) but not shipped, so native apps render it behind the Web escape hatch or format on the web side today"],
   ['@pyreon/lathe', "the code generator — build-time tooling that emits app code, not app runtime itself"],
   ['@pyreon/lint', "lint tooling — runs at dev time, not app runtime"],
   ['@pyreon/loom', "the dependency observatory — dev tooling, not app runtime"],

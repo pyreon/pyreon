@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 224,
+  "pageCount": 226,
   "pages": [
    {
     "path": "a11y.md",
@@ -241,6 +241,11 @@
     "path": "hotkeys.md",
     "title": "Hotkeys",
     "href": "/docs/hotkeys"
+   },
+   {
+    "path": "format.md",
+    "title": "Format",
+    "href": "/docs/format"
    },
    {
     "path": "http.md",
@@ -661,6 +666,11 @@
     "path": "reference/hotkeys.md",
     "title": "Keyboard Shortcuts — API Reference",
     "href": "/docs/reference/hotkeys"
+   },
+   {
+    "path": "reference/format.md",
+    "title": "Formatting and Parsing — API Reference",
+    "href": "/docs/reference/format"
    },
    {
     "path": "reference/http.md",
@@ -1305,6 +1315,7 @@
       "permissions",
       "auth",
       "hotkeys",
+      "format",
       "toast",
       "rx",
       "url-state",
@@ -1407,6 +1418,7 @@
       "reference/form",
       "reference/hooks",
       "reference/hotkeys",
+      "reference/format",
       "reference/http",
       "reference/i18n",
       "reference/kinetic-presets",
@@ -1966,6 +1978,10 @@
      "productId": "hotkeys"
     },
     {
+     "title": "Format",
+     "href": "/docs/format"
+    },
+    {
      "title": "Drag and Drop",
      "href": "/docs/dnd",
      "productId": "dnd"
@@ -2389,6 +2405,10 @@
       {
        "title": "Keyboard Shortcuts",
        "href": "/docs/reference/hotkeys"
+      },
+      {
+       "title": "Formatting and Parsing",
+       "href": "/docs/reference/format"
       },
       {
        "title": "HTTP Client",

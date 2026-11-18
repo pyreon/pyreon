@@ -35,6 +35,7 @@
       "@pyreon/elements",
       "@pyreon/feature",
       "@pyreon/flow",
+      "@pyreon/format",
       "@pyreon/form",
       "@pyreon/head",
       "@pyreon/hooks",

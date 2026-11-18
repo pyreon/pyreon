@@ -332,6 +332,81 @@ export const SCENARIOS: Scenario[] = [
     // renderer unreferenced — nor the ECharts wrapper.
     imports: ['Chart', 'Line'],
   },
+  {
+    id: '@pyreon/format::core-formatNumber',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'core.js',
+    // One number formatter from the pure entry must not pull the date, duration,
+    // list, parse or defineFormats code: every function is individually shakeable.
+    imports: ['formatNumber'],
+  },
+  {
+    id: '@pyreon/format::core-formatBytes',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'core.js',
+    imports: ['formatBytes'],
+  },
+  {
+    id: '@pyreon/format::core-formatDate',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'core.js',
+    imports: ['formatDate'],
+  },
+  {
+    id: '@pyreon/format::core-all',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'core.js',
+    // The whole pure entry: every formatter, both parsers, createFormatter, defineFormats.
+    imports: [
+      'createFormatter', 'defineFormats', 'formatBytes', 'formatCompact', 'formatCurrency', 'formatDate',
+      'formatDateRange', 'formatDateTime', 'formatDateToParts', 'formatDuration', 'formatList', 'formatNumber',
+      'formatNumberRange', 'formatNumberToParts', 'formatPercent', 'formatRelative', 'formatRelativeTo',
+      'formatTime', 'formatUnit', 'parseDate', 'parseNumber', 'numberFormatter', 'currencyFormatter',
+      'percentFormatter', 'compactFormatter', 'unitFormatter', 'bytesFormatter', 'durationFormatter', 'listFormatter',
+      'dateFormatter', 'timeFormatter', 'dateTimeFormatter', 'relativeFormatter',
+    ],
+  },
+  {
+    id: '@pyreon/format::formatNumber',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    // The reactive entry with one formatter: the locale signal and context are
+    // the only extras over the pure entry.
+    imports: ['formatNumber'],
+  },
+  {
+    id: '@pyreon/format::core-numberFormatter',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'core.js',
+    // One reusable number formatter from the pure entry: the formatter machinery
+    // (with / from / fallback / parts / range) plus the number kind, nothing else.
+    imports: ['numberFormatter'],
+  },
+  {
+    id: '@pyreon/format::core-currencyFormatter',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'core.js',
+    imports: ['currencyFormatter'],
+  },
+  {
+    id: '@pyreon/format::currencyFormatter',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    // The reactive entry with one factory: the locale signal and context are the extras over core.
+    imports: ['currencyFormatter'],
+  },
+  {
+    id: '@pyreon/format::formatNumber-and-setLocale',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    imports: ['formatNumber', 'setLocale'],
+  },
 ]
 
 /**
