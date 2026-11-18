@@ -1,6 +1,7 @@
 /**
  * Shared harness for the multi-library head-to-heads in
- * `packages/fundamentals/<pkg>/bench/*-rivals.ts` (bun / JavaScriptCore).
+ * `packages/fundamentals/<pkg>/bench/*-rivals.ts` (bun / JavaScriptCore, or node /
+ * V8 when the orchestrator is started with node: children use the same runtime).
  *
  * One bench file declares its arms (Pyreon + every rival), its ops and a
  * correctness gate, then calls `runRivalBench`. The same file is re-entered as a
@@ -33,20 +34,33 @@
  * loss needs disjoint CI95s; overlap is a tie. One run is FIRST-PASS: a published
  * verdict needs two runs with disjoint CIs on a quiet machine.
  */
+import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { cpus, loadavg, totalmem } from 'node:os'
 import { clusterBootstrapCI95, medianOf } from '../../examples/benchmark/cluster-bootstrap'
 
-declare const Bun: {
-  version: string
-  spawnSync: (
-    cmd: string[],
-    opts: {
-      env: Record<string, string | undefined>
-      stdout?: 'pipe' | 'inherit'
-      stderr?: 'pipe' | 'inherit'
-    },
-  ) => { stdout: Uint8Array; stderr: Uint8Array; exitCode: number }
+/** `Bun.version` under bun; absent under node. */
+declare const Bun: { version: string } | undefined
+
+/**
+ * Run a child to completion, capturing its output. `node:child_process` so the
+ * same harness drives a bench under bun (JavaScriptCore) or under node (V8): the
+ * children are re-entered with whatever runtime started the orchestrator.
+ */
+function run(
+  cmd: string[],
+  env: Record<string, string | undefined>,
+  inherit: boolean,
+): { stdout: string; stderr: string; exitCode: number } {
+  const [bin, ...rest] = cmd
+  const r = spawnSync(bin as string, rest, {
+    env,
+    encoding: 'utf8',
+    maxBuffer: 64 * 2 ** 20,
+    stdio: inherit ? 'inherit' : 'pipe',
+  })
+
+  return { stdout: r.stdout ?? '', stderr: r.stderr ?? '', exitCode: r.status ?? 1 }
 }
 
 export interface Arm<I extends string> {
@@ -121,7 +135,9 @@ function banner(): string {
     .map((l) => l.toFixed(2))
     .join(' ')
   const ram = `${Math.round(totalmem() / 2 ** 30)} GiB`
-  return `bun ${Bun.version} (JavaScriptCore) · ${process.platform}/${process.arch} · ${cpus()[0]?.model ?? 'cpu?'} · ${ram} · loadavg ${load} · NODE_ENV=${process.env.NODE_ENV}`
+  const engine = typeof Bun === 'undefined' ? `node ${process.version} (V8)` : `bun ${Bun.version} (JavaScriptCore)`
+
+  return `${engine} · ${process.platform}/${process.arch} · ${cpus()[0]?.model ?? 'cpu?'} · ${ram} · loadavg ${load} · NODE_ENV=${process.env.NODE_ENV}`
 }
 
 function versionOf(file: string, pkg: string): string {
@@ -173,11 +189,11 @@ export async function runRivalBench<I extends string>(cfg: RivalBench<I>): Promi
 
   // ── orchestrator ─────────────────────────────────────────────────────────
   if (process.env.NODE_ENV !== 'production') {
-    const r = Bun.spawnSync([process.execPath, cfg.file, ...process.argv.slice(2)], {
-      env: { ...process.env, NODE_ENV: 'production' },
-      stdout: 'inherit',
-      stderr: 'inherit',
-    })
+    const r = run(
+      [process.execPath, ...process.execArgv, cfg.file, ...process.argv.slice(2)],
+      { ...process.env, NODE_ENV: 'production' },
+      true,
+    )
     process.exit(r.exitCode)
   }
 
@@ -209,16 +225,15 @@ export async function runRivalBench<I extends string>(cfg: RivalBench<I>): Promi
       const k = (round + opIndex) % arms.length
       const order = [...arms.slice(k), ...arms.slice(0, k)]
       for (const arm of order) {
-        const proc = Bun.spawnSync(
-          [process.execPath, cfg.file, 'cell', op, arm, ...(QUICK ? ['--quick'] : [])],
-          { env: { ...process.env, NODE_ENV: 'production' } },
+        const proc = run(
+          [process.execPath, ...process.execArgv, cfg.file, 'cell', op, arm, ...(QUICK ? ['--quick'] : [])],
+          { ...process.env, NODE_ENV: 'production' },
+          false,
         )
         if (proc.exitCode !== 0) {
-          throw new Error(
-            `[rivals-harness] child failed (op "${op}", arm "${arm}"):\n${new TextDecoder().decode(proc.stderr)}`,
-          )
+          throw new Error(`[rivals-harness] child failed (op "${op}", arm "${arm}"):\n${proc.stderr}`)
         }
-        const out = JSON.parse(new TextDecoder().decode(proc.stdout)) as { samples: number[] }
+        const out = JSON.parse(proc.stdout) as { samples: number[] }
         const list = (clusters[op]![arm] ??= [])
         list.push(out.samples)
       }

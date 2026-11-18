@@ -63,15 +63,21 @@
     }
   },
   "devDependencies": {
+    "@formatjs/intl": "6.2.0",
     "@pyreon/core": "workspace:*",
+    "@pyreon/i18n": "workspace:*",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/runtime-server": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
+    "@types/humanize-duration": "3.27.4",
     "@vitest/browser-playwright": "^5.1.0",
-    "happy-dom": "^21.0.4"
+    "happy-dom": "^21.0.4",
+    "humanize-duration": "3.35.1",
+    "pretty-bytes": "7.2.0",
+    "pretty-ms": "10.0.0"
   },
   "publishConfig": {
     "access": "public"

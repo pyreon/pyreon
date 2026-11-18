@@ -190,27 +190,41 @@ export function durationIn(locale: string, value: DurationInput, options: Durati
 
     return text
   }
-  // Keep the `largest` most significant non-zero units (truncating the rest).
+  const first = truncateTo(f, pack.largest)
+  if (first === -1) return unitFormat(pack, 6).format(0)
+
+  return formatUnits(pack, f, sign, first)
+}
+
+/** Zero every field after the `largest` most significant non-zero ones; the index of the first non-zero field, or `-1`. */
+function truncateTo(f: number[], largest: number): number {
   let shown = 0
   let first = -1
   for (let i = 0; i < 8; i++) {
     if (f[i] === 0) continue
-    if (shown >= pack.largest) f[i] = 0
-    else {
-      if (first === -1) first = i
-      shown++
+    if (shown >= largest) {
+      f[i] = 0
+      continue
     }
+    if (first === -1) first = i
+    shown++
   }
-  if (first === -1) return unitFormat(pack, 6).format(0)
+
+  return first
+}
+
+/** The unit-style text: `Intl.DurationFormat` when present, else unit numbers joined by an `Intl.ListFormat`. */
+function formatUnits(pack: DurationPack, f: number[], sign: -1 | 1, first: number): string {
   if (pack.native !== undefined) {
     const d: Record<string, number> = {}
-    for (let i = 0; i < 8; i++) if (f[i] !== 0) d[UNITS[i] as string] = (sign === -1 ? -1 : 1) * (f[i] as number)
+    for (let i = 0; i < 8; i++) if (f[i] !== 0) d[UNITS[i] as string] = sign * (f[i] as number)
+
     return pack.native.format(d)
   }
   const parts: string[] = []
   for (let i = 0; i < 8; i++) {
     if (f[i] === 0) continue
-    parts.push(unitFormat(pack, i).format(i === first && sign === -1 ? -(f[i] as number) : (f[i] as number)))
+    parts.push(unitFormat(pack, i).format(i === first ? sign * (f[i] as number) : (f[i] as number)))
   }
   pack.list ??= construct(
     (l, o) => new Intl.ListFormat(l, o),

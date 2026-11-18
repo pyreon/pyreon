@@ -14,7 +14,7 @@ export default defineManifest({
   multiplatform: {
     tier: 'web-only',
     rationale:
-      "formats through the platform's Intl; the PMTC native lowering of these calls is planned (the native compiler already lowers a core set of Intl number/date formatting) but not shipped, so native apps import it behind a <Web> branch or format on the web side today",
+      "formats through the platform's Intl; the PMTC native lowering of these calls is planned (the native compiler already lowers a core set of Intl number/date formatting) but not shipped, so native apps render it behind the Web escape hatch or format on the web side today",
   },
   peerDeps: ['@pyreon/core', '@pyreon/reactivity'],
   longExample: `// Plain functions: no setup, no instances. Output below is for the en-US locale.
