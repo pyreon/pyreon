@@ -109,7 +109,7 @@ function buildEntry<F>(table: Table<F>, locale: string, variant: string, options
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('[Pyreon]')) throw error
     const detail = error instanceof Error ? error.message : 'an option has the wrong type'
-    throw new Error(`[Pyreon] bad formatter options: ${detail}. Check the option types.`)
+    throw new Error(`[Pyreon] bad formatter options: ${detail}. Check the option types.`, { cause: error })
   }
 }
 
