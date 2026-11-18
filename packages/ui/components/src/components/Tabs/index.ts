@@ -1,5 +1,5 @@
 import { makeItResponsive, styles } from '@pyreon/unistyle'
-import { disabledState, el, focusRing, tintText } from '../../factory'
+import { disabledState, el, focusRing, tintText, tones } from '../../factory'
 import { TabsBase, TabBase, TabListBase, TabPanelBase } from '@pyreon/ui-primitives'
 
 // TabsBase renders a plain <div>, so the layout is theme CSS (Element's
@@ -62,7 +62,7 @@ export const Tab = el.config({ name: 'Tab', component: TabBase })
     // outset border show on every tab.
     backgroundColor: 'transparent',
     borderWidth: 0,
-    color: t.color.system.base[500],
+    color: tones(t, m).textMuted,
     fontSize: t.fontSize.small,
     fontWeight: t.fontWeight.medium,
     cursor: 'pointer',
@@ -76,7 +76,7 @@ export const Tab = el.config({ name: 'Tab', component: TabBase })
     transition: t.transition.fast,
     whiteSpace: 'nowrap',
     hover: {
-      color: t.color.system.base[700],
+      color: tones(t, m).text,
     },
     focus: { ...focusRing(t), borderRadius: t.borderRadius.small },
     // The selected look. `active` alone compiles to `:active` (pointer held
@@ -87,7 +87,7 @@ export const Tab = el.config({ name: 'Tab', component: TabBase })
     },
     disabled: { ...disabledState(), pointerEvents: 'none' },
   }))
-  .variants((t) => ({
+  .variants((t, m) => ({
     line: {},
     enclosed: {
       borderWidth: 1,
@@ -97,7 +97,8 @@ export const Tab = el.config({ name: 'Tab', component: TabBase })
       borderRadius: `${t.borderRadius.base} ${t.borderRadius.base} 0 0`,
       active: {
         borderColor: t.color.system.base[200],
-        backgroundColor: t.color.system.light.base,
+        // The page colour, so the selected tab joins the panel below it.
+        backgroundColor: m(t.color.system.light.base, t.color.system.dark.base),
       },
     },
     pills: {
