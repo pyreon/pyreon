@@ -810,15 +810,107 @@ function hydrateReactiveChild(
     )
   }
 
-  // Reactive accessor that produces a VNode/NativeItem subtree.
-  const next = domNode ? nextReal(domNode) : null
-  if (domNode && domNode.parentNode) {
-    domNode.parentNode.removeChild(domNode)
-  }
-  const marker = insertMarker(parent, next, 'pyreon')
-  const cleanup = mountReactive(child, parent, marker, mountChild)
+  // Reactive accessor that produces a VNode/NativeItem subtree over server
+  // content that carries NO range markers: the server rendered the same
+  // content without an accessor here (#4448 — `props.children` on one side,
+  // `<Provider>{props.children}</Provider>` on the other). See
+  // `adoptUnmarkedRange`.
+  return adoptUnmarkedRange(child, domNode, parent, anchor, path)
+}
 
-  return [cleanup, next]
+/**
+ * Hydrate a structural accessor whose server content is NOT range-marked.
+ *
+ * The markers only tell hydration where an accessor's output ENDS; its first
+ * value says the same thing, the way a static child's vnode does. So the
+ * initial value is walked against the server nodes exactly as a static child
+ * would be (`hydrateChild`: nodes adopted, any real divergence reported and
+ * repaired by the walk), inside `mountReactive`'s first run so the binding
+ * stays live. The boundary marker is then moved to the end of what the walk
+ * claimed, which makes the result the same as the marked path's
+ * (`adoptReactiveRange`): a start marker, the adopted content, the boundary.
+ *
+ * This replaced "remove one server node and mount fresh" (#4448): silent in dev
+ * and production, it rebuilt every subtree under such an accessor (every island
+ * under a client-only provider on pyreon.dev) and, for a multi-node value, left
+ * the rest of the server nodes to the boundary sweep.
+ *
+ * A KEYED array still mounts fresh, as on the marked path (`needsKeyedReconcile`):
+ * adoption builds no per-key cache. With no markers its server extent is the
+ * walk's to find, so the walk runs first and its nodes are what the fresh
+ * mount replaces.
+ */
+function adoptUnmarkedRange(
+  child: () => VNodeChild,
+  domNode: ChildNode | null,
+  parent: Node,
+  anchor: Node | null,
+  path: string,
+): [Cleanup, ChildNode | null] {
+  const start = document.createComment('pyreon')
+  parent.insertBefore(start, domNode ?? anchor)
+  let after: ChildNode | null = domNode
+  let hydrated = false
+  let keyedFirst = false
+  const cleanup = mountReactive(child, parent, domNode ?? anchor, (value, p, a) => {
+    if (hydrated) return mountChild(value, p, a)
+    hydrated = true
+    // The first run's value IS the accessor's initial value (primed).
+    keyedFirst = needsKeyedReconcile(value)
+    const [dispose, next] = hydrateChild(value, domNode, p, anchor, `${path} > reactive`)
+    after = next
+    // The boundary goes after everything the walk claimed (or recovered), and
+    // never past the PARENT's own boundary (`anchor`): the returned cursor may
+    // have skipped comments, the enclosing range's markers among them, and a
+    // boundary placed beyond the parent's would make this range's cleanup
+    // delete the parent's marker and every sibling after it.
+    let end: Node | null = next ?? anchor
+    if (anchor !== null) {
+      for (let c = start.nextSibling; c !== null && c !== next; c = c.nextSibling) {
+        if (c === anchor) {
+          end = anchor
+          break
+        }
+      }
+    }
+    p.insertBefore(a as ChildNode, end)
+    // Same contract bridge as `adoptReactiveRange`: a later run must clear the
+    // LIVE range, so the per-run cleanup removes start → boundary.
+    return () => {
+      dispose()
+      let c = start.nextSibling
+      while (c && c !== a) {
+        const nx: ChildNode | null = c.nextSibling
+        c.remove()
+        c = nx
+      }
+    }
+  })
+  if (keyedFirst) {
+    // Extent found by the walk above; hand the region to the keyed reconciler.
+    // `cleanup` clears start → boundary and disposes the walk's bindings.
+    const end = document.createComment('pyreon')
+    parent.insertBefore(end, after ?? anchor)
+    cleanup()
+    const keyed = mountKeyedList(child as () => VNode[], parent, end, (vn, p, a) => mountChild(vn, p, a))
+    start.remove()
+
+    return [
+      () => {
+        keyed()
+        end.parentNode?.removeChild(end)
+      },
+      after,
+    ]
+  }
+
+  return [
+    () => {
+      cleanup()
+      start.parentNode?.removeChild(start)
+    },
+    after,
+  ]
 }
 
 /** Hydrate a reactive text binding against an existing text node. */
