@@ -16,6 +16,17 @@ const DEFAULT_IMAGE = `${SITE_ORIGIN}/media/${shareDefault.file}`
 const DEFAULT_IMAGE_ALT = shareDefault.alt
 
 /**
+ * Every page on the site, marketing and docs (and the 404), is static HTML
+ * plus its islands (zero's islands-only pages, #4371): the browser hydrates
+ * the `<pyreon-island>` elements and never starts the app, so neither the
+ * router nor the UI system's styling runtime downloads. Anything interactive
+ * must be an island; a handler outside one never runs. An island that renders
+ * kit components roots itself in `KitScope` (`kit/scope.tsx`): only those
+ * islands load the styling runtime. Links are plain links.
+ */
+export const hydrate = 'islands'
+
+/**
  * Root layout — every page renders through it:
  *
  *   - Site-wide head defaults (title, description, Open Graph, feed link).

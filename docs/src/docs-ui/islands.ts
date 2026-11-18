@@ -2,7 +2,7 @@ import { island } from '@pyreon/zero'
 
 /**
  * The docs' islands. A docs page is static HTML like every marketing page
- * (`site/render-mode.ts`): the reading shell, the Markdown and the selling
+ * (`hydrate` in `routes/_layout.tsx`): the reading shell, the Markdown and the selling
  * slots render on the server only, and these are the parts that run in the
  * browser. Each is small, takes JSON props, and hydrates when it is needed:
  *

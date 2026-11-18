@@ -87,7 +87,7 @@ export default function DemoToast() {
     style?.remove()
   }
   onUnmount(teardown)
-  // Every page is static HTML (site/render-mode.ts): leaving it is a page
+  // Every page is static HTML (`hydrate` in routes/_layout.tsx): leaving it is a page
   // load, so there is no client-side route change to tear down on, and no
   // router in the island (useRoute() threw "No router installed" when the
   // island hydrated).

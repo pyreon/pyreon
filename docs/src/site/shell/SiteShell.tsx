@@ -31,8 +31,8 @@ const Main = el.config({ name: 'SiteMain' }).attrs({ tag: 'main', block: true, c
  * The site shell: skip link, `<header>` (nav, mega menu, mobile sheet),
  * `<main id="site-main">`, `<footer>`. Every page renders in it — through
  * `routes/(site)/_layout.tsx`, `routes/docs/_layout.tsx`, and directly from
- * `_404.tsx` — and every page is static HTML with islands: `<main>` carries
- * the static-page marker (`render-mode.ts`).
+ * `_404.tsx` — and every page is static HTML with islands (the `hydrate`
+ * export in `routes/_layout.tsx`).
  */
 export function SiteShell(props: { children?: VNodeChild }) {
   // The islands' plain stylesheet (kit/site-css.ts), into this request's
@@ -42,7 +42,7 @@ export function SiteShell(props: { children?: VNodeChild }) {
     <Page>
       <SkipLink href="#site-main">Skip to content</SkipLink>
       <SiteHeader />
-      <Main id="site-main" tabIndex={-1} data-site-static="">
+      <Main id="site-main" tabIndex={-1}>
         {props.children}
       </Main>
       <SiteFooter />

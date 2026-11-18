@@ -13,6 +13,8 @@ import { waitForIsland, waitForNav } from './site-islands'
  *     the loop (theme and reduced motion), the 404.
  */
 const DIST = resolve(__dirname, '../docs/dist')
+/** The marker zero writes into an islands-only page (`export const hydrate = 'islands'`). */
+const ISLANDS_ONLY = '<meta name="pyreon-hydrate" content="islands">'
 
 /**
  * How MUCH JavaScript a page loads is not asserted here. Each page's bytes are
@@ -70,20 +72,31 @@ test.describe('build output', () => {
     }
   })
 
-  test('a static page preloads only the entry graph, links no docs stylesheet and carries no loader data', () => {
-    const pages = htmlFiles(DIST).filter((f) => readFileSync(f, 'utf8').includes('data-site-static'))
+  test('every page is islands-only: preloads only the entry graph and the islands runtime, links no docs stylesheet, carries no loader data', () => {
+    const files = htmlFiles(DIST)
+    const pages = files.filter((f) => readFileSync(f, 'utf8').includes(ISLANDS_ONLY))
     expect(pages.length).toBeGreaterThan(5)
+    // Every rendered page (redirect stubs aside) is marked.
+    const unmarked = files.filter((f) => {
+      const html = readFileSync(f, 'utf8')
+      return !html.includes(ISLANDS_ONLY) && !html.includes('http-equiv="refresh"') && html.includes('id="site-main"')
+    })
+    expect(unmarked).toEqual([])
     const entry = /<script[^>]*type="module"[^>]*src="\/(assets\/[^"]+\.js)"/.exec(readFileSync(join(DIST, 'index.html'), 'utf8'))?.[1]
     expect(entry).toBeTruthy()
 
-    // No static page preloads anything outside the entry's own graph (the
-    // route closure would download the kit and the router for nothing), and
-    // none links the docs stylesheet or carries loader data.
-    const entryGraph = closure(entry as string)
+    // No page preloads anything outside the entry's own graph and the islands
+    // runtime it starts (the route closure would download the kit and the
+    // router for nothing), and none links the docs stylesheet or carries
+    // loader data.
+    const allowed = closure(entry as string)
+    for (const runtime of readdirSync(join(DIST, 'assets')).filter((f) => /^islands-runtime-[\w-]+\.js$/.test(f))) {
+      closure(`assets/${runtime}`, allowed)
+    }
     for (const f of pages) {
       const html = readFileSync(f, 'utf8')
       const preloads = [...html.matchAll(/<link[^>]*rel="modulepreload"[^>]*href="\/([^"]+)"/g)].map((m) => m[1])
-      for (const p of preloads) expect(entryGraph.has(p as string), `${f}: preloads ${p}`).toBe(true)
+      for (const p of preloads) expect(allowed.has(p as string), `${f}: preloads ${p}`).toBe(true)
       // Docs pages are static too (docs/src/docs-ui/islands.ts); only they link the docs stylesheet.
       if (!f.startsWith(join(DIST, 'docs'))) expect(html, f).not.toMatch(/href="\/assets\/docs-[^"]+\.css"/)
       // (A script, not the docs pages that write about it in code samples.)
@@ -94,7 +107,7 @@ test.describe('build output', () => {
   test('docs pages are static pages too, and link the docs stylesheet', () => {
     const html = readFileSync(join(DIST, 'docs/index.html'), 'utf8')
     expect(html).toMatch(/\/assets\/docs-[^"]+\.css/)
-    expect(html).toContain('data-site-static')
+    expect(html).toContain(ISLANDS_ONLY)
   })
 })
 

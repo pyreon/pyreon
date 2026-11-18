@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 
 /**
- * Marketing pages are static HTML with islands (docs/src/site/render-mode.ts):
+ * Marketing pages are static HTML with islands (`hydrate` in docs/src/routes/_layout.tsx):
  * nothing sets `data-pyreon-hydrated`, because the app never starts. The nav
  * island marks its bar `data-hydrated` once its handlers are attached; wait
  * for that before clicking anything in the shell.

@@ -2,7 +2,7 @@ import { island } from '@pyreon/zero'
 
 /**
  * Kit-level islands. Every interactive piece of a static marketing page is an
- * island (see `render-mode.ts`); these are the ones the kit and the shell use.
+ * island (the `hydrate` export in `routes/_layout.tsx`); these are the ones the kit and the shell use.
  * Declarations stay literal `island(() => import(…), {…})` calls so
  * `@pyreon/vite-plugin` puts them in the islands registry.
  */

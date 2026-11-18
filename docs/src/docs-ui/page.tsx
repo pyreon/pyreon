@@ -85,7 +85,7 @@ function Rail(props: { entries: readonly TocHeading[]; slug: string | undefined 
  * page: breadcrumbs, page actions, the title, the inline TOC below 1180px,
  * "helpful?", prev / next, and the rail (TOC, one product card, links).
  *
- * The page is static HTML (`site/render-mode.ts`); the actions and "helpful?"
+ * The page is static HTML (`hydrate` in `routes/_layout.tsx`); the actions and "helpful?"
  * are islands, and one enhance island adds code copy, the TOCs' scroll-spy
  * and heading anchors (`islands.ts`).
  *

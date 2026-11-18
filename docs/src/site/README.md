@@ -7,15 +7,15 @@ system on Zero.
 ## How a marketing page runs
 
 **Static HTML with islands.** Every page — the `(site)` shell, the docs and
-the 404 — is server-rendered at build time and never hydrates as a whole. The
-browser entry (`src/entry-client.ts`) loads `static-client.ts`, which hydrates
-only the `<pyreon-island>` elements on the page. The docs follow the same
-model: their islands are listed in `docs-ui/islands.ts` (search, the drawer,
-page actions, code copy and scroll-spy, live examples, demo tabs).
-`render-mode.ts` explains the contract; Zero has no per-route islands-only
-mode yet (#4371), so `vite-plugins/static-pages.ts` removes the route
-preloads and loader data a static page (the `data-site-static` marker that
-`SiteShell` prints) does not need.
+the 404 — is server-rendered at build time and never hydrates as a whole:
+the root layout (`routes/_layout.tsx`) declares `export const hydrate =
+'islands'`, Zero's islands-only pages. The server marks each page, leaves out
+the loader data and the route's preloads, and the browser entry
+(`src/entry-client.ts`, `startClientLazy`) hydrates only the
+`<pyreon-island>` elements on the page. Because no page starts the app, the
+client build carries none of it (no router, no route code). The docs follow
+the same model: their islands are listed in `docs-ui/islands.ts` (search, the
+drawer, page actions, code copy and scroll-spy, live examples, demo tabs).
 
 What that means when you build a page:
 
@@ -142,8 +142,7 @@ own verifier (`09-site/verify/run.mjs`) checks the copy against the repo.
 
 ## Tests
 
-- Unit (`bun run test` in `docs/`): head tags, asset helpers, the static-page
-  trim, content links, every product page's content and visuals, demo roots
+- Unit (`bun run test` in `docs/`): head tags, asset helpers, content links, every product page's content and visuals, demo roots
   (every demo's kit components sit inside `KitScope`), the build-time strip.
 - Real Chromium against the production build (`e2e-configs/docs.config.ts`,
   one project per page family: site-shell, site-home, site-pages,

@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { trimStaticPage } from '../../../vite-plugins/static-pages'
 import sitemap from '../content/_sitemap.json'
 import { HOME } from '../content/home'
 import { pageHeadTags } from '../head'
@@ -8,7 +7,6 @@ import { C } from '../kit/classes'
 import { pickLoopFiles } from '../kit/LoopPlayer'
 import { SITE_CSS } from '../kit/site-css'
 import { commandSteps, lastPhrase } from '../pages/home/HomePage'
-import { STATIC_MARKER } from '../render-mode'
 
 const ROUTES = (sitemap as { sections: { pages: { route: string }[] }[] }).sections.flatMap((s) => s.pages.map((p) => p.route))
 
@@ -81,21 +79,6 @@ describe('loop files', () => {
     expect(pickLoopFiles(sources, 'dark', false)).toEqual({ webm: 'd.webm', mp4: 'd.mp4' })
     expect(pickLoopFiles(sources, 'dark', true)).toEqual({ webm: 'ds.webm', mp4: 'ds.mp4' })
     expect(pickLoopFiles(sources, 'light', true)).toEqual({ webm: 'l.webm', mp4: 'l.mp4' })
-  })
-})
-
-describe('static pages', () => {
-  const page = (body: string) =>
-    `<html><head><link rel="modulepreload" href="/assets/index-a.js"><link rel="modulepreload" href="/assets/kit-b.js"></head><body><main ${body}></main><script>window.__PYREON_LOADER_DATA__={"x":1}</script></body></html>`
-  it('keeps only the entry graph preloads and drops loader data on a marked page', () => {
-    const out = trimStaticPage(page(STATIC_MARKER), new Set(['/assets/index-a.js']))
-    expect(out).toContain('/assets/index-a.js')
-    expect(out).not.toContain('/assets/kit-b.js')
-    expect(out).not.toContain('__PYREON_LOADER_DATA__')
-  })
-  it('leaves a docs page alone', () => {
-    const html = page('id="docs"')
-    expect(trimStaticPage(html, new Set())).toBe(html)
   })
 })
 
