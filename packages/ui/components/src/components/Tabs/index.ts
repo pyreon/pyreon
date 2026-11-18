@@ -2,9 +2,13 @@ import { makeItResponsive, styles } from '@pyreon/unistyle'
 import { disabledState, el, focusRing, tintText } from '../../factory'
 import { TabsBase, TabBase, TabListBase, TabPanelBase } from '@pyreon/ui-primitives'
 
+// TabsBase renders a plain <div>, so the layout is theme CSS (Element's
+// layout props never reach it). A flex row put the panel beside the tab list
+// (#4426): horizontal tabs stack list over panel, vertical tabs sit beside it.
 const Tabs = el.config({ name: 'Tabs', component: TabsBase })
   .theme((t) => ({
     display: 'flex',
+    flexDirection: 'column',
     borderWidthBottom: 1,
     borderStyleBottom: 'solid',
     borderColorBottom: t.color.system.base[200],
@@ -21,6 +25,15 @@ const Tabs = el.config({ name: 'Tabs', component: TabsBase })
       gap: t.spacing.xxxSmall,
     },
   }))
+  // `orientation` lives on TabsBase's context and reaches the DOM only as the
+  // tab list's `aria-orientation`, so the vertical layout keys on that.
+  .styles(
+    (css) => css`
+      &:has(> [role='tablist'][aria-orientation='vertical']) {
+        flex-direction: row;
+      }
+    `,
+  )
 
 export default Tabs
 
@@ -31,9 +44,17 @@ export default Tabs
  * walks `[role="tab"]` within the nearest `[role="tablist"]`). Inherits
  * `aria-orientation` from `<Tabs orientation="vertical">`.
  */
-export const TabList = el.config({ name: 'TabList', component: TabListBase }).theme(() => ({
-  display: 'flex',
-}))
+export const TabList = el.config({ name: 'TabList', component: TabListBase })
+  .theme(() => ({
+    display: 'flex',
+  }))
+  .styles(
+    (css) => css`
+      &[aria-orientation='vertical'] {
+        flex-direction: column;
+      }
+    `,
+  )
 
 export const Tab = el.config({ name: 'Tab', component: TabBase })
   .theme((t, m) => ({
