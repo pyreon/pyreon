@@ -296,9 +296,9 @@ export interface ChartSpec {
    */
   horizontal?: boolean | undefined
   /** Reference rules and bands, drawn between the grid and the series. */
-  annotations?: Annotation[] | undefined
+  annotations?: readonly Annotation[] | undefined
   /** Datum-anchored point markers, drawn OVER the series. */
-  markers?: PointMarker[] | undefined
+  markers?: readonly PointMarker[] | undefined
   /**
    * Entrance progress, 0..1; absent means 1 (fully drawn).
    *

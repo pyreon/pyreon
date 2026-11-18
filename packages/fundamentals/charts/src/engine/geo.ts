@@ -31,7 +31,7 @@ export interface GeoRegion {
  */
 export interface GeoShape {
   name: string
-  rings: Pt[][]
+  rings: readonly (readonly Pt[])[]
 }
 
 /**
@@ -67,7 +67,7 @@ export interface GeoValue {
 const GEO_NA: Double = 0.0 / 0.0
 
 /** Linear scan for a region's value; the list is one entry per region. */
-export function geoValueOf(values: GeoValue[], name: string): Double {
+export function geoValueOf(values: readonly GeoValue[], name: string): Double {
   for (const v of values) if (v.region === name) return v.value
   return GEO_NA
 }
@@ -151,7 +151,7 @@ function ringCentroid(ring: Pt[]): Pt | null {
   return { x: cx / (6.0 * a), y: cy / (6.0 * a) }
 }
 
-export function layoutGeoShapes(shapes: GeoShape[], box: Rect, options?: GeoOptions): GeoLayout {
+export function layoutGeoShapes(shapes: readonly GeoShape[], box: Rect, options?: GeoOptions): GeoLayout {
   const projection = options?.projection ?? 'equirectangular'
   const pad = options?.padding ?? 4.0
   const raw = shapes
@@ -268,7 +268,7 @@ export function geoRoamPan(view: GeoView, dx: Double, dy: Double): GeoView {
 }
 
 /** Value extent over the regions that have data. */
-export function geoDomain(layout: GeoLayout, values: GeoValue[]): Domain {
+export function geoDomain(layout: GeoLayout, values: readonly GeoValue[]): Domain {
   let lo = 0.0
   let hi = 0.0
   let seen = 0
@@ -287,7 +287,7 @@ export function geoDomain(layout: GeoLayout, values: GeoValue[]): Domain {
 }
 
 /** Render fills, borders, then labels. */
-export function renderGeo(layout: GeoLayout, values: GeoValue[], options?: GeoOptions, measure?: MeasureText): DrawCmd[] {
+export function renderGeo(layout: GeoLayout, values: readonly GeoValue[], options?: GeoOptions, measure?: MeasureText): DrawCmd[] {
   const out: DrawCmd[] = []
   const stops = options?.stops ?? HEAT_RAMP
   const emptyColor = options?.emptyColor ?? '#e2e8f0'

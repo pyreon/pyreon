@@ -2085,7 +2085,11 @@ function hydrateComponent(
   // during hydration too. Owner stays `scope` through `runWithHooks` +
   // `hydrateChild` + onMount, restored to `prevOwner` on every exit.
   const prevOwner = getContextOwner()
-  // Restored, never reset to null — see `mountComponent`.
+  // RESTORED on every exit, never reset to null: a component can mount while
+  // another scope is current (inside a parent's onMount via a signal write
+  // that flips a <Show>, inside a <For> row's collector, inside a parent's
+  // compiled template), and nulling it there left everything that scope's
+  // owner created afterwards with no owner — never disposed.
   const prevScope = getCurrentScope()
   const scope = effectScope()
   scope._parent = prevOwner

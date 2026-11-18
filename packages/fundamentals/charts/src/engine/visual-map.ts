@@ -88,7 +88,7 @@ export interface VisualMapOptions {
   /** `'continuous'` draws a ramp, `'piecewise'` draws swatches. Default `'continuous'`. */
   type?: 'continuous' | 'piecewise' | undefined
   /** The ramp's colours, low to high. Default the heat ramp. */
-  stops?: string[] | undefined
+  stops?: readonly string[] | undefined
   /**
    * Piecewise: the pieces, high to low. A piece without a `label` is named by
    * its bounds, one without a `color` takes the ramp's. Without pieces, the
@@ -155,7 +155,7 @@ export function visualMap(o: VisualMapOptions): VisualMapSpec {
   const range: [Double, Double] = o.range !== undefined ? [Math.min(o.range[0], o.range[1]), Math.max(o.range[0], o.range[1])] : [domain[0], domain[1]]
   return {
     type,
-    stops,
+    stops: stops.slice(),
     domain,
     pieces,
     orient: o.orient ?? 'vertical',
