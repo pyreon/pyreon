@@ -60,7 +60,7 @@ describe('dualInstanceDetail', () => {
     `[Pyreon] Multiple instances of @pyreon/reactivity detected — this breaks reactivity/lifecycle/context contracts.\n` +
     `  A: file:///app/node_modules/@pyreon/reactivity/lib/index.js (v0.55.0)\n` +
     `  B: file:///app/node_modules/@pyreon/atlas/node_modules/@pyreon/reactivity/lib/index.js (v0.54.2)\n` +
-    `Run 'pyreon doctor --check-dedup'. PYREON_SINGLE_INSTANCE=warn|silent overrides.`
+    `Run 'pyreon doctor --only check-dedup'. PYREON_SINGLE_INSTANCE=warn|silent overrides.`
 
   it('extracts the two resolved locations (+ versions) from the sentinel message', () => {
     expect(dualInstanceDetail(sentinelCore)).toBe(

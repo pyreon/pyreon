@@ -32,6 +32,9 @@
 
 import Foundation
 import Observation
+// `PyreonJSON.decode`: the web's key order and repeated-key rule for a decoded payload. The app target that compiles
+// these co-located sources links the base runtime (the emitted views import it too).
+import PyreonRuntime
 
 // MARK: - Wire parsing (pure) — BEGIN
 
@@ -333,7 +336,7 @@ public enum PyreonStreamDecode {
             do {
                 return PyreonSseEvent(
                     type: msg.type,
-                    data: try JSONDecoder().decode(T.self, from: Data(msg.data.utf8)),
+                    data: try PyreonJSON.decode(T.self, from: Data(msg.data.utf8)),
                     id: msg.id
                 )
             } catch {
@@ -349,7 +352,7 @@ public enum PyreonStreamDecode {
 
     /// One NDJSON line into `T`.
     public static func ndjson<T: Decodable>(_ type: T.Type) -> (String) throws -> T {
-        { line in try JSONDecoder().decode(T.self, from: Data(line.utf8)) }
+        { line in try PyreonJSON.decode(T.self, from: Data(line.utf8)) }
     }
 }
 

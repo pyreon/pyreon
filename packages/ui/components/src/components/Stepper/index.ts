@@ -1,4 +1,4 @@
-import { el, focusRing } from '../../factory'
+import { el, focusRing, tones } from '../../factory'
 
 const Stepper = el
   .config({ name: 'Stepper' })
@@ -38,13 +38,13 @@ export const Step = el
     gap: 2,
     'aria-current': props.state === 'active' ? ('step' as const) : undefined,
   }))
-  .theme((t) => ({
+  .theme((t, m) => ({
     fontSize: t.fontSize.small,
-    color: t.color.system.base[500],
+    color: tones(t, m).textMuted,
     transition: t.transition.fast,
     focus: { ...focusRing(t), borderRadius: t.borderRadius.small },
   }))
-  .states((t) => ({
+  .states((t, m) => ({
     active: {
       backgroundColor: t.color.system.primary.base,
       color: t.color.system.primary.contrast,
@@ -57,7 +57,7 @@ export const Step = el
     },
     default: {
       backgroundColor: t.color.system.base[200],
-      color: t.color.system.base[600],
+      color: tones(t, m).text,
       borderRadius: t.borderRadius.pill,
     },
   }))

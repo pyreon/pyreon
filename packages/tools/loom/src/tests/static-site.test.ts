@@ -137,7 +137,7 @@ describe.skipIf(!CAN_BUILD || !BUILT)('the emitted site', () => {
     expect(html).toMatch(/href="\/cycles(#pkg=[^"]+)?"/)
   })
 
-  it('bakes the report in rather than fetching it — the output works from file://', () => {
+  it('bakes the report in rather than fetching it — any static host serves it with no backend', () => {
     const html = readFileSync(join(out, 'cycles', 'index.html'), 'utf8')
     expect(html).not.toContain('/@loom/report.json')
   })

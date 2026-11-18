@@ -9,6 +9,7 @@
 // java.util.Properties by explicit import — inside android {} the bare
 // `java` resolves to Gradle's JavaPluginExtension accessor, shadowing the
 // package root (`Unresolved reference 'util'`).
+import com.android.build.api.artifact.SingleArtifact
 import java.util.Properties
 
 plugins {
@@ -175,6 +176,8 @@ dependencies {
     // import kotlinx.coroutines.* directly — pin it explicitly so the
     // compile classpath doesn't depend on transitive luck.
     implementation("androidx.core:core-ktx:1.19.1")
+    // useBiometrics: BiometricManager + BiometricPrompt (PyreonBiometricsAndroid.kt).
+    implementation("androidx.biometric:biometric:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     // material (M2) — the PMTC emit's Compose dispatcher uses
     // androidx.compose.material.* widgets (Text/Button/TextField/
@@ -211,6 +214,30 @@ dependencies {
 
 // Pyreon compile step — re-runs the .tsx → .kt compile on every build.
 // Mirrors the iOS `preBuildScripts` block in `project.yml`.
+// ── Crash symbols: retain each release build's R8 mapping ──
+// R8 writes mapping.txt to build/outputs/mapping/release/, where the next
+// build overwrites it and `gradle clean` deletes it, so the stack of a build
+// that already shipped could never be retraced. After every release
+// assemble/bundle this copies it to
+// symbols/android/<versionName>-<versionCode>/mapping.txt, where
+// `pyreon-native symbolicate` looks (it matches the R8 map id the crashed
+// frames carry, so the right file is found by content, not by luck).
+// Archive symbols/ with every release you ship; it is gitignored.
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        val output = variant.outputs.single()
+        val target = output.versionName.zip(output.versionCode) { name, code ->
+            rootProject.layout.projectDirectory.dir("symbols/android/" + name + "-" + code)
+        }
+        val retain = tasks.register<Copy>("pyreonRetainReleaseMapping") {
+            from(variant.artifacts.get(SingleArtifact.OBFUSCATION_MAPPING_FILE))
+            into(target)
+        }
+        tasks.matching { it.name == "assembleRelease" || it.name == "bundleRelease" }
+            .configureEach { finalizedBy(retain) }
+    }
+}
+
 tasks.register<Exec>("pyreonCompile") {
     // The app root (examples/native-todomvc): android/app → android → root.
     workingDir = projectDir.parentFile.parentFile

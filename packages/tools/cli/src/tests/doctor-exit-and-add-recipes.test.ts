@@ -158,7 +158,7 @@ describe('--ci returns the count of findings that should block a merge', () => {
   })
 })
 
-describe('the legacy single-purpose flags still select their gate', () => {
+describe('--only selects exactly the listed gates', () => {
   /**
    * The gates the run actually SELECTED. Every gate appears in the
    * report — the unselected ones carry a `skipped` reason so `--json`
@@ -173,54 +173,27 @@ describe('the legacy single-purpose flags still select their gate', () => {
       .map((g) => g.gate)
 
   it('runs the whole set when no selector is given', () => {
-    // The control for the four assertions below: each of them means
-    // "only this one", which is only meaningful if the default is more.
+    // The control for the assertions below: each of them means "only
+    // this one", which is only meaningful if the default is more.
     workspace(CLEAN)
     return capture(() => doctor({ fix: false, json: true, ci: false, cwd })).then(({ out }) => {
       expect(gatesIn(out).length).toBeGreaterThan(1)
     })
   })
 
-  for (const [flag, gate] of [
-    ['auditTests', 'audit-tests'],
-    ['checkIslands', 'islands-audit'],
-    ['checkSsg', 'ssg-audit'],
-    ['checkContent', 'content-audit'],
-    ['checkNative', 'native-audit'],
-  ] as Array<[string, string]>) {
-    it(`--${flag} narrows the run to ${gate}`, () => {
-      // These are documented as still working, and a CI script pinned to
-      // one of them would otherwise start running the whole suite —
-      // slower, and failing on gates it never opted into.
+  for (const gate of ['audit-tests', 'islands-audit', 'ssg-audit', 'content-audit', 'native-audit'] as const) {
+    it(`--only ${gate} narrows the run to ${gate}`, () => {
       workspace(CLEAN)
-      return capture(() =>
-        doctor({ fix: false, json: true, ci: false, cwd, [flag]: true } as never),
-      ).then(({ out }) => {
+      return capture(() => doctor({ fix: false, json: true, ci: false, cwd, only: [gate] })).then(({ out }) => {
         expect(gatesIn(out)).toEqual([gate])
       })
     })
   }
 
-  it('lets an explicit --only WIN over a legacy flag', () => {
-    // Passing both is a contradiction; resolving it to the modern flag
-    // is the only reading that lets someone migrate a script one line at
-    // a time.
+  it('selects every gate listed in --only rather than taking the first', () => {
     workspace(CLEAN)
     return capture(() =>
-      doctor({
-        fix: false, json: true, ci: false, cwd,
-        only: ['pyreon-patterns'],
-        checkIslands: true,
-      } as never),
-    ).then(({ out }) => {
-      expect(gatesIn(out)).toEqual(['pyreon-patterns'])
-    })
-  })
-
-  it('combines several legacy flags rather than taking the first', () => {
-    workspace(CLEAN)
-    return capture(() =>
-      doctor({ fix: false, json: true, ci: false, cwd, checkSsg: true, checkNative: true } as never),
+      doctor({ fix: false, json: true, ci: false, cwd, only: ['ssg-audit', 'native-audit'] }),
     ).then(({ out }) => {
       expect(gatesIn(out).sort()).toEqual(['native-audit', 'ssg-audit'])
     })

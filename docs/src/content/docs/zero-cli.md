@@ -198,7 +198,7 @@ zero doctor ./apps/web     # check a project in a subdirectory
 ```
 
 :::note
-`zero doctor` exposes four flags: `--fix`, `--json`, `--ci`, `--full`. The richer controls `pyreon doctor` itself exposes — `--only`/`--skip` a specific gate, cross-file island checks, SSG misconfiguration audits, test-environment parity, `--roots` for non-standard layouts — live on the framework-wide `pyreon doctor` binary in [`@pyreon/cli`](/docs/cli), and are **not** forwarded through `zero doctor`. Run `pyreon doctor --check-islands` / `--check-ssg` / `--audit-tests` / `--only <gate>` for those.
+`zero doctor` exposes four flags: `--fix`, `--json`, `--ci`, `--full`. The richer controls `pyreon doctor` itself exposes — `--only`/`--skip` a specific gate, cross-file island checks, SSG misconfiguration audits, test-environment parity, `--roots` for non-standard layouts — live on the framework-wide `pyreon doctor` binary in [`@pyreon/cli`](/docs/cli), and are **not** forwarded through `zero doctor`. Run `pyreon doctor --only <gate>` (e.g. `--only islands-audit`, `--only ssg-audit`, `--only audit-tests`) for those.
 :::
 
 ### `zero context [root]`

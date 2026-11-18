@@ -140,7 +140,7 @@ export function App() { return <View book={{ title: 'a' }} /> }`
   const f = (b: Book, tags: number): number => (b.tags === undefined ? tags : b.tags.length + tags)
   return <Text>{f({ title: 'a' }, 1)}</Text>
 }`
-    expect(swift(src).code).toContain('b.tags.map { tagsValue in tagsValue.count + tags }')
+    expect(swift(src).code).toContain('b.tags.map { tagsValue in pyreonAdd(tagsValue.count, tags) }')
   })
 })
 

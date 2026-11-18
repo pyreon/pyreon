@@ -58,7 +58,7 @@ const SITES: Record<string, Site> = {
     kotlin: [
       'data class PageData(val ok: Boolean)',
       'remember { PyreonMutation<PageData>() }',
-      'decodeFromString<PageData>(',
+      'PyreonJson.decode<PageData>(',
     ],
     swiftNot: ['PyreonMutation<Bool>', 'decode(Bool.self)'],
   },
@@ -77,7 +77,7 @@ const SITES: Record<string, Site> = {
     kotlin: [
       'data class PageData(val id: Long, val title: String)',
       'PyreonQuery<PageData>(',
-      'decodeFromString<PageData>(body)',
+      'PyreonJson.decode<PageData>(body)',
     ],
     swiftNot: ['(id: Int, title: String)'],
   },
@@ -94,7 +94,7 @@ const SITES: Record<string, Site> = {
     kotlin: [
       'data class PageData(val ok: Boolean)',
       'PyreonFetch<PageData>()',
-      'decodeFromString<PageData>(body)',
+      'PyreonJson.decode<PageData>(body)',
     ],
     swiftNot: ['PyreonFetch<Bool>', 'decode(Bool.self'],
   },
@@ -130,7 +130,7 @@ const SITES: Record<string, Site> = {
     kotlin: [
       'data class PageData(val message: String)',
       'PyreonStream<PageData>(',
-      'decodeFromString<PageData>(line)',
+      'PyreonJson.decode<PageData>(line)',
     ],
     swiftNot: ['PyreonStream<String>', 'ndjson(String.self)'],
   },

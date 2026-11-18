@@ -82,7 +82,7 @@ describe('a response shape has one name through callback, query and decode', () 
         expect(callback).not.toBe('(none)')
         expect(query).toBe(callback)
         // The decode names the SAME type as the container it fills.
-        expect(code).toContain(target === 'swift' ? `decode(${query}.self` : `decodeFromString<${query}>`)
+        expect(code).toContain(target === 'swift' ? `decode(${query}.self` : `PyreonJson.decode<${query}>`)
         // …and nothing else declares a second type for the same envelope.
         const declared = (code.match(target === 'swift' ? /^struct (\w+)/gm : /^data class (\w+)/gm) ?? []).length
         const unique = new Set(code.match(target === 'swift' ? /^struct (\w+)/gm : /^data class (\w+)/gm)).size

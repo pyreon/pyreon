@@ -241,7 +241,7 @@ export function App() {
 }`
   it('emit: the closure value, the closure run, the read', () => {
     const swift = emit(src, 'swift')
-    expect(swift.code).toContain('(a) + b')
+    expect(swift.code).toContain('pyreonAdd((a), b)')
     expect(swift.code).toMatch(/\{ \(\) in\n\s*a = 1\n\s*b = 2\n\s*\}\(\)/)
     expect(swift.warnings).toEqual([])
     const kotlin = emit(src, 'kotlin')

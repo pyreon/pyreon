@@ -51,18 +51,18 @@ describe('nullable-struct narrowing through null compares', () => {
     expect(swift.code).toContain('private func onAbsentElse(_ r: Range?) {\n    if let r {\n      sel = String(r.start) + "-" + String(r.end)\n    } else {\n      sel = ""\n    }')
   })
   it('Swift: `if (r !== null) …` binds directly', () => {
-    expect(swift.code).toContain('private func onPresent(_ r: Range?) {\n    if let r {\n      count = r.end - r.start + 1\n    }')
+    expect(swift.code).toContain('private func onPresent(_ r: Range?) {\n    if let r {\n      count = pyreonAdd(pyreonSub(r.end, r.start), 1)\n    }')
   })
   it('Swift: a lone `=== null` (no else) keeps the plain nil test — nothing to narrow', () => {
     expect(swift.code).toContain('private func onAbsentOnly(_ r: Range?) {\n    if r == nil {\n      sel = "none"\n    }')
   })
   it('Swift: a ternary that reads the operand in its narrowed branch lowers to `.map { r in … } ?? …`, either polarity', () => {
     expect(swift.code).toContain('(r.map { r in String(r.start) } ?? "none")')
-    expect(swift.code).toContain('(r.map { r in r.end - r.start } ?? 0)')
+    expect(swift.code).toContain('(r.map { r in pyreonSub(r.end, r.start) } ?? 0)')
   })
   it('Kotlin: the compares stay compares — a val param smart-casts', () => {
     expect(kotlin.code).toContain('if (r == null) {\n      sel = ""\n    } else {\n      sel = (r.start).toString() + "-" + (r.end).toString()\n    }')
-    expect(kotlin.code).toContain('if (r != null) {\n      count = r.end - r.start + 1L\n    }')
+    expect(kotlin.code).toContain('if (r != null) {\n      count = pyreonAdd(pyreonSub(r.end, r.start), 1L)\n    }')
     expect(kotlin.code).toContain('if (r == null) "none" else (r.start).toString()')
   })
   it.skipIf(!isSwiftcAvailable())('swiftc accepts every shape', () => {
