@@ -6,10 +6,11 @@ export {
   focusRingTone,
   type FocusTone,
   solidFill,
+  themeColor,
   tintText,
 } from './bases/fragments'
 export { list } from './bases/list'
 export type { MaybeNull, ObjectValue, SimpleValue } from './bases/list'
 export { rs } from './bases/rs'
 export { txt } from './bases/text'
-export { choiceBoxStyles, choiceBoxTheme, fieldSurface, type StatusTone, tones, toneText, type ModeFn } from './bases/tones'
+export { choiceBoxStyles, choiceBoxTheme, fieldSurface, tones, type ModeFn } from './bases/tones'
