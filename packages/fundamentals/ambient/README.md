@@ -9,7 +9,7 @@ Most apps reach it through `@pyreon/format`, `@pyreon/time`, `@pyreon/i18n` or `
 ## Install
 
 ```bash
-bun add @pyreon/ambient @pyreon/reactivity
+bun add @pyreon/ambient @pyreon/core @pyreon/reactivity
 ```
 
 ## Quick start

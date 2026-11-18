@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/time",
   "version": "0.53.0",
-  "description": "Dates and times as plain strings and numbers for Pyreon \u2014 ISO values, DST-correct zone math, calendar grids, no classes",
+  "description": "Dates and times as plain strings and numbers for Pyreon — ISO values, DST-correct zone math, calendar grids, no classes",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/time#readme",
   "bugs": {
@@ -77,5 +77,9 @@
   },
   "dependencies": {
     "@pyreon/ambient": "workspace:^"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
   }
 }
