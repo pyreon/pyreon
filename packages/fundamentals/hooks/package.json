@@ -214,7 +214,8 @@
         "PyreonWebView.kt",
         "PyreonWebChromeAndroid.kt",
         "PyreonSafeAreaAndroid.kt",
-        "PyreonDeviceProbesAndroid.kt"
+        "PyreonDeviceProbesAndroid.kt",
+        "PyreonBiometricsAndroid.kt"
       ]
     }
   },

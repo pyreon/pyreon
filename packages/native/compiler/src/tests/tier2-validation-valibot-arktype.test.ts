@@ -24,7 +24,7 @@ export const userSchema = valibotSchema(
     const r = transform(src, { target: 'swift' })
     expect(r.code).toContain('struct PyreonZodSchema_userSchema: Codable {')
     expect(r.code).toContain('var name: String = ""')
-    expect(r.code).toContain('var age: Int = 0')
+    expect(r.code).toContain('var age: Double = 0')
     expect(r.code).toContain('var active: Bool = false')
   })
 
@@ -43,7 +43,7 @@ export const itemSchema = valibotSchema(
     const r = transform(src, { target: 'kotlin' })
     expect(r.code).toContain('data class PyreonZodSchema_itemSchema(')
     expect(r.code).toContain('var id: String = "",')
-    expect(r.code).toContain('var qty: Long = 0,')
+    expect(r.code).toContain('var qty: Double = 0.0,')
   })
 
   it('Valibot modifier chains unwrap to base v.X()', () => {
@@ -64,7 +64,7 @@ export const s = valibotSchema(
     // which is itself a call. v1 doesn't unwrap pipe — it bails on
     // anything that isn't directly a v.X() at the field slot.
     // The 'age' field still works.
-    expect(r.code).toContain('var age: Int = 0')
+    expect(r.code).toContain('var age: Double = 0')
   })
 })
 
@@ -83,7 +83,7 @@ export const userSchema = arktypeSchema(type({
     const r = transform(src, { target: 'swift' })
     expect(r.code).toContain('struct PyreonZodSchema_userSchema: Codable {')
     expect(r.code).toContain('var name: String = ""')
-    expect(r.code).toContain('var age: Int = 0')
+    expect(r.code).toContain('var age: Double = 0')
     expect(r.code).toContain('var active: Bool = false')
   })
 

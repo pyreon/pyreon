@@ -38,7 +38,7 @@ describe('the statement form lowers instead of being dropped', () => {
     // loop has to consult cancellation itself.
     expect(out).toContain('while !_Concurrency.Task.isCancelled {')
     expect(out).toContain('nanoseconds: 1000_000_000')
-    expect(out).toContain('n = n + 1')
+    expect(out).toContain('n = pyreonAdd(n, 1)')
   })
 
   it('Swift: a timeout sleeps once and bails if cancelled meanwhile', () => {

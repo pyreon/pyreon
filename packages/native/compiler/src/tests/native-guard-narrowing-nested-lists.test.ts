@@ -113,14 +113,14 @@ describe('the guard reaches every statement list', () => {
   })
   it('a member subject inside a loop, on both targets', () => {
     expect(swift(MEMBER_LOOP).code).toMatch(
-      /guard let tags = b\.tags else \{\s*continue\s*\}\s*n \+= tags\.count/,
+      /guard let tags = b\.tags else \{\s*continue\s*\}\s*n = pyreonAdd\(n, tags\.count\)/,
     )
     // A data-class `var` field does not smart-cast, so Kotlin binds it too.
     // Not `?: run { continue }`: a loop jump inside that lambda is experimental
     // before Kotlin 2.2, and CI pins kotlinc 2.0. Binding first and testing after
     // smart-casts the local `val` on every version.
     const kt = kotlin(MEMBER_LOOP).code
-    expect(kt).toMatch(/val tags = b\.tags\s+if \(tags == null\) \{\s*continue\s*\}\s*n \+= tags\.length/)
+    expect(kt).toMatch(/val tags = b\.tags\s+if \(tags == null\) \{\s*continue\s*\}\s*n = pyreonAdd\(n, tags\.length\)/)
     expect(kt).not.toMatch(/\?: run \{\s*continue/)
   })
 })

@@ -58,7 +58,7 @@ describe('unary `!` — one arm per inferred operand type', () => {
   })
 
   it('a NON-`!` unary is emitted verbatim', () => {
-    expect(sw(`  const a = computed(() => -n())`)).toContain('-n')
+    expect(sw(`  const a = computed(() => pyreonNeg(n)())`)).toContain('pyreonNeg(n)')
   })
 })
 
@@ -83,17 +83,17 @@ describe('binary — bitwise parenthesisation vs plain arithmetic', () => {
   const d = computed(() => n() ^ (n() + 1))
   const e2 = computed(() => n() << (n() + 1))
   const f = computed(() => n() >> (n() + 1))`)
-    for (const op of ['&', '|', '^', '<<', '>>']) {
-      expect(out, op).toContain(`n ${op} (n + 1)`)
+    for (const helper of ['pyreonBitAnd', 'pyreonBitOr', 'pyreonBitXor', 'pyreonShl', 'pyreonShr']) {
+      expect(out, helper).toMatch(new RegExp(`${helper}\\(n, \\(?pyreonAdd\\(n, 1\\)\\)?\\)`))
     }
   })
 
   it('SIMPLE bitwise operands take no extra parens', () => {
-    expect(sw(`  const a = computed(() => n() & 3)`)).toContain('n & 3')
+    expect(sw(`  const a = computed(() => n() & 3)`)).toContain('pyreonBitAnd(n, 3)')
   })
 
   it('plain `+` is emitted without the bitwise parenthesisation', () => {
-    expect(sw(`  const a = computed(() => n() + n())`)).toContain('n + n')
+    expect(sw(`  const a = computed(() => n() + n())`)).toContain('pyreonAdd(n, n)')
   })
 })
 
@@ -103,8 +103,8 @@ describe('update expressions — ++ and --', () => {
       `  const go = () => { let i = 0; const a = i++; const c = i--; }`,
       '<Text>y</Text>',
     )
-    expect(out).toContain('+= 1')
-    expect(out).toContain('-= 1')
+    expect(out).toContain('i = pyreonAdd(i, 1)')
+    expect(out).toContain('i = pyreonSub(i, 1)')
   })
 })
 

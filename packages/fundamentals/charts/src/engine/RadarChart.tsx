@@ -10,8 +10,8 @@ import type { RadarAxis, RadarHitIndex, RadarOptions, RadarSeries } from './rada
 import type { Double, Rect } from './types'
 
 export interface RadarChartProps<T> extends CanvasHostProps {
-  data: T[] | (() => T[])
-  axes: RadarAxis[] | (() => RadarAxis[])
+  data: readonly T[] | (() => readonly T[])
+  axes: readonly RadarAxis[] | (() => readonly RadarAxis[])
   /** One value per axis, in axis order. */
   values: (d: T, index: number) => Double[]
   label: (d: T, index: number) => string
@@ -29,11 +29,11 @@ export interface RadarChartProps<T> extends CanvasHostProps {
   onSelectIndex?: (hit: RadarHitIndex) => void
 }
 
-interface Geometry { axes: RadarAxis[]; series: RadarSeries[]; labels: string[]; box: Rect; opts: RadarOptions }
+interface Geometry { axes: readonly RadarAxis[]; series: RadarSeries[]; labels: string[]; box: Rect; opts: RadarOptions }
 
 export function RadarChart<T>(props: RadarChartProps<T>): VNode {
-  const readData = (): T[] => (typeof props.data === 'function' ? (props.data as () => T[])() : props.data)
-  const readAxes = (): RadarAxis[] => (typeof props.axes === 'function' ? (props.axes as () => RadarAxis[])() : props.axes)
+  const readData = (): readonly T[] => (typeof props.data === 'function' ? (props.data as () => readonly T[])() : props.data)
+  const readAxes = (): readonly RadarAxis[] => (typeof props.axes === 'function' ? (props.axes as () => readonly RadarAxis[])() : props.axes)
   return canvasHost<Geometry>({
     props,
     defaultHeight: 260,

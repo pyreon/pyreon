@@ -99,7 +99,7 @@ export function App(){
 }`
   it('Swift: a reassigned `let` counter is NOT inlined (stays by-name)', () => {
     const code = sw(mutated)
-    expect(code).toContain('nextId += 1') // by name — the mutation is preserved
+    expect(code).toContain('nextId = pyreonAdd(nextId, 1)') // by name — the mutation is preserved
     expect(code).not.toContain('(1) += 1') // NOT the broken inlined-initial form
     // …while an immutable const in the SAME component still inlines into a handler.
     const resetFn = code.split('func reset')[1]?.split('\n  }')[0] ?? ''

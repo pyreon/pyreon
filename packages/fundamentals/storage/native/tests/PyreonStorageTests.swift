@@ -6,6 +6,7 @@
 // SecItem I/O are device/host territory (asserted by the iOS device gate), not here.
 
 import Foundation
+import PyreonRuntime
 
 @main
 struct PyreonStorageTests {
@@ -28,6 +29,19 @@ struct PyreonStorageTests {
     }
 
     static func main() {
+        // A stored Record reads back in the order it was written (the web's localStorage holds `JSON.stringify`
+        // bytes): written as those bytes, decoded in document order. Five keys: a hash order matching is a
+        // 1-in-120 accident per run.
+        let ordered = freshStore()
+        let record: PyreonMap<String, Int> = PyreonMap([("zeta", 1), ("alpha", 2), ("mid", 3), ("k", 4), ("b", 5)])
+        try! PyreonStorage.write(record, key: "rec", store: ordered)
+        eq(String(decoding: ordered.data(forKey: "rec")!, as: UTF8.self), "{\"zeta\":1,\"alpha\":2,\"mid\":3,\"k\":4,\"b\":5}", "stored bytes")
+        let readBack = try! PyreonStorage.read(PyreonMap<String, Int>.self, key: "rec", store: ordered)!
+        eq(readBack.keys, ["zeta", "alpha", "mid", "k", "b"], "record key order after a round trip")
+        let repeated: PyreonMap<String, Int> = PyreonStorage.decodeOrDefault(Data("{\"a\":1,\"b\":2,\"a\":3}".utf8), default: [:])
+        eq(repeated.keys, ["a", "b"], "repeated key keeps its first position")
+        eq(repeated["a"], 3, "repeated key keeps the last value")
+
         // decodeOrDefault: empty → default, corrupt → default, valid → decoded
         let d1: [TestTodo] = PyreonStorage.decodeOrDefault(Data(), default: [TestTodo(id: 1, text: "default", done: false)])
         eq(d1.count, 1); eq(d1[0].text, "default", "empty data → default")

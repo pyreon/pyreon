@@ -84,7 +84,7 @@ describe('<WebView onMessage={…}> reverse-bridge emit', () => {
     )
     expect(result.warnings).toEqual([])
     expect(result.code).toContain('last = m')
-    expect(result.code).toContain('count = count + 1')
+    expect(result.code).toContain(target === 'swift' ? 'count = pyreonAdd(count, 1)' : 'count = pyreonAdd(count, 1L)')
     expect(result.code).toContain(target === 'swift' ? '.accessibilityIdentifier("toolkit-webview")' : 'modifier = Modifier.testTag("toolkit-webview")')
   })
 })

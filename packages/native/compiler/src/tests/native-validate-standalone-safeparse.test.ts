@@ -29,7 +29,7 @@ export function App() {
 const MULTI = `import { computed } from '@pyreon/reactivity'
 import { s } from '@pyreon/validate'
 export function App() {
-  const ok = computed(() => s.object({ name: s.string(), age: s.number(), active: s.boolean() }).safeParse({ name: 'x', age: 3, active: true }).ok)
+  const ok = computed(() => s.object({ name: s.string(), age: s.number().int(), score: s.number(), active: s.boolean() }).safeParse({ name: 'x', age: 3, score: 1.5, active: true }).ok)
   return <Text>{ok() ? 'valid' : 'invalid'}</Text>
 }`
 
@@ -40,8 +40,9 @@ describe('@pyreon/validate standalone `.safeParse().success` lowering', () => {
     expect(warnings.filter((w) => w.includes('@pyreon/validate'))).toHaveLength(0)
     // A synthesized struct with the real field + parse type-check.
     expect(code).toContain('struct PyreonZodSchema_Inline0: Codable')
-    expect(code).toContain('var n: Int')
-    expect(code).toContain('guard let nVal = input["n"] as? Int else {')
+    // A bare `number()` is a Double (the web accepts `1.5`) that also reads a whole number from the map.
+    expect(code).toContain('var n: Double')
+    expect(code).toContain('guard let nVal = ((input["n"] as? Double) ?? (input["n"] as? Int).map(Double.init)) else {')
     // The web-faithful result shape + the call it lowers to.
     // The result type is the runtime's (`PyreonSchema.swift`), never per file.
     expect(code).not.toMatch(/struct PyreonValidateResult\b/)
@@ -60,7 +61,7 @@ describe('@pyreon/validate standalone `.safeParse().success` lowering', () => {
     const { code, warnings } = transform(SCALAR, { target: 'kotlin' })
     expect(warnings.filter((w) => w.includes('@pyreon/validate'))).toHaveLength(0)
     expect(code).toContain('data class PyreonZodSchema_Inline0')
-    expect(code).toContain('var n: Long')
+    expect(code).toContain('var n: Double')
     expect(code).not.toMatch(/class PyreonValidateResult\b/)
     expect(code).toContain(
       'pyreonValidateResult { PyreonZodSchema_Inline0.parse(mapOf<String, Any?>("n" to 1L)) }.ok',

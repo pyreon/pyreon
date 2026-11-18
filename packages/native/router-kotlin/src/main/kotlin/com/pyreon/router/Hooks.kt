@@ -92,3 +92,19 @@ public inline fun <reified T> useLoaderData(): T? {
     val router = LocalPyreonRouter.current ?: return null
     return router.loaderData.value[router.currentPath] as? T
 }
+
+/**
+ * Imperative navigation — `@pyreon/router`'s `useRouter()`, for the calls a
+ * path-only `useNavigate()` cannot express: `replace` (the current entry is
+ * swapped, so Back skips it), `back` and `forward`. A missing provider makes
+ * every call a no-op, as `useNavigate()` does.
+ */
+public class PyreonRouterHandle(private val router: PyreonRouter?) {
+    public fun push(path: String) { router?.push(path) }
+    public fun replace(path: String) { router?.replace(path) }
+    public fun back() { router?.back() }
+    public fun forward() { router?.forward() }
+}
+
+@Composable
+public fun useRouter(): PyreonRouterHandle = PyreonRouterHandle(LocalPyreonRouter.current)

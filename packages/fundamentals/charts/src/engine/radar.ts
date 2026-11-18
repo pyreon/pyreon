@@ -34,7 +34,7 @@ export function radarAngles(count: number): Double[] {
  */
 export function radarPolygon(
   values: Double[],
-  axes: RadarAxis[],
+  axes: readonly RadarAxis[],
   center: Pt,
   radius: Double,
 ): Pt[] {
@@ -62,7 +62,7 @@ export interface RadarOptions {
 
 /** Draw commands for the web of axes plus every series polygon. */
 export function renderRadar(
-  axes: RadarAxis[],
+  axes: readonly RadarAxis[],
   series: RadarSeries[],
   box: Rect,
   opts: RadarOptions,
@@ -170,7 +170,7 @@ export interface RadarHitIndex {
  * Hit-test the series polygons' vertices — the same geometry `renderRadar`
  * draws (same pad, radius and centre), so a tap lands where the eye does.
  */
-export function hitRadarIndex(axes: RadarAxis[], series: RadarSeries[], box: Rect, opts: RadarOptions, px: Double, py: Double, tolerance: Double = 8.0): RadarHitIndex {
+export function hitRadarIndex(axes: readonly RadarAxis[], series: RadarSeries[], box: Rect, opts: RadarOptions, px: Double, py: Double, tolerance: Double = 8.0): RadarHitIndex {
   const miss: RadarHitIndex = { series: -1, axis: -1 }
   const n = axes.length
   if (n < 3) return miss

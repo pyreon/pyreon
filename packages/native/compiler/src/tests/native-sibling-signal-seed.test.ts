@@ -86,7 +86,7 @@ describe('signal seeded from sibling signal reads', () => {
     const r = transform(app(`  const count = signal(5)\n  const derived = signal(count() * 2)`), {
       target: 'kotlin',
     })
-    expect(r.code).toContain('var derived by remember { mutableStateOf(count * 2L) }')
+    expect(r.code).toContain('var derived by remember { mutableStateOf(pyreonMul(count, 2L)) }')
     expect(warningsOf(r).filter((m) => m.includes('sibling'))).toHaveLength(0)
   })
 

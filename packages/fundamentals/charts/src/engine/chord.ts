@@ -120,8 +120,8 @@ function indexOfName(names: string[], name: string): number {
  * neighbour.
  */
 export function layoutChord(
-  nodes: ChordNode[],
-  links: ChordLink[],
+  nodes: readonly ChordNode[],
+  links: readonly ChordLink[],
   box: Rect,
   options?: ChordOptions,
   measure?: MeasureText,

@@ -168,6 +168,7 @@ const GATES: Gate[] = [
   // A tracked file that .gitignore excludes stays tracked (the rule does not
   // apply to it), so a test artifact committed once keeps churning (#4571).
   { name: 'check-no-tracked-ignored', cmd: 'bun scripts/check-no-tracked-ignored.ts' },
+  { name: 'check-no-conflict-markers', cmd: 'bun scripts/check-no-conflict-markers.ts' },
   // Pairs with the one above: having a changeset is not enough, its SEVERITY
   // must be legal for 0.x. Pure file read, milliseconds — and without it the
   // only feedback on a `major` bump is a CI round trip.

@@ -93,7 +93,7 @@ export function App() {
 }`)
 
   it('the `{ length: n }` + index-callback form becomes a range map', () => {
-    expect(r.code).toContain('(0..<3).map({ i in i * 2 })')
+    expect(r.code).toContain('(0..<3).map({ i in pyreonMul(i, 2) })')
   })
 
   it('the INDEX param is seeded Int, so an object literal in the body still synthesizes a struct', () => {
@@ -104,7 +104,7 @@ export function App() {
 
   it('the plain and mapped ARRAY forms, and `isArray`, each take their own arm', () => {
     expect(r.code).toContain('Array(xs)')
-    expect(r.code).toContain('xs.map({ v in v + 1 })')
+    expect(r.code).toContain('xs.map({ v in pyreonAdd(v, 1) })')
     // a typed source IS statically an array
     expect(r.code).toContain('private var f: Bool { true }')
   })

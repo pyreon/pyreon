@@ -33,7 +33,7 @@
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, join as pathJoin } from 'node:path'
+import { dirname, join as pathJoin, relative as pathRelative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Visitor } from 'oxc-parser'
 import { parseOxc } from './oxc-parse'
@@ -51,6 +51,13 @@ import {
   DEV_ERROR_PRINTER_SCRIPT_TAG,
   DEV_ERROR_PRINTER_SOURCE,
 } from './dev-error-printer'
+import {
+  configuredOutputDirs,
+  outputDirOf,
+  outputDirsToSkip,
+  recordedOutputDirs,
+  recordOutputDir,
+} from './build-output-dirs'
 import { injectIslandNames, islandNameEdits } from './island-auto-name'
 import { SourceMapChain, type TextEdit } from './source-map-chain'
 import type { CollapseResolver } from './rocketstyle-collapse'
@@ -907,6 +914,15 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
   // consumer running `vite dev` isn't left wondering why nothing collapsed.
   let warnedDevCollapse = false
   let projectRoot = ''
+  // Build output the prescans must not read as source — see
+  // `build-output-dirs.ts`. Set in `configResolved`; empty when a harness
+  // drives `buildStart` without one (then only the name-based skips apply).
+  let configOutputDirs: string[] = []
+  let viteCacheDir: string | undefined
+  // Vite's resolved (realpath'd) root. `projectRoot` is the user's spelling,
+  // which may go through a symlink (macOS `/var` → `/private/var`), so the
+  // skip set is kept RELATIVE to the root to compare across the two.
+  let viteRoot: string | undefined
   // `include`/`exclude` — see the option docs. The default `exclude` keeps
   // third-party `node_modules` out of the transform while letting the
   // `@pyreon/*` packages (resolved via the `bun` condition to their `.tsx`
@@ -974,6 +990,17 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
 
     configResolved(resolved) {
       isProductionBuild = resolved.command === 'build' && resolved.isProduction
+      configOutputDirs = configuredOutputDirs(resolved)
+      viteRoot = resolved.root
+      viteCacheDir = resolved.cacheDir
+    },
+
+    // Record where this build wrote, so a LATER build of the same project
+    // (a separate `vite build --ssr --outDir dist-ssr`, or zero's nested SSR
+    // pass) knows that directory is output and never prescans it as source.
+    writeBundle(outputOptions) {
+      const dir = outputDirOf(outputOptions)
+      if (viteCacheDir && dir) recordOutputDir(viteCacheDir, dir)
     },
 
     config(userConfig, env) {
@@ -1095,7 +1122,11 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // is complete before any transforms run. This solves the build
       // ordering problem where component.tsx is transformed before
       // store.ts — without pre-scanning, the registry would be empty.
-      await prescanSignalExports(projectRoot, signalExportRegistry)
+      const skipDirs = outputDirsToSkip(viteRoot ?? projectRoot, [
+        ...configOutputDirs,
+        ...(viteCacheDir ? recordedOutputDirs(viteCacheDir) : []),
+      ])
+      await prescanSignalExports(projectRoot, signalExportRegistry, skipDirs)
 
       // Mirror prescan for `island()` declarations. The result populates
       // `virtual:pyreon/islands-registry`, consumed by `hydrateIslandsAuto()`
@@ -1103,7 +1134,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // `island()` source-of-truth and the client `hydrateIslands({ ... })`
       // call — the #1 author foot-gun for islands.
       if (islandsEnabled) {
-        await prescanIslandDeclarations(projectRoot, islandRegistry)
+        await prescanIslandDeclarations(projectRoot, islandRegistry, skipDirs)
       }
     },
 
@@ -3114,8 +3145,14 @@ interface IslandDecl {
  * function SOURCE, non-reactively, in every importer, because a plain `.ts`
  * store had no other path into the registry. `node_modules` and dot-dirs
  * are skipped everywhere.
+ *
+ * `skipDirs` (paths relative to `root`) is the build output the Vite config declares or an
+ * earlier build of this project wrote (`build-output-dirs.ts`). The names
+ * above only cover the default layout; a custom `build.outDir` (`dist-ssr`,
+ * `out`, `.output/public`) is known only from there. Reading it as source put
+ * a server bundle's `island()` calls into the CLIENT islands registry.
  */
-function collectSourceFiles(root: string): string[] {
+function collectSourceFiles(root: string, skipDirs: ReadonlySet<string> = new Set()): string[] {
   const files: string[] = []
   function walk(dir: string) {
     let entries: string[]
@@ -3135,7 +3172,9 @@ function collectSourceFiles(root: string): string[] {
       const full = pathJoin(dir, entry)
       try {
         const stat = statSync(full)
-        if (stat.isDirectory()) walk(full)
+        if (stat.isDirectory()) {
+          if (!skipDirs.has(pathRelative(root, full))) walk(full)
+        }
         else if (/\.(ts|tsx|js|jsx)$/.test(entry)) files.push(full)
       } catch {
         /* unreadable entry */
@@ -3164,8 +3203,9 @@ function collectSourceFiles(root: string): string[] {
 async function prescanIslandDeclarations(
   root: string,
   registry: Map<string, IslandDecl[]>,
+  skipDirs?: ReadonlySet<string>,
 ): Promise<void> {
-  const files = collectSourceFiles(root)
+  const files = collectSourceFiles(root, skipDirs)
 
   for (const file of files) {
     try {
@@ -3336,8 +3376,9 @@ function renderIslandsRegistry(registry: Map<string, IslandDecl[]>, enabled: boo
 async function prescanSignalExports(
   root: string,
   registry: Map<string, Set<string>>,
+  skipDirs?: ReadonlySet<string>,
 ): Promise<void> {
-  const files = collectSourceFiles(root)
+  const files = collectSourceFiles(root, skipDirs)
 
   for (const file of files) {
     try {

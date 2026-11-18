@@ -36,7 +36,7 @@ export function App() {
     expect(out).toContain(
       'let (bytes, _) = try await URLSession.shared.data(from: URL(string: "https://x/1")!)',
     )
-    expect(out).toContain('f1.resolve(try PyreonJSON.decode(U.self, from: bytes))')
+    expect(out).toContain('return try PyreonJSON.decode(U.self, from: bytes)')
   })
 
   it('a VERB, HEADERS or a BODY — any one of the three — routes through PyreonHttp', () => {
@@ -53,7 +53,7 @@ export function App() {
   it('the PyreonHttp path REJECTS a non-2xx instead of decoding the error page', () => {
     expect(out).toContain('guard __response.isOK else {')
     expect(out).toContain('throw PyreonHttpError.badStatus(__response.status)')
-    expect(out).toContain('f2.resolve(try __response.decode(U.self))')
+    expect(out).toContain('return try __response.decode(U.self)')
   })
 })
 
@@ -86,7 +86,7 @@ export function App(props: { uid: number }) {
     // queryKey rather than an emitted expression
     expect(out).toContain('.task(id: "v") {')
     expect(out).toContain('qv.setKey("v")')
-    expect(out).toMatch(/await qv\.run \{\s*return uid \* 2\s*\}/)
+    expect(out).toMatch(/await qv\.run \{\s*return pyreonMul\(uid, 2\)\s*\}/)
   })
 
   it('a query carrying a verb/headers/body routes through PyreonHttp with the status guard', () => {
