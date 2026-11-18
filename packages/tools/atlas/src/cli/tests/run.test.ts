@@ -276,6 +276,62 @@ describe('runCli', () => {
     }
   })
 
+  it('scan --check exits 0 when the only failures are already in the baseline (#4307)', async () => {
+    // A ratchet fails on a regression. It used to print "no change in any
+    // check" and then exit 1 from the absolute-failure branch, so --check
+    // could not be adopted on a catalog that already had a failure.
+    const dir = fixture('ratchet-inherited', {
+      'Card.tsx': `export function Card(props: { title: string }) { return 1 }`,
+    })
+    try {
+      expect(await runCli(['scan', dir])).toBe(1)
+      stdout = ''
+      stderr = ''
+      expect(await runCli(['scan', dir, '--check'])).toBe(0)
+      expect(stdout).toContain('no change in any check')
+      expect(stderr).toContain('already failed the same check in the committed catalog')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('scan --check still fails on a failing scenario the baseline did not have', async () => {
+    // A new component is not a regression to the diff (it has no baseline),
+    // but its failure is new red, not inherited red.
+    const dir = fixture('ratchet-new-failure', {
+      'Button.tsx': `export function Button(props: { label?: string }) { return 1 }`,
+    })
+    try {
+      expect(await runCli(['scan', dir])).toBe(0)
+      writeFileSync(join(dir, 'src', 'Card.tsx'), `export function Card(props: { title: string }) { return 1 }`)
+      stderr = ''
+      expect(await runCli(['scan', dir, '--check'])).toBe(1)
+      expect(stderr).toContain('a11y [missing-accessible-name]')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('verify --check exits 0 on inherited failures and 1 on a new one', async () => {
+    const dir = fixture('verify-ratchet-inherited', {
+      'Card.tsx': `export function Card(props: { title: string }) { return 1 }`,
+    })
+    try {
+      await runCli(['scan', dir])
+      expect(await runCli(['verify', 'Card', '--cwd', dir, '--check'])).toBe(0)
+      expect(await runCli(['verify', 'Card', '--cwd', dir])).toBe(1)
+      // `ok` agrees with the exit code.
+      stdout = ''
+      expect(await runCli(['verify', 'Card', '--cwd', dir, '--check', '--json'])).toBe(0)
+      expect(JSON.parse(stdout).ok).toBe(true)
+      stdout = ''
+      expect(await runCli(['verify', 'Card', '--cwd', dir, '--json'])).toBe(1)
+      expect(JSON.parse(stdout).ok).toBe(false)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('scan --check calls LOST COVERAGE a regression, though the counts improve', async () => {
     // The failure the ratchet uniquely catches. Baseline has failing checks;
     // the second run cannot mount, so those checks SKIP — `2 failing` becomes

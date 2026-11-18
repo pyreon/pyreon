@@ -201,6 +201,19 @@ describe('lint() — high-level API', () => {
     expect(typeof after).toBe('string')
     rmSync(dir, { recursive: true, force: true })
   })
+
+  // #4396: `lint({ fix: true })` dropped every fixed diagnostic, so a caller
+  // (`pyreon doctor --fix`) could not report the edits it had just written.
+  it('reports the diagnostics it fixed on `fixed`, outside the totals', () => {
+    const dir = makeTmp()
+    const file = write(dir, 'src/a.tsx', `export const X = () => <input autoFocus />\n`)
+    const result = lint({ paths: [dir], fix: true })
+    const fr = result.files.find((f) => f.filePath === file)
+    expect(fr?.fixed?.map((d) => d.ruleId)).toEqual(['pyreon/no-autofocus'])
+    expect(fr?.diagnostics.some((d) => d.ruleId === 'pyreon/no-autofocus')).toBe(false)
+    expect(readFileSync(file, 'utf-8')).toBe(`export const X = () => <input />\n`)
+    rmSync(dir, { recursive: true, force: true })
+  })
 })
 
 describe('listRules()', () => {

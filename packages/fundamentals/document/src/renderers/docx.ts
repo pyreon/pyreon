@@ -671,7 +671,9 @@ export const docxRenderer: DocumentRenderer = {
       ],
     })
 
-    const buffer = await docx.Packer.toBuffer(doc)
-    return new Uint8Array(buffer)
+    // toArrayBuffer, not toBuffer: toBuffer asks JSZip for a Node `Buffer`
+    // ("nodebuffer") and throws in a browser, where download() runs.
+    // An ArrayBuffer is available in every runtime (docx >= 9.7.1).
+    return new Uint8Array(await docx.Packer.toArrayBuffer(doc))
   },
 }

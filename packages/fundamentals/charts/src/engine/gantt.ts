@@ -39,6 +39,17 @@ export interface GanttTick {
   at: Double
   x: Double
   label: string
+  /**
+   * Where the label starts. Normally just right of the tick (`x + 3`); a label
+   * that would run past the plot's right edge is pulled back so it ends there,
+   * or a narrow host clips the last one ("29 J").
+   */
+  labelX: Double
+  /**
+   * False when the pulled-back label would overlap the label before it (two
+   * ticks crowded at the right edge): it is left out rather than stacked.
+   */
+  labelShown: boolean
 }
 
 export interface GanttRow {
@@ -195,7 +206,7 @@ export function ganttTicks(lo: Double, hi: Double, unit: 'day' | 'week' | 'month
             : unit === 'quarter'
               ? `Q${Math.round(q)} ${year}`
               : year
-      out.push({ at: t, x: 0.0, label })
+      out.push({ at: t, x: 0.0, label, labelX: 0.0, labelShown: true })
     }
     t = ganttNextTick(t, unit)
   }
@@ -361,7 +372,22 @@ export function layoutGantt(tasks: GanttTask[], box: Rect, options?: GanttOption
     }
   }
   const ticks: GanttTick[] = []
-  for (const t of ganttTicks(lo, hi, unit)) ticks.push({ at: t.at, x: plot.x + ((t.at - lo) / span) * plot.w, label: t.label })
+  const plotRight = plot.x + plot.w
+  let prevEnd = plot.x - 1.0e9
+  for (const t of ganttTicks(lo, hi, unit)) {
+    const tx = plot.x + ((t.at - lo) / span) * plot.w
+    // Start-aligned just right of the tick, but never past the plot's right
+    // edge: the last tick sits close to it, and its label would be clipped.
+    // A label pulled back onto the one before it is dropped, not stacked.
+    const lw = m(t.label, fontSize - 1.0)
+    const want = tx + 3.0
+    const latest = plotRight - lw
+    const pulled = want > latest
+    const tickLabelX = !pulled ? want : latest < plot.x ? plot.x : latest
+    const labelShown = !pulled || tickLabelX >= prevEnd
+    if (labelShown) prevEnd = tickLabelX + lw
+    ticks.push({ at: t.at, x: tx, label: t.label, labelX: tickLabelX, labelShown })
+  }
   return {
     rows,
     lanes,
@@ -394,7 +420,7 @@ export function renderGantt(layout: GanttLayout, options?: GanttOptions): DrawCm
   const plotBottom = layout.plot.y + layout.plot.h
   for (const t of layout.ticks) {
     out.push({ kind: 'line', from: { x: t.x, y: layout.axis.y + layout.axis.h }, to: { x: t.x, y: plotBottom }, stroke: gridColor, width: 1.0 })
-    out.push({ kind: 'text', text: t.label, at: { x: t.x + 3.0, y: layout.axis.y + layout.axis.h / 2.0 }, fill: labelColor, size: fontSize - 1.0, align: 'start', baseline: 'middle' })
+    if (t.labelShown) out.push({ kind: 'text', text: t.label, at: { x: t.labelX, y: layout.axis.y + layout.axis.h / 2.0 }, fill: labelColor, size: fontSize - 1.0, align: 'start', baseline: 'middle' })
   }
   for (const row of layout.rows) {
     out.push({ kind: 'text', text: row.label, at: row.labelAt, fill: labelColor, size: fontSize, align: 'start', baseline: 'middle' })

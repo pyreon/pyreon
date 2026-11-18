@@ -20,6 +20,7 @@ import pyreonPlugin, {
   _compatAliasTable,
   _getCompatTarget,
   _isUnaliasedFrameworkImport,
+  _unaliasedImportWarning,
   type PyreonPluginOptions,
 } from '../index'
 
@@ -30,6 +31,7 @@ function compatExports(fw: Framework): string[] {
   const pkg = JSON.parse(
     readFileSync(resolve(__dirname, `../../../${fw}-compat/package.json`), 'utf8'),
   ) as { exports: Record<string, unknown> }
+
   return Object.keys(pkg.exports).map((k) =>
     k === '.' ? `@pyreon/${fw}-compat` : `@pyreon/${fw}-compat/${k.slice(2)}`,
   )
@@ -101,5 +103,46 @@ describe('an unaliased framework specifier warns once', () => {
     expect(_isUnaliasedFrameworkImport('react', 'lodash')).toBe(false)
     expect(_isUnaliasedFrameworkImport('react', 'react-dom/server')).toBe(true)
     expect(_isUnaliasedFrameworkImport('react', 'reactive-lib')).toBe(false)
+  })
+})
+
+// #4331: `react-dom/server` falls through to the real package in compat mode,
+// and the once-per-specifier warning only said "import the equivalent from
+// @pyreon/react-compat", which has no server renderer. A framework's server
+// renderer cannot render Pyreon vnodes; the warning must name the replacement.
+describe('an unaliased server renderer names @pyreon/runtime-server (#4331)', () => {
+  it('react-dom/server: the resolveId warning names renderToString from @pyreon/runtime-server', async () => {
+    const plugin = pyreonPlugin({ compat: 'react' } as PyreonPluginOptions)
+    ;(plugin.config as unknown as (c: object, e: object) => void)({}, { command: 'serve' })
+    const warnings: string[] = []
+    const ctx = { resolve: async () => null, warn: (m: string) => void warnings.push(m) }
+    const hook = plugin.resolveId as unknown as ResolveIdHook
+    expect(await hook.call(ctx, 'react-dom/server', '/app/src/entry-server.ts')).toBeUndefined()
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toMatch(/^\[Pyreon\] compat "react": "react-dom\/server" is not provided/)
+    expect(warnings[0]).toContain('`renderToString` (or `renderToStream`) from "@pyreon/runtime-server"')
+    expect(warnings[0]).toContain('async')
+    expect(warnings[0]).not.toContain('Import the equivalent from "@pyreon/react-compat"')
+  })
+
+  it.each([
+    ['react', 'react-dom/server.node'],
+    ['react', 'react-dom/server.browser'],
+    ['react', 'react-dom/server.edge'],
+    ['react', 'react-dom/static'],
+    ['vue', 'vue/server-renderer'],
+    ['vue', '@vue/server-renderer'],
+    ['svelte', 'svelte/server'],
+  ] as const)('%s: %s gets the same guidance', (fw, id) => {
+    expect(_isUnaliasedFrameworkImport(fw, id)).toBe(true)
+    expect(_unaliasedImportWarning(fw, id)).toContain('"@pyreon/runtime-server"')
+  })
+
+  it('any other unaliased specifier keeps the compat-package advice', () => {
+    for (const [fw, id] of [['react', 'react-dom/test-utils'], ['svelte', 'svelte/transition'], ['vue', 'vue/macros']] as const) {
+      const msg = _unaliasedImportWarning(fw, id)
+      expect(msg).toContain(`Import the equivalent from "@pyreon/${fw}-compat"`)
+      expect(msg).not.toContain('@pyreon/runtime-server')
+    }
   })
 })

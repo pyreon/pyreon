@@ -152,7 +152,9 @@ exports[`--list > renders at truecolor (one level is enough: the roles are the r
     pyreon/no-mount-in-effect  ␛[38;2;138;134;150mlifecycle␛[39m  ␛[38;2;250;204;21mwarn␛[39m
       Warn when onMount is called inside effect().
     pyreon/no-effect-in-mount  ␛[38;2;138;134;150mlifecycle␛[39m  ␛[38;2;34;211;238minfo␛[39m
-      Inform when effect() is created inside onMount — effects are typically created at setup time.
+      Inform when a pure reactive effect() is created inside onMount — it belongs at setup time. An
+      effect doing imperative work is where \`no-imperative-effect-on-create\` sends it, so it is
+      accepted.
     pyreon/no-dom-in-setup  ␛[38;2;138;134;150mlifecycle␛[39m  ␛[38;2;250;204;21mwarn␛[39m
       Warn when DOM query methods are used outside onMount or effect.
     pyreon/no-imperative-effect-on-create  ␛[38;2;138;134;150mlifecycle␛[39m  ␛[38;2;250;204;21mwarn␛[39m

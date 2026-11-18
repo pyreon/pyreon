@@ -25,6 +25,8 @@ const FIXTURES: Record<PyreonDiagnosticCode, string> = {
   'signal-write-as-call': `const count = signal(0)\nexport const inc = () => count(5)`,
   'static-return-null-conditional': `const c = signal(false)\nfunction C(props) { if (c()) return null\n  return <div /> }`,
   'static-early-return-conditional': `const l = signal(false)\nfunction C(props) { if (l()) return <Skeleton />\n  return <div /> }`,
+  'props-early-return-conditional': `function C(props) { if (props.loading) return <Skeleton />\n  return <div /> }`,
+  'props-object-copy': `function C(props) { const m = Object.assign({}, props, { extra: 1 })\n  return <div title={m.title} /> }`,
   'as-unknown-as-vnodechild': `const c = x as unknown as VNodeChild`,
   'island-never-with-registry-entry': `const W = island(() => import('./w'), { name: 'W', hydrate: 'never' })\nhydrateIslands({ W: () => import('./w') })`,
   'query-options-as-function': `const q = useQuery({ queryKey: ['user', id()], queryFn: fetchUser })`,

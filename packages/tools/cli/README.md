@@ -84,7 +84,7 @@ A project-wide health audit that runs a battery of independent **gates** in para
 ```bash
 pyreon doctor                          # 13 fast gates (~1-2 s wall, parallel), scored output
 pyreon doctor --full                   # adds 2 slow gates (audit-types, bundle-budgets) — 15 total
-pyreon doctor --fix                    # auto-fix what we can (lint + react-patterns)
+pyreon doctor --fix                    # auto-fix (react-patterns, then lint) and list every edit
 pyreon doctor --json                   # full DoctorReport as JSON
 pyreon doctor --gha                    # GitHub Actions annotations (one per finding)
 pyreon doctor --ci                     # exit non-zero on non-advisory error findings

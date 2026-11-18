@@ -6,7 +6,7 @@ import { loadConfig, loadConfigFromPath } from './config/loader'
 import { getPreset } from './config/presets'
 import { groupOf } from './rules/groups'
 import { allRules } from './rules/index'
-import { applyFixes, lintFile } from './runner'
+import { applyFileFixes, lintFile } from './runner'
 import type {
   ConfigDiagnostic,
   LintConfig,
@@ -209,15 +209,6 @@ function gatherFiles(
   return files
 }
 
-function applyFixesToFile(fileResult: LintFileResult, source: string): void {
-  const fixable = fileResult.diagnostics.filter((d) => d.fix)
-  if (fixable.length === 0) return
-  const fixed = applyFixes(source, fileResult.diagnostics)
-  writeFileSync(fileResult.filePath, fixed, 'utf-8')
-  fileResult.fixedSource = fixed
-  fileResult.diagnostics = fileResult.diagnostics.filter((d) => !d.fix)
-}
-
 function countDiagnostics(fileResult: LintFileResult, results: LintResult): void {
   for (const d of fileResult.diagnostics) {
     if (d.severity === 'error') results.totalErrors++
@@ -285,7 +276,8 @@ export function lint(options: LintOptions): LintResult {
     }
     const fileResult = lintFile(filePath, source, allRules, config, cache, configDiagnostics)
     if (options.fix) {
-      applyFixesToFile(fileResult, source)
+      const fixed = applyFileFixes(fileResult, source)
+      if (fixed !== undefined) writeFileSync(filePath, fixed, 'utf-8')
     }
     if (options.quiet) {
       fileResult.diagnostics = fileResult.diagnostics.filter((d) => d.severity === 'error')

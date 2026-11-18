@@ -29,9 +29,9 @@ Spot them? `props.count` and `doubled` stay live. `label` and `tripled` are froz
                ^ ⚠ footgun [props-destructured-body] — Destructuring `props` in the
                  component body captures the values ONCE during setup …
    7 |       {props.count} / {doubled} / {tripled}
-              ^ ◆ live — live — this text re-renders whenever its signals change
-                              ^ ◆ live — live — this text re-renders whenever its signals change
-                                          ^ ○ baked once — baked once into the DOM — never re-renders (no signal read here)
+              ^ ◆ live — this text re-renders whenever its signals change
+                              ^ ◆ live — this text re-renders whenever its signals change
+                                          ^ ○ baked once into the DOM — never re-renders (no signal read here)
 ```
 
 Pyreon components **run once**. There is no re-render pass to pick up a value you forgot to track, and no dependency array to forget. The compiler wires each signal read to the exact DOM node that uses it, and everything else is a plain value. Updates are cheap because of that, and it means *where* you read a value decides whether it updates.

@@ -112,8 +112,8 @@
       "warnings": 0
     },
     "fixture:12-canonical-input.tsx|swift": {
-      "sha": "493dd7d161762ae0ca49aa6dfa5f955e0ba7fdcb515245e0f2bff3f2d3620743",
-      "bytes": 462,
+      "sha": "2262667e930e11caaf759e86db3ce146a6465caf4dfcc464dfa75742352f1a27",
+      "bytes": 486,
       "warnings": 0
     },
     "fixture:12-canonical-input.tsx|kotlin": {
@@ -2682,8 +2682,8 @@
       "warnings": 0
     },
     "golden-fixture:flow-45.tsx|swift": {
-      "sha": "524205e2fde5d0afee99c5f59556cad61b348b62b19f6c7422794d8fc62d6c82",
-      "bytes": 20441,
+      "sha": "43d850454d9e105ef31dca83d50d6926b56953e70d13773ac756b42d7cc5a3bd",
+      "bytes": 20471,
       "warnings": 0
     },
     "golden-fixture:flow-45.tsx|kotlin": {
@@ -7372,8 +7372,8 @@
       "warnings": 0
     },
     "example:native-counter/Counter.tsx|swift": {
-      "sha": "dafc7932b8f546347b2035e6ab359075bf9b2e930f124a95c93e599d35d77738",
-      "bytes": 23606,
+      "sha": "a392860408ad07a8a79f918253d53afa50bf8d2ba9088a30e6399d56a7343a31",
+      "bytes": 23636,
       "warnings": 0
     },
     "example:native-counter/Counter.tsx|kotlin": {
@@ -7412,13 +7412,13 @@
       "warnings": 1
     },
     "example:native-showcase/TodayApp.tsx|swift": {
-      "sha": "558ae0b06368938259056ae8d4495bfd010f3eedfca9fb827723398760250f48",
-      "bytes": 5626,
+      "sha": "8daa64b655f2f6c472c38e4411755ad8e4f71c285e2974d7ac7c7c88dc35fc40",
+      "bytes": 5630,
       "warnings": 0
     },
     "example:native-showcase/TodayApp.tsx|kotlin": {
-      "sha": "6ed6392523c5ce5df853f269218fe21eaa3f3748aa3e4cce4561738f629c123c",
-      "bytes": 4815,
+      "sha": "48e21cac9d88fb835591245c7514f1730273c42800ad9d7f693bef773f70b8b7",
+      "bytes": 4794,
       "warnings": 0
     },
     "example:native-tasks/TasksApp.tsx|swift": {
@@ -7432,8 +7432,8 @@
       "warnings": 2
     },
     "example:native-todomvc/TodoApp.tsx|swift": {
-      "sha": "984e973cdef6c1239d52ea486df58da58dec43524fd4d9a010c08080b55edcb6",
-      "bytes": 2829,
+      "sha": "a38b95970be65b308fb42c882615ef0319154b38d534e9d4b8199429f91c7803",
+      "bytes": 2853,
       "warnings": 0
     },
     "example:native-todomvc/TodoApp.tsx|kotlin": {
