@@ -195,6 +195,7 @@ export function createMemoryStore<E = ISRCacheEntry>(opts: {
     },
   }
   _tagIndexProbes.set(store, () => tagIndex.size)
+
   return store
 }
 
@@ -259,8 +260,10 @@ export function createFsStore<E = ISRCacheEntry>(dir: string): ISRStore<E> {
       if (keys.length === 0) index.delete(tag)
       changed = true
     }
+
     return changed
   }
+
   return {
     async get(key) {
       try {
@@ -438,6 +441,7 @@ export function createISRHandler(
       _keyEpoch.set(key, slot)
     }
     slot.renders++
+
     return { key, slot, epoch: slot.epoch, all: _allEpoch }
   }
   const _ticketCurrent = (t: RenderTicket): boolean =>
