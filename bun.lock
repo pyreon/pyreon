@@ -1414,6 +1414,28 @@
         "@pyreon/router",
       ],
     },
+    "packages/fundamentals/ambient": {
+      "name": "@pyreon/ambient",
+      "version": "0.53.0",
+      "devDependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/manifest": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/runtime-server": "workspace:*",
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vitest-config": "workspace:*",
+        "@vitest/browser-playwright": "^5.1.0",
+        "happy-dom": "^21.0.4",
+      },
+      "peerDependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+      },
+      "optionalPeers": [
+        "@pyreon/core",
+      ],
+    },
     "packages/fundamentals/auth": {
       "name": "@pyreon/auth",
       "version": "0.52.0",
@@ -4118,6 +4140,8 @@
     "@preact/signals-core": ["@preact/signals-core@1.14.5", "", {}, "sha512-vcRv7Ityz5JVmeiVqIluLFzT/PDS/AlhHUpw3/aUWqcVUs6bDGIPXE/6RSC4evBNWYvnniozg5Syfj33al3gkg=="],
 
     "@pyreon/a11y": ["@pyreon/a11y@workspace:packages/fundamentals/a11y"],
+
+    "@pyreon/ambient": ["@pyreon/ambient@workspace:packages/fundamentals/ambient"],
 
     "@pyreon/ansi": ["@pyreon/ansi@workspace:packages/internals/ansi"],
 
