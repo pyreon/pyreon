@@ -2221,7 +2221,6 @@ const xml = generateRssFeed({
 
 - Passing `items` in an arbitrary order and expecting the feed to sort itself — items are emitted in the SUPPLIED order; sort newest-first before passing them in
 - Putting site-relative links or images in `content` — a feed reader resolves them against nothing; make every URL absolute
-- Reaching for `@pyreon/zero-content`'s own `generateRssFeed` — that one is DEPRECATED and forwards here anyway; import directly from `@pyreon/zero`
 
 **See also:** `seoPlugin`
 

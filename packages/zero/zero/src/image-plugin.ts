@@ -77,23 +77,22 @@ export const cdnProviders = {
  *   trivial/solid sources `'blur'` can be the smaller of the two. Best when
  *   you want a clean solid backdrop rather than a blurry preview.
  * - `'none'` — no placeholder (`placeholder: ''`). Skips all placeholder work.
- *
- * `'dominant-color'` is a deprecated alias of `'color'` — it was typed from
- * the plugin's inception but never implemented (the build + dev paths always
- * fell through to blur). It now resolves to `'color'`; prefer the shorter
- * name in new code.
  */
-export type PlaceholderStrategy = 'blur' | 'color' | 'dominant-color' | 'none'
+export type PlaceholderStrategy = 'blur' | 'color' | 'none'
 
 /** Quality per output format (1-100), or a single number applied to all. */
 export type ImageQuality = number | Partial<Record<ImageFormat, number>>
 
 /**
- * Normalize the public {@link PlaceholderStrategy} to an internal kind.
+ * Validate the configured {@link PlaceholderStrategy}. An untyped (JS) config
+ * with an unknown value would otherwise fall through to `'blur'` silently.
  * @internal Exported for testing.
  */
-export function normalizePlaceholder(s: PlaceholderStrategy): 'blur' | 'color' | 'none' {
-  return s === 'dominant-color' ? 'color' : s
+export function resolvePlaceholder(s: PlaceholderStrategy): PlaceholderStrategy {
+  if (s === 'blur' || s === 'color' || s === 'none') return s
+  throw new Error(
+    `[Pyreon] imagePlugin: unknown placeholder strategy ${JSON.stringify(s)}. Use 'blur', 'color' or 'none'.`,
+  )
 }
 
 /** SVG processing options for ?component imports. */
@@ -239,7 +238,7 @@ export function imagePlugin(config: ImagePluginConfig = {}): Plugin {
   const defaultFormats = config.formats ?? ['webp']
   const qualityFor = resolveQuality(config.quality)
   const placeholderSize = config.placeholderSize ?? 16
-  const placeholderStrategy = normalizePlaceholder(config.placeholder ?? 'blur')
+  const placeholderStrategy = resolvePlaceholder(config.placeholder ?? 'blur')
   const outSubDir = config.outDir ?? 'assets/img'
   const include = config.include ?? IMAGE_EXT_RE
   const cdn = config.cdn
@@ -778,9 +777,9 @@ export function resolveQuality(
  * Dispatch placeholder generation by strategy. Single source of truth used
  * by every code path (CDN / dev / build) — pre-fix each path open-coded
  * `generateBlurPlaceholder`, so `'none'` was honoured only in the CDN path
- * and `'dominant-color'` (typed since the plugin's inception) was never
- * implemented anywhere — the exact typed-but-unimplemented bug class the
- * `audit-types` gate exists to catch.
+ * and the dominant-colour strategy was never implemented anywhere — the
+ * exact typed-but-unimplemented bug class the `audit-types` gate exists to
+ * catch.
  *
  * @internal Exported for testing.
  */
