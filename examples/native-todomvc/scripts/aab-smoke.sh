@@ -17,7 +17,8 @@
 #
 # Needs ensure-release-keystore.sh to have run (CI does it in the release lane)
 # and one device attached. bundletool comes from $BUNDLETOOL_JAR, a `bundletool`
-# on PATH, or the copy the Android Gradle Plugin already put in the Gradle cache.
+# on PATH, or the standalone release jar, downloaded once and checked against a
+# pinned SHA-256.
 #
 #   bash ../scripts/aab-smoke.sh   # from examples/native-todomvc/android
 set -euo pipefail
@@ -50,9 +51,23 @@ echo "[aab-smoke] ok: built $AAB (R8 mapping inside)"
 if [ -n "${BUNDLETOOL_JAR:-}" ]; then
   bundletool() { java -jar "$BUNDLETOOL_JAR" "$@"; }
 elif ! command -v bundletool > /dev/null 2>&1; then
-  jar=$(find "${GRADLE_USER_HOME:-$HOME/.gradle}/caches/modules-2" -name 'bundletool-*.jar' 2>/dev/null | sort -V | tail -1)
-  if [ -z "$jar" ]; then
-    echo "[aab-smoke] FAIL: no bundletool (set BUNDLETOOL_JAR, install it, or build once so AGP caches it)"
+  # The jar AGP leaves in the Gradle cache is the thin Maven artifact: it has no
+  # Main-Class and none of its dependencies inside, so `java -jar` on it fails
+  # with "no main manifest attribute". The runnable tool is the standalone
+  # release jar, fetched once and pinned by checksum.
+  ver=1.18.3
+  sha=a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29
+  jar="app/build/bundletool-all-$ver.jar"
+  if [ ! -f "$jar" ]; then
+    mkdir -p "$(dirname "$jar")"
+    curl -fsSL --retry 3 -o "$jar.part" \
+      "https://github.com/google/bundletool/releases/download/$ver/bundletool-all-$ver.jar"
+    mv "$jar.part" "$jar"
+  fi
+  if command -v sha256sum > /dev/null 2>&1; then got=$(sha256sum "$jar" | cut -d' ' -f1); else got=$(shasum -a 256 "$jar" | cut -d' ' -f1); fi
+  if [ "$got" != "$sha" ]; then
+    rm -f "$jar"
+    echo "[aab-smoke] FAIL: bundletool $ver checksum mismatch (got $got)"
     exit 1
   fi
   echo "[aab-smoke] bundletool: $jar"
