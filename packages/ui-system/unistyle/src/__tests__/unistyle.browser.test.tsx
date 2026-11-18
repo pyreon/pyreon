@@ -1,10 +1,13 @@
 /** @jsxImportSource @pyreon/core */
 import { h } from '@pyreon/core'
 import { css, sheet, styled } from '@pyreon/styler'
+import { PyreonUI } from '@pyreon/ui-core'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'
 import { enrichTheme } from '../enrichTheme'
-import Provider from '../context'
+// Importing the package entry registers unistyle's theme engine with ui-core,
+// so `<PyreonUI>` enriches a raw theme the way an app sees it.
+import '../index'
 import { makeItResponsive } from '../responsive'
 import unistyles from '../styles/styles/index'
 import { stripUnit, value } from '../units'
@@ -21,7 +24,7 @@ import { stripUnit, value } from '../units'
 //   2. The generated media-query helper emits `@media (min-width: XXem)`
 //      CSS that Chromium resolves — a breakpoint under the current
 //      viewport applies, one above does not.
-//   3. `<Provider>` provides the enriched theme so `styled()` components
+//   3. `<PyreonUI>` provides the enriched theme so `styled()` components
 //      resolve `p.theme` and interpolation functions see breakpoint data.
 //   4. `value()` and `stripUnit()` produce the same strings in Node and
 //      the browser (pure math, but we lock parity).
@@ -72,8 +75,8 @@ describe('@pyreon/unistyle in real browser', () => {
     o.unmount()
   })
 
-  it('Provider enriches theme and styled() reads it via theme prop (no fallback — breaks loudly)', () => {
-    // Use a non-default sentinel color: if Provider/styler integration is
+  it('PyreonUI enriches theme and styled() reads it via theme prop (no fallback — breaks loudly)', () => {
+    // Use a non-default sentinel color: if PyreonUI/styler integration is
     // broken, the interpolation receives `undefined`, the rule becomes
     // `color: undefined;` (invalid), and Chromium computes the default
     // black (rgb(0, 0, 0)) — the assertion fails immediately. No silent
@@ -86,7 +89,7 @@ describe('@pyreon/unistyle in real browser', () => {
       `}
     `
     const { container, unmount } = mountInBrowser(
-      h(Provider, { theme }, h(Themed, { id: 'p' })),
+      h(PyreonUI, { theme }, h(Themed, { id: 'p' })),
     )
     const el = container.querySelector<HTMLElement>('#p')!
     expect(getComputedStyle(el).color).toBe('rgb(0, 200, 0)')
@@ -116,7 +119,7 @@ describe('@pyreon/unistyle in real browser', () => {
 
     const { container, unmount } = mountInBrowser(
       h(
-        Provider,
+        PyreonUI,
         { theme },
         h(ResponsiveBox, {
           id: 'r',
@@ -148,7 +151,7 @@ describe('@pyreon/unistyle in real browser', () => {
 
     const { container, unmount } = mountInBrowser(
       h(
-        Provider,
+        PyreonUI,
         { theme },
         h(Padded, { id: 'p', $pad: { pad: ['8px', '32px'] } }),
       ),
@@ -174,7 +177,7 @@ describe('@pyreon/unistyle in real browser', () => {
 
     const { container, unmount } = mountInBrowser(
       h(
-        Provider,
+        PyreonUI,
         { theme },
         h(Box, { id: 'g', $bg: { backgroundImage: 'linear-gradient(95deg, #FF1F8C, #FF5E1A)' } }),
         h(Box, { id: 'v', $bg: { backgroundImage: 'var(--bg-test)' } }),

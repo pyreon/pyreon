@@ -4,7 +4,7 @@ import { signal } from '@pyreon/reactivity'
 import { afterEach, describe, expect, it } from 'vitest'
 import { sheet } from '../sheet'
 import { styled } from '../styled'
-import { ThemeContext } from '../ThemeProvider'
+import { ThemeContext } from '../theme-context'
 
 describe('DynamicStyled reactive class path', () => {
   afterEach(() => {

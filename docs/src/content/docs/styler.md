@@ -611,7 +611,7 @@ The `StyleSheet` class maintains:
 
 The sheet automatically detects whether it is running in a browser or server environment via `typeof document === 'undefined'`.
 
-### `sheet.insert(cssText, _unused?, insertLayer?)`
+### `sheet.insert(cssText, insertLayer?)`
 
 Inserts a CSS rule and returns the generated class name. Rules are deduplicated -- inserting the same CSS text (and the same `insertLayer`) twice returns the same class name without creating a duplicate rule.
 
@@ -625,11 +625,11 @@ const className = sheet.insert('color: red; font-size: 14px;')
 const same = sheet.insert('color: red; font-size: 14px;')
 // same === className
 
-// Optional third argument wraps the rule in `@layer <name> { ... }`
-const layered = sheet.insert('color: blue;', undefined, 'app-base')
+// Optional second argument wraps the rule in `@layer <name> { ... }`
+const layered = sheet.insert('color: blue;', 'app-base')
 ```
 
-The second positional parameter is reserved (historically `boost`) and does nothing today — always pass `undefined` or omit it, and use the third `insertLayer` argument (or `layer` in `StyledOptions`/`StyleSheetOptions`) if you need cascade control.
+Use the `insertLayer` argument (or `layer` in `StyledOptions`/`StyleSheetOptions`) if you need cascade control.
 
 The generated class name has the format `pyr-&#123;hash&#125;` where the hash is a base-36 FNV-1a hash of the CSS string.
 
@@ -837,7 +837,7 @@ function AppRoot(props) {
 }
 ```
 
-**In a real app, don't provide `ThemeContext` directly** — use `<PyreonUI theme={theme} mode="light">` from `@pyreon/ui-core` instead. `PyreonUI` provides `ThemeContext` (among other context layers), enriches the theme with responsive-breakpoint helpers, and wires the `theme` prop to update reactively when it changes. See the [styling and theming pattern](/docs/patterns/styler-theming) for the full picture. The styler package also ships a low-level, deprecated `ThemeProvider` component (`import { ThemeProvider } from '@pyreon/styler'`) equivalent to the `provide()` call above — it exists for backward compatibility and internal use; prefer `PyreonUI`.
+**In a real app, don't provide `ThemeContext` directly** — use `<PyreonUI theme={theme} mode="light">` from `@pyreon/ui-core` instead. `PyreonUI` provides `ThemeContext` (among other context layers), enriches the theme with responsive-breakpoint helpers, and wires the `theme` prop to update reactively when it changes. See the [styling and theming pattern](/docs/patterns/styler-theming) for the full picture.
 
 ### Accessing the Theme
 
@@ -1318,7 +1318,7 @@ This ensures consistent hashing regardless of how the template is formatted — 
 
 These lower-level exports are what `styled()` itself is built on. Reach for them only when `styled()` doesn't fit — e.g. attaching computed styles to a plain element without a dedicated component, or building your own styled-like wrapper.
 
-### `useCSS(cssResult, props?, boost?)`
+### `useCSS(cssResult, props?)`
 
 Resolves a `css` template with the given props (merged with the current theme) and returns the generated class name — no component wrapper needed:
 
@@ -1354,7 +1354,6 @@ function PassthroughDiv(props) {
 
 - **Reaching for `<ThemeContext.Provider value={...}>`.** `ThemeContext` is a plain Pyreon `Context` object, not a React-style context — there is no `.Provider` component. Use `provide(ThemeContext, () => theme)` (from `@pyreon/core`), or, in a real app, `<PyreonUI theme={theme}>` from `@pyreon/ui-core`. See [Theming](#theming) above.
 - **Expecting a live theme swap to re-color an already-mounted, hand-written `styled()` component.** It won't — see the caution box under [Theming](#theming). Only rocketstyle/`@pyreon/elements`-driven components (which pass their dimension props as reactive accessors) get automatic re-resolution; a plain `styled()` component's CSS is fixed once it mounts.
-- **Passing a second argument to `sheet.insert(cssText, boost)` expecting a specificity boost.** That parameter is a reserved no-op (`_unused`) kept only for call-site backward compatibility — it does nothing. Use the `layer` option (on `styled()` or as `sheet.insert()`'s third argument) if you need one rule to reliably beat another; see [`layer` — CSS `@layer` wrapping](#layer-css-layer-wrapping).
 - **Calling `sheet.reset()` on the client expecting it to remove already-injected CSS.** It only clears the internal dedup caches — any rule already in the live `<style>` element's `sheet.cssRules` stays there. `reset()` is for server request boundaries; use `sheet.clearAll()` on the client (e.g. for a full HMR-style wipe).
 - **Getting silently-wrong CSS from a theme-token expression and not noticing.** In development, every resolved CSS string is scanned for common footguns before insertion — a `NaN` (JS arithmetic on a CSS-variable token, e.g. `${(t) => t.spacing.sm * 2}` where `spacing.sm` is a `var(--...)` string), an `undefined`/`null` value (a theme-token path that doesn't exist), a malformed `var(--x)concat` (string concatenation instead of `calc()`/`color-mix()`), or `content-visibility: auto` without `contain-intrinsic-size` (a Cumulative Layout Shift footgun) all print a `[Pyreon] styler: ...` console warning naming the exact declaration. Watch for these when styles silently don't apply.
 - **Assuming `styled()`'s `on*` forwarding is a wildcard.** It's a fixed allowlist of ~40 specific handler names (`onClick`, `onInput`, `onMouseEnter`, ...), not "any prop starting with `on`" — an unrecognized custom `onXyz` prop is filtered out just like any other unknown prop. Use `shouldForwardProp` to allow it through.
@@ -1383,7 +1382,6 @@ Every runtime export from `@pyreon/styler`'s `index.ts` (type-only exports are l
 | `styled`            | Function | Create a styled component; `styled.div` etc. via Proxy shorthand             |
 | `defineTheme`       | Function | Identity helper for declaring theme tokens (typing + multiplatform hook)     |
 | `ThemeContext`       | Context  | Reactive Pyreon context (`() => Theme`) for theme distribution               |
-| `ThemeProvider`     | Component | `@deprecated` — low-level provider; prefer `<PyreonUI theme={...}>`         |
 | `useTheme`          | Function | Read the current theme **once**, at call time                                |
 | `useThemeAccessor`  | Function | Get the raw `() => Theme` accessor, for tracked reads inside reactive scopes |
 | `useCSS`            | Function | Resolve a `css` template + props to an injected class name (no component)   |

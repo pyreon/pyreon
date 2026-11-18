@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ThemeContext, useTheme } from '../ThemeProvider'
+import { ThemeContext, useTheme } from '../theme-context'
 
 describe('ThemeContext', () => {
   it('is a Context object', () => {

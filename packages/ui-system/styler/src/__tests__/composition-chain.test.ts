@@ -479,11 +479,11 @@ describe('styled component composition', () => {
     expect(className).toMatch(/^pyr-/)
   })
 
-  it('handles the exact rocketstyle pattern with ThemeProvider context', () => {
+  it('handles the exact rocketstyle pattern with theme context', () => {
     // Full pattern: styled component -> function interpolation
     // -> css result -> function -> css result -> array fragments
     // Note: In VNode-level testing, we verify resolve output directly
-    // since ThemeProvider requires runtime context.
+    // since a provided ThemeContext requires runtime context.
 
     const innerFn = (props: any) => {
       const t = props.$rocketstyle || {}

@@ -25,7 +25,7 @@ import { createGlobalStyle } from '../globalStyle'
 import { keyframes } from '../keyframes'
 import { sheet } from '../sheet'
 import { styled } from '../styled'
-import { ThemeProvider } from '../ThemeProvider'
+import { TestThemeProvider } from './index'
 
 const BOUND = 10_000
 let fillSeq = 0
@@ -156,7 +156,7 @@ describe('sheet eviction — keys still in use are never evicted', () => {
     const Global = createGlobalStyle`
       body { --dyn-global-marker: ${(p: { theme?: { m?: number } }) => p.theme?.m ?? 0}; }
     ` as unknown as AnyComp
-    const mounted = render(h(ThemeProvider as never, { theme: { m: 42 } }, h(Global as never, {})))
+    const mounted = render(h(TestThemeProvider as never, { theme: { m: 42 } }, h(Global as never, {})))
 
     await overflowSheet()
     expect(liveCss()).toContain('--dyn-global-marker: 42')
