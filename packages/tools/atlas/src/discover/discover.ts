@@ -46,7 +46,13 @@ export interface DiscoverOptions {
  */
 export const DEFAULT_EXTENSIONS = ['.tsx', '.jsx', '.ts'] as const
 
-export const DEFAULT_IGNORE = ['node_modules', '.test.', '.spec.', '.stories.', '.d.ts']
+/**
+ * Path fragments that never hold a catalog component. `.fixture.` is here
+ * because a test fixture is often a real component built only to be measured
+ * (`instance-css-layer.fixture.ts` defined three), and a catalog that lists a
+ * fixture tells its reader to use it.
+ */
+export const DEFAULT_IGNORE = ['node_modules', '.test.', '.spec.', '.stories.', '.fixture.', '.d.ts']
 
 /**
  * Walk `dir`, skipping any entry whose path RELATIVE TO `root` contains an
