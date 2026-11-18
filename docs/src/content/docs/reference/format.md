@@ -34,7 +34,7 @@ A full, end-to-end usage of the package:
 
 ```tsx
 // Plain functions: no setup, no instances. Output below is for the en-US locale.
-formatNumber(1234567.891, { locale: 'en-US' , maximumFractionDigits: 1 }) // → "1,234,567.9"
+formatNumber(1234567.891, { locale: 'en-US', maximumFractionDigits: 1 }) // → "1,234,567.9"
 formatCurrency(9.99, 'EUR', { locale: 'en-US' }) // → "€9.99"
 formatCompact(1_240_000, { locale: 'en-US' }) // → "1.2M"
 formatBytes(1536, { locale: 'en-US' }) // → "1.5 kB"
