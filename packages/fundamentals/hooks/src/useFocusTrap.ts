@@ -437,6 +437,7 @@ export function useFocusTrap(
   onMount(() => {
     const frame: TrapFrame = { getEl, isActive }
     let pushed = false
+    let focusRun = 0
 
     const attach = () => {
       if (pushed) return
@@ -447,14 +448,26 @@ export function useFocusTrap(
       if (!pushed) return
       removeFrame(frame)
       pushed = false
+      focusRun++
     }
 
+    // Initial focus waits one microtask (#4355). The write that activates the
+    // trap often also reveals its content (`hidden={!open()}`, a `<Show>`), and
+    // whether that content's binding runs before or after this watcher depends
+    // only on which subscribed first: content mounted after the trap runs
+    // second, so a synchronous `focus()` would hit a still-hidden target and be
+    // a no-op. A microtask runs after the whole synchronous flush. `focusRun`
+    // drops a pending focus when the trap deactivates or unmounts first.
     const applyInitialFocus = () => {
-      const el = getEl()
-      if (!el) return
-      // Don't steal focus that's already inside the container.
-      if (el.contains(document.activeElement)) return
-      resolveInitialFocus(el, opts.initialFocus)?.focus?.()
+      const run = ++focusRun
+      queueMicrotask(() => {
+        if (run !== focusRun || !pushed) return
+        const el = getEl()
+        if (!el) return
+        // Don't steal focus that's already inside the container.
+        if (el.contains(document.activeElement)) return
+        resolveInitialFocus(el, opts.initialFocus)?.focus?.()
+      })
     }
 
     // Arm / disarm on the reactive `active` state. `immediate` runs the current
