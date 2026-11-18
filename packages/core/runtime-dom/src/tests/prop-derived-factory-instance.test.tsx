@@ -25,7 +25,7 @@
  * `packages/core/compiler/src/jsx.ts` makes the two "one instance" specs fail
  * with the DOM frozen at its initial text.
  */
-import { _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { transformSync } from 'esbuild'
 import { transformJSX } from '@pyreon/compiler'
 import { Fragment, _fuse, _lc, h } from '@pyreon/core'

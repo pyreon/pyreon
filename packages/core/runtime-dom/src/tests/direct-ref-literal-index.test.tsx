@@ -11,7 +11,7 @@
  * bindings. The `_d1` assertions are what distinguish the tiers — both update
  * the DOM correctly, so a DOM-only check passes either way.
  */
-import { _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { describe, expect, it, afterEach } from 'vitest'
 import { signal, renderEffect } from '@pyreon/reactivity'
 import { transformJSX } from '@pyreon/compiler'

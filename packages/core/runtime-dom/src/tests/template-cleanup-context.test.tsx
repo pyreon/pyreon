@@ -12,7 +12,7 @@ import v8 from 'node:v8'
 import vm from 'node:vm'
 import { signal } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
-import { _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { compilePlainModule, mountComponent } from './plain-harness'
 
 describe('template cleanup helpers', () => {

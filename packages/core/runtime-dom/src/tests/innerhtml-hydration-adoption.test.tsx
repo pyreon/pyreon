@@ -43,7 +43,7 @@
  *    template-path adoption specs (`runtime.tpl.adopt` stays 0, whole
  *    code-block clones).
  */
-import { _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { query } from '@pyreon/test-utils'
 import { transformJSX } from '@pyreon/compiler'
 import { Fragment, _fuse, _lc, h } from '@pyreon/core'

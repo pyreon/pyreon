@@ -91,6 +91,19 @@ if (process.env.NODE_ENV !== 'production') _devScopeIds = new WeakMap()
  * function call overhead in tight render loops (1000+ calls per list render).
  */
 /**
+ * `_setChild` / `_setChildAt` are emitted as STATEMENTS — the compiled template
+ * never receives a cleanup from them — so what they mount (an accessor's
+ * binding, a VNode's components) is owned by the ambient scope instead: the
+ * component's, or a `<For>` row's collector. Template bindings proper are
+ * owned by the template's cleanup and never register with the scope (see
+ * "Template-owned bindings" in @pyreon/reactivity), so this is the one place
+ * a mount made inside a template bind hands its cleanup to the scope.
+ */
+export function ownByScope(cleanup: () => void): void {
+  if (cleanup !== noop && cleanup !== _noopDispose) getCurrentScope()?.add(cleanup)
+}
+
+/**
  * Mount a STATIC child (a value, never an accessor) as part of a freshly built
  * element — the same depth window `mountElement` gives its own children, so
  * descendants return effect-only cleanups and their DOM leaves with the

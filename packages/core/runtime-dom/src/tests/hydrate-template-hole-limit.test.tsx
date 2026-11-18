@@ -69,7 +69,8 @@ import {
   hydrateRoot,
 } from '../index'
 import { bindPolymorphicText } from '../mount'
-import { _setTplAdoptTarget, _setTplAdoptVerifier, _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
+import { _setTplAdoptTarget, _setTplAdoptVerifier } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 
 // ─── Counter sink ────────────────────────────────────────────────────────────
 const g = globalThis as { __pyreon_count__?: ((name: string, n?: number) => void) | undefined }

@@ -25,7 +25,8 @@ import { transformSync } from 'esbuild'
 import { Fragment, h, _rp, _rpd, cx, makeReactiveProps } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
-import { _tpl, _bindText, _bindProp, _bindDirect, _mountSlot, _setChild, _setChildAt, _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
+import { _tpl, _bindText, _bindProp, _bindDirect, _mountSlot, _setChild, _setChildAt } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { _applyProps, _bindSpread, _setAttr, _setStyle, _setStyleOnce, bindPolymorphicText, mount, mountChild} from '../index'
 
 const RUNTIME_DEPS = {

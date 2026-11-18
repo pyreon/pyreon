@@ -22,7 +22,7 @@
  * passes (swap fallback IS the old behavior + the anchor fix). Reverting the
  * anchor fix fails the bail-shape spec's post-hydration list ops.
  */
-import { _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { transformSync } from 'esbuild'
 import { transformJSX } from '@pyreon/compiler'
 import { For, Fragment, h } from '@pyreon/core'

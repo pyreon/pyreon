@@ -8,7 +8,6 @@ import {
   _rdNodeId,
   _rdOpenBindingFrame,
   getContextOwner,
-  getCurrentScope,
   _renderBind,
 } from '@pyreon/reactivity'
 import { _tagTextBinding } from './binding-registry'
@@ -30,7 +29,7 @@ import {
   reportFirstText,
   reportTextWrite,
 } from './hydration-debug'
-import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, noop, type PolyTextCore } from './mount'
+import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, ownByScope, type PolyTextCore } from './mount'
 import { _bindEvent } from './props'
 
 // Dev-mode gates in this file use the bare bundler-agnostic
@@ -125,19 +124,6 @@ function _isMountableTextValue(v: unknown): boolean {
  * did (no behavior change for non-VNode values). The reactive counterpart is
  * `bindPolymorphicText` (a reactive child can also swap text↔VNode).
  */
-/**
- * `_setChild` / `_setChildAt` are emitted as STATEMENTS — the compiled template
- * never receives a cleanup from them — so what they mount (an accessor's
- * binding, a VNode's components) is owned by the ambient scope instead: the
- * component's, or a `<For>` row's collector. Template bindings proper are
- * owned by the template's cleanup and never register with the scope (see
- * "Template-owned bindings" in @pyreon/reactivity), so this is the one place
- * a mount made inside a template bind hands its cleanup to the scope.
- */
-function ownByScope(cleanup: () => void): void {
-  if (cleanup !== noop && cleanup !== _noopDispose) getCurrentScope()?.add(cleanup)
-}
-
 export function _setChild(node: Element, value: unknown): void {
   // A FUNCTION is an accessor, as it is on the h() path (`mountChild`'s function
   // branch). The compiler routes every child it cannot type statically here —
@@ -837,6 +823,7 @@ export function _setHydrationActive(v: boolean): boolean {
   const prev = _walkActive
   _walkActive = v
   _hydrationActive = v || _asyncPending > 0
+
   return prev
 }
 
@@ -851,6 +838,7 @@ export function _holdTplDeferral(): () => void {
   _asyncPending++
   _hydrationActive = true
   let held = true
+
   return () => {
     if (!held) return
     held = false
@@ -1020,9 +1008,6 @@ function sweepHoles(holes: Map<Element, ChildNode | null>): void {
     }
   }
 }
-
-// Template cleanup helpers (`_dispose2/3/4/N`) live in `./dispose-helpers`.
-export { _dispose2, _dispose3, _dispose4, _disposeN } from './dispose-helpers'
 
 /**
  * `remountable` (the compiler passes `1` for a template emitted as a

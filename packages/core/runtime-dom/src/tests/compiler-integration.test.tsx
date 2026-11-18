@@ -11,7 +11,8 @@ import { transformJSX } from '@pyreon/compiler'
 import { query } from '@pyreon/test-utils'
 import { Fragment, h, _fuse, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal, renderEffect } from '@pyreon/reactivity'
-import { _tpl, _bindText, _bindDirect, _setChild, _setChildAt, _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
+import { _tpl, _bindText, _bindDirect, _setChild, _setChildAt } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import {
   _applyProps,
   _setAttr,

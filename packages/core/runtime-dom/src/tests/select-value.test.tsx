@@ -37,7 +37,8 @@ import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
-import { _tpl, _bindText, _bindDirect, _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
+import { _tpl, _bindText, _bindDirect } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { _applyProps, _setStyle, _setStyleOnce, _mountSlot, _textSlot, hydrateRoot, mountChild, _bindProp} from '../index'
 
 // ─── Compiled-template harness ───────────────────────────────────────────────

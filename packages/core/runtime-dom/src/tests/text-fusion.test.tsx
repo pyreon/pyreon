@@ -14,7 +14,7 @@
  * "[object Object]"), and swaps back to text; (5) the non-fusable shapes are
  * untouched.
  */
-import { _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { transformJSX } from '@pyreon/compiler'
 import { _fuse, _lc, _rp, _rpd, _wrapSpread, For, Fragment, h, Show } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'

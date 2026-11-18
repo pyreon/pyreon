@@ -28,7 +28,7 @@
  * (the rebuild is correct, just not an adoption) — which is the point: without
  * the retention assertions this lock would be inert.
  */
-import { _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { transformJSX } from '@pyreon/compiler'
 import { For, Fragment, _fuse, h } from '@pyreon/core'
 import { _bind, signal, renderEffect } from '@pyreon/reactivity'

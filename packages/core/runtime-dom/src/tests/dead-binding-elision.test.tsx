@@ -7,7 +7,7 @@
  * that reads a signal stays live, and a first value that MOUNTED a subtree
  * keeps a disposer that removes it.
  */
-import { _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { transformJSX } from '@pyreon/compiler'
 import {
   _fuse,
