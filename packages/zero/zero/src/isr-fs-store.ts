@@ -46,6 +46,7 @@ function nameFor(key: string): string {
   // upper-case letter in the key makes the name case-sensitive.
   const caseSensitive = /[A-Z]/.test(key)
   if (encoded.length <= MAX_READABLE_NAME && !caseSensitive && encoded !== '_tags') return encoded
+
   return HASHED_PREFIX + createHash('sha256').update(key).digest('hex')
 }
 
@@ -85,268 +86,341 @@ export function createFsStore<E = ISRCacheEntry>(
   dir: string,
   opts: { maxEntries?: number } = {},
 ): ISRStore<E> {
-  const maxEntries = Math.max(1, opts.maxEntries ?? 1000)
-  const entryPath = (name: string) => join(dir, name + ENTRY_SUFFIX)
-  const tagsPath = (name: string) => join(dir, name + TAGS_SUFFIX)
+  const store = new FsStore<E>(dir, Math.max(1, opts.maxEntries ?? 1000))
+  _fsIndexProbes.set(store, () => store.stats())
 
-  // In-memory index, rebuilt from disk at start. `entries` is in recency
-  // order (oldest first). Tags: name → record, and tag → names.
-  const entries = new Set<string>()
-  const tagsOf = new Map<string, TagRecord>()
-  const byTag = new Map<string, Set<string>>()
+  return store
+}
 
-  const index = (name: string, record: TagRecord): void => {
-    tagsOf.set(name, record)
+/** The in-memory view of the directory: entries in recency order (oldest
+ * first), and the tags of each tagged entry both ways. */
+class FsIndex {
+  readonly entries = new Set<string>()
+  private readonly tagsOf = new Map<string, TagRecord>()
+  private readonly byTag = new Map<string, Set<string>>()
+
+  tagsFor(name: string): TagRecord | undefined {
+    return this.tagsOf.get(name)
+  }
+
+  tag(name: string, record: TagRecord): void {
+    this.untag(name)
+    this.tagsOf.set(name, record)
     for (const tag of record.tags) {
-      let names = byTag.get(tag)
+      let names = this.byTag.get(tag)
       if (!names) {
         names = new Set()
-        byTag.set(tag, names)
+        this.byTag.set(tag, names)
       }
       names.add(name)
     }
   }
-  const unindex = (name: string): void => {
-    const record = tagsOf.get(name)
+
+  untag(name: string): void {
+    const record = this.tagsOf.get(name)
     if (!record) return
-    tagsOf.delete(name)
+    this.tagsOf.delete(name)
     for (const tag of record.tags) {
-      const names = byTag.get(tag)
+      const names = this.byTag.get(tag)
       if (!names) continue
       names.delete(name)
-      if (names.size === 0) byTag.delete(tag)
+      if (names.size === 0) this.byTag.delete(tag)
     }
   }
 
-  // Per-key lanes: fs mutations for one name run in call order. A lane is
-  // dropped by identity once its last operation settles, so the map holds
-  // only names with work in flight.
-  const lanes = new Map<string, Promise<void>>()
-  const enqueue = (name: string, op: () => Promise<void>): Promise<void> => {
-    const next = (lanes.get(name) ?? Promise.resolve()).then(op).catch(() => {
-      // Best-effort: a failed write is a miss next time; a failed removal
-      // leaves a file the next start counts against the cap.
-    })
-    lanes.set(name, next)
+  forget(name: string): void {
+    this.entries.delete(name)
+    this.untag(name)
+  }
+
+  keysByTag(tag: string): string[] {
+    const keys: string[] = []
+    for (const name of this.byTag.get(tag) ?? []) {
+      const record = this.tagsOf.get(name)
+      if (record && this.entries.has(name)) keys.push(record.key)
+    }
+
+    return keys
+  }
+
+  clear(): void {
+    this.entries.clear()
+    this.tagsOf.clear()
+    this.byTag.clear()
+  }
+
+  stats(): { entries: number; tags: number } {
+    return { entries: this.entries.size, tags: this.byTag.size }
+  }
+}
+
+let tmpSeq = 0
+
+/** tmp + rename: a crash mid-write never leaves a torn file in place. */
+async function writeAtomic(dir: string, path: string, data: string): Promise<void> {
+  const tmp = `${path}.${process.pid}-${tmpSeq++}${TMP_SUFFIX}`
+  try {
+    await mkdir(dir, { recursive: true })
+    await writeFile(tmp, data, 'utf-8')
+    await rename(tmp, path)
+  } catch (err) {
+    await rm(tmp, { force: true }).catch(() => {})
+    throw err
+  }
+}
+
+async function readTagRecord(file: string): Promise<TagRecord | null> {
+  try {
+    const raw = JSON.parse(await readFile(file, 'utf-8')) as Partial<TagRecord>
+    if (typeof raw.key !== 'string' || !Array.isArray(raw.tags)) return null
+    const tags = raw.tags.filter((t): t is string => typeof t === 'string')
+
+    return { key: raw.key, tags: [...new Set(tags)] }
+  } catch {
+    return null
+  }
+}
+
+/** key → tags from an earlier version's `_tags.json` (tag → keys). */
+async function readLegacyIndex(file: string): Promise<Map<string, string[]>> {
+  const tagsByKey = new Map<string, string[]>()
+  try {
+    const raw = JSON.parse(await readFile(file, 'utf-8')) as Record<string, unknown>
+    for (const [tag, keys] of Object.entries(raw)) {
+      if (!Array.isArray(keys)) continue
+      for (const key of keys) {
+        if (typeof key !== 'string') continue
+        tagsByKey.set(key, [...(tagsByKey.get(key) ?? []), tag])
+      }
+    }
+  } catch {
+    // Unreadable: nothing to migrate.
+  }
+
+  return tagsByKey
+}
+
+interface DirScan {
+  /** Entry names, oldest modification first. */
+  entries: string[]
+  sidecars: string[]
+  legacy: boolean
+}
+
+/** Read `dir`, removing temp files a crash left behind. */
+async function scanDir(dir: string): Promise<DirScan> {
+  const scan: DirScan = { entries: [], sidecars: [], legacy: false }
+  let files: string[]
+  try {
+    files = await readdir(dir)
+  } catch {
+    return scan // No directory yet: an empty cache.
+  }
+  const found: { name: string; mtime: number }[] = []
+  for (const file of files) {
+    const path = join(dir, file)
+    if (file.endsWith(TMP_SUFFIX)) {
+      await rm(path, { force: true }).catch(() => {})
+    } else if (file === LEGACY_TAGS_FILE) {
+      scan.legacy = true
+    } else if (file.endsWith(TAGS_SUFFIX)) {
+      scan.sidecars.push(file.slice(0, -TAGS_SUFFIX.length))
+    } else if (file.endsWith(ENTRY_SUFFIX)) {
+      const info = await stat(path).catch(() => null)
+      if (info?.isFile()) found.push({ name: file.slice(0, -ENTRY_SUFFIX.length), mtime: info.mtimeMs })
+    }
+  }
+  found.sort((a, b) => a.mtime - b.mtime || (a.name < b.name ? -1 : 1))
+  scan.entries = found.map((f) => f.name)
+
+  return scan
+}
+
+class FsStore<E> implements ISRStore<E> {
+  private readonly index = new FsIndex()
+  /** Per-name fs mutation chains, dropped by identity once settled: the map
+   * holds only names with work in flight. */
+  private readonly lanes = new Map<string, Promise<void>>()
+  /** Every operation waits for this: the start-up scan, then any `clear()`. */
+  private barrier: Promise<void> | null = null
+
+  constructor(
+    private readonly dir: string,
+    private readonly maxEntries: number,
+  ) {}
+
+  stats(): { entries: number; tags: number } {
+    return this.index.stats()
+  }
+
+  private entryPath(name: string): string {
+    return join(this.dir, name + ENTRY_SUFFIX)
+  }
+
+  private tagsPath(name: string): string {
+    return join(this.dir, name + TAGS_SUFFIX)
+  }
+
+  private ready(): Promise<void> {
+    return (this.barrier ??= this.init())
+  }
+
+  /** Run `op` after every earlier fs mutation for `name`. Best-effort: a
+   * failed write is a miss next time; a failed removal leaves a file the next
+   * start counts against the cap. */
+  private enqueue(name: string, op: () => Promise<void>): Promise<void> {
+    const next = (this.lanes.get(name) ?? Promise.resolve()).then(op).catch(() => {})
+    this.lanes.set(name, next)
     void next.then(() => {
-      if (lanes.get(name) === next) lanes.delete(name)
+      if (this.lanes.get(name) === next) this.lanes.delete(name)
     })
+
     return next
   }
 
-  let tmpSeq = 0
-  const writeAtomic = async (path: string, data: string): Promise<void> => {
-    const tmp = `${path}.${process.pid}-${tmpSeq++}${TMP_SUFFIX}`
-    try {
-      await mkdir(dir, { recursive: true })
-      await writeFile(tmp, data, 'utf-8')
-      await rename(tmp, path)
-    } catch (err) {
-      await rm(tmp, { force: true }).catch(() => {})
-      throw err
-    }
-  }
-  const removeFiles = (name: string): Promise<void> =>
-    enqueue(name, async () => {
-      await Promise.all([rm(entryPath(name), { force: true }), rm(tagsPath(name), { force: true })])
+  private removeFiles(name: string): Promise<void> {
+    return this.enqueue(name, async () => {
+      await Promise.all([
+        rm(this.entryPath(name), { force: true }),
+        rm(this.tagsPath(name), { force: true }),
+      ])
     })
+  }
 
-  // Evict oldest-first past the cap: the entry file AND its tags. Returns
-  // the removals so the caller can wait for the disk to match the index.
-  const evictOverflow = (): Promise<void>[] => {
+  /** Evict oldest-first past the cap: the entry file AND its tags. Returns
+   * the removals so the caller can wait for the disk to match the index. */
+  private evictOverflow(): Promise<void>[] {
     const removals: Promise<void>[] = []
-    while (entries.size > maxEntries) {
-      const oldest = entries.values().next().value as string
-      entries.delete(oldest)
-      unindex(oldest)
-      removals.push(removeFiles(oldest))
+    while (this.index.entries.size > this.maxEntries) {
+      const oldest = this.index.entries.values().next().value as string
+      this.index.forget(oldest)
+      removals.push(this.removeFiles(oldest))
     }
 
     return removals
   }
-  // Mark `name` most recent, then enforce the cap.
-  const touch = (name: string): Promise<void>[] => {
-    entries.delete(name)
-    entries.add(name)
-    return evictOverflow()
+
+  /** Mark `name` most recent, then enforce the cap. */
+  private touch(name: string): Promise<void>[] {
+    this.index.entries.delete(name)
+    this.index.entries.add(name)
+
+    return this.evictOverflow()
   }
 
-  const loadTagRecord = async (file: string): Promise<TagRecord | null> => {
-    try {
-      const raw = JSON.parse(await readFile(file, 'utf-8')) as Partial<TagRecord>
-      if (typeof raw.key !== 'string' || !Array.isArray(raw.tags)) return null
-      const tags = raw.tags.filter((t): t is string => typeof t === 'string')
-      return { key: raw.key, tags: [...new Set(tags)] }
-    } catch {
-      return null
-    }
+  private writeTags(name: string, record: TagRecord): Promise<void> {
+    const data = JSON.stringify(record)
+
+    return this.enqueue(name, () => writeAtomic(this.dir, this.tagsPath(name), data))
   }
 
-  const migrateLegacyIndex = async (): Promise<void> => {
-    const file = join(dir, LEGACY_TAGS_FILE)
-    const tagsByKey = new Map<string, string[]>()
-    try {
-      const raw = JSON.parse(await readFile(file, 'utf-8')) as Record<string, unknown>
-      for (const [tag, keys] of Object.entries(raw)) {
-        if (!Array.isArray(keys)) continue
-        for (const key of keys) {
-          if (typeof key !== 'string') continue
-          const own = tagsByKey.get(key) ?? []
-          own.push(tag)
-          tagsByKey.set(key, own)
-        }
-      }
-    } catch {
-      // Unreadable: nothing to migrate.
+  private async init(): Promise<void> {
+    const scan = await scanDir(this.dir)
+    for (const name of scan.entries) this.index.entries.add(name)
+    for (const name of scan.sidecars) {
+      const record = this.index.entries.has(name) ? await readTagRecord(this.tagsPath(name)) : null
+      if (record && record.tags.length > 0) this.index.tag(name, record)
+      else await rm(this.tagsPath(name), { force: true }).catch(() => {})
     }
+    if (scan.legacy) await this.migrateLegacyIndex()
+    // Trim a directory left over the cap (an earlier version, a lowered cap).
+    await Promise.all(this.evictOverflow())
+  }
+
+  private async migrateLegacyIndex(): Promise<void> {
+    const file = join(this.dir, LEGACY_TAGS_FILE)
     const writes: Promise<void>[] = []
-    for (const [key, tags] of tagsByKey) {
+    for (const [key, tags] of await readLegacyIndex(file)) {
       const name = nameFor(key)
-      // Only keys still cached, and a sidecar already on disk wins.
-      if (!entries.has(name) || tagsOf.has(name)) continue
+      // Only keys still cached; a sidecar already on disk wins.
+      if (!this.index.entries.has(name) || this.index.tagsFor(name)) continue
       const record = { key, tags: [...new Set(tags)] }
-      index(name, record)
-      writes.push(enqueue(name, () => writeAtomic(tagsPath(name), JSON.stringify(record))))
+      this.index.tag(name, record)
+      writes.push(this.writeTags(name, record))
     }
     await Promise.all(writes)
     await rm(file, { force: true }).catch(() => {})
   }
 
-  const init = async (): Promise<void> => {
-    let files: string[]
+  async get(key: string): Promise<E | undefined> {
+    await this.ready()
+    const name = nameFor(key)
     try {
-      files = await readdir(dir)
+      const value = JSON.parse(await readFile(this.entryPath(name), 'utf-8')) as E
+      // A hit refreshes recency. A file this process did not index (another
+      // process sharing `dir` wrote it) is adopted and counted.
+      await Promise.all(this.touch(name))
+
+      return value
     } catch {
-      return // No directory yet: an empty cache.
+      return undefined
     }
-    const found: { name: string; mtime: number }[] = []
-    const sidecars: string[] = []
-    let legacy = false
-    for (const file of files) {
-      const path = join(dir, file)
-      if (file.endsWith(TMP_SUFFIX)) {
-        // A write torn by a crash: never renamed into place, never served.
-        await rm(path, { force: true }).catch(() => {})
-      } else if (file === LEGACY_TAGS_FILE) {
-        legacy = true
-      } else if (file.endsWith(TAGS_SUFFIX)) {
-        sidecars.push(file.slice(0, -TAGS_SUFFIX.length))
-      } else if (file.endsWith(ENTRY_SUFFIX)) {
-        const info = await stat(path).catch(() => null)
-        if (info?.isFile()) found.push({ name: file.slice(0, -ENTRY_SUFFIX.length), mtime: info.mtimeMs })
-      }
-    }
-    found.sort((a, b) => a.mtime - b.mtime || (a.name < b.name ? -1 : 1))
-    for (const { name } of found) entries.add(name)
-    for (const name of sidecars) {
-      const record = entries.has(name) ? await loadTagRecord(tagsPath(name)) : null
-      if (record && record.tags.length > 0) index(name, record)
-      else await rm(tagsPath(name), { force: true }).catch(() => {})
-    }
-    if (legacy) await migrateLegacyIndex()
-    // Trim a directory left over the cap (an earlier version, a lowered cap).
-    await Promise.all(evictOverflow())
   }
 
-  // Every operation waits for `barrier`: the start-up scan, then any
-  // `clear()` in progress.
-  let barrier: Promise<void> | null = null
-  const ready = (): Promise<void> => (barrier ??= init())
-
-  const store: ISRStore<E> = {
-    async get(key) {
-      await ready()
-      const name = nameFor(key)
-      try {
-        const value = JSON.parse(await readFile(entryPath(name), 'utf-8')) as E
-        // A hit refreshes recency. A file this process did not index (another
-        // process sharing `dir` wrote it) is adopted and counted.
-        await Promise.all(touch(name))
-        return value
-      } catch {
-        return undefined
-      }
-    },
-    async set(key, entry) {
-      await ready()
-      const name = nameFor(key)
-      const removals = touch(name)
-      const data = JSON.stringify(entry)
-      await Promise.all([enqueue(name, () => writeAtomic(entryPath(name), data)), ...removals])
-    },
-    async delete(key) {
-      await ready()
-      const name = nameFor(key)
-      entries.delete(name)
-      unindex(name)
-      await removeFiles(name)
-    },
-    async clear() {
-      const previous = ready()
-      barrier = (async () => {
-        await previous
-        // Writes issued before the clear land first, then everything goes.
-        await Promise.all(lanes.values())
-        entries.clear()
-        tagsOf.clear()
-        byTag.clear()
-        let files: string[] = []
-        try {
-          files = await readdir(dir)
-        } catch {
-          return
-        }
-        await Promise.all(
-          files
-            .filter(
-              (f) =>
-                f.endsWith(ENTRY_SUFFIX) || f.endsWith(TMP_SUFFIX) || f === LEGACY_TAGS_FILE,
-            )
-            .map((f) => rm(join(dir, f), { force: true }).catch(() => {})),
-        )
-      })()
-      await barrier
-    },
-    async setTags(key, tags) {
-      await ready()
-      const name = nameFor(key)
-      const own = [...new Set(tags)]
-      const previous = tagsOf.get(name)
-      // Tags belong to the CACHED entry, as in the memory store.
-      const cached = entries.has(name)
-      if (
-        cached
-        && previous
-        && previous.key === key
-        && previous.tags.length === own.length
-        && own.every((t) => previous.tags.includes(t))
-      ) {
-        return // Unchanged: no write.
-      }
-      unindex(name)
-      if (!cached || own.length === 0) {
-        if (previous) await enqueue(name, () => rm(tagsPath(name), { force: true }))
-        return
-      }
-      const record = { key, tags: own }
-      index(name, record)
-      const data = JSON.stringify(record)
-      await enqueue(name, () => writeAtomic(tagsPath(name), data))
-    },
-    async keysByTag(tag) {
-      await ready()
-      const names = byTag.get(tag)
-      if (!names) return []
-      const keys: string[] = []
-      for (const name of names) {
-        const record = tagsOf.get(name)
-        if (record && entries.has(name)) keys.push(record.key)
-      }
-
-      return keys
-    },
+  async set(key: string, entry: E): Promise<void> {
+    await this.ready()
+    const name = nameFor(key)
+    const removals = this.touch(name)
+    const data = JSON.stringify(entry)
+    await Promise.all([
+      this.enqueue(name, () => writeAtomic(this.dir, this.entryPath(name), data)),
+      ...removals,
+    ])
   }
-  _fsIndexProbes.set(store, () => ({ entries: entries.size, tags: byTag.size }))
 
-  return store
+  async delete(key: string): Promise<void> {
+    await this.ready()
+    const name = nameFor(key)
+    this.index.forget(name)
+    await this.removeFiles(name)
+  }
+
+  async clear(): Promise<void> {
+    const previous = this.ready()
+    this.barrier = (async () => {
+      await previous
+      // Writes issued before the clear land first, then everything goes.
+      await Promise.all(this.lanes.values())
+      this.index.clear()
+      const files = await readdir(this.dir).catch(() => [] as string[])
+      await Promise.all(
+        files
+          .filter((f) => f.endsWith(ENTRY_SUFFIX) || f.endsWith(TMP_SUFFIX))
+          .map((f) => rm(join(this.dir, f), { force: true }).catch(() => {})),
+      )
+    })()
+    await this.barrier
+  }
+
+  async setTags(key: string, tags: readonly string[]): Promise<void> {
+    await this.ready()
+    const name = nameFor(key)
+    const own = [...new Set(tags)]
+    const previous = this.index.tagsFor(name)
+    // Tags belong to the CACHED entry, as in the memory store.
+    const cached = this.index.entries.has(name)
+    if (cached && previous && sameTags(previous, key, own)) return // Unchanged: no write.
+    this.index.untag(name)
+    if (!cached || own.length === 0) {
+      if (previous) await this.enqueue(name, () => rm(this.tagsPath(name), { force: true }))
+      return
+    }
+    const record = { key, tags: own }
+    this.index.tag(name, record)
+    await this.writeTags(name, record)
+  }
+
+  async keysByTag(tag: string): Promise<string[]> {
+    await this.ready()
+
+    return this.index.keysByTag(tag)
+  }
+}
+
+function sameTags(record: TagRecord, key: string, tags: readonly string[]): boolean {
+  return (
+    record.key === key
+    && record.tags.length === tags.length
+    && tags.every((t) => record.tags.includes(t))
+  )
 }

@@ -30,9 +30,11 @@ const entry = (html = 'x') => ({ html, headers: {}, timestamp: 1 })
 const tick = () => new Promise((r) => setTimeout(r, 15))
 
 let dir: string
+
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'pyreon-isr-fs-bounds-'))
 })
+
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 const files = () => readdirSync(dir)
