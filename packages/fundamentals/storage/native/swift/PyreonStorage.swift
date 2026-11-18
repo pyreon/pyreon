@@ -35,9 +35,9 @@
 // ```
 //
 // Same persistence semantics, same UserDefaults backing store, same
-// `Binding<T>` projection via `$todos`. Zero runtime cost vs the
-// inline bridge — JSONEncoder/JSONDecoder are the same calls either
-// way.
+// `Binding<T>` projection via `$todos`. One difference from the bridge:
+// values go through `PyreonJSON` (the web's key order and its last value for a
+// repeated key) where the bridge used `JSONEncoder` / `JSONDecoder`.
 //
 // ## Relationship to the PMTC compiler emit
 //
@@ -58,6 +58,10 @@
 // callers, but views should use the property wrapper.
 
 import SwiftUI
+// `PyreonJSON`: values are written as the web's `JSON.stringify` bytes and read back with the web's key order and
+// repeated-key rule, so a stored `Record` lists its keys as it did when written. The app target that compiles these
+// co-located sources links the base runtime (the emitted views import it too).
+import PyreonRuntime
 
 /// Codable-aware UserDefaults-backed storage, mirroring SwiftUI's
 /// `@AppStorage` API for any `Codable` value type.
@@ -79,8 +83,8 @@ import SwiftUI
 /// ```
 ///
 /// The wrapper:
-/// - **Reads** by decoding the UserDefaults `Data` slot via JSONDecoder
-/// - **Writes** by encoding via JSONEncoder + storing back
+/// - **Reads** by decoding the UserDefaults `Data` slot via `PyreonJSON.decode`
+/// - **Writes** by encoding via `PyreonJSON.serialize` + storing back
 /// - **Projects** a `Binding<Value>` via `$todos`, same as `@AppStorage`
 /// - **Defaults** to the supplied initial when the key is absent or
 ///   decoding fails (corruption, schema migration)
@@ -90,13 +94,13 @@ import SwiftUI
 ///
 /// ## Failure semantics
 ///
-/// JSONDecoder failures fall back to the default value silently. This
+/// Decode failures fall back to the default value silently. This
 /// matches Pyreon's `@pyreon/storage` web API: corrupted localStorage
 /// reads also fall back to the default without throwing. Apps that
 /// want explicit error visibility can use `PyreonStorage.read(...)`
 /// directly and inspect the throw.
 ///
-/// JSONEncoder failures (e.g. a non-Codable value reaching the setter
+/// Encode failures (e.g. a non-Codable value reaching the setter
 /// despite the `Codable` constraint — should be unreachable, but Swift's
 /// type system doesn't prevent encoding errors for some custom
 /// implementations) silently drop the write. Apps that need
@@ -104,7 +108,7 @@ import SwiftUI
 ///
 /// ## Memory + performance
 ///
-/// Each get/set roundtrips through `JSONEncoder` / `JSONDecoder` — same
+/// Each get/set roundtrips through `PyreonJSON.serialize` / `PyreonJSON.decode` — same
 /// cost as the inline bridge. For high-frequency writes (e.g. typing
 /// in a search field) consider holding an in-memory `@State` and
 /// debouncing the write into `@PyreonAppStorage`. Same advice applies
@@ -144,8 +148,8 @@ public struct PyreonAppStorage<Value: Codable>: DynamicProperty {
             PyreonStorage.decodeOrDefault(rawData, default: defaultValue)
         }
         nonmutating set {
-            if let encoded = try? JSONEncoder().encode(newValue) {
-                rawData = encoded
+            if let encoded = try? PyreonJSON.serialize(newValue) {
+                rawData = Data(encoded.utf8)
             }
             // Silent write-failure — matches web @pyreon/storage's
             // localStorage QuotaExceededError behaviour: app continues
@@ -180,7 +184,7 @@ public enum PyreonStorage {
         default defaultValue: T
     ) -> T {
         guard !data.isEmpty,
-              let decoded = try? JSONDecoder().decode(T.self, from: data)
+              let decoded = try? PyreonJSON.decode(T.self, from: data)
         else { return defaultValue }
         return decoded
     }
@@ -196,7 +200,7 @@ public enum PyreonStorage {
         guard let data = store.data(forKey: key), !data.isEmpty else {
             return nil
         }
-        return try JSONDecoder().decode(T.self, from: data)
+        return try PyreonJSON.decode(T.self, from: data)
     }
 
     /// Write a Codable value to UserDefaults at `key`, throwing on
@@ -206,8 +210,7 @@ public enum PyreonStorage {
         key: String,
         store: UserDefaults = .standard
     ) throws {
-        let data = try JSONEncoder().encode(value)
-        store.set(data, forKey: key)
+        store.set(Data(try PyreonJSON.serialize(value).utf8), forKey: key)
     }
 
     /// Remove a value at `key`. Mirrors web @pyreon/storage's `.remove()`.

@@ -132,14 +132,14 @@ describe('_bindProp on a data property', () => {
     expect(empty).toBe(true)
   })
 
-  it('coerces like the poly core: null / undefined / false → empty, numbers and true → String()', () => {
+  it('coerces like the poly core: null / undefined / booleans → empty, numbers → String()', () => {
     const el = document.createElement('span')
     for (const [v, out] of [
       [null, ''],
       [undefined, ''],
       [false, ''],
       [0, '0'],
-      [true, 'true'],
+      [true, ''],
       ['', ''],
     ] as const) {
       const t = textIn(el)

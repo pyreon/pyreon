@@ -43,7 +43,7 @@ describe('.update(fn) lowering', () => {
   it('Swift: lowers to assignment with the param substituted by the read', () => {
     const out = transform(UPDATE_APP, { target: 'swift' }).code
     // Identical emit to the hand-written `.set(x().…)` form — no IIFE.
-    expect(out).toContain('count = count + 1')
+    expect(out).toContain('count = pyreonAdd(count, 1)')
     expect(out).toContain('local = local.map(')
     expect(out).not.toContain('.update(')
   })
@@ -60,7 +60,7 @@ describe('.update(fn) lowering', () => {
 
   it('Kotlin: mirrors the lowering through the object singleton', () => {
     const out = transform(UPDATE_APP, { target: 'kotlin' }).code
-    expect(out).toContain('count = count + 1')
+    expect(out).toContain('count = pyreonAdd(count, 1L)')
     expect(out).toContain('PyreonStore_app.tasks = PyreonStore_app.tasks.map(')
     expect(out).not.toContain('.update(')
   })
@@ -127,13 +127,13 @@ describe('index expressions', () => {
   it('Swift: xs[i] emits subscript syntax (was xs.undefined)', () => {
     const out = transform(INDEX_APP, { target: 'swift' }).code
     // .length → .count rewrite composes with the subscript emit.
-    expect(out).toContain('tasks[tasks.count - 1].id')
+    expect(out).toContain('tasks[pyreonSub(tasks.count, 1)].id')
     expect(out).not.toContain('.undefined')
   })
 
   it('Kotlin: xs[i] emits subscript syntax (was xs.undefined)', () => {
     const out = transform(INDEX_APP, { target: 'kotlin' }).code
-    expect(out).toContain('tasks[(tasks.length - 1L).toInt()].id')
+    expect(out).toContain('tasks[(pyreonSub(tasks.length, 1L)).toInt()].id')
     expect(out).not.toContain('.undefined')
   })
 })

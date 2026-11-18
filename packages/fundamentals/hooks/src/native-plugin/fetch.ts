@@ -1,8 +1,11 @@
 // How `useFetch<T>(url, init?)` crosses to native: a reactive `PyreonFetch<T>` container the component holds, driven by a
 // mount-time harness (SwiftUI `.task`, Compose `LaunchedEffect(Unit)`) that issues the request and resolves or rejects it.
 //
-//   Swift   → `@State private var user = PyreonFetch<User>()` + `.task { user.begin(); … user.resolve(…) }`
-//   Kotlin  → `val user = remember { PyreonFetch<User>() }` + `LaunchedEffect(Unit) { user.begin(); … user.resolve(…) }`
+//   Swift   → `@State private var user = PyreonFetch<User>()` + `.task { await user.run { …; return decoded } }`
+//   Kotlin  → `val user = remember { PyreonFetch<User>() }` + `LaunchedEffect(Unit) { user.run(launch = …) { …; decoded } }`
+// The harness REGISTERS the request with the runtime (`run`), so `user.refetch()` re-runs it. It used to fetch inline
+// (`begin()` … `resolve(…)`), and a compiled `refetch()` was a silent no-op on both targets — the same class as
+// useQuery's #4504.
 //
 // The URL is BAKED into the harness, so it must be knowable at build time: an inline string, a module-scope string `const`, or a
 // same-file endpoint call a request source (`@pyreon/http`) resolves. A request with a verb, headers or a body goes through
@@ -24,6 +27,7 @@ import {
   type ExprIR,
   type ExtDecl,
   type ExtPayload,
+  type KotlinEmitContext,
   type ReceiverLowering,
   type ReceiverSite,
   type TypeIR,
@@ -120,6 +124,7 @@ export const recognizeFetch: CallRecognizer = (_call, ctx) => {
     ctx.warn(
       `useFetch needs a statically-known url — an inline string, or a module-scope \`const\` holding one. The url is BAKED into the native request, so a computed one cannot be resolved at build time. Got ${urlArg?.type ?? 'nothing'}.`,
     )
+
     return null
   }
   const url = resolvedUrl ?? (constUrl as string)
@@ -242,11 +247,11 @@ const hasRequestInit = (p: FetchPayload): boolean =>
       p.middleware !== undefined,
   )
 
-/** `.task { … }` on the stable-identity host: begin → request → resolve | reject. Lines are relative to the modifier's own indentation. */
+/** `.task { await x.run { … } }` on the stable-identity host: registers the request (so `refetch()` re-runs it) and fetches it. Lines are relative to the modifier's own indentation. */
 function swiftHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
   const p = payloadOf(d)
   const name = ctx.ident(d.name)
-  const lines: string[] = [`.task {`, `  ${name}.begin()`, `  do {`]
+  const lines: string[] = [`.task {`, `  await ${name}.run {`]
   if (hasRequestInit(p)) {
     // A request with a VERB, headers, or a body goes through PyreonHttp — the runtime that has shipped on both targets with full verb
     // support. The bare-GET path below is left alone deliberately: it is device-proven, and re-routing it would put a proven path
@@ -261,20 +266,22 @@ function swiftHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
     // A non-2xx must REJECT rather than decode (see `swiftSendLines`). The client's `use: [...]`, when present, is applied
     // around the request with the web's onion semantics.
     for (const line of swiftSendLines(args, p.middleware !== undefined ? ctx.expr(p.middleware, 0) : undefined)) lines.push(`    ${line}`)
-    lines.push(`    ${name}.resolve(try __response.decode(${ctx.typeText(p.type)}.self))`)
+    lines.push(`    return try __response.decode(${ctx.typeText(p.type)}.self)`)
   } else {
     lines.push(`    let (bytes, _) = try await URLSession.shared.data(from: URL(string: ${swiftStr(p.url)})!)`)
-    lines.push(`    ${name}.resolve(try PyreonJSON.decode(${ctx.typeText(p.type)}.self, from: bytes))`)
+    lines.push(`    return try PyreonJSON.decode(${ctx.typeText(p.type)}.self, from: bytes)`)
   }
-  lines.push(`  } catch { ${name}.reject(error) }`, `}`)
+  // A failure is the runtime's to record (`error`), so the closure just throws.
+  lines.push(`  }`, `}`)
+
   return lines
 }
 
-/** `LaunchedEffect(Unit) { … }`: a SIBLING node keyed on a stable `Unit`, which recomposition does not cancel. */
-function kotlinHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
+/** `LaunchedEffect(Unit) { x.run(launch = …) { … } }` — registers the request with a launcher on the composable's scope so `refetch()` can re-run it; a SIBLING node keyed on a stable `Unit`, which recomposition does not cancel. */
+function kotlinHarness(d: ExtDecl, ctx: KotlinEmitContext): readonly string[] {
   const p = payloadOf(d)
   const name = ctx.ident(d.name)
-  const lines: string[] = [`LaunchedEffect(Unit) {`, `  ${name}.begin()`, `  try {`]
+  const lines: string[] = [`LaunchedEffect(Unit) {`, `  ${name}.run(launch = { __refetch -> ${ctx.coroutineScope()}.launch { __refetch() } }) {`]
   if (hasRequestInit(p)) {
     // Mirrors the Swift branch one-for-one; `readText()` below cannot express a verb, headers or a body.
     const where = `Declaration ${d.name}: useFetch`
@@ -285,12 +292,14 @@ function kotlinHarness(d: ExtDecl, ctx: EmitContext): readonly string[] {
     )
     // A non-2xx REJECTS rather than decoding (see `kotlinSendLines`).
     for (const line of kotlinSendLines(args, p.middleware !== undefined ? ctx.expr(p.middleware, 0) : undefined)) lines.push(`    ${line}`)
-    lines.push(`    ${name}.resolve(PyreonFetchJson.decodeFromString<${ctx.typeText(p.type)}>(__response.body))`)
+    lines.push(`    PyreonJson.decode<${ctx.typeText(p.type)}>(__response.body)`)
   } else {
     lines.push(`    val body = withContext(Dispatchers.IO) { java.net.URL(${kotlinStr(p.url)}).readText() }`)
-    lines.push(`    ${name}.resolve(PyreonFetchJson.decodeFromString<${ctx.typeText(p.type)}>(body))`)
+    lines.push(`    PyreonJson.decode<${ctx.typeText(p.type)}>(body)`)
   }
-  lines.push(`  } catch (e: Throwable) { ${name}.reject(e) }`, `}`)
+  // A failure is the runtime's to record (`error`), so the lambda just throws.
+  lines.push(`  }`, `}`)
+
   return lines
 }
 
@@ -362,6 +371,7 @@ function fieldOf(site: ReceiverSite): string | undefined {
   }
   const read = site.expr
   if (read.object.kind !== 'identifier') return undefined
+
   return FETCH_FIELDS.has(read.property) ? read.property : undefined
 }
 

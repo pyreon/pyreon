@@ -2,7 +2,7 @@
 //
 //   `useStorage<T>('key', initial)`      → a PERSISTED signal: SwiftUI's `@AppStorage` for scalars / enums / optionals of
 //                                          them, the library's `@PyreonAppStorage` Codable bridge for everything else;
-//                                          Compose's `rememberSaveable`, or `rememberPyreonStorage` for what Compose cannot save
+//                                          the library's file-backed `rememberPyreonStorage` on Compose for every type
 //   `useSessionStorage` / `useMemoryStorage` → PLAIN state: the process IS the session, so in-memory state is the exact
 //                                          analogue rather than an approximation of one
 //
@@ -61,11 +61,13 @@ const persistence: SignalPersistence = {
       : `@PyreonAppStorage(${key}) private var ${name}: ${site.type} = ${site.initial}`
   },
   kotlin(site, ctx) {
-    // Compose's `rememberSaveable` saves and restores state across configuration changes and process-death restoration for
-    // the Bundle-friendly types (strings, numbers, booleans, enums). Anything else uses `rememberPyreonStorage` from the
-    // library's runtime: one line at the call site, a pluggable backend (InMemoryBackend by default, DataStoreBackend for
-    // real cross-launch persistence), and the same MutableState projection and `by` delegate.
-    if (site.nativeType) return { wrapper: 'rememberSaveable' }
+    // EVERY type goes through `rememberPyreonStorage` (the file-backed store, installed on first use), scalars included.
+    // Compose's `rememberSaveable` is NOT storage: it lives in the activity's saved-instance-state Bundle, which survives a
+    // configuration change and a system-initiated restore of the same task, and is discarded when the app is closed or
+    // force-stopped. Routing Bundle-friendly types (strings, numbers, booleans, enums) through it made a scalar
+    // `useStorage` reset to its initial value on every cold launch on Android, while the web (`localStorage`) and iOS
+    // (`@AppStorage`) kept it. Every Android test of that path recreated the activity in the same process, which the
+    // Bundle survives; `examples/native-router-demo/scripts/process-death-android.sh` kills the process and caught it.
     const name = ctx.ident(site.name)
     return {
       line: `var ${name} by rememberPyreonStorage<${site.type}>(${kotlinStr(site.key)}, ${site.emptyList ? 'listOf()' : site.initial})`,

@@ -168,6 +168,51 @@ final class PyreonRuntimeTests: XCTestCase {
         }
     }
 
+    // MARK: - PyreonHttpMessageError (`@pyreon/feature`'s error contract; the Kotlin twin runs the same cases)
+
+    func testMessageErrorReadsTheBody() {
+        func err(_ status: Int, _ body: String) -> PyreonHttpMessageError {
+            PyreonHttpResponse(status: status, body: Data(body.utf8)).messageError(method: "PUT", url: "https://a.dev/todos/a b")
+        }
+        let plain = err(500, "")
+        XCTAssertEqual(plain, PyreonHttpMessageError(message: "PUT https://a.dev/todos/a b failed: 500", status: 500))
+        XCTAssertEqual(err(422, #"{"message":"Title is required"}"#).message, "Title is required")
+        XCTAssertEqual(err(400, #"{"message":""}"#).message, "PUT https://a.dev/todos/a b failed: 400", "an empty message is falsy")
+        XCTAssertEqual(err(400, #"{"message":7}"#).message, "PUT https://a.dev/todos/a b failed: 400", "a non-string message is not read")
+        XCTAssertEqual(err(400, "<html>oops</html>").message, "PUT https://a.dev/todos/a b failed: 400")
+        XCTAssertEqual(err(400, #"{"message":"x",}"#).message, "PUT https://a.dev/todos/a b failed: 400", "invalid JSON keeps the default")
+        XCTAssertEqual(err(400, #"{"message":"a","message":"b"}"#).message, "b", "a duplicate key keeps its LAST value")
+        XCTAssertEqual(err(400, #"{"message":"caf\u00e9 \"q\" \ud83d\ude42"}"#).message, "café \"q\" 🙂")
+        XCTAssertEqual(err(422, #"{"message":"Invalid","errors": {"title" : ["required"]} }"#).errors, #"{"title" : ["required"]}"#)
+        XCTAssertNil(err(422, #"{"errors":0}"#).errors)
+        XCTAssertNil(err(422, #"{"errors":false}"#).errors)
+        XCTAssertEqual(err(422, #"[{"message":"x"}]"#).message, "PUT https://a.dev/todos/a b failed: 422")
+        XCTAssertEqual(String(describing: plain), "Error: PUT https://a.dev/todos/a b failed: 500")
+        XCTAssertEqual((plain as Error as? LocalizedError)?.errorDescription, plain.message, "error.message reads the message")
+        // The plain status error reads as the Kotlin twin's message does.
+        XCTAssertEqual((PyreonHttpError.badStatus(404) as Error as? LocalizedError)?.errorDescription, "HTTP 404")
+        XCTAssertEqual((PyreonHttpError.invalidURL("x") as Error as? LocalizedError)?.errorDescription, "invalid url: x")
+    }
+
+    func testMiddlewareRejectThrowsTheBuiltError() async throws {
+        let ok = try await PyreonHttpPipeline.run(
+            PyreonHttpRequest.get("https://a.dev/x"),
+            middleware: [.reject { $0.messageError(method: "GET", url: "https://a.dev/x") }],
+            env: Recorder().env()
+        ) { _ in PyreonHttpResponse(status: 204) }
+        XCTAssertEqual(ok.status, 204, "a 2xx passes through")
+        do {
+            _ = try await PyreonHttpPipeline.run(
+                PyreonHttpRequest.get("https://a.dev/x"),
+                middleware: [.reject { $0.messageError(method: "GET", url: "https://a.dev/x") }],
+                env: Recorder().env()
+            ) { _ in PyreonHttpResponse(status: 404, body: Data(#"{"message":"Not here"}"#.utf8)) }
+            XCTFail("a non-2xx must throw")
+        } catch let e as PyreonHttpMessageError {
+            XCTAssertEqual(e, PyreonHttpMessageError(message: "Not here", status: 404))
+        }
+    }
+
     func testMiddlewareBearerReplacesAuthorizationOnce() async throws {
         let t = Scripted(200)
         var reads = 0

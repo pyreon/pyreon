@@ -152,7 +152,7 @@ ${decls}
     expect(a(`  const v = computed(() => Math.abs())`, 'v')).toContain('var v: Int')
   })
 
-  it('`Math.min()` with no arguments is Int (no float argument to contaminate it)', () => {
-    expect(a(`  const v = computed(() => Math.min())`, 'v')).toContain('var v: Int')
+  it('`Math.min()` with no arguments is a Double (the web answer is Infinity, which no Int holds)', () => {
+    expect(a(`  const v = computed(() => Math.min())`, 'v')).toContain('var v: Double')
   })
 })

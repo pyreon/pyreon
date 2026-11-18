@@ -85,3 +85,23 @@ public func useLoaderData<T>(router: PyreonRouter?) -> T? {
     guard let router else { return nil }
     return router.loaderData[router.currentPath] as? T
 }
+
+/// Imperative navigation — `@pyreon/router`'s `useRouter()`, for the calls a
+/// path-only `useNavigate()` cannot express: `replace` (the current entry is
+/// swapped, so Back skips it), `back` and `forward`. A value type over the
+/// environment's router, so a missing provider is a no-op rather than an
+/// optional chain at every call site.
+@available(iOS 17.0, macOS 14.0, *)
+public struct PyreonRouterHandle {
+    let router: PyreonRouter?
+
+    public func push(_ path: String) { router?.push(path) }
+    public func replace(_ path: String) { router?.replace(path) }
+    public func back() { router?.back() }
+    public func forward() { router?.forward() }
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+public func useRouter(router: PyreonRouter?) -> PyreonRouterHandle {
+    PyreonRouterHandle(router: router)
+}

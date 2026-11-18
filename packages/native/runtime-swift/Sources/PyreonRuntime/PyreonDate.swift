@@ -218,3 +218,84 @@ private func pyreonDateParse(_ raw: String) -> Double {
     guard built.isFinite else { return .nan }
     return pyreonDateFrom(built - cycle - Double(offset ?? 0) * 60_000)
 }
+
+// ─── A `Date` field in JSON ──────────────────────────────────────────────────
+//
+// On the web a `Date` crosses JSON as its ISO string: `JSON.stringify` writes `toISOString()` (`null` for an invalid
+// date), and a server sends the same text. Natively the field is its epoch milliseconds like every other date, so the
+// compiler marks each struct field the source types `Date` with one of these wrappers: they read an ISO string (any
+// string `new Date(text)` reads; a number is taken as milliseconds; `null` is an invalid date) and write the ISO
+// string back. The value the code sees is the plain `Double` — arithmetic, comparisons and the `Date` lowering are
+// unchanged.
+
+/// The JSON form of one date: its ISO string, or `null` when it is invalid (`JSON.stringify(new Date(NaN))`).
+private func pyreonDateEncode(_ ms: Double, _ encoder: Encoder) throws {
+    var c = encoder.singleValueContainer()
+    if ms.isFinite { try c.encode(pyreonDateISO(ms)) } else { try c.encodeNil() }
+}
+
+/// One date read back from JSON: an ISO string, milliseconds, or `null` (an invalid date).
+private func pyreonDateDecode(_ c: SingleValueDecodingContainer) throws -> Double {
+    if c.decodeNil() { return .nan }
+    if let text = try? c.decode(String.self) { return pyreonDateFrom(text) }
+    return pyreonDateFrom(try c.decode(Double.self))
+}
+
+/// A `Date` field (`at: Date`).
+@propertyWrapper
+public struct PyreonISODate: Codable, Hashable, Sendable {
+    public var wrappedValue: Double
+    public init(wrappedValue: Double) { self.wrappedValue = wrappedValue }
+    public init(from decoder: Decoder) throws { wrappedValue = try pyreonDateDecode(decoder.singleValueContainer()) }
+    public func encode(to encoder: Encoder) throws { try pyreonDateEncode(wrappedValue, encoder) }
+}
+
+/// An optional `Date` field (`at?: Date`, `at: Date | null`): a missing key reads as `nil` and `nil` is not written,
+/// as for every other optional field.
+@propertyWrapper
+public struct PyreonOptionalISODate: Codable, Hashable, Sendable {
+    public var wrappedValue: Double?
+    public init(wrappedValue: Double?) { self.wrappedValue = wrappedValue }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        wrappedValue = c.decodeNil() ? nil : try pyreonDateDecode(c)
+    }
+    public func encode(to encoder: Encoder) throws {
+        if let ms = wrappedValue { try pyreonDateEncode(ms, encoder) } else {
+            var c = encoder.singleValueContainer()
+            try c.encodeNil()
+        }
+    }
+}
+
+/// A `Date[]` field: each element as one date.
+@propertyWrapper
+public struct PyreonISODates: Codable, Hashable, Sendable {
+    public var wrappedValue: [Double]
+    public init(wrappedValue: [Double]) { self.wrappedValue = wrappedValue }
+    public init(from decoder: Decoder) throws {
+        var c = try decoder.unkeyedContainer()
+        var out: [Double] = []
+        while !c.isAtEnd { out.append(try c.decode(PyreonISODate.self).wrappedValue) }
+        wrappedValue = out
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.unkeyedContainer()
+        for ms in wrappedValue { try c.encode(PyreonISODate(wrappedValue: ms)) }
+    }
+}
+
+// The synthesized `Codable` of a struct asks its keyed container for a wrapped field by the WRAPPER's type; these
+// overloads make an optional date behave like `decodeIfPresent` / `encodeIfPresent` (a missing key is `nil`, `nil` is
+// omitted) instead of requiring the key.
+extension KeyedDecodingContainer {
+    public func decode(_ type: PyreonOptionalISODate.Type, forKey key: Key) throws -> PyreonOptionalISODate {
+        try decodeIfPresent(type, forKey: key) ?? PyreonOptionalISODate(wrappedValue: nil)
+    }
+}
+
+extension KeyedEncodingContainer {
+    public mutating func encode(_ value: PyreonOptionalISODate, forKey key: Key) throws {
+        if value.wrappedValue != nil { try encodeIfPresent(value, forKey: key) }
+    }
+}

@@ -1,4 +1,5 @@
 import type { NativeItem, VNodeChild } from '@pyreon/core'
+import { _childText, _isStructuralChild } from '@pyreon/core'
 import {
   _noopDispose,
   _rdCloseBindingFrame,
@@ -102,33 +103,15 @@ export function createTemplate<T>(
 // `_bindDirect` reaches `.data` only through the signal-method-call promotion
 // (a pure-method safelist over primitives), so a raw VNode never lands there.
 
-/** Structural VNode check — VNode has no symbol brand (see core/types.ts),
- *  so `{ type, props, children }` is the discriminator; `__isNative` covers
- *  NativeItems from `_tpl()`/`createTemplate()`. */
-function _looksLikeVNode(v: unknown): boolean {
-  return (
-    v !== null &&
-    typeof v === 'object' &&
-    (((v as { __isNative?: boolean }).__isNative === true) ||
-      ('type' in v && 'props' in v && 'children' in v))
-  )
-}
-
-/** The ONE mountable-in-a-text-position discriminator, shared by the static
- *  setters (`_setChild`/`_setChildAt`), the reactive `_bindText` VNode
- *  upgrade, and the dev coercion warning: a VNode/NativeItem, or an array
- *  containing at least one. Plain objects and plain-primitive arrays keep
- *  the historical String() coercion (consistent across all four sites). */
+/** A VNode/NativeItem, or an array holding one (at any depth) or a function —
+ *  the OBJECT values a text position mounts instead of stringifying. The rule
+ *  is `@pyreon/core`'s `_isStructuralChild`, shared with SSR and hydration
+ *  (see `child-text.ts` there); a top-level function is checked by each caller
+ *  separately. Everything else is text, coerced by `_childText`: an array of
+ *  primitives concatenates (`['a', 'b']` → `ab`, as SSR and `h()` render it),
+ *  never `String(array)`'s `a,b`. */
 function _isMountableTextValue(v: unknown): boolean {
-  return _looksLikeVNode(v) || (Array.isArray(v) && v.some(_isMountablePart))
-}
-
-// A part of an array child that must be MOUNTED rather than stringified: a
-// VNode, a nested array (`_fuse("a", items, "b")` returns its parts with
-// `items` still an array) or a function (a reactive part — mountChild binds
-// it, as the h() path does). Arrays of primitives keep the text path.
-function _isMountablePart(x: unknown): boolean {
-  return _looksLikeVNode(x) || Array.isArray(x) || typeof x === 'function'
+  return typeof v === 'object' && v !== null && _isStructuralChild(v)
 }
 
 /**
@@ -193,23 +176,29 @@ export function _setChild(node: Element, value: unknown): void {
     // On a fresh clone the compiled cell is empty, so the adoption probe is
     // skipped (`textContent =` would replace any children regardless).
     const fc = _freshBind ? null : node.firstChild
+    // The shared child-text rule (`_childText`), never the DOM's own coercion:
+    // `textContent = ['a', 'b']` renders `a,b` where SSR renders `ab`, and the
+    // DOM's handling of a number is not even uniform across implementations
+    // (happy-dom writes `''` for `0`). A string, the dominant value, skips the
+    // call.
+    const text = typeof value === 'string' ? value : _childText(value)
     // Dev, adopting: the same write, reported if it changed the server's text
     // (#4419). A separate block so production keeps exactly the write below.
     if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
       const before = node.textContent ?? ''
       if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
-        ;(fc as Text).data = value as string
+        ;(fc as Text).data = text
       } else {
-        node.textContent = value as string
+        node.textContent = text
       }
       reportTextWrite(node, before, 'text')
 
       return
     }
     if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
-      ;(fc as Text).data = value as string
+      ;(fc as Text).data = text
     } else {
-      node.textContent = value as string
+      node.textContent = text
     }
   }
 }
@@ -265,10 +254,11 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
     ownByScope(mountChildAsUnit(value as VNodeChild, parent, placeholder))
     placeholder.remove()
   } else {
-    // Coerced as a child is (`mountChild`, and SSR's `renderNode`): nullish and
-    // `false` render NOTHING, never the literal text "null". `String(null)` is
-    // `"null"`, and `<div>{null}{rows}</div>` once put that word on the page.
-    const text = value == null || value === false ? '' : String(value)
+    // The shared child-text rule (`_childText`): nullish and `false` render
+    // EMPTY, an array of primitives concatenates. `String()` put the word
+    // "null" (and "false", and `a,b` for an array) on the page where SSR
+    // renders nothing / `ab`.
+    const text = typeof value === 'string' ? value : _childText(value)
     if (!isMidSlotText(placeholder)) {
       parent.replaceChild(document.createTextNode(text), placeholder)
     } else if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
@@ -410,7 +400,7 @@ export function _bindProp(props: object, key: string, node: Text, parent: Node):
     // functions (a VNode, an accessor) keep the general path below.
     const v = d.value as unknown
     if (v === null || (typeof v !== 'object' && typeof v !== 'function')) {
-      const next = v == null || v === false ? '' : String(v as string | number | boolean)
+      const next = v == null || typeof v === 'boolean' ? '' : String(v as string | number)
       if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
         reportFirstText(node, v, next, 'reactive')
       if (node.data !== next) node.data = next
@@ -422,6 +412,60 @@ export function _bindProp(props: object, key: string, node: Text, parent: Node):
   if (g !== undefined && typeof g.direct === 'function') return _bindText(g, node)
 
   return bindPolymorphicText(() => (props as Record<string, unknown>)[key] as VNodeChild, node, parent)
+}
+
+/**
+ * `_bindText`'s tracked tier: a bare callable with no `.direct()`. The
+ * renderEffect keeps tracking `fn`'s reads across the upgrade — after the first
+ * VNode-shaped value every re-run routes through the swap core, whose child
+ * mounts are untracked. The dev label skips two frames (this helper and
+ * `_bindText`) so it still names the compiled template that emitted the call.
+ */
+function bindTextTracked(fn: () => unknown, node: Text, ownerAtSetup: ReturnType<typeof getContextOwner>): () => void {
+  let core: PolyTextCore | null = null
+  // Last string written — same read-back saving as the fast path above.
+  let written: string | null | undefined = null
+  const disposeEffect = _renderBind(() => {
+    const v = fn()
+    if (core !== null) {
+      core.apply(v as VNodeChild)
+      return
+    }
+    const next =
+      v == null || typeof v === 'boolean'
+        ? ''
+        : typeof v === 'object'
+          ? _childText(v)
+          : String(v as string | number)
+    if (written === null) {
+      written = _freshBind ? undefined : node.data
+      // Dev: the first write into ADOPTED server text (#4419).
+      if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
+        reportFirstText(node, v, next, 'reactive')
+    }
+    if (next !== written) {
+      if (typeof v === 'object' && v !== null && _isMountableTextValue(v)) {
+        const parent = node.parentNode
+        if (parent !== null) {
+          core = createPolyTextCore(node, parent, ownerAtSetup)
+          core.apply(v as VNodeChild)
+          return
+        }
+      }
+      if (process.env.NODE_ENV !== 'production') _warnTextCoercion(v, node)
+      node.data = next
+      written = next
+    }
+  })
+  if (process.env.NODE_ENV !== 'production')
+    _rdLabelBinding(disposeEffect, 'text', node, undefined, 2)
+  // Dead binding that stayed text: no re-run can happen and no subtree exists.
+  if (disposeEffect === _noopDispose && core === null) return _noopDispose
+
+  return () => {
+    disposeEffect()
+    if (core !== null) core.dispose()
+  }
 }
 
 export function _bindText(
@@ -457,7 +501,12 @@ export function _bindText(
     let written: string | null | undefined = null
     const textUpdate = () => {
       const v = source._v
-      const next = v == null || v === false ? '' : String(v as string | number)
+      const next =
+      v == null || typeof v === 'boolean'
+        ? ''
+        : typeof v === 'object'
+          ? _childText(v)
+          : String(v as string | number)
       if (written === null) {
         written = _freshBind ? undefined : node.data
         // Dev: the first write into ADOPTED server text (#4419).
@@ -516,50 +565,8 @@ export function _bindText(
     return () => disposer!()
   }
   // Fallback: bare callable. Use the compiler-provided receiver/caller when
-  // present (it preserves `this` for member-expression sources). The
-  // renderEffect keeps tracking `fn`'s reads across the upgrade — after the
-  // first VNode-shaped value every re-run routes through the swap core, whose
-  // child mounts are untracked.
-  const fn = resolveSlowCaller(source, caller, receiver)
-  let core: PolyTextCore | null = null
-  // Last string written — same read-back saving as the fast path above.
-  let written: string | null | undefined = null
-  const disposeEffect = _renderBind(() => {
-    const v = fn()
-    if (core !== null) {
-      core.apply(v as VNodeChild)
-      return
-    }
-    const next = v == null || v === false ? '' : String(v as string | number)
-    if (written === null) {
-      written = _freshBind ? undefined : node.data
-      // Dev: the first write into ADOPTED server text (#4419).
-      if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
-        reportFirstText(node, v, next, 'reactive')
-    }
-    if (next !== written) {
-      if (typeof v === 'object' && v !== null && _isMountableTextValue(v)) {
-        const parent = node.parentNode
-        if (parent !== null) {
-          core = createPolyTextCore(node, parent, ownerAtSetup)
-          core.apply(v as VNodeChild)
-          return
-        }
-      }
-      if (process.env.NODE_ENV !== 'production') _warnTextCoercion(v, node)
-      node.data = next
-      written = next
-    }
-  })
-  if (process.env.NODE_ENV !== 'production')
-    _rdLabelBinding(disposeEffect, 'text', node, undefined, 1)
-  // Dead binding that stayed text: no re-run can happen and no subtree exists.
-  if (disposeEffect === _noopDispose && core === null) return _noopDispose
-
-  return () => {
-    disposeEffect()
-    if (core !== null) core.dispose()
-  }
+  // present (it preserves `this` for member-expression sources).
+  return bindTextTracked(resolveSlowCaller(source, caller, receiver), node, ownerAtSetup)
 }
 
 // ─── Direct signal binding (bypasses effect system) ──────────────────────────
@@ -811,14 +818,45 @@ let _tplRootDecorated = false
 // Deliberately NOT derived from `_tplAdoptVerifier !== null`: the verifier
 // stays registered after hydration completes, and keying deferral on it would
 // defer every post-hydration client render too.
+//
+// It is also held while an ASYNC component that the walk met is still pending
+// (#4353). Its body's code after an `await` runs in a later microtask, outside
+// the synchronous walk, and builds the templates the component's `.then` then
+// hydrates against the server range; built eagerly they could only clone and
+// swap. The flag `_tpl` reads stays ONE boolean, recomputed here on the cold
+// enter/leave paths, so a mount outside hydration pays nothing for this. A
+// template built for an unrelated client render inside that window defers too,
+// and its first `.el` read builds it un-armed: the same clone, built at mount.
 let _hydrationActive = false
+let _walkActive = false
+let _asyncPending = 0
 
 /** Set the hydration-active flag; returns the PREVIOUS value so callers can
  *  save/restore (frame discipline — hydration roots can nest via islands). */
 export function _setHydrationActive(v: boolean): boolean {
-  const prev = _hydrationActive
-  _hydrationActive = v
+  const prev = _walkActive
+  _walkActive = v
+  _hydrationActive = v || _asyncPending > 0
   return prev
+}
+
+/**
+ * Keep `_tpl` deferring until the returned release runs: called by hydration
+ * for an async component whose output is still pending. The release is
+ * idempotent, and hydration calls it on every settle path and on unmount, so a
+ * hold cannot outlive its component (a promise that never settles holds until
+ * the component unmounts; deferral is only slower then, never wrong).
+ */
+export function _holdTplDeferral(): () => void {
+  _asyncPending++
+  _hydrationActive = true
+  let held = true
+  return () => {
+    if (!held) return
+    held = false
+    _asyncPending--
+    _hydrationActive = _walkActive || _asyncPending > 0
+  }
 }
 
 // ─── MOUNT HOLES ─────────────────────────────────────────────────────────────
