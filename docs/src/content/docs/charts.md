@@ -295,6 +295,8 @@ export const Colours = () => (
 )
 ```
 
+> **Zoom and streaming.** `shadeBy` maps over the rows in view, so its default domain is the extent of those rows: zoom or append data and the colours shift with the window. Pin the domain when a colour must keep its meaning: `shadeBy('margin', { domain: { min: 0, max: 30 } })`.
+
 - `fillBy(field | (d, i) => colour)`: a datum whose colour is missing keeps the series colour.
 - `shadeBy(field | (d, i) => number, { ramp?, domain? })`: the ramp defaults to the theme's value ramp (the one the heatmap uses, with its own light and dark stops) and the domain to the finite extent of the values. A missing value is a gap and keeps the series colour. On a zoomed or decimated chart the extent is that of the rows in view, so **pin `domain`** when colours must stay put as the window moves.
 - **The value is data, and the ramp is a legend.** A colour is the one thing a reader who cannot see it can never recover, so a `shadeBy` chart draws a compact ramp strip above the plot (the low and high values at its ends; it is part of the server-rendered SVG and mirrors under `rtl`), the tooltip gets a `Revenue (shade)` row and the accessible table a `Revenue (shade)` column.

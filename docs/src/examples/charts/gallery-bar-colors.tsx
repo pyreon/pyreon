@@ -7,7 +7,8 @@ import { signal } from '@pyreon/reactivity'
  * margin). `color` stays the series colour and `<Chart color="field">` the
  * long-format split; `fill` is a descriptor, so it cannot be mistaken for
  * either. The tooltip and the accessible table print the margin, so the shade
- * is never the only carrier of the number.
+ * is never the only carrier of the number. The shade's default domain is the
+ * extent of the rows in view: pin `domain` when the chart zooms or streams.
  */
 interface Region {
   name: string
