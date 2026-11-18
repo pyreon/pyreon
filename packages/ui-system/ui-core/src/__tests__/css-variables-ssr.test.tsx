@@ -85,6 +85,7 @@ describe('PyreonUI cssVariables — SSR', () => {
         await renderToString(
           h(PyreonUI, { theme: { ...theme, spacing: { small } } } as any, h(Probe, null)),
         )
+
         return sheet.getStyleTag()
       })
     for (const small of [8, 24, 8]) {

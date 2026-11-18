@@ -12,9 +12,8 @@ afterEach(() => {
 })
 
 const rootTexts = (s: StyleSheet): string[] => {
-  const el = document.querySelector('style[data-pyreon-styler]') as HTMLStyleElement | null
   const out: string[] = []
-  const sheet = (s as unknown as { sheet: CSSStyleSheet | null }).sheet ?? el?.sheet
+  const sheet = (s as unknown as { sheet: CSSStyleSheet | null }).sheet
   if (!sheet) return out
   for (const r of Array.from(sheet.cssRules)) if (r.cssText.includes('--v')) out.push(r.cssText)
 
