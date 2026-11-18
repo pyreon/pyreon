@@ -51,9 +51,19 @@ export const GlobalReset = createGlobalStyle`
 `
 
 // ─── Shell layout ────────────────────────────────────────────────────
+/**
+ * Below this width the sidebar stops being a fixed 240px column (which left a
+ * phone 150px for the page) and stacks above the content instead.
+ */
+export const PHONE_MAX = 768
+
 export const Shell = styled('div')`
   display: flex;
   min-height: 100vh;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    flex-direction: column;
+  }
 `
 
 export const Sidebar = styled('nav')`
@@ -65,6 +75,13 @@ export const Sidebar = styled('nav')`
   top: 0;
   bottom: 0;
   background: ${(p) => t(p).color.system.light.base};
+
+  @media (max-width: ${PHONE_MAX}px) {
+    position: static;
+    width: auto;
+    border-right: none;
+    border-bottom: 1px solid ${(p) => t(p).color.system.base[200]};
+  }
 `
 
 /**
@@ -154,18 +171,31 @@ export const SoonBadge = styled('span')`
 export const Main = styled('main')`
   margin-left: 240px;
   flex: 1;
+  min-width: 0;
   min-height: 100vh;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    margin-left: 0;
+  }
 `
 
 // ─── Page primitives (used by route entries) ─────────────────────────
 export const Page = styled('div')`
   padding: 32px 40px;
   max-width: 1080px;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    padding: 24px 16px;
+  }
 `
 
 export const PageWide = styled('div')`
   padding: 48px 56px;
   max-width: 1080px;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    padding: 24px 16px;
+  }
 `
 
 // ─── Homepage primitives ─────────────────────────────────────────────

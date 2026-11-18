@@ -1,6 +1,6 @@
 import { styled } from '@pyreon/styler'
 import { Badge, Button, Card, Input, Paragraph, Title } from '@pyreon/ui-components'
-import { t } from '../../styles'
+import { PHONE_MAX, t } from '../../styles'
 import type { Todo } from './store/types'
 
 /**
@@ -25,6 +25,11 @@ export const TodosLayout = styled('div')`
   gap: 24px;
   padding: 32px 40px;
   max-width: 1080px;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 24px 16px;
+  }
 `
 
 export const TodosSidebar = styled('aside')`

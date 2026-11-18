@@ -34,24 +34,27 @@ body {
   list-style: none;
 }
 
-.sidebar button {
-  width: 100%;
-  text-align: left;
+/* The nav items are RouterLink anchors (see routes/_layout.tsx). */
+.sidebar a {
+  display: block;
   padding: 10px 20px;
-  background: none;
-  border: none;
   color: rgba(255, 255, 255, 0.7);
-  cursor: pointer;
+  text-decoration: none;
   font-size: 14px;
   transition: all 0.15s;
 }
 
-.sidebar button:hover {
+.sidebar a:hover {
   background: rgba(255, 255, 255, 0.05);
   color: #fff;
 }
 
-.sidebar button.active {
+.sidebar a:focus-visible {
+  outline: 2px solid #6c63ff;
+  outline-offset: -2px;
+}
+
+.sidebar a.active {
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
   border-left: 3px solid #6c63ff;
