@@ -17,7 +17,7 @@
 // position in a warning so the author can add the `try`/`catch` that makes all three agree.
 
 import { syncThrowingPluginExpr } from './registry-lookup'
-import type { ExprIR, StatementIR } from './types'
+import type { ExprIR, StatementIR, TypeIR } from './types'
 
 /** Every nested statement list of `s` — the one place that knows which statement kinds own a body. */
 export function childStatementLists(s: StatementIR): StatementIR[][] {
@@ -35,11 +35,26 @@ export function childStatementLists(s: StatementIR): StatementIR[][] {
       const out = [s.body]
       if (s.catchBody) out.push(s.catchBody)
       if (s.finallyBody) out.push(s.finallyBody)
+
       return out
     }
     default:
       return []
   }
+}
+
+/**
+ * Whether `t` is the `Error` object a container's `error()` / an `onError` parameter is typed as (`ERROR_OBJECT`),
+ * optionally with `null` / `undefined` — the receivers whose `.message` reads through {@link ERROR_MESSAGE_FN}.
+ */
+export function isErrorObjectType(t: TypeIR): boolean {
+  const isError = (b: TypeIR): boolean => b.kind === 'typeRef' && b.name === 'Error' && b.args.length === 0
+  if (isError(t)) return true
+  return (
+    t.kind === 'union' &&
+    t.branches.some(isError) &&
+    t.branches.every((b) => isError(b) || b.kind === 'null' || b.kind === 'undefined')
+  )
 }
 
 /** The name the runtime-free message accessor is emitted under, on both targets. */
@@ -70,6 +85,7 @@ export function arrowThrowsUncaught(arrow: unknown, throwingFns: ReadonlySet<str
   const a = arrow as { kind?: string; body?: unknown; stmts?: StatementIR[]; async?: boolean }
   if (a.kind !== 'arrow' || a.async === true) return false
   if (a.stmts !== undefined && a.stmts.length > 0) return statementsThrowUncaught(a.stmts, throwingFns)
+
   return exprCallsThrowing(a.body, throwingFns)
 }
 
@@ -78,6 +94,7 @@ export function rethrowingCallbackArgs(expr: unknown, throwingFns: ReadonlySet<s
   const n = expr as { kind?: string; callee?: { kind?: string; property?: string }; args?: unknown[] }
   if (n.kind !== 'call' || n.callee?.kind !== 'member' || n.callee.property === undefined) return []
   if (!RETHROWING_ARRAY_METHODS.has(n.callee.property)) return []
+
   return (n.args ?? []).filter((a) => arrowThrowsUncaught(a, throwingFns))
 }
 
@@ -100,9 +117,11 @@ export function exprCallsThrowing(expr: unknown, throwingFns: ReadonlySet<string
       node.callee.name !== undefined &&
       throwingFns.has(node.callee.name)
     )
-      return true
+      {return true}
+
     return Object.values(n).some(walk)
   }
+
   return walk(expr)
 }
 
@@ -154,6 +173,7 @@ export function statementsThrowUncaught(
     }
     if (childStatementLists(s).some((l) => statementsThrowUncaught(l, throwingFns))) return true
   }
+
   return false
 }
 
@@ -184,6 +204,7 @@ export function computeThrowingFunctions(
       }
     }
   }
+
   return throwing
 }
 
@@ -210,6 +231,7 @@ export function rewriteCaughtMessage(stmts: StatementIR[], param: string): State
         callee: { kind: 'identifier', name: ERROR_MESSAGE_FN },
         args: [{ kind: 'identifier', name: param }],
       }
+
       return call
     }
     // `String(e)` — Swift has no `String(_:)` for an `Error`; both targets describe it as JavaScript does.
@@ -226,10 +248,12 @@ export function rewriteCaughtMessage(stmts: StatementIR[], param: string): State
         callee: { kind: 'identifier', name: ERROR_STRING_FN },
         args: [{ kind: 'identifier', name: param }],
       }
+
       return described
     }
     const out: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(n)) out[k] = map(v)
+
     return out
   }
   const isParam = (n: unknown): boolean => {
@@ -237,6 +261,7 @@ export function rewriteCaughtMessage(stmts: StatementIR[], param: string): State
     while (cur?.kind === 'paren') cur = cur.inner as typeof cur
     return cur?.kind === 'identifier' && cur.name === param
   }
+
   return map(stmts) as StatementIR[]
 }
 
@@ -247,6 +272,7 @@ export function containsAwait(n: unknown): boolean {
   const node = n as { kind?: string }
   if (node.kind === 'arrow') return false
   if (node.kind === 'await') return true
+
   return Object.values(n).some(containsAwait)
 }
 
@@ -268,6 +294,7 @@ export function anonymousCatchBinder(catchBody: unknown): string {
   visit(catchBody)
   let name = 'pyreonCaught'
   for (let i = 2; used.has(name); i++) name = `pyreonCaught${i}`
+
   return name
 }
 

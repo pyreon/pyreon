@@ -35,10 +35,10 @@ describe('toast() action on native', () => {
   it('a no-argument onClick lowers to the action button on both targets', () => {
     const swift = transform(ACTION, { target: 'swift' })
     expect(swift.warnings).toEqual([])
-    expect(swift.code).toMatch(/PyreonToast\.shared\.add\("Deleted", type: "info", actionLabel: "Undo", onAction: \{[^}]*count = count \+ 1/)
+    expect(swift.code).toMatch(/PyreonToast\.shared\.add\("Deleted", type: "info", actionLabel: "Undo", onAction: \{[^}]*count = pyreonAdd\(count, 1\)/)
     const kotlin = transform(ACTION, { target: 'kotlin' })
     expect(kotlin.warnings).toEqual([])
-    expect(kotlin.code).toMatch(/PyreonToast\.add\("Deleted", "info", actionLabel = "Undo", onAction = \{[^}]*count = count \+ 1L/)
+    expect(kotlin.code).toMatch(/PyreonToast\.add\("Deleted", "info", actionLabel = "Undo", onAction = \{[^}]*count = pyreonAdd\(count, 1L\)/)
   })
 
   it('combines with a description, in the runtime parameter order', () => {

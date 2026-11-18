@@ -4,6 +4,7 @@ import type {
   CallRecognizer,
   CompilerPlugin,
   ExtPayload,
+  MemberCallLowering,
   TypeIR,
 } from '@pyreon/native-compiler/plugin-api'
 const recognizeParams: CallRecognizer = (_call, ctx) => {
@@ -108,16 +109,33 @@ const recognizePattern: CallRecognizer = (_call, ctx) => {
   }
   return params.length === 0 ? null : { type: 'params-fields', payload: { params } }
 }
+// `router.push(path)` on the handle. Claimed here because the generic emit reads any `.push(x)` on a receiver it cannot
+// type as an ARRAY push (Swift `append`, Kotlin `add`), which the handle does not have.
+const handleCall = (method: string): MemberCallLowering => ({
+  swift: (call, ctx) =>
+    call.receiver.type === 'router-handle' && call.args.length === 1
+      ? `${ctx.ident(call.receiver.name)}.${method}(${ctx.expr(call.args[0]!)})`
+      : undefined,
+  kotlin: (call, ctx) =>
+    call.receiver.type === 'router-handle' && call.args.length === 1
+      ? `${ctx.ident(call.receiver.name)}.${method}(${ctx.expr(call.args[0]!)})`
+      : undefined,
+})
+
 export const routerPlugin: CompilerPlugin = {
   name: '@pyreon/router',
   apiVersion: 2,
   modules: ['@pyreon/router'],
   calls: {
     useNavigate: () => ({ type: 'navigate', payload: { hook: 'navigate' } }),
+    // `const router = useRouter()` → a handle with push / replace / back / forward. Other members of the web Router
+    // (currentRoute, beforeEach, …) have no native counterpart and fail the native build by name.
+    useRouter: () => ({ type: 'router-handle', payload: { hook: 'router-handle' } }),
     useParams: recognizeParams,
     useLoaderData: recognizeLoader,
   },
   patternCalls: { useParams: recognizePattern, useLoaderData: recognizeLoader },
+  memberCalls: { push: handleCall('push'), replace: handleCall('replace') },
   decls: {
     navigate: {
       legacyKind: 'router-hook',
@@ -126,6 +144,13 @@ export const routerPlugin: CompilerPlugin = {
       swift: (decl, ctx) =>
         `private var ${ctx.ident(decl.name)}: (String) -> Void { useNavigate(router: pyreonRouter) }`,
       kotlin: (decl, ctx) => `val ${ctx.ident(decl.name)} = useNavigate()`,
+    },
+    'router-handle': {
+      legacyKind: 'router-hook',
+      usesRouter: true,
+      swift: (decl, ctx) =>
+        `private var ${ctx.ident(decl.name)}: PyreonRouterHandle { useRouter(router: pyreonRouter) }`,
+      kotlin: (decl, ctx) => `val ${ctx.ident(decl.name)} = useRouter()`,
     },
     params: {
       legacyKind: 'router-hook',

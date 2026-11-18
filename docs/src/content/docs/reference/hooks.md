@@ -1620,6 +1620,7 @@ const status = signal<'idle' | 'unlocked' | 'denied'>('idle')
 - Calling `bio.authenticate(...)` WITHOUT `await` inside a plain (non-async) handler — it returns a `Promise<boolean>`, not a boolean, so the gate never applies. Mark the handler `async` and `await` the result (PMTC wraps that async handler in a native `Task`/coroutine scope).
 - Expecting the WEB `authenticate` to actually authenticate — v1 resolves `false` (a real WebAuthn assertion needs a server challenge + a registered credential, out of scope for a client-only hook). For web biometric auth drive the WebAuthn API with your backend; the native paths (Face ID / Touch ID / BiometricPrompt) are the real gate.
 - Treating a `false` result as an error — `authenticate` never rejects; failure, cancellation, and an unavailable / unenrolled device all resolve `false`. Branch on the boolean, do not wrap it in `try/catch`.
+- An Android host that is a plain `ComponentActivity`, or a build without `androidx.biometric:biometric` — BiometricPrompt needs a `FragmentActivity` (the scaffold's `MainActivity` is one) and the library on the classpath. Without the activity, `authenticate` resolves `false` and logs why; without the library the app does not compile.
 
 **See also:** `useNotifications` · `useShare`
 
@@ -1822,6 +1823,8 @@ const open = db.find('notes', 'done', 'false')
 - Storing a number or boolean directly in `fields` — every value is a STRING on every target (native `[String: String]`); serialize (`String(n)`) on write, parse on read
 - Expecting `get`/`find` to be async — the whole point is a SYNCHRONOUS API matching the native container; no `await`, no promise
 - Using this for a real dataset — it is `localStorage`-backed (~5 MB/origin) with a linear-scan `find`, meant for small app-state record sets, not a production database
+- Reading a field with a dot (`rec.fields.title`) in code that also compiles to native — `fields` is a dictionary there (`[String: String]` / `Map<String, String>`), so the dot read does not compile on iOS or Android. Read it by key with a fallback: `rec.fields['title'] ?? ''`
+- Expecting `delete` to return true for an id that is not there — it returns whether a record was removed, on every target; there is no separate `update`, because `insert` with an existing id replaces that record
 
 **See also:** `useSecureStorage` · `useStorage (in @pyreon/storage)`
 
@@ -1833,7 +1836,7 @@ const open = db.find('notes', 'done', 'false')
 () => { lastCrash: string; hadCrash: boolean; recordError(message): void; breadcrumb(message): void; clear(): void; start(): void }
 ```
 
-The web half of the cross-platform crash-reporter container (`PyreonCrashReporter` natively). Captures via `window.onerror` + `unhandledrejection`, persists to `localStorage` (the durable, cross-reload analogue of the native file/Keychain backing), and rehydrates the previous session's report on `start()`. `start()` installs the global-error hooks and is auto-called by the native emit on mount; on web call it once yourself (typically in `onMount`) — or skip it entirely if you only use `recordError` for manual capture. `breadcrumb(message)` maintains a ring buffer capped at 32 entries, attached to the next report. The vendor transport (actually uploading a report) is app-wired via `setCrashTransport`, mirroring the native transport registry — the hook itself only captures + persists, never fakes an upload. SSR-safe: every read returns the empty state and `start()` no-ops without `window`.
+The web half of the cross-platform crash-reporter container (`PyreonCrashReporter` natively). Captures via `window.onerror` + `unhandledrejection`, persists to `localStorage` (the durable, cross-reload analogue of the native file/Keychain backing), and rehydrates the previous session's report on `start()`. `start()` installs the global-error hooks and is auto-called by the native emit on mount; on web call it once yourself (typically in `onMount`) — or skip it entirely if you only use `recordError` for manual capture. `breadcrumb(message)` maintains a ring buffer capped at 32 entries, attached to the next report. The vendor transport (actually uploading a report) is app-wired via `setCrashTransport`, mirroring the native transport registry — the hook itself only captures + persists, never fakes an upload. SSR-safe: every read returns the empty state and `start()` no-ops without `window`. `lastCrash` is a JSON-encoded `CrashReport` with the same shape on every platform (`platform`, `message`, `stack`, `breadcrumbs`, `timestamp`); native reports add the build identity a release stack needs to be read: `build` (`appId`, `version`, `buildNumber`, and on Android `mappingId` — the R8 map id the minified frames name), and on iOS `image` (the executable's LC_UUID, load address, arch) plus the raw return `addresses`. `pyreon-native symbolicate <report.json> --symbols=symbols` uses those to pick the release build's retained R8 `mapping.txt` / dSYM and run `retrace` / `atos`.
 
 **Example**
 
@@ -1852,8 +1855,9 @@ crash.recordError(String(err))
 - Forgetting to call `start()` on web — unlike native (auto-called by the emit), the web half needs an explicit `start()` call (typically in `onMount`) to install the global-error hooks and rehydrate
 - Expecting `recordError`/`breadcrumb` to upload anywhere — capture + persist is all this hook does; wire `setCrashTransport` separately to actually send reports
 - Calling `clear()` before the user has seen `hadCrash` — it wipes both the in-memory state AND the persisted entry, so the banner cannot be shown again after a reload
+- Reading a native release stack as-is — R8 / an iOS release binary make it unreadable by design; keep the release build's `symbols/` directory and run `pyreon-native symbolicate` on the report (a mapping/dSYM from another build is refused, not used)
 
-**See also:** `useOnline`
+**See also:** `useOnline` · `setCrashTransport`
 
 ---
 

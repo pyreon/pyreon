@@ -1,9 +1,9 @@
-import { txt } from '../../factory'
+import { tones, txt } from '../../factory'
 
 const Kbd = txt
   .config({ name: 'Kbd' })
   .attrs({ tag: 'kbd' })
-  .theme((t) => ({
+  .theme((t, m) => ({
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -12,7 +12,7 @@ const Kbd = txt
     fontWeight: t.fontWeight.medium,
     lineHeight: t.lineHeight.small,
     backgroundColor: t.color.system.base[100],
-    color: t.color.system.base[800],
+    color: tones(t, m).text,
     borderRadius: t.borderRadius.small,
     borderWidth: '1px',
     borderStyle: 'solid',

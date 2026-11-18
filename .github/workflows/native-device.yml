@@ -889,6 +889,72 @@ jobs:
             -destination "platform=iOS Simulator,id=${PYREON_SIM_UDID}" \
             -configuration Debug
 
+      # ── Adaptive layout: the iPad lane ──
+      # Every step above runs on ONE iPhone, which can only ever report the
+      # compact horizontal size class. The regular half (useSizeClass reading
+      # `regular`, the Stack↔Inline swap's regular branch, <Split>'s two panes,
+      # the iPad tab bar) needs an iPad. The iPhone is shut down first so only
+      # one simulator runs at a time, then the newest-runtime iPad boots and
+      # the iPad-only tests run by name. They XCTSkip on an iPhone, so the
+      # step also fails if any of them skipped: a skip here would mean the lane
+      # silently ran on the wrong device.
+      - name: iPad lane — regular size class (counter + router-demo)
+        id: uitest-ipad
+        if: >-
+          ${{ env.IOS_APPS == 'all' || contains(format(' {0} ', env.IOS_APPS), ' counter ') || contains(format(' {0} ', env.IOS_APPS), ' router-demo ') }}
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          xcrun simctl shutdown "$PYREON_SIM_UDID" || true
+          PAD=$(xcrun simctl list devices available -j | jq -r '
+            [ .devices | to_entries[]
+              | select(.key | test("SimRuntime\\.iOS-"))
+              | (.key | capture("iOS-(?<maj>[0-9]+)-(?<min>[0-9]+)")) as $v
+              | .value[]
+              | select(.name | startswith("iPad"))
+              | { udid, name, maj: ($v.maj | tonumber), min: ($v.min | tonumber) } ]
+            | sort_by(-.maj, -.min) | first // empty
+            | "\(.udid)\t\(.name)\t\(.maj).\(.min)"')
+          if [ -z "$PAD" ]; then
+            echo "::error::No available iPad simulator on this runner image"
+            exit 1
+          fi
+          IFS=$'\t' read -r PAD_UDID PAD_NAME PAD_OS <<< "$PAD"
+          echo "iPad lane: $PAD_NAME (iOS $PAD_OS) $PAD_UDID"
+          xcrun simctl boot "$PAD_UDID" || true
+          xcrun simctl bootstatus "$PAD_UDID" -b
+          trap 'xcrun simctl shutdown "$PAD_UDID" || true' EXIT
+          run_pad() {
+            local dir="$1" scheme="$2" expected="$3"; shift 3
+            local log; log="$(mktemp)"
+            ( cd "$dir" && xcodebuild test \
+                -parallel-testing-enabled NO \
+                -workspace "$PYREON_IOS_WS" \
+                -derivedDataPath "$PYREON_IOS_DD" \
+                -scheme "$scheme" \
+                -sdk iphonesimulator \
+                -destination "platform=iOS Simulator,id=${PAD_UDID}" \
+                -configuration Debug \
+                -resultBundlePath "$GITHUB_WORKSPACE/.ci-ios-results/ipad-${scheme}.xcresult" \
+                "$@" ) 2>&1 | tee "$log" | grep -E "Test Case .*(passed|failed|skipped)|error:|\*\* TEST" || true
+            local passed skipped
+            passed=$(grep -cE "Test Case .*' passed" "$log" || true)
+            skipped=$(grep -cE "Test Case .*' skipped" "$log" || true)
+            if [ "$passed" -ne "$expected" ] || [ "$skipped" -ne 0 ]; then
+              echo "::error::iPad lane ($scheme): $passed of $expected passed, $skipped skipped"
+              exit 1
+            fi
+          }
+          if [ "$IOS_APPS" = all ] || [[ " $IOS_APPS " == *" counter "* ]]; then
+            run_pad examples/native-counter/ios PyreonCounter 2 \
+              -only-testing:PyreonCounterUITests/PyreonCounterUITests/test_sizeClassReadsRegularOnPad \
+              -only-testing:PyreonCounterUITests/PyreonCounterUITests/test_adaptiveLayoutRendersRegularBranchOnPad
+          fi
+          if [ "$IOS_APPS" = all ] || [[ " $IOS_APPS " == *" router-demo "* ]]; then
+            run_pad examples/native-router-demo/ios PyreonRouterDemo 1 \
+              -only-testing:PyreonRouterDemoUITests/PyreonRouterDemoUITests/test_splitShowsTwoPanesAndTabsMoveToTheTopOnPad
+          fi
+
       - name: Upload iOS test results
         # A selected test step must leave diagnostic evidence, including on failure.
         # Skipped app lanes have no result bundle to upload.
@@ -898,7 +964,8 @@ jobs:
             steps.uitest-counter.outcome == 'success' || steps.uitest-counter.outcome == 'failure' ||
             steps.uitest-finance.outcome == 'success' || steps.uitest-finance.outcome == 'failure' ||
             steps.uitest-router.outcome == 'success' || steps.uitest-router.outcome == 'failure' ||
-            steps.uitest-tasks.outcome == 'success' || steps.uitest-tasks.outcome == 'failure'
+            steps.uitest-tasks.outcome == 'success' || steps.uitest-tasks.outcome == 'failure' ||
+            steps.uitest-ipad.outcome == 'success' || steps.uitest-ipad.outcome == 'failure'
           ) }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -1223,6 +1290,8 @@ jobs:
             gradle -PpyreonReleaseTests connectedCheck --stacktrace
             gradle assembleRelease --stacktrace
             bash ../scripts/release-smoke.sh
+            # The store format: bundleRelease → bundletool --local-testing → split install → the same render check.
+            bash ../scripts/aab-smoke.sh
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
       - name: Assert the release lane tested a minified RELEASE build
         if: env.ANDROID_APPS == 'all' || contains(format(' {0} ', env.ANDROID_APPS), ' todomvc ')
@@ -1328,6 +1397,8 @@ jobs:
           # PRs, with every test already passed. Only reached on success.
           script: |
             gradle connectedCheck --stacktrace
+            # useBiometrics through a real BiometricPrompt: enrols a fingerprint, unlocks with it, rejects another, un-enrols.
+            bash ../scripts/biometric-device-test.sh
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
 
       # Router demo — wires the existing #1455 example into device CI.
@@ -1394,6 +1465,7 @@ jobs:
             nohup bun ../scripts/ws-echo-server.ts > /tmp/ws-echo.log 2>&1 &
             adb reverse tcp:8790 tcp:8790
             gradle connectedCheck --stacktrace
+            bash ../scripts/process-death-android.sh
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
 
       # Tasks showcase — Gap 5 PR-5.3(c) closure on the Android side.

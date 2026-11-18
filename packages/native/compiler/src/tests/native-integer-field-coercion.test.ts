@@ -64,7 +64,7 @@ describe('a whole-valued Double converts into an integer struct field', () => {
     expect(code.match(/\bInt\(/g)).toHaveLength(2)
     expect(code).toContain('c.id = Int(Date().timeIntervalSince1970 * 1000)')
     // An integer value is untouched.
-    expect(code).toContain('Todo(id: todos.count + 1, title: title)')
+    expect(code).toContain('Todo(id: pyreonAdd(todos.count, 1), title: title)')
     expect(warnings).toEqual([])
   })
 

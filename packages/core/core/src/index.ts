@@ -75,6 +75,7 @@ export type {
 } from './jsx-runtime'
 export type { DeferProps } from './defer'
 export { Defer } from './defer'
+export { _childText, _isStructuralChild, _isVNodeLike } from './child-text'
 export { lazy } from './lazy'
 export { onErrorCaptured, onMount, onUnmount, onUpdate } from './lifecycle'
 export { mapArray } from './map-array'

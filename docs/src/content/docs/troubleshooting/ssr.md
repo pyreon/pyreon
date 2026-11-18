@@ -181,6 +181,15 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
 
 ---
 
+### [FIXED, 2026-11] A renderer coercing a child value on its own
+
+(#4386): ten pieces of code turn a child value into text (`mountChild`, `_setChild`, `_setChildAt`, both `_bindText` tiers, the poly text core, `_fuse`, `renderNode`, `streamNode`, `_esc`, hydration), and each had its own rule. `['a', 'b']` rendered `a,b` through the compiled text sinks (`String(array)`, or the DOM's `textContent =` coercion) and `ab` through SSR and `h()`. `true` rendered "true" on the server and nothing in a compiled template, which bakes a literal `{true}` away. `false` at a `_setChildAt` slot rendered "false". A bigint or a `Date` threw a `TypeError` inside `renderElement`. A component's server HTML and client DOM differed in characters, and hydration rewrote the adopted text silently.
+  - One rule in `@pyreon/core` (`child-text.ts`): `_isStructuralChild` (a VNode/NativeItem, a function, or an array holding one at any depth mounts) and `_childText` (everything else is text: booleans and nullish render nothing, arrays concatenate, other objects render `String()`). Every sink calls them; hot paths keep the primitive branch inline and call `_childText` only for an object.
+  - Never hand a non-string to `textContent`/`createTextNode`/`.data` and let the DOM coerce it: happy-dom writes `''` for `textContent = 0`, Chromium writes `"0"`.
+  - Tests: `runtime-dom/src/tests/child-text-parity.test.tsx` (every value kind x every sink, real compiler, fresh mount = `renderToString` = `renderToStream` = hydrated, nothing reported) and its `.browser` twin.
+
+---
+
 ### SSR↔hydration parity bugs are cursor/extent errors; fuzz them
 
 `packages/core/runtime-dom/src/tests/hydration-parity-fuzz.test.tsx` (and `hydration-parity-fuzz-compiled.test.tsx`) hydrate each seeded tree and compare against a fresh client mount: zero mismatches, identical normalized DOM, identical DOM after identical flips, root identity reused, plus a ground-truth fresh mount with flipped values. `PYREON_FUZZ_SEEDS` raises the seed count; CI's count is not a proof.

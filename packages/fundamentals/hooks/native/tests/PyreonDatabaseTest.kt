@@ -2,7 +2,7 @@
 // free `check(...)` harness; runs via `verify-kotlin.ts --service=PyreonDatabase`.
 //
 // Scope: the facade + in-memory backend contract (insert/get/all/delete/find/
-// count, upsert, ordering, idempotent delete, collection isolation). The real
+// count, upsert, ordering, delete's removed flag, collection isolation). The real
 // Room backend is the app's / Android-CI's responsibility.
 
 package com.pyreon.runtime
@@ -46,9 +46,9 @@ fun testDbDelete() {
     check(db.count("todos") == 0L) { "count back to zero" }
 }
 
-fun testDbDeleteAbsentIsIdempotent() {
+fun testDbDeleteAbsentReturnsFalse() {
     val db = PyreonDatabase(InMemoryDatabaseBackend())
-    check(db.delete("todos", "never")) { "delete of absent id is idempotent (true)" }
+    check(!db.delete("todos", "never")) { "delete of an absent id is a no-op that returns false, as on the web" }
 }
 
 fun testDbFind() {
@@ -156,7 +156,8 @@ fun testFileBackendPersistsDeletes() {
         val a = FileDatabaseBackend(dir)
         a.insert("todos", PyreonRecord("1"))
         a.insert("todos", PyreonRecord("2"))
-        a.delete("todos", "1")
+        check(a.delete("todos", "1")) { "file backend: delete of a present id returns true" }
+        check(!a.delete("todos", "1")) { "file backend: delete of an absent id returns false, as on the web" }
 
         val b = FileDatabaseBackend(dir)
         check(b.get("todos", "1") == null) { "deleted record must not come back" }
@@ -244,7 +245,7 @@ fun main() {
     testDbUpsert()
     testDbAllPreservesInsertionOrder()
     testDbDelete()
-    testDbDeleteAbsentIsIdempotent()
+    testDbDeleteAbsentReturnsFalse()
     testDbFind()
     testDbCollectionsAreIsolated()
     testDbFacadeRoutesThroughBackend()
