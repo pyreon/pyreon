@@ -35,6 +35,7 @@ const routes = (): RouteRecord[] => [
 ]
 
 const created: Router[] = []
+
 function make(extra: Partial<Parameters<typeof createRouter>[0] & object> = {}): Router {
   const r = createRouter({ routes: routes(), mode: 'memory', ...extra })
   created.push(r)
@@ -343,9 +344,9 @@ describe('memory mode — RouterLink', () => {
       ),
       root,
     )
-    const a = root.querySelector('#l') as HTMLAnchorElement
-    expect(a.getAttribute('href')).toBe('/user/7')
-    a.click()
+    const a = root.querySelector<HTMLAnchorElement>('#l')
+    expect(a?.getAttribute('href')).toBe('/user/7')
+    a?.click()
     await settle(r)
     expect(path(r)).toBe('/user/7')
     expect(root.querySelector('[data-page]')?.textContent).toBe('user')

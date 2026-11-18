@@ -11,6 +11,7 @@ import type { Router } from '../types'
 // the parts happy-dom stubs.
 
 const page = (name: string) => () => h('p', { 'data-page': name }, name)
+
 const routes = [
   { path: '/', component: page('home') },
   { path: '/a', component: page('a') },

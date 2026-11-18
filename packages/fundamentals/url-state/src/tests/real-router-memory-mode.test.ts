@@ -19,6 +19,7 @@ beforeEach(() => {
   history.replaceState(null, '', '/host?page=9#top')
   setUrlRouter(null)
 })
+
 afterEach(() => {
   setUrlRouter(null)
   dispose?.()

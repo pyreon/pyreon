@@ -648,6 +648,11 @@ export function createRouter<TNames extends string = string>(
   // `!memory`, so a memory router never touches the page it is embedded in —
   // and never becomes `_navOwner`, since it attaches no traversal listener.
   const memory = mode === 'memory'
+  // Whether this router owns the PAGE: its title and its View Transitions.
+  const ownsPage = isClient && !memory
+  // Whether a push / replace scrolls without an explicit `scrollBehavior`. A
+  // memory router's window is usually its host page's, so it does not.
+  const scrollOnPush = scrollBehavior !== undefined || !memory
   // Phase 5 — server-loader data endpoint (single-fetch). Base-prefixed so
   // sub-path deploys hit the right origin path.
   const dataEndpoint = opts.dataEndpoint ?? `${base}/_pyreon/data`
@@ -968,6 +973,7 @@ export function createRouter<TNames extends string = string>(
       .then((status) => {
         if (status === 'cancelled') onCancelled()
       })
+
     return true
   }
 
@@ -1527,7 +1533,7 @@ export function createRouter<TNames extends string = string>(
       memShown = memIdx
 
       // The page's title belongs to the page, not to a memory router in it.
-      if (isClient && !memory && to.meta.title) {
+      if (ownsPage && to.meta.title) {
         document.title = to.meta.title
       }
 
@@ -1575,8 +1581,7 @@ export function createRouter<TNames extends string = string>(
     // Not in memory mode: a view transition snapshots the WHOLE document and
     // skips any other transition in flight — the page router's included.
     const useVT =
-      isClient &&
-      !memory &&
+      ownsPage &&
       !reducedMotion &&
       to.meta.viewTransition !== false &&
       typeof (document as any).startViewTransition === 'function'
@@ -1654,9 +1659,8 @@ export function createRouter<TNames extends string = string>(
     //     (`history.scrollRestoration` stays 'auto'), exactly the pre-pipeline
     //     behavior. With an explicit behavior, native restoration is switched
     //     to 'manual' at router creation so the two never fight.
-    // A memory router scrolls only when `scrollBehavior` is set: the window
-    // it would scroll is usually its host page's.
-    if (isClient && (scrollBehavior !== undefined || (!fromBrowser && !memory))) {
+    // A memory router scrolls only when `scrollBehavior` is set (`scrollOnPush`).
+    if (isClient && (fromBrowser ? scrollBehavior !== undefined : scrollOnPush)) {
       queueMicrotask(() => scrollManager.restore(to, from))
     }
   }
@@ -1723,6 +1727,7 @@ export function createRouter<TNames extends string = string>(
             `[Pyreon Router] mode: 'memory' does not follow the external redirect to "${c.url}" — it would navigate the whole page. Navigation cancelled; call window.location.assign() yourself if leaving the page is intended.`,
           )
         }
+
         return 'cancelled'
       }
       // `isClient` rather than a hand-rolled `typeof window` check: it is the

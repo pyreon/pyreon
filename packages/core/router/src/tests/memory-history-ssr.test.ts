@@ -13,6 +13,7 @@ import { createRouter } from '../router'
 import type { RouteRecord, Router } from '../types'
 
 const Page = () => null
+
 const routes: RouteRecord[] = [
   { path: '/', component: Page },
   { path: '/a', component: Page },
