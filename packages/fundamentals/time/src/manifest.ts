@@ -17,6 +17,7 @@ export default defineManifest({
     rationale:
       'not lowered by PMTC yet: the package is pure computation on strings and numbers (an Instant is epoch milliseconds, exactly how a date is represented natively), so it can become `shared` once the Swift and Kotlin ports of the same functions exist; until then the compiler warns on import rather than miscompiling',
   },
+  peerDeps: ['@pyreon/core', '@pyreon/reactivity'],
   features: [
     'Values are plain data: PlainDate "2026-11-18", PlainTime "14:30", PlainDateTime, PlainYearMonth, Instant (epoch ms)',
     'One function per operation: add, subtract, diff, between, startOf, endOf, compare, min, max, clamp, eachDay, monthGrid',
@@ -131,7 +132,7 @@ endOf('2026-11-18T14:30', 'day')              // => '2026-11-18T23:59:59.999'`,
       kind: 'function',
       signature: '<T extends PlainDate | PlainDateTime | PlainYearMonth | PlainTime | Instant>(a: T, b: T) => -1 | 0 | 1',
       summary:
-        'Order two values of the same shape. Same-length strings compare as plain strings (every field is fixed-width and zero-padded), so the common case is one string comparison; that fast path does not validate. Values written at different precision (`14:30` and `14:30`) are parsed. Usable as an `Array#sort` comparator.',
+        'Order two values of the same shape. Same-length strings compare as plain strings (every field is fixed-width and zero-padded), so the common case is one string comparison; that fast path does not validate. Values written at different precision (`14:30` and `14:30:00`, which compare equal) are parsed. Usable as an `Array#sort` comparator.',
       example: `compare('2026-11-18', '2026-11-19')           // => -1
 compare('14:30', '14:30')                  // => 0
 compare('2026-11-18T14:30', '2026-11-18T14:30:00.001')  // => -1
@@ -503,7 +504,7 @@ isToday(Date.UTC(2026, 10, 18, 23, 30), 'Europe/Prague', Date.UTC(2026, 10, 18, 
       kind: 'function',
       signature: '(target: Instant | PlainDate | PlainDateTime, base: Instant, zone: TimeZone) => { value: number; unit: "second" | "minute" | "hour" | "day" | "week" | "month" | "year" }',
       summary:
-        'How far `target` is from `base`, counted the way a person says it. Under a minute is seconds, under an hour minutes, under 24 hours hours (truncated toward zero). From 24 hours on it is counted by the calendar in `zone`, so yesterday is literally yesterday: under 7 calendar days it is days; then weeks while the calendar month differs by less than one or the distance is under 30 days; then calendar months (up to 11), then calendar years. A PlainDate or PlainDateTime target is a wall-clock value in `zone`. These are the thresholds of `formatRelativeTo` in `@pyreon/format`, ported with its tests, so the same two moments give the same words.',
+        'How far `target` is from `base`, counted the way a person says it. Under a minute is seconds, under an hour minutes, under 24 hours hours (truncated toward zero). From 24 hours on it is counted by the calendar in `zone`, so yesterday is literally yesterday: under 7 calendar days it is days; then weeks while the calendar month differs by less than one or the distance is under 30 days; then calendar months (up to 11), then calendar years. A PlainDateTime target is a wall-clock value in `zone`; a PlainDate target is a DAY, compared as a calendar day in `zone` and never as hours (today, tomorrow, in 3 days). These are the thresholds of `formatRelativeTo` in `@pyreon/format`, ported with its tests, so the same two moments give the same words.',
       example: `relativeDistance(Date.UTC(2026, 10, 18, 11, 58), Date.UTC(2026, 10, 18, 12), 'UTC')  // => { value: -2, unit: 'minute' }
 relativeDistance('2026-11-17', Date.UTC(2026, 10, 18, 23, 59), 'UTC')   // => { value: -1, unit: 'day' }
 relativeDistance('2026-12-20', Date.UTC(2026, 10, 18, 12), 'UTC')       // => { value: 1, unit: 'month' }`,

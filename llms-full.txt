@@ -2212,7 +2212,7 @@ setClock(() => Date.UTC(2026, 10, 18, 12))
 now()                                         // => 1795003200000
 ```
 
-> **Peer dep**: @pyreon/reactivity
+> **Peer deps**: @pyreon/core, @pyreon/reactivity
 >
 > **Server and client**: On a server nothing ticks: `useNow()` returns the plain read, which is the `provideClock` instant when one is provided and `Date.now()` otherwise. Provide the render instant per request and emit it with `clockScript()` or `clockAttributes()`; otherwise a relative time such as "2 sec ago" can differ between the server HTML and the first client render. Capturing the instant automatically at the first read of a request needs a request-scoped store in `@pyreon/runtime-server`, which does not exist yet.
 >
@@ -2220,7 +2220,7 @@ now()                                         // => 1795003200000
 >
 > **Tickers are bounded**: `second` and `minute` tickers are always shared. Up to 16 other tickers (custom intervals and per-zone `hour`/`day` tickers) are shared; a reader beyond that gets a private ticker that is stopped with it.
 >
-> **Peer dependencies**: `@pyreon/reactivity` is required. `@pyreon/core` is an optional peer in the metadata but the `provide*` functions import it, so install it when you use them (every Pyreon app has it). The non-reactive story is to pass a locale, zone or instant explicitly to the core entries of `@pyreon/format` and `@pyreon/time`.
+> **Peer dependencies**: `@pyreon/core` and `@pyreon/reactivity` are both required peers: the entry imports them when it loads, and every Pyreon app has them. The non-reactive story is to pass a locale, zone or instant explicitly to the core entries of `@pyreon/format` and `@pyreon/time`.
 
 ## @pyreon/a11y — Accessibility Primitives
 
@@ -2343,7 +2343,9 @@ parseDate('18. 11. 2026', { locale: 'cs' }) // → "2026-11-18"
 >
 > **Relative time that updates itself**: `useRelativeTime` and `<RelativeTime>` are built on the shared clock of `@pyreon/ambient`: every label shares one timer for the target-relative minute and hour marks and one for seconds; the timers are created by the first reader, stop with the last, and never run on a server. A formatter call (`formatRelativeTo`, `relativeFormatter`) is ONE reading and does not tick. For a server-rendered page emit `clockScript()` (or spread `clockAttributes()`) from `@pyreon/ambient` so the first client render prints what the server printed; the page then updates once to real time.
 >
-> **A date-only target is that day in the display zone**: In relative time a date-only value (`2026-11-18`) is the midnight that starts that day in the display zone, so "yesterday", "today" and "tomorrow" are literally true for a person in that zone and `@pyreon/time`'s `relativeDistance` gives the same words (a shared table of cases is tested in both packages). At 10:00 on the 18th it is "10 hours ago", not "today": a date-only value has no time of day, and under 24 hours the distance is elapsed time. Two date-only values compare as calendar days.
+> **A date-only target is that day in the display zone**: In relative time a date-only value (`2026-11-18`) is a DAY, not a moment: it is compared as a calendar day in the display zone and never as hours, so "yesterday", "today", "tomorrow" and "in 3 days" are literally true for a person in that zone at any hour (`2026-11-18` at 10:00 on the 18th is "today", not "10 hours ago"). `@pyreon/time`'s `relativeDistance` gives the same words (a shared table of cases is tested in both packages). A date-time without a zone is a moment: under 24 hours it is elapsed time. Two date-only values compare as calendar days.
+>
+> **Spaces in output are non-breaking and thin spaces**: Intl writes U+00A0, U+2009 and U+202F where a plain space would sit: `formatDateRange` puts U+2009 around the en dash, `formatTime` writes U+202F before PM, Czech and French group digits with U+00A0 and U+202F. The examples in this documentation show them as plain spaces so they stay readable. Compare with `===` only against the platform's own output from the same process (`new Intl.DateTimeFormat(locale, options).formatRange(a, b)`), never against a typed literal; to see them in a failing test message, `text.replace(/[\u00a0\u2009\u202f]/g, '·')`.
 >
 > **Engines differ in CLDR data**: Intl output is CLDR data and V8, JavaScriptCore and ICU versions differ (for example a narrow no-break space before PM). For SSR, pass the same locale and time zone on both sides; the hydration test in this package runs real Chromium against Node-rendered markup shape, not byte equality across ICU versions.
 >
@@ -2797,6 +2799,8 @@ toPlainDateTime(t, 'Europe/Prague')                 // => '2026-03-29T03:30'
 offsetAt(t, 'Europe/Prague')                        // => 120
 ```
 
+> **Peer deps**: @pyreon/core, @pyreon/reactivity
+>
 > **Accepted ISO forms**: PlainDate `YYYY-MM-DD` (year 0001-9999, a real day); PlainYearMonth `YYYY-MM`; PlainTime `HH:MM`, `HH:MM:SS` or `HH:MM:SS.f` to `.fff` (hour 00-23, second 00-59, no `24:00`, no leap second); PlainDateTime a PlainDate, an upper-case `T`, a PlainTime. No offsets or zone names, no lower-case `t`, no space separator, no unpadded fields: `isPlainDate("2026-2-3")` is false. Temporal accepts more; this package is strict so a value is always canonical and `compare` can be a string comparison. `parseInstant` is the one parser for timestamps with an offset.
 >
 > **Throws versus returns**: The `isPlain*` guards, `isTimeZone`, `parseInstant` and `parseISO` never throw. Every other function throws a `[Pyreon]` error on a value of the wrong shape (validate user input with a guard first), an unknown unit or zone, a mixed-sign duration, or a result outside years 0001-9999. Rendering code that must not throw belongs behind a guard or in `@pyreon/format`.

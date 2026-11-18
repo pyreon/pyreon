@@ -40,7 +40,7 @@ yarn add @pyreon/format
 
 :::
 
-`@pyreon/core` and `@pyreon/reactivity` are peer dependencies of the reactive entry and the components. `@pyreon/ambient` (the locale, time zone and clock) is a regular dependency and installs with it. The `/core` entry needs none of them.
+`@pyreon/core` and `@pyreon/reactivity` are REQUIRED peer dependencies of the reactive entry and the components (they import them when they load; every Pyreon app has both): `npm install @pyreon/format @pyreon/core @pyreon/reactivity`. The `/core` entry imports no `@pyreon/*` package, so a project that uses only `@pyreon/format/core` needs neither. `@pyreon/ambient` (the locale, time zone and clock) is a regular dependency and installs with the reactive entry.
 
 ## Quick start
 
@@ -66,7 +66,7 @@ setLocale('de') // every binding above re-renders in German
 | --- | --- | --- |
 | `@pyreon/format/core` | nothing | Every formatter and parser as a pure function. Locale and time zone come from the options; the default is the runtime's. No `@pyreon/*` import. |
 | `@pyreon/format` | `@pyreon/core`, `@pyreon/reactivity`, `@pyreon/ambient` | The same names, defaulting to the active locale and zone. Adds the locale API (re-exported from `@pyreon/ambient`) and `useRelativeTime`. |
-| `@pyreon/format/components` | `@pyreon/core`, `@pyreon/ambient` | `<Num>`, `<DateTime>` and `<RelativeTime>`. |
+| `@pyreon/format/components` | `@pyreon/core`, `@pyreon/reactivity`, `@pyreon/ambient` | `<Num>`, `<DateTime>` and `<RelativeTime>`. |
 
 Every function is individually tree-shakeable (`sideEffects: false`, nothing runs on import).
 
@@ -227,18 +227,19 @@ formatRelativeTo('2025-12-15', '2026-12-20', { locale: 'en-US' })               
 formatRelativeTo('2026-10-22', '2026-11-18', { locale: 'en-US' })                                       // → "3 weeks ago"
 ```
 
-### A date-only target is that day in the display zone
+### A date-only target is a day
 
-In relative time a date-only value (`2026-11-18`) is the midnight that starts that day **in the display zone**, not UTC midnight. Seen from far from UTC the old reading was wrong by hours or a whole day (at 10:00 in Tokyo on the 18th the date was "1 hour ago"; at midnight on the 19th in Kiritimati it was "10 hours ago" although the 18th was already yesterday). With the day in the zone, "yesterday", "today" and "tomorrow" are literally true for the person reading, and `@pyreon/time`'s `relativeDistance` gives the same words: both packages test the same table of cases.
+In relative time a date-only value (`2026-11-18`) names a **day**, not a moment. It is compared as a calendar day in the display zone and never reads as hours, so "today", "tomorrow", "yesterday" and "in 3 days" are literally true for the person reading, at any hour. At 10:00 in Tokyo on the 18th, `2026-11-18` is "today", not "10 hours ago" (and not the "1 hour ago" that reading it as UTC midnight gave). `@pyreon/time`'s `relativeDistance` gives the same words: both packages test the same table of cases.
 
 ```ts
-formatRelativeTo('2026-11-18', '2026-11-18T01:00:00Z', { locale: 'en-US', timeZone: 'Asia/Tokyo' }) // → "10 hours ago"
+formatRelativeTo('2026-11-18', '2026-11-18T01:00:00Z', { locale: 'en-US', timeZone: 'Asia/Tokyo' }) // → "today"
 formatRelativeTo('2026-11-18', '2026-11-18T10:00:00Z', { locale: 'en-US', timeZone: 'Pacific/Kiritimati' }) // → "yesterday"
-formatRelativeTo('2026-11-18', '2026-11-17T20:00:00Z', { locale: 'en-US', timeZone: 'America/Los_Angeles' }) // → "in 12 hours"
+formatRelativeTo('2026-11-18', '2026-11-17T20:00:00Z', { locale: 'en-US', timeZone: 'America/Los_Angeles' }) // → "tomorrow"
+formatRelativeTo('2026-11-21', '2026-11-18T12:00:00Z', { locale: 'en-US', timeZone: 'UTC' }) // → "in 3 days"
 formatRelativeTo('2026-11-17', '2026-11-18', { locale: 'en-US' }) // → "yesterday"
 ```
 
-Under 24 hours the distance is still elapsed time, so a date-only value seen at 10:00 on its own day is "10 hours ago", not "today": it has no time of day to count from. Two date-only values compare as calendar days.
+A date-time (`2026-11-18T00:00:00Z`, a moment) keeps the elapsed-time tiers: under 24 hours it is minutes or hours. Two date-only values compare as calendar days.
 
 ### Reversed ranges
 
@@ -461,14 +462,17 @@ f.date('2026-11-18', 'long')   // "18. listopadu 2026"
 ## Components
 
 ```tsx
+import { dateFormatter } from '@pyreon/format'
 import { Num, DateTime, RelativeTime } from '@pyreon/format/components'
 
-<Num value={total()} kind="currency" currency="EUR" />
-<Num value={total()} format={price} />
-<Num value={9.99} format={price} parts={{ currency: (text) => <sup>{text}</sup> }} />
-<DateTime value="2026-11-18" kind="date" format="long" />
-<DateTime value="2026-11-18" format={dateFormatter('long')} parts={{ month: (t) => <b>{t}</b> }} />
-<RelativeTime value={comment.createdAt} threshold={{ after: { days: 7 } }} />
+<>
+  <Num value={total()} kind="currency" currency="EUR" />
+  <Num value={total()} format={price} />
+  <Num value={9.99} format={price} parts={{ currency: (text) => <sup>{text}</sup> }} />
+  <DateTime value="2026-11-18" kind="date" format="long" />
+  <DateTime value="2026-11-18" format={dateFormatter('long')} parts={{ month: (t) => <b>{t}</b> }} />
+  <RelativeTime value={comment.createdAt} threshold={{ after: { days: 7 } }} />
+</>
 ```
 
 `<Num>` renders reactive text with no wrapper element. `kind` is `number` (default), `currency`, `percent`, `compact`, `unit` or `bytes`. Pass a built formatter as `format` and it replaces `kind`, `options`, `locale` and `fallback`: configure those on the formatter. `parts` wraps parts of the output (the keys are the `Intl` part types, typed per component): a part without a wrapper stays plain text, and the plain parts between wrapped ones are joined into one text node, so the server HTML and the client agree and hydration adopts it.
@@ -490,7 +494,7 @@ import { RelativeTime } from '@pyreon/format/components'
 function Comment(props: { comment: Comment }) {
   const ago = useRelativeTime(() => props.comment.createdAt)
 
-  return <span>{ago}</span> // "just now", "3 minutes ago", "yesterday" ... changes by itself
+  return <span>{ago}</span> // "now", "30 seconds ago", "3 minutes ago", "yesterday" ... changes by itself
 }
 
 <RelativeTime value={comment.createdAt} />
@@ -520,7 +524,7 @@ old() // → "Jan 5, 2020"
 - **Comment timestamps.** `<RelativeTime value={comment.createdAt} threshold={{ after: { days: 7 } }} />`: relative for a week, then the date, one pair of timers for the whole thread.
 - **An "Updated just now" badge.** `<RelativeTime value={doc.savedAt} />` reads "now" for the first second, then "5 seconds ago" on the shared second timer, and flips to "1 minute ago" exactly when the save is a minute old. Wrap it for the wording around it: `<span>Saved <RelativeTime value={doc.savedAt} /></span>`.
 - **The exact time on hover.** `<RelativeTime>` sets `title` to the full date and time (with the zone name for an instant) and `datetime` to the machine value; pass your own `title` to replace it.
-- **A due date.** `<RelativeTime value="2026-11-20" numeric="always" />` counts the calendar in the display zone: "in 2 days", then from the day before "tomorrow", and from midnight on the day itself "in 3 hours".
+- **A due date.** `<RelativeTime value="2026-11-20" />` is a day: "in 2 days" from the 18th, "tomorrow" from the whole of the 19th, "today" on the day itself and "yesterday" the day after, at any hour in the display zone, and it changes at local midnight.
 
 ### Server rendering
 
@@ -656,6 +660,19 @@ The call here that does the same job as the one you know. The result column is w
 | Moment: `moment('18.11.2026', 'DD.MM.YYYY')` | `parseDate('18.11.2026', { locale: 'cs' })` | `"2026-11-18"` |
 
 Differences worth knowing: `toLocaleString` and `new Intl.*Format` take the locale once, where these follow the active locale and re-render on `setLocale`; moment, Day.js and date-fns format a `Date` in the local zone, where a date-only string here is a calendar date that never shifts; `numeral` and `pretty-bytes` print English patterns, where these use the locale's own number and unit patterns; the English long date-time pattern in CLDR reads "November 18, 2026 at 2:30 PM", where Day.js and moment templates print no "at".
+
+## Spaces in output
+
+`Intl` writes non-breaking and thin spaces where a plain space would sit: `formatDateRange` puts U+2009 around the en dash (`Nov 12 – 15, 2026`), `formatTime('14:30')` writes U+202F before `PM`, and Czech or French group digits with U+00A0 or U+202F. The examples on this page show them as plain spaces so they stay readable; the real strings contain the others.
+
+Compare with `===` only against the platform's own output from the same process, never against a typed literal:
+
+```ts
+const text = formatDateRange('2026-11-12', '2026-11-15', { locale: 'en-US' })
+text === new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeZone: 'UTC' }).formatRange(new Date('2026-11-12'), new Date('2026-11-15')) // → true
+```
+
+To see them in a failing test message, map them to a visible mark: `text.replace(/[\u00a0\u2009\u202f]/g, '·')`. Do not normalise them away in the code that renders text: they keep a number and its unit, or a time and its `PM`, on one line.
 
 ## Never throws on data
 

@@ -7,7 +7,7 @@ description: "The ambient values every formatted thing depends on: locale, time 
 
 The values that formatting, dates and translations all read but none of them owns: the active locale, the active time zone and the clock. Each has an app default (`setLocale`, `setTimeZone`, `setClock`), a subtree scope that is request-scoped on a server (`provideLocale`, `provideTimeZone`, `provideClock`), and a reactive read. `useNow` is the reactive clock: one shared ticker per granularity, aligned to the wall-clock boundary (local hour and midnight in the active zone, exact on 23- and 25-hour days), refcounted, paused while the page is hidden, and never created on a server or at import. A server-to-client hand-over (`clockScript`) makes the first client render read the instant the server rendered at, so relative times hydrate without a mismatch. Most apps reach it through `@pyreon/format`, `@pyreon/time`, `@pyreon/i18n` or `@pyreon/zero`; the non-reactive story is to pass options explicitly to those packages' core entries.
 
-> **Peer dependencies:** `@pyreon/reactivity` — install alongside this package.
+> **Peer dependencies:** `@pyreon/core`, `@pyreon/reactivity` — install alongside this package.
 
 ## Multiplatform
 
@@ -399,4 +399,4 @@ const o: ClockScriptOptions = { nonce: 'abc' }
 
 > **Tickers are bounded:** `second` and `minute` tickers are always shared. Up to 16 other tickers (custom intervals and per-zone `hour`/`day` tickers) are shared; a reader beyond that gets a private ticker that is stopped with it.
 
-> **Peer dependencies:** `@pyreon/reactivity` is required. `@pyreon/core` is an optional peer in the metadata but the `provide*` functions import it, so install it when you use them (every Pyreon app has it). The non-reactive story is to pass a locale, zone or instant explicitly to the core entries of `@pyreon/format` and `@pyreon/time`.
+> **Peer dependencies:** `@pyreon/core` and `@pyreon/reactivity` are both required peers: the entry imports them when it loads, and every Pyreon app has them. The non-reactive story is to pass a locale, zone or instant explicitly to the core entries of `@pyreon/format` and `@pyreon/time`.

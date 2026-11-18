@@ -31,7 +31,7 @@ yarn add @pyreon/ambient
 
 :::
 
-Peer dependencies: `@pyreon/reactivity`, and `@pyreon/core` for the `provide*` functions (every Pyreon app has both). There is no non-reactive entry: the non-reactive story is to pass a locale, zone or instant explicitly to the core entries of `@pyreon/format` and `@pyreon/time`.
+Peer dependencies: `@pyreon/core` and `@pyreon/reactivity`, both required (the entry imports them when it loads; every Pyreon app has both). Install them with it: `npm install @pyreon/ambient @pyreon/core @pyreon/reactivity`. There is no non-reactive entry: the non-reactive story is to pass a locale, zone or instant explicitly to the core entries of `@pyreon/format` and `@pyreon/time`.
 
 ## Locale and time zone
 
