@@ -69,6 +69,7 @@ import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
 import {
+  _holdTplDeferral,
   _setHydrationActive,
   _setSlotHydrator,
   _takeParkedRange,
@@ -2163,10 +2164,16 @@ function hydrateComponent(
     const endMarker = startMarker ? findMatchingAsyncEnd(startMarker) : null
     const rangeStart = startMarker ? startMarker.nextSibling : null
 
+    // The body's code after an `await` builds its templates once the walk
+    // has ended; keep `_tpl` deferring until the `.then` below has hydrated
+    // them against the range (#4353). Released on every settle path and on
+    // unmount.
+    let releaseDeferral: () => void = noop
     if (startMarker && endMarker) {
       // Advance the parent's DOM cursor PAST the end marker — synchronous,
       // so the parent's hydration loop continues normally for siblings.
       nextDom = endMarker.nextSibling
+      releaseDeferral = _holdTplDeferral()
     } else {
       // Markers missing — fall back to "do not touch SSR DOM" behaviour.
       if (process.env.NODE_ENV !== 'production') {
@@ -2183,7 +2190,10 @@ function hydrateComponent(
     output
       .then((resolved) => {
         if (cancelled) return
-        if (resolved == null) return
+        if (resolved == null) {
+          releaseDeferral()
+          return
+        }
         if (!startMarker || !endMarker) return
         try {
           // Hydrate the resolved subtree against the SSR DOM range.
@@ -2207,6 +2217,7 @@ function hydrateComponent(
             resolvedCleanup = childCleanup
           } finally {
             setHydrating(prev)
+            releaseDeferral()
           }
         } catch (err) {
           const handled = dispatchToErrorBoundary(err)
@@ -2219,6 +2230,7 @@ function hydrateComponent(
         }
       })
       .catch((err) => {
+        releaseDeferral()
         if (cancelled) return
         const handled = dispatchToErrorBoundary(err)
         if (!handled && process.env.NODE_ENV !== 'production') {
@@ -2235,6 +2247,7 @@ function hydrateComponent(
 
     subtreeCleanup = () => {
       cancelled = true
+      releaseDeferral()
       resolvedCleanup()
       // Remove the SSR markers themselves on unmount so re-mount doesn't
       // confuse the walker. The DOM range between them is owned by the
