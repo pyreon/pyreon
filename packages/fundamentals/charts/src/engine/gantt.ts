@@ -136,7 +136,6 @@ function ganttUnitFor(spanDays: Double): 'day' | 'week' | 'month' | 'quarter' | 
   if (spanDays <= 120.0) return 'week'
   if (spanDays <= 730.0) return 'month'
   if (spanDays <= 3000.0) return 'quarter'
-
   return 'year'
 }
 
@@ -146,7 +145,6 @@ function ganttUnitDays(unit: 'day' | 'week' | 'month' | 'quarter' | 'year'): Dou
   if (unit === 'week') return 7.0
   if (unit === 'month') return 30.0
   if (unit === 'quarter') return 91.0
-
   return 365.0
 }
 
@@ -158,7 +156,6 @@ function ganttMonthName(month: Double): string {
     mi = mi + 1
     miF = miF + 1.0
   }
-
   return GANTT_MONTHS[mi]!
 }
 
@@ -176,7 +173,6 @@ function ganttAlignStart(lo: Double, unit: 'day' | 'week' | 'month' | 'quarter' 
     const off = c.month - 1.0
     return daysFromCivil(c.year, c.month - (off - Math.floor(off / 3.0) * 3.0), 1.0)
   }
-
   return daysFromCivil(c.year, 1.0, 1.0)
 }
 
@@ -187,7 +183,6 @@ function ganttNextTick(t: Double, unit: 'day' | 'week' | 'month' | 'quarter' | '
   const c = civilFromDays(t)
   if (unit === 'month') return c.month >= 12.0 ? daysFromCivil(c.year + 1.0, 1.0, 1.0) : daysFromCivil(c.year, c.month + 1.0, 1.0)
   if (unit === 'quarter') return c.month >= 10.0 ? daysFromCivil(c.year + 1.0, c.month - 9.0, 1.0) : daysFromCivil(c.year, c.month + 3.0, 1.0)
-
   return daysFromCivil(c.year + 1.0, 1.0, 1.0)
 }
 
@@ -215,7 +210,6 @@ export function ganttTicks(lo: Double, hi: Double, unit: 'day' | 'week' | 'month
     }
     t = ganttNextTick(t, unit)
   }
-
   return out
 }
 
@@ -394,7 +388,6 @@ export function layoutGantt(tasks: GanttTask[], box: Rect, options?: GanttOption
     if (labelShown) prevEnd = tickLabelX + lw
     ticks.push({ at: t.at, x: tx, label: t.label, labelX: tickLabelX, labelShown })
   }
-
   return {
     rows,
     lanes,
@@ -458,7 +451,6 @@ export function renderGantt(layout: GanttLayout, options?: GanttOptions): DrawCm
   if (layout.hasToday) {
     out.push({ kind: 'line', from: { x: layout.todayX, y: layout.axis.y }, to: { x: layout.todayX, y: plotBottom }, stroke: options?.todayColor ?? '#dc2626', width: 1.5, dash: [4.0, 3.0] })
   }
-
   return out
 }
 
@@ -476,7 +468,6 @@ export function hitGanttIndex(layout: GanttLayout, px: Double, py: Double): numb
     const b = layout.rows[i]!.band
     if (px >= layout.plot.x && py >= b.y && py <= b.y + b.h) hit = i
   }
-
   return hit
 }
 

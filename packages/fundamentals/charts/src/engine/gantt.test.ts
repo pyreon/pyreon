@@ -11,7 +11,6 @@ const tasks: GanttTask[] = [
   { id: 'b', name: 'Build', start: '2024-03-08', end: '2024-03-24', dependencies: ['a'], group: 'Phase 1' },
   { id: 'c', name: 'Launch', start: '2024-03-25', milestone: true, dependencies: ['b'], group: 'Phase 2' },
 ]
-
 const box = { x: 0, y: 0, w: 600, h: 200 }
 
 describe('layoutGantt', () => {
