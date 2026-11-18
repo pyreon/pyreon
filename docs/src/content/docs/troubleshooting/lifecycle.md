@@ -83,6 +83,12 @@ Solid-compat's `onCleanup` always meant "component unmount", so a cleanup regist
 
 ---
 
+### Side indexes and guards that outlive the entries they describe (Class C)
+
+The ISR memory store capped its cache at `maxEntries` but its tag index only grew (`setTags` added; `delete()` and LRU eviction never pruned), `createFsStore`'s `_tags.json` likewise, and `createISRHandler` kept one invalidation epoch per key EVER passed to `revalidateNow`, though an epoch only guards a render in flight. Rules: every index keyed by a cached entry is pruned on EVERY path that removes the entry (delete, eviction, clear), via a reverse key → index map; a guard for in-flight work lives exactly as long as that work (refcounted ticket, released in `finally`); a read-only lookup must not refresh LRU order. Reference: `packages/zero/zero/src/isr.ts` (`createMemoryStore`, `createFsStore`, `_beginRender`/`_endRender`); locked by `isr-store-bounds.test.ts`, which also caught `revalidateAll` missing a cold render in flight.
+
+---
+
 ### Two sources suspending one timer through one shared flag
 
 `<Toaster>` paused auto-dismiss on hover and focus through a single `_paused` boolean, so `mouseleave` cleared a keyboard user's focus hold and the toast dismissed under them. Key holds by source identity (`'hover' | 'focus' | 'hidden'`), release individually, restart the clock only when the set is empty. Do not use a depth counter: removing a focused element need not fire `focusout`, so a count can stick above zero and freeze every later toast, while a stranded `'focus'` hold is cleared by the next `focusout`. Pause while the tab is hidden (`visibilitychange`), make the handler idempotent against its own last-known state, read `document.visibilityState` at setup, and release a held hold in `onCleanup`. `document.visibilityState` is read-only in a real browser, so the spec redefines it — read it back before asserting. Reference: `packages/fundamentals/toast/src/toast.ts` (`PauseSource`, `_pauseHolds`) + `toaster.tsx` (`syncVisibility`); `tests/pause-sources.test.ts` + `tests/toaster.browser.test.tsx`.
