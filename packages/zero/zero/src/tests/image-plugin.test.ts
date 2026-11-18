@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   generatePlaceholder,
-  normalizePlaceholder,
+  resolvePlaceholder,
   parseJpegDimensions,
   parseWebPDimensions,
   resolveQuality,
@@ -164,17 +164,18 @@ describe('resolveQuality', () => {
   })
 })
 
-describe('normalizePlaceholder', () => {
+describe('resolvePlaceholder', () => {
   it('passes blur / color / none through unchanged', () => {
-    expect(normalizePlaceholder('blur')).toBe('blur')
-    expect(normalizePlaceholder('color')).toBe('color')
-    expect(normalizePlaceholder('none')).toBe('none')
+    expect(resolvePlaceholder('blur')).toBe('blur')
+    expect(resolvePlaceholder('color')).toBe('color')
+    expect(resolvePlaceholder('none')).toBe('none')
   })
 
-  it('maps the deprecated dominant-color alias to color', () => {
-    // dominant-color was typed since the plugin's inception but never
-    // implemented — this alias is what closes that gap.
-    expect(normalizePlaceholder('dominant-color')).toBe('color')
+  it('throws on an unknown strategy instead of silently falling back to blur', () => {
+    // The removed `'dominant-color'` alias is the realistic JS-config case.
+    expect(() => resolvePlaceholder('dominant-color' as never)).toThrow(
+      /unknown placeholder strategy "dominant-color"/,
+    )
   })
 })
 

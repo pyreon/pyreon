@@ -13,6 +13,7 @@
  * never imports `@pyreon/validation`.
  */
 
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { FormFieldEncoding, FormFields, FormScalar, MultipartFields } from './body'
 
 /** HTTP methods the client can issue. Mirrors zero's `HttpMethod`. */
@@ -127,23 +128,6 @@ export type ErrorSchemas = Readonly<Record<string | number, Validator<unknown>>>
 export type ParseFn<T> = (raw: unknown) => T
 
 /**
- * Structural shape of a Standard Schema (`~standard`) — Tier 2.
- *
- * Declared structurally ON PURPOSE: it is a TYPE, so it is erased and the
- * core keeps its zero-dependency guarantee. The RUNTIME half (detecting +
- * invoking `~standard.validate`) lives in the separate `@pyreon/http/schema`
- * entry, which may depend on `@pyreon/validation`.
- */
-export interface StandardSchemaShape<Output = unknown> {
-  readonly '~standard': {
-    readonly version: 1
-    readonly vendor: string
-    readonly validate: (value: unknown) => unknown
-    readonly types?: { readonly output: Output } | undefined
-  }
-}
-
-/**
  * Recover the output type from the `validate` RETURN.
  *
  * The `~standard.types` phantom is OPTIONAL in the spec, and
@@ -216,7 +200,13 @@ export type ValidatorOutput<V> =
  */
 export type Validator<T> =
   | ParseFn<T>
-  | StandardSchemaShape<T>
+  /**
+   * A Standard Schema (Tier 2) — the official `@standard-schema/spec` type.
+   * That package is types-only, so the core keeps zero runtime dependencies;
+   * the RUNTIME half (detecting + invoking `~standard.validate`) lives in the
+   * separate `@pyreon/http/schema` entry.
+   */
+  | StandardSchemaV1<unknown, T>
   /**
    * A `@pyreon/validation` typed adapter — `zodSchema(...)` et al.
    * `parse` is OPTIONAL on `TypedSchemaAdapter` (only the sync-parse

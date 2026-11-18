@@ -72,7 +72,7 @@ const theme = enrichTheme({ colors: { primary: "#3b82f6" } })
 // mode="system" auto-detects OS dark mode via prefers-color-scheme
 // inversed flips the resolved mode (light↔dark)`,
       mistakes: [
-        'Using `ThemeProvider` + `ModeProvider` + `ConfigProvider` separately — `PyreonUI` is the single replacement covering all three',
+        'Hand-wiring the theme, mode and config contexts separately — `PyreonUI` is the single provider covering all three',
         'Flipping `init({ cssVariables })` after the first render — the switch is a boot-time contract; theme-resolution caches across the ui-system assume it does not change mid-session',
         'Expecting `mode(a, b)` pairs with NUMBER values to unit-convert under `cssVariables` — pairs are emitted verbatim into CSS custom properties; pass unit-complete strings',
         'Forgetting `enrichTheme()` — raw theme objects miss default breakpoints / spacing / unit utilities',

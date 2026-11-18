@@ -7,11 +7,12 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import type { Codemod } from './types'
+import { zeroPlaceholderColor } from './zero-placeholder-color'
 import { zeroRemoveViteOption } from './zero-remove-vite-option'
 
 export type { Codemod } from './types'
 
-export const CODEMODS: readonly Codemod[] = [zeroRemoveViteOption]
+export const CODEMODS: readonly Codemod[] = [zeroRemoveViteOption, zeroPlaceholderColor]
 
 function versionKey(v: string): number[] {
   return (/^(\d+)\.(\d+)\.(\d+)/.exec(v) ?? [0, 0, 0, 0]).slice(1).map(Number)
