@@ -1,4 +1,4 @@
-import { disabledState, el, focusRing, focusRingTone, solidFill, tintText } from '../../factory'
+import { disabledState, el, focusRing, focusRingTone, solidFill, tintText, tones } from '../../factory'
 
 const ActionIcon = el
   .config({ name: 'ActionIcon' })
@@ -22,11 +22,11 @@ const ActionIcon = el
     },
     disabled: { ...disabledState(), pointerEvents: 'none' },
   }))
-  .states((t) => ({
+  .states((t, m) => ({
     primary: solidFill(t, 'primary'),
     secondary: {
       backgroundColor: t.color.system.base[100],
-      color: t.color.system.base[700],
+      color: tones(t, m).text,
       hover: {
         backgroundColor: t.color.system.base[200],
       },
@@ -62,11 +62,11 @@ const ActionIcon = el
     },
     transparent: {
       backgroundColor: t.color.system.transparent,
-      color: t.color.system.base[500],
+      color: tones(t, m).textMuted,
       hover: {
         backgroundColor: t.color.system.base[100],
 
-        color: t.color.system.dark.base,
+        color: tones(t, m).text,
       },
     },
   }))
