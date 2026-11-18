@@ -1,6 +1,6 @@
 // Plot-area layout and per-mark geometry.
 
-import { barSlot, isFiniteNumber, makeTicks, scaleLinear } from './scale'
+import { barThickness, isFiniteNumber, makeTicks, scaleLinear } from './scale'
 import { logViewTicks, timeTicks } from './scale-extra'
 import type { Formatter } from './format'
 import type { Domain, MeasureText, Pt, Rect, Tick, Double } from './types'
@@ -468,7 +468,7 @@ export function layoutBars(
   if (n === 0) return out
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.w / n
-  const bw = barSlot(band * (1.0 - ratio), 1.0, barWidth).bar
+  const bw = barThickness(band * (1.0 - ratio), 1.0, 0.0, barWidth)
   // Bars are measured from the axis zero line when the domain straddles zero,
   // so a negative value draws downward from it rather than up from the floor.
   const zero = yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min
@@ -599,7 +599,7 @@ export function layoutBarsH(
   if (n === 0) return out
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.h / n
-  const bh = barSlot(band * (1.0 - ratio), 1.0, barWidth).bar
+  const bh = barThickness(band * (1.0 - ratio), 1.0, 0.0, barWidth)
   const zero = vDomain.min < 0.0 && vDomain.max > 0.0 ? 0.0 : vDomain.min
   const zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
   for (let i = 0; i < n; i++) {

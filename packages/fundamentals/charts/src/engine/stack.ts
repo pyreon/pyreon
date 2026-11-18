@@ -4,7 +4,7 @@
 // a category axis and wrong for a scatter plot — there, x is a measured value
 // like y, and pretending otherwise silently redraws the data.
 
-import { barSlot, isFiniteNumber, scaleLinear } from './scale'
+import { barThickness, isFiniteNumber, scaleLinear } from './scale'
 import type { Domain, Double, Pt, Rect } from './types'
 
 /** One band's worth of stacked segments, bottom to top. */
@@ -100,7 +100,7 @@ export function layoutStackLevels(levels: StackLevels, values: Double[][], plot:
   if (n === 0) return out
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.w / countOf(n)
-  const bw = barSlot(band * (1.0 - ratio), 1.0, barWidth).bar
+  const bw = barThickness(band * (1.0 - ratio), 1.0, 0.0, barWidth)
   let fi = 0.0
   for (let i = 0; i < n; i++) {
     for (let s = 0; s < levels.tops.length; s++) {
@@ -132,7 +132,7 @@ export function layoutStackLevelsH(levels: StackLevels, values: Double[][], plot
   if (n === 0) return out
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.h / countOf(n)
-  const bh = barSlot(band * (1.0 - ratio), 1.0, barWidth).bar
+  const bh = barThickness(band * (1.0 - ratio), 1.0, 0.0, barWidth)
   let fi = 0.0
   for (let i = 0; i < n; i++) {
     for (let s = 0; s < levels.tops.length; s++) {
@@ -209,15 +209,14 @@ export function layoutGroupedBarsH(
 
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.h / n
-  const slotH = barSlot(band * (1.0 - ratio), countOf(k), barWidth, barGap)
-  const barH = slotH.bar
-  const groupH = slotH.group
-  const pitchH = slotH.pitch
+  const gapH = Math.max(0.0, barGap ?? 0.0)
+  const barH = barThickness(band * (1.0 - ratio), countOf(k), gapH, barWidth)
+  const pitchH = barH * (1.0 + gapH)
   const zero = vDomain.min < 0.0 && vDomain.max > 0.0 ? 0.0 : vDomain.min
   const zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
 
   for (let i = 0; i < n; i++) {
-    const gy = plot.y + band * i + (band - groupH) / 2.0
+    const gy = plot.y + band * i + (band - (barH + pitchH * (countOf(k) - 1.0))) / 2.0
     for (let s = 0; s < k; s++) {
       const raw = seriesValues[s]![i] ?? 0.0
       // A gap draws a zero-width bar at the zero line — nothing to see, nothing to hit.
@@ -269,15 +268,14 @@ export function layoutGroupedBars(
 
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.w / n
-  const slotW = barSlot(band * (1.0 - ratio), countOf(k), barWidth, barGap)
-  const barW = slotW.bar
-  const groupW = slotW.group
-  const pitchW = slotW.pitch
+  const gapW = Math.max(0.0, barGap ?? 0.0)
+  const barW = barThickness(band * (1.0 - ratio), countOf(k), gapW, barWidth)
+  const pitchW = barW * (1.0 + gapW)
   const zero = yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min
   const zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
 
   for (let i = 0; i < n; i++) {
-    const gx = plot.x + band * i + (band - groupW) / 2.0
+    const gx = plot.x + band * i + (band - (barW + pitchW * (countOf(k) - 1.0))) / 2.0
     for (let s = 0; s < k; s++) {
       const raw = seriesValues[s]![i] ?? 0.0
       // A gap draws a zero-height bar at the zero line — nothing to see, nothing to hit.
@@ -387,7 +385,7 @@ export function layoutWaterfall(
   if (n === 0) return out
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.w / n
-  const bw = barSlot(band * (1.0 - ratio), 1.0, barWidth).bar
+  const bw = barThickness(band * (1.0 - ratio), 1.0, 0.0, barWidth)
   let acc = 0.0
   for (let i = 0; i < n; i++) {
     const v = values[i]!

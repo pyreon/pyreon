@@ -1118,7 +1118,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     let legendLeft = 0.0
     let legendRight = 0.0
     if (props.showLegend === true) {
-      const series = resolveMarks(rows, props.marks, theme().palette, theme().ramp)
+      const series = resolveMarks(rows, props.marks, theme().palette)
       const hidden = hiddenSeries()
       // One entry per LABEL (ECharts' rule): an area and a line both labelled
       // Revenue are one Revenue entry, and a tap toggles both.
