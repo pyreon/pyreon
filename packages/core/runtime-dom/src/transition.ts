@@ -1,5 +1,5 @@
-import type { Props, VNode, VNodeChild } from '@pyreon/core'
-import { createRef, Fragment, h, nativeCompat, onUnmount } from '@pyreon/core'
+import type { NativeItem, Props, VNode, VNodeChild } from '@pyreon/core'
+import { createRef, Fragment, h, nativeCompat, onMount, onUnmount } from '@pyreon/core'
 import { effect, runUntracked, signal } from '@pyreon/reactivity'
 
 // Dev-mode gates in this file use the bare bundler-agnostic
@@ -212,6 +212,7 @@ function Transition(props: TransitionProps): VNodeChild {
       if (visible && props.appear) {
         queueMicrotask(() => safeApplyEnter())
       }
+
       return
     }
     handleVisibilityChange(visible)
@@ -233,10 +234,18 @@ function Transition(props: TransitionProps): VNodeChild {
   // mountReactive instead of the null/primitive text-node fast-path, which
   // cannot later be swapped for a VNode when the element enters.
   const emptyFragment = h(Fragment, null)
+
   return (() => {
     if (!isMounted()) return emptyFragment
     if (!rawChild || typeof rawChild !== 'object' || Array.isArray(rawChild)) {
       return rawChild ?? null
+    }
+    // A COMPILED element child (`<Transition><div>…</div></Transition>` lowers
+    // the div to a `_tpl` item): it has an element, not props, so the ref is
+    // set from that element when it mounts (#4382). It used to fall into the
+    // component branch below, warn "child is a component" and never animate.
+    if ((rawChild as { __isNative?: boolean }).__isNative === true) {
+      return h(NativeTransitionChild, { item: rawChild as unknown as NativeItem, target: ref })
     }
     const vnode = rawChild as VNode
     // Only inject ref into DOM element children — component children need ref forwarding
@@ -246,10 +255,29 @@ function Transition(props: TransitionProps): VNodeChild {
           '[Pyreon] Transition child is a component. Wrap it in a DOM element for enter/leave animations to work.',
         )
       }
+
       return vnode
     }
+
     return { ...vnode, props: { ...vnode.props, ref } as Props }
   }) as unknown as VNode
+}
+
+/**
+ * Hands a compiled child's element to the transition's ref. Read at MOUNT, not
+ * captured: a re-shown `_tpl` item that was unmounted is rebuilt with a fresh
+ * element, so each mount reports the element it actually inserted.
+ */
+function NativeTransitionChild(props: { item: NativeItem; target: { current: HTMLElement | null } }): VNodeChild {
+  onMount(() => {
+    const el = props.item.el as HTMLElement
+    props.target.current = el
+    return () => {
+      if (props.target.current === el) props.target.current = null
+    }
+  })
+
+  return props.item as unknown as VNodeChild
 }
 
 // Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this

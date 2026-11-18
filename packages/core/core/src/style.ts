@@ -96,7 +96,15 @@ export function toKebabCase(str: string): string {
   return str.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
 }
 
-/** Normalize a style value — appends "px" to numbers for non-unitless properties. */
+/**
+ * Normalize a style value — appends "px" to numbers for non-unitless
+ * properties. Never for a custom property (`--stagger-index: 2`): its value is
+ * an arbitrary token stream read through `var()`, so `2px` would break
+ * `calc(var(--i) * 50ms)`, and code that sets it with `setProperty(name,
+ * String(v))` wrote `2` where the server rendered `2px`.
+ */
 export function normalizeStyleValue(key: string, value: unknown): string {
-  return typeof value === 'number' && !CSS_UNITLESS.has(key) ? `${value}px` : String(value)
+  return typeof value === 'number' && !CSS_UNITLESS.has(key) && !key.startsWith('--')
+    ? `${value}px`
+    : String(value)
 }

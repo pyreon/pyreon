@@ -101,6 +101,74 @@ class RawHtml {
     readonly value: string,
     readonly el = false,
   ) {}
+
+  /** See `decorateRootTag`. A multi-node value is returned unchanged. */
+  withRootAttrs(extra: Record<string, unknown>): RawHtml {
+    return this.el ? new RawHtml(decorateRootTag(this.value, extra), true) : this
+  }
+}
+
+/**
+ * THE SERVER HALF OF DECORATING A COMPILED CHILD ELEMENT (#4382).
+ *
+ * A component that clones its child to add props (kinetic's per-item hidden
+ * class/style, a transition's ref) receives, for a literal child, a compiled
+ * item instead of a VNode: a `_tpl` item on the client, which the component
+ * decorates at mount, and on the server the result of `_ssr` — raw HTML with
+ * no props to merge into. The decoration was dropped, so an initially-hidden
+ * item was prerendered VISIBLE.
+ *
+ * `withRootAttrs(extra)` is the server's answer, exposed (duck-typed, so a
+ * client-safe package never imports this module) on every shape a templated
+ * single element takes on the server: `RawHtml` (`_ssr`), `DeferredHtml`
+ * (`_ssrDeferred`, a subtree holding a component) and `StreamParts` (the same
+ * inside a stream). It adds each prop to the ROOT element's opening tag with
+ * the h() path's own serializer (`renderProp`), and MERGES `class` (tokens
+ * appended) and `style` (declarations appended, so the added ones win) into the
+ * element's own — what the client's `_tpl` decoration does to the live
+ * element. `ref`, `key`, `children` and event handlers render nothing on the
+ * server, as on the h() path.
+ *
+ * Exact, not heuristic: every attribute value in serialized output is escaped
+ * (`escapeHtml` escapes `>` and both quotes), so the root's opening tag ends at
+ * the first `>` and every value is double-quoted.
+ */
+function decorateRootTag(html: string, extra: Record<string, unknown>): string {
+  const close = html.indexOf('>')
+  const selfClosing = html.charCodeAt(close - 1) === 47
+  let open = html.slice(0, selfClosing ? close - 1 : close).trimEnd()
+  const tag = (/^<([^\s/>]+)/.exec(open) as RegExpExecArray)[1] as string
+  for (const key in extra) {
+    // `renderProp` renders nothing for `ref`, `key` and event handlers.
+    const attr = key === 'children' ? null : renderProp(tag, key, extra[key])
+    if (attr === null) continue
+    const eq = attr.indexOf('=')
+    const name = eq < 0 ? attr : attr.slice(0, eq)
+    const at = findOpenTagAttr(open, name)
+    if (at === null) {
+      open += ` ${attr}`
+      continue
+    }
+    let next = attr
+    const own = at[2] ?? ''
+    if (own !== '' && (name === 'class' || name === 'style')) {
+      const added = attr.slice(eq + 2, -1)
+      next = name === 'class' ? `class="${own} ${added}"` : `style="${own.replace(/;\s*$/, '')}; ${added}"`
+    }
+    open = `${open.slice(0, at.index)} ${next}${open.slice(at.index + at[0].length)}`
+  }
+
+  return `${open}${selfClosing ? ' />' : '>'}${html.slice(close + 1)}`
+}
+
+/** One attribute of a serialized opening tag (` name` or ` name="value"`), as its match. */
+function findOpenTagAttr(open: string, name: string): RegExpExecArray | null {
+  const re = /\s([^\s="'>/]+)(?:="([^"]*)")?/g
+  for (let m = re.exec(open); m !== null; m = re.exec(open)) {
+    if (m[1] === name) return m
+  }
+
+  return null
 }
 
 // The sanitized `innerHTML` prop is DOM-based on the client (`applyStaticProp`
@@ -154,6 +222,15 @@ function throwSsrInnerHtmlUnsupported(tag: string): never {
  */
 class DeferredHtml {
   constructor(readonly render: () => RawHtml | Promise<RawHtml>) {}
+
+  /** See `decorateRootTag`. The thunk stays deferred; its result is decorated. */
+  withRootAttrs(extra: Record<string, unknown>): DeferredHtml {
+    return new DeferredHtml(() => {
+      const r = this.render() as RawHtml | Promise<RawHtml> | StreamParts
+      if (r instanceof Promise) return r.then((x) => x.withRootAttrs(extra))
+      return r.withRootAttrs(extra) as RawHtml
+    })
+  }
 }
 
 /**
@@ -185,6 +262,19 @@ class StreamHole {
 /** Ordered output of an `_ssr(...)` call that contains a `StreamHole`. */
 class StreamParts {
   constructor(readonly parts: readonly unknown[]) {}
+
+  /**
+   * See `decorateRootTag`. The root's opening tag is in the leading STRING
+   * parts (a dynamic attribute is a string hole between statics); a component
+   * hole cannot sit inside a tag, so the join below always reaches the `>`.
+   */
+  withRootAttrs(extra: Record<string, unknown>): StreamParts {
+    let head = this.parts[0] as string
+    let i = 1
+    while (!head.includes('>')) head += this.parts[i++] as string
+
+    return new StreamParts([decorateRootTag(head, extra), ...this.parts.slice(i)])
+  }
 }
 
 // True ONLY for the synchronous extent of a `DeferredHtml` thunk invoked by
@@ -248,6 +338,7 @@ interface BufferFrame {
   readonly release: () => void
   readonly parent: BufferFrame | undefined
 }
+
 const _bufferFrameAls = new AsyncLocalStorage<BufferFrame | undefined>()
 
 function openBufferFrame(parent: BufferFrame | undefined): BufferFrame {
@@ -255,6 +346,7 @@ function openBufferFrame(parent: BufferFrame | undefined): BufferFrame {
   const done = new Promise<void>((resolve) => {
     release = resolve
   })
+
   return { done, release, parent }
 }
 
@@ -383,6 +475,7 @@ function withIsolatedRegistries<T>(fn: () => T): T {
     const inner = call
     call = () => seam.als.run(new Map(), inner)
   }
+
   return call()
 }
 
@@ -462,6 +555,7 @@ function makeSelectFrame(props: Record<string, unknown>): SelectValueFrame | nul
   let v: unknown = props.value
   if (typeof v === 'function') v = (v as () => unknown)()
   if (v == null || typeof v === 'boolean') return null
+
   return { value: String(v), matched: false }
 }
 
@@ -493,6 +587,7 @@ function optionSelectedAttr(props: Record<string, unknown>, children: VNodeChild
   }
   if (optValue !== frame.value) return ''
   frame.matched = true
+
   return ' selected'
 }
 
@@ -511,8 +606,10 @@ function collectOptionText(children: VNodeChild[], acc: { text: string }): boole
       if (!collectOptionText(child, acc)) return false
       continue
     }
+
     return false
   }
+
   return true
 }
 
@@ -748,12 +845,14 @@ export function renderToStream(
               } catch {
                 /* already closed */
               }
+
               return
             }
             // Deliver what rendered before the failure, then error the stream.
             flush()
             controller.error(err)
           })
+
       return _contextAls.getStore() !== undefined
         ? streamBody()
         : withStylerSSRScope(() => withIsolatedRegistries(() => _contextAls.run([_requestIdFrame()], streamBody)))
@@ -831,6 +930,7 @@ async function streamVNode(vnode: VNode, enqueue: (s: string) => void): Promise<
       for (let i = 1; i < leadKeys.length; i++) enqueue(` ${leadKeys[i]}`)
       enqueue('-->')
     }
+
     return
   }
 
@@ -904,6 +1004,7 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
   } finally {
     trimContextStack(stackLenBefore)
   }
+
   return single
 }
 
@@ -993,6 +1094,7 @@ async function streamNode(
     enqueue('<!--$-->')
     await streamNode((node as () => VNodeChild)(), enqueue)
     enqueue('<!--/$-->')
+
     return
   }
   // Already-rendered HTML from the `_ssr` fast path — enqueue verbatim.
@@ -1013,6 +1115,7 @@ async function streamNode(
       _streamHoleMode = prev
     }
     await streamPart(r, enqueue)
+
     return
   }
   if (node == null || node === false) return
@@ -1104,6 +1207,7 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
     } finally {
       trimContextStack(stackLenBefore)
     }
+
     return
   }
   /* c8 ignore stop */
@@ -1273,6 +1377,7 @@ function renderChildList(children: readonly VNodeChild[], start: number, acc: st
       return r.then((s) => renderChildList(children, next, soFar + s))
     }
   }
+
   return acc
 }
 
@@ -1348,6 +1453,7 @@ function renderNode(node: VNodeChild | (() => VNodeChild)): MaybeAsync {
     } finally {
       _streamHoleMode = prev
     }
+
     return r instanceof RawHtml ? r.value : r.then((x) => x.value)
   }
 
@@ -1382,6 +1488,7 @@ function renderNode(node: VNodeChild | (() => VNodeChild)): MaybeAsync {
     /* v8 ignore next */
     const items = typeof each === 'function' ? each() : (each as Iterable<unknown>)
     const arr = Array.isArray(items) ? (items as unknown[]) : [...items]
+
     return renderForItems(arr, by, children, 0, '<!--pyreon-for-->')
   }
 
@@ -1406,6 +1513,7 @@ function outputIsSingleElement(output: unknown, inner: boolean): boolean {
   if (output instanceof DeferredHtml || output instanceof StreamParts) return true
   const t = (output as VNode).type
   if (typeof t === 'string') return true
+
   return typeof t === 'function' && t !== Suspense ? inner : false
 }
 
@@ -1516,9 +1624,11 @@ function renderForItems(
       const soFar = acc
       const lk = leadKeys
       const mk = marked
+
       return r.then((s) => renderForItems(items, by, children, next, soFar + s, lk, mk))
     }
   }
+
   return acc + forCloseMarker(leadKeys)
 }
 
@@ -1561,6 +1671,7 @@ function renderComponent(vnode: VNode & { type: ComponentFn }): MaybeAsync {
           trimContextStack(stackLenBefore)
           return `<!--$pas-->${inner}<!--$pae-->`
         }
+
         return inner.then(
           (s) => {
             trimContextStack(stackLenBefore)
@@ -1595,6 +1706,7 @@ function renderComponent(vnode: VNode & { type: ComponentFn }): MaybeAsync {
     trimContextStack(stackLenBefore)
     return r
   }
+
   return r.then(
     (s) => {
       trimContextStack(stackLenBefore)
@@ -1708,6 +1820,7 @@ function renderElement(vnode: VNode): MaybeAsync {
   }
 
   html += `</${tag}>`
+
   return html
 }
 
@@ -1735,6 +1848,7 @@ export function _esc(v: unknown, ns?: string): MaybeAsync {
   if (v == null || v === false) return ''
   if (v === true) return 'true'
   if (ns !== undefined) return inNs(nsAfterPath(ns), () => renderNode(v as VNodeChild))
+
   return renderNode(v as VNodeChild)
 }
 
@@ -1760,6 +1874,7 @@ export function _escSole(v: unknown, ns?: string): MaybeAsync {
   if (ns !== undefined) return inNs(nsAfterPath(ns), () => _escSole(v))
   // The one divergence from `_esc`: unwrap the accessor WITHOUT markers.
   if (typeof v === 'function') return renderNode((v as () => VNodeChild)())
+
   return renderNode(v as VNodeChild)
 }
 
@@ -1815,6 +1930,7 @@ export function _ssrAttrGen(name: string, value: unknown): string {
   // never contains a character escapeHtml rewrites, so skip the scan: numeric
   // ids / counts are the dominant generic-attribute value on list rows.
   if (typeof value === 'number') return ` ${name}="${value}"`
+
   return ` ${name}="${escapeHtml(String(value))}"`
 }
 
@@ -1837,6 +1953,7 @@ export function _ssrAttrUrl(tag: string, name: string, value: unknown): string {
   if (typeof value === 'string' && isUnsafeUrl(value) && !isSafeImageDataUri(tag, name, value)) {
     return ''
   }
+
   return ` ${name}="${escapeHtml(String(value))}"`
 }
 
@@ -1879,6 +1996,7 @@ export function _ssr(
     return new StreamParts(parts) as unknown as RawHtml
   }
   const r = _ssrConcat(statics, holes, 0, statics[0] ?? '')
+
   return typeof r === 'string' ? new RawHtml(r, true) : r.then((s) => new RawHtml(s, true))
 }
 
@@ -1947,12 +2065,14 @@ function _ssrFixed(
     case 2:
       if (typeof a === 'string' && typeof b === 'string')
         return (statics[0] ?? '') + a + (statics[1] ?? '') + b + (statics[2] ?? '')
+
       return undefined
     case 3:
       if (typeof a === 'string' && typeof b === 'string' && typeof c === 'string')
         return (
           (statics[0] ?? '') + a + (statics[1] ?? '') + b + (statics[2] ?? '') + c + (statics[3] ?? '')
         )
+
       return undefined
     case 4:
       if (
@@ -1972,6 +2092,7 @@ function _ssrFixed(
           d +
           (statics[4] ?? '')
         )
+
       return undefined
     case 5:
       if (
@@ -1994,6 +2115,7 @@ function _ssrFixed(
           e +
           (statics[5] ?? '')
         )
+
       return undefined
     case 6:
       if (
@@ -2019,6 +2141,7 @@ function _ssrFixed(
           f +
           (statics[6] ?? '')
         )
+
       return undefined
     default:
       return undefined
@@ -2103,6 +2226,7 @@ export function _ssrForKeyed(
   const items = typeof each === 'function' ? (each as () => unknown)() : each
   const arr = Array.isArray(items) ? (items as unknown[]) : [...(items as Iterable<unknown>)]
   const r = _ssrForKeyedFrom(arr, by, item, 0, '<!--pyreon-for-->')
+
   return typeof r === 'string' ? new RawHtml(r) : r.then((s) => new RawHtml(s))
 }
 
@@ -2132,11 +2256,13 @@ function _ssrForKeyedFrom(
       const next = i + 1
       const soFar = acc
       const ks = keys
+
       return (r as Promise<unknown>).then((s) =>
         _ssrForKeyedFrom(items, by, item, next, soFar + holeToString(s), ks),
       )
     }
   }
+
   return acc + forCloseMarker(keys)
 }
 
@@ -2160,11 +2286,13 @@ function _ssrConcat(
       const next = i + 1
       const soFar = acc
       const between = statics[next] ?? ''
+
       return (h as Promise<unknown>).then((r) =>
         _ssrConcat(statics, holes, next, soFar + holeToString(r) + between),
       )
     }
   }
+
   return acc
 }
 
@@ -2243,6 +2371,7 @@ function _ssrChildrenFrom(
       )
     }
   }
+
   return new RawHtml(acc)
 }
 
@@ -2360,6 +2489,7 @@ function isShadowedDefault(tag: string, key: string, props: Record<string, unkno
   else return false
   let v = props[live]
   if (typeof v === 'function') v = (v as () => unknown)()
+
   return v != null
 }
 
@@ -2443,6 +2573,7 @@ const UPPERCASE_RE = /[A-Z]/
 // — beyond that, pathological dynamic tag names fall through to the uncached
 // path rather than growing without limit.
 const _voidCache = new Map<string, boolean>()
+
 function isVoidElement(tag: string): boolean {
   const hit = _voidCache.get(tag)
   if (hit !== undefined) return hit
@@ -2450,6 +2581,7 @@ function isVoidElement(tag: string): boolean {
   // the direct probe covers lowercase JSX with zero allocation.
   const r = VOID_ELEMENTS.has(tag) || (UPPERCASE_RE.test(tag) && VOID_ELEMENTS.has(tag.toLowerCase()))
   if (_voidCache.size < 1000) _voidCache.set(tag, r)
+
   return r
 }
 
@@ -2690,6 +2822,7 @@ const warnIfUnsafeAttrName: (key: string) => void =
 // Returns the pre-escaped attribute name, or `null` when the resolved name is
 // invalid (breakout chars / empty) — callers DROP a null-named attribute.
 const _attrNameCache = new Map<string, string | null>()
+
 function toAttrName(key: string): string | null {
   const cached = _attrNameCache.get(key)
   if (cached !== undefined) return cached
@@ -2708,6 +2841,7 @@ function toAttrName(key: string): string | null {
     result = escapeHtml(resolved)
   }
   if (_attrNameCache.size < 1000) _attrNameCache.set(key, result)
+
   return result
 }
 
@@ -2730,6 +2864,7 @@ function normalizeStyle(value: unknown): string {
         .join('; ')
     }
   }
+
   return ''
 }
 
@@ -2753,10 +2888,12 @@ function toKebab(str: string): string {
 // fast paths skip the encodeURIComponent + replace pair, ~7% of non-GC SSR time
 // on list-heavy pages (numeric ids dominate <For> keys).
 const SIMPLE_KEY_RE = /^[\w.:]+$/
+
 function safeKeyForMarker(key: unknown): string {
   if (typeof key === 'number') return String(key)
   const s = String(key)
   if (SIMPLE_KEY_RE.test(s)) return s
+
   return encodeURIComponent(s).replace(/-/g, '%2D')
 }
 
@@ -2779,6 +2916,7 @@ export function decodeKeyFromMarker(encoded: string): string {
 // Solid match — it's the caller's responsibility), but a dev warning catches the
 // mistake before prod. The safe pattern covers HTML + custom element names.
 const SAFE_TAG_RE = /^[a-zA-Z][a-zA-Z0-9-]*$/
+
 // Selected ONCE at module init rather than gated per call.
 //
 // `process.env.NODE_ENV` is NOT a constant in Node — it is a getter over the
@@ -2867,6 +3005,7 @@ function rawTextChildren(children: readonly VNodeChild[]): {
       for (const x of c) if (!walk(x)) return false
       return true
     }
+
     return false
   }
   const resolved: VNodeChild[] = []
@@ -2876,6 +3015,7 @@ function rawTextChildren(children: readonly VNodeChild[]): {
     resolved.push(v)
     if (!walk(v)) ok = false
   }
+
   return { ok, text: out, resolved }
 }
 
@@ -2891,6 +3031,7 @@ function rawTextChildren(children: readonly VNodeChild[]): {
 // JSON string, and a legal identifier escape in code position.
 const SCRIPT_BREAKOUT_RE =
   /<(\/?)(script|style|title|textarea|noscript|noembed|noframes|iframe|xmp)/gi
+
 // Every `<` that could OPEN A TAG: `<` followed by a letter or `/`.
 const STYLE_TAG_OPEN_RE = /<(?=[A-Za-z/])/g
 
@@ -2921,6 +3062,7 @@ function escapeRawText(tag: string, text: string, ns: number): string {
         : `<${slash}\\u${name.charCodeAt(0).toString(16).padStart(4, '0')}${name.slice(1)}`,
     )
   }
+
   return text.replace(STYLE_TAG_OPEN_RE, '\\3c ')
 }
 
@@ -2959,6 +3101,7 @@ function nsCode(tag: string): string | undefined {
   if (n === 3) return tagIs(tag, 'svg') ? 's' : undefined
   if (n === 4) return tagIs(tag, 'math') ? 'm' : undefined
   if (n === 13) return tagIs(tag, 'foreignobject') ? 'f' : undefined
+
   return undefined
 }
 
@@ -3019,6 +3162,7 @@ function contentFromProps(tag: string, props: Record<string, unknown> | null): s
   if (v == null) v = props.textContent ?? props.innerText
   if (typeof v === 'function') v = (v as () => unknown)()
   if (v === null || v === undefined || typeof v === 'boolean') return null
+
   return escapeHtml(String(v))
 }
 
@@ -3047,6 +3191,7 @@ function escapeHtml(str: string): string {
       last = i + 1
     }
   }
+
   return out + str.slice(last)
 }
 
@@ -3079,6 +3224,7 @@ function pendingLazy(type: unknown): Promise<void> | null {
   if (typeof type !== 'function') return null
   const lazyType = type as Partial<LazyComponent>
   if (typeof lazyType.__load !== 'function' || typeof lazyType.__loading !== 'function') return null
+
   return lazyType.__loading() ? lazyType.__load() : null
 }
 
@@ -3087,6 +3233,7 @@ function suspenseChildPending(props: Record<string, unknown>): Promise<void> | n
   const ch = props.children
   const child = typeof ch === 'function' ? (ch as () => unknown)() : ch
   if (child == null || typeof child !== 'object' || Array.isArray(child)) return null
+
   return pendingLazy((child as Partial<VNode>).type)
 }
 
@@ -3098,5 +3245,6 @@ function mergeChildrenIntoProps(vnode: VNode): Record<string, unknown> {
           children: vnode.children.length === 1 ? vnode.children[0] : vnode.children,
         }
       : (vnode.props as Record<string, unknown>)
+
   return makeReactiveProps(raw)
 }

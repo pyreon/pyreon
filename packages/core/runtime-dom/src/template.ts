@@ -10,6 +10,7 @@ import {
   renderEffect,
 } from '@pyreon/reactivity'
 import { _tagTextBinding } from './binding-registry'
+import { _takeParkedRange, hasParkedRange, isMidSlotText, peekParkedRange } from './slot-brands'
 import {
   _adoptParkedText,
   _beginParkBatch,
@@ -748,6 +749,7 @@ export type TplAdoptVerifier = (
   html: string,
   target: Element,
   allowPlanReplay?: boolean,
+  rootDecorated?: boolean,
 ) => boolean
 
 let _tplAdoptVerifier: TplAdoptVerifier | null = null
@@ -755,6 +757,31 @@ let _tplAdoptVerifier: TplAdoptVerifier | null = null
 export function _setTplAdoptVerifier(v: TplAdoptVerifier): void {
   _tplAdoptVerifier = v
 }
+
+/**
+ * DECLARED ROOT DECORATION (#4382). A component that adds `class` / `style` to
+ * a compiled child element (kinetic's per-item hidden state) does it on the
+ * client at mount, and on the server to the root tag of the child's raw HTML
+ * (`withRootAttrs`). The server element's root then carries attributes the
+ * template's static skeleton does not, and the static-skeleton gate refused
+ * it: the item was re-created at hydration instead of adopted.
+ *
+ * The decorating component declares the decoration on the item it receives,
+ * and for that item ONLY the gate leaves the ROOT's `class` and `style` out of
+ * the comparison: the declaring component owns them and re-applies them at
+ * mount. Every other attribute and every descendant is still compared. Carried
+ * on the item (leak class C: never a registry), read once by its adoption.
+ */
+const ROOT_DECORATED: unique symbol = Symbol('pyreon.rootDecorated')
+type DecoratedItem = NativeItem & { [ROOT_DECORATED]?: true }
+
+export function _declareRootDecoration(item: NativeItem): void {
+  ;(item as DecoratedItem)[ROOT_DECORATED] = true
+}
+
+// The adoption frame's flag (see `_tplAdoptTarget`): set by `__adoptAt`,
+// consumed one-shot by the `buildTpl` it arms.
+let _tplRootDecorated = false
 
 // ─── Hydration-active window ─────────────────────────────────────────────────
 // True for the duration of `hydrateRoot`'s SYNCHRONOUS walk (save/restored
@@ -1102,7 +1129,10 @@ function remountableTpl(
       return (built() as Partial<DeferredNativeItem>).__deferred
     },
     __adoptAt(domNode: Element): boolean {
-      return (built() as Partial<DeferredNativeItem>).__adoptAt?.(domNode) ?? false
+      const inner = built()
+      // A declaration made on this (outer) item belongs to the build it adopts.
+      if ((item as unknown as DecoratedItem)[ROOT_DECORATED] === true) _declareRootDecoration(inner)
+      return (inner as Partial<DeferredNativeItem>).__adoptAt?.(domNode) ?? false
     },
   }
 
@@ -1127,12 +1157,14 @@ function buildTpl(
   if (_tplAdoptTarget !== null) {
     const target = _tplAdoptTarget
     const allowPlan = _tplAdoptAllowPlan
+    const rootDecorated = _tplRootDecorated
     _tplAdoptTarget = null // one-shot, cleared on ANY outcome
     _tplAdoptAllowPlan = false
+    _tplRootDecorated = false
     _tplPendingHoles = null
     // Placeholders parked by this verify and this bind (#4385), swept after it.
     const prevPark = _beginParkBatch()
-    if (_tplAdoptVerifier !== null && _tplAdoptVerifier(tpl, html, target, allowPlan)) {
+    if (_tplAdoptVerifier !== null && _tplAdoptVerifier(tpl, html, target, allowPlan, rootDecorated)) {
       const holes = _tplPendingHoles
       _tplPendingHoles = null
       // Belt-and-braces: a verified hole is only safe if something will
@@ -1248,9 +1280,11 @@ function deferTpl(
       const prevAllow = _tplAdoptAllowPlan
       const prevConsumed = _tplAdoptConsumed
       const prevPending = _tplPendingHoles
+      const prevDecorated = _tplRootDecorated
       _tplAdoptTarget = domNode
       _tplAdoptAllowPlan = false
       _tplPendingHoles = null
+      _tplRootDecorated = (item as unknown as DecoratedItem)[ROOT_DECORATED] === true
       try {
         built = buildTpl(tpl, html, bind)
       } finally {
@@ -1258,6 +1292,7 @@ function deferTpl(
         _tplAdoptAllowPlan = prevAllow
         _tplAdoptConsumed = prevConsumed
         _tplPendingHoles = prevPending
+        _tplRootDecorated = prevDecorated
       }
 
       return built.el === domNode
@@ -1727,7 +1762,7 @@ function sweepParkedTexts(prev: Text[] | null): void {
 let _rangeServerText = ''
 
 function _serverTextOfRange(open: Comment): string {
-  const parked = (open as ParkedOpen)[PARKED_RANGE]
+  const parked = peekParkedRange(open)
   return parked !== undefined ? parked.textContent : rangeText(open)
 }
 
@@ -1737,69 +1772,7 @@ function _serverTextOfRange(open: Comment): string {
 const isCloneSlotPlaceholder = (n: Node | null): boolean =>
   n != null && n.nodeType === 8 && (n as Comment).data === ''
 
-/**
- * Brand on a text node the adoption verifier COLLAPSED a mid text slot into
- * (see `TplSig.midSlots`). Carried ON the node — a registry keyed by DOM node
- * is leak class C, and the node's own lifetime is exactly the mark's.
- *
- * Two consumers read it. `_textSlot` adopts the node outright. `_mountSlot`
- * must NOT take its marker-less adoption branch for it: that branch is gated on
- * `placeholder === parent.firstChild`, which used to prove the slot was SOLE
- * because the signature refused every non-trailing `<!>`. A collapsed mid slot
- * at clone index 0 is now a firstChild placeholder too, and without the brand
- * `_mountSlot` would hydrate the element's whole child list as slot content —
- * swallowing the static siblings that follow (measured: `<p>{off && <i/>}!</p>`
- * hydrated to `<p></p>`). With the brand it falls to the clone path, which is
- * correct for both the empty range and the single-text range.
- */
-/**
- * A mid slot whose server range holds ELEMENTS (`{cond && <i/>}!`,
- * `{xs.map(…)} tail`) cannot be collapsed to one node without losing them —
- * but the compiled refs after it still need the clone's single-node shape. So
- * the verifier PARKS the range: everything from the open marker's next sibling
- * through the close marker is moved into a fragment hung off the OPEN marker,
- * which stays in the DOM as the one placeholder the refs expect. The consumer
- * that receives that marker decides: `_mountSlot` hands it to the hydrator,
- * which puts the range BACK before adopting it (`hydrateMountSlot`); a text
- * bind (`_textSlot`) has no use for element content and discards it. Carried on
- * the node, never in a registry (leak class C).
- */
-const PARKED_RANGE: unique symbol = Symbol('pyreon.parkedRange')
-type ParkedOpen = Comment & { [PARKED_RANGE]?: DocumentFragment | undefined }
-
-export function _parkSlotRange(open: Comment, frag: DocumentFragment): void {
-  ;(open as ParkedOpen)[PARKED_RANGE] = frag
-}
-
-/** Is a parked range hung off `open`? Non-consuming — see `_mountSlot`. */
-const hasParkedRange = (n: Node): boolean => (n as ParkedOpen)[PARKED_RANGE] !== undefined
-
-/** Take (and clear) the parked range hung off `open`, or `null`. */
-export function _takeParkedRange(open: Comment): DocumentFragment | null {
-  const f = (open as ParkedOpen)[PARKED_RANGE]
-  if (f === undefined) return null
-  ;(open as ParkedOpen)[PARKED_RANGE] = undefined
-
-  return f
-}
-
-const MID_SLOT_TEXT: unique symbol = Symbol('pyreon.midSlotText')
-type MidSlotText = Text & { [MID_SLOT_TEXT]?: true }
-
-export function _markMidSlotText(t: Text): void {
-  ;(t as MidSlotText)[MID_SLOT_TEXT] = true
-}
-
-// Null-safe: `_mountSlot` hands a `null` placeholder for an EMPTY marker-less
-// sole slot (the slot rendered nothing on the server, so both the compiled ref
-// and the parent's firstChild are null — a designed case, see `_mountSlot`).
-// An unguarded `.nodeType` there threw inside the adopt bind; the throw was
-// swallowed by the adoption fallback and every binding of that element was
-// orphaned: a sole `{() => cond ? null : <X/>}` child AND its sibling
-// `class={…}` both stayed dead after hydration. Found by the compiled-path
-// parity fuzz (seeds 76 + 112) the day after #3307 shipped it.
-const isMidSlotText = (n: Node | null): boolean =>
-  n !== null && n.nodeType === 3 && (n as MidSlotText)[MID_SLOT_TEXT] === true
+export { _markMidSlotText, _parkSlotRange, _takeParkedRange } from './slot-brands'
 
 export { _setSlotHydrator, type SlotHydrator } from './parked-text'
 

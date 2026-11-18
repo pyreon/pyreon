@@ -2925,6 +2925,7 @@
         "@pyreon/sized-map": "workspace:*",
       },
       "devDependencies": {
+        "@pyreon/compiler": "workspace:^",
         "@pyreon/hooks": "workspace:^",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/native-compiler": "workspace:*",
@@ -2936,6 +2937,7 @@
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^5.1.0",
         "@vitus-labs/tools-rolldown": "^2.8.0",
+        "esbuild": "^0.28.2",
         "motion": "^14.14.0",
       },
       "peerDependencies": {

@@ -172,6 +172,15 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
 
 ---
 
+### [FIXED, 2026-11] A component that decorates its child assumed the child is a VNode
+
+(#4382): a literal element child compiles to a `_tpl` item on the client and to raw HTML (`_ssr`) on the server, neither of which has props to merge. Kinetic's per-item hidden class/style was dropped on the server (initially-hidden items prerendered VISIBLE, a flash before hydration); runtime-dom's `<Transition><div/></Transition>` treated the `_tpl` item as a component, warned, and never animated; `_ssr` dropped `key` while the client kept the keyed element on `h()`, so a group saw different keys on each side.
+  - Decorate every child shape: VNode (merge props), `_tpl` item (apply at mount; `wrapNativeItem` in kinetic, `NativeTransitionChild` in runtime-dom), server raw HTML (`withRootAttrs`). Declare the client decoration with `_declareRootDecoration` so hydration adopts the decorated server root instead of re-creating it.
+  - A keyed root is never templated on either side. A child's own `style` may be a STRING: merge it as text (kinetic `mergeStyles`), never by object spread. A numeric custom property (`--i: 2`) takes no unit (`normalizeStyleValue`).
+  - Tests: kinetic `ssr-compiled-children.test.tsx` (h()-path oracle, both renderers, hydration adopts), runtime-dom `transition-compiled-child.test.tsx`, compiler `native-equivalence` (keyed-root cases).
+
+---
+
 ### SSR↔hydration parity bugs are cursor/extent errors; fuzz them
 
 `packages/core/runtime-dom/src/tests/hydration-parity-fuzz.test.tsx` (and `hydration-parity-fuzz-compiled.test.tsx`) hydrate each seeded tree and compare against a fresh client mount: zero mismatches, identical normalized DOM, identical DOM after identical flips, root identity reused, plus a ground-truth fresh mount with flipped values. `PYREON_FUZZ_SEEDS` raises the seed count; CI's count is not a proof.
