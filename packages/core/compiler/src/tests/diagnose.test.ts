@@ -641,3 +641,18 @@ describe('diagnoseError — visible island with nothing to observe (#4435)', () 
     expect(diagnoseError("island uses hydrate: 'visible' and loads late")?.cause ?? '').not.toContain('box-less')
   })
 })
+
+describe('diagnoseError — a throw while hydrating a subtree', () => {
+  test('the runtime-dom message names the component and the containment', () => {
+    const result = diagnoseError('[Pyreon] <ProfileCard> threw during hydration: TypeError: x is undefined')
+    expect(result?.cause).toContain('<ProfileCard>')
+    expect(result?.cause).toContain('hydrated')
+    expect(result?.fix).toContain('ErrorBoundary')
+  })
+
+  test('an unrelated message does not match', () => {
+    expect(diagnoseError('[Pyreon] <ProfileCard> threw during render: boom')?.cause ?? '').not.toContain(
+      'hydrated',
+    )
+  })
+})
