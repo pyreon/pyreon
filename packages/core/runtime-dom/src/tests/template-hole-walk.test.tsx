@@ -118,7 +118,7 @@ describe('a walked hole renders and updates like h()', () => {
   it('a component inside a walked item receives a live prop and runs once', () => {
     const label = signal('a')
     let runs = 0
-    const Row = (props: { v: () => string }) => {
+    const Row = (props: { v: string }) => {
       runs++
       return h('em', null, () => props.v)
     }
