@@ -2195,10 +2195,14 @@ public struct GanttTick: Codable {
   public var at: Double
   public var x: Double
   public var label: String
-  public init(at: Double, x: Double, label: String) {
+  public var labelX: Double
+  public var labelShown: Bool
+  public init(at: Double, x: Double, label: String, labelX: Double, labelShown: Bool) {
     self.at = at
     self.x = x
     self.label = label
+    self.labelX = labelX
+    self.labelShown = labelShown
   }
 }
 
@@ -10814,7 +10818,7 @@ public func ganttTicks(_ lo: Double, _ hi: Double, _ unit: String) -> [GanttTick
         let q = floor(Double((c.month - 1.0) / 3.0)) + 1.0
         let year = "\(pyreonNumberString(pyreonRound(Double(c.year))))"
         let label = unit == "day" || unit == "week" ? "\(pyreonNumberString(pyreonRound(Double(c.day)))) \(ganttMonthName(c.month))" : unit == "month" ? (sameYear ? ganttMonthName(c.month) : "\(ganttMonthName(c.month)) \(year)") : unit == "quarter" ? "Q\(pyreonNumberString(pyreonRound(Double(q)))) \(year)" : year
-        out.append(GanttTick(at: t, x: 0.0, label: label))
+        out.append(GanttTick(at: t, x: 0.0, label: label, labelX: 0.0, labelShown: true))
       }
       t = ganttNextTick(t, unit)
     }
@@ -10993,8 +10997,20 @@ public func layoutGantt(_ tasks: [GanttTask], _ box: PyreonChartRect, _ options:
       }
     }
     var ticks: [GanttTick] = []
+    let plotRight = plot.x + plot.w
+    var prevEnd = plot.x - 1000000000.0
     for t in ganttTicks(lo, hi, unit) {
-      ticks.append(GanttTick(at: t.at, x: plot.x + ((t.at - lo) / span) * plot.w, label: t.label))
+      let tx = plot.x + ((t.at - lo) / span) * plot.w
+      let lw = m(t.label, fontSize - 1.0)
+      let want = tx + 3.0
+      let latest = plotRight - lw
+      let pulled = want > latest
+      let tickLabelX = !pulled ? want : latest < plot.x ? plot.x : latest
+      let labelShown = !pulled || tickLabelX >= prevEnd
+      if labelShown {
+        prevEnd = tickLabelX + lw
+      }
+      ticks.append(GanttTick(at: t.at, x: tx, label: t.label, labelX: tickLabelX, labelShown: labelShown))
     }
     return GanttLayout(rows: rows, lanes: lanes, dependencies: dependencies, ticks: ticks, unit: unit, axis: axis, plot: plot, domain: Domain(min: lo, max: hi), hasToday: hasToday, todayX: hasToday ? plot.x + ((todayDay - lo) / span) * plot.w : 0.0, rowHeight: rowHeight)
   }
@@ -11015,7 +11031,9 @@ public func renderGantt(_ layout: GanttLayout, _ options: GanttOptions? = nil) -
     let plotBottom = layout.plot.y + layout.plot.h
     for t in layout.ticks {
       out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: t.x, y: layout.axis.y + layout.axis.h), to: PyreonChartPt(x: t.x, y: plotBottom), stroke: gridColor, width: 1.0))
-      out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: t.label, at: PyreonChartPt(x: t.x + 3.0, y: layout.axis.y + layout.axis.h / 2.0), size: fontSize - 1.0, align: "start", baseline: "middle"))
+      if t.labelShown {
+        out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: t.label, at: PyreonChartPt(x: t.labelX, y: layout.axis.y + layout.axis.h / 2.0), size: fontSize - 1.0, align: "start", baseline: "middle"))
+      }
     }
     for row in layout.rows {
       out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: row.label, at: row.labelAt, size: fontSize, align: "start", baseline: "middle"))

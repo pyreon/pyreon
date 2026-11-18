@@ -51,6 +51,17 @@
  *                       that branch forever. Use `<Show>` or a returned
  *                       reactive accessor. (The `return null` shape stays
  *                       with `static-return-null-conditional`.)
+ *  - `props-early-return-conditional` — `if (props.loading) return <Skeleton/>`
+ *                       at the top of a component body. Same run-once pin as
+ *                       `static-early-return-conditional`, with the condition
+ *                       reading a PROP: a reactive prop is a getter, read once
+ *                       here. Use `<Show when={() => props.loading}>` or a
+ *                       returned accessor.
+ *  - `props-object-copy` — `Object.assign({}, props, …)` or `{ ...props }` in
+ *                       a component body's setup scope copies each prop's
+ *                       CURRENT value; the getters (reactive props) are gone.
+ *                       Use `mergeProps` / `splitProps`. A JSX spread
+ *                       (`<div {...props}>`) is not a copy and is not flagged.
  *  - `as-unknown-as-vnodechild` — defensive `as unknown as VNodeChild`
  *                       cast on JSX returns is unnecessary (`JSX.Element`
  *                       is already assignable to `VNodeChild`).
@@ -133,6 +144,8 @@ export type PyreonDiagnosticCode =
   | 'signal-write-as-call'
   | 'static-return-null-conditional'
   | 'static-early-return-conditional'
+  | 'props-early-return-conditional'
+  | 'props-object-copy'
   | 'as-unknown-as-vnodechild'
   | 'island-never-with-registry-entry'
   | 'query-options-as-function'
@@ -1141,6 +1154,193 @@ function detectStaticEarlyReturnConditional(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Patterns: props-early-return-conditional / props-object-copy
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * A component's props parameter name and block body, or null when `node` is not a
+ * component or takes its props destructured (that shape is
+ * `props-destructured`'s). Component = PascalCase + JSX, or the anonymous
+ * `props`-param function a HOC returns — the same gate as
+ * `detectPropsDestructuredBody`.
+ */
+function componentPropsParam(
+  node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
+): { name: string; body: ts.Block } | null {
+  if (!isComponentShapedFunction(node) && !isReturnedPropsComponent(node)) return null
+  const first = node.parameters[0]
+  if (!first || !ts.isIdentifier(first.name)) return null
+  if (!node.body || !ts.isBlock(node.body)) return null
+  if (!containsJsx(node)) return null
+
+  return { name: first.name.text, body: node.body }
+}
+
+function isNestedFunction(n: ts.Node): boolean {
+  return (
+    ts.isArrowFunction(n) ||
+    ts.isFunctionExpression(n) ||
+    ts.isFunctionDeclaration(n) ||
+    ts.isMethodDeclaration(n) ||
+    ts.isGetAccessorDeclaration(n) ||
+    ts.isSetAccessorDeclaration(n)
+  )
+}
+
+/**
+ * The first `props.x` / `props?.x` / `props['x']` read in `cond`, as written,
+ * or null. Reads inside a nested function are not reads at this point.
+ */
+function findPropsReadInCondition(cond: ts.Expression, propsName: string): ts.Expression | null {
+  let found: ts.Expression | null = null
+  function walk(n: ts.Node): void {
+    if (found || isNestedFunction(n)) return
+    if (
+      (ts.isPropertyAccessExpression(n) || ts.isElementAccessExpression(n)) &&
+      ts.isIdentifier(n.expression) &&
+      n.expression.text === propsName
+    ) {
+      found = n
+      return
+    }
+    ts.forEachChild(n, walk)
+  }
+  walk(cond)
+
+  return found
+}
+
+/**
+ * `if (props.loading) return <Skeleton/>` (or `return null`) at the top of a
+ * component body. The compiler hands a reactive prop to the child as a getter,
+ * but this `if` reads it once, at mount, and never again — the component stays
+ * on the branch the first read picked (AGENTS.md, "Components run once").
+ *
+ * Its own code, not a widening of `static-early-return-conditional`: that one
+ * fires only on PROOF the condition is reactive (a call of a tracked signal or
+ * hook accessor). A prop is reactive only when the parent passes a reactive
+ * expression, which a single-file detector cannot see, so a structural prop
+ * that never changes (`depth`, a variant) is a legitimate read. A separate code
+ * lets a consumer tell the two apart, and the message says how to silence the
+ * static case.
+ *
+ * Scope: top-level `if` statements of the body whose then-branch is a return
+ * (the single-statement block forms too). A condition that also calls a
+ * tracked signal belongs to the signal codes, so it is skipped here. First
+ * occurrence per component only, like its siblings.
+ */
+function detectPropsEarlyReturnConditional(
+  ctx: DetectContext,
+  node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
+): void {
+  if (ctx.plainMode) return // Plain Mode rewrites early returns — correct there
+  const component = componentPropsParam(node)
+  if (!component) return
+  const propsName = component.name
+
+  for (const stmt of component.body.statements) {
+    if (!ts.isIfStatement(stmt)) continue
+    if (!returnsNullStatement(stmt.thenStatement) && !nonNullEarlyReturn(stmt.thenStatement)) {
+      continue
+    }
+    if (
+      findSignalReadInCondition(stmt.expression, ctx.signalBindings) ||
+      findSignalReadInCondition(stmt.expression, ctx.hookBindings)
+    ) {
+      continue
+    }
+    const read = findPropsReadInCondition(stmt.expression, propsName)
+    if (!read) continue
+    const text = getNodeText(ctx, read)
+    pushDiag(
+      ctx,
+      stmt,
+      'props-early-return-conditional',
+      `Pyreon components run ONCE — this early return reads \`${text}\` exactly once, at mount. When the parent passes a reactive value (\`<C x={sig()} />\`), the prop is a getter that this \`if\` never re-reads, so the component stays on whichever branch the first read picked. Move the branch into the render: \`<Show when={() => ${text}} fallback={<Content/>}>…</Show>\`, or return an accessor: \`return () => (${text} ? <A/> : <B/>)\`. If this prop never changes for the life of the component, silence the line with \`// pyreon-lint-ignore props-early-return-conditional\`.`,
+      getNodeText(ctx, stmt),
+      `return () => (${text} ? <A /> : <B />)`,
+      false,
+    )
+
+    return
+  }
+}
+
+/** `Object.assign(target, …, props, …)` with `props` as a SOURCE, or `{ …, ...props }`. */
+function propsCopyShape(n: ts.Node, propsName: string): 'assign' | 'spread' | null {
+  const isProps = (e: ts.Expression) => {
+    const base = unwrapInitializer(e)
+    return ts.isIdentifier(base) && base.text === propsName
+  }
+  if (
+    ts.isCallExpression(n) &&
+    ts.isPropertyAccessExpression(n.expression) &&
+    ts.isIdentifier(n.expression.expression) &&
+    n.expression.expression.text === 'Object' &&
+    n.expression.name.text === 'assign' &&
+    n.arguments.slice(1).some(isProps)
+  ) {
+    return 'assign'
+  }
+  if (
+    ts.isObjectLiteralExpression(n) &&
+    n.properties.some((p) => ts.isSpreadAssignment(p) && isProps(p.expression))
+  ) {
+    return 'spread'
+  }
+
+  return null
+}
+
+/**
+ * `Object.assign({}, props, { extra: 1 })` or `{ ...props, extra: 1 }` in a
+ * component's setup scope. Both read every prop through its getter once and
+ * store the VALUE, so a reactive prop in the copy is a snapshot (AGENTS.md:
+ * "Hand-written `Object.assign` or `{ ...source }` does not [preserve
+ * reactivity]"). `mergeProps` / `splitProps` copy the getters instead.
+ *
+ * Not flagged:
+ *  - JSX spreads (`<div {...props}>`, `<Child {...props}>`) — those are
+ *    attributes, not object literals, and preserve reactivity;
+ *  - anything inside JSX (`data={{ ...props }}` is a binding expression);
+ *  - copies inside a nested function (handler, effect, returned accessor) —
+ *    those re-read on every call;
+ *  - `Object.assign(props, …)` — props as the TARGET is a different mistake.
+ */
+function detectPropsObjectCopy(
+  ctx: DetectContext,
+  node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
+): void {
+  if (ctx.plainMode) return // Plain Mode owns its props lowering
+  const component = componentPropsParam(node)
+  if (!component) return
+  const propsName = component.name
+
+  function walk(n: ts.Node): void {
+    if (isNestedFunction(n)) return
+    if (ts.isJsxElement(n) || ts.isJsxSelfClosingElement(n) || ts.isJsxFragment(n)) return
+    const shape = propsCopyShape(n, propsName)
+    if (shape) {
+      const what =
+        shape === 'assign' ? `\`Object.assign(…, ${propsName}, …)\`` : `\`{ ...${propsName} }\``
+      pushDiag(
+        ctx,
+        n,
+        'props-object-copy',
+        `${what} copies each prop's CURRENT value. A reactive prop arrives as a getter (\`<C x={sig()} />\`), and the copy keeps the value it read at setup, so it never updates. Use \`mergeProps(${propsName}, { … })\` to add or default props, or \`splitProps(${propsName}, ['a', 'b'])\` to carve out a group — both keep the getters. Spreading onto JSX (\`<div {...${propsName}} />\`) is fine as it is.`,
+        getNodeText(ctx, n),
+        `mergeProps(${propsName}, { /* extra or default props */ })`,
+        false,
+      )
+
+      return
+    }
+    ts.forEachChild(n, walk)
+  }
+  for (const stmt of component.body.statements) walk(stmt)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Patterns: accessor-uncalled-in-template / accessor-uncalled-in-condition
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1484,6 +1684,8 @@ function visitNode(ctx: DetectContext, node: ts.Node): void {
     detectPropsDestructuredBody(ctx, node)
     detectStaticReturnNullConditional(ctx, node)
     detectStaticEarlyReturnConditional(ctx, node)
+    detectPropsEarlyReturnConditional(ctx, node)
+    detectPropsObjectCopy(ctx, node)
   }
   if (ts.isBinaryExpression(node)) {
     detectProcessDevGate(ctx, node)
@@ -1663,10 +1865,16 @@ export function hasPyreonPatterns(code: string): boolean {
     // `const x = useX(` declaration anywhere. Bounded identifier length —
     // linear-time, same discipline as the other pre-filter lines.
     /\bconst\s+[A-Za-z_$][\w$]{0,60}\s*=\s*use[A-Z]\w{0,60}\s*\(/.test(code) ||
-    // static-return-null-conditional: `if (...) return null` anywhere.
+    // static-return-null-conditional + props-early-return-conditional:
+    // `if (...) return` anywhere (the props detector takes any returned value).
     // `[\s{]*` (single class) instead of `\s*\{?\s*` (overlapping
     // quantifiers) — the latter is polynomial on long whitespace runs.
-    /\bif\s*\([^)]{1,500}\)[\s{]{0,20}return\s+null\b/.test(code) ||
+    /\bif\s*\([^)]{1,500}\)[\s{]{0,20}return\b/.test(code) ||
+    // props-object-copy: `Object.assign(` or an object literal with a spread
+    // (`= { ...x`, `({ ...x`, `, ...x }`). Bounded identifier, linear-time.
+    /\bObject\.assign\s*\(|(?:[=(,:?]|\breturn)\s*\{\s*\.\.\.|,\s*\.\.\.\s*[A-Za-z_$][\w$]{0,60}\s*[,}]/.test(
+      code,
+    ) ||
     // as-unknown-as-vnodechild
     /\bas\s+unknown\s+as\s+VNodeChild\b/.test(code) ||
     // query-options-as-function: a query hook called with an object literal

@@ -168,6 +168,40 @@ describe.skipIf(!CAN_BUILD || !BUILT)('the emitted site', () => {
   })
 })
 
+describe.skipIf(!CAN_BUILD || !BUILT)('a site built with --base (#4391)', () => {
+  // `--base` reached Vite but not zero, so the module script carried the base
+  // while the prerendered modulepreloads and the view tabs pointed at the
+  // root: served from the base, the chunks 404'd and the page was blank.
+  const BASE = '/demos/loom/'
+  let out: string
+
+  beforeAll(() => {
+    out = join(tmpdir(), `loom-site-base-test-${process.pid}`)
+    const repoRoot = join(appDir(), '..', '..', '..', '..')
+    execFileSync('node', [BIN, 'build', repoRoot, `--out=${out}`, `--base=${BASE}`], { stdio: 'pipe' })
+  }, 240_000)
+
+  afterAll(() => {
+    if (out) rmSync(out, { recursive: true, force: true })
+  })
+
+  it('every root-relative URL in every page is under the base', () => {
+    for (const path of ['index.html', ...VIEWS.map((v) => `${v}/index.html`)]) {
+      const html = readFileSync(join(out, path), 'utf8')
+      const urls = [...html.matchAll(/(?:href|src)="(\/[^"]*)"/g)].map((m) => m[1]!)
+      // An empty list must not read as a pass.
+      expect(urls.length, `${path} has no root-relative URLs`).toBeGreaterThan(4)
+      expect(urls.filter((u) => !u.startsWith(BASE)), `${path} links outside ${BASE}`).toEqual([])
+    }
+  })
+
+  it('preloads its chunks and links its tabs under the base', () => {
+    const html = readFileSync(join(out, 'index.html'), 'utf8')
+    expect(html).toMatch(new RegExp(`rel="modulepreload"[^>]*href="${BASE}assets/`))
+    expect(html).toMatch(new RegExp(`href="${BASE}matrix(#pkg=[^"]+)?"`))
+  })
+})
+
 describe('the build guard', () => {
   it('vite IS resolvable here — the specs above are not silently skipped', () => {
     expect(CAN_BUILD).toBe(true)

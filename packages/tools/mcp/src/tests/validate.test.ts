@@ -38,6 +38,22 @@ describe('MCP validate — merged detector surface', () => {
     expect(pyreonCodes.has('for-missing-by')).toBe(true)
   })
 
+  // #4254: the issue's snippet reported "No issues found". The uncalled
+  // `count * 2` is a TypeScript error in a typed file and is not a detector code.
+  it('flags a props-based early return and an Object.assign over props', () => {
+    const code = `
+      import { signal } from '@pyreon/reactivity'
+      export function Card(props: { loading: boolean; title: string }) {
+        const count = signal(0)
+        if (props.loading) return <p>Loading</p>
+        const merged = Object.assign({}, props, { extra: 1 })
+        return <div title={merged.title}>{count}</div>
+      }
+    `
+    const codes = detectPyreonPatterns(code).map((d) => d.code)
+    expect(codes).toEqual(['props-early-return-conditional', 'props-object-copy'])
+  })
+
   it('does not double-flag anything between the two detectors', () => {
     // Both detectors know about className — but it belongs to the
     // React detector (coming-from-React mistake). The Pyreon detector

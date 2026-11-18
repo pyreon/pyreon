@@ -632,6 +632,52 @@ const debounced = useDebouncedValue(q, 300)  // write the URL from this`,
     }),
   },
   {
+    // A component pinned to the branch its first render picked (#4254). Like
+    // the destructure entry below, nothing throws: the trigger is the symptom
+    // ("stuck on the skeleton") or the detector code a user pastes. Placed
+    // first so a pasted `props-early-return-conditional` finding is not
+    // answered with the destructure explanation.
+    pattern:
+      /(?:static|props)-early-return-conditional|static-return-null-conditional|early[- ]return[^\n]{0,80}(?:prop|signal|run|once|stuck|pinned|never|update)|(?:stuck|pinned|stays|frozen) on (?:the )?(?:loading|skeleton|spinner|fallback|first branch|placeholder)/i,
+    diagnose: () => ({
+      cause:
+        'A component body ran an early return — `if (props.loading) return <Skeleton/>` or `if (loading()) return <Skeleton/>`. Pyreon components run ONCE, so that `if` is evaluated a single time at mount. When the prop or signal changes later, nothing re-runs the body, and the component stays on whichever branch the first run picked. Nothing throws.',
+      fix: 'Move the branch into what the component returns: `<Show when={() => props.loading} fallback={<Content/>}>` or a returned accessor `return () => (props.loading ? <Skeleton/> : <Content/>)` — both re-run when the condition changes. MCP `validate` / `pyreon check` flag the shapes: `static-early-return-conditional` (a signal call), `static-return-null-conditional` (`return null`), `props-early-return-conditional` (a prop). A prop that never changes for the life of the component is a correct read; silence that line with `// pyreon-lint-ignore props-early-return-conditional`.',
+      fixCode: `// pinned — evaluated once at mount
+function Card(props) {
+  if (props.loading) return <Skeleton />
+  return <Content />
+}
+
+// live — the accessor re-runs when props.loading changes
+function Card(props) {
+  return () => (props.loading ? <Skeleton /> : <Content />)
+}`,
+      related:
+        'Early returns inside an event handler, an effect or a returned accessor are fine: those functions run again. The same run-once rule is why a body-scope `const { x } = props` freezes `x`.',
+    }),
+  },
+  {
+    // A hand-written copy of props (#4254): `Object.assign({}, props, …)` or
+    // `{ ...props }` reads every getter once. Symptom-keyed, like the entries
+    // around it, plus the detector code.
+    pattern:
+      /props-object-copy|Object\.assign\([^\n]{0,60}\bprops\b|\{\s*\.\.\.props\b[^\n]{0,120}(?:reactiv|never update|not update|stale|lost|lose|snapshot)|spread(?:ing)? (?:of )?props[^\n]{0,80}(?:reactiv|never update|not update|stale|lost|lose|snapshot)/i,
+    diagnose: () => ({
+      cause:
+        'Props were copied into a plain object — `Object.assign({}, props, { extra: 1 })` or `{ ...props, extra: 1 }`. A reactive prop is a getter on `props`; copying reads each getter once and stores the VALUE, so the copy keeps the setup-time values and never updates.',
+      fix: 'Use `mergeProps(props, { extra: 1 })` to add props (`mergeProps({ size: \'md\' }, props)` for defaults) or `splitProps(props, [\'a\', \'b\'])` to carve out a group — both copy the getters, not the values. Spreading straight onto JSX (`<div {...props} />`, `<Child {...props} />`) is fine as it is. MCP `validate` / `pyreon check` flag the copy as `props-object-copy`.',
+      fixCode: `// snapshot — title never updates
+const merged = Object.assign({}, props, { extra: 1 })
+
+// live — getters preserved
+import { mergeProps } from '@pyreon/core'
+const merged = mergeProps(props, { extra: 1 })`,
+      related:
+        'A copy inside an event handler or an effect is fine (it re-reads on each call). If you need a plain snapshot on purpose, for example to send over the network, copy inside the handler that sends it.',
+    }),
+  },
+  {
     // The residual footgun left by this PR's captured-once prop fixes. Those
     // components now read through `props`, but the CLASS is still writable by
     // hand: a body-scope destructure freezes the value at setup because

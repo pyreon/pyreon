@@ -22,6 +22,7 @@
  * The caller supplies both sides.
  */
 import { CHECK_KEYS, type CheckKey, type Scenario, type VerifyVerdict } from '../core/types'
+import type { FailingScenario } from './report'
 
 /** One scenario whose outcome moved. */
 export interface ScenarioDelta {
@@ -47,10 +48,10 @@ export interface VerifyDiff {
   /**
    * Is this a REGRESSION?
    *
-   * True when a check started failing, or when a check that used to run no
-   * longer does. Deliberately NOT true for a removed scenario: deleting a
-   * component is a legitimate edit, and treating it as a regression would make
-   * the ratchet fire on ordinary refactors until people stopped believing it.
+   * True when a check started failing, when a check that used to run no
+   * longer does, or when a scenario disappeared (see the `regressed` term
+   * below). NOT true for an added scenario: it has no baseline to move from;
+   * `newFailures` is what makes its failure count under `--check`.
    */
   regressed: boolean
   /** Did anything get better? */
@@ -161,6 +162,41 @@ export function diffVerdicts(
       changed.some((d) => d.nowFailing.length > 0 || d.checksLost.length > 0),
     improved: changed.some((d) => d.nowPassing.length > 0 || d.checksGained.length > 0),
   }
+}
+
+const failKey = (id: string, key: CheckKey): string => `${id}\u0000${key}`
+
+/** Every (scenario, check) pair that FAILS in `scenarios`, as opaque keys for {@link newFailures}. */
+export function failingChecks(scenarios: readonly Scenario[]): ReadonlySet<string> {
+  const keys = new Set<string>()
+  for (const s of scenarios) {
+    for (const key of CHECK_KEYS) if (statusOf(s.verify, key) === 'fail') keys.add(failKey(s.id, key))
+  }
+
+  return keys
+}
+
+/**
+ * The failures a baseline did NOT already have — what `--check` exits on.
+ *
+ * A ratchet fails on a regression, not on the red it inherited: a check that
+ * failed in the committed catalog and still fails is the status quo, and
+ * making it a red exit blocked adopting `--check` on any catalog that already
+ * had a failure (#4307). A failure of a scenario the baseline does not have
+ * (a new component) is new, so it still fails, and so does every failure when
+ * there is no baseline.
+ */
+export function newFailures(
+  failures: readonly FailingScenario[],
+  baselineFailing: ReadonlySet<string>,
+): FailingScenario[] {
+  const out: FailingScenario[] = []
+  for (const f of failures) {
+    const checks = f.checks.filter((c) => !baselineFailing.has(failKey(f.id, c.key)))
+    if (checks.length > 0) out.push({ ...f, checks })
+  }
+
+  return out
 }
 
 /**
