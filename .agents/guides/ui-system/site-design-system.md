@@ -46,6 +46,24 @@ Import them from the folder's index (`kit/primitives`; an island imports the one
 - **Static layout.** Layout props are read once when the primitive renders; a layout that changes at runtime switches between two primitives (or uses `Visible`).
 - **Islands.** The primitives use the styling runtime (except `Icon`, which is plain markup), so only an island already rooted in `KitScope` (product demos, the benchmark islands) uses them, and it imports the primitive's own file (`kit/primitives/stack`), not the index: the index pulls every primitive (and coolgrid) into the island, about 1.4 KB gzip measured on a benchmark island. Kit files do the same. Static pages import the index.
 
+## Component families
+
+Layer 2. Every one is on `/brand/kit` (`site/pages/KitGalleryFamilies.tsx` holds the family specimens). A page never defines its own pill, note or stat: it picks the family member below. None sets an outer margin (the parent's `Stack` gap or a `Box padTop` sets the space); the one exception is noted.
+
+| Family | Component | Use | Props |
+| --- | --- | --- | --- |
+| Badge (`kit/badge.tsx`) | `Badge` | a STATUS: a verdict, or a marker on an item ("next release", "experimental"). Uppercase mono lettering, never interactive, the label is the text | `tone` (`win` `tie` `split` `loss` `info` `experimental`), `size` (`md` verdict chip, `sm` marker), `placement` (`after` a name / `before` a line: a word-sized gap, the only margin in the families), `bare` (lettering without the pill) |
+| | `Tag` | NAMES a thing: an API export, a product, a section to jump to. Mono, sentence case, neutral | `size` (`md`, `sm`), `href` (one plain anchor, outlined, hover border, focus ring; without it a filled static chip), `tag` (`li` in a `Cluster tag="ul"`) |
+| | `Text variant="badge"` | the badge lettering on a label that is not a pill (a term in a card, Do / Don't) | with `tone`, `medium`, `block` |
+| Note (`kit/note.tsx`) | `Note` | the quiet line that qualifies what is above it: a caveat, a run condition, a footnote, a figure caption, a hint | `size` (`caveat` 11.5px tracked mono [A8], `mono`, `caption`, `ui`, `small`), `tone` (`fog`, `mist`), `leading`, `measure` (cap the line under a full-width block), `tag` (`p`, `figcaption`, `small`, …) |
+| Card and stat (`kit/cards.tsx`, `kit/stat.tsx`) | `GlowCard` | the one card shell | `padding` (`card` `compact` `stat` `flush`), `state` (`default`, `hot`), `href` (the whole card is one link) |
+| | `StatBody` | a number that proves something: numeral, label, detail lines, the condition, an optional chart | `size` (`band` proof band, `strip` stat card, `product` product card, `hero` benchmarks hero), `numeral` (`default` `long` `strip` `card` `inline`) |
+| | `PackageName` | a package name in a card | `block` |
+
+- **Badge or Tag or control.** A status is a `Badge`; a name is a `Tag`; a chip you press to filter or toggle (`aria-pressed`) is a control and belongs with the segmented controls, never a `Tag`.
+- **Linked cards.** A `GlowCard` with `href` is one tab stop with the focus ring and holds nothing interactive (a `Tag` link or a button inside makes it a static card with its own links). Its hover changes the edge colour only, no motion. Every card carries `data-card` for the e2e (`e2e/site-pages.spec.ts`).
+- **Proof of an equal swap.** `site/tests/families.test.tsx` renders each replaced definition (verbatim) next to its family member, through compiled JSX and `h()`, and compares the effective CSS with pseudo-states and nested media (`site/tests/effective-css.ts`); every intended difference is named in the test.
+
 ## Conventions
 
 - **Names:** PascalCase, family first (`NoteCaption`, not `HomeNote`); the rocketstyle `name` equals the export name. A page prefix (`Home*`, `Bench*`) only for a one-off in `site/pages/**` with no `.theme()` of its own.

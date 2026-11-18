@@ -9,9 +9,10 @@ import { el, tone, txt } from '../kit/bases'
 import { DemoSurface, GlowCard } from '../kit/cards'
 import { CodeBlock } from '../kit/code'
 import { CardSegmented, PaperText, SimulatedNote } from '../kit/demo-parts'
-import { Eyebrow, StatusBadge } from '../kit/type'
+import { Eyebrow } from '../kit/type'
 import { ThemedPicture } from './_asset'
 import { KitScope } from '../kit/scope'
+import { Badge } from '../kit/badge'
 
 /**
  * Primitives demo (`primitives.json` → demo): pick a primitive; the web
@@ -206,7 +207,7 @@ export default function DemoPrimitives() {
             </GlowCard>
           </Columns>
           <Footer>
-            {() => (NEXT_RELEASE.has(current()) ? <StatusBadge>next release</StatusBadge> : null)}
+            {() => (NEXT_RELEASE.has(current()) ? <Badge tone="experimental" size="sm" placement="after">next release</Badge> : null)}
             <SimulatedNote>Illustrative, abridged: the iOS and Android columns are not compiled live in this page. The web column is the real component.</SimulatedNote>
           </Footer>
         </GlowCard>

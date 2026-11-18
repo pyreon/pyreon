@@ -17,7 +17,7 @@ const BOUND = 10_000
 let fillSeq = 0
 const overflowSheet = (): void => {
   for (let i = 0; i < BOUND + 10; i++)
-    sheet.insert(`--ssr-evict-fill-${fillSeq++}: ${i};`, false, undefined, false)
+    sheet.insert(`--ssr-evict-fill-${fillSeq++}: ${i};`, undefined, false)
 }
 
 afterEach(() => {

@@ -1,7 +1,7 @@
 import { createUniqueId, onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
 import { batch, computed, effect, isServer, signal } from '@pyreon/reactivity'
-import type { SchemaValidateFn, StandardSchemaLike } from '@pyreon/validation'
+import type { SchemaValidateFn } from '@pyreon/validation'
 import { isStandardSchema, standardSchemaToValidator } from '@pyreon/validation'
 import type { FieldDefinition, InferFieldValues } from './field'
 import { isFieldDefinition } from './field'
@@ -222,10 +222,10 @@ export function resolveSchemaValidator<TValues extends Record<string, unknown>>(
   // mistreated as a hand-written `SchemaValidateFn` — invoked with the wrong
   // signature, silently no-opping validation. `isStandardSchema` (fixed in
   // @pyreon/validation, #2243, to accept callables) now recognizes both
-  // zod/valibot OBJECT schemas AND ArkType CALLABLE schemas; it narrows to the
-  // strict shape while the bridge takes the lax `StandardSchemaLike` — one cast.
+  // zod/valibot OBJECT schemas AND ArkType CALLABLE schemas, narrowing to
+  // `StandardSchemaV1`, which the bridge takes directly.
   if (isStandardSchema(schemaInput)) {
-    return standardSchemaToValidator<TValues>(schemaInput as StandardSchemaLike)
+    return standardSchemaToValidator<TValues>(schemaInput)
   }
   // Fallback: a hand-written whole-form `SchemaValidateFn` — a plain function
   // WITHOUT `~standard`.

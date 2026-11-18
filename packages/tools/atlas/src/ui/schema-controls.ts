@@ -22,21 +22,11 @@
  *    ecosystem, not a shortcut taken here.
  */
 import { extractFields, type FieldInfo } from '@pyreon/feature'
+import { isStandardSchema } from '@pyreon/validation'
 import type { WorkbenchControl } from './catalog'
 
 /** A schema in the loosest sense this module accepts. */
 export type UnknownSchema = unknown
-
-/** Does this value expose the Standard Schema validate contract? */
-export function isStandardSchema(value: unknown): value is {
-  '~standard': { validate: (v: unknown) => unknown }
-} {
-  // Object OR function: an ArkType schema is a callable that carries
-  // `~standard`, and an object-only guard silently rejects it.
-  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return false
-  const std = (value as { '~standard'?: { validate?: unknown } })['~standard']
-  return typeof std?.validate === 'function'
-}
 
 /**
  * Map one schema field to a workbench control.

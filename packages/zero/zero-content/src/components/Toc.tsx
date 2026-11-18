@@ -72,9 +72,11 @@ export function Toc(props: TocProps): VNodeChild {
     const rect = el.getBoundingClientRect()
     const target = (window.pageYOffset || 0) + rect.top - scrollOffset
     window.scrollTo({ top: target, behavior: 'smooth' })
-    // Update history hash WITHOUT triggering the browser's native jump.
+    // Update history hash WITHOUT triggering the browser's native jump. Keep
+    // the entry's state: it belongs to whoever created the entry (the
+    // router's `__pyreonIdx` stamp), and `null` would erase it (#4388).
     if (typeof history !== 'undefined' && history.replaceState) {
-      history.replaceState(null, '', `#${slug}`)
+      history.replaceState(history.state, '', `#${slug}`)
     }
   }
 

@@ -4,7 +4,7 @@
  */
 import { expectSubQuadratic } from '@pyreon/test-utils'
 import { describe, expect, it, vi } from 'vitest'
-import content, { isMarkdownId, shortId } from '../plugin'
+import content, { _setResolvedRootForPaths, isMarkdownId, reportPath } from '../plugin'
 
 describe('content() Vite plugin', () => {
   it('has the expected name + `pre` ordering', () => {
@@ -152,15 +152,16 @@ describe('isMarkdownId — ReDoS regression', () => {
   })
 })
 
-describe('shortId', () => {
+describe('reportPath without a resolved root (the /src/-suffix fallback)', () => {
   it.each([
     ['/abs/project/src/content/docs/zero.md', 'src/content/docs/zero.md'],
     ['/very/long/abs/path/src/x.md', 'src/x.md'],
     // No /src/ in the path — full id is returned.
     ['/abs/random.md', '/abs/random.md'],
     ['', ''],
-  ])('shortId(%j) === %j', (input, expected) => {
-    expect(shortId(input)).toBe(expected)
+  ])('reportPath(%j) === %j', (input, expected) => {
+    _setResolvedRootForPaths(null)
+    expect(reportPath(input)).toBe(expected)
   })
 })
 
