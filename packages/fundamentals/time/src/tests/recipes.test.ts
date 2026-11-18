@@ -1,7 +1,6 @@
-import { add, between, dayOfWeek, diff, eachDay, endOf, isToday, monthGrid, startOf, toInstant, toPlainDateTime, weekStartOf, dateParts, isSame, isPlainDate, parseISO, weekOfYear, eachDay as days } from '../core'
+import { add, between, dayOfWeek, diff, eachDay, endOf, isToday, monthGrid, startOf, toInstant, toPlainDateTime, weekStartOf, dateParts, isSame, isPlainDate, parseISO, weekOfYear } from '../core'
 import type { PlainDate } from '../core'
-import { pipe, toPlainDate } from '../fp'
-import { add as addBy, endOf as endOfBy, startOf as startOfBy } from '../fp'
+import { add as addBy, endOf as endOfBy, pipe, toPlainDate } from '../fp'
 
 /** The docs' recipes and "Coming from" calls, run. The docs show these snippets with these outputs. */
 describe('recipes', () => {
@@ -86,7 +85,7 @@ describe('coming from', () => {
     ['date-fns differenceInCalendarDays(b, a)', () => diff('2026-11-18', '2026-12-24', 'day'), 36],
     ['date-fns startOfWeek(d, { weekStartsOn: 1 })', () => startOf('2026-11-18', 'week'), '2026-11-16'],
     ['date-fns endOfMonth(d)', () => endOf('2026-11-18', 'month'), '2026-11-30'],
-    ['date-fns eachDayOfInterval', () => days('2026-11-18', '2026-11-20'), ['2026-11-18', '2026-11-19', '2026-11-20']],
+    ['date-fns eachDayOfInterval', () => eachDay('2026-11-18', '2026-11-20'), ['2026-11-18', '2026-11-19', '2026-11-20']],
     ['date-fns getISOWeek(d)', () => weekOfYear('2027-01-01'), 53],
     ['date-fns isSameDay(a, b)', () => isSame('2026-11-18T01:00', '2026-11-18T23:00', 'day'), true],
     ['date-fns isValid(parseISO(s))', () => isPlainDate('2026-02-30'), false],
