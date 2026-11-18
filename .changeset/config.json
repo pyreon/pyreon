@@ -10,6 +10,7 @@
   "fixed": [
     [
       "@pyreon/a11y",
+      "@pyreon/ambient",
       "@pyreon/atlas",
       "@pyreon/attrs",
       "@pyreon/charts",
@@ -81,6 +82,7 @@
       "@pyreon/sync",
       "@pyreon/table",
       "@pyreon/testing",
+      "@pyreon/time",
       "@pyreon/toast",
       "@pyreon/typescript",
       "@pyreon/ui-core",

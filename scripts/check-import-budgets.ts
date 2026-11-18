@@ -195,6 +195,54 @@ export const SCENARIOS: Scenario[] = [
     imports: ['defineStore'],
   },
   {
+    // Date arithmetic on plain strings: parsing, the padded writer and the duration loader, and nothing of the zone code.
+    // `add` must not drag `Intl.DateTimeFormat` handling in; zone conversion is a separate import.
+    id: '@pyreon/time::add',
+    pkg: '@pyreon/time',
+    dir: 'fundamentals/time',
+    entry: 'core.js',
+    imports: ['add'],
+  },
+  {
+    // The typical set a calendar or scheduler writes: arithmetic, truncation, a grid and one zone conversion.
+    id: '@pyreon/time::typical',
+    pkg: '@pyreon/time',
+    dir: 'fundamentals/time',
+    entry: 'core.js',
+    imports: ['add', 'diff', 'startOf', 'monthGrid', 'toInstant'],
+  },
+  {
+    // The value-last entry is a thin wrapper: one fp function must cost core's function plus a closure, and must not pull the
+    // other fp functions.
+    id: '@pyreon/time::fp-add',
+    pkg: '@pyreon/time',
+    dir: 'fundamentals/time',
+    entry: 'fp.js',
+    imports: ['add'],
+  },
+  {
+    // A typical pipeline: adjusters composed with pipe.
+    id: '@pyreon/time::fp-pipeline',
+    pkg: '@pyreon/time',
+    dir: 'fundamentals/time',
+    entry: 'fp.js',
+    imports: ['add', 'startOf', 'pipe', 'isBetween'],
+  },
+  {
+    // The ambient clock hook alone: the shared ticker machinery, without the locale and zone context.
+    id: '@pyreon/ambient::useNow',
+    pkg: '@pyreon/ambient',
+    dir: 'fundamentals/ambient',
+    imports: ['useNow'],
+  },
+  {
+    // The reactive time entry with one clock hook: the hook, the ambient clock it sits on, and the date math it needs.
+    id: '@pyreon/time::reactive-useRelative',
+    pkg: '@pyreon/time',
+    dir: 'fundamentals/time',
+    imports: ['useRelative'],
+  },
+  {
     // Locks the import-chosen drag preview: a plain draggable must not carry
     // pdnd's preview utilities (`setCustomNativeDragPreview` + offset presets),
     // which `dragPreview()` brings in only when used.

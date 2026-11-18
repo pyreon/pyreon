@@ -27,6 +27,7 @@ describe('loadPatternRegistry — real repo docs/patterns', () => {
     expect(names).toEqual([
       'controllable-state',
       'data-fetching',
+      'dates-and-times',
       'dev-warnings',
       'dynamic-fields',
       'event-listeners',

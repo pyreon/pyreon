@@ -43,6 +43,8 @@
     "@pyreon/storage",
     "@pyreon/format",
     "@pyreon/auth",
-    "@pyreon/devtools"
+    "@pyreon/devtools",
+    "@pyreon/time",
+    "@pyreon/ambient"
   ]
 }
