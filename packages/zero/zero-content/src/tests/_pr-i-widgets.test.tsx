@@ -136,6 +136,33 @@ describe('PR-I — H13 — Toc smooth-scroll on click', () => {
     }
   })
 
+  it("keeps the history entry's state when it writes the hash (#4388)", () => {
+    // The hash write replaces the CURRENT entry, whose state belongs to whoever
+    // created it — @pyreon/router stamps `{ __pyreonIdx }` on every entry it
+    // owns. `replaceState(null, …)` erased that stamp on every TOC click.
+    const heading = document.createElement('h2')
+    heading.id = 'kept-section'
+    document.body.appendChild(heading)
+    const originalScrollTo = window.scrollTo
+    window.scrollTo = vi.fn() as unknown as typeof window.scrollTo
+    const stamp = { __pyreonIdx: 3 }
+    history.replaceState(stamp, '', '/docs')
+
+    try {
+      const { container, cleanup } = mountReactive(
+        <Toc headings={[{ level: 2, text: 'Kept', slug: 'kept-section' }]} />,
+      )
+      query<HTMLAnchorElement>(container, '.pyreon-toc__link').click()
+      expect(window.location.hash).toBe('#kept-section')
+      expect(history.state).toEqual(stamp)
+      cleanup()
+    } finally {
+      window.scrollTo = originalScrollTo
+      document.body.removeChild(heading)
+      history.replaceState(null, '', '/')
+    }
+  })
+
   it('respects smoothScroll=false and uses the browser default', () => {
     const heading = document.createElement('h2')
     heading.id = 'x'

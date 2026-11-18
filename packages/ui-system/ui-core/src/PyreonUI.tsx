@@ -135,8 +135,8 @@ function autoInit(): void {
 /**
  * Unified provider for the Pyreon UI system.
  *
- * Replaces the need for separate UnistyleProvider, RocketstyleProvider,
- * and ThemeProvider — one component, zero init.
+ * Provides the styler theme context, the ui-core context and the mode
+ * context in one component, with zero init.
  *
  * Mode can be a static string OR a signal/getter for reactive switching:
  * ```tsx

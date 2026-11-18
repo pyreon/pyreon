@@ -15,7 +15,7 @@ import { isServer } from '@pyreon/reactivity'
 import { type Interpolation, normalizeCSS, resolve } from './resolve'
 import { isDynamic } from './shared'
 import { sheet } from './sheet'
-import { useTheme } from './ThemeProvider'
+import { useTheme } from './theme-context'
 
 export const createGlobalStyle = (
   strings: TemplateStringsArray,

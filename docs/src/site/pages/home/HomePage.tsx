@@ -15,7 +15,7 @@ import { AutoGrid, Box, Cluster, Grid, Stack, Text, Visible, Wrap } from '../../
 import { AnimatedSvg, Loop } from '../../kit/media'
 import { Reveal } from '../../kit/motion'
 import { CaveatLine, EndCTA, HookHero, Numeral, ProofBand, StatCard, type StatChartSource, TextLink } from '../../kit/proof'
-import { Heading, Lede, renderInline, StatusBadge, StatusDot, VisuallyHidden } from '../../kit/type'
+import { Heading, Lede, renderInline, StatusDot, VisuallyHidden } from '../../kit/type'
 import { productName, resolveHref } from '../../nav'
 import proofBundle from '../../media/home/proof-bundle.svg?raw'
 import proofCharts from '../../media/home/proof-charts.svg?raw'
@@ -26,6 +26,9 @@ import proofRenderToString from '../../media/home/proof-render-to-string.svg?raw
 import proofRows from '../../media/home/proof-rows-10k.svg?raw'
 import proofSsr from '../../media/home/proof-ssr.svg?raw'
 import runsOnceTree from '../../media/home/runs-once-tree.svg?raw'
+import { Badge } from '../../kit/badge'
+import { Tag } from '../../kit/tag'
+import { Note } from '../../kit/note'
 import {
   BenchList,
   BenchRow,
@@ -37,7 +40,6 @@ import {
   DefList,
   Finding,
   MapTable,
-  Note,
   Pane,
   PaneHead,
   PhoneLoop,
@@ -52,7 +54,6 @@ import {
   StripGrid,
   Strong,
   TableBox,
-  TagLink,
   TargetLabel,
   TargetLabels,
   TargetsGrid,
@@ -128,7 +129,9 @@ function Hero(props: { s: HomeHero }) {
               </For>
             </ul>
           </VisuallyHidden>
-          <Note>{renderInline(v.note)}</Note>
+          <Box padTop={175}>
+            <Note size="caption">{renderInline(v.note)}</Note>
+          </Box>
         </div>
       </TargetsGrid>
       <PhoneOnly>
@@ -199,7 +202,9 @@ function Once(props: { s: HomeOnce }) {
               <CodeBlock code={s.counter.code} html={s.counter.codeHtml} label="Counter" />
               <CounterIsland metrics={s.counter.metrics} />
             </GlowCard>
-            <Note>{s.counter.spec}</Note>
+            <Box padTop={175}>
+              <Note size="caption">{s.counter.spec}</Note>
+            </Box>
             <AnimatedSvg file="home/runs-once-tree.svg" markup={runsOnceTree} />
           </Stack>
         </Split>
@@ -308,10 +313,14 @@ function Compare(props: { s: SectionOf<'compare'> }) {
             </For>
           </AutoGrid>
         </Visible>
-        <Note>{renderInline(s.note)}</Note>
-        <Note>
-          <Text variant="mono" tone="fog" leading="normal">source: {s.source}</Text>
-        </Note>
+        <Box padTop={175}>
+          <Note size="caption">{renderInline(s.note)}</Note>
+        </Box>
+        <Box padTop={175}>
+          <Note size="caption">
+            <Text variant="mono" tone="fog" leading="normal">source: {s.source}</Text>
+          </Note>
+        </Box>
         <Box padTop={225}>
           <Cluster gap={275} alignY="center">
             <For each={s.links} by={(l) => l.href}>
@@ -367,7 +376,7 @@ function Platforms(props: { s: SectionOf<'platforms'>; media: HomeHero['visual']
                 </tbody>
               </MapTable>
               <span>
-                <StatusBadge>experimental</StatusBadge>
+                <Badge tone="experimental" size="sm" placement="after">experimental</Badge>
               </span>
             </GlowCard>
             {props.media ? (
@@ -435,7 +444,7 @@ function Audiences(props: { s: SectionOf<'audiences'> }) {
                   <Lede size="small">{renderInline(x.item.text)}</Lede>
                   <Cluster gap={100} alignY="center" aria-label="Products">
                     <For each={x.item.tags} by={(t) => t}>
-                      {(t) => <TagLink href={`/products/${t}`}>{productName(t)}</TagLink>}
+                      {(t) => <Tag size="sm" href={`/products/${t}`}>{productName(t)}</Tag>}
                     </For>
                   </Cluster>
                 </GlowCard>
@@ -465,13 +474,13 @@ function Products(props: { s: SectionOf<'products'> }) {
                 <GlowCard href={resolveHref(f.p.href)} state={f.width === 'full' ? 'hot' : 'default'}>
                   <Heading tag="h3" size="step" style="margin:0">
                     {f.p.name}
-                    {f.p.status ? <StatusBadge>{f.p.status}</StatusBadge> : null}
+                    {f.p.status ? <Badge tone="experimental" size="sm" placement="after">{f.p.status}</Badge> : null}
                   </Heading>
                   <Lede size="small">{renderInline(f.p.pitch)}</Lede>
                   <CardFoot label={<Text variant="mono" tone="fog" leading="normal">{f.p.package}</Text>}>
                     <Show when={() => !!f.p.proof}>
                       <Lede size="small">
-                        <Numeral tag="span" size="strip" style="font-size:22px">
+                        <Numeral tag="span" size="inline">
                           {f.p.proof?.stat}
                         </Numeral>{' '}
                         {renderInline(f.p.proof?.label ?? '')}

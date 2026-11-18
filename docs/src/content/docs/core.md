@@ -1001,6 +1001,22 @@ function FormWithRefs() {
 }
 ```
 
+### Capturing an element into a signal
+
+`ref` also takes a signal's setter, which is the shortest way to make an element reactive state:
+
+```tsx
+import { effect, signal } from '@pyreon/reactivity'
+
+function Measured() {
+  const box = signal<HTMLDivElement | null>(null)
+  effect(() => console.log(box()?.getBoundingClientRect().width))
+  return <div ref={box.set}>…</div>
+}
+```
+
+The compiler binds the method to its signal (`box.set.bind(box)`), because signal methods read `this`. That works for any signal or computed declared in the component (and any the Vite plugin knows from an import). A setter reached through props or an object is not known to the compiler. Pass an arrow for those: `ref={(el) => props.box.set(el)}`.
+
 ### Ref Forwarding Pattern
 
 Since refs are plain objects, forwarding them to child components is straightforward:

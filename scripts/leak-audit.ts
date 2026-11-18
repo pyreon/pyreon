@@ -19,7 +19,9 @@
  *      - Sample `performance.memory.usedJSHeapSize`
  *   5. Compute the linear-regression slope of heap size over cycle
  *      number (least-squares).
- *   6. Assert `slope < threshold` (bytes per cycle).
+ *   6. Assert `slope < threshold` (bytes per cycle). A window over the
+ *      threshold runs confirmation cycles first: one allocation step is not
+ *      a leak (see `perf/leak-verdict.ts` for the rule and its derivation).
  *
  * Exit codes mean something distinct so CI / nightly runs classify
  * failures cleanly:
@@ -54,6 +56,12 @@ import { fileURLToPath } from 'node:url'
 import { chromium, type Page } from 'playwright'
 import { startServer as startViteServer } from './perf/server'
 import { forceGcTwice, HEAP_AUDIT_CHROMIUM_ARGS } from './perf/heap'
+import {
+  DEFAULT_MAX_CONFIRM_CYCLES,
+  type HeapGrowthVerdict,
+  judgeHeapGrowth,
+  linearRegression,
+} from './perf/leak-verdict'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(HERE, '..')
@@ -132,53 +140,8 @@ Exit codes:
 `)
 }
 
-/**
- * Least-squares linear regression on (x, y) samples — exported pure
- * function so unit tests can validate the math without spawning a
- * browser. x is the sample index (0..n-1); y is the value.
- *
- * Returns `{ slope, intercept, rSquared }`:
- *   - `slope` — value change per unit x (bytes per cycle in the
- *     leak-audit use case)
- *   - `intercept` — predicted y at x=0
- *   - `rSquared` — coefficient of determination ∈ [0, 1]. 1.0 means
- *     perfect line; 0 means the line explains no variance. NaN-safe:
- *     returns 0 when total variance is 0 (constant samples).
- */
-export function linearRegression(samples: number[]): {
-  slope: number
-  intercept: number
-  rSquared: number
-} {
-  const n = samples.length
-  if (n < 2) return { slope: 0, intercept: samples[0] ?? 0, rSquared: 0 }
-  // x is the cycle index (0..n-1); y is the heap-size sample.
-  let sumX = 0
-  let sumY = 0
-  let sumXY = 0
-  let sumX2 = 0
-  for (let i = 0; i < n; i++) {
-    sumX += i
-    sumY += samples[i]!
-    sumXY += i * samples[i]!
-    sumX2 += i * i
-  }
-  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX)
-  const intercept = (sumY - slope * sumX) / n
-  // Coefficient of determination — how well the line fits the data.
-  // Low rSquared means the heap is jittery (noise > trend), which means
-  // the slope estimate is uncertain even if it's small.
-  const meanY = sumY / n
-  let ssTotal = 0
-  let ssRes = 0
-  for (let i = 0; i < n; i++) {
-    const yPred = intercept + slope * i
-    ssTotal += (samples[i]! - meanY) ** 2
-    ssRes += (samples[i]! - yPred) ** 2
-  }
-  const rSquared = ssTotal > 0 ? 1 - ssRes / ssTotal : 0
-  return { slope, intercept, rSquared }
-}
+// The regression and the verdict live in `perf/leak-verdict.ts`; re-exported for existing importers.
+export { linearRegression }
 
 async function runOneCycle(page: Page, journeyName: string): Promise<void> {
   // Load journeys catalog from the running app — it's already in scope.
@@ -234,6 +197,17 @@ async function sampleHeap(page: Page): Promise<number> {
     const perf = performance as unknown as { memory?: { usedJSHeapSize: number } }
     return perf.memory?.usedJSHeapSize ?? 0
   })
+}
+
+function describeVerdict(v: HeapGrowthVerdict, threshold: number): string {
+  const kb = (bytes: number): string => `${(bytes / 1024).toFixed(2)} KB/cycle`
+  if (v.reason === 'within-threshold') return `✓ No leak detected — slope ${kb(v.slope)} ≤ threshold`
+  const over = `slope ${kb(v.slope)} > threshold ${kb(threshold)}`
+  if (v.confirmation === undefined) return `❌ LEAK DETECTED — ${over}; growth too large to confirm`
+  const after = `${kb(v.confirmation.slope)} over ${v.confirmation.cycles} further cycles`
+  return v.leak
+    ? `❌ LEAK DETECTED — ${over}, and still ${after}`
+    : `✓ No leak detected — ${over} once, then ${after}: a one-time allocation`
 }
 
 async function main(): Promise<void> {
@@ -309,11 +283,29 @@ async function main(): Promise<void> {
       }
     }
 
+    // Analysis: linear regression on (cycle, heap size). A window over the
+    // threshold is confirmed on further cycles before it counts as a leak —
+    // one allocation step reads as a slope otherwise (perf/leak-verdict.ts).
+    const judged = await judgeHeapGrowth(
+      samples,
+      args.thresholdBytesPerCycle,
+      DEFAULT_MAX_CONFIRM_CYCLES,
+      async (cycles) => {
+        console.log(`[leak-audit] slope over threshold — confirming on ${cycles} further cycles…`)
+        const more: number[] = []
+        for (let i = 0; i < cycles; i++) {
+          await runOneCycle(page, args.journey)
+          await forceGcTwice(page)
+          more.push(await sampleHeap(page))
+        }
+        return more
+      },
+    )
+    const { slope, intercept, rSquared } = judged
+
     await browser.close()
     await server.stop()
 
-    // Analysis: linear regression on (cycle, heap size).
-    const { slope, intercept, rSquared } = linearRegression(samples)
     const first = samples[0] ?? 0
     const last = samples[samples.length - 1] ?? 0
     const total = last - first
@@ -335,11 +327,8 @@ async function main(): Promise<void> {
     )
     console.log('─'.repeat(72))
 
-    const leakDetected = slope > args.thresholdBytesPerCycle
-    const verdict = leakDetected
-      ? `❌ LEAK DETECTED — slope ${(slope / 1024).toFixed(2)} KB/cycle > threshold ${(args.thresholdBytesPerCycle / 1024).toFixed(2)} KB/cycle`
-      : `✓ No leak detected — slope ${(slope / 1024).toFixed(2)} KB/cycle ≤ threshold`
-    console.log(`  ${verdict}`)
+    const leakDetected = judged.leak
+    console.log(`  ${describeVerdict(judged, args.thresholdBytesPerCycle)}`)
     console.log('─'.repeat(72))
 
     // Honesty note: distinguish "constant heap" (best outcome — R²
@@ -390,6 +379,8 @@ async function main(): Promise<void> {
             lastSampleBytes: last,
             totalGrowthBytes: total,
             samples,
+            reason: judged.reason,
+            confirmation: judged.confirmation,
             leakDetected,
           },
           null,

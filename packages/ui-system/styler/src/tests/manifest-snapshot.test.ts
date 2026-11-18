@@ -22,7 +22,6 @@ describe('gen-docs — styler snapshot', () => {
     expect(Object.keys(record).sort()).toEqual([
       'styler/StyleSheet',
       'styler/ThemeContext',
-      'styler/ThemeProvider',
       'styler/buildProps',
       'styler/clearNormCache',
       'styler/createGlobalStyle',

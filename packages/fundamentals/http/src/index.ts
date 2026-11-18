@@ -136,7 +136,6 @@ export type {
   RequestOptions,
   SchemaOutput,
   SchemaResolver,
-  StandardSchemaShape,
   Transport,
   ValidateMode,
   Validator,

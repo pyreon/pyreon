@@ -10,7 +10,7 @@ import { mount } from '@pyreon/runtime-dom'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createSheet, sheet } from '../sheet'
 import { setStyleExtraction, styled } from '../styled'
-import { ThemeProvider } from '../ThemeProvider'
+import { TestThemeProvider } from './index'
 
 const fakeRewrite = (cssText: string, varsOut: Record<string, string>): string =>
   cssText.replace(/([a-z-]+)\s*:\s*([^;]+);/g, (_m, prop: string, value: string) => {
@@ -105,7 +105,7 @@ describe('$element cache — theme key and CPSE vars', () => {
     for (let i = 0; i < 2; i++) {
       const root = document.createElement('div')
       const dispose = mount(
-        h(ThemeProvider as never, { theme: null }, h(Box as never, { $element: bundle })),
+        h(TestThemeProvider as never, { theme: null }, h(Box as never, { $element: bundle })),
         root,
       )
       classes.push((root.firstElementChild as HTMLElement).className)

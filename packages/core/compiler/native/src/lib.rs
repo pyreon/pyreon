@@ -776,8 +776,6 @@ struct Ctx<'a> {
 
     /// Signal variables: `const x = signal(...)` or `const x = computed(...)`
     signal_vars: FxHashSet<String>,
-    /// JSX elements already scanned by `check_signal_method_refs`.
-    method_ref_scanned: FxHashSet<u32>,
     /// Shadowed signal names in current scope (for scope-aware auto-call)
     shadowed_signals: FxHashSet<String>,
     /// Selector variables: `const x = createSelector(...)` — drives the
@@ -937,7 +935,6 @@ impl<'a> Ctx<'a> {
             in_jsx_child_callback: false,
             in_callback_argument: false,
             signal_vars: FxHashSet::default(),
-            method_ref_scanned: FxHashSet::default(),
             shadowed_signals: FxHashSet::default(),
             selector_vars: FxHashSet::default(),
             shadowed_selectors: FxHashSet::default(),
@@ -3037,7 +3034,8 @@ fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> String {
         let mut signals = Vec::new();
         collect_signal_idents(expr, ctx, &mut signals, span.start, span.end, &mut Vec::new());
         for (start, end) in signals {
-            edits.push((start, end, format!("{}()", &ctx.source[start as usize..end as usize])));
+            let suffix = signal_edit_suffix(&ctx.source, start, end);
+            edits.push((start, end, format!("{}{}", &ctx.source[start as usize..end as usize], suffix)));
         }
     }
     if edits.is_empty() {
@@ -3678,9 +3676,9 @@ fn auto_call_signals(text: &str, expr: &Expression, ctx: &Ctx) -> String {
     idents.sort_by_key(|&(start, _)| start);
     let mut result = String::new();
     let mut last = base;
-    for &(_, end) in &idents {
+    for &(start, end) in &idents {
         result.push_str(&ctx.source[last as usize..end as usize]);
-        result.push_str("()");
+        result.push_str(&signal_edit_suffix(&ctx.source, start, end));
         last = end;
     }
     result.push_str(&ctx.source[last as usize..end_offset as usize]);
@@ -4144,8 +4142,10 @@ fn collect_signal_idents(
 
     // Skip property name positions on member expressions
     if let Expression::StaticMemberExpression(m) = expr {
-        // `sig.set` passed by reference — the signal's method, not a value read.
+        // `sig.set` passed by reference — the signal's own method, not a value
+        // read. Recorded over the whole member so the edit BINDS it (#4356).
         if is_signal_method_ref(m, ctx, shadows) {
+            push_signal_method_ref(m, out, range_start, range_end);
             return;
         }
         collect_signal_idents(&m.object, ctx, out, range_start, range_end, shadows);
@@ -4235,6 +4235,10 @@ fn collect_signal_idents(
         Expression::ChainExpression(c) => match &c.expression {
             ChainElement::CallExpression(call) => {
                 collect_signal_call_idents(call, ctx, out, range_start, range_end, shadows);
+            }
+            // `sig?.set` — the same method reference as `sig.set`.
+            ChainElement::StaticMemberExpression(m) if is_signal_method_ref(m, ctx, shadows) => {
+                push_signal_method_ref(m, out, range_start, range_end);
             }
             ChainElement::StaticMemberExpression(m) => {
                 collect_signal_idents(&m.object, ctx, out, range_start, range_end, shadows);
@@ -4548,6 +4552,48 @@ const SIGNAL_METHOD_NAMES: [&str; 8] =
 fn is_signal_method_ref(m: &StaticMemberExpression, ctx: &Ctx, shadows: &[String]) -> bool {
     SIGNAL_METHOD_NAMES.contains(&m.property.name.as_str())
         && is_bare_active_signal(&m.object, ctx, shadows)
+}
+
+/// Record a `sig.<method>` reference over the WHOLE member — from the signal
+/// identifier to the end of the property — so `signal_edit_suffix` binds it.
+fn push_signal_method_ref(m: &StaticMemberExpression, out: &mut Vec<(u32, u32)>, range_start: u32, range_end: u32) {
+    let mut cur = &m.object;
+    loop {
+        match cur {
+            Expression::ParenthesizedExpression(p) => cur = &p.expression,
+            Expression::TSAsExpression(e) => cur = &e.expression,
+            Expression::TSSatisfiesExpression(e) => cur = &e.expression,
+            Expression::TSNonNullExpression(e) => cur = &e.expression,
+            Expression::TSTypeAssertion(e) => cur = &e.expression,
+            _ => break,
+        }
+    }
+    if let Expression::Identifier(id) = cur {
+        if id.span.start >= range_start && m.span.end <= range_end {
+            out.push((id.span.start, m.span.end));
+        }
+    }
+}
+
+/// The text an auto-call edit appends at the end of its range: `()` for a
+/// signal read, `.bind(sig)` for a signal-method reference (recorded over the
+/// whole member, so its range is longer than the identifier it starts with).
+/// Signal methods read `this`; a bound reference survives being called
+/// detached (`ref`, `on*`, a callback prop). Mirrors `signalEditSuffix` in
+/// src/jsx.ts (#4356).
+fn signal_edit_suffix(source: &str, start: u32, end: u32) -> String {
+    let text = &source[start as usize..end as usize];
+    let name_len = text
+        .char_indices()
+        // The identifier ends at the first character no identifier contains:
+        // `.` / `?.` / `)` / `!` / a comment or whitespace before `as`.
+        .find(|&(_, c)| matches!(c, '.' | '?' | ')' | '!' | '/') || c.is_whitespace())
+        .map_or(text.len(), |(i, _)| i);
+    if name_len == text.len() {
+        "()".to_string()
+    } else {
+        format!(".bind({})", &text[..name_len])
+    }
 }
 
 fn is_bare_active_signal(expr: &Expression, ctx: &Ctx, shadows: &[String]) -> bool {
@@ -5572,10 +5618,6 @@ fn walk_jsx_child(child: &JSXChild, ctx: &mut Ctx) {
 // ─── JSX element handling ────────────────────────────────────────────────────
 
 fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
-    // `ref={panel.set}` — mirrors the JS `checkSignalMethodRefs` at the same
-    // walk position (before any emit path swallows the subtree).
-    check_signal_method_refs(el, ctx);
-
     // Rocketstyle-collapse: a candidate component with a resolved site collapses
     // to a single `__rsCollapse` cloneNode — children are baked into the SSR-
     // resolved template, so do NOT recurse into the subtree. Mirrors the JS
@@ -5659,57 +5701,6 @@ fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
     ctx.parent_is_component_jsx_element = old_parent_is_component;
     ctx.parent_component_has_sole_child = old_sole_child;
     ctx.parent_eager_mount = old_eager;
-}
-
-/// `ref={panel.set}` / `onClick={count.update}`: a signal METHOD passed as an
-/// attribute value by reference. Signal methods read `this`, so the detached
-/// reference throws when called. Warns with the arrow that works (#4356).
-/// Covers the element's attributes and its directly nested elements;
-/// `method_ref_scanned` keeps an element from being reported twice. Mirrors
-/// `checkSignalMethodRefs` in src/jsx.ts.
-fn check_signal_method_refs(el: &JSXElement, ctx: &mut Ctx) {
-    if ctx.method_ref_scanned.contains(&el.span.start) {
-        return;
-    }
-    scan_signal_method_refs(el, ctx);
-}
-
-fn scan_signal_method_refs(el: &JSXElement, ctx: &mut Ctx) {
-    ctx.method_ref_scanned.insert(el.span.start);
-    for attr in &el.opening_element.attributes {
-        let JSXAttributeItem::Attribute(a) = attr else { continue };
-        let Some(JSXAttributeValue::ExpressionContainer(container)) = &a.value else { continue };
-        let Some(value) = container.expression.as_expression() else { continue };
-        let Expression::StaticMemberExpression(m) = unwrap_type_layers(value) else { continue };
-        let method = m.property.name.as_str();
-        if !SIGNAL_METHOD_NAMES.contains(&method) {
-            continue;
-        }
-        let Expression::Identifier(object) = unwrap_type_layers(&m.object) else { continue };
-        if !is_active_signal(object.name.as_str(), ctx) {
-            continue;
-        }
-        let reference = format!("{}.{}", object.name.as_str(), method);
-        let attr_name = jsx_attr_name(&a.name).to_string();
-        ctx.warn(
-            m.span,
-            format!(
-                "\"{reference}\" is passed by reference, so it runs without its signal and throws: signal methods read \"this\". Pass an arrow instead: {attr_name}={{(v) => {reference}(v)}}."
-            ),
-            "signal-method-reference",
-        );
-    }
-    scan_signal_method_ref_children(&el.children, ctx);
-}
-
-fn scan_signal_method_ref_children(children: &[JSXChild], ctx: &mut Ctx) {
-    for child in children {
-        match child {
-            JSXChild::Element(e) => scan_signal_method_refs(e, ctx),
-            JSXChild::Fragment(f) => scan_signal_method_ref_children(&f.children, ctx),
-            _ => {}
-        }
-    }
 }
 
 fn check_for_warnings(el: &JSXElement, ctx: &mut Ctx) {
@@ -5901,7 +5892,8 @@ fn slice_unsliced(expr: &Expression, ctx: &mut Ctx) {
         if in_jsx(start, end) {
             continue;
         }
-        ctx.add_replacement(end, end, "()".to_string());
+        let suffix = signal_edit_suffix(&ctx.source, start, end);
+        ctx.add_replacement(end, end, suffix);
     }
     for (start, end, text) in pd_edits {
         if in_jsx(start, end) {
@@ -10696,21 +10688,6 @@ fn arrow_contains_jsx(arrow: &ArrowFunctionExpression) -> bool {
 
 // ─── Prop-derived variable collection ────────────────────────────────────────
 
-/// Does this initializer carry JSX? See the SSR bail in `collect_prop_derived`.
-///
-/// Reuses the two predicates the element-const collection already relies on
-/// rather than hand-rolling a second full expression walk: a directly-JSX
-/// initializer (optionally parenthesized), and the array-of-JSX / map-of-JSX
-/// collection shape. Those are the forms a JSX-bearing initializer actually
-/// takes, and both are already exercised by the element-var tests.
-fn contains_jsx(expr: &Expression) -> bool {
-    let mut e = expr;
-    while let Expression::ParenthesizedExpression(p) = e {
-        e = &p.expression;
-    }
-    matches!(e, Expression::JSXElement(_) | Expression::JSXFragment(_)) || is_jsx_collection_init(e)
-}
-
 /// Would evaluating this initializer TWICE be observable — does it mint state
 /// anywhere, not only at its root? Mirrors `initMintsState` in jsx.ts (see its
 /// doc comment for the rule): a stateful call (`is_stateful_call_expr`), a
@@ -10891,17 +10868,20 @@ fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
                     }
                     continue;
                 }
-                // Under SSR, a JSX-bearing initializer is never inlinable.
-                // Inlining splices the ORIGINAL source for the initializer, so
-                // JSX inside is re-emitted PRE-transform (never lowered) and
-                // the raw text drifts against offsets the emit has shifted —
-                // two sibling `.map()` callbacks swapped hole expressions and
-                // rendering died with `ReferenceError: p1 is not defined`.
-                // The DOM path still inlines it, and must: there the inlining
-                // is what keeps a prop-derived value reactive at the use site.
-                // SSR renders once, so referencing the const by name is both
-                // correct and sufficient. Mirrors the JS backend 1:1.
-                if ctx.ssr && contains_jsx(init) {
+                // A JSX-bearing initializer — JSX ANYWHERE in it, a function
+                // body included — is never inlinable, on any path (#4300). The
+                // inlined text is the ORIGINAL source, so its JSX would be
+                // re-emitted un-lowered (a plain `h()` reading props once, a
+                // fresh element per read; under SSR it drifted against shifted
+                // offsets). The const's own JSX compiles with live bindings.
+                // A full walk, mirroring the JS backend's `containsJsx`.
+                if contains_jsx_in_expr(init) {
+                    continue;
+                }
+                // A factory call or `new` ANYWHERE in the initializer (not only
+                // at its root, checked above): inlining would mint fresh state
+                // per use site. Mirrors the JS backend's `initMintsState`.
+                if init_mints_state(init) {
                     continue;
                 }
                 // A factory call or `new` ANYWHERE in the initializer (not only
