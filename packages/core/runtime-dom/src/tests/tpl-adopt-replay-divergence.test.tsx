@@ -231,28 +231,40 @@ describe('a sole-child slot has its own invariant, re-proved per row', () => {
     expect(tplAdoptVerify(soleTpl, SOLE_HTML, targetOf('<a class="c">L2</a>'), true)).toBe(true)
   })
 
-  it('REFUSES a sole slot holding an element', () => {
-    // The markers are elided here, so "this element's only child is a text
-    // node" has to be stated directly — there is no triplet left to imply it.
+  it('does not REPLAY a sole slot holding an element: the full verify parks it for the binding (#4385)', () => {
     seed()
-    expect(tplAdoptVerify(soleTpl, SOLE_HTML, targetOf('<a class="c"><b>L</b></a>'), true)).toBe(
-      false,
-    )
+    const el = targetOf('<a class="c"><b>L</b></a>')
+    const server = [...el.childNodes]
+    expect(tplAdoptVerify(soleTpl, SOLE_HTML, el, true)).toBe(true)
+    // The compiled `.firstChild` ref lands on the parked placeholder, never on
+    // server content; the server nodes stay for the binding to adopt.
+    expect(el.firstChild?.nodeType).toBe(3)
+    expect(el.firstChild?.nodeValue).toBe('')
+    expect([...el.childNodes].slice(1)).toEqual(server)
   })
 
-  it('REFUSES a sole slot with a TRAILING sibling', () => {
-    // "Sole" is the premise the elision rests on.
+  it('does not REPLAY a sole slot with a TRAILING sibling: the full verify parks it for the binding (#4385)', () => {
     seed()
-    expect(tplAdoptVerify(soleTpl, SOLE_HTML, targetOf('<a class="c">L<i>x</i></a>'), true)).toBe(
-      false,
-    )
+    const el = targetOf('<a class="c">L<i>x</i></a>')
+    const server = [...el.childNodes]
+    expect(tplAdoptVerify(soleTpl, SOLE_HTML, el, true)).toBe(true)
+    // The compiled `.firstChild` ref lands on the parked placeholder, never on
+    // server content; the server nodes stay for the binding to adopt.
+    expect(el.firstChild?.nodeType).toBe(3)
+    expect(el.firstChild?.nodeValue).toBe('')
+    expect([...el.childNodes].slice(1)).toEqual(server)
   })
 
-  it('REFUSES a sole slot with a LEADING sibling', () => {
+  it('does not REPLAY a sole slot with a LEADING sibling: the full verify parks it for the binding (#4385)', () => {
     seed()
-    expect(tplAdoptVerify(soleTpl, SOLE_HTML, targetOf('<a class="c"><i>x</i>L</a>'), true)).toBe(
-      false,
-    )
+    const el = targetOf('<a class="c"><i>x</i>L</a>')
+    const server = [...el.childNodes]
+    expect(tplAdoptVerify(soleTpl, SOLE_HTML, el, true)).toBe(true)
+    // The compiled `.firstChild` ref lands on the parked placeholder, never on
+    // server content; the server nodes stay for the binding to adopt.
+    expect(el.firstChild?.nodeType).toBe(3)
+    expect(el.firstChild?.nodeValue).toBe('')
+    expect([...el.childNodes].slice(1)).toEqual(server)
   })
 
   it('lets the full verify materialize an EMPTY sole slot', () => {
@@ -576,6 +588,7 @@ describe('a bind-managed element has its stray server texts removed', () => {
     host.innerHTML = '<p></p>'
     const el = host.firstElementChild!
     for (const t of parts) el.appendChild(document.createTextNode(t))
+
     return el
   }
 

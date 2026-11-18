@@ -148,6 +148,12 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
 
 ---
 
+### [FIXED, 2026-11] A polymorphic text slot whose server content is elements was rebuilt, not adopted
+
+(#4385): `{parts(row)}` lowers to a text binding over one `' '` placeholder, but renders `['a ', <Code/>, ' b']` as elements. The verifier refused the element (sole slot) and `_textSlot` cleared the range (trailing/mid), so every such cell was re-created at hydration, identical and unreported (pyreon.dev's comparison table, every row). Park a placeholder where the content is and let the binding adopt it through the slot hydrator; sweep placeholders a raw `.data` binding cannot adopt, or the server's nodes stay beside the written text. Code: `runtime-dom/src/parked-text.ts`, `hydration-plan.ts` (`soleTexts`), `template.ts` (`_textSlot`, `buildTpl`). Tests: `compiled-text-slot-adopts-elements.test.tsx` + `.browser`.
+
+---
+
 ### [FIXED, 2026-11] A component that decorates its child assumed the child is a VNode
 
 (#4382): a literal element child compiles to a `_tpl` item on the client and to raw HTML (`_ssr`) on the server, neither of which has props to merge. Kinetic's per-item hidden class/style was dropped on the server (initially-hidden items prerendered VISIBLE, a flash before hydration); runtime-dom's `<Transition><div/></Transition>` treated the `_tpl` item as a component, warned, and never animated; `_ssr` dropped `key` while the client kept the keyed element on `h()`, so a group saw different keys on each side.

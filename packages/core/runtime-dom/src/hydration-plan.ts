@@ -32,6 +32,7 @@ import { _rdLabelBinding, renderEffect } from '@pyreon/reactivity'
 import { bindPolymorphicText } from './mount'
 import { _markAdoptedHtmlEl, applyClassProp, applyProp, applyProps, applyStyleProp, makeEventBinder } from './props'
 import { _isTplHoleEl, _isTplHtmlEl, _markMidSlotText, _parkSlotRange, _setTplHoleCursors } from './template'
+import { _parkText } from './parked-text'
 
 type Cleanup = () => void
 
@@ -552,6 +553,12 @@ interface TplSig {
    */
   soleSlots: boolean[]
   /**
+   * Per element (tree order): its ONLY child is the compiler's dynamic-text
+   * placeholder (`' '`), i.e. a sole polymorphic text binding. Its server
+   * content may be elements (#4385); see the verify walk.
+   */
+  soleTexts: boolean[]
+  /**
    * Per element (tree order), the template's STATIC attributes — the ones
    * baked into the template HTML. Dynamic props are bound by the compiled
    * `bind` and are absent here, so this is a SUBSET check against the SSR
@@ -660,6 +667,7 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
   let htmlCount = 0
   const slotList: boolean[] = []
   const soleSlotList: boolean[] = []
+  const soleTextList: boolean[] = []
   const midSlotList: (number[] | null)[] = []
   let midSlotCount = 0
   // MOUNT-SLOT ALIGNMENT GATE. A `<!>` placeholder is one node in the clone but
@@ -717,6 +725,7 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     counts.push(texts)
     slotList.push(slotAtEnd)
     soleSlotList.push(soleSlot)
+    soleTextList.push(isSoleSpacePlaceholder(el))
     midSlotList.push(mids)
     if (mids !== null) midSlotCount++
     const ownAttrs: [string, string][] = []
@@ -787,6 +796,7 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     texts: textList,
     slots: slotList,
     soleSlots: soleSlotList,
+    soleTexts: soleTextList,
     holes: holeCount > 0 ? Int32Array.from(holeFlags) : null,
     holeCount,
     htmlEls: htmlCount > 0 ? htmlFlags : null,
@@ -840,6 +850,13 @@ interface AdoptMatch {
    * compiled bind's `.firstChild` ref would land on null or an element.
    */
   soles: Element[] | null
+  /**
+   * Elements whose sole dynamic-text slot holds server ELEMENT content
+   * (#4385). The caller inserts a parked placeholder text as each one's first
+   * child, so the compiled `firstChild` ref resolves to it and the binding
+   * adopts the content through the slot hydrator (`parked-text.ts`).
+   */
+  soleTextParks: Element[] | null
   /**
    * Elements whose ELIDED sole-child slot rendered EMPTY, so SSR emitted no
    * node at all where the template baked its ' ' placeholder. The compiled
@@ -1005,6 +1022,20 @@ function replayAdoptPlan(root: Element, plan: AdoptPlan): boolean {
   return true
 }
 
+/** The element's ONLY child is the compiler's dynamic-text placeholder `' '`. */
+function isSoleSpacePlaceholder(el: Element): boolean {
+  const only = el.firstChild
+
+  return only !== null && only === el.lastChild && only.nodeType === 3 && (only as Text).data === ' '
+}
+
+/** The element's whole child list is ONE marked `<!--$-->…<!--/$-->` range. */
+function isOneMarkedRange(el: Element): boolean {
+  const f = el.firstChild
+
+  return f !== null && f.nodeType === 8 && (f as Comment).data === '$' && matchingCloseIsLastChild(f as Comment, el)
+}
+
 /**
  * Depth-aware scan from a `<!--$-->` open marker to its matching `<!--/$-->`,
  * answering only "is that close this element's LAST child?" — the structural
@@ -1037,6 +1068,7 @@ function matchDomAgainstTemplate(
   let parks: { open: Comment; close: Comment }[] | null = null
   const midFlags = expected.midSlots
   let soles: Element[] | null = null
+  let soleTextParks: Element[] | null = null
   let emptySlots: Element[] | null = null
   let holes: Map<Element, ChildNode | null> | null = null
   let htmlEls: Element[] | null = null
@@ -1136,14 +1168,17 @@ function matchDomAgainstTemplate(
     // actually elided — a sole slot whose vnode child was an ARRAY rather than an
     // accessor still gets its markers — so fall through to the marked path when
     // the range really is there.
-    if (expected.soleSlots[at] === true) {
-      const f = el.firstChild
-      const marked =
-        f !== null &&
-        f.nodeType === 8 &&
-        (f as Comment).data === '$' &&
-        matchingCloseIsLastChild(f as Comment, el)
-      if (!marked) return true
+    if (expected.soleSlots[at] === true && !isOneMarkedRange(el)) return true
+    // SOLE DYNAMIC TEXT HOLDING ELEMENTS (#4385). A polymorphic text binding
+    // (`{parts(row)}` rendering `['a ', <Code/>, ' b']`) is a single `' '`
+    // placeholder in the template, and SSR renders the value's elements
+    // marker-less (a sole accessor child). The element's whole child list is
+    // the slot's content, exactly as for a sole `<!>` slot above; the binding
+    // adopts it through the slot hydrator. A marked range falls through.
+    if (expected.soleTexts[at] === true && el.firstElementChild !== null && !isOneMarkedRange(el)) {
+      ;(soleTextParks ??= []).push(el)
+
+      return true
     }
     let texts = 0
     let bare: Text[] | null = null
@@ -1348,7 +1383,7 @@ function matchDomAgainstTemplate(
   if (!walk(root)) return null
   if (idx !== total) return null
 
-  return { removals, triplets, midSlots, parks, soles, emptySlots, holes, htmlEls }
+  return { removals, triplets, midSlots, parks, soles, soleTextParks, emptySlots, holes, htmlEls }
 }
 
 /** All checks passed — strip markers, ensuring one text node per slot. */
@@ -1503,7 +1538,10 @@ export function tplAdoptVerify(
   const sig = templateSignature(tpl)
   const match = sig !== null ? matchDomAgainstTemplate(target, sig, rootDecorated) : null
   if (match === null) return false
-  if (allowPlanReplay && plan === undefined) {
+  // A row matched through the sole-text relaxation records no plan: the plan's
+  // spot checks are a text-node invariant this row does not satisfy; a later
+  // plain row records it, and replay sends rows like this one to the full verify.
+  if (allowPlanReplay && plan === undefined && match.soleTextParks === null) {
     // TWO restrictions compose here. #2925 gates replay behind
     // `allowPlanReplay`; separately, a slot-bearing template is a CONTAINER —
     // one per hydration, not one per row — so the replay plan buys nothing,
@@ -1525,6 +1563,13 @@ export function tplAdoptVerify(
   if (match.triplets) normalizeDollarTriplets(match.triplets)
   if (match.midSlots) collapseMidSlots(match.midSlots)
   if (match.parks) parkMidRanges(match.parks)
+  if (match.soleTextParks) {
+    for (const el of match.soleTextParks) {
+      const placeholder = document.createTextNode('')
+      el.insertBefore(placeholder, el.firstChild)
+      _parkText(placeholder, null)
+    }
+  }
   // Declared innerHTML elements: mark each so the bind's first `_setHtml`
   // write — which runs synchronously inside the adoption's `bind(target)` —
   // trusts the server children instead of re-parsing `__html`. Marked only

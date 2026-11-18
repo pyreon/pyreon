@@ -11,6 +11,15 @@ import {
 } from '@pyreon/reactivity'
 import { _tagTextBinding } from './binding-registry'
 import {
+  _adoptParkedText,
+  _beginParkBatch,
+  _endParkBatch,
+  _parkText,
+  _parkedPending,
+  _slotHydrator,
+  _takeParkedText,
+} from './parked-text'
+import {
   _adoptingCompiledBind,
   _bindWithAdoption,
   _markServerText,
@@ -372,6 +381,11 @@ function resolveSlowCaller(
  * identical on both paths: the getter's value, re-rendered on change.
  */
 export function _bindProp(props: object, key: string, node: Text, parent: Node): () => void {
+  // A parked slot placeholder (#4385): adopt the server content instead.
+  if (_parkedPending > 0) {
+    const adopted = _adoptParkedText(node, () => (props as Record<string, unknown>)[key] as VNodeChild)
+    if (adopted !== null) return adopted
+  }
   const d = Object.getOwnPropertyDescriptor(props, key)
   if (d !== undefined && d.get === undefined && d.set === undefined) {
     // An own DATA property: a props object's data properties are fixed at
@@ -402,6 +416,11 @@ export function _bindText(
   receiver?: object,
 ): () => void {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.bindText')
+  // A parked slot placeholder (#4385): adopt the server content instead.
+  if (_parkedPending > 0) {
+    const adopted = _adoptParkedText(node, resolveSlowCaller(source, caller, receiver) as () => VNodeChild)
+    if (adopted !== null) return adopted
+  }
   // Captured for the upgrade path: components mounted by a LATER upgrade run
   // inside a signal dispatch with no ambient owner, so they must resolve context
   // through the owner active at SETUP — same discipline as renderEffect's
@@ -1132,6 +1151,8 @@ function buildTpl(
     _tplAdoptAllowPlan = false
     _tplRootDecorated = false
     _tplPendingHoles = null
+    // Placeholders parked by this verify and this bind (#4385), swept after it.
+    const prevPark = _beginParkBatch()
     if (_tplAdoptVerifier !== null && _tplAdoptVerifier(tpl, html, target, allowPlan, rootDecorated)) {
       const holes = _tplPendingHoles
       _tplPendingHoles = null
@@ -1159,6 +1180,7 @@ function buildTpl(
         } finally {
           _tplHoleCursors = prevHoles
           _freshBind = prevFresh
+          sweepParkedTexts(prevPark)
         }
         _tplAdoptConsumed = true
         if (process.env.NODE_ENV !== 'production')
@@ -1167,6 +1189,8 @@ function buildTpl(
         return { __isNative: true, el: target as HTMLElement, cleanup }
       }
     }
+    // Not adopted: close this build's park batch (nothing it parked is bound).
+    sweepParkedTexts(prevPark)
   }
   // (adoption falls through to a normal clone on any verification bail)
   const root = (tpl as CachedTemplate)._root
@@ -1600,6 +1624,9 @@ const SLOT_NOOP = (): void => {}
 /** The live `<!--$-->` opening an SSR-emitted accessor range. */
 const isRangeOpen = (n: Node): boolean => n.nodeType === 8 && (n as Comment).data === '$'
 
+/** The `<!--/$-->` closing one. */
+const isRangeClose = (n: Node): boolean => n.nodeType === 8 && (n as Comment).data === '/$'
+
 /**
  * Resolve the text node a compiled MIXED-CONTENT text slot binds into.
  *
@@ -1633,49 +1660,33 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
     // Dev: when this hands the bind a FRESH node, the binder reports against
     // what the server rendered here (#4419), read before the range goes.
     if (process.env.NODE_ENV !== 'production') _rangeServerText = _serverTextOfRange(placeholder as Comment)
-    // A PARKED mid range (see `PARKED_RANGE`): the server rendered element
-    // content into what the compiled bind treats as a text slot (a polymorphic
-    // upgrade, or a divergence). A text bind has no use for it — discard the
-    // parked nodes and give the bind a fresh text node. The close marker is
-    // inside the fragment, so the depth walk below must NOT run here: it would
-    // hunt for a close that is no longer in the DOM and remove the static
-    // siblings instead.
-    if (_takeParkedRange(placeholder as Comment) !== null) {
-      const fresh = document.createTextNode('')
-      parent.replaceChild(fresh, placeholder)
-      if (process.env.NODE_ENV !== 'production') _markServerText(fresh, _rangeServerText)
-
-      return fresh
-    }
     // The shape SSR emits for a reactive text: exactly one text node between
     // the markers. Adopt it and drop both markers, leaving the DOM identical
-    // to what a fresh client mount would have produced.
+    // to what a fresh client mount would have produced. A PARKED mid range (see
+    // `PARKED_RANGE`) is never that shape: its content AND its close marker are
+    // in the fragment, so the open's siblings are the static skeleton.
+    const parked = hasParkedRange(placeholder)
     const first = placeholder.nextSibling
-    if (first !== null && first.nodeType === 3) {
+    if (!parked && first !== null && first.nodeType === 3) {
       const close = first.nextSibling
-      if (close !== null && close.nodeType === 8 && (close as Comment).data === '/$') {
+      if (close !== null && isRangeClose(close)) {
         parent.removeChild(placeholder)
         parent.removeChild(close)
         return first as Text
       }
     }
-    // Any other range shape — empty (the accessor rendered ''), or content a
-    // polymorphic binding will replace wholesale. Clear the whole range and
-    // put a fresh node where it was: correct, simply not adopted. Depth-counted
-    // so a nested range inside this one cannot end the walk early.
     const fresh = document.createTextNode('')
     parent.insertBefore(fresh, placeholder)
-    let depth = 0
-    let n: ChildNode | null = placeholder as ChildNode
-    while (n !== null) {
-      const next: ChildNode | null = n.nextSibling
-      const d = n.nodeType === 8 ? (n as Comment).data : ''
-      parent.removeChild(n)
-      if (d === '$') depth++
-      else if (d === '/$' && --depth === 0) break
-      n = next
-    }
     if (process.env.NODE_ENV !== 'production') _markServerText(fresh, _rangeServerText)
+    // A range holding CONTENT that is not one text node (a polymorphic value:
+    // `['a ', <Code/>]`, a VNode), parked or in place. #4385: the placeholder
+    // is PARKED against the range, so a polymorphic binding adopts the server's
+    // nodes through the slot hydrator (which puts a parked range back) instead
+    // of re-mounting them; a binding that cannot is swept after the bind.
+    if (parked || (first !== null && !isRangeClose(first))) _parkText(fresh, placeholder as Comment)
+    // EMPTY range (the accessor rendered ''): nothing to adopt, clear it.
+    else clearSlotRange(placeholder as Comment)
+
 
     return fresh
   }
@@ -1685,13 +1696,63 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
   return t
 }
 
+/**
+ * Remove a slot's server range: a parked fragment hung off `open`, or the
+ * marked `<!--$-->…<!--/$-->` run. Depth-counted, so a nested range cannot end
+ * the walk early.
+ */
+function clearSlotRange(open: Comment): void {
+  if (_takeParkedRange(open) !== null) {
+    // The content and the close marker are in the fragment: only `open` is live.
+    open.remove()
+
+    return
+  }
+  let depth = 0
+  for (let n: ChildNode | null = open; n !== null; ) {
+    const next: ChildNode | null = n.nextSibling
+    const d = n.nodeType === 8 ? (n as Comment).data : ''
+    n.remove()
+    if (d === '$') depth++
+    else if (d === '/$' && --depth === 0) break
+    n = next
+  }
+}
+
+/**
+ * Close a build's park batch and sweep the placeholders no binding adopted
+ * (see `_beginParkBatch`): the server content each one stands for is removed,
+ * and in dev the rewrite is reported against it.
+ */
+function sweepParkedTexts(prev: Text[] | null): void {
+  const mine = _endParkBatch(prev)
+  if (mine === null) return
+  for (const text of mine) {
+    const open = _takeParkedText(text)
+    if (open === undefined) continue
+    let server = ''
+    if (open === null) {
+      // Sole slot: every other child of the element is server content.
+      const el = text.parentNode as Element
+      if (process.env.NODE_ENV !== 'production') {
+        for (const n of el.childNodes) if (n !== text) server += (n as Element | CharacterData).textContent
+      }
+      el.replaceChildren(text)
+    } else {
+      if (process.env.NODE_ENV !== 'production') server = _serverTextOfRange(open)
+      clearSlotRange(open)
+    }
+    if (process.env.NODE_ENV !== 'production') reportTextWrite(text, server, 'reactive')
+  }
+}
+
 // Dev: the server text of the range `_textSlot` is resolving (set and read
 // within one synchronous call).
 let _rangeServerText = ''
 
 function _serverTextOfRange(open: Comment): string {
   const parked = (open as ParkedOpen)[PARKED_RANGE]
-  return parked !== undefined ? (parked.textContent ?? '') : rangeText(open)
+  return parked !== undefined ? parked.textContent : rangeText(open)
 }
 
 /** The template's own inert `<!>` — an EMPTY comment, which is what a cloned
@@ -1764,23 +1825,7 @@ export function _markMidSlotText(t: Text): void {
 const isMidSlotText = (n: Node | null): boolean =>
   n !== null && n.nodeType === 3 && (n as MidSlotText)[MID_SLOT_TEXT] === true
 
-/** Hydration hook — registered by hydrateRoot (never at module load, so CSR
- * bundles tree-shake it exactly like the `_tpl` adopt verifier).
- *
- * `open === null` means a MARKER-LESS range: the slot was its element's SOLE
- * child, so SSR elided the `<!--$-->` pair and the extent is the parent's whole
- * child list. See `_mountSlot`. */
-export type SlotHydrator = (
-  children: VNodeChild | VNodeChild[],
-  parent: Node,
-  open: Comment | null,
-) => () => void
-
-let _slotHydrator: SlotHydrator | null = null
-
-export function _setSlotHydrator(h: SlotHydrator): void {
-  _slotHydrator = h
-}
+export { _setSlotHydrator, type SlotHydrator } from './parked-text'
 
 export function _mountSlot(
   children: VNodeChild | VNodeChild[],
