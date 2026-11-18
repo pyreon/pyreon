@@ -113,6 +113,7 @@ function mergeProperty(
   if (!Object.hasOwn(result, key)) {
     if (desc.get) Object.defineProperty(result, key, { ...desc, configurable: true })
     else _copyProp(result, key, desc)
+
     return
   }
   const existing = Object.getOwnPropertyDescriptor(result, key)
@@ -163,6 +164,7 @@ export function _mergePropsOmit<T extends Record<string, unknown>>(
       mergeProperty(result, key, desc)
     }
   }
+
   return result
 }
 
@@ -182,6 +184,7 @@ export function _pickProps<T extends object>(props: T, keys: ReadonlySet<Propert
     if (!desc) continue
     _copyProp(picked, key, desc)
   }
+
   return picked
 }
 
@@ -214,6 +217,7 @@ export function _mergePropsExcept<T extends Record<string, unknown>>(
       mergeProperty(result, key as string, desc)
     }
   }
+
   return result
 }
 
@@ -237,6 +241,7 @@ export function mergeProps<T extends Record<string, unknown>>(...sources: T[]): 
       mergeProperty(result, key as string, desc)
     }
   }
+
   return result
 }
 
@@ -295,6 +300,7 @@ export const removeUndefinedProps = (<T extends Record<string, any>>(props: T) =
       }
     }
   }
+
   return result
 }) as RemoveUndefinedProps
 
@@ -343,6 +349,7 @@ export function _pk(props: object, key: string): boolean {
   if (d === undefined || d.get !== undefined || d.set !== undefined) return false
   const v = d.value as unknown
   const t = typeof v
+
   return v == null || t === 'string' || t === 'number' || t === 'boolean'
 }
 
@@ -374,6 +381,7 @@ export function _pp(props: object, key: string): unknown {
       return g
     }
   }
+
   return _rp(() => (props as Record<string, unknown>)[key])
 }
 
@@ -402,6 +410,7 @@ export function _rpd<T>(
   const peek = sig.peek as (() => T) | undefined
   if (peek !== undefined) t.peek = () => peek.call(sig)
   Object.defineProperty(t, '_v', { get: () => sig._v, configurable: true })
+
   return t
 }
 
@@ -451,9 +460,11 @@ export function _lc<T>(fn: () => T): () => T {
       built = true
       cached = untrack(fn)
     }
+
     return cached
   }
   ;(thunk as unknown as Record<symbol, boolean>)[REACTIVE_PROP] = true
+
   return thunk
 }
 
@@ -486,7 +497,23 @@ export function _fuse(...parts: unknown[]): string | unknown[] {
     if (typeof v === 'object' || typeof v === 'function') return parts
     s += v as string | number | true
   }
+
   return s
+}
+
+/**
+ * SSR half of the compiled-template placeholder contract (#4385). A fixed
+ * child the client template lowers to a `<!>` placeholder must be a
+ * `<!--$-->…<!--/$-->` range in the server HTML, and `renderNode` brackets
+ * exactly the children that are functions. So the SSR compile emits
+ * `{_slot(x)}` there: an accessor around a plain value (one range), and the
+ * value itself when it already is one (still one range, never two).
+ *
+ * The value is read where the compile put it, as the plain child was, so
+ * nothing about evaluation order changes. Emitted by the compiler only.
+ */
+export function _slot(v: unknown): () => unknown {
+  return typeof v === 'function' ? (v as () => unknown) : () => v
 }
 
 /**
@@ -556,6 +583,7 @@ export function _wrapSpread(
       result[key as string] = desc.value
     }
   }
+
   return result
 }
 
@@ -642,5 +670,6 @@ export function _compatProps<T extends object>(props: T): T {
   if (props !== null && typeof props === 'object' && Object.getPrototypeOf(props) === null) {
     Object.setPrototypeOf(props, Object.prototype)
   }
+
   return props
 }

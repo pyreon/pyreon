@@ -87,6 +87,7 @@ export {
   _pickProps,
   _lc,
   _fuse,
+  _slot,
   _compatProps,
   _pk,
   _pp,

@@ -220,44 +220,42 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
   // the hydrator adopts over the whole child list exactly as it does for a real
   // sole slot. No cleanup is threaded because this is the STATIC path — the
   // content leaves with the clone, as it did before.
-  if (
-    _slotHydrator !== null &&
-    !isCloneSlotPlaceholder(placeholder) &&
-    !isMidSlotText(placeholder)
-  ) {
-    _slotHydrator(value as never, parent as Element, null)
+  //
+  // A MARKED range (#4385 D): the SSR compile brackets every fixed child the
+  // client lowers to a placeholder, so an adopted placeholder is usually the
+  // slot's own `<!--$-->` — a trailing range the verifier left in place, or a
+  // mid range it parked. Its extent is the range, never the parent's whole
+  // child list, so it is handed over as `_mountSlot` hands over its own.
+  const open = isRangeOpen(placeholder)
+  if (_slotHydrator !== null && (open || (!isCloneSlotPlaceholder(placeholder) && !isMidSlotText(placeholder)))) {
+    _slotHydrator(value as never, parent as Element, open ? (placeholder as Comment) : null)
     return
   }
   // A function is an accessor (see `_setChild`) — mount it reactively.
   if (typeof value === 'function' || _isMountableTextValue(value)) {
     mountChild(value as VNodeChild, parent, placeholder)
     placeholder.remove()
-  } else if (isMidSlotText(placeholder)) {
-    // A verifier-collapsed MID slot (see `MID_SLOT_TEXT`) holding the server's
-    // own text: write in place and keep the node — the same sole-text fast
-    // path `_setChild` takes, and by construction the value already matches.
-    // A `<For>` row's `Item {r.n}!` reaches here; without this the element
-    // adopts but its one dynamic text is swapped for a fresh node. "By
-    // construction" holds when server and client agree; when they do not, the
-    // write is a correction, which dev reports (#4419).
+  } else {
+    // The shared child-text rule (`_childText`): nullish and `false` render
+    // EMPTY, an array of primitives concatenates. `String()` put the word
+    // "null" (and "false", and `a,b` for an array) on the page where SSR
+    // renders nothing / `ab`.
     const text = typeof value === 'string' ? value : _childText(value)
-    if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
+    if (!isMidSlotText(placeholder)) {
+      parent.replaceChild(document.createTextNode(text), placeholder)
+    } else if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
+      // A verifier-collapsed MID slot (see `MID_SLOT_TEXT`) holding the server's
+      // own text: write in place and keep the node, the same sole-text fast path
+      // `_setChild` takes. A `<For>` row's `Item {r.n}!` reaches here; without
+      // this the element adopts but its one dynamic text is swapped for a fresh
+      // node. When server and client agree the value already matches; when they
+      // do not, the write is a correction, which dev reports (#4419).
       const before = (placeholder as Text).data
       ;(placeholder as Text).data = text
       reportTextWrite(placeholder, before, 'text')
-
-      return
+    } else {
+      ;(placeholder as Text).data = text
     }
-    ;(placeholder as Text).data = text
-  } else {
-    // The shared child-text rule (`_childText`): nullish and `false` render
-    // EMPTY, an array of primitives concatenates. `createTextNode` coerces with
-    // `String()`, which put the word "null" (and "false", and `a,b` for an
-    // array) on the page where SSR renders nothing / `ab`.
-    parent.replaceChild(
-      document.createTextNode(typeof value === 'string' ? value : _childText(value)),
-      placeholder,
-    )
   }
 }
 

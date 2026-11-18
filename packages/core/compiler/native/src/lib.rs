@@ -749,6 +749,23 @@ struct Ctx<'a> {
     /// components is ordered against the enclosing component's setup.
     parent_eager_mount: bool,
 
+    /// The CLIENT compile's `templatizeComponentChildren`, read by the SSR emit
+    /// to work out which elements the client lowers to templates (see
+    /// `ssr_enter_element`). `templatize_component_children` is `false` under SSR.
+    client_tpl_components: bool,
+    /// SSR walk: the client-template state at this point (`SSR_CLIENT_*`).
+    /// Mirrors the JS backend's `ssrClient`.
+    ssr_client: u8,
+    /// SSR walk: when the element whose expression children are being emitted
+    /// is IN a client template and not text-fused, `Some(sole)` where `sole` is
+    /// the span start of its SSR sole child. Mirrors the JS `ssrOwner`.
+    ssr_owner: Option<Option<u32>>,
+    /// The `parent_eager_mount` verdict for the next element `ssr_serialize_element`
+    /// enters as a serialization ROOT (consumed and reset there; nested children
+    /// are never eager: their parent is a DOM element).
+    ssr_next_eager: bool,
+    needs_slot_import: bool,
+
     /// Whether the expression currently being walked is the DIRECT child
     /// render-callback of a JSX element (`<For>{(row) => …}</For>`,
     /// `<Index>`, `<Show>`, `<Switch>`). Set by `handle_jsx_expression_child`
@@ -934,6 +951,11 @@ impl<'a> Ctx<'a> {
             parent_is_component_jsx_element: false,
             parent_component_has_sole_child: false,
             parent_eager_mount: false,
+            client_tpl_components: false,
+            ssr_client: SSR_CLIENT_NONE,
+            ssr_owner: None,
+            ssr_next_eager: false,
+            needs_slot_import: false,
             in_jsx_child_callback: false,
             in_callback_argument: false,
             signal_vars: FxHashSet::default(),
@@ -1169,6 +1191,7 @@ impl<'a> Ctx<'a> {
             || self.needs_pp_import
             || self.needs_lc_import
             || self.needs_fuse_import
+            || self.needs_slot_import
             || self.needs_wrap_spread_import
             || self.needs_cx_import
         {
@@ -1195,6 +1218,9 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_rpd_import {
                 core_imports.push("_rpd");
+            }
+            if self.needs_slot_import {
+                core_imports.push("_slot");
             }
             if self.needs_wrap_spread_import {
                 core_imports.push("_wrapSpread");
@@ -4771,7 +4797,8 @@ pub fn transform_jsx(
     // already, so there is nothing to absorb there (and `_ssr`'s preserved-hole
     // machinery has its own component-child bail). Mirrors the JS gate
     // `!ssr && options.templatizeComponentChildren === true`.
-    let templatize_component_children = !ssr && templatize_component_children == Some(true);
+    let client_tpl_components = templatize_component_children == Some(true);
+    let templatize_component_children = !ssr && client_tpl_components;
     let mut ctx = Ctx::new(
         &code,
         &ret.program,
@@ -4781,6 +4808,7 @@ pub fn transform_jsx(
         collect_lens,
         collapse,
     );
+    ctx.client_tpl_components = client_tpl_components;
 
     // Seed signal_vars from known_signals (cross-module imports resolved by Vite plugin)
     if let Some(signals) = known_signals {
@@ -5623,6 +5651,20 @@ fn walk_jsx_child(child: &JSXChild, ctx: &mut Ctx) {
 // ─── JSX element handling ────────────────────────────────────────────────────
 
 fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
+    if !ctx.ssr {
+        handle_jsx_element_body(el, ctx);
+        return;
+    }
+    let prev_client = ctx.ssr_client;
+    let prev_owner = ctx.ssr_owner;
+    let eager = ctx.parent_eager_mount;
+    ssr_enter_element(el, eager, ctx);
+    handle_jsx_element_body(el, ctx);
+    ctx.ssr_client = prev_client;
+    ctx.ssr_owner = prev_owner;
+}
+
+fn handle_jsx_element_body(el: &JSXElement, ctx: &mut Ctx) {
     // Rocketstyle-collapse: a candidate component with a resolved site collapses
     // to a single `__rsCollapse` cloneNode — children are baked into the SSR-
     // resolved template, so do NOT recurse into the subtree. Mirrors the JS
@@ -5651,6 +5693,12 @@ fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
     let tag = jsx_tag_name(el);
     let is_component = is_component_element(el);
 
+    // A templated element's attributes are sliced into the client bind as raw
+    // source: nothing inside them is a client template. Mirrors JS.
+    let attr_client = ctx.ssr_client;
+    if ctx.ssr_client == SSR_CLIENT_IN {
+        ctx.ssr_client = SSR_CLIENT_RAW;
+    }
     // Process attributes
     for attr in &el.opening_element.attributes {
         match attr {
@@ -5667,6 +5715,7 @@ fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
             }
         }
     }
+    ctx.ssr_client = attr_client;
 
     // Text fusion on the h() path (see `fuse_text_children`): the whole child
     // span becomes ONE accessor child. DOM elements only. Mirrors JS.
@@ -5947,6 +5996,26 @@ fn handle_jsx_spread_attribute(spread: &JSXSpreadAttribute, ctx: &mut Ctx) {
 }
 
 fn handle_jsx_expression_child(container: &JSXExpressionContainer, ctx: &mut Ctx) {
+    if ctx.ssr && ctx.ssr_client == SSR_CLIENT_IN {
+        let marks = match jsx_expr_as_expression(&container.expression) {
+            Some(e) => ssr_slot_needs_markers(container, e, ctx),
+            None => false,
+        };
+        // The client slices a template's expression children into the bind as
+        // raw source, so nothing inside one is a template. Mirrors JS.
+        ctx.ssr_client = SSR_CLIENT_RAW;
+        handle_jsx_expression_child_inner(container, marks, ctx);
+        ctx.ssr_client = SSR_CLIENT_IN;
+        return;
+    }
+    handle_jsx_expression_child_inner(container, false, ctx);
+}
+
+fn handle_jsx_expression_child_inner(
+    container: &JSXExpressionContainer,
+    marks: bool,
+    ctx: &mut Ctx,
+) {
     let expr = match &container.expression {
         JSXExpression::EmptyExpression(_) => return,
         _ => match jsx_expr_as_expression(&container.expression) {
@@ -5957,7 +6026,13 @@ fn handle_jsx_expression_child(container: &JSXExpressionContainer, ctx: &mut Ctx
 
     // Try hoisting
     if let Some(hoist_name) = maybe_hoist_expr(expr, ctx) {
-        ctx.add_replacement(expr.span().start, expr.span().end, hoist_name);
+        let text = if marks {
+            ctx.needs_slot_import = true;
+            format!("_slot({})", hoist_name)
+        } else {
+            hoist_name
+        };
+        ctx.add_replacement(expr.span().start, expr.span().end, text);
         return;
     }
 
@@ -6028,6 +6103,14 @@ fn handle_jsx_expression_child(container: &JSXExpressionContainer, ctx: &mut Ctx
         return;
     }
 
+    // A client placeholder whose value is not an accessor: zero-width edits
+    // around the untouched range, so the walk below still transforms the
+    // inside. The closer goes AFTER the walk, so an edit the walk inserts at the
+    // same offset (a signal auto-call's `()`) lands inside it. Mirrors JS.
+    if marks {
+        ctx.needs_slot_import = true;
+        ctx.add_replacement(expr.span().start, expr.span().start, "_slot(".to_string());
+    }
     // Otherwise just recurse — but reset parent_is_jsx since we're already
     // inside a JSX expression container `{...}`.
     let old = ctx.parent_is_jsx;
@@ -6054,6 +6137,96 @@ fn handle_jsx_expression_child(container: &JSXExpressionContainer, ctx: &mut Ctx
     ctx.in_jsx_child_callback = old_cb;
     ctx.parent_is_jsx = old;
     ctx.parent_eager_mount = old_eager;
+    if marks {
+        ctx.add_replacement(expr.span().end, expr.span().end, ")".to_string());
+    }
+}
+
+// ── SSR range markers for client placeholders (#4385 case D) ────────────────
+//
+// Every child the CLIENT template lowers to a `<!>` placeholder must be a
+// `<!--$-->…<!--/$-->` range in the server HTML, or its element's SOLE child
+// (markers elided on both sides): hydration finds a placeholder's content by
+// its range. A reactive child is an accessor and gets one; a FIXED child did
+// not. So the SSR emit tracks which elements the client templates and brackets
+// the fixed children that become placeholders there (`_slot(x)` on the h()
+// path, `<!--$-->` + `_escSole(x)` + `<!--/$-->` on the `_ssr` path). The state
+// errs only toward NONE/RAW, which keeps today's bytes. See the JS backend's
+// `ssrEnterElement` for the full contract; every function here mirrors it.
+
+const SSR_CLIENT_NONE: u8 = 0;
+const SSR_CLIENT_IN: u8 = 1;
+const SSR_CLIENT_RAW: u8 = 2;
+
+/// Would the client's `try_template_emit` lower this element to a template root?
+/// `eager` is the client's `parent_eager_mount` verdict for it.
+fn client_templates_root(el: &JSXElement, eager: bool, ctx: &Ctx) -> bool {
+    if is_self_closing(el) {
+        return false;
+    }
+    if ctx.client_tpl_components && eager && template_absorbs_component(&el.children) {
+        return false;
+    }
+    template_element_count(el, true, ctx.client_tpl_components) >= 1
+}
+
+/// Enter a JSX element on the SSR walk (the caller saves and restores
+/// `ssr_client` / `ssr_owner`).
+fn ssr_enter_element(el: &JSXElement, eager: bool, ctx: &mut Ctx) {
+    if ctx.ssr_client == SSR_CLIENT_RAW {
+        ctx.ssr_owner = None;
+        return;
+    }
+    let tag = jsx_tag_name(el);
+    if tag.is_empty() || !is_lower_case(tag) {
+        ctx.ssr_client = SSR_CLIENT_NONE;
+        ctx.ssr_owner = None;
+        return;
+    }
+    if ctx.ssr_client != SSR_CLIENT_IN && client_templates_root(el, eager, ctx) {
+        ctx.ssr_client = SSR_CLIENT_IN;
+    }
+    ctx.ssr_owner = if ctx.ssr_client == SSR_CLIENT_IN
+        && !is_self_closing(el)
+        && !fuse_text_children_probe(el, ctx)
+    {
+        Some(ssr_sole_child(el).map(|i| el.children[i].span().start))
+    } else {
+        None
+    };
+}
+
+/// Does this expression child of the current owner take a client `<!>`
+/// placeholder its server output does not already bracket? `wrap_node` is the
+/// node the caller's own wrap decision reads.
+fn ssr_slot_needs_markers(
+    container: &JSXExpressionContainer,
+    wrap_node: &Expression,
+    ctx: &mut Ctx,
+) -> bool {
+    if ctx.ssr_client != SSR_CLIENT_IN {
+        return false;
+    }
+    let Some(sole) = ctx.ssr_owner else {
+        return false;
+    };
+    if sole == Some(container.span.start) {
+        return false;
+    }
+    let Some(expr) = jsx_expr_as_expression(&container.expression) else {
+        return false;
+    };
+    let u = unwrap_type_layers(expr);
+    if literal_child_text(u).is_some() {
+        return false;
+    }
+    if matches!(
+        u,
+        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+    ) {
+        return false;
+    }
+    !should_wrap(wrap_node, ctx)
 }
 
 fn maybe_hoist_expr(expr: &Expression, ctx: &mut Ctx) -> Option<String> {
@@ -6254,6 +6427,11 @@ struct SrcHole {
     open: &'static str,
     close: &'static str,
     is_expr: bool,
+    /// `ssr_client` for the later walk of the preserved range (JS `client`).
+    client: u8,
+    /// An expression hole whose container expression IS the JSX (not type- or
+    /// paren-wrapped): the client's `parent_eager_mount` for it.
+    eager: bool,
 }
 
 impl SsrBuf {
@@ -6286,9 +6464,10 @@ impl SsrBuf {
     }
     /// A hole whose text is the child's OWN source range, left in place.
     /// Mirrors the JS `ssrEmitSourceHole`.
-    fn emit_source_hole(&mut self, start: u32, end: u32, ns: String) {
-        self.emit_source_hole_wrapped(start, end, "_ssrNode(", ")", false, ns);
+    fn emit_source_hole(&mut self, start: u32, end: u32, ns: String, client: u8) {
+        self.emit_source_hole_wrapped(start, end, "_ssrNode(", ")", false, ns, client, false);
     }
+    #[allow(clippy::too_many_arguments)]
     fn emit_source_hole_wrapped(
         &mut self,
         start: u32,
@@ -6297,10 +6476,12 @@ impl SsrBuf {
         close: &'static str,
         is_expr: bool,
         ns: String,
+        client: u8,
+        eager: bool,
     ) {
         self.holes.push(String::new());
         self.hole_str.push(false);
-        self.hole_src.push(Some(SrcHole { start, end, open, close, is_expr }));
+        self.hole_src.push(Some(SrcHole { start, end, open, close, is_expr, client, eager }));
         self.hole_ns.push(ns);
         self.statics.push(String::new());
     }
@@ -7265,6 +7446,21 @@ fn is_ident_text(s: &str) -> bool {
 /// `allow_static` (template path only) also fuses an all-static mix — see the
 /// JS twin's `allowStatic` for the measured reason. Mirrors JS.
 fn fuse_text_children(el: &JSXElement, ctx: &mut Ctx, allow_static: bool) -> Option<String> {
+    fuse_text_children_impl(el, ctx, allow_static, false)
+}
+
+/// Whether the client fuses this element's children (static mixes included):
+/// no lens span and no import. Mirrors JS `fuseTextChildren(el, true, true)`.
+fn fuse_text_children_probe(el: &JSXElement, ctx: &mut Ctx) -> bool {
+    fuse_text_children_impl(el, ctx, true, true).is_some()
+}
+
+fn fuse_text_children_impl(
+    el: &JSXElement,
+    ctx: &mut Ctx,
+    allow_static: bool,
+    probe: bool,
+) -> Option<String> {
     if el.children.len() < 2 {
         return None;
     }
@@ -7349,6 +7545,9 @@ fn fuse_text_children(el: &JSXElement, ctx: &mut Ctx, allow_static: bool) -> Opt
     if (!any_reactive && !allow_static) || parts.len() < 2 {
         return None;
     }
+    if probe {
+        return Some(String::new());
+    }
     for (start, end, reactive) in spans {
         if reactive {
             ctx.lens(
@@ -7408,6 +7607,20 @@ fn ssr_serialize_expr_child(
         }
         return true;
     }
+    // A client `<!>` placeholder whose value is not an accessor: bracket it
+    // (see `ssr_enter_element`). Byte-identical to the h() path's `_slot(x)`.
+    let marks = ssr_slot_needs_markers(container, expr, ctx);
+    // What the client does with JSX inside this expression: a templated
+    // element slices it into its bind and an accessor child is sliced, so
+    // neither is walked (RAW); anything else is walked as on the h() path.
+    let inner = if ctx.ssr_client == SSR_CLIENT_NONE && !should_wrap(expr, ctx) {
+        SSR_CLIENT_NONE
+    } else {
+        SSR_CLIENT_RAW
+    };
+    // The client's `parent_eager_mount` for JSX that IS the container's
+    // expression (`{<div/>}`), and so for a preserved or lowered one.
+    let raw_is_jsx = matches!(raw, Expression::JSXElement(_) | Expression::JSXFragment(_));
     // recursed mode: matches handleJsxExpression's wrap decision.
     if ssr_try_map(buf, expr, sole, ctx) {
         return true;
@@ -7416,7 +7629,15 @@ fn ssr_serialize_expr_child(
     // `cond ? <el> : …`) so the taken branch builds a string, not a VNode. The
     // reconstructed text is byte-identical through `_esc`/`_escSole` (see
     // `ssr_lower_nested_elements`); `None` keeps the pre-existing slice path.
+    let outer_client = ctx.ssr_client;
+    let outer_owner = ctx.ssr_owner;
+    ctx.ssr_client = inner;
+    ctx.ssr_owner = None;
+    ctx.ssr_next_eager = raw_is_jsx;
     let lowered = ssr_lower_nested_elements(expr, ctx);
+    ctx.ssr_next_eager = false;
+    ctx.ssr_client = outer_client;
+    ctx.ssr_owner = outer_owner;
     if lowered.is_none() && contains_jsx_in_expr(expr) {
         // JSX the two lowerings above could not turn into a string (a `.map`
         // item holding a component, a component ternary arm). When the
@@ -7437,7 +7658,23 @@ fn ssr_serialize_expr_child(
                     ")",
                     true,
                     ctx.ssr_ns_path.clone(),
+                    inner,
+                    raw_is_jsx,
                 );
+            } else if marks {
+                ctx.needs_esc_sole_import = true;
+                buf.emit_static("<!--$-->");
+                buf.emit_source_hole_wrapped(
+                    sp.start,
+                    sp.end,
+                    "_escSole(",
+                    ")",
+                    true,
+                    ctx.ssr_ns_path.clone(),
+                    inner,
+                    raw_is_jsx,
+                );
+                buf.emit_static("<!--/$-->");
             } else {
                 let wrapped = should_wrap(expr, ctx);
                 ctx.needs_esc_import = true;
@@ -7451,6 +7688,8 @@ fn ssr_serialize_expr_child(
                     ")",
                     true,
                     ctx.ssr_ns_path.clone(),
+                    inner,
+                    raw_is_jsx,
                 );
                 if wrapped {
                     buf.emit_static("<!--/$-->");
@@ -7476,6 +7715,13 @@ fn ssr_serialize_expr_child(
         // markers. Bake the markers + `_esc(expr)`: byte-identical.
         buf.emit_static("<!--$-->");
         emit_esc_hole(buf, expr_text, true, ctx);
+        buf.emit_static("<!--/$-->");
+    } else if marks {
+        // `_escSole` unwraps a function value WITHOUT its own range, so the
+        // value renders inside exactly one range whatever it is, as `_slot`'s
+        // accessor does on the h() path.
+        buf.emit_static("<!--$-->");
+        emit_esc_sole_hole(buf, expr_text, ctx);
         buf.emit_static("<!--/$-->");
     } else {
         emit_esc_hole(buf, expr_text, true, ctx);
@@ -7556,7 +7802,19 @@ fn ssr_try_for_keyed(buf: &mut SsrBuf, el: &JSXElement, ctx: &mut Ctx) -> bool {
         _ => return false,
     };
     // Self-closing `<For>` item bodies are eligible, same as `.map` above.
-    let item_buf = match build_ssr_buf(body_el, SsrMode::ForItem, ctx) {
+    // The client walks a component's render callback unsliced, so the row is a
+    // template root of its own when it qualifies. Mirrors JS.
+    let outer_client = ctx.ssr_client;
+    let outer_owner = ctx.ssr_owner;
+    if ctx.ssr_client != SSR_CLIENT_RAW {
+        ctx.ssr_client = SSR_CLIENT_NONE;
+    }
+    ctx.ssr_owner = None;
+    ctx.ssr_next_eager = false;
+    let built = build_ssr_buf(body_el, SsrMode::ForItem, ctx);
+    ctx.ssr_client = outer_client;
+    ctx.ssr_owner = outer_owner;
+    let item_buf = match built {
         Some(s) => s,
         None => return false,
     };
@@ -7644,7 +7902,12 @@ fn ssr_serialize_child(
                 if !ssr_component_child_eligible(el) {
                     return false;
                 }
-                buf.emit_source_hole(el.span().start, el.span().end, ctx.ssr_ns_path.clone());
+                let client = if ctx.ssr_client == SSR_CLIENT_RAW {
+                    SSR_CLIENT_RAW
+                } else {
+                    SSR_CLIENT_NONE
+                };
+                buf.emit_source_hole(el.span().start, el.span().end, ctx.ssr_ns_path.clone(), client);
                 ctx.needs_ssr_node_import = true;
                 return true;
             }
@@ -7659,6 +7922,27 @@ fn ssr_serialize_child(
 /// Serialize an element (open tag + attrs + children + close). False = bail.
 /// Mirrors JS `ssrSerializeElement`.
 fn ssr_serialize_element(buf: &mut SsrBuf, el: &JSXElement, mode: SsrMode, ctx: &mut Ctx) -> bool {
+    // The same client-template state the h() walk keeps (`ssr_enter_element`).
+    // A `.map` item is sliced on the client, so it is never a template.
+    let prev_client = ctx.ssr_client;
+    let prev_owner = ctx.ssr_owner;
+    let eager = std::mem::replace(&mut ctx.ssr_next_eager, false);
+    if mode == SsrMode::MapItem {
+        ctx.ssr_client = SSR_CLIENT_RAW;
+    }
+    ssr_enter_element(el, eager, ctx);
+    let ok = ssr_serialize_element_body(buf, el, mode, ctx);
+    ctx.ssr_client = prev_client;
+    ctx.ssr_owner = prev_owner;
+    ok
+}
+
+fn ssr_serialize_element_body(
+    buf: &mut SsrBuf,
+    el: &JSXElement,
+    mode: SsrMode,
+    ctx: &mut Ctx,
+) -> bool {
     let tag = jsx_tag_name(el);
     if tag.is_empty() || !is_lower_case(tag) {
         return false; // component / empty → bail
@@ -7924,12 +8208,14 @@ fn find_jsx_child_expr_by_span<'a>(
 /// Re-walk a preserved expression child with the flags its container position
 /// implies — the same set `handle_jsx_expression_child`'s plain-recurse tail
 /// uses — so nested roots transform exactly as the JS `walkNode(expr)` does.
-fn walk_preserved_child_expr(expr: &Expression, ctx: &mut Ctx) {
+/// `eager`: the container's expression IS this JSX (not type- or paren-wrapped),
+/// which is the client's `parent_eager_mount` for it (`handle_jsx_expression_child`
+/// reads the RAW expression; `expr` here is the unwrapped one).
+fn walk_preserved_child_expr(expr: &Expression, eager: bool, ctx: &mut Ctx) {
     let old = ctx.parent_is_jsx;
     let old_eager = ctx.parent_eager_mount;
     ctx.parent_is_jsx = false;
-    ctx.parent_eager_mount =
-        matches!(expr, Expression::JSXElement(_) | Expression::JSXFragment(_));
+    ctx.parent_eager_mount = eager;
     let is_render_cb = matches!(
         expr,
         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
@@ -8004,7 +8290,9 @@ fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
     // A top-level template has no baked ancestors: its holes inherit the
     // runtime namespace it renders in. Mirrors JS `trySsrTemplateEmit`.
     let outer_ns = std::mem::take(&mut ctx.ssr_ns_path);
+    ctx.ssr_next_eager = ctx.parent_eager_mount;
     let built = build_ssr_buf(el, SsrMode::Recursed, ctx);
+    ctx.ssr_next_eager = false;
     ctx.ssr_ns_path = outer_ns;
     let buf = match built {
         Some(b) => b,
@@ -8124,13 +8412,19 @@ fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
     // still need their normal visit — reactive props, nested templates, signal
     // auto-call. This is the whole point of preserving rather than re-emitting.
     for (_, h) in &preserved {
+        let prev_client = ctx.ssr_client;
+        let prev_owner = ctx.ssr_owner;
+        ctx.ssr_client = h.client;
+        ctx.ssr_owner = None;
         if h.is_expr {
             if let Some(e) = find_jsx_child_expr_by_span(&el.children, h.start, h.end) {
-                walk_preserved_child_expr(e, ctx);
+                walk_preserved_child_expr(e, h.eager, ctx);
             }
         } else if let Some(child) = find_jsx_element_by_span(el, h.start, h.end) {
             handle_jsx_element(child, ctx);
         }
+        ctx.ssr_client = prev_client;
+        ctx.ssr_owner = prev_owner;
     }
 
     ctx.needs_ssr_import = true;
