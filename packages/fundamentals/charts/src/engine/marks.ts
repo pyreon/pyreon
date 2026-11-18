@@ -466,6 +466,7 @@ function itemPaint<T>(data: readonly T[], m: Mark<T>): { itemColors?: string[]; 
   const f = m.options.fill as ItemFill<T> | undefined
   if (f === undefined) return {}
   const p = f.resolve(data)
+
   return { itemColors: p.colors, ...(p.shades !== undefined ? { shades: p.shades } : {}) }
 }
 

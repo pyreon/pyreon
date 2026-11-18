@@ -1,6 +1,7 @@
 // Bar thickness on native: barWidth / barGap / barCategoryGap are literal ChartSpec fields, vertical grouped and horizontal plain.
 import { Bar, Chart } from '@pyreon/charts'
 import { Stack } from '@pyreon/primitives'
+
 interface Row { m: string; a: number; b: number }
 const ROWS: Row[] = [{ m: 'Jan', a: 3, b: 5 }, { m: 'Feb', a: 4, b: 1 }]
 export function App() {

@@ -10,16 +10,20 @@ import { tooltipAt, tooltipLines } from './tooltip'
 import { renderSvg } from './svg'
 
 interface Row { m: string; v: number; tone?: string; heat?: number }
+
 const ROWS: Row[] = [
   { m: 'a', v: 3, tone: '#ff0000', heat: 10 },
   { m: 'b', v: 6, tone: '#00ff00', heat: 20 },
   { m: 'c', v: 4, heat: 30 },
 ]
+
 const measure = (t: string, s: number): number => t.length * s * 0.6
+
 const spec = (series: Series[], extra: Partial<ChartSpec> = {}): ChartSpec => ({
   width: 400, height: 200, series, categories: ['a', 'b', 'c'], theme: defaultTheme,
   showXAxis: true, showYAxis: true, showGrid: true, ...extra,
 })
+
 const fills = (cmds: ReturnType<typeof renderChart>): string[] => cmds.flatMap((c) => (c.kind === 'rect' && c.fill !== defaultTheme.background ? [c.fill] : []))
 
 describe('fillBy', () => {

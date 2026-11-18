@@ -3,16 +3,19 @@
 // names the value behind a shade.
 import { h } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
+import { query } from '@pyreon/test-utils'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { Bar, Chart, Tooltip } from './grammar'
 import { fillBy, shadeBy } from './item-colors'
 
 interface Row { m: string; v: number; w: number; tone: string }
+
 const DATA: Row[] = [
   { m: 'a', v: 90, w: 10, tone: '#ff0000' },
   { m: 'b', v: 90, w: 20, tone: '#00ff00' },
   { m: 'c', v: 90, w: 30, tone: '#0000ff' },
 ]
+
 const W = 360
 const H = 220
 
@@ -31,6 +34,7 @@ async function hitSpans(barProps: Record<string, unknown>, chartProps: Record<st
     for (const i of picked) if (i >= 0) spans[i]!.push(x)
   }
   unmount()
+
   return spans
 }
 
@@ -94,7 +98,7 @@ describe('per-datum colour in real Chromium', () => {
     const r = canvas.getBoundingClientRect()
     for (let x = 20; x < W; x += 6) canvas.dispatchEvent(new PointerEvent('pointermove', { clientX: r.left + x, clientY: r.top + H - 40, bubbles: true }))
     await flush()
-    const tip = container.querySelector('[data-pyreon-chart-tooltip]') as HTMLElement
+    const tip = query<HTMLElement>(container, '[data-pyreon-chart-tooltip]')
     expect(tip.textContent).toMatch(/Revenue: 90 \(shade \d+\)/)
     unmount()
   })

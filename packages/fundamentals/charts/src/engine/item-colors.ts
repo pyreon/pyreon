@@ -63,6 +63,7 @@ export function fillBy<T>(channel: ItemChannel<T, string | undefined>): ItemFill
         const v = read(channel, data[i]!, i)
         colors.push(typeof v === 'string' ? v : '')
       }
+
       return { colors }
     },
   }
@@ -96,6 +97,7 @@ export function shadeBy<T>(channel: ItemChannel<T, number | undefined>, options:
       const span = dom.max - dom.min
       const stops = options.ramp !== undefined && options.ramp.length > 0 ? options.ramp : HEAT_RAMP
       const colors = shades.map((v) => (Number.isNaN(v) ? '' : rampColor(stops, span > 0 ? (v - dom.min) / span : 0.5)))
+
       return { colors, shades }
     },
   }

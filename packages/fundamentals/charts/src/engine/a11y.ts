@@ -278,6 +278,14 @@ export function chartRowCount(input: A11yInput): number {
  * reader that needs ONE row (a keyboard focus move announcing the focused
  * item), which used to format every row of the table to read one.
  */
+/** One `(shade)` cell: the value a `shadeBy` colour was mapped from, '' for a gap or a short series. */
+function shadeCell(shades: Double[], i: number, fmt: Formatter): string {
+  if (i >= shades.length) return ''
+  const c = shades[i]!
+
+  return isFiniteNumber(c) ? fmt(c) : ''
+}
+
 export function chartTableRow(input: A11yInput, i: number): string[] {
   const fmt = input.format ?? groupThousands
   // Bounds-checked, not coalesced: a subscript past the end is a crash on
@@ -316,13 +324,7 @@ export function chartTableRow(input: A11yInput, i: number): string[] {
         row.push(isFiniteNumber(r) ? fmt(r) : '')
       }
     }
-    if (shaded) {
-      if (i >= shs.length) row.push('')
-      else {
-        const c = shs[i]!
-        row.push(isFiniteNumber(c) ? fmt(c) : '')
-      }
-    }
+    if (shaded) row.push(shadeCell(shs, i, fmt))
   }
   return row
 }

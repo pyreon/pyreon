@@ -1778,6 +1778,7 @@ function bridgeRuns(runs: Pt[][], connect: boolean): Pt[][] {
   if (!connect || runs.length < 2) return runs
   const all: Pt[] = []
   for (const run of runs) for (const p of run) all.push(p)
+
   return [all]
 }
 

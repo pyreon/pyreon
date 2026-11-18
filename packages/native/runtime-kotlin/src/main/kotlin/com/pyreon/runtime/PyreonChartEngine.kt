@@ -74,6 +74,8 @@ data class StackSegment(var rect: PyreonChartRect, var seriesIndex: Long, var da
 
 data class StackLevels(var bases: List<List<Double>>, var tops: List<List<Double>>)
 
+data class GroupSlot(var bar: Double, var group: Double, var pitch: Double)
+
 data class WaterfallStep(var rect: PyreonChartRect, var datumIndex: Long, var value: Double, var start: Double, var end: Double)
 
 data class PictorialBar(var bar: PyreonChartRect, var horizontal: Boolean, var symbol: String, var repeat: Boolean, var fill: String)
@@ -2640,6 +2642,14 @@ fun layoutStackLevelsH(levels: StackLevels, values: List<List<Double>>, plot: Py
     return out
   }
 
+fun groupSlot(slot: Double, k: Long, barWidth: Double? = null, barGap: Double? = null): GroupSlot {
+    val gap = if (((barGap ?: 0.0)) > 0.0) (barGap ?: 0.0) else 0.0
+    val kF = countOf(k)
+    val bar = clampBarWidth(if (gap > 0.0) (slot).toDouble() / ((kF + (kF - 1.0) * gap)).toDouble() else (slot).toDouble() / (k).toDouble(), barWidth)
+    val custom = gap > 0.0 || ((barWidth ?: 0.0)) > 0.0
+    return GroupSlot(bar = bar, group = if (custom) bar * kF + bar * gap * (kF - 1.0) else slot, pitch = bar * (1.0 + gap))
+  }
+
 fun countOf(n: Long): Double {
     var f = 0.0
     for (i in 0L until n) {
@@ -2669,13 +2679,10 @@ fun layoutGroupedBarsH(seriesValues: List<List<Double>>, plot: PyreonChartRect, 
     }
     val ratio = if (gapRatio < 0.0) 0.0 else if (gapRatio > 0.9) 0.9 else gapRatio
     val band = (plot.h).toDouble() / (n).toDouble()
-    val groupH0 = band * (1.0 - ratio)
-    val gap = if (((barGap ?: 0.0)) > 0.0) (barGap ?: 0.0) else 0.0
-    val kF = countOf(k)
-    val barH = clampBarWidth(if (gap > 0.0) (groupH0).toDouble() / ((kF + (kF - 1.0) * gap)).toDouble() else (groupH0).toDouble() / (k).toDouble(), barWidth)
-    val custom = gap > 0.0 || ((barWidth ?: 0.0)) > 0.0
-    val groupH = if (custom) barH * kF + barH * gap * (kF - 1.0) else groupH0
-    val pitchH = barH * (1.0 + gap)
+    val slotH = groupSlot(band * (1.0 - ratio), k, barWidth, barGap)
+    val barH = slotH.bar
+    val groupH = slotH.group
+    val pitchH = slotH.pitch
     val zero = if (vDomain.min < 0.0 && vDomain.max > 0.0) 0.0 else vDomain.min
     val zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
     for (i in 0L until n) {
@@ -2720,13 +2727,10 @@ fun layoutGroupedBars(seriesValues: List<List<Double>>, plot: PyreonChartRect, y
     }
     val ratio = if (gapRatio < 0.0) 0.0 else if (gapRatio > 0.9) 0.9 else gapRatio
     val band = (plot.w).toDouble() / (n).toDouble()
-    val groupW0 = band * (1.0 - ratio)
-    val gap = if (((barGap ?: 0.0)) > 0.0) (barGap ?: 0.0) else 0.0
-    val kF = countOf(k)
-    val barW = clampBarWidth(if (gap > 0.0) (groupW0).toDouble() / ((kF + (kF - 1.0) * gap)).toDouble() else (groupW0).toDouble() / (k).toDouble(), barWidth)
-    val custom = gap > 0.0 || ((barWidth ?: 0.0)) > 0.0
-    val groupW = if (custom) barW * kF + barW * gap * (kF - 1.0) else groupW0
-    val pitchW = barW * (1.0 + gap)
+    val slotW = groupSlot(band * (1.0 - ratio), k, barWidth, barGap)
+    val barW = slotW.bar
+    val groupW = slotW.group
+    val pitchW = slotW.pitch
     val zero = if (yDomain.min < 0.0 && yDomain.max > 0.0) 0.0 else yDomain.min
     val zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
     for (i in 0L until n) {
@@ -10958,6 +10962,14 @@ fun chartRowCount(input: A11yInput): Long {
     return n
   }
 
+fun shadeCell(shades: List<Double>, i: Long, fmt: (Double) -> String): String {
+    if (i >= shades.length) {
+      return ""
+    }
+    val c = shades[(i).toInt()]
+    return if (isFiniteNumber(c)) fmt(c) else ""
+  }
+
 fun chartTableRow(input: A11yInput, i: Long): List<String> {
     val fmt = (input.format ?: ::groupThousands)
     val row = mutableListOf(if (i < input.categories.length) input.categories[(i).toInt()] else "${pyreonAdd(i, 1L)}")
@@ -11000,12 +11012,7 @@ fun chartTableRow(input: A11yInput, i: Long): List<String> {
         }
       }
       if (shaded) {
-        if (i >= shs.length) {
-          row.add("")
-        } else {
-          val c = shs[(i).toInt()]
-          row.add(if (isFiniteNumber(c)) fmt(c) else "")
-        }
+        row.add(shadeCell(shs, i, fmt))
       }
     }
     return row

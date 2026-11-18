@@ -92,6 +92,7 @@ export function stackLevelsExtent(levels: StackLevels): Domain {
 }
 
 /** Segments for stack levels, upright: band `i`, series `s`, from its base to its top. */
+// oxlint-disable-next-line max-params -- positional signature kept for its many call sites; barWidth / barGap are optional trailing bar geometry
 export function layoutStackLevels(levels: StackLevels, values: Double[][], plot: Rect, yDomain: Domain, gapRatio: Double, barWidth?: Double): StackSegment[] {
   const out: StackSegment[] = []
   let n = 0
@@ -123,6 +124,7 @@ export function layoutStackLevels(levels: StackLevels, values: Double[][], plot:
 }
 
 /** `layoutStackLevels` on the flipped frame: bands run DOWN the y axis and each stack grows along x. */
+// oxlint-disable-next-line max-params -- positional signature kept for its many call sites; barWidth / barGap are optional trailing bar geometry
 export function layoutStackLevelsH(levels: StackLevels, values: Double[][], plot: Rect, vDomain: Domain, gapRatio: Double, barWidth?: Double): StackSegment[] {
   const out: StackSegment[] = []
   let n = 0
@@ -151,6 +153,28 @@ export function layoutStackLevelsH(levels: StackLevels, values: Double[][], plot
     fi = fi + 1.0
   }
   return out
+}
+
+/** How wide one bar, a whole group, and one bar-to-bar step are, in px. */
+export interface GroupSlot {
+  bar: Double
+  group: Double
+  pitch: Double
+}
+
+/**
+ * The geometry of a `k`-bar group inside a band: each bar's thickness, the
+ * group's total thickness and the step from one bar to the next. With neither
+ * `barWidth` nor `barGap` set it is the original arithmetic (bars abut and fill
+ * the band's slot), so a chart that sets neither lays out exactly as before.
+ */
+export function groupSlot(slot: Double, k: number, barWidth?: Double, barGap?: Double): GroupSlot {
+  const gap = (barGap ?? 0.0) > 0.0 ? barGap ?? 0.0 : 0.0
+  const kF = countOf(k)
+  const bar = clampBarWidth(gap > 0.0 ? slot / (kF + (kF - 1.0) * gap) : slot / k, barWidth)
+  const custom = gap > 0.0 || (barWidth ?? 0.0) > 0.0
+
+  return { bar, group: custom ? bar * kF + bar * gap * (kF - 1.0) : slot, pitch: bar * (1.0 + gap) }
 }
 
 /** A count as a Double, for pixel arithmetic (the native targets will not mix Int into Double math). */
@@ -189,6 +213,7 @@ export function layoutStackedBarsH(
 }
 
 /** `layoutGroupedBars` on the flipped frame: one bar per series, stacked DOWN each band. */
+// oxlint-disable-next-line max-params -- positional signature kept for its many call sites; barWidth / barGap are optional trailing bar geometry
 export function layoutGroupedBarsH(
   seriesValues: Double[][],
   plot: Rect,
@@ -206,14 +231,10 @@ export function layoutGroupedBarsH(
 
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.h / n
-  const groupH0 = band * (1.0 - ratio)
-  const gap = (barGap ?? 0.0) > 0.0 ? barGap ?? 0.0 : 0.0
-  const kF = countOf(k)
-  // Defaults take the original arithmetic, so a chart that sets neither option lays out as before.
-  const barH = clampBarWidth(gap > 0.0 ? groupH0 / (kF + (kF - 1.0) * gap) : groupH0 / k, barWidth)
-  const custom = gap > 0.0 || (barWidth ?? 0.0) > 0.0
-  const groupH = custom ? barH * kF + barH * gap * (kF - 1.0) : groupH0
-  const pitchH = barH * (1.0 + gap)
+  const slotH = groupSlot(band * (1.0 - ratio), k, barWidth, barGap)
+  const barH = slotH.bar
+  const groupH = slotH.group
+  const pitchH = slotH.pitch
   const zero = vDomain.min < 0.0 && vDomain.max > 0.0 ? 0.0 : vDomain.min
   const zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
 
@@ -252,6 +273,7 @@ export function stackedExtent(seriesValues: Double[][]): Domain {
 }
 
 /** Bars sitting side by side within each band, one per series. */
+// oxlint-disable-next-line max-params -- positional signature kept for its many call sites; barWidth / barGap are optional trailing bar geometry
 export function layoutGroupedBars(
   seriesValues: Double[][],
   plot: Rect,
@@ -269,13 +291,10 @@ export function layoutGroupedBars(
 
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.w / n
-  const groupW0 = band * (1.0 - ratio)
-  const gap = (barGap ?? 0.0) > 0.0 ? barGap ?? 0.0 : 0.0
-  const kF = countOf(k)
-  const barW = clampBarWidth(gap > 0.0 ? groupW0 / (kF + (kF - 1.0) * gap) : groupW0 / k, barWidth)
-  const custom = gap > 0.0 || (barWidth ?? 0.0) > 0.0
-  const groupW = custom ? barW * kF + barW * gap * (kF - 1.0) : groupW0
-  const pitchW = barW * (1.0 + gap)
+  const slotW = groupSlot(band * (1.0 - ratio), k, barWidth, barGap)
+  const barW = slotW.bar
+  const groupW = slotW.group
+  const pitchW = slotW.pitch
   const zero = yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min
   const zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
 

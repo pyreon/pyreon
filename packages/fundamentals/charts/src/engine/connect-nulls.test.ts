@@ -8,12 +8,15 @@ import type { DrawCmd } from './types'
 
 const measure = (t: string, s: number): number => t.length * s * 0.6
 const CATS = ['a', 'b', 'c', 'd', 'e', 'f']
+
 const spec = (values: number[], opts: { connectNulls?: boolean; kind?: 'line' | 'area' } = {}): ChartSpec => {
   const mark = opts.kind === 'area' ? area : line
   const rows = values.map((v) => ({ v }))
   const series = resolveMarks(rows, [mark((d: { v: number }) => d.v, opts.connectNulls === undefined ? {} : { connectNulls: opts.connectNulls })])
+
   return { width: 400, height: 200, series, categories: CATS, theme: defaultTheme, showXAxis: true, showYAxis: true, showGrid: true }
 }
+
 const strokes = (cmds: DrawCmd[]): { x: number; y: number }[][] => cmds.flatMap((c) => (c.kind === 'polyline' && c.width === 2 ? [c.points] : []))
 const GAPPY = [1, 3, Number.NaN, Number.NaN, 4, 2]
 

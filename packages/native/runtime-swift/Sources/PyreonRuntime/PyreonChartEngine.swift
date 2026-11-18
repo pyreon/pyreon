@@ -444,6 +444,17 @@ public struct StackLevels: Codable {
   }
 }
 
+public struct GroupSlot: Codable {
+  public var bar: Double
+  public var group: Double
+  public var pitch: Double
+  public init(bar: Double, group: Double, pitch: Double) {
+    self.bar = bar
+    self.group = group
+    self.pitch = pitch
+  }
+}
+
 public struct WaterfallStep: Codable {
   public var rect: PyreonChartRect
   public var datumIndex: Int
@@ -5294,6 +5305,14 @@ public func layoutStackLevelsH(_ levels: StackLevels, _ values: [[Double]], _ pl
     return out
   }
 
+public func groupSlot(_ slot: Double, _ k: Int, _ barWidth: Double? = nil, _ barGap: Double? = nil) -> GroupSlot {
+    let gap = ((barGap ?? 0.0)) > 0.0 ? (barGap ?? 0.0) : 0.0
+    let kF = countOf(k)
+    let bar = clampBarWidth(gap > 0.0 ? slot / (kF + (kF - 1.0) * gap) : slot / Double(k), barWidth)
+    let custom = gap > 0.0 || ((barWidth ?? 0.0)) > 0.0
+    return GroupSlot(bar: bar, group: custom ? bar * kF + bar * gap * (kF - 1.0) : slot, pitch: bar * (1.0 + gap))
+  }
+
 public func countOf(_ n: Int) -> Double {
     var f = 0.0
     for i in 0..<n {
@@ -5323,13 +5342,10 @@ public func layoutGroupedBarsH(_ seriesValues: [[Double]], _ plot: PyreonChartRe
     }
     let ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
     let band = plot.h / Double(n)
-    let groupH0 = band * (1.0 - ratio)
-    let gap = ((barGap ?? 0.0)) > 0.0 ? (barGap ?? 0.0) : 0.0
-    let kF = countOf(k)
-    let barH = clampBarWidth(gap > 0.0 ? groupH0 / (kF + (kF - 1.0) * gap) : groupH0 / Double(k), barWidth)
-    let custom = gap > 0.0 || ((barWidth ?? 0.0)) > 0.0
-    let groupH = custom ? barH * kF + barH * gap * (kF - 1.0) : groupH0
-    let pitchH = barH * (1.0 + gap)
+    let slotH = groupSlot(band * (1.0 - ratio), k, barWidth, barGap)
+    let barH = slotH.bar
+    let groupH = slotH.group
+    let pitchH = slotH.pitch
     let zero = vDomain.min < 0.0 && vDomain.max > 0.0 ? 0.0 : vDomain.min
     let zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
     for i in 0..<n {
@@ -5374,13 +5390,10 @@ public func layoutGroupedBars(_ seriesValues: [[Double]], _ plot: PyreonChartRec
     }
     let ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
     let band = plot.w / Double(n)
-    let groupW0 = band * (1.0 - ratio)
-    let gap = ((barGap ?? 0.0)) > 0.0 ? (barGap ?? 0.0) : 0.0
-    let kF = countOf(k)
-    let barW = clampBarWidth(gap > 0.0 ? groupW0 / (kF + (kF - 1.0) * gap) : groupW0 / Double(k), barWidth)
-    let custom = gap > 0.0 || ((barWidth ?? 0.0)) > 0.0
-    let groupW = custom ? barW * kF + barW * gap * (kF - 1.0) : groupW0
-    let pitchW = barW * (1.0 + gap)
+    let slotW = groupSlot(band * (1.0 - ratio), k, barWidth, barGap)
+    let barW = slotW.bar
+    let groupW = slotW.group
+    let pitchW = slotW.pitch
     let zero = yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min
     let zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
     for i in 0..<n {
@@ -13599,6 +13612,14 @@ public func chartRowCount(_ input: A11yInput) -> Int {
     return n
   }
 
+public func shadeCell(_ shades: [Double], _ i: Int, _ fmt: (Double) -> String) -> String {
+    if i >= shades.count {
+      return ""
+    }
+    let c = shades[i]
+    return isFiniteNumber(c) ? fmt(c) : ""
+  }
+
 public func chartTableRow(_ input: A11yInput, _ i: Int) -> [String] {
     let fmt = (input.format ?? groupThousands)
     var row = [i < input.categories.count ? input.categories[i] : "\(pyreonAdd(i, 1))"]
@@ -13641,12 +13662,7 @@ public func chartTableRow(_ input: A11yInput, _ i: Int) -> [String] {
         }
       }
       if shaded {
-        if i >= shs.count {
-          row.append("")
-        } else {
-          let c = shs[i]
-          row.append(isFiniteNumber(c) ? fmt(c) : "")
-        }
+        row.append(shadeCell(shs, i, fmt))
       }
     }
     return row
