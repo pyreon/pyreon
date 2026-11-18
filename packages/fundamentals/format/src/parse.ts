@@ -95,7 +95,15 @@ const WORD_SEPARATORS = /[\s/,\u060c\-\u2013]+/u
 
 /** Lower-case word with the dots around it removed (`Lis.` -> `lis`). */
 function normalizeWord(word: string): string {
-  return strip(word).replace(/^\.+|\.+$/gu, '').toLowerCase()
+  const text = strip(word)
+  let start = 0
+  let end = text.length
+
+  // A linear scan: a regular expression for leading and trailing dots backtracks quadratically on a long run of dots.
+  while (start < end && text.charCodeAt(start) === 46) start++
+  while (end > start && text.charCodeAt(end - 1) === 46) end--
+
+  return text.slice(start, end).toLowerCase()
 }
 
 function wordsOf(text: string): string[] {

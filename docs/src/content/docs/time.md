@@ -31,7 +31,7 @@ yarn add @pyreon/time
 
 :::
 
-`@pyreon/time/core` has no dependencies and works anywhere JavaScript runs. `@pyreon/time` re-exports all of it, reads the clock and time zone of `@pyreon/ambient` (it depends on that package) and adds the clock hooks. `@pyreon/time/fp` has the value-last forms of every operation and `pipe` (see [Composing operations](#composing-operations)).
+`@pyreon/time/core` has no dependencies and works anywhere JavaScript runs (so does `/fp`: neither imports a `@pyreon/*` package). The reactive entry needs `@pyreon/core` and `@pyreon/reactivity` as required peers (it depends on `@pyreon/ambient`, which imports them), so install `npm install @pyreon/time @pyreon/core @pyreon/reactivity`. `@pyreon/time` re-exports all of it, reads the clock and time zone of `@pyreon/ambient` (it depends on that package) and adds the clock hooks. `@pyreon/time/fp` has the value-last forms of every operation and `pipe` (see [Composing operations](#composing-operations)).
 
 ## Quick start
 
@@ -129,7 +129,7 @@ between('2020-01-01', '2026-11-18') // { years: 6, months: 10, days: 17 }
 
 Both follow `Temporal`, including its one subtlety: `diff` counts a month as complete when adding that many months (day clamped) does not pass the end, while `between` returns Temporal's unrounded breakdown. So `diff('2026-01-31', '2026-02-28', 'month')` is 1, and `diff` back from February 28 to January 31 is 0. Mixed-sign durations (`{ months: 1, days: -1 }`) and fractional fields throw, as in Temporal.
 
-`startOf` and `endOf` take any unit from `year` to `millisecond`, including `quarter` (calendar quarters: January, April, July, October; `quarterOf(date)` is 1 to 4, and `diff` and `isSame` take `quarter` too). There is no `quarters` duration field, as in Temporal: add three months with `{ months: 3 }`. A date has no hours, so `startOf('2026-11-18', 'hour')` throws; use a `PlainDateTime`. `compare`, `isBefore`, `isAfter`, `isSame`, `min`, `max` and `clamp` order values of one shape. Mixing shapes (`compare('2026-11-18', '2026-11-18T00:00')`) throws, and the error names both values and their shapes; bring them to one shape first, either by giving the date a time (`` `${date}T00:00` ``) or by taking the date of the date-time (`dt.slice(0, 10)`). Same-length strings compare as strings, because every field is fixed-width, and values written at different precision (`14:30` and `14:30`) are parsed.
+`startOf` and `endOf` take any unit from `year` to `millisecond`, including `quarter` (calendar quarters: January, April, July, October; `quarterOf(date)` is 1 to 4, and `diff` and `isSame` take `quarter` too). There is no `quarters` duration field, as in Temporal: add three months with `{ months: 3 }`. A date has no hours, so `startOf('2026-11-18', 'hour')` throws; use a `PlainDateTime`. `compare`, `isBefore`, `isAfter`, `isSame`, `min`, `max` and `clamp` order values of one shape. Mixing shapes (`compare('2026-11-18', '2026-11-18T00:00')`) throws, and the error names both values and their shapes; bring them to one shape first, either by giving the date a time (`` `${date}T00:00` ``) or by taking the date of the date-time (`dt.slice(0, 10)`). Same-length strings compare as strings, because every field is fixed-width, and values written at different precision (`14:30` and `14:30:00`, which compare equal) are parsed.
 
 ## Calendars
 

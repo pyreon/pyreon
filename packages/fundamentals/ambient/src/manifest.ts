@@ -13,7 +13,7 @@ export default defineManifest({
     rationale:
       'not lowered by PMTC: the package is context plus timers on the web runtime (`document.hidden`, `setTimeout`, the owner-based context); native apps carry their own locale, zone and clock through the host runtime',
   },
-  peerDeps: ['@pyreon/reactivity'],
+  peerDeps: ['@pyreon/core', '@pyreon/reactivity'],
   features: [
     'locale(), timeZone(), now(): reactive reads of the ambient locale, time zone and clock',
     'setLocale / setTimeZone / setClock: app defaults and test pins',
@@ -182,7 +182,7 @@ provideClock(Date.now())`,
     { label: 'Server and client', note: 'On a server nothing ticks: `useNow()` returns the plain read, which is the `provideClock` instant when one is provided and `Date.now()` otherwise. Provide the render instant per request and emit it with `clockScript()` or `clockAttributes()`; otherwise a relative time such as "2 sec ago" can differ between the server HTML and the first client render. Capturing the instant automatically at the first read of a request needs a request-scoped store in `@pyreon/runtime-server`, which does not exist yet.' },
     { label: 'Hydration', note: 'The hand-over is read on the first client `now()` and released one macrotask later. Components that first read the clock later than that (lazy islands) see real time and may mismatch against server HTML rendered at the older instant; call `releaseClock()` yourself after your own async hydration if needed.' },
     { label: 'Tickers are bounded', note: '`second` and `minute` tickers are always shared. Up to 16 other tickers (custom intervals and per-zone `hour`/`day` tickers) are shared; a reader beyond that gets a private ticker that is stopped with it.' },
-    { label: 'Peer dependencies', note: '`@pyreon/reactivity` is required. `@pyreon/core` is an optional peer in the metadata but the `provide*` functions import it, so install it when you use them (every Pyreon app has it). The non-reactive story is to pass a locale, zone or instant explicitly to the core entries of `@pyreon/format` and `@pyreon/time`.' },
+    { label: 'Peer dependencies', note: '`@pyreon/core` and `@pyreon/reactivity` are both required peers: the entry imports them when it loads, and every Pyreon app has them. The non-reactive story is to pass a locale, zone or instant explicitly to the core entries of `@pyreon/format` and `@pyreon/time`.' },
   ],
   longExample: `import { provideLocale, provideTimeZone, setClock, useNow, now } from '@pyreon/ambient'
 

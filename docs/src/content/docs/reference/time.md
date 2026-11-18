@@ -7,6 +7,8 @@ description: "Dates and times as plain strings and numbers: ISO values, DST-corr
 
 Plain-data date and time values for Pyreon: a date is the string `"2026-11-18"`, an instant is epoch milliseconds, and every operation is one tree-shakeable function (`add`, `diff`, `startOf`, `monthGrid`, `toInstant`). Calendar math is proleptic Gregorian integer arithmetic with no `Date` object on the path; time zones come from `Intl` with one cached formatter per zone, and `toInstant` implements Temporal's four disambiguation modes for DST gaps and overlaps. Checked against `Temporal` with seeded differential tests. `@pyreon/time/core` and `/fp` have no dependencies; `@pyreon/time` reads the ambient clock and time zone of `@pyreon/ambient` and adds the clock hooks `useToday`, `useCountdown`, `useElapsed` and `useRelative`, which update on shared, aligned tickers. Experimental.
 
+> **Peer dependencies:** `@pyreon/core`, `@pyreon/reactivity` — install alongside this package.
+
 ## Multiplatform
 
 **Tier:** Web-only — the browser package; the native story is stated below
@@ -135,11 +137,11 @@ offsetAt(t, 'Europe/Prague')                        // => 120
 | [`fp.isBefore`](#fpisbefore-function-experimental) | function | A predicate: `isBefore(limit)(value)` is true for values before `limit`, so it reads correctly in `filter`. |
 | [`fp.isAfter`](#fpisafter-function-experimental) | function | A predicate: true for values after `limit`. |
 | [`fp.isSame`](#fpissame-function-experimental) | function | A predicate: true for values in the same unit as `other`. |
-| [`fp.isBetween`](#fpisbetween-function-experimental) | function | A predicate: true for values from `start` to `end`, both included. |
+| [`isBetween`](#isbetween-function-experimental) | function | A predicate: true for values from `start` to `end`, both included. |
 | [`fp.clamp`](#fpclamp-function-experimental) | function | Limit values to a range. |
-| [`fp.diffFrom`](#fpdifffrom-function-experimental) | function | Whole units from `base` to each value: `dates.map(diffFrom(today, "day"))` reads left to right. |
-| [`fp.betweenFrom`](#fpbetweenfrom-function-experimental) | function | The Duration from `base` to each value. |
-| [`fp.by`](#fpby-function-experimental) | function | A comparator that orders items by a mapped value: `items.sort(by(toDay))`. |
+| [`diffFrom`](#difffrom-function-experimental) | function | Whole units from `base` to each value: `dates.map(diffFrom(today, "day"))` reads left to right. |
+| [`betweenFrom`](#betweenfrom-function-experimental) | function | The Duration from `base` to each value. |
+| [`by`](#by-function-experimental) | function | A comparator that orders items by a mapped value: `items.sort(by(toDay))`. |
 | [`fp.compare`](#fpcompare-function-experimental) | function | The same function as the value-first `compare`: it is already a comparator for `Array#sort`. |
 | [`fp.toInstant`](#fptoinstant-function-experimental) | function | Value-last `toInstant`. |
 | [`fp.toPlainDate`](#fptoplaindate-function-experimental) | function | Value-last `toPlainDate`: a groupBy key for bucketing instants by local day. |
@@ -150,7 +152,7 @@ offsetAt(t, 'Europe/Prague')                        // => 120
 | [`fp.monthGrid`](#fpmonthgrid-function-experimental) | function | Value-last `monthGrid`. |
 | [`fp.fromDate`](#fpfromdate-function-experimental) | function | Value-last `fromDate`. |
 | [`fp.toDate`](#fptodate-function-experimental) | function | Value-last `toDate`. |
-| [`fp.pipe`](#fppipe-function-experimental) | function | Left-to-right composition of unary functions, typed for up to eight steps, so pipelines need no other package:… |
+| [`pipe`](#pipe-function-experimental) | function | Left-to-right composition of unary functions, typed for up to eight steps, so pipelines need no other package:… |
 
 ## API
 
@@ -295,7 +297,7 @@ endOf('2026-11-18T14:30', 'day')              // => '2026-11-18T23:59:59.999'
 <T extends PlainDate | PlainDateTime | PlainYearMonth | PlainTime | Instant>(a: T, b: T) => -1 | 0 | 1
 ```
 
-Order two values of the same shape. Same-length strings compare as plain strings (every field is fixed-width and zero-padded), so the common case is one string comparison; that fast path does not validate. Values written at different precision (`14:30` and `14:30`) are parsed. Usable as an `Array#sort` comparator.
+Order two values of the same shape. Same-length strings compare as plain strings (every field is fixed-width and zero-padded), so the common case is one string comparison; that fast path does not validate. Values written at different precision (`14:30` and `14:30:00`, which compare equal) are parsed. Usable as an `Array#sort` comparator.
 
 **Example**
 
@@ -922,7 +924,7 @@ isTomorrow('2026-11-19', 'Europe/Prague', Date.UTC(2026, 10, 18, 12))  // => tru
 (target: Instant | PlainDate | PlainDateTime, base: Instant, zone: TimeZone) => { value: number; unit: "second" | "minute" | "hour" | "day" | "week" | "month" | "year" }
 ```
 
-How far `target` is from `base`, counted the way a person says it. Under a minute is seconds, under an hour minutes, under 24 hours hours (truncated toward zero). From 24 hours on it is counted by the calendar in `zone`, so yesterday is literally yesterday: under 7 calendar days it is days; then weeks while the calendar month differs by less than one or the distance is under 30 days; then calendar months (up to 11), then calendar years. A PlainDate or PlainDateTime target is a wall-clock value in `zone`. These are the thresholds of `formatRelativeTo` in `@pyreon/format`, ported with its tests, so the same two moments give the same words.
+How far `target` is from `base`, counted the way a person says it. Under a minute is seconds, under an hour minutes, under 24 hours hours (truncated toward zero). From 24 hours on it is counted by the calendar in `zone`, so yesterday is literally yesterday: under 7 calendar days it is days; then weeks while the calendar month differs by less than one or the distance is under 30 days; then calendar months (up to 11), then calendar years. A PlainDateTime target is a wall-clock value in `zone`; a PlainDate target is a DAY, compared as a calendar day in `zone` and never as hours (today, tomorrow, in 3 days). These are the thresholds of `formatRelativeTo` in `@pyreon/format`, ported with its tests, so the same two moments give the same words.
 
 **Example**
 
@@ -1722,7 +1724,7 @@ import { isSame } from '@pyreon/time/fp'
 
 ---
 
-### `fp.isBetween` `function` — **experimental**
+### `isBetween` `function` — **experimental**
 
 ```ts
 (start: T, end: T) => (value: shape of T) => boolean
@@ -1756,7 +1758,7 @@ import { clamp } from '@pyreon/time/fp'
 
 ---
 
-### `fp.diffFrom` `function` — **experimental**
+### `diffFrom` `function` — **experimental**
 
 ```ts
 (base: T, unit: Unit, options?: { zone?: TimeZone }) => (value: shape of T) => number
@@ -1773,7 +1775,7 @@ import { diffFrom } from '@pyreon/time/fp'
 
 ---
 
-### `fp.betweenFrom` `function` — **experimental**
+### `betweenFrom` `function` — **experimental**
 
 ```ts
 (base: PlainDate | PlainDateTime) => (value: same shape) => Duration
@@ -1790,7 +1792,7 @@ betweenFrom('2026-01-31')('2026-03-01')      // => { years: 0, months: 1, days: 
 
 ---
 
-### `fp.by` `function` — **experimental**
+### `by` `function` — **experimental**
 
 ```ts
 (mapper: (item: A) => K) => (a: A, b: A) => -1 | 0 | 1
@@ -1979,7 +1981,7 @@ toDate('UTC')('1970-01-01').getTime()         // => 0
 
 ---
 
-### `fp.pipe` `function` — **experimental**
+### `pipe` `function` — **experimental**
 
 ```ts
 (f1: (a: A) => B, f2: (b: B) => C, ...up to eight steps) => (value: A) => result

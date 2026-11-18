@@ -121,7 +121,7 @@ export function sankeyLegend(layout: SankeyLayout): LegendEntry[] {
 }
 
 /** One entry per series, coloured like the plot (an unset colour takes the palette slot). */
-export function polarLegend(series: PolarSeries[], palette: readonly string[]): LegendEntry[] {
+export function polarLegend(series: readonly PolarSeries[], palette: readonly string[]): LegendEntry[] {
   const out: LegendEntry[] = []
   for (let i = 0; i < series.length; i++) {
     const s = series[i]!
@@ -229,7 +229,7 @@ export function ganttTip(layout: GanttLayout, px: Double, py: Double): string[] 
   return [r.task.name, `${plain(ganttDurationDays(r))} days`]
 }
 
-export function polarTip(layout: PolarLayout, series: PolarSeries[], px: Double, py: Double): string[] {
+export function polarTip(layout: PolarLayout, series: readonly PolarSeries[], px: Double, py: Double): string[] {
   const hit = hitPolarIndex(layout, px, py)
   if (hit.sector >= 0) {
     const sec = layout.sectors[hit.sector]!
@@ -260,7 +260,7 @@ export function calendarTip(layout: CalendarLayout, values: CalendarValue[], px:
  * where it was drawn — so the caller's own points supply the value, the way
  * `calendarTip` and `geoTip` take theirs.
  */
-export function singleAxisTip(layout: SingleAxisLayout, points: SingleAxisPoint[], px: Double, py: Double): string[] {
+export function singleAxisTip(layout: SingleAxisLayout, points: readonly SingleAxisPoint[], px: Double, py: Double): string[] {
   const i = hitSingleAxis(layout, px, py)
   // A BOUNDS test, not an `=== undefined` test on the indexed value: this file
   // crosses to Swift and Kotlin, where `points[i]` is a subscript that TRAPS
@@ -272,7 +272,7 @@ export function singleAxisTip(layout: SingleAxisLayout, points: SingleAxisPoint[
 }
 
 /** The region's name, and its value when one was recorded for that region. */
-export function geoTip(layout: GeoLayout, values: GeoValue[], px: Double, py: Double): string[] {
+export function geoTip(layout: GeoLayout, values: readonly GeoValue[], px: Double, py: Double): string[] {
   const i = hitGeoIndex(layout, px, py)
   if (i < 0) return []
   const name = layout.regions[i]!.name

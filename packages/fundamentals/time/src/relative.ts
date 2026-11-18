@@ -71,7 +71,7 @@ const DAY = 86_400_000
  * minutes, under 24 hours hours (elapsed time, truncated toward zero: 59 minutes 40 seconds is 59 minutes). From 24 hours on it
  * is counted by the calendar in `zone`, so yesterday is literally yesterday: under 7 calendar days it is days; otherwise weeks
  * (7-day blocks) while the calendar month differs by less than one or the distance is under 30 days; then calendar months (up to
- * 11), then calendar years. A PlainDate or PlainDateTime target is a wall-clock value in `zone` (a date is its midnight).
+ * 11), then calendar years. A PlainDateTime target is a wall-clock value in `zone`. A PlainDate target is a DAY, not a moment: it is compared as a calendar day in `zone` and never reads as hours (today, tomorrow, 3 days ago).
  * These are the thresholds of `formatRelativeTo` in `@pyreon/format`, so the same two moments give the same words.
  *
  * @example relativeDistance(Date.UTC(2026, 10, 18, 11, 58), Date.UTC(2026, 10, 18, 12), 'UTC') // => { value: -2, unit: 'minute' }
@@ -85,9 +85,12 @@ export function relativeDistance(target: Instant | PlainDate | PlainDateTime, ba
   const diffMs = t - base
   const abs = Math.abs(diffMs)
 
-  if (abs < MINUTE) return { value: Math.trunc(diffMs / 1000) + 0, unit: 'second' }
-  if (abs < HOUR) return { value: Math.trunc(diffMs / MINUTE), unit: 'minute' }
-  if (abs < DAY) return { value: Math.trunc(diffMs / HOUR), unit: 'hour' }
+  // A date-only target (a PlainDate) names a day, not a moment: it is compared as a calendar day and never reads as hours.
+  const calendarOnly = typeof target === 'string' && isPlainDate(target)
+
+  if (!calendarOnly && abs < MINUTE) return { value: Math.trunc(diffMs / 1000) + 0, unit: 'second' }
+  if (!calendarOnly && abs < HOUR) return { value: Math.trunc(diffMs / MINUTE), unit: 'minute' }
+  if (!calendarOnly && abs < DAY) return { value: Math.trunc(diffMs / HOUR), unit: 'hour' }
   const td = dateParts(toPlainDate(t, zone))
   const bd = dateParts(toPlainDate(base, zone))
   const days = diff(toPlainDate(base, zone), toPlainDate(t, zone), 'day')

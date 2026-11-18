@@ -49,11 +49,6 @@
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^"
   },
-  "peerDependenciesMeta": {
-    "@pyreon/core": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@happy-dom/global-registrator": "21.0.4",
     "@pyreon/core": "workspace:*",

@@ -9,10 +9,10 @@ import type { ParallelAxis, ParallelLayout, ParallelLine } from './parallel'
 import type { Double, Pt } from './types'
 
 /** A row as authored on the web: a number, a category name (or index), or null for a gap, per axis. */
-export type ParallelRow = (Double | string | null)[]
+export type ParallelRow = readonly (Double | string | null)[]
 
 /** Rows as the engine takes them: a category as its index in the axis's `categories`, a gap (null, unknown category, non-number) as NaN. */
-export function parallelRows(axes: ParallelAxis[], rows: ParallelRow[]): Double[][] {
+export function parallelRows(axes: readonly ParallelAxis[], rows: readonly ParallelRow[]): Double[][] {
   const out: Double[][] = []
   for (const row of rows) {
     const values: Double[] = []
@@ -31,7 +31,7 @@ export function parallelRows(axes: ParallelAxis[], rows: ParallelRow[]): Double[
 }
 
 /** Per-row colours from a callback, for `ParallelOptions.lineColors`. */
-export function parallelLineColors(rows: ParallelRow[], colorOf: (row: ParallelRow, index: number) => string): string[] {
+export function parallelLineColors(rows: readonly ParallelRow[], colorOf: (row: ParallelRow, index: number) => string): string[] {
   return rows.map((row, i) => colorOf(row, i))
 }
 

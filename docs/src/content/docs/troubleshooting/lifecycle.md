@@ -47,6 +47,12 @@ The callback runs after the surrounding component's setup, when no scope is curr
 
 ---
 
+### [FIXED, 2026-11] Resetting the current effect scope to `null` instead of restoring it.
+
+`mountComponent` and `hydrateComponent` ended setup with `setCurrentScope(null)`. A component can mount while another scope is current: inside a parent's `onMount` (`runInScope`) when a signal write flips a `<Show>`, inside a `<For>` row's collector, inside a parent's compiled template. The reset left everything that owner created afterwards with no owner, so an effect created later in the same `onMount` kept running after the parent unmounted. **Rule: code that sets the current scope saves the previous one and restores it on every exit path (`runInScope`, `runRowCallback`), never a constant.** Reference: `runtime-dom/src/mount.ts`, `hydrate.ts`; locked by `mount-restores-scope.test.ts` (h(), hydration, and both compiler backends; bisect-verified).
+
+---
+
 ### Measuring layout in a `ref` inside `<For>`
 
 `<For>` mounts its initial rows into a fragment and moves them into the document afterwards, so a row's `ref` fires on a detached element and `getBoundingClientRect()` returns zeros. Recording that size breaks consumers (in `@pyreon/virtual`, TanStack compensated scroll for the 0 → 40px corrections and the window rendered from the wrong row). A layout read in a `ref` must check `el.isConnected` and defer (a microtask is enough for `<For>`). Reference: `packages/fundamentals/virtual/src/detached-measure.ts` + `tests/detached-measure.test.ts`.
@@ -270,6 +276,12 @@ A hook that checks `if (active()) return`, awaits a permission or device, then s
 ### A settle-once flag does not cover settle-never
 
 The file pickers (`useCamera`, `useFilePicker`, `useImagePicker`) append a hidden `<input type="file">` and remove it in `settle`. If neither `change` nor `cancel` fires (older browsers, or unmount while the OS sheet is open), the node, its listeners and the `resolve` closure are retained forever and the promise never settles. A resource acquired from an event handler has no reactive scope to own it, so the hook registers `onCleanup` during setup and settles whatever is still in flight. Async iterables have the same settle-never risk: `.return()` queues behind an in-flight `.next()`, and an abort signal alone cannot settle a transport or parser that ignores it. Cancel the owned reader, abort the connection/parse wait, cancel late response bodies, detach external listeners before iteration too, and make terminal status idempotent. Check that a guard actually implements the invariant its comment claims. References: `packages/fundamentals/hooks/src/file-picker.ts`; `hooks/src/tests/file-picker-unmount.test.ts`; `packages/fundamentals/http/src/stream.ts`; `http/src/tests/stream-release-regressions.test.ts`.
+
+---
+
+### [FIXED, 2026-11] A client convenience fallback written and read on the server.
+
+`<RouterProvider>` also stored its router in a module-level fallback (`setActiveRouter`), and every router hook read `useContext(RouterContext) ?? _activeRouter`. On a server that slot held the LAST page request's router, so a server-island fragment (rendered with no provider) resolved `useRoute()` / `useParams()` / `useSearchParams()` to another user's path and query: a cross-request data exposure. **Rule: a module-level "current X" fallback is client-only; on the server, resolve through request-scoped context or fail.** All router reads go through one resolver (`resolveRouter` in `router/src/router.ts`), which ignores the slot when `isClient` is false, and `setActiveRouter` stores nothing on a server. Locked by `server/src/tests/server-island-router-bleed.test.ts` (node environment; bisect-verified).
 
 ---
 
