@@ -7,6 +7,24 @@ import { diagnoseError } from '../diagnose'
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 describe('diagnoseError (browser-safe error catalog)', () => {
+  it('explains an effect cleanup that threw when a server request ended', () => {
+    const result = diagnoseError('[Pyreon SSR] An effect cleanup threw while a request ended: TypeError: x is not a function')
+    expect(result).not.toBeNull()
+    expect(result!.cause).toContain('cleanup')
+    expect(result!.fix).toContain('onMount')
+    // Another SSR message is not this entry.
+    expect(diagnoseError('[Pyreon] SSR render failed for /x: TypeError: boom')?.fix ?? '').not.toContain('Find the cleanup')
+  })
+
+  it('explains a per-request registry whose dispose threw', () => {
+    const result = diagnoseError('[Pyreon SSR] Disposing the request registry (__PYREON_STORE_DISPOSE_REGISTRY__) threw: Error: socket closed')
+    expect(result).not.toBeNull()
+    expect(result!.cause).toContain('per-request registry')
+    expect(result!.fix).toContain('must not throw')
+    // The effect-cleanup message is a different entry.
+    expect(diagnoseError('[Pyreon SSR] An effect cleanup threw while a request ended:')?.cause ?? '').not.toContain('per-request registry')
+  })
+
   it('explains a loader notFound() that answered 500 (SSR and the data endpoint)', () => {
     for (const message of [
       '[Pyreon] SSR render failed for /items/9999: Error: Not Found',
