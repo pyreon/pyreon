@@ -1,4 +1,4 @@
-import { disabledState, el, focusRing, tintText } from '../../factory'
+import { disabledState, el, focusRing, tintText, tones } from '../../factory'
 
 const NavLink = el
   .config({ name: 'NavLink' })
@@ -20,7 +20,7 @@ const NavLink = el
     'aria-disabled': props.state === 'disabled' ? ('true' as const) : undefined,
     tabIndex: props.state === 'disabled' ? -1 : undefined,
   }))
-  .theme((t) => ({
+  .theme((t, m) => ({
     // Touch-target floor (code-style: interactive nav items need ≥8px-vertical
     // equivalent) — compact paddings + the MultiSelect minHeight pattern.
     minHeight: 32,
@@ -30,7 +30,7 @@ const NavLink = el
     paddingRight: t.spacing.small,
     borderRadius: t.borderRadius.base,
     fontSize: t.fontSize.small,
-    color: t.color.system.base[700],
+    color: tones(t, m).textMuted,
     textDecoration: 'none',
     cursor: 'pointer',
     transition: t.transition.fast,

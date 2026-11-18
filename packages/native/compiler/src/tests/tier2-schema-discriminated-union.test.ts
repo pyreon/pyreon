@@ -66,8 +66,8 @@ export const eventSchema = zodSchema(z.discriminatedUnion('event', [
     const r = transform(src, { target: 'swift' })
     expect(r.code).toContain('struct PyreonZodSchema_eventSchema_Click')
     // Click variant fields
-    expect(r.code).toContain('var x: Int')
-    expect(r.code).toContain('var y: Int')
+    expect(r.code).toContain('var x: Double')
+    expect(r.code).toContain('var y: Double')
     // Focus variant
     expect(r.code).toContain('struct PyreonZodSchema_eventSchema_Focus')
     expect(r.code).toContain('var targetId: String')

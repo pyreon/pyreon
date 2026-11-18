@@ -41,7 +41,7 @@ describe('M3.1 useHaptics platform-API hook emit', () => {
     // Method call flows through unchanged (string arg, no rewrite).
     expect(out.code).toContain('haptics.impact("light")')
     // Emitted inside the block handler alongside the count write.
-    expect(out.code).toMatch(/count = count \+ 1\s*\n\s*haptics\.impact\("light"\)/)
+    expect(out.code).toMatch(/count = pyreonAdd\(count, 1\)\s*\n\s*haptics\.impact\("light"\)/)
     expect(out.warnings).toEqual([])
   })
 

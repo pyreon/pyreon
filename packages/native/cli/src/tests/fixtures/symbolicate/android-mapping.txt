@@ -1,0 +1,130 @@
+# compiler: R8
+# compiler_version: 9.4.14
+# common_typos_disable
+# {"id":"com.android.tools.r8.mapping","version":"2.2"}
+# pg_map_id: 4fb6658390e9a53fc7014a8e321faf461bc1c2f76c73b2c781725a8a491038fb
+# pg_map_hash: SHA-256 4fb6658390e9a53fc7014a8e321faf461bc1c2f76c73b2c781725a8a491038fb
+androidx.compose.runtime.ComposeStubKt -> R8$$REMOVED$$CLASS$$0:
+# {"id":"sourceFile","fileName":"ComposeStub.kt"}
+androidx.compose.runtime.ComposeStubKt$mutableStateOf$1 -> a.a:
+# {"id":"sourceFile","fileName":"ComposeStub.kt"}
+    java.lang.Object value -> a
+    1:1:void <init>(java.lang.Object):4:4 -> <init>
+com.example.shop.CheckoutService -> b.a:
+# {"id":"sourceFile","fileName":"ProofApp.kt"}
+    1:2:int applyDiscount(java.lang.String):10:11 -> a
+      # {"id":"com.android.tools.r8.residualsignature","signature":"()V"}
+    3:3:int rejectCode(java.lang.String):15:15 -> a
+    3:3:int applyDiscount(java.lang.String):11 -> a
+com.example.shop.ProofAppKt -> com.example.shop.ProofAppKt:
+# {"id":"sourceFile","fileName":"ProofApp.kt"}
+    1:3:void main(java.lang.String[]):20:22 -> main
+    4:10:void main(java.lang.String[]):20:26 -> main
+com.pyreon.runtime.FileStorageBackend -> c.a:
+# {"id":"sourceFile","fileName":"PyreonStorageBackends.kt"}
+    java.io.File directory -> a
+    boolean loaded -> b
+    java.util.LinkedHashMap map -> c
+    1:10:void <init>(java.io.File,kotlin.jvm.functions.Function2):228:237 -> <init>
+    1:10:void <init>(java.io.File,kotlin.jvm.functions.Function2,int,kotlin.jvm.internal.DefaultConstructorMarker):228 -> <init>
+      # {"id":"com.android.tools.r8.residualsignature","signature":"(Ljava/io/File;)V"}
+    1:2:void load():249:250 -> a
+    3:3:java.io.File file():246:246 -> a
+    3:3:void load():251 -> a
+    4:11:void load():252:259 -> a
+    12:13:void write(java.lang.String,java.lang.String):287:288 -> a
+      # {"id":"com.android.tools.r8.residualsignature","signature":"(Ljava/lang/String;)V"}
+    14:14:java.io.File file():246:246 -> a
+    14:14:void flush():269 -> a
+    14:14:void write(java.lang.String,java.lang.String):289 -> a
+    15:19:void flush():270:274 -> a
+    15:19:void write(java.lang.String,java.lang.String):289 -> a
+com.pyreon.runtime.PyreonCrashBuildInfo -> c.b:
+# {"id":"sourceFile","fileName":"PyreonCrashReporter.kt"}
+    1:1:void <init>(java.lang.String,java.lang.String,java.lang.String):56:56 -> <init>
+      # {"id":"com.android.tools.r8.residualsignature","signature":"()V"}
+    1:1:boolean equals(java.lang.Object):0:0 -> equals
+    1:1:int hashCode():0:0 -> hashCode
+    1:1:java.lang.String toString():0:0 -> toString
+com.pyreon.runtime.PyreonCrashReporter -> c.d:
+# {"id":"sourceFile","fileName":"PyreonCrashReporter.kt"}
+    com.pyreon.runtime.PyreonStorageBackend backend -> a
+      # {"id":"com.android.tools.r8.residualsignature","signature":"Lc/a;"}
+    boolean started -> b
+    kotlin.collections.ArrayDeque breadcrumbs -> c
+    kotlin.text.Regex R8_MAP_ID -> d
+    1:1:void <clinit>():164:164 -> <clinit>
+    1:2:void <init>(com.pyreon.runtime.PyreonStorageBackend,com.pyreon.runtime.PyreonCrashBuildInfo):62:63 -> <init>
+      # {"id":"com.android.tools.r8.residualsignature","signature":"(Lc/a;Lc/b;)V"}
+    3:3:androidx.compose.runtime.MutableState androidx.compose.runtime.ComposeStubKt.mutableStateOf(java.lang.Object):4:4 -> <init>
+    3:3:void <init>(com.pyreon.runtime.PyreonStorageBackend,com.pyreon.runtime.PyreonCrashBuildInfo):67 -> <init>
+    4:4:void <init>(com.pyreon.runtime.PyreonStorageBackend,com.pyreon.runtime.PyreonCrashBuildInfo):73:73 -> <init>
+    5:5:androidx.compose.runtime.MutableState androidx.compose.runtime.ComposeStubKt.mutableStateOf(java.lang.Object):4:4 -> <init>
+    5:5:void <init>(com.pyreon.runtime.PyreonStorageBackend,com.pyreon.runtime.PyreonCrashBuildInfo):73 -> <init>
+    6:6:void <init>(com.pyreon.runtime.PyreonStorageBackend,com.pyreon.runtime.PyreonCrashBuildInfo):76:76 -> <init>
+    1:2:void start$lambda$0(com.pyreon.runtime.PyreonCrashReporter,java.lang.Thread$UncaughtExceptionHandler,java.lang.Thread,java.lang.Throwable):93:94 -> a
+      # {"id":"com.android.tools.r8.residualsignature","signature":"(Lc/d;Ljava/lang/Thread$UncaughtExceptionHandler;Ljava/lang/Thread;Ljava/lang/Throwable;)V"}
+    3:3:void start$lambda$0(com.pyreon.runtime.PyreonCrashReporter,java.lang.Thread$UncaughtExceptionHandler,java.lang.Thread,java.lang.Throwable):92:92 -> a
+    4:126:void persist$main(java.lang.String,java.lang.String):0:122 -> a
+    4:126:void start$lambda$0(com.pyreon.runtime.PyreonCrashReporter,java.lang.Thread$UncaughtExceptionHandler,java.lang.Thread,java.lang.Throwable):92 -> a
+    127:127:void start$lambda$0(com.pyreon.runtime.PyreonCrashReporter,java.lang.Thread$UncaughtExceptionHandler,java.lang.Thread,java.lang.Throwable):96:96 -> a
+    128:129:void breadcrumb(java.lang.String):108:109 -> a
+      # {"id":"com.android.tools.r8.residualsignature","signature":"()V"}
+    130:135:java.lang.String report$main(java.lang.String,java.lang.String):133:138 -> a
+    136:139:java.lang.String report$main(java.lang.String,java.lang.String) -> a
+    140:145:java.lang.String report$main(java.lang.String,java.lang.String):136:141 -> a
+    146:153:java.lang.String report$main(java.lang.String,java.lang.String):136:143 -> a
+    154:162:java.lang.String report$main(java.lang.String,java.lang.String):136:144 -> a
+    163:172:java.lang.String report$main(java.lang.String,java.lang.String):136:145 -> a
+    173:183:java.lang.String report$main(java.lang.String,java.lang.String):136:146 -> a
+    184:184:java.lang.String report$main(java.lang.String,java.lang.String):136:136 -> a
+    185:185:java.lang.CharSequence report$lambda$0(kotlin.reflect.KFunction,java.lang.String):134:134 -> a
+    1:2:void start():87:88 -> b
+    3:3:void rehydrate():151:151 -> b
+    3:3:void start():89 -> b
+    4:5:java.lang.String com.pyreon.runtime.FileStorageBackend.read(java.lang.String):282:283 -> b
+    4:5:void rehydrate():151 -> b
+    4:5:void start():89 -> b
+    6:7:void start():90:91 -> b
+com.pyreon.runtime.PyreonCrashReporter$report$q$1 -> c.c:
+# {"id":"sourceFile","fileName":"PyreonCrashReporter.kt"}
+    1:1:void <init>(java.lang.Object):0:0 -> <init>
+      # {"id":"com.android.tools.r8.residualsignature","signature":"()V"}
+    1:1:java.lang.Object invoke(java.lang.Object):133:133 -> invoke
+    2:135:java.lang.String invoke(java.lang.String):0:133 -> invoke
+    2:135:java.lang.Object invoke(java.lang.Object):133 -> invoke
+com.pyreon.runtime.PyreonJson -> c.e:
+# {"id":"sourceFile","fileName":"PyreonJson.kt"}
+    com.pyreon.runtime.PyreonJson INSTANCE -> a
+      # {"id":"com.android.tools.r8.residualsignature","signature":"Lc/e;"}
+    1:5:void <clinit>():41:45 -> <clinit>
+    1:1:void <init>():30:30 -> <init>
+    1:1:kotlin.Unit parseJson$lambda$0(kotlinx.serialization.json.JsonBuilder):45:45 -> a
+    2:15:java.lang.String jsString$main(java.lang.String):175:188 -> a
+    16:16:java.lang.String hex4(char):201:201 -> a
+    16:16:java.lang.String jsString$main(java.lang.String):188 -> a
+    17:22:java.lang.String jsString$main(java.lang.String):188:193 -> a
+    23:23:java.lang.String hex4(char):201:201 -> a
+    23:23:java.lang.String jsString$main(java.lang.String):193 -> a
+    24:29:java.lang.String jsString$main(java.lang.String):193:198 -> a
+    1:1:kotlin.Unit stringifyJson$lambda$0(kotlinx.serialization.json.JsonBuilder):41:41 -> b
+com.pyreon.runtime.PyreonKvJson -> c.f:
+# {"id":"sourceFile","fileName":"PyreonStorageBackends.kt"}
+    1:164:java.lang.String encode(java.util.Map):137:300 -> a
+      # {"id":"com.android.tools.r8.residualsignature","signature":"(Ljava/util/LinkedHashMap;)Ljava/lang/String;"}
+    165:168:java.lang.String encode(java.util.Map):139:142 -> a
+    169:181:void escape(java.lang.StringBuilder,java.lang.String):146:158 -> a
+    182:232:java.util.Map decode(java.lang.String):164:214 -> a
+      # {"id":"com.android.tools.r8.residualsignature","signature":"(Ljava/lang/String;)Ljava/util/LinkedHashMap;"}
+    233:233:boolean decode$eat(kotlin.jvm.internal.Ref$IntRef,java.lang.String,char):167:167 -> a
+    234:258:java.lang.String decode$str(kotlin.jvm.internal.Ref$IntRef,java.lang.String):171:195 -> a
+    259:273:java.lang.String decode$str(kotlin.jvm.internal.Ref$IntRef,java.lang.String):178:192 -> a
+    274:275:java.lang.String decode$str(kotlin.jvm.internal.Ref$IntRef,java.lang.String):189:190 -> a
+    276:276:java.lang.String decode$str(kotlin.jvm.internal.Ref$IntRef,java.lang.String):185:185 -> a
+    277:277:java.lang.String decode$str(kotlin.jvm.internal.Ref$IntRef,java.lang.String):184:184 -> a
+    278:282:java.lang.String decode$str(kotlin.jvm.internal.Ref$IntRef,java.lang.String):183:187 -> a
+    283:283:java.lang.String decode$str(kotlin.jvm.internal.Ref$IntRef,java.lang.String):186:186 -> a
+    284:285:java.lang.String decode$str(kotlin.jvm.internal.Ref$IntRef,java.lang.String):181:182 -> a
+    286:286:java.lang.String decode$str(kotlin.jvm.internal.Ref$IntRef,java.lang.String):180:180 -> a
+    287:287:java.lang.String decode$str(kotlin.jvm.internal.Ref$IntRef,java.lang.String):176:176 -> a
+    1:1:void decode$ws(kotlin.jvm.internal.Ref$IntRef,java.lang.String):165:165 -> b

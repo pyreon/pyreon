@@ -59,7 +59,7 @@ describe('a file-scope const is a typed receiver', () => {
     expect(r.code).not.toContain('NAMES.indexOf(')
     expect(r.code).toContain('__pyRecv[__pyFrom...].firstIndex(of: "b")')
     expect(r.code).toContain('private var up: String { GREETING.uppercased() }')
-    expect(r.code).toContain('private var n: Int { GREETING.utf16.count + LIMIT }')
+    expect(r.code).toContain('private var n: Int { pyreonAdd(GREETING.utf16.count, LIMIT) }')
     expect(r.code).toContain('private var i: Int {')
   })
 

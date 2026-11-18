@@ -8,8 +8,7 @@
 //     with the requested target
 //   - Write output to a mirrored path in the out directory, with the
 //     target-appropriate extension (.swift / .kt)
-//   - Prepend source-map directives so downstream debug tooling can
-//     point at Pyreon source lines
+//   - Prepend a provenance comment naming the Pyreon source file
 //
 // What's NOT here (deferred):
 //   - File watching / hot reload — Phase 3
@@ -77,6 +76,7 @@ export interface BuildResult {
  * runtime is itself a bug this surfaces).
  */
 const WEB_ONLY_IMPORT_RE = /\bfrom\s+['"]@pyreon\/(?:runtime-dom|runtime-server)['"]/
+
 export function isWebOnlyEntry(code: string): boolean {
   return WEB_ONLY_IMPORT_RE.test(code)
 }
@@ -87,18 +87,18 @@ function outputExtension(target: TargetLanguage): string {
 }
 
 /**
- * Source-map directive prepended to each emitted file. Swift uses
- * `#sourceLocation(file:line:)`; Kotlin doesn't have an equivalent
- * pragma, so we use a leading line comment that debug tooling can
- * parse out by convention. This keeps debugging hops from compiled
- * native back to original Pyreon source possible.
+ * Provenance comment prepended to each emitted file: the Pyreon source it
+ * came from, for a reader of the generated code. A COMMENT on both targets,
+ * deliberately not Swift's `#sourceLocation(file:line:)`.
+ *
+ * The emit has no per-statement line map, so a `#sourceLocation(file:
+ * "App.tsx", line: 1)` header told the compiler that generated line N was
+ * `App.tsx` line N — true of no line. Every compile error, debugger frame
+ * and symbolicated crash (`atos` over the dSYM) then named the .tsx at a
+ * line holding something else entirely (a comment, an import). The
+ * generated Swift's own file and line are at least correct and on disk.
  */
-function sourceMapHeader(target: TargetLanguage, originalPath: string): string {
-  if (target === 'swift') {
-    // Swift's directive expects an absolute path; relative paths work
-    // too but are harder for IDE breakpoints to resolve.
-    return `#sourceLocation(file: "${originalPath}", line: 1)\n`
-  }
+function sourceMapHeader(originalPath: string): string {
   return `// pyreon-source: ${originalPath}\n`
 }
 
@@ -135,6 +135,14 @@ function sourceMapHeader(target: TargetLanguage, originalPath: string): string {
  * `withContext` / `Dispatchers` / `Json` imports only surfaced on the
  * first REAL `gradle assembleDebug` of a useFetch screen.
  */
+/**
+ * Compose's enter/exit transition builders: `fadeIn`, `scaleOut`, `slideInHorizontally`, `expandVertically`, … — all
+ * in `androidx.compose.animation`, none covered by a star import. Followed by `(` OR `{`: the trailing-lambda form
+ * (`slideInVertically { it }`) is the `.clickable` trap the predicates above already document.
+ */
+const COMPOSE_TRANSITION_BUILDER =
+  /(?<![.\w])(?:(?:fade|scale|slide|expand|shrink)(?:In|Out)(?:Horizontally|Vertically)?|(?:expand|shrink)(?:Horizontally|Vertically))(?=\s*[({])/g
+
 export function conditionalKotlinImports(emitted: string): string {
   const imports: string[] = []
   // `delay` is emitted by the useInterval / useTimeout lowering. Unqualified
@@ -260,9 +268,17 @@ export function conditionalKotlinImports(emitted: string): string {
   // symbols the star imports don't cover — the exact stub-masked-symbol
   // class (the validate loop's stubs resolve them regardless of import;
   // only the real gradle build catches the miss, and it did).
-  if (/\bfadeIn\(/.test(emitted)) {
-    imports.push('import androidx.compose.animation.fadeIn')
-    imports.push('import androidx.compose.animation.fadeOut')
+  //
+  // Every enter/exit transition a preset can emit is imported by its own call,
+  // not just the fade: `slide-*` and `scale-in` lowered to slideIn/Out… and
+  // scaleIn/Out with NO import, so any slide or scale <Transition> failed the
+  // real Android build with "Unresolved reference 'slideInHorizontally'" while
+  // the stub-concatenating validate loop passed it. Found by the router demo's
+  // presets page, the first Android build to render one.
+  // Keyed on the builder NAME SHAPE rather than a list, so a builder no emit
+  // uses yet (expandVertically, shrinkHorizontally, …) resolves too.
+  for (const fn of new Set(emitted.match(COMPOSE_TRANSITION_BUILDER) ?? [])) {
+    imports.push(`import androidx.compose.animation.${fn}`)
   }
   if (/\btween\(/.test(emitted)) {
     imports.push('import androidx.compose.animation.core.tween')
@@ -538,6 +554,7 @@ export function conditionalKotlinImports(emitted: string): string {
       imports.push(`import androidx.compose.material.icons.filled.${g}`)
     }
   }
+
   return imports.length === 0 ? '' : imports.join('\n') + '\n'
 }
 
@@ -551,6 +568,7 @@ export function importHeader(target: TargetLanguage): string {
       '',
     ].join('\n')
   }
+
   return [
     'import androidx.compose.runtime.*',
     'import androidx.compose.foundation.layout.*',
@@ -586,6 +604,7 @@ export function findTsxFiles(sourceDir: string): string[] {
     }
   }
   walk(sourceDir)
+
   return found.sort()
 }
 
@@ -645,7 +664,7 @@ export function build(options: BuildOptions): BuildResult {
     const finalCode =
       fileAnnotations +
       packageHeader +
-      sourceMapHeader(options.target, input) +
+      sourceMapHeader(input) +
       importHeader(options.target) +
       (options.target === 'kotlin' ? conditionalKotlinImports(result.code) : '') +
       result.code

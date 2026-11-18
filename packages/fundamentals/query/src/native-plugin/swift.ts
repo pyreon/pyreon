@@ -22,6 +22,7 @@ export function queryDeclSwift(d: ExtDecl, ctx: EmitContext): string {
     p.queryKeyExpr !== undefined || p.urlExpr !== undefined || p.valueExpr !== undefined
       ? '""'
       : ctx.stringLiteral(p.queryKey)
+
   return `@State private var ${ctx.ident(d.name)} = PyreonQuery<${ctx.typeText(p.type)}>(queryKey: ${key}, staleSeconds: ${staleSeconds})`
 }
 
@@ -45,13 +46,12 @@ export function queryLifecycleSwift(decl: ExtDecl, ctx: EmitContext): readonly s
   // on the computed key string via `.task(id:)`, so a key change re-keys the cache (`setKey`) + re-runs
   // the fetch — matching the web's reactive queryKey. Static literal queries keep `.task {}`.
   const runtimeQuery = d.queryKeyExpr !== undefined || d.urlExpr !== undefined || d.valueExpr !== undefined
-  if (runtimeQuery) {
-    const keyExpr = d.queryKeyExpr !== undefined ? ctx.expr(d.queryKeyExpr, 0) : ctx.stringLiteral(d.queryKey)
-    lines.push(`.task(id: ${keyExpr}) {`)
-    lines.push(`  ${name}.setKey(${keyExpr})`)
-  } else {
-    lines.push(`.task {`)
-  }
+  // `enabled` joins the task's identity, so the harness re-runs when it flips (the web reads it tracked), and gates
+  // the request: a disabled query does not fetch.
+  const enabled = d.enabled !== undefined ? ctx.expr(d.enabled, 0) : undefined
+  const keyExpr = d.queryKeyExpr !== undefined ? ctx.expr(d.queryKeyExpr, 0) : ctx.stringLiteral(d.queryKey)
+  lines.push(...swiftTaskHeader(name, keyExpr, runtimeQuery, enabled))
+  const runStart = lines.length
   // The request closure: everything it reads (a URL param, a header token, a body) is read each time it RUNS, so a
   // refetch sends current values. A failure is the runtime's to record (`error`), so the closure just throws.
   lines.push(`  await ${name}.run {`)
@@ -77,8 +77,17 @@ export function queryLifecycleSwift(decl: ExtDecl, ctx: EmitContext): readonly s
     }
   }
   lines.push(`  }`)
+  if (enabled !== undefined) gateOnEnabled(lines, runStart, `  if ${enabled} {`)
   lines.push(`}`)
+
   return lines
+}
+
+/** Wrap the request block (from `start` on) in the `enabled` guard, re-indented one level. */
+function gateOnEnabled(lines: string[], start: number, open: string): void {
+  for (let j = start; j < lines.length; j++) lines[j] = `  ${lines[j]}`
+  lines.splice(start, 0, open)
+  lines.push(`  }`)
 }
 
 /** The `.task(id:)` modifier that runs one `useStream` decl: KEYED on the request URL plus the restart tick, so a runtime `:param` or `restart()` re-keys it. */
@@ -139,5 +148,14 @@ export function streamLifecycleSwift(decl: ExtDecl, ctx: EmitContext): readonly 
     out.push(`  }`)
   }
   out.push(`}`)
+
   return out
+}
+
+/** The harness's opening: `.task(id:)` keyed on the runtime key and/or `enabled` (which a change re-runs), else `.task`. */
+function swiftTaskHeader(name: string, keyExpr: string, runtimeQuery: boolean, enabled: string | undefined): string[] {
+  if (!runtimeQuery && enabled === undefined) return [`.task {`]
+  const id = enabled === undefined ? keyExpr : `"\\(${keyExpr})|\\(${enabled})"`
+
+  return runtimeQuery ? [`.task(id: ${id}) {`, `  ${name}.setKey(${keyExpr})`] : [`.task(id: ${id}) {`]
 }

@@ -206,6 +206,12 @@ export type DeclIR =
       beforeEach?: string[]
       afterEach?: string[]
       /**
+       * The guards above that take NO parameter (`afterEach: [countVisit]` with `function countVisit()`). The native
+       * routers call every guard with the target path, so the emit adapts these with a closure that drops it — a bare
+       * reference has the wrong function type on both targets.
+       */
+      zeroArgGuards?: string[]
+      /**
        * `createRouter({ tabs: [{ name, root }] })` — per-tab back stacks
        * (#4060). Literal names and roots only; the router runtime is
        * constructed with them (`PyreonRouter(tabs:)`), and a
@@ -550,7 +556,10 @@ export type TypeIR =
   // literal like `12.5`) → emits as Swift/Kotlin `Double`. Absent/false
   // → `Int` (PMTC's ergonomic default for counts/ids/indices). Additive:
   // every existing `kind: 'number'` check still matches.
-  | { kind: 'number'; float?: boolean }
+  // `date: true` marks a `Date` — natively its epoch milliseconds, a `Double`, in every piece of logic
+  // (date-lowering.ts); the mark only decides how a struct FIELD crosses JSON (as the web's ISO string,
+  // date-json.ts). It is lost the moment a value is computed from it, as on the web (`d.getTime()` is a number).
+  | { kind: 'number'; float?: boolean; date?: boolean }
   | { kind: 'string' }
   | { kind: 'boolean' }
   | { kind: 'array'; element: TypeIR }
@@ -708,7 +717,7 @@ export type ExprIR =
       // Arithmetic + bitwise + exponent. Bitwise ops (`& | ^ << >>`) emit
       // verbatim on Swift / as infix functions on Kotlin. Exponent (`**`) has
       // no operator on either target → `pow(...)` (Double-domain) on both.
-      op: '+' | '-' | '*' | '/' | '%' | '&' | '|' | '^' | '<<' | '>>' | '**'
+      op: '+' | '-' | '*' | '/' | '%' | '&' | '|' | '^' | '<<' | '>>' | '>>>' | '**'
       left: ExprIR
       right: ExprIR
     }
@@ -748,7 +757,7 @@ export type ExprIR =
    * optional must be unwrapped before a member is read, so the emitters force-unwrap (`x!` / `x!!`) when — and only
    * when — the argument's inferred type is optional; otherwise they emit the argument unchanged.
    */
-  | { kind: 'unary'; op: '!' | '-' | '+' | 'non-null'; argument: ExprIR }
+  | { kind: 'unary'; op: '!' | '-' | '+' | '~' | 'non-null'; argument: ExprIR }
   /**
    * Logical operators (Parser-C). TodoMVC uses `e.key === 'Enter' && addTodo()`
    * in the keyboard handler. Swift and Kotlin both have `&&` / `||` with

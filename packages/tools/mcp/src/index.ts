@@ -214,7 +214,7 @@ server.tool(
     // never false-positives. Catches code that compiles for web but silently
     // breaks the PMTC native build (web-only imports, dropped interface/enum/
     // class). The AI's per-keystroke one-shot feedback loop, complementing
-    // `pyreon doctor --check-native`.
+    // `pyreon doctor --only native-audit`.
     const { diags: nativeDiags, skipped: nativeSkipped } = await detectNative(source, fname)
     const nativeNote = nativeSkipped ? `\n\n${NATIVE_CHECKS_SKIPPED_NOTE}` : ''
     // A syntax error is the verdict. Detectors that still found something in

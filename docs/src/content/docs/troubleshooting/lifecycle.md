@@ -83,6 +83,12 @@ Solid-compat's `onCleanup` always meant "component unmount", so a cleanup regist
 
 ---
 
+### Side indexes and guards that outlive the entries they describe (Class C)
+
+The ISR memory store capped its cache at `maxEntries` but its tag index only grew (`setTags` added; `delete()` and LRU eviction never pruned), `createFsStore`'s `_tags.json` likewise, and `createISRHandler` kept one invalidation epoch per key EVER passed to `revalidateNow`, though an epoch only guards a render in flight. Rules: every index keyed by a cached entry is pruned on EVERY path that removes the entry (delete, eviction, clear), via a reverse key → index map; a guard for in-flight work lives exactly as long as that work (refcounted ticket, released in `finally`); a read-only lookup must not refresh LRU order. Reference: `packages/zero/zero/src/isr.ts` (`createMemoryStore`, `createFsStore`, `_beginRender`/`_endRender`); locked by `isr-store-bounds.test.ts`, which also caught `revalidateAll` missing a cold render in flight.
+
+---
+
 ### A refcounted shared resource created inside the FIRST consumer's `onMount` is owned by that consumer
 
 Zero's `initTheme()` ran its shared setup (matchMedia listener + the effect that keeps `<html data-theme>` following the theme) when the refcount went 0 -&gt; 1, inside the first `<ThemeToggle>`'s `onMount`. An `effect()` created there registers with that component's scope, so unmounting the first toggle disposed the effect while the others still held the refcount, and `data-theme` stopped following changes. Rule: anything whose lifetime is a refcount must be created in its own `effectScope()` (`scope.runInScope(...)`) and stopped by the refcount's teardown, never left to the ambient owner. Reference: `packages/zero/zero/src/theme.tsx` (`_setupShared`); locked by `src/tests/theme-shared-effect-owner.test.tsx`.
