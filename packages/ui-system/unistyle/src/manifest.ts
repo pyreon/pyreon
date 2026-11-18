@@ -24,7 +24,6 @@ export default defineManifest({
     'stripUnit / value / values — unit-utility helpers',
     'themeToCssVars(theme) — autogenerate CSS custom properties from a theme JSON; units baked at emission (px→rem via rootSize)',
     'resolveCssVarReferences(value, registry) — inline var() references back to raw values for non-CSS consumers (document export, devtools)',
-    'Provider / context — React-style provider for the theme (used internally by PyreonUI)',
   ],
   longExample: `import { enrichTheme, makeItResponsive, alignContent } from '@pyreon/unistyle'
 import type { MakeItResponsiveStyles } from '@pyreon/unistyle'
@@ -338,9 +337,9 @@ const Box = cpseStyled('div')
         'Unistyle uses property-first naming (`borderWidthTop`, `borderColorLeft`) rather than CSS-spec order (`borderTopWidth`, `borderLeftColor`). Stick to the unistyle convention when authoring components — the responsive transformer expects it.',
     },
     {
-      label: 'Deprecated internal Provider / context',
+      label: 'No provider here — use PyreonUI',
       note:
-        'The package exports a low-level `Provider` (default export) + `context` (re-exported from `@pyreon/ui-core`) that `<PyreonUI>` no longer calls directly — it is `@deprecated`-tagged and dev-warns on mount. There is no reason to import it: use `<PyreonUI theme={theme}>` instead.',
+        'Unistyle has no provider component. `<PyreonUI theme={theme}>` from `@pyreon/ui-core` enriches the theme through unistyle (registered at module load) and provides it to styler, ui-core and the mode context. The `context` export is a re-export of `@pyreon/ui-core`\'s internal context.',
     },
     {
       label: 'Responsive-pipeline internals (normalizeTheme / sortBreakpoints / transformTheme)',

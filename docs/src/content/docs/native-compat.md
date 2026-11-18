@@ -77,13 +77,11 @@ These public components carry the marker today (33 across 17 packages):
 | `@pyreon/a11y` | `RouteAnnouncer` |
 | `@pyreon/charts` | `ChartThemeProvider` |
 | `@pyreon/ui-core` | `PyreonUI`, `Provider` |
-| `@pyreon/unistyle` | `Provider` |
-| `@pyreon/styler` | `ThemeProvider` |
 | `@pyreon/rocketstyle` | `Provider` |
 | `@pyreon/coolgrid` | `Container`, `Row` |
 | `@pyreon/elements` | `Overlay`, `OverlayProvider` |
 
-Internal pieces are marked too: the router's default chrome layout, and the wrappers the compat layers build (`createContext` providers, `lazy`/async components). The low-level Provider components (`Provider` from ui-core / unistyle / rocketstyle, `OverlayProvider`) are marked even though they're `@internal` / `@deprecated`. Reason: `PyreonUI`'s JSX body still routes through the active jsx() runtime in compat-mode apps — any unmarked Provider rendered inside `PyreonUI`'s body would get wrapped, swallowing its `provide()` call before reaching descendants.
+Internal pieces are marked too: the router's default chrome layout, and the wrappers the compat layers build (`createContext` providers, `lazy`/async components). The low-level Provider components (`Provider` from ui-core / rocketstyle, `OverlayProvider`) are marked even though they're `@internal` / `@deprecated`. Reason: `PyreonUI`'s JSX body still routes through the active jsx() runtime in compat-mode apps — any unmarked Provider rendered inside `PyreonUI`'s body would get wrapped, swallowing its `provide()` call before reaching descendants.
 
 ## When *you* need to mark a component
 

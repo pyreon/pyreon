@@ -605,7 +605,7 @@ content({
 - Unpublished entries (drafts, and future-dated entries of a `publishDate` collection) are left out of all three in a production build.
 - `rss` options: `path` (default `'rss.xml'`; e.g. `'blog/rss.xml'`, also used for `<atom:link rel="self">`), `content: 'full'` (adds each entry's whole body as HTML in `<content:encoded>`, with absolute URLs — what feed readers and importers such as dev.to's "Publishing from RSS" use as the article; default `'summary'` = `description` only), `limit` (newest N). When the collection declares `publishDate`, items carry `pubDate` and are ordered newest first; a string-array `tags` field becomes `<category>` elements; the `guid` is the absolute item URL.
 
-The same generators (`generateSitemap`, `generateRssFeed`, `generateLlmsTxt`) are exported for use in standalone build scripts without the Vite plugin.
+Outside the plugin, use `@pyreon/zero`: `generateRssFeed` (from the main entry), and `seoPlugin` / `aiPlugin` (from `@pyreon/zero/server`) for the sitemap and `llms.txt`.
 
 ## Diagnostics
 
@@ -664,14 +664,6 @@ The plugin surfaces non-fatal compile warnings via Vite (with a clickable, root-
 | `Sidebar` / `Toc`                     | Grouped sidebar + scroll-spy TOC.                                        |
 | `PrevNext` / `Breadcrumbs`            | Navigation widgets.                                                      |
 | `Search`                              | Cmd+K minisearch box; `useSearch` is the headless hook.                  |
-
-### Build outputs (callable standalone)
-
-| Export                | Description                              |
-| --------------------- | ---------------------------------------- |
-| `generateSitemap`     | Build a `sitemap.xml` string.            |
-| `generateRssFeed`     | Build an RSS 2.0 feed string.            |
-| `generateLlmsTxt`     | Build an `llms.txt` string.              |
 
 ### Directive reference
 

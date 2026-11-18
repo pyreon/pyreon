@@ -65,7 +65,8 @@ const LOCKED: Record<string, { minEntries: number; minWithMistakes: number }> = 
   '@pyreon/dnd': { minEntries: 5, minWithMistakes: 5 },
   '@pyreon/attrs': { minEntries: 7, minWithMistakes: 7 },
   '@pyreon/rocketstyle': { minEntries: 13, minWithMistakes: 13 },
-  '@pyreon/coolgrid': { minEntries: 5, minWithMistakes: 5 },
+  // 4: Container, Row, Col, theme — the deprecated Provider re-export was removed.
+  '@pyreon/coolgrid': { minEntries: 4, minWithMistakes: 4 },
   '@pyreon/kinetic': { minEntries: 9, minWithMistakes: 5 },
   '@pyreon/kinetic-presets': { minEntries: 12, minWithMistakes: 5 },
   '@pyreon/connector-document': { minEntries: 10, minWithMistakes: 7 },

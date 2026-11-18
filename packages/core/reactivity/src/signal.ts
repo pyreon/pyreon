@@ -112,14 +112,15 @@ interface SignalFn<T> {
 // Shared method implementations — defined once, assigned to every signal.
 // Uses `this` binding (signal methods are always called as `signal.method()`).
 //
-// A DETACHED reference (`ref={sig.set}`, `onInput={sig.set}`, `.then(sig.set)`)
-// therefore runs with `this === undefined`, which used to surface as
-// "Cannot read properties of undefined (reading '_v')". Dev builds name the
-// mistake and the fix instead (#4356); the compiler also warns on the JSX
-// shape (`signal-method-reference`).
+// A DETACHED reference (`.then(sig.set)`, `ref={props.sig.set}`) therefore
+// runs with `this === undefined`, which used to surface as "Cannot read
+// properties of undefined (reading '_v')". Dev builds name the mistake and the
+// fix instead. Inside JSX the compiler binds a reference to a signal it knows
+// (`ref={el.set}` → `el.set.bind(el)`, #4356), so this fires only for one it
+// cannot see.
 function _detached(method: string): never {
   throw new TypeError(
-    `[Pyreon] signal.${method}() was called without its signal. Signal methods read \`this\`, so a detached reference such as ref={sig.${method}} or promise.then(sig.${method}) cannot work. Pass an arrow instead: (v) => sig.${method}(v).`,
+    `[Pyreon] signal.${method}() was called without its signal. Signal methods read \`this\`, so a detached reference such as promise.then(sig.${method}) or ref={props.sig.${method}} cannot work. Pass an arrow instead: (v) => sig.${method}(v).`,
   )
 }
 
@@ -374,6 +375,7 @@ export function _suspendSoleSubscriber<T>(sig: Signal<T>): SoleSubscriberToken |
   const set = s._s
   if (set === null || typeof set === 'function' || set.size !== 1) return null
   s._s = null
+
   return set
 }
 
@@ -445,6 +447,7 @@ function _directFn(this: SignalFn<unknown>, updater: () => void): () => void {
   }
   const set = this._d
   set.add(updater)
+
   return () => {
     set.delete(updater)
   }
@@ -508,6 +511,7 @@ const SignalProto = {
   direct: _directFn,
   debug: _debug,
 }
+
 Object.setPrototypeOf(SignalProto, Function.prototype)
 
 /**

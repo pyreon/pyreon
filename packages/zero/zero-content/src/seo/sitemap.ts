@@ -3,18 +3,7 @@
 // Pure builder that produces a sitemap.xml string from a list of
 // pages. Sitemaps follow the protocol at https://www.sitemaps.org/.
 //
-// Authors call this from their build script with the collection
-// entries:
-//
-//     import { generateSitemap } from '@pyreon/zero-content'
-//     const entries = await getCollection('docs')
-//     const xml = generateSitemap({
-//       baseUrl: 'https://example.com',
-//       pages: entries.map((e) => ({ path: `/docs/${e.slug}` })),
-//     })
-//     await fs.writeFile('dist/sitemap.xml', xml)
-//
-// Or use the plugin's auto-emit hook (`sitemap: { baseUrl }`).
+// Internal: the content plugin's `seo.sitemap` option calls it at build close.
 
 export interface SitemapPage {
   /** Relative URL path (joined to baseUrl at render time). */
@@ -61,13 +50,7 @@ function escapeXml(input: string): string {
     .replace(/'/g, '&apos;')
 }
 
-/**
- * @deprecated Use `generateSitemap` + `seoPlugin` from `@pyreon/zero`
- *   instead. Zero's surface is richer (hreflang/i18n, trailing-slash
- *   policy, SSG path-manifest integration) and runs as a Vite plugin
- *   so consumers don't write a build script. This zero-content
- *   builder will be removed in a future major version.
- */
+/** Build a sitemap.xml string. Internal to the content plugin's `seo.sitemap` output. */
 export function generateSitemap(args: GenerateSitemapArgs): string {
   const lines: string[] = ['<?xml version="1.0" encoding="UTF-8"?>']
   lines.push('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')

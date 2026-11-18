@@ -1038,6 +1038,13 @@ describe('JS syntax and optional native parity — additional edge cases', () =>
 // ─── Signal auto-call cross-backend equivalence ─────────────────────────────
 
 describe('JS syntax and optional native parity — signal auto-call', () => {
+  // #4356: a signal method passed by reference is bound to its signal.
+  test('signal method references bound on every path', () =>
+    compare(
+      'function C(props) { const el = signal(null); const n = signal(0); return <div ref={el.set} onClick={n?.update}><input {...props} ref={(el.set as any)} /><Comp cb={n.trigger} f={() => [1].forEach(n.set)} />{[1].map((i) => <i ref={el.set} />)}</div> }',
+    ))
+  test('signal method references bound under SSR', () =>
+    compareSsr('function C() { const el = signal(null); return <Comp cb={el.set} ref={(el).set} /> }'))
   test('bare signal in text child', () =>
     compare('function C() { const name = signal("Vít"); return <div>{name}</div> }'))
   test('signal in attribute', () =>

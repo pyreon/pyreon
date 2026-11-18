@@ -572,7 +572,7 @@ createISRHandler(handler, {
 function vercelAdapter(): Adapter
 ```
 
-Vercel deployment adapter. SSG branch emits `.vercel/output/config.json` v3 STATIC variant (no functions, asset cache headers). Does NOT copy files into `.vercel/output/static/` — Vercel CLI auto-detects dist. ISR `revalidate(path)` POSTs to `<VERCEL_DEPLOYMENT_URL>/api/_pyreon-revalidate?path=…&secret=<token>`; user-side webhook validates secret + calls `res.revalidate()`.
+Vercel deployment adapter. SSG branch emits `.vercel/output/config.json` v3 STATIC variant (no functions, asset cache headers). Does NOT copy files into `.vercel/output/static/` — Vercel CLI auto-detects dist. ISR `revalidate(path)` POSTs to `<VERCEL_DEPLOYMENT_URL>/api/_pyreon-revalidate?path=…` with `Authorization: Bearer <token>`; user-side webhook validates secret + calls `res.revalidate()`.
 
 **Example**
 
@@ -2221,7 +2221,6 @@ const xml = generateRssFeed({
 
 - Passing `items` in an arbitrary order and expecting the feed to sort itself — items are emitted in the SUPPLIED order; sort newest-first before passing them in
 - Putting site-relative links or images in `content` — a feed reader resolves them against nothing; make every URL absolute
-- Reaching for `@pyreon/zero-content`'s own `generateRssFeed` — that one is DEPRECATED and forwards here anyway; import directly from `@pyreon/zero`
 
 **See also:** `seoPlugin`
 

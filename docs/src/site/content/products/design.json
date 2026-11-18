@@ -141,7 +141,6 @@
      "createGlobalStyle",
      "useCSS",
      "defineTheme",
-     "ThemeProvider",
      "useTheme",
      "useThemeAccessor",
      "createSheet",
@@ -203,7 +202,7 @@
   },
   {
    "title": "Give the grid its theme",
-   "text": "Container, Row and Col read columns and breakpoints from context. Render them under coolgrid's `Provider theme={theme}`, or a `PyreonUI` theme that carries the grid keys; without them a responsive Col is moved off-screen and a fixed size is ignored."
+   "text": "Container, Row and Col read columns and breakpoints from context. Render them under `<PyreonUI theme={theme}>`; a theme without grid keys falls back to coolgrid's defaults (12 columns, xs–xl breakpoints)."
   },
   {
    "title": "CSS variables buy a clean flip, not speed",
@@ -324,7 +323,7 @@
   {
    "title": "A responsive product grid",
    "text": "One column on phones, two from `sm`, three from `md`. Array values are mobile-first and cascade upward.",
-   "code": "import { For } from '@pyreon/core'\nimport { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'\n\nconst products = ['Zero', 'Native', 'Charts', 'Forms', 'Flow', 'Table']\n\nexport const ProductGrid = () => (\n  <Provider theme={theme}>\n    <Container gap={16}>\n      <Row>\n        <For each={products} by={(name) => name}>\n          {(name) => <Col size={[12, 6, 4]}>{name}</Col>}\n        </For>\n      </Row>\n    </Container>\n  </Provider>\n)"
+   "code": "import { For } from '@pyreon/core'\nimport { PyreonUI } from '@pyreon/ui-core'\nimport { Container, Row, Col, theme } from '@pyreon/coolgrid'\n\nconst products = ['Zero', 'Native', 'Charts', 'Forms', 'Flow', 'Table']\n\nexport const ProductGrid = () => (\n  <PyreonUI theme={theme}>\n    <Container gap={16}>\n      <Row>\n        <For each={products} by={(name) => name}>\n          {(name) => <Col size={[12, 6, 4]}>{name}</Col>}\n        </For>\n      </Row>\n    </Container>\n  </PyreonUI>\n)"
   }
  ],
  "faq": [

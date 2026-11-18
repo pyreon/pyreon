@@ -13,12 +13,12 @@ export default defineManifest({
     rationale:
       'Container/Row/Col lower (equal-fill + literal fractional Col spans)',
   },
-  longExample: `import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
+  longExample: `import { PyreonUI } from '@pyreon/ui-core'
+import { Container, Row, Col, theme } from '@pyreon/coolgrid'
 
-// Provider scopes breakpoints, rootSize, and grid defaults to the subtree.
-// In an app that already renders <PyreonUI> at the root, skip Provider —
-// PyreonUI sets up the same unistyle context.
-<Provider theme={theme}>
+// PyreonUI provides breakpoints, rootSize, and grid defaults to the subtree.
+// A theme without grid keys falls back to coolgrid's defaults.
+<PyreonUI theme={theme}>
   <Container gap={16} gutter={24} padding={16}>
     <Row>
       {/* Responsive size — breakpoint-keyed object */}
@@ -38,10 +38,10 @@ export default defineManifest({
       <Col>Half</Col>
     </Row>
   </Container>
-</Provider>
+</PyreonUI>
 
 // Custom breakpoints + column count via a custom theme:
-<Provider
+<PyreonUI
   theme={{
     rootSize: 16,
     breakpoints: { phone: 0, tablet: 600, desktop: 1024 },
@@ -54,7 +54,7 @@ export default defineManifest({
       <Col size={8}>One third of 24</Col>
     </Row>
   </Container>
-</Provider>`,
+</PyreonUI>`,
   features: [
     'Container / Row / Col with context-cascading grid config — set once on Container, everything inherits',
     'Every numeric prop responsive: single value, mobile-first array, or breakpoint-keyed object',
@@ -147,7 +147,7 @@ export default defineManifest({
         'Expecting a custom breakpoint scale to pick up the default container widths — they are keyed xs–xl, so a theme with its own `breakpoints` but no `grid.container` gets no max-width; add `grid.container` keyed by your breakpoint names',
         "Using CSS keyword values for `contentAlignX` ('space-between') — the accepted keys are camelCase: 'spaceAround' / 'spaceBetween' / 'spaceEvenly' (plus 'center' / 'left' / 'right')",
       ],
-      seeAlso: ['Row', 'Col', 'Provider', 'theme'],
+      seeAlso: ['Row', 'Col', 'theme'],
     },
     {
       name: 'Row',
@@ -281,59 +281,30 @@ export default defineManifest({
       seeAlso: ['Row', 'Container'],
     },
     {
-      name: 'Provider',
-      kind: 'component',
-      signature: '(props: { theme: PyreonTheme; children?: VNode | null }) => VNode | null',
-      // NOT marked stability: 'deprecated' — the manifest policy gate requires a
-      // planned `removeIn` version, which is a maintainer decision that hasn't
-      // been made. The source JSDoc `@deprecated` tag remains authoritative;
-      // the summary + mistakes carry the "prefer PyreonUI" guidance.
-      summary:
-        'Re-export of `@pyreon/unistyle`\'s low-level theme provider — enriches the theme (pre-computed sorted breakpoints + media-query helpers) and provides it to BOTH the ui-core context and the styler `ThemeContext`. Marked `@deprecated` in source: prefer `<PyreonUI theme={theme} mode="light">` from `@pyreon/ui-core`, which handles all three context layers (styler, core, mode) in one component. The remaining legitimate use is scoping DIFFERENT breakpoints / grid defaults to a subtree.',
-      example: `import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
-
-// Standalone (no PyreonUI at the root):
-<Provider theme={theme}>
-  <Container>…</Container>
-</Provider>
-
-// Preferred in real apps — PyreonUI provides the same context:
-import { PyreonUI } from '@pyreon/ui-core'
-<PyreonUI theme={appTheme} mode="light">
-  <Container>…</Container>
-</PyreonUI>`,
-      mistakes: [
-        'Wrapping a fresh `<Provider>` inside an app that already renders `<PyreonUI>` at the root — PyreonUI sets up the unistyle context already; only add a nested Provider to scope DIFFERENT breakpoints to a subtree',
-        "Expecting a nested `<Provider>` to inherit the outer Provider's overrides — context is per-Provider; the inner one starts fresh from its own `theme`",
-        'Reaching for `Provider` in new code — it is deprecated in favor of `PyreonUI` from `@pyreon/ui-core`',
-        'Being surprised by the dev warning `[Pyreon] CoreProvider is internal` — this Provider delegates to ui-core\'s internal provider, which logs it in development; `<PyreonUI>` does not',
-      ],
-      seeAlso: ['theme', '@pyreon/ui-core'],
-    },
-    {
       name: 'theme',
       kind: 'constant',
       signature:
         "{ rootSize: 16; breakpoints: { xs: 0; sm: 576; md: 768; lg: 992; xl: 1200 }; grid: { columns: 12; container: { xs: '100%'; sm: 540; md: 720; lg: 960; xl: 1140 } } }",
       summary:
-        'Default Bootstrap-4-style grid theme: 5 breakpoints (xs–xl), a 12-column grid, and responsive container max-widths. Pass it to `Provider` / `PyreonUI`, or ship your own theme with the same shape (`rootSize`, `breakpoints`, `grid.columns`, `grid.container`) for custom breakpoint names and column counts.',
-      example: `import { Provider, theme } from '@pyreon/coolgrid'
+        'Default Bootstrap-4-style grid theme: 5 breakpoints (xs–xl), a 12-column grid, and responsive container max-widths. Pass it to `<PyreonUI theme={…}>` (from `@pyreon/ui-core`), or ship your own theme with the same shape (`rootSize`, `breakpoints`, `grid.columns`, `grid.container`) for custom breakpoint names and column counts.',
+      example: `import { PyreonUI } from '@pyreon/ui-core'
+import { theme } from '@pyreon/coolgrid'
 
-<Provider theme={theme}>…</Provider>
+<PyreonUI theme={theme}>…</PyreonUI>
 
 // Custom theme — same shape, your own breakpoint names:
-<Provider
+<PyreonUI
   theme={{
     rootSize: 16,
     breakpoints: { phone: 0, tablet: 600, desktop: 1024 },
     grid: { columns: 24, container: { phone: '100%', tablet: 540, desktop: 960 } },
   }}
->…</Provider>`,
+>…</PyreonUI>`,
       mistakes: [
         'Custom themes missing `grid.container` — the Container has no max-width source and renders full-width at every breakpoint',
         "Keying `grid.container` by breakpoint names that don't match `breakpoints` — the responsive engine resolves widths per breakpoint name, so the keys must agree",
       ],
-      seeAlso: ['Provider', 'Container'],
+      seeAlso: ['Container', '@pyreon/ui-core'],
     },
   ],
   gotchas: [
@@ -348,8 +319,8 @@ import { PyreonUI } from '@pyreon/ui-core'
       note: 'Under `init({ cssVariables: true })` gap/gutter can arrive as `var(--…)` reference strings — the styled helpers detect them (`isCssVarValue`) and express the grid math in native `calc()` (halving via `* 0.5` / `* -0.5`; a negative `calc()` divisor is invalid CSS). JS arithmetic on a var() string would produce NaN — the historical coolgrid bug class, fixed via the calc() path.',
     },
     {
-      label: 'Provider vs PyreonUI',
-      note: 'coolgrid re-exports the low-level unistyle `Provider` (deprecated in source). Apps rendering `<PyreonUI>` at the root already have the required context — add a nested `Provider` only to scope different breakpoints to a subtree.',
+      label: 'Theme context comes from PyreonUI',
+      note: 'coolgrid has no provider of its own — Container / Row / Col read breakpoints and grid defaults from the `<PyreonUI theme={…}>` (from `@pyreon/ui-core`) above them. To scope different breakpoints to a subtree, nest another `<PyreonUI theme={…}>` there.',
     },
   ],
 })

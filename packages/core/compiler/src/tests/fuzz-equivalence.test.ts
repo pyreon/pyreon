@@ -119,18 +119,26 @@ interface Ctx {
   rnd5: () => number
   pq: boolean
   /**
-   * A SIXTH independent stream for FIXED (non-reactive) children in placeholder
+   * A SIXTH independent stream for signal-method REFERENCES (#4356): `sig.set`
+   * / `sig?.update` / `(sig.trigger as any)` handed to a `ref`, handler or
+   * component prop, or to a callee inside a nested function. Each must be
+   * bound to its signal (`sig.set.bind(sig)`); both backends once left it
+   * detached. Its own stream keeps every earlier draw sequence unchanged.
+   */
+  rnd6: () => number
+  /**
+   * A SEVENTH independent stream for FIXED (non-reactive) children in placeholder
    * positions (#4385 D): the SSR emit brackets them only where the client
    * templates the element, so the arm crosses child kind × position × the
    * template decision. Its own stream keeps every earlier draw unchanged.
    */
-  rnd6: () => number
+  rnd7: () => number
 }
 
 /** A fixed child the client template lowers to a `<!>` placeholder when it is
  *  not its element's sole child. Free identifiers are static to both backends. */
 function genFixedChild(c: Ctx): string {
-  return pick(c.rnd6, [
+  return pick(c.rnd7, [
     '{fixC ? <b>{fixV}</b> : null}',
     '{fixC && <i>x</i>}',
     '{fixV}',
@@ -141,6 +149,21 @@ function genFixedChild(c: Ctx): string {
     '{children}',
     '{row.label}',
     `<For each={fixList} by={(r) => r.id}>{(r) => <li><b />{r.name}<i /></li>}</For>`,
+  ])
+}
+
+/** A signal method passed by reference — bound by the auto-call pass. */
+function genMethodRef(c: Ctx): string {
+  const s = pick(c.rnd6, c.signals)
+  const m = pick(c.rnd6, ['set', 'update', 'trigger', 'peek', 'subscribe'])
+  return pick(c.rnd6, [
+    `${s}.${m}`,
+    `${s}?.${m}`,
+    `(${s}.${m} as never)`,
+    `(${s}).${m}`,
+    `${s}!.${m}`,
+    `() => [1].forEach(${s}.${m})`,
+    `() => use(${s}.${m}, ${s})`,
   ])
 }
 
@@ -350,6 +373,9 @@ function genAttrs(c: Ctx): string {
     else if (r < 0.9) parts.push(`title={(${genExpr(c)}) as string}`)
     else parts.push(`title="${'t' + Math.floor(c.rnd() * 10)}"`)
   }
+  if (c.signals.length && c.rnd6() < 0.2) {
+    parts.push(`${pick(c.rnd6, ['ref', 'onClick', 'onInput', 'onPick'])}={${genMethodRef(c)}}`)
+  }
   if (c.signals.length && c.rnd4() < 0.3) {
     parts.push(`${pick(c.rnd4, [...EVENTS, 'ref', 'render', 'data-fn'])}={${genNestedFn(c)}}`)
   }
@@ -358,7 +384,7 @@ function genAttrs(c: Ctx): string {
 }
 
 function genChild(c: Ctx): string {
-  if (c.rnd6() < 0.12) return genFixedChild(c)
+  if (c.rnd7() < 0.12) return genFixedChild(c)
   if (c.pd && c.rnd2() < 0.12) {
     const e = PD_EXPRS[Math.floor(c.rnd2() * PD_EXPRS.length)]!
     return c.rnd2() < 0.3 ? `{() => ${e}}` : `{${e}}`
@@ -506,8 +532,9 @@ function genComponent(seed: number): string {
   const rnd4 = mulberry32((seed ^ 0x2545f491) >>> 0)
   const rnd5 = mulberry32((seed ^ 0x6c8e9cf5) >>> 0)
   const pq = props && rnd5() < 0.5
-  const rnd6 = mulberry32((seed ^ 0x7f4a7c15) >>> 0)
-  const c: Ctx = { rnd, signals, props, depth: 0, idc: { n: 0 }, helpers, pd, rnd2, rnd3, rnd4, rnd5, pq, rnd6 }
+  const rnd6 = mulberry32((seed ^ 0x5f3759df) >>> 0)
+  const rnd7 = mulberry32((seed ^ 0x7f4a7c15) >>> 0)
+  const c: Ctx = { rnd, signals, props, depth: 0, idc: { n: 0 }, helpers, pd, rnd2, rnd3, rnd4, rnd5, pq, rnd6, rnd7 }
   const lines: string[] = [`import { signal, computed } from "@pyreon/reactivity"`]
   lines.push(...helperLines)
   const body: string[] = []
