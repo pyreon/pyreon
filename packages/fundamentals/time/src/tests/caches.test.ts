@@ -48,7 +48,7 @@ describe('bounded caches (leak class C): what evicts, and the proof', () => {
     expect(() => toPlainDateTime(Number.NaN, 'UTC')).toThrow(/Instant/)
     expect(() => toPlainDateTime(8.64e15, 'UTC')).toThrow(RangeError)
     expect(() => toPlainDateTime(-62_135_596_800_001, 'UTC')).toThrow(RangeError)
-    expect(toPlainDateTime(-62_135_596_800_000, 'UTC')).toBe('0001-01-01T00:00:00')
+    expect(toPlainDateTime(-62_135_596_800_000, 'UTC')).toBe('0001-01-01T00:00')
     expect(toPlainDateTime(253_402_300_799_999, 'UTC')).toBe('9999-12-31T23:59:59.999')
   })
 

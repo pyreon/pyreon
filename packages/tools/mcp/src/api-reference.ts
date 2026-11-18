@@ -9500,7 +9500,7 @@ between('2026-01-01T10:00', '2026-01-02T09:30')  // => { years: 0, months: 0, da
     example: `startOf('2026-11-18', 'week')                 // => '2026-11-16'
 startOf('2026-11-18', 'week', { weekStart: 7 })  // => '2026-11-15'
 startOf('2026-11-18', 'month')                // => '2026-11-01'
-startOf('2026-11-18T14:30:05', 'hour')        // => '2026-11-18T14:00:00'`,
+startOf('2026-11-18T14:30:05', 'hour')        // => '2026-11-18T14:00'`,
     notes: '[EXPERIMENTAL] The first moment of the `unit` containing `value`. Weeks start on `options.weekStart` (1 Monday ... 7 Sunday, default Monday). A PlainDateTime keeps the precision it came in with. A PlainDate has no time units; a PlainYearMonth has only year and month. See also: endOf, weekStartOf. Added in v0.53.0.',
   },
 
@@ -9515,10 +9515,10 @@ endOf('2026-11-18T14:30', 'day')              // => '2026-11-18T23:59:59.999'`,
   'time/compare': {
     signature: '<T extends PlainDate | PlainDateTime | PlainYearMonth | PlainTime | Instant>(a: T, b: T) => -1 | 0 | 1',
     example: `compare('2026-11-18', '2026-11-19')           // => -1
-compare('14:30', '14:30:00')                  // => 0
+compare('14:30', '14:30')                  // => 0
 compare('2026-11-18T14:30', '2026-11-18T14:30:00.001')  // => -1
 ['2026-03-01', '2026-01-01'].sort(compare)    // => ['2026-01-01', '2026-03-01']`,
-    notes: '[EXPERIMENTAL] Order two values of the same shape. Same-length strings compare as plain strings (every field is fixed-width and zero-padded), so the common case is one string comparison; that fast path does not validate. Values written at different precision (`14:30` and `14:30:00`) are parsed. Usable as an `Array#sort` comparator. See also: isBefore, isAfter, isSame, min, max, clamp. Added in v0.53.0.',
+    notes: '[EXPERIMENTAL] Order two values of the same shape. Same-length strings compare as plain strings (every field is fixed-width and zero-padded), so the common case is one string comparison; that fast path does not validate. Values written at different precision (`14:30` and `14:30`) are parsed. Usable as an `Array#sort` comparator. See also: isBefore, isAfter, isSame, min, max, clamp. Added in v0.53.0.',
   },
 
   'time/isBefore': {
@@ -9561,9 +9561,16 @@ isSame(Date.UTC(2026, 10, 18, 22, 30), Date.UTC(2026, 10, 18, 23, 30), 'day', { 
   },
 
   'time/eachDay': {
-    signature: '(start: PlainDate, end: PlainDate) => PlainDate[]',
-    example: `eachDay('2026-02-27', '2026-03-02')           // => ['2026-02-27', '2026-02-28', '2026-03-01', '2026-03-02']`,
-    notes: '[EXPERIMENTAL] Every date from `start` to `end`, both included; empty when `end` is before `start`. Added in v0.53.0.',
+    signature: '(start: PlainDate, end: PlainDate, step?: number) => PlainDate[]',
+    example: `eachDay('2026-02-27', '2026-03-02')           // => ['2026-02-27', '2026-02-28', '2026-03-01', '2026-03-02']
+eachDay('2026-11-03', '2026-11-01', -1)       // => ['2026-11-03', '2026-11-02', '2026-11-01']`,
+    notes: '[EXPERIMENTAL] Every date from `start` to `end`, both included, as an array. `step` (default 1) moves by that many days; a negative step counts down. A range that runs the other way than `step` is empty, which is a normal answer and never guessed into a direction. Nothing is capped: the whole range is built, so use `iterateDays` for long ranges. See also: iterateDays. Added in v0.53.0.',
+  },
+
+  'time/iterateDays': {
+    signature: '(start: PlainDate, end: PlainDate, step?: number) => Generator<PlainDate>',
+    example: `[...iterateDays('2026-11-01', '2026-11-03')]  // => ['2026-11-01', '2026-11-02', '2026-11-03']`,
+    notes: '[EXPERIMENTAL] The dates from `start` to `end`, both included, one at a time, so a long range is never materialised. `step` is as in `eachDay`; a zero or fractional step throws when called. See also: eachDay. Added in v0.53.0.',
   },
 
   'time/monthGrid': {
@@ -9595,6 +9602,15 @@ weekendOf('he-IL')                            // => [5, 6]`,
     example: `dayOfWeek('2026-11-18')                       // => 3
 dayOfWeek('2026-11-22')                       // => 7`,
     notes: '[EXPERIMENTAL] ISO weekday: 1 is Monday, 7 is Sunday (unlike `Date#getDay`). Added in v0.53.0.',
+  },
+
+  'time/quarterOf': {
+    signature: '(value: PlainDate | PlainDateTime | PlainYearMonth) => 1 | 2 | 3 | 4',
+    example: `quarterOf('2026-11-18')                       // => 4
+startOf('2026-11-18', 'quarter')              // => '2026-10-01'
+endOf('2026-11-18', 'quarter')                // => '2026-12-31'
+diff('2026-01-01', '2026-12-31', 'quarter')   // => 3`,
+    notes: '[EXPERIMENTAL] The calendar quarter (January-March is 1). `startOf`, `endOf`, `diff` and `isSame` also take the unit `quarter`. There is no `quarters` duration field (a quarter is a calendar unit, not a length, and Temporal has none): add three months with `{ months: 3 }`. See also: startOf, endOf. Added in v0.53.0.',
   },
 
   'time/dayOfYear': {
@@ -9703,12 +9719,21 @@ parseInstant('2026-11-18 14:30:05+0100', { lenient: true })  // => Date.UTC(2026
     notes: '[EXPERIMENTAL] Parse an ISO 8601 timestamp that names its offset into an Instant, or `null`. Strict: upper-case `T` and `Z`, a `+hh:mm` offset with a colon, seconds required, an optional fraction of 1-9 digits truncated to milliseconds. A string without an offset is a wall-clock value, not a moment, so it is `null`: use `toInstant(value, zone)`. With `{ lenient: true }` it also accepts a space or lower-case `t` and `z`, `+0100` and `+01` offsets, missing seconds and unpadded fields. Never throws. See also: toInstant. Added in v0.53.0.',
   },
 
+  'time/normalize': {
+    signature: '<T extends PlainDate | PlainYearMonth | PlainTime | PlainDateTime>(value: T) => same shape as T',
+    example: `normalize('2026-11-18T14:30:00.000')          // => '2026-11-18T14:30'
+normalize('14:30:05.5')                       // => '14:30:05.500'
+normalize('2026-11-18')                       // => '2026-11-18'`,
+    notes: '[EXPERIMENTAL] The canonical form of a value that came from elsewhere. Every PlainTime and PlainDateTime this package returns is the shortest exact form: `HH:MM` when seconds and milliseconds are zero, `HH:MM:SS` when only milliseconds are zero, otherwise `HH:MM:SS.mmm` (always three digits), which is what `<input type="time">` and `<input type="datetime-local">` produce. So equal values are equal strings, and `===`, `Object.is`, a Map key and plain string sorting are correct on them. A value typed by hand or read from an API may carry extra zeros (`14:30:00`, `14:30:00.000`): normalise it once at the boundary. Dates and year-months are returned as they are; other input throws. See also: parseISO, compare. Added in v0.53.0.',
+  },
+
   'time/parseISO': {
     signature: '(text: string) => PlainDate | PlainDateTime | PlainYearMonth | PlainTime | null',
     example: `parseISO('2026-11-18 14:30')                  // => '2026-11-18T14:30'
 parseISO(' 2026-2-3 ')                        // => '2026-02-03'
-parseISO('2026-11-18T14:30Z')                 // => null`,
-    notes: '[EXPERIMENTAL] The lenient door: read an ISO-like string people and other systems produce and return the strict value it denotes, or `null`. Accepts a space or lower-case `t` between date and time, unpadded months, days and hours, a comma as the decimal mark, up to nine fraction digits (cut to milliseconds) and surrounding spaces. It never guesses: a string with an offset or `Z` is a moment, not a wall-clock value, so it is `null` (use `parseInstant(text, { lenient: true })`), and an impossible date is `null`. The strict guards stay strict. Never throws. See also: parseInstant, isPlainDate. Added in v0.53.0.',
+parseISO('2026-11-18T14:30Z')                 // => null
+toPlainDateTime(parseInstant('2026-11-18T14:30:00+01:00')!, 'Asia/Tokyo')  // => '2026-11-18T22:30'`,
+    notes: '[EXPERIMENTAL] The lenient door: read an ISO-like string people and other systems produce and return the strict value it denotes, or `null`. Accepts a space or lower-case `t` between date and time, unpadded months, days and hours, a comma as the decimal mark, up to nine fraction digits (cut to milliseconds) and surrounding spaces. It never guesses: a string with an offset or `Z` is a moment, not a wall-clock value, so it is `null` (use `parseInstant(text, { lenient: true })`, then `toPlainDateTime(instant, zone)` for the wall-clock time in a zone), and an impossible date is `null`. The result is always canonical. The strict guards stay strict. Never throws. See also: parseInstant, isPlainDate. Added in v0.53.0.',
   },
 
   'time/daysFromToday': {
@@ -9749,8 +9774,8 @@ new Date(toInstant('2026-10-25T02:30', 'Europe/Prague', { disambiguation: 'later
 
   'time/toPlainDateTime': {
     signature: '(instant: Instant, zone: TimeZone) => PlainDateTime',
-    example: `toPlainDateTime(0, 'Europe/Prague')           // => '1970-01-01T01:00:00'
-toPlainDateTime(0, 'America/St_Johns')        // => '1969-12-31T20:30:00'`,
+    example: `toPlainDateTime(0, 'Europe/Prague')           // => '1970-01-01T01:00'
+toPlainDateTime(0, 'America/St_Johns')        // => '1969-12-31T20:30'`,
     notes: '[EXPERIMENTAL] The wall-clock date and time of an instant in a zone. Seconds are always written, milliseconds only when non-zero. See also: toPlainDate, toPlainTime, offsetAt. Added in v0.53.0.',
   },
 
@@ -9762,7 +9787,7 @@ toPlainDateTime(0, 'America/St_Johns')        // => '1969-12-31T20:30:00'`,
 
   'time/toPlainTime': {
     signature: '(instant: Instant, zone: TimeZone) => PlainTime',
-    example: `toPlainTime(Date.UTC(2026, 10, 18, 13, 30), 'Europe/Prague') // => '14:30:00'`,
+    example: `toPlainTime(Date.UTC(2026, 10, 18, 13, 30), 'Europe/Prague') // => '14:30'`,
     notes: '[EXPERIMENTAL] The time of day of an instant in a zone. Added in v0.53.0.',
   },
 
@@ -9791,7 +9816,7 @@ isTimeZone('Mars/Olympus')                    // => false`,
 
   'time/fromDate': {
     signature: '(date: Date, zone?: TimeZone) => PlainDateTime',
-    example: `fromDate(new Date(Date.UTC(2026, 10, 18, 13, 30)), 'Europe/Prague') // => '2026-11-18T14:30:00'`,
+    example: `fromDate(new Date(Date.UTC(2026, 10, 18, 13, 30)), 'Europe/Prague') // => '2026-11-18T14:30'`,
     notes: `[EXPERIMENTAL] The wall-clock date and time of a \`Date\` in \`zone\` (default: the runtime's local zone). Added in v0.53.0.`,
   },
 
@@ -10039,14 +10064,14 @@ toPlainDate('Asia/Tokyo')(Date.UTC(2026, 10, 18, 23, 30))  // => '2026-11-19'`,
   'time/fp.toPlainTime': {
     signature: '(zone: TimeZone) => (instant: Instant) => PlainTime',
     example: `import { toPlainTime } from '@pyreon/time/fp'
-toPlainTime('Europe/Prague')(Date.UTC(2026, 10, 18, 13, 30))  // => '14:30:00'`,
+toPlainTime('Europe/Prague')(Date.UTC(2026, 10, 18, 13, 30))  // => '14:30'`,
     notes: '[EXPERIMENTAL] Value-last `toPlainTime`. Added in v0.53.0.',
   },
 
   'time/fp.toPlainDateTime': {
     signature: '(zone: TimeZone) => (instant: Instant) => PlainDateTime',
     example: `import { toPlainDateTime } from '@pyreon/time/fp'
-toPlainDateTime('Europe/Prague')(0)           // => '1970-01-01T01:00:00'`,
+toPlainDateTime('Europe/Prague')(0)           // => '1970-01-01T01:00'`,
     notes: '[EXPERIMENTAL] Value-last `toPlainDateTime`. Added in v0.53.0.',
   },
 
@@ -10074,7 +10099,7 @@ monthGrid({ weekStart: 7 })('2026-11').length  // => 5`,
   'time/fp.fromDate': {
     signature: '(zone?: TimeZone) => (date: Date) => PlainDateTime',
     example: `import { fromDate } from '@pyreon/time/fp'
-fromDate('UTC')(new Date(0))                  // => '1970-01-01T00:00:00'`,
+fromDate('UTC')(new Date(0))                  // => '1970-01-01T00:00'`,
     notes: '[EXPERIMENTAL] Value-last `fromDate`. Added in v0.53.0.',
   },
 

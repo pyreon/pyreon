@@ -2,7 +2,7 @@ import { civilFromDays, daysFromCivil, MAX_DAY, MIN_DAY, MS_PER_DAY } from './ci
 import { D, dur, loadDuration, loadedTimeMs, MO, W, Y } from './duration'
 import { shiftDay } from './arith'
 import { badRange, badValue, DATE_HINT, DATETIME_HINT, show } from './errors'
-import { LEVEL_SECOND, parseDateAt, parseWall, SHAPE_DATE, SHAPE_DT, shapeOf, writeDay, writeTod, writeWall } from './text'
+import { parseDateAt, parseWall, SHAPE_DATE, SHAPE_DT, shapeOf, writeDay, writeTod, writeWall } from './text'
 import type { Disambiguation, Duration, Instant, PlainDate, PlainDateTime, PlainTime, TimeZone } from './types'
 
 /**
@@ -158,10 +158,10 @@ function wallOfInstant(fn: string, instant: number, zone: unknown): number {
 /**
  * The wall-clock date and time of an instant in a zone.
  *
- * @example toPlainDateTime(0, 'Europe/Prague') // => '1970-01-01T01:00:00'
+ * @example toPlainDateTime(0, 'Europe/Prague') // => '1970-01-01T01:00'
  */
 export function toPlainDateTime(instant: Instant, zone: TimeZone): PlainDateTime {
-  return writeWall(wallOfInstant('toPlainDateTime', instant, zone), LEVEL_SECOND)
+  return writeWall(wallOfInstant('toPlainDateTime', instant, zone))
 }
 
 /**
@@ -176,12 +176,12 @@ export function toPlainDate(instant: Instant, zone: TimeZone): PlainDate {
 /**
  * The time of day of an instant in a zone.
  *
- * @example toPlainTime(Date.UTC(2026, 10, 18, 13, 30), 'Europe/Prague') // => '14:30:00'
+ * @example toPlainTime(Date.UTC(2026, 10, 18, 13, 30), 'Europe/Prague') // => '14:30'
  */
 export function toPlainTime(instant: Instant, zone: TimeZone): PlainTime {
   const wall = wallOfInstant('toPlainTime', instant, zone)
 
-  return writeTod(wall - Math.floor(wall / MS_PER_DAY) * MS_PER_DAY, LEVEL_SECOND) as PlainTime
+  return writeTod(wall - Math.floor(wall / MS_PER_DAY) * MS_PER_DAY) as PlainTime
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -228,7 +228,7 @@ function resolveGap(fn: string, e: ZoneEntry, wall: number, mode: Disambiguation
 }
 
 function wallText(wall: number): string {
-  return writeWall(wall, LEVEL_SECOND)
+  return writeWall(wall)
 }
 
 /**

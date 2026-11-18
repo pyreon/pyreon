@@ -392,11 +392,11 @@ The `run` column says which run each row comes from. Final-pass rows are one run
 | Temporal (native, adapter code only) | 0.9 kB | 0.41 kB |
 | Date (hand-written UTC code) | 1.3 kB | 0.58 kB |
 | Day.js + utc, timezone, isoWeek | 13.7 kB | 5.42 kB |
-| **Pyreon (`@pyreon/time/core`)** | 14.4 kB | **5.55 kB** |
+| **Pyreon (`@pyreon/time/core`)** | 15.7 kB | **5.90 kB** |
 | date-fns + `@date-fns/tz` | 28.6 kB | 8.53 kB |
 | Luxon | 71.4 kB | 21.89 kB |
 
-**Loss:** Day.js is 2.4% smaller than Pyreon for this task set (5.42 vs 5.55 kB gzip), and the platform (`Date`, `Temporal`) is far smaller than any library. Pyreon is 1.5× smaller than date-fns and 3.9× smaller than Luxon. The Pyreon figure includes full DST disambiguation, ISO weeks and strict validation with fix-it error messages. One function alone: `add` is 2.5 kB gzip, `compare` 1.3 kB, a six-function zone set 3.5 kB (locked in `scripts/size-budgets/packages/time.json`).
+**Loss:** Day.js is 8% smaller than Pyreon for this task set (5.42 vs 5.90 kB gzip), and the platform (`Date`, `Temporal`) is far smaller than any library. Pyreon is 1.4× smaller than date-fns and 3.7× smaller than Luxon. The Pyreon figure includes full DST disambiguation, ISO weeks and strict validation with fix-it error messages. One function alone: `add` is 2.65 kB gzip, a five-function typical set (`add`, `diff`, `startOf`, `monthGrid`, `toInstant`) 5.47 kB (locked in `scripts/size-budgets/packages/time.json`).
 
 **Timing is not recorded here.** The head-to-head timing bench (`bun run bench:rivals`, and `bun run bench:fp` for the composition overhead) was written, gate-checked against Temporal on every input, and run during development while other sessions held the machine at a 1-minute load of 5 to 35 (the record's rule is below 4), so no timing figure is entered in this file. Run both on a quiet machine and replace this paragraph with the result.
 

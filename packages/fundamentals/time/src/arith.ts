@@ -1,11 +1,9 @@
 import { daysFromCivil, daysIn, MS_PER_DAY, weekdayOf } from './civil'
-import { D, dur, hasLoadedTime, loadDuration, loadedTimeMs, MO, unitMs, unitSlot, W, Y } from './duration'
+import { D, dur, H, hasLoadedTime, loadDuration, loadedTimeMs, MI, MO, MS, Q, S, timeOnDateMessage, unitMs, unitName, unitSlot, W, Y } from './duration'
 import { ANY_HINT, badRange, badValue, show } from './errors'
 import {
   checkDay,
   checkWall,
-  levelOfLength,
-  LEVEL_MS,
   packedYearMonth,
   parseDateAt,
   parseWall,
@@ -35,6 +33,8 @@ export function weekStartOption(fn: string, options: WeekOptions | undefined): n
   return Number.isInteger(ws) && ws >= 1 && ws <= 7 ? ws : badRange(fn, `weekStart must be 1 (Monday) to 7 (Sunday), got ${show(ws)}`)
 }
 
+const OUT_OF_RANGE = 'the result is outside the supported range 0001-01-01 ... 9999-12-31'
+
 /** Apply the loaded years and months to a packed civil date, clamping the day to the target month (Temporal's `constrain`). */
 export function shiftMonths(fn: string, p: number): number {
   const months = dur[Y]! * 12 + dur[MO]!
@@ -43,7 +43,7 @@ export function shiftMonths(fn: string, p: number): number {
   const total = (p >> 9) * 12 + ((p >> 5) & 15) - 1 + months
   const year = Math.floor(total / 12)
 
-  if (!(year >= 1 && year <= 9999)) return badRange(fn, 'the result falls outside the supported range 0001-01-01 ... 9999-12-31')
+  if (!(year >= 1 && year <= 9999)) return badRange(fn, OUT_OF_RANGE)
   const month = total - year * 12 + 1
   const day = Math.min(p & 31, daysIn(year, month))
 
@@ -62,7 +62,7 @@ function addDate(fn: string, value: string): PlainDate {
 
   if (p < 0) return badValue(fn, ANY_HINT, value)
   if (hasLoadedTime()) {
-    return badRange(fn, 'a PlainDate has no time of day, so hours, minutes, seconds and milliseconds do not apply. Use a PlainDateTime.')
+    return badRange(fn, timeOnDateMessage())
   }
   const q = shiftMonths(fn, p)
 
@@ -85,14 +85,21 @@ function addDateTime(fn: string, value: string): PlainDateTime {
   const tod = wall - Math.floor(wall / MS_PER_DAY) * MS_PER_DAY
   const result = shiftDay(fn, p) * MS_PER_DAY + tod + loadedTimeMs()
 
-  return writeWall(checkWall(fn, result), levelOfLength(value.length - 11))
+  return writeWall(checkWall(fn, result))
+}
+
+function offendingField(): string {
+  const keys = ['weeks', 'days', 'hours', 'minutes', 'seconds', 'milliseconds']
+  const slots = [W, D, H, MI, S, MS]
+
+  return keys.find((_, i) => dur[slots[i]!] !== 0) ?? 'days'
 }
 
 function addYearMonth(fn: string, value: string): PlainYearMonth {
   const p = packedYearMonth(fn, value)
 
   if (dur[W] !== 0 || dur[D] !== 0 || hasLoadedTime()) {
-    return badRange(fn, 'a PlainYearMonth moves by years and months only. Convert to a PlainDate for weeks and days.')
+    return badRange(fn, `duration.${offendingField()} cannot be added to a PlainYearMonth (years and months only). Use a PlainDate.`)
   }
   const q = shiftMonths(fn, p | 1)
 
@@ -137,11 +144,17 @@ export function subtract<T extends PlainValue>(value: T, duration: Duration): Sh
 // startOf / endOf
 // ---------------------------------------------------------------------------------------------------------------------
 
+/** First month (1, 4, 7 or 10) of the calendar quarter of a packed civil date. */
+function quarterFirstMonth(p: number): number {
+  return Math.floor((((p >> 5) & 15) - 1) / 3) * 3 + 1
+}
+
 /** Epoch day of the first day of the period of `slot` (year, month or week) containing the packed date `p`. */
 function periodStartDay(p: number, slot: number, weekStart: number): number {
   const z = daysFromCivil(p >> 9, (p >> 5) & 15, p & 31)
 
   if (slot === Y) return daysFromCivil(p >> 9, 1, 1)
+  if (slot === Q) return daysFromCivil(p >> 9, quarterFirstMonth(p), 1)
   if (slot === MO) return z - (p & 31) + 1
   if (slot === W) return z - ((weekdayOf(z) - weekStart + 7) % 7)
 
@@ -154,6 +167,7 @@ function periodEndDay(p: number, slot: number, weekStart: number): number {
   const month = (p >> 5) & 15
 
   if (slot === Y) return daysFromCivil(year, 12, 31)
+  if (slot === Q) return daysFromCivil(year, quarterFirstMonth(p) + 2, daysIn(year, quarterFirstMonth(p) + 2))
   if (slot === MO) return daysFromCivil(year, month, daysIn(year, month))
   if (slot === W) return periodStartDay(p, W, weekStart) + 6
 
@@ -164,7 +178,8 @@ function boundaryOfYearMonth(fn: string, value: string, slot: number, end: boole
   const p = packedYearMonth(fn, value)
 
   if (slot === MO) return value as PlainYearMonth
-  if (slot !== Y) return badRange(fn, 'a PlainYearMonth has only year and month units')
+  if (slot !== Y && slot !== Q) return badRange(fn, 'a PlainYearMonth has only year, quarter and month units')
+  if (slot === Q) return writeYM(p >> 9, quarterFirstMonth(p | 1) + (end ? 2 : 0))
 
   return writeYM(p >> 9, end ? 12 : 1)
 }
@@ -173,7 +188,7 @@ function boundaryOfDate(fn: string, value: string, slot: number, end: boolean, w
   const p = value.length === 10 ? parseDateAt(value) : -1
 
   if (p < 0) return badValue(fn, ANY_HINT, value)
-  if (slot > D) return badRange(fn, 'a PlainDate has no time of day, so hour, minute, second and millisecond do not apply. Use a PlainDateTime.')
+  if (slot > D && slot !== Q) return badRange(fn, `the unit "${unitName(slot)}" needs a time of day, and a PlainDate has none. Use a PlainDateTime, or a unit of day or larger.`)
   if (slot === D) return value as PlainDate
 
   return writeDay(checkDay(fn, end ? periodEndDay(p, slot, weekStart) : periodStartDay(p, slot, weekStart)))
@@ -183,18 +198,16 @@ function boundaryOfDateTime(fn: string, value: string, slot: number, end: boolea
   const wall = parseWall(value)
 
   if (Number.isNaN(wall)) return badValue(fn, ANY_HINT, value)
-  const level = levelOfLength(value.length - 11)
-
-  if (slot <= D) {
+  if (slot <= D || slot === Q) {
     const p = parseDateAt(value)
     const day = checkDay(fn, end ? periodEndDay(p, slot, weekStart) : periodStartDay(p, slot, weekStart))
 
-    return end ? writeWall(day * MS_PER_DAY + MS_PER_DAY - 1, LEVEL_MS) : writeWall(day * MS_PER_DAY, level)
+    return writeWall(end ? day * MS_PER_DAY + MS_PER_DAY - 1 : day * MS_PER_DAY)
   }
   const step = unitMs(slot)
   const start = Math.floor(wall / step) * step
 
-  return end ? writeWall(start + step - 1, LEVEL_MS) : writeWall(start, level)
+  return writeWall(end ? start + step - 1 : start)
 }
 
 function boundary(fn: string, value: unknown, unit: Unit, options: WeekOptions | undefined, end: boolean): string {
@@ -214,7 +227,7 @@ function boundary(fn: string, value: unknown, unit: Unit, options: WeekOptions |
  * Sunday; default Monday). A PlainDateTime keeps the precision it came in with.
  *
  * @example startOf('2026-11-18', 'week') // => '2026-11-16'
- * @example startOf('2026-11-18T14:30:05', 'hour') // => '2026-11-18T14:00:00'
+ * @example startOf('2026-11-18T14:30:05', 'hour') // => '2026-11-18T14:00'
  */
 export function startOf<T extends PlainValue>(value: T, unit: Unit, options?: WeekOptions): ShapeOf<T> {
   return boundary('startOf', value, unit, options, false) as ShapeOf<T>

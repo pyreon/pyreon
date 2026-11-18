@@ -11,6 +11,9 @@ export const MI = 5
 export const S = 6
 export const MS = 7
 
+/** Calendar quarters (Jan-Mar, Apr-Jun, Jul-Sep, Oct-Dec): a unit, never a duration field. */
+export const Q = 8
+
 /**
  * The most recently loaded duration, signed. A module-level scratch buffer of fixed size (not a cache: nothing grows,
  * nothing is evicted) so a hot `add` neither allocates a normalised copy nor spreads the caller's object. It is only
@@ -22,6 +25,9 @@ const MS_PER_UNIT = [0, 0, 604_800_000, 86_400_000, 3_600_000, 60_000, 1000, 1]
 
 /** Milliseconds carried by the fractional part of weeks, days, hours, minutes and seconds in the duration being loaded. */
 let fractionMs = 0
+
+/** The first field of the loaded duration that carried a fraction, for error messages. */
+let fractionKey = ''
 
 /**
  * One field of the duration. Years and months must be whole (a fractional month has no fixed length). Weeks, days, hours,
@@ -36,16 +42,17 @@ function put(fn: string, key: string, slot: number, v: number | undefined, sign:
     return
   }
   if (typeof v !== 'number' || !Number.isFinite(v)) {
-    badRange(fn, `duration.${key} must be a finite number, got ${show(v)}. Use whole numbers such as { ${key}: 2 }.`)
+    badRange(fn, `duration.${key} must be a finite number, got ${show(v)}, e.g. { ${key}: 2 }.`)
   }
   const whole = Math.trunc(v)
 
   if (whole !== v) {
     if (slot === Y || slot === MO) {
-      badRange(fn, `duration.${key} must be a whole number, got ${v}: a fractional ${key === 'years' ? 'year' : 'month'} has no fixed length (months are 28 to 31 days). Use { days } or { weeks } for a fraction of a month, or { months: 1, days: 15 }.`)
+      badRange(fn, `duration.${key} must be a whole number, got ${v}: a fractional ${key === 'years' ? 'year' : 'month'} has no fixed length. Use { days } or { weeks }, or whole months plus days.`)
     }
-    if (slot === MS) badRange(fn, `duration.milliseconds must be a whole number, got ${v}: the finest unit is one millisecond.`)
+    if (slot === MS) badRange(fn, `duration.milliseconds must be a whole number, got ${v}.`)
     fractionMs += (v - whole) * unitMs(slot) * sign
+    if (fractionKey === '') fractionKey = key
   }
   dur[slot] = whole * sign + 0
 }
@@ -55,7 +62,9 @@ const DURATION_KEYS = ['years', 'months', 'weeks', 'days', 'hours', 'minutes', '
 function warnUnknownKeys(fn: string, d: Duration): void {
   for (const key in d) {
     if (!DURATION_KEYS.includes(key) && process.env.NODE_ENV !== 'production') {
-      console.warn(`[Pyreon] ${fn}: unknown duration field "${key}" is ignored. Use ${DURATION_KEYS.join(', ')}.`)
+      const hint = /^quarters?$/.test(key) ? ' There is no quarter field (a quarter is a calendar unit, not a length): use { months: 3 }.' : ''
+
+      console.warn(`[Pyreon] ${fn}: unknown duration field "${key}" is ignored. Use ${DURATION_KEYS.join(', ')}.${hint}`)
     }
   }
 }
@@ -68,6 +77,7 @@ function warnUnknownKeys(fn: string, d: Duration): void {
 export function loadDuration(fn: string, d: Duration, sign: number): number {
   if (d === null || typeof d !== 'object') return badValue(fn, 'a Duration such as { days: 1 }', d)
   fractionMs = 0
+  fractionKey = ''
   put(fn, 'years', Y, d.years, sign)
   put(fn, 'months', MO, d.months, sign)
   put(fn, 'weeks', W, d.weeks, sign)
@@ -104,6 +114,17 @@ export function loadedTimeMs(): number {
   return dur[H]! * 3_600_000 + dur[MI]! * 60_000 + dur[S]! * 1000 + dur[MS]!
 }
 
+/** Why the loaded duration cannot be added to a PlainDate: names the field that brought a time of day. */
+export function timeOnDateMessage(): string {
+  if (fractionKey !== '') {
+    return `duration.${fractionKey} has a fraction, which would need a time of day, and a PlainDate has none. Use a whole number, or a PlainDateTime.`
+  }
+  const names = ['hours', 'minutes', 'seconds', 'milliseconds']
+  const key = names.find((_, i) => dur[H + i] !== 0) ?? 'hours'
+
+  return `duration.${key} is a time of day, and a PlainDate has none. Use a PlainDateTime.`
+}
+
 export function hasLoadedTime(): boolean {
   return dur[H]! !== 0 || dur[MI]! !== 0 || dur[S]! !== 0 || dur[MS]! !== 0
 }
@@ -113,6 +134,8 @@ export function unitSlot(fn: string, unit: Unit): number {
   switch (unit) {
     case 'year':
       return Y
+    case 'quarter':
+      return Q
     case 'month':
       return MO
     case 'week':
@@ -128,8 +151,13 @@ export function unitSlot(fn: string, unit: Unit): number {
     case 'millisecond':
       return MS
     default:
-      return badRange(fn, `unknown unit ${show(unit)}. Use year, month, week, day, hour, minute, second or millisecond (singular).`)
+      return badRange(fn, `unknown unit ${show(unit)}. Use year, quarter, month, week, day, hour, minute, second or millisecond (singular).`)
   }
+}
+
+/** The unit name of a slot (`hour` for H). */
+export function unitName(slot: number): string {
+  return ['year', 'month', 'week', 'day', 'hour', 'minute', 'second', 'millisecond', 'quarter'][slot]!
 }
 
 /** Length of a fixed unit in milliseconds (`week` is seven 24-hour days; `year` and `month` are not fixed: 0). */

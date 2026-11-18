@@ -1,4 +1,4 @@
-import { isPlainDate, isPlainDateTime, isPlainTime, isPlainYearMonth, pad2 } from './text'
+import { isPlainDate, isPlainDateTime, isPlainTime, isPlainYearMonth, normalize, pad2 } from './text'
 import type { PlainDate, PlainDateTime, PlainTime, PlainYearMonth } from './types'
 
 const DATE_TIME = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[Tt ]+(\d{1,2}):(\d{1,2})(?::(\d{1,2})(?:[.,](\d{1,9}))?)?)?$/
@@ -22,12 +22,14 @@ function clock(h: string, m: string, s: string | undefined, f: string | undefine
  * (`2026-2-3`), a comma as the decimal mark, up to nine fraction digits (cut to milliseconds), and surrounding spaces.
  * It never guesses a meaning: a string with an offset or `Z` is a moment, not a wall-clock value, so it is `null` here (use
  * `parseInstant(text, { lenient: true })`), and an impossible date such as `2026-02-30` is `null`. The strict `isPlain*`
- * guards stay strict; this is the one lenient door.
+ * guards stay strict; this is the one lenient door. The result is always in the canonical form (`normalize`). To read an offset
+ * string as a wall-clock time in a zone, go through the instant: `toPlainDateTime(parseInstant(text), zone)`.
  *
  * @example parseISO('2026-11-18 14:30') // => '2026-11-18T14:30'
  * @example parseISO(' 2026-2-3 ') // => '2026-02-03'
  * @example parseISO('2026-11-18t14:30:05,5') // => '2026-11-18T14:30:05.500'
  * @example parseISO('2026-11-18T14:30Z') // => null
+ * @example toPlainDateTime(parseInstant('2026-11-18T14:30:00+01:00')!, 'Asia/Tokyo') // => '2026-11-18T22:30'
  */
 export function parseISO(text: string): PlainDate | PlainDateTime | PlainYearMonth | PlainTime | null {
   if (typeof text !== 'string') return null
@@ -40,7 +42,7 @@ export function parseISO(text: string): PlainDate | PlainDateTime | PlainYearMon
     if (dt[4] === undefined) return isPlainDate(date) ? date : null
     const value = `${date}T${clock(dt[4], dt[5]!, dt[6], dt[7])}`
 
-    return isPlainDateTime(value) ? value : null
+    return isPlainDateTime(value) ? normalize(value) : null
   }
   const ym = YEAR_MONTH.exec(t)
 
@@ -54,7 +56,7 @@ export function parseISO(text: string): PlainDate | PlainDateTime | PlainYearMon
   if (time === null) return null
   const value = clock(time[1]!, time[2]!, time[3], time[4])
 
-  return isPlainTime(value) ? value : null
+  return isPlainTime(value) ? normalize(value) : null
 }
 
 /** The strict form of a lenient timestamp (`2026-11-18 14:30z`, `2026-11-18T14:30:05+0100`), or `null`. */

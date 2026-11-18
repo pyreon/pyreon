@@ -76,6 +76,19 @@ const b: PlainDateTime = startOf('2026-11-18T14:30:05', 'hour')
 
 The types are looser than the runtime check, because template literal types cannot count digits: `'2026-1-3'` type-checks and fails `isPlainDate`. A plain `string` is rejected by the type system, so the guard is how user input gets in.
 
+### Canonical output
+
+Every PlainTime and PlainDateTime this package returns is the shortest exact form: `HH:MM` when seconds and milliseconds are zero, `HH:MM:SS` when only milliseconds are zero, otherwise `HH:MM:SS.mmm` with three digits. That is what `<input type="time">` and `<input type="datetime-local">` produce, so values round-trip through forms unchanged, and it means equal values are equal strings: `===`, `Object.is` (a signal), a `Map` key, a `groupBy` key and plain string sorting are all correct on values this package produced. Inputs of any accepted precision stay accepted; normalise external input once at the boundary:
+
+```ts
+// @check
+import { add, normalize } from '@pyreon/time/core'
+
+normalize('2026-11-18T14:30:00.000') // '2026-11-18T14:30'
+add('2026-11-18T14:30:00', { seconds: 30 }) // '2026-11-18T14:30:30'
+add('2026-11-18T14:30:00.000', { minutes: 1 }) // '2026-11-18T14:31'
+```
+
 ### Which strings are valid
 
 The `isPlain*` guards are strict and never throw: exactly `YYYY-MM-DD` (a real day: `isPlainDate('2026-02-30')` and `isPlainDate('2026-2-3')` are both false), `YYYY-MM`, `HH:MM[:SS[.fff]]` (hour 00-23, second 00-59, no `24:00`), and a date plus `T` plus a time. Offsets and zone names are not part of a Plain value; lower-case `t`, a space separator and unpadded fields are rejected. Strictness is what lets `compare` be a string comparison.
@@ -116,7 +129,7 @@ between('2020-01-01', '2026-11-18') // { years: 6, months: 10, days: 17 }
 
 Both follow `Temporal`, including its one subtlety: `diff` counts a month as complete when adding that many months (day clamped) does not pass the end, while `between` returns Temporal's unrounded breakdown. So `diff('2026-01-31', '2026-02-28', 'month')` is 1, and `diff` back from February 28 to January 31 is 0. Mixed-sign durations (`{ months: 1, days: -1 }`) and fractional fields throw, as in Temporal.
 
-`startOf` and `endOf` take any unit from `year` to `millisecond`. A date has no hours, so `startOf('2026-11-18', 'hour')` throws; use a `PlainDateTime`. `compare`, `isBefore`, `isAfter`, `isSame`, `min`, `max` and `clamp` order values of one shape. Same-length strings compare as strings, because every field is fixed-width, and values written at different precision (`14:30` and `14:30:00`) are parsed.
+`startOf` and `endOf` take any unit from `year` to `millisecond`, including `quarter` (calendar quarters: January, April, July, October; `quarterOf(date)` is 1 to 4, and `diff` and `isSame` take `quarter` too). There is no `quarters` duration field, as in Temporal: add three months with `{ months: 3 }`. A date has no hours, so `startOf('2026-11-18', 'hour')` throws; use a `PlainDateTime`. `compare`, `isBefore`, `isAfter`, `isSame`, `min`, `max` and `clamp` order values of one shape. Mixing shapes (`compare('2026-11-18', '2026-11-18T00:00')`) throws, and the error names both values and their shapes; bring them to one shape first, either by giving the date a time (`` `${date}T00:00` ``) or by taking the date of the date-time (`dt.slice(0, 10)`). Same-length strings compare as strings, because every field is fixed-width, and values written at different precision (`14:30` and `14:30`) are parsed.
 
 ## Calendars
 
@@ -164,7 +177,7 @@ The package ships no tz database. Offsets come from `Intl.DateTimeFormat`, with 
 import { toInstant, toPlainDateTime, offsetAt, isTimeZone } from '@pyreon/time/core'
 
 const t = toInstant('2026-11-18T14:30', 'Europe/Prague')
-toPlainDateTime(t, 'Europe/Prague') // '2026-11-18T14:30:00'
+toPlainDateTime(t, 'Europe/Prague') // '2026-11-18T14:30'
 offsetAt(t, 'Europe/Prague') // 60 (minutes east of UTC)
 isTimeZone('Mars/Olympus') // false; zone functions throw on an unknown zone, so check user input
 ```
@@ -235,15 +248,12 @@ Named adjusters from composition, all checked:
 ```ts
 // @check
 import { add, endOf, pipe, startOf, toPlainDate, by } from '@pyreon/time/fp'
-import { dateParts } from '@pyreon/time/core'
-import type { PlainDate } from '@pyreon/time/core'
 
 const sameDayNextMonth = add({ months: 1 }) // '2026-01-31' -> '2026-02-28', clamped
 const startOfNextWeek = pipe(add({ weeks: 1 }), startOf('week')) // '2026-11-18' -> '2026-11-23'
 
-// The end of the quarter: step to the quarter's last month, then take the end of that month.
-const endOfQuarter = (d: PlainDate): PlainDate =>
-  endOf('month')(add({ months: Math.ceil(dateParts(d).month / 3) * 3 - dateParts(d).month })(d)) // '2026-11-18' -> '2026-12-31'
+// The end of the calendar quarter is a unit. (Fiscal quarters that do not start in January compose from months: see the recipe.)
+const endOfQuarter = endOf('quarter') // '2026-11-18' -> '2026-12-31'
 
 // A comparator from a mapper: events ordered by their local day.
 const byDay = by((event: { at: number }) => toPlainDate('Europe/Prague')(event.at))
@@ -300,7 +310,7 @@ const tokyoDay = (instant: number) => formatDate(toPlainDate('Asia/Tokyo')(insta
 
 ## Reading messy input
 
-The strict guards stay strict. When a value arrives from somewhere you do not control, `parseISO` is the one lenient door and it returns the strict types or `null`:
+The strict guards stay strict. When a value arrives from somewhere you do not control, `parseISO` is the one lenient door and it returns the canonical strict types or `null` (offset strings are moments: see the next section):
 
 ```ts
 // @check
@@ -310,8 +320,22 @@ parseISO('2026-11-18 14:30') // '2026-11-18T14:30': a space or lower-case t is a
 parseISO(' 2026-2-3 ') // '2026-02-03': unpadded fields
 parseISO('2026-11-18T14:30Z') // null: that is a moment, not a wall-clock value
 parseInstant('2026-11-18 14:30:05+0100', { lenient: true }) // 1795008605000
-fromDate(new Date(0), 'UTC') // '1970-01-01T00:00:00': a Date comes in through fromDate
+fromDate(new Date(0), 'UTC') // '1970-01-01T00:00': a Date comes in through fromDate
 ```
+
+## What time did this offset string mean in a zone?
+
+A string with an offset is a moment, so it goes through `parseInstant`, and the zone turns it back into a wall-clock time:
+
+```ts
+// @check
+import { parseInstant, toPlainDateTime } from '@pyreon/time/core'
+
+const t = parseInstant('2026-11-18T14:30:00+01:00') // 1795008600000, or null if it is not a valid timestamp
+if (t !== null) toPlainDateTime(t, 'Asia/Tokyo') // '2026-11-18T22:30'
+```
+
+`parseISO('2026-11-18T14:30:00+01:00')` is `null` on purpose: it reads wall-clock values, and an offset string is not one.
 
 ## Is it today?
 
@@ -346,7 +370,7 @@ grid[0]![0] // '2026-10-26'
 grid[5]![6] // '2026-12-06'
 ```
 
-**Every weekday in a range:**
+**Every weekday in a range** (`eachDay` builds the array; `iterateDays` yields one date at a time for long ranges, and `eachDay(a, b, -1)` counts down; a reversed range with the default step is `[]`):
 
 ```ts
 // @check
@@ -398,8 +422,8 @@ between(toPlainDateTime(now, 'UTC'), toPlainDateTime(target, 'UTC'))
 import { toInstant, toPlainDateTime } from '@pyreon/time/core'
 
 const meeting = toInstant('2026-11-18T10:00', 'America/New_York')
-toPlainDateTime(meeting, 'Europe/Prague') // '2026-11-18T16:00:00'
-toPlainDateTime(meeting, 'Asia/Kathmandu') // '2026-11-18T20:45:00'
+toPlainDateTime(meeting, 'Europe/Prague') // '2026-11-18T16:00'
+toPlainDateTime(meeting, 'Asia/Kathmandu') // '2026-11-18T20:45'
 ```
 
 **Group records by local day:**

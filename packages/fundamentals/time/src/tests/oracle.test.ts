@@ -30,6 +30,7 @@ import {
   monthGrid,
   offsetAt,
   parseInstant,
+  quarterOf,
   startOf,
   subtract,
   timeParts,
@@ -280,6 +281,27 @@ describe.skipIf(!HAS_TEMPORAL)('oracle: Temporal', () => {
           seconds: want.seconds + 0,
           milliseconds: want.milliseconds + 0,
         })
+      }
+    })
+  })
+
+  describe('quarters (Temporal has none: composed from months)', () => {
+    it('startOf / endOf / diff / quarterOf by quarter match the month arithmetic', () => {
+      const r = rng(61)
+
+      for (let i = 0; i < N; i++) {
+        const d = gen.date(r)
+        const t = Temporal.PlainDate.from(d)
+        const first = t.with({ month: Math.floor((t.month - 1) / 3) * 3 + 1, day: 1 })
+        const last = first.add({ months: 2 }).with({ day: first.add({ months: 2 }).daysInMonth })
+
+        expect(startOf(d as '2026-01-01', 'quarter'), d).toBe(first.toString())
+        expect(endOf(d as '2026-01-01', 'quarter'), d).toBe(last.toString())
+        expect(quarterOf(d as '2026-01-01')).toBe(Math.floor((t.month - 1) / 3) + 1)
+        const b = gen.date(r)
+        const months = Temporal.PlainDate.from(d).until(b, { largestUnit: 'month', smallestUnit: 'month', roundingMode: 'trunc' }).months
+
+        expect(diff(d as '2026-01-01', b as '2026-01-01', 'quarter'), `${d} ${b}`).toBe(Math.trunc(months / 3) + 0)
       }
     })
   })

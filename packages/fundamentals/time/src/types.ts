@@ -52,7 +52,7 @@ export type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7
  *
  * @example const unit: DateUnit = 'week'
  */
-export type DateUnit = 'year' | 'month' | 'week' | 'day'
+export type DateUnit = 'year' | 'quarter' | 'month' | 'week' | 'day'
 
 /**
  * `'hour' | 'minute' | 'second' | 'millisecond'`.

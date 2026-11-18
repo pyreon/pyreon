@@ -177,7 +177,7 @@ export function toPlainDate(zone: TimeZone): (instant: Instant) => PlainDate {
 /**
  * Value-last `toPlainTime`.
  *
- * @example toPlainTime('Europe/Prague')(Date.UTC(2026, 10, 18, 13, 30)) // => '14:30:00'
+ * @example toPlainTime('Europe/Prague')(Date.UTC(2026, 10, 18, 13, 30)) // => '14:30'
  */
 export function toPlainTime(zone: TimeZone): (instant: Instant) => PlainTime {
   return (instant) => coreToPlainTime(instant, zone)
@@ -186,7 +186,7 @@ export function toPlainTime(zone: TimeZone): (instant: Instant) => PlainTime {
 /**
  * Value-last `toPlainDateTime`.
  *
- * @example toPlainDateTime('Europe/Prague')(0) // => '1970-01-01T01:00:00'
+ * @example toPlainDateTime('Europe/Prague')(0) // => '1970-01-01T01:00'
  */
 export function toPlainDateTime(zone: TimeZone): (instant: Instant) => PlainDateTime {
   return (instant) => coreToPlainDateTime(instant, zone)
@@ -222,7 +222,7 @@ export function monthGrid(options?: MonthGridOptions): (month: PlainDate | Plain
 /**
  * Value-last `fromDate`.
  *
- * @example fromDate('UTC')(new Date(0)) // => '1970-01-01T00:00:00'
+ * @example fromDate('UTC')(new Date(0)) // => '1970-01-01T00:00'
  */
 export function fromDate(zone?: TimeZone): (date: Date) => PlainDateTime {
   return (date) => coreFromDate(date, zone)

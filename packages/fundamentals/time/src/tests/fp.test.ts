@@ -138,7 +138,7 @@ describe('inZone', () => {
     expect(z.zone).toBe('Europe/Prague')
     expect(z.toPlainDateTime(t)).toBe(core.toPlainDateTime(t, 'Europe/Prague'))
     expect(z.toPlainDate(t)).toBe('2026-03-29')
-    expect(z.toPlainTime(t)).toBe('03:30:00')
+    expect(z.toPlainTime(t)).toBe('03:30')
     expect(z.offsetAt(t)).toBe(120)
     expect(z.toInstant('2026-03-29T02:30')).toBe(t)
     expect(z.toInstant('2026-03-29T02:30', { disambiguation: 'earlier' })).toBe(t - 3_600_000)

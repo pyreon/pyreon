@@ -16,7 +16,7 @@ export function localZone(): TimeZone {
 /**
  * The wall-clock date and time of a `Date` in `zone` (default: the runtime's local zone).
  *
- * @example fromDate(new Date(Date.UTC(2026, 10, 18, 13, 30)), 'Europe/Prague') // => '2026-11-18T14:30:00'
+ * @example fromDate(new Date(Date.UTC(2026, 10, 18, 13, 30)), 'Europe/Prague') // => '2026-11-18T14:30'
  */
 export function fromDate(date: Date, zone?: TimeZone): PlainDateTime {
   const t = date instanceof Date ? date.getTime() : Number.NaN

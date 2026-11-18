@@ -129,7 +129,7 @@ describe('durations: fractions, signs and huge values are defined', () => {
     expect(time.add('2026-11-18T10:00', { days: 1, hours: 0.5 })).toBe('2026-11-19T10:30')
     expect(time.toMilliseconds({ days: 1.5 })).toBe(129_600_000)
     expect(time.addInstant(0, { hours: 1.5 })).toBe(5_400_000)
-    expect(() => time.add('2026-11-18', { days: 1.5 })).toThrow(/PlainDate has no time of day/)
+    expect(() => time.add('2026-11-18', { days: 1.5 })).toThrow(/duration.days has a fraction/)
     expect(() => time.add('2026-11-18T10:00', { months: 0.5 })).toThrow(/\[Pyreon\] add: duration.months must be a whole number, got 0.5: a fractional month has no fixed length.*\{ days \}/)
     expect(() => time.add('2026-11-18T10:00', { years: 1.5 })).toThrow(/fractional year has no fixed length/)
     expect(() => time.add('2026-11-18T10:00', { milliseconds: 0.5 })).toThrow(/milliseconds must be a whole number/)
@@ -148,6 +148,37 @@ describe('durations: fractions, signs and huge values are defined', () => {
     expect(() => time.add('2026-11-18T10:00', { milliseconds: 1e308 })).toThrow(RangeError)
     expect(() => time.addInstant(0, { hours: 1e308 })).toThrow(/outside the range of a Date/)
     expect(() => time.add('2026-11-18', { days: 2 ** 53 })).toThrow(RangeError)
+  })
+})
+
+describe('an error names the field or value that caused it', () => {
+  const FIELDS = ['years', 'months', 'weeks', 'days', 'hours', 'minutes', 'seconds', 'milliseconds'] as const
+  const BAD: unknown[] = [Number.NaN, Number.POSITIVE_INFINITY, '1', null, {}, 0.5]
+
+  it('a bad duration field is named in the message (not another field, not a generic one)', () => {
+    for (const field of FIELDS) {
+      for (const bad of BAD) {
+        let message = ''
+
+        try {
+          time.add('2026-11-18T10:00', { [field]: bad } as never)
+        } catch (error) {
+          message = (error as Error).message
+        }
+        const valid = (field === 'weeks' || field === 'days' || field === 'hours' || field === 'minutes' || field === 'seconds') && bad === 0.5
+
+        if (!valid && message !== '') expect(message, `${field}=${String(bad)}`).toContain(`duration.${field}`)
+        if (!valid && bad !== null) expect(message, `${field}=${String(bad)} must be rejected`).not.toBe('')
+      }
+    }
+  })
+
+  it('a time field on a date names that field, and so does a unit on a date', () => {
+    expect(() => time.add('2026-11-18', { minutes: 5 })).toThrow(/duration.minutes/)
+    expect(() => time.add('2026-11-18', { seconds: 0.5 })).toThrow(/duration.seconds has a fraction/)
+    expect(() => time.add('2026-11', { weeks: 1 })).toThrow(/duration.weeks/)
+    expect(() => time.startOf('2026-11-18', 'minute')).toThrow(/the unit "minute"/)
+    expect(() => time.diff('2026-11-18', '2026-11-19', 'second')).toThrow(/the unit "second"/)
   })
 })
 
@@ -184,7 +215,7 @@ describe('lenient parsing: one door, strict guards stay strict', () => {
   })
 
   it('Date objects come in through fromDate', () => {
-    expect(time.fromDate(new Date(Date.UTC(2026, 10, 18, 13, 30)), 'Europe/Prague')).toBe('2026-11-18T14:30:00')
+    expect(time.fromDate(new Date(Date.UTC(2026, 10, 18, 13, 30)), 'Europe/Prague')).toBe('2026-11-18T14:30')
   })
 })
 

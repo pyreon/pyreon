@@ -46,9 +46,9 @@ describe('recipes', () => {
   it('a meeting time between zones', () => {
     const meeting = toInstant('2026-11-18T10:00', 'America/New_York')
 
-    expect(toPlainDateTime(meeting, 'Europe/Prague')).toBe('2026-11-18T16:00:00')
-    expect(toPlainDateTime(meeting, 'Asia/Tokyo')).toBe('2026-11-19T00:00:00')
-    expect(toPlainDateTime(meeting, 'Asia/Kathmandu')).toBe('2026-11-18T20:45:00')
+    expect(toPlainDateTime(meeting, 'Europe/Prague')).toBe('2026-11-18T16:00')
+    expect(toPlainDateTime(meeting, 'Asia/Tokyo')).toBe('2026-11-19T00:00')
+    expect(toPlainDateTime(meeting, 'Asia/Kathmandu')).toBe('2026-11-18T20:45')
   })
 
   it('grouping records by local day', () => {
@@ -94,11 +94,11 @@ describe('coming from', () => {
     ['Day.js dayjs(b).diff(a, "day")', () => diff('2026-11-18', '2026-12-24', 'day'), 36],
     ['Day.js dayjs(d).startOf("week") (Sunday first)', () => startOf('2026-11-18', 'week', { weekStart: 7 }), '2026-11-15'],
     ['Day.js dayjs(d).startOf("isoWeek")', () => startOf('2026-11-18', 'week'), '2026-11-16'],
-    ['Day.js dayjs(t).tz("Europe/Prague")', () => toPlainDateTime(NOW, 'Europe/Prague'), '2026-11-18T13:00:00'],
+    ['Day.js dayjs(t).tz("Europe/Prague")', () => toPlainDateTime(NOW, 'Europe/Prague'), '2026-11-18T13:00'],
     ['Day.js dayjs.tz(s, zone).valueOf()', () => toInstant('2026-11-18T13:00', 'Europe/Prague'), NOW],
     ['Luxon DateTime.fromISO(s).plus({ days: 1 })', () => add('2026-11-18', { days: 1 }), '2026-11-19'],
     ['Luxon b.diff(a, "days").days', () => diff('2026-11-18', '2026-12-24', 'day'), 36],
-    ['Luxon DateTime.fromMillis(t, { zone })', () => toPlainDateTime(NOW, 'Asia/Tokyo'), '2026-11-18T21:00:00'],
+    ['Luxon DateTime.fromMillis(t, { zone })', () => toPlainDateTime(NOW, 'Asia/Tokyo'), '2026-11-18T21:00'],
     ['Luxon DateTime.fromISO(s, { zone }).toMillis()', () => toInstant('2026-11-18T21:00', 'Asia/Tokyo'), NOW],
     ['Moment moment(s).add(1, "months")', () => add('2026-01-31', { months: 1 }), '2026-02-28'],
     ['Moment moment(b).diff(a, "days")', () => diff('2026-11-18', '2026-12-24', 'day'), 36],
@@ -109,7 +109,7 @@ describe('coming from', () => {
     ['Temporal a.until(b, { largestUnit: "year" })', () => between('2020-01-01', '2026-11-18'), { years: 6, months: 10, days: 17 }],
     ['Temporal PlainDate.from(s).dayOfWeek', () => dayOfWeek('2026-11-18'), 3],
     ['Temporal plain.toZonedDateTime(zone).epochMilliseconds', () => toInstant('2026-11-18T13:00', 'Europe/Prague'), NOW],
-    ['Temporal Instant.fromEpochMilliseconds(t).toZonedDateTimeISO(z).toPlainDateTime()', () => toPlainDateTime(NOW, 'Europe/Prague'), '2026-11-18T13:00:00'],
+    ['Temporal Instant.fromEpochMilliseconds(t).toZonedDateTimeISO(z).toPlainDateTime()', () => toPlainDateTime(NOW, 'Europe/Prague'), '2026-11-18T13:00'],
   ] as const)('%s', (_name, ours, expected) => {
     expect(ours()).toEqual(expected)
   })

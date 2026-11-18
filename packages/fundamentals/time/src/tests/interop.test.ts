@@ -5,7 +5,7 @@ describe('Date interop', () => {
   it('fromDate and toDate round-trip in an explicit zone', () => {
     const d = new Date(Date.UTC(2026, 10, 18, 13, 30))
 
-    expect(fromDate(d, 'Europe/Prague')).toBe('2026-11-18T14:30:00')
+    expect(fromDate(d, 'Europe/Prague')).toBe('2026-11-18T14:30')
     expect(toDate('2026-11-18T14:30', 'Europe/Prague').getTime()).toBe(d.getTime())
     expect(toDate('2026-11-18', 'UTC').getTime()).toBe(Date.UTC(2026, 10, 18))
     expect(toDate(123).getTime()).toBe(123)
@@ -15,7 +15,7 @@ describe('Date interop', () => {
   it('without a zone both use the runtime local zone, like new Date(y, m, d)', () => {
     const d = new Date(2026, 10, 18, 14, 30)
 
-    expect(fromDate(d)).toBe('2026-11-18T14:30:00')
+    expect(fromDate(d)).toBe('2026-11-18T14:30')
     expect(toDate('2026-11-18T14:30').getTime()).toBe(d.getTime())
     expect(typeof localZone()).toBe('string')
   })

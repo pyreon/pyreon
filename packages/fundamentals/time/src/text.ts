@@ -1,6 +1,6 @@
 import { civilFromDays, daysFromCivil, daysIn, MAX_DAY, MIN_DAY, MS_PER_DAY } from './civil'
 import { badRange, badValue, show, DATE_HINT, DATETIME_HINT, TIME_HINT, YEARMONTH_HINT } from './errors'
-import type { PlainDate, PlainDateTime, PlainTime, PlainYearMonth } from './types'
+import type { PlainDate, PlainDateTime, PlainTime, PlainYearMonth, ShapeOf } from './types'
 
 /**
  * Accepted ISO forms (nothing else, no offsets or zone names in a Plain value):
@@ -18,11 +18,6 @@ export const SHAPE_DATE = 1
 export const SHAPE_YM = 2
 export const SHAPE_DT = 3
 export const SHAPE_TIME = 4
-
-/** Precision levels of a time of day: 0 minutes, 1 seconds, 2 milliseconds. */
-export const LEVEL_MINUTE = 0
-export const LEVEL_SECOND = 1
-export const LEVEL_MS = 2
 
 /** The shape a string looks like (length and separators only; the parsers do the real validation). */
 export function shapeOf(s: string): number {
@@ -99,11 +94,6 @@ function parseFraction(s: string, at: number, digits: number, base: number): num
   if (d1 >>> 0 > 9 || d2 >>> 0 > 9 || d3 >>> 0 > 9) return -1
 
   return base + d1 * 100 + d2 * 10 + d3
-}
-
-/** Precision level a time string was written at. */
-export function levelOfLength(n: number): number {
-  return n === 5 ? LEVEL_MINUTE : n === 8 ? LEVEL_SECOND : LEVEL_MS
 }
 
 /** The wall-clock milliseconds (as if UTC) of a PlainDateTime string, or NaN. */
@@ -192,24 +182,27 @@ export function writeDay(epochDay: number): PlainDate {
   return writeYMD(p >> 9, (p >> 5) & 15, p & 31)
 }
 
-/** `HH:MM[:SS[.mmm]]` of a millisecond-of-day, at least as precise as `level` and as precise as the value needs. */
-export function writeTod(tod: number, level: number): string {
+/**
+ * The canonical `HH:MM[:SS[.mmm]]` of a millisecond-of-day: the shortest exact form (`HH:MM` when seconds and milliseconds
+ * are zero, `HH:MM:SS` when milliseconds are zero, otherwise `HH:MM:SS.mmm` with three digits). Every value this package
+ * returns is written this way, so equal times are equal strings.
+ */
+export function writeTod(tod: number): string {
   const hh = (tod / 3_600_000) | 0
   const mm = ((tod % 3_600_000) / 60_000) | 0
   const ss = ((tod % 60_000) / 1000) | 0
   const ms = tod % 1000
 
-  if (ms !== 0 || level === LEVEL_MS) return pad2(hh) + ':' + pad2(mm) + ':' + pad2(ss) + '.' + pad3(ms)
-  if (ss !== 0 || level === LEVEL_SECOND) return pad2(hh) + ':' + pad2(mm) + ':' + pad2(ss)
+  if (ms !== 0) return pad2(hh) + ':' + pad2(mm) + ':' + pad2(ss) + '.' + pad3(ms)
 
-  return pad2(hh) + ':' + pad2(mm)
+  return ss !== 0 ? pad2(hh) + ':' + pad2(mm) + ':' + pad2(ss) : pad2(hh) + ':' + pad2(mm)
 }
 
-/** `YYYY-MM-DDTHH:MM[:SS[.mmm]]` of wall-clock milliseconds inside the supported range. */
-export function writeWall(wall: number, level: number): PlainDateTime {
+/** The canonical `YYYY-MM-DDTHH:MM[:SS[.mmm]]` of wall-clock milliseconds inside the supported range. */
+export function writeWall(wall: number): PlainDateTime {
   const day = Math.floor(wall / MS_PER_DAY)
 
-  return (writeDay(day) + 'T' + writeTod(wall - day * MS_PER_DAY, level)) as PlainDateTime
+  return (writeDay(day) + 'T' + writeTod(wall - day * MS_PER_DAY)) as PlainDateTime
 }
 
 const RANGE_MESSAGE = 'the result falls outside the supported range 0001-01-01 ... 9999-12-31'
@@ -291,7 +284,7 @@ export function plainTime(hour: number, minute = 0, second = 0, millisecond = 0)
   const s = intIn('plainTime', 'second', second, 0, 59)
   const ms = intIn('plainTime', 'millisecond', millisecond, 0, 999)
 
-  return writeTod(h * 3_600_000 + mi * 60_000 + s * 1000 + ms, LEVEL_MINUTE) as PlainTime
+  return writeTod(h * 3_600_000 + mi * 60_000 + s * 1000 + ms) as PlainTime
 }
 
 /**
@@ -320,4 +313,26 @@ export function timeParts(value: PlainTime | PlainDateTime): { hour: number; min
   if (tod < 0) return badValue('timeParts', `${TIME_HINT} or ${DATETIME_HINT}`, value)
 
   return { hour: (tod / 3_600_000) | 0, minute: ((tod % 3_600_000) / 60_000) | 0, second: ((tod % 60_000) / 1000) | 0, millisecond: tod % 1000 }
+}
+
+/**
+ * The canonical form of a value that came from elsewhere. Values this package produces are already canonical (the shortest
+ * exact form: `HH:MM`, `HH:MM:SS` only when seconds are non-zero, `.mmm` only when milliseconds are non-zero), so `===`,
+ * `Object.is`, a `Map` key and plain string sorting are all correct on them. A PlainTime or PlainDateTime typed by hand or
+ * read from an API can carry extra zeros (`14:30:00`, `14:30:00.000`, `14:30:05.5`): normalise it once at the boundary.
+ * PlainDates and PlainYearMonths are returned as they are. Throws on a value that is not one of the four plain shapes.
+ *
+ * @example normalize('2026-11-18T14:30:00.000') // => '2026-11-18T14:30'
+ * @example normalize('14:30:05.5') // => '14:30:05.500'
+ * @example normalize('2026-11-18') // => '2026-11-18'
+ */
+export function normalize<T extends PlainDate | PlainYearMonth | PlainTime | PlainDateTime>(value: T): ShapeOf<T> {
+  const shape = typeof value === 'string' ? shapeOf(value) : SHAPE_NONE
+
+  if (shape === SHAPE_TIME) return writeTod(todOfTime('normalize', value)) as ShapeOf<T>
+  if (shape === SHAPE_DT) return writeWall(wallOfDateTime('normalize', value)) as ShapeOf<T>
+  if (shape === SHAPE_DATE) return (dayOfDate('normalize', value), value) as unknown as ShapeOf<T>
+  if (shape === SHAPE_YM) return (packedYearMonth('normalize', value), value) as unknown as ShapeOf<T>
+
+  return badValue('normalize', 'a PlainDate, PlainYearMonth, PlainTime or PlainDateTime', value)
 }

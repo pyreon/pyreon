@@ -28,7 +28,7 @@ isPlainDate('2026-02-30') // false (strict: a real calendar day, zero-padded)
 
 // Zones: wall-clock in, instant out; DST gaps and overlaps follow Temporal's four disambiguation modes.
 const t = toInstant('2026-03-29T02:30', 'Europe/Prague') // 02:30 does not exist: 03:30 CEST
-toPlainDateTime(t, 'Europe/Prague') // '2026-03-29T03:30:00'
+toPlainDateTime(t, 'Europe/Prague') // '2026-03-29T03:30'
 ```
 
 ## What is in it

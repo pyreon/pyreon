@@ -18,11 +18,13 @@ import {
   isPlainTime,
   isPlainYearMonth,
   isSame,
+  iterateDays,
   max,
   min,
   monthGrid,
   parseInstant,
   plainDate,
+  quarterOf,
   plainTime,
   plainYearMonth,
   startOf,
@@ -130,7 +132,9 @@ describe('add and subtract', () => {
     ['2026-11-18T14:30:05', { milliseconds: 0 }, '2026-11-18T14:30:05'],
     ['2026-01-31T10:00', { months: 1, hours: 2 }, '2026-02-28T12:00'],
     ['2026-11-18T00:30', { hours: -1 }, '2026-11-17T23:30'],
-    ['2026-12-31T23:59:59.999', { milliseconds: 1 }, '2027-01-01T00:00:00.000'],
+    ['2026-12-31T23:59:59.999', { milliseconds: 1 }, '2027-01-01T00:00'],
+    ['2026-11-18T14:30:00.000', { minutes: 1 }, '2026-11-18T14:31'],
+    ['2026-11-18T14:30', { seconds: 30 }, '2026-11-18T14:30:30'],
     ['2026-11', { months: 3 }, '2027-02'],
     ['2026-11', { years: -1 }, '2025-11'],
     ['2026-01', { months: -1 }, '2025-12'],
@@ -153,12 +157,12 @@ describe('add and subtract', () => {
   })
 
   it('rejects fractional and non-finite fields, time on a PlainDate, days on a PlainYearMonth', () => {
-    expect(() => add('2026-01-01', { days: 1.5 })).toThrow(/\[Pyreon\] add: a PlainDate has no time of day/)
+    expect(() => add('2026-01-01', { days: 1.5 })).toThrow(/\[Pyreon\] add: duration.days has a fraction, which would need a time of day.*whole number, or a PlainDateTime/)
     expect(() => add('2026-01-01', { months: 1.5 })).toThrow(/\[Pyreon\] add: duration.months must be a whole number/)
     expect(() => add('2026-01-01', { days: Number.NaN })).toThrow(/finite number/)
     expect(() => add('2026-01-01', { days: Number.POSITIVE_INFINITY })).toThrow(/finite number/)
-    expect(() => add('2026-01-01', { hours: 1 })).toThrow(/PlainDate has no time of day/)
-    expect(() => add('2026-01', { days: 1 })).toThrow(/PlainYearMonth moves by years and months only/)
+    expect(() => add('2026-01-01', { hours: 1 })).toThrow(/duration.hours is a time of day, and a PlainDate has none/)
+    expect(() => add('2026-01', { days: 1 })).toThrow(/duration.days cannot be added to a PlainYearMonth/)
     expect(() => add('2026-01-01', null as unknown as { days: 1 })).toThrow(/\[Pyreon\] add: expected a Duration/)
   })
 
@@ -243,11 +247,11 @@ describe('diff and between', () => {
   })
 
   it('rejects units that do not fit the shape', () => {
-    expect(() => diff('2026-01-01', '2026-02-01', 'hour')).toThrow(/PlainDate has no time of day/)
-    expect(() => diff('2026-01', '2026-02', 'day')).toThrow(/only year and month/)
+    expect(() => diff('2026-01-01', '2026-02-01', 'hour')).toThrow(/the unit "hour" needs a time of day/)
+    expect(() => diff('2026-01', '2026-02', 'day')).toThrow(/only year, quarter and month/)
     expect(() => diff('10:00', '11:00', 'day')).toThrow(/only hour/)
     expect(() => diff('2026-01-01', '2026-02-01', 'days' as never)).toThrow(/unknown unit "days"/)
-    expect(() => diff('2026-01-01', '2026-02-01T10:00' as '2026-01-01', 'day')).toThrow(/same shape/)
+    expect(() => diff('2026-01-01', '2026-02-01T10:00' as '2026-01-01', 'day')).toThrow(/the shapes differ.*Bring both to one shape/s)
   })
 
   it.each([
@@ -265,7 +269,7 @@ describe('diff and between', () => {
     expect(between('2026-01-01T10:00', '2026-01-02T09:30')).toEqual({ years: 0, months: 0, days: 0, hours: 23, minutes: 30, seconds: 0, milliseconds: 0 })
     expect(between('1918-08-31T08:11:42', '1976-07-01T08:11')).toEqual({ years: 57, months: 9, days: 30, hours: 23, minutes: 59, seconds: 18, milliseconds: 0 })
     expect(between('2026-01-01T00:00', '2025-12-31T23:59:59.999')).toEqual({ years: 0, months: 0, days: 0, hours: 0, minutes: 0, seconds: 0, milliseconds: -1 })
-    expect(() => between('2026-01-01', '2026-01-01T00:00' as '2026-01-01')).toThrow(/same shape/)
+    expect(() => between('2026-01-01', '2026-01-01T00:00' as '2026-01-01')).toThrow(/the shapes differ.*Bring both to one shape/s)
   })
 })
 
@@ -284,7 +288,7 @@ describe('compare and friends', () => {
     expect(compare(1, 2)).toBe(-1)
     expect(compare(2, 1)).toBe(1)
     expect(compare(Date.UTC(2026, 0, 1), Date.UTC(2026, 0, 1))).toBe(0)
-    expect(() => compare('2026-11-18', '2026-11-18T10:00' as '2026-11-18')).toThrow(/same shape/)
+    expect(() => compare('2026-11-18', '2026-11-18T10:00' as '2026-11-18')).toThrow(/the shapes differ.*Bring both to one shape/s)
     expect(() => compare('2026-11-18', 5 as unknown as '2026-11-18')).toThrow(/\[Pyreon\] compare/)
   })
 
@@ -380,9 +384,9 @@ describe('startOf and endOf', () => {
     ['2026-11-18', 'month', undefined, '2026-11-01'],
     ['2026-11-18', 'year', undefined, '2026-01-01'],
     ['2026-11-18', 'day', undefined, '2026-11-18'],
-    ['2026-11-18T14:30:05', 'hour', undefined, '2026-11-18T14:00:00'],
+    ['2026-11-18T14:30:05', 'hour', undefined, '2026-11-18T14:00'],
     ['2026-11-18T14:30', 'minute', undefined, '2026-11-18T14:30'],
-    ['2026-11-18T14:30:05.250', 'second', undefined, '2026-11-18T14:30:05.000'],
+    ['2026-11-18T14:30:05.250', 'second', undefined, '2026-11-18T14:30:05'],
     ['2026-11-18T14:30', 'day', undefined, '2026-11-18T00:00'],
     ['2026-11-18T14:30', 'month', undefined, '2026-11-01T00:00'],
     ['2026-11-18T14:30', 'week', undefined, '2026-11-16T00:00'],
@@ -411,12 +415,51 @@ describe('startOf and endOf', () => {
   })
 
   it('rejects units that do not fit and bad week starts', () => {
-    expect(() => startOf('2026-11-18', 'hour')).toThrow(/PlainDate has no time of day/)
-    expect(() => endOf('2026-11', 'day')).toThrow(/only year and month/)
+    expect(() => startOf('2026-11-18', 'hour')).toThrow(/the unit "hour" needs a time of day/)
+    expect(() => endOf('2026-11', 'day')).toThrow(/only year, quarter and month/)
     expect(() => startOf('2026-11-18', 'week', { weekStart: 8 as 7 })).toThrow(/weekStart must be 1/)
-    expect(() => startOf('2026-11-18', 'quarter' as never)).toThrow(/unknown unit/)
+    expect(() => startOf('2026-11-18', 'decade' as never)).toThrow(/unknown unit/)
     expect(() => startOf('0001-01-01', 'week')).not.toThrow()
     expect(() => startOf('0001-01-02', 'week', { weekStart: 3 })).toThrow(RangeError)
+  })
+})
+
+describe('quarters', () => {
+  it.each([
+    ['startOf', '2026-11-18', 'quarter', '2026-10-01'],
+    ['endOf', '2026-11-18', 'quarter', '2026-12-31'],
+    ['startOf', '2026-02-10', 'quarter', '2026-01-01'],
+    ['endOf', '2026-02-10', 'quarter', '2026-03-31'],
+    ['startOf', '2026-05-31', 'quarter', '2026-04-01'],
+    ['endOf', '2026-05-31', 'quarter', '2026-06-30'],
+    ['endOf', '2026-08-01', 'quarter', '2026-09-30'],
+    ['startOf', '2026-11-18T14:30', 'quarter', '2026-10-01T00:00'],
+    ['endOf', '2026-11-18T14:30', 'quarter', '2026-12-31T23:59:59.999'],
+    ['startOf', '2026-11', 'quarter', '2026-10'],
+    ['endOf', '2026-11', 'quarter', '2026-12'],
+  ] as const)('%s(%s, %s) is %s', (fn, value, unit, expected) => {
+    expect((fn === 'startOf' ? startOf : endOf)(value as '2026-01-01', unit)).toBe(expected)
+  })
+
+  it('quarterOf, diff and isSame by quarter; a quarter is not a duration field', () => {
+    expect([1, 3, 4, 6, 7, 9, 10, 12].map((m) => quarterOf(`2026-${String(m).padStart(2, '0')}` as '2026-01'))).toEqual([1, 1, 2, 2, 3, 3, 4, 4])
+    expect(quarterOf('2026-11-18T10:00')).toBe(4)
+    expect(diff('2026-01-01', '2026-12-31', 'quarter')).toBe(3)
+    expect(diff('2026-01-01', '2027-01-01', 'quarter')).toBe(4)
+    expect(diff('2026-12-01', '2026-01-01', 'quarter')).toBe(-3)
+    expect(diff('2026-02', '2026-11', 'quarter')).toBe(3)
+    expect(diff('2026-01-01T00:00', '2026-04-01T00:00', 'quarter')).toBe(1)
+    expect(diff(Date.UTC(2026, 0, 1), Date.UTC(2026, 9, 1), 'quarter', { zone: 'UTC' })).toBe(3)
+    expect(isSame('2026-10-01', '2026-12-31', 'quarter')).toBe(true)
+    expect(isSame('2026-09-30', '2026-10-01', 'quarter')).toBe(false)
+    expect(isSame('2025-11-01', '2026-11-01', 'quarter')).toBe(false)
+    expect(() => diff('10:00', '11:00', 'quarter')).toThrow(/only hour/)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    add('2026-01-01', { quarters: 1 } as never)
+    expect(warn.mock.calls[0]![0]).toMatch(/no quarter field.*\{ months: 3 \}/)
+    warn.mockRestore()
+    expect(add('2026-01-31', { months: 3 })).toBe('2026-04-30')
   })
 })
 
@@ -427,7 +470,17 @@ describe('eachDay and monthGrid', () => {
     expect(eachDay('2026-12-30', '2027-01-01')).toEqual(['2026-12-30', '2026-12-31', '2027-01-01'])
     expect(eachDay('2026-11-18', '2026-11-18')).toEqual(['2026-11-18'])
     expect(eachDay('2026-11-19', '2026-11-18')).toEqual([])
+    expect(eachDay('2026-11-19', '2026-11-18', -1)).toEqual(['2026-11-19', '2026-11-18'])
+    expect(eachDay('2026-11-01', '2026-11-15', 7)).toEqual(['2026-11-01', '2026-11-08', '2026-11-15'])
+    expect(eachDay('2026-11-01', '2026-11-30', 14)).toEqual(['2026-11-01', '2026-11-15', '2026-11-29'])
+    expect([...iterateDays('2026-12-30', '2027-01-02')]).toEqual(['2026-12-30', '2026-12-31', '2027-01-01', '2027-01-02'])
+    expect(() => iterateDays('2026-11-01', '2026-11-02', 0)).toThrow(/\[Pyreon\] iterateDays: step must be a non-zero whole number/)
+    expect(() => eachDay('2026-11-01', '2026-11-02', 1.5)).toThrow(/step must be/)
     expect(eachDay('2026-01-01', '2026-12-31')).toHaveLength(365)
+    // A long range is walked lazily: take the first three of 3.6 million days without building the rest.
+    const first = iterateDays('0001-01-01', '9999-12-31')
+
+    expect([first.next().value, first.next().value, first.next().value]).toEqual(['0001-01-01', '0001-01-02', '0001-01-03'])
   })
 
   it('monthGrid: November 2026 starts on a Sunday', () => {

@@ -24,6 +24,18 @@ export function dayOfWeek(value: PlainDate | PlainDateTime): Weekday {
 }
 
 /**
+ * The calendar quarter, 1 to 4 (January-March is 1). Months are 1-12.
+ *
+ * @example quarterOf('2026-11-18') // => 4
+ * @example quarterOf('2026-03') // => 1
+ */
+export function quarterOf(value: PlainDate | PlainDateTime | PlainYearMonth): 1 | 2 | 3 | 4 {
+  const p = typeof value === 'string' && value.length === 7 ? packedYearMonth('quarterOf', value) : civilOf('quarterOf', value)
+
+  return (Math.floor((((p >> 5) & 15) - 1) / 3) + 1) as 1 | 2 | 3 | 4
+}
+
+/**
  * 1 for January 1st through 365 or 366.
  *
  * @example dayOfYear('2024-12-31') // => 366
@@ -93,11 +105,26 @@ export function isLeapYear(value: number | PlainDate | PlainDateTime | PlainYear
 }
 
 /**
- * Every date from `start` to `end`, both included; empty when `end` is before `start`.
+ * Every date from `start` to `end`, both included, as an array. `step` (default 1, a non-zero whole number) moves by that
+ * many days; a negative step counts down from `start` to `end`. A range that runs the other way than `step` is empty
+ * (`eachDay('2026-11-19', '2026-11-18')` is `[]`; pass `-1` to count down): an empty range is a normal answer, not a mistake,
+ * and the call never guesses a direction. Nothing is capped: the whole range is built, so for a long range use
+ * `iterateDays`, which yields one date at a time.
  *
  * @example eachDay('2026-02-27', '2026-03-02') // => ['2026-02-27', '2026-02-28', '2026-03-01', '2026-03-02']
+ * @example eachDay('2026-11-01', '2026-11-15', 7) // => ['2026-11-01', '2026-11-08', '2026-11-15']
+ * @example eachDay('2026-11-03', '2026-11-01', -1) // => ['2026-11-03', '2026-11-02', '2026-11-01']
  */
-export function eachDay(start: PlainDate, end: PlainDate): PlainDate[] {
+export function eachDay(start: PlainDate, end: PlainDate, step = 1): PlainDate[] {
+  if (step === 1) return eachDayUp(start, end)
+  const out: PlainDate[] = []
+
+  for (const day of iterateDays(start, end, step)) out.push(day)
+
+  return out
+}
+
+function eachDayUp(start: PlainDate, end: PlainDate): PlainDate[] {
   const ps = civilOf('eachDay', start)
   const pe = civilOf('eachDay', end)
   const out: PlainDate[] = []
@@ -122,10 +149,25 @@ export function eachDay(start: PlainDate, end: PlainDate): PlainDate[] {
 }
 
 /**
- * Options of `monthGrid`: `weekStart` (ISO weekday, 1 Monday ... 7 Sunday) and `weeks` (`'auto'` or 6).
+ * The dates from `start` to `end`, both included, one at a time (a generator), so a long range is never materialised:
+ * `for (const day of iterateDays('0001-01-01', '9999-12-31')) ...` holds one date in memory. `step` is as in `eachDay`.
  *
- * @example const options: MonthGridOptions = { weekStart: 7, weeks: 6 }
+ * @example [...iterateDays('2026-11-01', '2026-11-03')] // => ['2026-11-01', '2026-11-02', '2026-11-03']
+ * @example [...iterateDays('2026-11-01', '2026-11-30', 14)] // => ['2026-11-01', '2026-11-15', '2026-11-29']
  */
+export function iterateDays(start: PlainDate, end: PlainDate, step = 1): Generator<PlainDate, void, undefined> {
+  const ps = civilOf('iterateDays', start)
+  const pe = civilOf('iterateDays', end)
+
+  if (!Number.isInteger(step) || step === 0) badRange('iterateDays', `step must be a non-zero whole number of days, got ${show(step)}. Use -1 to count down.`)
+
+  return walkDays(daysFromCivil(ps >> 9, (ps >> 5) & 15, ps & 31), daysFromCivil(pe >> 9, (pe >> 5) & 15, pe & 31), step)
+}
+
+function* walkDays(first: number, last: number, step: number): Generator<PlainDate, void, undefined> {
+  for (let z = first; step > 0 ? z <= last : z >= last; z += step) yield writeDay(z)
+}
+
 export interface MonthGridOptions extends WeekOptions {
   /** `'auto'` (default): only the weeks the month occupies (4 to 6 rows). `6`: always six rows, so a picker keeps its height. */
   weeks?: 6 | 'auto'
@@ -171,12 +213,16 @@ interface WeekInfo {
   weekend: readonly Weekday[]
 }
 
-const SUNDAY_FIRST = new Set(
-  'AG AS BD BR BS BT BW BZ CA CO DM DO ET GT GU HK HN ID IL IN JM JP KE KH KR LA MH MM MO MT MX MZ NI NP PA PE PH PK PR PT PY SA SG SV TH TT TW UM US VE VI WS YE ZA ZW'.split(' '),
-)
+// Region lists as space-delimited strings, not Sets: a top-level `new Set(...)` is never tree-shaken, so it would sit in every
+// bundle that imports anything from this module, and it would run at import.
+const SUNDAY_FIRST =
+  ' AG AS BD BR BS BT BW BZ CA CO DM DO ET GT GU HK HN ID IL IN JM JP KE KH KR LA MH MM MO MT MX MZ NI NP PA PE PH PK PR PT PY SA SG SV TH TT TW UM US VE VI WS YE ZA ZW '
 
-const SATURDAY_FIRST = new Set('AE AF BH DJ DZ EG IQ IR JO KW LY OM QA SD SY'.split(' '))
-const FRI_SAT_WEEKEND = new Set('BH DZ EG IL IQ JO KW LY OM QA SA SD SY YE'.split(' '))
+const SATURDAY_FIRST = ' AE AF BH DJ DZ EG IQ IR JO KW LY OM QA SD SY '
+const FRI_SAT_WEEKEND = ' BH DZ EG IL IQ JO KW LY OM QA SA SD SY YE '
+
+/** Whether a two-letter region is in one of the space-delimited lists above. */
+const listed = (list: string, region: string): boolean => region.length === 2 && list.includes(` ${region} `)
 
 const WEEK_CACHE_LIMIT = 64
 const weekCache = new Map<string, WeekInfo>()
@@ -194,12 +240,12 @@ function regionOf(locale: string): string {
 
 /** The week data table used when the platform has none. Exported for tests, not part of the public API. */
 export function fallbackWeekInfo(region: string): WeekInfo {
-  const firstDay: Weekday = SUNDAY_FIRST.has(region) ? 7 : SATURDAY_FIRST.has(region) ? 6 : 1
+  const firstDay: Weekday = listed(SUNDAY_FIRST, region) ? 7 : listed(SATURDAY_FIRST, region) ? 6 : 1
   return { firstDay, weekend: Object.freeze(fallbackWeekend(region).slice() as Weekday[]) }
 }
 
 function fallbackWeekend(region: string): readonly Weekday[] {
-  if (FRI_SAT_WEEKEND.has(region)) return [5, 6]
+  if (listed(FRI_SAT_WEEKEND, region)) return [5, 6]
   if (region === 'AF') return [4, 5]
   if (region === 'IR') return [5]
 

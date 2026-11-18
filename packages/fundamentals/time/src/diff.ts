@@ -1,6 +1,7 @@
 import { shiftMonths } from './arith'
 import { civilFromDays, daysFromCivil, daysIn, MS_PER_DAY } from './civil'
-import { D, loadDuration, MO, unitMs, unitSlot, W, Y } from './duration'
+import { D, loadDuration, MO, Q, unitMs, unitName, unitSlot, W, Y } from './duration'
+import { mixedShapes } from './compare'
 import { badRange, badValue } from './errors'
 import {
   packedYearMonth,
@@ -59,6 +60,8 @@ function wholeMonths(pa: number, ta: number, pb: number, tb: number, clampDay = 
 const trunc = (n: number): number => (n < 0 ? Math.ceil(n) : Math.floor(n)) + 0
 
 function diffMonthsUnit(slot: number, months: number): number {
+  if (slot === Q) return trunc(months / 3)
+
   return slot === Y ? trunc(months / 12) : months
 }
 
@@ -67,15 +70,15 @@ function diffDates(fn: string, a: string, b: string, slot: number): number {
   const pb = shapeOf(b) === SHAPE_DATE ? parseDateAt(b) : -1
 
   if (pa < 0 || pb < 0) return badValue(fn, 'two PlainDates', pa < 0 ? a : b)
-  if (slot <= MO) return diffMonthsUnit(slot, wholeMonths(pa, 0, pb, 0))
-  if (slot > D) return badRange(fn, 'a PlainDate has no time of day. Use a PlainDateTime to diff in hours, minutes, seconds or milliseconds.')
+  if (slot <= MO || slot === Q) return diffMonthsUnit(slot, wholeMonths(pa, 0, pb, 0))
+  if (slot > D) return badRange(fn, `the unit "${unitName(slot)}" needs a time of day, and a PlainDate has none. Use PlainDateTimes to diff in hours or finer, or diff in days.`)
   const days = daysFromCivil(pb >> 9, (pb >> 5) & 15, pb & 31) - daysFromCivil(pa >> 9, (pa >> 5) & 15, pa & 31)
 
   return trunc(slot === W ? days / 7 : days)
 }
 
 function diffYearMonths(fn: string, a: string, b: string, slot: number): number {
-  if (slot > MO) return badRange(fn, 'a PlainYearMonth has only year and month units')
+  if (slot > MO && slot !== Q) return badRange(fn, 'a PlainYearMonth has only year, quarter and month units')
   const pa = packedYearMonth(fn, a)
   const pb = packedYearMonth(fn, b)
   const months = (pb >> 9) * 12 + ((pb >> 5) & 15) - ((pa >> 9) * 12 + ((pa >> 5) & 15))
@@ -85,7 +88,7 @@ function diffYearMonths(fn: string, a: string, b: string, slot: number): number 
 
 /** Difference of two wall-clock values (milliseconds as if UTC) in `slot`, truncated toward zero. */
 function diffWalls(wa: number, wb: number, slot: number): number {
-  if (slot > W) return trunc((wb - wa) / unitMs(slot))
+  if (slot > W && slot !== Q) return trunc((wb - wa) / unitMs(slot))
   if (slot === W) return trunc((wb - wa) / unitMs(W))
   const da = Math.floor(wa / MS_PER_DAY)
   const db = Math.floor(wb / MS_PER_DAY)
@@ -109,13 +112,13 @@ function diffTimes(fn: string, a: string, b: string, slot: number): number {
   const tb = parseTimeAt(b, 0)
 
   if (ta < 0 || tb < 0) return badValue(fn, 'two PlainTimes', ta < 0 ? a : b)
-  if (slot < 4) return badRange(fn, 'a PlainTime has only hour, minute, second and millisecond units')
+  if (slot < 4 || slot === Q) return badRange(fn, 'a PlainTime has only hour, minute, second and millisecond units')
 
   return trunc((tb - ta) / unitMs(slot))
 }
 
 function diffInstants(fn: string, a: number, b: number, slot: number, zone: TimeZone | undefined): number {
-  if (slot > D) return trunc((b - a) / unitMs(slot))
+  if (slot > D && slot !== Q) return trunc((b - a) / unitMs(slot))
   if (zone === undefined) {
     return badRange(fn, 'diffing Instants in years, months, weeks or days needs a time zone (a day is not always 24 hours): diff(a, b, "day", { zone: "Europe/Prague" })')
   }
@@ -136,7 +139,7 @@ export function diff<T extends Comparable>(a: T, b: T, unit: Unit, options?: Dif
   const shape = shapeOfAny('diff', a)
 
   if (shapeOfAny('diff', b) !== shape) {
-    return badValue('diff', 'two values of the same shape', b)
+    return mixedShapes('diff', a, b)
   }
   if (shape === SHAPE_INSTANT) return diffInstants('diff', a as number, b as number, slot, options?.zone)
   const x = a as string
@@ -159,7 +162,7 @@ export function between(a: PlainDate | PlainDateTime, b: PlainDate | PlainDateTi
   const shape = typeof a === 'string' ? shapeOf(a) : -1
 
   if (shape !== SHAPE_DATE && shape !== SHAPE_DT) return badValue('between', 'a PlainDate or PlainDateTime', a)
-  if (typeof b !== 'string' || shapeOf(b) !== shape) return badValue('between', 'a value of the same shape as the first', b)
+  if (typeof b !== 'string' || shapeOf(b) !== shape) return mixedShapes('between', a, b)
   const withTime = shape === SHAPE_DT
   const wa = withTime ? parseWall(a) : parseDateDay(a) * MS_PER_DAY
   const wb = withTime ? parseWall(b) : parseDateDay(b) * MS_PER_DAY

@@ -2704,7 +2704,7 @@ monthGrid('2026-11')[0]![0]                         // => '2026-10-26'
 
 // Zones: wall-clock time in, instant out; DST gaps and overlaps follow Temporal's rules.
 const t = toInstant('2026-03-29T02:30', 'Europe/Prague')   // 02:30 does not exist: shifts forward to 03:30
-toPlainDateTime(t, 'Europe/Prague')                 // => '2026-03-29T03:30:00'
+toPlainDateTime(t, 'Europe/Prague')                 // => '2026-03-29T03:30'
 offsetAt(t, 'Europe/Prague')                        // => 120
 ```
 
@@ -2718,7 +2718,7 @@ offsetAt(t, 'Europe/Prague')                        // => 120
 >
 > **Durations**: Years and months must be whole numbers (a fractional month has no fixed length: use days or weeks). Weeks, days, hours, minutes and seconds may be fractional and balance down: `{ days: 1.5 }` is one day and twelve hours, rounded to the nearest millisecond. `{ milliseconds: 0.5 }`, NaN, Infinity and non-numbers throw. `-0` is `0`. A fraction that leaves a time of day cannot be added to a PlainDate, which throws and says to use a PlainDateTime.
 >
-> **Precision**: A PlainDateTime result keeps the precision of its input (`14:30` stays minutes) unless the result needs more (adding seconds), and `endOf` returns milliseconds. Fractions are at most three digits: finer values are rejected, not rounded.
+> **Canonical output**: Every PlainTime and PlainDateTime the package returns is the shortest exact form (`HH:MM`, `HH:MM:SS` only when seconds are non-zero, `.mmm` only when milliseconds are non-zero), so equal values are equal strings: `===`, `Object.is`, Map keys, `groupBy` keys and plain string sorting are all correct on them. Inputs of any accepted precision stay accepted. Normalise external input once at the boundary with `normalize`. Fractions are at most three digits: finer values are rejected, not rounded.
 >
 > **Operations as values**: `@pyreon/time/fp` has the value-last form of every operation (`add({ months: 1 })` returns a function), `pipe` and `by`; they are thin wrappers over core, each tree-shakes alone, and a built adjuster costs one extra call per use, so build it once. `inZone(zone)` binds the zone-taking functions and pulls all of them. Because values are plain strings and numbers, `between(a, b)` is already the Duration `@pyreon/format` takes, and PlainDate, PlainDateTime and Instant are already its date inputs: neither package depends on the other.
 >
