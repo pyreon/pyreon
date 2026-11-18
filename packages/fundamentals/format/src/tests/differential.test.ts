@@ -146,14 +146,16 @@ describe.each(ENTRIES)('differential vs raw Intl (%s entry)', (_name, f) => {
       }
       const auto = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
       const base = AT
-      expect(f.formatRelativeTo(base + 5 * 60000, base, { locale })).toBe(auto.format(5, 'minute'))
-      expect(f.formatRelativeTo(base - 86400000, base, { locale })).toBe(auto.format(-1, 'day'))
-      expect(f.formatRelativeTo(base + 3 * 3600000, base, { locale })).toBe(auto.format(3, 'hour'))
-      expect(f.formatRelativeTo(base - 20 * 1000, base, { locale })).toBe(auto.format(-20, 'second'))
-      expect(f.formatRelativeTo(base + 3 * 7 * 86400000, base, { locale })).toBe(auto.format(3, 'week'))
-      expect(f.formatRelativeTo(base - 90 * 86400000, base, { locale })).toBe(auto.format(-2, 'month'))
-      expect(f.formatRelativeTo(base + 800 * 86400000, base, { locale })).toBe(auto.format(2, 'year'))
-      expect(f.formatRelativeTo(base, base, { locale })).toBe(auto.format(0, 'second'))
+      const o = { locale, timeZone: 'UTC' } as const
+      expect(f.formatRelativeTo(base + 5 * 60000, base, o)).toBe(auto.format(5, 'minute'))
+      expect(f.formatRelativeTo(base - 86400000, base, o)).toBe(auto.format(-1, 'day'))
+      expect(f.formatRelativeTo(base + 3 * 3600000, base, o)).toBe(auto.format(3, 'hour'))
+      expect(f.formatRelativeTo(base - 20 * 1000, base, o)).toBe(auto.format(-20, 'second'))
+      expect(f.formatRelativeTo(base + 3 * 7 * 86400000, base, o)).toBe(auto.format(3, 'week'))
+      // Calendar distances: 2026-08-20 is three calendar months before 2026-11-18, 2029-01-26 three calendar years after.
+      expect(f.formatRelativeTo(base - 90 * 86400000, base, o)).toBe(auto.format(-3, 'month'))
+      expect(f.formatRelativeTo(base + 800 * 86400000, base, o)).toBe(auto.format(3, 'year'))
+      expect(f.formatRelativeTo(base, base, o)).toBe(auto.format(0, 'second'))
     })
 
     it('ranges', () => {

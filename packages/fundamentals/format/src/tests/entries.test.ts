@@ -73,7 +73,7 @@ describe('entries', () => {
         'createFormatter', 'defineFormats', 'formatBytes', 'formatCompact', 'formatCurrency', 'formatDate', 'formatDateRange',
         'formatDateTime', 'formatDateToParts', 'formatDuration', 'formatList', 'formatNumber', 'formatNumberRange',
         'formatNumberToParts', 'formatPercent', 'formatRelative', 'formatRelativeTo', 'formatTime', 'formatUnit',
-        'parseDate', 'parseNumber', 'numberFormatter', 'currencyFormatter', 'percentFormatter', 'compactFormatter',
+        'parseDate', 'parseNumber', 'parseCurrency', 'numberFormatter', 'currencyFormatter', 'percentFormatter', 'compactFormatter',
         'unitFormatter', 'bytesFormatter', 'durationFormatter', 'listFormatter', 'dateFormatter', 'timeFormatter',
         'dateTimeFormatter', 'relativeFormatter',
       ].sort(),

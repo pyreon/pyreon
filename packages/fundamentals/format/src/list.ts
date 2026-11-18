@@ -1,8 +1,8 @@
 /** `formatList`: `Intl.ListFormat` with a cached formatter. */
 import type { KindDef } from './formatter'
 import { clearTable, construct, createTable, resolve } from './cache'
-import { badLocale, fallbackOf, preset } from './number'
-import { programmerError } from './warn'
+import { badLocale, fallbackOf, preset, fallbackText } from './number'
+import { programmerError, warnInvalid } from './warn'
 import type { ListInput, ListOptions, ListPreset } from './types'
 
 const LIST_PRESETS: Record<ListPreset, Intl.ListFormatOptions> = {
@@ -33,12 +33,21 @@ const listTable = /* @__PURE__ */ createTable<Intl.ListFormat>((locale, _variant
  * else goes through `String`. A bare string is ONE item (a string is iterable;
  * `Intl.ListFormat` would join its characters).
  */
+/** `String(item)` that cannot throw (a symbol is fine, an object without `toString` is not). */
+function safeString(item: unknown): string {
+  try {
+    return String(item)
+  } catch {
+    return Object.prototype.toString.call(item)
+  }
+}
+
 function toItems(items: NonNullable<ListInput>): string[] {
   if (typeof items === 'string') return [items]
   const out: string[] = []
   for (const item of items) {
     if (item == null) continue
-    out.push(typeof item === 'string' ? item : String(item))
+    out.push(typeof item === 'string' ? item : safeString(item))
   }
 
   return out
@@ -47,6 +56,11 @@ function toItems(items: NonNullable<ListInput>): string[] {
 /** The strings to join, or `undefined` when there is nothing to list. */
 function listItems(items: ListInput): string[] | undefined {
   if (items == null) return undefined
+  if (typeof items !== 'string' && typeof (items as { [Symbol.iterator]?: unknown })[Symbol.iterator] !== 'function') {
+    if (process.env.NODE_ENV !== 'production') warnInvalid('formatList', items, 'an iterable of strings (an array, a Set)')
+
+    return undefined
+  }
   const list = toItems(items)
 
   return list.length === 0 ? undefined : list
@@ -68,7 +82,7 @@ export function listSpec(options: ListOptions | ListPreset | undefined): ListOpt
 
 export const listKind: KindDef<'list'> = {
   create(spec, locale) {
-    const fb = spec.fallback ?? ''
+    const fb = fallbackText(spec.fallback)
     let at = ''
     let intl: Intl.ListFormat | undefined
     const get = (l: string): Intl.ListFormat => {

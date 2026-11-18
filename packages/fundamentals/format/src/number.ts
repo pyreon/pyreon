@@ -7,7 +7,7 @@
  */
 import { clearTable, construct, createTable, resolve, tableStats, type Table } from './cache'
 import type { Core, KindDef } from './formatter'
-import { programmerError, warnInvalid, warnOnce } from './warn'
+import { describe, programmerError, quote, warnInvalid, warnOnce } from './warn'
 import type {
   BaseOptions,
   BytesOptions,
@@ -28,11 +28,13 @@ import type {
 
 type Opts = Intl.NumberFormatOptions
 
+/** A fallback is text: anything else (a wrong-typed option) reads as the default `''`. */
+export function fallbackText(fallback: unknown): string {
+  return typeof fallback === 'string' ? fallback : ''
+}
+
 export function fallbackOf(options: unknown): string {
-  if (typeof options === 'object' && options !== null) {
-    const f = (options as { fallback?: string | undefined }).fallback
-    if (f !== undefined) return f
-  }
+  if (typeof options === 'object' && options !== null) return fallbackText((options as { fallback?: unknown }).fallback)
 
   return ''
 }
@@ -46,7 +48,7 @@ export function badLocale(fn: string): (locale: string) => void {
     if (process.env.NODE_ENV !== 'production') {
       warnOnce(
         `${fn}:locale:${locale}`,
-        `[Pyreon] ${fn}(): the locale ${JSON.stringify(locale)} is not a valid BCP 47 tag; using the runtime default. Use a tag such as "en-US" (underscores are not valid).`,
+        `[Pyreon] ${fn}(): the locale ${quote(locale)} is not a valid BCP 47 tag; using the runtime default. Use a tag such as "en-US" (underscores are not valid).`,
       )
     }
   }
@@ -69,7 +71,7 @@ export function preset<T extends object>(
   if (Object.hasOwn(presets, name)) return presets[name] as T
   throw programmerError(
     fn,
-    `unknown preset ${JSON.stringify(name)}. Valid presets: ${Object.keys(presets).join(', ')}. Pass an options object for anything else.`,
+    `unknown preset ${quote(name)}. Valid presets: ${Object.keys(presets).join(', ')}. Pass an options object for anything else.`,
   )
 }
 
@@ -105,7 +107,7 @@ const NUMBER_PRESETS: Record<NumberPreset, Opts> = {
 }
 
 const numberTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, _variant, options) =>
-  make('formatNumber', locale, optionsOf<Opts>(options, NUMBER_PRESETS, 'formatNumber') ?? {}),
+  make('formatNumber', locale, { signDisplay: 'negative', ...optionsOf<Opts>(options, NUMBER_PRESETS, 'formatNumber') }),
 )
 
 /** Invalid: not a number, not a bigint, not NaN. Nullish is "missing", not invalid. */
@@ -140,7 +142,7 @@ export function numberToPartsIn(
 }
 
 const rangeTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, _variant, options) =>
-  make('formatNumberRange', locale, optionsOf<Opts>(options, NUMBER_PRESETS, 'formatNumberRange') ?? {}),
+  make('formatNumberRange', locale, { signDisplay: 'negative', ...optionsOf<Opts>(options, NUMBER_PRESETS, 'formatNumberRange') }),
 )
 
 export function numberRangeIn(
@@ -158,7 +160,10 @@ export function numberRangeIn(
     return fallbackOf(options)
   }
 
-  return resolve(rangeTable, locale, '', options).formatRange(start, end)
+  // A range picker mid-selection produces reversed pairs: order them.
+  const range = resolve(rangeTable, locale, '', options)
+
+  return start > end ? range.formatRange(end, start) : range.formatRange(start, end)
 }
 
 // ─── formatCurrency ──────────────────────────────────────────────────────────
@@ -173,6 +178,7 @@ const CURRENCY_PRESETS: Record<CurrencyPreset, Opts> = {
 
 const currencyTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, currency, options) =>
   make('formatCurrency', locale, {
+    signDisplay: 'negative',
     ...optionsOf<Opts>(options, CURRENCY_PRESETS, 'formatCurrency'),
     style: 'currency',
     currency,
@@ -209,6 +215,7 @@ export function currencyIn(
 
 const percentTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, _variant, options) =>
   make('formatPercent', locale, {
+    signDisplay: 'negative',
     ...optionsOf<PercentOptions>(options, NO_PRESETS, 'formatPercent'),
     style: 'percent',
   }),
@@ -228,6 +235,7 @@ const COMPACT_PRESETS: Record<CompactPreset, Opts> = {
 
 const compactTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, _variant, options) =>
   make('formatCompact', locale, {
+    signDisplay: 'negative',
     ...optionsOf<Opts>(options, COMPACT_PRESETS, 'formatCompact'),
     notation: 'compact',
   }),
@@ -252,6 +260,7 @@ const UNIT_PRESETS: Record<UnitPreset, Opts> = {
 
 const unitTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, unit, options) =>
   make('formatUnit', locale, {
+    signDisplay: 'negative',
     unitDisplay: 'short',
     ...optionsOf<Opts>(options, UNIT_PRESETS, 'formatUnit'),
     style: 'unit',
@@ -267,7 +276,7 @@ export function unitIn(
 ): string {
   if (!isUsable(value)) return badNumber('formatUnit', value, fallbackOf(options))
   if (typeof unit !== 'string' || !unit) {
-    throw programmerError('formatUnit', `the unit must be a string such as "kilometer" or "kilometer-per-hour", got ${String(unit)}. See Intl.supportedValuesOf('unit').`)
+    throw programmerError('formatUnit', `the unit must be a string such as "kilometer" or "kilometer-per-hour", got ${describe(unit)}. See Intl.supportedValuesOf('unit').`)
   }
 
   return resolve(unitTable, locale, unit, options).format(value)
@@ -276,38 +285,112 @@ export function unitIn(
 // ─── formatBytes ─────────────────────────────────────────────────────────────
 
 const BYTE_UNITS = ['byte', 'kilobyte', 'megabyte', 'gigabyte', 'terabyte', 'petabyte'] as const
-const BYTE_SYMBOLS_BINARY = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'] as const
+/** IEC symbols are language-neutral, so they stand in for the unit text of the nearest `Intl` unit (up to YiB). */
+const BYTE_SYMBOLS_BINARY = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB', 'ZiB', 'YiB'] as const
+const BIG_PREFIXES = ['E', 'Z', 'Y'] as const
+
+type UnitDisplay = 'short' | 'narrow' | 'long'
 
 /**
  * One cache entry per (locale, options): the options and, filled lazily, one
  * `Intl.NumberFormat` per byte unit. A `Pack` is built once per cached options
  * shape; the per-call work is picking the unit and one `format()`.
+ *
+ * `Intl` has no unit above petabyte and writes a lone byte as a word ("999 byte") next to symbols ("1 kB"). So:
+ * - `byteSymbol` is the locale's own narrow byte symbol ("B"), set when the locale writes short units as symbols
+ *   (its short and narrow kilobyte text are the same); `bytePre` / `bytePost` are the locale's short kilobyte pattern
+ *   (number order, spacing, bidi marks) around that symbol. Locales that write words (ar, he, th) keep `Intl`'s word.
+ * - `bigSymbols` (EB, ZB, YB) derive from the locale's petabyte text by swapping its leading "P" (fr: Po -> Eo), only
+ *   when it starts with "P"; otherwise (ru, ar) the scale stops at petabytes. `long` display never leaves petabytes
+ *   (the unit word cannot be derived); IEC symbols (EiB, ZiB, YiB) are language neutral and always allowed.
  */
 interface BytesPack {
   readonly locale: string
   readonly options: Opts
   readonly binary: boolean
   readonly digits: number
+  readonly display: UnitDisplay
   readonly formats: (Intl.NumberFormat | undefined)[]
+  readonly byteSymbol: string | undefined
+  readonly bytePre: string
+  readonly bytePost: string
+  readonly byteNumber: Intl.NumberFormat | undefined
+  readonly bigSymbols: readonly string[] | undefined
+  /** The highest byte-unit index this pack scales to (5 = petabyte, 8 = yotta). */
+  readonly maxIndex: number
+}
+
+const NUMERIC_PARTS = new Set(['integer', 'group', 'decimal', 'fraction', 'minusSign', 'plusSign'])
+
+function unitText(format: Intl.NumberFormat): string {
+  return format.formatToParts(5).find((p) => p.type === 'unit')?.value ?? ''
 }
 
 const bytesTable = /* @__PURE__ */ createTable<BytesPack>((locale, _variant, options) => {
   const o = optionsOf<BytesOptions>(options, NO_PRESETS, 'formatBytes') ?? {}
   const digits = o.maximumFractionDigits ?? Math.max(1, o.minimumFractionDigits ?? 0)
-  const base: Opts = { ...o, maximumFractionDigits: digits, unitDisplay: o.unitDisplay ?? 'short' }
+  const display: UnitDisplay = o.unitDisplay ?? 'short'
+  const base: Opts = { signDisplay: 'negative', ...o, maximumFractionDigits: digits, unitDisplay: display }
+  const unitFormat = (unit: string, unitDisplay: UnitDisplay) => make('formatBytes', locale, { ...base, style: 'unit', unit, unitDisplay })
   // Validate the options now (and fall a bad locale back) with the cheapest unit.
-  const first = make('formatBytes', locale, { ...base, style: 'unit', unit: 'byte' })
+  const first = unitFormat('byte', display)
   const formats: (Intl.NumberFormat | undefined)[] = [first, undefined, undefined, undefined, undefined, undefined]
+  let byteSymbol: string | undefined
+  let bytePre = ''
+  let bytePost = ''
+  let byteNumber: Intl.NumberFormat | undefined
+  let bigSymbols: string[] | undefined
+  let maxIndex = 5
+  if (display === 'short') {
+    const kilo = unitFormat('kilobyte', 'short')
+    formats[1] = kilo
+    if (unitText(kilo).toLowerCase() === unitText(unitFormat('kilobyte', 'narrow')).toLowerCase()) {
+      byteSymbol = unitFormat('byte', 'narrow').formatToParts(5).find((p) => p.type === 'unit')?.value
+      if (byteSymbol !== undefined) {
+        // The locale's kilobyte pattern with the byte symbol in the unit's place, around a plain number.
+        const parts = kilo.formatToParts(5)
+        const firstNum = parts.findIndex((p) => NUMERIC_PARTS.has(p.type))
+        let lastNum = firstNum
+        parts.forEach((p, i) => {
+          if (NUMERIC_PARTS.has(p.type)) lastNum = i
+        })
+        const text = (from: number, to: number) => parts.slice(from, to).map((p) => (p.type === 'unit' ? (byteSymbol as string) : p.value)).join('')
+        bytePre = text(0, firstNum)
+        bytePost = text(lastNum + 1, parts.length)
+        byteNumber = make('formatBytes', locale, { ...base, style: 'decimal' })
+      }
+    }
+  }
+  if (display !== 'long') {
+    if (o.binary === true) maxIndex = 8
+    else {
+      const peta = unitText(unitFormat('petabyte', display))
+      if (peta.startsWith('P')) {
+        bigSymbols = BIG_PREFIXES.map((prefix) => `${prefix}${peta.slice(1)}`)
+        maxIndex = 8
+      }
+    }
+  }
 
-  return { locale, options: base, binary: o.binary === true, digits, formats }
+  return { locale, options: base, binary: o.binary === true, digits, display, formats, byteSymbol, bytePre, bytePost, byteNumber, bigSymbols, maxIndex }
 })
 
 function bytesFormatter(pack: BytesPack, index: number): Intl.NumberFormat {
-  return (pack.formats[index] ??= make('formatBytes', pack.locale, {
+  const at = index > 5 ? 5 : index
+
+  return (pack.formats[at] ??= make('formatBytes', pack.locale, {
     ...pack.options,
     style: 'unit',
-    unit: BYTE_UNITS[index] as string,
+    unit: BYTE_UNITS[at] as string,
   }))
+}
+
+/** The unit text `Intl` would not give for this index (a language-neutral or derived symbol), or `undefined`. */
+function replacementSymbol(pack: BytesPack, index: number): string | undefined {
+  if (index === 0) return pack.byteSymbol
+  if (pack.binary) return BYTE_SYMBOLS_BINARY[index]
+
+  return index > 5 ? pack.bigSymbols?.[index - 6] : undefined
 }
 
 /** The unit chosen by {@link bytesPick}: the scaled value and the byte-unit index (module scratch: synchronous, no allocation). */
@@ -317,15 +400,16 @@ let pickedIndex = 0
 /** Scale `value` to the largest fitting unit (carrying when rounding reaches the next step); returns that unit's formatter. */
 function bytesPick(pack: BytesPack, value: number): Intl.NumberFormat {
   const base = pack.binary ? 1024 : 1000
+  const top = pack.maxIndex
   let scaled = value < 0 ? -value : value
   let index = 0
-  while (scaled >= base && index < 5) {
+  while (scaled >= base && index < top) {
     scaled /= base
     index++
   }
   // Rounding can carry a value over the next step (999.96 kB at one digit is
   // "1000 kB", never shown): bump the unit instead.
-  if (index < 5) {
+  if (index < top) {
     const factor = 10 ** pack.digits
     if (Math.round(scaled * factor) / factor >= base) {
       scaled /= base
@@ -335,22 +419,21 @@ function bytesPick(pack: BytesPack, value: number): Intl.NumberFormat {
   pickedValue = value < 0 ? -scaled : scaled
   pickedIndex = index
 
-  return bytesFormatter(pack, index)
+  return bytesFormatter(pack, index === 0 && pack.byteSymbol !== undefined ? 1 : index)
 }
 
-/**
- * No Intl unit exists for KiB/MiB: let Intl place the number and unit
- * (spacing and order are per locale), and swap the unit text for the IEC symbol.
- */
+/** The parts of the picked value with the unit text replaced where `Intl` has none (or only a word). */
 function bytesParts(pack: BytesPack, format: Intl.NumberFormat): Intl.NumberFormatPart[] {
   const parts = format.formatToParts(pickedValue)
-  if (!pack.binary || pickedIndex === 0) return parts
+  const symbol = replacementSymbol(pack, pickedIndex)
+  if (symbol === undefined) return parts
 
-  return parts.map((part) => (part.type === 'unit' ? { type: 'unit', value: BYTE_SYMBOLS_BINARY[pickedIndex] as string } : part))
+  return parts.map((part) => (part.type === 'unit' ? { type: 'unit', value: symbol } : part))
 }
 
 function bytesText(pack: BytesPack, format: Intl.NumberFormat): string {
-  if (!pack.binary || pickedIndex === 0) return format.format(pickedValue)
+  if (pickedIndex === 0 && pack.byteNumber !== undefined) return pack.bytePre + pack.byteNumber.format(pickedValue) + pack.bytePost
+  if (replacementSymbol(pack, pickedIndex) === undefined) return format.format(pickedValue)
   let out = ''
   for (const part of bytesParts(pack, format)) out += part.value
 
@@ -396,7 +479,7 @@ export function compactSpec(options: CompactOptions | CompactPreset | undefined)
 
 export function unitSpec(unit: Unit, options: UnitOptions | UnitPreset | undefined): KindInfo['unit']['spec'] {
   if (typeof unit !== 'string' || !unit) {
-    throw programmerError('unitFormatter', `the unit must be a string such as "kilometer" or "kilometer-per-hour", got ${String(unit)}. See Intl.supportedValuesOf('unit').`)
+    throw programmerError('unitFormatter', `the unit must be a string such as "kilometer" or "kilometer-per-hour", got ${describe(unit)}. See Intl.supportedValuesOf('unit').`)
   }
 
   return { ...optionsOf<UnitOptions>(options, UNIT_PRESETS, 'unitFormatter'), unit }
@@ -417,7 +500,7 @@ function numberCore(
   spec: Readonly<BaseOptions>,
   locale: () => string,
 ): Core<NumberInput> {
-  const fb = spec.fallback ?? ''
+  const fb = fallbackText(spec.fallback)
   let at = ''
   let intl: Intl.NumberFormat | undefined
   const get = (l: string): Intl.NumberFormat => {
@@ -446,7 +529,7 @@ function numberCore(
       const l = locale()
       if (!isUsable(start) || !isUsable(end)) return fb
 
-      return get(l).formatRange(start, end)
+      return start > end ? get(l).formatRange(end, start) : get(l).formatRange(start, end)
     },
   }
 }
@@ -458,7 +541,7 @@ export const numberKind: KindDef<'number'> = {
 export const currencyKind: KindDef<'currency'> = {
   create(spec, locale) {
     if (isCurrencyCode(spec.currency)) return numberCore(currencyTable, 'currencyFormatter', spec.currency, spec, locale)
-    const fb = spec.fallback ?? ''
+    const fb = fallbackText(spec.fallback)
 
     return {
       call: (value) => {
@@ -488,7 +571,7 @@ export const unitKind: KindDef<'unit'> = {
 
 export const bytesKind: KindDef<'bytes'> = {
   create(spec, locale) {
-    const fb = spec.fallback ?? ''
+    const fb = fallbackText(spec.fallback)
     let at = ''
     let pack: BytesPack | undefined
     const get = (l: string): BytesPack => {

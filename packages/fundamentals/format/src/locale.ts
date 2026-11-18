@@ -18,7 +18,7 @@
  */
 import { createReactiveContext, provide, useContext } from '@pyreon/core'
 import { getContextOwner, isServer, signal } from '@pyreon/reactivity'
-import { programmerError, warnOnce } from './warn'
+import { programmerError, quote, warnOnce } from './warn'
 
 const LocaleContext = createReactiveContext<string | undefined>(undefined)
 const ZoneContext = createReactiveContext<string | undefined>(undefined)
@@ -68,7 +68,15 @@ export function _resetLocaleState(): void {
   appZone.set(undefined)
 }
 
-/** The active locale. A reactive read. */
+/**
+ * The active locale (a reactive read): an explicit `options.locale`, the nearest `provideLocale`, the app default from `setLocale`, then `navigator.language` (client) or the runtime default (server).
+ *
+ * @example
+ * ```ts
+ * setLocale('cs')
+ * locale() // "cs"
+ * ```
+ */
 export function locale(): string {
   if (localeProvided) {
     const provided = useContext(LocaleContext)()
@@ -91,7 +99,15 @@ export function activeZone(): string {
   return appZone() ?? ''
 }
 
-/** The active IANA time zone. A reactive read. */
+/**
+ * The active IANA time zone (a reactive read).
+ *
+ * @example
+ * ```ts
+ * setTimeZone('Asia/Tokyo')
+ * timeZone() // "Asia/Tokyo"
+ * ```
+ */
 export function timeZone(): string {
   const z = activeZone()
   return z !== '' ? z : runtimeDefaultZone()
@@ -104,7 +120,7 @@ function canonicalLocale(tag: string, fn: string): string {
   } catch {
     // fall through to the error below
   }
-  throw programmerError(fn, `${JSON.stringify(tag)} is not a valid BCP 47 locale tag. Use a tag such as "en-US" or "cs" (underscores are not valid).`)
+  throw programmerError(fn, `${quote(tag)} is not a valid BCP 47 locale tag. Use a tag such as "en-US" or "cs" (underscores are not valid).`)
 }
 
 function checkedZone(zone: string, fn: string): string {
@@ -112,7 +128,7 @@ function checkedZone(zone: string, fn: string): string {
     new Intl.DateTimeFormat(undefined, { timeZone: zone })
     return zone
   } catch {
-    throw programmerError(fn, `${JSON.stringify(zone)} is not an IANA time zone name. Use a name such as "Europe/Prague", "America/Los_Angeles" or "UTC".`)
+    throw programmerError(fn, `${quote(zone)} is not an IANA time zone name. Use a name such as "Europe/Prague", "America/Los_Angeles" or "UTC".`)
   }
 }
 

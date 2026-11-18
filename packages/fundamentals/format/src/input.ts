@@ -14,6 +14,12 @@
 const MAX_TIME = 8.64e15
 
 let lastPlain = false
+let lastTimeOnly = false
+
+/** Whether the value last converted by {@link toMillis} was a time of day with no date (`14:30`). */
+export function lastWasTimeOnly(): boolean {
+  return lastTimeOnly
+}
 
 /** Whether the value last converted by {@link toMillis} was a calendar value. */
 export function lastWasPlain(): boolean {
@@ -139,11 +145,43 @@ function isoOffset(s: string): number {
 }
 
 /**
+ * `HH:MM`, `HH:MM:SS` or `HH:MM:SS.fff` to milliseconds since midnight (`NaN` when it is not one). A time of
+ * day is a wall-clock value like a date-time without offset: it never shifts with the zone.
+ */
+function parseTimeOnly(s: string): number {
+  const n = s.length
+  if (n < 5 || s.charCodeAt(2) !== CH_COLON) return NaN
+  const hour = digits(s, 0, 2)
+  const minute = digits(s, 3, 2)
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return NaN
+  let ms = hour * 3600000 + minute * 60000
+  if (n === 5) return ms
+  if (s.charCodeAt(5) !== CH_COLON) return NaN
+  const second = digits(s, 6, 2)
+  if (second < 0 || second > 59) return NaN
+  ms += second * 1000
+  if (n === 8) return ms
+  if (s.charCodeAt(8) !== CH_DOT) return NaN
+  const fraction = isoFraction(s, 8)
+
+  return fraction === fraction && cursor === n ? ms + fraction : NaN
+}
+
+/**
  * Parse an ISO 8601 string to epoch milliseconds, `NaN` when it is not one.
  * Accepts `YYYY-MM-DD`, then optionally `T`/space and `HH:MM[:SS[.fff…]]`,
  * then optionally `Z`, `±HH:MM`, `±HHMM` or `±HH`. Sets the calendar flag.
  */
 function parseIso(s: string): number {
+  if (s.length >= 5 && s.charCodeAt(2) === CH_COLON) {
+    const t = parseTimeOnly(s)
+    if (t === t) {
+      lastPlain = true
+      lastTimeOnly = true
+    }
+
+    return t
+  }
   const day = isoDay(s)
   if (day !== day) return NaN
   if (s.length === 10) {
@@ -172,6 +210,7 @@ function parseIso(s: string): number {
  */
 export function toMillis(value: unknown): number {
   lastPlain = false
+  lastTimeOnly = false
   if (typeof value === 'number') return Math.abs(value) <= MAX_TIME ? value : NaN
   if (typeof value === 'string') {
     const t = parseIso(value)

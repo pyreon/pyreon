@@ -72,6 +72,15 @@ function slotFor<F>(table: Table<F>, locale: string, variant: string): Slot<F> {
 const SEP_KEY = '\u0001'
 const SEP_ENTRY = '\u0002'
 
+/** An option value as key text; never throws (an object without `toString` is not a string). */
+function keyText(v: unknown): string {
+  try {
+    return String(v)
+  } catch {
+    return Object.prototype.toString.call(v)
+  }
+}
+
 /**
  * The structural key of an options object: own enumerable keys in insertion
  * order, `undefined` values skipped, the extras that never reach `Intl`
@@ -84,10 +93,24 @@ export function structuralKey(options: object): string {
     if (k === 'locale' || k === 'fallback') continue
     const v: unknown = (options as Record<string, unknown>)[k]
     if (v === undefined) continue
-    key += k + SEP_KEY + String(v) + SEP_ENTRY
+    key += k + SEP_KEY + keyText(v) + SEP_ENTRY
   }
 
   return key
+}
+
+/**
+ * Build one formatter. A builder that fails for a reason of its own (a wrong-typed option such as a symbol or an
+ * object where a number belongs) is reported as a `[Pyreon]` error that names the cause, never as the raw error.
+ */
+function buildEntry<F>(table: Table<F>, locale: string, variant: string, options: object | string | undefined): F {
+  try {
+    return table.build(locale, variant, options)
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('[Pyreon]')) throw error
+    const detail = error instanceof Error ? error.message : 'an option has the wrong type'
+    throw new Error(`[Pyreon] bad formatter options: ${detail}. Check the option types.`)
+  }
 }
 
 /** Resolve the cached formatter for `(locale, variant, options)`, constructing it on a miss. */
@@ -97,16 +120,19 @@ export function resolve<F>(
   variant: string,
   options: object | string | undefined,
 ): F {
+  if (options !== undefined && options !== null && typeof options !== 'string' && typeof options !== 'object') {
+    throw new Error(`[Pyreon] options must be an object or a preset name, got ${typeof options}.`)
+  }
   const slot = slotFor(table, locale, variant)
   // `null` options (from untyped callers) mean "none", like `undefined`.
   if (options === undefined || options === null) {
-    return slot.def ?? (slot.def = table.build(locale, variant, undefined))
+    return slot.def ?? (slot.def = buildEntry(table, locale, variant, undefined))
   }
   if (typeof options === 'string') {
     const named = slot.named ?? (slot.named = new Map())
     const hit = named.get(options)
     if (hit !== undefined) return hit
-    const made = table.build(locale, variant, options)
+    const made = buildEntry(table, locale, variant, options)
     if (named.size >= OPTIONS_CAP) evictOldest(named)
     named.set(options, made)
 
@@ -117,14 +143,14 @@ export function resolve<F>(
   if (byIdentity !== undefined) return byIdentity
   const key = structuralKey(options)
   if (key === '') {
-    const def = slot.def ?? (slot.def = table.build(locale, variant, undefined))
+    const def = slot.def ?? (slot.def = buildEntry(table, locale, variant, undefined))
     weak.set(options, def)
     return def
   }
   const keyed = slot.keyed ?? (slot.keyed = new Map())
   let made = keyed.get(key)
   if (made === undefined) {
-    made = table.build(locale, variant, options)
+    made = buildEntry(table, locale, variant, options)
     if (keyed.size >= OPTIONS_CAP) evictOldest(keyed)
     keyed.set(key, made)
   }

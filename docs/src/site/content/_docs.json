@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 226,
+  "pageCount": 227,
   "pages": [
    {
     "path": "a11y.md",
@@ -441,6 +441,11 @@
     "path": "patterns/form-fields.md",
     "title": "Form fields",
     "href": "/docs/patterns/form-fields"
+   },
+   {
+    "path": "patterns/formatting.md",
+    "title": "Formatting numbers, dates and money",
+    "href": "/docs/patterns/formatting"
    },
    {
     "path": "patterns/imperative-toasts.md",
@@ -1199,6 +1204,7 @@
       "patterns/islands",
       "patterns/event-listeners",
       "patterns/imperative-toasts",
+      "patterns/formatting",
       "patterns/multiplatform",
       "accessibility"
      ],
@@ -2196,6 +2202,10 @@
     {
      "title": "Imperative toasts",
      "href": "/docs/patterns/imperative-toasts"
+    },
+    {
+     "title": "Formatting",
+     "href": "/docs/patterns/formatting"
     },
     {
      "title": "One source, web + iOS + Android",
