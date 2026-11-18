@@ -25,8 +25,18 @@
  * The two-path resolution lets dev-mode (where `cargo build` produced
  * an in-tree binary) and production-mode (where the user has only the
  * published per-platform package) coexist with no flag flipping.
+ *
+ * Version lock (Path 2 only): the per-platform package must be the SAME
+ * version as this `@pyreon/compiler`. The Rust and JS backends are kept
+ * byte-identical per version, not across versions, so a binary from another
+ * release (a lockfile dedupe, an override, a `release-native` run that lagged
+ * the JS publish) would emit different code than this package's JS does.
+ * On a mismatch the loader returns `null` (JS fallback, correct but slower)
+ * and warns once outside production. The `optionalDependencies` are
+ * published as exact versions for the same reason.
  */
 
+import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -75,6 +85,7 @@ interface NodeProcess {
     getReport(): unknown
   }
 }
+
 const nodeProcess = process as unknown as NodeProcess
 
 /**
@@ -108,6 +119,7 @@ export function getPlatformPackageName(
     win32: ['x64'],
   }
   if (!supported[platform]?.includes(arch)) return null
+
   return `@pyreon/compiler-${platform}-${arch}${suffix}`
 }
 
@@ -134,6 +146,7 @@ function detectLibc(platform: string): string | null {
   } catch {
     // Best-effort detection — fall through to glibc default.
   }
+
   return 'gnu'
 }
 
@@ -149,6 +162,49 @@ function detectLibc(platform: string): string | null {
  */
 /** `src/<file>` and `lib/_chunks/<file>` — see Path 1 below. */
 const IN_TREE_DEPTHS = ['..', join('..', '..')] as const
+
+/**
+ * The version of the `@pyreon/compiler` package containing `here` (the
+ * caller module's directory), or null when no such `package.json` is found
+ * (the compiler bundled into something else), in which case the binary
+ * version cannot be compared and is trusted.
+ */
+function ownCompilerVersion(here: string): string | null {
+  for (const up of IN_TREE_DEPTHS) {
+    try {
+      const pkg = JSON.parse(readFileSync(join(here, up, 'package.json'), 'utf-8')) as {
+        name?: string
+        version?: string
+      }
+      if (pkg.name === '@pyreon/compiler' && typeof pkg.version === 'string') return pkg.version
+    } catch {
+      // Not at this depth.
+    }
+  }
+
+  return null
+}
+
+/**
+ * The warning for a per-platform binary whose version differs from the
+ * compiler's, or null when they match. A binary with no readable version
+ * counts as a mismatch. Exported for the unit test.
+ */
+export function nativeVersionMismatch(
+  pkgName: string,
+  binaryVersion: string | undefined,
+  compilerVersion: string,
+): string | null {
+  if (binaryVersion === compilerVersion) return null
+  return (
+    `[Pyreon] ${pkgName}@${binaryVersion ?? '<unknown>'} does not match @pyreon/compiler@${compilerVersion}; ` +
+    'using the JavaScript compiler instead (same output, slower). The native binary must be the same version as ' +
+    `@pyreon/compiler: reinstall so the lockfile resolves ${pkgName}@${compilerVersion}, and remove any override or ` +
+    'resolution that pins it.'
+  )
+}
+
+let mismatchWarned = false
 
 export function loadNativeBinding(metaUrl: string): NativeBinding | null {
   const nativeRequire = createRequire(metaUrl)
@@ -179,6 +235,20 @@ export function loadNativeBinding(metaUrl: string): NativeBinding | null {
   const pkgName = getPlatformPackageName()
   if (pkgName !== null) {
     try {
+      const compilerVersion = ownCompilerVersion(here)
+      if (compilerVersion !== null) {
+        const binaryVersion = (nativeRequire(`${pkgName}/package.json`) as { version?: string }).version
+        const mismatch = nativeVersionMismatch(pkgName, binaryVersion, compilerVersion)
+        if (mismatch !== null) {
+          if (process.env.NODE_ENV !== 'production' && !mismatchWarned) {
+            mismatchWarned = true
+            console.warn(mismatch)
+          }
+
+          return null
+        }
+      }
+
       return nativeRequire(pkgName) as NativeBinding
     } catch {
       // Per-platform package not installed (typical pre-Phase-5b

@@ -17,7 +17,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { css } from '../css'
 import { buildProps } from '../forward'
 import { StyleSheet } from '../sheet'
-import { ThemeContext } from '../ThemeProvider'
+import { ThemeContext } from '../theme-context'
 import { useCSS } from '../useCSS'
 
 afterEach(() => {

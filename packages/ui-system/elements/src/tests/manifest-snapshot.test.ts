@@ -26,7 +26,6 @@ describe('gen-docs — elements snapshot', () => {
       'elements/Overlay',
       'elements/OverlayProvider',
       'elements/Portal',
-      'elements/Provider',
       'elements/Text',
       'elements/Util',
       'elements/useOverlay',

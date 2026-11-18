@@ -66,6 +66,7 @@ export function CodeBlock(props: CodeBlockProps): VNodeChild {
   // + clear is idempotent: re-clicking copy clears the prior timer
   // before scheduling a new one.
   let _resetTimer: ReturnType<typeof setTimeout> | null = null
+
   onUnmount(() => {
     if (_resetTimer !== null) clearTimeout(_resetTimer)
   })
@@ -111,12 +112,18 @@ export function CodeBlock(props: CodeBlockProps): VNodeChild {
   // the workaround as no longer required. Rendering nodes removes a raw
   // `dangerouslySetInnerHTML` sink from a component that never needed one —
   // these are generated line numbers, with nothing to inline.
-  const gutterLines =
-    showLineNumbers && lineCount > 0
-      ? Array.from({ length: lineCount }, (_, i) => (
+  //
+  // A function called where it renders, reading the props itself: a const
+  // holding JSX is referenced, never inlined, so a plain const (or one reading
+  // the setup-time `showLineNumbers` / `lineCount`) would be computed once.
+  const gutterLines = () => {
+    const count = typeof props.lineCount === 'number' ? props.lineCount : 0
+    return props.showLineNumbers === true && count > 0
+      ? Array.from({ length: count }, (_, i) => (
           <span class="code-block__line-number">{String(i + 1)}</span>
         ))
       : []
+  }
 
   // Highlight lines are emitted as a data-* so CSS can target them
   // without the component knowing about the rendered DOM structure.
@@ -168,7 +175,7 @@ export function CodeBlock(props: CodeBlockProps): VNodeChild {
       </div>
       <div class="code-block__body">
         <div class={gutterClass} aria-hidden="true">
-          {gutterLines}
+          {() => gutterLines()}
         </div>
         <div
           class="code-block__pre"

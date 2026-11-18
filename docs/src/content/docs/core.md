@@ -934,7 +934,9 @@ scheme applies.
 
 ## Refs
 
-Refs provide mutable containers for DOM element references. The runtime sets `ref.current` after the element is inserted into the DOM and clears it to `null` when the element is removed.
+Refs provide mutable containers for DOM element references. The runtime sets `ref.current` (or calls a callback ref) once, while the component mounts, and sets it to `null` (or calls the callback with `null`) when the element is removed. This holds for every ref form and for both compiled JSX and `h()`.
+
+When a ref fires, the element belongs to the page's `document`, so `el.ownerDocument.defaultView` is the window. It may **not yet be in the live document**, though: a subtree is built and then inserted as a whole. Read layout (`getBoundingClientRect`, `getComputedStyle`), focus, or attach observers that need a connected element in `onMount`, as below.
 
 ### createRef
 
@@ -1000,6 +1002,22 @@ function FormWithRefs() {
   )
 }
 ```
+
+### Capturing an element into a signal
+
+`ref` also takes a signal's setter, which is the shortest way to make an element reactive state:
+
+```tsx
+import { effect, signal } from '@pyreon/reactivity'
+
+function Measured() {
+  const box = signal<HTMLDivElement | null>(null)
+  effect(() => console.log(box()?.getBoundingClientRect().width))
+  return <div ref={box.set}>…</div>
+}
+```
+
+The compiler binds the method to its signal (`box.set.bind(box)`), because signal methods read `this`. That works for any signal or computed declared in the component (and any the Vite plugin knows from an import). A setter reached through props or an object is not known to the compiler. Pass an arrow for those: `ref={(el) => props.box.set(el)}`.
 
 ### Ref Forwarding Pattern
 

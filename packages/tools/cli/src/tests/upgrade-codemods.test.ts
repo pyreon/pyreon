@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CODEMODS, type Codemod, selectCodemods } from '../codemods'
+import { zeroPlaceholderColor } from '../codemods/zero-placeholder-color'
 import { zeroRemoveViteOption } from '../codemods/zero-remove-vite-option'
 import { upgrade } from '../upgrade'
 
@@ -76,6 +77,26 @@ describe('zero-remove-vite-option', () => {
     // The result must still parse as an object with the other keys intact.
     const obj = new Function('zero', `return ${out.replace(/;?\s*$/, '')}`)((o: unknown) => o) as Record<string, unknown>
     expect(obj).toEqual({ mode: 'ssr', base: '/x/' })
+  })
+})
+
+describe('zero-placeholder-color', () => {
+  it("rewrites placeholder: 'dominant-color' to 'color', keeping the quote style", () => {
+    const src = `imagePlugin({ placeholder: 'dominant-color' })\nimagePlugin({ "placeholder": "dominant-color" })\n`
+    expect(zeroPlaceholderColor.transform(src, 'vite.config.ts')).toBe(
+      `imagePlugin({ placeholder: 'color' })\nimagePlugin({ "placeholder": "color" })\n`,
+    )
+  })
+
+  it('is idempotent and leaves other dominant-color strings alone', () => {
+    expect(zeroPlaceholderColor.transform(`imagePlugin({ placeholder: 'color' })`, 'a.ts')).toBeNull()
+    const other = `const label = 'dominant-color'\nconst o = { kind: 'dominant-color', placeholder: 'blur' }\n`
+    expect(zeroPlaceholderColor.transform(other, 'a.ts')).toBeNull()
+  })
+
+  it('handles TSX sources', () => {
+    const src = `export const C = () => <div>{cfg({ placeholder: 'dominant-color' })}</div>\n`
+    expect(zeroPlaceholderColor.transform(src, 'a.tsx')).toContain(`placeholder: 'color'`)
   })
 })
 

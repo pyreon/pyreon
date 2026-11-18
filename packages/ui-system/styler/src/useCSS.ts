@@ -7,14 +7,14 @@
  */
 import { type CSSResult, normalizeCSS, resolve } from './resolve'
 import { sheet } from './sheet'
-import { useTheme } from './ThemeProvider'
+import { useTheme } from './theme-context'
 
-export function useCSS(template: CSSResult, props?: Record<string, any>, boost?: boolean): string {
+export function useCSS(template: CSSResult, props?: Record<string, any>): string {
   const theme = useTheme()
   const allProps = theme ? { ...props, theme } : (props ?? {})
   const cssText = normalizeCSS(resolve(template.strings, template.values, allProps))
 
   if (!cssText.trim()) return ''
 
-  return sheet.insert(cssText, boost)
+  return sheet.insert(cssText)
 }

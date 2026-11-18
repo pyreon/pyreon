@@ -7,7 +7,8 @@ import { css } from '../css'
 import { keyframes } from '../keyframes'
 import { sheet } from '../sheet'
 import { styled } from '../styled'
-import { ThemeContext, ThemeProvider, useThemeAccessor } from '../ThemeProvider'
+import { ThemeContext, useThemeAccessor } from '../theme-context'
+import { TestThemeProvider } from './index'
 
 // Real-Chromium smoke for @pyreon/styler.
 //
@@ -93,19 +94,19 @@ describe('@pyreon/styler in real browser', () => {
     unmount()
   })
 
-  it('ThemeProvider injects a theme readable by themed components', () => {
+  it('a provided ThemeContext injects a theme readable by themed components', () => {
     const Themed = styled('div')`
       color: ${(p: { theme: { color: string } }) => p.theme.color};
     `
     const { container, unmount } = mountInBrowser(
-      h(ThemeProvider, { theme: { color: 'rgb(128, 0, 128)' } }, h(Themed, { id: 't' })),
+      h(TestThemeProvider, { theme: { color: 'rgb(128, 0, 128)' } }, h(Themed, { id: 't' })),
     )
     const el = container.querySelector<HTMLElement>('#t')!
     expect(getComputedStyle(el).color).toBe('rgb(128, 0, 128)')
     unmount()
   })
 
-  it('ThemeProvider follows a LATER theme prop change (reactive accessor, no remount)', async () => {
+  it('a provided ThemeContext follows a LATER theme prop change (reactive accessor, no remount)', async () => {
     // A consumer tracking the theme through the reactive context — the
     // `useThemeAccessor()` contract (effects/computeds/accessors).
     const Consumer = () => {
@@ -113,10 +114,10 @@ describe('@pyreon/styler in real browser', () => {
       return h('div', { id: 'rt', style: () => `color: ${t().color}` }, () => t().color)
     }
     const theme = signal({ color: 'rgb(128, 0, 128)' })
-    // `_rp` is exactly what the compiler emits for `<ThemeProvider theme={theme()}>`;
+    // `_rp` is exactly what the compiler emits for `<TestThemeProvider theme={theme()}>`;
     // the mount pipeline turns it into a getter-backed prop.
     const { container, unmount } = mountInBrowser(
-      h(ThemeProvider, { theme: _rp(() => theme()) as never }, h(Consumer, null)),
+      h(TestThemeProvider, { theme: _rp(() => theme()) as never }, h(Consumer, null)),
     )
     const el = container.querySelector<HTMLElement>('#rt')!
     expect(el.textContent).toBe('rgb(128, 0, 128)')

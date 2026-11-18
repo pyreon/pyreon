@@ -1322,7 +1322,7 @@ This makes `import hero from './x.jpg?optimize'` resolve to `ProcessedImage` (an
 | `'color'`          | The image's dominant color as a ~200-byte flat SVG data URI                   |
 | `'none'`           | No placeholder (`placeholder: ''`) — skips all placeholder work               |
 
-`'dominant-color'` is a deprecated alias of `'color'`. `quality` accepts a single number applied to all lossy formats, or a per-format object (`{ avif, webp, jpeg }`) — AVIF achieves comparable perceived quality at a much lower number than WebP/JPEG. Optional CDN delivery providers (`cloudinary`, `imgix`, `vercel`, `bunny`) are also available.
+`quality` accepts a single number applied to all lossy formats, or a per-format object (`{ avif, webp, jpeg }`) — AVIF achieves comparable perceived quality at a much lower number than WebP/JPEG. Optional CDN delivery providers (`cloudinary`, `imgix`, `vercel`, `bunny`) are also available.
 
 ## Favicons
 

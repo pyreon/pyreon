@@ -622,6 +622,7 @@ Codemods only make changes that keep behaviour the same, and skip `node_modules`
 | Id | Since | What it does |
 | --- | --- | --- |
 | `zero-remove-vite-option` | 0.52.0 | Removes the `vite` option from `zero({...})` in `vite.config.*`. `zero()` never read it; the old value is kept as a comment so you can move it into `defineConfig`. |
+| `zero-placeholder-color` | 0.54.0 | Rewrites the image option `placeholder: 'dominant-color'` to `placeholder: 'color'`. The removed name was an alias, so behaviour is unchanged. |
 
 Every `@pyreon/zero` changeset that bumps a minor version (a breaking change while Pyreon is 0.x) states how to upgrade in an `Upgrade:` line: `none`, the codemod id, or the manual step. That line appears in the changelog.
 

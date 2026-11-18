@@ -2,9 +2,9 @@
  * SSR: a prop-derived const whose initializer contains JSX must NOT be inlined.
  *
  * Prop-derived consts are inlined at their use sites by slicing the ORIGINAL
- * source for the initializer. That is right on the DOM path — the inlining is
- * what keeps the value reactive — and wrong under SSR the moment the
- * initializer contains JSX, because the sliced text is PRE-transform. The JSX
+ * source for the initializer. That is wrong the moment the initializer
+ * contains JSX, because the sliced text is PRE-transform (on every path since
+ * #4300; this file covers the SSR shape that found it). The JSX
  * gets re-emitted verbatim into an `_ssr` hole, never lowered, and the raw
  * text drifts against offsets the emit has already shifted.
  *
@@ -77,13 +77,13 @@ describe('SSR — a JSX-bearing prop-derived const is referenced, not inlined', 
   })
 })
 
-describe('the DOM path is untouched — there the inlining is load-bearing', () => {
-  it('still inlines a prop-derived element-const so its class stays reactive', () => {
-    // Round 15's contract: referencing the frozen const would capture the
-    // prop-derived class once. SSR has no such concern (it renders once), which
-    // is exactly why the bail is scoped to `ssr`.
+describe('the DOM path references the const too (#4300)', () => {
+  it('an element-const is mounted by name, its own class binding stays live', () => {
+    // Inlining was never what kept the class reactive: the inlined copy was
+    // raw JSX (a plain h() reading it once). The const's own JSX compiles to
+    // a live accessor, so every path now references the const.
     const out = dom(`function C(p){ const cls=p.x+'-b'; const el=<i class={cls}/>; return <div>{el}<span class={cls}/></div> }`)
-    expect(out).toContain("_mountSlot((<i class={(p.x+'-b')}/>)")
-    expect(out).not.toMatch(/_mountSlot\(\s*el\b/)
+    expect(out).toMatch(/_mountSlot\(\s*el\b/)
+    expect(out).toContain("const el=<i class={() => (p.x+'-b')}/>")
   })
 })
