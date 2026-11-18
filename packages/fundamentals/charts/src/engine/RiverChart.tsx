@@ -9,7 +9,7 @@ import type { ChartTheme } from './render'
 import type { RiverLayer, RiverLayout, RiverOptions, RiverSeries } from './river'
 
 export interface RiverChartProps extends CanvasHostProps {
-  series: RiverSeries[] | (() => RiverSeries[])
+  series: readonly RiverSeries[] | (() => readonly RiverSeries[])
   river?: RiverOptions
   /** Fired with the layer under the click, or null for a miss. */
   onSelect?: (layer: RiverLayer | null) => void
@@ -18,7 +18,7 @@ export interface RiverChartProps extends CanvasHostProps {
 }
 
 export function RiverChart(props: RiverChartProps): VNode {
-  const readSeries = (): RiverSeries[] => (typeof props.series === 'function' ? props.series() : props.series)
+  const readSeries = (): readonly RiverSeries[] => (typeof props.series === 'function' ? props.series() : props.series)
   const opts = (t: ChartTheme): RiverOptions => ({ palette: t.palette, axisColor: t.axis, tickColor: t.label, ...props.river })
   return canvasHost<RiverLayout>({
     props,

@@ -582,7 +582,7 @@ function PostsPage() {
       signature:
         'getActiveRouter(): RouterInstance | null · setActiveRouter(router: RouterInstance | null): void',
       summary:
-        'The module-level FALLBACK a hook resolves against when no `<RouterProvider>` context is above it. Every router hook (`useRouter`, `useRoute`, `RouterLink`\'s internal resolution, …) reads `useContext(RouterContext) ?? _activeRouter` — the context wins when present, and `setActiveRouter(router)` (called once by app setup code — `createApp`/`startClient` in `@pyreon/zero`, or by hand in a non-JSX-provider app) supplies the fallback for code that runs OUTSIDE any component tree (a route loader, a plain utility module). `getActiveRouter()` reads the SAME resolution a hook would, without throwing when nothing is installed — useful for "is a router active at all?" checks in framework-adjacent code.',
+        'The module-level FALLBACK a hook resolves against when no `<RouterProvider>` context is above it. Every router hook (`useRouter`, `useRoute`, `RouterLink`\'s internal resolution, …) reads `useContext(RouterContext) ?? _activeRouter` — the context wins when present, and `setActiveRouter(router)` (called once by app setup code — `createApp`/`startClient` in `@pyreon/zero`, or by hand in a non-JSX-provider app) supplies the fallback for code that runs OUTSIDE any component tree (a route loader, a plain utility module). `getActiveRouter()` reads the SAME resolution a hook would, without throwing when nothing is installed — useful for "is a router active at all?" checks in framework-adjacent code. The fallback is CLIENT-ONLY: on a server one process serves every request, so `setActiveRouter` stores nothing there and the hooks resolve through `<RouterProvider>` context alone (a render with no provider above it gets the "no router installed" error, never another request\'s router).',
       example: `// App setup (once):
 setActiveRouter(router)
 
@@ -591,6 +591,7 @@ const router = getActiveRouter()
 if (router) router.push('/dashboard')`,
       mistakes: [
         'Calling `setActiveRouter` more than once per app expecting multiple active routers to coexist — it is a single module-level fallback slot; the LAST call wins. Multiple simultaneous routers need `<RouterProvider>` context scoping, not this',
+        'Relying on the fallback during SSR (`setActiveRouter` in server code, or a router hook in a render with no `<RouterProvider>` above it, such as a server-island fragment) — on a server it is never written or read, because a module slot there is shared by every request; pass the router through `<RouterProvider>`',
         'Reaching for `getActiveRouter()` inside an ordinary component instead of `useRouter()` — `useRouter()` throws a clear error with no router installed; `getActiveRouter()` silently returns `null`, which is right for library/framework code but usually wrong for app components (a silent `null` there reads as "nothing happened")',
       ],
       seeAlso: ['useRouter', 'RouterProvider', 'createRouter'],

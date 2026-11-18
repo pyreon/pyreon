@@ -11,7 +11,7 @@ import { paletteAt } from './palette'
 import type { Double, Rect } from './types'
 
 export interface FunnelChartProps<T> extends CanvasHostProps {
-  data: T[] | (() => T[])
+  data: readonly T[] | (() => readonly T[])
   value: (d: T, index: number) => Double
   label: (d: T, index: number) => string
   /** Per-stage colour; the theme palette otherwise. */
@@ -27,7 +27,7 @@ interface Geometry { stages: FunnelStage[]; plot: Rect }
 
 export function FunnelChart<T>(props: FunnelChartProps<T>): VNode {
   const hitAt = (g: Geometry, px: Double, py: Double): number => hitFunnel(g.stages, g.plot, px, py, props.funnel)
-  const readData = (): T[] => (typeof props.data === 'function' ? (props.data as () => T[])() : props.data)
+  const readData = (): readonly T[] => (typeof props.data === 'function' ? (props.data as () => readonly T[])() : props.data)
   const stages = (palette: readonly string[]): FunnelStage[] =>
     readData().map((d, i) => ({ value: props.value(d, i), label: props.label(d, i), color: props.color !== undefined ? props.color(d, i) : paletteAt(palette, i) }))
   return canvasHost<Geometry>({

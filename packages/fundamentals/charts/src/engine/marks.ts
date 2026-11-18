@@ -421,7 +421,7 @@ export const PRIMED_LOOP_MIN_ROWS = 300_000
  * 10,000-row update 1.15 [1.12–1.17] → 1.08 [1.05–1.10] ms. Every other
  * charts-libs and charts-vs-ECharts cell tied.
  */
-function resolveAccessor<T>(data: T[], acc: (d: T, index: number) => unknown, label: string): Double[] {
+function resolveAccessor<T>(data: readonly T[], acc: (d: T, index: number) => unknown, label: string): Double[] {
   const n = data.length
   const out: Double[] = new Array<Double>(n).fill(Number.NaN)
   if (n >= PRIMED_LOOP_MIN_ROWS) {
@@ -437,14 +437,14 @@ function resolveAccessor<T>(data: T[], acc: (d: T, index: number) => unknown, la
 }
 
 /** `resolveAccessor`'s per-row loop over `[from, to)`. See `resolveAccessor` for why it is a separate function. */
-function fillAccessor<T>(data: T[], acc: (d: T, index: number) => unknown, out: Double[], from: number, to: number, label: string): void {
+function fillAccessor<T>(data: readonly T[], acc: (d: T, index: number) => unknown, out: Double[], from: number, to: number, label: string): void {
   for (let i = from; i < to; i++) {
     const v = acc(data[i]!, i)
     out[i] = typeof v === 'number' ? (Number.isFinite(v) ? v : Number.NaN) : toNumber(v, label)
   }
 }
 
-export function resolveMarks<T>(data: T[], marks: Mark<T>[], palette: readonly string[] = DEFAULT_PALETTE): Series[] {
+export function resolveMarks<T>(data: readonly T[], marks: readonly Mark<T>[], palette: readonly string[] = DEFAULT_PALETTE): Series[] {
   // Colour follows the LABEL (`labelSlots`): marks sharing a label share a colour.
   const slots = labelSlots(marks.map((m, k) => markLabel(m, k)))
   return marks.map((m, seriesIndex) => {
@@ -557,7 +557,7 @@ export function markLabel<T>(m: Mark<T>, index: number): string {
   return m.options.label ?? `Series ${index + 1}`
 }
 
-export function resolveCategories<T>(data: T[], x?: (d: T, index: number) => string): string[] {
+export function resolveCategories<T>(data: readonly T[], x?: (d: T, index: number) => string): string[] {
   if (x === undefined) return []
   return data.map((d, i) => x(d, i))
 }
@@ -585,7 +585,7 @@ export interface HistogramProps {
  * table, selection and the native lowering all come for free). The bin
  * label is its `[x0, x1)` range; `onSelect` reports the BIN index.
  */
-export function histogram<T>(rows: T[], x: Accessor<T>, options: HistogramOptions = {}): HistogramProps {
+export function histogram<T>(rows: readonly T[], x: Accessor<T>, options: HistogramOptions = {}): HistogramProps {
   const values: Double[] = []
   for (let i = 0; i < rows.length; i++) {
     const v = x(rows[i]!, i)

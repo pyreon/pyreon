@@ -7,14 +7,14 @@ import type { SingleAxisLayout, SingleAxisOptions, SingleAxisPoint, SingleAxisSp
 
 export interface SingleAxisChartProps extends CanvasHostProps {
   axis: SingleAxisSpec
-  points: SingleAxisPoint[] | (() => SingleAxisPoint[])
+  points: readonly SingleAxisPoint[] | (() => readonly SingleAxisPoint[])
   singleAxis?: SingleAxisOptions
   onSelect?: (index: number) => void
   onSelectIndex?: (index: number) => void
 }
 
 export function SingleAxisChart(props: SingleAxisChartProps): VNode {
-  const readPoints = (): SingleAxisPoint[] => typeof props.points === 'function' ? props.points() : props.points
+  const readPoints = (): readonly SingleAxisPoint[] => typeof props.points === 'function' ? props.points() : props.points
   return canvasHost<SingleAxisLayout>({
     props,
     defaultHeight: 160,
