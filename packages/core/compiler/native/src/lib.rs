@@ -140,90 +140,6 @@ fn is_raw_text_element(tag: &str) -> bool {
     )
 }
 
-/// SVG element names that are NOT also HTML element names — an element with one
-/// is SVG content wherever it is written. Mirrors JS `SVG_ONLY_TAGS`.
-fn is_svg_only_tag(tag: &str) -> bool {
-    matches!(
-        tag,
-        "altGlyph" | "altGlyphDef" | "altGlyphItem" | "animate" | "animateColor"
-            | "animateMotion" | "animateTransform" | "circle" | "clipPath" | "color-profile"
-            | "cursor" | "defs" | "desc" | "discard" | "ellipse" | "feBlend" | "feColorMatrix"
-            | "feComponentTransfer" | "feComposite" | "feConvolveMatrix" | "feDiffuseLighting"
-            | "feDisplacementMap" | "feDistantLight" | "feDropShadow" | "feFlood" | "feFuncA"
-            | "feFuncB" | "feFuncG" | "feFuncR" | "feGaussianBlur" | "feImage" | "feMerge"
-            | "feMergeNode" | "feMorphology" | "feOffset" | "fePointLight"
-            | "feSpecularLighting" | "feSpotLight" | "feTile" | "feTurbulence" | "filter"
-            | "font-face" | "font-face-format" | "font-face-name" | "font-face-src"
-            | "font-face-uri" | "foreignObject" | "g" | "glyph" | "glyphRef" | "hkern" | "image"
-            | "line" | "linearGradient" | "marker" | "mask" | "metadata" | "missing-glyph"
-            | "mpath" | "path" | "pattern" | "polygon" | "polyline" | "radialGradient" | "rect"
-            | "set" | "stop" | "switch" | "symbol" | "text" | "textPath" | "tref" | "tspan"
-            | "use" | "view" | "vkern"
-    )
-}
-
-/// The raw-expression span starts of every JSX child expression whose holding
-/// element sits in SVG or MathML content by its JSX ancestry: the chain runs
-/// through elements (components included) and fragments up to the first
-/// non-JSX parent; `svg`, `math` or an SVG-only tag enter foreign content and
-/// `foreignObject` returns to HTML. A hole there is never walked
-/// (`client_walks_hole`), because each element it builds would be a template
-/// root namespaced by its own tag alone. A pre-pass because the walk has no
-/// parent pointers. Mirrors jsx.ts `inForeignContent`.
-fn collect_foreign_holes(program: &Program) -> FxHashSet<u32> {
-    struct F {
-        inherited: bool,
-        out: FxHashSet<u32>,
-    }
-    fn children<'a>(f: &mut F, kids: &[JSXChild<'a>], state: bool) {
-        for child in kids {
-            match child {
-                JSXChild::Element(c) => {
-                    f.inherited = state;
-                    f.visit_jsx_element(c);
-                }
-                JSXChild::Fragment(frag) => children(f, &frag.children, state),
-                JSXChild::ExpressionContainer(c) => {
-                    if state {
-                        if let Some(e) = jsx_expr_as_expression(&c.expression) {
-                            f.out.insert(e.span().start);
-                        }
-                    }
-                    f.inherited = false;
-                    f.visit_jsx_expression_container(c);
-                }
-                other => {
-                    f.inherited = false;
-                    f.visit_jsx_child(other);
-                }
-            }
-        }
-    }
-    impl<'a> Visit<'a> for F {
-        fn visit_jsx_element(&mut self, el: &JSXElement<'a>) {
-            let inherited = std::mem::replace(&mut self.inherited, false);
-            let tag = jsx_tag_name(el);
-            let state = if tag == "foreignObject" {
-                false
-            } else if tag == "svg" || tag == "math" || is_svg_only_tag(tag) {
-                true
-            } else {
-                inherited
-            };
-            self.visit_jsx_opening_element(&el.opening_element);
-            self.inherited = false;
-            children(self, &el.children, state);
-        }
-        fn visit_jsx_fragment(&mut self, frag: &JSXFragment<'a>) {
-            let inherited = std::mem::replace(&mut self.inherited, false);
-            children(self, &frag.children, inherited);
-        }
-    }
-    let mut f = F { inherited: false, out: FxHashSet::default() };
-    f.visit_program(program);
-    f.out
-}
-
 fn is_void_element(tag: &str) -> bool {
     matches!(
         tag,
@@ -6125,6 +6041,90 @@ fn handle_jsx_expression_child(container: &JSXExpressionContainer, ctx: &mut Ctx
         return;
     }
     handle_jsx_expression_child_inner(container, false, false, ctx);
+}
+
+/// SVG element names that are NOT also HTML element names — an element with one
+/// is SVG content wherever it is written. Mirrors JS `SVG_ONLY_TAGS`.
+fn is_svg_only_tag(tag: &str) -> bool {
+    matches!(
+        tag,
+        "altGlyph" | "altGlyphDef" | "altGlyphItem" | "animate" | "animateColor"
+            | "animateMotion" | "animateTransform" | "circle" | "clipPath" | "color-profile"
+            | "cursor" | "defs" | "desc" | "discard" | "ellipse" | "feBlend" | "feColorMatrix"
+            | "feComponentTransfer" | "feComposite" | "feConvolveMatrix" | "feDiffuseLighting"
+            | "feDisplacementMap" | "feDistantLight" | "feDropShadow" | "feFlood" | "feFuncA"
+            | "feFuncB" | "feFuncG" | "feFuncR" | "feGaussianBlur" | "feImage" | "feMerge"
+            | "feMergeNode" | "feMorphology" | "feOffset" | "fePointLight"
+            | "feSpecularLighting" | "feSpotLight" | "feTile" | "feTurbulence" | "filter"
+            | "font-face" | "font-face-format" | "font-face-name" | "font-face-src"
+            | "font-face-uri" | "foreignObject" | "g" | "glyph" | "glyphRef" | "hkern" | "image"
+            | "line" | "linearGradient" | "marker" | "mask" | "metadata" | "missing-glyph"
+            | "mpath" | "path" | "pattern" | "polygon" | "polyline" | "radialGradient" | "rect"
+            | "set" | "stop" | "switch" | "symbol" | "text" | "textPath" | "tref" | "tspan"
+            | "use" | "view" | "vkern"
+    )
+}
+
+/// The raw-expression span starts of every JSX child expression whose holding
+/// element sits in SVG or MathML content by its JSX ancestry: the chain runs
+/// through elements (components included) and fragments up to the first
+/// non-JSX parent; `svg`, `math` or an SVG-only tag enter foreign content and
+/// `foreignObject` returns to HTML. A hole there is never walked
+/// (`client_walks_hole`), because each element it builds would be a template
+/// root namespaced by its own tag alone. A pre-pass because the walk has no
+/// parent pointers. Mirrors jsx.ts `inForeignContent`.
+fn collect_foreign_holes(program: &Program) -> FxHashSet<u32> {
+    struct F {
+        inherited: bool,
+        out: FxHashSet<u32>,
+    }
+    fn children<'a>(f: &mut F, kids: &[JSXChild<'a>], state: bool) {
+        for child in kids {
+            match child {
+                JSXChild::Element(c) => {
+                    f.inherited = state;
+                    f.visit_jsx_element(c);
+                }
+                JSXChild::Fragment(frag) => children(f, &frag.children, state),
+                JSXChild::ExpressionContainer(c) => {
+                    if state {
+                        if let Some(e) = jsx_expr_as_expression(&c.expression) {
+                            f.out.insert(e.span().start);
+                        }
+                    }
+                    f.inherited = false;
+                    f.visit_jsx_expression_container(c);
+                }
+                other => {
+                    f.inherited = false;
+                    f.visit_jsx_child(other);
+                }
+            }
+        }
+    }
+    impl<'a> Visit<'a> for F {
+        fn visit_jsx_element(&mut self, el: &JSXElement<'a>) {
+            let inherited = std::mem::replace(&mut self.inherited, false);
+            let tag = jsx_tag_name(el);
+            let state = if tag == "foreignObject" {
+                false
+            } else if tag == "svg" || tag == "math" || is_svg_only_tag(tag) {
+                true
+            } else {
+                inherited
+            };
+            self.visit_jsx_opening_element(&el.opening_element);
+            self.inherited = false;
+            children(self, &el.children, state);
+        }
+        fn visit_jsx_fragment(&mut self, frag: &JSXFragment<'a>) {
+            let inherited = std::mem::replace(&mut self.inherited, false);
+            children(self, &frag.children, inherited);
+        }
+    }
+    let mut f = F { inherited: false, out: FxHashSet::default() };
+    f.visit_program(program);
+    f.out
 }
 
 /// Does the client PRESERVE this expression child of a templated element as a
