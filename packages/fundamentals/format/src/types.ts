@@ -18,6 +18,9 @@ export type NumberInput = number | bigint | null | undefined
  */
 export type DateInput = Date | number | string | null | undefined
 
+/** A time of day: `14:30`, `14:30:05` or `14:30:05.250`. A wall-clock value like a date-time without offset: it never shifts with the time zone. Accepted by the time formatters only. Structurally the `PlainTime` of `@pyreon/time`. */
+export type PlainTimeString = `${number}:${number}` | `${number}:${number}:${number}` | `${number}:${number}:${number}.${number}`
+
 /** `YYYY-MM-DD`, the result of {@link parseDate}. Structurally the `PlainDate` of `@pyreon/time`. */
 export type PlainDateString = `${number}-${number}-${number}`
 
@@ -31,7 +34,7 @@ export interface BaseOptions {
 
 /** Options of the date and time formatters. */
 export interface DateBaseOptions extends BaseOptions {
-  /** IANA zone. Ignored for calendar strings (`2026-11-18`), which never shift. Defaults to the active zone. */
+  /** IANA zone. Ignored for calendar strings (`2026-11-18`), which never shift. Defaults to the active zone. An invalid name warns once in dev and falls back to the active zone. */
   timeZone?: string | undefined
 }
 
@@ -97,7 +100,13 @@ export type RelativeUnit = 'second' | 'minute' | 'hour' | 'day' | 'week' | 'mont
 // ─── Number options ──────────────────────────────────────────────────────────
 
 /** Options of {@link formatNumber}: any `Intl.NumberFormat` option. */
-export interface NumberOptions extends Intl.NumberFormatOptions, BaseOptions {}
+export interface NumberOptions extends Intl.NumberFormatOptions, BaseOptions {
+  /**
+   * Default `'negative'`, unlike raw `Intl` (`'auto'`): `-0` and values that round to zero print `0`, never `-0` or `-$0.00`.
+   * Pass `'auto'` for the platform behaviour.
+   */
+  signDisplay?: Intl.NumberFormatOptions['signDisplay'] | undefined
+}
 
 /** Style shorthands of {@link formatNumber}. */
 export type NumberPreset = 'integer' | 'plain' | 'compact' | 'percent'
@@ -105,22 +114,46 @@ export type NumberPreset = 'integer' | 'plain' | 'compact' | 'percent'
 /** Options of {@link formatCurrency}. `style` and `currency` are set by the function. */
 export interface CurrencyOptions
   extends Omit<Intl.NumberFormatOptions, 'style' | 'currency'>,
-    BaseOptions {}
+    BaseOptions {
+  /**
+   * Default `'negative'`, unlike raw `Intl` (`'auto'`): `-0` and values that round to zero print `0`, never `-0` or `-$0.00`.
+   * Pass `'auto'` for the platform behaviour.
+   */
+  signDisplay?: Intl.NumberFormatOptions['signDisplay'] | undefined
+}
 
 /** Style shorthands of {@link formatCurrency}: a `currencyDisplay`, or `accounting` (negatives in parentheses where the locale does so). */
 export type CurrencyPreset = 'symbol' | 'narrowSymbol' | 'code' | 'name' | 'accounting'
 
 /** Options of {@link formatPercent}. `style` is set by the function. */
-export interface PercentOptions extends Omit<Intl.NumberFormatOptions, 'style'>, BaseOptions {}
+export interface PercentOptions extends Omit<Intl.NumberFormatOptions, 'style'>, BaseOptions {
+  /**
+   * Default `'negative'`, unlike raw `Intl` (`'auto'`): `-0` and values that round to zero print `0`, never `-0` or `-$0.00`.
+   * Pass `'auto'` for the platform behaviour.
+   */
+  signDisplay?: Intl.NumberFormatOptions['signDisplay'] | undefined
+}
 
 /** Options of {@link formatCompact}. `notation` is set by the function. */
-export interface CompactOptions extends Omit<Intl.NumberFormatOptions, 'notation'>, BaseOptions {}
+export interface CompactOptions extends Omit<Intl.NumberFormatOptions, 'notation'>, BaseOptions {
+  /**
+   * Default `'negative'`, unlike raw `Intl` (`'auto'`): `-0` and values that round to zero print `0`, never `-0` or `-$0.00`.
+   * Pass `'auto'` for the platform behaviour.
+   */
+  signDisplay?: Intl.NumberFormatOptions['signDisplay'] | undefined
+}
 
 /** Style shorthands of {@link formatCompact}. */
 export type CompactPreset = 'short' | 'long'
 
 /** Options of {@link formatUnit}. `style` and `unit` are set by the function. `unitDisplay` defaults to `'short'`. */
-export interface UnitOptions extends Omit<Intl.NumberFormatOptions, 'style' | 'unit'>, BaseOptions {}
+export interface UnitOptions extends Omit<Intl.NumberFormatOptions, 'style' | 'unit'>, BaseOptions {
+  /**
+   * Default `'negative'`, unlike raw `Intl` (`'auto'`): `-0` and values that round to zero print `0`, never `-0` or `-$0.00`.
+   * Pass `'auto'` for the platform behaviour.
+   */
+  signDisplay?: Intl.NumberFormatOptions['signDisplay'] | undefined
+}
 
 /** Style shorthands of {@link formatUnit}: a `unitDisplay`. */
 export type UnitPreset = 'short' | 'narrow' | 'long'
@@ -129,6 +162,10 @@ export type UnitPreset = 'short' | 'narrow' | 'long'
 export interface BytesOptions
   extends Omit<Intl.NumberFormatOptions, 'style' | 'unit' | 'notation' | 'currency'>,
     BaseOptions {
+  /**
+   * Default `'negative'`, unlike raw `Intl` (`'auto'`): `-0` prints `0`.
+   */
+  signDisplay?: Intl.NumberFormatOptions['signDisplay'] | undefined
   /** Use 1024 steps and IEC symbols (`KiB`, `MiB`, ...). Default `false`: 1000 steps and SI units (`kB`, `MB`, ...). */
   binary?: boolean | undefined
 }
@@ -153,6 +190,9 @@ export interface Duration {
 /** A duration, or a number of milliseconds. */
 export type DurationInput = Duration | number | null | undefined
 
+/** A unit of {@link DurationOptions.smallest}. */
+export type DurationUnit = 'year' | 'month' | 'week' | 'day' | 'hour' | 'minute' | 'second' | 'millisecond'
+
 /** Style of {@link formatDuration}. */
 export type DurationStyle = 'long' | 'short' | 'narrow' | 'digital'
 
@@ -162,7 +202,9 @@ export interface DurationOptions extends BaseOptions {
   style?: DurationStyle | undefined
   /** Show at most this many units, the most significant non-zero ones (truncated, not rounded). Ignored for `'digital'`. */
   largest?: number | undefined
-  /** Digits after the seconds in `'digital'` style, `0`-`9`. Default: as many as the input needs. */
+  /** The finest unit shown; finer parts are rounded away with carries (59 min 59.6 s with `'minute'` is `1 hr`). Default: seconds, and milliseconds only when the whole duration is under one second. */
+  smallest?: DurationUnit | undefined
+  /** Digits after the seconds in `'digital'` style, `0`-`9` (3 shows milliseconds). Default: none. */
   fractionalDigits?: number | undefined
 }
 
@@ -186,7 +228,7 @@ export interface DateTimeOptions extends Intl.DateTimeFormatOptions, DateBaseOpt
 export type DateStylePreset = 'short' | 'medium' | 'long' | 'full'
 
 /** Options of {@link formatRelative}. */
-export interface RelativeOptions extends Intl.RelativeTimeFormatOptions, BaseOptions {}
+export interface RelativeOptions extends Intl.RelativeTimeFormatOptions, DateBaseOptions {}
 
 /** Style shorthands of {@link formatRelative}: the `numeric` mode. */
 export type RelativePreset = 'always' | 'auto'
@@ -240,7 +282,7 @@ export interface ListPart {
 }
 
 /** Options of {@link relativeFormatter}: the elapsed time is measured against `base`. */
-export interface RelativeFormatterOptions extends Intl.RelativeTimeFormatOptions, BaseOptions {
+export interface RelativeFormatterOptions extends Intl.RelativeTimeFormatOptions, DateBaseOptions {
   /**
    * What the target is relative to: a date-like value, or an accessor for one
    * (`() => now()` makes the formatter track a clock signal). Required.

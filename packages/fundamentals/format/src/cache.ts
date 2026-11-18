@@ -72,6 +72,15 @@ function slotFor<F>(table: Table<F>, locale: string, variant: string): Slot<F> {
 const SEP_KEY = '\u0001'
 const SEP_ENTRY = '\u0002'
 
+/** An option value as key text; never throws (an object without `toString` is not a string). */
+function keyText(v: unknown): string {
+  try {
+    return String(v)
+  } catch {
+    return Object.prototype.toString.call(v)
+  }
+}
+
 /**
  * The structural key of an options object: own enumerable keys in insertion
  * order, `undefined` values skipped, the extras that never reach `Intl`
@@ -84,10 +93,27 @@ export function structuralKey(options: object): string {
     if (k === 'locale' || k === 'fallback') continue
     const v: unknown = (options as Record<string, unknown>)[k]
     if (v === undefined) continue
-    key += k + SEP_KEY + String(v) + SEP_ENTRY
+    key += k + SEP_KEY + keyText(v) + SEP_ENTRY
   }
 
   return key
+}
+
+/**
+ * Wrap a builder that reads option values itself (not only through `Intl`): a wrong-typed option (a symbol, an object where a number
+ * belongs) is reported as a `[Pyreon]` error that names the cause, never as the raw error. Builders that hand every option to
+ * `construct` need no wrapper, so a number-only import does not pay for it.
+ */
+export function guarded<F>(build: Builder<F>): Builder<F> {
+  return (locale, variant, options) => {
+    try {
+      return build(locale, variant, options)
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('[Pyreon]')) throw error
+      const detail = error instanceof Error ? error.message : 'an option has the wrong type'
+      throw new Error(`[Pyreon] bad formatter options: ${detail}. Check the option types.`, { cause: error })
+    }
+  }
 }
 
 /** Resolve the cached formatter for `(locale, variant, options)`, constructing it on a miss. */
@@ -97,6 +123,9 @@ export function resolve<F>(
   variant: string,
   options: object | string | undefined,
 ): F {
+  if (options !== undefined && options !== null && typeof options !== 'string' && typeof options !== 'object') {
+    throw new Error(`[Pyreon] options must be an object or a preset name, got ${typeof options}.`)
+  }
   const slot = slotFor(table, locale, variant)
   // `null` options (from untyped callers) mean "none", like `undefined`.
   if (options === undefined || options === null) {

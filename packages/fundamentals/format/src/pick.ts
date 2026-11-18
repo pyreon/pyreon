@@ -1,8 +1,14 @@
-/** Read `locale` / `timeZone` off an options argument (a string preset or `undefined` carries neither). */
+/** Read `locale` / `timeZone` off an options argument (a string preset, `undefined` or a wrong-typed value carries neither). */
 export function localeOf(options: { locale?: string | undefined } | string | undefined): string {
-  return (typeof options === 'object' && options !== null && options.locale) || ''
+  if (typeof options !== 'object' || options === null) return ''
+  const locale = options.locale
+
+  return typeof locale === 'string' ? locale : ''
 }
 
 export function zoneOf(options: { timeZone?: string | undefined } | string | undefined): string {
-  return (typeof options === 'object' && options !== null && options.timeZone) || ''
+  if (typeof options !== 'object' || options === null) return ''
+  const zone = options.timeZone
+
+  return typeof zone === 'string' ? zone : ''
 }

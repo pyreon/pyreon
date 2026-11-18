@@ -31,12 +31,17 @@ export function describe(value: unknown): string {
   return String(value)
 }
 
+/** A user value quoted for a message: strings as JSON, anything else described safely (never throws). */
+export function quote(value: unknown): string {
+  return typeof value === 'string' ? JSON.stringify(value) : describe(value)
+}
+
 /** An invalid-input warning: the formatter returns its fallback. Nullish input is not invalid and never warns. */
 export function warnInvalid(fn: string, value: unknown, expected: string): void {
   if (process.env.NODE_ENV !== 'production') {
     warnOnce(
       `${fn}:${typeof value}:${expected}`,
-      `[Pyreon] ${fn}(): expected ${expected}, got ${describe(value)}; returning the fallback. Pass a valid value, or guard nullish/invalid data before formatting.`,
+      `[Pyreon] ${fn}(): expected ${expected}, got ${describe(value)}; returning the fallback.`,
     )
   }
 }
@@ -44,4 +49,9 @@ export function warnInvalid(fn: string, value: unknown, expected: string): void 
 /** A programmer error (bad option, unknown unit, unknown preset): always thrown, with the fix in the message. */
 export function programmerError(fn: string, detail: string): Error {
   return new Error(`[Pyreon] ${fn}(): ${detail}`)
+}
+
+/** Test hook: how many distinct messages are remembered (bounded). */
+export function _warnedSize(): number {
+  return warned?.size ?? 0
 }

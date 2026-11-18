@@ -1,15 +1,19 @@
 {
   "package": "@pyreon/format",
-  "bundle": 10854,
+  "bundle": 14155,
   "imports": {
-    "core-all": 10205,
-    "core-currencyFormatter": 1722,
-    "core-formatBytes": 1502,
-    "core-formatDate": 2400,
-    "core-formatNumber": 1181,
-    "core-numberFormatter": 1589,
-    "currencyFormatter": 2001,
-    "formatNumber": 1438,
-    "formatNumber-and-setLocale": 1580
+    "core-all": 13174,
+    "core-currencyFormatter": 1851,
+    "core-formatBytes": 2338,
+    "core-formatCurrency": 1402,
+    "core-formatDate": 2963,
+    "core-formatDuration": 3063,
+    "core-formatNumber": 1306,
+    "core-numberFormatter": 1721,
+    "core-parseDate": 2500,
+    "core-parseNumber": 1994,
+    "currencyFormatter": 2129,
+    "formatNumber": 1560,
+    "formatNumber-and-setLocale": 1772
   }
 }
