@@ -149,7 +149,8 @@ The docs page has recipes (a price with the percent off, file sizes in a table, 
 ## Components
 
 ```tsx
-import { Num, DateTime } from '@pyreon/format/components'
+import { dateFormatter } from '@pyreon/format'
+import { Num, DateTime, RelativeTime } from '@pyreon/format/components'
 
 <>
   <Num value={total()} kind="currency" currency="EUR" />
