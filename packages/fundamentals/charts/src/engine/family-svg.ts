@@ -129,7 +129,7 @@ function svgTail(
 export interface PieToSvgOptions<T> {
   /** Series colours for rows without one; defaults to the theme palette. */
   palette?: readonly string[] | undefined
-  data: T[]
+  data: readonly T[]
   /** The slice magnitude. */
   value: (d: T, index: number) => Double
   /** The slice name — labels, legend and the derived description. */
@@ -274,9 +274,9 @@ export function gaugeToSvg(options: GaugeToSvgOptions): string {
 export interface RadarToSvgOptions<T> {
   /** Series colours for rows without one; defaults to the theme palette. */
   palette?: readonly string[] | undefined
-  data: T[]
+  data: readonly T[]
   /** The spokes; each axis normalises by its OWN max — see `radarPolygon`. */
-  axes: RadarAxis[]
+  axes: readonly RadarAxis[]
   /** A row's value per axis, index-aligned with `axes`. */
   values: (d: T, index: number) => Double[]
   label: (d: T, index: number) => string
@@ -348,7 +348,7 @@ export function radarToSvg<T>(options: RadarToSvgOptions<T>): string {
 }
 
 export interface CandlestickToSvgOptions<T> {
-  data: T[]
+  data: readonly T[]
   open: (d: T, index: number) => Double
   high: (d: T, index: number) => Double
   low: (d: T, index: number) => Double
@@ -443,7 +443,7 @@ export function candlestickToSvg<T>(options: CandlestickToSvgOptions<T>): string
 }
 
 export interface HeatmapToSvgOptions<T> {
-  data: T[]
+  data: readonly T[]
   /** Column category per datum. */
   x: (d: T, index: number) => string
   /** Row category per datum. */
@@ -453,7 +453,7 @@ export interface HeatmapToSvgOptions<T> {
   width?: Double
   height?: Double
   /** `#rrggbb` ramp stops, cold to hot. */
-  colors?: string[]
+  colors?: readonly string[]
   gap?: Double
   /** A visualMap's domain and selection (see `HeatSelection`). */
   selection?: HeatSelection
@@ -465,7 +465,7 @@ export interface HeatmapToSvgOptions<T> {
 }
 
 /** First-seen category order — the order the data means. */
-function firstSeen<T>(data: T[], of: (d: T, i: number) => string): string[] {
+function firstSeen<T>(data: readonly T[], of: (d: T, i: number) => string): string[] {
   const seen = new Set<string>()
   const out: string[] = []
   for (let i = 0; i < data.length; i++) {
@@ -568,7 +568,7 @@ export { fitCircle, layoutArcs }
 export interface FunnelToSvgOptions<T> {
   /** Series colours for rows without one; defaults to the theme palette. */
   palette?: readonly string[] | undefined
-  data: T[]
+  data: readonly T[]
   value: (d: T, index: number) => Double
   label: (d: T, index: number) => string
   color?: (d: T, index: number) => string
@@ -612,7 +612,7 @@ export function funnelToSvg<T>(options: FunnelToSvgOptions<T>): string {
 // ---- treemap + sunburst (svg halves; the geometry in treemap.ts / sunburst.ts is bundled into the native engine) ----
 
 export interface TreemapToSvgOptions {
-  data: TreeNode[]
+  data: readonly TreeNode[]
   width?: Double
   height?: Double
   treemap?: TreemapOptions
@@ -645,7 +645,7 @@ export function treemapToSvg(options: TreemapToSvgOptions): string {
 }
 
 export interface SunburstToSvgOptions {
-  data: TreeNode[]
+  data: readonly TreeNode[]
   width?: Double
   height?: Double
   /** Hole radius as a fraction of the outer radius (0 = full disc). */
@@ -685,7 +685,7 @@ export function sunburstToSvg(options: SunburstToSvgOptions): string {
 // ---- tree + theme river (svg halves; the geometry in tree.ts / river.ts is bundled into the native engine) ----
 
 export interface TreeToSvgOptions {
-  data: TreeNode[]
+  data: readonly TreeNode[]
   width?: Double
   height?: Double
   tree?: TreeOptions
@@ -717,8 +717,8 @@ export function treeToSvg(options: TreeToSvgOptions): string {
 }
 
 export interface ChordToSvgOptions {
-  nodes: ChordNode[]
-  links: ChordLink[]
+  nodes: readonly ChordNode[]
+  links: readonly ChordLink[]
   width?: Double
   height?: Double
   chord?: ChordOptions
@@ -753,7 +753,7 @@ export function chordToSvg(options: ChordToSvgOptions): string {
 }
 
 export interface RiverToSvgOptions {
-  series: RiverSeries[]
+  series: readonly RiverSeries[]
   width?: Double
   height?: Double
   river?: RiverOptions
@@ -786,7 +786,7 @@ export function riverToSvg(options: RiverToSvgOptions): string {
 
 export interface PolarToSvgOptions {
   axes: PolarAxes
-  series: PolarSeries[]
+  series: readonly PolarSeries[]
   width?: Double
   height?: Double
   polar?: PolarOptions
@@ -821,8 +821,8 @@ export function polarToSvg(options: PolarToSvgOptions): string {
 // ---- sankey (svg half; the geometry in sankey.ts is bundled into the native engine) ----
 
 export interface SankeyToSvgOptions {
-  nodes: SankeyNode[]
-  links: SankeyLink[]
+  nodes: readonly SankeyNode[]
+  links: readonly SankeyLink[]
   width?: Double
   height?: Double
   sankey?: SankeyOptions
@@ -863,8 +863,8 @@ export function sankeyToSvg(options: SankeyToSvgOptions): string {
 // ---- graph (svg half; the geometry in graph.ts is bundled into the native engine) ----
 
 export interface GraphToSvgOptions {
-  nodes: GraphNode[]
-  links: GraphLink[]
+  nodes: readonly GraphNode[]
+  links: readonly GraphLink[]
   width?: Double
   height?: Double
   graph?: GraphOptions
@@ -942,7 +942,7 @@ export function calendarToSvg(options: CalendarToSvgOptions): string {
 // ---- gantt (svg half; the geometry in gantt.ts is bundled into the native engine) ----
 
 export interface GanttToSvgOptions {
-  tasks: GanttTask[]
+  tasks: readonly GanttTask[]
   width?: Double
   height?: Double
   gantt?: GanttOptions
@@ -977,8 +977,8 @@ export function ganttToSvg(options: GanttToSvgOptions): string {
 // ---- parallel (svg half; the geometry in parallel.ts is bundled into the native engine) ----
 
 export interface ParallelToSvgOptions {
-  axes: ParallelAxis[]
-  rows: ParallelRow[]
+  axes: readonly ParallelAxis[]
+  rows: readonly ParallelRow[]
   width?: Double
   height?: Double
   parallel?: ParallelOptions
