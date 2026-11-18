@@ -34,7 +34,7 @@ describe('formatting in a real browser', () => {
     const html = scratch.innerHTML
     unmount()
     scratch.remove()
-    expect(html).toContain('<time datetime="2026-11-18">')
+    expect(html).toContain('<time datetime="2026-11-18"')
 
     const el = document.createElement('div')
     document.body.appendChild(el)

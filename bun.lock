@@ -1724,10 +1724,6 @@
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
-      "optionalPeers": [
-        "@pyreon/core",
-        "@pyreon/reactivity",
-      ],
     },
     "packages/fundamentals/hooks": {
       "name": "@pyreon/hooks",

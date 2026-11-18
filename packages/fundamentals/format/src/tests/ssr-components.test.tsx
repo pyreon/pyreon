@@ -27,8 +27,8 @@ const tree = () =>
 describe('SSR output', () => {
   it('renders the formatted text and <time datetime>', async () => {
     const html = await renderToString(tree())
-    expect(html).toContain('<time datetime="2026-11-18">')
-    expect(html).toContain('<time datetime="2026-11-18T23:30:00.000Z">')
+    expect(html).toMatch(/<time datetime="2026-11-18" title="[^"]*2026"[^>]*>/)
+    expect(html).toMatch(/<time datetime="2026-11-18T23:30:00.000Z" title="[^"]*"[^>]*>/)
     expect(html).toContain(new Intl.DateTimeFormat('fr', { dateStyle: 'medium', timeZone: 'UTC' }).format(Date.UTC(2026, 10, 18)))
     expect(html).toContain(new Intl.DateTimeFormat('ja', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Tokyo' }).format(Date.UTC(2026, 10, 18, 23, 30)))
   })

@@ -169,7 +169,7 @@ describe('parseDate round trip: numeric forms of formatDate(..., short)', () => 
   })
 
   it('garbage is null', () => {
-    for (const bad of ['', 'abc', '18 November 2026', '1/2', '1/2/3/4', '1/2/202', '1//2026', 'Nov 18 2026', '18.11.20266', '١٨/١١', '1/2/20x6'] ) {
+    for (const bad of ['', 'abc', 'a 18 November 2026', '1/2', '1/2/3/4', '1/2/202', '1//2026', 'Nov 2026', '18.11.20266', '١٨/١١', '1/2/20x6'] ) {
       expect(parseDate(bad, { locale: 'en-US' }), bad).toBeNull()
     }
     expect(parseDate(null)).toBeNull()

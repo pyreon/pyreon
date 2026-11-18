@@ -139,7 +139,7 @@ describe('defineFormats', () => {
     // @ts-expect-error a currency takes a number, not a Date
     expect(typeof f.price(new Date())).toBe('string')
     // @ts-expect-error a bytes format has no `currency` override
-    expect(f.size.with({ currency: 'EUR' })(1)).toBe('1 byte')
+    expect(f.size.with({ currency: 'EUR' })(1)).toBe('1 B')
     // @ts-expect-error a date formatter takes a date-like, not an array
     expect(typeof f.day(['x'])).toBe('string')
     // @ts-expect-error unknown kind
