@@ -30,6 +30,13 @@ list is reactive, so the switch repaints the same canvas.
 
 <Example file="./examples/charts/gallery-horizontal" title="Horizontal bars" />
 
+## A rank chart and a depth profile
+
+`<Axis y inverse>` reverses the value axis: here rank 1 sits at the top, and
+depth increases downward. The data and the table keep their order.
+
+<Example file="./examples/charts/gallery-rank-inverse" title="Rank and depth, inverted" />
+
 ## Bar thickness
 
 `barWidth` caps one bar's thickness in px, `barGap` spaces the bars of a group and

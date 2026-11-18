@@ -6567,6 +6567,26 @@ const rows: Row[] = [{ month: 'Jan', revenue: 3200, target: 3000 }, { month: 'Fe
 - Looking for a \`series\` array — layering IS the children; a combo chart is a \`<Bar>\` beside a \`<Line>\`, a second axis is \`<Line axis="right">\` + \`<Axis y2>\``,
   },
 
+  'charts/Axis': {
+    signature: '(props: AxisProps) => VNode | null',
+    example: `import { Axis, Bar, Chart } from '@pyreon/charts'
+
+interface Team { name: string; rank: number }
+const teams: Team[] = [{ name: 'Ada', rank: 3 }, { name: 'Bao', rank: 1 }]
+
+// Rank 1 at the top: the value axis runs downward.
+<Chart<Team> data={teams} x="name">
+  <Bar<Team> y="rank" />
+  <Axis y inverse />
+</Chart>`,
+    notes: `Configures one axis of a \`<Chart>\`: \`<Axis y format={currency('$')} domain title ticks hidden scale time inverse />\`, \`<Axis y2 …>\` for the right axis, \`<Axis x time format title labels ticks hidden />\`. One \`format\` feeds the axis, the tooltip and the accessible description. \`inverse\` (y and y2, independently) REVERSES the value axis: the high end at the bottom (the left, on a horizontal chart), bars and areas hanging from the top with their rounded ends and the ticks following, composing with log and time axes, dual axes, zoom, the crosshair and the tooltip. Only the value-to-pixel mapping flips: the data, the tooltip rows and the accessible table keep their order, and under \`rtl\` the two commute (RTL mirrors x, \`inverse\` flips y). \`<Axis x inverse>\` is not supported yet and warns. \`yInverse\` / \`y2Inverse\` lower to iOS and Android as literals. See also: Chart, Bar.`,
+    mistakes: `- Reversing the data to get a top-down ranking — that changes the table and the tooltip order too; \`<Axis y inverse>\` flips only where a value is drawn, so the table keeps reading in data order
+- Expecting bars on a reversed axis to rise from the bottom — their baseline is the axis floor, which is now the TOP, so they hang down from it (the rank-chart look); a value below zero hangs the other way
+- \`<Axis x inverse>\` to reverse the categories — only the value axes reverse; the category axis keeps its order and the prop warns by name (reverse the rows, or use \`horizontal\`)
+- Passing a computed \`inverse\` in a native app — only a literal \`inverse\` lowers (\`yInverse\` / \`y2Inverse\` are compile-time spec fields); a computed one warns and the axis stays as it was
+- Reversing y on a dual-axis chart and expecting both to flip — each axis reverses on its own: \`<Axis y inverse>\` the left, \`<Axis y2 inverse>\` the right`,
+  },
+
   'charts/Bar': {
     signature: '<T>(props: BarProps<T>) => VNode | null',
     example: `import { Bar, Chart, Tooltip, shadeBy } from '@pyreon/charts'

@@ -418,6 +418,10 @@ export interface PlotChartProps<T> {
   barGap?: number
   /** The space between categories, as a fraction of the band (default 0.25, clamped to 0..0.9). */
   barCategoryGap?: number
+  /** Reverse the value axis (high end at the bottom; bars hang from the top). Data and table order are unchanged. */
+  yInverse?: boolean
+  /** `yInverse` for the right axis of a dual-axis chart. */
+  y2Inverse?: boolean
   /**
    * A BCP 47 tag that formats the numbers (axis, tooltip, table, value
    * labels) and, with `xTime` / `yTime`, the dates through `Intl` — `de-DE`
@@ -1004,6 +1008,8 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     barWidth: props.barWidth,
     barGap: props.barGap,
     barCategoryGap: props.barCategoryGap,
+    yInverse: props.yInverse,
+    y2Inverse: props.y2Inverse,
     ...(props.xValue !== undefined
       ? { xValues: rows.map((d, i) => props.xValue!(d, gi(i))) }
       : {}),

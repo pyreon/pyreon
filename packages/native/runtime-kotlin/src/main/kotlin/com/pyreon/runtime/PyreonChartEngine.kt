@@ -98,7 +98,7 @@ data class ChartTheme(var palette: List<String>, var background: String, var sur
 
 data class Emphasis(var highlight: Long, var selected: List<Long>)
 
-data class ChartSpec(var width: Double, var height: Double, var m4Density: Double? = null, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var endLabels: Boolean? = null, var xTicks: Double? = null, var yTicks: Double? = null, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var barWidth: Double? = null, var barGap: Double? = null, var barCategoryGap: Double? = null, var rowKeys: List<String>? = null)
+data class ChartSpec(var width: Double, var height: Double, var m4Density: Double? = null, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var endLabels: Boolean? = null, var xTicks: Double? = null, var yTicks: Double? = null, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var barWidth: Double? = null, var barGap: Double? = null, var barCategoryGap: Double? = null, var yInverse: Boolean? = null, var y2Inverse: Boolean? = null, var rowKeys: List<String>? = null)
 
 data class ExtentSpan(var seen: Boolean, var lo: Double, var hi: Double)
 
@@ -2206,7 +2206,7 @@ fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotL
     val isLog = cfg.yLog == true
     val logMin = (cfg.yLogMin ?: 1.0)
     val logMax = (cfg.yLogMax ?: 10.0)
-    val valueTicksY = { r0: Double, r1: Double -> if (isLog) logViewTicks(logMin, logMax, r0, r1, cfg.yFormat) else if (cfg.yTime == true) timeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) else makeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) }
+    val valueTicksY = { r0: Double, r1: Double -> if (isLog) logViewTicks(logMin, logMax, if (cfg.yDomain.inverse == true) r1 else r0, if (cfg.yDomain.inverse == true) r0 else r1, cfg.yFormat) else if (cfg.yTime == true) timeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) else makeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) }
     val provisionalLabels = if (cfg.horizontal == true) if (cfg.showYAxis) cfg.categories else listOf() else if (cfg.showYAxis) valueTicksY(cfg.height, 0.0).map({ t -> t.label }) else listOf()
     val yProvisional = labelSample(provisionalLabels, cfg.fontSize, 0.0, measure)
     val widest = yProvisional.widest
@@ -3198,6 +3198,11 @@ fun pathLength(pts: List<PyreonChartPt>): Double {
     return total
   }
 
+fun growsToward(spec: ChartSpec, s: Series, v: Double): Boolean {
+    val flipped = if (seriesOnRightAxis(s, spec)) spec.y2Inverse == true else spec.yInverse == true
+    return (v >= 0.0) != flipped
+  }
+
 fun themeCorners(radius: Double, positive: Boolean, horizontal: Boolean): List<Double>? {
     if (radius <= 0.0) {
       return null
@@ -3273,9 +3278,11 @@ fun stateFill(s: Series, index: Long, own: String): String {
 
 fun emphasisOutline(r: PyreonChartRect, level: Long, stroke: String): PyreonDrawCmd = PyreonDrawCmd(kind = "polyline", stroke = stroke, width = if (level == 2L) 2.5 else 1.5, points = listOf(PyreonChartPt(x = r.x, y = r.y), PyreonChartPt(x = r.x + r.w, y = r.y), PyreonChartPt(x = r.x + r.w, y = r.y + r.h), PyreonChartPt(x = r.x, y = r.y + r.h), PyreonChartPt(x = r.x, y = r.y)))
 
-fun resolveYDomain(spec: ChartSpec): Domain = (spec.yDomain ?: pinDomain(spec, leftAxisSeries(spec)))
+fun resolveYDomain(spec: ChartSpec): Domain = invertIf((spec.yDomain ?: pinDomain(spec, leftAxisSeries(spec))), spec.yInverse == true)
 
-fun resolveY2Domain(spec: ChartSpec): Domain = (spec.y2Domain ?: niceDomain(rawExtentOver(rightAxisSeries(spec)), valueTicks(spec)))
+fun invertIf(d: Domain, flip: Boolean): Domain = if (flip) Domain(min = d.min, max = d.max, inverse = true) else d
+
+fun resolveY2Domain(spec: ChartSpec): Domain = invertIf((spec.y2Domain ?: niceDomain(rawExtentOver(rightAxisSeries(spec)), valueTicks(spec))), spec.y2Inverse == true)
 
 fun logBounds(spec: ChartSpec): Domain {
     val pinned = (spec.yDomain ?: Domain(min = 0.0, max = 0.0))
@@ -3879,7 +3886,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           val grown = growRectH(r)
           val fillH = stateFill(s, ri, s.color)
           if (s.symbol == null) {
-            val cmdH = rectCmd(grown, fillH, (s.corners ?: themeCorners(spec.theme.radius, ((s.values[(ri).toInt()] ?: 0.0)) >= 0.0, true)), sGrad, s.pattern)
+            val cmdH = rectCmd(grown, fillH, (s.corners ?: themeCorners(spec.theme.radius, growsToward(spec, s, (s.values[(ri).toInt()] ?: 0.0)), true)), sGrad, s.pattern)
             out.add(if (ri < rowKeys.length) keyedBar(rowKeys[(ri).toInt()], growEdgeRect(r, yDomain, plot, true), cmdH) else cmdH)
           } else {
             for (c in pictorialCommands(pictorialBar(s, grown, true, fillH))) {
@@ -3914,7 +3921,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           val grown = growRect(r, sDomain)
           val fillV = stateFill(s, ri, s.color)
           if (s.symbol == null) {
-            val cmdV = rectCmd(grown, fillV, (s.corners ?: themeCorners(spec.theme.radius, ((s.values[(ri).toInt()] ?: 0.0)) >= 0.0, false)), sGrad, s.pattern)
+            val cmdV = rectCmd(grown, fillV, (s.corners ?: themeCorners(spec.theme.radius, growsToward(spec, s, (s.values[(ri).toInt()] ?: 0.0)), false)), sGrad, s.pattern)
             out.add(if (ri < rowKeys.length) keyedBar(rowKeys[(ri).toInt()], growEdgeRect(r, sDomain, plot, false), cmdV) else cmdV)
           } else {
             for (c in pictorialCommands(pictorialBar(s, grown, false, fillV))) {

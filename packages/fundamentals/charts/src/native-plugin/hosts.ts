@@ -1001,10 +1001,12 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
           if (title !== undefined) attrs.push({ kind: 'attr', name: 'xTitle', value: title })
           const labels = attrOf(child, 'labels')
           if (labels !== undefined) attrs.push({ kind: 'attr', name: 'xLabels', value: labels })
+          if (flagOn(child, 'inverse')) warn('<Axis x inverse>: reversing the x (category) axis is not supported yet, on any target; the axis keeps its order. `<Axis y inverse>` and `<Axis y2 inverse>` reverse the value axes.')
         } else if (flagOn(child, 'y2')) {
           if (format !== undefined) attrs.push({ kind: 'attr', name: 'y2Format', value: format })
           if (domain !== undefined) attrs.push({ kind: 'attr', name: 'y2Domain', value: domain })
           if (title !== undefined) attrs.push({ kind: 'attr', name: 'y2Title', value: title })
+          if (flagOn(child, 'inverse')) attrs.push({ kind: 'attr', name: 'y2Inverse', value: lit(true) })
         } else {
           if (format !== undefined) attrs.push({ kind: 'attr', name: 'format', value: format })
           const yTicks = attrOf(child, 'ticks')
@@ -1014,6 +1016,7 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
           if (flagOn(child, 'time')) attrs.push({ kind: 'attr', name: 'yTime', value: lit(true) })
           const scale = attrOf(child, 'scale')
           if (scale !== undefined) attrs.push({ kind: 'attr', name: 'yScale', value: scale })
+          if (flagOn(child, 'inverse')) attrs.push({ kind: 'attr', name: 'yInverse', value: lit(true) })
         }
         break
       }
@@ -2054,6 +2057,8 @@ export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'barWidth', kind: 'number' },
   { name: 'barGap', kind: 'number' },
   { name: 'barCategoryGap', kind: 'number' },
+  { name: 'yInverse', kind: 'boolean' },
+  { name: 'y2Inverse', kind: 'boolean' },
 ]
 
 /**

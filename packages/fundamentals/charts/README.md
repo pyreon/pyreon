@@ -140,6 +140,17 @@ Android, as does `fill` with a literal field name (`fillBy('tone')`,
 `shadeBy('margin', { ramp })`); an accessor function stays web-only and is named
 by a compile-time warning.
 
+### Reversed value axis
+
+`<Axis y inverse>` (or `y2`, independently) puts the axis's high end at the
+bottom: a rank chart with 1 at the top, a depth profile reading downward. Bars
+and areas hang from the top, the rounded ends and the ticks follow, and it
+composes with log and time axes, dual axes, zoom, the crosshair and the tooltip.
+Only the value-to-pixel mapping flips (`Domain.inverse` through `yPx` / `xPx`, the
+single seam every y position goes through): the data and the accessible table keep
+their order. Reversing the category axis is not supported yet. Lowers to iOS and
+Android as `yInverse` / `y2Inverse` literals.
+
 ### Entrance animation
 
 On by default: bars rise from the zero line, lines draw left to right, points

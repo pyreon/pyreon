@@ -851,8 +851,10 @@ public struct ChartSpec {
   public var barWidth: Double? = nil
   public var barGap: Double? = nil
   public var barCategoryGap: Double? = nil
+  public var yInverse: Bool? = nil
+  public var y2Inverse: Bool? = nil
   public var rowKeys: [String]? = nil
-  public init(width: Double, height: Double, m4Density: Double? = nil, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, endLabels: Bool? = nil, xTicks: Double? = nil, yTicks: Double? = nil, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, barWidth: Double? = nil, barGap: Double? = nil, barCategoryGap: Double? = nil, rowKeys: [String]? = nil) {
+  public init(width: Double, height: Double, m4Density: Double? = nil, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, endLabels: Bool? = nil, xTicks: Double? = nil, yTicks: Double? = nil, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, barWidth: Double? = nil, barGap: Double? = nil, barCategoryGap: Double? = nil, yInverse: Bool? = nil, y2Inverse: Bool? = nil, rowKeys: [String]? = nil) {
     self.width = width
     self.height = height
     self.m4Density = m4Density
@@ -887,6 +889,8 @@ public struct ChartSpec {
     self.barWidth = barWidth
     self.barGap = barGap
     self.barCategoryGap = barCategoryGap
+    self.yInverse = yInverse
+    self.y2Inverse = y2Inverse
     self.rowKeys = rowKeys
   }
 }
@@ -4854,7 +4858,7 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
     let isLog = cfg.yLog == true
     let logMin = (cfg.yLogMin ?? 1.0)
     let logMax = (cfg.yLogMax ?? 10.0)
-    let valueTicksY = { (r0: Double, r1: Double) in isLog ? logViewTicks(logMin, logMax, r0, r1, cfg.yFormat) : cfg.yTime == true ? timeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) : makeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) }
+    let valueTicksY = { (r0: Double, r1: Double) in isLog ? logViewTicks(logMin, logMax, cfg.yDomain.inverse == true ? r1 : r0, cfg.yDomain.inverse == true ? r0 : r1, cfg.yFormat) : cfg.yTime == true ? timeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) : makeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) }
     let provisionalLabels = cfg.horizontal == true ? cfg.showYAxis ? cfg.categories : [] : cfg.showYAxis ? valueTicksY(cfg.height, 0.0).map({ t in t.label }) : []
     let yProvisional = labelSample(provisionalLabels, cfg.fontSize, 0.0, measure)
     let widest = yProvisional.widest
@@ -5846,6 +5850,11 @@ public func pathLength(_ pts: [PyreonChartPt]) -> Double {
     return total
   }
 
+public func growsToward(_ spec: ChartSpec, _ s: Series, _ v: Double) -> Bool {
+    let flipped = seriesOnRightAxis(s, spec) ? spec.y2Inverse == true : spec.yInverse == true
+    return (v >= 0.0) != flipped
+  }
+
 public func themeCorners(_ radius: Double, _ positive: Bool, _ horizontal: Bool) -> [Double]? {
     if radius <= 0.0 {
       return nil
@@ -5922,9 +5931,11 @@ public func stateFill(_ s: Series, _ index: Int, _ own: String) -> String {
 
 public func emphasisOutline(_ r: PyreonChartRect, _ level: Int, _ stroke: String) -> PyreonDrawCmd { PyreonDrawCmd(kind: "polyline", stroke: stroke, width: level == 2 ? 2.5 : 1.5, points: [PyreonChartPt(x: r.x, y: r.y), PyreonChartPt(x: r.x + r.w, y: r.y), PyreonChartPt(x: r.x + r.w, y: r.y + r.h), PyreonChartPt(x: r.x, y: r.y + r.h), PyreonChartPt(x: r.x, y: r.y)]) }
 
-public func resolveYDomain(_ spec: ChartSpec) -> Domain { (spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec))) }
+public func resolveYDomain(_ spec: ChartSpec) -> Domain { invertIf((spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec))), spec.yInverse == true) }
 
-public func resolveY2Domain(_ spec: ChartSpec) -> Domain { (spec.y2Domain ?? niceDomain(rawExtentOver(rightAxisSeries(spec)), valueTicks(spec))) }
+public func invertIf(_ d: Domain, _ flip: Bool) -> Domain { flip ? Domain(min: d.min, max: d.max, inverse: true) : d }
+
+public func resolveY2Domain(_ spec: ChartSpec) -> Domain { invertIf((spec.y2Domain ?? niceDomain(rawExtentOver(rightAxisSeries(spec)), valueTicks(spec))), spec.y2Inverse == true) }
 
 public func logBounds(_ spec: ChartSpec) -> Domain {
     let pinned = (spec.yDomain ?? Domain(min: 0.0, max: 0.0))
@@ -6523,7 +6534,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           let grown = growRectH(r)
           let fillH = stateFill(s, ri, s.color)
           if s.symbol == nil {
-            let cmdH = rectCmd(grown, fillH, (s.corners ?? themeCorners(spec.theme.radius, ((s.values[ri] ?? 0.0)) >= 0.0, true)), sGrad, s.pattern)
+            let cmdH = rectCmd(grown, fillH, (s.corners ?? themeCorners(spec.theme.radius, growsToward(spec, s, (s.values[ri] ?? 0.0)), true)), sGrad, s.pattern)
             out.append(ri < rowKeys.count ? keyedBar(rowKeys[ri], growEdgeRect(r, yDomain, plot, true), cmdH) : cmdH)
           } else {
             for c in pictorialCommands(pictorialBar(s, grown, true, fillH)) {
@@ -6558,7 +6569,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           let grown = growRect(r, sDomain)
           let fillV = stateFill(s, ri, s.color)
           if s.symbol == nil {
-            let cmdV = rectCmd(grown, fillV, (s.corners ?? themeCorners(spec.theme.radius, ((s.values[ri] ?? 0.0)) >= 0.0, false)), sGrad, s.pattern)
+            let cmdV = rectCmd(grown, fillV, (s.corners ?? themeCorners(spec.theme.radius, growsToward(spec, s, (s.values[ri] ?? 0.0)), false)), sGrad, s.pattern)
             out.append(ri < rowKeys.count ? keyedBar(rowKeys[ri], growEdgeRect(r, sDomain, plot, false), cmdV) : cmdV)
           } else {
             for c in pictorialCommands(pictorialBar(s, grown, false, fillV)) {

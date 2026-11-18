@@ -339,6 +339,18 @@ iOS and Android as a literal.
   2× and 5× minors under two decades), non-positive values as gaps, bars
   growing from the axis floor. Tooltip, table and value labels keep the real
   values — the view is geometry, not a data edit. A right axis stays linear.
+- **Reversed value axis** — `<Axis y inverse>` (and `<Axis y2 inverse>` for the
+  right axis, independently) puts the high end at the bottom, the left on a
+  horizontal chart: a rank chart reads 1 at the top, a depth profile reads depth
+  going down. Bars and areas hang from the top (their baseline is the axis floor,
+  which is now the top), the rounded ends move to the free end, the ticks run the
+  other way, and it composes with log and time axes, dual axes, a zoom window, the
+  crosshair, the tooltip and the hit targets. Only the mapping from a value to a
+  pixel flips: **the data, the tooltip rows and the accessible table keep their
+  order**. Under `rtl` the two commute: RTL mirrors x, a reversed axis flips y.
+  Reversing the x (category) axis is not supported yet on any target; `<Axis x
+  inverse>` warns and the axis keeps its order. On iOS and Android `yInverse` and
+  `y2Inverse` lower as literals (a computed value warns by name).
 - **Time y axis** — `yTime` (or `<Scale y="time">`), the twin of `xTime`.
 - **Axis titles** — `xTitle` / `yTitle` / `y2Title` (or `<Axis x title>`), each
   in a line of its own outside the tick labels, the y titles running along

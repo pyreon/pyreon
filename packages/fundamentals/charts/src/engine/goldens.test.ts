@@ -65,6 +65,13 @@ const GOLDENS: Record<string, () => string> = {
   'plot-item-fill-rtl': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue, { label: 'Revenue', fill: shadeBy<Row>('cost', { ramp: ['#fde68a', '#b45309'] }) as never })], x: (d) => d.month, rtl: true, ...SIZE }),
   'plot-item-fill-horizontal': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue, { label: 'Revenue', fill: fillBy<Row>((d, i) => ['#2563eb', '#16a34a', '', '#dc2626'][i]) as never })], x: (d) => d.month, horizontal: true, ...SIZE }),
   'plot-connect-nulls': () => chartToSvg({ data: [{ month: 'Jan', revenue: 120, cost: 80 }, { month: 'Feb', revenue: Number.NaN, cost: 70 }, { month: 'Mar', revenue: 160, cost: Number.NaN }, { month: 'Apr', revenue: 140, cost: 100 }] as Row[], marks: [line<Row>((d) => d.revenue, { label: 'Revenue', connectNulls: true }), area<Row>((d) => d.cost, { label: 'Cost', connectNulls: true })], x: (d) => d.month, ...SIZE }),
+  // yInverse: bars hang from the top, ticks run the other way; one golden per geometry the flip must keep correct.
+  'plot-inverse-bars-line': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue, { label: 'Revenue' }), line<Row>((d) => d.cost, { label: 'Cost' })], x: (d) => d.month, yInverse: true, ...SIZE }),
+  'plot-inverse-grouped-horizontal': () => chartToSvg({ data: ROWS, marks: [groupedBars<Row>((d) => d.revenue), groupedBars<Row>((d) => d.cost)], x: (d) => d.month, horizontal: true, yInverse: true, ...SIZE }),
+  'plot-inverse-stacked': () => chartToSvg({ data: ROWS, marks: [stackedBars<Row>((d) => d.revenue), stackedBars<Row>((d) => d.cost)], x: (d) => d.month, yInverse: true, ...SIZE }),
+  'plot-inverse-area-dual': () => chartToSvg({ data: ROWS, marks: [area<Row>((d) => d.revenue, { label: 'Revenue' }), line<Row>((d) => d.cost, { label: 'Cost', axis: 'right' })], x: (d) => d.month, yInverse: true, y2Inverse: true, ...SIZE }),
+  'plot-inverse-dual-right-only': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue), line<Row>((d) => d.cost, { axis: 'right' })], x: (d) => d.month, y2Inverse: true, ...SIZE }),
+  'plot-inverse-rtl': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue)], x: (d) => d.month, yInverse: true, rtl: true, ...SIZE }),
   'plot-annotated': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue)], x: (d) => d.month, annotations: [{ y: 100, label: 'goal' }, { yFrom: 130, yTo: 150 }], ...SIZE }),
   pie: () => pieToSvg({ data: ROWS, value: (d) => d.revenue, label: (d) => d.month, innerRadius: 0.5, showLabels: true, ...SIZE }),
   gauge: () => gaugeToSvg({ value: 0.72, max: 1, showValue: true, ...SIZE }),

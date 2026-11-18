@@ -58,6 +58,10 @@ export interface ChartToSvgOptions<T> {
   barGap?: number
   /** Space between categories, as a fraction of the band — see `PlotChartProps.barCategoryGap`. */
   barCategoryGap?: number
+  /** Reverse the value axis — see `PlotChartProps.yInverse`. */
+  yInverse?: boolean
+  /** Reverse the right axis — see `PlotChartProps.y2Inverse`. */
+  y2Inverse?: boolean
   /**
    * Text measurement. Defaults to the approximation, which is what makes this
    * callable on a server — pass `canvasMeasure(ctx, font)` in a browser when
@@ -115,6 +119,8 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
     barWidth: options.barWidth,
     barGap: options.barGap,
     barCategoryGap: options.barCategoryGap,
+    yInverse: options.yInverse,
+    y2Inverse: options.y2Inverse,
   }
   const measure = options.measure ?? measureApprox()
   // Same seam as the canvas host's `present`: RTL is the mirror of the

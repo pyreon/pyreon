@@ -370,6 +370,15 @@ export interface ChartSpec {
   /** The space between categories, as a fraction of the band (0.25 by default, clamped to 0..0.9). */
   barCategoryGap?: Double | undefined
   /**
+   * Reverse the value axis: its high end at the bottom (the left, on a
+   * horizontal chart) and bars hanging from the top. The data and the
+   * accessible table keep their order; only the mapping from a value to a pixel
+   * flips, through `Domain.inverse` (see `scaleLinear`).
+   */
+  yInverse?: boolean | undefined
+  /** `yInverse` for the right axis of a dual-axis chart; each axis flips on its own. */
+  y2Inverse?: boolean | undefined
+  /**
    * One key per row (`<Chart by>`), aligned with the series values. When set,
    * every plain / stacked / grouped bar command carries its row's `key` and
    * `enter` rect, and a line whose points are its rows one-to-one carries
@@ -387,6 +396,17 @@ export interface ChartSpec {
  * Stacked and grouped bars keep their mark corners only: rounding every
  * segment breaks a stack.
  */
+/**
+ * Whether a bar of value `v` grows toward the axis's high end (up on a vertical
+ * chart, right on a horizontal one). A reversed axis flips the direction, so
+ * the rounded corners — which sit on the free end — flip with it.
+ */
+function growsToward(spec: ChartSpec, s: Series, v: Double): boolean {
+  const flipped = seriesOnRightAxis(s, spec) ? spec.y2Inverse === true : spec.yInverse === true
+
+  return (v >= 0.0) !== flipped
+}
+
 export function themeCorners(radius: Double, positive: boolean, horizontal: boolean): Double[] | undefined {
   if (radius <= 0.0) return undefined
   if (horizontal) return positive ? [0.0, radius, radius, 0.0] : [radius, 0.0, 0.0, radius]
@@ -493,7 +513,12 @@ export function emphasisOutline(r: Rect, level: number, stroke: string): DrawCmd
 export function resolveYDomain(spec: ChartSpec): Domain {
   // `?? derive` rather than an early return: Swift does not narrow
   // `spec.yDomain` through the guard, and the coalesce is the same contract.
-  return spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec))
+  return invertIf(spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec)), spec.yInverse === true)
+}
+
+/** The domain with its mapping reversed (`Domain.inverse`) when `flip`; the same domain otherwise. */
+function invertIf(d: Domain, flip: boolean): Domain {
+  return flip ? { min: d.min, max: d.max, inverse: true } : d
 }
 
 /**
@@ -505,7 +530,7 @@ export function resolveYDomain(spec: ChartSpec): Domain {
  * it anyway.
  */
 export function resolveY2Domain(spec: ChartSpec): Domain {
-  return spec.y2Domain ?? niceDomain(rawExtentOver(rightAxisSeries(spec)), valueTicks(spec))
+  return invertIf(spec.y2Domain ?? niceDomain(rawExtentOver(rightAxisSeries(spec)), valueTicks(spec)), spec.y2Inverse === true)
 }
 
 /**
@@ -1338,7 +1363,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           /* v8 ignore next — `(s.values[ri] ?? 0.0)` is unreachable: `ri` indexes
              rects built FROM `s.values`, so the read is always in range. Native
              needs the unwrap; the web cannot reach it. */
-          const cmdH = rectCmd(grown, fillH, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad, s.pattern)
+          const cmdH = rectCmd(grown, fillH, s.corners ?? themeCorners(spec.theme.radius, growsToward(spec, s, s.values[ri] ?? 0.0), true), sGrad, s.pattern)
           out.push(ri < rowKeys.length ? keyedBar(rowKeys[ri]!, growEdgeRect(r, yDomain, plot, true), cmdH) : cmdH)
         } else {
           for (const c of pictorialCommands(pictorialBar(s, grown, true, fillH))) out.push(c)
@@ -1374,7 +1399,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           /* v8 ignore next — `(s.values[ri] ?? 0.0)` is unreachable: `ri` indexes
              rects built FROM `s.values`, so the read is always in range. Native
              needs the unwrap; the web cannot reach it. */
-          const cmdV = rectCmd(grown, fillV, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad, s.pattern)
+          const cmdV = rectCmd(grown, fillV, s.corners ?? themeCorners(spec.theme.radius, growsToward(spec, s, s.values[ri] ?? 0.0), false), sGrad, s.pattern)
           out.push(ri < rowKeys.length ? keyedBar(rowKeys[ri]!, growEdgeRect(r, sDomain, plot, false), cmdV) : cmdV)
         } else {
           for (const c of pictorialCommands(pictorialBar(s, grown, false, fillV))) out.push(c)
