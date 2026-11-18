@@ -26,7 +26,7 @@ const btnBase = (t: T) => ({
   disabled: { opacity: 0.5, cursor: 'not-allowed' },
 })
 export const DemoButton = el
-  .attrs({ tag: 'button', css: 'display:inline-flex;align-items:center;justify-content:center;' })
+  .attrs({ tag: 'button', styles: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center' } })
   .theme(btnBase)
   .variants((t) => ({
     solid: { backgroundColor: t.accent, color: '#fff', boxShadow: `0 6px 16px -6px ${hexToRgba(t.accent, 0.6)}` },
@@ -41,7 +41,7 @@ export const DemoButton = el
   }))
 
 export const DemoBadge = el
-  .attrs({ tag: 'span', css: 'display:inline-flex;align-items:center;justify-content:center;' })
+  .attrs({ tag: 'span', styles: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center' } })
   .theme((t) => cx(`font-family:'Public Sans',sans-serif;font-size:12.5px;font-weight:600;padding:4px 11px;border-radius:20px;display:inline-flex;align-items:center;gap:7px;border:1px solid transparent;background:${hexToRgba(t.accent, 0.14)};color:${t.accent};`))
   .variants((t) => ({
     soft: { backgroundColor: hexToRgba(t.accent, 0.14), color: t.accent },
@@ -51,7 +51,7 @@ export const DemoBadge = el
 
 export const IconDot = el.attrs({ tag: 'span' }).theme(() => cx('width:7px;height:7px;border-radius:9px;background:currentColor;display:inline-block;'))
 
-const ToggleRoot = el.attrs({ tag: 'label', css: 'display:inline-flex;align-items:center;justify-content:center;' }).theme((t) => cx(`display:inline-flex;align-items:center;gap:11px;cursor:pointer;font-family:'Public Sans',sans-serif;color:${t.text};`))
+const ToggleRoot = el.attrs({ tag: 'label', styles: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center' } }).theme((t) => cx(`display:inline-flex;align-items:center;gap:11px;cursor:pointer;font-family:'Public Sans',sans-serif;color:${t.text};`))
 const ToggleTrack = el
   .attrs({ tag: 'span' })
   .theme((t) => cx(`cursor:pointer;width:46px;height:26px;border-radius:20px;position:relative;display:inline-block;transition:background .15s;background:${t.border};`))
@@ -62,7 +62,7 @@ const ToggleKnob = el
   .states(() => ({ on: { left: '22px' }, off: {} }))
 const ToggleText = txt.attrs({ tag: 'span' }).theme(() => cx('font-size:14px;font-weight:500;'))
 
-const FieldRoot = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:column;align-items:stretch;' }).theme(() => cx("width:260px;text-align:left;font-family:'Public Sans',sans-serif;"))
+const FieldRoot = el.attrs({ tag: 'div', styles: { display: 'flex', flexDirection: 'column', alignItems: 'stretch' } }).theme(() => cx("width:260px;text-align:left;font-family:'Public Sans',sans-serif;"))
 const FieldLabel = txt.attrs({ tag: 'label' }).theme((t) => cx(`display:block;font-size:12.5px;font-weight:600;margin-bottom:6px;color:${t.text};`))
 const FieldInput = (el
   .attrs({ tag: 'input' })
