@@ -82,9 +82,9 @@ describe('a mixed String/non-String `+` concatenates on both targets', () => {
   it('control: Int + Int arithmetic is untouched', () => {
     const body = `const n = signal(5)
   const out = n() + 3`
-    expect(outLine('swift', body)).toContain('n + 3')
+    expect(outLine('swift', body)).toContain('pyreonAdd(n, 3)')
     expect(outLine('swift', body)).not.toContain('String(')
-    expect(outLine('kotlin', body)).toContain('n + 3')
+    expect(outLine('kotlin', body)).toContain('pyreonAdd(n, 3L)')
     expect(outLine('kotlin', body)).not.toContain('.toString()')
   })
 

@@ -37,7 +37,7 @@ describe('Kotlin createFlow: property reads drop their parens', () => {
       <Text>{flow.viewport().x}</Text>
       <Text>{flow.selectedNodes().length}</Text>`).code
     expect(out).toContain('flow.edges.length')
-    expect(out).toContain('${flow.zoom}')
+    expect(out).toContain('${pyreonOptionalText(flow.zoom, "")}')
     expect(out).toContain('flow.viewport.x')
     // deliberately NOT rewritten — the Kotlin port names it a method too
     expect(out).toContain('flow.selectedNodes()')

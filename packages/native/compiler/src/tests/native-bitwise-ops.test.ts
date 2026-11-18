@@ -47,11 +47,11 @@ describe('bitwise operators', () => {
   const shr = computed(() => a() >> 1)`),
       { target: 'swift' },
     )
-    expect(r.code).toContain('a & b')
-    expect(r.code).toContain('a | b')
-    expect(r.code).toContain('a ^ b')
-    expect(r.code).toContain('a << 2')
-    expect(r.code).toContain('a >> 1')
+    expect(r.code).toContain('pyreonBitAnd(a, b)')
+    expect(r.code).toContain('pyreonBitOr(a, b)')
+    expect(r.code).toContain('pyreonBitXor(a, b)')
+    expect(r.code).toContain('pyreonShl(a, 2)')
+    expect(r.code).toContain('pyreonShr(a, 1)')
     expect(r.warnings).toEqual([])
   })
 
@@ -64,24 +64,27 @@ describe('bitwise operators', () => {
   const shr = computed(() => a() >> 1)`),
       { target: 'kotlin' },
     )
-    expect(r.code).toContain('a and b')
-    expect(r.code).toContain('a or b')
-    expect(r.code).toContain('a xor b')
-    expect(r.code).toContain('a shl 2')
-    expect(r.code).toContain('a shr 1')
+    expect(r.code).toContain('pyreonBitAnd(a, b)')
+    expect(r.code).toContain('pyreonBitOr(a, b)')
+    expect(r.code).toContain('pyreonBitXor(a, b)')
+    expect(r.code).toContain('pyreonShl(a, 2L)')
+    expect(r.code).toContain('pyreonShr(a, 1L)')
     expect(r.warnings).toEqual([])
   })
 
   it('parenthesizes a compound operand to preserve JS grouping (both targets)', () => {
     // JS: `a & b + 1` === `a & (b + 1)` (`+` binds tighter than `&`).
     const body = `  const m = computed(() => a() & b() + 1)`
-    expect(transform(app(body), { target: 'swift' }).code).toContain('a & (b + 1)')
-    expect(transform(app(body), { target: 'kotlin' }).code).toContain('a and (b + 1L)')
+    expect(transform(app(body), { target: 'swift' }).code).toContain('pyreonBitAnd(a, pyreonAdd(b, 1))')
+    expect(transform(app(body), { target: 'kotlin' }).code).toContain('pyreonBitAnd(a, pyreonAdd(b, 1L))')
   })
 
-  it('still warn-falls-back for `>>>` (unsigned shift — deliberately unsupported)', () => {
-    const r = transform(app(`  const u = computed(() => a() >>> 1)`), { target: 'swift' })
-    expect(r.warnings.some((w) => w.includes('>>>'))).toBe(true)
+  it('lowers `>>>` (unsigned shift) through the 32-bit helper, with no warning', () => {
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(app(`  const u = computed(() => a() >>> 1)`), { target })
+      expect(r.warnings).toEqual([])
+      expect(r.code).toMatch(/pyreonUshr\(a, 1L?\)/)
+    }
   })
 
   it.skipIf(!isSwiftcAvailable())('Swift: bitwise emit parses via swiftc -parse', () => {

@@ -127,6 +127,7 @@ function arrowReturnedCall(arrow: AnyNode | undefined): AnyNode | undefined {
     body = stmts[0].argument as AnyNode | undefined
     if (body?.type === 'ParenthesizedExpression') body = body.expression as AnyNode | undefined
   }
+
   return body?.type === 'CallExpression' ? body : undefined
 }
 
@@ -141,6 +142,7 @@ function arrowExprBody(arrow: AnyNode | undefined): AnyNode | undefined {
   const body = arrow!.body as AnyNode | undefined
   if (body?.type !== 'BlockStatement') return body
   const stmts = (body.body as AnyNode[] | undefined) ?? []
+
   return stmts.length === 1 && stmts[0]?.type === 'ReturnStatement' ? (stmts[0].argument as AnyNode | undefined) : undefined
 }
 
@@ -164,6 +166,7 @@ function identifierReferenced(node: AnyNode | undefined, name: string): boolean 
     }
   }
   visit(node)
+
   return found
 }
 
@@ -203,6 +206,7 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
     ctx.report(
       `Declaration ${name}: useQuery without a response type lowers to a decode of Any on Swift, which does NOT compile — Any cannot conform to Decodable. Give it the shape you expect: useQuery<Response>(() => ({ … })). Kotlin compiles either way, so this breaks iOS only.`,
     )
+
     return null
   }
   const optsFn = init.arguments?.[0] as AnyNode | undefined
@@ -210,6 +214,7 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
     ctx.report(
       `Declaration ${name}: useQuery expects an options function \`() => ({ queryKey, queryFn, staleTime })\`; got ${optsFn?.type ?? 'nothing'}. The @pyreon/query hooks take options as a FUNCTION so queryKey can read signals.`,
     )
+
     return null
   }
   // The @pyreon/http endpoint `.query()` fetcher form —
@@ -271,6 +276,7 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
         exprs: (resolved.urlExpr as { exprs: ExprIR[] }).exprs,
       }
     }
+
     return queryDecl({
       type,
       // `url` is omitted when a template took its place — the declaration
@@ -287,6 +293,7 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
     ctx.report(
       `Declaration ${name}: useQuery options function must return an object literal \`({ queryKey, queryFn, staleTime })\` to lower to native.`,
     )
+
     return null
   }
   let queryKey: string | undefined
@@ -296,9 +303,16 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
   let valueExpr: ExprIR | undefined
   let queryFnSeen = false
   let staleMillis = 0
+  let enabled: ExprIR | undefined
   const req: FetchInitFields = {}
   for (const prop of (optsObj.properties as AnyNode[] | undefined) ?? []) {
-    if (prop.type !== 'Property') continue
+    if (prop.type !== 'Property') {
+      // A spread could carry `enabled`, `refetchInterval`, … — none of which the native query would honour.
+      ctx.report(
+        `Declaration ${name}: useQuery options spread (\`...x\`) cannot be read at compile time and is IGNORED on native — pass the options literally.`,
+      )
+      continue
+    }
     if (hasDynamicKey(prop)) {
       warnDynamicKey(prop, `Declaration ${name}: useQuery options`, ctx)
       continue
@@ -317,6 +331,7 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
         ctx.report(
           `Declaration ${name}: useQuery queryKey must be an ARRAY of string/number literals or expressions (\`['todo', id()]\`) to lower to native; got ${(prop.value as AnyNode | undefined)?.type ?? 'nothing'}.`,
         )
+
         return null
       }
       queryKey = k.literal
@@ -339,6 +354,7 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
           ctx.report(
             `Declaration ${name}: useQuery queryFn must be an inline \`() => fetch('<url>')\` (literal OR template URL) or a \`() => <expr>\` returning the decoded value directly; a function reference, a \`fetch(<non-url>)\`, or an \`await\`/multi-statement body is a tracked follow-up.`,
           )
+
           return null
         }
         valueExpr = ctx.expr(v)
@@ -352,12 +368,38 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
           `Declaration ${name}: useQuery staleTime must be a number literal (ms) to lower to native; got ${v.type}. Defaulting to 0 (always revalidate, serving the stale value instantly).`,
         )
       }
+    } else if (key === 'enabled') {
+      // `enabled: false | expr | () => expr` — the web skips the fetch while it is false and fetches once it turns
+      // true (`enabled: session() !== null`, the documented authenticated-request pattern). It used to be dropped
+      // with no word, so native fetched on mount with no session.
+      const node = unwrapTypeLayers(prop.value as AnyNode | undefined)
+      const v = literalScalar(node)
+      if (v === true) continue
+      if (v === false) {
+        enabled = { kind: 'literal', value: false }
+        continue
+      }
+      const expr = arrowExprBody(node) ?? (isFunctionNode(node) ? undefined : node)
+      if (expr === undefined) {
+        ctx.report(
+          `Declaration ${name}: useQuery \`enabled\` must be a boolean, an expression, or an accessor returning one (\`() => ready()\`) to lower to native — IGNORED, so the query fetches regardless on iOS and Android.`,
+        )
+        continue
+      }
+      enabled = ctx.expr(expr)
+    } else {
+      // Every other option (`refetchInterval`, `refetchOnWindowFocus`, `retry`, `select`, `placeholderData`,
+      // …) used to be dropped with no word: `enabled: false` still fetched on mount and `refetchInterval` never polled.
+      ctx.report(
+        `Declaration ${name}: useQuery option \`${key}\` has no native lowering and is IGNORED on iOS and Android — the native query fetches when it appears and when its key or \`enabled\` changes, and re-fetches only on \`refetch()\`. Only \`queryKey\`, \`queryFn\`, \`staleTime\` and \`enabled\` lower.`,
+      )
     }
   }
   if (queryKey === undefined) {
     ctx.report(
       `Declaration ${name}: useQuery needs a queryKey to lower to native.`,
     )
+
     return null
   }
   // Exactly one of the three queryFn forms must have resolved: a literal URL
@@ -370,11 +412,13 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
         `Declaration ${name}: useQuery needs a queryFn to lower to native.`,
       )
     }
+
     return null
   }
   // A fetched (not direct-value) query decodes its response into `type`, with no schema to settle its number fields: record it
   // so the core can name an integer-default field a fractional payload would fail to decode (#3956).
   if (valueExpr === undefined) ctx.recordDecode(type, undefined)
+
   return queryDecl({
     type,
     queryKey,
@@ -383,6 +427,7 @@ export function recognizeQuery(_call: CallSite, ctx: ParseContext): ExtDeclSpec 
     ...(urlExpr !== undefined ? { urlExpr } : {}),
     ...(valueExpr !== undefined ? { valueExpr } : {}),
     ...(queryKeyExpr !== undefined ? { queryKeyExpr } : {}),
+    ...(enabled !== undefined ? { enabled } : {}),
     ...req,
   })
 }
@@ -423,6 +468,7 @@ export function recognizeStream(_call: CallSite, ctx: ParseContext): ExtDeclSpec
     ctx.report(
       `Declaration ${name}: useStream ${why} This stream stays web — on iOS and Android the call is reproduced verbatim and does not compile.`,
     )
+
     return null
   }
   const ignored = (what: string, why: string): void => {
@@ -483,10 +529,13 @@ export function recognizeStream(_call: CallSite, ctx: ParseContext): ExtDeclSpec
         if (propName(hp)?.toLowerCase() !== 'accept') return true
         const a = literalScalar(hp.value as AnyNode | undefined)
         if (typeof a === 'string') accept = a
+
         return typeof a !== 'string'
       })
+
       return literal.length > 0 ? [{ ...p, value: { ...v, properties: literal } } as AnyNode] : []
     }
+
     return [p]
   })
   const filtered = epArg !== undefined ? ({ ...epArg, properties: kept } as AnyNode) : undefined
@@ -667,6 +716,7 @@ export function recognizeStream(_call: CallSite, ctx: ParseContext): ExtDeclSpec
   // integer-default number field a fractional payload would fail to decode is named (#3956). No response schema: a
   // stream endpoint's `response` does not describe one event.
   if (!sseText) ctx.recordDecode(dataType, undefined)
+
   return {
     type: STREAM_TYPE,
     payload: {
@@ -726,6 +776,7 @@ function endpointQueryCallInArrow(
   ) {
     return { name: callee.object.name as string, call: expr }
   }
+
   return undefined
 }
 
@@ -755,6 +806,7 @@ export function arrowReturnedObject(arrow: AnyNode): AnyNode | undefined {
       }
     }
   }
+
   return undefined
 }
 
@@ -799,6 +851,7 @@ export function tryQueryKeyParts(
     }
   }
   const literal = literalParts.join(':')
+
   return hasExpr ? { literal, expr: { kind: 'template', quasis, exprs } } : { literal }
 }
 
@@ -864,6 +917,7 @@ export function tryQueryFnFetch(
     }
   }
   visit(node.body)
+
   return found
 }
 
@@ -923,6 +977,7 @@ function tryQueryFnValue(node: AnyNode): AnyNode | undefined {
     }
   }
   visit(expr)
+
   return disallowed ? undefined : expr
 }
 
@@ -951,6 +1006,7 @@ function parseFetchInitObject(
     ctx.report(
       `Declaration ${name}: useQuery queryFn fetch init must be an object literal to lower to native; got ${initNode.type}. The request will be a plain GET.`,
     )
+
     return req
   }
   for (const prop of (initNode.properties as AnyNode[] | undefined) ?? []) {
@@ -1010,6 +1066,7 @@ function parseFetchInitObject(
       if (Object.keys(headerExprs).length > 0) req.headerExprs = headerExprs
     }
   }
+
   return req
 }
 

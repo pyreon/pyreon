@@ -116,7 +116,7 @@ function formatError(pkg: string, existing: SingletonMarker, current: SingletonM
     `[Pyreon] Multiple instances of ${pkg} detected — this breaks reactivity/lifecycle/context contracts.\n` +
     `  A: ${existing.location} (v${existing.version})\n` +
     `  B: ${current.location} (v${current.version})\n` +
-    `Run 'pyreon doctor --check-dedup'. PYREON_SINGLE_INSTANCE=warn|silent overrides.`
+    `Run 'pyreon doctor --only check-dedup'. PYREON_SINGLE_INSTANCE=warn|silent overrides.`
   // The full remediation guide ships in DEV only — the strings were ~1KB of
   // every production bundle for a message users act on at dev time; prod keeps
   // the compact core (both locations + versions + the doctor pointer).

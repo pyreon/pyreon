@@ -47,6 +47,12 @@ The callback runs after the surrounding component's setup, when no scope is curr
 
 ---
 
+### [FIXED, 2026-11] Resetting the current effect scope to `null` instead of restoring it.
+
+`mountComponent` and `hydrateComponent` ended setup with `setCurrentScope(null)`. A component can mount while another scope is current: inside a parent's `onMount` (`runInScope`) when a signal write flips a `<Show>`, inside a `<For>` row's collector, inside a parent's compiled template. The reset left everything that owner created afterwards with no owner, so an effect created later in the same `onMount` kept running after the parent unmounted. **Rule: code that sets the current scope saves the previous one and restores it on every exit path (`runInScope`, `runRowCallback`), never a constant.** Reference: `runtime-dom/src/mount.ts`, `hydrate.ts`; locked by `mount-restores-scope.test.ts` (h(), hydration, and both compiler backends; bisect-verified).
+
+---
+
 ### Measuring layout in a `ref` inside `<For>`
 
 `<For>` mounts its initial rows into a fragment and moves them into the document afterwards, so a row's `ref` fires on a detached element and `getBoundingClientRect()` returns zeros. Recording that size breaks consumers (in `@pyreon/virtual`, TanStack compensated scroll for the 0 → 40px corrections and the window rendered from the wrong row). A layout read in a `ref` must check `el.isConnected` and defer (a microtask is enough for `<For>`). Reference: `packages/fundamentals/virtual/src/detached-measure.ts` + `tests/detached-measure.test.ts`.
@@ -80,6 +86,12 @@ Solid-compat's `onCleanup` always meant "component unmount", so a cleanup regist
 ### An effect wrapper storing its per-run cleanup in a closure
 
 `watch(source, cb)` used to park a returned cleanup in a local `let`, so it ran only on the next re-run or an explicit `stop()` — never when the owning scope disposed the effect, which is how components use `watch`. Kinetic's `useAnimationEnd` then left a 5s timer and `transitionend`/`animationend` listeners pinning an unmounted subtree. Any wrapper whose callback may return a cleanup must hand it to the effect: `watch` calls `onCleanup(result)` inside the effect body, so it runs before each re-run, on `dispose()`, and untracked. Reference: `packages/core/reactivity/src/watch.ts`; `tests/watch.test.ts` ("per-run cleanup runs when the OWNING scope disposes").
+
+---
+
+### Side indexes and guards that outlive the entries they describe (Class C)
+
+The ISR memory store capped its cache at `maxEntries` but its tag index only grew (`setTags` added; `delete()` and LRU eviction never pruned), `createFsStore`'s `_tags.json` likewise, and `createISRHandler` kept one invalidation epoch per key EVER passed to `revalidateNow`, though an epoch only guards a render in flight. Rules: every index keyed by a cached entry is pruned on EVERY path that removes the entry (delete, eviction, clear), via a reverse key → index map; a guard for in-flight work lives exactly as long as that work (refcounted ticket, released in `finally`); a read-only lookup must not refresh LRU order. Reference: `packages/zero/zero/src/isr.ts` (`createMemoryStore`, `createFsStore`, `_beginRender`/`_endRender`); locked by `isr-store-bounds.test.ts`, which also caught `revalidateAll` missing a cold render in flight.
 
 ---
 

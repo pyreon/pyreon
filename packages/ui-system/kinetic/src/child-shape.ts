@@ -115,4 +115,4 @@ export const wrapNativeItem = (item: NativeChildItem, extra: Record<string, unkn
 
 /** The child's own `ref` / `style` / `class`, whatever its shape. */
 export const childProps = (child: unknown): Record<string, unknown> =>
-  isVNodeLike(child) ? ((child.props ?? {}) as Record<string, unknown>) : {}
+  isVNodeLike(child) ? child.props : {}

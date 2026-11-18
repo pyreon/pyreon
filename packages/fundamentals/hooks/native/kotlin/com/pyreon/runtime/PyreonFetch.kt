@@ -92,6 +92,16 @@ public class PyreonFetch<T> {
     /** Last fetcher passed to [load], retained so [refetch] can re-run it. */
     private var lastFetcher: (() -> T)? = null
 
+    /** The request the emitted `LaunchedEffect` registered through [run]; [refetch] re-runs it. Without it a
+     *  compiled `refetch()` was a silent no-op: the harness fetched inline and nothing kept the request. */
+    private var asyncFetcher: (suspend () -> T)? = null
+
+    /** Starts a coroutine on the composable's scope (registered with the request). */
+    private var launcher: ((suspend () -> Unit) -> Unit)? = null
+
+    /** Bumped by every async fetch: a response settles state only while its own generation is the latest. */
+    private var generation = 0
+
     /**
      * Run [fetcher], transitioning `isPending` → (`data` | `error`).
      * Retains the fetcher so [refetch] re-runs the same request.
@@ -107,12 +117,46 @@ public class PyreonFetch<T> {
     }
 
     /**
-     * Re-run the last [load] fetcher. No-op if [load] was never called
-     * (the async-harness path re-runs by re-triggering its `LaunchedEffect`,
-     * not through here).
+     * Register the request and fetch it. The emitted `LaunchedEffect` calls this with the request it builds and a
+     * [launch] that starts a coroutine on the composable's scope; the container keeps both so [refetch] can re-run
+     * the request later.
+     */
+    public suspend fun run(launch: (suspend () -> Unit) -> Unit, fetcher: suspend () -> T) {
+        asyncFetcher = fetcher
+        launcher = launch
+        fetch(fetcher)
+    }
+
+    /**
+     * Re-run the registered request: the async one from [run], else the last synchronous [load] fetcher. A no-op
+     * before either.
      */
     public fun refetch() {
+        val request = asyncFetcher
+        val launch = launcher
+        if (request != null && launch != null) {
+            launch { fetch(request) }
+            return
+        }
         reload()
+    }
+
+    private suspend fun fetch(request: suspend () -> T) {
+        generation += 1
+        val mine = generation
+        begin()
+        val value = try {
+            request()
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            // The composable left: not a failure to show.
+            if (mine == generation) isPending.value = false
+            throw e
+        } catch (t: Throwable) {
+            if (mine == generation) reject(t)
+            return
+        }
+        // Superseded: a newer fetch owns the state.
+        if (mine == generation) resolve(value)
     }
 
     // Async-harness transitions — the compiler-emitted `LaunchedEffect`

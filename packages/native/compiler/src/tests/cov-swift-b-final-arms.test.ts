@@ -369,7 +369,7 @@ export function TagsDemo() {
     // "cannot call value of non-function type". The `each` source is
     // recognised in BOTH spellings, so the param-marking is identical.
     for (const each of ['tags.items()', 'tags.items']) {
-      expect(fieldArray(each), each).toContain('Text(verbatim: "\\(item.value)")')
+      expect(fieldArray(each), each).toContain('Text(verbatim: "\\(pyreonOptionalText(item.value, ""))")')
       expect(fieldArray(each), each).not.toContain('item.value()')
     }
   })
