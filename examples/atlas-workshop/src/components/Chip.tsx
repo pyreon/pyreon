@@ -17,8 +17,10 @@
 import { chipBase } from './chip-kit'
 
 export const Chip = chipBase
-  .attrs({ tag: 'span', styles: { display: 'inline-flex', alignItems: 'center' } })
+  .attrs({ tag: 'span' })
   .theme((t) => ({
+    display: 'inline-flex',
+    alignItems: 'center',
     padding: '3px 10px',
     borderRadius: '12px',
     fontSize: '12px',

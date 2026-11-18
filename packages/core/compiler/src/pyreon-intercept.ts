@@ -33,6 +33,10 @@
  *                       variants. Under rapid operations (paste, clone)
  *                       collision probability is non-trivial. Use a
  *                       monotonic counter.
+ *  - `css-prop-on-component` — `<Card css={…}>`: CSS passed to a component
+ *                      through a prop. A one-off look is a named
+ *                      `.multiple()` modifier (`<Card multiple="look" />`);
+ *                      `css` is the escape hatch for a selector or at-rule.
  *  - `on-click-undefined` — `onClick={undefined}` explicitly; the runtime
  *                       used to crash on this pattern. Omit the prop.
  *  - `signal-write-as-call` — `sig(value)` is a no-op read that ignores
@@ -154,6 +158,7 @@ export type PyreonDiagnosticCode =
   | 'charts-legacy-import'
   | 'plain-mode'
   | 'for-stale-item-field'
+  | 'css-prop-on-component'
 
 export interface PyreonDiagnostic {
   /** Machine-readable code for filtering + programmatic handling */
@@ -738,6 +743,45 @@ function detectOnClickUndefined(ctx: DetectContext, node: ts.JsxAttribute): void
     // No `migrate_pyreon` tool yet — claiming fixable would mislead.
     false,
   )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Pattern: css passed to a component (a one-off look belongs in a modifier)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function detectCssPropOnComponent(ctx: DetectContext, node: ts.JsxAttribute): void {
+  if (!ts.isIdentifier(node.name) || node.name.text !== 'css') return
+  const tag = node.parent?.parent
+  if (!tag || !(ts.isJsxOpeningElement(tag) || ts.isJsxSelfClosingElement(tag))) return
+  const tagName = tag.tagName.getText(ctx.sf)
+  const root = tagName.split('.')[0] ?? ''
+  if (!/^[A-Z]/.test(root)) return
+  // coolgrid's Container / Row / Col take `css` by design (no theme to extend).
+  if (importedFrom(ctx.sf, root) === '@pyreon/coolgrid') return
+
+  pushDiag(
+    ctx,
+    node,
+    'css-prop-on-component',
+    `\`css\` on <${tagName}> passes CSS through a prop. A one-off look is a named, typed modifier on the component, applied by name: \`const Styled = ${tagName}.multiple({ look: { gridTemplateColumns: { md: 'repeat(3, 1fr)' } } })\` then \`<Styled multiple="look" />\` (compose with \`multiple={['look', cond && 'other']}\`). A caller-chosen value is a typed prop of the component; a product-wide look is a variant. Keep \`css\` (a tagged \`css\` template or a callback, never a raw string) only for a selector or an at-rule.`,
+    getNodeText(ctx, node),
+    `multiple="look" /* after ${tagName}.multiple({ look: { … } }) */`,
+    false,
+  )
+}
+
+/** The module a JSX tag's root identifier is imported from, if any. */
+function importedFrom(sf: ts.SourceFile, local: string): string | undefined {
+  for (const stmt of sf.statements) {
+    if (!ts.isImportDeclaration(stmt) || !ts.isStringLiteral(stmt.moduleSpecifier)) continue
+    const bindings = stmt.importClause?.namedBindings
+    const names: string[] = []
+    if (stmt.importClause?.name) names.push(stmt.importClause.name.text)
+    if (bindings && ts.isNamedImports(bindings)) for (const el of bindings.elements) names.push(el.name.text)
+    if (bindings && ts.isNamespaceImport(bindings)) names.push(bindings.name.text)
+    if (names.includes(local)) return stmt.moduleSpecifier.text
+  }
+  return undefined
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1707,6 +1751,7 @@ function visitNode(ctx: DetectContext, node: ts.Node): void {
   }
   if (ts.isJsxAttribute(node)) {
     detectOnClickUndefined(ctx, node)
+    detectCssPropOnComponent(ctx, node)
   }
   if (ts.isAsExpression(node)) {
     detectAsUnknownAsVNodeChild(ctx, node)
@@ -1853,6 +1898,8 @@ export function hasPyreonPatterns(code: string): boolean {
     // fails to match, giving O(N²) overall on N starting positions.
     // The cap keeps the regex linear regardless of input shape.
     /on[A-Z]\w{0,60}\s*=\s*\{\s*undefined\s*\}/.test(code) ||
+    // css-prop-on-component: a `css=` JSX attribute anywhere.
+    /\scss\s*=\s*["'{]/.test(code) ||
     // Bounded `{0,500}` / `{1,500}` quantifiers — this is a pre-filter
     // scan before the precise AST walker, so losing detector recall on
     // a pathologically long single-line input is acceptable.

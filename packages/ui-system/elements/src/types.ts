@@ -5,7 +5,7 @@
  */
 import type { ComponentFn } from '@pyreon/core'
 import type { BreakpointKeys, config, render } from '@pyreon/ui-core'
-import type { ITheme, MakeItResponsiveStyles } from '@pyreon/unistyle'
+import type { MakeItResponsiveStyles } from '@pyreon/unistyle'
 
 // Each Element-layer styled component (Wrapper, Content, Text) supplies a
 // `ThemeProps` shape describing its per-breakpoint resolved theme. Pass it
@@ -38,56 +38,14 @@ export type CssCallback = (css: typeof config.css) => ReturnType<typeof css>
 
 /**
  * The `css` escape hatch: a `css\`…\`` result or a `(css) => css\`…\``
- * callback. A raw CSS string is NOT accepted: the typed per-instance override
- * is the `styles` prop ({@link StylesProp}); `css` is for what that cannot
- * express (a selector, an at-rule), and has to be written as an explicit
- * tagged template so it reads as an escape hatch.
+ * callback. A raw CSS string is NOT accepted. A one-off look belongs on the
+ * component as a named modifier (`.multiple({ threeUp: { … } })`, applied as
+ * `multiple={['threeUp']}` or `<Grid threeUp />` under `useBooleans`), typed
+ * and resolved through the theme pipeline; `css` is for what a theme value
+ * cannot express (a selector, an at-rule), and has to be written as an
+ * explicit tagged template so it reads as an escape hatch.
  */
 export type Css = CssCallback | ReturnType<typeof config.css>
-
-/** One style value: a single value, a mobile-first array, or a breakpoint object. */
-export type StyleValue<T> =
-  | T
-  | readonly (T | null | undefined)[]
-  | Partial<Record<BreakpointKeys, T | null | undefined>>
-
-/**
- * A style object keyed by the `@pyreon/unistyle` property mappings: the keys a
- * component's `.theme()` uses (`paddingTop`, `borderWidthTop`,
- * `gridTemplateColumns`, …), each value responsive exactly as in a theme.
- * `extendCss` (free CSS text) is deliberately not a key.
- */
-export type StyleProps = {
-  [K in Exclude<keyof ITheme, 'extendCss'>]?: StyleValue<NonNullable<ITheme[K]>> | null | undefined
-}
-
-/**
- * The typed per-instance style override: {@link StyleProps} plus the four
- * pseudo-state groups a component's `.theme()` uses (`hover` → `:hover`,
- * `focus` → `:focus-visible`, `active` → `:active`, `disabled` →
- * `:disabled, [aria-disabled='true']`). No selectors, no CSS text: an override
- * can only style the element it is on.
- */
-export type StyleOverride = StyleProps &
-  Partial<Record<'hover' | 'focus' | 'active' | 'disabled', StyleProps | undefined>>
-
-/** `mode(light, dark)` inside a {@link StylesCallback}: the value for the current colour mode. */
-export type StylesMode = <A, B>(light: A, dark: B) => A | B
-
-/**
- * The theme a {@link StylesCallback} receives (the `<PyreonUI>` theme). An app
- * types it by augmenting this interface, as it augments rocketstyle's
- * `ThemeDefault` for `.theme()` callbacks.
- */
-export interface StylesThemeDefault {
-  [key: string]: unknown
-}
-
-/** The callback form of `styles`, with the same arguments as a `.theme()` callback. */
-export type StylesCallback = (theme: StylesThemeDefault, mode: StylesMode) => StyleOverride
-
-/** The `styles` prop: a {@link StyleOverride} object or a `(theme, mode) => object` callback. */
-export type StylesProp = StyleOverride | StylesCallback
 
 export type Content = Parameters<typeof render>['0']
 

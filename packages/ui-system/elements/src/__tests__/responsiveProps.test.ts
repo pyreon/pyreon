@@ -243,7 +243,7 @@ describe('Element responsive props', () => {
 
   describe('responsive css prop', () => {
     it('renders with css as string', () => {
-      // @ts-expect-error a raw CSS string is no longer typed (use `styles` or css``); untyped callers still render
+      // @ts-expect-error a raw CSS string is no longer typed (write css``); untyped callers still render
       const result = asVNode(Element({ css: 'background: red;', children: 'content' }))
       expect(typeof result.type).toBe("function")
       expect(getLayoutProps(result).extendCss).toBe('background: red;')
@@ -252,7 +252,7 @@ describe('Element responsive props', () => {
     it('renders with contentCss', () => {
       const result = asVNode(
         Element({
-          // @ts-expect-error a raw CSS string is no longer typed (use `styles` or css``); untyped callers still render
+          // @ts-expect-error a raw CSS string is no longer typed (write css``); untyped callers still render
           contentCss: 'color: blue;',
           beforeContent: h('span', null, 'Before'),
           children: 'content',
@@ -267,9 +267,9 @@ describe('Element responsive props', () => {
     it('renders with beforeContentCss and afterContentCss', () => {
       const result = asVNode(
         Element({
-          // @ts-expect-error a raw CSS string is no longer typed (use `styles` or css``); untyped callers still render
+          // @ts-expect-error a raw CSS string is no longer typed (write css``); untyped callers still render
           beforeContentCss: 'padding: 4px;',
-          // @ts-expect-error a raw CSS string is no longer typed (use `styles` or css``); untyped callers still render
+          // @ts-expect-error a raw CSS string is no longer typed (write css``); untyped callers still render
           afterContentCss: 'padding: 8px;',
           beforeContent: h('span', null, 'Before'),
           afterContent: h('span', null, 'After'),

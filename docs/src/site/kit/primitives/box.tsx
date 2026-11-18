@@ -1,11 +1,11 @@
 import { h } from '@pyreon/core'
-import type { StyleProps } from '@pyreon/elements'
-import { space, type SpaceKey } from '../../theme'
+import type { SpaceKey } from '../../theme'
 import { el } from '../bases'
+import { paddingModifiers, paddingOf } from './modifiers'
 import { flagsOf, layoutFlags, type LayoutProps, passThrough } from './shared'
-import type { Breakpoint, Responsive } from './space'
+import type { Responsive } from './space'
 
-const BoxBase = el.config({ name: 'Box' }).multiple(layoutFlags)
+const BoxBase = el.config({ name: 'Box' }).multiple(() => ({ ...layoutFlags(), ...paddingModifiers() }))
 
 type Padding = Responsive<SpaceKey>
 
@@ -22,41 +22,20 @@ export interface BoxProps extends LayoutProps {
   padBottom?: Padding | undefined
 }
 
-type Side = 'paddingTop' | 'paddingRight' | 'paddingBottom' | 'paddingLeft'
-
-const SIDES = [
-  ['pad', ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft']],
-  ['padY', ['paddingTop', 'paddingBottom']],
-  ['padX', ['paddingLeft', 'paddingRight']],
-  ['padTop', ['paddingTop']],
-  ['padBottom', ['paddingBottom']],
-] as const satisfies readonly (readonly [keyof BoxProps, readonly Side[]])[]
-
-/**
- * Per-side, per-breakpoint padding as a typed `styles` override; within a
- * breakpoint the more specific prop comes later and wins. Values are px
- * numbers, rendered as rem against the theme's rootSize as in a `.theme()`.
- */
-export function paddingStyles(p: BoxProps): StyleProps | undefined {
-  const out: Partial<Record<Side, Partial<Record<Breakpoint, number>>>> = {}
-  for (const [prop, sides] of SIDES) {
-    const value = p[prop]
-    if (value === undefined) continue
-    const perBp: Partial<Record<Breakpoint, SpaceKey>> = typeof value === 'number' ? { xs: value } : value
-    for (const bp of Object.keys(perBp) as Breakpoint[]) {
-      const step = perBp[bp]
-      if (step === undefined) continue
-      for (const side of sides) out[side] = { ...out[side], [bp]: space[step] }
-    }
-  }
-
-  return Object.keys(out).length > 0 ? out : undefined
-}
-
 /**
  * A block with padding from the space scale, and nothing else: its children
- * stretch to its width and stack without a gap (use `Stack` for a gap).
+ * stretch to its width and stack without a gap (use `Stack` for a gap). The
+ * padding props map to `pad-<side>-<bp>-<key>` modifiers; within a breakpoint
+ * the more specific prop wins.
  */
 export function Box(props: BoxProps) {
-  return h(BoxBase, { ...passThrough(props), contentAlignX: 'block', multiple: flagsOf(props), styles: paddingStyles(props) }, props.children)
+  const padding = paddingOf([
+    [props.pad, ['top', 'right', 'bottom', 'left']],
+    [props.padY, ['top', 'bottom']],
+    [props.padX, ['left', 'right']],
+    [props.padTop, ['top']],
+    [props.padBottom, ['bottom']],
+  ])
+
+  return h(BoxBase, { ...passThrough(props), contentAlignX: 'block', multiple: [...flagsOf(props), ...padding] }, props.children)
 }

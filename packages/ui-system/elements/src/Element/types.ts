@@ -10,7 +10,6 @@ import type {
   PyreonStatic,
   Responsive,
   ResponsiveBoolType,
-  StylesProp,
 } from '../types'
 
 export type Props = Partial<{
@@ -144,24 +143,14 @@ export type Props = Partial<{
   dangerouslySetInnerHTML: { __html: string }
 
   /**
-   * Escape hatch for styling the **root** element with CSS the typed `styles`
-   * prop cannot express (a selector, an at-rule): a `css\`…\`` result or a
-   * `(css) => css\`…\`` callback, optionally per breakpoint. Renders into
-   * `@layer instance`, so it beats the component's theme. Prefer `styles`.
+   * Escape hatch for styling the **root** element with CSS a theme value
+   * cannot express (a selector, an at-rule): a `css\`…\`` result or a
+   * `(css) => css\`…\`` callback, optionally per breakpoint. No raw string.
+   * Renders into `@layer instance`, so it beats the component's theme. For a
+   * one-off look, add a named modifier to the component instead
+   * (`.multiple({ threeUp: { … } })`).
    */
   css: ExtendCss
-
-  /**
-   * Typed per-instance style override of the **root** element: the same keys
-   * and value shapes as a component's `.theme()` (a single value, a
-   * mobile-first array or a breakpoint object; `hover` / `focus` / `active` /
-   * `disabled` groups), or a `(theme, mode) => object` callback. Renders into
-   * `@layer instance`, so it beats the component's theme for the same property.
-   *
-   * @example
-   * <Grid styles={{ gridTemplateColumns: { md: 'repeat(3, minmax(0, 1fr))' } }} />
-   */
-  styles: StylesProp
 
   /**
    * An additional prop for extending styling of the **content** wrapper element.

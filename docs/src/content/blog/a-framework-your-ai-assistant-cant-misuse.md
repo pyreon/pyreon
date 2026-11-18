@@ -194,7 +194,7 @@ On the snippet (first two findings shown):
   5 findings in 1 file  ·  some are auto-fixable with --fix
 ```
 
-[`@pyreon/lint`](/docs/lint) is the broader rule set: 142 rules in 26 categories, from reactivity to SSR to accessibility. On the same file it reports the same five problems under its own rule names:
+[`@pyreon/lint`](/docs/lint) is the broader rule set: 144 rules in 26 categories, from reactivity to SSR to accessibility. On the same file it reports the same five problems under its own rule names:
 
 ```text
   4:25  error    Destructured props in component function …           pyreon/no-props-destructure

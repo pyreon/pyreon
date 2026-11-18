@@ -362,6 +362,14 @@ Use `useControllableState` from `@pyreon/hooks` instead of hand-written `isContr
 
 ---
 
+### Styles through props
+
+`<Card css={…}>` / `css="…"` / an inline `style={{ padding: 4 }}` on a themed component. Nothing checks the text, it skips the theme (no breakpoints, tokens or dark mode), and every call site restates the look. One rule: a caller-chosen VALUE is a typed prop of the primitive (map it to a `.multiple()` modifier list in the render function, the way the docs kit's `Grid` maps `columns` to `cols-<bp>-<n>`); a one-off LOOK is a named `.multiple()` modifier (`Grid.multiple({ threeUp: { gridTemplateColumns: { md: 'repeat(3, minmax(0, 1fr))' } } })`, applied as `multiple="threeUp"` or `multiple={['threeUp', compact() && 'dense']}`); a product-wide look is a variant. A modifier is a theme slice, so it cannot lose to `.theme()` (#4354) and a responsive modifier keeps the theme value below its first breakpoint (rocketstyle `mergeTheme`). `css` stays only as the escape hatch for a selector or an at-rule, as a tagged template or callback (no raw string type), with a lint suppression saying why. Lint: `pyreon/prefer-style-modifier` (warn), `pyreon/no-raw-css-string` (error), `pyreon/no-theme-props-in-style` (opt-in). Tests: `ui/components/src/style-modifier.browser.test.tsx`, `rocketstyle/src/__tests__/modifier-responsive-merge.test.ts`.
+
+**Detected by:** `css-prop-on-component` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.
+
+---
+
 ### Empty `.theme({})`
 
 Never chain `.theme({})` as a no-op; omit `.theme()` when there is no base theme.

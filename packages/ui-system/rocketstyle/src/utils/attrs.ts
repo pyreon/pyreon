@@ -98,7 +98,10 @@ export const calculateStylingAttrs: CalculateStylingAttrs =
       const t = typeof pickedProp
 
       if (multiKeys?.[item] && Array.isArray(pickedProp)) {
-        result[item] = pickedProp
+        // Conditional composition: `multiple={['threeUp', compact() && 'dense']}`.
+        // Falsy entries are skipped so the resolved state (and the memo key
+        // `_resolveRsEntry` builds from it) equals the list without them.
+        result[item] = (pickedProp as unknown[]).filter(Boolean)
       } else if (t === 'string' || t === 'number') {
         result[item] = pickedProp
       } else {

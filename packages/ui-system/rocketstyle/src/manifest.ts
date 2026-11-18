@@ -69,6 +69,7 @@ const Badge = rsBadge({ name: 'Badge', component: 'span' })
     'Owns its native compiler frontend through the optional ./native-plugin tooling entry; the native CLI discovers it from package metadata',
     'Chainable immutable builder — every method returns a NEW component, bases fork cleanly into variants',
     'Five built-in dimensions: states/sizes/variants (single-value), multiple (multi-value), modifiers (multi + transform)',
+    'One-off looks as named `.multiple()` modifiers — typed, responsive, composable (`multiple={["threeUp", cond && "dense"]}`), merged over the theme; no styles through props',
     'Custom dimensions at factory init — each key becomes a chain method + a typed consumer prop',
     "Dark/light via the mode(light, dark) helper in .theme() and dimension callbacks; .config({ inversed }) inverts the mode for that component's OWN styles (use <PyreonUI inversed> for a whole subtree)",
     'Nested pseudo-state objects (hover/focus/active/pressed/disabled/readOnly) compile to CSS pseudo-selectors',
@@ -251,13 +252,21 @@ const Anchor = Button.config({ component: 'a', name: 'Anchor' }).attrs({ href: '
       signature:
         '(values: Record<string, object | ((theme) => object)> | ((theme, mode, css) => Record<string, object>)) => RocketStyleComponent',
       summary:
-        'Multi-value dimension definition methods (from the default dimension map). `.multiple({...})` drives the `multiple` prop, `.modifiers({...})` drives `modifier` — both accept an ARRAY of active values at the call site (`multiple={["rounded", "shadow"]}`), all of which compose onto the theme. `modifiers` is additionally a TRANSFORM dimension: its value functions receive the theme ACCUMULATED from all prior dimensions, so a modifier can derive from the active state (e.g. `outlined` reading the current state\'s `backgroundColor`). Custom dimensions opt into the same behaviors via `{ multi: true }` / `{ transform: true }`.',
+        'Multi-value dimension definition methods (from the default dimension map). `.multiple({...})` drives the `multiple` prop, `.modifiers({...})` drives `modifier` — both accept an ARRAY of active values at the call site (`multiple={["rounded", "shadow"]}`), all of which compose onto the theme. `.multiple()` is how a ONE-OFF LOOK is expressed: a named, typed modifier on the component (`Grid.multiple({ threeUp: { gridTemplateColumns: { md: "repeat(3, minmax(0, 1fr))" } } })` → `<Grid multiple="threeUp" />`), never CSS through a prop. A slice takes every value form a `.theme()` value takes (single value, mobile-first array, breakpoint object, `mode()` pair) and the `hover` / `focus` / `active` / `disabled` / `pressed` / `readOnly` groups; with a typed `StylesDefault` its keys are checked. A list may hold falsy entries, which are skipped (`multiple={["threeUp", compact() && "dense"]}`), so the memo and class are those of the list without them; a signal-driven list swaps the class on the same node. Slices merge in list order after state / size / variant, so a modifier beats them and the base theme; a responsive slice wins from its first breakpoint up and keeps the earlier value below it. Under `useBooleans: true` each value is also a boolean prop (`<Grid threeUp />`). `modifiers` is additionally a TRANSFORM dimension: its value functions receive the theme ACCUMULATED from all prior dimensions, so a modifier can derive from the active state (e.g. `outlined` reading the current state\'s `backgroundColor`). Custom dimensions opt into the same behaviors via `{ multi: true }` / `{ transform: true }`.',
       example: `const Box = rs({ name: 'Box', component: Element })
   .multiple({
     rounded: { borderRadius: 999 },
     shadow: { boxShadow: '0 2px 8px rgba(0,0,0,0.15)' },
   })
 <Box multiple={['rounded', 'shadow']} />       // both slices compose
+<Box multiple={['rounded', raised() && 'shadow']} />  // falsy entries are skipped
+
+// A one-off look on a shipped component: a modifier, not a style prop
+const Grid = BaseGrid.multiple({
+  threeUp: { gridTemplateColumns: { md: 'repeat(3, minmax(0, 1fr))' } }, // theme value kept below md
+  dense: { gap: 8 },
+})
+<Grid multiple={['threeUp', compact() && 'dense']} />
 
 // Transform dimension — value fn receives the ACCUMULATED theme
 const Button2 = rs({ name: 'Button2', component: Element })
@@ -270,6 +279,7 @@ const Button2 = rs({ name: 'Button2', component: Element })
       mistakes: [
         'Passing a single string to a multi dimension and expecting array semantics — `multiple="rounded"` and `multiple={["rounded"]}` both work, but composing several values requires the array form',
         'Expecting a transform value fn to see the raw app theme — transform-dimension value functions receive the theme accumulated from PRIOR dimensions (base + active state/size/variant), which is the whole point; read app-theme tokens in a dimension-level callback instead',
+        'Passing CSS to one instance (`css="…"`, `style={{ padding: 4 }}`) for a one-off look — add a named `.multiple()` modifier to the component and apply it by name. A caller-chosen VALUE is a typed prop of the primitive mapped to a modifier list; a product-wide look is a variant',
         'Declaring a custom multi dimension as a bare string — `{ decorations: "decoration" }` is single-value; multi needs the object form `{ propName: "decoration", multi: true }`',
       ],
       seeAlso: ['.states() / .sizes() / .variants()', 'rocketstyle'],
@@ -437,8 +447,8 @@ resolveModeVar('#ff0000', 'dark')              // '#ff0000' — passthrough`,
   gotchas: [
     'useBooleans defaults to FALSE — dimension props take strings (state="primary"), not boolean shorthands. Historically the TYPE default said true while the runtime was false, so boolean props typechecked but were silently dropped; the runtime default (false) is now authoritative in both.',
     {
-      label: 'Per-instance override: styles (theme < instance)',
-      note: 'To override the theme on ONE instance of an Element-based component, pass `styles` (handled by the Element underneath): the same object shape as `.theme()` — `<Card styles={{ paddingTop: { xs: 8, md: 16 }, hover: { color: "red" } }} />` — or a `(theme, mode) => object` callback. The theme renders into `@layer rocketstyle`, declared between `@layer elements` (an Element base layout) and `@layer instance` (the override): `@layer elements, rocketstyle, instance;`, so the override beats the theme for the same property. Rocketstyle has no override prop of its own and `theme` is a dimension name, so the prop is `styles`. The `css` escape hatch (a tagged `css` template result, no raw string) lands in the same layer.',
+      label: 'No styles through props: a one-off look is a .multiple() modifier',
+      note: 'A look for some instances is a named, typed modifier (`.multiple({ threeUp: { … } })`, applied as `multiple="threeUp"` or `multiple={["threeUp", compact() && "dense"]}`); it is a theme slice, so it is type-checked, composes, and always beats `.theme()` and state / size / variant. A responsive slice wins from its first breakpoint up and keeps the earlier value below it (`mergeTheme` in utils/theme.ts; a mobile-first array survives the light/dark walk). A caller-chosen value is a typed prop of the primitive mapped to a modifier list; a product-wide look is a variant. The `css` prop of the Element underneath remains the escape hatch for a selector or an at-rule (tagged template or callback, no raw string), rendered into `@layer instance` after `@layer rocketstyle`: `@layer elements, rocketstyle, instance;`.',
     },
     {
       label: 'Layout vs CSS split',

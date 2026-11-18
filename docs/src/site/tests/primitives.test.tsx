@@ -290,11 +290,11 @@ describe('Grid, AutoGrid and Wrap', () => {
     }
   })
 
-  it('AutoGrid: the layout.tsx AutoGrid values, through the typed styles override (min, cols, list)', async () => {
-    // The columns and the gap are a typed `styles` override now, so they take
-    // the theme's unit rule (px → rem against rootSize 16) and its media
-    // queries (em), as a `.theme()` value does; the values are equal at the
-    // default root font size.
+  it('AutoGrid: the layout.tsx AutoGrid values (min through the css escape hatch, cols as modifiers, list)', async () => {
+    // The gap is Element's `gap` prop and `cols` are `cols-<bp>-<n>` theme
+    // modifiers, so they take the theme's unit rule (px → rem against
+    // rootSize 16) and its media queries (em); equal at the default root font
+    // size. `min` is an arbitrary px width, so it stays CSS text (`css`).
     const wantMin = { '|gap': '0.75rem', '|grid-template-columns': 'repeat(auto-fit,minmax(min(260px,100%),1fr))' }
     for (const node of [<AutoGrid min={260} gap={150}><li>x</li></AutoGrid>, h(AutoGrid, { min: 260, gap: 150 }, h('li', null, 'x'))]) {
       const got = await render(node)
@@ -307,8 +307,8 @@ describe('Grid, AutoGrid and Wrap', () => {
     for (const key of ['|list-style', '|margin', '|padding']) expect(gotList.css[key], key).toBeDefined()
     // `cols`: one column below lg, the count from the theme's lg breakpoint (992px = 62em).
     const gotCols = await render(<AutoGrid cols={3}><i>x</i></AutoGrid>)
-    expect(gotCols.css['|grid-template-columns']).toBe('repeat(1,minmax(0,1fr))')
-    expect(gotCols.css[`@media only screen and (min-width: ${breakpoints.lg / 16}em)|grid-template-columns`]).toBe('repeat(3,minmax(0,1fr))')
+    expect(gotCols.css['|grid-template-columns']).toBe('minmax(0, 1fr)')
+    expect(gotCols.css[`@media only screen and (min-width: ${breakpoints.lg / 16}em)|grid-template-columns`]).toBe('repeat(3, minmax(0, 1fr))')
   })
 
   it('Wrap: the coolgrid column with the layout gutters, as before', async () => {
@@ -337,8 +337,8 @@ describe('Grid, AutoGrid and Wrap', () => {
 describe('Box and Icon', () => {
   it('Box: padding from the space scale; the specific side wins within a breakpoint', async () => {
     const r = await render(<Box pad={200} padTop={225} padX={{ xs: 150, md: 500 }}>x</Box>)
-    // A typed `styles` override: unistyle folds the sides into the `padding`
-    // shorthand (top, x, bottom) and renders px as rem (rootSize 16).
+    // `pad-<side>-<bp>-<key>` modifiers: unistyle folds the sides into the
+    // `padding` shorthand (top, x, bottom) and renders px as rem (rootSize 16).
     expect(r.css['|padding']).toBe('1.125rem 0.75rem 1rem')
     expect(Object.entries(r.css).some(([k, v]) => k.startsWith('@media') && k.endsWith('|padding') && v === '1.125rem 2.5rem 1rem')).toBe(true)
     expect(r.css['|align-items']).toBe('stretch')

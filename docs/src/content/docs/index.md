@@ -144,7 +144,7 @@ Specialized packages for rich application features.
 
 | Package                            | Description                                                        |
 | ---------------------------------- | ------------------------------------------------------------------ |
-| [@pyreon/lint](/docs/lint)         | Pyreon-specific linter — 142 rules across 26 categories            |
+| [@pyreon/lint](/docs/lint)         | Pyreon-specific linter — 144 rules across 26 categories            |
 | [@pyreon/testing](/docs/guides/testing) | Testing-Library-style render/screen/fireEvent plus reactive matchers |
 | [@pyreon/atlas](/docs/atlas)       | Component workbench — derives and verifies a component catalog     |
 | [@pyreon/loom](/docs/loom)         | Monorepo dependency observatory                                    |

@@ -12,7 +12,6 @@ import type {
   ExtendCss,
   Responsive,
   ResponsiveBoolType,
-  StyleOverride,
 } from '../../types'
 
 export type Reference = unknown
@@ -28,7 +27,6 @@ export interface Props {
   equalCols: ResponsiveBoolType | undefined
   gap: Responsive | undefined
   extendCss: ExtendCss | undefined
-  instanceStyles: StyleOverride | undefined
   dangerouslySetInnerHTML: { __html: string } | undefined
 }
 
@@ -42,7 +40,6 @@ export interface StyledProps {
     gap: Responsive
     block: ResponsiveBoolType
     extraStyles: ExtendCss
-    instanceStyles: StyleOverride
     childFix: true
     parentFix: true
   }>

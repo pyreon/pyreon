@@ -124,6 +124,70 @@ export function __resetModePairRegistryForTesting(): void {
 }
 
 // --------------------------------------------------------
+// Responsive-aware merge of theme layers
+// --------------------------------------------------------
+// A theme value is a single value, a mobile-first array or a breakpoint map
+// (`{ xs: …, md: … }`). Layers (chained `.theme()`s, then the active dimension
+// slices) are deep-merged, and a plain deep merge reads a responsive value
+// wrongly: a slice `{ md: X }` over a theme scalar REPLACED it (the value
+// below `md` was lost), and over a theme `{ xs: a, lg: b }` it kept `lg: b`
+// (the theme won at `lg` over a slice that says "from md up"). The rule here:
+// a later responsive value wins from its FIRST defined breakpoint up, and the
+// earlier value applies below it. A single value still replaces everything.
+
+const isObj = (v: unknown): v is Record<string, any> =>
+  v !== null && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype
+
+// A breakpoint map: a plain object whose keys are all breakpoint names and
+// whose values are leaves. The leaf check keeps a dimension map whose VALUE
+// NAMES are breakpoint names (`.sizes({ sm: {…}, md: {…} })`) a plain object.
+const isResponsive = (v: unknown, order: string[]): boolean =>
+  Array.isArray(v) ||
+  (isObj(v) &&
+    Object.keys(v).length > 0 &&
+    Object.keys(v).every((k) => order.includes(k) && (v[k] === null || typeof v[k] !== 'object')))
+
+// The value a responsive (or single) value sets AT breakpoint index `i`; a
+// single value sits on the smallest breakpoint.
+const valueAt = (v: unknown, order: string[], i: number): unknown =>
+  Array.isArray(v) ? v[i] : isObj(v) ? v[order[i]!] : i === 0 ? v : undefined
+
+const overlayResponsive = (base: unknown, top: unknown, order: string[]): unknown => {
+  const start = order.findIndex((_, i) => valueAt(top, order, i) != null)
+  if (start === -1) return base
+  const out: Record<string, unknown> = {}
+  order.forEach((bp, i) => {
+    const value = valueAt(i < start ? base : top, order, i)
+    if (value != null) out[bp] = value
+  })
+  return out
+}
+
+// `merge(target, source)` from ui-core (in place, plain objects deep-merged),
+// with the responsive rule above. Without breakpoints it is exactly `merge`.
+export const mergeTheme = (
+  target: Record<string, any>,
+  source: Record<string, any> | null | undefined,
+  theme: Record<string, any> | undefined,
+): Record<string, any> => {
+  const bps = theme?.breakpoints
+  const order = isObj(bps) ? Object.keys(bps).sort((a, b) => bps[a] - bps[b]) : []
+  if (order.length === 0 || source == null) return merge(target, source as Record<string, any>)
+  const run = (tgt: Record<string, any>, src: Record<string, any>): Record<string, any> => {
+    for (const key of Object.keys(src)) {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
+      const t = tgt[key]
+      const v = src[key]
+      if (t != null && isResponsive(v, order) && (typeof t !== 'object' || isResponsive(t, order))) {
+        tgt[key] = overlayResponsive(t, v, order)
+      } else tgt[key] = isObj(t) && isObj(v) ? run({ ...t }, v) : v
+    }
+    return tgt
+  }
+  return run(target, source)
+}
+
+// --------------------------------------------------------
 // Get Theme From Chain
 // --------------------------------------------------------
 /** Reduces an array of chained `.theme()` callbacks into a single merged theme object. */
@@ -143,7 +207,7 @@ export const getThemeFromChain: GetThemeFromChain = (options, theme) => {
   const modeFactory = resolveCssVariables().enabled ? varThemeModeCallback : themeModeCallback
 
   return options.reduce(
-    (acc, item) => merge(acc, item(theme, modeFactory, config.css)),
+    (acc, item) => mergeTheme(acc, item(theme, modeFactory, config.css), theme),
     result,
   )
 }
@@ -246,7 +310,7 @@ export const getTheme: GetTheme = ({ rocketstate, themes, baseTheme, transformKe
       } else {
         // Merge in-place onto finalTheme — avoids allocating a fresh {}
         // as merge target on every dimension slice.
-        merge(finalTheme, val)
+        mergeTheme(finalTheme, val, appTheme)
       }
     }
 
@@ -259,7 +323,11 @@ export const getTheme: GetTheme = ({ rocketstate, themes, baseTheme, transformKe
 
   // Apply transform dimension values last with the fully accumulated theme
   for (let i = 0; i < deferredTransforms.length; i++) {
-    merge(finalTheme, deferredTransforms[i]!(finalTheme, appTheme ?? {}, themeModeCallback, config.css))
+    mergeTheme(
+      finalTheme,
+      deferredTransforms[i]!(finalTheme, appTheme ?? {}, themeModeCallback, config.css),
+      appTheme,
+    )
   }
 
   // Ensure pseudo-state keys always exist as objects so .styles() can
@@ -298,15 +366,16 @@ export const getThemeByMode: GetThemeByMode = (object, mode) => {
   // helpers but the pattern is consistent. Ported from vitus-labs
   // `00fdadc2`.
   const acc: Record<string, any> = {}
-  for (const key in object) {
-    const value = object[key]
-    if (typeof value === 'object' && value !== null) {
-      acc[key] = getThemeByMode(value, mode)
-    } else if (isModeCallback(value)) {
-      acc[key] = value(mode)
-    } else {
-      acc[key] = value
-    }
-  }
+  for (const key in object) acc[key] = resolveByMode(object[key], mode)
   return acc
+}
+
+// An ARRAY (a mobile-first responsive value) stays an array: walked as an
+// object it came out as `{ 0: …, 1: … }`, which unistyle reads as a
+// breakpoint map without breakpoint keys, so the value was silently dropped.
+const resolveByMode = (value: unknown, mode: 'light' | 'dark'): unknown => {
+  if (Array.isArray(value)) return value.map((item) => resolveByMode(item, mode))
+  if (typeof value === 'object' && value !== null) return getThemeByMode(value as Record<string, any>, mode)
+  if (isModeCallback(value)) return (value as (m: string) => unknown)(mode)
+  return value
 }

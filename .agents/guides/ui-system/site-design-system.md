@@ -32,7 +32,7 @@ Import them from the folder's index (`kit/primitives`; an island imports the one
 | `Stack` | children in a column with one gap between them | `gap`, `alignX` (`block` default: stretch), `alignY`, `tag`, `shrink`, `selfStart`, `inline` |
 | `Cluster` | a row that wraps: chips, pills, links, actions | `gap`, `alignX`, `alignY`, `nowrap`, `tag` (`ul` drops the bullets) |
 | `Box` | a block with padding and nothing else | `pad`, `padX`, `padY`, `padTop`, `padBottom` |
-| `Grid` | equal columns, the count set per breakpoint | `columns` (`3` or `{ xs: 1, lg: 6 }`), `gap`, `tag` |
+| `Grid` | equal columns, the count set per breakpoint | `columns` (1–12: `3` or `{ xs: 1, lg: 6 }`), `gap`, `tag` |
 | `AutoGrid` | as many columns as fit (`min` px), or `cols` from `lg` | `min`, `cols`, `colsBelow`, `gap` |
 | `Wrap` | the page column with its gutters | none |
 | `Text` | small inline or block text in a set style | `variant` (`mono`, `label`, `caption`, `small`, `body`), `tone`, `leading`, `block`, `anywhere`, `tag` |
@@ -43,6 +43,7 @@ Import them from the folder's index (`kit/primitives`; an island imports the one
 - **Gap and padding take `space` keys** (`gap={150}` is 12px, `theme.ts` `space`), or one per breakpoint (`{ xs: 150, md: 250 }`). Never pixels: the prop types accept the keys only.
 - **Responsive values** use the theme breakpoints (`xs`…`xl`); a width that is not one (the home page's 700px `split`) is a named token in `theme.ts` with a query in `media.up` / `media.down`, never inside `breakpoints` (that object feeds the UI system and its generated CSS).
 - **Display type is not `Text`.** Headings are `Heading`, copy paragraphs `Lede`, the section label `Eyebrow` (`kit/type.tsx`); `Text` is for the small text pages used to style themselves.
+- **Values become modifiers, never CSS through a prop.** A primitive maps its typed props to named `.multiple()` modifiers declared once (`kit/primitives/modifiers.ts`: `cols-<bp>-<n>` for `Grid` / `AutoGrid` `cols`, `pad-<side>-<bp>-<key>` for `Box`), the way `flagsOf` maps `shrink` and `tag`. The one exception is `AutoGrid` `min`, an arbitrary px width that no finite modifier set can name; it is the kit's only `css` escape hatch, suppressed with its reason.
 - **Static layout.** Layout props are read once when the primitive renders; a layout that changes at runtime switches between two primitives (or uses `Visible`).
 - **Islands.** The primitives use the styling runtime (except `Icon`, which is plain markup), so only an island already rooted in `KitScope` (product demos, the benchmark islands) uses them, and it imports the primitive's own file (`kit/primitives/stack`), not the index: the index pulls every primitive (and coolgrid) into the island, about 1.4 KB gzip measured on a benchmark island. Kit files do the same. Static pages import the index.
 

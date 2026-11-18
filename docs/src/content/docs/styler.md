@@ -350,7 +350,7 @@ const Panel = styled('div', { layer: 'app-base' })`
 // Emits: @layer app-base { .pyr-xyz { padding: 16px; } }
 ```
 
-A NAMED `@layer <name> { … }` block written inside a component's CSS goes into that top-level layer, under the same class name, instead of becoming a sublayer of the component's own `layer`. That is how one Elements class puts its base layout in `elements` and the instance `css` in `instance`:
+A NAMED `@layer <name> { … }` block written inside a component's CSS goes into that top-level layer, under the same class name, instead of becoming a sublayer of the component's own `layer`. That is how one Elements class puts its base layout in `elements` and the instance `css` escape hatch in `instance`:
 
 ```ts
 const Box = styled('div', { layer: 'elements' })`

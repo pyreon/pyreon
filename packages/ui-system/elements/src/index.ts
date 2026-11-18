@@ -44,13 +44,6 @@ export type {
   PyreonStatic,
   Responsive,
   ResponsiveBoolType,
-  StyleOverride,
-  StyleProps,
-  StylesCallback,
-  StylesMode,
-  StylesProp,
-  StylesThemeDefault,
-  StyleValue,
 } from './types'
 export type { UtilProps } from './Util'
 export { Util } from './Util'

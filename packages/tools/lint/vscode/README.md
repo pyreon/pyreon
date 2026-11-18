@@ -63,8 +63,8 @@ formatter keeps.
 The server reads the nearest `.pyreonlintrc.json` for each file, and picks up
 edits to it without a restart.
 
-## 142 rules
+## 144 rules
 
-142 rules across 26 categories, the same set the `pyreon-lint` CLI runs. The
+144 rules across 26 categories, the same set the `pyreon-lint` CLI runs. The
 full list, with what each rule catches, is on the
 [lint docs page](https://pyreon.dev/docs/lint).

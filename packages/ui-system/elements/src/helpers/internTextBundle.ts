@@ -15,38 +15,14 @@
  * Bundles are never mutated downstream (styler reads `$text.extraStyles`).
  */
 import { SizedMap } from '@pyreon/sized-map'
-import type { StyleOverride } from '../types'
-import { internedStylesKey } from './instanceStyles'
 
-export type TextBundle = { extraStyles: unknown; instanceStyles?: StyleOverride | undefined }
+export type TextBundle = { extraStyles: unknown }
 
 const EMPTY: TextBundle = { extraStyles: undefined }
 const _byRef = new WeakMap<object, TextBundle>()
 const _byString = new SizedMap<string, TextBundle>({ maxEntries: 256, lru: true })
 
-const _withStyles = /* @__PURE__ */ new SizedMap<string, TextBundle>({ maxEntries: 256, lru: true })
-
-/**
- * With a typed `styles` override (interned by `internStyles`): keyed by the
- * override's canonical key plus a string / absent `css`, in a 256-entry LRU.
- * An object/function `css` next to an override is not cached (rare).
- */
-const internWithStyles = (css: unknown, styles: StyleOverride): TextBundle => {
-  const stylesKey = internedStylesKey(styles)
-  if (stylesKey === undefined || (css !== undefined && typeof css !== 'string'))
-    {return { extraStyles: css, instanceStyles: styles }}
-  const key = JSON.stringify([css ?? null, stylesKey])
-  let b = _withStyles.get(key)
-  if (!b) {
-    b = { extraStyles: css, instanceStyles: styles }
-    _withStyles.set(key, b)
-  }
-
-  return b
-}
-
-export const internTextBundle = (css: unknown, styles?: StyleOverride | undefined): TextBundle => {
-  if (styles !== undefined) return internWithStyles(css, styles)
+export const internTextBundle = (css: unknown): TextBundle => {
   if (css === undefined) return EMPTY
   if (typeof css === 'string') {
     let b = _byString.get(css)

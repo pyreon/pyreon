@@ -135,7 +135,7 @@ const diags = detectPyreonPatterns(
   `const C = ({ state }) => <div>{state}</div>`,
   'C.tsx',
 )
-// PyreonDiagnostic[] — 23 codes today: 'for-missing-by', 'for-with-key',
+// PyreonDiagnostic[] — 24 codes today: 'for-missing-by', 'for-with-key',
 // 'props-destructured', 'props-destructured-body', 'process-dev-gate',
 // 'empty-theme', 'raw-add-event-listener', 'raw-remove-event-listener',
 // 'date-math-random-id', 'on-click-undefined', 'signal-write-as-call',
@@ -144,7 +144,7 @@ const diags = detectPyreonPatterns(
 // 'as-unknown-as-vnodechild', 'island-never-with-registry-entry',
 // 'query-options-as-function', 'accessor-uncalled-in-template',
 // 'accessor-uncalled-in-condition', 'charts-legacy-import', 'plain-mode',
-// 'for-stale-item-field'
+// 'for-stale-item-field', 'css-prop-on-component'
 ```
 
 This is what the MCP `validate({ code })` tool runs. Some shapes are caught syntactically here AND also as lint rules in `@pyreon/lint` (proactive + reactive — the agent sees the fix before commit; CI catches it post-commit).

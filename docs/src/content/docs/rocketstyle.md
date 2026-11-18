@@ -385,7 +385,7 @@ The five built-in dimensions are defined at factory-init time, and you can overr
 | `multiple: { propName: 'multiple', multi: true }` | `multiple` | **yes** | no |
 | `modifiers: { propName: 'modifier', multi: true, transform: true }` | `modifier` | **yes** | **yes** |
 
-- A **multi** dimension (`multi: true`) accepts an array of values that all compose: `<Box multiple={['rounded', 'shadow']} />`.
+- A **multi** dimension (`multi: true`) accepts an array of values that all compose: `<Box multiple={['rounded', 'shadow']} />`. Falsy entries are skipped, so `multiple={['rounded', raised() && 'shadow']}` composes conditionally.
 - A **transform** dimension (`transform: true`) is evaluated **last**, and its values are functions receiving the fully accumulated theme — for derived styles like "inverted" or "outlined" that depend on the resolved base.
 
 ```tsx
@@ -409,6 +409,32 @@ const Badge = rs({ name: 'Badge', component: Element }).attrs({ tag: 'span' })
 :::danger{title="Reserved dimension names"}
 Dimension names cannot collide with reserved keys (`light`, `dark`, `provider`, `consumer`, `DEBUG`, `name`, `component`, `inversed`, `passProps`, `styled`, `theme`, `styles`, `compose`, `attrs`). In dev mode, a collision throws at factory init.
 :::
+
+## One-off looks: add a modifier, do not pass styles
+
+There is no per-instance style prop, on purpose. A look that some instances need is a named, typed modifier on the component, using the built-in multi-value `multiple` dimension:
+
+```tsx
+// existing API: .multiple({...}) declares composable modifiers
+const Grid = BaseGrid.multiple({
+  threeUp: { gridTemplateColumns: { md: 'repeat(3, minmax(0, 1fr))' } },
+  dense:   { gap: 8 },
+})
+
+<Grid multiple="threeUp" />
+<Grid multiple={['threeUp', 'dense']} />
+<Grid multiple={['threeUp', compact() && 'dense']} />  // falsy entries are skipped
+```
+
+- **One word per look at the call site**, autocompleted, and a typo (`multiple={['thre']}`) is a type error. With a typed `StylesDefault` (`@pyreon/ui-theme` augments it with unistyle's `ITheme`) a misspelt key in the definition is a type error too.
+- **Every `.theme()` value form**: a single value, a mobile-first array (`null` keeps the smaller breakpoint's value), a breakpoint object, a `mode(light, dark)` pair, and the `hover` / `focus` / `active` / `disabled` / `pressed` / `readOnly` groups.
+- **It wins.** Modifier slices merge after the base theme and the `state` / `size` / `variant` slices, in list order, inside the component's own class, so there is no cascade fight (#4354). A responsive modifier wins from its first breakpoint up and keeps the earlier value below it: over `gridTemplateColumns: 'minmax(0, 1fr)'`, `{ md: 'repeat(3, …)' }` gives one column below `md` and three from `md`.
+- **Reactive**: a signal-driven list swaps the class on the same node; equal lists share one memo entry and one class.
+- **Composes downstream**: `Card.multiple({ compact: { … } })` extends a shipped component without touching it.
+
+Two neighbours of the same rule: a **caller-chosen value** (a column count, a padding step) is a typed prop of the primitive that maps to a modifier list in its render function; a **product-wide look** is a variant. The `css` prop of an `@pyreon/elements` base is only the escape hatch for a selector or an at-rule. `pyreon/prefer-style-modifier` (warn) flags `css` on a component, `pyreon/no-raw-css-string` (error) flags raw CSS text, and the opt-in `pyreon/no-theme-props-in-style` flags a fixed theme-owned value in an inline `style`.
+
+Under `rocketstyle({ useBooleans: true })` each modifier is also a boolean prop (`<Grid threeUp dense={compact()} />`); Pyreon's own factories keep the default `useBooleans: false`, so the list form above is the canonical one.
 
 ## Provider & Context
 
@@ -443,7 +469,7 @@ For component-to-component context, `.config({ provider: true })` exposes a comp
 
 Rocketstyle is built on `@pyreon/styler`. Resolved dimension style objects are handed to the styler's `styled` API, which produces scoped, deduplicated CSS classes with SSR support. You don't call styler directly — rocketstyle drives it — but the resolved theme follows the same value pipeline (`@pyreon/unistyle`'s responsive props, CSS-variable mode, etc.).
 
-Rocketstyle's CSS lives in `@layer rocketstyle`. The framework declares the order once, `@layer elements, rocketstyle, instance;`: the theme beats an `@pyreon/elements` primitive's base layout, and a per-instance override beats the theme for the same property. The override is the Element's typed `styles` prop, written exactly like a `.theme()` value (`<Card styles={{ paddingTop: { xs: 8, md: 16 }, hover: { color: 'red' } }} />`), rendered by the Element underneath into `@layer instance`. Unlayered CSS beats all three.
+Rocketstyle's CSS lives in `@layer rocketstyle`. The framework declares the order once, `@layer elements, rocketstyle, instance;`: the theme beats an `@pyreon/elements` primitive's base layout, and the Element's `css` escape hatch (a selector or an at-rule, as a tagged template) beats the theme. A look is never passed as a prop; it is a modifier (see [One-off looks](#one-off-looks-add-a-modifier-do-not-pass-styles)). Unlayered CSS beats all three.
 
 When `init({ cssVariables: true })` is set on `@pyreon/ui-core`, `mode(light, dark)` pairs are emitted as hashed CSS custom properties so a dark/light flip is one attribute write with zero per-component re-resolution. The `resolveModeVar(value, mode)` export resolves a `var(--px-m-…)` mode-pair reference back to its raw value for non-CSS render targets (PDF / DOCX / email export).
 

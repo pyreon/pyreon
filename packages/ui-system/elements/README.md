@@ -80,13 +80,12 @@ Most-used primitive. Renders an outer container with optional `beforeContent` / 
 
 Per-section overrides: `contentDirection`, `contentAlignX`, `beforeContentAlignY`, `afterContentDirection`, etc. — every section accepts the same axis props prefixed with the section name.
 
-**Per-instance style override — `styles`**: the same object a component's `.theme()` returns, type-checked against the unistyle property names. Values are a single value, a mobile-first array or a breakpoint object; numbers become rem; `hover` / `focus` / `active` / `disabled` groups become `:hover` / `:focus-visible` / `:active` / `:disabled`. A `(theme, mode) => object` callback works too. It renders into `@layer instance`, after the component's theme, so it wins:
+**No styles through props.** A one-off look of a rocketstyle component built on `Element` is a named modifier on the component, applied by name; `css` is only the escape hatch for a selector or an at-rule, written as a tagged template (``css={css`…`}`` or ``css={(css) => css`…`}``), and a raw CSS string does not type-check. `css` renders into `@layer instance`, after the component's theme.
 
 ```tsx
-<Grid styles={{ gridTemplateColumns: { md: 'repeat(3, minmax(0, 1fr))' }, hover: { color: 'red' } }} />
+const Grid = BaseGrid.multiple({ threeUp: { gridTemplateColumns: { md: 'repeat(3, minmax(0, 1fr))' } } })
+<Grid multiple={['threeUp', compact() && 'dense']} />
 ```
-
-`css` is the escape hatch for a selector or an at-rule, written as a tagged template (``css={css`…`}`` or ``css={(css) => css`…`}``). A raw CSS string is not accepted.
 
 **Simple-path fast path**: when there's no `beforeContent` / `afterContent` and the tag doesn't need the button/fieldset/legend two-layer flex fix, Element inlines the wrapper helper into ONE styled invocation. Saves one component invocation + one `splitProps` + one `mountChild` per Element. Real-Chromium benchmark drops a 500-child mount from 2.9ms to 1.6ms (-45%).
 
@@ -103,8 +102,7 @@ Per-section overrides: `contentDirection`, `contentAlignX`, `beforeContentAlignY
 | `tag` | `'h1'`-`'h6'` / `'p'` / `'span'` / `'strong'` / `'em'` / `'small'` / … | Inline-by-default |
 | `paragraph` | `boolean` | Shorthand for `tag="p"` |
 | `children` / `label` | `VNodeChild` | Text content |
-| `styles` | `StylesProp` | Typed per-instance override (the `.theme()` object shape) |
-| `css` | `ExtendCss` | Escape hatch: a tagged `css` template or `(css) => …` callback |
+| `css` | `ExtendCss` | Escape hatch for a selector or an at-rule: a tagged `css` template or a `(css) => …` callback (no raw string) |
 
 ## `List` — data-driven children with positional metadata
 

@@ -68,8 +68,8 @@ function lintWithRuleEnabled(ruleId: string, source: string, filePath?: string) 
 // ── Rule Metadata ───────────────────────────────────────────────────────────
 
 describe('Rule metadata', () => {
-  it('should have 142 rules', () => {
-    expect(allRules.length).toBe(142)
+  it('should have 144 rules', () => {
+    expect(allRules.length).toBe(144)
   })
 
   it('should have unique rule IDs', () => {
@@ -135,7 +135,7 @@ describe('Rule metadata', () => {
     expect(counts.architecture).toBe(11)
     expect(counts.store).toBe(3)
     expect(counts.form).toBe(4)
-    expect(counts.styling).toBe(6)
+    expect(counts.styling).toBe(8)
     expect(counts.hooks).toBe(3)
     expect(counts.accessibility).toBe(3)
     expect(counts.router).toBe(5)
@@ -161,7 +161,7 @@ describe('Rule metadata', () => {
     // How code reads — the `readable` preset layers.
     expect(counts.style).toBe(7)
     const total = Object.values(counts).reduce((a, b) => a + b, 0)
-    expect(total).toBe(142)
+    expect(total).toBe(144)
   })
 })
 
@@ -2102,7 +2102,7 @@ describe('Ignore filter', () => {
 describe('Presets', () => {
   it('recommended should include all rules (opt-in ones forced off)', () => {
     const config = getPreset('recommended')
-    expect(Object.keys(config.rules).length).toBe(142)
+    expect(Object.keys(config.rules).length).toBe(144)
     // Opt-in best-practice rules are present as keys but disabled.
     for (const rule of allRules) {
       if (rule.meta.optIn === true) {

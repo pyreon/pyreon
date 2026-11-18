@@ -18,8 +18,8 @@ const warnRawCss = (text: string): void => {
     // oxlint-disable-next-line no-console
     console.warn(
       `[Pyreon] A raw CSS string was passed to the \`css\` prop ("${text.slice(0, 60)}"). ` +
-        'Use the typed `styles` prop (`styles={{ gridTemplateColumns: { md: "repeat(3, 1fr)" } }}`), ' +
-        'or write the escape hatch as a tagged template: css={css`…`} or css={(css) => css`…`}.',
+        'Give the component a named modifier instead (`.multiple({ threeUp: { gridTemplateColumns: { md: "repeat(3, 1fr)" } } })`, ' +
+        "applied as multiple={['threeUp']}), or write the escape hatch as a tagged template: css={css`…`} or css={(css) => css`…`}.",
     )
   }
 }
