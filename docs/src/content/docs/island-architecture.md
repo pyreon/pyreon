@@ -92,7 +92,7 @@ The `loader` is a dynamic `import()`. It may resolve to a module with a `default
 
 | Option     | Type                 | Default    | Description                                                                                          |
 | ---------- | -------------------- | ---------- | ---------------------------------------------------------------------------------------------------- |
-| `name`     | `string`             | *auto-derived* | Unique island name. Must match the key in the client-side registry (manual `hydrateIslands` form). Two islands sharing a name is a foot-gun — see the [audit](#pyreon-doctor-check-islands). |
+| `name`     | `string`             | *auto-derived* | Unique island name. Must match the key in the client-side registry (manual `hydrateIslands` form). Two islands sharing a name is a foot-gun — see the [audit](#pyreon-doctor-only-islands-audit). |
 | `hydrate`  | `HydrationStrategy`  | `'load'`   | When to hydrate on the client. See [the six strategies](#the-six-strategies).                        |
 | `prefetch` | `PrefetchStrategy`   | `'none'`   | Pre-warm the chunk before the hydration trigger fires. See [Prefetch hint](#prefetch-hint).          |
 
