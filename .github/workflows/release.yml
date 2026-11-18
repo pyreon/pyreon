@@ -215,7 +215,7 @@ jobs:
         run: bun scripts/cap-changeset-bumps.ts
 
       - name: Reject high-severity dependency advisories before publishing
-        run: bun audit --audit-level=high
+        run: bun scripts/audit-new-advisories.ts --level high
 
       - name: Create Release PR or Publish
         id: changesets
@@ -514,7 +514,7 @@ jobs:
         run: git config core.hooksPath /dev/null
 
       - name: Reject high-severity dependency advisories before publishing
-        run: bun audit --audit-level=high
+        run: bun scripts/audit-new-advisories.ts --level high
 
       - name: Publish snapshot
         run: |
