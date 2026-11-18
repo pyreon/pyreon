@@ -198,6 +198,23 @@ The rule: hydration keeps server nodes wherever the client renders the same thin
 | compiled `_tpl` | adopt when the static skeleton matches | swap to a clone; `reportSwappedTemplate` reports the first real difference (none when the DOM is identical, e.g. #4385's text slots holding elements) |
 | compiled text binders, `_setChild`, `_setChildAt`, `_textSlot` | adopt | report `text` (dev) |
 | `_mountSlot` / `_setChild` structural values | adopt through the slot hydrator | reported by the walk |
+
+### Hydration contract: adopt, report, remount
+
+The rule: hydration keeps server nodes wherever the client renders the same thing, and every place it CHANGES what the server rendered is reported through `warnHydrationMismatch` (dev console) and `onHydrationMismatch` handlers. The h()-path reports reach the handlers in production too; the compiled binders' text reports (#4419) are dev-only, with zero production bytes.
+
+| Path | Agreement | Divergence |
+| --- | --- | --- |
+| static text / element (`hydrateChild`, `hydrateElement`) | adopt | report `text` / `tag`; replace that node, siblings keep theirs |
+| accessor, marked range, one text node | adopt, bind | report `text`, write in place |
+| accessor, marked range, several nodes | adopt by walking the first value (`adoptReactiveRange`) | reported by the walk |
+| accessor, NO markers (server rendered the content without an accessor, #4448) | adopt by walking the first value (`adoptUnmarkedRange`) | reported by the walk |
+| accessor over an empty range / empty sole element | mount | text: report; a structural first value mounts without a report (gap) |
+| sole accessor child (markers elided) | adopt (`hydrateSoleAccessorChild`) | as the marked rows |
+| keyed array from an accessor | mounts fresh (no adoption-time key cache), no report | n/a |
+| compiled `_tpl` | adopt when the static skeleton matches | swap to a clone; `reportSwappedTemplate` reports the first real difference (none when the DOM is identical, e.g. #4385's text slots holding elements) |
+| compiled text binders, `_setChild`, `_setChildAt`, `_textSlot` | adopt | report `text` (dev) |
+| `_mountSlot` / `_setChild` structural values | adopt through the slot hydrator | reported by the walk |
 | fixed (non-accessor) child on a `<!>` placeholder: `_mountSlot`, `_setChildAt` (#4385 D) | its server range (`_slot` / baked markers) is parked (mid) or left in place (trailing) and adopted through the slot hydrator; a one-text mid range collapses and is written in place | reported by the walk / `text` (dev) |
 | `_setChild` VNode or array into an EMPTY template element (sole static child, fused static mix) | refused by the verifier (the template declares no element children): swap, no report (open) | n/a |
 
