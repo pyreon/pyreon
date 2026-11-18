@@ -90,7 +90,7 @@ import {
 | `@pyreon/attrs` | `attrs` |
 | `@pyreon/rocketstyle` | `rocketstyle` |
 | `@pyreon/ui-core` | `PyreonUI`, `useMode` (consumer-app surface; framework-internal utilities omitted) |
-| `@pyreon/document-primitives` | `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak`, `extractDocNode`, `createDocumentExport`, `DocumentPreview`, `documentTheme` |
+| `@pyreon/document-primitives` | `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak`, `extractDocNode`, `DocumentPreview`, `documentTheme` |
 | `@pyreon/connector-document` | `extractDocumentTree`, `resolveStyles`, `DocumentMarker`, `ExtractOptions`, `ResolvedStyles` |
 
 ## Bundle hygiene

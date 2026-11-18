@@ -99,16 +99,6 @@ The returned `unmount` function is safe to call multiple times -- subsequent cal
 
 <Example file="./examples/runtime-dom/mount-reactive-children" title="mount() + reactive children" />
 
-### render
-
-An alias for `mount`. Use whichever name you prefer:
-
-```tsx
-import { render } from '@pyreon/runtime-dom'
-
-const unmount = render(<App />, document.getElementById('app')!)
-```
-
 ### mount with JSX
 
 If you are using the Pyreon JSX transform, mounting looks like this:
@@ -1574,7 +1564,6 @@ In production builds, duplicate `key` values in keyed lists emit a one-time cons
 | Export                     | Description                                                                                                               |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `mount`                    | Mount a VNode tree into a container                                                                                       |
-| `render`                   | Alias for `mount`                                                                                                         |
 | `hydrateRoot`              | Hydrate server-rendered HTML                                                                                              |
 | `createTemplate`           | Create a template-cloning factory                                                                                         |
 | `applyProp`                | Apply a single prop to an element                                                                                         |

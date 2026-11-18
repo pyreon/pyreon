@@ -3,7 +3,7 @@
  * Compose.
  *
  * The package OWNS its native lowering: the recognizers, the persistence primitive a persisted signal is declared with
- * (`@AppStorage` / `@PyreonAppStorage`, `rememberSaveable` / `rememberPyreonStorage`) and the compile-gate stubs for that
+ * (`@AppStorage` / `@PyreonAppStorage`, `rememberPyreonStorage`) and the compile-gate stubs for that
  * runtime. `@pyreon/native-cli` discovers it from `package.json` → `pyreon.native.plugin` when a source file imports
  * `@pyreon/storage`.
  *

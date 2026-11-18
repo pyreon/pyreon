@@ -157,7 +157,7 @@ export { useAppState } from './useAppState'
 // transport is app-wired via setCrashTransport (the native registry mirror).
 export { useCrashReporter } from './useCrashReporter'
 export { setCrashTransport } from './useCrashReporter'
-export type { UseCrashReporterResult } from './useCrashReporter'
+export type { CrashReport, UseCrashReporterResult } from './useCrashReporter'
 export { usePrevious } from './usePrevious'
 export { useReducedMotion } from './useReducedMotion'
 export { useScrollLock } from './useScrollLock'

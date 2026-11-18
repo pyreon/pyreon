@@ -99,8 +99,8 @@ export function C() {
   const add = () => { db.insert('notes', { id: String(n() + 1), fields: { at: 'x' } }) }
   return <Stack><Text>{db.count('notes')}</Text></Stack>
 }`
-    expect(swift(computed).code).toContain('PyreonRecord(id: String(n + 1), fields: ["at": "x"])')
-    expect(kotlin(computed).code).toContain('PyreonRecord((n + 1L).toString(), mapOf("at" to "x"))')
+    expect(swift(computed).code).toContain('PyreonRecord(id: String(pyreonAdd(n, 1)), fields: ["at": "x"])')
+    expect(kotlin(computed).code).toContain('PyreonRecord((pyreonAdd(n, 1L)).toString(), mapOf("at" to "x"))')
   })
 
   it('does NOT rewrite a literal with unexpected keys — a wrong call must still error', () => {

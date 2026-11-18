@@ -422,6 +422,6 @@ interface ResolvedStyles {
 
 ## Related Packages
 
-- [`@pyreon/document-primitives`](/docs/document-primitives) — the 18 rocketstyle components you author; re-exports `extractDocumentTree` / `resolveStyles` and adds the higher-level `extractDocNode(templateFn)` / `createDocumentExport(templateFn)` helpers most apps use.
+- [`@pyreon/document-primitives`](/docs/document-primitives) — the 18 rocketstyle components you author; re-exports `extractDocumentTree` / `resolveStyles` and adds the higher-level `extractDocNode(templateFn)` helper most apps use.
 - [`@pyreon/document`](/docs/document) — the renderer. Takes a `DocNode` and produces 20 output formats (PDF, DOCX, XLSX, PPTX, HTML, email, Markdown, text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence, WhatsApp, Google Chat, JSON, JSONL).
 - [`@pyreon/rocketstyle`](/docs/rocketstyle) / [`@pyreon/styler`](/docs/styler) / [`@pyreon/unistyle`](/docs/unistyle) — the CSS-in-JS layer the connector reads `$rocketstyle` and `var(--…)` values from.

@@ -6,7 +6,7 @@ exports[`loom scan, themed > 16 colours 1`] = `
   ␛[90mworkspace packages␛[39m  5
   ␛[90mexternal deps␛[39m       5
   ␛[90minternal edges␛[39m      5
-  ␛[90mdepth␛[39m               4
+  ␛[90mdepth␛[39m               1
   ␛[90mruntime cycles␛[39m      ␛[31m1␛[39m
 
   ␛[36m␛[1mℹ 8 info␛[22m␛[39m
@@ -84,7 +84,7 @@ exports[`loom scan, themed > 256 dark 1`] = `
   ␛[38;5;103mworkspace packages␛[39m  5
   ␛[38;5;103mexternal deps␛[39m       5
   ␛[38;5;103minternal edges␛[39m      5
-  ␛[38;5;103mdepth␛[39m               4
+  ␛[38;5;103mdepth␛[39m               1
   ␛[38;5;103mruntime cycles␛[39m      ␛[38;5;203m1␛[39m
 
   ␛[38;5;45m␛[1mℹ 8 info␛[22m␛[39m
@@ -162,7 +162,7 @@ exports[`loom scan, themed > 256 light 1`] = `
   ␛[38;5;59mworkspace packages␛[39m  5
   ␛[38;5;59mexternal deps␛[39m       5
   ␛[38;5;59minternal edges␛[39m      5
-  ␛[38;5;59mdepth␛[39m               4
+  ␛[38;5;59mdepth␛[39m               1
   ␛[38;5;59mruntime cycles␛[39m      ␛[38;5;124m1␛[39m
 
   ␛[38;5;24m␛[1mℹ 8 info␛[22m␛[39m
@@ -240,7 +240,7 @@ exports[`loom scan, themed > ascii 1`] = `
   workspace packages  5
   external deps       5
   internal edges      5
-  depth               4
+  depth               1
   runtime cycles      1
 
   i 8 info
@@ -318,7 +318,7 @@ exports[`loom scan, themed > plain 1`] = `
   workspace packages  5
   external deps       5
   internal edges      5
-  depth               4
+  depth               1
   runtime cycles      1
 
   ℹ 8 info
@@ -396,7 +396,7 @@ exports[`loom scan, themed > truecolor dark 1`] = `
   ␛[38;2;138;134;150mworkspace packages␛[39m  5
   ␛[38;2;138;134;150mexternal deps␛[39m       5
   ␛[38;2;138;134;150minternal edges␛[39m      5
-  ␛[38;2;138;134;150mdepth␛[39m               4
+  ␛[38;2;138;134;150mdepth␛[39m               1
   ␛[38;2;138;134;150mruntime cycles␛[39m      ␛[38;2;248;113;113m1␛[39m
 
   ␛[38;2;34;211;238m␛[1mℹ 8 info␛[22m␛[39m
@@ -474,7 +474,7 @@ exports[`loom scan, themed > truecolor light 1`] = `
   ␛[38;2;94;90;105mworkspace packages␛[39m  5
   ␛[38;2;94;90;105mexternal deps␛[39m       5
   ␛[38;2;94;90;105minternal edges␛[39m      5
-  ␛[38;2;94;90;105mdepth␛[39m               4
+  ␛[38;2;94;90;105mdepth␛[39m               1
   ␛[38;2;94;90;105mruntime cycles␛[39m      ␛[38;2;185;28;28m1␛[39m
 
   ␛[38;2;10;110;137m␛[1mℹ 8 info␛[22m␛[39m

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { signal } from '@pyreon/reactivity'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { GanttChart } from './GanttChart'
-import { layoutGantt } from './gantt'
+import { layoutGantt, renderGantt } from './gantt'
 import type { GanttRow, GanttTask } from './gantt'
 
 const pixel = (c: HTMLCanvasElement, x: number, y: number): string => {
@@ -44,5 +44,34 @@ describe('GanttChart (real browser)', () => {
     const z = layoutGantt(tasks(), { x: 4, y: 4, w: 492, h: 152 }, undefined, measure).rows[0]!
     expect(pixel(c, z.rect.x + z.rect.w / 2, z.rect.y + z.rect.h * 0.1)).toBe('0,255,0')
     expect(container.querySelector('table')!.textContent).toContain('Kickoff')
+  })
+
+  // #4269: at phone width the last time-axis tick sits a few pixels from the
+  // plot's right edge, and its start-aligned label ran past the canvas ("29 J").
+  // Measured with the canvas's own text metrics, every tick label must end
+  // inside the plot.
+  it('keeps every tick label inside the plot at phone width (#4269)', async () => {
+    const tasks: GanttTask[] = [
+      { id: 'a', name: 'Design', start: '2024-01-01', end: '2024-01-10', progress: 0.6 },
+      { id: 'b', name: 'Build', start: '2024-01-08', end: '2024-01-24' },
+      { id: 'c', name: 'Ship', start: '2024-01-25', end: '2024-01-30' },
+    ]
+    const { container } = mountInBrowser(() => GanttChart({ animate: false, tasks, width: 358, height: 160 }))
+    await flush()
+    const ctx = container.querySelector('canvas')!.getContext('2d')!
+    const measure = (text: string, size: number): number => {
+      ctx.font = String(size) + 'px system-ui, -apple-system, "Segoe UI", sans-serif'
+      return ctx.measureText(text).width
+    }
+    const layout = layoutGantt(tasks, { x: 4, y: 4, w: 350, h: 152 }, undefined, measure)
+    const labels = new Set(layout.ticks.map((t) => t.label))
+    const drawn = renderGantt(layout).filter((c) => c.kind === 'text' && labels.has(c.text))
+    expect(drawn.map((c) => (c.kind === 'text' ? c.text : ''))).toContain('29 Jan')
+    const right = layout.plot.x + layout.plot.w
+    for (const c of drawn) {
+      if (c.kind !== 'text') continue
+      expect(c.at.x + measure(c.text, 11), c.text).toBeLessThanOrEqual(right + 0.01)
+      expect(c.at.x, c.text).toBeGreaterThanOrEqual(layout.plot.x)
+    }
   })
 })

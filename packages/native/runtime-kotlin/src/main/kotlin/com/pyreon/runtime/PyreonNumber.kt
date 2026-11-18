@@ -210,3 +210,139 @@ fun pyreonToNumber(text: String): Double {
     }
     return pyreonDecimalPrefix(s, 0, whole = true) ?: Double.NaN
 }
+
+/**
+ * JavaScript's text for a value that may be absent: the value as the web prints it, or [absent] (`"undefined"` /
+ * `"null"`, the spelling its TypeScript type names). Kotlin's `"${x}"` prints `null` for every absence, where the web
+ * prints `undefined` for an optional field, `.find`, `.at`, `map.get` and `?.`. A Double prints through
+ * [pyreonNumberString] (`7`, not `7.0`).
+ */
+fun pyreonOptionalText(value: Any?, absent: String): String = when (value) {
+    null -> absent
+    is Double -> pyreonNumberString(value)
+    is Float -> pyreonNumberString(value)
+    else -> value.toString()
+}
+
+// ─── Integer arithmetic with JavaScript's results ─────────────────────────────────────────────────────────────────
+//
+// The same model and functions as `PyreonNumber.swift` (read its comment): a TS integer is a 64-bit `Long`; `+ - *`
+// and negation give the web's result (exact within ±2^53, the web's double beyond, saturated past ±2^63 — Kotlin's
+// own operators WRAPPED there, so `2^62 * 4` was 0); `%` never throws (a zero divisor is 0, NaN's integer value);
+// the bitwise operators are 32-bit (`ToInt32`, `>>>` with `ToUint32`, shift counts modulo 32).
+
+private const val PYREON_SAFE_INTEGER = 9_007_199_254_740_992L
+
+@Volatile private var pyreonIntegerNoticeShown = false
+
+private fun pyreonIntegerResult(d: Double, op: String): Long {
+    if ((d.isNaN() || Math.abs(d) >= 9.223372036854775807E18) && !pyreonIntegerNoticeShown) {
+        pyreonIntegerNoticeShown = true
+        System.err.println("[Pyreon] integer $op gave ${pyreonNumberString(d)} on the web, which a 64-bit integer cannot hold; stored as ${d.toLong()}. Use a fractional number (`1.0`) where values can grow past 2^63.")
+    }
+    return d.toLong()
+}
+
+fun pyreonAdd(a: Long, b: Long): Long {
+    val r = a + b
+    if (((a xor r) and (b xor r)) >= 0 && r >= -PYREON_SAFE_INTEGER && r <= PYREON_SAFE_INTEGER) return r
+    return pyreonIntegerResult(a.toDouble() + b.toDouble(), "+")
+}
+
+fun pyreonSub(a: Long, b: Long): Long {
+    val r = a - b
+    if (((a xor b) and (a xor r)) >= 0 && r >= -PYREON_SAFE_INTEGER && r <= PYREON_SAFE_INTEGER) return r
+    return pyreonIntegerResult(a.toDouble() - b.toDouble(), "-")
+}
+
+fun pyreonMul(a: Long, b: Long): Long {
+    val r = a * b
+    // `Math.multiplyHigh` is JDK 9 / Android API 31; the division check works everywhere.
+    val overflow = a != 0L && (r / a != b || (a == -1L && b == Long.MIN_VALUE))
+    if (!overflow && r >= -PYREON_SAFE_INTEGER && r <= PYREON_SAFE_INTEGER) return r
+    return pyreonIntegerResult(a.toDouble() * b.toDouble(), "*")
+}
+
+fun pyreonNeg(a: Long): Long = if (a == Long.MIN_VALUE) Long.MAX_VALUE else -a
+
+// The emit picks these by the INFERRED type. Where inference says integer but the Kotlin value is a platform `Int`
+// (`.size`, an index) or a `Double`, these overloads keep the operator's own result type, so the call still compiles:
+// an `Int` pair computes through the Long helper and narrows back (saturating), anything with a Double is the plain
+// Double operator.
+fun pyreonAdd(a: Int, b: Int): Int = pyreonNarrow(pyreonAdd(a.toLong(), b.toLong()))
+fun pyreonAdd(a: Int, b: Long): Long = pyreonAdd(a.toLong(), b)
+fun pyreonAdd(a: Long, b: Int): Long = pyreonAdd(a, b.toLong())
+fun pyreonAdd(a: Double, b: Double): Double = a + b
+fun pyreonAdd(a: Double, b: Long): Double = a + b
+fun pyreonAdd(a: Long, b: Double): Double = a + b
+fun pyreonAdd(a: Double, b: Int): Double = a + b
+fun pyreonAdd(a: Int, b: Double): Double = a + b
+fun pyreonSub(a: Int, b: Int): Int = pyreonNarrow(pyreonSub(a.toLong(), b.toLong()))
+fun pyreonSub(a: Int, b: Long): Long = pyreonSub(a.toLong(), b)
+fun pyreonSub(a: Long, b: Int): Long = pyreonSub(a, b.toLong())
+fun pyreonSub(a: Double, b: Double): Double = a - b
+fun pyreonSub(a: Double, b: Long): Double = a - b
+fun pyreonSub(a: Long, b: Double): Double = a - b
+fun pyreonSub(a: Double, b: Int): Double = a - b
+fun pyreonSub(a: Int, b: Double): Double = a - b
+fun pyreonMul(a: Int, b: Int): Int = pyreonNarrow(pyreonMul(a.toLong(), b.toLong()))
+fun pyreonMul(a: Int, b: Long): Long = pyreonMul(a.toLong(), b)
+fun pyreonMul(a: Long, b: Int): Long = pyreonMul(a, b.toLong())
+fun pyreonMul(a: Double, b: Double): Double = a * b
+fun pyreonMul(a: Double, b: Long): Double = a * b
+fun pyreonMul(a: Long, b: Double): Double = a * b
+fun pyreonMul(a: Double, b: Int): Double = a * b
+fun pyreonMul(a: Int, b: Double): Double = a * b
+fun pyreonNeg(a: Int): Int = if (a == Int.MIN_VALUE) Int.MAX_VALUE else -a
+fun pyreonNeg(a: Double): Double = -a
+fun pyreonRem(a: Int, b: Int): Int = pyreonNarrow(pyreonRem(a.toLong(), b.toLong()))
+fun pyreonRem(a: Int, b: Long): Long = pyreonRem(a.toLong(), b)
+fun pyreonRem(a: Long, b: Int): Long = pyreonRem(a, b.toLong())
+
+private fun pyreonNarrow(v: Long): Int = if (v > Int.MAX_VALUE) Int.MAX_VALUE else if (v < Int.MIN_VALUE) Int.MIN_VALUE else v.toInt()
+
+fun pyreonRem(a: Long, b: Long): Long {
+    if (b == 0L) return pyreonIntegerResult(Double.NaN, "%")
+    return a % b
+}
+
+/** The web's `%` on doubles (the JVM's `%` already truncates toward zero and gives NaN for a zero divisor). */
+fun pyreonRem(a: Double, b: Double): Double = a % b
+fun pyreonRem(a: Double, b: Long): Double = a % b
+fun pyreonRem(a: Long, b: Double): Double = a % b
+
+/** ECMAScript `ToInt32`: modulo 2^32 after truncation; NaN and ±Infinity are 0. */
+fun pyreonToInt32(x: Number): Int = when (x) {
+    is Double -> if (x.isNaN() || x.isInfinite()) 0 else (x - x % 1.0).rem(4_294_967_296.0).toLong().toInt()
+    is Float -> pyreonToInt32(x.toDouble())
+    else -> x.toLong().toInt()
+}
+
+fun pyreonBitAnd(a: Number, b: Number): Long = (pyreonToInt32(a) and pyreonToInt32(b)).toLong()
+fun pyreonBitOr(a: Number, b: Number): Long = (pyreonToInt32(a) or pyreonToInt32(b)).toLong()
+fun pyreonBitXor(a: Number, b: Number): Long = (pyreonToInt32(a) xor pyreonToInt32(b)).toLong()
+fun pyreonBitNot(a: Number): Long = pyreonToInt32(a).inv().toLong()
+fun pyreonShl(a: Number, b: Number): Long = (pyreonToInt32(a) shl (pyreonToInt32(b) and 31)).toLong()
+fun pyreonShr(a: Number, b: Number): Long = (pyreonToInt32(a) shr (pyreonToInt32(b) and 31)).toLong()
+fun pyreonUshr(a: Number, b: Number): Long = (pyreonToInt32(a) ushr (pyreonToInt32(b) and 31)).toLong() and 0xFFFFFFFFL
+
+/** `Math.max(...xs)` / `Math.min(...xs)`: -Infinity / Infinity for an EMPTY list, NaN when any element is NaN. */
+fun pyreonMax(xs: Iterable<Number>): Double {
+    var r = Double.NEGATIVE_INFINITY
+    for (n in xs) {
+        val x = n.toDouble()
+        if (x.isNaN()) return Double.NaN
+        if (x > r || (x == 0.0 && r == 0.0 && 1.0 / r < 0)) r = x
+    }
+    return r
+}
+
+fun pyreonMin(xs: Iterable<Number>): Double {
+    var r = Double.POSITIVE_INFINITY
+    for (n in xs) {
+        val x = n.toDouble()
+        if (x.isNaN()) return Double.NaN
+        if (x < r || (x == 0.0 && r == 0.0 && 1.0 / x < 0)) r = x
+    }
+    return r
+}

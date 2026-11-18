@@ -162,7 +162,7 @@ examples/app-showcase/
 │       │   │                             renders in browser AND exports to PDF/DOCX
 │       │   ├── ResumeForm.tsx         ← signal-bound editor with field-array
 │       │   │                             siblings (Experience/Education lists)
-│       │   ├── ExportButtons.tsx      ← createDocumentExport → extractDocumentTree
+│       │   ├── ExportButtons.tsx      ← extractDocNode → extractDocumentTree
 │       │   │                             → @pyreon/document download()
 │       │   ├── store.ts               ← single signal store for the whole resume
 │       │   ├── styled.ts              ← form/preview chrome (no doc styling)

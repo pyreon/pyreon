@@ -319,6 +319,7 @@ describe('buildScaffold — native runtime delivery wiring (local-proof-found fi
           encoding: 'utf8',
         })
         expect(r.status, r.stderr).toBe(0)
+
         return {
           pass: readFileSync(join(root, 'pass.txt'), 'utf8'),
           argv: readFileSync(join(root, 'argv.txt'), 'utf8'),
@@ -343,13 +344,17 @@ describe('buildScaffold — native runtime delivery wiring (local-proof-found fi
     expect(a.argv).toContain('-storepass:env PYREON_KEYSTORE_PASS')
   })
 
-  it('MainActivity extends ComponentActivity (Compose setContent receiver)', () => {
+  it('MainActivity extends FragmentActivity (a ComponentActivity, and a BiometricPrompt host)', () => {
     // bug #4: setContent {} is an extension on ComponentActivity, not the
-    // plain android.app.Activity the scaffold previously used.
+    // plain android.app.Activity the scaffold previously used. FragmentActivity
+    // IS a ComponentActivity, and useBiometrics' BiometricPrompt needs a
+    // fragment host: on a plain ComponentActivity authenticate() resolves false.
     const act = get('android/app/src/main/kotlin/com/example/myapp/MainActivity.kt')
-    expect(act).toContain('import androidx.activity.ComponentActivity')
-    expect(act).toContain('class MainActivity : ComponentActivity()')
+    expect(act).toContain('import androidx.fragment.app.FragmentActivity')
+    expect(act).toContain('class MainActivity : FragmentActivity()')
     expect(act).not.toContain('import android.app.Activity')
+    // The runtime's BiometricPrompt gate compiles into every app that wires @pyreon/hooks.
+    expect(get('android/app/build.gradle.kts')).toContain('implementation("androidx.biometric:biometric:1.1.0")')
   })
 
   it('build-android.sh stamps the FQN package the MainActivity import needs', () => {
@@ -376,6 +381,35 @@ describe('buildScaffold — native runtime delivery wiring (local-proof-found fi
     const pg = get('android/app/proguard-rules.pro')
     expect(pg).toContain('kotlinx-serialization')
     expect(pg).toContain('NO manual rules')
+  })
+
+  // A release crash is only readable with THAT build's R8 mapping / dSYM.
+  // Both used to exist only inside build output the next build replaces, so
+  // a shipped build's stack could never be symbolicated. Each release lane
+  // now files its symbols under symbols/<platform>/<version>-<build>/, the
+  // layout `pyreon-native symbolicate` reads.
+  it('release lanes retain crash symbols where pyreon-native symbolicate looks', () => {
+    const g = get('android/app/build.gradle.kts')
+    expect(g).toContain('import com.android.build.api.artifact.SingleArtifact')
+    expect(g).toContain('onVariants(selector().withBuildType("release"))')
+    expect(g).toContain('SingleArtifact.OBFUSCATION_MAPPING_FILE')
+    expect(g).toContain('"../symbols/android/" + name + "-" + code')
+    expect(g).toMatch(/it\.name == "assembleRelease" \|\| it\.name == "bundleRelease"[\s\S]*finalizedBy\(retain\)/)
+
+    const archive = get('scripts/archive-ios.sh')
+    expect(archive).toContain('xcodebuild archive')
+    expect(archive).toContain("-destination 'generic/platform=iOS'")
+    expect(archive).toContain('DEST="symbols/ios/${VERSION}-${BUILD}"')
+    expect(archive).toContain('cp -R "${DSYM}" "${DEST}/"')
+    // The retained dSYM is checked against the binary, not assumed.
+    expect(archive).toContain('[ "${BIN_UUID}" = "${DSYM_UUID}" ]')
+    const archiveParse = spawnSync('bash', ['-n'], { input: archive, encoding: 'utf8' })
+    expect(archiveParse.status, archiveParse.stderr).toBe(0)
+
+    const pkg = JSON.parse(get('package.json')) as { scripts: Record<string, string> }
+    expect(pkg.scripts['release:ios']).toBe('bash scripts/archive-ios.sh')
+    expect(get('.gitignore')).toMatch(/^symbols\/$/m)
+    expect(get('README.md')).toContain('npx pyreon-native symbolicate crash.json --symbols=symbols')
   })
 })
 

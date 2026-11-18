@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { el, tones } from '../../factory'
 
 const Card = el
   .config({ name: 'Card' })
@@ -6,8 +6,9 @@ const Card = el
     contentDirection: 'rows',
     contentAlignX: 'left',
     contentAlignY: 'center', block: true })
-  .theme((t) => ({
-    backgroundColor: t.color.system.light.base,
+  .theme((t, m) => ({
+    backgroundColor: tones(t, m).surface,
+    color: tones(t, m).text,
     borderRadius: t.borderRadius.medium,
     padding: t.spacing.medium,
   }))

@@ -22,14 +22,14 @@ export function C() {
 describe('Array.prototype.reduce(reducer, initial) method-call emit', () => {
   it('Swift: reduce(cb, init) → reduce(init, cb) (initial first)', () => {
     const out = transform(SRC('xs().reduce((s, x) => s + x, 0)'), { target: 'swift' }).code
-    expect(out).toContain('reduce(0, { s, x in s + x })')
+    expect(out).toContain('reduce(0, { s, x in pyreonAdd(s, x) })')
     // must NOT emit the JS arg order (closure first)
     expect(out).not.toMatch(/reduce\(\{ s, x in[^}]*\}, 0\)/)
   })
 
   it('Kotlin: reduce(cb, init) → fold(init, cb)', () => {
     const out = transform(SRC('xs().reduce((s, x) => s + x, 0)'), { target: 'kotlin' }).code
-    expect(out).toContain('fold(0L, { s, x -> s + x })')
+    expect(out).toContain('fold(0L, { s, x -> pyreonAdd(s, x) })')
     // Kotlin reduce takes no initial — the 2-arg method form must NOT
     // emit as `.reduce(...)`.
     expect(out).not.toContain('.reduce(')
@@ -44,7 +44,7 @@ export function C() {
   return total
 }`
     const out = transform(src, { target: 'swift' }).code
-    expect(out).toContain('reduce(0, { s, r in s + r.revenue })')
+    expect(out).toContain('reduce(0, { s, r in pyreonAdd(s, r.revenue) })')
   })
 
   it('no regression: .map / .filter still pass through verbatim (single closure)', () => {

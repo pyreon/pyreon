@@ -79,7 +79,6 @@ const TabExample = () => (
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`mount`](#mount-function) | function | Mount a VNode tree into a container element. |
-| [`render`](#render-function) | function | Alias for `mount`. |
 | [`hydrateRoot`](#hydrateroot-function) | function | Hydrate server-rendered HTML. |
 | [`Transition`](#transition-component) | component | CSS-based enter/leave animation wrapper. |
 | [`TransitionGroup`](#transitiongroup-component) | component | Animate list item additions and removals with CSS transitions. |
@@ -117,30 +116,7 @@ dispose()
 - `mount(<App />, document.body)` — mounting directly to body is discouraged; use a dedicated container element
 - Forgetting to call the returned unmount function — leaks event listeners and effects. Store and call it on cleanup
 
-**See also:** `hydrateRoot` · `render`
-
----
-
-### `render` `function`
-
-```ts
-render(root: VNodeChild, container: Element): () => void
-```
-
-Alias for `mount`. Provided for API familiarity — both names point to the same function.
-
-**Example**
-
-```tsx
-import { render } from "@pyreon/runtime-dom"
-render(<App />, document.getElementById("app")!)
-```
-
-**Common mistakes**
-
-- `render` is an EXACT alias for `mount` (same function reference) — its foot-guns are `mount`'s (null container throws; props are reactive-vs-static per the compiler; call the returned function to unmount + dispose effects). Do NOT expect any `render`-specific behavior
-
-**See also:** `mount`
+**See also:** `hydrateRoot`
 
 ---
 

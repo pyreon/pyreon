@@ -670,7 +670,7 @@ export function App() {
   })
 
   it('the modelled arities still lower: seedless reduce, one- and two-argument substring', () => {
-    expect(line('a14')).toContain('let a14 = xs.dropFirst().reduce(xs[0], { a, x in a + x })')
+    expect(line('a14')).toContain('let a14 = xs.dropFirst().reduce(xs[0], { a, x in pyreonAdd(a, x) })')
     // String positions are UTF-16 offsets, so substring goes through the runtime.
     expect(line('a18')).toContain('let a18 = pyreonSubstring(s, 1)')
     expect(line('a19')).toContain('let a19 = pyreonSubstring(s, 1, 2)')

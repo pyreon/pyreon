@@ -465,7 +465,7 @@ get_changelog({ package: '@pyreon/router', since: '0.12.0' })`,
       kind: 'constant',
       signature: 'tool: audit_islands({ json?: boolean }) → IslandAuditReport',
       summary:
-        'Project-wide cross-file islands audit (PR C of the islands DX roadmap). Walks `packages/` + `examples/` and runs five detectors that auto-registry can\\\'t reach (manual `hydrateIslands({...})` for non-Vite consumers / library authors) AND PR G\\\'s per-file `island-never-with-registry-entry` detector misses (it only catches the same-file shape): `duplicate-name`, `never-with-registry-entry`, `registry-mismatch`, `nested-island`, `dead-island`. Each finding ships with file path + line/column + actionable fix suggestion. Companion to the `pyreon doctor --check-islands` CLI flag (same scanner, same five detectors). Run before merging an island PR; CI gate by piping `--json` and grepping `findings.length > 0`.',
+        'Project-wide cross-file islands audit (PR C of the islands DX roadmap). Walks `packages/` + `examples/` and runs five detectors that auto-registry can\\\'t reach (manual `hydrateIslands({...})` for non-Vite consumers / library authors) AND PR G\\\'s per-file `island-never-with-registry-entry` detector misses (it only catches the same-file shape): `duplicate-name`, `never-with-registry-entry`, `registry-mismatch`, `nested-island`, `dead-island`. Each finding ships with file path + line/column + actionable fix suggestion. Companion to the `pyreon doctor --only islands-audit` CLI flag (same scanner, same five detectors). Run before merging an island PR; CI gate by piping `--json` and grepping `findings.length > 0`.',
       example: `audit_islands({})
 // → markdown-grouped report with one section per finding code
 

@@ -83,20 +83,7 @@ dispose()`,
         '`mount(<App />, document.body)` — mounting directly to body is discouraged; use a dedicated container element',
         'Forgetting to call the returned unmount function — leaks event listeners and effects. Store and call it on cleanup',
       ],
-      seeAlso: ['hydrateRoot', 'render'],
-    },
-    {
-      name: 'render',
-      kind: 'function',
-      signature: 'render(root: VNodeChild, container: Element): () => void',
-      summary:
-        'Alias for `mount`. Provided for API familiarity — both names point to the same function.',
-      example: `import { render } from "@pyreon/runtime-dom"
-render(<App />, document.getElementById("app")!)`,
-      mistakes: [
-        '`render` is an EXACT alias for `mount` (same function reference) — its foot-guns are `mount`\'s (null container throws; props are reactive-vs-static per the compiler; call the returned function to unmount + dispose effects). Do NOT expect any `render`-specific behavior',
-      ],
-      seeAlso: ['mount'],
+      seeAlso: ['hydrateRoot'],
     },
     {
       name: 'hydrateRoot',

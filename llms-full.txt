@@ -2588,6 +2588,18 @@ p.others()  // PeerState<{ name: string }>[] — other people here
   {p => <Avatar name={p.state.name} />}
 </For>
 
+import { createYjsDoc, connectYDocs } from "@pyreon/sync/yjs"
+
+const a = createYjsDoc()
+const b = createYjsDoc()
+const link = connectYDocs(a, b) // state merge both ways + live link
+link.disconnect() // offline; connecting again re-merges
+
+// Three docs: link every pair, never a chain.
+const c = createYjsDoc()
+connectYDocs(a, c)
+connectYDocs(b, c)
+
 const doc = createYjsDoc()
 const link = connectViaBroadcastChannel(doc, "my-doc-room")
 // edit in tab A → the same <h1> patches in place in tab B

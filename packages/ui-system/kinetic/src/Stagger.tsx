@@ -5,7 +5,7 @@ import { showAccessorFrom } from './show-accessor'
 import Transition from './Transition'
 import type { CSSProperties, StaggerProps, TransitionCallbacks } from './types'
 import { childProps, flattenChildren } from './child-shape'
-import { cloneVNode } from './utils'
+import { cloneVNode, mergeStyles } from './utils'
 
 const Stagger = (props: StaggerProps): VNode | null => {
   const [own, transitionProps] = splitProps(props, [
@@ -80,8 +80,7 @@ const Stagger = (props: StaggerProps): VNode | null => {
                 : undefined,
           }),
           cloneVNode(child as VNode, {
-              style: {
-                ...(childProps(child).style as CSSProperties | undefined),
+              style: mergeStyles(childProps(child).style as CSSProperties | string | undefined, {
                 '--stagger-index': index,
                 '--stagger-interval': `${interval}ms`,
                 // Stable delay sources — survive the `transition` shorthand
@@ -91,7 +90,7 @@ const Stagger = (props: StaggerProps): VNode | null => {
                 '--kinetic-delay': `${enterDelay}ms`,
                 '--kinetic-leave-delay': `${leaveDelay}ms`,
                 transitionDelay: `${enterDelay}ms`,
-            } as CSSProperties,
+            } as CSSProperties),
           }),
         )
       })}
