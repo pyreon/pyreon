@@ -3,7 +3,7 @@ import { useNow } from '@pyreon/ambient'
 import { For, onMount } from '@pyreon/core'
 import { formatDate } from '@pyreon/format'
 import { computed, signal } from '@pyreon/reactivity'
-import type { PlainDate, TimeZone } from '@pyreon/time'
+import type { PlainDate, TimeZone, Weekday } from '@pyreon/time'
 import {
   add,
   dayOfYear,
@@ -53,6 +53,53 @@ const offsetLabel = (minutes: number): string => {
   return `UTC${sign}${h}${m === 0 ? '' : `:${String(m).padStart(2, '0')}`}`
 }
 
+/** Where a key moves the focus in the date grid (WAI-ARIA date grid): arrows, Home and End, Page keys (Shift: year). */
+function nextFocus(e: KeyboardEvent, f: PlainDate, weekStart: Weekday, flip: 1 | -1): PlainDate | undefined {
+  if (e.key === 'ArrowLeft') return add(f, { days: -flip })
+  if (e.key === 'ArrowRight') return add(f, { days: flip })
+  if (e.key === 'ArrowUp') return add(f, { days: -7 })
+  if (e.key === 'ArrowDown') return add(f, { days: 7 })
+  if (e.key === 'Home') return startOf(f, 'week', { weekStart })
+  if (e.key === 'End') return endOf(f, 'week', { weekStart })
+  if (e.key === 'PageUp') return add(f, e.shiftKey ? { years: -1 } : { months: -1 })
+  if (e.key === 'PageDown') return add(f, e.shiftKey ? { years: 1 } : { months: 1 })
+
+  return undefined
+}
+
+/** The arithmetic on the selected day: month math clamps on the 31st. */
+function Arithmetic(props: { selected: () => PlainDate; weekStart: () => Weekday }) {
+  const sel = () => props.selected()
+  const plusMonth = () => add(sel(), { months: 1 })
+  const arithmetic: { label: string; value: () => string }[] = [
+    { label: 'Selected', value: () => sel() },
+    { label: 'Add 1 month', value: () => plusMonth() },
+    { label: 'Add 30 days', value: () => add(sel(), { days: 30 }) },
+    { label: 'Start of week', value: () => startOf(sel(), 'week', { weekStart: props.weekStart() }) },
+    { label: 'Start of quarter', value: () => `${startOf(sel(), 'quarter')} (Q${quarterOf(sel())})` },
+    { label: 'End of month', value: () => endOf(sel(), 'month') },
+    { label: 'ISO week, day of year', value: () => `W${weekOfYear(sel())}, day ${dayOfYear(sel())}` },
+  ]
+
+  return (
+    <>
+        <PaperList aria-label="Date arithmetic on the selected day">
+          <For each={arithmetic} by={(r) => r.label}>
+            {(r) => (
+              <PaperRow tag="li">
+                <PaperText>{r.label}</PaperText>
+                <PaperMono>{r.value()}</PaperMono>
+              </PaperRow>
+            )}
+          </For>
+        </PaperList>
+        <PaperHint aria-live="polite">
+          {() => (plusMonth().slice(8) !== sel().slice(8) ? `The ${sel().slice(8)}th does not exist next month: the day clamps to ${plusMonth().slice(8)}.` : 'Pick the 31st to see month math clamp.')}
+        </PaperHint>
+    </>
+  )
+}
+
 /** The calendar: a WAI-ARIA date grid, and the arithmetic on the selected day. */
 function CalendarCard() {
   const lang = signal<Language>('en-US')
@@ -66,29 +113,16 @@ function CalendarCard() {
   const weeks = computed(() => monthGrid(month(), { weekStart: weekStart(), weeks: 6 }))
   const heads = computed(() => (weeks()[0] ?? []).map((d) => ({ d, label: formatDate(d, { weekday: 'short', locale: lang() }) })))
 
-  const focusDay = (d: PlainDate) => {
-    queueMicrotask(() => root?.querySelector<HTMLElement>(`[data-day="${d}"]`)?.focus())
-  }
   const move = (d: PlainDate) => {
     focused.set(d)
-    focusDay(d)
+    queueMicrotask(() => root?.querySelector<HTMLElement>(`[data-day="${d}"]`)?.focus())
   }
   const pick = (d: PlainDate) => {
     selected.set(d)
     focused.set(d)
   }
   const onKeyDown = (e: KeyboardEvent) => {
-    const flip = lang() === 'ar' ? -1 : 1
-    const f = focused()
-    let next: PlainDate | undefined
-    if (e.key === 'ArrowLeft') next = add(f, { days: -flip })
-    else if (e.key === 'ArrowRight') next = add(f, { days: flip })
-    else if (e.key === 'ArrowUp') next = add(f, { days: -7 })
-    else if (e.key === 'ArrowDown') next = add(f, { days: 7 })
-    else if (e.key === 'Home') next = startOf(f, 'week', { weekStart: weekStart() })
-    else if (e.key === 'End') next = endOf(f, 'week', { weekStart: weekStart() })
-    else if (e.key === 'PageUp') next = add(f, e.shiftKey ? { years: -1 } : { months: -1 })
-    else if (e.key === 'PageDown') next = add(f, e.shiftKey ? { years: 1 } : { months: 1 })
+    const next = nextFocus(e, focused(), weekStart(), lang() === 'ar' ? -1 : 1)
     if (next !== undefined) {
       e.preventDefault()
       move(next)
@@ -96,18 +130,6 @@ function CalendarCard() {
   }
 
   const title = () => formatDate(`${month()}-01`, { month: 'long', year: 'numeric', locale: lang() })
-  const sel = () => selected()
-  const plusMonth = () => add(sel(), { months: 1 })
-  const arithmetic: { label: string; value: () => string }[] = [
-    { label: 'Selected', value: () => sel() },
-    { label: 'Add 1 month', value: () => plusMonth() },
-    { label: 'Add 30 days', value: () => add(sel(), { days: 30 }) },
-    { label: 'Start of week', value: () => startOf(sel(), 'week', { weekStart: weekStart() }) },
-    { label: 'Start of quarter', value: () => `${startOf(sel(), 'quarter')} (Q${quarterOf(sel())})` },
-    { label: 'End of month', value: () => endOf(sel(), 'month') },
-    { label: 'ISO week, day of year', value: () => `W${weekOfYear(sel())}, day ${dayOfYear(sel())}` },
-  ]
-
   return (
     <div
       ref={(e: Element | null) => {
@@ -176,19 +198,7 @@ function CalendarCard() {
           </div>
           <PaperHint>Arrow keys move, Home and End jump to the week's edges, Page keys change month (Shift: year).</PaperHint>
         </Stack>
-        <PaperList aria-label="Date arithmetic on the selected day">
-          <For each={arithmetic} by={(r) => r.label}>
-            {(r) => (
-              <PaperRow tag="li">
-                <PaperText>{r.label}</PaperText>
-                <PaperMono>{r.value()}</PaperMono>
-              </PaperRow>
-            )}
-          </For>
-        </PaperList>
-        <PaperHint aria-live="polite">
-          {() => (plusMonth().slice(8) !== sel().slice(8) ? `The ${sel().slice(8)}th does not exist next month: the day clamps to ${plusMonth().slice(8)}.` : 'Pick the 31st to see month math clamp.')}
-        </PaperHint>
+        <Arithmetic selected={() => selected()} weekStart={() => weekStart()} />
       </Stack>
     </DemoSurface>
     </div>

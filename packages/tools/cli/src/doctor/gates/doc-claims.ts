@@ -22,15 +22,12 @@ import { join, relative } from 'node:path'
 import type { Finding, GateResult } from '../types'
 import {
   type ClaimSpec,
-  SITE_ANTI_PATTERN_CLAIMS,
   SITE_LINT_CATEGORY_CLAIMS,
   SITE_LINT_RULE_CLAIMS,
-  SITE_PACKAGE_COUNT_CLAIMS,
-  SITE_PRODUCT_COUNT_CLAIMS,
 } from './doc-claims-site'
-import { countAntiPatternEntries, countSiteProducts, readSitePackageCount } from './doc-claims-site-counts'
+import { SITE_COUNT_CHECKS } from './doc-claims-site-counts'
 
-interface ClaimCheck {
+export interface ClaimCheck {
   /** Human-readable name shown in findings */
   name: string
   /** Stable code suffix used in `Finding.code` */
@@ -691,25 +688,7 @@ const checks: ClaimCheck[] = [
       },
     ],
   },
-  {
-    name: 'site product count',
-    codeId: 'site-product-count',
-    actual: countSiteProducts,
-    claims: SITE_PRODUCT_COUNT_CLAIMS,
-  },
-  {
-    name: 'site anti-pattern total',
-    codeId: 'site-anti-pattern-count',
-    actual: countAntiPatternEntries,
-    claims: SITE_ANTI_PATTERN_CLAIMS,
-  },
-  {
-    // Deliberately NOT the published count: the site states the maintainer's decision (see doc-claims-site.ts).
-    name: 'site package count (the content set constant)',
-    codeId: 'site-package-count',
-    actual: readSitePackageCount,
-    claims: SITE_PACKAGE_COUNT_CLAIMS,
-  },
+  ...SITE_COUNT_CHECKS,
   {
     name: 'published package count',
     codeId: 'package-count',
