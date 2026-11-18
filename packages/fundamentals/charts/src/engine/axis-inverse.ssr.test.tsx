@@ -19,7 +19,6 @@ const barTops = (svg: string): number[] => [...svg.matchAll(/<path d="M[\d.]+ ([
 
 describe('server-rendered yInverse', () => {
   it('the first frame is the flipped chart', async () => {
-    require('node:fs').writeFileSync('/tmp/frame.txt', frame(await html(true)))
     const plain = frame(await html(false))
     const inv = frame(await html(true))
     expect(inv).not.toBe(plain)
