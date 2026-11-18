@@ -150,7 +150,7 @@ endOf('2026-11-18T14:30', 'day')              // => '2026-11-18T23:59:59.999'`,
       kind: 'function',
       signature: '<T extends PlainDate | PlainDateTime | PlainYearMonth | PlainTime | Instant>(a: T, b: T) => -1 | 0 | 1',
       summary:
-        'Order two values of the same shape. Same-length strings compare as plain strings (every field is fixed-width and zero-padded), so the common case is one string comparison; that fast path does not validate. Values written at different precision (`14:30` and `14:30`) are parsed. Usable as an `Array#sort` comparator.',
+        'Order two values of the same shape. Same-length strings compare as plain strings (every field is fixed-width and zero-padded), so the common case is one string comparison; that fast path does not validate. Values written at different precision (`14:30` and `14:30:00`, which compare equal) are parsed. Usable as an `Array#sort` comparator.',
       example: `compare('2026-11-18', '2026-11-19')           // => -1
 compare('14:30', '14:30')                  // => 0
 compare('2026-11-18T14:30', '2026-11-18T14:30:00.001')  // => -1
