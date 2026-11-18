@@ -8,6 +8,7 @@
  */
 import * as format from '../index'
 import * as components from '../components'
+import * as core from '../core'
 import { h } from '@pyreon/core'
 import manifest from '../manifest'
 import { _resetLocaleState } from '../locale'
@@ -55,12 +56,12 @@ describe('manifest examples are true', () => {
     for (const { expr, shown, actual } of evaluate(example)) expect(actual, expr).toBe(shown)
   })
 
-  it('every export of the reactive entry and the components entry has a manifest entry', () => {
-    const documented = new Set(manifest.api.map((a) => a.name))
-    for (const name of [...Object.keys(format), ...Object.keys(components)]) {
-      if (name === 'machineValue' || name === 'partsToChildren' || name === 'exactTitle') continue // internal helpers, exported for tests
-      expect(documented, name).toContain(name)
-    }
+  it('the runtime exports of the entries are exactly the names the manifest documents (types excluded)', () => {
+    const documented = new Set<string>(manifest.api.filter((a) => a.kind !== 'type').map((a) => a.name))
+    const exported = new Set<string>([...Object.keys(core), ...Object.keys(format), ...Object.keys(components)])
+
+    expect([...exported].filter((n) => !documented.has(n)).sort(), 'exported but not documented').toEqual([])
+    expect([...documented].filter((n) => !exported.has(n)).sort(), 'documented but not exported by any entry').toEqual([])
   })
 
   it('declares the tier that is true today, with a rationale', () => {

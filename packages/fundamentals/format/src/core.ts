@@ -93,6 +93,8 @@ export type * from './types'
 /**
  * Format a number with `Intl.NumberFormat`, cached per locale and options. Nullish or `NaN` input returns the `fallback` (default `''`). Differs from raw `Intl` in one default: `signDisplay` is `'negative'`, so `-0` and values that round to zero print `0`.
  *
+ * Output uses the platform's non-breaking and thin spaces (U+00A0, U+2009, U+202F), not plain ones: compare with `===` only against `Intl`'s own output from the same process.
+ *
  * @example
  * ```ts
  * formatNumber(1234567.891, { locale: 'en-US' }) // "1,234,567.891"
@@ -107,6 +109,8 @@ export function formatNumber(value: NumberInput, options?: NumberOptions | Numbe
 /**
  * Format money. `currency` is an ISO 4217 code; a malformed code returns the `fallback` with a dev warning. Presets: `symbol`, `narrowSymbol`, `code`, `name`, `accounting`.
  *
+ * Output uses the platform's non-breaking and thin spaces (U+00A0, U+2009, U+202F), not plain ones: compare with `===` only against `Intl`'s own output from the same process.
+ *
  * @example
  * ```ts
  * formatCurrency(9.99, 'EUR', { locale: 'en-US' }) // "€9.99"
@@ -119,6 +123,8 @@ export function formatCurrency(value: NumberInput, currency: string, options?: C
 
 /**
  * Format a ratio as a percentage: `0.42` is `42%`. The value is a ratio, never multiplied by you.
+ *
+ * Output uses the platform's non-breaking and thin spaces (U+00A0, U+2009, U+202F), not plain ones: compare with `===` only against `Intl`'s own output from the same process.
  *
  * @example
  * ```ts
@@ -133,6 +139,8 @@ export function formatPercent(value: NumberInput, options?: PercentOptions): str
 /**
  * Compact notation: `1_240_000` is `1.2M`. Presets `short` (default) and `long`.
  *
+ * Output uses the platform's non-breaking and thin spaces (U+00A0, U+2009, U+202F), not plain ones: compare with `===` only against `Intl`'s own output from the same process.
+ *
  * @example
  * ```ts
  * formatCompact(1240000, { locale: 'en-US' }) // "1.2M"
@@ -145,6 +153,8 @@ export function formatCompact(value: NumberInput, options?: CompactOptions | Com
 
 /**
  * Format a measurement with a sanctioned `Intl` unit (`kilometer`, `kilometer-per-hour`, ...). `unitDisplay` is `short` by default. An unknown unit throws a `[Pyreon]` error.
+ *
+ * Output uses the platform's non-breaking and thin spaces (U+00A0, U+2009, U+202F), not plain ones: compare with `===` only against `Intl`'s own output from the same process.
  *
  * @example
  * ```ts
@@ -159,6 +169,8 @@ export function formatUnit(value: NumberInput, unit: Unit, options?: UnitOptions
 /**
  * Format a byte count, choosing the unit: decimal by default (`1.5 kB`), `binary: true` for `KiB`. Below a kilobyte the symbol is used in the locale's own pattern (`999 B`); `unitDisplay: 'long'` gives `999 bytes`. Never prints `1000 kB`. Continues to EB/ZB/YB (`EiB`...) above petabytes.
  *
+ * Output uses the platform's non-breaking and thin spaces (U+00A0, U+2009, U+202F), not plain ones: compare with `===` only against `Intl`'s own output from the same process.
+ *
  * @example
  * ```ts
  * formatBytes(1536, { locale: 'en-US' }) // "1.5 kB"
@@ -172,6 +184,8 @@ export function formatBytes(bytes: NumberInput, options?: BytesOptions): string 
 
 /**
  * Format a duration (`{ hours, minutes, ... }` or milliseconds). From one second on, seconds are the smallest unit shown (rounded with carry); `smallest` and `largest` set the range; fractions balance down; `style: 'digital'` is `h:mm:ss`.
+ *
+ * Output uses the platform's non-breaking and thin spaces (U+00A0, U+2009, U+202F), not plain ones: compare with `===` only against `Intl`'s own output from the same process.
  *
  * @example
  * ```ts
@@ -200,6 +214,8 @@ export function formatList(items: ListInput, options?: ListOptions | ListPreset)
 /**
  * Format the date part (default `dateStyle: 'medium'`). A date-only string is a calendar date and shows that day in every zone; instants show in `timeZone`. A time of day is rejected.
  *
+ * Output uses the platform's non-breaking and thin spaces (U+00A0, U+2009, U+202F), not plain ones: compare with `===` only against `Intl`'s own output from the same process.
+ *
  * @example
  * ```ts
  * formatDate('2026-11-18', { locale: 'en-US' }) // "Nov 18, 2026"
@@ -213,6 +229,8 @@ export function formatDate(value: DateInput, options?: DateTimeOptions | DateSty
 /**
  * Format the time part (default `timeStyle: 'short'`). Accepts a time of day (`14:30`, `14:30:05.250`) as a wall-clock value that never shifts.
  *
+ * Output uses the platform's non-breaking and thin spaces (U+00A0, U+2009, U+202F), not plain ones: compare with `===` only against `Intl`'s own output from the same process.
+ *
  * @example
  * ```ts
  * formatTime('14:30', { locale: 'en-US' }) // "2:30 PM"
@@ -225,6 +243,8 @@ export function formatTime(value: DateInput, options?: DateTimeOptions | DateSty
 
 /**
  * Format date and time together (default `dateStyle: 'medium'`, `timeStyle: 'short'`).
+ *
+ * Output uses the platform's non-breaking and thin spaces (U+00A0, U+2009, U+202F), not plain ones: compare with `===` only against `Intl`'s own output from the same process.
  *
  * @example
  * ```ts
@@ -264,6 +284,8 @@ export function formatRelativeTo(target: DateInput, base: DateInput, options?: R
 /**
  * Format a range with the shared parts collapsed. A reversed pair is ordered first.
  *
+ * Output uses the platform's non-breaking and thin spaces (U+00A0, U+2009, U+202F), not plain ones: compare with `===` only against `Intl`'s own output from the same process.
+ *
  * @example
  * ```ts
  * formatDateRange('2026-11-12', '2026-11-15', { locale: 'en-US' }) // "Nov 12 – 15, 2026"
@@ -275,6 +297,8 @@ export function formatDateRange(start: DateInput, end: DateInput, options?: Date
 
 /**
  * Format a numeric range with the shared parts collapsed. A reversed pair is ordered first.
+ *
+ * Output uses the platform's non-breaking and thin spaces (U+00A0, U+2009, U+202F), not plain ones: compare with `===` only against `Intl`'s own output from the same process.
  *
  * @example
  * ```ts

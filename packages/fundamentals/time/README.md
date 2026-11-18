@@ -9,8 +9,10 @@ A date is `"2026-11-18"`, a time is `"14:30"`, an instant is the epoch-milliseco
 ## Install
 
 ```bash
-bun add @pyreon/time
+bun add @pyreon/time @pyreon/core @pyreon/reactivity
 ```
+
+`@pyreon/core` and `@pyreon/reactivity` are required peers of the reactive entry (`@pyreon/time` reads `@pyreon/ambient`, which imports them); `@pyreon/time/core` and `@pyreon/time/fp` import no `@pyreon/*` package, so a project that uses only those needs neither.
 
 `@pyreon/time/core` and `/fp` have no dependencies. `@pyreon/time` re-exports core, reads the clock and time zone of `@pyreon/ambient` and adds `useToday`, `useCountdown`, `useElapsed` and `useRelative`, which update on shared, aligned tickers (one timer serves every reader of a granularity).
 

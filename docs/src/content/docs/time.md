@@ -31,7 +31,7 @@ yarn add @pyreon/time
 
 :::
 
-`@pyreon/time/core` has no dependencies and works anywhere JavaScript runs. `@pyreon/time` re-exports all of it, reads the clock and time zone of `@pyreon/ambient` (it depends on that package) and adds the clock hooks. `@pyreon/time/fp` has the value-last forms of every operation and `pipe` (see [Composing operations](#composing-operations)).
+`@pyreon/time/core` has no dependencies and works anywhere JavaScript runs (so does `/fp`: neither imports a `@pyreon/*` package). The reactive entry needs `@pyreon/core` and `@pyreon/reactivity` as required peers (it depends on `@pyreon/ambient`, which imports them), so install `npm install @pyreon/time @pyreon/core @pyreon/reactivity`. `@pyreon/time` re-exports all of it, reads the clock and time zone of `@pyreon/ambient` (it depends on that package) and adds the clock hooks. `@pyreon/time/fp` has the value-last forms of every operation and `pipe` (see [Composing operations](#composing-operations)).
 
 ## Quick start
 

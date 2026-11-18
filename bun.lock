@@ -1433,9 +1433,6 @@
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
-      "optionalPeers": [
-        "@pyreon/core",
-      ],
     },
     "packages/fundamentals/auth": {
       "name": "@pyreon/auth",
@@ -1751,10 +1748,6 @@
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
-      "optionalPeers": [
-        "@pyreon/core",
-        "@pyreon/reactivity",
-      ],
     },
     "packages/fundamentals/hooks": {
       "name": "@pyreon/hooks",
@@ -2166,6 +2159,10 @@
         "dayjs": "1.11.23",
         "happy-dom": "^21.0.4",
         "luxon": "3.7.2",
+      },
+      "peerDependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
       },
     },
     "packages/fundamentals/toast": {

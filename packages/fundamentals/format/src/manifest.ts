@@ -741,6 +741,10 @@ formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'sh
       note: 'In relative time a date-only value (`2026-11-18`) is the midnight that starts that day in the display zone, so "yesterday", "today" and "tomorrow" are literally true for a person in that zone and `@pyreon/time`\'s `relativeDistance` gives the same words (a shared table of cases is tested in both packages). At 10:00 on the 18th it is "10 hours ago", not "today": a date-only value has no time of day, and under 24 hours the distance is elapsed time. Two date-only values compare as calendar days.',
     },
     {
+      label: 'Spaces in output are non-breaking and thin spaces',
+      note: 'Intl writes U+00A0, U+2009 and U+202F where a plain space would sit: `formatDateRange` puts U+2009 around the en dash, `formatTime` writes U+202F before PM, Czech and French group digits with U+00A0 and U+202F. The examples in this documentation show them as plain spaces so they stay readable. Compare with `===` only against the platform\'s own output from the same process (`new Intl.DateTimeFormat(locale, options).formatRange(a, b)`), never against a typed literal; to see them in a failing test message, `text.replace(/[\\u00a0\\u2009\\u202f]/g, \'·\')`.',
+    },
+    {
       label: 'Engines differ in CLDR data',
       note: 'Intl output is CLDR data and V8, JavaScriptCore and ICU versions differ (for example a narrow no-break space before PM). For SSR, pass the same locale and time zone on both sides; the hydration test in this package runs real Chromium against Node-rendered markup shape, not byte equality across ICU versions.',
     },

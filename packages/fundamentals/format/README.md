@@ -32,7 +32,7 @@ The same function works in JSX and effects (it reads the active locale and time 
 | --- | --- | --- |
 | `@pyreon/format/core` | nothing | Every formatter and parser as a pure function. Locale and time zone come from the options; default is the runtime's. |
 | `@pyreon/format` | `@pyreon/core`, `@pyreon/reactivity`, `@pyreon/ambient` | The same names, defaulting to the active locale and zone. Plus the locale API (re-exported from `@pyreon/ambient`) and `useRelativeTime`. |
-| `@pyreon/format/components` | `@pyreon/core`, `@pyreon/ambient` | `<Num>`, `<DateTime>` and `<RelativeTime>`. |
+| `@pyreon/format/components` | `@pyreon/core`, `@pyreon/reactivity`, `@pyreon/ambient` | `<Num>`, `<DateTime>` and `<RelativeTime>`. |
 
 ## Formatters
 
@@ -54,6 +54,10 @@ The same function works in JSX and effects (it reads the active locale and time 
 | `formatNumberRange(3, 5)` | `3–5` |
 
 Options are the platform's `Intl` option names plus `locale`, `timeZone` (dates) and `fallback`. A string in place of options is a preset or style shorthand (`'long'`, `'compact'`, `'or'`). Nullish input returns `fallback` (default `''`); invalid input returns it too, with a dev-only warning; a bad option or unknown unit throws a `[Pyreon]` error that says how to fix it.
+
+## Spaces in output
+
+`Intl` writes non-breaking and thin spaces (U+00A0, U+2009, U+202F) where a plain space would sit: `formatDateRange` puts U+2009 around the en dash, `formatTime` writes U+202F before `PM`, Czech and French group digits with U+00A0 and U+202F. The examples show them as plain spaces so they stay readable. Compare with `===` only against `Intl`'s own output from the same process, never against a typed literal.
 
 ## Dates: calendar values never shift
 
@@ -147,12 +151,14 @@ The docs page has recipes (a price with the percent off, file sizes in a table, 
 ```tsx
 import { Num, DateTime } from '@pyreon/format/components'
 
-<Num value={total()} kind="currency" currency="EUR" />
-<Num value={total()} format={price} />                      // a built formatter
-<Num value={9.99} format={price} parts={{ currency: (text) => <sup>{text}</sup> }} />
-<DateTime value="2026-11-18" kind="date" format="long" />   // <time datetime="2026-11-18">November 18, 2026</time>
-<DateTime value="2026-11-18" format={dateFormatter('long')} parts={{ month: (t) => <b>{t}</b> }} />
-<RelativeTime value={comment.createdAt} threshold={{ after: { days: 7 } }} />   // "3 minutes ago" ... "Nov 12, 2026", updates itself
+<>
+  <Num value={total()} kind="currency" currency="EUR" />
+  <Num value={total()} format={price} />                      // a built formatter
+  <Num value={9.99} format={price} parts={{ currency: (text) => <sup>{text}</sup> }} />
+  <DateTime value="2026-11-18" kind="date" format="long" />   // <time datetime="2026-11-18">November 18, 2026</time>
+  <DateTime value="2026-11-18" format={dateFormatter('long')} parts={{ month: (t) => <b>{t}</b> }} />
+  <RelativeTime value={comment.createdAt} threshold={{ after: { days: 7 } }} />   // "3 minutes ago" ... "Nov 12, 2026", updates itself
+</>
 ```
 
 `parts` keys are the `Intl` part types; unwrapped parts are joined into one text node so server and client markup agree. `<DateTime>` sets `title` to the exact date and time unless you pass one; `<Num tabular>` renders a span with `tabular-nums`; `class`, `id` and other props are forwarded. `<RelativeTime>` is `useRelativeTime` in a `<time>`: the text updates at the moment it changes (the target's own minute and hour marks, local midnight) on timers shared by every label on the page, never on a server.
