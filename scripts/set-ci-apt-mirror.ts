@@ -2,10 +2,22 @@ import { readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-/** Replace the stalled runner mirror; preserve suites, components and signing options. */
+/**
+ * Point every regional Ubuntu archive mirror at the primary archive; preserve
+ * suites, components and signing options.
+ *
+ * A runner image names whichever mirror its host region uses: first
+ * `azure.archive.ubuntu.com`, which stalled `apt-get update`, later
+ * `us-east-2.ec2.archive.ubuntu.com`, which served a us-west-2 runner at about
+ * 250 kB/s while the same runner restored its cache at 49 MB/s. At that rate the
+ * 117 MB of WebKit and Firefox libraries cannot arrive inside the install
+ * deadline. Matching one host name per incident left the next one unhandled, so
+ * any subdomain of `archive.ubuntu.com` is rewritten. `security.ubuntu.com` and
+ * `ports.ubuntu.com` are different hosts and are left alone.
+ */
 export function ubuntuArchiveSource(source: string): string {
   return source.replace(
-    /https?:\/\/azure\.archive\.ubuntu\.com(?=\/ubuntu(?:[/\s]|$))/g,
+    /https?:\/\/(?:[a-z0-9-]+\.)+archive\.ubuntu\.com(?=\/ubuntu(?:[/\s]|$))/g,
     'https://archive.ubuntu.com',
   )
 }
