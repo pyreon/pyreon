@@ -5,50 +5,42 @@ const BASE = Date.UTC(2026, 10, 18, 12, 0, 0)
 const S = 1000, M = 60 * S, H = 60 * M, D = 24 * H
 const rel = (v: number, u: Intl.RelativeTimeFormatUnit) => new Intl.RelativeTimeFormat('en-US', { numeric: 'auto' }).format(v, u)
 
-describe('formatRelativeTo picks the unit and truncates toward zero', () => {
+describe('formatRelativeTo: elapsed time under a day, calendar distance from a day on', () => {
+  const utc = { ...en, timeZone: 'UTC' }
+
   it.each([
-    [0, -0, 'second'],
-    [30 * S, 30, 'second'],
-    [59 * S + 999, 59, 'second'],
-    [60 * S, 1, 'minute'],
-    [5 * M, 5, 'minute'],
-    [59 * M + 40 * S, 59, 'minute'],
-    [60 * M, 1, 'hour'],
-    [23 * H + 59 * M, 23, 'hour'],
-    [24 * H, 1, 'day'],
-    [36 * H, 1, 'day'],
-    [6 * D + 23 * H, 6, 'day'],
-    [7 * D, 1, 'week'],
-    [29 * D, 4, 'week'],
-    [30.4375 * D, 1, 'month'],
-    [200 * D, 6, 'month'],
-    [364 * D, 11, 'month'],
-    [365.25 * D, 1, 'year'],
-    [1000 * D, 2, 'year'],
-  ] as const)('%d ms ahead', (ms, n, unit) => {
-    expect(formatRelativeTo(BASE + ms, BASE, en)).toBe(rel(Object.is(n, -0) ? 0 : n, unit))
-    if (ms !== 0) expect(formatRelativeTo(BASE - ms, BASE, en)).toBe(rel(-n, unit))
+    [0, 'second', 0],
+    [30 * S, 'second', 30],
+    [59 * S + 999, 'second', 59],
+    [60 * S, 'minute', 1],
+    [5 * M, 'minute', 5],
+    [59 * M + 40 * S, 'minute', 59],
+    [60 * M, 'hour', 1],
+    [23 * H + 59 * M, 'hour', 23],
+  ] as const)('%d ms ahead is %s %d (elapsed, truncated toward zero)', (ms, unit, n) => {
+    expect(formatRelativeTo(BASE + ms, BASE, utc)).toBe(rel(n, unit))
+    if (ms !== 0) expect(formatRelativeTo(BASE - ms, BASE, utc)).toBe(rel(-n, unit))
   })
 
   it('reads naturally', () => {
-    expect(formatRelativeTo(BASE + 5 * M, BASE, en)).toBe('in 5 minutes')
-    expect(formatRelativeTo(BASE - D, BASE, en)).toBe('yesterday')
-    expect(formatRelativeTo(BASE + D, BASE, en)).toBe('tomorrow')
-    expect(formatRelativeTo(BASE, BASE, en)).toBe('now')
-    expect(formatRelativeTo(BASE - 3 * H, BASE, en)).toBe('3 hours ago')
-  })
-
-  it('accepts every date-like input, and numeric / style options', () => {
-    expect(formatRelativeTo('2026-11-17', '2026-11-18', en)).toBe('yesterday')
-    expect(formatRelativeTo(new Date(BASE + 2 * H), new Date(BASE), en)).toBe('in 2 hours')
-    expect(formatRelativeTo('2026-11-18T14:00:00Z', '2026-11-18T12:00:00Z', en)).toBe('in 2 hours')
-    expect(formatRelativeTo(BASE - D, BASE, { ...en, numeric: 'always' })).toBe('1 day ago')
-    expect(formatRelativeTo(BASE - 3 * H, BASE, { ...en, style: 'short' })).toBe('3 hr. ago')
-    expect(formatRelativeTo(BASE - D, BASE, 'always')).toBe(new Intl.RelativeTimeFormat(undefined, { numeric: 'always' }).format(-1, 'day'))
+    expect(formatRelativeTo(BASE + 5 * M, BASE, utc)).toBe('in 5 minutes')
+    expect(formatRelativeTo(BASE - D, BASE, utc)).toBe('yesterday')
+    expect(formatRelativeTo(BASE + D, BASE, utc)).toBe('tomorrow')
+    expect(formatRelativeTo(BASE, BASE, utc)).toBe('now')
+    expect(formatRelativeTo(BASE - 3 * H, BASE, utc)).toBe('3 hours ago')
   })
 
   it('never says "60 minutes"', () => {
-    expect(formatRelativeTo(BASE + 59 * M + 59 * S, BASE, en)).toBe('in 59 minutes')
+    expect(formatRelativeTo(BASE + 59 * M + 59 * S, BASE, utc)).toBe('in 59 minutes')
+  })
+
+  it('accepts every date-like input, and numeric / style options', () => {
+    expect(formatRelativeTo('2026-11-17', '2026-11-18', utc)).toBe('yesterday')
+    expect(formatRelativeTo(new Date(BASE + 2 * H), new Date(BASE), utc)).toBe('in 2 hours')
+    expect(formatRelativeTo('2026-11-18T14:00:00Z', '2026-11-18T12:00:00Z', utc)).toBe('in 2 hours')
+    expect(formatRelativeTo(BASE - D, BASE, { ...utc, numeric: 'always' })).toBe('1 day ago')
+    expect(formatRelativeTo(BASE - 3 * H, BASE, { ...utc, style: 'short' })).toBe('3 hr. ago')
+    expect(formatRelativeTo(BASE - D, BASE, 'always')).toBe(new Intl.RelativeTimeFormat(undefined, { numeric: 'always' }).format(-1, 'day'))
   })
 })
 

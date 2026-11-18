@@ -41,7 +41,8 @@ function localeFor(spec: { locale?: string | undefined }, env: Env): () => strin
 }
 
 /** Merge overrides over a spec; an `undefined` override unsets the option. */
-function merge<S extends object>(spec: S, overrides: object): S {
+function merge<S extends object>(spec: S, overrides: unknown): S {
+  if (typeof overrides !== 'object' || overrides === null) return spec
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(spec)) out[key] = value
   for (const [key, value] of Object.entries(overrides)) {
