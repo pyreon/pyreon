@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { gzipSync } from 'node:zlib'
 import { waitForIsland, waitForNav } from './site-islands'
 
 /**
@@ -9,28 +8,19 @@ import { waitForIsland, waitForNav } from './site-islands'
  * production SSG build (e2e-configs/docs.config.ts serves it like pyreon.dev).
  *
  *   - build output: the routes, robots.txt, sitemap, icons, share images;
- *   - the JavaScript budget of a marketing page (the shell's islands only);
+ *   - what a static page may preload and link (the shell's own graph only);
  *   - the homepage: head tags, one h1, the live counter, the copy buttons,
  *     the loop (theme and reduced motion), the 404.
  */
 const DIST = resolve(__dirname, '../docs/dist')
 
 /**
- * JavaScript a marketing page loads before any demo island: the client entry,
- * the static client (island hydration) and the shell's islands (the nav and
- * the copy button), each with its static import closure, gzip -9.
- *
- * Measured 2026-11-11 on feat/site-redesign-home: 43.4 KB (the foundation
- * shipped 129.3 KB on `/`). The budget is that plus ~2 KB headroom. Raise it
- * only with a measurement in the PR that does.
- *
- * Raised to 48.5 on feat/site-int-c: 47.0 KB measured. The docs became
- * static pages too, so the islands registry in the entry lists their islands
- * (search, drawer, actions, examples, …: loaders only), and the entry
- * imports the static client directly instead of through one more chunk. The
- * JavaScript `/` actually requests went down, 50.0 → 49.0 KB.
+ * How MUCH JavaScript a page loads is not asserted here. Each page's bytes are
+ * measured by `e2e/site-sizes.measure.ts` and judged by `check-site-budgets`
+ * against `scripts/size-budgets/sites/docs.json`: a pull request on the bytes
+ * it adds, the default branch against the ceiling. A byte constant in this
+ * spec failed every open pull request once the default branch reached it.
  */
-const SHELL_JS_BUDGET_KB = 48.5
 
 function htmlFiles(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -54,12 +44,6 @@ function closure(start: string, seen = new Set<string>()): Set<string> {
     closure(spec.startsWith('/') ? spec.slice(1) : `assets/${spec.replace(/^\.\//, '')}`, seen)
   }
   return seen
-}
-
-const chunk = (prefix: string): string => {
-  const hit = readdirSync(join(DIST, 'assets')).find((f) => f.startsWith(`${prefix}-`) && f.endsWith('.js'))
-  if (!hit) throw new Error(`no ${prefix}-*.js chunk in dist/assets`)
-  return `assets/${hit}`
 }
 
 test.describe('build output', () => {
@@ -86,17 +70,11 @@ test.describe('build output', () => {
     }
   })
 
-  test(`a marketing page loads at most ${SHELL_JS_BUDGET_KB} KB of JavaScript before any demo island`, () => {
+  test('a static page preloads only the entry graph, links no docs stylesheet and carries no loader data', () => {
     const pages = htmlFiles(DIST).filter((f) => readFileSync(f, 'utf8').includes('data-site-static'))
     expect(pages.length).toBeGreaterThan(5)
     const entry = /<script[^>]*type="module"[^>]*src="\/(assets\/[^"]+\.js)"/.exec(readFileSync(join(DIST, 'index.html'), 'utf8'))?.[1]
     expect(entry).toBeTruthy()
-    const files = new Set<string>()
-    // The static client (island hydration) is part of the entry's own graph.
-    for (const start of [entry as string, chunk('SiteNav'), chunk('command')]) for (const f of closure(start)) files.add(f)
-    const kb = [...files].reduce((sum, f) => sum + gzipSync(readFileSync(join(DIST, f)), { level: 9 }).length, 0) / 1024
-    console.log(`shell JS: ${kb.toFixed(1)} KB gzip in ${files.size} files`)
-    expect(kb).toBeLessThanOrEqual(SHELL_JS_BUDGET_KB)
 
     // No static page preloads anything outside the entry's own graph (the
     // route closure would download the kit and the router for nothing), and
@@ -112,55 +90,6 @@ test.describe('build output', () => {
       expect(html, f).not.toMatch(/<script\b[^>]*>\s*window\.__PYREON_LOADER_DATA__/)
     }
   })
-
-  /**
-   * JavaScript each page TYPE requests on load, without scrolling (gzip -9 of
-   * every script the browser fetched, idle prefetches included), measured
-   * 2026-11-11 on the integrated feat/site-redesign at 1440×900, plus ~2 KB.
-   * The shell alone is 47.3 KB; a type above it says what it adds. Raise a
-   * budget only with a measurement in the PR that does.
-   */
-  const SHELL = 49.5
-  const PAGE_TYPE_BUDGETS_KB: Record<string, number> = {
-    '/': 51.5, // the home: the counter and loop islands
-    '/products': SHELL,
-    '/products/form': 89, // a light demo, prefetched at idle (the styling runtime ~25 KB + @pyreon/form)
-    '/products/charts': SHELL, // a heavy demo package loads only near the demo
-    '/benchmarks': SHELL, // the live charts load only near them
-    '/why/components-run-once': 83, // the run-once counter, prefetched at idle
-    '/compare/react': SHELL,
-    '/migrate': SHELL,
-    '/migrate/react': SHELL,
-    '/status': SHELL,
-    '/releases': SHELL,
-    '/community': SHELL,
-    '/brand': SHELL,
-    '/brand/kit': 84.5, // the gallery's live examples
-    '/blog': SHELL,
-    '/blog/components-run-once': 50.5, // a post: its copy-link and code-copy island
-    '/blog/tags/signals': SHELL,
-    '/showcase': SHELL,
-    '/open': SHELL, // the download chart loads only near it
-    '/404.html': SHELL,
-    '/docs': 53,
-    '/docs/form': 98, // an overview page with its product demo
-    '/docs/reference/core': 52.5,
-  }
-  for (const [route, budget] of Object.entries(PAGE_TYPE_BUDGETS_KB)) {
-    test(`${route} requests at most ${budget} KB of JavaScript on load`, async ({ page }) => {
-      await page.setViewportSize({ width: 1440, height: 900 })
-      const scripts: string[] = []
-      page.on('request', (r) => {
-        if (r.resourceType() === 'script') scripts.push(new URL(r.url()).pathname)
-      })
-      await page.goto(route)
-      await page.waitForLoadState('networkidle')
-      await page.waitForTimeout(1500)
-      const kb = scripts.reduce((sum, u) => sum + gzipSync(readFileSync(join(DIST, u.slice(1))), { level: 9 }).length, 0) / 1024
-      console.log(`${route}: ${kb.toFixed(1)} KB gzip in ${scripts.length} scripts`)
-      expect(kb, `${route}: ${kb.toFixed(1)} KB`).toBeLessThanOrEqual(budget)
-    })
-  }
 
   test('docs pages are static pages too, and link the docs stylesheet', () => {
     const html = readFileSync(join(DIST, 'docs/index.html'), 'utf8')

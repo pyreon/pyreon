@@ -41,7 +41,7 @@ describe('StyleSheet', () => {
     })
 
     it('supports layer mode (@layer wrapping)', () => {
-      const className = sheet.insert('color: red;', false, 'rocketstyle')
+      const className = sheet.insert('color: red;', 'rocketstyle')
       expect(className).toMatch(/^pyr-[0-9a-z]+$/)
     })
   })

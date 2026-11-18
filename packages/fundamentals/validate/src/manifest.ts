@@ -203,7 +203,7 @@ onUnmount(stop)`,
     {
       name: 'formatError',
       kind: 'function',
-      signature: '(issue: StandardSchemaIssue | PyreonIssue, t?: TFn) => string',
+      signature: '(issue: StandardSchemaV1.Issue | PyreonIssue, t?: TFn) => string',
       summary:
         "Resolve a single issue to a human-readable string. Resolution order: (1) `issue.key` + `t` provided AND `t` returns a non-key string → resolved string; (2) `issue.fallback` if set; (3) `issue.message` (always present per StdSchema spec). Native StdSchema issues without `key`/`fallback` fall through to `message` immediately — no overhead.",
       example: `const message = formatError(issue, t)
@@ -215,7 +215,7 @@ onUnmount(stop)`,
     {
       name: 'formatErrors',
       kind: 'function',
-      signature: '(issues: ReadonlyArray<StandardSchemaIssue | PyreonIssue>, t?: TFn) => string[]',
+      signature: '(issues: ReadonlyArray<StandardSchemaV1.Issue | PyreonIssue>, t?: TFn) => string[]',
       summary:
         'Resolve an array of issues to strings via the same per-issue logic as formatError. Returns strings in the original order so paths line up with the input array.',
       example: `const { t } = useI18n()
@@ -233,7 +233,7 @@ const messages = formatErrors(result.issues ?? [], t)`,
       name: 'formatErrorsByPath',
       kind: 'function',
       signature:
-        '(issues: ReadonlyArray<StandardSchemaIssue | PyreonIssue>, t?: TFn, options?: { joinWith?: string }) => Record<string, string>',
+        '(issues: ReadonlyArray<StandardSchemaV1.Issue | PyreonIssue>, t?: TFn, options?: { joinWith?: string }) => Record<string, string>',
       summary:
         "Build a per-field error map keyed by the issue's path joined with `.`. Compatible with `@pyreon/form`'s `Errors` shape (`Partial<Record<fieldName, string>>`). Path-less issues land under the empty-string key. First issue wins on collision unless `joinWith` is set (then messages concatenate).",
       example: `const errorMap = formatErrorsByPath(result.issues ?? [], t)

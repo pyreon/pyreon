@@ -1,7 +1,7 @@
 import type { VNodeChild } from '@pyreon/core'
 import { For } from '@pyreon/core'
 import { font, motion, radius, text, touch, weight } from '../theme'
-import { el, focusRing, tone, txt, type LinkAttrs, type ButtonAttrs, tapArea } from './bases'
+import { el, focusRing, tone, type LinkAttrs, type ButtonAttrs, tapArea } from './bases'
 import { CommandLine } from './command'
 import { CopyButtonIsland } from './islands'
 import { isFileHref, useLinkClick } from './link'
@@ -97,27 +97,6 @@ export function Pill(props: {
 export function InstallCommand(props: { command: string; variant?: 'default' | 'hot' | undefined }) {
   return <CommandLine command={props.command} variant={props.variant} copy={<CopyButtonIsland text={props.command} />} />
 }
-
-/** `.p-api .chips span` — a mono tag. */
-export const Chip = txt
-  .config({ name: 'Chip' })
-  .attrs({ tag: 'span' })
-  .theme((_t, m) => ({
-    display: 'inline-block',
-    fontFamily: font.mono,
-    fontSize: text.mono.size,
-    lineHeight: 1.4,
-    paddingTop: 7,
-    paddingBottom: 7,
-    paddingLeft: 12,
-    paddingRight: 12,
-    borderRadius: radius.pill,
-    border: '1px solid',
-    borderColor: tone(m, 'line'),
-    color: tone(m, 'mist'),
-    backgroundColor: tone(m, 'sheen'),
-    overflowWrap: 'anywhere',
-  }))
 
 const SegBox = el
   .config({ name: 'Segmented' })

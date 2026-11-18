@@ -16,27 +16,21 @@
  *      params, fallback }` and `formatErrors(issues, t)` resolves them.
  */
 
-// The Standard Schema contract (`StandardSchemaV1` / `StandardSchemaResult` /
-// `StandardSchemaIssue`) is owned by @pyreon/validation — the SINGLE canonical
-// source of truth for the whole @pyreon stack. @pyreon/validate imports and
-// re-exports it (preserving this package's public API) instead of re-declaring
-// its own copy, so the two can never drift. `import type` binds them for local
-// use by `PyreonIssue` / `Output` / `WithFieldMeta` below; `export type`
-// re-exports them.
-import type {
-  StandardSchemaIssue,
-  StandardSchemaResult,
-  StandardSchemaV1,
-} from '@pyreon/validation'
-export type { StandardSchemaIssue, StandardSchemaResult, StandardSchemaV1 }
+// The Standard Schema contract is the official `@standard-schema/spec` type,
+// re-exported by @pyreon/validation — the single source for the whole @pyreon
+// stack. @pyreon/validate re-exports `StandardSchemaV1` instead of declaring
+// its own copy, so the two can never drift. The issue and result shapes are
+// its namespace members (`StandardSchemaV1.Issue`, `StandardSchemaV1.Result`).
+import type { StandardSchemaV1 } from '@pyreon/validation'
+export type { StandardSchemaV1 }
 
 /**
- * Pyreon-flavoured issue. Extends `StandardSchemaIssue` with optional
+ * Pyreon-flavoured issue. Extends `StandardSchemaV1.Issue` with optional
  * i18n routing. Validators that don't know about Pyreon (i.e. raw Zod /
- * Valibot / ArkType) produce bare `StandardSchemaIssue` — Pyreon's
+ * Valibot / ArkType) produce bare `StandardSchemaV1.Issue` — Pyreon's
  * format helpers handle both shapes.
  */
-export interface PyreonIssue extends StandardSchemaIssue {
+export interface PyreonIssue extends StandardSchemaV1.Issue {
   /**
    * Machine-readable issue code (`'wrong_type'` / `'invalid_enum'` /
    * `'custom'` / …). Set by `makeIssue` / `makeCheckIssue` on every

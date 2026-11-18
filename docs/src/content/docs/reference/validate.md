@@ -303,7 +303,7 @@ onUnmount(stop)
 ### `formatError` `function`
 
 ```ts
-(issue: StandardSchemaIssue | PyreonIssue, t?: TFn) => string
+(issue: StandardSchemaV1.Issue | PyreonIssue, t?: TFn) => string
 ```
 
 Resolve a single issue to a human-readable string. Resolution order: (1) `issue.key` + `t` provided AND `t` returns a non-key string → resolved string; (2) `issue.fallback` if set; (3) `issue.message` (always present per StdSchema spec). Native StdSchema issues without `key`/`fallback` fall through to `message` immediately — no overhead.
@@ -324,7 +324,7 @@ const message = formatError(issue, t)
 ### `formatErrors` `function`
 
 ```ts
-(issues: ReadonlyArray<StandardSchemaIssue | PyreonIssue>, t?: TFn) => string[]
+(issues: ReadonlyArray<StandardSchemaV1.Issue | PyreonIssue>, t?: TFn) => string[]
 ```
 
 Resolve an array of issues to strings via the same per-issue logic as formatError. Returns strings in the original order so paths line up with the input array.
@@ -351,7 +351,7 @@ const messages = formatErrors(result.issues ?? [], t)
 ### `formatErrorsByPath` `function`
 
 ```ts
-(issues: ReadonlyArray<StandardSchemaIssue | PyreonIssue>, t?: TFn, options?: { joinWith?: string }) => Record<string, string>
+(issues: ReadonlyArray<StandardSchemaV1.Issue | PyreonIssue>, t?: TFn, options?: { joinWith?: string }) => Record<string, string>
 ```
 
 Build a per-field error map keyed by the issue's path joined with `.`. Compatible with `@pyreon/form`'s `Errors` shape (`Partial<Record<fieldName, string>>`). Path-less issues land under the empty-string key. First issue wins on collision unless `joinWith` is set (then messages concatenate).

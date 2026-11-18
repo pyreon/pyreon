@@ -19,8 +19,9 @@ That split is not a new opinion — the native runtime already made it:
 
 ## Everything is optional
 
-The core has **zero dependencies** — no `@pyreon/reactivity`, no
-`@pyreon/validation`, no `@pyreon/query`. Each capability is a separately
+The core has **zero runtime dependencies** — no `@pyreon/reactivity`, no
+`@pyreon/validation`, no `@pyreon/query`; its one dependency is the
+types-only `@standard-schema/spec`, erased at build. Each capability is a separately
 imported entry, so an unused one costs nothing.
 
 | Layer | Entry | Cost when unused |

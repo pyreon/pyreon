@@ -5,9 +5,14 @@
 // — PRs that touch nothing but docs included. In 2026-10/11 that froze merges
 // for four days. The gate now blocks only what a PR introduces.
 
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
+  ACCEPTANCES_FILE,
+  type Acceptance,
   type Advisory,
+  acceptanceProblems,
+  applyAcceptances,
   atLeast,
   diffAdvisories,
   parseAudit,
@@ -18,7 +23,8 @@ const adv = (pkg: string, id: number, severity = 'high'): Advisory => ({
   id,
   severity,
   title: `${pkg} issue`,
-  url: '',
+  url: `https://github.com/advisories/GHSA-${pkg}`,
+  vulnerableVersions: '<=1.0.0',
 })
 
 describe('parseAudit', () => {
@@ -81,5 +87,81 @@ describe('diffAdvisories', () => {
 
   it('a PR that fixes advisories introduces nothing', () => {
     expect(diffAdvisories([], [adv('joi', 2)]).introduced).toEqual([])
+  })
+})
+
+describe('applyAcceptances', () => {
+  const entry: Acceptance = {
+    pkg: 'glob',
+    ghsa: 'GHSA-glob',
+    vulnerableVersions: '<=1.0.0',
+    accepted: '2026-11-18',
+    expires: '2026-12-18',
+    reason: 'no fixed release',
+  }
+
+  it('an advisory with a live entry does not block', () => {
+    const r = applyAcceptances([adv('glob', 1)], [entry], '2026-11-20')
+    expect(r.blocking).toEqual([])
+    expect(r.accepted).toHaveLength(1)
+    expect(r.lapsed).toEqual([])
+  })
+
+  it('an advisory with no entry blocks', () => {
+    const r = applyAcceptances([adv('other', 2)], [entry], '2026-11-20')
+    expect(r.blocking.map((a) => a.pkg)).toEqual(['other'])
+    expect(r.accepted).toEqual([])
+  })
+
+  it('the entry lapses when the vulnerable range changes (a fix shipped)', () => {
+    const fixed = { ...adv('glob', 1), vulnerableVersions: '<1.0.1' }
+    const r = applyAcceptances([fixed], [entry], '2026-11-20')
+    expect(r.blocking).toHaveLength(1)
+    expect(r.lapsed[0]).toContain('Bump the lockfile')
+  })
+
+  it('the entry holds on its expiry date and lapses the day after', () => {
+    expect(applyAcceptances([adv('glob', 1)], [entry], '2026-12-18').blocking).toEqual([])
+    const r = applyAcceptances([adv('glob', 1)], [entry], '2026-12-19')
+    expect(r.blocking).toHaveLength(1)
+    expect(r.lapsed[0]).toContain('expired on 2026-12-18')
+  })
+
+  it('an entry for the same GHSA on another package does not apply', () => {
+    const other = { ...adv('glob', 1), pkg: 'globber' }
+    expect(applyAcceptances([other], [entry], '2026-11-20').blocking).toHaveLength(1)
+  })
+})
+
+describe('acceptanceProblems', () => {
+  const ok: Acceptance = {
+    pkg: 'glob',
+    ghsa: 'GHSA-glob',
+    vulnerableVersions: '<=1.0.0',
+    accepted: '2026-11-18',
+    expires: '2026-12-18',
+    reason: 'no fixed release',
+  }
+
+  it('accepts a 30-day entry', () => {
+    expect(acceptanceProblems([ok])).toEqual([])
+  })
+
+  it('rejects an entry that stands longer than 30 days', () => {
+    expect(acceptanceProblems([{ ...ok, expires: '2026-12-19' }])).toHaveLength(1)
+  })
+
+  it('rejects an entry that expires before it was accepted', () => {
+    expect(acceptanceProblems([{ ...ok, expires: '2026-11-18' }])).toHaveLength(1)
+  })
+
+  it('rejects an empty reason and a malformed date', () => {
+    expect(acceptanceProblems([{ ...ok, reason: ' ' }])).toHaveLength(1)
+    expect(acceptanceProblems([{ ...ok, accepted: '18.11.2026' }])).toHaveLength(1)
+  })
+
+  it('the committed list is well-formed', () => {
+    const list = JSON.parse(readFileSync(ACCEPTANCES_FILE, 'utf8')) as Acceptance[]
+    expect(acceptanceProblems(list)).toEqual([])
   })
 })

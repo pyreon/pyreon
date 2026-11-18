@@ -1,7 +1,8 @@
 /* oxlint-disable complexity -- judgeEntry is the one decision table for the verdict codes; splitting it would scatter the policy */
 /**
- * size-budget-policy — how a measured size is judged, for all three size gates
- * (`check-bundle-budgets`, `check-import-budgets`, `check-route-budgets`).
+ * size-budget-policy — how a measured size is judged, for all four size gates
+ * (`check-bundle-budgets`, `check-import-budgets`, `check-route-budgets`,
+ * `check-site-budgets`).
  *
  * Two questions, asked in two different places:
  *
@@ -262,7 +263,7 @@ export function judgeFamily(
 ): Verdict[] {
   if (mode === 'pr' && base === undefined) {
     throw new Error(
-      '[Pyreon] size gate: pr mode needs the base measurement. Run `bun scripts/size-base.ts` first and pass its output with --base=<file> or PYREON_SIZE_BASE.',
+      '[Pyreon] size gate: pr mode needs the base measurement. Produce it first (the `size-base` script for the package and route gates, `--base-ref` for the site gate) and pass it with --base=<file> or PYREON_SIZE_BASE.',
     )
   }
   return entries.map((entry) => {
@@ -318,6 +319,23 @@ export function movesLibSizes(path: string): boolean {
  */
 export function movesRouteSizes(path: string): boolean {
   return movesLibSizes(path) || path.startsWith('examples/')
+}
+
+/**
+ * Can a change to `path` move the JavaScript a page of the docs site requests?
+ * Anything that moves a `lib/` the site is built from, or anything under
+ * `docs/`: site code, and content too, because a page's Markdown decides which
+ * islands and live examples the page carries.
+ */
+export function movesSiteSizes(path: string): boolean {
+  return movesLibSizes(path) || path.startsWith('docs/')
+}
+
+/** The file `check-site-budgets --base-ref` writes: the site family's base. */
+export interface SiteBaseFile {
+  /** The commit the base was measured at. */
+  ref: string
+  site: BaseFamily
 }
 
 /** Verdict lines for a log: failures first, then notes; passing entries are counted. */
