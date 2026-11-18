@@ -26,11 +26,11 @@ function examplesOf(file: string): Array<{ name: string; lines: string[] }> {
 
 afterEach(() => _resetLocaleState())
 
-describe.each(['core.ts', 'index.ts', 'locale.ts'])('JSDoc examples in %s', (file) => {
+describe.each(['core.ts', 'index.ts'])('JSDoc examples in %s', (file) => {
   const found = examplesOf(file)
 
   it('has examples', () => {
-    expect(found.length).toBeGreaterThan(file === 'locale.ts' ? 1 : 25)
+    expect(found.length).toBeGreaterThan(25)
   })
 
   it.each(found.map((f) => [f.name, f.lines] as const))('%s', (_name, lines) => {

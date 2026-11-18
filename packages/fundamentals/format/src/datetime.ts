@@ -219,11 +219,21 @@ function relativeOptions(options: object | string | undefined, fn: string): Intl
   return options as Intl.RelativeTimeFormatOptions
 }
 
+/** The defaults with the options over them; an option that is `undefined` leaves its default alone. */
+function withDefaults(defaults: Intl.RelativeTimeFormatOptions, given: Intl.RelativeTimeFormatOptions | undefined): Intl.RelativeTimeFormatOptions {
+  const out: Intl.RelativeTimeFormatOptions = { ...defaults }
+  if (given?.numeric !== undefined) out.numeric = given.numeric
+  if (given?.style !== undefined) out.style = given.style
+  if (given?.localeMatcher !== undefined) out.localeMatcher = given.localeMatcher
+
+  return out
+}
+
 function makeRelative(fn: string, defaults: Intl.RelativeTimeFormatOptions, locale: string, options: object | string | undefined) {
   return construct(
     (l, o) => new Intl.RelativeTimeFormat(l, o),
     locale,
-    { ...defaults, ...relativeOptions(options, fn) },
+    withDefaults(defaults, relativeOptions(options, fn)),
     (error) =>
       programmerError(fn, `${error instanceof Error ? error.message : String(error)}. numeric is 'always' | 'auto', style is 'long' | 'short' | 'narrow'.`),
     badLocale(fn),
@@ -265,7 +275,7 @@ const MIN = 60000
 const HOUR = 3600000
 const DAY = 86400000
 
-/** `Intl` view of a zone's local date: Gregorian, Latin digits, era kept for years before 1. */
+/** `Intl` view of a zone's local date and clock: Gregorian, Latin digits, 24-hour, era kept for years before 1. */
 const civilTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>((_locale, zone) =>
   withZoneFallback(
     zone,
@@ -275,19 +285,24 @@ const civilTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>((_locale, zo
         ...(z === '' ? {} : { timeZone: z }),
         calendar: 'gregory',
         numberingSystem: 'latn',
+        hourCycle: 'h23',
         era: 'short',
         year: 'numeric',
         month: 'numeric',
         day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        second: 'numeric',
       }),
   ),
 )
 
-/** Day number (days since 1970-01-01) and `year * 12 + month` of the local date of an instant, in `zone`; calendar values read as UTC. */
+/** Day number (days since 1970-01-01), `year * 12 + month` and clock milliseconds of the local date of an instant, in `zone`; calendar values read as UTC. */
 function civilOf(ms: number, plain: boolean, zone: string): void {
   let year: number
   let month: number
   let day: number
+  let clock = 0
   if (plain) {
     const d = new Date(ms)
     year = d.getUTCFullYear()
@@ -302,6 +317,9 @@ function civilOf(ms: number, plain: boolean, zone: string): void {
       if (part.type === 'year') year = Number(part.value)
       else if (part.type === 'month') month = Number(part.value)
       else if (part.type === 'day') day = Number(part.value)
+      else if (part.type === 'hour') clock += Number(part.value) * HOUR
+      else if (part.type === 'minute') clock += Number(part.value) * MIN
+      else if (part.type === 'second') clock += Number(part.value) * 1000
       else if (part.type === 'era') bce = part.value === 'BC'
     }
     if (bce) year = 1 - year
@@ -309,12 +327,37 @@ function civilOf(ms: number, plain: boolean, zone: string): void {
   civilDays = daysFromCivil(year, month, day)
   civilMonths = year * 12 + month
   civilYear = year
+  civilClock = clock
 }
 
 /** Scratch of {@link civilOf} (synchronous, no allocation). */
 let civilDays = 0
 let civilMonths = 0
 let civilYear = 0
+let civilClock = 0
+
+/** The offset of `zone` from UTC at an instant, in milliseconds (a whole number of seconds). */
+function offsetAt(ms: number, zone: string): number {
+  civilOf(ms, false, zone)
+
+  return civilDays * DAY + civilClock - (ms - (((ms % 1000) + 1000) % 1000))
+}
+
+/**
+ * The instant at which the calendar day whose UTC midnight is `day` begins in `zone`: its local midnight. Where the zone's
+ * clock skips midnight (a spring-forward gap) it is the first instant after the gap; where midnight occurs twice, the first.
+ */
+function zoneMidnight(day: number, zone: string): number {
+  const before = offsetAt(day - DAY, zone)
+  const after = offsetAt(day + DAY, zone)
+  if (before === after) return day - before
+  const a = day - before
+  const b = day - after
+  const okA = offsetAt(a, zone) === before
+  const okB = offsetAt(b, zone) === after
+
+  return okA && okB ? Math.min(a, b) : okA ? a : okB ? b : Math.max(a, b)
+}
 
 /**
  * `target` relative to `base` through `rtf`. Under a minute is seconds, under an hour minutes, under 24 hours
@@ -330,6 +373,21 @@ function relativeToValue(rtf: Intl.RelativeTimeFormat, target: DateInput, base: 
   const b = t === t ? dateMs('formatRelativeTo', base, false) : NaN
   const plainB = lastWasPlain()
   if (t !== t || b !== b) return fallback
+  return relativeFrom(rtf, t, plainT, b, plainB, zone)
+}
+
+/**
+ * The words for two moments. A calendar value (date only) is the day it names: against an instant it is that day's midnight in
+ * `zone`, so for a person in that zone "yesterday", "today" and "tomorrow" are literally true and a date seen from the far side
+ * of the date line is not an hour or a day off (target `2026-11-18` at 10:00 in Tokyo is "10 hours ago", not the "1 hour ago"
+ * that reading it as UTC midnight gave). Two calendar values compare as calendar days.
+ */
+function relativeFrom(rtf: Intl.RelativeTimeFormat, t0: number, plainT0: boolean, b0: number, plainB0: boolean, zone: string): string {
+  const both = plainT0 && plainB0
+  const t = plainT0 && !both ? zoneMidnight(t0, zone) : t0
+  const b = plainB0 && !both ? zoneMidnight(b0, zone) : b0
+  const plainT = both
+  const plainB = both
   const diff = t - b
   const abs = diff < 0 ? -diff : diff
   let unit: RelativeUnit
@@ -379,6 +437,108 @@ export function relativeToIn(
   options: RelativeOptions | RelativePreset | undefined,
 ): string {
   return relativeToValue(resolve(relativeToTable, locale, '', options), target, base, fallbackOf(options), zone)
+}
+
+// ─── self-updating relative time ──────────────────────────────────────────────────────────────────────────────────────
+
+/** A distance in `relativeTime`'s `threshold.after`, resolved to milliseconds. */
+const SPAN_MS: Record<string, number> = { seconds: 1000, minutes: MIN, hours: HOUR, days: DAY, weeks: 7 * DAY }
+
+/** What `threshold` resolves to: past this distance (either direction) the value is shown as an absolute date. */
+export interface ResolvedThreshold {
+  ms: number
+  as: DateTimeOptions | DateStylePreset
+}
+
+/** `threshold.after` and `.as` of a relative-time options object, validated; `undefined` when there is no threshold. */
+export function thresholdOf(fn: string, options: { threshold?: unknown } | null | undefined): ResolvedThreshold | undefined {
+  const raw = options?.threshold
+  if (raw === undefined || raw === null) return undefined
+  const given = typeof raw === 'object' ? (raw as { after?: unknown; as?: unknown }) : undefined
+  let ms = Number.NaN
+  if (given !== undefined) {
+    if (typeof given.after === 'number') ms = given.after
+    else if (typeof given.after === 'object' && given.after !== null) {
+      ms = 0
+      for (const [unit, amount] of Object.entries(given.after)) {
+        const per = SPAN_MS[unit]
+        if (per === undefined || typeof amount !== 'number') {
+          ms = Number.NaN
+          break
+        }
+        ms += per * amount
+      }
+    }
+  }
+  if (!(ms > 0) || ms === Infinity) {
+    throw programmerError(fn, `threshold must be { after, as? } with a positive after: milliseconds, or { seconds, minutes, hours, days, weeks }, such as { after: { days: 7 }, as: 'medium' }, got ${describe(raw)}.`)
+  }
+  const as = given?.as
+  if (as !== undefined && typeof as !== 'string' && (typeof as !== 'object' || as === null)) {
+    throw programmerError(fn, `threshold.as must be a date style such as 'medium' or Intl.DateTimeFormat options, got ${describe(as)}.`)
+  }
+
+  return { ms, as: (as as DateTimeOptions | DateStylePreset | undefined) ?? 'medium' }
+}
+
+/**
+ * The text of a self-updating relative label at `base`: the calendar-aware relative words, or, past `threshold`, the value as an
+ * absolute date in `zone` (a calendar value stays on its own day). Invalid input is the `fallback`.
+ */
+export function relativeTimeIn(
+  locale: string,
+  zone: string,
+  target: DateInput,
+  base: number,
+  options: RelativeOptions | undefined,
+  threshold: ResolvedThreshold | undefined,
+): string {
+  if (threshold !== undefined) {
+    const t = dateMs('useRelativeTime', target, false)
+    if (t !== t) return fallbackOf(options)
+    const instant = lastWasPlain() ? zoneMidnight(t, zone) : t
+    const away = instant - base
+    if ((away < 0 ? -away : away) >= threshold.ms) return dateIn(locale, zone, target, threshold.as)
+  }
+  // `threshold` and `base` are data, not Intl options: keep them out of the cache key.
+  const rtf = resolve(relativeToTable, locale, '', options === undefined ? undefined : { numeric: options.numeric, style: options.style })
+
+  return relativeToValue(rtf, target, base, fallbackOf(options), zone)
+}
+
+/** The local midnight that ends the day `ms` falls on in `zone`. */
+function nextMidnight(ms: number, zone: string): number {
+  civilOf(ms, false, zone)
+
+  return zoneMidnight((civilDays + 1) * DAY, zone)
+}
+
+/**
+ * When the label of `target` next changes, seen at `base`: `'second'` while it counts seconds (a shared ticker is exact enough),
+ * else the instant of its next change: the next whole minute or hour OF THE TARGET'S OWN AGE (so "1 minute ago" appears when
+ * it is one minute old, not at the next wall-clock minute), the local midnight once it counts calendar days, the moment a future
+ * target comes within 24 hours, and the threshold. `Infinity` when it never changes again.
+ */
+export function nextRelativeChange(target: DateInput, base: number, zone: string, threshold: ResolvedThreshold | undefined): 'second' | number {
+  const t0 = dateMs('useRelativeTime', target, false)
+  if (t0 !== t0) return Infinity
+  const t = lastWasPlain() ? zoneMidnight(t0, zone) : t0
+  const d = t - base
+  const abs = d < 0 ? -d : d
+  const past = d <= 0
+  if (threshold !== undefined && abs >= threshold.ms) return past ? Infinity : t - threshold.ms + 1
+  let next: number
+  // The last second before a minute: aim at the minute itself, so "1 minute ago" is not up to a second late.
+  if (abs < MIN) return past && abs >= MIN - 1000 ? t + MIN : 'second'
+  if (abs < DAY) {
+    const unit = abs < HOUR ? MIN : HOUR
+    next = past ? t + (Math.floor(-d / unit) + 1) * unit : t - Math.floor(d / unit) * unit + 1
+  } else {
+    next = nextMidnight(base, zone)
+    if (!past) next = Math.min(next, t - DAY + 1)
+  }
+
+  return past && threshold !== undefined ? Math.min(next, t + threshold.ms) : next
 }
 
 // ─── Formatters as values ────────────────────────────────────────────────────
@@ -473,10 +633,10 @@ export function relativeSpec(options: RelativeFormatterOptions): RelativeFormatt
 }
 
 export const relativeKind: KindDef<'relative'> = {
-  create(spec, locale, activeZone) {
+  create(spec, locale, activeZone, clock) {
     const fb = fallbackText(spec.fallback)
     const zone = zoneFn(spec, activeZone)
-    if (process.env.NODE_ENV !== 'production' && spec.base === undefined) {
+    if (process.env.NODE_ENV !== 'production' && spec.base === undefined && clock === undefined) {
       warnOnce('relativeFormatter:base', '[Pyreon] relativeFormatter(): no `base` was given, so every call returns the fallback. Pass { base: Date.now() } or an accessor such as { base: () => now() }.')
     }
     // `base` is data, not an Intl option: keep it out of the cache key.
@@ -488,7 +648,7 @@ export const relativeKind: KindDef<'relative'> = {
       call: (target) => {
         const l = locale()
         const z = zone()
-        const base = typeof spec.base === 'function' ? spec.base() : spec.base
+        const base = typeof spec.base === 'function' ? spec.base() : (spec.base ?? clock?.())
         if (rtf === undefined || l !== at) {
           rtf = resolve(relativeToTable, l, '', rtfSpec)
           at = l

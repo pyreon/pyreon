@@ -7,7 +7,9 @@ import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { hydrateRoot, mount, onHydrationMismatch } from '@pyreon/runtime-dom'
-import { DateTime, Num } from './components'
+import { _resetClockState } from '@pyreon/ambient/testing'
+import { setClock } from '@pyreon/ambient'
+import { DateTime, Num, RelativeTime } from './components'
 import { currencyFormatter, dateFormatter, formatBytes, formatDate, formatNumber, provideLocale, setLocale } from './index'
 
 const tree = () =>
@@ -114,5 +116,93 @@ describe('formatting in a real browser', () => {
     expect(root.textContent).toBe(new Intl.NumberFormat('cs').format(1234567.5))
     unmount()
     root.remove()
+  })
+})
+
+describe('<RelativeTime> hydrates with the server\'s clock and then updates once', () => {
+  const MINUTE = 60_000
+  const SERVER_AT = Date.now() - 5 * MINUTE // the server rendered five minutes ago
+  const target = SERVER_AT - 30 * MINUTE
+  const label = () => h(RelativeTime, { value: target, locale: 'en-US', timeZone: 'UTC' })
+
+  function serverHtml(): string {
+    setClock(() => SERVER_AT)
+    const scratch = document.createElement('div')
+
+    document.body.appendChild(scratch)
+    const unmount = mount(label() as never, scratch)
+    const html = scratch.innerHTML
+
+    unmount()
+    scratch.remove()
+    _resetClockState()
+
+    return html
+  }
+
+  afterEach(() => {
+    _resetClockState()
+    delete (globalThis as Record<string, unknown>).__PYREON_CLOCK__
+  })
+
+  it('no mismatch with the hand-over, the server text first, then exactly one update to real time', async () => {
+    const html = serverHtml()
+
+    expect(html).toContain('30 minutes ago')
+    const el = document.createElement('div')
+
+    document.body.appendChild(el)
+    el.innerHTML = html
+    ;(globalThis as Record<string, unknown>).__PYREON_CLOCK__ = SERVER_AT
+    const mismatches: string[] = []
+    const off = onHydrationMismatch((info) => mismatches.push(JSON.stringify(info)))
+    const cleanup = hydrateRoot(el, label() as never)
+
+    off()
+    const time = el.querySelector('time') as HTMLElement
+
+    expect(mismatches, 'hydration mismatches').toEqual([])
+    expect(time.textContent).toBe('30 minutes ago') // the first client render read the server's instant
+    const seen: string[] = [time.textContent as string]
+    const watch = new MutationObserver(() => seen.push(time.textContent as string))
+
+    watch.observe(time, { childList: true, characterData: true, subtree: true })
+    await new Promise((r) => setTimeout(r, 40))
+    watch.disconnect()
+    expect(time.textContent).toBe('35 minutes ago') // real time took over
+    expect([...new Set(seen)]).toEqual(['30 minutes ago', '35 minutes ago']) // one update, no flicker through other values
+    cleanup()
+    el.remove()
+  })
+
+  it('control: without the hand-over the same HTML does not hydrate to the server text (the test can fail)', async () => {
+    const html = serverHtml()
+    const el = document.createElement('div')
+
+    document.body.appendChild(el)
+    el.innerHTML = html
+    const mismatches: string[] = []
+    const off = onHydrationMismatch((info) => mismatches.push(JSON.stringify(info)))
+    const cleanup = hydrateRoot(el, label() as never)
+
+    off()
+    await new Promise((r) => setTimeout(r, 40))
+    expect(mismatches.length > 0 || el.querySelector('time')?.textContent !== '30 minutes ago').toBe(true)
+    cleanup()
+    el.remove()
+  })
+
+  it('a real page ticks on a real timer: a label 59.5 s old becomes "1 minute ago" without a reload', async () => {
+    const el = document.createElement('div')
+
+    document.body.appendChild(el)
+    const unmount = mount(h(RelativeTime, { value: Date.now() - 59_500, locale: 'en-US', timeZone: 'UTC' }) as never, el)
+    const time = el.querySelector('time') as HTMLElement
+
+    expect(time.textContent).toBe('59 seconds ago')
+    await new Promise((r) => setTimeout(r, 700))
+    expect(time.textContent).toBe('1 minute ago')
+    unmount()
+    el.remove()
   })
 })

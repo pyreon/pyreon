@@ -1,11 +1,11 @@
 /**
- * `@pyreon/format/components`: `<Num>` and `<DateTime>`. Both read their props
+ * `@pyreon/format/components`: `<Num>`, `<DateTime>` and `<RelativeTime>`. Both read their props
  * (and the active locale / time zone) inside a reactive accessor, so a binding
  * such as `<Num value={count()} />` updates when the value or the locale changes.
  */
 import type { Props, VNodeChild } from '@pyreon/core'
 import { h, mergeProps, splitProps } from '@pyreon/core'
-import { formatBytes, formatCompact, formatCurrency, formatDate, formatDateTime, formatNumber, formatPercent, formatTime, formatUnit } from './index'
+import { formatBytes, formatCompact, formatCurrency, formatDate, formatDateTime, formatNumber, formatPercent, formatTime, formatUnit, useRelativeTime } from './index'
 import { lastWasPlain, lastWasTimeOnly, toMillis } from './input'
 import type {
   BytesOptions,
@@ -18,6 +18,8 @@ import type {
   NumberInput,
   NumberOptions,
   PercentOptions,
+  RelativeThreshold,
+  RelativeTimeOptions,
   Unit,
   UnitOptions,
 } from './types'
@@ -246,6 +248,57 @@ export function DateTime(props: DateTimeProps) {
   const extra = {
     datetime: () => machineValue(own.value),
     title: () => (rest.title as string | undefined) ?? exactTitle(own.value, own.format, own.locale ?? own.options?.locale, own.timeZone ?? own.options?.timeZone),
+    ...(own.isolate === false ? {} : { style: wrapperStyle(rest.style, false, true) }),
+  }
+
+  return h('time', mergeProps(rest, extra), text)
+}
+
+export interface RelativeTimeProps extends Props {
+  /** The date-like value (a calendar value, a `Date`, epoch milliseconds or an ISO string). Nullish or invalid renders `fallback`. */
+  value: DateInput
+  /** `'auto'` (default) says "yesterday"; `'always'` says "1 day ago". */
+  numeric?: 'always' | 'auto' | undefined
+  /** `Intl.RelativeTimeFormat` options (`style`) and the rest of {@link RelativeTimeOptions}; the props below take precedence. */
+  options?: RelativeTimeOptions | undefined
+  /** Overrides the active locale. */
+  locale?: string | undefined
+  /** Overrides the active time zone: the calendar that "yesterday" and "last month" are counted in. */
+  timeZone?: string | undefined
+  /** Past this distance show an absolute date: `{ after: { days: 7 }, as: 'medium' }`. */
+  threshold?: RelativeThreshold | undefined
+  /** `unicode-bidi: isolate` on the element (default `true`). */
+  isolate?: boolean | undefined
+  /** Rendered for nullish or invalid values. Default `''`. */
+  fallback?: string | undefined
+}
+
+/**
+ * A `<time>` element that says how long ago (or how far ahead) a value is and keeps itself current: `3 minutes ago` becomes
+ * `4 minutes ago` when the value turns four minutes old. All instances share two timers (see `useRelativeTime`); a server render
+ * starts none and prints the request's clock, and the page hydrates without a mismatch when the server's instant is handed over
+ * (`clockScript()` of `@pyreon/ambient`). `datetime` is the machine value and `title` the exact date and time, so hovering a
+ * relative label shows when it was; a `title` you pass wins.
+ *
+ * @example
+ * <RelativeTime value={comment.createdAt} threshold={{ after: { days: 7 } }} />
+ */
+export function RelativeTime(props: RelativeTimeProps) {
+  const [own, rest] = splitProps(props, ['value', 'numeric', 'options', 'locale', 'timeZone', 'threshold', 'isolate', 'fallback'])
+  const text = useRelativeTime(
+    () => own.value,
+    () => ({
+      ...own.options,
+      numeric: own.numeric ?? own.options?.numeric ?? 'auto',
+      locale: own.locale ?? own.options?.locale,
+      timeZone: own.timeZone ?? own.options?.timeZone,
+      threshold: own.threshold ?? own.options?.threshold,
+      fallback: own.fallback ?? own.options?.fallback,
+    }),
+  )
+  const extra = {
+    datetime: () => machineValue(own.value),
+    title: () => (rest.title as string | undefined) ?? exactTitle(own.value, undefined, own.locale ?? own.options?.locale, own.timeZone ?? own.options?.timeZone),
     ...(own.isolate === false ? {} : { style: wrapperStyle(rest.style, false, true) }),
   }
 

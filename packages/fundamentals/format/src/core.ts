@@ -76,6 +76,7 @@ import type {
   ParseOptions,
   PercentOptions,
   PlainDateString,
+  CoreRelativeFormatterOptions,
   RelativeFormatterOptions,
   RelativeOptions,
   RelativePreset,
@@ -509,7 +510,7 @@ export function dateTimeFormatter(options?: DateTimeOptions | DateStylePreset): 
  * relativeFormatter({ locale: 'en-US', base: '2026-11-18' })('2026-11-17') // "yesterday"
  * ```
  */
-export function relativeFormatter(options: RelativeFormatterOptions): Formatter<DateInput, 'relative'> {
+export function relativeFormatter(options: CoreRelativeFormatterOptions): Formatter<DateInput, 'relative'> {
   return makeFormatter(relativeKind, relativeSpec(options), CORE_ENV)
 }
 

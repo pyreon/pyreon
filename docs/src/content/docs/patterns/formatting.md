@@ -43,6 +43,7 @@ Parse what the user types with `parseNumber`, `parseCurrency` and `parseDate`, i
 - **`toLocaleString()` with no locale on the server and the client.** The server formats with its locale and the browser with the user's: the HTML and the first client render differ and hydration mismatches. Provide the same locale on both sides (`provideLocale`).
 - **Money built by concatenation** (`'€' + price.toFixed(2)`, `` `${n} USD` ``). The symbol position, spacing, decimal and group separators and the minor-unit digits are per locale and per currency (`JPY` has none). Use `formatCurrency` or a `currencyFormatter`.
 - **`new Date('2026-11-18')` for a calendar date.** That is midnight UTC, so it shows the 17th west of Greenwich. Pass the string to `formatDate`: a date-only string is a calendar date and shows the same day in every zone.
+- **A `setInterval` (or `useTimeAgo`) per row to keep "3 minutes ago" fresh.** Each instance owns a timer that fires on its own phase, and 200 rows are 200 timers. `useRelativeTime(target)` (or `<RelativeTime value={…} />`) shares two timers across every label on the page, updates at the moment the text changes, switches to an absolute date with `threshold: { after: { days: 7 } }`, and prints the request's clock on the server without starting a timer.
 - **A "per month" currency pattern assembled by hand** (`price + '/mo'`). There is no locale data for that pattern outside unit formatting. Format the value and put it in a translated message (`"{price} per month"`).
 
 ## Related

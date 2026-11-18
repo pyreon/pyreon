@@ -46,6 +46,8 @@ parseDate('18. 11. 2026', { locale: 'cs' }) // → "2026-11-18"`,
   features: [
     'One plain function per operation — formatNumber, formatCurrency, formatPercent, formatCompact, formatUnit, formatBytes, formatDuration, formatList, formatDate, formatTime, formatDateTime, formatRelative, formatRelativeTo, formatDateRange, formatNumberRange — plus parseNumber and parseDate',
     'Reactive without ceremony: the reactive entry reads the active locale and time zone, so a formatter in an effect, computed or JSX binding updates on setLocale / setTimeZone / a provided accessor',
+    'Relative time that updates itself: useRelativeTime and <RelativeTime> change the text at the moment it changes (the target\'s own minute and hour marks, local midnight), 200 labels share two timers, a threshold switches to an absolute date, and a server render starts no timer and hydrates cleanly with the ambient clock hand-over',
+    'One locale, one time zone, one clock: they live in @pyreon/ambient and are shared with @pyreon/time (and @pyreon/i18n will feed them), so setLocale or setTimeZone from any package changes every formatted value',
     'Request-scoped on the server: provideLocale / provideTimeZone use the context stack, never module state, so concurrent requests never share a locale',
     'Calendar dates never shift: a date-only or offset-less string formats as that day / wall-clock time in every time zone',
     'Bounded three-tier Intl cache: no options, preset string, options object (identity, then structural key) — every table bounded, no JSON.stringify on the hot path',
@@ -484,14 +486,15 @@ stamp('2026-11-18T14:30') // → "18.11.2026, 14:30"`,
       name: "relativeFormatter",
       kind: "function",
       signature: "(options: RelativeFormatterOptions) => Formatter<DateInput, 'relative'>",
-      summary: "A reusable relative-time formatter: the target is measured against `options.base`, a date-like value or an accessor (`base: () => now()` is tracked, so a clock signal keeps it current). `numeric` defaults to `auto`. It has no `parts` or `range`.",
+      summary: "A reusable relative-time formatter: the target is measured against `options.base`, a date-like value or an accessor (`base: () => now()` is tracked, so a clock signal keeps it current). In the reactive entry `base` may be omitted: it is then the ambient clock (`now()` of `@pyreon/ambient`, read on every call; it does not tick, so a label that updates itself is `useRelativeTime` or `<RelativeTime>`). `@pyreon/format/core` requires `base`. `numeric` defaults to `auto`. It has no `parts` or `range`.",
       example: `const since = relativeFormatter({ locale: 'en-US', base: '2026-11-18' })
 since('2026-11-17') // → "yesterday"
 since('2026-11-25') // → "next week"`,
       mistakes: [
-        "Omitting `base`: every call returns the fallback (dev warning)",
+        "Omitting `base` in `@pyreon/format/core`: every call returns the fallback (dev warning). The reactive entry defaults it to the ambient clock",
+        "Expecting a formatter call to update the text by itself: it reads the clock once per call; use `useRelativeTime` or `<RelativeTime>` for a label that keeps current",
       ],
-      seeAlso: ["formatRelativeTo"],
+      seeAlso: ["formatRelativeTo", "useRelativeTime"],
     },
     {
       name: "defineFormats",
@@ -511,10 +514,26 @@ f.day('2026-11-18') // → "November 18, 2026"`,
       seeAlso: ["createFormatter", "numberFormatter"],
     },
     {
+      name: "useRelativeTime",
+      kind: "hook",
+      signature: "(target: DateInput | (() => DateInput), options?: RelativeTimeOptions | (() => RelativeTimeOptions | undefined)) => () => string",
+      summary: "A relative label that keeps itself current: an accessor returning `\"3 minutes ago\"`, updated by the shared clock of `@pyreon/ambient`. The text is `formatRelativeTo` against the clock, so it is calendar-true (\"yesterday\" in the time zone). It updates at the moment the text changes: each second under a minute, at the TARGET'S OWN minute and hour marks (\"1 minute ago\" appears when the target is one minute old, not at the next wall-clock minute), at local midnight once it counts days, when a future target comes within a day, and at the `threshold`. Every label shares one timer for those marks and one for seconds, so 200 labels cost two timers. `target` and `options` may be accessors (tracked). Options are `numeric` (`'auto'` by default), `style`, `locale`, `timeZone`, `fallback` and `threshold: { after, as? }`: once the target is `after` away (milliseconds or `{ seconds, minutes, hours, days, weeks }`, in either direction) the label is the date, formatted `as` (a date style or `Intl.DateTimeFormat` options, default `'medium'`). Call it in a component's setup and read the accessor in JSX. On a server it prints the request's clock (`provideClock`) and starts no timer; outside a component it is a plain reading.",
+      example: `const ago = useRelativeTime(Date.now() - 180_000, { locale: 'en-US' })
+ago() // → "3 minutes ago"
+const old = useRelativeTime('2020-01-05', { locale: 'en-US', timeZone: 'UTC', threshold: { after: { days: 7 }, as: 'medium' } })
+old() // → "Jan 5, 2020"`,
+      mistakes: [
+        "Calling it in an event handler or a timer: it needs the component's scope to release its timer; call it in setup",
+        "Using `formatRelativeTo(value, Date.now())` in JSX and expecting it to tick: that is one reading; the label only changes when something else re-renders it",
+        "A date-only target such as `'2026-11-18'` is that day's midnight in the display zone: at 10:00 on the 18th it is \"10 hours ago\", and from midnight on the 19th it is \"yesterday\"",
+      ],
+      seeAlso: ["RelativeTime", "formatRelativeTo", "relativeFormatter"],
+    },
+    {
       name: "locale",
       kind: "function",
       signature: "() => string",
-      summary: "The active locale (a reactive read). Resolution order: an explicit `options.locale`, the nearest `provideLocale`, the app default set by `setLocale`, then `navigator.language` on the client or the runtime default on the server.",
+      summary: "Re-exported from `@pyreon/ambient`, which owns it, so `@pyreon/format`, `@pyreon/time` and every component share one value. The active locale (a reactive read). Resolution order: an explicit `options.locale`, the nearest `provideLocale`, the app default set by `setLocale`, then `navigator.language` on the client or the runtime default on the server.",
       example: `setLocale('cs')
 locale() // → "cs"
 formatNumber(1234.5) // → "1 234,5"`,
@@ -527,7 +546,7 @@ formatNumber(1234.5) // → "1 234,5"`,
       name: "setLocale",
       kind: "function",
       signature: "(tag: string) => void",
-      summary: "Set the app-level default locale (client). Every formatter read in an effect, computed or JSX accessor updates. The tag is validated (a malformed tag throws a `[Pyreon]` error) and canonicalized (`EN-us` becomes `en-US`). On the server it does nothing and warns in dev: one process serves many requests, use `provideLocale`.",
+      summary: "Re-exported from `@pyreon/ambient`, which owns it, so `@pyreon/format`, `@pyreon/time` and every component share one value. Set the app-level default locale (client). Every formatter read in an effect, computed or JSX accessor updates. The tag is validated (a malformed tag throws a `[Pyreon]` error) and canonicalized (`EN-us` becomes `en-US`). On the server it does nothing and warns in dev: one process serves many requests, use `provideLocale`.",
       example: `setLocale('de')
 formatNumber(1234.5) // → "1.234,5"
 setLocale('en-US')
@@ -541,7 +560,7 @@ formatNumber(1234.5) // → "1,234.5"`,
       name: "provideLocale",
       kind: "function",
       signature: "(tag: string | (() => string)) => void",
-      summary: "Scope a subtree to a locale. Call it in a component's setup with a tag or an accessor (`() => i18n.locale()`), which is tracked. On the client it is owner-based context; on the server it is request-scoped, so concurrent requests never see each other's locale. This is the seam `@pyreon/i18n` will call.",
+      summary: "Re-exported from `@pyreon/ambient`, which owns it, so `@pyreon/format`, `@pyreon/time` and every component share one value. Scope a subtree to a locale. Call it in a component's setup with a tag or an accessor (`() => i18n.locale()`), which is tracked. On the client it is owner-based context; on the server it is request-scoped, so concurrent requests never see each other's locale. This is the seam `@pyreon/i18n` will call.",
       example: `// in a component's setup:
 // provideLocale('de')
 // provideLocale(() => userSettings.locale())`,
@@ -555,7 +574,7 @@ formatNumber(1234.5) // → "1,234.5"`,
       name: "timeZone",
       kind: "function",
       signature: "() => string",
-      summary: "The active IANA time zone (a reactive read): the provided zone, else the app default, else the runtime's zone.",
+      summary: "Re-exported from `@pyreon/ambient`, which owns it, so `@pyreon/format`, `@pyreon/time` and every component share one value. The active IANA time zone (a reactive read): the provided zone, else the app default, else the runtime's zone.",
       example: `setTimeZone('Asia/Tokyo')
 timeZone() // → "Asia/Tokyo"
 setTimeZone('UTC')
@@ -566,7 +585,7 @@ timeZone() // → "UTC"`,
       name: "setTimeZone",
       kind: "function",
       signature: "(zone: string) => void",
-      summary: "Set the app-level default time zone (client). Date formatters of instants update; calendar strings never depend on the zone. A name that is not an IANA zone throws a `[Pyreon]` error. A no-op with a dev warning on the server: use `provideTimeZone`.",
+      summary: "Re-exported from `@pyreon/ambient`, which owns it, so `@pyreon/format`, `@pyreon/time` and every component share one value. Set the app-level default time zone (client). Date formatters of instants update; calendar strings never depend on the zone. A name that is not an IANA zone throws a `[Pyreon]` error. A no-op with a dev warning on the server: use `provideTimeZone`.",
       example: `setTimeZone('Asia/Tokyo')
 formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'short', timeStyle: 'short' }) // → "11/19/26, 8:30 AM"
 setTimeZone('UTC')
@@ -577,7 +596,7 @@ formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'sh
       name: "provideTimeZone",
       kind: "function",
       signature: "(zone: string | (() => string)) => void",
-      summary: "Scope a subtree to a time zone, like `provideLocale`: a name or a tracked accessor; request-scoped on the server.",
+      summary: "Re-exported from `@pyreon/ambient`, which owns it, so `@pyreon/format`, `@pyreon/time` and every component share one value. Scope a subtree to a time zone, like `provideLocale`: a name or a tracked accessor; request-scoped on the server.",
       example: `// in a component's setup:
 // provideTimeZone('Europe/Prague')`,
       seeAlso: ["setTimeZone", "provideLocale"],
@@ -608,6 +627,20 @@ formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'sh
         "Expecting the server and the browser to agree without a locale: they agree when the same locale and zone are provided on both sides (and ICU versions match)",
       ],
       seeAlso: ["Num", "formatDate"],
+    },
+    {
+      name: "RelativeTime",
+      kind: "component",
+      signature: "(props: RelativeTimeProps) => VNode",
+      summary: "A `<time>` that says how long ago (or how far ahead) a value is and keeps itself current. It is `useRelativeTime` in an element: `datetime` is the machine value, `title` the exact date and time (the full date, and for an instant the time with its zone name; a `title` you pass wins), the text updates by itself on the shared timers (two for the whole page), and `unicode-bidi: isolate` is on by default. Props: `value`, `numeric`, `locale`, `timeZone`, `threshold` (`{ after: { days: 7 }, as: 'medium' }`), `fallback`, `options` (`style` and the rest) and `isolate`; other props go to the element. A server render prints the request's clock and starts no timer; with `clockScript()` or `clockAttributes()` from `@pyreon/ambient` the page hydrates to the same text and then updates once to real time.",
+      example: `// <RelativeTime value={comment.createdAt} />
+// <RelativeTime value={post.updatedAt} threshold={{ after: { days: 7 } }} />  // "3 hours ago" ... "Nov 12, 2026"
+// <RelativeTime value={issue.dueDate} numeric="always" />  // a date-only value is that day in the display zone`,
+      mistakes: [
+        "Passing `style` for the Intl style: `style` is the element's style; use `options={{ style: 'short' }}`",
+        "Server-rendering without handing the instant over: the client's first render reads its own clock and can differ from the server text; emit `clockScript()` (or spread `clockAttributes()`) from `@pyreon/ambient`",
+      ],
+      seeAlso: ["useRelativeTime", "DateTime"],
     },
     {
       name: "NumberInput",
@@ -698,6 +731,14 @@ formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'sh
     {
       label: 'Locale tags from data',
       note: 'A tag you hand to setLocale / provideLocale (static) / setTimeZone is validated and throws a [Pyreon] error if malformed. A tag that arrives at format time (an accessor value, an options.locale) may be request data, so a malformed one degrades to the runtime default with a dev warning instead of throwing.',
+    },
+    {
+      label: 'Relative time that updates itself',
+      note: '`useRelativeTime` and `<RelativeTime>` are built on the shared clock of `@pyreon/ambient`: every label shares one timer for the target-relative minute and hour marks and one for seconds; the timers are created by the first reader, stop with the last, and never run on a server. A formatter call (`formatRelativeTo`, `relativeFormatter`) is ONE reading and does not tick. For a server-rendered page emit `clockScript()` (or spread `clockAttributes()`) from `@pyreon/ambient` so the first client render prints what the server printed; the page then updates once to real time.',
+    },
+    {
+      label: 'A date-only target is that day in the display zone',
+      note: 'In relative time a date-only value (`2026-11-18`) is the midnight that starts that day in the display zone, so "yesterday", "today" and "tomorrow" are literally true for a person in that zone and `@pyreon/time`\'s `relativeDistance` gives the same words (a shared table of cases is tested in both packages). At 10:00 on the 18th it is "10 hours ago", not "today": a date-only value has no time of day, and under 24 hours the distance is elapsed time. Two date-only values compare as calendar days.',
     },
     {
       label: 'Engines differ in CLDR data',

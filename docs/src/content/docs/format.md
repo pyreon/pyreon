@@ -40,7 +40,7 @@ yarn add @pyreon/format
 
 :::
 
-`@pyreon/core` and `@pyreon/reactivity` are peer dependencies of the reactive entry and the components. The `/core` entry needs neither.
+`@pyreon/core` and `@pyreon/reactivity` are peer dependencies of the reactive entry and the components. `@pyreon/ambient` (the locale, time zone and clock) is a regular dependency and installs with it. The `/core` entry needs none of them.
 
 ## Quick start
 
@@ -65,8 +65,8 @@ setLocale('de') // every binding above re-renders in German
 | Entry | Depends on | What |
 | --- | --- | --- |
 | `@pyreon/format/core` | nothing | Every formatter and parser as a pure function. Locale and time zone come from the options; the default is the runtime's. No `@pyreon/*` import. |
-| `@pyreon/format` | `@pyreon/core`, `@pyreon/reactivity` | The same names, defaulting to the active locale and zone. Adds the locale API. |
-| `@pyreon/format/components` | `@pyreon/core` | `<Num>` and `<DateTime>`. |
+| `@pyreon/format` | `@pyreon/core`, `@pyreon/reactivity`, `@pyreon/ambient` | The same names, defaulting to the active locale and zone. Adds the locale API (re-exported from `@pyreon/ambient`) and `useRelativeTime`. |
+| `@pyreon/format/components` | `@pyreon/core`, `@pyreon/ambient` | `<Num>`, `<DateTime>` and `<RelativeTime>`. |
 
 Every function is individually tree-shakeable (`sideEffects: false`, nothing runs on import).
 
@@ -218,7 +218,7 @@ formatDate('14:30', { locale: 'en-US', fallback: 'no date' })                  /
 | up to 11 calendar months | months | calendar months (`last month` is the previous calendar month) |
 | 12 calendar months or more | years | calendar years (`last year` is the previous calendar year) |
 
-From a day on, the calendar decides, so "yesterday", "tomorrow" and "last month" are always literally true; the zone is the `timeZone` option, else the active zone (calendar strings are counted in UTC). Under a day, elapsed time is used even across midnight (23 hours is "23 hours ago"). The thresholds are not options.
+From a day on, the calendar decides, so "yesterday", "tomorrow" and "last month" are always literally true; the zone is the `timeZone` option, else the active zone. Under a day, elapsed time is used even across midnight (23 hours is "23 hours ago"). The thresholds are not options.
 
 ```ts
 formatRelativeTo('2026-11-16T13:00:00Z', '2026-11-18T01:00:00Z', { locale: 'en-US', timeZone: 'UTC' })   // → "2 days ago"
@@ -226,6 +226,19 @@ formatRelativeTo('2026-10-05', '2026-11-18', { locale: 'en-US' })               
 formatRelativeTo('2025-12-15', '2026-12-20', { locale: 'en-US' })                                       // → "last year"
 formatRelativeTo('2026-10-22', '2026-11-18', { locale: 'en-US' })                                       // → "3 weeks ago"
 ```
+
+### A date-only target is that day in the display zone
+
+In relative time a date-only value (`2026-11-18`) is the midnight that starts that day **in the display zone**, not UTC midnight. Seen from far from UTC the old reading was wrong by hours or a whole day (at 10:00 in Tokyo on the 18th the date was "1 hour ago"; at midnight on the 19th in Kiritimati it was "10 hours ago" although the 18th was already yesterday). With the day in the zone, "yesterday", "today" and "tomorrow" are literally true for the person reading, and `@pyreon/time`'s `relativeDistance` gives the same words: both packages test the same table of cases.
+
+```ts
+formatRelativeTo('2026-11-18', '2026-11-18T01:00:00Z', { locale: 'en-US', timeZone: 'Asia/Tokyo' }) // → "10 hours ago"
+formatRelativeTo('2026-11-18', '2026-11-18T10:00:00Z', { locale: 'en-US', timeZone: 'Pacific/Kiritimati' }) // → "yesterday"
+formatRelativeTo('2026-11-18', '2026-11-17T20:00:00Z', { locale: 'en-US', timeZone: 'America/Los_Angeles' }) // → "in 12 hours"
+formatRelativeTo('2026-11-17', '2026-11-18', { locale: 'en-US' }) // → "yesterday"
+```
+
+Under 24 hours the distance is still elapsed time, so a date-only value seen at 10:00 on its own day is "10 hours ago", not "today": it has no time of day to count from. Two date-only values compare as calendar days.
 
 ### Reversed ranges
 
@@ -256,6 +269,8 @@ Any iterable works. Presets are `'and'`, `'or'` and `'unit'`. Nullish entries ar
 ```ts
 import { locale, setLocale, provideLocale, timeZone, setTimeZone, provideTimeZone } from '@pyreon/format'
 ```
+
+These are the functions of [`@pyreon/ambient`](/docs/ambient), re-exported: the active locale, the active time zone and the clock belong to neither the formatting nor the time package. An app that uses `@pyreon/format`, `@pyreon/time` and `@pyreon/i18n` has **one** locale, **one** time zone and **one** clock: `setLocale` from any of them changes what every formatter prints, and `@pyreon/i18n` will feed its locale into the same value, so a language switch moves numbers, dates and relative times with the translations. `@pyreon/format/core` has no dependency and takes the locale and zone as options.
 
 | Function | What |
 | --- | --- |
@@ -446,20 +461,79 @@ f.date('2026-11-18', 'long')   // "18. listopadu 2026"
 ## Components
 
 ```tsx
-import { Num, DateTime } from '@pyreon/format/components'
+import { Num, DateTime, RelativeTime } from '@pyreon/format/components'
 
 <Num value={total()} kind="currency" currency="EUR" />
 <Num value={total()} format={price} />
 <Num value={9.99} format={price} parts={{ currency: (text) => <sup>{text}</sup> }} />
 <DateTime value="2026-11-18" kind="date" format="long" />
 <DateTime value="2026-11-18" format={dateFormatter('long')} parts={{ month: (t) => <b>{t}</b> }} />
+<RelativeTime value={comment.createdAt} threshold={{ after: { days: 7 } }} />
 ```
 
 `<Num>` renders reactive text with no wrapper element. `kind` is `number` (default), `currency`, `percent`, `compact`, `unit` or `bytes`. Pass a built formatter as `format` and it replaces `kind`, `options`, `locale` and `fallback`: configure those on the formatter. `parts` wraps parts of the output (the keys are the `Intl` part types, typed per component): a part without a wrapper stays plain text, and the plain parts between wrapped ones are joined into one text node, so the server HTML and the client agree and hydration adopts it.
 
 `<DateTime>` renders `<time datetime="…">` with a machine-readable value whatever the display locale: the calendar string as given, or the UTC ISO instant. `format` is a `dateStyle`/`timeStyle` shorthand or a built date or relative formatter. `title` is set to the exact reading unless you pass one: the full date, and for an instant the time with its zone name (a calendar value has no zone), so hovering a short or relative date reveals the exact one. An invalid value renders the `fallback` and no `datetime` or `title`.
 
+`<RelativeTime>` is [`useRelativeTime`](#relative-time-that-updates-itself) in a `<time>`: `datetime`, an exact `title` and bidi isolation as for `<DateTime>`, and the text keeps itself current.
+
 `<Num tabular>` renders a `<span>` with `font-variant-numeric: tabular-nums`, set once and never per update, so numbers in columns and live-updating values do not jitter. `class`, `id`, `style` and any other prop are forwarded to the element (`<Num>` with none of them stays a bare text node). For right-to-left locales, `<DateTime>` isolates its content by default (`unicode-bidi: isolate`; `isolate={false}` turns it off) and `<Num isolate>` does the same, so a number or date inside text of the other direction keeps its own order.
+
+## Relative time that updates itself
+
+`formatRelativeTo` is one reading. For a label that stays current, `useRelativeTime` returns an accessor and `<RelativeTime>` is the same thing in a `<time>` element:
+
+```tsx
+import { useRelativeTime } from '@pyreon/format'
+import { RelativeTime } from '@pyreon/format/components'
+
+function Comment(props: { comment: Comment }) {
+  const ago = useRelativeTime(() => props.comment.createdAt)
+
+  return <span>{ago}</span> // "just now", "3 minutes ago", "yesterday" ... changes by itself
+}
+
+<RelativeTime value={comment.createdAt} />
+```
+
+The text is `formatRelativeTo` against the shared clock of `@pyreon/ambient`, so it is the same calendar-true text, and it changes **at the moment it changes**: each second under a minute, at the target's own minute and hour marks (`1 minute ago` appears when the target is one minute old, not at the next wall-clock minute), at local midnight once it counts days, and when a future target comes within a day. Every label on the page shares one timer for those marks and one for the seconds, so 200 comments cost two timers; the timers are created by the first label, stop with the last, never run while the page is hidden, and never run on a server.
+
+| Option | |
+| --- | --- |
+| `numeric` | `'auto'` (default) says "yesterday"; `'always'` says "1 day ago" |
+| `style` | `'long'`, `'short'`, `'narrow'` (on `<RelativeTime>` pass it in `options`: `style` is the element's) |
+| `locale`, `timeZone` | override the active ones |
+| `fallback` | text for a missing or invalid value |
+| `threshold` | `{ after, as? }`: past this distance show an absolute date |
+
+### Switching to a date after a week
+
+`threshold: { after: { days: 7 }, as: 'medium' }` reads "3 hours ago", "yesterday", "last week", then "Nov 12, 2026". `after` is milliseconds or `{ seconds, minutes, hours, days, weeks }` (summed) of elapsed time, in either direction, and `as` is a date style or `Intl.DateTimeFormat` options (`{ month: 'long', day: 'numeric' }`), default `'medium'`. A future target beyond the threshold shows its date and turns relative when it comes within it. Once a past label has switched to its date it never changes again and costs no timer.
+
+```ts
+const old = useRelativeTime('2020-01-05', { locale: 'en-US', timeZone: 'UTC', threshold: { after: { days: 7 }, as: 'medium' } })
+old() // → "Jan 5, 2020"
+```
+
+### Recipes
+
+- **Comment timestamps.** `<RelativeTime value={comment.createdAt} threshold={{ after: { days: 7 } }} />`: relative for a week, then the date, one pair of timers for the whole thread.
+- **An "Updated just now" badge.** `<RelativeTime value={doc.savedAt} />` reads "now" for the first second, then "5 seconds ago" on the shared second timer, and flips to "1 minute ago" exactly when the save is a minute old. Wrap it for the wording around it: `<span>Saved <RelativeTime value={doc.savedAt} /></span>`.
+- **The exact time on hover.** `<RelativeTime>` sets `title` to the full date and time (with the zone name for an instant) and `datetime` to the machine value; pass your own `title` to replace it.
+- **A due date.** `<RelativeTime value="2026-11-20" numeric="always" />` counts the calendar in the display zone: "in 2 days", then from the day before "tomorrow", and from midnight on the day itself "in 3 hours".
+
+### Server rendering
+
+On a server the label prints the request's clock and starts no timer. Provide the instant the page renders at and hand it to the client, and the first client render prints exactly what the server printed, then updates once to real time:
+
+```tsx
+import { clockScript, provideClock } from '@pyreon/ambient'
+
+provideClock(requestStartedAt) // in the root component, on the server
+// in the page head: clockScript() (or spread clockAttributes() on <html> under a strict CSP)
+```
+
+Without the hand-over the client's first render reads its own clock and the text can differ from the server's; see [ambient](/docs/ambient) for the details. A relative formatter without a `base` (`relativeFormatter({ locale: 'en-US' })`) reads the same clock once per call; it does not tick.
 
 ## Recipes
 
@@ -490,7 +564,7 @@ sizeOf({ name: 'report.pdf', bytes: 2_500_000 }) // → "2.5 MB"
 
 ### "Updated 3 minutes ago" with the exact time on hover
 
-`<DateTime>` puts the exact date and time (with the zone) in `title` for you. A relative formatter takes the clock as an accessor, so a clock signal keeps the text current.
+`<DateTime>` puts the exact date and time (with the zone) in `title` for you, and `<RelativeTime>` does the same while keeping the text current (see above). A relative formatter takes the clock as an accessor, so a clock signal keeps the text current.
 
 ```ts
 const base = Date.UTC(2026, 10, 18, 12, 3)

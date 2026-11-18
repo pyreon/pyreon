@@ -21,7 +21,7 @@
  */
 import { createReactiveContext, provide, useContext } from '@pyreon/core'
 import { getContextOwner, isServer, signal } from '@pyreon/reactivity'
-import { programmerError, quote, warnOnce } from './warn'
+import { _resetWarnings, programmerError, quote, warnOnce } from './warn'
 
 const LocaleContext = createReactiveContext<string | undefined>(undefined)
 const ZoneContext = createReactiveContext<string | undefined>(undefined)
@@ -61,8 +61,9 @@ function runtimeDefaultZone(): string {
   return (runtimeZone ??= runtimeResolved().timeZone)
 }
 
-/** Test hook: forget the memoized runtime defaults and the provide flags. */
+/** Test hook: forget the memoized runtime defaults, the provide flags and the printed warnings. */
 export function _resetLocaleState(): void {
+  _resetWarnings()
   runtimeLocale = undefined
   runtimeZone = undefined
   localeProvided = false

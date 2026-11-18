@@ -71,6 +71,7 @@
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/runtime-server": "workspace:*",
+    "@pyreon/time": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@types/humanize-duration": "3.27.4",
@@ -85,5 +86,8 @@
   },
   "pyreon": {
     "stability": "experimental"
+  },
+  "dependencies": {
+    "@pyreon/ambient": "workspace:^"
   }
 }

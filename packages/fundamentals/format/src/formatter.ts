@@ -19,6 +19,8 @@ export interface Env {
   readonly locale: () => string
   /** The active zone (`''` = the runtime zone). */
   readonly zone: () => string
+  /** The clock a relative formatter without a `base` reads: the ambient clock in the reactive entry, none in `/core`. */
+  readonly clock?: (() => number) | undefined
 }
 
 /** What a kind builds: the call, plus `parts` / `range` where the platform has them. */
@@ -30,7 +32,7 @@ export interface Core<In> {
 
 /** A formatter kind: builds a `Core` from a frozen spec. */
 export interface KindDef<K extends FormatterKind> {
-  create(spec: Readonly<KindInfo[K]['spec']>, locale: () => string, zone: () => string): Core<KindInfo[K]['in']>
+  create(spec: Readonly<KindInfo[K]['spec']>, locale: () => string, zone: () => string, clock?: () => number): Core<KindInfo[K]['in']>
 }
 
 const constant = (value: string): (() => string) => () => value
@@ -66,7 +68,7 @@ export function makeFormatter<K extends FormatterKind>(
 ): Formatter<KindInfo[K]['in'], K> {
   type In = KindInfo[K]['in']
   const frozen: Readonly<KindInfo[K]['spec']> = Object.isFrozen(spec) ? spec : Object.freeze({ ...spec })
-  const core = def.create(frozen, localeFor(frozen, env), env.zone)
+  const core = def.create(frozen, localeFor(frozen, env), env.zone, env.clock)
   const call = adapt === undefined ? core.call : (source: never): string => core.call(adapt(source))
   const members: Record<string, unknown> = {
     options: frozen,

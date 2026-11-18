@@ -230,6 +230,30 @@ export type DateStylePreset = 'short' | 'medium' | 'long' | 'full'
 /** Options of {@link formatRelative}. */
 export interface RelativeOptions extends Intl.RelativeTimeFormatOptions, DateBaseOptions {}
 
+/** A span of time, summed: `{ days: 1, hours: 12 }` is 36 hours. */
+export interface RelativeSpan {
+  seconds?: number | undefined
+  minutes?: number | undefined
+  hours?: number | undefined
+  days?: number | undefined
+  weeks?: number | undefined
+}
+
+/**
+ * When a self-updating relative label gives way to an absolute date: once the target is `after` away from now (in either
+ * direction, by elapsed time), the label is the date, formatted `as` (a date style or `Intl.DateTimeFormat` options; default
+ * `'medium'`). `{ after: { days: 7 }, as: 'medium' }` reads "3 hours ago", "yesterday", "last week", then "Nov 12, 2026".
+ */
+export interface RelativeThreshold {
+  after: number | RelativeSpan
+  as?: DateStylePreset | DateTimeOptions | undefined
+}
+
+/** Options of {@link useRelativeTime} and `<RelativeTime>`: the relative words, and an optional switch to an absolute date. */
+export interface RelativeTimeOptions extends RelativeOptions {
+  threshold?: RelativeThreshold | undefined
+}
+
 /** Style shorthands of {@link formatRelative}: the `numeric` mode. */
 export type RelativePreset = 'always' | 'auto'
 
@@ -285,10 +309,14 @@ export interface ListPart {
 export interface RelativeFormatterOptions extends Intl.RelativeTimeFormatOptions, DateBaseOptions {
   /**
    * What the target is relative to: a date-like value, or an accessor for one
-   * (`() => now()` makes the formatter track a clock signal). Required.
+   * (`() => now()` makes the formatter track a clock signal). Required by `@pyreon/format/core`; in the reactive entry
+   * it defaults to the ambient clock (`@pyreon/ambient`'s `now()`, read on every call).
    */
-  base: DateInput | (() => DateInput)
+  base?: DateInput | (() => DateInput) | undefined
 }
+
+/** Options of `relativeFormatter` in `@pyreon/format/core`, where there is no ambient clock: `base` is required. */
+export type CoreRelativeFormatterOptions = RelativeFormatterOptions & { base: DateInput | (() => DateInput) }
 
 /**
  * Per formatter kind: the input it takes, the spec (options) it is built from,
