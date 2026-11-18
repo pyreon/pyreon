@@ -196,24 +196,7 @@ The rule: hydration keeps server nodes wherever the client renders the same thin
 | accessor, marked range, one text node | adopt, bind | report `text`, write in place |
 | accessor, marked range, several nodes | adopt by walking the first value (`adoptReactiveRange`) | reported by the walk |
 | accessor, NO markers (server rendered the content without an accessor, #4448) | adopt by walking the first value (`adoptUnmarkedRange`) | reported by the walk |
-| accessor over an empty range / empty sole element | mount | text: report; a structural first value mounts without a report (gap) |
-| sole accessor child (markers elided) | adopt (`hydrateSoleAccessorChild`) | as the marked rows |
-| keyed array from an accessor | mounts fresh (no adoption-time key cache), no report | n/a |
-| compiled `_tpl` | adopt when the static skeleton matches | swap to a clone; `reportSwappedTemplate` reports the first real difference (none when the DOM is identical, e.g. #4385's text slots holding elements) |
-| compiled text binders, `_setChild`, `_setChildAt`, `_textSlot` | adopt | report `text` (dev) |
-| `_mountSlot` / `_setChild` structural values | adopt through the slot hydrator | reported by the walk |
-
-### Hydration contract: adopt, report, remount
-
-The rule: hydration keeps server nodes wherever the client renders the same thing, and every place it CHANGES what the server rendered is reported through `warnHydrationMismatch` (dev console) and `onHydrationMismatch` handlers. The h()-path reports reach the handlers in production too; the compiled binders' text reports (#4419) are dev-only, with zero production bytes.
-
-| Path | Agreement | Divergence |
-| --- | --- | --- |
-| static text / element (`hydrateChild`, `hydrateElement`) | adopt | report `text` / `tag`; replace that node, siblings keep theirs |
-| accessor, marked range, one text node | adopt, bind | report `text`, write in place |
-| accessor, marked range, several nodes | adopt by walking the first value (`adoptReactiveRange`) | reported by the walk |
-| accessor, NO markers (server rendered the content without an accessor, #4448) | adopt by walking the first value (`adoptUnmarkedRange`) | reported by the walk |
-| accessor over an empty range / empty sole element | mount | text: report; a structural first value mounts without a report (gap) |
+| accessor over an empty range / empty sole element (h() walk, compiled sole `_mountSlot`) | mount (`mountOverEmpty`) | report the first element (`tag`, actual `''`) or non-empty text (`text`) the mount inserted, text and structural values alike (#4419, #4582); a value that renders nothing (null, `[]`, a component returning null, a portal) is not reported |
 | sole accessor child (markers elided) | adopt (`hydrateSoleAccessorChild`) | as the marked rows |
 | keyed array from an accessor | mounts fresh (no adoption-time key cache), no report | n/a |
 | compiled `_tpl` | adopt when the static skeleton matches | swap to a clone; `reportSwappedTemplate` reports the first real difference (none when the DOM is identical, e.g. #4385's text slots holding elements) |
@@ -227,7 +210,6 @@ The rule: hydration keeps server nodes wherever the client renders the same thin
 `_tpl` adopts server nodes at its cursor; verification is in `hydration-plan.ts`. Relaxations are declared by the compiler on the element, never inferred:
 
 - `data-pyreon-hole`: a trailing mount hole for absorbed component children.
-- **A text slot holding server ELEMENTS** (#4385, `parked-text.ts`). A polymorphic text binding (`bindPolymorphicText`, `_bindText`, `_bindProp`) resolves its slot to one text node, but the server renders a structural value (`['a ', <Code/>]`) as elements. Sole slot (template `' '`): the verifier admits it (`TplSig.soleTexts`), inserts an empty placeholder text as the element's first child and parks it with `open = null`; such a row records no replay plan. Trailing or mid slot: `_textSlot` parks a placeholder against the range's open marker (a parked mid range included) instead of clearing the range. The binding that receives a parked placeholder removes it and hands its accessor to `hydrateMountSlot`, which adopts the content as a live slot and reports real divergences. A binding that writes `.data` directly (selector ternary, `_bindDirect` method call) never consumes one: `buildTpl` sweeps unconsumed placeholders after the bind (server content cleared, rewrite reported in dev). `_parkedPending` keeps every other binding at one integer compare. Not covered: a STATIC mid `<!>` slot (`_setChildAt`, `_mountSlot` with a non-accessor value) has no SSR range at all, so the verifier still refuses it (needs an SSR emit change).
 - **A text slot holding server ELEMENTS** (#4385, `parked-text.ts`). A polymorphic text binding (`bindPolymorphicText`, `_bindText`, `_bindProp`) resolves its slot to one text node, but the server renders a structural value (`['a ', <Code/>]`) as elements. Sole slot (template `' '`): the verifier admits it (`TplSig.soleTexts`), inserts an empty placeholder text as the element's first child and parks it with `open = null`; such a row records no replay plan. Trailing or mid slot: `_textSlot` parks a placeholder against the range's open marker (a parked mid range included) instead of clearing the range. The binding that receives a parked placeholder removes it and hands its accessor to `hydrateMountSlot`, which adopts the content as a live slot and reports real divergences. A binding that writes `.data` directly (selector ternary, `_bindDirect` method call) never consumes one: `buildTpl` sweeps unconsumed placeholders after the bind (server content cleared, rewrite reported in dev). `_parkedPending` keeps every other binding at one integer compare. A STATIC `<!>` slot (`_setChildAt`, `_mountSlot` with a non-accessor value) now has its SSR range too (see "Placeholder ↔ range contract" above); `_setChildAt` hands a marked or parked range to the slot hydrator like `_mountSlot`.
 - `_declareRootDecoration(item)` (runtime-dom, called by the component that decorates a compiled child, e.g. kinetic's `wrapNativeItem`): the ROOT's `class` and `style` are not compared for that item; the declaring component owns and re-applies them at mount. Carried on the item (a remountable `_tpl(…, 1)` wrapper forwards it to the build it adopts) and consumed one-shot by that build's verify; never a plan replay.
 - `data-pyreon-html`: accept any server children (no string comparison); `_setHtml` (`applyDangerousHtml`) skips its first write to a marked element (the `h()` path marks in `hydrateElement`). A client `__html` differing from the server's shows until the first reactive update (as in React). The sanitized `innerHTML` prop is always re-assigned.
