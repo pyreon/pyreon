@@ -170,6 +170,16 @@ export const Comments = island(() => import('./components/Comments'), {
 })
 ```
 
+**What is observed.** The framework gives `<pyreon-island>` no styling of its own, so it is an inline element by default. Sites often set `pyreon-island { display: contents }` so the wrapper adds nothing to flex and grid layouts, and an island's content often starts under more box-less wrappers (a nested `<PyreonUI mode>` scope renders a `display: contents` element). An element with no box never reports as visible, so the trigger observes the first elements under the island that are **not** `display: contents`, at any depth; whichever of them enters the viewport first hydrates the island. `prefetch: 'visible'` uses the same targets.
+
+| Island shape | Hydrates when |
+| --- | --- |
+| A boxed island (the default), including an empty one, `height: 0`, absolutely positioned content, `visibility: hidden`, `content-visibility: auto` | its position scrolls into view (visibility is geometric: a `visibility: hidden` island still hydrates when scrolled to) |
+| `display: contents`, with content under any number of further `contents` wrappers | its first boxed content scrolls into view |
+| Inside a scroll container | it scrolls into the container's visible area (the `200px` margin applies to the viewport only) |
+| Hidden right now: inside a closed `<details>`, under `display: none`, or with content that is `display: none` at this width | it is shown and in view; until then it stays pending, by design |
+| `display: contents` holding **no element** (only text, or nothing) | its nearest boxed ancestor scrolls into view. Dev warns once per page: `[Pyreon] island "X" uses hydrate: 'visible' but nothing in it can be observed`. Wrap the text in an element, or use `idle` / `load` |
+
 ### `'interaction'` — hydrate on first user interaction
 
 Best for components that are interactive **but not visible on initial paint** — modals, dropdowns, command palettes. The runtime registers one-shot capture-phase listeners on the `<pyreon-island>` element for the default event set:
@@ -198,6 +208,8 @@ export const Tooltip = island(() => import('./components/Tooltip'), {
 3. After hydration completes, re-dispatches the equivalent event on the live element: a synthetic `MouseEvent('click')` for clicks, a synthetic `SubmitEvent('submit')` (re-dispatched on the live `<form>`, so the handler reads the user's current `FormData`) for submits.
 
 This closes both the "user clicks but nothing happens until they retry" trap and the more severe "form silently navigates away before the island wakes up" data-loss trap. Other trigger events (`focus`, `pointerenter`, `touchstart`) start hydration but are not replayed — `focus` can't be reliably re-dispatched once the user has tabbed past, and `pointerenter` is passive.
+
+The listeners follow the DOM, not the layout: events reach the `<pyreon-island>` element in the capture phase whether or not it has a box, so `interaction` works the same on a `display: contents` island. `media(...)` and `idle` do not depend on layout at all.
 
 :::warning{title="'interaction' is not for above-the-fold content"}
 `'interaction'` is for components that are interactive **but not visible** on first paint. For a button the user sees and is meant to click on load, use `'load'` — `'interaction'` shows the button but doesn't respond until the first click is replayed through a hydration round-trip, which the user perceives as lag.
