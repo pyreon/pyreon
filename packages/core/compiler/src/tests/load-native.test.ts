@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, symlinkSync } from 'node:fs'
+import { describe, expect, it, vi } from 'vitest'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { getPlatformPackageName, loadNativeBinding } from '../load-native'
+import { getPlatformPackageName, loadNativeBinding, nativeVersionMismatch } from '../load-native'
 
 describe('getPlatformPackageName', () => {
   it('returns @pyreon/compiler-darwin-arm64 on Apple Silicon', () => {
@@ -70,6 +70,7 @@ describe('loadNativeBinding — in-tree binary depth', () => {
     symlinkSync(real, join(root, 'native', 'pyreon-compiler.node'))
     mkdirSync(join(root, 'src'))
     mkdirSync(join(root, 'lib', '_chunks'), { recursive: true })
+
     return root
   }
 
@@ -89,5 +90,72 @@ describe('loadNativeBinding — in-tree binary depth', () => {
     const root = fakePackage()
     const b = loadNativeBinding(pathToFileURL(join(root, 'lib', '_chunks', 'jsx-abc.js')).href)
     expect(typeof b?.transformJsx).toBe('function')
+  })
+})
+
+describe('loadNativeBinding — the per-platform binary must match the compiler version', () => {
+  // The Rust and JS backends are byte-identical PER VERSION. A binary from
+  // another release (lockfile dedupe, an override, a lagging release-native
+  // publish) used to load silently and emit different code than the JS
+  // package beside it. It must fall back to JS and say why.
+  const platformPkg = getPlatformPackageName()
+
+  function installed(compilerVersion: string, binaryVersion: string | null): string {
+    const root = mkdtempSync(join(tmpdir(), 'pyreon-load-native-pkg-'))
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: '@pyreon/compiler', version: compilerVersion }))
+    mkdirSync(join(root, 'lib', '_chunks'), { recursive: true })
+    const dir = join(root, 'node_modules', ...platformPkg!.split('/'))
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({ name: platformPkg, ...(binaryVersion === null ? {} : { version: binaryVersion }), main: 'index.js' }),
+    )
+    writeFileSync(join(dir, 'index.js'), 'module.exports = { transformJsx() { return "fake-native" } }\n')
+
+    return pathToFileURL(join(root, 'lib', '_chunks', 'jsx-abc.js')).href
+  }
+
+  it.runIf(platformPkg !== null)('loads the binary when its version matches', () => {
+    const b = loadNativeBinding(installed('1.0.0', '1.0.0'))
+    expect(b?.transformJsx('', '', false, null, false)).toBe('fake-native')
+  })
+
+  it.runIf(platformPkg !== null)('falls back to JS (null) with one [Pyreon] warning on a mismatch', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(loadNativeBinding(installed('1.2.0', '1.1.0'))).toBeNull()
+      expect(loadNativeBinding(installed('1.2.0', null))).toBeNull()
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(String(warn.mock.calls[0]?.[0])).toMatch(/^\[Pyreon\] @pyreon\/compiler-.*@1\.1\.0 does not match @pyreon\/compiler@1\.2\.0/)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('nativeVersionMismatch compares exactly — a prerelease is not its release', () => {
+    expect(nativeVersionMismatch('@pyreon/compiler-darwin-arm64', '1.0.0', '1.0.0')).toBeNull()
+    expect(nativeVersionMismatch('@pyreon/compiler-darwin-arm64', '1.0.0-rc.2', '1.0.0')).toContain('does not match')
+    expect(nativeVersionMismatch('@pyreon/compiler-darwin-arm64', undefined, '1.0.0')).toContain('<unknown>')
+  })
+})
+
+describe('@pyreon/compiler pins its native binaries exactly', () => {
+  it('every @pyreon/compiler-* optionalDependency is workspace:* (published as the exact version)', () => {
+    const pkg = JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'package.json'), 'utf-8')) as {
+      optionalDependencies: Record<string, string>
+    }
+    const ranges = Object.entries(pkg.optionalDependencies).filter(([n]) => n.startsWith('@pyreon/compiler-'))
+    expect(ranges.length).toBe(7)
+    for (const [name, range] of ranges) expect(range, name).toBe('workspace:*')
+  })
+})
+
+describe('the mismatch warning is in the diagnose catalog', () => {
+  it('diagnoseError explains it and names the exact version to install', async () => {
+    const { diagnoseError } = await import('../diagnose')
+    const msg = nativeVersionMismatch('@pyreon/compiler-linux-x64-gnu', '1.1.0', '1.2.0')!
+    const d = diagnoseError(msg)
+    expect(d?.cause).toContain('@pyreon/compiler-linux-x64-gnu@1.1.0')
+    expect(d?.fix).toContain('@pyreon/compiler-linux-x64-gnu@1.2.0')
   })
 })

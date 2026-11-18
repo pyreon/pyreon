@@ -1500,6 +1500,18 @@ const Page = lazy(() => import('./Page'))`,
     }),
   },
   {
+    // The native compiler binary is from a different release than
+    // `@pyreon/compiler` (load-native.ts). The backends are byte-identical
+    // per version only, so the loader falls back to the JS compiler.
+    pattern: /(@pyreon\/compiler-[a-z0-9-]+)@(\S+) does not match @pyreon\/compiler@(\S+);/,
+    diagnose: (m) => ({
+      cause: `The installed native compiler binary ${m[1]}@${m[2]} is from a different release than @pyreon/compiler@${m[3]}. The Rust and JavaScript backends produce identical output only within one version, so Pyreon is using the JavaScript compiler instead. Output is correct; builds are slower.`,
+      fix: `Reinstall so the lockfile resolves ${m[1]}@${m[3]} (delete the lockfile entry for ${m[1]} if needed), and remove any \`overrides\`/\`resolutions\` that pin it. Every @pyreon/* package should be on one version.`,
+      fixCode: `// package.json: no override for ${m[1]}; then reinstall
+// bun install   (or npm install / pnpm install)`,
+    }),
+  },
+  {
     // A subpath whose shipped `lib/` file came from the WRONG source entry
     // (#4283). The build takes each entry from the export KEY and the output
     // file from the `import` target, so two keys pointing at one target
