@@ -141,6 +141,32 @@ test.describe('no horizontal page scroll', () => {
   }
 })
 
+test.describe('the hero drawing on a phone', () => {
+  for (const id of ['format', 'time', 'urlstate', 'i18n']) {
+    test(`/products/${id}: keeps its size, scrolls in a labelled box, shows an edge fade, never scrolls the page`, async ({ page }) => {
+      await page.setViewportSize({ width: 320, height: 800 })
+      await page.goto(`/products/${id}`)
+      await waitForIslands(page)
+      const art = page.locator('main figure [data-art-fade]')
+      await expect(art).toHaveAttribute('tabindex', '0')
+      await expect(art).toHaveAttribute('role', 'region')
+      expect(((await art.getAttribute('aria-label')) ?? '').length).toBeGreaterThan(5)
+      const m = await art.evaluate((e) => ({ over: e.scrollWidth - e.clientWidth, svg: e.querySelector('svg')!.getBoundingClientRect().width, mask: getComputedStyle(e).maskImage }))
+      expect(m.svg, 'the drawing keeps a readable size').toBeGreaterThanOrEqual(500)
+      expect(m.over, 'it overflows its box, so the box scrolls').toBeGreaterThan(0)
+      expect(m.mask, 'the edge fade').not.toBe('none')
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+      await art.focus()
+      await page.keyboard.press('ArrowRight')
+      await page.keyboard.press('ArrowRight')
+      await expect.poll(() => art.evaluate((e) => e.scrollLeft)).toBeGreaterThan(0)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+      await page.setViewportSize({ width: 1280, height: 800 })
+      expect(await art.evaluate((e) => getComputedStyle(e).maskImage), 'no fade where the drawing fits').toBe('none')
+    })
+  }
+})
+
 test.describe('contrast in the hero and the demo', () => {
   for (const theme of ['dark', 'light'] as const) {
     test(`every text node passes WCAG AA (${theme})`, async ({ browser }) => {

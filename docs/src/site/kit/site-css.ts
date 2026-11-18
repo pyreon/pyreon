@@ -138,6 +138,14 @@ ${navMedia.expanded}{.${C.sheet}{display:none}}
 [data-art]{overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain}
 @media (max-width:${breakpoints.md - 0.02}px){[data-art] svg{min-width:var(--art-min,0)}}
 [data-art]:focus-visible{${focus}}
+/* A hero drawing wider than a phone's column scrolls in its box; the edge fade (the side with more to scroll) says so.
+   Scroll-driven where supported, a static right-edge fade where not. Only below the width where the art overflows. */
+@property --art-fade-l{syntax:'<length>';inherits:false;initial-value:0px}
+@property --art-fade-r{syntax:'<length>';inherits:false;initial-value:0px}
+@keyframes art-fade-l{from{--art-fade-l:0px}to{--art-fade-l:var(--s-space-400)}}
+@keyframes art-fade-r{from{--art-fade-r:var(--s-space-400)}to{--art-fade-r:0px}}
+@media (max-width:${breakpoints.sm - 0.02}px){[data-art-fade]{--art-fade-r:var(--s-space-400);-webkit-mask-image:linear-gradient(90deg,transparent 0,currentColor var(--art-fade-l),currentColor calc(100% - var(--art-fade-r)),transparent 100%);mask-image:linear-gradient(90deg,transparent 0,currentColor var(--art-fade-l),currentColor calc(100% - var(--art-fade-r)),transparent 100%)}}
+@media (max-width:${breakpoints.sm - 0.02}px){@supports (animation-timeline:scroll()){[data-art-fade]{animation:art-fade-l linear both,art-fade-r linear both;animation-timeline:scroll(self inline),scroll(self inline);animation-range:0 var(--s-space-400),calc(100% - var(--s-space-400)) 100%}}}
 .${C.loop}{position:relative;margin:0}
 .${C.loopVideo}{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity ${motion.hover}}
 .${C.loopPlaying} .${C.loopVideo}{opacity:1}

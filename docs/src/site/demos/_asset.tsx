@@ -24,14 +24,14 @@ const SvgBox = el
 
 /**
  * An animated SVG from the asset set, inlined. It carries its own `<title>`/`<desc>` and `role="img"`.
- * `fit`: the drawing scales down to its column on a phone, however small, instead of keeping a minimum
- * width and scrolling sideways in its own box (the hero visual, a schematic whose labels are decoration
- * for the text beside it).
+ * On a phone a wide drawing keeps its readable size and scrolls sideways in its own focusable box
+ * (`artBox`); `fade` adds an edge fade on the side that has more to scroll (the hero visual), so the
+ * box does not look cut off.
  */
-export function InlineSvg(props: { svg: string; fit?: boolean | undefined }) {
+export function InlineSvg(props: { svg: string; fade?: boolean | undefined }) {
   return (
     <SvgBox>
-      {props.fit ? <div dangerouslySetInnerHTML={{ __html: props.svg }} /> : <div {...artBox(props.svg)} dangerouslySetInnerHTML={{ __html: props.svg }} />}
+      <div {...artBox(props.svg)} data-art-fade={props.fade ? '' : undefined} dangerouslySetInnerHTML={{ __html: props.svg }} />
     </SvgBox>
   )
 }
@@ -118,7 +118,7 @@ export function HeroVisualFigure(props: { visual: HeroVisual }) {
   return (
     <Frame>
       {v.kind === 'svg' ? (
-        <InlineSvg svg={v.svg} fit />
+        <InlineSvg svg={v.svg} fade />
       ) : v.kind === 'picture' ? (
         <Picture file={v.file} alt={v.alt} eager sizes="(min-width: 1100px) 840px, calc(100vw - 60px)" />
       ) : (
