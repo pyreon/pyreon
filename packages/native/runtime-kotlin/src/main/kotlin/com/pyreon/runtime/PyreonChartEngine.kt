@@ -264,7 +264,7 @@ data class GeoTrail(var period: Double, var trailLength: Double, var color: Stri
 
 data class GanttTask(var id: String, var name: String, var start: String, var end: String? = null, var progress: Double? = null, var dependencies: List<String>? = null, var group: String? = null, var color: String? = null, var milestone: Boolean? = null)
 
-data class GanttTick(var at: Double, var x: Double, var label: String)
+data class GanttTick(var at: Double, var x: Double, var label: String, var labelX: Double, var labelShown: Boolean)
 
 data class GanttRow(var task: GanttTask, var index: Long, var rect: PyreonChartRect, var band: PyreonChartRect, var startDay: Double, var endDay: Double, var color: String, var label: String, var labelAt: PyreonChartPt)
 
@@ -8189,7 +8189,7 @@ fun ganttTicks(lo: Double, hi: Double, unit: String): List<GanttTick> {
         val q = Math.floor(((c.month - 1.0)).toDouble() / (3.0).toDouble()) + 1.0
         val year = "${pyreonNumberString(pyreonRound((c.year).toDouble()))}"
         val label = if (unit == "day" || unit == "week") "${pyreonNumberString(pyreonRound((c.day).toDouble()))} ${ganttMonthName(c.month)}" else if (unit == "month") (if (sameYear) ganttMonthName(c.month) else "${ganttMonthName(c.month)} ${year}") else if (unit == "quarter") "Q${pyreonNumberString(pyreonRound((q).toDouble()))} ${year}" else year
-        out.add(GanttTick(at = t, x = 0.0, label = label))
+        out.add(GanttTick(at = t, x = 0.0, label = label, labelX = 0.0, labelShown = true))
       }
       t = ganttNextTick(t, unit)
     }
@@ -8368,8 +8368,20 @@ fun layoutGantt(tasks: List<GanttTask>, box: PyreonChartRect, options: GanttOpti
       }
     }
     val ticks: MutableList<GanttTick> = mutableListOf()
+    val plotRight = plot.x + plot.w
+    var prevEnd = plot.x - 1000000000.0
     for (t in ganttTicks(lo, hi, unit)) {
-      ticks.add(GanttTick(at = t.at, x = plot.x + (((t.at - lo)).toDouble() / (span).toDouble()) * plot.w, label = t.label))
+      val tx = plot.x + (((t.at - lo)).toDouble() / (span).toDouble()) * plot.w
+      val lw = m(t.label, fontSize - 1.0)
+      val want = tx + 3.0
+      val latest = plotRight - lw
+      val pulled = want > latest
+      val tickLabelX = if (!pulled) want else if (latest < plot.x) plot.x else latest
+      val labelShown = !pulled || tickLabelX >= prevEnd
+      if (labelShown) {
+        prevEnd = tickLabelX + lw
+      }
+      ticks.add(GanttTick(at = t.at, x = tx, label = t.label, labelX = tickLabelX, labelShown = labelShown))
     }
     return GanttLayout(rows = rows, lanes = lanes, dependencies = dependencies, ticks = ticks, unit = unit, axis = axis, plot = plot, domain = Domain(min = lo, max = hi), hasToday = hasToday, todayX = if (hasToday) plot.x + (((todayDay - lo)).toDouble() / (span).toDouble()) * plot.w else 0.0, rowHeight = rowHeight)
   }
@@ -8390,7 +8402,9 @@ fun renderGantt(layout: GanttLayout, options: GanttOptions? = null): List<Pyreon
     val plotBottom = layout.plot.y + layout.plot.h
     for (t in layout.ticks) {
       out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = t.x, y = layout.axis.y + layout.axis.h), to = PyreonChartPt(x = t.x, y = plotBottom), stroke = gridColor, width = 1.0))
-      out.add(PyreonDrawCmd(kind = "text", fill = labelColor, text = t.label, at = PyreonChartPt(x = t.x + 3.0, y = layout.axis.y + (layout.axis.h).toDouble() / (2.0).toDouble()), size = fontSize - 1.0, align = "start", baseline = "middle"))
+      if (t.labelShown) {
+        out.add(PyreonDrawCmd(kind = "text", fill = labelColor, text = t.label, at = PyreonChartPt(x = t.labelX, y = layout.axis.y + (layout.axis.h).toDouble() / (2.0).toDouble()), size = fontSize - 1.0, align = "start", baseline = "middle"))
+      }
     }
     for (row in layout.rows) {
       out.add(PyreonDrawCmd(kind = "text", fill = labelColor, text = row.label, at = row.labelAt, size = fontSize, align = "start", baseline = "middle"))
