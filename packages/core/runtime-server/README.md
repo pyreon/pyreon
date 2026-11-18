@@ -67,7 +67,7 @@ Pyreon's `provide()` / `useContext` use a module-level context stack at runtime 
 ```ts
 // Outside any render? Use runWithRequestContext to isolate manual API calls
 await runWithRequestContext(async () => {
-  router.preload(pathname, request)
+  await preloadRoute(router, pathname, request)
   return renderToString(<App />)
 })
 ```

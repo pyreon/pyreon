@@ -597,7 +597,7 @@ function Panel() {
   {
     // A one-character unauthenticated 500: `GET /?q=%`. Every decode in the
     // matcher runs on attacker-supplied text, and the matcher is reached
-    // pre-auth from `router.preload` inside the SSR handler — so this needed
+    // pre-auth from `preloadRoute` inside the SSR handler — so this needed
     // no dynamic route and no session, because the QUERY parser decodes too.
     pattern: /URIError|URI malformed|malformed URI sequence/i,
     diagnose: () => ({
@@ -2009,7 +2009,7 @@ const html = renderToString(<App />).replace('<!--x-->', head)
 // RIGHT — correct for both the sync and the async-promoted path
 const html = (await renderToString(<App />)).replace('<!--x-->', head)`,
       related:
-        'Same for `renderToStream`. A `lazy()` component whose chunk has not loaded yet is WAITED for exactly like an async component, so it promotes the subtree too; under `renderToStream` a lazy inside `<Suspense>` resolves inside the boundary without holding up the shell. If you need a hard guarantee that a tree stays on the fast synchronous path, keep `async function` components out of it and preload lazy chunks before rendering (`router.preload`). The framework-owned page pipeline (`renderPage` in `@pyreon/server`) already awaits correctly; this bites hand-rolled SSR handlers and test/bench harnesses.',
+        'Same for `renderToStream`. A `lazy()` component whose chunk has not loaded yet is WAITED for exactly like an async component, so it promotes the subtree too; under `renderToStream` a lazy inside `<Suspense>` resolves inside the boundary without holding up the shell. If you need a hard guarantee that a tree stays on the fast synchronous path, keep `async function` components out of it and preload lazy chunks before rendering (`preloadRoute(router, path)` or `router.preloadComponents(path)`). The framework-owned page pipeline (`renderPage` in `@pyreon/server`) already awaits correctly; this bites hand-rolled SSR handlers and test/bench harnesses.',
     }),
   },
   {

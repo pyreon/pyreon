@@ -9,6 +9,7 @@
 import { hydrateLoaderData, prefetchLoaderData, serializeLoaderData } from '../loader'
 import { notFound } from '../not-found'
 import { redirect } from '../redirect'
+import { preloadRoute, runServerLoaders } from '../server-loaders'
 import { createRouter } from '../router'
 import type { RouteRecord, RouterInstance } from '../types'
 
@@ -50,7 +51,7 @@ describe('loader notFound() — server paths', () => {
   test('preload: currentRoute resolves to the not-found chain inside the layout', async () => {
     const routes = itemsRoutes()
     const router = make(routes, '/items/9999')
-    await router.preload('/items/9999')
+    await preloadRoute(router, '/items/9999')
     const route = router.currentRoute()
     expect(route.isNotFound).toBe(true)
     expect(route.path).toBe('/items/9999')
@@ -63,7 +64,7 @@ describe('loader notFound() — server paths', () => {
 
   test('preload: a found item stays on its own route', async () => {
     const router = make(itemsRoutes(), '/items/1')
-    await router.preload('/items/1')
+    await preloadRoute(router, '/items/1')
     expect(router.currentRoute().isNotFound).toBeUndefined()
     expect(leafOf(router)?.component).toBe(Item)
   })
@@ -78,7 +79,7 @@ describe('loader notFound() — server paths', () => {
       },
     ]
     const router = make(routes, '/x')
-    await expect(router.preload('/x')).rejects.toSatisfy(
+    await expect(preloadRoute(router, '/x')).rejects.toSatisfy(
       (e: unknown) => (e as { message?: string }).message !== 'Not Found',
     )
   })
@@ -86,25 +87,25 @@ describe('loader notFound() — server paths', () => {
   test('preload: no notFoundComponent anywhere → isNotFound with an empty chain (SSR 404)', async () => {
     const routes: RouteRecord[] = [{ path: '/x/:id', component: Item, loader: () => notFound() }]
     const router = make(routes, '/x/1')
-    await router.preload('/x/1')
+    await preloadRoute(router, '/x/1')
     expect(router.currentRoute().isNotFound).toBe(true)
     expect(router.currentRoute().matched).toEqual([])
   })
 
   test('runServerLoaders: a serverLoader notFound() → { kind: "notFound" }', async () => {
     const router = make(itemsRoutes('serverLoader'), '/items/9999')
-    await expect(router.runServerLoaders('/items/9999')).resolves.toEqual({ kind: 'notFound' })
-    const ok = await router.runServerLoaders('/items/1')
+    await expect(runServerLoaders(router, '/items/9999')).resolves.toEqual({ kind: 'notFound' })
+    const ok = await runServerLoaders(router, '/items/1')
     expect(ok).toEqual({ kind: 'data', data: { 1: { name: 'First' } } })
   })
 
   test('serializeLoaderData marks the not-found state; a normal page carries no marker', async () => {
     const nf = make(itemsRoutes(), '/items/9999')
-    await nf.preload('/items/9999')
+    await preloadRoute(nf, '/items/9999')
     expect(serializeLoaderData(nf)).toEqual({ '/': 'LAYOUT', __pyreonNotFound: true })
 
     const ok = make(itemsRoutes(), '/items/1')
-    await ok.preload('/items/1')
+    await preloadRoute(ok, '/items/1')
     expect(serializeLoaderData(ok)).not.toHaveProperty('__pyreonNotFound')
   })
 
@@ -119,7 +120,7 @@ describe('loader notFound() — hydrating client', () => {
   test('hydrateLoaderData with the marker resolves the SAME chain the server rendered', async () => {
     const routes = itemsRoutes()
     const server = make(routes, '/items/9999')
-    await server.preload('/items/9999')
+    await preloadRoute(server, '/items/9999')
     const blob = JSON.parse(JSON.stringify(serializeLoaderData(server))) as Record<string, unknown>
 
     const client = make(routes, '/items/9999')

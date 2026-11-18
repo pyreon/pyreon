@@ -29,6 +29,7 @@ import { h } from '@pyreon/core'
 import {
   createRouter,
   getRedirectInfo,
+  preloadRoute,
   safeRedirectLocation,
   type RouteRecord,
   RouterProvider,
@@ -313,7 +314,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
           // render (see renderPage's docstring for the empty-page failure mode
           // `prefetchLoaderData` alone caused). Forward the request so loaders
           // can read cookies and `throw redirect()` BEFORE the layout renders.
-          await router.preload(appPath, req)
+          await preloadRoute(router, appPath, req)
 
           const app = h(RouterProvider, { router }, h(App, null))
           // Pass through `req.signal` so an upstream abort (client disconnect,

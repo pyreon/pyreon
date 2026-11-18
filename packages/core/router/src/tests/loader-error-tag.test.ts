@@ -6,6 +6,7 @@
  */
 import { LOADER_ERROR_ROUTE, markLoaderError } from '../loader-error'
 import { notFound } from '../not-found'
+import { preloadRoute } from '../server-loaders'
 import { createRouter } from '../router'
 import type { RouteRecord, RouterInstance } from '../types'
 
@@ -33,7 +34,7 @@ describe('loader error tag (dev)', () => {
   test('a throwing loader rejects preload with the same error, tagged with its route path', async () => {
     const boom = new TypeError("Cannot read properties of undefined (reading 'name')")
     const router = make(routes(async () => { throw boom }), '/account/7')
-    const err = await router.preload('/account/7').then(
+    const err = await preloadRoute(router, '/account/7').then(
       () => undefined,
       (e: unknown) => e,
     )
@@ -45,13 +46,13 @@ describe('loader error tag (dev)', () => {
 
   test('a synchronous throw is tagged too', async () => {
     const router = make(routes(() => { throw new Error('sync') }), '/account/1')
-    const err = await router.preload('/account/1').catch((e: unknown) => e)
+    const err = await preloadRoute(router, '/account/1').catch((e: unknown) => e)
     expect((err as Record<symbol, unknown>)[TAG]).toBe('account/:id')
   })
 
   test('notFound() is not an error and is not tagged', async () => {
     const router = make(routes(async () => notFound()), '/account/1')
-    await expect(router.preload('/account/1')).resolves.toBeUndefined()
+    await expect(preloadRoute(router, '/account/1')).resolves.toBeUndefined()
   })
 
   test('primitives and frozen errors pass through untouched', () => {

@@ -136,8 +136,8 @@ A module-level `Map` keyed by a user key (`defineStore('cart')`, `useCookie('ses
 ### `rel="modulepreload"` with a route path as href
 
 The path returns `text/html`, so every hover logs a strict-MIME error and wastes a request. The chunk URL lives inside the route record's `loader()` closure and cannot be derived from the path.
-  - Warm the chunk with `router.preload(path, undefined, { skipLoaders: true })`; keep `rel="prefetch" as="document"`.
-  - Write `router?.preload(...)?.catch(...)` — a bare `.catch` on an optional chain throws when `router` is null.
+  - Warm the chunk with `router.preloadComponents(path)`; keep `rel="prefetch" as="document"`.
+  - Write `router?.preloadComponents(...)?.catch(...)` — a bare `.catch` on an optional chain throws when `router` is null.
   - Code: `packages/zero/zero/src/link.tsx:doPrefetch`. Tests: `link-prefetch.test.ts`, `e2e/ssr-node.spec.ts` ("zero &lt;Link&gt; prefetch") — only real Chromium shows the MIME error.
 
 ---
@@ -244,7 +244,7 @@ A fully static subtree already lowers to `_tpl(html, () => null)`, so the only r
 
 ### `@pyreon/zero` hydration retention depends on the client's first render matching
 
-Zero's route is a reactive child of `RouterView`. `startClient` (`packages/zero/zero/src/client.ts`) calls `router.preload(path, undefined, { skipLoaders: true })` before `hydrateRoot` so the first render is the real page, not a `lazy()` fallback, and both accessor-hydration paths adopt the server range. If the first client render is a placeholder, the server range is still dropped. When measuring retention (`examples/benchmark/probe-ssr-retention.ts`), stamp nodes from a synchronous end-of-body `<script>`, never `DOMContentLoaded` (module scripts run before it and a DCL stamp reports ~100%); run a positive control such as `islands-showcase`.
+Zero's route is a reactive child of `RouterView`. `startClient` (`packages/zero/zero/src/client.ts`) calls `router.preloadComponents(path)` before `hydrateRoot` so the first render is the real page, not a `lazy()` fallback, and both accessor-hydration paths adopt the server range. If the first client render is a placeholder, the server range is still dropped. When measuring retention (`examples/benchmark/probe-ssr-retention.ts`), stamp nodes from a synchronous end-of-body `<script>`, never `DOMContentLoaded` (module scripts run before it and a DCL stamp reports ~100%); run a positive control such as `islands-showcase`.
 
 ---
 
@@ -271,7 +271,7 @@ Use `isServer` / `isClient` from `@pyreon/reactivity` (re-exported by `@pyreon/c
 
 ### Running loaders but not resolving lazy route components before synchronous SSR
 
-`renderToString` is synchronous, and `RouterView` renders an uncached `lazy()` route as nothing, so the page renders blank inside its layout. The handler calls `router.preload(path, req)`, which resolves lazy components into `_componentCache` and runs loaders (forwarding the request and loader redirects). `prefetchLoaderData` stays loaders-only because `RouterLink` hover prefetch uses it. An SSR e2e must assert the route's own page content in the raw HTTP response (`page.request.get`); layout content and hydrated DOM both mask an empty page. Code: `packages/core/server/src/handler.ts`, `packages/core/router/src/loader.ts:prefetchLoaderData`. Tests: `server.test.ts`, `loader.test.ts`, `e2e/ssr-node.spec.ts`.
+`renderToString` is synchronous, and `RouterView` renders an uncached `lazy()` route as nothing, so the page renders blank inside its layout. The handler calls `preloadRoute(router, path, req)`, which resolves lazy components into `_componentCache` and runs loaders (forwarding the request and loader redirects). `prefetchLoaderData` stays loaders-only because `RouterLink` hover prefetch uses it. An SSR e2e must assert the route's own page content in the raw HTTP response (`page.request.get`); layout content and hydrated DOM both mask an empty page. Code: `packages/core/server/src/handler.ts`, `packages/core/router/src/loader.ts:prefetchLoaderData`. Tests: `server.test.ts`, `loader.test.ts`, `e2e/ssr-node.spec.ts`.
 
 ---
 

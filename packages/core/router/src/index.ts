@@ -82,6 +82,9 @@ export {
   stringifyLoaderDataForScript,
   useLoaderData,
 } from './loader'
+// Server-side loader passes (free functions: client bundles that never call them drop them)
+export type { ServerLoadersResult } from './server-loaders'
+export { preloadRoute, runServerLoaders } from './server-loaders'
 // Match utilities (useful for SSR route pre-fetching)
 export {
   buildPath,

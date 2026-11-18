@@ -1762,17 +1762,9 @@ async function renderSsr(
 	// Dev error overlay: remember whether the failure came after the preload
 	// (loaders, lazy route modules) finished — then it is the render — and
 	// which route matched. A loader failure is tagged by the router itself.
-	// This router is per-request, so wrapping its `preload` touches nothing
-	// shared.
 	let preloaded = false;
 	const devRouter = routerInst as unknown as {
-		preload: (...args: unknown[]) => Promise<void>;
 		currentRoute?: () => { matched?: Array<{ path?: string }> } | undefined;
-	};
-	const preload = devRouter.preload.bind(routerInst);
-	devRouter.preload = async (...args: unknown[]) => {
-		await preload(...args);
-		preloaded = true;
 	};
 
 	let result: Awaited<ReturnType<typeof serverPkg.renderPage>>;
@@ -1785,6 +1777,9 @@ async function renderSsr(
 				...(req ? { request: req } : {}),
 				...(locals ? { locals } : {}),
 				bailOnUnmatched: true,
+				onPreloaded: () => {
+					preloaded = true;
+				},
 			},
 		);
 	} catch (err) {

@@ -585,39 +585,22 @@ export interface Router<TNames extends string = string> {
    */
   isReady(): Promise<void>
   /**
-   * Resolve `path` and prepare everything needed to render it: load any lazy
-   * route components into the router's cache and run the matched routes'
-   * loaders. After this resolves, a `RouterView` rendered against this router
-   * for `path` will produce final HTML synchronously — no loading fallbacks,
-   * no `useLoaderData()` returning `undefined`.
+   * Load the lazy route components `path` matches into the router's cache, so
+   * a `RouterView` rendered for `path` shows the real page on its first pass
+   * instead of a `lazy()` fallback. When `path` is the router's INITIAL path,
+   * the initial navigation's guards run first: a route they cancel or
+   * redirect is not loaded and the result is `false` (on the server a guard
+   * redirect rejects with that `redirect()`, which hosts turn into HTTP 30x).
    *
-   * Used by SSR/SSG to hydrate the route tree before `renderToString`.
-   * The router's `currentRoute` is NOT changed by `preload` — pass the path
-   * separately when creating the router (`createRouter({ url, ... })`) or
-   * call this for the same `url` you initialised the router with.
+   * Never runs loaders. A server render that also needs loader data calls
+   * `preloadRoute(router, path, request)`; the single-fetch data endpoint
+   * calls `runServerLoaders(router, path, request)`. Both are free functions
+   * exported from `@pyreon/router`, so client bundles do not carry them.
+   *
+   * Zero's hydrating client calls this before `hydrateRoot` (loader data comes
+   * from the serialized blob), and `<Link>` calls it to warm a route's chunk.
    */
-  preload(
-    path: string,
-    request?: Request,
-    options?: { skipLoaders?: boolean },
-  ): Promise<void>
-  /**
-   * Phase 5 — run ONLY the matched chain's `serverLoader` records for the
-   * single-fetch data endpoint, keyed by matched-chain index. Returns the
-   * index-keyed data, a redirect descriptor when a server loader threw
-   * `redirect()`, or `{ kind: 'notFound' }` when one threw `notFound()`
-   * (the endpoint answers `{ notFound: true }` and the client lands on the
-   * not-found page). Server-only (the `serverLoader` fn exists only in the SSR
-   * module graph).
-   */
-  runServerLoaders(
-    path: string,
-    request?: Request,
-  ): Promise<
-    | { kind: 'data'; data: Record<number, unknown> }
-    | { kind: 'redirect'; to: string; status: number }
-    | { kind: 'notFound' }
-  >
+  preloadComponents(path: string): Promise<boolean>
   /**
    * Invalidate cached loader data. Forces loaders to re-run on next navigation.
    * - No args: invalidate ALL cached loader data
