@@ -42,6 +42,7 @@
     "@pyreon/lathe",
     "@pyreon/storage",
     "@pyreon/auth",
-    "@pyreon/devtools"
+    "@pyreon/devtools",
+    "@pyreon/upload"
   ]
 }

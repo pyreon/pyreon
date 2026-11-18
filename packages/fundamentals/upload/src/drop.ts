@@ -114,7 +114,12 @@ export function useFileDrop(options: FileDropOptions = {}): FileDrop {
       if (options.disabled === true || !hasFiles(e)) return
       e.preventDefault()
       reset()
-      void collectDropped(e.dataTransfer, { directories: options.directories !== false }).then(take)
+      collectDropped(e.dataTransfer, { directories: options.directories !== false }).then(take, (error: unknown) => {
+        if (process.env.NODE_ENV !== 'production') {
+          // oxlint-disable-next-line no-console
+          console.error('[Pyreon] useFileDrop: the dropped files could not be read', error)
+        }
+      })
     },
     get 'data-drag-over'() {
       return over() ? 'true' : undefined

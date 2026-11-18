@@ -128,6 +128,17 @@ describe('useFileDrop', () => {
     expect(d.isOver()).toBe(false)
   })
 
+  it('a drop whose items cannot be read is reported, not thrown into the event handler', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const d = useFileDrop({ onDrop: () => {} })
+    const e = { dataTransfer: { types: ['Files'], get items(): never { throw new Error('x') }, files: [] }, preventDefault() {} }
+
+    expect(() => (d.dropProps.onDrop as (e: unknown) => void)(e)).not.toThrow()
+    await flush()
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('could not be read'), expect.anything())
+    spy.mockRestore()
+  })
+
   it('a disabled zone does nothing; paste is opt in and only takes files', async () => {
     const got: File[][] = []
     const off = useFileDrop({ disabled: true, onDrop: (f) => got.push(f) })

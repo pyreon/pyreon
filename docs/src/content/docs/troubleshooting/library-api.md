@@ -209,3 +209,9 @@ Whatever a template ships is what a deployed app runs until someone replaces it,
 `@pyreon/kinetic`'s stagger renderers filtered children on `'type' in child`, but the compiler lowers literal markup (`<li>Install</li>`) to a pre-built `_tpl` item on the client and `_ssr` raw HTML on the server, so the docs' own stagger example rendered an empty `<ol>`. A forwarded `children` arrives as an accessor, and around a user's own `() => items.map(…)` as an accessor returning an accessor (one `typeof === 'function'` unwrap threw `children is not iterable`). **Rule: flatten children by unwrapping EVERY accessor level and every array/fragment; decorate a `_tpl` item by setting the extras on its element at mount (it has no props to clone), and pass raw server HTML through. Test it through the real compiler: kinetic's browser suite runs `@pyreon/vite-plugin` for exactly this.** Kinetic's group renderers also rebuilt every row on each change, so a removed row never unmounted: a keyed animated list keeps one row per key (`<For by>`), flips that row's `show` to leave, and drops it from its own `onAfterLeave`.
 
 ---
+
+### Reading a whole file to upload it, trusting `file.type`, never revoking an object URL, using `fetch` for a large upload (`@pyreon/upload`).
+
+`FileReader` / `arrayBuffer()` holds the whole file in memory; `file.type` and the extension are what the sender's machine claims (use `rules.sniff` for the interface and check content on the server); `URL.createObjectURL` leaks until `revokeObjectURL` (`preview: true` revokes on remove, clear and dispose); `fetch` has no upload progress (`xhrTransport` reports bytes). Also: hand-counting `dragenter` / `dragleave` (they fire on every child: `useFileDrop` counts them), and showing a file name with `innerHTML`. Reference: `packages/fundamentals/upload`, pattern `patterns/upload`.
+
+---

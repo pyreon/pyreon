@@ -2,7 +2,7 @@
 // pyreon-lint-disable-file pyreon/no-raw-addeventlistener -- the online and offline listeners live on window, are attached on the first add() and removed by dispose(); tests give a bare window
 import { computed, getCurrentScope } from '@pyreon/reactivity'
 import { sumProgress } from './progress'
-import { admit, cancelItems, countAccepted, createQ, disposeQ, goOffline, goOnline, makeItem, pauseItems, publish, removeItem, resumeItems, retryItems, startItems } from './queue'
+import { admit, cancelItems, countAccepted, createQ, disposeQ, goOffline, goOnline, makeItem, metaOf, pauseItems, publish, removeItem, resumeItems, retryItems, startItems } from './queue'
 import type { FileRejection, FileRule, Progress, Transport, UploadError } from './types'
 
 export type FileStatus = 'queued' | 'validating' | 'rejected' | 'uploading' | 'paused' | 'done' | 'failed' | 'cancelled'
@@ -82,11 +82,18 @@ const isFileList = (x: unknown): x is FileList => typeof FileList !== 'undefined
 const isDataTransfer = (x: unknown): x is DataTransfer => typeof DataTransfer !== 'undefined' && x instanceof DataTransfer
 
 function listOf(input: FileList | readonly (File | Blob)[] | DataTransfer): (File | Blob)[] {
-  if (isDataTransfer(input)) return Array.from(input.files)
-  if (isFileList(input)) return Array.from(input)
-  if (Array.isArray(input)) return [...input]
-  if (typeof input === 'object' && input !== null && typeof (input as { length?: unknown }).length === 'number') return Array.from(input as ArrayLike<File>)
-  throw new TypeError(`[Pyreon] uploader.add: expected a FileList, an array of File or a DataTransfer, got ${String(input)}.`)
+  const bad = `[Pyreon] uploader.add: expected a FileList, an array of File or a DataTransfer, got ${String(input)}.`
+  let list: unknown[]
+
+  if (isDataTransfer(input)) list = Array.from(input.files)
+  else if (isFileList(input) || Array.isArray(input)) list = Array.from(input)
+  else if (typeof input === 'object' && input !== null && typeof (input as { length?: unknown }).length === 'number') list = Array.from(input as ArrayLike<File>)
+  else throw new TypeError(bad)
+  for (const f of list) {
+    if (typeof f !== 'object' || f === null || typeof (f as Blob).size !== 'number' || typeof (f as Blob).slice !== 'function') throw new TypeError(`[Pyreon] uploader.add: every item must be a File or Blob, got ${String(f)}.`)
+  }
+
+  return list as (File | Blob)[]
 }
 
 /**
@@ -116,12 +123,13 @@ export function createUploader(options: UploaderOptions): Uploader {
   function add(input: FileList | readonly (File | Blob)[] | DataTransfer): UploadFile[] {
     if (q.disposed) return []
     const files = listOf(input)
+    const metas = files.map((f) => metaOf(q, f))
     const added: UploadFile[] = []
     let existing = countAccepted(q)
 
     listen()
-    for (const file of files) {
-      const it = makeItem(q, file)
+    for (const [i, file] of files.entries()) {
+      const it = makeItem(q, file, metas[i]!)
 
       q.items.set(it.view.id, it)
       added.push(it.view)

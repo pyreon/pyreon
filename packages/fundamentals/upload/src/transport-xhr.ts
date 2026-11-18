@@ -5,11 +5,13 @@ import type { Transport, TransportContext, TransportFile, UploadError } from './
 
 type HeaderMap = Record<string, string>
 
-/** The part of an `@pyreon/http` client an upload needs; written structurally so this package does not import `@pyreon/http`. */
+/**
+ * The part of an `@pyreon/http` client an upload needs, written structurally so this package does not import `@pyreon/http`:
+ * `extend({ transport })` derives a client that sends through a transport, and `request(method, path, options)` sends. The
+ * parameters are `never` so that the real client (whose parameter types are richer) is assignable.
+ */
 export interface UploadHttpClient {
-  extend(config: { transport: (request: HttpLikeRequest) => Promise<HttpLikeResponse> }): {
-    request(method: 'POST' | 'PUT' | 'PATCH', path: string, options: { body?: BodyInit | null; signal?: AbortSignal; meta?: Record<string, unknown>; timeout?: number | false; headers?: HeadersInit }): PromiseLike<HttpLikeResponse> & { json?: () => Promise<unknown> }
-  }
+  extend(config: never): { request(method: never, path: string, options: never): PromiseLike<unknown> }
 }
 
 interface HttpLikeRequest {
@@ -157,8 +159,12 @@ export function xhrHttpTransport(): (request: HttpLikeRequest) => Promise<HttpLi
     })
 }
 
+interface HttpRequester {
+  request(method: string, path: string, options: { body?: BodyInit | null; signal?: AbortSignal; meta?: Record<string, unknown>; timeout?: number | false }): PromiseLike<HttpLikeResponse>
+}
+
 async function viaClient(file: TransportFile, ctx: TransportContext, options: XhrTransportOptions): Promise<unknown> {
-  const client = options.client!.extend({ transport: xhrHttpTransport() })
+  const client = options.client!.extend({ transport: xhrHttpTransport() } as never) as unknown as HttpRequester
   const path = typeof options.url === 'function' ? options.url(file) : options.url
   const response = client.request(options.method ?? 'POST', path, {
     body: bodyOf(file, options),

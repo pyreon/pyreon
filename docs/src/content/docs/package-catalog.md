@@ -4,7 +4,7 @@ description: Public Pyreon framework packages, with links to their guides or sou
 generated_by: docs/scripts/gen-package-catalog.ts
 ---
 
-76 public framework packages across 6 categories, discovered from `packages/<category>/<package>`. This inventory describes the current source tree; see each package on npm for the published version.
+77 public framework packages across 6 categories, discovered from `packages/<category>/<package>`. This inventory describes the current source tree; see each package on npm for the published version.
 
 The platform-specific compiler binaries under `packages/core/compiler/npm/` are optional dependencies of [@pyreon/compiler](/docs/compiler) and are not included in this framework package count.
 
@@ -25,7 +25,7 @@ Explore the [live examples](/docs/examples) and the [UI component workbench](/at
 | [@pyreon/server](/docs/server) | SSR handler, SSG prerender, and island architecture for Pyreon |
 | [@pyreon/sized-map](/docs/sized-map) | Bounded `Map<K, V>` primitive — FIFO (default) or LRU-on-read mode. Used internally across Pyreon packages for sized cache eviction; safe to use directly. |
 
-## fundamentals (27)
+## fundamentals (28)
 
 | Package | Description |
 | --- | --- |
@@ -52,6 +52,7 @@ Explore the [live examples](/docs/examples) and the [UI component workbench](/at
 | [@pyreon/sync](/docs/sync) | Local-first CRDT-backed sync for signals — a synced signal is just a signal, so remote ops drive surgical fine-grained updates |
 | [@pyreon/table](/docs/table) | Pyreon adapter for TanStack Table |
 | [@pyreon/toast](/docs/toast) | Imperative toast notifications for Pyreon — no provider needed |
+| [@pyreon/upload](/docs/upload) | File selection, validation, preview and upload with progress as signals for Pyreon: a queue with retry and pause, XHR progress, drop and picker state |
 | [@pyreon/url-state](/docs/url-state) | Reactive URL search-param state for Pyreon — signal-backed, type-coerced, SSR-safe |
 | [@pyreon/validate](/docs/validate) | Pyreon DX layer over Standard Schema — withField metadata, reactive parse, i18n-aware error formatting. Works with Zod, Valibot, ArkType, or any Standard Schema-compliant validator. |
 | [@pyreon/validation](/docs/validation) | Schema validation adapters for Pyreon forms (Zod, Valibot, ArkType) |

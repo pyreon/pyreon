@@ -85,7 +85,8 @@ describe('abort, pause and resume', () => {
     await until(async () => f!.progress().loaded > 0 && (await active()) === 1)
     up.cancel(f!.id)
     expect(f!.status()).toBe('cancelled')
-    await until(async () => (await active()) === 0)
+    // The 8 MB body would take about 6 s to read: the connection is gone within 2 s only because the request was aborted.
+    await until(async () => (await active()) === 0, 2000)
     expect(f!.progress().ratio).toBeLessThan(1)
     up.dispose()
   })
@@ -99,7 +100,7 @@ describe('abort, pause and resume', () => {
     await until(() => f!.progress().loaded > 300_000)
     up.pause(f!.id)
     expect(f!.status()).toBe('paused')
-    await until(async () => (await active()) === 0)
+    await until(async () => (await active()) === 0, 2000)
     const held = f!.progress().loaded
 
     up.resume(f!.id)
@@ -217,7 +218,7 @@ describe('dispose leaves nothing behind', () => {
       await until(async () => (await active()) >= 2)
       expect(urls.size).toBe(1)
       up.dispose()
-      await until(async () => (await active()) === 0)
+      await until(async () => (await active()) === 0, 2000)
       await sleep(300)
       expect(urls.size).toBe(0)
       expect([...listeners.values()].every((n) => n === 0)).toBe(true)

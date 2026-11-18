@@ -1,0 +1,10 @@
+{
+  "package": "@pyreon/upload",
+  "bundle": 9032,
+  "imports": {
+    "picker-drop": 2453,
+    "uploader": 6982,
+    "validate": 2670,
+    "xhr-transport": 2173
+  }
+}

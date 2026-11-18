@@ -151,17 +151,18 @@ describe('concurrency and fairness', () => {
 
   it('a file that keeps failing goes to the back of the line instead of starving the others', async () => {
     const t = fakeTransport()
-    const up = createUploader({ transport: t.transport, concurrency: 1, retry: { attempts: 3, backoff: () => 10 } })
+    const up = createUploader({ transport: t.transport, concurrency: 1, retry: { attempts: 3, backoff: () => 0 } })
 
     up.add([file('flaky'), file('b'), file('c')])
     t.calls[0]!.reject(uploadError('network', 'down'))
     await flush()
+    // The retry is due at once, but b and c were waiting first.
     expect(t.calls.map((c) => c.file.name)).toEqual(['flaky', 'b'])
     t.calls[1]!.resolve()
     await flush()
+    expect(t.calls.map((c) => c.file.name)).toEqual(['flaky', 'b', 'c'])
     t.calls[2]!.resolve()
     await flush()
-    await vi.advanceTimersByTimeAsync(10)
     expect(t.calls.map((c) => c.file.name)).toEqual(['flaky', 'b', 'c', 'flaky'])
     up.dispose()
   })
@@ -447,6 +448,32 @@ describe('pause, resume, cancel, remove', () => {
     expect(a!.status()).toBe('done')
     expect(spy).toHaveBeenCalled()
     spy.mockRestore()
+    up.dispose()
+  })
+})
+
+describe('what the probe found', () => {
+  it('a back-off that throws or returns nonsense falls back to the default instead of crashing or retrying at once', async () => {
+    for (const backoff of [() => { throw new Error('b') }, () => NaN, () => -5]) {
+      const t = fakeTransport()
+      const up = createUploader({ transport: t.transport, retry: { backoff } })
+
+      up.add([file('a')])
+      t.calls[0]!.reject(uploadError('network', 'x'))
+      await flush()
+      expect(t.calls).toHaveLength(1)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(t.calls).toHaveLength(2)
+      up.dispose()
+    }
+  })
+
+  it('a bad item in the list or a meta function that throws is a [Pyreon] error and adds nothing', () => {
+    const up = createUploader({ transport: fakeTransport().transport, autoStart: false, meta: (f) => { if (f.name === 'bad') throw new Error('m'); return {} } })
+
+    expect(() => up.add([file('ok'), null as never])).toThrow(/every item must be a File or Blob/)
+    expect(() => up.add([file('ok'), file('bad')])).toThrow(/the meta function threw for bad: m/)
+    expect(up.files()).toHaveLength(0)
     up.dispose()
   })
 })

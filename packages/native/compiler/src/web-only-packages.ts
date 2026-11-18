@@ -51,6 +51,7 @@ export const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/ui-components', ""],
   ['@pyreon/ui-primitives', ""],
   ['@pyreon/unistyle', "responsive breakpoints + CSS-variable theming over real CSS; native theming is compile-time tokens + the 2-bucket size-class model"],
+  ['@pyreon/upload', "not lowered by PMTC: it is built on the browser File, Blob, XMLHttpRequest, DataTransfer and object URL APIs, which have no Swift or Kotlin counterpart in the compiler yet; native apps pick files with the platform pickers and upload with their own networking"],
   ['@pyreon/virtual', "DOM virtualization (scroll containers, measured rows). Native lists are lazy by construction: render the rows with a `<For>` as the ONLY child of a `<Scroll>` (LazyVStack on iOS, LazyColumn on Android) and no virtualizer is needed. Do not nest that `<For>` among other children inside a `<Scroll>`: Compose rejects a lazy list inside a scrolling Column at measure time."],
   ['@pyreon/zero', "the web meta-framework (SSR/SSG/ISR, Vite, fs-router); native apps are built by PMTC + create-multiplatform, not zero"],
   ['@pyreon/zero-content', "markdown/MDX content pipeline and blog module for zero's web rendering: a Vite plugin, SSG/SSR pages and document head tags — nothing here has a native target"],

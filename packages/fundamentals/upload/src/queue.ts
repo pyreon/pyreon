@@ -228,12 +228,23 @@ function finish(q: Q, it: Item, outcome: { result: unknown } | { error: UploadEr
   pump(q)
 }
 
+/** The back-off for a try, made safe: a function that throws or returns NaN or a negative falls back to the default. */
+function delayOf(backoff: (attempt: number) => number, attempt: number): number {
+  try {
+    const d = backoff(attempt)
+
+    return Number.isFinite(d) && d >= 0 ? d : defaultBackoff(attempt)
+  } catch {
+    return defaultBackoff(attempt)
+  }
+}
+
 function failed(q: Q, it: Item, error: UploadError): void {
   const policy = q.policy
 
   if (policy === null || !error.retryable || it.attempts >= policy.attempts) return finish(q, it, { error })
   it.controller = null
-  it.notBefore = q.clock() + Math.max(policy.backoff(it.attempts), error.retryAfter ?? 0)
+  it.notBefore = q.clock() + Math.max(delayOf(policy.backoff, it.attempts), error.retryAfter ?? 0)
   it.seq = ++q.seq
   batch(() => {
     it.sig.error.set(error)
@@ -308,7 +319,16 @@ export function publish(q: Q): void {
   q.list.set([...q.items.values()].map((i) => i.view))
 }
 
-export function makeItem(q: Q, file: File | Blob): Item {
+export function metaOf(q: Q, file: File | Blob): Readonly<Record<string, unknown>> {
+  if (q.o.meta === undefined) return Object.freeze({})
+  try {
+    return Object.freeze({ ...q.o.meta(file as File) })
+  } catch (error) {
+    throw new TypeError(`[Pyreon] uploader.add: the meta function threw for ${(file as File).name ?? 'a file'}: ${error instanceof Error ? error.message : String(error)}. Return a plain object.`, { cause: error })
+  }
+}
+
+export function makeItem(q: Q, file: File | Blob, meta: Readonly<Record<string, unknown>>): Item {
   const id = `${q.prefix}${++q.counter}`
   const sig: Item['sig'] = {
     status: signal<FileStatus>('queued'),
@@ -322,7 +342,6 @@ export function makeItem(q: Q, file: File | Blob): Item {
     rejections: signal<readonly FileRejection[]>([]),
   }
   const name = (file as File).name ?? ''
-  const meta = Object.freeze({ ...(q.o.meta === undefined ? {} : q.o.meta(file as File)) })
   const view: UploadFile = { id, file, name, size: file.size, type: file.type, meta, ...sig }
 
   return {
