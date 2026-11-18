@@ -5,7 +5,7 @@ import { hydrateIsland, replacedIslandRoots, trackIslandRoots, waitForIslands, w
 import { SITE_WIDTHS } from './site-audit'
 
 /**
- * The app-building-blocks and visual-and-tools product pages (twenty), against
+ * The app-building-blocks and visual-and-tools product pages (twenty-one), against
  * the production SSG build: prerendered with their share tags and hero visual,
  * hydration adopts the server DOM with no console errors, no horizontal page
  * scroll at the seven site widths, the demo island hydrates when scrolled to
@@ -13,7 +13,7 @@ import { SITE_WIDTHS } from './site-audit'
  * demo passes WCAG AA in both themes. Per-demo interaction (keyboard and
  * pointer) lives in site-products-b-*.spec.ts.
  */
-const APP = ['feature', 'i18n', 'permissions', 'urlstate', 'hotkeys', 'rx', 'dnd', 'toast', 'table', 'virtual']
+const APP = ['feature', 'i18n', 'format', 'permissions', 'urlstate', 'hotkeys', 'rx', 'dnd', 'toast', 'table', 'virtual']
 const TOOLS = ['charts', 'editor', 'flow', 'document', 'atlas', 'lathe', 'loom', 'tooling', 'ai', 'migrate']
 const IDS = [...APP, ...TOOLS]
 const WIDTHS = SITE_WIDTHS

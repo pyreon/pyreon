@@ -280,6 +280,12 @@
             "name": "i18n",
             "href": "/products/i18n",
             "sub": "Translations"
+          },
+          {
+            "id": "format",
+            "name": "Format",
+            "href": "/products/format",
+            "sub": "Numbers, dates, sizes"
           }
         ]
       },
@@ -394,7 +400,7 @@
     ],
     "footer": [
       {
-        "label": "All 40 products",
+        "label": "All 41 products",
         "href": "/products"
       },
       {
@@ -481,7 +487,7 @@
         },
         {
           "title": "Products",
-          "items": "megaMenu.columns[*].items (all 40, grouped by column)"
+          "items": "megaMenu.columns[*].items (all 41, grouped by column)"
         }
       ],
       "install": "npm create @pyreon/zero@latest",
@@ -588,7 +594,7 @@
             "href": "/products/charts"
           },
           {
-            "label": "All 40 products",
+            "label": "All 41 products",
             "href": "/products"
           }
         ]

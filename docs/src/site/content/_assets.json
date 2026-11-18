@@ -4382,7 +4382,7 @@
     "/products"
    ],
    "slot": "og",
-   "alt": "40 products. One reactive core. The glyphs of all 40 Pyreon products.",
+   "alt": "41 products. One reactive core. The glyphs of all 41 Pyreon products.",
    "theme": "dark",
    "width": 1200,
    "height": 630
@@ -4539,6 +4539,18 @@
    ],
    "slot": "og",
    "alt": "Forms: Type in one field. The other eleven never notice. 210 µs to mount a 12-field form. React Hook Form: 640 µs. TanStack Form: 680 µs.",
+   "theme": "dark",
+   "width": 1200,
+   "height": 630
+  },
+  {
+   "file": "og/products/format.png",
+   "kind": "image",
+   "pages": [
+    "/products/format"
+   ],
+   "slot": "og",
+   "alt": "Format (@pyreon/format): Change the language once. Every price and date follows.",
    "theme": "dark",
    "width": 1200,
    "height": 630
@@ -6334,6 +6346,89 @@
    "motion": {
     "loop": true,
     "ms": 8000,
+    "reduced": "static end state with the ember ring on the part that changed"
+   }
+  },
+  {
+   "file": "products/format/hero.svg",
+   "kind": "animated-svg",
+   "pages": [
+    "/products/format"
+   ],
+   "slot": "hero-visual",
+   "alt": "Schematic: setLocale switches the language from en-US to German to Czech. A price (€1,234.50, then 1.234,50 €, then 1 234,50 €), a file size, a date (November 18, 2026, then 18. November 2026, then 18. listopadu 2026) and a relative time (yesterday, gestern, včera) each rewrite in place. A panel lists the four function calls, none of which takes a locale.",
+   "theme": "both",
+   "poster": {
+    "dark": "products/format/hero.poster-dark.png",
+    "light": "products/format/hero.poster-light.png"
+   },
+   "posterVariants": {
+    "dark": [
+     {
+      "file": "products/format/hero.poster-dark-640.webp",
+      "width": 640,
+      "height": 400,
+      "bytes": 16164,
+      "format": "webp"
+     },
+     {
+      "file": "products/format/hero.poster-dark-640.avif",
+      "width": 640,
+      "height": 400,
+      "bytes": 12793,
+      "format": "avif"
+     },
+     {
+      "file": "products/format/hero.poster-dark.webp",
+      "width": 1280,
+      "height": 800,
+      "bytes": 34092,
+      "format": "webp"
+     },
+     {
+      "file": "products/format/hero.poster-dark.avif",
+      "width": 1280,
+      "height": 800,
+      "bytes": 21253,
+      "format": "avif"
+     }
+    ],
+    "light": [
+     {
+      "file": "products/format/hero.poster-light-640.webp",
+      "width": 640,
+      "height": 400,
+      "bytes": 16416,
+      "format": "webp"
+     },
+     {
+      "file": "products/format/hero.poster-light-640.avif",
+      "width": 640,
+      "height": 400,
+      "bytes": 12210,
+      "format": "avif"
+     },
+     {
+      "file": "products/format/hero.poster-light.webp",
+      "width": 1280,
+      "height": 800,
+      "bytes": 34720,
+      "format": "webp"
+     },
+     {
+      "file": "products/format/hero.poster-light.avif",
+      "width": 1280,
+      "height": 800,
+      "bytes": 21990,
+      "format": "avif"
+     }
+    ]
+   },
+   "width": 640,
+   "height": 400,
+   "motion": {
+    "loop": true,
+    "ms": 9000,
     "reduced": "static end state with the ember ring on the part that changed"
    }
   },

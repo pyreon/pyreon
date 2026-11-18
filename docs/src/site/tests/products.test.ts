@@ -45,8 +45,8 @@ describe('product pages', () => {
     expect(hero.title.slice(0, i).split('`').length % 2, `${id}: ember word inside backticks`).toBe(1)
   })
 
-  it('covers all 40 products, and the products index lists exactly them', () => {
-    expect(IDS).toHaveLength(40)
+  it('covers all 41 products, and the products index lists exactly them', () => {
+    expect(IDS).toHaveLength(41)
     const index = read<{ groups?: { products: { id: string }[] }[]; products?: { id: string }[] }>(resolve(site, 'content/_products.json'))
     const listed = JSON.stringify(index)
     for (const id of IDS) expect(listed, `_products.json lists ${id}`).toContain(`"${id}"`)

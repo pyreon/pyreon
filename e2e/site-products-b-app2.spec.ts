@@ -110,6 +110,66 @@ test.describe('i18n demo', () => {
   })
 })
 
+test.describe('format demo', () => {
+  test('one language switch rewrites every value, the zone moves the instant but not the calendar date, typed numbers parse', async ({ page }) => {
+    const errors = collectErrors(page)
+    const demo = await openDemo(page, 'format', (d) => d.getByRole('button', { name: 'Deutsch' }))
+    const value = (label: string) => demo.getByRole('list', { name: 'Formatted values' }).locator('li', { hasText: label }).locator('bdi')
+    const ran = demo.locator('li', { hasText: 'row components that ran' })
+    const parsed = demo.locator('#format-parsed')
+
+    // The server's first render: en-US in UTC.
+    await expect(value('Price')).toHaveText('€1,234.50')
+    await expect(value('File size')).toHaveText('7.3 MB')
+    await expect(value('Calendar date')).toHaveText('November 18, 2026')
+    await expect(value('Relative time')).toHaveText('in 5 minutes')
+    await expect(parsed).toHaveText('parseNumber → 1234.5, printed back as 1,234.5')
+    await expect(ran).toContainText('12')
+
+    // Keyboard: one switch, and every value follows in place.
+    await demo.getByRole('button', { name: 'Deutsch' }).focus()
+    await page.keyboard.press('Enter')
+    await expect(demo.getByRole('button', { name: 'Deutsch' })).toHaveAttribute('aria-pressed', 'true')
+    await expect(value('Price')).toHaveText('1.234,50\u00a0€')
+    await expect(value('File size')).toHaveText('7,3 MB')
+    await expect(value('Calendar date')).toHaveText('18. November 2026')
+    await expect(value('Relative time')).toHaveText('in 5 Minuten')
+    // "1,234.5" is not a number in German: the locale is part of the question.
+    await expect(parsed).toHaveText('parseNumber → null: not a number in this language.')
+    await demo.getByLabel('Type a number').fill('1.234,5')
+    await expect(parsed).toHaveText('parseNumber → 1234.5, printed back as 1.234,5')
+    // No row component ran again.
+    await expect(ran).toContainText('12')
+
+    // Pointer: Czech and Japanese.
+    await demo.getByRole('button', { name: 'Čeština' }).click()
+    await expect(value('Calendar date')).toHaveText('18. listopadu 2026')
+    await demo.getByRole('button', { name: '日本語' }).click()
+    await expect(value('Calendar date')).toHaveText('2026年11月18日')
+
+    // The zone moves the instant, never the calendar date or the wall-clock time.
+    await demo.getByRole('button', { name: 'English' }).click()
+    const instant = await value('Instant').textContent()
+    await demo.getByRole('button', { name: 'Tokyo' }).click()
+    await expect(value('Instant')).toContainText('Nov 19, 2026')
+    await expect(value('Instant')).not.toHaveText(instant ?? '')
+    await expect(value('Calendar date')).toHaveText('November 18, 2026')
+    await expect(value('Wall-clock')).toContainText('Nov 18, 2026')
+    await expect(value('Wall-clock')).toContainText('2:30')
+    await demo.getByRole('button', { name: 'Los Angeles' }).click()
+    await expect(value('Instant')).toContainText('Nov 18, 2026')
+    await expect(value('Instant')).toContainText('3:30')
+    await expect(value('Calendar date')).toHaveText('November 18, 2026')
+
+    // Arabic is written right to left.
+    await demo.getByRole('button', { name: 'العربية' }).click()
+    await expect(value('Price')).toHaveAttribute('dir', 'rtl')
+    await expect(value('Price')).toHaveAttribute('lang', 'ar')
+    await expect(ran).toContainText('12')
+    expect(errors).toEqual([])
+  })
+})
+
 test.describe('permissions demo', () => {
   test('a role switch enables and disables the right actions', async ({ page }) => {
     const errors = collectErrors(page)

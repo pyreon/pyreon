@@ -1,0 +1,365 @@
+{
+ "id": "format",
+ "route": "/products/format",
+ "name": "Format",
+ "package": "@pyreon/format",
+ "category": "fundamentals · formatting",
+ "hero": {
+  "title": "Change the language once. Every price and date follows.",
+  "emberWord": "follows",
+  "lede": "`formatCurrency(price, 'EUR')` is one function over the platform's `Intl`. Read it in JSX and its text updates when the locale does, with no component re-rendering. The same call runs in plain code and on the server, and a `/core` entry with no dependencies carries it everywhere else.",
+  "install": "bun add @pyreon/format",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "status",
+    "value": "{dot:warn}Experimental<small>The API may change in a minor release before it is promoted to Stable.</small>"
+   },
+   {
+    "key": "one call",
+    "value": "`setLocale('de')`<small>Every price, date and size in a binding rewrites its own text in place.</small>"
+   },
+   {
+    "key": "dates",
+    "value": "a calendar date never shifts<small>`'2026-11-18'` is the 18th in every time zone.</small>"
+   },
+   {
+    "key": "size",
+    "value": "1.1 kB gzip for a number formatter<small>From `/core`, minified; @formatjs/intl is 13.1 kB for the same job. Date formatting is 2.2 kB.</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "1.1 kB",
+   "label": "gzip for one number formatter from `/core`; @formatjs/intl needs 13.1 kB for the same job",
+   "source": "packages/fundamentals/format/bench/format-size.ts, \"format a number\": @pyreon/format/core 1,096 B (PR #4681 states 1,086 B), @formatjs/intl 13,107 B · Bun.build, minify, browser target, gzip, deterministic"
+  },
+  {
+   "stat": "4.9 kB",
+   "label": "gzip for number, currency, bytes, duration, date, relative time and list together; @formatjs/intl with pretty-bytes and pretty-ms is 15.3 kB",
+   "source": "bench/format-size.ts, \"the whole set\": @pyreon/format/core 4,899 B (PR #4681: 4,859 B), @formatjs/intl + pretty-bytes + pretty-ms 15,338 B · same build conditions"
+  },
+  {
+   "stat": "0",
+   "label": "runtime dependencies; `/core` imports no other package, and `@pyreon/core` and `@pyreon/reactivity` are optional peers of the reactive entry",
+   "source": "packages/fundamentals/format/package.json (no dependencies; peerDependenciesMeta optional); src/tests/entries.test.ts (no @pyreon import in /core)"
+  }
+ ],
+ "why": {
+  "title": "Every number in your app, in the reader's language.",
+  "items": [
+   {
+    "title": "One call switches everything",
+    "text": "`setLocale('de')` and every formatted price, date and size on screen rewrites its own text node. Components do not re-render, and inputs keep their caret."
+   },
+   {
+    "title": "One function per job",
+    "text": "`formatCurrency`, `formatBytes`, `formatDuration`, `formatList`, `formatRelativeTo`. Plain data in, a string out: no classes, and no formatter object to build or pass around."
+   },
+   {
+    "title": "Dates that stay put",
+    "text": "A date string with no time is a calendar date: the same day in every zone, so `'2026-11-18'` never becomes the 17th for someone in Los Angeles. An instant (`Z`, an offset, a number, a `Date`) is shown in the zone you pick."
+   },
+   {
+    "title": "Parsing is the other half",
+    "text": "`parseNumber('1 234,5', { locale: 'cs' })` is 1234.5 and `parseDate('18. 11. 2026', { locale: 'cs' })` is `'2026-11-18'`. What the visitor typed in their own format becomes a number or a date, and anything else is `null`."
+   }
+  ]
+ },
+ "difference": {
+  "title": "The locale stops being an argument.",
+  "before": {
+   "label": "Intl by hand",
+   "caption": "The locale is a parameter of every call, a formatter is built each time, and a plain date string needs a UTC workaround.",
+   "code": "const price = new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(amount)\nconst day = new Intl.DateTimeFormat(locale, { dateStyle: 'long', timeZone: 'UTC' }).format(new Date('2026-11-18'))\n\n// Change language: pass the new `locale` to every call and re-render everything that has one."
+  },
+  "after": {
+   "label": "with @pyreon/format",
+   "caption": "The active locale is a signal. Each call reads it, so the text updates when it changes.",
+   "code": "import { formatCurrency, formatDate, setLocale } from '@pyreon/format'\n\nconst Price = (props: { amount: number }) => <p>{formatCurrency(props.amount, 'EUR')}</p>\nconst Day = (props: { day: string }) => <p>{formatDate(props.day, 'long')}</p>\n\nsetLocale('de')\n// <Price amount={1234.5} />  →  \"1.234,50 €\"\n// <Day day=\"2026-11-18\" />    →  \"18. November 2026\""
+  }
+ },
+ "comingFrom": [
+  {
+   "lib": "Intl",
+   "title": "The same strings, without building the formatter.",
+   "before": "const price = new Intl.NumberFormat('de', { style: 'currency', currency: 'EUR' }).format(1234.5)\nconst day = new Intl.DateTimeFormat('de', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date('2026-11-18'))\n// \"1.234,50 €\", \"18. November 2026\"",
+   "after": "import { formatCurrency, formatDate, setLocale } from '@pyreon/format'\n\nsetLocale('de')\nformatCurrency(1234.5, 'EUR')      // \"1.234,50 €\"\nformatDate('2026-11-18', 'long')   // \"18. November 2026\"",
+   "note": "Checked against raw `Intl` for these two calls: the output is the same string, because `Intl` does the formatting. What changes is who builds and caches the formatter, and where the locale comes from. A calendar string needs no `timeZone: 'UTC'` workaround."
+  },
+  {
+   "lib": "pretty-bytes",
+   "title": "Sizes and durations in the reader's language.",
+   "before": "import prettyBytes from 'pretty-bytes'\nimport prettyMs from 'pretty-ms'\n\nprettyBytes(1536)                              // \"1.54 kB\"\nprettyBytes(1536, { locale: 'de' })            // \"1,54 kB\"\nprettyMs(3_905_000)                            // \"1h 5m 5s\"\nprettyMs(3_905_000, { colonNotation: true })   // \"1:05:05\"",
+   "after": "import { formatBytes, formatDuration } from '@pyreon/format'\n\nformatBytes(1536)                                // \"1.5 kB\"\nformatBytes(1536, { locale: 'de' })              // \"1,5 kB\"\nformatDuration(3_905_000)                        // \"1 hr, 5 min, 5 sec\"\nformatDuration(3_905_000, { style: 'digital' })  // \"1:05:05\"",
+   "note": "pretty-bytes keeps three significant digits (`1.54 kB`); `formatBytes` shows one fraction digit (`1.5 kB`), and `maximumFractionDigits` changes it. pretty-ms prints English unit letters; `formatDuration` follows the locale's unit names. Both libraries are smaller for one job: pretty-ms is 1.2 kB gzip and `formatDuration` is 2.0 kB."
+  },
+  {
+   "lib": "@formatjs/intl",
+   "title": "One active locale instead of an instance per locale.",
+   "before": "import { createIntl } from '@formatjs/intl'\n\nconst intl = createIntl({ locale: 'de' })\nintl.formatNumber(1234.5, { style: 'currency', currency: 'EUR' })   // \"1.234,50 €\"\nintl.formatRelativeTime(-3, 'day')                                  // \"vor 3 Tagen\"",
+   "after": "import { formatCurrency, formatRelative, setLocale } from '@pyreon/format'\n\nsetLocale('de')\nformatCurrency(1234.5, 'EUR')   // \"1.234,50 €\"\nformatRelative(-3, 'day')       // \"vor 3 Tagen\"",
+   "note": "`@formatjs/intl` also formats ICU messages (plurals, selects); this package does not. Messages stay in `@pyreon/i18n`. For numbers, dates and relative time the output is the same strings, at 1.1 kB for a number against 13.1 kB gzip."
+  }
+ ],
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "Switch the language. Switch the zone. Everything moves.",
+  "text": "One locale and one time zone drive every value below, through the real `@pyreon/format`. Type a number the way you would in that language and `parseNumber` reads it back. The calendar date stays on the 18th when the zone changes; the instant does not.",
+  "component": "DemoFormat",
+  "reference": "built against the real package in the site repository; no canvas prototype",
+  "referenceHtml": "",
+  "referenceCss": "",
+  "referenceJs": ""
+ },
+ "features": {
+  "title": "Small functions, the whole job.",
+  "items": [
+   {
+    "name": "Numbers, currency, percent",
+    "text": "`formatNumber`, `formatCurrency` and `formatPercent` take the options `Intl` has, plus presets for the common shapes."
+   },
+   {
+    "name": "Compact and units",
+    "text": "`formatCompact(1_240_000)` is `1.2M`; `formatUnit(72, 'kilometer-per-hour')` is `72 km/h`. A unit `Intl` does not have is a type error."
+   },
+   {
+    "name": "Bytes, decimal or binary",
+    "text": "`1.5 kB` or, with `binary: true`, `1.5 KiB`. Rounding never prints `1000 kB`: the value carries into the next unit."
+   },
+   {
+    "name": "Durations",
+    "text": "Milliseconds or `{ hours, minutes }`; `largest: 2` keeps the two biggest units, `style: 'digital'` gives `1:05:05`. Uses `Intl.DurationFormat` where it exists and an equivalent where it does not."
+   },
+   {
+    "name": "Lists",
+    "text": "`formatList(['red', 'green', 'blue'])` joins the way the language does: `and`, `or`, or a plain unit list."
+   },
+   {
+    "name": "Dates and times",
+    "text": "`formatDate`, `formatTime`, `formatDateTime` with `short` to `full` presets, or any `Intl.DateTimeFormat` options."
+   },
+   {
+    "name": "Relative time and ranges",
+    "text": "`formatRelativeTo(target, base)` picks the unit (`yesterday`, `in 5 minutes`); `formatDateRange` and `formatNumberRange` collapse the shared parts."
+   },
+   {
+    "name": "Named formats",
+    "text": "`defineFormats({ price: { kind: 'currency', currency: 'EUR' } })` names a set once. Keys, value types and overrides are inferred; a wrong `kind` or `unit` is a type error."
+   },
+   {
+    "name": "`<Num>` and `<DateTime>`",
+    "text": "`<Num>` renders reactive text with no wrapper element. `<DateTime>` renders a real `<time datetime>` whose machine-readable value does not depend on the display locale."
+   },
+   {
+    "name": "Bounded caches, safe on data",
+    "text": "Each `Intl` formatter is built once per locale and options, in tables with a size cap. Nullish input returns the `fallback` and bad data never throws; a wrong option throws a `[Pyreon]` error that says how to fix it."
+   }
+  ]
+ },
+ "recipes": [
+  {
+   "title": "A price list that follows the language",
+   "text": "Name the formats once at module level. Each cell reads the active locale, so one `setLocale` rewrites the whole table.",
+   "code": "import { defineFormats, setLocale } from '@pyreon/format'\nimport { Num } from '@pyreon/format/components'\n\nconst f = defineFormats({\n  price: { kind: 'currency', currency: 'EUR' },\n  size: { kind: 'bytes' },\n})\n\nconst Row = (props: { name: string; price: number; bytes: number }) => (\n  <tr>\n    <td>{props.name}</td>\n    <td>{f.price(props.price)}</td>\n    <td><Num value={props.bytes} kind=\"bytes\" /></td>\n  </tr>\n)\n\n// <Row name=\"Export\" price={1234.5} bytes={1536} />\n// en-US: \"€1,234.50\"   \"1.5 kB\"\nsetLocale('de')\n// de:    \"1.234,50 €\"   \"1,5 kB\"\nsetLocale('ja')\n// ja:    \"€1,234.50\"   \"1.5 KB\""
+  },
+  {
+   "title": "A time zone switcher that never moves a birthday",
+   "text": "A calendar date stays on its day in every zone. An instant is shown in the zone you set. `new Date('2026-11-18')` is an instant at midnight UTC, so pass the string.",
+   "code": "import { formatDate, formatDateTime, setTimeZone } from '@pyreon/format'\n\nconst birthday = '2026-11-18'            // a calendar date\nconst standup = '2026-11-18T23:30:00Z'   // an instant\n\nsetTimeZone('Asia/Tokyo')\nformatDate(birthday)                     // \"Nov 18, 2026\"\nformatDateTime(standup)                  // \"Nov 19, 2026, 8:30 AM\"\n\nsetTimeZone('America/Los_Angeles')\nformatDate(birthday)                     // \"Nov 18, 2026\"\nformatDateTime(standup)                  // \"Nov 18, 2026, 3:30 PM\"\nformatDate(new Date(birthday))           // \"Nov 17, 2026\"  ← the instant, not the date"
+  },
+  {
+   "title": "Read what the visitor typed",
+   "text": "Parse with the locale the visitor types in. `1.234` is 1234 in German and 1.234 in English, so the locale is part of the question.",
+   "code": "import { formatCurrency, parseNumber } from '@pyreon/format'\nimport { computed, signal } from '@pyreon/reactivity'\n\nconst typed = signal('1 234,5')\nconst amount = computed(() => parseNumber(typed(), { locale: 'cs' }))\n\n// <input value={typed()} onInput={(e) => typed.set(e.currentTarget.value)} />\n// <p>{() => (amount() === null ? 'Not a number' : formatCurrency(amount(), 'CZK', { locale: 'cs' }))}</p>\n\namount()                                  // 1234.5  →  \"1 234,50 Kč\"\nparseNumber('1.234', { locale: 'de' })    // 1234\nparseNumber('1.234', { locale: 'en-US' }) // 1.234\nparseNumber('twelve', { locale: 'en-US' }) // null"
+  }
+ ],
+ "api": {
+  "title": "Plain functions, three entries.",
+  "groups": [
+   {
+    "name": "format",
+    "items": [
+     "formatNumber",
+     "formatCurrency",
+     "formatPercent",
+     "formatCompact",
+     "formatUnit",
+     "formatBytes",
+     "formatDuration",
+     "formatList",
+     "formatDate",
+     "formatTime",
+     "formatDateTime",
+     "formatRelative",
+     "formatRelativeTo",
+     "formatDateRange",
+     "formatNumberRange"
+    ]
+   },
+   {
+    "name": "parts",
+    "items": [
+     "formatNumberToParts",
+     "formatDateToParts"
+    ]
+   },
+   {
+    "name": "parse",
+    "items": [
+     "parseNumber",
+     "parseDate"
+    ]
+   },
+   {
+    "name": "locale and zone",
+    "items": [
+     "locale",
+     "setLocale",
+     "provideLocale",
+     "timeZone",
+     "setTimeZone",
+     "provideTimeZone"
+    ]
+   },
+   {
+    "name": "named formats",
+    "items": [
+     "defineFormats",
+     "createFormatter"
+    ]
+   },
+   {
+    "name": "components",
+    "items": [
+     "Num",
+     "DateTime"
+    ]
+   },
+   {
+    "name": "entry points",
+    "items": [
+     "@pyreon/format",
+     "@pyreon/format/core",
+     "@pyreon/format/components"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Experimental",
+   "text": "The API may change in a minor release before it is promoted to Stable. Pin the version while you build on it, and read the changelog when you update."
+  },
+  {
+   "title": "A provided locale is visible in setup and effects",
+   "text": "`provideLocale` is context. A formatter called in a component body, an effect, a computed or a JSX accessor sees it. One called from an event handler outside any scope sees the app default, so format in setup and keep the string if a handler needs it."
+  },
+  {
+   "title": "On the server, provide the locale per request",
+   "text": "One process serves many requests, so `setLocale` does nothing there (and warns in development). Call `provideLocale` and `provideTimeZone` in the root component; they are request-scoped and never share a locale between requests."
+  },
+  {
+   "title": "Parsing covers numbers and numeric dates",
+   "text": "`parseDate` reads numeric dates in the locale's order and ISO `YYYY-MM-DD`. Month names (`18 November 2026`), other calendars and scientific notation return `null`."
+  },
+  {
+   "title": "Engines differ in CLDR data",
+   "text": "`Intl` output is CLDR data, and V8, JavaScriptCore and ICU versions differ (a narrow no-break space before PM, for one). Pass the same locale and time zone on the server and in the browser; byte equality across engines is not promised."
+  },
+  {
+   "title": "iOS and Android are not covered yet",
+   "text": "The package is web-only today. A core set of `Intl` number and date calls already lowers to the native targets without it; mapping these functions onto that set is planned, with no date."
+  }
+ ],
+ "faq": [
+  {
+   "q": "Does it work with @pyreon/i18n?",
+   "a": "`provideLocale` takes an accessor, so `provideLocale(() => i18n.locale())` makes every formatter follow an i18n instance's language today, and a test covers that seam. Having i18n's own `n()` and `d()` delegate to this package is planned, not shipped."
+  },
+  {
+   "q": "Does it run on iOS and Android?",
+   "a": "Not yet. The package is web-only. The native compiler already lowers a core set of `Intl` number and date formatting on its own; moving these functions onto it is planned, and we are not promising a date."
+  },
+  {
+   "q": "Is it fast?",
+   "a": "We have not published speed numbers for it, so this page makes no speed claim. The design is to build each `Intl` formatter once per locale and options and reuse it, in bounded tables, so formatting in a list or a binding costs one `format()` call. The size figures above are measured."
+  },
+  {
+   "q": "Why not call Intl directly?",
+   "a": "Call it directly when you format one value once. This package adds the cache, the active locale as a signal, presets, bytes and durations done right, calendar dates that do not shift, and parsing. A hand-written cache helper over `Intl` is much smaller (169 B gzip for one number, against 1.1 kB here) because it has no validation, presets, locale resolution, warnings or parsing."
+  },
+  {
+   "q": "Does a date really never shift with the time zone?",
+   "a": "A string with no time (`2026-11-18`) or a date-time with no offset (`2026-11-18T14:30`) is a calendar value and shows that day or clock time in every zone. A string with `Z` or an offset, a number and a `Date` are instants and follow the zone. The one trap is `new Date('2026-11-18')`: that is an instant, midnight UTC."
+  },
+  {
+   "q": "What happens with bad data?",
+   "a": "Nullish input returns the `fallback` (an empty string by default). Invalid input returns it too, with a warning in development. A programmer error, such as an unknown unit or a malformed locale tag handed to `setLocale`, throws a `[Pyreon]` error that says how to fix it."
+  },
+  {
+   "q": "Will the server and the browser print the same text?",
+   "a": "When both get the same locale and time zone and run the same ICU data, yes. Engines can differ in small ways (a narrow no-break space before PM), so pass the locale and zone explicitly on both sides rather than relying on each side's default."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/i18n",
+   "category": "fundamentals",
+   "name": "i18n",
+   "text": "Translations and plurals. `provideLocale(() => i18n.locale())` points every formatter at the same language.",
+   "package": "@pyreon/i18n"
+  },
+  {
+   "href": "/products/table",
+   "category": "fundamentals",
+   "name": "Table",
+   "text": "Sizes, prices and dates in cells, in the reader's format.",
+   "package": "@pyreon/table"
+  },
+  {
+   "href": "/products/zero",
+   "category": "framework",
+   "name": "Zero",
+   "text": "Request-scoped locale and time zone on the server, so concurrent requests never share one.",
+   "package": "@pyreon/zero"
+  }
+ ],
+ "end": {
+  "title": "Say it the way they read it.",
+  "cta": "Read the Format guide"
+ },
+ "benchmarks": null,
+ "glyphSvg": "<path d=\"M20 44 L36 32 V90\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\" stroke-linecap=\"square\"/><circle cx=\"56\" cy=\"84\" r=\"9\" fill=\"url(#eg)\"/><path d=\"M100 34 H78 V60 H90 Q106 60 106 74 Q106 90 90 90 H78\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\" stroke-linecap=\"square\"/>",
+ "sources": [
+  {
+   "claim": "status Experimental; the API may change in a minor release",
+   "path": "packages/fundamentals/format/README.md status line; package.json pyreon.stability"
+  },
+  {
+   "claim": "formatters, parsers, entries, components listed",
+   "path": "packages/fundamentals/format/src/manifest.ts api; README.md"
+  },
+  {
+   "claim": "every code sample output",
+   "path": "evaluated against the real package under happy-dom (vitest, TZ=America/New_York) on 2026-11-18; pretty-bytes 7.2.0, pretty-ms 10.0.0, @formatjs/intl 6.1.5 as pinned in the package"
+  },
+  {
+   "claim": "size: 1.1 kB number, 2.2 kB date, 4.9 kB whole set, 13.1 kB and 15.3 kB rivals, 169 B raw helper, pretty-ms 1.2 kB, formatDuration 2.0 kB",
+   "path": "packages/fundamentals/format/bench/format-size.ts (Bun.build minify, browser, gzip); PR #4681 body; re-run 2026-11-18"
+  },
+  {
+   "claim": "calendar strings never shift; new Date(\"2026-11-18\") is an instant",
+   "path": "src/manifest.ts gotchas; src/tests/calendar-dates.test.ts"
+  },
+  {
+   "claim": "no speed claim",
+   "path": "PR #4681 body: benchmarks written, not run"
+  },
+  {
+   "claim": "i18n seam tested, delegation not shipped; native planned, tier web-only",
+   "path": "PR #4681 body \"Not changed\"; src/manifest.ts multiplatform"
+  }
+ ]
+}

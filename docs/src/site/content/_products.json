@@ -1,7 +1,7 @@
 {
  "hero": {
   "eyebrow": "all products",
-  "title": "40 products. One reactive core.",
+  "title": "41 products. One reactive core.",
   "lede": "Forms, charts, routing, auth, i18n, a native compiler and the tools that check all of it, built together on the same signals and released as one version. Use one in the app you have, or build the whole thing on them."
  },
  "groupingNote": "Follows products.html with two fixes: HTTP moves from Foundations to Data and state (it is the transport under Query, and the mega menu already files it there), and Content moves from Visual and content to Build apps (it is Zero's content layer and cannot run without Zero). RX stays in Data and state, as on products.html.",
@@ -51,6 +51,7 @@
     "permissions",
     "urlstate",
     "i18n",
+    "format",
     "rx"
    ]
   },
@@ -370,6 +371,15 @@
     "condition": "one run, overnight pass, bun",
     "source": "00-brief/BENCHMARKS-2026-11-05.md §10 i18n"
    }
+  },
+  {
+   "id": "format",
+   "name": "Format",
+   "package": "@pyreon/format",
+   "group": "data",
+   "href": "/products/format",
+   "pitch": "`formatCurrency(price, 'EUR')` follows the active locale, so one `setLocale('de')` rewrites every price, date, size and duration on screen. Calendar dates never shift with the time zone, and `/core` has no dependencies.",
+   "status": "experimental"
   },
   {
    "id": "rx",

@@ -1979,7 +1979,8 @@
     },
     {
      "title": "Format",
-     "href": "/docs/format"
+     "href": "/docs/format",
+     "productId": "format"
     },
     {
      "title": "Drag and Drop",
@@ -3260,6 +3261,27 @@
     "validation",
     "content",
     "a11y"
+   ]
+  },
+  {
+   "productId": "format",
+   "name": "Format",
+   "docsPage": null,
+   "docsHref": "/docs/format",
+   "gapNote": "The Format docs page (format.md) is a guide and carries none of the six selling slots yet; the product page's call to action links to it.",
+   "closestPage": "format.md",
+   "pitch": "content/format.json#hero",
+   "demo": "content/format.json#demo",
+   "bench": "content/format.json#benchmarks",
+   "benchNote": "No benchmark has been run for @pyreon/format (benchmarks written, not run): no figure may be added until a recorded result exists.",
+   "comingFrom": {
+    "lib": "Intl",
+    "ref": "content/format.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "i18n",
+    "table",
+    "zero"
    ]
   },
   {

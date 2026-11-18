@@ -541,7 +541,7 @@ export const checked = {
    "kind": "products",
    "id": "products",
    "eyebrow": "Products",
-   "title": "40 products. One version.",
+   "title": "41 products. One version.",
    "lede": "One reactive core, one release train, one set of docs. Here are the ones people start with.",
    "featured": [
     {
@@ -583,7 +583,7 @@ export const checked = {
    ],
    "pitchesFrom": "content/_products.json#products[].pitch",
    "link": {
-    "label": "See all 40 products",
+    "label": "See all 41 products",
     "href": "/products"
    }
   },
