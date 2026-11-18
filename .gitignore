@@ -101,3 +101,8 @@ loom-report.json
 # gradle builds in the native example apps
 .kotlin/
 publish-result.json
+
+# scripts/scaffold-smoke.ts scaffolds its non-isolated cells here (removed
+# after each cell; ignored so an interrupted or --keep run never shows up as
+# untracked source).
+examples/cpa-smoke-*/
