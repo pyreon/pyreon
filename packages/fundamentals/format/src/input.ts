@@ -177,7 +177,10 @@ export function toMillis(value: unknown): number {
     const t = parseIso(value)
     return t === t && Math.abs(t) <= MAX_TIME ? t : NaN
   }
-  if (value instanceof Date) return value.getTime()
+  // `instanceof` misses a Date from another realm (an iframe, a vm context).
+  if (value instanceof Date || Object.prototype.toString.call(value) === '[object Date]') {
+    return (value as Date).getTime()
+  }
 
   return NaN
 }

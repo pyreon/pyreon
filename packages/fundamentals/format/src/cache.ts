@@ -98,7 +98,8 @@ export function resolve<F>(
   options: object | string | undefined,
 ): F {
   const slot = slotFor(table, locale, variant)
-  if (options === undefined) {
+  // `null` options (from untyped callers) mean "none", like `undefined`.
+  if (options === undefined || options === null) {
     return slot.def ?? (slot.def = table.build(locale, variant, undefined))
   }
   if (typeof options === 'string') {

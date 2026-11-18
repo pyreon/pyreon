@@ -111,6 +111,23 @@ describe('invalid input returns the fallback with a dev warning, once', () => {
   })
 })
 
+describe('untyped callers', () => {
+  it('null options mean no options', () => {
+    expect(core.formatNumber(1234.5, null as never)).toBe(new Intl.NumberFormat().format(1234.5))
+    expect(core.formatDate(0, null as never)).toBe(new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(0))
+    expect(core.formatCurrency(1, 'EUR', null as never)).toBe(new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(1))
+    expect(core.formatDuration(1000, null as never)).toBe(core.formatDuration(1000))
+    expect(core.formatList(['a'], null as never)).toBe('a')
+  })
+
+  it('a Date from another realm is still a Date', async () => {
+    const vm = await import('node:vm')
+    const foreign = vm.runInNewContext('new Date(86400000)') as Date
+    expect(foreign instanceof Date).toBe(false)
+    expect(core.formatDate(foreign, { locale: 'en-US', timeZone: 'UTC' })).toBe('Jan 2, 1970')
+  })
+})
+
 describe('production is silent', () => {
   it('no warnings for any invalid input', () => {
     process.env.NODE_ENV = 'production'
