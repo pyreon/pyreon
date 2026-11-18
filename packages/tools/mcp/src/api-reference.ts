@@ -8490,7 +8490,7 @@ const s = new StyleSheet({ /* options */ })`,
     signature: 'sheet: StyleSheet',
     example: `import { sheet } from "@pyreon/styler"
 // SSR: render the app, then read the collected rules off \`sheet\` for the <head>`,
-    notes: 'The process-wide singleton `StyleSheet` that `styled()` / `css` / `keyframes` / `createGlobalStyle` inject into by default. For SSR, render the app and then emit `sheet.getStyleTag(nonce?)` (a complete `<style>` tag) or `sheet.getStyles()` (the CSS text) into the document head; do not mutate it directly. See also: StyleSheet, createSheet.',
+    notes: 'The process-wide singleton `StyleSheet` that `styled()` / `css` / `keyframes` / `createGlobalStyle` inject into by default. For SSR, render the app and then emit `sheet.getStyleTag(nonce?)` (a complete `<style>` tag) or `sheet.getStyles()` (the CSS text) into the document head; do not mutate it directly. `sheet.setRootVariables(css)` owns ONE replaceable root-variables block (what `<PyreonUI>` writes its `cssVariables` `:root` block into): each call replaces the previous block, server side it is per request and emitted first. See also: StyleSheet, createSheet.',
   },
 
   'styler/resolve': {

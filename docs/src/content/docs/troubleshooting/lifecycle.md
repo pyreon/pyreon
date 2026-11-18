@@ -83,6 +83,12 @@ Solid-compat's `onCleanup` always meant "component unmount", so a cleanup regist
 
 ---
 
+### Keeping a block whose CONTENT changes under a stable identity in an append-only, content-keyed store
+
+`<PyreonUI>` under `cssVariables` injected each theme's `:root { --px-… }` block with `sheet.injectRules([css], css)`. The variable NAMES depend only on the theme path, so every block redefined the same names and the last INSERTED one won: theme A -&gt; B -&gt; A inserted nothing the third time (A's text was already "injected") and the page kept showing B, while the sheet (and, server side, the process-lifetime rule map) grew by one block per distinct theme. After `clearCache()`, SSR also stopped emitting the block (the dedup set survived, the rules did not). Rule: a block that represents CURRENT state ("the theme now") gets one owned, replaceable slot keyed by its role, not by its content: `sheet.setRootVariables(css)`. Reference: `packages/ui-system/styler/src/sheet.ts`, `packages/ui-system/ui-core/src/PyreonUI.tsx`; locked by `rocketstyle/src/__tests__/css-variables-theme-swap.browser.test.tsx` and `styler/src/__tests__/sheet-root-variables.test.ts`.
+
+---
+
 ### Two sources suspending one timer through one shared flag
 
 `<Toaster>` paused auto-dismiss on hover and focus through a single `_paused` boolean, so `mouseleave` cleared a keyboard user's focus hold and the toast dismissed under them. Key holds by source identity (`'hover' | 'focus' | 'hidden'`), release individually, restart the clock only when the set is empty. Do not use a depth counter: removing a focused element need not fire `focusout`, so a count can stick above zero and freeze every later toast, while a stranded `'focus'` hold is cleared by the next `focusout`. Pause while the tab is hidden (`visibilitychange`), make the handler idempotent against its own last-known state, read `document.visibilityState` at setup, and release a held hold in `onCleanup`. `document.visibilityState` is read-only in a real browser, so the spec redefines it — read it back before asserting. Reference: `packages/fundamentals/toast/src/toast.ts` (`PauseSource`, `_pauseHolds`) + `toaster.tsx` (`syncVisibility`); `tests/pause-sources.test.ts` + `tests/toaster.browser.test.tsx`.
