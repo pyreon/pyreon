@@ -270,6 +270,9 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
       indentOnInput(),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       indentUnit.of(' '.repeat(configTabSize)),
+      // The indent unit alone leaves a TAB character at CodeMirror's default
+      // width of 4 columns; `tabSize` has to set both.
+      EditorState.tabSize.of(configTabSize),
 
       // Accessible name for the content textbox — CM sets role="textbox" +
       // aria-multiline but no name, so a screen reader announces just
