@@ -69,6 +69,8 @@ import {
 	scanRouteFilesWithExports,
 	invalidateRouteScanCache,
 	assertHydrateExports,
+	applyHydrateRules,
+	everyPageIslandsOnly,
 	assertRouteFileShapes,
 } from "./fs-router";
 import { validateZeroConfig } from "./config-validation";
@@ -266,6 +268,12 @@ export function matchesProxyContext(
  */
 let _indexHtmlCache: string | null = null;
 
+/**
+ * The custom HMR event an islands-only page reloads on (#4371): a module the
+ * dev server rendered with changed. Mirrored in `client-marker.ts`.
+ */
+export const ISLANDS_ONLY_SSR_UPDATE_EVENT = "pyreon:ssr-update";
+
 /** `zero()`'s accepted config: `ZeroConfig` plus the `mode: 'auto'` input. */
 export type ZeroUserConfig = Omit<ZeroConfig, 'mode'> & {
 	/** Render mode — or 'auto' (EXPERIMENTAL): infer per route from exports. */
@@ -335,10 +343,22 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 				? expandRoutesForLocales(baseRoutes, config.i18n)
 				: baseRoutes;
 			// mode: 'auto' — inference-as-declaration (see zeroPlugin head).
-			const routes = config._autoMode ? applyModeInference(expandedRoutes, config.routeRules) : expandedRoutes;
-			// `export const hydrate` (#4371): a literal, and never on a page
-			// rendered 'spa'. Same file-level mode resolution as the mode table.
-			assertHydrateExports(routes, config.mode ?? "ssr", config.routeRules);
+			const modeRoutes = config._autoMode ? applyModeInference(expandedRoutes, config.routeRules) : expandedRoutes;
+			// `export const hydrate` and `routeRules` `hydrate` (#4371): a valid
+			// value, and never on a page rendered 'spa'. Same file-level mode
+			// resolution as the mode table. Then a rule's `hydrate` is stamped
+			// onto the pages it governs, as if they exported it.
+			assertHydrateExports(modeRoutes, config.mode ?? "ssr", config.routeRules);
+			const routes = applyHydrateRules(modeRoutes, config.routeRules);
+			// Every page islands-only: the browser never starts the app, so the
+			// CLIENT build gets no route code. A `routes: () => import(
+			// 'virtual:zero/routes')` in the entry then puts nothing of the app
+			// into the client graph, whose chunks (and global tree-shaking) would
+			// otherwise be shaped by code no page loads: on pyreon.dev that cost
+			// every page about 9 KB gzip. The server graph keeps every route.
+			if (isBuild && !ssr && everyPageIslandsOnly(routes, config.routeRules)) {
+				return "export const routes = []";
+			}
 			// Build-time ISR safety: an isr-mode route whose source reads
 			// request cookie/authorization state is per-user — with the
 			// default cache key (or 'path-only') the runtime REFUSES to
@@ -447,13 +467,32 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 			}
 		},
 
-		handleHotUpdate(ctx) {
+		// `hotUpdate` (not the legacy `handleHotUpdate`: Vite calls only one of
+		// the two per plugin) runs once per environment.
+		hotUpdate(options) {
 			// Invalidate cached index.html when the file itself OR any of its
 			// imported deps change. Vite calls this per-file change; we filter
 			// to just `<root>/index.html`. Cache stays warm across all other
 			// HMR updates (user code, deps, etc.).
-			if (ctx.file === `${root}/index.html`) {
+			if (options.file === `${root}/index.html`) {
 				_indexHtmlCache = null;
+			}
+			// Islands-only pages (#4371): the browser never loads the route's
+			// code, so an edit to a module the SERVER rendered with (the route,
+			// its layout, a component) has no client module to hot-swap, and
+			// Vite sends nothing: the page stayed stale until a manual reload.
+			// Tell the browser instead; an islands-only page reloads to get the
+			// new server HTML (client-marker.ts), an app page ignores it.
+			if (
+				this.environment.name === "ssr" &&
+				options.type === "update" &&
+				options.modules.length > 0
+			) {
+				options.server.environments.client.hot.send({
+					type: "custom",
+					event: ISLANDS_ONLY_SSR_UPDATE_EVENT,
+					data: { file: options.file },
+				});
 			}
 			// NOTE: typed-routes regen is NOT wired here. `handleHotUpdate` fires
 			// only for Vite `type: "update"` (content EDITS), never for add/delete

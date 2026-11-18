@@ -16,6 +16,8 @@ import { type IslandsOnlyOptions, isIslandsOnlyPage, startIslandsOnlyPage } from
 
 export type { IslandRootLoader, IslandsOnlyOptions, IslandsRegistry } from './client-marker'
 
+declare const __ZERO_APP_PAGES__: boolean | undefined
+
 export interface StartClientLazyOptions extends IslandsOnlyOptions {
   /**
    * Loads the route definitions, called only on a page that starts the app:
@@ -45,6 +47,12 @@ export function startClientLazy(options: StartClientLazyOptions): () => void {
   if (isServer) {
     throw new Error('[Pyreon] startClientLazy() can only be called in the browser.')
   }
+  // `__ZERO_APP_PAGES__` is `false` when every page is islands-only
+  // (client-flags-plugin.ts): the app path below then compiles out, and the
+  // router with it. Undefined outside a zero build: keep the app path.
+  // The constant check first, on its own: folded to `if (true) return`, the
+  // minifier drops everything below it.
+  if (typeof __ZERO_APP_PAGES__ !== 'undefined' && !__ZERO_APP_PAGES__) return startIslandsOnlyPage(options)
   if (isIslandsOnlyPage()) return startIslandsOnlyPage(options)
 
   let disposed = false

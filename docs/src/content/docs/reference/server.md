@@ -90,6 +90,7 @@ function useUser() {
 | [`useRequestLocals`](#userequestlocals-function) | function | Read middleware `ctx.locals` inside components during SSR (and inside server-island fragments / server loaders). |
 | [`hydrateIslands`](#hydrateislands-function) | function | Client-side counterpart to `island()`. |
 | [`hydrateIslandsAuto`](#hydrateislandsauto-function) | function | Auto-discovered counterpart to `hydrateIslands()`. |
+| [`islandsOnlyPages`](#islandsonlypages-function) | function | Islands-only page support for `@pyreon/server`'s own `startClient` (apps without `@pyreon/zero`). |
 | [`prerender`](#prerender-function) | function | Static-site generator built on `createHandler`. |
 
 ## API
@@ -100,7 +101,7 @@ function useUser() {
 createHandler(options: HandlerOptions): (req: Request) => Promise<Response>
 ```
 
-Build a production SSR handler from your `App`, `routes`, and optional template / client entry / middleware. The template is precompiled once at handler-creation (split into 4 parts to skip three string scans per request); a missing `<!--pyreon-app-->` placeholder throws at creation time, not per request. Middleware runs before render with `ctx.locals` for cross-middleware data passing — return a `Response` to short-circuit the chain. `mode: "stream"` uses `renderToStream` so Suspense boundaries flush out-of-order; `mode: "string"` uses `renderToString` (default). `onError(error, { request, phase })` receives every unexpected server error (`phase`: `middleware` — including API routes —, `render`, `stream`, `action` from zero server actions, or `reported` via `ctx.reportError`) to forward to Sentry / OpenTelemetry; it runs after the console line, never changes the 500 response, and a throwing hook is caught.
+Build a production SSR handler from your `App`, `routes`, and optional template / client entry / middleware. The template is precompiled once at handler-creation (split into 4 parts to skip three string scans per request); a missing `<!--pyreon-app-->` placeholder throws at creation time, not per request. Middleware runs before render with `ctx.locals` for cross-middleware data passing — return a `Response` to short-circuit the chain. `mode: "stream"` uses `renderToStream` so Suspense boundaries flush out-of-order; `mode: "string"` uses `renderToString` (default). `onError(error, { request, phase })` receives every unexpected server error (`phase`: `middleware` — including API routes —, `render`, `stream`, `action` from zero server actions, or `reported` via `ctx.reportError`) to forward to Sentry / OpenTelemetry; it runs after the console line, never changes the 500 response, and a throwing hook is caught. `clientPreload: { app?, islands? }` (base-prefixed hrefs) emits `<link rel=modulepreload>` for what the client entry loads with a dynamic import, per page kind: `app` on a page that starts the app, `islands` on an islands-only page with an island to hydrate (string mode in the head; streaming puts the app set in the head and the islands set before the scripts). `@pyreon/zero` fills it from the client manifest for `startClientLazy`.
 
 **Example**
 
@@ -354,6 +355,33 @@ hydrateIslandsAuto(registry)
 - Setting `pyreon({ islands: false })` and still calling `hydrateIslandsAuto()` — the plugin emits a stub registry that throws at runtime with a clear error message. Either re-enable islands (the default) or use `hydrateIslands({ ... })` instead.
 
 **See also:** `hydrateIslands` · `island`
+
+---
+
+### `islandsOnlyPages` `function`
+
+```ts
+islandsOnlyPages(start: () => () => void): IslandsOnlyPages
+```
+
+Islands-only page support for `@pyreon/server`'s own `startClient` (apps without `@pyreon/zero`). Pass the result as `startClient({ App, routes, islandsOnly })`: on a page the server marked islands-only (route `meta: { hydrate: 'islands' }`, so `createHandler` wrote `<meta name="pyreon-hydrate" content="islands">` and no loader data), `start` runs INSTEAD of the app (no router, no tree hydration) and its return is the cleanup; on an app page a client-side navigation to an islands-only route becomes a full page load (never for the current path). A separate function so the marker check, the guard and the islands runtime enter a bundle only when the app imports it: an app that never uses the mode pays 47 B gzip in `startClient` (measured, Vite production build). Without it, a marked page starts the whole app and warns in dev. `ISLANDS_ONLY_SELECTOR` is the matching CSS selector.
+
+**Example**
+
+```tsx
+// src/entry-client.ts
+import { hydrateIslandsAuto, islandsOnlyPages, startClient } from "@pyreon/server/client"
+import * as registry from "virtual:pyreon/islands-registry"
+
+startClient({ App, routes, islandsOnly: islandsOnlyPages(() => hydrateIslandsAuto(registry, { root: () => import("./IslandRoot") })) })
+```
+
+**Common mistakes**
+
+- Calling `startClient({ App, routes })` alone on an app with islands-only routes: a marked page has no loader data, so the app re-runs the loaders in the browser and hydrates a page that was meant to stay static. Pass `islandsOnly`.
+- `<RouterLink>` inside an island on an islands-only page: there is no router there. Use `<a href>`.
+
+**See also:** `hydrateIslandsAuto` · `renderPage` · `createHandler`
 
 ---
 

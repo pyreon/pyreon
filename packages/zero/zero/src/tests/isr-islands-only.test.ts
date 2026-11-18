@@ -42,3 +42,56 @@ describe('ISR — islands-only pages', () => {
     }
   })
 })
+
+/**
+ * Client-start preloads (#4371) through zero's own server: `createServer`
+ * hands the build's `__ZERO_CLIENT_PRELOAD__` to the handler, so an app page
+ * preloads the lazy entry's app chunks and an islands-only page never does.
+ * Under ISR the cache stores each render with its own set: a HIT must carry
+ * exactly what its MISS carried.
+ */
+describe('ISR — client-start preloads per page kind', () => {
+  const TEMPLATE =
+    '<!doctype html><html><head><!--pyreon-head--><script type="module" src="/assets/entry.js"></script></head>' +
+    '<body><div id="app"><!--pyreon-app--></div><!--pyreon-scripts--></body></html>'
+  const PRELOAD = { app: ['/assets/client-A.js', '/assets/routes-B.js'], islands: ['/assets/client-islands-C.js'] }
+  const g = globalThis as { __ZERO_CLIENT_PRELOAD__?: unknown }
+  const preloadsOf = (html: string): string[] =>
+    [...html.matchAll(/<link rel="modulepreload" href="([^"]+)"/g)].map((m) => m[1] as string)
+
+  it('MISS and HIT carry the preload set of their own page kind', async () => {
+    const { createServer } = await import('../entry-server')
+    g.__ZERO_CLIENT_PRELOAD__ = PRELOAD
+    try {
+      const server = createServer({
+        routes,
+        config: { mode: 'isr', isr: { revalidate: 60 } },
+        template: TEMPLATE,
+        clientEntry: false,
+      })
+      for (const round of ['MISS', 'HIT']) {
+        const appRes = await server(new Request('http://localhost/app'))
+        const staticRes = await server(new Request('http://localhost/static'))
+        expect(appRes.headers.get('x-isr-cache')).toBe(round)
+        expect(staticRes.headers.get('x-isr-cache')).toBe(round)
+        expect(preloadsOf(await appRes.text())).toEqual(PRELOAD.app)
+        // No island on this page: nothing to hydrate, so nothing to preload,
+        // and never the app's chunks.
+        expect(preloadsOf(await staticRes.text())).toEqual([])
+      }
+    } finally {
+      delete g.__ZERO_CLIENT_PRELOAD__
+    }
+  })
+
+  it('a dev client entry (not the built one) gets no preloads', async () => {
+    const { createServer } = await import('../entry-server')
+    g.__ZERO_CLIENT_PRELOAD__ = PRELOAD
+    try {
+      const server = createServer({ routes, config: { mode: 'ssr' }, template: TEMPLATE })
+      expect(preloadsOf(await (await server(new Request('http://localhost/app'))).text())).toEqual([])
+    } finally {
+      delete g.__ZERO_CLIENT_PRELOAD__
+    }
+  })
+})

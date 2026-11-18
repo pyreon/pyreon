@@ -305,15 +305,18 @@ const SUITES: Suite[] = [
     ],
   },
   {
-    // Islands-only pages (#4371): a real SSG build of zero's own fixture,
-    // served per route. Built from zero's SOURCE by the fixture's build.ts.
+    // Islands-only pages (#4371): zero's own fixture as a real SSG build
+    // served per route, a real SSR build run by `node`, and the dev server
+    // (HMR). Built from zero's SOURCE by the fixture's build.ts / dev.ts.
     name: 'zero-islands-only',
     script: 'test:e2e:zero-islands-only',
     triggers: [
       ...RENDER_CORE,
       'packages/core/server/',
       'packages/zero/zero/',
+      'packages/tools/vite-plugin/',
       'e2e/zero-islands-only.spec.ts',
+      'e2e-configs/zero-islands-only.config.ts',
     ],
   },
   {

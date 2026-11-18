@@ -103,14 +103,15 @@ describe('islands-only pages — built SSG output', () => {
 
   it('an islands-only page preloads the islands runtime it starts from', () => {
     const files = declared(page('/static'))
-    expect([...files].some((f) => f.startsWith('client-islands-'))).toBe(true)
+    // zero groups `client-islands` with `@pyreon/server/client` (client-flags-plugin.ts).
+    expect([...files].some((f) => f.startsWith('islands-runtime-'))).toBe(true)
   })
 
   it('an islands-only page with no islands declares nothing but the entry', () => {
     const html = page('/empty')
     expect(html).toContain('<meta name="pyreon-hydrate" content="islands">')
     expect(preloads(html).filter((f) => !closure([entryOf(html)]).has(f))).toEqual([])
-    expect([...declared(html)].some((f) => f.startsWith('client-islands-'))).toBe(false)
+    expect([...declared(html)].some((f) => f.startsWith('islands-runtime-'))).toBe(false)
   })
 
   it('an app page is unchanged: loader data, its route, the router and the app it starts', () => {

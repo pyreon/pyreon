@@ -131,7 +131,7 @@ export default {
 | `ssr.mode`   | `"stream" \| "string"`                                                        | `"string"` | SSR output mode. `"stream"` flushes the shell first and streams Suspense boundaries — opt in with `ssr: { mode: 'stream' }`. ISR routes always render buffered (the cache stores complete responses) regardless of this setting |
 | `ssg`        | `{ paths?, format?, modulePreload?, speculationRules?, viewTransitions?, cssMode?, earlyHints?, emit404?, emitRedirects?, redirectsAsHtml?, onPathError?, errorArtifact?, concurrency?, workers?, onProgress?, splitChunks? }` | `{}` | SSG options — see **[SSG](/docs/ssg)** |
 | `isr`        | `ISRConfig` (`{ revalidate, maxEntries?, revalidateTimeoutMs?, cacheKey?, expireOnTimeout?, store?, revalidateRequest?, tagsForRequest? }`) | —       | Runtime ISR config (only used when `mode: "isr"`)            |
-| `routeRules` | `Record<string, { renderMode?: RenderMode }>`                                 | —       | Central glob-keyed per-path render-mode overrides (`'*'` = one segment, `'**'` = any depth). Applies only to routes without their own `renderMode` export — precedence is route-file export > `routeRules` > app `mode`. See [Per-route render modes](#per-route-render-modes-hybrid-rendering) |
+| `routeRules` | `Record<string, { renderMode?: RenderMode; hydrate?: 'islands' \| 'app' }>`  | —       | Central glob-keyed per-path overrides (`'*'` = one segment, `'**'` = any depth) of the render mode and of [islands-only hydration](#islands-only-pages-export-const-hydrate-islands). Each applies only to routes without their own export (a `_layout` export counts) — precedence is route-file export > `routeRules` > app `mode`. See [Per-route render modes](#per-route-render-modes-hybrid-rendering) |
 | `adapter`    | `"node" \| "bun" \| "deno" \| "static" \| "vercel" \| "cloudflare" \| "netlify" \| Adapter` | auto     | Deployment adapter (name or constructed instance, e.g. `adapter: vercelAdapter()`). When unset, the build platform is auto-detected from its env (`VERCEL` / `NETLIFY` / `CF_PAGES`) and that adapter is used — local/self-hosted builds default to `"node"` |
 | `base`       | `string`                                                                      | `"/"`   | Base URL path — single source of truth (see [Base Path](#base-path)) |
 | `i18n`       | `I18nRoutingConfig`                                                           | —       | Build-time locale-prefixed route duplication (fans every route into per-locale copies at build) — see **[SSG → i18n](/docs/ssg#i18n-localized-routes)**. Independent of the `i18nRouting()` Vite plugin below, which only does request-time locale detection — the two compose |
@@ -611,9 +611,25 @@ startClientLazy({
 })
 ```
 
-`startClient({ routes, islands })` honours islands-only pages too, but its static `routes` import keeps the router and the layouts in the entry, so they still download there. On an SSG build, app pages preload the app chunks and islands-only pages preload the islands runtime. On SSR/ISR the lazy entry costs app pages one extra round trip, because the server does not preload those chunks.
+`startClient({ routes, islands })` honours islands-only pages too, but its static `routes` import keeps the router and the layouts in the entry, so they still download there. Every page preloads what its client starts from, so the lazy entry costs no extra round trip: app pages preload the app chunks and islands-only pages with an island preload the islands runtime, whether the page was prerendered (SSG), rendered per request (SSR, string or streaming) or served from the ISR cache (each cache entry keeps the set of its own page kind).
 
-`hydrate` must be a string literal, and a page that renders `'spa'` (by its own `renderMode`, a layout, `routeRules` or the app mode) cannot be islands-only: it has no server HTML to keep. Both fail when the routes module loads, naming the file. A build whose route files never export `hydrate` compiles this support out of `startClient`.
+To declare it centrally instead of in route files, use `routeRules`, with the same precedence `renderMode` has (a page's or a `_layout`'s own `hydrate` export wins over the rule; the most specific rule wins among rules):
+
+```ts
+zero({
+  mode: 'ssg',
+  routeRules: {
+    '/docs/**': { hydrate: 'islands' },
+    '/docs/playground': { hydrate: 'app' },
+  },
+})
+```
+
+`hydrate` must be a string literal (`'islands'` or `'app'`, in a rule too), and a page that renders `'spa'` (by its own `renderMode`, a layout, `routeRules` or the app mode) cannot be islands-only: it has no server HTML to keep. Both fail when the routes module loads, naming the file or the rule. A build whose route files and rules never declare `hydrate` compiles this support out of `startClient`.
+
+**When every page is islands-only** (a content site: `export const hydrate = 'islands'` on the root `_layout`, or a `'/**'` rule), no page ever starts the app, and the production client build carries none of it: the client routes module is empty, and `startClientLazy`'s app path, with the router, compiles out. The islands runtime is one chunk. Keep the same entry; nothing changes in the code.
+
+**Dev.** Islands-only pages render through dev SSR like any page. The browser never loads their route code, so there is nothing to hot-swap when the route, its layout or a component the server rendered changes: the page reloads instead, to get the new server HTML. App pages are unaffected.
 
 ### Streaming is opt-in (`ssr: { mode: 'stream' }`)
 

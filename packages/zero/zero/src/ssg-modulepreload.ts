@@ -196,7 +196,11 @@ export function computeEntryHrefs(manifest: ViteManifest, base: string): Set<str
 export function computeClientStartKeys(manifest: ViteManifest): { app: string[]; islands: string[] } {
   const entryKey = Object.keys(manifest).find((k) => manifest[k]?.isEntry)
   const dynamic = (entryKey ? manifest[entryKey]?.dynamicImports : undefined) ?? []
-  const islands = dynamic.filter((k) => /(?:^|\/)client-islands(?:-[\w-]+)?\.[cm]?[jt]s$/.test(k))
+  // `client-islands` by its module path, or the `islands-runtime` chunk zero
+  // groups it into (client-flags-plugin.ts), which the manifest keys by file.
+  const islands = dynamic.filter((k) =>
+    /(?:^|\/)client-islands(?:-[\w-]+)?\.[cm]?[jt]s$|(?:^|\/)_islands-runtime-[\w-]+\.js$/.test(k),
+  )
   // The virtual module's key can carry a relative prefix
   // (`../../virtual:zero/routes`), depending on the build root.
   const isRoutes = (k: string): boolean => /(?:^|\/)virtual:zero\/routes$/.test(k)
@@ -229,4 +233,26 @@ export function renderModulePreloadLinks(hrefs: readonly string[]): string {
   return hrefs
     .map((href) => `<link rel="modulepreload" href="${href}" crossorigin>`)
     .join('\n')
+}
+
+/**
+ * The client-start preload sets for server-rendered pages (#4371): the hrefs
+ * an SSG page of each kind adds (see `computeClientStartKeys`), computed once
+ * per build from the client manifest and the built template, so a page the
+ * server renders per request preloads exactly what the same page prerendered
+ * would. Empty sets when the entry is not lazy (`startClient`'s app is in the
+ * entry's static graph, which the template already preloads).
+ */
+export function computeClientStartPreload(
+  manifest: ViteManifest,
+  templateHtml: string,
+  base: string,
+): { app: string[]; islands: string[] } {
+  const already = new Set([...computeEntryHrefs(manifest, base), ...parseExistingModulePreloads(templateHtml)])
+  const keys = computeClientStartKeys(manifest)
+
+  return {
+    app: computeKeysPreloadHrefs(manifest, keys.app, base, already),
+    islands: computeKeysPreloadHrefs(manifest, keys.islands, base, already),
+  }
 }

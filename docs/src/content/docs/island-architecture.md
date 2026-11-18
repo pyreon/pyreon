@@ -388,6 +388,17 @@ export default function Post() {
 
 A zero page whose only interactive parts are islands can skip the app entirely: `export const hydrate = 'islands'` on the route (or its `_layout`) makes it static HTML plus its islands, with no router, no route code and no loader-data blob in the browser. The islands then hydrate from the auto-registry, which the client entry passes in (`startClientLazy({ routes: () => import('virtual:zero/routes'), islands })`). An island there is its own root, so one that reads context (a theme) gets its providers from `islandRoot`. See [Zero → Islands-only pages](/docs/zero#islands-only-pages-export-const-hydrate-islands).
 
+Without zero, a route declares `meta: { hydrate: 'islands' }` and `createHandler` renders it the same way. Tell `@pyreon/server`'s `startClient` what to run on such a page instead of the app:
+
+```ts
+import { hydrateIslandsAuto, islandsOnlyPages, startClient } from '@pyreon/server/client'
+import * as registry from 'virtual:pyreon/islands-registry'
+
+startClient({ App, routes, islandsOnly: islandsOnlyPages(() => hydrateIslandsAuto(registry)) })
+```
+
+On a marked page only the islands hydrate (no router, no tree hydration), and on an app page a client-side navigation to an islands-only route becomes a full page load. It is a separate import so an app that never uses islands-only pages ships none of it.
+
 The inverse pattern — a cacheable page with per-request **server**-rendered holes — is **server islands** (`serverIsland()`). That's a different feature; see [Zero → Server Islands](/docs/zero#server-islands).
 
 ## Island lifecycle

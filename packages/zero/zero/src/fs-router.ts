@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import type { FileRoute, RenderMode, RouteFileExports } from './types'
 import { jsStringLiteral } from './codegen-literal'
 import { ROUTE_GATE_TAG, routeGateId } from './route-gate'
-import { matchRouteRules } from './route-modes'
+import { matchRouteRule, matchRouteRules } from './route-modes'
 
 // `filePathToUrlPath` + `ROUTE_EXTENSIONS` are the fs-route CONVENTION —
 // single-sourced from `@pyreon/compiler/fs-route-convention` (a pure,
@@ -1845,48 +1845,34 @@ export function assertRouteFileShapes(routes: readonly FileRoute[]): void {
 
 type HydrateValue = 'islands' | 'app'
 
+const isHydrateValue = (v: unknown): v is HydrateValue => v === 'islands' || v === 'app'
+
 function hydrateValueOf(r: FileRoute): HydrateValue | 'invalid' | undefined {
   const exp = r.exports
   if (!exp?.hasHydrate) return undefined
   const lit = exp.hydrateLiteral?.replace(/^['"`]|['"`]$/g, '')
 
-  return lit === 'islands' || lit === 'app' ? lit : 'invalid'
+  return isHydrateValue(lit) ? lit : 'invalid'
 }
 
+/** Where a page's effective `hydrate` comes from: its own export, a `_layout`, or a `routeRules` glob. */
+type HydrateSource = { value: HydrateValue; via: 'file' | 'layout' | 'rule'; glob?: string }
+
 /**
- * `export const hydrate = 'islands' | 'app'` (#4371) — the checks the build
- * needs before it can honour the declaration, run wherever the routes module
- * is generated (dev and every build):
- *
- *   - the value is a string literal, `'islands'` or `'app'`: the server, the
- *     SSG and the client read it from the route record without running the
- *     route module, so a computed value would silently do nothing;
- *   - an islands-only page is not rendered `spa`: an SPA page has no server
- *     HTML to keep, so "static HTML plus its islands" cannot exist there.
- *
- * The cascade matches the runtime's merged `route.meta` (the page's own
- * declaration, else its nearest `_layout`'s); the render mode comes from the
- * one file-level resolver (`createFileRouteModeResolver`), so routeRules and
- * `mode: 'auto'` are covered. Throws one `[Pyreon]` error listing every file.
+ * The effective `hydrate` of every page, with the precedence `renderMode`
+ * has (`createFileRouteModeResolver`): the page's own export > the nearest
+ * `_layout`'s > the most specific `routeRules` glob > default (`'app'`,
+ * reported as undefined). Invalid declarations are skipped here; the
+ * assertion reports them.
  */
-export function assertHydrateExports(
+function createHydrateResolver(
   routes: readonly FileRoute[],
-  appMode: RenderMode | 'auto',
-  rules?: import('./route-modes').RouteRules,
-): void {
-  const problems: string[] = []
+  rules: import('./route-modes').RouteRules | undefined,
+): (r: FileRoute) => HydrateSource | undefined {
   const layoutHydrate = new Map<string, HydrateValue>()
   for (const r of routes) {
     const value = hydrateValueOf(r)
-    if (value === 'invalid') {
-      problems.push(
-        r.exports?.hydrateLiteral === undefined
-          ? `"${r.filePath}": \`hydrate\` must be a string literal (\`export const hydrate = 'islands'\`): the build reads it without running the module.`
-          : `"${r.filePath}": \`hydrate = ${r.exports.hydrateLiteral}\` is not a hydration mode. Use 'islands' or 'app'.`,
-      )
-    } else if (value !== undefined && r.isLayout) {
-      layoutHydrate.set(r.dirPath, value)
-    }
+    if (r.isLayout && isHydrateValue(value)) layoutHydrate.set(r.dirPath, value)
   }
   const nearestLayout = (dirPath: string): HydrateValue | undefined => {
     let dir = dirPath
@@ -1898,21 +1884,152 @@ export function assertHydrateExports(
       dir = i === -1 ? '' : dir.slice(0, i)
     }
   }
+
+  return (r) => {
+    const own = hydrateValueOf(r)
+    if (isHydrateValue(own)) return { value: own, via: 'file' }
+    const layout = nearestLayout(r.dirPath)
+    if (layout) return { value: layout, via: 'layout' }
+    const rule = matchRouteRule(rules, r.urlPath, 'hydrate')
+    if (rule && isHydrateValue(rule.value)) return { value: rule.value, via: 'rule', glob: rule.glob }
+
+    return undefined
+  }
+}
+
+/** A non-literal or unknown `hydrate` export, and an unknown rule value: one message each. */
+function invalidHydrateDeclarations(
+  routes: readonly FileRoute[],
+  rules: import('./route-modes').RouteRules | undefined,
+): string[] {
+  const problems: string[] = []
+  for (const r of routes) {
+    if (hydrateValueOf(r) !== 'invalid') continue
+    problems.push(
+      r.exports?.hydrateLiteral === undefined
+        ? `"${r.filePath}": \`hydrate\` must be a string literal (\`export const hydrate = 'islands'\`): the build reads it without running the module.`
+        : `"${r.filePath}": \`hydrate = ${r.exports.hydrateLiteral}\` is not a hydration mode. Use 'islands' or 'app'.`,
+    )
+  }
+  for (const [glob, rule] of Object.entries(rules ?? {})) {
+    const value = (rule as { hydrate?: unknown } | undefined)?.hydrate
+    if (value === undefined || isHydrateValue(value)) continue
+    problems.push(
+      `routeRules[${JSON.stringify(glob)}].hydrate = ${JSON.stringify(value) ?? String(value)} is not a hydration mode. Use 'islands' or 'app'.`,
+    )
+  }
+
+  return problems
+}
+
+/** `''` for the page's own export, else where the page inherited `hydrate` from. */
+function hydrateSourceLabel(source: HydrateSource): string {
+  if (source.via === 'file') return ''
+  if (source.via === 'layout') return ', from its _layout'
+
+  return `, from routeRules[${JSON.stringify(source.glob)}]`
+}
+
+/**
+ * `export const hydrate = 'islands' | 'app'` and `routeRules: { '/x/**': {
+ * hydrate } }` (#4371) — the checks the build needs before it can honour the
+ * declaration, run wherever the routes module is generated (dev and every
+ * build):
+ *
+ *   - the value is `'islands'` or `'app'`, and an export is a string literal:
+ *     the server, the SSG and the client read it from the route record
+ *     without running the route module, so a computed value would silently
+ *     do nothing;
+ *   - an islands-only page is not rendered `spa`: an SPA page has no server
+ *     HTML to keep, so "static HTML plus its islands" cannot exist there.
+ *
+ * The cascade matches the runtime's merged `route.meta` (the page's own
+ * declaration, else its nearest `_layout`'s, else the rule `applyHydrateRules`
+ * stamps); the render mode comes from the one file-level resolver
+ * (`createFileRouteModeResolver`), so routeRules and `mode: 'auto'` are
+ * covered. Throws one `[Pyreon]` error listing every file and rule.
+ */
+export function assertHydrateExports(
+  routes: readonly FileRoute[],
+  appMode: RenderMode | 'auto',
+  rules?: import('./route-modes').RouteRules,
+): void {
+  const problems = invalidHydrateDeclarations(routes, rules)
+  const resolveHydrate = createHydrateResolver(routes, rules)
   const resolveMode = createFileRouteModeResolver(routes, appMode, rules)
   for (const r of routes) {
     if (r.isLayout || r.isError || r.isLoading || r.isNotFound) continue
-    const own = hydrateValueOf(r)
-    const effective = own === 'islands' || own === 'app' ? own : nearestLayout(r.dirPath)
-    if (effective !== 'islands') continue
+    const effective = resolveHydrate(r)
+    if (effective?.value !== 'islands') continue
     if (resolveMode(r).mode !== 'spa') continue
+    const from = hydrateSourceLabel(effective)
     problems.push(
-      `"${r.filePath}" (${r.urlPath}) is islands-only (\`hydrate = 'islands'\`${own === 'islands' ? '' : ', from its _layout'}) but renders as 'spa', which has no server HTML to keep. ` +
+      `"${r.filePath}" (${r.urlPath}) is islands-only (\`hydrate = 'islands'\`${from}) but renders as 'spa', which has no server HTML to keep. ` +
         `Give it a server render mode (\`export const renderMode = 'ssg'\`), or \`export const hydrate = 'app'\` in the page.`,
     )
   }
   if (problems.length > 0) {
-    throw new Error(`[Pyreon] Invalid \`hydrate\` export(s):\n${problems.map((p) => `  - ${p}`).join('\n')}`)
+    throw new Error(`[Pyreon] Invalid \`hydrate\` declaration(s):\n${problems.map((p) => `  - ${p}`).join('\n')}`)
   }
+}
+
+/**
+ * True when every page of the app is islands-only (#4371): every page route
+ * resolves `hydrate` to `'islands'` (its own export, a `_layout`, or a
+ * `routeRules` glob), and so does every not-found page (its own export or a
+ * `_layout`: rules are matched by URL and never reach the not-found fallback).
+ * The browser then never starts the app on any page, so the client build
+ * needs no route code at all (see `loadRoutesModule` in vite-plugin.ts).
+ * False for an app with no pages.
+ */
+export function everyPageIslandsOnly(
+  routes: readonly FileRoute[],
+  rules: import('./route-modes').RouteRules | undefined,
+): boolean {
+  const resolveHydrate = createHydrateResolver(routes, rules)
+  let pages = 0
+  for (const r of routes) {
+    if (r.isLayout || r.isError || r.isLoading) continue
+    const effective = resolveHydrate(r)
+    if (effective?.value !== 'islands') return false
+    if (r.isNotFound && effective.via === 'rule') return false
+    if (!r.isNotFound) pages++
+  }
+
+  return pages > 0
+}
+
+/**
+ * `routeRules` `hydrate` (#4371), applied by declaration: a page that neither
+ * declares `hydrate` itself nor inherits one from a `_layout`, and that a rule
+ * with `hydrate` matches, gets the rule's value as if the page exported it.
+ * The generator then inlines it as `meta.hydrate`, so the server, the SSG,
+ * dev SSR and the client's navigation guard all read one value from the
+ * route record and nothing at runtime needs to know about rules. A page or
+ * layout export always wins (the precedence `renderMode` has). Run after
+ * `assertHydrateExports`, whose messages name the rule.
+ */
+export function applyHydrateRules(
+  routes: FileRoute[],
+  rules: import('./route-modes').RouteRules | undefined,
+): FileRoute[] {
+  if (!rules || !Object.values(rules).some((r) => r?.hydrate !== undefined)) return routes
+  const resolveHydrate = createHydrateResolver(routes, rules)
+
+  return routes.map((r) => {
+    if (r.isLayout || r.isError || r.isLoading || r.isNotFound) return r
+    const effective = resolveHydrate(r)
+    if (effective?.via !== 'rule') return r
+
+    return {
+      ...r,
+      exports: {
+        ...(r.exports ?? EMPTY_EXPORTS),
+        hasHydrate: true,
+        hydrateLiteral: JSON.stringify(effective.value),
+      },
+    }
+  })
 }
 
 /**

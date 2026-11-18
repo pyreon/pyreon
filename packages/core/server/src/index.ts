@@ -88,6 +88,7 @@ export type {
 export { provideRequestLocals, useRequestLocals } from './middleware'
 // Shared string-mode page renderer (handler + zero SSG + zero dev SSR)
 export type {
+  ClientStartPreload,
   PageHydration,
   RenderablePageRouter,
   RenderPageOptions,

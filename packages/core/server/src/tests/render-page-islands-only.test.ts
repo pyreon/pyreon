@@ -14,7 +14,8 @@ import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { createRouter, lazy, type RouteRecord, RouterView, useLoaderData } from '@pyreon/router'
 import { createHandler } from '../handler'
-import { ISLANDS_ONLY_MARKER, isIslandsOnlyMeta, renderPage } from '../render-page'
+import { island } from '../island'
+import { hasIslandToHydrate, ISLANDS_ONLY_MARKER, isIslandsOnlyMeta, renderPage } from '../render-page'
 
 const App: ComponentFn = () => h(RouterView, null)
 
@@ -141,4 +142,64 @@ describe('createHandler — islands-only page', () => {
       expect(html).not.toContain(ISLANDS_ONLY_MARKER)
     })
   }
+})
+
+/**
+ * `clientPreload` (#4371): a server-rendered page preloads what its client
+ * loads first beyond the entry, the same set zero's SSG pages preload. With
+ * zero's lazy entry an app page otherwise paid one extra round trip (the
+ * entry had to run before the browser saw the app chunks).
+ */
+describe('createHandler — clientPreload', () => {
+  const clientPreload = { app: ['/assets/app-A.js', '/assets/routes-B.js'], islands: ['/assets/islands-C.js'] }
+  const Counter = island(() => Promise.resolve({ default: () => h('button', null, '0') }), {
+    name: 'Counter',
+  })
+  const Never = island(() => Promise.resolve({ default: () => h('i', null, 'x') }), {
+    name: 'Never',
+    hydrate: 'never',
+  })
+  const pages = (component: ComponentFn, meta?: Record<string, unknown>): RouteRecord[] => [
+    { path: '/page', component, loader, ...(meta ? { meta: meta as never } : {}) },
+  ]
+  const WithIsland: ComponentFn = () => h('main', null, 'static ', h(Counter, null))
+  const WithNeverIsland: ComponentFn = () => h('main', null, 'static ', h(Never, null))
+  const preloadsOf = (html: string): string[] =>
+    [...html.matchAll(/<link rel="modulepreload" href="([^"]+)" crossorigin>/g)].map((m) => m[1] as string)
+
+  async function get(routes: RouteRecord[], mode: 'string' | 'stream'): Promise<string> {
+    const handler = createHandler({ App, routes, mode, clientEntry: false, clientPreload })
+    return (await handler(new Request('http://localhost/page'))).text()
+  }
+
+  for (const mode of ['string', 'stream'] as const) {
+    test(`${mode} mode: an app page preloads the app set, before the body`, async () => {
+      const html = await get(pages(Page), mode)
+      expect(preloadsOf(html)).toEqual(clientPreload.app)
+      expect(html.indexOf('/assets/app-A.js')).toBeLessThan(html.indexOf('<main'))
+    })
+
+    test(`${mode} mode: an islands-only page with an island preloads only the islands runtime`, async () => {
+      const html = await get(pages(WithIsland, { hydrate: 'islands' }), mode)
+      expect(html).toContain('<pyreon-island')
+      expect(preloadsOf(html)).toEqual(clientPreload.islands)
+    })
+
+    test(`${mode} mode: an islands-only page with nothing to hydrate preloads nothing`, async () => {
+      expect(preloadsOf(await get(pages(Page, { hydrate: 'islands' }), mode))).toEqual([])
+      expect(preloadsOf(await get(pages(WithNeverIsland, { hydrate: 'islands' }), mode))).toEqual([])
+    })
+  }
+
+  test('no clientPreload: no preload links (byte-identical to before)', async () => {
+    const handler = createHandler({ App, routes: pages(Page), clientEntry: false })
+    const html = await (await handler(new Request('http://localhost/page'))).text()
+    expect(preloadsOf(html)).toEqual([])
+  })
+
+  test('hasIslandToHydrate: a hydrate="never" island loads nothing, so it does not count', () => {
+    expect(hasIslandToHydrate('<pyreon-island data-component="X" data-hydrate="load">')).toBe(true)
+    expect(hasIslandToHydrate('<pyreon-island data-component="X" data-hydrate="never">')).toBe(false)
+    expect(hasIslandToHydrate('<main></main>')).toBe(false)
+  })
 })

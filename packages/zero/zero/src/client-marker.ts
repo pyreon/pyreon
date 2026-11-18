@@ -7,15 +7,14 @@
  * `fixture-islands-only` build, caught by `e2e/zero-islands-only.spec.ts`).
  */
 import type { ComponentFn } from '@pyreon/core'
+import type { AutoIslandRegistry } from '@pyreon/server/client'
 
-/** The module `@pyreon/vite-plugin` generates as `virtual:pyreon/islands-registry`. */
-export interface IslandsRegistry {
-  readonly __pyreonIslandRegistry: Record<
-    string,
-    () => Promise<{ default: ComponentFn } | ComponentFn>
-  >
-  readonly __pyreonIslandsEnabled: boolean
-}
+/**
+ * The module `@pyreon/vite-plugin` generates as `virtual:pyreon/islands-registry`:
+ * `@pyreon/server`'s `AutoIslandRegistry`, which `hydrateIslandsAuto` reads.
+ * A type-only import, so this module still imports nothing at runtime.
+ */
+export type IslandsRegistry = AutoIslandRegistry
 
 /**
  * Loads the component that wraps every standalone island: the providers an
@@ -48,6 +47,29 @@ export interface IslandsOnlyOptions {
  */
 export const ISLANDS_ONLY_SELECTOR = 'meta[name="pyreon-hydrate"][content="islands"]'
 
+/**
+ * The dev server's custom HMR event for "a module the server rendered with
+ * changed" (`ISLANDS_ONLY_SSR_UPDATE_EVENT` in vite-plugin.ts).
+ */
+export const SSR_UPDATE_EVENT = 'pyreon:ssr-update'
+
+/** The part of Vite's `import.meta.hot` this module uses. */
+interface HotContext {
+  on(event: string, cb: (data: unknown) => void): void
+}
+
+/**
+ * Dev only: an islands-only page is server HTML, and the browser never loads
+ * the route's code, so there is nothing to hot-swap when the route, its layout
+ * or a component it renders changes. Reload to get the new server HTML.
+ * `import.meta.hot` is undefined in a production build, so this compiles out.
+ */
+function watchServerModules(): void {
+  const hot = (import.meta as { hot?: HotContext }).hot
+  // pyreon-lint-disable-next-line pyreon/no-window-in-ssr -- an HMR callback: only the dev server's browser client ever calls it
+  if (hot) hot.on(SSR_UPDATE_EVENT, () => location.reload())
+}
+
 /** True when the server marked this page islands-only. */
 export function isIslandsOnlyPage(): boolean {
   // pyreon-lint-disable-next-line pyreon/prefer-isserver -- importing isServer costs every page a request (see the module comment)
@@ -62,16 +84,21 @@ export function isIslandsOnlyPage(): boolean {
 export function startIslandsOnlyPage(options: IslandsOnlyOptions): () => void {
   // pyreon-lint-disable-next-line pyreon/prefer-isserver -- importing isServer costs every page a request (see the module comment)
   if (typeof document === 'undefined') return () => {}
+  watchServerModules()
   if (document.querySelector('pyreon-island') === null) return () => {}
   const islands = options.islands
   if (!islands) {
-    // oxlint-disable-next-line no-console
-    console.error(
-      "[Pyreon] This page is islands-only (`export const hydrate = 'islands'`), but the client was started " +
-        'without an islands registry, so none of its islands hydrate. Pass it in the client entry:\n' +
-        "  import * as islands from 'virtual:pyreon/islands-registry'\n" +
-        "  startClientLazy({ routes: () => import('virtual:zero/routes'), islands })",
-    )
+    // A wiring mistake every islands-only page shows in dev; its text stays
+    // out of the production entry, which every page downloads.
+    if (process.env.NODE_ENV !== 'production') {
+      // oxlint-disable-next-line no-console
+      console.error(
+        "[Pyreon] This page is islands-only (`export const hydrate = 'islands'`), but the client was started " +
+          'without an islands registry, so none of its islands hydrate. Pass it in the client entry:\n' +
+          "  import * as islands from 'virtual:pyreon/islands-registry'\n" +
+          "  startClientLazy({ routes: () => import('virtual:zero/routes'), islands })",
+      )
+    }
 
     return () => {}
   }

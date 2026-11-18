@@ -88,6 +88,33 @@ export function isIslandsOnlyMeta(meta: Readonly<Record<string, unknown>> | unde
   return meta?.hydrate === 'islands'
 }
 
+/**
+ * Module preloads for what the client entry loads with a dynamic import, per
+ * page kind: `app` on a page that starts the app (with `startClientLazy`, the
+ * routes module and the app client), `islands` on an islands-only page that
+ * has an island to hydrate (the islands runtime). Base-prefixed hrefs.
+ * `@pyreon/zero` computes both from the client build manifest.
+ */
+export interface ClientStartPreload {
+  app?: readonly string[] | undefined
+  islands?: readonly string[] | undefined
+}
+
+/**
+ * True when rendered markup holds an island the client will hydrate
+ * (`hydrate: 'never'` islands load nothing). An islands-only page without one
+ * loads nothing beyond the entry, so it preloads nothing. zero's SSG applies
+ * the same rule (`ssg-plugin.ts`, `pageStartKeys`).
+ */
+export function hasIslandToHydrate(html: string): boolean {
+  return /<pyreon-island\b(?![^>]*\bdata-hydrate="never")/.test(html)
+}
+
+/** `<link rel="modulepreload" … crossorigin>` tags, one per line (build-manifest paths, as zero's SSG writes them). */
+export function renderModulePreloads(hrefs: readonly string[] = []): string {
+  return hrefs.map((href) => `<link rel="modulepreload" href="${href}" crossorigin>`).join('\n')
+}
+
 export interface RenderPageOptions {
   /**
    * The incoming request (runtime SSR). Forwarded to `router.preload` so

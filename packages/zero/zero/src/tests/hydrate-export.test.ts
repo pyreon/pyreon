@@ -6,7 +6,9 @@
  * the build cannot honour, naming the file and the fix.
  */
 import { describe, expect, it } from 'vitest'
+import { rulesDeclareHydrate } from '../client-flags-plugin'
 import {
+  applyHydrateRules,
   assertHydrateExports,
   detectRouteExports,
   generateRouteModuleFromRoutes,
@@ -177,5 +179,107 @@ describe('assertHydrateExports', () => {
         'ssr',
       ),
     ).not.toThrow()
+  })
+})
+
+/**
+ * `routeRules: { '/glob': { hydrate } }` (#4371): a central declaration with
+ * the same validation as the export and the precedence `renderMode` has
+ * (page export > nearest `_layout` export > the most specific rule > 'app').
+ */
+describe('routeRules hydrate', () => {
+  const hydrateOf = (routes: FileRoute[], urlPath: string) =>
+    routes.find((r) => r.urlPath === urlPath && !r.isLayout)?.exports?.hydrateLiteral
+
+  it('a rule marks the pages it matches, as if they exported it', () => {
+    const routes = applyHydrateRules(
+      routesFrom({ 'index.tsx': page(), 'blog/index.tsx': page(), 'blog/[slug].tsx': page() }, 'ssg'),
+      { '/blog/**': { hydrate: 'islands' } },
+    )
+    expect(hydrateOf(routes, '/blog')).toBe('"islands"')
+    expect(hydrateOf(routes, '/blog/:slug')).toBe('"islands"')
+    expect(hydrateOf(routes, '/')).toBeUndefined()
+  })
+
+  it('the generated record carries it, and a lazy page stays code-split', () => {
+    const code = generateRouteModuleFromRoutes(
+      applyHydrateRules(routesFrom({ 'docs.tsx': page() }, 'ssr'), { '/docs': { hydrate: 'islands' } }),
+      '/r',
+    )
+    expect(code).toContain('meta: { hydrate: "islands" }')
+    expect(code).toMatch(/lazy\(\(\) => import\("\/r\/docs\.tsx"\)/)
+  })
+
+  it("a page's own export wins over the rule", () => {
+    const routes = applyHydrateRules(
+      routesFrom({ 'blog/index.tsx': page(`export const hydrate = 'app'`) }, 'ssg'),
+      { '/blog/**': { hydrate: 'islands' } },
+    )
+    expect(hydrateOf(routes, '/blog')).toBe(`'app'`)
+  })
+
+  it("a _layout's export wins over the rule (the page stays unstamped and inherits the layout)", () => {
+    const routes = applyHydrateRules(
+      routesFrom({ 'blog/_layout.tsx': layout(`export const hydrate = 'app'`), 'blog/index.tsx': page() }, 'ssg'),
+      { '/blog/**': { hydrate: 'islands' } },
+    )
+    expect(hydrateOf(routes, '/blog')).toBeUndefined()
+  })
+
+  it('the most specific rule that sets hydrate wins; a more specific rule without it does not hide it', () => {
+    const routes = applyHydrateRules(
+      routesFrom({ 'blog/index.tsx': page(), 'blog/live.tsx': page(), 'blog/new.tsx': page() }, 'ssr'),
+      {
+        '/blog/**': { hydrate: 'islands' },
+        '/blog/live': { hydrate: 'app' },
+        '/blog/new': { renderMode: 'ssr' },
+      },
+    )
+    expect(hydrateOf(routes, '/blog')).toBe('"islands"')
+    expect(hydrateOf(routes, '/blog/live')).toBe('"app"')
+    expect(hydrateOf(routes, '/blog/new')).toBe('"islands"')
+  })
+
+  it('no rule declares hydrate: the routes come back untouched', () => {
+    const routes = routesFrom({ 'index.tsx': page() }, 'ssg')
+    expect(applyHydrateRules(routes, { '/**': { renderMode: 'ssg' } })).toBe(routes)
+    expect(applyHydrateRules(routes, undefined)).toBe(routes)
+  })
+
+  it('rejects an unknown value, naming the rule', () => {
+    expect(() =>
+      assertHydrateExports(routesFrom({ 'index.tsx': page() }), 'ssg', {
+        '/docs/**': { hydrate: 'partial' as never },
+      }),
+    ).toThrow(/\[Pyreon\][\s\S]*routeRules\["\/docs\/\*\*"\]\.hydrate = "partial"[\s\S]*'islands' or 'app'/)
+  })
+
+  it('rejects an islands rule on a page that renders spa, naming the rule (app mode, or a rule)', () => {
+    expect(() =>
+      assertHydrateExports(routesFrom({ 'index.tsx': page() }, 'spa'), 'spa', {
+        '/**': { hydrate: 'islands' },
+      }),
+    ).toThrow(/index\.tsx[\s\S]*from routeRules\["\/\*\*"\][\s\S]*spa/)
+    expect(() =>
+      assertHydrateExports(routesFrom({ 'app/index.tsx': page() }, 'ssr'), 'ssr', {
+        '/app/**': { renderMode: 'spa', hydrate: 'islands' },
+      }),
+    ).toThrow(/app\/index\.tsx[\s\S]*routeRules/)
+  })
+
+  it('an islands rule is fine where the page itself renders on the server or opts back to app', () => {
+    expect(() =>
+      assertHydrateExports(
+        routesFrom({ 'a.tsx': page(`export const renderMode = 'ssg'`), 'b.tsx': page(`export const hydrate = 'app'`) }, 'spa'),
+        'spa',
+        { '/**': { hydrate: 'islands' } },
+      ),
+    ).not.toThrow()
+  })
+
+  it('a rule that declares hydrate keeps the islands-only client support in the build', () => {
+    expect(rulesDeclareHydrate({ routeRules: { '/docs/**': { hydrate: 'islands' } } })).toBe(true)
+    expect(rulesDeclareHydrate({ routeRules: { '/docs/**': { renderMode: 'ssg' } } })).toBe(false)
+    expect(rulesDeclareHydrate({})).toBe(false)
   })
 })

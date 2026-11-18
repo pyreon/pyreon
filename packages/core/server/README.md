@@ -147,6 +147,19 @@ hydrateIslandsAuto(registry, { root: () => import('./IslandRoot') })
 
 A route whose matched chain declares `meta: { hydrate: 'islands' }` renders as an islands-only page (`renderPage` and both `createHandler` modes): the head carries `<meta name="pyreon-hydrate" content="islands">` (`ISLANDS_ONLY_MARKER`), and the loader-data script and the route's modulepreloads are left out. `@pyreon/zero` declares it with `export const hydrate = 'islands'`; its client hydrates only the islands on such a page.
 
+Without `@pyreon/zero`, tell `startClient` what to run on such a page instead of the app. `islandsOnlyPages(start)` builds the option: on a marked page `start` runs (no router, no tree hydration), and on an app page a client-side navigation to an islands-only route becomes a full page load:
+
+```ts
+import { hydrateIslandsAuto, islandsOnlyPages, startClient } from '@pyreon/server/client'
+import * as registry from 'virtual:pyreon/islands-registry'
+
+startClient({ App, routes, islandsOnly: islandsOnlyPages(() => hydrateIslandsAuto(registry)) })
+```
+
+It is a separate import so that an app that never uses islands-only pages ships none of it: `startClient` costs 47 B gzip more than without the option (Vite production build), while the islands runtime the option pulls in is about 2.3 KB gzip.
+
+`createHandler({ clientPreload: { app, islands } })` adds `<link rel="modulepreload">` for what the client entry loads with a dynamic import, per page kind: `app` on a page that starts the app, `islands` on an islands-only page that has an island to hydrate. `@pyreon/zero` fills it from the client build manifest.
+
 The Vite plugin scans every `island(() => import('PATH'), { name })` call at `buildStart` and emits the registry as a virtual module — no manual sync needed. Drop-in replacement for `hydrateIslands({ ... })`.
 
 For project-wide foot-gun detection (duplicate names, nested islands, dead islands, registry mismatch, never-with-registry-entry), run `pyreon doctor --check-islands`.

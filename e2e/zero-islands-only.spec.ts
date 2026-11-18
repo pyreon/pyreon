@@ -142,3 +142,132 @@ test.describe('islands-only pages in @pyreon/zero', () => {
     expect(errors).toEqual([])
   })
 })
+
+// The same fixture built in `mode: 'ssr'` with the node adapter and served by
+// its emitted `node .dist-ssr/index.js` (the second web server in
+// e2e-configs/zero-islands-only.config.ts): every page is rendered per
+// request. With `startClientLazy` an app page's client loads the app with a
+// dynamic import; the server must preload those chunks (as the SSG pages do)
+// or the browser finds them only after the entry has run.
+const SSR = 'http://localhost:5214'
+
+/** The client-start preloads the server added (`<link rel="modulepreload" href=… crossorigin>`). */
+const addedPreloads = (html: string): string[] =>
+  [...html.matchAll(/<link rel="modulepreload" href="\/assets\/([^"]+)" crossorigin>/g)].map((m) => m[1]!)
+
+const fileOf = (url: string) => url.slice(url.lastIndexOf('/') + 1)
+
+test.describe('islands-only pages, server-rendered (SSR, node adapter)', () => {
+  test('an app page preloads the chunks its lazy entry imports, and the browser uses them', async ({
+    page,
+    request,
+  }) => {
+    const html = await (await request.get(`${SSR}/`)).text()
+    expect(html).toContain('APP_LOADER_TITLE')
+    expect(html).not.toContain('name="pyreon-hydrate"')
+    const preloads = addedPreloads(html)
+    // The routes module is what the lazy entry imports to start the app.
+    expect(preloads.some((f) => /^routes-[\w-]+\.js$/.test(f))).toBe(true)
+
+    const errors = collectErrors(page)
+    const scripts = captureScripts(page)
+    await page.goto(`${SSR}/`)
+    await waitForHydration(page)
+    await page.getByTestId('app-button').click()
+    await expect(page.getByTestId('app-button')).toHaveText('app:1')
+    await page.waitForLoadState('networkidle')
+    const requested = new Set(scripts.map((s) => fileOf(s.url)))
+    // Every preload is a file the page really loads: no wasted fetch.
+    expect(preloads.filter((f) => !requested.has(f))).toEqual([])
+    expect(errors).toEqual([])
+  })
+
+  test('an islands-only page preloads only the islands runtime: no router, no route code', async ({
+    page,
+    request,
+  }) => {
+    const html = await (await request.get(`${SSR}/static`)).text()
+    expect(html).toContain('<meta name="pyreon-hydrate" content="islands">')
+    expect(html).toContain('STATIC_LOADER_TITLE')
+    expect(html).not.toContain('__PYREON_LOADER_DATA__')
+    const preloads = addedPreloads(html)
+    expect(preloads.some((f) => f.startsWith('islands-runtime-'))).toBe(true)
+    expect(preloads.some((f) => /^routes-[\w-]+\.js$/.test(f))).toBe(false)
+    for (const file of preloads) {
+      const body = await (await request.get(`${SSR}/assets/${file}`)).text()
+      expect(body, file).not.toContain('popstate')
+      expect(body, file).not.toContain('STATIC_ROUTE_MODULE_MARKER')
+    }
+
+    const errors = collectErrors(page)
+    const scripts = captureScripts(page)
+    await page.goto(`${SSR}/static`)
+    const counter = page.getByTestId('counter')
+    await expect(page.locator('pyreon-island[data-island-hydrated]')).toHaveCount(1)
+    await counter.click()
+    await expect(counter).toHaveText('dark:1')
+    await page.waitForLoadState('networkidle')
+    const requested = new Set(scripts.map((s) => fileOf(s.url)))
+    expect(preloads.filter((f) => !requested.has(f))).toEqual([])
+    expect(scripts.filter((s) => s.body.includes('popstate')).map((s) => s.url)).toEqual([])
+    expect(errors).toEqual([])
+  })
+
+  test('an islands-only page with no islands preloads nothing', async ({ request }) => {
+    const html = await (await request.get(`${SSR}/empty`)).text()
+    expect(html).toContain('<meta name="pyreon-hydrate" content="islands">')
+    expect(addedPreloads(html)).toEqual([])
+  })
+})
+
+// The same fixture under zero's DEV server (the third web server): HMR. The
+// browser never loads an islands-only page's route code, so when a module the
+// server rendered with changes, Vite has no client module to update; the page
+// must reload to get the new server HTML. `/__pyreon_hmr_touch__` drives
+// Vite's real HMR pipeline for a fixture file (see fixture-islands-only/dev.ts).
+const DEV = 'http://localhost:5218'
+const touch = (page: Page, file: string) => page.request.get(`${DEV}/__pyreon_hmr_touch__?f=${file}`)
+
+test.describe('islands-only pages under the dev server (HMR)', () => {
+  test('an edit to the route reloads the islands-only page, which hydrates again', async ({ page }) => {
+    const errors = collectErrors(page)
+    await page.goto(`${DEV}/static`)
+    await expect(page.locator('meta[name="pyreon-hydrate"]')).toHaveCount(1)
+    await expect(page.locator('pyreon-island[data-island-hydrated]')).toHaveCount(1)
+    await stamp(page)
+    const reloaded = page.waitForEvent('load')
+    expect((await touch(page, 'src/routes/static.tsx')).ok()).toBe(true)
+    await reloaded
+    expect(await sameDocument(page)).toBe(false)
+    const counter = page.getByTestId('counter')
+    await expect(page.locator('pyreon-island[data-island-hydrated]')).toHaveCount(1)
+    await counter.click()
+    await expect(counter).toHaveText('dark:1')
+    expect(errors).toEqual([])
+  })
+
+  test('an edit to the layout reloads the islands-only page too', async ({ page }) => {
+    await page.goto(`${DEV}/empty`)
+    await expect(page.getByTestId('empty-page')).toBeVisible()
+    await stamp(page)
+    const reloaded = page.waitForEvent('load')
+    await touch(page, 'src/routes/_layout.tsx')
+    await reloaded
+    expect(await sameDocument(page)).toBe(false)
+  })
+
+  test('an app page does not reload for a module it never loaded', async ({ page }) => {
+    const errors = collectErrors(page)
+    await page.goto(`${DEV}/`)
+    await waitForHydration(page)
+    await page.getByTestId('app-button').click()
+    await expect(page.getByTestId('app-button')).toHaveText('app:1')
+    await stamp(page)
+    await touch(page, 'src/routes/static.tsx')
+    // Give a reload every chance to happen before asserting it did not.
+    await page.waitForTimeout(1_500)
+    expect(await sameDocument(page)).toBe(true)
+    await expect(page.getByTestId('app-button')).toHaveText('app:1')
+    expect(errors).toEqual([])
+  })
+})

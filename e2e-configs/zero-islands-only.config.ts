@@ -15,9 +15,21 @@ import { definePlaywrightConfig } from '@pyreon/playwright-config'
  * Served by `scripts/serve-ssg.ts` (per-route `index.html`), never
  * `vite preview`, whose SPA fallback would serve `/` for every path.
  *
+ * The second server is the same fixture built in `mode: 'ssr'` (node
+ * adapter) and run as `node .dist-ssr/index.js`: the suite reads the
+ * server-rendered HTML of both page kinds from it (the client-start
+ * modulepreloads). Playwright starts the web servers one after the other, so
+ * the two builds of the same root never overlap.
+ *
  * CI: `bun run test:e2e:zero-islands-only`.
  */
-const DIST = 'packages/zero/zero/src/tests/integration/fixture-islands-only/dist'
+const FIXTURE = 'packages/zero/zero/src/tests/integration/fixture-islands-only'
+const DIST = `${FIXTURE}/dist`
+// A dot-dir: the islands-registry prescan skips dot-dirs at any depth (and
+// `dist` only by that name), so neither build reads the other's output as
+// source. A `dist-ssr` here put the server bundle's island() calls into the
+// SSG build's islands registry.
+const DIST_SSR = `${FIXTURE}/.dist-ssr`
 
 export default definePlaywrightConfig({
   testDir: '../e2e',
@@ -28,6 +40,18 @@ export default definePlaywrightConfig({
       command: `bun packages/zero/zero/src/tests/integration/fixture-islands-only/build.ts ${DIST} && bun scripts/serve-ssg.ts ${DIST} 5213`,
       port: 5213,
       // Commands run from the config file's directory; the paths are repo-relative.
+      cwd: '..',
+      timeout: 180_000,
+    },
+    {
+      command: `bun ${FIXTURE}/build.ts ${DIST_SSR} ssr 5214 && PORT=5214 node ${DIST_SSR}/index.js`,
+      port: 5214,
+      cwd: '..',
+      timeout: 180_000,
+    },
+    {
+      command: `bun ${FIXTURE}/dev.ts 5218`,
+      port: 5218,
       cwd: '..',
       timeout: 180_000,
     },
