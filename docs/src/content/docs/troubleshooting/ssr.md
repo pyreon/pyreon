@@ -148,6 +148,12 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
 
 ---
 
+### [FIXED, 2026-11] A polymorphic text slot whose server content is elements was rebuilt, not adopted
+
+(#4385): `{parts(row)}` lowers to a text binding over one `' '` placeholder, but renders `['a ', <Code/>, ' b']` as elements. The verifier refused the element (sole slot) and `_textSlot` cleared the range (trailing/mid), so every such cell was re-created at hydration, identical and unreported (pyreon.dev's comparison table, every row). Park a placeholder where the content is and let the binding adopt it through the slot hydrator; sweep placeholders a raw `.data` binding cannot adopt, or the server's nodes stay beside the written text. Code: `runtime-dom/src/parked-text.ts`, `hydration-plan.ts` (`soleTexts`), `template.ts` (`_textSlot`, `buildTpl`). Tests: `compiled-text-slot-adopts-elements.test.tsx` + `.browser`.
+
+---
+
 ### SSR↔hydration parity bugs are cursor/extent errors; fuzz them
 
 `packages/core/runtime-dom/src/tests/hydration-parity-fuzz.test.tsx` (and `hydration-parity-fuzz-compiled.test.tsx`) hydrate each seeded tree and compare against a fresh client mount: zero mismatches, identical normalized DOM, identical DOM after identical flips, root identity reused, plus a ground-truth fresh mount with flipped values. `PYREON_FUZZ_SEEDS` raises the seed count; CI's count is not a proof.

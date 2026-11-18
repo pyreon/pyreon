@@ -246,9 +246,18 @@ describe('tplAdoptVerify — template adoption for the compiled _tpl path', () =
     expect(tplAdoptVerify(tpl, html, empty)).toBe(true)
     expect(empty.firstChild?.nodeType).toBe(3)
     expect(empty.firstChild?.nodeValue).toBe('')
-    // …and the genuinely divergent rows still BAIL rather than replay unverified.
-    expect(tplAdoptVerify(tpl, html, targetOf('<a class="c"><b>L</b></a>'))).toBe(false)
-    expect(tplAdoptVerify(tpl, html, targetOf('<a class="c">L<i>x</i></a>'))).toBe(false)
+    // …and rows whose slot holds ELEMENTS never replay unverified: the full
+    // verify admits them (#4385) with a parked placeholder as the element's first
+    // child, so the bind's `.firstChild` ref lands on a text node and the
+    // binding adopts the server content through the slot hydrator.
+    for (const shape of ['<a class="c"><b>L</b></a>', '<a class="c">L<i>x</i></a>']) {
+      const el = targetOf(shape)
+      const server = [...el.childNodes]
+      expect(tplAdoptVerify(tpl, html, el)).toBe(true)
+      expect(el.firstChild?.nodeType).toBe(3)
+      expect(el.firstChild?.nodeValue).toBe('')
+      expect([...el.childNodes].slice(1)).toEqual(server)
+    }
   })
 
   it('reuses the cached plan on the SECOND call — the rows 2..N path', () => {
