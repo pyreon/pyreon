@@ -24,7 +24,7 @@ export interface GanttTask {
   /** 0..1 done fraction; drawn as a darker inner bar. */
   progress?: Double | undefined
   /** Ids of tasks this one depends on; drawn as elbows from their end to this start. */
-  dependencies?: string[] | undefined
+  dependencies?: readonly string[] | undefined
   /** Lane header the task sits under; consecutive tasks with the same group share one header row. */
   group?: string | undefined
   color?: string | undefined
@@ -221,7 +221,7 @@ function ganttRowIndex(rows: GanttRow[], id: string): number {
 }
 
 /** Lay tasks out in `box`: labels left, time axis on top, one row per task, lane headers between groups. */
-export function layoutGantt(tasks: GanttTask[], box: Rect, options?: GanttOptions, measure?: MeasureText): GanttLayout {
+export function layoutGantt(tasks: readonly GanttTask[], box: Rect, options?: GanttOptions, measure?: MeasureText): GanttLayout {
   const fontSize = options?.fontSize ?? 12.0
   const m: MeasureText = measure ?? approxTextWidth
   const palette = options?.palette ?? DEFAULT_PALETTE

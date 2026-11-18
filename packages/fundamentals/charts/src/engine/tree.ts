@@ -106,7 +106,7 @@ function placeTreeNode(orient: string, box: Rect, gutter: Double, levelsF: Doubl
 }
 
 /** Lay out the hierarchy into `box`. */
-export function layoutTree(roots: TreeNode[], box: Rect, options?: TreeOptions): TreeLayout {
+export function layoutTree(roots: readonly TreeNode[], box: Rect, options?: TreeOptions): TreeLayout {
   const palette = options?.palette ?? DEFAULT_PALETTE
   const orient = options?.orient ?? 'LR'
   const maxDepth = options?.maxDepth ?? 64.0

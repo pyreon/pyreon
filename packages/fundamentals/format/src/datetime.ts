@@ -656,7 +656,7 @@ export const dateTimeKind: KindDef<'dateTime'> = {
 /** Spec of `relativeFormatter`: an options object with a `base`. */
 export function relativeSpec(options: RelativeFormatterOptions): RelativeFormatterOptions {
   if (typeof options !== 'object' || options === null) {
-    throw programmerError('relativeFormatter', `expected options with a base, such as { base: Date.now() } or { base: () => now() }, got ${describe(options)}.`)
+    throw programmerError('relativeFormatter', `expected an options object with a base: a date-like value, or an accessor that returns one. Got ${describe(options)}.`)
   }
 
   return options
@@ -667,7 +667,7 @@ export const relativeKind: KindDef<'relative'> = {
     const fb = fallbackText(spec.fallback)
     const zone = zoneFn(spec, activeZone)
     if (process.env.NODE_ENV !== 'production' && spec.base === undefined && clock === undefined) {
-      warnOnce('relativeFormatter:base', '[Pyreon] relativeFormatter(): no `base` was given, so every call returns the fallback. Pass { base: Date.now() } or an accessor such as { base: () => now() }.')
+      warnOnce('relativeFormatter:base', '[Pyreon] relativeFormatter(): no `base` was given, so every call returns the fallback. Pass a date-like value, or an accessor that returns one.')
     }
     // `base` is data, not an Intl option: keep it out of the cache key.
     const rtfSpec = { numeric: spec.numeric, style: spec.style }

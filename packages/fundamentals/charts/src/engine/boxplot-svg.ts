@@ -12,7 +12,7 @@ import type { SvgOptions } from './svg'
 import type { Double, MeasureText } from './types'
 
 export interface BoxplotToSvgOptions<T> {
-  data: T[]
+  data: readonly T[]
   /** Raw observations per datum — summarised with `fiveNumber`. */
   values: (d: T, index: number) => Double[]
   x?: (d: T, index: number) => string
@@ -26,7 +26,7 @@ export interface BoxplotToSvgOptions<T> {
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
   /** Precomputed summaries (index-aligned with `data`) — skips `fiveNumber`. */
-  summaries?: FiveNumber[]
+  summaries?: readonly FiveNumber[]
 }
 
 /** Boxplot → `<svg>` string, server-safe. */
