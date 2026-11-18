@@ -298,9 +298,184 @@ formatDuration(between('2026-01-01', '2026-03-05')) // a Duration from between()
 const tokyoDay = (instant: number) => formatDate(toPlainDate('Asia/Tokyo')(instant), 'long')
 ```
 
+## Reading messy input
+
+The strict guards stay strict. When a value arrives from somewhere you do not control, `parseISO` is the one lenient door and it returns the strict types or `null`:
+
+```ts
+// @check
+import { parseISO, parseInstant, fromDate } from '@pyreon/time/core'
+
+parseISO('2026-11-18 14:30') // '2026-11-18T14:30': a space or lower-case t is accepted
+parseISO(' 2026-2-3 ') // '2026-02-03': unpadded fields
+parseISO('2026-11-18T14:30Z') // null: that is a moment, not a wall-clock value
+parseInstant('2026-11-18 14:30:05+0100', { lenient: true }) // 1795008605000
+fromDate(new Date(0), 'UTC') // '1970-01-01T00:00:00': a Date comes in through fromDate
+```
+
+## Is it today?
+
+`isToday`, `isYesterday`, `isTomorrow` and `daysFromToday` answer in calendar days in a zone, not in 24-hour spans, so they are right around local midnight and on the 23- and 25-hour days of a DST change. Comparing two instants by a calendar unit needs a zone, because the day depends on where you are:
+
+```ts
+// @check
+import { isSame, isToday } from '@pyreon/time/core'
+
+const a = Date.UTC(2026, 10, 18, 22, 30) // 23:30 in Prague
+const b = Date.UTC(2026, 10, 18, 23, 30) // 00:30 the next day in Prague
+isSame(a, b, 'day', { zone: 'Europe/Prague' }) // false
+isSame(a, b, 'day', { zone: 'UTC' }) // true
+isToday(a, 'Europe/Prague', Date.UTC(2026, 10, 18, 12)) // true; the third argument is "now", for tests
+```
+
+`isSame(a, b, 'day')` without a zone throws a `[Pyreon]` error that says so.
+
+## Recipes
+
+Every snippet here is run by the package's tests, with the outputs shown.
+
+**A month grid for a date picker**, starting the week where the locale does:
+
+```ts
+// @check
+import { monthGrid, weekStartOf } from '@pyreon/time/core'
+
+const grid = monthGrid('2026-11', { weekStart: weekStartOf('cs'), weeks: 6 })
+grid.length // 6
+grid[0]![0] // '2026-10-26'
+grid[5]![6] // '2026-12-06'
+```
+
+**Every weekday in a range:**
+
+```ts
+// @check
+import { dayOfWeek, eachDay } from '@pyreon/time/core'
+
+eachDay('2026-11-16', '2026-11-24').filter((d) => dayOfWeek(d) <= 5)
+// ['2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19', '2026-11-20', '2026-11-23', '2026-11-24']
+```
+
+**The next business day**, by composition:
+
+```ts
+// @check
+import { add, dayOfWeek } from '@pyreon/time/core'
+import type { PlainDate } from '@pyreon/time/core'
+
+const skipWeekend = (d: PlainDate): PlainDate => add(d, { days: dayOfWeek(d) === 6 ? 2 : dayOfWeek(d) === 7 ? 1 : 0 })
+const nextBusinessDay = (d: PlainDate): PlainDate => skipWeekend(add(d, { days: 1 }))
+
+nextBusinessDay('2026-11-20') // '2026-11-23': Friday to Monday
+```
+
+**Age from a birthday:**
+
+```ts
+// @check
+import { diff } from '@pyreon/time/core'
+
+diff('1990-05-20', '2026-11-18', 'year') // 36
+diff('1990-11-19', '2026-11-18', 'year') // 35: the birthday is tomorrow
+```
+
+**Countdown parts from two instants:**
+
+```ts
+// @check
+import { between, toPlainDateTime } from '@pyreon/time/core'
+
+const now = Date.UTC(2026, 10, 18, 12, 0, 0)
+const target = Date.UTC(2026, 11, 25, 15, 30, 10)
+between(toPlainDateTime(now, 'UTC'), toPlainDateTime(target, 'UTC'))
+// { years: 0, months: 1, days: 7, hours: 3, minutes: 30, seconds: 10, milliseconds: 0 }
+```
+
+**A meeting time in other zones:**
+
+```ts
+// @check
+import { toInstant, toPlainDateTime } from '@pyreon/time/core'
+
+const meeting = toInstant('2026-11-18T10:00', 'America/New_York')
+toPlainDateTime(meeting, 'Europe/Prague') // '2026-11-18T16:00:00'
+toPlainDateTime(meeting, 'Asia/Kathmandu') // '2026-11-18T20:45:00'
+```
+
+**Group records by local day:**
+
+```ts
+// @check
+import { toPlainDate } from '@pyreon/time/fp'
+import type { PlainDate } from '@pyreon/time/core'
+
+const records = [{ at: Date.UTC(2026, 10, 18, 22, 30) }, { at: Date.UTC(2026, 10, 18, 23, 30) }, { at: Date.UTC(2026, 10, 19, 5, 0) }]
+const dayKey = toPlainDate('Europe/Prague')
+const byDay = new Map<PlainDate, number>()
+
+for (const r of records) byDay.set(dayKey(r.at), (byDay.get(dayKey(r.at)) ?? 0) + 1)
+// Map { '2026-11-18' => 1, '2026-11-19' => 2 }
+```
+
+**Start and end of a fiscal quarter** (the fiscal year starts in April):
+
+```ts
+// @check
+import { add, dateParts, startOf } from '@pyreon/time/core'
+import { add as addBy, endOf as endOfBy, pipe } from '@pyreon/time/fp'
+import type { PlainDate } from '@pyreon/time/core'
+
+const fiscalQuarterStart = (d: PlainDate): PlainDate => {
+  const monthIndex = (dateParts(d).month - 4 + 12) % 12 // 0 for April
+
+  return startOf(add(d, { months: -(monthIndex % 3) }), 'month')
+}
+const fiscalQuarterEnd = pipe(fiscalQuarterStart, addBy({ months: 2 }), endOfBy('month'))
+
+fiscalQuarterStart('2026-11-18') // '2026-10-01'
+fiscalQuarterEnd('2026-11-18') // '2026-12-31'
+```
+
+A note on `pipe` and types: when its first step is a generic adjuster (`add({ ... })`) and a later step names a concrete type, TypeScript cannot infer the input type. Start with a function that names it (as `fiscalQuarterEnd` does), or write the step as a function.
+
+## Coming from
+
+Months are 1-12 and weekdays are 1 (Monday) to 7 (Sunday) here. Every call in the right-hand column was run.
+
+| You write | Here |
+| --- | --- |
+| date-fns `addDays(d, 1)`, `addMonths(d, 1)` | `add(d, { days: 1 })`, `add(d, { months: 1 })` |
+| date-fns `differenceInCalendarDays(b, a)` | `diff(a, b, 'day')` |
+| date-fns `startOfWeek(d, { weekStartsOn: 1 })` | `startOf(d, 'week')` |
+| date-fns `endOfMonth(d)` | `endOf(d, 'month')` |
+| date-fns `eachDayOfInterval({ start, end })` | `eachDay(start, end)` |
+| date-fns `getISOWeek(d)`, `isSameDay(a, b)` | `weekOfYear(d)`, `isSame(a, b, 'day')` |
+| date-fns `isValid(parseISO(s))` | `isPlainDate(s)` (strict) or `parseISO(s) !== null` (lenient) |
+| Day.js `dayjs(d).add(1, 'month')` | `add(d, { months: 1 })` |
+| Day.js `dayjs(b).diff(a, 'day')` | `diff(a, b, 'day')` |
+| Day.js `dayjs(d).startOf('week')` (Sunday first) | `startOf(d, 'week', { weekStart: 7 })` |
+| Day.js `startOf('isoWeek')` | `startOf(d, 'week')` |
+| Day.js `dayjs(t).tz('Europe/Prague')` | `toPlainDateTime(t, 'Europe/Prague')` |
+| Day.js `dayjs.tz(s, zone).valueOf()` | `toInstant(s, zone)` |
+| Luxon `DateTime.fromISO(s).plus({ days: 1 })` | `add(s, { days: 1 })` |
+| Luxon `b.diff(a, 'days').days` | `diff(a, b, 'day')` |
+| Luxon `DateTime.fromMillis(t, { zone })` | `toPlainDateTime(t, zone)` |
+| Luxon `DateTime.fromISO(s, { zone }).toMillis()` | `toInstant(s, zone)` |
+| Moment `moment(s).add(1, 'months')` | `add(s, { months: 1 })` |
+| Moment `moment(b).diff(a, 'days')` | `diff(a, b, 'day')` |
+| Moment `startOf('isoWeek')` | `startOf(d, 'week')` |
+| Moment `moment().isSame(d, 'day')` | `isToday(d, zone)` |
+| Temporal `PlainDate.from(s).add({ days: 1 }).toString()` | `add(s, { days: 1 })` |
+| Temporal `a.until(b, { largestUnit: 'day' }).days` | `diff(a, b, 'day')` |
+| Temporal `a.until(b, { largestUnit: 'year' })` | `between(a, b)` |
+| Temporal `plain.toZonedDateTime(zone).epochMilliseconds` | `toInstant(plain, zone)` |
+| Temporal `Instant.fromEpochMilliseconds(t).toZonedDateTimeISO(z).toPlainDateTime()` | `toPlainDateTime(t, z)` |
+
+Formatting (`format('yyyy-MM-dd')`, `toLocaleString`) lives in `@pyreon/format`.
+
 ## Errors and warnings
 
-The guards, `isTimeZone` and `parseInstant` never throw. Every other function throws a `[Pyreon]` error on a value of the wrong shape, an unknown unit or zone, a mixed-sign or fractional duration, or a result outside years 0001-9999, and the message says how to fix it. In development an unknown duration field (`{ day: 1 }`) warns once per call.
+One rule everywhere: the `isPlain*` guards, `isTimeZone`, `parseInstant` and `parseISO` never throw and answer `false` or `null`. Every other function either returns a correct value or throws a `TypeError` or `RangeError` whose message starts with `[Pyreon]`, names the function, says what it got and what it expected, and says how to fix it. That covers a value of the wrong shape, an unknown unit or zone, a mixed-sign duration, a fractional month or year, and a result outside years 0001-9999. Arithmetic on a malformed value throws rather than returning a wrong date; check data with a guard first. A seeded fuzz test calls every export with random bad input to hold the line. Fractions of weeks, days, hours, minutes and seconds in a duration balance down to milliseconds (`{ days: 1.5 }` is one day and twelve hours); fractional years and months have no fixed length and are rejected. In development an unknown duration field (`{ day: 1 }`) warns once per call.
 
 ## How it is checked
 

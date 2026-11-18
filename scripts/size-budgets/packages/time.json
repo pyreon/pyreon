@@ -1,10 +1,10 @@
 {
   "package": "@pyreon/time",
-  "bundle": 9037,
+  "bundle": 10178,
   "imports": {
-    "add": 2778,
-    "fp-add": 2793,
-    "fp-pipeline": 3804,
-    "typical": 5607
+    "add": 3103,
+    "fp-add": 3120,
+    "fp-pipeline": 4216,
+    "typical": 5839
   }
 }

@@ -209,3 +209,27 @@ Whatever a template ships is what a deployed app runs until someone replaces it,
 `@pyreon/kinetic`'s stagger renderers filtered children on `'type' in child`, but the compiler lowers literal markup (`<li>Install</li>`) to a pre-built `_tpl` item on the client and `_ssr` raw HTML on the server, so the docs' own stagger example rendered an empty `<ol>`. A forwarded `children` arrives as an accessor, and around a user's own `() => items.map(…)` as an accessor returning an accessor (one `typeof === 'function'` unwrap threw `children is not iterable`). **Rule: flatten children by unwrapping EVERY accessor level and every array/fragment; decorate a `_tpl` item by setting the extras on its element at mount (it has no props to clone), and pass raw server HTML through. Test it through the real compiler: kinetic's browser suite runs `@pyreon/vite-plugin` for exactly this.** Kinetic's group renderers also rebuilt every row on each change, so a removed row never unmounted: a keyed animated list keeps one row per key (`<For by>`), flips that row's `show` to leave, and drops it from its own `onAfterLeave`.
 
 ---
+
+### Date math with `setDate` or `+ 86_400_000` across a DST change
+
+A day is 23 or 25 hours twice a year, so `new Date(t + 24 * 3_600_000)` is not "tomorrow" and `d.setDate(d.getDate() + 1)` depends on the machine's zone. Use `add(date, { days: 1 })` on a PlainDate, or `addInstant(instant, { days: 1 }, zone)`, which keeps the time of day. `@pyreon/time` tests the 23- and 25-hour days against `Temporal`.
+
+---
+
+### `new Date('2026-11-18')` displayed in local time
+
+A date-only ISO string parses as UTC midnight, so formatting it in a zone west of Greenwich shows the previous day. A date-only string is a calendar date; keep it a string (`PlainDate`) and format it as that day, never through a `Date` in the viewer's zone.
+
+---
+
+### `new Date()` or `Date.now()` read in a component body
+
+The body runs once, so the value freezes at mount, and on a server-rendered page the server's and the client's reads differ, which is a hydration mismatch. Read the clock inside an effect or an event handler, and pin it in tests with `setClock`.
+
+---
+
+### `toISOString().slice(0, 10)` as today's date
+
+It is today in UTC, not in the user's zone. Use `today(zone)` from `@pyreon/time`.
+
+---
