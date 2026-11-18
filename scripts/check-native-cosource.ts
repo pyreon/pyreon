@@ -172,7 +172,7 @@ let baseModuleDir: string | undefined
 function baseRuntimeModule(): { ok: true; args: string[] } | { ok: false; error: string } {
   if (baseModule !== undefined) return baseModule
   baseModuleDir = mkdtempSync(join(tmpdir(), 'pyreon-base-module-'))
-  const r = spawnSync(
+  const r = spawnSwiftToolSync(
     'swiftc',
     [
       '-parse-as-library',
