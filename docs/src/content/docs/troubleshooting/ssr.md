@@ -154,6 +154,12 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
 
 ---
 
+### [FIXED, 2026-11] Cloning a `<template>`'s content and handing the clone to user code before insertion
+
+(#4390): a clone of `template.content` belongs to the template's INERT document (`ownerDocument.defaultView === null`) until it is inserted, and compiled refs run on the clone. `@pyreon/virtual`'s TanStack core read the window from the scroll element's document at ref time, found `null` and never observed scroll. happy-dom gives template content the page document, so only a browser shows it. Import the clone SOURCE into the page document once at parse (`document.importNode`), never per clone. Same PR: a compiled ref never received `null` on unmount (the bind returned no disposer for it); refs now lower to `_ref`, which returns one.
+
+---
+
 ### [FIXED, 2026-11] Treating a missing range marker as "unknown extent, rebuild"
 
 (#4448): an accessor whose server content carries no `<!--$-->` markers (the server rendered the same content without an accessor: `props.children` on one side, `<Provider>{props.children}</Provider>` on the other) removed ONE server node and mounted fresh, silently, in dev and production. A multi-node value also re-created the following sibling. The markers only say where output ENDS; the first value says the same, as a static child's vnode does. Walk the first value against the server nodes inside `mountReactive`'s first run (`adoptUnmarkedRange` in `hydrate.ts`), then place the boundary after what the walk claimed, never past the parent's own boundary (the walk's cursor skips comments, including the enclosing range's markers; a boundary placed beyond it made the range's cleanup delete the parent's marker, caught by the compiled parity fuzz, seed 297). Test: `runtime-dom/src/tests/hydrate-adopt-not-remount.test.tsx`.

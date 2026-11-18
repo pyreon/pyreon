@@ -177,7 +177,7 @@ describe('a signal method passed by reference in JSX is bound to its signal (#43
   for (const [backend, run] of BACKENDS) {
     it(`${backend}: the exact emit for the issue's shape`, () => {
       const out = run(wrap('<div ref={el.set} onClick={el.set}>x</div>'), false)
-      expect(out).toContain('const __r = el.set.bind(el);')
+      expect(out).toContain('_ref(__root, el.set.bind(el));')
       expect(out).toContain('__root.__ev_click = el.set.bind(el);')
     })
 

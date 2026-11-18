@@ -67,7 +67,8 @@ export function createTemplate<T>(
 ): (item: T) => NativeItem {
   const tmpl = document.createElement('template')
   tmpl.innerHTML = html
-  const proto = tmpl.content.firstElementChild as HTMLElement
+  // Owned by the page document, so clones are too (see `_tpl`, #4390).
+  const proto = document.importNode(tmpl.content.firstElementChild as HTMLElement, true)
 
   return (item: T): NativeItem => {
     const el = proto.cloneNode(true) as HTMLElement
@@ -603,6 +604,8 @@ export function _bindDirect(
   return dispose
 }
 
+export { _ref } from './compiled-ref'
+
 // ─── Compiler-facing template API ─────────────────────────────────────────────
 
 // Cache parsed <template> elements by HTML string — parse once, clone many.
@@ -981,7 +984,18 @@ export function _tpl(
     // `tpl.content.firstElementChild` there costs two DOM getter calls per
     // clone for a node that never changes once parsed (markers are stripped
     // above, before this point). A JS field read replaces both.
-    ;(tpl as CachedTemplate)._root = tpl.content.firstElementChild
+    //
+    // The clone source is a copy OWNED BY THE PAGE DOCUMENT (#4390). A clone of
+    // `tpl.content` belongs to the template's inert document (no
+    // `defaultView`) until it is inserted, and compiled refs and binds run on
+    // the clone before that: a ref read `el.ownerDocument.defaultView` as
+    // `null` (`@pyreon/virtual` never observed scroll), where an h()-built
+    // element is the page document's from `createElement`. Importing the root
+    // ONCE here makes every clone the page document's, with nothing added per
+    // clone and no adoption walk on insertion. `tpl.content` stays as parsed:
+    // the adoption verifier's signature walk reads it.
+    const parsed = tpl.content.firstElementChild
+    ;(tpl as CachedTemplate)._root = parsed === null ? null : (document.importNode(parsed, true) as Element)
     // FIFO eviction — drop the oldest entry once we hit the cap. Map iteration
     // order is insertion order, so `keys().next()` is the oldest.
     if (_tplCache.size >= TPL_CACHE_MAX) _tplCache.delete(_tplCache.keys().next().value as string)
@@ -1648,6 +1662,7 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
     if (parked || (first !== null && !isRangeClose(first))) _parkText(fresh, placeholder as Comment)
     // EMPTY range (the accessor rendered ''): nothing to adopt, clear it.
     else clearSlotRange(placeholder as Comment)
+
 
     return fresh
   }
