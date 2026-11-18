@@ -64,7 +64,7 @@
     }
   },
   "devDependencies": {
-    "@formatjs/intl": "6.2.0",
+    "@formatjs/intl": "6.1.5",
     "@pyreon/core": "workspace:*",
     "@pyreon/i18n": "workspace:*",
     "@pyreon/manifest": "workspace:*",
