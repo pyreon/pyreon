@@ -46,30 +46,21 @@ export function analyzeGraph(model: WorkspaceModel): GraphAnalysis {
   for (const p of model.packages) dependents.set(p.name, [])
   for (const [from, to] of edges) dependents.get(to)!.push(from)
 
-  // Depths: entry points (no internal runtime dependents) are depth 0; a
-  // package's depth is 1 + the max depth of its dependents — i.e. how far
-  // below the surface it sits. Computed as longest path from any entry,
-  // which is well-defined on the acyclic part; nodes on cycles get the
-  // depth their first visit found (the traversal is visit-capped).
-  const depths: Record<string, number> = {}
-  const entries = model.packages.filter((p) => dependents.get(p.name)!.length === 0).map((p) => p.name)
-  // Fallback: a fully-cyclic workspace has no entries; treat every node as one.
-  const roots = entries.length > 0 ? entries : model.packages.map((p) => p.name)
-  // Longest-path relaxation, HARD-BOUNDED at V-1: a simple path can never be
-  // longer, and without the bound a cyclic graph relaxes forever — the
-  // fixture's two-package loop hung the first cut of this BFS (the acyclic
-  // dogfood repo masked it). Depth-bounded/iterative on WRITE-side graph
-  // walks is the standing framework rule; it applies here too.
-  const maxDepth = Math.max(0, model.packages.length - 1)
-  const queue: [string, number][] = roots.map((r) => [r, 0])
-  while (queue.length) {
-    const [name, d] = queue.shift()!
-    if (d > maxDepth) continue
-    if (depths[name] !== undefined && depths[name] >= d) continue
-    depths[name] = d
-    for (const dep of runtimeDeps.get(name) ?? []) queue.push([dep, d + 1])
-  }
-  for (const p of model.packages) depths[p.name] ??= 0
+  // Depths: how far below the surface a package sits. Entry points (no
+  // internal runtime dependents) are depth 0, and a package is one below its
+  // deepest dependent: the longest path from any entry.
+  //
+  // Longest path only means something on a DAG, so the depths are computed on
+  // the CONDENSATION — each strongly connected component (a cycle and
+  // everything locked into it) collapsed to one node — and every member gets
+  // its component's depth. Relaxing through the cycle itself walked it again
+  // and again until the V-1 cap: one three-package loop in a 14-package
+  // workspace put its dependencies at depth 13 where the longest acyclic chain
+  // is about 5 (#4391).
+  const depths = condensedDepths(
+    model.packages.map((p) => p.name),
+    runtimeDeps,
+  )
 
   // Cycles: iterative DFS with an explicit stack over runtime edges,
   // deduplicated by the sorted member set. Depth-bounded by construction
@@ -136,6 +127,79 @@ export function analyzeGraph(model: WorkspaceModel): GraphAnalysis {
   return { depths, cycles, reach, edges, devEdges }
 }
 
+/**
+ * Longest-path depth over the condensation of `deps` (see `analyzeGraph`).
+ * Tarjan's SCC, iterative so a deep workspace cannot overflow the call stack.
+ */
+function condensedDepths(names: readonly string[], deps: ReadonlyMap<string, readonly string[]>): Record<string, number> {
+  const comp = new Map<string, number>()
+  const index = new Map<string, number>()
+  const low = new Map<string, number>()
+  const stack: string[] = []
+  const onStack = new Set<string>()
+  let counter = 0
+  let comps = 0
+  for (const root of names) {
+    if (index.has(root)) continue
+    const frames: [string, number][] = [[root, 0]]
+    index.set(root, counter)
+    low.set(root, counter++)
+    stack.push(root)
+    onStack.add(root)
+    while (frames.length) {
+      const frame = frames[frames.length - 1]!
+      const [node] = frame
+      const children = deps.get(node) ?? []
+      if (frame[1] < children.length) {
+        const next = children[frame[1]++]!
+        if (!index.has(next)) {
+          index.set(next, counter)
+          low.set(next, counter++)
+          stack.push(next)
+          onStack.add(next)
+          frames.push([next, 0])
+        } else if (onStack.has(next)) {
+          low.set(node, Math.min(low.get(node)!, index.get(next)!))
+        }
+        continue
+      }
+      frames.pop()
+      const parent = frames[frames.length - 1]
+      if (parent) low.set(parent[0], Math.min(low.get(parent[0])!, low.get(node)!))
+      if (low.get(node) === index.get(node)) {
+        let member: string
+        do {
+          member = stack.pop()!
+          onStack.delete(member)
+          comp.set(member, comps)
+        } while (member !== node)
+        comps++
+      }
+    }
+  }
+
+  // Tarjan numbers components in reverse topological order of the edges
+  // (a component is completed only after everything it depends on), so the
+  // highest number is a source. Walking from it down, every dependent of a
+  // component is final before the component is.
+  const depthOf = new Array<number>(comps).fill(0)
+  const into = Array.from({ length: comps }, () => new Set<number>())
+  for (const name of names) {
+    for (const d of deps.get(name) ?? []) {
+      const from = comp.get(name)!
+      const to = comp.get(d)
+      if (to !== undefined && to !== from) into[to]!.add(from)
+    }
+  }
+  for (let c = comps - 1; c >= 0; c--) {
+    for (const from of into[c]!) depthOf[c] = Math.max(depthOf[c]!, depthOf[from]! + 1)
+  }
+  const out: Record<string, number> = {}
+  for (const name of names) out[name] = depthOf[comp.get(name)!]!
+
+  return out
+}
+
 /** External-usage fold: every external dep name → range → declaring users. */
 export function externalUsage(model: WorkspaceModel): import('./types').ExternalUsage[] {
   const internal = new Set(model.packages.map((p) => p.name))
@@ -148,6 +212,7 @@ export function externalUsage(model: WorkspaceModel): import('./types').External
       byName.set(d.name, ranges)
     }
   }
+
   return [...byName.entries()]
     .map(([name, ranges]) => ({ name, ranges }))
     .sort((a, b) => a.name.localeCompare(b.name))
