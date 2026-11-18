@@ -126,6 +126,11 @@ export const ZERO_FEATURE_COVERAGE: Record<string, Coverage> = {
     mode: 'ssr',
     evidence: "join(dist, 'hybrid-spa', 'index.html')",
   },
+  "Islands-only pages (`export const hydrate = 'islands'`)": {
+    kind: 'e2e',
+    spec: 'e2e/zero-islands-only.spec.ts',
+    evidence: 'the island hydrates, adopts its server HTML and is interactive; the app never loads',
+  },
   'Server Islands': {
     kind: 'e2e',
     spec: 'e2e/ssr-node.spec.ts',

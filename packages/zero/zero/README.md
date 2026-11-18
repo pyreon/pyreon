@@ -10,6 +10,7 @@ Highlights:
 - **Server islands** — `serverIsland()` puts per-request server-rendered holes inside a cacheable page (fragment endpoint + no-JS fallback + opt-in fragment caching).
 - **Server loaders** — a `.server.{ts,tsx,js,jsx}` sibling next to a route file is a server-only data loader (never ships to the client; single-fetch on client navigations). Layouts can't have them — put per-request layout data in a page serverLoader or middleware locals.
 - **Per-route `renderMode`** — any route opts out of the global mode (`export const renderMode = 'ssg'`).
+- **Islands-only pages** — `export const hydrate = 'islands'` on a route or `_layout` ships the page as static HTML plus its `island()`s: no router, no route code, no loader-data blob in the browser. Use `startClientLazy` from `@pyreon/zero/client-lazy` so the app never downloads on those pages.
 - **SSG delivery polish** — `ssg: { speculationRules, viewTransitions, cssMode: 'asset', earlyHints }` tune how prerendered pages ship.
 - **Dev error overlay** — in `vite dev`, an SSR, loader or middleware error, or a reported hydration mismatch, opens an overlay with the route and phase, the source file and lines around the error (with **Open in editor**), the diagnose-catalog fix when one matches, a dimmed-library stack and **Copy for your AI assistant**. Nothing of it reaches a build.
 - **Runtime ISR with tags + persistence** — `isr.tagsForRequest` + `isrHandler.revalidateTag(tag)` for group invalidation; `createFsStore(dir)` persists the cache across restarts.
@@ -84,7 +85,7 @@ export default function Layout({ children }) {
 | `src/routes/(group)/x.tsx` | `/x` — group prefix is stripped from the URL                      |
 | `src/routes/api/*.ts`      | API routes — `export function GET / POST / PUT / DELETE / …`      |
 
-Each route file may also export `loader`, `meta`, `middleware`, `guard`, `getStaticPaths`, `revalidate`, and `renderMode`.
+Each route file may also export `loader`, `meta`, `middleware`, `guard`, `getStaticPaths`, `revalidate`, `renderMode`, and `hydrate`.
 
 ## Rendering modes
 
@@ -96,6 +97,16 @@ zero({ mode: 'spa' })  // client-only — single dist/index.html shell
 ```
 
 Per-route override: `export const renderMode = 'ssg'`.
+
+Islands-only pages: `export const hydrate = 'islands'` (route or `_layout`, cascading like `renderMode`) renders the page on the server as usual, then hydrates only its islands in the browser. Links on such a page are full page loads, and a navigation from an app page to one is a full page load too. Not allowed on an `spa` page (route-scan error).
+
+```ts
+// src/entry-client.ts
+import { startClientLazy } from '@pyreon/zero/client-lazy'
+import * as islands from 'virtual:pyreon/islands-registry'
+
+startClientLazy({ routes: () => import('virtual:zero/routes'), islands, islandRoot: () => import('./IslandRoot') })
+```
 
 ## SSG
 
@@ -224,6 +235,7 @@ Routes are duplicated per locale at build time. `prefix-except-default` keeps th
 |-------------------------------|--------------------------------------------------------------------------------------|
 | `@pyreon/zero/server`         | `createServer`, `createApp`, `createISRHandler`, adapters, plugins, `vercelRevalidateHandler` |
 | `@pyreon/zero/client`         | `startClient`, `hydrateIslands*` re-exports                                          |
+| `@pyreon/zero/client-lazy`    | `startClientLazy` — the app behind a dynamic import, for apps with islands-only pages |
 | `@pyreon/zero/config`         | `defineConfig`, `resolveConfig`                                                      |
 | `@pyreon/zero/env`            | `validateEnv`, `publicEnv`, `schema`                                                 |
 | `@pyreon/zero/middleware`     | Generic `Middleware` helpers                                                         |

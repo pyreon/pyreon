@@ -35,7 +35,7 @@ import {
   serializeLoaderData,
 } from '@pyreon/router'
 import { renderToStream, runWithRequestContext } from '@pyreon/runtime-server'
-import { renderPage } from './render-page'
+import { ISLANDS_ONLY_MARKER, isIslandsOnlyMeta, renderPage } from './render-page'
 import {
   buildClientEntryTag,
   buildScriptsFast,
@@ -324,7 +324,10 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
           // end-to-end (renderToStream gained `{ signal }` in #745).
           // PR-S6: read `isNotFound` synchronously here (before streaming
           // starts) so the stream response carries the right HTTP status.
-          const streamResolved = router.currentRoute() as { isNotFound?: boolean }
+          const streamResolved = router.currentRoute() as {
+            isNotFound?: boolean
+            meta?: Readonly<Record<string, unknown>>
+          }
           const streamStatus = streamResolved?.isNotFound === true ? 404 : 200
           return renderStreamResponse(
             app,
@@ -338,6 +341,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
             method === 'HEAD',
             typeof ctx.locals.cspNonce === 'string' ? ctx.locals.cspNonce : undefined,
             onError ? (err: unknown) => callOnError(onError, err, req, 'stream') : undefined,
+            isIslandsOnlyMeta(streamResolved?.meta),
           )
         } catch (err) {
           const info = getRedirectInfo(err)
@@ -442,9 +446,16 @@ async function renderStreamResponse(
   nonce?: string,
   // The handler's `onError`, bound to this request.
   reportStreamError?: (err: unknown) => void,
+  // An islands-only page (`meta.hydrate: 'islands'`, see render-page.ts):
+  // marked, and no loader-data blob. The streaming shell has no head slot, so
+  // the marker goes with the scripts; the client reads it once the document
+  // is parsed (module scripts are deferred).
+  islandsOnly: boolean = false,
 ): Promise<Response> {
-  const loaderData = serializeLoaderData(router as never)
-  const scripts = buildScriptsFast(clientEntryTag, loaderData, nonce)
+  const loaderData = islandsOnly ? null : serializeLoaderData(router as never)
+  const scripts = islandsOnly
+    ? `${ISLANDS_ONLY_MARKER}\n  ${buildScriptsFast(clientEntryTag, null, nonce)}`
+    : buildScriptsFast(clientEntryTag, loaderData, nonce)
 
   // Use pre-split parts: [before-head, between-head-app, between-app-scripts, after-scripts]
   const [p0, p1, p2, p3] = compiled.parts

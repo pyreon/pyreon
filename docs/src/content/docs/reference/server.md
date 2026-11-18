@@ -134,7 +134,7 @@ export default createHandler({
 renderPage(App: ComponentFn, router: RenderablePageRouter, path: string, options?: RenderPageOptions): Promise<RenderPageResult>
 ```
 
-The ONE string-mode page-render pipeline — preload (lazy components + loaders, with `redirect()` catching) → render with head collection → CSS-in-JS style collect → loader-data inline script → HTTP status (404 via the router's `notFoundComponent` chain). Shared by `createHandler`, zero's SSG prerender entry, and zero's dev SSR middleware so per-page concerns can never drift between them again. Returns discriminated parts (`kind: "html" | "redirect" | "unmatched"`) for the caller to compose into its own template; template injection and streaming stay caller-specific by design. The router MUST be a per-request instance created AT `path` — `preload` warms caches but does not navigate. **`collectStyles` is OPTIONAL and defaults to the CSS-in-JS collector registered on `globalThis.__PYREON_STYLER_COLLECT__`** (set by `@pyreon/styler`'s singleton on SSR init), so a page never ships class names whose CSS was left behind — pass one explicitly only to override the engine or add reset semantics.
+The ONE string-mode page-render pipeline — preload (lazy components + loaders, with `redirect()` catching) → render with head collection → CSS-in-JS style collect → loader-data inline script → HTTP status (404 via the router's `notFoundComponent` chain). Shared by `createHandler`, zero's SSG prerender entry, and zero's dev SSR middleware so per-page concerns can never drift between them again. **Islands-only pages:** when the matched chain's merged meta declares `hydrate: 'islands'` (zero's `export const hydrate = 'islands'`), the head gets `ISLANDS_ONLY_MARKER` (`<meta name="pyreon-hydrate" content="islands">`), the loader-data script is left out (the loader output is in the HTML; store state is still shipped for islands that share a store), `routeModules` is empty, and `result.hydrate` is `'islands'` (`'app'` otherwise). `createHandler`'s streaming path honours the same meta. Returns discriminated parts (`kind: "html" | "redirect" | "unmatched"`) for the caller to compose into its own template; template injection and streaming stay caller-specific by design. The router MUST be a per-request instance created AT `path` — `preload` warms caches but does not navigate. **`collectStyles` is OPTIONAL and defaults to the CSS-in-JS collector registered on `globalThis.__PYREON_STYLER_COLLECT__`** (set by `@pyreon/styler`'s singleton on SSR init), so a page never ships class names whose CSS was left behind — pass one explicitly only to override the engine or add reset semantics.
 
 **Example**
 
@@ -299,10 +299,10 @@ function Header() {
 ### `hydrateIslands` `function`
 
 ```ts
-hydrateIslands(registry: Record<string, () => Promise<ComponentFn | { default: ComponentFn }>>): () => void
+hydrateIslands(registry: Record<string, () => Promise<ComponentFn | { default: ComponentFn }>>, options?: { root?: () => Promise<ComponentFn | { default: ComponentFn }> }): () => void
 ```
 
-Client-side counterpart to `island()`. Walks every `<pyreon-island>` element on the page and schedules hydration per its `data-hydrate` strategy. Manual form: the user maintains the `Name → loader` mapping by hand (must match every `island()` `name` field). Returns a cleanup that ENDS every island it scheduled: pending triggers are cancelled, in-flight chunks never mount, hydrated islands are unmounted (`onUnmount` / effects / `onMount` cleanups run, their DOM is removed). A static page has no component tree to notice island DOM leaving, so a host that removes or replaces island DOM itself (an `innerHTML` swap, its own navigation) calls this cleanup; HMR passes it to `import.meta.hot.dispose`. An island already live from an earlier call is never hydrated twice. Use `hydrateIslandsAuto()` under `@pyreon/vite-plugin` to skip the manual sync. Imported from `@pyreon/server/client`, NOT from `@pyreon/server` (server-only entry).
+Client-side counterpart to `island()`. Walks every `<pyreon-island>` element on the page and schedules hydration per its `data-hydrate` strategy. Manual form: the user maintains the `Name → loader` mapping by hand (must match every `island()` `name` field). Returns a cleanup that ENDS every island it scheduled: pending triggers are cancelled, in-flight chunks never mount, hydrated islands are unmounted (`onUnmount` / effects / `onMount` cleanups run, their DOM is removed). A static page has no component tree to notice island DOM leaving, so a host that removes or replaces island DOM itself (an `innerHTML` swap, its own navigation) calls this cleanup; HMR passes it to `import.meta.hot.dispose`. An island already live from an earlier call is never hydrated twice. `options.root` wraps every island the call hydrates in a component of yours (the providers a standalone island needs: a theme, a UI system's root scope); it is loaded once, with the first island that hydrates, and must render only its children so the island still adopts its server HTML. Use `hydrateIslandsAuto()` under `@pyreon/vite-plugin` to skip the manual sync. Imported from `@pyreon/server/client`, NOT from `@pyreon/server` (server-only entry).
 
 **Example**
 
@@ -323,6 +323,7 @@ hydrateIslands({
 - Including a `hydrate: "never"` island in the registry — defeats the strategy by pulling its module into the client bundle. Skip never-islands; the runtime short-circuits silently for them.
 - Importing from `@pyreon/server` instead of `@pyreon/server/client` — the main entry is server-only and stubs/throws on client-side use.
 - Replacing island DOM (an `innerHTML` swap, a hand-rolled page transition) without calling the returned cleanup — the island's effects, timers and listeners keep running against detached DOM. Removal the framework did not perform is not observed; call the cleanup.
+- A `root` that renders an element around its children (`<div class="theme">{props.children}</div>`) — the server rendered the island without it, so the island no longer matches its HTML. Render only providers: `provide(...)` and `return props.children`.
 
 **See also:** `island` · `hydrateIslandsAuto`
 
@@ -331,10 +332,10 @@ hydrateIslands({
 ### `hydrateIslandsAuto` `function`
 
 ```ts
-hydrateIslandsAuto(registry: AutoIslandRegistry): () => void
+hydrateIslandsAuto(registry: AutoIslandRegistry, options?: HydrateIslandsOptions): () => void
 ```
 
-Auto-discovered counterpart to `hydrateIslands()`. Under `@pyreon/vite-plugin` (`pyreon({ islands: true })` is the default), the plugin pre-scans your source for `island()` declarations and emits a `virtual:pyreon/islands-registry` virtual module. The user imports it into `entry-client.ts` and passes it here. Eliminates the manual `Name → loader` sync that drives the #1 author foot-gun for islands. Never-strategy islands are omitted from the auto-registry by design — their components stay out of the client bundle.
+Auto-discovered counterpart to `hydrateIslands()`. Under `@pyreon/vite-plugin` (`pyreon({ islands: true })` is the default), the plugin pre-scans your source for `island()` declarations and emits a `virtual:pyreon/islands-registry` virtual module. The user imports it into `entry-client.ts` and passes it here. Eliminates the manual `Name → loader` sync that drives the #1 author foot-gun for islands. Never-strategy islands are omitted from the auto-registry by design — their components stay out of the client bundle. `options` is forwarded to `hydrateIslands` (`root`).
 
 **Example**
 

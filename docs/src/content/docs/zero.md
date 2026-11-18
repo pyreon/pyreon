@@ -406,6 +406,10 @@ export function error(props) {
 // Optional: per-route rendering mode override
 export const renderMode = 'ssr' // "ssr" | "ssg" | "spa" | "isr"
 
+// Optional: static HTML plus its islands, without starting the app
+// (see "Islands-only pages" below)
+export const hydrate = 'islands' // "islands" | "app"
+
 // SSG-only: enumerate concrete params for a dynamic route
 export const getStaticPaths = () => [{ params: { id: 'a' } }, { params: { id: 'b' } }]
 
@@ -574,6 +578,42 @@ Precedence is always: route-file `export const renderMode` (closest to the code)
 **You can always SEE the resolved modes.** Every production build prints a per-route mode table — `○ ssg`, `λ ssr`, `⟳ isr`, `⚡ spa`, with `(declared)` marking per-route overrides — and `zero dev`'s banner shows the app mode plus any hybrid overrides (`Mode  ssr (hybrid: 2 ssg, 1 isr)`); `zero dev --routes` lists each route with its true resolved mode. Apps above 40 routes collapse the build table to the counts line.
 
 **No silent missing pages.** Under SSG, a dynamic route (`[id].tsx`) with no `getStaticPaths` cannot be enumerated — the build now warns loudly, naming the file and the three fixes (add `getStaticPaths`, hand-list `ssg.paths`, or declare `renderMode = 'spa'` if a client-rendered shell is intended). Routes that declare a non-static mode and API routes are exempt.
+
+### Islands-only pages (`export const hydrate = 'islands'`)
+
+A content page whose only interactive parts are `island()`s does not need the app. Declare it on the route, or on a `_layout` to cover every page under it (the page's own declaration wins, like `renderMode`; `'app'` opts a page back in):
+
+```tsx
+// src/routes/(marketing)/_layout.tsx
+export const hydrate = 'islands'
+```
+
+The page is then static HTML plus its islands:
+
+- **Server (SSG, SSR string and streaming, ISR, dev).** The loader runs as usual and its output is rendered into the HTML, but the page carries no `window.__PYREON_LOADER_DATA__` blob and no `<link rel="modulepreload">` for the route's code. It is marked with `<meta name="pyreon-hydrate" content="islands">`. Shared `@pyreon/store` state is still shipped, for islands that share a store.
+- **Browser.** The client hydrates the page's `<pyreon-island>` elements and starts nothing else: no router, no page tree, no route code. A page with no islands loads nothing beyond the entry. Anything interactive must be an island; a handler outside one never runs.
+- **Links.** An islands-only page has no router, so every link on it, `<RouterLink>` included, is a full page load. A client-side navigation from an app page to an islands-only route is a full page load too, so the page always arrives as its server HTML.
+- **Head.** Head tags are rendered on the server. `@pyreon/head` does not run in the browser on these pages.
+
+The client entry passes the islands registry and, to keep the app off these pages entirely, loads the routes lazily with `startClientLazy`:
+
+```ts
+// src/entry-client.ts
+import { startClientLazy } from '@pyreon/zero/client-lazy'
+import * as islands from 'virtual:pyreon/islands-registry'
+
+startClientLazy({
+  routes: () => import('virtual:zero/routes'),
+  islands,
+  // Optional: providers for islands that read context (a theme). Render only
+  // the children; it loads with the first island that hydrates.
+  islandRoot: () => import('./IslandRoot'),
+})
+```
+
+`startClient({ routes, islands })` honours islands-only pages too, but its static `routes` import keeps the router and the layouts in the entry, so they still download there. On an SSG build, app pages preload the app chunks and islands-only pages preload the islands runtime. On SSR/ISR the lazy entry costs app pages one extra round trip, because the server does not preload those chunks.
+
+`hydrate` must be a string literal, and a page that renders `'spa'` (by its own `renderMode`, a layout, `routeRules` or the app mode) cannot be islands-only: it has no server HTML to keep. Both fail when the routes module loads, naming the file. A build whose route files never export `hydrate` compiles this support out of `startClient`.
 
 ### Streaming is opt-in (`ssr: { mode: 'stream' }`)
 
@@ -1623,7 +1663,7 @@ import { startClient } from '@pyreon/zero/client'
 startClient({ routes })
 ```
 
-`startClient` auto-detects whether to hydrate (SSR-rendered HTML present) or mount fresh (SPA). It also reads the Vite-injected `__ZERO_BASE__` so the router prefix matches the SSR/build output. With fs-router, never pass `layout` to `startClient`.
+`startClient` auto-detects whether to hydrate (SSR-rendered HTML present) or mount fresh (SPA). It also reads the Vite-injected `__ZERO_BASE__` so the router prefix matches the SSR/build output. With fs-router, never pass `layout` to `startClient`. For apps with [islands-only pages](#islands-only-pages-export-const-hydrate-islands), `startClientLazy` from `@pyreon/zero/client-lazy` takes `routes` as a loader so the app never downloads on those pages.
 
 ### `zero preview`
 

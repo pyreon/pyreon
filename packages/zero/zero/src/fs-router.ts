@@ -84,6 +84,7 @@ const ROUTE_EXPORT_NAMES = [
   'guard',
   'meta',
   'renderMode',
+  'hydrate',
   'error',
   'middleware',
   'action',
@@ -176,6 +177,8 @@ export function detectRouteExports(source: string, filename = 'route.tsx'): Rout
   }
   const metaLiteral = literalOf('meta')
   const renderModeLiteral = literalOf('renderMode')
+  // `hydrate` is always inlined (and must be a literal: assertHydrateExports).
+  const hydrateLiteral = literalOf('hydrate')
   // PR I — `revalidate` feeds the build-time ISR manifest
   // (`dist/_pyreon-revalidate.json`); it is never inlined into the route
   // record.
@@ -195,6 +198,7 @@ export function detectRouteExports(source: string, filename = 'route.tsx'): Rout
     hasGuard: found.has('guard'),
     hasMeta: found.has('meta'),
     hasRenderMode: found.has('renderMode'),
+    hasHydrate: found.has('hydrate'),
     hasError: found.has('error'),
     hasMiddleware: found.has('middleware'),
     hasAction: found.has('action'),
@@ -206,6 +210,7 @@ export function detectRouteExports(source: string, filename = 'route.tsx'): Rout
     readsRequestAuth: READS_REQUEST_AUTH_RE.test(source),
     ...(metaLiteral !== undefined ? { metaLiteral } : {}),
     ...(renderModeLiteral !== undefined ? { renderModeLiteral } : {}),
+    hydrateLiteral,
     ...(revalidateLiteral !== undefined ? { revalidateLiteral } : {}),
   }
 }
@@ -260,6 +265,7 @@ function constInitializerLiteral(
       return pureLiteralSource(d.init as AstNode, statement)
     }
   }
+
   return undefined
 }
 
@@ -312,6 +318,7 @@ function pureLiteralSource(node: AstNode, source: string): string | undefined {
         if (inner === undefined) return undefined
         parts.push([el, inner])
       }
+
       return splice(node, parts, source)
     }
     case 'ObjectExpression': {
@@ -328,6 +335,7 @@ function pureLiteralSource(node: AstNode, source: string): string | undefined {
         if (inner === undefined) return undefined
         parts.push([value, inner])
       }
+
       return splice(node, parts, source)
     }
     default:
@@ -343,6 +351,7 @@ function splice(node: AstNode, parts: Array<[AstNode, string]>, source: string):
     out += source.slice(pos, child.start) + text
     pos = child.end
   }
+
   return out + source.slice(pos, node.end)
 }
 
@@ -417,6 +426,7 @@ export function parseFileRoutes(
       const filePath = toPosixPath(rawPath)
       const route = parseFilePath(filePath, defaultMode)
       const exp = exportsMap?.get(filePath) ?? exportsMap?.get(rawPath)
+
       return exp ? { ...route, exports: exp } : route
     })
     .sort(sortRoutes)
@@ -513,6 +523,7 @@ function getOrCreateChild(node: RouteNode, segment: string): RouteNode {
     child = { pages: [], children: new Map() }
     node.children.set(segment, child)
   }
+
   return child
 }
 
@@ -523,6 +534,7 @@ function resolveNode(root: RouteNode, dirPath: string): RouteNode {
       node = getOrCreateChild(node, segment)
     }
   }
+
   return node
 }
 
@@ -564,6 +576,7 @@ function buildRouteTree(routes: FileRoute[]): RouteNode {
   for (const route of routes) {
     placeRoute(resolveNode(root, route.dirPath), route)
   }
+
   return root
 }
 
@@ -624,6 +637,7 @@ export function generateRouteModule(
       exportsMap.set(filePath, EMPTY_EXPORTS)
     }
   }
+
   return generateRouteModuleFromRoutes(
     parseFileRoutes(files, undefined, exportsMap),
     routesDir,
@@ -674,6 +688,7 @@ export function generateRouteModuleFromRoutes(
     } else {
       imports.push(`import { ${exportName} as ${name} } from ${jsStringLiteral(fullPath)}`)
     }
+
     return name
   }
 
@@ -681,6 +696,7 @@ export function generateRouteModuleFromRoutes(
     const name = `_m${importCounter++}`
     const fullPath = `${routesDir}/${filePath}`
     imports.push(`import * as ${name} from ${jsStringLiteral(fullPath)}`)
+
     return name
   }
 
@@ -708,6 +724,7 @@ export function generateRouteModuleFromRoutes(
     imports.push(
       `const ${name} = lazy(${loaderExpr ?? `() => import(${jsStringLiteral(fullPath)})`}${optsStr})`,
     )
+
     return name
   }
 
@@ -750,6 +767,20 @@ export function generateRouteModuleFromRoutes(
         + `dev banner, SSG completeness checks) cannot see it. Keep it a plain string literal: `
         + `export const renderMode = 'ssg'`,
     )
+  }
+
+  /**
+   * `export const hydrate` (#4371) lands on the record as `meta.hydrate`, always
+   * as an inlined literal (assertHydrateExports rejects anything else), so it
+   * never costs a route its code splitting. Merged into a `meta` prop another
+   * export already produced, or added as its own.
+   */
+  function addHydrateMeta(exp: RouteFileExports, props: string[], prefix: string): void {
+    if (exp.hydrateLiteral === undefined) return
+    const part = `hydrate: ${exp.hydrateLiteral}`
+    const at = props.findIndex((p) => p.startsWith(`${prefix}meta: { `))
+    if (at === -1) props.push(`${prefix}meta: { ${part} }`)
+    else props[at] = (props[at] as string).replace(/ \}$/, `, ${part} }`)
   }
 
   function generatePageRoute(
@@ -943,6 +974,8 @@ export function generateRouteModuleFromRoutes(
       }
     }
 
+    addHydrateMeta(exp, props, `${indent}  `)
+
     if (notFoundName) {
       props.push(`${indent}  notFoundComponent: ${notFoundName}`)
     }
@@ -1015,6 +1048,8 @@ export function generateRouteModuleFromRoutes(
       }
     }
 
+    addHydrateMeta(exp, props, indent)
+
     if (errorName) {
       props.push(`${indent}errorComponent: ${errorName}`)
     }
@@ -1052,6 +1087,7 @@ export function generateRouteModuleFromRoutes(
     if (node.layout) {
       return [wrapWithLayout(node, allChildren, indent, errorName, notFoundName)]
     }
+
     return allChildren
   }
 
@@ -1226,6 +1262,7 @@ function remember<T>(cache: Map<string, Promise<T>>, key: string, make: () => Pr
   })
   cache.set(key, p)
   if (cache.size > SCAN_CACHE_MAX) cache.delete(cache.keys().next().value as string)
+
   return p
 }
 
@@ -1295,6 +1332,7 @@ async function walkRoutesDir(routesDir: string): Promise<RouteScan> {
   }
 
   await walk(routesDir)
+
   return { files, serverFiles }
 }
 
@@ -1332,6 +1370,7 @@ export function inferRouteMode(exp: RouteFileExports): RenderMode {
   if (exp.hasRevalidate) return 'isr'
   if (exp.hasGetStaticPaths) return 'ssg'
   if (exp.hasLoader || exp.serverLoaderFile !== undefined || exp.hasGuard || exp.hasMiddleware) return 'ssr'
+
   return 'ssg'
 }
 
@@ -1352,6 +1391,7 @@ function declaredModeOf(r: FileRoute): DeclaredMode | undefined {
   const exp = r.exports
   if (!exp?.hasRenderMode) return undefined
   const lit = exp.renderModeLiteral?.replace(/['"]/g, '')
+
   return lit === 'ssr' || lit === 'ssg' || lit === 'spa' || lit === 'isr' ? lit : 'computed'
 }
 
@@ -1387,6 +1427,7 @@ export function createFileRouteModeResolver(
       dir = i === -1 ? '' : dir.slice(0, i)
     }
   }
+
   return (r) => {
     const own = declaredModeOf(r)
     if (own === 'computed') return { mode: undefined, source: 'computed' }
@@ -1399,6 +1440,7 @@ export function createFileRouteModeResolver(
     if (appMode === 'auto') {
       return { mode: inferRouteMode(r.exports ?? ({} as RouteFileExports)), source: 'inferred' }
     }
+
     return { mode: appMode, source: 'app' }
   }
 }
@@ -1425,6 +1467,7 @@ export function applyModeInference(
     const exp = r.exports
     const { mode: inferred, source } = resolve(r)
     if (source !== 'inferred' || inferred === undefined) return r
+
     return {
       ...r,
       exports: {
@@ -1478,6 +1521,7 @@ export function detectIsrAuthRisk(
     const effective = resolve(r).mode
     if (effective === 'isr') offenders.push({ filePath: r.filePath, urlPath: r.urlPath })
   }
+
   return offenders
 }
 
@@ -1524,6 +1568,7 @@ export function resolveAutoAppMode(
     if (source === 'computed') return 'ssr'
     if (mode !== undefined && serverModes.has(mode)) return 'ssr'
   }
+
   return 'ssg'
 }
 
@@ -1559,6 +1604,7 @@ function walkRouteFilesSync(routesDir: string, fs: SyncRouteFs): string[] | null
   } catch {
     return null
   }
+
   return files
 }
 
@@ -1582,6 +1628,7 @@ export function routesDeclareLoadersSync(routesDir: string, fs: SyncRouteFs): bo
       return true
     }
   }
+
   return false
 }
 
@@ -1614,6 +1661,7 @@ export function resolveAutoModeSync(
   const pages = withExports.filter(
     (r) => !r.isLayout && !r.isError && !r.isLoading && !r.isNotFound,
   ).length
+
   return { mode: resolveAutoAppMode(withExports, rules), pages }
 }
 
@@ -1671,6 +1719,7 @@ export async function collectFileRouteModes(
       filePath: r.filePath,
     })
   }
+
   return out
 }
 
@@ -1794,6 +1843,78 @@ export function assertRouteFileShapes(routes: readonly FileRoute[]): void {
   }
 }
 
+type HydrateValue = 'islands' | 'app'
+
+function hydrateValueOf(r: FileRoute): HydrateValue | 'invalid' | undefined {
+  const exp = r.exports
+  if (!exp?.hasHydrate) return undefined
+  const lit = exp.hydrateLiteral?.replace(/^['"`]|['"`]$/g, '')
+
+  return lit === 'islands' || lit === 'app' ? lit : 'invalid'
+}
+
+/**
+ * `export const hydrate = 'islands' | 'app'` (#4371) — the checks the build
+ * needs before it can honour the declaration, run wherever the routes module
+ * is generated (dev and every build):
+ *
+ *   - the value is a string literal, `'islands'` or `'app'`: the server, the
+ *     SSG and the client read it from the route record without running the
+ *     route module, so a computed value would silently do nothing;
+ *   - an islands-only page is not rendered `spa`: an SPA page has no server
+ *     HTML to keep, so "static HTML plus its islands" cannot exist there.
+ *
+ * The cascade matches the runtime's merged `route.meta` (the page's own
+ * declaration, else its nearest `_layout`'s); the render mode comes from the
+ * one file-level resolver (`createFileRouteModeResolver`), so routeRules and
+ * `mode: 'auto'` are covered. Throws one `[Pyreon]` error listing every file.
+ */
+export function assertHydrateExports(
+  routes: readonly FileRoute[],
+  appMode: RenderMode | 'auto',
+  rules?: import('./route-modes').RouteRules,
+): void {
+  const problems: string[] = []
+  const layoutHydrate = new Map<string, HydrateValue>()
+  for (const r of routes) {
+    const value = hydrateValueOf(r)
+    if (value === 'invalid') {
+      problems.push(
+        r.exports?.hydrateLiteral === undefined
+          ? `"${r.filePath}": \`hydrate\` must be a string literal (\`export const hydrate = 'islands'\`): the build reads it without running the module.`
+          : `"${r.filePath}": \`hydrate = ${r.exports.hydrateLiteral}\` is not a hydration mode. Use 'islands' or 'app'.`,
+      )
+    } else if (value !== undefined && r.isLayout) {
+      layoutHydrate.set(r.dirPath, value)
+    }
+  }
+  const nearestLayout = (dirPath: string): HydrateValue | undefined => {
+    let dir = dirPath
+    for (;;) {
+      const v = layoutHydrate.get(dir)
+      if (v) return v
+      if (dir === '') return undefined
+      const i = dir.lastIndexOf('/')
+      dir = i === -1 ? '' : dir.slice(0, i)
+    }
+  }
+  const resolveMode = createFileRouteModeResolver(routes, appMode, rules)
+  for (const r of routes) {
+    if (r.isLayout || r.isError || r.isLoading || r.isNotFound) continue
+    const own = hydrateValueOf(r)
+    const effective = own === 'islands' || own === 'app' ? own : nearestLayout(r.dirPath)
+    if (effective !== 'islands') continue
+    if (resolveMode(r).mode !== 'spa') continue
+    problems.push(
+      `"${r.filePath}" (${r.urlPath}) is islands-only (\`hydrate = 'islands'\`${own === 'islands' ? '' : ', from its _layout'}) but renders as 'spa', which has no server HTML to keep. ` +
+        `Give it a server render mode (\`export const renderMode = 'ssg'\`), or \`export const hydrate = 'app'\` in the page.`,
+    )
+  }
+  if (problems.length > 0) {
+    throw new Error(`[Pyreon] Invalid \`hydrate\` export(s):\n${problems.map((p) => `  - ${p}`).join('\n')}`)
+  }
+}
+
 /**
  * Read the PURE-literal initializers of arbitrary `export const NAME = …`
  * declarations in a route file — the same parser + literal rules
@@ -1836,5 +1957,6 @@ export function readLiteralExports(
       })
     }
   }
+
   return out
 }

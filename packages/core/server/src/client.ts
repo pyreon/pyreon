@@ -141,6 +141,39 @@ export function startClient(options: StartClientOptions): () => void {
 
 type IslandLoader = () => Promise<{ default: ComponentFn } | ComponentFn>
 
+/** Options for {@link hydrateIslands} / {@link hydrateIslandsAuto}. */
+export interface HydrateIslandsOptions {
+  /**
+   * A component that wraps every island these calls hydrate: the place for
+   * the providers a standalone island needs (a theme, a UI system's root
+   * scope). An island hydrated this way is its own root, with no app around
+   * it, so a component inside it that reads context finds nothing unless the
+   * root provides it.
+   *
+   * Loaded once, with the first island that hydrates; a page with no islands
+   * never downloads it. It must render ONLY its children (providers, no
+   * element), or the island no longer matches its server HTML. Pass the
+   * children through as they are (`return props.children`, or
+   * `h(Provider, props, props.children)`).
+   *
+   * @example
+   * hydrateIslands(registry, { root: () => import('./IslandRoot') })
+   */
+  root?: IslandLoader | undefined
+}
+
+/** One cached load of the root, per `hydrateIslands` call (never module-level). */
+function withRoot(loader: IslandLoader, loadRoot: () => Promise<ComponentFn>): IslandLoader {
+  return () =>
+    Promise.all([loader(), loadRoot()]).then(([mod, Root]) => {
+      const Comp = typeof mod === 'function' ? mod : mod.default
+      // The island passed as a plain child argument: the root returns it as
+      // it is, so the hydrated tree has exactly the server's shape.
+      const Rooted: ComponentFn = (props) => h(Root, null, h(Comp, props))
+      return Rooted
+    })
+}
+
 /**
  * Hydrate all `<pyreon-island>` elements on the page.
  *
@@ -171,9 +204,20 @@ type IslandLoader = () => Promise<{ default: ComponentFn } | ComponentFn>
  *   // in the HTML — registering one would defeat the strategy.
  * })
  */
-export function hydrateIslands(registry: Record<string, IslandLoader>): () => void {
+export function hydrateIslands(
+  registry: Record<string, IslandLoader>,
+  options?: HydrateIslandsOptions,
+): () => void {
   /* v8 ignore next */
   if (isServer) return () => {}
+
+  // The root loads at most once for every island this call hydrates, and only
+  // when one does. Held by this call's closure, so it lives exactly as long as
+  // the islands it wraps.
+  const rootLoader = options?.root
+  let rootPromise: Promise<ComponentFn> | null = null
+  const loadRoot = (): Promise<ComponentFn> =>
+    (rootPromise ??= (rootLoader as IslandLoader)().then((m) => (typeof m === 'function' ? m : m.default)))
 
   // Dev-mode footgun guard: calling `hydrateIslands()` twice without
   // invoking the previous call's cleanup function leaks the old
@@ -233,14 +277,15 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
       continue
     }
 
-    const loader = registry[componentId]
-    if (!loader) {
+    const registered = registry[componentId]
+    if (!registered) {
       console.warn(`No loader registered for island "${componentId}"`)
       el.setAttribute('data-island-error', 'no-loader')
       if (process.env.NODE_ENV !== 'production') _count('island.skipped.no-loader')
       continue
     }
 
+    const loader = rootLoader ? withRoot(registered, loadRoot) : registered
     const propsJson = el.getAttribute('data-props') ?? '{}'
 
     // Prefetch (if requested) primes the module cache before the hydration
@@ -366,7 +411,10 @@ export interface AutoIslandRegistry {
  * import * as registry from 'virtual:pyreon/islands-registry'
  * hydrateIslandsAuto(registry)
  */
-export function hydrateIslandsAuto(registry?: AutoIslandRegistry): () => void {
+export function hydrateIslandsAuto(
+  registry?: AutoIslandRegistry,
+  options?: HydrateIslandsOptions,
+): () => void {
   /* v8 ignore next */
   if (isServer) return () => {}
   // When there is nothing to auto-hydrate — a missing / malformed registry
@@ -398,7 +446,7 @@ export function hydrateIslandsAuto(registry?: AutoIslandRegistry): () => void {
     return () => {}
   }
 
-  return hydrateIslands(registry.__pyreonIslandRegistry)
+  return hydrateIslands(registry.__pyreonIslandRegistry, options)
 }
 
 /**

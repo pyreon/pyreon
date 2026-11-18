@@ -323,6 +323,12 @@ That's the entire island client entry. No manual map to keep in sync with your `
 
 `'never'`-strategy islands are deliberately omitted from the auto-registry, so their components stay out of the client bundle entirely.
 
+An island hydrated this way is its own root: nothing above it provides context. When islands read context (a theme, a UI system's root scope), pass a root that provides it; it loads once, with the first island that hydrates, and must render only its children so each island still adopts its server HTML:
+
+```ts title="src/entry-client.ts"
+hydrateIslandsAuto(registry, { root: () => import('./IslandRoot') })
+```
+
 `hydrateIslandsAuto()` throws a descriptive error if it's handed the stub registry the plugin emits when `pyreon({ islands: false })` is set — pointing you to either re-enable islands or switch to the manual form.
 
 ### Manual registry
@@ -377,6 +383,10 @@ export default function Post() {
   )
 }
 ```
+
+### Pages that are only islands
+
+A zero page whose only interactive parts are islands can skip the app entirely: `export const hydrate = 'islands'` on the route (or its `_layout`) makes it static HTML plus its islands, with no router, no route code and no loader-data blob in the browser. The islands then hydrate from the auto-registry, which the client entry passes in (`startClientLazy({ routes: () => import('virtual:zero/routes'), islands })`). An island there is its own root, so one that reads context (a theme) gets its providers from `islandRoot`. See [Zero → Islands-only pages](/docs/zero#islands-only-pages-export-const-hydrate-islands).
 
 The inverse pattern — a cacheable page with per-request **server**-rendered holes — is **server islands** (`serverIsland()`). That's a different feature; see [Zero → Server Islands](/docs/zero#server-islands).
 

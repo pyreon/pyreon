@@ -68,6 +68,7 @@ import {
 	scanRouteFiles,
 	scanRouteFilesWithExports,
 	invalidateRouteScanCache,
+	assertHydrateExports,
 	assertRouteFileShapes,
 } from "./fs-router";
 import { validateZeroConfig } from "./config-validation";
@@ -335,6 +336,9 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 				: baseRoutes;
 			// mode: 'auto' — inference-as-declaration (see zeroPlugin head).
 			const routes = config._autoMode ? applyModeInference(expandedRoutes, config.routeRules) : expandedRoutes;
+			// `export const hydrate` (#4371): a literal, and never on a page
+			// rendered 'spa'. Same file-level mode resolution as the mode table.
+			assertHydrateExports(routes, config.mode ?? "ssr", config.routeRules);
 			// Build-time ISR safety: an isr-mode route whose source reads
 			// request cookie/authorization state is per-user — with the
 			// default cache key (or 'path-only') the runtime REFUSES to

@@ -1,6 +1,7 @@
 import { type Dirent, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { Plugin } from 'vite'
+import { detectRouteExports } from './fs-router'
 import type { ZeroConfig } from './types'
 
 /**
@@ -12,6 +13,12 @@ import type { ZeroConfig } from './types'
  * and the hydration machinery (~23 KB raw / ~7 KB gz, measured on kanban) was
  * pure weight. Defined `false` only when that is provably true, `true`
  * otherwise, and never in dev, so nothing changes while developing.
+ *
+ * `__ZERO_ISLANDS_ONLY__` — `false` compiles the islands-only page support
+ * (#4371) out of `startClient`: the marker check that hands an islands-only
+ * page to the islands runtime, and the navigation guard that turns a
+ * navigation to one into a full page load. Defined `false` only when no route
+ * file exports `hydrate` (so no page can be marked), `true` otherwise.
  */
 export function clientFlagsPlugin(userConfig: ZeroConfig, appMode: string): Plugin {
   return {
@@ -19,8 +26,15 @@ export function clientFlagsPlugin(userConfig: ZeroConfig, appMode: string): Plug
     config(viteConfig, env) {
       if (env.command !== 'build') return
       const root = resolve(viteConfig.root ?? process.cwd())
-      const hydrate = !isSpaEverywhere(userConfig, appMode, join(root, 'src', 'routes'))
-      return { define: { __ZERO_HYDRATE__: JSON.stringify(hydrate) } }
+      const routesDir = join(root, 'src', 'routes')
+      const hydrate = !isSpaEverywhere(userConfig, appMode, routesDir)
+
+      return {
+        define: {
+          __ZERO_HYDRATE__: JSON.stringify(hydrate),
+          __ZERO_ISLANDS_ONLY__: JSON.stringify(mayDeclareIslandsOnly(routesDir)),
+        },
+      }
     },
   }
 }
@@ -67,5 +81,42 @@ export function isSpaEverywhere(userConfig: ZeroConfig, appMode: string, routesD
   } catch {
     return false
   }
+
   return true
+}
+
+/**
+ * True when any route file under `routesDir` exports `hydrate` (#4371), read
+ * with the SAME detector the route generator uses, so a page the server can
+ * mark is a page this answers `true` for. Every doubt (a symlink, an
+ * unreadable tree) answers `true`: a wrong `false` would drop the code an
+ * islands-only page needs, a wrong `true` costs only bytes.
+ */
+export function mayDeclareIslandsOnly(routesDir: string): boolean {
+  const stack = [routesDir]
+  try {
+    while (stack.length > 0) {
+      const dir = stack.pop()!
+      let entries: Dirent[]
+      try {
+        entries = readdirSync(dir, { withFileTypes: true })
+      } catch (err) {
+        if (dir === routesDir && (err as NodeJS.ErrnoException).code === 'ENOENT') return false
+        throw err
+      }
+      for (const entry of entries) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) stack.push(full)
+        else if (entry.isSymbolicLink()) return true
+        else if (/\.[mc]?[jt]sx?$/.test(entry.name)) {
+          const source = readFileSync(full, 'utf-8')
+          if (source.includes('hydrate') && detectRouteExports(source, entry.name).hasHydrate) return true
+        }
+      }
+    }
+  } catch {
+    return true
+  }
+
+  return false
 }

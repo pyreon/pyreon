@@ -938,6 +938,14 @@ export interface RouteFileExports {
    * as a literal expression. Same inlining strategy as `metaLiteral`.
    */
   renderModeLiteral?: string
+  /** Has `export const hydrate` (`'islands' | 'app'`, #4371). */
+  hasHydrate?: boolean
+  /**
+   * Raw text of the `export const hydrate = …` initializer when it is a pure
+   * literal. Always inlined into the route record as `meta.hydrate`; a
+   * declaration without one is rejected by `assertHydrateExports`.
+   */
+  hydrateLiteral?: string | undefined
   /**
    * Raw text of the `export const revalidate = …` initializer (e.g.
    * `'60'`, `'false'`, `'3600'`). Captured at scan time so the SSG

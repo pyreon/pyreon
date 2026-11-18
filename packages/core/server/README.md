@@ -135,9 +135,17 @@ export default { plugins: [pyreon({ islands: true })] }
 ```ts
 // entry-client.ts
 import { hydrateIslandsAuto } from '@pyreon/server/client'
-import registry from 'virtual:pyreon/islands-registry'
+import * as registry from 'virtual:pyreon/islands-registry'
 hydrateIslandsAuto(registry)
 ```
+
+An island hydrated this way is its own root. When islands read context (a theme), pass a root that provides it; it loads with the first island that hydrates and must render only its children (providers, no element), so each island still adopts its server HTML:
+
+```ts
+hydrateIslandsAuto(registry, { root: () => import('./IslandRoot') })
+```
+
+A route whose matched chain declares `meta: { hydrate: 'islands' }` renders as an islands-only page (`renderPage` and both `createHandler` modes): the head carries `<meta name="pyreon-hydrate" content="islands">` (`ISLANDS_ONLY_MARKER`), and the loader-data script and the route's modulepreloads are left out. `@pyreon/zero` declares it with `export const hydrate = 'islands'`; its client hydrates only the islands on such a page.
 
 The Vite plugin scans every `island(() => import('PATH'), { name })` call at `buildStart` and emits the registry as a virtual module — no manual sync needed. Drop-in replacement for `hydrateIslands({ ... })`.
 

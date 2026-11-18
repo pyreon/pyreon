@@ -8,7 +8,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync }
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { clientFlagsPlugin, isSpaEverywhere } from '../client-flags-plugin'
+import { clientFlagsPlugin, isSpaEverywhere, mayDeclareIslandsOnly } from '../client-flags-plugin'
 
 const dirs: string[] = []
 afterEach(() => {
@@ -124,5 +124,51 @@ describe('clientFlagsPlugin', () => {
     } finally {
       cwd.mockRestore()
     }
+  })
+})
+
+/**
+ * `__ZERO_ISLANDS_ONLY__` (#4371) — `false` compiles the islands-only page
+ * support out of `startClient`. A wrong `false` would leave a marked page
+ * hydrated as an app with no loader data, so every doubt answers `true`.
+ */
+describe('mayDeclareIslandsOnly', () => {
+  it('is false when no route exports hydrate, even when islands mention it', () => {
+    const root = project({
+      'index.tsx': PAGE,
+      'demo.tsx': `${PAGE}const C = island(() => import('./C'), { name: 'C', hydrate: 'load' })\n`,
+    })
+    expect(mayDeclareIslandsOnly(join(root, 'src/routes'))).toBe(false)
+  })
+
+  it('is true for a page or a layout that exports hydrate, at any depth', () => {
+    expect(mayDeclareIslandsOnly(join(project({ 'a/b/page.tsx': `${PAGE}export const hydrate = 'islands'\n` }), 'src/routes'))).toBe(true)
+    expect(
+      mayDeclareIslandsOnly(join(project({ '_layout.tsx': `export function layout() { return null }\nexport const hydrate = 'app'\n` }), 'src/routes')),
+    ).toBe(true)
+  })
+
+  it('is false with no routes directory, true when the tree cannot be read', () => {
+    const root = project({})
+    expect(mayDeclareIslandsOnly(join(root, 'src/routes-missing'))).toBe(false)
+    const file = join(root, 'not-a-dir')
+    writeFileSync(file, '')
+    expect(mayDeclareIslandsOnly(file)).toBe(true)
+  })
+
+  it('a symlink answers true (its target is not read)', () => {
+    const root = project({ 'index.tsx': PAGE })
+    symlinkSync(join(root, 'src/routes/index.tsx'), join(root, 'src/routes/link.tsx'))
+    expect(mayDeclareIslandsOnly(join(root, 'src/routes'))).toBe(true)
+  })
+
+  it('the plugin defines it per build, never in dev', () => {
+    type ConfigHook = (c: object, e: { command: string; mode: string }) => { define?: Record<string, string> } | undefined
+    const none = project({ 'index.tsx': PAGE })
+    const some = project({ 'index.tsx': `${PAGE}export const hydrate = 'islands'\n` })
+    const hook = clientFlagsPlugin({}, 'ssg').config as unknown as ConfigHook
+    expect(hook({ root: none }, { command: 'build', mode: 'production' })?.define?.__ZERO_ISLANDS_ONLY__).toBe('false')
+    expect(hook({ root: some }, { command: 'build', mode: 'production' })?.define?.__ZERO_ISLANDS_ONLY__).toBe('true')
+    expect(hook({ root: some }, { command: 'serve', mode: 'development' })).toBeUndefined()
   })
 })
