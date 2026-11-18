@@ -25,7 +25,7 @@ import { Fragment, h, _pk, _pp, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal, renderEffect } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { describe, expect, it } from 'vitest'
-import { _tpl, _bindText, _bindDirect, _mountSlot, _textSlot, _setChild, _setChildAt } from '../template'
+import { _tpl, _bindText, _bindDirect, _mountSlot, _textSlot, _setChild, _setChildAt, _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
 import { _applyProps, _setAttr, _setStyle, _setStyleOnce, bindPolymorphicText, mountChild, _bindProp} from '../index'
 
 function stripImports(code: string): string {
@@ -42,7 +42,7 @@ function lowerResidualTsx(code: string): string {
 }
 
 const RUNTIME_DEPS = {
-  _tpl,
+  _tpl, _dispose2, _dispose3, _dispose4, _disposeN,
   _bind,
   renderEffect,
   _bindText,

@@ -37,6 +37,10 @@ import {
   type EffectScope,
   effectScope,
   getContextOwner,
+  getCurrentScope,
+  _abortOwnerFrame,
+  _closeOwnerFrame,
+  _openOwnerFrame,
   type RunCapture,
   type SubscriberHost,
   runWithContextOwner,
@@ -2074,10 +2078,15 @@ function hydrateComponent(
   // during hydration too. Owner stays `scope` through `runWithHooks` +
   // `hydrateChild` + onMount, restored to `prevOwner` on every exit.
   const prevOwner = getContextOwner()
+  // Restored, never reset to null — see `mountComponent`.
+  const prevScope = getCurrentScope()
   const scope = effectScope()
   scope._parent = prevOwner
   setCurrentScope(scope)
   setContextOwner(scope)
+  // Error-path owner of the template bindings this setup and hydration build —
+  // see `mountComponent`.
+  const ownerFrame = _openOwnerFrame()
 
   let subtreeCleanup: Cleanup = noop
   const mountCleanups: Cleanup[] = []
@@ -2113,8 +2122,9 @@ function hydrateComponent(
     hooks = _takeHooks()
   } catch (err) {
     if (adoptTarget !== null) _setTplAdoptTarget(null)
-    setCurrentScope(null)
+    setCurrentScope(prevScope)
     setContextOwner(prevOwner)
+    _abortOwnerFrame(ownerFrame)
     scope.stop()
 
     console.error(`[Pyreon] Error hydrating component <${componentName}>:`, err)
@@ -2132,8 +2142,9 @@ function hydrateComponent(
   // Disarm unconditionally: a component that produced no root `_tpl` must not
   // leave a live target for an unrelated later call.
   if (adoptTarget !== null) _setTplAdoptTarget(null)
-  setCurrentScope(null)
+  setCurrentScope(prevScope)
 
+  try {
 
   // Register onUpdate hooks with the scope
   if (hooks.update) {
@@ -2299,6 +2310,16 @@ function hydrateComponent(
       }
     }
   }
+  } catch (err) {
+    // The hydration walk threw: nothing will ever receive this component's
+    // cleanup, so release what it built and restore the parent owner before
+    // the error continues up the walk (it propagates, as before).
+    _abortOwnerFrame(ownerFrame)
+    scope.stop()
+    setContextOwner(prevOwner)
+    throw err
+  }
+  _closeOwnerFrame(ownerFrame)
 
   // A component that rendered nothing registers too, as `mountComponent` does.
   if (process.env.NODE_ENV !== 'production' && output == null) {

@@ -18,6 +18,7 @@
  * Bisect: restoring the spread in `hydrateComponent` fails the two `h()`
  * hydrate specs with `expected '/a' to be '/b'`.
  */
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
 import { transformJSX } from '@pyreon/compiler'
 import { Fragment, _fuse, _pp, _rp, _rpd, _wrapSpread, h } from '@pyreon/core'
 import { _bind, renderEffect, signal } from '@pyreon/reactivity'
@@ -117,7 +118,7 @@ describe('children merge keeps getter props live — h() forwarding', () => {
 
 // ─── Compiled control: real transformJSX ────────────────────────────────────
 const DEPS = {
-  _tpl, _bind, renderEffect, _bindText, _bindProp, _applyProps, _setAttr, _mountSlot, _textSlot,
+  _tpl, _dispose2, _dispose3, _dispose4, _disposeN, _bind, renderEffect, _bindText, _bindProp, _applyProps, _setAttr, _mountSlot, _textSlot,
   bindPolymorphicText, _fuse, _pp, _rp, _rpd, _wrapSpread, h, Fragment, signal,
 }
 function compile(source: string, sig: Sig): () => unknown {

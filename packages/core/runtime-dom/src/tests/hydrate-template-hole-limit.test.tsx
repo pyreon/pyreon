@@ -69,7 +69,7 @@ import {
   hydrateRoot,
 } from '../index'
 import { bindPolymorphicText } from '../mount'
-import { _setTplAdoptTarget, _setTplAdoptVerifier } from '../template'
+import { _setTplAdoptTarget, _setTplAdoptVerifier, _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
 
 // ─── Counter sink ────────────────────────────────────────────────────────────
 const g = globalThis as { __pyreon_count__?: ((name: string, n?: number) => void) | undefined }
@@ -89,7 +89,7 @@ afterEach(() => {
 
 // ─── Real-transform harness (same shape as hydrate-component-tpl-adoption) ───
 const RUNTIME_DEPS = {
-  _tpl,
+  _tpl, _dispose2, _dispose3, _dispose4, _disposeN,
   _bind,
   renderEffect,
   _bindText,

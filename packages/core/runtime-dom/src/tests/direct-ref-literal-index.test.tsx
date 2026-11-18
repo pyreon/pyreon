@@ -11,6 +11,7 @@
  * bindings. The `_d1` assertions are what distinguish the tiers — both update
  * the DOM correctly, so a DOM-only check passes either way.
  */
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
 import { describe, expect, it, afterEach } from 'vitest'
 import { signal, renderEffect } from '@pyreon/reactivity'
 import { transformJSX } from '@pyreon/compiler'
@@ -20,7 +21,7 @@ import { query } from '@pyreon/test-utils'
 import { mountChild } from '../mount'
 import { _tpl, _bindText, _bindDirect, _setClass, bindPolymorphicText } from '../index'
 
-const DEPS = { _tpl, _bindText, _bindDirect, _setClass, bindPolymorphicText, renderEffect, _rp, _cx: cx, h, Fragment, document }
+const DEPS = { _tpl, _dispose2, _dispose3, _dispose4, _disposeN, _bindText, _bindDirect, _setClass, bindPolymorphicText, renderEffect, _rp, _cx: cx, h, Fragment, document }
 
 const mounted: Array<() => void> = []
 afterEach(() => {

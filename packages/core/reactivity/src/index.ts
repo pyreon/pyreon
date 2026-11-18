@@ -88,6 +88,10 @@ export {
   onCleanup,
   type ReactiveSnapshotCapture,
   renderEffect,
+  _renderBind,
+  _openOwnerFrame,
+  _closeOwnerFrame,
+  _abortOwnerFrame,
   setErrorHandler,
   setSnapshotCapture,
 } from './effect'

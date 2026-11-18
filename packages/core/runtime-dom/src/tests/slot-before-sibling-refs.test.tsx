@@ -31,7 +31,7 @@ import { transformSync } from 'esbuild'
 import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
 import { _bind, signal, renderEffect } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
-import { _tpl, _bindText, _bindDirect, _mountSlot, _textSlot } from '../template'
+import { _tpl, _bindText, _bindDirect, _mountSlot, _textSlot, _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
 import {
   _applyProps,
   _setAttr,
@@ -63,7 +63,7 @@ function lowerResidualJsx(code: string): string {
 }
 
 const RUNTIME_DEPS = {
-  _tpl,
+  _tpl, _dispose2, _dispose3, _dispose4, _disposeN,
   _bind,
   renderEffect,
   _bindText,

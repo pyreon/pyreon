@@ -472,6 +472,57 @@ export function _releaseRun(cap: RunCapture): void {
  */
 export const _noopDispose = (): void => {}
 
+// ─── Template-owned bindings ─────────────────────────────────────────────────
+// A render binding created by a compiled template or a runtime-dom mount
+// helper has exactly ONE owner: the cleanup it is returned to (the template's
+// `return () => { __d0(); … }`, an element's prop cleanup, a text binding's
+// disposer). Registering it with the ambient `EffectScope` as well made the
+// scope a redundant second owner and kept a `[dispose]` array (28 B, 100 B
+// once it grows) alive per component for nothing.
+//
+// The one thing that second owner did was dispose bindings on an ERROR path:
+// a setup or render that throws after building a template never hands the
+// template's cleanup to anyone. An OWNER FRAME covers exactly that window.
+// `mountComponent` (and a `<For>` row callback) opens one; every owned binding
+// created while it is open is recorded; a throw disposes what was recorded
+// since the frame opened, and a normal exit forgets it. Frames nest strictly
+// (synchronous try/finally), so a frame owns `l[mark..]` — LIFO by mark, never
+// by `pop()` — and the list is empty whenever no mount is on the stack.
+// Nothing is retained past the frame: the list holds references only while a
+// mount is running.
+interface OwnerFrame {
+  /** Open frames. Bindings are recorded only while this is > 0. */
+  d: number
+  /** Disposers recorded by the open frames, oldest first. */
+  l: (() => void)[]
+}
+const _of: OwnerFrame = { d: 0, l: [] }
+
+/**
+ * @internal Open an owner frame (see above). Returns the mark to pass to
+ * `_closeOwnerFrame` on a normal exit or `_abortOwnerFrame` on a throw —
+ * exactly one of them, exactly once.
+ */
+export function _openOwnerFrame(): number {
+  _of.d++
+  return _of.l.length
+}
+
+/** @internal Normal exit: the bindings recorded since `mark` are owned by their cleanups now. */
+export function _closeOwnerFrame(mark: number): void {
+  _of.d--
+  _of.l.length = mark
+}
+
+/** @internal Error exit: dispose every binding recorded since `mark`, oldest first. */
+export function _abortOwnerFrame(mark: number): void {
+  _of.d--
+  const l = _of.l
+  if (l.length <= mark) return
+  const taken = l.splice(mark)
+  for (const dispose of taken) dispose()
+}
+
 /**
  * Static-dep binding — compiler helper for template expressions.
  *
@@ -556,8 +607,9 @@ export function _bind(fn: () => void): () => void {
   }
   if (process.env.NODE_ENV !== 'production') _rdTagHandle(dispose, run)
 
-  // Auto-register with scope so template bindings are disposed during teardown
-  getCurrentScope()?.add(dispose)
+  // Template-owned: the compiled template's cleanup is the only owner, so this
+  // does NOT register with the ambient scope (see "Template-owned bindings").
+  if (_of.d > 0) _of.l.push(dispose)
 
   return dispose
 }
@@ -574,6 +626,21 @@ export function _bind(fn: () => void): () => void {
  * function rather than an Effect object — saves one allocation.
  */
 export function renderEffect(fn: () => void): () => void {
+  return renderEffectImpl(fn, false)
+}
+
+/**
+ * @internal `renderEffect` for a binding whose disposer is RETURNED to an
+ * owning cleanup — a compiled template's binding or a runtime-dom mount
+ * helper's. It does not register with the ambient `EffectScope` (see
+ * "Template-owned bindings" above); an open owner frame records it for the
+ * error path instead. Never use it for an effect whose disposer is dropped.
+ */
+export function _renderBind(fn: () => void): () => void {
+  return renderEffectImpl(fn, true)
+}
+
+function renderEffectImpl(fn: () => void, owned: boolean): () => void {
   // Same dev warning as `effect()` — signal reads after the first
   // await aren't tracked. See effect()'s docstring for full reasoning.
   if (process.env.NODE_ENV !== 'production') {
@@ -640,9 +707,10 @@ export function renderEffect(fn: () => void): () => void {
   // tracked on the first run, so no signal can ever schedule `run` again.
   if (deps.length === 0) return _noopDispose
 
-  // skipFrames=1: skip the `renderEffect()` frame, capture the caller's site.
+  // skipFrames=2: skip this frame and the `renderEffect()` / `_renderBind()`
+  // wrapper, capture the caller's site.
   if (process.env.NODE_ENV !== 'production')
-    _rdRegisterBinding(run, _captureCallerLocation(1))
+    _rdRegisterBinding(run, _captureCallerLocation(2))
 
   const dispose = () => {
     if (disposed) return
@@ -657,8 +725,12 @@ export function renderEffect(fn: () => void): () => void {
   }
   if (process.env.NODE_ENV !== 'production') _rdTagHandle(dispose, run)
 
-  // Auto-register with scope so render effects are disposed during teardown
-  getCurrentScope()?.add(dispose)
+  if (owned) {
+    if (_of.d > 0) _of.l.push(dispose)
+  } else {
+    // Auto-register with scope so render effects are disposed during teardown
+    getCurrentScope()?.add(dispose)
+  }
 
   return dispose
 }

@@ -221,12 +221,10 @@ export function createFlow<TData = Record<string, unknown>>(
   // (unmount + remount with the same instance is supported). A scope-
   // registered computed would be disposed by that WRONG owner on unmount,
   // leaving the cache serving permanently stale values on remount
-  // (`recompute` early-returns on `_disposed`). NOTE: in the CURRENT
-  // runtime-dom this is defensive — `mountComponent` nulls the scope after
-  // setup (mount.ts `finally { setCurrentScope(null) }`), so thunk-time
-  // creation already sees no scope — but that is another package's internal
-  // ordering, not a contract; the detach makes the instance-owned lifecycle
-  // hold regardless. The instance owns disposal (sweep + `dispose()`).
+  // (`recompute` early-returns on `_disposed`). `mountComponent` restores the
+  // PREVIOUS scope after setup (not null), so thunk-time creation inside a
+  // parent's mount can see a live scope; the detach makes the instance-owned
+  // lifecycle hold regardless. The instance owns disposal (sweep + `dispose()`).
   function detachedComputed<V>(create: () => Computed<V>): Computed<V> {
     const prev = getCurrentScope()
     setCurrentScope(null)

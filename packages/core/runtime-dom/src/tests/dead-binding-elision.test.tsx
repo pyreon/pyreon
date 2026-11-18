@@ -7,6 +7,7 @@
  * that reads a signal stays live, and a first value that MOUNTED a subtree
  * keeps a disposer that removes it.
  */
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
 import { transformJSX } from '@pyreon/compiler'
 import {
   _fuse,
@@ -59,7 +60,7 @@ afterEach(() => {
 })
 
 const RUNTIME_DEPS = {
-  _tpl,
+  _tpl, _dispose2, _dispose3, _dispose4, _disposeN,
   _bind,
   _bindText,
   _bindDirect,
@@ -188,10 +189,12 @@ describe('_bindProp on a data property', () => {
     const { result, empty, stop } = withScope(() => _bindProp(props, 'label', t, el))
     expect(t.data).toBe('a!')
     expect(result).not.toBe(_noopDispose)
-    expect(empty).toBe(false)
+    // Template-owned: the returned disposer is the binding's only owner.
+    expect(empty).toBe(true)
     s.set('b')
     expect(t.data).toBe('b!')
     stop()
+    result()
     s.set('c')
     expect(t.data).toBe('b!')
   })
