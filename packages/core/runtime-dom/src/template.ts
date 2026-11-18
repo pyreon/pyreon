@@ -397,6 +397,60 @@ export function _bindProp(props: object, key: string, node: Text, parent: Node):
   return bindPolymorphicText(() => (props as Record<string, unknown>)[key] as VNodeChild, node, parent)
 }
 
+/**
+ * `_bindText`'s tracked tier: a bare callable with no `.direct()`. The
+ * renderEffect keeps tracking `fn`'s reads across the upgrade — after the first
+ * VNode-shaped value every re-run routes through the swap core, whose child
+ * mounts are untracked. The dev label skips two frames (this helper and
+ * `_bindText`) so it still names the compiled template that emitted the call.
+ */
+function bindTextTracked(fn: () => unknown, node: Text, ownerAtSetup: ReturnType<typeof getContextOwner>): () => void {
+  let core: PolyTextCore | null = null
+  // Last string written — same read-back saving as the fast path above.
+  let written: string | null | undefined = null
+  const disposeEffect = renderEffect(() => {
+    const v = fn()
+    if (core !== null) {
+      core.apply(v as VNodeChild)
+      return
+    }
+    const next =
+      v == null || typeof v === 'boolean'
+        ? ''
+        : typeof v === 'object'
+          ? _childText(v)
+          : String(v as string | number)
+    if (written === null) {
+      written = _freshBind ? undefined : node.data
+      // Dev: the first write into ADOPTED server text (#4419).
+      if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
+        reportFirstText(node, v, next, 'reactive')
+    }
+    if (next !== written) {
+      if (typeof v === 'object' && v !== null && _isMountableTextValue(v)) {
+        const parent = node.parentNode
+        if (parent !== null) {
+          core = createPolyTextCore(node, parent, ownerAtSetup)
+          core.apply(v as VNodeChild)
+          return
+        }
+      }
+      if (process.env.NODE_ENV !== 'production') _warnTextCoercion(v, node)
+      node.data = next
+      written = next
+    }
+  })
+  if (process.env.NODE_ENV !== 'production')
+    _rdLabelBinding(disposeEffect, 'text', node, undefined, 2)
+  // Dead binding that stayed text: no re-run can happen and no subtree exists.
+  if (disposeEffect === _noopDispose && core === null) return _noopDispose
+
+  return () => {
+    disposeEffect()
+    if (core !== null) core.dispose()
+  }
+}
+
 export function _bindText(
   source: { _v?: unknown; direct?: (fn: () => void) => () => void },
   node: Text,
@@ -494,55 +548,8 @@ export function _bindText(
     return () => disposer!()
   }
   // Fallback: bare callable. Use the compiler-provided receiver/caller when
-  // present (it preserves `this` for member-expression sources). The
-  // renderEffect keeps tracking `fn`'s reads across the upgrade — after the
-  // first VNode-shaped value every re-run routes through the swap core, whose
-  // child mounts are untracked.
-  const fn = resolveSlowCaller(source, caller, receiver)
-  let core: PolyTextCore | null = null
-  // Last string written — same read-back saving as the fast path above.
-  let written: string | null | undefined = null
-  const disposeEffect = renderEffect(() => {
-    const v = fn()
-    if (core !== null) {
-      core.apply(v as VNodeChild)
-      return
-    }
-    const next =
-      v == null || typeof v === 'boolean'
-        ? ''
-        : typeof v === 'object'
-          ? _childText(v)
-          : String(v as string | number)
-    if (written === null) {
-      written = _freshBind ? undefined : node.data
-      // Dev: the first write into ADOPTED server text (#4419).
-      if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
-        reportFirstText(node, v, next, 'reactive')
-    }
-    if (next !== written) {
-      if (typeof v === 'object' && v !== null && _isMountableTextValue(v)) {
-        const parent = node.parentNode
-        if (parent !== null) {
-          core = createPolyTextCore(node, parent, ownerAtSetup)
-          core.apply(v as VNodeChild)
-          return
-        }
-      }
-      if (process.env.NODE_ENV !== 'production') _warnTextCoercion(v, node)
-      node.data = next
-      written = next
-    }
-  })
-  if (process.env.NODE_ENV !== 'production')
-    _rdLabelBinding(disposeEffect, 'text', node, undefined, 1)
-  // Dead binding that stayed text: no re-run can happen and no subtree exists.
-  if (disposeEffect === _noopDispose && core === null) return _noopDispose
-
-  return () => {
-    disposeEffect()
-    if (core !== null) core.dispose()
-  }
+  // present (it preserves `this` for member-expression sources).
+  return bindTextTracked(resolveSlowCaller(source, caller, receiver), node, ownerAtSetup)
 }
 
 // ─── Direct signal binding (bypasses effect system) ──────────────────────────
