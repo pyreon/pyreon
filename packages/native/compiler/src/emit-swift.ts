@@ -3247,7 +3247,9 @@ function emitSwiftStmtLinesScoped(stmts: readonly StatementIR[], indent: number)
         if (c.locals.has(s.name)) continue
         const t = inferType(s.expr, c)
         const typed = t.kind === 'unknown' && s.declaredType !== undefined ? s.declaredType : t
-        if (typeIsOptional(typed)) c.locals.set(s.name, typed)
+        // Any known type, not only an optional one: every type-gated lowering of a nested local
+        // (`Object.keys(r)` over a `Record`, a numeric coercion) needs it (#4588).
+        if (typed.kind !== 'unknown') c.locals.set(s.name, typed)
       }
     }
   }

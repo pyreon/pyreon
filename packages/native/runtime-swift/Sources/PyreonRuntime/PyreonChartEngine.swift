@@ -3200,7 +3200,7 @@ public func patternMarks(_ p: PyreonChartPattern, _ bounds: PyreonChartRect) -> 
                   while k < count && at < shape.count {
                     let q = shape[at]
                     pts.append(rotated(center, gx + q.x * width, gy + q.y * width, cosA, sinA))
-                    at = at + 1
+                    at = pyreonAdd(at, 1)
                     k = k + 1.0
                   }
                   if pts.count >= 3 {
@@ -3263,13 +3263,13 @@ public func patternImageCells(_ p: PyreonChartPattern, _ bounds: PyreonChartRect
       let sy = ((p.spacingY ?? sx)) > 2.0 ? (p.spacingY ?? sx) : 2.0
       let size = p.width > 0.5 ? p.width : 0.5
       let aspect = imageW > 0.0 && imageH > 0.0 ? imageH / imageW : 1.0
-      let w = aspect <= 1.0 ? size : Double(size) / Double(aspect)
+      let w = aspect <= 1.0 ? size : size / aspect
       let h = aspect <= 1.0 ? size * aspect : size
-      var y = floor(Double(bounds.y / Double(sy))) * sy
+      var y = floor(Double(bounds.y / sy)) * sy
       while y < bounds.y + bounds.h {
-        var x = floor(Double(bounds.x / Double(sx))) * sx
+        var x = floor(Double(bounds.x / sx)) * sx
         while x < bounds.x + bounds.w {
-          out.append(PyreonChartRect(x: x + Double((sx - w)) / 2.0, y: y + Double((sy - h)) / 2.0, w: w, h: h))
+          out.append(PyreonChartRect(x: x + (sx - w) / 2.0, y: y + (sy - h) / 2.0, w: w, h: h))
           x = x + sx
         }
         y = y + sy
@@ -3567,11 +3567,11 @@ public func formatDate(_ ms: Double, _ pattern: String) -> String {
       let c = pyreonSubstring(pattern, i, pyreonAdd(i, 1))
       if c == "[" {
         var end = pyreonAdd(i, 1)
-        while end < pattern.utf16.count && pyreonSubstring(pattern, end, end + 1) != "]" {
-          end = end + 1
+        while end < pattern.utf16.count && pyreonSubstring(pattern, end, pyreonAdd(end, 1)) != "]" {
+          end = pyreonAdd(end, 1)
         }
         out = out + pyreonSubstring(pattern, pyreonAdd(i, 1), end)
-        i = end + 1
+        i = pyreonAdd(end, 1)
       } else {
         if pyreonSubstring(pattern, i, pyreonAdd(i, 4)) == "YYYY" {
           out = out + padded(year, 4)
@@ -3857,7 +3857,7 @@ public func timeTicks(_ d: Domain, _ r0: Double, _ r1: Double, _ target: Double,
       if monthStartMs(mi) < d.min {
         mi = mi + 1.0
       }
-      mi = ceil(Double(Double(mi) / Double(months))) * months
+      mi = ceil(Double(mi / months)) * months
       var k = 0.0
       while k < 200.0 {
         let v = monthStartMs(mi + months * k)
@@ -3959,7 +3959,7 @@ public func logViewTicks(_ lo: Double, _ hi: Double, _ r0: Double, _ r1: Double,
       for m in mults {
         let v = base * m
         if v >= lo * 0.999999 && v <= hi * 1.000001 && count < limit {
-          out.append(Tick(value: v, pos: scaleLinear(view, r0, r1, log10(Double(Double(v) / lo))), label: fmt(v)))
+          out.append(Tick(value: v, pos: scaleLinear(view, r0, r1, log10(Double(v / lo))), label: fmt(v)))
           count = pyreonAdd(count, 1)
         }
       }
@@ -3978,7 +3978,7 @@ public func smooth(_ points: [PyreonChartPt]) -> [PyreonChartPt] {
     for i in 0..<pyreonSub(n, 1) {
       let dxi = points[pyreonAdd(i, 1)].x - points[i].x
       dx.append(dxi)
-      slope.append(dxi == 0.0 ? 0.0 : (points[pyreonAdd(i, 1)].y - points[i].y) / Double(dxi))
+      slope.append(dxi == 0.0 ? 0.0 : (points[pyreonAdd(i, 1)].y - points[i].y) / dxi)
     }
     var m = [slope[0]]
     for i in 1..<pyreonSub(n, 1) {
@@ -3989,7 +3989,7 @@ public func smooth(_ points: [PyreonChartPt]) -> [PyreonChartPt] {
       } else {
         let w0 = 2.0 * dx[i] + dx[pyreonSub(i, 1)]
         let w1 = dx[i] + 2.0 * dx[pyreonSub(i, 1)]
-        m.append(Double((w0 + w1)) / Double((Double(w0) / Double(s0) + Double(w1) / Double(s1))))
+        m.append((w0 + w1) / (w0 / s0 + w1 / s1))
       }
     }
     m.append(slope[pyreonSub(n, 2)])
@@ -4087,8 +4087,8 @@ public func layoutArcsWith(_ slices: [Slice], _ cfg: ArcConfig) -> [ArcGeometry]
       let to = cfg.padAngle > a ? from : at + dir * a - dir * halfPad
       let lo = min(from, to)
       let hi = max(from, to)
-      let reach = cfg.rose == "" ? 1.0 : peak > 0.0 ? Double(s.value) / peak : 0.0
-      out.append(ArcGeometry(start: lo, end: hi, mid: Double((lo + hi)) / 2.0, slice: s, fraction: total > 0.0 ? Double(s.value) / total : 0.0, index: kept[k], reach: reach))
+      let reach = cfg.rose == "" ? 1.0 : peak > 0.0 ? s.value / peak : 0.0
+      out.append(ArcGeometry(start: lo, end: hi, mid: (lo + hi) / 2.0, slice: s, fraction: total > 0.0 ? s.value / total : 0.0, index: kept[k], reach: reach))
       at = at + dir * a
     }
     return out
@@ -4183,7 +4183,7 @@ public func hitArc(_ arcs: [ArcGeometry], _ center: PyreonChartPt, _ outerR: Dou
         continue
       }
       let off = ang - a.start
-      let d = off - floor(Double(Double(off) / TAU)) * TAU
+      let d = off - floor(Double(off / TAU)) * TAU
       if d <= a.end - a.start {
         return i
       }
@@ -4356,7 +4356,7 @@ public func layoutPieLabels(_ arcs: [ArcGeometry], _ center: PyreonChartPt, _ ra
               if dy >= maxY {
                 let dx = tx[i] - center.x - o.leg2 * dir
                 let rA = radius + o.leg1
-                rB = abs(dx) < rA ? sqrt(Double(Double((dy * dy)) / (1.0 - Double(Double((dx * dx)) / Double(rA)) / Double(rA)))) : rA
+                rB = abs(dx) < rA ? sqrt(Double((dy * dy) / (1.0 - (dx * dx) / rA / rA))) : rA
                 maxY = dy
               }
               members.append(i)
@@ -4364,7 +4364,7 @@ public func layoutPieLabels(_ arcs: [ArcGeometry], _ center: PyreonChartPt, _ ra
             for i in members {
               let dy = abs(ty[i] - center.y)
               let rA = radius + o.leg1
-              let dx = sqrt(Double(abs((1.0 - Double((dy * dy)) / Double((rB * rB))) * rA * rA)))
+              let dx = sqrt(Double(abs((1.0 - (dy * dy) / (rB * rB)) * rA * rA)))
               let nx = center.x + (dx + o.leg2) * dir
               var room = target[i] - (nx - tx[i]) * dir
               if o.overflow == "truncate" {
@@ -4455,8 +4455,8 @@ public func truncateLabel(_ text: String, _ width: Double, _ size: Double, _ mea
       if j == 0 {
         var w = 0.0
         while sub < line.utf16.count && w < content {
-          w = w + measure(pyreonSlice(line, sub, sub + 1), size)
-          sub = sub + 1
+          w = w + measure(pyreonSlice(line, sub, pyreonAdd(sub, 1)), size)
+          sub = pyreonAdd(sub, 1)
         }
       } else {
         if lineW > 0.0 {
@@ -4466,7 +4466,7 @@ public func truncateLabel(_ text: String, _ width: Double, _ size: Double, _ mea
           while more && sub < line.utf16.count {
             let need = lineW * (count + 1.0)
             if need <= limit {
-              sub = sub + 1
+              sub = pyreonAdd(sub, 1)
               count = count + 1.0
             } else {
               more = false
@@ -4571,7 +4571,7 @@ public func takeBoundsGap(_ pos0: [Double], _ rh: Double, _ gapThis: Double, _ g
     if moveFromOther > 0.0 {
       let pos = shiftRange(pos0, moveFromOther * moveDir, 0, pos0.count)
       let remained = moveFromOther + gapThis
-      return remained < 0.0 ? squeezeGaps(pos, rh, Double(-remained) * moveDir, 1.0) : pos
+      return remained < 0.0 ? squeezeGaps(pos, rh, -remained * moveDir, 1.0) : pos
     }
     return squeezeGaps(pos0, rh, -gapThis * moveDir, 1.0)
   }
@@ -4604,13 +4604,13 @@ public func limitLine(_ x0: Double, _ y0: Double, _ x1: Double, _ y1: Double, _ 
       let la = sqrt(Double(ax * ax + ay * ay))
       let lb = sqrt(Double(bx * bx + by * by))
       if la >= 0.001 && lb >= 0.001 {
-        let ux = Double(bx) / Double(lb)
-        let uy = Double(by) / Double(lb)
-        let turnCos = (Double(ax) / Double(la)) * ux + (Double(ay) / Double(la)) * uy
+        let ux = bx / lb
+        let uy = by / lb
+        let turnCos = (ax / la) * ux + (ay / la) * uy
         if cos(Double(turn)) < turnCos {
           let proj = project(ex, ey, x2, y2, x0, y0)
-          let px = proj.x + ux * (Double(proj.d) / tan(Double(Double.pi - turn)))
-          let py = proj.y + uy * (Double(proj.d) / tan(Double(Double.pi - turn)))
+          let px = proj.x + ux * (proj.d / tan(Double(Double.pi - turn)))
+          let py = proj.y + uy * (proj.d / tan(Double(Double.pi - turn)))
           let t = x2 != ex ? (px - ex) / (x2 - ex) : (py - ey) / (y2 - ey)
           if t == t {
             if t < 0.0 {
@@ -4637,9 +4637,9 @@ public func limitLine(_ x0: Double, _ y0: Double, _ x1: Double, _ y1: Double, _ 
       let la = sqrt(Double(ax * ax + ay * ay))
       let lb = sqrt(Double(bx * bx + by * by))
       if la >= 0.001 && lb >= 0.001 {
-        let ux = Double(bx) / Double(lb)
-        let uy = Double(by) / Double(lb)
-        let surfCos = (Double(ax) / Double(la)) * nx + (Double(ay) / Double(la)) * ny
+        let ux = bx / lb
+        let uy = by / lb
+        let surfCos = (ax / la) * nx + (ay / la) * ny
         if surfCos < cos(Double(surf)) {
           let proj = project(ex, ey, x2, y2, x0, y0)
           let angle2 = acos(Double(ux * nx + uy * ny))
@@ -4648,8 +4648,8 @@ public func limitLine(_ x0: Double, _ y0: Double, _ x1: Double, _ y1: Double, _ 
             ex = x2
             ey = y2
           } else {
-            let px = proj.x + ux * (Double(proj.d) / tan(Double(Double.pi / 2.0 - newAngle)))
-            let py = proj.y + uy * (Double(proj.d) / tan(Double(Double.pi / 2.0 - newAngle)))
+            let px = proj.x + ux * (proj.d / tan(Double(Double.pi / 2.0 - newAngle)))
+            let py = proj.y + uy * (proj.d / tan(Double(Double.pi / 2.0 - newAngle)))
             let t = x2 != ex ? (px - ex) / (x2 - ex) : (py - ey) / (y2 - ey)
             if t == t {
               if t < 0.0 {
@@ -4700,7 +4700,7 @@ public func radarPolygon(_ values: [Double], _ axes: [RadarAxis], _ center: Pyre
     var out: [PyreonChartPt] = []
     for i in 0..<n {
       let axisMax = axes[i].max
-      let t = axisMax <= 0.0 ? 0.0 : max(0.0, min(1.0, values[i] / Double(axisMax)))
+      let t = axisMax <= 0.0 ? 0.0 : max(0.0, min(1.0, values[i] / axisMax))
       out.append(pointOnCircle(center, radius * t, angles[i]))
     }
     return out
@@ -4745,7 +4745,7 @@ public func renderRadar(_ axes: [RadarAxis], _ series: [RadarSeries], _ box: Pyr
       for i in 0..<n {
         let at = pointOnCircle(center, radius + opts.fontSize * 1.2, angles[i])
         let dx = at.x - center.x
-        let align = Double(abs(dx)) < 1.0 ? "middle" : dx > 0.0 ? "start" : "end"
+        let align = abs(dx) < 1.0 ? "middle" : dx > 0.0 ? "start" : "end"
         out.append(PyreonDrawCmd(kind: "text", fill: opts.labelColor, text: axes[i].label, at: at, size: opts.fontSize, align: align, baseline: "middle"))
       }
     }
@@ -5231,7 +5231,7 @@ public func layoutStackLevels(_ levels: StackLevels, _ values: [[Double]], _ plo
         let yTop = scaleLinear(yDomain, plot.y + plot.h, plot.y, top)
         let yBot = scaleLinear(yDomain, plot.y + plot.h, plot.y, base)
         let own = values[s]
-        out.append(StackSegment(rect: PyreonChartRect(x: plot.x + band * fi + (band - bw) / 2.0, y: yTop < yBot ? yTop : yBot, w: bw, h: Double(abs(yBot - yTop))), seriesIndex: s, datumIndex: i, value: i < own.count ? own[i] : 0.0))
+        out.append(StackSegment(rect: PyreonChartRect(x: plot.x + band * fi + (band - bw) / 2.0, y: yTop < yBot ? yTop : yBot, w: bw, h: abs(yBot - yTop)), seriesIndex: s, datumIndex: i, value: i < own.count ? own[i] : 0.0))
       }
       fi = fi + 1.0
     }
@@ -5264,7 +5264,7 @@ public func layoutStackLevelsH(_ levels: StackLevels, _ values: [[Double]], _ pl
         let xEnd = scaleLinear(vDomain, plot.x, plot.x + plot.w, top)
         let xStart = scaleLinear(vDomain, plot.x, plot.x + plot.w, base)
         let own = values[s]
-        out.append(StackSegment(rect: PyreonChartRect(x: xStart < xEnd ? xStart : xEnd, y: plot.y + band * fi + (band - bh) / 2.0, w: Double(abs(xEnd - xStart)), h: bh), seriesIndex: s, datumIndex: i, value: i < own.count ? own[i] : 0.0))
+        out.append(StackSegment(rect: PyreonChartRect(x: xStart < xEnd ? xStart : xEnd, y: plot.y + band * fi + (band - bh) / 2.0, w: abs(xEnd - xStart), h: bh), seriesIndex: s, datumIndex: i, value: i < own.count ? own[i] : 0.0))
       }
       fi = fi + 1.0
     }
@@ -5395,7 +5395,7 @@ public func normalizeStack(_ seriesValues: [[Double]]) -> [[Double]] {
       for i in 0..<s.count {
         let v = s[i]
         let total = totals[i]
-        row.append(total > 0.0 ? Double(v) / Double(total) : isFiniteNumber(v) ? 0.0 : v)
+        row.append(total > 0.0 ? v / total : isFiniteNumber(v) ? 0.0 : v)
       }
       out.append(row)
     }
@@ -5421,7 +5421,7 @@ public func layoutWaterfall(_ values: [Double], _ plot: PyreonChartRect, _ yDoma
       let end = acc + v
       let y0 = scaleLinear(yDomain, plot.y + plot.h, plot.y, start)
       let y1 = scaleLinear(yDomain, plot.y + plot.h, plot.y, end)
-      out.append(WaterfallStep(rect: PyreonChartRect(x: plot.x + band * Double(i) + (band - bw) / 2.0, y: y0 < y1 ? y0 : y1, w: bw, h: Double(abs(y1 - y0))), datumIndex: i, value: v, start: start, end: end))
+      out.append(WaterfallStep(rect: PyreonChartRect(x: plot.x + band * Double(i) + (band - bw) / 2.0, y: y0 < y1 ? y0 : y1, w: bw, h: abs(y1 - y0)), datumIndex: i, value: v, start: start, end: end))
       acc = end
     }
     return out
@@ -5582,7 +5582,7 @@ public func renderDial(_ spec: DialSpec, _ center: PyreonChartPt, _ r: Double, _
         bands.append(band(center, r, r - spec.lineWidth, prev, at, s.color, spec.lineRound))
         prev = at
       }
-      for i in stride(from: bands.count - 1, through: 0, by: -1) {
+      for i in stride(from: pyreonSub(bands.count, 1), through: 0, by: -1) {
         layers.append(Layered(z: 0.0, seq: seq, cmd: bands[i]))
         seq = seq + 1.0
       }
@@ -5625,7 +5625,7 @@ public func renderDial(_ spec: DialSpec, _ center: PyreonChartPt, _ r: Double, _
           let align = ux < -0.4 ? "start" : ux > 0.4 ? "end" : "middle"
           layers.append(Layered(z: 0.0, seq: seq, cmd: PyreonDrawCmd(kind: "text", fill: fill, text: spec.labels[i], at: at, size: spec.labelSize, align: align, baseline: baseline)))
         } else {
-          layers.append(Layered(z: 0.0, seq: seq, cmd: PyreonDrawCmd(kind: "text", fill: fill, text: spec.labels[i], at: at, size: spec.labelSize, align: "middle", baseline: "middle", rotate: (Double(-rot) * 180.0) / Double.pi)))
+          layers.append(Layered(z: 0.0, seq: seq, cmd: PyreonDrawCmd(kind: "text", fill: fill, text: spec.labels[i], at: at, size: spec.labelSize, align: "middle", baseline: "middle", rotate: (-rot * 180.0) / Double.pi)))
         }
         seq = seq + 1.0
       }
@@ -5659,7 +5659,7 @@ public func renderDial(_ spec: DialSpec, _ center: PyreonChartPt, _ r: Double, _
           let pad = spec.detailPadding
           let bw = spec.detailWidth + pad[1] + pad[3]
           let bh = (spec.detailHeight >= 0.0 ? spec.detailHeight : spec.detailSize) + pad[0] + pad[2]
-          let box = PyreonChartRect(x: at.x - Double(bw) / 2.0, y: at.y - Double(bh) / 2.0, w: bw, h: bh)
+          let box = PyreonChartRect(x: at.x - bw / 2.0, y: at.y - bh / 2.0, w: bw, h: bh)
           if spec.detailBg != "" {
             layers.append(Layered(z: textZ, seq: seq, cmd: PyreonDrawCmd(kind: "rect", rect: box, fill: spec.detailBg)))
             seq = seq + 1.0
@@ -5719,7 +5719,7 @@ public func renderDial(_ spec: DialSpec, _ center: PyreonChartPt, _ r: Double, _
         let w = dialLen(spec.pointerWidth, r)
         let ox = dialLen(spec.pointerX, r)
         let oy = dialLen(spec.pointerY, r)
-        let points = spec.pointerIcon == "" ? pointerPoints(center, a, len, w, ox, oy) : turnAbout(center, a, iconPoints(spec.pointerIcon, PyreonChartRect(x: ox - Double(w) / 2.0, y: oy - len, w: w, h: len)))
+        let points = spec.pointerIcon == "" ? pointerPoints(center, a, len, w, ox, oy) : turnAbout(center, a, iconPoints(spec.pointerIcon, PyreonChartRect(x: ox - w / 2.0, y: oy - len, w: w, h: len)))
         layers.append(Layered(z: 0.0, seq: seq, cmd: PyreonDrawCmd(kind: "polygon", fill: fill, points: points)))
         seq = seq + 1.0
       }
@@ -5785,7 +5785,7 @@ public func pointAlong(_ pts: [PyreonChartPt], _ dist: Double) -> PyreonChartPt 
       let b = pts[i]
       let seg = sqrt(Double((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y)))
       if remaining <= seg && seg > 0.0 {
-        let f = remaining / Double(seg)
+        let f = remaining / seg
         return PyreonChartPt(x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f)
       }
       remaining = remaining - seg
@@ -5975,7 +5975,7 @@ public func geometrySpec(_ spec: ChartSpec) -> ChartSpec {
       let ay = (a.y ?? 0.0)
       let yF = (a.yFrom ?? 0.0)
       let yT = (a.yTo ?? 0.0)
-      notes.append({ var c = a; c.y = a.y != nil && ay > 0.0 ? log10(Double(Double(ay) / Double(lb.min))) : nil; c.yFrom = a.yFrom != nil && yF > 0.0 ? log10(Double(Double(yF) / Double(lb.min))) : nil; c.yTo = a.yTo != nil && yT > 0.0 ? log10(Double(Double(yT) / Double(lb.min))) : nil; return c }())
+      notes.append({ var c = a; c.y = a.y != nil && ay > 0.0 ? log10(Double(ay / Double(lb.min))) : nil; c.yFrom = a.yFrom != nil && yF > 0.0 ? log10(Double(yF / Double(lb.min))) : nil; c.yTo = a.yTo != nil && yT > 0.0 ? log10(Double(yT / Double(lb.min))) : nil; return c }())
     }
     let yDomain = isLog ? Domain(min: 0.0, max: viewMax) : Domain(min: 0.0, max: 1.0)
     return { var c = spec; c.series = series; c.yDomain = yDomain; c.annotations = spec.annotations == nil ? nil : notes; c.yScale = "linear"; c.stackNormalize = false; return c }()
@@ -6328,7 +6328,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         let y1 = scaleLinear(yDomain, plot.y + plot.h, plot.y, yFrom)
         let y2 = scaleLinear(yDomain, plot.y + plot.h, plot.y, yTo)
         let top = y1 < y2 ? y1 : y2
-        out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: plot.x, y: top, w: plot.w, h: Double(abs(y2 - y1))), fill: withAlpha((a.color ?? t.axis), 0.12)))
+        out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: plot.x, y: top, w: plot.w, h: abs(y2 - y1)), fill: withAlpha((a.color ?? t.axis), 0.12)))
         if let label = a.label {
           out.append(PyreonDrawCmd(kind: "text", fill: (a.color ?? t.label), text: label, at: PyreonChartPt(x: plot.x + plot.w - 4.0, y: top + 4.0), size: t.fontSize, align: "end", baseline: "top"))
         }
@@ -6340,7 +6340,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         let x1 = span.x
         let x2 = span.y
         let left = x1 < x2 ? x1 : x2
-        out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: left, y: plot.y, w: Double(abs(x2 - x1)), h: plot.h), fill: withAlpha((a.color ?? t.axis), 0.12)))
+        out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: left, y: plot.y, w: abs(x2 - x1), h: plot.h), fill: withAlpha((a.color ?? t.axis), 0.12)))
         if let label = a.label {
           out.append(PyreonDrawCmd(kind: "text", fill: (a.color ?? t.label), text: label, at: PyreonChartPt(x: left + 4.0, y: plot.y + 4.0), size: t.fontSize, align: "start", baseline: "top"))
         }
@@ -6454,7 +6454,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           for p in upper {
             poly.append(p)
           }
-          for i in stride(from: lower.count - 1, through: 0, by: -1) {
+          for i in stride(from: pyreonSub(lower.count, 1), through: 0, by: -1) {
             poly.append(lower[i])
           }
           let gA = seriesGradient(sA.gradient, plot)
@@ -6466,7 +6466,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
               if !isFiniteValue(v) {
                 continue
               }
-              let labA = valueLabel(fmtA(v), PyreonChartPt(x: upper[i].x, y: Double((upper[i].y + lower[i].y)) / 2.0), "middle", "middle", t)
+              let labA = valueLabel(fmtA(v), PyreonChartPt(x: upper[i].x, y: (upper[i].y + lower[i].y) / 2.0), "middle", "middle", t)
               out.append(i < rowKeys.count ? keyedLabel(rowKeys[i], labA) : labA)
             }
           }
@@ -6519,7 +6519,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             if !isFiniteValue(v) {
               continue
             }
-            let labH = valueLabel(fmt(v), PyreonChartPt(x: v < 0.0 ? r.x - 4.0 : r.x + r.w + 4.0, y: r.y + Double(r.h) / 2.0), v < 0.0 ? "end" : "start", "middle", t)
+            let labH = valueLabel(fmt(v), PyreonChartPt(x: v < 0.0 ? r.x - 4.0 : r.x + r.w + 4.0, y: r.y + r.h / 2.0), v < 0.0 ? "end" : "start", "middle", t)
             out.append(i < rowKeys.count ? keyedLabel(rowKeys[i], labH) : labH)
           }
         }
@@ -6554,7 +6554,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             if !isFiniteValue(v) {
               continue
             }
-            let labV = valueLabel(fmt(v), PyreonChartPt(x: r.x + Double(r.w) / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0), "middle", v < 0.0 ? "top" : "bottom", t)
+            let labV = valueLabel(fmt(v), PyreonChartPt(x: r.x + r.w / 2.0, y: v < 0.0 ? r.y + r.h + 4.0 : r.y - 4.0), "middle", v < 0.0 ? "top" : "bottom", t)
             out.append(i < rowKeys.count ? keyedLabel(rowKeys[i], labV) : labV)
           }
         }
@@ -6580,7 +6580,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             if s.showValues == true && progress >= 1.0 {
               let fmt = (spec.yFormat ?? plain)
               let v = printed(sIdx, st.datumIndex)
-              let labW = valueLabel(fmt(v), PyreonChartPt(x: st.rect.x + Double(st.rect.w) / 2.0, y: v < 0.0 ? st.rect.y + st.rect.h + 4.0 : st.rect.y - 4.0), "middle", v < 0.0 ? "top" : "bottom", t)
+              let labW = valueLabel(fmt(v), PyreonChartPt(x: st.rect.x + st.rect.w / 2.0, y: v < 0.0 ? st.rect.y + st.rect.h + 4.0 : st.rect.y - 4.0), "middle", v < 0.0 ? "top" : "bottom", t)
               out.append(st.datumIndex < rowKeys.count ? keyedLabel(rowKeys[st.datumIndex], labW) : labW)
             }
           }
@@ -6593,17 +6593,17 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             var runFrom = 0
             for run in runs {
               while runFrom < s.values.count && !isFiniteValue(s.values[runFrom]) {
-                runFrom = runFrom + 1
+                runFrom = pyreonAdd(runFrom, 1)
               }
               var runKeys: [String] = []
               if keyedLine {
                 for k in 0..<run.count {
-                  if runFrom + k < rowKeys.count {
-                    runKeys.append(rowKeys[runFrom + k])
+                  if pyreonAdd(runFrom, k) < rowKeys.count {
+                    runKeys.append(rowKeys[pyreonAdd(runFrom, k)])
                   }
                 }
               }
-              runFrom = runFrom + run.count
+              runFrom = pyreonAdd(runFrom, run.count)
               let pts = useDirect ? reveal(run) : m4Pixels(reveal(curveFn(run)), m4Density(spec))
               if pts.count > 1 {
                 let oneToOne = keyedLine && runKeys.count == pts.count
@@ -6791,7 +6791,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             for i in 0..<n {
               sum = sum + s.values[i]
             }
-            let mean = Double(sum) / Double(n)
+            let mean = sum / Double(n)
             idx = 0
             for i in 1..<n {
               if abs(s.values[i] - mean) < abs(s.values[idx] - mean) {
@@ -7260,7 +7260,7 @@ public func rampColor(_ stops: [String], _ t: Double) -> String {
     if n == 1 || t <= 0.0 {
       let s0 = stops[0]
       let o0 = heatHashOffset(s0)
-      return "rgb(\(pyreonNumberString(pyreonRound(Double(heatChannel(s0, o0))))), \(pyreonNumberString(pyreonRound(Double(heatChannel(s0, o0 + 2))))), \(pyreonNumberString(pyreonRound(Double(heatChannel(s0, o0 + 4))))))"
+      return "rgb(\(pyreonNumberString(pyreonRound(Double(heatChannel(s0, o0))))), \(pyreonNumberString(pyreonRound(Double(heatChannel(s0, pyreonAdd(o0, 2)))))), \(pyreonNumberString(pyreonRound(Double(heatChannel(s0, pyreonAdd(o0, 4)))))))"
     }
     let clamped = t >= 1.0 ? 1.0 : t
     var spanF = 0.0
@@ -7343,8 +7343,8 @@ public func renderHeat(_ options: HeatmapOptions) -> [PyreonDrawCmd] {
       let fullH = ch - gap
       let w = fullW * progress
       let h = fullH * progress
-      let x = plot.x + cell.col * cw + gap / 2.0 + Double((fullW - w)) / 2.0
-      let y = plot.y + cell.row * ch + gap / 2.0 + Double((fullH - h)) / 2.0
+      let x = plot.x + cell.col * cw + gap / 2.0 + (fullW - w) / 2.0
+      let y = plot.y + cell.row * ch + gap / 2.0 + (fullH - h) / 2.0
       out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: x, y: y, w: w, h: h), fill: visualOutside(cell.value, options.inRange, options.outBands) ? outColor : rampColor(stops, t)))
     }
     return out
@@ -7678,10 +7678,10 @@ public func layoutFunnel(_ stages: [FunnelStage], _ plot: PyreonChartRect, _ opt
           if !swap {
             break
           }
-          order[j + 1] = order[j]
-          j = j - 1
+          order[pyreonAdd(j, 1)] = order[j]
+          j = pyreonSub(j, 1)
         }
-        order[j + 1] = cur
+        order[pyreonAdd(j, 1)] = cur
       }
     }
     var maxV = 0.0
@@ -7700,7 +7700,7 @@ public func layoutFunnel(_ stages: [FunnelStage], _ plot: PyreonChartRect, _ opt
       let nextRatio = next >= 0 ? (maxV <= 0.0 ? 1.0 : stages[next].value / maxV) : minRatio
       let bottomW = plot.w * (nextRatio < minRatio ? minRatio : nextRatio)
       let top = plot.y + kf * (stageH + gap)
-      let cx = align == "left" ? plot.x + Double(topW) / 2.0 : align == "right" ? plot.x + plot.w - Double(topW) / 2.0 : plot.x + plot.w / 2.0
+      let cx = align == "left" ? plot.x + topW / 2.0 : align == "right" ? plot.x + plot.w - topW / 2.0 : plot.x + plot.w / 2.0
       out.append(FunnelStageGeometry(index: idx, top: top, bottom: top + stageH, topWidth: topW, bottomWidth: bottomW, centerX: cx))
       kf = kf + 1.0
     }
@@ -7720,9 +7720,9 @@ public func renderFunnel(_ stages: [FunnelStage], _ plot: PyreonChartRect, _ opt
       let s = stages[g.index]
       let tw = g.topWidth * progress
       let bw = g.bottomWidth * progress
-      let cxTop = align == "left" ? plot.x + Double(tw) / 2.0 : g.centerX
-      let cxBottom = align == "left" ? plot.x + Double(bw) / 2.0 : align == "right" ? plot.x + plot.w - Double(bw) / 2.0 : g.centerX
-      out.append(PyreonDrawCmd(kind: "polygon", fill: s.color, points: [PyreonChartPt(x: cxTop - Double(tw) / 2.0, y: g.top), PyreonChartPt(x: cxTop + Double(tw) / 2.0, y: g.top), PyreonChartPt(x: cxBottom + Double(bw) / 2.0, y: g.bottom), PyreonChartPt(x: cxBottom - Double(bw) / 2.0, y: g.bottom)]))
+      let cxTop = align == "left" ? plot.x + tw / 2.0 : g.centerX
+      let cxBottom = align == "left" ? plot.x + bw / 2.0 : align == "right" ? plot.x + plot.w - bw / 2.0 : g.centerX
+      out.append(PyreonDrawCmd(kind: "polygon", fill: s.color, points: [PyreonChartPt(x: cxTop - tw / 2.0, y: g.top), PyreonChartPt(x: cxTop + tw / 2.0, y: g.top), PyreonChartPt(x: cxBottom + bw / 2.0, y: g.bottom), PyreonChartPt(x: cxBottom - bw / 2.0, y: g.bottom)]))
       if showLabels && progress >= 1.0 {
         out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: s.label, at: PyreonChartPt(x: cxTop, y: (g.top + g.bottom) / 2.0), size: fontSize, align: "middle", baseline: "middle"))
       }
@@ -7737,7 +7737,7 @@ public func hitFunnel(_ stages: [FunnelStage], _ plot: PyreonChartRect, _ px: Do
       }
       let t = g.bottom <= g.top ? 0.0 : (py - g.top) / (g.bottom - g.top)
       let w = g.topWidth + (g.bottomWidth - g.topWidth) * t
-      if px >= g.centerX - Double(w) / 2.0 && px <= g.centerX + Double(w) / 2.0 {
+      if px >= g.centerX - w / 2.0 && px <= g.centerX + w / 2.0 {
         return g.index
       }
     }
@@ -7763,8 +7763,8 @@ public func nodeValue(_ node: TreeNode) -> Double {
       sp = pyreonSub(sp, 1)
       let cur = stack[sp]
       let own = cur.value
-      if own != nil {
-        sum = sum + ((own ?? 0.0))
+      if let own {
+        sum = sum + (own)
       } else {
         for c in (cur.children ?? []) {
           if sp < stack.count {
@@ -7854,11 +7854,11 @@ public func squarify(_ values: [Double], _ rect: PyreonChartRect) -> [PyreonChar
       }
       let vertical = w >= h
       let side = vertical ? h : w
-      let thick = side <= 0.0 ? 0.0 : Double(rowSum) / Double(side)
+      let thick = side <= 0.0 ? 0.0 : rowSum / side
       var offset = 0.0
       for k in 0..<row.count {
         let a = row[k] * areaScale
-        let len = thick <= 0.0 ? 0.0 : Double(a) / Double(thick)
+        let len = thick <= 0.0 ? 0.0 : a / thick
         let target = rowIdx[k]
         if vertical {
           out[target] = PyreonChartRect(x: x, y: y + offset, w: thick, h: len)
@@ -7893,10 +7893,10 @@ public func orderByValue(_ children: [TreeNode]) -> [Int] {
         if vals[order[j]] >= cv {
           break
         }
-        order[j + 1] = order[j]
-        j = j - 1
+        order[pyreonAdd(j, 1)] = order[j]
+        j = pyreonSub(j, 1)
       }
-      order[j + 1] = cur
+      order[pyreonAdd(j, 1)] = cur
     }
     return order
   }
@@ -7942,10 +7942,10 @@ public func layoutTreemap(_ nodes: [TreeNode], _ rect: PyreonChartRect, _ option
         if kids.count > 0 {
           let innerW = r.w - padding * 2.0
           let innerH = r.h - padding * 2.0
-          pushed.append(TreemapFrame(children: kids, area: PyreonChartRect(x: r.x + padding, y: r.y + padding, w: innerW < 0.0 ? 0.0 : innerW, h: innerH < 0.0 ? 0.0 : innerH), depth: frame.depth + 1, path: cellPath, inherited: color, hasInherited: true))
+          pushed.append(TreemapFrame(children: kids, area: PyreonChartRect(x: r.x + padding, y: r.y + padding, w: innerW < 0.0 ? 0.0 : innerW, h: innerH < 0.0 ? 0.0 : innerH), depth: pyreonAdd(frame.depth, 1), path: cellPath, inherited: color, hasInherited: true))
         }
       }
-      var pk = pushed.count - 1
+      var pk = pyreonSub(pushed.count, 1)
       while pk >= 0 {
         if sp < stack.count {
           stack[sp] = pushed[pk]
@@ -7953,7 +7953,7 @@ public func layoutTreemap(_ nodes: [TreeNode], _ rect: PyreonChartRect, _ option
           stack.append(pushed[pk])
         }
         sp = pyreonAdd(sp, 1)
-        pk = pk - 1
+        pk = pyreonSub(pk, 1)
       }
     }
     return cells
@@ -8064,10 +8064,10 @@ public func treeDepth(_ nodes: [TreeNode]) -> Int {
       for c in (cur.children ?? []) {
         if sp < stack.count {
           stack[sp] = c
-          depths[sp] = d + 1
+          depths[sp] = pyreonAdd(d, 1)
         } else {
           stack.append(c)
-          depths.append(d + 1)
+          depths.append(pyreonAdd(d, 1))
         }
         sp = pyreonAdd(sp, 1)
       }
@@ -8131,7 +8131,7 @@ public func layoutSunburst(_ nodes: [TreeNode], _ innerR: Double, _ outerR: Doub
         let node = frame.children[idx]
         let raw = nodeValue(node)
         let v = raw < 0.0 ? 0.0 : raw
-        let span = total <= 0.0 || usable <= 0.0 ? 0.0 : usable * (Double(v) / Double(total))
+        let span = total <= 0.0 || usable <= 0.0 ? 0.0 : usable * (v / total)
         let color = (node.color ?? (frame.hasInherited ? frame.inherited : paletteAt(palette, idx)))
         let kids = (node.children ?? [])
         var cellPath: [Int] = []
@@ -8142,11 +8142,11 @@ public func layoutSunburst(_ nodes: [TreeNode], _ innerR: Double, _ outerR: Doub
         let r0 = innerR + ringW * depthF
         arcs.append(SunburstArc(name: node.name, value: v, depth: frame.depth, path: cellPath, start: cursor, end: cursor + span, innerR: r0, outerR: r0 + ringW, color: color, leaf: kids.count == 0))
         if kids.count > 0 {
-          pushed.append(SunburstFrame(children: kids, a0: cursor, a1: cursor + span, depth: frame.depth + 1, path: cellPath, inherited: color, hasInherited: true))
+          pushed.append(SunburstFrame(children: kids, a0: cursor, a1: cursor + span, depth: pyreonAdd(frame.depth, 1), path: cellPath, inherited: color, hasInherited: true))
         }
         cursor = cursor + span + pad
       }
-      var pk = pushed.count - 1
+      var pk = pyreonSub(pushed.count, 1)
       while pk >= 0 {
         if sp < stack.count {
           stack[sp] = pushed[pk]
@@ -8154,7 +8154,7 @@ public func layoutSunburst(_ nodes: [TreeNode], _ innerR: Double, _ outerR: Doub
           stack.append(pushed[pk])
         }
         sp = pyreonAdd(sp, 1)
-        pk = pk - 1
+        pk = pyreonSub(pk, 1)
       }
     }
     return arcs
@@ -8237,7 +8237,7 @@ public func placeTreeNode(_ orient: String, _ box: PyreonChartRect, _ gutter: Do
       let cx = box.x + box.w / 2.0
       let cy = box.y + box.h / 2.0
       let side = box.w < box.h ? box.w : box.h
-      let rawR = Double(side) / 2.0 - gutter
+      let rawR = side / 2.0 - gutter
       let bigR = rawR < 0.0 ? 0.0 : rawR
       let ang = -Double.pi / 2.0 + (slotsF <= 0.0 ? 0.0 : (t / slotsF) * TREE_TAU)
       let r = bigR * depthFrac
@@ -8298,7 +8298,7 @@ public func layoutTree(_ roots: [TreeNode], _ box: PyreonChartRect, _ options: T
       let index = frames.count
       frames.append(frame)
       leafFlags.append(kids.count == 0)
-      var ki = kids.count - 1
+      var ki = pyreonSub(kids.count, 1)
       while ki >= 0 {
         let kid = kids[ki]
         var childPath: [Int] = []
@@ -8306,14 +8306,14 @@ public func layoutTree(_ roots: [TreeNode], _ box: PyreonChartRect, _ options: T
           childPath.append(p)
         }
         childPath.append(ki)
-        let next = TreeFrame(node: kid, depth: frame.depth + 1, path: childPath, color: (kid.color ?? frame.color), parent: index)
+        let next = TreeFrame(node: kid, depth: pyreonAdd(frame.depth, 1), path: childPath, color: (kid.color ?? frame.color), parent: index)
         if sp < stack.count {
           stack[sp] = next
         } else {
           stack.append(next)
         }
         sp = pyreonAdd(sp, 1)
-        ki = ki - 1
+        ki = pyreonSub(ki, 1)
       }
     }
     var lo: [Double] = []
@@ -8565,20 +8565,20 @@ public func layoutRiver(_ series: [RiverSeries], _ box: PyreonChartRect, _ optio
       }
       let hasPts = n > 0
       let midX = hasPts ? xs[widestAt] : plot.x
-      let midY = hasPts ? Double(top[widestAt].y) / 2.0 + Double(bottom[widestAt].y) / 2.0 : plot.y
+      let midY = hasPts ? top[widestAt].y / 2.0 + bottom[widestAt].y / 2.0 : plot.y
       let thickness = hasPts && widest > 0.0 ? bottom[widestAt].y - top[widestAt].y : 0.0
       layers.append(RiverLayer(series: si, name: s.name, color: (s.color ?? paletteAt(palette, si)), top: top, bottom: bottom, labelAt: PyreonChartPt(x: midX, y: midY), thickness: thickness))
     }
     var ticks: [RiverTick] = []
     if showAxis && n > 0 {
       var every = 1
-      while every * 8 < n {
-        every = every + 1
+      while pyreonMul(every, 8) < n {
+        every = pyreonAdd(every, 1)
       }
       var ti = 0
       while ti < n {
-        ticks.append(RiverTick(x: xs[ti], label: ti < cats.count ? cats[ti] : "\(ti + 1)"))
-        ti = ti + every
+        ticks.append(RiverTick(x: xs[ti], label: ti < cats.count ? cats[ti] : "\(pyreonAdd(ti, 1))"))
+        ti = pyreonAdd(ti, every)
       }
     }
     return RiverLayout(layers: layers, xs: xs, ticks: ticks, plot: plot)
@@ -8600,11 +8600,11 @@ public func smoothPoints(_ pts: [PyreonChartPt]) -> [PyreonChartPt] {
       let p3 = pyreonAdd(i, 2) < pts.count ? pts[pyreonAdd(i, 2)] : p2
       var kf = 1.0
       for k in 1...8 {
-        let t = Double(kf) / 8.0
+        let t = kf / 8.0
         let t2 = t * t
         let t3 = t2 * t
-        let x = 0.5 * (2.0 * p1.x + Double((-p0.x + p2.x) * t) + (2.0 * p0.x - 5.0 * p1.x + 4.0 * p2.x - p3.x) * t2 + (Double(-p0.x) + 3.0 * p1.x - 3.0 * p2.x + p3.x) * t3)
-        let y = 0.5 * (2.0 * p1.y + Double((-p0.y + p2.y) * t) + (2.0 * p0.y - 5.0 * p1.y + 4.0 * p2.y - p3.y) * t2 + (Double(-p0.y) + 3.0 * p1.y - 3.0 * p2.y + p3.y) * t3)
+        let x = 0.5 * (2.0 * p1.x + (-p0.x + p2.x) * t + (2.0 * p0.x - 5.0 * p1.x + 4.0 * p2.x - p3.x) * t2 + (-p0.x + 3.0 * p1.x - 3.0 * p2.x + p3.x) * t3)
+        let y = 0.5 * (2.0 * p1.y + (-p0.y + p2.y) * t + (2.0 * p0.y - 5.0 * p1.y + 4.0 * p2.y - p3.y) * t2 + (-p0.y + 3.0 * p1.y - 3.0 * p2.y + p3.y) * t3)
         out.append(PyreonChartPt(x: x, y: y))
         kf = kf + 1.0
       }
@@ -8706,7 +8706,7 @@ public func riverPointInPolygon(_ pts: [PyreonChartPt], _ px: Double, _ py: Doub
       let b = pts[j]
       let aAbove = a.y > py
       let bAbove = b.y > py
-      if aAbove != bAbove && px < ((b.x - a.x) * (py - a.y)) / Double((b.y - a.y)) + a.x {
+      if aAbove != bAbove && px < ((b.x - a.x) * (py - a.y)) / (b.y - a.y) + a.x {
         inside = !inside
       }
       j = i
@@ -8802,7 +8802,7 @@ public func layoutChord(_ nodes: [ChordNode], _ links: [ChordLink], _ box: Pyreo
       let span = (totals[i] / grand) * usable
       let start = angle
       let end = angle + span
-      let mid = Double((start + end)) / 2.0
+      let mid = (start + end) / 2.0
       let labelR = radius + 6.0
       let at = pointOnCircle(circle.center, labelR, mid)
       let cosMid = cos(Double(mid))
@@ -8815,7 +8815,7 @@ public func layoutChord(_ nodes: [ChordNode], _ links: [ChordLink], _ box: Pyreo
       let l = valid[k]
       let s = indexOfName(names, l.source)
       let t = indexOfName(names, l.target)
-      let span = (Double(l.value) / grand) * usable
+      let span = (l.value / grand) * usable
       let sStart = cursors[s]
       let sEnd = sStart + span
       cursors[s] = sEnd
@@ -9032,7 +9032,7 @@ public func layoutPolar(_ axes: PolarAxes, _ series: [PolarSeries], _ box: Pyreo
           continue
         }
         if col >= 0 {
-          let at = pyreonAdd(col * n, i)
+          let at = pyreonAdd(pyreonMul(col, n), i)
           let top = stackTop[at] + v
           stackTop[at] = top
           if top > hi {
@@ -9091,7 +9091,7 @@ public func layoutPolar(_ axes: PolarAxes, _ series: [PolarSeries], _ box: Pyreo
               let width = (slot - slot * barGap) / columnsF
               let a0 = start + dir * slot * iF + dir * (inner + width * colF)
               let a1 = a0 + dir * width
-              let at = pyreonAdd(col * n, i)
+              let at = pyreonAdd(pyreonMul(col, n), i)
               let base = running[at]
               running[at] = base + v
               sectors.append(PolarSector(series: si, index: i, start: a0 < a1 ? a0 : a1, end: a0 < a1 ? a1 : a0, innerR: innerR + (outerR - innerR) * polarFrac(base, domainLo, domainHi), outerR: innerR + (outerR - innerR) * polarFrac(base + v, domainLo, domainHi), color: color, value: v))
@@ -9229,7 +9229,7 @@ public func renderPolar(_ layout: PolarLayout, _ options: PolarOptions? = nil) -
       } else {
         var kF = 0.0
         for k in 0..<8 {
-          out.append(PyreonDrawCmd(kind: "line", from: c, to: pointOnCircle(c, layout.outerR, (Double(kF) / 8.0) * POLAR_TAU), stroke: gridColor, width: 1.0))
+          out.append(PyreonDrawCmd(kind: "line", from: c, to: pointOnCircle(c, layout.outerR, (kF / 8.0) * POLAR_TAU), stroke: gridColor, width: 1.0))
           kF = kF + 1.0
         }
         out.append(PyreonDrawCmd(kind: "polyline", stroke: gridColor, width: 1.0, points: ringPolyline(c, layout.outerR)))
@@ -9459,7 +9459,7 @@ public func layoutSankey(_ nodes: [SankeyNode], _ links: [SankeyLink], _ box: Py
       }
       let avail = box.h - padding * (members > 1.0 ? members - 1.0 : 0.0)
       if total > 0.0 && avail > 0.0 {
-        let cand = Double(avail) / Double(total)
+        let cand = avail / total
         if !kySeen || cand < ky {
           ky = cand
         }
@@ -9513,7 +9513,7 @@ public func layoutSankey(_ nodes: [SankeyNode], _ links: [SankeyLink], _ box: Py
               w = w + flowV[k]
             }
             if w > 0.0 {
-              y0[i] = y0[i] + (Double(acc) / Double(w) - (y0[i] + hgt[i] / 2.0)) * alpha
+              y0[i] = y0[i] + (acc / w - (y0[i] + hgt[i] / 2.0)) * alpha
             }
           }
           var col: [Int] = []
@@ -9531,10 +9531,10 @@ public func layoutSankey(_ nodes: [SankeyNode], _ links: [SankeyLink], _ box: Py
               if y0[prev] + hgt[prev] / 2.0 <= cc {
                 break
               }
-              col[b + 1] = prev
-              b = b - 1
+              col[pyreonAdd(b, 1)] = prev
+              b = pyreonSub(b, 1)
             }
-            col[b + 1] = cur
+            col[pyreonAdd(b, 1)] = cur
           }
           var y = box.y
           for i in col {
@@ -9544,14 +9544,14 @@ public func layoutSankey(_ nodes: [SankeyNode], _ links: [SankeyLink], _ box: Py
             y = y0[i] + hgt[i] + padding
           }
           var bottom = box.y + box.h
-          for k in stride(from: col.count - 1, through: 0, by: -1) {
+          for k in stride(from: pyreonSub(col.count, 1), through: 0, by: -1) {
             let i = col[k]
             if y0[i] + hgt[i] > bottom {
               y0[i] = bottom - hgt[i]
             }
             bottom = y0[i] - padding
           }
-          d = d + dStep
+          d = pyreonAdd(d, dStep)
           more = forward ? d <= dEnd : d >= dEnd
         }
       }
@@ -9592,10 +9592,10 @@ public func layoutSankey(_ nodes: [SankeyNode], _ links: [SankeyLink], _ box: Py
         if pt < ct || (pt == ct && flowS[prev] <= flowS[cur]) {
           break
         }
-        orderOut[b + 1] = prev
-        b = b - 1
+        orderOut[pyreonAdd(b, 1)] = prev
+        b = pyreonSub(b, 1)
       }
-      orderOut[b + 1] = cur
+      orderOut[pyreonAdd(b, 1)] = cur
     }
     for k in orderOut {
       linkY0[k] = outCursor[flowS[k]]
@@ -9615,10 +9615,10 @@ public func layoutSankey(_ nodes: [SankeyNode], _ links: [SankeyLink], _ box: Py
         if ps < cs || (ps == cs && flowT[prev] <= flowT[cur]) {
           break
         }
-        orderIn[b + 1] = prev
-        b = b - 1
+        orderIn[pyreonAdd(b, 1)] = prev
+        b = pyreonSub(b, 1)
       }
-      orderIn[b + 1] = cur
+      orderIn[pyreonAdd(b, 1)] = cur
     }
     for k in orderIn {
       linkY1[k] = inCursor[flowT[k]]
@@ -9704,7 +9704,7 @@ public func sankeyPointInPolygon(_ pts: [PyreonChartPt], _ px: Double, _ py: Dou
       let b = pts[j]
       let aAbove = a.y > py
       let bAbove = b.y > py
-      if aAbove != bAbove && px < ((b.x - a.x) * (py - a.y)) / Double((b.y - a.y)) + a.x {
+      if aAbove != bAbove && px < ((b.x - a.x) * (py - a.y)) / (b.y - a.y) + a.x {
         inside = !inside
       }
       j = i
@@ -9810,7 +9810,7 @@ public func layoutGraph(_ nodes: [GraphNode], _ links: [GraphLink], _ box: Pyreo
       let R = half < 0.0 ? 0.0 : half
       var iF = 0.0
       for i in 0..<n {
-        let ang = -Double.pi / 2.0 + (nF <= 0.0 ? 0.0 : (Double(iF) / nF) * GRAPH_TAU)
+        let ang = -Double.pi / 2.0 + (nF <= 0.0 ? 0.0 : (iF / nF) * GRAPH_TAU)
         px[i] = cx + cos(Double(ang)) * R
         py[i] = cy + sin(Double(ang)) * R
         iF = iF + 1.0
@@ -9843,8 +9843,8 @@ public func layoutGraph(_ nodes: [GraphNode], _ links: [GraphLink], _ box: Pyreo
         let spanY = maxY - minY
         let pad = base
         for i in 0..<n {
-          let fx = spanX <= 0.0 ? 0.5 : (((nodes[i].x ?? 0.0)) - minX) / Double(spanX)
-          let fy = spanY <= 0.0 ? 0.5 : (((nodes[i].y ?? 0.0)) - minY) / Double(spanY)
+          let fx = spanX <= 0.0 ? 0.5 : (((nodes[i].x ?? 0.0)) - minX) / spanX
+          let fy = spanY <= 0.0 ? 0.5 : (((nodes[i].y ?? 0.0)) - minY) / spanY
           px[i] = box.x + pad + (box.w - pad * 2.0) * fx
           py[i] = box.y + pad + (box.h - pad * 2.0) * fy
         }
@@ -9854,19 +9854,19 @@ public func layoutGraph(_ nodes: [GraphNode], _ links: [GraphLink], _ box: Pyreo
         let iterations = rawIt < 0.0 ? 0.0 : rawIt
         let rawArea = box.w * box.h
         let area = rawArea < 1.0 ? 1.0 : rawArea
-        let k = sqrt(Double(Double(area) / (nF < 1.0 ? 1.0 : nF)))
+        let k = sqrt(Double(area / (nF < 1.0 ? 1.0 : nF)))
         let repulsion = (options?.repulsion ?? k * k)
         let linkDistance = (options?.linkDistance ?? k)
         let gravity = (options?.gravity ?? 0.05)
         let spread = (box.w < box.h ? box.w : box.h) / 3.0
         for i in 0..<n {
           seed = graphNextSeed(seed)
-          px[i] = cx + (Double(seed) / GRAPH_LCG_M - 0.5) * spread
+          px[i] = cx + (seed / GRAPH_LCG_M - 0.5) * spread
           seed = graphNextSeed(seed)
-          py[i] = cy + (Double(seed) / GRAPH_LCG_M - 0.5) * spread
+          py[i] = cy + (seed / GRAPH_LCG_M - 0.5) * spread
         }
         var temp = (box.w > box.h ? box.w : box.h) / 10.0
-        let cool = iterations <= 0.0 ? 0.0 : Double(temp) / Double(iterations)
+        let cool = iterations <= 0.0 ? 0.0 : temp / iterations
         var dx: [Double] = []
         var dy: [Double] = []
         for i in 0..<n {
@@ -9886,14 +9886,14 @@ public func layoutGraph(_ nodes: [GraphNode], _ links: [GraphLink], _ box: Pyreo
               var d = sqrt(Double(ddx * ddx + ddy * ddy))
               if d < 0.01 {
                 seed = graphNextSeed(seed)
-                ddx = (Double(seed) / GRAPH_LCG_M - 0.5) * 0.1
+                ddx = (seed / GRAPH_LCG_M - 0.5) * 0.1
                 seed = graphNextSeed(seed)
-                ddy = (Double(seed) / GRAPH_LCG_M - 0.5) * 0.1
+                ddy = (seed / GRAPH_LCG_M - 0.5) * 0.1
                 d = 0.01
               }
-              let f = Double(repulsion) / Double((d * d))
-              let fx = (Double(ddx) / Double(d)) * f
-              let fy = (Double(ddy) / Double(d)) * f
+              let f = repulsion / (d * d)
+              let fx = (ddx / d) * f
+              let fy = (ddy / d) * f
               dx[i] = dx[i] + fx
               dy[i] = dy[i] + fy
               dx[j] = dx[j] - fx
@@ -9907,9 +9907,9 @@ public func layoutGraph(_ nodes: [GraphNode], _ links: [GraphLink], _ box: Pyreo
             if d <= 0.0 {
               continue
             }
-            let f = Double((d * d)) / Double(linkDistance)
-            let fx = (Double(ddx) / Double(d)) * f
-            let fy = (Double(ddy) / Double(d)) * f
+            let f = (d * d) / linkDistance
+            let fx = (ddx / d) * f
+            let fy = (ddy / d) * f
             dx[l.source] = dx[l.source] - fx
             dy[l.source] = dy[l.source] - fy
             dx[l.target] = dx[l.target] + fx
@@ -9921,8 +9921,8 @@ public func layoutGraph(_ nodes: [GraphNode], _ links: [GraphLink], _ box: Pyreo
             var d = sqrt(Double(dx[i] * dx[i] + dy[i] * dy[i]))
             if d > 0.0 {
               let step = d < temp ? d : temp
-              px[i] = px[i] + (Double(dx[i]) / Double(d)) * step
-              py[i] = py[i] + (Double(dy[i]) / Double(d)) * step
+              px[i] = px[i] + (dx[i] / d) * step
+              py[i] = py[i] + (dy[i] / d) * step
             }
             let r = radius[i]
             if px[i] < box.x + r {
@@ -9977,7 +9977,7 @@ public func renderGraph(_ layout: GraphLayout, _ box: PyreonChartRect, _ options
     }
     for l in layout.links {
       let v = (l.value ?? -1.0)
-      let width = v < 0.0 || maxLink <= 0.0 ? 1.0 : 1.0 + 3.0 * (Double(v) / maxLink)
+      let width = v < 0.0 || maxLink <= 0.0 ? 1.0 : 1.0 + 3.0 * (v / maxLink)
       out.append(PyreonDrawCmd(kind: "line", from: graphAt(layout.nodes[l.source], cx, cy, progress), to: graphAt(layout.nodes[l.target], cx, cy, progress), stroke: linkColor, width: width))
     }
     for nd in layout.nodes {
@@ -10117,7 +10117,7 @@ public func layoutCalendar(_ start: String, _ end: String, _ box: PyreonChartRec
       let t = p0.days + iF
       let c = civilFromDays(t)
       let idx = startRow + iF
-      let week = floor(Double(Double(idx) / 7.0))
+      let week = floor(Double(idx / 7.0))
       let row = idx - week * 7.0
       let rect = PyreonChartRect(x: originX + week * pitch, y: originY + row * pitch, w: cellSize, h: cellSize)
       cells.append(CalendarCell(date: formatIsoDays(t), rect: rect, row: row, week: week, month: c.month - 1.0, day: c.day, year: c.year))
@@ -10127,7 +10127,7 @@ public func layoutCalendar(_ start: String, _ end: String, _ box: PyreonChartRec
         var mi = 0
         var miF = 1.0
         while miF < c.month {
-          mi = mi + 1
+          mi = pyreonAdd(mi, 1)
           miF = miF + 1.0
         }
         monthLabels.append(CalendarLabel(kind: "month", text: CALENDAR_MONTHS[mi], at: PyreonChartPt(x: originX + week * pitch, y: originY - fontSize * 0.4)))
@@ -10139,11 +10139,11 @@ public func layoutCalendar(_ start: String, _ end: String, _ box: PyreonChartRec
     for r in 0..<7 {
       if r % 2 == 1 {
         let raw = firstDay + rF
-        let dIdx = raw - floor(Double(Double(raw) / 7.0)) * 7.0
+        let dIdx = raw - floor(Double(raw / 7.0)) * 7.0
         var di = 0
         var diF = 0.0
         while diF < dIdx {
-          di = di + 1
+          di = pyreonAdd(di, 1)
           diF = diF + 1.0
         }
         dayLabels.append(CalendarLabel(kind: "day", text: CALENDAR_DAYS[di], at: PyreonChartPt(x: originX - fontSize * 0.4, y: originY + rF * pitch + cellSize / 2.0)))
@@ -10276,7 +10276,7 @@ public func projectLonLat(_ lon: Double, _ lat: Double, _ projection: GeoProject
     if projection == .mercator {
       let clamped = lat > 85.0 ? 85.0 : lat < -85.0 ? -85.0 : lat
       let phi = (clamped * Double.pi) / 180.0
-      return PyreonChartPt(x: lon, y: (log(Double(tan(Double(Double.pi / 4.0 + Double(phi) / 2.0)))) * 180.0) / Double.pi)
+      return PyreonChartPt(x: lon, y: (log(Double(tan(Double(Double.pi / 4.0 + phi / 2.0)))) * 180.0) / Double.pi)
     }
     return PyreonChartPt(x: lon, y: lat)
   }
@@ -10387,7 +10387,7 @@ public func layoutGeoShapes(_ shapes: [GeoShape], _ box: PyreonChartRect, _ opti
           bseen = pyreonAdd(bseen, 1)
         }
         let a = abs(ringArea(ring))
-        if a > bestArea {
+        if Double(a) > bestArea {
           bestArea = a
           bestAt = ri
         }
@@ -10530,7 +10530,7 @@ public func pointInRing(_ ring: [PyreonChartPt], _ px: Double, _ py: Double) -> 
       let j = i == 0 ? pyreonSub(ring.count, 1) : pyreonSub(i, 1)
       let a = ring[i]
       let b = ring[j]
-      if (a.y > py) != (b.y > py) && px < ((b.x - a.x) * (py - a.y)) / Double((b.y - a.y)) + a.x {
+      if (a.y > py) != (b.y > py) && px < ((b.x - a.x) * (py - a.y)) / (b.y - a.y) + a.x {
         inside = !inside
       }
     }
@@ -10777,14 +10777,14 @@ public func ganttAlignStart(_ lo: Double, _ unit: String) -> Double {
     }
     if unit == "week" {
       let back = weekdayOfDays(day) + 6.0
-      return day - (back - floor(Double(Double(back) / 7.0)) * 7.0)
+      return day - (back - floor(Double(back / 7.0)) * 7.0)
     }
     if unit == "month" {
       return daysFromCivil(c.year, c.month, 1.0)
     }
     if unit == "quarter" {
       let off = c.month - 1.0
-      return daysFromCivil(c.year, c.month - (off - floor(Double(Double(off) / 3.0)) * 3.0), 1.0)
+      return daysFromCivil(c.year, c.month - (off - floor(Double(off / 3.0)) * 3.0), 1.0)
     }
     return daysFromCivil(c.year, 1.0, 1.0)
   }
@@ -10963,7 +10963,7 @@ public func layoutGantt(_ tasks: [GanttTask], _ box: PyreonChartRect, _ options:
       let barH = barRaw < 4.0 ? 4.0 : barRaw
       let isMilestone = task.milestone == true || eDay[i] == sDay[i]
       let bw = x1 - x0 < 1.0 ? 1.0 : x1 - x0
-      let rect = isMilestone ? PyreonChartRect(x: x0 - Double(barH) / 2.0, y: y + (rowHeight - barH) / 2.0, w: barH, h: barH) : PyreonChartRect(x: x0, y: y + (rowHeight - barH) / 2.0, w: bw, h: barH)
+      let rect = isMilestone ? PyreonChartRect(x: x0 - barH / 2.0, y: y + (rowHeight - barH) / 2.0, w: barH, h: barH) : PyreonChartRect(x: x0, y: y + (rowHeight - barH) / 2.0, w: bw, h: barH)
       rows.append(GanttRow(task: task, index: i, rect: rect, band: PyreonChartRect(x: box.x, y: y, w: box.w, h: rowHeight), startDay: sDay[i], endDay: eDay[i], color: (task.color ?? palette[pyreonRem(i, palette.count)]), label: task.name, labelAt: PyreonChartPt(x: labelX, y: y + rowHeight / 2.0)))
       y = y + rowHeight
     }
@@ -10977,7 +10977,7 @@ public func layoutGantt(_ tasks: [GanttTask], _ box: PyreonChartRect, _ options:
         }
         let from = rows[fi]
         let fx = from.rect.x + from.rect.w
-        let fy = from.rect.y + Double(from.rect.h) / 2.0
+        let fy = from.rect.y + from.rect.h / 2.0
         let tx = row.rect.x
         let ty = row.rect.y + row.rect.h / 2.0
         var points: [PyreonChartPt] = []
@@ -11039,9 +11039,9 @@ public func renderGantt(_ layout: GanttLayout, _ options: GanttOptions? = nil) -
       out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: row.label, at: row.labelAt, size: fontSize, align: "start", baseline: "middle"))
       let r = row.rect
       if row.task.milestone == true || row.endDay == row.startDay {
-        let cx = r.x + Double(r.w) / 2.0
-        let cy = r.y + Double(r.h) / 2.0
-        let hw = (Double(r.w) / 2.0) * progress
+        let cx = r.x + r.w / 2.0
+        let cy = r.y + r.h / 2.0
+        let hw = (r.w / 2.0) * progress
         var diamond: [PyreonChartPt] = []
         diamond.append(PyreonChartPt(x: cx, y: cy - hw))
         diamond.append(PyreonChartPt(x: cx + hw, y: cy))
@@ -11250,7 +11250,7 @@ public func renderParallel(_ layout: ParallelLayout, _ options: ParallelOptions?
             runStart = i
           }
           if !visible && runStart >= 0 {
-            if i - runStart >= 2 {
+            if pyreonSub(i, runStart) >= 2 {
               var run: [PyreonChartPt] = []
               for k in runStart..<i {
                 run.append(line.points[k])
@@ -11261,7 +11261,7 @@ public func renderParallel(_ layout: ParallelLayout, _ options: ParallelOptions?
           }
           iF = iF + 1.0
         }
-        if runStart >= 0 && line.points.count - runStart >= 2 {
+        if runStart >= 0 && pyreonSub(line.points.count, runStart) >= 2 {
           var run: [PyreonChartPt] = []
           for k in runStart..<line.points.count {
             run.append(line.points[k])
@@ -11379,7 +11379,7 @@ public func layoutSingleAxis(_ axis: SingleAxisSpec, _ points: [SingleAxisPoint]
       var index = 0
       for v in niceTicks(lo, hi, 6) {
         ticks.append(SingleAxisTick(x: px(v), label: pyreonNumberString(v), index: index))
-        index += 1
+        index = pyreonAdd(index, 1)
       }
     }
     var maxSize = 0.0
@@ -12314,7 +12314,7 @@ public func polarTip(_ layout: PolarLayout, _ series: [PolarSeries], _ px: Doubl
     if hit.sector >= 0 {
       let sec = layout.sectors[hit.sector]
       let s = series[sec.series]
-      let name = s == nil ? "Series \(sec.series + 1)" : s.name
+      let name = s == nil ? "Series \(pyreonAdd(sec.series, 1))" : s.name
       return [name, plain(sec.value)]
     }
     if hit.line < 0 {
@@ -12597,7 +12597,7 @@ public func renderPresets(_ items: [ZoomPreset], _ total: Int, _ win: ZoomWindow
       boxes.append(b)
       let active = presetIsActive(it, total, win)
       cmds.append(PyreonDrawCmd(kind: "rect", rect: b, fill: active ? opts.activeFill : opts.idleFill))
-      cmds.append(PyreonDrawCmd(kind: "text", fill: active ? opts.activeText : opts.idleText, text: it.label, at: PyreonChartPt(x: b.x + Double(b.w) / 2.0, y: b.y + Double(b.h) / 2.0), size: opts.fontSize, align: "middle", baseline: "middle"))
+      cmds.append(PyreonDrawCmd(kind: "text", fill: active ? opts.activeText : opts.idleText, text: it.label, at: PyreonChartPt(x: b.x + b.w / 2.0, y: b.y + b.h / 2.0), size: opts.fontSize, align: "middle", baseline: "middle"))
       x = x + tw + opts.gap
     }
     return PresetLayout(cmds: cmds, boxes: boxes, height: PRESET_STRIP_HEIGHT)
@@ -12814,7 +12814,7 @@ public func renderNavigator(_ values: [Double], _ color: String, _ win: ZoomWind
           safe.append(!isFiniteNumber(v) ? lo : v)
         }
         let pts = layoutSeriesPointsEdge(safe, strip, Domain(min: lo < 0.0 ? lo : 0.0, max: hi <= lo ? lo + 1.0 : hi))
-        let last = pts[pts.count - 1]
+        let last = pts[pyreonSub(pts.count, 1)]
         let first = pts[0]
         var poly: [PyreonChartPt] = []
         for i in 0..<pts.count {
@@ -12876,10 +12876,10 @@ public func cutRun(_ pts: [PyreonChartPt], _ x0: Double, _ x1: Double) -> [Pyreo
       if i > 0 {
         let q = pts[pyreonSub(i, 1)]
         if q.x < x0 && p.x > x0 {
-          out.append(PyreonChartPt(x: x0, y: q.y + ((p.y - q.y) * (x0 - q.x)) / Double((p.x - q.x))))
+          out.append(PyreonChartPt(x: x0, y: q.y + ((p.y - q.y) * (x0 - q.x)) / (p.x - q.x)))
         }
         if q.x < x1 && p.x > x1 && x1 > x0 {
-          out.append(PyreonChartPt(x: x1, y: q.y + ((p.y - q.y) * (x1 - q.x)) / Double((p.x - q.x))))
+          out.append(PyreonChartPt(x: x1, y: q.y + ((p.y - q.y) * (x1 - q.x)) / (p.x - q.x)))
         }
       }
       if p.x >= x0 && p.x <= x1 {
@@ -12939,12 +12939,12 @@ public func renderSliderZoom(_ values: [Double], _ win: ZoomWindow, _ strip: Pyr
       for i in 1..<n {
         gaps = gaps + 1.0
       }
-      let step = strip.w / Double(gaps)
+      let step = strip.w / gaps
       var px = strip.x
       for i in 0..<n {
         let v = values[i]
         let u = !isFiniteNumber(v) ? lo : v
-        let f = b > a ? Double((u - a)) / Double((b - a)) : 0.5
+        let f = b > a ? (u - a) / (b - a) : 0.5
         pts.append(PyreonChartPt(x: px, y: bottom - f * strip.h))
         px = px + step
       }
@@ -13114,9 +13114,9 @@ public func pointInBrushArea(_ area: BrushArea, _ x: Double, _ y: Double) -> Boo
       var inside = false
       var n = 0
       for _p in area.points {
-        n = n + 1
+        n = pyreonAdd(n, 1)
       }
-      var j = n - 1
+      var j = pyreonSub(n, 1)
       for i in 0..<n {
         let a = area.points[i]
         let b = area.points[j]
@@ -13425,7 +13425,7 @@ public func describeChart(_ input: A11yInput) -> String {
           hiAt = i
         }
         last = v
-        seen = seen + 1
+        seen = pyreonAdd(seen, 1)
       }
       if seen == 0 {
         parts.append("\(s.label): empty.")
@@ -13454,7 +13454,7 @@ public func describeChart(_ input: A11yInput) -> String {
           if v > ohi {
             ohi = v
           }
-          oseen = oseen + 1
+          oseen = pyreonAdd(oseen, 1)
         }
         if oseen > 0 {
           parts.append("\(s.label), \(s.kind): upper bound \(dir)\(pct) from \(fmt(first)) to \(fmt(last)), " + "ranging \(fmt(lo))\(at(loAt)) to \(fmt(hi))\(at(hiAt)); " + "lower bound ranging \(fmt(olo)) to \(fmt(ohi)).")
@@ -13636,13 +13636,13 @@ public func stdevValues(_ values: [Double], _ window: Int) -> [Double] {
       for k in pyreonAdd(pyreonSub(i, w), 1)...i {
         mean = mean + values[k]
       }
-      mean = Double(mean) / Double(w)
+      mean = mean / Double(w)
       var acc = 0.0
       for k in pyreonAdd(pyreonSub(i, w), 1)...i {
         let d = values[k] - mean
         acc = acc + d * d
       }
-      out.append(sqrt(Double(Double(acc) / Double(w))))
+      out.append(sqrt(Double(acc / Double(w))))
     }
     return out
   }
@@ -13733,11 +13733,11 @@ public func lttbIndices(_ xs: [Double], _ ys: [Double], _ threshold: Int) -> [In
       if avgHi > n {
         avgHi = n
       }
-      var avgCount = avgHi - avgLo
+      var avgCount = pyreonSub(avgHi, avgLo)
       if avgCount < 1 {
         avgLo = lo
         avgHi = hi
-        avgCount = hi - lo
+        avgCount = pyreonSub(hi, lo)
         if avgCount < 1 {
           avgCount = 1
         }
@@ -13748,8 +13748,8 @@ public func lttbIndices(_ xs: [Double], _ ys: [Double], _ threshold: Int) -> [In
         avgX = avgX + xOf(xs, j)
         avgY = avgY + ys[j]
       }
-      avgX = Double(avgX) / Double(avgCount)
-      avgY = Double(avgY) / Double(avgCount)
+      avgX = avgX / Double(avgCount)
+      avgY = avgY / Double(avgCount)
       let paX = xOf(xs, a)
       let paY = ys[a]
       var best = lo
@@ -13832,9 +13832,9 @@ public func m4Pixels(_ pts: [PyreonChartPt], _ perPx: Double = 2.0) -> [PyreonCh
         if pts[j].y > pts[hi].y {
           hi = j
         }
-        j = j + 1
+        j = pyreonAdd(j, 1)
       }
-      let last = j - 1
+      let last = pyreonSub(j, 1)
       out.append(pts[first])
       let a = lo < hi ? lo : hi
       let b = lo < hi ? hi : lo
@@ -13883,13 +13883,13 @@ public func m4CategoryPoints(_ values: [Double], _ plot: PyreonChartRect, _ dom:
       if end > n {
         end = n
       }
-      while end > pyreonAdd(i, 1) && floor(Double((bandCenter(px, band, end - 1)) * perPx)) != col {
-        end = end - 1
+      while end > pyreonAdd(i, 1) && floor(Double((bandCenter(px, band, pyreonSub(end, 1))) * perPx)) != col {
+        end = pyreonSub(end, 1)
       }
       while end < n && floor(Double((bandCenter(px, band, end)) * perPx)) == col {
-        end = end + 1
+        end = pyreonAdd(end, 1)
       }
-      prevLen = end - i
+      prevLen = pyreonSub(end, i)
       let first = i
       let v0 = values[i]
       if !isFiniteChartNumber(v0) {
@@ -13921,9 +13921,9 @@ public func m4CategoryPoints(_ values: [Double], _ plot: PyreonChartRect, _ dom:
             hiV = v
           }
         }
-        j = j + 1
+        j = pyreonAdd(j, 1)
       }
-      let last = j - 1
+      let last = pyreonSub(j, 1)
       let a = lo < hi ? lo : hi
       let b = lo < hi ? hi : lo
       out.append(PyreonChartPt(x: bandCenter(plot.x, band, first), y: scaleLinear(dom, top, plot.y, values[first])))
@@ -13985,7 +13985,7 @@ public func binValues(_ values: [Double], _ count: Double) -> [Bin] {
       var idx = 0
       var edge = dom.min + step
       while edge <= v && idx < last {
-        idx = idx + 1
+        idx = pyreonAdd(idx, 1)
         edge = edge + step
       }
       out[idx].count = out[idx].count + 1.0
