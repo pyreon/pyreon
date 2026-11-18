@@ -91,7 +91,7 @@
    },
    {
     "name": "get_anti_patterns",
-    "text": "a paged index of the whole catalog (569 entries on main); ask by name or category, or pass `full: true` for every entry in full."
+    "text": "a paged index of the whole catalog (572 entries on main); ask by name or category, or pass `full: true` for every entry in full."
    },
    {
     "name": "diagnose and explain_error",
@@ -256,9 +256,9 @@
    "source": "Codes that a detector emits: ReactDiagnosticCode in packages/core/compiler/src/react-intercept.ts:32 (19, all emitted; #4476 removed the five declared-only codes), PyreonDiagnosticCode (23, all emitted; props-early-return-conditional and props-object-copy added for #4254) in pyreon-intercept.ts:133, NativeFindingCode (2) in packages/native/compiler/src/native-audit.ts:41 via packages/tools/mcp/src/native-detect.ts"
   },
   {
-   "stat": "569",
+   "stat": "572",
    "label": "known mistakes in the anti-pattern catalog on main, served as a compact index your assistant pages through.",
-   "source": "get_anti_patterns({}) header \"569 total, page 1 of 3, 9 categories\", 18 Nov 2026, on the merged tree of the format, time and ambient PRs; the total is the number of `- **` entries in .agents/rules/anti-patterns.md"
+   "source": "get_anti_patterns({}) header \"572 total, page 1 of 3, 9 categories\", 18 Nov 2026, on the merged tree of the format, time and ambient PRs; the total is the number of `- **` entries in .agents/rules/anti-patterns.md"
   }
  ],
  "recipes": [
@@ -330,7 +330,7 @@
    "path": "measured via tools/call get_api; packages/tools/mcp/src/api-reference.ts"
   },
   {
-   "claim": "Anti-pattern catalog 569 entries, index page 1 of 3, ~34,284 chars; full: true ~449,997 chars (parseAntiPatterns / formatAntiPatterns on the merged tree, 18 Nov 2026)",
+   "claim": "Anti-pattern catalog 572 entries, index page 1 of 3, ~34,284 chars; full: true ~453,238 chars (parseAntiPatterns / formatAntiPatterns on the merged tree, 18 Nov 2026)",
    "path": "measured via get_anti_patterns({}) and ({ full: true }) (scratch sizes.mjs)"
   },
   {

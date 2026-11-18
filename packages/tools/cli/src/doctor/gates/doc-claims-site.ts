@@ -117,6 +117,7 @@ export const SITE_ANTI_PATTERN_CLAIMS: ClaimSpec[] = [
  * changing the decision is one edit plus the files below.
  */
 export const SITE_PACKAGE_COUNT_FILE = `${SITE}/_counts.json`
+
 export const SITE_PACKAGE_COUNT_CLAIMS: ClaimSpec[] = [
   { file: `${SITE}/_home.json`, pattern: /"text": "(\d+) packages, one version"/ },
   { file: `${SITE}/pages/compare/react.json`, pattern: /(\d+) first-party packages/ },

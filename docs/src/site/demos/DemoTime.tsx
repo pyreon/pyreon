@@ -1,3 +1,4 @@
+/* oxlint-disable jsx-a11y/prefer-tag-over-role -- the WAI-ARIA date grid is laid out with the Grid primitive (CSS grid), so its roles sit on those elements; native table elements would drop that layout and the one-tab-stop cells */
 import { useNow } from '@pyreon/ambient'
 import { For, onMount } from '@pyreon/core'
 import { formatDate } from '@pyreon/format'
@@ -52,26 +53,11 @@ const offsetLabel = (minutes: number): string => {
   return `UTC${sign}${h}${m === 0 ? '' : `:${String(m).padStart(2, '0')}`}`
 }
 
-/**
- * Time demo (`time.json` → demo): the real `@pyreon/time`. A month grid built
- * with `monthGrid` whose week starts where `weekStartOf(locale)` says, as a
- * WAI-ARIA date grid (arrows, Home, End, Page keys, one tab stop); the
- * arithmetic strip (month math clamps on the 31st); a planner that converts one
- * wall-clock time between three zones, including days with a skipped hour; and
- * live clocks (`useNow`, `useToday`, `useCountdown`).
- *
- * SSR: everything is a fixed date except the clocks, which show a dash until
- * the island mounts (a server has no clock the browser could agree with), so
- * hydration adopts the server HTML.
- */
-export default function DemoTime() {
+/** The calendar: a WAI-ARIA date grid, and the arithmetic on the selected day. */
+function CalendarCard() {
   const lang = signal<Language>('en-US')
   const selected = signal<PlainDate>(START)
   const focused = signal<PlainDate>(START)
-  const day = signal<Day>('2026-03-29')
-  const clock = signal<Clock>('02:30')
-  const from = signal<Zone>('Europe/Prague')
-  const ready = signal(false)
   let root: HTMLElement | null = null
 
   const rtl = () => (lang() === 'ar' ? 'rtl' : 'ltr')
@@ -122,6 +108,100 @@ export default function DemoTime() {
     { label: 'ISO week, day of year', value: () => `W${weekOfYear(sel())}, day ${dayOfYear(sel())}` },
   ]
 
+  return (
+    <div
+      ref={(e: Element | null) => {
+        root = e as HTMLElement | null
+      }}
+    >
+    <DemoSurface aria-label="Calendar and date arithmetic">
+      <Stack gap={200}>
+        <PaperSegmented<Language>
+          legend="Language (sets the first weekday)"
+          options={Object.keys(LANGUAGES) as Language[]}
+          value={() => lang()}
+          onChange={(v) => lang.set(v)}
+          format={(v) => LANGUAGES[v]}
+        />
+        <Stack gap={100}>
+          <Cluster alignX="spaceBetween" alignY="center" nowrap gap={100}>
+            <PaperToggle type="button" aria-label="Previous month" onClick={() => move(add(focused(), { months: -1 }))}>
+              ‹
+            </PaperToggle>
+            <Text variant="body" medium tone="text" block tag="p" id="time-month" aria-live="polite">
+              {title()}
+            </Text>
+            <PaperToggle type="button" aria-label="Next month" onClick={() => move(add(focused(), { months: 1 }))}>
+              ›
+            </PaperToggle>
+          </Cluster>
+          <div dir={rtl()}>
+            <Stack gap={50} role="grid" aria-labelledby="time-month">
+              <Grid columns={7} gap={50} role="row">
+                <For each={() => heads()} by={(h) => h.d}>
+                  {(h) => (
+                    <span role="columnheader">
+                      <Text variant="caption" tone="mist">
+                        {h.label}
+                      </Text>
+                    </span>
+                  )}
+                </For>
+              </Grid>
+              <For each={() => weeks()} by={(w) => w[0] ?? ''}>
+                {(w) => (
+                  <Grid columns={7} gap={50} role="row">
+                    <For each={w} by={(d) => d}>
+                      {(d) => (
+                        <span role="gridcell" aria-selected={() => (d === selected() ? 'true' : 'false')}>
+                          <PaperToggle
+                            type="button"
+                            data-day={d}
+                            aria-label={formatDate(d, { dateStyle: 'full', locale: lang() })}
+                            aria-pressed={() => (d === selected() ? 'true' : 'false')}
+                            tabIndex={() => (d === focused() ? 0 : -1)}
+                            disabled={d.slice(0, 7) !== month()}
+                            onClick={() => pick(d)}
+                            onKeyDown={onKeyDown}
+                          >
+                            {d.slice(8).replace(/^0/, '')}
+                          </PaperToggle>
+                        </span>
+                      )}
+                    </For>
+                  </Grid>
+                )}
+              </For>
+            </Stack>
+          </div>
+          <PaperHint>Arrow keys move, Home and End jump to the week's edges, Page keys change month (Shift: year).</PaperHint>
+        </Stack>
+        <PaperList aria-label="Date arithmetic on the selected day">
+          <For each={arithmetic} by={(r) => r.label}>
+            {(r) => (
+              <PaperRow tag="li">
+                <PaperText>{r.label}</PaperText>
+                <PaperMono>{r.value()}</PaperMono>
+              </PaperRow>
+            )}
+          </For>
+        </PaperList>
+        <PaperHint aria-live="polite">
+          {() => (plusMonth().slice(8) !== sel().slice(8) ? `The ${sel().slice(8)}th does not exist next month: the day clamps to ${plusMonth().slice(8)}.` : 'Pick the 31st to see month math clamp.')}
+        </PaperHint>
+      </Stack>
+    </DemoSurface>
+    </div>
+  )
+}
+
+/** The planner and the clocks. */
+function PlannerCard() {
+  const day = signal<Day>('2026-03-29')
+  const clock = signal<Clock>('02:30')
+  const from = signal<Zone>('Europe/Prague')
+  const ready = signal(false)
+
   // The planner: one wall-clock time in one zone, read in three.
   const asked = computed(() => normalize(`${day()}T${clock()}`))
   const instant = computed(() => toInstant(asked(), from()))
@@ -141,141 +221,77 @@ export default function DemoTime() {
   }
 
   return (
-    <div
-      ref={(e: Element | null) => {
-        root = e as HTMLElement | null
-      }}
-    >
-      <DemoGrid>
-        <DemoSurface aria-label="Calendar and date arithmetic">
-          <Stack gap={200}>
-            <PaperSegmented<Language>
-              legend="Language (sets the first weekday)"
-              options={Object.keys(LANGUAGES) as Language[]}
-              value={() => lang()}
-              onChange={(v) => lang.set(v)}
-              format={(v) => LANGUAGES[v]}
-            />
-            <Stack gap={100}>
-              <Cluster alignX="spaceBetween" alignY="center" nowrap gap={100}>
-                <PaperToggle type="button" aria-label="Previous month" onClick={() => move(add(focused(), { months: -1 }))}>
-                  ‹
-                </PaperToggle>
-                <Text variant="body" medium tone="text" block tag="p" id="time-month" aria-live="polite">
-                  {title()}
-                </Text>
-                <PaperToggle type="button" aria-label="Next month" onClick={() => move(add(focused(), { months: 1 }))}>
-                  ›
-                </PaperToggle>
-              </Cluster>
-              <div dir={rtl()}>
-                <Stack gap={50} role="grid" aria-labelledby="time-month">
-                  <Grid columns={7} gap={50} role="row">
-                    <For each={() => heads()} by={(h) => h.d}>
-                      {(h) => (
-                        <span role="columnheader">
-                          <Text variant="caption" tone="mist">
-                            {h.label}
-                          </Text>
-                        </span>
-                      )}
-                    </For>
-                  </Grid>
-                  <For each={() => weeks()} by={(w) => w[0] ?? ''}>
-                    {(w) => (
-                      <Grid columns={7} gap={50} role="row">
-                        <For each={w} by={(d) => d}>
-                          {(d) => (
-                            <span role="gridcell" aria-selected={() => (d === selected() ? 'true' : 'false')}>
-                              <PaperToggle
-                                type="button"
-                                data-day={d}
-                                aria-label={formatDate(d, { dateStyle: 'full', locale: lang() })}
-                                aria-pressed={() => (d === selected() ? 'true' : 'false')}
-                                tabIndex={() => (d === focused() ? 0 : -1)}
-                                disabled={d.slice(0, 7) !== month()}
-                                onClick={() => pick(d)}
-                                onKeyDown={onKeyDown}
-                              >
-                                {d.slice(8).replace(/^0/, '')}
-                              </PaperToggle>
-                            </span>
-                          )}
-                        </For>
-                      </Grid>
-                    )}
-                  </For>
-                </Stack>
-              </div>
-              <PaperHint>Arrow keys move, Home and End jump to the week's edges, Page keys change month (Shift: year).</PaperHint>
-            </Stack>
-            <PaperList aria-label="Date arithmetic on the selected day">
-              <For each={arithmetic} by={(r) => r.label}>
-                {(r) => (
-                  <PaperRow tag="li">
-                    <PaperText>{r.label}</PaperText>
-                    <PaperMono>{r.value()}</PaperMono>
-                  </PaperRow>
-                )}
-              </For>
-            </PaperList>
-            <PaperHint aria-live="polite">
-              {() => (plusMonth().slice(8) !== sel().slice(8) ? `The ${sel().slice(8)}th does not exist next month: the day clamps to ${plusMonth().slice(8)}.` : 'Pick the 31st to see month math clamp.')}
-            </PaperHint>
-          </Stack>
-        </DemoSurface>
-        <DemoSurface aria-label="Meeting planner and clocks">
-          <Stack gap={200}>
-            <PaperSegmented<Day>
-              legend="Day"
-              options={Object.keys(DAYS) as Day[]}
-              value={() => day()}
-              onChange={(v) => day.set(v)}
-              format={(v) => DAYS[v]}
-            />
-            <PaperSegmented<Clock> legend="Wall-clock time" options={TIMES} value={() => clock()} onChange={(v) => clock.set(v)} />
-            <PaperSegmented<Zone>
-              legend="In this zone"
-              options={ZONE_LIST}
-              value={() => from()}
-              onChange={(v) => from.set(v)}
-              format={(v) => ZONES[v]}
-            />
-            <PaperList aria-label="The same moment in three time zones">
-              <For each={ZONE_LIST} by={(z) => z}>
-                {(z) => (
-                  <PaperRow tag="li">
-                    <PaperText>{ZONES[z]}</PaperText>
-                    <PaperMono>{`${toPlainDateTime(instant(), z as TimeZone)} · ${offsetLabel(offsetAt(instant(), z as TimeZone))}`}</PaperMono>
-                  </PaperRow>
-                )}
-              </For>
-            </PaperList>
-            <PaperHint aria-live="polite">
-              {() =>
-                skipped()
-                  ? `${asked().slice(11)} does not exist on ${asked().slice(0, 10)} in ${ZONES[from()]}: the clocks skip an hour, so it resolves to ${resolved().slice(11)}.`
-                  : 'Every wall-clock time exists on this day: no hour is skipped.'
-              }
-            </PaperHint>
-            <PaperList aria-label="Live clocks">
+    <DemoSurface aria-label="Meeting planner and clocks">
+      <Stack gap={200}>
+        <PaperSegmented<Day>
+          legend="Day"
+          options={Object.keys(DAYS) as Day[]}
+          value={() => day()}
+          onChange={(v) => day.set(v)}
+          format={(v) => DAYS[v]}
+        />
+        <PaperSegmented<Clock> legend="Wall-clock time" options={TIMES} value={() => clock()} onChange={(v) => clock.set(v)} />
+        <PaperSegmented<Zone>
+          legend="In this zone"
+          options={ZONE_LIST}
+          value={() => from()}
+          onChange={(v) => from.set(v)}
+          format={(v) => ZONES[v]}
+        />
+        <PaperList aria-label="The same moment in three time zones">
+          <For each={ZONE_LIST} by={(z) => z}>
+            {(z) => (
               <PaperRow tag="li">
-                <PaperText>Now in Prague</PaperText>
-                <PaperMono>{() => (ready() ? toPlainDateTime(Math.floor(nowSecond() / 1000) * 1000, 'Europe/Prague') : dash)}</PaperMono>
+                <PaperText>{ZONES[z]}</PaperText>
+                <PaperMono>{`${toPlainDateTime(instant(), z as TimeZone)} · ${offsetLabel(offsetAt(instant(), z as TimeZone))}`}</PaperMono>
               </PaperRow>
-              <PaperRow tag="li">
-                <PaperText>Today in Tokyo</PaperText>
-                <PaperMono>{() => (ready() ? today() : dash)}</PaperMono>
-              </PaperRow>
-              <PaperRow tag="li">
-                <PaperText>New Year in Prague</PaperText>
-                <PaperMono>{() => (ready() ? left() : dash)}</PaperMono>
-              </PaperRow>
-            </PaperList>
-            <PaperHint>Three clocks, two shared timers: one per granularity, not one per reader.</PaperHint>
-          </Stack>
-        </DemoSurface>
-      </DemoGrid>
-    </div>
+            )}
+          </For>
+        </PaperList>
+        <PaperHint aria-live="polite">
+          {() =>
+            skipped()
+              ? `${asked().slice(11)} does not exist on ${asked().slice(0, 10)} in ${ZONES[from()]}: the clocks skip an hour, so it resolves to ${resolved().slice(11)}.`
+              : 'Every wall-clock time exists on this day: no hour is skipped.'
+          }
+        </PaperHint>
+        <PaperList aria-label="Live clocks">
+          <PaperRow tag="li">
+            <PaperText>Now in Prague</PaperText>
+            <PaperMono>{() => (ready() ? toPlainDateTime(Math.floor(nowSecond() / 1000) * 1000, 'Europe/Prague') : dash)}</PaperMono>
+          </PaperRow>
+          <PaperRow tag="li">
+            <PaperText>Today in Tokyo</PaperText>
+            <PaperMono>{() => (ready() ? today() : dash)}</PaperMono>
+          </PaperRow>
+          <PaperRow tag="li">
+            <PaperText>New Year in Prague</PaperText>
+            <PaperMono>{() => (ready() ? left() : dash)}</PaperMono>
+          </PaperRow>
+        </PaperList>
+        <PaperHint>Three clocks, two shared timers: one per granularity, not one per reader.</PaperHint>
+      </Stack>
+    </DemoSurface>
+  )
+}
+
+/**
+ * Time demo (`time.json` → demo): the real `@pyreon/time`. A month grid built
+ * with `monthGrid` whose week starts where `weekStartOf(locale)` says, as a
+ * WAI-ARIA date grid (arrows, Home, End, Page keys, one tab stop); the
+ * arithmetic strip (month math clamps on the 31st); a planner that converts one
+ * wall-clock time between three zones, including days with a skipped hour; and
+ * live clocks (`useNow`, `useToday`, `useCountdown`).
+ *
+ * SSR: everything is a fixed date except the clocks, which show a dash until
+ * the island mounts (a server has no clock the browser could agree with), so
+ * hydration adopts the server HTML.
+ */
+export default function DemoTime() {
+  return (
+    <DemoGrid>
+      <CalendarCard />
+      <PlannerCard />
+    </DemoGrid>
   )
 }
