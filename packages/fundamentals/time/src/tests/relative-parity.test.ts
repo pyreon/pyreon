@@ -100,3 +100,18 @@ describe('thresholds', () => {
     expect(relativeDistance(Date.UTC(2026, 10, 18, 12, 0, 30), Date.UTC(2026, 10, 18, 12), 'UTC')).toEqual({ value: 30, unit: 'second' })
   })
 })
+
+describe('a date-only target is a day: compared as a calendar day, never as hours', () => {
+  it('today, tomorrow and yesterday are the display zone\'s calendar, whatever the hour', () => {
+    expect(rel('2026-11-18', '2026-11-18T01:00:00Z', 'Asia/Tokyo')).toBe('today') // 10:00 on the 18th in Tokyo
+    expect(rel('2026-11-18', '2026-11-18T23:59:00Z', 'UTC')).toBe('today')
+    expect(rel('2026-11-19', '2026-11-18T09:59:00Z', 'Pacific/Kiritimati')).toBe('tomorrow') // 23:59 on the 18th there
+    expect(rel('2026-11-19', '2026-11-18T01:00:00Z', 'UTC')).toBe('tomorrow') // 23 hours away, still tomorrow
+    expect(rel('2026-11-17', '2026-11-18T00:30:00Z', 'UTC')).toBe('yesterday')
+    expect(rel('2026-11-20', '2026-11-18T12:00:00Z', 'UTC')).toBe('in 2 days')
+  })
+
+  it('a PlainDateTime is a moment: under a day it is still elapsed hours', () => {
+    expect(rel('2026-11-18T00:00', '2026-11-18T10:00:00Z', 'UTC')).toBe('10 hours ago')
+  })
+})
