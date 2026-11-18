@@ -26,6 +26,7 @@ beforeEach(() => {
     if (name === 'runtime.polyTextCore') cores++
   }
 })
+
 afterEach(() => {
   g.__pyreon_count__ = prev
 })

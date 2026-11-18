@@ -73,6 +73,7 @@ interface CleanupFrame {
   /** Context snapshot hook registered by `@pyreon/core` (see `setSnapshotCapture`). */
   s: ReactiveSnapshotCapture | null
 }
+
 const _c: CleanupFrame = {
   c: null,
   o: false,
@@ -131,6 +132,7 @@ export function _enterCleanupFrame(): CleanupFrameToken {
   const token: CleanupFrameToken = _c.o ? (_c.c ?? true) : false
   _c.o = true
   _c.c = null
+
   return token
 }
 
@@ -143,6 +145,7 @@ export function _exitCleanupFrame(token: CleanupFrameToken): (() => void)[] | nu
   const collected = _c.c
   _c.o = token !== false
   _c.c = typeof token === 'boolean' ? null : token
+
   return collected
 }
 
@@ -165,6 +168,7 @@ const LAZY_INNER: unknown[] = []
 interface PyreonErrorBridge {
   __pyreon_report_error__?: (err: unknown, phase: 'effect') => void
 }
+
 const _errorBridge = globalThis as PyreonErrorBridge
 
 function _defaultErrorHandler(err: unknown): void {
@@ -391,6 +395,7 @@ export function effect(
   // to scope.add — that's what keeps child component effects mounted inside
   // `mountFor`'s `runUntracked` wrap alive across the For's next re-run.
   registerEffectHere(e)
+
   return e
 }
 
@@ -496,6 +501,7 @@ interface OwnerFrame {
   /** Disposers recorded by the open frames, oldest first. */
   l: (() => void)[]
 }
+
 const _of: OwnerFrame = { d: 0, l: [] }
 
 /**

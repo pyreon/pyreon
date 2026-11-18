@@ -15,11 +15,13 @@ import { compilePlainModule, mountComponent } from './plain-harness'
 const subs = (s: { debug(): { subscriberCount: number } }) => s.debug().subscriberCount
 
 let errSpy: ReturnType<typeof vi.spyOn> | null = null
+
 afterEach(() => {
   errSpy?.mockRestore()
   errSpy = null
   document.body.innerHTML = ''
 })
+
 const quietErrors = () => {
   errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 }
