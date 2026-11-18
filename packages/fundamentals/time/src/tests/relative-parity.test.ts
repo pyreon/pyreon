@@ -103,23 +103,24 @@ describe('thresholds', () => {
 
 /**
  * The shared table of `@pyreon/format`'s `date-only-rule.test.ts`, copied verbatim (neither package may import the other): a
- * date-only target is the day it names, read as that day's midnight in the display zone, so both packages give the same words.
+ * date-only target is a DAY, compared as a calendar day in the display zone (today, tomorrow, 3 days ago) and never as hours, so
+ * both packages give the same words.
  * Change both copies together.
  */
 type SharedRow = readonly [target: string, base: string, zone: string, words: string]
 
 const SHARED_TABLE: readonly SharedRow[] = [
-  ['2026-11-18', '2026-11-18T01:00:00Z', 'Asia/Tokyo', '10 hours ago'],
-  ['2026-11-18', '2026-11-18T01:00:00Z', 'UTC', '1 hour ago'],
-  ['2026-11-18', '2026-11-17T20:00:00Z', 'America/Los_Angeles', 'in 12 hours'],
+  ['2026-11-18', '2026-11-18T01:00:00Z', 'Asia/Tokyo', 'today'],
+  ['2026-11-18', '2026-11-18T01:00:00Z', 'UTC', 'today'],
+  ['2026-11-18', '2026-11-17T20:00:00Z', 'America/Los_Angeles', 'tomorrow'],
   ['2026-11-18', '2026-11-18T10:00:00Z', 'Pacific/Kiritimati', 'yesterday'],
-  ['2026-11-19', '2026-11-18T09:59:00Z', 'Pacific/Kiritimati', 'in 1 minute'],
-  ['2026-11-19', '2026-11-19T07:00:00Z', 'America/Los_Angeles', 'in 1 hour'],
-  ['2026-11-17', '2026-11-18T07:59:00Z', 'America/Los_Angeles', '23 hours ago'],
+  ['2026-11-19', '2026-11-18T09:59:00Z', 'Pacific/Kiritimati', 'tomorrow'],
+  ['2026-11-19', '2026-11-19T07:00:00Z', 'America/Los_Angeles', 'tomorrow'],
+  ['2026-11-17', '2026-11-18T07:59:00Z', 'America/Los_Angeles', 'today'],
   ['2026-11-17', '2026-11-18T08:00:00Z', 'America/Los_Angeles', 'yesterday'],
   ['2026-11-19', '2026-11-18T08:00:00Z', 'America/Los_Angeles', 'tomorrow'],
-  ['2026-09-06', '2026-09-06T05:00:00Z', 'America/Santiago', '1 hour ago'], // midnight does not exist (spring forward): the first instant after
-  ['2026-11-01', '2026-11-01T06:00:00Z', 'America/Havana', '2 hours ago'], // midnight happens twice (fall back): the first
+  ['2026-09-06', '2026-09-06T05:00:00Z', 'America/Santiago', 'today'], // the day whose midnight does not exist (spring forward) is still just that day
+  ['2026-11-01', '2026-11-01T06:00:00Z', 'America/Havana', 'today'], // the day whose midnight happens twice (fall back) is still just that day
   ['2026-11-11', '2026-11-18T12:00:00Z', 'Pacific/Kiritimati', 'last week'],
   ['2026-11-18T12:00:00Z', '2026-11-18T13:00:00Z', 'Pacific/Kiritimati', '1 hour ago'], // instants are unchanged
   ['2026-11-16T13:00:00Z', '2026-11-18T01:00:00Z', 'UTC', '2 days ago'],
@@ -131,5 +132,18 @@ describe('the shared date-only table agrees with @pyreon/format', () => {
     const { value, unit } = relativeDistance(t, Date.parse(base), zone)
 
     expect(auto.format(value, unit)).toBe(words)
+
+describe('a date-only target is a day: compared as a calendar day, never as hours', () => {
+  it('today, tomorrow and yesterday are the display zone\'s calendar, whatever the hour', () => {
+    expect(rel('2026-11-18', '2026-11-18T01:00:00Z', 'Asia/Tokyo')).toBe('today') // 10:00 on the 18th in Tokyo
+    expect(rel('2026-11-18', '2026-11-18T23:59:00Z', 'UTC')).toBe('today')
+    expect(rel('2026-11-19', '2026-11-18T09:59:00Z', 'Pacific/Kiritimati')).toBe('tomorrow') // 23:59 on the 18th there
+    expect(rel('2026-11-19', '2026-11-18T01:00:00Z', 'UTC')).toBe('tomorrow') // 23 hours away, still tomorrow
+    expect(rel('2026-11-17', '2026-11-18T00:30:00Z', 'UTC')).toBe('yesterday')
+    expect(rel('2026-11-20', '2026-11-18T12:00:00Z', 'UTC')).toBe('in 2 days')
+  })
+
+  it('a PlainDateTime is a moment: under a day it is still elapsed hours', () => {
+    expect(rel('2026-11-18T00:00', '2026-11-18T10:00:00Z', 'UTC')).toBe('10 hours ago')
   })
 })
