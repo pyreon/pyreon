@@ -21,6 +21,11 @@
  * → these specs fail (Rust emits `class={c}`, JS `class={(p.x+'-b')}`).
  * Restore + rebuild → all pass. The 180 native-equivalence tests + full
  * suite remain green (no regression).
+ *
+ * The sources use a COMPONENT parent (`<List>`): its `.map` child is wrapped as
+ * a SLICE, which is the path `collect_pd_in_stmt` serves. Under a DOM parent
+ * the same child is a template hole, preserved and walked instead (see
+ * `template-hole-walk.test.ts`).
  */
 import { describe, expect, it } from 'vitest'
 import { transformJSX, transformJSX_JS } from '../jsx'
@@ -29,11 +34,11 @@ const j = (c: string): string => transformJSX_JS(c, 'c.tsx').code ?? ''
 const r = (c: string): string => transformJSX(c, 'c.tsx').code ?? ''
 
 const CASES: Array<[string, string]> = [
-  ['while', `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { while(i){ return <li class={c}/> } })}</ul> }`],
-  ['switch', `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { switch(i){ default: return <li class={c}/> } })}</ul> }`],
-  ['labeled', `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { lbl: { return <li class={c}/> } })}</ul> }`],
-  ['try-catch', `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { try { return <li class={c}/> } catch { return null } })}</ul> }`],
-  ['for', `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { for(let k=0;k<i;k++){ return <li class={c}/> } })}</ul> }`],
+  ['while', `function C(p){ const c=p.x+'-b'; return <List>{p.i.map(i => { while(i){ return <li class={c}/> } })}</List> }`],
+  ['switch', `function C(p){ const c=p.x+'-b'; return <List>{p.i.map(i => { switch(i){ default: return <li class={c}/> } })}</List> }`],
+  ['labeled', `function C(p){ const c=p.x+'-b'; return <List>{p.i.map(i => { lbl: { return <li class={c}/> } })}</List> }`],
+  ['try-catch', `function C(p){ const c=p.x+'-b'; return <List>{p.i.map(i => { try { return <li class={c}/> } catch { return null } })}</List> }`],
+  ['for', `function C(p){ const c=p.x+'-b'; return <List>{p.i.map(i => { for(let k=0;k<i;k++){ return <li class={c}/> } })}</List> }`],
 ]
 
 describe('Round 13 — prop-derived inlining inside callback statement shapes is JS≡Rust', () => {
@@ -45,13 +50,13 @@ describe('Round 13 — prop-derived inlining inside callback statement shapes is
   }
 
   it('catch-param shadowing is NOT clobbered (filter discipline, both backends)', () => {
-    const src = `function C(p){ const e=p.x+'-b'; return <ul>{p.i.map(i => { try {} catch (e) { return <li class={e}/> } })}</ul> }`
+    const src = `function C(p){ const e=p.x+'-b'; return <List>{p.i.map(i => { try {} catch (e) { return <li class={e}/> } })}</List> }`
     expect(r(src)).toBe(j(src))
     expect(r(src)).not.toContain("class={(p.x+'-b')}") // `e` is the catch param
   })
 
   it('nested const inside a while body shadowing the prop-derived is NOT clobbered (no R2 regression)', () => {
-    const src = `function C(p){ const c=p.x; return <ul>{p.i.map(i => { while(i){ const c=2; return <li>{c}</li> } })}</ul> }`
+    const src = `function C(p){ const c=p.x; return <List>{p.i.map(i => { while(i){ const c=2; return <li>{c}</li> } })}</List> }`
     expect(r(src)).toBe(j(src))
     expect(r(src)).not.toContain('{(p.x)}') // inner `const c=2` shadows — must stay `{c}`
   })

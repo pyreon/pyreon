@@ -19,7 +19,7 @@ import { For, Fragment, h } from '@pyreon/core'
 import { effect, onCleanup, signal } from '@pyreon/reactivity'
 import { transformSync } from 'esbuild'
 import { describe, expect, it } from 'vitest'
-import { _mountSlot, _tpl, mount } from '../index'
+import { _mountSlot, _setChild, _tpl, mount } from '../index'
 
 function counted<T>(fn: () => T): { calls: () => number; acc: () => T } {
   let n = 0
@@ -231,8 +231,9 @@ describe('structural shapes also run ONCE at mount', () => {
     const body = transformSync(code.replace(/^import\s+.*$/gm, ''), {
       loader: 'tsx', jsx: 'transform', jsxFactory: 'h', jsxFragment: 'Fragment',
     }).code
-    const App = new Function('h', 'Fragment', '_tpl', '_mountSlot', 'S', `${body}\nreturn App`)(
-      h, Fragment, _tpl, _mountSlot, { items, tick: () => maps++ },
+    // The accessor is walked, so `<li>{i}</li>` is a template (`_setChild`).
+    const App = new Function('h', 'Fragment', '_tpl', '_mountSlot', '_setChild', 'S', `${body}\nreturn App`)(
+      h, Fragment, _tpl, _mountSlot, _setChild, { items, tick: () => maps++ },
     ) as () => never
     const el = document.createElement('div')
     const dispose = mount(h(App, null), el)

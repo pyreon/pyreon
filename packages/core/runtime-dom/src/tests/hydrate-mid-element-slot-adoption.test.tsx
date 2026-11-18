@@ -184,7 +184,8 @@ describe('mid ELEMENT slot — parked, put back, adopted', () => {
     expect(html).toBe('<p class="e1"><!--$--><i>i</i><!--/$-->!</p>')
     expect(noC(out)).toBe('<p class="e1"><i>i</i>!</p>')
     expect(retained(before, host)).toBe(before.length)
-    expect(tplAdopted()).toBe(1)
+    // The `<p>` and — the conditional being a walked hole — the `<i>` inside it.
+    expect(tplAdopted()).toBe(2)
     const i = host.querySelector('i')!
     expect(before).toContain(i)
     flag('__e1', false)
@@ -251,18 +252,19 @@ describe('mid ELEMENT slot — parked, put back, adopted', () => {
   })
 
   it('a genuinely NESTED reactive range inside the parked element (explicit inner accessor) adopts as one unit', async () => {
-    // `{() => y()}` survives residual lowering as an accessor child, so the
-    // server marks the inner range: the park must carry `<!--$-->` pairs at
+    // The conditional is a walked hole, so `<b>` is a template whose `{() => y()}`
+    // sits beside an element (no text fusion): a `<!>` placeholder, and the
+    // server marks the inner range. The park must carry `<!--$-->` pairs at
     // depth, and `findMatchingClose` must not stop at the INNER close.
     const { html, out, before, host, dispose } = await roundTrip(
-      h('p', { class: 'e5b' }, () => h('b', null, 'x', () => 'y'), '!'),
-      `const App = () => { const on = signal(true); const y = signal('y'); globalThis.__y5b = y; return <p class="e5b">{on() && <b>x{() => y()}</b>}!</p> }`,
+      h('p', { class: 'e5b' }, () => h('b', null, 'x', h('u', null), () => 'y'), '!'),
+      `const App = () => { const on = signal(true); const y = signal('y'); globalThis.__y5b = y; return <p class="e5b">{on() && <b>x<u />{() => y()}</b>}!</p> }`,
     )
-    expect(html).toBe('<p class="e5b"><!--$--><b>x<!--$-->y<!--/$--></b><!--/$-->!</p>')
-    expect(noC(out)).toBe('<p class="e5b"><b>xy</b>!</p>')
+    expect(html).toBe('<p class="e5b"><!--$--><b>x<u></u><!--$-->y<!--/$--></b><!--/$-->!</p>')
+    expect(noC(out)).toBe('<p class="e5b"><b>x<u></u>y</b>!</p>')
     expect(retained(before, host)).toBe(before.length)
     ;(globalThis as unknown as Record<string, { set(v: string): void } | undefined>).__y5b?.set('Z')
-    expect(noC(host.innerHTML)).toBe('<p class="e5b"><b>xZ</b>!</p>')
+    expect(noC(host.innerHTML)).toBe('<p class="e5b"><b>x<u></u>Z</b>!</p>')
     dispose()
   })
 })
@@ -333,7 +335,8 @@ const App = () => (
   </div>
 )`, { rows: () => rows(), cond: () => true })
     const dispose = hydrateRoot(host, h(App as never, null))
-    expect(tplAdopted()).toBe(3)
+    // Three rows, and each row's `<i>` (the conditional is a walked hole).
+    expect(tplAdopted()).toBe(6)
     expect(retained(before, host)).toBe(before.length)
     const labels = () => Array.from(host.querySelectorAll('a')).map((a) => a.textContent)
     expect(labels()).toEqual(['L1', 'L2', 'L3'])
