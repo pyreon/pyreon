@@ -54,6 +54,7 @@ function declarationsOf(value: any): string | null {
       return i > 0 ? `${toCamel(d.slice(0, i))}: ${JSON.stringify(d.slice(i + 1).trim()).replace(/"/g, "'")}` : null
     })
   if (entries.length === 0 || entries.some((e) => e === null)) return null
+
   return `{ ${entries.join(', ')} }`
 }
 
@@ -100,6 +101,7 @@ export const preferStyleModifier: Rule = {
       JSXOpeningElement(node: any) {
         const root = jsxComponentRoot(node.name)
         if (root === null || exempt.has(root)) return
+
         for (const attr of node.attributes ?? []) {
           if (attr.type === 'JSXAttribute' && attr.name?.type === 'JSXIdentifier' && attr.name.name === 'css') {
             check(attr, jsxTagName(node.name), jsxAttrExpression(attr))
@@ -122,10 +124,13 @@ function countLeaves(value: any): number {
   const n = unwrapTs(value)
   if (!n) return 0
   if (n.type === 'ArrayExpression') return (n.elements ?? []).reduce((s: number, e: any) => s + countLeaves(e), 0)
+
   if (n.type === 'ObjectExpression') {
     return (n.properties ?? []).reduce((s: number, p: any) => s + (p.type === 'Property' ? countLeaves(p.value) : 1), 0)
   }
+
   if (n.type === 'ConditionalExpression') return countLeaves(n.consequent) + countLeaves(n.alternate)
   if (n.type === 'LogicalExpression') return countLeaves(n.right)
+
   return 1
 }

@@ -756,8 +756,6 @@ function detectCssPropOnComponent(ctx: DetectContext, node: ts.JsxAttribute): vo
   const tagName = tag.tagName.getText(ctx.sf)
   const root = tagName.split('.')[0] ?? ''
   if (!/^[A-Z]/.test(root)) return
-  // coolgrid's Container / Row / Col take `css` by design (no theme to extend).
-  if (importedFrom(ctx.sf, root) === '@pyreon/coolgrid') return
 
   pushDiag(
     ctx,
@@ -768,20 +766,6 @@ function detectCssPropOnComponent(ctx: DetectContext, node: ts.JsxAttribute): vo
     `multiple="look" /* after ${tagName}.multiple({ look: { … } }) */`,
     false,
   )
-}
-
-/** The module a JSX tag's root identifier is imported from, if any. */
-function importedFrom(sf: ts.SourceFile, local: string): string | undefined {
-  for (const stmt of sf.statements) {
-    if (!ts.isImportDeclaration(stmt) || !ts.isStringLiteral(stmt.moduleSpecifier)) continue
-    const bindings = stmt.importClause?.namedBindings
-    const names: string[] = []
-    if (stmt.importClause?.name) names.push(stmt.importClause.name.text)
-    if (bindings && ts.isNamedImports(bindings)) for (const el of bindings.elements) names.push(el.name.text)
-    if (bindings && ts.isNamespaceImport(bindings)) names.push(bindings.name.text)
-    if (names.includes(local)) return stmt.moduleSpecifier.text
-  }
-  return undefined
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -23,9 +23,8 @@ describe('css-prop-on-component', () => {
     expect(d!.fixable).toBe(false)
   })
 
-  it('does not fire on an HTML element, a modifier list, or a coolgrid component', () => {
+  it('does not fire on an HTML element or a modifier list', () => {
     expect(codes(`export const A = () => <div css={x} />`)).not.toContain('css-prop-on-component')
     expect(codes(`export const A = () => <Grid multiple={['threeUp', on && 'dense']} />`)).not.toContain('css-prop-on-component')
-    expect(codes(`import { Col } from '@pyreon/coolgrid'\nexport const A = () => <Col css="a: b;" />`)).not.toContain('css-prop-on-component')
   })
 })

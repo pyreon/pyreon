@@ -20,12 +20,15 @@ import { ThemeCapture, getComputedTheme, initTestConfig } from '@pyreon/test-uti
 import rocketstyle from '../init'
 
 let cleanup: () => void
+
 beforeAll(() => {
   cleanup = initTestConfig()
 })
+
 afterAll(() => cleanup())
 
 const theme = { rootSize: 16, breakpoints: { xs: 0, sm: 576, md: 768, lg: 992, xl: 1200 } }
+
 const resolve = (Comp: unknown, props: Record<string, unknown> = {}, mode: 'light' | 'dark' = 'light') =>
   getComputedTheme(Comp, props, { theme, mode })
 

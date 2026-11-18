@@ -14,6 +14,7 @@ export const isComponentName = (name: string): boolean => /^[A-Z]/.test(name)
 /** The root identifier of a JSX tag name (`Foo` / `Foo.Bar` → `Foo`), or `null` for an HTML tag. */
 export function jsxComponentRoot(name: any): string | null {
   if (name?.type === 'JSXIdentifier') return isComponentName(name.name) ? name.name : null
+
   if (name?.type === 'JSXMemberExpression') {
     let object = name.object
     while (object?.type === 'JSXMemberExpression') object = object.object
@@ -36,6 +37,7 @@ export function propertyKey(prop: any): string | null {
   const key = prop.key
   if (key?.type === 'Identifier') return key.name
   if (key?.type === 'Literal' && typeof key.value === 'string') return key.value
+
   return null
 }
 
@@ -53,6 +55,7 @@ export function attrsObjectOf(node: any): any {
   const callee = node.callee
   if (callee?.type !== 'MemberExpression' || callee.computed || callee.property?.name !== 'attrs') return null
   const [arg] = node.arguments ?? []
+
   return arg?.type === 'ObjectExpression' ? arg : null
 }
 
@@ -66,9 +69,11 @@ export function jsxAttrExpression(attr: any): any {
 /** Strip a TS `as` / `satisfies` / non-null wrapper (`'x' as never`). */
 export function unwrapTs(node: any): any {
   let n = node
+
   while (n && (n.type === 'TSAsExpression' || n.type === 'TSSatisfiesExpression' || n.type === 'TSNonNullExpression' || n.type === 'TSTypeAssertion' || n.type === 'ParenthesizedExpression')) {
     n = n.expression
   }
+
   return n
 }
 
@@ -83,6 +88,7 @@ export function rawCssTextNodes(value: any): any[] {
   const walk = (node: any): void => {
     const n = unwrapTs(node)
     if (!n) return
+
     if (n.type === 'Literal' && typeof n.value === 'string') out.push(n)
     else if (n.type === 'TemplateLiteral') out.push(n)
     else if (n.type === 'ConditionalExpression') {
@@ -93,5 +99,6 @@ export function rawCssTextNodes(value: any): any[] {
     else if (n.type === 'ObjectExpression') for (const p of n.properties ?? []) if (p.type === 'Property') walk(p.value)
   }
   walk(value)
+
   return out
 }

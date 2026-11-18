@@ -24,6 +24,7 @@ export const themeModeCallback: ThemeModeCallback = (light, dark) => {
 // --------------------------------------------------------
 /** Detects whether a value is a `themeModeCallback` function via Symbol brand. */
 type IsModeCallback = (value: unknown) => boolean
+
 const isModeCallback: IsModeCallback = (value: unknown) =>
   typeof value === 'function' &&
   (value as unknown as Record<string, unknown>).__brand === MODE_CALLBACK_BRAND
@@ -36,10 +37,12 @@ const isModeCallback: IsModeCallback = (value: unknown) =>
 // CSS, and across call sites, so identical pairs dedupe to one variable.
 const fnv1a = (s: string): string => {
   let h = 0x811c9dc5
+
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i)
     h = Math.imul(h, 0x01000193) >>> 0
   }
+
   return h.toString(36)
 }
 
@@ -59,6 +62,7 @@ const fnv1a = (s: string): string => {
  */
 const varThemeModeCallback = ((light: unknown, dark: unknown) => {
   const { prefix, attribute } = resolveCssVariables()
+
   if (process.env.NODE_ENV !== 'production') {
     if (typeof light === 'number' || typeof dark === 'number') {
       // oxlint-disable-next-line no-console
@@ -69,6 +73,7 @@ const varThemeModeCallback = ((light: unknown, dark: unknown) => {
       )
     }
   }
+
   const l = String(light)
   const d = String(dark)
   const varName = `--${prefix}-m-${fnv1a(`${l}\u0000${d}`)}`
@@ -84,6 +89,7 @@ const varThemeModeCallback = ((light: unknown, dark: unknown) => {
     // without re-injecting, so the declaration must reach every request.
     true,
   )
+
   return `var(${varName})`
 }) as unknown as ThemeModeCallback
 
@@ -160,6 +166,7 @@ const overlayResponsive = (base: unknown, top: unknown, order: string[]): unknow
     const value = valueAt(i < start ? base : top, order, i)
     if (value != null) out[bp] = value
   })
+
   return out
 }
 
@@ -178,12 +185,15 @@ export const mergeTheme = (
       if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
       const t = tgt[key]
       const v = src[key]
+
       if (t != null && isResponsive(v, order) && (typeof t !== 'object' || isResponsive(t, order))) {
         tgt[key] = overlayResponsive(t, v, order)
       } else tgt[key] = isObj(t) && isObj(v) ? run({ ...t }, v) : v
     }
+
     return tgt
   }
+
   return run(target, source)
 }
 
@@ -192,6 +202,7 @@ export const mergeTheme = (
 // --------------------------------------------------------
 /** Reduces an array of chained `.theme()` callbacks into a single merged theme object. */
 type OptionFunc = (...arg: any) => Record<string, unknown>
+
 type GetThemeFromChain = (
   options: OptionFunc[] | undefined | null,
   theme: Record<string, any>,
@@ -305,6 +316,7 @@ export const getTheme: GetTheme = ({ rocketstate, themes, baseTheme, transformKe
     const mergeValue = (item: string) => {
       const val = keyTheme[item]
       if (val == null) return
+
       if (isTransform && typeof val === 'function') {
         deferredTransforms.push(val as TransformFn)
       } else {
@@ -377,5 +389,6 @@ const resolveByMode = (value: unknown, mode: 'light' | 'dark'): unknown => {
   if (Array.isArray(value)) return value.map((item) => resolveByMode(item, mode))
   if (typeof value === 'object' && value !== null) return getThemeByMode(value as Record<string, any>, mode)
   if (isModeCallback(value)) return (value as (m: string) => unknown)(mode)
+
   return value
 }

@@ -30,6 +30,7 @@ const IS_BROWSER_RUNNER = (globalThis as Record<string, unknown>).__vitest_brows
 
 const style = (root: ParentNode, id: string): CSSStyleDeclaration =>
   getComputedStyle(root.querySelector<HTMLElement>(`#${id}`)!)
+
 const columns = (root: ParentNode, id: string): number => style(root, id).gridTemplateColumns.split(' ').length
 
 /** Props whose `key` is a getter, the shape the compiler's `_rp()` gives a signal-driven prop. */

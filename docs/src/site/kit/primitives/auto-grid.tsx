@@ -32,7 +32,9 @@ export interface AutoGridProps extends GridBaseProps {
  * the `css` escape hatch.
  */
 export function AutoGrid(props: AutoGridProps) {
-  const base = { ...gridAttrs(props), gap: space[props.gap ?? 175] }
+  // A number is px and renders as rem against the theme's rootSize, as in a `.theme()`.
+  const gap = space[props.gap ?? 175]
+  const base = { ...gridAttrs(props), gap }
   if (props.cols) {
     const columns = columnsOf({ xs: toColumnCount(props.colsBelow ?? 1), lg: toColumnCount(props.cols) })
     return h(AutoGridBase, { ...base, multiple: [...gridFlagsOf(props), ...columns] }, props.children)

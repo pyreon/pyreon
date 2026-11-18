@@ -23,6 +23,7 @@ export type ExtractDimensionAttrsKeys<D extends Dimensions> = {
 }[keyof D]
 
 export type DimensionValuePrimitive = string
+
 export type DimensionValueObj = {
   propName: string
   multi?: boolean
@@ -79,6 +80,7 @@ export type DimensionResult<CT, T = any> = Record<
   | DimensionStyle<CT>
   | ((theme: CT, appTheme: T, mode: ThemeModeCallback, css: Css) => DimensionStyle<CT>)
 >
+
 export type DimensionObj<CT, T = any> = DimensionResult<CT, T>
 
 export type DimensionCb<T, CT> = (
@@ -145,6 +147,7 @@ type WithDimensionAccessor<T> = { [K in keyof T]: T[K] | (() => T[K]) }
  * accessor widening above; the resolved shape keeps the clean list.
  */
 type Falsy = false | null | undefined | 0 | ''
+
 type WithFalsyEntries<T> = {
   [K in keyof T]:
     | T[K]

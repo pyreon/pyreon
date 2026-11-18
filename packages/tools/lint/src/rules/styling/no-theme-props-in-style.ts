@@ -37,11 +37,13 @@ const THEME_OWNED = new Set([
 /** A rocketstyle chain: `el.config(…).theme(…)`, `rs({ … }).attrs(…)`. */
 function isRocketstyleChain(init: any): boolean {
   let n = unwrapTs(init)
+
   while (n?.type === 'CallExpression') {
     const callee = n.callee
     if (callee?.type === 'MemberExpression' && !callee.computed && CHAIN_METHODS.has(callee.property?.name)) return true
     n = callee?.type === 'MemberExpression' ? callee.object : null
   }
+
   return false
 }
 
@@ -49,6 +51,7 @@ const isLiteralValue = (value: any): boolean => {
   const v = unwrapTs(value)
   if (v?.type === 'Literal') return typeof v.value === 'string' || typeof v.value === 'number'
   if (v?.type === 'UnaryExpression' && v.operator === '-') return isLiteralValue(v.argument)
+
   return v?.type === 'TemplateLiteral' && (v.expressions?.length ?? 0) === 0
 }
 
@@ -81,6 +84,7 @@ export const noThemePropsInStyle: Rule = {
       JSXOpeningElement(node: any) {
         const root = jsxComponentRoot(node.name)
         if (root === null || !themeable.has(root)) return
+
         for (const attr of node.attributes ?? []) {
           if (attr.type !== 'JSXAttribute' || attr.name?.name !== 'style') continue
           const expr = unwrapTs(attr.value?.type === 'JSXExpressionContainer' ? attr.value.expression : null)
