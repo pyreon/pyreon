@@ -1,8 +1,8 @@
 # @pyreon/state-tree
 
-MobX-State-Tree-inspired structured models on signals — `model({ state, views, actions })`.
+MobX-State-Tree-inspired structured models on signals — `model({ state }).views(…).actions(…)`.
 
-Structured reactive state trees built on `@pyreon/reactivity`: `model({ state, views, actions })` composes signal-backed state, computed views, and the only legal mutation path (actions). Supports nested model composition, typed snapshots, JSON-patch record/replay (replace only), and action interception middleware. Fits when `@pyreon/store` is too flat — use it for tree-shaped domain models with undo/redo, time-travel, or audit-log requirements.
+Structured reactive state trees built on `@pyreon/reactivity`: `model({ state })` declares signal-backed state, and the chained `.views((self) => …)` and `.actions((self) => …)` add computed views and the only legal mutation path (actions). Supports nested model composition, typed snapshots, JSON-patch record/replay (replace only), and action interception middleware. Fits when `@pyreon/store` is too flat — use it for tree-shaped domain models with undo/redo, time-travel, or audit-log requirements.
 
 ## Install
 
@@ -13,19 +13,18 @@ bun add @pyreon/state-tree @pyreon/reactivity
 ## Quick Start
 
 ```ts
+// @check
 import { model, getSnapshot, onPatch } from '@pyreon/state-tree'
 import { computed } from '@pyreon/reactivity'
 
-const Counter = model({
-  state: { count: 0 },
-  views: (self) => ({
+const Counter = model({ state: { count: 0 } })
+  .views((self) => ({
     doubled: computed(() => self.count() * 2),
-  }),
-  actions: (self) => ({
+  }))
+  .actions((self) => ({
     inc: () => self.count.update((c) => c + 1),
     reset: () => self.count.set(0),
-  }),
-})
+  }))
 
 const counter = Counter.create({ count: 5 })
 counter.count() // 5
@@ -41,28 +40,35 @@ Models are defined once, then instantiated with `.create()` or used as singleton
 
 ### `model(config)`
 
-Define a reactive model. Returns a `ModelDefinition` with `.create()` and `.asHook()`.
+Define a reactive model. Returns a `ModelDefinition` with `.create()` and `.asHook()`. The config takes the state only (plain mode: `{ state }`; schema mode: `{ schema, initial? }`); views and actions are added by chaining, never as config keys. `model({ state, views, actions })` is not accepted (TypeScript reports TS2769, "No overload matches this call").
 
-| Parameter        | Type                                 | Description                                                   |
-| ---------------- | ------------------------------------ | ------------------------------------------------------------- |
-| `config.state`   | `StateShape`                         | Plain object — each key becomes a `Signal<T>` on the instance |
-| `config.views`   | `(self) => Record<string, Computed>` | Factory returning computed signals for derived state          |
-| `config.actions` | `(self) => Record<string, Function>` | Factory returning functions that mutate state                 |
+| Parameter      | Type         | Description                                                   |
+| -------------- | ------------ | ------------------------------------------------------------- |
+| `config.state` | `StateShape` | Plain object — each key becomes a `Signal<T>` on the instance |
+
+| Chained method          | Type                                 | Description                                          |
+| ----------------------- | ------------------------------------ | ---------------------------------------------------- |
+| `.views(factory)`       | `(self) => Record<string, Computed>` | Factory returning computed signals for derived state |
+| `.actions(factory)`     | `(self) => Record<string, Function>` | Factory returning functions that mutate state        |
+
+Each chained method returns a new `ModelDefinition`, and every later layer sees the views and actions added before it on `self`.
 
 **Returns:** `ModelDefinition<TState, TActions, TViews>`
 
 The `self` parameter in views and actions is strongly typed for state signals and loosely typed for actions/views to avoid circular type issues.
 
 ```ts
-const Todo = model({
-  state: { text: '', done: false },
-  views: (self) => ({
+// @check
+import { computed } from '@pyreon/reactivity'
+import { model } from '@pyreon/state-tree'
+
+const Todo = model({ state: { text: '', done: false } })
+  .views((self) => ({
     summary: computed(() => `${self.done() ? '[x]' : '[ ]'} ${self.text()}`),
-  }),
-  actions: (self) => ({
+  }))
+  .actions((self) => ({
     toggle: () => self.done.update((d) => !d),
-  }),
-})
+  }))
 ```
 
 ### `ModelDefinition.create(initial?)`
@@ -219,7 +225,8 @@ getSnapshot(app) // { title: "Hello", profile: { name: "Alice", age: 30 } }
 Declare a field that holds model instances with `arrayOf(Model)` or `mapOf(Model)`. Element snapshots become instances, child writes emit patches addressed by index or key, patch values are plain snapshots, and `applySnapshot` / `applyPatch` recreate the elements, so patches and snapshots round-trip, also into a fresh instance in another process.
 
 ```ts
-import { applyPatch, arrayOf, getPath, model, onPatch } from '@pyreon/state-tree'
+// @check
+import { applyPatch, arrayOf, getPath, model, onPatch, type Patch } from '@pyreon/state-tree'
 
 const Todo = model({ state: { title: '', done: false } }).actions((self) => ({
   toggle: () => self.done.update((d) => !d),
