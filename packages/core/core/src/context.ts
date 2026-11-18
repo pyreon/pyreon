@@ -175,6 +175,18 @@ export function useContext<T>(context: Context<T>): T {
   return context.defaultValue
 }
 
+/** Dev: warn about a `provide()` that ran after the component's children chained past it. */
+function warnLateProvide(api: string): void {
+  if (process.env.NODE_ENV !== 'production') {
+    // oxlint-disable-next-line no-console
+    console.warn(
+      `[Pyreon] ${api}() ran after this component had already mounted children (late in the setup body, ` +
+        'after a child component, or in onMount). Those children resolve context through the ' +
+        "parent's owner and will not see this value. Call it before the component builds or returns its children.",
+    )
+  }
+}
+
 /**
  * Provide a context value for the current component's subtree.
  * Must be called during component setup (like onMount/onUnmount).
@@ -202,15 +214,6 @@ export function useContext<T>(context: Context<T>): T {
  *   return children
  * }
  */
-/** Dev: warn about a `provide()` that ran after the component's children chained past it. */
-function warnLateProvide(api: string): void {
-  // oxlint-disable-next-line no-console
-  console.warn(
-    `[Pyreon] ${api}() ran after this component had already mounted children (late in the setup body, ` +
-      'after a child component, or in onMount). Those children resolve context through the ' +
-      "parent's owner and will not see this value. Call it before the component builds or returns its children.",
-  )
-}
 
 export function provide<T>(context: Context<T>, value: T): void {
   // Become the context owner on first provide (see the lazy-owner note in
