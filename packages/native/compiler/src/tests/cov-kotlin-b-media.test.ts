@@ -138,11 +138,11 @@ export function App() {
 
   it('an out-of-range level, a childless heading and a NON-numeric level all resolve to h4', () => {
     const got = find(H, 'Text(')
-    expect(got[0]).toBe('Text(text = "out of range", style = MaterialTheme.typography.h4)')
-    expect(got[1]).toBe('Text(text = "", style = MaterialTheme.typography.h4)')
+    expect(got[0]).toBe('Text(text = "out of range", style = MaterialTheme.typography.h4, fontWeight = FontWeight.Bold)')
+    expect(got[1]).toBe('Text(text = "", style = MaterialTheme.typography.h4, fontWeight = FontWeight.Bold)')
     // Both ternary arms are non-numeric, so both resolve to the default.
     expect(got[2]).toBe(
-      'Text(text = "non-numeric", style = (if (big) MaterialTheme.typography.h4 else MaterialTheme.typography.h4))',
+      'Text(text = "non-numeric", style = (if (big) MaterialTheme.typography.h4 else MaterialTheme.typography.h4), fontWeight = FontWeight.Bold)',
     )
   })
 })

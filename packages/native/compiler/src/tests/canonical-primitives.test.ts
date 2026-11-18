@@ -295,12 +295,23 @@ describe('Phase P2.1 — <Heading> emit (semantic heading)', () => {
     expect(out).toMatch(/\.foregroundColor\(Color\(red: [\d.]+, green: [\d.]+, blue: [\d.]+\)\)/)
   })
 
-  it('Kotlin: <Heading>Title</Heading> → Text(style = MaterialTheme.typography.h4) (default level 1)', () => {
+  it('Kotlin: <Heading>Title</Heading> → Text(style = MaterialTheme.typography.h4, fontWeight = FontWeight.Bold) (default level 1)', () => {
     const out = tx(`<Heading>Title</Heading>`, 'kotlin')
     // Material 2 typography role (the emit base is androidx.compose.material.*,
     // NOT material3 — Material 3's `headlineLarge` is not a member of M2's
     // Typography and fails a real `gradle assembleDebug`).
-    expect(out).toContain('Text(text = "Title", style = MaterialTheme.typography.h4)')
+    expect(out).toContain('Text(text = "Title", style = MaterialTheme.typography.h4, fontWeight = FontWeight.Bold)')
+  })
+
+  it('Kotlin: every level is bold, as on web (weight 700) and iOS (.bold())', () => {
+    // Material 2's h4/h5/subtitle1/body1/body2 are FontWeight.Normal (h6 is
+    // Medium), so the typography role alone rendered a regular-weight heading.
+    for (const level of [1, 2, 3, 4, 5, 6]) {
+      const out = tx(`<Heading level={${level}}>x</Heading>`, 'kotlin')
+      expect(out, `level ${level}`).toMatch(/style = MaterialTheme\.typography\.\w+, fontWeight = FontWeight\.Bold\)/)
+    }
+    const withColor = tx(`<Heading level={2} color="primary">x</Heading>`, 'kotlin')
+    expect(withColor).toMatch(/style = MaterialTheme\.typography\.h5, fontWeight = FontWeight\.Bold, color = Color\(/)
   })
 
   it('Kotlin: level maps to the Material 2 typography role', () => {
