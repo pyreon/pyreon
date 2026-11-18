@@ -249,6 +249,67 @@ export const Curves = () => (
 )
 ```
 
+### Bar thickness
+
+`<Chart barWidth barGap barCategoryGap>` sets how thick the bars are. Unset, a bar
+takes 75% of its band, as it always did.
+
+| Prop | Meaning |
+| --- | --- |
+| `barWidth` | The thickness of one bar in px, across its band: width on a vertical chart, height on a horizontal one. A **ceiling**, not a stretch: a bar is never wider than the slot its band leaves, so a narrow chart cannot overflow. |
+| `barGap` | The space between the bars of a group (`<Bar group>`), as a fraction of one bar. `0` (the default) means the bars abut. |
+| `barCategoryGap` | The space between categories, as a fraction of the band: `0.25` by default, clamped to `0`..`0.9`. |
+
+They reach plain, stacked, grouped and waterfall bars in both orientations, and the
+hit target, the keyed update morph and the server-rendered first frame follow the
+drawn bar. `barWidth` is px and the two gaps are fractions on purpose: a pixel
+width is what a designer asks for, and a fraction survives a resize. On iOS and
+Android all three lower as literals (a computed value warns by name). Bars on a
+time or numeric axis are a separate chart and are not covered here.
+
+### Colouring a datum
+
+`color` is one colour for the whole series, and `<Chart color="field">` splits
+long-format rows into a series per value. Colouring each **datum** is a third job
+with a third spelling, so it cannot be confused with either: `fill` takes a
+descriptor made by an imported binding.
+
+```tsx
+// @check
+import { Bar, Chart, Tooltip, fillBy, shadeBy } from '@pyreon/charts'
+
+interface Region { name: string; revenue: number; margin: number; status: string }
+const regions: Region[] = [
+  { name: 'North', revenue: 420, margin: 12, status: '#16a34a' },
+  { name: 'South', revenue: 310, margin: 4, status: '#dc2626' },
+]
+
+export const Colours = () => (
+  <Chart<Region> data={regions} x="name">
+    {/* a colour carried by the row */}
+    <Bar<Region> y="revenue" label="Revenue" fill={fillBy<Region>('status')} />
+    {/* a value mapped through a ramp: low = first stop, high = last */}
+    <Bar<Region> y="revenue" label="Revenue" fill={shadeBy<Region>('margin', { ramp: ['#fde68a', '#b45309'] })} />
+    <Tooltip />
+  </Chart>
+)
+```
+
+- `fillBy(field | (d, i) => colour)`: a datum whose colour is missing keeps the series colour.
+- `shadeBy(field | (d, i) => number, { ramp?, domain? })`: the ramp defaults to the heatmap's cool-to-warm stops and the domain to the finite extent of the values (pin it to compare charts). A missing value is a gap and keeps the series colour.
+- **The value is data.** A colour is the one thing a reader who cannot see it can never recover, so a `shadeBy` value is printed beside the bar's own: the tooltip reads `Revenue: 420 (shade 12)` and the accessible table gets a `Revenue (shade)` column.
+- Works on `<Bar>` (plain, stacked, grouped, waterfall) and `<Dot>`. Both bindings are imported, so a chart that never colours a datum does not bundle them.
+- Web only for now. On iOS and Android the compiler warns that `fill` is not lowered and the bars draw in the series colour: it maps a closure over each row, which has no native form yet. There is no colour legend strip for `shadeBy` yet (use the tooltip and the table, or draw your own from the same ramp).
+
+### Gaps in a line
+
+A missing value breaks a line or an area into separate runs, which is the honest
+reading of a measurement that is absent. `<Line connectNulls>` and
+`<Area connectNulls>` draw one continuous stroke (or fill) through the finite points
+instead. The bridge is straight between the neighbours, and the gap is still
+missing data: it has no tooltip row and its table cell stays empty. It lowers to
+iOS and Android as a literal.
+
 ## Axes
 
 - **Categorical x** — pass `x={(d) => d.label}`; points are spaced evenly.

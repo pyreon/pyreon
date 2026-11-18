@@ -114,6 +114,30 @@ shape (rect, circle, diamond, triangle; the pictorialBar vocabulary), and
 `line(y, { symbol })` draws a symbol at every datum over the line, on web,
 iOS and Android.
 
+### Bar thickness, per-datum colour, gaps
+
+```tsx
+import { Bar, Chart, Line, fillBy, shadeBy } from '@pyreon/charts'
+
+<Chart data={rows} x="region" barWidth={28} barGap={0.2} barCategoryGap={0.4}>
+  <Bar y="revenue" group />
+  <Bar y="target" group fill={shadeBy('margin')} />   {/* each bar shaded by its margin */}
+  <Line y="trend" connectNulls />                      {/* one stroke across the gaps */}
+</Chart>
+```
+
+`barWidth` is a px **ceiling** on one bar (never wider than its band's slot),
+`barGap` the space between the bars of a group (a fraction of a bar),
+`barCategoryGap` the space between categories (a fraction of the band, 0.25 by
+default). `fill` colours each datum on its own and is deliberately not `color`
+(the series colour) or `<Chart color="field">` (the long-format split): it takes
+the descriptor `fillBy(field)` (a colour on the row) or `shadeBy(field, { ramp })`
+(a value through a ramp) returns, both imported bindings that tree-shake away
+when unused. The value behind a shade is printed in the tooltip and the accessible
+table. `connectNulls` draws one stroke through the finite points of a line or area
+instead of breaking at each gap. The bar props and `connectNulls` lower to iOS and
+Android; `fill` is web-only and named by a compile-time warning.
+
 ### Entrance animation
 
 On by default: bars rise from the zero line, lines draw left to right, points

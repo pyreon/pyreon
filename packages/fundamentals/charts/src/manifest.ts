@@ -84,6 +84,74 @@ const rows: Row[] = [{ month: 'Jan', revenue: 3200, target: 3000 }, { month: 'Fe
       seeAlso: ['PlotChart', 'ChartThemeProvider'],
     },
     {
+      name: 'Bar',
+      kind: 'component',
+      signature: '<T>(props: BarProps<T>) => VNode | null',
+      summary:
+        "The bar mark: `<Bar y>` draws vertical bars from the zero line (`horizontal` on the chart turns them on their side), `stack` stacks, `group` places side by side, `waterfall` floats steps from running total to running total. Bar THICKNESS is set on the chart, not the mark: `<Chart barWidth barGap barCategoryGap>` (`barWidth` a px ceiling, `barGap` the space between a group's bars as a fraction of one bar, `barCategoryGap` the space between categories as a fraction of the band, 0.25 by default). `fill={fillBy(…)}` / `fill={shadeBy(…)}` colour each datum on its own; `color` stays the series colour and `<Chart color=\"field\">` the long-format split. `errorLow` / `errorHigh` draw whiskers, `showValues` labels each bar, `borderRadius`, `gradient` and `pattern` style it.",
+      example: `import { Bar, Chart, Tooltip, shadeBy } from '@pyreon/charts'
+
+interface Region { name: string; revenue: number; margin: number }
+const regions: Region[] = [{ name: 'North', revenue: 420, margin: 12 }, { name: 'South', revenue: 310, margin: 4 }]
+
+<Chart<Region> data={regions} x="name" barWidth={28}>
+  <Bar<Region> y="revenue" label="Revenue" fill={shadeBy<Region>('margin')} />
+  <Tooltip />
+</Chart>`,
+      mistakes: [
+        'Setting `barWidth` on the `<Bar>` mark — thickness is a property of the CATEGORY BAND the chart lays out, so it is a `<Chart>` prop (and a `<PlotChart>` prop) and applies to every bar mark in the chart',
+        'Expecting `barWidth` to stretch bars — it is a ceiling in px: a bar is never wider than the slot its band leaves, so a width larger than the slot changes nothing; use `barCategoryGap` to give bars more of the band',
+        'Using `barGap` on plain or stacked bars — it spaces the bars WITHIN a group, so it only has an effect on `<Bar group>`; the space between categories is `barCategoryGap`',
+        'Writing `color="region"` to colour each bar by a field — that is the long-format SPLIT (one series per distinct value); per-datum colour is `fill={fillBy("colour")}` (a colour on the row) or `fill={shadeBy("margin")}` (a value through a ramp)',
+        'Passing a colour string to `fill` — it takes the descriptor `fillBy` / `shadeBy` returns, not a colour; one colour for the whole series is `color="#hex"`',
+        'Expecting `fill` to colour bars on iOS and Android — it maps a closure over each row, which has no native form yet, so the compiler warns by name and the bars draw in the series colour',
+        'Reading a `shadeBy` colour as the only carrier of the value — the number behind it is printed beside the bar\'s own in the tooltip (`Revenue: 420 (shade 12)`) and as a `Revenue (shade)` column in the accessible table; there is no colour legend strip yet',
+      ],
+      seeAlso: ['Chart', 'Line'],
+    },
+    {
+      name: 'shadeBy',
+      kind: 'function',
+      signature: '<T>(channel: ItemChannel<T, number | undefined>, options?: { ramp?: readonly string[]; domain?: Domain }) => ItemFill<T>  // also fillBy(channel)',
+      summary:
+        "Per-datum colour for `<Bar>` and `<Dot>`, as an imported binding for the `fill` prop. `shadeBy(channel, { ramp, domain })` maps each datum's VALUE through a colour ramp (`#rrggbb` stops, low to high; default the heatmap's cool-to-warm; domain defaults to the finite extent of the values, pin it to compare charts). `fillBy(channel)` instead reads a CSS colour off the row (a field holding `'#16a34a'`, or an accessor). A datum with no colour or no finite value keeps the series colour. The values behind a shade are data: they reach the tooltip (`Revenue: 420 (shade 12)`) and the accessible table (a `(shade)` column). Both bindings are imported, so a chart that never colours a datum does not bundle them. Web only; the native compiler names `fill` and draws the series colour.",
+      example: `import { Bar, Chart, fillBy, shadeBy } from '@pyreon/charts'
+
+interface Region { name: string; revenue: number; margin: number; status: string }
+const regions: Region[] = [{ name: 'North', revenue: 420, margin: 12, status: '#16a34a' }]
+
+<Chart<Region> data={regions} x="name">
+  <Bar<Region> y="revenue" fill={shadeBy<Region>('margin', { ramp: ['#fde68a', '#b45309'] })} />
+  <Bar<Region> y="revenue" fill={fillBy<Region>('status')} />
+</Chart>`,
+      mistakes: [
+        'Passing the result as `color` — `color` is the series colour (a string); the per-datum descriptor goes on `fill`',
+        'Giving `shadeBy` a ramp of named colours or `rgb()` strings — the ramp is `#rrggbb` stops, the hex restriction being what lets the ramp math be the engine\'s own',
+        'Expecting the colours to follow the dark theme — the default ramp is fixed; pass a ramp per mode (or `ramp` from your own theme tokens)',
+      ],
+      seeAlso: ['Bar', 'Cell'],
+    },
+    {
+      name: 'Line',
+      kind: 'component',
+      signature: '<T>(props: MarkProps<T>) => VNode | null',
+      summary:
+        "The line mark: `<Line y>` draws a polyline through the values; `curve={smooth|step}` shapes it (an imported binding), `dash={[4, 2]}` dashes it, `symbol` draws a mark at every datum. A missing value (NaN, null, an infinity) BREAKS the line into runs, because an absent measurement is not a zero; `connectNulls` draws one continuous stroke through the finite points instead, straight across each gap. The gap stays missing data either way: no tooltip row, an empty cell in the accessible table. `<Area connectNulls>` does the same for the fill. `connectNulls` lowers to iOS and Android as a literal.",
+      example: `import { Chart, Line } from '@pyreon/charts'
+
+interface Reading { day: string; temp: number }
+const readings: Reading[] = [{ day: 'Mon', temp: 18 }, { day: 'Tue', temp: Number.NaN }, { day: 'Wed', temp: 21 }]
+
+<Chart<Reading> data={readings} x="day">
+  <Line<Reading> y="temp" connectNulls />
+</Chart>`,
+      mistakes: [
+        'Turning on `connectNulls` to hide missing data — the line then claims a trend across the gap that no measurement supports; leave it off unless the gap is a sampling artefact, and the tooltip and table still show the datum as missing',
+        'Expecting a single isolated point to draw a stroke — a run of one point has no length, so it draws nothing by default; `connectNulls` joins it to its neighbours, or add `symbol` to see every datum',
+      ],
+      seeAlso: ['Chart', 'Bar'],
+    },
+    {
       name: 'Sma',
       kind: 'component',
       signature: '<T>(props: AverageProps<T>) => VNode | null  // also Ema; Trend (no window); Bollinger (window, k?)',

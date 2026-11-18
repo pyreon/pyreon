@@ -30,6 +30,21 @@ list is reactive, so the switch repaints the same canvas.
 
 <Example file="./examples/charts/gallery-horizontal" title="Horizontal bars" />
 
+## Bar thickness
+
+`barWidth` caps one bar's thickness in px, `barGap` spaces the bars of a group and
+`barCategoryGap` the categories. Unset, bars keep their band-proportional width.
+
+<Example file="./examples/charts/gallery-bar-geometry" title="Bar width and gaps" />
+
+## Colour a datum
+
+`fill={fillBy('status')}` reads a colour off each row; `fill={shadeBy('margin')}`
+maps a value through a ramp, and the tooltip and the accessible table print that
+value.
+
+<Example file="./examples/charts/gallery-bar-colors" title="Per-datum colour" />
+
 ## A donut
 
 An `<Arc>` with an inner radius, and a legend whose entries toggle their slices.
