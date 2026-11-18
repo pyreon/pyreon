@@ -2009,6 +2009,24 @@
         "@pyreon/native-compiler",
       ],
     },
+    "packages/fundamentals/schedule": {
+      "name": "@pyreon/schedule",
+      "version": "0.53.0",
+      "dependencies": {
+        "@pyreon/time": "workspace:^",
+      },
+      "devDependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/manifest": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vitest-config": "workspace:*",
+        "rrule": "2.8.1",
+      },
+      "peerDependencies": {
+        "@pyreon/reactivity": "workspace:^",
+      },
+    },
     "packages/fundamentals/state-tree": {
       "name": "@pyreon/state-tree",
       "version": "0.53.0",
@@ -4368,6 +4386,8 @@
 
     "@pyreon/rx": ["@pyreon/rx@workspace:packages/fundamentals/rx"],
 
+    "@pyreon/schedule": ["@pyreon/schedule@workspace:packages/fundamentals/schedule"],
+
     "@pyreon/server": ["@pyreon/server@workspace:packages/core/server"],
 
     "@pyreon/sized-map": ["@pyreon/sized-map@workspace:packages/core/sized-map"],
@@ -6301,6 +6321,8 @@
     "rope-sequence": ["rope-sequence@1.3.4", "", {}, "sha512-UT5EDe2cu2E/6O4igUr5PSFs23nvvukicWHx6GnOPlHAiiYbzNuCRQCuiUdHJQcqKalLKlrYJnjY0ySGsXNQXQ=="],
 
     "router": ["router@2.2.0", "", { "dependencies": { "debug": "^4.4.0", "depd": "^2.0.0", "is-promise": "^4.0.0", "parseurl": "^1.3.3", "path-to-regexp": "^8.0.0" } }, "sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ=="],
+
+    "rrule": ["rrule@2.8.1", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-hM3dHSBMeaJ0Ktp7W38BJZ7O1zOgaFEsn41PDk+yHoEtfLV+PoJt9E9xAlZiWgf/iqEqionN0ebHFZIDAp+iGw=="],
 
     "run-applescript": ["run-applescript@7.1.0", "", {}, "sha512-DPe5pVFaAsinSaV6QjQ6gdiedWDcRCbUuiQfQa2wmWV7+xC9bGulGI8+TdRmoFkAPaBXk8CrAbnlY2ISniJ47Q=="],
 
