@@ -5773,12 +5773,13 @@ guard('/account') // true | { redirect: '/login?returnTo=%2Faccount' }`,
     example: `const theme = useStorage('theme', 'light')
 theme()           // 'light'
 theme.set('dark') // persists + cross-tab sync
-theme.remove()    // delete from storage, reset to default`,
-    notes: 'Create a reactive signal backed by localStorage. Reads the stored value on creation (falling back to `defaultValue` if absent or on SSR), writes on every `.set()`, and syncs across browser tabs via `storage` events. Returns `StorageSignal<T>` which extends `Signal<T>` with `.remove()` to delete the key and reset to default. Serialization defaults to JSON; provide custom `serializer`/`deserializer` in options for non-JSON types. See also: useSessionStorage, useCookie, useIndexedDB, createStorage.',
+theme.remove()    // delete from storage, reset to default; theme stays bound
+theme.set('dark') // persists again`,
+    notes: 'Create a reactive signal backed by localStorage. Reads the stored value on creation (falling back to `defaultValue` if absent or on SSR), writes on every `.set()`, and syncs across browser tabs via `storage` events. Returns `StorageSignal<T>` which extends `Signal<T>` with `.remove()` to delete the key and reset to default; the binding stays live after `.remove()` (later writes persist, other tabs still update it) and is released when the calling component (owner scope) is disposed and no other consumer holds the key. Serialization defaults to JSON; provide custom `serializer`/`deserializer` in options for non-JSON types. See also: useSessionStorage, useCookie, useIndexedDB, createStorage.',
     mistakes: `- Expecting cross-tab sync with \`useSessionStorage\` — only \`useStorage\` (localStorage) fires storage events across tabs
 - Storing non-serializable values (functions, class instances) without custom \`serializer\`/\`deserializer\` — JSON.stringify drops them silently
 - Reading \`.remove()\` return value — it returns void, not the removed value
-- Treating \`.remove()\` as a per-consumer teardown that leaves other consumers alone — it always clears the STORED VALUE (that is what you asked for) and resets the shared signal. What is refcounted is the registry entry, so \`removeStorage\`/\`clearStorage\` keep seeing a key while any consumer still holds it.
+- Treating \`.remove()\` as a teardown — it deletes the STORED VALUE and resets the shared signal, and the binding stays alive: a later \`.set()\` persists again and cross-tab updates keep arriving. There is no need to call \`useStorage\` again after \`.remove()\`. The binding is released by its lifecycle: each call holds a refcount that the calling component's (owner scope's) disposal releases, and the entry plus the cross-tab listener go away with the last holder. A call made outside any component holds the key for the page.
 - Evolving the stored shape without \`version\` + \`migrate\` — a user with the OLD shape on disk loads it as-is (or \`onError\`/default if it no longer parses). Bump \`version\` and provide \`migrate\` to transform the old shape; a pre-versioning value is migrated as version \`0\`.
 - Assuming a \`.set()\` that exceeds quota throws — the in-memory signal always updates; the \`setItem\` failure is routed to \`onError\` (a notification) instead of throwing. Provide \`onError\` to surface quota problems to the user.`,
   },

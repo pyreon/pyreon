@@ -27,7 +27,7 @@ import {
 const theme = useStorage('theme', 'light')
 theme() // 'light' — read reactively
 theme.set('dark') // updates signal + localStorage + any other tab
-theme.remove() // resets to default and removes from storage
+theme.remove() // resets to default and removes from storage; theme stays bound
 
 // sessionStorage — tab-scoped
 const wizardStep = useSessionStorage('wizard-step', 0)
@@ -66,7 +66,7 @@ a === b // true — registered once per (backend, key) pair
 
 ```ts
 interface StorageSignal<T> extends Signal<T> {
-  remove(): void // clear storage, reset to default value
+  remove(): void // clear storage, reset to default value; the binding stays live
 }
 ```
 
@@ -216,7 +216,8 @@ Every storage signal wraps a base `signal()` with a facade that **forwards `_v` 
 
 - **Same key returns the SAME signal instance per backend** — two `useStorage('theme', 'light')` calls in different components share state. This is by design; do NOT expect a fresh signal per call.
 - **Inbound cross-tab events never write back** — a value (or removal) arriving from another tab updates this tab's signal without re-persisting it, and `localStorage.clear()` in another tab resets every `useStorage` signal to its default.
-- **`useStorage` cross-tab listener is ref-counted** — attached on first `useStorage`, removed when the last signal disposes via `.remove()`. Pre-fix the listener leaked across the page lifetime.
+- **`.remove()` keeps the binding alive** — it deletes the stored value and resets the signal to its default; a later `.set()` persists again and (for `useStorage`) other tabs still update it. Do not call the hook again after `.remove()`.
+- **Bindings are released with their component** — each `useX(key)` call holds a refcount on the shared signal, released when the calling component (owner scope) is disposed. The registry entry, and for `useStorage` the window `storage` listener, go away with the last holder. A call made outside any component (module level) holds the key for the page.
 - **The internal `_v` getter is load-bearing** — if you hand-roll a wrapper-signal on top of `@pyreon/reactivity` and forget to forward `_v` (or `.direct`), the compiler-emitted fast path binds to `undefined` and renders empty (the bug class PR #546 fixed). **Use `wrapSignal()` from `@pyreon/reactivity` for any new backend** — it forwards both by construction so the bug is impossible. The `pyreon/storage-signal-v-forwarding` lint rule guards the hand-rolled case.
 - **Cookies need `setCookieSource(header)` on the server** — `document.cookie` doesn't exist in SSR. Without it, `useCookie` returns the default value during render.
 - **IndexedDB writes are debounced** (default 100ms) — the signal updates immediately; persistence trails. On unload, in-flight writes complete (most browsers honor pending IndexedDB transactions).

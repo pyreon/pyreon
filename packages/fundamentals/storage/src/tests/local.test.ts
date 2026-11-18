@@ -203,13 +203,13 @@ describe('useStorage (localStorage)', () => {
     expect(theme()).toBe('light')
   })
 
-  it('after remove(), a new useStorage call creates a fresh signal', () => {
+  it('after remove(), a new useStorage call shares the still-live signal (#4381)', () => {
     const a = useStorage('temp', 'first')
     a.set('modified')
     a.remove()
 
-    const b = useStorage('temp', 'second')
-    expect(b()).toBe('second')
-    expect(a).not.toBe(b)
+    const b = useStorage('temp', 'first')
+    expect(b()).toBe('first')
+    expect(b).toBe(a)
   })
 })

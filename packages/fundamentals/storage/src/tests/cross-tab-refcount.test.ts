@@ -2,16 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { _resetRegistry, _resetStorageListener, useStorage } from '../index'
 
 /**
- * REGRESSION: `useStorage`'s cross-tab listener refcount under-counts
- * consumers. The first `useStorage(key)` call retains; same-key cached
- * returns DO NOT retain. `.remove()` always releases. Result: when one
- * of N consumers calls `.remove()`, the listener is detached even
- * though N-1 consumers still hold the (now orphaned) signal — cross-tab
- * updates stop flowing to them.
- *
- * Fix (paired with `useStorage` body): every `useStorage(key)` call
- * retains; `.remove()` is idempotent per consumer (the StorageSignal
- * carries a `_disposed` flag).
+ * REGRESSION: one consumer's `.remove()` must not cut the others (or itself)
+ * off from cross-tab updates. Every `useStorage(key)` call retains the listener
+ * and the registry entry; only the owner scope's disposal releases them, and
+ * `.remove()` releases nothing (#4381).
  */
 describe('useStorage — cross-tab listener refcount survives same-key consumer remove()', () => {
   beforeEach(() => {
@@ -30,8 +24,7 @@ describe('useStorage — cross-tab listener refcount survives same-key consumer 
     const t2 = useStorage('theme', 'light')
     expect(t1).toBe(t2)
 
-    // One consumer removes. Pre-fix: refcount drops to 0, listener detached,
-    // registry entry removed; t2 is orphaned from the cross-tab pipeline.
+    // One consumer removes. The listener and the registry entry must stay.
     t1.remove()
 
     // Cross-tab event for 'theme' must still flow through to the surviving
@@ -53,12 +46,11 @@ describe('useStorage — cross-tab listener refcount survives same-key consumer 
     const t1 = useStorage('theme', 'light')
     const t2 = useStorage('theme', 'light')
 
-    t1.remove() // resets to default, clears storage, releases ONE retain
+    t1.remove() // resets to default, clears storage, keeps the binding
 
-    // After remove(): signal is reset, storage is cleared, BUT the
-    // registry entry stays (since refcount didn't drop to 0). The
-    // cross-tab listener can still route incoming `storage` events to
-    // the surviving consumer.
+    // After remove(): signal is reset, storage is cleared, and the registry
+    // entry stays, so the cross-tab listener still routes incoming `storage`
+    // events to every consumer.
     expect(t2()).toBe('light')
 
     // A subsequent useStorage('theme', ...) call must return the
