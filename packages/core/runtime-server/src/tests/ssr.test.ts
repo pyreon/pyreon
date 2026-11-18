@@ -954,9 +954,9 @@ describe('renderToString — null/undefined/boolean prop values', () => {
     expect(html).toBe('<span>42</span>')
   })
 
-  test('renders boolean true as text in children', async () => {
+  test('omits true children (booleans render nothing, as on the client)', async () => {
     const html = await renderToString(h('span', null, true))
-    expect(html).toBe('<span>true</span>')
+    expect(html).toBe('<span></span>')
   })
 
   test('omits false children', async () => {
@@ -1207,9 +1207,9 @@ describe('renderToStream — boolean and edge-case children', () => {
     return result
   }
 
-  test("streams boolean true child as 'true'", async () => {
+  test('streams boolean true child as empty', async () => {
     const html = await collect(renderToStream(h('span', null, true)))
-    expect(html).toBe('<span>true</span>')
+    expect(html).toBe('<span></span>')
   })
 
   test('streams boolean false child as empty', async () => {

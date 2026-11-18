@@ -92,7 +92,7 @@ The `loader` is a dynamic `import()`. It may resolve to a module with a `default
 
 | Option     | Type                 | Default    | Description                                                                                          |
 | ---------- | -------------------- | ---------- | ---------------------------------------------------------------------------------------------------- |
-| `name`     | `string`             | *auto-derived* | Unique island name. Must match the key in the client-side registry (manual `hydrateIslands` form). Two islands sharing a name is a foot-gun — see the [audit](#pyreon-doctor-check-islands). |
+| `name`     | `string`             | *auto-derived* | Unique island name. Must match the key in the client-side registry (manual `hydrateIslands` form). Two islands sharing a name is a foot-gun — see the [audit](#pyreon-doctor-only-islands-audit). |
 | `hydrate`  | `HydrationStrategy`  | `'load'`   | When to hydrate on the client. See [the six strategies](#the-six-strategies).                        |
 | `prefetch` | `PrefetchStrategy`   | `'none'`   | Pre-warm the chunk before the hydration trigger fires. See [Prefetch hint](#prefetch-hint).          |
 
@@ -243,7 +243,7 @@ export const StaticBadge = island(() => import('./components/StaticBadge'), {
 ```
 
 :::warning{title="Never register a 'never' island in the client registry"}
-A `hydrate: 'never'` island MUST NOT appear in the manual `hydrateIslands({ ... })` registry. Registering it pulls the component module into the client bundle graph — defeating the zero-JS goal — even though the runtime short-circuits before invoking the loader. The auto-registry omits `'never'` islands automatically; the manual form is your responsibility. The `pyreon doctor --check-islands` audit catches the mistake (finding code: `never-with-registry-entry`).
+A `hydrate: 'never'` island MUST NOT appear in the manual `hydrateIslands({ ... })` registry. Registering it pulls the component module into the client bundle graph — defeating the zero-JS goal — even though the runtime short-circuits before invoking the loader. The auto-registry omits `'never'` islands automatically; the manual form is your responsibility. The `pyreon doctor --only islands-audit` audit catches the mistake (finding code: `never-with-registry-entry`).
 :::
 
 ## Prefetch hint
@@ -348,7 +348,7 @@ if (import.meta.hot) import.meta.hot.dispose(cleanup) // HMR
 ```
 
 :::warning{title="Registry keys must match the island name exactly"}
-A `hydrateIslands({ X })` entry whose key doesn't exactly match an `island()` declaration's `name` (case-sensitive) is a no-op — the island logs `No loader registered for island "…"`, stamps `data-island-error="no-loader"`, and stays un-hydrated. The auto-registry eliminates this class of bug entirely; the `pyreon doctor --check-islands` audit catches it for the manual form (finding code: `registry-mismatch`).
+A `hydrateIslands({ X })` entry whose key doesn't exactly match an `island()` declaration's `name` (case-sensitive) is a no-op — the island logs `No loader registered for island "…"`, stamps `data-island-error="no-loader"`, and stays un-hydrated. The auto-registry eliminates this class of bug entirely; the `pyreon doctor --only islands-audit` audit catches it for the manual form (finding code: `registry-mismatch`).
 :::
 
 ## Using islands with `@pyreon/zero`
@@ -413,15 +413,15 @@ Pyreon ships static + runtime gates that catch the recurring island foot-guns at
 
 ### Dev-server doctor-lite (automatic)
 
-Under `@pyreon/vite-plugin` with `islands: true` (the default), `vite dev` runs the same five-detector audit **once on server boot** — deferred 1 second off the startup path so it never delays first paint — and prints any findings as plain `console.warn` output naming `pyreon doctor --check-islands` for the full report. It's purely advisory: a failure inside the audit itself is swallowed, so a broken audit can never break `vite dev`. This closes the gap where a duplicate island name or a registry typo shipped an entire dev session unnoticed until someone ran `pyreon doctor` manually or hit CI.
+Under `@pyreon/vite-plugin` with `islands: true` (the default), `vite dev` runs the same five-detector audit **once on server boot** — deferred 1 second off the startup path so it never delays first paint — and prints any findings as plain `console.warn` output naming `pyreon doctor --only islands-audit` for the full report. It's purely advisory: a failure inside the audit itself is swallowed, so a broken audit can never break `vite dev`. This closes the gap where a duplicate island name or a registry typo shipped an entire dev session unnoticed until someone ran `pyreon doctor` manually or hit CI.
 
-### `pyreon doctor --check-islands`
+### `pyreon doctor --only islands-audit`
 
 Walks your project's source roots and runs five cross-file detectors. Each finding includes a file path, line/column, and an actionable fix.
 
 ```bash
-pyreon doctor --check-islands         # human-readable
-pyreon doctor --check-islands --json  # CI-pipeable JSON
+pyreon doctor --only islands-audit         # human-readable
+pyreon doctor --only islands-audit --json  # CI-pipeable JSON
 ```
 
 | Finding code                | Catches                                                                                                                                       |
@@ -435,7 +435,7 @@ pyreon doctor --check-islands --json  # CI-pipeable JSON
 Wire it into CI by piping `--json` and gating the merge on a non-empty findings array.
 
 :::warning{title="Don't nest islands"}
-An `island()` whose loader target also contains an `island()` is unsupported — when the outer island hydrates, its `hydrateRoot` replaces the inner subtree before the inner loader runs, so the inner island never hydrates. The runtime detects this at hydration time (logs an error, stamps `data-island-error="nested"`, and skips), and `--check-islands` catches it statically. Flatten the two components, or move the inner island out of the outer's tree.
+An `island()` whose loader target also contains an `island()` is unsupported — when the outer island hydrates, its `hydrateRoot` replaces the inner subtree before the inner loader runs, so the inner island never hydrates. The runtime detects this at hydration time (logs an error, stamps `data-island-error="nested"`, and skips), and `--only islands-audit` catches it statically. Flatten the two components, or move the inner island out of the outer's tree.
 :::
 
 ### MCP `audit_islands` tool
@@ -476,5 +476,5 @@ A successfully hydrated island clears its `data-island-state` and carries no `da
 - [`@pyreon/zero`](/docs/zero) — file-system routing, the self-hydrating zero integration, and server islands
 - [`@pyreon/runtime-server`](/docs/runtime-server) — the lower-level `renderToString` / `renderToStream` primitives
 - [`@pyreon/vite-plugin`](/docs/vite-plugin) — the build-time integration that powers the auto-registry
-- [`@pyreon/cli`](/docs/cli) — `pyreon doctor --check-islands`
+- [`@pyreon/cli`](/docs/cli) — `pyreon doctor --only islands-audit`
 - [`@pyreon/mcp`](/docs/mcp) — the `audit_islands` + `validate` tools for AI agents

@@ -11,3 +11,6 @@ node_modules/
 # scripts/ensure-release-keystore.sh, never committed.
 release.keystore
 keystore.properties
+# Retained release symbols (R8 mapping.txt per version) — archive them with
+# each shipped release; they are build output, not source.
+symbols/

@@ -103,8 +103,8 @@ export function App() {
 }`)
 
   it('the closure is `{ (idx, el) in … }` over `enumerated()`, for every indexed method', () => {
-    expect(out).toContain('xs.enumerated().map({ (i, v) in v * i })')
-    expect(out).toContain('xs.enumerated().forEach({ (i, v) in n = v + i })')
+    expect(out).toContain('xs.enumerated().map({ (i, v) in pyreonMul(v, i) })')
+    expect(out).toContain('xs.enumerated().forEach({ (i, v) in n = pyreonAdd(v, i) })')
     // `.filter` has to map back off the enumerated pair
     expect(out).toContain('xs.enumerated().filter({ (i, v) in i > 0 && v > 1 }).map({ $0.element })')
     expect(out).toContain('xs.enumerated().allSatisfy({ (i, v) in v > i })')
@@ -113,8 +113,8 @@ export function App() {
   it('a MULTI-STATEMENT block body is emitted, not silently dropped', () => {
     // Reading only `cb.body` (the empty-literal SENTINEL a block parses to)
     // dropped the whole body and compiled clean.
-    expect(out).toContain('let q = v + i')
-    expect(out).toContain('return q * 2')
+    expect(out).toContain('let q = pyreonAdd(v, i)')
+    expect(out).toContain('return pyreonMul(q, 2)')
   })
 })
 
@@ -324,7 +324,7 @@ export function App() {
   return (<Stack><Text>{() => \`\${nested().length}\${nestedFrom().length}\`}</Text></Stack>)
 }`)
     expect(out).toContain(
-      'xs.enumerated().map({ (i, v) in ys.enumerated().map({ (i, v) in v + i }).count })',
+      'xs.enumerated().map({ (i, v) in ys.enumerated().map({ (i, v) in pyreonAdd(v, i) }).count })',
     )
     expect(out).toContain('(0..<2).map({ i in (0..<2).map({ i in i }).count })')
   })

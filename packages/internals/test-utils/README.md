@@ -164,7 +164,7 @@ it('renders in real Chromium', async () => {
 ## Gotchas
 
 - **Mount helpers throw without `environment: 'happy-dom'`.** The error message points at the fix (add `environment: 'happy-dom'` to the package's `vitest.config.ts`). Browser-subpath helpers obviously need real Chromium via `@vitest/browser`.
-- **Always pair mock-vnode tests with real-`h()` tests.** The mock path is fast but doesn't exercise rocketstyle's attrs HOC pipeline. The real-`h()` test is the regression-net for PR #197-class bugs. `pyreon doctor --audit-tests` scans for files that have HIGH ratios of mock-vnode literals to real-`h()` calls.
+- **Always pair mock-vnode tests with real-`h()` tests.** The mock path is fast but doesn't exercise rocketstyle's attrs HOC pipeline. The real-`h()` test is the regression-net for PR #197-class bugs. `pyreon doctor --only audit-tests` scans for files that have HIGH ratios of mock-vnode literals to real-`h()` calls.
 - **`mountAndExpectOnce` counts factory invocations, not effect re-runs.** The signal-driven re-run typically IS the effect (good — patches in place); the failure case is that the factory itself is re-invoked, which means a new VNode subtree is constructed and mounted.
 - **`initTestConfig` mutates `@pyreon/ui-core` config globally** — always pair with the returned `cleanup()` in an `afterAll` / `afterEach`. Otherwise theme assertions in unrelated test files will fail.
 

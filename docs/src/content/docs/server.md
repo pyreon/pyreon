@@ -529,7 +529,7 @@ Pyreon's island architecture (partial hydration) has its own dedicated page cove
 
 → **[Read the Island Architecture guide](/docs/island-architecture)**
 
-The short version: `island(loader, { name, hydrate })` wraps an async component import and returns a `ComponentFn` that renders inside a `<pyreon-island>` custom element with serialized props + the hydration strategy as data attributes. Six strategies (`load` / `idle` / `visible` / `interaction` / `media(...)` / `never`), plus a `prefetch` hint that pre-warms the chunk before deferred-hydration triggers fire. Auto-discovered registry under `@pyreon/vite-plugin` (`hydrateIslandsAuto()`) eliminates the manual sync between `island()` declarations and the client registry. Project-wide audit at `pyreon doctor --check-islands` + MCP `audit_islands` tool catches duplicate names, dead islands, registry drift, nested islands, and never-with-registry foot-guns at build time.
+The short version: `island(loader, { name, hydrate })` wraps an async component import and returns a `ComponentFn` that renders inside a `<pyreon-island>` custom element with serialized props + the hydration strategy as data attributes. Six strategies (`load` / `idle` / `visible` / `interaction` / `media(...)` / `never`), plus a `prefetch` hint that pre-warms the chunk before deferred-hydration triggers fire. Auto-discovered registry under `@pyreon/vite-plugin` (`hydrateIslandsAuto()`) eliminates the manual sync between `island()` declarations and the client registry. Project-wide audit at `pyreon doctor --only islands-audit` + MCP `audit_islands` tool catches duplicate names, dead islands, registry drift, nested islands, and never-with-registry foot-guns at build time.
 
 ---
 
@@ -690,7 +690,7 @@ hydrateIslandsAuto(islandsRegistry)
 
 This eliminates the manual sync between every `island()` declaration and the client registry — typo / forgotten entry / registry drift was the #1 author foot-gun before auto-registry shipped. Reference: `examples/islands-showcase`.
 
-`hydrate: 'never'` islands are deliberately omitted from the auto-registry so their components stay out of the client bundle. Don't pair `hydrate: 'never'` with a manual `hydrateIslands({ X })` entry — the lint rule `pyreon/island-never-with-registry-entry` flags this in the same file; the project-wide `pyreon doctor --check-islands` audit catches the cross-file shape.
+`hydrate: 'never'` islands are deliberately omitted from the auto-registry so their components stay out of the client bundle. Don't pair `hydrate: 'never'` with a manual `hydrateIslands({ X })` entry — the lint rule `pyreon/island-never-with-registry-entry` flags this in the same file; the project-wide `pyreon doctor --only islands-audit` audit catches the cross-file shape.
 
 ### `interaction` strategy + click/submit replay
 

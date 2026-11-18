@@ -50,18 +50,39 @@ const urlOf = (d: ExtDecl): string => (d.payload as { url: string }).url
 // recognizers
 // ---------------------------------------------------------------------------------------------------------------------
 
-/** `useWebSocket('wss://…')`: the url must be a string literal so it can be baked into the emitted connect call. */
+/**
+ * `useWebSocket('wss://…', { autoConnect? })`: the url must be a string literal so it can be baked into the emitted connect
+ * call. `autoConnect: false` (a boolean literal) turns off the connect-on-mount, as on the web; anything else in that slot
+ * cannot be read at compile time and is named, keeping the web default (`true`).
+ */
 export const recognizeWebSocket: CallRecognizer = (_call, ctx) => {
   const url = ctx.stringLiteralArg(0)
   if (url === undefined) {
     ctx.warn(`useWebSocket url argument must be a string literal; got ${(ctx.args[0] as { type?: string } | undefined)?.type ?? 'nothing'}.`)
     return null
   }
-  return { type: WEBSOCKET_TYPE, payload: { url } }
+  let autoConnect = true
+  const opts = ctx.unwrap(ctx.args[1]) as { type?: string; properties?: unknown[] } | undefined
+  if (opts !== undefined) {
+    const props = opts.type === 'ObjectExpression' ? ((opts.properties ?? []) as { type?: string; value?: unknown }[]) : undefined
+    const prop = props?.find((p) => (p.type === 'Property' || p.type === 'ObjectProperty') && ctx.propKey(p as never) === 'autoConnect')
+    const value = prop === undefined ? undefined : (ctx.unwrap(prop.value as never) as { type?: string; value?: unknown } | undefined)
+    if (props === undefined || (prop !== undefined && (value?.type !== 'Literal' || typeof value.value !== 'boolean'))) {
+      ctx.warn(
+        "useWebSocket options: `autoConnect` must be a boolean literal (`{ autoConnect: false }`) for the native connect-on-mount to follow it; this one is not, so the socket connects on mount (the web default).",
+      )
+    } else if (value !== undefined) {
+      autoConnect = value.value as boolean
+    }
+  }
+
+  return { type: WEBSOCKET_TYPE, payload: { url, autoConnect } }
 }
+
 export const recognizeDatabase: CallRecognizer = () => ({ type: DATABASE_TYPE })
 export const recognizeSecureStorage: CallRecognizer = () => ({ type: SECURE_STORAGE_TYPE })
 export const recognizeMap: CallRecognizer = () => ({ type: MAP_TYPE })
+
 /** `useAuth<User>()`: generic over the app's user type. The no-generic form falls back to a placeholder type the emit handles. */
 export const recognizeAuth: CallRecognizer = (_call, ctx) => ({
   type: AUTH_TYPE,
@@ -139,6 +160,7 @@ function fieldOf(site: ReceiverSite, fields: ReadonlySet<string>): string | unde
   }
   const read = site.expr
   if (read.object.kind !== 'identifier') return undefined
+
   return fields.has(read.property) ? read.property : undefined
 }
 
@@ -175,6 +197,7 @@ function labelledCall(site: ReceiverSite, ctx: SwiftEmitContext, labels: Labels,
     const label = exactAfterCollection ? (i === 0 ? null : table[i - 1]) : table[i]
     return label === null || label === undefined ? src : `${label}: ${src}`
   })
+
   return `${ctx.ident(site.receiver.name)}.${method}(${labelled.join(', ')})`
 }
 
@@ -209,9 +232,11 @@ function insertRecord(site: ReceiverSite, ctx: SwiftEmitContext | KotlinEmitCont
         parts.push(swift ? `fields: ${ctx.expr(fieldsField.value)}` : ctx.expr(fieldsField.value))
       }
     }
+
     return `${ctx.ident(site.receiver.name)}.insert(${ctx.expr(args[0]!)}, PyreonRecord(${parts.join(', ')}))`
   }
   warnInsertShape(ctx, site.receiver.name, lit.fields)
+
   return undefined
 }
 
@@ -243,6 +268,7 @@ export const websocketReceiver: ReceiverLowering = {
       const field = fieldOf(site, WEBSOCKET_FIELDS)
       if (field !== undefined) return `${ctx.ident(site.receiver.name)}.${field}`
       if (zeroArgMethodOf(site) === 'connect') return `${ctx.ident(site.receiver.name)}.connect(to: URL(string: ${swiftStr(urlOf(site.receiver))})!)`
+
       return undefined
     },
   },
@@ -253,6 +279,7 @@ export const websocketReceiver: ReceiverLowering = {
       const field = fieldOf(site, WEBSOCKET_FIELDS)
       if (field !== undefined) return `${ctx.ident(site.receiver.name)}.${ctx.ident(field)}.value`
       if (zeroArgMethodOf(site) === 'connect') return `${ctx.ident(site.receiver.name)}.connect(${kotlinStr(urlOf(site.receiver))})`
+
       return undefined
     },
   },
@@ -276,6 +303,7 @@ const stateFieldsReceiver = (fields: ReadonlySet<string>, labels?: Labels): Rece
     },
   },
 })
+
 export const mapReceiver = stateFieldsReceiver(MAP_FIELDS, MAP_LABELS)
 export const authReceiver = stateFieldsReceiver(AUTH_FIELDS)
 
@@ -283,58 +311,40 @@ export const authReceiver = stateFieldsReceiver(AUTH_FIELDS)
 // the implicit connect
 // ---------------------------------------------------------------------------------------------------------------------
 
+/** The lifecycle declarations this preparation added, so a second run over the same IR adds none. */
+const syntheticLifecycle = new WeakSet<DeclIR>()
+
+type Statement = Extract<DeclIR, { kind: 'on-mount' }>['body'][number]
+
+const wsCall = (name: string, method: 'connect' | 'close'): Statement => ({
+  kind: 'expr',
+  expr: { kind: 'call', callee: { kind: 'member', object: { kind: 'identifier', name }, property: method }, args: [] },
+})
+
 /**
- * The web `useWebSocket(url)` auto-connects; the native container is created but never connects unless the author writes
- * `onMount(() => ws.connect())`. For each socket with NO explicit `.connect()` call anywhere in its component, append a synthetic
- * `on-mount` declaration calling `ws.connect()` — which reuses the whole mount harness (SwiftUI `.onAppear` on the stable host,
- * Compose `LaunchedEffect(Unit)`) and the url-threading receiver above. Skips a socket that already has an explicit connect (no
- * double-connect). Idempotent: a socket that already owns a synthetic on-mount connect is not re-appended.
+ * The web `useWebSocket(url)` connects during setup unless `autoConnect: false`, and closes the socket when the component
+ * unmounts (`onHookCleanup(close)`). The native container does neither on its own, so each socket gets a synthetic
+ * `on-mount` declaration: `ws.connect()` on mount (unless `autoConnect: false`) and `ws.close()` as its cleanup. That reuses
+ * the mount harness (SwiftUI `.onAppear` / `.onDisappear` on the stable host, Compose `DisposableEffect`) and the
+ * url-threading receiver above.
+ *
+ * An explicit `ws.connect()` elsewhere does NOT replace the mount connect: on the web it is a no-op while the socket is
+ * open, and both runtimes guard `connect` the same way. (Before, any explicit call — even a reconnect button — turned
+ * the mount connect off, so the socket stayed closed until the button was pressed.)
  */
 export const connectOnMount: EmitPreparation = (input) => {
   for (const c of input.components) {
-    const wsNames = c.decls.filter((d) => d.kind === 'ext' && d.plugin === PLUGIN_NAME && d.type === WEBSOCKET_TYPE).map((d) => (d as ExtDecl).name)
-    if (wsNames.length === 0) continue
-    // Names that ALREADY have an explicit `.connect()` call anywhere in the component IR (decls + return tree): a generic recursive
-    // walk — find a `call` whose callee is `member(identifier(ws), 'connect')`.
-    const explicit = new Set<string>()
-    const visit = (n: unknown): void => {
-      if (Array.isArray(n)) {
-        for (const x of n) visit(x)
-        return
-      }
-      if (n === null || typeof n !== 'object') return
-      const node = n as Record<string, unknown> & { kind?: string }
-      if (node.kind === 'call') {
-        const callee = node.callee as { kind?: string; object?: { kind?: string; name?: string }; property?: string } | undefined
-        if (
-          callee?.kind === 'member' &&
-          callee.property === 'connect' &&
-          callee.object?.kind === 'identifier' &&
-          typeof callee.object.name === 'string' &&
-          wsNames.includes(callee.object.name)
-        ) {
-          explicit.add(callee.object.name)
-        }
-      }
-      for (const key of Object.keys(node)) {
-        if (key === 'kind') continue
-        visit(node[key])
-      }
-    }
-    visit(c.decls)
-    visit(c.returnExpr)
-    for (const name of wsNames) {
-      if (explicit.has(name)) continue
-      const connect: DeclIR = {
+    if (c.decls.some((d) => syntheticLifecycle.has(d))) continue
+    for (const d of c.decls) {
+      if (d.kind !== 'ext' || d.plugin !== PLUGIN_NAME || d.type !== WEBSOCKET_TYPE) continue
+      const auto = (d.payload as { autoConnect?: boolean }).autoConnect !== false
+      const lifecycle: DeclIR = {
         kind: 'on-mount',
-        body: [
-          {
-            kind: 'expr',
-            expr: { kind: 'call', callee: { kind: 'member', object: { kind: 'identifier', name }, property: 'connect' }, args: [] },
-          },
-        ],
+        body: auto ? [wsCall(d.name, 'connect')] : [],
+        cleanup: [wsCall(d.name, 'close')],
       }
-      c.decls.push(connect)
+      syntheticLifecycle.add(lifecycle)
+      c.decls.push(lifecycle)
     }
   }
 }

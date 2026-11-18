@@ -368,6 +368,31 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    // Animations row (ANI-1) — the slide and scale presets run their show →
+    // hide → show cycle on iOS, and useReducedMotion reports the Simulator's
+    // setting (Reduce Motion is off on a fresh Simulator). As the test above
+    // explains, XCUITest cannot read a SwiftUI transition mid-flight, so the
+    // GEOMETRY of the presets is the Android half's assertion; this proves the
+    // emitted `.transition(.move(edge: .trailing))` and `.transition(.scale)`
+    // build and gate the views on a device.
+    func test_slideAndScalePresetsShowAndHideAndReducedMotionReads() throws {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30), "Home page did not render")
+        app.buttons["View presets"].tap()
+        XCTAssertTrue(app.otherElements["presets-page"].firstMatch.waitToExist(timeout: 15), "Presets page did not render")
+        XCTAssertEqual(app.staticTexts["reduced-motion"].label, "Reduced motion: false")
+
+        for (box, toggle) in [("slide-box", "slide-toggle"), ("scale-box", "scale-toggle")] {
+            let el = app.staticTexts[box]
+            XCTAssertTrue(el.waitToExist(timeout: 10), "\(box) missing before the toggle")
+            app.buttons[toggle].tap()
+            XCTAssertTrue(el.waitForNonExistence(timeout: 6), "\(box) did not leave after hide")
+            app.buttons[toggle].tap()
+            XCTAssertTrue(el.waitToExist(timeout: 6), "\(box) did not return after show")
+        }
+    }
+
     // Adaptive row — the COMPACT half of the responsive-prop proof on the
     // iPhone simulator: the A→B vertical gap carries the compact token
     // (2 → 8pt; a regular resolution would read 24pt, a dropped adaptive
@@ -1536,6 +1561,52 @@ final class PyreonRouterDemoUITests: XCTestCase {
         app.buttons["nav-mail-row-invoice"].tap()
         XCTAssertTrue(subject.waitToExist(timeout: 10))
         XCTAssertEqual(subject.label, "Subject: Invoice")
+    }
+
+    // ADP-2 — the WIDE half of <Tabs> and <Split>, on an iPad (CI's iPad
+    // lane runs it with `-only-testing`; it skips on an iPhone). The test above
+    // proves the phone layout. In a regular-width window:
+    //   <Split> inside the router lays out two panes side by side, the detail
+    //           shown with no selection, and a row tap updates the detail while
+    //           the list stays on screen (nothing is pushed);
+    //   <Tabs>  is the iPad tab bar at the TOP of the window (iOS 18's
+    //           `.sidebarAdaptable`), where the phone's sits at the bottom.
+    // Asserted by frames, so a host that ignored the size class fails on
+    // geometry rather than on a missing element.
+    func test_splitShowsTwoPanesAndTabsMoveToTheTopOnPad() throws {
+        try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "iPad lane only")
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30))
+        app.buttons["home-to-navigation"].tap()
+        XCTAssertTrue(app.staticTexts["nav-feed-title"].waitToExist(timeout: 15), "Feed tab did not render")
+
+        let window = app.windows.firstMatch.frame
+        let mailTab = app.buttons["Mail"].firstMatch
+        XCTAssertTrue(mailTab.waitToExist(timeout: 10), "no Mail tab item")
+        XCTAssertLessThan(
+            mailTab.frame.midY, window.midY,
+            "the iPad tab bar is not at the top of the window: Mail tab \(mailTab.frame) in window \(window)"
+        )
+        mailTab.tap()
+
+        let welcome = app.buttons["nav-mail-row-welcome"]
+        let subject = app.staticTexts["nav-mail-subject"]
+        XCTAssertTrue(welcome.waitToExist(timeout: 10), "Split list did not render")
+        XCTAssertTrue(subject.waitToExist(timeout: 10), "Split detail is not shown beside the list with no selection")
+        XCTAssertEqual(subject.label, "Subject: none")
+        XCTAssertLessThanOrEqual(
+            welcome.frame.maxX, subject.frame.minX,
+            "the Split panes are not side by side: list row \(welcome.frame), detail \(subject.frame)"
+        )
+
+        app.buttons["nav-mail-row-invoice"].tap()
+        let deadline = Date().addingTimeInterval(10)
+        while subject.label != "Subject: Invoice" && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        XCTAssertEqual(subject.label, "Subject: Invoice", "the detail did not follow the row tap")
+        XCTAssertTrue(welcome.isHittable, "a row tap pushed over the list instead of updating the detail pane")
     }
 
     /// Tab-bar router (#4060): `createRouter({ tabs })` + `<Tabs router>` — each tab is its own

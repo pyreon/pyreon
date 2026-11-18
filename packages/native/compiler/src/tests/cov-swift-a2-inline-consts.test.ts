@@ -45,7 +45,7 @@ describe('a value const is inlined into every statement kind', () => {
     // `declare` carries no expression — emitted untouched
     expect(out).toContain('var out: String\n')
     expect(out).toContain('var v = (3) + 1')
-    expect(out).toContain('v = (3) + v')
+    expect(out).toContain('v = pyreonAdd((3), v)')
     expect(out).toContain('if v > (3) {')
     expect(out).toContain('v = (3) * 2')
     expect(out).toContain('out = String((3))')

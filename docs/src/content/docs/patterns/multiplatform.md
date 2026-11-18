@@ -8,7 +8,7 @@ seeAlso: [routing-setup, state-management, data-fetching]
 
 **PMTC compiles your COMPONENT SOURCE — signals, the 22 canonical primitives, a fixed hook set, and a narrow declarative TS subset — to SwiftUI (iOS) and Jetpack Compose (Android). It does NOT transpile npm packages to native.** So a multiplatform app is built from: the canonical primitives + reactivity + the ported hooks/services, written in the supported TS subset. Anything outside that compiles for web but **silently breaks or drops on native**. Build inside the lane and it works first-try; step outside and it won't.
 
-> Status: native PMTC is **Experimental overall** — the shipping path (store release, crash reporting, background/push) is Not ready. Each area has its own tier, derived from the matrix in [Maturity by area](../multiplatform#maturity-by-area). **Beta areas:** Core UI & layout, Lists & keyed rendering, Navigation & routing, State, Forms & validation, Networking, Platform APIs, Gestures. The one authoritative number is the gated capability matrix in [multiplatform.md](../multiplatform) (`check-multiplatform-matrix` fails CI when its headline disagrees with its table) — do not quote a score from memory. Per-PR validation compiles every emitted fixture with `swiftc` (typecheck against stubs, plus the real SDK on macOS) and `kotlinc`-against-stubs; the iOS/Android device builds of the gated example apps are required checks, so a capability no gated app exercises ships on stub-typecheck strength. Treat the rules below as hard constraints, not suggestions.
+> Status: native PMTC is **Experimental overall** — the shipping path is not ready: crash reporting and background/push are rated Not ready, and store release is Experimental with no app submitted to a store yet. Each area has its own tier, derived from the matrix in [Maturity by area](../multiplatform#maturity-by-area). **Beta areas:** Core UI & layout, Lists & keyed rendering, Navigation & routing, State, Forms & validation, Networking, Storage, Platform APIs, Gestures, Adaptive / tablet layout, Styling & design system. The one authoritative number is the gated capability matrix in [multiplatform.md](../multiplatform) (`check-multiplatform-matrix` fails CI when its headline disagrees with its table) — do not quote a score from memory. Per-PR validation compiles every emitted fixture with `swiftc` (typecheck against stubs, plus the real SDK on macOS) and `kotlinc`-against-stubs; the iOS/Android device builds of the gated example apps are required checks, so a capability no gated app exercises ships on stub-typecheck strength. Treat the rules below as hard constraints, not suggestions.
 
 ## Imports — the canonical layer
 
@@ -84,7 +84,7 @@ Also lowering today (each verified against real `swiftc`/`kotlinc`): object-shap
 | destructured props `function C({ x }) {}` | `function C(props) { … props.x … }` (destructure loses reactivity) |
 | a bare object literal whose field PMTC cannot type (`{ nodes, edges: [] }`, a `null` field) | annotate it: `const g: Graph = { … }` / `signal<Graph>({ … })` |
 
-Do not rely on the absence of a warning as proof it compiles: run `pyreon doctor --check-native` (project scan) or the MCP `validate` tool (per-snippet) before the device build.
+Do not rely on the absence of a warning as proof it compiles: run `pyreon doctor --only native-audit` (project scan) or the MCP `validate` tool (per-snippet) before the device build.
 
 ## Per-target hooks + services (these DO work on native)
 
@@ -233,7 +233,7 @@ This compiles to web + iOS + Android from one source: canonical primitives, a `t
 
 ## Anti-pattern
 
-Reaching outside the multiplatform lane — the native build breaks (the compiler warns by name for most of these; run `pyreon doctor --check-native`):
+Reaching outside the multiplatform lane — the native build breaks (the compiler warns by name for most of these; run `pyreon doctor --only native-audit`):
 
 ```tsx
 // ❌ DON'T — every line here breaks the native (iOS/Android) build:
@@ -262,7 +262,7 @@ function Dashboard(props: { title: string }) {            // props.x stays react
 // Charts work natively: import { Chart } from '@pyreon/charts'. A code editor? Host it: <WebView html={EDITOR_HTML} data={doc()} onMessage={...} />
 ```
 
-Catch these BEFORE the device build with `pyreon doctor --check-native` (project scan) or the MCP `validate` tool (per-snippet) — both flag web-only imports + out-of-subset `enum`/`class` in files importing `@pyreon/primitives`.
+Catch these BEFORE the device build with `pyreon doctor --only native-audit` (project scan) or the MCP `validate` tool (per-snippet) — both flag web-only imports + out-of-subset `enum`/`class` in files importing `@pyreon/primitives`.
 
 ## Related
 
