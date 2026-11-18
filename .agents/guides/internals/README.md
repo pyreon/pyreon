@@ -183,6 +183,23 @@ Eligible trees lower to `_ssr(["<li>…", "</li>"], hole0, …)`. Holes resolve 
 - **Decorating a compiled child element.** A component that clones its child to add props (kinetic's per-item hidden class/style, `Transition`'s ref) receives a compiled item for a literal child: a `_tpl` item on the client and, on the server, an `_ssr` / `_ssrDeferred` / streamed result. The server shapes expose `withRootAttrs(extra)` (duck-typed; client-safe packages never import runtime-server), which adds the props to the ROOT's opening tag with `renderProp`, appending to its own `class` and `style`. On the client the component decorates the element at mount and declares it with `_declareRootDecoration(item)` so hydration adopts the decorated server element (see below). Locked by kinetic `ssr-compiled-children.test.tsx` and runtime-dom `transition-compiled-child.test.tsx`.
 - A component child is a PRESERVED-source hole (`_ssrNode(<Comp …/>)`, walked in place), and so is an expression child that contains JSX the lowerings cannot turn into a string (`{items.map(i => <li><Link/></li>)}`) when `sliceExpr` returns its source verbatim: `_esc(`/`_escSole(` around the range, so the item's own root templates. Any call with a preserved hole, or with a generated hole that still builds JSX, is wrapped in `_ssrDeferred(() => …)` so components render at the h() path's position (context).
 
+### Hydration contract: adopt, report, remount
+
+The rule: hydration keeps server nodes wherever the client renders the same thing, and every place it CHANGES what the server rendered is reported through `warnHydrationMismatch` (dev console) and `onHydrationMismatch` handlers. The h()-path reports reach the handlers in production too; the compiled binders' text reports (#4419) are dev-only, with zero production bytes.
+
+| Path | Agreement | Divergence |
+| --- | --- | --- |
+| static text / element (`hydrateChild`, `hydrateElement`) | adopt | report `text` / `tag`; replace that node, siblings keep theirs |
+| accessor, marked range, one text node | adopt, bind | report `text`, write in place |
+| accessor, marked range, several nodes | adopt by walking the first value (`adoptReactiveRange`) | reported by the walk |
+| accessor, NO markers (server rendered the content without an accessor, #4448) | adopt by walking the first value (`adoptUnmarkedRange`) | reported by the walk |
+| accessor over an empty range / empty sole element | mount | text: report; a structural first value mounts without a report (gap) |
+| sole accessor child (markers elided) | adopt (`hydrateSoleAccessorChild`) | as the marked rows |
+| keyed array from an accessor | mounts fresh (no adoption-time key cache), no report | n/a |
+| compiled `_tpl` | adopt when the static skeleton matches | swap to a clone; `reportSwappedTemplate` reports the first real difference (none when the DOM is identical, e.g. #4385's text slots holding elements) |
+| compiled text binders, `_setChild`, `_setChildAt`, `_textSlot` | adopt | report `text` (dev) |
+| `_mountSlot` / `_setChild` structural values | adopt through the slot hydrator | reported by the walk |
+
 ### Hydrating compiled templates
 
 `_tpl` adopts server nodes at its cursor; verification is in `hydration-plan.ts`. Relaxations are declared by the compiler on the element, never inferred:

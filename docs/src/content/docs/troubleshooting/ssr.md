@@ -142,6 +142,12 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
 
 ---
 
+### [FIXED, 2026-11] Treating a missing range marker as "unknown extent, rebuild"
+
+(#4448): an accessor whose server content carries no `<!--$-->` markers (the server rendered the same content without an accessor: `props.children` on one side, `<Provider>{props.children}</Provider>` on the other) removed ONE server node and mounted fresh, silently, in dev and production. A multi-node value also re-created the following sibling. The markers only say where output ENDS; the first value says the same, as a static child's vnode does. Walk the first value against the server nodes inside `mountReactive`'s first run (`adoptUnmarkedRange` in `hydrate.ts`), then place the boundary after what the walk claimed, never past the parent's own boundary (the walk's cursor skips comments, including the enclosing range's markers; a boundary placed beyond it made the range's cleanup delete the parent's marker, caught by the compiled parity fuzz, seed 297). Test: `runtime-dom/src/tests/hydrate-adopt-not-remount.test.tsx`.
+
+---
+
 ### [FIXED, 2026-11] A component that decorates its child assumed the child is a VNode
 
 (#4382): a literal element child compiles to a `_tpl` item on the client and to raw HTML (`_ssr`) on the server, neither of which has props to merge. Kinetic's per-item hidden class/style was dropped on the server (initially-hidden items prerendered VISIBLE, a flash before hydration); runtime-dom's `<Transition><div/></Transition>` treated the `_tpl` item as a component, warned, and never animated; `_ssr` dropped `key` while the client kept the keyed element on `h()`, so a group saw different keys on each side.
